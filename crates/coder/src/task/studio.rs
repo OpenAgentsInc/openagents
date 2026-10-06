@@ -2281,6 +2281,9 @@ pub mod flow;
 pub use flow::{Flow, Stage, Verification};
 #[path = "studio_approvals.rs"]
 pub mod approvals;
+// A direct request to a resident seat: the workshop agent's task mode.
+#[path = "studio_direct.rs"]
+pub mod direct;
 
 #[cfg(test)]
 #[path = "studio_tests.rs"]

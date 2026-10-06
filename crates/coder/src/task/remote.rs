@@ -42,6 +42,9 @@ pub struct Inbox {
     /// device's coding reply starts Coder at once (#10101); `None` reads
     /// [`super::settings::path`].
     settings: Option<PathBuf>,
+    /// The workshop agents this host answers for
+    /// (`docs/verse/workshop-agent.md`).
+    agents: Option<Arc<super::agent_host::Agents>>,
 }
 
 /// The most engine preferences an inbox holds for creates not yet made.
@@ -62,7 +65,23 @@ impl Inbox {
             autostart: None,
             preferences: Arc::new(std::sync::Mutex::new(BTreeMap::new())),
             settings: None,
+            agents: None,
         }
+    }
+
+    /// Answer `studio.agent.*` for the workshop agents under `agents`'s
+    /// host root, and run their standing jobs on each sweep.
+    #[must_use]
+    pub fn with_agents(mut self, agents: super::agent_host::Agents) -> Self {
+        let agents = match &self.autostart {
+            Some(autostart) => {
+                let autostart = autostart.clone();
+                agents.with_sweep(Arc::new(move || autostart.sweep_soon()))
+            }
+            None => agents,
+        };
+        self.agents = Some(Arc::new(agents));
+        self
     }
 
     /// Read `coder.start` from `file` instead of [`super::settings::path`].
@@ -357,6 +376,28 @@ impl Inbox {
 }
 
 impl Tasks for Inbox {
+    fn agent(
+        &self,
+        key: &str,
+        principal: &Principal,
+        op: &Operation,
+    ) -> Result<serde_json::Value, Code> {
+        match &self.agents {
+            Some(agents) => agents.answer(key, principal, op),
+            None => Err(coder_host::tasks::refuse(
+                Code::Unsupported,
+                "This host keeps no workshop agents.",
+            )),
+        }
+    }
+
+    fn agent_reports(&self) -> Vec<coder_host::AgentReport> {
+        self.agents
+            .as_ref()
+            .map(|agents| agents.reports())
+            .unwrap_or_default()
+    }
+
     fn capabilities(&self) -> Vec<String> {
         if self.starts_at_once() {
             vec![coder_host::access::protocol::CODER_START_AT_ONCE.to_owned()]
@@ -640,6 +681,9 @@ impl Tasks for Inbox {
     /// Evaluate held commands again, such as queued messages after a turn
     /// ends, with each sender's grant rechecked.
     fn tick(&self, standing: Standing<'_>) {
+        if let Some(agents) = &self.agents {
+            agents.tick();
+        }
         self.apply_standing_rules(standing);
         let check = |sender: &super::commands::Sender| standing(&principal_of(sender));
         let now = super::autostart::unix_now();
@@ -697,6 +741,9 @@ impl Tasks for Inbox {
             };
             stamp.extend_from_slice(&length.to_le_bytes());
             stamp.extend_from_slice(&modified.to_le_bytes());
+        }
+        if let Some(agents) = &self.agents {
+            stamp.extend_from_slice(&agents.stamp().to_le_bytes());
         }
         Some(stamp)
     }
@@ -883,6 +930,15 @@ impl Tasks for Inbox {
         standing: Standing<'_>,
     ) -> Result<String, Code> {
         use super::studio::{NewGoal, Party, PlanOutcome, Repository, Studio};
+        // Pausing or resuming a workshop agent is the same intent as a
+        // seat's (`studio.seat.pause`); her record keeps it.
+        if let (Some(agents), Operation::PauseSeat { seat } | Operation::ResumeSeat { seat }) =
+            (&self.agents, op)
+            && agents.holds(seat)
+        {
+            agents.answer(key, principal, op)?;
+            return Ok(seat.clone());
+        }
         if matches!(op, Operation::AllowAlways { .. }) {
             return self.allow_always(key, principal, op, standing);
         }

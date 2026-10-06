@@ -396,3 +396,99 @@ fn a_conflicting_merge_is_refused_and_leaves_the_checkout() {
     assert_eq!(git(&s.repo, &["rev-parse", "HEAD"]), before);
     assert!(git(&s.repo, &["status", "--porcelain"]).is_empty());
 }
+
+/// The workshop agent's task mode: a direct request is a one-task goal for
+/// her seat, released at once into a worktree of her own, whose change
+/// the person reviews and merges; nothing is pushed.
+#[test]
+fn a_direct_request_works_in_its_own_worktree_and_merges_locally() {
+    use super::super::direct::Direct;
+    let s = scratch();
+    let first = git(&s.repo, &["rev-parse", "HEAD"]);
+    let mut tasks = Store::open(&s.store).unwrap();
+    let mut studio = Studio::open(&s.store)
+        .unwrap()
+        .with_host_root(&s.root)
+        .with_worktrees(worktrees_dir(&s.root));
+    studio
+        .set_seat(seat("alice", Role::Worker, "codex:gpt-6-luna", 3))
+        .unwrap();
+    let (goal, task, released) = studio
+        .submit_direct(
+            &mut tasks,
+            Direct {
+                text: "Add a notes file.".into(),
+                title: "Add a notes file".into(),
+                repository: Repository {
+                    label: "demo".into(),
+                    path: s.repo.to_string_lossy().into_owned(),
+                },
+                seat: "alice".into(),
+            },
+            2_000,
+        )
+        .unwrap();
+    assert_eq!(released.len(), 1);
+    assert_eq!(released[0].task_id, task);
+    assert_eq!(released[0].seat, "alice");
+    let state = studio.state().goal(&goal).unwrap().clone();
+    assert!(state.planned);
+    assert_eq!(
+        state.lead.task_id, task,
+        "the goal's progress is her task's"
+    );
+    assert_eq!(studio.direct_task(&goal).unwrap().0, task);
+    let record = local::record(&s.store, &task).expect("a run record");
+    let worktree = PathBuf::from(&record.worktree);
+    assert!(worktree.starts_with(worktrees_dir(&s.root)));
+    let on = git(&worktree, &["symbolic-ref", "--short", "HEAD"]);
+    assert!(on.starts_with("studio/alice/"), "{on}");
+    // A paused seat takes no direct request.
+    studio.pause_seat("alice").unwrap();
+    assert!(
+        studio
+            .submit_direct(
+                &mut tasks,
+                Direct {
+                    text: "Another.".into(),
+                    title: "Another".into(),
+                    repository: state.repository.clone(),
+                    seat: "alice".into(),
+                },
+                2_001,
+            )
+            .is_err()
+    );
+    drop(studio);
+    drop(tasks);
+    let home = s.dir.path().join("home");
+    std::fs::create_dir_all(&home).unwrap();
+    std::fs::write(worktree.join("notes.txt"), "alice\n").unwrap();
+    succeeds(as_seat("alice", &worktree, &home).args(["add", "-A"]));
+    succeeds(as_seat("alice", &worktree, &home).args(["commit", "-q", "-m", "Add notes"]));
+    let inbox = remote::Inbox::new(
+        &s.store,
+        BTreeMap::from([("demo".to_owned(), s.repo.clone())]),
+    );
+    let review = inbox.review(&task).unwrap();
+    assert_eq!(review.base, first);
+    let principal = coder_host::Principal {
+        device: "d".repeat(64),
+        grant: None,
+        epoch: None,
+    };
+    let merged = inbox
+        .publish(
+            &principal,
+            &task,
+            &coder_host::Reviewed {
+                base: review.base,
+                head_commit: review.head_commit,
+                head: review.head,
+            },
+        )
+        .unwrap();
+    assert_eq!(merged.state, PublishState::Published, "{}", merged.note);
+    assert!(s.repo.join("notes.txt").is_file());
+    assert_eq!(git(&s.origin, &["rev-parse", "refs/heads/main"]), first);
+}

@@ -158,6 +158,21 @@ pub trait Dispatch: Send {
     ) -> std::result::Result<serde_json::Value, Code> {
         Err(Code::Unsupported)
     }
+    /// Answer a `studio.agent.*` operation for `device`, which holds the
+    /// right it requires, under the grant and epoch `grant` names (none
+    /// for the owner). `request` is the NIP-HOST request ID, which keys an
+    /// ask so a retry asks once. The answer is one of
+    /// [`crate::agent`]'s answers as JSON. A host without workshop agents
+    /// has none.
+    fn agent(
+        &mut self,
+        _request: &str,
+        _device: &str,
+        _grant: Option<(&str, u64)>,
+        _op: &crate::protocol::Operation,
+    ) -> std::result::Result<serde_json::Value, Code> {
+        Err(Code::Unsupported)
+    }
     /// The Agent Studio now, for `device`, which holds `observe`
     /// (`studio.snapshot`). A host without a studio has none to offer.
     fn studio_snapshot(
@@ -1148,6 +1163,27 @@ impl Host {
                 }
                 Err(code) => Err(Error::new(code, "the host has no background rules")),
             },
+            op @ (Operation::ListAgents {}
+            | Operation::AskAgent { .. }
+            | Operation::AnswerAgent { .. }
+            | Operation::AgentRan { .. }
+            | Operation::StopAgent { .. }
+            | Operation::ListAgentMemory { .. }
+            | Operation::EditAgentMemory { .. }
+            | Operation::ListAgentJobs { .. }
+            | Operation::EditAgentJobs { .. }
+            | Operation::AgentLog { .. }) => {
+                let grant = p.grant.as_deref().zip(request.epoch);
+                match dispatch.agent(&request.request, &p.key, grant, op) {
+                    Ok(value) => {
+                        let outcome = Outcome::Agent {
+                            agent: Box::new(value),
+                        };
+                        outcome.validate().map(|()| outcome)
+                    }
+                    Err(code) => Err(Error::new(code, "the host refused the agent operation")),
+                }
+            }
             Operation::PutArtifact { artifact } => match dispatch.put_artifact(&p.key, artifact) {
                 Ok(state) => {
                     let outcome = Outcome::Artifact { artifact: state };

@@ -468,6 +468,31 @@ pub trait Tasks: Send + Sync {
         Err(Code::Unsupported)
     }
 
+    /// Answer a `studio.agent.*` operation ([`Operation::agent`]) for
+    /// `principal`, whose right the host checked. `key`, the NIP-HOST
+    /// request ID, keys an ask so a retry asks once. The answer is one of
+    /// `coder_access::agent`'s answers as JSON. The default, an owner
+    /// without workshop agents, refuses as `unsupported`.
+    ///
+    /// # Errors
+    /// Returns the NIP-HOST refusal code the device receives.
+    fn agent(
+        &self,
+        _key: &str,
+        _principal: &Principal,
+        _op: &Operation,
+    ) -> Result<serde_json::Value, Code> {
+        Err(Code::Unsupported)
+    }
+
+    /// The workshop agents' reports since the last call, oldest first: the
+    /// host notes each into the agent's own chat thread and publishes its
+    /// activity summary to every device that holds `observe`. The default
+    /// has none.
+    fn agent_reports(&self) -> Vec<AgentReport> {
+        Vec::new()
+    }
+
     /// Record that `principal`, whose `review` right the host checked,
     /// rejected the studio task `task` at the `reviewed` revisions, with
     /// an optional `reason`. The task's worktree stays for inspection
@@ -484,6 +509,29 @@ pub trait Tasks: Send + Sync {
     ) -> Result<(), Code> {
         Err(Code::Unsupported)
     }
+}
+
+/// A workshop agent's report (`docs/verse/workshop-agent.md`, "Reporting
+/// back"): its activity summary, from host state alone, and the full
+/// report its thread keeps.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct AgentReport {
+    /// The agent's name, its thread's title.
+    pub agent: String,
+    /// The summary's subject: 64 lowercase hex characters, the agent's
+    /// own, never a task's.
+    pub subject: String,
+    /// Higher supersedes lower for the subject.
+    pub sequence: u64,
+    pub phase: nostr::activity_summary::Phase,
+    pub attention: nostr::activity_summary::Attention,
+    /// The summary's headline, such as `alice: atif tests failed`: host
+    /// state, never engine text.
+    pub headline: String,
+    /// The agent's thread: 32 lowercase hex characters.
+    pub thread: String,
+    /// The full report for the thread, plain ASCII.
+    pub text: String,
 }
 
 std::thread_local! {

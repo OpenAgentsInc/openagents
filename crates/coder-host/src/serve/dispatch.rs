@@ -290,6 +290,20 @@ impl Dispatch for Dispatcher {
         }
     }
 
+    /// The task owner's workshop agents answer `studio.agent.*`.
+    fn agent(
+        &mut self,
+        request: &str,
+        device: &str,
+        grant: Option<(&str, u64)>,
+        op: &coder_access::protocol::Operation,
+    ) -> Result<serde_json::Value, Code> {
+        let principal = principal(device, grant);
+        let _ = crate::tasks::take_reason(Code::Unavailable);
+        let result = self.shared.tasks.agent(request, &principal, op);
+        self.noted(result.map_err(Refusal::from))
+    }
+
     /// The configured workspace labels. The roots they name stay on the host.
     fn workspaces(&mut self) -> Result<Vec<String>, Code> {
         Ok(self.shared.config.workspaces.keys().cloned().collect())

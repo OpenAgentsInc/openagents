@@ -806,6 +806,61 @@ pub enum Operation {
     DecideMerge {
         decision: Box<crate::studio::MergeDecision>,
     },
+    /// The host's workshop agents ([`crate::agent::Agents`]). A read.
+    #[serde(rename = "studio.agent.list")]
+    ListAgents {},
+    /// A request for a workshop agent. The host checks it, journals it,
+    /// and runs it; with `typist`, the asking device's pane types the
+    /// agent's commands and reports each with `studio.agent.ran`.
+    #[serde(rename = "studio.agent.ask")]
+    AskAgent {
+        agent: String,
+        text: String,
+        workspace: Option<String>,
+        context: String,
+        mode: crate::agent::Mode,
+        typist: bool,
+    },
+    /// CONFIRM or REJECT the agent's waiting proposal `step`.
+    #[serde(rename = "studio.agent.answer")]
+    AnswerAgent {
+        agent: String,
+        step: u64,
+        confirm: bool,
+    },
+    /// How the command of step `step` ended in the device's pane.
+    #[serde(rename = "studio.agent.ran")]
+    AgentRan {
+        agent: String,
+        step: u64,
+        ran: crate::agent::Ran,
+    },
+    /// Stop the agent: its standing jobs go off, its panes are released
+    /// with `Ctrl+C`, its tasks are cancelled, and it starts nothing new.
+    #[serde(rename = "studio.agent.stop")]
+    StopAgent { agent: String, reason: String },
+    /// The agent's memory ([`crate::agent::Memory`]). A read.
+    #[serde(rename = "studio.agent.memory.list")]
+    ListAgentMemory { agent: String, after: Option<u64> },
+    /// Add a note, forget an entry, or accept or reject a preference.
+    #[serde(rename = "studio.agent.memory.edit")]
+    EditAgentMemory {
+        agent: String,
+        edit: crate::agent::MemoryEdit,
+    },
+    /// The agent's standing jobs ([`crate::agent::Jobs`]). A read.
+    #[serde(rename = "studio.agent.jobs.list")]
+    ListAgentJobs { agent: String },
+    /// Pause, resume, or delete a standing job.
+    #[serde(rename = "studio.agent.jobs.edit")]
+    EditAgentJobs {
+        agent: String,
+        edit: crate::agent::JobEdit,
+    },
+    /// The agent's journal after entry `after` ([`crate::agent::Journal`]).
+    /// A read.
+    #[serde(rename = "studio.agent.log")]
+    AgentLog { agent: String, after: Option<u64> },
 }
 impl Operation {
     /// A read with no effect, whose reply the host does not retain: an
@@ -820,6 +875,30 @@ impl Operation {
                 | Self::StudioSnapshot {}
                 | Self::StudioUpdate { .. }
                 | Self::OpenReview { .. }
+                | Self::ListAgents {}
+                | Self::ListAgentMemory { .. }
+                | Self::ListAgentJobs { .. }
+                | Self::AgentLog { .. }
+        )
+    }
+
+    /// A `studio.agent.*` operation, answered by [`Outcome::Agent`]. None
+    /// of their replies is retained, as for `background.*`: the host keys
+    /// a request by its ID itself, so a retry asks once.
+    #[must_use]
+    pub fn agent(&self) -> bool {
+        matches!(
+            self,
+            Self::ListAgents {}
+                | Self::AskAgent { .. }
+                | Self::AnswerAgent { .. }
+                | Self::AgentRan { .. }
+                | Self::StopAgent { .. }
+                | Self::ListAgentMemory { .. }
+                | Self::EditAgentMemory { .. }
+                | Self::ListAgentJobs { .. }
+                | Self::EditAgentJobs { .. }
+                | Self::AgentLog { .. }
         )
     }
 
@@ -862,6 +941,7 @@ impl Operation {
                 | Self::OpenReview { .. }
                 | Self::DecideMerge { .. }
         ) || self.studio_intent()
+            || self.agent()
     }
 
     /// Whether the host retains this operation's reply for an exact retry.
@@ -870,7 +950,10 @@ impl Operation {
     /// otherwise fill the reply store.
     #[must_use]
     pub fn retains_reply(&self) -> bool {
-        !self.reads_only() && !matches!(self, Self::PutArtifact { .. }) && !self.background()
+        !self.reads_only()
+            && !matches!(self, Self::PutArtifact { .. })
+            && !self.background()
+            && !self.agent()
     }
 
     /// A `background.*` operation. None of their replies is retained: the
@@ -936,6 +1019,16 @@ impl Operation {
             Self::AllowAlways { .. } => "studio.decision.always",
             Self::OpenReview { .. } => "studio.review.open",
             Self::DecideMerge { .. } => "studio.merge.decide",
+            Self::ListAgents {} => "studio.agent.list",
+            Self::AskAgent { .. } => "studio.agent.ask",
+            Self::AnswerAgent { .. } => "studio.agent.answer",
+            Self::AgentRan { .. } => "studio.agent.ran",
+            Self::StopAgent { .. } => "studio.agent.stop",
+            Self::ListAgentMemory { .. } => "studio.agent.memory.list",
+            Self::EditAgentMemory { .. } => "studio.agent.memory.edit",
+            Self::ListAgentJobs { .. } => "studio.agent.jobs.list",
+            Self::EditAgentJobs { .. } => "studio.agent.jobs.edit",
+            Self::AgentLog { .. } => "studio.agent.log",
         }
     }
     /// The right this operation requires. Redemption uses the invitation's
@@ -958,7 +1051,11 @@ impl Operation {
             | Self::LogBackground { .. }
             | Self::StudioSnapshot {}
             | Self::StudioUpdate { .. }
-            | Self::OpenReview { .. } => Some(Right::Observe),
+            | Self::OpenReview { .. }
+            | Self::ListAgents {}
+            | Self::ListAgentMemory { .. }
+            | Self::ListAgentJobs { .. }
+            | Self::AgentLog { .. } => Some(Right::Observe),
             Self::CreateTask { .. }
             | Self::SteerTask { .. }
             | Self::CancelTask { .. }
@@ -987,7 +1084,13 @@ impl Operation {
             | Self::RetryTask { .. }
             | Self::PrioritizeTask { .. }
             | Self::AnswerDecision { .. }
-            | Self::AllowAlways { .. } => Some(Right::Operate),
+            | Self::AllowAlways { .. }
+            | Self::AskAgent { .. }
+            | Self::AnswerAgent { .. }
+            | Self::AgentRan { .. }
+            | Self::StopAgent { .. }
+            | Self::EditAgentMemory { .. }
+            | Self::EditAgentJobs { .. } => Some(Right::Operate),
             Self::OpenTerminal { .. } => Some(Right::Terminal),
             Self::DecideMerge { .. } => Some(Right::Review),
         }
@@ -1188,6 +1291,49 @@ impl Operation {
                 safe(*issued_at)?;
             }
             Self::DecideMerge { decision } => decision.validate()?,
+            Self::ListAgents {} => {}
+            Self::AskAgent {
+                agent,
+                text: request,
+                workspace,
+                context,
+                ..
+            } => {
+                crate::agent::name(agent)?;
+                crate::agent::request_text(request)?;
+                if let Some(workspace) = workspace {
+                    text(workspace, 128)?;
+                }
+                crate::agent::context(context)?;
+            }
+            Self::AnswerAgent { agent, step, .. } => {
+                crate::agent::name(agent)?;
+                safe(*step)?;
+            }
+            Self::AgentRan { agent, step, ran } => {
+                crate::agent::name(agent)?;
+                safe(*step)?;
+                ran.validate()?;
+            }
+            Self::StopAgent { agent, reason } => {
+                crate::agent::name(agent)?;
+                text(reason, 512)?;
+            }
+            Self::ListAgentMemory { agent, after } | Self::AgentLog { agent, after } => {
+                crate::agent::name(agent)?;
+                if let Some(after) = after {
+                    safe(*after)?;
+                }
+            }
+            Self::EditAgentMemory { agent, edit } => {
+                crate::agent::name(agent)?;
+                edit.validate()?;
+            }
+            Self::ListAgentJobs { agent } => crate::agent::name(agent)?,
+            Self::EditAgentJobs { agent, edit } => {
+                crate::agent::name(agent)?;
+                edit.validate()?;
+            }
         }
         Ok(())
     }
@@ -1364,6 +1510,11 @@ pub enum Outcome {
     Merged {
         merged: Box<crate::studio::Merged>,
     },
+    /// A `studio.agent.*` answer: one of [`crate::agent`]'s answers as
+    /// JSON, at most [`crate::agent::MAX_AGENT_BYTES`].
+    Agent {
+        agent: Box<serde_json::Value>,
+    },
 }
 
 /// The largest `background` outcome.
@@ -1491,6 +1642,12 @@ impl Outcome {
         {
             return fail(Code::Bounds, "background answer exceeds its bound");
         }
+        if let Self::Agent { .. } = self
+            && serde_json::to_vec(self)
+                .map_or(true, |bytes| bytes.len() > crate::agent::MAX_AGENT_BYTES)
+        {
+            return fail(Code::Bounds, "agent answer exceeds its bound");
+        }
         if let Self::Workspaces { workspaces } = self {
             if workspaces.len() > MAX_WORKSPACES {
                 return fail(Code::Bounds, "too many workspaces");
@@ -1555,6 +1712,7 @@ impl Outcome {
                     && publication.head == *head
             }
             (op, Self::Background { .. }) if op.background() => true,
+            (op, Self::Agent { .. }) if op.agent() => true,
             (Operation::PutArtifact { artifact }, Self::Artifact { artifact: state }) => {
                 state.digest == artifact.digest && state.received <= artifact.size
             }

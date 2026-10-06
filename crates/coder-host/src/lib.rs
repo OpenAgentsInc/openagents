@@ -71,7 +71,8 @@ pub use config::Config;
 #[cfg(feature = "host")]
 pub use serve::{Running, start};
 pub use tasks::{
-    GoalDecision, NoTasks, Note, Passed, Principal, Reviewed, Standing, StartCause, TaskRef, Tasks,
+    AgentReport, GoalDecision, NoTasks, Note, Passed, Principal, Reviewed, Standing, StartCause,
+    TaskRef, Tasks,
 };
 
 /// The host protocol version the ready record and presence report.

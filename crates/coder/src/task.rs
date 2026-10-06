@@ -28,6 +28,9 @@ pub const TASK_FILE_SCHEMA: &str = "openagents.coder.task-file.v1";
 
 pub mod adapter;
 pub mod agent;
+pub mod agent_host;
+pub mod agent_jobs;
+pub mod agent_memory;
 pub mod archive;
 pub mod artifact;
 pub mod autostart;

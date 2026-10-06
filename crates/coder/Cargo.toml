@@ -53,6 +53,9 @@ serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 sha2 = "0.10"
 toml = "0.9"
+# The workshop agent's secret screen: credential shapes and this host's
+# exact credential values never reach her memory, journal, or reports.
+secret-screen = { path = "../secret-screen" }
 supervise = { path = "../supervise" }
 tokio = { version = "1", features = ["full"] }
 tokio-tungstenite = { version = "0.30.0", features = ["rustls-tls-webpki-roots"] }

@@ -6,6 +6,7 @@
 use serde::{Deserialize, Serialize};
 use std::fmt;
 
+pub mod agent;
 #[cfg(not(target_arch = "wasm32"))]
 pub mod cj;
 #[cfg(not(target_arch = "wasm32"))]

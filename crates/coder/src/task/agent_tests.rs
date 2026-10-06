@@ -63,7 +63,8 @@ fn the_record_and_journal_survive_a_restart() {
     let dir = tempfile::tempdir().unwrap();
     let (store, record) = store(&dir);
     assert_eq!(record.schema, RECORD_SCHEMA);
-    assert_eq!(record.name, "ada");
+    assert_eq!(record.name, "alice");
+    assert_eq!(record.look, DEFAULT_LOOK);
     assert_eq!(record.created_at, now());
     store
         .append(&Entry::new(now() + 5, Kind::Request, "run the atif tests"))
@@ -77,7 +78,7 @@ fn the_record_and_journal_survive_a_restart() {
         assert_eq!(mode(store.dir()), 0o700);
     }
     // A new process opens the same record; nothing is made again.
-    let again = Store::new(&dir.path().join("host"), "ada").unwrap();
+    let again = Store::new(&dir.path().join("host"), "alice").unwrap();
     let reopened = again.open(Path::new("/elsewhere"), now() + 100).unwrap();
     assert_eq!(reopened, record);
     let journal = again.journal(10).unwrap();

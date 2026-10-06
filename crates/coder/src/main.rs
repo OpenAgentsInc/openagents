@@ -367,7 +367,7 @@ async fn start() -> ExitCode {
             move |store: &Path,
                   workspaces: &std::collections::BTreeMap<String, std::path::PathBuf>| {
                 let mut inbox = coder::task::remote::Inbox::new(store, workspaces.clone());
-                if let Some(root) = root {
+                if let Some(root) = root.clone() {
                     let autostart = std::sync::Arc::new(coder::task::autostart::Autostart::new(
                         root,
                         store.to_path_buf(),
@@ -377,6 +377,15 @@ async fn start() -> ExitCode {
                     ));
                     coder::task::autostart::spawn_sweeper(autostart.clone());
                     inbox = inbox.with_autostart(autostart);
+                }
+                // The workshop agents under the same host root
+                // (`docs/verse/workshop-agent.md`).
+                if let Some(root) = root.clone() {
+                    inbox = inbox.with_agents(coder::task::agent_host::Agents::new(
+                        root,
+                        store,
+                        workspaces.clone(),
+                    ));
                 }
                 Ok(std::sync::Arc::new(inbox) as std::sync::Arc<dyn coder_host::Tasks>)
             },

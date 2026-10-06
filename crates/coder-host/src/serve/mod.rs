@@ -896,6 +896,64 @@ async fn summary_loop(shared: Arc<Shared>) {
         for summary in goal_summaries(&shared.host_key, &mut raised, &open, now) {
             publish_summary(&shared, &summary, now).await;
         }
+        let tasks = shared.tasks.clone();
+        let Ok(reports) = tokio::task::spawn_blocking(move || tasks.agent_reports()).await else {
+            continue;
+        };
+        for report in reports {
+            agent_report(&shared, &report, now).await;
+        }
+    }
+}
+
+/// Carry a workshop agent's report to its thread and to every device that
+/// holds `observe`: the full report as a reply in the agent's own chat
+/// thread, which syncs to the desktop app and the phone, and a NIP-WS
+/// activity summary whose headline is host state.
+async fn agent_report(shared: &Arc<Shared>, report: &crate::tasks::AgentReport, now: u64) {
+    let thread_shared = shared.clone();
+    let thread = report.thread.clone();
+    let title = report.agent.clone();
+    let text = report.text.clone();
+    let noted = tokio::task::spawn_blocking(move || {
+        use openagents_chat::service::Command;
+        let created = crate::control::apply_chat(
+            &thread_shared,
+            Command::Create {
+                chat: thread.clone(),
+            },
+        );
+        if created.as_ref().is_ok_and(|snapshot| snapshot.total == 0) {
+            let _ = crate::control::apply_chat(
+                &thread_shared,
+                Command::Rename {
+                    chat: thread.clone(),
+                    title,
+                },
+            );
+        }
+        crate::control::apply_chat(&thread_shared, Command::Note { chat: thread, text }).is_ok()
+    })
+    .await
+    .unwrap_or(false);
+    if !noted {
+        eprintln!(
+            "openagents host: {}'s report did not reach her thread",
+            report.agent
+        );
+    }
+    let draft = SummaryDraft {
+        host: &shared.host_key,
+        subject_kind: SubjectKind::Task,
+        subject: &report.subject,
+        sequence: report.sequence,
+        phase: report.phase,
+        headline: &report.headline,
+        attention: report.attention,
+        updated_at: now,
+    };
+    if let Ok(summary) = activity_summary::encode(&draft) {
+        publish_summary(shared, &summary, now).await;
     }
 }
 
