@@ -38,6 +38,8 @@
 //!   outcome, and cancellation states a pane keeps apart.
 //! - [`qualify`]: held-out qualification of route extensions (#10702): a
 //!   frozen profile, per-adapter evidence, and promotion only on it.
+//! - [`graph`]: bounded execution graphs (#10703): typed node
+//!   dependencies, per-node admissions, cancellation, and funded rework.
 //! - [`eval`]: the labeled evaluation split for route families
 //!   (`fixtures/route-families-v1.json`).
 //!
@@ -49,6 +51,7 @@ pub mod binding;
 pub mod decision;
 pub mod digest;
 pub mod eval;
+pub mod graph;
 pub mod lifecycle;
 pub mod offer;
 pub mod price_book;
@@ -102,3 +105,6 @@ mod view_tests;
 
 #[cfg(test)]
 mod qualify_tests;
+
+#[cfg(test)]
+mod graph_tests;

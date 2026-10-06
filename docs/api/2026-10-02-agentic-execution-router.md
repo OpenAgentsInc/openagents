@@ -824,3 +824,16 @@ the denominator and keep the cost unknown, a score never authorizes
 execution and a claim never establishes completion, an unavailable adapter
 stays unqualified without blocking another, and only a promotion naming the
 adapter's own evidence changes the active policy.
+
+Execution graphs (#10703): [`route_contract::graph`](../../crates/route-contract/src/graph.rs)
+(`openagents.route.execution-graph.v1`) extends the flat dispatch plan with
+typed node dependencies, each node a run in its existing owner with its own
+pinned input and admission. A node dispatches once per attempt, within the
+operator's parallel bound, and only after every node it needs verified and
+the artifacts it binds exist. A failed check, a failure, a cancellation, an
+unknown dispatch, or a missing artifact blocks dependents with that cause.
+Cancelling the graph stops waiting nodes and returns dispatched tasks to
+cancel through the task owner. Rework needs remaining attempts, the
+reservation's remaining sats, or a new confirmed offer; an owned-host graph
+needs no reservation and cannot hold a paid node. Child completion grants no
+publication or spending right.
