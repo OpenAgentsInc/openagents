@@ -661,3 +661,18 @@ payer, two debits under one admission, closure, and the remainder refunded
 to the payer's own BOLT12 offer. Retain the deposit and refund payment
 hashes and the ledger's session summary. A real deposit, a real refund, and
 third-party MPP client compatibility are unverified.
+
+## Funded retail cloud qualification (#10722, #10723)
+
+The fake-payment acceptance run and the fake qualification of the
+checked-in plan pass
+([`docs/cloud/retail-qualification.md`](docs/cloud/retail-qualification.md),
+receipts in `docs/cloud/evidence/2026-10-06-retail-fake-*.json`). After
+"Review the first retail cloud contract", follow the owner runbook there:
+approve live wallet and Boat bindings under a separate retail account,
+review the plan digest (`retail-qualify plan`), pay its top-up of at most
+1,000 sats, and run `retail-qualify qualify --funded --confirm DIGEST` once.
+This build refuses the funded step (`no_live_binding`) until those bindings
+exist. Keep the receipt, ledger rows, Boat usage, and artifacts; check the
+sandbox is deleted and nothing stays held. Real readiness, latency, Boat
+billing, and Lightning top-ups are unverified.

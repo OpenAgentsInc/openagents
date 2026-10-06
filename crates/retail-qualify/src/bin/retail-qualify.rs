@@ -4,7 +4,9 @@
 use std::process::ExitCode;
 
 fn usage() -> ExitCode {
-    eprintln!("usage: retail-qualify accept [--out PATH]");
+    eprintln!(
+        "usage: retail-qualify accept [--out PATH]\n       retail-qualify plan [--plan PATH]\n       retail-qualify qualify --fake [--plan PATH] [--out PATH]\n       retail-qualify qualify --funded --confirm PLAN_DIGEST [--plan PATH]"
+    );
     ExitCode::from(2)
 }
 
@@ -43,6 +45,73 @@ fn main() -> ExitCode {
                 ExitCode::FAILURE
             }
         }
+        Some("plan") => match load_plan(&args) {
+            Ok(plan) => match plan.check() {
+                Ok(()) => {
+                    println!("{}", plan.digest());
+                    ExitCode::SUCCESS
+                }
+                Err(refusal) => {
+                    eprintln!("plan refused: {refusal:?}");
+                    ExitCode::FAILURE
+                }
+            },
+            Err(code) => code,
+        },
+        Some("qualify") => {
+            let plan = match load_plan(&args) {
+                Ok(plan) => plan,
+                Err(code) => return code,
+            };
+            if args.iter().any(|a| a == "--funded") {
+                let confirm = args
+                    .iter()
+                    .position(|a| a == "--confirm")
+                    .and_then(|i| args.get(i + 1))
+                    .cloned()
+                    .unwrap_or_default();
+                return match retail_qualify::qualify::run_funded(&plan, &confirm) {
+                    Ok(()) => ExitCode::SUCCESS,
+                    Err(refusal) => {
+                        eprintln!(
+                            "funded qualification refused: {refusal:?}. Follow docs/cloud/retail-qualification.md."
+                        );
+                        ExitCode::from(3)
+                    }
+                };
+            }
+            if !args.iter().any(|a| a == "--fake") {
+                return usage();
+            }
+            let receipt = retail_qualify::qualify::run_fake(&plan);
+            let Ok(json) = serde_json::to_string_pretty(&receipt) else {
+                return ExitCode::FAILURE;
+            };
+            let code = write(&json, out);
+            if receipt.qualified {
+                code
+            } else {
+                ExitCode::FAILURE
+            }
+        }
         _ => usage(),
     }
+}
+
+fn load_plan(args: &[String]) -> Result<retail_qualify::qualify::Plan, ExitCode> {
+    let Some(path) = args
+        .iter()
+        .position(|a| a == "--plan")
+        .and_then(|i| args.get(i + 1))
+    else {
+        return Ok(retail_qualify::qualify::fixture());
+    };
+    let text = std::fs::read_to_string(path).map_err(|error| {
+        eprintln!("cannot read {path}: {error}");
+        ExitCode::FAILURE
+    })?;
+    serde_json::from_str(&text).map_err(|error| {
+        eprintln!("cannot parse {path}: {error}");
+        ExitCode::FAILURE
+    })
 }

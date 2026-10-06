@@ -1,0 +1,21 @@
+{
+  "schema": "openagents.cloud.retail-qualification-plan.v1",
+  "account": "qualification-test-account",
+  "top_up_sats": 300,
+  "computer_class": "retail-boat-large-v1",
+  "task_class": "retail-repo-change-v1",
+  "price_book": "retail-2026-10-06.1",
+  "source": {
+    "repository": "https://github.com/OpenAgentsInc/example",
+    "commit": "cccccccccccccccccccccccccccccccccccccccc"
+  },
+  "task": "Make the parser accept trailing commas.",
+  "check": "cargo test -p parser",
+  "max_seconds": 600,
+  "ceiling_sats": 150,
+  "disclosure": [
+    { "kind": "model_provider", "id": "openai" },
+    { "kind": "open_agents", "id": "retail-boat-large-v1" }
+  ],
+  "cleanup_deadline_seconds": 2400
+}

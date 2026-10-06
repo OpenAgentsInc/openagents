@@ -1,0 +1,22 @@
+{
+  "schema": "openagents.cloud.retail-qualification.v1",
+  "mode": "fake",
+  "label": "FAKE QUALIFICATION: fake wallet, Boat, sandbox, and task owner. It proves the runner, not a funded outcome.",
+  "plan": "sha256:f65df61835c81e344969b903804d1e623beb75124f4cfb60acfba74746029520",
+  "qualified": true,
+  "failure": null,
+  "account": "qualification-test-account",
+  "invoice_payment_hash": "bd953af56e6fb05b80f99e5e5b6364a11d2cfa1cb68281220c12bc625d2d3386",
+  "execution": "rx_04a8d9aeb4d23a18eb319ff7",
+  "hold": "fr_04a8d9aeb4d23a18eb319ff7",
+  "sandbox": "sbx-1",
+  "task": "task_rx_04a8d9aeb4d23a18eb319ff7",
+  "check": "verified",
+  "settlement_source": "debit:fr_04a8d9aeb4d23a18eb319ff7",
+  "charge_msat": 104000,
+  "released_msat": 20000,
+  "unknown_held_msat": 0,
+  "provider_seconds": 90,
+  "teardown_acknowledged": true,
+  "ledger_conserved": true
+}

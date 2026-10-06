@@ -48,3 +48,62 @@ The frozen supported limits are the v1 contract's: the
 `retail-boat-large-v1` computer, the `retail-repo-change-v1` task, at most
 3,600 seconds a task, 4 retail sandboxes at once, 8 checks, and 30 days of
 retention.
+
+## Funded qualification
+
+[`retail_qualify::qualify`](../../crates/retail-qualify/src/qualify.rs)
+
+A plan (`openagents.cloud.retail-qualification-plan.v1`) pins everything one
+qualification may touch: a test account (never the owner's personal one), a
+top-up of at most 1,000 sats, the v1 computer and task class, the price
+book version, a public source at an exact commit, the task text, one
+independent check, the wall time, a spending ceiling no higher than the
+top-up, the provider disclosure (exactly the contract's recipients), and a
+cleanup deadline that covers the task and one replacement. The checked-in
+plan is [`fixtures/qualification-plan-v1.json`](../../crates/retail-qualify/fixtures/qualification-plan-v1.json).
+
+```sh
+cargo run -p retail-qualify -- plan                 # check the plan; print its digest
+cargo run -p retail-qualify -- qualify --fake --out docs/cloud/evidence/2026-10-06-retail-fake-qualification.json
+cargo run -p retail-qualify -- qualify --funded --confirm PLAN_DIGEST
+```
+
+- `qualify --fake` runs the plan end to end on fakes and writes a receipt
+  labeled `FAKE QUALIFICATION`. It retains the invoice payment hash, the
+  execution, hold, sandbox, and task identities, the check verdict, the
+  settlement source, the charge and the released amount, any unknown held
+  amount, the provider's seconds, the teardown acknowledgment, and ledger
+  conservation. It qualifies only when the check is `verified`, the sandbox
+  is deleted within the deadline, nothing stays held, and the ledger
+  conserves. The retained fake receipt is
+  [`evidence/2026-10-06-retail-fake-qualification.json`](evidence/2026-10-06-retail-fake-qualification.json):
+  104 sats charged and 20 sats released for 90 metered seconds.
+- `qualify --funded` checks the plan, requires `--confirm` to name the
+  plan's exact digest, and requires the fake run to pass. This build binds
+  no live receiver wallet or Boat account, so it then refuses
+  (`no_live_binding`, exit status 3). It never moves money and never claims
+  a funded outcome.
+
+### Owner runbook
+
+Each step is the owner's; none runs without them (`NEEDS_OWNER.md`).
+
+1. Confirm the retail contract and the price book ("Review the first retail
+   cloud contract").
+2. Approve binding the live adapters: the resident receiver wallet for
+   top-ups and a Boat account for the `Provider`, `Sandbox`, and task-owner
+   seams, under a separate retail account, never the operator allowance
+   used by `chat work --on boat`.
+3. Create the test account and principal, and review the plan: run
+   `retail-qualify plan` and keep the digest.
+4. Pay the plan's top-up invoice (at most 1,000 sats) from a wallet you
+   control.
+5. Run `retail-qualify qualify --funded --confirm DIGEST` once. Keep the
+   receipt, the ledger's settlement and hold rows, the Boat usage for the
+   sandbox, and the retained artifacts.
+6. Check that the Boat sandbox is deleted, the charge is at most the
+   ceiling, and nothing is held. Any unknown charge stays held until
+   reconciled.
+
+A failed funded run opens a new defect issue. Until a funded receipt
+exists, no funded outcome is claimed.
