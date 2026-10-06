@@ -50,6 +50,7 @@ pub fn failures(report: &Value) -> Vec<String> {
         400.,
         &mut failures,
     );
+    limit("/server/movement_expiry/total", 0., &mut failures);
     limit("/server/request_queue_peak", 128., &mut failures);
     limit("/server/writer_queue_peak", 2., &mut failures);
     limit("/server/held_reply_bytes_peak", 33554432., &mut failures);
@@ -264,7 +265,24 @@ mod tests {
     #[test]
     fn fast_profiles_do_not_hide_missing_actions_or_route_failures() {
         let segment = serde_json::json!({"status":"complete","maximum_players":20,"battle_occupancy":{"samples":100,"minimum_live_hostiles":40},"observed_frame_snapshots":100,"battle_framed_snapshots":100,"movement_inputs":100,"bound_frames":30,"confirmed_interval_steps":360,"accepted_operations":{"equipment":1,"quest_claim":1,"item_use":1,"respawn":1},"accepted_casts":{"Fireball":1,"Web":1,"Thunderwave":1},"measurements":{"steady":{"prediction_correction_meters":{"p95":0.01,"maximum":0.1}}}});
-        let mut report = serde_json::json!({"status":"complete","mode":"network","seconds":60,"server":{"ticks":1800,"workload_ticks":1800,"request_queue_peak":20,"writer_queue_peak":2,"held_reply_bytes_peak":1000000,"failure":null,"simulation":{"steady":{"p99_upper_bound_ms":16.}},"admission":{"active_peak":20}},"render":{"measurements":{"steady":{"applied_snapshot_age_ms":{"p95":100.}}}},"recovery":{"active_receipts":32,"retained_events":512,"characters_checked":20,"live_hostiles":40,"checkpoint_bytes":300000},"route":{"connections":40,"refused_connections":0,"omitted_error_details":0,"error_details":[]},"disconnect_windows_seconds":[30.,60.],"players":(0..20).map(|player|serde_json::json!({"player":player,"segments":[segment.clone(),segment.clone()]})).collect::<Vec<_>>()});
+        let mut report = serde_json::json!({"status":"complete","mode":"network","seconds":60,"server":{"movement_expiry":{"total":0},"ticks":1800,"workload_ticks":1800,"request_queue_peak":20,"writer_queue_peak":2,"held_reply_bytes_peak":1000000,"failure":null,"simulation":{"steady":{"p99_upper_bound_ms":16.}},"admission":{"active_peak":20}},"render":{"measurements":{"steady":{"applied_snapshot_age_ms":{"p95":100.}}}},"recovery":{"active_receipts":32,"retained_events":512,"characters_checked":20,"live_hostiles":40,"checkpoint_bytes":300000},"route":{"connections":40,"refused_connections":0,"omitted_error_details":0,"error_details":[]},"disconnect_windows_seconds":[30.,60.],"players":(0..20).map(|player|serde_json::json!({"player":player,"segments":[segment.clone(),segment.clone()]})).collect::<Vec<_>>()});
+        assert!(failures(&report).is_empty());
+        report["server"]["movement_expiry"]["total"] = serde_json::json!(13);
+        assert!(
+            failures(&report)
+                .iter()
+                .any(|f| f.contains("/server/movement_expiry/total"))
+        );
+        report["server"]
+            .as_object_mut()
+            .unwrap()
+            .remove("movement_expiry");
+        assert!(
+            failures(&report)
+                .iter()
+                .any(|f| f.contains("/server/movement_expiry/total"))
+        );
+        report["server"]["movement_expiry"] = serde_json::json!({"total":0});
         assert!(failures(&report).is_empty());
         report["server"]["workload_ticks"] = serde_json::json!(1700);
         assert!(failures(&report).iter().any(|f| f.contains("throughput")));

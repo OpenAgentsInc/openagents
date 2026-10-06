@@ -1,0 +1,20 @@
+{
+  "schema": "verse.battle.continuity.gate.v1",
+  "issue": 10559,
+  "required_movement_expiries": 0,
+  "tests": {
+    "passed": 3,
+    "failed": 0,
+    "cases": [
+      "A complete populated workload with thirteen expiries is rejected.",
+      "Missing expiry evidence is rejected.",
+      "Zero-expiry evidence preserves the other existing requirements."
+    ]
+  },
+  "source_sha256": "bd6dcea20692f2f5e226d338d7a269f57efbadf519011b23b76c8d6f856c9745",
+  "log_sha256": "1bfc04ee8776d242ad63e84686fc57711c3f49f34d458677859e0f139c22517e",
+  "limits": [
+    "Historical raw verdicts are retained unchanged; latest traced run remains incomplete with thirteen expiries.",
+    "This strengthens acceptance reporting and does not fix movement itself."
+  ]
+}
