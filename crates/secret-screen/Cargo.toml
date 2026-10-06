@@ -1,0 +1,13 @@
+[package]
+name = "secret-screen"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+description = "Credential-shape rules and the secret screen: redact credential-shaped text, and refuse text that holds a credential or the exact value of one on this host."
+publish.workspace = true
+
+[dependencies]
+regex = "1"
+
+[lints]
+workspace = true

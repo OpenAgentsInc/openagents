@@ -8,126 +8,15 @@
 //! personal data, applied to every string a bundle carries. A match is
 //! replaced with `[redacted:<rule>]` and counted in the bundle's
 //! [`ScrubReport`](crate::contract::ScrubReport); a publication with any
-//! credential-shaped match fails `check` so a person looks at it.
+//! credential-shaped match fails `check` so a person looks at it. The rules
+//! live in the shared `secret-screen` crate.
 
 use std::collections::BTreeMap;
-use std::sync::OnceLock;
-
-use regex::Regex;
 
 use crate::contract::Text;
 
-/// A named shape rule.
-struct Rule {
-    name: &'static str,
-    /// Whether a match means a credential leaked (as opposed to personal
-    /// data that is routine to redact, such as a home directory).
-    credential: bool,
-    pattern: Regex,
-    replacement: &'static str,
-}
-
-fn rules() -> &'static [Rule] {
-    static RULES: OnceLock<Vec<Rule>> = OnceLock::new();
-    RULES.get_or_init(|| {
-        let rule = |name, credential, pattern: &str, replacement| Rule {
-            name,
-            credential,
-            pattern: Regex::new(pattern).unwrap_or_else(|e| panic!("rule {name}: {e}")),
-            replacement,
-        };
-        vec![
-            rule(
-                "private-key",
-                true,
-                r"-----BEGIN [A-Z ]*PRIVATE KEY-----[\s\S]*?(-----END [A-Z ]*PRIVATE KEY-----|$)",
-                "[redacted:private-key]",
-            ),
-            rule(
-                "anthropic-key",
-                true,
-                r"sk-ant-[A-Za-z0-9_\-]{16,}",
-                "[redacted:anthropic-key]",
-            ),
-            rule(
-                "openai-key",
-                true,
-                r"\bsk-(proj-|svcacct-)?[A-Za-z0-9_\-]{20,}",
-                "[redacted:openai-key]",
-            ),
-            rule(
-                "openagents-key",
-                true,
-                r"\b(oak_[A-Za-z0-9]+\.[A-Za-z0-9_\-]{8,}|oa_agent_[A-Za-z0-9_\-]{12,})",
-                "[redacted:openagents-key]",
-            ),
-            rule(
-                "github-token",
-                true,
-                r"\b(gh[pousr]_[A-Za-z0-9]{30,}|github_pat_[A-Za-z0-9_]{30,})",
-                "[redacted:github-token]",
-            ),
-            rule(
-                "slack-token",
-                true,
-                r"\bxox[abprs]-[A-Za-z0-9\-]{10,}",
-                "[redacted:slack-token]",
-            ),
-            rule(
-                "aws-key",
-                true,
-                r"\b(AKIA|ASIA)[0-9A-Z]{16}\b",
-                "[redacted:aws-key]",
-            ),
-            rule(
-                "google-key",
-                true,
-                r"\bAIza[0-9A-Za-z_\-]{35}",
-                "[redacted:google-key]",
-            ),
-            rule(
-                "nostr-secret",
-                true,
-                r"\bnsec1[02-9ac-hj-np-z]{58}\b",
-                "[redacted:nostr-secret]",
-            ),
-            rule(
-                "jwt",
-                true,
-                r"\beyJ[A-Za-z0-9_\-]{8,}\.eyJ[A-Za-z0-9_\-]{8,}\.[A-Za-z0-9_\-]{8,}",
-                "[redacted:jwt]",
-            ),
-            rule(
-                "bearer",
-                true,
-                r"(?i)\bbearer\s+[A-Za-z0-9._\-~+/]{20,}=*",
-                "Bearer [redacted:bearer]",
-            ),
-            rule(
-                "home-directory",
-                false,
-                r"/(Users|home)/[A-Za-z0-9._\-]+",
-                "/$1/[redacted]",
-            ),
-            rule(
-                "email",
-                false,
-                r"\b[A-Za-z0-9._%+\-]+@[A-Za-z0-9.\-]+\.[A-Za-z]{2,}\b",
-                "[redacted:email]",
-            ),
-        ]
-    })
-}
-
-/// Rule names whose match means a credential leaked.
-#[must_use]
-pub fn credential_rules() -> Vec<&'static str> {
-    rules()
-        .iter()
-        .filter(|r| r.credential)
-        .map(|r| r.name)
-        .collect()
-}
+/// The shape rules, shared with the workshop agent's secret screen.
+pub use secret_screen::{credential_rules, head_and_tail};
 
 /// Counts redactions and truncations across one bundle.
 #[derive(Debug, Default)]
@@ -149,21 +38,7 @@ impl Scrubber {
 
     /// Redacts every rule's matches.
     pub fn redact(&mut self, text: &str) -> String {
-        let mut out = text.to_owned();
-        for rule in rules() {
-            let count = rule.pattern.find_iter(&out).count();
-            if count == 0 {
-                continue;
-            }
-            // `$1` in a replacement refers to the rule's first group.
-            out = rule
-                .pattern
-                .replace_all(&out, rule.replacement)
-                .into_owned();
-            *self.redactions.entry(rule.name.to_owned()).or_default() +=
-                u32::try_from(count).unwrap_or(u32::MAX);
-        }
-        out
+        secret_screen::redact_counted(text, &mut self.redactions)
     }
 
     /// Redacts, then bounds to the scrubber's field bound.
@@ -188,37 +63,6 @@ impl Scrubber {
             original_bytes: Some(clean.len() as u64),
         }
     }
-}
-
-/// The first and last parts of `text`, within `bound` bytes in all, split
-/// on character boundaries, with a marker between them.
-#[must_use]
-pub fn head_and_tail(text: &str, bound: usize) -> String {
-    const MARK: &str = "\n[… cut …]\n";
-    if text.len() <= bound {
-        return text.to_owned();
-    }
-    let room = bound.saturating_sub(MARK.len());
-    let head = floor_boundary(text, room * 2 / 3);
-    let tail_len = room - head;
-    let tail_start = ceil_boundary(text, text.len() - tail_len);
-    format!("{}{MARK}{}", &text[..head], &text[tail_start..])
-}
-
-fn floor_boundary(text: &str, mut at: usize) -> usize {
-    at = at.min(text.len());
-    while !text.is_char_boundary(at) {
-        at -= 1;
-    }
-    at
-}
-
-fn ceil_boundary(text: &str, mut at: usize) -> usize {
-    at = at.min(text.len());
-    while !text.is_char_boundary(at) {
-        at += 1;
-    }
-    at
 }
 
 #[cfg(test)]

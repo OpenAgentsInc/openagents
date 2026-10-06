@@ -10,7 +10,7 @@ publish.workspace = true
 default = ["generate"]
 # Build and check the publication from the committed evidence. A phone
 # depends with `default-features = false` and links none of it.
-generate = ["dep:gym", "dep:knowledge", "dep:regex"]
+generate = ["dep:gym", "dep:knowledge", "dep:regex", "dep:secret-screen"]
 # Fetch, verify, and cache the publication off the frame loop.
 client = ["dep:reqwest"]
 # Send a signed results publication to a relay (`gym-leaderboard sign
@@ -37,6 +37,9 @@ gym = { path = "../gym", optional = true }
 # the task-name rule the Gym uses.
 knowledge = { path = "../knowledge", optional = true }
 regex = { version = "1", optional = true }
+# The credential-shape rules the scrubber applies, shared with the
+# workshop agent's secret screen.
+secret-screen = { path = "../secret-screen", optional = true }
 # The client's HTTP: blocking on its own worker thread, rustls, no cookie
 # store, the same build the Verse crate ships on iOS and Android.
 reqwest = { version = "0.12", default-features = false, features = ["blocking", "rustls-tls"], optional = true }
