@@ -18,6 +18,7 @@ pub mod markets;
 pub mod payee;
 pub mod payout;
 pub mod reconcile;
+pub mod session;
 
 pub const V1: &str = include_str!("../rules/v1.toml");
 pub const OPENAGENTS: &str = "openagents";

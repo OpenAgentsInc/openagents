@@ -649,3 +649,15 @@ separately to individual block attachments. No live model producer was run.
 - #10658: On a paired Mac host, visually check the standalone and Verse task
   shell titles and directory display. Scratch relay fixtures cover admission
   and task isolation; a physical Mac session remains unverified.
+
+## Metered Lightning session qualification (#10721)
+
+[`docs/cloud/mpp-sessions.md`](docs/cloud/mpp-sessions.md) defines the
+session profile `openagents.mpp.lightning-session.v1`; mock-rail tests cover
+deposit, debits, disconnect, expiry, closure, remainder return, and unknown
+refunds. No route offers a session. Before any route does, separately
+authorize one funded session: a deposit of at most 1,000 sats from a scratch
+payer, two debits under one admission, closure, and the remainder refunded
+to the payer's own BOLT12 offer. Retain the deposit and refund payment
+hashes and the ledger's session summary. A real deposit, a real refund, and
+third-party MPP client compatibility are unverified.

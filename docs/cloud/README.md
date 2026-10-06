@@ -33,4 +33,5 @@ the GCE spot pool granted as one computer (`openagents cloud up/down/status`,
 | [Retail prices](retail-prices.md) | Price book `retail-2026-10-06.1`: one credit per sat, compute and coordination rates, quotes, what a failed or cancelled task is charged, and holds versus refunds |
 | [Purchased compute balance](compute-balance.md) | One customer account in the central ledger that every client resolves to: principals, credential digests, read and spend rights, top-ups, holds, and settlement |
 | [Retail service](retail-service.md) | The retail flow behind the paid-availability gate: authorities, offers, holds, provisioning, credentials, dispatch, metering, teardown, cancellation, recovery, settlement, and the launch gate |
+| [Metered Lightning sessions](mpp-sessions.md) | The `openagents.mpp.lightning-session.v1` profile: deposit, frozen rate, ceiling, admitted debits, closure, and remainder refunds as liabilities |
 | [The GCE pool](gce-pool.md) | `openagents cloud up/down/status` and `chat work --on gce`: spot hosts from the daily image granted as one computer `gce`, two runs per host, self-delete after 10 idle minutes, credentials, measurements and cost |
