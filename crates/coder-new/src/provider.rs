@@ -246,7 +246,7 @@ impl Provider {
                 joined.push_str(delta);
             };
             let streamed = tokio::select! {
-                result = self.chat.stream_tools(&request, &history, &definitions, &mut sink, model_callback) => result.map_err(stream_error)?,
+                result = self.chat.stream_tools_for_repair(&request, &history, &definitions, &mut sink, model_callback) => result.map_err(stream_error)?,
                 () = canceled(cancel) => return Err("The OpenRouter request was canceled; whether it was billed is unknown.".into()),
             };
             aggregate_usage(&mut aggregate.usage, &streamed.reply.usage, round == 0);
@@ -279,21 +279,44 @@ impl Provider {
                     );
                 }
             }
-            history.push(json!({"role":"assistant","content":streamed.reply.text,"tool_calls":streamed.calls.iter().map(|call|json!({"id":call.id,"type":"function","function":{"name":call.name,"arguments":call.arguments}})).collect::<Vec<_>>()}));
+            let wire_calls: Vec<_> = streamed.calls.iter().map(|call| {
+                // Providers that translate tool history require argument objects.
+                let mut arguments = serde_json::from_str::<Value>(&call.arguments)
+                    .ok()
+                    .filter(Value::is_object)
+                    .unwrap_or_else(|| json!({}));
+                execution.redact(&mut arguments);
+                redact_value(&mut arguments, self.key.expose());
+                json!({"id":call.id,"type":"function","function":{"name":call.name,"arguments":arguments.to_string()}})
+            }).collect();
+            let mut assistant =
+                json!({"role":"assistant","content":streamed.reply.text,"tool_calls":wire_calls});
+            execution.redact(&mut assistant);
+            redact_value(&mut assistant, self.key.expose());
+            history.push(assistant);
             for call in streamed.calls {
                 if cancel.load(Ordering::Relaxed) {
                     return Err("The reply was canceled before its next plugin call.".into());
                 }
                 calls_used += 1;
-                let arguments: Value = serde_json::from_str(&call.arguments)
-                    .map_err(|_| "OpenRouter supplied invalid tool arguments.")?;
-                let has_credential =
-                    !self.key.expose().is_empty() && call.arguments.contains(self.key.expose());
-                let mut safe_input = arguments.clone();
+                let arguments = serde_json::from_str::<Value>(&call.arguments)
+                    .ok()
+                    .filter(Value::is_object);
+                let has_credential = !self.key.expose().is_empty()
+                    && (call.arguments.contains(self.key.expose())
+                        || arguments.as_ref().is_some_and(|arguments| {
+                            arguments.to_string().contains(self.key.expose())
+                        }));
+                let mut safe_input = arguments
+                    .clone()
+                    .unwrap_or_else(|| json!({"arguments":"Invalid JSON object"}));
                 execution.redact(&mut safe_input);
                 redact_value(&mut safe_input, self.key.expose());
+                let safe_name = execution
+                    .redact_text(&call.name)
+                    .replace(self.key.expose(), "[redacted]");
                 event_callback(RuntimeEvent::Tool {
-                    name: call.name.clone(),
+                    name: safe_name.clone(),
                     input: safe_input.clone(),
                     output: Value::Null,
                     running: true,
@@ -324,7 +347,7 @@ impl Provider {
                 };
                 let result = if has_credential {
                     Err("Keep API keys in plugin settings, outside tool arguments.".into())
-                } else {
+                } else if let Some(arguments) = arguments {
                     execution
                         .execute(
                             &call.name,
@@ -334,6 +357,8 @@ impl Provider {
                             &mut child_events,
                         )
                         .await
+                } else {
+                    Err("Tool arguments must be one complete JSON object matching the declared schema. Correct the arguments and call the tool again. No plugin was run.".into())
                 };
                 let mut output = match result {
                     Ok(value) => value,
@@ -342,7 +367,7 @@ impl Provider {
                 execution.redact(&mut output);
                 redact_value(&mut output, self.key.expose());
                 event_callback(RuntimeEvent::Tool {
-                    name: call.name.clone(),
+                    name: safe_name,
                     input: safe_input,
                     output: output.clone(),
                     running: false,
@@ -350,9 +375,11 @@ impl Provider {
                 if cancel.load(Ordering::Relaxed) {
                     return Err("The reply was canceled after its plugin call; completed effects were not replayed.".into());
                 }
-                history.push(
-                    json!({"role":"tool","tool_call_id":call.id,"content":output.to_string()}),
-                );
+                let mut observation =
+                    json!({"role":"tool","tool_call_id":call.id,"content":output.to_string()});
+                execution.redact(&mut observation);
+                redact_value(&mut observation, self.key.expose());
+                history.push(observation);
             }
         }
         Err("The turn reached its model-round limit.".into())
@@ -412,7 +439,26 @@ fn stream_error(error: openrouter::Error) -> String {
         openrouter::Error::Connection(_) => {
             "The OpenRouter connection failed. The request was not retried.".into()
         }
-        openrouter::Error::Decode { .. } | openrouter::Error::Schema { .. } => {
+        openrouter::Error::Decode { detail, .. } => match detail.as_str() {
+            "the stream ended without completing its tool calls"
+            | "the stream reported tool calls but supplied none" =>
+                "OpenRouter stopped before completing its tool calls. No pending plugin calls were run.".into(),
+            "a streamed tool call had an invalid or duplicate ID"
+            | "a streamed tool call had an invalid or missing name"
+            | "a streamed tool call had an invalid index"
+            | "a streamed tool call was not a function"
+            | "a streamed tool call was not an object"
+            | "streamed tool calls were not an array"
+            | "a streamed function was not an object"
+            | "a streamed function field was not text" =>
+                "OpenRouter sent an invalid tool call. No pending plugin calls were run.".into(),
+            "streamed function fields exceeded their size limit" =>
+                "OpenRouter's tool call exceeded the size limit. No pending plugin calls were run.".into(),
+            "the stream ended before [DONE]" =>
+                "OpenRouter's reply was cut off before completion. No pending plugin calls were run.".into(),
+            _ => "OpenRouter returned an incomplete or invalid reply. The request was not retried.".into(),
+        },
+        openrouter::Error::Schema { .. } => {
             "OpenRouter returned an incomplete or invalid reply. The request was not retried."
                 .into()
         }
@@ -560,10 +606,168 @@ mod tests {
     }
 
     fn tool_reply(id: &str, arguments: Value) -> String {
+        raw_tool_reply(id, &arguments.to_string())
+    }
+
+    fn raw_tool_reply(id: &str, arguments: &str) -> String {
         format!(
             "data: {}\n\ndata: [DONE]\n\n",
-            json!({"model":"fixture/first","choices":[{"delta":{"content":"Checking.","tool_calls":[{"index":0,"id":id,"function":{"name":"jev","arguments":arguments.to_string()}}]},"finish_reason":"tool_calls"}],"usage":{"prompt_tokens":2,"completion_tokens":1,"total_tokens":3,"cost":0.001}})
+            json!({"model":"fixture/first","choices":[{"delta":{"content":"Checking.","tool_calls":[{"index":0,"id":id,"function":{"name":"jev","arguments":arguments}}]},"finish_reason":"tool_calls"}],"usage":{"prompt_tokens":2,"completion_tokens":1,"total_tokens":3,"cost":0.001}})
         )
+    }
+
+    #[test]
+    fn rejected_and_malformed_jev_calls_are_repaired_before_one_valid_batch_runs() {
+        let arguments = json!({
+            "state": {"ticket":"My order never arrived. I want my money back."},
+            "questions": {
+                "refund": {"type":"noul","instructions":"Does the customer ask for a refund?"},
+                "status": {"type":"choice","instructions":"What status does the customer report?","criteria":{"lost":"The order has not arrived.","other":"Any other status."}},
+                "urgency": {"type":"score","instructions":"How urgent is this ticket?","criteria":["Routine support question.","Time-sensitive interruption."]}
+            }
+        });
+        let mut wrong_endpoint = arguments.clone();
+        wrong_endpoint["endpoint"] = json!("/v1/choice");
+        let malformed = format!("{},}}", arguments.to_string().trim_end_matches('}'));
+        let final_reply = format!(
+            "data: {}\n\ndata: [DONE]\n\n",
+            json!({"model":"fixture/served","choices":[{"delta":{"content":"All three judgments returned."},"finish_reason":"stop"}]})
+        );
+        let (base, model_server) = sequence(vec![
+            tool_reply("wrong-endpoint", wrong_endpoint),
+            raw_tool_reply("malformed", &malformed),
+            tool_reply("corrected", arguments.clone()),
+            final_reply,
+        ]);
+        let body = json!({
+            "model":"jev-fixture",
+            "answers": {
+                "refund":{"type":"noul","noul":0.9},
+                "status":{"type":"choice","choice":"lost","confidence":0.8,"probabilities":{"lost":0.9,"other":0.1}},
+                "urgency":{"type":"score","score":0.2,"confidence":0.6,"probabilities":{"0":0.8,"1":0.2},"legend":{"0":"Routine support question.","1":"Time-sensitive interruption."}}
+            },
+            "usage":{"input_tokens":12,"output_tokens":3}
+        });
+        let (endpoint, jev_server) = fixture(200, "application/json", &body.to_string());
+        let provider = Provider::with_base(ApiKey::new(FIXTURE_TOKEN), &base).unwrap();
+        let mut events = vec![];
+        let reply = runtime()
+            .block_on(provider.chat_with_plugins(
+                "openrouter/free",
+                &crate::models::GenerationOptions::default(),
+                vec![Message::user("Try all three Jev question types.")],
+                &jev_settings(
+                    endpoint.trim_end_matches("/api/v1").into(),
+                    Some(model_access::ApiKey::new("fixture-jev-key")),
+                ),
+                &mut |_| {},
+                &mut |_| {},
+                &mut |event| events.push(event),
+                &Arc::new(AtomicBool::new(false)),
+            ))
+            .unwrap();
+        assert!(reply.text.ends_with("All three judgments returned."));
+        let outputs: Vec<_> = events
+            .iter()
+            .filter_map(|event| match event {
+                RuntimeEvent::Tool {
+                    output,
+                    running: false,
+                    ..
+                } => Some(output),
+                _ => None,
+            })
+            .collect();
+        assert_eq!(outputs.len(), 3);
+        assert!(outputs[0]["error"].as_str().unwrap().contains("state"));
+        assert!(
+            outputs[1]["error"]
+                .as_str()
+                .unwrap()
+                .contains("No plugin was run")
+        );
+        assert_eq!(outputs[2]["answers"].as_object().unwrap().len(), 3);
+        let requests = model_server.join().unwrap();
+        assert_eq!(requests.len(), 4);
+        for (request, call_id) in [
+            (&requests[1], "wrong-endpoint"),
+            (&requests[2], "malformed"),
+        ] {
+            let observation = request["messages"].as_array().unwrap().last().unwrap();
+            assert_eq!(observation["tool_call_id"], call_id);
+            assert!(serde_json::from_str::<Value>(observation["content"].as_str().unwrap()).unwrap()["error"].is_string());
+        }
+        let request = jev_server.join().unwrap();
+        let sent: Value = serde_json::from_str(request.split_once("\r\n\r\n").unwrap().1).unwrap();
+        assert_eq!(sent["questions"], arguments["questions"]);
+        assert!(sent.get("endpoint").is_none());
+    }
+
+    #[test]
+    fn invalid_argument_shapes_return_feedback_without_repeating_credentials() {
+        for arguments in [
+            "null".to_string(),
+            "[]".to_string(),
+            format!("{{\"state\":\"{FIXTURE_TOKEN} jev-fixture-secret\""),
+            format!("{{\"state\":\"{}\"", FIXTURE_TOKEN.replace('-', "\\u002d")),
+            format!(
+                "{{\"state\":\"{} {}\"}}",
+                FIXTURE_TOKEN.replace('-', "\\u002d"),
+                "jev-fixture-secret".replace('-', "\\u002d"),
+            ),
+        ] {
+            let final_reply = "data: {\"choices\":[{\"delta\":{\"content\":\"Correcting the arguments.\"},\"finish_reason\":\"stop\"}]}\n\ndata: [DONE]\n\n".into();
+            let (base, server) = sequence(vec![raw_tool_reply("invalid", &arguments), final_reply]);
+            let provider = Provider::with_base(ApiKey::new(FIXTURE_TOKEN), &base).unwrap();
+            let mut execution = jev_settings(jev_plugin_endpoint(), None);
+            execution
+                .redaction_keys
+                .push(model_access::ApiKey::new("jev-fixture-secret"));
+            let mut events = vec![];
+            runtime()
+                .block_on(provider.chat_with_plugins(
+                    "openrouter/free",
+                    &crate::models::GenerationOptions::default(),
+                    vec![Message::user("Check this state.")],
+                    &execution,
+                    &mut |_| {},
+                    &mut |_| {},
+                    &mut |event| events.push(event),
+                    &Arc::new(AtomicBool::new(false)),
+                ))
+                .unwrap();
+            let requests = server.join().unwrap();
+            assert_eq!(requests.len(), 2);
+            let followup = requests[1]["messages"].to_string();
+            assert!(!followup.contains(FIXTURE_TOKEN));
+            assert!(!followup.contains("jev-fixture-secret"));
+            let assistant = &requests[1]["messages"][2];
+            let recorded: Value = serde_json::from_str(
+                assistant["tool_calls"][0]["function"]["arguments"]
+                    .as_str()
+                    .unwrap(),
+            )
+            .unwrap();
+            assert!(recorded.is_object());
+            assert!(!recorded.to_string().contains(FIXTURE_TOKEN));
+            assert!(!recorded.to_string().contains("jev-fixture-secret"));
+            if !serde_json::from_str::<Value>(&arguments)
+                .is_ok_and(|arguments| arguments.is_object())
+            {
+                assert_eq!(recorded, json!({}));
+            }
+            assert!(
+                matches!(&events[1], RuntimeEvent::Tool { output, running:false, .. } if output["error"].is_string())
+            );
+            for event in events {
+                if let RuntimeEvent::Tool { input, output, .. } = event {
+                    for value in [input, output] {
+                        assert!(!value.to_string().contains(FIXTURE_TOKEN));
+                        assert!(!value.to_string().contains("jev-fixture-secret"));
+                    }
+                }
+            }
+        }
     }
 
     #[test]
@@ -669,6 +873,33 @@ mod tests {
                 error,
                 "Enter an OpenRouter API key without spaces or control characters."
             );
+        }
+    }
+
+    #[test]
+    fn invalid_stream_errors_identify_safe_failure_classes_without_raw_details() {
+        for (detail, expected) in [
+            (
+                "the stream ended without completing its tool calls",
+                "before completing its tool calls",
+            ),
+            (
+                "a streamed tool call had an invalid or missing name",
+                "invalid tool call",
+            ),
+            (
+                "streamed function fields exceeded their size limit",
+                "size limit",
+            ),
+            ("the stream ended before [DONE]", "cut off"),
+            (FIXTURE_TOKEN, "incomplete or invalid reply"),
+        ] {
+            let error = stream_error(openrouter::Error::Decode {
+                detail: detail.into(),
+                excerpt: FIXTURE_TOKEN.into(),
+            });
+            assert!(error.contains(expected));
+            assert!(!error.contains(FIXTURE_TOKEN));
         }
     }
 

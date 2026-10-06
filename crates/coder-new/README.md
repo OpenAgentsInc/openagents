@@ -48,7 +48,9 @@ the key and model settings. The default model is
 `openrouter/free`, including when you leave the model field blank.
 Replies stream from `/api/v1/chat/completions`
 on a background worker, with prior live messages included. Esc stops a reply;
-failed requests are not retried automatically.
+failed requests are not retried automatically. Argument validation errors return
+to the model so it can submit a corrected plugin call within the same bounded
+turn. Call identities, size limits, and completion are checked before dispatch.
 
 Enabled plugins register their tools and usage instructions for OpenRouter
 chat. Tool calls run on the background worker, appear in the transcript, and

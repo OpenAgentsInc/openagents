@@ -861,8 +861,9 @@ pub struct Streamed {
 
 /// One complete function call requested by a streamed reply.
 ///
-/// The caller decides whether to execute it. Arguments hold a JSON object;
-/// the caller must also validate that object against the tool's schema.
+/// The caller decides whether to execute it and validates the arguments against
+/// the tool's schema. [`Client::stream_tools`] requires an argument object;
+/// [`Client::stream_tools_for_repair`] can return invalid arguments for correction.
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
 pub struct FunctionCall {
     pub id: String,
@@ -882,6 +883,14 @@ const TOOL_ARGUMENT_LIMIT: usize = 64 * 1024;
 const TOOL_AGGREGATE_LIMIT: usize = 256 * 1024;
 const TOOL_ID_LIMIT: usize = 256;
 const TOOL_NAME_LIMIT: usize = 128;
+const STREAM_EVENT_LIMIT: usize = ERROR_BODY_LIMIT * 64;
+
+#[derive(Clone, Copy)]
+enum ToolMode {
+    None,
+    Strict,
+    Repair,
+}
 
 fn tool_decode(detail: &str) -> Error {
     Error::Decode {
@@ -979,6 +988,18 @@ impl ToolCalls {
     }
 
     fn finish(self, finish_reason: Option<&str>) -> Result<Vec<FunctionCall>, Error> {
+        self.finish_with_arguments(finish_reason, true)
+    }
+
+    fn finish_for_repair(self, finish_reason: Option<&str>) -> Result<Vec<FunctionCall>, Error> {
+        self.finish_with_arguments(finish_reason, false)
+    }
+
+    fn finish_with_arguments(
+        self,
+        finish_reason: Option<&str>,
+        validate_arguments: bool,
+    ) -> Result<Vec<FunctionCall>, Error> {
         if self.calls.is_empty() {
             if finish_reason == Some("tool_calls") {
                 return Err(tool_decode(
@@ -1014,8 +1035,9 @@ impl ToolCalls {
                     "a streamed tool call had an invalid or missing name",
                 ));
             }
-            if !serde_json::from_str::<Value>(&call.arguments)
-                .is_ok_and(|arguments| arguments.is_object())
+            if validate_arguments
+                && !serde_json::from_str::<Value>(&call.arguments)
+                    .is_ok_and(|arguments| arguments.is_object())
             {
                 return Err(tool_decode(
                     "streamed tool arguments were not a JSON object",
@@ -1029,11 +1051,13 @@ impl ToolCalls {
 /// The Server-Sent Events reader for a streamed chat completion: bytes in,
 /// text deltas and the final chunk's fields out. Lines are split at LF (a
 /// CR before it is dropped) and decoded whole, so a character split across
-/// two network chunks arrives intact; comment lines (`: OPENROUTER
-/// PROCESSING`) and `data: [DONE]` carry nothing.
+/// two network chunks arrives intact. Data lines within an event are joined
+/// with newlines and decoded at the blank line. Comments (`: OPENROUTER
+/// PROCESSING`) carry nothing, and `data: [DONE]` ends the stream.
 #[derive(Default)]
 struct StreamReader {
     buffer: Vec<u8>,
+    data: String,
     reply: Streamed,
     done: bool,
     tools: Option<ToolCalls>,
@@ -1047,9 +1071,12 @@ impl StreamReader {
         sink: &mut (dyn FnMut(&str) + Send),
         model_sink: &mut (dyn FnMut(&str) + Send),
     ) -> Result<(), Error> {
+        if self.done {
+            return Ok(());
+        }
         self.buffer.extend_from_slice(chunk);
         while let Some(end) = self.buffer.iter().position(|byte| *byte == b'\n') {
-            if end > ERROR_BODY_LIMIT * 64 {
+            if end > STREAM_EVENT_LIMIT {
                 return Err(tool_decode("a stream line exceeded its size limit"));
             }
             let line: Vec<u8> = self.buffer.drain(..=end).collect();
@@ -1058,8 +1085,12 @@ impl StreamReader {
                 excerpt: String::new(),
             })?;
             self.line(line.trim_end_matches('\r'), sink, model_sink)?;
+            if self.done {
+                self.buffer.clear();
+                break;
+            }
         }
-        if self.buffer.len() > ERROR_BODY_LIMIT * 64 {
+        if self.buffer.len() > STREAM_EVENT_LIMIT {
             return Err(Error::Decode {
                 detail: "a stream line ran on without ending".to_string(),
                 excerpt: String::new(),
@@ -1074,10 +1105,31 @@ impl StreamReader {
         sink: &mut (dyn FnMut(&str) + Send),
         model_sink: &mut (dyn FnMut(&str) + Send),
     ) -> Result<(), Error> {
-        let Some(data) = line.strip_prefix("data:") else {
+        if line.is_empty() {
+            let data = std::mem::take(&mut self.data);
+            return self.event(data.trim(), sink, model_sink);
+        }
+        let Some(data) = line
+            .strip_prefix("data:")
+            .or_else(|| (line == "data").then_some(""))
+        else {
             return Ok(());
         };
-        let data = data.trim();
+        let data = data.strip_prefix(' ').unwrap_or(data);
+        if data.len().saturating_add(1) > STREAM_EVENT_LIMIT.saturating_sub(self.data.len()) {
+            return Err(tool_decode("a stream event exceeded its size limit"));
+        }
+        self.data.push_str(data);
+        self.data.push('\n');
+        Ok(())
+    }
+
+    fn event(
+        &mut self,
+        data: &str,
+        sink: &mut (dyn FnMut(&str) + Send),
+        model_sink: &mut (dyn FnMut(&str) + Send),
+    ) -> Result<(), Error> {
         if data == "[DONE]" {
             self.done = true;
             return Ok(());
@@ -1172,7 +1224,7 @@ impl Client {
     ) -> Result<Streamed, Error> {
         let mut request = request.clone();
         request.stream = true;
-        self.stream_body(&request, false, sink, model_sink)
+        self.stream_body(&request, ToolMode::None, sink, model_sink)
             .await
             .map(|stream| stream.reply)
     }
@@ -1200,19 +1252,57 @@ impl Client {
         sink: &mut (dyn FnMut(&str) + Send),
         model_sink: &mut (dyn FnMut(&str) + Send),
     ) -> Result<ToolStreamed, Error> {
+        self.stream_tools_body(request, messages, tools, ToolMode::Strict, sink, model_sink)
+            .await
+    }
+
+    /// Streams function calls whose arguments the caller can reject and repair.
+    ///
+    /// This has the same wire format and single-attempt behavior as
+    /// [`Client::stream_tools`]. IDs, names, size limits, and the completion reason
+    /// still pass validation. Argument strings are returned unchanged, including
+    /// malformed JSON and non-object JSON, so the caller can send a tool error back
+    /// to the model. The caller must parse and validate them before executing a
+    /// tool. This method executes none.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`Client::stream`]'s errors, and [`Error::Decode`] for malformed,
+    /// duplicate, incomplete, or oversized call metadata or argument fragments.
+    pub async fn stream_tools_for_repair(
+        &self,
+        request: &ChatRequest,
+        messages: &[Value],
+        tools: &[Value],
+        sink: &mut (dyn FnMut(&str) + Send),
+        model_sink: &mut (dyn FnMut(&str) + Send),
+    ) -> Result<ToolStreamed, Error> {
+        self.stream_tools_body(request, messages, tools, ToolMode::Repair, sink, model_sink)
+            .await
+    }
+
+    async fn stream_tools_body(
+        &self,
+        request: &ChatRequest,
+        messages: &[Value],
+        tools: &[Value],
+        mode: ToolMode,
+        sink: &mut (dyn FnMut(&str) + Send),
+        model_sink: &mut (dyn FnMut(&str) + Send),
+    ) -> Result<ToolStreamed, Error> {
         let mut body = serde_json::to_value(request)
             .map_err(|_| tool_decode("the tool request could not be encoded"))?;
         body["stream"] = Value::Bool(true);
         body["messages"] = Value::Array(messages.to_vec());
         body["tools"] = Value::Array(tools.to_vec());
         body["provider"] = serde_json::json!({ "require_parameters": true });
-        self.stream_body(&body, true, sink, model_sink).await
+        self.stream_body(&body, mode, sink, model_sink).await
     }
 
     async fn stream_body<B: Serialize>(
         &self,
         body: &B,
-        with_tools: bool,
+        tool_mode: ToolMode,
         sink: &mut (dyn FnMut(&str) + Send),
         model_sink: &mut (dyn FnMut(&str) + Send),
     ) -> Result<ToolStreamed, Error> {
@@ -1257,7 +1347,7 @@ impl Client {
             });
         }
         let mut reader = StreamReader {
-            tools: with_tools.then(ToolCalls::default),
+            tools: (!matches!(tool_mode, ToolMode::None)).then(ToolCalls::default),
             ..StreamReader::default()
         };
         let mut first: Option<u64> = None;
@@ -1281,7 +1371,12 @@ impl Client {
         }
         let calls = reader
             .tools
-            .map(|tools| tools.finish(reader.reply.finish_reason.as_deref()))
+            .map(|tools| match tool_mode {
+                ToolMode::Repair => tools.finish_for_repair(reader.reply.finish_reason.as_deref()),
+                ToolMode::None | ToolMode::Strict => {
+                    tools.finish(reader.reply.finish_reason.as_deref())
+                }
+            })
             .transpose()?
             .unwrap_or_default();
         let mut reply = reader.reply;
@@ -1396,7 +1491,7 @@ mod tests {
         let mut reader = StreamReader::default();
         let error = reader
             .push(
-                b"data: {\"error\":{\"code\":429,\"message\":\"slow down\"}}\n",
+                b"data: {\"error\":{\"code\":429,\"message\":\"slow down\"}}\n\n",
                 &mut |_: &str| {},
                 &mut |_: &str| {},
             )
@@ -1519,6 +1614,63 @@ mod tests {
     }
 
     #[test]
+    fn multiline_events_preserve_tool_calls_text_and_accounting() {
+        let body = concat!(
+            "event: message\r\n",
+            "data: {\"model\":\"provider/model\",\r\n",
+            ": OPENROUTER PROCESSING\r\n",
+            "data: \"choices\":[{\"delta\":{\"content\":\"café\",\r\n",
+            "data: \"tool_calls\":[{\"index\":0,\"id\":\"call_1\",\"function\":{\"name\":\"jev\",\"arguments\":\"{}\"}}]}}]}\r\n\r\n",
+            "data: {\"choices\":[{\"delta\":{},\"finish_reason\":\"tool_calls\"}]}\n\n",
+            "data: {\"choices\":[{\"delta\":{},\"finish_reason\":\"tool_calls\"}],\n",
+            "data: \"usage\":{\"total_tokens\":11}}\n\n",
+            "data: [DONE]\n\n",
+            "data: ignored after the stream ends\n\n",
+        );
+        let mut reader = StreamReader {
+            tools: Some(ToolCalls::default()),
+            ..StreamReader::default()
+        };
+        let mut text = String::new();
+        let mut models = Vec::new();
+        for byte in body.as_bytes() {
+            reader
+                .push(
+                    std::slice::from_ref(byte),
+                    &mut |delta| text.push_str(delta),
+                    &mut |model| models.push(model.to_string()),
+                )
+                .unwrap();
+        }
+        assert!(reader.done);
+        assert_eq!(text, "café");
+        assert_eq!(models, ["provider/model"]);
+        assert_eq!(reader.reply.usage.total_tokens, 11);
+        let calls = reader
+            .tools
+            .unwrap()
+            .finish(reader.reply.finish_reason.as_deref())
+            .unwrap();
+        assert_eq!(calls.len(), 1);
+        assert_eq!(calls[0].id, "call_1");
+        assert_eq!(calls[0].name, "jev");
+        assert_eq!(calls[0].arguments, "{}");
+    }
+
+    #[test]
+    fn unfinished_multiline_events_remain_bounded() {
+        let mut reader = StreamReader::default();
+        let line = format!("data: {}\n", " ".repeat(STREAM_EVENT_LIMIT / 2));
+        reader
+            .push(line.as_bytes(), &mut |_| {}, &mut |_| {})
+            .unwrap();
+        assert!(matches!(
+            reader.push(line.as_bytes(), &mut |_| {}, &mut |_| {}),
+            Err(Error::Decode { .. })
+        ));
+    }
+
+    #[test]
     fn tool_calls_reject_malformed_fields_and_out_of_bounds_indices() {
         for fragment in [
             serde_json::json!({}),
@@ -1571,6 +1723,40 @@ mod tests {
         let mut tools = ToolCalls::default();
         tools.push(&serde_json::json!([valid])).unwrap();
         assert!(tools.finish(Some("length")).is_err());
+    }
+
+    #[test]
+    fn repair_calls_still_require_complete_unique_metadata() {
+        let valid = serde_json::json!({"index": 0, "id": "call_1", "function": {"name": "jev", "arguments": "not JSON"}});
+        for (path, value) in [
+            ("/id", serde_json::json!("")),
+            ("/id", serde_json::json!("bad id")),
+            ("/function/name", serde_json::json!("")),
+            ("/function/name", serde_json::json!("bad name")),
+        ] {
+            let mut fragment = valid.clone();
+            *fragment.pointer_mut(path).unwrap() = value;
+            let mut tools = ToolCalls::default();
+            tools.push(&serde_json::json!([fragment])).unwrap();
+            assert!(tools.finish_for_repair(Some("tool_calls")).is_err());
+        }
+        let mut duplicate = valid.clone();
+        duplicate["index"] = 1.into();
+        let mut tools = ToolCalls::default();
+        tools
+            .push(&serde_json::json!([valid.clone(), duplicate]))
+            .unwrap();
+        assert!(tools.finish_for_repair(Some("tool_calls")).is_err());
+        for reason in [None, Some("stop"), Some("length")] {
+            let mut tools = ToolCalls::default();
+            tools.push(&serde_json::json!([valid.clone()])).unwrap();
+            assert!(tools.finish_for_repair(reason).is_err());
+        }
+        assert!(
+            ToolCalls::default()
+                .finish_for_repair(Some("tool_calls"))
+                .is_err()
+        );
     }
 
     #[test]
@@ -1701,6 +1887,74 @@ mod tests {
         assert_eq!(sent["model"], "openrouter/free");
         assert_eq!(sent["max_tokens"], 32);
         assert_eq!(sent["reasoning"]["effort"], "low");
+    }
+
+    #[tokio::test]
+    async fn only_the_repair_method_returns_invalid_argument_strings() {
+        for arguments in ["{\"state\":\"café\"", "[]", "null", ""] {
+            let first = serde_json::json!({
+                "model": "provider/model",
+                "choices": [{"delta": {
+                    "content": "Correcting the call.",
+                    "tool_calls": [{"index": 0, "id": "call_1", "type": "function", "function": {"name": "jev", "arguments": arguments}}]
+                }}]
+            });
+            let body = format!(
+                "data: {first}\n\ndata: {{\"choices\":[{{\"delta\":{{}},\"finish_reason\":\"tool_calls\"}}]}}\n\ndata: {{\"choices\":[{{\"delta\":{{}},\"finish_reason\":\"tool_calls\"}}],\"usage\":{{\"total_tokens\":11}}}}\n\ndata: [DONE]\n\n"
+            );
+            let request = ChatRequest::new("openrouter/free", Vec::new());
+            let (client, server) = serve_tool_stream(&body, 200).await;
+            let error = client
+                .stream_tools(&request, &[], &[], &mut |_| {}, &mut |_| {})
+                .await
+                .unwrap_err();
+            assert!(matches!(error, Error::Decode { .. }));
+            let strict_request = server.await.unwrap();
+
+            let (client, server) = serve_tool_stream(&body, 200).await;
+            let mut text = String::new();
+            let mut models = Vec::new();
+            let result = client
+                .stream_tools_for_repair(
+                    &request,
+                    &[],
+                    &[],
+                    &mut |delta| text.push_str(delta),
+                    &mut |model| models.push(model.to_string()),
+                )
+                .await
+                .unwrap();
+            assert_eq!(result.calls[0].id, "call_1");
+            assert_eq!(result.calls[0].name, "jev");
+            assert_eq!(result.calls[0].arguments, arguments);
+            assert_eq!(text, "Correcting the call.");
+            assert_eq!(models, ["provider/model"]);
+            assert_eq!(result.reply.usage.total_tokens, 11);
+            assert_eq!(strict_request, server.await.unwrap());
+        }
+    }
+
+    #[tokio::test]
+    async fn repair_streams_reject_oversized_and_unfinished_calls() {
+        for (arguments, finish_reason) in [
+            ("x".repeat(TOOL_ARGUMENT_LIMIT + 1), "tool_calls"),
+            ("not JSON".into(), "length"),
+        ] {
+            let chunk = serde_json::json!({"choices": [{
+                "delta": {"tool_calls": [{"index": 0, "id": "call_1", "function": {"name": "jev", "arguments": arguments}}]},
+                "finish_reason": finish_reason
+            }]});
+            let body = format!("data: {chunk}\n\ndata: [DONE]\n\n");
+            let (client, server) = serve_tool_stream(&body, 200).await;
+            let request = ChatRequest::new("openrouter/free", Vec::new());
+            assert!(matches!(
+                client
+                    .stream_tools_for_repair(&request, &[], &[], &mut |_| {}, &mut |_| {})
+                    .await,
+                Err(Error::Decode { .. })
+            ));
+            server.await.unwrap();
+        }
     }
 
     #[tokio::test]

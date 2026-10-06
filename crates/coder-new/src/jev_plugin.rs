@@ -21,7 +21,10 @@ static REQUEST_SEQUENCE: AtomicU64 = AtomicU64::new(0);
 /// The tool schema exposed when the Jev plugin is enabled and connected.
 pub fn tool_definition() -> Value {
     let description = json!({"type": ["string", "object", "array", "null"]});
-    let instructions = json!({"type": ["string", "object", "array"]});
+    let instructions = json!({
+        "type": ["string", "object", "array"],
+        "description": "The complete judgment to make about state. Write a specific question; question IDs are not visible to Jev."
+    });
     let question = |kind: &str, criteria: Value, required: Vec<&str>| {
         json!({
             "type": "object",
@@ -38,7 +41,7 @@ pub fn tool_definition() -> Value {
         "type": "function",
         "function": {
             "name": TOOL_NAME,
-            "description": "Ask Jev for typed semantic judgments over one state. Batch independent Noul (yes/no probability), Choice (one named option), and Score (ordered rubric) questions. Returns answers, probabilities, model, and usage; does not generate prose or execute actions.",
+            "description": "Evaluate state at the configured Jev /v1/systemone endpoint. Batch Noul (yes/no probability), Choice (one named option), and Score (ordered rubric) in one questions object; these are question types, not separate endpoints. Pass only state, questions, and optional model. Returns typed answers, probabilities, model, and usage.",
             "parameters": {
                 "type": "object",
                 "properties": {
@@ -48,6 +51,7 @@ pub fn tool_definition() -> Value {
                     },
                     "questions": {
                         "type": "object",
+                        "description": "A non-empty map from question IDs to question objects. Mix noul, choice, and score in this map; do not use a questions array.",
                         "minProperties": 1,
                         "maxProperties": MAX_QUESTIONS,
                         "additionalProperties": {
@@ -89,12 +93,14 @@ pub fn tool_definition() -> Value {
 /// Model guidance derived from the TypeSafe skill and current primitive docs.
 pub fn instructions() -> &'static str {
     "The Jev plugin provides the jev tool for focused semantic judgments, including routing, ranking, extraction from supplied candidates, and checking claims against evidence. Keep exact lookups, calculations, known rules, and execution in ordinary code. Jev returns typed answers and probabilities, not generated text or reasoning explanations.\n\
+     This tool calls only the /v1/systemone evaluation endpoint at the gateway configured in /plugins. Noul, Choice, and Score are question types, not different endpoints. To try all three, put them in one questions object. Pass only state, questions, and optional model; do not pass endpoint, url, method, action, headers, or credentials. Other API operations are not exposed by this tool.\n\
      Send state with the source material, relevant identities, relationships, policies, and current facts. Prefer a JSON object with descriptive fields; a string suits one passage. Reference nested state in instructions with paths such as `ticket.messages[0].text`. Each call is complete and independent; Jev receives no chat history unless you include it in state.\n\
      Supply questions as an object keyed by caller-chosen IDs. IDs are not visible to Jev, so each question's instructions must state its complete meaning. Ask one coherent judgment per question. Put the material in state, the judgment in instructions, and answer descriptions in criteria. Instructions and criterion descriptions can be strings, objects, or arrays.\n\
      Use {\"type\":\"noul\",\"instructions\":\"Does the customer request a refund?\"} for a condition's yes probability from 0 to 1. Optional criteria can describe true and false. A Noul near 0.5 means yes and no are similarly probable, not medium intensity.\n\
      Use choice with criteria mapping 1–255 named options to their descriptions. Include an other or no-match option when appropriate; the model cannot select an omitted candidate. Read choice, probabilities, and confidence. Use separate Nouls when several labels may independently apply.\n\
      Use score with criteria containing 2–10 ordered descriptions of concrete situations, lowest to highest. Each level must stand on its own; avoid numeric-only levels or references to neighboring levels. Read score as a probability-weighted position from 0 to the last level index, alongside probabilities, legend, and confidence.\n\
      Batch independent questions over the same state in one call, including speculative questions with explicit premises. They cannot see each other's answers. Use a later call only when prior answers are needed to obtain evidence or construct new questions. Extra questions consume tokens. This tool accepts at most 256 questions and 128 KiB of arguments per call.\n\
+     Complete example using all three types: {\"state\":{\"message\":\"Please refund the duplicate charge.\"},\"questions\":{\"refund\":{\"type\":\"noul\",\"instructions\":\"Does `message` request a refund?\"},\"team\":{\"type\":\"choice\",\"instructions\":\"Which team handles `message`?\",\"criteria\":{\"billing\":\"Payments and refunds\",\"other\":\"Anything else\"}},\"urgency\":{\"type\":\"score\",\"instructions\":\"How urgent is `message`?\",\"criteria\":[\"Routine inquiry\",\"Immediate interruption needed\"]}}}. The yes/no type is noul, not boolean. If a tool result reports invalid arguments, fix the indicated field and retry; do not treat it as a decision result.\n\
      Omit model to use the model selected in plugin settings: jev-latest for TypeSafe direct, or typesafe-ai/jev for Vercel AI Gateway. An explicit model must be available at the configured gateway. Credentials and endpoint are supplied by plugin settings; never put an API key in tool arguments. Probabilities are judgments, not proof or permission. Choice and Score confidence measures distribution concentration. Keep action policy and evaluated thresholds in code, and report uncertainty when evidence is insufficient. API failures are not judgments."
 }
 
@@ -155,30 +161,20 @@ fn request(arguments: Value, api_key: &str) -> Result<SystemOneRequest, String> 
     if !api_key.is_empty() && String::from_utf8_lossy(&bytes).contains(api_key) {
         return Err("Keep the Jev API key in plugin settings, outside tool arguments.".into());
     }
+    validate_arguments(&arguments)?;
     let arguments: Arguments = serde_json::from_value(arguments).map_err(
-        |_| "Jev requires state and a questions object, with an optional model; no other fields.",
+        |_| "Jev arguments must contain state, a questions object, and an optional model ID.",
     )?;
-    if !matches!(
-        arguments.state,
-        Value::String(_) | Value::Object(_) | Value::Array(_)
-    ) {
-        return Err("Jev state must be text, a JSON object, or an array.".into());
-    }
-    if arguments.questions.len() > MAX_QUESTIONS {
-        return Err("Jev accepts at most 256 questions per tool call.".into());
-    }
-    for (id, question) in &arguments.questions {
-        validate_question(id, question)?;
+    for (index, (id, question)) in arguments.questions.iter().enumerate() {
+        validate_question(id, question)
+            .map_err(|error| format!("Jev questions entry {}: {error}", index + 1))?;
     }
     let questions = Questions::from_map(arguments.questions);
     questions
         .validate()
-        .map_err(|error| error_message(error, api_key))?;
+        .map_err(|_| "Jev questions are invalid. Use noul, choice, or score questions with instructions and the required criteria.")?;
     let mut request = SystemOneRequest::new(arguments.state, questions);
     if let Some(model) = arguments.model {
-        if model.is_empty() || model.len() > 128 || !model.chars().all(model_character) {
-            return Err("The Jev model ID must use 1–128 letters, digits, dots, dashes, underscores, colons, or slashes.".into());
-        }
         request = request.model(model);
     }
     let mut headers = HeaderMap::new();
@@ -187,6 +183,39 @@ fn request(arguments: Value, api_key: &str) -> Result<SystemOneRequest, String> 
         HeaderValue::from_str(&request_id()).map_err(|_| "The Jev request ID is invalid.")?,
     );
     Ok(request.headers(headers))
+}
+
+fn validate_arguments(arguments: &Value) -> Result<(), String> {
+    let object = arguments.as_object().ok_or(
+        "Jev arguments must be an object. Use {\"state\":\"text to evaluate\",\"questions\":{\"check\":{\"type\":\"noul\",\"instructions\":\"Is the text a refund request?\"}}}.",
+    )?;
+    if object
+        .keys()
+        .any(|field| !matches!(field.as_str(), "state" | "questions" | "model"))
+    {
+        return Err("Jev arguments contain an unsupported top-level field. Use state and questions, with optional model and no other fields. The endpoint comes from /plugins; remove endpoint, URL, method, action, headers, and other extra fields, then retry.".into());
+    }
+    let state = object
+        .get("state")
+        .ok_or("Missing Jev field state. Add the text, JSON object, or array to evaluate.")?;
+    if !description(state) {
+        return Err("Jev field state must be text, a JSON object, or an array. Wrap numbers and booleans in an object.".into());
+    }
+    let questions = object.get("questions").ok_or("Missing Jev field questions. Add a question-ID map, for example {\"check\":{\"type\":\"noul\",\"instructions\":\"Is the state a refund request?\"}}.")?;
+    let questions = questions.as_object().ok_or("Jev field questions must be an object mapping question IDs to question objects, not an array. Example: {\"check\":{\"type\":\"noul\",\"instructions\":\"Is the state a refund request?\"}}.")?;
+    if questions.is_empty() {
+        return Err("Jev field questions is empty. Add at least one noul, choice, or score question with instructions.".into());
+    }
+    if questions.len() > MAX_QUESTIONS {
+        return Err("Jev accepts at most 256 questions per tool call. Split the questions into smaller batches.".into());
+    }
+    if let Some(model) = object.get("model") {
+        let model = model.as_str().ok_or("Jev field model must be a model ID string. Omit model to use plugin settings; do not pass null.")?;
+        if model.is_empty() || model.len() > 128 || !model.chars().all(model_character) {
+            return Err("The Jev model ID must use 1–128 letters, digits, dots, dashes, underscores, colons, or slashes. Omit model to use plugin settings.".into());
+        }
+    }
+    Ok(())
 }
 
 fn validate_question(id: &str, question: &Value) -> Result<(), String> {
@@ -208,9 +237,9 @@ fn validate_question(id: &str, question: &Value) -> Result<(), String> {
     match object.get("type").and_then(Value::as_str) {
         Some("noul") => {
             if let Some(criteria) = object.get("criteria") {
-                let criteria = criteria
-                    .as_object()
-                    .ok_or("Noul criteria must be an object with true and false descriptions.")?;
+                let criteria = criteria.as_object().ok_or(
+                    "Noul criteria must be an object with optional true and false descriptions.",
+                )?;
                 if criteria.iter().any(|(key, value)| {
                     !matches!(key.as_str(), "true" | "false") || !nullable_description(value)
                 }) {
@@ -224,11 +253,12 @@ fn validate_question(id: &str, question: &Value) -> Result<(), String> {
                 .and_then(Value::as_object)
                 .ok_or("Choice criteria must map named options to descriptions.")?;
             if criteria.is_empty()
+                || criteria.len() > 255
                 || criteria
                     .iter()
                     .any(|(key, value)| key.is_empty() || !nullable_description(value))
             {
-                return Err("Choice needs at least one named option, with text, object, array, or null descriptions.".into());
+                return Err("Choice criteria must contain 1–255 named options, with text, object, array, or null descriptions.".into());
             }
         }
         Some("score") => {
@@ -236,11 +266,17 @@ fn validate_question(id: &str, question: &Value) -> Result<(), String> {
                 .get("criteria")
                 .and_then(Value::as_array)
                 .ok_or("Score criteria must be an ordered array of descriptions.")?;
+            if !(2..=10).contains(&criteria.len()) {
+                return Err("Score criteria must contain 2–10 ordered level descriptions. Add or remove levels, then retry.".into());
+            }
             if criteria.iter().any(|value| !nullable_description(value)) {
                 return Err("Score levels must be text, objects, arrays, or null.".into());
             }
         }
-        _ => return Err("Jev question type must be noul, choice, or score.".into()),
+        _ => return Err(
+            "Jev question type must be noul, choice, or score. Use noul for a boolean question."
+                .into(),
+        ),
     }
     Ok(())
 }
@@ -437,6 +473,90 @@ mod tests {
             arguments["questions"]["refund"] = invalid;
             assert!(request(arguments, "fixture-token").is_err());
         }
+    }
+
+    #[test]
+    fn unsupported_endpoint_error_explains_scope_and_accepts_the_repaired_call() {
+        let mut call = arguments();
+        call["endpoint"] = json!("https://private-route.invalid/owner-data");
+        let error = request(call.clone(), "fixture-token").unwrap_err();
+        assert!(error.contains("unsupported top-level field"));
+        assert!(error.contains("no other fields"));
+        assert!(error.contains("endpoint comes from /plugins"));
+        assert!(error.contains("then retry"));
+        assert!(!error.contains("private-route"));
+        assert!(!error.contains("owner-data"));
+        assert!(error.len() <= 512);
+        call.as_object_mut().unwrap().remove("endpoint");
+        assert!(request(call, "fixture-token").is_ok());
+    }
+
+    #[test]
+    fn question_shape_errors_identify_the_field_and_allow_corrections() {
+        let mut call = arguments();
+        let questions = call["questions"].take();
+        call["questions"] = json!([questions.clone()]);
+        let error = request(call.clone(), "fixture-token").unwrap_err();
+        assert!(error.contains("field questions"));
+        assert!(error.contains("not an array"));
+        assert!(error.contains("\"type\":\"noul\""));
+        call["questions"] = questions;
+        assert!(request(call.clone(), "fixture-token").is_ok());
+
+        call["questions"]["refund"]["type"] = json!("boolean");
+        let error = request(call.clone(), "fixture-token").unwrap_err();
+        assert!(error.contains("questions entry 1"));
+        assert!(error.contains("Use noul for a boolean question"));
+        call["questions"]["refund"]["type"] = json!("noul");
+        assert!(request(call.clone(), "fixture-token").is_ok());
+
+        call["model"] = Value::Null;
+        let error = request(call.clone(), "fixture-token").unwrap_err();
+        assert!(error.contains("field model"));
+        assert!(error.contains("Omit model to use plugin settings"));
+        call.as_object_mut().unwrap().remove("model");
+        assert!(request(call, "fixture-token").is_ok());
+    }
+
+    #[test]
+    fn local_validation_feedback_never_echoes_arbitrary_names_or_values() {
+        let private_name = "private-input-".repeat(256);
+        let mut unknown = arguments();
+        unknown[&private_name] = json!("private-input-value");
+        let error = request(unknown, "fixture-token").unwrap_err();
+        assert!(!error.contains("private-input"));
+        assert!(error.len() <= 512);
+        for question in [
+            json!({"type":"noul", "instructions":"text", "private-field":"private-value"}),
+            json!({"type":"private-type", "instructions":"text"}),
+            json!({"type":"choice", "instructions":"text", "criteria":{"private-option":true}}),
+        ] {
+            let call =
+                json!({"state":"private-state", "questions":{ "private-question-id":question }});
+            let error = request(call, "fixture-token").unwrap_err();
+            assert!(error.contains("questions entry 1"));
+            assert!(!error.contains("private-"));
+            assert!(error.len() <= 512);
+        }
+    }
+
+    #[test]
+    fn guidance_gives_a_valid_complete_call_batching_all_three_question_types() {
+        let example = instructions()
+            .split_once("Complete example using all three types: ")
+            .unwrap()
+            .1
+            .split_once(". The yes/no type")
+            .unwrap()
+            .0;
+        let example: Value = serde_json::from_str(example).unwrap();
+        let questions = example["questions"].as_object().unwrap();
+        assert_eq!(questions.len(), 3);
+        for kind in ["noul", "choice", "score"] {
+            assert!(questions.values().any(|question| question["type"] == kind));
+        }
+        assert!(request(example, "fixture-token").is_ok());
+        assert!(instructions().contains("Other API operations are not exposed"));
     }
 
     #[test]
