@@ -105,6 +105,9 @@ fn main() -> Result<(), String> {
         "hall" | "studio-hall" => (glam::Vec3::new(0.0, 0.0, 5.0), 0.0, 20.0),
         "overhead" => (glam::Vec3::new(0.0, 0.0, -20.0), 0.0, 0.0),
         other if other.starts_with("air:") => (glam::Vec3::new(0.0, 0.0, -20.0), 0.0, 0.0),
+        // Alice, the workshop agent, as a host answered for her: the
+        // player stands in front of her wherever her work puts her.
+        other if other.starts_with("alice:") => (glam::Vec3::new(0.0, 0.0, 5.0), 0.0, 20.0),
         // A free camera; the player stands out of its way, at the spawn.
         other if other.starts_with("look:") => (glam::Vec3::new(0.0, 0.0, -29.0), 0.0, 0.0),
         "town-north" => (glam::Vec3::new(-11.0, 0.0, 14.0), 0.35, 30.0),
@@ -173,6 +176,10 @@ fn main() -> Result<(), String> {
         None
     };
     let idle = InputState::default();
+    let workshop = match view.strip_prefix("alice:") {
+        Some(file) => Some(alice(&mut runtime, Path::new(file), &idle)?),
+        None => None,
+    };
     if view.starts_with("reverse") {
         reverse(&mut runtime, &view, &idle)?;
     }
@@ -216,6 +223,13 @@ fn main() -> Result<(), String> {
                 wind,
             );
         }
+    }
+    if let Some(workshop) = &workshop {
+        // Her desk panel, anchored over the hotbar as the app draws it.
+        let size = [1280.0, 800.0];
+        let cols = verse::hud::workshop_cols(&atlas, size, 1.0);
+        let rows = workshop.rows(cols, verse::hud::WORKSHOP_ROWS);
+        let _ = verse::hud::workshop_panel(&mut ui, &atlas, size, 1.0, 60.0, &rows);
     }
     if let Some(summary) = runtime
         .studio()
@@ -361,4 +375,40 @@ fn studio(
 #[cfg(not(feature = "model-host"))]
 fn studio(_: &mut WorldRuntime, _: &str, _: Option<usize>) -> Result<(), String> {
     Err("the studio views need the model-host feature".into())
+}
+
+/// `alice:FILE`: Alice as the host's `studio.agent.list` answer in FILE
+/// (the JSON `openagents --json agent list` prints, or one agent's view)
+/// shows her, with the player standing in front of her.
+fn alice(
+    runtime: &mut WorldRuntime,
+    file: &Path,
+    idle: &InputState,
+) -> Result<verse::workshop::Workshop, String> {
+    use coder_access::agent::AgentView;
+    let text = std::fs::read_to_string(file).map_err(|e| format!("{}: {e}", file.display()))?;
+    let value: serde_json::Value =
+        serde_json::from_str(&text).map_err(|e| format!("{}: {e}", file.display()))?;
+    let view: AgentView = match value.get("agents") {
+        Some(agents) => serde_json::from_value::<Vec<AgentView>>(agents.clone())
+            .map_err(|e| format!("{}: {e}", file.display()))?
+            .into_iter()
+            .find(|a| a.name == verse::workshop::NAME)
+            .ok_or("the answer has no alice")?,
+        None => serde_json::from_value(value).map_err(|e| format!("{}: {e}", file.display()))?,
+    };
+    let workshop = verse::workshop::Workshop::showing(view);
+    runtime.set_studio_resident(workshop.seats());
+    runtime.update_studio(true, 0.0);
+    let at = runtime
+        .studio()
+        .seat_position(verse::workshop::NAME)
+        .ok_or("Alice has no seat")?;
+    let toward = glam::Vec3::new(0.0 - at.x, 0.0, 8.0 - at.z).normalize_or(glam::Vec3::Z);
+    runtime.set_spawn(at + toward * 2.6, (-toward.x).atan2(-toward.z))?;
+    for _ in 0..20 {
+        runtime.update_studio(true, 0.05);
+        runtime.tick(idle, 0.05);
+    }
+    Ok(workshop)
 }

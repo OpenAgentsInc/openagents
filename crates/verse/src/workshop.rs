@@ -325,6 +325,18 @@ impl Workshop {
         }
     }
 
+    /// A workshop that shows `view`, as the host answered it, with no
+    /// connection: for an offline capture of her panel and seat.
+    #[must_use]
+    pub fn showing(view: AgentView) -> Self {
+        Self {
+            view: Some(view),
+            loaded: true,
+            open: true,
+            ..Self::default()
+        }
+    }
+
     /// Starts asking the host for her. Called on entering Everglade; once
     /// started it does nothing.
     pub fn load(&mut self) {
