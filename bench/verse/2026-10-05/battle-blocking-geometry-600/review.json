@@ -1,0 +1,53 @@
+{
+  "schema": "verse.battle.review.v1",
+  "duration_seconds": 600,
+  "source_base": "43f12d6e0bb48e22f151476a14aaab66cca9bee8",
+  "main_fix": "2cca1020c1",
+  "executable_sha256": "aaf89fee2ba5367df60f9d11afdb29c470c4e0dbbcce23716def9214c0aeaf9b",
+  "acceptance": "failed",
+  "failures": [
+    "Authority throughput fell below ninety-eight percent of 30 Hz",
+    "/server/movement_expiry/total: Some(138.0) exceeds 0, or is unavailable",
+    "Player 0 lacks sustained interval battle observations",
+    "Player 0 late prediction p95 Some(0.3318645656108856) exceeds 0.25 meters or is unavailable",
+    "Player 0 late prediction p95 Some(0.3511701822280884) exceeds 0.25 meters or is unavailable",
+    "Player 0 lacks sustained interval battle observations",
+    "Player 0 late prediction p95 Some(0.3086099624633789) exceeds 0.25 meters or is unavailable",
+    "A lifetime window exceeded the snapshot freshness budget",
+    "A lifetime window exceeded the snapshot freshness budget"
+  ],
+  "movement_expiry": 138,
+  "native_segment_errors": [
+    "Local prediction observation regressed",
+    "Native session worker stopped before its deadline"
+  ],
+  "p95": {
+    "frame_cpu_ms": 7.141312,
+    "gpu_scene_ms": 7.068672,
+    "applied_snapshot_age_ms": 222.408871
+  },
+  "report_sha256": "771fad545afb926242141ff205ba1927b5cca963c7a29706f671f54e0a528e33",
+  "limitations": [
+    "No own compiler ran during measurement; the host is shared.",
+    "Offscreen rendering does not measure physical input-to-display latency.",
+    "The frozen source predates the silent-death control fix.",
+    "Native sessions stopped early; this run does not establish sustained native battle participation."
+  ],
+  "source_patch_sha256": "1770c4f7b47560230404927f66c3a3c0e1bb3322caa6b09c9048d8a4ee71ed26",
+  "native_maxima": [
+    {
+      "meters": 0.6400799751281738,
+      "seconds_in_segment": 51.705117453,
+      "path": "same_travel",
+      "blocking_geometry_matches": true,
+      "fixed_geometry_matches": true
+    },
+    {
+      "meters": 0.640080451965332,
+      "seconds_in_segment": 50.085313637,
+      "path": "same_travel",
+      "blocking_geometry_matches": true,
+      "fixed_geometry_matches": true
+    }
+  ]
+}
