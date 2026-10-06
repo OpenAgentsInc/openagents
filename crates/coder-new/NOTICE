@@ -1,0 +1,15 @@
+coder-new
+=========
+
+The Grok Night RGB palette in src/theme.rs is taken from:
+
+  grok-build — https://github.com/xai-org/grok-build
+  Git commit: 2bdd1d6a6369de0e8c68132ea4539e9abd9e14a8
+  SOURCE_REV: 559751fdcec02d413e4c57c8832ab275e4f44980
+  crates/codegen/xai-grok-pager-render/src/theme/groknight.rs
+  Copyright 2023-2026 SpaceXAI
+  Licensed under the Apache License, Version 2.0 (LICENSE-APACHE-xai).
+
+Changes: retain only the RGB slots used by this mockup, rename the exported
+constants for their Theme slots, and omit terminal color quantization.
+The screen layout, editor, and SVG exporter are implemented in OpenAgents.

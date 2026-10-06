@@ -1,0 +1,16 @@
+[package]
+name = "coder-new"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+publish.workspace = true
+description = "A Ratatui mockup of the new Coder terminal."
+
+[dependencies]
+crossterm = "0.29"
+ratatui = { version = "0.30", default-features = false, features = ["crossterm", "layout-cache", "unstable-rendered-line-info"] }
+unicode-segmentation = "1"
+unicode-width = "0.2"
+
+[lints]
+workspace = true
