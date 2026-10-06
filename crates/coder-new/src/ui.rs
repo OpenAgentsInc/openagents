@@ -3,6 +3,7 @@
 mod models;
 mod plugins;
 
+use coder_terminal::{Colors, Ladder, components::turn::markdown_body};
 use ratatui::{
     Frame,
     layout::{Constraint, Layout, Rect},
@@ -334,12 +335,55 @@ fn welcome(frame: &mut Frame, area: Rect) {
     );
 }
 
-fn prompt(text: impl Into<String>) -> Line<'static> {
-    Line::from(vec![
-        span(" ❯ ", t::TEXT_SECONDARY),
-        span(text, t::TEXT_PRIMARY),
-    ])
-    .style(Style::default().bg(t::BG_LIGHT))
+fn message_body(text: &str, width: u16) -> Vec<Line<'static>> {
+    markdown_body(text, width, Ladder::new(Colors::True))
+}
+
+fn prompt(text: &str, width: u16) -> Vec<Line<'static>> {
+    let mut rows = message_body(text, width.saturating_sub(3));
+    if rows.is_empty() {
+        rows.push(Line::default());
+    }
+    for (index, row) in rows.iter_mut().enumerate() {
+        row.spans.insert(
+            0,
+            span(if index == 0 { " ❯ " } else { "   " }, t::TEXT_SECONDARY),
+        );
+        row.style = row.style.bg(t::BG_LIGHT);
+    }
+    rows
+}
+
+fn wrap_display(lines: Vec<Line<'static>>, width: u16) -> Vec<Line<'static>> {
+    let mut rows = Vec::new();
+    for line in lines {
+        for range in coder_terminal::wrap_rows(&line.to_string(), usize::from(width).max(1)) {
+            let mut offset = 0;
+            let spans = line
+                .spans
+                .iter()
+                .filter_map(|span| {
+                    let end = offset + span.content.len();
+                    let start = range.start.max(offset);
+                    let stop = range.end.min(end);
+                    let piece = (start < stop).then(|| {
+                        Span::styled(
+                            span.content[start - offset..stop - offset].to_owned(),
+                            span.style,
+                        )
+                    });
+                    offset = end;
+                    piece
+                })
+                .collect::<Vec<_>>();
+            rows.push(Line {
+                spans,
+                style: line.style,
+                alignment: line.alignment,
+            });
+        }
+    }
+    rows
 }
 
 fn conversation(frame: &mut Frame, area: Rect, app: &mut App) {
@@ -349,13 +393,19 @@ fn conversation(frame: &mut Frame, area: Rect, app: &mut App) {
         let mut lines = Vec::new();
         for (index, message) in agent.conversation.iter().enumerate() {
             match message {
-                DemoMessage::User(text) => lines.push(prompt(*text)),
+                DemoMessage::User(text) => lines.extend(prompt(text, area.width)),
                 DemoMessage::Tool(call) => {
-                    lines.extend(tool_lines(call, app.animation_frame, area.width));
+                    lines.extend(wrap_display(
+                        tool_lines(call, app.animation_frame, area.width),
+                        area.width,
+                    ));
                 }
-                DemoMessage::Plugin(call) => lines.extend(plugin_lines(call, app.animation_frame)),
+                DemoMessage::Plugin(call) => lines.extend(wrap_display(
+                    plugin_lines(call, app.animation_frame),
+                    area.width,
+                )),
                 DemoMessage::Assistant(text) => {
-                    lines.push(Line::from(span(*text, t::TEXT_SECONDARY)));
+                    lines.extend(message_body(text, area.width));
                 }
             }
             let grouped = matches!(message, DemoMessage::Tool(_) | DemoMessage::Plugin(_))
@@ -369,15 +419,19 @@ fn conversation(frame: &mut Frame, area: Rect, app: &mut App) {
         }
         lines
     } else {
-        let mut lines = vec![
-            prompt("Review the terminal with four agents."),
-            Line::default(),
-        ];
+        let mut lines = prompt("Review the terminal with four agents.", area.width);
+        lines.push(Line::default());
         for call in &MAIN_TOOLS {
-            lines.extend(tool_lines(call, app.animation_frame, area.width));
+            lines.extend(wrap_display(
+                tool_lines(call, app.animation_frame, area.width),
+                area.width,
+            ));
         }
         for call in &MAIN_PLUGINS {
-            lines.extend(plugin_lines(call, app.animation_frame));
+            lines.extend(wrap_display(
+                plugin_lines(call, app.animation_frame),
+                area.width,
+            ));
         }
         lines.push(Line::default());
         for agent in &DEMOS {
@@ -387,32 +441,28 @@ fn conversation(frame: &mut Frame, area: Rect, app: &mut App) {
         lines
     };
     for message in app.messages.iter().filter(|_| app.mode == Mode::Demo) {
-        for (index, line) in message.split('\n').enumerate() {
-            lines.push(if index == 0 {
-                prompt(line)
-            } else {
-                Line::from(span(format!("   {line}"), t::TEXT_PRIMARY))
-                    .style(Style::default().bg(t::BG_LIGHT))
-            });
-        }
-        lines.extend([
-            Line::default(),
-            Line::from(span(
+        lines.extend(prompt(message, area.width));
+        lines.push(Line::default());
+        lines.extend(wrap_display(
+            vec![Line::from(span(
                 "Preview message added. No agent is connected.",
                 t::GRAY,
-            )),
-            Line::default(),
-        ]);
-    }
-    if let Some(notice) = &app.notice {
-        lines.extend(
-            notice
-                .lines()
-                .map(|text| Line::from(span(text, t::GRAY_BRIGHT))),
-        );
+            ))],
+            area.width,
+        ));
         lines.push(Line::default());
     }
-    let paragraph = Paragraph::new(Text::from(lines)).wrap(Wrap { trim: false });
+    if let Some(notice) = &app.notice {
+        lines.extend(wrap_display(
+            notice
+                .lines()
+                .map(|text| Line::from(span(text, t::GRAY_BRIGHT)))
+                .collect(),
+            area.width,
+        ));
+        lines.push(Line::default());
+    }
+    let paragraph = Paragraph::new(Text::from(lines));
     let max_scroll = paragraph
         .line_count(area.width)
         .saturating_sub(usize::from(area.height))
@@ -424,30 +474,26 @@ fn conversation(frame: &mut Frame, area: Rect, app: &mut App) {
 fn live_lines(app: &App, width: u16) -> Vec<Line<'static>> {
     let mut lines = Vec::new();
     if app.live.entries.is_empty() {
-        lines.extend([
-            Line::from(span(
-                if app.plugins.enabled && app.plugins.key_configured {
-                    "Ask OpenRouter a question."
-                } else {
-                    "Connect OpenRouter BYOK in /plugins to start."
-                },
-                t::TEXT_SECONDARY,
-            )),
-            Line::from(span("Your messages go directly to OpenRouter.", t::GRAY)),
-            Line::default(),
-        ]);
+        lines.extend(wrap_display(
+            vec![
+                Line::from(span(
+                    if app.plugins.enabled && app.plugins.key_configured {
+                        "Ask OpenRouter a question."
+                    } else {
+                        "Connect OpenRouter BYOK in /plugins to start."
+                    },
+                    t::TEXT_SECONDARY,
+                )),
+                Line::from(span("Your messages go directly to OpenRouter.", t::GRAY)),
+                Line::default(),
+            ],
+            width,
+        ));
     }
     for entry in &app.live.entries {
         match entry {
             crate::live::Entry::User(text) => {
-                for (index, line) in text.lines().enumerate() {
-                    lines.push(if index == 0 {
-                        prompt(line)
-                    } else {
-                        Line::from(span(format!("   {line}"), t::TEXT_PRIMARY))
-                            .style(Style::default().bg(t::BG_LIGHT))
-                    });
-                }
+                lines.extend(prompt(text, width));
             }
             crate::live::Entry::Assistant { text, model } => {
                 reply_lines(&mut lines, text, model.as_deref(), width);
@@ -465,20 +511,25 @@ fn live_lines(app: &App, width: u16) -> Vec<Line<'static>> {
         lines.push(Line::default());
     }
     if app.live.busy {
-        lines.push(Line::from(vec![
-            span(
-                format!("{} ", crate::tools::spinner(app.animation_frame)),
-                t::ACCENT_MODEL,
-            ),
-            span("OpenRouter is replying…", t::GRAY),
-        ]));
+        lines.extend(wrap_display(
+            vec![Line::from(vec![
+                span(
+                    format!("{} ", crate::tools::spinner(app.animation_frame)),
+                    t::ACCENT_MODEL,
+                ),
+                span("OpenRouter is replying…", t::GRAY),
+            ])],
+            width,
+        ));
     }
     if let Some(notice) = &app.live.notice {
-        lines.extend(
+        lines.extend(wrap_display(
             notice
                 .lines()
-                .map(|line| Line::from(span(line, t::DIFF_DELETE_FG))),
-        );
+                .map(|line| Line::from(span(line, t::DIFF_DELETE_FG)))
+                .collect(),
+            width,
+        ));
         lines.push(Line::default());
     }
     lines
@@ -488,10 +539,7 @@ fn reply_lines(lines: &mut Vec<Line<'static>>, text: &str, model: Option<&str>, 
     if let Some(model) = model {
         lines.push(Line::from(span(truncate(model, width), t::GRAY)).right_aligned());
     }
-    lines.extend(
-        text.lines()
-            .map(|line| Line::from(span(line, t::TEXT_SECONDARY))),
-    );
+    lines.extend(message_body(text, width));
 }
 
 fn composer_view(

@@ -178,6 +178,23 @@ fn reply(text: &str, width: u16, ladder: Ladder) -> Vec<Line<'static>> {
         .saturating_sub(CONTENT_TAIL)
         .max(content + 1);
     let room = end.saturating_sub(content).max(1);
+    markdown_body(text, room as u16, ladder)
+        .into_iter()
+        .map(|mut line| {
+            if !line.spans.is_empty() {
+                line.spans.insert(0, Span::raw(" ".repeat(content)));
+            }
+            line
+        })
+        .collect()
+}
+
+/// Render Markdown in grok-build's transcript styles across `width` cells.
+///
+/// The caller owns gutters and spacing between messages. Code backgrounds
+/// fill the supplied width; other rows have no trailing padding.
+pub fn markdown_body(text: &str, width: u16, ladder: Ladder) -> Vec<Line<'static>> {
+    let room = usize::from(width).max(1);
     let colors = transcript(ladder);
     markdown::wrapped(text, room)
         .into_iter()
@@ -185,7 +202,7 @@ fn reply(text: &str, width: u16, ladder: Ladder) -> Vec<Line<'static>> {
             if rendered.marked.text.is_empty() && !rendered.code {
                 return Line::default();
             }
-            let mut spans = vec![Span::raw(" ".repeat(content))];
+            let mut spans = Vec::new();
             let mut used = 0;
             for (run, marks) in rendered.marked.runs_in(0..rendered.marked.text.len()) {
                 used += cells(&run);
@@ -386,6 +403,47 @@ mod tests {
         );
         assert_eq!(span("Run").style.fg, Some(Color::Rgb(200, 200, 200)));
         assert_eq!(span("plain").style.bg, Some(Color::Rgb(28, 28, 28)));
+    }
+
+    #[test]
+    fn a_markdown_body_uses_the_callers_full_width_without_turn_padding() {
+        let ladder = Ladder::new(Colors::True);
+        let source = "## Plan\n\n**one** two three\n\n```rust\nlet n = 1;\n```";
+        let body = markdown_body(source, 13, ladder);
+        assert_eq!(
+            text(&body),
+            ["Plan", "", "one two three", "", "let n = 1;   "]
+        );
+        assert!(body[0].spans[0].style.add_modifier.contains(Modifier::BOLD));
+        assert_eq!(body[0].spans[0].style.fg, Some(Color::Rgb(122, 162, 247)));
+        assert!(
+            body[2]
+                .spans
+                .iter()
+                .find(|span| span.content == "one")
+                .unwrap()
+                .style
+                .add_modifier
+                .contains(Modifier::BOLD)
+        );
+        let code = &body[4];
+        assert_eq!(code.width(), 13);
+        assert!(
+            code.spans
+                .iter()
+                .all(|span| span.style.bg == Some(Color::Rgb(28, 28, 28)))
+        );
+        let foregrounds: std::collections::HashSet<_> =
+            code.spans.iter().filter_map(|span| span.style.fg).collect();
+        assert!(foregrounds.len() > 1, "Rust tokens keep syntax colors");
+
+        // The turn wrapper still reserves its content gutter and tail.
+        let reply = streaming("one two three", 13, ladder);
+        assert_eq!(text(&reply), [" one two", " three"]);
+        assert_eq!(
+            text(&markdown_body("one two three", 13, ladder)),
+            ["one two three"]
+        );
     }
 
     #[test]

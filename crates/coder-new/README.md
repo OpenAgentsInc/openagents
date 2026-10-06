@@ -26,6 +26,13 @@ state. The main conversation uses `terminal-inspector.layout.inspect` and
 `palette-audit.colors.check`. Agent conversations also use keyboard and
 conversation audit examples. These fixtures do not load or invoke plugins.
 
+All transcript message bodies use Coder's shared Markdown renderer, ported from
+Grok Build. Live, streaming, stopped, demo, and user messages render headings,
+lists, emphasis, links, quotes, tables, and syntax-highlighted code fences.
+User messages keep the compact prompt band. Markdown wraps to the transcript
+width while model labels stay separate from the message content.
+See the [Markdown transcript preview](../../docs/coder-new/markdown.svg).
+
 Press F2 or enter `/plugins` to manage **OpenRouter BYOK**.
 Space toggles its enabled preference; Enter opens connection settings. The
 settings screen has a masked **OpenRouter API key**, an optional model ID, and

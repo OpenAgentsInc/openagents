@@ -50,9 +50,28 @@ pub fn svg(app: &mut App, width: u16, height: u16) -> String {
             } else {
                 "normal"
             };
+            let italic = if cell.modifier.contains(Modifier::ITALIC) {
+                " font-style=\"italic\""
+            } else {
+                ""
+            };
+            let decoration = match (
+                cell.modifier.contains(Modifier::UNDERLINED),
+                cell.modifier.contains(Modifier::CROSSED_OUT),
+            ) {
+                (true, true) => " text-decoration=\"underline line-through\"",
+                (true, false) => " text-decoration=\"underline\"",
+                (false, true) => " text-decoration=\"line-through\"",
+                (false, false) => "",
+            };
+            let dim = if cell.modifier.contains(Modifier::DIM) {
+                " opacity=\"0.5\""
+            } else {
+                ""
+            };
             writeln!(
                 svg,
-                "<text x=\"{}\" y=\"{}\" fill=\"{}\" font-weight=\"{weight}\">{}</text>",
+                "<text x=\"{}\" y=\"{}\" fill=\"{}\" font-weight=\"{weight}\"{italic}{decoration}{dim}>{}</text>",
                 u32::from(x) * 9,
                 u32::from(y) * 20 + 15,
                 hex(cell.fg),

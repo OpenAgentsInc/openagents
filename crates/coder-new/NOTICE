@@ -18,3 +18,7 @@ The screen layout, editor, and SVG exporter are implemented in OpenAgents.
 The mock Edit calls reuse the Grok diff renderer in coder-terminal and the
 Grok Night syntax highlighter in code-highlight. Their source attribution
 and licenses are retained in code-highlight/NOTICE.
+
+Transcript messages reuse the Grok Markdown layout and transcript styles in
+coder-terminal, including fenced-code highlighting from code-highlight. Their
+source attribution and licenses are retained in code-highlight/NOTICE.
