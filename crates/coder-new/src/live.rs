@@ -83,6 +83,7 @@ pub enum Work {
     Check,
     CheckJev {
         endpoint: String,
+        model: String,
     },
     Chat {
         model: String,
@@ -264,9 +265,9 @@ fn run_with_provider(
         };
         let work = async {
             let update = match request.kind {
-                Work::CheckJev { endpoint } => Update::CheckedJev {
+                Work::CheckJev { endpoint, model } => Update::CheckedJev {
                     id,
-                    result: crate::jev_plugin::test_key(request.key.expose(), &endpoint).await,
+                    result: crate::jev_plugin::test_key_for_model(request.key.expose(), &endpoint, &model).await,
                 },
                 Work::Microcoder { messages, execution } => {
                     let mut events = |event| {

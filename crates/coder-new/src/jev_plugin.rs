@@ -10,6 +10,8 @@ use serde_json::{Map, Value, json};
 
 pub const TOOL_NAME: &str = "jev";
 pub const DEFAULT_ENDPOINT: &str = jev::defaults::BASE_URL;
+pub const GATEWAY_ENDPOINT: &str = "https://ai-gateway.vercel.sh/typesafe";
+pub const GATEWAY_MODEL: &str = jev::doors::GATEWAY_MODEL;
 
 const MAX_ARGUMENT_BYTES: usize = 128 * 1024;
 const MAX_QUESTIONS: usize = 256;
@@ -74,7 +76,7 @@ pub fn tool_definition() -> Value {
                         "type": "string",
                         "minLength": 1,
                         "maxLength": 128,
-                        "description": "Optional TypeSafe model ID. Omit to use jev-latest."
+                        "description": "Optional model ID for the configured Jev gateway. Omit to use the model selected in plugin settings."
                     }
                 },
                 "required": ["state", "questions"],
@@ -93,7 +95,7 @@ pub fn instructions() -> &'static str {
      Use choice with criteria mapping 1–255 named options to their descriptions. Include an other or no-match option when appropriate; the model cannot select an omitted candidate. Read choice, probabilities, and confidence. Use separate Nouls when several labels may independently apply.\n\
      Use score with criteria containing 2–10 ordered descriptions of concrete situations, lowest to highest. Each level must stand on its own; avoid numeric-only levels or references to neighboring levels. Read score as a probability-weighted position from 0 to the last level index, alongside probabilities, legend, and confidence.\n\
      Batch independent questions over the same state in one call, including speculative questions with explicit premises. They cannot see each other's answers. Use a later call only when prior answers are needed to obtain evidence or construct new questions. Extra questions consume tokens. This tool accepts at most 256 questions and 128 KiB of arguments per call.\n\
-     Omit model to use jev-latest, or name an available TypeSafe model. Credentials and endpoint are supplied by plugin settings; never put an API key in tool arguments. Probabilities are judgments, not proof or permission. Choice and Score confidence measures distribution concentration. Keep action policy and evaluated thresholds in code, and report uncertainty when evidence is insufficient. API failures are not judgments."
+     Omit model to use the model selected in plugin settings: jev-latest for TypeSafe direct, or typesafe-ai/jev for Vercel AI Gateway. An explicit model must be available at the configured gateway. Credentials and endpoint are supplied by plugin settings; never put an API key in tool arguments. Probabilities are judgments, not proof or permission. Choice and Score confidence measures distribution concentration. Keep action policy and evaluated thresholds in code, and report uncertainty when evidence is insufficient. API failures are not judgments."
 }
 
 #[derive(Deserialize)]
@@ -124,7 +126,16 @@ pub async fn execute(api_key: &str, endpoint: &str, arguments: Value) -> Result<
 
 /// Check a credential by listing its models without requesting inference.
 pub async fn test_key(api_key: &str, endpoint: &str) -> Result<Vec<String>, String> {
-    let client = client(api_key, endpoint)?;
+    test_key_for_model(api_key, endpoint, default_model(endpoint)).await
+}
+
+/// Check the selected connection without requesting a decision.
+pub async fn test_key_for_model(
+    api_key: &str,
+    endpoint: &str,
+    model: &str,
+) -> Result<Vec<String>, String> {
+    let client = configured_client(api_key, endpoint, model)?;
     let models = client
         .models()
         .list(ListOptions::new())
@@ -247,7 +258,15 @@ fn model_character(character: char) -> bool {
 }
 
 fn client(api_key: &str, endpoint: &str) -> Result<Client, String> {
-    configured_client(api_key, endpoint, jev::defaults::MODEL)
+    configured_client(api_key, endpoint, default_model(endpoint))
+}
+
+fn default_model(endpoint: &str) -> &'static str {
+    if endpoint.trim_end_matches('/') == GATEWAY_ENDPOINT {
+        GATEWAY_MODEL
+    } else {
+        jev::defaults::MODEL
+    }
 }
 
 /// Build the SDK client shared by bundled tools with the selected Jev model.
@@ -260,10 +279,13 @@ pub fn configured_client(api_key: &str, endpoint: &str, model: &str) -> Result<C
     }
     let url = reqwest::Url::parse(endpoint).map_err(|_| "The Jev endpoint must be an HTTP URL.")?;
     let loopback = url.host_str().is_some_and(|host| {
-        host.parse::<std::net::IpAddr>()
+        host.trim_matches(['[', ']'])
+            .parse::<std::net::IpAddr>()
             .is_ok_and(|address| address.is_loopback())
     });
-    if !(url.scheme() == "https" || url.scheme() == "http" && loopback)
+    if endpoint.len() > 2048
+        || url.host_str().is_none()
+        || !(url.scheme() == "https" || url.scheme() == "http" && loopback)
         || !url.username().is_empty()
         || url.password().is_some()
         || url.query().is_some()
@@ -517,6 +539,95 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn gateway_key_check_preserves_the_typesafe_path_prefix() {
+        let (endpoint, handle) = server(
+            200,
+            json!({"models": [{"name": GATEWAY_MODEL, "description": "Jev", "release_date": "2026-09-15"}]}),
+        );
+        let models = test_key_for_model(
+            "fixture-gateway-key",
+            &format!("{endpoint}/typesafe"),
+            GATEWAY_MODEL,
+        )
+        .await
+        .unwrap();
+        assert_eq!(models, [GATEWAY_MODEL]);
+        let (head, body) = handle.join().unwrap();
+        assert!(head.starts_with("GET /typesafe/v1/models "));
+        assert!(
+            head.to_ascii_lowercase()
+                .contains("authorization: bearer fixture-gateway-key")
+        );
+        assert!(body.is_null());
+        assert_eq!(default_model(GATEWAY_ENDPOINT), GATEWAY_MODEL);
+    }
+
+    #[tokio::test]
+    async fn gateway_settings_reach_the_chat_tool_and_microcoder_judge() {
+        for chat_tool in [true, false] {
+            let (endpoint, handle) = server(
+                200,
+                json!({
+                    "model": GATEWAY_MODEL,
+                    "answers": {
+                        "refund": {"type": "noul", "noul": 0.9},
+                        "team": {"type": "choice", "choice": "billing", "confidence": 0.8, "probabilities": {"billing": 0.9, "other": 0.1}},
+                        "urgency": {"type": "score", "score": 0.2, "confidence": 0.6, "probabilities": {"0": 0.8, "1": 0.2}, "legend": {"0": "Routine inquiry", "1": "Immediate interruption needed"}}
+                    },
+                    "usage": {"input_tokens": 42, "output_tokens": 7},
+                    "provider_metadata": {"gateway": {"cost": "0.00000168"}}
+                }),
+            );
+            let settings = crate::plugin_tools::ExecutionSettings {
+                microcoder: false,
+                cli: false,
+                acp: false,
+                jev_enabled: true,
+                jev_key: Some(model_access::ApiKey::new("fixture-gateway-key")),
+                redaction_keys: vec![],
+                jev_model: GATEWAY_MODEL.into(),
+                jev_endpoint: format!("{endpoint}/typesafe"),
+                agents: vec![],
+                cwd: std::path::PathBuf::from("/unused"),
+            };
+            let result = if chat_tool {
+                settings
+                    .execute(
+                        TOOL_NAME,
+                        arguments(),
+                        None,
+                        &std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false)),
+                        &mut |_| {},
+                    )
+                    .await
+                    .unwrap()
+            } else {
+                let response = settings
+                    .jev_client()
+                    .unwrap()
+                    .unwrap()
+                    .system_one(request(arguments(), "fixture-gateway-key").unwrap())
+                    .await
+                    .unwrap();
+                json!({"model": response.model, "answers": response.answers_value(), "usage": response.usage})
+            };
+            assert_eq!(result["model"], GATEWAY_MODEL);
+            assert_eq!(result["answers"]["refund"]["noul"], 0.9);
+            assert_eq!(result["usage"]["input_tokens"], 42);
+            assert!(!result.to_string().contains("fixture-gateway-key"));
+            let (head, body) = handle.join().unwrap();
+            assert!(head.starts_with("POST /typesafe/v1/systemone "));
+            assert!(
+                head.to_ascii_lowercase()
+                    .contains("authorization: bearer fixture-gateway-key")
+            );
+            assert_eq!(body["model"], GATEWAY_MODEL);
+            assert_eq!(body["questions"]["refund"]["type"], "noul");
+            assert!(!body.to_string().contains("fixture-gateway-key"));
+        }
+    }
+
+    #[tokio::test]
     async fn service_errors_redact_credentials_and_preserve_failure_identity() {
         let (endpoint, handle) = server(
             401,
@@ -534,6 +645,9 @@ mod tests {
 
     #[tokio::test]
     async fn missing_key_and_unsafe_endpoint_are_rejected_without_network() {
+        assert!(
+            configured_client("fixture-token", "http://[::1]:9090/typesafe", GATEWAY_MODEL).is_ok()
+        );
         assert!(
             execute("", DEFAULT_ENDPOINT, arguments())
                 .await

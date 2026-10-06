@@ -79,7 +79,7 @@ pub const DEFINITIONS: &[PluginDefinition] = &[
     PluginDefinition {
         id: "jev",
         name: "Jev",
-        description: "Typed decisions and probabilities through the Jev SDK. Add your TypeSafe API key.",
+        description: "Typed decisions through the Jev SDK. Connect TypeSafe or a compatible gateway.",
         default_enabled: true,
         tools: &[ToolBinding::Jev],
         model_provider: None,

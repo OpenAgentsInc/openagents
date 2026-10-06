@@ -62,8 +62,15 @@ Claude Code login. That local loop retains its structured command protocol.
 and adds `--json`. [Coder's installer](../../scripts/install-coder.sh) builds
 and installs the companion `openagents` binary with Coder.
 
-**Jev** has masked TypeSafe API key settings and a model ID, defaulting to
-`jev-latest`. Key checks list models without running inference. Its `jev` tool
+**Jev** supports TypeSafe direct, Vercel AI Gateway, and custom
+TypeSafe-compatible API bases. In `/plugins`, open Jev settings and choose
+the gateway, enter its API key, and save. The TypeSafe preset uses
+`https://api.typesafe.ai` and `jev-latest`; the Vercel preset uses
+`https://ai-gateway.vercel.sh/typesafe` and `typesafe-ai/jev`.
+You can edit the API base URL and model. Changing the gateway's origin
+requires a key for that connection. Key checks use the draft settings and
+list models without running inference. The chat tool and Microcoder's Jev
+judge share the saved connection. Its `jev` tool
 uses the existing Rust SDK to send state and typed Noul, Choice, or Score
 questions, then returns typed answers and probabilities. The registered
 instructions describe when to use those judgments and how to interpret them.
@@ -115,9 +122,12 @@ The editable key draft clears on save or cancel. Keys stay redacted in the UI
 and errors. Demo settings and conversations last only until you quit, and demo
 mode makes no requests or settings writes. Switching modes keeps their
 preferences, drafts, and transcripts separate and cancels pending network work.
-Startup imports `OPENROUTER_API_KEY`, `TYPESAFE_API_KEY`, and
-`TYPESAFE_BASE_URL` from the process environment, then the working directory's
-`.env`. OpenRouter also accepts the existing `~/.openagents/openrouter.json`
+Startup imports `OPENROUTER_API_KEY`, `TYPESAFE_API_KEY`, `AI_GATEWAY_API_KEY`,
+`TYPESAFE_BASE_URL`, and `TYPESAFE_DEFAULT_MODEL` from the process environment,
+then the working directory's `.env`. A gateway key without a TypeSafe key or
+explicit API base selects the Vercel preset. Saved routing takes precedence,
+and imported keys apply only to the matching origin. OpenRouter also accepts
+the existing `~/.openagents/openrouter.json`
 key file. Saved plugin keys take precedence. Imports do not write settings;
 `.env` values are read as literals without shell execution or expansion.
 OpenRouter's own upstream-provider BYOK settings are separate from

@@ -371,9 +371,23 @@ impl App {
             self.plugins.bundled.error = Some("Wait for the current reply before testing a key.");
             return;
         }
+        let endpoint = match self.plugins.bundled.endpoint_for_check() {
+            Ok(endpoint) => endpoint,
+            Err(error) => {
+                self.plugins.bundled.connection = plugins::Connection::Failed(error);
+                return;
+            }
+        };
+        let model = match self.plugins.bundled.model_for_check() {
+            Ok(model) => model,
+            Err(error) => {
+                self.plugins.bundled.connection = plugins::Connection::Failed(error);
+                return;
+            }
+        };
         let Some(key) = self.plugins.bundled.key_for_check() else {
             self.plugins.bundled.connection =
-                plugins::Connection::Failed("Add a TypeSafe API key first.".into());
+                plugins::Connection::Failed("Add an API key for this Jev connection first.".into());
             return;
         };
         self.cancel_request();
@@ -383,9 +397,7 @@ impl App {
         self.request = Some(live::Request {
             id: self.request_id,
             key,
-            kind: live::Work::CheckJev {
-                endpoint: self.plugins.bundled.jev_endpoint().into(),
-            },
+            kind: live::Work::CheckJev { endpoint, model },
         });
     }
 
@@ -432,7 +444,12 @@ impl App {
                 } else if self.screen == Screen::PluginSettings {
                     match self.plugins.selected_definition().id {
                         "jev" => {
-                            if self.plugins.bundled.focus == plugins::SettingsFocus::ApiKey {
+                            if matches!(
+                                self.plugins.bundled.focus,
+                                plugins::SettingsFocus::ApiKey
+                                    | plugins::SettingsFocus::Endpoint
+                                    | plugins::SettingsFocus::Model
+                            ) {
                                 if self.checking_key {
                                     self.cancel_request();
                                 }
@@ -498,11 +515,23 @@ impl App {
                     match self.plugins.selected_definition().id {
                         "jev" => {
                             if self.mode == Mode::Live
-                                && self.plugins.bundled.focus == plugins::SettingsFocus::ApiKey
-                                && matches!(
+                                && ((matches!(
+                                    self.plugins.bundled.focus,
+                                    plugins::SettingsFocus::ApiKey
+                                        | plugins::SettingsFocus::Endpoint
+                                        | plugins::SettingsFocus::Model
+                                ) && matches!(
                                     key.code,
                                     KeyCode::Char(_) | KeyCode::Backspace | KeyCode::Delete
-                                )
+                                )) || (self.plugins.bundled.focus
+                                    == plugins::SettingsFocus::Gateway
+                                    && matches!(
+                                        key.code,
+                                        KeyCode::Enter | KeyCode::Left | KeyCode::Right
+                                    ))
+                                    || (self.plugins.bundled.focus
+                                        == plugins::SettingsFocus::RemoveKey
+                                        && key.code == KeyCode::Enter))
                             {
                                 if self.checking_key {
                                     self.cancel_request();

@@ -82,7 +82,8 @@ fn valid_endpoint(endpoint: &str) -> bool {
         return false;
     };
     let loopback = url.host_str().is_some_and(|host| {
-        host.parse::<std::net::IpAddr>()
+        host.trim_matches(['[', ']'])
+            .parse::<std::net::IpAddr>()
             .is_ok_and(|ip| ip.is_loopback())
     });
     (url.scheme() == "https" || url.scheme() == "http" && loopback)
@@ -91,6 +92,21 @@ fn valid_endpoint(endpoint: &str) -> bool {
         && url.password().is_none()
         && url.query().is_none()
         && url.fragment().is_none()
+}
+
+fn same_origin(left: &str, right: &str) -> bool {
+    match (reqwest::Url::parse(left), reqwest::Url::parse(right)) {
+        (Ok(left), Ok(right)) => left.origin() == right.origin(),
+        _ => false,
+    }
+}
+
+fn gateway_label(endpoint: &str) -> &'static str {
+    match endpoint.trim_end_matches('/') {
+        crate::jev_plugin::DEFAULT_ENDPOINT => "TypeSafe direct",
+        crate::jev_plugin::GATEWAY_ENDPOINT => "Vercel AI Gateway",
+        _ => "Custom gateway",
+    }
 }
 
 fn valid_agents(agents: &[AcpAgent]) -> Result<(), String> {
@@ -140,6 +156,7 @@ pub struct BundledSettings {
     jev_endpoint: String,
     key_draft: Draft,
     model_draft: Draft,
+    endpoint_draft: Draft,
     remove_key: bool,
     live: bool,
     other: Preferences,
@@ -171,6 +188,7 @@ impl Default for BundledSettings {
             jev_endpoint: defaults.jev_endpoint.clone(),
             key_draft: Draft::default(),
             model_draft: Draft::default(),
+            endpoint_draft: Draft::default(),
             remove_key: false,
             live: false,
             other: defaults,
@@ -243,18 +261,61 @@ impl BundledSettings {
     }
 
     pub fn set_jev_environment(&mut self, key: Option<ApiKey>, endpoint: Option<String>) {
+        self.import_jev_environment(key, endpoint, None, None);
+    }
+
+    /// Pair imported credentials with their configured origin without changing saved routing.
+    pub fn import_jev_environment(
+        &mut self,
+        key: Option<ApiKey>,
+        endpoint: Option<String>,
+        gateway_key: Option<ApiKey>,
+        model: Option<String>,
+    ) {
         let mut value = if self.live {
             self.preferences()
         } else {
             self.other.clone()
         };
-        if value.jev_key.is_none() {
-            value.jev_key = key.filter(|key| valid_key(key.expose()));
-        }
+        let key = key.filter(|key| valid_key(key.expose()));
+        let gateway_key = gateway_key.filter(|key| valid_key(key.expose()));
+        let endpoint = endpoint.filter(|endpoint| valid_endpoint(endpoint));
+        let key_endpoint = endpoint
+            .as_deref()
+            .unwrap_or(crate::jev_plugin::DEFAULT_ENDPOINT);
         if !self.configured {
-            if let Some(endpoint) = endpoint.filter(|endpoint| valid_endpoint(endpoint)) {
-                value.jev_endpoint = endpoint;
+            let previous_endpoint = value.jev_endpoint.clone();
+            if let Some(endpoint) = &endpoint {
+                value.jev_endpoint.clone_from(endpoint);
+            } else if key.is_none() && gateway_key.is_some() {
+                value.jev_endpoint = crate::jev_plugin::GATEWAY_ENDPOINT.into();
+            } else {
+                value.jev_endpoint = crate::jev_plugin::DEFAULT_ENDPOINT.into();
             }
+            if let Some(model) = model.filter(|model| valid_model(model)) {
+                value.jev_model = model;
+            } else if gateway_label(&value.jev_endpoint) == "Vercel AI Gateway" {
+                value.jev_model = crate::jev_plugin::GATEWAY_MODEL.into();
+            } else {
+                value.jev_model = jev::defaults::MODEL.into();
+            }
+            if !same_origin(&previous_endpoint, &value.jev_endpoint) {
+                value.jev_key = None;
+            }
+        }
+        if value.jev_key.is_none() {
+            value.jev_key = if same_origin(&value.jev_endpoint, crate::jev_plugin::GATEWAY_ENDPOINT)
+            {
+                gateway_key.or_else(|| {
+                    same_origin(&value.jev_endpoint, key_endpoint)
+                        .then_some(key)
+                        .flatten()
+                })
+            } else if same_origin(&value.jev_endpoint, key_endpoint) {
+                key
+            } else {
+                None
+            };
         }
         if self.live {
             self.apply(value);
@@ -341,6 +402,7 @@ impl BundledSettings {
             }
         }
         self.storage_error = None;
+        self.configured = true;
         true
     }
 
@@ -349,12 +411,15 @@ impl BundledSettings {
         self.saved_connection = Some(self.connection.clone());
         self.model_draft.text.clone_from(&self.jev_model);
         self.model_draft.cursor = self.model_draft.text.len();
+        self.endpoint_draft.text.clone_from(&self.jev_endpoint);
+        self.endpoint_draft.cursor = self.endpoint_draft.text.len();
         self.focus = SettingsFocus::ApiKey;
     }
 
     pub fn discard(&mut self) {
         self.key_draft = Draft::default();
         self.model_draft = Draft::default();
+        self.endpoint_draft = Draft::default();
         self.remove_key = false;
         self.error = None;
         self.check_requested = false;
@@ -372,10 +437,12 @@ impl BundledSettings {
             "Key will be removed on save"
         } else if !self.key_draft.text.is_empty() {
             "Key hidden"
+        } else if self.origin_changed() && self.jev_key.is_some() {
+            "Add a key for the new gateway"
         } else if self.jev_key.is_some() {
             "Key added · paste to replace"
         } else {
-            "Add your TypeSafe API key"
+            "Add the API key for this gateway"
         }
     }
 
@@ -396,11 +463,97 @@ impl BundledSettings {
             None
         } else if !self.key_draft.text.is_empty() {
             Some(ApiKey::new(&self.key_draft.text))
-        } else if self.remove_key {
+        } else if self.remove_key || self.origin_changed() {
             None
         } else {
             self.jev_key.clone()
         }
+    }
+
+    pub fn endpoint_for_check(&self) -> Result<String, String> {
+        let endpoint = if self.saved_connection.is_some() {
+            self.endpoint_draft.text.trim()
+        } else {
+            &self.jev_endpoint
+        };
+        if valid_endpoint(endpoint) {
+            Ok(endpoint.trim_end_matches('/').into())
+        } else {
+            Err("Enter an HTTPS API base URL without credentials, query, or fragment.".into())
+        }
+    }
+
+    pub fn model_for_check(&self) -> Result<String, String> {
+        let model = if self.saved_connection.is_some() {
+            self.model_draft.text.trim()
+        } else {
+            &self.jev_model
+        };
+        let model = if model.is_empty() {
+            self.default_model()
+        } else {
+            model
+        };
+        if valid_model(model) {
+            Ok(model.into())
+        } else {
+            Err("Enter a valid Jev model ID using at most 128 bytes.".into())
+        }
+    }
+
+    pub fn gateway_label(&self) -> &'static str {
+        gateway_label(if self.saved_connection.is_some() {
+            self.endpoint_draft.text.trim()
+        } else {
+            &self.jev_endpoint
+        })
+    }
+
+    pub fn default_model(&self) -> &'static str {
+        if self.gateway_label() == "Vercel AI Gateway" {
+            crate::jev_plugin::GATEWAY_MODEL
+        } else {
+            jev::defaults::MODEL
+        }
+    }
+
+    fn origin_changed(&self) -> bool {
+        self.saved_connection.is_some()
+            && !same_origin(self.endpoint_draft.text.trim(), &self.jev_endpoint)
+    }
+
+    fn edited(&mut self) {
+        self.connection = Connection::Unchecked;
+        self.check_requested = false;
+        self.error = None;
+    }
+
+    fn endpoint_edited(&mut self, previous: &str) {
+        if !same_origin(previous, self.endpoint_draft.text.trim()) {
+            self.key_draft = Draft::default();
+        }
+        self.edited();
+    }
+
+    fn cycle_gateway(&mut self) {
+        let previous = self.endpoint_draft.text.clone();
+        let (endpoint, model) = if self.gateway_label() == "Vercel AI Gateway" {
+            (crate::jev_plugin::DEFAULT_ENDPOINT, jev::defaults::MODEL)
+        } else {
+            (
+                crate::jev_plugin::GATEWAY_ENDPOINT,
+                crate::jev_plugin::GATEWAY_MODEL,
+            )
+        };
+        self.endpoint_draft.text = endpoint.into();
+        self.endpoint_draft.cursor = endpoint.len();
+        self.model_draft.text = model.into();
+        self.model_draft.cursor = model.len();
+        self.endpoint_edited(&previous);
+    }
+
+    pub fn endpoint_field(&self) -> (String, usize) {
+        (self.endpoint_draft.text.clone(), self.endpoint_draft.cursor)
     }
 
     pub fn field(&self, key: bool) -> (String, usize) {
@@ -418,14 +571,24 @@ impl BundledSettings {
     }
 
     pub fn paste(&mut self, text: &str) {
+        let previous_endpoint = self.endpoint_draft.text.clone();
         let draft = match self.focus {
             SettingsFocus::ApiKey => &mut self.key_draft,
             SettingsFocus::Model => &mut self.model_draft,
+            SettingsFocus::Endpoint => &mut self.endpoint_draft,
             _ => return,
         };
+        let previous = draft.text.clone();
         if draft.text.len().saturating_add(text.len()) <= 16 * 1024 {
             draft.insert(&text.trim().replace(['\r', '\n'], ""));
-            self.error = None;
+            if draft.text == previous {
+                return;
+            }
+            if self.focus == SettingsFocus::Endpoint {
+                self.endpoint_edited(&previous_endpoint);
+            } else {
+                self.edited();
+            }
         }
     }
 
@@ -436,6 +599,8 @@ impl BundledSettings {
         match key.code {
             KeyCode::Tab | KeyCode::Down | KeyCode::BackTab | KeyCode::Up => {
                 let fields = [
+                    SettingsFocus::Gateway,
+                    SettingsFocus::Endpoint,
                     SettingsFocus::ApiKey,
                     SettingsFocus::Model,
                     SettingsFocus::TestKey,
@@ -460,6 +625,8 @@ impl BundledSettings {
                 return true;
             }
             KeyCode::Enter => match self.focus {
+                SettingsFocus::Gateway => self.cycle_gateway(),
+                SettingsFocus::Endpoint => self.focus = SettingsFocus::ApiKey,
                 SettingsFocus::ApiKey => self.focus = SettingsFocus::Model,
                 SettingsFocus::Model => self.focus = SettingsFocus::Save,
                 SettingsFocus::TestKey => self.check_requested = true,
@@ -467,23 +634,36 @@ impl BundledSettings {
                 SettingsFocus::RemoveKey => {
                     self.key_draft = Draft::default();
                     self.remove_key = true;
-                    self.error = None;
+                    self.edited();
                 }
                 SettingsFocus::Cancel => {
                     self.discard();
                     return true;
                 }
             },
+            KeyCode::Left | KeyCode::Right if self.focus == SettingsFocus::Gateway => {
+                self.cycle_gateway();
+            }
             _ => {
+                let previous_endpoint = self.endpoint_draft.text.clone();
                 let draft = match self.focus {
                     SettingsFocus::ApiKey => &mut self.key_draft,
                     SettingsFocus::Model => &mut self.model_draft,
+                    SettingsFocus::Endpoint => &mut self.endpoint_draft,
                     _ => return false,
                 };
+                let previous = draft.text.clone();
                 if draft.text.len() < 16 * 1024 || !matches!(key.code, KeyCode::Char(_)) {
                     draft.edit(key);
                 }
-                self.error = None;
+                if draft.text == previous {
+                    return false;
+                }
+                if self.focus == SettingsFocus::Endpoint {
+                    self.endpoint_edited(&previous_endpoint);
+                } else {
+                    self.edited();
+                }
             }
         }
         false
@@ -495,25 +675,37 @@ impl BundledSettings {
             self.focus = SettingsFocus::ApiKey;
             return false;
         }
-        let model = self.model_draft.text.trim();
-        let model = if model.is_empty() {
-            jev::defaults::MODEL
-        } else {
-            model
+        let Ok(endpoint) = self.endpoint_for_check() else {
+            self.error =
+                Some("Enter an HTTPS API base URL without credentials, query, or fragment.");
+            self.focus = SettingsFocus::Endpoint;
+            return false;
         };
-        if !valid_model(model) {
+        let Ok(model) = self.model_for_check() else {
             self.error = Some("Enter a valid Jev model ID using at most 128 bytes.");
             self.focus = SettingsFocus::Model;
             return false;
-        }
+        };
         let mut value = self.preferences();
-        value.jev_model = model.into();
+        value.jev_model = model;
+        value.jev_endpoint = endpoint;
+        if self.origin_changed()
+            && self.key_draft.text.is_empty()
+            && !self.remove_key
+            && self.jev_key.is_some()
+        {
+            self.error = Some("Add an API key for the new gateway or remove the saved key.");
+            self.focus = SettingsFocus::ApiKey;
+            return false;
+        }
         if !self.key_draft.text.is_empty() {
             value.jev_key = Some(ApiKey::new(&self.key_draft.text));
         } else if self.remove_key {
             value.jev_key = None;
         }
-        let changed = value.jev_key != self.jev_key;
+        let changed = value.jev_key != self.jev_key
+            || value.jev_endpoint != self.jev_endpoint
+            || value.jev_model != self.jev_model;
         if !self.persist(&value) {
             return false;
         }
@@ -576,6 +768,194 @@ mod tests {
         settings.handle(KeyEvent::new(KeyCode::Enter, KeyModifiers::NONE))
     }
 
+    fn replace(settings: &mut BundledSettings, focus: SettingsFocus, text: &str) {
+        settings.focus = focus;
+        let draft = match focus {
+            SettingsFocus::Endpoint => &mut settings.endpoint_draft,
+            SettingsFocus::Model => &mut settings.model_draft,
+            _ => unreachable!(),
+        };
+        *draft = Draft::default();
+        settings.paste(text);
+    }
+
+    #[test]
+    fn gateway_changes_require_a_new_key_and_cancel_restores_saved_verification() {
+        let temporary = tempfile::tempdir().unwrap();
+        let store = Store::under(temporary.path());
+        let mut settings = BundledSettings::default();
+        settings.load(store.clone()).unwrap();
+        settings.set_live(true);
+        settings.set_jev_environment(Some(ApiKey::new("direct-fixture")), None);
+        settings.connection = Connection::Verified;
+        settings.begin_settings();
+        settings.paste("replacement-direct-fixture");
+        settings.focus = SettingsFocus::Gateway;
+        settings.handle(KeyEvent::new(KeyCode::Enter, KeyModifiers::NONE));
+        assert_eq!(settings.gateway_label(), "Vercel AI Gateway");
+        assert_eq!(
+            settings.endpoint_for_check().unwrap(),
+            crate::jev_plugin::GATEWAY_ENDPOINT
+        );
+        assert_eq!(
+            settings.model_for_check().unwrap(),
+            crate::jev_plugin::GATEWAY_MODEL
+        );
+        assert!(settings.field(true).0.is_empty());
+        assert!(settings.key_for_check().is_none());
+        assert!(!save(&mut settings));
+        assert!(matches!(settings.connection, Connection::Unchecked));
+        assert!(!temporary.path().join(FILE).exists());
+        settings.discard();
+        assert!(matches!(settings.connection, Connection::Verified));
+        assert_eq!(settings.jev_endpoint(), crate::jev_plugin::DEFAULT_ENDPOINT);
+        assert_eq!(settings.key_for_check().unwrap().expose(), "direct-fixture");
+
+        settings.begin_settings();
+        settings.focus = SettingsFocus::Gateway;
+        settings.handle(KeyEvent::new(KeyCode::Right, KeyModifiers::NONE));
+        settings.focus = SettingsFocus::ApiKey;
+        settings.paste("gateway-fixture");
+        assert_eq!(
+            settings.key_for_check().unwrap().expose(),
+            "gateway-fixture"
+        );
+        assert!(save(&mut settings));
+        assert!(settings.credential_changed);
+        assert_eq!(
+            settings.endpoint_for_check().unwrap(),
+            crate::jev_plugin::GATEWAY_ENDPOINT
+        );
+        assert_eq!(
+            settings.model_for_check().unwrap(),
+            crate::jev_plugin::GATEWAY_MODEL
+        );
+        let mut restored = BundledSettings::default();
+        restored.set_live(true);
+        restored.load(store).unwrap();
+        assert_eq!(restored.jev_key().unwrap().expose(), "gateway-fixture");
+        assert_eq!(restored.gateway_label(), "Vercel AI Gateway");
+        let document: serde_json::Value =
+            serde_json::from_slice(&std::fs::read(temporary.path().join(FILE)).unwrap()).unwrap();
+        assert_eq!(document["version"], 1);
+    }
+
+    #[test]
+    fn endpoint_and_model_edits_invalidate_checks_without_changing_saved_settings() {
+        let mut settings = BundledSettings::default();
+        settings.set_live(true);
+        settings.set_jev_environment(Some(ApiKey::new("direct-fixture")), None);
+        settings.connection = Connection::Verified;
+        settings.begin_settings();
+        replace(
+            &mut settings,
+            SettingsFocus::Endpoint,
+            "https://api.typesafe.ai/custom",
+        );
+        assert_eq!(settings.gateway_label(), "Custom gateway");
+        assert!(matches!(settings.connection, Connection::Unchecked));
+        assert_eq!(settings.key_for_check().unwrap().expose(), "direct-fixture");
+        assert_eq!(settings.jev_endpoint(), crate::jev_plugin::DEFAULT_ENDPOINT);
+        settings.connection = Connection::Verified;
+        replace(&mut settings, SettingsFocus::Model, "jev-fixture");
+        assert!(matches!(settings.connection, Connection::Unchecked));
+        assert_eq!(settings.model_for_check().unwrap(), "jev-fixture");
+        assert_eq!(settings.jev_model(), jev::defaults::MODEL);
+        settings.connection = Connection::Verified;
+        settings.handle(KeyEvent::new(KeyCode::Left, KeyModifiers::NONE));
+        assert!(matches!(settings.connection, Connection::Verified));
+        assert!(save(&mut settings));
+        assert!(settings.credential_changed);
+        assert_eq!(settings.jev_endpoint(), "https://api.typesafe.ai/custom");
+        assert_eq!(settings.jev_model(), "jev-fixture");
+    }
+
+    #[test]
+    fn invalid_endpoint_drafts_do_not_save_or_disclose_saved_credentials() {
+        let mut settings = BundledSettings::default();
+        settings.set_live(true);
+        settings.set_jev_environment(Some(ApiKey::new("direct-fixture")), None);
+        settings.begin_settings();
+        for endpoint in [
+            "http://example.invalid",
+            "https://key@example.invalid",
+            "https://example.invalid?key=fixture",
+            "https://example.invalid#fragment",
+            "",
+            "not-a-url",
+        ] {
+            replace(&mut settings, SettingsFocus::Endpoint, endpoint);
+            assert!(settings.endpoint_for_check().is_err());
+            assert!(settings.key_for_check().is_none());
+            assert!(!save(&mut settings));
+            assert_eq!(settings.jev_endpoint(), crate::jev_plugin::DEFAULT_ENDPOINT);
+        }
+        assert!(valid_endpoint("http://127.0.0.1:9090/typesafe"));
+        assert!(valid_endpoint("http://[::1]:9090/typesafe"));
+    }
+
+    #[test]
+    fn startup_credentials_are_paired_with_their_origin_and_saved_routing_wins() {
+        let direct = || Some(ApiKey::new("direct-fixture"));
+        let gateway = || Some(ApiKey::new("gateway-fixture"));
+        let mut auto = BundledSettings::default();
+        auto.import_jev_environment(None, None, gateway(), None);
+        auto.set_live(true);
+        assert_eq!(auto.gateway_label(), "Vercel AI Gateway");
+        assert_eq!(auto.jev_model(), crate::jev_plugin::GATEWAY_MODEL);
+        assert_eq!(auto.jev_key().unwrap().expose(), "gateway-fixture");
+        auto.import_jev_environment(direct(), None, None, None);
+        assert_eq!(auto.gateway_label(), "TypeSafe direct");
+        assert_eq!(auto.jev_key().unwrap().expose(), "direct-fixture");
+        auto.import_jev_environment(None, None, gateway(), None);
+        assert_eq!(auto.gateway_label(), "Vercel AI Gateway");
+        assert_eq!(auto.jev_key().unwrap().expose(), "gateway-fixture");
+
+        for endpoint in [None, Some("https://api.typesafe.ai".into())] {
+            let mut settings = BundledSettings::default();
+            settings.import_jev_environment(
+                direct(),
+                endpoint,
+                gateway(),
+                Some("jev-fixture".into()),
+            );
+            settings.set_live(true);
+            assert_eq!(settings.jev_key().unwrap().expose(), "direct-fixture");
+            assert_eq!(settings.jev_model(), "jev-fixture");
+        }
+
+        let temporary = tempfile::tempdir().unwrap();
+        let store = Store::under(temporary.path());
+        let custom = Preferences {
+            jev_endpoint: "https://custom.invalid/typesafe".into(),
+            jev_model: "custom-jev".into(),
+            ..Preferences::default()
+        };
+        store.save_extra(FILE, &custom).unwrap();
+        let mut saved = BundledSettings::default();
+        saved.load(store.clone()).unwrap();
+        saved.import_jev_environment(direct(), None, gateway(), Some("env-model".into()));
+        saved.set_live(true);
+        assert!(saved.jev_key().is_none());
+        assert_eq!(saved.jev_model(), "custom-jev");
+        assert_eq!(saved.jev_endpoint(), "https://custom.invalid/typesafe");
+        saved.import_jev_environment(
+            direct(),
+            Some("https://custom.invalid".into()),
+            gateway(),
+            None,
+        );
+        assert_eq!(saved.jev_key().unwrap().expose(), "direct-fixture");
+        assert_eq!(
+            store
+                .read_extra::<Preferences>(FILE)
+                .unwrap()
+                .unwrap()
+                .jev_key,
+            None
+        );
+    }
+
     #[test]
     fn defaults_are_enabled_and_demo_edits_never_write_live_settings() {
         let temporary = tempfile::tempdir().unwrap();
@@ -586,14 +966,20 @@ mod tests {
             assert!(settings.toggle(id));
         }
         settings.begin_settings();
+        settings.focus = SettingsFocus::Gateway;
+        settings.handle(KeyEvent::new(KeyCode::Enter, KeyModifiers::NONE));
+        settings.focus = SettingsFocus::ApiKey;
         settings.paste("fixture-key");
         assert!(save(&mut settings));
+        assert_eq!(settings.jev_endpoint(), crate::jev_plugin::GATEWAY_ENDPOINT);
         assert!(settings.jev_key().is_none());
         assert!(!temporary.path().join(FILE).exists());
         settings.set_live(true);
         assert!(settings.microcoder && settings.cli && settings.acp && settings.jev_enabled);
         assert!(settings.jev_key().is_none());
+        assert_eq!(settings.jev_endpoint(), crate::jev_plugin::DEFAULT_ENDPOINT);
         settings.set_live(false);
+        assert_eq!(settings.jev_endpoint(), crate::jev_plugin::GATEWAY_ENDPOINT);
         assert!(!settings.microcoder && !settings.cli && !settings.acp && !settings.jev_enabled);
         assert_eq!(settings.key_label(), "Key added · paste to replace");
     }

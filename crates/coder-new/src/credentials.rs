@@ -8,10 +8,12 @@ use std::{
 
 use model_access::ApiKey;
 
-const NAMES: [&str; 3] = [
+const NAMES: [&str; 5] = [
     "OPENROUTER_API_KEY",
     "TYPESAFE_API_KEY",
     "TYPESAFE_BASE_URL",
+    "AI_GATEWAY_API_KEY",
+    "TYPESAFE_DEFAULT_MODEL",
 ];
 const MAX_BYTES: usize = 64 * 1024;
 const READ_ERROR: &str = "Cannot read the plugin credential source.";
@@ -22,6 +24,8 @@ pub struct Imported {
     pub openrouter_key: Option<ApiKey>,
     pub jev_key: Option<ApiKey>,
     pub jev_endpoint: Option<String>,
+    pub gateway_key: Option<ApiKey>,
+    pub jev_model: Option<String>,
 }
 
 /// Read only the declared keys, with process values before `.env` and key files.
@@ -68,10 +72,23 @@ pub fn load(
     {
         return Err(INVALID_ERROR.into());
     }
+    let jev_model = value(4).map(|value| value.trim().to_owned());
+    if jev_model.as_deref().is_some_and(|model| {
+        model.is_empty()
+            || model.len() > 128
+            || !model.chars().all(|character| {
+                character.is_ascii_alphanumeric()
+                    || matches!(character, '.' | '-' | '_' | ':' | '/')
+            })
+    }) {
+        return Err(INVALID_ERROR.into());
+    }
     Ok(Imported {
         openrouter_key,
         jev_key: key(value(1))?,
         jev_endpoint,
+        gateway_key: key(value(3))?,
+        jev_model,
     })
 }
 
@@ -114,8 +131,8 @@ fn valid_endpoint(endpoint: &str) -> bool {
         && url.fragment().is_none()
 }
 
-fn parse_dotenv(text: &str) -> Result<[Option<String>; 3], String> {
-    let mut values = [None, None, None];
+fn parse_dotenv(text: &str) -> Result<[Option<String>; NAMES.len()], String> {
+    let mut values = std::array::from_fn(|_| None);
     for line in text.trim_start_matches('\u{feff}').lines() {
         let line = line.trim();
         if line.is_empty() || line.starts_with('#') {
@@ -200,7 +217,9 @@ mod tests {
             [
                 Some("dotenv-key".into()),
                 Some("jev-key#literal".into()),
-                Some("https://example.invalid".into())
+                Some("https://example.invalid".into()),
+                None,
+                None,
             ]
         );
         assert_eq!(
@@ -251,6 +270,71 @@ mod tests {
                 .expose(),
             "file-key"
         );
+    }
+
+    #[test]
+    fn gateway_and_model_imports_resolve_each_value_independently() {
+        let temporary = tempfile::tempdir().unwrap();
+        fs::write(
+            temporary.path().join(".env"),
+            "AI_GATEWAY_API_KEY=gateway-dotenv\nTYPESAFE_API_KEY=typesafe-dotenv\nTYPESAFE_BASE_URL=https://example.invalid/typesafe\nTYPESAFE_DEFAULT_MODEL='typesafe-ai/jev'\n",
+        )
+        .unwrap();
+        let loaded = load(temporary.path(), None, |name| {
+            (name == "AI_GATEWAY_API_KEY").then(|| "gateway-process".into())
+        })
+        .unwrap();
+        assert_eq!(
+            loaded.gateway_key.as_ref().unwrap().expose(),
+            "gateway-process"
+        );
+        assert_eq!(loaded.jev_key.as_ref().unwrap().expose(), "typesafe-dotenv");
+        assert_eq!(loaded.jev_model.as_deref(), Some("typesafe-ai/jev"));
+        assert_eq!(
+            loaded.jev_endpoint.as_deref(),
+            Some("https://example.invalid/typesafe")
+        );
+        let debug = format!("{loaded:?}");
+        assert!(!debug.contains("gateway-process"));
+        assert!(!debug.contains("typesafe-dotenv"));
+
+        let loaded = load(temporary.path(), None, |name| match name {
+            "AI_GATEWAY_API_KEY" => Some("  ".into()),
+            "TYPESAFE_DEFAULT_MODEL" => Some(" jev-1.13.0 ".into()),
+            _ => None,
+        })
+        .unwrap();
+        assert_eq!(loaded.gateway_key.unwrap().expose(), "gateway-dotenv");
+        assert_eq!(loaded.jev_model.as_deref(), Some("jev-1.13.0"));
+    }
+
+    #[test]
+    fn invalid_gateway_and_model_sources_never_echo_values() {
+        let temporary = tempfile::tempdir().unwrap();
+        for (name, value) in [
+            ("AI_GATEWAY_API_KEY", "private gateway key".to_owned()),
+            ("TYPESAFE_DEFAULT_MODEL", "private model".to_owned()),
+            ("TYPESAFE_DEFAULT_MODEL", "jev/秘密".to_owned()),
+            ("TYPESAFE_DEFAULT_MODEL", "x".repeat(129)),
+        ] {
+            let error = load(temporary.path(), None, |variable| {
+                (variable == name).then(|| value.clone())
+            })
+            .unwrap_err();
+            assert_eq!(error, INVALID_ERROR);
+        }
+        for source in [
+            "AI_GATEWAY_API_KEY='private gateway key'",
+            "AI_GATEWAY_API_KEY='private-unterminated-key",
+            "TYPESAFE_DEFAULT_MODEL='private model'",
+            "TYPESAFE_DEFAULT_MODEL='private-unterminated-model",
+        ] {
+            fs::write(temporary.path().join(".env"), source).unwrap();
+            assert_eq!(
+                load(temporary.path(), None, |_| None).unwrap_err(),
+                INVALID_ERROR
+            );
+        }
     }
 
     #[test]

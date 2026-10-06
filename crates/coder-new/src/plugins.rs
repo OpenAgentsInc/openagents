@@ -18,6 +18,8 @@ pub const ENDPOINT: &str = "https://openrouter.ai/api/v1";
 pub enum SettingsFocus {
     #[default]
     ApiKey,
+    Gateway,
+    Endpoint,
     Model,
     TestKey,
     Save,
@@ -35,7 +37,7 @@ impl SettingsFocus {
             Self::RemoveKey,
             Self::Cancel,
         ];
-        let index = fields.iter().position(|field| *field == self).unwrap();
+        let index = fields.iter().position(|field| *field == self).unwrap_or(0);
         fields[(index + if backwards { fields.len() - 1 } else { 1 }) % fields.len()]
     }
 }
@@ -186,8 +188,12 @@ impl Plugins {
                 self.other_preferences.enabled = true;
             }
         }
-        self.bundled
-            .set_jev_environment(imported.jev_key, imported.jev_endpoint);
+        self.bundled.import_jev_environment(
+            imported.jev_key,
+            imported.jev_endpoint,
+            imported.gateway_key,
+            imported.jev_model,
+        );
     }
 
     pub fn storage_label(&self) -> &'static str {
@@ -444,6 +450,9 @@ impl Plugins {
                 return true;
             }
             KeyCode::Enter => match self.focus {
+                SettingsFocus::Gateway | SettingsFocus::Endpoint => {
+                    self.focus = SettingsFocus::ApiKey;
+                }
                 SettingsFocus::ApiKey => self.focus = SettingsFocus::Model,
                 SettingsFocus::Model => self.focus = SettingsFocus::Save,
                 SettingsFocus::TestKey => self.check_requested = true,

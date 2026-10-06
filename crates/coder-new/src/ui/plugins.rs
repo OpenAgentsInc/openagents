@@ -241,6 +241,7 @@ fn plugin_details(app: &App, width: u16) -> Vec<Line<'static>> {
             lines.push(Line::default());
             lines.extend([
                 detail("Tool", "jev", width),
+                detail("Gateway", p.bundled.gateway_label(), width),
                 detail("API key", p.bundled.key_label(), width),
                 detail("Model", p.bundled.jev_model(), width),
                 detail("Endpoint", p.bundled.jev_endpoint(), width),
@@ -436,6 +437,7 @@ fn router_settings(frame: &mut Frame, area: Rect, app: &App) {
         t::GRAY,
     )));
     let focus_row = match p.focus {
+        SettingsFocus::Gateway | SettingsFocus::Endpoint => key_row,
         SettingsFocus::ApiKey => key_row,
         SettingsFocus::Model => model_row,
         SettingsFocus::TestKey => test_row,
@@ -455,15 +457,31 @@ fn router_settings(frame: &mut Frame, area: Rect, app: &App) {
 
 fn jev_settings(frame: &mut Frame, area: Rect, app: &App) {
     let p = &app.plugins.bundled;
-    let mut lines = vec![
-        Line::from(span("Connection settings", t::ACCENT_MODEL)),
-        detail("Endpoint", p.jev_endpoint(), area.width),
-        Line::default(),
-    ];
+    let mut lines = vec![Line::from(span("Connection settings", t::ACCENT_MODEL))];
     let mut cursor = None;
+    let gateway_row = action(
+        &mut lines,
+        &format!("Gateway: {}", p.gateway_label()),
+        p.focus == SettingsFocus::Gateway,
+        t::ACCENT_MODEL,
+    );
+    lines.push(Line::from(span(
+        truncate("Enter or Left/Right Select gateway", area.width),
+        t::GRAY,
+    )));
+    lines.push(Line::default());
+    let endpoint_row = field(
+        &mut lines,
+        "API base URL",
+        p.endpoint_field(),
+        p.focus == SettingsFocus::Endpoint,
+        area.width,
+        &mut cursor,
+    );
+    lines.push(Line::default());
     let key_row = field(
         &mut lines,
-        "TypeSafe API key",
+        "Gateway API key",
         p.field(true),
         p.focus == SettingsFocus::ApiKey,
         area.width,
@@ -490,7 +508,7 @@ fn jev_settings(frame: &mut Frame, area: Rect, app: &App) {
         truncate(
             &format!(
                 "Default: {} · Typed decisions and probabilities",
-                jev::defaults::MODEL
+                p.default_model()
             ),
             area.width,
         ),
@@ -557,6 +575,8 @@ fn jev_settings(frame: &mut Frame, area: Rect, app: &App) {
         t::GRAY,
     )));
     let focus_row = match p.focus {
+        SettingsFocus::Gateway => gateway_row,
+        SettingsFocus::Endpoint => endpoint_row,
         SettingsFocus::ApiKey => key_row,
         SettingsFocus::Model => model_row,
         SettingsFocus::TestKey => test_row,
@@ -815,7 +835,8 @@ mod tests {
         select(&mut app, "jev");
         let text = draw(&app, 110, 36).rows.join("\n");
         assert!(text.contains("❯ Jev"));
-        assert!(text.contains("Add your TypeSafe API key"));
+        assert!(text.contains("Add the API key for this gateway"));
+        assert!(text.contains("TypeSafe direct"));
         assert!(text.contains(app.plugins.bundled.jev_model()));
     }
 
@@ -845,6 +866,8 @@ mod tests {
         app.plugins.bundled.begin_settings();
         app.plugins.bundled.paste("masking-probe-👩‍💻界");
         for focus in [
+            SettingsFocus::Gateway,
+            SettingsFocus::Endpoint,
             SettingsFocus::ApiKey,
             SettingsFocus::Model,
             SettingsFocus::TestKey,
@@ -860,7 +883,10 @@ mod tests {
                 assert!(!text.contains("masking-probe"));
                 assert!(!text.contains("👩‍💻"));
                 assert!(!text.contains('界'));
-                if matches!(focus, SettingsFocus::ApiKey | SettingsFocus::Model) {
+                if matches!(
+                    focus,
+                    SettingsFocus::ApiKey | SettingsFocus::Model | SettingsFocus::Endpoint
+                ) {
                     assert!(canvas.cursor_visible);
                     assert!(canvas.cursor.0 < width && canvas.cursor.1 < height);
                     if focus == SettingsFocus::ApiKey {
@@ -873,6 +899,7 @@ mod tests {
                         SettingsFocus::Save => "Save settings",
                         SettingsFocus::RemoveKey => "Remove API key",
                         SettingsFocus::Cancel => "Cancel",
+                        SettingsFocus::Gateway => "Gateway: TypeSafe",
                         _ => unreachable!(),
                     };
                     assert!(text.contains(&format!("❯ {label}")), "{text}");

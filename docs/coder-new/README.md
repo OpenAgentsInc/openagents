@@ -23,8 +23,10 @@ including line numbers and red and green change backgrounds.
 The [plugin manager](plugins.png) ships Microcoder, Jev, OpenAgents CLI, and ACP
 Subagents enabled by default, and OpenRouter BYOK off unless a startup key is
 available. [OpenRouter settings](plugin-settings.png) and Jev settings provide
-masked key entry and key checks. The [Jev form](jev-settings.png) and
-[ACP editor](acp-settings.png) are also exported from the terminal renderer.
+masked key entry and key checks. Jev supports TypeSafe direct, Vercel AI Gateway,
+and editable TypeSafe-compatible API bases and models. The [Jev form](jev-settings.png),
+[Vercel gateway form](jev-gateway.png), and [ACP editor](acp-settings.png) are
+also exported from the terminal renderer.
 Live OpenRouter chat executes enabled plugin
 tools and returns their results to the model; local Microcoder uses existing
 model logins. ACP settings define named local agent executables. Preferences
