@@ -156,3 +156,30 @@ credential, no Secret Manager entry, and no environment variable.
 | `paid_provider_unsupported` | OpenAgents-paid model access is not part of the v1 class |
 | `source_unverified` | `HEAD` is not the admitted commit, or the tree is dirty |
 | `isolation_unsupported` | The sandbox cannot keep a private file |
+
+## Dispatch and observation
+
+[`retail_cloud::dispatch`](../../crates/retail-cloud/src/dispatch.rs)
+
+A funded execution has one task identity, `task_<execution>`, recorded in
+the journal before the task owner on the sandbox is contacted. `dispatch`
+starts the executor only when the dispatch authorities, a live hold, a ready
+sandbox, and delivered material are all in place.
+
+- A transport attempt is not a task. The journal counts attempts separately
+  (`intent`, `sent`, `acknowledged`).
+- Before each submission, `dispatch` asks the owner whether it already has
+  the task; the owner's submission is idempotent on the task identity. A
+  lost acknowledgment, an unreachable owner, a service restart, or a client
+  retry recovers the same task, and the executor starts once.
+- The specification carries the request digest, the checks frozen before
+  the candidate exists, the quoted seconds, and the one v1 engine, Codex.
+
+`observe` reads the owner's events after a cursor and the task's status. It
+needs only the observe right and changes nothing, so a client that
+disconnects reattaches with its cursor without cancelling or redispatching.
+
+`verdict` maps an ended task to the contract's check outcomes: `verified`
+when every declared check passed on the exact retained candidate,
+`check_failed` when one failed or ran on another candidate, and `unchecked`
+when the executor made no change.

@@ -544,3 +544,145 @@ impl crate::material::Sandbox for FakeSandbox {
         }))
     }
 }
+
+/// A simulated Coder task owner on a sandbox.
+#[derive(Default)]
+pub struct FakeTaskOwner {
+    state: Mutex<OwnerState>,
+}
+
+#[derive(Default)]
+struct OwnerState {
+    /// (resource, task) -> (spec, status, events).
+    tasks: BTreeMap<(String, String), OwnerTask>,
+    /// Executors started: the effect counter.
+    started: u64,
+    lose_next_ack: bool,
+    unreachable: bool,
+}
+
+struct OwnerTask {
+    status: crate::dispatch::TaskStatus,
+    events: Vec<crate::dispatch::TaskEvent>,
+}
+
+impl FakeTaskOwner {
+    #[must_use]
+    pub fn new() -> Self {
+        Self::default()
+    }
+
+    fn with<T>(&self, f: impl FnOnce(&mut OwnerState) -> T) -> T {
+        let mut state = self
+            .state
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        f(&mut state)
+    }
+
+    /// The next submission starts the task but its answer is lost.
+    pub fn lose_next_ack(&self) {
+        self.with(|s| s.lose_next_ack = true);
+    }
+    /// Every call fails until set back.
+    pub fn set_unreachable(&self, unreachable: bool) {
+        self.with(|s| s.unreachable = unreachable);
+    }
+    /// Executors started so far.
+    #[must_use]
+    pub fn started(&self) -> u64 {
+        self.with(|s| s.started)
+    }
+    /// The task emits a progress line.
+    pub fn emit(&self, resource: &str, task: &str, text: &str) {
+        self.with(|s| {
+            if let Some(t) = s.tasks.get_mut(&(resource.into(), task.into())) {
+                let cursor = t.events.len() as u64 + 1;
+                t.events.push(crate::dispatch::TaskEvent {
+                    cursor,
+                    text: text.into(),
+                });
+            }
+        });
+    }
+    /// Set the task's status, as the owner would report it.
+    pub fn set_status(&self, resource: &str, task: &str, status: crate::dispatch::TaskStatus) {
+        self.with(|s| {
+            if let Some(t) = s.tasks.get_mut(&(resource.into(), task.into())) {
+                t.status = status;
+            }
+        });
+    }
+}
+
+impl crate::dispatch::TaskOwner for FakeTaskOwner {
+    fn submit(
+        &self,
+        resource: &str,
+        spec: &crate::dispatch::DispatchSpec,
+    ) -> Result<(), crate::dispatch::OwnerError> {
+        use crate::dispatch::{OwnerError, TaskStatus};
+        self.with(|s| {
+            if s.unreachable {
+                return Err(OwnerError::Unknown("fake owner unreachable".into()));
+            }
+            let key = (resource.to_owned(), spec.task.clone());
+            if !s.tasks.contains_key(&key) {
+                s.started += 1;
+                s.tasks.insert(
+                    key,
+                    OwnerTask {
+                        status: TaskStatus::Running,
+                        events: Vec::new(),
+                    },
+                );
+            }
+            if std::mem::take(&mut s.lose_next_ack) {
+                return Err(OwnerError::Unknown("acknowledgment lost".into()));
+            }
+            Ok(())
+        })
+    }
+
+    fn status(
+        &self,
+        resource: &str,
+        task: &str,
+    ) -> Result<Option<crate::dispatch::TaskStatus>, crate::dispatch::OwnerError> {
+        self.with(|s| {
+            if s.unreachable {
+                return Err(crate::dispatch::OwnerError::Unknown(
+                    "fake owner unreachable".into(),
+                ));
+            }
+            Ok(s.tasks
+                .get(&(resource.to_owned(), task.to_owned()))
+                .map(|t| t.status.clone()))
+        })
+    }
+
+    fn events(
+        &self,
+        resource: &str,
+        task: &str,
+        after: u64,
+    ) -> Result<Vec<crate::dispatch::TaskEvent>, crate::dispatch::OwnerError> {
+        self.with(|s| {
+            if s.unreachable {
+                return Err(crate::dispatch::OwnerError::Unknown(
+                    "fake owner unreachable".into(),
+                ));
+            }
+            Ok(s.tasks
+                .get(&(resource.to_owned(), task.to_owned()))
+                .map(|t| {
+                    t.events
+                        .iter()
+                        .filter(|e| e.cursor > after)
+                        .cloned()
+                        .collect()
+                })
+                .unwrap_or_default())
+        })
+    }
+}

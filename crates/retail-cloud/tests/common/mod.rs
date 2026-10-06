@@ -141,3 +141,32 @@ pub fn ready(
     }
     panic!("the sandbox never became ready")
 }
+
+/// The customer's test key.
+pub const KEY: &str = "sk-test-customer-000000000000";
+
+/// Provision and deliver material for `funded`; returns the sandbox.
+pub fn delivered(
+    journal: &mut Journal,
+    ledger: &mut Ledger,
+    provider: &retail_cloud::fake::FakeProvider,
+    sandbox: &retail_cloud::fake::FakeSandbox,
+    funded: &FundedRequest,
+) -> String {
+    let resource = ready(journal, ledger, provider, funded);
+    retail_cloud::material::deliver(
+        journal,
+        sandbox,
+        funded,
+        &rights(funded),
+        &resource,
+        &funded.admission.source,
+        &retail_cloud::material::Credential::ApiKey {
+            provider: "openai".into(),
+            secret: retail_cloud::material::CustomerSecret::new(KEY.into()),
+        },
+        NOW + 10,
+    )
+    .unwrap();
+    resource
+}
