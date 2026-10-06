@@ -324,11 +324,21 @@ impl PaneAdapter for Adapter {
 }
 /// Both native window and Grid mount these exact read-only account and receipt adapters.
 pub fn mount(application: &mut terminal_core::Application, config: Config) -> Result<(), String> {
+    mount_products(&mut application.products, config)?;
+    application.paper.on = true;
+    Ok(())
+}
+
+/// Register and open the production panes without constructing a shell or window.
+pub fn mount_products(
+    products: &mut terminal_core::resources::Products,
+    config: Config,
+) -> Result<(), String> {
     let account = config.read()?;
     let host = Host::Local {
         instance: credential_digest(&format!("compute-account:{}", account.account)),
     };
-    application.products.panes = std::mem::take(&mut application.products.panes)
+    products.panes = std::mem::take(&mut products.panes)
         .adapter(Box::new(Adapter {
             config: config.clone(),
             host: host.clone(),
@@ -340,7 +350,7 @@ pub fn mount(application: &mut terminal_core::Application, config: Config) -> Re
             kind: PaneKind::Receipt,
         }));
     for receipt in account.receipts.iter().take(16) {
-        application.products.open(
+        products.open(
             PaneKind::Receipt,
             &Subject::Record {
                 host: host.clone(),
@@ -349,7 +359,7 @@ pub fn mount(application: &mut terminal_core::Application, config: Config) -> Re
             },
         )?;
     }
-    application.products.open(
+    products.open(
         PaneKind::Account,
         &Subject::Record {
             host,
@@ -357,7 +367,6 @@ pub fn mount(application: &mut terminal_core::Application, config: Config) -> Re
             revision: None,
         },
     )?;
-    application.paper.on = true;
     Ok(())
 }
 

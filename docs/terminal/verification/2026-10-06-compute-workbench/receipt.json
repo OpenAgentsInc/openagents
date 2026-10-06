@@ -17,7 +17,7 @@
   "real_money": "Unverified; mock rail only",
   "source_sha256": {
     "crates/compute-workbench/src/lib.rs": "91121c0118ea041bc369d454661b1a91316b3c685ec9b77dcc0362656c837b46",
-    "crates/compute-workbench/src/host.rs": "aea43c061c77687bb348c1a11d6f0bb12db3b4bd62fd4d8deca9b4fbbd82ce96",
+    "crates/compute-workbench/src/host.rs": "bf8a035da615058525f93b95361465d015aef199aff21f635cec29b857f66dc0",
     "crates/terminal-app/src/window.rs": "da82f46e9fcf5f034f1d27501a091308d72882cbc2deb4fa6c8cc933c6b29d2f",
     "crates/verse/src/app.rs": "7c79098359d8e4c2dca85b22bc9cfff99ad135f719af45e7915687bf09495164"
   },
