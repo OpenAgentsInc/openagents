@@ -214,6 +214,7 @@ impl Sender {
         }
     }
 
+    #[cfg(test)]
     pub(super) fn project(
         &mut self,
         state: State,
@@ -223,6 +224,30 @@ impl Sender {
         ack: Option<Baseline>,
         index: &Index,
     ) -> Result<Packet, String> {
+        self.project_encoded(state, control, instance, tick, ack, index)
+            .map(|(packet, _)| packet)
+    }
+    #[cfg(test)]
+    pub(super) fn packet(
+        &mut self,
+        state: State,
+        control: &Option<Control>,
+        instance: u64,
+        tick: u64,
+        ack: Option<Baseline>,
+    ) -> Result<Packet, String> {
+        self.packet_encoded(state, control, instance, tick, ack)
+            .map(|(packet, _)| packet)
+    }
+    pub(super) fn project_encoded(
+        &mut self,
+        state: State,
+        control: &Option<Control>,
+        instance: u64,
+        tick: u64,
+        ack: Option<Baseline>,
+        index: &Index,
+    ) -> Result<(Packet, Vec<u8>), String> {
         let refresh_due = tick.saturating_sub(self.outer_tick) >= 6;
         let needs_history = spatial::needs_outer_history(&state, control);
         let previous = if refresh_due || !needs_history {
@@ -236,21 +261,21 @@ impl Sender {
             .any(|s| Some(s.id) == ack && s.fence == fence(control));
         let refresh = refresh_due || !acknowledged || (needs_history && previous.is_none());
         let state = scoped(state, control, previous.as_ref(), refresh, index)?;
-        let packet = self.packet(state, control, instance, tick, ack)?;
+        let packet = self.packet_encoded(state, control, instance, tick, ack)?;
         if refresh {
             self.outer_tick = tick;
         }
         Ok(packet)
     }
 
-    pub(super) fn packet(
+    pub(super) fn packet_encoded(
         &mut self,
         state: State,
         control: &Option<Control>,
         instance: u64,
         tick: u64,
         ack: Option<Baseline>,
-    ) -> Result<Packet, String> {
+    ) -> Result<(Packet, Vec<u8>), String> {
         state.validate_control(instance, control)?;
         let began = std::time::Instant::now();
         let (after, bytes) = encode_parts(&state)?;
@@ -265,9 +290,9 @@ impl Sender {
                 .find(|s| s.id == ack && s.fence == fence(control))
         });
         let mut packet = Packet::Full { baseline, state };
-        let full_len = serde_json::to_vec(&packet)
-            .map_err(|_| "Cannot encode full replication packet")?
-            .len();
+        let mut encoded =
+            serde_json::to_vec(&packet).map_err(|_| "Cannot encode full replication packet")?;
+        let full_len = encoded.len();
         let mut packet_bytes = full_len;
         if let Some(previous) = previous {
             let before = serde_json::from_slice(&previous.bytes)
@@ -280,10 +305,11 @@ impl Sender {
                     base: previous.id,
                     edits,
                 };
-                let delta_len = serde_json::to_vec(&delta)
-                    .map_err(|_| "Cannot encode replication delta")?
-                    .len();
+                let delta_bytes =
+                    serde_json::to_vec(&delta).map_err(|_| "Cannot encode replication delta")?;
+                let delta_len = delta_bytes.len();
                 if delta_len < full_len {
+                    encoded = delta_bytes;
                     packet = delta;
                     packet_bytes = delta_len;
                 }
@@ -314,7 +340,7 @@ impl Sender {
             self.saved.pop_front();
         }
         self.stats.retained_bytes = self.saved.iter().map(|s| s.bytes.len()).sum();
-        Ok(packet)
+        Ok((packet, encoded))
     }
     pub(super) fn previous(
         &self,

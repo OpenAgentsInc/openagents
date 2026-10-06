@@ -1,0 +1,27 @@
+{
+  "candidate": "Reuse full/delta packet JSON during response encoding",
+  "toolchain": "1.97.1",
+  "features": [
+    "service-net",
+    "service-reach",
+    "studio"
+  ],
+  "checks": [
+    {
+      "filter": "preencoded_replication",
+      "passed": 1
+    },
+    {
+      "filter": "replication",
+      "passed": 16
+    },
+    {
+      "filter": "service::worker::delayed::",
+      "passed": 7,
+      "test_threads": 1
+    }
+  ],
+  "wire_version_changed": false,
+  "limits_changed": false,
+  "battle_acceptance": "not yet measured"
+}

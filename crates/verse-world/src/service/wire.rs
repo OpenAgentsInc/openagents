@@ -595,6 +595,33 @@ impl Response {
         }
         Ok(bytes)
     }
+    /// Reuses the exact packet bytes already encoded during delta selection.
+    fn encode_replication(&self, packet: &[u8]) -> Result<Vec<u8>, String> {
+        #[derive(Serialize)]
+        struct Header<'a> {
+            version: u16,
+            request_id: u64,
+            instance: u64,
+            tick: u64,
+            control: &'a Option<Control>,
+        }
+        let mut bytes = serde_json::to_vec(&Header {
+            version: self.version,
+            request_id: self.request_id,
+            instance: self.instance,
+            tick: self.tick,
+            control: &self.control,
+        })
+        .map_err(|_| "Cannot encode chamber response")?;
+        bytes.pop();
+        bytes.extend_from_slice(b",\"body\":{\"type\":\"replicated\",\"packet\":");
+        bytes.extend_from_slice(packet);
+        bytes.extend_from_slice(b"}}");
+        if bytes.len() > MAX_RESPONSE_BYTES {
+            return Err("Chamber response exceeds byte budget".into());
+        }
+        Ok(bytes)
+    }
 }
 impl Gateway {
     /// Assigns the connection and encodes its public opening challenge.
@@ -618,8 +645,21 @@ impl Gateway {
         now_ms: u64,
         bytes: &[u8],
     ) -> Result<Vec<u8>, String> {
+        let mut packet_bytes = None;
         let (request_id, body) = match Request::decode(bytes) {
-            Ok(r) => (r.request_id, self.dispatch_body(connection, now_ms, r.body)),
+            Ok(r) => {
+                let body = match r.body {
+                    Body::Replicate { ack } => {
+                        self.replication_for(connection, ack)
+                            .map(|(packet, encoded)| {
+                                packet_bytes = Some(encoded);
+                                Reply::Replicated { packet }
+                            })
+                    }
+                    body => self.dispatch_body(connection, now_ms, body),
+                };
+                (r.request_id, body)
+            }
             Err(message) => (0, Err(("protocol", message))),
         };
         let control = self.admission(connection).ok().map(|a| Control {
@@ -630,7 +670,7 @@ impl Gateway {
             accepted_sequence: a.accepted_sequence(),
             applied_movement: None,
         });
-        Response {
+        let response = Response {
             version: VERSION,
             request_id,
             instance: self.game().player_life().instance,
@@ -640,8 +680,11 @@ impl Gateway {
                 code: code.into(),
                 message,
             }),
+        };
+        match packet_bytes {
+            Some(encoded) => response.encode_replication(&encoded),
+            None => response.encode(),
         }
-        .encode()
     }
     fn extract_shared(&self, id: ConnectionId) -> Result<State, (&'static str, String)> {
         let snapshot = self.snapshot(id).map_err(|e| ("authentication", e))?;
@@ -746,6 +789,34 @@ impl Gateway {
             state.collision = None;
         }
         Ok(state)
+    }
+    fn replication_for(
+        &mut self,
+        id: ConnectionId,
+        ack: Option<super::replication::Baseline>,
+    ) -> Result<(super::replication::Packet, Vec<u8>), (&'static str, String)> {
+        let state = self.state_for(id)?;
+        let control = self.admission(id).ok().map(|a| Control {
+            credit_step: self.game().physics_steps,
+            world_step: self.game().physics_steps,
+            life: a.actor().into(),
+            epoch: a.epoch(),
+            accepted_sequence: a.accepted_sequence(),
+            applied_movement: None,
+        });
+        let tick = self.game().authority_tick;
+        let instance = self.game().player_life().instance;
+        let sender = self.replication.entry(id).or_default();
+        sender
+            .project_encoded(
+                state,
+                &control,
+                instance,
+                tick,
+                ack,
+                self.view_index.as_ref().unwrap(),
+            )
+            .map_err(|e| ("replication", e))
     }
     fn dispatch_body(
         &mut self,
@@ -916,34 +987,9 @@ impl Gateway {
             Body::Snapshot {} => Ok(Reply::Snapshot {
                 state: self.state_for(id)?,
             }),
-            Body::Replicate { ack } => {
-                let Reply::Snapshot { state } = self.dispatch_body(id, now, Body::Snapshot {})?
-                else {
-                    unreachable!()
-                };
-                let control = self.admission(id).ok().map(|a| Control {
-                    credit_step: self.game().physics_steps,
-                    world_step: self.game().physics_steps,
-                    life: a.actor().into(),
-                    epoch: a.epoch(),
-                    accepted_sequence: a.accepted_sequence(),
-                    applied_movement: None,
-                });
-                let tick = self.game().authority_tick;
-                let instance = self.game().player_life().instance;
-                let sender = self.replication.entry(id).or_default();
-                let packet = sender
-                    .project(
-                        state,
-                        &control,
-                        instance,
-                        tick,
-                        ack,
-                        self.view_index.as_ref().unwrap(),
-                    )
-                    .map_err(|e| ("replication", e))?;
-                Ok(Reply::Replicated { packet })
-            }
+            Body::Replicate { ack } => self
+                .replication_for(id, ack)
+                .map(|(packet, _)| Reply::Replicated { packet }),
             Body::Inventory {} => {
                 let (life, revision, character) =
                     self.inventory(id).map_err(|e| ("authentication", e))?;
@@ -1066,6 +1112,56 @@ mod tests {
         ));
         id
     }
+    #[test]
+    fn preencoded_replication_preserves_full_delta_bytes_digests_and_response_limits() {
+        let mut g = gateway();
+        let player = key(130);
+        g.enroll_primary(public(&player)).unwrap();
+        let id = join(&mut g, &player);
+        let mut receiver = super::super::replication::Receiver::default();
+        let mut full = 0;
+        let mut delta = 0;
+        for request_id in 2..=5 {
+            let request = serde_json::to_vec(&Request {
+                version: VERSION,
+                request_id,
+                body: Body::Replicate {
+                    ack: receiver.ack(),
+                },
+            })
+            .unwrap();
+            let encoded = g.dispatch_json(id, 0, &request).unwrap();
+            let response: Response = serde_json::from_slice(&encoded).unwrap();
+            assert_eq!(encoded, response.encode().unwrap());
+            let Reply::Replicated { ref packet } = response.body else {
+                panic!("Expected replication")
+            };
+            match packet {
+                super::super::replication::Packet::Full { .. } => full += 1,
+                super::super::replication::Packet::Delta { .. } => delta += 1,
+            }
+            receiver
+                .admit(packet, response.instance, response.tick, &response.control)
+                .unwrap();
+            assert!(receiver.ack().is_some());
+            g.tick(1. / 30.).unwrap();
+        }
+        assert!(full > 0 && delta > 0);
+        let response = Response {
+            version: VERSION,
+            request_id: 6,
+            instance: 110,
+            tick: 0,
+            control: None,
+            body: Reply::Accepted,
+        };
+        assert!(
+            response
+                .encode_replication(&vec![b' '; MAX_RESPONSE_BYTES])
+                .is_err()
+        );
+    }
+
     #[test]
     fn movement_baselines_wait_for_applied_inputs_and_match_owned_control() {
         let mut g = gateway();
