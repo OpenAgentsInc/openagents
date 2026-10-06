@@ -3,8 +3,8 @@
 # release contract. Rerun this script to update the complete bundle.
 #
 #   irm https://openagents.com/cli/install.ps1 | iex
-#   $env:CODER_VERSION = '1.0.0-rc.3'; irm https://openagents.com/cli/install.ps1 | iex
-#   & ([scriptblock]::Create((irm https://openagents.com/cli/install.ps1))) -Version 1.0.0-rc.3
+#   $env:CODER_VERSION = '1.0.0-rc.4'; irm https://openagents.com/cli/install.ps1 | iex
+#   & ([scriptblock]::Create((irm https://openagents.com/cli/install.ps1))) -Version 1.0.0-rc.4
 #
 # CODER_CHANNEL defaults to rc for the testing release; stable is also accepted.
 # CODER_BIN_DIR defaults to %USERPROFILE%\.openagents\bin. CODER_BASE_URL

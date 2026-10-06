@@ -3110,7 +3110,7 @@ dependencies = [
 
 [[package]]
 name = "coder-new"
-version = "1.0.0-rc.3"
+version = "1.0.0-rc.4"
 dependencies = [
  "acp-client",
  "atif",
@@ -8309,7 +8309,7 @@ dependencies = [
 
 [[package]]
 name = "microcoder"
-version = "1.0.0-rc.3"
+version = "1.0.0-rc.4"
 dependencies = [
  "acp-client",
  "atif",
@@ -9790,7 +9790,7 @@ dependencies = [
 
 [[package]]
 name = "openagents-cli"
-version = "1.0.0-rc.3"
+version = "1.0.0-rc.4"
 dependencies = [
  "atif",
  "axum 0.8.9",

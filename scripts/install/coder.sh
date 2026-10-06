@@ -4,7 +4,7 @@
 # OpenAgents release contract; no xAI authentication or backend code is used.
 #
 #   curl -fsSL https://openagents.com/cli/install.sh | bash
-#   curl -fsSL https://openagents.com/cli/install.sh | bash -s -- 1.0.0-rc.3
+#   curl -fsSL https://openagents.com/cli/install.sh | bash -s -- 1.0.0-rc.4
 #   curl -fsSL https://openagents.com/cli/install.sh | CODER_CHANNEL=rc bash
 #
 # Environment:

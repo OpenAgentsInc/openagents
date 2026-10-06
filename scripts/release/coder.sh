@@ -21,8 +21,8 @@
 # built artifacts and leaves the channel unchanged.
 #
 # Usage:
-#   scripts/release/coder.sh --version 1.0.0-rc.3
-#   scripts/release/coder.sh --version 1.0.0-rc.3 --publish
+#   scripts/release/coder.sh --version 1.0.0-rc.4
+#   scripts/release/coder.sh --version 1.0.0-rc.4 --publish
 #   scripts/release/coder.sh --publish-installers
 #
 # Options:
@@ -642,9 +642,22 @@ for platform in $targets; do
         *) die "$(artifact_name "$name" "$platform") --version does not name $version" ;;
       esac
     done
-    "$dist/$(artifact_name "$product" "$platform")" --demo --snapshot >"$dist/demo-$platform.svg" ||
-      die "$(artifact_name "$product" "$platform") cannot render its demo"
-    grep -q '<svg' "$dist/demo-$platform.svg" || die "the demo did not produce an SVG"
+    smoke_home=$(mktemp -d "${TMPDIR:-/tmp}/coder-release-smoke.XXXXXX")
+    native_coder="$dist/$(artifact_name "$product" "$platform")"
+    HOME="$smoke_home" "$native_coder" --snapshot >"$dist/live-$platform.svg" ||
+      die "$(artifact_name "$product" "$platform") cannot render its live view"
+    grep -q '<svg' "$dist/live-$platform.svg" || die "the live view did not produce an SVG"
+    HOME="$smoke_home" "$native_coder" --help >"$dist/help-$platform.txt"
+    grep -q '/resume' "$dist/help-$platform.txt" || die "the release does not expose /resume"
+    if grep -q -- '--demo\|/demo' "$dist/help-$platform.txt"; then
+      die "the release exposes demo mode"
+    fi
+    if HOME="$smoke_home" "$native_coder" --demo --snapshot >"$dist/demo-$platform.txt" 2>&1; then
+      die "the release accepts demo mode"
+    fi
+    grep -q 'only in local development builds' "$dist/demo-$platform.txt" ||
+      die "the release did not explain why demo mode is unavailable"
+    rm -rf "$smoke_home"
     "$dist/$(artifact_name "$engine" "$platform")" repository --help >/dev/null 2>&1 ||
       die "$(artifact_name "$engine" "$platform") does not run"
   fi
