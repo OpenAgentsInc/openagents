@@ -641,6 +641,7 @@ async fn serve_loop<F: Future<Output = ()>>(
     let mut committed = CommitView::capture(&gateway);
     let mut token = 0u64;
     let mut dirty = false;
+    let mut checkpoint_ticks = 0u64;
     let mut diagnostics = tokio::time::interval(Duration::from_secs(1));
     diagnostics.set_missed_tick_behavior(MissedTickBehavior::Skip);
     let mut storage_paused = false;
@@ -763,6 +764,10 @@ async fn serve_loop<F: Future<Output = ()>>(
                         stats.simulation.record(seconds);
                         stats.simulation_phases.record(seconds);
                         stats.ticks += 1;
+                        if writer.is_some() {
+                            checkpoint_ticks = checkpoint_ticks.saturating_add(1);
+                            dirty = true;
+                        }
                     }
                     if failure.is_some() { break; }
                 } else {
@@ -772,6 +777,11 @@ async fn serve_loop<F: Future<Output = ()>>(
                     if !history { deferred_tick = None; }
                 }
                 if let Some(writer) = &mut writer {
+                    // Adjacent ticks share one immutable checkpoint. Pressure still
+                    // flushes immediately, and replies wait for the durable prefix.
+                    if checkpoint_ticks < 2 && history && request_room {
+                        continue;
+                    }
                     let permit = match writer.send.as_ref().unwrap().try_reserve() {
                         Ok(permit) => permit,
                         Err(_) => {
@@ -803,6 +813,7 @@ async fn serve_loop<F: Future<Output = ()>>(
                     stats.capture_phases.record(seconds);
                     stats.writer_queue_peak = stats.writer_queue_peak.max(fences.len());
                     permit.send(Work {token, prepared});
+                    checkpoint_ticks = 0;
                     dirty = false;
                 }
             }
@@ -2079,10 +2090,57 @@ pub(super) mod tests {
         assert!(exit.stats.storage_paused_ticks > 0 && exit.stats.storage_paused_seconds > 0.);
         assert!(exit.stats.commits.maximum_seconds >= 0.12);
         assert_eq!(exit.stats.simulation.count, exit.stats.ticks);
-        assert!(exit.stats.capture.count >= exit.stats.ticks);
+        assert!(exit.stats.capture.count >= 2);
+        assert!(exit.stats.checkpoint_commits <= exit.stats.capture.count + 1);
         assert!(exit.stats.commits.percentile(0.99).unwrap().is_finite());
         // Shutdown drains the writer and releases its exclusive storage lock.
         assert!(Store::open(&root, [8; 32], 120).is_ok());
+    }
+
+    #[tokio::test]
+    async fn durable_ticks_share_checkpoints_and_shutdown_keeps_the_latest_state() {
+        let directory = tempfile::tempdir().unwrap();
+        let root = directory.path().join("state");
+        let keys = [key(121), key(122), key(123)];
+        let store = Store::open(&root, [8; 32], 120).unwrap();
+        let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let (tls, _) = tls();
+        let (stop, stopped) = oneshot::channel();
+        let mut stop = Some(stop);
+        let mut ticks = 0;
+        let hook: Tick = Box::new(move |_, _| {
+            ticks += 1;
+            if ticks == 24 {
+                let _ = stop.take().unwrap().send(());
+            }
+        });
+        let exit = timeout(
+            Duration::from_secs(10),
+            serve_ticked(
+                listener,
+                tls,
+                gateway(&keys).with_content([8; 32]).unwrap(),
+                Some(store),
+                hook,
+                async {
+                    let _ = stopped.await;
+                },
+            ),
+        )
+        .await
+        .unwrap();
+        assert!(exit.failure.is_none(), "{:?}", exit.failure);
+        assert!(exit.stats.ticks >= 24);
+        assert!(
+            exit.stats.checkpoint_commits <= exit.stats.ticks.div_ceil(2) + 2,
+            "Each tick still forces a separate durable checkpoint: {} commits for {} ticks",
+            exit.stats.checkpoint_commits,
+            exit.stats.ticks
+        );
+        let expected_tick = exit.gateway.game().authority_tick;
+        let mut reopened = Store::open(&root, [8; 32], 120).unwrap();
+        let restored = reopened.recover().unwrap();
+        assert_eq!(restored.game().authority_tick, expected_tick);
     }
 
     #[tokio::test]

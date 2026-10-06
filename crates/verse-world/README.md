@@ -497,7 +497,11 @@ content. It recovers existing adventurers, resources, pending combat, and timers
 simulation time resumes without offline catch-up. Without `state_dir`, the host
 uses temporary reward-history files and does not retain a recoverable world.
 
-Durable network hosts capture an owned persistence copy on each admitted tick.
+Durable network hosts normally group two simulation ticks into one owned
+persistence copy. Bounded catch-up batches can contain more ticks; queue or
+reward-history pressure forces an earlier flush.
+Intervening world mutations remain uncommitted, and their reads and replies wait
+for the same ordered durability fence.
 One storage thread encodes changes, publishes reward-history nodes, appends and
 synchronizes the journal, and periodically replaces the base snapshot. The
 queue holds one active and one waiting copy; at most 128 replies wait in each

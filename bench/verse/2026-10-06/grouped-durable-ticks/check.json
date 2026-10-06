@@ -1,0 +1,31 @@
+{
+  "schema": "verse.regression.check.v1",
+  "scenario": "Adjacent simulation ticks share a bounded immutable checkpoint while uncommitted mutations and reads retain their ordered durability fence. Queue or reward-history pressure forces an earlier flush; bounded catch-up batches can cover more ticks.",
+  "before": {
+    "status": "failed",
+    "test": "durable_ticks_share_checkpoints_and_shutdown_keeps_the_latest_state",
+    "simulation_ticks": 24,
+    "checkpoint_commits": 25
+  },
+  "after": {
+    "status": "passed",
+    "network_tests": 29,
+    "worker_tests": 30,
+    "commands": [
+      "cargo +1.97.1 test -p verse-world --features service-net service::net:: -- --test-threads=1",
+      "verse_world-0bfd8864a72bdeff service::worker --test-threads=1"
+    ],
+    "formatting": "rustfmt +1.97.1 --edition 2024 crates/verse-world/src/service/net.rs; git diff --check"
+  },
+  "coverage": [
+    "The grouped-tick regression bounds checkpoint count by ceil(ticks/2)+2 and reopens the latest authority tick after shutdown.",
+    "Storage failure withholds acknowledgment; slow writers fence replies and bounded request admission.",
+    "Body snapshots, clock credit, completed travel, and ordered delivered control retain their admission prefix.",
+    "Queued intervals survive storage resume, delayed casts, shared-player pressure, and long writer stalls."
+  ],
+  "limitations": [
+    "No new battle result establishes reduced pauses or expiry yet.",
+    "The storage writer still pauses authority when its existing two-copy bound fills.",
+    "Physical storage tail latency remains part of the measured operating envelope."
+  ]
+}
