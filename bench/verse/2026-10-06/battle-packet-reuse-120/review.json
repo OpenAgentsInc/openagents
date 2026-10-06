@@ -1,0 +1,64 @@
+{
+  "source_base_revision": "3896776166080cfba6ed740aa9a414b6a7582cb4",
+  "source_patch": "source.patch",
+  "executable_sha256": "6e4245f01ed30f956174ab96441b76339fe0d4c4b71c799a9f046c10b164603c",
+  "acceptance": "failed",
+  "failures": [
+    "/server/movement_expiry/total: Some(1.0) exceeds 0, or is unavailable"
+  ],
+  "movement_expiry": {
+    "total": 1,
+    "admission": 0,
+    "primary_tick": 0,
+    "additional_tick": 1,
+    "bootstrap": 0,
+    "samples": [
+      {
+        "actor": 236,
+        "epoch": 9,
+        "authority_tick": 3490,
+        "origin": "additional_tick",
+        "world_step": 11560,
+        "confirmed_step": 11524,
+        "projected_step": 11524,
+        "received_at": 11536,
+        "applied_sequence": 1331,
+        "queued_frames": 0,
+        "queued_steps": 0,
+        "first_start": null,
+        "last_end": null
+      }
+    ],
+    "omitted": 0
+  },
+  "limits_changed": false,
+  "route": {
+    "upstream_bytes": 23991522,
+    "downstream_bytes": 105002289,
+    "forwarded_chunks": 119396,
+    "queued_chunk_peak": 5
+  },
+  "render_p95_ms": {
+    "frame_cpu_ms": 8.491959999999999,
+    "gpu_scene_ms": 7.15264,
+    "applied_snapshot_age_ms": 222.204501
+  },
+  "conclusion": "Strict short-run acceptance fails. No 600-second qualification was run. No sustained capacity acceptance is claimed.",
+  "read_projection": {
+    "count": 19688,
+    "maximum_ms": 12.113980999999999,
+    "p95_upper_bound_ms": 8.0,
+    "p99_upper_bound_ms": 8.0
+  },
+  "replication": {
+    "full": 190,
+    "deltas": 10424,
+    "resyncs": 130,
+    "encoded_bytes": 185717777,
+    "encode_micros": 27830634,
+    "encode_peak_micros": 10864,
+    "max_packet_bytes": 78836,
+    "max_ack_age_ticks": 14,
+    "retained_bytes": 0
+  }
+}
