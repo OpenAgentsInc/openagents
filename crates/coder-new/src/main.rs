@@ -49,7 +49,7 @@ fn main() -> io::Result<()> {
         execute!(
             io::stdout(),
             EnableBracketedPaste,
-            SetCursorStyle::SteadyBar
+            SetCursorStyle::BlinkingBlock
         )?;
         let ratatui::style::Color::Rgb(r, g, b) = coder_new::theme::TEXT_SECONDARY else {
             unreachable!("Grok Night uses RGB colors");

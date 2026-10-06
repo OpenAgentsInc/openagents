@@ -423,7 +423,7 @@ fn selected_agent_keeps_the_rail_visible_and_tokens_aligned_after_resize() {
 }
 
 #[test]
-fn compact_header_and_footer_keep_the_rail_and_status_on_consecutive_rows() {
+fn header_and_rail_use_compact_spacing_at_the_terminal_bottom() {
     let mut app = App::default();
     let rendered = screen(&mut app, 110, 36);
     let lines: Vec<_> = rendered.lines().collect();
@@ -434,10 +434,9 @@ fn compact_header_and_footer_keep_the_rail_and_status_on_consecutive_rows() {
     assert!(!rendered.contains("Enter preview"));
     let bottom = composer_rules(&rendered)[1].0;
     for (index, demo) in DEMOS.iter().enumerate() {
-        assert!(lines[bottom + 1 + index].starts_with(&format!("   ○ {}", demo.name)));
+        assert!(lines[bottom + 1 + index].starts_with(&format!("  ○ {}", demo.name)));
     }
-    let status = bottom + DEMOS.len() + 1;
-    assert_eq!(status, lines.len() - 1);
-    assert!(lines[status].contains("6 plugins"));
-    assert!(lines[status].contains("24,000 sats"));
+    assert_eq!(bottom + DEMOS.len(), lines.len() - 1);
+    assert!(!rendered.contains("6 plugins"));
+    assert!(!rendered.contains("24,000 sats"));
 }

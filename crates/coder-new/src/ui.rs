@@ -46,14 +46,13 @@ pub fn render(frame: &mut Frame, app: &mut App) {
     let (draft, cursor) = app.draft.wrapped(terminal_width.saturating_sub(2));
     let rail_height = DEMOS.len() as u16;
     let composer_height = (draft.len() as u16).clamp(1, 6) + 2;
-    let reserved = rail_height + 4;
-    let [header, body, _gap, composer, rail, status] = Layout::vertical([
+    let reserved = rail_height + 3;
+    let [header, body, _gap, composer, rail] = Layout::vertical([
         Constraint::Length(1),
         Constraint::Min(1),
         Constraint::Length(1),
         Constraint::Length(composer_height.min(area.height.saturating_sub(reserved))),
         Constraint::Length(rail_height),
-        Constraint::Length(1),
     ])
     .areas(area);
     header_view(frame, header);
@@ -72,16 +71,6 @@ pub fn render(frame: &mut Frame, app: &mut App) {
         cursor,
     );
     agent_rail(frame, rail, app.selected_agent);
-
-    frame.render_widget(
-        Paragraph::new(Line::from(vec![
-            span("  ◇ ", t::ACCENT_SKILL),
-            span("6 plugins", t::GRAY_BRIGHT),
-            span("  ·  ", t::GRAY_DIM),
-            span("24,000 sats", t::GRAY_BRIGHT),
-        ])),
-        status,
-    );
 }
 
 fn agent_rail(frame: &mut Frame, area: Rect, selected: Option<usize>) {
@@ -108,8 +97,8 @@ fn agent_rail(frame: &mut Frame, area: Rect, selected: Option<usize>) {
         let prefix = match (narrow, active) {
             (true, true) => "❯ ",
             (true, false) => "  ",
-            (false, true) => " ❯ ",
-            (false, false) => " ○ ",
+            (false, true) => "❯ ",
+            (false, false) => "○ ",
         };
         let name_width = (prefix.width()
             + DEMOS

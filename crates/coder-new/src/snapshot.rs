@@ -16,6 +16,9 @@ pub fn svg(app: &mut App, width: u16, height: u16) -> String {
     terminal
         .draw(|frame| ui::render(frame, app))
         .expect("the memory backend is infallible");
+    let cursor = terminal
+        .get_cursor_position()
+        .expect("the memory backend is infallible");
     let buffer = terminal.backend().buffer();
     let mut svg = format!(
         "<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"{}\" height=\"{}\" viewBox=\"0 0 {} {}\" role=\"img\">\n<title>Coder terminal UI preview</title>\n<rect width=\"100%\" height=\"100%\" fill=\"{}\"/>\n<g font-family=\"DejaVu Sans Mono, monospace\" font-size=\"15\">\n",
@@ -57,21 +60,30 @@ pub fn svg(app: &mut App, width: u16, height: u16) -> String {
             .expect("writing to a String succeeds");
         }
     }
-    svg.push_str("</g>\n");
     if width >= 24 && height >= 12 {
-        let cursor = terminal
-            .get_cursor_position()
-            .expect("the memory backend is infallible");
         writeln!(
             svg,
-            "<rect x=\"{}\" y=\"{}\" width=\"2\" height=\"20\" fill=\"{}\"/>",
+            "<g><rect x=\"{}\" y=\"{}\" width=\"9\" height=\"20\" fill=\"{}\"/>",
             u32::from(cursor.x) * 9,
             u32::from(cursor.y) * 20,
             hex(t::TEXT_SECONDARY)
         )
         .expect("writing to a String succeeds");
+        let cell = &buffer[(cursor.x, cursor.y)];
+        if !cell.symbol().trim().is_empty() {
+            writeln!(
+                svg,
+                "<text x=\"{}\" y=\"{}\" fill=\"{}\">{}</text>",
+                u32::from(cursor.x) * 9,
+                u32::from(cursor.y) * 20 + 15,
+                hex(t::BG_BASE),
+                escape(cell.symbol())
+            )
+            .expect("writing to a String succeeds");
+        }
+        svg.push_str("<animate attributeName=\"opacity\" values=\"1;0;1\" keyTimes=\"0;0.5;1\" dur=\"1s\" calcMode=\"discrete\" repeatCount=\"indefinite\"/></g>\n");
     }
-    svg.push_str("</svg>\n");
+    svg.push_str("</g>\n</svg>\n");
     svg
 }
 

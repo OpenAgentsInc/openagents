@@ -13,10 +13,11 @@ Type a draft, move with Left/Right or Home/End, and edit with Backspace/Delete.
 Alt+Enter adds a newline. Enter appends a local preview message. Bracketed paste
 inserts text without sending it. PageUp/PageDown scroll the conversation;
 Ctrl+C quits. The preview makes no network requests, runs no tools, and saves
-no messages. All conversation, agent, plugin, and wallet values are sample data.
+no messages. All conversation and agent values are sample data.
 
-The composer is a plain `❯` input between edge-to-edge horizontal rules. Four
-rows below it show `claude-code`, `codex`, `devin-cli`, and `grok-build`. Agent
+The composer is a plain `❯` input with a blinking block cursor between
+edge-to-edge horizontal rules. The four rows below it show `claude-code`,
+`codex`, `devin-cli`, and `grok-build`. Agent
 names and current tasks occupy separate aligned columns, with token counts on
 the right. Narrow terminals truncate task text and shorten the token label to
 preserve the agent names.
