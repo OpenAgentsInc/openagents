@@ -1,0 +1,58 @@
+{
+  "source_base_revision": "3896776166080cfba6ed740aa9a414b6a7582cb4",
+  "source_patch": "source.patch",
+  "executable_sha256": "63154fa277385363ccf66118c9a2b43304b5ef8b7f32660f90fc906cc0ca252d",
+  "acceptance": "passed",
+  "failures": [],
+  "movement_expiry": {
+    "total": 0,
+    "admission": 0,
+    "primary_tick": 0,
+    "additional_tick": 0,
+    "bootstrap": 0,
+    "samples": [],
+    "omitted": 0
+  },
+  "limits_changed": false,
+  "route": {
+    "upstream_bytes": 23855878,
+    "downstream_bytes": 104621144,
+    "forwarded_chunks": 118680,
+    "queued_chunk_peak": 5
+  },
+  "render_p95_ms": {
+    "frame_cpu_ms": 8.22687,
+    "gpu_scene_ms": 7.124992,
+    "applied_snapshot_age_ms": 225.553811
+  },
+  "conclusion": "The admission-timed 120-second all-native delayed-route battle passes every strict gate. Movement/read queue-wait p95 upper bounds are 33.333 ms; maxima are near 50 ms. One Linux machine and one offscreen 1440p renderer; sustained acceptance remains incomplete. This executable predates the exact equipment comparison change.",
+  "read_projection": {
+    "count": 19786,
+    "maximum_ms": 10.872811,
+    "p95_upper_bound_ms": 8.0,
+    "p99_upper_bound_ms": 8.0
+  },
+  "replication": {
+    "full": 197,
+    "deltas": 10415,
+    "resyncs": 136,
+    "encoded_bytes": 186902375,
+    "encode_micros": 27714553,
+    "encode_peak_micros": 9201,
+    "max_packet_bytes": 82831,
+    "max_ack_age_ticks": 13,
+    "retained_bytes": 0
+  },
+  "movement_queue_wait": {
+    "count": 58829,
+    "maximum_ms": 50.048487,
+    "p95_upper_bound_ms": 33.333333333333336,
+    "p99_upper_bound_ms": 33.333333333333336
+  },
+  "read_queue_wait": {
+    "count": 10698,
+    "maximum_ms": 50.178656000000004,
+    "p95_upper_bound_ms": 33.333333333333336,
+    "p99_upper_bound_ms": 33.333333333333336
+  }
+}
