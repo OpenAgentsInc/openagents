@@ -1924,6 +1924,9 @@ with no free text or private Studio payload. Only the local operator API and
 queued `realm::net::Control` read or resolve reports. Completion releases queue
 capacity; a delayed retry cannot reopen a report or restore an old block.
 Wire version 31 and typed SDK methods expose the public account operations.
+A bounded contact projection maps current-world avatars to public character and
+account addresses, so clients can target a block or report without operator
+metadata. It carries no credential key, epoch, inventory, or Studio payload.
 Active state and rates are bounded; immutable receipts remain on disk under the
 host's storage and retention policy.
 

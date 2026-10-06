@@ -2,5 +2,5 @@
 running 1 test
 test service::realm::services::tests::real_tls_party_adventure_claims_trades_transfers_and_restarts ... ok
 
-test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 609 filtered out; finished in 0.26s
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 609 filtered out; finished in 1.90s
 

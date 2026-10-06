@@ -1,5 +1,5 @@
 import json, os, pathlib, subprocess, hashlib
-root=pathlib.Path('/run/verse-audit-build-agent1/v26-public-proof')
+root=pathlib.Path('/run/verse-audit-build-agent1/v26-public-proof-final')
 root.mkdir(exist_ok=True)
 repo=pathlib.Path('/home/christopherdavid/work/openagents-verse-audit')
 target=pathlib.Path('/home/christopherdavid/work/openagents-target-agent1')

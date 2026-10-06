@@ -1,0 +1,14 @@
+{
+  "README.md": "2a0ea811aa78aa3d61bb518795bd628a024a3ab808626cc54fa018fcc81c6f4c",
+  "checks.json": "b5ff171db0607c2c417deddfd550f9c9fa0663fcd8e01735a893d690d90a2ea4",
+  "consumer.log": "ee8edecae79b2fb5003686fc7d34b4a786f31d8d355b2fa2dde48a45f083bd32",
+  "content-final-tests.log": "8f5622ec18c9d18c9dd4dbe1afc9c83fd2604c50b53b44da8f912eaa6e3b283d",
+  "namespace-recipe.py": "b46b1e4410e1f41b0be9d0cfee64f8d346115575d205706ee26a78cbc2c92344",
+  "namespace.json": "3677a1f98410bdd84350b2ac3bb6d94b9cc40a59b044f46620775bc38b3f22e8",
+  "namespace.log": "b2bc628ae2362fdd577fbf5f3166bb5d087428ebd61a9a192bf8f90fcb42fbab",
+  "package-tests.log": "f9dca23acd607959ca3b9efb66059d14205d7d30f4b916353483e4dc23327d85",
+  "release.json": "7316e9a02884f645bea9c9783f1471001534a011fba8f6c8a2e02aa0f4a2d9bb",
+  "source.diff": "b8c3e6c0114931d36a052e5c3ba62f393792496c5c34217b61382a8b28f009c9",
+  "tls-loop.json": "42b7193fb2d44bc0c16bcca3a6d7db5d38e6f8fc84a405d0de58de851765871c",
+  "tls-loop.log": "6edd0d1eca81d2ba9516bd01e3545a636cfe98bd59be7734dca57acd0acf214b"
+}

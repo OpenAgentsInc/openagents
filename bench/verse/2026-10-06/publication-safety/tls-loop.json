@@ -27,7 +27,7 @@
       "principal_capacity_refusals": 0,
       "principal_work_refusals": 0,
       "aggregate_work_refusals": 0,
-      "projections": 14,
+      "projections": 15,
       "commands": 22,
       "pending_peak": 1,
       "active_peak": 2,
@@ -49,11 +49,11 @@
       "transport_closures": 0,
       "cancelled_workers": 2
     },
-    "ticks": 6,
-    "requests": 40,
-    "queue_peak": 1,
-    "skipped_seconds": 0.0,
-    "work_peak_seconds": 0.010131117
+    "ticks": 64,
+    "requests": 41,
+    "queue_peak": 2,
+    "skipped_seconds": 0.00796520399999999,
+    "work_peak_seconds": 0.090286043
   },
   "account_block_private": true,
   "typed_report_private_queue": true,

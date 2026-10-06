@@ -1,8 +1,8 @@
 diff --git a/Cargo.lock b/Cargo.lock
-index 76b0d80025..41e84ad15c 100644
+index 9bedde0624..7bc9cbe15c 100644
 --- a/Cargo.lock
 +++ b/Cargo.lock
-@@ -15069,6 +15069,7 @@ dependencies = [
+@@ -15088,6 +15088,7 @@ dependencies = [
   "physics",
   "png",
   "resvg",
@@ -1325,10 +1325,10 @@ index 6c43358a65..959591c617 100644
      let name = args
          .next()
 diff --git a/crates/verse-world/README.md b/crates/verse-world/README.md
-index e83db6daa2..c02ad76ffb 100644
+index e83db6daa2..5f11e14a88 100644
 --- a/crates/verse-world/README.md
 +++ b/crates/verse-world/README.md
-@@ -995,3 +995,34 @@ requests the existing ordered drain. The dedicated
+@@ -995,3 +995,38 @@ requests the existing ordered drain. The dedicated
  through owner-local IPC. `service::persistence::backup` verifies and restores
  chamber checkpoints, reachable reward history, and migration archives into new
  storage. Offline pruning retains every current and migration history root.
@@ -1337,7 +1337,11 @@ index e83db6daa2..c02ad76ffb 100644
 +
 +Wire version 31 adds `Safety` and `SafetyAction`. The realm derives the acting
 +account from the authenticated connection; clients cannot select the owner of
-+its safety preferences. `service::safety` defines account blocks, typed reports,
++its safety preferences. The private view also maps up to 128 resident avatars
++in the world the connection can observe to public character and account
++addresses. Clients target blocks and reports through those addresses; the
++projection carries no credential key, epoch, inventory, or Studio data.
++`service::safety` defines account blocks, typed reports,
 +private projections, and exact-retry receipts. Each account can retain 64
 +blocked accounts, with 128 block changes per UTC day. A block in either direction refuses new party or guild
 +invitations, joining a pending invitation from that leader, new gear trade
@@ -1376,7 +1380,7 @@ index 6db88dfe4a..0fed868226 100644
  pub mod save;
  #[cfg(feature = "service-client")]
 diff --git a/crates/verse-world/src/service/client.rs b/crates/verse-world/src/service/client.rs
-index 66e53bd040..934cb65d7a 100644
+index 66e53bd040..25ab9d399c 100644
 --- a/crates/verse-world/src/service/client.rs
 +++ b/crates/verse-world/src/service/client.rs
 @@ -271,6 +271,33 @@ impl Client {
@@ -1413,11 +1417,21 @@ index 66e53bd040..934cb65d7a 100644
      pub async fn service_action(
          &mut self,
          realm: [u8; 32],
-@@ -629,6 +656,15 @@ impl Client {
+@@ -629,6 +656,25 @@ impl Client {
              (Reply::Snapshot { state }, Body::Snapshot {} | Body::Replicate { .. }) => {
                  state.validate_control(self.instance, &r.control)
              }
-+            (Reply::Safety { view }, Body::Safety {}) => view.validate(),
++            (Reply::Safety { view }, Body::Safety {}) => {
++                view.validate()?;
++                if view
++                    .contacts
++                    .iter()
++                    .any(|c| c.life.instance != self.instance)
++                {
++                    return Err("Public contact belongs to another instance".into());
++                }
++                Ok(())
++            }
 +            (
 +                Reply::SafetyApplied { receipt },
 +                Body::SafetyAction {
@@ -1430,20 +1444,17 @@ index 66e53bd040..934cb65d7a 100644
                  view.validate()?;
                  if view.character != *character
 diff --git a/crates/verse-world/src/service/net/admission.rs b/crates/verse-world/src/service/net/admission.rs
-index f0880aae67..5292add0d1 100644
+index f0880aae67..32d19d85be 100644
 --- a/crates/verse-world/src/service/net/admission.rs
 +++ b/crates/verse-world/src/service/net/admission.rs
-@@ -355,7 +355,9 @@ impl Slot {
+@@ -355,6 +355,7 @@ impl Slot {
          let (projection, cost) = match body {
              Body::Snapshot {} => (true, 32),
              Body::Replicate { .. } => (true, 8),
--            Body::Inventory {} | Body::Account {} | Body::Services { .. } => (true, 8),
-+            Body::Safety {} | Body::Inventory {} | Body::Account {} | Body::Services { .. } => {
-+                (true, 8)
-+            }
++            Body::Safety {} => (true, 32),
+             Body::Inventory {} | Body::Account {} | Body::Services { .. } => (true, 8),
              Body::Events { .. } => (true, 4),
              _ => (false, 1),
-         };
 diff --git a/crates/verse-world/src/service/realm.rs b/crates/verse-world/src/service/realm.rs
 index ec7933b9c4..c893031234 100644
 --- a/crates/verse-world/src/service/realm.rs
@@ -1575,10 +1586,10 @@ index 218897ee75..b86ca7e1fb 100644
              Record::Credential { key, .. } => credential_key(*key),
 diff --git a/crates/verse-world/src/service/realm/safety.rs b/crates/verse-world/src/service/realm/safety.rs
 new file mode 100644
-index 0000000000..df02a23eda
+index 0000000000..c06686808c
 --- /dev/null
 +++ b/crates/verse-world/src/service/realm/safety.rs
-@@ -0,0 +1,311 @@
+@@ -0,0 +1,333 @@
 +//! Private, restart-durable account safety records selected by the realm head.
 +use super::super::safety as api;
 +use super::*;
@@ -1652,6 +1663,7 @@ index 0000000000..df02a23eda
 +            realm: self.manifest.id,
 +            account,
 +            blocked: p.blocked.clone(),
++            contacts: vec![],
 +        }
 +        .validate()?;
 +        Ok(p)
@@ -1695,10 +1707,31 @@ index 0000000000..df02a23eda
 +    ) -> Result<api::View, String> {
 +        self.check(lease, now)?;
 +        let account = self.safety_account(lease, connection)?;
++        let gateway = &self.games[&lease.instance];
++        let mut contacts = vec![];
++        if gateway.check_view(connection).is_ok() {
++            for (character, placement) in &self.manifest.characters {
++                if placement.instance != lease.instance {
++                    continue;
++                }
++                let life = gateway
++                    .game()
++                    .player_admission(placement.actor)
++                    .ok_or("Public contact avatar is unavailable")?
++                    .actor();
++                contacts.push(api::Contact {
++                    life,
++                    character: *character,
++                    account: self.character(*character)?.account,
++                });
++            }
++        }
++        contacts.sort_by_key(|c| c.life);
 +        let view = api::View {
 +            realm: self.manifest.id,
 +            account,
 +            blocked: self.preferences(account)?.blocked,
++            contacts,
 +        };
 +        view.validate()?;
 +        Ok(view)
@@ -1929,7 +1962,7 @@ index 8846205ead..f769ba44df 100644
                  offer.status = if accept {
                      Status::Accepted
 diff --git a/crates/verse-world/src/service/realm/services/tests.rs b/crates/verse-world/src/service/realm/services/tests.rs
-index 0165684e86..eb8b805bd2 100644
+index 0165684e86..1797952a25 100644
 --- a/crates/verse-world/src/service/realm/services/tests.rs
 +++ b/crates/verse-world/src/service/realm/services/tests.rs
 @@ -471,6 +471,8 @@ async fn real_tls_party_adventure_claims_trades_transfers_and_restarts() {
@@ -1941,17 +1974,25 @@ index 0165684e86..eb8b805bd2 100644
      let left = TcpListener::bind("127.0.0.1:0").await.unwrap();
      let right = TcpListener::bind("127.0.0.1:0").await.unwrap();
      let left_addr = left.local_addr().unwrap();
-@@ -668,6 +670,56 @@ async fn real_tls_party_adventure_claims_trades_transfers_and_restarts() {
+@@ -668,6 +670,64 @@ async fn real_tls_party_adventure_claims_trades_transfers_and_restarts() {
          control.party_loot(1001, loot(50, party)).await.unwrap(),
          grant
      );
 +    use crate::service::safety as safe;
++    let public_contacts = ca.safety().await.unwrap().contacts;
++    let bob_contact = public_contacts
++        .iter()
++        .find(|c| c.life == cb.control().unwrap().life.into())
++        .unwrap();
++    assert_eq!(bob_contact.account, bob_account);
++    assert_eq!(bob_contact.character, bob);
++    let bob_public_account = bob_contact.account;
 +    let block = ca
 +        .safety_action(
 +            identity,
 +            [80; 16],
 +            safe::Action::Block {
-+                account: bob_account,
++                account: bob_public_account,
 +                blocked: true,
 +            },
 +        )
@@ -1998,7 +2039,7 @@ index 0165684e86..eb8b805bd2 100644
      drop(ca);
      drop(cb);
      stop.send(()).unwrap();
-@@ -710,6 +762,34 @@ async fn real_tls_party_adventure_claims_trades_transfers_and_restarts() {
+@@ -710,6 +770,34 @@ async fn real_tls_party_adventure_claims_trades_transfers_and_restarts() {
          realm.party_loot(&a, loot(50, party), now + 1000).unwrap(),
          grant
      );
@@ -2033,7 +2074,7 @@ index 0165684e86..eb8b805bd2 100644
      let actor = realm.manifest.characters[&alice].actor;
      assert_eq!(
          realm.games[&1002]
-@@ -729,7 +809,8 @@ async fn real_tls_party_adventure_claims_trades_transfers_and_restarts() {
+@@ -729,7 +817,8 @@ async fn real_tls_party_adventure_claims_trades_transfers_and_restarts() {
                  "guardian_level_two_with_wand": { "max_hp": 335, "max_mana": 51 },
                  "logout_resume": true, "zone_transfer": true, "restart": true,
                  "party_event_recipients_frozen": true, "final_character_experience": 200,
@@ -2043,7 +2084,7 @@ index 0165684e86..eb8b805bd2 100644
              }))
              .unwrap(),
          )
-@@ -1040,3 +1121,396 @@ fn offers_lock_only_the_sender_and_cancel_after_requested_items_change_owner() {
+@@ -1040,3 +1129,402 @@ fn offers_lock_only_the_sender_and_cancel_after_requested_items_change_owner() {
      assert_eq!(realm.item_instance(hat.id).unwrap().owner, alice);
      assert_eq!(realm.item_instance(hat.id).unwrap().locked, None);
  }
@@ -2111,6 +2152,12 @@ index 0165684e86..eb8b805bd2 100644
 +    assert_eq!(realm.safety_view(&b, cb, 1).unwrap().blocked, vec![aa]);
 +    assert_eq!(realm.safety_view(&a, ca, 1).unwrap().account, aa);
 +    assert!(realm.safety_view(&a, ca, 1).unwrap().blocked.is_empty());
++    let public = realm.safety_view(&a, ca, 1).unwrap();
++    assert_eq!(public.contacts.len(), 1);
++    assert_eq!(public.contacts[0].character, alice);
++    assert_eq!(public.contacts[0].account, aa);
++    assert_eq!(public.contacts[0].life.instance, 1001);
++
 +    assert!(realm.contact(alice, bob).is_err());
 +    assert!(realm.contact(bob, alice).is_err());
 +    let refuse = dispatch(
@@ -2442,10 +2489,10 @@ index 0165684e86..eb8b805bd2 100644
 +}
 diff --git a/crates/verse-world/src/service/safety.rs b/crates/verse-world/src/service/safety.rs
 new file mode 100644
-index 0000000000..d95c491054
+index 0000000000..176bf5e251
 --- /dev/null
 +++ b/crates/verse-world/src/service/safety.rs
-@@ -0,0 +1,144 @@
+@@ -0,0 +1,168 @@
 +//! Account-owned contact blocks and bounded reports, separate from host authority.
 +use serde::{Deserialize, Serialize};
 +use sha2::{Digest, Sha256};
@@ -2517,6 +2564,15 @@ index 0000000000..d95c491054
 +    pub realm: Id,
 +    pub account: u64,
 +    pub blocked: Vec<u64>,
++    pub contacts: Vec<Contact>,
++}
++/// Public safety address for a resident avatar; no key, inventory, or Studio data.
++#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
++#[serde(deny_unknown_fields)]
++pub struct Contact {
++    pub life: verse_engine::core::LifeId,
++    pub character: u64,
++    pub account: u64,
 +}
 +impl View {
 +    pub fn validate(&self) -> Result<(), String> {
@@ -2525,6 +2581,21 @@ index 0000000000..d95c491054
 +            || self.blocked.len() > 64
 +            || self.blocked.iter().any(|a| *a == 0 || *a == self.account)
 +            || self.blocked.windows(2).any(|a| a[0] >= a[1])
++            || self.contacts.len() > 128
++            || self.contacts.iter().any(|c| {
++                c.account == 0 || c.character == 0 || c.life.instance == 0 || c.life.actor == 0
++            })
++            || self
++                .contacts
++                .windows(2)
++                .any(|c| c[0].life >= c[1].life || c[0].life.instance != c[1].life.instance)
++            || self
++                .contacts
++                .iter()
++                .map(|c| c.character)
++                .collect::<std::collections::BTreeSet<_>>()
++                .len()
++                != self.contacts.len()
 +        {
 +            return Err("Invalid account safety projection".into());
 +        }
