@@ -18,6 +18,7 @@ use winit::{
 pub struct Options {
     root: Option<PathBuf>,
     knowledge_workbench: Option<PathBuf>,
+    compute_workbench: Option<PathBuf>,
     knowledge_review: Option<PathBuf>,
     knowledge_operator: Option<String>,
     knowledge_evaluator: Option<String>,
@@ -108,6 +109,13 @@ pub fn run() -> Result<(), String> {
                 options.knowledge_review = Some(
                     args.next()
                         .ok_or("Expected retained knowledge evidence")?
+                        .into(),
+                )
+            }
+            "--compute-workbench" => {
+                options.compute_workbench = Some(
+                    args.next()
+                        .ok_or("Expected private compute configuration")?
                         .into(),
                 )
             }
@@ -514,6 +522,12 @@ impl ApplicationHandler for App {
                     .core
                     .products
                     .open(workbench::pane::PaneKind::Knowledge, &subject)?;
+            }
+            if let Some(path) = &self.options.compute_workbench {
+                compute_workbench::host::mount(
+                    &mut terminal.core,
+                    compute_workbench::host::Config::load(path)?,
+                )?;
             }
             terminal.focused = true;
             terminal.fit(

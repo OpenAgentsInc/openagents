@@ -45,6 +45,8 @@ const HOTBAR_BOTTOM: f32 = 0.0;
 /// How the window joins the shared world.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Options {
+    /// Private authenticated compute account configuration for the shared sheet.
+    pub compute_workbench: Option<std::path::PathBuf>,
     /// Profile name; each profile is its own player key.
     pub profile: String,
     /// Relay URL, or `None` to play offline.
@@ -124,6 +126,7 @@ impl Default for Options {
             terminal_host: None,
             terminal_store: None,
             terminal_reference: None,
+            compute_workbench: None,
             studio_muted: false,
             everglade: false,
             grove: false,
@@ -807,6 +810,13 @@ fn terminal_overlay(options: &Options) -> Result<crate::terminal::Overlay, Strin
         && let Err(error) = overlay.listen(&path)
     {
         eprintln!("verse: the terminal control socket is off: {error}");
+    }
+    if let Some(path) = &options.compute_workbench {
+        compute_workbench::host::mount(
+            &mut overlay.core,
+            compute_workbench::host::Config::load(path)?,
+        )?;
+        overlay.open = true;
     }
     Ok(overlay)
 }

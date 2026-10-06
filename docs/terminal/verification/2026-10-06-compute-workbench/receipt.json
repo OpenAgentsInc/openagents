@@ -1,0 +1,29 @@
+{
+  "schema": "openagents.compute-workbench.fixture.v1",
+  "toolchain": "1.97.1",
+  "isolation": "In-memory financial records and temporary private files; no owner host, payment, or saved chat",
+  "tests": 8,
+  "observed": [
+    "Native/Grid Products adapters expose identical account and execution identities",
+    "Reconnect reads retained holds without spending",
+    "Current principal revocation clears private pane details",
+    "Independent execution observation revocation refuses check evidence",
+    "Expired or changed quotes are disabled; foreign account quotes are omitted",
+    "Pending and expired invoices add no available funds",
+    "Acknowledged cancellation and failed exact-patch checks remain separate from charge settlement",
+    "Original retained zero-charge settlement releases the reservation without a refund or fictitious debit"
+  ],
+  "physical_native_rendering": "Unverified; owner scratch check in NEEDS_OWNER.md",
+  "real_money": "Unverified; mock rail only",
+  "source_sha256": {
+    "crates/compute-workbench/src/lib.rs": "91121c0118ea041bc369d454661b1a91316b3c685ec9b77dcc0362656c837b46",
+    "crates/compute-workbench/src/host.rs": "aea43c061c77687bb348c1a11d6f0bb12db3b4bd62fd4d8deca9b4fbbd82ce96",
+    "crates/terminal-app/src/window.rs": "da82f46e9fcf5f034f1d27501a091308d72882cbc2deb4fa6c8cc933c6b29d2f",
+    "crates/verse/src/app.rs": "7c79098359d8e4c2dca85b22bc9cfff99ad135f719af45e7915687bf09495164"
+  },
+  "checks": {
+    "portable_wasm": "cargo check -p compute-workbench --target wasm32-unknown-unknown passed",
+    "host_fixtures": "cargo test -p compute-workbench --features host --lib passed",
+    "native_consumers": "cargo check -p terminal-app -p verse passed with staged native development libraries"
+  }
+}

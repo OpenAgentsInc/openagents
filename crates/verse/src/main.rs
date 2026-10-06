@@ -222,6 +222,7 @@ fn parse(mut args: impl Iterator<Item = String>) -> Result<(Option<Shot>, Option
             "--replay" => options.replay = Some(value()?),
             "--gym-connection" => options.gym_connection = Some(value()?.into()),
             "--studio-sim" => options.studio_sim = true,
+            "--compute-workbench" => options.compute_workbench = Some(value()?.into()),
             "--studio-socket" => options.studio_socket = Some(value()?.into()),
             "--terminal-host" => options.terminal_host = Some(value()?),
             "--terminal-store" => options.terminal_store = Some(value()?.into()),

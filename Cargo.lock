@@ -3343,6 +3343,20 @@ dependencies = [
 ]
 
 [[package]]
+name = "compute-workbench"
+version = "0.1.0"
+dependencies = [
+ "pay-ledger",
+ "retail-cloud",
+ "route-contract",
+ "serde",
+ "serde_json",
+ "tempfile",
+ "terminal-core",
+ "workbench",
+]
+
+[[package]]
 name = "concurrent-queue"
 version = "2.5.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -13604,6 +13618,7 @@ name = "terminal-app"
 version = "1.0.0-rc.2"
 dependencies = [
  "bytemuck",
+ "compute-workbench",
  "knowledge",
  "pollster",
  "serde_json",
@@ -15103,6 +15118,7 @@ dependencies = [
  "coder-pty",
  "coder-ui",
  "coder-vt",
+ "compute-workbench",
  "cpal",
  "futures-util",
  "getrandom 0.3.4",

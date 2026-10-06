@@ -1,3 +1,12 @@
+## Shared compute account views (#10719)
+
+On a scratch Mac, use the same private compute configuration with
+`openagents-terminal --compute-workbench CONFIG` and
+`verse --compute-workbench CONFIG`. Confirm the shared account, offer, run,
+and receipt identities and F2 refresh after revocation. Rust projections and
+Products adapter fixtures pass; physical rendering and real-money qualification
+remain unverified. This pane offers no spending or shell-approval control.
+
 ## Browser host workbench (#10686)
 
 On a scratch host, open the same session in native and browser clients. Check

@@ -1,0 +1,26 @@
+[package]
+name = "compute-workbench"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+publish.workspace = true
+description = "Portable private compute account and receipt projections."
+
+[features]
+default = []
+host = ["dep:pay-ledger", "dep:retail-cloud", "dep:terminal-core"]
+
+[dependencies]
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+route-contract = { path = "../route-contract" }
+workbench = { path = "../workbench" }
+pay-ledger = { path = "../pay-ledger", optional = true }
+retail-cloud = { path = "../retail-cloud", optional = true }
+terminal-core = { path = "../terminal-core", optional = true }
+
+[dev-dependencies]
+tempfile = "3"
+
+[lints]
+workspace = true
