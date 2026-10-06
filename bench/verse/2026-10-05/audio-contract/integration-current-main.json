@@ -1,0 +1,49 @@
+{
+  "schema": "verse.audio.integration.v1",
+  "source_commit": "e998d5e412a39d6f19bbc40a95f4a2e60e172d61",
+  "integration_base": "95c938edd4ce52354c946ffca58660fc99a01407",
+  "recorded_utc": "2026-10-06T02:55:44.199258+00:00",
+  "checks": [
+    {
+      "log": "native-current-main.log",
+      "sha256": "5a463610b9a01baa6251499692fed12f155eadf4e7b5e3482320eaa04804a465"
+    },
+    {
+      "log": "chamber-current-main.log",
+      "sha256": "6b1c01721da8f68fe3ce83e78ff0310d6538da9b5e7cefb96ab2e96e258dd530"
+    },
+    {
+      "log": "format-current-main.log",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "log": "chamber-tmpfs-failure.log",
+      "sha256": "c6c210641a4b10c9d568c0bc9d2a787a9479c4559ad9e64d6e8255d9d1250823"
+    },
+    {
+      "log": "chamber-example-space-failure.log",
+      "sha256": "da29bbcff4f16ddfaaea81f6e4849c3e3ce9012b37c39dcd4f8ff26ac07ac4c5"
+    }
+  ],
+  "files_sha256": {
+    "Cargo.lock": "db84f28a9da50fa4584526d51642516795f02b69ead0d6d6bc7f589ac761335b",
+    "crates/verse-engine/Cargo.toml": "8bbf7e1edeab02507c3cc87c36af4cc1e6ba0f2558f9209a5a8d95b47f5a7bcc",
+    "crates/verse/Cargo.toml": "2a60feeefa728c7c0ec348a2f5d690ae1119a063ebe2ce81fc84703c46a822d7",
+    "crates/verse-engine/src/audio.rs": "62611d02b64804c3c2ada44b578882c9a291666ea0ab33955611128acdbae8e1",
+    "crates/verse-engine/src/audio_bank.rs": "fc13ff7b107630f96b86b9cf0eaa28e6f7fb73da573efa2b6a096621e1fe293f",
+    "crates/verse-engine/src/audio_stream.rs": "582722b7d27abca49111e97582bb66d96250ba9afc6422538fe15f33cb3463b5",
+    "crates/verse-engine/src/audio_cues.rs": "1b636ac808afefc01575ed0320c1463acd74a7f3a27b87cca203473871a3d0c6",
+    "crates/verse-engine/src/original_audio_bank.json": "b65b45a7114661fa2e456c8c31bb42359cca9051435f6ede770ee4bc39ed7e3c",
+    "crates/verse/src/audio_native.rs": "3311554387ad309f7b53623c75c6527bcbe9ede8a123e0969a8d75f3b816b24a",
+    "crates/verse/examples/chamber_app/audio.rs": "4dcd44aa44e75372c685800c251f65bc9dac527d8a74402fa05e6b81aaeb4d8b",
+    "crates/verse/examples/chamber_app/mod.rs": "1b05ff056a663ec5c73026258d445dd44448c4c7ae383063d0ee49b32fe14883"
+  },
+  "upstream_changes": "Prediction horizon handling, typed workbench panes, and removal of the Ruins zone. Audio code is unchanged. Native callback tests, chamber compilation, and formatting pass with the resulting feature graph.",
+  "earlier_source": {
+    "base": "5262e898e3",
+    "patch": "source.patch",
+    "sha256": "20a9142ddacdbfac5e5205bd495c34a37c2428d4b43da31e44b9bb0cc8273645",
+    "instruction": "Apply source.patch to base 5262e898e3 to reconstruct the audio source phase used by run.json; audio source bytes also match the earlier 91a26f09ee callback profile."
+  },
+  "storage": "Own incremental caches moved to a persistent warm-target archive with 36,831 file hashes verified. The wrapper restores each crate cache before compilation. Compiler library/example outputs, build-script data, and fingerprints retain their logical warm target paths through private storage; no owner cache removed. Test scratch uses private TMPDIR."
+}

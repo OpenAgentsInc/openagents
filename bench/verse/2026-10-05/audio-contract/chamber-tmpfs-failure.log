@@ -1,0 +1,57 @@
+    Checking tracing-core v0.1.36
+    Checking tracing v0.1.44
+    Checking rand v0.9.5
+    Checking secp256k1 v0.31.1
+    Checking nostr v0.1.0 (/home/christopherdavid/work/openagents-verse-audit/crates/nostr)
+    Checking nostr-transport v0.1.0 (/home/christopherdavid/work/openagents-verse-audit/crates/nostr-transport)
+    Checking coder-connect v0.1.0 (/home/christopherdavid/work/openagents-verse-audit/crates/coder-connect)
+    Checking hyper-util v0.1.20
+    Checking hyper-rustls v0.27.9
+    Checking coder-access v0.1.0 (/home/christopherdavid/work/openagents-verse-audit/crates/coder-access)
+    Checking coder-reach v0.1.0 (/home/christopherdavid/work/openagents-verse-audit/crates/coder-reach)
+    Checking verse-engine v0.1.0 (/home/christopherdavid/work/openagents-verse-audit/crates/verse-engine)
+    Checking verse-world v0.1.0 (/home/christopherdavid/work/openagents-verse-audit/crates/verse-world)
+warning: method `additional_characters` is never used
+    --> crates/verse-world/src/play.rs:2943:19
+     |
+ 428 | impl Game {
+     | --------- method in this implementation
+...
+2943 |     pub(crate) fn additional_characters(
+     |                   ^^^^^^^^^^^^^^^^^^^^^
+     |
+     = note: `#[warn(dead_code)]` (part of `#[warn(unused)]`) on by default
+
+warning: `verse-world` (lib) generated 1 warning
+    Checking crossbeam-utils v0.8.23
+    Checking verse-gfx v0.1.0 (/home/christopherdavid/work/openagents-verse-audit/crates/verse-gfx)
+    Checking concurrent-queue v2.5.0
+    Checking winit v0.30.13
+    Checking reqwest v0.12.28
+    Checking verse-pbr v0.1.0 (/home/christopherdavid/work/openagents-verse-audit/crates/verse-pbr)
+    Checking verse-net v0.1.0 (/home/christopherdavid/work/openagents-verse-audit/crates/verse-net)
+    Checking verse-core v0.1.0 (/home/christopherdavid/work/openagents-verse-audit/crates/verse-core)
+    Checking reqwest v0.13.5
+    Checking async-io v2.6.0
+    Checking noq-udp v1.3.0
+    Checking async-channel v2.5.0
+    Checking workbench v0.1.0 (/home/christopherdavid/work/openagents-verse-audit/crates/workbench)
+    Checking noq-proto v1.3.0
+    Checking n0-dns-resolver v0.1.0
+    Checking async-signal v0.2.14
+    Checking verse-content v0.1.0 (/home/christopherdavid/work/openagents-verse-audit/crates/verse-content)
+    Checking blocking v1.7.0
+    Checking noq v1.3.0
+    Checking async-process v2.5.0
+    Checking iroh-metrics v1.0.2
+    Checking iroh-dns v1.3.0
+    Checking async-executor v1.14.0
+    Checking zbus v5.19.0
+    Checking acto v0.8.2
+    Checking iroh-relay v1.3.0
+    Checking netwatch v0.19.3
+    Checking hickory-proto v0.26.3
+    Checking jev v0.1.0 (/home/christopherdavid/work/openagents-verse-audit/crates/jev)
+error: failed to write to `/run/verse-audit-build-agent1/outputs/jev/-48115611974f29cf/rmetaHWdNU4/full.rmeta`: No space left on device (os error 28)
+
+error: could not compile `jev` (lib) due to 1 previous error

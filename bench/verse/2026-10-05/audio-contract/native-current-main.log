@@ -1,0 +1,159 @@
+   Compiling tracing-core v0.1.36
+   Compiling tracing v0.1.44
+   Compiling rand v0.9.5
+   Compiling secp256k1 v0.31.1
+   Compiling nostr v0.1.0 (/home/christopherdavid/work/openagents-verse-audit/crates/nostr)
+   Compiling nostr-transport v0.1.0 (/home/christopherdavid/work/openagents-verse-audit/crates/nostr-transport)
+   Compiling coder-connect v0.1.0 (/home/christopherdavid/work/openagents-verse-audit/crates/coder-connect)
+   Compiling hyper-util v0.1.20
+   Compiling hyper-rustls v0.27.9
+   Compiling coder-access v0.1.0 (/home/christopherdavid/work/openagents-verse-audit/crates/coder-access)
+   Compiling coder-reach v0.1.0 (/home/christopherdavid/work/openagents-verse-audit/crates/coder-reach)
+warning: failed to connect to jobserver from environment variable `CARGO_MAKEFLAGS="-j --jobserver-fds=3,5 --jobserver-auth=3,5"`: cannot open file descriptor 3 from the jobserver environment variable value: Bad file descriptor (os error 9)
+  |
+  = note: the build environment is likely misconfigured
+
+warning: `physics` (lib) generated 1 warning
+   Compiling verse-engine v0.1.0 (/home/christopherdavid/work/openagents-verse-audit/crates/verse-engine)
+   Compiling crossbeam-utils v0.8.23
+   Compiling verse-world v0.1.0 (/home/christopherdavid/work/openagents-verse-audit/crates/verse-world)
+warning: method `additional_characters` is never used
+    --> crates/verse-world/src/play.rs:2943:19
+     |
+ 428 | impl Game {
+     | --------- method in this implementation
+...
+2943 |     pub(crate) fn additional_characters(
+     |                   ^^^^^^^^^^^^^^^^^^^^^
+     |
+     = note: `#[warn(dead_code)]` (part of `#[warn(unused)]`) on by default
+
+warning: `verse-world` (lib) generated 1 warning
+   Compiling concurrent-queue v2.5.0
+   Compiling verse-gfx v0.1.0 (/home/christopherdavid/work/openagents-verse-audit/crates/verse-gfx)
+   Compiling reqwest v0.12.28
+   Compiling verse-pbr v0.1.0 (/home/christopherdavid/work/openagents-verse-audit/crates/verse-pbr)
+   Compiling verse-net v0.1.0 (/home/christopherdavid/work/openagents-verse-audit/crates/verse-net)
+   Compiling reqwest v0.13.5
+   Compiling async-io v2.6.0
+   Compiling verse-core v0.1.0 (/home/christopherdavid/work/openagents-verse-audit/crates/verse-core)
+   Compiling noq-udp v1.3.0
+   Compiling async-channel v2.5.0
+   Compiling noq-proto v1.3.0
+   Compiling n0-dns-resolver v0.1.0
+   Compiling async-signal v0.2.14
+   Compiling workbench v0.1.0 (/home/christopherdavid/work/openagents-verse-audit/crates/workbench)
+   Compiling blocking v1.7.0
+   Compiling noq v1.3.0
+   Compiling async-process v2.5.0
+   Compiling iroh-metrics v1.0.2
+   Compiling iroh-dns v1.3.0
+   Compiling async-executor v1.14.0
+   Compiling zbus v5.19.0
+   Compiling acto v0.8.2
+   Compiling iroh-relay v1.3.0
+   Compiling verse-content v0.1.0 (/home/christopherdavid/work/openagents-verse-audit/crates/verse-content)
+   Compiling netwatch v0.19.3
+   Compiling hickory-proto v0.26.3
+   Compiling jev v0.1.0 (/home/christopherdavid/work/openagents-verse-audit/crates/jev)
+   Compiling iroh v1.3.0
+   Compiling model-access v0.1.0 (/home/christopherdavid/work/openagents-verse-audit/crates/model-access)
+   Compiling swarm-discovery v0.6.3
+   Compiling secret-service v5.2.0
+   Compiling route-contract v0.1.0 (/home/christopherdavid/work/openagents-verse-audit/crates/route-contract)
+   Compiling playtest v0.1.0 (/home/christopherdavid/work/openagents-verse-audit/crates/playtest)
+   Compiling zbus-secret-service-keyring-store v1.0.1
+   Compiling openagents-chat v0.1.0 (/home/christopherdavid/work/openagents-verse-audit/crates/openagents-chat)
+   Compiling iroh-mdns-address-lookup v0.5.0
+   Compiling terminal-core v0.1.0 (/home/christopherdavid/work/openagents-verse-audit/crates/terminal-core)
+   Compiling verse-host v0.1.0 (/home/christopherdavid/work/openagents-verse-audit/crates/verse-host)
+   Compiling openagents-connect v0.1.0 (/home/christopherdavid/work/openagents-verse-audit/crates/openagents-connect)
+   Compiling keyring v4.2.0
+   Compiling verse-zone-everglade v0.1.0 (/home/christopherdavid/work/openagents-verse-audit/crates/verse-zone-everglade)
+warning: variable does not need to be mutable
+   --> crates/verse-zone-everglade/src/zones/everglade/layout/streets.rs:275:9
+    |
+275 |     let mut try_put =
+    |         ----^^^^^^^
+    |         |
+    |         help: remove this `mut`
+    |
+    = note: `#[warn(unused_mut)]` (part of `#[warn(unused)]`) on by default
+
+warning: function `triangles` is never used
+   --> crates/verse-zone-everglade/src/zones/everglade/draw.rs:103:15
+    |
+103 | pub(super) fn triangles() -> u64 {
+    |               ^^^^^^^^^
+    |
+    = note: `#[warn(dead_code)]` (part of `#[warn(unused)]`) on by default
+
+warning: function `stream_triangles` is never used
+   --> crates/verse-zone-everglade/src/zones/everglade/draw.rs:112:4
+    |
+112 | fn stream_triangles() -> u64 {
+    |    ^^^^^^^^^^^^^^^^
+
+warning: `verse-zone-everglade` (lib) generated 3 warnings (run `cargo fix --lib -p verse-zone-everglade` to apply 1 suggestion)
+   Compiling coder-service v0.1.0 (/home/christopherdavid/work/openagents-verse-audit/crates/coder-service)
+   Compiling gym-leaderboard v0.1.0 (/home/christopherdavid/work/openagents-verse-audit/crates/gym-leaderboard)
+warning: `verse-lagrange` (lib) generated 1 warning (1 duplicate)
+   Compiling gym-bridge v0.1.0 (/home/christopherdavid/work/openagents-verse-audit/crates/gym-bridge)
+   Compiling coder-host v0.1.0 (/home/christopherdavid/work/openagents-verse-audit/crates/coder-host)
+   Compiling verse-gym v0.1.0 (/home/christopherdavid/work/openagents-verse-audit/crates/verse-gym)
+   Compiling verse-zone-lagrange v0.1.0 (/home/christopherdavid/work/openagents-verse-audit/crates/verse-zone-lagrange)
+   Compiling verse-zone-grove v0.1.0 (/home/christopherdavid/work/openagents-verse-audit/crates/verse-zone-grove)
+   Compiling terminal-control v0.1.0 (/home/christopherdavid/work/openagents-verse-audit/crates/terminal-control)
+   Compiling verse-imported v0.1.0 (/home/christopherdavid/work/openagents-verse-audit/crates/verse-imported)
+warning: unused variable: `numbers`
+    --> crates/verse-imported/src/imported/overlay.rs:1297:9
+     |
+1297 |     let numbers = atlas.font("numbers").layout_at_scale(1.0 / s).unwrap();
+     |         ^^^^^^^ help: if this is intentional, prefix it with an underscore: `_numbers`
+     |
+     = note: `#[warn(unused_variables)]` (part of `#[warn(unused)]`) on by default
+
+warning: `verse-imported` (lib) generated 1 warning (run `cargo fix --lib -p verse-imported` to apply 1 suggestion)
+   Compiling verse-zone-lab v0.1.0 (/home/christopherdavid/work/openagents-verse-audit/crates/verse-zone-lab)
+   Compiling verse-zone-crypt v0.1.0 (/home/christopherdavid/work/openagents-verse-audit/crates/verse-zone-crypt)
+   Compiling verse v0.1.0 (/home/christopherdavid/work/openagents-verse-audit/crates/verse)
+warning: unused import: `boards`
+ --> crates/verse/src/zones/studio_tests.rs:5:41
+  |
+5 | use crate::zones::everglade::{STATIONS, boards, height};
+  |                                         ^^^^^^
+  |
+  = note: `#[warn(unused_imports)]` (part of `#[warn(unused)]`) on by default
+
+warning: unused import: `Station as At`
+ --> crates/verse/src/zones/studio_tests.rs:9:40
+  |
+9 | use coder_access::studio::{Role, Seat, Station as At};
+  |                                        ^^^^^^^^^^^^^
+
+warning: function `ground` is never used
+  --> crates/verse/src/zones/studio_tests.rs:43:4
+   |
+43 | fn ground(at: [f32; 2]) -> Vec3 {
+   |    ^^^^^^
+   |
+   = note: `#[warn(dead_code)]` (part of `#[warn(unused)]`) on by default
+
+warning: function `walk` is never used
+  --> crates/verse/src/zones/studio_tests.rs:48:4
+   |
+48 | fn walk(studio: &mut Studio, seconds: f32) {
+   |    ^^^^
+
+warning: `verse` (lib test) generated 4 warnings (run `cargo fix --lib -p verse --tests` to apply 2 suggestions)
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 8m 12s
+     Running unittests src/lib.rs (/home/christopherdavid/work/openagents-target-agent1/debug/deps/verse-b84134820f9c1963)
+
+running 4 tests
+test audio_native::tests::crowded_callback_deadline_profile ... ignored, Explicit CPU audio deadline evidence; opens no device
+test audio_native::tests::output_channel_conversion_and_trailing_samples_are_defined ... ok
+test audio_native::tests::critical_queue_survives_ordinary_saturation_and_controls_work_without_commands ... ok
+test audio_native::tests::actual_callback_does_no_allocation_or_resource_destruction ... ok
+
+test result: ok. 3 passed; 0 failed; 1 ignored; 0 measured; 294 filtered out; finished in 0.03s
+

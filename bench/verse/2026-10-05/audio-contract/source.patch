@@ -1,0 +1,3216 @@
+diff --git a/Cargo.lock b/Cargo.lock
+index 711ba4b5ca..355fccee07 100644
+--- a/Cargo.lock
++++ b/Cargo.lock
+@@ -12024,6 +12024,12 @@ dependencies = [
+  "lru",
+ ]
+ 
++[[package]]
++name = "rtrb"
++version = "0.4.0"
++source = "registry+https://github.com/rust-lang/crates.io-index"
++checksum = "9278fb35b3e730abe136e9b395b5b81b96d06b9f5478a50f0c8430a2237b22de"
++
+ [[package]]
+ name = "ruint"
+ version = "1.20.1"
+@@ -15091,6 +15097,7 @@ dependencies = [
+  "rcgen",
+  "reqwest 0.12.28",
+  "resvg",
++ "rtrb",
+  "rust-native",
+  "rust-native-desktop",
+  "rustls",
+@@ -15174,6 +15181,7 @@ dependencies = [
+  "glam",
+  "libc",
+  "png",
++ "rtrb",
+  "serde",
+  "serde_json",
+  "sha2 0.10.9",
+diff --git a/NEEDS_OWNER.md b/NEEDS_OWNER.md
+index a05d4c0d5a..160d285591 100644
+--- a/NEEDS_OWNER.md
++++ b/NEEDS_OWNER.md
+@@ -429,3 +429,14 @@ and a second phone build):
+ The PTY-level checks run on scratch hosts in `coder-vt`'s
+ `tests/authority.rs` and `tests/join.rs` and in `coder-pty`'s
+ `tests/typist.rs`.
++
++## Verify native Verse audio on physical output after V23 (#10739)
++
++After installing the matching native chamber build, listen to a crowded fight,
++remove and reconnect the selected output device, change focus, and suspend and
++resume the application. Confirm that critical cues remain audible, music resumes
++at its retained position, and sound remains clean. With no output device, confirm
++that captions and master/music controls (F9–F12) still work. The committed V23
++checks use a headless callback and controlled PCM production; they do not open an
++owner device or prove driver scheduling. Browser and phone mounting remains V24.
++Open a new issue for a defect found in this device run.
+diff --git a/crates/verse-engine/Cargo.toml b/crates/verse-engine/Cargo.toml
+index f2147da3c3..312c1e8106 100644
+--- a/crates/verse-engine/Cargo.toml
++++ b/crates/verse-engine/Cargo.toml
+@@ -11,6 +11,7 @@ default = []
+ asset-io = ["dep:png", "dep:libc"]
+ 
+ [dependencies]
++rtrb = "=0.4.0"
+ bytemuck = { version = "1.25", features = ["derive"] }
+ glam = { version = "0.30.10", features = ["serde"] }
+ serde = { version = "1", features = ["derive"] }
+diff --git a/crates/verse-engine/README.md b/crates/verse-engine/README.md
+index 2d3dc4d41a..f4288464e0 100644
+--- a/crates/verse-engine/README.md
++++ b/crates/verse-engine/README.md
+@@ -79,3 +79,23 @@ single texel, authored compressed chains, and vertex-varying alpha remain conten
+ production limits.
+ 
+ The dedicated `verse-host` and network service use `core::FixedSchedule`. Actor identities use `LifeId`; actor storage remains in `verse-world` rather than adopting the separate `Entities` container. Applications supply generic `MountPose` values to the admitted renderer frame, including planar grips and offset socket frames.
++
++
++`audio_bank` admits versioned cue banks with bounded sources, mix buses,
++priorities, and localized captions. The original bank declares reproducible
++procedural cues. Decoded mono clips must match their PCM pins; streamed music and
++dialogue declare stereo little-endian float PCM, sample rate, frame count, and
++SHA-256. `prepare_stream_reader` verifies the supplied immutable reader before
++playback, then returns its prepared voice and bounded feeder. The caller supplies
++an immutable snapshot or provider; the bank selects no file or network path.
++Compressed decoding belongs on a provider worker. Streamed tracks are finite;
++original clip ambience supports looping.
++
++`audio::Mixer` separates control-side preparation from callback admission. It
++holds at most 128 logical voices, mixes 32 audible voices, bounds streaming to
++eight sources, advances virtual clip clocks analytically, and retains completed
++resources for off-callback reclamation. Music has two replacement slots; effects
++cannot displace music. Dialogue ducks music. Suspension freezes source clocks.
++`audio_bank::Scene` retains captions, volume settings, and zone music progress
++without a device. These contracts do not establish hardware audio deadlines or
++complete environmental acoustics.
+diff --git a/crates/verse-engine/src/audio.rs b/crates/verse-engine/src/audio.rs
+index 9608f00966..9a0adf3ccc 100644
+--- a/crates/verse-engine/src/audio.rs
++++ b/crates/verse-engine/src/audio.rs
+@@ -43,7 +43,7 @@ pub struct Emitter {
+     pub looping: bool,
+ }
+ impl Emitter {
+-    fn validate(self) -> Result<(), String> {
++    pub fn validate(self) -> Result<(), String> {
+         if !self.position.is_finite()
+             || self.position.abs().max_element() > 1_000_000.
+             || !self.range.is_finite()
+@@ -58,20 +58,212 @@ impl Emitter {
+         Ok(())
+     }
+ }
++
++pub const MAX_VOICES: usize = 128;
++pub const AUDIBLE_VOICES: usize = 32;
++#[derive(Clone, Copy, Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
++#[serde(rename_all = "snake_case")]
++pub enum Bus {
++    Effects,
++    Music,
++    Dialogue,
++    Interface,
++}
++impl Bus {
++    fn index(self) -> usize {
++        self as usize
++    }
++}
++#[derive(Clone, Copy, Debug, PartialEq, Eq)]
++pub enum Refusal {
++    Capacity,
++    Retirement,
++    Identity,
++    Block,
++}
++#[derive(Clone, Default)]
++pub struct Progress(Arc<std::sync::atomic::AtomicU64>);
++impl Progress {
++    fn at(frame: u64) -> Self {
++        Self(Arc::new(std::sync::atomic::AtomicU64::new(frame)))
++    }
++    pub fn frame(&self) -> u64 {
++        self.0.load(std::sync::atomic::Ordering::Acquire)
++    }
++}
++enum Source {
++    Clip(Clip),
++    Stream(crate::audio_stream::Stream),
++}
++/// Construct on the control thread. Callback admission only moves prepared data.
++pub struct Prepared {
++    source: Source,
++    emitter: Emitter,
++    bus: Bus,
++    priority: u8,
++    start: u64,
++    progress: Progress,
++}
++impl Prepared {
++    pub fn clip(
++        clip: Clip,
++        emitter: Emitter,
++        bus: Bus,
++        priority: u8,
++        start: u64,
++    ) -> Result<Self, String> {
++        emitter.validate()?;
++        if start > (1_u64 << 53) {
++            return Err("Audio resume position exceeds exact frame precision".into());
++        }
++        Ok(Self {
++            source: Source::Clip(clip),
++            emitter,
++            bus,
++            priority,
++            start,
++            progress: Progress::at(start),
++        })
++    }
++    pub fn stream(
++        stream: crate::audio_stream::Stream,
++        emitter: Emitter,
++        bus: Bus,
++        priority: u8,
++        start: u64,
++    ) -> Result<Self, String> {
++        emitter.validate()?;
++        if emitter.looping || start > (1_u64 << 53) {
++            return Err("Streaming loops belong to the feeder; invalid resume position".into());
++        }
++        Ok(Self {
++            source: Source::Stream(stream),
++            emitter,
++            bus,
++            priority,
++            start,
++            progress: Progress::at(start),
++        })
++    }
++    /// Converts an admitted clip to bounded decoded streaming on the control thread.
++    /// The returned feeder can run on an I/O worker; its consumer stays in the voice.
++    pub fn into_streaming(self, frames: usize) -> Result<(Self, LoopFeeder), String> {
++        let Self {
++            source,
++            mut emitter,
++            bus,
++            priority,
++            start,
++            progress,
++        } = self;
++        let Source::Clip(clip) = source else {
++            return Err("Audio source is already streaming".into());
++        };
++        let (feeder, stream) = crate::audio_stream::channel(clip.rate, frames)
++            .map_err(|_| "Invalid audio stream capacity")?;
++        let looping = emitter.looping;
++        emitter.looping = false;
++        let worker = LoopFeeder {
++            feeder,
++            clip,
++            cursor: start,
++            looping,
++            finished: false,
++        };
++        Ok((
++            Self {
++                source: Source::Stream(stream),
++                emitter,
++                bus,
++                priority,
++                start,
++                progress,
++            },
++            worker,
++        ))
++    }
++    pub fn is_streaming(&self) -> bool {
++        matches!(self.source, Source::Stream(_))
++    }
++    pub fn bus(&self) -> Bus {
++        self.bus
++    }
++    pub fn progress(&self) -> Progress {
++        self.progress.clone()
++    }
++    pub fn priority(&self) -> u8 {
++        self.priority
++    }
++}
++/// An original or admitted PCM source streamed in at most 1024 frames per pump.
++pub struct LoopFeeder {
++    feeder: crate::audio_stream::Feeder,
++    clip: Clip,
++    cursor: u64,
++    looping: bool,
++    finished: bool,
++}
++impl LoopFeeder {
++    pub fn closed(&self) -> bool {
++        self.feeder.closed()
++    }
++    pub fn pump(&mut self) -> usize {
++        if self.finished || self.closed() {
++            return 0;
++        }
++        let count = self.feeder.slots().min(1024);
++        let mut written = 0;
++        for _ in 0..count {
++            if !self.looping && self.cursor >= self.clip.samples.len() as u64 {
++                self.feeder.finish();
++                self.finished = true;
++                break;
++            }
++            let sample = self.clip.samples[self.cursor as usize % self.clip.samples.len()]
++                * std::f32::consts::FRAC_1_SQRT_2;
++            if self.feeder.push([sample; 2]).is_err() {
++                break;
++            }
++            self.cursor = self.cursor.saturating_add(1);
++            written += 1;
++        }
++        written
++    }
++}
++
++/// Drop this value on a control or reclamation thread, never in a callback.
++pub struct Retired {
++    _prepared: Prepared,
++}
+ struct Voice {
+     id: VoiceId,
+-    clip: Clip,
+-    emitter: Emitter,
++    prepared: Prepared,
+     cursor: f64,
++    position: f64,
+     age: u64,
+     release: Option<u32>,
++    release_total: u32,
++    done: bool,
++}
++#[derive(Clone, Copy, Debug, Default, serde::Serialize)]
++pub struct MixStats {
++    pub audible: usize,
++    pub virtual_voices: usize,
++    pub stolen: u64,
++    pub stream_gaps: u64,
++    pub retirement_blocked: u64,
+ }
+ pub struct Mixer {
+     rate: u32,
+     listener: Vec3,
+     right: Vec3,
+     voices: Vec<Voice>,
++    retired: Vec<Retired>,
+     next_id: u64,
++    volumes: [f32; 4],
++    master: f32,
++    suspended: bool,
++    pub stats: MixStats,
+ }
+ impl Mixer {
+     pub fn new(rate: u32) -> Result<Self, String> {
+@@ -82,8 +274,13 @@ impl Mixer {
+             rate,
+             listener: Vec3::ZERO,
+             right: Vec3::X,
+-            voices: Vec::with_capacity(128),
++            voices: Vec::with_capacity(MAX_VOICES),
++            retired: Vec::with_capacity(MAX_VOICES),
+             next_id: 0,
++            volumes: [1.0; 4],
++            master: 1.0,
++            suspended: false,
++            stats: Default::default(),
+         })
+     }
+     pub fn set_listener(&mut self, position: Vec3, right: Vec3) -> Result<(), String> {
+@@ -99,114 +296,382 @@ impl Mixer {
+         self.right = right.normalize();
+         Ok(())
+     }
+-    pub fn play(&mut self, clip: &Clip, emitter: Emitter) -> Result<VoiceId, String> {
+-        emitter.validate()?;
+-        if self.voices.len() >= 128 {
+-            return Err("Audio voice capacity exhausted".into());
+-        }
+-        let next = self
+-            .next_id
+-            .checked_add(1)
+-            .ok_or("Audio voice identity exhausted")?;
+-        let id = VoiceId(next);
+-        self.next_id = next;
+-        self.voices.push(Voice {
+-            id,
+-            clip: clip.clone(),
+-            emitter,
+-            cursor: 0.,
++    pub fn volume(&mut self, bus: Bus, volume: f32) -> Result<(), String> {
++        if !volume.is_finite() || !(0.0..=1.0).contains(&volume) {
++            return Err("Invalid audio bus volume".into());
++        }
++        self.volumes[bus.index()] = volume;
++        Ok(())
++    }
++    pub fn master(&mut self, volume: f32) -> Result<(), String> {
++        if !volume.is_finite() || !(0.0..=1.0).contains(&volume) {
++            return Err("Invalid master volume".into());
++        }
++        self.master = volume;
++        Ok(())
++    }
++    pub fn suspend(&mut self, suspended: bool) {
++        self.suspended = suspended;
++    }
++    pub fn retirement_slots(&self) -> usize {
++        MAX_VOICES - self.retired.len()
++    }
++    pub fn pop_retired(&mut self) -> Option<Retired> {
++        self.retired.pop()
++    }
++    pub fn return_retired(&mut self, retired: Retired) {
++        assert!(self.retired.len() < MAX_VOICES);
++        self.retired.push(retired);
++    }
++    pub fn retire_prepared(&mut self, prepared: Prepared) -> Result<(), Prepared> {
++        if self.retirement_slots() == 0 {
++            return Err(prepared);
++        }
++        self.retired.push(Retired {
++            _prepared: prepared,
++        });
++        Ok(())
++    }
++    fn retire_voice(&mut self, index: usize) {
++        let voice = self.voices.swap_remove(index);
++        self.retired.push(Retired {
++            _prepared: voice.prepared,
++        });
++    }
++    /// No allocation, locking, or resource destruction. Returns refused ownership.
++    pub fn play_rt(&mut self, prepared: Prepared) -> Result<VoiceId, (Refusal, Prepared)> {
++        let Some(next) = self.next_id.checked_add(1) else {
++            return Err((Refusal::Identity, prepared));
++        };
++        // Preflight every limit before displacing an admitted source.
++        let music_victim = (prepared.bus == Bus::Music
++            && self
++                .voices
++                .iter()
++                .filter(|v| v.prepared.bus == Bus::Music)
++                .count()
++                >= 2)
++            .then(|| {
++                self.voices
++                    .iter()
++                    .enumerate()
++                    .filter(|(_, v)| v.prepared.bus == Bus::Music)
++                    .min_by_key(|(_, v)| v.id.0)
++                    .unwrap()
++                    .0
++            });
++        let victim = if music_victim.is_some() {
++            music_victim
++        } else if self.voices.len() == MAX_VOICES {
++            let victim = self
++                .voices
++                .iter()
++                .enumerate()
++                .filter(|(_, v)| {
++                    (v.prepared.bus == Bus::Effects && prepared.bus != Bus::Effects)
++                        || (v.prepared.bus == prepared.bus
++                            && v.prepared.priority < prepared.priority)
++                })
++                .min_by_key(|(_, v)| (v.prepared.priority, v.id.0))
++                .map(|(i, _)| i);
++            if victim.is_none() {
++                return Err((Refusal::Capacity, prepared));
++            }
++            victim
++        } else {
++            None
++        };
++        if victim.is_some() && self.retirement_slots() == 0 {
++            return Err((Refusal::Retirement, prepared));
++        }
++        let streams = self
++            .voices
++            .iter()
++            .enumerate()
++            .filter(|(i, v)| Some(*i) != victim && matches!(v.prepared.source, Source::Stream(_)))
++            .count();
++        if matches!(prepared.source, Source::Stream(_)) && streams >= 8 {
++            return Err((Refusal::Capacity, prepared));
++        }
++        if let Some(victim) = victim {
++            self.retire_voice(victim);
++            self.stats.stolen = self.stats.stolen.saturating_add(1);
++        }
++        let mut cursor = prepared.start as f64;
++        if let Source::Clip(clip) = &prepared.source {
++            if prepared.emitter.looping {
++                cursor %= clip.samples.len() as f64;
++            }
++        } else {
++            cursor = 0.0;
++        }
++        let position = prepared.start as f64;
++        let voice = Voice {
++            id: VoiceId(next),
++            prepared,
++            cursor,
++            position,
+             age: 0,
+             release: None,
+-        });
+-        Ok(id)
++            release_total: 0,
++            done: false,
++        };
++        self.next_id = next;
++        self.voices.push(voice);
++        Ok(VoiceId(next))
++    }
++    /// Legacy control-thread entry. Same-priority voices retain refusal behavior.
++    pub fn play(&mut self, clip: &Clip, emitter: Emitter) -> Result<VoiceId, String> {
++        let prepared = Prepared::clip(clip.clone(), emitter, Bus::Effects, 0, 0)?;
++        self.play_rt(prepared)
++            .map_err(|(reason, _)| format!("Audio voice refused: {reason:?}"))
+     }
+     pub fn voice_count(&self) -> usize {
+         self.voices.len()
+     }
+-    /// Stops only this exact actor life, with a ten-millisecond release envelope.
+     pub fn stop_life(&mut self, life: LifeId) {
+-        let release = self.rate / 100;
+         for voice in &mut self.voices {
+-            if voice.emitter.life == Some(life) && voice.release.is_none() {
+-                voice.release = Some(release);
++            if voice.prepared.emitter.life == Some(life) && voice.release.is_none() {
++                voice.release = Some(self.rate / 100);
++                voice.release_total = self.rate / 100;
+             }
+         }
+     }
+     pub fn stop(&mut self, id: VoiceId) -> bool {
+-        let Some(voice) = self.voices.iter_mut().find(|voice| voice.id == id) else {
++        let Some(voice) = self.voices.iter_mut().find(|v| v.id == id) else {
+             return false;
+         };
+         if voice.release.is_none() {
+             voice.release = Some(self.rate / 100);
++            voice.release_total = self.rate / 100;
+         }
+         true
+     }
+-    /// Writes at most 8192 interleaved stereo frames without allocating. Invalid
+-    /// output lengths refuse before changing either voices or the output buffer.
++    pub fn stop_bus(&mut self, bus: Bus) {
++        for voice in &mut self.voices {
++            if voice.prepared.bus == bus && voice.release.is_none() {
++                voice.release = Some(self.rate / 5);
++                voice.release_total = self.rate / 5;
++            }
++        }
++    }
+     pub fn render(&mut self, output: &mut [f32]) -> Result<(), String> {
++        self.render_rt(output)
++            .map_err(|_| "Invalid audio output block size".into())
++    }
++    pub fn render_rt(&mut self, output: &mut [f32]) -> Result<(), Refusal> {
+         if !output.len().is_multiple_of(2) || output.len() > 16384 {
+-            return Err("Invalid audio output block size".into());
++            return Err(Refusal::Block);
+         }
+-        output.fill(0.);
+-        let fade = f64::from(self.rate) / 100.;
+-        for voice in &mut self.voices {
+-            let delta = voice.emitter.position - self.listener;
++        output.fill(0.0);
++        if self.suspended {
++            return Ok(());
++        }
++        let frames = output.len() / 2;
++        let mut order = [0usize; MAX_VOICES];
++        for (i, index) in order[..self.voices.len()].iter_mut().enumerate() {
++            *index = i;
++        }
++        order[..self.voices.len()].sort_unstable_by_key(|&i| {
++            (
++                matches!(self.voices[i].prepared.bus, Bus::Effects),
++                std::cmp::Reverse(self.voices[i].prepared.priority),
++                self.voices[i].id.0,
++            )
++        });
++        let mut selected = [false; MAX_VOICES];
++        let mut audible = 0;
++        for &i in &order[..self.voices.len()] {
++            let voice = &self.voices[i];
++            let emitter = voice.prepared.emitter;
++            let spatial = matches!(voice.prepared.bus, Bus::Effects);
++            if !voice.done
++                && emitter.gain > 0.0
++                && self.volumes[voice.prepared.bus.index()] > 0.0
++                && (!spatial || (emitter.position - self.listener).length() < emitter.range)
++            {
++                if audible < AUDIBLE_VOICES {
++                    selected[i] = true;
++                    audible += 1;
++                }
++            }
++        }
++        self.stats.audible = audible;
++        self.stats.virtual_voices = self.voices.len() - audible;
++        let dialogue = self
++            .voices
++            .iter()
++            .enumerate()
++            .any(|(i, v)| selected[i] && v.prepared.bus == Bus::Dialogue);
++        let fade = f64::from(self.rate) / 100.0;
++        for (i, voice) in self.voices.iter_mut().enumerate() {
++            if voice.done {
++                continue;
++            }
++            let emitter = voice.prepared.emitter;
++            let spatial = matches!(voice.prepared.bus, Bus::Effects);
++            let delta = emitter.position - self.listener;
+             let distance = delta.length();
+-            let attenuation = (1. - distance / voice.emitter.range).clamp(0., 1.).powi(2);
+-            let pan = if distance > 1e-8 {
+-                (delta / distance).dot(self.right).clamp(-1., 1.)
++            let attenuation = if spatial {
++                (1.0 - distance / emitter.range).clamp(0.0, 1.0).powi(2)
++            } else {
++                1.0
++            };
++            let pan = if spatial && distance > 1e-8 {
++                (delta / distance).dot(self.right).clamp(-1.0, 1.0)
++            } else {
++                0.0
++            };
++            let mono = matches!(voice.prepared.source, Source::Clip(_));
++            let balance = if spatial || mono {
++                [((1.0 - pan) * 0.5).sqrt(), ((1.0 + pan) * 0.5).sqrt()]
+             } else {
+-                0.
++                [1.0; 2]
+             };
+-            let left = ((1. - pan) * 0.5).sqrt();
+-            let right = ((1. + pan) * 0.5).sqrt();
+-            let step =
+-                f64::from(voice.clip.rate) / f64::from(self.rate) * f64::from(voice.emitter.pitch);
+-            let length = voice.clip.samples.len();
++            let rate = match &voice.prepared.source {
++                Source::Clip(c) => c.rate,
++                Source::Stream(s) => s.rate,
++            };
++            let step = f64::from(rate) / f64::from(self.rate) * f64::from(emitter.pitch);
++            if !selected[i] {
++                if let Source::Clip(clip) = &voice.prepared.source {
++                    let count =
++                        frames.min(voice.release.map_or(frames, |remaining| remaining as usize));
++                    let count = if emitter.looping {
++                        count
++                    } else {
++                        count.min(
++                            ((clip.samples.len() as f64 - voice.cursor).max(0.0) / step).ceil()
++                                as usize,
++                        )
++                    };
++                    voice.cursor += count as f64 * step;
++                    voice.position += count as f64 * step;
++                    voice.age = voice.age.saturating_add(count as u64);
++                    if emitter.looping {
++                        voice.cursor %= clip.samples.len() as f64;
++                    }
++                    if let Some(remaining) = &mut voice.release {
++                        *remaining = remaining.saturating_sub(count as u32);
++                    }
++                    voice.done = voice.release == Some(0)
++                        || (!emitter.looping && voice.cursor >= clip.samples.len() as f64);
++                    voice
++                        .prepared
++                        .progress
++                        .0
++                        .store(voice.position as u64, std::sync::atomic::Ordering::Release);
++                    continue;
++                }
++            }
++            let bus = self.volumes[voice.prepared.bus.index()]
++                * if dialogue && voice.prepared.bus == Bus::Music {
++                    0.25
++                } else {
++                    1.0
++                };
+             for frame in output.chunks_exact_mut(2) {
+-                if voice.release == Some(0)
+-                    || (!voice.emitter.looping && voice.cursor >= length as f64)
+-                {
++                if voice.release == Some(0) {
++                    voice.done = true;
+                     break;
+                 }
+-                let index = voice.cursor.floor() as usize;
+-                let next = if index + 1 < length {
+-                    voice.clip.samples[index + 1]
+-                } else if voice.emitter.looping {
+-                    voice.clip.samples[0]
+-                } else {
+-                    0.
++                let sample = match &mut voice.prepared.source {
++                    Source::Clip(clip) => {
++                        let length = clip.samples.len();
++                        if voice.cursor >= length as f64 {
++                            voice.done = true;
++                            break;
++                        }
++                        let index = voice.cursor.floor() as usize;
++                        let next = if index + 1 < length {
++                            clip.samples[index + 1]
++                        } else if emitter.looping {
++                            clip.samples[0]
++                        } else {
++                            0.0
++                        };
++                        let sample = clip.samples[index]
++                            + (next - clip.samples[index]) * voice.cursor.fract() as f32;
++                        voice.cursor += step;
++                        if emitter.looping {
++                            voice.cursor %= length as f64;
++                        }
++                        [sample; 2]
++                    }
++                    Source::Stream(stream) => match stream.sample(step) {
++                        crate::audio_stream::Sample::Frame(sample) => sample,
++                        crate::audio_stream::Sample::End => {
++                            voice.done = true;
++                            break;
++                        }
++                        crate::audio_stream::Sample::Gap => {
++                            self.stats.stream_gaps = self.stats.stream_gaps.saturating_add(1);
++                            voice.age = voice.age.saturating_add(1);
++                            if let Some(remaining) = &mut voice.release {
++                                *remaining = remaining.saturating_sub(1);
++                            }
++                            if voice.release == Some(0) {
++                                voice.done = true;
++                                break;
++                            }
++                            continue;
++                        }
++                    },
+                 };
+-                let sample = voice.clip.samples[index]
+-                    + (next - voice.clip.samples[index]) * voice.cursor.fract() as f32;
+-                let attack = (voice.age as f64 / fade).min(1.);
+-                let release = voice
+-                    .release
+-                    .map_or(1., |remaining| f64::from(remaining) / fade);
+-                let tail = if voice.emitter.looping {
+-                    1.
+-                } else {
+-                    ((length as f64 - voice.cursor) / step / fade).clamp(0., 1.)
++                let attack = (voice.age as f64 / fade).min(1.0);
++                let release = voice.release.map_or(1.0, |left| {
++                    f64::from(left) / f64::from(voice.release_total.max(1))
++                });
++                let tail = match &voice.prepared.source {
++                    Source::Clip(clip) if !emitter.looping => {
++                        ((clip.samples.len() as f64 - voice.cursor + step) / step / fade)
++                            .clamp(0.0, 1.0)
++                    }
++                    _ => 1.0,
+                 };
+-                let gain = voice.emitter.gain * attenuation * (attack * release * tail) as f32;
+-                frame[0] += sample * gain * left;
+-                frame[1] += sample * gain * right;
++                let gain = emitter.gain
++                    * attenuation
++                    * self.master
++                    * bus
++                    * (attack * release * tail) as f32;
++                if selected[i] {
++                    for channel in 0..2 {
++                        frame[channel] += sample[channel] * gain * balance[channel];
++                    }
++                }
+                 voice.age = voice.age.saturating_add(1);
+-                if let Some(remaining) = &mut voice.release {
+-                    *remaining = remaining.saturating_sub(1);
++                voice.position += step;
++                if let Some(left) = &mut voice.release {
++                    *left = left.saturating_sub(1);
+                 }
+-                voice.cursor += step;
+-                if voice.emitter.looping {
+-                    voice.cursor %= length as f64;
++            }
++            voice
++                .prepared
++                .progress
++                .0
++                .store(voice.position as u64, std::sync::atomic::Ordering::Release);
++            if let Source::Clip(clip) = &voice.prepared.source {
++                if !emitter.looping && voice.cursor >= clip.samples.len() as f64 {
++                    voice.done = true;
+                 }
+             }
++            if voice.release == Some(0) {
++                voice.done = true;
++            }
++        }
++        let mut i = 0;
++        while i < self.voices.len() {
++            if self.voices[i].done && self.retirement_slots() > 0 {
++                self.retire_voice(i);
++            } else {
++                if self.voices[i].done {
++                    self.stats.retirement_blocked = self.stats.retirement_blocked.saturating_add(1);
++                }
++                i += 1;
++            }
+         }
+-        self.voices.retain(|voice| {
+-            voice.release != Some(0)
+-                && (voice.emitter.looping || voice.cursor < voice.clip.samples.len() as f64)
+-        });
+         for sample in output {
+-            *sample = sample.clamp(-1., 1.);
++            *sample = sample.clamp(-1.0, 1.0);
+         }
+         Ok(())
+     }
+@@ -276,3 +741,202 @@ mod tests {
+         assert_eq!(mixer.voice_count(), 128);
+     }
+ }
++
++#[cfg(test)]
++mod rt_tests {
++    use super::*;
++    use std::alloc::{GlobalAlloc, Layout, System};
++    use std::cell::Cell;
++    std::thread_local! {static TRACK:Cell<bool>=const {Cell::new(false)}; static OPS:Cell<(u64,u64)>=const {Cell::new((0,0))};}
++    struct Allocator;
++    #[global_allocator]
++    static ALLOC: Allocator = Allocator;
++    unsafe impl GlobalAlloc for Allocator {
++        unsafe fn alloc(&self, l: Layout) -> *mut u8 {
++            TRACK.with(|t| {
++                if t.get() {
++                    OPS.with(|o| {
++                        let (a, d) = o.get();
++                        o.set((a + 1, d));
++                    })
++                }
++            });
++            unsafe { System.alloc(l) }
++        }
++        unsafe fn dealloc(&self, p: *mut u8, l: Layout) {
++            TRACK.with(|t| {
++                if t.get() {
++                    OPS.with(|o| {
++                        let (a, d) = o.get();
++                        o.set((a, d + 1));
++                    })
++                }
++            });
++            unsafe { System.dealloc(p, l) }
++        }
++        unsafe fn realloc(&self, p: *mut u8, l: Layout, n: usize) -> *mut u8 {
++            TRACK.with(|t| {
++                if t.get() {
++                    OPS.with(|o| {
++                        let (a, d) = o.get();
++                        o.set((a + 1, d + 1));
++                    })
++                }
++            });
++            unsafe { System.realloc(p, l, n) }
++        }
++    }
++    fn emitter(looping: bool) -> Emitter {
++        Emitter {
++            life: None,
++            position: Vec3::ZERO,
++            range: 10.,
++            gain: 0.01,
++            pitch: 1.,
++            looping,
++        }
++    }
++    #[test]
++    fn callback_admission_render_and_retirement_never_allocate_or_free() {
++        let clip = Clip::new(vec![0.5; 480], 48000).unwrap();
++        let weak = Arc::downgrade(&clip.samples);
++        let prepared = Prepared::clip(clip, emitter(false), Bus::Effects, 1, 0).unwrap();
++        let mut mixer = Mixer::new(48000).unwrap();
++        let mut pcm = [0.; 1024];
++        OPS.with(|o| o.set((0, 0)));
++        TRACK.with(|t| t.set(true));
++        let admitted = mixer.play_rt(prepared).is_ok();
++        let rendered = mixer.render_rt(&mut pcm).is_ok();
++        let retired = mixer.pop_retired();
++        TRACK.with(|t| t.set(false));
++        assert!(admitted && rendered && retired.is_some());
++        assert_eq!(OPS.with(Cell::get), (0, 0));
++        assert!(weak.upgrade().is_some());
++        drop(retired);
++        assert!(weak.upgrade().is_none());
++    }
++    #[test]
++    fn crowd_pressure_protects_music_and_critical_effects_and_virtual_time() {
++        let clip = Clip::new(vec![0.5; 48000], 48000).unwrap();
++        let mut mixer = Mixer::new(48000).unwrap();
++        let music = Prepared::clip(clip.clone(), emitter(true), Bus::Music, 1, 0).unwrap();
++        let progress = music.progress();
++        assert!(mixer.play_rt(music).is_ok());
++        for _ in 0..127 {
++            assert!(
++                mixer
++                    .play_rt(
++                        Prepared::clip(clip.clone(), emitter(true), Bus::Effects, 20, 0).unwrap()
++                    )
++                    .is_ok()
++            );
++        }
++        let mut critical_emitter = emitter(false);
++        critical_emitter.gain = 0.9;
++        let critical =
++            Prepared::clip(clip.clone(), critical_emitter, Bus::Effects, 220, 0).unwrap();
++        let cp = critical.progress();
++        assert!(mixer.play_rt(critical).is_ok());
++        let mut pcm = [0.; 1024];
++        mixer.render_rt(&mut pcm).unwrap();
++        assert_eq!(progress.frame(), 512);
++        assert_eq!(cp.frame(), 512);
++        assert!(
++            pcm.iter().any(|v| *v > 0.4),
++            "The critical voice must contribute audible PCM"
++        );
++        assert_eq!(mixer.stats.audible, 32);
++        assert_eq!(mixer.stats.virtual_voices, 96);
++        assert_eq!(mixer.stats.stolen, 1);
++        assert!(mixer.voices.iter().any(|v| v.prepared.bus == Bus::Music));
++        assert!(
++            mixer
++                .voices
++                .iter()
++                .all(|v| v.prepared.progress.frame() == 512)
++        );
++    }
++    #[test]
++    fn stream_limit_refusal_preserves_admitted_sources() {
++        let clip = Clip::new(vec![0.2; 8000], 8000).unwrap();
++        let mut mixer = Mixer::new(8000).unwrap();
++        let mut feeders = Vec::new();
++        for _ in 0..8 {
++            let (feeder, stream) = crate::audio_stream::channel(8000, 128).unwrap();
++            feeders.push(feeder);
++            assert!(
++                mixer
++                    .play_rt(
++                        Prepared::stream(stream, emitter(false), Bus::Dialogue, 10, 0).unwrap()
++                    )
++                    .is_ok()
++            );
++        }
++        for _ in 0..120 {
++            assert!(
++                mixer
++                    .play_rt(
++                        Prepared::clip(clip.clone(), emitter(true), Bus::Effects, 0, 0).unwrap()
++                    )
++                    .is_ok()
++            );
++        }
++        let (feeder, stream) = crate::audio_stream::channel(8000, 128).unwrap();
++        feeders.push(feeder);
++        assert!(matches!(
++            mixer.play_rt(Prepared::stream(stream, emitter(false), Bus::Music, 1, 0).unwrap()),
++            Err((Refusal::Capacity, _))
++        ));
++        assert_eq!(mixer.voice_count(), 128);
++        assert_eq!(mixer.stats.stolen, 0);
++        assert!(mixer.pop_retired().is_none());
++        mixer.stop_bus(Bus::Dialogue);
++        mixer.render_rt(&mut [0.; 3200]).unwrap();
++        assert_eq!(mixer.voice_count(), 120);
++    }
++    #[test]
++    fn long_music_release_decays_without_a_gain_spike() {
++        let clip = Clip::new(vec![0.5; 48000], 48000).unwrap();
++        let mut mixer = Mixer::new(48000).unwrap();
++        assert!(
++            mixer
++                .play_rt(Prepared::clip(clip, emitter(true), Bus::Music, 80, 0).unwrap())
++                .is_ok()
++        );
++        let mut pcm = [0.; 1024];
++        mixer.render_rt(&mut pcm).unwrap();
++        let baseline = pcm[1022];
++        assert!(baseline > 0.);
++        mixer.stop_bus(Bus::Music);
++        mixer.render_rt(&mut pcm).unwrap();
++        assert!(pcm.iter().all(|v| *v <= baseline + 1e-6));
++        let early = pcm[1022];
++        for _ in 0..17 {
++            mixer.render_rt(&mut pcm).unwrap();
++        }
++        assert!(pcm[1022] < early * 0.1);
++        mixer.render_rt(&mut pcm).unwrap();
++        assert_eq!(mixer.voice_count(), 0);
++    }
++    #[test]
++    fn streamed_loop_restores_source_clock_and_pause_freezes_it() {
++        let clip = Clip::new(vec![0.5; 1000], 48000).unwrap();
++        let prepared = Prepared::clip(clip, emitter(true), Bus::Music, 80, 1250).unwrap();
++        let progress = prepared.progress();
++        let (prepared, mut feeder) = prepared.into_streaming(2048).unwrap();
++        while feeder.pump() > 0 {}
++        let mut mixer = Mixer::new(48000).unwrap();
++        assert!(mixer.play_rt(prepared).is_ok());
++        mixer.render_rt(&mut [0.; 1024]).unwrap();
++        assert_eq!(progress.frame(), 1762);
++        mixer.suspend(true);
++        let mut pcm = [1.; 1024];
++        mixer.render_rt(&mut pcm).unwrap();
++        assert_eq!(progress.frame(), 1762);
++        assert!(pcm.iter().all(|v| *v == 0.));
++        mixer.suspend(false);
++        mixer.render_rt(&mut pcm).unwrap();
++        assert_eq!(progress.frame(), 2274);
++        assert!(pcm.iter().any(|v| *v > 0.));
++    }
++}
+diff --git a/crates/verse-engine/src/audio_bank.rs b/crates/verse-engine/src/audio_bank.rs
+new file mode 100644
+index 0000000000..ab15a5eb6d
+--- /dev/null
++++ b/crates/verse-engine/src/audio_bank.rs
+@@ -0,0 +1,614 @@
++//! Admitted audio content and captions. Resolve on the control thread.
++use crate::{
++    audio::{Bus, Clip, Emitter, Prepared},
++    audio_cues::{Cue, synthesize},
++    core::LifeId,
++};
++use glam::Vec3;
++use serde::{Deserialize, Serialize};
++use sha2::{Digest, Sha256};
++use std::{
++    collections::{BTreeMap, BTreeSet},
++    sync::Arc,
++};
++#[derive(Clone, Debug, Serialize, Deserialize)]
++#[serde(tag = "kind", rename_all = "snake_case", deny_unknown_fields)]
++pub enum Source {
++    /// Canonical stereo little-endian float PCM, verified before publication.
++    Stream {
++        id: String,
++        rate: u32,
++        frames: u64,
++        sha256: String,
++    },
++    Synth {
++        id: String,
++        cue: Cue,
++        seed: u64,
++    },
++    Pcm {
++        id: String,
++        rate: u32,
++        frames: usize,
++        sha256: String,
++    },
++}
++#[derive(Clone, Debug, Serialize, Deserialize)]
++#[serde(deny_unknown_fields)]
++pub struct CueSpec {
++    pub id: String,
++    pub source: String,
++    pub bus: Bus,
++    pub priority: u8,
++    pub gain: f32,
++    pub range: f32,
++    pub pitch: f32,
++    pub looping: bool,
++    pub captions: BTreeMap<String, String>,
++}
++#[derive(Clone, Debug, Serialize, Deserialize)]
++#[serde(deny_unknown_fields)]
++pub struct Spec {
++    pub version: u32,
++    pub id: String,
++    pub default_locale: String,
++    pub sources: Vec<Source>,
++    pub cues: Vec<CueSpec>,
++}
++pub struct Bank {
++    spec: Spec,
++    clips: BTreeMap<String, Clip>,
++    streams: BTreeMap<String, (u32, u64, String)>,
++    pub digest: String,
++}
++fn identifier(id: &str) -> bool {
++    !id.is_empty()
++        && id.len() <= 64
++        && id
++            .bytes()
++            .all(|b| b.is_ascii_alphanumeric() || b == b'_' || b == b'-')
++}
++fn pcm_digest(clip: &Clip) -> String {
++    let mut hash = Sha256::new();
++    for sample in clip.samples() {
++        hash.update(sample.to_le_bytes());
++    }
++    format!("{:x}", hash.finalize())
++}
++impl Bank {
++    /// Synthetic sources resolve here; decoded assets must match their PCM pin.
++    /// No path, network request, plugin, or callback decoder is selected by data.
++    pub fn admit(spec: Spec, decoded: BTreeMap<String, Clip>) -> Result<Self, String> {
++        if spec.version != 1
++            || !identifier(&spec.id)
++            || !identifier(&spec.default_locale)
++            || spec.sources.is_empty()
++            || spec.sources.len() > 256
++            || spec.cues.is_empty()
++            || spec.cues.len() > 256
++        {
++            return Err("Invalid audio bank header or capacity".into());
++        }
++        let mut clips = BTreeMap::new();
++        let mut streams = BTreeMap::new();
++        let mut source_ids = BTreeSet::new();
++        let mut bytes = 0usize;
++        let mut used_decoded = BTreeSet::new();
++        for source in &spec.sources {
++            let source_id = match source {
++                Source::Stream { id, .. } | Source::Pcm { id, .. } | Source::Synth { id, .. } => id,
++            };
++            if !identifier(source_id) || !source_ids.insert(source_id.clone()) {
++                return Err("Invalid or duplicate audio source".into());
++            }
++            let (id, clip) = match source {
++                Source::Stream {
++                    id,
++                    rate,
++                    frames,
++                    sha256,
++                } => {
++                    if !(8000..=192000).contains(rate)
++                        || *frames == 0
++                        || *frames > u64::from(*rate) * 86400
++                        || sha256.len() != 64
++                        || !sha256
++                            .bytes()
++                            .all(|b| b.is_ascii_digit() || (b'a'..=b'f').contains(&b))
++                    {
++                        return Err("Invalid streamed audio source".into());
++                    }
++                    streams.insert(id.clone(), (*rate, *frames, sha256.clone()));
++                    continue;
++                }
++                Source::Synth { id, cue, seed } => (id, synthesize(*cue, 48000, *seed)?),
++                Source::Pcm {
++                    id,
++                    rate,
++                    frames,
++                    sha256,
++                } => {
++                    let clip = decoded.get(id).ok_or("Missing decoded bank source")?;
++                    if clip.rate() != *rate
++                        || clip.samples().len() != *frames
++                        || pcm_digest(clip) != *sha256
++                    {
++                        return Err("Audio source disagrees with its PCM pin".into());
++                    }
++                    used_decoded.insert(id.clone());
++                    (id, clip.clone())
++                }
++            };
++            if !identifier(id) || clips.contains_key(id) {
++                return Err("Invalid or duplicate audio source".into());
++            }
++            bytes = bytes
++                .checked_add(clip.samples().len() * 4)
++                .ok_or("Audio bank byte overflow")?;
++            if bytes > 32 * 1024 * 1024 {
++                return Err("Decoded audio bank exceeds 32 MiB".into());
++            }
++            clips.insert(id.clone(), clip);
++        }
++        if used_decoded.len() != decoded.len() {
++            return Err("Unreferenced decoded audio source".into());
++        }
++        let mut cues = BTreeSet::new();
++        for cue in &spec.cues {
++            if !identifier(&cue.id)
++                || !cues.insert(cue.id.clone())
++                || !source_ids.contains(&cue.source)
++                || (streams.contains_key(&cue.source)
++                    && (cue.looping || !matches!(cue.bus, Bus::Music | Bus::Dialogue)))
++                || cue.captions.len() > 16
++                || cue.captions.iter().any(|(locale, text)| {
++                    !identifier(locale)
++                        || text.is_empty()
++                        || text.len() > 512
++                        || text.chars().any(char::is_control)
++                })
++                || (!cue.captions.is_empty() && !cue.captions.contains_key(&spec.default_locale))
++            {
++                return Err("Invalid audio cue, source, or caption".into());
++            }
++            Emitter {
++                life: None,
++                position: Vec3::ZERO,
++                range: cue.range,
++                gain: cue.gain,
++                pitch: cue.pitch,
++                looping: cue.looping,
++            }
++            .validate()?;
++        }
++        let mut hash = Sha256::new();
++        hash.update(serde_json::to_vec(&spec).map_err(|e| e.to_string())?);
++        for (id, clip) in &clips {
++            hash.update(id.as_bytes());
++            hash.update(pcm_digest(clip).as_bytes());
++        }
++        Ok(Self {
++            spec,
++            clips,
++            streams,
++            digest: format!("{:x}", hash.finalize()),
++        })
++    }
++    /// Verify an admitted reader on a control or decoding worker. No path is
++    /// selected here. Returns a bounded feeder and its matching prepared voice.
++    pub fn prepare_stream_reader<R: std::io::Read + std::io::Seek>(
++        &self,
++        id: &str,
++        mut reader: R,
++        start: u64,
++        capacity: usize,
++    ) -> Result<(Prepared, crate::audio_stream::Reader<R>), String> {
++        let cue = self.cue(id).ok_or("Unknown audio cue")?;
++        let (rate, frames, expected) = self
++            .streams
++            .get(&cue.source)
++            .ok_or("Cue is not a streamed source")?;
++        if start >= *frames {
++            return Err("Stream restore position is past the source".into());
++        }
++        reader
++            .seek(std::io::SeekFrom::Start(0))
++            .map_err(|e| e.to_string())?;
++        let mut hash = Sha256::new();
++        let mut remaining = *frames;
++        let mut bytes = [0u8; 8192];
++        while remaining > 0 {
++            let count = remaining.min(1024) as usize;
++            let batch = &mut bytes[..count * 8];
++            reader.read_exact(batch).map_err(|e| e.to_string())?;
++            for sample in batch.chunks_exact(4) {
++                let sample = f32::from_le_bytes(sample.try_into().unwrap());
++                if !sample.is_finite() || sample.abs() > 1. {
++                    return Err("Invalid streamed PCM sample".into());
++                }
++            }
++            hash.update(batch);
++            remaining -= count as u64;
++        }
++        if reader.read(&mut bytes[..1]).map_err(|e| e.to_string())? != 0
++            || format!("{:x}", hash.finalize()) != *expected
++        {
++            return Err("Streamed PCM disagrees with its pin or length".into());
++        }
++        reader
++            .seek(std::io::SeekFrom::Start(start * 8))
++            .map_err(|e| e.to_string())?;
++        let (feeder, stream) =
++            crate::audio_stream::channel(*rate, capacity).map_err(|_| "Invalid stream capacity")?;
++        let prepared = Prepared::stream(
++            stream,
++            Emitter {
++                life: None,
++                position: Vec3::ZERO,
++                range: cue.range,
++                gain: cue.gain,
++                pitch: cue.pitch,
++                looping: false,
++            },
++            cue.bus,
++            cue.priority,
++            start,
++        )?;
++        let reader = crate::audio_stream::Reader::new(reader, feeder, *frames - start)
++            .map_err(|_| "Invalid stream length")?;
++        Ok((prepared, reader))
++    }
++    pub fn original() -> Result<Self, String> {
++        Self::admit(
++            serde_json::from_str(include_str!("original_audio_bank.json"))
++                .map_err(|e| e.to_string())?,
++            BTreeMap::new(),
++        )
++    }
++    pub fn cue(&self, id: &str) -> Option<&CueSpec> {
++        self.spec.cues.iter().find(|c| c.id == id)
++    }
++    pub fn clip(&self, id: &str) -> Option<&Clip> {
++        self.clips.get(id)
++    }
++    pub fn prepare(
++        &self,
++        id: &str,
++        life: Option<LifeId>,
++        position: Vec3,
++        start: u64,
++    ) -> Result<Prepared, String> {
++        let cue = self.cue(id).ok_or("Unknown audio cue")?;
++        Prepared::clip(
++            self.clips[&cue.source].clone(),
++            Emitter {
++                life,
++                position,
++                range: cue.range,
++                gain: cue.gain,
++                pitch: cue.pitch,
++                looping: cue.looping,
++            },
++            cue.bus,
++            cue.priority,
++            start,
++        )
++    }
++    pub fn caption<'a>(&'a self, id: &str, locale: &str) -> Option<&'a str> {
++        let cue = self.cue(id)?;
++        cue.captions
++            .get(locale)
++            .or_else(|| cue.captions.get(&self.spec.default_locale))
++            .map(String::as_str)
++    }
++}
++#[derive(Clone, Debug)]
++pub struct Caption {
++    pub cue: String,
++    pub life: Option<LifeId>,
++    pub text: String,
++    pub expires: f64,
++    pub priority: u8,
++}
++/// Captions and volume survive loss of audio output. This owns no device.
++pub struct Scene {
++    pub bank: Arc<Bank>,
++    locale: String,
++    captions: Vec<Caption>,
++    pub master: f32,
++    pub buses: [f32; 4],
++    pub output_available: bool,
++    pub suspended: bool,
++    pub caption_drops: u64,
++    zone: Option<String>,
++    music: Option<(String, crate::audio::Progress)>,
++}
++impl Scene {
++    pub fn new(bank: Arc<Bank>, locale: &str) -> Result<Self, String> {
++        if !identifier(locale) {
++            return Err("Invalid audio locale".into());
++        }
++        Ok(Self {
++            bank,
++            locale: locale.into(),
++            captions: Vec::with_capacity(32),
++            master: 1.0,
++            buses: [1.0; 4],
++            output_available: false,
++            suspended: false,
++            caption_drops: 0,
++            zone: None,
++            music: None,
++        })
++    }
++    pub fn volume(&mut self, master: f32) -> Result<(), String> {
++        if !master.is_finite() || !(0.0..=1.0).contains(&master) {
++            return Err("Invalid master volume".into());
++        }
++        self.master = master;
++        Ok(())
++    }
++    pub fn bus_volume(&mut self, bus: Bus, volume: f32) -> Result<(), String> {
++        if !volume.is_finite() || !(0.0..=1.0).contains(&volume) {
++            return Err("Invalid audio bus volume".into());
++        }
++        self.buses[bus as usize] = volume;
++        Ok(())
++    }
++    pub fn emit(
++        &mut self,
++        id: &str,
++        life: Option<LifeId>,
++        position: Vec3,
++        now: f64,
++    ) -> Result<Prepared, String> {
++        let prepared = self.bank.prepare(id, life, position, 0)?;
++        self.caption(id, life, now)?;
++        Ok(prepared)
++    }
++    /// Streaming providers can publish the same authored caption independently.
++    pub fn caption(&mut self, id: &str, life: Option<LifeId>, now: f64) -> Result<(), String> {
++        if !now.is_finite() || now < 0.0 {
++            return Err("Invalid audio presentation time".into());
++        }
++        self.bank.cue(id).ok_or("Unknown audio cue")?;
++        self.captions.retain(|c| c.expires > now);
++        if let Some(text) = self.bank.caption(id, &self.locale) {
++            let priority = self.bank.cue(id).unwrap().priority;
++            if let Some(c) = self
++                .captions
++                .iter_mut()
++                .find(|c| c.cue == id && c.life == life)
++            {
++                c.expires = now + 3.0;
++            } else {
++                if self.captions.len() == 32 {
++                    let victim = self
++                        .captions
++                        .iter()
++                        .enumerate()
++                        .filter(|(_, c)| c.priority < priority)
++                        .min_by_key(|(_, c)| c.priority)
++                        .map(|(i, _)| i);
++                    if let Some(i) = victim {
++                        self.captions.swap_remove(i);
++                    } else {
++                        self.caption_drops = self.caption_drops.saturating_add(1);
++                        return Ok(());
++                    }
++                }
++                self.captions.push(Caption {
++                    cue: id.into(),
++                    life,
++                    text: text.into(),
++                    expires: now + 3.0,
++                    priority,
++                });
++            }
++        }
++        Ok(())
++    }
++    pub fn clear_captions(&mut self) {
++        self.captions.clear();
++    }
++    pub fn captions(&self, now: f64) -> impl Iterator<Item = &Caption> {
++        self.captions.iter().filter(move |c| c.expires > now)
++    }
++    /// On a new zone, the adapter releases old music before submitting this cue.
++    /// A retry within the same zone restores the observed source-frame position.
++    pub fn enter_zone(
++        &mut self,
++        zone: &str,
++        music: Option<&str>,
++    ) -> Result<Option<Prepared>, String> {
++        if !identifier(zone) {
++            return Err("Invalid audio zone identity".into());
++        }
++        if let Some(id) = music {
++            let cue = self.bank.cue(id).ok_or("Unknown zone music cue")?;
++            if cue.bus != Bus::Music {
++                return Err("Zone music cue must use the music bus".into());
++            }
++            let start = self.zone_music_position(zone, id)?;
++            let prepared = self.bank.prepare(id, None, Vec3::ZERO, start)?;
++            self.bind_zone_music(zone, id, prepared.progress())?;
++            Ok(Some(prepared))
++        } else {
++            self.zone = Some(zone.into());
++            self.music = None;
++            Ok(None)
++        }
++    }
++    /// Prepare from this position, submit successfully, then bind the new clock.
++    pub fn zone_music_position(&self, zone: &str, id: &str) -> Result<u64, String> {
++        if !identifier(zone) || self.bank.cue(id).is_none_or(|c| c.bus != Bus::Music) {
++            return Err("Invalid zone music binding".into());
++        }
++        Ok(if self.zone.as_deref() == Some(zone) {
++            self.music
++                .as_ref()
++                .filter(|(old, _)| old == id)
++                .map_or(0, |(_, p)| p.frame())
++        } else {
++            0
++        })
++    }
++    pub fn bind_zone_music(
++        &mut self,
++        zone: &str,
++        id: &str,
++        progress: crate::audio::Progress,
++    ) -> Result<(), String> {
++        self.zone_music_position(zone, id)?;
++        if self.zone.as_deref() != Some(zone) {
++            self.clear_captions();
++        }
++        self.zone = Some(zone.into());
++        self.music = Some((id.into(), progress));
++        Ok(())
++    }
++    pub fn music_position(&self) -> Option<u64> {
++        self.music.as_ref().map(|(_, p)| p.frame())
++    }
++}
++#[cfg(test)]
++mod tests {
++    use super::*;
++    #[test]
++    fn authored_bank_is_pinned_and_invalid_edits_refuse() {
++        let bank = Bank::original().unwrap();
++        let mut spec = bank.spec.clone();
++        assert_eq!(Bank::original().unwrap().digest, bank.digest);
++        assert_eq!(bank.caption("impact", "unknown"), Some("Impact"));
++        spec.cues.push(spec.cues[0].clone());
++        assert!(Bank::admit(spec, BTreeMap::new()).is_err());
++        let mut spec = bank.spec.clone();
++        spec.cues[0].gain = f32::NAN;
++        assert!(Bank::admit(spec, BTreeMap::new()).is_err());
++        let mut spec = bank.spec.clone();
++        spec.cues[0].source = "missing".into();
++        assert!(Bank::admit(spec, BTreeMap::new()).is_err());
++    }
++    #[test]
++    fn pcm_pins_localization_and_bank_capacity_are_enforced() {
++        let original = Bank::original().unwrap();
++        let clip = Clip::new(vec![0.25; 8000], 8000).unwrap();
++        let mut spec = original.spec.clone();
++        spec.sources = vec![Source::Pcm {
++            id: "decoded".into(),
++            rate: 8000,
++            frames: 8000,
++            sha256: pcm_digest(&clip),
++        }];
++        spec.cues = vec![spec.cues[0].clone()];
++        spec.cues[0].source = "decoded".into();
++        let decoded = BTreeMap::from([("decoded".into(), clip.clone())]);
++        assert!(Bank::admit(spec.clone(), decoded.clone()).is_ok());
++        let wrong = BTreeMap::from([("decoded".into(), Clip::new(vec![0.5; 8000], 8000).unwrap())]);
++        assert!(Bank::admit(spec.clone(), wrong).is_err());
++        spec.cues[0].captions.remove("en");
++        spec.cues[0].captions.insert("fr".into(), "Pas".into());
++        assert!(Bank::admit(spec.clone(), decoded.clone()).is_err());
++        spec.cues[0]
++            .captions
++            .insert("en".into(), "Footsteps".into());
++        let bank = Bank::admit(spec.clone(), decoded.clone()).unwrap();
++        assert_eq!(bank.caption("footstep", "fr"), Some("Pas"));
++        spec.cues[0]
++            .captions
++            .insert("en".into(), "Bad\ncaption".into());
++        assert!(Bank::admit(spec, decoded).is_err());
++        let mut spec = original.spec.clone();
++        spec.sources = vec![spec.sources[0].clone(); 257];
++        assert!(Bank::admit(spec, BTreeMap::new()).is_err());
++    }
++    #[test]
++    fn authored_long_stream_is_verified_before_a_frame_can_play() {
++        let original = Bank::original().unwrap();
++        let mut spec = original.spec.clone();
++        let bytes = [0.25f32, -0.25]
++            .into_iter()
++            .flat_map(f32::to_le_bytes)
++            .cycle()
++            .take(8000)
++            .collect::<Vec<_>>();
++        let hash = format!("{:x}", Sha256::digest(&bytes));
++        spec.sources = vec![Source::Stream {
++            id: "track".into(),
++            rate: 48000,
++            frames: 1000,
++            sha256: hash,
++        }];
++        spec.cues = vec![spec.cues[4].clone()];
++        spec.cues[0].source = "track".into();
++        spec.cues[0].looping = false;
++        let bank = Bank::admit(spec, BTreeMap::new()).unwrap();
++        let mut changed = bytes.clone();
++        changed[0] = 1;
++        assert!(
++            bank.prepare_stream_reader("ritual_ambience", std::io::Cursor::new(changed), 0, 128)
++                .is_err()
++        );
++        let bank = Arc::new(bank);
++        let mut scene = Scene::new(bank.clone(), "en").unwrap();
++        scene.caption("ritual_ambience", None, 1.).unwrap();
++        assert_eq!(scene.captions(2.).count(), 1);
++        let (prepared, mut reader) = bank
++            .prepare_stream_reader("ritual_ambience", std::io::Cursor::new(bytes), 500, 128)
++            .unwrap();
++        assert_eq!(reader.remaining(), 500);
++        let progress = prepared.progress();
++        scene
++            .bind_zone_music("forest", "ritual_ambience", progress.clone())
++            .unwrap();
++        reader.pump().unwrap();
++        let mut mixer = crate::audio::Mixer::new(48000).unwrap();
++        assert!(mixer.play_rt(prepared).is_ok());
++        mixer.render_rt(&mut [0.; 128]).unwrap();
++        assert_eq!(progress.frame(), 564);
++        assert_eq!(
++            scene
++                .zone_music_position("forest", "ritual_ambience")
++                .unwrap(),
++            564
++        );
++        assert_eq!(
++            scene
++                .zone_music_position("chamber", "ritual_ambience")
++                .unwrap(),
++            0
++        );
++    }
++    #[test]
++    fn silent_output_keeps_captions_volumes_and_music_restore_position() {
++        let mut scene = Scene::new(Arc::new(Bank::original().unwrap()), "en").unwrap();
++        scene.volume(0.0).unwrap();
++        assert!(!scene.output_available);
++        let cue = scene.emit("impact", None, Vec3::ZERO, 1.0).unwrap();
++        drop(cue);
++        assert_eq!(scene.captions(2.0).next().unwrap().text, "Impact");
++        assert!(scene.captions(5.0).next().is_none());
++        let mut mixer = crate::audio::Mixer::new(48000).unwrap();
++        let music = scene
++            .enter_zone("chamber", Some("ritual_ambience"))
++            .unwrap()
++            .unwrap();
++        mixer.play_rt(music).ok().unwrap();
++        mixer.render_rt(&mut [0.0; 1024]).unwrap();
++        let position = scene.music_position().unwrap();
++        assert_eq!(position, 512);
++        mixer.suspend(true);
++        mixer.render_rt(&mut [1.0; 1024]).unwrap();
++        assert_eq!(scene.music_position(), Some(position));
++        let restored = scene
++            .enter_zone("chamber", Some("ritual_ambience"))
++            .unwrap()
++            .unwrap();
++        assert_eq!(restored.progress().frame(), position);
++        let fresh = scene
++            .enter_zone("forest", Some("ritual_ambience"))
++            .unwrap()
++            .unwrap();
++        assert_eq!(fresh.progress().frame(), 0);
++    }
++}
+diff --git a/crates/verse-engine/src/audio_cues.rs b/crates/verse-engine/src/audio_cues.rs
+index b1f3e1a0bf..bf4d1a907c 100644
+--- a/crates/verse-engine/src/audio_cues.rs
++++ b/crates/verse-engine/src/audio_cues.rs
+@@ -1,7 +1,8 @@
+ //! Original synthesized scene cues. No recordings or imported sound assets.
+ use crate::audio::Clip;
+ 
+-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
++#[derive(Clone, Copy, Debug, Eq, PartialEq, serde::Serialize, serde::Deserialize)]
++#[serde(rename_all = "snake_case")]
+ pub enum Cue {
+     Footstep,
+     FireLaunch,
+diff --git a/crates/verse-engine/src/audio_stream.rs b/crates/verse-engine/src/audio_stream.rs
+new file mode 100644
+index 0000000000..3cc0e8dcc8
+--- /dev/null
++++ b/crates/verse-engine/src/audio_stream.rs
+@@ -0,0 +1,223 @@
++//! Bounded decoded stereo streaming. Feed and decode outside the mixer callback.
++use rtrb::{Consumer, Producer, PushError, RingBuffer};
++use std::sync::{
++    Arc,
++    atomic::{AtomicBool, Ordering},
++};
++
++pub type Frame = [f32; 2];
++pub struct Feeder {
++    producer: Producer<Frame>,
++    finished: Arc<AtomicBool>,
++}
++pub struct Stream {
++    pub(crate) rate: u32,
++    consumer: Consumer<Frame>,
++    finished: Arc<AtomicBool>,
++    current: Option<Frame>,
++    next: Option<Frame>,
++    phase: f64,
++}
++#[derive(Clone, Copy, Debug, PartialEq, Eq)]
++pub enum FeedError {
++    Invalid,
++    Full,
++    Closed,
++}
++/// The queue holds decoded frames only; no file, decoder, or lock reaches render.
++pub fn channel(rate: u32, frames: usize) -> Result<(Feeder, Stream), FeedError> {
++    if !(8000..=192000).contains(&rate) || !(128..=65536).contains(&frames) {
++        return Err(FeedError::Invalid);
++    }
++    let (producer, consumer) = RingBuffer::new(frames);
++    let finished = Arc::new(AtomicBool::new(false));
++    Ok((
++        Feeder {
++            producer,
++            finished: finished.clone(),
++        },
++        Stream {
++            rate,
++            consumer,
++            finished,
++            current: None,
++            next: None,
++            phase: 0.0,
++        },
++    ))
++}
++impl Feeder {
++    pub fn slots(&self) -> usize {
++        self.producer.slots()
++    }
++    pub fn closed(&self) -> bool {
++        self.producer.is_abandoned()
++    }
++    pub fn push(&mut self, frame: Frame) -> Result<(), FeedError> {
++        if frame.iter().any(|s| !s.is_finite() || s.abs() > 1.0) {
++            return Err(FeedError::Invalid);
++        }
++        if self.closed() || self.finished.load(Ordering::Acquire) {
++            return Err(FeedError::Closed);
++        }
++        self.producer
++            .push(frame)
++            .map_err(|PushError::Full(_)| FeedError::Full)
++    }
++    pub fn finish(&mut self) {
++        self.finished.store(true, Ordering::Release);
++    }
++}
++impl Stream {
++    fn finished(&self) -> bool {
++        self.finished.load(Ordering::Acquire) || self.consumer.is_abandoned()
++    }
++    /// None is a temporary underrun; an empty finished source is End.
++    pub(crate) fn sample(&mut self, step: f64) -> Sample {
++        let available = self.consumer.slots()
++            + usize::from(self.current.is_some())
++            + usize::from(self.next.is_some());
++        if !self.finished() && available < step.ceil() as usize + 2 {
++            return Sample::Gap;
++        }
++        if self.current.is_none() {
++            self.current = self.consumer.pop().ok();
++        }
++        if self.next.is_none() {
++            self.next = self.consumer.pop().ok();
++        }
++        let Some(current) = self.current else {
++            return if self.finished() {
++                Sample::End
++            } else {
++                Sample::Gap
++            };
++        };
++        let next = self.next.unwrap_or([0.0; 2]);
++        let out = [0, 1].map(|i| current[i] + (next[i] - current[i]) * self.phase as f32);
++        self.phase += step;
++        while self.phase >= 1.0 {
++            self.phase -= 1.0;
++            self.current = self.next.take();
++            self.next = self.consumer.pop().ok();
++        }
++        Sample::Frame(out)
++    }
++}
++pub(crate) enum Sample {
++    Frame(Frame),
++    Gap,
++    End,
++}
++
++/// Reads canonical little-endian stereo float PCM in bounded batches. The caller
++/// supplies an admitted reader; this module chooses no path and opens no file.
++pub struct Reader<R> {
++    reader: R,
++    feeder: Feeder,
++    remaining: u64,
++}
++impl<R: std::io::Read> Reader<R> {
++    pub fn new(reader: R, feeder: Feeder, frames: u64) -> Result<Self, FeedError> {
++        if frames == 0 || frames > 192000 * 86400 {
++            return Err(FeedError::Invalid);
++        }
++        Ok(Self {
++            reader,
++            feeder,
++            remaining: frames,
++        })
++    }
++    /// At most 1024 frames per call, with validation before each publication.
++    /// A decode error terminates the source; already admitted frames may drain.
++    pub fn pump(&mut self) -> Result<usize, String> {
++        let count = self.remaining.min(self.feeder.slots() as u64).min(1024) as usize;
++        let mut bytes = [0u8; 8192];
++        if let Err(error) = self.reader.read_exact(&mut bytes[..count * 8]) {
++            self.feeder.finish();
++            return Err(error.to_string());
++        }
++        let mut frames = [[0.0; 2]; 1024];
++        for (frame, bytes) in frames[..count].iter_mut().zip(bytes.chunks_exact(8)) {
++            *frame = [
++                f32::from_le_bytes(bytes[..4].try_into().unwrap()),
++                f32::from_le_bytes(bytes[4..8].try_into().unwrap()),
++            ];
++            if frame.iter().any(|s| !s.is_finite() || s.abs() > 1.0) {
++                self.feeder.finish();
++                return Err("Invalid decoded audio frame".into());
++            }
++        }
++        for frame in frames[..count].iter().copied() {
++            self.feeder
++                .push(frame)
++                .map_err(|_| "Audio streaming consumer closed")?;
++        }
++        self.remaining -= count as u64;
++        if self.remaining == 0 {
++            self.feeder.finish();
++        }
++        Ok(count)
++    }
++    pub fn closed(&self) -> bool {
++        self.feeder.closed()
++    }
++    pub fn remaining(&self) -> u64 {
++        self.remaining
++    }
++}
++
++#[cfg(test)]
++mod tests {
++    use super::*;
++    #[test]
++    fn fragmented_pcm_backpressure_and_end_are_bounded() {
++        struct Fragment(std::io::Cursor<Vec<u8>>);
++        impl std::io::Read for Fragment {
++            fn read(&mut self, b: &mut [u8]) -> std::io::Result<usize> {
++                let len = b.len().min(3);
++                std::io::Read::read(&mut self.0, &mut b[..len])
++            }
++        }
++        let (feeder, mut stream) = channel(48000, 128).unwrap();
++        let bytes = (0..256)
++            .flat_map(|_| [0.25f32, -0.5].into_iter().flat_map(f32::to_le_bytes))
++            .collect();
++        let mut reader = Reader::new(Fragment(std::io::Cursor::new(bytes)), feeder, 256).unwrap();
++        assert_eq!(reader.pump().unwrap(), 128);
++        assert_eq!(reader.pump().unwrap(), 0);
++        for _ in 0..126 {
++            assert!(matches!(stream.sample(1.), Sample::Frame([0.25, -0.5])));
++        }
++        assert!(matches!(stream.sample(1.), Sample::Gap));
++        assert!(reader.pump().unwrap() > 0);
++        while reader.remaining() > 0 {
++            for _ in 0..64 {
++                let _ = stream.sample(1.);
++            }
++            reader.pump().unwrap();
++        }
++        let mut ended = false;
++        for _ in 0..256 {
++            if matches!(stream.sample(1.), Sample::End) {
++                ended = true;
++                break;
++            }
++        }
++        assert!(ended);
++    }
++    #[test]
++    fn invalid_batch_publishes_no_frames_and_abandonment_ends_source() {
++        let (feeder, mut stream) = channel(48000, 128).unwrap();
++        let bytes = [0.2f32, 0.2, f32::NAN, 0.]
++            .into_iter()
++            .flat_map(f32::to_le_bytes)
++            .collect::<Vec<_>>();
++        let mut reader = Reader::new(std::io::Cursor::new(bytes), feeder, 2).unwrap();
++        assert!(reader.pump().is_err());
++        assert!(matches!(stream.sample(1.), Sample::End));
++        let (feeder, mut stream) = channel(48000, 128).unwrap();
++        drop(feeder);
++        assert!(matches!(stream.sample(1.), Sample::End));
++    }
++}
+diff --git a/crates/verse-engine/src/lib.rs b/crates/verse-engine/src/lib.rs
+index 0f8069935a..8fea482eab 100644
+--- a/crates/verse-engine/src/lib.rs
++++ b/crates/verse-engine/src/lib.rs
+@@ -5,7 +5,9 @@ pub mod animation;
+ pub mod animation_graph;
+ pub mod assets;
+ pub mod audio;
++pub mod audio_bank;
+ pub mod audio_cues;
++pub mod audio_stream;
+ pub mod core;
+ pub mod director;
+ pub mod environment;
+diff --git a/crates/verse-engine/src/original_audio_bank.json b/crates/verse-engine/src/original_audio_bank.json
+new file mode 100644
+index 0000000000..13347c6e76
+--- /dev/null
++++ b/crates/verse-engine/src/original_audio_bank.json
+@@ -0,0 +1,104 @@
++{
++  "version": 1,
++  "id": "verse-original-audio-v1",
++  "default_locale": "en",
++  "sources": [
++    {
++      "kind": "synth",
++      "id": "footstep",
++      "cue": "footstep",
++      "seed": 10491
++    },
++    {
++      "kind": "synth",
++      "id": "fire_launch",
++      "cue": "fire_launch",
++      "seed": 10492
++    },
++    {
++      "kind": "synth",
++      "id": "impact",
++      "cue": "impact",
++      "seed": 10493
++    },
++    {
++      "kind": "synth",
++      "id": "shield",
++      "cue": "shield",
++      "seed": 10494
++    },
++    {
++      "kind": "synth",
++      "id": "ritual_ambience",
++      "cue": "ritual_ambience",
++      "seed": 10495
++    }
++  ],
++  "cues": [
++    {
++      "id": "footstep",
++      "source": "footstep",
++      "bus": "effects",
++      "priority": 20,
++      "gain": 0.45,
++      "range": 35.0,
++      "pitch": 1.0,
++      "looping": false,
++      "captions": {
++        "en": "Footsteps"
++      }
++    },
++    {
++      "id": "fire_launch",
++      "source": "fire_launch",
++      "bus": "effects",
++      "priority": 150,
++      "gain": 0.6,
++      "range": 35.0,
++      "pitch": 1.0,
++      "looping": false,
++      "captions": {
++        "en": "Fire spell launched"
++      }
++    },
++    {
++      "id": "impact",
++      "source": "impact",
++      "bus": "effects",
++      "priority": 220,
++      "gain": 0.65,
++      "range": 35.0,
++      "pitch": 1.0,
++      "looping": false,
++      "captions": {
++        "en": "Impact"
++      }
++    },
++    {
++      "id": "shield",
++      "source": "shield",
++      "bus": "effects",
++      "priority": 220,
++      "gain": 0.55,
++      "range": 35.0,
++      "pitch": 1.0,
++      "looping": false,
++      "captions": {
++        "en": "Shield activated"
++      }
++    },
++    {
++      "id": "ritual_ambience",
++      "source": "ritual_ambience",
++      "bus": "music",
++      "priority": 80,
++      "gain": 0.2,
++      "range": 100.0,
++      "pitch": 1.0,
++      "looping": true,
++      "captions": {
++        "en": "Ritual ambience"
++      }
++    }
++  ]
++}
+diff --git a/crates/verse/Cargo.toml b/crates/verse/Cargo.toml
+index e173f6a769..0d1afd6570 100644
+--- a/crates/verse/Cargo.toml
++++ b/crates/verse/Cargo.toml
+@@ -31,7 +31,7 @@ imported-desktop = ["dep:winit", "capture", "native-audio", "imported-surface",
+ # The engine renderer presenting on a surface the host made (a phone's
+ # layer or window, a browser canvas); no window library.
+ imported-surface = ["verse-pbr/imported-surface"]
+-native-audio = ["dep:cpal"]
++native-audio = ["dep:cpal", "dep:rtrb"]
+ hosted-social = ["verse-world/service-auth"]
+ remote-chamber = ["hosted-social", "verse-world/service-reach", "tokio/signal", "verse-imported/remote-chamber"]
+ # An in-process chamber host over memory streams, for other crates' tests.
+@@ -42,6 +42,7 @@ chamber-loopback = ["remote-chamber", "tokio/io-util", "verse-imported/chamber-l
+ web = ["wgpu/webgl", "imported-surface"]
+ 
+ [dependencies]
++rtrb = { version = "=0.4.0", optional = true }
+ verse-content = { path = "../verse-content", features = ["compiler"] }
+ # The studio review's copy-path key, on the desktop.
+ arboard = { version = "3.6.1", optional = true }
+diff --git a/crates/verse/examples/chamber_app/audio.rs b/crates/verse/examples/chamber_app/audio.rs
+index 85675b0ad8..43040524aa 100644
+--- a/crates/verse/examples/chamber_app/audio.rs
++++ b/crates/verse/examples/chamber_app/audio.rs
+@@ -3,15 +3,17 @@ use glam::Vec3;
+ use std::collections::{BTreeMap, BTreeSet};
+ use verse::{audio_native::Output, imported::MarkerEvent, render::View};
+ use verse_engine::{
+-    audio::{Clip, Emitter},
+-    audio_cues::{Cue, synthesize},
++    audio::Bus,
++    audio_bank::{Bank, Scene},
+     core::LifeId,
+ };
+ use verse_world::{events::Kind, play::Game, rules::ProjectileKind};
+ 
+ pub struct Audio {
+-    output: Output,
+-    clips: [Clip; 5],
++    output: Option<Output>,
++    scene: Scene,
++    retry_at: std::time::Instant,
++    pub status: String,
+     serial: Option<(u64, u64)>,
+     flights: BTreeSet<u32>,
+     lives: BTreeMap<(u64, u64), LifeId>,
+@@ -21,23 +23,12 @@ pub struct Audio {
+ }
+ impl Audio {
+     pub fn open(game: &Game) -> Result<Self, String> {
+-        let output = Output::open()?;
+-        let rate = output.rate();
+-        let cues = [
+-            Cue::Footstep,
+-            Cue::FireLaunch,
+-            Cue::Impact,
+-            Cue::Shield,
+-            Cue::RitualAmbience,
+-        ];
+-        let clips: Vec<_> = cues
+-            .into_iter()
+-            .enumerate()
+-            .map(|(i, cue)| synthesize(cue, rate, i as u64 + 10491))
+-            .collect::<Result<_, _>>()?;
++        let scene = Scene::new(std::sync::Arc::new(Bank::original()?), "en")?;
+         let mut audio = Self {
+-            output,
+-            clips: clips.try_into().map_err(|_| "Invalid audio cue bank")?,
++            output: None,
++            scene,
++            retry_at: std::time::Instant::now(),
++            status: String::new(),
+             serial: game
+                 .events
+                 .last()
+@@ -56,7 +47,7 @@ impl Audio {
+             time: game.time,
+             queued: [0; 5],
+         };
+-        audio.play(4, None, Vec3::new(0., 1., -5.), 0.2, true)?;
++        audio.resume();
+         Ok(audio)
+     }
+     fn play(
+@@ -64,35 +55,144 @@ impl Audio {
+         cue: usize,
+         life: Option<LifeId>,
+         position: Vec3,
+-        gain: f32,
+-        looping: bool,
++        _gain: f32,
++        _looping: bool,
+     ) -> Result<(), String> {
+-        self.output.play(
+-            &self.clips[cue],
+-            Emitter {
+-                life,
+-                position,
+-                range: if looping { 100. } else { 35. },
+-                gain,
+-                pitch: 1.,
+-                looping,
+-            },
+-        )?;
+-        self.queued[cue] += 1;
++        let id = [
++            "footstep",
++            "fire_launch",
++            "impact",
++            "shield",
++            "ritual_ambience",
++        ][cue];
++        let prepared = self
++            .scene
++            .emit(id, life, position, f64::from(self.time.max(0.)))?;
++        if let Some(output) = &self.output {
++            if let Err(error) = output.play_prepared(prepared) {
++                self.status = error;
++            } else {
++                self.queued[cue] = self.queued[cue].saturating_add(1);
++            }
++        }
+         Ok(())
+     }
++    fn stop_life(&mut self, life: LifeId) {
++        if let Some(output) = &self.output {
++            if let Err(error) = output.stop_life(life) {
++                self.status = error;
++            }
++        }
++    }
++    pub fn focus(&mut self, focused: bool) {
++        self.scene.suspended = !focused;
++        if let Some(output) = &self.output {
++            output.suspend(!focused);
++        }
++    }
++    pub fn suspend(&mut self) {
++        self.focus(false);
++        self.output = None;
++        self.scene.output_available = false;
++    }
++    pub fn resume(&mut self) {
++        self.scene.suspended = false;
++        self.retry_at = std::time::Instant::now() + std::time::Duration::from_secs(3);
++        if let Some(output) = &self.output {
++            output.suspend(false);
++            return;
++        }
++        let result = (|| -> Result<Output, String> {
++            let output = Output::open()?;
++            output.volume(self.scene.master, self.scene.buses)?;
++            let start = self
++                .scene
++                .zone_music_position("chamber", "ritual_ambience")?;
++            let music = self
++                .scene
++                .bank
++                .prepare("ritual_ambience", None, Vec3::ZERO, start)?;
++            let progress = music.progress();
++            output.play_prepared(music)?;
++            self.scene
++                .bind_zone_music("chamber", "ritual_ambience", progress)?;
++            Ok(output)
++        })();
++        match result {
++            Ok(output) => {
++                self.output = Some(output);
++                self.scene.output_available = true;
++                self.status.clear();
++            }
++            Err(error) => {
++                self.scene.output_available = false;
++                self.status = error;
++            }
++        }
++    }
++    pub fn adjust_volume(&mut self, delta: f32) {
++        let _ = self.scene.volume((self.scene.master + delta).clamp(0., 1.));
++        if let Some(output) = &self.output {
++            let _ = output.volume(self.scene.master, self.scene.buses);
++        }
++    }
++    pub fn adjust_music(&mut self, delta: f32) {
++        let _ = self
++            .scene
++            .bus_volume(Bus::Music, (self.scene.buses[1] + delta).clamp(0., 1.));
++        if let Some(output) = &self.output {
++            let _ = output.volume(self.scene.master, self.scene.buses);
++        }
++    }
++    pub fn hud(&self) -> Vec<String> {
++        let mut lines = vec![format!(
++            "Volume {:.0}% [F9/F10]  Music {:.0}% [F11/F12]{}",
++            self.scene.master * 100.,
++            self.scene.buses[1] * 100.,
++            if self.scene.output_available {
++                ""
++            } else {
++                "  Audio unavailable; captions active"
++            }
++        )];
++        lines.extend(
++            self.scene
++                .captions(f64::from(self.time.max(0.)))
++                .take(4)
++                .map(|c| c.text.clone()),
++        );
++        lines
++    }
+     pub fn update(
+         &mut self,
+         game: &Game,
+         view: View,
+         markers: &[MarkerEvent],
+     ) -> Result<(), String> {
+-        self.output
+-            .listener(view.eye, view.view_proj.row(0).truncate())?;
++        if self
++            .output
++            .as_ref()
++            .is_some_and(|o| o.stats().device_errors > 0)
++        {
++            self.output = None;
++            self.scene.output_available = false;
++        }
++        if self.output.is_none()
++            && !self.scene.suspended
++            && std::time::Instant::now() >= self.retry_at
++        {
++            self.resume();
++        }
++        if let Some(output) = &self.output {
++            if let Err(error) = output.listener(view.eye, view.view_proj.row(0).truncate()) {
++                self.status = error;
++            }
++        }
+         if game.time < self.time {
+-            for life in self.lives.values() {
+-                self.output.stop_life(*life)?;
++            if let Some(output) = &self.output {
++                let _ = output.stop_bus(Bus::Effects);
+             }
++            self.scene.clear_captions();
+             self.serial = None;
+             self.flights.clear();
+             self.lives.clear();
+@@ -110,7 +210,7 @@ impl Audio {
+                 let key = (life.instance, life.actor);
+                 if let Some(old) = self.lives.insert(key, life) {
+                     if old != life {
+-                        self.output.stop_life(old)?;
++                        self.stop_life(old);
+                     }
+                 }
+                 let position = if life == game.player_life() {
+@@ -120,7 +220,7 @@ impl Audio {
+                 };
+                 match event.kind {
+                     Kind::Damage { .. } => self.play(2, Some(life), position, 0.65, false)?,
+-                    Kind::Death => self.output.stop_life(life)?,
++                    Kind::Death => self.stop_life(life),
+                     _ => {}
+                 }
+             }
+@@ -175,6 +275,6 @@ impl Audio {
+         Ok(())
+     }
+     pub fn stats(&self) -> serde_json::Value {
+-        serde_json::json!({"device":self.output.stats(),"queued_by_cue":self.queued,"sample_rate":self.output.rate()})
++        serde_json::json!({"device":self.output.as_ref().map(Output::stats),"queued_by_cue":self.queued,"sample_rate":self.output.as_ref().map(Output::rate),"bank":self.scene.bank.digest,"master":self.scene.master,"buses":self.scene.buses,"music_position":self.scene.music_position(),"caption_drops":self.scene.caption_drops,"status":self.status})
+     }
+ }
+diff --git a/crates/verse/examples/chamber_app/mod.rs b/crates/verse/examples/chamber_app/mod.rs
+index 2625343987..8905fd1970 100644
+--- a/crates/verse/examples/chamber_app/mod.rs
++++ b/crates/verse/examples/chamber_app/mod.rs
+@@ -383,6 +383,17 @@ impl App {
+                 [1., 0.8, 0.45, 1.],
+             );
+         }
++        if let Some(audio) = &self.audio {
++            for (index, line) in audio.hud().iter().enumerate() {
++                ui.text(
++                    &self.atlas,
++                    16.,
++                    150. + index as f32 * 22.,
++                    line,
++                    [1., 1., 1., 1.],
++                );
++            }
++        }
+         let mut actors = chamber::instances(&self.pack, &frame)?;
+         let combat_visuals = verse_world::visuals::Combat::extract(&self.game);
+         actors.extend(chamber::spell_instances_from_visuals(&combat_visuals));
+@@ -497,7 +508,9 @@ impl App {
+ }
+ impl ApplicationHandler for App {
+     fn suspended(&mut self, _event_loop: &ActiveEventLoop) {
+-        self.audio = None;
++        if let Some(audio) = &mut self.audio {
++            audio.suspend();
++        }
+     }
+     fn resumed(&mut self, event_loop: &ActiveEventLoop) {
+         if self.game.scene.collision_profile.is_some() && self.audio.is_none() {
+@@ -506,6 +519,9 @@ impl ApplicationHandler for App {
+                 Err(error) => self.audio_error = error,
+             }
+         }
++        if let Some(audio) = &mut self.audio {
++            audio.resume();
++        }
+         if self.window.is_some() {
+             return;
+         }
+@@ -575,7 +591,15 @@ impl ApplicationHandler for App {
+     fn window_event(&mut self, event_loop: &ActiveEventLoop, _id: WindowId, event: WindowEvent) {
+         match event {
+             WindowEvent::CloseRequested => event_loop.exit(),
++            WindowEvent::Focused(true) => {
++                if let Some(audio) = &mut self.audio {
++                    audio.focus(true);
++                }
++            }
+             WindowEvent::Focused(false) => {
++                if let Some(audio) = &mut self.audio {
++                    audio.focus(false);
++                }
+                 self.keys.clear();
+                 self.controls.clear();
+                 self.pending_select = false;
+@@ -650,6 +674,24 @@ impl ApplicationHandler for App {
+                                         self.game.message = error;
+                                     }
+                                 }
++                                KeyCode::F9 | KeyCode::F10 => {
++                                    if let Some(audio) = &mut self.audio {
++                                        audio.adjust_volume(if key == KeyCode::F9 {
++                                            -0.1
++                                        } else {
++                                            0.1
++                                        });
++                                    }
++                                }
++                                KeyCode::F11 | KeyCode::F12 => {
++                                    if let Some(audio) = &mut self.audio {
++                                        audio.adjust_music(if key == KeyCode::F11 {
++                                            -0.1
++                                        } else {
++                                            0.1
++                                        });
++                                    }
++                                }
+                                 KeyCode::F5 => {
+                                     if let Err(error) = self.start_reload() {
+                                         self.reload_status = error;
+diff --git a/crates/verse/src/audio_native.rs b/crates/verse/src/audio_native.rs
+index 0e53a7b484..63df305fc6 100644
+--- a/crates/verse/src/audio_native.rs
++++ b/crates/verse/src/audio_native.rs
+@@ -1,20 +1,21 @@
+-//! Native device adapter for the owned engine mixer.
++//! Native output with prepared commands and off-callback resource reclamation.
+ use cpal::traits::{DeviceTrait, HostTrait, StreamTrait};
+ use glam::Vec3;
++use rtrb::{Consumer, Producer, PushError, RingBuffer};
+ use std::sync::{
+-    Arc,
+-    atomic::{AtomicU64, Ordering},
+-    mpsc::{self, Receiver, SyncSender},
++    Arc, Mutex,
++    atomic::{AtomicBool, AtomicU64, Ordering},
+ };
+ use verse_engine::{
+-    audio::{Clip, Emitter, Mixer},
++    audio::{Bus, Clip, Emitter, Mixer, Prepared, Retired},
+     core::LifeId,
+ };
+ 
+ enum Command {
+     Listener(Vec3, Vec3),
+-    Play(Clip, Emitter),
++    Play(Prepared),
+     StopLife(LifeId),
++    StopBus(Bus),
+ }
+ #[derive(Default)]
+ struct Counters {
+@@ -24,13 +25,36 @@ struct Counters {
+     nonzero: AtomicU64,
+     peak: AtomicU64,
+     capture_dropped: AtomicU64,
++    capture_errors: AtomicU64,
++    stream_errors: AtomicU64,
++    callbacks: AtomicU64,
++    callback_max_ns: AtomicU64,
++    deadline_overruns: AtomicU64,
++    stream_gaps: AtomicU64,
++    virtual_voices: AtomicU64,
++    retirement_blocked: AtomicU64,
+ }
+-/// Owning this value retains the stream. Dropping it closes device output.
++struct Controls {
++    suspended: AtomicBool,
++    master: AtomicU64,
++    buses: [AtomicU64; 4],
++}
++impl Default for Controls {
++    fn default() -> Self {
++        Self {
++            suspended: AtomicBool::new(false),
++            master: AtomicU64::new(1f32.to_bits().into()),
++            buses: std::array::from_fn(|_| AtomicU64::new(1f32.to_bits().into())),
++        }
++    }
++}
++/// Control-side locks serialize producers. The callback owns only consumers.
+ pub struct Output {
+     stream: Option<cpal::Stream>,
+-    capture_worker: Option<std::thread::JoinHandle<()>>,
+-    sender: SyncSender<Command>,
++    senders: Mutex<Option<(Producer<Command>, Producer<Command>)>>,
++    workers: Mutex<Vec<std::thread::JoinHandle<()>>>,
+     counters: Arc<Counters>,
++    controls: Arc<Controls>,
+     rate: u32,
+ }
+ #[derive(Clone, Copy, Debug, serde::Serialize)]
+@@ -41,6 +65,14 @@ pub struct Stats {
+     pub nonzero_samples: u64,
+     pub peak: f32,
+     pub capture_dropped_blocks: u64,
++    pub capture_errors: u64,
++    pub stream_errors: u64,
++    pub callbacks: u64,
++    pub callback_max_ns: u64,
++    pub deadline_overruns: u64,
++    pub stream_gaps: u64,
++    pub virtual_voices: u64,
++    pub retirement_blocked: u64,
+ }
+ impl Output {
+     pub fn open() -> Result<Self, String> {
+@@ -54,28 +86,53 @@ impl Output {
+         if !(1..=8).contains(&config.channels) {
+             return Err("Unsupported audio output channel count".into());
+         }
+-        let mixer = Mixer::new(rate)?;
+-        let (sender, receiver) = mpsc::sync_channel(128);
++        let (ordinary, ordinary_rx) = RingBuffer::new(128);
++        let (critical, critical_rx) = RingBuffer::new(16);
++        let (gc, mut retired) = RingBuffer::<Retired>::new(256);
++        let reclaimer = std::thread::spawn(move || {
++            loop {
++                while let Ok(value) = retired.pop() {
++                    drop(value);
++                }
++                if retired.is_abandoned() {
++                    break;
++                }
++                std::thread::sleep(std::time::Duration::from_millis(1));
++            }
++            while let Ok(value) = retired.pop() {
++                drop(value);
++            }
++        });
+         let counters = Arc::new(Counters::default());
++        let controls = Arc::new(Controls::default());
+         let (capture, capture_worker) = capture(rate, counters.clone())?;
++        let callback = Callback {
++            mixer: Mixer::new(rate)?,
++            ordinary: ordinary_rx,
++            critical: critical_rx,
++            gc,
++            counters: counters.clone(),
++            controls: controls.clone(),
++            capture,
++            rate,
++        };
+         let stream = match format {
+-            cpal::SampleFormat::F32 => {
+-                build::<f32>(&device, &config, mixer, receiver, counters.clone(), capture)
+-            }
+-            cpal::SampleFormat::I16 => {
+-                build::<i16>(&device, &config, mixer, receiver, counters.clone(), capture)
+-            }
+-            cpal::SampleFormat::U16 => {
+-                build::<u16>(&device, &config, mixer, receiver, counters.clone(), capture)
+-            }
++            cpal::SampleFormat::F32 => build::<f32>(&device, &config, callback),
++            cpal::SampleFormat::I16 => build::<i16>(&device, &config, callback),
++            cpal::SampleFormat::U16 => build::<u16>(&device, &config, callback),
+             _ => return Err("Unsupported audio output sample format".into()),
+         }?;
+         stream.play().map_err(|e| e.to_string())?;
++        let mut workers = vec![reclaimer];
++        if let Some(worker) = capture_worker {
++            workers.push(worker);
++        }
+         Ok(Self {
+             stream: Some(stream),
+-            capture_worker,
+-            sender,
++            senders: Mutex::new(Some((ordinary, critical))),
++            workers: Mutex::new(workers),
+             counters,
++            controls,
+             rate,
+         })
+     }
+@@ -83,106 +140,303 @@ impl Output {
+         self.rate
+     }
+     pub fn stats(&self) -> Stats {
++        let c = &self.counters;
++        let read = |a: &AtomicU64| a.load(Ordering::Relaxed);
+         Stats {
+-            rendered_frames: self.counters.frames.load(Ordering::Relaxed),
+-            device_errors: self.counters.errors.load(Ordering::Relaxed),
+-            refused_commands: self.counters.refused.load(Ordering::Relaxed),
+-            nonzero_samples: self.counters.nonzero.load(Ordering::Relaxed),
+-            peak: f32::from_bits(self.counters.peak.load(Ordering::Relaxed) as u32),
+-            capture_dropped_blocks: self.counters.capture_dropped.load(Ordering::Relaxed),
++            rendered_frames: read(&c.frames),
++            device_errors: read(&c.errors),
++            refused_commands: read(&c.refused),
++            nonzero_samples: read(&c.nonzero),
++            peak: f32::from_bits(read(&c.peak) as u32),
++            capture_dropped_blocks: read(&c.capture_dropped),
++            capture_errors: read(&c.capture_errors),
++            stream_errors: read(&c.stream_errors),
++            callbacks: read(&c.callbacks),
++            callback_max_ns: read(&c.callback_max_ns),
++            deadline_overruns: read(&c.deadline_overruns),
++            stream_gaps: read(&c.stream_gaps),
++            virtual_voices: read(&c.virtual_voices),
++            retirement_blocked: read(&c.retirement_blocked),
+         }
+     }
+-    fn send(&self, command: Command) -> Result<(), String> {
+-        self.sender.try_send(command).map_err(|_| {
++    fn send(&self, command: Command, protected: bool) -> Result<(), String> {
++        let mut senders = self
++            .senders
++            .lock()
++            .map_err(|_| "Audio control lock failed")?;
++        let (ordinary, critical) = senders.as_mut().ok_or("Audio output is closed")?;
++        let queue = if protected { critical } else { ordinary };
++        if queue.is_abandoned() || queue.push(command).is_err() {
+             self.counters.refused.fetch_add(1, Ordering::Relaxed);
+-            "Audio command queue is full or disconnected".into()
+-        })
++            return Err("Audio command queue is full or disconnected".into());
++        }
++        Ok(())
+     }
+     pub fn listener(&self, position: Vec3, right: Vec3) -> Result<(), String> {
+-        self.send(Command::Listener(position, right))
++        // Validation occurs before the callback receives the pose.
++        if !position.is_finite()
++            || position.abs().max_element() > 1_000_000.
++            || !right.is_finite()
++            || !right.length_squared().is_finite()
++            || right.length_squared() < 1e-8
++        {
++            return Err("Invalid audio listener pose".into());
++        }
++        self.send(Command::Listener(position, right), false)
+     }
+     pub fn play(&self, clip: &Clip, emitter: Emitter) -> Result<(), String> {
+-        self.send(Command::Play(clip.clone(), emitter))
++        self.play_prepared(Prepared::clip(clip.clone(), emitter, Bus::Effects, 0, 0)?)
++    }
++    pub fn play_prepared(&self, prepared: Prepared) -> Result<(), String> {
++        let protected = prepared.priority() >= 128 || prepared.bus() != Bus::Effects;
++        if prepared.bus() == Bus::Music && !prepared.is_streaming() {
++            let (prepared, mut feeder) = prepared.into_streaming(8192)?;
++            while feeder.pump() > 0 {}
++            let mut workers = self
++                .workers
++                .lock()
++                .map_err(|_| "Audio worker lock failed")?;
++            let mut i = 0;
++            while i < workers.len() {
++                if workers[i].is_finished() {
++                    let worker = workers.swap_remove(i);
++                    let _ = worker.join();
++                } else {
++                    i += 1;
++                }
++            }
++            if workers.len() >= 12 {
++                return Err("Audio streaming workers are full".into());
++            }
++            // Failed admission drops the stream on this control thread.
++            self.send(Command::Play(prepared), protected)?;
++            workers.push(std::thread::spawn(move || {
++                while !feeder.closed() {
++                    feeder.pump();
++                    std::thread::sleep(std::time::Duration::from_millis(1));
++                }
++            }));
++            Ok(())
++        } else {
++            self.send(Command::Play(prepared), protected)
++        }
++    }
++    /// Feed a matching admitted PCM reader on a worker; never decode on output.
++    pub fn play_reader<R: std::io::Read + Send + 'static>(
++        &self,
++        prepared: Prepared,
++        mut reader: verse_engine::audio_stream::Reader<R>,
++    ) -> Result<(), String> {
++        if !prepared.is_streaming() {
++            return Err("Reader needs a streaming voice".into());
++        }
++        let mut workers = self
++            .workers
++            .lock()
++            .map_err(|_| "Audio worker lock failed")?;
++        let mut i = 0;
++        while i < workers.len() {
++            if workers[i].is_finished() {
++                let worker = workers.swap_remove(i);
++                let _ = worker.join();
++            } else {
++                i += 1;
++            }
++        }
++        if workers.len() >= 12 {
++            return Err("Audio streaming workers are full".into());
++        }
++        reader.pump()?;
++        let protected = prepared.bus() != Bus::Effects || prepared.priority() >= 128;
++        self.send(Command::Play(prepared), protected)?;
++        let counters = self.counters.clone();
++        workers.push(std::thread::spawn(move || {
++            while !reader.closed() && reader.remaining() > 0 {
++                if reader.pump().is_err() {
++                    counters.stream_errors.fetch_add(1, Ordering::Relaxed);
++                    break;
++                }
++                std::thread::sleep(std::time::Duration::from_millis(1));
++            }
++        }));
++        Ok(())
+     }
+     pub fn stop_life(&self, life: LifeId) -> Result<(), String> {
+-        self.send(Command::StopLife(life))
++        self.send(Command::StopLife(life), true)
++    }
++    pub fn stop_bus(&self, bus: Bus) -> Result<(), String> {
++        self.send(Command::StopBus(bus), true)
++    }
++    pub fn suspend(&self, suspended: bool) {
++        self.controls.suspended.store(suspended, Ordering::Release);
++    }
++    pub fn volume(&self, master: f32, buses: [f32; 4]) -> Result<(), String> {
++        if std::iter::once(master)
++            .chain(buses)
++            .any(|v| !v.is_finite() || !(0.0..=1.0).contains(&v))
++        {
++            return Err("Invalid audio volume".into());
++        }
++        self.controls
++            .master
++            .store(master.to_bits().into(), Ordering::Release);
++        for (slot, value) in self.controls.buses.iter().zip(buses) {
++            slot.store(value.to_bits().into(), Ordering::Release);
++        }
++        Ok(())
++    }
++}
++struct Callback {
++    mixer: Mixer,
++    ordinary: Consumer<Command>,
++    critical: Consumer<Command>,
++    gc: Producer<Retired>,
++    counters: Arc<Counters>,
++    controls: Arc<Controls>,
++    capture: Option<Producer<AudioBlock>>,
++    rate: u32,
++}
++impl Callback {
++    fn reclaim(&mut self) {
++        for _ in 0..128 {
++            let Some(retired) = self.mixer.pop_retired() else {
++                break;
++            };
++            if let Err(PushError::Full(retired)) = self.gc.push(retired) {
++                self.mixer.return_retired(retired);
++                break;
++            }
++        }
++    }
++    fn commands(&mut self) {
++        self.reclaim();
++        self.mixer
++            .suspend(self.controls.suspended.load(Ordering::Acquire));
++        let _ = self.mixer.master(f32::from_bits(
++            self.controls.master.load(Ordering::Acquire) as u32
++        ));
++        for (bus, value) in [Bus::Effects, Bus::Music, Bus::Dialogue, Bus::Interface]
++            .into_iter()
++            .zip(&self.controls.buses)
++        {
++            let _ = self
++                .mixer
++                .volume(bus, f32::from_bits(value.load(Ordering::Acquire) as u32));
++        }
++        for _ in 0..64 {
++            // Reserve room for both a displaced source and a refused command.
++            if self.mixer.retirement_slots() < 2 {
++                break;
++            }
++            let command = self.critical.pop().or_else(|_| self.ordinary.pop());
++            let Ok(command) = command else {
++                break;
++            };
++            match command {
++                Command::Listener(position, right) => {
++                    let _ = self.mixer.set_listener(position, right);
++                }
++                Command::Play(prepared) => {
++                    if let Err((_, prepared)) = self.mixer.play_rt(prepared) {
++                        self.counters.refused.fetch_add(1, Ordering::Relaxed);
++                        if self.mixer.retire_prepared(prepared).is_err() {
++                            unreachable!("Reserved retirement capacity");
++                        }
++                    }
++                }
++                Command::StopLife(life) => self.mixer.stop_life(life),
++                Command::StopBus(bus) => self.mixer.stop_bus(bus),
++            }
++        }
++    }
++    fn render<T: cpal::SizedSample + cpal::FromSample<f32>>(
++        &mut self,
++        data: &mut [T],
++        channels: usize,
++    ) {
++        let started = std::time::Instant::now();
++        self.commands();
++        let mut scratch = [0.; 2048];
++        for block in data.chunks_mut(channels * 1024) {
++            let frames = block.len() / channels;
++            let pcm = &mut scratch[..frames * 2];
++            if self.mixer.render_rt(pcm).is_err() {
++                pcm.fill(0.);
++                self.counters.errors.fetch_add(1, Ordering::Relaxed);
++            }
++            let nonzero = pcm.iter().filter(|s| s.abs() > 0.00001).count();
++            let peak = pcm.iter().fold(0f32, |p, s| p.max(s.abs()));
++            self.counters
++                .nonzero
++                .fetch_add(nonzero as u64, Ordering::Relaxed);
++            self.counters
++                .peak
++                .fetch_max(peak.to_bits().into(), Ordering::Relaxed);
++            if let Some(sender) = &mut self.capture {
++                let mut captured = AudioBlock {
++                    samples: [0.; 2048],
++                    len: pcm.len(),
++                };
++                captured.samples[..pcm.len()].copy_from_slice(pcm);
++                if sender.push(captured).is_err() {
++                    self.counters
++                        .capture_dropped
++                        .fetch_add(1, Ordering::Relaxed);
++                }
++            }
++            for (frame, source) in block.chunks_exact_mut(channels).zip(pcm.chunks_exact(2)) {
++                for (channel, sample) in frame.iter_mut().enumerate() {
++                    *sample = T::from_sample(if channels == 1 {
++                        (source[0] + source[1]) * 0.5
++                    } else if channel < 2 {
++                        source[channel]
++                    } else {
++                        0.
++                    });
++                }
++            }
++            // A malformed trailing partial frame must not expose old device data.
++            for sample in &mut block[frames * channels..] {
++                *sample = T::from_sample(0.);
++            }
++            self.counters
++                .frames
++                .fetch_add(frames as u64, Ordering::Relaxed);
++            self.reclaim();
++        }
++        let ns = started.elapsed().as_nanos().min(u128::from(u64::MAX)) as u64;
++        self.counters.callbacks.fetch_add(1, Ordering::Relaxed);
++        self.counters
++            .callback_max_ns
++            .fetch_max(ns, Ordering::Relaxed);
++        let budget = (data.len() / channels) as u64 * 1_000_000_000 / u64::from(self.rate);
++        if ns > budget {
++            self.counters
++                .deadline_overruns
++                .fetch_add(1, Ordering::Relaxed);
++        }
++        self.counters
++            .stream_gaps
++            .store(self.mixer.stats.stream_gaps, Ordering::Relaxed);
++        self.counters
++            .virtual_voices
++            .store(self.mixer.stats.virtual_voices as u64, Ordering::Relaxed);
++        self.counters
++            .retirement_blocked
++            .store(self.mixer.stats.retirement_blocked, Ordering::Relaxed);
+     }
+ }
+ fn build<T: cpal::SizedSample + cpal::FromSample<f32>>(
+     device: &cpal::Device,
+     config: &cpal::StreamConfig,
+-    mut mixer: Mixer,
+-    receiver: Receiver<Command>,
+-    counters: Arc<Counters>,
+-    capture: Option<SyncSender<AudioBlock>>,
++    mut callback: Callback,
+ ) -> Result<cpal::Stream, String> {
+     let channels = usize::from(config.channels);
+-    let errors = counters.clone();
+-    let mut scratch = [0.; 2048];
++    let errors = callback.counters.clone();
+     device
+         .build_output_stream(
+             *config,
+-            move |data: &mut [T], _| {
+-                // Limit command work per callback. Queue storage and PCM are prepared elsewhere.
+-                for _ in 0..64 {
+-                    let Ok(command) = receiver.try_recv() else {
+-                        break;
+-                    };
+-                    let result = match command {
+-                        Command::Listener(position, right) => mixer.set_listener(position, right),
+-                        Command::Play(clip, emitter) => mixer.play(&clip, emitter).map(|_| ()),
+-                        Command::StopLife(life) => {
+-                            mixer.stop_life(life);
+-                            Ok(())
+-                        }
+-                    };
+-                    if result.is_err() {
+-                        counters.refused.fetch_add(1, Ordering::Relaxed);
+-                    }
+-                }
+-                for block in data.chunks_mut(channels * 1024) {
+-                    let frames = block.len() / channels;
+-                    let pcm = &mut scratch[..frames * 2];
+-                    if mixer.render(pcm).is_err() {
+-                        pcm.fill(0.);
+-                        counters.errors.fetch_add(1, Ordering::Relaxed);
+-                    }
+-                    let nonzero = pcm.iter().filter(|sample| sample.abs() > 0.00001).count();
+-                    let peak = pcm
+-                        .iter()
+-                        .fold(0.0f32, |peak, sample| peak.max(sample.abs()));
+-                    counters
+-                        .nonzero
+-                        .fetch_add(nonzero as u64, Ordering::Relaxed);
+-                    counters
+-                        .peak
+-                        .fetch_max(u64::from(peak.to_bits()), Ordering::Relaxed);
+-                    if let Some(sender) = &capture {
+-                        let mut block = AudioBlock {
+-                            samples: [0.; 2048],
+-                            len: pcm.len(),
+-                        };
+-                        block.samples[..pcm.len()].copy_from_slice(pcm);
+-                        if sender.try_send(block).is_err() {
+-                            counters.capture_dropped.fetch_add(1, Ordering::Relaxed);
+-                        }
+-                    }
+-                    for (frame, source) in block.chunks_exact_mut(channels).zip(pcm.chunks_exact(2))
+-                    {
+-                        for (channel, sample) in frame.iter_mut().enumerate() {
+-                            let value = if channels == 1 {
+-                                (source[0] + source[1]) * 0.5
+-                            } else if channel < 2 {
+-                                source[channel]
+-                            } else {
+-                                0.
+-                            };
+-                            *sample = T::from_sample(value);
+-                        }
+-                    }
+-                    counters.frames.fetch_add(frames as u64, Ordering::Relaxed);
+-                }
+-            },
++            move |data: &mut [T], _| callback.render(data, channels),
+             move |_| {
+                 errors.errors.fetch_add(1, Ordering::Relaxed);
+             },
+@@ -190,11 +444,19 @@ fn build<T: cpal::SizedSample + cpal::FromSample<f32>>(
+         )
+         .map_err(|e| e.to_string())
+ }
+-
+ impl Drop for Output {
+     fn drop(&mut self) {
+         self.stream.take();
+-        if let Some(worker) = self.capture_worker.take() {
++        self.senders
++            .get_mut()
++            .unwrap_or_else(|p| p.into_inner())
++            .take();
++        for worker in self
++            .workers
++            .get_mut()
++            .unwrap_or_else(|p| p.into_inner())
++            .drain(..)
++        {
+             let _ = worker.join();
+         }
+     }
+@@ -204,7 +466,7 @@ struct AudioBlock {
+     len: usize,
+ }
+ type Capture = (
+-    Option<SyncSender<AudioBlock>>,
++    Option<Producer<AudioBlock>>,
+     Option<std::thread::JoinHandle<()>>,
+ );
+ fn capture(rate: u32, counters: Arc<Counters>) -> Result<Capture, String> {
+@@ -230,21 +492,29 @@ fn capture(rate: u32, counters: Arc<Counters>) -> Result<Capture, String> {
+         data
+     };
+     file.write_all(&header(0)).map_err(|e| e.to_string())?;
+-    let (sender, receiver) = mpsc::sync_channel::<AudioBlock>(64);
++    let (sender, mut receiver) = RingBuffer::<AudioBlock>::new(64);
+     let worker = std::thread::spawn(move || {
+         let result = (|| -> std::io::Result<()> {
+             let mut bytes = 0u32;
+             let limit = rate * 8 * 300;
+             let mut encoded = [0u8; 8192];
+-            while let Ok(block) = receiver.recv() {
++            loop {
++                let block = match receiver.pop() {
++                    Ok(block) => block,
++                    Err(_) if receiver.is_abandoned() => break,
++                    Err(_) => {
++                        std::thread::sleep(std::time::Duration::from_millis(1));
++                        continue;
++                    }
++                };
+                 if bytes + block.len as u32 * 4 > limit {
+                     continue;
+                 }
+-                for (sample, output) in block.samples[..block.len]
++                for (sample, out) in block.samples[..block.len]
+                     .iter()
+                     .zip(encoded.chunks_exact_mut(4))
+                 {
+-                    output.copy_from_slice(&sample.to_le_bytes());
++                    out.copy_from_slice(&sample.to_le_bytes());
+                 }
+                 file.write_all(&encoded[..block.len * 4])?;
+                 bytes += block.len as u32 * 4;
+@@ -254,8 +524,260 @@ fn capture(rate: u32, counters: Arc<Counters>) -> Result<Capture, String> {
+             file.flush()
+         })();
+         if result.is_err() {
+-            counters.errors.fetch_add(1, Ordering::Relaxed);
++            counters.capture_errors.fetch_add(1, Ordering::Relaxed);
+         }
+     });
+     Ok((Some(sender), Some(worker)))
+ }
++
++#[cfg(test)]
++mod tests {
++    use super::*;
++    use std::alloc::{GlobalAlloc, Layout, System};
++    use std::cell::Cell;
++    std::thread_local! {static TRACK:Cell<bool>=const {Cell::new(false)}; static OPS:Cell<(u64,u64)>=const {Cell::new((0,0))};}
++    struct Allocator;
++    #[global_allocator]
++    static ALLOC: Allocator = Allocator;
++    unsafe impl GlobalAlloc for Allocator {
++        unsafe fn alloc(&self, l: Layout) -> *mut u8 {
++            TRACK.with(|t| {
++                if t.get() {
++                    OPS.with(|o| {
++                        let (a, d) = o.get();
++                        o.set((a + 1, d));
++                    })
++                }
++            });
++            unsafe { System.alloc(l) }
++        }
++        unsafe fn dealloc(&self, p: *mut u8, l: Layout) {
++            TRACK.with(|t| {
++                if t.get() {
++                    OPS.with(|o| {
++                        let (a, d) = o.get();
++                        o.set((a, d + 1));
++                    })
++                }
++            });
++            unsafe { System.dealloc(p, l) }
++        }
++        unsafe fn realloc(&self, p: *mut u8, l: Layout, n: usize) -> *mut u8 {
++            TRACK.with(|t| {
++                if t.get() {
++                    OPS.with(|o| {
++                        let (a, d) = o.get();
++                        o.set((a + 1, d + 1));
++                    })
++                }
++            });
++            unsafe { System.realloc(p, l, n) }
++        }
++    }
++    fn fixture(
++        gc_capacity: usize,
++    ) -> (
++        Callback,
++        Producer<Command>,
++        Producer<Command>,
++        Consumer<Retired>,
++    ) {
++        let (ordinary, ordinary_rx) = RingBuffer::new(128);
++        let (critical, critical_rx) = RingBuffer::new(16);
++        let (gc, retired) = RingBuffer::new(gc_capacity);
++        (
++            Callback {
++                mixer: Mixer::new(48000).unwrap(),
++                ordinary: ordinary_rx,
++                critical: critical_rx,
++                gc,
++                counters: Arc::new(Counters::default()),
++                controls: Arc::new(Controls::default()),
++                capture: None,
++                rate: 48000,
++            },
++            ordinary,
++            critical,
++            retired,
++        )
++    }
++    fn cue(bus: Bus, priority: u8, looping: bool) -> Prepared {
++        Prepared::clip(
++            Clip::new(vec![0.25; 48000], 48000).unwrap(),
++            Emitter {
++                life: None,
++                position: Vec3::ZERO,
++                range: 35.,
++                gain: 0.01,
++                pitch: 1.,
++                looping,
++            },
++            bus,
++            priority,
++            0,
++        )
++        .unwrap()
++    }
++    #[test]
++    fn actual_callback_does_no_allocation_or_resource_destruction() {
++        let (mut callback, mut ordinary, mut critical, mut retired) = fixture(1);
++        for _ in 0..128 {
++            assert!(
++                ordinary
++                    .push(Command::Play(cue(Bus::Effects, 20, false)))
++                    .is_ok()
++            );
++        }
++        assert!(
++            critical
++                .push(Command::Play(cue(Bus::Effects, 220, false)))
++                .is_ok()
++        );
++        let mut data = [0f32; 1024];
++        OPS.with(|o| o.set((0, 0)));
++        TRACK.with(|t| t.set(true));
++        for _ in 0..120 {
++            callback.render(&mut data, 2);
++        }
++        TRACK.with(|t| t.set(false));
++        assert_eq!(OPS.with(Cell::get), (0, 0));
++        assert!(callback.counters.nonzero.load(Ordering::Relaxed) > 0);
++        while let Ok(value) = retired.pop() {
++            drop(value);
++        }
++        callback.reclaim();
++    }
++    #[test]
++    fn critical_queue_survives_ordinary_saturation_and_controls_work_without_commands() {
++        let (mut callback, mut ordinary, mut critical, _retired) = fixture(256);
++        for _ in 0..128 {
++            assert!(
++                ordinary
++                    .push(Command::Play(cue(Bus::Effects, 20, true)))
++                    .is_ok()
++            );
++        }
++        assert!(
++            ordinary
++                .push(Command::Listener(Vec3::ZERO, Vec3::X))
++                .is_err()
++        );
++        let prepared = cue(Bus::Effects, 220, true);
++        let progress = prepared.progress();
++        assert!(critical.push(Command::Play(prepared)).is_ok());
++        let mut data = [0f32; 1024];
++        callback.render(&mut data, 2);
++        assert_eq!(progress.frame(), 512);
++        callback.controls.suspended.store(true, Ordering::Release);
++        callback.render(&mut data, 2);
++        assert_eq!(progress.frame(), 512);
++        assert!(data.iter().all(|v| *v == 0.));
++        callback.controls.suspended.store(false, Ordering::Release);
++        callback.controls.master.store(0, Ordering::Release);
++        callback.render(&mut data, 2);
++        assert_eq!(progress.frame(), 1024);
++        assert!(data.iter().all(|v| *v == 0.));
++    }
++    #[test]
++    fn output_channel_conversion_and_trailing_samples_are_defined() {
++        let (mut callback, _ordinary, _critical, _retired) = fixture(256);
++        let mut mono = [1f32; 17];
++        callback.render(&mut mono, 1);
++        assert!(mono.iter().all(|v| *v == 0.));
++        let mut surround = [1f32; 19];
++        callback.render(&mut surround, 8);
++        assert!(surround.iter().all(|v| *v == 0.));
++        let mut signed = [1i16; 1024];
++        callback.render(&mut signed, 2);
++        assert!(signed.iter().all(|v| *v == 0));
++        let mut unsigned = [0u16; 1024];
++        callback.render(&mut unsigned, 2);
++        assert!(unsigned.iter().all(|v| *v == 32768));
++    }
++    #[test]
++    #[ignore = "Explicit CPU audio deadline evidence; opens no device"]
++    fn crowded_callback_deadline_profile() {
++        let (mut callback, mut ordinary, mut critical, mut retired) = fixture(256);
++        let bank = verse_engine::audio_bank::Bank::original().unwrap();
++        let music = bank
++            .prepare("ritual_ambience", None, Vec3::ZERO, 0)
++            .unwrap();
++        let music_progress = music.progress();
++        let (music, mut feeder) = music.into_streaming(8192).unwrap();
++        while feeder.pump() > 0 {}
++        assert!(critical.push(Command::Play(music)).is_ok());
++        for _ in 0..127 {
++            assert!(
++                ordinary
++                    .push(Command::Play(cue(Bus::Effects, 20, true)))
++                    .is_ok()
++            );
++        }
++        let mut data = [0f32; 1024];
++        for _ in 0..10 {
++            while feeder.pump() > 0 {}
++            callback.render(&mut data, 2);
++            while let Ok(value) = retired.pop() {
++                drop(value);
++            }
++        }
++        let initial = music_progress.frame();
++        let mut times = Vec::with_capacity(1000);
++        let mut reclaim_times = Vec::with_capacity(1000);
++        let mut reclaimed = 0u64;
++        let mut peak_backlog = 0;
++        let mut operations = (0, 0);
++        let mut minimum_voices = 128;
++        for _ in 0..1000 {
++            while feeder.pump() > 0 {}
++            let needed = 128 - callback.mixer.voice_count();
++            assert!(needed < 63);
++            for _ in 0..needed {
++                assert!(
++                    ordinary
++                        .push(Command::Play(cue(Bus::Effects, 20, true)))
++                        .is_ok()
++                );
++            }
++            for _ in needed..63 {
++                assert!(
++                    ordinary
++                        .push(Command::Listener(Vec3::ZERO, Vec3::X))
++                        .is_ok()
++                );
++            }
++            let effect = bank.prepare("impact", None, Vec3::ZERO, 0).unwrap();
++            assert!(critical.push(Command::Play(effect)).is_ok());
++            OPS.with(|o| o.set((0, 0)));
++            TRACK.with(|t| t.set(true));
++            let start = std::time::Instant::now();
++            callback.render(&mut data, 2);
++            let ns = start.elapsed().as_nanos() as u64;
++            TRACK.with(|t| t.set(false));
++            let (a, d) = OPS.with(Cell::get);
++            operations.0 += a;
++            operations.1 += d;
++            minimum_voices = minimum_voices.min(callback.mixer.voice_count());
++            times.push(ns);
++            peak_backlog = peak_backlog.max(retired.slots());
++            let gc_start = std::time::Instant::now();
++            while let Ok(value) = retired.pop() {
++                drop(value);
++                reclaimed += 1;
++            }
++            reclaim_times.push(gc_start.elapsed().as_nanos() as u64);
++        }
++        times.sort_unstable();
++        reclaim_times.sort_unstable();
++        let stats = callback.mixer.stats;
++        println!(
++            "AUDIO_PROFILE {}",
++            serde_json::json!({"schema":"verse.audio.deadline.v1","bank":bank.digest,"profile":"headless-callback-debug-48k-stereo-512","samples":times.len(),"logical_voice_target":128,"minimum_voices_after_callback":minimum_voices,"audible_limit":32,"commands_per_callback":64,"music_streams":1,"producer":"bounded pump before callback; no device pacing","budget_ns":10666666,"p50_ns":times[499],"p95_ns":times[949],"p99_ns":times[989],"max_ns":times[999],"overruns":times.iter().filter(|&&n|n>10666666).count(),"allocations":operations.0,"deallocations":operations.1,"stream_gaps":stats.stream_gaps,"music_advanced_frames":music_progress.frame()-initial,"stolen":stats.stolen,"retirement_blocked":stats.retirement_blocked,"reclaimed_sources":reclaimed,"retirement_peak_backlog":peak_backlog,"reclamation":"control-side draining of the native retirement queue","reclaim_p95_ns":reclaim_times[949],"reclaim_p99_ns":reclaim_times[989],"reclaim_max_ns":reclaim_times[999]})
++        );
++        assert_eq!(operations, (0, 0));
++        assert_eq!(stats.stream_gaps, 0);
++        assert_eq!(music_progress.frame() - initial, 512000);
++        assert!(minimum_voices >= 126);
++        assert!(times[989] < 10666666);
++    }
++}
+diff --git a/docs/audits/2026-10-04-verse-engine-audit.md b/docs/audits/2026-10-04-verse-engine-audit.md
+index c41007e55f..c340e35384 100644
+--- a/docs/audits/2026-10-04-verse-engine-audit.md
++++ b/docs/audits/2026-10-04-verse-engine-audit.md
+@@ -169,7 +169,7 @@ Evidence labels:
+ | V20 | P2 | Content production still requires Rust implementation work. | Code, gap | Rust authoring tools | Complete ([#10736](https://github.com/OpenAgentsInc/openagents/issues/10736)) |
+ | V21 | P2 | Admitted characters share locomotion, terrain contacts, and author diagnostics. | Code, recorded | Animation and character content | Complete, named-rig profile ([#10737](https://github.com/OpenAgentsInc/openagents/issues/10737)) |
+ | V22 | P2 | Declared lighting profiles share shading semantics and tier references. | Code, recorded | Rendering and art direction | Complete, controlled profiles ([#10738](https://github.com/OpenAgentsInc/openagents/issues/10738)) |
+-| V23 | P2 | Audio is a bounded mixer, not a complete game audio system. | Code, gap | Audio and platform adapters | Open |
++| V23 | P2 | Audio is a bounded mixer, not a complete game audio system. | Code, gap | Audio and platform adapters | In progress ([#10739](https://github.com/OpenAgentsInc/openagents/issues/10739)) |
+ | V24 | P1 | Mobile/browser rendering does not establish authoritative game parity. | Code, gap | Platform world clients | Open |
+ | V25 | P2 | MMO social and progression systems need dedicated domains. | Code, gap | Verse game services | Open |
+ | V26 | P1 | Player-generated content needs publication and disclosure boundaries. | Code, gap | Content admission and product access | Open |

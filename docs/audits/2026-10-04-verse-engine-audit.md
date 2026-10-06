@@ -1762,6 +1762,12 @@ deallocations, zero stream gaps, and no blocked retirement. Control-side drainin
 reclaimed 1,968 sources; reclamation p99 was 211 ns and maximum was
 1,078 ns. Allocator guards also cover queue saturation and deferred PCM destruction.
 
+The [current-main integration receipt](../../bench/verse/2026-10-05/audio-contract/integration-current-main.json)
+retains the same callback checks and chamber compilation after upstream prediction,
+workbench, and zone changes. Its source patch reconstructs the earlier source phase.
+Storage-related refusals remain alongside the accepted checks; no owner cache was
+removed or owner device opened.
+
 **Remaining limits:** This is a controlled CPU callback profile with explicit
 PCM production and control-side queue draining. It proves no driver scheduling,
 physical output quality, worker scheduling latency, or general real-time deadline.
