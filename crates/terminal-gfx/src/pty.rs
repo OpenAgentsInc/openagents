@@ -96,11 +96,16 @@ pub fn candidates(name: &str) -> Vec<PathBuf> {
     if let Some(path) = std::env::var_os("PATH") {
         dirs.extend(std::env::split_paths(&path));
     }
-    if let Some(home) = std::env::var_os("HOME") {
+    if let Some(home) = std::env::var_os("HOME").or_else(|| std::env::var_os("USERPROFILE")) {
         dirs.push(PathBuf::from(home).join(".openagents/bin"));
     }
     let mut found: Vec<PathBuf> = Vec::new();
-    for path in dirs.into_iter().map(|dir| dir.join(name)) {
+    let executable = if cfg!(windows) {
+        format!("{name}.exe")
+    } else {
+        name.into()
+    };
+    for path in dirs.into_iter().map(|dir| dir.join(&executable)) {
         if path.is_absolute() && path.is_file() && !found.contains(&path) {
             found.push(path);
         }
@@ -171,9 +176,24 @@ impl Local {
             config
                 .base_env
                 .push(("HOME".into(), home.display().to_string()));
+            if cfg!(windows) {
+                for name in ["USERPROFILE", "APPDATA", "LOCALAPPDATA", "TEMP", "TMP"] {
+                    config.base_env.retain(|(key, _)| key != name);
+                    config
+                        .base_env
+                        .push((name.into(), home.display().to_string()));
+                }
+                config
+                    .base_env
+                    .retain(|(key, _)| !matches!(key.as_str(), "HOMEDRIVE" | "HOMEPATH"));
+            }
         }
         config.shell.clone_from(&shell);
-        config.shell_args = vec!["-l".into()];
+        config.shell_args = if cfg!(windows) {
+            Vec::new()
+        } else {
+            vec!["-l".into()]
+        };
         config
             .base_env
             .push(("COLORTERM".into(), "truecolor".into()));
@@ -237,14 +257,8 @@ impl Local {
     #[must_use]
     #[cfg(not(test))]
     pub fn for_user() -> Self {
-        let home = std::env::var_os("HOME")
-            .map(PathBuf::from)
-            .filter(|home| home.is_dir())
-            .unwrap_or_else(|| PathBuf::from("/"));
-        let shell = std::env::var_os("SHELL")
-            .map(PathBuf::from)
-            .filter(|shell| shell.is_absolute() && shell.is_file())
-            .unwrap_or_else(|| PathBuf::from("/bin/sh"));
+        let home = user_home();
+        let shell = user_shell();
         Local::new(&home, shell)
     }
 
@@ -392,11 +406,17 @@ impl Transport for Local {
         }
         #[cfg(not(test))]
         {
+            #[cfg(windows)]
+            {
+                return windows_open_link(target);
+            }
+            #[cfg(not(windows))]
             let opener = if cfg!(target_os = "macos") {
                 "open"
             } else {
                 "xdg-open"
             };
+            #[cfg(not(windows))]
             std::process::Command::new(opener)
                 .arg(target)
                 .stdin(std::process::Stdio::null())
@@ -659,4 +679,45 @@ fn raw_cwd(pid: i32) -> Option<String> {
 #[cfg(not(any(target_os = "macos", target_os = "linux")))]
 fn raw_cwd(_: i32) -> Option<String> {
     None
+}
+
+/// The native profile directory, or this process's current directory.
+pub fn user_home() -> PathBuf {
+    std::env::var_os("HOME")
+        .or_else(|| std::env::var_os("USERPROFILE"))
+        .map(PathBuf::from)
+        .filter(|path| path.is_dir())
+        .or_else(|| std::env::current_dir().ok())
+        .unwrap_or_default()
+}
+
+/// The configured shell, with the host's native default as a fallback.
+pub fn user_shell() -> PathBuf {
+    std::env::var_os("SHELL")
+        .map(PathBuf::from)
+        .filter(|path| path.is_absolute() && path.is_file())
+        .unwrap_or_else(|| Config::new().shell)
+}
+
+#[cfg(windows)]
+fn windows_open_link(target: &str) -> Result<(), String> {
+    use windows_sys::Win32::UI::Shell::ShellExecuteW;
+    let operation: Vec<u16> = "open".encode_utf16().chain(Some(0)).collect();
+    let target: Vec<u16> = target.encode_utf16().chain(Some(0)).collect();
+    // SAFETY: both strings are terminated and live throughout the OS call.
+    let result = unsafe {
+        ShellExecuteW(
+            std::ptr::null_mut(),
+            operation.as_ptr(),
+            target.as_ptr(),
+            std::ptr::null(),
+            std::ptr::null(),
+            1,
+        )
+    };
+    if result as isize > 32 {
+        Ok(())
+    } else {
+        Err("The link opener did not start.".into())
+    }
 }

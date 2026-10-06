@@ -115,10 +115,31 @@ impl Fallback {
             data: Some(Data::Static(verse_gfx::ui::MONO_FONT)),
             failed: false,
         }];
+        let mut paths: Vec<(PathBuf, u32)> = FONTS
+            .iter()
+            .map(|(path, index)| (PathBuf::from(path), *index))
+            .collect();
+        if cfg!(windows) {
+            let root = std::env::var_os("SystemRoot")
+                .map(PathBuf::from)
+                .unwrap_or_else(|| PathBuf::from(r"C:\Windows"));
+            paths.extend(
+                [
+                    "consola.ttf",
+                    "segoeui.ttf",
+                    "seguisym.ttf",
+                    "seguiemj.ttf",
+                    "msyh.ttc",
+                    "msgothic.ttc",
+                    "malgun.ttf",
+                ]
+                .into_iter()
+                .map(|name| (root.join("Fonts").join(name), 0)),
+            );
+        }
         fonts.extend(
-            FONTS
-                .iter()
-                .map(|(path, index)| (PathBuf::from(path), *index))
+            paths
+                .into_iter()
                 .filter(|(path, _)| path.is_file())
                 .map(|(path, index)| Font {
                     path: Some(path),

@@ -1050,11 +1050,15 @@ fn intensity(tone: terminal_core::paper::Tone) -> Intensity {
 
 /// The local time as `HH:MM:SS`.
 fn clock() -> String {
-    // SAFETY: `time` and `localtime_r` fill the plain values passed.
+    // SAFETY: the native time functions fill the initialized values passed.
     unsafe {
         let now = libc::time(std::ptr::null_mut());
         let mut tm: libc::tm = std::mem::zeroed();
-        if libc::localtime_r(&now, &mut tm).is_null() {
+        #[cfg(unix)]
+        let valid = !libc::localtime_r(&now, &mut tm).is_null();
+        #[cfg(windows)]
+        let valid = libc::localtime_s(&mut tm, &now) == 0;
+        if !valid {
             return "--:--:--".into();
         }
         format!("{:02}:{:02}:{:02}", tm.tm_hour, tm.tm_min, tm.tm_sec)
@@ -1062,6 +1066,12 @@ fn clock() -> String {
 }
 
 /// The one-minute load average.
+#[cfg(windows)]
+fn load() -> String {
+    "?".into()
+}
+
+#[cfg(unix)]
 fn load() -> String {
     let mut loads = [0f64; 3];
     // SAFETY: `getloadavg` writes at most the three values it is given.

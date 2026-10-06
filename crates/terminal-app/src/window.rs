@@ -453,7 +453,7 @@ impl ApplicationHandler for App {
             } else if let Some(driver) = &stress {
                 Overlay::with(
                     driver.root(),
-                    "/bin/sh".into(),
+                    terminal_gfx::pty::user_shell(),
                     terminal_gfx::pty::Program::Shell,
                 )
             } else if let Some(root) = &self.options.root {
@@ -461,13 +461,10 @@ impl ApplicationHandler for App {
                     .options
                     .shell
                     .clone()
-                    .or_else(|| std::env::var_os("SHELL").map(PathBuf::from))
-                    .unwrap_or_else(|| "/bin/sh".into());
+                    .unwrap_or_else(terminal_gfx::pty::user_shell);
                 Overlay::with(root, shell, terminal_gfx::pty::Program::Shell)
             } else if let Some(shell) = &self.options.shell {
-                let root = std::env::var_os("HOME")
-                    .map(PathBuf::from)
-                    .unwrap_or_else(|| "/".into());
+                let root = terminal_gfx::pty::user_home();
                 Overlay::with(&root, shell.clone(), terminal_gfx::pty::Program::Shell)
             } else {
                 Overlay::new()
@@ -685,8 +682,11 @@ impl ApplicationHandler for App {
                                 }
                             };
                             state.terminal.shutdown();
-                            state.terminal =
-                                Overlay::with(driver.root(), "/bin/sh".into(), programs[0].clone());
+                            state.terminal = Overlay::with(
+                                driver.root(),
+                                terminal_gfx::pty::user_shell(),
+                                programs[0].clone(),
+                            );
                             state.terminal.studio_transport = std::sync::Arc::new(
                                 terminal_studio::Native::new(Some(driver.root().to_path_buf())),
                             );

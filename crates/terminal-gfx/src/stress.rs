@@ -173,6 +173,48 @@ impl Driver {
     /// The scratch directory cannot be written.
     pub fn programs(&self) -> Result<Vec<Program>, String> {
         std::fs::create_dir_all(&self.root).map_err(|e| e.to_string())?;
+        if cfg!(windows) {
+            let system = std::env::var_os("SystemRoot")
+                .map(std::path::PathBuf::from)
+                .unwrap_or_else(|| std::path::PathBuf::from(r"C:\Windows"));
+            let shell = system.join(r"System32\WindowsPowerShell\v1.0\powershell.exe");
+            if !shell.is_file() {
+                return Err("The Windows workload requires Windows PowerShell.".into());
+            }
+            let scripts = [
+                (
+                    "while ($true) { [Console]::WriteLine('terminal stress: output') }",
+                    "output",
+                ),
+                (
+                    "$i = 0; while ($true) { [Console]::WriteLine($i); $i++ }",
+                    "sequence",
+                ),
+                (
+                    r#"$e = [char]27; while ($true) { [Console]::WriteLine("$e[32mtest$e[0m Unicode λ → ✓") }"#,
+                    "unicode log",
+                ),
+                (
+                    r#"$e = [char]27; [Console]::Write("$e[?1049h"); while ($true) { [Console]::Write("$e[H$e[2Jfull-screen fixture"); Start-Sleep -Milliseconds 100 }"#,
+                    "fullscreen",
+                ),
+            ];
+            let mut programs = vec![Program::Shell];
+            programs.extend((0..self.plan.busy).map(|index| {
+                let (script, label) = scripts[index % scripts.len()];
+                Program::Command {
+                    program: shell.clone(),
+                    args: vec![
+                        "-NoProfile".into(),
+                        "-NonInteractive".into(),
+                        "-Command".into(),
+                        script.into(),
+                    ],
+                    label: label.into(),
+                }
+            }));
+            return Ok(programs);
+        }
         let big = self.root.join("big.txt");
         let mut text = String::new();
         for i in 0..200_000 {

@@ -13635,9 +13635,12 @@ dependencies = [
 name = "terminal-control"
 version = "0.1.0"
 dependencies = [
+ "private-fs",
  "serde_json",
  "tempfile",
  "terminal-core",
+ "tokio",
+ "windows-sys 0.61.2",
 ]
 
 [[package]]
@@ -13675,6 +13678,7 @@ dependencies = [
  "terminal-remote",
  "unicode-width",
  "verse-gfx",
+ "windows-sys 0.61.2",
  "winit",
 ]
 
