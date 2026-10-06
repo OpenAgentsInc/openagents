@@ -1,0 +1,44 @@
+{
+  "schema": "verse.battle.review.v1",
+  "duration_seconds": 120,
+  "source_base": "43f12d6e0bb48e22f151476a14aaab66cca9bee8",
+  "executable_sha256": "0e251ed67f2216776528660ec91df4e029e9cb954db586f45ff2b61b391b39fa",
+  "acceptance": "failed",
+  "failures": [
+    "/server/movement_expiry/total: Some(1.0) exceeds 0, or is unavailable"
+  ],
+  "movement_expiry": 1,
+  "storage_paused_seconds": 0.10012068099999999,
+  "workload_ticks": 3597,
+  "native_segments": [
+    {
+      "status": "complete",
+      "error": null,
+      "prediction_failures": 0,
+      "prediction_horizon_pauses": 0
+    },
+    {
+      "status": "complete",
+      "error": null,
+      "prediction_failures": 0,
+      "prediction_horizon_pauses": 0
+    }
+  ],
+  "files": {
+    "report.json": "8926bb394143316362de2493e6083113b7b12fdf5caee0b1538e89ec702bb65a",
+    "source.patch": "afeefc07fff204954240427fc6ebbd3271c8f4b0ad1e3a55ed30dbe37698f5c2"
+  },
+  "findings": [
+    "All gates except aggregate expiry pass. Both native segments complete without prediction failures or horizon pauses.",
+    "The sole expiry is actor 234 epoch 4, applied sequence 2, soon after entering the frame profile. Its next intervals are locally enqueued but acknowledged after the epoch reset.",
+    "The client request window reaches eight pending requests during recovery. Periodic reads compete with subsequent frame bursts while the producer waits for verified credit."
+  ],
+  "limitations": [
+    "One 120-second run is not an isolated causal comparison or a soak.",
+    "No own compiler ran during measurement; the host is shared.",
+    "Only the headless producer changed; no native-client improvement is inferred.",
+    "Enqueue timestamps do not establish socket-write or authority-admission timing.",
+    "Offscreen rendering does not measure physical input-to-display latency.",
+    "Zero-expiry acceptance remains unmet."
+  ]
+}
