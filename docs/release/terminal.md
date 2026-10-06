@@ -7,6 +7,12 @@ complete release with `--version 1.0.0-rc.3 --publish --channel rc`, then
 publish its installers with `--publish-installers` from the same commit.
 The website serves those installers at `/cli/install.sh` and `/cli/install.ps1`.
 
+Published on 2026-10-06: `1.0.0-rc.3`, from commit `1701e1d3c1`.
+All 22 public executables passed checksum verification. The Mac executables
+for both architectures passed notarization and Gatekeeper. The hosted installer
+installed and verified all three commands on an Apple silicon Mac. A native
+Windows install remains untested.
+
 The shipped OpenAgents Terminal chat TUI is in the `openagents` program
 ([user guide](../terminal/README.md)). A release is seven platforms of two
 bare executables each, a checksum file, and a channel pointer, in the public

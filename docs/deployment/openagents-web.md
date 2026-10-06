@@ -403,3 +403,13 @@ Chrome cast Meteor Swarm 50 times in Everglade and alternated Meteor Swarm
 and Thunderbolt about 40 times in the Grove, each on WebGPU and WebGL2
 (`?gl`), and no page stopped, before traffic moved. Rollback:
 `--to-revisions coder-web-2c68a678f4=100`.
+
+## 2026-10-06: Coder RC3 installers
+
+Revision `coder-web-337c008eb0` serves 100% of traffic. `/download` offers
+Coder `1.0.0-rc.3`, and `/cli/install.sh` and `/cli/install.ps1` serve the
+committed installers as plain text. The image was built from GitHub commit
+`337c008eb0`; the production sidecar, runtime settings, and VPC configuration
+were preserved. The download page, both exact installer bodies, and the
+existing public pages passed checks on the `new` tag and production.
+Rollback: `--to-revisions coder-web-1726d56f8d=100`.
