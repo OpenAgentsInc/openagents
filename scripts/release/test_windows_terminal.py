@@ -28,7 +28,14 @@ class WindowsTests(unittest.TestCase):
         self.binaries.mkdir()
         for name in release.NAMES:
             path = self.binaries / name
-            path.write_bytes(b"MZ" + bytes(58) + (64).to_bytes(4, "little") + b"PE\x00\x00\x64\x86" + name.encode())
+            # Minimal x86-64 PE identity for package admission; no execution claim.
+            import struct
+            header = bytearray(70)
+            header[:2] = b"MZ"
+            struct.pack_into("<I", header, 60, 64)
+            header[64:68] = b"PE\0\0"
+            struct.pack_into("<H", header, 68, 0x8664)
+            path.write_bytes(header + name.encode())
             path.chmod(0o755)
         self.record = {"schema": "openagents.native-terminal.windows-qualification.v1",
                        "version": "1.0.0-rc.2", "commit": "a" * 40, "platform": "windows-x86_64", "distribution": "fixture",
@@ -73,11 +80,11 @@ class WindowsTests(unittest.TestCase):
             self.package()
 
     def test_other_pe_architecture_refuses_package(self):
-        binary = self.binaries / "microcoder.exe"
-        data = bytearray(binary.read_bytes())
-        data[68:70] = b"\x64\xaa"
-        binary.write_bytes(data)
-        self.record["executables"][binary.name] = release.digest(binary)
+        path = self.binaries / "microcoder.exe"
+        body = bytearray(path.read_bytes())
+        body[68:70] = b"\x64\xaa"
+        path.write_bytes(body)
+        self.record["executables"][path.name] = release.digest(path)
         self.write_record()
         with self.assertRaisesRegex(ValueError, "x86-64"):
             self.package()

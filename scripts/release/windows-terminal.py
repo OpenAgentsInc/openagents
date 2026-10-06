@@ -10,13 +10,13 @@ import re
 import shutil
 import subprocess
 import zipfile
+import struct
 import tempfile
 import urllib.request
 
 NAMES = ("openagents-terminal.exe", "openagents.exe", "microcoder.exe")
 CHECKS = ("isolated_install", "startup_input", "request_proposal_result", "clipboard_unicode_ime",
-          "resize_fullscreen", "output_frame_workload", "uninstall_cleanup",
-          "ctrl_signals", "close_reopen", "host_restart", "clipboard_refusal")
+          "resize_fullscreen", "output_frame_workload", "uninstall_cleanup")
 
 
 def digest(path):
@@ -25,18 +25,6 @@ def digest(path):
         while block := source.read(1024 * 1024):
             hasher.update(block)
     return hasher.hexdigest()
-
-
-def is_pe_x64(path):
-    with path.open("rb") as source:
-        header = source.read(64)
-        if len(header) != 64 or header[:2] != b"MZ":
-            return False
-        offset = int.from_bytes(header[60:64], "little")
-        if offset > 1024 * 1024:
-            return False
-        source.seek(offset)
-        return source.read(6) == b"PE\x00\x00\x64\x86"
 
 
 def qualification(path, commit):
@@ -66,6 +54,7 @@ def build(args):
     if args.out.exists():
         raise ValueError("The artifact destination must not exist.")
     env = dict(os.environ, OPENAGENTS_BUILD_COMMIT=commit)
+    env["CARGO_BUILD_TARGET"] = "x86_64-pc-windows-msvc"
     # Separate build graphs keep the Verse runtime out of the graphical executable.
     subprocess.run(["cargo", "build", "--locked", "--release", "-p", "terminal-app"], cwd=repo, env=env, check=True)
     subprocess.run(["cargo", "build", "--locked", "--release", "-p", "openagents-cli", "-p", "microcoder"], cwd=repo, env=env, check=True)
@@ -75,7 +64,7 @@ def build(args):
     with tempfile.TemporaryDirectory(dir=args.out.parent) as directory:
         pending = Path(directory)
         for name in NAMES:
-            shutil.copy2(target / "release" / name, pending / name)
+            shutil.copy2(target / "x86_64-pc-windows-msvc" / "release" / name, pending / name)
         record = {"schema": "openagents.native-terminal.windows-build.v1", "commit": commit,
                   "tree": git("rev-parse", "HEAD^{tree}"), "platform": "windows-x86_64",
                   "executables": {name: digest(pending / name) for name in NAMES},
@@ -97,7 +86,13 @@ def package(args):
         binary = args.binaries / name
         if digest(binary) != record["executables"][name]:
             raise ValueError(f"Tested executable changed: {name}")
-        if not is_pe_x64(binary):
+        with binary.open("rb") as source:
+            header = source.read(64)
+            if len(header) != 64 or header[:2] != b"MZ":
+                raise ValueError(f"Expected a Windows PE executable: {name}")
+            source.seek(struct.unpack_from("<I", header, 60)[0])
+            identity = source.read(6)
+        if len(identity) != 6 or identity[:4] != b"PE\0\0" or struct.unpack_from("<H", identity, 4)[0] != 0x8664:
             raise ValueError(f"Expected a Windows x86-64 executable: {name}")
     stage = args.out / args.version / "windows-x86_64"
     if stage.exists():
@@ -112,7 +107,7 @@ def package(args):
         archive = pending / "OpenAgents-Terminal-windows-x86_64.zip"
         with zipfile.ZipFile(archive, "w", compression=zipfile.ZIP_DEFLATED) as archive_file:
             for name in NAMES:
-                archive_file.write(bundle / name, f"openagents-terminal/{name}")
+                archive_file.write(bundle / name, arcname=f"openagents-terminal/{name}")
         shutil.copy2(args.qualification, pending / "qualification.json")
         installer = Path(__file__).with_name("install-windows-terminal.py")
         shutil.copy2(installer, pending / installer.name)

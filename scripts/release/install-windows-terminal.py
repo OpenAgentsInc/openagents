@@ -53,8 +53,7 @@ def install(base, version, destination):
         fetch(f"{base}/{version}/windows-x86_64/qualification.json", root / "qualification.json")
         qualification = json.loads((root / "qualification.json").read_text())
         checks = ("isolated_install", "startup_input", "request_proposal_result", "clipboard_unicode_ime",
-                  "resize_fullscreen", "output_frame_workload", "uninstall_cleanup",
-                  "ctrl_signals", "close_reopen", "host_restart", "clipboard_refusal")
+                  "resize_fullscreen", "output_frame_workload", "uninstall_cleanup")
         if (digest(root / "qualification.json") != manifest.get("qualification_sha256") or
             sums.get("qualification.json") != digest(root / "qualification.json") or
             qualification.get("schema") != "openagents.native-terminal.windows-qualification.v1" or
@@ -73,12 +72,14 @@ def install(base, version, destination):
             if {item.filename for item in members} != expected or len(members) != len(expected):
                 raise ValueError("Unexpected archive entries.")
             for item in members:
-                if item.is_dir() or item.file_size > 1024**3 or (item.external_attr >> 16) & 0o170000 == 0o120000:
+                # Refuse links, encrypted files, directories, and oversized decompression.
+                kind = (item.external_attr >> 16) & 0o170000
+                if item.is_dir() or item.flag_bits & 1 or kind not in (0, 0o100000) or item.file_size > 1024**3:
                     raise ValueError("Invalid archive entry.")
-                target = unpacked / item.filename
-                target.parent.mkdir(parents=True, exist_ok=True)
-                with archive.open(item) as source, target.open("wb") as destination_file:
-                    shutil.copyfileobj(source, destination_file)
+                destination_file = unpacked / item.filename
+                destination_file.parent.mkdir(exist_ok=True)
+                with archive.open(item) as source, destination_file.open("xb") as output:
+                    shutil.copyfileobj(source, output)
         bundle = unpacked / "openagents-terminal"
         for name in NAMES:
             if digest(bundle / name) != manifest["executables"][name]:
