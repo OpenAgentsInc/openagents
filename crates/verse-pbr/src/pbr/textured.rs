@@ -180,11 +180,12 @@ impl AlphaMode {
     /// its alpha.
     #[must_use]
     pub fn keeps(self, alpha: f32) -> bool {
-        match self {
-            Self::Opaque => true,
-            Self::Mask { cutoff } => alpha >= cutoff,
-            Self::Blend => alpha > 0.0,
-        }
+        let blend = match self {
+            Self::Opaque => 0,
+            Self::Mask { .. } => 1,
+            Self::Blend => 2,
+        };
+        verse_engine::material::coverage(alpha, blend, self.cutoff()).is_some()
     }
 
     /// The pass the material draws in.

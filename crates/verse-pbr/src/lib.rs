@@ -9,8 +9,12 @@ pub mod fog;
 pub mod fx;
 pub mod mesh;
 pub mod pbr;
+mod shading;
 #[cfg(not(target_arch = "wasm32"))]
 pub mod streaming;
 
 pub mod imported;
 pub use verse_gfx::{gles, gpu_lifecycle, ui};
+
+#[cfg(test)]
+mod visual_tests;

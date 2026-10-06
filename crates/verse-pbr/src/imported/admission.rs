@@ -203,8 +203,8 @@ mod tests {
 
     #[test]
     fn the_cut_scene_shader_declares_a_block_within_the_limit() {
-        let source = include_str!("scene.wgsl");
-        assert_eq!(scene_shader(source, 256), source);
+        let source = &crate::shading::source(include_str!("scene.wgsl"));
+        assert_eq!(scene_shader(source, 256), source.as_str());
         let text = scene_shader(source, 254);
         assert!(text.contains("bones:array<mat4x4<f32>,254>"));
         let module = naga::front::wgsl::parse_str(&text).unwrap();

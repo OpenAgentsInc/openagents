@@ -1,3 +1,4 @@
+// VERSE_SHARED_SHADING
 // Verse physical scene: lit surfaces, the sky at infinity, stars, glows, and
 // guide lines, all in pre-exposed luminance (cd/m² × exposure).
 //
@@ -915,15 +916,15 @@ fn shade(i: Shading) -> vec3<f32> {
         let d2 = max(dot(to, to), 1e-4);
         let l = to * inverseSqrt(d2);
         let nol = dot(n, l);
-        let window = clamp(1.0 - pow(d2 / (at.w * at.w), 2.0), 0.0, 1.0);
-        if nol <= 0.0 || window <= 0.0 {
+        let falloff = verse_point_falloff(dot(to, to), at.w, true);
+        if nol <= 0.0 || falloff <= 0.0 {
             continue;
         }
         let h = normalize(l + v);
         let noh = max(dot(n, h), 0.0);
         let voh = max(dot(v, h), 0.0);
         let spec = d_ggx(noh, a2) * v_smith(nov, nol, a2) * f_schlick(f0, voh) * energy;
-        let e = f.lamps[k * 2 + 1].rgb * (window * window / (d2 + 0.01));
+        let e = f.lamps[k * 2 + 1].rgb * falloff;
         radiance += (diffuse_color / PI + spec) * e * nol;
     }
     direct_part = radiance;
@@ -1084,7 +1085,7 @@ fn fs_textured_masked(i: TexturedOut) -> @location(0) vec4<f32> {
 @fragment
 fn fs_textured_blend(i: TexturedOut) -> @location(0) vec4<f32> {
     let base = textured_base(i.uv, i.color);
-    let alpha = clamp(base.a, 0.0, 1.0);
+    let alpha = verse_coverage(base.a, 2.0);
     return vec4<f32>(textured_shade(i.world, i.normal, i.clip.xy, base.rgb, i.ambient, vec2<f32>(1.0)) * alpha, alpha);
 }
 

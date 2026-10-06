@@ -1,3 +1,4 @@
+// VERSE_SHARED_SHADING
 // fog: rgb color, w density at the base height (1/m). fog_shape: base height
 // (m), falloff with height (1/m), start distance (m), and opacity cap.
 struct Frame { view:mat4x4<f32>,eye:vec4<f32>,ambient:vec4<f32>,fog:vec4<f32>,settings:vec4<f32>,lights:array<vec4<f32>,64>,shadow:array<mat4x4<f32>,24>,fog_shape:vec4<f32> };
@@ -137,7 +138,7 @@ fn fog_amount(p:vec3<f32>)->f32{
   if material.params.y==1.0 && flat_alpha<material.channels.w{discard;}
   let flat=tex.rgb*v.tint+select(vec3(0.0),tex.rgb*v.tint*0.7,material.params.x>0.5);
   let flat_fog=fog_amount(v.pos);
-  return vec4(min(mix(flat,frame.fog.rgb,flat_fog)*frame.ambient.w,vec3(60000.0)),select(flat_alpha,1.0,material.params.y==0.0));
+  return vec4(min(mix(flat,frame.fog.rgb,flat_fog)*frame.ambient.w,vec3(60000.0)),verse_coverage(flat_alpha,material.params.y));
  }
  let alpha=tex.a*material.channels.z;
  if material.params.y==1.0 && alpha<material.channels.w{discard;}
@@ -153,8 +154,7 @@ fn fog_amount(p:vec3<f32>)->f32{
   if distance_squared>=source.w*source.w || radiance.w<=0.0 {continue;}
   let d=sqrt(distance_squared);let direction=delta/max(d,0.001);
   if dot(n,direction)<=0.0 {continue;}
-  let attenuation=max(1.0-d/source.w,0.0);
-  let falloff=attenuation*attenuation/(1.0+distance_squared);
+  let falloff=verse_point_falloff(distance_squared,source.w,false);
   lit+=reflectance(n,view_direction,direction,diffuse_color,f0,roughness,nv)
       *radiance.rgb*radiance.w*falloff*occlusion(i,v.pos,geometric);
  }
@@ -164,5 +164,5 @@ fn fog_amount(p:vec3<f32>)->f32{
  // output pass (pbr/post.wgsl) adds bloom, grades, and tone-maps it, as it
  // does for the physical path; the cap keeps half floats finite.
  let fog=fog_amount(v.pos);let color=min(mix(lit,frame.fog.rgb,fog)*frame.ambient.w,vec3(60000.0));
- return vec4(color,select(alpha,1.0,material.params.y==0.0));
+ return vec4(color,verse_coverage(alpha,material.params.y));
 }

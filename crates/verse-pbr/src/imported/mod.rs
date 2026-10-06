@@ -356,6 +356,7 @@ impl Gpu {
 }
 /// Persistent offscreen renderer; frames come directly from owned GPU passes.
 pub struct Renderer {
+    pub last_lighting: verse_engine::lighting::FrameLighting,
     #[cfg(feature = "imported-surface")]
     instance: wgpu::Instance,
     #[cfg(feature = "imported-surface")]
@@ -1142,7 +1143,9 @@ impl Renderer {
         let shader = device.create_shader_module(wgpu::ShaderModuleDescriptor {
             label: Some("Verse imported WGSL"),
             source: wgpu::ShaderSource::Wgsl(
-                admission.scene_shader(include_str!("scene.wgsl")).into(),
+                admission
+                    .scene_shader(&crate::shading::source(include_str!("scene.wgsl")))
+                    .into(),
             ),
         });
         let layout = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
@@ -1378,6 +1381,7 @@ impl Renderer {
             device_recoveries: 0,
             last_device_loss: None,
             last_timings: FrameTimings::default(),
+            last_lighting: Default::default(),
             gpu_timer,
             submitted_frames: 0,
             shadowed_lights: Vec::new(),
@@ -1752,6 +1756,16 @@ impl Renderer {
             &self.shadowed_lights,
         );
         let frame = lighting::frame(view, lighting, &shadowed)?;
+        self.last_lighting = verse_engine::lighting::FrameLighting {
+            profile: verse_engine::lighting::PointProfile::Authored,
+            exposure: lighting.exposure,
+            grade_stops: verse_engine::lighting::Grade::CHAMBER.exposure,
+            selected_points: (0..lighting.lights.len()).collect(),
+            shadowed_points: shadowed.clone(),
+            shadow_views: shadowed.len() * 6,
+            shadow_size: self.admission.quality.local_shadow_size(),
+            ambient: "authored diffuse fill",
+        };
         self.shadowed_lights = shadowed;
         while self.actors.len() <= instances.len() {
             let buffer = buffer(
@@ -3035,7 +3049,9 @@ mod tests {
     }
     #[test]
     fn textured_skin_shader_validates() {
-        let module = naga::front::wgsl::parse_str(include_str!("scene.wgsl")).unwrap();
+        let module =
+            naga::front::wgsl::parse_str(&crate::shading::source(include_str!("scene.wgsl")))
+                .unwrap();
         let info = naga::valid::Validator::new(
             naga::valid::ValidationFlags::all(),
             naga::valid::Capabilities::all(),

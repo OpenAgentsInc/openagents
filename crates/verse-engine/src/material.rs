@@ -1,6 +1,22 @@
 //! Authored metallic/roughness materials, independent of GPU resource layouts.
 use serde::{Deserialize, Serialize};
 
+/// Effective alpha after texture, vertex, and authored opacity multiplication.
+/// Opaque and retained masked fragments are fully covered; blended and additive
+/// fragments have bounded coverage. Missing coverage means a discarded fragment.
+#[must_use]
+pub fn coverage(alpha: f32, blend: u8, cutoff: f32) -> Option<f32> {
+    if !alpha.is_finite() {
+        return None;
+    }
+    match blend {
+        0 => Some(1.0),
+        1 if alpha >= cutoff => Some(1.0),
+        2 | 3 if alpha > 0.0 => Some(alpha.clamp(0.0, 1.0)),
+        _ => None,
+    }
+}
+
 /// Base color and emissive images use sRGB RGB with linear alpha. Normal,
 /// occlusion, and metallic/roughness images use linear channels. Metallic is
 /// sampled from B, roughness from G, and occlusion from R.
@@ -115,5 +131,19 @@ mod tests {
         material.normal_scale = 1.;
         material.emissive_factor[0] = -1.;
         assert!(material.validate(0).is_err());
+    }
+}
+
+#[cfg(test)]
+mod coverage_tests {
+    use super::*;
+    #[test]
+    fn mask_survivors_are_opaque_and_transparency_is_bounded() {
+        assert_eq!(coverage(0.0, 0, 0.5), Some(1.0));
+        assert_eq!(coverage(0.5, 1, 0.5), Some(1.0));
+        assert_eq!(coverage(0.49, 1, 0.5), None);
+        assert_eq!(coverage(2.0, 2, 0.0), Some(1.0));
+        assert_eq!(coverage(0.25, 3, 0.0), Some(0.25));
+        assert_eq!(coverage(f32::NAN, 2, 0.0), None);
     }
 }

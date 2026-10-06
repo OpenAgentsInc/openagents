@@ -228,7 +228,7 @@ impl Camera {
 /// de Rousiers 2014): exposure = 1 / (1.2 × 2^EV100).
 #[must_use]
 pub fn exposure(ev100: f32) -> f32 {
-    1.0 / (1.2 * 2f32.powf(ev100))
+    verse_engine::lighting::exposure(ev100)
 }
 
 /// Irradiance probes for bounce light, as linear functions of the normal.

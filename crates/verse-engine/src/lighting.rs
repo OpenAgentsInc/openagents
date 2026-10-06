@@ -4,6 +4,76 @@
 use crate::presentation::View;
 use glam::{Mat4, Vec3, Vec4};
 
+/// Local-light units and attenuation. Authored chamber values preserve the
+/// retained look; they are not calibrated candela. Physical lamps use candela.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, serde::Serialize)]
+pub enum PointProfile {
+    Authored,
+    Candela,
+}
+impl PointProfile {
+    /// Reference attenuation used by both render paths, with distances in meters.
+    /// The finite core avoids a singularity at the source. Returns zero for
+    /// invalid queries or beyond the authored range.
+    #[must_use]
+    pub fn attenuation(self, distance_squared: f32, range: f32) -> f32 {
+        if !distance_squared.is_finite()
+            || distance_squared < 0.0
+            || !range.is_finite()
+            || range <= 0.0
+            || distance_squared >= range * range
+        {
+            return 0.0;
+        }
+        match self {
+            Self::Authored => {
+                let window = (1.0 - distance_squared.sqrt() / range).max(0.0);
+                window * window / (1.0 + distance_squared)
+            }
+            Self::Candela => {
+                let d2 = distance_squared.max(1e-4);
+                let window = (1.0 - (d2 / (range * range)).powi(2)).clamp(0.0, 1.0);
+                window * window / (d2 + 0.01)
+            }
+        }
+    }
+}
+/// Applied lighting settings for a captured frame. Exposure is a linear
+/// multiplier; the output grade's offset is in stops. Shadow views count active
+/// maps, including cached maps, rather than redraws or elapsed GPU time.
+#[derive(Clone, Debug, serde::Serialize)]
+pub struct FrameLighting {
+    pub profile: PointProfile,
+    pub exposure: f32,
+    pub grade_stops: f32,
+    pub selected_points: Vec<usize>,
+    pub shadowed_points: Vec<usize>,
+    pub shadow_views: usize,
+    pub shadow_size: u32,
+    pub ambient: &'static str,
+}
+impl Default for FrameLighting {
+    fn default() -> Self {
+        Self {
+            profile: PointProfile::Authored,
+            exposure: 1.0,
+            grade_stops: 0.0,
+            selected_points: vec![],
+            shadowed_points: vec![],
+            shadow_views: 0,
+            shadow_size: 0,
+            ambient: "none",
+        }
+    }
+}
+
+/// Converts photographic EV100 to the linear multiplier applied exactly once
+/// before the shared output grade. A grade exposure offset is separate, in stops.
+#[must_use]
+pub fn exposure(ev100: f32) -> f32 {
+    1.0 / (1.2 * 2f32.powf(ev100))
+}
+
 pub const MAX_LIGHTS: usize = 32;
 
 /// A point source in meters. Up to four sources receive cube shadow maps;
@@ -12,6 +82,7 @@ pub const MAX_LIGHTS: usize = 32;
 pub struct Light {
     pub position: Vec3,
     pub color: Vec3,
+    /// Authored intensity for the chamber profile; candela for physical lamps.
     pub intensity: f32,
     pub range: f32,
 }
@@ -348,6 +419,25 @@ pub fn select_shadowed(
         }
     }
     order.into_iter().flatten().collect()
+}
+
+/// The strongest visible point sources, independent of source-list order.
+/// Ties retain source order. This uses the same contribution estimate as local
+/// shadow priority; selection does not mutate simulation or flicker phases.
+#[must_use]
+pub fn select_lights(lights: &[Light], view: View, budget: usize) -> Vec<usize> {
+    let mut ranked: Vec<_> = lights
+        .iter()
+        .enumerate()
+        .map(|(index, light)| (light.contribution(view), index))
+        .filter(|(score, _)| score.is_finite() && *score > 0.0)
+        .collect();
+    ranked.sort_by(|a, b| b.0.total_cmp(&a.0).then(a.1.cmp(&b.1)));
+    ranked
+        .into_iter()
+        .take(budget.min(MAX_LIGHTS))
+        .map(|(_, index)| index)
+        .collect()
 }
 
 /// The most sun shadow cascades any quality tier draws.
@@ -1741,5 +1831,49 @@ mod tests {
             ..Lighting::default()
         };
         assert!(lighting.validate(view()).is_err());
+    }
+}
+
+#[cfg(test)]
+mod visual_contract_tests {
+    use super::*;
+    #[test]
+    fn point_profiles_preserve_units_range_and_finite_source_core() {
+        assert!((PointProfile::Authored.attenuation(1.0, 10.0) - 0.405).abs() < 1e-6);
+        let physical = PointProfile::Candela.attenuation(4.0, 10.0);
+        assert!((physical - 0.9984_f32.powi(2) / 4.01).abs() < 1e-6);
+        for profile in [PointProfile::Authored, PointProfile::Candela] {
+            assert!(profile.attenuation(0.0, 10.0).is_finite());
+            assert_eq!(profile.attenuation(100.0, 10.0), 0.0);
+            assert_eq!(profile.attenuation(f32::NAN, 10.0), 0.0);
+            assert_eq!(profile.attenuation(1.0, 0.0), 0.0);
+        }
+        assert!((exposure(1.0) * 2.0 - exposure(0.0)).abs() < 1e-6);
+    }
+    #[test]
+    fn visible_foreground_lamps_survive_every_tier_budget() {
+        let eye = Vec3::new(0.0, 1.0, 5.0);
+        let view = View {
+            eye,
+            view_proj: Mat4::perspective_rh(1.0, 1.0, 0.1, 100.0)
+                * Mat4::look_at_rh(eye, Vec3::ZERO, Vec3::Y),
+        };
+        let dim = Light {
+            position: Vec3::ZERO,
+            color: Vec3::ONE,
+            intensity: 1.0,
+            range: 2.0,
+        };
+        let mut lights = vec![dim; MAX_LIGHTS];
+        lights[31].intensity = 100.0;
+        lights[30].position = Vec3::new(0.0, 0.0, 500.0);
+        lights[30].intensity = 1_000_000.0;
+        for budget in [8, 16, 32] {
+            let selected = select_lights(&lights, view, budget);
+            assert_eq!(selected[0], 31);
+            assert!(!selected.contains(&30));
+            assert!(selected.len() <= budget);
+            assert_eq!(selected[1], 0);
+        }
     }
 }

@@ -358,7 +358,7 @@ struct Pipelines {
     textured_shadow_masked: wgpu::RenderPipeline,
 }
 
-/// How many of a stage's lamps a tier shades, first lamps first: each lamp
+/// How many of a stage's lamps a tier shades, ranked by view contribution: each lamp
 /// costs every lit fragment a loop iteration, so phones and WebGL2 shade
 /// the stage's most important few and leave the rest out.
 #[must_use]
@@ -470,6 +470,7 @@ impl PhotoTargets {
 
 /// GPU state for the physical path, created on the first physical frame.
 pub struct Photo {
+    pub last_lighting: verse_engine::lighting::FrameLighting,
     capability: Capability,
     output_format: wgpu::TextureFormat,
     frame: wgpu::Buffer,
@@ -820,7 +821,10 @@ impl Photo {
         let module = shader(
             device,
             "verse photo",
-            &verse_gfx::gles::wgsl(include_str!("photo.wgsl"), capability.gles),
+            &verse_gfx::gles::wgsl(
+                &crate::shading::source(include_str!("photo.wgsl")),
+                capability.gles,
+            ),
         );
         let layout = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
             label: Some("verse photo"),
@@ -1332,6 +1336,7 @@ impl Photo {
             mapped_at_creation: false,
         });
         Ok(Self {
+            last_lighting: Default::default(),
             capability,
             output_format,
             frame,
@@ -1811,6 +1816,16 @@ impl Photo {
         let [width, height] = targets.size;
         let camera = &sky.camera;
         let exposure = camera.exposure();
+        self.last_lighting = verse_engine::lighting::FrameLighting {
+            profile: verse_engine::lighting::PointProfile::Candela,
+            exposure,
+            grade_stops: 0.0,
+            selected_points: vec![],
+            shadowed_points: vec![],
+            shadow_views: 1,
+            shadow_size: SHADOW_SIZE,
+            ambient: "sun and Earth; optional irradiance probes",
+        };
         let sun = sky.sun_dir.normalize();
         let shadow = fit_box(sun, sky.shadow_center, sky.shadow_half, SHADOW_SIZE);
         // The projection's vertical scale is 1 / tan(fov / 2); read it from the
@@ -2286,6 +2301,16 @@ impl Photo {
             uniform.sky_sun = [day.sun[0], day.sun[1], day.sun[2], radius];
             uniform.field[3] = day.glow;
         }
+        self.last_lighting = verse_engine::lighting::FrameLighting {
+            profile: verse_engine::lighting::PointProfile::Candela,
+            grade_stops: neon.grade.exposure,
+            ambient: if daylight.is_some() {
+                "daylight sky and irradiance probes"
+            } else {
+                "hemispheric irradiance probes"
+            },
+            ..Default::default()
+        };
         let lit = neon.key.filter(|_| {
             world.lit.1 > 0
                 || self.dynamic_lit.count > 0
@@ -2299,6 +2324,9 @@ impl Photo {
             let probes = key.probes();
             self.update_probes(device, queue, Some(&probes));
             let cascades = self.key_shadow(key, view);
+            self.last_lighting.exposure = exposure;
+            self.last_lighting.shadow_views = cascades.cascades.len();
+            self.last_lighting.shadow_size = SHADOW_SIZE;
             uniform.set_cascades(&cascades);
             shadow = Some(cascades);
             let rim = key.rim_illuminance * exposure;
@@ -2323,7 +2351,20 @@ impl Photo {
             uniform.lamp_params = [0.0, exposure, 0.0, 0.0];
             let mut count = 0;
             let budget = lamp_budget(self.capability.quality.tier);
-            for lamp in neon.lamps.iter().filter(|lamp| lamp.lit()).take(budget) {
+            let sources: Vec<_> = neon
+                .lamps
+                .iter()
+                .map(|lamp| verse_engine::lighting::Light {
+                    position: lamp.position,
+                    color: glam::Vec3::from_array(lamp.color),
+                    intensity: if lamp.lit() { lamp.intensity } else { 0.0 },
+                    range: lamp.range,
+                })
+                .collect();
+            self.last_lighting.selected_points =
+                verse_engine::lighting::select_lights(&sources, view, budget);
+            for &index in &self.last_lighting.selected_points {
+                let lamp = &neon.lamps[index];
                 let gain = lamp.intensity * exposure;
                 uniform.lamps[count * 2] = lamp.position.extend(lamp.range).to_array();
                 uniform.lamps[count * 2 + 1] = [
@@ -3139,7 +3180,8 @@ mod tests {
     #[test]
     fn the_frame_uniform_matches_the_shader() {
         for gles in [false, true] {
-            let source = verse_gfx::gles::wgsl(include_str!("photo.wgsl"), gles);
+            let shared = crate::shading::source(include_str!("photo.wgsl"));
+            let source = verse_gfx::gles::wgsl(&shared, gles);
             let module = naga::front::wgsl::parse_str(&source).unwrap();
             let mut layouter = naga::proc::Layouter::default();
             layouter.update(module.to_ctx()).unwrap();

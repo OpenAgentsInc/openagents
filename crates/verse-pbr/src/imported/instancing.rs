@@ -11,7 +11,7 @@ pub(super) struct Shadows {
 }
 pub(super) const INDEX_CAPACITY: u32 = 27 * 1024;
 fn source() -> String {
-    include_str!("scene.wgsl")
+    crate::shading::source(include_str!("scene.wgsl"))
         .split("@fragment fn fs(")
         .next()
         .expect("scene shader has a world fragment entry point")
@@ -22,7 +22,7 @@ fn source() -> String {
         .replace("pose.", "poses[pose_index].")
 }
 fn world_source() -> String {
-    include_str!("scene.wgsl")
+    crate::shading::source(include_str!("scene.wgsl"))
         .replace("@group(2) @binding(0) var<uniform> pose:Pose;",
             "@group(2) @binding(0) var<storage,read> poses:array<Pose>;\n@group(2) @binding(1) var<storage,read> indices:array<u32>;")
         .replace("@location(3) tint:vec3<f32> };", "@location(3) tint:vec3<f32>,@location(4) @interpolate(flat) pose_index:u32 };")
