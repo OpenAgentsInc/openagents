@@ -14,7 +14,7 @@ use tokio::net::TcpStream;
 use tokio_rustls::TlsConnector;
 
 use super::{
-    transport::{Transport, read_frame, write_frame},
+    transport::{Transport, read_frame, write_frame, write_frame_batch},
     wire::{
         Body, Control, EventPage, Hello, MAX_REQUEST_BYTES, MAX_RESPONSE_BYTES, Reply, Request,
         Response, State, VERSION,
@@ -918,10 +918,19 @@ impl Client {
         let errors = incoming.clone();
         let write = client_runtime::spawn(async move {
             while let Some(bytes) = outgoing.recv().await {
-                let result = timeout(
-                    DEADLINE,
-                    write_frame(&mut writer, &bytes, MAX_REQUEST_BYTES),
-                )
+                let result = timeout(DEADLINE, async {
+                    // One millisecond lets a same-wake input and its reads share
+                    // a write. The existing deadline includes this collection.
+                    client_runtime::sleep(Duration::from_millis(1)).await;
+                    let mut frames = vec![bytes];
+                    while frames.len() < PIPELINE_CAPACITY {
+                        match outgoing.try_recv() {
+                            Ok(bytes) => frames.push(bytes),
+                            Err(_) => break,
+                        }
+                    }
+                    write_frame_batch(&mut writer, &frames, MAX_REQUEST_BYTES).await
+                })
                 .await
                 .map_err(|_| "Chamber write timed out".to_string())
                 .and_then(|r| r);

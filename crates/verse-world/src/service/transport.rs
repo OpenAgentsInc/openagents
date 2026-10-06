@@ -51,3 +51,78 @@ pub async fn write_frame<W: AsyncWrite + Unpin>(
         .map_err(|_| "Cannot flush chamber frame")?;
     Ok(())
 }
+
+/// Writes a bounded group without changing individual framing or request order.
+pub(super) async fn write_frame_batch<W: AsyncWrite + Unpin>(
+    writer: &mut W,
+    frames: &[Vec<u8>],
+    max: usize,
+) -> Result<(), String> {
+    if frames.is_empty() || frames.len() > super::client::PIPELINE_CAPACITY {
+        return Err("Chamber frame batch exceeds request budget".into());
+    }
+    let mut size = 0usize;
+    for bytes in frames {
+        if bytes.is_empty() || bytes.len() > max || u32::try_from(bytes.len()).is_err() {
+            return Err("Chamber frame exceeds byte budget".into());
+        }
+        size = size
+            .checked_add(bytes.len())
+            .and_then(|size| size.checked_add(4))
+            .ok_or("Chamber frame batch length overflow")?;
+    }
+    let mut batch = Vec::with_capacity(size);
+    for bytes in frames {
+        batch.extend_from_slice(&(bytes.len() as u32).to_be_bytes());
+        batch.extend_from_slice(bytes);
+    }
+    writer
+        .write_all(&batch)
+        .await
+        .map_err(|_| "Cannot write chamber frame batch")?;
+    writer
+        .flush()
+        .await
+        .map_err(|_| "Cannot flush chamber frame batch")?;
+    Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[tokio::test]
+    async fn batched_frames_preserve_boundaries_through_partial_writes() {
+        let (mut writer, mut reader) = tokio::io::duplex(7);
+        let frames = vec![vec![1; 13], vec![2; 3], vec![3; 19]];
+        let (sent, received) = tokio::join!(write_frame_batch(&mut writer, &frames, 19), async {
+            let mut received = Vec::new();
+            for _ in 0..3 {
+                received.push(read_frame(&mut reader, 19).await.unwrap());
+            }
+            received
+        });
+        sent.unwrap();
+        assert_eq!(received, frames);
+    }
+
+    #[tokio::test]
+    async fn invalid_batch_sends_no_prefix_and_cannot_exceed_pipeline_capacity() {
+        for frames in [
+            vec![vec![1], vec![2; 9]],
+            vec![vec![1], Vec::new()],
+            vec![vec![1]; super::super::client::PIPELINE_CAPACITY + 1],
+            Vec::new(),
+        ] {
+            let (mut writer, mut reader) = tokio::io::duplex(64);
+            assert!(write_frame_batch(&mut writer, &frames, 8).await.is_err());
+            drop(writer);
+            let mut received = Vec::new();
+            reader.read_to_end(&mut received).await.unwrap();
+            assert!(
+                received.is_empty(),
+                "An invalid batch cannot send an earlier valid request"
+            );
+        }
+    }
+}
