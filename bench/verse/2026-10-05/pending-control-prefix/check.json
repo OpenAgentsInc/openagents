@@ -1,0 +1,30 @@
+{
+  "schema": "verse.regression.check.v1",
+  "before": {
+    "command": "verse_world-0bfd8864a72bdeff pending_ack_refreshes_staged_cast --test-threads=1 --nocapture",
+    "status": "failed",
+    "detail": "Staged cast requested a scene despite an outstanding control acknowledgment."
+  },
+  "after": {
+    "prediction": {
+      "command": "cargo +1.97.1 test -p verse-world --features service-net prediction:: -- --test-threads=1",
+      "status": "passed",
+      "tests": 43
+    },
+    "worker": {
+      "command": "verse_world-0bfd8864a72bdeff service::worker:: --test-threads=1 --nocapture",
+      "status": "passed",
+      "tests": 30
+    },
+    "formatting": "rustfmt +1.97.1 --edition 2024 for affected source; git diff --check",
+    "native_consumer": {
+      "command": "cargo +1.97.1 test -p verse-imported --features chamber-loopback imported::chamber_session -- --test-threads=1",
+      "status": "passed",
+      "tests": 6
+    }
+  },
+  "scenario": "An acknowledged-at-authority command reply is withheld; a later staged cast must wait for its validated control header without an extra scene request, then bind and execute once in sequence.",
+  "limitations": [
+    "This tests the extra refresh wait; it does not establish the cause of all battle movement expiries."
+  ]
+}

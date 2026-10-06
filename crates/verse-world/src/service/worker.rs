@@ -378,7 +378,12 @@ async fn run_impl(
                     && !retired_control(&input, client.control())
                     && !fresh_control(&input, client.control(), last_response)
                 {
-                    if !snapshot_pending && read_backoff.ready(0, tokio::time::Instant::now()) {
+                    // Any owned reply supplies a validated control header. Drain
+                    // that prefix before adding a scene request for staged input.
+                    if client.pending() == 0
+                        && !snapshot_pending
+                        && read_backoff.ready(0, tokio::time::Instant::now())
+                    {
                         client.send_snapshot()?;
                         last_snapshot_sent = Some(tokio::time::Instant::now());
                         snapshot_pending = true;
@@ -2030,6 +2035,138 @@ mod tests {
             deferred,
             Some(Input::Command(Intent::Cast { .. }))
         ));
+    }
+    #[tokio::test]
+    async fn pending_ack_refreshes_staged_cast_without_an_extra_scene_request() {
+        use crate::service::net::{read_frame, tests::gateway, write_frame};
+        use crate::service::wire::{MAX_REQUEST_BYTES, MAX_RESPONSE_BYTES, Request};
+        let keys = [key(241), key(242), key(243)];
+        let mut gateway = gateway(&keys);
+        let (socket, mut peer_socket) = tokio::io::duplex(1024 * 1024);
+        let (first_admitted, admitted) = oneshot::channel();
+        let (cast_staged, staged) = oneshot::channel();
+        let peer = tokio::spawn(async move {
+            let (id, hello) = gateway.open_json(0).unwrap();
+            write_frame(&mut peer_socket, &hello, MAX_RESPONSE_BYTES)
+                .await
+                .unwrap();
+            let mut first_admitted = Some(first_admitted);
+            let mut staged = Some(staged);
+            let mut commands = 0;
+            loop {
+                let bytes = read_frame(&mut peer_socket, MAX_REQUEST_BYTES)
+                    .await
+                    .unwrap();
+                let request = Request::decode(&bytes).unwrap();
+                let reply = gateway.dispatch_json(id, 0, &bytes).unwrap();
+                if let Body::Command { command } = &request.body {
+                    commands += 1;
+                    assert_eq!(command.sequence, commands);
+                    if commands == 1 {
+                        first_admitted.take().unwrap().send(()).unwrap();
+                        staged.take().unwrap().await.unwrap();
+                        assert!(
+                            timeout(
+                                Duration::from_millis(100),
+                                read_frame(&mut peer_socket, MAX_REQUEST_BYTES)
+                            )
+                            .await
+                            .is_err(),
+                            "Staged cast requested a scene despite an outstanding control acknowledgment"
+                        );
+                    } else {
+                        assert!(matches!(
+                            command.intent,
+                            super::super::wire::Action::Cast {
+                                ability: Ability::Shield,
+                                ..
+                            }
+                        ));
+                    }
+                    let response: Response = serde_json::from_slice(&reply).unwrap();
+                    assert!(matches!(response.body, Reply::Accepted));
+                }
+                write_frame(&mut peer_socket, &reply, MAX_RESPONSE_BYTES)
+                    .await
+                    .unwrap();
+                if commands == 2 {
+                    break;
+                }
+            }
+        });
+        let client = Client::connect_stream(Box::new(socket), 120, None, &keys[0])
+            .await
+            .unwrap();
+        let control = client.control().unwrap().clone();
+        let (input, inputs, updates, mut output) = channels();
+        let (stop, stopping) = oneshot::channel();
+        let task = tokio::spawn(run(
+            client,
+            Cursor::new(120),
+            Duration::from_secs(1),
+            inputs,
+            updates,
+            stopping,
+        ));
+        timeout(Duration::from_secs(3), async {
+            while !matches!(output.recv().await.unwrap(), Update::Inventory(_)) {}
+        })
+        .await
+        .unwrap();
+        input
+            .send(Input::TrackedCommand {
+                token: 1,
+                life: control.life.into(),
+                epoch: control.epoch,
+                intent: Intent::Move {
+                    axes: [0., 0.],
+                    yaw: 0.,
+                },
+            })
+            .await
+            .unwrap();
+        timeout(Duration::from_secs(3), admitted)
+            .await
+            .unwrap()
+            .unwrap();
+        tokio::time::sleep(Duration::from_millis(75)).await;
+        input
+            .send(Input::TrackedCommand {
+                token: 2,
+                life: control.life.into(),
+                epoch: control.epoch,
+                intent: Intent::Cast {
+                    ability: Ability::Shield,
+                    target: None,
+                    aim: [0., 0., 1.],
+                },
+            })
+            .await
+            .unwrap();
+        cast_staged.send(()).unwrap();
+        let mut outcomes = 0;
+        let mut tokens = Vec::new();
+        timeout(Duration::from_secs(3), async {
+            while outcomes < 2 {
+                match output.recv().await.unwrap() {
+                    Update::CommandBound { token, binding } => {
+                        assert!(binding.is_ok());
+                        tokens.push(token);
+                    }
+                    Update::Outcome(response) => {
+                        assert!(matches!(response.body, Reply::Accepted));
+                        outcomes += 1;
+                    }
+                    _ => {}
+                }
+            }
+        })
+        .await
+        .unwrap();
+        assert_eq!(tokens, vec![1, 2]);
+        peer.await.unwrap();
+        let _ = stop.send(());
+        task.await.unwrap().unwrap();
     }
     #[tokio::test]
     async fn movement_arriving_during_refresh_replaces_the_unsent_command() {
