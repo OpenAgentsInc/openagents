@@ -1,0 +1,28 @@
+{
+  "schema": "verse.regression.check.v1",
+  "scenario": "Keep constrained correction history continuous around a wall corner and serialize correction context only for retained traces.",
+  "commits": [
+    "cc27a0f0e2",
+    "76105567f1"
+  ],
+  "checks": {
+    "prediction_tests": 46,
+    "native_session_tests": 8,
+    "remote_record_tests": 8,
+    "remote_record_ignored": 1,
+    "corner_regression_failed_before_fix": true,
+    "corner_before_adjacent_distance_meters": 0.07411,
+    "corner_max_allowed_adjacent_distance_meters": 0.05334,
+    "lazy_serialization_samples": 400,
+    "lazy_serialization_retained": 256,
+    "lazy_serialization_omitted": 44,
+    "battle_acceptance_tests": 3,
+    "battle_consumer_compile_seconds": 244
+  },
+  "limitations": [
+    "Targeted regression checks do not establish sustained battle acceptance.",
+    "All correction distance samples and existing trace thresholds and capacities remain unchanged.",
+    "The ignored recorder test requires native GPU capture and ffmpeg.",
+    "A displacement-only candidate failed the existing free-current correction regression and was replaced before commit."
+  ]
+}
