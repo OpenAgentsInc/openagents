@@ -353,16 +353,35 @@ impl Local {
                         entity: baseline.life.actor,
                         generation: baseline.life.generation,
                     });
-                    let overlap = self.collision.scene().overlap(
-                        physics::character::Settings::default().capsule(current.feet + delta),
-                        filter,
-                    )?;
-                    if overlap.truncated {
-                        return Err("Prediction reconciliation query budget exceeded".into());
+                    let fixed_clear_at = |feet: glam::DVec3| -> Result<bool, String> {
+                        let overlap = self.collision.scene().overlap(
+                            physics::character::Settings::default().capsule(feet + delta),
+                            filter,
+                        )?;
+                        if overlap.truncated {
+                            return Err("Prediction reconciliation query budget exceeded".into());
+                        }
+                        Ok(overlap.hits.iter().all(|hit| {
+                            hit.penetration <= 1e-5 || self.collision.is_capsule(hit.collider)
+                        }))
+                    };
+                    let mut fixed_clear = delta == glam::DVec3::ZERO;
+                    if !fixed_clear {
+                        fixed_clear = fixed_clear_at(current.feet)?;
+                        if fixed_clear {
+                            // A clear current pose does not guarantee that shifting
+                            // earlier wall contacts preserves valid collision history.
+                            for (_, estimate) in self.estimates.range((
+                                std::ops::Bound::Excluded(baseline.physics_step),
+                                std::ops::Bound::Unbounded,
+                            )) {
+                                if !fixed_clear_at(estimate.character.feet)? {
+                                    fixed_clear = false;
+                                    break;
+                                }
+                            }
+                        }
                     }
-                    let fixed_clear = overlap.hits.iter().all(|hit| {
-                        hit.penetration <= 1e-5 || self.collision.is_capsule(hit.collider)
-                    });
                     if fixed_clear {
                         translation = Some(delta);
                     } else {
@@ -1954,6 +1973,79 @@ mod tests {
         }
     }
 
+    #[test]
+    fn free_current_correction_keeps_historical_wall_contacts_valid() {
+        use physics::queries::{ColliderKey, GeometrySnapshot, Pose, ShapeSnapshot, Usage};
+        let (mut local, mut baseline, mut source) = setup();
+        baseline.profile = movement::Profile::Frames;
+        baseline.epoch += 1;
+        baseline.character.feet.x = 4.;
+        source.colliders.push(ShapeSnapshot {
+            key: ColliderKey {
+                life: Life {
+                    instance: 7,
+                    entity: 0,
+                    generation: 0,
+                },
+                shape: 1,
+            },
+            layers: 1,
+            usage: Usage::Blocking,
+            pose: Pose::default(),
+            geometry: GeometrySnapshot::Box {
+                min: glam::DVec3::new(6., 0., -2.),
+                max: glam::DVec3::new(6.1, 4., 2.),
+            },
+        });
+        local.observe(baseline, &source, 2, 2).unwrap();
+        local.queue(1, movement()).unwrap();
+        for _ in 0..3 {
+            local.advance(0.1).unwrap();
+        }
+        assert!(local.pose().unwrap().position.x > 5.64);
+        local
+            .queue(
+                2,
+                Intent::Move {
+                    axes: [-1., 0.],
+                    yaw: 0.,
+                },
+            )
+            .unwrap();
+        local.advance(0.1).unwrap();
+        local.advance(0.1).unwrap();
+        let before = local.pose().unwrap().position;
+        let completed = local.estimates[&12];
+        baseline.physics_step = 12;
+        baseline.world_step = local.physics_step();
+        baseline.character = completed.character;
+        baseline.character.feet.x += 0.1;
+        baseline.held = completed.held;
+        baseline.policy = completed.policy;
+        baseline.yaw = completed.yaw;
+        local.observe(baseline, &source, 3, 3).unwrap();
+        local.advance(0.).unwrap();
+        assert!((local.pose().unwrap().position.x - before.x - 0.1).abs() < 1e-6);
+        let settings = physics::character::Settings::default();
+        for (step, estimate) in &local.estimates {
+            let overlaps = local
+                .collision
+                .scene()
+                .overlap(
+                    settings.capsule(estimate.character.feet),
+                    Filter::blocking(7),
+                )
+                .unwrap();
+            assert!(!overlaps.truncated);
+            assert!(
+                overlaps.hits.iter().all(|hit| hit.penetration <= 1e-5),
+                "Correction embedded historical step {step} in a fixed wall: {:?}",
+                estimate.character.feet
+            );
+        }
+        assert_eq!(local.physics_step(), 60);
+        assert_eq!(local.pending(), 2);
+    }
     #[test]
     fn confirmed_time_reconciliation_does_not_replay_through_later_crowd_geometry() {
         use physics::queries::{ColliderKey, GeometrySnapshot, Pose, ShapeSnapshot, Usage};

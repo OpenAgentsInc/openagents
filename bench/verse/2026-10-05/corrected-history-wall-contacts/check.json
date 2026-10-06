@@ -1,0 +1,19 @@
+{
+  "schema": "verse.regression.check.v1",
+  "scenario": "A horizontal authority correction leaves the current pose clear but would shift earlier wall contacts into fixed geometry. Validate retained history before plain translation and constrain corrections when needed.",
+  "before": {
+    "status": "failed",
+    "test": "free_current_correction_keeps_historical_wall_contacts_valid",
+    "observed": "Historical step 30 embedded in wall at x=5.700200057."
+  },
+  "after": {
+    "status": "passed",
+    "tests": 44,
+    "command": "verse_world-0bfd8864a72bdeff prediction:: --test-threads=1",
+    "formatting": "rustfmt +1.97.1 --edition 2024 crates/verse-world/src/prediction/local.rs; git diff --check"
+  },
+  "limitations": [
+    "Battle correction and timing improvements remain unmeasured for this change.",
+    "Nonzero corrections can require bounded overlap queries for retained history; zero corrections skip those queries."
+  ]
+}
