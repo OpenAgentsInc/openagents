@@ -1,0 +1,5 @@
+{
+  "observed_at": "2026-10-06T01:15:34.612283+00:00",
+  "observation": "The original incremental directory no longer existed after the failed physics build; no attribution is made.",
+  "action": "Recreated the same warm target path as a symlink to the preserved RAM incremental directory; no existing data was deleted."
+}

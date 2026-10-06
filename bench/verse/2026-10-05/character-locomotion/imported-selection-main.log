@@ -1,0 +1,104 @@
+   Compiling physics v0.1.0 (/home/christopherdavid/work/openagents-verse-audit/crates/physics)
+warning: failed to connect to jobserver from environment variable `CARGO_MAKEFLAGS="-j --jobserver-fds=3,5 --jobserver-auth=3,5"`: cannot open file descriptor 3 from the jobserver environment variable value: Bad file descriptor (os error 9)
+  |
+  = note: the build environment is likely misconfigured
+
+warning: `physics` (lib) generated 1 warning
+warning: `verse-engine` (lib) generated 1 warning (1 duplicate)
+   Compiling verse-world v0.1.0 (/home/christopherdavid/work/openagents-verse-audit/crates/verse-world)
+warning: method `additional_characters` is never used
+    --> crates/verse-world/src/play.rs:2943:19
+     |
+ 428 | impl Game {
+     | --------- method in this implementation
+...
+2943 |     pub(crate) fn additional_characters(
+     |                   ^^^^^^^^^^^^^^^^^^^^^
+     |
+     = note: `#[warn(dead_code)]` (part of `#[warn(unused)]`) on by default
+
+warning: `verse-world` (lib) generated 2 warnings (1 duplicate)
+   Compiling verse-gfx v0.1.0 (/home/christopherdavid/work/openagents-verse-audit/crates/verse-gfx)
+   Compiling verse-pbr v0.1.0 (/home/christopherdavid/work/openagents-verse-audit/crates/verse-pbr)
+warning: `verse-pbr` (lib) generated 1 warning (1 duplicate)
+   Compiling verse-net v0.1.0 (/home/christopherdavid/work/openagents-verse-audit/crates/verse-net)
+warning: `verse-net` (lib) generated 1 warning (1 duplicate)
+   Compiling verse-core v0.1.0 (/home/christopherdavid/work/openagents-verse-audit/crates/verse-core)
+   Compiling verse-content v0.1.0 (/home/christopherdavid/work/openagents-verse-audit/crates/verse-content)
+warning: `verse-content` (lib) generated 1 warning (1 duplicate)
+   Compiling verse-zone-crypt v0.1.0 (/home/christopherdavid/work/openagents-verse-audit/crates/verse-zone-crypt)
+   Compiling verse-imported v0.1.0 (/home/christopherdavid/work/openagents-verse-audit/crates/verse-imported)
+warning: unused variable: `numbers`
+    --> crates/verse-imported/src/imported/overlay.rs:1297:9
+     |
+1297 |     let numbers = atlas.font("numbers").layout_at_scale(1.0 / s).unwrap();
+     |         ^^^^^^^ help: if this is intentional, prefix it with an underscore: `_numbers`
+     |
+     = note: `#[warn(unused_variables)]` (part of `#[warn(unused)]`) on by default
+
+warning: `verse-imported` (lib test) generated 2 warnings (1 duplicate) (run `cargo fix --lib -p verse-imported --tests` to apply 1 suggestion)
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 23.85s
+     Running unittests src/lib.rs (/home/christopherdavid/work/openagents-target-agent1/debug/deps/verse_imported-8f44d1f342630fd4)
+
+running 59 tests
+test imported::chamber::tests::capture_owned_outfit_models ... ignored, Explicit animated outfit GPU acceptance
+test imported::character_panel::tests::capture_character_panels ... ignored, Explicit GPU acceptance capture
+test imported::chamber::tests::explosions_light_the_room_then_fade_with_the_effect ... ok
+test imported::chamber::tests::many_effects_keep_the_brightest_local_lights_and_respect_the_gpu_bound ... ok
+test imported::character_panel::tests::gear_buttons_emit_owned_slot_changes_without_mutating_inventory ... ok
+test imported::character_panel::tests::panel_consumes_blank_rows_closes_and_pages_all_bounded_entries ... ok
+test imported::character_panel::tests::outfit_buttons_emit_equipping_and_base_selection_without_local_changes ... ok
+test imported::character_panel::tests::giver_quest_buttons_require_authoritative_acceptance_and_interaction ... ok
+test imported::character_panel::tests::use_buttons_select_only_owned_authored_items_without_spending_locally ... ok
+test imported::character_panel::tests::quest_buttons_emit_only_ready_unclaimed_intents_without_changing_counters ... ok
+test imported::giver_panel::tests::capture_authored_giver_dialogue ... ignored, Explicit GPU quest dialogue acceptance capture
+test imported::locomotion_gpu_tests::terrain_aim_and_equipment_use_the_same_rendered_palette ... ignored, Requires an explicitly selected native graphics adapter
+test imported::giver_panel::tests::dialogue_wrap_retains_words_and_long_tokens ... ok
+test imported::overlay::action_tests::classic_hit_regions_keep_six_unit_gaps_at_every_ui_scale ... ok
+test imported::overlay::action_tests::clickable_slots_match_hotkeys_and_empty_slots_do_not_cast ... ok
+test imported::overlay::respawn_tests::respawn_hit_bounds_scale_with_the_visible_button ... ok
+test imported::overlay::tests::combat_bursts_sum_health_loss_without_mixing_incoming_or_expired_hits ... ok
+test imported::chamber::tests::simultaneous_impacts_keep_a_finite_deterministic_particle_budget ... ok
+test imported::remote_record::tests::all_completed_gpu_samples_are_retained_in_one_render_update ... ok
+test imported::remote_record::tests::discontinuities_do_not_pollute_reconciliation_and_traces_are_bounded ... ok
+test imported::remote_record::tests::native_capture_attributes_readback_and_encoder_queue ... ignored, requires a native GPU and ffmpeg; uses temporary original assets and video
+test imported::remote_record::tests::profile_samples_are_bounded_and_percentiles_preserve_units ... ok
+test imported::remote_record::tests::recording_duration_and_output_are_explicitly_bounded ... ok
+test imported::remote_record::tests::refusal_history_keeps_the_first_cause_and_counts_omissions ... ok
+test imported::remote_record::tests::retirement_series_is_separate_and_bounded ... ok
+test imported::remote_record::tests::scripted_movement_turns_and_stops_on_a_local_clock ... ok
+test imported::remote_window::tests::automated_respawn_requires_dead_owned_life_and_never_retries_it ... ok
+test imported::remote_window::tests::cinematic_camera_converts_scene_radians_to_native_degrees ... ok
+test imported::remote_window::tests::native_keys_cover_only_the_shared_host_kit ... ok
+test imported::remote_window::tests::remote_casts_use_horizontal_directions_instead_of_world_aim_points ... ok
+test imported::remote_content::tests::outfit_admission_refuses_missing_models_and_animation_states ... ok
+test ritual::tests::a_configuration_needs_its_files ... ok
+test imported::chamber::tests::remote_scene_waits_for_admission_and_rejects_invalid_view_inputs ... ok
+test imported::remote_content::tests::equipment_preflight_requires_static_models_and_parent_sockets ... ok
+test imported::overlay::tests::quest_marker_draws_only_for_the_matching_living_friendly_life ... ok
+test imported::remote_content::tests::identity_binds_scene_geometry_and_verified_texture_bytes ... ok
+test imported::overlay::tests::crowded_plates_stay_anchored_and_selected_target_has_priority ... ok
+test imported::overlay::tests::friendly_nameplates_are_green_and_dead_plates_are_hidden ... ok
+test imported::original::tests::application_atlas_keeps_all_original_icons_and_fonts ... ok
+test imported::remote_window::tests::the_window_mounts_the_shared_session_and_its_recorder_reads_notes ... ok
+test imported::chamber_session::tests::bounded_native_input_reports_pressure_and_closed_update_streams ... ok
+test imported::chamber::tests::controlled_adventurers_keep_distinct_shield_and_light_projections ... ok
+test imported::chamber_session::tests::a_host_that_goes_away_fails_the_session ... ok
+test imported::chamber_session::tests::a_new_session_after_a_stop_takes_the_same_character_back ... ok
+test imported::chamber_session::tests::native_prediction_binds_local_input_renders_it_and_retires_acknowledgments ... ok
+test imported::chamber::tests::local_and_read_only_blocker_bounds_share_native_transforms_and_table_proxy_rules ... ok
+test imported::chamber::tests::assembled_remote_sample_matches_local_native_world_consumers ... ok
+test imported::chamber::tests::local_and_read_only_prop_values_share_native_model_and_box_transforms ... ok
+test imported::crypt_fight::tests::the_circle_brightens_as_the_chant_nears_completion ... ok
+test imported::crypt_fight::tests::the_crypt_lights_itself_within_budget ... ok
+test imported::chamber_session::tests::a_dead_player_respawns_once_into_a_new_life ... ok
+test imported::overlay::action_tests::exact_target_frame_reuses_portraits_health_and_hides_dead_or_stale_lives ... ok
+test imported::overlay::tests::shared_damage_text_matches_local_rendering_and_preserves_colors_and_expiry ... ok
+test imported::overlay::action_tests::owned_hud_uses_shared_icons_resources_cast_and_respawn_geometry ... ok
+test imported::overlay::tests::ritual_limits_hostile_bars_without_overlap_in_both_camera_shots ... ok
+test imported::meteor_swarm::tests::the_busiest_playground_frame_stays_within_the_instance_budget ... ok
+test imported::chamber_session::tests::a_session_plays_the_loopback_chamber_and_stops_cleanly ... ok
+test imported::giver_panel::tests::authored_dialogue_buttons_follow_real_combat_and_retry_safe_turn_in ... ok
+test imported::crypt_fight::tests::the_fight_builds_from_the_embedded_models ... ok
+
+test result: ok. 54 passed; 0 failed; 5 ignored; 0 measured; 0 filtered out; finished in 40.22s

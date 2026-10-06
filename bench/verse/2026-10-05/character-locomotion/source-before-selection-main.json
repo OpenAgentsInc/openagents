@@ -1,10 +1,10 @@
 {
   "schema": "verse.locomotion.source.v1",
-  "phase": "Final code after selection-geometry integration",
-  "base_revision": "93f3e1e964ed08387c66658a10e7018f4c9698cd",
+  "phase": "Final source after integration and static GPU fixture binding correction",
+  "base_revision": "2628e9431b680538d6b5c6f17320f8d1e78d0bec",
   "rustc": "rustc 1.97.1 (8bab26f4f 2026-07-14)",
   "inputs_sha256": {
-    "Cargo.lock": "31de838ff7b3efd45db43de6577ff5ce762296aad8c4c67ff9aeac28564c03ac",
+    "Cargo.lock": "5f75239266fdd32feb61b4bf7664a9e32ae0822e70db1955650671292c98130d",
     "Cargo.toml": "88733914852aa853801cf314287260655a9e3ce8be671dac49d6a5eb132fdc49",
     "assets/verse/characters/quaternius/README.md": "fd2d75b1cd2c6be669d01931dd6ed4c8419e0450256af166dd32eef3120b6f49",
     "assets/verse/characters/quaternius/animations-license.txt": "67e65a88def1ce573211f5cac3f514014abeface8fe48309c010491186b3a89a",
@@ -141,7 +141,7 @@
     "crates/physics/src/queries.rs": "7073c1da546fc74b878406eac5dd6a8534869f474d97954586a4b21042894939",
     "crates/physics/src/queries/index_tests.rs": "99b55f1a48497c9f19a2c898a812740562e66f9d1200f17a2ecbf3cade2cfb95",
     "crates/physics/src/queries/profiling.rs": "3c9dba236b6ac22bb7b9be380aa757dbab9b5437a28a32bac6b99e164d7dca11",
-    "crates/physics/src/queries/snapshot.rs": "a939789765dc75530ed81ef2089012cc5878c2c0bdff37796c4d98393748c30a",
+    "crates/physics/src/queries/snapshot.rs": "e52bf67f5d66a0eb03d106a35bc67c1b50ba9ec85a51b342192a4fea44673b8a",
     "crates/physics/src/rope.rs": "8c0f3fbadf8ab407484f8f8246d95a2f3e56df1341b5cb46eedda3d0db77ace2",
     "crates/physics/src/sensors.rs": "7d03850a2beb99da5475d9bb7f63a85e79295feae732a741ef3acc7302df7247",
     "crates/physics/src/solid.rs": "f95ebe09eae5aa62b30f9369b1d58402c53531a269a929eb1279ba69528b11d9",
@@ -309,7 +309,7 @@
     "crates/verse-world/src/playground.rs": "c9842a87ecf7ec7429087274265cf719541509855923a27db2a595f3d98e8973",
     "crates/verse-world/src/prediction.rs": "df07f76d53908eb4b4d87f04f22451f82095a4056c9fa729cdc0791c8d61e1dd",
     "crates/verse-world/src/prediction/latency.rs": "89a5ee112f978ed9baf5a48219c01efbeb0096564008938ca6aae440090e1c82",
-    "crates/verse-world/src/prediction/local.rs": "83aeeb08ea96248f838f03e0ed0c7b74e3035f874450a29a08196953bb44df2d",
+    "crates/verse-world/src/prediction/local.rs": "f1b9492f775f39fa88a487e3df21a052a7ec91749f6d59419116a7686eea8f12",
     "crates/verse-world/src/prediction/local_frames.rs": "73624e65b6c03cd1f7c228233e50499f990b7bd7b35b45ccf09029a99157ebfd",
     "crates/verse-world/src/reverse_gravity.rs": "28aae2b30fc38546ee4af2ce0903d1497a5bea61b8d021c59346671c63a85944",
     "crates/verse-world/src/room.rs": "498ada007b8a137e3ac24fca5922cb89bb7d872fe639cc8a8deef7b753b9b2f7",
@@ -410,7 +410,7 @@
     "crates/verse-world/src/wind_wall/tests.rs": "9a861d16802156547a199d2d71faa0ed0560b67fe807889620d65cc65535dca7",
     "rust-toolchain.toml": "8e390d6a0838315f972690f46ef8bae8b7ecc9ee6c1ed70140ef852869c2482e"
   },
-  "patch": "source.patch.gz",
-  "patch_sha256": "21b5f7d7553b06048dceef562b7a7c12dbdf86695368f48a48e0cce78cfb0933",
-  "implementation_head": "3f31ef672989fc159673e1c90640f4f30540c565"
+  "patch": "source-before-selection-main.patch.gz",
+  "patch_sha256": "6218ee36a21c2f286e441a8657fb71762f245320cfb8e2db76de305f1794a95f",
+  "implementation_head": "745a7c8a789c801416d024273440aac40b09a9c9"
 }

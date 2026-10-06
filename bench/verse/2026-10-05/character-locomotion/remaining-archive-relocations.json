@@ -1,0 +1,338 @@
+[
+  {
+    "logical": "/home/christopherdavid/work/openagents-target-agent1/debug/deps/libverse_engine-ba67a13f381d8c6c.rmeta",
+    "physical": "/run/verse-audit-build-agent1/retained-archives/libverse_engine-ba67a13f381d8c6c.rmeta-119e41eec7637227a012b6300e59c000d2bb48f38cdbc35e414805ee408c18b5",
+    "bytes": 1651467,
+    "sha256": "119e41eec7637227a012b6300e59c000d2bb48f38cdbc35e414805ee408c18b5",
+    "reason": "Verse audit compiler archive/metadata relocated intact while the shared disk is full; warm target paths remain linked and no archive bytes are deleted."
+  },
+  {
+    "logical": "/home/christopherdavid/work/openagents-target-agent1/debug/deps/libverse_world-40d12ea14639342b.rmeta",
+    "physical": "/run/verse-audit-build-agent1/retained-archives/libverse_world-40d12ea14639342b.rmeta-ad330a695f82c1406619188f3de3afcbb0413ae7e3055dbe1beb8b59935770c6",
+    "bytes": 13834974,
+    "sha256": "ad330a695f82c1406619188f3de3afcbb0413ae7e3055dbe1beb8b59935770c6",
+    "reason": "Verse audit compiler archive/metadata relocated intact while the shared disk is full; warm target paths remain linked and no archive bytes are deleted."
+  },
+  {
+    "logical": "/home/christopherdavid/work/openagents-target-agent1/debug/deps/libverse_content-ca04f0964c669587.rlib",
+    "physical": "/run/verse-audit-build-agent1/retained-archives/libverse_content-ca04f0964c669587.rlib-9a6dc926e5dc569bd439e49f636e612d1320e6e422d9b9d4f238c567c3334b07",
+    "bytes": 18436174,
+    "sha256": "9a6dc926e5dc569bd439e49f636e612d1320e6e422d9b9d4f238c567c3334b07",
+    "reason": "Verse audit compiler archive/metadata relocated intact while the shared disk is full; warm target paths remain linked and no archive bytes are deleted."
+  },
+  {
+    "logical": "/home/christopherdavid/work/openagents-target-agent1/debug/deps/libverse_engine-0d0a802026259eb6.rmeta",
+    "physical": "/run/verse-audit-build-agent1/retained-archives/libverse_engine-0d0a802026259eb6.rmeta-564b75266b67b4b041a095821725fc0325b5518794a599a0e743f3fb3aeaa9ba",
+    "bytes": 3628676,
+    "sha256": "564b75266b67b4b041a095821725fc0325b5518794a599a0e743f3fb3aeaa9ba",
+    "reason": "Verse audit compiler archive/metadata relocated intact while the shared disk is full; warm target paths remain linked and no archive bytes are deleted."
+  },
+  {
+    "logical": "/home/christopherdavid/work/openagents-target-agent1/debug/deps/libverse_engine-c323c1b1b3658976.rmeta",
+    "physical": "/run/verse-audit-build-agent1/retained-archives/libverse_engine-c323c1b1b3658976.rmeta-f4a8ff2a3e0e7145f6be913c4e906d99bbeef50ae90794f904d53e5c5dbd0f57",
+    "bytes": 1724040,
+    "sha256": "f4a8ff2a3e0e7145f6be913c4e906d99bbeef50ae90794f904d53e5c5dbd0f57",
+    "reason": "Verse audit compiler archive/metadata relocated intact while the shared disk is full; warm target paths remain linked and no archive bytes are deleted."
+  },
+  {
+    "logical": "/home/christopherdavid/work/openagents-target-agent1/debug/deps/libverse_world-711f0fbe6794fc5c.rmeta",
+    "physical": "/run/verse-audit-build-agent1/retained-archives/libverse_world-711f0fbe6794fc5c.rmeta-a060f88b6303e029be404be0280ae819d34fa48e1519f32bd7d6898734bce697",
+    "bytes": 16841564,
+    "sha256": "a060f88b6303e029be404be0280ae819d34fa48e1519f32bd7d6898734bce697",
+    "reason": "Verse audit compiler archive/metadata relocated intact while the shared disk is full; warm target paths remain linked and no archive bytes are deleted."
+  },
+  {
+    "logical": "/home/christopherdavid/work/openagents-target-agent1/debug/deps/libverse_content-5b67eabacafb508f.rmeta",
+    "physical": "/run/verse-audit-build-agent1/retained-archives/libverse_content-5b67eabacafb508f.rmeta-2c095bae4c06d38a49633505cf66a7f2503cfaa7f70b8cc1e5a1194f61143cb5",
+    "bytes": 373283,
+    "sha256": "2c095bae4c06d38a49633505cf66a7f2503cfaa7f70b8cc1e5a1194f61143cb5",
+    "reason": "Verse audit compiler archive/metadata relocated intact while the shared disk is full; warm target paths remain linked and no archive bytes are deleted."
+  },
+  {
+    "logical": "/home/christopherdavid/work/openagents-target-agent1/debug/deps/libverse_content-ebacfa5cd7978496.rlib",
+    "physical": "/run/verse-audit-build-agent1/retained-archives/libverse_content-ebacfa5cd7978496.rlib-2413a880ec67e41b4250cf8e45ec21752132d1a4272d7bc8a16ace40c332d5ab",
+    "bytes": 121676296,
+    "sha256": "2413a880ec67e41b4250cf8e45ec21752132d1a4272d7bc8a16ace40c332d5ab",
+    "reason": "Verse audit compiler archive/metadata relocated intact while the shared disk is full; warm target paths remain linked and no archive bytes are deleted."
+  },
+  {
+    "logical": "/home/christopherdavid/work/openagents-target-agent1/debug/deps/libverse_world-347f3db0a0259f4d.rmeta",
+    "physical": "/run/verse-audit-build-agent1/retained-archives/libverse_world-347f3db0a0259f4d.rmeta-62b6564e6adc884e1e51253497b558a904be53c59720cce968bd5d428721b03d",
+    "bytes": 16841564,
+    "sha256": "62b6564e6adc884e1e51253497b558a904be53c59720cce968bd5d428721b03d",
+    "reason": "Verse audit compiler archive/metadata relocated intact while the shared disk is full; warm target paths remain linked and no archive bytes are deleted."
+  },
+  {
+    "logical": "/home/christopherdavid/work/openagents-target-agent1/debug/deps/libverse_content-bbebd66ee871c0c8.rmeta",
+    "physical": "/run/verse-audit-build-agent1/retained-archives/libverse_content-bbebd66ee871c0c8.rmeta-bd4f91cdd5dde45823a4de51204ed7df874466234a6f753ca7ac4746fff7a2ed",
+    "bytes": 1532972,
+    "sha256": "bd4f91cdd5dde45823a4de51204ed7df874466234a6f753ca7ac4746fff7a2ed",
+    "reason": "Verse audit compiler archive/metadata relocated intact while the shared disk is full; warm target paths remain linked and no archive bytes are deleted."
+  },
+  {
+    "logical": "/home/christopherdavid/work/openagents-target-agent1/debug/deps/libverse_world-40d12ea14639342b.rlib",
+    "physical": "/run/verse-audit-build-agent1/retained-archives/libverse_world-40d12ea14639342b.rlib-903b0d1a5234bb533bb44e576a45ecc7e72c92874752fd015e7d9e496d36502a",
+    "bytes": 79996934,
+    "sha256": "903b0d1a5234bb533bb44e576a45ecc7e72c92874752fd015e7d9e496d36502a",
+    "reason": "Verse audit compiler archive/metadata relocated intact while the shared disk is full; warm target paths remain linked and no archive bytes are deleted."
+  },
+  {
+    "logical": "/home/christopherdavid/work/openagents-target-agent1/debug/deps/libverse_content-32493df6cc459898.rmeta",
+    "physical": "/run/verse-audit-build-agent1/retained-archives/libverse_content-32493df6cc459898.rmeta-2e3054c406ab92cc86a24a0719315e0a3644c83fee61f755df0a020162c5b6fc",
+    "bytes": 1532114,
+    "sha256": "2e3054c406ab92cc86a24a0719315e0a3644c83fee61f755df0a020162c5b6fc",
+    "reason": "Verse audit compiler archive/metadata relocated intact while the shared disk is full; warm target paths remain linked and no archive bytes are deleted."
+  },
+  {
+    "logical": "/home/christopherdavid/work/openagents-target-agent1/debug/deps/libverse_content-0e4a64cee58cea31.rmeta",
+    "physical": "/run/verse-audit-build-agent1/retained-archives/libverse_content-0e4a64cee58cea31.rmeta-271bb66af31adcfd6e600e18458c4ba8e6bcd72f67f945a7bba271905ae60728",
+    "bytes": 886500,
+    "sha256": "271bb66af31adcfd6e600e18458c4ba8e6bcd72f67f945a7bba271905ae60728",
+    "reason": "Verse audit compiler archive/metadata relocated intact while the shared disk is full; warm target paths remain linked and no archive bytes are deleted."
+  },
+  {
+    "logical": "/home/christopherdavid/work/openagents-target-agent1/debug/deps/libverse_world-b6f95d5f39ab8b0e.rmeta",
+    "physical": "/run/verse-audit-build-agent1/retained-archives/libverse_world-b6f95d5f39ab8b0e.rmeta-15b07bce05e5e093fa93bbaca8a28cbf92f88657476d9727c0c84981612589ee",
+    "bytes": 16833421,
+    "sha256": "15b07bce05e5e093fa93bbaca8a28cbf92f88657476d9727c0c84981612589ee",
+    "reason": "Verse audit compiler archive/metadata relocated intact while the shared disk is full; warm target paths remain linked and no archive bytes are deleted."
+  },
+  {
+    "logical": "/home/christopherdavid/work/openagents-target-agent1/debug/deps/libverse_imported-d6bc2ff76fcfeacc.rmeta",
+    "physical": "/run/verse-audit-build-agent1/retained-archives/libverse_imported-d6bc2ff76fcfeacc.rmeta-29329611e4141a641a35c55341380ad17cbee3dd088c051a00543a0645c8df69",
+    "bytes": 359157,
+    "sha256": "29329611e4141a641a35c55341380ad17cbee3dd088c051a00543a0645c8df69",
+    "reason": "Verse audit compiler archive/metadata relocated intact while the shared disk is full; warm target paths remain linked and no archive bytes are deleted."
+  },
+  {
+    "logical": "/home/christopherdavid/work/openagents-target-agent1/debug/deps/libverse_content-556b1c0892b22c08.rmeta",
+    "physical": "/run/verse-audit-build-agent1/retained-archives/libverse_content-556b1c0892b22c08.rmeta-4a0f2fbf3fb2415244966c089d36cbd803fbe0c2909dd0d209b63d85aa75c7ab",
+    "bytes": 1532168,
+    "sha256": "4a0f2fbf3fb2415244966c089d36cbd803fbe0c2909dd0d209b63d85aa75c7ab",
+    "reason": "Verse audit compiler archive/metadata relocated intact while the shared disk is full; warm target paths remain linked and no archive bytes are deleted."
+  },
+  {
+    "logical": "/home/christopherdavid/work/openagents-target-agent1/debug/deps/libverse_content-ca04f0964c669587.rmeta",
+    "physical": "/run/verse-audit-build-agent1/retained-archives/libverse_content-ca04f0964c669587.rmeta-91c29b87917cfdc4a82b8103aa72e134c425ac7dba5c7a81927deab0b0d19236",
+    "bytes": 1531492,
+    "sha256": "91c29b87917cfdc4a82b8103aa72e134c425ac7dba5c7a81927deab0b0d19236",
+    "reason": "Verse audit compiler archive/metadata relocated intact while the shared disk is full; warm target paths remain linked and no archive bytes are deleted."
+  },
+  {
+    "logical": "/home/christopherdavid/work/openagents-target-agent1/debug/deps/libverse_content-556b1c0892b22c08.rlib",
+    "physical": "/run/verse-audit-build-agent1/retained-archives/libverse_content-556b1c0892b22c08.rlib-0c0e14322f79aa5b06a07d877f08367a772c05f461f670d17fa2c4f9855f7dff",
+    "bytes": 18415524,
+    "sha256": "0c0e14322f79aa5b06a07d877f08367a772c05f461f670d17fa2c4f9855f7dff",
+    "reason": "Verse audit compiler archive/metadata relocated intact while the shared disk is full; warm target paths remain linked and no archive bytes are deleted."
+  },
+  {
+    "logical": "/home/christopherdavid/work/openagents-target-agent1/debug/deps/libverse_world-11d0242de87a24b3.rmeta",
+    "physical": "/run/verse-audit-build-agent1/retained-archives/libverse_world-11d0242de87a24b3.rmeta-521aa3fd3e2ecaad6ff844bcd01835733a885557775af5acf547b0689ac97d25",
+    "bytes": 17531997,
+    "sha256": "521aa3fd3e2ecaad6ff844bcd01835733a885557775af5acf547b0689ac97d25",
+    "reason": "Verse audit compiler archive/metadata relocated intact while the shared disk is full; warm target paths remain linked and no archive bytes are deleted."
+  },
+  {
+    "logical": "/home/christopherdavid/work/openagents-target-agent1/debug/deps/libverse_content-26329f5e69eb9b79.rmeta",
+    "physical": "/run/verse-audit-build-agent1/retained-archives/libverse_content-26329f5e69eb9b79.rmeta-e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "bytes": 0,
+    "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "reason": "Verse audit compiler archive/metadata relocated intact while the shared disk is full; warm target paths remain linked and no archive bytes are deleted."
+  },
+  {
+    "logical": "/home/christopherdavid/work/openagents-target-agent1/debug/deps/libverse_engine-5f4276fde30fe40a.rmeta",
+    "physical": "/run/verse-audit-build-agent1/retained-archives/libverse_engine-5f4276fde30fe40a.rmeta-55c035e89813e3de15e8e55aed4086a7166de5d57f890985f1f5ef6d0d530778",
+    "bytes": 3515403,
+    "sha256": "55c035e89813e3de15e8e55aed4086a7166de5d57f890985f1f5ef6d0d530778",
+    "reason": "Verse audit compiler archive/metadata relocated intact while the shared disk is full; warm target paths remain linked and no archive bytes are deleted."
+  },
+  {
+    "logical": "/home/christopherdavid/work/openagents-target-agent1/debug/deps/libverse_content-ebacfa5cd7978496.rmeta",
+    "physical": "/run/verse-audit-build-agent1/retained-archives/libverse_content-ebacfa5cd7978496.rmeta-41e9879bd4ce9802a907e894e3649bfe12ec88b2d4df91f4ea37b470acb3c817",
+    "bytes": 1515787,
+    "sha256": "41e9879bd4ce9802a907e894e3649bfe12ec88b2d4df91f4ea37b470acb3c817",
+    "reason": "Verse audit compiler archive/metadata relocated intact while the shared disk is full; warm target paths remain linked and no archive bytes are deleted."
+  },
+  {
+    "logical": "/home/christopherdavid/work/openagents-target-agent1/debug/deps/libverse_engine-5f4276fde30fe40a.rlib",
+    "physical": "/run/verse-audit-build-agent1/retained-archives/libverse_engine-5f4276fde30fe40a.rlib-baff5cdb27ceddbcbdcc124466dd6ea2bf6b4b5d354698fc9df889d1a81f9c83",
+    "bytes": 52951488,
+    "sha256": "baff5cdb27ceddbcbdcc124466dd6ea2bf6b4b5d354698fc9df889d1a81f9c83",
+    "reason": "Verse audit compiler archive/metadata relocated intact while the shared disk is full; warm target paths remain linked and no archive bytes are deleted."
+  },
+  {
+    "logical": "/home/christopherdavid/work/openagents-target-agent1/debug/deps/libverse_world-b6f95d5f39ab8b0e.rlib",
+    "physical": "/run/verse-audit-build-agent1/retained-archives/libverse_world-b6f95d5f39ab8b0e.rlib-2328b297cf9ec15ed186c95e6012ea94ab92300972215c08bcdd8a51fb186089",
+    "bytes": 313671014,
+    "sha256": "2328b297cf9ec15ed186c95e6012ea94ab92300972215c08bcdd8a51fb186089",
+    "reason": "Verse audit compiler archive/metadata relocated intact while the shared disk is full; warm target paths remain linked and no archive bytes are deleted."
+  },
+  {
+    "logical": "/home/christopherdavid/work/openagents-target-agent1/debug/deps/libverse_engine-51e45687738d1443.rmeta",
+    "physical": "/run/verse-audit-build-agent1/retained-archives/libverse_engine-51e45687738d1443.rmeta-6f7d7cf9ce0711da6b38e84d0dac2b76b462f123eeae353ca3fff78790a12275",
+    "bytes": 3628676,
+    "sha256": "6f7d7cf9ce0711da6b38e84d0dac2b76b462f123eeae353ca3fff78790a12275",
+    "reason": "Verse audit compiler archive/metadata relocated intact while the shared disk is full; warm target paths remain linked and no archive bytes are deleted."
+  },
+  {
+    "logical": "/home/christopherdavid/work/openagents-target-agent1/debug/deps/libverse_engine-d6a4b133c653ee79.rmeta",
+    "physical": "/run/verse-audit-build-agent1/retained-archives/libverse_engine-d6a4b133c653ee79.rmeta-2d31bcc21099562aa52698db76b853df3b5864c82807f2285b09d328cd284b07",
+    "bytes": 1651467,
+    "sha256": "2d31bcc21099562aa52698db76b853df3b5864c82807f2285b09d328cd284b07",
+    "reason": "Verse audit compiler archive/metadata relocated intact while the shared disk is full; warm target paths remain linked and no archive bytes are deleted."
+  },
+  {
+    "logical": "/home/christopherdavid/work/openagents-target-agent1/debug/deps/libverse_world-605a6237fb99fc7e.rmeta",
+    "physical": "/run/verse-audit-build-agent1/retained-archives/libverse_world-605a6237fb99fc7e.rmeta-da9af1d921a7e5631fedb982c49f06efc8e54afdc7295d05b6504f9f816a965b",
+    "bytes": 16673235,
+    "sha256": "da9af1d921a7e5631fedb982c49f06efc8e54afdc7295d05b6504f9f816a965b",
+    "reason": "Verse audit compiler archive/metadata relocated intact while the shared disk is full; warm target paths remain linked and no archive bytes are deleted."
+  },
+  {
+    "logical": "/home/christopherdavid/work/openagents-target-agent1/debug/deps/libverse_world-605a6237fb99fc7e.rlib",
+    "physical": "/run/verse-audit-build-agent1/retained-archives/libverse_world-605a6237fb99fc7e.rlib-858053b393bbd082bc5ca3e37b20fc8468241965b01f179a9fce03fb920ca27b",
+    "bytes": 310348908,
+    "sha256": "858053b393bbd082bc5ca3e37b20fc8468241965b01f179a9fce03fb920ca27b",
+    "reason": "Verse audit compiler archive/metadata relocated intact while the shared disk is full; warm target paths remain linked and no archive bytes are deleted."
+  },
+  {
+    "logical": "/home/christopherdavid/work/openagents-target-agent1/debug/deps/libverse_pbr-129160b4181f86fe.rmeta",
+    "physical": "/run/verse-audit-build-agent1/retained-archives/libverse_pbr-129160b4181f86fe.rmeta-596770f187c25677fc7e238be0dcaef40524660f7c12ac6e42078007314d17ce",
+    "bytes": 2460145,
+    "sha256": "596770f187c25677fc7e238be0dcaef40524660f7c12ac6e42078007314d17ce",
+    "reason": "Verse audit compiler archive/metadata relocated intact while the shared disk is full; warm target paths remain linked and no archive bytes are deleted."
+  },
+  {
+    "logical": "/home/christopherdavid/work/openagents-target-agent1/debug/deps/libverse_content-fbb556250dda0cce.rlib",
+    "physical": "/run/verse-audit-build-agent1/retained-archives/libverse_content-fbb556250dda0cce.rlib-f802a12ad010471eed84ff68fbc5ef0d44670df933fccba154a03c2fbe6dfbee",
+    "bytes": 55477518,
+    "sha256": "f802a12ad010471eed84ff68fbc5ef0d44670df933fccba154a03c2fbe6dfbee",
+    "reason": "Verse audit compiler archive/metadata relocated intact while the shared disk is full; warm target paths remain linked and no archive bytes are deleted."
+  },
+  {
+    "logical": "/home/christopherdavid/work/openagents-target-agent1/debug/deps/libverse_world-c41bbf5f270044ff.rlib",
+    "physical": "/run/verse-audit-build-agent1/retained-archives/libverse_world-c41bbf5f270044ff.rlib-0d9830bb0525711f9cd1a843d7ac318e28c38dede186041c05025a4dc7a543dc",
+    "bytes": 238008480,
+    "sha256": "0d9830bb0525711f9cd1a843d7ac318e28c38dede186041c05025a4dc7a543dc",
+    "reason": "Verse audit compiler archive/metadata relocated intact while the shared disk is full; warm target paths remain linked and no archive bytes are deleted."
+  },
+  {
+    "logical": "/home/christopherdavid/work/openagents-target-agent1/debug/deps/libverse_world-0c23c5ce54834bf4.rmeta",
+    "physical": "/run/verse-audit-build-agent1/retained-archives/libverse_world-0c23c5ce54834bf4.rmeta-a7397f5d542846eabbca4704d0e79b494d1e3d8e11be46a24a275a6242eb9cef",
+    "bytes": 5046177,
+    "sha256": "a7397f5d542846eabbca4704d0e79b494d1e3d8e11be46a24a275a6242eb9cef",
+    "reason": "Verse audit compiler archive/metadata relocated intact while the shared disk is full; warm target paths remain linked and no archive bytes are deleted."
+  },
+  {
+    "logical": "/home/christopherdavid/work/openagents-target-agent1/debug/deps/libverse_pbr-a2cb0cc077f45d6a.rmeta",
+    "physical": "/run/verse-audit-build-agent1/retained-archives/libverse_pbr-a2cb0cc077f45d6a.rmeta-a6f2bed2648cbe6b62b8988a9c1cea954e6e2c07b4173c28e5a9eba5b58d995d",
+    "bytes": 2442235,
+    "sha256": "a6f2bed2648cbe6b62b8988a9c1cea954e6e2c07b4173c28e5a9eba5b58d995d",
+    "reason": "Verse audit compiler archive/metadata relocated intact while the shared disk is full; warm target paths remain linked and no archive bytes are deleted."
+  },
+  {
+    "logical": "/home/christopherdavid/work/openagents-target-agent1/debug/deps/libverse_world-11d0242de87a24b3.rlib",
+    "physical": "/run/verse-audit-build-agent1/retained-archives/libverse_world-11d0242de87a24b3.rlib-b1c2b9bafea44dbb77a387da52edb3755164fb56dbc347a37b2b916edb2e90d0",
+    "bytes": 103339692,
+    "sha256": "b1c2b9bafea44dbb77a387da52edb3755164fb56dbc347a37b2b916edb2e90d0",
+    "reason": "Verse audit compiler archive/metadata relocated intact while the shared disk is full; warm target paths remain linked and no archive bytes are deleted."
+  },
+  {
+    "logical": "/home/christopherdavid/work/openagents-target-agent1/debug/deps/libverse_world-b5c018b547469709.rmeta",
+    "physical": "/run/verse-audit-build-agent1/retained-archives/libverse_world-b5c018b547469709.rmeta-8681d24037deb9536f9addb69d78eb38523681771018f9602f768af7bde8441b",
+    "bytes": 9087171,
+    "sha256": "8681d24037deb9536f9addb69d78eb38523681771018f9602f768af7bde8441b",
+    "reason": "Verse audit compiler archive/metadata relocated intact while the shared disk is full; warm target paths remain linked and no archive bytes are deleted."
+  },
+  {
+    "logical": "/home/christopherdavid/work/openagents-target-agent1/debug/deps/libverse_content-5b67eabacafb508f.rlib",
+    "physical": "/run/verse-audit-build-agent1/retained-archives/libverse_content-5b67eabacafb508f.rlib-13db30d4a6173174e68c1f1f545acfac56c698a803ce62c3d6d725b6500be742",
+    "bytes": 54874822,
+    "sha256": "13db30d4a6173174e68c1f1f545acfac56c698a803ce62c3d6d725b6500be742",
+    "reason": "Verse audit compiler archive/metadata relocated intact while the shared disk is full; warm target paths remain linked and no archive bytes are deleted."
+  },
+  {
+    "logical": "/home/christopherdavid/work/openagents-target-agent1/debug/deps/libverse_world-347f3db0a0259f4d.rlib",
+    "physical": "/run/verse-audit-build-agent1/retained-archives/libverse_world-347f3db0a0259f4d.rlib-b4c0bd7acfbd4c911f12789dcdafd14f9675f220a6ed651bdb28874f305084ac",
+    "bytes": 313884008,
+    "sha256": "b4c0bd7acfbd4c911f12789dcdafd14f9675f220a6ed651bdb28874f305084ac",
+    "reason": "Verse audit compiler archive/metadata relocated intact while the shared disk is full; warm target paths remain linked and no archive bytes are deleted."
+  },
+  {
+    "logical": "/home/christopherdavid/work/openagents-target-agent1/debug/deps/libverse_content-8b3c76ae0795666f.rlib",
+    "physical": "/run/verse-audit-build-agent1/retained-archives/libverse_content-8b3c76ae0795666f.rlib-f4a99590e25443a99d38a6b63a985eb4550c7dcb11baa83803afdca71d9a73e2",
+    "bytes": 121355812,
+    "sha256": "f4a99590e25443a99d38a6b63a985eb4550c7dcb11baa83803afdca71d9a73e2",
+    "reason": "Verse audit compiler archive/metadata relocated intact while the shared disk is full; warm target paths remain linked and no archive bytes are deleted."
+  },
+  {
+    "logical": "/home/christopherdavid/work/openagents-target-agent1/debug/deps/libverse_engine-51e45687738d1443.rlib",
+    "physical": "/run/verse-audit-build-agent1/retained-archives/libverse_engine-51e45687738d1443.rlib-9b306a4a39f6ce7668a272090b74a6192423b452a87a979f8886d22b67c37555",
+    "bytes": 62779236,
+    "sha256": "9b306a4a39f6ce7668a272090b74a6192423b452a87a979f8886d22b67c37555",
+    "reason": "Verse audit compiler archive/metadata relocated intact while the shared disk is full; warm target paths remain linked and no archive bytes are deleted."
+  },
+  {
+    "logical": "/home/christopherdavid/work/openagents-target-agent1/debug/deps/libverse_world-46b78107dd90676b.rmeta",
+    "physical": "/run/verse-audit-build-agent1/retained-archives/libverse_world-46b78107dd90676b.rmeta-d82f2190c332139c3e71e13b7965fea1c67d011f37341e430ab155fc683e5161",
+    "bytes": 6522659,
+    "sha256": "d82f2190c332139c3e71e13b7965fea1c67d011f37341e430ab155fc683e5161",
+    "reason": "Verse audit compiler archive/metadata relocated intact while the shared disk is full; warm target paths remain linked and no archive bytes are deleted."
+  },
+  {
+    "logical": "/home/christopherdavid/work/openagents-target-agent1/debug/deps/libverse_content-fbb556250dda0cce.rmeta",
+    "physical": "/run/verse-audit-build-agent1/retained-archives/libverse_content-fbb556250dda0cce.rmeta-a296626477950aa4491a53a3738ef6cd868040588ee78b3cc7350986cbf83a44",
+    "bytes": 379070,
+    "sha256": "a296626477950aa4491a53a3738ef6cd868040588ee78b3cc7350986cbf83a44",
+    "reason": "Verse audit compiler archive/metadata relocated intact while the shared disk is full; warm target paths remain linked and no archive bytes are deleted."
+  },
+  {
+    "logical": "/home/christopherdavid/work/openagents-target-agent1/debug/deps/libverse_world-c41bbf5f270044ff.rmeta",
+    "physical": "/run/verse-audit-build-agent1/retained-archives/libverse_world-c41bbf5f270044ff.rmeta-98b7fc5e6b7940d08f4a8283bb1c739201c28354bc6f21175d4fc6686fc4df3b",
+    "bytes": 13229500,
+    "sha256": "98b7fc5e6b7940d08f4a8283bb1c739201c28354bc6f21175d4fc6686fc4df3b",
+    "reason": "Verse audit compiler archive/metadata relocated intact while the shared disk is full; warm target paths remain linked and no archive bytes are deleted."
+  },
+  {
+    "logical": "/home/christopherdavid/work/openagents-target-agent1/debug/deps/libverse_engine-0d0a802026259eb6.rlib",
+    "physical": "/run/verse-audit-build-agent1/retained-archives/libverse_engine-0d0a802026259eb6.rlib-52402a6711fda0f29bad0e76371972b667d4c647c82ddc369b520a65d27da038",
+    "bytes": 62781050,
+    "sha256": "52402a6711fda0f29bad0e76371972b667d4c647c82ddc369b520a65d27da038",
+    "reason": "Verse audit compiler archive/metadata relocated intact while the shared disk is full; warm target paths remain linked and no archive bytes are deleted."
+  },
+  {
+    "logical": "/home/christopherdavid/work/openagents-target-agent1/debug/deps/libverse_engine-9c163512291227e7.rmeta",
+    "physical": "/run/verse-audit-build-agent1/retained-archives/libverse_engine-9c163512291227e7.rmeta-282c49c6c0bf78d9a52dc360d821f1a5d11dbee4017e9ca04536d917288aa7d0",
+    "bytes": 1870434,
+    "sha256": "282c49c6c0bf78d9a52dc360d821f1a5d11dbee4017e9ca04536d917288aa7d0",
+    "reason": "Verse audit compiler archive/metadata relocated intact while the shared disk is full; warm target paths remain linked and no archive bytes are deleted."
+  },
+  {
+    "logical": "/home/christopherdavid/work/openagents-target-agent1/debug/deps/libverse_imported-e6ef7761e5cc30c9.rmeta",
+    "physical": "/run/verse-audit-build-agent1/retained-archives/libverse_imported-e6ef7761e5cc30c9.rmeta-713a6fea610de5826955494a7e12792627b5919e2d8fc301e5335bb47b77cbed",
+    "bytes": 359225,
+    "sha256": "713a6fea610de5826955494a7e12792627b5919e2d8fc301e5335bb47b77cbed",
+    "reason": "Verse audit compiler archive/metadata relocated intact while the shared disk is full; warm target paths remain linked and no archive bytes are deleted."
+  },
+  {
+    "logical": "/home/christopherdavid/work/openagents-target-agent1/debug/deps/libverse_content-8b3c76ae0795666f.rmeta",
+    "physical": "/run/verse-audit-build-agent1/retained-archives/libverse_content-8b3c76ae0795666f.rmeta-5a40718bacded7b02924ea633b1cf032018e2fa5c2c2f3707b61461a72322cb1",
+    "bytes": 1516562,
+    "sha256": "5a40718bacded7b02924ea633b1cf032018e2fa5c2c2f3707b61461a72322cb1",
+    "reason": "Verse audit compiler archive/metadata relocated intact while the shared disk is full; warm target paths remain linked and no archive bytes are deleted."
+  },
+  {
+    "logical": "/home/christopherdavid/work/openagents-target-agent1/debug/deps/libverse_content-b595f0785d04bdce.rmeta",
+    "physical": "/run/verse-audit-build-agent1/retained-archives/libverse_content-b595f0785d04bdce.rmeta-42943146be14b7b14a337f57d637e4bf7835d7226fcdf1b44160f9e3ffd08b8d",
+    "bytes": 876251,
+    "sha256": "42943146be14b7b14a337f57d637e4bf7835d7226fcdf1b44160f9e3ffd08b8d",
+    "reason": "Verse audit compiler archive/metadata relocated intact while the shared disk is full; warm target paths remain linked and no archive bytes are deleted."
+  },
+  {
+    "logical": "/home/christopherdavid/work/openagents-target-agent1/debug/deps/libverse_content-32493df6cc459898.rlib",
+    "physical": "/run/verse-audit-build-agent1/retained-archives/libverse_content-32493df6cc459898.rlib-3b5331cff320c6b00e5ac2a6dbe29adb3de25a4fd8ced18408f2779caa262dd0",
+    "bytes": 18382884,
+    "sha256": "3b5331cff320c6b00e5ac2a6dbe29adb3de25a4fd8ced18408f2779caa262dd0",
+    "reason": "Verse audit compiler archive/metadata relocated intact while the shared disk is full; warm target paths remain linked and no archive bytes are deleted."
+  }
+]

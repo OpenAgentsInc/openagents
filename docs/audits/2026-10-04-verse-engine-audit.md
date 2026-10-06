@@ -1628,11 +1628,15 @@ focused terrain-query check passes against that addition. Content passes 24
 tests and its CLI workflow before the final pitch-sign correction; the final
 named-rig fixture passes against the corrected controller. Renderer library
 checks pass 80 tests with six ignored graphics checks against current main.
-The merged native client passes 54 tests with five ignored graphics checks;
+The final geometry integration also passes all 360 default world tests, including
+prediction and contact isolation. The merged native client passes 54 tests with five ignored graphics checks;
 the final offscreen Vulkan check separately passes on an RTX 4080, with 29
 planted contacts and zero equipment-socket matrix error over 18 frames. Its
 retained frame shows both bodies and their socket-mounted wands. Query terrain
-is not drawn in that diagnostic image. Source phases, exact build profiles,
+is not drawn in that diagnostic image. The capture predates the final
+selection-geometry reconciliation change; that change preserves the direct
+terrain-ray and pose paths, and the final world and native checks cover its
+integration. Source phases, exact build profiles,
 executable and artifact hashes, observed fixture failures, and disk workarounds
 remain retained.
 

@@ -39,6 +39,12 @@ and equipment use the same final palette. The query terrain is not drawn in the
 capture. GPU timestamp queries are disabled, so this is a palette integration
 check, not a GPU timing result.
 
+The final main integration preserves travel when nonblocking selection geometry
+changes. Against it, all 360 default world tests and 54 native client tests pass.
+The GPU capture predates that integration; the change leaves the direct terrain
+ray, locomotion controller, renderer, and fixture source unchanged. Source
+manifests and verification phases distinguish both revisions.
+
 ![Two admitted outfits and their socket-mounted wands after terrain and aim adjustments.](terrain-aim-equipment.png)
 
 Checks use the pinned Rust toolchain and the existing warm Cargo target. Some
