@@ -38,27 +38,31 @@ async fn delay<R: AsyncRead + Unpin, W: AsyncWrite + Unpin>(
 }
 #[tokio::test]
 async fn delayed_bootstrap_and_native_interval_stream_use_one_owned_timeline() {
-    interval_stream(false, 0, 67, 100, 0, false).await;
+    interval_stream(false, 0, 67, 100, 0, false, false).await;
 }
 #[tokio::test]
 async fn durable_writer_stall_preserves_owned_interval_timeline() {
-    interval_stream(true, 300, 0, 0, 0, false).await;
+    interval_stream(true, 300, 0, 0, 0, false, false).await;
 }
 #[tokio::test]
 async fn delayed_route_and_long_writer_stall_preserve_owned_interval_timeline() {
-    interval_stream(true, 1200, 40, 40, 0, false).await;
+    interval_stream(true, 1200, 40, 40, 0, false, false).await;
 }
 #[tokio::test]
 async fn shared_player_pressure_and_long_writer_stall_preserve_owned_interval_timeline() {
-    interval_stream(true, 1200, 40, 40, 19, false).await;
+    interval_stream(true, 1200, 40, 40, 19, false, false).await;
 }
 #[tokio::test]
 async fn mixed_cast_and_native_interval_stream_preserve_control() {
-    interval_stream(false, 0, 67, 100, 0, true).await;
+    interval_stream(false, 0, 67, 100, 0, true, false).await;
 }
 #[tokio::test]
 async fn cast_during_shared_writer_stall_preserves_native_intervals() {
-    interval_stream(true, 1200, 40, 40, 19, true).await;
+    interval_stream(true, 1200, 40, 40, 19, true, false).await;
+}
+#[tokio::test]
+async fn cast_and_authority_credit_bursts_preserve_control() {
+    interval_stream(true, 300, 40, 40, 19, true, true).await;
 }
 async fn interval_stream(
     durable_stall: bool,
@@ -67,6 +71,7 @@ async fn interval_stream(
     down_ms: u64,
     pressure_players: usize,
     cast_during_movement: bool,
+    credit_bursts: bool,
 ) {
     use super::super::net::tests::{key, start};
     use rustls::pki_types::ServerName;
@@ -218,6 +223,9 @@ async fn interval_stream(
     let mut next_input = started;
     let mut token = 0;
     let mut next_frame = baseline.physics_step;
+    let mut verified_credit = baseline.world_step;
+    let mut snapshots = 0;
+    let mut next_burst = started;
     let mut bound = 0;
     let mut accepted = 0;
     let mut cast_sent = false;
@@ -234,7 +242,10 @@ async fn interval_stream(
         while let Ok(update) = output.try_recv() {
             match update {
                 Update::FrameBound { binding, .. } => {
-                    local.bind_movement_frame(&binding.unwrap()).unwrap();
+                    let frame = binding.unwrap();
+                    if !credit_bursts {
+                        local.bind_movement_frame(&frame).unwrap();
+                    }
                     bound += 1;
                 }
                 Update::CommandBound { binding, .. } if cast_during_movement => {
@@ -262,7 +273,9 @@ async fn interval_stream(
                         accepted_casts += 1;
                     }
                     if let Some(control) = &response.control {
-                        if local.context() == Some((control.life.into(), control.epoch))
+                        verified_credit = verified_credit.max(control.credit_step);
+                        if !credit_bursts
+                            && local.context() == Some((control.life.into(), control.epoch))
                             && local.movement_profile() == Some(Profile::Frames)
                         {
                             local
@@ -282,7 +295,10 @@ async fn interval_stream(
                         panic!();
                     };
                     let next = state.movement.unwrap();
-                    recent.push_back(serde_json::json!({"elapsed_ms":started.elapsed().as_millis(),"world_step":next.world_step,"confirmed_step":next.physics_step,"local_step":local.physics_step(),"next_frame":next_frame,"credit_limit":local.movement_frame_limit(),"epoch":next.epoch,"bound":bound,"accepted":accepted}));
+                    snapshots += 1;
+                    verified_credit =
+                        verified_credit.max(response.control.as_ref().unwrap().credit_step);
+                    recent.push_back(serde_json::json!({"elapsed_ms":started.elapsed().as_millis(),"world_step":next.world_step,"confirmed_step":next.physics_step,"local_step":(!credit_bursts).then(||local.physics_step()),"next_frame":next_frame,"credit_limit":if credit_bursts {Some(verified_credit+u64::from(crate::movement::frames::MAX_STEPS))} else {local.movement_frame_limit()},"epoch":next.epoch,"bound":bound,"accepted":accepted}));
                     if recent.len() > 12 {
                         recent.pop_front();
                     }
@@ -297,6 +313,9 @@ async fn interval_stream(
                         (baseline.life, baseline.epoch, Profile::Frames),
                         "Interval mode expired under supported latency"
                     );
+                    if credit_bursts {
+                        continue;
+                    }
                     let before = local.pose().unwrap().position;
                     local
                         .observe(
@@ -325,11 +344,13 @@ async fn interval_stream(
             );
         }
         let now = Instant::now();
-        local
-            .advance(now.duration_since(last).as_secs_f64().min(0.1))
-            .unwrap();
+        if !credit_bursts {
+            local
+                .advance(now.duration_since(last).as_secs_f64().min(0.1))
+                .unwrap();
+        }
         last = now;
-        if now >= next_input {
+        if !credit_bursts && now >= next_input {
             token += 1;
             local
                 .queue(
@@ -366,24 +387,53 @@ async fn interval_stream(
                 .unwrap();
             cast_sent = true;
         }
-        let steps = local
-            .movement_frame_limit()
-            .unwrap()
-            .saturating_sub(next_frame)
-            .min(u64::from(crate::movement::frames::SEND_STEPS)) as u32;
-        if steps >= crate::movement::frames::SEND_STEPS && input.capacity() > 0 {
-            let frame = local.movement_frame(next_frame, steps).unwrap();
+        let maximum = if credit_bursts {
+            u64::from(crate::movement::frames::MAX_STEPS)
+        } else {
+            u64::from(crate::movement::frames::SEND_STEPS)
+        };
+        let limit = if credit_bursts {
+            verified_credit + maximum
+        } else {
+            local.movement_frame_limit().unwrap()
+        };
+        let steps = limit.saturating_sub(next_frame).min(maximum) as u32;
+        if steps > 0
+            && (credit_bursts || steps >= crate::movement::frames::SEND_STEPS)
+            && (!credit_bursts || now >= next_burst)
+            && input.capacity() > 0
+        {
+            let frame = if credit_bursts {
+                crate::movement::frames::Frame {
+                    life: baseline.life,
+                    epoch: baseline.epoch,
+                    sequence: 0,
+                    tick: 0,
+                    start: next_frame,
+                    steps,
+                    segments: vec![crate::movement::frames::Segment {
+                        offset: 0,
+                        axes: [1., 0.],
+                        yaw: 0.,
+                        until: next_frame + crate::movement::HELD_STEPS,
+                        jump: false,
+                    }],
+                }
+            } else {
+                local.movement_frame(next_frame, steps).unwrap()
+            };
             token += 1;
             input
                 .send(Input::MovementFrame { token, frame })
                 .await
                 .unwrap();
             next_frame += u64::from(steps);
+            next_burst = now + Duration::from_millis(33);
         }
         tokio::time::sleep(Duration::from_millis(8)).await;
     }
     assert!(
-        bound > 30 && accepted > 30 && corrections.len() > 10,
+        bound > 30 && accepted > 30 && snapshots > 10,
         "bound={bound} accepted={accepted} observations={}",
         corrections.len()
     );
@@ -391,13 +441,19 @@ async fn interval_stream(
         assert!(cast_sent && cast_sequence.is_some());
         assert_eq!(accepted_casts, 1);
     }
-    corrections.sort_by(f32::total_cmp);
-    let p95 = corrections[(corrections.len() as f64 * 0.95).ceil() as usize - 1];
     eprintln!(
-        "VERSE_V04_TLS_EVIDENCE {}",
-        serde_json::json!({"up_ms":up.as_millis(),"down_ms":down.as_millis(),"durable_stall_ms":stall_ms,"bound":bound,"accepted":accepted,"observations":corrections.len(),"p95_m":p95,"maximum_m":corrections.last().unwrap(),"mode_resets":0})
+        "VERSE_INTERVAL_PRODUCER_EVIDENCE {}",
+        serde_json::json!({"producer":if credit_bursts {"authority_credit_bursts"} else {"completed_local_steps"},"bound":bound,"accepted":accepted,"snapshots":snapshots,"accepted_casts":accepted_casts,"mode_resets":0}),
     );
-    assert!(p95 < 0.1, "Actual delayed TLS correction p95: {p95}");
+    if !credit_bursts {
+        corrections.sort_by(f32::total_cmp);
+        let p95 = corrections[(corrections.len() as f64 * 0.95).ceil() as usize - 1];
+        eprintln!(
+            "VERSE_V04_TLS_EVIDENCE {}",
+            serde_json::json!({"up_ms":up.as_millis(),"down_ms":down.as_millis(),"durable_stall_ms":stall_ms,"bound":bound,"accepted":accepted,"observations":corrections.len(),"p95_m":p95,"maximum_m":corrections.last().unwrap(),"mode_resets":0})
+        );
+        assert!(p95 < 0.1, "Actual delayed TLS correction p95: {p95}");
+    }
     let reads: Vec<_> = observer
         .drain()
         .samples

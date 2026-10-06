@@ -1,0 +1,1237 @@
+diff --git a/crates/physics/src/queries/snapshot.rs b/crates/physics/src/queries/snapshot.rs
+index c663decfbb..e17f98250e 100644
+--- a/crates/physics/src/queries/snapshot.rs
++++ b/crates/physics/src/queries/snapshot.rs
+@@ -439,6 +439,20 @@ impl SceneCache {
+                 .into_iter()
+                 .all(|shape| self.source.get(&shape.key) == Some(shape))
+     }
++    /// Compares fixed character blockers; other query usages do not affect movement.
++    /// Capsule poses remain separate, and `update` validates every shape.
++    pub fn blocking_geometry_matches(&self, snapshot: &SceneSnapshot) -> bool {
++        if snapshot.instance != self.instance {
++            return false;
++        }
++        let blocking = |shape: &&ShapeSnapshot| {
++            shape.usage == Usage::Blocking
++                && !matches!(shape.geometry, GeometrySnapshot::Capsule { .. })
++        };
++        let mut next = snapshot.colliders.iter().filter(blocking);
++        next.clone().count() == self.source.values().filter(blocking).count()
++            && next.all(|shape| self.source.get(&shape.key) == Some(shape))
++    }
+     /// Returns the number of recompiled shapes. Validation and compilation precede mutation.
+     pub fn update(&mut self, snapshot: &SceneSnapshot) -> Result<usize, String> {
+         snapshot.validate(self.instance)?;
+@@ -515,3 +529,62 @@ impl SceneCache {
+         Ok(count)
+     }
+ }
++
++#[cfg(test)]
++mod blocking_cache_tests {
++    use super::*;
++
++    #[test]
++    fn nonblocking_changes_preserve_character_geometry_but_blockers_invalidate_it() {
++        let shape = |entity, usage| ShapeSnapshot {
++            key: ColliderKey {
++                life: Life {
++                    instance: 7,
++                    entity,
++                    generation: 0,
++                },
++                shape: 0,
++            },
++            layers: 1,
++            usage,
++            pose: Pose::default(),
++            geometry: GeometrySnapshot::Box {
++                min: DVec3::ZERO,
++                max: DVec3::ONE,
++            },
++        };
++        let source = SceneSnapshot {
++            instance: 7,
++            colliders: vec![shape(1, Usage::Blocking), shape(2, Usage::Selection)],
++        };
++        let mut cache = SceneCache::new(7);
++        cache.update(&source).unwrap();
++        assert!(cache.blocking_geometry_matches(&source));
++        for usage in [Usage::Selection, Usage::Trigger, Usage::Damage] {
++            let mut changed = source.clone();
++            changed.colliders[1].usage = usage;
++            changed.colliders[1].pose.position.x = 10.;
++            assert!(!cache.fixed_geometry_matches(&changed));
++            assert!(cache.blocking_geometry_matches(&changed));
++        }
++        let mut changed = source.clone();
++        changed.colliders.pop();
++        assert!(cache.blocking_geometry_matches(&changed));
++        changed.colliders.push(shape(3, Usage::Selection));
++        assert!(cache.blocking_geometry_matches(&changed));
++        changed.colliders[1].usage = Usage::Blocking;
++        assert!(!cache.blocking_geometry_matches(&changed));
++        let mut changed = source.clone();
++        changed.colliders[0].pose.position.x = 1.;
++        assert!(!cache.blocking_geometry_matches(&changed));
++        changed = source.clone();
++        changed.colliders[0].usage = Usage::Selection;
++        assert!(!cache.blocking_geometry_matches(&changed));
++        changed = source.clone();
++        changed.colliders.remove(0);
++        assert!(!cache.blocking_geometry_matches(&changed));
++        changed = source.clone();
++        changed.instance = 8;
++        assert!(!cache.blocking_geometry_matches(&changed));
++    }
++}
+diff --git a/crates/verse-world/Cargo.toml b/crates/verse-world/Cargo.toml
+index 6c903b4d36..ddbc78de5d 100644
+--- a/crates/verse-world/Cargo.toml
++++ b/crates/verse-world/Cargo.toml
+@@ -30,6 +30,7 @@ coder-reach = { path = "../coder-reach", optional = true }
+ coder-access = { path = "../coder-access", default-features = false, optional = true }
+ 
+ [dev-dependencies]
++tokio = { version = "1", features = ["rt-multi-thread"] }
+ tempfile = "3"
+ rcgen = { version = "0.14", default-features = false, features = ["crypto", "ring"] }
+ 
+diff --git a/crates/verse-world/src/play.rs b/crates/verse-world/src/play.rs
+index 198713c94c..b82880ef93 100644
+--- a/crates/verse-world/src/play.rs
++++ b/crates/verse-world/src/play.rs
+@@ -2167,7 +2167,7 @@ impl Game {
+                 .map_err(|e| format!("Movement refused: {e:?}"))?;
+             self.submit(self.primary.admission.controller(), command)?;
+         }
+-        self.expire_primary_frames()?;
++        self.expire_primary_frames(dead)?;
+         let movement = if dead {
+             self.primary.pending_movement = None;
+             self.primary.held_movement = Default::default();
+diff --git a/crates/verse-world/src/play/framed_movement.rs b/crates/verse-world/src/play/framed_movement.rs
+index 8e54d57479..bc3a67be13 100644
+--- a/crates/verse-world/src/play/framed_movement.rs
++++ b/crates/verse-world/src/play/framed_movement.rs
+@@ -199,7 +199,12 @@ impl Game {
+         self.clear_social_seat(frame.life);
+         Ok(())
+     }
+-    pub(super) fn expire_primary_frames(&mut self) -> Result<(), String> {
++    /// Retires unavailable control before checking the live interval deadline.
++    pub(super) fn expire_primary_frames(&mut self, dead: bool) -> Result<(), String> {
++        if self.primary.frame_clock.is_some() && (dead || !self.unlocked()) {
++            self.handoff_player(self.player_life(), self.primary.admission.controller())?;
++            return Ok(());
++        }
+         if self
+             .frame_clock
+             .as_ref()
+@@ -398,6 +403,58 @@ mod tests {
+         assert_eq!(b.physics_step, f.end().unwrap());
+         assert!(b.character.feet.x > 0.);
+     }
++    #[test]
++    fn silent_death_retires_primary_and_secondary_intervals_without_expiry() {
++        for secondary in [false, true] {
++            let mut g = world();
++            let owner = Controller(if secondary { 10 } else { 9 });
++            let life = if secondary {
++                g.add_player(owner, Vec3::new(5., 0., -22.)).unwrap()
++            } else {
++                g.player_life()
++            };
++            ticks(&mut g, 1);
++            g.begin_movement_frames(owner, life).unwrap();
++            let queued = frame(&g, life, true);
++            g.submit_movement_frame(owner, queued.clone()).unwrap();
++            let position = if secondary {
++                g.additional_players[&life.actor].player
++            } else {
++                g.primary.player
++            };
++            g.hostile_hit_player(life, 10_000).unwrap();
++            ticks(&mut g, 1);
++            assert!(
++                if secondary {
++                    g.additional_players[&life.actor].frame_clock.is_none()
++                } else {
++                    g.primary.frame_clock.is_none()
++                },
++                "Dead control must retire before its clock expires"
++            );
++            let fenced = g.player_admission(life.actor).unwrap().epoch();
++            assert_eq!(fenced, queued.epoch + 1);
++            assert_eq!(g.player_admission(life.actor).unwrap().controller(), owner);
++            assert!(g.submit_movement_frame(owner, queued.clone()).is_err());
++            ticks(&mut g, 12);
++            assert_eq!(g.movement_expiry.total, 0);
++            assert_eq!(g.player_admission(life.actor).unwrap().epoch(), fenced);
++            assert_eq!(
++                if secondary {
++                    g.additional_players[&life.actor].player
++                } else {
++                    g.primary.player
++                },
++                position
++            );
++            let next = g.respawn_controlled_player(owner, life).unwrap();
++            assert_ne!(next, life);
++            assert!(g.submit_movement_frame(owner, queued).is_err());
++            ticks(&mut g, 1);
++            g.begin_movement_frames(owner, next).unwrap();
++        }
++    }
++
+     #[test]
+     fn primary_and_secondary_lifecycle_changes_fence_delayed_intervals() {
+         for secondary in [false, true] {
+diff --git a/crates/verse-world/src/play/multiplayer.rs b/crates/verse-world/src/play/multiplayer.rs
+index abfc8f4f3e..230c151d2a 100644
+--- a/crates/verse-world/src/play/multiplayer.rs
++++ b/crates/verse-world/src/play/multiplayer.rs
+@@ -952,7 +952,16 @@ impl Game {
+             let mut p = self.additional_players.remove(&actor).unwrap();
+             let result: Result<(), String> = (|| {
+                 let dead = self.simulation.snapshot_for(p.source)?.player.hp == 0;
+-                if p.frame_clock
++                if p.frame_clock.is_some() && (dead || !self.unlocked()) {
++                    p.admission
++                        .handoff(p.admission.controller())
++                        .map_err(|e| format!("Unavailable interval handoff refused: {e:?}"))?;
++                    p.frame_clock = None;
++                    p.pending_movement = None;
++                    p.pending_jump = false;
++                    p.held_movement = Default::default();
++                } else if p
++                    .frame_clock
+                     .as_ref()
+                     .is_some_and(|clock| clock.expired(self.physics_steps))
+                 {
+diff --git a/crates/verse-world/src/prediction/local.rs b/crates/verse-world/src/prediction/local.rs
+index 6e699e733e..6a61ee9df5 100644
+--- a/crates/verse-world/src/prediction/local.rs
++++ b/crates/verse-world/src/prediction/local.rs
+@@ -32,6 +32,7 @@ pub struct Timing {
+     render_floor: u64,
+     deferred_steps: Vec<u64>,
+     motor_history_steps: usize,
++    last_reconciliation: Option<Reconciliation>,
+     steps_per_second: u16,
+     step: u64,
+     simulated: u64,
+@@ -54,18 +55,29 @@ struct Input {
+     step: u64,
+     intent: Intent<Ability>,
+ }
+-#[derive(Clone, Copy)]
++#[derive(Clone, Copy, serde::Serialize)]
+ struct Estimate {
+     character: physics::character::Character,
+     held: movement::Held,
+     yaw: f32,
+     policy: movement::Policy,
+ }
++/// One reconciliation decision, retained without growing the input history.
++#[derive(Clone, Copy, serde::Serialize)]
++struct Reconciliation {
++    previous_baseline: Option<Baseline>,
++    completed_estimate: Option<Estimate>,
++    fixed_geometry_matches: bool,
++    blocking_geometry_matches: bool,
++    dirty_before: bool,
++    path: &'static str,
++}
+ pub struct Local {
+     recovery: movement::RecoveryObservations,
+     embedding_deferrals: u64,
+     separating_steps: u64,
+     last_embedding: Option<String>,
++    last_reconciliation: Option<Reconciliation>,
+     collision: SceneCache,
+     baseline: Option<Baseline>,
+     world_credit: u64,
+@@ -92,6 +104,7 @@ impl Local {
+             embedding_deferrals: 0,
+             separating_steps: 0,
+             last_embedding: None,
++            last_reconciliation: None,
+             collision: SceneCache::new(instance),
+             baseline: None,
+             world_credit: 0,
+@@ -113,6 +126,7 @@ impl Local {
+         }
+     }
+     pub fn clear(&mut self) {
++        self.last_reconciliation = None;
+         self.baseline = None;
+         self.world_credit = 0;
+         self.render_floor = 0;
+@@ -137,6 +151,7 @@ impl Local {
+             render_floor: self.render_floor,
+             deferred_steps: self.deferred_steps.iter().copied().collect(),
+             motor_history_steps: self.estimates.len(),
++            last_reconciliation: self.last_reconciliation,
+             steps_per_second: 120,
+             step: self.step,
+             simulated: self.simulated,
+@@ -219,32 +234,76 @@ impl Local {
+     ) -> Result<(), String> {
+         baseline.validate()?;
+         if let Some(old) = self.baseline {
+-            if observation <= self.observation
+-                || tick < self.tick
+-                || baseline.life.instance != old.life.instance
++            let rejection = if observation <= self.observation {
++                Some("observation order")
++            } else if tick < self.tick {
++                Some("authority tick")
++            } else if baseline.life.instance != old.life.instance
+                 || baseline.life.actor != old.life.actor
+-                || baseline.life.generation < old.life.generation
+-                || baseline.epoch < old.epoch
+-                || (baseline.epoch == old.epoch
+-                    && (baseline.physics_step < old.physics_step
+-                        || baseline.applied_sequence < old.applied_sequence
+-                        || baseline.life != old.life
+-                        || baseline.profile != old.profile
+-                        || (baseline.profile == movement::Profile::Frames
+-                            && baseline.physics_step > self.step)
+-                        || (baseline.profile == movement::Profile::Frames
+-                            && baseline.world_step < old.world_step)))
+             {
+-                return Err("Local prediction observation regressed".into());
++                Some("actor identity")
++            } else if baseline.life.generation < old.life.generation {
++                Some("life generation")
++            } else if baseline.epoch < old.epoch {
++                Some("control epoch")
++            } else if baseline.epoch == old.epoch {
++                if baseline.physics_step < old.physics_step {
++                    Some("confirmed physics step")
++                } else if baseline.applied_sequence < old.applied_sequence {
++                    Some("applied sequence")
++                } else if baseline.life != old.life {
++                    Some("life changed without an epoch")
++                } else if baseline.profile != old.profile {
++                    Some("profile changed without an epoch")
++                } else if baseline.profile == movement::Profile::Frames
++                    && baseline.physics_step > self.step
++                {
++                    Some("confirmation ahead of local simulation")
++                } else if baseline.profile == movement::Profile::Frames
++                    && baseline.world_step < old.world_step
++                {
++                    Some("world step")
++                } else {
++                    None
++                }
++            } else {
++                None
++            };
++            if let Some(reason) = rejection {
++                return Err(format!(
++                    "Local prediction observation regressed: {reason}; observation {observation}/{}, tick {tick}/{}, epoch {}/{}, confirmed step {}/{}, local step {}, world step {}/{}, sequence {}/{}",
++                    self.observation,
++                    self.tick,
++                    baseline.epoch,
++                    old.epoch,
++                    baseline.physics_step,
++                    old.physics_step,
++                    self.step,
++                    baseline.world_step,
++                    old.world_step,
++                    baseline.applied_sequence,
++                    old.applied_sequence,
++                ));
+             }
+         }
+         let reset = self.context() != Some((baseline.life, baseline.epoch));
++        let blocking_geometry_matches =
++            geometry.is_none_or(|scene| self.collision.blocking_geometry_matches(scene));
++        let mut reconciliation = Reconciliation {
++            previous_baseline: self.baseline,
++            completed_estimate: self.estimates.get(&baseline.physics_step).copied(),
++            fixed_geometry_matches: geometry
++                .is_none_or(|geometry| self.collision.fixed_geometry_matches(geometry)),
++            blocking_geometry_matches,
++            dirty_before: self.dirty,
++            path: "replay",
++        };
+         let same_travel = baseline.profile == movement::Profile::Frames
+             && self.baseline.is_some_and(|mut previous| {
+                 previous.world_step = baseline.world_step;
+                 previous == baseline
+             })
+-            && geometry.is_none_or(|geometry| self.collision.fixed_geometry_matches(geometry));
++            && blocking_geometry_matches;
+         // Compare completed travel at its own physics step. Capsule poses from
+         // another observation cannot retroactively replace a pending path that
+         // this estimate already processed. Other motor state still requires replay.
+@@ -254,7 +313,7 @@ impl Local {
+             && !same_travel
+             && !self.dirty
+             && baseline.profile == movement::Profile::Frames
+-            && geometry.is_none_or(|scene| self.collision.fixed_geometry_matches(scene))
++            && blocking_geometry_matches
+         {
+             if let (Some(reference), Some(current)) =
+                 (self.estimates.get(&baseline.physics_step), self.character)
+@@ -435,6 +494,18 @@ impl Local {
+             self.world_credit.max(baseline.world_step)
+         };
+         self.baseline = Some(baseline);
++        reconciliation.path = if reset {
++            "control_reset"
++        } else if same_travel {
++            "same_travel"
++        } else if translation.is_some() {
++            "translation"
++        } else if constrained.is_some() {
++            "constrained_translation"
++        } else {
++            "replay"
++        };
++        self.last_reconciliation = Some(reconciliation);
+         self.tick = tick;
+         self.observation = observation;
+         if translation.is_some() || constrained.is_some() {
+@@ -463,7 +534,7 @@ impl Local {
+         let replay = self
+             .baseline
+             .is_some_and(|b| b.profile != movement::Profile::Frames)
+-            || !self.collision.fixed_geometry_matches(geometry);
++            || !self.collision.blocking_geometry_matches(geometry);
+         self.collision.update(geometry)?;
+         self.tick = tick;
+         self.observation = observation;
+@@ -1527,6 +1598,103 @@ mod tests {
+         );
+     }
+ 
++    #[test]
++    fn selection_only_changes_preserve_completed_pending_motion() {
++        use physics::queries::{ColliderKey, GeometrySnapshot, Pose, ShapeSnapshot, Usage};
++        for change in 0..3 {
++            let (mut local, mut baseline, mut source) = setup();
++            let selection = ShapeSnapshot {
++                key: ColliderKey {
++                    life: Life {
++                        instance: 7,
++                        entity: 300,
++                        generation: 0,
++                    },
++                    shape: 0,
++                },
++                layers: 1,
++                usage: Usage::Selection,
++                pose: Pose::default(),
++                geometry: GeometrySnapshot::Box {
++                    min: glam::DVec3::new(100., 0., 100.),
++                    max: glam::DVec3::new(101., 1., 101.),
++                },
++            };
++            source.colliders.push(selection.clone());
++            baseline.profile = movement::Profile::Frames;
++            baseline.epoch += 1;
++            local.observe(baseline, &source, 2, 2).unwrap();
++            local.queue(1, movement()).unwrap();
++            for _ in 0..3 {
++                local.advance(0.1).unwrap();
++            }
++            let before = local.pose().unwrap().position;
++            let completed = local.estimates[&12];
++            baseline.physics_step = 12;
++            baseline.world_step = 36;
++            baseline.character = completed.character;
++            baseline.held = completed.held;
++            baseline.policy = completed.policy;
++            baseline.yaw = completed.yaw;
++            local.observe(baseline, &source, 3, 3).unwrap();
++            local.advance(0.).unwrap();
++            let capsule =
++                physics::character::Settings::default().capsule(glam::DVec3::new(1.3, 0., 0.));
++            source.colliders.push(ShapeSnapshot {
++                key: ColliderKey {
++                    life: Life {
++                        instance: 7,
++                        entity: 216,
++                        generation: 0,
++                    },
++                    shape: 0,
++                },
++                layers: 1,
++                usage: Usage::Blocking,
++                pose: Pose::default(),
++                geometry: GeometrySnapshot::Capsule {
++                    a: capsule.a,
++                    b: capsule.b,
++                    radius: capsule.radius,
++                },
++            });
++            match change {
++                0 => {
++                    let mut added = selection.clone();
++                    added.key.life.entity += 1;
++                    source.colliders.push(added);
++                }
++                1 => {
++                    source
++                        .colliders
++                        .iter_mut()
++                        .find(|shape| shape.key == selection.key)
++                        .unwrap()
++                        .pose
++                        .position
++                        .x += 1.;
++                }
++                _ => source.colliders.retain(|shape| shape.key != selection.key),
++            }
++            baseline.physics_step = 12;
++            baseline.world_step = 36;
++            baseline.character = completed.character;
++            baseline.held = completed.held;
++            baseline.policy = completed.policy;
++            baseline.yaw = completed.yaw;
++            local.observe(baseline, &source, 4, 4).unwrap();
++            local.advance(0.).unwrap();
++            assert!(
++                local.pose().unwrap().position.distance(before) < 1e-7,
++                "Selection change {change} rewound completed pending movement: {before:?} -> {:?}",
++                local.pose().unwrap().position
++            );
++            assert_eq!(local.physics_step(), 36);
++            assert_eq!(local.timing().simulated, 36);
++            assert_eq!(local.pending(), 1);
++        }
++    }
++
+     #[test]
+     fn confirmed_time_reconciliation_does_not_replay_through_later_crowd_geometry() {
+         use physics::queries::{ColliderKey, GeometrySnapshot, Pose, ShapeSnapshot, Usage};
+diff --git a/crates/verse-world/src/service/net.rs b/crates/verse-world/src/service/net.rs
+index 440f601a6b..097222b7a2 100644
+--- a/crates/verse-world/src/service/net.rs
++++ b/crates/verse-world/src/service/net.rs
+@@ -645,6 +645,7 @@ async fn serve_loop<F: Future<Output = ()>>(
+     diagnostics.set_missed_tick_behavior(MissedTickBehavior::Skip);
+     let mut storage_paused = false;
+     let mut resume_requests = 0usize;
++    let mut deferred_tick = None;
+     tokio::pin!(shutdown);
+     loop {
+         stats.request_queue_peak = stats.request_queue_peak.max(receive.len());
+@@ -715,10 +716,15 @@ async fn serve_loop<F: Future<Output = ()>>(
+             }
+             // If reply or writer bounds block admission, a tick must still flush
+             // admitted state. New arrivals cannot extend the captured FIFO cohort.
+-            _ = ticker.tick(), if resume_requests == 0 || !request_room => {
++            _ = async {
++                if deferred_tick.is_none() || resume_requests > 0 {
++                    ticker.tick().await;
++                }
++            }, if resume_requests == 0 || !request_room => {
+                 let now = Instant::now();
+-                let elapsed = now.duration_since(last_tick).as_secs_f64();
++                let wall_elapsed = now.duration_since(last_tick).as_secs_f64();
+                 last_tick = now;
++                let elapsed = deferred_tick.unwrap_or(0.) + wall_elapsed;
+                 let room = writer.as_ref().is_none_or(|writer| fences.len() < 2 && writer.send.as_ref().unwrap().capacity() > 0);
+                 let history = match gateway.chamber.rewards.history_capacity() {
+                     Ok(available) => available,
+@@ -727,10 +733,23 @@ async fn serve_loop<F: Future<Output = ()>>(
+                 if !room {
+                     storage_paused = true;
+                     stats.storage_paused_ticks += 1;
+-                    stats.storage_paused_seconds += elapsed;
++                    stats.storage_paused_seconds += wall_elapsed;
++                    continue;
++                }
++                if deferred_tick.is_none() && history && request_room
++                    && resume_requests == 0
++                    && !receive.is_empty()
++                {
++                    // A simulation deadline can become ready alongside valid
++                    // movement already waiting. Admit that fixed FIFO
++                    // cohort first, then resume this same elapsed-time batch.
++                    // Later arrivals cannot extend the cohort or starve time.
++                    resume_requests = receive.len();
++                    deferred_tick = Some(elapsed);
+                     continue;
+                 }
+                 if history && resume_requests == 0 {
++                    deferred_tick = None;
+                     let batch = match schedule.advance(elapsed) {
+                         Ok(batch) => batch,
+                         Err(error) => {failure = Some(error); break;}
+@@ -749,7 +768,8 @@ async fn serve_loop<F: Future<Output = ()>>(
+                 } else {
+                     // Flush already admitted state without adding more simulation mutations.
+                     stats.storage_paused_ticks += 1;
+-                    stats.storage_paused_seconds += elapsed;
++                    stats.storage_paused_seconds += wall_elapsed;
++                    if !history { deferred_tick = None; }
+                 }
+                 if let Some(writer) = &mut writer {
+                     let permit = match writer.send.as_ref().unwrap().try_reserve() {
+diff --git a/crates/verse-world/src/service/net/resume_tests.rs b/crates/verse-world/src/service/net/resume_tests.rs
+index 2e72efb241..194d248c5b 100644
+--- a/crates/verse-world/src/service/net/resume_tests.rs
++++ b/crates/verse-world/src/service/net/resume_tests.rs
+@@ -77,7 +77,7 @@ async fn queued_intervals_survive_storage_resume_without_expiry() {
+         .unwrap();
+         let entry = client.begin_movement_frames().await.unwrap();
+         let Reply::Snapshot { state } = entry.body else {
+-            panic!("Missing interval baseline");
++            panic!("Missing interval baseline: {:?}", entry.body);
+         };
+         let baseline = state.movement.unwrap();
+         let frame = |start, steps| Frame {
+@@ -149,3 +149,133 @@ async fn queued_intervals_survive_storage_resume_without_expiry() {
+         );
+     }
+ }
++
++#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
++async fn queued_intervals_precede_simulation_deadlines() {
++    for (attempt, delay_ms) in [40u64, 110].into_iter().cycle().take(32).enumerate() {
++        let keys = [tests::key(114), tests::key(115), tests::key(116)];
++        let gate = Arc::new((Mutex::new(false), Condvar::new()));
++        let release = Release(gate.clone());
++        let (started, mut blocked) = mpsc::unbounded_channel();
++        let mut has_blocked = false;
++        let tick: Tick = Box::new(move |gateway, _| {
++            let game = gateway.game();
++            if let Some(baseline) = game.movement_baseline(game.player_life()).unwrap() {
++                if !has_blocked
++                    && baseline.profile == crate::movement::Profile::Frames
++                    && baseline.applied_sequence > 0
++                    && baseline.world_step.saturating_sub(baseline.physics_step)
++                        >= if delay_ms == 40 { MAX_LAG } else { MAX_LAG - 8 }
++                {
++                    has_blocked = true;
++                    started.send(()).unwrap();
++                    let mut open = gate.0.lock().unwrap();
++                    while !*open {
++                        open = gate.1.wait(open).unwrap();
++                    }
++                }
++            }
++        });
++        let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
++        let address = listener.local_addr().unwrap();
++        let (tls, connector) = tests::tls();
++        let (stop, stopped) = oneshot::channel();
++        let server = tokio::spawn(serve_ticked(
++            listener,
++            tls,
++            tests::gateway(&keys),
++            None,
++            tick,
++            async {
++                let _ = stopped.await;
++            },
++        ));
++        let mut client = Client::connect(
++            address,
++            rustls::pki_types::ServerName::try_from("localhost").unwrap(),
++            connector.config().clone(),
++            120,
++            &keys[0],
++        )
++        .await
++        .unwrap();
++        timeout(Duration::from_secs(2), async {
++            loop {
++                let snapshot = client.snapshot().await.unwrap();
++                if snapshot
++                    .movement
++                    .is_some_and(|movement| movement.character.support.is_some())
++                {
++                    break;
++                }
++                tokio::time::sleep(Duration::from_millis(33)).await;
++            }
++        })
++        .await
++        .unwrap();
++        let entry = client.begin_movement_frames().await.unwrap();
++        let Reply::Snapshot { state } = entry.body else {
++            panic!("Missing interval baseline: {:?}", entry.body);
++        };
++        let baseline = state.movement.unwrap();
++        let frame = |start, steps| Frame {
++            life: baseline.life,
++            epoch: baseline.epoch,
++            sequence: 0,
++            tick: 0,
++            start,
++            steps,
++            segments: vec![Segment {
++                offset: 0,
++                axes: [0.; 2],
++                yaw: 0.,
++                until: start + crate::movement::HELD_STEPS,
++                jump: false,
++            }],
++        };
++        assert!(matches!(
++            client
++                .movement_frame(frame(baseline.physics_step, 4))
++                .await
++                .unwrap()
++                .body,
++            Reply::Accepted
++        ));
++        timeout(Duration::from_secs(2), blocked.recv())
++            .await
++            .unwrap()
++            .unwrap();
++        let mut client = client.pipeline().unwrap();
++        let frame = client
++            .prepare_movement_frame(frame(baseline.physics_step + 4, MAX_STEPS))
++            .unwrap();
++        client.send(Body::MovementFrame { frame }).unwrap();
++        // Other runtime tasks deliver this TLS interval while the authority is
++        // delayed. Neither an ordinary deadline nor a catch-up batch may overtake admission.
++        tokio::time::sleep(Duration::from_millis(delay_ms)).await;
++        drop(release);
++        let (_, reply) = timeout(Duration::from_secs(2), client.receive())
++            .await
++            .unwrap()
++            .unwrap();
++        let _ = stop.send(());
++        let exit = timeout(Duration::from_secs(2), server)
++            .await
++            .unwrap()
++            .unwrap();
++        assert!(exit.failure.is_none(), "{:?}", exit.failure);
++        assert!(
++            matches!(reply.body, Reply::Accepted),
++            "Attempt {attempt}: {:?}; expiries {:?}",
++            reply.body,
++            exit.gateway.game().movement_expiry
++        );
++        assert_eq!(reply.control.as_ref().unwrap().epoch, baseline.epoch);
++        assert!(exit.stats.request_queue_peak > 0);
++        assert_eq!(
++            exit.gateway.game().movement_expiry.total,
++            0,
++            "Attempt {attempt}: catch-up expired an already queued interval"
++        );
++    }
++}
+diff --git a/crates/verse-world/src/service/net/session_pipeline.rs b/crates/verse-world/src/service/net/session_pipeline.rs
+index 7441e56f05..0c1e20a059 100644
+--- a/crates/verse-world/src/service/net/session_pipeline.rs
++++ b/crates/verse-world/src/service/net/session_pipeline.rs
+@@ -1,8 +1,14 @@
+ //! Ordered admission proceeds independently of ordered durable reply delivery.
+ use super::*;
+-use std::collections::VecDeque;
++use std::{collections::VecDeque, future::Future, pin::Pin};
+ 
+ const CAPACITY: usize = 8;
++type WriteFlight<S> = Pin<
++    Box<
++        dyn Future<Output = Result<(tokio::io::WriteHalf<S>, usize, Response, bool), String>>
++            + Send,
++    >,
++>;
+ struct Reader {
+     receive: mpsc::Receiver<Result<Vec<u8>, String>>,
+     task: tokio::task::JoinHandle<()>,
+@@ -110,7 +116,9 @@ pub(super) async fn run<S: Transport + 'static>(
+     mut window: Instant,
+     mut count: u32,
+ ) -> Result<(), String> {
+-    let (read, mut write) = tokio::io::split(stream);
++    let (read, write) = tokio::io::split(stream);
++    let mut writer = Some(write);
++    let mut writing: Option<WriteFlight<S>> = None;
+     // Partial frame reads are owned by this task and are never cancelled by reply polling.
+     let mut reader = Reader::new(read);
+     let mut pending = VecDeque::<Delivery>::new();
+@@ -118,12 +126,25 @@ pub(super) async fn run<S: Transport + 'static>(
+     let mut retry: Option<(Vec<u8>, bool, tokio::time::Instant, tokio::time::Instant)> = None;
+     let mut terminal: Option<String> = None;
+     loop {
+-        if terminal.is_some() && pending.is_empty() && gate.is_none() && retry.is_none() {
++        if terminal.is_some()
++            && pending.is_empty()
++            && gate.is_none()
++            && retry.is_none()
++            && writing.is_none()
++        {
+             return Err(terminal.unwrap());
+         }
+         tokio::select! {
+             biased;
+             _ = slot.cancelled() => return Err("Chamber connection was superseded".into()),
++            completed = async { writing.as_mut().unwrap().await }, if writing.is_some() => {
++                let (write, bytes, delivered, authenticated) = completed?;
++                writing = None;
++                writer = Some(write);
++                slot.delivered(bytes, Some(delivered.tick));
++                last = delivered;
++                if !authenticated { return Err("Chamber connection is not authenticated".into()); }
++            }
+             progress = async { (&mut gate.as_mut().unwrap().progress).await }, if gate.is_some() => {
+                 let current = gate.take().unwrap();
+                 match progress.map_err(|_| "Chamber host stopped")? {
+@@ -156,19 +177,25 @@ pub(super) async fn run<S: Transport + 'static>(
+                 let (bytes, wait, deadline, _) = retry.take().unwrap();
+                 gate = Some(submit(send, id, bytes, wait, deadline).await?);
+             }
+-            result = async { pending.front_mut().unwrap().receive(&last).await }, if !pending.is_empty() => {
++            result = async { pending.front_mut().unwrap().receive(&last).await }, if !pending.is_empty() && writing.is_none() => {
+                 let (bytes, authenticated) = result?;
+                 pending.pop_front();
+                 let bytes = refusal_prefix(bytes, &last)?;
+                 let response: ResponseHeader = serde_json::from_slice(&bytes).map_err(|_| "Invalid chamber response")?;
+-                timeout(WRITE, write_frame(&mut write, &bytes, MAX_RESPONSE_BYTES))
+-                    .await.map_err(|_| "Chamber write timed out")??;
+-                slot.delivered(bytes.len(), Some(response.tick));
+-                last = response.refusal_template();
+-                if !authenticated { return Err("Chamber connection is not authenticated".into()); }
++                if !authenticated {
++                    terminal = Some("Chamber connection is not authenticated".into());
++                }
++                let mut write = writer.take().expect("Idle chamber reply writer");
++                // Keep the partial write future alive across admission polls. A
++                // slow reader cannot stall inbound movement or duplicate a frame.
++                writing = Some(Box::pin(async move {
++                    timeout(WRITE, write_frame(&mut write, &bytes, MAX_RESPONSE_BYTES))
++                        .await.map_err(|_| "Chamber write timed out")??;
++                    Ok((write, bytes.len(), response.refusal_template(), authenticated))
++                }));
+             }
+             incoming = reader.receive.recv(), if terminal.is_none() && gate.is_none()
+-                && retry.is_none() && pending.len() < CAPACITY => {
++                && retry.is_none() && pending.len() + usize::from(writing.is_some()) < CAPACITY => {
+                 let bytes = match incoming {
+                     Some(Ok(bytes)) => bytes,
+                     Some(Err(error)) => { terminal = Some(error); continue; }
+@@ -349,4 +376,246 @@ mod tests {
+         assert_eq!(Request::decode(&bytes).unwrap().request_id, 9);
+         task.abort();
+     }
++    #[tokio::test]
++    async fn blocked_reply_write_keeps_movement_admission_live_and_bounded() {
++        let (server, client) = tokio::io::duplex(1024);
++        let (mut read, mut write) = tokio::io::split(client);
++        let (send, mut events) = mpsc::channel(32);
++        let limits = admission::Limits::new();
++        let mut slot = limits.open("127.0.0.1".parse().unwrap()).unwrap();
++        slot.authenticate([1; 32]).unwrap();
++        let keys = [
++            super::super::tests::key(1),
++            super::super::tests::key(2),
++            super::super::tests::key(3),
++        ];
++        let (id, _) = super::super::tests::gateway(&keys).open(0).unwrap();
++        let task = tokio::spawn(async move {
++            run(
++                server,
++                &None,
++                &send,
++                &mut slot,
++                id,
++                response(0, 1, 0),
++                Instant::now(),
++                0,
++            )
++            .await
++        });
++        let request = |request_id, body| {
++            serde_json::to_vec(&Request {
++                version: VERSION,
++                request_id,
++                body,
++            })
++            .unwrap()
++        };
++        write_frame(
++            &mut write,
++            &request(1, Body::Snapshot {}),
++            MAX_REQUEST_BYTES,
++        )
++        .await
++        .unwrap();
++        let Event::Request {
++            reply, progress, ..
++        } = events.recv().await.unwrap()
++        else {
++            panic!("Missing initial admission")
++        };
++        progress
++            .unwrap()
++            .send(RequestProgress::Queued {
++                authenticated: true,
++            })
++            .unwrap_or_else(|_| panic!("Admission receiver stopped"));
++        let mut large = response(1, 1, 0);
++        large.body = Reply::Refused {
++            code: "fixture".into(),
++            message: "x".repeat(16 * 1024),
++        };
++        let large = large.encode().unwrap();
++        reply.send(Ok((large.clone(), true))).unwrap();
++        // No response bytes are consumed while the server's bounded socket fills.
++        tokio::time::sleep(Duration::from_millis(40)).await;
++        for request_id in 2..=9 {
++            let frame = crate::movement::frames::Frame {
++                life: verse_engine::core::LifeId {
++                    instance: 1,
++                    actor: 1,
++                    generation: 1,
++                },
++                epoch: 1,
++                sequence: request_id,
++                tick: 1,
++                start: (request_id - 2) * 4,
++                steps: 4,
++                segments: vec![crate::movement::frames::Segment {
++                    offset: 0,
++                    axes: [0.; 2],
++                    yaw: 0.,
++                    until: (request_id - 2) * 4 + crate::movement::HELD_STEPS,
++                    jump: false,
++                }],
++            };
++            timeout(
++                Duration::from_secs(1),
++                write_frame(
++                    &mut write,
++                    &request(request_id, Body::MovementFrame { frame }),
++                    MAX_REQUEST_BYTES,
++                ),
++            )
++            .await
++            .unwrap()
++            .unwrap();
++        }
++        for request_id in 2..=8 {
++            let event = timeout(Duration::from_secs(1), events.recv())
++                .await
++                .expect("Blocked reply write stopped movement admission")
++                .unwrap();
++            let Event::Request {
++                bytes,
++                reply,
++                progress,
++                ..
++            } = event
++            else {
++                panic!("Missing movement admission")
++            };
++            let request = Request::decode(&bytes).unwrap();
++            assert_eq!(request.request_id, request_id);
++            assert!(matches!(request.body, Body::MovementFrame { .. }));
++            progress
++                .unwrap()
++                .send(RequestProgress::Queued {
++                    authenticated: true,
++                })
++                .unwrap_or_else(|_| panic!("Admission receiver stopped"));
++            reply
++                .send(Ok((
++                    response(request_id, 1, request_id).encode().unwrap(),
++                    true,
++                )))
++                .unwrap();
++        }
++        assert!(
++            timeout(Duration::from_millis(30), events.recv())
++                .await
++                .is_err(),
++            "Blocked write bypassed the eight-request bound"
++        );
++        // The partially written first frame must resume without duplicated bytes.
++        assert_eq!(
++            read_frame(&mut read, MAX_RESPONSE_BYTES).await.unwrap(),
++            large
++        );
++        for request_id in 2..=8 {
++            let bytes = timeout(
++                Duration::from_secs(1),
++                read_frame(&mut read, MAX_RESPONSE_BYTES),
++            )
++            .await
++            .unwrap()
++            .unwrap();
++            assert_eq!(
++                serde_json::from_slice::<Response>(&bytes)
++                    .unwrap()
++                    .request_id,
++                request_id
++            );
++        }
++        let Event::Request { bytes, .. } = timeout(Duration::from_secs(1), events.recv())
++            .await
++            .unwrap()
++            .unwrap()
++        else {
++            panic!("Missing released admission")
++        };
++        assert_eq!(Request::decode(&bytes).unwrap().request_id, 9);
++        task.abort();
++        let _ = task.await;
++    }
++    #[tokio::test]
++    async fn authentication_loss_stops_admission_during_a_blocked_reply_write() {
++        let (server, client) = tokio::io::duplex(1024);
++        let (mut read, mut write) = tokio::io::split(client);
++        let (send, mut events) = mpsc::channel(32);
++        let limits = admission::Limits::new();
++        let mut slot = limits.open("127.0.0.1".parse().unwrap()).unwrap();
++        slot.authenticate([1; 32]).unwrap();
++        let keys = [
++            super::super::tests::key(1),
++            super::super::tests::key(2),
++            super::super::tests::key(3),
++        ];
++        let (id, _) = super::super::tests::gateway(&keys).open(0).unwrap();
++        let task = tokio::spawn(async move {
++            run(
++                server,
++                &None,
++                &send,
++                &mut slot,
++                id,
++                response(0, 1, 0),
++                Instant::now(),
++                0,
++            )
++            .await
++        });
++        let request = |request_id| {
++            serde_json::to_vec(&Request {
++                version: VERSION,
++                request_id,
++                body: Body::Snapshot {},
++            })
++            .unwrap()
++        };
++        write_frame(&mut write, &request(1), MAX_REQUEST_BYTES)
++            .await
++            .unwrap();
++        let Event::Request {
++            reply, progress, ..
++        } = events.recv().await.unwrap()
++        else {
++            panic!("Missing initial admission")
++        };
++        progress
++            .unwrap()
++            .send(RequestProgress::Busy)
++            .unwrap_or_else(|_| panic!("Admission receiver stopped"));
++        let mut denied = response(1, 1, 0);
++        denied.control = None;
++        denied.body = Reply::Refused {
++            code: "fixture".into(),
++            message: "x".repeat(16 * 1024),
++        };
++        let denied = denied.encode().unwrap();
++        reply.send(Ok((denied.clone(), false))).unwrap();
++        tokio::time::sleep(Duration::from_millis(40)).await;
++        write_frame(&mut write, &request(2), MAX_REQUEST_BYTES)
++            .await
++            .unwrap();
++        assert!(
++            timeout(Duration::from_millis(40), events.recv())
++                .await
++                .is_err(),
++            "Admission continued after authentication loss"
++        );
++        assert_eq!(
++            read_frame(&mut read, MAX_RESPONSE_BYTES).await.unwrap(),
++            denied
++        );
++        let result = timeout(Duration::from_secs(1), task)
++            .await
++            .unwrap()
++            .unwrap();
++        assert_eq!(
++            result.unwrap_err(),
++            "Chamber connection is not authenticated"
++        );
++        assert!(events.recv().await.is_none());
++    }
+ }
+diff --git a/crates/verse-world/src/service/worker_delayed.rs b/crates/verse-world/src/service/worker_delayed.rs
+index ddaa6f3189..1357d061e2 100644
+--- a/crates/verse-world/src/service/worker_delayed.rs
++++ b/crates/verse-world/src/service/worker_delayed.rs
+@@ -38,19 +38,27 @@ async fn delay<R: AsyncRead + Unpin, W: AsyncWrite + Unpin>(
+ }
+ #[tokio::test]
+ async fn delayed_bootstrap_and_native_interval_stream_use_one_owned_timeline() {
+-    interval_stream(false, 0, 67, 100, 0).await;
++    interval_stream(false, 0, 67, 100, 0, false).await;
+ }
+ #[tokio::test]
+ async fn durable_writer_stall_preserves_owned_interval_timeline() {
+-    interval_stream(true, 300, 0, 0, 0).await;
++    interval_stream(true, 300, 0, 0, 0, false).await;
+ }
+ #[tokio::test]
+ async fn delayed_route_and_long_writer_stall_preserve_owned_interval_timeline() {
+-    interval_stream(true, 1200, 40, 40, 0).await;
++    interval_stream(true, 1200, 40, 40, 0, false).await;
+ }
+ #[tokio::test]
+ async fn shared_player_pressure_and_long_writer_stall_preserve_owned_interval_timeline() {
+-    interval_stream(true, 1200, 40, 40, 19).await;
++    interval_stream(true, 1200, 40, 40, 19, false).await;
++}
++#[tokio::test]
++async fn mixed_cast_and_native_interval_stream_preserve_control() {
++    interval_stream(false, 0, 67, 100, 0, true).await;
++}
++#[tokio::test]
++async fn cast_during_shared_writer_stall_preserves_native_intervals() {
++    interval_stream(true, 1200, 40, 40, 19, true).await;
+ }
+ async fn interval_stream(
+     durable_stall: bool,
+@@ -58,6 +66,7 @@ async fn interval_stream(
+     up_ms: u64,
+     down_ms: u64,
+     pressure_players: usize,
++    cast_during_movement: bool,
+ ) {
+     use super::super::net::tests::{key, start};
+     use rustls::pki_types::ServerName;
+@@ -211,6 +220,9 @@ async fn interval_stream(
+     let mut next_frame = baseline.physics_step;
+     let mut bound = 0;
+     let mut accepted = 0;
++    let mut cast_sent = false;
++    let mut cast_sequence = None;
++    let mut accepted_casts = 0;
+     let mut corrections = Vec::new();
+     let mut stall_armed = false;
+     let mut recent = std::collections::VecDeque::new();
+@@ -225,7 +237,30 @@ async fn interval_stream(
+                     local.bind_movement_frame(&binding.unwrap()).unwrap();
+                     bound += 1;
+                 }
++                Update::CommandBound { binding, .. } if cast_during_movement => {
++                    let command = binding.unwrap();
++                    assert!(matches!(
++                        command.intent,
++                        Intent::Cast {
++                            ability: crate::play::Ability::Shield,
++                            ..
++                        }
++                    ));
++                    assert!(cast_sequence.replace(command.sequence).is_none());
++                }
+                 Update::Outcome(response) => {
++                    if response
++                        .control
++                        .as_ref()
++                        .is_some_and(|c| Some(c.accepted_sequence) == cast_sequence)
++                    {
++                        assert!(
++                            matches!(response.body, Reply::Accepted),
++                            "Cast must execute during movement: {:?}",
++                            response.body
++                        );
++                        accepted_casts += 1;
++                    }
+                     if let Some(control) = &response.control {
+                         if local.context() == Some((control.life.into(), control.epoch))
+                             && local.movement_profile() == Some(Profile::Frames)
+@@ -311,6 +346,26 @@ async fn interval_stream(
+                 .unwrap();
+             next_input = now + Duration::from_millis(33);
+         }
++        if cast_during_movement
++            && !cast_sent
++            && started.elapsed() >= Duration::from_millis(if durable_stall { 1500 } else { 500 })
++        {
++            token += 1;
++            input
++                .send(Input::TrackedCommand {
++                    token,
++                    life: baseline.life,
++                    epoch: baseline.epoch,
++                    intent: Intent::Cast {
++                        ability: crate::play::Ability::Shield,
++                        target: None,
++                        aim: [0., 0., 1.],
++                    },
++                })
++                .await
++                .unwrap();
++            cast_sent = true;
++        }
+         let steps = local
+             .movement_frame_limit()
+             .unwrap()
+@@ -332,6 +387,10 @@ async fn interval_stream(
+         "bound={bound} accepted={accepted} observations={}",
+         corrections.len()
+     );
++    if cast_during_movement {
++        assert!(cast_sent && cast_sequence.is_some());
++        assert_eq!(accepted_casts, 1);
++    }
+     corrections.sort_by(f32::total_cmp);
+     let p95 = corrections[(corrections.len() as f64 * 0.95).ceil() as usize - 1];
+     eprintln!(
+diff --git a/crates/verse/examples/battle_scale.rs b/crates/verse/examples/battle_scale.rs
+index f2b3f4e2b9..8d3047f66e 100644
+--- a/crates/verse/examples/battle_scale.rs
++++ b/crates/verse/examples/battle_scale.rs
+@@ -873,7 +873,7 @@ fn main() -> Result<(), String> {
+     {
+         return Err("Invalid capacity mode or duration".into());
+     }
+-    let mut report = serde_json::json!({"schema":"verse.battle.capacity.v1","mode":args[0],"seconds":seconds,"players":PLAYERS,"native_sessions":1,"headless_workers":19,"hostile_npcs":HOSTILES,"cultist_health":20000,"frontline_player":19,"frontline_initial_position":[-6.,0.,-8.],"frontline_initial_life_recipe":"approach the nearest hostile and cast only Fire Bolt; defer inventory, healing, crowd control, Shield, and Misty Step until the first actual respawn","delay_profile":"pipeline","delay_ms_per_chunk":40,"jitter_ms_per_chunk":20,"wire_version":verse_world::service::wire::VERSION,"debug_assertions":cfg!(debug_assertions),"status":"running","budgets":{"simulation_p99_upper_bound_ms":1000./30.,"render_cpu_p95_ms":1000./60.,"render_gpu_p95_ms":1000./60.,"snapshot_age_p95_ms":400.,"minimum_live_hostiles":HOSTILES,"minimum_authority_tick_fraction":0.98,"battle_framed_snapshot_fraction":0.8,"prediction_correction_p95_meters":0.25,"prediction_correction_maximum_meters":1.,"checkpoint_bytes":1048576,"request_queue_peak":128,"writer_queue_peak":2,"held_reply_bytes_peak":33554432,"steady_rss_growth_bytes":67108864},"limits":["Scratch authority and clients share this process and machine.","Offscreen rendering has no display surface, capture, or physical input-to-display measurement.","Authority mode reports simulated duration and in-process authenticated command dispatch; network modes use actual wall time, TLS workers, and durable storage.","GPU timestamp observations exclude display and final pending slots; bounded omissions are retained."]});
++    let mut report = serde_json::json!({"schema":"verse.battle.capacity.v1","mode":args[0],"seconds":seconds,"players":PLAYERS,"native_sessions":1,"headless_workers":19,"hostile_npcs":HOSTILES,"cultist_health":20000,"frontline_player":19,"frontline_initial_position":[-6.,0.,-8.],"frontline_initial_life_recipe":"approach the nearest hostile and cast only Fire Bolt; defer inventory, healing, crowd control, Shield, and Misty Step until the first actual respawn","delay_profile":"pipeline","delay_ms_per_chunk":40,"jitter_ms_per_chunk":20,"wire_version":verse_world::service::wire::VERSION,"debug_assertions":cfg!(debug_assertions),"status":"running","budgets":{"movement_expiries":0,"simulation_p99_upper_bound_ms":1000./30.,"render_cpu_p95_ms":1000./60.,"render_gpu_p95_ms":1000./60.,"snapshot_age_p95_ms":400.,"minimum_live_hostiles":HOSTILES,"minimum_authority_tick_fraction":0.98,"battle_framed_snapshot_fraction":0.8,"prediction_correction_p95_meters":0.25,"prediction_correction_maximum_meters":1.,"checkpoint_bytes":1048576,"request_queue_peak":128,"writer_queue_peak":2,"held_reply_bytes_peak":33554432,"steady_rss_growth_bytes":67108864},"limits":["Scratch authority and clients share this process and machine.","Offscreen rendering has no display surface, capture, or physical input-to-display measurement.","Authority mode reports simulated duration and in-process authenticated command dispatch; network modes use actual wall time, TLS workers, and durable storage.","GPU timestamp observations exclude display and final pending slots; bounded omissions are retained."]});
+     let resolution = resolution()?;
+     report["render_resolution"] = serde_json::json!({"width":resolution.0,"height":resolution.1});
+     use sha2::{Digest, Sha256};
+diff --git a/crates/verse/examples/common/battle_acceptance.rs b/crates/verse/examples/common/battle_acceptance.rs
+index 933fa81238..2d439088c6 100644
+--- a/crates/verse/examples/common/battle_acceptance.rs
++++ b/crates/verse/examples/common/battle_acceptance.rs
+@@ -50,6 +50,7 @@ pub fn failures(report: &Value) -> Vec<String> {
+         400.,
+         &mut failures,
+     );
++    limit("/server/movement_expiry/total", 0., &mut failures);
+     limit("/server/request_queue_peak", 128., &mut failures);
+     limit("/server/writer_queue_peak", 2., &mut failures);
+     limit("/server/held_reply_bytes_peak", 33554432., &mut failures);
+@@ -264,7 +265,24 @@ mod tests {
+     #[test]
+     fn fast_profiles_do_not_hide_missing_actions_or_route_failures() {
+         let segment = serde_json::json!({"status":"complete","maximum_players":20,"battle_occupancy":{"samples":100,"minimum_live_hostiles":40},"observed_frame_snapshots":100,"battle_framed_snapshots":100,"movement_inputs":100,"bound_frames":30,"confirmed_interval_steps":360,"accepted_operations":{"equipment":1,"quest_claim":1,"item_use":1,"respawn":1},"accepted_casts":{"Fireball":1,"Web":1,"Thunderwave":1},"measurements":{"steady":{"prediction_correction_meters":{"p95":0.01,"maximum":0.1}}}});
+-        let mut report = serde_json::json!({"status":"complete","mode":"network","seconds":60,"server":{"ticks":1800,"workload_ticks":1800,"request_queue_peak":20,"writer_queue_peak":2,"held_reply_bytes_peak":1000000,"failure":null,"simulation":{"steady":{"p99_upper_bound_ms":16.}},"admission":{"active_peak":20}},"render":{"measurements":{"steady":{"applied_snapshot_age_ms":{"p95":100.}}}},"recovery":{"active_receipts":32,"retained_events":512,"characters_checked":20,"live_hostiles":40,"checkpoint_bytes":300000},"route":{"connections":40,"refused_connections":0,"omitted_error_details":0,"error_details":[]},"disconnect_windows_seconds":[30.,60.],"players":(0..20).map(|player|serde_json::json!({"player":player,"segments":[segment.clone(),segment.clone()]})).collect::<Vec<_>>()});
++        let mut report = serde_json::json!({"status":"complete","mode":"network","seconds":60,"server":{"movement_expiry":{"total":0},"ticks":1800,"workload_ticks":1800,"request_queue_peak":20,"writer_queue_peak":2,"held_reply_bytes_peak":1000000,"failure":null,"simulation":{"steady":{"p99_upper_bound_ms":16.}},"admission":{"active_peak":20}},"render":{"measurements":{"steady":{"applied_snapshot_age_ms":{"p95":100.}}}},"recovery":{"active_receipts":32,"retained_events":512,"characters_checked":20,"live_hostiles":40,"checkpoint_bytes":300000},"route":{"connections":40,"refused_connections":0,"omitted_error_details":0,"error_details":[]},"disconnect_windows_seconds":[30.,60.],"players":(0..20).map(|player|serde_json::json!({"player":player,"segments":[segment.clone(),segment.clone()]})).collect::<Vec<_>>()});
++        assert!(failures(&report).is_empty());
++        report["server"]["movement_expiry"]["total"] = serde_json::json!(13);
++        assert!(
++            failures(&report)
++                .iter()
++                .any(|f| f.contains("/server/movement_expiry/total"))
++        );
++        report["server"]
++            .as_object_mut()
++            .unwrap()
++            .remove("movement_expiry");
++        assert!(
++            failures(&report)
++                .iter()
++                .any(|f| f.contains("/server/movement_expiry/total"))
++        );
++        report["server"]["movement_expiry"] = serde_json::json!({"total":0});
+         assert!(failures(&report).is_empty());
+         report["server"]["workload_ticks"] = serde_json::json!(1700);
+         assert!(failures(&report).iter().any(|f| f.contains("throughput")));

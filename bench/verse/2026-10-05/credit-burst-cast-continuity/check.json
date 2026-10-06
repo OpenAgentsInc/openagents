@@ -1,0 +1,28 @@
+{
+  "schema": "verse.check.v1",
+  "command": "cargo +1.97.1 test -p verse-world --features service-net service::worker::delayed:: -- --nocapture --test-threads=1",
+  "native_fixtures": {
+    "passed": 6,
+    "failed": 0
+  },
+  "credit_burst_fixture": {
+    "setup_failure": "The initial nonpersistent fixture advertised no requested content identity; movement was not reached.",
+    "corrected_command": "cargo +1.97.1 test -p verse-world --features service-net service::worker::delayed::cast_and_authority_credit_bursts_preserve_control -- --nocapture --test-threads=1",
+    "passed": 1,
+    "players": 20,
+    "writer_stall_ms": 300,
+    "up_ms": 40,
+    "down_ms": 40,
+    "bound": 48,
+    "accepted": 46,
+    "snapshots": 14,
+    "accepted_casts": 1,
+    "mode_resets": 0,
+    "background_requests": 1004
+  },
+  "limitations": [
+    "This fixture did not reproduce the battle timeouts.",
+    "The corrected case uses the durable content-advertising host and a 300 ms writer stall; the native cases were unchanged on retry.",
+    "No claim of improved runtime performance or completed lag acceptance."
+  ]
+}
