@@ -126,7 +126,7 @@ pub fn plugin_lines(call: &PluginCall, phase: u8) -> Vec<Line<'static>> {
         ToolState::Running => (spinner(phase), t::ACCENT_SKILL),
         ToolState::Failed => ("×", t::DIFF_DELETE_FG),
     };
-    let header = Line::from(vec![
+    let mut header = Line::from(vec![
         styled(format!(" {glyph} "), status_color),
         Span::styled(
             "Plugin",
@@ -138,8 +138,12 @@ pub fn plugin_lines(call: &PluginCall, phase: u8) -> Vec<Line<'static>> {
             format!(" {}.{}", call.plugin, call.operation),
             t::TEXT_PRIMARY,
         ),
-        styled(format!(" · {}", call.input), t::GRAY_BRIGHT),
     ]);
+    if !call.input.is_empty() {
+        header
+            .spans
+            .push(styled(format!(" · {}", call.input), t::GRAY_BRIGHT));
+    }
     let mut result = vec![styled("   ╰ ", t::GRAY_DIM)];
     match call.state {
         ToolState::Complete => result.push(styled(call.output, t::GRAY_BRIGHT)),

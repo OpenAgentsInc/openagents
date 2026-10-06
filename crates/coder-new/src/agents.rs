@@ -98,7 +98,7 @@ pub const DEMOS: [DemoAgent; 4] = [
             DemoMessage::Plugin(PluginCall {
                 plugin: "keyboard-audit",
                 operation: "navigation.check",
-                input: "Up/Down · four agent conversations",
+                input: "",
                 output: "Draft and cursor restored across conversation switches",
                 state: ToolState::Complete,
             }),
