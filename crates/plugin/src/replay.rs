@@ -27,7 +27,7 @@ pub const RECEIPT_SCHEMA: &str = "openagents.plugin-invocation-receipt.v1";
 
 /// The engine and configuration [`crate::invoke`] runs guests on. A replay
 /// on a different engine is `unverifiable`, not `failed`.
-pub const ENGINE: &str = "wasmtime/48.0.2+consume_fuel+epoch_interruption";
+pub const ENGINE: &str = "wasmtime/48.0.5+consume_fuel+epoch_interruption";
 
 /// The verification class a passing replay reports.
 pub const EXACT_REPLAY: &str = "exact_replay";

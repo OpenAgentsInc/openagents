@@ -291,6 +291,19 @@ fn different_inputs_or_engine_are_unverifiable_and_do_not_run() {
 }
 
 #[test]
+fn a_receipt_from_wasmtime_48_0_2_is_unverifiable() {
+    let invocation = Invocation::pure();
+    let mut receipt = invocation.receipt();
+    receipt.engine = "wasmtime/48.0.2+consume_fuel+epoch_interruption".into();
+
+    let verdict = replay(&receipt, invocation.call());
+    assert_eq!(
+        unverifiable(&verdict),
+        format!("engine {} is not {ENGINE}", receipt.engine)
+    );
+}
+
+#[test]
 fn a_deterministic_host_error_replays_and_a_cancellation_does_not() {
     let mut starved = Invocation::guest("repo-map", "map", "{}");
     starved.limits.fuel = 1_000;
