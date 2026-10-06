@@ -1,6 +1,6 @@
 //! Exercises the shared native session without a window or owner state.
 use std::{
-    collections::BTreeMap,
+    collections::{BTreeMap, VecDeque},
     time::{Duration, Instant},
 };
 use tokio::sync::{mpsc, oneshot};
@@ -20,6 +20,28 @@ use verse_world::{
     },
 };
 
+#[derive(Clone, serde::Serialize)]
+struct FrameTrace {
+    elapsed_ms: u128,
+    phase: &'static str,
+    actor: u64,
+    epoch: u64,
+    sequence: u64,
+    start: u64,
+    end: u64,
+    authority_tick: u64,
+    control_epoch: Option<u64>,
+    credit_step: Option<u64>,
+    pending_requests: usize,
+    queued_inputs: usize,
+}
+#[derive(serde::Serialize)]
+struct ControlTransition {
+    tick: u64,
+    before: verse_world::movement::Baseline,
+    after: verse_world::movement::Baseline,
+    frames: VecDeque<FrameTrace>,
+}
 pub struct Tap {
     pub frame: Frame,
     pub applied_at: Instant,
@@ -83,6 +105,11 @@ pub async fn player(
     let mut cast = 0usize;
     let mut responses = 0u64;
     let mut frontline_yaw = None;
+    let mut frame_trace = VecDeque::new();
+    let mut control_transitions = Vec::new();
+    let mut previous_movement: Option<verse_world::movement::Baseline> = None;
+    let mut omitted_frame_trace = 0u64;
+    let mut omitted_control_transitions = 0u64;
     let result=async {
       let mut clock=tokio::time::interval(Duration::from_secs_f64(1./60.));clock.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
       while tokio::time::Instant::now()<end {
@@ -91,6 +118,13 @@ pub async fn player(
         while let Ok(update)=output.try_recv() {
           match &update {
             Update::Snapshot(response)=>if let Reply::Snapshot {state}=&response.body {
+              if let Some(after)=state.movement {
+                if let Some(before)=previous_movement.filter(|b|b.profile==verse_world::movement::Profile::Frames && (b.life,b.epoch)!=(after.life,after.epoch)) {
+                  if control_transitions.len()<8 {control_transitions.push(ControlTransition {tick:response.tick,before,after,frames:frame_trace.clone()});}
+                  else {omitted_control_transitions+=1;}
+                }
+                previous_movement=Some(after);
+              }
               if index==19 {
                 frontline_yaw=state.hud.as_ref().filter(|h|h.life.generation==0).and_then(|h| {
                   let owned=state.presentation.actors.iter().find(|a|verse_engine::core::LifeId::from(a.life)==h.life)?.actor.position;
@@ -155,6 +189,11 @@ pub async fn player(
           _=>{}
         }}
         let observations=observer.drain();omitted_observer+=observations.omitted;
+        omitted_frame_trace+=observations.omitted_frames;
+        for frame in observations.frames {
+          if frame_trace.len()==128 {frame_trace.pop_front();}
+          frame_trace.push_back(FrameTrace {elapsed_ms:frame.at.saturating_duration_since(began).as_millis(),phase:frame.phase,actor:frame.actor,epoch:frame.epoch,sequence:frame.sequence,start:frame.start,end:frame.end,authority_tick:frame.authority_tick,control_epoch:frame.control_epoch,credit_step:frame.credit_step,pending_requests:frame.pending_requests,queued_inputs:frame.queued_inputs});
+        }
         for sample in observations.samples {
           measurements.record(frame,"request_turnaround_ms",sample.turnaround_ms);window.record(frame,"request_turnaround_ms",sample.turnaround_ms);
           measurements.record(frame,"pending_requests",sample.pending_requests as f64);window.record(frame,"pending_requests",sample.pending_requests as f64);
@@ -188,6 +227,6 @@ pub async fn player(
     }
     operations.insert("respawn".into(), session.life_changes);
     Ok(
-        serde_json::json!({"player":index,"status":if error.is_none(){"complete"}else{"failed"},"error":error,"worker_error":worker_error,"snapshots":session.snapshots,"maximum_players":max_players,"battle_occupancy":{"samples":occupancy,"minimum_live_hostiles":(occupancy>0).then_some(min_hostiles)},"movement_profile":"native_session_intervals","observed_frame_snapshots":framed,"movement_inputs":movements,"battle_framed_snapshots":battle_framed,"confirmed_interval_steps":confirmed_steps,"bound_frames":bound_frames,"accepted_outcomes":accepted_frames,"outcomes":responses,"accepted_casts":session.accepted_casts,"accepted_operations":operations,"damage_events":session.damage_events,"minimum_hp":(min_hp!=i32::MAX).then_some(min_hp),"prediction_horizon_pauses":session.prediction_horizon_pauses(),"prediction_failures":session.prediction_failures(),"last_prediction_failure":session.last_prediction_failure(),"prediction_embedding_deferrals":session.prediction_embedding_deferrals(),"prediction_separating_steps":session.prediction_separating_steps(),"last_prediction_embedding":session.prediction_embedding_diagnostic(),"unacknowledged_bound_operations":session.pending(),"refusals":refusals,"refusal_trace":trace,"correction_trace":correction_trace,"maximum_correction_detail":maximum_correction_detail,"omitted_correction_details":omitted_corrections,"omitted_observer_samples":omitted_observer,"omitted_render_frames":omitted_taps,"windows":windows,"measurements":measurements.summary()}),
+        serde_json::json!({"player":index,"status":if error.is_none(){"complete"}else{"failed"},"error":error,"worker_error":worker_error,"snapshots":session.snapshots,"maximum_players":max_players,"battle_occupancy":{"samples":occupancy,"minimum_live_hostiles":(occupancy>0).then_some(min_hostiles)},"movement_profile":"native_session_intervals","frame_timing":{"recent":frame_trace,"window_capacity":128,"omitted":omitted_frame_trace},"control_transitions":control_transitions,"control_transition_capacity":8,"omitted_control_transitions":omitted_control_transitions,"observed_frame_snapshots":framed,"movement_inputs":movements,"battle_framed_snapshots":battle_framed,"confirmed_interval_steps":confirmed_steps,"bound_frames":bound_frames,"accepted_outcomes":accepted_frames,"outcomes":responses,"accepted_casts":session.accepted_casts,"accepted_operations":operations,"damage_events":session.damage_events,"minimum_hp":(min_hp!=i32::MAX).then_some(min_hp),"prediction_horizon_pauses":session.prediction_horizon_pauses(),"prediction_failures":session.prediction_failures(),"last_prediction_failure":session.last_prediction_failure(),"prediction_embedding_deferrals":session.prediction_embedding_deferrals(),"prediction_separating_steps":session.prediction_separating_steps(),"last_prediction_embedding":session.prediction_embedding_diagnostic(),"unacknowledged_bound_operations":session.pending(),"refusals":refusals,"refusal_trace":trace,"correction_trace":correction_trace,"maximum_correction_detail":maximum_correction_detail,"omitted_correction_details":omitted_corrections,"omitted_observer_samples":omitted_observer,"omitted_render_frames":omitted_taps,"windows":windows,"measurements":measurements.summary()}),
     )
 }

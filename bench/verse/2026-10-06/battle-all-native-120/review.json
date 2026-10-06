@@ -1,0 +1,16 @@
+{
+  "base_commit": "3896776166080cfba6ed740aa9a414b6a7582cb4",
+  "main_implementation_commit": "27c5f0e1a1",
+  "executable_sha256": "79434f7a1935bb5aa19369f9dbf99befd8e37fd33365cdd44f0022c1bbd6dcf8",
+  "build_seconds": 33.59,
+  "native_sessions": 20,
+  "rendered_sessions": 1,
+  "native_segments_completed": 40,
+  "prediction_failures": 0,
+  "prediction_horizon_pauses": 0,
+  "maximum_correction_p95_meters": 0.16165421903133392,
+  "maximum_correction_meters": 0.6400814056396484,
+  "consumer_tests": 3,
+  "acceptance": "failed: one movement expiry; all other gates pass",
+  "limits": "Shared machine, one offscreen renderer; not isolated physical-device or input-to-display acceptance. Frontline initial-life recipe retained. Per-client correction and prediction-failure checks now cover every native session."
+}
