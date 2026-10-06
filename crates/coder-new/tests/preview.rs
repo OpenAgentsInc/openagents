@@ -182,9 +182,9 @@ fn expected_token_label(tokens: &str, compact: bool) -> String {
     let width = DEMOS.iter().map(|demo| demo.tokens.width()).max().unwrap();
     let padding = " ".repeat(width.saturating_sub(tokens.width()));
     if compact {
-        format!("↓{padding}{tokens}")
+        format!("{padding}{tokens}↓")
     } else {
-        format!("↓ {padding}{tokens} tokens")
+        format!("{padding}{tokens} tokens ↓")
     }
 }
 
@@ -839,7 +839,7 @@ fn rail_elapsed_time_formats_units_and_preserves_the_clock_across_selection_and_
             .lines()
             .find(|line| line.contains("○ grok-build"))
             .unwrap();
-        assert!(grok.contains("1m 7s · ↓"));
+        assert!(grok.contains("1m 7s ·  3.1k tokens ↓"));
     }
     let fixed = snapshot::svg(&mut app, 110, 36);
     assert_eq!(snapshot::svg(&mut app, 110, 36), fixed);

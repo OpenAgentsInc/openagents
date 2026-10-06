@@ -118,9 +118,9 @@ fn agent_rail(frame: &mut Frame, area: Rect, app: &App) {
         .iter()
         .map(|agent| {
             if narrow {
-                format!("↓{:>count_width$}", agent.tokens)
+                format!("{:>count_width$}↓", agent.tokens)
             } else {
-                format!("↓ {:>count_width$} tokens", agent.tokens)
+                format!("{:>count_width$} tokens ↓", agent.tokens)
             }
         })
         .collect();

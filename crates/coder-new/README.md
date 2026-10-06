@@ -68,7 +68,7 @@ The composer is a plain `❯` input with a blinking block cursor between
 edge-to-edge horizontal rules. In demo mode, the four rows below it show `claude-code`,
 `codex`, `devin-cli`, and `grok-build`. Agent
 names and current tasks occupy separate aligned columns, with elapsed time
-beside the token counts on the right, such as `1h 12m 38s · ↓ 8.2k tokens`.
+beside the token counts on the right, such as `1h 12m 38s · 8.2k tokens ↓`.
 The token-count column grows to the widest count so the separators stay aligned.
 The mock timers advance once per second while the preview runs. Narrow terminals
 truncate task text, shorten the token label, and omit elapsed time when needed
