@@ -1,0 +1,53 @@
+{
+  "schema": "verse.battle.review.v1",
+  "duration_seconds": 600,
+  "source_base": "43f12d6e0bb48e22f151476a14aaab66cca9bee8",
+  "executable_sha256": "8be81fcbc319600a39659afcbdac8fc3114fc9b293a1be07afe81b3d07429ad6",
+  "acceptance": "failed",
+  "failures": [
+    "/server/movement_expiry/total: Some(121.0) exceeds 0, or is unavailable",
+    "Player 0 late prediction p95 Some(0.25146347284317017) exceeds 0.25 meters or is unavailable",
+    "Player 0 late prediction p95 Some(0.25502175092697144) exceeds 0.25 meters or is unavailable",
+    "Player 0 prediction maximum Some(2.458416700363159) exceeds 1 meters or is unavailable",
+    "Player 0 late prediction maximum Some(2.458416700363159) exceeds 1 meters or is unavailable"
+  ],
+  "movement_expiry": 121,
+  "native_segments": [
+    {
+      "error": null,
+      "prediction_failures": 0,
+      "last_prediction_failure": null,
+      "prediction_horizon_pauses": 8
+    },
+    {
+      "error": null,
+      "prediction_failures": 0,
+      "last_prediction_failure": null,
+      "prediction_horizon_pauses": 18
+    }
+  ],
+  "files": {
+    "report.json": "3c8ed25df04891b977acf0616aba1b4bf6f6363fed9e9e43071f4497ba2496c7",
+    "source.patch": "9d19892282576d95d04564eaf735ff3cec24be9fc5acce585f9baacc7334b9de"
+  },
+  "limitations": [
+    "No own compiler ran during measurement; the host is shared.",
+    "Both native segments completed without prediction reset errors, but correction and movement expiry acceptance still fails.",
+    "Horizon pauses retain submitted input history; they do not establish uninterrupted movement.",
+    "Offscreen rendering does not measure physical input-to-display latency."
+  ],
+  "maximum_native_corrections": [
+    {
+      "distance": 0.8351936340332031,
+      "stage": "applied_movement_confirmation",
+      "pending_inputs": 12,
+      "last_embedding": "Prediction holds actor LifeId { instance: 9300, actor: 14, generation: 0 } at DVec3(-16.70053841446678, 0.0, 12.103769934393789): contact ColliderKey { life: Life { instance: 9300, entity: 228, generation: 0 }, shape: 0 }, penetration 0.03568040412858142, normal DVec3(-0.9792391152651607, 0.0, 0.20270854726603219), observed tick 8919, replay step 33344"
+    },
+    {
+      "distance": 2.458416700363159,
+      "stage": "applied_movement_confirmation",
+      "pending_inputs": 48,
+      "last_embedding": "Prediction holds actor LifeId { instance: 9300, actor: 14, generation: 0 } at DVec3(-18.83697030793522, 0.0, 11.628424986872446): contact ColliderKey { life: Life { instance: 9300, entity: 228, generation: 0 }, shape: 0 }, penetration 0.09777738818791848, normal DVec3(-0.9323819309137595, 0.0, -0.361474667031494), observed tick 16112, replay step 62127"
+    }
+  ]
+}
