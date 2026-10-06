@@ -193,8 +193,9 @@ pub async fn player(
      let frontline_initial_life=mixed && index==19 && hud.life.generation==0;
      if mixed && !frontline_initial_life && pending.is_empty() && outstanding.is_empty() && tokio::time::Instant::now()>=next_operation {
       let (input,label)=match operation {0=>(Input::EquipGear(verse_world::service::equipment::Slot::Head,501),"equipment"),1=>(Input::ClaimQuest(1),"quest_claim"),_=>(Input::UseItem(502),"item_use")};
-      if send.try_send(input).is_ok() {pending.push_back((tokio::time::Instant::now(),Some(format!("operation/{label}")),None,None));operation+=1;next_operation=tokio::time::Instant::now()+Duration::from_secs(6);continue;}
+      if send.try_send(input).is_ok() {pending.push_back((tokio::time::Instant::now(),Some(format!("operation/{label}")),None,None));operation+=1;next_operation=tokio::time::Instant::now()+Duration::from_secs(6);}
      }
+     // A nonmovement operation shares this wake with movement, as in the native session.
      let seconds=began.elapsed().as_secs_f64();
      let phase=((seconds+index as f64*0.2).rem_euclid(8.)).floor() as u32;
      let mut axes=match phase {0=>[0.,1.],1=>[1.,0.],2=>[0.,-1.],3=>[-1.,0.],_=>[0.,0.]};
