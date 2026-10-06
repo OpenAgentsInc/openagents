@@ -16,7 +16,7 @@ fn main() -> io::Result<()> {
             "--snapshot" => capture = true,
             "--help" | "-h" => {
                 println!(
-                    "Coder terminal UI preview\n\nUsage: coder-new [--welcome] [--snapshot]\n\n--welcome   Start with the welcome screen.\n--snapshot  Write a 110×36 SVG preview to stdout.\n\nTab switches views. Ctrl+C closes the preview."
+                    "Coder terminal UI preview\n\nUsage: coder-new [--welcome] [--snapshot]\n\n--welcome   Start with the welcome screen.\n--snapshot  Write a 110×36 SVG preview to stdout.\n\nUp/Down selects agent conversations. Esc returns to main. Tab switches views. Ctrl+C closes the preview."
                 );
                 return Ok(());
             }

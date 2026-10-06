@@ -1,4 +1,4 @@
-use coder_new::agents::DEMOS;
+use coder_new::agents::{DEMOS, DemoMessage};
 use coder_new::{App, Screen, snapshot, ui};
 use crossterm::event::{Event, KeyCode, KeyEvent, KeyEventKind, KeyModifiers};
 use ratatui::{Terminal, backend::TestBackend};
@@ -140,7 +140,10 @@ fn assert_agent_rail(rendered: &str) {
         let (row, line) = rendered
             .lines()
             .enumerate()
-            .find(|(_, line)| line.contains(&format!("○ {}:", demo.name)))
+            .find(|(_, line)| {
+                line.contains(&format!("○ {}:", demo.name))
+                    || line.contains(&format!("❯ {}:", demo.name))
+            })
             .unwrap_or_else(|| panic!("missing agent row: {}", demo.name));
         assert!(row > previous_row);
         assert!(line.contains(demo.task));
@@ -195,7 +198,7 @@ fn resizing_keeps_the_draft_cursor_visible_and_agent_rows_aligned() {
     let mut app = App::default();
     app.handle(Event::Paste("draft with 👩‍💻 and 界\ncontinued draft".into()));
     let draft_cursor = app.draft.cursor;
-    for (width, height) in [(80, 24), (24, 12), (23, 9), (80, 24)] {
+    for (width, height) in [(80, 24), (80, 16), (24, 12), (23, 9), (80, 24)] {
         assert!(app.handle(Event::Resize(width, height)));
         let mut terminal = Terminal::new(TestBackend::new(width, height)).unwrap();
         terminal.draw(|frame| ui::render(frame, &mut app)).unwrap();
@@ -217,4 +220,185 @@ fn resizing_keeps_the_draft_cursor_visible_and_agent_rows_aligned() {
             }
         }
     }
+}
+
+fn compact_text(text: &str) -> String {
+    text.chars().filter(|ch| !ch.is_whitespace()).collect()
+}
+
+#[test]
+fn selecting_each_agent_loads_its_own_demo_conversation() {
+    let mut app = App::default();
+    for (index, demo) in DEMOS.iter().enumerate() {
+        key(&mut app, KeyCode::Down);
+        assert_eq!(app.selected_agent, Some(index));
+        let rendered = screen(&mut app, 110, 40);
+        let composer_top = composer_rules(&rendered)[0].0;
+        let body = rendered
+            .lines()
+            .take(composer_top)
+            .collect::<Vec<_>>()
+            .join("\n");
+        let prompt = demo
+            .conversation
+            .iter()
+            .find_map(|message| match message {
+                DemoMessage::User(text) => Some(*text),
+                _ => None,
+            })
+            .unwrap();
+        let response = demo
+            .conversation
+            .iter()
+            .find_map(|message| match message {
+                DemoMessage::Assistant(text) => Some(*text),
+                _ => None,
+            })
+            .unwrap();
+        let body = compact_text(&body);
+        assert!(
+            body.contains(&compact_text(prompt)),
+            "missing demo prompt for {}",
+            demo.name
+        );
+        assert!(
+            body.contains(&compact_text(response)),
+            "missing demo response for {}",
+            demo.name
+        );
+        assert!(!body.contains("Conversationfirst"));
+        assert!(rendered.contains(&format!("❯ {}:", demo.name)));
+        assert_agent_rail(&rendered);
+    }
+}
+
+#[test]
+fn agent_navigation_clamps_at_the_ends_and_escape_restores_main() {
+    let mut app = App::default();
+    assert_eq!(app.selected_agent, None);
+    key(&mut app, KeyCode::Up);
+    assert_eq!(app.selected_agent, None);
+    for _ in 0..8 {
+        key(&mut app, KeyCode::Down);
+    }
+    assert_eq!(app.selected_agent, Some(3));
+    for selected in [Some(2), Some(1), Some(0), None] {
+        key(&mut app, KeyCode::Up);
+        assert_eq!(app.selected_agent, selected);
+    }
+    key(&mut app, KeyCode::Down);
+    key(&mut app, KeyCode::Down);
+    assert_eq!(app.selected_agent, Some(1));
+    key(&mut app, KeyCode::Esc);
+    assert_eq!(app.selected_agent, None);
+    assert!(screen(&mut app, 110, 36).contains("Conversation first"));
+    assert!(app.draft.text.is_empty());
+    assert!(app.messages.is_empty());
+}
+
+fn conversation_state(app: &App) -> (String, usize, Vec<String>, u16) {
+    (
+        app.draft.text.clone(),
+        app.draft.cursor,
+        app.messages.clone(),
+        app.scroll,
+    )
+}
+
+#[test]
+fn switching_restores_each_conversations_draft_cursor_messages_and_scroll() {
+    let mut app = App::default();
+    app.handle(Event::Paste("main message".into()));
+    key(&mut app, KeyCode::Enter);
+    app.handle(Event::Paste("main draft 界".into()));
+    key(&mut app, KeyCode::Left);
+    app.scroll = 5;
+    let main = conversation_state(&app);
+    let mut agents = Vec::new();
+    for (index, demo) in DEMOS.iter().enumerate() {
+        key(&mut app, KeyCode::Down);
+        assert_eq!(app.selected_agent, Some(index));
+        assert!(app.messages.is_empty());
+        assert!(app.draft.text.is_empty());
+        assert_eq!(app.scroll, 0);
+        app.handle(Event::Paste(format!("message for {}", demo.name)));
+        key(&mut app, KeyCode::Enter);
+        assert_eq!(app.selected_agent, Some(index));
+        assert_eq!(app.messages, [format!("message for {}", demo.name)]);
+        app.handle(Event::Paste(format!("draft for {} 界", demo.name)));
+        key(&mut app, KeyCode::Left);
+        app.scroll = (index as u16 + 1) * 7;
+        agents.push(conversation_state(&app));
+    }
+    for index in (0..DEMOS.len()).rev() {
+        assert_eq!(app.selected_agent, Some(index));
+        assert_eq!(conversation_state(&app), agents[index]);
+        key(&mut app, KeyCode::Up);
+    }
+    assert_eq!(app.selected_agent, None);
+    assert_eq!(conversation_state(&app), main);
+    for (index, expected) in agents.iter().enumerate() {
+        key(&mut app, KeyCode::Down);
+        assert_eq!(app.selected_agent, Some(index));
+        assert_eq!(&conversation_state(&app), expected);
+    }
+    key(&mut app, KeyCode::Esc);
+    assert_eq!(app.selected_agent, None);
+    assert_eq!(conversation_state(&app), main);
+}
+
+#[test]
+fn selected_agent_keeps_the_rail_visible_and_tokens_aligned_after_resize() {
+    let mut app = App::default();
+    for selected in 0..DEMOS.len() {
+        key(&mut app, KeyCode::Down);
+        for (width, height) in [(80, 24), (24, 12)] {
+            assert!(app.handle(Event::Resize(width, height)));
+            let rendered = screen(&mut app, width, height);
+            let rules = composer_rules(&rendered);
+            let bottom = rules[1].0;
+            let right_edge = rules[1].1.trim_end().chars().count();
+            for (index, demo) in DEMOS.iter().enumerate() {
+                let (_, line) = rendered
+                    .lines()
+                    .enumerate()
+                    .skip(bottom + 1)
+                    .find(|(_, line)| line.contains(demo.name))
+                    .unwrap();
+                if index == selected {
+                    assert!(line.contains(&format!("❯ {}", demo.name)));
+                } else if width == 80 {
+                    assert!(line.contains(&format!("○ {}", demo.name)));
+                }
+                let suffix = if width == 80 {
+                    format!("↓ {} tokens", demo.tokens)
+                } else {
+                    format!("↓ {}", demo.tokens)
+                };
+                assert!(line.trim_end().ends_with(&suffix));
+                assert_eq!(line.trim_end().chars().count(), right_edge);
+            }
+            assert_eq!(app.selected_agent, Some(selected));
+        }
+    }
+}
+
+#[test]
+fn compact_header_and_footer_keep_the_rail_and_status_on_consecutive_rows() {
+    let mut app = App::default();
+    let rendered = screen(&mut app, 110, 36);
+    let lines: Vec<_> = rendered.lines().collect();
+    let header = lines.iter().find(|line| line.contains("◆ Coder")).unwrap();
+    assert!(header.contains("openagents / main"));
+    assert!(!rendered.contains("UI preview"));
+    assert!(!rendered.contains("Ctrl+C"));
+    assert!(!rendered.contains("Enter preview"));
+    let bottom = composer_rules(&rendered)[1].0;
+    for (index, demo) in DEMOS.iter().enumerate() {
+        assert!(lines[bottom + 1 + index].starts_with(&format!("   ○ {}:", demo.name)));
+    }
+    let status = bottom + DEMOS.len() + 1;
+    assert_eq!(status, lines.len() - 1);
+    assert!(lines[status].contains("6 plugins"));
+    assert!(lines[status].contains("24,000 sats"));
 }

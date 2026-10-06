@@ -19,6 +19,10 @@ The composer is a plain `❯` input between horizontal rules. Four rows below it
 show `claude-code`, `codex`, `devin-cli`, and `grok-build`, each with its current
 sample task and a token count aligned on the right. Narrow terminals truncate
 task text and shorten the token label to preserve the agent names.
+Press Down to select the first agent, then Up/Down to switch conversations.
+Selection loads that agent's demo messages immediately. Up from the first agent
+or Esc returns to the main conversation. Each conversation retains its own
+draft, cursor, preview messages, and scroll position while the preview is open.
 
 All colors are exact 24-bit RGB values from Grok Build's default Grok Night
 theme, including the focused composer border. Use a truecolor terminal to

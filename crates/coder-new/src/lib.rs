@@ -22,9 +22,37 @@ pub struct App {
     pub draft: Draft,
     pub messages: Vec<String>,
     pub scroll: u16,
+    pub selected_agent: Option<usize>,
+    saved_chats: [Chat; 5],
+}
+
+#[derive(Default)]
+struct Chat {
+    draft: Draft,
+    messages: Vec<String>,
+    scroll: u16,
 }
 
 impl App {
+    fn select_agent(&mut self, selected: Option<usize>) {
+        if self.selected_agent == selected {
+            return;
+        }
+        let previous = self.selected_agent.map_or(0, |index| index + 1);
+        self.saved_chats[previous] = Chat {
+            draft: std::mem::take(&mut self.draft),
+            messages: std::mem::take(&mut self.messages),
+            scroll: self.scroll,
+        };
+        let next = selected.map_or(0, |index| index + 1);
+        let chat = std::mem::take(&mut self.saved_chats[next]);
+        self.draft = chat.draft;
+        self.messages = chat.messages;
+        self.scroll = chat.scroll;
+        self.selected_agent = selected;
+        self.screen = Screen::Conversation;
+    }
+
     /// Returns false when the preview should close.
     pub fn handle(&mut self, event: Event) -> bool {
         match event {
@@ -35,6 +63,13 @@ impl App {
                     return false;
                 }
                 match key.code {
+                    KeyCode::Down => self.select_agent(Some(
+                        self.selected_agent
+                            .map_or(0, |index| (index + 1).min(agents::DEMOS.len() - 1)),
+                    )),
+                    KeyCode::Up => self
+                        .select_agent(self.selected_agent.and_then(|index| index.checked_sub(1))),
+                    KeyCode::Esc => self.select_agent(None),
                     KeyCode::Tab | KeyCode::BackTab => {
                         self.screen = match self.screen {
                             Screen::Welcome => Screen::Conversation,
