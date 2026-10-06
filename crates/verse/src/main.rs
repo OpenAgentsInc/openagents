@@ -296,6 +296,20 @@ fn parse(mut args: impl Iterator<Item = String>) -> Result<(Option<Shot>, Option
             "--frame-times" => options.frame_times = true,
             "--studio-notice" => options.studio_notice = Some(value()?),
             "--workshop-ask" => options.workshop_ask = Some(value()?),
+            "--place" => {
+                let v = value()?;
+                let parts: Vec<f32> = v
+                    .split(',')
+                    .map(|part| part.trim().parse::<f32>())
+                    .collect::<Result<_, _>>()
+                    .map_err(|_| format!("--place takes X,Z[,YAW], got {v}"))?;
+                let at = |v: f32| (v * 100.0).round() as i32;
+                options.place = match parts[..] {
+                    [x, z] => Some([at(x), at(z), 0]),
+                    [x, z, yaw] => Some([at(x), at(z), at(yaw)]),
+                    _ => return Err(format!("--place takes X,Z[,YAW], got {v}")),
+                };
+            }
             "--ritual" => options.ritual = Some(value()?.into()),
             "--no-ritual" => options.ritual = None,
             "--at" => {

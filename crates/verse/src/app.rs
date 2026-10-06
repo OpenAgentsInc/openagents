@@ -116,6 +116,10 @@ pub struct Options {
     /// if the player walked up to her, opened her panel, and typed it
     /// (`--workshop-ask`), for a demo or a capture.
     pub workshop_ask: Option<String>,
+    /// Where to stand the player once Everglade is up, as `[x, z, yaw]`
+    /// in centimeters and hundredths of a degree (`--place X,Z[,YAW]` in
+    /// meters and degrees), for a demo or a capture.
+    pub place: Option<[i32; 3]>,
     /// The pinned chamber the Grid's RITUAL arch joins
     /// ([`crate::ritual::Config`]); `None` draws no arch.
     pub ritual: Option<std::path::PathBuf>,
@@ -160,6 +164,7 @@ impl Default for Options {
             terminal_stress: None,
             studio_notice: None,
             workshop_ask: None,
+            place: None,
             ritual: crate::ritual::default_config(),
             #[cfg(feature = "remote-chamber")]
             chamber: None,
@@ -1659,6 +1664,17 @@ impl App {
         }
         self.workshop.frame(&mut self.terminal);
         self.runtime.set_studio_resident(self.workshop.seats());
+        // `--place`: stand the player there once, when Everglade is up.
+        if in_glade && let Some([x, z, yaw]) = self.connection_options.place.take() {
+            let y = self.runtime.player.pos.y + 1.0;
+            let (x, z) = (x as f32 / 100.0, z as f32 / 100.0);
+            if let Err(error) = self
+                .runtime
+                .place_player(Vec3::new(x, y, z), (yaw as f32 / 100.0).to_radians())
+            {
+                eprintln!("--place: {error}");
+            }
+        }
         // `--workshop-ask`: walk up to her and say it, once she stands at
         // her desk.
         let name = crate::workshop::NAME;
