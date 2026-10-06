@@ -388,3 +388,18 @@ quoted). On the `new` tag, `/`, `/grid`, `/everglade`, `/druid`, and
 WebGL2 (`?gl`) and Everglade. A Meteor Swarm cast with real key and mouse
 input showed its ring and falling meteors before traffic moved. Rollback:
 `--to-revisions coder-web-9cbc7e6dd4=100`.
+
+Budgets degrade instead of stopping Everglade (1726d56f8d): a geometry
+budget overrun no longer halts a zone with "Renderer geometry bytes exceed
+the admitted quality budget"; frames draw less, the debris pool is bounded,
+and the low and medium tiers reserve room for destruction. Also live: the
+Grove's support fix for pieces stuck in the sky, the dragon's reach and
+Fire Breath's near-wall hits, and Alice's revised look. Image
+`openagents/openagents-web:1726d56f8d`, built from GitHub by the automation
+account and applied as `chris@` from the live spec with only the revision
+name and image changed (`CODER_CHAT_SYNC` quoted). On the `new` tag, `/`,
+`/grid`, `/everglade`, `/druid`, and `/api/stats` answered 200; headless
+Chrome cast Meteor Swarm 50 times in Everglade and alternated Meteor Swarm
+and Thunderbolt about 40 times in the Grove, each on WebGPU and WebGL2
+(`?gl`), and no page stopped, before traffic moved. Rollback:
+`--to-revisions coder-web-2c68a678f4=100`.
