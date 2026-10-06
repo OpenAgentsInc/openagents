@@ -431,6 +431,15 @@ replaced the kit-built jettied, balconied, and row townhouses, at about a
 quarter of their triangles, and are painted per place like the sixth
 round's houses.
 
+The owner's house (`layout::estate`) stands at the east end of Library
+Way, the first building in the [Greco-futurism](greco-futurism.md) style: a
+two-storey limestone estate on a podium, up a stair between hedged planter
+walls, with a columned portico, bronze circuit doors that stand open, and an
+enterable great room. It's on open ground near the clearing's edge, with the
+east woods behind it; a walk continues Library Way to its stair. It blocks
+by its own boxes, breaks like the other generated buildings, and doesn't
+smoke.
+
 The town has ambient wildlife
 ([`wildlife`](../../crates/verse-zone-everglade/src/zones/everglade/wildlife.rs)): pairs of
 songbirds circling over the commons, Main Street, Walden Woods, and
@@ -451,7 +460,7 @@ farther than 60 m from the player is neither posed nor drawn.
 | Fountain Plaza | A cobbled market with the generated fountain, awninged and produce stalls, crates, barrels, a hand cart, a flower cart, a hand pump, a shop house and a timber house with tables out front, planters, the generated market hall with its stock under the arcade | Market Way |
 | Creative District | The Makers' Hall, a studio, two generated Boardwalk Cafés with tables on their decks, the Atelier Hall, the Sculpture Walk's statues, sculpture, and sundial | Studio Road |
 | The Foundry | The Server Barn and fab yard, a workshop, the Fab Hall, the generated smithy with its open forge, an annex | Foundry Road |
-| Knowledge District | The Stacks (the generated library up its steps), the Old College, the generated clock tower on its square, the college hall, the archive, the map room, an L-shaped seminar house, the generated observatory on Observatory Hill, Reed Pond and its jetty, the long meadow's wildflowers and its log cabin | Library Way |
+| Knowledge District | The Stacks (the generated library up its steps), the Old College, the generated clock tower on its square, the college hall, the archive, the map room, an L-shaped seminar house, the generated observatory on Observatory Hill, the owner's Greco-futurism house at Library Way's east end, Reed Pond and its jetty, the long meadow's wildflowers and its log cabin | Library Way |
 | Stoop Lane | Ten homes and townhouses, four of them generated, with lanterns, flower boxes, and little gardens, the cottage, a well | Stoop Lane, Hearth Road |
 | Lantern Quarter | The generated Music Hall, meeting hall, tavern, and guild hall, the choir house, the pubs, an L-shaped house, bunting, paper lanterns across Lantern Road, two-armed lamps, a well; Well Square with its two hipped houses, well, and benches | Hearth Road, Lantern Road |
 | Brownstone Row | Four brownstones with stoops and iron rails, two terraces of generated row houses, two more brownstones, stone cottages, and gambrel houses across the street, back gardens with fences, beds, and benches, the community garden behind its picket fence with the glasshouse, the footbridge over Glade Run | Brownstone Row |

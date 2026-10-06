@@ -516,9 +516,10 @@ const fn brownstone(building: &'static str) -> StandIn {
 /// Generated models that stand on open ground rather than in a building's
 /// place: the boathouse on Lantern Pond's north bank, its arch to the
 /// water; the glasshouse in the community garden behind Brownstone Row;
-/// the gazebo on the commons' east lawn; and the wayside chapel on the
-/// north trail.
-pub const GROUNDS: [Instance; 4] = [
+/// the gazebo on the commons' east lawn; the wayside chapel on the
+/// north trail; and the owner's house at Library Way's east end
+/// (`super::estate`).
+pub const GROUNDS: [Instance; 5] = [
     Instance {
         scale: 0.8,
         ..Instance::new("boathouse", &BOATHOUSE, [4.5, 34.2], PI)
@@ -528,6 +529,7 @@ pub const GROUNDS: [Instance; 4] = [
     // The eighth round's wayside chapel, its door to the north trail
     // (`trails`).
     Instance::new("chapel", &CHAPEL, [3.5, 124.0], FRAC_PI_2),
+    super::estate::OWNERS_HOUSE,
 ];
 
 /// The Fountain Plaza's fountain, on the plaza's west half clear of
@@ -731,6 +733,7 @@ pub fn doors() -> Vec<(&'static str, [f32; 2], [f32; 2])> {
 /// The streets and each building's walk from its street to its door.
 pub fn roads() -> Vec<([f32; 2], [f32; 2], f32)> {
     let mut out = STREETS.to_vec();
+    out.push(super::estate::WALK);
     // Each stand-in's walk from its building's street to its front step.
     for s in &STAND_INS {
         let b = named(s.building);

@@ -391,7 +391,9 @@ fn committed_manifests_admit_only_base_color_sources_with_licenses() {
                 assert!(transform.contains("foliage_admit.py"), "{set}/{name}");
             } else if set == "lod" {
                 assert!(
-                    transform.contains("everglade_lod.py") || transform.contains("town_houses.py"),
+                    transform.contains("everglade_lod.py")
+                        || transform.contains("town_houses.py")
+                        || transform.contains("greco_futurism.py"),
                     "{set}/{name}"
                 );
             } else if compile::FORM_SETS.contains(&set) {

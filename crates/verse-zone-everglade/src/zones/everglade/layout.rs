@@ -23,6 +23,7 @@ use verse_world::social::everglade::DESK_SEATS;
 
 pub mod city;
 pub mod details;
+pub mod estate;
 pub mod foliage;
 pub mod furnish;
 pub mod generated;
@@ -2000,7 +2001,7 @@ fn glade(out: &mut Vec<Placement>) {
     for (i, (model, at)) in [
         ("nature/Rock_Medium_1", [-30.0, 64.0]),
         ("nature/Rock_Medium_3", [116.0, 14.0]),
-        ("nature/Rock_Medium_2", [118.0, -30.0]),
+        ("nature/Rock_Medium_2", [114.0, -44.0]),
         ("nature/Rock_Medium_1", [-124.0, 10.0]),
         ("nature/Rock_Medium_3", [26.0, -58.0]),
         ("nature/Rock_Medium_2", [-6.0, -50.0]),
