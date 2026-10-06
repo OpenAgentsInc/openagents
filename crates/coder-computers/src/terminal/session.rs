@@ -71,6 +71,13 @@ const RETRY: Duration = Duration::from_secs(1);
 const GENERATION_TRIES: u32 = 10;
 
 enum Command {
+    Proposals,
+    DecideProposal {
+        thread: String,
+        proposal: String,
+        revision: u64,
+        approve: bool,
+    },
     Bytes(Vec<u8>),
     Resize(u16, u16),
     /// Take the typist role.
@@ -145,6 +152,39 @@ impl Session {
             model.touch();
         }
         let _ = self.commands.send(Command::Blocks(before));
+    }
+
+    /// Reads the bounded proposal page from the terminal owner.
+    pub fn proposals(&self) {
+        let _ = self.commands.send(Command::Proposals);
+    }
+    /// A decision is live-only and names exactly the displayed revision.
+    pub fn decide_proposal(&self, thread: String, proposal: String, revision: u64, approve: bool) {
+        let model = self.model();
+        if model.phase != Phase::Attached || model.watch {
+            return;
+        }
+        if !model.proposals.as_ref().is_some_and(|page| {
+            page.entries.iter().any(|entry| {
+                entry.proposal.thread == thread
+                    && entry.proposal.id == proposal
+                    && entry.proposal.revision == revision
+                    && matches!(
+                        entry.state,
+                        coder_host::pty::proposal::State::Pending
+                            | coder_host::pty::proposal::State::Warned { .. }
+                    )
+            })
+        }) {
+            return;
+        }
+        drop(model);
+        let _ = self.commands.send(Command::DecideProposal {
+            thread,
+            proposal,
+            revision,
+            approve,
+        });
     }
 
     /// Show the host's saved sessions, or the members of the one named.
@@ -1019,6 +1059,81 @@ async fn handle(
             // The typist frame that follows sets the role and the size.
             None
         }
+        Command::Proposals | Command::DecideProposal { .. } => {
+            use coder_host::pty::proposal::{Action, Request};
+            if exited {
+                return None;
+            }
+            let action = match command {
+                Command::DecideProposal {
+                    thread,
+                    proposal,
+                    revision,
+                    approve,
+                } => {
+                    if lock(model).watch {
+                        return None;
+                    }
+                    Action::Decide {
+                        thread,
+                        proposal,
+                        revision,
+                        approve,
+                        attachment: match &speaker.0 {
+                            Some(attachment) => attachment.clone(),
+                            None => {
+                                return None;
+                            }
+                        },
+                    }
+                }
+                _ => Action::Read { limit: 8 },
+            };
+            let answer = request(
+                link,
+                TermRequest::Proposal(Request::new(new_id(), reference.clone(), action)),
+            )
+            .await;
+            let mut model = lock(model);
+            match answer {
+                Ok(TerminalResult {
+                    value: Some(Value::Proposals { page }),
+                    ..
+                }) => {
+                    model.proposals = Some(page);
+                }
+                Ok(result) => {
+                    model.proposals = None;
+                    model.notice = Some(
+                        match result.reason {
+                            Some(Reason::Stale) => {
+                                "The proposal or shell context changed. Read proposals again."
+                            }
+                            Some(Reason::NotTypist) => {
+                                "Another device types here. Choose Type here first."
+                            }
+                            Some(Reason::NotAdmitted | Reason::Revoked) => {
+                                "This device may not decide proposals on this terminal."
+                            }
+                            Some(Reason::UnsupportedFeature | Reason::UnsupportedVersion) => {
+                                "This computer does not support proposal controls. Update its host."
+                            }
+                            _ => "The computer refused this proposal request.",
+                        }
+                        .into(),
+                    );
+                }
+                Err(_) => {
+                    model.proposals = None;
+                    model.notice = Some(
+                        "Proposal disposition is unknown. Read proposals before deciding again."
+                            .into(),
+                    );
+                }
+            }
+            model.touch();
+            None
+        }
         Command::Blocks(before) => {
             let read = BlockPageRead::new(new_id(), reference.clone(), before, BLOCK_PAGE);
             let answer = request(link, TermRequest::BlockPage(read)).await;
@@ -1409,5 +1524,54 @@ mod tests {
         let transport = HostError::Access(AccessError::new(Code::Transport, "down"));
         assert!(open_refusal(&transport).is_none());
         assert!(open_refusal(&HostError::Closed(None)).is_none());
+    }
+    #[test]
+    fn proposal_decisions_are_live_exact_revision_actions_not_offline_input() {
+        let mut model = Model::new("a".repeat(64), "Scratch host", 24, 80);
+        model.phase = Phase::Attached;
+        model.proposals = Some(coder_host::pty::proposal::Page {
+            entries: vec![coder_host::pty::proposal::Entry {
+                proposal: coder_host::pty::proposal::Proposal {
+                    thread: "thread".into(),
+                    id: "proposal".into(),
+                    revision: 7,
+                    command: "printf reviewed".into(),
+                    binding: coder_host::pty::proposal::Binding {
+                        terminal: "a".repeat(64),
+                        generation: "b".repeat(64),
+                        cwd: "/scratch".into(),
+                        shell_directory: Some("/scratch".into()),
+                        context_digest: "c".repeat(64),
+                    },
+                },
+                effect: coder_host::pty::proposal::Effect::Destructive("Confirm changes.".into()),
+                state: coder_host::pty::proposal::State::Pending,
+            }],
+            more: false,
+        });
+        let (commands, mut received) = mpsc::unbounded_channel();
+        let session = Session {
+            model: Arc::new(Mutex::new(model)),
+            commands,
+        };
+        session.decide_proposal("thread".into(), "proposal".into(), 6, true);
+        assert!(received.try_recv().is_err());
+        session.model().watch = true;
+        session.decide_proposal("thread".into(), "proposal".into(), 7, true);
+        assert!(received.try_recv().is_err());
+        session.model().watch = false;
+        session.model().phase = Phase::Reconnecting;
+        session.decide_proposal("thread".into(), "proposal".into(), 7, true);
+        assert!(received.try_recv().is_err());
+        session.model().phase = Phase::Attached;
+        session.decide_proposal("thread".into(), "proposal".into(), 7, true);
+        assert!(matches!(
+            received.try_recv(),
+            Ok(Command::DecideProposal {
+                revision: 7,
+                approve: true,
+                ..
+            })
+        ));
     }
 }

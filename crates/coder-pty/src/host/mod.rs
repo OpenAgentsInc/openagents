@@ -114,6 +114,7 @@ use crate::wire::{
 };
 
 mod cmdline;
+mod proposals;
 #[cfg(unix)]
 mod sys;
 #[cfg(windows)]
@@ -380,6 +381,8 @@ impl Config {
         Features {
             typist: true,
             effects: self.emulator.is_some(),
+            proposals: cfg!(any(target_os = "macos", target_os = "linux"))
+                && self.emulator.is_some(),
             snapshot: self
                 .emulator
                 .as_ref()
@@ -552,6 +555,9 @@ struct State {
     /// The newest sequence number no share may read since the last resume,
     /// or 0.
     cut: u64,
+    proposals: BTreeMap<String, proposals::Stored>,
+    input_epoch: u64,
+    last_input: Option<u64>,
     /// The agent that holds the typist role under a handoff, when one does.
     agent: Option<AgentSeat>,
 }
@@ -1573,7 +1579,10 @@ impl Host {
         }
         let terminal = self.inner.running(&request.terminal)?;
         let owner = self.inner.rights.holds(principal, Right::Terminal);
-        terminal.seat_as(principal, request.attachment.as_deref(), true, owner)?;
+        let mut state = terminal.state();
+        state.seat(principal, request.attachment.as_deref(), true, owner)?;
+        state.input_epoch = state.input_epoch.saturating_add(1);
+        state.last_input = Some(state.ring.head());
         let written = terminal.process.write(&request.data).map_err(|error| {
             Refusal::new(
                 Reason::Unavailable,
@@ -1586,7 +1595,9 @@ impl Host {
                 "the terminal is not reading input",
             ));
         }
-        terminal.state().activity = Instant::now();
+        state.activity = Instant::now();
+        terminal.pump(&mut state, Instant::now());
+        drop(state);
         let value = Value::Written {
             bytes: written as u64,
         };
@@ -1936,8 +1947,8 @@ impl Host {
             return outcome;
         }
         let terminal = self.inner.running(&request.terminal)?;
+        let mut state = terminal.state();
         {
-            let state = terminal.state();
             let current = state
                 .agent
                 .as_ref()
@@ -1949,13 +1960,14 @@ impl Host {
                 ));
             }
         }
+        state.input_epoch = state.input_epoch.saturating_add(1);
+        state.last_input = Some(state.ring.head());
         let written = terminal.process.write(&request.data).map_err(|error| {
             Refusal::new(
                 Reason::Unavailable,
                 format!("the terminal refused input: {error}"),
             )
         })?;
-        let mut state = terminal.state();
         state.activity = Instant::now();
         if let Some(seat) = state.agent.as_mut() {
             seat.log.push_back(AgentEvidence {
@@ -2355,6 +2367,9 @@ impl Inner {
                     .map(|emulators| emulators.make(request.size)),
                 title: String::new(),
                 directory: None,
+                proposals: BTreeMap::new(),
+                input_epoch: 0,
+                last_input: None,
                 typist: None,
                 shares: BTreeMap::new(),
                 share_epoch: 1,

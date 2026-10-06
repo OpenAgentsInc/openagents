@@ -47,3 +47,5 @@ pub use wire::{
     Attach, Body, Cause, Close, Detach, Detached, EnvVar, Exit, Frame, Input, Launch, Mode, Open,
     Reason, Refusal, Resize, Signal, SignalKind, Size, Status, TerminalRef, TerminalResult, Value,
 };
+
+pub mod proposal;

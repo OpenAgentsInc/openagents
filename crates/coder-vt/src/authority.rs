@@ -23,6 +23,9 @@ pub struct Authority {
     title: String,
     directory: Option<String>,
     journal: Journal,
+    at_prompt: bool,
+    buffer: Option<String>,
+    prompt_through: Option<u64>,
 }
 
 /// Makes an [`Authority`] for each terminal.
@@ -55,6 +58,9 @@ impl Authority {
             title: String::new(),
             directory: None,
             journal: Journal::default(),
+            at_prompt: false,
+            buffer: None,
+            prompt_through: None,
         }
     }
 
@@ -79,6 +85,16 @@ impl Authority {
 }
 
 impl Emulator for Authority {
+    fn empty_prompt(&self) -> bool {
+        self.at_prompt
+            && !self.terminal.alternate_screen()
+            && self.buffer.as_ref().is_none_or(String::is_empty)
+    }
+
+    fn prompt_through(&self) -> Option<u64> {
+        self.prompt_through
+    }
+
     fn output(&mut self, bytes: &[u8], seq: u64) -> Effects {
         let now = std::time::SystemTime::now()
             .duration_since(std::time::UNIX_EPOCH)
@@ -95,6 +111,22 @@ impl Emulator for Authority {
         });
         let mut directory = None;
         for mark in terminal.take_shell_marks() {
+            match &mark.event {
+                Event::Prompt => {
+                    self.prompt_through = Some(seq);
+                    self.at_prompt = true;
+                    self.buffer = None;
+                }
+                Event::Buffer(buffer) if self.at_prompt => {
+                    self.prompt_through = Some(seq);
+                    self.buffer = Some(buffer.clone());
+                }
+                Event::Gap | Event::Output => {
+                    self.at_prompt = false;
+                    self.buffer = None;
+                }
+                _ => {}
+            }
             self.journal.mark(&mark, seq, now, terminal);
             if let Event::Directory(dir) = mark.event
                 && self.directory.as_ref() != Some(&dir)

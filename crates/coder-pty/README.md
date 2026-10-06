@@ -87,6 +87,7 @@ host.attach(device, &Attach::new(request2, terminal, Mode::Interact, 0, 64 * 102
   typist feature counts as its device. `tests/typist.rs` covers racing
   devices, take and release, detach and revocation, a second route of the
   same device, and an older client.
+- **Proposals.** `Host::proposal` retains bounded pending shell proposals and exact-revision decisions under the current terminal right and an interact attachment. It uses the same approval checks as `terminal-core`, records input disposition before writing, and never repeats it.
 - **Block journal.** When the emulator keeps one (`Emulators::blocks`),
   `Host::block_page` reads a page of it under the `terminal` right or the
   observer policy, and sets each block's `retained` from the ring.

@@ -290,6 +290,21 @@ impl Terminal {
             .map_err(|_| "The terminal screen changed. Try again.".to_owned())?
             .clone();
         match intent {
+            TerminalIntent::Proposals => {
+                if let Some(session) = &self.session {
+                    session.proposals();
+                }
+            }
+            TerminalIntent::DecideProposal {
+                thread,
+                proposal,
+                revision,
+                approve,
+            } => {
+                if let Some(session) = &self.session {
+                    session.decide_proposal(thread, proposal, revision, approve);
+                }
+            }
             TerminalIntent::Key { key } => {
                 let bytes = self.with_model(|model| model.key(key.key(), Modifiers::NONE));
                 self.send(bytes);

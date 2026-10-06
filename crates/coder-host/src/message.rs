@@ -128,6 +128,7 @@ struct Closing {
 /// A NIP-TERM request.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum TermRequest {
+    Proposal(coder_pty::proposal::Request),
     Open(Open),
     Attach(Attach),
     Detach(Detach),
@@ -173,6 +174,9 @@ impl TermRequest {
         };
         let v = value.get("v").and_then(Value::as_str).ok_or_else(bad)?;
         let parsed = match v {
+            coder_pty::proposal::READ
+            | coder_pty::proposal::OFFER
+            | coder_pty::proposal::DECIDE => serde_json::from_value(value).map(Self::Proposal),
             OPEN => serde_json::from_value(value).map(Self::Open),
             ATTACH => serde_json::from_value(value).map(Self::Attach),
             DETACH => serde_json::from_value(value).map(Self::Detach),
@@ -206,6 +210,7 @@ impl TermRequest {
     #[must_use]
     pub fn request(&self) -> &str {
         match self {
+            Self::Proposal(r) => &r.request,
             Self::Open(r) => &r.request,
             Self::Attach(r) => &r.request,
             Self::Detach(r) => &r.request,
@@ -232,6 +237,11 @@ impl TermRequest {
     #[must_use]
     pub fn schema(&self) -> &'static str {
         match self {
+            Self::Proposal(r) => match &r.action {
+                coder_pty::proposal::Action::Read { .. } => coder_pty::proposal::READ,
+                coder_pty::proposal::Action::Offer { .. } => coder_pty::proposal::OFFER,
+                coder_pty::proposal::Action::Decide { .. } => coder_pty::proposal::DECIDE,
+            },
             Self::Open(_) => OPEN,
             Self::Attach(_) => ATTACH,
             Self::Detach(_) => DETACH,
@@ -259,6 +269,7 @@ impl TermRequest {
     #[must_use]
     pub fn to_value(&self) -> Value {
         let value = match self {
+            Self::Proposal(r) => serde_json::to_value(r),
             Self::Open(r) => serde_json::to_value(r),
             Self::Attach(r) => serde_json::to_value(r),
             Self::Detach(r) => serde_json::to_value(r),
@@ -526,5 +537,39 @@ mod tests {
             let decoded = ToHost::decode(&ToHost::Terminal(request).encode());
             assert!(matches!(decoded, Ok(ToHost::Terminal(TermRequest::Seat(r))) if r == seat));
         }
+    }
+    #[test]
+    fn proposal_requests_round_trip_exact_revisions_and_refuse_mismatched_actions() {
+        use coder_pty::proposal::{Action, Request};
+        let request = TermRequest::Proposal(Request::new(
+            "a".repeat(64),
+            coder_pty::wire::TerminalRef {
+                generation: "b".repeat(64),
+                terminal: "c".repeat(64),
+            },
+            Action::Decide {
+                thread: "thread".into(),
+                proposal: "proposal".into(),
+                revision: 9,
+                approve: true,
+                attachment: "d".repeat(64),
+            },
+        ));
+        let value = request.to_value();
+        let decoded = TermRequest::from_value(value.clone()).unwrap();
+        assert_eq!(decoded.to_value(), value);
+        assert_eq!(decoded.request(), request.request());
+        let mut changed = value;
+        changed["v"] = serde_json::json!(coder_pty::proposal::READ);
+        let TermRequest::Proposal(changed) = TermRequest::from_value(changed).unwrap() else {
+            panic!("proposal request");
+        };
+        assert_eq!(
+            changed
+                .check(coder_pty::ext::Features::ALL)
+                .unwrap_err()
+                .reason,
+            coder_pty::wire::Reason::UnsupportedVersion
+        );
     }
 }

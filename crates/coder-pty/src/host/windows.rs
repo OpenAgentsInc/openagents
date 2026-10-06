@@ -574,3 +574,7 @@ pub(super) fn random_id() -> String {
     }
     bytes.iter().map(|byte| format!("{byte:02x}")).collect()
 }
+
+pub(super) fn process_cwd(_: i32) -> Option<String> {
+    None
+}

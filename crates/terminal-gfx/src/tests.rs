@@ -1046,6 +1046,11 @@ fn a_live_shell_proposal_waits_for_exact_enter_and_destructive_confirmation() {
             .binding("context".into())
             .unwrap(),
     };
+    overlay.panes[&pane]
+        .session
+        .offer_proposal(&proposal)
+        .expect("owner-backed proposals")
+        .unwrap();
     let key = overlay.smart.book.offer(proposal).unwrap();
     overlay
         .smart

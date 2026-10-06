@@ -5,38 +5,7 @@ use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 use std::collections::BTreeMap;
 
-#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(deny_unknown_fields)]
-pub struct Binding {
-    pub terminal: String,
-    pub generation: String,
-    pub cwd: String,
-    /// Advisory logical PWD at the prompt; the OS cwd still binds admission.
-    #[serde(default)]
-    pub shell_directory: Option<String>,
-    pub context_digest: String,
-}
-
-#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(deny_unknown_fields)]
-pub struct Proposal {
-    pub thread: String,
-    pub id: String,
-    pub revision: u64,
-    pub command: String,
-    pub binding: Binding,
-}
-
-#[derive(Clone, Debug, PartialEq, Eq)]
-pub enum Effect {
-    /// The shared effect boundary classed the command read-only. Enter
-    /// treats it as ordinary; only this class can auto-run
-    /// ([`crate::autorun`]).
-    ReadOnly,
-    Ordinary,
-    Destructive(String),
-    Denied(String),
-}
+pub use coder_pty::proposal::{Binding, Effect, Proposal};
 
 /// The mount reads the existing host effect policy and deny list.
 pub trait Policy {
@@ -46,6 +15,7 @@ pub trait Policy {
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub enum Phase {
     Pending,
+    Rejected,
     Warned { nonce: String },
     Executing { approval: String },
     Uncertain { approval: String },
@@ -72,31 +42,6 @@ pub enum Approval {
         identity: String,
         bytes: Vec<u8>,
     },
-}
-
-impl Proposal {
-    pub fn key(&self) -> String {
-        digest(&(&self.thread, &self.id, self.revision))
-    }
-
-    fn valid(&self) -> bool {
-        [
-            &self.thread,
-            &self.id,
-            &self.binding.terminal,
-            &self.binding.generation,
-            &self.binding.cwd,
-            &self.binding.context_digest,
-        ]
-        .iter()
-        .all(|word| !word.is_empty() && word.len() <= 8192 && !word.chars().any(char::is_control))
-            && self.binding.shell_directory.as_ref().is_none_or(|path| {
-                !path.is_empty() && path.len() <= 8192 && !path.chars().any(char::is_control)
-            })
-            && !self.command.is_empty()
-            && self.command.len() <= 8192
-            && !self.command.chars().any(char::is_control)
-    }
 }
 
 impl Book {
@@ -135,30 +80,24 @@ impl Book {
         nonce: &str,
         policy: &dyn Policy,
     ) -> Result<Approval, &'static str> {
-        if principal.is_empty() || nonce.is_empty() {
-            return Err("approval identity is required");
-        }
         let entry = self.entries.get_mut(key).ok_or("proposal not found")?;
-        if &entry.proposal.binding != current {
-            return Err("proposal target or displayed context changed");
-        }
-        if !matches!(entry.phase, Phase::Pending | Phase::Warned { .. }) {
-            return Err("proposal already admitted; reconcile its result");
-        }
-        match policy.effect(&entry.proposal.command) {
-            Effect::Denied(_) => return Err("host policy denied the command"),
-            Effect::Destructive(warning) if entry.phase == Phase::Pending => {
-                entry.phase = Phase::Warned {
-                    nonce: nonce.to_owned(),
-                };
-                return Ok(Approval::Warning(warning));
-            }
-            _ => {}
-        }
-        if let Phase::Warned { nonce: previous } = &entry.phase
-            && previous == nonce
-        {
-            return Err("a second explicit key is required");
+        let previous_warning = match &entry.phase {
+            Phase::Warned { nonce } => Some(nonce.as_str()),
+            _ => None,
+        };
+        if let Some(warning) = coder_pty::proposal::admit(
+            &entry.proposal,
+            current,
+            principal,
+            nonce,
+            matches!(entry.phase, Phase::Pending | Phase::Warned { .. }),
+            previous_warning,
+            policy.effect(&entry.proposal.command),
+        )? {
+            entry.phase = Phase::Warned {
+                nonce: nonce.to_owned(),
+            };
+            return Ok(Approval::Warning(warning));
         }
         let identity = digest(&(&entry.proposal, principal, nonce));
         entry.phase = Phase::Executing {
@@ -507,5 +446,18 @@ mod tests {
             book.auto(&next, &binding, "n4", &read_only, &setting)
                 .is_err()
         );
+    }
+    #[test]
+    fn a_rejected_proposal_stays_rejected_when_the_helper_repeats_it() {
+        let proposal = proposal();
+        let mut book = Book::default();
+        let key = book.offer(proposal.clone()).unwrap();
+        book.entries.get_mut(&key).unwrap().phase = Phase::Rejected;
+        assert_eq!(book.offer(proposal.clone()).unwrap(), key);
+        assert!(
+            book.enter(&key, &proposal.binding, "person", "new-key", &ReadOnly)
+                .is_err()
+        );
+        assert_eq!(book.entries[&key].phase, Phase::Rejected);
     }
 }

@@ -102,6 +102,7 @@ pub const RESOURCE_MAX: usize = 2048;
 /// The extension features one side serves.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub struct Features {
+    pub proposals: bool,
     pub snapshot: bool,
     pub blocks: bool,
     pub sessions: bool,
@@ -114,6 +115,7 @@ pub struct Features {
 impl Features {
     /// The base profile: no feature.
     pub const NONE: Features = Features {
+        proposals: false,
         snapshot: false,
         blocks: false,
         sessions: false,
@@ -123,6 +125,7 @@ impl Features {
     };
     /// Every feature this module defines.
     pub const ALL: Features = Features {
+        proposals: true,
         snapshot: true,
         blocks: true,
         sessions: true,
@@ -137,6 +140,7 @@ impl Features {
     pub fn advertised<S: AsRef<str>>(capabilities: &[S]) -> Features {
         let has = |slug: &str| capabilities.iter().any(|c| c.as_ref() == slug);
         Features {
+            proposals: has("term-proposals"),
             snapshot: has(CAPABILITY_SNAPSHOT),
             blocks: has(CAPABILITY_BLOCKS),
             sessions: has(CAPABILITY_SESSIONS),
@@ -150,6 +154,9 @@ impl Features {
     #[must_use]
     pub fn capabilities(self) -> Vec<&'static str> {
         let mut out = Vec::new();
+        if self.proposals {
+            out.push("term-proposals");
+        }
         if self.snapshot {
             out.push(CAPABILITY_SNAPSHOT);
         }
@@ -173,6 +180,7 @@ impl Features {
 
     fn serves(self, id: &str) -> Option<bool> {
         match id {
+            crate::proposal::FEATURE => Some(self.proposals),
             SNAPSHOT => Some(self.snapshot),
             BLOCKS => Some(self.blocks),
             SESSIONS => Some(self.sessions),
@@ -2117,6 +2125,8 @@ mod tests {
         let advertised = Features::advertised(&["task-engine", "term-snapshot"]);
         assert!(advertised.snapshot && !advertised.blocks && !advertised.sessions);
         assert!(!advertised.effects && !advertised.typist && !advertised.shares);
-        assert_eq!(Features::ALL.capabilities().len(), 6);
+        assert!(!advertised.proposals);
+        assert!(Features::advertised(&["term-proposals"]).proposals);
+        assert_eq!(Features::ALL.capabilities().len(), 7);
     }
 }

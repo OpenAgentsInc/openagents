@@ -356,3 +356,37 @@ pub(super) fn random_id() -> String {
     }
     bytes.iter().map(|byte| format!("{byte:02x}")).collect()
 }
+
+#[cfg(target_os = "linux")]
+pub(super) fn process_cwd(pid: i32) -> Option<String> {
+    std::fs::read_link(format!("/proc/{pid}/cwd"))
+        .ok()
+        .map(|path| path.display().to_string())
+}
+#[cfg(target_os = "macos")]
+pub(super) fn process_cwd(pid: i32) -> Option<String> {
+    // SAFETY: the OS fills this plain C structure, sized as passed.
+    unsafe {
+        let mut info: libc::proc_vnodepathinfo = std::mem::zeroed();
+        let size = std::mem::size_of::<libc::proc_vnodepathinfo>() as libc::c_int;
+        if libc::proc_pidinfo(
+            pid,
+            libc::PROC_PIDVNODEPATHINFO,
+            0,
+            (&raw mut info).cast(),
+            size,
+        ) != size
+        {
+            return None;
+        }
+        Some(
+            std::ffi::CStr::from_ptr(info.pvi_cdir.vip_path.as_ptr().cast())
+                .to_string_lossy()
+                .into_owned(),
+        )
+    }
+}
+#[cfg(not(any(target_os = "linux", target_os = "macos")))]
+pub(super) fn process_cwd(_: i32) -> Option<String> {
+    None
+}

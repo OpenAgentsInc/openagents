@@ -33,7 +33,7 @@ or the device key a NIP-REACH channel proved.
 
 Every body has `v`, `requires`, and exactly the fields listed; unknown fields,
 versions, required features, and enum values refuse. The base profile's
-`requires` list is empty; the [extensions](#extensions) define three feature
+`requires` list is empty; the [extensions](#extensions) define feature
 IDs, and a body that names one carries the fields that feature adds. IDs are
 common IDs (64 lowercase hexadecimal characters).
 Terminal input and output bytes are base64 with the standard alphabet and
@@ -290,6 +290,7 @@ transports, and follows the same privacy rules.
 | `openagents.terminal-snapshot.v1` | `term-snapshot` | Attach by snapshot, the history operation, and record streams |
 | `openagents.terminal-blocks.v1` | `term-blocks` | Paged block-journal reads |
 | `openagents.terminal-sessions.v1` | `term-sessions` | Session records: membership and layout |
+| `openagents.terminal-proposals.v1` | `term-proposals` | Pending proposals and exact-revision decisions |
 | `openagents.terminal-effects.v1` | `term-effects` | The host answers queries; effects arrive as effect frames |
 | `openagents.terminal-typist.v1` | `term-typist` | One typist per terminal: attachment-named input, take, and release |
 | `openagents.terminal-shares.v1` | `term-shares` | Share and unshare one terminal with another device key, to watch or drive |
@@ -928,3 +929,43 @@ Required host and client tests:
 - A working directory that escapes the workspace through a symbolic link, and
   an environment name outside the allowlist, refused.
 - A frame that arrives ahead of the next expected one detected by the client.
+
+### Pending shell proposals
+
+The `openagents.terminal-proposals.v1` feature (`term-proposals` in presence)
+keeps up to 64 proposals per terminal for that host generation. Restarting the
+host loses both the terminal and its proposals. It never replays proposal input.
+Each request names the feature in `requires`, a common `request` ID, and a
+`terminal` reference. Unknown fields and mismatched action versions refuse.
+
+| Version | `action` |
+| --- | --- |
+| `openagents.terminal-proposal-read.v1` | `{kind: "read", limit}`; `limit` is 1–8. |
+| `openagents.terminal-proposal-offer.v1` | `{kind: "offer", proposal}`. |
+| `openagents.terminal-proposal-decide.v1` | `{kind: "decide", thread, proposal, revision, approve, attachment}`. |
+
+A proposal contains `thread`, `id`, `revision`, `command`, and `binding`.
+The binding contains `terminal`, `generation`, OS `cwd`, optional advisory
+`shell_directory`, and the displayed `context_digest`. Its encoded size is at
+most 8 KiB. A changed body at the same revision conflicts; a new revision
+supersedes earlier pending revisions. Offering a proposal performs no input.
+The host records the current output head and input epoch when it accepts it.
+
+Every operation requires the current `terminal` right; a share grants no
+proposal authority. Decisions additionally require the sender's current
+`interact` attachment. Approval applies the terminal's typist check, verifies
+an empty shell prompt and unchanged OS directory, output head, and input epoch,
+and applies the shared exact proposal approval checks. A changed revision,
+context, or disposition refuses as `stale`. This host conservatively classes
+remote proposals as destructive: the first approval warns, and a second
+explicit request with a fresh ID confirms. An exact retry returns the original
+disposition and never serves as that second confirmation.
+
+The result value is `{kind: "proposals", page: {entries, more}}`, bounded to
+12 KiB. Each entry has the exact `proposal`, host `effect` class, and `state`:
+`pending`, `warned` with its confirmation nonce, `rejected`, `executing`,
+`uncertain`, or `completed` with its resulting block number. Pending entries
+come first. The host marks a proposal uncertain before writing bytes; a partial
+or failed write remains uncertain and cannot be approved again. The existing
+block journal records the result. The feature requires a host that can inspect
+the shell's OS directory; the current adapters support macOS and Linux.

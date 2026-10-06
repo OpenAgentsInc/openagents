@@ -51,6 +51,7 @@ pub(crate) fn run(
         return TerminalResult::from_outcome(id, outcome);
     }
     let outcome = match request {
+        TermRequest::Proposal(r) => pty.proposal(principal, r),
         TermRequest::Open(r) => pty.open(principal, r),
         TermRequest::Attach(r) => pty.attach(principal, r, sink()),
         TermRequest::Detach(r) => pty.detach(principal, r),

@@ -19,6 +19,15 @@ use crate::wire::{Exit, Refusal, Size, TerminalRef};
 
 /// One terminal's authoritative emulator.
 pub trait Emulator: Send {
+    /// Whether the shell reports an empty prompt. Advisory, never a grant.
+    fn empty_prompt(&self) -> bool {
+        false
+    }
+    /// Sequence of the latest explicit prompt or buffer mark.
+    fn prompt_through(&self) -> Option<u64> {
+        None
+    }
+
     /// Applies the output of sequenced frame `seq`, in order, and answers
     /// what it caused. Parsing must stay bounded for any input.
     fn output(&mut self, bytes: &[u8], seq: u64) -> Effects;

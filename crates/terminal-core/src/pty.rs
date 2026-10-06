@@ -37,6 +37,26 @@ pub enum Event {
 }
 /// A terminal attachment; implementations retain their protocol and platform objects.
 pub trait Attachment: Send {
+    /// The terminal owner answers emulator queries once for all attachments.
+    fn host_answers(&self) -> bool {
+        false
+    }
+
+    /// Retains a proposal on the terminal owner when this mount supports it.
+    fn offer_proposal(&self, proposal: &crate::proposals::Proposal) -> Option<Result<(), String>> {
+        let _ = proposal;
+        None
+    }
+    /// Decides an owner-held proposal. A result never asks the mount to replay input.
+    fn decide_proposal(
+        &self,
+        proposal: &crate::proposals::Proposal,
+        approve: bool,
+    ) -> Option<Result<coder_pty::proposal::State, String>> {
+        let _ = (proposal, approve);
+        None
+    }
+
     fn input(&self, bytes: &[u8]);
     fn resize(&self, rows: u16, cols: u16);
     fn close(&self);
@@ -252,7 +272,7 @@ impl Sessions {
             );
         }
         let replies = session.vt.take_replies();
-        if !replies.is_empty() {
+        if !replies.is_empty() && !session.attachment.host_answers() {
             self.input(session, &replies);
         }
         let now = Instant::now();
@@ -277,6 +297,19 @@ pub struct Session {
     attachment: Box<dyn Attachment>,
 }
 impl Session {
+    pub fn offer_proposal(
+        &self,
+        proposal: &crate::proposals::Proposal,
+    ) -> Option<Result<(), String>> {
+        self.attachment.offer_proposal(proposal)
+    }
+    pub fn decide_proposal(
+        &self,
+        proposal: &crate::proposals::Proposal,
+        approve: bool,
+    ) -> Option<Result<coder_pty::proposal::State, String>> {
+        self.attachment.decide_proposal(proposal, approve)
+    }
     pub fn binding(&self, context_digest: String) -> Option<Binding> {
         let mut binding = self.attachment.target()?;
         binding.context_digest = context_digest;

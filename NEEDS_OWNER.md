@@ -1,5 +1,9 @@
 # Owner checks
 
+## Remote shell proposal controls (#10745)
+
+On scratch state in a Mac build from current main, create a desktop shell proposal and open the same terminal from the phone. Confirm that the proposal shows its exact command and revision, confirmation runs once, and its command block appears. Check that a watch screen has no enabled approval control. The Rust scratch-terminal and phone-projection tests cover these behaviors; physical controls remain unverified.
+
 ## Shared studio native and real-engine qualification (#10650)
 
 The [scripted receipt](docs/verse/verification/2026-10-06-studio-workbench/README.md)

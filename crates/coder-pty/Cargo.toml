@@ -16,6 +16,7 @@ default = ["host"]
 host = ["dep:coder-boundary", "dep:libc", "dep:supervise", "dep:windows-sys"]
 
 [dependencies]
+sha2 = "0.10"
 base64 = "0.22"
 # A terminal stays out of the places macOS guards with a privacy prompt.
 coder-boundary = { path = "../coder-boundary", optional = true }

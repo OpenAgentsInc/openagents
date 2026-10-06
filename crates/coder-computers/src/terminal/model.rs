@@ -225,6 +225,7 @@ pub struct Model {
     pub blocks: Blocks,
     /// The host's saved sessions, when the person asked for them.
     pub saved: Saved,
+    pub proposals: Option<coder_host::pty::proposal::Page>,
 }
 
 impl Model {
@@ -251,6 +252,7 @@ impl Model {
             watch: false,
             blocks: Blocks::Hidden,
             saved: Saved::Hidden,
+            proposals: None,
         }
     }
 

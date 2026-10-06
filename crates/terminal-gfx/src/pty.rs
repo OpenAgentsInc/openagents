@@ -165,6 +165,7 @@ impl Local {
     fn build(root: &Path, shell: PathBuf, home: Option<&Path>) -> Self {
         let helper_home = home.map(Path::to_path_buf);
         let mut config = Config::new().workspace(WORKSPACE, root);
+        config.emulator = Some(coder_vt::Authority::factory(500));
         if let Some(home) = home {
             config.base_env.retain(|(name, _)| name != "HOME");
             config
@@ -281,15 +282,20 @@ impl Transport for Local {
             Err(refusal) => return Err(format!("{refusal:?}")),
         };
         let (sink, frames) = host::channel(QUEUE);
-        let attach = Attach::new(request(), terminal.clone(), Mode::Interact, 0, 1 << 26);
-        if let Err(refusal) = self.host.attach(PRINCIPAL, &attach, Box::new(sink)) {
-            let _ = self
-                .host
-                .close(PRINCIPAL, &Close::new(request(), terminal.clone()));
-            return Err(format!("{refusal:?}"));
-        }
+        let attach =
+            Attach::new(request(), terminal.clone(), Mode::Interact, 0, 1 << 26).with_effects();
+        let attachment = match self.host.attach(PRINCIPAL, &attach, Box::new(sink)) {
+            Ok((_, Value::Attached { attachment, .. })) => attachment,
+            other => {
+                let _ = self
+                    .host
+                    .close(PRINCIPAL, &Close::new(request(), terminal.clone()));
+                return Err(format!("terminal attach failed: {other:?}"));
+            }
+        };
         let group = self.host.process_group(&terminal);
         Ok(Box::new(LocalAttachment {
+            attachment,
             terminal,
             frames,
             group,
@@ -427,6 +433,7 @@ impl Transport for Local {
 }
 
 struct LocalAttachment {
+    attachment: String,
     host: Arc<Host>,
     terminal: TerminalRef,
     frames: Receiver<Frame>,
@@ -434,6 +441,69 @@ struct LocalAttachment {
     ended: bool,
 }
 impl Attachment for LocalAttachment {
+    fn host_answers(&self) -> bool {
+        true
+    }
+
+    fn offer_proposal(
+        &self,
+        proposal: &terminal_core::proposals::Proposal,
+    ) -> Option<Result<(), String>> {
+        if !self.host.features().proposals {
+            return None;
+        }
+        Some(
+            self.host
+                .proposal(
+                    PRINCIPAL,
+                    &coder_pty::proposal::Request::new(
+                        request(),
+                        self.terminal.clone(),
+                        coder_pty::proposal::Action::Offer {
+                            proposal: proposal.clone(),
+                        },
+                    ),
+                )
+                .map(|_| ())
+                .map_err(|e| e.detail),
+        )
+    }
+    fn decide_proposal(
+        &self,
+        proposal: &terminal_core::proposals::Proposal,
+        approve: bool,
+    ) -> Option<Result<coder_pty::proposal::State, String>> {
+        if !self.host.features().proposals {
+            return None;
+        }
+        Some(
+            self.host
+                .proposal(
+                    PRINCIPAL,
+                    &coder_pty::proposal::Request::new(
+                        request(),
+                        self.terminal.clone(),
+                        coder_pty::proposal::Action::Decide {
+                            thread: proposal.thread.clone(),
+                            proposal: proposal.id.clone(),
+                            revision: proposal.revision,
+                            approve,
+                            attachment: self.attachment.clone(),
+                        },
+                    ),
+                )
+                .map_err(|e| e.detail)
+                .and_then(|(_, value)| match value {
+                    Value::Proposals { page } => page
+                        .entries
+                        .first()
+                        .map(|e| e.state.clone())
+                        .ok_or_else(|| "The host returned no proposal disposition.".into()),
+                    _ => Err("The host returned another proposal result.".into()),
+                }),
+        )
+    }
+
     fn input(&self, bytes: &[u8]) {
         for piece in bytes.chunks(coder_pty::wire::INPUT_MAX) {
             let _ = self.host.input(
@@ -476,8 +546,8 @@ impl Attachment for LocalAttachment {
                     self.ended = true;
                     Some(Event::End("detached".into()))
                 }
-                // This in-process host names no feature, so it sends none;
-                // the pane's own emulator reports its effects.
+                // The host answers queries; the pane projects the original
+                // output into glyphs and shell marks.
                 Body::Effect { .. } | Body::Typist { .. } | Body::Paused { .. } => self.poll(),
             },
             Err(TryRecvError::Empty) => None,

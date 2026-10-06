@@ -66,6 +66,13 @@ impl AccessoryKey {
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(tag = "kind", rename_all = "snake_case", deny_unknown_fields)]
 pub enum TerminalIntent {
+    Proposals,
+    DecideProposal {
+        thread: String,
+        proposal: String,
+        revision: u64,
+        approve: bool,
+    },
     Key {
         key: AccessoryKey,
     },
@@ -106,7 +113,7 @@ pub enum TerminalIntent {
 }
 
 /// Nodes kept for everything except the grid rows.
-const CHROME_NODES: usize = 48;
+const CHROME_NODES: usize = 96;
 
 fn amber(intensity: Intensity) -> Color {
     rgb(intensity.color())
@@ -485,6 +492,12 @@ pub fn view(model: &Model, instance: &str, revision: u64) -> View<TerminalIntent
             ));
         }
     } else {
+        actions.push(button(
+            "terminal-proposals",
+            "Proposals",
+            TerminalIntent::Proposals,
+            attached,
+        ));
         let listing = !matches!(model.blocks, Blocks::Hidden);
         actions.push(if listing {
             button(
@@ -576,6 +589,68 @@ pub fn view(model: &Model, instance: &str, revision: u64) -> View<TerminalIntent
         button("terminal-key-paste", "Paste", TerminalIntent::Paste, typing),
     ];
 
+    if let Some(page) = &model.proposals {
+        for (index, entry) in page.entries.iter().take(8).enumerate() {
+            use coder_host::pty::proposal::State;
+            let disposition = match &entry.state {
+                State::Pending => "Pending".into(),
+                State::Warned { .. } => "Confirmation required".into(),
+                State::Rejected => "Rejected".into(),
+                State::Executing => "Running".into(),
+                State::Uncertain => {
+                    "Input uncertain. Check command blocks before continuing.".into()
+                }
+                State::Completed { block } => format!("Completed in command block {block}"),
+            };
+            header.push(text(
+                format!("proposal-{index}"),
+                format!(
+                    "{} (revision {}): {}",
+                    entry.proposal.command, entry.proposal.revision, disposition
+                ),
+                TextRole::Body,
+            ));
+            let enabled = attached
+                && !model.watch
+                && model.typing != Typing::Elsewhere
+                && matches!(entry.state, State::Pending | State::Warned { .. });
+            if let coder_host::pty::proposal::Effect::Destructive(warning) = &entry.effect {
+                header.push(text(
+                    format!("proposal-warning-{index}"),
+                    warning,
+                    TextRole::Status,
+                ));
+            }
+            for approve in [true, false] {
+                header.push(button(
+                    &format!("proposal-{index}-{approve}"),
+                    if approve {
+                        if matches!(entry.state, State::Warned { .. }) {
+                            "Confirm command"
+                        } else {
+                            "Approve"
+                        }
+                    } else {
+                        "Reject"
+                    },
+                    TerminalIntent::DecideProposal {
+                        thread: entry.proposal.thread.clone(),
+                        proposal: entry.proposal.id.clone(),
+                        revision: entry.proposal.revision,
+                        approve,
+                    },
+                    enabled,
+                ));
+            }
+        }
+        if page.more {
+            header.push(text(
+                "proposal-more",
+                "More proposals remain on the host.",
+                TextRole::Status,
+            ));
+        }
+    }
     let root = stack(
         "terminal",
         Axis::Vertical,
@@ -1149,5 +1224,56 @@ mod tests {
             press(&open, "terminal-saved-hide"),
             Ok(TerminalIntent::HideSaved)
         );
+    }
+    #[test]
+    fn proposal_controls_name_the_displayed_revision_and_disable_when_watch_or_revoked() {
+        let mut model = attached(24, 80);
+        model.proposals = Some(coder_host::pty::proposal::Page {
+            entries: vec![coder_host::pty::proposal::Entry {
+                proposal: coder_host::pty::proposal::Proposal {
+                    thread: "thread".into(),
+                    id: "proposal".into(),
+                    revision: 7,
+                    command: "printf reviewed".into(),
+                    binding: coder_host::pty::proposal::Binding {
+                        terminal: "a".repeat(64),
+                        generation: "b".repeat(64),
+                        cwd: "/scratch".into(),
+                        shell_directory: Some("/scratch".into()),
+                        context_digest: "c".repeat(64),
+                    },
+                },
+                effect: coder_host::pty::proposal::Effect::Destructive("Confirm changes.".into()),
+                state: coder_host::pty::proposal::State::Pending,
+            }],
+            more: false,
+        });
+        let view = super::view(&model, "proposal-test", 1).validate().unwrap();
+        let node = find(&view.view().root, "proposal-0-true").unwrap();
+        assert!(matches!(
+            &node.element,
+            Element::Button {
+                enabled: true,
+                intent: TerminalIntent::DecideProposal {
+                    revision: 7,
+                    approve: true,
+                    ..
+                },
+                ..
+            }
+        ));
+        for watch in [true, false] {
+            model.watch = watch;
+            model.phase = if watch {
+                Phase::Attached
+            } else {
+                Phase::Refused("Revoked".into())
+            };
+            let view = super::view(&model, "proposal-test", 2).validate().unwrap();
+            assert!(matches!(
+                &find(&view.view().root, "proposal-0-true").unwrap().element,
+                Element::Button { enabled: false, .. }
+            ));
+        }
     }
 }

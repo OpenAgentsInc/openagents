@@ -248,6 +248,15 @@ impl super::Overlay {
                 return false;
             }
             if key.code == KeyCode::Escape {
+                if let (Some(pane), Some(entry)) = (
+                    self.panes.get(&pane_id),
+                    self.smart.book.entries.get(&proposal_key),
+                ) {
+                    let _ = pane.session.decide_proposal(&entry.proposal, false);
+                }
+                if let Some(entry) = self.smart.book.entries.get_mut(&proposal_key) {
+                    entry.phase = crate::proposals::Phase::Rejected;
+                }
                 self.smart.pending = None;
                 return true;
             }
@@ -280,6 +289,53 @@ impl super::Overlay {
                 {
                     self.notice =
                         Some("Return to an empty shell prompt before approving a proposal.".into());
+                    return true;
+                }
+                if let Some(result) = pane.session.decide_proposal(&entry.proposal, true) {
+                    match result {
+                        Ok(coder_pty::proposal::State::Warned { nonce }) => {
+                            self.smart
+                                .book
+                                .entries
+                                .get_mut(&proposal_key)
+                                .expect("displayed proposal")
+                                .phase = crate::proposals::Phase::Warned { nonce };
+                            self.notice = Some("This command may change this computer or publish data. Press Enter again to approve it.".into());
+                        }
+                        Ok(coder_pty::proposal::State::Executing) => {
+                            let after = pane
+                                .session
+                                .blocks
+                                .records
+                                .back()
+                                .map_or(0, |block| block.id);
+                            let identity =
+                                crate::proposals::digest(&(&entry.proposal, "terminal-owner"));
+                            self.smart
+                                .book
+                                .entries
+                                .get_mut(&proposal_key)
+                                .expect("displayed proposal")
+                                .phase = crate::proposals::Phase::Executing {
+                                approval: identity.clone(),
+                            };
+                            self.smart.execution = Some((pane_id, proposal_key, identity, after));
+                            self.smart.pending = None;
+                        }
+                        Ok(_) => {
+                            let approval =
+                                crate::proposals::digest(&(&entry.proposal, "terminal-owner"));
+                            self.smart
+                                .book
+                                .entries
+                                .get_mut(&proposal_key)
+                                .expect("displayed proposal")
+                                .phase = crate::proposals::Phase::Uncertain { approval };
+                            self.notice = Some("The host retained this proposal's disposition. Its command will not be repeated.".into());
+                            self.smart.pending = None;
+                        }
+                        Err(why) => self.notice = Some(why),
+                    }
                     return true;
                 }
                 match self.smart.book.enter(
@@ -626,6 +682,23 @@ impl super::Overlay {
                         && proposal.id == request.request
                         && proposal.binding == request.binding =>
                 {
+                    let fresh = !self.smart.book.entries.contains_key(&proposal.key());
+                    if !fresh
+                        && self
+                            .smart
+                            .book
+                            .entries
+                            .get(&proposal.key())
+                            .is_some_and(|entry| {
+                                !matches!(
+                                    entry.phase,
+                                    crate::proposals::Phase::Pending
+                                        | crate::proposals::Phase::Warned { .. }
+                                )
+                            })
+                    {
+                        continue;
+                    }
                     self.smart.policy.0.insert(proposal.command.clone(), effect);
                     let command = proposal.command.clone();
                     if let Ok(key) = self.smart.book.offer(proposal) {
@@ -633,7 +706,23 @@ impl super::Overlay {
                         if self.paper.on {
                             self.paper_offered(&key, &command);
                         }
-                        if self.auto_run(pane_id, &key) {
+                        if fresh && self.auto_run(pane_id, &key) {
+                            continue;
+                        }
+                        if let Some(pane) = self.panes.get(&pane_id)
+                            && let Some(Err(why)) = pane
+                                .session
+                                .offer_proposal(&self.smart.book.entries[&key].proposal)
+                        {
+                            self.notice = Some(why);
+                            self.smart
+                                .book
+                                .entries
+                                .get_mut(&key)
+                                .expect("offered proposal")
+                                .phase = crate::proposals::Phase::Uncertain {
+                                approval: crate::proposals::digest(&(&key, "owner-offer")),
+                            };
                             continue;
                         }
                         self.smart.pending = Some((pane_id, key));

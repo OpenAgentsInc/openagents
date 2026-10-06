@@ -689,6 +689,9 @@ pub enum Status {
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(tag = "kind", rename_all = "snake_case", deny_unknown_fields)]
 pub enum Value {
+    Proposals {
+        page: crate::proposal::Page,
+    },
     Opened {
         terminal: TerminalRef,
         size: Size,
