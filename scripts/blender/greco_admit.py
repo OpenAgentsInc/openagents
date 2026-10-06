@@ -79,8 +79,10 @@ def main():
 if __name__ == "__main__":
     status = main()
     if not status:
-        # Compact what this script wrote (`everglade_compact.py`).
+        # Compact the glTF this script wrote (`everglade_compact.py`). It
+        # writes no image, so the sets' PNGs aren't recompressed again.
         import everglade_compact
 
-        everglade_compact.main()
+        for name in ("generated", "lod"):
+            everglade_compact.compact_set(name, None)
     sys.exit(status)

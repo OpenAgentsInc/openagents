@@ -66,10 +66,10 @@ and a kit piece in `assets/verse/generated/greco/kit/`.
 | --- | --- | --- | ---: |
 | Column | `column` | A square plinth, a base ring, the smooth shaft, a necking ring, an echinus block, and a square abacus | 114 |
 | Square pier | `pier` | An anta: a square shaft with the column's plinth and capital, for the ends of a portico | 28 |
-| Entablature with panel frieze | `entablature` | Architrave, a frieze of small red-brown square panels, and the stepped cornice, round a whole plan | 80 (one 4 m bay) |
+| Entablature with panel frieze | `entablature` | Architrave, a frieze of small red-brown square panels, and the stepped cornice, round a whole plan | 56 (one 4 m bay) |
 | Stair and podium | `stair` | A flight of shallow steps, each a solid block showing only its front and top | 24 (6 steps) |
 | Planter wall | `planter_wall` | A limestone wall with a coping band and a clipped hedge in two tiers | 40 |
-| Bronze circuit door | `glyph`, `circuit_door` | A bronze leaf with copper traces in the machine glyph and amber panes, with a glyph transom | 818 (double door, frame, and transom) |
+| Bronze circuit door | `glyph`, `circuit_door` | A bronze leaf with copper traces in the machine glyph and amber panes, with a glyph transom | 226 (double door, frame, and transom) |
 | Lattice screen wall | `lattice` | A walnut grid across an opening, in a bronze frame; light and sight pass through | 328 (3.4 by 4 m) |
 | Coffered ceiling | `coffers` | Crossing beams under the ceiling slab and a stepped cove round the room | 46 (one bay) |
 | Marble pilaster | `pilaster` | A flat white marble pier on a wall, with a base and a capital | 22 |
@@ -83,7 +83,7 @@ The props share the vocabulary:
 | Prop | Script function | Triangles |
 | --- | --- | ---: |
 | Long low bench, with two stools | `bench_long` | 94 |
-| Planter with a clipped shrub | `planter` | 86 |
+| Planter with a clipped shrub | `planter` | 64 |
 | Bronze floor lamp with an amber shade | `lamp` | 40 |
 | Rug with a classical border | `rug` | 50 |
 | Walnut desk with a chair | `desk` | 166 |
@@ -105,9 +105,10 @@ in normalized door coordinates. It holds:
   traces of a circuit board.
 
 Every polyline is drawn on the left half and mirrored onto the right. A
-trace is a copper strip 0.035 m wide and 0.02 m proud of the bronze, as low
-geometry rather than a texture, so it catches the low sun and breaks with
-the door.
+trace is a flat copper inlay 0.035 m wide and 0.02 m proud of the bronze:
+low geometry rather than a texture, two triangles a segment, so it needs no
+image in the pack and breaks with the door. Pads are the same inlay, and
+the amber panes are shallow boxes.
 
 ## Palette
 
@@ -168,7 +169,8 @@ Ways to stay in budget:
 - Drop every face nothing sees: the bottoms of steps and walls, the backs of
   trims against a wall, and the sides of beams that meet another beam. The
   script's `box` takes a `skip` list for this.
-- Draw circuit lines and inscriptions as single flat strips.
+- Draw circuit traces, frieze panels, and inscriptions as single flat
+  faces just proud of their surface: a trace costs 2 triangles rather than 10.
 - Use 12 sides for a column near and 6 far.
 - Build one object per model, so its glTF has one node.
 
@@ -234,7 +236,9 @@ house.
   inscribed with circuit lines, an engraved double door in a marble
   surround, two bookcases, a desk on a rug, a long sofa and a low table on a
   second rug, a floor lamp, and two planters.
-- **Budget.** 7,002 triangles near and 1,186 far.
+- **Budget.** 4,802 triangles near and 924 far. In Everglade it adds
+  3,202 merged triangles net, since the wild ground's foliage keeps off
+  its lot (2,890,704 to 2,893,906 of 2,900,000).
 
 Rebuild it and admit it:
 

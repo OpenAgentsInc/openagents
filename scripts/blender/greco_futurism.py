@@ -116,12 +116,19 @@ def materials(b):
 
 
 WALNUT_BAND = bl.DARK_WOOD
+# The outward face of a frieze panel, from the face its back hides.
+OUTWARD = {"+y": "-y", "-y": "+y", "+x": "-x", "-x": "+x"}
 
 # --------------------------------------------------------------------------
 # Geometry
 
 
 AXES = {"-x": (0, -1), "+x": (0, 1), "-y": (1, -1), "+y": (1, 1), "-z": (2, -1), "+z": (2, 1)}
+
+
+def only(face):
+    """The `skip` list that keeps one face of a box: a flat inlay."""
+    return " ".join(a for a in AXES if a != face)
 
 
 def box(b, lo, hi, mat, skip="", xf=None, name="Part", smooth=False):
@@ -242,7 +249,9 @@ def glyph(b, xf, w, h, proud=0.02, trace=0.035, tall=True, base="bronze", leaf=T
         (s0, t0), (s1, t1) = p, q
         u0, u1 = sorted((s0 * w, s1 * w))
         z0, z1 = sorted((t0 * h, t1 * h))
-        box(b, (u0 - tw, -proud, z0 - tw), (u1 + tw, 0.0, z1 + tw), "copper", skip="+y", xf=xf, name="Trace")
+        # A flat copper inlay: only its face shows at 2 cm proud.
+        box(b, (u0 - tw, -proud, z0 - tw), (u1 + tw, 0.0, z1 + tw), "copper", skip=only("-y"), xf=xf,
+            name="Trace")
 
     for line in lines:
         for mirror in (1, -1):
@@ -254,8 +263,8 @@ def glyph(b, xf, w, h, proud=0.02, trace=0.035, tall=True, base="bronze", leaf=T
     for s, t in pads:
         for mirror in (1, -1):
             u, z = s * mirror * w, t * h
-            box(b, (u - 0.05, -proud - 0.01, z - 0.05), (u + 0.05, 0.0, z + 0.05), "copper", skip="+y", xf=xf,
-                name="Pad")
+            box(b, (u - 0.05, -proud - 0.01, z - 0.05), (u + 0.05, 0.0, z + 0.05), "copper", skip=only("-y"),
+                xf=xf, name="Pad")
     for s0, t0, s1, t1 in panes:
         for mirror in (1, -1):
             u0, u1 = sorted((s0 * mirror * w, s1 * mirror * w))
@@ -325,7 +334,7 @@ def entablature(b, x0, x1, y0, y1, z, panels=("-y", "-x", "+x", "+y"), spacing=1
         for i in range(n):
             u = lo + step * (i + 1)
             p, q = at(u)
-            box(b, p, q, "redbrown", skip=back, name="FriezePanel")
+            box(b, p, q, "redbrown", skip=only(OUTWARD[back]), name="FriezePanel")
 
 
 def stair(b, x0, x1, y0, z0, steps, rise, run, mat="shade"):
@@ -340,7 +349,9 @@ def stair(b, x0, x1, y0, z0, steps, rise, run, mat="shade"):
 def planter_wall(b, x0, x1, y0, y1, z0, top, hedge=0.8, ends="-x +x"):
     """A low limestone planter wall with a clipped hedge standing in it."""
     box(b, (x0, y0, z0), (x1, y1, top), "lime", skip="-z", name="Planter")
-    box(b, (x0 - 0.04, y0 - 0.04, top - 0.08), (x1 + 0.04, y1 + 0.04, top), "shade", skip="-z", name="Coping")
+    if not FAR:
+        box(b, (x0 - 0.04, y0 - 0.04, top - 0.08), (x1 + 0.04, y1 + 0.04, top), "shade", skip="-z",
+            name="Coping")
     if hedge > 0:
         inset = 0.1
         box(b, (x0 + inset, y0 + inset, top), (x1 - inset, y1 - inset, top + hedge), "hedge", skip="-z",
@@ -416,7 +427,7 @@ def dentils(b, xf, u0, u1, z, tooth=0.12, gap=0.14, out=0.12, tall=0.16):
     """A row of dentils under a cornice on a wall's face."""
     u = u0
     while u + tooth <= u1:
-        box(b, (u, -out, z - tall), (u + tooth, 0.0, z), "marble", skip="+y +z", xf=xf, name="Dentil")
+        box(b, (u, -out, z - tall), (u + tooth, 0.0, z), "marble", skip="+y +z -x +x", xf=xf, name="Dentil")
         u += tooth + gap
 
 
@@ -549,7 +560,11 @@ def planter(b, x, y, z0, size=0.9, ball=1.0):
     box(b, (x - size / 2 - 0.05, y - size / 2 - 0.05, z0 + h - 0.06), (x + size / 2 + 0.05, y + size / 2 + 0.05,
                                                                         z0 + h), "shade", name="Coping")
     r = ball / 2
-    sphere(b, (x, y, z0 + h + r * 0.75), r, "hedge", name="Shrub")
+    if FAR:
+        box(b, (x - r * 0.8, y - r * 0.8, z0 + h), (x + r * 0.8, y + r * 0.8, z0 + h + r * 1.4), "hedge",
+            skip="-z", name="Shrub")
+    else:
+        sphere(b, (x, y, z0 + h + r * 0.75), r, "hedge", segments=7, rings=4, name="Shrub")
 
 
 def lamp(b, x, y, z0, height=1.7):
@@ -725,7 +740,8 @@ def house_body(b):
             # The opening's walnut frame and mullions.
             if FAR:
                 box(b, (min(outer, outer - s * 0.1), y - win_hw, sill),
-                    (max(outer, outer - s * 0.1), y + win_hw, head), "glass", name="Glass")
+                    (max(outer, outer - s * 0.1), y + win_hw, head), "glass", skip=only("+x" if s > 0 else "-x"),
+                    name="Glass")
             else:
                 fx0, fx1 = sorted((outer - s * 0.08, outer - s * 0.2))
                 box(b, (fx0, y - 0.04, sill), (fx1, y + 0.04, head), "walnut", skip="-z +z", name="Mullion")
@@ -768,7 +784,8 @@ def house_body(b):
     # upper floor.
     slab(b, -hw + t, hw - t, fy + t, by - t, CEILING, "shade", down=True, name="Ceiling")
     # The forecourt's table and stools.
-    bench_long(b, 0.0, 3.5, FORECOURT)
+    if not FAR:
+        bench_long(b, 0.0, 3.5, FORECOURT)
     for s in (-1, 1):
         planter(b, s * 3.6, y_portico + 0.9, FLOOR, size=0.9, ball=1.0)
     b.front = (0.0, -1.0)
@@ -995,6 +1012,13 @@ def bookshelf_piece():
 
 def join(b):
     objs = [o for o in b.col.objects if o.type == "MESH"]
+    if os.environ.get("GRECO_TALLY"):
+        tally = {}
+        for o in objs:
+            o.data.calc_loop_triangles()
+            key = o.name.rsplit(".", 1)[0]
+            tally[key] = tally.get(key, 0) + len(o.data.loop_triangles)
+        print("TALLY", b.name, sorted(tally.items(), key=lambda kv: -kv[1])[:24])
     bpy.ops.object.select_all(action="DESELECT")
     for o in objs:
         o.select_set(True)
