@@ -1,0 +1,46 @@
+{
+  "source_base_revision": "3896776166080cfba6ed740aa9a414b6a7582cb4",
+  "source_patch": "source.patch",
+  "executable_sha256": "41d0e47c24063a12a361f9f457d3b1840a6c198a3a70c50df2e9f6f9c96bfabe",
+  "acceptance": "passed",
+  "failures": [],
+  "movement_expiry": {
+    "total": 0,
+    "admission": 0,
+    "primary_tick": 0,
+    "additional_tick": 0,
+    "bootstrap": 0,
+    "samples": [],
+    "omitted": 0
+  },
+  "limits_changed": false,
+  "route": {
+    "upstream_bytes": 23944416,
+    "downstream_bytes": 105844074,
+    "forwarded_chunks": 118959,
+    "queued_chunk_peak": 5
+  },
+  "render_p95_ms": {
+    "frame_cpu_ms": 8.079194,
+    "gpu_scene_ms": 7.401472,
+    "applied_snapshot_age_ms": 232.39601
+  },
+  "conclusion": "The traced 120-second all-native delayed-route battle passes every strict gate. All four timing phases are retained. One Linux machine and one offscreen 1440p renderer; sustained acceptance remains unproven.",
+  "read_projection": {
+    "count": 19476,
+    "maximum_ms": 10.172838,
+    "p95_upper_bound_ms": 8.0,
+    "p99_upper_bound_ms": 8.0
+  },
+  "replication": {
+    "full": 208,
+    "deltas": 10242,
+    "resyncs": 141,
+    "encoded_bytes": 188788733,
+    "encode_micros": 27789561,
+    "encode_peak_micros": 8879,
+    "max_packet_bytes": 79006,
+    "max_ack_age_ticks": 13,
+    "retained_bytes": 0
+  }
+}
