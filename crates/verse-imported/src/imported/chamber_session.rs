@@ -865,6 +865,11 @@ impl Session {
     ) -> Result<(), String> {
         let previous_pose = self.prediction.pose();
         let previous_timing = self.notes.as_ref().map(|_| self.prediction.timing());
+        let previous_control = self
+            .view
+            .replica()
+            .control()
+            .map(|c| (LifeId::from(c.life), c.epoch));
         self.view.push_snapshot(r)?;
         self.snapshots += 1;
         self.received_at = Instant::now();
@@ -874,6 +879,10 @@ impl Session {
             .replica()
             .control()
             .map(|c| (c.life.into(), c.epoch));
+        if previous_control != context {
+            // A verified handoff retires messages about the previous control.
+            self.status.clear();
+        }
         let teleport = context.and_then(|(life, _)| {
             state
                 .presentation

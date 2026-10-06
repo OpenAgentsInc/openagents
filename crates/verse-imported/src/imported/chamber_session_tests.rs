@@ -91,6 +91,7 @@ fn held_movement_reaches_the_authority_without_retiring_control() {
     );
     assert_eq!(epoch, final_epoch);
     assert!(sequence > 0);
+    assert!(session.status.is_empty(), "{}", session.status);
 }
 
 #[test]
