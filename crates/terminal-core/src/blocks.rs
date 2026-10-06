@@ -55,6 +55,42 @@ pub struct Blocks {
 }
 
 impl Blocks {
+    /// Restores retained command anchors only when they belong to the current screen epoch.
+    pub fn restore_journal(&mut self, page: &coder_pty::ext::BlockPage, vt: &Terminal) {
+        self.records.clear();
+        self.cwd = page.blocks.first().map(|b| b.dir.clone());
+        self.next = page.newest.unwrap_or(0);
+        self.active = None;
+        for block in page.blocks.iter().rev() {
+            let Some(lines) = block.lines.filter(|lines| lines.epoch == vt.line_epoch()) else {
+                continue;
+            };
+            self.records.push_back(Block {
+                id: block.block,
+                command: block.command.clone(),
+                cwd: Some(block.dir.clone()),
+                start: Position {
+                    line: lines.start,
+                    col: 0,
+                },
+                end: Some(Position {
+                    line: lines.end,
+                    col: 0,
+                }),
+                status: block.status,
+                started_ms: block.started.unwrap_or(0),
+                elapsed_ms: block
+                    .ended
+                    .zip(block.started)
+                    .map(|(end, start)| end.saturating_sub(start)),
+                output: String::new(),
+                truncated: true,
+                collapsed: false,
+                alternate: block.alternate,
+            });
+        }
+    }
+
     /// Consumes advisory marks after applying a bounded frame of output.
     pub fn update(&mut self, vt: &mut Terminal, now_ms: u64) {
         for mark in vt.take_shell_marks() {

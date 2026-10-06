@@ -8,10 +8,11 @@ description = "Shared terminal glyph renderer and native local-session adapters.
 
 [features]
 default = ["native"]
-native = ["fonts", "dep:terminal-control", "dep:winit", "dep:arboard", "dep:libc", "coder-pty/host"]
+native = ["fonts", "dep:terminal-remote", "dep:terminal-control", "dep:winit", "dep:arboard", "dep:libc", "coder-pty/host"]
 fonts = ["dep:memmap2", "dep:swash"]
 
 [dependencies]
+terminal-remote = { path = "../terminal-remote", optional = true }
 serde = { version = "1", features = ["derive"] }
 terminal-control = { path = "../terminal-control", optional = true }
 terminal-core = { path = "../terminal-core" }

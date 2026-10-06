@@ -86,6 +86,13 @@ impl Default for Overlay {
     }
 }
 impl Overlay {
+    /// Mounts an admitted host terminal in either a native window or Verse.
+    pub fn on_host(remote: crate::remote::Remote) -> Self {
+        Self::mount(terminal_core::Application::new(pty::Sessions(
+            std::sync::Arc::new(remote),
+        )))
+    }
+
     pub fn new() -> Self {
         #[cfg_attr(test, allow(unused_mut))]
         let mut core = terminal_core::Application::new(pty::for_user());
@@ -464,7 +471,10 @@ impl Overlay {
             let vt = &pane.session.vt;
             self.core.stats.drawn(id, vt.generation());
             let mut title = if vt.title().is_empty() {
-                pane.label.clone()
+                pane.session
+                    .status
+                    .clone()
+                    .unwrap_or_else(|| pane.label.clone())
             } else {
                 format!("{} — {}", pane.label, vt.title())
             };

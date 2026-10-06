@@ -1,0 +1,26 @@
+[package]
+name = "terminal-remote"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+publish.workspace = true
+description = "Shared terminal mounts over the paired-host shell client."
+
+[dependencies]
+terminal-core = { path = "../terminal-core" }
+coder-pty = { path = "../coder-pty", default-features = false }
+coder-vt = { path = "../coder-vt" }
+coder-computers = { path = "../coder-computers" }
+tokio = { version = "1", features = ["rt-multi-thread", "sync", "time"] }
+
+[dev-dependencies]
+nostr = { path = "../nostr" }
+serde_json = "1"
+coder-host = { path = "../coder-host" }
+secp256k1 = { version = "0.31.1", features = ["rand"] }
+futures-util = "0.3"
+tokio-tungstenite = { version = "0.30", features = ["rustls-tls-webpki-roots"] }
+tempfile = "3"
+
+[lints]
+workspace = true

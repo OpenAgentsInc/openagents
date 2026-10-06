@@ -586,6 +586,10 @@ impl Application {
                     "generation": pane.session.vt.generation(),
                     "cursor": [row, col],
                     "exited": pane.session.exited,
+                    "attachment": pane.session.status,
+                    "input_available": pane.session.input_available(),
+                    "terminal": pane.session.reference(),
+                    "host_blocks": pane.session.journal,
                     "input": self.paper.on.then(|| &self.paper.input),
                     "input_route": self.paper.on.then(|| match self.paper_route() {
                         Some(crate::route::Route::Ask) => "ask",
@@ -679,6 +683,10 @@ impl Application {
                     "cols": pane.session.vt.cols(),
                     "focused": focus == Some(*id),
                     "exited": pane.session.exited,
+                    "attachment": pane.session.status,
+                    "input_available": pane.session.input_available(),
+                    "terminal": pane.session.reference(),
+                    "host_blocks": pane.session.journal,
                     "rect": rect,
                     "resource": self.resource(*id),
                 })
@@ -1375,7 +1383,7 @@ impl Application {
         Rect::new(x, y, width, height)
     }
 
-    /// Ends every session's process group.
+    /// Detaches panes and applies the transport's shutdown policy.
     pub fn shutdown(&mut self) {
         if let Some(sessions) = &self.sessions {
             sessions.shutdown();

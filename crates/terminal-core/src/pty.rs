@@ -31,17 +31,33 @@ impl Program {
 }
 
 pub enum Event {
+    Size(u16, u16),
+    Blocks(coder_pty::ext::BlockPage),
+    /// Replaces the projection with the host-authoritative emulator.
+    Snapshot(Box<coder_vt::Terminal>),
+    History {
+        epoch: u64,
+        page: coder_pty::ext::HistoryRecord,
+    },
+    /// Changes attachment status without claiming the process ended.
+    Status(String),
     Output(Vec<u8>),
     Gap,
     End(String),
 }
 /// A terminal attachment; implementations retain their protocol and platform objects.
 pub trait Attachment: Send {
-    /// A remote owner supplies grid size; a requested resize needs its confirmation.
+    /// The owner confirms grid dimensions through snapshots or size events.
     fn host_grid(&self) -> bool {
         false
     }
 
+    fn input_available(&self) -> bool {
+        true
+    }
+    fn reference(&self) -> Option<coder_pty::wire::TerminalRef> {
+        None
+    }
     /// The terminal owner answers emulator queries once for all attachments.
     fn host_answers(&self) -> bool {
         false
@@ -235,6 +251,8 @@ impl Sessions {
             vt: coder_vt::Terminal::new(rows.into(), cols.into(), SCROLLBACK),
             blocks: Blocks::default(),
             exited: None,
+            status: None,
+            journal: None,
             cwd: None,
             started: Instant::now(),
             checked: None,
@@ -268,7 +286,7 @@ impl Sessions {
         let mut changed = false;
         let mut bytes = 0u64;
         loop {
-            if bytes as usize >= maximum || (bytes > 0 && Instant::now() >= deadline) {
+            if bytes as usize >= maximum || (changed && Instant::now() >= deadline) {
                 break;
             }
             let Some(event) = session.attachment.poll() else {
@@ -276,6 +294,16 @@ impl Sessions {
             };
             changed = true;
             match event {
+                Event::Size(rows, cols) => session.vt.resize(rows.into(), cols.into()),
+                Event::Blocks(page) => {
+                    session.blocks.restore_journal(&page, &session.vt);
+                    session.journal = Some(page);
+                }
+                Event::Snapshot(vt) => session.vt = *vt,
+                Event::History { epoch, page } => {
+                    let _ = session.vt.attach_history(epoch, &page);
+                }
+                Event::Status(status) => session.status = Some(status),
                 Event::Output(data) => {
                     bytes += data.len() as u64;
                     session.vt.feed(&data);
@@ -308,6 +336,8 @@ pub struct Session {
     pub vt: coder_vt::Terminal,
     pub blocks: Blocks,
     pub exited: Option<String>,
+    pub status: Option<String>,
+    pub journal: Option<coder_pty::ext::BlockPage>,
     pub cwd: Option<String>,
     started: Instant,
     checked: Option<Instant>,
@@ -319,6 +349,12 @@ impl Session {
         action: crate::sharing::Action,
     ) -> Option<Receiver<Result<coder_pty::wire::Value, String>>> {
         self.attachment.sharing(action)
+    }
+    pub fn reference(&self) -> Option<coder_pty::wire::TerminalRef> {
+        self.attachment.reference()
+    }
+    pub fn input_available(&self) -> bool {
+        self.exited.is_none() && self.attachment.input_available()
     }
     pub fn offer_proposal(
         &self,

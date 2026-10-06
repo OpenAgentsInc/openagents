@@ -31,6 +31,10 @@ Compile the thin iOS and Android hosts with their native SDKs, then use a scratc
 
 Run `openagents terminal shell` in a scratch directory on the Mac and through your usual SSH/tmux setup; confirm native editing, full-screen controls, and the existing thread view remain usable. Scratch bash, zsh, and fish fixtures verify exact edited proposals and one result without a real engine; physical SSH/tmux and a signed-in provider remain unverified.
 
+## Durable native and Verse terminal mounts (#10657)
+
+On a scratch Mac host, check physical full-screen keys, selection, clipboard, and resize in both shared mounts. Close each mount and attach the other to its exact retained generation and terminal; confirm the process continues. The automated scratch acceptance covers projection, reattachment, route changes, refused offline input, and restart loss. Device rendering remains unverified.
+
 ## Remote shell proposal controls (#10745)
 
 On scratch state in a Mac build from current main, create a desktop shell proposal and open the same terminal from the phone. Confirm that the proposal shows its exact command and revision, confirmation runs once, and its command block appears. Check that a watch screen has no enabled approval control. The Rust scratch-terminal and phone-projection tests cover these behaviors; physical controls remain unverified.

@@ -65,6 +65,11 @@ pub struct Options {
     /// The control socket of the host whose Agent Studio Everglade shows,
     /// in place of this computer's own host (`openagents_connect::control::socket_path`).
     pub studio_socket: Option<std::path::PathBuf>,
+    /// Explicit paired host for the shared terminal mount.
+    pub terminal_host: Option<String>,
+    pub terminal_store: Option<std::path::PathBuf>,
+    /// Exact retained generation and terminal, without opening a replacement.
+    pub terminal_reference: Option<String>,
     /// Start with the studio's bell and chimes silent; V toggles them in
     /// Everglade.
     pub studio_muted: bool,
@@ -116,6 +121,9 @@ impl Default for Options {
             gym_connection: None,
             studio_sim: false,
             studio_socket: None,
+            terminal_host: None,
+            terminal_store: None,
+            terminal_reference: None,
             studio_muted: false,
             everglade: false,
             grove: false,
@@ -764,14 +772,43 @@ fn block_by_name(session: &mut Session, name: &str, block: bool) -> String {
 /// The terminal overlay, listening on its control socket so
 /// `openagents verse terminal` can drive it. A socket that cannot be
 /// bound is reported once and the overlay works from the keyboard alone.
-fn terminal_overlay() -> crate::terminal::Overlay {
-    let mut overlay = crate::terminal::Overlay::new();
+fn terminal_overlay(options: &Options) -> Result<crate::terminal::Overlay, String> {
+    let mut overlay = if let Some(host) = &options.terminal_host {
+        let store = options
+            .terminal_store
+            .as_ref()
+            .ok_or("--terminal-host requires --terminal-store.")?;
+        let reference = options
+            .terminal_reference
+            .as_ref()
+            .map(|value| {
+                let (generation, terminal) = value
+                    .split_once('/')
+                    .ok_or("--terminal-reference needs generation/terminal.")?;
+                crate::terminal::remote::reference(generation, terminal)
+            })
+            .transpose()?;
+        let remote = crate::terminal::remote::Remote::paired(
+            store,
+            host.clone(),
+            reference,
+            crate::terminal::pty::for_user().0,
+        )?;
+        crate::terminal::Overlay::on_host(remote)
+    } else {
+        if options.terminal_store.is_some() || options.terminal_reference.is_some() {
+            return Err(
+                "--terminal-store and --terminal-reference require --terminal-host.".into(),
+            );
+        }
+        crate::terminal::Overlay::new()
+    };
     if let Some(path) = crate::terminal::control::default_path()
         && let Err(error) = overlay.listen(&path)
     {
         eprintln!("verse: the terminal control socket is off: {error}");
     }
-    overlay
+    Ok(overlay)
 }
 
 impl App {
@@ -963,7 +1000,7 @@ impl App {
             studio_panel: None,
             studio_target: None,
             panel_shift: false,
-            terminal: terminal_overlay(),
+            terminal: terminal_overlay(options)?,
             // Alice is a client of the host the studio reads, over the same
             // control socket; a test never reaches the person's own host.
             workshop: crate::workshop::Workshop::control(

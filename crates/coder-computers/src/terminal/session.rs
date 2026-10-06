@@ -71,6 +71,12 @@ const RETRY: Duration = Duration::from_secs(1);
 const GENERATION_TRIES: u32 = 10;
 
 enum Command {
+    LeaveWait(std::sync::mpsc::Sender<()>),
+    OwnerProposal {
+        action: coder_host::pty::proposal::Action,
+        answer: std::sync::mpsc::Sender<Result<coder_host::pty::proposal::Page, String>>,
+    },
+    Reconcile,
     Proposals,
     DecideProposal {
         thread: String,
@@ -155,6 +161,28 @@ impl Session {
     }
 
     /// Reads the bounded proposal page from the terminal owner.
+    /// Sends one exact owner proposal operation without retaining it for reconnect.
+    pub fn owner_proposal(
+        &self,
+        action: coder_host::pty::proposal::Action,
+    ) -> std::sync::mpsc::Receiver<Result<coder_host::pty::proposal::Page, String>> {
+        let (answer, receive) = std::sync::mpsc::channel();
+        let model = self.model();
+        if model.phase != Phase::Attached || model.watch {
+            let _ = answer.send(Err("Terminal input is unavailable.".into()));
+        } else {
+            let _ = self
+                .commands
+                .send(Command::OwnerProposal { action, answer });
+        }
+        receive
+    }
+
+    /// Reattaches for an authoritative snapshot without replaying input.
+    pub fn reconcile(&self) {
+        let _ = self.commands.send(Command::Reconcile);
+    }
+
     pub fn proposals(&self) {
         let _ = self.commands.send(Command::Proposals);
     }
@@ -274,6 +302,17 @@ impl Session {
     }
 
     /// Detach. The shell keeps running on the host.
+    /// Detaches before a mount drops its runtime, with a bounded wait and no process close.
+    pub fn leave_wait(&self, timeout: Duration) {
+        if self.model().phase != Phase::Attached {
+            self.leave();
+            return;
+        }
+        let (sender, receiver) = std::sync::mpsc::channel();
+        let _ = self.commands.send(Command::LeaveWait(sender));
+        let _ = receiver.recv_timeout(timeout);
+    }
+
     pub fn leave(&self) {
         let _ = self.commands.send(Command::Leave);
     }
@@ -451,6 +490,9 @@ impl Joining {
         };
         let mut model = lock(model);
         let mut through = None;
+        if let Some(tap) = &model.projection {
+            tap.send(super::model::Projection::Records(part.clone()));
+        }
         for event in events {
             match event {
                 StreamEvent::Ready {
@@ -786,6 +828,9 @@ async fn drive(
                 return stop;
             }
             Next::Reattach { new_link } => {
+                if !exited {
+                    lock(model).set_phase(Phase::Reconnecting);
+                }
                 let old = link.clone();
                 let old_attachment = attachment.clone();
                 let old_reference = reference.clone();
@@ -947,12 +992,19 @@ async fn attached_loop(
         // direct channel after the relay.
         if checked.elapsed() > LINK_CHECK {
             checked = Instant::now();
-            if let Ok(current) = links()
-                && !Arc::ptr_eq(&current, link)
-                && current.closed().is_none()
-                && !*exited
-            {
-                return Next::Reattach { new_link: true };
+            match links() {
+                Ok(current)
+                    if !Arc::ptr_eq(&current, link) && current.closed().is_none() && !*exited =>
+                {
+                    return Next::Reattach { new_link: true };
+                }
+                Err(error) if error.code == Code::Transport && !*exited => {
+                    return Next::Reattach { new_link: true };
+                }
+                Err(error) if !*exited => {
+                    return Next::Stop(Stop::Ended(Phase::Refused(describe(&error))));
+                }
+                _ => {}
             }
         }
     }
@@ -1020,7 +1072,52 @@ async fn handle(
     speaker: &Speaker,
 ) -> Option<Next> {
     match command {
+        Command::LeaveWait(answer) => {
+            if let Some(attachment) = &speaker.0 {
+                detach(link, reference, attachment).await;
+            }
+            let _ = answer.send(());
+            Some(Next::Stop(Stop::Left))
+        }
+        Command::OwnerProposal { mut action, answer } => {
+            use coder_host::pty::proposal::{Action, Request};
+            if exited || lock(model).watch {
+                let _ = answer.send(Err("Terminal input is unavailable.".into()));
+                return None;
+            }
+            if let Action::Decide { attachment, .. } = &mut action {
+                let Some(current) = &speaker.0 else {
+                    let _ = answer.send(Err("This attachment has no proposal authority.".into()));
+                    return None;
+                };
+                attachment.clone_from(current);
+            }
+            let result = request(
+                link,
+                TermRequest::Proposal(Request::new(new_id(), reference.clone(), action)),
+            )
+            .await;
+            let result = match result {
+                Ok(TerminalResult {
+                    value: Some(Value::Proposals { page }),
+                    ..
+                }) => {
+                    lock(model).proposals = Some(page.clone());
+                    Ok(page)
+                }
+                Ok(result) => Err(format!(
+                    "The host refused the proposal: {:?}.",
+                    result.reason
+                )),
+                Err(_) => {
+                    Err("Proposal disposition is unknown. Reconcile before acting again.".into())
+                }
+            };
+            let _ = answer.send(result);
+            None
+        }
         Command::Leave => Some(Next::Stop(Stop::Left)),
+        Command::Reconcile => Some(Next::Reattach { new_link: false }),
         Command::Bytes(bytes) => {
             if exited {
                 return None;
@@ -1031,6 +1128,9 @@ async fn handle(
             if !exited && *host_size != (rows, cols) {
                 let resized = request(link, speaker.resize(reference, rows, cols)).await;
                 if matches!(resized, Ok(ref result) if result.status != Status::Refused) {
+                    if let Some(tap) = &lock(model).projection {
+                        tap.send(super::model::Projection::Size(rows, cols));
+                    }
                     *host_size = (rows, cols);
                 }
             }
@@ -1137,6 +1237,15 @@ async fn handle(
         Command::Blocks(before) => {
             let read = BlockPageRead::new(new_id(), reference.clone(), before, BLOCK_PAGE);
             let answer = request(link, TermRequest::BlockPage(read)).await;
+            if let Ok(TerminalResult {
+                value: Some(Value::Blocks { page }),
+                ..
+            }) = &answer
+            {
+                if let Some(tap) = &lock(model).projection {
+                    tap.send(super::model::Projection::Blocks(page.clone()));
+                }
+            }
             let blocks = blocks_from(answer);
             let mut model = lock(model);
             // The person may have hidden the list meanwhile.

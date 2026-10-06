@@ -179,8 +179,38 @@ pub enum Saved {
     Unavailable(String),
 }
 
-/// The screen's state. The session task writes the phase and output; the
-/// screen writes the modifier the accessory row latched.
+/// Ordered projection events for a shared terminal mount.
+#[cfg(feature = "live")]
+#[derive(Clone, Debug)]
+pub enum Projection {
+    Size(u16, u16),
+    Output(Vec<u8>),
+    Gap,
+    Blocks(coder_host::pty::ext::BlockPage),
+    Records(coder_host::pty::ext::RecordsFrame),
+}
+
+/// A bounded mount projection. Overflow requires a new authoritative snapshot.
+#[cfg(feature = "live")]
+#[derive(Clone, Debug)]
+pub struct ProjectionTap {
+    pub sender: std::sync::mpsc::SyncSender<Projection>,
+    pub overflow: std::sync::Arc<std::sync::atomic::AtomicBool>,
+}
+#[cfg(feature = "live")]
+impl ProjectionTap {
+    pub fn send(&self, event: Projection) {
+        use std::sync::atomic::Ordering;
+        if self.overflow.load(Ordering::Acquire) {
+            return;
+        }
+        if self.sender.try_send(event).is_err() {
+            self.overflow.store(true, Ordering::Release);
+        }
+    }
+}
+
+/// The screen's state, updated by its attachment task.
 #[derive(Debug)]
 pub struct Model {
     /// The host's public key.
@@ -206,6 +236,8 @@ pub struct Model {
     /// it, for a reader that wants the stream rather than the grid. After a
     /// join by snapshot, that is the output after the snapshot.
     pub tap: Option<std::sync::mpsc::Sender<Vec<u8>>>,
+    #[cfg(feature = "live")]
+    pub projection: Option<ProjectionTap>,
     /// Who types at the terminal.
     pub typing: Typing,
     /// This screen's own grid size. While another device types, the grid
@@ -245,6 +277,8 @@ impl Model {
             notice: None,
             revision: 1,
             tap: None,
+            #[cfg(feature = "live")]
+            projection: None,
             typing: Typing::Unknown,
             view: (rows, cols),
             pending_resize: None,
@@ -263,6 +297,10 @@ impl Model {
 
     /// Draw output the host sent, and pass it to the tap when one is set.
     pub fn output(&mut self, data: &[u8]) {
+        #[cfg(feature = "live")]
+        if let Some(tap) = &self.projection {
+            tap.send(Projection::Output(data.to_vec()));
+        }
         if let Some(tap) = &self.tap
             && tap.send(data.to_vec()).is_err()
         {
@@ -281,6 +319,10 @@ impl Model {
 
     /// Record a gap the host reported and mark it in the grid.
     pub fn gap(&mut self, bytes: Option<u64>) {
+        #[cfg(feature = "live")]
+        if let Some(tap) = &self.projection {
+            tap.send(Projection::Gap);
+        }
         self.gaps += 1;
         match bytes {
             Some(bytes) => self.missed.0 += bytes,
@@ -344,6 +386,10 @@ impl Model {
     /// the terminal's `size`; this screen's own, or nobody's, returns the
     /// grid to the screen's size and asks for it on the host.
     pub fn seat(&mut self, typing: Typing, size: (u16, u16)) {
+        #[cfg(feature = "live")]
+        if let Some(tap) = &self.projection {
+            tap.send(Projection::Size(size.0, size.1));
+        }
         if self.typing != typing {
             self.typing = typing;
             self.touch();

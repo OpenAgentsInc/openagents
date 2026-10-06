@@ -15,3 +15,6 @@ pub mod pty;
 pub use native::*;
 #[cfg(feature = "native")]
 pub mod stress;
+
+#[cfg(feature = "native")]
+pub use terminal_remote as remote;

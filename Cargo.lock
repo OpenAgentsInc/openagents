@@ -13657,9 +13657,28 @@ dependencies = [
  "tempfile",
  "terminal-control",
  "terminal-core",
+ "terminal-remote",
  "unicode-width",
  "verse-gfx",
  "winit",
+]
+
+[[package]]
+name = "terminal-remote"
+version = "0.1.0"
+dependencies = [
+ "coder-computers",
+ "coder-host",
+ "coder-pty",
+ "coder-vt",
+ "futures-util",
+ "nostr",
+ "secp256k1 0.31.1",
+ "serde_json",
+ "tempfile",
+ "terminal-core",
+ "tokio",
+ "tokio-tungstenite 0.30.0",
 ]
 
 [[package]]

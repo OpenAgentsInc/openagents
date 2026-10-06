@@ -21,6 +21,9 @@ pub struct Options {
     knowledge_review: Option<PathBuf>,
     knowledge_operator: Option<String>,
     knowledge_evaluator: Option<String>,
+    host: Option<String>,
+    paired_store: Option<PathBuf>,
+    reference: Option<String>,
     shell: Option<PathBuf>,
     socket: Option<PathBuf>,
     stress_out: Option<PathBuf>,
@@ -73,7 +76,7 @@ pub fn run() -> Result<(), String> {
             }
             "--help" | "-h" => {
                 println!(
-                    "OpenAgents Terminal\nUsage: openagents-terminal [--root DIR] [--shell PATH] [--socket PATH]\n\nStarts your login shell under one fixed sheet. Type a command or a question; ENTER runs or asks. F1 shows the keys.\nCtrl+B % or \" splits; Ctrl+B c opens a tab. Cmd+Q exits on macOS.\n--root isolates shell and helper HOME for a scratch run.\nThe native package supports macOS arm64; Linux is a development platform.\n--stress-out FILE runs the shared workload; --busy N --seconds S --warmup S configure it.\n--startup-out FILE records process entry to first presented frame.\n--background opens behind the active app and keeps drawing while covered.\n--latency-out FILE records key-to-frame times on the sheet until quit."
+                    "OpenAgents Terminal\nUsage: openagents-terminal [--root DIR] [--shell PATH] [--socket PATH] [--host KEY --paired-store DIR --terminal GENERATION/TERMINAL]\n\nStarts your login shell under one fixed sheet. Type a command or a question; ENTER runs or asks. F1 shows the keys.\nCtrl+B % or \" splits; Ctrl+B c opens a tab. Cmd+Q exits on macOS.\n--root isolates shell and helper HOME for a scratch run.\nThe native package supports macOS arm64; Linux is a development platform.\n--stress-out FILE runs the shared workload; --busy N --seconds S --warmup S configure it.\n--startup-out FILE records process entry to first presented frame.\n--background opens behind the active app and keeps drawing while covered.\n--latency-out FILE records key-to-frame times on the sheet until quit."
                 );
                 return Ok(());
             }
@@ -115,6 +118,17 @@ pub fn run() -> Result<(), String> {
                         .into(),
                 )
             }
+            "--host" => options.host = Some(args.next().ok_or("--host needs a host key")?),
+            "--paired-store" => {
+                options.paired_store = Some(
+                    args.next()
+                        .ok_or("--paired-store needs a directory")?
+                        .into(),
+                )
+            }
+            "--terminal" => {
+                options.reference = Some(args.next().ok_or("--terminal needs generation/terminal")?)
+            }
             "--root" => options.root = Some(args.next().ok_or("--root needs a directory")?.into()),
             "--shell" => options.shell = Some(args.next().ok_or("--shell needs a path")?.into()),
             "--socket" => options.socket = Some(args.next().ok_or("--socket needs a path")?.into()),
@@ -128,6 +142,9 @@ pub fn run() -> Result<(), String> {
     }
     if options.knowledge_review.is_some() && options.knowledge_workbench.is_none() {
         return Err("--knowledge-review requires --knowledge-workbench".into());
+    }
+    if options.host.is_none() && (options.paired_store.is_some() || options.reference.is_some()) {
+        return Err("--paired-store and --terminal require --host.".into());
     }
     if options.root.as_ref().is_some_and(|root| !root.is_dir()) {
         return Err("the scratch root must be an existing directory".into());
@@ -401,7 +418,31 @@ impl ApplicationHandler for App {
             if let Some(driver) = &stress {
                 std::fs::create_dir_all(driver.root()).map_err(|error| error.to_string())?;
             }
-            let mut terminal = if let Some(driver) = &stress {
+            let mut terminal = if let Some(host) = &self.options.host {
+                let store = self
+                    .options
+                    .paired_store
+                    .as_ref()
+                    .ok_or("--host requires --paired-store")?;
+                let reference = self
+                    .options
+                    .reference
+                    .as_ref()
+                    .map(|value| {
+                        let (generation, terminal) = value
+                            .split_once('/')
+                            .ok_or("--terminal needs generation/terminal")?;
+                        Ok::<_, String>(terminal_gfx::remote::reference(generation, terminal)?)
+                    })
+                    .transpose()?;
+                let remote = terminal_gfx::remote::Remote::paired(
+                    store,
+                    host.clone(),
+                    reference,
+                    terminal_gfx::pty::for_user().0,
+                )?;
+                Overlay::on_host(remote)
+            } else if let Some(driver) = &stress {
                 Overlay::with(
                     driver.root(),
                     "/bin/sh".into(),
