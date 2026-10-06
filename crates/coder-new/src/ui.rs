@@ -13,9 +13,9 @@ use unicode_width::UnicodeWidthStr;
 
 use crate::{
     App, Screen,
-    agents::{DEMOS, DemoMessage, MAIN_TOOLS},
+    agents::{DEMOS, DemoMessage, MAIN_PLUGINS, MAIN_TOOLS},
     theme as t,
-    tools::{delegation_lines, tool_lines},
+    tools::{delegation_lines, plugin_lines, tool_lines},
 };
 
 fn span(text: impl Into<String>, color: Color) -> Span<'static> {
@@ -244,14 +244,15 @@ fn conversation(frame: &mut Frame, area: Rect, app: &mut App) {
             match message {
                 DemoMessage::User(text) => lines.push(prompt(*text)),
                 DemoMessage::Tool(call) => lines.extend(tool_lines(call, app.animation_frame)),
+                DemoMessage::Plugin(call) => lines.extend(plugin_lines(call, app.animation_frame)),
                 DemoMessage::Assistant(text) => {
                     lines.push(Line::from(span(*text, t::TEXT_SECONDARY)));
                 }
             }
-            let grouped = matches!(message, DemoMessage::Tool(_))
+            let grouped = matches!(message, DemoMessage::Tool(_) | DemoMessage::Plugin(_))
                 && matches!(
                     agent.conversation.get(index + 1),
-                    Some(DemoMessage::Tool(_))
+                    Some(DemoMessage::Tool(_) | DemoMessage::Plugin(_))
                 );
             if !grouped {
                 lines.push(Line::default());
@@ -265,6 +266,9 @@ fn conversation(frame: &mut Frame, area: Rect, app: &mut App) {
         ];
         for call in &MAIN_TOOLS {
             lines.extend(tool_lines(call, app.animation_frame));
+        }
+        for call in &MAIN_PLUGINS {
+            lines.extend(plugin_lines(call, app.animation_frame));
         }
         lines.extend([
             Line::default(),

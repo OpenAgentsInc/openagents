@@ -1,5 +1,5 @@
-use coder_new::agents::{DEMOS, DemoMessage, MAIN_TOOLS};
-use coder_new::tools::{ToolCall, ToolKind, ToolState};
+use coder_new::agents::{DEMOS, DemoMessage, MAIN_PLUGINS, MAIN_TOOLS};
+use coder_new::tools::{PluginCall, ToolCall, ToolKind, ToolState};
 use coder_new::{App, Screen, snapshot, ui};
 use crossterm::event::{Event, KeyCode, KeyEvent, KeyEventKind, KeyModifiers};
 use ratatui::{Terminal, backend::TestBackend};
@@ -29,9 +29,9 @@ fn both_views_and_tiny_terminals_render() {
     assert!(conversation.contains("Conversation first"));
     assert_eq!(composer_rules(&conversation).len(), 2);
     assert!(!conversation.contains("Sample data"));
-    let main = screen(&mut app, 110, 70);
-    let body = transcript_text(&main);
+    let body = transcript_text(&conversation);
     assert_tool_calls(&body, MAIN_TOOLS.iter());
+    assert_plugin_calls(&body, MAIN_PLUGINS.iter());
     let lines: Vec<_> = body.lines().collect();
     for (index, demo) in DEMOS.iter().enumerate() {
         let row = lines
@@ -326,6 +326,21 @@ fn assert_tool_calls<'a>(rendered: &str, calls: impl Iterator<Item = &'a ToolCal
     }
 }
 
+fn assert_plugin_calls<'a>(rendered: &str, calls: impl Iterator<Item = &'a PluginCall>) {
+    let text = compact_text(rendered);
+    for call in calls {
+        let identity = format!("Plugin{}.{}", call.plugin, call.operation);
+        assert!(text.contains(&identity));
+        assert!(text.contains(&compact_text(call.input)));
+        assert!(text.contains(&compact_text(call.output)));
+        match call.state {
+            ToolState::Complete => assert!(text.contains(&format!("◆{identity}"))),
+            ToolState::Running => assert!(text.contains("╰Running")),
+            ToolState::Failed => assert!(text.contains("╰Failed")),
+        }
+    }
+}
+
 #[test]
 fn selecting_each_agent_loads_its_own_demo_conversation() {
     let mut app = App::default();
@@ -340,6 +355,15 @@ fn selecting_each_agent_loads_its_own_demo_conversation() {
                 .iter()
                 .filter_map(|message| match message {
                     DemoMessage::Tool(call) => Some(call),
+                    _ => None,
+                }),
+        );
+        assert_plugin_calls(
+            &body,
+            demo.conversation
+                .iter()
+                .filter_map(|message| match message {
+                    DemoMessage::Plugin(call) => Some(call),
                     _ => None,
                 }),
         );
@@ -518,12 +542,23 @@ fn animation_ticks_change_running_indicators_without_changing_conversation_state
     let fixed_snapshot = snapshot::svg(&mut app, 110, 70);
     assert_eq!(snapshot::svg(&mut app, 110, 70), fixed_snapshot);
     let is_spinner = |ch: &char| ('\u{2800}'..='\u{28ff}').contains(ch);
-    assert_eq!(before.chars().filter(is_spinner).count(), 0);
+    assert_eq!(before.chars().filter(is_spinner).count(), 1);
 
     app.tick();
     let after = screen(&mut app, 110, 70);
     assert_ne!(app.animation_frame, phase);
-    assert_eq!(before, after);
+    assert_ne!(before, after);
+    assert_eq!(after.chars().filter(is_spinner).count(), 1);
+    assert_eq!(
+        before
+            .chars()
+            .filter(|ch| !is_spinner(ch))
+            .collect::<String>(),
+        after
+            .chars()
+            .filter(|ch| !is_spinner(ch))
+            .collect::<String>()
+    );
     let pulsed_snapshot = snapshot::svg(&mut app, 110, 70);
     assert_ne!(fixed_snapshot, pulsed_snapshot);
     let changed: Vec<_> = fixed_snapshot
@@ -531,10 +566,14 @@ fn animation_ticks_change_running_indicators_without_changing_conversation_state
         .zip(pulsed_snapshot.lines())
         .filter(|(before_line, after_line)| before_line != after_line)
         .collect();
-    assert_eq!(changed.len(), DEMOS.len());
+    assert_eq!(changed.len(), DEMOS.len() + 1);
     for (before_line, after_line) in changed {
-        assert!(before_line.ends_with(">◆</text>"));
-        assert!(after_line.ends_with(">◆</text>"));
+        if before_line.ends_with(">◆</text>") {
+            assert!(after_line.ends_with(">◆</text>"));
+        } else {
+            assert!(before_line.chars().any(|ch| is_spinner(&ch)));
+            assert!(after_line.chars().any(|ch| is_spinner(&ch)));
+        }
     }
     assert_eq!(conversation_state(&app), state);
     assert_eq!(app.selected_agent, selected);

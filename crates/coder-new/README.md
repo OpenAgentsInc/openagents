@@ -8,6 +8,11 @@ show a rotating spinner. Each agent conversation has its own tool calls,
 arguments, results, and current activity.
 Press Tab to switch to the welcome view.
 
+Mock plugin calls show their qualified operation, arguments, result, and running
+state. The main conversation uses `terminal-inspector.layout.inspect` and
+`palette-audit.colors.check`. Agent conversations also use keyboard and
+conversation audit examples. These fixtures do not load or invoke plugins.
+
 ```sh
 cargo run -p coder-new
 cargo run -p coder-new -- --welcome

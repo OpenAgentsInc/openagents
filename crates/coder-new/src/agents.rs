@@ -1,6 +1,6 @@
 //! Sample activity for the four agent rows beneath the composer.
 
-use crate::tools::{ToolCall, ToolKind, ToolState};
+use crate::tools::{PluginCall, ToolCall, ToolKind, ToolState};
 
 pub struct DemoAgent {
     pub name: &'static str,
@@ -12,6 +12,7 @@ pub struct DemoAgent {
 pub enum DemoMessage {
     User(&'static str),
     Tool(ToolCall),
+    Plugin(PluginCall),
     Assistant(&'static str),
 }
 
@@ -42,6 +43,23 @@ pub const MAIN_TOOLS: [ToolCall; 4] = [
     },
 ];
 
+pub const MAIN_PLUGINS: [PluginCall; 2] = [
+    PluginCall {
+        plugin: "terminal-inspector",
+        operation: "layout.inspect",
+        input: "110×36 · composer and agent rail",
+        output: "4 agent rows · aligned names, tasks, and tokens",
+        state: ToolState::Complete,
+    },
+    PluginCall {
+        plugin: "palette-audit",
+        operation: "colors.check",
+        input: "Grok Night · #0a0a0a",
+        output: "Comparing tool accents and diff backgrounds",
+        state: ToolState::Running,
+    },
+];
+
 pub const DEMOS: [DemoAgent; 4] = [
     DemoAgent {
         name: "claude-code",
@@ -59,6 +77,13 @@ pub const DEMOS: [DemoAgent; 4] = [
                 kind: ToolKind::Search,
                 input: "\"KeyCode|KeyEventKind\" crates/coder-new/src/lib.rs",
                 output: "18 matches · editing, selection, and key releases",
+                state: ToolState::Complete,
+            }),
+            DemoMessage::Plugin(PluginCall {
+                plugin: "keyboard-audit",
+                operation: "navigation.check",
+                input: "Up/Down · four agent conversations",
+                output: "Draft and cursor restored across conversation switches",
                 state: ToolState::Complete,
             }),
             DemoMessage::Assistant(
@@ -91,6 +116,13 @@ pub const DEMOS: [DemoAgent; 4] = [
                 output: "Exit 0 · 80- and 24-column views checked",
                 state: ToolState::Complete,
             }),
+            DemoMessage::Plugin(PluginCall {
+                plugin: "terminal-inspector",
+                operation: "layout.inspect",
+                input: "80 and 24 columns · composer and agent rail",
+                output: "4 consecutive agent rows · token counts aligned",
+                state: ToolState::Complete,
+            }),
             DemoMessage::Assistant(
                 "Agent names and token counts stay visible. Long tasks end with an ellipsis, and narrow terminals shorten the token label.",
             ),
@@ -121,6 +153,13 @@ pub const DEMOS: [DemoAgent; 4] = [
                 output: "5 conversation slots · main and four agents",
                 state: ToolState::Complete,
             }),
+            DemoMessage::Plugin(PluginCall {
+                plugin: "conversation-audit",
+                operation: "state.check",
+                input: "Main and four agents · multiline drafts",
+                output: "5 independent drafts · cursor, messages, and scroll retained",
+                state: ToolState::Complete,
+            }),
             DemoMessage::Assistant(
                 "Each conversation keeps its own draft, messages, and scroll position. Switching restores the cursor where you left it.",
             ),
@@ -149,6 +188,13 @@ pub const DEMOS: [DemoAgent; 4] = [
                 kind: ToolKind::Search,
                 input: "\"NEAR_BLACK\" crates/coder-ui/src/theme.rs",
                 output: "#0a0a0a · shared near-black background",
+                state: ToolState::Complete,
+            }),
+            DemoMessage::Plugin(PluginCall {
+                plugin: "palette-audit",
+                operation: "colors.check",
+                input: "Terminal and SVG · Grok Night · #0a0a0a",
+                output: "Shared background and tool accents match the exported cells",
                 state: ToolState::Complete,
             }),
             DemoMessage::Assistant(

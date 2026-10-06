@@ -1,4 +1,4 @@
-//! Local tool and delegation displays for the conversation previews.
+//! Local tool, plugin, and delegation displays for the conversation previews.
 
 use ratatui::{
     style::{Color, Modifier, Style},
@@ -26,6 +26,15 @@ pub enum ToolState {
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub struct ToolCall {
     pub kind: ToolKind,
+    pub input: &'static str,
+    pub output: &'static str,
+    pub state: ToolState,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct PluginCall {
+    pub plugin: &'static str,
+    pub operation: &'static str,
     pub input: &'static str,
     pub output: &'static str,
     pub state: ToolState,
@@ -89,6 +98,41 @@ pub fn tool_lines(call: &ToolCall, phase: u8) -> Vec<Line<'static>> {
         }
     }
     lines
+}
+
+pub fn plugin_lines(call: &PluginCall, phase: u8) -> Vec<Line<'static>> {
+    let (glyph, status_color) = match call.state {
+        ToolState::Complete => ("◆", t::ACCENT_SKILL),
+        ToolState::Running => (spinner(phase), t::ACCENT_SKILL),
+        ToolState::Failed => ("×", t::DIFF_DELETE_FG),
+    };
+    let header = Line::from(vec![
+        styled(format!(" {glyph} "), status_color),
+        Span::styled(
+            "Plugin",
+            Style::default()
+                .fg(t::ACCENT_SKILL)
+                .add_modifier(Modifier::BOLD),
+        ),
+        styled(
+            format!(" {}.{}", call.plugin, call.operation),
+            t::TEXT_PRIMARY,
+        ),
+        styled(format!(" · {}", call.input), t::GRAY_BRIGHT),
+    ]);
+    let mut result = vec![styled("   ╰ ", t::GRAY_DIM)];
+    match call.state {
+        ToolState::Complete => result.push(styled(call.output, t::GRAY_BRIGHT)),
+        ToolState::Running => result.extend([
+            styled("Running", t::ACCENT_SKILL),
+            styled(format!(" · {}", call.output), t::GRAY_BRIGHT),
+        ]),
+        ToolState::Failed => result.extend([
+            styled("Failed", t::DIFF_DELETE_FG),
+            styled(format!(" · {}", call.output), t::DIFF_DELETE_FG),
+        ]),
+    }
+    vec![header, Line::from(result)]
 }
 
 pub fn delegation_lines(agent: &DemoAgent, phase: u8, width: u16) -> Vec<Line<'static>> {
