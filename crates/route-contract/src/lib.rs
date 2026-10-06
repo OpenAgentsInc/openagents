@@ -4,8 +4,9 @@
 //! `openagents` CLI, the desktop app, the phone, and the future HTTP API
 //! ([plan](../../../docs/api/2026-10-02-agentic-execution-router.md),
 //! sections 4 to 6 and 13). It holds data and pure checks only: no I/O, no
-//! Jev, no task store. It depends on `serde`, `serde_json`, and `sha2`, so a
-//! thin surface can use it without linking Coder.
+//! Jev, no task store. It depends on `serde`, `serde_json`, `sha2`, and the
+//! data-only `workbench` contract, so a thin surface can use it without
+//! linking Coder.
 //!
 //! - [`snapshot`]: the immutable admission snapshot (identity, input, route,
 //!   placement, effects with the macOS deny set, disclosure, resources,
@@ -25,6 +26,10 @@
 //! - [`recipe`]: the delegate recipe (#10208): what each engine gets of
 //!   the briefing, knowledge, effort, tools, cache, and frozen checks, and
 //!   the adapter digest a route records for it.
+//! - [`binding`]: the workbench binding (#10669): host generation and
+//!   dispatch recipient, the run and engine session, the terminal and its
+//!   generation, and workbench resources, bound to one snapshot; the
+//!   continuation and dispatch rechecks that refuse before execution.
 //! - [`eval`]: the labeled evaluation split for route families
 //!   (`fixtures/route-families-v1.json`).
 //!
@@ -32,6 +37,7 @@
 //! named by [`Digest`]: SHA-256 over canonical JSON (object keys sorted, no
 //! whitespace), so a digest does not move with serde's map ordering.
 
+pub mod binding;
 pub mod decision;
 pub mod digest;
 pub mod eval;
@@ -65,8 +71,14 @@ pub const TRANSITION_SCHEMA: &str = "openagents.route.transition.v1";
 /// A route record's schema ([`record`]), added in phase 1 beside the
 /// frozen documents.
 pub const RECORD_SCHEMA: &str = "openagents.route.record.v1";
+/// A workbench binding's schema ([`binding`]), added beside the frozen
+/// documents.
+pub const BINDING_SCHEMA: &str = "openagents.route.workbench-binding.v1";
 /// The evaluation split's schema.
 pub const EVAL_SCHEMA: &str = "openagents.route.eval-split.v1";
 
 #[cfg(test)]
 mod tests;
+
+#[cfg(test)]
+mod binding_tests;

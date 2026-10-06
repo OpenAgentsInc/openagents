@@ -41,7 +41,7 @@ fn plan() -> DispatchPlan {
     }
 }
 
-fn snapshot() -> AdmissionSnapshot {
+pub(crate) fn snapshot() -> AdmissionSnapshot {
     let result = RouteResult::Coder { plan: plan() };
     AdmissionSnapshot {
         schema: crate::SNAPSHOT_SCHEMA.into(),
@@ -340,7 +340,7 @@ fn commands_run_by_effect() {
     assert_eq!(Effect::Secret.run_policy(), RunPolicy::NeverFromChat);
 }
 
-fn terms() -> Terms {
+pub(crate) fn terms() -> Terms {
     let snapshot = snapshot();
     Terms {
         route: snapshot.route.result.clone(),

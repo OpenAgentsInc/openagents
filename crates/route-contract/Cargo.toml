@@ -10,6 +10,7 @@ description = "The agentic execution router's frozen contract: admission snapsho
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 sha2 = "0.10"
+workbench = { path = "../workbench" }
 
 [lints]
 workspace = true

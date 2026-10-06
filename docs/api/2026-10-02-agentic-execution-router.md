@@ -757,6 +757,19 @@ game-only ledger. Observation, execution, disclosure, and spending remain
 separate authorities. A reconnect follows the funded execution identity;
 it cannot charge or dispatch again.
 
+Workbench bindings (#10669) extend an admission without editing the frozen
+snapshot. [`route_contract::binding`](../../crates/route-contract/src/binding.rs)
+(`openagents.route.workbench-binding.v1`) names one snapshot by digest and
+adds the host generation and dispatch recipient, the run's task and engine
+session, the originating terminal with its generation, and the workbench
+[resource references](../terminal/workbench-resources.md) the route uses.
+A continuation must keep the computer, generation, recipient, task, engine
+session, and terminal, and its snapshot must not widen its parent; a
+dispatch or control operation rechecks the host generation, the grant and
+its revocation epoch, and the terminal generation, and refuses before
+anything runs. A changed computer, recipient, effect, price, fee, or payer
+is a new offer, and an expired offer never approves its substitute.
+
 The [complete workbench issue directory](../terminal/issue-roadmap.md)
 and [public project](https://github.com/orgs/OpenAgentsInc/projects/20)
 track the integration deltas and their native blockers. Delivered local
