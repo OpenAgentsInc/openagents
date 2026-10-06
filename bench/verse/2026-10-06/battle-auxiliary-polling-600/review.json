@@ -1,0 +1,67 @@
+{
+  "schema": "verse.battle.review.v1",
+  "duration_seconds": 600,
+  "source_base": "43f12d6e0bb48e22f151476a14aaab66cca9bee8",
+  "executable_sha256": "ab37e50acc746b332add13d5b7765238004229be2538ff9bfa40fa1c591a8868",
+  "acceptance": "failed",
+  "failures": [
+    "/server/movement_expiry/total: Some(8.0) exceeds 0, or is unavailable",
+    "The soak lacks bounded steady resident memory evidence"
+  ],
+  "movement_expiry": 8,
+  "storage_paused_seconds": 3.5322161859999994,
+  "workload_ticks": 17894,
+  "native_segments": [
+    {
+      "status": "complete",
+      "error": null,
+      "prediction_failures": 0,
+      "prediction_horizon_pauses": 0,
+      "correction_meters": {
+        "samples": 6951,
+        "omitted": 0,
+        "invalid": 0,
+        "p50": 0.0,
+        "p95": 0.06857967376708984,
+        "p99": 0.2996775805950165,
+        "maximum": 0.6400799751281738
+      }
+    },
+    {
+      "status": "complete",
+      "error": null,
+      "prediction_failures": 0,
+      "prediction_horizon_pauses": 0,
+      "correction_meters": {
+        "samples": 7491,
+        "omitted": 0,
+        "invalid": 0,
+        "p50": 0.0,
+        "p95": 0.08364307880401611,
+        "p99": 0.3200399875640869,
+        "maximum": 0.6400800347328186
+      }
+    }
+  ],
+  "rss": {
+    "first_steady_bytes": 1348763648,
+    "peak_steady_bytes": 1421307904,
+    "growth_bytes": 72544256,
+    "budget_bytes": 67108864
+  },
+  "files": {
+    "report.json": "892f0263465aec4aae81253d232065bbbeee17fbdfb8ffe4b875ec94cf9c8864",
+    "source.patch": "9e3032b4de104d4052bfbc7656f1f14c03cc6698f123bb530b8bc6fc0af01ab5"
+  },
+  "findings": [
+    "Both native segments complete with zero prediction failures and horizon pauses and passing correction gates. Throughput, CPU/GPU timing, freshness, population, actions, reconnect, and durable recovery gates pass.",
+    "Eight additional-player movement clocks expire with empty authority queues.",
+    "Steady resident memory grows 72,544,256 bytes, above the unchanged 67,108,864-byte budget."
+  ],
+  "limitations": [
+    "The earlier 120-second pass does not establish sustained acceptance; this soak fails.",
+    "No own compiler ran during measurement; the host is shared.",
+    "The comparison checkout retains its declared source base and own patches; it is not a current-main host deployment.",
+    "Offscreen rendering does not measure physical input-to-display latency."
+  ]
+}
