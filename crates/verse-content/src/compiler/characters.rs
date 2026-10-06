@@ -1160,7 +1160,43 @@ pub fn alice(
         .map(|v| v.position[2])
         .fold(0., f32::max);
     animations(&mut model, &universal_root.join("animations.glb"))?;
+    relax_arms(&mut model, ALICE_ARMS_OUT)?;
     Ok(model)
+}
+/// How far Alice's upper arms turn out from her sides in every clip,
+/// radians: her coat flares over her hips, and the Universal clips hang a
+/// slimmer figure's arms, which would sink her hands into it.
+pub const ALICE_ARMS_OUT: f64 = 0.17;
+/// Turns both upper arms out from the body by `angle` radians, about the
+/// axis the character faces along, in every clip's keys.
+fn relax_arms(model: &mut Model, angle: f64) -> Result<(), String> {
+    let global = globals(model);
+    let skin = model.skin.as_ref().ok_or("The model has no skin")?;
+    let mut turns = Vec::new();
+    for (side, sign) in [("l", 1.0), ("r", -1.0)] {
+        let upper = skin
+            .names
+            .iter()
+            .position(|n| *n == format!("upperarm_{side}"))
+            .ok_or("Missing upper arm")?;
+        let parent = usize::try_from(model.bones[upper].parent).map_err(|_| "Unparented arm")?;
+        let rest = global[parent].to_scale_rotation_translation().1;
+        // The model faces +Z with its left at +X: a turn about +Z raises the
+        // left arm outward, and the opposite turn the right.
+        let half = sign * angle / 2.;
+        let turn = Quat::from_xyzw(0., 0., libm::sin(half), libm::cos(half));
+        turns.push((upper, rest.inverse() * turn * rest));
+    }
+    for clip in &mut model.clips {
+        for track in &mut clip.bones {
+            if let Some((_, turn)) = turns.iter().find(|(bone, _)| *bone == track.bone) {
+                for key in &mut track.rotation {
+                    key.1 = f4((*turn * q4(key.1)).normalize());
+                }
+            }
+        }
+    }
+    Ok(())
 }
 /// Installs Alice's chamber variant as `universal-alice`, a character a
 /// scene can place. She is an NPC, never the player's body.
@@ -1383,6 +1419,27 @@ mod tests {
                 let start = verse_engine::animation::pose(&model, id, 0.);
                 let end = verse_engine::animation::pose(&model, id, duration - 0.000001);
                 assert!(start.iter().zip(end).all(|(a, b)| a.abs_diff_eq(b, 0.001)));
+            }
+        }
+        // Standing idle and mid-walk, her hands hang clear of her coat's
+        // hips (0.21 m from her center at most).
+        let model = alice(&mut pack, &dir, &root, &alice_root, "lod1").unwrap();
+        let skin = model.skin.as_ref().unwrap();
+        for id in [0, 4] {
+            let pose = verse_engine::animation::pose(&model, id, 0.3);
+            for side in ["l", "r"] {
+                let hand = skin
+                    .names
+                    .iter()
+                    .position(|n| *n == format!("middle_01_{side}"))
+                    .unwrap();
+                let bind = glam::Mat4::from_cols_array(&skin.inverse_bind[hand])
+                    .inverse()
+                    .w_axis
+                    .truncate();
+                let at = pose[hand].transform_point3(bind);
+                let at = crate::basis().transform_point3(at);
+                assert!(at.x.abs() > 0.24, "clip {id} {side}: hand at {at}");
             }
         }
         assert!(alice(&mut pack, &dir, &root, &alice_root, "lod9").is_err());

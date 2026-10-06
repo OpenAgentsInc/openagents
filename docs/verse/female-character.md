@@ -58,13 +58,21 @@ What was built:
   (the format needs no new section). `everglade::npcs` stands her idle west
   of the approach, at (-4.6, -21.6), turned toward arrivals, in a 0.6 m block
   of the solids. She has no dialogue or behavior yet.
+- **Figure and fit.** A woman's figure: a bust under the tunic and coat, a
+  waist the sash cinches, hips as wide as her shoulders, slimmer arms and
+  neck, and boots 27 cm long. The coat follows the figure, fitted at the
+  bust and waist and flaring over the hips, with side vents below the hip.
+  The Universal clips hang a slimmer figure's arms, so `characters::alice`
+  turns her upper arms out by `ALICE_ARMS_OUT` (0.17 rad) in every clip,
+  and her hands hang clear of the coat standing and walking; a test checks
+  it.
 
 | Variant | Triangles | Budget | Atlas |
 | --- | ---: | ---: | --- |
-| `lod0` (chamber) | 17,628 | 24,000 | 1024 |
-| `lod1` (Everglade pack) | 14,173 | 16,000 | 512 |
-| `lod2` (phone, once packs split) | 6,390 | 10,000 | 256 |
-| `lod3` (distant, once skinned levels of detail exist) | 2,585 | 3,000 | 256 |
+| `lod0` (chamber) | 17,748 | 24,000 | 1024 |
+| `lod1` (Everglade pack) | 14,165 | 16,000 | 512 |
+| `lod2` (phone, once packs split) | 6,455 | 10,000 | 256 |
+| `lod3` (distant, once skinned levels of detail exist) | 2,577 | 3,000 | 256 |
 
 She adds 0.41 MB to the Everglade pack, so its committed budget rose from
 42.0 MB to 42.4 MB (`Limits::EVERGLADE`). To rebuild and review her:
@@ -99,6 +107,44 @@ construction with none of Echo's likeness:
 - proportions: the eye line at half the head's height, eyes about one eye
   width apart, a defined nose bridge and tip, a philtrum, and a chin and jaw
   that are planes, not a cone.
+
+A second pass measured Echo's LOD0 head itself. The installed engine
+exported her geometry headless (Geometry Script, to OBJ) and her textures,
+to a local study folder that is never committed; Blender rendered study
+views of the bare head. Nothing from it is copied into Alice: no geometry,
+UVs, texture, or likeness. What it teaches:
+
+| Measure | Echo's head |
+| --- | --- |
+| Head, including the neck's top | About 23,800 triangles; each eyeball 1,536; teeth 4,348 |
+| Eye line | 0.112 m below the crown, at half the crown-to-chin height |
+| Eye centers | 0.065 m apart, with the gap between the eyeballs about 0.75 of an eye's width |
+| Nose tip | 0.036 m below the eye line, 0.029 m in front of the corneas |
+| Mouth | 0.063 m below the eye line, close under the nose |
+| Eye assembly | Six shells around each eyeball (2,300 triangles together): lashes, an occlusion blend, a wet tear line, and an overlay |
+| Brows | Strand grooms with a brow mask in the head texture, not mesh |
+
+The construction lessons Alice takes:
+
+- **Eyes read through their frame, not their size.** The lash shells give a
+  dark upper-lid band and the occlusion shell darkens the socket's rim, so
+  the white and the iris stand out. At our scale, Alice's lash line is baked
+  into the head texture as a dark band with a flick at the outer corner,
+  and her eye texture gets more contrast and whiter whites.
+- **Large, open, almond eyes about one eye width apart**, with the outer
+  corners a little higher than the inner, set under a soft brow ridge. Alice's
+  eye openings are 16 percent larger than the base head's, and her eyes turn
+  up a little so her gaze meets the viewer's.
+- **Small, soft features low on the face.** A narrow nose bridge, a rounded
+  tip with soft nostril wings, and a mouth close under it, with a full upper
+  and lower lip and a defined philtrum. Alice's nose sits back in profile
+  (less beak), and her mouth's corners turn up.
+- **An oval face from full cheeks and a soft jaw**, a small rounded chin,
+  and a slim neck. Alice's cheeks are fuller and higher, her jaw narrows
+  less than before, and her neck is slimmer.
+- **Painted warmth carries the face at a distance**: warm cheeks and nose,
+  rose lips, and darker brow strokes. Alice's bake adds warmth on her cheeks,
+  nose, and lips, and her brows are fuller and darker.
 
 ## Mode and the Echo rule
 

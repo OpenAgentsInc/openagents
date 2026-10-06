@@ -59,7 +59,7 @@ from math import cos, exp, pi, sin
 
 import bmesh
 import bpy
-from mathutils import Vector
+from mathutils import Matrix, Vector
 
 sys.path.insert(0, os.path.dirname(__file__))
 import kit  # noqa: E402
@@ -93,11 +93,12 @@ def linear(h):
 # The palette: forest green, warm brown leather, and cream linen, with copper
 # accents; dark auburn hair. No gold anywhere.
 PALETTE = {
-    "skin": "#E2AE8C",
-    "blush": "#FFD2C4",
+    "skin": "#EDB18F",
+    "blush": "#FFC2B0",
     "lips": "#F0A49C",
     "glint": "#FFFFFF",
-    "brow": "#5E2D1C",
+    "brow": "#4E2416",
+    "lash": "#24140F",
     "hair": "#5E2418",
     "hair_inner": "#3A160F",
     "linen": "#E9DDC2",
@@ -341,6 +342,13 @@ def gauss(x, w):
     return exp(-((x / w) ** 2))
 
 
+# The base head's left eye center, and how much larger Alice's eyes are.
+EYE_CENTER = Vector((0.0315, -0.06, 1.656))
+EYE_GROW = 0.16
+# Her arms are this much slimmer than the lofts' first measurements.
+ARM_SLIM = 0.88
+
+
 def reshape(p):
     """Turns the Universal female head into Alice's: a little larger, for
     the stylized proportions of our world; a softer, narrower jaw and a
@@ -348,25 +356,47 @@ def reshape(p):
     and a softer brow ridge. Masks read the original position, so the
     changes don't compound."""
     q = p.copy()
+    # A slimmer neck.
+    neck = smoothstep(1.565, 1.53, p.z)
+    q.x *= 1 - 0.10 * neck
+    q.y = 0.02 + (q.y - 0.02) * (1 - 0.06 * neck)
     k = smoothstep(1.50, 1.57, p.z)
     center = Vector((0.0, -0.005, 1.60))
     q = center + (q - center) * (1 + 0.05 * k)
     front = smoothstep(0.02, -0.045, p.y)
     lower = smoothstep(1.62, 1.545, p.z)
-    q.x *= 1 - 0.075 * lower * front
+    # An oval face: the jaw narrows a little, toward a small, round chin.
+    q.x *= 1 - 0.04 * lower * front
     chin = gauss(p.x, 0.03) * gauss(p.z - 1.55, 0.02) * front
-    q.y += 0.003 * chin
+    q.y += 0.004 * chin
     q.z += 0.002 * chin
-    nose = gauss(p.x, 0.02) * gauss(p.z - 1.614, 0.016) * smoothstep(-0.09, -0.108, p.y)
-    q.y += 0.0075 * nose
-    q.z += 0.0035 * nose
+    # A shorter nose that sits back in profile, with a soft, rounded tip.
+    nose = gauss(p.x, 0.028) * gauss(p.z - 1.614, 0.017) * smoothstep(-0.088, -0.108, p.y)
+    q.y += 0.0085 * nose
+    q.z += 0.003 * nose
+    tip = gauss(p.x, 0.012) * gauss(p.z - 1.612, 0.008) * smoothstep(-0.095, -0.11, p.y)
+    q.x += 0.06 * p.x * tip
     lips = gauss(p.x, 0.021) * gauss(p.z - 1.591, 0.009) * smoothstep(-0.08, -0.092, p.y)
     q.y -= 0.0018 * lips
-    cheek = gauss(abs(p.x) - 0.048, 0.016) * gauss(p.z - 1.618, 0.022) * smoothstep(-0.02, -0.06, p.y)
-    q.x += math.copysign(0.0045 * cheek, p.x)
-    q.y -= 0.003 * cheek
-    brow = gauss(p.z - 1.682, 0.01) * smoothstep(-0.075, -0.09, p.y)
-    q.y += 0.0025 * brow
+    # The mouth's corners turn up into a slight smile.
+    corner = gauss(abs(p.x) - 0.021, 0.006) * gauss(p.z - 1.590, 0.006) * front
+    q.z += 0.0018 * corner
+    # Fuller, higher cheeks.
+    cheek = gauss(abs(p.x) - 0.046, 0.017) * gauss(p.z - 1.622, 0.022) * smoothstep(-0.02, -0.06, p.y)
+    q.x += math.copysign(0.006 * cheek, p.x)
+    q.y -= 0.005 * cheek
+    # A soft brow ridge that shades the eyes, as a game face needs.
+    brow = gauss(p.z - 1.676, 0.008) * gauss(abs(p.x) - 0.03, 0.025) * smoothstep(-0.075, -0.09, p.y)
+    q.y -= 0.0012 * brow
+    # Larger eyes: the lids open wider about each eye's center.
+    for s in (1, -1):
+        c = EYE_CENTER.copy()
+        c.x *= s
+        r = math.hypot(p.x - c.x, (p.z - c.z) * 1.3)
+        w = smoothstep(0.03, 0.012, r) * smoothstep(0.0, -0.05, p.y)
+        if w > 0:
+            q.x += (p.x - c.x) * EYE_GROW * w
+            q.z += (p.z - c.z) * EYE_GROW * w
     # Ears laid closer to the head, so the bob falls over them.
     ear = smoothstep(0.066, 0.078, abs(p.x)) * gauss(p.z - 1.64, 0.05)
     if ear > 0:
@@ -404,19 +434,24 @@ def ubc_head(lod):
     for side in (1, -1):
         vs = [v for v in eyes.data.vertices if v.co.x * side > 0]
         c = sum((v.co for v in vs), Vector()) / len(vs)
-        delta = reshape(c) - c
+        moved = reshape(c)
+        # Larger, and turned up a little, so her gaze meets yours rather
+        # than resting under heavy lids.
+        up = Matrix.Rotation(math.radians(-9), 3, "X")
         for v in vs:
-            v.co += delta
-    # Brows follow the brow ridge, a little slimmer and lower.
+            v.co = moved + up @ ((v.co - c) * (1 + EYE_GROW))
+    # Brows follow the brow ridge.
     for side in (1, -1):
         vs = [v for v in brows.data.vertices if v.co.x * side > 0]
         mz = sum(v.co.z for v in vs) / len(vs)
         for v in vs:
             co = v.co.copy()
-            # Slimmer, a little higher, and the inner ends lifted most, so
-            # her resting look is open rather than stern.
+            # Full enough to read at a distance, a little higher, and the
+            # inner ends lifted most, so her resting look is open rather
+            # than stern.
             inner = smoothstep(0.045, 0.012, abs(co.x))
-            co.z = mz + (co.z - mz) * 0.5 + 0.0015 + 0.0035 * inner
+            arch = gauss(abs(co.x) - 0.034, 0.012)
+            co.z = mz + (co.z - mz) * 0.68 + 0.0055 + 0.002 * inner + 0.0025 * arch
             v.co = reshape(co)
     for o in (body, eyes, brows):
         uv = o.data.uv_layers
@@ -436,7 +471,14 @@ def ubc_head(lod):
     brows.data.materials.clear()
     brows.data.materials.append(material("brow"))
     eye_material(eyes)
-    # Warmth on the cheeks, the nose, and the lips, for the bake.
+    # Warmth on the cheeks, the nose, and the lips, and the lash lines, for
+    # the bake.
+    eye_centers = []
+    for side in (1, -1):
+        vs = [v.co for v in eyes.data.vertices if v.co.x * side > 0]
+        c = sum(vs, Vector()) / len(vs)
+        c.y = min(p.y for p in vs)
+        eye_centers.append(c)
     attr = body.data.color_attributes.new("warm", "FLOAT_COLOR", "POINT")
     for v in body.data.vertices:
         p = v.co
@@ -445,7 +487,23 @@ def ubc_head(lod):
             w += 0.9 * gauss(abs(p.x) - 0.045, 0.018) * gauss(p.z - 1.615, 0.016)
             w += 0.7 * gauss(p.x, 0.012) * gauss(p.z - 1.618, 0.012) * smoothstep(-0.09, -0.105, p.y)
         lip = gauss(p.x, 0.022) * gauss(p.z - 1.591, 0.0075) if p.y < -0.075 else 0.0
-        attr.data[v.index].color = (min(1.0, w), min(1.0, lip), 0, 1)
+        # The upper lid's lash line, a dark band that reads at a distance,
+        # flicked out at the outer corner, and a fainter lower line.
+        lash = 0.0
+        for c in eye_centers:
+            if p.y > c.y + 0.012:
+                continue
+            u = (p.x - c.x) / 0.0195
+            t = (p.z - c.z) / 0.0095
+            e = math.hypot(u, t)
+            if t > -0.15:
+                lash = max(lash, smoothstep(0.82, 0.98, e) * smoothstep(1.45, 1.15, e))
+            elif t > -1.2:
+                lash = max(lash, 0.35 * smoothstep(0.9, 1.0, e) * smoothstep(1.3, 1.1, e))
+            outer = (p.x - c.x) * (1 if c.x > 0 else -1)
+            if 0.014 < outer < 0.026 and abs(p.z - c.z - 0.002 - 0.25 * (outer - 0.014)) < 0.0022:
+                lash = max(lash, 0.9)
+        attr.data[v.index].color = (min(1.0, w), min(1.0, lip), min(1.0, lash), 1)
     bpy.context.view_layer.objects.active = brows
     bpy.ops.object.select_all(action="DESELECT")
     body.select_set(True)
@@ -546,19 +604,21 @@ class Rig:
 # The torso at each height: z, half width, half depth, center y, superellipse
 # exponent. Front is -y.
 TORSO = [
-    (0.80, 0.188, 0.128, 0.010, 2.2, True),
-    (0.86, 0.180, 0.122, 0.010, 2.2, False),
-    (0.93, 0.172, 0.116, 0.012, 2.3, True),
-    (1.00, 0.150, 0.106, 0.010, 2.3, False),
-    (1.06, 0.134, 0.098, 0.006, 2.3, True),
-    (1.12, 0.139, 0.100, 0.000, 2.3, False),
-    (1.19, 0.148, 0.106, -0.004, 2.4, True),
-    (1.26, 0.156, 0.112, -0.004, 2.4, False),
-    (1.32, 0.164, 0.110, 0.000, 2.5, True),
-    (1.38, 0.170, 0.101, 0.010, 2.6, False),
-    (1.43, 0.160, 0.090, 0.015, 2.6, True),
-    (1.47, 0.112, 0.074, 0.020, 2.4, False),
-    (1.50, 0.052, 0.050, 0.022, 2.0, True),
+    # A woman's figure: hips wider than the waist and as wide as the
+    # shoulders, a waist the sash cinches, a bust, and narrower shoulders.
+    (0.80, 0.190, 0.130, 0.012, 2.2, True),
+    (0.86, 0.188, 0.126, 0.014, 2.2, False),
+    (0.93, 0.182, 0.120, 0.016, 2.3, True),
+    (1.00, 0.150, 0.104, 0.010, 2.3, False),
+    (1.06, 0.120, 0.090, 0.006, 2.3, True),
+    (1.12, 0.124, 0.092, 0.000, 2.3, False),
+    (1.19, 0.136, 0.100, -0.004, 2.4, True),
+    (1.26, 0.146, 0.108, -0.004, 2.4, False),
+    (1.32, 0.152, 0.106, 0.000, 2.5, True),
+    (1.38, 0.156, 0.098, 0.010, 2.6, False),
+    (1.43, 0.146, 0.086, 0.015, 2.6, True),
+    (1.47, 0.104, 0.070, 0.020, 2.4, False),
+    (1.50, 0.046, 0.044, 0.022, 2.0, True),
 ]
 
 
@@ -578,11 +638,11 @@ def torso_at(z):
 
 
 def bust(d, p):
-    """The torso's modest bust and shoulder blades."""
+    """The torso's bust, stylized and modest, and shoulder blades."""
     out = 0.0
     if d.y < 0:
         for sx in (-1, 1):
-            out += 0.022 * exp(-(((p.x - sx * 0.072) / 0.055) ** 2)) * exp(-(((p.z - 1.265) / 0.065) ** 2)) * (-d.y)
+            out += 0.064 * exp(-(((p.x - sx * 0.068) / 0.050) ** 2)) * exp(-(((p.z - 1.255) / 0.058) ** 2)) * (-d.y)
     if d.y > 0:
         out += 0.006 * exp(-(((abs(p.x) - 0.08) / 0.05) ** 2)) * exp(-(((p.z - 1.36) / 0.06) ** 2)) * d.y
     return out
@@ -639,7 +699,7 @@ class Alice:
             s = 1 if p.x >= 0 else -1
             # Enough of the thigh that a stride swings the tail, little
             # enough that a tucked knee lifts it as cloth, not as a board.
-            th = 0.62 * smoothstep(1.0, 0.78, p.z) * smoothstep(0.0, 0.16, abs(p.x))
+            th = 0.5 * smoothstep(1.0, 0.78, p.z) * smoothstep(0.0, 0.16, abs(p.x))
             w = mix(w, {side_name("thigh", s): 1.0}, th)
         return w
 
@@ -736,8 +796,8 @@ class Alice:
             aa = abs(al)
             # Where the column leaves the skull: the hairline in front, the
             # equator at the sides and back.
-            hairline = 0.62 + 0.30 * min(1.0, aa / 1.25) ** 2
-            fringe = 0.48 * exp(-(((al + 0.10) / 0.62) ** 2)) * smoothstep(0.95, 0.30, al)
+            hairline = 0.62 + 0.30 * min(1.0, aa / 1.25) ** 2 + 0.28 * smoothstep(0.55, 1.0, aa)
+            fringe = 0.44 * exp(-(((al + 0.05) / 0.78) ** 2)) * smoothstep(1.15, 0.45, al)
             # Tapered locks at the fringe's edge, not one cut line.
             locks = 0.05 * abs(((al * 11 / pi) % 2) - 1) * smoothstep(0.05, 0.25, fringe)
             ph_face = min(1.20, hairline + fringe + locks)
@@ -818,12 +878,12 @@ class Alice:
     def sleeve_radius(self, x):
         rows = self.SLEEVE
         if x <= rows[0][0]:
-            return rows[0][1], rows[0][2]
+            return rows[0][1] * ARM_SLIM, rows[0][2] * ARM_SLIM
         for a, b in zip(rows, rows[1:]):
             if a[0] <= x <= b[0]:
                 t = (x - a[0]) / (b[0] - a[0])
-                return lerp(a[1], b[1], t), lerp(a[2], b[2], t)
-        return rows[-1][1], rows[-1][2]
+                return lerp(a[1], b[1], t) * ARM_SLIM, lerp(a[2], b[2], t) * ARM_SLIM
+        return rows[-1][1] * ARM_SLIM, rows[-1][2] * ARM_SLIM
 
     def arm_left(self):
         """The left arm's tunic sleeve, bracer, and hand, in a mesh of its own."""
@@ -834,7 +894,7 @@ class Alice:
         M.part = "tunic"
         rings = []
         for x, ry, rz, key in self.stations(self.SLEEVE):
-            rings.append(dict(c=self.arm_center(s, x), axis=(1, 0, 0), ref=(0, 1, 0), rx=ry, ry=rz))
+            rings.append(dict(c=self.arm_center(s, x), axis=(1, 0, 0), ref=(0, 1, 0), rx=ry * ARM_SLIM, ry=rz * ARM_SLIM))
         loft(M, rings, segs, "linen", chain.weights)
         # The bracer: wrapped leather from mid forearm to the wrist, tapering
         # onto the wrist.
@@ -938,17 +998,19 @@ class Alice:
     ]
 
     BOOT = [
-        (0.452, 0.058, 0.064, True), (0.447, 0.071, 0.077, False), (0.43, 0.073, 0.079, True),
-        (0.405, 0.069, 0.075, False), (0.398, 0.061, 0.068, True), (0.34, 0.059, 0.067, False),
-        (0.27, 0.053, 0.059, True), (0.20, 0.046, 0.051, False), (0.14, 0.042, 0.047, True),
-        (0.10, 0.041, 0.047, False), (0.075, 0.040, 0.044, True),
+        (0.452, 0.054, 0.060, True), (0.447, 0.064, 0.070, False), (0.43, 0.066, 0.072, True),
+        (0.405, 0.063, 0.069, False), (0.398, 0.056, 0.063, True), (0.34, 0.055, 0.062, False),
+        (0.27, 0.049, 0.054, True), (0.20, 0.042, 0.047, False), (0.14, 0.038, 0.043, True),
+        (0.10, 0.037, 0.042, False), (0.075, 0.036, 0.040, True),
     ]
 
     FOOT = [
-        (0.122, 0.024, 0.062, True), (0.114, 0.036, 0.094, False), (0.094, 0.041, 0.118, True),
-        (0.060, 0.043, 0.118, False), (0.020, 0.045, 0.112, True), (-0.020, 0.047, 0.094, False),
-        (-0.060, 0.049, 0.072, True), (-0.100, 0.048, 0.060, False), (-0.140, 0.045, 0.052, True),
-        (-0.175, 0.039, 0.045, False), (-0.200, 0.029, 0.038, True),
+        # A boot of a woman's size: 27 cm heel to toe, narrow, with a toe
+        # that rises rather than a flat paddle.
+        (0.102, 0.022, 0.060, True), (0.096, 0.032, 0.092, False), (0.080, 0.036, 0.116, True),
+        (0.050, 0.038, 0.116, False), (0.015, 0.039, 0.106, True), (-0.020, 0.040, 0.090, False),
+        (-0.055, 0.041, 0.074, True), (-0.090, 0.040, 0.064, False), (-0.122, 0.037, 0.058, True),
+        (-0.150, 0.032, 0.052, False), (-0.170, 0.023, 0.044, True),
     ]
 
     def leg_left(self):
@@ -1007,49 +1069,57 @@ class Alice:
 
     # Coat, hood, sash, satchel, staff ------------------------------------------------------
 
+    # The coat follows her figure: fitted at the bust and the waist, flaring
+    # over the hips to the knee. Columns: height, half width, half depth,
+    # the front opening's half angle (degrees), and whether the station is
+    # a key one.
     COAT = [
-        (0.47, 0.250, 0.200, 55, True), (0.52, 0.243, 0.193, 53, False), (0.60, 0.230, 0.180, 49, True),
-        (0.70, 0.220, 0.165, 44, False), (0.80, 0.210, 0.154, 38, True), (0.88, 0.204, 0.146, 33, False),
-        (0.94, 0.198, 0.142, 30, True), (1.00, 0.174, 0.128, 27, False), (1.06, 0.152, 0.116, 26, True),
-        (1.12, 0.156, 0.117, 25, False), (1.19, 0.164, 0.122, 23, True), (1.26, 0.172, 0.128, 21, False),
-        (1.32, 0.180, 0.126, 19, True), (1.38, 0.186, 0.117, 17, False), (1.43, 0.177, 0.106, 15, True),
-        (1.468, 0.126, 0.088, 14, True),
+        (0.47, 0.236, 0.186, 55, True), (0.52, 0.231, 0.181, 53, False), (0.60, 0.224, 0.172, 49, True),
+        (0.70, 0.216, 0.162, 44, False), (0.80, 0.210, 0.154, 38, True), (0.88, 0.206, 0.148, 33, False),
+        (0.94, 0.200, 0.140, 30, True), (1.00, 0.168, 0.120, 27, False), (1.06, 0.136, 0.104, 26, True),
+        (1.12, 0.140, 0.106, 25, False), (1.19, 0.152, 0.114, 23, True), (1.26, 0.162, 0.122, 21, False),
+        (1.32, 0.168, 0.120, 19, True), (1.38, 0.172, 0.113, 17, False), (1.43, 0.162, 0.101, 15, True),
+        (1.468, 0.118, 0.084, 14, True),
     ]
+
+    @staticmethod
+    def vent(z):
+        """Half the side vent's opening at height z, radians: closed above the
+        hip, opening toward the hem, so the arms hang clear of the skirt."""
+        return math.radians(11.0) * smoothstep(0.98, 0.72, z)
 
     def coat(self):
         M = self.M
         M.part = "coat"
         rows = self.stations(self.COAT)
-        half = self.L["torso"] // 2 + 1
+        cols = max(3, self.L["torso"] // 4 + 1)
         for s in (1, -1):
-            P = []
-            for z, a, b, opening, key in rows:
-                _, _, yc, n = torso_at(z)
-                op = math.radians(opening)
-                row = []
-                for j in range(half):
-                    t = j / (half - 1)
-                    if s > 0:
-                        th = -pi / 2 + op + t * (pi - op)
-                    else:
-                        th = pi / 2 + t * (pi - op)
-                    row.append(section_point(z, th, sizes=(a, b, yc + 0.006, 2.3 if z < 1.0 else n)))
-                P.append(row)
-            W = [[self.w_coat(p) for p in row] for row in P]
-            nrow = len(P)
-            front_col = 0 if s > 0 else half - 1
+            for piece in ("front", "back"):
+                P = []
+                for z, a, b, opening, key in rows:
+                    _, _, yc, n = torso_at(z)
+                    op = math.radians(opening)
+                    lo, hi = (op, pi / 2 - self.vent(z)) if piece == "front" else (pi / 2 + self.vent(z), pi)
+                    row = []
+                    for j in range(cols):
+                        al = lo + (hi - lo) * j / (cols - 1)
+                        th = -pi / 2 + s * al
+                        row.append(section_point(z, th, sizes=(a, b, yc + 0.006, 2.3 if z < 1.0 else n)))
+                    # Columns counterclockwise about +z, so faces point out.
+                    P.append(row if s > 0 else row[::-1])
+                W = [[self.w_coat(p) for p in row] for row in P]
+                edge = 0 if s > 0 else cols - 2
 
-            def matfn(i, j, nrow=nrow, front_col=front_col):
-                if i == 0:
-                    return "coat_trim"
-                if j == front_col or (front_col == half - 1 and j == half - 2):
-                    return "coat_trim"
-                return "coat"
+                def matfn(i, j, edge=edge, piece=piece):
+                    if i == 0 or (piece == "front" and j == edge):
+                        return "coat_trim"
+                    return "coat"
 
-            vent_rows = sum(1 for r in rows if r[0] < 0.86)
-            shell(M, P, W, 0.007, "coat", "coat_inner", "coat_trim", matfn=matfn,
-                  rims=(True, True, s > 0, s < 0))
-            del vent_rows
+                # Rims on the hem, the shoulder, and the open edges: the
+                # front opening and the side vents.
+                first, last = (piece == "front", True) if s > 0 else (True, piece == "front")
+                shell(M, P, W, 0.007, "coat", "coat_inner", "coat_trim", matfn=matfn,
+                      rims=(True, True, first, last))
         # Sleeves to the elbow with a turned-back cuff.
         L = Mesh()
         L.part = "coat"
@@ -1123,8 +1193,8 @@ class Alice:
         segs = self.L["torso"]
         rings = []
         for z, g in ((0.985, 0.010), (1.005, 0.015), (1.045, 0.015), (1.068, 0.010)):
-            a, b, yc, n = (lerp(0.170, 0.152, (z - 1.0) / 0.06), lerp(0.124, 0.116, (z - 1.0) / 0.06),
-                           torso_at(z)[2] + 0.006, 2.3)
+            a, b, yc, _ = self.coat_size(z)
+            n = 2.3
             rings.append(dict(c=Vector((0, yc, z)), axis=(0, 0, 1), ref=(1, 0, 0), rx=a + g, ry=b + g, n=n))
         loft(M, rings, segs, "sash", self.w_coat)
         # The knot at her left hip and its two hanging ends.
@@ -1321,7 +1391,7 @@ class Alice:
             c = sum(cornea, Vector()) / len(cornea)
             at = Vector((c.x + s * 0.0035, front - 0.0006, c.z + 0.0035))
             n = 6 if self.L.get("lite") else 8
-            ring = [M.vert(at + Vector((0.0016 * cos(2 * pi * k / n), 0, 0.0016 * sin(2 * pi * k / n))),
+            ring = [M.vert(at + Vector((0.0026 * cos(2 * pi * k / n), 0, 0.0026 * sin(2 * pi * k / n))),
                            rigid("Head")) for k in range(n)]
             fan(M, ring, at + Vector((0, -0.0002, 0)), rigid("Head"), "glint", Vector((0, -1, 0)))
 
@@ -1498,9 +1568,18 @@ def face_material(obj):
     # contours are a superhero's; Alice's are softer.
     soft = nt.nodes.new("ShaderNodeMix")
     soft.data_type = "RGBA"
-    soft.inputs["Factor"].default_value = 0.35
+    soft.inputs["Factor"].default_value = 0.5
     nt.links.new(color, soft.inputs["A"])
     soft.inputs["B"].default_value = (*typical.tolist(), 1)
+    # No painted shadow darker than two thirds of her tone: the base's deep
+    # nostrils and mouth corners read as spots at a game's distance.
+    floor = nt.nodes.new("ShaderNodeMix")
+    floor.data_type = "RGBA"
+    floor.blend_type = "LIGHTEN"
+    floor.inputs["Factor"].default_value = 1.0
+    nt.links.new(soft.outputs["Result"], floor.inputs["A"])
+    floor.inputs["B"].default_value = (*(typical * 0.66).tolist(), 1)
+    soft = floor
     mul = nt.nodes.new("ShaderNodeMix")
     mul.data_type = "RGBA"
     mul.blend_type = "MULTIPLY"
@@ -1514,7 +1593,7 @@ def face_material(obj):
     scale = nt.nodes.new("ShaderNodeMath")
     scale.operation = "MULTIPLY"
     nt.links.new(sep.outputs[0], scale.inputs[0])
-    scale.inputs[1].default_value = 0.30
+    scale.inputs[1].default_value = 0.45
     warm = nt.nodes.new("ShaderNodeMix")
     warm.data_type = "RGBA"
     warm.blend_type = "MULTIPLY"
@@ -1532,15 +1611,26 @@ def face_material(obj):
     nt.links.new(lips.outputs[0], rose.inputs["Factor"])
     nt.links.new(warm.outputs["Result"], rose.inputs["A"])
     rose.inputs["B"].default_value = (*linear(PALETTE["lips"]), 1)
-    nt.links.new(rose.outputs["Result"], nt.nodes["Principled BSDF"].inputs["Base Color"])
+    # The lash lines.
+    lash = nt.nodes.new("ShaderNodeMix")
+    lash.data_type = "RGBA"
+    nt.links.new(sep.outputs[2], lash.inputs["Factor"])
+    nt.links.new(rose.outputs["Result"], lash.inputs["A"])
+    lash.inputs["B"].default_value = (*linear(PALETTE["lash"]), 1)
+    nt.links.new(lash.outputs["Result"], nt.nodes["Principled BSDF"].inputs["Base Color"])
     obj.data.materials.clear()
     obj.data.materials.append(m)
 
 
 def eye_material(obj):
-    """The base's eye texture: sclera, a brown iris, and a pupil."""
+    """The base's eye texture: sclera, a brown iris, and a pupil, with more
+    contrast and a whiter white, so the eyes read at a game's distance."""
     m, nt, color = textured("eyes", base_image(obj))
-    nt.links.new(color, nt.nodes["Principled BSDF"].inputs["Base Color"])
+    bc = nt.nodes.new("ShaderNodeBrightContrast")
+    bc.inputs["Bright"].default_value = 0.06
+    bc.inputs["Contrast"].default_value = 0.45
+    nt.links.new(color, bc.inputs["Color"])
+    nt.links.new(bc.outputs["Color"], nt.nodes["Principled BSDF"].inputs["Base Color"])
     obj.data.materials.clear()
     obj.data.materials.append(m)
 
@@ -1619,7 +1709,7 @@ def unwrap(obj, lod):
     saved = {k: me.vertices[k].co.copy() for k in verts}
     center = Vector((0, -0.006, 1.646))
     for k in verts:
-        me.vertices[k].co = center + (me.vertices[k].co - center) * 2.2
+        me.vertices[k].co = center + (me.vertices[k].co - center) * 3.0
     atlas = me.uv_layers.new(name="atlas")
     me.uv_layers.active = atlas
     atlas.active_render = True
@@ -1628,7 +1718,7 @@ def unwrap(obj, lod):
     obj.select_set(True)
     bpy.ops.object.mode_set(mode="EDIT")
     bpy.ops.mesh.select_all(action="SELECT")
-    margin = 2.5 / lod["tex"]
+    margin = 4.0 / lod["tex"]
     bpy.ops.uv.smart_project(angle_limit=math.radians(60), island_margin=margin, area_weight=0.0,
                              scale_to_bounds=False)
     bpy.ops.uv.pack_islands(margin=margin, rotate=True)
@@ -1650,7 +1740,7 @@ def bake(obj, lod):
     scene.cycles.use_denoising = False
     if scene.world is None:
         scene.world = bpy.data.worlds.new("World")
-    scene.world.light_settings.distance = 0.12
+    scene.world.light_settings.distance = 0.07
     size = lod["tex"]
     images = {}
     for kind in ("color", "ao", "normal"):
@@ -1678,7 +1768,7 @@ def bake(obj, lod):
     for axis in (0, 1):
         ao = sum(np.roll(ao, s - 2, axis=axis) * k[s] for s in range(5))
     up = px["normal"][..., 2:3] * 2 - 1
-    shade = (0.52 + 0.48 * np.clip(ao, 0, 1) ** 0.85) * (0.90 + 0.10 * np.clip(up, -1, 1))
+    shade = (0.60 + 0.40 * np.clip(ao, 0, 1) ** 0.85) * (0.92 + 0.10 * np.clip(up, -1, 1))
     lin = np.clip(color * shade, 0, 1)
     srgb = np.where(lin <= 0.0031308, lin * 12.92, 1.055 * np.power(lin, 1 / 2.4) - 0.055)
     # Six bits a channel: soft shading shows no banding at a character's
