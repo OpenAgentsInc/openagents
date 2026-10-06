@@ -348,7 +348,7 @@ fn header_view(frame: &mut Frame, area: Rect, app: &App) {
         span(mode, t::ACCENT_MODEL),
         span(
             truncate(directory, context_width.saturating_sub(prefix_width)),
-            t::PATH,
+            t::TEXT_PRIMARY,
         ),
         span(format!(" / {branch}"), t::GRAY),
     ];

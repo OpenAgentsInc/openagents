@@ -91,7 +91,7 @@ pub fn parameter_lines(value: &serde_json::Value, width: u16) -> Vec<Line<'stati
         rows.push(
             Line::from(vec![
                 styled("   │ ", t::GRAY_DIM),
-                styled(format!("{key}: "), t::MD_CODE),
+                styled(format!("{key}: "), t::TEXT_SECONDARY),
                 styled(truncate(value, available), t::GRAY_BRIGHT),
             ])
             .style(Style::default().bg(t::BG_DARK)),
@@ -113,11 +113,11 @@ pub fn parameter_lines(value: &serde_json::Value, width: u16) -> Vec<Line<'stati
 }
 
 pub fn tool_lines(call: &ToolCall, phase: u8, width: u16) -> Vec<Line<'static>> {
-    let (label, accent, input_color) = match call.kind {
-        ToolKind::Read => ("Read", t::ACCENT_SKILL, t::PATH),
-        ToolKind::Search => ("Search", t::ACCENT_SKILL, t::ACCENT_SUCCESS),
-        ToolKind::Edit => ("Edit", t::ACCENT_SUCCESS, t::PATH),
-        ToolKind::Run => ("Run", t::ACCENT_SUCCESS, t::COMMAND),
+    let (label, accent) = match call.kind {
+        ToolKind::Read => ("Read", t::ACCENT_SKILL),
+        ToolKind::Search => ("Search", t::ACCENT_SKILL),
+        ToolKind::Edit => ("Edit", t::ACCENT_SUCCESS),
+        ToolKind::Run => ("Run", t::ACCENT_SUCCESS),
     };
     let (glyph, status_color) = match call.state {
         ToolState::Complete => ("◆", accent),
@@ -131,7 +131,7 @@ pub fn tool_lines(call: &ToolCall, phase: u8, width: u16) -> Vec<Line<'static>> 
             Style::default().fg(accent).add_modifier(Modifier::BOLD),
         ),
         Span::raw(" "),
-        styled(call.input, input_color),
+        styled(call.input, t::TEXT_SECONDARY),
     ])];
 
     if call.kind == ToolKind::Edit && call.state == ToolState::Complete {

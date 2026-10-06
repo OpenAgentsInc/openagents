@@ -50,7 +50,7 @@ pub(super) fn render(frame: &mut Frame, area: Rect, app: &App) {
                     },
                     t::ACCENT_MODEL,
                 ),
-                span("openagents", t::PATH),
+                span("openagents", t::TEXT_PRIMARY),
                 span(" / main", t::GRAY),
             ]))
             .right_aligned(),
