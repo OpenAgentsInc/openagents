@@ -631,6 +631,32 @@ fn native_prediction_binds_local_input_renders_it_and_retires_acknowledgments() 
             .iter()
             .any(|(_, pending)| *pending == Some(token))
     );
+    // A full local history is backpressure, not a new movement timeline.
+    for _ in 0..verse_world::prediction::CAPACITY {
+        if session.prediction.pending() == verse_world::prediction::CAPACITY {
+            break;
+        }
+        session.send(Input::Command(Intent::Jump));
+    }
+    assert_eq!(
+        session.prediction.pending(),
+        verse_world::prediction::CAPACITY
+    );
+    let before_token = session.input_token;
+    let before_failures = session.prediction_failures;
+    session.send(Input::Command(Intent::Move {
+        axes: [0.; 2],
+        yaw: 0.,
+    }));
+    assert_eq!(session.status, "Input queue is busy");
+    assert_eq!(session.prediction.context(), Some(context));
+    assert_eq!(
+        session.prediction.pending(),
+        verse_world::prediction::CAPACITY
+    );
+    assert_eq!(session.frame_cursor, cursor);
+    assert_eq!(session.input_token, before_token);
+    assert_eq!(session.prediction_failures, before_failures);
     session.frame_bindings.insert(token + 1, context);
     updates
         .try_send(Update::FrameBound {

@@ -447,6 +447,10 @@ impl Session {
         }
         if let Input::Command(intent @ (Intent::Move { .. } | Intent::Jump)) = &input {
             if self.prediction.movement_profile() == Some(verse_world::movement::Profile::Frames) {
+                if self.prediction.pending() >= verse_world::prediction::CAPACITY {
+                    self.status = "Input queue is busy".into();
+                    return;
+                }
                 let Some(token) = self.input_token.checked_add(1) else {
                     self.status = "Input token exhausted".into();
                     return;

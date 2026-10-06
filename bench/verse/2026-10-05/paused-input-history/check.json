@@ -1,0 +1,30 @@
+{
+  "schema": "verse.regression.check.v1",
+  "before": {
+    "command": "cargo +1.97.1 test -p verse-world --features service-net paused_clock_movement_samples -- --test-threads=1",
+    "status": "failed",
+    "detail": "At the same paused clock boundary, pending history grew to four entries where one latest untransmitted movement sample should keep it at three."
+  },
+  "after": {
+    "prediction": {
+      "command": "cargo +1.97.1 test -p verse-world --features service-net prediction:: -- --test-threads=1",
+      "status": "passed",
+      "tests": 43
+    },
+    "worker": {
+      "command": "verse_world-0bfd8864a72bdeff service::worker:: --test-threads=1 --nocapture",
+      "status": "passed",
+      "tests": 30
+    },
+    "formatting": "rustfmt +1.97.1 --edition 2024 for affected source; git diff --check",
+    "native_consumer": {
+      "command": "cargo +1.97.1 test -p verse-imported --features chamber-loopback imported::chamber_session -- --test-threads=1",
+      "status": "passed",
+      "tests": 6
+    }
+  },
+  "scenario": "A paused framed clock receives 1,000 increasing movement samples, then a jump and a new direction. Bound stop history, the jump, the latest direction, and subsequent confirmation must survive within the existing capacity.",
+  "limitations": [
+    "The previous battle recorded input-context/budget failures before noncontiguous interval refusals. A new battle has not yet measured this fix."
+  ]
+}

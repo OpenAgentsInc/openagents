@@ -560,11 +560,7 @@ impl Local {
         Ok(())
     }
     pub fn queue(&mut self, token: u64, intent: Intent<Ability>) -> Result<(), String> {
-        if self.baseline.is_none()
-            || token == 0
-            || token <= self.token
-            || self.inputs.len() >= super::CAPACITY
-        {
+        if self.baseline.is_none() || token == 0 || token <= self.token {
             return Err("Local prediction input context or budget is invalid".into());
         }
         match &intent {
@@ -576,6 +572,30 @@ impl Local {
             }
             Intent::Jump => {}
             _ => return Err("Only movement inputs can be predicted".into()),
+        }
+        // Consecutive untransmitted direction samples at the same instant
+        // replace each other. No bound interval or intervening jump changes.
+        if self.movement_profile() == Some(movement::Profile::Frames)
+            && matches!(intent, Intent::Move { .. })
+            && self.inputs.back().is_some_and(|last| {
+                last.step == self.step
+                    && last.sequence.is_none()
+                    && last.superseded_by.is_none()
+                    && matches!(last.intent, Intent::Move { .. })
+                    && !self
+                        .inputs
+                        .iter()
+                        .any(|input| input.superseded_by == Some(last.token))
+            })
+        {
+            let last = self.inputs.back_mut().unwrap();
+            last.token = token;
+            last.intent = intent;
+            self.token = token;
+            return Ok(());
+        }
+        if self.inputs.len() >= super::CAPACITY {
+            return Err("Local prediction input context or budget is invalid".into());
         }
         self.token = token;
         self.inputs.push_back(Input {
@@ -1123,6 +1143,75 @@ mod tests {
         assert_eq!(local.pose().unwrap().position, before);
     }
 
+    #[test]
+    fn paused_clock_movement_samples_preserve_bound_history_jump_and_latest_direction() {
+        let (mut local, mut baseline, geometry) = setup();
+        baseline.profile = movement::Profile::Frames;
+        baseline.epoch += 1;
+        local.observe(baseline, &geometry, 2, 2).unwrap();
+        local.queue(1, movement()).unwrap();
+        for _ in 0..21 {
+            local.advance(0.1).unwrap();
+        }
+        local
+            .queue(
+                2,
+                Intent::Move {
+                    axes: [0.; 2],
+                    yaw: 0.,
+                },
+            )
+            .unwrap();
+        local.advance(4. / 120.).unwrap();
+        let end = local.physics_step();
+        local
+            .grant_world_credit(baseline.life, baseline.epoch, end)
+            .unwrap();
+        for start in (0..end).step_by(4) {
+            let mut frame = local.movement_frame(start, 4).unwrap();
+            frame.sequence = start / 4 + 1;
+            local.bind_movement_frame(&frame).unwrap();
+        }
+        let character = local.character.unwrap();
+        for token in 3..=1002 {
+            local.advance(0.1).unwrap();
+            local.queue(token, movement()).unwrap();
+            assert_eq!(local.physics_step(), end);
+            assert_eq!(local.pending(), 3);
+            assert_eq!(local.context(), Some((baseline.life, baseline.epoch)));
+        }
+        // A jump separates movement samples even at the paused boundary.
+        local.queue(1003, Intent::Jump).unwrap();
+        local.queue(1004, movement()).unwrap();
+        local
+            .queue(
+                1005,
+                Intent::Move {
+                    axes: [0., 1.],
+                    yaw: 0.,
+                },
+            )
+            .unwrap();
+        assert_eq!(local.pending(), 5);
+        assert!(local.contains(1003) && local.contains(1005));
+        assert!(!local.contains(1004));
+        assert_eq!(
+            local.movement_frame(end - 4, 4).unwrap().segments[0].axes,
+            [0.; 2]
+        );
+        baseline.physics_step = end;
+        baseline.world_step = end + 12;
+        baseline.applied_sequence = end / 4;
+        baseline.character = character;
+        baseline.held.refresh([0.; 2], end - 4).unwrap();
+        local.observe_applied(baseline, 3, 3).unwrap();
+        assert_eq!(local.pending(), 3);
+        local.advance(4. / 120.).unwrap();
+        let next = local.movement_frame(end, 4).unwrap();
+        assert!(next.segments[0].jump);
+        assert_eq!(next.segments[0].axes, [0., 1.]);
+        assert_eq!(local.physics_step(), end + 4);
+    }
     #[test]
     fn partial_interval_confirmation_replays_only_unconsumed_steps() {
         let (mut local, mut baseline, geometry) = setup();
