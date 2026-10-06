@@ -438,6 +438,41 @@ openagents studio merge 5be04d27a1c3 --head 8c1e0f4
 openagents --json studio watch
 ```
 
+## The workshop agent (`openagents agent`)
+
+`openagents agent` is a client of the workshop agent, Alice
+([the specification](../verse/workshop-agent.md)). The running host plans,
+checks, and journals every request; this command sends NIP-HOST
+`studio.agent.*` operations over the host's control socket, as Everglade's
+desk panel does. A read falls back to her records in the host root when no
+host answers. Making an agent, attesting her key, retiring her, and adding
+or turning on a standing job are the owner's actions at the host, so they
+write the host root (`--root DIR`, default `~/.openagents/host`) directly.
+
+```sh
+openagents agent new alice --workspace ~/code/openagents --owner-key owner.key
+openagents agent ask alice run the atif tests and tell me what fails --wait
+openagents agent answer alice confirm
+openagents agent ask alice fix the typo in the README --mode task --workspace openagents
+openagents agent show alice
+openagents agent log alice
+openagents agent memory alice note mobile is its own Cargo workspace
+openagents agent memory alice accept 3
+openagents agent jobs alice add nightly-check
+openagents agent jobs alice on nightly-check
+openagents agent stop alice --reason "enough for today"
+openagents agent resume alice
+openagents agent retire alice
+```
+
+`new` makes her own Nostr key in her directory (`key`, mode `0600`) and,
+with `--owner-key FILE`, records the owner's NIP-OA attestation of it for
+`--days N`, at most 365. `stop` runs the kill switch and journals each step;
+`pause` keeps everything and starts nothing new. In the smart terminal,
+`@alice TEXT` on the input line sends the same request as `ask`. A task-mode
+change waits at the Merge station; `openagents studio review TASK` and
+`openagents studio merge TASK` act on it from here.
+
 ## Verse (NIP-MV)
 
 Headless presence: see who is around, listen, speak, move, and gesture.

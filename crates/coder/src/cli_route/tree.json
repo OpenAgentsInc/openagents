@@ -7958,6 +7958,999 @@
       ]
     },
     {
+      "name": "agent",
+      "summary": "The workshop agent, Alice: make her with her own key, ask her, answer her proposals, stop, pause, or retire her, her memory, journal, and standing jobs.",
+      "children": [
+        {
+          "name": "new",
+          "leaf": {
+            "path": [
+              "agent",
+              "new"
+            ],
+            "usage": [
+              "new NAME [--workspace DIR] [--owner-key FILE] [--days N] [--route ROUTE]"
+            ],
+            "forms": [
+              {
+                "tokens": [
+                  {
+                    "kind": "literal",
+                    "word": "new"
+                  },
+                  {
+                    "kind": "positional",
+                    "name": "NAME"
+                  },
+                  {
+                    "kind": "option",
+                    "name": "workspace",
+                    "value": "DIR",
+                    "open": true,
+                    "optional": true
+                  },
+                  {
+                    "kind": "option",
+                    "name": "owner-key",
+                    "value": "FILE",
+                    "open": true,
+                    "optional": true
+                  },
+                  {
+                    "kind": "option",
+                    "name": "days",
+                    "value": "N",
+                    "open": true,
+                    "optional": true
+                  },
+                  {
+                    "kind": "option",
+                    "name": "route",
+                    "value": "ROUTE",
+                    "open": true,
+                    "optional": true
+                  }
+                ]
+              }
+            ],
+            "summary": "Make an agent with her own key, attested by the owner key in FILE (64 hex or nsec1) for N days, at most 365 (default 365).",
+            "effect": "local_write",
+            "runs_on": "connected_computer"
+          }
+        },
+        {
+          "name": "attest",
+          "leaf": {
+            "path": [
+              "agent",
+              "attest"
+            ],
+            "usage": [
+              "attest NAME --owner-key FILE [--days N]"
+            ],
+            "forms": [
+              {
+                "tokens": [
+                  {
+                    "kind": "literal",
+                    "word": "attest"
+                  },
+                  {
+                    "kind": "positional",
+                    "name": "NAME"
+                  },
+                  {
+                    "kind": "option",
+                    "name": "owner-key",
+                    "value": "FILE",
+                    "open": true
+                  },
+                  {
+                    "kind": "option",
+                    "name": "days",
+                    "value": "N",
+                    "open": true,
+                    "optional": true
+                  }
+                ]
+              }
+            ],
+            "summary": "Attest her key again.",
+            "effect": "local_write",
+            "runs_on": "connected_computer"
+          }
+        },
+        {
+          "name": "list",
+          "leaf": {
+            "path": [
+              "agent",
+              "list"
+            ],
+            "usage": [
+              "list"
+            ],
+            "forms": [
+              {
+                "tokens": [
+                  {
+                    "kind": "literal",
+                    "word": "list"
+                  }
+                ]
+              }
+            ],
+            "summary": "Every agent: state, activity, last report, service record.",
+            "effect": "read_only",
+            "runs_on": "connected_computer"
+          }
+        },
+        {
+          "name": "show",
+          "leaf": {
+            "path": [
+              "agent",
+              "show"
+            ],
+            "usage": [
+              "show NAME"
+            ],
+            "forms": [
+              {
+                "tokens": [
+                  {
+                    "kind": "literal",
+                    "word": "show"
+                  },
+                  {
+                    "kind": "positional",
+                    "name": "NAME"
+                  }
+                ]
+              }
+            ],
+            "summary": "One agent in full: key, attestation, transcript, jobs.",
+            "effect": "read_only",
+            "runs_on": "connected_computer"
+          }
+        },
+        {
+          "name": "ask",
+          "leaf": {
+            "path": [
+              "agent",
+              "ask"
+            ],
+            "usage": [
+              "ask NAME TEXT... [--mode MODE] [--workspace LABEL] [--from DIR] [--wait]"
+            ],
+            "forms": [
+              {
+                "tokens": [
+                  {
+                    "kind": "literal",
+                    "word": "ask"
+                  },
+                  {
+                    "kind": "positional",
+                    "name": "NAME"
+                  },
+                  {
+                    "kind": "positional",
+                    "name": "TEXT",
+                    "repeated": true
+                  },
+                  {
+                    "kind": "option",
+                    "name": "mode",
+                    "value": "MODE",
+                    "open": true,
+                    "optional": true
+                  },
+                  {
+                    "kind": "option",
+                    "name": "workspace",
+                    "value": "LABEL",
+                    "open": true,
+                    "optional": true
+                  },
+                  {
+                    "kind": "option",
+                    "name": "from",
+                    "value": "DIR",
+                    "open": true,
+                    "optional": true
+                  },
+                  {
+                    "kind": "option",
+                    "name": "wait",
+                    "optional": true
+                  }
+                ]
+              }
+            ],
+            "summary": "Hand her a request; MODE is auto, task, or terminal, DIR is where you asked from, and --wait follows it to her report.",
+            "effect": "publishes",
+            "runs_on": "connected_computer"
+          }
+        },
+        {
+          "name": "answer",
+          "children": [
+            {
+              "name": "confirm",
+              "leaf": {
+                "path": [
+                  "agent",
+                  "answer",
+                  "confirm"
+                ],
+                "usage": [
+                  "answer NAME confirm"
+                ],
+                "forms": [
+                  {
+                    "tokens": [
+                      {
+                        "kind": "literal",
+                        "word": "answer"
+                      },
+                      {
+                        "kind": "positional",
+                        "name": "NAME"
+                      },
+                      {
+                        "kind": "literal",
+                        "word": "confirm"
+                      }
+                    ]
+                  }
+                ],
+                "summary": "CONFIRM the command she proposed.",
+                "effect": "publishes",
+                "runs_on": "connected_computer"
+              }
+            },
+            {
+              "name": "reject",
+              "leaf": {
+                "path": [
+                  "agent",
+                  "answer",
+                  "reject"
+                ],
+                "usage": [
+                  "answer NAME reject"
+                ],
+                "forms": [
+                  {
+                    "tokens": [
+                      {
+                        "kind": "literal",
+                        "word": "answer"
+                      },
+                      {
+                        "kind": "positional",
+                        "name": "NAME"
+                      },
+                      {
+                        "kind": "literal",
+                        "word": "reject"
+                      }
+                    ]
+                  }
+                ],
+                "summary": "REJECT the command she proposed.",
+                "effect": "publishes",
+                "runs_on": "connected_computer"
+              }
+            }
+          ]
+        },
+        {
+          "name": "stop",
+          "leaf": {
+            "path": [
+              "agent",
+              "stop"
+            ],
+            "usage": [
+              "stop NAME [--reason TEXT]"
+            ],
+            "forms": [
+              {
+                "tokens": [
+                  {
+                    "kind": "literal",
+                    "word": "stop"
+                  },
+                  {
+                    "kind": "positional",
+                    "name": "NAME"
+                  },
+                  {
+                    "kind": "option",
+                    "name": "reason",
+                    "value": "TEXT",
+                    "open": true,
+                    "optional": true
+                  }
+                ]
+              }
+            ],
+            "summary": "The kill switch: her standing jobs go off, her panes are released with Ctrl+C, her work is cancelled, and she starts nothing until resumed. Each step is journaled.",
+            "effect": "publishes",
+            "runs_on": "connected_computer"
+          }
+        },
+        {
+          "name": "pause",
+          "leaf": {
+            "path": [
+              "agent",
+              "pause"
+            ],
+            "usage": [
+              "pause NAME"
+            ],
+            "forms": [
+              {
+                "tokens": [
+                  {
+                    "kind": "literal",
+                    "word": "pause"
+                  },
+                  {
+                    "kind": "positional",
+                    "name": "NAME"
+                  }
+                ]
+              }
+            ],
+            "summary": "She keeps everything and starts nothing new.",
+            "effect": "publishes",
+            "runs_on": "connected_computer"
+          }
+        },
+        {
+          "name": "resume",
+          "leaf": {
+            "path": [
+              "agent",
+              "resume"
+            ],
+            "usage": [
+              "resume NAME"
+            ],
+            "forms": [
+              {
+                "tokens": [
+                  {
+                    "kind": "literal",
+                    "word": "resume"
+                  },
+                  {
+                    "kind": "positional",
+                    "name": "NAME"
+                  }
+                ]
+              }
+            ],
+            "summary": "She takes work again.",
+            "effect": "publishes",
+            "runs_on": "connected_computer"
+          }
+        },
+        {
+          "name": "retire",
+          "leaf": {
+            "path": [
+              "agent",
+              "retire"
+            ],
+            "usage": [
+              "retire NAME"
+            ],
+            "forms": [
+              {
+                "tokens": [
+                  {
+                    "kind": "literal",
+                    "word": "retire"
+                  },
+                  {
+                    "kind": "positional",
+                    "name": "NAME"
+                  }
+                ]
+              }
+            ],
+            "summary": "Stop her, delete her key, and keep her journal.",
+            "effect": "local_write",
+            "runs_on": "connected_computer"
+          }
+        },
+        {
+          "name": "log",
+          "leaf": {
+            "path": [
+              "agent",
+              "log"
+            ],
+            "usage": [
+              "log NAME [--after N]"
+            ],
+            "forms": [
+              {
+                "tokens": [
+                  {
+                    "kind": "literal",
+                    "word": "log"
+                  },
+                  {
+                    "kind": "positional",
+                    "name": "NAME"
+                  },
+                  {
+                    "kind": "option",
+                    "name": "after",
+                    "value": "N",
+                    "open": true,
+                    "optional": true
+                  }
+                ]
+              }
+            ],
+            "summary": "Her journal, newest last.",
+            "effect": "read_only",
+            "runs_on": "connected_computer"
+          }
+        },
+        {
+          "name": "memory",
+          "children": [
+            {
+              "name": "list",
+              "leaf": {
+                "path": [
+                  "agent",
+                  "memory",
+                  "list"
+                ],
+                "usage": [
+                  "memory NAME list"
+                ],
+                "forms": [
+                  {
+                    "tokens": [
+                      {
+                        "kind": "literal",
+                        "word": "memory"
+                      },
+                      {
+                        "kind": "positional",
+                        "name": "NAME"
+                      },
+                      {
+                        "kind": "literal",
+                        "word": "list"
+                      }
+                    ]
+                  }
+                ],
+                "summary": "Her memory: projects, preferences, outcomes, and notes.",
+                "effect": "read_only",
+                "runs_on": "connected_computer"
+              }
+            },
+            {
+              "name": "note",
+              "leaf": {
+                "path": [
+                  "agent",
+                  "memory",
+                  "note"
+                ],
+                "usage": [
+                  "memory NAME note TEXT..."
+                ],
+                "forms": [
+                  {
+                    "tokens": [
+                      {
+                        "kind": "literal",
+                        "word": "memory"
+                      },
+                      {
+                        "kind": "positional",
+                        "name": "NAME"
+                      },
+                      {
+                        "kind": "literal",
+                        "word": "note"
+                      },
+                      {
+                        "kind": "positional",
+                        "name": "TEXT",
+                        "repeated": true
+                      }
+                    ]
+                  }
+                ],
+                "summary": "Tell her something to remember.",
+                "effect": "publishes",
+                "runs_on": "connected_computer"
+              }
+            },
+            {
+              "name": "forget",
+              "leaf": {
+                "path": [
+                  "agent",
+                  "memory",
+                  "forget"
+                ],
+                "usage": [
+                  "memory NAME forget ID"
+                ],
+                "forms": [
+                  {
+                    "tokens": [
+                      {
+                        "kind": "literal",
+                        "word": "memory"
+                      },
+                      {
+                        "kind": "positional",
+                        "name": "NAME"
+                      },
+                      {
+                        "kind": "literal",
+                        "word": "forget"
+                      },
+                      {
+                        "kind": "positional",
+                        "name": "ID"
+                      }
+                    ]
+                  }
+                ],
+                "summary": "Forget an entry; the journal keeps only that it was forgotten.",
+                "effect": "publishes",
+                "runs_on": "connected_computer"
+              }
+            },
+            {
+              "name": "accept",
+              "leaf": {
+                "path": [
+                  "agent",
+                  "memory",
+                  "accept"
+                ],
+                "usage": [
+                  "memory NAME accept ID"
+                ],
+                "forms": [
+                  {
+                    "tokens": [
+                      {
+                        "kind": "literal",
+                        "word": "memory"
+                      },
+                      {
+                        "kind": "positional",
+                        "name": "NAME"
+                      },
+                      {
+                        "kind": "literal",
+                        "word": "accept"
+                      },
+                      {
+                        "kind": "positional",
+                        "name": "ID"
+                      }
+                    ]
+                  }
+                ],
+                "summary": "Accept a preference she proposed, so her briefings carry it.",
+                "effect": "publishes",
+                "runs_on": "connected_computer"
+              }
+            },
+            {
+              "name": "reject",
+              "leaf": {
+                "path": [
+                  "agent",
+                  "memory",
+                  "reject"
+                ],
+                "usage": [
+                  "memory NAME reject ID"
+                ],
+                "forms": [
+                  {
+                    "tokens": [
+                      {
+                        "kind": "literal",
+                        "word": "memory"
+                      },
+                      {
+                        "kind": "positional",
+                        "name": "NAME"
+                      },
+                      {
+                        "kind": "literal",
+                        "word": "reject"
+                      },
+                      {
+                        "kind": "positional",
+                        "name": "ID"
+                      }
+                    ]
+                  }
+                ],
+                "summary": "Reject a preference she proposed.",
+                "effect": "publishes",
+                "runs_on": "connected_computer"
+              }
+            }
+          ]
+        },
+        {
+          "name": "jobs",
+          "children": [
+            {
+              "name": "list",
+              "leaf": {
+                "path": [
+                  "agent",
+                  "jobs",
+                  "list"
+                ],
+                "usage": [
+                  "jobs NAME list"
+                ],
+                "forms": [
+                  {
+                    "tokens": [
+                      {
+                        "kind": "literal",
+                        "word": "jobs"
+                      },
+                      {
+                        "kind": "positional",
+                        "name": "NAME"
+                      },
+                      {
+                        "kind": "literal",
+                        "word": "list"
+                      }
+                    ]
+                  }
+                ],
+                "summary": "Her standing jobs, all off until you turn one on.",
+                "effect": "read_only",
+                "runs_on": "connected_computer"
+              }
+            },
+            {
+              "name": "add",
+              "leaf": {
+                "path": [
+                  "agent",
+                  "jobs",
+                  "add"
+                ],
+                "usage": [
+                  "jobs NAME add TEMPLATE [--repository OWNER/REPO] [--label L]"
+                ],
+                "forms": [
+                  {
+                    "tokens": [
+                      {
+                        "kind": "literal",
+                        "word": "jobs"
+                      },
+                      {
+                        "kind": "positional",
+                        "name": "NAME"
+                      },
+                      {
+                        "kind": "literal",
+                        "word": "add"
+                      },
+                      {
+                        "kind": "positional",
+                        "name": "TEMPLATE"
+                      },
+                      {
+                        "kind": "option",
+                        "name": "repository",
+                        "value": "OWNER/REPO",
+                        "open": true,
+                        "optional": true
+                      },
+                      {
+                        "kind": "option",
+                        "name": "label",
+                        "value": "L",
+                        "open": true,
+                        "optional": true
+                      }
+                    ]
+                  }
+                ],
+                "summary": "Add nightly-check, watch-issues, or keep-green, off.",
+                "effect": "local_write",
+                "runs_on": "connected_computer"
+              }
+            },
+            {
+              "name": "on",
+              "leaf": {
+                "path": [
+                  "agent",
+                  "jobs",
+                  "on"
+                ],
+                "usage": [
+                  "jobs NAME on JOB"
+                ],
+                "forms": [
+                  {
+                    "tokens": [
+                      {
+                        "kind": "literal",
+                        "word": "jobs"
+                      },
+                      {
+                        "kind": "positional",
+                        "name": "NAME"
+                      },
+                      {
+                        "kind": "literal",
+                        "word": "on"
+                      },
+                      {
+                        "kind": "positional",
+                        "name": "JOB"
+                      }
+                    ]
+                  }
+                ],
+                "summary": "Turn a job on.",
+                "effect": "local_write",
+                "runs_on": "connected_computer"
+              }
+            },
+            {
+              "name": "off",
+              "leaf": {
+                "path": [
+                  "agent",
+                  "jobs",
+                  "off"
+                ],
+                "usage": [
+                  "jobs NAME off JOB"
+                ],
+                "forms": [
+                  {
+                    "tokens": [
+                      {
+                        "kind": "literal",
+                        "word": "jobs"
+                      },
+                      {
+                        "kind": "positional",
+                        "name": "NAME"
+                      },
+                      {
+                        "kind": "literal",
+                        "word": "off"
+                      },
+                      {
+                        "kind": "positional",
+                        "name": "JOB"
+                      }
+                    ]
+                  }
+                ],
+                "summary": "Turn a job off.",
+                "effect": "local_write",
+                "runs_on": "connected_computer"
+              }
+            },
+            {
+              "name": "delete",
+              "leaf": {
+                "path": [
+                  "agent",
+                  "jobs",
+                  "delete"
+                ],
+                "usage": [
+                  "jobs NAME delete JOB"
+                ],
+                "forms": [
+                  {
+                    "tokens": [
+                      {
+                        "kind": "literal",
+                        "word": "jobs"
+                      },
+                      {
+                        "kind": "positional",
+                        "name": "NAME"
+                      },
+                      {
+                        "kind": "literal",
+                        "word": "delete"
+                      },
+                      {
+                        "kind": "positional",
+                        "name": "JOB"
+                      }
+                    ]
+                  }
+                ],
+                "summary": "Delete a job.",
+                "effect": "local_write",
+                "runs_on": "connected_computer"
+              }
+            },
+            {
+              "name": "renew",
+              "leaf": {
+                "path": [
+                  "agent",
+                  "jobs",
+                  "renew"
+                ],
+                "usage": [
+                  "jobs NAME renew JOB [--days N]"
+                ],
+                "forms": [
+                  {
+                    "tokens": [
+                      {
+                        "kind": "literal",
+                        "word": "jobs"
+                      },
+                      {
+                        "kind": "positional",
+                        "name": "NAME"
+                      },
+                      {
+                        "kind": "literal",
+                        "word": "renew"
+                      },
+                      {
+                        "kind": "positional",
+                        "name": "JOB"
+                      },
+                      {
+                        "kind": "option",
+                        "name": "days",
+                        "value": "N",
+                        "open": true,
+                        "optional": true
+                      }
+                    ]
+                  }
+                ],
+                "summary": "Renew a job for N days, at most 90 (default 30).",
+                "effect": "local_write",
+                "runs_on": "connected_computer"
+              }
+            }
+          ]
+        }
+      ],
+      "options": [
+        {
+          "kind": "option",
+          "name": "workspace",
+          "value": "DIR",
+          "open": true,
+          "optional": true,
+          "repeated": true
+        },
+        {
+          "kind": "option",
+          "name": "owner-key",
+          "value": "FILE",
+          "open": true,
+          "optional": true,
+          "repeated": true
+        },
+        {
+          "kind": "option",
+          "name": "days",
+          "value": "N",
+          "open": true,
+          "optional": true,
+          "repeated": true
+        },
+        {
+          "kind": "option",
+          "name": "route",
+          "value": "ROUTE",
+          "open": true,
+          "optional": true,
+          "repeated": true
+        },
+        {
+          "kind": "option",
+          "name": "mode",
+          "value": "MODE",
+          "open": true,
+          "optional": true,
+          "repeated": true
+        },
+        {
+          "kind": "option",
+          "name": "from",
+          "value": "DIR",
+          "open": true,
+          "optional": true,
+          "repeated": true
+        },
+        {
+          "kind": "option",
+          "name": "wait",
+          "optional": true,
+          "repeated": true
+        },
+        {
+          "kind": "option",
+          "name": "reason",
+          "value": "TEXT",
+          "open": true,
+          "optional": true,
+          "repeated": true
+        },
+        {
+          "kind": "option",
+          "name": "after",
+          "value": "N",
+          "open": true,
+          "optional": true,
+          "repeated": true
+        },
+        {
+          "kind": "option",
+          "name": "repository",
+          "value": "OWNER/REPO",
+          "open": true,
+          "optional": true,
+          "repeated": true
+        },
+        {
+          "kind": "option",
+          "name": "label",
+          "value": "L",
+          "open": true,
+          "optional": true,
+          "repeated": true
+        },
+        {
+          "kind": "option",
+          "name": "root",
+          "optional": true,
+          "repeated": true
+        },
+        {
+          "kind": "option",
+          "name": "control",
+          "optional": true,
+          "repeated": true
+        }
+      ]
+    },
+    {
       "name": "shadow",
       "summary": "What a sample of Coder runs would have cost through the raw engine (off unless set: coder.shadow).",
       "children": [

@@ -16,6 +16,7 @@ use std::process::ExitCode;
 
 // `connect`, `labor`, `pay`, `service`, `ssh`, `wallet`, and `x402` are Unix-only
 // (see the dispatch below); Windows builds the rest.
+mod agent;
 mod argv;
 #[cfg(unix)]
 mod background;
@@ -133,6 +134,9 @@ Coder:
   studio       Agent Studio: one command to launch it on a repository, seats, goals a
                lead plans, plan entries released as their dependencies finish,
                shared memory, and messages to seats.
+  agent        The workshop agent, Alice: make her with her own key, ask her,
+               answer her proposals, stop, pause, or retire her, her memory,
+               journal, and standing jobs.
   shadow       What a sample of Coder runs would have cost through the raw engine
                (off unless set: coder.shadow).
   efficiency   Routed against raw delegation, from recorded runs: cost per
@@ -329,6 +333,7 @@ fn main() -> ExitCode {
         "settings" => settings::run(&output, &rest),
         "boat" => boat_run::run(&output, &rest),
         "studio" => studio::run(&output, &rest),
+        "agent" | "agents" => agent::run(&output, &rest),
         "shadow" => shadow::run(&output, &rest),
         "efficiency" => efficiency::run(&output, &rest),
         "cloud" => cloud::run(&output, &rest),
@@ -412,9 +417,26 @@ pub fn runtime() -> tokio::runtime::Runtime {
 }
 
 async fn host(arguments: &[String]) -> u8 {
+    // The host root, as `coder host` reads it: `--root DIR`, else
+    // ~/.openagents/host. The workshop agents live there.
+    let root = arguments
+        .windows(2)
+        .find(|pair| pair[0] == "--root")
+        .map(|pair| std::path::PathBuf::from(&pair[1]))
+        .or_else(|| {
+            std::env::var_os("HOME")
+                .map(|home| std::path::PathBuf::from(home).join(".openagents/host"))
+        });
     let open = Box::new(
-        |store: &Path, workspaces: &std::collections::BTreeMap<String, std::path::PathBuf>| {
-            let inbox = coder::task::remote::Inbox::new(store, workspaces.clone());
+        move |store: &Path, workspaces: &std::collections::BTreeMap<String, std::path::PathBuf>| {
+            let mut inbox = coder::task::remote::Inbox::new(store, workspaces.clone());
+            if let Some(root) = root.clone() {
+                inbox = inbox.with_agents(coder::task::agent_host::Agents::new(
+                    root,
+                    store,
+                    workspaces.clone(),
+                ));
+            }
             Ok(std::sync::Arc::new(inbox) as std::sync::Arc<dyn coder_host::Tasks>)
         },
     );
