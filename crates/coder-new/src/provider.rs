@@ -128,6 +128,18 @@ impl Provider {
         messages: Vec<Message>,
         callback: &mut (dyn FnMut(&str) + Send),
     ) -> Result<Streamed, String> {
+        self.stream_with_options_and_model(model, options, messages, callback, &mut |_| {})
+            .await
+    }
+
+    pub async fn stream_with_options_and_model(
+        &self,
+        model: &str,
+        options: &crate::models::GenerationOptions,
+        messages: Vec<Message>,
+        callback: &mut (dyn FnMut(&str) + Send),
+        model_callback: &mut (dyn FnMut(&str) + Send),
+    ) -> Result<Streamed, String> {
         if messages.is_empty() {
             return Err("Add a message before requesting a reply.".into());
         }
@@ -150,7 +162,7 @@ impl Provider {
             request = request.max_tokens(limit);
         }
         self.chat
-            .stream(&request, callback)
+            .stream_with_model(&request, callback, model_callback)
             .await
             .map_err(stream_error)
     }
@@ -333,14 +345,20 @@ mod tests {
         let (base, server) = fixture(200, "text/event-stream", body);
         let provider = Provider::with_base(ApiKey::new(FIXTURE_TOKEN), &base).unwrap();
         let mut received = Vec::new();
+        let mut models = Vec::new();
         let reply = runtime()
-            .block_on(
-                provider.stream("", vec![Message::user("hello")], &mut |delta| {
+            .block_on(provider.stream_with_options_and_model(
+                "",
+                &crate::models::GenerationOptions::default(),
+                vec![Message::user("hello")],
+                &mut |delta| {
                     received.push(delta.to_owned());
-                }),
-            )
+                },
+                &mut |model| models.push(model.to_owned()),
+            ))
             .unwrap();
         assert_eq!(received, ["Hello ", "there"]);
+        assert_eq!(models, ["fixture/model"]);
         assert_eq!(reply.text, "Hello there");
         assert_eq!(reply.model, "fixture/model");
         assert_eq!(reply.usage.total_tokens, 4);
@@ -393,13 +411,24 @@ mod tests {
             assert!(!error.contains(FIXTURE_TOKEN));
             server.join().unwrap();
         }
-        let body =
-            format!("data: {{\"error\":{{\"code\":429,\"message\":\"{FIXTURE_TOKEN}\"}}}}\n\n");
+        let body = format!(
+            "data: {{\"model\":\"fixture/served-model\",\"choices\":[{{\"delta\":{{\"content\":\"Partial\"}}}}]}}\n\ndata: {{\"error\":{{\"code\":429,\"message\":\"{FIXTURE_TOKEN}\"}}}}\n\n"
+        );
         let (base, server) = fixture(200, "text/event-stream", &body);
         let provider = Provider::with_base(ApiKey::new(FIXTURE_TOKEN), &base).unwrap();
+        let mut models = Vec::new();
+        let mut text = String::new();
         let error = runtime()
-            .block_on(provider.stream("fixture/model", vec![Message::user("hello")], &mut |_| {}))
+            .block_on(provider.stream_with_options_and_model(
+                "openrouter/free",
+                &crate::models::GenerationOptions::default(),
+                vec![Message::user("hello")],
+                &mut |delta| text.push_str(delta),
+                &mut |model| models.push(model.to_owned()),
+            ))
             .unwrap_err();
+        assert_eq!(models, ["fixture/served-model"]);
+        assert_eq!(text, "Partial");
         assert!(error.contains("429"));
         assert!(!error.contains(FIXTURE_TOKEN));
         server.join().unwrap();

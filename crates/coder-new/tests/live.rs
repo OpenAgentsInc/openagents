@@ -125,7 +125,7 @@ fn transcript(app: &App) -> Vec<(&str, &str)> {
         .iter()
         .map(|entry| match entry {
             Entry::User(text) => ("user", text.as_str()),
-            Entry::Assistant(text) => ("assistant", text.as_str()),
+            Entry::Assistant { text, .. } => ("assistant", text.as_str()),
         })
         .collect()
 }
@@ -402,12 +402,20 @@ fn demo_and_live_keep_separate_preferences_drafts_and_transcripts() {
 fn live_streaming_preserves_stopped_text_and_ignores_stale_updates() {
     let mut app = live_app();
     let first = submit(&mut app, "first question");
+    app.apply_update(Update::Model {
+        id: first.id,
+        model: "provider/stopped-model".into(),
+    });
     app.apply_update(Update::Delta {
         id: first.id,
         text: "partial reply".into(),
     });
     assert!(app.live.busy);
     assert_eq!(app.live.partial, "partial reply");
+    assert_eq!(
+        app.live.partial_model.as_deref(),
+        Some("provider/stopped-model")
+    );
     assert!(render(&mut app, 80, 24).contains("partial reply"));
 
     app.open_plugin_settings();
@@ -432,6 +440,12 @@ fn live_streaming_preserves_stopped_text_and_ignores_stale_updates() {
     key(&mut app, KeyCode::Esc);
     assert!(!app.live.busy);
     assert!(app.live.partial.is_empty());
+    assert!(app.live.partial_model.is_none());
+    assert!(matches!(
+        &app.live.entries[1],
+        Entry::Assistant { model, .. }
+            if model.as_deref() == Some("provider/stopped-model")
+    ));
     assert_eq!(
         transcript(&app),
         [("user", "first question"), ("assistant", "partial reply")]
@@ -439,6 +453,10 @@ fn live_streaming_preserves_stopped_text_and_ignores_stale_updates() {
     app.apply_update(Update::Delta {
         id: first.id,
         text: "late delta".into(),
+    });
+    app.apply_update(Update::Model {
+        id: first.id,
+        model: "provider/late-model".into(),
     });
     app.apply_update(Update::Finished {
         id: first.id,
@@ -456,6 +474,12 @@ fn live_streaming_preserves_stopped_text_and_ignores_stale_updates() {
     key(&mut app, KeyCode::Enter);
     let second = app.request.take().unwrap();
     assert_ne!(second.id, first.id);
+    assert!(app.live.partial_model.is_none());
+    app.apply_update(Update::Model {
+        id: first.id,
+        model: "provider/late-model".into(),
+    });
+    assert!(app.live.partial_model.is_none());
     match second.kind {
         Work::Chat { messages, .. } => {
             let contents: Vec<_> = messages
@@ -493,6 +517,10 @@ fn live_streaming_preserves_stopped_text_and_ignores_stale_updates() {
     assert!(render(&mut app, 80, 24).contains("complete reply"));
 
     let third = submit(&mut app, "last question");
+    app.apply_update(Update::Model {
+        id: third.id,
+        model: "provider/interrupted-model".into(),
+    });
     app.apply_update(Update::Delta {
         id: third.id,
         text: "interrupted reply".into(),
@@ -508,8 +536,109 @@ fn live_streaming_preserves_stopped_text_and_ignores_stale_updates() {
         transcript(&app).last(),
         Some(&("assistant", "interrupted reply"))
     );
+    assert!(matches!(
+        app.live.entries.last().unwrap(),
+        Entry::Assistant { model, .. }
+            if model.as_deref() == Some("provider/interrupted-model")
+    ));
+    assert!(app.live.partial_model.is_none());
     assert!(matches!(app.plugins.connection, Connection::Failed(_)));
     let rendered = render(&mut app, 80, 24);
     assert!(rendered.contains("interrupted reply"));
     assert!(rendered.contains("HTTP 401"));
+}
+
+#[test]
+fn completed_replies_keep_their_served_model_without_a_requested_model_fallback() {
+    let mut app = live_app();
+    assert_eq!(app.plugins.model, "openrouter/free");
+    let first = submit(&mut app, "first question");
+    app.apply_update(Update::Model {
+        id: first.id,
+        model: "provider/initial-model".into(),
+    });
+    let mut first_reply = reply("first answer", 3);
+    first_reply.model = "provider/served-model:free".into();
+    app.apply_update(Update::Finished {
+        id: first.id,
+        result: Ok(first_reply),
+    });
+    app.apply_update(Update::Model {
+        id: first.id,
+        model: "provider/late-model".into(),
+    });
+    assert!(app.live.partial_model.is_none());
+    app.plugins.model = "provider/next-model".into();
+    let second = submit(&mut app, "second question");
+    app.apply_update(Update::Model {
+        id: second.id,
+        model: "provider/observed-model".into(),
+    });
+    app.apply_update(Update::Finished {
+        id: second.id,
+        result: Ok(reply("second answer", 4)),
+    });
+    let models: Vec<_> = app
+        .live
+        .entries
+        .iter()
+        .filter_map(|entry| match entry {
+            Entry::Assistant { model, .. } => Some(model.as_deref()),
+            Entry::User(_) => None,
+        })
+        .collect();
+    assert_eq!(models, [Some("provider/served-model:free"), None]);
+    let sent = serde_json::to_string(&app.live.messages()).unwrap();
+    assert!(!sent.contains("provider/"));
+    assert!(!sent.contains("openrouter/free"));
+    assert!(sent.contains("first answer"));
+    assert!(sent.contains("second answer"));
+}
+
+#[test]
+fn invalid_model_metadata_clears_observed_attribution_and_is_not_stored() {
+    let mut app = live_app();
+    let request = submit(&mut app, "a question");
+    app.apply_update(Update::Delta {
+        id: request.id,
+        text: "partial answer".into(),
+    });
+    for invalid in [
+        "".to_owned(),
+        "provider/model\x1b[31m".to_owned(),
+        "provider/model\nforged label".to_owned(),
+        "provider/modèl".to_owned(),
+        "x".repeat(1025),
+    ] {
+        app.apply_update(Update::Model {
+            id: request.id,
+            model: "provider/model".into(),
+        });
+        assert!(app.live.partial_model.is_some());
+        app.apply_update(Update::Model {
+            id: request.id,
+            model: invalid,
+        });
+        assert!(app.live.partial_model.is_none());
+    }
+    app.apply_update(Update::Finished {
+        id: request.id,
+        result: Err("Fixture stream interrupted.".into()),
+    });
+    assert!(matches!(
+        app.live.entries.last().unwrap(),
+        Entry::Assistant { text, model: None } if text == "partial answer"
+    ));
+
+    let second = submit(&mut app, "next question");
+    let mut reply = reply("complete answer", 1);
+    reply.model = "provider/model\x1b[31m".into();
+    app.apply_update(Update::Finished {
+        id: second.id,
+        result: Ok(reply),
+    });
+    assert!(matches!(
+        app.live.entries.last().unwrap(),
+        Entry::Assistant { model: None, .. }
+    ));
 }

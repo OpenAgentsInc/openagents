@@ -873,7 +873,12 @@ struct StreamReader {
 
 impl StreamReader {
     /// Reads one network chunk, handing each text delta to `sink`.
-    fn push(&mut self, chunk: &[u8], sink: &mut (dyn FnMut(&str) + Send)) -> Result<(), Error> {
+    fn push(
+        &mut self,
+        chunk: &[u8],
+        sink: &mut (dyn FnMut(&str) + Send),
+        model_sink: &mut (dyn FnMut(&str) + Send),
+    ) -> Result<(), Error> {
         self.buffer.extend_from_slice(chunk);
         while let Some(end) = self.buffer.iter().position(|byte| *byte == b'\n') {
             let line: Vec<u8> = self.buffer.drain(..=end).collect();
@@ -881,7 +886,7 @@ impl StreamReader {
                 detail: "a stream line was not UTF-8".to_string(),
                 excerpt: String::new(),
             })?;
-            self.line(line.trim_end_matches('\r'), sink)?;
+            self.line(line.trim_end_matches('\r'), sink, model_sink)?;
         }
         if self.buffer.len() > ERROR_BODY_LIMIT * 64 {
             return Err(Error::Decode {
@@ -892,7 +897,12 @@ impl StreamReader {
         Ok(())
     }
 
-    fn line(&mut self, line: &str, sink: &mut (dyn FnMut(&str) + Send)) -> Result<(), Error> {
+    fn line(
+        &mut self,
+        line: &str,
+        sink: &mut (dyn FnMut(&str) + Send),
+        model_sink: &mut (dyn FnMut(&str) + Send),
+    ) -> Result<(), Error> {
         let Some(data) = line.strip_prefix("data:") else {
             return Ok(());
         };
@@ -922,8 +932,11 @@ impl StreamReader {
                 body: bounded_body(data),
             });
         }
-        if let Some(model) = chunk["model"].as_str() {
+        if let Some(model) = chunk["model"].as_str()
+            && model != self.reply.model
+        {
             self.reply.model = model.to_string();
+            model_sink(model);
         }
         let choice = &chunk["choices"][0];
         if let Some(delta) = choice["delta"]["content"].as_str()
@@ -962,6 +975,24 @@ impl Client {
         &self,
         request: &ChatRequest,
         sink: &mut (dyn FnMut(&str) + Send),
+    ) -> Result<Streamed, Error> {
+        self.stream_with_model(request, sink, &mut |_| {}).await
+    }
+
+    /// Streams a reply and reports the model named by response chunks.
+    ///
+    /// `model_sink` receives each changed model before that chunk's text.
+    /// The requested model is never used as a substitute. An error leaves
+    /// previously delivered text and model notifications with the caller.
+    ///
+    /// # Errors
+    ///
+    /// Returns the same errors as [`Client::stream`].
+    pub async fn stream_with_model(
+        &self,
+        request: &ChatRequest,
+        sink: &mut (dyn FnMut(&str) + Send),
+        model_sink: &mut (dyn FnMut(&str) + Send),
     ) -> Result<Streamed, Error> {
         let mut request = request.clone();
         request.stream = true;
@@ -1014,7 +1045,7 @@ impl Client {
                 }
                 sink(delta);
             };
-            reader.push(&chunk, &mut timed)?;
+            reader.push(&chunk, &mut timed, model_sink)?;
             if reader.done {
                 break;
             }
@@ -1112,18 +1143,22 @@ mod tests {
         .as_bytes();
         let mut reader = StreamReader::default();
         let mut seen = Vec::new();
+        let mut models = Vec::new();
         // One byte at a time, so a line and the two-byte "é" both split.
         for byte in body {
             reader
-                .push(std::slice::from_ref(byte), &mut |delta: &str| {
-                    seen.push(delta.to_string());
-                })
+                .push(
+                    std::slice::from_ref(byte),
+                    &mut |delta: &str| seen.push(delta.to_string()),
+                    &mut |model: &str| models.push(model.to_string()),
+                )
                 .unwrap();
         }
         assert!(reader.done);
         assert_eq!(seen, vec!["café ", "ok"]);
         assert_eq!(reader.reply.text, "café ok");
         assert_eq!(reader.reply.model, "m/x");
+        assert_eq!(models, ["m/x"]);
         assert_eq!(reader.reply.finish_reason.as_deref(), Some("stop"));
         assert_eq!(reader.reply.usage.total_tokens, 5);
     }
@@ -1134,6 +1169,7 @@ mod tests {
         let error = reader
             .push(
                 b"data: {\"error\":{\"code\":429,\"message\":\"slow down\"}}\n",
+                &mut |_: &str| {},
                 &mut |_: &str| {},
             )
             .unwrap_err();
@@ -1147,6 +1183,44 @@ mod tests {
             ),
             "{error:?}"
         );
+    }
+
+    #[test]
+    fn model_notifications_precede_text_and_survive_a_later_error() {
+        use std::sync::{Arc, Mutex};
+
+        let mut reader = StreamReader::default();
+        let events = Arc::new(Mutex::new(Vec::new()));
+        let text_events = Arc::clone(&events);
+        let model_events = Arc::clone(&events);
+        let mut text_sink = move |text: &str| {
+            text_events.lock().unwrap().push(format!("text:{text}"));
+        };
+        let mut model_sink = move |model: &str| {
+            model_events.lock().unwrap().push(format!("model:{model}"));
+        };
+        let body = concat!(
+            "data: {\"model\":\"provider/first\",\"choices\":[{\"delta\":{\"content\":\"One\"}}]}\n\n",
+            "data: {\"model\":\"provider/first\",\"choices\":[{\"delta\":{\"content\":\" two\"}}]}\n\n",
+            "data: {\"model\":\"provider/second\",\"choices\":[]}\n\n",
+            "data: {\"error\":{\"code\":502,\"message\":\"fixture error\"}}\n\n"
+        );
+        assert!(
+            reader
+                .push(body.as_bytes(), &mut text_sink, &mut model_sink)
+                .is_err()
+        );
+        assert_eq!(
+            *events.lock().unwrap(),
+            [
+                "model:provider/first",
+                "text:One",
+                "text: two",
+                "model:provider/second",
+            ]
+        );
+        assert_eq!(reader.reply.model, "provider/second");
+        assert_eq!(reader.reply.text, "One two");
     }
 
     #[tokio::test]

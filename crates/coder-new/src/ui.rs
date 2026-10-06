@@ -17,6 +17,7 @@ use unicode_width::UnicodeWidthStr;
 use crate::{
     App, Mode, Screen,
     agents::{DEMOS, DemoMessage, MAIN_PLUGINS, MAIN_TOOLS, elapsed_time},
+    plugin_definition::RailSlot,
     theme as t,
     tools::{delegation_lines, plugin_lines, tool_lines},
 };
@@ -101,6 +102,7 @@ pub fn render(frame: &mut Frame, app: &mut App) {
         cursor,
         app.mode == Mode::Live || app.selected_agent.is_none(),
         app.model_picker.is_none(),
+        &app.plugins,
     );
     if app.mode == Mode::Demo {
         agent_rail(frame, rail, app);
@@ -342,7 +344,7 @@ fn prompt(text: impl Into<String>) -> Line<'static> {
 
 fn conversation(frame: &mut Frame, area: Rect, app: &mut App) {
     let mut lines = if app.mode == Mode::Live {
-        live_lines(app)
+        live_lines(app, area.width)
     } else if let Some(agent) = app.selected_agent.and_then(|index| DEMOS.get(index)) {
         let mut lines = Vec::new();
         for (index, message) in agent.conversation.iter().enumerate() {
@@ -419,7 +421,7 @@ fn conversation(frame: &mut Frame, area: Rect, app: &mut App) {
     frame.render_widget(paragraph.scroll((app.scroll, 0)), area);
 }
 
-fn live_lines(app: &App) -> Vec<Line<'static>> {
+fn live_lines(app: &App, width: u16) -> Vec<Line<'static>> {
     let mut lines = Vec::new();
     if app.live.entries.is_empty() {
         lines.extend([
@@ -447,19 +449,18 @@ fn live_lines(app: &App) -> Vec<Line<'static>> {
                     });
                 }
             }
-            crate::live::Entry::Assistant(text) => lines.extend(
-                text.lines()
-                    .map(|line| Line::from(span(line, t::TEXT_SECONDARY))),
-            ),
+            crate::live::Entry::Assistant { text, model } => {
+                reply_lines(&mut lines, text, model.as_deref(), width);
+            }
         }
         lines.push(Line::default());
     }
     if !app.live.partial.is_empty() {
-        lines.extend(
-            app.live
-                .partial
-                .lines()
-                .map(|line| Line::from(span(line, t::TEXT_SECONDARY))),
+        reply_lines(
+            &mut lines,
+            &app.live.partial,
+            app.live.partial_model.as_deref(),
+            width,
         );
         lines.push(Line::default());
     }
@@ -483,6 +484,16 @@ fn live_lines(app: &App) -> Vec<Line<'static>> {
     lines
 }
 
+fn reply_lines(lines: &mut Vec<Line<'static>>, text: &str, model: Option<&str>, width: u16) {
+    if let Some(model) = model {
+        lines.push(Line::from(span(truncate(model, width), t::GRAY)).right_aligned());
+    }
+    lines.extend(
+        text.lines()
+            .map(|line| Line::from(span(line, t::TEXT_SECONDARY))),
+    );
+}
+
 fn composer_view(
     frame: &mut Frame,
     area: Rect,
@@ -490,6 +501,7 @@ fn composer_view(
     cursor: (u16, u16),
     main_selected: bool,
     cursor_visible: bool,
+    plugins: &crate::plugins::Plugins,
 ) {
     let block = Block::default()
         .borders(Borders::TOP | Borders::BOTTOM)
@@ -497,6 +509,20 @@ fn composer_view(
         .style(Style::default().bg(t::BG_BASE));
     let inner = block.inner(area);
     frame.render_widget(block, area);
+    for contribution in plugins.composer_rails() {
+        let offset = match contribution.slot {
+            RailSlot::ComposerTopRight => 0,
+            RailSlot::ComposerBottomRight => area.height.saturating_sub(1),
+        };
+        let text = truncate(&contribution.text, area.width.saturating_sub(6));
+        coder_terminal::rail(
+            area,
+            frame.buffer_mut(),
+            offset,
+            None,
+            Some((&text, Style::default().fg(t::GRAY))),
+        );
+    }
     if inner.width < 4 || inner.height == 0 {
         return;
     }

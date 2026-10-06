@@ -6,6 +6,9 @@ use unicode_segmentation::UnicodeSegmentation;
 use crate::{
     Draft,
     models::{DEFAULT_MODEL, GenerationOptions, Model, OPENROUTER_PLUGIN},
+    plugin_definition::{
+        DEFINITIONS, ModelProviderBinding, RailBinding, ResolvedRail, resolve_composer_rails,
+    },
     plugin_store::{SavedPlugin, Store},
 };
 
@@ -113,6 +116,20 @@ pub enum Connection {
 }
 
 impl Plugins {
+    pub fn composer_rails(&self) -> Vec<ResolvedRail> {
+        resolve_composer_rails(DEFINITIONS, |definition, binding| {
+            if !self.enabled || definition.id != OPENROUTER_PLUGIN {
+                return None;
+            }
+            match (definition.model_provider, binding) {
+                (Some(ModelProviderBinding::OpenRouter), RailBinding::SelectedModel) => {
+                    Some(self.model.as_str())
+                }
+                _ => None,
+            }
+        })
+    }
+
     pub fn load_settings(&mut self, store: Store) -> Result<(), String> {
         let loaded = store.load();
         self.store = Some(store);
@@ -432,5 +449,48 @@ impl Plugins {
                 connection
             };
         }
+    }
+}
+
+#[cfg(test)]
+mod rail_tests {
+    use super::*;
+    use crate::{models::openrouter_catalog, plugin_definition::RailSlot};
+
+    #[test]
+    fn enabled_definition_registers_selected_model_without_requiring_a_key() {
+        let mut plugins = Plugins::default();
+        assert!(plugins.composer_rails().is_empty());
+        assert!(plugins.toggle_enabled());
+        assert!(!plugins.key_configured);
+        assert_eq!(
+            plugins.composer_rails(),
+            vec![ResolvedRail {
+                slot: RailSlot::ComposerTopRight,
+                text: DEFAULT_MODEL.into(),
+            }]
+        );
+        assert!(plugins.set_model(&openrouter_catalog()[1], GenerationOptions::default()));
+        assert_eq!(plugins.composer_rails()[0].text, "openai/gpt-6-luna");
+        assert!(plugins.toggle_enabled());
+        assert!(plugins.composer_rails().is_empty());
+    }
+
+    #[test]
+    fn rail_follows_the_current_modes_plugin_preferences() {
+        let mut plugins = Plugins::default();
+        plugins.toggle_enabled();
+        plugins.set_model(&openrouter_catalog()[3], GenerationOptions::default());
+        plugins.set_live(true);
+        assert!(plugins.composer_rails().is_empty());
+        plugins.toggle_enabled();
+        assert_eq!(plugins.composer_rails()[0].text, DEFAULT_MODEL);
+        plugins.set_live(false);
+        assert_eq!(
+            plugins.composer_rails()[0].text,
+            "anthropic/claude-fable-5.1"
+        );
+        plugins.set_live(true);
+        assert_eq!(plugins.composer_rails()[0].text, DEFAULT_MODEL);
     }
 }

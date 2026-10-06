@@ -12,6 +12,7 @@ use crate::provider::{KeyInfo, Provider};
 pub struct Chat {
     pub entries: Vec<Entry>,
     pub partial: String,
+    pub partial_model: Option<String>,
     pub busy: bool,
     pub notice: Option<String>,
     pub tokens: u64,
@@ -19,7 +20,7 @@ pub struct Chat {
 
 pub enum Entry {
     User(String),
-    Assistant(String),
+    Assistant { text: String, model: Option<String> },
 }
 
 impl Chat {
@@ -28,13 +29,22 @@ impl Chat {
             .iter()
             .map(|entry| match entry {
                 Entry::User(text) => Message::user(text.clone()),
-                Entry::Assistant(text) => Message {
+                Entry::Assistant { text, .. } => Message {
                     role: "assistant".into(),
                     content: text.clone(),
                 },
             })
             .collect()
     }
+}
+
+pub(crate) fn model_slug(model: &str) -> Option<String> {
+    (!model.is_empty()
+        && model.len() <= 1024
+        && model
+            .bytes()
+            .all(|byte| byte.is_ascii_alphanumeric() || b"._-/:".contains(&byte)))
+    .then(|| model.to_owned())
 }
 
 pub struct Request {
@@ -61,6 +71,10 @@ pub enum Update {
         id: u64,
         text: String,
     },
+    Model {
+        id: u64,
+        model: String,
+    },
     Finished {
         id: u64,
         result: Result<Streamed, String>,
@@ -70,7 +84,10 @@ pub enum Update {
 impl Update {
     pub fn id(&self) -> u64 {
         match self {
-            Self::Checked { id, .. } | Self::Delta { id, .. } | Self::Finished { id, .. } => *id,
+            Self::Checked { id, .. }
+            | Self::Delta { id, .. }
+            | Self::Model { id, .. }
+            | Self::Finished { id, .. } => *id,
         }
     }
 }
@@ -103,7 +120,8 @@ impl Background {
             loop {
                 match receiver.try_recv() {
                     Ok(update) => {
-                        finished |= !matches!(update, Update::Delta { .. });
+                        finished |=
+                            matches!(update, Update::Checked { .. } | Update::Finished { .. });
                         app.apply_update(update);
                     }
                     Err(mpsc::TryRecvError::Empty) => break,
@@ -197,10 +215,22 @@ fn run_with_provider(
                             text: text.to_owned(),
                         });
                     };
+                    let mut model_callback = |model: &str| {
+                        let _ = sender.send(Update::Model {
+                            id,
+                            model: model.to_owned(),
+                        });
+                    };
                     Update::Finished {
                         id,
                         result: provider
-                            .stream_with_options(&model, &options, messages, &mut callback)
+                            .stream_with_options_and_model(
+                                &model,
+                                &options,
+                                messages,
+                                &mut callback,
+                                &mut model_callback,
+                            )
                             .await,
                     }
                 }
@@ -433,15 +463,22 @@ mod tests {
             app.live.partial == "Loopback "
         });
         assert!(app.live.busy);
+        assert_eq!(app.live.partial_model.as_deref(), Some("fixture/model"));
+        assert!(background.active.is_some());
         assert_eq!(app.live.entries.len(), 1);
         assert!(matches!(&app.live.entries[0], Entry::User(text) if text == "Loopback prompt"));
         finish.send(()).unwrap();
         pump(&mut app, &mut background, |app| !app.live.busy);
         chat_worker.join().unwrap();
         assert!(app.live.partial.is_empty());
+        assert!(app.live.partial_model.is_none());
         assert!(app.live.notice.is_none());
         assert_eq!(app.live.tokens, 5);
-        assert!(matches!(&app.live.entries[1], Entry::Assistant(text) if text == "Loopback reply"));
+        assert!(matches!(
+            &app.live.entries[1],
+            Entry::Assistant { text, model }
+                if text == "Loopback reply" && model.as_deref() == Some("fixture/model")
+        ));
 
         let request = server.join().unwrap();
         assert!(request.starts_with("POST /api/v1/chat/completions HTTP/1.1"));

@@ -4,6 +4,7 @@ pub mod agents;
 pub mod live;
 pub mod model_catalog;
 pub mod models;
+pub mod plugin_definition;
 pub mod plugin_store;
 pub mod plugins;
 pub mod provider;
@@ -109,12 +110,12 @@ impl App {
         self.checking_key = false;
         if self.live.busy {
             if !self.live.partial.is_empty() {
-                self.live
-                    .entries
-                    .push(live::Entry::Assistant(std::mem::take(
-                        &mut self.live.partial,
-                    )));
+                self.live.entries.push(live::Entry::Assistant {
+                    text: std::mem::take(&mut self.live.partial),
+                    model: self.live.partial_model.take(),
+                });
             }
+            self.live.partial_model = None;
             self.live.busy = false;
             self.live.notice = Some("Reply stopped.".into());
         }
@@ -162,14 +163,21 @@ impl App {
                 self.live.partial.push_str(&text);
                 self.scroll = u16::MAX;
             }
-            live::Update::Finished { result, .. } => {
+            live::Update::Model { model, .. } if self.live.busy => {
+                self.live.partial_model = live::model_slug(&model);
+            }
+            live::Update::Finished { result, .. } if self.live.busy => {
                 self.live.busy = false;
                 match result {
                     Ok(reply) => {
                         self.live.tokens =
                             self.live.tokens.saturating_add(reply.usage.total_tokens);
-                        self.live.entries.push(live::Entry::Assistant(reply.text));
+                        self.live.entries.push(live::Entry::Assistant {
+                            text: reply.text,
+                            model: live::model_slug(&reply.model),
+                        });
                         self.live.partial.clear();
+                        self.live.partial_model = None;
                         self.live.notice = None;
                         self.plugins.connection = plugins::Connection::Verified;
                     }
@@ -178,12 +186,12 @@ impl App {
                             self.plugins.connection = plugins::Connection::Failed(error.clone());
                         }
                         if !self.live.partial.is_empty() {
-                            self.live
-                                .entries
-                                .push(live::Entry::Assistant(std::mem::take(
-                                    &mut self.live.partial,
-                                )));
+                            self.live.entries.push(live::Entry::Assistant {
+                                text: std::mem::take(&mut self.live.partial),
+                                model: self.live.partial_model.take(),
+                            });
                         }
+                        self.live.partial_model = None;
                         self.live.notice = Some(error);
                     }
                 }
@@ -226,6 +234,7 @@ impl App {
         self.draft.cursor = 0;
         self.live.notice = None;
         self.live.partial.clear();
+        self.live.partial_model = None;
         self.live.busy = true;
         self.screen = Screen::Conversation;
         self.scroll = u16::MAX;

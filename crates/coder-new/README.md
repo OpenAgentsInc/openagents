@@ -55,6 +55,20 @@ See the [model](../../docs/coder-new/models.svg),
 [reasoning](../../docs/coder-new/model-reasoning.svg), and
 [output limit](../../docs/coder-new/model-output.svg) previews.
 
+When OpenRouter BYOK is enabled, the composer's top-right rail shows the selected
+model, such as `openrouter/free`, in muted gray. The local trusted
+[plugin definition](src/plugin_definition.rs) registers a `SelectedModel`
+binding at `ComposerTopRight`; the renderer consumes enabled registrations.
+Registrations have a plugin-scoped ID, priority, and cell limit, and disappear
+when their plugin is disabled. The host resolves values and owns their styling.
+
+Each live reply shows its actual model slug at the top right, using OpenRouter's
+response metadata. Streaming and stopped replies retain the model observed for
+that reply. Changing the selected model affects the composer and subsequent
+requests; earlier reply labels keep their original attribution. Missing model
+metadata leaves the label absent.
+See the [reply attribution preview](../../docs/coder-new/model-attribution.svg).
+
 Removing a key takes effect when you save. Disabling retains configuration.
 Live plugin preferences and the API key survive restarts in
 `~/.openagents/coder-new/plugins.json`. The directory uses `0700` permissions;
