@@ -33,13 +33,17 @@ fn both_views_and_tiny_terminals_render() {
     let body = transcript_text(&main);
     assert_tool_calls(&body, MAIN_TOOLS.iter());
     let lines: Vec<_> = body.lines().collect();
-    for demo in &DEMOS {
+    for (index, demo) in DEMOS.iter().enumerate() {
         let row = lines
             .iter()
             .position(|line| line.contains(&format!("Delegate {}", demo.name)))
             .unwrap();
         assert!(lines[row + 1].contains(demo.task));
-        assert!(lines[row + 2].contains(&format!("Running · {} tokens", demo.tokens)));
+        assert!(lines[row + 1].contains("Running"));
+        assert!(lines[row + 1].contains(&format!("{} tokens", demo.tokens)));
+        if let Some(next) = DEMOS.get(index + 1) {
+            assert!(lines[row + 2].contains(&format!("Delegate {}", next.name)));
+        }
     }
     key(&mut app, KeyCode::Tab);
     assert!(screen(&mut app, 110, 36).contains("What do you want to build?"));

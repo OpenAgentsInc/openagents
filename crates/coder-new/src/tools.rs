@@ -4,8 +4,9 @@ use ratatui::{
     style::{Color, Modifier, Style},
     text::{Line, Span},
 };
+use unicode_width::UnicodeWidthStr;
 
-use crate::{agents::DemoAgent, theme as t};
+use crate::{agents::DemoAgent, theme as t, ui::truncate};
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum ToolKind {
@@ -90,10 +91,11 @@ pub fn tool_lines(call: &ToolCall, phase: u8) -> Vec<Line<'static>> {
     lines
 }
 
-pub fn delegation_lines(agent: &DemoAgent, phase: u8) -> Vec<Line<'static>> {
-    vec![
-        Line::from(vec![
-            styled(" ◆ ", pulse(t::ACCENT_DELEGATE, phase)),
+pub fn delegation_lines(agent: &DemoAgent, phase: u8, width: u16) -> Vec<Line<'static>> {
+    let narrow = width < 32;
+    let mut header = vec![styled(" ◆ ", pulse(t::ACCENT_DELEGATE, phase))];
+    if !narrow {
+        header.extend([
             Span::styled(
                 "Delegate",
                 Style::default()
@@ -101,18 +103,27 @@ pub fn delegation_lines(agent: &DemoAgent, phase: u8) -> Vec<Line<'static>> {
                     .add_modifier(Modifier::BOLD),
             ),
             Span::raw(" "),
-            styled(agent.name, t::TEXT_PRIMARY),
-        ]),
-        Line::from(vec![
-            styled("   │ ", t::GRAY_DIM),
-            styled(agent.task, t::TEXT_SECONDARY),
-        ]),
-        Line::from(vec![
-            styled("   ╰ ", t::GRAY_DIM),
-            styled("Running", t::ACCENT_MODEL),
-            styled(format!(" · {} tokens", agent.tokens), t::GRAY_BRIGHT),
-        ]),
-    ]
+        ]);
+    }
+    header.push(styled(agent.name, t::TEXT_PRIMARY));
+    let tokens = if narrow {
+        format!(" · {}", agent.tokens)
+    } else {
+        format!(" · {} tokens", agent.tokens)
+    };
+    let task_width = width.saturating_sub(5 + 3 + 7 + tokens.width() as u16);
+    let mut detail = vec![styled("   ╰ ", t::GRAY_DIM)];
+    if task_width > 0 {
+        detail.extend([
+            styled(truncate(agent.task, task_width), t::TEXT_SECONDARY),
+            styled(" · ", t::GRAY_DIM),
+        ]);
+    }
+    detail.extend([
+        styled("Running", t::ACCENT_MODEL),
+        styled(tokens, t::GRAY_BRIGHT),
+    ]);
+    vec![Line::from(header), Line::from(detail)]
 }
 
 fn styled(text: impl Into<String>, color: Color) -> Span<'static> {

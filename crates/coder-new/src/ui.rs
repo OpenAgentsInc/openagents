@@ -144,7 +144,7 @@ fn agent_rail(frame: &mut Frame, area: Rect, selected: Option<usize>) {
     }
 }
 
-fn truncate(text: &str, width: u16) -> String {
+pub(crate) fn truncate(text: &str, width: u16) -> String {
     if text.width() <= usize::from(width) {
         return text.into();
     }
@@ -277,7 +277,7 @@ fn conversation(frame: &mut Frame, area: Rect, app: &mut App) {
             Line::default(),
         ]);
         for agent in &DEMOS {
-            lines.extend(delegation_lines(agent, app.animation_frame));
+            lines.extend(delegation_lines(agent, app.animation_frame, area.width));
         }
         lines
     };
