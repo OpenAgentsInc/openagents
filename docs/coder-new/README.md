@@ -25,7 +25,7 @@ Subagents enabled by default, and OpenRouter BYOK off unless a startup key is
 available. [OpenRouter settings](plugin-settings.png) and Jev settings provide
 masked key entry and key checks. Jev supports TypeSafe direct, Vercel AI Gateway,
 and editable TypeSafe-compatible API bases and models. The [Jev form](jev-settings.png),
-[Vercel gateway form](jev-gateway.png), and [ACP editor](acp-settings.png) are
+[Vercel gateway form](jev-gateway.png), and [ACP agent picker](acp-settings.png) are
 also exported from the terminal renderer.
 Live OpenRouter chat executes enabled plugin
 tools and returns their results to the model; local Microcoder uses existing

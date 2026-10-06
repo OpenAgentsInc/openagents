@@ -352,7 +352,7 @@ impl Plugins {
                 .into_iter()
                 .chain(self.bundled.jev_key())
                 .collect(),
-            agents: self.bundled.acp_agents.clone(),
+            agents: self.bundled.acp_registered(),
             cwd,
         }
     }

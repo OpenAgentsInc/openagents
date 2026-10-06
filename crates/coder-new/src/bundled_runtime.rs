@@ -28,7 +28,7 @@ const ARGUMENT_BYTES: usize = 64 * 1024;
 const RUN_SECONDS: u64 = 600;
 const POLL: Duration = Duration::from_millis(50);
 
-/// A local executable the operator registers, addressed by its stable ID.
+/// A detected or configured local ACP executable, addressed by its stable ID.
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(deny_unknown_fields)]
 pub struct AcpAgent {

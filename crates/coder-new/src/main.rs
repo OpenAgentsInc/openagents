@@ -90,6 +90,15 @@ fn main() -> io::Result<()> {
             }
         }
     }
+    app.plugins.bundled.discover_acp(&|name| {
+        if name == "CODER_ACP_CWD" {
+            std::env::current_dir()
+                .ok()
+                .map(std::path::PathBuf::into_os_string)
+        } else {
+            std::env::var_os(name)
+        }
+    });
     if models {
         app.open_models();
     }

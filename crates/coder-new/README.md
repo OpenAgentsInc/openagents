@@ -75,10 +75,13 @@ judge share the saved connection. Its `jev` tool
 uses the existing Rust SDK to send state and typed Noul, Choice, or Score
 questions, then returns typed answers and probabilities. The registered
 instructions describe when to use those judgments and how to interpret them.
-**ACP Subagents** configures a JSON array of named local ACP executables with
-`id`, `name`, `program`, optional `arguments`, optional `mode`, and `enabled`.
-Paste definitions into its editor and press Ctrl+S to save. Chat delegates
-through `acp_subagent` using a registered ID; it cannot choose an executable.
+**ACP Subagents** detects installed ACP agents on `PATH` and in common local
+installation directories. Its settings show a checkbox list; new agents default
+to on. Up/Down selects an agent, Space or Enter toggles it, and R refreshes
+detection. Live choices save immediately and persist across restarts. Agents
+turned off or no longer installed are excluded from chat's tools. Claude Code
+and Codex require their installed ACP adapters. Chat delegates through
+`acp_subagent` using a registered ID; it cannot choose an executable.
 The host denies ACP permission requests and closes each child session.
 See the [Jev settings](../../docs/coder-new/jev-settings.svg) and
 [ACP settings](../../docs/coder-new/acp-settings.svg) previews.

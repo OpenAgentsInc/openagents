@@ -3,6 +3,10 @@
 use crossterm::event::{KeyCode, KeyEvent};
 use model_access::ApiKey;
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
+use std::{
+    collections::{BTreeMap, BTreeSet},
+    ffi::OsString,
+};
 use unicode_segmentation::UnicodeSegmentation;
 
 use crate::{
@@ -149,8 +153,9 @@ pub struct BundledSettings {
     pub check_requested: bool,
     pub saved: bool,
     pub credential_changed: bool,
-    pub acp_draft: Draft,
-    pub acp_error: Option<String>,
+    pub acp_selected: usize,
+    acp_available: BTreeSet<String>,
+    acp_environment: BTreeMap<String, OsString>,
     jev_key: Option<ApiKey>,
     jev_model: String,
     jev_endpoint: String,
@@ -181,8 +186,9 @@ impl Default for BundledSettings {
             check_requested: false,
             saved: false,
             credential_changed: false,
-            acp_draft: Draft::default(),
-            acp_error: None,
+            acp_selected: 0,
+            acp_available: BTreeSet::new(),
+            acp_environment: BTreeMap::new(),
             jev_key: None,
             jev_model: defaults.jev_model.clone(),
             jev_endpoint: defaults.jev_endpoint.clone(),
@@ -230,12 +236,12 @@ impl BundledSettings {
             return;
         }
         self.discard();
-        self.cancel_acp();
         let current = self.preferences();
         let next = std::mem::replace(&mut self.other, current);
         self.apply(next);
         self.live = live;
         self.connection = Connection::Unchecked;
+        self.refresh_acp();
     }
 
     pub fn load(&mut self, store: Store) -> Result<(), String> {
@@ -257,6 +263,7 @@ impl BundledSettings {
             }
         }
         self.storage_error = None;
+        self.refresh_acp();
         Ok(())
     }
 
@@ -363,9 +370,8 @@ impl BundledSettings {
                 Connection::Failed(_) => "Unavailable",
                 Connection::Unchecked => "Configured",
             },
-            "acp-subagents" if self.acp_agents.iter().all(|agent| !agent.enabled) => {
-                "Setup required"
-            }
+            "acp-subagents" if self.acp_available.is_empty() => "No agents detected",
+            "acp-subagents" if self.acp_registered().is_empty() => "All agents off",
             _ => "Enabled",
         }
     }
@@ -719,42 +725,96 @@ impl BundledSettings {
         true
     }
 
-    pub fn begin_acp(&mut self) {
-        self.acp_draft.text =
-            serde_json::to_string_pretty(&self.acp_agents).unwrap_or_else(|_| "[]".into());
-        self.acp_draft.cursor = self.acp_draft.text.len();
-        self.acp_error = None;
+    /// Snapshot only executable-discovery inputs, never credentials.
+    pub fn discover_acp(&mut self, variable: &dyn Fn(&str) -> Option<OsString>) {
+        self.acp_environment = crate::acp_discovery::ENVIRONMENT
+            .iter()
+            .filter_map(|name| variable(name).map(|value| ((*name).to_owned(), value)))
+            .collect();
+        self.refresh_acp();
     }
 
-    pub fn save_acp(&mut self) -> bool {
-        if self.acp_draft.text.len() > 48 * 1024 {
-            self.acp_error = Some("ACP settings exceed 48 KiB.".into());
-            return false;
-        }
-        let agents: Vec<AcpAgent> = match serde_json::from_str(&self.acp_draft.text) {
-            Ok(agents) => agents,
-            Err(_) => {
-                self.acp_error = Some("Enter a JSON array of ACP subagent definitions.".into());
-                return false;
+    pub fn begin_acp(&mut self) {
+        self.refresh_acp();
+    }
+
+    /// Rescan executable metadata while preserving each saved enabled choice.
+    pub fn refresh_acp(&mut self) {
+        let selected = self
+            .acp_choices()
+            .get(self.acp_selected)
+            .map(|a| a.id.clone());
+        let variable = |name: &str| self.acp_environment.get(name).cloned();
+        let mut available = BTreeSet::new();
+        for mut found in crate::acp_discovery::discover(&variable) {
+            if let Some(saved) = self.acp_agents.iter_mut().find(|a| a.id == found.id) {
+                found.enabled = saved.enabled;
+                *saved = found.clone();
+            } else if self.acp_agents.len() < 32 {
+                self.acp_agents.push(found.clone());
+            } else {
+                continue;
             }
-        };
-        if let Err(error) = valid_agents(&agents) {
-            self.acp_error = Some(error);
-            return false;
+            available.insert(found.id);
         }
+        for agent in &mut self.acp_agents {
+            if !crate::acp_discovery::managed(&agent.id)
+                && !available.contains(&agent.id)
+                && let Some(program) = crate::acp_discovery::resolve(&agent.program, &variable)
+            {
+                agent.program = program;
+                available.insert(agent.id.clone());
+            }
+        }
+        self.acp_available = available;
+        let choices = self.acp_choices();
+        self.acp_selected = selected
+            .and_then(|selected| choices.iter().position(|a| a.id == selected))
+            .unwrap_or_else(|| self.acp_selected.min(choices.len().saturating_sub(1)));
+    }
+
+    /// Installed choices shown by the picker, including agents turned off.
+    pub fn acp_choices(&self) -> Vec<&AcpAgent> {
+        self.acp_agents
+            .iter()
+            .filter(|agent| self.acp_available.contains(&agent.id))
+            .collect()
+    }
+
+    /// Only enabled, currently installed agents can be offered to chat.
+    pub fn acp_registered(&self) -> Vec<AcpAgent> {
+        self.acp_choices()
+            .into_iter()
+            .filter(|agent| agent.enabled)
+            .cloned()
+            .collect()
+    }
+
+    pub fn select_acp(&mut self, backwards: bool) {
+        self.acp_selected = if backwards {
+            self.acp_selected.saturating_sub(1)
+        } else {
+            self.acp_selected
+                .saturating_add(1)
+                .min(self.acp_choices().len().saturating_sub(1))
+        };
+    }
+
+    pub fn toggle_acp_agent(&mut self) -> bool {
+        let Some(agent) = self.acp_choices().get(self.acp_selected).cloned() else {
+            return false;
+        };
+        let id = agent.id.clone();
         let mut value = self.preferences();
-        value.acp_agents = agents;
+        let Some(agent) = value.acp_agents.iter_mut().find(|agent| agent.id == id) else {
+            return false;
+        };
+        agent.enabled = !agent.enabled;
         if !self.persist(&value) {
             return false;
         }
         self.apply(value);
-        self.cancel_acp();
         true
-    }
-
-    pub fn cancel_acp(&mut self) {
-        self.acp_draft = Draft::default();
-        self.acp_error = None;
     }
 }
 
@@ -1040,19 +1100,14 @@ mod tests {
     }
 
     #[test]
-    fn acp_editor_accepts_explicit_programs_and_rejects_duplicate_ids() {
-        let mut settings = BundledSettings::default();
-        settings.begin_acp();
+    fn saved_acp_definitions_accept_explicit_programs_and_require_unique_ids() {
         let agent = serde_json::json!({"id":"reviewer","name":"Reviewer","program":"fixture-agent","arguments":["--acp"],"enabled":true});
-        settings.acp_draft.text = serde_json::json!([agent.clone(), agent.clone()]).to_string();
-        assert!(!settings.save_acp());
-        assert!(settings.acp_agents.is_empty());
-        assert!(settings.acp_error.as_deref().unwrap().contains("unique"));
-        settings.acp_draft.text = serde_json::json!([agent]).to_string();
-        assert!(settings.save_acp());
-        assert_eq!(settings.acp_agents[0].id, "reviewer");
-        assert!(settings.acp_draft.text.is_empty());
-        settings.set_live(true);
-        assert!(settings.acp_agents.is_empty());
+        let agent: AcpAgent = serde_json::from_value(agent).unwrap();
+        assert!(
+            valid_agents(&[agent.clone(), agent.clone()])
+                .unwrap_err()
+                .contains("unique")
+        );
+        assert!(valid_agents(&[agent]).is_ok());
     }
 }

@@ -1,5 +1,6 @@
 //! A Coder terminal with bundled plugins, live chat, and demo fixtures.
 
+pub mod acp_discovery;
 pub mod agents;
 pub mod bundled_runtime;
 pub mod bundled_settings;
@@ -454,21 +455,7 @@ impl App {
                             self.plugins.bundled.paste(&text);
                             return true;
                         }
-                        "acp-subagents" => {
-                            if self
-                                .plugins
-                                .bundled
-                                .acp_draft
-                                .text
-                                .len()
-                                .saturating_add(text.len())
-                                <= 48 * 1024
-                            {
-                                self.plugins.bundled.acp_draft.insert(&text);
-                                self.plugins.bundled.acp_error = None;
-                            }
-                            return true;
-                        }
+                        "acp-subagents" => return true,
                         "openrouter-byok" => {}
                         _ => return true,
                     }
@@ -562,20 +549,24 @@ impl App {
                             return true;
                         }
                         "acp-subagents" => {
-                            if ctrl && key.code == KeyCode::Char('s') {
-                                if self.plugins.bundled.save_acp() {
-                                    if self.mode == Mode::Live {
+                            match key.code {
+                                KeyCode::Esc => self.screen = Screen::Plugins,
+                                KeyCode::Up => self.plugins.bundled.select_acp(true),
+                                KeyCode::Down => self.plugins.bundled.select_acp(false),
+                                KeyCode::Home => self.plugins.bundled.acp_selected = 0,
+                                KeyCode::End => {
+                                    self.plugins.bundled.acp_selected =
+                                        self.plugins.bundled.acp_choices().len().saturating_sub(1);
+                                }
+                                KeyCode::Char('r') => self.plugins.bundled.refresh_acp(),
+                                KeyCode::Char(' ') | KeyCode::Enter => {
+                                    if self.plugins.bundled.toggle_acp_agent()
+                                        && self.mode == Mode::Live
+                                    {
                                         self.cancel_request();
                                     }
-                                    self.screen = Screen::Plugins;
                                 }
-                            } else if key.code == KeyCode::Esc {
-                                self.plugins.bundled.cancel_acp();
-                                self.screen = Screen::Plugins;
-                            } else if key.code == KeyCode::Enter {
-                                self.plugins.bundled.acp_draft.insert("\n");
-                            } else {
-                                self.plugins.bundled.acp_draft.edit(key);
+                                _ => {}
                             }
                             return true;
                         }

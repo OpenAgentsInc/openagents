@@ -5,7 +5,7 @@ use ratatui::{
     layout::Rect,
     style::{Modifier, Style},
     text::{Line, Span, Text},
-    widgets::{Block, Borders, Paragraph},
+    widgets::Paragraph,
 };
 
 use super::{span, truncate};
@@ -285,11 +285,11 @@ fn plugin_details(app: &App, width: u16) -> Vec<Line<'static>> {
                 detail("Tool", "acp_subagent", width),
                 detail(
                     "Agents",
-                    &format!("{} configured", p.bundled.acp_agents.len()),
+                    &format!("{} detected", p.bundled.acp_choices().len()),
                     width,
                 ),
                 Line::from(span(
-                    "Configure named local executables that speak ACP over stdio.",
+                    "Installed agents appear automatically. Choose which to use.",
                     t::GRAY,
                 )),
             ]);
@@ -619,90 +619,115 @@ fn render_fields(
 
 fn acp_settings(frame: &mut Frame, area: Rect, app: &App) {
     let p = &app.plugins.bundled;
-    let instructions = [
-        "Local agents that speak ACP over stdio",
-        "Paste a JSON array. Each agent needs id, name, and program.",
-        "Optional: arguments, mode, enabled. Programs run locally.",
-    ];
-    let instruction_height = 3.min(area.height.saturating_sub(3));
+    let agents = p.acp_choices();
     frame.render_widget(
-        Paragraph::new(Text::from(
-            instructions
-                .iter()
-                .enumerate()
-                .map(|(index, text)| {
-                    Line::from(span(
-                        truncate(text, area.width),
-                        if index == 0 { t::ACCENT_MODEL } else { t::GRAY },
-                    ))
-                })
-                .collect::<Vec<_>>(),
-        )),
-        Rect {
-            height: instruction_height,
-            ..area
-        },
+        Paragraph::new(span("Detected on this computer", t::GRAY)),
+        Rect { height: 1, ..area },
     );
-    let error = p.acp_error.as_ref().or(p.storage_error.as_ref());
-    let footer_height =
-        (2 + u16::from(error.is_some())).min(area.height.saturating_sub(instruction_height + 2));
-    let editor = Rect {
-        y: area.y + instruction_height,
-        height: area
-            .height
-            .saturating_sub(instruction_height + footer_height),
-        ..area
-    };
-    let block = Block::default()
-        .borders(Borders::TOP | Borders::BOTTOM)
-        .border_style(Style::default().fg(t::PROMPT_BORDER_ACTIVE));
-    let inner = block.inner(editor);
-    frame.render_widget(block, editor);
-    if inner.width > 0 && inner.height > 0 {
-        let (rows, cursor) = p.acp_draft.wrapped(inner.width);
-        let scroll = cursor.1.saturating_sub(inner.height.saturating_sub(1));
-        frame.render_widget(
-            Paragraph::new(Text::from(
-                rows.into_iter()
-                    .map(|row| Line::from(span(row, t::TEXT_PRIMARY)))
-                    .collect::<Vec<_>>(),
-            ))
-            .scroll((scroll, 0)),
-            inner,
-        );
-        if app.model_picker.is_none() {
-            frame.set_cursor_position((
-                inner.x + cursor.0.min(inner.width.saturating_sub(1)),
-                inner.y + cursor.1.saturating_sub(scroll),
-            ));
-        }
-    }
-    let mut footer = vec![
-        Line::from(span(
-            truncate("Ctrl+S Save settings · Esc Cancel", area.width),
-            t::GRAY_BRIGHT,
-        )),
-        Line::from(span(
-            truncate(
-                &format!(
-                    "{} configured · Empty array removes all agents",
-                    p.acp_agents.len()
-                ),
-                area.width,
+    let mut footer = vec![Line::from(span(
+        truncate(
+            &format!(
+                "{} detected · {} on",
+                agents.len(),
+                agents.iter().filter(|agent| agent.enabled).count()
             ),
-            t::GRAY,
-        )),
-    ];
-    if let Some(error) = error {
+            area.width,
+        ),
+        t::GRAY,
+    ))];
+    let hints: &[&str] = if area.width >= 66 {
+        &["↑/↓ Select · Space/Enter Toggle · R Refresh · Esc Back"]
+    } else {
+        &["↑/↓ Select · Space/Enter Toggle", "R Refresh · Esc Back"]
+    };
+    footer.extend(
+        hints
+            .iter()
+            .map(|hint| Line::from(span(truncate(hint, area.width), t::GRAY_BRIGHT))),
+    );
+    if let Some(error) = &p.storage_error {
         footer.push(Line::from(span(
             truncate(error, area.width),
             t::DIFF_DELETE_FG,
         )));
     }
+    let footer_height = (footer.len() as u16).min(area.height.saturating_sub(3));
+    let list = Rect {
+        y: area.y + 2,
+        height: area.height.saturating_sub(footer_height + 2),
+        ..area
+    };
+    if agents.is_empty() {
+        frame.render_widget(
+            Paragraph::new(Text::from(vec![
+                Line::from(span("No ACP agents detected.", t::TEXT_PRIMARY)),
+                Line::default(),
+                Line::from(span(
+                    truncate("Install an ACP agent, then press R to refresh.", area.width),
+                    t::GRAY,
+                )),
+            ])),
+            list,
+        );
+    } else {
+        let rows: Vec<_> = agents
+            .iter()
+            .enumerate()
+            .map(|(index, agent)| {
+                let selected = index == p.acp_selected;
+                let mut spans = vec![
+                    span(if selected { "❯ " } else { "  " }, t::ACCENT_MODEL),
+                    span(
+                        if agent.enabled { "[x] " } else { "[ ] " },
+                        if agent.enabled {
+                            t::ACCENT_MODEL
+                        } else {
+                            t::GRAY
+                        },
+                    ),
+                    Span::styled(
+                        if area.width >= 56 {
+                            format!("{:<24}", truncate(&agent.name, 23))
+                        } else {
+                            truncate(&agent.name, area.width.saturating_sub(6))
+                        },
+                        Style::default()
+                            .fg(t::TEXT_PRIMARY)
+                            .add_modifier(if selected {
+                                Modifier::BOLD
+                            } else {
+                                Modifier::empty()
+                            }),
+                    ),
+                ];
+                if area.width >= 56 {
+                    spans.push(span(
+                        truncate(
+                            &agent
+                                .program
+                                .file_name()
+                                .unwrap_or_default()
+                                .to_string_lossy(),
+                            area.width.saturating_sub(30),
+                        ),
+                        t::GRAY,
+                    ));
+                }
+                let row = Line::from(spans);
+                if selected {
+                    row.style(Style::default().bg(t::BG_DARK))
+                } else {
+                    row
+                }
+            })
+            .collect();
+        let scroll = (p.acp_selected as u16).saturating_sub(list.height.saturating_sub(1));
+        frame.render_widget(Paragraph::new(Text::from(rows)).scroll((scroll, 0)), list);
+    }
     frame.render_widget(
         Paragraph::new(Text::from(footer)),
         Rect {
-            y: editor.bottom(),
+            y: list.bottom(),
             height: footer_height,
             ..area
         },
@@ -909,25 +934,53 @@ mod tests {
     }
 
     #[test]
-    fn acp_editor_starts_with_an_empty_array_and_tracks_a_long_cursor() {
+    fn acp_picker_shows_an_empty_state_without_a_text_editor() {
         let mut app = App::default();
         app.screen = Screen::PluginSettings;
         select(&mut app, "acp-subagents");
         app.plugins.bundled.begin_acp();
         let canvas = draw(&app, 80, 24);
-        assert!(canvas.rows.join("\n").contains("[]"));
-        assert!(canvas.rows.join("\n").contains("Ctrl+S Save settings"));
-        assert!(canvas.cursor_visible);
-        app.plugins.bundled.acp_draft.insert(&"\n".repeat(40));
-        app.plugins
-            .bundled
-            .acp_draft
-            .insert("cursor follows this line");
+        let text = canvas.rows.join("\n");
+        assert!(text.contains("No ACP agents detected."));
+        assert!(text.contains("R Refresh"));
+        assert!(!text.contains("JSON"));
+        assert!(!text.contains("[]"));
+        assert!(!canvas.cursor_visible);
+    }
+
+    #[test]
+    fn acp_picker_keeps_the_selected_checkbox_visible_after_resize() {
+        let temporary = tempfile::tempdir().unwrap();
+        let program = temporary
+            .path()
+            .join(if cfg!(windows) { "agent.exe" } else { "agent" });
+        std::fs::write(&program, "").unwrap();
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            std::fs::set_permissions(&program, std::fs::Permissions::from_mode(0o755)).unwrap();
+        }
+        let mut app = App::default();
+        app.screen = Screen::PluginSettings;
+        select(&mut app, "acp-subagents");
+        app.plugins.bundled.acp_agents = (0..24)
+            .map(|index| crate::bundled_runtime::AcpAgent {
+                id: format!("fixture-{index}"),
+                name: format!("Agent {index}"),
+                program: program.clone(),
+                arguments: vec![],
+                mode: None,
+                enabled: true,
+            })
+            .collect();
+        app.plugins.bundled.begin_acp();
+        assert_eq!(app.plugins.bundled.acp_choices().len(), 24);
+        app.plugins.bundled.acp_selected = 23;
+        assert!(app.plugins.bundled.toggle_acp_agent());
         for (width, height) in [(80, 24), (20, 10)] {
             let canvas = draw(&app, width, height);
-            assert!(canvas.cursor_visible);
-            assert!(canvas.cursor.0 < width && canvas.cursor.1 < height);
-            assert!(canvas.rows.iter().any(|row| row.contains("line")));
+            assert!(!canvas.cursor_visible);
+            assert!(canvas.rows.iter().any(|row| row.contains("❯ [ ] Agent 23")));
         }
     }
 
