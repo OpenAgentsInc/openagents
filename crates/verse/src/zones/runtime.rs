@@ -1466,7 +1466,13 @@ impl WorldRuntime {
                 && (at.x - self.player.pos.x).hypot(at.z - self.player.pos.z)
                     <= crate::zones::everglade::studio::TALK_REACH
             {
-                caption = format!("Everglade\nF talks to {agent}, the workshop agent");
+                caption = if self.zone_state.workshop_owner {
+                    format!("Everglade\nF talks to {agent}, your workshop agent")
+                } else {
+                    format!(
+                        "Everglade\n{agent} is the owner's workshop agent; she answers only her owner"
+                    )
+                };
             }
             match &self.zone_state.studio_notice {
                 Some(notice) if caption.is_empty() => notice.clone(),
@@ -1910,6 +1916,12 @@ impl WorldRuntime {
     /// Lead Everglade's caption with `notice`, or with nothing for `None`.
     /// A blank notice counts as none, and a long one is cut to 180
     /// characters.
+    /// Says whether this window's own host answers for the workshop agent:
+    /// only then does her caption offer F, and does F open her panel.
+    pub fn set_workshop_owner(&mut self, owner: bool) {
+        self.zone_state.workshop_owner = owner;
+    }
+
     pub fn set_studio_notice(&mut self, notice: Option<String>) {
         self.zone_state.studio_notice = notice
             .map(|text| text.trim().chars().take(180).collect::<String>())

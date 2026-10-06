@@ -71,6 +71,19 @@ impl Dispatch for Recorder {
     fn spends(&mut self) -> Option<&mut dyn crate::host::Spends> {
         Some(&mut self.1)
     }
+    fn agent(
+        &mut self,
+        request: &str,
+        device: &str,
+        _grant: Option<(&str, u64)>,
+        op: &crate::protocol::Operation,
+    ) -> std::result::Result<serde_json::Value, Code> {
+        self.0
+            .lock()
+            .unwrap()
+            .push((request.into(), device.into(), op.name().into()));
+        Ok(serde_json::json!({"dispatched": "alice"}))
+    }
     fn studio_snapshot(
         &mut self,
         _device: &str,

@@ -298,6 +298,15 @@ impl Dispatch for Dispatcher {
         grant: Option<(&str, u64)>,
         op: &coder_access::protocol::Operation,
     ) -> Result<serde_json::Value, Code> {
+        // Only the owner talks to the workshop agent: the owner's own key,
+        // or a device the owner granted. The access layer has checked the
+        // right the operation needs.
+        if !agent_admits(&self.shared.owner, device, grant) {
+            return self.noted(Err(Refusal::because(
+                Code::Forbidden,
+                "The workshop agent answers only her owner.",
+            )));
+        }
         let principal = principal(device, grant);
         let _ = crate::tasks::take_reason(Code::Unavailable);
         let result = self.shared.tasks.agent(request, &principal, op);
@@ -622,3 +631,24 @@ impl Dispatch for Dispatcher {
 #[cfg(test)]
 #[path = "studio_tests.rs"]
 mod studio_tests;
+
+/// Whether `device`, under `grant`, may talk to the workshop agent: the
+/// host's owner, or a device holding a grant, which only the owner issues.
+pub(crate) fn agent_admits(owner: &str, device: &str, grant: Option<(&str, u64)>) -> bool {
+    device == owner || grant.is_some()
+}
+
+#[cfg(test)]
+mod agent_tests {
+    #[test]
+    fn the_workshop_agent_answers_only_her_owner_and_granted_devices() {
+        let owner = "a".repeat(64);
+        assert!(super::agent_admits(&owner, &owner, None));
+        assert!(super::agent_admits(
+            &owner,
+            &"b".repeat(64),
+            Some(("grant", 1))
+        ));
+        assert!(!super::agent_admits(&owner, &"c".repeat(64), None));
+    }
+}

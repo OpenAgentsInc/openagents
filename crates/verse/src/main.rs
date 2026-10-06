@@ -40,8 +40,11 @@
 //! `--studio-notice <text>` leads Everglade's caption with a notice;
 //! `openagents studio up` passes both.
 //!
-//! In Everglade's workshop, `alice`, the workshop agent, sits at the last
-//! desk; walk up to her and press F to talk (`docs/verse/workshop-agent.md`).
+//! In Everglade, `alice`, the workshop agent, sits at her workstation in
+//! the owner's house at the east end of Library Way; walk in through the
+//! front door, up to her, and press F to talk (`docs/verse/workshop-agent.md`).
+//! `--owners-house` opens Everglade just inside the owner's house's front
+//! door, facing her.
 //! `--workshop-ask <text>` walks you up to her once she is at her desk,
 //! types that request into her panel, and sends it six seconds later, for
 //! a demo or a capture.
@@ -309,6 +312,10 @@ fn parse(mut args: impl Iterator<Item = String>) -> Result<(Option<Shot>, Option
                     [x, z, yaw] => Some([at(x), at(z), at(yaw)]),
                     _ => return Err(format!("--place takes X,Z[,YAW], got {v}")),
                 };
+            }
+            "--owners-house" => {
+                options.everglade = true;
+                options.owners_house = true;
             }
             "--ritual" => options.ritual = Some(value()?.into()),
             "--no-ritual" => options.ritual = None,

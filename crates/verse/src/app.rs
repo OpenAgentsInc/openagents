@@ -120,6 +120,10 @@ pub struct Options {
     /// in centimeters and hundredths of a degree (`--place X,Z[,YAW]` in
     /// meters and degrees), for a demo or a capture.
     pub place: Option<[i32; 3]>,
+    /// Stand the player just inside the owner's house's front door, facing
+    /// the workshop agent at her workstation, once Everglade loads
+    /// (`--owners-house`).
+    pub owners_house: bool,
     /// The pinned chamber the Grid's RITUAL arch joins
     /// ([`crate::ritual::Config`]); `None` draws no arch.
     pub ritual: Option<std::path::PathBuf>,
@@ -165,6 +169,7 @@ impl Default for Options {
             studio_notice: None,
             workshop_ask: None,
             place: None,
+            owners_house: false,
             ritual: crate::ritual::default_config(),
             #[cfg(feature = "remote-chamber")]
             chamber: None,
@@ -1675,18 +1680,30 @@ impl App {
                 eprintln!("--place: {error}");
             }
         }
+        self.runtime.set_workshop_owner(self.workshop.connected());
+        // `--owners-house`: in through the front door, facing her.
+        if in_glade && std::mem::take(&mut self.connection_options.owners_house) {
+            use zones::everglade::layout::estate;
+            let [x, z] = estate::OWNERS_HOUSE.world([0.0, -12.8]);
+            let [tx, tz] = estate::OWNERS_HOUSE.world([0.0, -20.0]);
+            let _ = self
+                .runtime
+                .set_spawn(Vec3::new(x, estate::floor(), z), (tx - x).atan2(tz - z));
+        }
         // `--workshop-ask`: walk up to her and say it, once she stands at
         // her desk.
         let name = crate::workshop::NAME;
         if in_glade
-            && self.workshop.loaded()
+            && self.workshop.connected()
             && self.connection_options.workshop_ask.is_some()
             && !self.runtime.studio().seat_walking(name)
             && let Some(at) = self.runtime.studio().seat_position(name)
             && let Some(text) = self.connection_options.workshop_ask.take()
         {
-            let toward = Vec3::new(0.0 - at.x, 0.0, 8.0 - at.z).normalize_or(Vec3::Z);
-            self.runtime.player.pos = at + toward * 1.8;
+            // Across her workstation in the owner's house, facing her.
+            let (_, facing) = zones::everglade::layout::estate::AliceSpot::Seat.world();
+            let toward = Vec3::new(facing.sin(), 0.0, facing.cos());
+            self.runtime.player.pos = at + toward * crate::workshop::WALK_UP;
             self.runtime.player.yaw = (-toward.x).atan2(-toward.z);
             self.workshop.open = true;
             self.workshop.input = text;
@@ -3212,7 +3229,13 @@ impl App {
             }
             // In Everglade the interact key next to the workshop agent
             // opens her panel; elsewhere it opens the station in reach.
-            if code == KeyCode::KeyF && !self.keys.shift && self.near_workshop_agent() {
+            // Only her owner's window, whose host answers for her, opens
+            // her panel; anyone else sees her and her caption says so.
+            if code == KeyCode::KeyF
+                && !self.keys.shift
+                && self.near_workshop_agent()
+                && self.workshop.connected()
+            {
                 self.workshop.open = true;
                 self.keys = Keys::default();
                 self.climb = 0.0;

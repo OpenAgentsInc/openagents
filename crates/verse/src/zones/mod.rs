@@ -301,6 +301,9 @@ pub(crate) struct State {
     /// What Everglade's caption leads with, such as that no coding agent
     /// can sign in ([`crate::runtime::WorldRuntime::set_studio_notice`]).
     studio_notice: Option<String>,
+    /// Whether this window's own host answers for the workshop agent, so
+    /// she talks to this player: only her owner's windows do.
+    workshop_owner: bool,
     destination: ZoneId,
     plaza_pose: Option<(glam::Vec3, f32)>,
     elapsed: f32,
@@ -332,6 +335,7 @@ impl Default for State {
             dev_destruction: false,
             studio: everglade::studio::Studio::default(),
             studio_notice: None,
+            workshop_owner: false,
             destination: ZoneId::Everglade,
             plaza_pose: None,
             elapsed: 0.0,

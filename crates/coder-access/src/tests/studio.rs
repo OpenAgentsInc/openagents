@@ -416,3 +416,102 @@ async fn a_missed_studio_update_forces_a_fresh_snapshot() {
     mirror.accept(&answer).unwrap();
     assert_eq!(mirror.snapshot().unwrap().stream, "6e");
 }
+
+/// Every `studio.agent.*` operation, as the owner's devices send them.
+fn agent_operations() -> Vec<Operation> {
+    use crate::agent::{JobEdit, MemoryEdit, Mode, Ran};
+    let agent = || "alice".to_string();
+    vec![
+        Operation::ListAgents {},
+        Operation::AskAgent {
+            agent: agent(),
+            text: "run the atif tests".into(),
+            workspace: None,
+            context: String::new(),
+            mode: Mode::Auto,
+            typist: true,
+        },
+        Operation::AnswerAgent {
+            agent: agent(),
+            step: 1,
+            confirm: true,
+        },
+        Operation::AgentRan {
+            agent: agent(),
+            step: 1,
+            ran: Ran {
+                status: Some(0),
+                ..Ran::default()
+            },
+        },
+        Operation::StopAgent {
+            agent: agent(),
+            reason: "enough".into(),
+        },
+        Operation::ListAgentMemory {
+            agent: agent(),
+            after: None,
+        },
+        Operation::EditAgentMemory {
+            agent: agent(),
+            edit: MemoryEdit::Note {
+                text: "a note".into(),
+            },
+        },
+        Operation::ListAgentJobs { agent: agent() },
+        Operation::EditAgentJobs {
+            agent: agent(),
+            edit: JobEdit::Pause {
+                job: "nightly-check".into(),
+            },
+        },
+        Operation::AgentLog {
+            agent: agent(),
+            after: None,
+        },
+    ]
+}
+
+/// Only the owner talks to the workshop agent: the owner's own key and a
+/// device the owner granted `observe` and `operate` reach her, and a
+/// device that may only be in the world with her, such as a guest in a
+/// shared Everglade, is refused every `studio.agent.*` operation at the
+/// host, before the task owner sees it.
+#[tokio::test]
+async fn only_the_owner_and_owner_granted_devices_reach_the_workshop_agent() {
+    let f = Fixture::served(0, false).await;
+    let (_, guest) = f.enroll("world").await;
+    for op in agent_operations() {
+        let error = guest.call(op.clone()).await.unwrap_err();
+        assert_eq!(error.code, Code::MissingRight, "{}", op.name());
+    }
+    assert_eq!(f.recorder.count(), 0, "nothing reached her");
+    // A device with `observe` only reads; it cannot command her.
+    let (_, watcher) = f.enroll("observe").await;
+    for op in agent_operations() {
+        let answer = watcher.call(op.clone()).await;
+        if op.required() == Some(Right::Operate) {
+            assert_eq!(
+                answer.unwrap_err().code,
+                Code::MissingRight,
+                "{}",
+                op.name()
+            );
+        } else {
+            assert!(answer.is_ok(), "{}", op.name());
+        }
+    }
+    // The owner's key, and a device the owner granted `operate`, reach
+    // her with every operation.
+    let before = f.recorder.count();
+    let (_, phone) = f.enroll("observe,operate").await;
+    for client in [f.owner_client(), phone] {
+        for op in agent_operations() {
+            let Outcome::Agent { agent } = client.call(op.clone()).await.unwrap() else {
+                panic!("{} answers as the agent", op.name());
+            };
+            assert_eq!(agent["dispatched"], "alice");
+        }
+    }
+    assert_eq!(f.recorder.count(), before + 2 * agent_operations().len());
+}
