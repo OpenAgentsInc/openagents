@@ -493,7 +493,9 @@ async fn run_impl(
                                 .control()
                                 .ok_or("Client has no admitted adventurer")?
                                 .clone();
-                            next_inventory = client_runtime::Instant::now();
+                            if !matches!(action, Input::BeginMovementFrames { .. }) {
+                                next_inventory = client_runtime::Instant::now();
+                            }
                             match action {
                                 Input::Respawn => Body::Respawn { life: control.life },
                                 Input::BeginMovementFrames { life, epoch } => {
@@ -599,6 +601,13 @@ async fn run_impl(
                     let (body,response) = response?;
                     last_response = Some(Instant::now());
                     let entry = matches!(&body,Body::BeginMovementFrames{..}).then(||response.clone());
+                    if entry.as_ref().is_some_and(|response| matches!(response.body, Reply::Snapshot { .. })) {
+                        // Entry already delivers the movement baseline. Leave one cadence
+                        // for its first input batch before asking for another projection.
+                        let now = client_runtime::Instant::now();
+                        last_snapshot_sent = Some(now);
+                        snapshot_resume = now + cadence;
+                    }
                     if let Some(observer) = &observer {
                         let kind = match &body {
                             Body::Replicate { .. } | Body::Snapshot {} => "snapshot",
@@ -1658,6 +1667,104 @@ mod tests {
         task.await.unwrap().unwrap();
         let _ = host_stop.send(());
         host.await.unwrap();
+    }
+    #[tokio::test]
+    async fn interval_entry_snapshot_defers_the_next_scene_read() {
+        use crate::service::net::{
+            read_frame,
+            tests::{gateway, tls},
+            write_frame,
+        };
+        use crate::service::wire::{MAX_REQUEST_BYTES, MAX_RESPONSE_BYTES, Request};
+        use tokio::net::TcpListener;
+        use tokio_rustls::TlsAcceptor;
+        let keys = [key(231), key(232), key(233)];
+        let mut gateway = gateway(&keys);
+        gateway.tick(0.05).unwrap();
+        let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let address = listener.local_addr().unwrap();
+        let (server_tls, connector) = tls();
+        let (reads, mut observed) = mpsc::channel(16);
+        let (peer_stop, peer_stopping) = oneshot::channel();
+        let peer = tokio::spawn(async move {
+            let (socket, _) = listener.accept().await.unwrap();
+            let mut socket = TlsAcceptor::from(server_tls).accept(socket).await.unwrap();
+            let (id, hello) = gateway.open_json(0).unwrap();
+            write_frame(&mut socket, &hello, MAX_RESPONSE_BYTES)
+                .await
+                .unwrap();
+            let mut entered = false;
+            tokio::pin!(peer_stopping);
+            loop {
+                tokio::select! {
+                    _ = &mut peer_stopping => break,
+                    bytes = read_frame(&mut socket, MAX_REQUEST_BYTES) => {
+                        let Ok(bytes) = bytes else { break };
+                        let request = Request::decode(&bytes).unwrap();
+                        if entered && matches!(request.body, Body::Snapshot {} | Body::Replicate { .. }) {
+                            reads.send(()).await.unwrap();
+                        }
+                        entered |= matches!(request.body, Body::BeginMovementFrames { .. });
+                        let response = gateway.dispatch_json(id, 0, &bytes).unwrap();
+                        write_frame(&mut socket, &response, MAX_RESPONSE_BYTES).await.unwrap();
+                    }
+                }
+            }
+        });
+        let client = Client::connect(
+            address,
+            ServerName::try_from("localhost").unwrap(),
+            connector.config().clone(),
+            120,
+            &keys[0],
+        )
+        .await
+        .unwrap();
+        let control = client.control().unwrap().clone();
+        let (input, inputs, updates, mut output) = channels();
+        input
+            .send(Input::BeginMovementFrames {
+                life: control.life.into(),
+                epoch: control.epoch,
+            })
+            .await
+            .unwrap();
+        let (stop, stopping) = oneshot::channel();
+        let task = tokio::spawn(run(
+            client,
+            Cursor::new(120),
+            Duration::from_millis(200),
+            inputs,
+            updates,
+            stopping,
+        ));
+        let entry = async {
+            while let Some(update) = output.recv().await {
+                if let Update::Snapshot(response) = update {
+                    if matches!(response.body, Reply::Snapshot { ref state }
+                        if state.movement.is_some_and(|b| b.profile == crate::movement::Profile::Frames))
+                    {
+                        return;
+                    }
+                }
+            }
+            panic!("Worker stopped before interval entry");
+        };
+        timeout(Duration::from_secs(3), entry).await.unwrap();
+        // Keep consuming other read classes while checking the scene deadline.
+        let check = async {
+            loop {
+                tokio::select! {
+                    read = observed.recv() => { assert!(read.is_none(), "Entry triggered a duplicate scene read"); return; }
+                    update = output.recv() => { assert!(update.is_some()); }
+                }
+            }
+        };
+        assert!(timeout(Duration::from_millis(100), check).await.is_err());
+        let _ = stop.send(());
+        task.await.unwrap().unwrap();
+        let _ = peer_stop.send(());
+        peer.await.unwrap();
     }
     #[tokio::test]
     async fn periodic_reads_leave_a_gameplay_slot_when_replies_are_withheld() {
