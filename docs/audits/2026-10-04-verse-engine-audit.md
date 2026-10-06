@@ -53,8 +53,10 @@ generations. V21 remediation in
 locomotion, terrain contacts, aim, crowd sampling, and character diagnostics.
 V22 remediation in [#10738](https://github.com/OpenAgentsInc/openagents/issues/10738)
 adds shared shading semantics, contribution-ranked physical lamps, and tiered
-lighting references. Broader art, coordinated operations, device, and population
-readiness remains open in V23–V28.
+lighting references. V23 remediation in [#10739](https://github.com/OpenAgentsInc/openagents/issues/10739)
+adds admitted audio banks, streaming, priorities, captions, and native lifecycle
+handling with controlled callback evidence. Broader art, coordinated operations, device, and population
+readiness remains open in V24–V28.
 
 The [engine roadmap](../verse/engine/roadmap.md) already names a battle with
 about 20 authenticated players and 40 active NPCs. That milestone now has a bounded accepted profile. Neither a 64-player admission limit nor a video with two
@@ -169,7 +171,7 @@ Evidence labels:
 | V20 | P2 | Content production still requires Rust implementation work. | Code, gap | Rust authoring tools | Complete ([#10736](https://github.com/OpenAgentsInc/openagents/issues/10736)) |
 | V21 | P2 | Admitted characters share locomotion, terrain contacts, and author diagnostics. | Code, recorded | Animation and character content | Complete, named-rig profile ([#10737](https://github.com/OpenAgentsInc/openagents/issues/10737)) |
 | V22 | P2 | Declared lighting profiles share shading semantics and tier references. | Code, recorded | Rendering and art direction | Complete, controlled profiles ([#10738](https://github.com/OpenAgentsInc/openagents/issues/10738)) |
-| V23 | P2 | Audio is a bounded mixer, not a complete game audio system. | Code, gap | Audio and platform adapters | In progress ([#10739](https://github.com/OpenAgentsInc/openagents/issues/10739)) |
+| V23 | P2 | Audio is a bounded mixer, not a complete game audio system. | Code, gap | Audio and platform adapters | Complete for the controlled native profile ([#10739](https://github.com/OpenAgentsInc/openagents/issues/10739)) |
 | V24 | P1 | Mobile/browser rendering does not establish authoritative game parity. | Code, gap | Platform world clients | Open |
 | V25 | P2 | MMO social and progression systems need dedicated domains. | Code, gap | Verse game services | Open |
 | V26 | P1 | Player-generated content needs publication and disclosure boundaries. | Code, gap | Content admission and product access | Open |
@@ -1717,21 +1719,57 @@ platform and readiness-reporting scope.
 
 ### V23: Audio needs a content and lifecycle layer
 
-[`audio::Mixer`](../../crates/verse-engine/src/audio.rs) provides bounded PCM
-voices, spatial gain/pan, pitch, looping, and life-scoped release. The
-[`native adapter`](../../crates/verse/src/audio_native.rs) supplies device output,
-bounded command work, and counters. It is a sound foundation, but does not supply
-streaming music/dialogue, mix buses, priorities/virtual voices, environmental
-occlusion, localization, or complete browser/mobile mounting.
+**Original finding:** The owned mixer had bounded PCM, spatial gain/pan, pitch,
+looping, and life-scoped release, but lacked authored banks, streaming, buses,
+priorities, and output-independent presentation. Native queue bounds alone did
+not establish callback allocation, destruction, or deadline behavior.
 
-**Improve:** Add authored sound banks/cues, voice priorities, buses, music and
-dialogue streaming, listener/zone transitions, and platform focus/device recovery.
-Profile callback work and PCM destruction as well as allocation; bounded queues
-alone do not prove audio deadline safety.
+**Remediation:** [#10739](https://github.com/OpenAgentsInc/openagents/issues/10739)
+adds [`audio_bank`](../../crates/verse-engine/src/audio_bank.rs) admission for
+versioned cues, priorities, four buses, localized captions, original procedural
+sources, and digest-bound PCM. Long music/dialogue providers supply immutable
+stereo PCM readers; admission verifies length, samples, and digest before a
+bounded feeder publishes frames. No bank selects a file or network path.
 
-**Acceptance:** A crowded fight preserves critical cues without underruns,
-handles device/focus changes, and restores music correctly after zone changes.
-Captions/subtitles and volume controls remain usable when audio is unavailable.
+[`Mixer`](../../crates/verse-engine/src/audio.rs) holds 128 logical voices,
+mixes 32 audible voices, and bounds streaming to eight sources. It preserves
+music against effect displacement, prioritizes critical effects over footsteps,
+advances virtual clip clocks analytically, and ducks music during dialogue.
+Admission preflights every limit before replacing a voice. Each release uses its
+own fade duration; a regression check prevents music transition gain spikes.
+Completed or refused sources remain owned until off-callback reclamation.
+
+The [`native adapter`](../../crates/verse/src/audio_native.rs) uses preallocated
+SPSC command, capture, and retirement queues, with separate critical admission.
+Control threads prepare voices, decode and feed streams, and reclaim resources;
+callback counters expose timing, gaps, pressure, and separate device/capture/
+stream errors. The [`chamber`](../../crates/verse/examples/chamber_app/audio.rs)
+retains captions and master/music controls without output, pauses on focus loss,
+keeps music source position through suspension, and retries failed output.
+Caption state does not grant gameplay authority. Zone music binding supports
+restoration within a zone and a new clock when the zone changes.
+
+**Verification:** The [retained audio receipt](../../bench/verse/2026-10-05/audio-contract/run.json)
+records the pinned toolchain, source digests, commands, and logs: 166 engine
+checks; three native callback checks; the explicit deadline fixture; native
+chamber compilation; and formatting. The fixture uses an i7-14700K, the optimized
+Cargo test profile, 48 kHz stereo, 512 frames, 64 commands per callback, a
+128-voice target (minimum 127 after retirement), 32 audible voices,
+and one music stream. Across 1,000 callbacks, p99 was
+0.193 ms and maximum was 0.278 ms against a
+10.667 ms buffer budget, with 0 overruns, zero callback allocations and
+deallocations, zero stream gaps, and no blocked retirement. Control-side draining
+reclaimed 1,968 sources; reclamation p99 was 211 ns and maximum was
+1,078 ns. Allocator guards also cover queue saturation and deferred PCM destruction.
+
+**Remaining limits:** This is a controlled CPU callback profile with explicit
+PCM production and control-side queue draining. It proves no driver scheduling,
+physical output quality, worker scheduling latency, or general real-time deadline.
+[`NEEDS_OWNER.md`](../../NEEDS_OWNER.md) records device/focus/output verification.
+Browser and phone mounting remains V24. Providers must supply immutable admitted
+readers; compressed codecs, environmental occlusion, production scores, and
+recorded dialogue localization remain content/platform work. No complete AAA
+audio-production claim follows from these original cues.
 
 ### V24: Shared rendering is narrower than multiplayer platform parity
 

@@ -1,0 +1,140 @@
+{
+  "schema": "verse.audio.acceptance.v1",
+  "recorded_utc": "2026-10-06T02:32:08.680599+00:00",
+  "source_commit": "0ddc7fa356fc24484c4e6aaf1da54c423a0ed254",
+  "files_sha256": {
+    "Cargo.lock": "c25640c62bfdc6f8601aa98cd88570d9a4218a4a31c9b28cd06424c64787ea30",
+    "crates/verse-engine/Cargo.toml": "8bbf7e1edeab02507c3cc87c36af4cc1e6ba0f2558f9209a5a8d95b47f5a7bcc",
+    "crates/verse/Cargo.toml": "976e8630ce9ad20efccaa840c28bf1086b8956442152bccb3d05e9634a66a742",
+    "crates/verse-engine/src/audio.rs": "62611d02b64804c3c2ada44b578882c9a291666ea0ab33955611128acdbae8e1",
+    "crates/verse-engine/src/audio_bank.rs": "fc13ff7b107630f96b86b9cf0eaa28e6f7fb73da573efa2b6a096621e1fe293f",
+    "crates/verse-engine/src/audio_stream.rs": "582722b7d27abca49111e97582bb66d96250ba9afc6422538fe15f33cb3463b5",
+    "crates/verse-engine/src/audio_cues.rs": "1b636ac808afefc01575ed0320c1463acd74a7f3a27b87cca203473871a3d0c6",
+    "crates/verse-engine/src/original_audio_bank.json": "b65b45a7114661fa2e456c8c31bb42359cca9051435f6ede770ee4bc39ed7e3c",
+    "crates/verse/src/audio_native.rs": "3311554387ad309f7b53623c75c6527bcbe9ede8a123e0969a8d75f3b816b24a",
+    "crates/verse/examples/chamber_app/audio.rs": "4dcd44aa44e75372c685800c251f65bc9dac527d8a74402fa05e6b81aaeb4d8b",
+    "crates/verse/examples/chamber_app/mod.rs": "1b05ff056a663ec5c73026258d445dd44448c4c7ae383063d0ee49b32fe14883"
+  },
+  "deadline": {
+    "schema": "verse.audio.deadline.v1",
+    "bank": "bb58fae7d7b297a2c19ad15295d4c07f8370da99c459660eab4bdaddcbd7e36d",
+    "profile": "headless-callback-debug-48k-stereo-512",
+    "samples": 1000,
+    "logical_voice_target": 128,
+    "minimum_voices_after_callback": 127,
+    "audible_limit": 32,
+    "commands_per_callback": 64,
+    "music_streams": 1,
+    "producer": "bounded pump before callback; no device pacing",
+    "budget_ns": 10666666,
+    "p50_ns": 130267,
+    "p95_ns": 138236,
+    "p99_ns": 192910,
+    "max_ns": 278117,
+    "overruns": 0,
+    "allocations": 0,
+    "deallocations": 0,
+    "stream_gaps": 0,
+    "music_advanced_frames": 512000,
+    "stolen": 33,
+    "retirement_blocked": 0,
+    "reclaimed_sources": 1968,
+    "retirement_peak_backlog": 2,
+    "reclamation": "control-side draining of the native retirement queue",
+    "reclaim_p95_ns": 138,
+    "reclaim_p99_ns": 211,
+    "reclaim_max_ns": 1078
+  },
+  "profile_source_commit": "91a26f09ee136dd8a9e6e4b4633b75dc054619a5",
+  "integration_base": "5262e898e3",
+  "profile_integration": "Audio source bytes are unchanged through rebase; integrated engine and native consumer checks follow the profile.",
+  "checks": [
+    {
+      "log": "engine.log",
+      "sha256": "cf16d84a6194ebae5228b1c2ba2f638fdfdcc1a2888d87753268b40f24f0e910",
+      "test_result": [
+        "test result: ok. 166 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.07s"
+      ]
+    },
+    {
+      "log": "native.log",
+      "sha256": "4dd56157b9fa7bf0fa75a931103d46884034e5b7371794406ee07742deaa9ca6",
+      "test_result": [
+        "test result: ok. 3 passed; 0 failed; 1 ignored; 0 measured; 298 filtered out; finished in 0.03s"
+      ]
+    },
+    {
+      "log": "deadline.log",
+      "sha256": "18582cc3c7b106326f9247c54461e64876a9a412ea0e604795bf1d3b85847faf",
+      "test_result": [
+        "test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 301 filtered out; finished in 0.19s"
+      ]
+    },
+    {
+      "log": "chamber-check.log",
+      "sha256": "28dc918860565df50408335819704cc45cc97ab1576e023d9c22404214f6f90d",
+      "test_result": []
+    },
+    {
+      "log": "format.log",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "test_result": []
+    },
+    {
+      "log": "alsa-search-refusal.log",
+      "sha256": "ee06f05474706dd57eeef025c0bde5966d2e8dc0d8a0e45526a1ad43add1c5d5",
+      "test_result": []
+    },
+    {
+      "log": "adapter-recompile.log",
+      "sha256": "22776538a18a1dd8f9993f4cb3a35a6d72a384ff709faa0c16a6dd81ee13e1fe",
+      "test_result": []
+    },
+    {
+      "log": "engine-root-space-failure.log",
+      "sha256": "4a5fa2c659c5e920b725b2cfdbc4d74f1ad554117c10911dba1b204d2470deef",
+      "test_result": [
+        "test result: FAILED. 153 passed; 13 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.05s"
+      ]
+    },
+    {
+      "log": "native-build-space-failure.log",
+      "sha256": "17da7c010ddb7d21925d9fc1365771cbcd4049338d171126445bcde545a3ccce",
+      "test_result": []
+    },
+    {
+      "log": "chamber-build-space-failure.log",
+      "sha256": "3aa1635fe4f37b2444305460724ef5f3a09ced10ff89180afc4e4dd1f044773a",
+      "test_result": []
+    }
+  ],
+  "profile": {
+    "target": "x86_64-unknown-linux-gnu",
+    "cpu": "Intel Core i7-14700K",
+    "cargo": "test profile; verse and verse-engine opt-level=3 in Cargo.toml",
+    "physical_device_opened": false,
+    "output": "in-memory callback buffers"
+  },
+  "rustc": "rustc 1.97.1 (8bab26f4f 2026-07-14)\nbinary: rustc\ncommit-hash: 8bab26f4f68e0e26f0bb7960be334d5b520ea452\ncommit-date: 2026-07-14\nhost: x86_64-unknown-linux-gnu\nrelease: 1.97.1\nLLVM version: 22.1.6\n",
+  "commands": [
+    "cargo test -p verse-engine --features asset-io --lib",
+    "cargo test -p verse --no-default-features --features native-audio --lib audio_native",
+    "cargo test -p verse --no-default-features --features native-audio --lib audio_native::tests::crowded_callback_deadline_profile -- --ignored --nocapture",
+    "cargo check -p verse --no-default-features --features imported-desktop --example verse_play",
+    "cargo fmt -p verse-engine -p verse --check"
+  ],
+  "build_environment": {
+    "cargo_target": "/home/christopherdavid/work/openagents-target-agent1",
+    "jobs": 1,
+    "test_tmpdir": "/run/verse-audit-build-agent1/test-tmp",
+    "alsa_pc": "/nix/store/whfhyjs4xfkfjqid2nflj2cjk0ikl4az-alsa-lib-1.2.15.3-dev/lib/pkgconfig",
+    "storage": "Warm target reused. Own compiler outputs, fingerprints, and build-script files retained under private /run storage while root was full; wrapper redirects out-dir only, preserving optimization and code generation. No owner cache removed."
+  },
+  "limits": [
+    "CPU callback profile with explicitly pumped PCM and control-side retirement draining; no device pacing or driver scheduling claim",
+    "Physical output verification is in NEEDS_OWNER.md; browser and mobile mounting remains V24",
+    "Stream providers supply immutable admitted readers; the bank selects no file or network path",
+    "Environmental occlusion, compressed codecs, and production music/dialogue localization remain content and platform work"
+  ],
+  "earlier_checks": "Retained ALSA search-path refusal, adapter API rebuild failure, and root-disk failures precede the accepted checks. Test scratch moved to private TMPDIR; own warm build metadata was relocated with hash verification."
+}

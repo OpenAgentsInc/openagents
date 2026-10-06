@@ -1,0 +1,72 @@
+warning: method `additional_characters` is never used
+    --> crates/verse-world/src/play.rs:2943:19
+     |
+ 428 | impl Game {
+     | --------- method in this implementation
+...
+2943 |     pub(crate) fn additional_characters(
+     |                   ^^^^^^^^^^^^^^^^^^^^^
+     |
+     = note: `#[warn(dead_code)]` (part of `#[warn(unused)]`) on by default
+
+warning: `verse-world` (lib) generated 1 warning
+warning: variable does not need to be mutable
+   --> crates/verse-zone-everglade/src/zones/everglade/layout/streets.rs:275:9
+    |
+275 |     let mut try_put =
+    |         ----^^^^^^^
+    |         |
+    |         help: remove this `mut`
+    |
+    = note: `#[warn(unused_mut)]` (part of `#[warn(unused)]`) on by default
+
+warning: function `triangles` is never used
+   --> crates/verse-zone-everglade/src/zones/everglade/draw.rs:103:15
+    |
+103 | pub(super) fn triangles() -> u64 {
+    |               ^^^^^^^^^
+    |
+    = note: `#[warn(dead_code)]` (part of `#[warn(unused)]`) on by default
+
+warning: function `stream_triangles` is never used
+   --> crates/verse-zone-everglade/src/zones/everglade/draw.rs:112:4
+    |
+112 | fn stream_triangles() -> u64 {
+    |    ^^^^^^^^^^^^^^^^
+
+warning: `verse-zone-everglade` (lib) generated 3 warnings (run `cargo fix --lib -p verse-zone-everglade` to apply 1 suggestion)
+   Compiling verse-host v0.1.0 (/home/christopherdavid/work/openagents-verse-audit/crates/verse-host)
+    Checking verse-gym v0.1.0 (/home/christopherdavid/work/openagents-verse-audit/crates/verse-gym)
+    Checking verse-zone-lagrange v0.1.0 (/home/christopherdavid/work/openagents-verse-audit/crates/verse-zone-lagrange)
+    Checking verse-zone-grove v0.1.0 (/home/christopherdavid/work/openagents-verse-audit/crates/verse-zone-grove)
+    Checking verse-zone-ruins v0.1.0 (/home/christopherdavid/work/openagents-verse-audit/crates/verse-zone-ruins)
+    Checking terminal-control v0.1.0 (/home/christopherdavid/work/openagents-verse-audit/crates/terminal-control)
+    Checking verse-imported v0.1.0 (/home/christopherdavid/work/openagents-verse-audit/crates/verse-imported)
+warning: unused import: `self`
+ --> crates/verse-imported/src/imported/remote_window.rs:7:23
+  |
+7 |     chamber_session::{self, Note, Session, Stopped},
+  |                       ^^^^
+  |
+  = note: `#[warn(unused_imports)]` (part of `#[warn(unused)]`) on by default
+
+warning: unused import: `glam::Vec3`
+  --> crates/verse-imported/src/imported/remote_window.rs:11:5
+   |
+11 | use glam::Vec3;
+   |     ^^^^^^^^^^
+
+warning: unused variable: `numbers`
+    --> crates/verse-imported/src/imported/overlay.rs:1297:9
+     |
+1297 |     let numbers = atlas.font("numbers").layout_at_scale(1.0 / s).unwrap();
+     |         ^^^^^^^ help: if this is intentional, prefix it with an underscore: `_numbers`
+     |
+     = note: `#[warn(unused_variables)]` (part of `#[warn(unused)]`) on by default
+
+warning: `verse-imported` (lib) generated 3 warnings (run `cargo fix --lib -p verse-imported` to apply 3 suggestions)
+    Checking verse-zone-crypt v0.1.0 (/home/christopherdavid/work/openagents-verse-audit/crates/verse-zone-crypt)
+    Checking verse-zone-lab v0.1.0 (/home/christopherdavid/work/openagents-verse-audit/crates/verse-zone-lab)
+    Checking coder-host v0.1.0 (/home/christopherdavid/work/openagents-verse-audit/crates/coder-host)
+    Checking verse v0.1.0 (/home/christopherdavid/work/openagents-verse-audit/crates/verse)
+    Finished `dev` profile [unoptimized + debuginfo] target(s) in 4.96s

@@ -1,0 +1,107 @@
+warning: failed to connect to jobserver from environment variable `CARGO_MAKEFLAGS="-j --jobserver-fds=3,5 --jobserver-auth=3,5"`: cannot open file descriptor 3 from the jobserver environment variable value: Bad file descriptor (os error 9)
+  |
+  = note: the build environment is likely misconfigured
+
+warning: `physics` (lib) generated 1 warning
+warning: method `additional_characters` is never used
+    --> crates/verse-world/src/play.rs:2943:19
+     |
+ 428 | impl Game {
+     | --------- method in this implementation
+...
+2943 |     pub(crate) fn additional_characters(
+     |                   ^^^^^^^^^^^^^^^^^^^^^
+     |
+     = note: `#[warn(dead_code)]` (part of `#[warn(unused)]`) on by default
+
+warning: `verse-world` (lib) generated 1 warning
+warning: `openagents-chat` (lib) generated 1 warning (1 duplicate)
+   Compiling verse-host v0.1.0 (/home/christopherdavid/work/openagents-verse-audit/crates/verse-host)
+warning: `openagents-connect` (lib) generated 1 warning (1 duplicate)
+   Compiling verse-zone-everglade v0.1.0 (/home/christopherdavid/work/openagents-verse-audit/crates/verse-zone-everglade)
+warning: variable does not need to be mutable
+   --> crates/verse-zone-everglade/src/zones/everglade/layout/streets.rs:275:9
+    |
+275 |     let mut try_put =
+    |         ----^^^^^^^
+    |         |
+    |         help: remove this `mut`
+    |
+    = note: `#[warn(unused_mut)]` (part of `#[warn(unused)]`) on by default
+
+warning: function `triangles` is never used
+   --> crates/verse-zone-everglade/src/zones/everglade/draw.rs:103:15
+    |
+103 | pub(super) fn triangles() -> u64 {
+    |               ^^^^^^^^^
+    |
+    = note: `#[warn(dead_code)]` (part of `#[warn(unused)]`) on by default
+
+warning: function `stream_triangles` is never used
+   --> crates/verse-zone-everglade/src/zones/everglade/draw.rs:112:4
+    |
+112 | fn stream_triangles() -> u64 {
+    |    ^^^^^^^^^^^^^^^^
+
+warning: `verse-zone-everglade` (lib) generated 3 warnings (run `cargo fix --lib -p verse-zone-everglade` to apply 1 suggestion)
+warning: `gym-leaderboard` (lib) generated 1 warning (1 duplicate)
+warning: `verse-lagrange` (lib) generated 1 warning (1 duplicate)
+   Compiling coder-host v0.1.0 (/home/christopherdavid/work/openagents-verse-audit/crates/coder-host)
+   Compiling verse-gym v0.1.0 (/home/christopherdavid/work/openagents-verse-audit/crates/verse-gym)
+   Compiling verse-zone-lagrange v0.1.0 (/home/christopherdavid/work/openagents-verse-audit/crates/verse-zone-lagrange)
+   Compiling verse-zone-grove v0.1.0 (/home/christopherdavid/work/openagents-verse-audit/crates/verse-zone-grove)
+   Compiling verse-zone-ruins v0.1.0 (/home/christopherdavid/work/openagents-verse-audit/crates/verse-zone-ruins)
+   Compiling terminal-control v0.1.0 (/home/christopherdavid/work/openagents-verse-audit/crates/terminal-control)
+   Compiling verse-imported v0.1.0 (/home/christopherdavid/work/openagents-verse-audit/crates/verse-imported)
+warning: unused variable: `numbers`
+    --> crates/verse-imported/src/imported/overlay.rs:1297:9
+     |
+1297 |     let numbers = atlas.font("numbers").layout_at_scale(1.0 / s).unwrap();
+     |         ^^^^^^^ help: if this is intentional, prefix it with an underscore: `_numbers`
+     |
+     = note: `#[warn(unused_variables)]` (part of `#[warn(unused)]`) on by default
+
+warning: `verse-imported` (lib) generated 1 warning (run `cargo fix --lib -p verse-imported` to apply 1 suggestion)
+   Compiling verse-zone-lab v0.1.0 (/home/christopherdavid/work/openagents-verse-audit/crates/verse-zone-lab)
+   Compiling verse-zone-crypt v0.1.0 (/home/christopherdavid/work/openagents-verse-audit/crates/verse-zone-crypt)
+   Compiling verse v0.1.0 (/home/christopherdavid/work/openagents-verse-audit/crates/verse)
+warning: unused import: `boards`
+ --> crates/verse/src/zones/studio_tests.rs:5:41
+  |
+5 | use crate::zones::everglade::{STATIONS, boards, height};
+  |                                         ^^^^^^
+  |
+  = note: `#[warn(unused_imports)]` (part of `#[warn(unused)]`) on by default
+
+warning: unused import: `Station as At`
+ --> crates/verse/src/zones/studio_tests.rs:9:40
+  |
+9 | use coder_access::studio::{Role, Seat, Station as At};
+  |                                        ^^^^^^^^^^^^^
+
+warning: function `ground` is never used
+  --> crates/verse/src/zones/studio_tests.rs:43:4
+   |
+43 | fn ground(at: [f32; 2]) -> Vec3 {
+   |    ^^^^^^
+   |
+   = note: `#[warn(dead_code)]` (part of `#[warn(unused)]`) on by default
+
+warning: function `walk` is never used
+  --> crates/verse/src/zones/studio_tests.rs:48:4
+   |
+48 | fn walk(studio: &mut Studio, seconds: f32) {
+   |    ^^^^
+
+warning: `verse` (lib test) generated 4 warnings (run `cargo fix --lib -p verse --tests` to apply 2 suggestions)
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 44.40s
+     Running unittests src/lib.rs (/home/christopherdavid/work/openagents-target-agent1/debug/deps/verse-f3aed9b97dc98e6f)
+
+running 4 tests
+test audio_native::tests::crowded_callback_deadline_profile ... ignored, Explicit CPU audio deadline evidence; opens no device
+test audio_native::tests::output_channel_conversion_and_trailing_samples_are_defined ... ok
+test audio_native::tests::critical_queue_survives_ordinary_saturation_and_controls_work_without_commands ... ok
+test audio_native::tests::actual_callback_does_no_allocation_or_resource_destruction ... ok
+
+test result: ok. 3 passed; 0 failed; 1 ignored; 0 measured; 298 filtered out; finished in 0.03s
+
