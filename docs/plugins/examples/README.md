@@ -1,12 +1,13 @@
 # Example plugins
 
-Three plugins that do useful work and that you can copy to make your own
+Plugins that do useful work and that you can copy to make your own
 ([#10086](https://github.com/OpenAgentsInc/openagents/issues/10086)):
 
 | Plugin | What it does | Directory |
 | --- | --- | --- |
 | [Explain this error](explain-this-error.md) | Reads a failing command's output, finds the file and line in your project it points at, shows the code, and says the likely cause and a likely fix. | [`crates/plugin-explain-error`](../../../crates/plugin-explain-error/) |
 | [Release notes](release-notes.md) | Groups the commits between two releases into user-facing release notes (breaking changes, features, fixes), each line citing its commit. | [`crates/plugin-release-notes`](../../../crates/plugin-release-notes/) |
+| Action items | Reads meeting notes and lists who does what, and by when, each citing the line it came from. The workbench's noncoding example ([receipt](../../verse/verification/2026-10-06-noncoding-action-items/README.md)). | [`crates/plugin-action-items`](../../../crates/plugin-action-items/) |
 | [Dependency check](dependency-check.md) | Reads manifests and lockfiles offline and flags duplicate versions, loose or unpinned version ranges, and licenses your declared policy doesn't allow. | [`crates/plugin-dependency-check`](../../../crates/plugin-dependency-check/) |
 
 Each one is a piece of Wasm, the workflow that runs it, and a test set.

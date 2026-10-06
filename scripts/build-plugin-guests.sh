@@ -3,7 +3,7 @@
 #
 # The guests are the three evidence guests (repo-map, code-search, and
 # test-report) and the example plugins' tools (explain-error,
-# release-notes, and dependency-check). For each guest named on the
+# release-notes, dependency-check, and action-items). For each guest named on the
 # command line, or every guest without names, this script:
 #
 # 1. Builds `crates/plugin-<guest>` for wasm32-unknown-unknown with the
@@ -43,7 +43,7 @@ cargo_home="${CARGO_HOME:-$HOME/.cargo}"
 fixtures="$root/crates/plugin/fixtures"
 program="$root/programs/evidence-guests.json"
 evidence=(repo-map code-search test-report)
-all=(repo-map code-search test-report explain-error release-notes dependency-check)
+all=(repo-map code-search test-report explain-error release-notes dependency-check action-items)
 
 if [ $# -gt 0 ]; then
   guests=("$@")

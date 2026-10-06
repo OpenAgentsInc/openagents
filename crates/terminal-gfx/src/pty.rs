@@ -339,6 +339,19 @@ impl Transport for Local {
     fn read_components(&self, root: &str) -> Receiver<terminal_core::gym::ComponentsRead> {
         super::helpers::read_components(root, self.helper_home.as_deref())
     }
+    fn plugin_use(
+        &self,
+        id: &str,
+        version: &str,
+        digest: &str,
+        request: &str,
+        workspace: &str,
+    ) -> Receiver<terminal_core::gym::UseRead> {
+        super::helpers::plugin_use(
+            [id, version, digest, request, workspace],
+            self.helper_home.as_deref(),
+        )
+    }
     fn read_study(&self, dir: &str) -> Receiver<terminal_core::gym::Read> {
         super::helpers::read_study(dir, self.helper_home.as_deref())
     }

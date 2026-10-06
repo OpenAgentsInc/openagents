@@ -52,6 +52,9 @@ struct Fake {
     study_reads: Mutex<Vec<String>>,
     /// What `plugin inspect` answers.
     components: Mutex<Option<serde_json::Value>>,
+    /// Every `plugin use` sent: plugin, version, digest, request, and
+    /// workspace. The fake owner runs a request once and follows it after.
+    uses: Mutex<Vec<[String; 5]>>,
 }
 struct Pane {
     bridge: bool,
@@ -214,6 +217,38 @@ impl Transport for Fake {
             None => crate::gym::decode_components(b"", br#"{"error":"no plugins store"}"#),
         };
         sender.send(answer).unwrap();
+        receiver
+    }
+    fn plugin_use(
+        &self,
+        id: &str,
+        version: &str,
+        digest: &str,
+        request: &str,
+        workspace: &str,
+    ) -> mpsc::Receiver<crate::gym::UseRead> {
+        let mut uses = self.uses.lock().unwrap();
+        let again = uses.iter().any(|terms| terms[3] == request);
+        uses.push([id, version, digest, request, workspace].map(str::to_owned));
+        let mut components = self.components.lock().unwrap();
+        if !again && let Some(held) = components.as_mut() {
+            held["plugins"][0]["runs"] = serde_json::json!([{
+                "request": "use-8d1b6c07a651cae1", "thread": "terminal", "state": "completed",
+                "version": version, "this_release": true, "check": "verified",
+                "cost_microusd": 0, "wall_ms": 40,
+                "outputs": [{"digest": format!("sha256:{}", "c".repeat(64)),
+                             "path": "/home/route-artifacts/c", "state": "retained"}],
+            }]);
+        }
+        let answer = serde_json::json!({
+            "dispatched": if again { "followed" } else { "ran" },
+            "text": "Action items (5)\n\n1. Ana: send the revised budget to finance, by Friday \
+                     (notes/standup.md line 6)",
+        });
+        let (sender, receiver) = mpsc::channel();
+        sender
+            .send(crate::gym::decode_use(answer.to_string().as_bytes(), b""))
+            .unwrap();
         receiver
     }
     fn read_study(&self, dir: &str) -> mpsc::Receiver<crate::gym::Read> {
@@ -2269,4 +2304,113 @@ fn the_gym_page_lists_plugins_by_exact_release_and_opens_their_evidence() {
     assert!(!app.paper.gym.components && app.paper.gym.open);
     press(&mut app, KeyCode::Escape, NamedKey::Escape);
     assert!(!app.paper.gym.open);
+}
+
+#[test]
+fn a_noncoding_plugin_turns_notes_into_one_checked_artifact_from_the_page() {
+    use crate::input::{KeyCode, NamedKey};
+    let transport = Arc::new(Fake {
+        bridge: true,
+        ..Fake::default()
+    });
+    let mut app = Application::new(Sessions(transport.clone()));
+    app.paper.on = true;
+    app.toggle();
+    app.ensure_started();
+    let sheet = |app: &mut Application| app.paper_sheet(120, 40, "12:00:00", "0.50");
+    let key = |app: &mut Application, named: NamedKey| press(app, KeyCode::Unidentified, named);
+    transport
+        .output
+        .lock()
+        .unwrap()
+        .push_back(b"\x1b]7;file:///test/work\x07\x1b]133;A\x07$ \x1b]133;B\x07".to_vec());
+    app.tick();
+    *transport.studies.lock().unwrap() =
+        Some(serde_json::json!({"root": "/test/work", "studies": []}));
+    *transport.components.lock().unwrap() = Some(serde_json::json!({
+        "plugins": [{"id": "a7cf:action-items", "name": "Action items", "version": "0.1.0",
+                     "digest": format!("sha256:{}", "d".repeat(64)), "enabled": true,
+                     "workflow": true, "background": [], "revocation": "not_checked",
+                     "evidence": [], "runs": [], "commands": {}}],
+    }));
+    key(&mut app, NamedKey::F12);
+    app.tick();
+    key(&mut app, NamedKey::F2);
+    app.tick();
+    assert!(sheet(&mut app).row_text(37).starts_with("| USE > "));
+
+    // The typed request arms one use; ESC would reject it, ENTER confirms.
+    typing(&mut app, "List the action items in notes/standup.md");
+    press(&mut app, KeyCode::Enter, NamedKey::Enter);
+    assert!(transport.uses.lock().unwrap().is_empty());
+    let page = sheet(&mut app);
+    assert!(
+        page.row_text(37)
+            .starts_with("| CONFIRM? use a7cf:action-items 0.1.0 once on this directory"),
+        "{}",
+        page.row_text(37)
+    );
+    press(&mut app, KeyCode::Enter, NamedKey::Enter);
+    app.tick();
+    app.tick();
+    assert_eq!(
+        transport.uses.lock().unwrap().as_slice(),
+        [[
+            "a7cf:action-items".to_owned(),
+            "0.1.0".to_owned(),
+            format!("sha256:{}", "d".repeat(64)),
+            "List the action items in notes/standup.md".to_owned(),
+            "/test/work".to_owned(),
+        ]]
+    );
+    let page = sheet(&mut app);
+    let text = page.text();
+    for row in 0..40 {
+        let row_text = page.row_text(row);
+        assert_eq!(row_text.len(), 120, "row {row}: {row_text:?}");
+        assert!(
+            row_text.chars().all(|c| (' '..='~').contains(&c)),
+            "row {row}"
+        );
+    }
+    assert!(
+        text.contains("USE \"List the action items in notes/standup.md\": ran"),
+        "{text}"
+    );
+    assert!(text.contains("Action items (5)"));
+    // The plugin, its exact release, the run, its check, and the kept
+    // output, in one place.
+    assert!(text.contains("RUN use-8d1b6c07a651cae1  completed  release 0.1.0 (this release)"));
+    assert!(text.contains("check verified, output cccccccccccc retained, cost $0.0000"));
+
+    // Closing and reopening the page, or asking again, never runs twice.
+    key(&mut app, NamedKey::F12);
+    key(&mut app, NamedKey::F12);
+    app.tick();
+    key(&mut app, NamedKey::F2);
+    app.tick();
+    assert_eq!(transport.uses.lock().unwrap().len(), 1);
+    assert!(sheet(&mut app).text().contains("check verified"));
+    typing(&mut app, "List the action items in notes/standup.md");
+    press(&mut app, KeyCode::Enter, NamedKey::Enter);
+    press(&mut app, KeyCode::Enter, NamedKey::Enter);
+    app.tick();
+    assert!(
+        sheet(&mut app)
+            .text()
+            .contains("USE \"List the action items in notes/standup.md\": followed")
+    );
+
+    // A lost output shows as missing.
+    transport.components.lock().unwrap().as_mut().unwrap()["plugins"][0]["runs"][0]["outputs"][0]
+        ["state"] = serde_json::json!("missing");
+    key(&mut app, NamedKey::F2);
+    key(&mut app, NamedKey::F2);
+    app.tick();
+    assert!(
+        sheet(&mut app)
+            .text()
+            .contains("output cccccccccccc missing")
+    );
+    assert!(transport.requests.lock().unwrap().is_empty());
 }

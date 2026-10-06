@@ -224,6 +224,69 @@ pub struct Commands {
     pub use_: Option<String>,
 }
 
+/// A kept output of a plugin run, and whether its bytes are still there.
+#[derive(Clone, Debug, Default, PartialEq, Eq, Deserialize)]
+#[serde(default)]
+pub struct KeptOutput {
+    pub digest: String,
+    pub path: String,
+    /// `retained`, `changed`, or `missing`.
+    pub state: String,
+}
+
+/// One `plugin use` run the route journal keeps (#10671).
+#[derive(Clone, Debug, Default, PartialEq, Eq, Deserialize)]
+#[serde(default)]
+pub struct PluginRun {
+    pub request: String,
+    pub thread: Option<String>,
+    pub state: String,
+    pub version: Option<String>,
+    pub this_release: bool,
+    pub check: Option<String>,
+    pub cost_microusd: Option<u64>,
+    pub wall_ms: Option<u64>,
+    pub outputs: Vec<KeptOutput>,
+}
+
+/// A `use` from the page: armed, sent, or answered.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct Using {
+    pub id: String,
+    pub version: String,
+    pub digest: String,
+    pub request: String,
+    pub state: Use,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum Use {
+    Armed,
+    Sending,
+    /// The run, or the record a repeated request followed, with its text.
+    Answered {
+        dispatched: String,
+        text: String,
+    },
+    Refused(String),
+}
+
+/// What `plugin use` answered.
+pub type UseRead = Result<(String, String), String>;
+
+/// Decodes `openagents --json plugin use ...`: what dispatch did and the
+/// words to show.
+#[must_use]
+pub fn decode_use(stdout: &[u8], stderr: &[u8]) -> UseRead {
+    match last_json(stdout) {
+        Some(value) if value.get("dispatched").is_some() => Ok((
+            value["dispatched"].as_str().unwrap_or_default().to_owned(),
+            crate::ascii::ascii(value["text"].as_str().unwrap_or_default()),
+        )),
+        _ => Err(error_of(stdout, stderr)),
+    }
+}
+
 /// One installed plugin by its exact release (#10664).
 #[derive(Clone, Debug, Default, PartialEq, Eq, Deserialize)]
 #[serde(default)]
@@ -237,6 +300,7 @@ pub struct Component {
     pub background: Vec<String>,
     pub revocation: String,
     pub evidence: Vec<Evidence>,
+    pub runs: Vec<PluginRun>,
     pub commands: Commands,
 }
 
@@ -294,6 +358,9 @@ pub struct Page {
     pub held: Option<ComponentsRead>,
     pub holding: Option<Receiver<ComponentsRead>>,
     pub component: usize,
+    /// A `use` of the picked plugin from the input line.
+    pub using: Option<Using>,
+    pub sending: Option<Receiver<UseRead>>,
 }
 
 impl Page {
@@ -349,8 +416,8 @@ fn component_lines(page: &Page, now: u64) -> Vec<(String, crate::paper::Tone)> {
         Tone::Loud,
     ));
     out.push((
-        "Each is its exact release. Results count only for the release they tested; ENTER opens \
-         the newest one in the Gym."
+        "Each is its exact release; results count only for the release they tested. ENTER opens \
+         the newest one; a typed request and ENTER use the plugin once, after CONFIRM."
             .into(),
         Tone::Quiet,
     ));
@@ -407,7 +474,59 @@ fn component_lines(page: &Page, now: u64) -> Vec<(String, crate::paper::Tone)> {
             ),
             Tone::Present,
         ));
+        for run in &component.runs {
+            let output = match run.outputs.first() {
+                None => "no output".to_owned(),
+                Some(kept) => format!("output {} {}", short(&kept.digest), ascii(&kept.state)),
+            };
+            out.push((
+                format!(
+                    "    RUN {}  {}  release {} ({})",
+                    ascii(&run.request),
+                    ascii(&run.state),
+                    ascii(run.version.as_deref().unwrap_or("?")),
+                    if run.this_release {
+                        "this release"
+                    } else {
+                        "another release"
+                    },
+                ),
+                Tone::Present,
+            ));
+            out.push((
+                format!(
+                    "        check {}, {output}, cost {}",
+                    ascii(run.check.as_deref().unwrap_or("pending")),
+                    run.cost_microusd.map_or_else(
+                        || "unknown".into(),
+                        |micro| format!("${:.4}", micro as f64 / 1_000_000.0)
+                    ),
+                ),
+                if run.outputs.iter().any(|kept| kept.state != "retained") {
+                    Tone::Loud
+                } else {
+                    Tone::Present
+                },
+            ));
+        }
         if picked {
+            if let Some(using) = page.using.as_ref().filter(|using| using.id == component.id) {
+                let state = match &using.state {
+                    Use::Armed => "ENTER confirms, ESC rejects".to_owned(),
+                    Use::Sending => "sent; running once through the shared route".to_owned(),
+                    Use::Answered { dispatched, .. } => dispatched.replace('_', " "),
+                    Use::Refused(why) => format!("refused: {why}"),
+                };
+                out.push((
+                    format!("    USE {:?}: {state}", ascii(&using.request)),
+                    Tone::Loud,
+                ));
+                if let Use::Answered { text, .. } = &using.state {
+                    for line in text.lines() {
+                        out.push((format!("      {line}"), Tone::Present));
+                    }
+                }
+            }
             for command in [
                 &component.commands.test,
                 &component.commands.turn,

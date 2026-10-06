@@ -10558,6 +10558,14 @@ dependencies = [
 ]
 
 [[package]]
+name = "plugin-action-items"
+version = "0.1.0"
+dependencies = [
+ "plugin-pdk",
+ "serde_json",
+]
+
+[[package]]
 name = "plugin-code-search"
 version = "0.1.0"
 dependencies = [

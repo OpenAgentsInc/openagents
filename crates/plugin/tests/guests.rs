@@ -4,7 +4,8 @@
 //! `scripts/build-plugin-guests.sh` builds the evidence guests
 //! (`repo-map.wasm`, `code-search.wasm`, and `test-report.wasm`) and the
 //! example plugins' tools (`explain-error.wasm`, `release-notes.wasm`, and
-//! `dependency-check.wasm`) into `fixtures/`. The receipt beside each
+//! `dependency-check.wasm`) and the noncoding example (`action-items.wasm`)
+//! into `fixtures/`. The receipt beside each
 //! module pins the PDK source, the guest source, and the module bytes, so
 //! an edit to either source without a rebuild fails here.
 
@@ -16,13 +17,14 @@ use std::sync::atomic::AtomicBool;
 use plugin::{Entry, GuestValue, HostError, Limits, Profile, Snapshot, invoke};
 use serde_json::{Value, json};
 
-const GUESTS: [&str; 6] = [
+const GUESTS: [&str; 7] = [
     "repo-map",
     "code-search",
     "test-report",
     "explain-error",
     "release-notes",
     "dependency-check",
+    "action-items",
 ];
 
 fn crates() -> PathBuf {

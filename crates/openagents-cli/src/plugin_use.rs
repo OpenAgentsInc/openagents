@@ -77,10 +77,16 @@ pub fn run(output: &Output, words: &[String]) -> Option<u8> {
             dirs if dirs.is_empty() => vec![PathBuf::from(".")],
             dirs => dirs.into_iter().map(PathBuf::from).collect(),
         };
+        let home = crate::ext_eval::openagents_home();
+        let kept = Kept {
+            journal: home.join("routes"),
+            artifacts: home.join("route-artifacts"),
+        };
         match inspect(
             &layout,
             args.positional().first().map(String::as_str),
             &roots,
+            &kept,
         ) {
             Ok(value) => {
                 output.emit(&value, |value| {
@@ -159,7 +165,87 @@ fn names(subject: &str, plugin: &Installed) -> bool {
         .is_some_and(|slug| slug == plugin.slug)
 }
 
-fn inspect(layout: &Layout, name: Option<&str>, roots: &[PathBuf]) -> Result<Value, String> {
+/// Where `use` keeps its route records and outputs.
+struct Kept {
+    journal: PathBuf,
+    artifacts: PathBuf,
+}
+
+/// The most runs `inspect` lists for one plugin.
+const RUNS_SHOWN: usize = 5;
+
+/// The `use` runs of `held`'s ID that the journal keeps, newest last: each
+/// one's request, state, the release it ran, its check, and whether its
+/// output is still kept with the bytes the record names.
+fn runs_of(held: &Held, kept: &Kept) -> Vec<Value> {
+    let Ok(entries) = std::fs::read_dir(&kept.journal) else {
+        return Vec::new();
+    };
+    let journal = Journal::at(&kept.journal);
+    let mut threads: Vec<String> = entries
+        .flatten()
+        .filter_map(|entry| {
+            entry
+                .file_name()
+                .to_str()
+                .and_then(|name| name.strip_suffix(".jsonl"))
+                .map(str::to_owned)
+        })
+        .collect();
+    threads.sort();
+    let mut latest: Vec<RouteRecord> = Vec::new();
+    for thread in threads {
+        for record in journal.records(&thread) {
+            if record.snapshot.route.capability.as_ref().map(|pin| &pin.id) != Some(&held.pin.id) {
+                continue;
+            }
+            latest.retain(|other| other.request != record.request || other.thread != record.thread);
+            latest.push(record);
+        }
+    }
+    let skip = latest.len().saturating_sub(RUNS_SHOWN);
+    latest
+        .iter()
+        .skip(skip)
+        .map(|record| {
+            let pin = record.snapshot.route.capability.clone();
+            let run = record.runs.last();
+            let outputs: Vec<Value> = run
+                .map(|run| run.artifacts.clone())
+                .unwrap_or_default()
+                .iter()
+                .map(|digest| {
+                    let path = kept.artifacts.join(&digest.as_str()[7..]);
+                    let state = match std::fs::read(&path) {
+                        Err(_) => "missing",
+                        Ok(bytes) if Digest::of_bytes(&bytes) == *digest => "retained",
+                        Ok(_) => "changed",
+                    };
+                    json!({"digest": digest, "path": path.display().to_string(), "state": state})
+                })
+                .collect();
+            json!({
+                "request": record.request,
+                "thread": record.thread,
+                "state": record.state,
+                "version": pin.as_ref().map(|pin| pin.version.clone()),
+                "digest": pin.as_ref().map(|pin| pin.digest.clone()),
+                "this_release": pin.as_ref() == Some(&held.pin),
+                "check": run.map(|run| run.projection.check),
+                "cost_microusd": run.and_then(|run| run.cost_microusd),
+                "wall_ms": run.and_then(|run| run.wall_ms),
+                "outputs": outputs,
+            })
+        })
+        .collect()
+}
+
+fn inspect(
+    layout: &Layout,
+    name: Option<&str>,
+    roots: &[PathBuf],
+    kept: &Kept,
+) -> Result<Value, String> {
     let plugins = match name {
         Some(name) => vec![plugins::find(layout, name)?],
         None => plugins::installed(layout),
@@ -208,6 +294,7 @@ fn inspect(layout: &Layout, name: Option<&str>, roots: &[PathBuf]) -> Result<Val
             "workflow": has_workflow,
             "revocation": "not_checked",
             "evidence": evidence,
+            "runs": runs_of(&held, kept),
             "commands": {
                 "test": format!("openagents plugin test run {}", plugin.dir.display()),
                 "turn": format!(
@@ -243,8 +330,52 @@ struct Use<'a> {
     thread: &'a str,
 }
 
+/// Checks a workflow's output apart from the guest that wrote it: for an
+/// `action-items` answer, each item must quote, exactly, the line of the
+/// request or the workspace file it cites, read again here. Any other
+/// output has no checker and stays unchecked.
+fn check(ran: &Value, request: &str, workspace: &Path) -> CheckLabel {
+    let Some(value) = ran["steps"]
+        .as_array()
+        .and_then(|steps| steps.last())
+        .map(|step| &step["output"]["value"])
+        .filter(|value| value["kind"] == "action-items")
+    else {
+        return CheckLabel::Unchecked;
+    };
+    let Some(items) = value["items"].as_array().filter(|items| !items.is_empty()) else {
+        return CheckLabel::Unverifiable;
+    };
+    for item in items {
+        let from = item["source"]["from"].as_str().unwrap_or_default();
+        let text = if from == "request" {
+            request.to_owned()
+        } else {
+            let path = workspace.join(from);
+            let inside = path
+                .canonicalize()
+                .is_ok_and(|path| path.starts_with(workspace));
+            match std::fs::read_to_string(&path) {
+                Ok(text) if inside => text,
+                _ => return CheckLabel::Unverifiable,
+            }
+        };
+        let quoted = item["source"]["line"]
+            .as_u64()
+            .and_then(|line| usize::try_from(line).ok())
+            .and_then(|line| line.checked_sub(1))
+            .and_then(|index| text.lines().nth(index))
+            .map(str::trim);
+        let claimed = item["text"].as_str().unwrap_or_default();
+        if quoted.is_none_or(|quoted| !quoted.starts_with(claimed) || claimed.is_empty()) {
+            return CheckLabel::CheckFailed;
+        }
+    }
+    CheckLabel::Verified
+}
+
 /// Runs an installed plugin's workflow: the read-only run `plugin run`
-/// makes. Its output is the run as JSON; nothing independent checks it.
+/// makes. Its output is the run as JSON, checked by [`check`].
 #[derive(Default)]
 struct Workflow {
     dir: PathBuf,
@@ -262,8 +393,8 @@ impl Runner for Workflow {
                 .to_owned());
         }
         Ok(RunOutput {
+            check: check(&ran, request, &self.workspace),
             artifact: serde_json::to_vec_pretty(&ran).unwrap_or_default(),
-            check: CheckLabel::Unchecked,
             cost_microusd: Some(0),
         })
     }
@@ -394,6 +525,18 @@ impl RunnerAt for Workflow {
     }
 }
 
+/// The check on a record's last run, as words.
+fn check_word(record: &RouteRecord) -> &'static str {
+    match record.runs.last().map(|run| run.projection.check) {
+        Some(CheckLabel::Verified) => "verified",
+        Some(CheckLabel::CheckFailed) => "failed",
+        Some(CheckLabel::Unverifiable) => "unverifiable",
+        Some(CheckLabel::Disputed) => "disputed",
+        Some(CheckLabel::Pending) | None => "pending",
+        Some(CheckLabel::Unchecked) => "none ran (no checker for this output)",
+    }
+}
+
 fn answer(
     record: &RouteRecord,
     pin: &CapabilityPin,
@@ -427,7 +570,7 @@ fn answer(
                 .and_then(|ran| ran["reply"].as_str().map(str::to_owned))
                 .unwrap_or_default();
             format!(
-                "{reply}\n\n{} {} ran once under route {} ({}); unchecked.",
+                "{reply}\n\n{} {} ran once under route {} ({}); check: {}.",
                 pin.id,
                 pin.version,
                 record.request,
@@ -435,7 +578,8 @@ fn answer(
                     "shown from the journal, not run again"
                 } else {
                     "journaled"
-                }
+                },
+                check_word(record)
             )
         }
         (_, Some(why)) => format!("Not run: {why}."),
@@ -456,6 +600,7 @@ fn answer(
         "thread": record.thread,
         "state": record.state,
         "outputs": outputs,
+        "check": record.runs.last().map(|run| run.projection.check),
         "text": text,
     })
 }
@@ -530,7 +675,12 @@ mod tests {
         let plugin = install(&layout, "0.1.0");
 
         // Inspecting reads the exact pin and runs nothing.
-        let inspected = inspect(&layout, Some("notes"), &[home.path().to_path_buf()]).unwrap();
+        let kept = Kept {
+            journal: home.path().join("routes"),
+            artifacts: home.path().join("route-artifacts"),
+        };
+        let inspected =
+            inspect(&layout, Some("notes"), &[home.path().to_path_buf()], &kept).unwrap();
         let row = &inspected["plugins"][0];
         assert_eq!(row["version"], "0.1.0");
         assert_eq!(row["enabled"], false);
@@ -646,6 +796,134 @@ mod tests {
         assert_eq!(record.runs[0].projection.check, CheckLabel::Unchecked);
     }
 
+    /// The noncoding slice (#10671): synthetic meeting notes become one
+    /// checked action-items artifact through the shared route, a second
+    /// ask follows the record, and a lost output shows as missing.
+    #[test]
+    fn meeting_notes_become_one_checked_artifact_and_never_run_twice() {
+        let home = tempfile::tempdir().unwrap();
+        let layout = Layout::new(home.path(), None).unwrap();
+        let source = Path::new(env!("CARGO_MANIFEST_DIR")).join("../plugin-action-items");
+        crate::plugin_local::install_into(&layout, &source).unwrap();
+        let plugin = plugins::find(&layout, "action-items").unwrap();
+        plugins::set_enabled(&layout, &plugin.id, true).unwrap();
+        let held = held_of(&plugin);
+        let workspace = tempfile::tempdir().unwrap();
+        std::fs::create_dir_all(workspace.path().join("notes")).unwrap();
+        std::fs::copy(
+            source.join("fixtures/standup.md"),
+            workspace.path().join("notes/standup.md"),
+        )
+        .unwrap();
+        let kept = Kept {
+            journal: home.path().join("routes"),
+            artifacts: home.path().join("route-artifacts"),
+        };
+        let journal = Journal::at(&kept.journal);
+        let request = Use {
+            plugin: "action-items",
+            pin: CapabilityPin {
+                id: String::new(),
+                ..held.pin.clone()
+            },
+            request: "List the action items in notes/standup.md",
+            workspace: workspace.path(),
+            thread: "terminal",
+        };
+        let answer = use_plugin(
+            &layout,
+            &request,
+            &journal,
+            &kept.artifacts,
+            &mut Workflow::default(),
+        )
+        .unwrap();
+        if std::env::var_os("OPENAGENTS_PRINT_RECEIPT").is_some() {
+            eprintln!("{}", serde_json::to_string_pretty(&answer).unwrap());
+        }
+        assert_eq!(answer["dispatched"], "ran", "{answer}");
+        let text = answer["text"].as_str().unwrap();
+        assert!(text.starts_with("Action items (5)"), "{text}");
+        assert!(text.contains("Ana: send the revised budget to finance, by Friday"));
+        let record = journal
+            .latest("terminal", answer["request"].as_str().unwrap())
+            .unwrap();
+        assert_eq!(record.runs.len(), 1);
+        // The independent check re-read every cited line.
+        assert_eq!(record.runs[0].projection.check, CheckLabel::Verified);
+
+        // Asking again, as a reopened pane or a reconnect would, follows
+        // the record: no second run.
+        let again = use_plugin(
+            &layout,
+            &request,
+            &journal,
+            &kept.artifacts,
+            &mut Workflow::default(),
+        )
+        .unwrap();
+        assert_eq!(again["dispatched"], "followed");
+        let record = journal
+            .latest("terminal", answer["request"].as_str().unwrap())
+            .unwrap();
+        assert_eq!(record.runs.len(), 1);
+
+        // Inspecting relates the plugin, its exact release, the run, its
+        // check, and the kept output.
+        let inspected = inspect(&layout, Some("action-items"), &[], &kept).unwrap();
+        let run = &inspected["plugins"][0]["runs"][0];
+        assert_eq!(run["this_release"], true);
+        assert_eq!(run["check"], "verified");
+        assert_eq!(run["cost_microusd"], 0);
+        assert_eq!(run["outputs"][0]["state"], "retained");
+        // A lost output is shown as missing, never as delivered.
+        std::fs::remove_file(run["outputs"][0]["path"].as_str().unwrap()).unwrap();
+        let inspected = inspect(&layout, Some("action-items"), &[], &kept).unwrap();
+        assert_eq!(
+            inspected["plugins"][0]["runs"][0]["outputs"][0]["state"],
+            "missing"
+        );
+    }
+
+    #[test]
+    fn the_check_fails_a_misquoted_item_and_leaves_other_outputs_unchecked() {
+        let workspace = tempfile::tempdir().unwrap();
+        let ran = |text: &str| {
+            json!({"steps": [{"output": {"value": {"kind": "action-items", "items": [
+                {"source": {"from": "request", "line": 2}, "text": text}
+            ]}}}]})
+        };
+        let request = "notes\nAna will send the budget by Friday.";
+        assert_eq!(
+            check(
+                &ran("Ana will send the budget by Friday."),
+                request,
+                workspace.path()
+            ),
+            CheckLabel::Verified
+        );
+        assert_eq!(
+            check(
+                &ran("Ana will send the slides by Friday."),
+                request,
+                workspace.path()
+            ),
+            CheckLabel::CheckFailed
+        );
+        let other = json!({"steps": [{"output": {"value": {"kind": "release-notes"}}}]});
+        assert_eq!(
+            check(&other, request, workspace.path()),
+            CheckLabel::Unchecked
+        );
+        let gone = json!({"steps": [{"output": {"value": {"kind": "action-items", "items": [
+            {"source": {"from": "notes/gone.md", "line": 1}, "text": "x"}
+        ]}}}]});
+        assert_eq!(
+            check(&gone, request, workspace.path()),
+            CheckLabel::Unverifiable
+        );
+    }
+
     #[test]
     fn inspect_separates_results_for_this_release_from_others() {
         let home = tempfile::tempdir().unwrap();
@@ -674,7 +952,11 @@ mod tests {
             )
             .unwrap();
         }
-        let inspected = inspect(&layout, None, &[home.path().join("work")]).unwrap();
+        let kept = Kept {
+            journal: home.path().join("routes"),
+            artifacts: home.path().join("route-artifacts"),
+        };
+        let inspected = inspect(&layout, None, &[home.path().join("work")], &kept).unwrap();
         let evidence = inspected["plugins"][0]["evidence"].as_array().unwrap();
         assert_eq!(evidence.len(), 2);
         let exact: Vec<&Value> = evidence.iter().filter(|e| e["exact"] == true).collect();

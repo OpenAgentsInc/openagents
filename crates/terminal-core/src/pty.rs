@@ -109,6 +109,22 @@ pub trait Transport: Send + Sync {
         let _ = sender.send(Err("this mount reads no installed plugins".into()));
         receiver
     }
+    /// Uses installed plugin `id` once, only while exactly `version` with
+    /// package `digest` is installed and on, through the shared route on
+    /// `workspace`. The same request again follows the first run.
+    fn plugin_use(
+        &self,
+        id: &str,
+        version: &str,
+        digest: &str,
+        request: &str,
+        workspace: &str,
+    ) -> Receiver<crate::gym::UseRead> {
+        let _ = (id, version, digest, request, workspace);
+        let (sender, receiver) = std::sync::mpsc::channel();
+        let _ = sender.send(Err("this mount runs no plugins".into()));
+        receiver
+    }
     /// Recomputes the retained plugin test result in `dir` from its
     /// attempts, only reading.
     fn read_study(&self, dir: &str) -> Receiver<crate::gym::Read> {

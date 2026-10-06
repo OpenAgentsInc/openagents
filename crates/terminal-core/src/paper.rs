@@ -68,7 +68,8 @@ const HELP: &[&str] = &[
     "     There, ENTER recomputes the one picked from its retained attempts and",
     "     shows whether they agree with its report. It runs and publishes nothing.",
     "     F2 there lists the installed plugins by exact release; ENTER opens the",
-    "     newest result for exactly that release.",
+    "     newest result for exactly that release. Type a request and ENTER to",
+    "     use the picked plugin once; ENTER confirms and ESC rejects.",
     "     (The key strip is full, so F12 is named here.)",
     "",
     "A proposed command waits in the transcript. ENTER on an empty input line",
@@ -509,8 +510,17 @@ impl Application {
             return true;
         }
         if self.paper.gym.open {
-            self.paper_gym_key(key.code, enter);
-            return true;
+            let typing = self.paper.gym.components
+                && self.paper.gym.viewing.is_none()
+                && !matches!(
+                    key.code,
+                    KeyCode::Escape | KeyCode::ArrowUp | KeyCode::ArrowDown
+                )
+                && !enter;
+            if !typing {
+                self.paper_gym_key(key.code, enter);
+                return true;
+            }
         }
         if self.paper.rules.open {
             self.paper_rules_key(key.code, enter);
@@ -876,6 +886,10 @@ impl Application {
                 .map(|evidence| evidence.dir.clone()),
             (None, false) => page.picked().map(|study| study.dir.clone()),
         };
+        let armed = page
+            .using
+            .as_ref()
+            .is_some_and(|using| using.state == crate::gym::Use::Armed);
         match code {
             KeyCode::Escape if page.viewing.is_some() => {
                 page.viewing = None;
@@ -883,6 +897,7 @@ impl Application {
                 page.reading = None;
                 page.scroll = 0;
             }
+            KeyCode::Escape if components && armed => page.using = None,
             KeyCode::Escape if components => {
                 page.components = false;
                 page.scroll = 0;
@@ -902,6 +917,43 @@ impl Application {
             }
             KeyCode::ArrowUp => page.selected = page.selected.saturating_sub(1),
             KeyCode::ArrowDown => page.selected = (page.selected + 1).min(count.saturating_sub(1)),
+            _ if enter && components && armed => {
+                if page.sending.is_some() {
+                    return;
+                }
+                let Some(using) = page.using.as_mut() else {
+                    return;
+                };
+                using.state = crate::gym::Use::Sending;
+                let using = using.clone();
+                let workspace = page.root.clone().unwrap_or_else(|| ".".into());
+                let sending = self.sessions().0.plugin_use(
+                    &using.id,
+                    &using.version,
+                    &using.digest,
+                    &using.request,
+                    &workspace,
+                );
+                self.paper.gym.sending = Some(sending);
+            }
+            _ if enter && components && !self.paper.input.trim().is_empty() => {
+                let Some(component) = page.picked_component().cloned() else {
+                    return;
+                };
+                if !component.workflow {
+                    self.notice = Some("This plugin has no workflow to use from here.".into());
+                    return;
+                }
+                let request = self.paper.input.trim().to_owned();
+                self.paper.set_input(String::new());
+                self.paper.gym.using = Some(crate::gym::Using {
+                    id: component.id,
+                    version: component.version,
+                    digest: component.digest,
+                    request,
+                    state: crate::gym::Use::Armed,
+                });
+            }
             _ if enter => {
                 let Some(dir) = dir else {
                     if components && page.picked_component().is_some() {
@@ -929,9 +981,36 @@ impl Application {
         }
     }
 
-    /// Takes a finished listing, plugin read, or study for the Gym page.
+    /// Takes a finished listing, plugin read, use, or study for the Gym
+    /// page; a finished use reads the plugins again to show its run.
     fn paper_gym_poll(&mut self) {
         use std::sync::mpsc::TryRecvError;
+        let page = &mut self.paper.gym;
+        if let Some(sending) = &page.sending {
+            let answer = match sending.try_recv() {
+                Ok(answer) => Some(answer),
+                Err(TryRecvError::Empty) => None,
+                Err(TryRecvError::Disconnected) => {
+                    Some(Err("the helper ended without an answer".into()))
+                }
+            };
+            if let Some(answer) = answer {
+                if let Some(using) = &mut page.using {
+                    using.state = match answer {
+                        Ok((dispatched, text)) => crate::gym::Use::Answered { dispatched, text },
+                        Err(why) => crate::gym::Use::Refused(ascii(&why)),
+                    };
+                }
+                page.sending = None;
+                if page.holding.is_none() {
+                    let root = page.root.clone().unwrap_or_else(|| ".".into());
+                    let holding = self.sessions().0.read_components(&root);
+                    let page = &mut self.paper.gym;
+                    page.holding = Some(holding);
+                    page.reads += 1;
+                }
+            }
+        }
         let page = &mut self.paper.gym;
         if let Some(holding) = &page.holding {
             match holding.try_recv() {
@@ -1707,7 +1786,7 @@ impl Application {
             || (self.paper.run.open && self.paper_run_armed())
             || self.paper.files.open
             || self.paper.rules.open
-            || self.paper.gym.open
+            || (self.paper.gym.open && !self.paper_gym_typing())
         {
             spans.push(Span {
                 text: fit(&self.paper_input_hint(), inner - label.len()),
@@ -1756,8 +1835,21 @@ impl Application {
         if self.smart.pending.is_some() && self.paper.input.is_empty() {
             return ("CONFIRM? ".into(), Tone::Loud);
         }
+        if self.paper_gym_typing() {
+            return ("USE > ".into(), Tone::Loud);
+        }
         if self.paper.gym.open {
-            return ("GYM > ".into(), Tone::Quiet);
+            return if self
+                .paper
+                .gym
+                .using
+                .as_ref()
+                .is_some_and(|using| using.state == crate::gym::Use::Armed)
+            {
+                ("CONFIRM? ".into(), Tone::Loud)
+            } else {
+                ("GYM > ".into(), Tone::Quiet)
+            };
         }
         if self.paper.rules.open {
             return ("RULES > ".into(), Tone::Quiet);
@@ -1781,6 +1873,19 @@ impl Application {
         }
     }
 
+    /// Whether the input line takes a request for the picked plugin: the
+    /// plugins view, with no use waiting for CONFIRM.
+    fn paper_gym_typing(&self) -> bool {
+        let page = &self.paper.gym;
+        page.open
+            && page.components
+            && page.viewing.is_none()
+            && !page
+                .using
+                .as_ref()
+                .is_some_and(|using| using.state == crate::gym::Use::Armed)
+    }
+
     fn paper_run_armed(&self) -> bool {
         self.paper
             .run
@@ -1790,6 +1895,19 @@ impl Application {
     }
 
     fn paper_input_hint(&self) -> String {
+        if let Some(using) = self
+            .paper
+            .gym
+            .using
+            .as_ref()
+            .filter(|using| self.paper.gym.open && using.state == crate::gym::Use::Armed)
+        {
+            return format!(
+                "use {} {} once on this directory   ENTER confirms, ESC rejects",
+                ascii(&using.id),
+                ascii(&using.version)
+            );
+        }
         if self.paper.gym.open {
             return if self.paper.gym.viewing.is_some() {
                 "UP DOWN scroll, ENTER recomputes again, ESC returns to the list".into()

@@ -1,0 +1,17 @@
+[package]
+name = "plugin-action-items"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+description = "Action-items guest: finds the action items in meeting notes (who does what, by when), each citing the line it came from."
+publish.workspace = true
+
+[lib]
+crate-type = ["cdylib"]
+
+[dependencies]
+plugin-pdk = { path = "../plugin-pdk", features = ["guest"] }
+serde_json = "1"
+
+[lints]
+workspace = true

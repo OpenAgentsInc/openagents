@@ -215,6 +215,20 @@ read-only workflow run of `openagents plugin run`, its output is kept by
 digest, and the same request again shows the first run instead of running
 twice.
 
+The plugins view also uses a plugin
+([#10671](https://github.com/OpenAgentsInc/openagents/issues/10671)): a
+request typed on the input line (`USE >`) and ENTER arm one use of the
+picked plugin's exact release on the shell's directory, ENTER confirms
+it, and ESC rejects it. The page sends it through `openagents plugin use`
+on the `terminal` thread and then lists the plugin's runs from the route
+journal: request, state, the release it ran, its check, the kept output
+and whether its bytes are still there, and the cost. Reopening the page
+or asking again shows the same run and never runs it twice. For an
+action-items output, `use` checks each item against the line it cites,
+read again from the request or the workspace; other outputs stay
+unchecked and say so. The noncoding receipt is
+[2026-10-06-noncoding-action-items](../verse/verification/2026-10-06-noncoding-action-items/README.md).
+
 ## Consumers
 
 `terminal-core` is the owner of a mount's local panes. The standalone

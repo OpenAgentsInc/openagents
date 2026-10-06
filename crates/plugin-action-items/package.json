@@ -1,0 +1,13 @@
+{
+  "v": 1,
+  "slug": "action-items",
+  "name": "Action items",
+  "summary": "Reads meeting notes and lists the action items: who does what, and by when, each citing the line it came from.",
+  "version": "0.1.0",
+  "publisher": "a7cff3ee1ff0209f971b9f24673db310ab858899c9d9a99b640e6cb29b1753f0",
+  "provenance": "OpenAgents catalog: the action-items guest (crates/plugin-action-items), the workbench's noncoding example (#10671)",
+  "program": {
+    "name": "action-items",
+    "digest": "b824a13af7336c24f70000fd3139a66571d0e1e9a2444861a52db21d99d2cd5b"
+  }
+}

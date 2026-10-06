@@ -1,0 +1,19 @@
+{
+  "v": "openagents.plugin-use.v1",
+  "dispatched": "ran",
+  "reuse": "admitted",
+  "reason": null,
+  "pin": {
+    "id": "a7cff3ee1ff0209f971b9f24673db310ab858899c9d9a99b640e6cb29b1753f0:action-items",
+    "version": "0.1.0",
+    "digest": "sha256:7a9ece16789edd2a2b6bf8c0052a681f7e6d8871592a6bbdd25fb21b9da14c13"
+  },
+  "request": "use-4ea25ad5a591b5c0",
+  "thread": "terminal",
+  "state": "completed",
+  "outputs": [
+    "SCRATCH_HOME/.openagents/route-artifacts/693479db77d9a25f7e6d3b95a16953e96111b552ae3847b16db6abfef3931f9a"
+  ],
+  "check": "verified",
+  "text": "Action items (5)\n\n1. Ana: send the revised budget to finance, by Friday (notes/standup.md line 6)\n2. Ben Okafor: book the room for the offsite (notes/standup.md line 7)\n3. Chen: draft the agenda, by Wednesday (notes/standup.md line 10)\n4. Unassigned: Update the onboarding checklist (notes/standup.md line 11)\n5. dana: Collect the survey results, by the 14th (notes/standup.md line 12)\n\n1 without an owner; 1 already done and left out.\n\naction-items ran its 1 step.\n\na7cff3ee1ff0209f971b9f24673db310ab858899c9d9a99b640e6cb29b1753f0:action-items 0.1.0 ran once under route use-4ea25ad5a591b5c0 (journaled); check: verified."
+}

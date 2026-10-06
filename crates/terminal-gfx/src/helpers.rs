@@ -352,6 +352,45 @@ pub fn read_components(
     receiver
 }
 
+/// Uses an installed plugin once through `openagents plugin use`: `id`,
+/// `version`, `digest`, the request, and the workspace, in that order. The
+/// thread is the terminal's, so the same request again follows the first
+/// run instead of running twice.
+pub fn plugin_use(terms: [&str; 5], home: Option<&Path>) -> Receiver<terminal_core::gym::UseRead> {
+    use terminal_core::gym::decode_use;
+    let (sender, receiver) = mpsc::channel();
+    let terms = terms.map(str::to_owned);
+    let home = home.map(Path::to_path_buf);
+    std::thread::spawn(move || {
+        let [id, version, digest, request, workspace] = &terms;
+        let answer = helper(
+            &[
+                "--json",
+                "plugin",
+                "use",
+                id,
+                "--version",
+                version,
+                "--digest",
+                digest,
+                "--request",
+                request,
+                "--in",
+                workspace,
+                "--thread",
+                "terminal",
+            ],
+            None,
+            home.as_deref(),
+            256 * 1024,
+            std::time::Duration::from_secs(120),
+        )
+        .and_then(|(stdout, stderr)| decode_use(&stdout, &stderr));
+        let _ = sender.send(answer);
+    });
+    receiver
+}
+
 /// Recomputes the retained plugin test result in `dir` from its attempts.
 /// It runs nothing and publishes nothing.
 pub fn read_study(dir: &str, home: Option<&Path>) -> Receiver<terminal_core::gym::Read> {
