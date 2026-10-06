@@ -549,3 +549,14 @@ holds the terminal and a thread; on the phone, tap **Sessions**, open it, and
 tap another live terminal to switch to it. Rotate the phone, paste, and use
 the soft keyboard in each. Restart the host and confirm the screen says the
 terminal was lost. Approving pending proposals from the phone is #10745.
+
+- Later independent-worker qualification (#10725): Run
+  `scripts/qualification/later-worker.sh NEW_OUTPUT_DIRECTORY` first. Its
+  buyer/provider roles share one operator; independent operation is unverified.
+  Have two separately controlled scratch operators confirm the pinned
+  MKT/LAB no-spend order, protected checker, disclosure, source, and grants;
+  retain duplicate, crash, relay replacement, delivery, check, and acceptance
+  records with measured all-in costs. Before a paid rehearsal, separately
+  authorize one fixed invoice, payer, worker destination, fee cap, and spend
+  limit; retain central receive/share/payout and both wallet receipts, including
+  unknown-outcome recovery. No funded worker scenario has run.

@@ -13,6 +13,7 @@ use sha2::{Digest, Sha256};
 use std::{collections::BTreeMap, path::Path};
 
 pub mod compute;
+pub mod markets;
 pub mod payee;
 pub mod payout;
 pub mod reconcile;
@@ -111,10 +112,26 @@ impl Rail {
     }
 }
 #[derive(Debug, Clone, PartialEq, Eq)]
+pub enum EarnedKind {
+    Worker,
+    Contribution,
+}
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Split {
-    Plugin { author: String, fee_msat: i64 },
-    HostedResource { owner: String },
+    Plugin {
+        author: String,
+        fee_msat: i64,
+    },
+    HostedResource {
+        owner: String,
+    },
     OpenAgents,
+    /// An accepted, fully funded obligation; no plugin launch bonuses.
+    Earned {
+        beneficiary: String,
+        amount_msat: i64,
+        kind: EarnedKind,
+    },
 }
 #[derive(Debug, Clone)]
 pub struct SettlementInput {
@@ -585,6 +602,30 @@ pub(crate) fn record_settlement_in(tx: &Connection, input: SettlementInput) -> R
                 / 10_000) as i64;
             shares.push((owner.as_str(), "resource", amount));
             amount
+        }
+        Split::Earned {
+            beneficiary,
+            amount_msat,
+            kind,
+        } => {
+            if beneficiary.is_empty()
+                || beneficiary == OPENAGENTS
+                || *amount_msat <= 0
+                || *amount_msat > input.received_msat
+                || input.received_msat != input.price_msat
+                || input.plugin_id.is_some()
+                || input.release_id.is_some()
+            {
+                return Err(Error::Invalid(
+                    "earned beneficiary, funding, or classification",
+                ));
+            }
+            let role = match kind {
+                EarnedKind::Worker => "provider",
+                EarnedKind::Contribution => "author",
+            };
+            shares.push((beneficiary.as_str(), role, *amount_msat));
+            *amount_msat
         }
         Split::OpenAgents => 0,
     };
