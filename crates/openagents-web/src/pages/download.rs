@@ -1,6 +1,5 @@
-//! `/download`: published release candidates and their installers.
-//! Coder's terminal ships with the OpenAgents CLI. The existing Mac app
-//! and OpenAgents Terminal retain their own downloads and versions.
+//! `/download`: Coder's published release candidate and its installers.
+//! Coder's terminal ships with the OpenAgents CLI and Microcoder.
 //! `/install` and `/desktop` redirect here permanently (`308`).
 
 use axum::Router;
@@ -28,25 +27,6 @@ pub(crate) const CODER_PLATFORMS: [(&str, &str); 7] = [
     ("Linux · ARM64 · musl", "linux-aarch64-musl"),
     ("Windows · x86_64", "windows-x86_64"),
 ];
-
-/// The published desktop version this page links.
-pub(crate) const MAC_VERSION: &str = "1.0.0-rc.2";
-
-/// The published `.dmg`, a universal build for Apple silicon and Intel.
-pub(crate) const MAC_DMG: &str = "https://storage.googleapis.com/openagentsgemini-oa-updates/desktop/macos/rc/1.0.0-rc.2/OpenAgents-1.0.0-rc.2.dmg";
-
-/// The published OpenAgents Terminal version the install commands fetch.
-pub(crate) const TERMINAL_VERSION: &str = "1.0.0-rc.2";
-
-/// OpenAgents Terminal's install command on macOS and Linux.
-pub(crate) const TERMINAL_SH: &str = "curl -fsSL https://storage.googleapis.com/openagentsgemini-cli-releases/openagents/install.sh | sh";
-
-/// OpenAgents Terminal's install command on Windows, in PowerShell.
-pub(crate) const TERMINAL_PS1: &str =
-    "irm https://storage.googleapis.com/openagentsgemini-cli-releases/openagents/install.ps1 | iex";
-
-/// Where everything else is built from.
-pub(crate) const SOURCE: &str = "https://github.com/OpenAgentsInc/openagents";
 
 pub(crate) fn routes() -> Router<App> {
     Router::new()
@@ -95,51 +75,23 @@ async fn download() -> Response {
     let coder = format!(
         "<p class=\"hint\">macOS and Linux:</p><pre><code>{CODER_SH}</code></pre>\
 <p class=\"hint\">Windows, in PowerShell:</p><pre><code>{CODER_PS1}</code></pre>\
-<p>Installs <code>coder</code> and <code>openagents</code> together. \
+<p>Installs <code>coder</code>, <code>openagents</code>, and <code>microcoder</code> together. \
 Run <code>coder</code> to open the new terminal, or <code>openagents --help</code> for the CLI. \
 Run the install command again to update.</p>\
 <p class=\"hint\">Windows RC: local task services and background automation require macOS or Linux.</p>\
 <details><summary>Download binaries manually</summary>{}</details>",
         coder_binaries(),
     );
-    let mac = format!(
-        "<ul class=\"dl-list\"><li class=\"dl-row\"><span class=\"dl-name\"><strong>macOS</strong> \
-<span class=\"dim\">(Apple silicon and Intel)</span></span>\
-<a class=\"button\" href=\"{MAC_DMG}\">[ Download .dmg ]</a></li></ul>\
-<p class=\"hint\">macOS 13 or later. Open the <code>.dmg</code> and drag \
-<strong>OpenAgents</strong> onto <strong>Applications</strong>.</p>"
-    );
-    let terminal = format!(
-        "<p class=\"hint\">macOS and Linux:</p><pre><code>{TERMINAL_SH}</code></pre>\
-<p class=\"hint\">Windows, in PowerShell:</p><pre><code>{TERMINAL_PS1}</code></pre>"
-    );
-    let other = format!(
-        "<p>iPhone, Android, and OpenAgents for Linux and Windows: \
-<a href=\"{SOURCE}\">build from source</a>.</p>"
-    );
     let body = format!(
-        "<h1>Download OpenAgents</h1>{}{}{}{}",
+        "<h1>Download Coder</h1>{}",
         section(
             1,
             "Coder + OpenAgents CLI",
             &format!("Release candidate {CODER_VERSION}."),
             &coder
         ),
-        section(
-            2,
-            "OpenAgents for Mac",
-            &format!("Version {MAC_VERSION}."),
-            &mac
-        ),
-        section(
-            3,
-            "OpenAgents Terminal",
-            &format!("Version {TERMINAL_VERSION}."),
-            &terminal
-        ),
-        section(4, "Everything else", "", &other),
     );
-    page("Download OpenAgents", Some("/download"), &body)
+    page("Download Coder", Some("/download"), &body)
 }
 
 fn coder_binaries() -> String {

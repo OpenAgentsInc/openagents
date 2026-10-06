@@ -189,10 +189,7 @@ async fn the_homepage_links_one_download_page_and_leads_with_the_terminal() {
     let (_, home) = get(router(config(root.path().into())), "/").await;
     assert!(home.contains("<a class=\"button\" href=\"/download\">[ Download OpenAgents ]</a>"));
     assert!(!home.contains("/install"), "every link says /download");
-    assert!(
-        !home.contains(pages::MAC_DMG),
-        "the download lives on /download"
-    );
+    assert!(!home.contains(".dmg"), "downloads live on /download");
     assert!(!home.contains("curl ") && !home.contains("irm "));
     // The terminal (#10106): its box, its line, and its one script.
     assert!(home.contains("<h2 class=\"box-title\" id=\"term-title\">Ask OpenAgents</h2>"));
@@ -470,27 +467,23 @@ async fn the_everglade_page_says_it_is_unavailable_without_the_build() {
 }
 
 #[tokio::test]
-async fn the_download_page_links_only_the_release_candidates_and_the_source() {
+async fn the_download_page_links_only_the_coder_release_bundle() {
     let root = tempfile::tempdir().unwrap();
     let (status, body) = get(router(config(root.path().into())), "/download").await;
     assert_eq!(status, StatusCode::OK);
-    assert_eq!(
-        pages::MAC_DMG,
-        "https://storage.googleapis.com/openagentsgemini-oa-updates/desktop/macos/rc/1.0.0-rc.2/OpenAgents-1.0.0-rc.2.dmg"
-    );
-    assert!(body.contains(&format!("href=\"{}\"", pages::MAC_DMG)));
-    assert!(body.contains("macOS 13 or later"));
-    assert!(body.contains("<strong>Applications</strong>"));
     assert!(body.contains(&format!("<pre><code>{}</code></pre>", pages::CODER_SH)));
     assert!(body.contains(&format!("<pre><code>{}</code></pre>", pages::CODER_PS1)));
     assert!(body.contains("Run <code>coder</code> to open the new terminal"));
-    assert!(body.contains(&format!("<pre><code>{}</code></pre>", pages::TERMINAL_SH)));
-    assert!(body.contains(&format!("<pre><code>{}</code></pre>", pages::TERMINAL_PS1)));
-    assert!(body.contains(&format!(
-        "<a href=\"{}\">build from source</a>",
-        pages::SOURCE
-    )));
-    // The mobile apps and desktop Linux packages still build from source.
+    for legacy in [
+        "1.0.0-rc.2",
+        "OpenAgents for Mac",
+        "OpenAgents Terminal",
+        "Everything else",
+        ".dmg",
+        "openagentsgemini-cli-releases/openagents/install.",
+    ] {
+        assert!(!body.contains(legacy), "legacy download remained: {legacy}");
+    }
     assert!(!body.contains(pages::TESTFLIGHT));
     assert!(!body.contains("testflight") && !body.contains("TestFlight"));
     assert!(!body.contains("AppImage") && !body.contains("amd64.deb"));
@@ -528,19 +521,18 @@ async fn the_download_page_links_only_the_release_candidates_and_the_source() {
         pages::CODER_BASE,
         pages::CODER_VERSION
     ));
-    expected.extend([pages::MAC_DMG.to_owned(), pages::SOURCE.to_owned()]);
     assert_eq!(links, expected, "{body}");
-    for heading in [
-        "[1]</span> Coder + OpenAgents CLI",
-        "[2]</span> OpenAgents for Mac",
-        "[3]</span> OpenAgents Terminal",
-        "[4]</span> Everything else",
-    ] {
-        assert!(body.contains(heading), "{heading}");
-    }
-    assert!(body.contains("<title>Download OpenAgents \u{b7} OpenAgents</title>"));
-    assert!(body.contains("<h1>Download OpenAgents</h1>"));
+    assert!(body.contains("[1]</span> Coder + OpenAgents CLI"));
+    assert!(body.contains("<title>Download Coder \u{b7} OpenAgents</title>"));
+    assert!(body.contains("<h1>Download Coder</h1>"));
     assert!(body.contains("<a href=\"/download\" aria-current=\"page\">Download</a>"));
+    let (status, guide) = get(router(config(root.path().into())), "/docs/download").await;
+    assert_eq!(status, StatusCode::OK);
+    assert!(guide.contains(pages::CODER_SH));
+    assert!(guide.contains(pages::CODER_PS1));
+    assert!(!guide.contains("1.0.0-rc.2"));
+    assert!(!guide.contains(".dmg"));
+    assert!(!guide.contains("OpenAgents Terminal"));
     // Its older addresses, and the guide's old name, redirect for good.
     for (old, new) in [
         ("/install", "/download"),
