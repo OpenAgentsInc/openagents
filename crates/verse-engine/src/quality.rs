@@ -137,11 +137,12 @@ impl Quality {
                 Tier::Medium => 512 * 1024 * 1024,
                 _ => memory,
             },
-            // Everglade's merged town, with its far levels of detail and
-            // foliage, is about 210 MB of vertices and indices, which
-            // WebGL2 and phones hold; the low tier draws less, not less of
-            // the world. The static world gets 256 MiB on every tier, and
-            // destruction its own reserve on top.
+            // Everglade's town, with its far levels of detail and foliage,
+            // keeps about 117 MiB on the GPU since repeated models draw as
+            // instances (210 MB merged before), which WebGL2 and phones
+            // hold; the low tier draws less, not less of the world. The
+            // static world gets 256 MiB on every tier, and destruction its
+            // own reserve on top.
             geometry_bytes: match self.tier {
                 Tier::Low | Tier::Medium => 320 * 1024 * 1024,
                 Tier::High => memory,

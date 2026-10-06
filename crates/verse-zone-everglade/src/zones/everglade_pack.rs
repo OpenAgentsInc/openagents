@@ -55,17 +55,27 @@ pub const PLACED_TRIANGLE_BUDGET: u64 = 1_650_000;
 /// views `tests::a_frame_draws_a_fraction_of_the_city` measures: the frame
 /// cost the levels of detail bound.
 pub const DRAWN_TRIANGLE_BUDGET: u64 = 600_000;
-/// The most triangles the city may merge and upload, every level of detail
-/// and the ground counted: the zone's geometry memory, under the
-/// renderer's 224 MiB bound (`pbr::textured::MAX_BYTES`). Trees and roofs
-/// are the largest shares: a kit tree is 3,000 to 6,000 triangles, a house
-/// roof 2,464 (the kit's thinned by `scripts/blender/kit_lod.py`), and a
-/// generated building 7,800 to 19,200, about a tenth more once split on
-/// its block lattice (`demolition::carve`). It was 2,600,000 (about 175
-/// MiB) before the foliage round, whose woods, yards, and verges merge to
-/// about 205 MiB, still under the renderer's bound and the low tier's
-/// 256 MB admission.
-pub const MERGED_TRIANGLE_BUDGET: u64 = 2_900_000;
+/// The most triangles the city may place, every level of detail and the
+/// ground counted, each instance counted in full: what the light bake
+/// merges on the CPU and lights one texel a vertex
+/// (`pbr::textured::MAX_MERGE_BYTES`). Trees and roofs are the largest
+/// shares: a kit tree is 3,000 to 6,000 triangles, a house roof 2,464 (the
+/// kit's thinned by `scripts/blender/kit_lod.py`), and a generated building
+/// 7,800 to 19,200, about a tenth more once split on its block lattice
+/// (`demolition::carve`). It was 2,900,000 while the renderer uploaded
+/// every placement merged, about 209 MiB; repeated models now upload once
+/// and draw as instances (`pbr::instanced`), so GPU memory is bounded on
+/// its own ([`RESIDENT_BYTES_BUDGET`]) and this bound follows the bake.
+pub const MERGED_TRIANGLE_BUDGET: u64 = 4_000_000;
+/// The most bytes the city keeps on the GPU: merged cells, shared meshes,
+/// instance records, and the light texture
+/// (`pbr::textured::TexturedScene::gpu_bytes`). It leaves the low and
+/// medium tiers' 320 MiB geometry budget 160 MiB, of which 64 MiB is the
+/// reserve for destruction's debris and the character
+/// (`verse_engine::quality::Budget::dynamic_geometry_bytes`). The city took
+/// 209 MiB before instancing and the compact vertex, and about 117 MiB
+/// after.
+pub const RESIDENT_BYTES_BUDGET: u64 = 160 * 1024 * 1024;
 /// Where packs are committed, relative to the repository root.
 pub const PACK_DIRECTORY: &str = "assets/verse/everglade";
 /// The pack file extension.

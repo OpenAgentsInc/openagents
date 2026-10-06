@@ -352,3 +352,100 @@ fn the_towns_creatures_live_by_the_water_the_trees_and_the_hives() {
     figure.validate().unwrap();
     assert!(figure.vertices.len() > cast.vertices.len());
 }
+
+#[test]
+fn the_whole_town_broken_stays_within_the_geometry_budget() {
+    use crate::pbr::textured::IndexEdits;
+    use verse_engine::quality::Tier;
+    let shared = world().mesh.textured.as_ref().unwrap();
+    let scene = std::sync::Arc::new(TexturedScene {
+        edits: IndexEdits::default(),
+        ..shared.as_ref().clone()
+    });
+    let resident = scene.gpu_bytes();
+    assert!(
+        resident <= everglade_pack::RESIDENT_BYTES_BUDGET,
+        "{resident}"
+    );
+    let mut town =
+        super::demolition::town::Town::new(pack(), &layout::placements(), scene.clone()).unwrap();
+    let targets: Vec<Vec3> = town
+        .buildings()
+        .iter()
+        .filter(|b| b.destructible())
+        .map(|b| {
+            let ([cx, cz], _) = b.rect;
+            Vec3::new(cx, height(cx, cz) + 2.0, cz)
+        })
+        .collect();
+    assert!(targets.len() > 100, "{}", targets.len());
+    // Every destructible building, one after another, with the debris of
+    // the earlier ones still falling: the world and the town's pool stay
+    // within the smallest tier's geometry budget, the pool within the
+    // reserve for moving geometry.
+    let budget = Tier::Low.quality().budget();
+    let mut peak = 0u64;
+    for (i, &at) in targets.iter().enumerate() {
+        let mut player = crate::controller::PlayerController::new(at - Vec3::Z * 20.0, 0.0);
+        player.pos.y = height(player.pos.x, player.pos.z);
+        town.blast(at, 9.0, 400, Vec3::ZERO);
+        for _ in 0..12 {
+            town.tick(1.0 / 30.0, &player);
+            let debris = town.geometry_bytes() as u64;
+            assert!(
+                debris <= budget.dynamic_geometry_bytes,
+                "blast {i}: {debris}"
+            );
+            assert!(resident + debris <= budget.geometry_bytes, "blast {i}");
+            peak = peak.max(debris);
+        }
+    }
+    eprintln!(
+        "Everglade keeps {resident} bytes resident and at most {peak} of debris, of {} on the low tier",
+        budget.geometry_bytes
+    );
+    assert!(peak > 0);
+}
+
+#[test]
+fn the_towns_buildings_merge_and_repeated_models_draw_as_instances() {
+    let scene = world().mesh.textured.as_ref().unwrap();
+    let placements = layout::placements();
+    let town = super::demolition::town::Town::new(pack(), &placements, scene.clone()).unwrap();
+    let fars = super::detail::far_placements(pack(), &placements);
+    let ranges = scene.index_ranges();
+    let instanced = scene.instanced();
+    // Every piece the town can hide or carve has merged indices to rewrite,
+    // near and far.
+    let mut pieces = 0;
+    for building in town.buildings().iter().filter(|b| b.destructible()) {
+        for piece in &building.pieces {
+            for &p in &piece.placements {
+                let far = fars[p].map(|(_, at)| at);
+                for q in std::iter::once(p).chain(far) {
+                    assert!(
+                        !instanced[q],
+                        "{} draws as an instance",
+                        placements[p].model
+                    );
+                    assert!(
+                        !ranges[q].is_empty(),
+                        "{} has no ranges",
+                        placements[p].model
+                    );
+                    pieces += 1;
+                }
+            }
+        }
+    }
+    assert!(pieces > 1000, "{pieces}");
+    // The trees, foliage, props, and street furniture the town repeats draw
+    // as instances, which keeps most of the city's placements out of the
+    // merged cells.
+    let count = instanced.iter().filter(|&&i| i).count();
+    assert!(
+        count * 2 > scene.placements.len(),
+        "{count} of {}",
+        scene.placements.len()
+    );
+}
