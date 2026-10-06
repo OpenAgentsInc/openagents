@@ -150,5 +150,7 @@ records a byte-free attempt in a private per-thread directory, and calls the
 host's input admission. An interrupted attempt remains unknown and cannot be
 replayed. Each lease admits at most 256 distinct input IDs. The producer has
 no reader, and typing authority grants no observation of blocks or screens.
+Persistent evidence currently requires Unix private directory permissions;
+other platforms refuse until their directory privacy can be validated.
 An owner key reclaims the seat; shares alone cannot reclaim it. The native
 and Verse pane title shows a leading agent badge. No model starts on handoff.

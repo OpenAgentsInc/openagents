@@ -110,7 +110,8 @@ struct InputRecord<'a> {
 
 impl PrivateEvidence {
     /// Opens an existing private directory supplied by the task owner.
-    /// On Unix, the directory must have no group or other permissions.
+    /// Unix directories must exclude group and other access. Other platforms
+    /// refuse until their private directory permissions can be validated.
     pub fn open(root: impl Into<std::path::PathBuf>) -> Result<Self, Refusal> {
         let root = root.into();
         private_directory(&root)?;
@@ -204,6 +205,12 @@ impl AgentProducer {
 }
 
 fn private_directory(path: &std::path::Path) -> Result<(), Refusal> {
+    if !cfg!(unix) {
+        return Err(Refusal::new(
+            Reason::UnsupportedFeature,
+            "Private evidence requires validated directory permissions on this platform.",
+        ));
+    }
     let metadata = std::fs::symlink_metadata(path).map_err(evidence_error)?;
     if !metadata.is_dir() || metadata.file_type().is_symlink() {
         return Err(Refusal::new(
