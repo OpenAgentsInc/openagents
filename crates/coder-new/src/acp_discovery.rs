@@ -1,14 +1,14 @@
 //! Detect installed ACP agents without starting them or reading their credentials.
 //!
 //! The catalog is reimplemented from public ACP launch contracts and Buzz's
-//! discovery design. Each adapter must be installed before it appears here.
+//! discovery design. Codex can also use the built-in native CLI bridge.
 
 use std::ffi::OsString;
 use std::path::{Path, PathBuf};
 
 use acp_client::process::{first_executable, on_path};
 
-use crate::bundled_runtime::AcpAgent;
+use crate::bundled_runtime::{AcpAgent, AgentTransport};
 
 /// Environment values the caller snapshots for agent discovery.
 pub const ENVIRONMENT: &[&str] = &[
@@ -19,6 +19,7 @@ pub const ENVIRONMENT: &[&str] = &[
     "DEVIN_BIN",
     "OPENCODE_BIN",
     "CODER_ACP_CWD",
+    "CODER_ONE_CODEX_BIN",
 ];
 
 const INSTALL_DIRS: &[&str] = &[
@@ -61,6 +62,7 @@ pub fn discover(variable: &dyn Fn(&str) -> Option<OsString>) -> Vec<AcpAgent> {
                 id: id.into(),
                 name: name.into(),
                 program,
+                transport: AgentTransport::Acp,
                 arguments,
                 mode: None,
                 enabled: true,
@@ -80,12 +82,6 @@ pub fn discover(variable: &dyn Fn(&str) -> Option<OsString>) -> Vec<AcpAgent> {
         "claude-code",
         "Claude Code",
         adapter(&["claude-agent-acp", "claude-code-acp"], Some("claude")),
-        Vec::new(),
-    );
-    add(
-        "codex",
-        "Codex",
-        adapter(&["codex-acp"], Some("codex")),
         Vec::new(),
     );
     add(
@@ -138,7 +134,67 @@ pub fn discover(variable: &dyn Fn(&str) -> Option<OsString>) -> Vec<AcpAgent> {
         adapter(&["hermes-acp"], None),
         Vec::new(),
     );
+    let explicit_codex = variable("CODER_ONE_CODEX_BIN").filter(|value| !value.is_empty());
+    let codex = explicit_codex.as_ref().map_or_else(
+        || codex_binary(variable),
+        |value| resolve(Path::new(&value), variable).and_then(codex_native_path),
+    );
+    if let Some(codex) = codex {
+        let adapter = explicit_codex
+            .is_none()
+            .then(|| resolve(Path::new("codex-acp"), variable))
+            .flatten();
+        let transport = if adapter.is_some() {
+            AgentTransport::Acp
+        } else {
+            AgentTransport::CodexCli
+        };
+        let index = usize::from(agents.first().is_some_and(|a| a.id == "claude-code"));
+        agents.insert(
+            index,
+            AcpAgent {
+                id: "codex".into(),
+                name: "Codex".into(),
+                program: adapter.unwrap_or(codex),
+                transport,
+                arguments: vec![],
+                mode: None,
+                enabled: true,
+            },
+        );
+    }
     agents
+}
+
+fn codex_binary(variable: &dyn Fn(&str) -> Option<OsString>) -> Option<PathBuf> {
+    if !cfg!(windows) {
+        return resolve(Path::new("codex"), variable);
+    }
+    let path = std::env::join_paths(directories(variable)).ok()?;
+    let binary = coder_delegate::delegate::binary(
+        coder_delegate::delegate::Agent::Codex,
+        |name| match name {
+            "PATH" => path.to_str().map(str::to_owned),
+            "HOME" => home(variable).and_then(|home| home.to_str().map(str::to_owned)),
+            _ => None,
+        },
+    )?;
+    absolute_executable([binary])
+}
+
+fn codex_native_path(program: PathBuf) -> Option<PathBuf> {
+    let batch = program.extension().is_some_and(|extension| {
+        extension.eq_ignore_ascii_case("cmd") || extension.eq_ignore_ascii_case("bat")
+    });
+    if !cfg!(windows) || !batch {
+        return Some(program);
+    }
+    let directory = program.parent()?.to_str()?;
+    let native =
+        coder_delegate::delegate::binary(coder_delegate::delegate::Agent::Codex, |name| {
+            (name == "PATH").then(|| directory.to_owned())
+        })?;
+    absolute_executable([native])
 }
 
 /// Resolve an executable path or command against the supplied environment.
@@ -327,13 +383,65 @@ mod tests {
     }
 
     #[test]
-    fn plain_claude_and_codex_are_not_acp_agents() {
+    fn native_codex_uses_the_builtin_bridge_without_an_acp_adapter() {
         let fixture = Fixture::new();
         fixture.file("bin", "claude", true);
-        fixture.file("bin", "codex", true);
-        assert!(discover(&|name| fixture.variable(name)).is_empty());
+        let codex = fixture.file("bin", "codex", true);
+        let agents = discover(&|name| fixture.variable(name));
+        assert_eq!(agents.len(), 1);
+        assert_eq!(agents[0].id, "codex");
+        assert_eq!(agents[0].program, std::fs::canonicalize(codex).unwrap());
+        assert_eq!(agents[0].transport, AgentTransport::CodexCli);
+        assert!(agents[0].validate().is_ok());
         fixture.file("bin", "claude-agent-acp", false);
         fixture.file("bin", "codex-acp", false);
+        assert_eq!(
+            discover(&|name| fixture.variable(name))[0].transport,
+            AgentTransport::CodexCli
+        );
+        let adapter = fixture.file("bin", "codex-acp", true);
+        let agents = discover(&|name| fixture.variable(name));
+        assert_eq!(agents.len(), 1);
+        assert_eq!(agents[0].transport, AgentTransport::Acp);
+        assert_eq!(agents[0].program, std::fs::canonicalize(adapter).unwrap());
+    }
+
+    #[test]
+    #[cfg(windows)]
+    fn windows_npm_codex_uses_the_packages_native_executable() {
+        let fixture = Fixture::new();
+        let bin = fixture.root.path().join("bin");
+        std::fs::write(bin.join("codex.cmd"), "This shim must never be executed.").unwrap();
+        let triple = if cfg!(target_arch = "aarch64") {
+            "aarch64-pc-windows-msvc"
+        } else {
+            "x86_64-pc-windows-msvc"
+        };
+        let directory = format!("bin/node_modules/@openai/codex/vendor/{triple}/codex");
+        let expected = fixture.file(&directory, "codex", true);
+        let agents = discover(&|name| fixture.variable(name));
+        assert_eq!(agents.len(), 1);
+        assert_eq!(agents[0].transport, AgentTransport::CodexCli);
+        assert_eq!(agents[0].program, std::fs::canonicalize(expected).unwrap());
+    }
+
+    #[test]
+    fn codex_binary_override_does_not_fall_back_to_another_installation() {
+        let mut fixture = Fixture::new();
+        fixture.file("bin", "codex", true);
+        let expected = fixture.file("explicit", "codex", true);
+        fixture.file("bin", "codex-acp", true);
+        fixture.environment.insert(
+            "CODER_ONE_CODEX_BIN".into(),
+            expected.as_os_str().to_owned(),
+        );
+        let agents = discover(&|name| fixture.variable(name));
+        assert_eq!(agents[0].program, std::fs::canonicalize(expected).unwrap());
+        assert_eq!(agents[0].transport, AgentTransport::CodexCli);
+        fixture.environment.insert(
+            "CODER_ONE_CODEX_BIN".into(),
+            fixture.root.path().join("missing").into_os_string(),
+        );
         assert!(discover(&|name| fixture.variable(name)).is_empty());
     }
 

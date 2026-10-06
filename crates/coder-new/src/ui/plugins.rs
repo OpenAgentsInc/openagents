@@ -968,6 +968,7 @@ mod tests {
                 id: format!("fixture-{index}"),
                 name: format!("Agent {index}"),
                 program: program.clone(),
+                transport: Default::default(),
                 arguments: vec![],
                 mode: None,
                 enabled: true,

@@ -57,6 +57,17 @@ struct AcpArguments {
 }
 
 impl ExecutionSettings {
+    /// Limit delegation to the agents explicitly named in the current request.
+    pub fn for_request(&self, request: &str) -> Self {
+        let targets = requested_agents(request, &self.agents);
+        let mut scoped = self.clone();
+        if !targets.is_empty() {
+            scoped.microcoder &= targets.contains("microcoder");
+            scoped.agents.retain(|agent| targets.contains(&agent.id));
+        }
+        scoped
+    }
+
     fn enabled_for(&self, binding: ToolBinding) -> bool {
         match binding {
             ToolBinding::Microcoder => self.microcoder,
@@ -114,7 +125,9 @@ impl ExecutionSettings {
                 .map(|agent| format!("{} ({})", agent.id, agent.name))
                 .collect();
             if !agents.is_empty() {
-                guidance.push_str(&format!("ACP Subagents are available through acp_subagent: {}. Delegate only to those registered IDs. They share the current working directory and retain their native permission semantics; the host denies permission requests.\n",agents.join(", ")));
+                guidance.push_str(&format!("Local subagents are available through acp_subagent: {}. Delegate only to those registered IDs. When the user names an agent, use that exact agent; never substitute another agent or Microcoder. If it is unavailable or turned off, explain how to enable it instead of trying another engine. Do not use CLI commands to bypass the selected agent. They share the current working directory and retain their native permission semantics; the host denies permission requests.\n",agents.join(", ")));
+            } else {
+                guidance.push_str("No local subagent is enabled for this request. If the user requested a named agent, explain that it is unavailable or turned off; do not substitute another agent or Microcoder.\n");
             }
         }
         if self.registered(ToolBinding::Jev) {
@@ -297,6 +310,125 @@ impl ExecutionSettings {
     }
 }
 
+fn requested_agents(request: &str, agents: &[AcpAgent]) -> std::collections::BTreeSet<String> {
+    fn words(text: &str) -> Vec<String> {
+        text.split(|ch: char| !ch.is_alphanumeric())
+            .filter(|word| !word.is_empty())
+            .map(str::to_lowercase)
+            .collect()
+    }
+    let mut names: Vec<(String, Vec<String>)> = [
+        ("codex", "codex"),
+        ("claude-code", "claude code"),
+        ("microcoder", "microcoder"),
+    ]
+    .into_iter()
+    .map(|(id, name)| (id.to_owned(), words(name)))
+    .collect();
+    for agent in agents {
+        names.push((agent.id.clone(), words(&agent.id)));
+        names.push((agent.id.clone(), words(&agent.name)));
+    }
+    let mut targets = std::collections::BTreeSet::new();
+    let directive = |word: &str| {
+        matches!(
+            word,
+            "ask"
+                | "asked"
+                | "have"
+                | "use"
+                | "run"
+                | "let"
+                | "get"
+                | "want"
+                | "need"
+                | "delegate"
+                | "delegation"
+                | "assign"
+                | "hand"
+        )
+    };
+    for clause in request.split(['.', ';', '\n', '!', '?']) {
+        let tokens = words(clause);
+        for (index, token) in tokens.iter().enumerate() {
+            let mut start = match token.as_str() {
+                word if directive(word) => {
+                    if names.iter().any(|(_, name)| {
+                        tokens.get(index + 1..index + 1 + name.len()) == Some(name.as_slice())
+                    }) {
+                        index + 1
+                    } else {
+                        let tail = &tokens[index + 1..];
+                        tail.iter()
+                            .take(10)
+                            .position(|word| {
+                                matches!(word.as_str(), "to" | "using" | "with" | "by" | "for")
+                            })
+                            .map_or(index + 1, |offset| index + offset + 2)
+                    }
+                }
+                _ if index == 0
+                    && names.iter().any(|(_, name)| {
+                        tokens.get(..name.len()) == Some(name.as_slice())
+                            && tokens.get(name.len()).is_some_and(|next| {
+                                matches!(
+                                    next.as_str(),
+                                    "please"
+                                        | "review"
+                                        | "check"
+                                        | "inspect"
+                                        | "fix"
+                                        | "implement"
+                                        | "write"
+                                        | "run"
+                                        | "test"
+                                        | "analyze"
+                                )
+                            })
+                    }) =>
+                {
+                    0
+                }
+                _ => continue,
+            };
+            let previous = tokens[..index]
+                .iter()
+                .rposition(|word| matches!(word.as_str(), "and" | "but" | "then" | "instead"))
+                .map_or(0, |previous| previous + 1);
+            if tokens[previous..index]
+                .iter()
+                .any(|word| matches!(word.as_str(), "not" | "never" | "dont" | "don"))
+            {
+                continue;
+            }
+            loop {
+                if tokens.get(start).is_some_and(|word| word == "the") {
+                    start += 1;
+                }
+                let Some((id, name)) = names.iter().find(|(_, name)| {
+                    !name.is_empty()
+                        && tokens.get(start..start + name.len()) == Some(name.as_slice())
+                }) else {
+                    break;
+                };
+                let next = start + name.len();
+                if tokens.get(next).is_some_and(|word| {
+                    matches!(word.as_str(), "docs" | "documentation" | "sdk" | "api")
+                }) {
+                    break;
+                }
+                targets.insert(id.clone());
+                if tokens.get(next).is_some_and(|word| word == "and") {
+                    start = next + 1;
+                } else {
+                    break;
+                }
+            }
+        }
+    }
+    targets
+}
+
 pub fn redact_value(value: &mut Value, key: &str) {
     if key.is_empty() {
         return;
@@ -335,6 +467,88 @@ mod tests {
             agents: vec![],
             cwd: PathBuf::from("/unavailable"),
         }
+    }
+
+    fn available_agents() -> ExecutionSettings {
+        let mut settings = settings();
+        settings.acp = true;
+        settings.microcoder = true;
+        settings.agents = [
+            ("codex", "Codex"),
+            ("opencode", "OpenCode"),
+            ("cursor", "Cursor"),
+        ]
+        .into_iter()
+        .map(|(id, name)| AcpAgent {
+            id: id.into(),
+            name: name.into(),
+            program: PathBuf::from("/must-not-run"),
+            arguments: vec![],
+            mode: None,
+            enabled: true,
+            transport: Default::default(),
+        })
+        .collect();
+        settings
+    }
+
+    #[tokio::test]
+    async fn named_delegation_never_dispatches_another_installed_agent() {
+        let settings = available_agents();
+        for request in [
+            "can u delegate example to codex",
+            "Ask Codex to review the tests.",
+            "Delegate Codex to review the tests.",
+            "Use Codex, not OpenCode.",
+            "Don't use OpenCode. Delegate the review to Codex.",
+            "Run Codex on the tests.",
+            "Have the review done by Codex.",
+            "Codex, please review the tests.",
+            "I asked for Codex.",
+            "Do not want to use OpenCode; delegate to Codex.",
+            "Don't use OpenCode and use Codex.",
+        ] {
+            let scoped = settings.for_request(request);
+            assert!(!scoped.microcoder);
+            assert_eq!(scoped.agents.len(), 1, "{request}");
+            assert_eq!(scoped.agents[0].id, "codex");
+            assert_eq!(
+                scoped.defs()[0]["function"]["parameters"]["properties"]["agent"]["enum"],
+                json!(["codex"])
+            );
+            let mut emitted = false;
+            assert!(
+                scoped
+                    .execute(
+                        "acp_subagent",
+                        json!({"agent":"opencode","task":"Review the tests."}),
+                        None,
+                        &Arc::new(AtomicBool::new(false)),
+                        &mut |_| emitted = true,
+                    )
+                    .await
+                    .is_err()
+            );
+            assert!(!emitted);
+        }
+        assert_eq!(settings.agents.len(), 3);
+        assert!(settings.microcoder);
+        let multi = settings.for_request("Delegate to Codex and OpenCode.");
+        assert_eq!(
+            multi
+                .agents
+                .iter()
+                .map(|agent| agent.id.as_str())
+                .collect::<Vec<_>>(),
+            ["codex", "opencode"]
+        );
+        let docs = settings.for_request("Use Codex documentation to explain the API.");
+        assert_eq!(docs.agents.len(), 3);
+        assert!(docs.microcoder);
+        let unavailable = docs.for_request("Delegate to Claude Code.");
+        assert!(unavailable.agents.is_empty());
+        assert!(!unavailable.microcoder);
+        assert!(unavailable.defs().is_empty());
     }
 
     #[tokio::test]
@@ -422,6 +636,7 @@ mod tests {
             id: "fixture".into(),
             name: "Fixture ACP".into(),
             program,
+            transport: Default::default(),
             arguments: vec![],
             mode: None,
             enabled: true,

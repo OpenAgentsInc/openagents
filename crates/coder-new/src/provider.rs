@@ -208,6 +208,14 @@ impl Provider {
         if !options.valid() {
             return Err("The model settings are invalid.".into());
         }
+        let scoped = execution.for_request(
+            messages
+                .iter()
+                .rev()
+                .find(|message| message.role == "user")
+                .map_or("", |message| message.content.as_str()),
+        );
+        let execution = &scoped;
         let definitions = execution.defs();
         let model = if model.trim().is_empty() {
             crate::models::DEFAULT_MODEL
@@ -1999,6 +2007,65 @@ mod tests {
 
     fn jev_plugin_endpoint() -> String {
         crate::jev_plugin::DEFAULT_ENDPOINT.into()
+    }
+
+    #[test]
+    fn an_explicit_codex_request_rejects_opencode_before_starting_a_child() {
+        let wrong = format!(
+            "data: {}\n\ndata: [DONE]\n\n",
+            json!({"choices":[{"delta":{"tool_calls":[{"index":0,"id":"wrong-agent","function":{"name":"acp_subagent","arguments":"{\"agent\":\"opencode\",\"task\":\"Provide a delegation example.\"}"}}]},"finish_reason":"tool_calls"}]})
+        );
+        let (base, server) = sequence(vec![wrong, final_reply("Use the requested Codex agent.")]);
+        let provider = Provider::with_base(ApiKey::new(FIXTURE_TOKEN), &base).unwrap();
+        let mut settings = jev_settings(jev_plugin_endpoint(), None);
+        settings.jev_enabled = false;
+        settings.acp = true;
+        settings.microcoder = true;
+        settings.agents = [("codex", "Codex"), ("opencode", "OpenCode")]
+            .into_iter()
+            .map(|(id, name)| crate::bundled_runtime::AcpAgent {
+                id: id.into(),
+                name: name.into(),
+                program: "/must-not-run".into(),
+                arguments: vec![],
+                mode: None,
+                enabled: true,
+                transport: Default::default(),
+            })
+            .collect();
+        let mut events = vec![];
+        runtime()
+            .block_on(provider.chat_with_plugins(
+                "fixture/model",
+                &crate::models::GenerationOptions::default(),
+                vec![Message::user("can u delegate example to codex")],
+                &settings,
+                &mut |_| {},
+                &mut |_| {},
+                &mut |event| events.push(event),
+                &Arc::new(AtomicBool::new(false)),
+            ))
+            .unwrap();
+        assert!(
+            events
+                .iter()
+                .all(|event| !matches!(event, RuntimeEvent::Delegation { .. }))
+        );
+        assert!(events.iter().any(|event| matches!(event, RuntimeEvent::Tool {output, running:false,..} if output["error"].is_string())));
+        let requests = server.join().unwrap();
+        assert_eq!(requests.len(), 2);
+        let defs = requests[0]["tools"].as_array().unwrap();
+        assert_eq!(defs.len(), 1);
+        assert_eq!(
+            defs[0]["function"]["parameters"]["properties"]["agent"]["enum"],
+            json!(["codex"])
+        );
+        assert!(
+            requests[1]["messages"].as_array().unwrap().last().unwrap()["content"]
+                .as_str()
+                .unwrap()
+                .contains("not configured")
+        );
     }
 
     #[test]

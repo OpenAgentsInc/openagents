@@ -657,7 +657,7 @@ fn model_command(app: &mut App, args: &[String]) -> Result<Value, Error> {
 }
 
 fn agent_list(app: &App) -> Value {
-    json!(app.plugins.bundled.acp_choices().iter().map(|agent|json!({"id":agent.id,"name":agent.name,"enabled":agent.enabled,"program":agent.program,"arguments":agent.arguments})).collect::<Vec<_>>())
+    json!(app.plugins.bundled.acp_choices().iter().map(|agent|json!({"id":agent.id,"name":agent.name,"enabled":agent.enabled,"program":agent.program,"arguments":agent.arguments,"transport":agent.transport})).collect::<Vec<_>>())
 }
 fn agents(app: &mut App, args: &[String]) -> Result<Value, Error> {
     if args.is_empty() || args == ["list"] || args == ["refresh"] {

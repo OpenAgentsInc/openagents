@@ -28,13 +28,25 @@ const ARGUMENT_BYTES: usize = 64 * 1024;
 const RUN_SECONDS: u64 = 600;
 const POLL: Duration = Duration::from_millis(50);
 
-/// A detected or configured local ACP executable, addressed by its stable ID.
+/// The protocol used by a registered local agent.
+#[derive(Clone, Copy, Debug, Default, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "kebab-case")]
+pub enum AgentTransport {
+    #[default]
+    Acp,
+    /// The built-in bridge to Codex's native JSON event stream.
+    CodexCli,
+}
+
+/// A detected or configured local agent executable, addressed by its stable ID.
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(deny_unknown_fields)]
 pub struct AcpAgent {
     pub id: String,
     pub name: String,
     pub program: PathBuf,
+    #[serde(default)]
+    pub transport: AgentTransport,
     #[serde(default)]
     pub arguments: Vec<String>,
     #[serde(default)]
@@ -73,6 +85,22 @@ impl AcpAgent {
             return Err("An ACP agent needs an executable path or program name.".into());
         }
         validate_arguments(&self.arguments)?;
+        if self.transport == AgentTransport::CodexCli
+            && (self.id != "codex" || !self.arguments.is_empty() || self.mode.is_some())
+        {
+            return Err("The built-in Codex bridge requires the codex agent ID and does not accept ACP arguments or modes.".into());
+        }
+        if self.transport == AgentTransport::CodexCli
+            && cfg!(windows)
+            && self.program.extension().is_some_and(|extension| {
+                extension.eq_ignore_ascii_case("cmd") || extension.eq_ignore_ascii_case("bat")
+            })
+        {
+            return Err(
+                "The native Codex bridge requires codex.exe instead of a Windows batch shim."
+                    .into(),
+            );
+        }
         if self.mode.as_ref().is_some_and(|mode| {
             mode.is_empty() || mode.len() > 128 || mode.chars().any(char::is_control)
         }) {
@@ -119,7 +147,7 @@ pub fn acp_tool_definition(agents: &[AcpAgent]) -> Option<Value> {
     }
     Some(json!({"type":"function","function":{
         "name":"acp_subagent",
-        "description":"Delegate a bounded task to one of the operator's configured ACP agents in the current working directory. Choose a registered agent ID; the host supplies its executable. Include the task, relevant context, and the result you need. This starts one child session, streams its work, and closes it when the task ends. Permission requests are denied; an enabled plugin does not grant a child additional authority.",
+        "description":"Delegate a task to a registered local agent through ACP or the built-in native Codex bridge. Use exactly the agent the user names; never substitute another agent. If that agent is unavailable, report the reason and let the user choose. The host supplies the executable. Include the task, relevant context, and the result you need. This starts one child session, streams its work, and closes it when the task ends. ACP permission requests are denied. The native Codex bridge keeps Codex's configured model and uses a read-only sandbox without approval prompts; an enabled plugin does not grant additional authority.",
         "parameters":{"type":"object","properties":{"agent":{"type":"string","enum":ids},"task":{"type":"string","minLength":1,"maxLength":65536}},"required":["agent","task"],"additionalProperties":false}
     }}))
 }
@@ -272,6 +300,9 @@ pub async fn acp(
         ))
     }
     .ok_or_else(|| format!("The executable for {} is unavailable.", agent.name))?;
+    if agent.transport == AgentTransport::CodexCli {
+        return codex_cli(&program, task, cwd, cancel, emit).await;
+    }
     let environment = std::env::vars()
         .filter(|(name, _)| {
             !(name.ends_with("_API_KEY") || name.ends_with("_TOKEN") || name.ends_with("_SECRET"))
@@ -313,6 +344,203 @@ pub async fn acp(
     let text = handler.text;
     let group_clear = session.close(Duration::from_secs(2)).await;
     result.map(|reply| json!({"session":id,"reply":text,"model":model,"stop_reason":reply.stop_reason.as_str(),"usage":reply.usage,"group_clear":group_clear})).map_err(|error| format!("ACP task failed: {error}; process group cleared: {group_clear}."))
+}
+
+/// Drive Codex's native protocol without treating its executable as an ACP server.
+async fn codex_cli(
+    program: &Path,
+    task: &str,
+    cwd: &Path,
+    cancel: &Arc<AtomicBool>,
+    emit: &mut dyn FnMut(RuntimeEvent),
+) -> Result<Value, String> {
+    let mut command = std::process::Command::new(program);
+    command
+        .args([
+            "exec",
+            "--json",
+            "--skip-git-repo-check",
+            "--sandbox",
+            "read-only",
+            "-c",
+            "approval_policy=\"never\"",
+            "-",
+        ])
+        .current_dir(cwd);
+    let (mark, value) = coder_delegate::delegate::Agent::Codex.engine_mark();
+    command.env(mark, value);
+    scrub_credentials(&mut command);
+    let mut live = supervise::Job::from_command(command)
+        .bounded(supervise::Limits::within(Duration::from_secs(RUN_SECONDS)).keeping(TEXT_MAX))
+        .start(supervise::Input::Piped)?;
+    if let Err(error) = live.send(task.as_bytes()).await {
+        let stopped = live.stop().await;
+        return Err(format!(
+            "Codex could not read the task: {error}; process group cleared: {}.",
+            stopped.group_clear
+        ));
+    }
+    live.close_input();
+    let mut events = CodexEvents::default();
+    let mut reader = coder_delegate::tail::Reader::new(TEXT_MAX);
+    let stopped = loop {
+        events.delivery(&mut reader, live.take(), emit);
+        if live.finished() {
+            break live.wait().await;
+        }
+        if cancel.load(Ordering::Relaxed) {
+            break live.stop().await;
+        }
+        tokio::time::sleep(POLL).await;
+    };
+    events.delivery(&mut reader, stopped.rest.clone(), emit);
+    if let Some(record) = reader.finish() {
+        events.record(record, emit);
+    }
+    if stopped.requested || cancel.load(Ordering::Relaxed) {
+        return Err(format!(
+            "The Codex task was canceled; process group cleared: {}.",
+            stopped.group_clear
+        ));
+    }
+    if !stopped.ending.success() || events.error.is_some() {
+        let reason = events.error.unwrap_or_else(|| {
+            let stderr = bounded(&stopped.stderr.marked(), TEXT_MAX);
+            if !stderr.trim().is_empty() {
+                stderr
+            } else if matches!(stopped.ending, supervise::Ending::TimedOut) {
+                "The Codex task timed out.".into()
+            } else {
+                format!("Codex exited with status {:?}.", stopped.ending.code())
+            }
+        });
+        return Err(format!(
+            "Codex task failed: {reason}; process group cleared: {}.",
+            stopped.group_clear
+        ));
+    }
+    if !events.completed {
+        return Err(format!(
+            "Codex exited without completing the turn; process group cleared: {}.",
+            stopped.group_clear
+        ));
+    }
+    let tokens = events
+        .usage
+        .get("input_tokens")
+        .and_then(Value::as_u64)
+        .unwrap_or(0)
+        .saturating_add(
+            events
+                .usage
+                .get("output_tokens")
+                .and_then(Value::as_u64)
+                .unwrap_or(0),
+        );
+    Ok(
+        json!({"session":events.session,"reply":events.text,"model":events.model,"stop_reason":"end_turn","usage":events.usage,"tokens":tokens,"group_clear":stopped.group_clear,"transport":"codex-cli","truncated":!reader.gaps().is_empty()}),
+    )
+}
+
+#[derive(Default)]
+struct CodexEvents {
+    text: String,
+    session: Option<String>,
+    model: Option<String>,
+    usage: Value,
+    error: Option<String>,
+    completed: bool,
+    seq: u64,
+}
+
+impl CodexEvents {
+    fn delivery(
+        &mut self,
+        reader: &mut coder_delegate::tail::Reader,
+        delivery: supervise::Delivery,
+        emit: &mut dyn FnMut(RuntimeEvent),
+    ) {
+        for gap in delivery.gaps {
+            reader.dropped(gap.offset, gap.bytes);
+        }
+        for record in reader.feed(delivery.offset, &delivery.bytes) {
+            self.record(record, emit);
+        }
+    }
+
+    fn record(&mut self, record: coder_delegate::tail::Record, emit: &mut dyn FnMut(RuntimeEvent)) {
+        self.line(&record.text, emit);
+        for event in coder_delegate::stream::normalize_line(
+            coder_delegate::stream::Format::Codex,
+            &record.text,
+            record.line,
+            &mut self.seq,
+        ) {
+            self.event(event.kind, emit);
+        }
+    }
+
+    fn line(&mut self, line: &str, emit: &mut dyn FnMut(RuntimeEvent)) {
+        let Ok(value) = serde_json::from_str::<Value>(line) else {
+            return;
+        };
+        if let Some(model) = value.get("model").and_then(Value::as_str)
+            && self.model.as_deref() != Some(model)
+        {
+            self.model = Some(model.into());
+            emit(RuntimeEvent::Model(model.into()));
+        }
+        if value["type"] == "item.completed"
+            && value["item"]["type"] == "agent_message"
+            && let Some(text) = value["item"]["text"].as_str()
+        {
+            let separator = if self.text.is_empty() { "" } else { "\n\n" };
+            let text = bounded(
+                &format!("{separator}{text}"),
+                TEXT_MAX.saturating_sub(self.text.len()),
+            );
+            self.text.push_str(&text);
+            emit(RuntimeEvent::Text(text));
+        }
+        if value["type"] == "turn.completed" {
+            self.completed = true;
+        }
+    }
+
+    fn event(&mut self, event: coder_delegate::stream::Kind, emit: &mut dyn FnMut(RuntimeEvent)) {
+        use coder_delegate::stream::Kind;
+        match event {
+            Kind::SessionStarted { session_id } => self.session = session_id,
+            Kind::CommandStarted { command } => emit(RuntimeEvent::Tool {
+                name: "Run".into(),
+                input: json!({"command":command}),
+                output: Value::Null,
+                running: true,
+            }),
+            Kind::CommandCompleted {
+                command,
+                exit_code,
+                output,
+            } => emit(RuntimeEvent::Tool {
+                name: "Run".into(),
+                input: json!({"command":command}),
+                output: json!({"exit":exit_code,"output":output}),
+                running: false,
+            }),
+            Kind::ArtifactChanged { path, change } => emit(RuntimeEvent::Tool {
+                name: "Edit".into(),
+                input: json!({"path":path}),
+                output: json!({"change":change}),
+                running: false,
+            }),
+            Kind::UsageUpdate { usage } => self.usage = usage,
+            Kind::SessionEnded {
+                error: true,
+                result,
+            } => self.error = Some(result.unwrap_or_else(|| "The Codex turn failed.".into())),
+            _ => {}
+        }
+    }
 }
 
 struct AcpEvents<'a> {
@@ -856,10 +1084,164 @@ mod tests {
             id: "reviewer".into(),
             name: "Reviewer".into(),
             program,
+            transport: AgentTransport::Acp,
             arguments: vec![],
             mode: None,
             enabled: true,
         }
+    }
+
+    #[test]
+    fn legacy_agents_default_to_acp_and_native_codex_rejects_other_ids() {
+        let legacy: AcpAgent =
+            serde_json::from_value(json!({"id":"reviewer","name":"Reviewer","program":"reviewer"}))
+                .unwrap();
+        assert_eq!(legacy.transport, AgentTransport::Acp);
+        let mut native = legacy;
+        native.transport = AgentTransport::CodexCli;
+        assert!(native.validate().is_err());
+        native.id = "codex".into();
+        assert!(native.validate().is_ok());
+        native.arguments = vec!["--dangerously-bypass-approvals-and-sandbox".into()];
+        assert!(native.validate().is_err());
+        native.arguments.clear();
+        native.mode = Some("bypass".into());
+        assert!(native.validate().is_err());
+    }
+
+    #[tokio::test]
+    #[cfg(unix)]
+    async fn native_codex_streams_its_own_protocol_and_keeps_read_only_permissions() {
+        use std::os::unix::fs::PermissionsExt;
+        let dir = tempfile::tempdir().unwrap();
+        let program = dir.path().join("codex");
+        std::fs::write(&program, r#"#!/bin/sh
+printf '%s\n' "$@" > args
+cat > task
+printf '%s' "$CODEX_INTERNAL_ORIGINATOR_OVERRIDE" > caller
+printf '%s\n' '{"type":"thread.started","thread_id":"scratch-codex","model":"gpt-test"}'
+printf '%s\n' '{"type":"item.started","item":{"type":"command_execution","command":"pwd"}}'
+printf '%s\n' '{"type":"item.completed","item":{"type":"command_execution","command":"pwd","aggregated_output":"scratch","exit_code":0}}'
+printf '%s\n' '{"type":"item.completed","item":{"type":"agent_message","text":"Codex answered."}}'
+printf '%s\n' '{"type":"turn.completed","usage":{"input_tokens":11,"output_tokens":7}}'
+"#).unwrap();
+        std::fs::set_permissions(&program, std::fs::Permissions::from_mode(0o700)).unwrap();
+        let mut native = agent(program);
+        native.id = "codex".into();
+        native.name = "Codex".into();
+        native.transport = AgentTransport::CodexCli;
+        let mut events = vec![];
+        let result = acp(
+            &native,
+            "Review this scratch task.",
+            dir.path(),
+            &Arc::new(AtomicBool::new(false)),
+            &mut |event| events.push(event),
+        )
+        .await
+        .unwrap();
+        assert_eq!(result["session"], "scratch-codex");
+        assert_eq!(result["reply"], "Codex answered.");
+        assert_eq!(result["tokens"], 18);
+        assert_eq!(result["model"], "gpt-test");
+        assert_eq!(result["transport"], "codex-cli");
+        assert_eq!(result["group_clear"], true);
+        assert_eq!(
+            std::fs::read_to_string(dir.path().join("task")).unwrap(),
+            "Review this scratch task."
+        );
+        let args = std::fs::read_to_string(dir.path().join("args")).unwrap();
+        assert!(args.starts_with("exec\n--json\n"));
+        assert!(args.contains("--sandbox\nread-only\n"));
+        assert!(args.contains("approval_policy=\"never\""));
+        assert!(!args.contains("bypass"));
+        assert!(!args.contains("-m\n"));
+        assert!(events.iter().any(
+            |event| matches!(event, RuntimeEvent::Tool { name, running: true, .. } if name == "Run")
+        ));
+        assert!(
+            events.iter().any(
+                |event| matches!(event, RuntimeEvent::Text(text) if text == "Codex answered.")
+            )
+        );
+        let command = events
+            .iter()
+            .position(|event| matches!(event, RuntimeEvent::Tool { running: true, .. }))
+            .unwrap();
+        let reply = events
+            .iter()
+            .position(|event| matches!(event, RuntimeEvent::Text(_)))
+            .unwrap();
+        assert!(command < reply);
+        let (_, mark) = coder_delegate::delegate::Agent::Codex.engine_mark();
+        assert_eq!(
+            std::fs::read_to_string(dir.path().join("caller")).unwrap(),
+            mark
+        );
+    }
+
+    #[tokio::test]
+    #[cfg(unix)]
+    async fn native_codex_failure_is_reported_without_starting_another_engine() {
+        use std::os::unix::fs::PermissionsExt;
+        let dir = tempfile::tempdir().unwrap();
+        let program = dir.path().join("codex");
+        std::fs::write(&program, "#!/bin/sh\ncat > task\nprintf '%s\\n' '{\"type\":\"turn.failed\",\"error\":{\"message\":\"Codex needs a login.\"}}'\nexit 1\n").unwrap();
+        std::fs::set_permissions(&program, std::fs::Permissions::from_mode(0o700)).unwrap();
+        let mut native = agent(program);
+        native.id = "codex".into();
+        native.transport = AgentTransport::CodexCli;
+        let error = acp(
+            &native,
+            "Review scratch.",
+            dir.path(),
+            &Arc::new(AtomicBool::new(false)),
+            &mut |_| {},
+        )
+        .await
+        .unwrap_err();
+        assert!(error.contains("Codex needs a login."));
+        assert!(error.contains("process group cleared: true"));
+    }
+
+    #[tokio::test]
+    #[cfg(unix)]
+    async fn canceling_native_codex_cleans_up_its_children() {
+        use std::os::unix::fs::PermissionsExt;
+        let dir = tempfile::tempdir().unwrap();
+        let program = dir.path().join("codex");
+        std::fs::write(
+            &program,
+            "#!/bin/sh\ncat > task\n(sleep 1; touch escaped) &\nwait\n",
+        )
+        .unwrap();
+        std::fs::set_permissions(&program, std::fs::Permissions::from_mode(0o700)).unwrap();
+        let mut native = agent(program);
+        native.id = "codex".into();
+        native.transport = AgentTransport::CodexCli;
+        let cancel = Arc::new(AtomicBool::new(false));
+        let signal = Arc::clone(&cancel);
+        let mut discard = |_| {};
+        let (result, ()) = tokio::join!(
+            acp(
+                &native,
+                "Review scratch.",
+                dir.path(),
+                &cancel,
+                &mut discard
+            ),
+            async move {
+                tokio::time::sleep(Duration::from_millis(150)).await;
+                signal.store(true, Ordering::Relaxed);
+            }
+        );
+        assert!(
+            result
+                .unwrap_err()
+                .contains("canceled; process group cleared: true")
+        );
+        tokio::time::sleep(Duration::from_millis(1100)).await;
+        assert!(!dir.path().join("escaped").exists());
     }
 
     #[test]
