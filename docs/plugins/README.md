@@ -10,6 +10,10 @@ engineering specifications behind it stay in
 [glossary](../glossary.md#one-vocabulary-what-you-can-add) maps the word
 *plugin* onto the precise terms those specifications use.
 
+The [Brainstorm integration proposal](brainstorm-v1-integration.md) describes
+an opt-in Coder V1 plugin for public Nostr account discovery and reputation,
+with delivery scope for October 7, 2026.
+
 ## What a plugin contains
 
 A plugin can contain any of these parts:
