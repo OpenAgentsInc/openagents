@@ -1,0 +1,43 @@
+{
+  "schema": "verse.battle.review.v1",
+  "duration_seconds": 120,
+  "source_base": "43f12d6e0bb48e22f151476a14aaab66cca9bee8",
+  "executable_sha256": "103ca41cfe7c0f3fb5026045bafb91482217b0501586a41265b48a99b513d8fa",
+  "acceptance": "failed",
+  "failures": [
+    "/server/movement_expiry/total: Some(3.0) exceeds 0, or is unavailable"
+  ],
+  "movement_expiry": 3,
+  "storage_paused_seconds": 0.065429754,
+  "workload_ticks": 3598,
+  "native_segments": [
+    {
+      "status": "complete",
+      "error": null,
+      "prediction_failures": 0,
+      "prediction_horizon_pauses": 0
+    },
+    {
+      "status": "complete",
+      "error": null,
+      "prediction_failures": 0,
+      "prediction_horizon_pauses": 0
+    }
+  ],
+  "files": {
+    "report.json": "59f52f3a5d670c77e2c39dbbecdff05db5becdf980ae75f5dd1724557cc81e20",
+    "source.patch": "9492b24c212b721b8fb9f2326f7f3ba99019810137f02a89981f8c1dc36f892e"
+  },
+  "findings": [
+    "All acceptance gates except aggregate movement expiry pass. Both native segments complete without prediction failures or horizon pauses.",
+    "Actor 234 epoch 2 has next frames enqueued only after the preceding acknowledgment; a cast occupies the intervening command sequence. The new credit has already advanced 24 steps beyond the last consumed interval.",
+    "Actor 234 epoch 4 also has intervals enqueued before expiry but acknowledged after the epoch reset. Enqueue timestamps alone do not establish socket-write or authority-admission timing.",
+    "The third expiry is outside the retained context-transition window; it must not be claimed explained by the first two traces."
+  ],
+  "limitations": [
+    "Diagnostic-only changes do not prove a performance gain from the preceding 18-expiry run.",
+    "No own compiler ran during measurement; the host is shared.",
+    "Offscreen rendering does not measure physical input-to-display latency.",
+    "Zero-expiry acceptance remains unmet."
+  ]
+}
