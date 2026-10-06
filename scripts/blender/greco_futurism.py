@@ -514,6 +514,71 @@ def desk(b, x, y, z0, rot=0.0):
     b.collide("desk", Vector(xf @ Vector((-w / 2, -d / 2, 0))), Vector(xf @ Vector((w / 2, d / 2, h))))
 
 
+def workstation(b, x, y, z0, rot=0.0):
+    """The workshop agent's workstation: a long walnut desk on two
+    pedestals with a copper edge, a front panel inscribed with circuit
+    lines toward the room, three slim bronze-framed screens glowing amber
+    toward her chair, a keyboard, and her chair. The screens stay low, so
+    the room sees her over them."""
+    xf = local((x, y, z0), rot)
+    w, d, h = 2.96, 1.0, 0.76
+    box(b, (-w / 2, -d / 2, h - 0.06), (w / 2, d / 2, h), "walnut", xf=xf, name="DeskTop")
+    box(b, (-w / 2 - 0.02, -d / 2 - 0.02, h - 0.09), (w / 2 + 0.02, d / 2 + 0.02, h - 0.06), "copper", skip="+z",
+        xf=xf, name="DeskEdge")
+    for s in (-1, 1):
+        box(b, (s * 1.08 - 0.3, -d / 2 + 0.08, 0.0), (s * 1.08 + 0.3, d / 2 - 0.08, h - 0.09), "walnut",
+            skip="-z +z", xf=xf, name="Pedestal")
+    # The front panel, between the pedestals, toward the room.
+    box(b, (-0.78, -d / 2 + 0.04, 0.16), (0.78, -d / 2 + 0.08, h - 0.09), "walnut", skip="+y -z +z", xf=xf,
+        name="DeskPanel")
+    b.collide("workstation", Vector(xf @ Vector((-w / 2, -d / 2, 0))), Vector(xf @ Vector((w / 2, d / 2, h))))
+    if FAR:
+        return
+    circuit_lines(b, xf @ Matrix.Translation(Vector((0.0, -d / 2 + 0.04, 0.0))), 1.5, 0.2, h - 0.33)
+    # Three slim screens toward her chair, the side ones turned in.
+    for u, turn in ((-0.94, 18.0), (0.0, 0.0), (0.94, -18.0)):
+        sx = xf @ Matrix.Translation(Vector((u, -0.22, h))) @ Matrix.Rotation(math.radians(turn), 4, "Z")
+        box(b, (-0.46, -0.03, 0.07), (0.46, 0.0, 0.38), "bronze", skip="-z", xf=sx, name="ScreenFrame")
+        box(b, (-0.43, 0.0, 0.1), (0.43, 0.004, 0.35), "amber", skip=only("+y"), xf=sx, name="EmitScreen")
+        box(b, (-0.025, -0.06, 0.0), (0.025, -0.03, 0.07), "copper", skip="-z +z", xf=sx, name="ScreenStand")
+    # The keyboard, with an amber line of keys.
+    box(b, (-0.36, 0.12, h), (0.36, 0.32, h + 0.02), "bronze", skip="-z", xf=xf, name="Keyboard")
+    box(b, (-0.3, 0.17, h + 0.02), (0.3, 0.27, h + 0.021), "amber", skip=only("+z"), xf=xf, name="EmitKeys")
+    # Her chair, behind the desk, facing the room.
+    box(b, (-0.28, 0.9, 0.42), (0.28, 1.4, 0.5), "redbrown", xf=xf, name="Chair")
+    box(b, (-0.28, 1.35, 0.5), (0.28, 1.43, 1.0), "redbrown", xf=xf, name="Chair")
+    box(b, (-0.03, 1.12, 0.0), (0.03, 1.18, 0.42), "copper", skip="-z +z", xf=xf, name="ChairPost")
+    box(b, (-0.3, 0.95, 0.0), (0.3, 1.35, 0.03), "copper", skip="-z", xf=xf, name="ChairFoot")
+
+
+def console(b, xf, h=1.0, w=1.4, d=0.75):
+    """A standing walnut console against a wall on a limestone plinth,
+    with an inclined amber screen: where the workshop agent works while a
+    command runs."""
+    box(b, (-w / 2, -d, 0.0), (w / 2, 0.0, 0.12), "lime", skip="+y -z", xf=xf, name="ConsolePlinth")
+    box(b, (-w / 2 + 0.05, -d + 0.05, 0.12), (w / 2 - 0.05, 0.0, h - 0.05), "walnut", skip="+y -z", xf=xf,
+        name="Console")
+    box(b, (-w / 2, -d, h - 0.05), (w / 2, 0.0, h), "bronze", skip="+y", xf=xf, name="ConsoleTop")
+    if FAR:
+        return
+    circuit_lines(b, xf @ Matrix.Translation(Vector((0.0, -d + 0.05, 0.0))), w - 0.2, 0.2, h - 0.35)
+    tilt = xf @ Matrix.Translation(Vector((0.0, -0.25, h))) @ Matrix.Rotation(math.radians(-25.0), 4, "X")
+    box(b, (-0.5, -0.03, 0.0), (0.5, 0.0, 0.5), "bronze", skip="-z", xf=tilt, name="ScreenFrame")
+    box(b, (-0.46, -0.034, 0.04), (0.46, -0.03, 0.46), "amber", skip=only("-y"), xf=tilt, name="EmitScreen")
+
+
+def lectern(b, x, y, z0, rot=0.0):
+    """A limestone lectern with a bronze top and an amber slit toward the
+    room: where the workshop agent waits for an approval."""
+    xf = local((x, y, z0), rot)
+    box(b, (-0.22, -0.22, 0.0), (0.22, 0.22, 1.0), "lime", skip="-z", xf=xf, name="Lectern")
+    box(b, (-0.28, -0.28, 1.0), (0.28, 0.28, 1.06), "bronze", xf=xf, name="LecternTop")
+    b.collide("lectern", Vector(xf @ Vector((-0.25, -0.25, 0))), Vector(xf @ Vector((0.25, 0.25, 1.06))))
+    if FAR:
+        return
+    box(b, (-0.14, -0.222, 0.86), (0.14, -0.22, 0.9), "amber", skip=only("-y"), xf=xf, name="EmitSlit")
+
+
 def sofa(b, x, y, z0, rot=0.0, w=4.4):
     """A long low linen sofa on a dark bronze plinth, with red-brown
     cushions, as in the references' great room."""
@@ -966,6 +1031,15 @@ def great_room(b):
     rug(b, -3.0, 3.0, 19.6, 23.8, FLOOR)
     desk(b, 0.0, 21.6, FLOOR + 0.02)
     lamp(b, 4.6, 23.6, FLOOR)
+    # The workshop agent's workstation, at the spot kept for it west of the
+    # desk, facing the room, with a console by the east wall where she
+    # works while a command runs and a lectern where she waits for an
+    # approval, all off the walk from the door.
+    workstation(b, -4.6, 22.6, FLOOR)
+    east = local((hw - t, 21.6, FLOOR), -90.0)
+    console(b, east)
+    b.collide("console", Vector((hw - t - 0.75, 20.9, FLOOR)), Vector((hw - t, 22.3, FLOOR + 1.0)))
+    lectern(b, 5.0, 15.0, FLOOR)
     # Candlelight: a candelabrum on the desk, sconces flanking the engraved
     # door, a tall candle stand lighting the workstation spot west of the
     # desk (kept clear for a seat facing into the room), a brazier across
@@ -1138,6 +1212,13 @@ def lamp_piece():
 def rug_piece():
     b = new("rug")
     rug(b, -2.0, 2.0, -1.5, 1.5, 0.0)
+    return b
+
+
+@piece
+def workstation_piece():
+    b = new("workstation")
+    workstation(b, 0, 0, 0)
     return b
 
 

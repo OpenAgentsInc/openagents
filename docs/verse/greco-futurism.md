@@ -277,19 +277,28 @@ house.
   surround, two bookcases, a desk on a rug, a long sofa against the west
   wall with a low table on a second rug, a floor lamp, and two planters.
   The walk from the door to the desk stays clear, at least 2.5 m wide, so
-  the desk and the engraved door are the view from the entrance. West of
-  the desk, in front of the engraved-door wall, a spot stays clear and lit
-  for a workstation facing into the room (`estate::WORKSTATION`).
+  the desk and the engraved door are the view from the entrance.
+- **Workstation.** The workshop agent, Alice, works here
+  ([Workshop agent](workshop-agent.md)). West of the desk, in front of the
+  engraved-door wall (`estate::WORKSTATION`), stands her workstation
+  (`workstation`, a kit piece of 194 triangles): a long walnut desk on two
+  pedestals with a copper edge, a front panel inscribed with circuit lines
+  toward the room, three slim bronze-framed screens and a keyboard glowing
+  `EmitAmber` toward her chair, and the chair she sits in, facing the room.
+  While a command runs she stands at a walnut console with an inclined
+  amber screen by the east wall, and while she waits for an approval,
+  behind a limestone lectern with an amber slit, east of the entry walk.
+  All three collide, and her walks stay in the great room.
 - **Light.** A candelabrum on the desk, bronze sconces flanking the engraved
-  door and the front door, tall candle stands by the workstation spot and
+  door and the front door, tall candle stands by the workstation and
   in the front corners, a brazier across from
   the sofa, candles on a side table and a lamp by the sofa, a lamp by the
   desk, the cove's warm line round the coffers, and the dark wall's inlay
   glowing faintly. Outside, lanterns hang on the inner piers, lanterns on
   posts mark both flights of the stair, and uplights wash the door and its
-  screens.
-- **Budget.** 6,156 triangles near and 1,016 far, with its light
-  fixtures.
+  screens. The workstation adds only its screens' own glow.
+- **Budget.** 6,448 triangles near and 1,016 far, with its light
+  fixtures and the workstation.
 
 Rebuild it and admit it:
 
