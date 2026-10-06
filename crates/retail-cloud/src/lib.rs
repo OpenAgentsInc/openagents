@@ -21,9 +21,11 @@
 //! - [`material`]: admitted source and the customer's key, nothing else.
 //! - [`dispatch`]: one funded task, streamed by cursor.
 //! - [`meter`]: retained cumulative usage and quoted-ceiling enforcement.
+//! - [`cancel`]: separate stop, teardown, usage, and settled-charge receipts.
 //! - [`journal`]: the durable intents and observations a restart reads.
 
 pub mod authority;
+pub mod cancel;
 pub mod contract;
 pub mod dispatch;
 pub mod fake;
@@ -70,6 +72,7 @@ pub(crate) const EXTRA_SCHEMAS: &[&str] = &[
     dispatch::SCHEMA,
     meter::SCHEMA,
     retain::SCHEMA,
+    cancel::SCHEMA,
 ];
 
 pub type Result<T> = std::result::Result<T, Error>;

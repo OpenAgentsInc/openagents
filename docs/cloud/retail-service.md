@@ -128,6 +128,8 @@ to repeat after any crash:
 
 `retail_cloud::retain` records cleanup duties before provider deletion, retains declared bounded task artifacts in the private journal for 30 days, and records missing delivery separately from acknowledged resource deletion; a service worker reconciles all recorded provisioning attempts after client loss, and observing retained artifacts requires the original read grant.
 
+`retail_cloud::cancel` records cancellation or matching revocation before new work is refused, reconciles exact task-owner stop receipts without replaying unknown stops, and exposes executor acknowledgment, deletion, final usage, actual ledger charges, and remaining holds separately. Read-only reconnects observe the same receipt without control or spending authority.
+
 ## Source and credentials
 
 [`retail_cloud::material`](../../crates/retail-cloud/src/material.rs)

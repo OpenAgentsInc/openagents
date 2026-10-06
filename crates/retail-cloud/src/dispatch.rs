@@ -224,6 +224,9 @@ pub fn dispatch(
                 .ok_or(Error::Invalid("missing dispatch"));
         }
     }
+    if journal.cleanup_requested(&funded.execution)? {
+        return Err(Error::Invalid("cleanup prevents dispatch"));
+    }
     journal.connection.execute(
         "UPDATE dispatch SET state='sent', transport_attempts=transport_attempts+1 WHERE execution=?",
         [&funded.execution],

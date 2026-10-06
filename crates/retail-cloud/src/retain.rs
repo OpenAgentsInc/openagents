@@ -294,8 +294,8 @@ impl Journal {
         Ok(self
             .connection
             .query_row(
-                "SELECT 1 FROM cleanup_discovery WHERE execution=?",
-                [execution],
+                "SELECT 1 FROM cleanup_discovery WHERE execution=? UNION SELECT 1 FROM cancellation WHERE execution=?",
+                [execution,execution],
                 |r| r.get::<_, i32>(0),
             )
             .optional()?
@@ -428,7 +428,11 @@ pub fn service_step(
                 ProvisionState::Refused { .. } | ProvisionState::Unavailable
             )
         });
-        if ended || unavailable || now >= deadline {
+        if ended
+            || unavailable
+            || now >= deadline
+            || journal.cancellation_requested(&funded.execution)?
+        {
             request(journal, &funded, now)?;
         }
     }

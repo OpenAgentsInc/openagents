@@ -257,8 +257,12 @@ impl Journal {
         let mut last = baseline;
         let mut valid = !events.is_empty();
         let mut stopped = false;
+        let mut final_counter = None;
         for (index, event) in events.iter().enumerate() {
-            valid &= event.sequence as usize == index + 1 && !stopped;
+            valid &= event.sequence as usize == index + 1 && (!stopped || event.stopped);
+            if let (Some(final_counter), Some(counter)) = (final_counter, event.seconds) {
+                valid &= final_counter == counter;
+            }
             match event.seconds {
                 Some(seconds) if seconds >= last => last = seconds,
                 Some(_) => valid = false,
@@ -268,6 +272,9 @@ impl Journal {
                 valid &= event.at >= events[index - 1].at;
             }
             stopped = event.stopped;
+            if stopped && final_counter.is_none() {
+                final_counter = event.seconds;
+            }
         }
         // A later known cumulative sample reconciles a missing intermediate
         // counter, but never a gap, regression, or changed immutable event.
