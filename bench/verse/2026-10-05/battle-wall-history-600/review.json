@@ -1,0 +1,65 @@
+{
+  "schema": "verse.battle.review.v1",
+  "duration_seconds": 600,
+  "source_base": "43f12d6e0bb48e22f151476a14aaab66cca9bee8",
+  "executable_sha256": "4fabc39dda6c5ebdb1029f7be81d46c2a21ff5157931cf5671207350acd512d1",
+  "acceptance": "failed",
+  "failures": [
+    "Authority throughput fell below ninety-eight percent of 30 Hz",
+    "/render/measurements/steady/applied_snapshot_age_ms/p95: Some(70979.886165) exceeds 400, or is unavailable",
+    "/server/movement_expiry/total: Some(100.0) exceeds 0, or is unavailable",
+    "Player 0 lacks sustained interval battle observations",
+    "Player 0 prediction maximum Some(4.80536413192749) exceeds 1 meters or is unavailable",
+    "Player 0 late prediction maximum Some(4.80536413192749) exceeds 1 meters or is unavailable",
+    "Player 0 lacks sustained interval battle observations",
+    "A lifetime window exceeded the snapshot freshness budget",
+    "A lifetime window exceeded the snapshot freshness budget",
+    "A lifetime window exceeded the snapshot freshness budget",
+    "A lifetime window exceeded the snapshot freshness budget",
+    "A lifetime window exceeded the snapshot freshness budget",
+    "A lifetime window exceeded the snapshot freshness budget",
+    "A lifetime window exceeded the snapshot freshness budget",
+    "A lifetime window exceeded the snapshot freshness budget",
+    "A lifetime window exceeded the snapshot freshness budget",
+    "A lifetime window exceeded the snapshot freshness budget",
+    "A lifetime window exceeded the snapshot freshness budget",
+    "A lifetime window exceeded the snapshot freshness budget",
+    "A lifetime window exceeded the snapshot freshness budget",
+    "A lifetime window exceeded the snapshot freshness budget",
+    "A lifetime window exceeded the snapshot freshness budget",
+    "A lifetime window exceeded the snapshot freshness budget",
+    "A lifetime window exceeded the snapshot freshness budget",
+    "A lifetime window exceeded the snapshot freshness budget",
+    "A lifetime window exceeded the snapshot freshness budget"
+  ],
+  "movement_expiry": 100,
+  "native_segments": [
+    {
+      "status": "failed",
+      "error": "Native session worker stopped before its deadline",
+      "worker_error": "Movement interval refused; reconnect before sending another interval: Movement interval start 3904 is not contiguous with 3908",
+      "prediction_failures": 1,
+      "last_prediction_failure": "Local prediction input context or budget is invalid",
+      "prediction_horizon_pauses": 33
+    },
+    {
+      "status": "failed",
+      "error": "Native session worker stopped before its deadline",
+      "worker_error": "Movement interval refused; reconnect before sending another interval: Movement interval start 4304 is not contiguous with 4316",
+      "prediction_failures": 3,
+      "last_prediction_failure": "Local prediction input context or budget is invalid",
+      "prediction_horizon_pauses": 58
+    }
+  ],
+  "files": {
+    "report.json": "92fae0025ee9b022d4a1d3ab8eada490202ed8171dbe61c10662d3a134193531",
+    "source.patch": "0bd38ab303555d2591ad0c36faff3fd3df47d19fc5eef3ef02ac7c976cc029a2"
+  },
+  "limitations": [
+    "No own compiler ran during measurement; the host is shared.",
+    "Both native segments stopped early after input-context/budget errors, then noncontiguous interval refusals.",
+    "Movement expiry, freshness, authority throughput, and sustained native acceptance fail.",
+    "This run does not establish a wall-history performance improvement or isolate the cause of the shared-host timing changes.",
+    "Offscreen rendering does not measure physical input-to-display latency."
+  ]
+}
