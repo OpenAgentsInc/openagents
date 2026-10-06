@@ -438,7 +438,8 @@ resume the application. Confirm that critical cues remain audible, music resumes
 at its retained position, and sound remains clean. With no output device, confirm
 that captions and master/music controls (F9–F12) still work. The committed V23
 checks use a headless callback and controlled PCM production; they do not open an
-owner device or prove driver scheduling. Browser and phone mounting remains V24.
+owner device or prove driver scheduling. V24 mounts browser and phone captions;
+device output audio remains unimplemented.
 Open a new issue for a defect found in this device run.
 
 ## Verify authoritative platform clients after V24 (#10742)
@@ -452,5 +453,7 @@ Measure declared device frame, memory, and thermal budgets. Check touch targets,
 text at device pixel ratios, keyboard focus, screen reader status, and gamepad
 remapping. Browser and phone have captions but no mounted audio output adapter;
 record that limitation rather than treating silent output as audio parity.
-The V24 receipts cover Rust tests and Wasm linking, not these physical or DOM
+The V24 receipts cover Rust tests, Wasm linking, and isolated headless DOM/
+software WebGL2 checks. Movement passes at 320 by 240; 1000-by-800 software
+rendering starves movement and fails that budget. They do not cover these physical
 checks. Retain per-device evidence and file a new issue for any defect.

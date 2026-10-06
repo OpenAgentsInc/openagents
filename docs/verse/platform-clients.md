@@ -17,10 +17,16 @@ role. The device key that proves the channel also signs the chamber challenge.
 | Inventory and quest panels | Desktop panels | Combat subset | Combat subset |
 | Output audio | Native callback mixer | Captions; output adapter pending | Captions; output adapter pending |
 | Interruptions | Close/reconnect | Suspend/resume destroys worker and rejoins | Focus/visibility destroys worker and GPU; reconnect reloads route configuration |
-| Verification in V24 | Native loopback, mounting tests, compile | Rust mounting/lifecycle tests; no physical phone run | Wasm compile/link; no DOM, GPU, gamepad, or screen-reader run |
+| Verification in V24 | Native loopback, mounting tests, compile | Rust mounting/lifecycle tests; no physical phone run | Wasm link and headless software WebGL2: authority movement, DOM sizing, focus/reconnect, and grants; no hardware, gamepad, or screen-reader run |
 
 This matrix describes code paths, not equal device performance or complete MMO
-feature parity. The browser caps unread channel data at four bounded messages plus one partially read frame;
+feature parity. The software WebGL2 smoke establishes authoritative movement at
+a 320-by-240 viewport. At 1000 by 800, software rendering ran at about four
+frames per second and retired movement control; that workload fails movement
+acceptance. Browser session work currently shares the graphics thread, so
+slow rendering can exceed the authority lease. Higher-resolution screenshots
+establish layout only. Hardware performance and crowded-world budgets remain
+unverified. The browser caps unread channel data at four bounded messages plus one partially read frame;
 the DOM allocates incoming messages before delivering them to Rust. That cap
 cannot establish a pre-delivery browser network allocation limit.
 

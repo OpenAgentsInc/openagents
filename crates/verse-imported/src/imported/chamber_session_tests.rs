@@ -51,6 +51,49 @@ fn a_session_plays_the_loopback_chamber_and_stops_cleanly() {
 }
 
 #[test]
+fn held_movement_reaches_the_authority_without_retiring_control() {
+    let host = Loopback::start(false).unwrap();
+    let scene = Loopback::scene().unwrap();
+    let mut session = joined(&host, &scene);
+    session.observe();
+    assert!(until(&mut session, &scene, |s| {
+        s.prediction.movement_profile() == Some(verse_world::movement::Profile::Frames)
+    }));
+    let (start, epoch) = host.with(|g| {
+        let a = g.game().player_admission(14).unwrap();
+        (g.game().actor_position(14).unwrap(), a.epoch())
+    });
+    let deadline = Instant::now() + Duration::from_secs(1);
+    while Instant::now() < deadline {
+        session
+            .step(
+                &scene,
+                Held {
+                    strafe_left: true,
+                    ..Held::default()
+                },
+            )
+            .unwrap();
+        std::thread::sleep(Duration::from_millis(16));
+    }
+    let (end, final_epoch, sequence) = host.with(|g| {
+        let a = g.game().player_admission(14).unwrap();
+        (
+            g.game().actor_position(14).unwrap(),
+            a.epoch(),
+            a.accepted_sequence(),
+        )
+    });
+    assert!(
+        end.distance(start) > 0.1,
+        "{start:?} -> {end:?}; {:?}",
+        session.take_notes()
+    );
+    assert_eq!(epoch, final_epoch);
+    assert!(sequence > 0);
+}
+
+#[test]
 fn a_host_that_goes_away_fails_the_session() {
     let host = Loopback::start(false).unwrap();
     let scene = Loopback::scene().unwrap();
