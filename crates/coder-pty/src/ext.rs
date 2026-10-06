@@ -469,7 +469,9 @@ impl StateRecord {
             }
             saved.pen.check()?;
         }
-        if !(self.scroll.top < self.scroll.bottom && self.scroll.bottom < size.rows) {
+        // A one-row terminal's region is that row, so top equals bottom.
+        let (top, bottom) = (self.scroll.top, self.scroll.bottom);
+        if !(bottom < size.rows && (top < bottom || (top == bottom && size.rows == 1))) {
             return Err(Refusal::malformed("the scrolling region is out of range"));
         }
         ascending(&self.tabs, usize::from(size.cols), "tabs")?;

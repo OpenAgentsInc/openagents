@@ -1789,6 +1789,8 @@ dependencies = [
 name = "coder-vt"
 version = "0.1.0"
 dependencies = [
+ "coder-pty",
+ "serde_json",
  "unicode-width",
  "vte",
 ]

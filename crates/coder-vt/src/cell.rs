@@ -37,6 +37,18 @@ impl Flags {
         Flags(0)
     }
 
+    /// The flags as a bit set.
+    #[must_use]
+    pub const fn bits(self) -> u16 {
+        self.0
+    }
+
+    /// Flags from a bit set; unknown bits are kept.
+    #[must_use]
+    pub const fn from_bits(bits: u16) -> Self {
+        Flags(bits)
+    }
+
     #[must_use]
     pub const fn contains(self, other: Flags) -> bool {
         self.0 & other.0 == other.0

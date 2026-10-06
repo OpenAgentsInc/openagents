@@ -431,7 +431,7 @@ an optional `CONTINUATION`, `READY`, zero or more `HISTORY` pages, and
 | `cursor` | `{row, col, pending_wrap, visible, shape, blink}`; `row` and `col` lie within `size`, `shape` is `block`, `underline`, or `bar`. |
 | `pen` | The style new text takes (see `ROWS`). |
 | `saved_primary`, `saved_alternate` | `{row, col, pending_wrap, pen}` saved by `DECSC` for each screen, or null. |
-| `scroll` | `{top, bottom}`, the scrolling region, with `top < bottom < rows`. |
+| `scroll` | `{top, bottom}`, the scrolling region, with `top < bottom < rows`, or `0` and `0` on a one-row terminal. |
 | `tabs` | Tab-stop columns, ascending, distinct, each below `cols`. |
 | `modes` | `{private, ansi}`: the `DECSET` and `SM` mode numbers that are set, each list ascending and distinct, at most 64. |
 | `charsets` | `{g0, g1, shift}`: `ascii` or `dec_special` for each set, and the active set, 0 or 1. |
@@ -468,7 +468,9 @@ malformed; `link` is the run's OSC 8 target, at most 2,048 bytes, or null.
 `CONTINUATION` holds the bytes since the parser was last in its ground
 state: an unfinished escape sequence or a partial UTF-8 character. A client
 feeds them to a fresh parser before the first live frame, so the next output
-continues the sequence the host's emulator is in. A host whose unfinished
+continues the sequence the host's emulator is in. The state already holds
+their effects, such as a control character inside the sequence, so the client
+feeds them for the parser's position only and applies nothing they do. A host whose unfinished
 input exceeds 4,096 bytes abandons it, as the parser would on a cancel, and
 sends no `CONTINUATION`.
 

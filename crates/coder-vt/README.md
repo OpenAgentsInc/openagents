@@ -28,6 +28,31 @@ replies are this crate's. See [the dependency review](../../docs/dependencies.md
 output, on a line of its own with the `MARKER` flag, and abandons any sequence
 the lost bytes would have finished.
 
+## Snapshots
+
+`snapshot` writes and restores the NIP-TERM snapshot stream
+(`openagents.terminal-snapshot.v1`, whose records and checks live in
+`coder_pty::ext`). `Terminal::snapshot` writes `TERMINAL`, `STATE`, the rows of
+each showing screen, the parser's `CONTINUATION`, and `READY`, then history
+pages newest first and `FINISH`; `Terminal::history_stream` answers a history
+read. A client feeds the records to a `Restore`, which yields a terminal at
+`READY` that draws the screen and continues parsing exactly where the host's
+parser stopped, inside an escape sequence or a UTF-8 character. History
+pages then attach with `Terminal::attach_history`, which refuses a page from
+another line epoch or one that does not adjoin the kept history, and changes
+nothing when it refuses.
+
+The continuation is the input since the parser was last at rest. The
+emulator follows `vte`'s states to know when that was; replaying the bytes
+into a fresh parser with no effects restores its position. Unfinished input
+longer than 4,096 bytes is abandoned on both sides, as a cancel would.
+
+A snapshot does not carry the alternate screen while the primary one shows,
+a saved cursor's character sets and origin mode, the character `REP`
+repeats, shell-integration marks, the bell count, or pending replies and
+clipboard writes. The format is this profile's own, ordered as libghostty's
+Snapshot v1 is; it does not read libghostty snapshots.
+
 `input` encodes keys (characters with Ctrl and Alt, Enter, Tab, Shift-Tab,
 Backspace, Escape, arrows under the cursor key mode, Home, End, Page Up and
 Down, Insert, Delete, F1–F24, and the keypad under its mode, with xterm
@@ -53,4 +78,9 @@ cargo clippy -p coder-vt --all-targets -- -D warnings
 
 The tests cover each area above, a typical shell and full-screen session, and
 a deterministic stream of arbitrary bytes and fragments across resizes that
-must keep the grid well formed.
+must keep the grid well formed. `tests/snapshot.rs` restores a session from a
+snapshot taken at every byte, sends it through the record checks in parts, and
+requires the restored terminal and live output after it to match parsing
+without a break; it also covers corrupt, truncated, oversized, and wrongly
+bound streams, `READY` without history, and history pages attached among live
+output.

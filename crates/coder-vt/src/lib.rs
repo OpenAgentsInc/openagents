@@ -32,15 +32,19 @@
 //! encodes mouse reports.
 
 mod cell;
+mod continuation;
 pub mod input;
 pub mod mouse;
 pub mod shell;
+pub mod snapshot;
 
 use std::collections::{HashMap, VecDeque};
 
 pub use cell::{Attrs, Cell, Color, Flags, Row, Run};
+pub use continuation::CONTINUATION_MAX;
 pub use input::{Key, KeyModes, Modifiers, encode_key, encode_key_in, encode_paste};
 pub use mouse::{MouseButton, MouseEncoding, MouseEvent, MouseKind, MouseMode, encode_mouse};
+pub use snapshot::{Binding, Restore};
 
 /// The largest grid a terminal accepts, in each dimension. NIP-TERM bounds
 /// sizes the same way.
@@ -171,11 +175,16 @@ struct State {
     /// the alternate screen; each screen has its own stack.
     kitty_primary: Vec<u8>,
     kitty_alternate: Vec<u8>,
+    /// The line epoch: one more whenever absolute line numbers stop
+    /// naming the same text.
+    epoch: u64,
 }
 
 /// A terminal emulator for one grid.
 pub struct Terminal {
     parser: vte::Parser,
+    /// Where the parser stands, for a snapshot's continuation.
+    tracker: continuation::Tracker,
     state: State,
     generation: u64,
 }
@@ -201,6 +210,7 @@ impl Terminal {
         let blank = Row::blank(cols, Attrs::default());
         Terminal {
             parser: vte::Parser::new(),
+            tracker: continuation::Tracker::default(),
             state: State {
                 rows,
                 cols,
@@ -235,6 +245,7 @@ impl Terminal {
                 damage: vec![true; rows],
                 kitty_primary: Vec::new(),
                 kitty_alternate: Vec::new(),
+                epoch: 1,
             },
             generation: 0,
         }
@@ -247,6 +258,7 @@ impl Terminal {
             return;
         }
         self.parser.advance(&mut self.state, bytes);
+        self.tracker.track(bytes);
         self.generation += 1;
     }
 
@@ -256,6 +268,7 @@ impl Terminal {
     /// since the bytes that would finish it are gone.
     pub fn mark(&mut self, text: &str) {
         self.parser = vte::Parser::new();
+        self.tracker = continuation::Tracker::default();
         let line =
             self.state.dropped + self.state.scrollback.len() as u64 + self.state.cursor.row as u64;
         self.state
@@ -932,6 +945,7 @@ impl State {
                 self.erase_rows(0, self.rows);
                 self.dropped += self.scrollback.len() as u64;
                 self.scrollback.clear();
+                self.epoch += 1;
             }
             _ => {}
         }
@@ -1173,8 +1187,13 @@ impl State {
     }
 
     fn full_reset(&mut self) {
-        let (rows, cols, scrollback, bells) =
-            (self.rows, self.cols, self.scrollback_max, self.bells);
+        let (rows, cols, scrollback, bells, epoch) = (
+            self.rows,
+            self.cols,
+            self.scrollback_max,
+            self.bells,
+            self.epoch,
+        );
         let dropped = self.dropped + self.scrollback.len() as u64;
         let mut metadata = std::mem::take(&mut self.shell);
         metadata.push(
@@ -1187,6 +1206,7 @@ impl State {
         self.shell = metadata;
         self.bells = bells;
         self.dropped = dropped;
+        self.epoch = epoch + 1;
     }
 
     /// The hyperlink ID for `target`, adding it while there is room.
