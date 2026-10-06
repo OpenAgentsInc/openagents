@@ -2238,7 +2238,7 @@ impl Game {
                 .map_err(|e| format!("Movement refused: {e:?}"))?;
             self.submit(self.primary.admission.controller(), command)?;
         }
-        self.expire_primary_frames()?;
+        self.expire_primary_frames(dead)?;
         let movement = if dead {
             self.primary.pending_movement = None;
             self.primary.held_movement = Default::default();

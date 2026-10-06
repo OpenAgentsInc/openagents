@@ -199,7 +199,12 @@ impl Game {
         self.clear_social_seat(frame.life);
         Ok(())
     }
-    pub(super) fn expire_primary_frames(&mut self) -> Result<(), String> {
+    /// Retires unavailable control before checking the live interval deadline.
+    pub(super) fn expire_primary_frames(&mut self, dead: bool) -> Result<(), String> {
+        if self.primary.frame_clock.is_some() && (dead || !self.unlocked()) {
+            self.handoff_player(self.player_life(), self.primary.admission.controller())?;
+            return Ok(());
+        }
         if self
             .frame_clock
             .as_ref()
@@ -398,6 +403,58 @@ mod tests {
         assert_eq!(b.physics_step, f.end().unwrap());
         assert!(b.character.feet.x > 0.);
     }
+    #[test]
+    fn silent_death_retires_primary_and_secondary_intervals_without_expiry() {
+        for secondary in [false, true] {
+            let mut g = world();
+            let owner = Controller(if secondary { 10 } else { 9 });
+            let life = if secondary {
+                g.add_player(owner, Vec3::new(5., 0., -22.)).unwrap()
+            } else {
+                g.player_life()
+            };
+            ticks(&mut g, 1);
+            g.begin_movement_frames(owner, life).unwrap();
+            let queued = frame(&g, life, true);
+            g.submit_movement_frame(owner, queued.clone()).unwrap();
+            let position = if secondary {
+                g.additional_players[&life.actor].player
+            } else {
+                g.primary.player
+            };
+            g.hostile_hit_player(life, 10_000).unwrap();
+            ticks(&mut g, 1);
+            assert!(
+                if secondary {
+                    g.additional_players[&life.actor].frame_clock.is_none()
+                } else {
+                    g.primary.frame_clock.is_none()
+                },
+                "Dead control must retire before its clock expires"
+            );
+            let fenced = g.player_admission(life.actor).unwrap().epoch();
+            assert_eq!(fenced, queued.epoch + 1);
+            assert_eq!(g.player_admission(life.actor).unwrap().controller(), owner);
+            assert!(g.submit_movement_frame(owner, queued.clone()).is_err());
+            ticks(&mut g, 12);
+            assert_eq!(g.movement_expiry.total, 0);
+            assert_eq!(g.player_admission(life.actor).unwrap().epoch(), fenced);
+            assert_eq!(
+                if secondary {
+                    g.additional_players[&life.actor].player
+                } else {
+                    g.primary.player
+                },
+                position
+            );
+            let next = g.respawn_controlled_player(owner, life).unwrap();
+            assert_ne!(next, life);
+            assert!(g.submit_movement_frame(owner, queued).is_err());
+            ticks(&mut g, 1);
+            g.begin_movement_frames(owner, next).unwrap();
+        }
+    }
+
     #[test]
     fn primary_and_secondary_lifecycle_changes_fence_delayed_intervals() {
         for secondary in [false, true] {

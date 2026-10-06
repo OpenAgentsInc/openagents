@@ -952,7 +952,16 @@ impl Game {
             let mut p = self.additional_players.remove(&actor).unwrap();
             let result: Result<(), String> = (|| {
                 let dead = self.simulation.snapshot_for(p.source)?.player.hp == 0;
-                if p.frame_clock
+                if p.frame_clock.is_some() && (dead || !self.unlocked()) {
+                    p.admission
+                        .handoff(p.admission.controller())
+                        .map_err(|e| format!("Unavailable interval handoff refused: {e:?}"))?;
+                    p.frame_clock = None;
+                    p.pending_movement = None;
+                    p.pending_jump = false;
+                    p.held_movement = Default::default();
+                } else if p
+                    .frame_clock
                     .as_ref()
                     .is_some_and(|clock| clock.expired(self.physics_steps))
                 {
