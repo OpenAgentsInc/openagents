@@ -31,7 +31,7 @@ imported-desktop = ["dep:winit", "capture", "native-audio", "imported-surface", 
 # The engine renderer presenting on a surface the host made (a phone's
 # layer or window, a browser canvas); no window library.
 imported-surface = ["verse-pbr/imported-surface"]
-native-audio = ["dep:cpal"]
+native-audio = ["dep:cpal", "dep:rtrb"]
 hosted-social = ["verse-world/service-auth"]
 remote-chamber = ["hosted-social", "verse-world/service-reach", "tokio/signal", "verse-imported/remote-chamber"]
 # An in-process chamber host over memory streams, for other crates' tests.
@@ -42,6 +42,7 @@ chamber-loopback = ["remote-chamber", "tokio/io-util", "verse-imported/chamber-l
 web = ["wgpu/webgl", "imported-surface"]
 
 [dependencies]
+rtrb = { version = "=0.4.0", optional = true }
 verse-content = { path = "../verse-content", features = ["compiler"] }
 # The studio review's copy-path key, on the desktop.
 arboard = { version = "3.6.1", optional = true }

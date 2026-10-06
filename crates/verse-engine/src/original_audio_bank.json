@@ -1,0 +1,104 @@
+{
+  "version": 1,
+  "id": "verse-original-audio-v1",
+  "default_locale": "en",
+  "sources": [
+    {
+      "kind": "synth",
+      "id": "footstep",
+      "cue": "footstep",
+      "seed": 10491
+    },
+    {
+      "kind": "synth",
+      "id": "fire_launch",
+      "cue": "fire_launch",
+      "seed": 10492
+    },
+    {
+      "kind": "synth",
+      "id": "impact",
+      "cue": "impact",
+      "seed": 10493
+    },
+    {
+      "kind": "synth",
+      "id": "shield",
+      "cue": "shield",
+      "seed": 10494
+    },
+    {
+      "kind": "synth",
+      "id": "ritual_ambience",
+      "cue": "ritual_ambience",
+      "seed": 10495
+    }
+  ],
+  "cues": [
+    {
+      "id": "footstep",
+      "source": "footstep",
+      "bus": "effects",
+      "priority": 20,
+      "gain": 0.45,
+      "range": 35.0,
+      "pitch": 1.0,
+      "looping": false,
+      "captions": {
+        "en": "Footsteps"
+      }
+    },
+    {
+      "id": "fire_launch",
+      "source": "fire_launch",
+      "bus": "effects",
+      "priority": 150,
+      "gain": 0.6,
+      "range": 35.0,
+      "pitch": 1.0,
+      "looping": false,
+      "captions": {
+        "en": "Fire spell launched"
+      }
+    },
+    {
+      "id": "impact",
+      "source": "impact",
+      "bus": "effects",
+      "priority": 220,
+      "gain": 0.65,
+      "range": 35.0,
+      "pitch": 1.0,
+      "looping": false,
+      "captions": {
+        "en": "Impact"
+      }
+    },
+    {
+      "id": "shield",
+      "source": "shield",
+      "bus": "effects",
+      "priority": 220,
+      "gain": 0.55,
+      "range": 35.0,
+      "pitch": 1.0,
+      "looping": false,
+      "captions": {
+        "en": "Shield activated"
+      }
+    },
+    {
+      "id": "ritual_ambience",
+      "source": "ritual_ambience",
+      "bus": "music",
+      "priority": 80,
+      "gain": 0.2,
+      "range": 100.0,
+      "pitch": 1.0,
+      "looping": true,
+      "captions": {
+        "en": "Ritual ambience"
+      }
+    }
+  ]
+}

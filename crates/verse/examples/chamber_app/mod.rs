@@ -383,6 +383,17 @@ impl App {
                 [1., 0.8, 0.45, 1.],
             );
         }
+        if let Some(audio) = &self.audio {
+            for (index, line) in audio.hud().iter().enumerate() {
+                ui.text(
+                    &self.atlas,
+                    16.,
+                    150. + index as f32 * 22.,
+                    line,
+                    [1., 1., 1., 1.],
+                );
+            }
+        }
         let mut actors = chamber::instances(&self.pack, &frame)?;
         let combat_visuals = verse_world::visuals::Combat::extract(&self.game);
         actors.extend(chamber::spell_instances_from_visuals(&combat_visuals));
@@ -497,7 +508,9 @@ impl App {
 }
 impl ApplicationHandler for App {
     fn suspended(&mut self, _event_loop: &ActiveEventLoop) {
-        self.audio = None;
+        if let Some(audio) = &mut self.audio {
+            audio.suspend();
+        }
     }
     fn resumed(&mut self, event_loop: &ActiveEventLoop) {
         if self.game.scene.collision_profile.is_some() && self.audio.is_none() {
@@ -505,6 +518,9 @@ impl ApplicationHandler for App {
                 Ok(audio) => self.audio = Some(audio),
                 Err(error) => self.audio_error = error,
             }
+        }
+        if let Some(audio) = &mut self.audio {
+            audio.resume();
         }
         if self.window.is_some() {
             return;
@@ -575,7 +591,15 @@ impl ApplicationHandler for App {
     fn window_event(&mut self, event_loop: &ActiveEventLoop, _id: WindowId, event: WindowEvent) {
         match event {
             WindowEvent::CloseRequested => event_loop.exit(),
+            WindowEvent::Focused(true) => {
+                if let Some(audio) = &mut self.audio {
+                    audio.focus(true);
+                }
+            }
             WindowEvent::Focused(false) => {
+                if let Some(audio) = &mut self.audio {
+                    audio.focus(false);
+                }
                 self.keys.clear();
                 self.controls.clear();
                 self.pending_select = false;
@@ -648,6 +672,24 @@ impl ApplicationHandler for App {
                                 KeyCode::Space if !self.game.agent_controlled => {
                                     if let Err(error) = self.game.jump() {
                                         self.game.message = error;
+                                    }
+                                }
+                                KeyCode::F9 | KeyCode::F10 => {
+                                    if let Some(audio) = &mut self.audio {
+                                        audio.adjust_volume(if key == KeyCode::F9 {
+                                            -0.1
+                                        } else {
+                                            0.1
+                                        });
+                                    }
+                                }
+                                KeyCode::F11 | KeyCode::F12 => {
+                                    if let Some(audio) = &mut self.audio {
+                                        audio.adjust_music(if key == KeyCode::F11 {
+                                            -0.1
+                                        } else {
+                                            0.1
+                                        });
                                     }
                                 }
                                 KeyCode::F5 => {

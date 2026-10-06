@@ -1,7 +1,8 @@
 //! Original synthesized scene cues. No recordings or imported sound assets.
 use crate::audio::Clip;
 
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+#[derive(Clone, Copy, Debug, Eq, PartialEq, serde::Serialize, serde::Deserialize)]
+#[serde(rename_all = "snake_case")]
 pub enum Cue {
     Footstep,
     FireLaunch,

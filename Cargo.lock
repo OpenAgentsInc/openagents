@@ -11941,6 +11941,12 @@ dependencies = [
 ]
 
 [[package]]
+name = "rtrb"
+version = "0.4.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "9278fb35b3e730abe136e9b395b5b81b96d06b9f5478a50f0c8430a2237b22de"
+
+[[package]]
 name = "ruint"
 version = "1.20.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -14968,6 +14974,7 @@ dependencies = [
  "rcgen",
  "reqwest 0.12.28",
  "resvg",
+ "rtrb",
  "rust-native",
  "rust-native-desktop",
  "rustls",
@@ -15049,6 +15056,7 @@ dependencies = [
  "glam",
  "libc",
  "png",
+ "rtrb",
  "serde",
  "serde_json",
  "sha2 0.10.9",

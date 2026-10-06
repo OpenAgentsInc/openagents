@@ -3,15 +3,17 @@ use glam::Vec3;
 use std::collections::{BTreeMap, BTreeSet};
 use verse::{audio_native::Output, imported::MarkerEvent, render::View};
 use verse_engine::{
-    audio::{Clip, Emitter},
-    audio_cues::{Cue, synthesize},
+    audio::Bus,
+    audio_bank::{Bank, Scene},
     core::LifeId,
 };
 use verse_world::{events::Kind, play::Game, rules::ProjectileKind};
 
 pub struct Audio {
-    output: Output,
-    clips: [Clip; 5],
+    output: Option<Output>,
+    scene: Scene,
+    retry_at: std::time::Instant,
+    pub status: String,
     serial: Option<(u64, u64)>,
     flights: BTreeSet<u32>,
     lives: BTreeMap<(u64, u64), LifeId>,
@@ -21,23 +23,12 @@ pub struct Audio {
 }
 impl Audio {
     pub fn open(game: &Game) -> Result<Self, String> {
-        let output = Output::open()?;
-        let rate = output.rate();
-        let cues = [
-            Cue::Footstep,
-            Cue::FireLaunch,
-            Cue::Impact,
-            Cue::Shield,
-            Cue::RitualAmbience,
-        ];
-        let clips: Vec<_> = cues
-            .into_iter()
-            .enumerate()
-            .map(|(i, cue)| synthesize(cue, rate, i as u64 + 10491))
-            .collect::<Result<_, _>>()?;
+        let scene = Scene::new(std::sync::Arc::new(Bank::original()?), "en")?;
         let mut audio = Self {
-            output,
-            clips: clips.try_into().map_err(|_| "Invalid audio cue bank")?,
+            output: None,
+            scene,
+            retry_at: std::time::Instant::now(),
+            status: String::new(),
             serial: game
                 .events
                 .last()
@@ -56,7 +47,7 @@ impl Audio {
             time: game.time,
             queued: [0; 5],
         };
-        audio.play(4, None, Vec3::new(0., 1., -5.), 0.2, true)?;
+        audio.resume();
         Ok(audio)
     }
     fn play(
@@ -64,22 +55,105 @@ impl Audio {
         cue: usize,
         life: Option<LifeId>,
         position: Vec3,
-        gain: f32,
-        looping: bool,
+        _gain: f32,
+        _looping: bool,
     ) -> Result<(), String> {
-        self.output.play(
-            &self.clips[cue],
-            Emitter {
-                life,
-                position,
-                range: if looping { 100. } else { 35. },
-                gain,
-                pitch: 1.,
-                looping,
-            },
-        )?;
-        self.queued[cue] += 1;
+        let id = [
+            "footstep",
+            "fire_launch",
+            "impact",
+            "shield",
+            "ritual_ambience",
+        ][cue];
+        let prepared = self
+            .scene
+            .emit(id, life, position, f64::from(self.time.max(0.)))?;
+        if let Some(output) = &self.output {
+            if let Err(error) = output.play_prepared(prepared) {
+                self.status = error;
+            } else {
+                self.queued[cue] = self.queued[cue].saturating_add(1);
+            }
+        }
         Ok(())
+    }
+    fn stop_life(&mut self, life: LifeId) {
+        if let Some(output) = &self.output {
+            if let Err(error) = output.stop_life(life) {
+                self.status = error;
+            }
+        }
+    }
+    pub fn focus(&mut self, focused: bool) {
+        self.scene.suspended = !focused;
+        if let Some(output) = &self.output {
+            output.suspend(!focused);
+        }
+    }
+    pub fn suspend(&mut self) {
+        self.focus(false);
+        self.output = None;
+        self.scene.output_available = false;
+    }
+    pub fn resume(&mut self) {
+        self.scene.suspended = false;
+        self.retry_at = std::time::Instant::now() + std::time::Duration::from_secs(3);
+        if let Some(output) = &self.output {
+            output.suspend(false);
+            return;
+        }
+        let result = (|| -> Result<Output, String> {
+            let output = Output::open()?;
+            output.volume(self.scene.master, self.scene.buses)?;
+            if let Some(music) = self.scene.enter_zone("chamber", Some("ritual_ambience"))? {
+                output.play_prepared(music)?;
+            }
+            Ok(output)
+        })();
+        match result {
+            Ok(output) => {
+                self.output = Some(output);
+                self.scene.output_available = true;
+                self.status.clear();
+            }
+            Err(error) => {
+                self.scene.output_available = false;
+                self.status = error;
+            }
+        }
+    }
+    pub fn adjust_volume(&mut self, delta: f32) {
+        let _ = self.scene.volume((self.scene.master + delta).clamp(0., 1.));
+        if let Some(output) = &self.output {
+            let _ = output.volume(self.scene.master, self.scene.buses);
+        }
+    }
+    pub fn adjust_music(&mut self, delta: f32) {
+        let _ = self
+            .scene
+            .bus_volume(Bus::Music, (self.scene.buses[1] + delta).clamp(0., 1.));
+        if let Some(output) = &self.output {
+            let _ = output.volume(self.scene.master, self.scene.buses);
+        }
+    }
+    pub fn hud(&self) -> Vec<String> {
+        let mut lines = vec![format!(
+            "Volume {:.0}% [F9/F10]  Music {:.0}% [F11/F12]{}",
+            self.scene.master * 100.,
+            self.scene.buses[1] * 100.,
+            if self.scene.output_available {
+                ""
+            } else {
+                "  Audio unavailable; captions active"
+            }
+        )];
+        lines.extend(
+            self.scene
+                .captions(f64::from(self.time.max(0.)))
+                .take(4)
+                .map(|c| c.text.clone()),
+        );
+        lines
     }
     pub fn update(
         &mut self,
@@ -87,12 +161,30 @@ impl Audio {
         view: View,
         markers: &[MarkerEvent],
     ) -> Result<(), String> {
-        self.output
-            .listener(view.eye, view.view_proj.row(0).truncate())?;
-        if game.time < self.time {
-            for life in self.lives.values() {
-                self.output.stop_life(*life)?;
+        if self
+            .output
+            .as_ref()
+            .is_some_and(|o| o.stats().device_errors > 0)
+        {
+            self.output = None;
+            self.scene.output_available = false;
+        }
+        if self.output.is_none()
+            && !self.scene.suspended
+            && std::time::Instant::now() >= self.retry_at
+        {
+            self.resume();
+        }
+        if let Some(output) = &self.output {
+            if let Err(error) = output.listener(view.eye, view.view_proj.row(0).truncate()) {
+                self.status = error;
             }
+        }
+        if game.time < self.time {
+            if let Some(output) = &self.output {
+                let _ = output.stop_bus(Bus::Effects);
+            }
+            self.scene.clear_captions();
             self.serial = None;
             self.flights.clear();
             self.lives.clear();
@@ -110,7 +202,7 @@ impl Audio {
                 let key = (life.instance, life.actor);
                 if let Some(old) = self.lives.insert(key, life) {
                     if old != life {
-                        self.output.stop_life(old)?;
+                        self.stop_life(old);
                     }
                 }
                 let position = if life == game.player_life() {
@@ -120,7 +212,7 @@ impl Audio {
                 };
                 match event.kind {
                     Kind::Damage { .. } => self.play(2, Some(life), position, 0.65, false)?,
-                    Kind::Death => self.output.stop_life(life)?,
+                    Kind::Death => self.stop_life(life),
                     _ => {}
                 }
             }
@@ -175,6 +267,6 @@ impl Audio {
         Ok(())
     }
     pub fn stats(&self) -> serde_json::Value {
-        serde_json::json!({"device":self.output.stats(),"queued_by_cue":self.queued,"sample_rate":self.output.rate()})
+        serde_json::json!({"device":self.output.as_ref().map(Output::stats),"queued_by_cue":self.queued,"sample_rate":self.output.as_ref().map(Output::rate),"bank":self.scene.bank.digest,"master":self.scene.master,"buses":self.scene.buses,"music_position":self.scene.music_position(),"caption_drops":self.scene.caption_drops,"status":self.status})
     }
 }
