@@ -218,9 +218,17 @@ fn flow(
             let manifest = coder::task::artifact::manifest(&scratch.store, &task_record)
                 .map_err(|e| e.to_string())?;
             if let Some(manifest) = &manifest {
-                std::fs::write(
+                let filename = task_record
+                    .run
+                    .as_ref()
+                    .and_then(|run| run.result.as_ref())
+                    .and_then(|result| result.artifact_file.as_ref())
+                    .ok_or("Validated artifact manifest has no result identity.")?;
+                // The reader above validated the digest and filename. Keep
+                // those original bytes instead of changing their JSON format.
+                std::fs::copy(
+                    scratch.store.join(filename),
                     artifact_dir.join("manifest.json"),
-                    serde_json::to_vec_pretty(manifest).map_err(|e| e.to_string())?,
                 )
                 .map_err(|e| e.to_string())?;
                 for entry in &manifest.entries {
