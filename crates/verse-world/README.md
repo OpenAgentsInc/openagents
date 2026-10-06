@@ -1000,7 +1000,11 @@ storage. Offline pruning retains every current and migration history root.
 
 Wire version 31 adds `Safety` and `SafetyAction`. The realm derives the acting
 account from the authenticated connection; clients cannot select the owner of
-its safety preferences. `service::safety` defines account blocks, typed reports,
+its safety preferences. The private view also maps up to 128 resident avatars
+in the world the connection can observe to public character and account
+addresses. Clients target blocks and reports through those addresses; the
+projection carries no credential key, epoch, inventory, or Studio data.
+`service::safety` defines account blocks, typed reports,
 private projections, and exact-retry receipts. Each account can retain 64
 blocked accounts, with 128 block changes per UTC day. A block in either direction refuses new party or guild
 invitations, joining a pending invitation from that leader, new gear trade

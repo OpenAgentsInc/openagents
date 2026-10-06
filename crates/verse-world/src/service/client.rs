@@ -656,7 +656,17 @@ impl Client {
             (Reply::Snapshot { state }, Body::Snapshot {} | Body::Replicate { .. }) => {
                 state.validate_control(self.instance, &r.control)
             }
-            (Reply::Safety { view }, Body::Safety {}) => view.validate(),
+            (Reply::Safety { view }, Body::Safety {}) => {
+                view.validate()?;
+                if view
+                    .contacts
+                    .iter()
+                    .any(|c| c.life.instance != self.instance)
+                {
+                    return Err("Public contact belongs to another instance".into());
+                }
+                Ok(())
+            }
             (
                 Reply::SafetyApplied { receipt },
                 Body::SafetyAction {

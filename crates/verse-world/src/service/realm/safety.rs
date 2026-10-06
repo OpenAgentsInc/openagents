@@ -71,6 +71,7 @@ impl Realm {
             realm: self.manifest.id,
             account,
             blocked: p.blocked.clone(),
+            contacts: vec![],
         }
         .validate()?;
         Ok(p)
@@ -114,10 +115,31 @@ impl Realm {
     ) -> Result<api::View, String> {
         self.check(lease, now)?;
         let account = self.safety_account(lease, connection)?;
+        let gateway = &self.games[&lease.instance];
+        let mut contacts = vec![];
+        if gateway.check_view(connection).is_ok() {
+            for (character, placement) in &self.manifest.characters {
+                if placement.instance != lease.instance {
+                    continue;
+                }
+                let life = gateway
+                    .game()
+                    .player_admission(placement.actor)
+                    .ok_or("Public contact avatar is unavailable")?
+                    .actor();
+                contacts.push(api::Contact {
+                    life,
+                    character: *character,
+                    account: self.character(*character)?.account,
+                });
+            }
+        }
+        contacts.sort_by_key(|c| c.life);
         let view = api::View {
             realm: self.manifest.id,
             account,
             blocked: self.preferences(account)?.blocked,
+            contacts,
         };
         view.validate()?;
         Ok(view)

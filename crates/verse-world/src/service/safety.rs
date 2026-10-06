@@ -69,6 +69,15 @@ pub struct View {
     pub realm: Id,
     pub account: u64,
     pub blocked: Vec<u64>,
+    pub contacts: Vec<Contact>,
+}
+/// Public safety address for a resident avatar; no key, inventory, or Studio data.
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct Contact {
+    pub life: verse_engine::core::LifeId,
+    pub character: u64,
+    pub account: u64,
 }
 impl View {
     pub fn validate(&self) -> Result<(), String> {
@@ -77,6 +86,21 @@ impl View {
             || self.blocked.len() > 64
             || self.blocked.iter().any(|a| *a == 0 || *a == self.account)
             || self.blocked.windows(2).any(|a| a[0] >= a[1])
+            || self.contacts.len() > 128
+            || self.contacts.iter().any(|c| {
+                c.account == 0 || c.character == 0 || c.life.instance == 0 || c.life.actor == 0
+            })
+            || self
+                .contacts
+                .windows(2)
+                .any(|c| c[0].life >= c[1].life || c[0].life.instance != c[1].life.instance)
+            || self
+                .contacts
+                .iter()
+                .map(|c| c.character)
+                .collect::<std::collections::BTreeSet<_>>()
+                .len()
+                != self.contacts.len()
         {
             return Err("Invalid account safety projection".into());
         }

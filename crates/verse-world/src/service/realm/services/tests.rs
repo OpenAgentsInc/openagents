@@ -671,12 +671,20 @@ async fn real_tls_party_adventure_claims_trades_transfers_and_restarts() {
         grant
     );
     use crate::service::safety as safe;
+    let public_contacts = ca.safety().await.unwrap().contacts;
+    let bob_contact = public_contacts
+        .iter()
+        .find(|c| c.life == cb.control().unwrap().life.into())
+        .unwrap();
+    assert_eq!(bob_contact.account, bob_account);
+    assert_eq!(bob_contact.character, bob);
+    let bob_public_account = bob_contact.account;
     let block = ca
         .safety_action(
             identity,
             [80; 16],
             safe::Action::Block {
-                account: bob_account,
+                account: bob_public_account,
                 blocked: true,
             },
         )
@@ -1185,6 +1193,12 @@ fn account_blocks_fence_pending_and_new_contact_across_restart() {
     assert_eq!(realm.safety_view(&b, cb, 1).unwrap().blocked, vec![aa]);
     assert_eq!(realm.safety_view(&a, ca, 1).unwrap().account, aa);
     assert!(realm.safety_view(&a, ca, 1).unwrap().blocked.is_empty());
+    let public = realm.safety_view(&a, ca, 1).unwrap();
+    assert_eq!(public.contacts.len(), 1);
+    assert_eq!(public.contacts[0].character, alice);
+    assert_eq!(public.contacts[0].account, aa);
+    assert_eq!(public.contacts[0].life.instance, 1001);
+
     assert!(realm.contact(alice, bob).is_err());
     assert!(realm.contact(bob, alice).is_err());
     let refuse = dispatch(
