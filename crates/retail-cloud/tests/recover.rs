@@ -214,3 +214,50 @@ fn recovery_readers_cannot_relabel_the_original_funded_identity() {
         Err(Error::Denied(_))
     ));
 }
+
+#[test]
+fn recovery_names_only_a_retained_unexpired_checkpoint_without_resubmission() {
+    use retail_cloud::retain::{self, Artifact, Artifacts, Kind, Manifest};
+    struct Patch(Manifest, Vec<u8>);
+    impl Artifacts for Patch {
+        fn manifest(&self, _: &str, _: &str) -> retail_cloud::Result<Manifest> {
+            Ok(self.0.clone())
+        }
+        fn read(&self, _: &str, _: &str, _: &str, _: usize) -> retail_cloud::Result<Vec<u8>> {
+            Ok(self.1.clone())
+        }
+    }
+    let mut j = Journal::in_memory().unwrap();
+    let mut l = Ledger::in_memory().unwrap();
+    let p = FakeProvider::new();
+    let o = FakeTaskOwner::new();
+    let (f, r) = running(&mut j, &mut l, &p, &o);
+    let bytes = b"diff --git a/parser.rs b/parser.rs\n".to_vec();
+    let digest = retail_cloud::sha256_hex(&bytes);
+    let artifacts = Patch(
+        Manifest {
+            execution: f.execution.clone(),
+            task: dispatch::task_id(&f.execution),
+            resource: r.clone(),
+            source: f.admission.source.clone(),
+            engine: "codex".into(),
+            artifacts: vec![Artifact {
+                name: "patch".into(),
+                kind: Kind::Patch,
+                digest: digest.clone(),
+                size: bytes.len(),
+            }],
+        },
+        bytes,
+    );
+    p.lose(&r);
+    retain::request(&mut j, &f, NOW + 21).unwrap();
+    let receipt = retain::advance(&mut j, &p, &artifacts, &f.execution, NOW + 22).unwrap();
+    let snapshot = recover::step(&mut j, &mut l, &p, &o, &f, NOW + 23).unwrap();
+    assert_eq!(snapshot.replacement.unwrap().checkpoint, Some(digest));
+    let expired = recover::step(&mut j, &mut l, &p, &o, &f, receipt.expires_at).unwrap();
+    assert_eq!(expired.replacement.unwrap().checkpoint, None);
+    assert_eq!(o.started(), 1);
+    assert_eq!(p.create_calls(), 1);
+    assert_eq!(l.compute_balance("acct").unwrap().settled_msat, 0);
+}
