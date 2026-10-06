@@ -815,3 +815,12 @@ first, journals the recipient and idempotency key (`RouteRecord::sent`)
 before asking the host, and after a lost acknowledgment asks the same host
 what that key created. A revoked or stale grant or another host refuses,
 and nothing falls back to this computer or to another one.
+
+Qualifying route extensions (#10702): [`route_contract::qualify`](../../crates/route-contract/src/qualify.rs)
+freezes a held-out profile (policy, question set, and source digests; tune,
+confirmation, and adversarial authority rows) and qualifies each adapter on
+its own attempts against the direct baseline. Failures and unknowns stay in
+the denominator and keep the cost unknown, a score never authorizes
+execution and a claim never establishes completion, an unavailable adapter
+stays unqualified without blocking another, and only a promotion naming the
+adapter's own evidence changes the active policy.

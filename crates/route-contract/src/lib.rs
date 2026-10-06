@@ -36,6 +36,8 @@
 //! - [`view`]: the workbench's read-only view of one route (#10698):
 //!   identities, placement, executor, payers, checks, and the cost,
 //!   outcome, and cancellation states a pane keeps apart.
+//! - [`qualify`]: held-out qualification of route extensions (#10702): a
+//!   frozen profile, per-adapter evidence, and promotion only on it.
 //! - [`eval`]: the labeled evaluation split for route families
 //!   (`fixtures/route-families-v1.json`).
 //!
@@ -50,6 +52,7 @@ pub mod eval;
 pub mod lifecycle;
 pub mod offer;
 pub mod price_book;
+pub mod qualify;
 pub mod recipe;
 pub mod record;
 pub mod route;
@@ -96,3 +99,6 @@ mod price_book_tests;
 
 #[cfg(test)]
 mod view_tests;
+
+#[cfg(test)]
+mod qualify_tests;
