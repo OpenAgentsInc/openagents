@@ -46,11 +46,36 @@ pub(crate) fn run(
             );
         }
     }
+    if let Some(reference) = task_reference(request)
+        && reference.generation == shared.pty.generation()
+    {
+        let bound = shared
+            .task_terminals
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .get(&reference.terminal)
+            .cloned();
+        if let Some((task, admitted)) = bound {
+            let current = shared.tasks.terminal_binding(&task);
+            if !current.is_ok_and(|binding| {
+                binding.interactive
+                    && binding.directory.canonicalize().ok().as_ref() == Some(&admitted.directory)
+            }) {
+                return TerminalResult::from_outcome(
+                    id,
+                    Err(Refusal::new(
+                        Reason::NotAdmitted,
+                        "The task no longer admits this terminal binding.",
+                    )),
+                );
+            }
+        }
+    }
     let pty = &shared.pty;
     if let Some(outcome) = session(shared, principal, request, now) {
         return TerminalResult::from_outcome(id, outcome);
     }
-    let outcome = match request {
+    let mut outcome = match request {
         TermRequest::Proposal(r) => pty.proposal(principal, r),
         TermRequest::Open(r) => pty.open(principal, r),
         TermRequest::Attach(r) => pty.attach(principal, r, sink()),
@@ -72,6 +97,20 @@ pub(crate) fn run(
         | TermRequest::SessionList(_)
         | TermRequest::SessionRemove(_) => unreachable!("answered above"),
     };
+    if let Ok((_, coder_pty::wire::Value::Attached { task_binding, .. })) = &mut outcome
+        && let Some(reference) = task_reference(request)
+        && let Some((task, binding)) = shared
+            .task_terminals
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .get(&reference.terminal)
+    {
+        *task_binding = Some(coder_pty::wire::TaskBinding {
+            task: task.clone(),
+            directory: binding.directory.to_string_lossy().into_owned(),
+            mode: "interactive".into(),
+        });
+    }
     TerminalResult::from_outcome(id, outcome)
 }
 
@@ -127,4 +166,30 @@ fn session(
         TermRequest::SessionRemove(r) => books.remove(principal, r),
         _ => return None,
     })
+}
+
+/// Cleanup remains available after a task loses its binding.
+fn task_reference(request: &TermRequest) -> Option<&coder_pty::wire::TerminalRef> {
+    match request {
+        TermRequest::Proposal(r) => Some(&r.terminal),
+        TermRequest::Attach(r) => Some(&r.terminal),
+        TermRequest::Input(r) => Some(&r.terminal),
+        TermRequest::Resize(r) => Some(&r.terminal),
+        TermRequest::Signal(r) => Some(&r.terminal),
+        TermRequest::History(r) => Some(&r.terminal),
+        TermRequest::BlockPage(r) => Some(&r.terminal),
+        TermRequest::Seat(r) => Some(&r.terminal),
+        TermRequest::Share(r) => Some(&r.terminal),
+        TermRequest::Unshare(r) => Some(&r.terminal),
+        TermRequest::SharePause(r) => Some(&r.terminal),
+        TermRequest::Handoff(r) => Some(&r.terminal),
+        TermRequest::Viewers(r) => Some(&r.terminal),
+        TermRequest::Open(_)
+        | TermRequest::Close(_)
+        | TermRequest::Detach(_)
+        | TermRequest::SessionRead(_)
+        | TermRequest::SessionWrite(_)
+        | TermRequest::SessionList(_)
+        | TermRequest::SessionRemove(_) => None,
+    }
 }

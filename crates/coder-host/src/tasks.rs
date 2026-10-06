@@ -243,10 +243,24 @@ pub struct Principal {
 /// grant and epoch, now.
 pub type Standing<'a> = &'a (dyn Fn(&Principal) -> bool + Sync);
 
+/// A studio worktree the task owner explicitly admits for a separate shell.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct TerminalBinding {
+    pub directory: std::path::PathBuf,
+    /// Read-only bindings may be inspected by task readers but cannot launch a shell.
+    pub interactive: bool,
+}
+
 /// Where admitted task operations go.
 ///
 /// Implementations return promptly and never call back into the host.
 pub trait Tasks: Send + Sync {
+    /// Resolve a non-archived studio task's current admitted worktree.
+    /// The default grants no shell access.
+    fn terminal_binding(&self, _task: &str) -> Result<TerminalBinding, Code> {
+        Err(Code::Unsupported)
+    }
+
     /// Record a new task. `key` is the idempotency key.
     ///
     /// # Errors

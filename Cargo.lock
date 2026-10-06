@@ -13734,6 +13734,7 @@ dependencies = [
 name = "terminal-remote"
 version = "0.1.0"
 dependencies = [
+ "coder-access",
  "coder-computers",
  "coder-host",
  "coder-pty",

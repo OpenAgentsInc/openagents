@@ -18,6 +18,7 @@
         "task.queue",
         "workspace.list",
         "terminal.open",
+        "task.terminal.open",
         "spend.list",
         "spend.settle",
         "chats.invite",

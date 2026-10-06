@@ -135,6 +135,7 @@ fn every_operation_has_a_fixture() {
         "device.revoke",
         "task.create",
         "terminal.open",
+        "task.terminal.open",
         "task.steer",
         "task.cancel",
         "workspace.list",

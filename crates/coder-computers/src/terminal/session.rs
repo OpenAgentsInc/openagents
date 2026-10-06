@@ -127,6 +127,7 @@ pub const BLOCK_PAGE: u16 = 8;
 enum Target {
     /// A new shell the host opens.
     Open,
+    OpenTask(String),
     /// A terminal the host already runs.
     Attach(TerminalRef),
 }
@@ -149,6 +150,12 @@ impl Session {
     #[must_use]
     pub fn start(runtime: &Handle, links: Links, model: Model) -> Self {
         Self::spawn(runtime, links, model, Target::Open)
+    }
+
+    /// Open a separately owned shell at the task owner's admitted studio worktree.
+    #[must_use]
+    pub fn start_task(runtime: &Handle, links: Links, model: Model, task: String) -> Self {
+        Self::spawn(runtime, links, model, Target::OpenTask(task))
     }
 
     /// Attach to the terminal `reference` names, which the host already
@@ -636,6 +643,7 @@ async fn open(
     links: &Links,
     model: &Arc<Mutex<Model>>,
     commands: &mut mpsc::UnboundedReceiver<Command>,
+    task: Option<&str>,
 ) -> Result<(Arc<Link>, TerminalRef, (u16, u16)), Stop> {
     let mut first = true;
     loop {
@@ -650,8 +658,15 @@ async fn open(
             model.set_phase(Phase::Opening);
             model.size()
         };
-        let answer =
-            until_left(commands, link.call(Operation::OpenTerminal { cols, rows })).await?;
+        let operation = match task {
+            Some(task) => Operation::OpenTaskTerminal {
+                task: task.into(),
+                cols,
+                rows,
+            },
+            None => Operation::OpenTerminal { cols, rows },
+        };
+        let answer = until_left(commands, link.call(operation)).await?;
         match answer {
             Ok(Outcome::Dispatched { receipt }) => {
                 let reference = TerminalRef {
@@ -668,6 +683,11 @@ async fn open(
             Err(error) => {
                 if let Some(phase) = open_refusal(&error) {
                     return Err(Stop::Ended(phase));
+                }
+                if task.is_some() {
+                    return Err(Stop::Ended(Phase::Refused(
+                        "Task shell disposition is unknown. Inspect the host before opening another.".into(),
+                    )));
                 }
             }
         }
@@ -707,7 +727,8 @@ async fn drive(
     target: Target,
 ) -> Stop {
     let opened = match target {
-        Target::Open => open(links, model, commands).await,
+        Target::Open => open(links, model, commands, None).await,
+        Target::OpenTask(task) => open(links, model, commands, Some(&task)).await,
         Target::Attach(reference) => {
             lock(model).set_phase(Phase::Connecting);
             // The terminal's size is the host's; the first attach says it.
@@ -766,10 +787,14 @@ async fn drive(
                 status: Status::Accepted | Status::Duplicate,
                 value:
                     Some(Value::Attached {
-                        attachment, size, ..
+                        attachment,
+                        size,
+                        task_binding,
+                        ..
                     }),
                 ..
             }) => {
+                lock(model).task_binding = task_binding;
                 if host_size == (0, 0) {
                     host_size = (size.rows, size.cols);
                 }

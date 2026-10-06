@@ -18,6 +18,7 @@ pub struct Remote {
     pub local: Arc<dyn Transport>,
     /// Reattach this exact reference instead of opening a shell.
     pub saved: Mutex<Option<TerminalRef>>,
+    task: Option<String>,
     _owner: Option<(coder_computers::live::Live, tokio::runtime::Runtime)>,
 }
 impl Remote {
@@ -57,6 +58,7 @@ impl Remote {
             runtime: runtime.handle().clone(),
             local,
             saved: Mutex::new(saved),
+            task: None,
             _owner: Some((live, runtime)),
         })
     }
@@ -91,6 +93,28 @@ impl Remote {
             Ok(link)
         });
     }
+    /// Open separate task shells. Exact-reference attachments use their retained host binding.
+    pub fn for_task(mut self, task: String) -> Result<Self, String> {
+        coder_access::protocol::Operation::OpenTaskTerminal {
+            task: task.clone(),
+            cols: 80,
+            rows: 24,
+        }
+        .validate()
+        .map_err(|_| "The task identity is malformed.")?;
+        if self
+            .saved
+            .lock()
+            .map_err(|_| "Terminal reference lock failed.")?
+            .is_some()
+        {
+            return Err("A task launch cannot replace an exact terminal attachment.".into());
+        }
+        self.label = format!("{} / task {} / interactive", self.label, task);
+        self.task = Some(task);
+        Ok(self)
+    }
+
     /// Injects the platform's already admitted and supervised host connection.
     pub fn injected(
         host: String,
@@ -106,6 +130,7 @@ impl Remote {
             links,
             runtime,
             saved: Mutex::new(saved),
+            task: None,
             local,
             _owner: None,
         }
@@ -136,7 +161,12 @@ impl Transport for Remote {
             .take();
         let session = match saved {
             Some(reference) => Session::attach(&self.runtime, self.links.clone(), model, reference),
-            None => Session::start(&self.runtime, self.links.clone(), model),
+            None => match &self.task {
+                Some(task) => {
+                    Session::start_task(&self.runtime, self.links.clone(), model, task.clone())
+                }
+                None => Session::start(&self.runtime, self.links.clone(), model),
+            },
         };
         Ok(Box::new(RemoteAttachment {
             session,
@@ -300,7 +330,11 @@ impl Attachment for RemoteAttachment {
         )
     }
     fn directory(&self) -> Option<String> {
-        None
+        self.session
+            .model()
+            .task_binding
+            .as_ref()
+            .map(|b| b.directory.clone())
     }
     fn poll(&mut self) -> Option<Event> {
         if self.overflow.load(std::sync::atomic::Ordering::Acquire) {
@@ -326,7 +360,15 @@ impl Attachment for RemoteAttachment {
                 .as_ref()
                 .map(|r| r.0.get(..12).unwrap_or(&r.0))
                 .unwrap_or("unavailable"),
-            model.notice.as_deref().unwrap_or("")
+            format!(
+                "{} {}",
+                model
+                    .task_binding
+                    .as_ref()
+                    .map(|b| format!("task {} / {} / {}", b.task, b.mode, b.directory))
+                    .unwrap_or_default(),
+                model.notice.as_deref().unwrap_or("")
+            )
         );
         if self.phase.as_ref() != Some(&status) {
             self.phase = Some(status.clone());

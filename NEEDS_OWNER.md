@@ -645,3 +645,7 @@ attribution, revocation, replay refusal, and private thread/run evidence.
 Physical native keyboard and badge presentation remain unverified. A handoff
 admits at most 256 distinct inputs and grants no screen observation; consent
 separately to individual block attachments. No live model producer was run.
+
+- #10658: On a paired Mac host, visually check the standalone and Verse task
+  shell titles and directory display. Scratch relay fixtures cover admission
+  and task isolation; a physical Mac session remains unverified.

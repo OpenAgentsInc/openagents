@@ -772,6 +772,23 @@
           }
         }
       }
+    },
+    "request_task_terminal_open": {
+      "v": "openagents.host-request.v1",
+      "requires": [],
+      "request": "f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0",
+      "host": "79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798",
+      "grant": "1111111111111111111111111111111111111111111111111111111111111111",
+      "epoch": 0,
+      "relay": "wss://relay.example.com/",
+      "issued_at": 1790000000,
+      "expires_at": 1790000060,
+      "op": {
+        "kind": "task.terminal.open",
+        "task": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "cols": 120,
+        "rows": 40
+      }
     }
   },
   "invalid": [

@@ -24,6 +24,7 @@ pub struct Options {
     knowledge_operator: Option<String>,
     knowledge_evaluator: Option<String>,
     host: Option<String>,
+    task: Option<String>,
     paired_store: Option<PathBuf>,
     reference: Option<String>,
     shell: Option<PathBuf>,
@@ -134,6 +135,9 @@ pub fn run() -> Result<(), String> {
                         .into(),
                 )
             }
+            "--task" => {
+                options.task = Some(args.next().ok_or("--task needs a studio task identity")?)
+            }
             "--host" => options.host = Some(args.next().ok_or("--host needs a host key")?),
             "--paired-store" => {
                 options.paired_store = Some(
@@ -159,8 +163,10 @@ pub fn run() -> Result<(), String> {
     if options.knowledge_review.is_some() && options.knowledge_workbench.is_none() {
         return Err("--knowledge-review requires --knowledge-workbench".into());
     }
-    if options.host.is_none() && (options.paired_store.is_some() || options.reference.is_some()) {
-        return Err("--paired-store and --terminal require --host.".into());
+    if options.host.is_none()
+        && (options.paired_store.is_some() || options.reference.is_some() || options.task.is_some())
+    {
+        return Err("--paired-store, --terminal, and --task require --host.".into());
     }
     if options.root.as_ref().is_some_and(|root| !root.is_dir()) {
         return Err("the scratch root must be an existing directory".into());
@@ -457,6 +463,10 @@ impl ApplicationHandler for App {
                     reference,
                     terminal_gfx::pty::for_user().0,
                 )?;
+                let remote = match &self.options.task {
+                    Some(task) => remote.for_task(task.clone())?,
+                    None => remote,
+                };
                 Overlay::on_host(remote)
             } else if let Some(driver) = &stress {
                 Overlay::with(

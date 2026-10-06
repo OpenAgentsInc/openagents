@@ -376,6 +376,26 @@ impl Inbox {
 }
 
 impl Tasks for Inbox {
+    fn terminal_binding(&self, task: &str) -> Result<coder_host::tasks::TerminalBinding, Code> {
+        if super::archive::archived(&self.store).contains(task) {
+            return Err(Code::Forbidden);
+        }
+        if super::studio::git::seat_of(&self.store, task).is_none() {
+            return Err(Code::Unsupported);
+        }
+        let record = super::local::record(&self.store, task).ok_or(Code::Unavailable)?;
+        let directory = Path::new(&record.worktree)
+            .canonicalize()
+            .map_err(|_| Code::Unavailable)?;
+        if !directory.is_dir() {
+            return Err(Code::Unavailable);
+        }
+        Ok(coder_host::tasks::TerminalBinding {
+            directory,
+            interactive: !record.shape.read_only,
+        })
+    }
+
     fn agent(
         &self,
         key: &str,

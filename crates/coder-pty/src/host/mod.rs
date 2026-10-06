@@ -1250,7 +1250,36 @@ impl Host {
         if let Some(outcome) = self.inner.retry(&key(principal, &request.request), &body) {
             return outcome;
         }
-        let value = self.inner.open(request)?;
+        let value = self.inner.open(request, None)?;
+        self.inner
+            .remember(&key(principal, &request.request), body, value.clone());
+        Ok((Status::Accepted, value))
+    }
+
+    /// Opens a shell in a directory explicitly admitted by the host's task owner.
+    /// Callers must resolve the binding locally; this is not a wire path operation.
+    pub fn open_bound(&self, principal: &str, request: &Open, directory: &Path) -> Outcome {
+        request.check()?;
+        self.inner.require(principal, Right::Terminal)?;
+        if !matches!(request.launch, Launch::Shell) || !request.env.is_empty() {
+            return Err(Refusal::malformed(
+                "a bound task terminal opens only its shell",
+            ));
+        }
+        let directory = directory
+            .canonicalize()
+            .map_err(|_| Refusal::new(Reason::Unavailable, "the task worktree is unavailable"))?;
+        if !directory.is_dir() {
+            return Err(Refusal::new(
+                Reason::Unavailable,
+                "the task worktree is not a directory",
+            ));
+        }
+        let body = identity(principal, &(request, &directory));
+        if let Some(outcome) = self.inner.retry(&key(principal, &request.request), &body) {
+            return outcome;
+        }
+        let value = self.inner.open(request, Some(directory))?;
         self.inner
             .remember(&key(principal, &request.request), body, value.clone());
         Ok((Status::Accepted, value))
@@ -1400,6 +1429,7 @@ impl Host {
         state.attachments.insert(id.clone(), attachment);
         state.activity = now;
         let value = Value::Attached {
+            task_binding: None,
             attachment: id,
             head: state.ring.head(),
             size: state.size,
@@ -2329,7 +2359,7 @@ impl Inner {
         Ok(terminal)
     }
 
-    fn open(self: &Arc<Self>, request: &Open) -> Result<Value, Refusal> {
+    fn open(self: &Arc<Self>, request: &Open, admitted: Option<PathBuf>) -> Result<Value, Refusal> {
         if self.shutting.load(Ordering::SeqCst) {
             return Err(Refusal::new(
                 Reason::Unavailable,
@@ -2347,7 +2377,10 @@ impl Inner {
                 "the host has its most terminals",
             ));
         }
-        let dir = self.directory(&request.workspace, &request.dir)?;
+        let dir = match admitted {
+            Some(directory) => directory,
+            None => self.directory(&request.workspace, &request.dir)?,
+        };
         for var in &request.env {
             if !self.config.env_allow.contains(&var.name) {
                 return Err(Refusal::new(

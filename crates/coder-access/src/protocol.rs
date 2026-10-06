@@ -587,6 +587,8 @@ pub enum Operation {
     CreateTask { task: TaskCreate },
     #[serde(rename = "terminal.open")]
     OpenTerminal { cols: u16, rows: u16 },
+    #[serde(rename = "task.terminal.open")]
+    OpenTaskTerminal { task: String, cols: u16, rows: u16 },
     /// Replace a task's instructions, as a CTRL steer does. `revision` is the
     /// task revision the device last read.
     #[serde(rename = "task.steer")]
@@ -980,6 +982,7 @@ impl Operation {
             Self::Revoke { .. } => "device.revoke",
             Self::CreateTask { .. } => "task.create",
             Self::OpenTerminal { .. } => "terminal.open",
+            Self::OpenTaskTerminal { .. } => "task.terminal.open",
             Self::SteerTask { .. } => "task.steer",
             Self::CancelTask { .. } => "task.cancel",
             Self::ArchiveTask { .. } => "task.archive",
@@ -1091,7 +1094,7 @@ impl Operation {
             | Self::StopAgent { .. }
             | Self::EditAgentMemory { .. }
             | Self::EditAgentJobs { .. } => Some(Right::Operate),
-            Self::OpenTerminal { .. } => Some(Right::Terminal),
+            Self::OpenTerminal { .. } | Self::OpenTaskTerminal { .. } => Some(Right::Terminal),
             Self::DecideMerge { .. } => Some(Right::Review),
         }
     }
@@ -1189,6 +1192,12 @@ impl Operation {
                 }
                 if let Some(since) = since {
                     safe(*since)?;
+                }
+            }
+            Self::OpenTaskTerminal { task, cols, rows } => {
+                crate::studio::id(task)?;
+                if !(1..=1000).contains(cols) || !(1..=1000).contains(rows) {
+                    return fail(Code::Bounds, "terminal size exceeds its bound");
                 }
             }
             Self::OpenTerminal { cols, rows } => {
@@ -1722,6 +1731,7 @@ impl Outcome {
             (
                 Operation::CreateTask { .. }
                 | Operation::OpenTerminal { .. }
+                | Operation::OpenTaskTerminal { .. }
                 | Operation::SteerTask { .. }
                 | Operation::CancelTask { .. }
                 | Operation::ArchiveTask { .. }

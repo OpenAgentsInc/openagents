@@ -969,3 +969,14 @@ come first. The host marks a proposal uncertain before writing bytes; a partial
 or failed write remains uncertain and cannot be approved again. The existing
 block journal records the result. The feature requires a host that can inspect
 the shell's OS directory; the current adapters support macOS and Linux.
+
+### Task shell binding
+
+An admitted HOST `task.terminal.open` creates a separate terminal. Its
+`attached` result carries optional `task_binding` with `{task, directory,
+mode}`, where mode is `interactive`. The host supplies the canonical
+worktree directory and rechecks that binding before attachment or input.
+The terminal reference supplies the host generation; the authenticated
+channel supplies the host identity. Older clients can omit this optional
+projection, but cannot replace or widen the binding. Detach and close do
+not cancel the task.

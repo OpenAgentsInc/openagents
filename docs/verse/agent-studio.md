@@ -565,3 +565,10 @@ Each stage lands as its own issue, with its own checks.
 - Whether seat identities become NIP-XP-earning agents, so studio work counts
   toward an agent's level the way Gym work does.
 - The disclosure rule for showing seats to other players on the plaza.
+
+A separately admitted worktree shell opens with `terminal-app --host HOST
+--task TASK` or Verse's `--terminal-host HOST --terminal-task TASK`. The host
+requires the current terminal grant and an interactive studio worktree binding;
+read-only tasks refuse the shell. The pane shows its host, task, generation,
+and admitted directory. Shell edits invalidate earlier exact tree reviews.
+Detach or close affects the shell and does not cancel or steer the task.

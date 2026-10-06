@@ -73,6 +73,7 @@ pub struct Options {
     pub studio_socket: Option<std::path::PathBuf>,
     /// Explicit paired host for the shared terminal mount.
     pub terminal_host: Option<String>,
+    pub terminal_task: Option<String>,
     pub terminal_store: Option<std::path::PathBuf>,
     /// Exact retained generation and terminal, without opening a replacement.
     pub terminal_reference: Option<String>,
@@ -128,6 +129,7 @@ impl Default for Options {
             studio_sim: false,
             studio_socket: None,
             terminal_host: None,
+            terminal_task: None,
             terminal_store: None,
             terminal_reference: None,
             capability_flow: None,
@@ -810,11 +812,18 @@ fn terminal_overlay(options: &Options) -> Result<crate::terminal::Overlay, Strin
             reference,
             crate::terminal::pty::for_user().0,
         )?;
+        let remote = match &options.terminal_task {
+            Some(task) => remote.for_task(task.clone())?,
+            None => remote,
+        };
         crate::terminal::Overlay::on_host(remote)
     } else {
-        if options.terminal_store.is_some() || options.terminal_reference.is_some() {
+        if options.terminal_store.is_some()
+            || options.terminal_reference.is_some()
+            || options.terminal_task.is_some()
+        {
             return Err(
-                "--terminal-store and --terminal-reference require --terminal-host.".into(),
+                "--terminal-store, --terminal-reference, and --terminal-task require --terminal-host.".into(),
             );
         }
         crate::terminal::Overlay::new()

@@ -516,6 +516,62 @@ impl Dispatch for Dispatcher {
                     reference: task.clone(),
                 })
             }
+            Operation::OpenTaskTerminal { task, cols, rows } => {
+                let mut binding = tasks.terminal_binding(task)?;
+                binding.directory = binding
+                    .directory
+                    .canonicalize()
+                    .map_err(|_| Code::Unavailable)?;
+                let mut terminals = self
+                    .shared
+                    .task_terminals
+                    .lock()
+                    .unwrap_or_else(std::sync::PoisonError::into_inner);
+                terminals.retain(|terminal, _| {
+                    self.shared
+                        .pty
+                        .head(&coder_pty::wire::TerminalRef {
+                            generation: self.shared.pty.generation().into(),
+                            terminal: terminal.clone(),
+                        })
+                        .is_ok()
+                });
+                if terminals.len() >= 1024 {
+                    return Err(Code::Bounds);
+                }
+                if !binding.interactive {
+                    return Err(Code::Forbidden);
+                }
+                let open = Open::new(
+                    request,
+                    crate::mailbox::workspace_id("studio-task"),
+                    "",
+                    Launch::Shell,
+                    Size::new(*rows, *cols),
+                );
+                match self
+                    .shared
+                    .pty
+                    .open_bound(device, &open, &binding.directory)
+                {
+                    Ok((_, Value::Opened { terminal, .. })) => {
+                        terminals.insert(terminal.terminal.clone(), (task.clone(), binding));
+                        Ok(Receipt {
+                            operation: op.name().into(),
+                            reference: terminal.terminal,
+                        })
+                    }
+                    Ok(_) => Err(Code::Unavailable),
+                    Err(refusal) => Err(match refusal.reason {
+                        Reason::Revoked => Code::Revoked,
+                        Reason::NotAdmitted => Code::Forbidden,
+                        Reason::LimitExceeded => Code::Bounds,
+                        Reason::IdempotencyConflict => Code::Conflict,
+                        Reason::Malformed => Code::Malformed,
+                        _ => Code::Unavailable,
+                    }),
+                }
+            }
             Operation::OpenTerminal { cols, rows } => {
                 // No workspace at all is a configuration the host cannot
                 // serve (`unsupported`); a configured root that is not a

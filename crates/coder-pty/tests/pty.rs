@@ -795,3 +795,41 @@ fn a_wrapped_terminal_writes_only_where_its_boundary_allows() {
     assert!(root.path().join("inside.txt").exists());
     assert!(!target.exists());
 }
+
+#[test]
+fn admitted_task_shell_retries_bind_the_exact_directory() {
+    let fixture = fixture_with(|config| {
+        config.shell = "/bin/sh".into();
+        config.shell_args = vec!["-c".into(), "cat".into()];
+    });
+    let first = fixture.root.path().join("first");
+    let second = fixture.root.path().join("second");
+    std::fs::create_dir(&first).unwrap();
+    std::fs::create_dir(&second).unwrap();
+    let request = Open::new(id(), WORKSPACE, "", Launch::Shell, Size::new(24, 80));
+    let (_, Value::Opened { terminal, .. }) =
+        fixture.host.open_bound(OWNER, &request, &first).unwrap()
+    else {
+        panic!("expected the separately admitted shell")
+    };
+    assert_eq!(
+        fixture.host.open_bound(OWNER, &request, &first).unwrap().0,
+        Status::Duplicate
+    );
+    assert_eq!(
+        fixture
+            .host
+            .open_bound(OWNER, &request, &second)
+            .unwrap_err()
+            .reason,
+        Reason::IdempotencyConflict
+    );
+    assert_eq!(
+        fixture.host.open(OWNER, &request).unwrap_err().reason,
+        Reason::IdempotencyConflict
+    );
+    fixture
+        .host
+        .close(OWNER, &Close::new(id(), terminal))
+        .unwrap();
+}

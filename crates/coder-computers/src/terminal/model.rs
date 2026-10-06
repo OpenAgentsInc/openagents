@@ -215,6 +215,7 @@ impl ProjectionTap {
 pub struct Model {
     /// The host's public key.
     pub host: String,
+    pub task_binding: Option<coder_host::pty::wire::TaskBinding>,
     /// The label the Computers screen shows for the host.
     pub label: String,
     pub phase: Phase,
@@ -267,6 +268,7 @@ impl Model {
         let (rows, cols) = clamp(rows, cols);
         Model {
             host: host.into(),
+            task_binding: None,
             label: label.into(),
             phase: Phase::Connecting,
             vt: Terminal::new(usize::from(rows), usize::from(cols), SCROLLBACK),

@@ -470,6 +470,17 @@ fn a_direct_request_works_in_its_own_worktree_and_merges_locally() {
         &s.store,
         BTreeMap::from([("demo".to_owned(), s.repo.clone())]),
     );
+    let binding = inbox.terminal_binding(&task).unwrap();
+    assert!(binding.interactive);
+    assert_eq!(binding.directory, worktree.canonicalize().unwrap());
+    assert!(inbox.terminal_binding("missing-task").is_err());
+    let record_path = s.store.join("local").join(format!("{task}.json"));
+    let record_bytes = std::fs::read(&record_path).unwrap();
+    let mut record: serde_json::Value = serde_json::from_slice(&record_bytes).unwrap();
+    record["shape"]["read_only"] = serde_json::json!(true);
+    std::fs::write(&record_path, serde_json::to_vec(&record).unwrap()).unwrap();
+    assert!(!inbox.terminal_binding(&task).unwrap().interactive);
+    std::fs::write(&record_path, record_bytes).unwrap();
     let review = inbox.review(&task).unwrap();
     assert_eq!(review.base, first);
     let principal = coder_host::Principal {
@@ -477,6 +488,18 @@ fn a_direct_request_works_in_its_own_worktree_and_merges_locally() {
         grant: None,
         epoch: None,
     };
+    // A concurrent shell edit changes the review identity and cannot land under the old review.
+    let frozen = coder_host::Reviewed {
+        base: review.base.clone(),
+        head_commit: review.head_commit.clone(),
+        head: review.head.clone(),
+    };
+    std::fs::write(worktree.join("notes.txt"), "edited by the person\n").unwrap();
+    assert_ne!(inbox.review(&task).unwrap().head, frozen.head);
+    let refused = inbox.publish(&principal, &task, &frozen).unwrap();
+    assert_eq!(refused.state, PublishState::Refused);
+    assert!(!s.repo.join("notes.txt").exists());
+    std::fs::write(worktree.join("notes.txt"), "alice\n").unwrap();
     let merged = inbox
         .publish(
             &principal,

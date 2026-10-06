@@ -249,6 +249,7 @@ fn parse(mut args: impl Iterator<Item = String>) -> Result<(Option<Shot>, Option
                 }
             }
             "--studio-socket" => options.studio_socket = Some(value()?.into()),
+            "--terminal-task" => options.terminal_task = Some(value()?),
             "--terminal-host" => options.terminal_host = Some(value()?),
             "--terminal-store" => options.terminal_store = Some(value()?.into()),
             "--terminal-reference" => options.terminal_reference = Some(value()?),

@@ -685,6 +685,15 @@ pub enum Status {
     Refused,
 }
 
+/// Host-supplied identity of a separately admitted studio shell.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct TaskBinding {
+    pub task: String,
+    pub directory: String,
+    pub mode: String,
+}
+
 /// What an accepted request produced.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(tag = "kind", rename_all = "snake_case", deny_unknown_fields)]
@@ -703,6 +712,8 @@ pub enum Value {
         size: Size,
         /// Whether the terminal's process was still running.
         running: bool,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        task_binding: Option<TaskBinding>,
     },
     Written {
         bytes: u64,

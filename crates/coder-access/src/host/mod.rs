@@ -1242,6 +1242,7 @@ impl Host {
             }
             Operation::CreateTask { .. }
             | Operation::OpenTerminal { .. }
+            | Operation::OpenTaskTerminal { .. }
             | Operation::SteerTask { .. }
             | Operation::CancelTask { .. }
             | Operation::ArchiveTask { .. }

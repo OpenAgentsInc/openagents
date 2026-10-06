@@ -669,6 +669,7 @@ A request is `openagents.host-request.v1`:
 | `task.command` | `operate` | `dispatched` |
 | `task.queue` | `operate` | `queue` |
 | `terminal.open` | `terminal` | `dispatched` |
+| `task.terminal.open` | `terminal` | `dispatched` |
 | `workspace.list` | `operate` | `workspaces` |
 | `spend.list` | `operate` | `spends` |
 | `spend.settle` | `operate` | `settled` |
@@ -733,6 +734,17 @@ them with the computer's record and names them in its chat's CJ context as
 does not know, and one that predates the flags ignores them as unknown
 capabilities. `terminal.open` carries `{cols, rows}`, each
 1–1,000; [TERM](NIP-TERM.md) defines the session and stream.
+`task.terminal.open` carries `{task, cols, rows}` with the same size bounds
+and a studio task ID. The task owner resolves its current worktree locally;
+the client supplies no path. Missing, archived, unsupported, or read-only
+bindings refuse the operation. The dispatched reference identifies a separate
+TERM shell, not the agent's input stream. Subsequent attachment and input
+recheck the exact task worktree binding and the current terminal grant;
+archive, changed bindings, revocation, or a lost generation refuse them.
+Detach and close affect only that shell. Human worktree edits invalidate
+existing exact tree reviews; opening a shell supplies no review or merge
+approval. The terminal descriptor reports its directory, generation, and
+interactive access mode; clients retain the selected host and task identity.
 `workspace.list` carries nothing and returns `{workspaces}`: the labels
 `task.create` accepts on this host, sorted and distinct, at most 64, each
 1–128 bytes without control characters. The roots they name stay on the

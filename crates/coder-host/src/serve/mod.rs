@@ -100,6 +100,9 @@ pub(crate) struct Shared {
     pub(crate) host_key: String,
     pub(crate) owner: String,
     pub(crate) pty: Arc<coder_pty::host::Host>,
+    pub(crate) task_terminals: std::sync::Mutex<
+        std::collections::BTreeMap<String, (String, crate::tasks::TerminalBinding)>,
+    >,
     pub(crate) tasks: Arc<dyn Tasks>,
     pub(crate) publisher: Publisher,
     pub(crate) listen: SocketAddr,
@@ -265,6 +268,7 @@ pub async fn start(config: Config, tasks: Arc<dyn Tasks>) -> Result<Running> {
         host_key,
         owner,
         pty,
+        task_terminals: std::sync::Mutex::new(std::collections::BTreeMap::new()),
         tasks,
         publisher,
         listen,
