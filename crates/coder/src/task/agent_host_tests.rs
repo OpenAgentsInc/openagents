@@ -88,7 +88,14 @@ fn the_host_runs_a_read_only_command_itself_and_reports_three_ways() {
             .iter()
             .any(|l| l == "alice: $ echo atif: 31 passed")
     );
-    assert!(seen.lines.iter().any(|l| l.contains("atif: 31 passed.")));
+    assert_eq!(
+        seen.lines
+            .iter()
+            .filter(|l| l.contains("atif: 31 passed."))
+            .count(),
+        1,
+        "the reply shows once"
+    );
     assert_eq!(seen.service.requests, 1);
     let reports = agents.reports();
     assert_eq!(reports.len(), 1);

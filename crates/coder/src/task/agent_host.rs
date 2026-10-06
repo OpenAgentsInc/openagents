@@ -1072,7 +1072,12 @@ impl Agents {
         let sequence = self.with_live(name, |live| {
             live.doing = doing;
             live.headline = report.headline.clone();
-            live.say(&format!("{name}: {}", report.reply));
+            // The run's last line is its reply already, when the loop
+            // said it.
+            let line = agent::ascii(&format!("{name}: {}", report.reply));
+            if live.lines.back() != Some(&line) {
+                live.say(&line);
+            }
             live.sequence += 1;
             live.sequence
         });
