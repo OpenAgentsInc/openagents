@@ -11,7 +11,7 @@ missed, bounded and in order.
 | Module | Feature | Platforms | What it does |
 | --- | --- | --- | --- |
 | `wire` | always | all | The NIP-TERM request, result, and frame bodies, with validation. |
-| `ext` | always | all | The NIP-TERM extensions' wire contract: features and negotiation, record streams (framing, CRC-32C, assembly, and order), the snapshot join, history, block pages, session records, and effect frames. The host serves only the effects feature. |
+| `ext` | always | all | The NIP-TERM extensions' wire contract: features and negotiation, record streams (framing, CRC-32C, assembly, and order), the snapshot join, history, block pages, session records, and effect frames. The host serves the effects and snapshot features. |
 | `emulator` | always | all | The seam for a host's authoritative emulator per terminal: output in, query replies and effects out. `coder_vt::Authority` implements it. |
 | `ring` | always | all | The bounded replay buffer: sequence numbers, discard, and missed ranges. |
 | `client` | always | all | `TerminalState` applies frames, ignores duplicates, detects lost frames, records gaps, and keeps a bounded plain-text `Screen`. |
@@ -71,6 +71,15 @@ host.attach(device, &Attach::new(request2, terminal, Mode::Interact, 0, 64 * 102
   frames to attachments that named it; a clipboard write goes only to the
   principal that typed last. `coder-vt`'s `tests/authority.rs` checks one
   reply for two devices and no repeat on reattach.
+- **Snapshots.** When the emulator writes snapshots (`Emulators::snapshots`),
+  the host serves the snapshot feature: an attach by snapshot sends the
+  emulator's snapshot stream through the sink, every part before the next
+  sequenced frame, and continues after its `through`; an attachment that
+  joined by snapshot and falls behind the ring receives a fresh snapshot
+  instead of a gap; and `Host::history` sends a history stream on the
+  principal's own attachment. A sink carries record streams only when it
+  says so (`FrameSink::carries_records`); `deliveries` is an in-process one.
+  `coder-vt`'s `tests/join.rs` checks each path on real PTYs.
 
 ## Limits
 

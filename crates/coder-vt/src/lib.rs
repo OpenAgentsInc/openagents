@@ -38,6 +38,7 @@ pub mod input;
 pub mod mouse;
 pub mod shell;
 pub mod snapshot;
+pub mod streams;
 
 use std::collections::{HashMap, VecDeque};
 
@@ -47,6 +48,7 @@ pub use continuation::CONTINUATION_MAX;
 pub use input::{Key, KeyModes, Modifiers, encode_key, encode_key_in, encode_paste};
 pub use mouse::{MouseButton, MouseEncoding, MouseEvent, MouseKind, MouseMode, encode_mouse};
 pub use snapshot::{Binding, Restore};
+pub use streams::{StreamEvent, Streams};
 
 /// The largest grid a terminal accepts, in each dimension. NIP-TERM bounds
 /// sizes the same way.

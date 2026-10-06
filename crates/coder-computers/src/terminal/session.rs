@@ -23,20 +23,23 @@ use std::time::Duration;
 use coder_access::protocol::{Operation, Outcome};
 use coder_access::{Code, Error as AccessError};
 use coder_host::Error as HostError;
+use coder_host::client::Incoming;
 use coder_host::client::{Link, Ordered, Route};
 use coder_host::mailbox::terminal_generation;
 use coder_host::message::TermRequest;
 use coder_host::pty::client::{Applied, TerminalState};
+use coder_host::pty::ext::{Join, RecordsFrame};
 use coder_host::pty::wire::{
-    Attach, Body, Cause, Close, Detach, Detached, Frame, Input, Mode, Reason, Resize, Size, Status,
-    TerminalRef, TerminalResult, Value,
+    Attach, Body, Cause, Close, Detach, Detached, Exit, Frame, Input, Mode, Reason, Resize, Size,
+    Status, TerminalRef, TerminalResult, Value,
 };
 use coder_host::reach::new_id;
+use coder_vt::{StreamEvent, Streams};
 use tokio::runtime::Handle;
 use tokio::sync::mpsc;
 use tokio::time::Instant;
 
-use super::model::{Model, Phase};
+use super::model::{Model, Phase, SCROLLBACK};
 use crate::controller::describe;
 
 /// The current link to a host, as the Computers service's supervisor holds
@@ -182,6 +185,121 @@ fn open_refusal(error: &HostError) -> Option<Phase> {
             "The computer couldn't open a terminal.".into(),
         )),
         _ => None,
+    }
+}
+
+/// The phase a terminal whose process ended shows.
+fn exited_phase(exit: Exit) -> Phase {
+    Phase::Exited {
+        code: exit.code,
+        signal: exit.signal,
+        cause: match exit.cause {
+            Cause::Exited => "exited",
+            Cause::Closed => "closed",
+            Cause::IdleExpired => "idle",
+            Cause::HostShutdown => "shutdown",
+        },
+    }
+}
+
+/// The most frames held for a snapshot's `READY` before the session
+/// attaches again.
+const HELD_BEFORE_READY: usize = 4096;
+
+/// The NIP-TERM features an attach asks for, most first.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum Features {
+    /// Join by snapshot, with effects.
+    Snapshot,
+    /// Replay, with effects: the host answers queries.
+    Effects,
+    /// The base profile: this device answers queries.
+    Base,
+}
+
+impl Features {
+    fn fewer(self) -> Self {
+        match self {
+            Features::Snapshot => Features::Effects,
+            Features::Effects | Features::Base => Features::Base,
+        }
+    }
+}
+
+/// What one attachment negotiated and, joining by snapshot, how far the
+/// join got.
+struct Joining {
+    /// The host answers queries (the effects feature).
+    host_answers: bool,
+    /// The record streams of an attachment that joined by snapshot.
+    streams: Option<Streams>,
+    /// Whether sequenced frames apply now: always on replay, and after the
+    /// snapshot's `READY` on a join.
+    ready: bool,
+    /// Frames that arrived before `READY`.
+    held: Vec<Frame>,
+}
+
+impl Joining {
+    fn new(level: Features, reference: &TerminalRef) -> Self {
+        let snapshot = level == Features::Snapshot;
+        Joining {
+            host_answers: level != Features::Base,
+            streams: snapshot.then(|| Streams::new(reference.clone(), SCROLLBACK)),
+            ready: !snapshot,
+            held: Vec::new(),
+        }
+    }
+
+    /// Applies one part of a record stream: a snapshot's `READY` replaces
+    /// the model's screen and answers its `through`, and history pages add
+    /// older rows. A broken snapshot before the first `READY` is an error:
+    /// the session attaches again.
+    fn records(
+        &mut self,
+        model: &Arc<Mutex<Model>>,
+        part: &RecordsFrame,
+        exited: &mut bool,
+    ) -> Result<Option<u64>, ()> {
+        let Some(streams) = self.streams.as_mut() else {
+            return Ok(None);
+        };
+        let events = match streams.push(part) {
+            Ok(events) => events,
+            // After a READY the screen stands; only that stream is lost.
+            Err(_) if self.ready => return Ok(None),
+            Err(_) => return Err(()),
+        };
+        let mut model = lock(model);
+        let mut through = None;
+        for event in events {
+            match event {
+                StreamEvent::Ready {
+                    terminal,
+                    through: at,
+                    exit,
+                } => {
+                    let (rows, cols) = model.size();
+                    let mut vt = *terminal;
+                    vt.resize(usize::from(rows), usize::from(cols));
+                    model.vt = vt;
+                    model.touch();
+                    if let Some(exit) = exit {
+                        *exited = true;
+                        model.set_phase(exited_phase(exit));
+                    }
+                    self.ready = true;
+                    through = Some(at);
+                }
+                StreamEvent::History { epoch, page } => {
+                    if model.vt.attach_history(epoch, &page).is_ok() {
+                        model.touch();
+                    }
+                }
+                StreamEvent::Finished { .. } => {}
+            }
+        }
+        Ok(through)
     }
 }
 
@@ -342,15 +460,20 @@ async fn drive(
     // first one sent the session to fresh presence for the generation.
     let mut attached_once = false;
     let mut rechecked = false;
-    // Whether to ask for the effects feature: the host answers queries and
-    // this device stops answering them. An older host refuses the feature,
-    // and the session attaches again without it.
-    let mut effects = true;
+    // The features to ask for: a join by snapshot with effects, effects
+    // alone, or the base profile. An older host refuses a feature, and the
+    // session attaches again asking for less.
+    let mut level = Features::Snapshot;
     loop {
         if !first {
             lock(model).set_phase(Phase::Reconnecting);
         }
-        let after = ordered.state().resume_after();
+        // A join by snapshot starts from the host's state, not a sequence
+        // number; the others resume after the last applied frame.
+        let after = match level {
+            Features::Snapshot => 0,
+            _ => ordered.state().resume_after(),
+        };
         let mut attach = Attach::new(
             new_id(),
             reference.clone(),
@@ -358,7 +481,10 @@ async fn drive(
             after,
             rate(&link),
         );
-        if effects {
+        if level == Features::Snapshot {
+            attach = attach.joining(Join::Snapshot);
+        }
+        if level != Features::Base {
             attach = attach.with_effects();
         }
         let attach = TermRequest::Attach(attach);
@@ -372,8 +498,8 @@ async fn drive(
                 value: Some(Value::Attached { attachment, .. }),
                 ..
             }) => attachment,
-            Ok(result) if effects && refuses_feature(&result) => {
-                effects = false;
+            Ok(result) if level != Features::Base && refuses_feature(&result) => {
+                level = level.fewer();
                 continue;
             }
             Ok(result) if result.status == Status::Refused => {
@@ -443,7 +569,7 @@ async fn drive(
             &mut ordered,
             &mut exited,
             &mut host_size,
-            effects,
+            &mut Joining::new(level, &reference),
         )
         .await;
         match next {
@@ -536,7 +662,7 @@ async fn attached_loop(
     ordered: &mut Ordered,
     exited: &mut bool,
     host_size: &mut (u16, u16),
-    host_answers: bool,
+    joining: &mut Joining,
 ) -> Next {
     let mut held_since: Option<Instant> = None;
     let mut checked = Instant::now();
@@ -548,15 +674,45 @@ async fn attached_loop(
                     return next;
                 }
             }
-            frame = link.next_frame(Duration::from_millis(250)) => {
-                if let Some(frame) = frame
-                    && frame.terminal == *reference
-                    && frame.attachment == attachment
-                {
+            incoming = link.next_incoming(Duration::from_millis(250)) => {
+                let mut frames = Vec::new();
+                match incoming {
+                    Some(Incoming::Frame(frame))
+                        if frame.terminal == *reference && frame.attachment == attachment =>
+                    {
+                        if joining.ready {
+                            frames.push(frame);
+                        } else if joining.held.len() < HELD_BEFORE_READY {
+                            // Over a relay a frame can overtake the snapshot.
+                            joining.held.push(frame);
+                        } else {
+                            return Next::Reattach { new_link: false };
+                        }
+                    }
+                    Some(Incoming::Records(part))
+                        if part.terminal == *reference && part.attachment == attachment =>
+                    {
+                        match joining.records(model, &part, exited) {
+                            Ok(Some(through)) => {
+                                // The snapshot holds everything through
+                                // `through`; frames after it follow.
+                                *ordered = Ordered::new(
+                                    TerminalState::new(reference.clone(), 1, 1)
+                                        .starting_after(through),
+                                );
+                                frames = std::mem::take(&mut joining.held);
+                            }
+                            Ok(None) => {}
+                            Err(()) => return Next::Reattach { new_link: false },
+                        }
+                    }
+                    _ => {}
+                }
+                for frame in frames {
                     let (replies, next) = apply(model, ordered, frame, exited);
                     // With the effects feature the host's emulator answers
                     // queries; answering here too would answer twice.
-                    if !replies.is_empty() && !*exited && !host_answers {
+                    if !replies.is_empty() && !*exited && !joining.host_answers {
                         send_input(link, reference, model, replies).await;
                     }
                     if let Some(next) = next {
@@ -612,16 +768,7 @@ fn apply(
             Applied::Gap { bytes, .. } => model.gap(bytes),
             Applied::Exit(exit) => {
                 *exited = true;
-                model.set_phase(Phase::Exited {
-                    code: exit.code,
-                    signal: exit.signal,
-                    cause: match exit.cause {
-                        Cause::Exited => "exited",
-                        Cause::Closed => "closed",
-                        Cause::IdleExpired => "idle",
-                        Cause::HostShutdown => "shutdown",
-                    },
-                });
+                model.set_phase(exited_phase(exit));
             }
             Applied::Detached(Detached::Revoked) => {
                 next = Some(Next::Stop(Stop::Ended(Phase::Refused(

@@ -35,7 +35,7 @@ mod order;
 mod websocket;
 
 pub use connector::{Connector, Reports};
-pub use link::{Link, Route};
+pub use link::{Incoming, Link, Route};
 pub use order::Ordered;
 pub use websocket::{Stream as WebSocketStream, Tls as WebSocketTls, connect as connect_websocket};
 

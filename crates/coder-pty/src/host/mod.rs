@@ -70,8 +70,8 @@ use std::sync::{Arc, Mutex, MutexGuard, PoisonError, Weak};
 use std::thread::JoinHandle;
 use std::time::{Duration, Instant};
 
-use crate::emulator::{self, Effects, Emulator};
-use crate::ext::{Effect, Features};
+use crate::emulator::{self, Effects, Emulator, HistoryRead};
+use crate::ext::{Effect, Features, History, Join, RecordsFrame};
 use crate::ring::Ring;
 use crate::wire::{
     self, Attach, Body, Cause, Close, Detach, Detached, Exit, Frame, Input, Launch, Mode, Open,
@@ -143,6 +143,61 @@ pub enum SinkError {
 /// for the transport and return [`SinkError::Full`] rather than wait.
 pub trait FrameSink: Send {
     fn deliver(&mut self, frame: &Frame) -> Result<(), SinkError>;
+
+    /// Whether this sink carries record streams, which an attach by
+    /// snapshot and a history read need.
+    fn carries_records(&self) -> bool {
+        false
+    }
+
+    /// Delivers one part of a record stream, in the same order as frames.
+    fn deliver_records(&mut self, frame: &RecordsFrame) -> Result<(), SinkError> {
+        let _ = frame;
+        Err(SinkError::Closed)
+    }
+}
+
+/// What a [`DeliverySink`] delivers: a frame or a part of a record stream.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum Delivery {
+    Frame(Frame),
+    Records(RecordsFrame),
+}
+
+/// A sink over a bounded channel that also carries record streams, in
+/// order with frames.
+#[derive(Debug)]
+pub struct DeliverySink(SyncSender<Delivery>);
+
+impl DeliverySink {
+    fn send(&self, delivery: Delivery) -> Result<(), SinkError> {
+        match self.0.try_send(delivery) {
+            Ok(()) => Ok(()),
+            Err(TrySendError::Full(_)) => Err(SinkError::Full),
+            Err(TrySendError::Disconnected(_)) => Err(SinkError::Closed),
+        }
+    }
+}
+
+impl FrameSink for DeliverySink {
+    fn deliver(&mut self, frame: &Frame) -> Result<(), SinkError> {
+        self.send(Delivery::Frame(frame.clone()))
+    }
+
+    fn carries_records(&self) -> bool {
+        true
+    }
+
+    fn deliver_records(&mut self, frame: &RecordsFrame) -> Result<(), SinkError> {
+        self.send(Delivery::Records(frame.clone()))
+    }
+}
+
+/// A delivery sink holding at most `bound` deliveries, and its receiver.
+#[must_use]
+pub fn deliveries(bound: usize) -> (DeliverySink, Receiver<Delivery>) {
+    let (sender, receiver) = std::sync::mpsc::sync_channel(bound);
+    (DeliverySink(sender), receiver)
 }
 
 /// A sink over a bounded channel, for tests and in-process transports.
@@ -277,6 +332,10 @@ impl Config {
     pub fn features(&self) -> Features {
         Features {
             effects: self.emulator.is_some(),
+            snapshot: self
+                .emulator
+                .as_ref()
+                .is_some_and(|emulators| emulators.snapshots()),
             ..Features::NONE
         }
     }
@@ -374,6 +433,13 @@ struct Attachment {
     bucket: Bucket,
     /// Whether the attachment named the effects feature.
     effects: bool,
+    /// Whether it joined by snapshot. Such an attachment that falls behind
+    /// the ring receives a fresh snapshot instead of a gap.
+    joined: bool,
+    /// Parts of record streams not yet delivered. Every part goes before
+    /// the next sequenced frame, so a snapshot's `READY` always precedes
+    /// the frames after its `through`.
+    parts: VecDeque<RecordsFrame>,
     /// Effects waiting for the output they follow, at most one of each
     /// kind: a later title replaces an earlier one, and bells add up.
     pending: VecDeque<(u64, Effect)>,
@@ -487,11 +553,21 @@ impl Terminal {
     /// Delivers what each attachment can take now.
     fn pump(&self, state: &mut State, now: Instant) {
         let State {
-            ring, attachments, ..
+            ring,
+            attachments,
+            emulator,
+            ended,
+            ..
         } = state;
         let mut finished = Vec::new();
         for (id, attachment) in attachments.iter_mut() {
-            if pump_one(&self.reference, id, attachment, ring, now) {
+            let mut source = Source {
+                reference: &self.reference,
+                ring,
+                emulator: emulator.as_deref_mut(),
+                exit: *ended,
+            };
+            if pump_one(&mut source, id, attachment, now) {
                 finished.push(id.clone());
             }
         }
@@ -514,15 +590,46 @@ impl Terminal {
     }
 }
 
+/// What a terminal's attachments are pumped from.
+struct Source<'a> {
+    reference: &'a TerminalRef,
+    ring: &'a Ring,
+    emulator: Option<&'a mut (dyn Emulator + 'static)>,
+    /// The process's exit, once the ring holds it.
+    exit: Option<Exit>,
+}
+
+impl Source<'_> {
+    /// A snapshot stream of the terminal now, through the ring's head, cut
+    /// into parts for attachment `id`.
+    fn snapshot(&mut self, id: &str) -> Option<Result<Vec<RecordsFrame>, Refusal>> {
+        let through = self.ring.head();
+        let records = self
+            .emulator
+            .as_mut()?
+            .snapshot(self.reference, through, self.exit)?;
+        Some(records.map(|records| parts(self.reference, id, &records)))
+    }
+}
+
+/// A record stream cut into parts for one attachment, under a new stream
+/// ID.
+fn parts(reference: &TerminalRef, id: &str, records: &[crate::ext::Record]) -> Vec<RecordsFrame> {
+    let bytes = crate::ext::encode_stream(records);
+    crate::ext::frames(
+        reference,
+        id,
+        &sys::random_id(),
+        &bytes,
+        crate::ext::PART_MAX,
+    )
+}
+
 /// Pumps one attachment. Returns whether it is finished: its transport
 /// closed, or it received the terminal's exit.
-fn pump_one(
-    reference: &TerminalRef,
-    id: &str,
-    attachment: &mut Attachment,
-    ring: &Ring,
-    now: Instant,
-) -> bool {
+fn pump_one(source: &mut Source<'_>, id: &str, attachment: &mut Attachment, now: Instant) -> bool {
+    let reference = source.reference;
+    let ring = source.ring;
     loop {
         if let Some(index) = attachment
             .pending
@@ -541,6 +648,37 @@ fn pump_one(
                 Err(SinkError::Full) => return false,
                 Err(SinkError::Closed) => return true,
             }
+            continue;
+        }
+        if let Some(part) = attachment.parts.front() {
+            let cost = part.data.len();
+            if !attachment.bucket.take(cost, now) {
+                return false;
+            }
+            match attachment.sink.deliver_records(part) {
+                Ok(()) => {
+                    attachment.parts.pop_front();
+                }
+                Err(SinkError::Full) => {
+                    attachment.bucket.refund(cost);
+                    return false;
+                }
+                Err(SinkError::Closed) => return true,
+            }
+            continue;
+        }
+        // A snapshot of an ended terminal carried its exit: nothing follows.
+        if source.exit.is_some() && attachment.sent >= ring.head() && attachment.pending.is_empty()
+        {
+            return true;
+        }
+        if attachment.joined
+            && ring.missed(attachment.sent).is_some()
+            && let Some(Ok(parts)) = source.snapshot(id)
+        {
+            // Behind the ring: a fresh snapshot replaces what was lost.
+            attachment.parts.extend(parts);
+            attachment.sent = ring.head();
             continue;
         }
         if let Some(missed) = ring.missed(attachment.sent) {
@@ -674,11 +812,19 @@ impl Host {
     }
 
     /// Attaches `sink` to a terminal and replays what it retains after
-    /// `request.after`, reporting a gap for anything it discarded. An
-    /// attachment that names the effects feature first receives the
-    /// terminal's current title and directory.
+    /// `request.after`, reporting a gap for anything it discarded; or, by
+    /// snapshot, sends a snapshot of the terminal's parsed state and then
+    /// the frames after it. An attachment that names the effects feature
+    /// first receives the terminal's current title and directory.
     pub fn attach(&self, principal: &str, request: &Attach, sink: Box<dyn FrameSink>) -> Outcome {
         request.check_with(self.features())?;
+        let joined = request.join == Some(Join::Snapshot);
+        if joined && !sink.carries_records() {
+            return Err(Refusal::new(
+                Reason::UnsupportedFeature,
+                "this transport carries no record streams",
+            ));
+        }
         let admitted = match request.mode {
             Mode::Interact => self.inner.rights.holds(principal, Right::Terminal),
             Mode::Observe => self.inner.may_read(principal),
@@ -717,8 +863,38 @@ impl Host {
             sent: request.after,
             bucket: Bucket::new(rate, self.inner.config.frame_max, now),
             effects: request.effects(),
+            joined,
+            parts: VecDeque::new(),
             pending: VecDeque::new(),
         };
+        if joined {
+            let State {
+                ring,
+                emulator,
+                ended,
+                ..
+            } = &mut *state;
+            let head = ring.head();
+            let mut source = Source {
+                reference: &terminal.reference,
+                ring,
+                emulator: emulator.as_deref_mut(),
+                exit: *ended,
+            };
+            match source.snapshot(&id) {
+                Some(Ok(parts)) => {
+                    attachment.parts.extend(parts);
+                    attachment.sent = head;
+                }
+                Some(Err(refusal)) => return Err(refusal),
+                None => {
+                    return Err(Refusal::new(
+                        Reason::UnsupportedFeature,
+                        "this host writes no snapshots",
+                    ));
+                }
+            }
+        }
         if attachment.effects {
             if !state.title.is_empty() {
                 attachment.queue(
@@ -742,6 +918,82 @@ impl Host {
         };
         terminal.pump(&mut state, now);
         drop(state);
+        self.inner
+            .remember(&key(principal, &request.request), body, value.clone());
+        Ok((Status::Accepted, value))
+    }
+
+    /// Reads older history rows into a record stream on the principal's
+    /// own attachment, and answers the stream's ID.
+    pub fn history(&self, principal: &str, request: &History) -> Outcome {
+        request.check_with(self.features())?;
+        let body = identity(principal, request);
+        if let Some(outcome) = self.inner.retry(&key(principal, &request.request), &body) {
+            return outcome;
+        }
+        let terminal = self.inner.find(&request.terminal)?;
+        let now = Instant::now();
+        let mut state = terminal.state();
+        let mode = match state.attachments.get(&request.attachment) {
+            Some(attachment) if attachment.principal == principal => attachment.mode,
+            _ => {
+                return Err(Refusal::new(
+                    Reason::NotAdmitted,
+                    "the attachment is not this device's",
+                ));
+            }
+        };
+        let admitted = match mode {
+            Mode::Interact => self.inner.rights.holds(principal, Right::Terminal),
+            Mode::Observe => self.inner.may_read(principal),
+        };
+        let carries = state
+            .attachments
+            .get(&request.attachment)
+            .is_some_and(|attachment| attachment.sink.carries_records());
+        if !admitted {
+            return Err(Refusal::new(
+                Reason::NotAdmitted,
+                "this device may not read this terminal",
+            ));
+        }
+        if !carries {
+            return Err(Refusal::new(
+                Reason::UnsupportedFeature,
+                "this transport carries no record streams",
+            ));
+        }
+        let read = HistoryRead {
+            through: state.ring.head(),
+            exit: state.ended,
+            epoch: request.epoch,
+            before: request.before,
+            rows: request.rows,
+        };
+        let records = match state
+            .emulator
+            .as_ref()
+            .and_then(|emulator| emulator.history(&terminal.reference, &read))
+        {
+            Some(records) => records?,
+            None => {
+                return Err(Refusal::new(
+                    Reason::UnsupportedFeature,
+                    "this host writes no history streams",
+                ));
+            }
+        };
+        let parts = parts(&terminal.reference, &request.attachment, &records);
+        let stream = parts
+            .first()
+            .map(|part| part.stream.clone())
+            .unwrap_or_default();
+        if let Some(attachment) = state.attachments.get_mut(&request.attachment) {
+            attachment.parts.extend(parts);
+        }
+        terminal.pump(&mut state, now);
+        drop(state);
+        let value = Value::Stream { stream };
         self.inner
             .remember(&key(principal, &request.request), body, value.clone());
         Ok((Status::Accepted, value))
@@ -1108,7 +1360,11 @@ impl Inner {
                 ended: None,
                 closing: None,
                 activity: Instant::now(),
-                emulator: self.config.emulator.as_ref().map(|make| make(request.size)),
+                emulator: self
+                    .config
+                    .emulator
+                    .as_ref()
+                    .map(|emulators| emulators.make(request.size)),
                 title: String::new(),
                 directory: None,
                 typist: None,

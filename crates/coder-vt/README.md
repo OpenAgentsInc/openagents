@@ -55,7 +55,14 @@ handler answers while the host drops the rest of the abandoned string.
 (`coder_pty::emulator`): it parses every output byte once, answers the
 program's queries, and reports bells, title and directory changes, and
 clipboard writes, which the host sends as NIP-TERM effect frames. A client on
-an attachment with the effects feature sends no replies of its own.
+an attachment with the effects feature sends no replies of its own. It also
+writes the snapshot and history streams the host serves.
+
+A client gives every part of a record stream on its attachment to a
+`Streams`, which tells snapshot streams from history streams, checks each,
+and reports a restored terminal at `READY` (with its `through` and any exit)
+and history pages to attach. It ignores a relay's replay of a stream it
+already finished.
 
 Parsing holds bounded memory: an OSC string longer than a clipboard write's
 bound (1 MiB and its parameters) is abandoned, and the rest of it is dropped

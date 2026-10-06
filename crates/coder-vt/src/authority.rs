@@ -1,14 +1,17 @@
 //! A host's authoritative emulator for one terminal
 //! (`coder_pty::emulator`): the one parse of the terminal's output that
-//! answers the program's queries and reports its side effects.
+//! answers the program's queries, reports its side effects, and writes the
+//! snapshot and history streams a joining device restores from.
 
 use std::sync::Arc;
 
-use coder_pty::emulator::{Effects, Emulator, Factory};
-use coder_pty::wire::Size;
+use coder_pty::emulator::{Effects, Emulator, Emulators, Factory, HistoryRead};
+use coder_pty::ext::Record;
+use coder_pty::wire::{Exit, Refusal, Size, TerminalRef};
 
 use crate::Terminal;
 use crate::shell::Event;
+use crate::snapshot::Binding;
 
 /// A terminal the host parses its output into, and what it last reported.
 #[derive(Debug)]
@@ -17,6 +20,22 @@ pub struct Authority {
     bells: u64,
     title: String,
     directory: Option<String>,
+}
+
+/// Makes an [`Authority`] for each terminal.
+#[derive(Clone, Copy, Debug)]
+struct Authorities {
+    scrollback: usize,
+}
+
+impl Emulators for Authorities {
+    fn make(&self, size: Size) -> Box<dyn Emulator> {
+        Box::new(Authority::new(size, self.scrollback))
+    }
+
+    fn snapshots(&self) -> bool {
+        true
+    }
 }
 
 impl Authority {
@@ -31,22 +50,17 @@ impl Authority {
         }
     }
 
-    /// A factory that makes one per terminal, for `coder_pty::host::Config`.
+    /// A factory that makes one per terminal, each keeping at most
+    /// `scrollback` history lines, for `coder_pty::host::Config`.
     #[must_use]
     pub fn factory(scrollback: usize) -> Factory {
-        Arc::new(move |size| Box::new(Authority::new(size, scrollback)) as Box<dyn Emulator>)
+        Arc::new(Authorities { scrollback })
     }
 
-    /// The parsed terminal, for snapshots and history reads.
+    /// The parsed terminal.
     #[must_use]
     pub fn terminal(&self) -> &Terminal {
         &self.terminal
-    }
-
-    /// The parsed terminal, mutably: a snapshot can abandon unfinished
-    /// input.
-    pub fn terminal_mut(&mut self) -> &mut Terminal {
-        &mut self.terminal
     }
 }
 
@@ -81,5 +95,35 @@ impl Emulator for Authority {
     fn resize(&mut self, size: Size) {
         self.terminal
             .resize(usize::from(size.rows), usize::from(size.cols));
+    }
+
+    fn snapshot(
+        &mut self,
+        terminal: &TerminalRef,
+        through: u64,
+        exit: Option<Exit>,
+    ) -> Option<Result<Vec<Record>, Refusal>> {
+        let binding = Binding {
+            terminal: terminal.clone(),
+            through,
+            exit,
+        };
+        Some(self.terminal.snapshot(&binding))
+    }
+
+    fn history(
+        &self,
+        terminal: &TerminalRef,
+        read: &HistoryRead,
+    ) -> Option<Result<Vec<Record>, Refusal>> {
+        let binding = Binding {
+            terminal: terminal.clone(),
+            through: read.through,
+            exit: read.exit,
+        };
+        Some(
+            self.terminal
+                .history_stream(&binding, read.epoch, read.before, read.rows),
+        )
     }
 }

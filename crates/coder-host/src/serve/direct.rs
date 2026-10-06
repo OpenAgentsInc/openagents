@@ -9,6 +9,7 @@
 
 use std::sync::Arc;
 
+use coder_pty::ext::RecordsFrame;
 use coder_pty::host::{FrameSink, SinkError};
 use coder_pty::wire::{Frame, TerminalResult};
 use coder_reach::channel::{Acceptor, Binding, GrantRefusal};
@@ -236,12 +237,26 @@ fn serve_message(
 /// Delivers an attachment's frames into the channel's outbound queue.
 struct ChannelSink(mpsc::Sender<ToDevice>);
 
-impl FrameSink for ChannelSink {
-    fn deliver(&mut self, frame: &Frame) -> Result<(), SinkError> {
-        match self.0.try_send(ToDevice::Frame(frame.clone())) {
+impl ChannelSink {
+    fn send(&self, message: ToDevice) -> Result<(), SinkError> {
+        match self.0.try_send(message) {
             Ok(()) => Ok(()),
             Err(mpsc::error::TrySendError::Full(_)) => Err(SinkError::Full),
             Err(mpsc::error::TrySendError::Closed(_)) => Err(SinkError::Closed),
         }
+    }
+}
+
+impl FrameSink for ChannelSink {
+    fn deliver(&mut self, frame: &Frame) -> Result<(), SinkError> {
+        self.send(ToDevice::Frame(frame.clone()))
+    }
+
+    fn carries_records(&self) -> bool {
+        true
+    }
+
+    fn deliver_records(&mut self, part: &RecordsFrame) -> Result<(), SinkError> {
+        self.send(ToDevice::Records(part.clone()))
     }
 }

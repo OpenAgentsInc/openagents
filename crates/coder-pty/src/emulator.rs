@@ -14,7 +14,8 @@
 
 use std::sync::Arc;
 
-use crate::wire::Size;
+use crate::ext::Record;
+use crate::wire::{Exit, Refusal, Size, TerminalRef};
 
 /// One terminal's authoritative emulator.
 pub trait Emulator: Send {
@@ -23,6 +24,42 @@ pub trait Emulator: Send {
     fn output(&mut self, bytes: &[u8]) -> Effects;
     /// The terminal changed size.
     fn resize(&mut self, size: Size);
+
+    /// A snapshot stream of the state, which reflects every output byte of
+    /// sequenced frames through `through`: the prefix through `READY`,
+    /// history newest first, and `FINISH`. `None` when this emulator writes
+    /// no snapshots.
+    fn snapshot(
+        &mut self,
+        terminal: &TerminalRef,
+        through: u64,
+        exit: Option<Exit>,
+    ) -> Option<Result<Vec<Record>, Refusal>> {
+        let _ = (terminal, through, exit);
+        None
+    }
+
+    /// A history stream of `rows` rows before absolute line `before` in
+    /// line epoch `epoch`. `None` when this emulator writes no snapshots.
+    fn history(
+        &self,
+        terminal: &TerminalRef,
+        read: &HistoryRead,
+    ) -> Option<Result<Vec<Record>, Refusal>> {
+        let _ = (terminal, read);
+        None
+    }
+}
+
+/// A history read as an emulator answers it.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct HistoryRead {
+    /// The last sequenced frame the state reflects.
+    pub through: u64,
+    pub exit: Option<Exit>,
+    pub epoch: u64,
+    pub before: u64,
+    pub rows: u64,
 }
 
 /// What a piece of output caused.
@@ -42,5 +79,16 @@ pub struct Effects {
     pub clipboard: Option<String>,
 }
 
-/// Makes the emulator for a terminal that opens at a size.
-pub type Factory = Arc<dyn Fn(Size) -> Box<dyn Emulator> + Send + Sync>;
+/// Makes each terminal's emulator.
+pub trait Emulators: Send + Sync {
+    /// The emulator for a terminal that opens at `size`.
+    fn make(&self, size: Size) -> Box<dyn Emulator>;
+    /// Whether its emulators write snapshot and history streams, so the
+    /// host serves the snapshot feature.
+    fn snapshots(&self) -> bool {
+        false
+    }
+}
+
+/// The emulators a host makes, shared.
+pub type Factory = Arc<dyn Emulators>;

@@ -7,7 +7,7 @@ pub const MAX_ROWS: u16 = 80;
 /// The most columns a phone grid uses.
 pub const MAX_COLS: u16 = 240;
 /// Lines of scrollback the emulator keeps.
-const SCROLLBACK: usize = 500;
+pub(crate) const SCROLLBACK: usize = 500;
 
 /// Where the terminal session stands.
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -103,7 +103,8 @@ pub struct Model {
     /// Changes whenever anything here changes.
     pub revision: u64,
     /// Receives every output byte the host sends, before the emulator draws
-    /// it, for a reader that wants the stream rather than the grid.
+    /// it, for a reader that wants the stream rather than the grid. After a
+    /// join by snapshot, that is the output after the snapshot.
     pub tap: Option<std::sync::mpsc::Sender<Vec<u8>>>,
 }
 

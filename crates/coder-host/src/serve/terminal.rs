@@ -52,6 +52,7 @@ pub(crate) fn run(
         TermRequest::Resize(r) => pty.resize(principal, r),
         TermRequest::Signal(r) => pty.signal(principal, r),
         TermRequest::Close(r) => pty.close(principal, r),
+        TermRequest::History(r) => pty.history(principal, r),
     };
     TerminalResult::from_outcome(id, outcome)
 }

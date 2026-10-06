@@ -494,15 +494,23 @@ The snapshot reflects every sequenced frame through `through` and nothing
 after it. The host delivers every part up to and including the one that
 completes `READY` before any sequenced frame of the attachment. After that
 part it delivers sequenced frames from `through + 1` and may interleave them
-with the stream's remaining parts. If the ring discarded frames after
-`through` before they were delivered, the attachment receives a `gap`, as in
-the base profile.
+with the stream's remaining parts. If the ring discards frames after
+`through` before they are delivered, an attachment that joined by snapshot
+receives a fresh snapshot stream in place of a `gap`: the same rules apply to
+it, and its `through` is the newest frame when it was taken. An attachment
+that joined by replay receives a `gap`, as in the base profile. A host that
+cannot carry record streams on an attachment's transport refuses an attach by
+snapshot as `unsupported_feature`.
 
 A client applies a snapshot this way:
 
-1. It draws nothing from the stream until `READY`. A sequenced frame before
-   `READY` is a protocol error: the client discards the stream, detaches,
-   and attaches again.
+1. It draws nothing from the stream until `READY`. The host sends no
+   sequenced frame before it, but over a relay artifacts can arrive in any
+   order, so a client holds a sequenced frame that arrives first, at most
+   4,096 of them, and applies it after `READY`. Past that bound the client
+   discards the stream, detaches, and attaches again. On a direct channel,
+   which keeps the host's order, a client may treat such a frame as a
+   protocol error instead, as `coder_pty::ext::SnapshotJoin` does.
 2. At `READY` it restores the screens and state, feeds the `CONTINUATION`
    bytes to its parser, and sets its applied sequence number to `through`.
    From then on the base profile's [client state](#client-state) applies.
@@ -513,6 +521,11 @@ A client applies a snapshot this way:
    attaches again (by snapshot or by replay). When it is malformed after
    `READY`, the client keeps the screen it drew, discards the rest of the
    stream, and reads missing history with the history operation.
+5. A fresh snapshot stream replaces the screen at its `READY` the same way.
+   A client tells a snapshot stream from a history stream by its second
+   record: `STATE` in a snapshot, `HISTORY` or `FINISH` in a history stream.
+   It ignores the parts of a stream it already finished, which a relay can
+   deliver again after a reconnect.
 
 A snapshot is a view of parsed state, not a process checkpoint. It does not
 survive a host restart; a reference from an earlier generation still refuses
@@ -707,11 +720,14 @@ The fixtures are in
 The [extensions](#extensions)' wire contract and its validation are in
 `coder_pty::ext`. The host serves the effects feature when it runs an
 emulator (`coder_pty::host::Config::emulator`, which `coder-host` fills with
-`coder_vt::Authority`), and `coder-host` advertises `term-effects`; the
-Coder mobile terminal screen names the feature and attaches again without it
-when an older host refuses it. `coder-vt` writes and restores snapshot
-streams (`coder_vt::snapshot`); no host serves snapshots, the block journal,
-or session records yet, so a host advertises none of their capabilities.
+`coder_vt::Authority`), and the snapshot feature when that emulator writes
+snapshots, as `coder_vt::Authority` does: attach by snapshot, history reads,
+and fresh snapshots for an attachment that falls behind, over direct
+channels and relays. `coder-host` advertises `term-effects` and
+`term-snapshot`. The Coder mobile terminal screen joins by snapshot with
+effects, restores through `coder_vt::Streams`, and asks for less when an
+older host refuses a feature. No host serves the block journal or session
+records yet, so a host advertises neither capability.
 
 ## Conformance
 

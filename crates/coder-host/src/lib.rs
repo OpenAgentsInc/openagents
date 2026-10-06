@@ -80,8 +80,9 @@ pub const PROTOCOL_VERSION: u32 = coder_reach::PROTOCOL_VERSION;
 /// `task-engine` says its `task.create` accepts the engine the person asked
 /// for (#10081). `term-effects` says terminals answer their programs'
 /// queries on the host and report bells, titles, and clipboard writes as
-/// effect frames (NIP-TERM's effects feature).
-pub const CAPABILITIES: [&str; 8] = [
+/// effect frames (NIP-TERM's effects feature); `term-snapshot` says a device
+/// can join a terminal by snapshot and read older history.
+pub const CAPABILITIES: [&str; 9] = [
     "activity-summary",
     "direct-tcp",
     "relay-control",
@@ -90,6 +91,7 @@ pub const CAPABILITIES: [&str; 8] = [
     coder_access::protocol::TASK_ENGINE,
     "terminal",
     coder_pty::ext::CAPABILITY_EFFECTS,
+    coder_pty::ext::CAPABILITY_SNAPSHOT,
 ];
 
 /// Why a host or client operation failed. Messages carry no key, grant,

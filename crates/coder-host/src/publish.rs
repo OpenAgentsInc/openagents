@@ -6,6 +6,7 @@
 
 use std::time::Duration;
 
+use coder_pty::ext::{RECORDS, RecordsFrame};
 use coder_pty::wire::{FRAME, Frame, RESULT, TerminalResult};
 use nostr::domain::Event;
 use nostr_transport::Connection;
@@ -25,6 +26,9 @@ pub(crate) enum Outgoing {
     Signed(Event),
     /// A terminal frame for one device, sealed under the attachment mailbox.
     Frame { device: String, frame: Frame },
+    /// A part of a record stream for one device, sealed under the
+    /// attachment mailbox like frames.
+    Records { device: String, part: RecordsFrame },
     /// A terminal result for one device, sealed under the request mailbox.
     Result {
         device: String,
@@ -124,6 +128,16 @@ fn seal(item: Outgoing, secret: &SecretKey) -> Option<Event> {
             secret,
             &device,
             &frame.attachment,
+            now,
+            now + TERMINAL_RETENTION,
+        )
+        .ok(),
+        Outgoing::Records { device, part } => coder_reach::artifact::seal(
+            &part,
+            RECORDS,
+            secret,
+            &device,
+            &part.attachment,
             now,
             now + TERMINAL_RETENTION,
         )

@@ -11,6 +11,7 @@
 //! frame starts with one flag byte: `1` when more fragments follow and `0`
 //! for the last. A message is at most [`MAX_MESSAGE_BYTES`] bytes.
 
+use coder_pty::ext::{HISTORY, History, RECORDS, RecordsFrame};
 use coder_pty::wire::{
     ATTACH, Attach, CLOSE, Close, DETACH, Detach, FRAME, Frame, INPUT, Input, OPEN, Open, RESIZE,
     RESULT, Reason, Refusal, Resize, SIGNAL, Signal, TerminalResult,
@@ -127,6 +128,8 @@ pub enum TermRequest {
     Resize(Resize),
     Signal(Signal),
     Close(Close),
+    /// A history read (NIP-TERM's snapshot feature).
+    History(History),
 }
 
 impl TermRequest {
@@ -150,6 +153,7 @@ impl TermRequest {
             RESIZE => serde_json::from_value(value).map(Self::Resize),
             SIGNAL => serde_json::from_value(value).map(Self::Signal),
             CLOSE => serde_json::from_value(value).map(Self::Close),
+            HISTORY => serde_json::from_value(value).map(Self::History),
             _ => {
                 return Err(Refusal::new(
                     Reason::UnsupportedVersion,
@@ -171,6 +175,7 @@ impl TermRequest {
             Self::Resize(r) => &r.request,
             Self::Signal(r) => &r.request,
             Self::Close(r) => &r.request,
+            Self::History(r) => &r.request,
         }
     }
 
@@ -185,6 +190,7 @@ impl TermRequest {
             Self::Resize(_) => RESIZE,
             Self::Signal(_) => SIGNAL,
             Self::Close(_) => CLOSE,
+            Self::History(_) => HISTORY,
         }
     }
 
@@ -199,6 +205,7 @@ impl TermRequest {
             Self::Resize(r) => serde_json::to_value(r),
             Self::Signal(r) => serde_json::to_value(r),
             Self::Close(r) => serde_json::to_value(r),
+            Self::History(r) => serde_json::to_value(r),
         };
         value.unwrap_or(Value::Null)
     }
@@ -220,6 +227,8 @@ pub enum ToDevice {
     Closing(String),
     Result(TerminalResult),
     Frame(Frame),
+    /// A part of a record stream, in order with the attachment's frames.
+    Records(RecordsFrame),
     /// A renewed grant envelope. A device that does not read renewals
     /// ignores it, as it ignores every unknown message.
     Renewal(Event),
@@ -276,6 +285,7 @@ impl ToDevice {
             Self::Renewal(event) => json!({"v": RENEWAL, "event": event}),
             Self::Result(result) => serde_json::to_value(result).unwrap_or(Value::Null),
             Self::Frame(frame) => serde_json::to_value(frame).unwrap_or(Value::Null),
+            Self::Records(part) => serde_json::to_value(part).unwrap_or(Value::Null),
         };
         value.to_string().into_bytes()
     }
@@ -306,6 +316,11 @@ impl ToDevice {
                 let frame: Frame = serde_json::from_value(value).map_err(malformed)?;
                 frame.check().map_err(|_| DecodeError::Malformed)?;
                 Ok(Self::Frame(frame))
+            }
+            Some(RECORDS) => {
+                let part: RecordsFrame = serde_json::from_value(value).map_err(malformed)?;
+                part.check().map_err(|_| DecodeError::Malformed)?;
+                Ok(Self::Records(part))
             }
             _ => Err(DecodeError::Malformed),
         }
@@ -390,5 +405,40 @@ mod tests {
             }
             other => panic!("unexpected {other:?}"),
         }
+    }
+
+    #[test]
+    fn record_parts_and_history_reads_round_trip() {
+        let terminal = coder_pty::wire::TerminalRef {
+            generation: "a".repeat(64),
+            terminal: "b".repeat(64),
+        };
+        let part = RecordsFrame {
+            v: RECORDS.into(),
+            terminal: terminal.clone(),
+            attachment: "c".repeat(64),
+            stream: "d".repeat(64),
+            part: 0,
+            last: true,
+            data: vec![1, 2, 3],
+        };
+        let encoded = ToDevice::Records(part.clone()).encode();
+        assert!(matches!(ToDevice::decode(&encoded), Ok(ToDevice::Records(p)) if p == part));
+        // An empty part fails its own check.
+        let empty = ToDevice::Records(RecordsFrame {
+            data: Vec::new(),
+            ..part
+        })
+        .encode();
+        assert_eq!(
+            ToDevice::decode(&empty).unwrap_err(),
+            DecodeError::Malformed
+        );
+        let read = History::new("e".repeat(64), terminal, "c".repeat(64), 1, 10, 5);
+        let request = TermRequest::History(read.clone());
+        assert_eq!(request.schema(), HISTORY);
+        assert_eq!(request.request(), "e".repeat(64));
+        let decoded = ToHost::decode(&ToHost::Terminal(request).encode());
+        assert!(matches!(decoded, Ok(ToHost::Terminal(TermRequest::History(r))) if r == read));
     }
 }

@@ -11,6 +11,7 @@ use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
 use coder_access::protocol::{Operation, Outcome};
+use coder_pty::ext::{RECORDS, RecordsFrame};
 use coder_pty::wire::{FRAME, Frame, RESULT, TerminalResult, Value as TermValue};
 use coder_reach::channel::{ClientConfig, connect};
 use nostr_transport::Connection;
@@ -39,6 +40,14 @@ pub enum Route {
 
 type Waiters = Arc<Mutex<HashMap<String, oneshot::Sender<ToDevice>>>>;
 
+/// What an attachment receives: a frame, or a part of a record stream
+/// (NIP-TERM's snapshot feature).
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum Incoming {
+    Frame(Frame),
+    Records(RecordsFrame),
+}
+
 struct Direct {
     outbound: mpsc::Sender<ToHost>,
     waiters: Waiters,
@@ -55,8 +64,8 @@ pub struct Link {
     /// relay route follows fresh presence ([`Link::refresh_generation`]).
     generation: Mutex<Option<u64>>,
     direct: Option<Direct>,
-    frames_in: mpsc::UnboundedSender<Frame>,
-    frames: tokio::sync::Mutex<mpsc::UnboundedReceiver<Frame>>,
+    frames_in: mpsc::UnboundedSender<Incoming>,
+    frames: tokio::sync::Mutex<mpsc::UnboundedReceiver<Incoming>>,
     subscriptions: Mutex<Vec<JoinHandle<()>>>,
     /// The newest renewed grant envelope the host sent on this channel,
     /// not yet taken ([`Link::take_renewal`]).
@@ -150,7 +159,10 @@ impl Link {
                 };
                 match ToDevice::decode(&message) {
                     Ok(ToDevice::Frame(frame)) => {
-                        let _ = reader_frames.send(frame);
+                        let _ = reader_frames.send(Incoming::Frame(frame));
+                    }
+                    Ok(ToDevice::Records(part)) => {
+                        let _ = reader_frames.send(Incoming::Records(part));
                     }
                     Ok(ToDevice::Closing(sent)) => code = Some(sent),
                     // Kept for the device to check and store; the channel
@@ -380,8 +392,22 @@ impl Link {
         Ok(result)
     }
 
-    /// The next terminal frame from any attachment on this link.
+    /// The next terminal frame from any attachment on this link. Parts of
+    /// record streams are skipped; [`Link::next_incoming`] returns them.
     pub async fn next_frame(&self, timeout: Duration) -> Option<Frame> {
+        let deadline = tokio::time::Instant::now() + timeout;
+        loop {
+            let left = deadline.saturating_duration_since(tokio::time::Instant::now());
+            match self.next_incoming(left).await? {
+                Incoming::Frame(frame) => return Some(frame),
+                Incoming::Records(_) => {}
+            }
+        }
+    }
+
+    /// The next frame or record-stream part from any attachment on this
+    /// link, in the order the host sent them on a direct channel.
+    pub async fn next_incoming(&self, timeout: Duration) -> Option<Incoming> {
         tokio::time::timeout(timeout, self.frames.lock().await.recv())
             .await
             .ok()
@@ -488,10 +514,34 @@ impl Link {
                     };
                     let opened: std::result::Result<(Frame, _), _> =
                         coder_reach::artifact::open(&event, &device.secret, &host, &me, FRAME);
-                    if let Ok((frame, _)) = opened
-                        && frame.check().is_ok()
-                        && frame.attachment == attachment
-                        && frames.send(frame).is_err()
+                    let incoming = match opened {
+                        Ok((frame, _))
+                            if frame.check().is_ok() && frame.attachment == attachment =>
+                        {
+                            Some(Incoming::Frame(frame))
+                        }
+                        Ok(_) => None,
+                        Err(_) => {
+                            let part: std::result::Result<(RecordsFrame, _), _> =
+                                coder_reach::artifact::open(
+                                    &event,
+                                    &device.secret,
+                                    &host,
+                                    &me,
+                                    RECORDS,
+                                );
+                            match part {
+                                Ok((part, _))
+                                    if part.check().is_ok() && part.attachment == attachment =>
+                                {
+                                    Some(Incoming::Records(part))
+                                }
+                                _ => None,
+                            }
+                        }
+                    };
+                    if let Some(incoming) = incoming
+                        && frames.send(incoming).is_err()
                     {
                         return;
                     }

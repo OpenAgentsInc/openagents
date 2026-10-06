@@ -10,6 +10,7 @@ use std::collections::{BTreeMap, BTreeSet, VecDeque};
 use std::sync::Arc;
 use std::time::Duration;
 
+use coder_pty::ext::RecordsFrame;
 use coder_pty::host::{FrameSink, SinkError};
 use coder_pty::wire::{Frame, Reason, Refusal, TerminalResult};
 use nostr::domain::Event;
@@ -222,17 +223,33 @@ struct RelaySink {
     device: String,
 }
 
-impl FrameSink for RelaySink {
-    fn deliver(&mut self, frame: &Frame) -> Result<(), SinkError> {
-        let item = Outgoing::Frame {
-            device: self.device.clone(),
-            frame: frame.clone(),
-        };
+impl RelaySink {
+    fn publish(&self, item: Outgoing) -> Result<(), SinkError> {
         if self.shared.publisher.try_to(&self.relay, item) {
             Ok(())
         } else {
             Err(SinkError::Full)
         }
+    }
+}
+
+impl FrameSink for RelaySink {
+    fn deliver(&mut self, frame: &Frame) -> Result<(), SinkError> {
+        self.publish(Outgoing::Frame {
+            device: self.device.clone(),
+            frame: frame.clone(),
+        })
+    }
+
+    fn carries_records(&self) -> bool {
+        true
+    }
+
+    fn deliver_records(&mut self, part: &RecordsFrame) -> Result<(), SinkError> {
+        self.publish(Outgoing::Records {
+            device: self.device.clone(),
+            part: part.clone(),
+        })
     }
 }
 
