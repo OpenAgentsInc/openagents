@@ -598,3 +598,35 @@ fn a_tall_building_cut_from_under_its_debris_leaves_nothing_in_the_air() {
         high.join("\n")
     );
 }
+
+#[test]
+fn a_small_geometry_budget_retires_the_oldest_debris_and_frees_the_pool() {
+    let mut town = town();
+    const BUDGET: usize = 3 * 1024 * 1024;
+    town.set_geometry_budget(BUDGET);
+    let targets: Vec<Vec3> = town
+        .buildings()
+        .iter()
+        .filter(|b| b.destructible())
+        .map(|b| {
+            let ([cx, cz], _) = b.rect;
+            Vec3::new(cx, height(cx, cz) + 2.0, cz)
+        })
+        .take(24)
+        .collect();
+    let mut peak = 0;
+    for (i, &at) in targets.iter().enumerate() {
+        let player = caster(at, 20.0);
+        town.blast(at, 9.0, 400, Vec3::ZERO);
+        for _ in 0..30 {
+            town.tick(1.0 / 60.0, &player);
+            let held = town.geometry_bytes();
+            assert!(held <= BUDGET, "blast {i}: {held} bytes");
+            peak = peak.max(held);
+        }
+    }
+    assert!(peak > BUDGET / 2, "the budget was reached: {peak}");
+    town.restore();
+    town.tick(1.0 / 60.0, &caster(targets[0], 20.0));
+    assert_eq!(town.geometry_bytes(), 0, "restoring frees the pool");
+}

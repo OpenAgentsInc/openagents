@@ -145,15 +145,26 @@ impl<'a> VisualSelection<'a> {
                 required.push(index);
             }
         }
+        // A budget never stops a frame: past it, actor roots and mounts stay
+        // and other required visuals are left out, latest first.
+        let mut dropped_required = 0;
         if required.len() > budget.instances {
-            return Err("Required visuals exceed the admitted instance budget".into());
+            let (mut kept, mut rest): (Vec<usize>, Vec<usize>) = required
+                .iter()
+                .partition(|&&i| instances[i].actor.is_some() || instances[i].mount.is_some());
+            kept.truncate(budget.instances);
+            rest.truncate(budget.instances - kept.len());
+            dropped_required = required.len() - kept.len() - rest.len();
+            kept.extend(rest);
+            kept.sort_unstable();
+            required = kept;
         }
         effects.sort_unstable();
         let count = effects
             .len()
             .min(budget.optional_effects)
             .min(budget.instances - required.len());
-        let dropped_effects = effects.len() - count;
+        let dropped_effects = effects.len() - count + dropped_required;
         required.extend(effects.into_iter().take(count).map(|(_, index)| index));
         required.sort_unstable();
         Ok(Self {

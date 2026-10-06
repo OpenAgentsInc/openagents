@@ -76,6 +76,18 @@ pub const MAX_LIVE: usize = if SMALL { 6 } else { 12 };
 pub const MAX_PIECES: usize = if SMALL { 240 } else { 520 };
 /// Most chunks alive at once across the town.
 pub const MAX_CHUNKS: usize = if SMALL { 128 } else { 260 };
+/// The most bytes of geometry the town's loose pieces and debris hold, on
+/// every platform and tier: well inside the 64 MiB the low and medium
+/// quality tiers hold for a frame's moving geometry
+/// (`verse_engine::quality::Budget::dynamic_geometry_bytes`), with room
+/// left for the character. Past it the oldest debris is retired first.
+pub const POOL_BYTES: usize = 40 * 1024 * 1024;
+/// The fraction of [`POOL_BYTES`] the town keeps its debris under, so a
+/// strike's new chunks fit without dropping any.
+const POOL_HEADROOM: f32 = 0.8;
+/// Vertices the pool may hold before it shrinks when three quarters sit
+/// empty.
+const SHRINK_FLOOR: usize = 1 << 16;
 /// Seconds a damaged building rests, with the player at least
 /// [`REGROW_DISTANCE`] m away, before it stands whole again.
 pub const REGROW: f32 = 60.0;
@@ -559,7 +571,13 @@ struct Pool {
     spans: Vec<Span>,
     /// The site pieces drawn, in order.
     drawn: Vec<usize>,
+    /// The most vertices the pool holds: its geometry budget.
+    limit: usize,
 }
+
+/// Bytes the pool's geometry takes per vertex it holds: the vertex and its
+/// index.
+const VERTEX_BYTES: usize = std::mem::size_of::<TexturedVertex>() + 4;
 
 impl Pool {
     fn new(kit: TexturedScene) -> Self {
@@ -573,9 +591,15 @@ impl Pool {
             posed: Vec::new(),
             spans: Vec::new(),
             drawn: Vec::new(),
+            limit: POOL_BYTES / VERTEX_BYTES,
         };
         pool.build();
         pool
+    }
+
+    /// The vertices the pool holds, drawn or not.
+    fn held(&self) -> usize {
+        self.caps.iter().sum()
     }
 
     /// Rebuilds the scene for the current capacities.
@@ -600,25 +624,37 @@ impl Pool {
         self.used = vec![0; self.caps.len()];
     }
 
-    /// Lays out the chunks of the site pieces `drawn` (by their `looks`),
-    /// in the pool materials `materials` holds for each pack material and
-    /// paint, growing the capacities when they don't fit.
+    /// Lays out the chunks of the site pieces `drawn` (by their `looks`)
+    /// that `live` keeps, in the pool materials `materials` holds for each
+    /// pack material and paint. The capacities grow when the chunks don't
+    /// fit and shrink, freeing the old buffers, when most of them sit
+    /// empty; they never pass the pool's limit, and past it the last
+    /// chunks are left out.
     fn pack(
         &mut self,
         drawn: Vec<usize>,
         looks: &[Look],
         meshes: &[Vec<ChunkMesh>],
         materials: &BTreeMap<(u16, usize), usize>,
+        live: &dyn Fn(usize, usize) -> bool,
     ) {
         let mut need = vec![0usize; self.caps.len()];
+        let mut total = 0;
         let mut entries: Vec<(usize, Span)> = Vec::new();
         for &piece in &drawn {
             let Look { shape, paint } = looks[piece];
             for (chunk, mesh) in meshes[shape].iter().enumerate() {
+                if !live(piece, chunk) {
+                    continue;
+                }
                 for (part, (source, vertices)) in mesh.parts.iter().enumerate() {
                     let Some(&material) = materials.get(&(*source, paint)) else {
                         continue;
                     };
+                    if total + vertices.len() > self.limit {
+                        continue;
+                    }
+                    total += vertices.len();
                     entries.push((
                         material,
                         Span {
@@ -635,15 +671,19 @@ impl Pool {
                 }
             }
         }
-        if need.iter().zip(&self.caps).any(|(n, c)| n > c) {
+        let grow = need.iter().zip(&self.caps).any(|(n, c)| n > c);
+        let held = self.held();
+        let shrink = held > SHRINK_FLOOR && total * 4 < held;
+        if grow || shrink || held > self.limit {
             for (cap, &n) in self.caps.iter_mut().zip(&need) {
-                if n > *cap {
-                    // Whole triangles: `n` is a multiple of three, and so
-                    // is the largest multiple of three at or under a cap
-                    // at or over it.
-                    let grown = n.next_power_of_two().max(2048);
-                    *cap = grown - grown % 3;
-                }
+                // Half again for what comes next, in whole triangles: `n`
+                // is a multiple of three, and so is the largest multiple
+                // of three at or under a cap at or over it.
+                let room = if n == 0 { 0 } else { (n + n / 2).max(2048) };
+                *cap = n.max(room - room % 3);
+            }
+            if self.held() > self.limit {
+                self.caps.clone_from(&need);
             }
             self.build();
         }
@@ -1378,7 +1418,7 @@ impl Town {
             .iter()
             .map(|&(b, k)| self.wreck.buildings[b].pieces[k].look)
             .collect();
-        let drawn: Vec<usize> = site
+        let damaged: Vec<usize> = site
             .specs()
             .iter()
             .zip(site.pieces())
@@ -1386,7 +1426,8 @@ impl Town {
             .filter(|(_, (s, p))| p.status != Status::Standing || p.hit_points < s.hit_points)
             .map(|(i, _)| i)
             .collect();
-        let hidden: BTreeSet<(usize, usize)> = drawn.iter().map(|&i| self.wreck.refs[i]).collect();
+        let hidden: BTreeSet<(usize, usize)> =
+            damaged.iter().map(|&i| self.wreck.refs[i]).collect();
         if hidden != self.hidden {
             let edits = &self.world.edits;
             // A carved placement's ranges are rewritten whole, with the
@@ -1433,12 +1474,32 @@ impl Town {
             }
             self.hidden = hidden;
         }
-        if drawn != self.pool.drawn || self.pool.spans.len() != self.count_spans(&drawn) {
+        self.retire_past_budget(&damaged);
+        // A broken piece draws only its chunks still alive, and nothing
+        // once they are all gone.
+        let site = &self.wreck.site;
+        let live = |piece: usize, chunk: usize| {
+            let state = &site.pieces()[piece];
+            state.status != Status::Broken || state.chunks.get(chunk).is_some_and(|c| !c.gone)
+        };
+        let drawn: Vec<usize> = damaged
+            .into_iter()
+            .filter(|&i| {
+                let state = &site.pieces()[i];
+                state.status != Status::Broken || state.chunks.iter().any(|c| !c.gone)
+            })
+            .collect();
+        if drawn != self.pool.drawn || self.pool.spans.len() != self.count_spans(&drawn, &live) {
             if drawn.is_empty() {
                 self.pool.clear();
             } else {
-                self.pool
-                    .pack(drawn, &self.looks, &self.wreck.meshes, &self.materials);
+                self.pool.pack(
+                    drawn,
+                    &self.looks,
+                    &self.wreck.meshes,
+                    &self.materials,
+                    &live,
+                );
             }
         }
         let seen = (self.wreck.revision, self.wreck.site.revision());
@@ -1448,17 +1509,97 @@ impl Town {
         }
     }
 
-    /// How many spans the site pieces `drawn` lay out.
-    fn count_spans(&self, drawn: &[usize]) -> usize {
+    /// How many spans the chunks `live` keeps of the site pieces `drawn`
+    /// lay out.
+    fn count_spans(&self, drawn: &[usize], live: &dyn Fn(usize, usize) -> bool) -> usize {
         drawn
             .iter()
             .map(|&i| {
                 self.wreck.meshes[self.looks[i].shape]
                     .iter()
-                    .map(|m| m.parts.len())
+                    .enumerate()
+                    .filter(|&(chunk, _)| live(i, chunk))
+                    .map(|(_, m)| m.parts.len())
                     .sum::<usize>()
             })
             .sum()
+    }
+
+    /// Vertices the chunks of the site pieces `damaged` would take in the
+    /// pool, counting a broken piece's live chunks only.
+    fn need(&self, damaged: &[usize]) -> usize {
+        let site = &self.wreck.site;
+        damaged
+            .iter()
+            .map(|&i| {
+                let state = &site.pieces()[i];
+                self.wreck.meshes[self.looks[i].shape]
+                    .iter()
+                    .enumerate()
+                    .filter(|&(chunk, _)| {
+                        state.status != Status::Broken
+                            || state.chunks.get(chunk).is_some_and(|c| !c.gone)
+                    })
+                    .flat_map(|(_, m)| m.parts.iter().map(|(_, v)| v.len()))
+                    .sum::<usize>()
+            })
+            .sum()
+    }
+
+    /// Retires the oldest debris, the chunks due to go soonest, until the
+    /// damaged pieces' chunks fit under the pool's limit with headroom.
+    fn retire_past_budget(&mut self, damaged: &[usize]) {
+        let goal = (self.pool.limit as f32 * POOL_HEADROOM) as usize;
+        let need = self.need(damaged);
+        if need <= goal {
+            return;
+        }
+        let site = &self.wreck.site;
+        let mut debris: Vec<(f64, usize, usize, usize)> = damaged
+            .iter()
+            .filter(|&&i| site.pieces()[i].status == Status::Broken)
+            .flat_map(|&i| {
+                let shape = self.looks[i].shape;
+                site.pieces()[i]
+                    .chunks
+                    .iter()
+                    .enumerate()
+                    .filter(|(_, c)| !c.gone)
+                    .map(move |(k, c)| (c.until, i, k, shape))
+            })
+            .map(|(until, i, k, shape)| {
+                let size = self.wreck.meshes[shape]
+                    .get(k)
+                    .map_or(0, |m| m.parts.iter().map(|(_, v)| v.len()).sum());
+                (until, i, k, size)
+            })
+            .collect();
+        debris.sort_by(|a, b| a.0.total_cmp(&b.0));
+        let mut over = need - goal;
+        let mut retired = Vec::new();
+        for (_, piece, chunk, size) in debris {
+            if over == 0 {
+                break;
+            }
+            retired.push((piece, chunk));
+            over = over.saturating_sub(size);
+        }
+        self.wreck.site.retire_chunks(&retired);
+    }
+
+    /// Holds the town's loose pieces and debris to `bytes` of geometry from
+    /// now on, retiring the oldest debris past it.
+    pub fn set_geometry_budget(&mut self, bytes: usize) {
+        self.pool.limit = bytes / VERTEX_BYTES;
+        self.pool.drawn.clear();
+        self.sync();
+    }
+
+    /// The bytes of geometry the town's figure holds now: its loose pieces
+    /// and debris, drawn or kept for the next.
+    #[must_use]
+    pub fn geometry_bytes(&self) -> usize {
+        self.pool.held() * VERTEX_BYTES
     }
 
     /// The solids: everything but the buildings, each static building's

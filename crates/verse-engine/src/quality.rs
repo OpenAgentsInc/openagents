@@ -137,12 +137,20 @@ impl Quality {
                 Tier::Medium => 512 * 1024 * 1024,
                 _ => memory,
             },
-            // Everglade's merged town, with its far levels of detail, is
-            // about 160 MB of vertices and indices, which WebGL2 holds; the
-            // low tier draws less, not less of the world.
+            // Everglade's merged town, with its far levels of detail and
+            // foliage, is about 210 MB of vertices and indices, which
+            // WebGL2 and phones hold; the low tier draws less, not less of
+            // the world. The static world gets 256 MiB on every tier, and
+            // destruction its own reserve on top.
             geometry_bytes: match self.tier {
-                Tier::Low => 256 * 1024 * 1024,
-                _ => memory,
+                Tier::Low | Tier::Medium => 320 * 1024 * 1024,
+                Tier::High => memory,
+            },
+            // Destruction's room, within `geometry_bytes`: the town's
+            // loose pieces and debris (at most 40 MiB) and the character.
+            dynamic_geometry_bytes: match self.tier {
+                Tier::Low | Tier::Medium => 64 * 1024 * 1024,
+                Tier::High => 128 * 1024 * 1024,
             },
             texture_bytes: memory,
             buffer_bytes: memory,
@@ -194,6 +202,11 @@ pub struct Budget {
     pub surfaces: usize,
     pub target_bytes: u64,
     pub geometry_bytes: u64,
+    /// The part of `geometry_bytes` held for the frame's moving geometry:
+    /// the character, spell effects, and the loose pieces and debris of
+    /// destroyed buildings, which a town keeps within it by retiring its
+    /// oldest settled debris first.
+    pub dynamic_geometry_bytes: u64,
     pub texture_bytes: u64,
     pub buffer_bytes: u64,
     pub cpu_frame_ms: f64,
@@ -207,22 +220,84 @@ pub struct Resources {
     pub buffer_bytes: u64,
     pub retained_source_bytes: u64,
 }
-impl Budget {
-    /// Reject resource excess before an adapter allocates or replaces active targets.
-    pub fn admit(&self, value: Resources) -> Result<(), String> {
-        for (name, used, limit) in [
-            ("target", value.target_bytes, self.target_bytes),
-            ("geometry", value.geometry_bytes, self.geometry_bytes),
-            ("texture", value.texture_bytes, self.texture_bytes),
-            ("buffer", value.buffer_bytes, self.buffer_bytes),
+/// How far a set of resources reaches past a [`Budget`], in bytes per kind.
+///
+/// A budget is a target the renderer meets by drawing less, never a reason
+/// to stop: a frame or a load over it degrades (fewer debris chunks, fewer
+/// spell sprites, no figure for a frame) and writes at most one quiet log
+/// line. Nothing here is an error.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, serde::Serialize)]
+pub struct Overrun {
+    pub target_bytes: u64,
+    pub geometry_bytes: u64,
+    pub texture_bytes: u64,
+    pub buffer_bytes: u64,
+}
+
+impl Overrun {
+    /// Whether everything fits.
+    #[must_use]
+    pub const fn fits(&self) -> bool {
+        self.target_bytes == 0
+            && self.geometry_bytes == 0
+            && self.texture_bytes == 0
+            && self.buffer_bytes == 0
+    }
+
+    /// Writes one quiet log line for an overrun at `place`, for the first
+    /// few a process sees, and nothing when everything fits.
+    pub fn note(&self, place: &str) {
+        static NOTED: std::sync::atomic::AtomicU32 = std::sync::atomic::AtomicU32::new(0);
+        if !self.fits() && NOTED.fetch_add(1, std::sync::atomic::Ordering::Relaxed) < 4 {
+            eprintln!("verse: {place} over its quality budget ({self}); drawing less");
+        }
+    }
+}
+
+impl std::fmt::Display for Overrun {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let mut first = true;
+        for (name, over) in [
+            ("target", self.target_bytes),
+            ("geometry", self.geometry_bytes),
+            ("texture", self.texture_bytes),
+            ("buffer", self.buffer_bytes),
         ] {
-            if used > limit {
-                return Err(format!(
-                    "Renderer {name} bytes exceed the admitted quality budget"
-                ));
+            if over > 0 {
+                if !first {
+                    f.write_str(", ")?;
+                }
+                write!(f, "{name} {over} bytes over")?;
+                first = false;
             }
         }
+        if first {
+            f.write_str("within budget")?;
+        }
         Ok(())
+    }
+}
+
+impl Budget {
+    /// How far `value` reaches past this budget. It never refuses: the
+    /// caller degrades what it draws (see [`Overrun`]).
+    #[must_use]
+    pub const fn overrun(&self, value: Resources) -> Overrun {
+        Overrun {
+            target_bytes: value.target_bytes.saturating_sub(self.target_bytes),
+            geometry_bytes: value.geometry_bytes.saturating_sub(self.geometry_bytes),
+            texture_bytes: value.texture_bytes.saturating_sub(self.texture_bytes),
+            buffer_bytes: value.buffer_bytes.saturating_sub(self.buffer_bytes),
+        }
+    }
+
+    /// The geometry a zone's static world may take: the budget less the
+    /// [`Budget::dynamic_geometry_bytes`] held for the frame's moving
+    /// geometry.
+    #[must_use]
+    pub const fn static_geometry_bytes(&self) -> u64 {
+        self.geometry_bytes
+            .saturating_sub(self.dynamic_geometry_bytes)
     }
 }
 
@@ -295,45 +370,37 @@ impl Tier {
 mod tests {
     use super::*;
     #[test]
-    fn resource_excess_is_refused_and_lower_tiers_reduce_optional_work() {
+    fn resource_excess_is_measured_never_refused_and_lower_tiers_reduce_optional_work() {
         for tier in Tier::ALL {
             let quality = tier.quality();
             let budget = quality.budget();
             assert!(
                 budget
-                    .admit(Resources {
+                    .overrun(Resources {
                         target_bytes: budget.target_bytes,
                         geometry_bytes: budget.geometry_bytes,
                         texture_bytes: budget.texture_bytes,
                         buffer_bytes: budget.buffer_bytes,
                         retained_source_bytes: 0
                     })
-                    .is_ok()
+                    .fits()
             );
-            assert!(
-                budget
-                    .admit(Resources {
-                        target_bytes: budget.target_bytes + 1,
-                        ..Default::default()
-                    })
-                    .is_err()
+            let over = budget.overrun(Resources {
+                target_bytes: budget.target_bytes + 1,
+                geometry_bytes: budget.geometry_bytes + 2,
+                texture_bytes: budget.texture_bytes + 3,
+                ..Default::default()
+            });
+            assert!(!over.fits());
+            assert_eq!(
+                (over.target_bytes, over.geometry_bytes, over.texture_bytes),
+                (1, 2, 3)
             );
-            assert!(
-                budget
-                    .admit(Resources {
-                        geometry_bytes: budget.geometry_bytes + 1,
-                        ..Default::default()
-                    })
-                    .is_err()
-            );
-            assert!(
-                budget
-                    .admit(Resources {
-                        texture_bytes: budget.texture_bytes + 1,
-                        ..Default::default()
-                    })
-                    .is_err()
-            );
+            assert!(over.to_string().contains("geometry 2 bytes over"));
+            // Destruction's reserve leaves the static world most of the
+            // geometry.
+            assert!(budget.dynamic_geometry_bytes > 0);
+            assert!(budget.static_geometry_bytes() >= budget.geometry_bytes / 2);
         }
         assert_eq!(Tier::Low.quality().sample_ceiling(), 1);
         assert!(

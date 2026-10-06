@@ -431,6 +431,27 @@ impl Site {
         self.cap_chunks();
     }
 
+    /// Retires the chunks `chunks`, each a piece and a chunk index there,
+    /// as if their time ran out: a town retires its oldest debris this way
+    /// to stay within its geometry budget.
+    pub fn retire_chunks(&mut self, chunks: &[(usize, usize)]) {
+        for &(p, i) in chunks {
+            let Some(chunk) = self
+                .pieces
+                .get_mut(p)
+                .and_then(|piece| piece.chunks.get_mut(i))
+            else {
+                continue;
+            };
+            if chunk.gone {
+                continue;
+            }
+            chunk.gone = true;
+            let body = chunk.body;
+            self.remove_chunk(body);
+        }
+    }
+
     /// Makes the flat ground slab `half` meters either side of the origin,
     /// and adds `floors` over it, each a box's center and half extents, for
     /// ground that rises. Takes effect when the world is next built.

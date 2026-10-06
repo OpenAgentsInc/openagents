@@ -12,6 +12,8 @@ pub mod hud;
 pub use verse_zone_lab as lab;
 pub use verse_zone_lagrange as lagrange;
 #[cfg(test)]
+mod budget_tests;
+#[cfg(test)]
 mod crypt_tests;
 #[cfg(test)]
 mod everglade_spell_tests;

@@ -870,7 +870,11 @@ impl Renderer {
                     a.payload().len() as u64 + a.encoded_manifest().map_or(0, |m| m.len() as u64)
                 }),
         };
-        admission.quality.budget().admit(resources)?;
+        admission
+            .quality
+            .budget()
+            .overrun(resources)
+            .note("the imported scene");
         let uniform = |binding| wgpu::BindGroupLayoutEntry {
             binding,
             visibility: wgpu::ShaderStages::VERTEX_FRAGMENT,
@@ -1407,7 +1411,11 @@ impl Renderer {
             target_bytes: self.admission.target_bytes(width, height),
             ..self.resources
         };
-        self.admission.quality.budget().admit(resources)?;
+        self.admission
+            .quality
+            .budget()
+            .overrun(resources)
+            .note("the imported scene's targets");
         self.resources = resources;
         let texture = |label, format, samples, usage| {
             self.device.create_texture(&wgpu::TextureDescriptor {
@@ -1742,8 +1750,13 @@ impl Renderer {
                 .iter()
                 .map(|model| self.models[model].len())
                 .sum::<usize>();
+        // A frame over its surface budget still draws: a budget never stops
+        // the renderer (`verse_engine::quality::Overrun`).
         if surface_batches > self.admission.quality.budget().surfaces {
-            return Err("Frame surfaces exceed the admitted quality budget".into());
+            static NOTED: std::sync::Once = std::sync::Once::new();
+            NOTED.call_once(|| {
+                eprintln!("verse: frame surfaces over their quality budget; drawing on");
+            });
         }
         let mut grounded_vertices = 0;
         let ui_bytes = bytemuck::cast_slice(world.overlay().vertices());

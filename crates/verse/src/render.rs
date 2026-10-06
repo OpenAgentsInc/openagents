@@ -609,7 +609,11 @@ impl Renderer {
         } else {
             0
         };
-        capability.quality.budget().admit(resources)?;
+        capability
+            .quality
+            .budget()
+            .overrun(resources)
+            .note("the world");
         surface.configure(&device, &config);
         let present = (encode && !hdr).then(|| Present::new(&device, format, width, height));
         let drawn = present.as_ref().map_or(format, |_| Present::FORMAT);
@@ -791,7 +795,12 @@ impl Renderer {
         } else {
             0
         };
-        self.scene.capability.quality.budget().admit(resources)?;
+        self.scene
+            .capability
+            .quality
+            .budget()
+            .overrun(resources)
+            .note("the world");
         self.resources = resources;
         self.config.width = width;
         self.config.height = height;
@@ -819,7 +828,12 @@ impl Renderer {
         resources.texture_bytes +=
             u64::from(self.source_atlas.width) * u64::from(self.source_atlas.height) * 4;
         resources.retained_source_bytes += self.source_atlas.pixels.len() as u64;
-        self.scene.capability.quality.budget().admit(resources)?;
+        self.scene
+            .capability
+            .quality
+            .budget()
+            .overrun(resources)
+            .note("the world");
         #[cfg(not(target_arch = "wasm32"))]
         if let Some(source) = &self.scene.streaming {
             self.scene.admit_streaming(source.budget(), resources)?;
@@ -942,13 +956,17 @@ impl Renderer {
                 return DrawStatus::Error(error);
             }
         }
-        if let Err(error) = admit_dynamic(
+        let (fitted, fitted_ui) = match fit_frame(
             self.scene.frame_resources(self.resources),
-            self.scene.capability,
+            self.scene.capability.quality,
             dynamic,
+            ui,
         ) {
-            return DrawStatus::Error(error);
-        }
+            Ok(fit) => fit,
+            Err(error) => return DrawStatus::Error(error),
+        };
+        let dynamic = fitted.as_ref().unwrap_or(dynamic);
+        let ui = fitted_ui.as_ref().unwrap_or(ui);
         self.dropped_glow_triangles = dynamic
             .glow
             .len()
@@ -1050,7 +1068,11 @@ impl Layer {
             height,
             u64::from(format.block_copy_size(None).unwrap_or(8)),
         );
-        capability.quality.budget().admit(resources)?;
+        capability
+            .quality
+            .budget()
+            .overrun(resources)
+            .note("the world");
         let mut scene = Scene::new(device, queue, adapter, format, world, atlas, samples);
         scene.atmosphere = atmosphere.validate()?;
         let targets = Targets::new(device, format, width, height, scene.samples);
@@ -1131,7 +1153,12 @@ impl Layer {
             height,
             u64::from(self.format.block_copy_size(None).unwrap_or(8)),
         );
-        self.scene.capability.quality.budget().admit(resources)?;
+        self.scene
+            .capability
+            .quality
+            .budget()
+            .overrun(resources)
+            .note("the world");
         self.resources = resources;
         self.targets = Targets::new(device, self.format, width, height, self.scene.samples);
         self.size = (width, height);
@@ -1156,11 +1183,14 @@ impl Layer {
         ui: &UiBatch,
     ) -> Result<(), String> {
         validate_frame(view, dynamic, ui)?;
-        admit_dynamic(
+        let (fitted, fitted_ui) = fit_frame(
             self.scene.frame_resources(self.resources),
-            self.scene.capability,
+            self.scene.capability.quality,
             dynamic,
+            ui,
         )?;
+        let dynamic = fitted.as_ref().unwrap_or(dynamic);
+        let ui = fitted_ui.as_ref().unwrap_or(ui);
         #[cfg(not(target_arch = "wasm32"))]
         if let Some(source) = &mut self.scene.streaming {
             source.pump(device, queue)?;
@@ -1232,23 +1262,10 @@ fn validate_frame(view: View, dynamic: &Mesh, ui: &UiBatch) -> Result<(), String
     if !view.view_proj.is_finite() || !view.eye.is_finite() {
         return Err("camera contains nonfinite values".into());
     }
-    let mesh_bytes = |n: usize| {
-        n.checked_mul(std::mem::size_of::<Vertex>())
-            .is_some_and(|n| n <= MAX_DYNAMIC_BYTES as usize)
-    };
-    if !mesh_bytes(dynamic.faces.len())
-        || !mesh_bytes(dynamic.lines.len())
-        || !ui
-            .vertices
-            .len()
-            .checked_mul(std::mem::size_of::<UiVertex>())
-            .is_some_and(|n| n <= UI_BYTES as usize)
-    {
-        return Err("frame exceeds retained GPU geometry or HUD capacity".into());
-    }
-    if !mesh_bytes(dynamic.lit.len() * 3 / 2)
-        || !mesh_bytes(dynamic.glow.len())
-        || !lit_finite(&dynamic.lit)
+    // Sizes are not checked here: `fit_frame` trims a frame to the
+    // renderer's capacity and quality budget instead of refusing it.
+    let _ = ui;
+    if !lit_finite(&dynamic.lit)
         || dynamic.glow.iter().any(|g| {
             g.pos
                 .iter()
@@ -1257,7 +1274,7 @@ fn validate_frame(view: View, dynamic: &Mesh, ui: &UiBatch) -> Result<(), String
                 .any(|x| !x.is_finite())
         })
     {
-        return Err("frame exceeds its physical geometry bounds".into());
+        return Err("frame contains nonfinite physical geometry".into());
     }
     if let Some(figure) = &dynamic.figure {
         figure.validate()?;
@@ -1266,7 +1283,7 @@ fn validate_frame(view: View, dynamic: &Mesh, ui: &UiBatch) -> Result<(), String
 }
 
 /// Logical payload reservations; driver padding, swapchain images, and fixed shader resources are excluded.
-fn mesh_resources(mesh: &Mesh) -> Result<verse_engine::quality::Resources, String> {
+pub(crate) fn mesh_resources(mesh: &Mesh) -> Result<verse_engine::quality::Resources, String> {
     use verse_engine::quality::Resources;
     if mesh
         .faces
@@ -1335,25 +1352,94 @@ pub fn glow_triangles(quality: verse_engine::quality::Quality) -> usize {
     }
 }
 
-fn admit_dynamic(
-    base: verse_engine::quality::Resources,
-    capability: Capability,
+/// The geometry and textures a frame's `mesh` adds at `quality`,
+/// counting only the glow the frame draws.
+fn frame_with(
+    quality: verse_engine::quality::Quality,
     mesh: &Mesh,
-) -> Result<(), String> {
+) -> Result<verse_engine::quality::Resources, String> {
     let mut dynamic = mesh_resources(mesh)?;
-    let omitted = mesh
-        .glow
-        .len()
-        .saturating_sub(glow_triangles(capability.quality) * 3);
-    dynamic.geometry_bytes -= (omitted * std::mem::size_of::<crate::pbr::GlowVertex>()) as u64;
-    capability
-        .quality
-        .budget()
-        .admit(verse_engine::quality::Resources {
-            geometry_bytes: base.geometry_bytes + dynamic.geometry_bytes,
-            texture_bytes: base.texture_bytes + dynamic.texture_bytes,
-            ..base
-        })
+    let omitted = mesh.glow.len().saturating_sub(glow_triangles(quality) * 3);
+    dynamic.geometry_bytes = dynamic
+        .geometry_bytes
+        .saturating_sub((omitted * std::mem::size_of::<crate::pbr::GlowVertex>()) as u64);
+    Ok(verse_engine::quality::Resources {
+        geometry_bytes: dynamic.geometry_bytes,
+        texture_bytes: dynamic.texture_bytes,
+        ..verse_engine::quality::Resources::default()
+    })
+}
+
+/// What a frame may add over a world of `base` resources: the tier's
+/// reserve for moving geometry, or all the budget the world leaves, if
+/// more. A world over its own budget (noted once at load) never takes the
+/// reserve from the frames drawn over it.
+fn frame_budget(
+    base: verse_engine::quality::Resources,
+    quality: verse_engine::quality::Quality,
+) -> verse_engine::quality::Budget {
+    let budget = quality.budget();
+    verse_engine::quality::Budget {
+        geometry_bytes: budget
+            .dynamic_geometry_bytes
+            .max(budget.geometry_bytes.saturating_sub(base.geometry_bytes)),
+        texture_bytes: (budget.texture_bytes / 4)
+            .max(budget.texture_bytes.saturating_sub(base.texture_bytes)),
+        target_bytes: u64::MAX,
+        buffer_bytes: u64::MAX,
+        ..budget
+    }
+}
+
+/// What a frame draws once it is held to the renderer's buffers and the
+/// tier's quality budget: `None` when `mesh` and `ui` fit as they are, or
+/// trimmed copies. A budget never stops a frame (see
+/// [`verse_engine::quality::Overrun`]): past it the frame drops its figure,
+/// then its textured and lit geometry, and writes one quiet log line.
+///
+/// # Errors
+///
+/// Returns a message only when the frame holds nonfinite values.
+pub fn fit_frame(
+    base: verse_engine::quality::Resources,
+    quality: verse_engine::quality::Quality,
+    mesh: &Mesh,
+    ui: &UiBatch,
+) -> Result<(Option<Mesh>, Option<UiBatch>), String> {
+    // Whole triangles and segments within each retained buffer.
+    let vertices = MAX_DYNAMIC_BYTES as usize / std::mem::size_of::<Vertex>();
+    let faces = vertices - vertices % 3;
+    let lines = vertices - vertices % 2;
+    let lit = (MAX_DYNAMIC_BYTES as usize / std::mem::size_of::<LitVertex>()) / 3 * 3;
+    let glow = (MAX_DYNAMIC_BYTES as usize / std::mem::size_of::<crate::pbr::GlowVertex>()) / 3 * 3;
+    let hud = (UI_BYTES as usize / std::mem::size_of::<UiVertex>()) / 3 * 3;
+    let fitted_ui = (ui.vertices.len() > hud).then(|| UiBatch {
+        vertices: ui.vertices[..hud].to_vec(),
+    });
+    let budget = frame_budget(base, quality);
+    let over_buffers = mesh.faces.len() > faces
+        || mesh.lines.len() > lines
+        || mesh.lit.len() > lit
+        || mesh.glow.len() > glow;
+    let over = budget.overrun(frame_with(quality, mesh)?);
+    if !over_buffers && over.fits() {
+        return Ok((None, fitted_ui));
+    }
+    over.note("a frame");
+    let mut fitted = mesh.clone();
+    fitted.faces.truncate(faces);
+    fitted.lines.truncate(lines);
+    fitted.lit.truncate(lit);
+    fitted.glow.truncate(glow);
+    if !budget.overrun(frame_with(quality, &fitted)?).fits() {
+        fitted.figure = None;
+    }
+    if !budget.overrun(frame_with(quality, &fitted)?).fits() {
+        fitted.textured = None;
+        fitted.lit.clear();
+        fitted.glow.clear();
+    }
+    Ok((Some(fitted), fitted_ui))
 }
 
 fn lit_bytes(vertices: &[LitVertex]) -> Option<usize> {
@@ -1661,6 +1747,14 @@ impl Offscreen {
         overlay: Option<&crate::overlay::OverlayImage>,
     ) -> Result<Vec<u8>, String> {
         validate_frame(view, dynamic, ui)?;
+        let (fitted, fitted_ui) = fit_frame(
+            verse_engine::quality::Resources::default(),
+            self.scene.capability.quality,
+            dynamic,
+            ui,
+        )?;
+        let dynamic = fitted.as_ref().unwrap_or(dynamic);
+        let ui = fitted_ui.as_ref().unwrap_or(ui);
         let (device, queue) = (&self.device, &self.queue);
         let panel = match overlay {
             Some(image) => {
@@ -2523,10 +2617,13 @@ fn dynamic_capacity(bytes: usize) -> Option<u64> {
 }
 
 fn write(device: &wgpu::Device, queue: &wgpu::Queue, batch: &mut Batch, vertices: &[Vertex]) {
+    // `fit_frame` already held the batch under the cap; whole triangles and
+    // segments past it are left out rather than failing the frame.
+    let most = MAX_DYNAMIC_BYTES as usize / std::mem::size_of::<Vertex>() / 6 * 6;
+    let vertices = &vertices[..vertices.len().min(most)];
     let bytes: &[u8] = bytemuck::cast_slice(vertices);
     if bytes.len() as u64 > batch.capacity {
-        // Frame validation already admitted the complete batch under the cap.
-        let capacity = dynamic_capacity(bytes.len()).expect("validated dynamic frame capacity");
+        let capacity = dynamic_capacity(bytes.len()).unwrap_or(MAX_DYNAMIC_BYTES);
         batch.buffer = device.create_buffer(&wgpu::BufferDescriptor {
             label: Some("verse resized dynamic geometry"),
             size: capacity,
@@ -2717,7 +2814,11 @@ mod tests {
                 - (count * std::mem::size_of::<crate::pbr::GlowVertex>()) as u64,
             ..Default::default()
         };
-        assert!(admit_dynamic(base, capability, &mesh).is_ok());
+        let ui = UiBatch::default();
+        assert!(matches!(
+            fit_frame(base, capability.quality, &mesh, &ui),
+            Ok((None, None))
+        ));
         let required = Mesh {
             faces: vec![
                 Vertex {
@@ -2733,7 +2834,48 @@ mod tests {
             geometry_bytes: quality.budget().geometry_bytes,
             ..Default::default()
         };
-        assert!(admit_dynamic(full, capability, &required).is_err());
+        // A world that fills the budget still leaves a frame the reserve
+        // for moving geometry: the frame draws whole.
+        assert!(matches!(
+            fit_frame(full, capability.quality, &required, &ui),
+            Ok((None, None))
+        ));
+    }
+
+    #[test]
+    fn an_over_budget_figure_is_dropped_for_the_frame_instead_of_stopping() {
+        use crate::pbr::textured::{Figure, Primitive, TexturedMesh, TexturedScene};
+        let quality = verse_engine::quality::Tier::Medium.quality();
+        // A figure past the whole reserve for moving geometry.
+        const FIGURE: usize = 3 * 700_000;
+        assert!(
+            (FIGURE * (std::mem::size_of::<crate::pbr::textured::TexturedVertex>() + 4)) as u64
+                > quality.budget().dynamic_geometry_bytes
+        );
+        let mut scene = TexturedScene::default();
+        scene.add_material(crate::pbr::textured::TexturedMaterial::default());
+        scene.add_mesh(TexturedMesh {
+            primitives: vec![Primitive {
+                vertices: vec![bytemuck::Zeroable::zeroed(); FIGURE],
+                indices: (0..FIGURE as u32).collect(),
+                material: 0,
+            }],
+        });
+        let figure = Figure {
+            vertices: std::sync::Arc::new(scene.meshes[0].primitives[0].vertices.clone()),
+            scene: std::sync::Arc::new(scene),
+        };
+        let mesh = Mesh {
+            figure: Some(figure),
+            ..Mesh::default()
+        };
+        // The world already holds the whole budget.
+        let full = verse_engine::quality::Resources {
+            geometry_bytes: quality.budget().geometry_bytes,
+            ..Default::default()
+        };
+        let (fitted, _) = fit_frame(full, quality, &mesh, &UiBatch::default()).unwrap();
+        assert!(fitted.expect("trimmed").figure.is_none());
     }
     #[test]
     fn scene_limits_accept_mobile_varyings_without_asking_for_unused_desktop_limits() {
@@ -2822,11 +2964,13 @@ mod tests {
     }
 
     #[test]
-    fn over_capacity_frames_fail_instead_of_silently_clipping() {
+    fn over_capacity_frames_are_trimmed_to_whole_primitives_instead_of_stopping() {
         let view = View {
             view_proj: Mat4::IDENTITY,
             eye: Vec3::ZERO,
         };
+        let quality = verse_engine::quality::Tier::Low.quality();
+        let base = verse_engine::quality::Resources::default();
         let mut mesh = Mesh::default();
         let mut ui = UiBatch::default();
         assert!(validate_frame(view, &mesh, &ui).is_ok());
@@ -2838,8 +2982,6 @@ mod tests {
                 fog: 0.0,
             },
         );
-        assert!(validate_frame(view, &mesh, &ui).is_err());
-        mesh.lines.clear();
         ui.vertices.resize(
             UI_BYTES as usize / std::mem::size_of::<UiVertex>() + 1,
             UiVertex {
@@ -2848,6 +2990,18 @@ mod tests {
                 color: [0.0; 4],
             },
         );
+        assert!(validate_frame(view, &mesh, &ui).is_ok());
+        let (fitted, fitted_ui) = fit_frame(base, quality, &mesh, &ui).unwrap();
+        let (fitted, fitted_ui) = (fitted.unwrap(), fitted_ui.unwrap());
+        assert!(std::mem::size_of_val(fitted.lines.as_slice()) <= MAX_DYNAMIC_BYTES as usize);
+        assert_eq!(fitted.lines.len() % 2, 0);
+        assert!(std::mem::size_of_val(fitted_ui.vertices.as_slice()) <= UI_BYTES as usize);
+        assert_eq!(fitted_ui.vertices.len() % 3, 0);
+        // Nonfinite values are still refused: they are a bug, not a budget.
+        mesh.lit.push(crate::pbr::LitVertex {
+            pos: [f32::NAN; 3],
+            ..bytemuck::Zeroable::zeroed()
+        });
         assert!(validate_frame(view, &mesh, &ui).is_err());
     }
 
