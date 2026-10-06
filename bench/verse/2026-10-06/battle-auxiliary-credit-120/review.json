@@ -1,0 +1,36 @@
+{
+  "schema": "verse.battle.review.v1",
+  "duration_seconds": 120,
+  "source_base": "43f12d6e0bb48e22f151476a14aaab66cca9bee8",
+  "executable_sha256": "20036d42ba7d91f6cbc7c8994e5e98b0613dc215689359997e7ae988436a68d6",
+  "acceptance": "failed",
+  "failures": [
+    "/server/movement_expiry/total: Some(1.0) exceeds 0, or is unavailable"
+  ],
+  "movement_expiry": 1,
+  "workload_ticks": 3598,
+  "native_segments": [
+    {
+      "status": "complete",
+      "error": null,
+      "prediction_failures": 0,
+      "prediction_horizon_pauses": 0
+    },
+    {
+      "status": "complete",
+      "error": null,
+      "prediction_failures": 0,
+      "prediction_horizon_pauses": 0
+    }
+  ],
+  "files": {
+    "report.json": "a08006fd75cc27d7fd03c5e1c28e69d766cf85d0ab16d22358a781a8782b9f33",
+    "source.patch": "6d1dc2062d140d7fe998ec81c241496d9d75986f13ce6e6360774e59cf06790b"
+  },
+  "limitations": [
+    "One headless expiry fails the unchanged zero-expiry gate; no sustained acceptance is claimed.",
+    "Forwarding verified auxiliary credit passed targeted checks but did not eliminate all expiries in this run.",
+    "High-quality 2560x1440 licensed scene, ordinary unprivileged process, direct NVMe scratch storage, shared host, no own concurrent compiler.",
+    "The comparison uses retained source base and own patches; this is not a current-main host deployment or physical input-to-display measurement."
+  ]
+}

@@ -1,0 +1,2854 @@
+diff --git a/crates/physics/src/queries/snapshot.rs b/crates/physics/src/queries/snapshot.rs
+index c663decfbb..38e62e705e 100644
+--- a/crates/physics/src/queries/snapshot.rs
++++ b/crates/physics/src/queries/snapshot.rs
+@@ -238,6 +238,74 @@ mod tests {
+             .unwrap();
+         scene
+     }
++    #[test]
++    fn regional_blockers_include_old_new_and_transformed_bounds() {
++        for geometry in [
++            GeometrySnapshot::Box {
++                min: DVec3::ZERO,
++                max: DVec3::ONE,
++            },
++            GeometrySnapshot::Triangles {
++                triangles: vec![Triangle([DVec3::ZERO, DVec3::Y, DVec3::Z])],
++            },
++        ] {
++            let mut source = SceneSnapshot {
++                instance: 7,
++                colliders: vec![ShapeSnapshot {
++                    key: key(10),
++                    layers: 1,
++                    usage: Usage::Blocking,
++                    pose: Pose {
++                        position: DVec3::X * 100.,
++                        rotation: DQuat::from_rotation_y(0.7),
++                    },
++                    geometry,
++                }],
++            };
++            let mut cache = SceneCache::new(7);
++            cache.update(&source).unwrap();
++            let min = DVec3::splat(-2.);
++            let max = DVec3::splat(2.);
++            source.colliders[0].pose.position.x += 1.;
++            assert!(cache.blocking_geometry_matches_in(&source, min, max));
++            let mut near = source.clone();
++            near.colliders[0].pose.position = DVec3::ZERO;
++            assert!(!cache.blocking_geometry_matches_in(&near, min, max));
++            cache.update(&near).unwrap();
++            assert!(!cache.blocking_geometry_matches_in(&source, min, max));
++            let empty = SceneSnapshot {
++                instance: 7,
++                colliders: vec![],
++            };
++            assert!(!cache.blocking_geometry_matches_in(&empty, min, max));
++            cache.update(&empty).unwrap();
++            assert!(!cache.blocking_geometry_matches_in(&near, min, max));
++            assert!(cache.blocking_geometry_matches_in(&source, min, max));
++        }
++        let source = SceneSnapshot {
++            instance: 7,
++            colliders: vec![ShapeSnapshot {
++                key: key(10),
++                layers: 1,
++                usage: Usage::Blocking,
++                pose: Pose {
++                    position: DVec3::ZERO,
++                    rotation: DQuat::from_rotation_z(std::f64::consts::FRAC_PI_4),
++                },
++                geometry: GeometrySnapshot::Box {
++                    min: DVec3::ZERO,
++                    max: DVec3::ONE,
++                },
++            }],
++        };
++        let cache = SceneCache::new(7);
++        assert!(!cache.blocking_geometry_matches_in(
++            &source,
++            DVec3::new(-0.8, 0., 0.),
++            DVec3::new(-0.1, 1., 1.),
++        ));
++    }
++
+     #[test]
+     fn cached_capsule_pose_updates_and_shape_replacement_keep_queries_current() {
+         let mut source = scene().snapshot(7).unwrap();
+@@ -439,6 +507,92 @@ impl SceneCache {
+                 .into_iter()
+                 .all(|shape| self.source.get(&shape.key) == Some(shape))
+     }
++    /// Compares fixed character blockers; other query usages do not affect movement.
++    /// Capsule poses remain separate, and `update` validates every shape.
++    pub fn blocking_geometry_matches(&self, snapshot: &SceneSnapshot) -> bool {
++        if snapshot.instance != self.instance {
++            return false;
++        }
++        let blocking = |shape: &&ShapeSnapshot| {
++            shape.usage == Usage::Blocking
++                && !matches!(shape.geometry, GeometrySnapshot::Capsule { .. })
++        };
++        let mut next = snapshot.colliders.iter().filter(blocking);
++        next.clone().count() == self.source.values().filter(blocking).count()
++            && next.all(|shape| self.source.get(&shape.key) == Some(shape))
++    }
++    /// Compares fixed blockers that can intersect a conservative world-space region.
++    /// Both old and new bounds participate; `update` still validates every shape.
++    pub fn blocking_geometry_matches_in(
++        &self,
++        snapshot: &SceneSnapshot,
++        min: DVec3,
++        max: DVec3,
++    ) -> bool {
++        if snapshot.instance != self.instance
++            || snapshot.colliders.len() > SNAPSHOT_COLLIDERS
++            || !min.is_finite()
++            || !max.is_finite()
++            || !min.cmple(max).all()
++        {
++            return false;
++        }
++        let triangles = snapshot.colliders.iter().try_fold(0usize, |count, shape| {
++            count.checked_add(match &shape.geometry {
++                GeometrySnapshot::Triangles { triangles } => triangles.len(),
++                _ => 0,
++            })
++        });
++        if triangles.is_none_or(|count| count > SNAPSHOT_TRIANGLES) {
++            return false;
++        }
++        let intersects = |shape: &ShapeSnapshot| {
++            if shape.usage != Usage::Blocking {
++                return false;
++            }
++            let mut low = DVec3::splat(f64::INFINITY);
++            let mut high = DVec3::splat(f64::NEG_INFINITY);
++            let mut include = |point: DVec3| {
++                let point = shape.pose.point(point);
++                low = low.min(point);
++                high = high.max(point);
++            };
++            match &shape.geometry {
++                GeometrySnapshot::Capsule { .. } => return false,
++                GeometrySnapshot::Box { min, max } => {
++                    for x in [min.x, max.x] {
++                        for y in [min.y, max.y] {
++                            for z in [min.z, max.z] {
++                                include(DVec3::new(x, y, z));
++                            }
++                        }
++                    }
++                }
++                GeometrySnapshot::Triangles { triangles } => {
++                    for triangle in triangles {
++                        for point in triangle.0 {
++                            include(point);
++                        }
++                    }
++                }
++            }
++            low.cmple(max).all() && high.cmpge(min).all()
++        };
++        let next: std::collections::BTreeMap<_, _> = snapshot
++            .colliders
++            .iter()
++            .map(|shape| (shape.key, shape))
++            .collect();
++        if next.len() != snapshot.colliders.len() {
++            return false;
++        }
++        self.source.values().all(|old| {
++            let new = next.get(&old.key).copied();
++            new == Some(old) || (!intersects(old) && new.is_none_or(|new| !intersects(new)))
++        }) && next
++            .values()
++            .all(|new| self.source.contains_key(&new.key) || !intersects(new))
++    }
+     /// Returns the number of recompiled shapes. Validation and compilation precede mutation.
+     pub fn update(&mut self, snapshot: &SceneSnapshot) -> Result<usize, String> {
+         snapshot.validate(self.instance)?;
+@@ -515,3 +669,62 @@ impl SceneCache {
+         Ok(count)
+     }
+ }
++
++#[cfg(test)]
++mod blocking_cache_tests {
++    use super::*;
++
++    #[test]
++    fn nonblocking_changes_preserve_character_geometry_but_blockers_invalidate_it() {
++        let shape = |entity, usage| ShapeSnapshot {
++            key: ColliderKey {
++                life: Life {
++                    instance: 7,
++                    entity,
++                    generation: 0,
++                },
++                shape: 0,
++            },
++            layers: 1,
++            usage,
++            pose: Pose::default(),
++            geometry: GeometrySnapshot::Box {
++                min: DVec3::ZERO,
++                max: DVec3::ONE,
++            },
++        };
++        let source = SceneSnapshot {
++            instance: 7,
++            colliders: vec![shape(1, Usage::Blocking), shape(2, Usage::Selection)],
++        };
++        let mut cache = SceneCache::new(7);
++        cache.update(&source).unwrap();
++        assert!(cache.blocking_geometry_matches(&source));
++        for usage in [Usage::Selection, Usage::Trigger, Usage::Damage] {
++            let mut changed = source.clone();
++            changed.colliders[1].usage = usage;
++            changed.colliders[1].pose.position.x = 10.;
++            assert!(!cache.fixed_geometry_matches(&changed));
++            assert!(cache.blocking_geometry_matches(&changed));
++        }
++        let mut changed = source.clone();
++        changed.colliders.pop();
++        assert!(cache.blocking_geometry_matches(&changed));
++        changed.colliders.push(shape(3, Usage::Selection));
++        assert!(cache.blocking_geometry_matches(&changed));
++        changed.colliders[1].usage = Usage::Blocking;
++        assert!(!cache.blocking_geometry_matches(&changed));
++        let mut changed = source.clone();
++        changed.colliders[0].pose.position.x = 1.;
++        assert!(!cache.blocking_geometry_matches(&changed));
++        changed = source.clone();
++        changed.colliders[0].usage = Usage::Selection;
++        assert!(!cache.blocking_geometry_matches(&changed));
++        changed = source.clone();
++        changed.colliders.remove(0);
++        assert!(!cache.blocking_geometry_matches(&changed));
++        changed = source.clone();
++        changed.instance = 8;
++        assert!(!cache.blocking_geometry_matches(&changed));
++    }
++}
+diff --git a/crates/verse-imported/src/imported/chamber_session.rs b/crates/verse-imported/src/imported/chamber_session.rs
+index 16662bdbf0..b387f12236 100644
+--- a/crates/verse-imported/src/imported/chamber_session.rs
++++ b/crates/verse-imported/src/imported/chamber_session.rs
+@@ -100,6 +100,8 @@ pub struct Session {
+     pub status: String,
+     pending: VecDeque<(Option<Ability>, Option<u64>)>,
+     prediction: verse_world::prediction::Local,
++    prediction_failures: u64,
++    last_prediction_failure: Option<String>,
+     input_token: u64,
+     frame_cursor: Option<(LifeId, u64, u64)>,
+     frame_bindings: BTreeMap<u64, (LifeId, u64)>,
+@@ -214,6 +216,8 @@ impl Session {
+             status: String::new(),
+             pending: VecDeque::new(),
+             prediction: verse_world::prediction::Local::new(instance),
++            prediction_failures: 0,
++            last_prediction_failure: None,
+             input_token: 0,
+             frame_cursor: None,
+             frame_bindings: BTreeMap::new(),
+@@ -261,6 +265,25 @@ impl Session {
+         self.prediction.last_embedding()
+     }
+ 
++    /// Counts local frames held at the bounded prediction horizon.
++    pub fn prediction_horizon_pauses(&self) -> u64 {
++        self.prediction.horizon_pauses()
++    }
++    /// Returns local prediction errors that discarded a clock or pending input.
++    pub fn prediction_failures(&self) -> u64 {
++        self.prediction_failures
++    }
++    /// Retains the most recent local prediction error independently of UI status.
++    pub fn last_prediction_failure(&self) -> Option<&str> {
++        self.last_prediction_failure.as_deref()
++    }
++    fn discard_failed_prediction(&mut self, message: String) {
++        self.prediction_failures = self.prediction_failures.saturating_add(1);
++        self.last_prediction_failure = Some(message.clone());
++        self.prediction.clear();
++        self.status = message;
++    }
++
+     /// Stops the worker and waits for it; the transport closes with it.
+     pub fn stop(mut self) -> Stopped {
+         self.close()
+@@ -386,14 +409,17 @@ impl Session {
+         }
+         if let Input::Command(intent @ (Intent::Move { .. } | Intent::Jump)) = &input {
+             if self.prediction.movement_profile() == Some(verse_world::movement::Profile::Frames) {
++                if self.prediction.pending() >= verse_world::prediction::CAPACITY {
++                    self.status = "Input queue is busy".into();
++                    return;
++                }
+                 let Some(token) = self.input_token.checked_add(1) else {
+                     self.status = "Input token exhausted".into();
+                     return;
+                 };
+                 self.input_token = token;
+                 if let Err(message) = self.prediction.queue(token, intent.clone()) {
+-                    self.prediction.clear();
+-                    self.status = message;
++                    self.discard_failed_prediction(message);
+                 }
+                 return;
+             }
+@@ -434,8 +460,7 @@ impl Session {
+                 let token = predicted.as_ref().map(|p| p.0);
+                 if let Some((token, intent)) = predicted {
+                     if let Err(message) = self.prediction.queue(token, intent) {
+-                        self.prediction.clear();
+-                        self.status = message;
++                        self.discard_failed_prediction(message);
+                     }
+                 }
+                 self.pending.push_back((ability, token));
+@@ -537,6 +562,24 @@ impl Session {
+         }
+     }
+ 
++    fn observe_movement_credit(
++        &mut self,
++        control: Option<&verse_world::service::wire::Control>,
++    ) -> Result<(), String> {
++        if let Some(control) = control.filter(|c| {
++            self.prediction.context() == Some((c.life.into(), c.epoch))
++                && self.prediction.movement_profile()
++                    == Some(verse_world::movement::Profile::Frames)
++        }) {
++            self.prediction.movement_credit(
++                control.life.into(),
++                control.epoch,
++                control.credit_step,
++            )?;
++        }
++        Ok(())
++    }
++
+     /// Applies every update the worker delivered.
+     ///
+     /// # Errors
+@@ -545,8 +588,11 @@ impl Session {
+         for _ in 0..worker::UPDATE_CAPACITY {
+             match self.output.try_recv() {
+                 Ok(Update::Snapshot(r)) => self.snapshot(scene, &r)?,
+-                Ok(Update::Events { delivery, .. }) => {
++                Ok(Update::Events {
++                    delivery, control, ..
++                }) => {
+                     self.view.push_events(&delivery)?;
++                    self.observe_movement_credit(control.as_ref())?;
+                     for event in &delivery.events {
+                         match event.kind {
+                             verse_world::events::Kind::Damage { .. } => self.damage_events += 1,
+@@ -555,14 +601,16 @@ impl Session {
+                         }
+                     }
+                 }
+-                Ok(Update::Inventory(r)) => self.view.push_inventory(&r)?,
++                Ok(Update::Inventory(r)) => {
++                    self.view.push_inventory(&r)?;
++                    self.observe_movement_credit(r.control.as_ref())?;
++                }
+                 Ok(Update::MovementSuperseded { token, replacement }) => {
+                     let before = self.prediction.pose();
+                     self.pending.retain(|(_, pending)| *pending != Some(token));
+                     if self.prediction.contains(token) {
+                         if let Err(message) = self.prediction.supersede(token, replacement) {
+-                            self.prediction.clear();
+-                            self.status = message;
++                            self.discard_failed_prediction(message);
+                         }
+                     }
+                     if self.notes.is_some() {
+@@ -614,8 +662,7 @@ impl Session {
+                             && self.prediction.contains(token)
+                         {
+                             if let Err(message) = self.prediction.bind(token, &command) {
+-                                self.prediction.clear();
+-                                self.status = message;
++                                self.discard_failed_prediction(message);
+                             }
+                         }
+                     }
+@@ -646,17 +693,7 @@ impl Session {
+                 },
+                 Ok(Update::Outcome(r)) => {
+                     self.confirm_applied_movement(&r)?;
+-                    if let Some(control) = r.control.as_ref().filter(|c| {
+-                        self.prediction.context() == Some((c.life.into(), c.epoch))
+-                            && self.prediction.movement_profile()
+-                                == Some(verse_world::movement::Profile::Frames)
+-                    }) {
+-                        self.prediction.movement_credit(
+-                            control.life.into(),
+-                            control.epoch,
+-                            control.credit_step,
+-                        )?;
+-                    }
++                    self.observe_movement_credit(r.control.as_ref())?;
+                     if self.frame_entry_pending {
+                         self.frame_entry_pending = false;
+                         if matches!(r.body, Reply::Refused { .. }) {
+@@ -999,8 +1036,7 @@ impl Session {
+             self.next_move = now + MOVE_INTERVAL;
+         }
+         if let Err(message) = self.prediction.advance(f64::from(dt).min(0.1)) {
+-            self.prediction.clear();
+-            self.status = message;
++            self.discard_failed_prediction(message);
+         }
+         self.send_movement_interval()
+     }
+diff --git a/crates/verse-world/Cargo.toml b/crates/verse-world/Cargo.toml
+index 6c903b4d36..ddbc78de5d 100644
+--- a/crates/verse-world/Cargo.toml
++++ b/crates/verse-world/Cargo.toml
+@@ -30,6 +30,7 @@ coder-reach = { path = "../coder-reach", optional = true }
+ coder-access = { path = "../coder-access", default-features = false, optional = true }
+ 
+ [dev-dependencies]
++tokio = { version = "1", features = ["rt-multi-thread"] }
+ tempfile = "3"
+ rcgen = { version = "0.14", default-features = false, features = ["crypto", "ring"] }
+ 
+diff --git a/crates/verse-world/src/play.rs b/crates/verse-world/src/play.rs
+index 198713c94c..b82880ef93 100644
+--- a/crates/verse-world/src/play.rs
++++ b/crates/verse-world/src/play.rs
+@@ -2167,7 +2167,7 @@ impl Game {
+                 .map_err(|e| format!("Movement refused: {e:?}"))?;
+             self.submit(self.primary.admission.controller(), command)?;
+         }
+-        self.expire_primary_frames()?;
++        self.expire_primary_frames(dead)?;
+         let movement = if dead {
+             self.primary.pending_movement = None;
+             self.primary.held_movement = Default::default();
+diff --git a/crates/verse-world/src/play/framed_movement.rs b/crates/verse-world/src/play/framed_movement.rs
+index 8e54d57479..bc3a67be13 100644
+--- a/crates/verse-world/src/play/framed_movement.rs
++++ b/crates/verse-world/src/play/framed_movement.rs
+@@ -199,7 +199,12 @@ impl Game {
+         self.clear_social_seat(frame.life);
+         Ok(())
+     }
+-    pub(super) fn expire_primary_frames(&mut self) -> Result<(), String> {
++    /// Retires unavailable control before checking the live interval deadline.
++    pub(super) fn expire_primary_frames(&mut self, dead: bool) -> Result<(), String> {
++        if self.primary.frame_clock.is_some() && (dead || !self.unlocked()) {
++            self.handoff_player(self.player_life(), self.primary.admission.controller())?;
++            return Ok(());
++        }
+         if self
+             .frame_clock
+             .as_ref()
+@@ -398,6 +403,58 @@ mod tests {
+         assert_eq!(b.physics_step, f.end().unwrap());
+         assert!(b.character.feet.x > 0.);
+     }
++    #[test]
++    fn silent_death_retires_primary_and_secondary_intervals_without_expiry() {
++        for secondary in [false, true] {
++            let mut g = world();
++            let owner = Controller(if secondary { 10 } else { 9 });
++            let life = if secondary {
++                g.add_player(owner, Vec3::new(5., 0., -22.)).unwrap()
++            } else {
++                g.player_life()
++            };
++            ticks(&mut g, 1);
++            g.begin_movement_frames(owner, life).unwrap();
++            let queued = frame(&g, life, true);
++            g.submit_movement_frame(owner, queued.clone()).unwrap();
++            let position = if secondary {
++                g.additional_players[&life.actor].player
++            } else {
++                g.primary.player
++            };
++            g.hostile_hit_player(life, 10_000).unwrap();
++            ticks(&mut g, 1);
++            assert!(
++                if secondary {
++                    g.additional_players[&life.actor].frame_clock.is_none()
++                } else {
++                    g.primary.frame_clock.is_none()
++                },
++                "Dead control must retire before its clock expires"
++            );
++            let fenced = g.player_admission(life.actor).unwrap().epoch();
++            assert_eq!(fenced, queued.epoch + 1);
++            assert_eq!(g.player_admission(life.actor).unwrap().controller(), owner);
++            assert!(g.submit_movement_frame(owner, queued.clone()).is_err());
++            ticks(&mut g, 12);
++            assert_eq!(g.movement_expiry.total, 0);
++            assert_eq!(g.player_admission(life.actor).unwrap().epoch(), fenced);
++            assert_eq!(
++                if secondary {
++                    g.additional_players[&life.actor].player
++                } else {
++                    g.primary.player
++                },
++                position
++            );
++            let next = g.respawn_controlled_player(owner, life).unwrap();
++            assert_ne!(next, life);
++            assert!(g.submit_movement_frame(owner, queued).is_err());
++            ticks(&mut g, 1);
++            g.begin_movement_frames(owner, next).unwrap();
++        }
++    }
++
+     #[test]
+     fn primary_and_secondary_lifecycle_changes_fence_delayed_intervals() {
+         for secondary in [false, true] {
+diff --git a/crates/verse-world/src/play/multiplayer.rs b/crates/verse-world/src/play/multiplayer.rs
+index abfc8f4f3e..230c151d2a 100644
+--- a/crates/verse-world/src/play/multiplayer.rs
++++ b/crates/verse-world/src/play/multiplayer.rs
+@@ -952,7 +952,16 @@ impl Game {
+             let mut p = self.additional_players.remove(&actor).unwrap();
+             let result: Result<(), String> = (|| {
+                 let dead = self.simulation.snapshot_for(p.source)?.player.hp == 0;
+-                if p.frame_clock
++                if p.frame_clock.is_some() && (dead || !self.unlocked()) {
++                    p.admission
++                        .handoff(p.admission.controller())
++                        .map_err(|e| format!("Unavailable interval handoff refused: {e:?}"))?;
++                    p.frame_clock = None;
++                    p.pending_movement = None;
++                    p.pending_jump = false;
++                    p.held_movement = Default::default();
++                } else if p
++                    .frame_clock
+                     .as_ref()
+                     .is_some_and(|clock| clock.expired(self.physics_steps))
+                 {
+diff --git a/crates/verse-world/src/prediction/local.rs b/crates/verse-world/src/prediction/local.rs
+index 6e699e733e..32348d613c 100644
+--- a/crates/verse-world/src/prediction/local.rs
++++ b/crates/verse-world/src/prediction/local.rs
+@@ -27,11 +27,13 @@ pub struct Pose {
+ pub struct Timing {
+     recovery_blocks: u64,
+     embedding_deferrals: u64,
++    horizon_pauses: u64,
+     separating_steps: u64,
+     last_embedding: Option<String>,
+     render_floor: u64,
+     deferred_steps: Vec<u64>,
+     motor_history_steps: usize,
++    last_reconciliation: Option<Reconciliation>,
+     steps_per_second: u16,
+     step: u64,
+     simulated: u64,
+@@ -54,18 +56,30 @@ struct Input {
+     step: u64,
+     intent: Intent<Ability>,
+ }
+-#[derive(Clone, Copy)]
++#[derive(Clone, Copy, serde::Serialize)]
+ struct Estimate {
+     character: physics::character::Character,
+     held: movement::Held,
+     yaw: f32,
+     policy: movement::Policy,
+ }
++/// One reconciliation decision, retained without growing the input history.
++#[derive(Clone, Copy, serde::Serialize)]
++struct Reconciliation {
++    previous_baseline: Option<Baseline>,
++    completed_estimate: Option<Estimate>,
++    fixed_geometry_matches: bool,
++    blocking_geometry_matches: bool,
++    dirty_before: bool,
++    path: &'static str,
++}
+ pub struct Local {
+     recovery: movement::RecoveryObservations,
+     embedding_deferrals: u64,
++    horizon_pauses: u64,
+     separating_steps: u64,
+     last_embedding: Option<String>,
++    last_reconciliation: Option<Reconciliation>,
+     collision: SceneCache,
+     baseline: Option<Baseline>,
+     world_credit: u64,
+@@ -90,8 +104,10 @@ impl Local {
+         Self {
+             recovery: Default::default(),
+             embedding_deferrals: 0,
++            horizon_pauses: 0,
+             separating_steps: 0,
+             last_embedding: None,
++            last_reconciliation: None,
+             collision: SceneCache::new(instance),
+             baseline: None,
+             world_credit: 0,
+@@ -113,6 +129,7 @@ impl Local {
+         }
+     }
+     pub fn clear(&mut self) {
++        self.last_reconciliation = None;
+         self.baseline = None;
+         self.world_credit = 0;
+         self.render_floor = 0;
+@@ -124,6 +141,10 @@ impl Local {
+         self.motion_time = 0.;
+         self.moving = false;
+     }
++    /// Counts frames that waited at the correction horizon for authority.
++    pub fn horizon_pauses(&self) -> u64 {
++        self.horizon_pauses
++    }
+     pub fn context(&self) -> Option<(LifeId, u64)> {
+         self.baseline.map(|b| (b.life, b.epoch))
+     }
+@@ -132,11 +153,13 @@ impl Local {
+         Timing {
+             recovery_blocks: self.recovery.blocks,
+             embedding_deferrals: self.embedding_deferrals,
++            horizon_pauses: self.horizon_pauses,
+             separating_steps: self.separating_steps,
+             last_embedding: self.last_embedding.clone(),
+             render_floor: self.render_floor,
+             deferred_steps: self.deferred_steps.iter().copied().collect(),
+             motor_history_steps: self.estimates.len(),
++            last_reconciliation: self.last_reconciliation,
+             steps_per_second: 120,
+             step: self.step,
+             simulated: self.simulated,
+@@ -210,6 +233,53 @@ impl Local {
+     pub fn confirmed(&self) -> Option<Baseline> {
+         self.baseline
+     }
++    fn movement_geometry_matches(
++        &self,
++        geometry: &SceneSnapshot,
++        incoming: Option<Baseline>,
++    ) -> bool {
++        if self
++            .baseline
++            .is_none_or(|b| b.profile != movement::Profile::Frames)
++        {
++            return self.collision.blocking_geometry_matches(geometry);
++        }
++        if self.collision.blocking_geometry_matches(geometry) {
++            return true;
++        }
++        let mut min = glam::DVec3::splat(f64::INFINITY);
++        let mut max = glam::DVec3::splat(f64::NEG_INFINITY);
++        let delta = incoming
++            .and_then(|b| {
++                self.estimates
++                    .get(&b.physics_step)
++                    .map(|e| b.character.feet - e.character.feet)
++            })
++            .unwrap_or(glam::DVec3::ZERO);
++        let mut include = |feet: glam::DVec3| {
++            min = min.min(feet).min(feet + delta);
++            max = max.max(feet).max(feet + delta);
++        };
++        if let Some(baseline) = self.baseline {
++            include(baseline.character.feet);
++        }
++        if let Some(character) = self.character {
++            include(character.feet);
++        }
++        if let Some(baseline) = incoming {
++            include(baseline.character.feet);
++        }
++        for estimate in self.estimates.values() {
++            include(estimate.character.feet);
++        }
++        let settings = physics::character::Settings::default();
++        let margin = settings.radius + settings.step_height + settings.ground_snap + 1e-5;
++        self.collision.blocking_geometry_matches_in(
++            geometry,
++            min - glam::DVec3::splat(margin),
++            max + glam::DVec3::splat(margin) + glam::DVec3::Y * settings.height,
++        )
++    }
+     fn observe_inner(
+         &mut self,
+         baseline: Baseline,
+@@ -219,32 +289,76 @@ impl Local {
+     ) -> Result<(), String> {
+         baseline.validate()?;
+         if let Some(old) = self.baseline {
+-            if observation <= self.observation
+-                || tick < self.tick
+-                || baseline.life.instance != old.life.instance
++            let rejection = if observation <= self.observation {
++                Some("observation order")
++            } else if tick < self.tick {
++                Some("authority tick")
++            } else if baseline.life.instance != old.life.instance
+                 || baseline.life.actor != old.life.actor
+-                || baseline.life.generation < old.life.generation
+-                || baseline.epoch < old.epoch
+-                || (baseline.epoch == old.epoch
+-                    && (baseline.physics_step < old.physics_step
+-                        || baseline.applied_sequence < old.applied_sequence
+-                        || baseline.life != old.life
+-                        || baseline.profile != old.profile
+-                        || (baseline.profile == movement::Profile::Frames
+-                            && baseline.physics_step > self.step)
+-                        || (baseline.profile == movement::Profile::Frames
+-                            && baseline.world_step < old.world_step)))
+             {
+-                return Err("Local prediction observation regressed".into());
++                Some("actor identity")
++            } else if baseline.life.generation < old.life.generation {
++                Some("life generation")
++            } else if baseline.epoch < old.epoch {
++                Some("control epoch")
++            } else if baseline.epoch == old.epoch {
++                if baseline.physics_step < old.physics_step {
++                    Some("confirmed physics step")
++                } else if baseline.applied_sequence < old.applied_sequence {
++                    Some("applied sequence")
++                } else if baseline.life != old.life {
++                    Some("life changed without an epoch")
++                } else if baseline.profile != old.profile {
++                    Some("profile changed without an epoch")
++                } else if baseline.profile == movement::Profile::Frames
++                    && baseline.physics_step > self.step
++                {
++                    Some("confirmation ahead of local simulation")
++                } else if baseline.profile == movement::Profile::Frames
++                    && baseline.world_step < old.world_step
++                {
++                    Some("world step")
++                } else {
++                    None
++                }
++            } else {
++                None
++            };
++            if let Some(reason) = rejection {
++                return Err(format!(
++                    "Local prediction observation regressed: {reason}; observation {observation}/{}, tick {tick}/{}, epoch {}/{}, confirmed step {}/{}, local step {}, world step {}/{}, sequence {}/{}",
++                    self.observation,
++                    self.tick,
++                    baseline.epoch,
++                    old.epoch,
++                    baseline.physics_step,
++                    old.physics_step,
++                    self.step,
++                    baseline.world_step,
++                    old.world_step,
++                    baseline.applied_sequence,
++                    old.applied_sequence,
++                ));
+             }
+         }
+         let reset = self.context() != Some((baseline.life, baseline.epoch));
++        let blocking_geometry_matches =
++            geometry.is_none_or(|scene| self.movement_geometry_matches(scene, Some(baseline)));
++        let mut reconciliation = Reconciliation {
++            previous_baseline: self.baseline,
++            completed_estimate: self.estimates.get(&baseline.physics_step).copied(),
++            fixed_geometry_matches: geometry
++                .is_none_or(|geometry| self.collision.fixed_geometry_matches(geometry)),
++            blocking_geometry_matches,
++            dirty_before: self.dirty,
++            path: "replay",
++        };
+         let same_travel = baseline.profile == movement::Profile::Frames
+             && self.baseline.is_some_and(|mut previous| {
+                 previous.world_step = baseline.world_step;
+                 previous == baseline
+             })
+-            && geometry.is_none_or(|geometry| self.collision.fixed_geometry_matches(geometry));
++            && blocking_geometry_matches;
+         // Compare completed travel at its own physics step. Capsule poses from
+         // another observation cannot retroactively replace a pending path that
+         // this estimate already processed. Other motor state still requires replay.
+@@ -254,7 +368,7 @@ impl Local {
+             && !same_travel
+             && !self.dirty
+             && baseline.profile == movement::Profile::Frames
+-            && geometry.is_none_or(|scene| self.collision.fixed_geometry_matches(scene))
++            && blocking_geometry_matches
+         {
+             if let (Some(reference), Some(current)) =
+                 (self.estimates.get(&baseline.physics_step), self.character)
+@@ -276,16 +390,35 @@ impl Local {
+                         entity: baseline.life.actor,
+                         generation: baseline.life.generation,
+                     });
+-                    let overlap = self.collision.scene().overlap(
+-                        physics::character::Settings::default().capsule(current.feet + delta),
+-                        filter,
+-                    )?;
+-                    if overlap.truncated {
+-                        return Err("Prediction reconciliation query budget exceeded".into());
++                    let fixed_clear_at = |feet: glam::DVec3| -> Result<bool, String> {
++                        let overlap = self.collision.scene().overlap(
++                            physics::character::Settings::default().capsule(feet + delta),
++                            filter,
++                        )?;
++                        if overlap.truncated {
++                            return Err("Prediction reconciliation query budget exceeded".into());
++                        }
++                        Ok(overlap.hits.iter().all(|hit| {
++                            hit.penetration <= 1e-5 || self.collision.is_capsule(hit.collider)
++                        }))
++                    };
++                    let mut fixed_clear = delta == glam::DVec3::ZERO;
++                    if !fixed_clear {
++                        fixed_clear = fixed_clear_at(current.feet)?;
++                        if fixed_clear {
++                            // A clear current pose does not guarantee that shifting
++                            // earlier wall contacts preserves valid collision history.
++                            for (_, estimate) in self.estimates.range((
++                                std::ops::Bound::Excluded(baseline.physics_step),
++                                std::ops::Bound::Unbounded,
++                            )) {
++                                if !fixed_clear_at(estimate.character.feet)? {
++                                    fixed_clear = false;
++                                    break;
++                                }
++                            }
++                        }
+                     }
+-                    let fixed_clear = overlap.hits.iter().all(|hit| {
+-                        hit.penetration <= 1e-5 || self.collision.is_capsule(hit.collider)
+-                    });
+                     if fixed_clear {
+                         translation = Some(delta);
+                     } else {
+@@ -314,20 +447,13 @@ impl Local {
+                         };
+                         if let Some(feet) = correct(current.feet)? {
+                             let mut history = Vec::new();
+-                            let mut valid = true;
+                             for (step, estimate) in self.estimates.range((
+                                 std::ops::Bound::Excluded(baseline.physics_step),
+                                 std::ops::Bound::Unbounded,
+                             )) {
+-                                let Some(corrected) = correct(estimate.character.feet)? else {
+-                                    valid = false;
+-                                    break;
+-                                };
+-                                history.push((*step, corrected));
+-                            }
+-                            if valid {
+-                                constrained = Some((feet, history));
++                                history.push((*step, correct(estimate.character.feet)?));
+                             }
++                            constrained = Some((feet, history));
+                         }
+                     }
+                 }
+@@ -408,9 +534,16 @@ impl Local {
+                 .as_mut()
+                 .expect("Verified prediction character")
+                 .feet = *feet;
++            // An obstructed historical sample cannot invalidate the separately
++            // checked current pose. Remove it so later confirmations cannot use
++            // that sample as a translation reference.
+             for (step, corrected) in history {
+-                if let Some(estimate) = self.estimates.get_mut(step) {
+-                    estimate.character.feet = *corrected;
++                if let Some(corrected) = corrected {
++                    if let Some(estimate) = self.estimates.get_mut(step) {
++                        estimate.character.feet = *corrected;
++                    }
++                } else {
++                    self.estimates.remove(step);
+                 }
+             }
+         } else if !same_travel {
+@@ -435,6 +568,18 @@ impl Local {
+             self.world_credit.max(baseline.world_step)
+         };
+         self.baseline = Some(baseline);
++        reconciliation.path = if reset {
++            "control_reset"
++        } else if same_travel {
++            "same_travel"
++        } else if translation.is_some() {
++            "translation"
++        } else if constrained.is_some() {
++            "constrained_translation"
++        } else {
++            "replay"
++        };
++        self.last_reconciliation = Some(reconciliation);
+         self.tick = tick;
+         self.observation = observation;
+         if translation.is_some() || constrained.is_some() {
+@@ -463,7 +608,7 @@ impl Local {
+         let replay = self
+             .baseline
+             .is_some_and(|b| b.profile != movement::Profile::Frames)
+-            || !self.collision.fixed_geometry_matches(geometry);
++            || !self.movement_geometry_matches(geometry, None);
+         self.collision.update(geometry)?;
+         self.tick = tick;
+         self.observation = observation;
+@@ -471,11 +616,7 @@ impl Local {
+         Ok(())
+     }
+     pub fn queue(&mut self, token: u64, intent: Intent<Ability>) -> Result<(), String> {
+-        if self.baseline.is_none()
+-            || token == 0
+-            || token <= self.token
+-            || self.inputs.len() >= super::CAPACITY
+-        {
++        if self.baseline.is_none() || token == 0 || token <= self.token {
+             return Err("Local prediction input context or budget is invalid".into());
+         }
+         match &intent {
+@@ -488,6 +629,30 @@ impl Local {
+             Intent::Jump => {}
+             _ => return Err("Only movement inputs can be predicted".into()),
+         }
++        // Consecutive untransmitted direction samples at the same instant
++        // replace each other. No bound interval or intervening jump changes.
++        if self.movement_profile() == Some(movement::Profile::Frames)
++            && matches!(intent, Intent::Move { .. })
++            && self.inputs.back().is_some_and(|last| {
++                last.step == self.step
++                    && last.sequence.is_none()
++                    && last.superseded_by.is_none()
++                    && matches!(last.intent, Intent::Move { .. })
++                    && !self
++                        .inputs
++                        .iter()
++                        .any(|input| input.superseded_by == Some(last.token))
++            })
++        {
++            let last = self.inputs.back_mut().unwrap();
++            last.token = token;
++            last.intent = intent;
++            self.token = token;
++            return Ok(());
++        }
++        if self.inputs.len() >= super::CAPACITY {
++            return Err("Local prediction input context or budget is invalid".into());
++        }
+         self.token = token;
+         self.inputs.push_back(Input {
+             token,
+@@ -684,14 +849,27 @@ impl Local {
+         self.fraction += seconds * 120.;
+         let steps = self.fraction.floor() as u64;
+         self.fraction -= steps as f64;
++        // Wait at the bounded horizon without discarding already submitted time.
++        // Excess elapsed time cannot renew movement or accumulate a catch-up burst.
++        let room = u64::from(super::MAX_PENDING_STEPS)
++            .saturating_sub(self.step.saturating_sub(baseline.physics_step));
++        let admitted = if baseline.profile == movement::Profile::Frames {
++            steps.min(room)
++        } else {
++            if steps > room {
++                self.clear();
++                return Err("Local prediction exceeded its correction horizon".into());
++            }
++            steps
++        };
++        if admitted < steps {
++            self.horizon_pauses = self.horizon_pauses.saturating_add(1);
++            self.fraction = 0.;
++        }
+         self.step = self
+             .step
+-            .checked_add(steps)
++            .checked_add(admitted)
+             .ok_or("Local prediction clock exhausted")?;
+-        if self.step.saturating_sub(baseline.physics_step) > u64::from(super::MAX_PENDING_STEPS) {
+-            self.clear();
+-            return Err("Local prediction exceeded its correction horizon".into());
+-        }
+         let mut filter = Filter::blocking(baseline.life.instance);
+         filter.ignore = Some(Life {
+             instance: baseline.life.instance,
+@@ -969,6 +1147,128 @@ mod tests {
+         }
+     }
+     #[test]
++    fn correction_horizon_preserves_submitted_time_until_confirmation() {
++        let (mut local, mut baseline, geometry) = setup();
++        baseline.profile = movement::Profile::Frames;
++        baseline.epoch += 1;
++        local.observe(baseline, &geometry, 2, 2).unwrap();
++        local.queue(1, movement()).unwrap();
++        for _ in 0..21 {
++            local.advance(0.1).unwrap();
++        }
++        local
++            .queue(
++                2,
++                Intent::Move {
++                    axes: [0.; 2],
++                    yaw: 0.,
++                },
++            )
++            .unwrap();
++        local.advance(4. / 120.).unwrap();
++        let end = local.physics_step();
++        assert_eq!(end, u64::from(super::super::MAX_PENDING_STEPS));
++        local
++            .grant_world_credit(baseline.life, baseline.epoch, end)
++            .unwrap();
++        for start in (0..end).step_by(4) {
++            let mut frame = local.movement_frame(start, 4).unwrap();
++            frame.sequence = start / 4 + 1;
++            local.bind_movement_frame(&frame).unwrap();
++        }
++        let character = local.character.unwrap();
++        let before = local.pose().unwrap().position;
++        for _ in 0..5 {
++            local.advance(0.1).unwrap();
++            assert_eq!(local.context(), Some((baseline.life, baseline.epoch)));
++            assert_eq!(local.physics_step(), end);
++            assert_eq!(local.pose().unwrap().position, before);
++            assert_eq!(local.pending(), 2);
++        }
++        baseline.physics_step = end;
++        baseline.world_step = end + 12;
++        baseline.applied_sequence = end / 4;
++        baseline.character = character;
++        baseline.held.refresh([0.; 2], end - 4).unwrap();
++        assert!(local.observe_applied(baseline, 3, 3).unwrap());
++        local.advance(0.).unwrap();
++        assert_eq!(local.physics_step(), end);
++        assert_eq!(local.pending(), 0);
++        local.advance(4. / 120.).unwrap();
++        assert_eq!(local.physics_step(), end + 4);
++        assert_eq!(local.pose().unwrap().position, before);
++    }
++
++    #[test]
++    fn paused_clock_movement_samples_preserve_bound_history_jump_and_latest_direction() {
++        let (mut local, mut baseline, geometry) = setup();
++        baseline.profile = movement::Profile::Frames;
++        baseline.epoch += 1;
++        local.observe(baseline, &geometry, 2, 2).unwrap();
++        local.queue(1, movement()).unwrap();
++        for _ in 0..21 {
++            local.advance(0.1).unwrap();
++        }
++        local
++            .queue(
++                2,
++                Intent::Move {
++                    axes: [0.; 2],
++                    yaw: 0.,
++                },
++            )
++            .unwrap();
++        local.advance(4. / 120.).unwrap();
++        let end = local.physics_step();
++        local
++            .grant_world_credit(baseline.life, baseline.epoch, end)
++            .unwrap();
++        for start in (0..end).step_by(4) {
++            let mut frame = local.movement_frame(start, 4).unwrap();
++            frame.sequence = start / 4 + 1;
++            local.bind_movement_frame(&frame).unwrap();
++        }
++        let character = local.character.unwrap();
++        for token in 3..=1002 {
++            local.advance(0.1).unwrap();
++            local.queue(token, movement()).unwrap();
++            assert_eq!(local.physics_step(), end);
++            assert_eq!(local.pending(), 3);
++            assert_eq!(local.context(), Some((baseline.life, baseline.epoch)));
++        }
++        // A jump separates movement samples even at the paused boundary.
++        local.queue(1003, Intent::Jump).unwrap();
++        local.queue(1004, movement()).unwrap();
++        local
++            .queue(
++                1005,
++                Intent::Move {
++                    axes: [0., 1.],
++                    yaw: 0.,
++                },
++            )
++            .unwrap();
++        assert_eq!(local.pending(), 5);
++        assert!(local.contains(1003) && local.contains(1005));
++        assert!(!local.contains(1004));
++        assert_eq!(
++            local.movement_frame(end - 4, 4).unwrap().segments[0].axes,
++            [0.; 2]
++        );
++        baseline.physics_step = end;
++        baseline.world_step = end + 12;
++        baseline.applied_sequence = end / 4;
++        baseline.character = character;
++        baseline.held.refresh([0.; 2], end - 4).unwrap();
++        local.observe_applied(baseline, 3, 3).unwrap();
++        assert_eq!(local.pending(), 3);
++        local.advance(4. / 120.).unwrap();
++        let next = local.movement_frame(end, 4).unwrap();
++        assert!(next.segments[0].jump);
++        assert_eq!(next.segments[0].axes, [0., 1.]);
++        assert_eq!(local.physics_step(), end + 4);
++    }
++    #[test]
+     fn partial_interval_confirmation_replays_only_unconsumed_steps() {
+         let (mut local, mut baseline, geometry) = setup();
+         baseline.profile = movement::Profile::Frames;
+@@ -1372,6 +1672,92 @@ mod tests {
+         assert!((local.pose().unwrap().position.x - 5.64999).abs() < 0.0001);
+     }
+ 
++    #[test]
++    fn invalid_historical_wall_pose_does_not_discard_a_valid_current_correction() {
++        use physics::queries::{ColliderKey, GeometrySnapshot, Pose, ShapeSnapshot, Usage};
++        let (mut local, mut baseline, mut source) = setup();
++        baseline.profile = movement::Profile::Frames;
++        baseline.epoch += 1;
++        source.colliders.push(ShapeSnapshot {
++            key: ColliderKey {
++                life: Life {
++                    instance: 7,
++                    entity: 0,
++                    generation: 0,
++                },
++                shape: 1,
++            },
++            layers: 1,
++            usage: Usage::Blocking,
++            pose: Pose::default(),
++            geometry: GeometrySnapshot::Box {
++                min: glam::DVec3::new(6., 0., -2.),
++                max: glam::DVec3::new(6.1, 4., 2.),
++            },
++        });
++        local.observe(baseline, &source, 2, 2).unwrap();
++        for token in 1..=9 {
++            local.queue(token, movement()).unwrap();
++            local.advance(0.1).unwrap();
++        }
++        assert!((local.pose().unwrap().position.x - 5.64999).abs() < 0.0001);
++        movement::advance(
++            &mut baseline.character,
++            local.collision.scene(),
++            Filter::blocking(7),
++            glam::DVec3::X * 6.4008,
++            false,
++            12,
++            1. / 120.,
++        )
++        .unwrap();
++        let capsule =
++            physics::character::Settings::default().capsule(glam::DVec3::new(0.7, 0., 0.));
++        source.colliders.push(ShapeSnapshot {
++            key: ColliderKey {
++                life: Life {
++                    instance: 7,
++                    entity: 216,
++                    generation: 0,
++                },
++                shape: 0,
++            },
++            layers: 1,
++            usage: Usage::Blocking,
++            pose: Pose::default(),
++            geometry: GeometrySnapshot::Capsule {
++                a: capsule.a,
++                b: capsule.b,
++                radius: capsule.radius,
++            },
++        });
++        local.update_geometry(&source, 3, 3).unwrap();
++        // A retained sample can become obstructed after a crowd correction.
++        // It must not erase the independently validated current wall constraint.
++        local.estimates.get_mut(&24).unwrap().character.feet.x = 6.05;
++        baseline.physics_step = 12;
++        baseline.world_step = 108;
++        baseline.character.feet.x = 0.7;
++        baseline.held.refresh([1., 0.], 0).unwrap();
++        local.observe(baseline, &source, 4, 4).unwrap();
++        assert_eq!(
++            local.last_reconciliation.as_ref().unwrap().path,
++            "constrained_translation"
++        );
++        assert!(!local.estimates.contains_key(&24));
++        local.advance(0.).unwrap();
++        assert!(
++            (local.pose().unwrap().position.x - 5.64999).abs() < 0.0001,
++            "A later capsule erased processed pending travel: {:?}",
++            local.pose().unwrap().position
++        );
++        assert_eq!(local.physics_step(), 108);
++        assert_eq!(local.pending(), 9);
++        assert!(local.estimates.len() <= super::super::MAX_PENDING_STEPS as usize + 1);
++        local.advance(4. / 120.).unwrap();
++        assert!((local.pose().unwrap().position.x - 5.64999).abs() < 0.0001);
++    }
++
+     #[test]
+     fn motor_history_preserves_fixed_walls_external_motion_and_policy_changes() {
+         use physics::queries::{ColliderKey, GeometrySnapshot, Pose, ShapeSnapshot, Usage};
+@@ -1527,6 +1913,273 @@ mod tests {
+         );
+     }
+ 
++    #[test]
++    fn selection_only_changes_preserve_completed_pending_motion() {
++        use physics::queries::{ColliderKey, GeometrySnapshot, Pose, ShapeSnapshot, Usage};
++        for change in 0..3 {
++            let (mut local, mut baseline, mut source) = setup();
++            let selection = ShapeSnapshot {
++                key: ColliderKey {
++                    life: Life {
++                        instance: 7,
++                        entity: 300,
++                        generation: 0,
++                    },
++                    shape: 0,
++                },
++                layers: 1,
++                usage: Usage::Selection,
++                pose: Pose::default(),
++                geometry: GeometrySnapshot::Box {
++                    min: glam::DVec3::new(100., 0., 100.),
++                    max: glam::DVec3::new(101., 1., 101.),
++                },
++            };
++            source.colliders.push(selection.clone());
++            baseline.profile = movement::Profile::Frames;
++            baseline.epoch += 1;
++            local.observe(baseline, &source, 2, 2).unwrap();
++            local.queue(1, movement()).unwrap();
++            for _ in 0..3 {
++                local.advance(0.1).unwrap();
++            }
++            let before = local.pose().unwrap().position;
++            let completed = local.estimates[&12];
++            baseline.physics_step = 12;
++            baseline.world_step = 36;
++            baseline.character = completed.character;
++            baseline.held = completed.held;
++            baseline.policy = completed.policy;
++            baseline.yaw = completed.yaw;
++            local.observe(baseline, &source, 3, 3).unwrap();
++            local.advance(0.).unwrap();
++            let capsule =
++                physics::character::Settings::default().capsule(glam::DVec3::new(1.3, 0., 0.));
++            source.colliders.push(ShapeSnapshot {
++                key: ColliderKey {
++                    life: Life {
++                        instance: 7,
++                        entity: 216,
++                        generation: 0,
++                    },
++                    shape: 0,
++                },
++                layers: 1,
++                usage: Usage::Blocking,
++                pose: Pose::default(),
++                geometry: GeometrySnapshot::Capsule {
++                    a: capsule.a,
++                    b: capsule.b,
++                    radius: capsule.radius,
++                },
++            });
++            match change {
++                0 => {
++                    let mut added = selection.clone();
++                    added.key.life.entity += 1;
++                    source.colliders.push(added);
++                }
++                1 => {
++                    source
++                        .colliders
++                        .iter_mut()
++                        .find(|shape| shape.key == selection.key)
++                        .unwrap()
++                        .pose
++                        .position
++                        .x += 1.;
++                }
++                _ => source.colliders.retain(|shape| shape.key != selection.key),
++            }
++            baseline.physics_step = 12;
++            baseline.world_step = 36;
++            baseline.character = completed.character;
++            baseline.held = completed.held;
++            baseline.policy = completed.policy;
++            baseline.yaw = completed.yaw;
++            local.observe(baseline, &source, 4, 4).unwrap();
++            local.advance(0.).unwrap();
++            assert!(
++                local.pose().unwrap().position.distance(before) < 1e-7,
++                "Selection change {change} rewound completed pending movement: {before:?} -> {:?}",
++                local.pose().unwrap().position
++            );
++            assert_eq!(local.physics_step(), 36);
++            assert_eq!(local.timing().simulated, 36);
++            assert_eq!(local.pending(), 1);
++        }
++    }
++
++    #[test]
++    fn distant_blocking_prop_changes_preserve_completed_pending_motion() {
++        use physics::queries::{ColliderKey, GeometrySnapshot, Pose, ShapeSnapshot, Usage};
++        for change in 0..3 {
++            let (mut local, mut baseline, mut source) = setup();
++            let selection = ShapeSnapshot {
++                key: ColliderKey {
++                    life: Life {
++                        instance: 7,
++                        entity: 300,
++                        generation: 0,
++                    },
++                    shape: 0,
++                },
++                layers: 1,
++                usage: Usage::Blocking,
++                pose: Pose::default(),
++                geometry: GeometrySnapshot::Box {
++                    min: glam::DVec3::new(100., 0., 100.),
++                    max: glam::DVec3::new(101., 1., 101.),
++                },
++            };
++            source.colliders.push(selection.clone());
++            baseline.profile = movement::Profile::Frames;
++            baseline.epoch += 1;
++            local.observe(baseline, &source, 2, 2).unwrap();
++            local.queue(1, movement()).unwrap();
++            for _ in 0..3 {
++                local.advance(0.1).unwrap();
++            }
++            let before = local.pose().unwrap().position;
++            let completed = local.estimates[&12];
++            baseline.physics_step = 12;
++            baseline.world_step = 36;
++            baseline.character = completed.character;
++            baseline.held = completed.held;
++            baseline.policy = completed.policy;
++            baseline.yaw = completed.yaw;
++            local.observe(baseline, &source, 3, 3).unwrap();
++            local.advance(0.).unwrap();
++            let capsule =
++                physics::character::Settings::default().capsule(glam::DVec3::new(1.3, 0., 0.));
++            source.colliders.push(ShapeSnapshot {
++                key: ColliderKey {
++                    life: Life {
++                        instance: 7,
++                        entity: 216,
++                        generation: 0,
++                    },
++                    shape: 0,
++                },
++                layers: 1,
++                usage: Usage::Blocking,
++                pose: Pose::default(),
++                geometry: GeometrySnapshot::Capsule {
++                    a: capsule.a,
++                    b: capsule.b,
++                    radius: capsule.radius,
++                },
++            });
++            match change {
++                0 => {
++                    let mut added = selection.clone();
++                    added.key.life.entity += 1;
++                    source.colliders.push(added);
++                }
++                1 => {
++                    source
++                        .colliders
++                        .iter_mut()
++                        .find(|shape| shape.key == selection.key)
++                        .unwrap()
++                        .pose
++                        .position
++                        .x += 1.;
++                }
++                _ => source.colliders.retain(|shape| shape.key != selection.key),
++            }
++            baseline.physics_step = 12;
++            baseline.world_step = 36;
++            baseline.character = completed.character;
++            baseline.held = completed.held;
++            baseline.policy = completed.policy;
++            baseline.yaw = completed.yaw;
++            local.observe(baseline, &source, 4, 4).unwrap();
++            local.advance(0.).unwrap();
++            assert!(
++                local.pose().unwrap().position.distance(before) < 1e-7,
++                "Distant blocker change {change} rewound completed pending movement: {before:?} -> {:?}",
++                local.pose().unwrap().position
++            );
++            assert_eq!(local.physics_step(), 36);
++            assert_eq!(local.timing().simulated, 36);
++            assert_eq!(local.pending(), 1);
++        }
++    }
++
++    #[test]
++    fn free_current_correction_keeps_historical_wall_contacts_valid() {
++        use physics::queries::{ColliderKey, GeometrySnapshot, Pose, ShapeSnapshot, Usage};
++        let (mut local, mut baseline, mut source) = setup();
++        baseline.profile = movement::Profile::Frames;
++        baseline.epoch += 1;
++        baseline.character.feet.x = 4.;
++        source.colliders.push(ShapeSnapshot {
++            key: ColliderKey {
++                life: Life {
++                    instance: 7,
++                    entity: 0,
++                    generation: 0,
++                },
++                shape: 1,
++            },
++            layers: 1,
++            usage: Usage::Blocking,
++            pose: Pose::default(),
++            geometry: GeometrySnapshot::Box {
++                min: glam::DVec3::new(6., 0., -2.),
++                max: glam::DVec3::new(6.1, 4., 2.),
++            },
++        });
++        local.observe(baseline, &source, 2, 2).unwrap();
++        local.queue(1, movement()).unwrap();
++        for _ in 0..3 {
++            local.advance(0.1).unwrap();
++        }
++        assert!(local.pose().unwrap().position.x > 5.64);
++        local
++            .queue(
++                2,
++                Intent::Move {
++                    axes: [-1., 0.],
++                    yaw: 0.,
++                },
++            )
++            .unwrap();
++        local.advance(0.1).unwrap();
++        local.advance(0.1).unwrap();
++        let before = local.pose().unwrap().position;
++        let completed = local.estimates[&12];
++        baseline.physics_step = 12;
++        baseline.world_step = local.physics_step();
++        baseline.character = completed.character;
++        baseline.character.feet.x += 0.1;
++        baseline.held = completed.held;
++        baseline.policy = completed.policy;
++        baseline.yaw = completed.yaw;
++        local.observe(baseline, &source, 3, 3).unwrap();
++        local.advance(0.).unwrap();
++        assert!((local.pose().unwrap().position.x - before.x - 0.1).abs() < 1e-6);
++        let settings = physics::character::Settings::default();
++        for (step, estimate) in &local.estimates {
++            let overlaps = local
++                .collision
++                .scene()
++                .overlap(
++                    settings.capsule(estimate.character.feet),
++                    Filter::blocking(7),
++                )
++                .unwrap();
++            assert!(!overlaps.truncated);
++            assert!(
++                overlaps.hits.iter().all(|hit| hit.penetration <= 1e-5),
++                "Correction embedded historical step {step} in a fixed wall: {:?}",
++                estimate.character.feet
++            );
++        }
++        assert_eq!(local.physics_step(), 60);
++        assert_eq!(local.pending(), 2);
++    }
+     #[test]
+     fn confirmed_time_reconciliation_does_not_replay_through_later_crowd_geometry() {
+         use physics::queries::{ColliderKey, GeometrySnapshot, Pose, ShapeSnapshot, Usage};
+diff --git a/crates/verse-world/src/service/net.rs b/crates/verse-world/src/service/net.rs
+index 440f601a6b..cf7c8c45dc 100644
+--- a/crates/verse-world/src/service/net.rs
++++ b/crates/verse-world/src/service/net.rs
+@@ -641,10 +641,12 @@ async fn serve_loop<F: Future<Output = ()>>(
+     let mut committed = CommitView::capture(&gateway);
+     let mut token = 0u64;
+     let mut dirty = false;
++    let mut checkpoint_ticks = 0u64;
+     let mut diagnostics = tokio::time::interval(Duration::from_secs(1));
+     diagnostics.set_missed_tick_behavior(MissedTickBehavior::Skip);
+     let mut storage_paused = false;
+     let mut resume_requests = 0usize;
++    let mut deferred_tick = None;
+     tokio::pin!(shutdown);
+     loop {
+         stats.request_queue_peak = stats.request_queue_peak.max(receive.len());
+@@ -715,10 +717,15 @@ async fn serve_loop<F: Future<Output = ()>>(
+             }
+             // If reply or writer bounds block admission, a tick must still flush
+             // admitted state. New arrivals cannot extend the captured FIFO cohort.
+-            _ = ticker.tick(), if resume_requests == 0 || !request_room => {
++            _ = async {
++                if deferred_tick.is_none() || resume_requests > 0 {
++                    ticker.tick().await;
++                }
++            }, if resume_requests == 0 || !request_room => {
+                 let now = Instant::now();
+-                let elapsed = now.duration_since(last_tick).as_secs_f64();
++                let wall_elapsed = now.duration_since(last_tick).as_secs_f64();
+                 last_tick = now;
++                let elapsed = deferred_tick.unwrap_or(0.) + wall_elapsed;
+                 let room = writer.as_ref().is_none_or(|writer| fences.len() < 2 && writer.send.as_ref().unwrap().capacity() > 0);
+                 let history = match gateway.chamber.rewards.history_capacity() {
+                     Ok(available) => available,
+@@ -727,10 +734,23 @@ async fn serve_loop<F: Future<Output = ()>>(
+                 if !room {
+                     storage_paused = true;
+                     stats.storage_paused_ticks += 1;
+-                    stats.storage_paused_seconds += elapsed;
++                    stats.storage_paused_seconds += wall_elapsed;
++                    continue;
++                }
++                if deferred_tick.is_none() && history && request_room
++                    && resume_requests == 0
++                    && !receive.is_empty()
++                {
++                    // A simulation deadline can become ready alongside valid
++                    // movement already waiting. Admit that fixed FIFO
++                    // cohort first, then resume this same elapsed-time batch.
++                    // Later arrivals cannot extend the cohort or starve time.
++                    resume_requests = receive.len();
++                    deferred_tick = Some(elapsed);
+                     continue;
+                 }
+                 if history && resume_requests == 0 {
++                    deferred_tick = None;
+                     let batch = match schedule.advance(elapsed) {
+                         Ok(batch) => batch,
+                         Err(error) => {failure = Some(error); break;}
+@@ -744,14 +764,24 @@ async fn serve_loop<F: Future<Output = ()>>(
+                         stats.simulation.record(seconds);
+                         stats.simulation_phases.record(seconds);
+                         stats.ticks += 1;
++                        if writer.is_some() {
++                            checkpoint_ticks = checkpoint_ticks.saturating_add(1);
++                            dirty = true;
++                        }
+                     }
+                     if failure.is_some() { break; }
+                 } else {
+                     // Flush already admitted state without adding more simulation mutations.
+                     stats.storage_paused_ticks += 1;
+-                    stats.storage_paused_seconds += elapsed;
++                    stats.storage_paused_seconds += wall_elapsed;
++                    if !history { deferred_tick = None; }
+                 }
+                 if let Some(writer) = &mut writer {
++                    // Adjacent ticks share one immutable checkpoint. Pressure still
++                    // flushes immediately, and replies wait for the durable prefix.
++                    if checkpoint_ticks < 2 && history && request_room {
++                        continue;
++                    }
+                     let permit = match writer.send.as_ref().unwrap().try_reserve() {
+                         Ok(permit) => permit,
+                         Err(_) => {
+@@ -783,6 +813,7 @@ async fn serve_loop<F: Future<Output = ()>>(
+                     stats.capture_phases.record(seconds);
+                     stats.writer_queue_peak = stats.writer_queue_peak.max(fences.len());
+                     permit.send(Work {token, prepared});
++                    checkpoint_ticks = 0;
+                     dirty = false;
+                 }
+             }
+@@ -2059,12 +2090,59 @@ pub(super) mod tests {
+         assert!(exit.stats.storage_paused_ticks > 0 && exit.stats.storage_paused_seconds > 0.);
+         assert!(exit.stats.commits.maximum_seconds >= 0.12);
+         assert_eq!(exit.stats.simulation.count, exit.stats.ticks);
+-        assert!(exit.stats.capture.count >= exit.stats.ticks);
++        assert!(exit.stats.capture.count >= 2);
++        assert!(exit.stats.checkpoint_commits <= exit.stats.capture.count + 1);
+         assert!(exit.stats.commits.percentile(0.99).unwrap().is_finite());
+         // Shutdown drains the writer and releases its exclusive storage lock.
+         assert!(Store::open(&root, [8; 32], 120).is_ok());
+     }
+ 
++    #[tokio::test]
++    async fn durable_ticks_share_checkpoints_and_shutdown_keeps_the_latest_state() {
++        let directory = tempfile::tempdir().unwrap();
++        let root = directory.path().join("state");
++        let keys = [key(121), key(122), key(123)];
++        let store = Store::open(&root, [8; 32], 120).unwrap();
++        let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
++        let (tls, _) = tls();
++        let (stop, stopped) = oneshot::channel();
++        let mut stop = Some(stop);
++        let mut ticks = 0;
++        let hook: Tick = Box::new(move |_, _| {
++            ticks += 1;
++            if ticks == 24 {
++                let _ = stop.take().unwrap().send(());
++            }
++        });
++        let exit = timeout(
++            Duration::from_secs(10),
++            serve_ticked(
++                listener,
++                tls,
++                gateway(&keys).with_content([8; 32]).unwrap(),
++                Some(store),
++                hook,
++                async {
++                    let _ = stopped.await;
++                },
++            ),
++        )
++        .await
++        .unwrap();
++        assert!(exit.failure.is_none(), "{:?}", exit.failure);
++        assert!(exit.stats.ticks >= 24);
++        assert!(
++            exit.stats.checkpoint_commits <= exit.stats.ticks.div_ceil(2) + 2,
++            "Each tick still forces a separate durable checkpoint: {} commits for {} ticks",
++            exit.stats.checkpoint_commits,
++            exit.stats.ticks
++        );
++        let expected_tick = exit.gateway.game().authority_tick;
++        let mut reopened = Store::open(&root, [8; 32], 120).unwrap();
++        let restored = reopened.recover().unwrap();
++        assert_eq!(restored.game().authority_tick, expected_tick);
++    }
++
+     #[tokio::test]
+     async fn durable_two_player_input_cadence_records_checkpoint_cost() {
+         use crate::{Intent, service::client::Client};
+diff --git a/crates/verse-world/src/service/net/resume_tests.rs b/crates/verse-world/src/service/net/resume_tests.rs
+index 2e72efb241..194d248c5b 100644
+--- a/crates/verse-world/src/service/net/resume_tests.rs
++++ b/crates/verse-world/src/service/net/resume_tests.rs
+@@ -77,7 +77,7 @@ async fn queued_intervals_survive_storage_resume_without_expiry() {
+         .unwrap();
+         let entry = client.begin_movement_frames().await.unwrap();
+         let Reply::Snapshot { state } = entry.body else {
+-            panic!("Missing interval baseline");
++            panic!("Missing interval baseline: {:?}", entry.body);
+         };
+         let baseline = state.movement.unwrap();
+         let frame = |start, steps| Frame {
+@@ -149,3 +149,133 @@ async fn queued_intervals_survive_storage_resume_without_expiry() {
+         );
+     }
+ }
++
++#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
++async fn queued_intervals_precede_simulation_deadlines() {
++    for (attempt, delay_ms) in [40u64, 110].into_iter().cycle().take(32).enumerate() {
++        let keys = [tests::key(114), tests::key(115), tests::key(116)];
++        let gate = Arc::new((Mutex::new(false), Condvar::new()));
++        let release = Release(gate.clone());
++        let (started, mut blocked) = mpsc::unbounded_channel();
++        let mut has_blocked = false;
++        let tick: Tick = Box::new(move |gateway, _| {
++            let game = gateway.game();
++            if let Some(baseline) = game.movement_baseline(game.player_life()).unwrap() {
++                if !has_blocked
++                    && baseline.profile == crate::movement::Profile::Frames
++                    && baseline.applied_sequence > 0
++                    && baseline.world_step.saturating_sub(baseline.physics_step)
++                        >= if delay_ms == 40 { MAX_LAG } else { MAX_LAG - 8 }
++                {
++                    has_blocked = true;
++                    started.send(()).unwrap();
++                    let mut open = gate.0.lock().unwrap();
++                    while !*open {
++                        open = gate.1.wait(open).unwrap();
++                    }
++                }
++            }
++        });
++        let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
++        let address = listener.local_addr().unwrap();
++        let (tls, connector) = tests::tls();
++        let (stop, stopped) = oneshot::channel();
++        let server = tokio::spawn(serve_ticked(
++            listener,
++            tls,
++            tests::gateway(&keys),
++            None,
++            tick,
++            async {
++                let _ = stopped.await;
++            },
++        ));
++        let mut client = Client::connect(
++            address,
++            rustls::pki_types::ServerName::try_from("localhost").unwrap(),
++            connector.config().clone(),
++            120,
++            &keys[0],
++        )
++        .await
++        .unwrap();
++        timeout(Duration::from_secs(2), async {
++            loop {
++                let snapshot = client.snapshot().await.unwrap();
++                if snapshot
++                    .movement
++                    .is_some_and(|movement| movement.character.support.is_some())
++                {
++                    break;
++                }
++                tokio::time::sleep(Duration::from_millis(33)).await;
++            }
++        })
++        .await
++        .unwrap();
++        let entry = client.begin_movement_frames().await.unwrap();
++        let Reply::Snapshot { state } = entry.body else {
++            panic!("Missing interval baseline: {:?}", entry.body);
++        };
++        let baseline = state.movement.unwrap();
++        let frame = |start, steps| Frame {
++            life: baseline.life,
++            epoch: baseline.epoch,
++            sequence: 0,
++            tick: 0,
++            start,
++            steps,
++            segments: vec![Segment {
++                offset: 0,
++                axes: [0.; 2],
++                yaw: 0.,
++                until: start + crate::movement::HELD_STEPS,
++                jump: false,
++            }],
++        };
++        assert!(matches!(
++            client
++                .movement_frame(frame(baseline.physics_step, 4))
++                .await
++                .unwrap()
++                .body,
++            Reply::Accepted
++        ));
++        timeout(Duration::from_secs(2), blocked.recv())
++            .await
++            .unwrap()
++            .unwrap();
++        let mut client = client.pipeline().unwrap();
++        let frame = client
++            .prepare_movement_frame(frame(baseline.physics_step + 4, MAX_STEPS))
++            .unwrap();
++        client.send(Body::MovementFrame { frame }).unwrap();
++        // Other runtime tasks deliver this TLS interval while the authority is
++        // delayed. Neither an ordinary deadline nor a catch-up batch may overtake admission.
++        tokio::time::sleep(Duration::from_millis(delay_ms)).await;
++        drop(release);
++        let (_, reply) = timeout(Duration::from_secs(2), client.receive())
++            .await
++            .unwrap()
++            .unwrap();
++        let _ = stop.send(());
++        let exit = timeout(Duration::from_secs(2), server)
++            .await
++            .unwrap()
++            .unwrap();
++        assert!(exit.failure.is_none(), "{:?}", exit.failure);
++        assert!(
++            matches!(reply.body, Reply::Accepted),
++            "Attempt {attempt}: {:?}; expiries {:?}",
++            reply.body,
++            exit.gateway.game().movement_expiry
++        );
++        assert_eq!(reply.control.as_ref().unwrap().epoch, baseline.epoch);
++        assert!(exit.stats.request_queue_peak > 0);
++        assert_eq!(
++            exit.gateway.game().movement_expiry.total,
++            0,
++            "Attempt {attempt}: catch-up expired an already queued interval"
++        );
++    }
++}
+diff --git a/crates/verse-world/src/service/net/session_pipeline.rs b/crates/verse-world/src/service/net/session_pipeline.rs
+index 7441e56f05..0c1e20a059 100644
+--- a/crates/verse-world/src/service/net/session_pipeline.rs
++++ b/crates/verse-world/src/service/net/session_pipeline.rs
+@@ -1,8 +1,14 @@
+ //! Ordered admission proceeds independently of ordered durable reply delivery.
+ use super::*;
+-use std::collections::VecDeque;
++use std::{collections::VecDeque, future::Future, pin::Pin};
+ 
+ const CAPACITY: usize = 8;
++type WriteFlight<S> = Pin<
++    Box<
++        dyn Future<Output = Result<(tokio::io::WriteHalf<S>, usize, Response, bool), String>>
++            + Send,
++    >,
++>;
+ struct Reader {
+     receive: mpsc::Receiver<Result<Vec<u8>, String>>,
+     task: tokio::task::JoinHandle<()>,
+@@ -110,7 +116,9 @@ pub(super) async fn run<S: Transport + 'static>(
+     mut window: Instant,
+     mut count: u32,
+ ) -> Result<(), String> {
+-    let (read, mut write) = tokio::io::split(stream);
++    let (read, write) = tokio::io::split(stream);
++    let mut writer = Some(write);
++    let mut writing: Option<WriteFlight<S>> = None;
+     // Partial frame reads are owned by this task and are never cancelled by reply polling.
+     let mut reader = Reader::new(read);
+     let mut pending = VecDeque::<Delivery>::new();
+@@ -118,12 +126,25 @@ pub(super) async fn run<S: Transport + 'static>(
+     let mut retry: Option<(Vec<u8>, bool, tokio::time::Instant, tokio::time::Instant)> = None;
+     let mut terminal: Option<String> = None;
+     loop {
+-        if terminal.is_some() && pending.is_empty() && gate.is_none() && retry.is_none() {
++        if terminal.is_some()
++            && pending.is_empty()
++            && gate.is_none()
++            && retry.is_none()
++            && writing.is_none()
++        {
+             return Err(terminal.unwrap());
+         }
+         tokio::select! {
+             biased;
+             _ = slot.cancelled() => return Err("Chamber connection was superseded".into()),
++            completed = async { writing.as_mut().unwrap().await }, if writing.is_some() => {
++                let (write, bytes, delivered, authenticated) = completed?;
++                writing = None;
++                writer = Some(write);
++                slot.delivered(bytes, Some(delivered.tick));
++                last = delivered;
++                if !authenticated { return Err("Chamber connection is not authenticated".into()); }
++            }
+             progress = async { (&mut gate.as_mut().unwrap().progress).await }, if gate.is_some() => {
+                 let current = gate.take().unwrap();
+                 match progress.map_err(|_| "Chamber host stopped")? {
+@@ -156,19 +177,25 @@ pub(super) async fn run<S: Transport + 'static>(
+                 let (bytes, wait, deadline, _) = retry.take().unwrap();
+                 gate = Some(submit(send, id, bytes, wait, deadline).await?);
+             }
+-            result = async { pending.front_mut().unwrap().receive(&last).await }, if !pending.is_empty() => {
++            result = async { pending.front_mut().unwrap().receive(&last).await }, if !pending.is_empty() && writing.is_none() => {
+                 let (bytes, authenticated) = result?;
+                 pending.pop_front();
+                 let bytes = refusal_prefix(bytes, &last)?;
+                 let response: ResponseHeader = serde_json::from_slice(&bytes).map_err(|_| "Invalid chamber response")?;
+-                timeout(WRITE, write_frame(&mut write, &bytes, MAX_RESPONSE_BYTES))
+-                    .await.map_err(|_| "Chamber write timed out")??;
+-                slot.delivered(bytes.len(), Some(response.tick));
+-                last = response.refusal_template();
+-                if !authenticated { return Err("Chamber connection is not authenticated".into()); }
++                if !authenticated {
++                    terminal = Some("Chamber connection is not authenticated".into());
++                }
++                let mut write = writer.take().expect("Idle chamber reply writer");
++                // Keep the partial write future alive across admission polls. A
++                // slow reader cannot stall inbound movement or duplicate a frame.
++                writing = Some(Box::pin(async move {
++                    timeout(WRITE, write_frame(&mut write, &bytes, MAX_RESPONSE_BYTES))
++                        .await.map_err(|_| "Chamber write timed out")??;
++                    Ok((write, bytes.len(), response.refusal_template(), authenticated))
++                }));
+             }
+             incoming = reader.receive.recv(), if terminal.is_none() && gate.is_none()
+-                && retry.is_none() && pending.len() < CAPACITY => {
++                && retry.is_none() && pending.len() + usize::from(writing.is_some()) < CAPACITY => {
+                 let bytes = match incoming {
+                     Some(Ok(bytes)) => bytes,
+                     Some(Err(error)) => { terminal = Some(error); continue; }
+@@ -349,4 +376,246 @@ mod tests {
+         assert_eq!(Request::decode(&bytes).unwrap().request_id, 9);
+         task.abort();
+     }
++    #[tokio::test]
++    async fn blocked_reply_write_keeps_movement_admission_live_and_bounded() {
++        let (server, client) = tokio::io::duplex(1024);
++        let (mut read, mut write) = tokio::io::split(client);
++        let (send, mut events) = mpsc::channel(32);
++        let limits = admission::Limits::new();
++        let mut slot = limits.open("127.0.0.1".parse().unwrap()).unwrap();
++        slot.authenticate([1; 32]).unwrap();
++        let keys = [
++            super::super::tests::key(1),
++            super::super::tests::key(2),
++            super::super::tests::key(3),
++        ];
++        let (id, _) = super::super::tests::gateway(&keys).open(0).unwrap();
++        let task = tokio::spawn(async move {
++            run(
++                server,
++                &None,
++                &send,
++                &mut slot,
++                id,
++                response(0, 1, 0),
++                Instant::now(),
++                0,
++            )
++            .await
++        });
++        let request = |request_id, body| {
++            serde_json::to_vec(&Request {
++                version: VERSION,
++                request_id,
++                body,
++            })
++            .unwrap()
++        };
++        write_frame(
++            &mut write,
++            &request(1, Body::Snapshot {}),
++            MAX_REQUEST_BYTES,
++        )
++        .await
++        .unwrap();
++        let Event::Request {
++            reply, progress, ..
++        } = events.recv().await.unwrap()
++        else {
++            panic!("Missing initial admission")
++        };
++        progress
++            .unwrap()
++            .send(RequestProgress::Queued {
++                authenticated: true,
++            })
++            .unwrap_or_else(|_| panic!("Admission receiver stopped"));
++        let mut large = response(1, 1, 0);
++        large.body = Reply::Refused {
++            code: "fixture".into(),
++            message: "x".repeat(16 * 1024),
++        };
++        let large = large.encode().unwrap();
++        reply.send(Ok((large.clone(), true))).unwrap();
++        // No response bytes are consumed while the server's bounded socket fills.
++        tokio::time::sleep(Duration::from_millis(40)).await;
++        for request_id in 2..=9 {
++            let frame = crate::movement::frames::Frame {
++                life: verse_engine::core::LifeId {
++                    instance: 1,
++                    actor: 1,
++                    generation: 1,
++                },
++                epoch: 1,
++                sequence: request_id,
++                tick: 1,
++                start: (request_id - 2) * 4,
++                steps: 4,
++                segments: vec![crate::movement::frames::Segment {
++                    offset: 0,
++                    axes: [0.; 2],
++                    yaw: 0.,
++                    until: (request_id - 2) * 4 + crate::movement::HELD_STEPS,
++                    jump: false,
++                }],
++            };
++            timeout(
++                Duration::from_secs(1),
++                write_frame(
++                    &mut write,
++                    &request(request_id, Body::MovementFrame { frame }),
++                    MAX_REQUEST_BYTES,
++                ),
++            )
++            .await
++            .unwrap()
++            .unwrap();
++        }
++        for request_id in 2..=8 {
++            let event = timeout(Duration::from_secs(1), events.recv())
++                .await
++                .expect("Blocked reply write stopped movement admission")
++                .unwrap();
++            let Event::Request {
++                bytes,
++                reply,
++                progress,
++                ..
++            } = event
++            else {
++                panic!("Missing movement admission")
++            };
++            let request = Request::decode(&bytes).unwrap();
++            assert_eq!(request.request_id, request_id);
++            assert!(matches!(request.body, Body::MovementFrame { .. }));
++            progress
++                .unwrap()
++                .send(RequestProgress::Queued {
++                    authenticated: true,
++                })
++                .unwrap_or_else(|_| panic!("Admission receiver stopped"));
++            reply
++                .send(Ok((
++                    response(request_id, 1, request_id).encode().unwrap(),
++                    true,
++                )))
++                .unwrap();
++        }
++        assert!(
++            timeout(Duration::from_millis(30), events.recv())
++                .await
++                .is_err(),
++            "Blocked write bypassed the eight-request bound"
++        );
++        // The partially written first frame must resume without duplicated bytes.
++        assert_eq!(
++            read_frame(&mut read, MAX_RESPONSE_BYTES).await.unwrap(),
++            large
++        );
++        for request_id in 2..=8 {
++            let bytes = timeout(
++                Duration::from_secs(1),
++                read_frame(&mut read, MAX_RESPONSE_BYTES),
++            )
++            .await
++            .unwrap()
++            .unwrap();
++            assert_eq!(
++                serde_json::from_slice::<Response>(&bytes)
++                    .unwrap()
++                    .request_id,
++                request_id
++            );
++        }
++        let Event::Request { bytes, .. } = timeout(Duration::from_secs(1), events.recv())
++            .await
++            .unwrap()
++            .unwrap()
++        else {
++            panic!("Missing released admission")
++        };
++        assert_eq!(Request::decode(&bytes).unwrap().request_id, 9);
++        task.abort();
++        let _ = task.await;
++    }
++    #[tokio::test]
++    async fn authentication_loss_stops_admission_during_a_blocked_reply_write() {
++        let (server, client) = tokio::io::duplex(1024);
++        let (mut read, mut write) = tokio::io::split(client);
++        let (send, mut events) = mpsc::channel(32);
++        let limits = admission::Limits::new();
++        let mut slot = limits.open("127.0.0.1".parse().unwrap()).unwrap();
++        slot.authenticate([1; 32]).unwrap();
++        let keys = [
++            super::super::tests::key(1),
++            super::super::tests::key(2),
++            super::super::tests::key(3),
++        ];
++        let (id, _) = super::super::tests::gateway(&keys).open(0).unwrap();
++        let task = tokio::spawn(async move {
++            run(
++                server,
++                &None,
++                &send,
++                &mut slot,
++                id,
++                response(0, 1, 0),
++                Instant::now(),
++                0,
++            )
++            .await
++        });
++        let request = |request_id| {
++            serde_json::to_vec(&Request {
++                version: VERSION,
++                request_id,
++                body: Body::Snapshot {},
++            })
++            .unwrap()
++        };
++        write_frame(&mut write, &request(1), MAX_REQUEST_BYTES)
++            .await
++            .unwrap();
++        let Event::Request {
++            reply, progress, ..
++        } = events.recv().await.unwrap()
++        else {
++            panic!("Missing initial admission")
++        };
++        progress
++            .unwrap()
++            .send(RequestProgress::Busy)
++            .unwrap_or_else(|_| panic!("Admission receiver stopped"));
++        let mut denied = response(1, 1, 0);
++        denied.control = None;
++        denied.body = Reply::Refused {
++            code: "fixture".into(),
++            message: "x".repeat(16 * 1024),
++        };
++        let denied = denied.encode().unwrap();
++        reply.send(Ok((denied.clone(), false))).unwrap();
++        tokio::time::sleep(Duration::from_millis(40)).await;
++        write_frame(&mut write, &request(2), MAX_REQUEST_BYTES)
++            .await
++            .unwrap();
++        assert!(
++            timeout(Duration::from_millis(40), events.recv())
++                .await
++                .is_err(),
++            "Admission continued after authentication loss"
++        );
++        assert_eq!(
++            read_frame(&mut read, MAX_RESPONSE_BYTES).await.unwrap(),
++            denied
++        );
++        let result = timeout(Duration::from_secs(1), task)
++            .await
++            .unwrap()
++            .unwrap();
++        assert_eq!(
++            result.unwrap_err(),
++            "Chamber connection is not authenticated"
++        );
++        assert!(events.recv().await.is_none());
++    }
+ }
+diff --git a/crates/verse-world/src/service/worker.rs b/crates/verse-world/src/service/worker.rs
+index a57faa0586..6ad6f3e039 100644
+--- a/crates/verse-world/src/service/worker.rs
++++ b/crates/verse-world/src/service/worker.rs
+@@ -5,7 +5,7 @@ mod delayed;
+ use super::{
+     client::Client,
+     event_cursor::{Cursor, Delivery},
+-    wire::{Body, Reply, Response},
++    wire::{Body, Control, Reply, Response},
+ };
+ use crate::{Command, Intent, play::Ability};
+ use std::time::{Duration, Instant};
+@@ -23,9 +23,27 @@ pub struct Observation {
+     pub queued_inputs: usize,
+     pub queued_updates: usize,
+ }
++/// Frame timing metadata excludes input axes and authentication material.
++#[derive(Clone, Copy)]
++pub struct FrameObservation {
++    pub at: Instant,
++    pub phase: &'static str,
++    pub actor: u64,
++    pub epoch: u64,
++    pub sequence: u64,
++    pub start: u64,
++    pub end: u64,
++    pub authority_tick: u64,
++    pub control_epoch: Option<u64>,
++    pub credit_step: Option<u64>,
++    pub pending_requests: usize,
++    pub queued_inputs: usize,
++}
+ #[derive(Default)]
+ pub struct Observations {
+     pub samples: Vec<Observation>,
++    pub frames: Vec<FrameObservation>,
++    pub omitted_frames: u64,
+     pub omitted: u64,
+     pub snapshot_verified_at: Option<Instant>,
+ }
+@@ -33,6 +51,14 @@ pub struct Observations {
+ #[derive(Clone, Default)]
+ pub struct Observer(std::sync::Arc<std::sync::Mutex<Observations>>);
+ impl Observer {
++    fn frame(&self, value: FrameObservation) {
++        let mut state = self.0.lock().unwrap_or_else(|poison| poison.into_inner());
++        if state.frames.len() < 256 {
++            state.frames.push(value);
++        } else {
++            state.omitted_frames = state.omitted_frames.saturating_add(1);
++        }
++    }
+     fn observe(&self, value: Observation) {
+         let mut state = self.0.lock().unwrap_or_else(|poison| poison.into_inner());
+         if value.accepted_snapshot {
+@@ -48,6 +74,8 @@ impl Observer {
+         let mut state = self.0.lock().unwrap_or_else(|poison| poison.into_inner());
+         Observations {
+             samples: std::mem::take(&mut state.samples),
++            frames: std::mem::take(&mut state.frames),
++            omitted_frames: std::mem::take(&mut state.omitted_frames),
+             omitted: state.omitted,
+             snapshot_verified_at: state.snapshot_verified_at,
+         }
+@@ -59,8 +87,11 @@ pub const UPDATE_CAPACITY: usize = 8;
+ /// Leaves request capacity for 30 Hz input refreshes and spell commands.
+ pub const NATIVE_CADENCE: Duration = Duration::from_millis(50);
+ 
+-fn periodic_read_room(pending: usize, queued: bool) -> bool {
+-    !queued && pending < super::client::PIPELINE_CAPACITY - 1
++fn periodic_read_room(pending: usize, queued: bool, auxiliary: bool) -> bool {
++    // Snapshots supply movement baselines. Auxiliary reads leave slots for a
++    // frame and a spell when the producer is waiting for its next credit burst.
++    let reserve = if auxiliary { 2 } else { 1 };
++    !queued && pending < super::client::PIPELINE_CAPACITY - reserve
+ }
+ 
+ /// Local input requests contain no principal, controller, or transport handle.
+@@ -95,6 +126,7 @@ pub enum Update {
+     Events {
+         delivery: Delivery,
+         checkpoint: Vec<u8>,
++        control: Option<Control>,
+     },
+     /// Emitted before transmission. An error consumes the input without an outcome.
+     CommandBound {
+@@ -378,7 +410,12 @@ async fn run_impl(
+                     && !retired_control(&input, client.control())
+                     && !fresh_control(&input, client.control(), last_response)
+                 {
+-                    if !snapshot_pending && read_backoff.ready(0, tokio::time::Instant::now()) {
++                    // Any owned reply supplies a validated control header. Drain
++                    // that prefix before adding a scene request for staged input.
++                    if client.pending() == 0
++                        && !snapshot_pending
++                        && read_backoff.ready(0, tokio::time::Instant::now())
++                    {
+                         client.send_snapshot()?;
+                         last_snapshot_sent = Some(tokio::time::Instant::now());
+                         snapshot_pending = true;
+@@ -498,7 +535,27 @@ async fn run_impl(
+                             }
+                         }
+                     };
++                    let frame = match &body {
++                        Body::MovementFrame { frame } if observer.is_some() => Some(frame.clone()),
++                        _ => None,
++                    };
+                     client.send(body)?;
++                    if let (Some(observer), Some(frame)) = (&observer, frame) {
++                        observer.frame(FrameObservation {
++                            at: Instant::now(),
++                            phase: "enqueued",
++                            actor: frame.life.actor,
++                            epoch: frame.epoch,
++                            sequence: frame.sequence,
++                            start: frame.start,
++                            end: frame.end()?,
++                            authority_tick: client.tick(),
++                            control_epoch: client.control().map(|c| c.epoch),
++                            credit_step: client.control().map(|c| c.credit_step),
++                            pending_requests: client.pending(),
++                            queued_inputs: inputs.len(),
++                        });
++                    }
+                     if lifecycle {
+                         barrier = true;
+                         teleport_barrier = teleport;
+@@ -512,7 +569,7 @@ async fn run_impl(
+             tokio::select! {
+                 _ = tokio::time::sleep_until(snapshot_due), if !input_closed && !barrier
+                     && staged.is_none() && client.available() && !snapshot_pending
+-                    && periodic_read_room(client.pending(), !inputs.is_empty() || deferred.is_some())
++                    && periodic_read_room(client.pending(), !inputs.is_empty() || deferred.is_some(), false)
+                     && last_snapshot_sent.is_some() && read_backoff.ready(0, tokio::time::Instant::now()) => {
+                     client.send_snapshot()?;
+                     last_snapshot_sent = Some(tokio::time::Instant::now());
+@@ -556,7 +613,7 @@ async fn run_impl(
+                             events_pending = false;
+                             if read_backoff.observe(1, &response.body, tokio::time::Instant::now())? { continue; }
+                             let delivery = cursor.admit(&response,after,limit)?;
+-                            Update::Events { delivery, checkpoint: cursor.checkpoint()? }
++                            Update::Events { delivery, checkpoint: cursor.checkpoint()?, control: response.control }
+                         }
+                         Body::Inventory {} => {
+                             inventory_pending = false;
+@@ -566,6 +623,16 @@ async fn run_impl(
+                             Update::Inventory(response)
+                         }
+                         Body::MovementFrame { frame } => {
++                            if let Some(observer) = &observer {
++                                observer.frame(FrameObservation {
++                                    at: Instant::now(), phase: "acknowledged", actor: frame.life.actor,
++                                    epoch: frame.epoch, sequence: frame.sequence, start: frame.start,
++                                    end: frame.end()?, authority_tick: response.tick,
++                                    control_epoch: response.control.as_ref().map(|c| c.epoch),
++                                    credit_step: response.control.as_ref().map(|c| c.credit_step),
++                                    pending_requests: client.pending(), queued_inputs: inputs.len(),
++                                });
++                            }
+                             if let Reply::Refused { message, .. } = &response.body {
+                                 if !interval_control_changed(&frame, response.control.as_ref()) {
+                                     return Err(format!("Movement interval refused; reconnect before sending another interval: {message}"));
+@@ -598,14 +665,14 @@ async fn run_impl(
+                         last_snapshot_sent = Some(tokio::time::Instant::now());
+                         snapshot_pending = true;
+                     }
+-                    if client.available() && periodic_read_room(client.pending(), !inputs.is_empty() || deferred.is_some()) && tokio::time::Instant::now() >= next_events
++                    if client.available() && periodic_read_room(client.pending(), !inputs.is_empty() || deferred.is_some(), true) && tokio::time::Instant::now() >= next_events
+                         && !events_pending && read_backoff.ready(1, tokio::time::Instant::now()) {
+                         client.send(Body::Events { after: cursor.after(), limit: 64 })?;
+                         events_pending = true;
+                         next_events = tokio::time::Instant::now() + cadence.max(Duration::from_millis(200));
+                     }
+                     let life = client.control().map(|c| c.life);
+-                    if client.available() && periodic_read_room(client.pending(), !inputs.is_empty() || deferred.is_some())
++                    if client.available() && periodic_read_room(client.pending(), !inputs.is_empty() || deferred.is_some(), true)
+                         && !inventory_pending && life.is_some()
+                         && read_backoff.ready(2, tokio::time::Instant::now())
+                         && (life != inventory_life || tokio::time::Instant::now() >= next_inventory) {
+@@ -1564,6 +1631,13 @@ mod tests {
+     }
+     #[tokio::test]
+     async fn periodic_reads_leave_a_gameplay_slot_when_replies_are_withheld() {
++        withheld_reply_slots(false).await;
++    }
++    #[tokio::test]
++    async fn frame_credit_wait_reserves_the_next_gameplay_burst() {
++        withheld_reply_slots(true).await;
++    }
++    async fn withheld_reply_slots(frames: bool) {
+         use crate::service::net::{
+             read_frame,
+             tests::{gateway, tls},
+@@ -1574,6 +1648,7 @@ mod tests {
+         use tokio_rustls::TlsAcceptor;
+         let keys = [key(224), key(225), key(226)];
+         let mut gateway = gateway(&keys);
++        gateway.tick(0.05).unwrap();
+         let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+         let address = listener.local_addr().unwrap();
+         let (server_tls, connector) = tls();
+@@ -1591,6 +1666,17 @@ mod tests {
+             write_frame(&mut socket, &response, MAX_RESPONSE_BYTES)
+                 .await
+                 .unwrap();
++            if frames {
++                let bytes = read_frame(&mut socket, MAX_REQUEST_BYTES).await.unwrap();
++                assert!(matches!(
++                    Request::decode(&bytes).unwrap().body,
++                    Body::BeginMovementFrames { .. }
++                ));
++                let response = gateway.dispatch_json(id, 0, &bytes).unwrap();
++                write_frame(&mut socket, &response, MAX_RESPONSE_BYTES)
++                    .await
++                    .unwrap();
++            }
+             tokio::pin!(peer_stopping);
+             loop {
+                 tokio::select! {
+@@ -1603,7 +1689,7 @@ mod tests {
+                 }
+             }
+         });
+-        let client = Client::connect(
++        let mut client = Client::connect(
+             address,
+             ServerName::try_from("localhost").unwrap(),
+             connector.config().clone(),
+@@ -1612,6 +1698,10 @@ mod tests {
+         )
+         .await
+         .unwrap();
++        if frames {
++            let entry = client.begin_movement_frames().await.unwrap();
++            assert!(matches!(entry.body, Reply::Snapshot { .. }));
++        }
+         let control = client.control().unwrap().clone();
+         let frame_input = |token| Input::MovementFrame {
+             token,
+@@ -1656,9 +1746,12 @@ mod tests {
+         .unwrap();
+         // Polling has time to use the remaining observation slots while replies stay withheld.
+         tokio::time::sleep(Duration::from_millis(150)).await;
+-        input.send(frame_input(6)).await.unwrap();
++        let total = if frames { 7 } else { 6 };
++        for token in 6..=total {
++            input.send(frame_input(token)).await.unwrap();
++        }
+         timeout(Duration::from_millis(300), async {
+-            while commands < 6 {
++            while commands < total {
+                 if observed.recv().await.unwrap() {
+                     commands += 1;
+                 }
+@@ -1674,7 +1767,7 @@ mod tests {
+             assert!(binding.is_ok());
+             bound += 1;
+         }
+-        assert_eq!(bound, 6);
++        assert_eq!(bound, total);
+         let _ = stop.send(());
+         task.await.unwrap().unwrap();
+         let _ = peer_stop.send(());
+@@ -2032,6 +2125,138 @@ mod tests {
+         ));
+     }
+     #[tokio::test]
++    async fn pending_ack_refreshes_staged_cast_without_an_extra_scene_request() {
++        use crate::service::net::{read_frame, tests::gateway, write_frame};
++        use crate::service::wire::{MAX_REQUEST_BYTES, MAX_RESPONSE_BYTES, Request};
++        let keys = [key(241), key(242), key(243)];
++        let mut gateway = gateway(&keys);
++        let (socket, mut peer_socket) = tokio::io::duplex(1024 * 1024);
++        let (first_admitted, admitted) = oneshot::channel();
++        let (cast_staged, staged) = oneshot::channel();
++        let peer = tokio::spawn(async move {
++            let (id, hello) = gateway.open_json(0).unwrap();
++            write_frame(&mut peer_socket, &hello, MAX_RESPONSE_BYTES)
++                .await
++                .unwrap();
++            let mut first_admitted = Some(first_admitted);
++            let mut staged = Some(staged);
++            let mut commands = 0;
++            loop {
++                let bytes = read_frame(&mut peer_socket, MAX_REQUEST_BYTES)
++                    .await
++                    .unwrap();
++                let request = Request::decode(&bytes).unwrap();
++                let reply = gateway.dispatch_json(id, 0, &bytes).unwrap();
++                if let Body::Command { command } = &request.body {
++                    commands += 1;
++                    assert_eq!(command.sequence, commands);
++                    if commands == 1 {
++                        first_admitted.take().unwrap().send(()).unwrap();
++                        staged.take().unwrap().await.unwrap();
++                        assert!(
++                            timeout(
++                                Duration::from_millis(100),
++                                read_frame(&mut peer_socket, MAX_REQUEST_BYTES)
++                            )
++                            .await
++                            .is_err(),
++                            "Staged cast requested a scene despite an outstanding control acknowledgment"
++                        );
++                    } else {
++                        assert!(matches!(
++                            command.intent,
++                            super::super::wire::Action::Cast {
++                                ability: Ability::Shield,
++                                ..
++                            }
++                        ));
++                    }
++                    let response: Response = serde_json::from_slice(&reply).unwrap();
++                    assert!(matches!(response.body, Reply::Accepted));
++                }
++                write_frame(&mut peer_socket, &reply, MAX_RESPONSE_BYTES)
++                    .await
++                    .unwrap();
++                if commands == 2 {
++                    break;
++                }
++            }
++        });
++        let client = Client::connect_stream(Box::new(socket), 120, None, &keys[0])
++            .await
++            .unwrap();
++        let control = client.control().unwrap().clone();
++        let (input, inputs, updates, mut output) = channels();
++        let (stop, stopping) = oneshot::channel();
++        let task = tokio::spawn(run(
++            client,
++            Cursor::new(120),
++            Duration::from_secs(1),
++            inputs,
++            updates,
++            stopping,
++        ));
++        timeout(Duration::from_secs(3), async {
++            while !matches!(output.recv().await.unwrap(), Update::Inventory(_)) {}
++        })
++        .await
++        .unwrap();
++        input
++            .send(Input::TrackedCommand {
++                token: 1,
++                life: control.life.into(),
++                epoch: control.epoch,
++                intent: Intent::Move {
++                    axes: [0., 0.],
++                    yaw: 0.,
++                },
++            })
++            .await
++            .unwrap();
++        timeout(Duration::from_secs(3), admitted)
++            .await
++            .unwrap()
++            .unwrap();
++        tokio::time::sleep(Duration::from_millis(75)).await;
++        input
++            .send(Input::TrackedCommand {
++                token: 2,
++                life: control.life.into(),
++                epoch: control.epoch,
++                intent: Intent::Cast {
++                    ability: Ability::Shield,
++                    target: None,
++                    aim: [0., 0., 1.],
++                },
++            })
++            .await
++            .unwrap();
++        cast_staged.send(()).unwrap();
++        let mut outcomes = 0;
++        let mut tokens = Vec::new();
++        timeout(Duration::from_secs(3), async {
++            while outcomes < 2 {
++                match output.recv().await.unwrap() {
++                    Update::CommandBound { token, binding } => {
++                        assert!(binding.is_ok());
++                        tokens.push(token);
++                    }
++                    Update::Outcome(response) => {
++                        assert!(matches!(response.body, Reply::Accepted));
++                        outcomes += 1;
++                    }
++                    _ => {}
++                }
++            }
++        })
++        .await
++        .unwrap();
++        assert_eq!(tokens, vec![1, 2]);
++        peer.await.unwrap();
++        let _ = stop.send(());
++        task.await.unwrap().unwrap();
++    }
++    #[tokio::test]
+     async fn movement_arriving_during_refresh_replaces_the_unsent_command() {
+         let keys = [key(71), key(72), key(73)];
+         let (address, connector, server_stop, server) = start(&keys).await;
+diff --git a/crates/verse-world/src/service/worker_delayed.rs b/crates/verse-world/src/service/worker_delayed.rs
+index ddaa6f3189..1357d061e2 100644
+--- a/crates/verse-world/src/service/worker_delayed.rs
++++ b/crates/verse-world/src/service/worker_delayed.rs
+@@ -38,19 +38,27 @@ async fn delay<R: AsyncRead + Unpin, W: AsyncWrite + Unpin>(
+ }
+ #[tokio::test]
+ async fn delayed_bootstrap_and_native_interval_stream_use_one_owned_timeline() {
+-    interval_stream(false, 0, 67, 100, 0).await;
++    interval_stream(false, 0, 67, 100, 0, false).await;
+ }
+ #[tokio::test]
+ async fn durable_writer_stall_preserves_owned_interval_timeline() {
+-    interval_stream(true, 300, 0, 0, 0).await;
++    interval_stream(true, 300, 0, 0, 0, false).await;
+ }
+ #[tokio::test]
+ async fn delayed_route_and_long_writer_stall_preserve_owned_interval_timeline() {
+-    interval_stream(true, 1200, 40, 40, 0).await;
++    interval_stream(true, 1200, 40, 40, 0, false).await;
+ }
+ #[tokio::test]
+ async fn shared_player_pressure_and_long_writer_stall_preserve_owned_interval_timeline() {
+-    interval_stream(true, 1200, 40, 40, 19).await;
++    interval_stream(true, 1200, 40, 40, 19, false).await;
++}
++#[tokio::test]
++async fn mixed_cast_and_native_interval_stream_preserve_control() {
++    interval_stream(false, 0, 67, 100, 0, true).await;
++}
++#[tokio::test]
++async fn cast_during_shared_writer_stall_preserves_native_intervals() {
++    interval_stream(true, 1200, 40, 40, 19, true).await;
+ }
+ async fn interval_stream(
+     durable_stall: bool,
+@@ -58,6 +66,7 @@ async fn interval_stream(
+     up_ms: u64,
+     down_ms: u64,
+     pressure_players: usize,
++    cast_during_movement: bool,
+ ) {
+     use super::super::net::tests::{key, start};
+     use rustls::pki_types::ServerName;
+@@ -211,6 +220,9 @@ async fn interval_stream(
+     let mut next_frame = baseline.physics_step;
+     let mut bound = 0;
+     let mut accepted = 0;
++    let mut cast_sent = false;
++    let mut cast_sequence = None;
++    let mut accepted_casts = 0;
+     let mut corrections = Vec::new();
+     let mut stall_armed = false;
+     let mut recent = std::collections::VecDeque::new();
+@@ -225,7 +237,30 @@ async fn interval_stream(
+                     local.bind_movement_frame(&binding.unwrap()).unwrap();
+                     bound += 1;
+                 }
++                Update::CommandBound { binding, .. } if cast_during_movement => {
++                    let command = binding.unwrap();
++                    assert!(matches!(
++                        command.intent,
++                        Intent::Cast {
++                            ability: crate::play::Ability::Shield,
++                            ..
++                        }
++                    ));
++                    assert!(cast_sequence.replace(command.sequence).is_none());
++                }
+                 Update::Outcome(response) => {
++                    if response
++                        .control
++                        .as_ref()
++                        .is_some_and(|c| Some(c.accepted_sequence) == cast_sequence)
++                    {
++                        assert!(
++                            matches!(response.body, Reply::Accepted),
++                            "Cast must execute during movement: {:?}",
++                            response.body
++                        );
++                        accepted_casts += 1;
++                    }
+                     if let Some(control) = &response.control {
+                         if local.context() == Some((control.life.into(), control.epoch))
+                             && local.movement_profile() == Some(Profile::Frames)
+@@ -311,6 +346,26 @@ async fn interval_stream(
+                 .unwrap();
+             next_input = now + Duration::from_millis(33);
+         }
++        if cast_during_movement
++            && !cast_sent
++            && started.elapsed() >= Duration::from_millis(if durable_stall { 1500 } else { 500 })
++        {
++            token += 1;
++            input
++                .send(Input::TrackedCommand {
++                    token,
++                    life: baseline.life,
++                    epoch: baseline.epoch,
++                    intent: Intent::Cast {
++                        ability: crate::play::Ability::Shield,
++                        target: None,
++                        aim: [0., 0., 1.],
++                    },
++                })
++                .await
++                .unwrap();
++            cast_sent = true;
++        }
+         let steps = local
+             .movement_frame_limit()
+             .unwrap()
+@@ -332,6 +387,10 @@ async fn interval_stream(
+         "bound={bound} accepted={accepted} observations={}",
+         corrections.len()
+     );
++    if cast_during_movement {
++        assert!(cast_sent && cast_sequence.is_some());
++        assert_eq!(accepted_casts, 1);
++    }
+     corrections.sort_by(f32::total_cmp);
+     let p95 = corrections[(corrections.len() as f64 * 0.95).ceil() as usize - 1];
+     eprintln!(
+diff --git a/crates/verse/examples/battle_scale.rs b/crates/verse/examples/battle_scale.rs
+index f2b3f4e2b9..8d3047f66e 100644
+--- a/crates/verse/examples/battle_scale.rs
++++ b/crates/verse/examples/battle_scale.rs
+@@ -873,7 +873,7 @@ fn main() -> Result<(), String> {
+     {
+         return Err("Invalid capacity mode or duration".into());
+     }
+-    let mut report = serde_json::json!({"schema":"verse.battle.capacity.v1","mode":args[0],"seconds":seconds,"players":PLAYERS,"native_sessions":1,"headless_workers":19,"hostile_npcs":HOSTILES,"cultist_health":20000,"frontline_player":19,"frontline_initial_position":[-6.,0.,-8.],"frontline_initial_life_recipe":"approach the nearest hostile and cast only Fire Bolt; defer inventory, healing, crowd control, Shield, and Misty Step until the first actual respawn","delay_profile":"pipeline","delay_ms_per_chunk":40,"jitter_ms_per_chunk":20,"wire_version":verse_world::service::wire::VERSION,"debug_assertions":cfg!(debug_assertions),"status":"running","budgets":{"simulation_p99_upper_bound_ms":1000./30.,"render_cpu_p95_ms":1000./60.,"render_gpu_p95_ms":1000./60.,"snapshot_age_p95_ms":400.,"minimum_live_hostiles":HOSTILES,"minimum_authority_tick_fraction":0.98,"battle_framed_snapshot_fraction":0.8,"prediction_correction_p95_meters":0.25,"prediction_correction_maximum_meters":1.,"checkpoint_bytes":1048576,"request_queue_peak":128,"writer_queue_peak":2,"held_reply_bytes_peak":33554432,"steady_rss_growth_bytes":67108864},"limits":["Scratch authority and clients share this process and machine.","Offscreen rendering has no display surface, capture, or physical input-to-display measurement.","Authority mode reports simulated duration and in-process authenticated command dispatch; network modes use actual wall time, TLS workers, and durable storage.","GPU timestamp observations exclude display and final pending slots; bounded omissions are retained."]});
++    let mut report = serde_json::json!({"schema":"verse.battle.capacity.v1","mode":args[0],"seconds":seconds,"players":PLAYERS,"native_sessions":1,"headless_workers":19,"hostile_npcs":HOSTILES,"cultist_health":20000,"frontline_player":19,"frontline_initial_position":[-6.,0.,-8.],"frontline_initial_life_recipe":"approach the nearest hostile and cast only Fire Bolt; defer inventory, healing, crowd control, Shield, and Misty Step until the first actual respawn","delay_profile":"pipeline","delay_ms_per_chunk":40,"jitter_ms_per_chunk":20,"wire_version":verse_world::service::wire::VERSION,"debug_assertions":cfg!(debug_assertions),"status":"running","budgets":{"movement_expiries":0,"simulation_p99_upper_bound_ms":1000./30.,"render_cpu_p95_ms":1000./60.,"render_gpu_p95_ms":1000./60.,"snapshot_age_p95_ms":400.,"minimum_live_hostiles":HOSTILES,"minimum_authority_tick_fraction":0.98,"battle_framed_snapshot_fraction":0.8,"prediction_correction_p95_meters":0.25,"prediction_correction_maximum_meters":1.,"checkpoint_bytes":1048576,"request_queue_peak":128,"writer_queue_peak":2,"held_reply_bytes_peak":33554432,"steady_rss_growth_bytes":67108864},"limits":["Scratch authority and clients share this process and machine.","Offscreen rendering has no display surface, capture, or physical input-to-display measurement.","Authority mode reports simulated duration and in-process authenticated command dispatch; network modes use actual wall time, TLS workers, and durable storage.","GPU timestamp observations exclude display and final pending slots; bounded omissions are retained."]});
+     let resolution = resolution()?;
+     report["render_resolution"] = serde_json::json!({"width":resolution.0,"height":resolution.1});
+     use sha2::{Digest, Sha256};
+diff --git a/crates/verse/examples/common/battle_acceptance.rs b/crates/verse/examples/common/battle_acceptance.rs
+index 933fa81238..2d439088c6 100644
+--- a/crates/verse/examples/common/battle_acceptance.rs
++++ b/crates/verse/examples/common/battle_acceptance.rs
+@@ -50,6 +50,7 @@ pub fn failures(report: &Value) -> Vec<String> {
+         400.,
+         &mut failures,
+     );
++    limit("/server/movement_expiry/total", 0., &mut failures);
+     limit("/server/request_queue_peak", 128., &mut failures);
+     limit("/server/writer_queue_peak", 2., &mut failures);
+     limit("/server/held_reply_bytes_peak", 33554432., &mut failures);
+@@ -264,7 +265,24 @@ mod tests {
+     #[test]
+     fn fast_profiles_do_not_hide_missing_actions_or_route_failures() {
+         let segment = serde_json::json!({"status":"complete","maximum_players":20,"battle_occupancy":{"samples":100,"minimum_live_hostiles":40},"observed_frame_snapshots":100,"battle_framed_snapshots":100,"movement_inputs":100,"bound_frames":30,"confirmed_interval_steps":360,"accepted_operations":{"equipment":1,"quest_claim":1,"item_use":1,"respawn":1},"accepted_casts":{"Fireball":1,"Web":1,"Thunderwave":1},"measurements":{"steady":{"prediction_correction_meters":{"p95":0.01,"maximum":0.1}}}});
+-        let mut report = serde_json::json!({"status":"complete","mode":"network","seconds":60,"server":{"ticks":1800,"workload_ticks":1800,"request_queue_peak":20,"writer_queue_peak":2,"held_reply_bytes_peak":1000000,"failure":null,"simulation":{"steady":{"p99_upper_bound_ms":16.}},"admission":{"active_peak":20}},"render":{"measurements":{"steady":{"applied_snapshot_age_ms":{"p95":100.}}}},"recovery":{"active_receipts":32,"retained_events":512,"characters_checked":20,"live_hostiles":40,"checkpoint_bytes":300000},"route":{"connections":40,"refused_connections":0,"omitted_error_details":0,"error_details":[]},"disconnect_windows_seconds":[30.,60.],"players":(0..20).map(|player|serde_json::json!({"player":player,"segments":[segment.clone(),segment.clone()]})).collect::<Vec<_>>()});
++        let mut report = serde_json::json!({"status":"complete","mode":"network","seconds":60,"server":{"movement_expiry":{"total":0},"ticks":1800,"workload_ticks":1800,"request_queue_peak":20,"writer_queue_peak":2,"held_reply_bytes_peak":1000000,"failure":null,"simulation":{"steady":{"p99_upper_bound_ms":16.}},"admission":{"active_peak":20}},"render":{"measurements":{"steady":{"applied_snapshot_age_ms":{"p95":100.}}}},"recovery":{"active_receipts":32,"retained_events":512,"characters_checked":20,"live_hostiles":40,"checkpoint_bytes":300000},"route":{"connections":40,"refused_connections":0,"omitted_error_details":0,"error_details":[]},"disconnect_windows_seconds":[30.,60.],"players":(0..20).map(|player|serde_json::json!({"player":player,"segments":[segment.clone(),segment.clone()]})).collect::<Vec<_>>()});
++        assert!(failures(&report).is_empty());
++        report["server"]["movement_expiry"]["total"] = serde_json::json!(13);
++        assert!(
++            failures(&report)
++                .iter()
++                .any(|f| f.contains("/server/movement_expiry/total"))
++        );
++        report["server"]
++            .as_object_mut()
++            .unwrap()
++            .remove("movement_expiry");
++        assert!(
++            failures(&report)
++                .iter()
++                .any(|f| f.contains("/server/movement_expiry/total"))
++        );
++        report["server"]["movement_expiry"] = serde_json::json!({"total":0});
+         assert!(failures(&report).is_empty());
+         report["server"]["workload_ticks"] = serde_json::json!(1700);
+         assert!(failures(&report).iter().any(|f| f.contains("throughput")));
+diff --git a/crates/verse/examples/common/battle_native_player.rs b/crates/verse/examples/common/battle_native_player.rs
+index 67d7d8a54c..1f56ecc312 100644
+--- a/crates/verse/examples/common/battle_native_player.rs
++++ b/crates/verse/examples/common/battle_native_player.rs
+@@ -178,6 +178,6 @@ pub async fn player(
+     }
+     operations.insert("respawn".into(), session.life_changes);
+     Ok(
+-        serde_json::json!({"player":index,"status":if error.is_none(){"complete"}else{"failed"},"error":error,"worker_error":worker_error,"snapshots":session.snapshots,"maximum_players":max_players,"battle_occupancy":{"samples":occupancy,"minimum_live_hostiles":(occupancy>0).then_some(min_hostiles)},"movement_profile":"native_session_intervals","observed_frame_snapshots":framed,"movement_inputs":movements,"battle_framed_snapshots":battle_framed,"confirmed_interval_steps":confirmed_steps,"bound_frames":bound_frames,"accepted_outcomes":accepted_frames,"outcomes":responses,"accepted_casts":session.accepted_casts,"accepted_operations":operations,"damage_events":session.damage_events,"minimum_hp":(min_hp!=i32::MAX).then_some(min_hp),"prediction_embedding_deferrals":session.prediction_embedding_deferrals(),"prediction_separating_steps":session.prediction_separating_steps(),"last_prediction_embedding":session.prediction_embedding_diagnostic(),"unacknowledged_bound_operations":session.pending(),"refusals":refusals,"refusal_trace":trace,"correction_trace":correction_trace,"maximum_correction_detail":maximum_correction_detail,"omitted_correction_details":omitted_corrections,"omitted_observer_samples":omitted_observer,"omitted_render_frames":omitted_taps,"windows":windows,"measurements":measurements.summary()}),
++        serde_json::json!({"player":index,"status":if error.is_none(){"complete"}else{"failed"},"error":error,"worker_error":worker_error,"snapshots":session.snapshots,"maximum_players":max_players,"battle_occupancy":{"samples":occupancy,"minimum_live_hostiles":(occupancy>0).then_some(min_hostiles)},"movement_profile":"native_session_intervals","observed_frame_snapshots":framed,"movement_inputs":movements,"battle_framed_snapshots":battle_framed,"confirmed_interval_steps":confirmed_steps,"bound_frames":bound_frames,"accepted_outcomes":accepted_frames,"outcomes":responses,"accepted_casts":session.accepted_casts,"accepted_operations":operations,"damage_events":session.damage_events,"minimum_hp":(min_hp!=i32::MAX).then_some(min_hp),"prediction_horizon_pauses":session.prediction_horizon_pauses(),"prediction_failures":session.prediction_failures(),"last_prediction_failure":session.last_prediction_failure(),"prediction_embedding_deferrals":session.prediction_embedding_deferrals(),"prediction_separating_steps":session.prediction_separating_steps(),"last_prediction_embedding":session.prediction_embedding_diagnostic(),"unacknowledged_bound_operations":session.pending(),"refusals":refusals,"refusal_trace":trace,"correction_trace":correction_trace,"maximum_correction_detail":maximum_correction_detail,"omitted_correction_details":omitted_corrections,"omitted_observer_samples":omitted_observer,"omitted_render_frames":omitted_taps,"windows":windows,"measurements":measurements.summary()}),
+     )
+ }
+diff --git a/crates/verse/examples/common/battle_player.rs b/crates/verse/examples/common/battle_player.rs
+index a7120bfc57..c6e36a47ea 100644
+--- a/crates/verse/examples/common/battle_player.rs
++++ b/crates/verse/examples/common/battle_player.rs
+@@ -27,10 +27,26 @@ struct ProducerObservation {
+     pending: usize,
+     input_depth: usize,
+ }
++#[derive(Clone, serde::Serialize)]
++struct FrameTrace {
++    elapsed_ms: u128,
++    phase: &'static str,
++    actor: u64,
++    epoch: u64,
++    sequence: u64,
++    start: u64,
++    end: u64,
++    authority_tick: u64,
++    control_epoch: Option<u64>,
++    credit_step: Option<u64>,
++    pending_requests: usize,
++    queued_inputs: usize,
++}
+ #[derive(serde::Serialize)]
+ struct ProducerTransition {
+     before: VecDeque<ProducerObservation>,
+     after: ProducerObservation,
++    frames: VecDeque<FrameTrace>,
+ }
+ fn sample(values: &mut Vec<f64>, value: f64) -> bool {
+     if values.len() < 8192 {
+@@ -46,6 +62,21 @@ fn summary(mut values: Vec<f64>) -> serde_json::Value {
+         (!values.is_empty()).then(|| values[((values.len() - 1) as f64 * 0.95).ceil() as usize]);
+     serde_json::json!({"samples":values.len(),"p95":p95,"max":values.last()})
+ }
++// Verified credit wakes the interval producer without granting elapsed wall time.
++fn credit_wakes_frames(
++    previous: Option<(verse_engine::core::LifeId, u64, u64)>,
++    latest: Option<(verse_engine::core::LifeId, u64, u64)>,
++    movement: Option<verse_world::movement::Baseline>,
++) -> bool {
++    let (Some((life, epoch, step)), Some(baseline)) = (latest, movement) else {
++        return false;
++    };
++    baseline.profile == verse_world::movement::Profile::Frames
++        && (baseline.life, baseline.epoch) == (life, epoch)
++        && previous.is_none_or(|(old_life, old_epoch, old_step)| {
++            (old_life, old_epoch) != (life, epoch) || step > old_step
++        })
++}
+ pub async fn player(
+     client: Client,
+     index: usize,
+@@ -121,6 +152,8 @@ pub async fn player(
+     let mut producer_context = None;
+     let mut producer_transitions = Vec::new();
+     let mut omitted_producer_transitions = 0u64;
++    let mut frame_trace = VecDeque::new();
++    let mut omitted_frame_trace = 0u64;
+     let began = tokio::time::Instant::now();
+     let result=async {
+   loop {
+@@ -129,6 +162,11 @@ pub async fn player(
+     _=clock.tick()=>{
+      let observations=observer.drain();
+      omitted_observer+=observations.omitted;
++     omitted_frame_trace+=observations.omitted_frames;
++     for frame in observations.frames {
++      if frame_trace.len()==128 {frame_trace.pop_front();}
++      frame_trace.push_back(FrameTrace {elapsed_ms:frame.at.saturating_duration_since(began.into_std()).as_millis(),phase:frame.phase,actor:frame.actor,epoch:frame.epoch,sequence:frame.sequence,start:frame.start,end:frame.end,authority_tick:frame.authority_tick,control_epoch:frame.control_epoch,credit_step:frame.credit_step,pending_requests:frame.pending_requests,queued_inputs:frame.queued_inputs});
++     }
+      for observation in observations.samples {
+       if !sample(&mut turnaround,observation.turnaround_ms) {omitted_turnaround+=1;}
+       if !sample(by_kind.entry(observation.kind.into()).or_default(), observation.turnaround_ms) { *omitted_by_kind.entry(observation.kind.into()).or_default() += 1; }
+@@ -184,7 +222,7 @@ pub async fn player(
+        let observation=ProducerObservation {elapsed_ms:began.elapsed().as_millis(),actor:baseline.life.actor,epoch:baseline.epoch,profile:baseline.profile,confirmed_step:baseline.physics_step,snapshot_world_step:baseline.world_step,verified_credit:credit.filter(|(life,e,_)|(*life,*e)==(baseline.life,baseline.epoch)).map(|(_,_,step)|step),cursor:frame_cursor.filter(|(life,e,_)|(*life,*e)==(baseline.life,baseline.epoch)).map(|(_,_,step)|step),outstanding:outstanding.len(),pending:pending.len(),input_depth:send.max_capacity()-send.capacity()};
+        let context=(baseline.life,baseline.epoch);
+        if producer_context.is_some_and(|old|old!=context) {
+-        if producer_transitions.len()<8 {producer_transitions.push(ProducerTransition {before:producer_recent.clone(),after:observation.clone()});}
++        if producer_transitions.len()<8 {producer_transitions.push(ProducerTransition {before:producer_recent.clone(),after:observation.clone(),frames:frame_trace.clone()});}
+         else {omitted_producer_transitions=omitted_producer_transitions.saturating_add(1);}
+        }
+        producer_context=Some(context);
+@@ -194,9 +232,12 @@ pub async fn player(
+        producer_recent.push_back(observation);
+       }
+      }
++     // Flush available movement before a cast can wait for a fresh control header.
++     // Keep the cast even when this wake has no additional interval credit.
++     let movement_first=movement_frames && matches!(intent,Intent::Cast {..}) && state.movement.is_some_and(|baseline|baseline.profile==verse_world::movement::Profile::Frames);
+      let mut interval_work=0;
+      for emission in 0..if movement_frames {2} else {1} {
+-     let intent=if emission==0 {intent.clone()} else {Intent::Move {axes,yaw}};
++     let intent=if emission==usize::from(movement_first) {intent.clone()} else {Intent::Move {axes,yaw}};
+      token=token.checked_add(1).ok_or("Load input identities exhausted")?;
+      let moving=matches!(intent,Intent::Move {..});
+      let input=if movement_frames && moving {
+@@ -218,7 +259,7 @@ pub async fn player(
+       let world_step=credit.filter(|(life,epoch,_)|(*life,*epoch)==context).map_or(baseline.world_step,|(_,_,step)|step.max(baseline.world_step));
+       let limit=world_step.checked_add(u64::from(verse_world::movement::frames::MAX_STEPS)).ok_or("Load movement credit exhausted")?;
+       let steps=limit.saturating_sub(start).min(u64::from(verse_world::movement::frames::MAX_STEPS)).min(u64::from(verse_world::movement::frames::MAX_STEPS-interval_work)) as u32;
+-      if steps==0 {break;}
++      if steps==0 {if movement_first {continue;} else {break;}}
+       let frame=verse_world::movement::frames::Frame {life:baseline.life,epoch:baseline.epoch,sequence:0,tick:0,start,steps,
+        segments:vec![verse_world::movement::frames::Segment {offset:0,axes,yaw,until:start+verse_world::movement::HELD_STEPS,jump:false}]};
+       frame.validate_payload()?;
+@@ -234,7 +275,10 @@ pub async fn player(
+     }
+     update=receive.recv()=>match update.ok_or("Load worker output closed")? {
+      Update::Snapshot(response)=>{
+-      credit=response.control.as_ref().map(|c|(c.life.into(),c.epoch,c.credit_step));
++      let latest_credit=response.control.as_ref().map(|c|(c.life.into(),c.epoch,c.credit_step));
++      let movement=match &response.body {Reply::Snapshot {state}=>state.movement,_=>None};
++      if credit_wakes_frames(credit,latest_credit,movement) {clock.reset_immediately();}
++      credit=latest_credit;
+       epoch=response.control.as_ref().ok_or("Load lost player control")?.epoch;
+       snapshot_bytes+=serde_json::to_vec(&response).map_err(|_|"Cannot size load snapshot")?.len() as u64;
+       let Reply::Snapshot {state:latest}=response.body else {return Err("Load snapshot refused".into())};
+@@ -261,7 +305,9 @@ pub async fn player(
+       Err(message)=>{outstanding.remove(&token);refused+=1;if refusal_trace.len()<32 {refusal_trace.push(serde_json::json!({"stage":"frame_binding","message":message}));}},
+      },
+      Update::Outcome(response)=>{
+-      credit=response.control.as_ref().map(|c|(c.life.into(),c.epoch,c.credit_step));
++      let latest_credit=response.control.as_ref().map(|c|(c.life.into(),c.epoch,c.credit_step));
++      if credit_wakes_frames(credit,latest_credit,state.as_ref().and_then(|s|s.movement)) {clock.reset_immediately();}
++      credit=latest_credit;
+       if let Some(control)=response.control.as_ref() {epoch=control.epoch;}
+       if let Some((started,ability,entry,token))=pending.pop_front() {
+        if let Some(token)=token {outstanding.remove(&token);}
+@@ -275,7 +321,13 @@ pub async fn player(
+       }
+      }
+      Update::MovementSuperseded {token,..}=>{outstanding.remove(&token);},
+-     Update::Events {..}|Update::Inventory(_)=>{},
++     auxiliary @ (Update::Events {..}|Update::Inventory(_))=>{
++      let control=match &auxiliary {Update::Events {control,..}=>control.as_ref(),Update::Inventory(response)=>response.control.as_ref(),_=>unreachable!()};
++      let latest_credit=control.map(|c|(c.life.into(),c.epoch,c.credit_step));
++      if credit_wakes_frames(credit,latest_credit,state.as_ref().and_then(|s|s.movement)) {clock.reset_immediately();}
++      credit=latest_credit;
++      if let Some(control)=control {epoch=control.epoch;}
++     },
+     }
+    }
+   }
+@@ -307,6 +359,6 @@ pub async fn player(
+         .map(|(kind, values)| (kind, summary(values)))
+         .collect::<BTreeMap<_, _>>();
+     Ok(
+-        serde_json::json!({"player":index,"status":if failure_stage.is_some() {"failed"} else {"complete"},"failure_stage":failure_stage,"observation_error":observation_error,"worker_error":worker_error,"omitted_refusal_samples":refused.saturating_sub(refusal_trace.len() as u64),"refusal_trace":refusal_trace,"omitted_latency_samples":omitted_latency,"snapshots":snapshots,"snapshot_bytes":snapshot_bytes,"maximum_actors":max_actors,"maximum_players":max_players,"maximum_live_hostiles":max_live_hostiles,"battle_occupancy":{"samples":battle_samples,"minimum_live_hostiles":(battle_samples>0).then_some(battle_live_min),"mean_live_hostiles":(battle_samples>0).then(||battle_live_total as f64/battle_samples as f64)},"movement_profile":if movement_frames {"authority_credit_intervals"} else {"legacy_commands"},"observed_frame_snapshots":observed_frame_snapshots,"movement_inputs":movement,"producer_timing":{"observations":producer_observations,"first":producer_first,"recent":producer_recent,"window_capacity":128,"transitions":producer_transitions,"transition_capacity":8,"omitted_transitions":omitted_producer_transitions},"bound_frames":bound_frames,"battle_framed_snapshots":battle_framed,"confirmed_interval_steps":confirmed_steps,"input_pressure":pressure,"unacknowledged_bound_operations":pending.len(),"unbound_inputs":outstanding.len(),"refusals":refused,"accepted_casts":casts,"accepted_operations":operations,"request_turnaround_ms":summary(turnaround),"request_turnaround_by_kind_ms":by_kind,"omitted_request_samples_by_kind":omitted_by_kind,"pending_request_peak":peak_pending,"queued_input_peak":peak_inputs,"snapshot_verified_age_ms":summary(snapshot_age),"omitted_request_samples":omitted_turnaround,"omitted_age_samples":omitted_age,"omitted_observer_samples":omitted_observer,"minimum_hp":(min_hp!=i32::MAX).then_some(min_hp),"binding_to_outcome_ms":summary(latency)}),
++        serde_json::json!({"player":index,"status":if failure_stage.is_some() {"failed"} else {"complete"},"failure_stage":failure_stage,"observation_error":observation_error,"worker_error":worker_error,"omitted_refusal_samples":refused.saturating_sub(refusal_trace.len() as u64),"refusal_trace":refusal_trace,"omitted_latency_samples":omitted_latency,"snapshots":snapshots,"snapshot_bytes":snapshot_bytes,"maximum_actors":max_actors,"maximum_players":max_players,"maximum_live_hostiles":max_live_hostiles,"battle_occupancy":{"samples":battle_samples,"minimum_live_hostiles":(battle_samples>0).then_some(battle_live_min),"mean_live_hostiles":(battle_samples>0).then(||battle_live_total as f64/battle_samples as f64)},"movement_profile":if movement_frames {"authority_credit_intervals"} else {"legacy_commands"},"observed_frame_snapshots":observed_frame_snapshots,"movement_inputs":movement,"frame_timing":{"recent":frame_trace,"window_capacity":128,"omitted":omitted_frame_trace},"producer_timing":{"observations":producer_observations,"first":producer_first,"recent":producer_recent,"window_capacity":128,"transitions":producer_transitions,"transition_capacity":8,"omitted_transitions":omitted_producer_transitions},"bound_frames":bound_frames,"battle_framed_snapshots":battle_framed,"confirmed_interval_steps":confirmed_steps,"input_pressure":pressure,"unacknowledged_bound_operations":pending.len(),"unbound_inputs":outstanding.len(),"refusals":refused,"accepted_casts":casts,"accepted_operations":operations,"request_turnaround_ms":summary(turnaround),"request_turnaround_by_kind_ms":by_kind,"omitted_request_samples_by_kind":omitted_by_kind,"pending_request_peak":peak_pending,"queued_input_peak":peak_inputs,"snapshot_verified_age_ms":summary(snapshot_age),"omitted_request_samples":omitted_turnaround,"omitted_age_samples":omitted_age,"omitted_observer_samples":omitted_observer,"minimum_hp":(min_hp!=i32::MAX).then_some(min_hp),"binding_to_outcome_ms":summary(latency)}),
+     )
+ }
