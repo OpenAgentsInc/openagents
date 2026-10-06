@@ -131,6 +131,8 @@ pub enum Input {
 pub enum Update {
     Snapshot(Response),
     Inventory(Response),
+    /// Verified clock time does not acknowledge a player operation.
+    MovementCredit(Response),
     Events {
         delivery: Delivery,
         checkpoint: Vec<u8>,
@@ -621,6 +623,12 @@ async fn run_impl(
                         // affects reads only and expires if no producer sends frames.
                         entry_quiet = response.control.as_ref().map(|control|
                             ((control.life, control.epoch), now + Duration::from_millis(200)));
+                        // Entry has completed. A small read can return fresh committed
+                        // time before the first movement receipt, without holding inputs.
+                        barrier = false;
+                        if !input_closed {
+                            client.send(Body::MovementCredit {})?;
+                        }
                     }
                     if let Some(observer) = &observer {
                         let kind = match &body {
@@ -666,6 +674,7 @@ async fn run_impl(
                             next_inventory = client_runtime::Instant::now() + Duration::from_secs(1);
                             Update::Inventory(response)
                         }
+                        Body::MovementCredit {} => Update::MovementCredit(response),
                         Body::MovementFrame { frame } => {
                             if entry_quiet.is_some_and(|(context, _)| context == (frame.life.into(), frame.epoch)) {
                                 entry_quiet = None;
@@ -1686,7 +1695,7 @@ mod tests {
         host.await.unwrap();
     }
     #[tokio::test]
-    async fn interval_entry_snapshot_defers_the_next_scene_read() {
+    async fn interval_entry_reads_fresh_credit_without_duplicate_scene_work() {
         use crate::service::net::{
             read_frame,
             tests::{gateway, tls},
@@ -1720,6 +1729,12 @@ mod tests {
                         let request = Request::decode(&bytes).unwrap();
                         if entered && matches!(request.body, Body::Snapshot {} | Body::Replicate { .. } | Body::Events { .. } | Body::Inventory {}) {
                             reads.send(()).await.unwrap();
+                        }
+                        if matches!(request.body, Body::BeginMovementFrames { .. }) {
+                            tokio::time::sleep(Duration::from_millis(100)).await;
+                        }
+                        if matches!(request.body, Body::MovementCredit {}) {
+                            gateway.tick(1. / 120.).unwrap();
                         }
                         entered |= matches!(request.body, Body::BeginMovementFrames { .. });
                         let response = gateway.dispatch_json(id, 0, &bytes).unwrap();
@@ -1772,15 +1787,28 @@ mod tests {
         };
         let baseline = timeout(Duration::from_secs(3), entry).await.unwrap();
         // Keep consuming other read classes while checking the scene deadline.
+        let mut credit_reads = 0;
         let check = async {
             loop {
                 tokio::select! {
                     read = observed.recv() => { assert!(read.is_none(), "Entry triggered a duplicate scene read"); return; }
-                    update = output.recv() => { assert!(update.is_some()); }
+                    update = output.recv() => {
+                        let update = update.expect("Worker stopped during entry");
+                        if let Update::MovementCredit(response) = update {
+                            credit_reads += 1;
+                            let control = response.control.unwrap();
+                            assert_eq!((control.life.into(), control.epoch), (baseline.life, baseline.epoch));
+                            assert!(control.credit_step > baseline.world_step);
+                        }
+                    }
                 }
             }
         };
         assert!(timeout(Duration::from_millis(100), check).await.is_err());
+        assert_eq!(
+            credit_reads, 1,
+            "Entry must supply one small fresh clock read"
+        );
         input
             .send(Input::MovementFrame {
                 token: 1,
@@ -2734,7 +2762,7 @@ mod tests {
                         Update::Inventory(response)=> {assert!(player);let Reply::Inventory{inventory}=response.body else {panic!("Missing inventory");};assert_eq!(inventory.experience,0);inventories+=1;},
                         Update::Events{..}=>{},
                         Update::FrameBound { .. } | Update::MovementSuperseded { .. }
-                    | Update::CommandBound { .. } | Update::Outcome(_)=>panic!("No player commands submitted"),
+                    | Update::CommandBound { .. } | Update::Outcome(_) | Update::MovementCredit(_)=>panic!("No player commands submitted"),
                     }
                 }
             }
@@ -2817,6 +2845,7 @@ mod tests {
                         }
                     }
                     Update::Events { .. } => event_pages.push(Instant::now()),
+                    Update::MovementCredit(_) => panic!("No interval entry submitted"),
                     Update::MovementSuperseded { .. }
                     | Update::FrameBound { .. }
                     | Update::CommandBound { .. }
@@ -2902,6 +2931,7 @@ mod tests {
                 | Update::CommandBound { .. } => {
                     panic!("No tracked commands submitted")
                 }
+                Update::MovementCredit(_) => panic!("No interval entry submitted"),
                 Update::Outcome(r) => {
                     assert!(matches!(r.body, Reply::Accepted));
                     accepted = true;

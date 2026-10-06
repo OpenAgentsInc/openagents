@@ -620,6 +620,12 @@ impl Client {
                 }
                 Ok(())
             }
+            (Reply::Accepted, Body::MovementCredit {}) => {
+                if r.control.is_none() {
+                    return Err("Movement credit has no owned control".into());
+                }
+                Ok(())
+            }
             (Reply::Accepted, Body::MovementFrame { frame }) => {
                 if r.control.as_ref().is_none_or(|c| {
                     c.life != frame.life.into()

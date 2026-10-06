@@ -772,7 +772,7 @@ fn bounded_native_input_reports_pressure_and_closed_update_streams() {
 }
 
 #[test]
-fn event_credit_advances_intervals_without_a_new_scene_and_fences_old_epochs() {
+fn read_credit_advances_intervals_without_acknowledging_input_and_fences_old_epochs() {
     use verse_world::service::{
         event_cursor::Delivery,
         wire::{Response, VERSION},
@@ -800,7 +800,7 @@ fn event_credit_advances_intervals_without_a_new_scene_and_fences_old_epochs() {
         },
     };
     connected.stop();
-    let (input, _inputs, updates, output) = worker::channels();
+    let (input, mut inputs, updates, output) = worker::channels();
     let mut session =
         Session::attached(View::new(snapshot.instance, 10., 0).unwrap(), input, output);
     updates
@@ -808,7 +808,7 @@ fn event_credit_advances_intervals_without_a_new_scene_and_fences_old_epochs() {
         .unwrap();
     session.consume(&scene).unwrap();
     let baseline = session.prediction.confirmed().unwrap();
-    let mut control = snapshot.control.unwrap();
+    let mut control = snapshot.control.clone().unwrap();
     control.credit_step = control.credit_step.max(session.prediction.physics_step()) + 12;
     let deliver = |control| Update::Events {
         delivery: Delivery {
@@ -824,8 +824,32 @@ fn event_credit_advances_intervals_without_a_new_scene_and_fences_old_epochs() {
     let after = session.prediction.physics_step();
     assert!(after > baseline.physics_step);
     assert_eq!(session.prediction.confirmed().unwrap(), baseline);
+    session.prediction.advance(4. / 120.).unwrap();
+    session.send_movement_interval().unwrap();
+    let Input::MovementFrame { token, .. } = inputs.try_recv().unwrap() else {
+        panic!("Missing pending movement frame");
+    };
+    let pending = session.pending.len();
+    control.credit_step += 12;
+    let mut credit = snapshot.clone();
+    credit.body = Reply::Accepted;
+    credit.control = Some(control.clone());
+    let before = session.prediction.physics_step();
+    updates
+        .try_send(Update::MovementCredit(credit.clone()))
+        .unwrap();
+    session.consume(&scene).unwrap();
+    assert_eq!(session.pending.len(), pending);
+    assert_eq!(session.pending.front().unwrap().1, Some(token));
+    assert_eq!(session.prediction.physics_step(), before);
+    session.prediction.recover_world_credit().unwrap();
+    let after = session.prediction.physics_step();
+    assert!(after > before);
+    assert_eq!(session.prediction.confirmed().unwrap(), baseline);
     control.epoch += 1;
     control.credit_step += 120;
+    credit.control = Some(control.clone());
+    updates.try_send(Update::MovementCredit(credit)).unwrap();
     updates.try_send(deliver(control)).unwrap();
     session.consume(&scene).unwrap();
     assert_eq!(session.prediction.physics_step(), after);

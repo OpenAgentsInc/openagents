@@ -1,0 +1,29 @@
+{
+  "scope": "One small owned movement-credit read after successful interval entry. Battle acceptance remains pending.",
+  "wire_version": 33,
+  "checks": {
+    "server_credit_read": 1,
+    "worker": 25,
+    "native_session": 8,
+    "battle_consumer": 3,
+    "formatting": "Targeted rustfmt and git diff --check",
+    "runtime_contract": "python3.13 scripts/verse-runtime-contract.py --check"
+  },
+  "world_optimization": 3,
+  "authority_bounds_changed": false,
+  "invariants": [
+    "Credit reads do not advance admission sequence or motor state.",
+    "Repeated reads cannot keep an idle interval alive beyond its existing grace.",
+    "The TLS worker emits one fresh credit read after entry without duplicate scene reads.",
+    "The lifecycle barrier ends at successful entry; the credit read does not hold inputs.",
+    "Credit updates preserve pending native inputs and ignore foreign epochs."
+  ],
+  "source_paths": [
+    "crates/verse-world/src/service/wire.rs",
+    "crates/verse-world/src/service/client.rs",
+    "crates/verse-world/src/service/worker.rs",
+    "crates/verse-imported/src/imported/chamber_session.rs",
+    "crates/verse/examples/common/battle_player.rs"
+  ],
+  "conclusion": "Focused source and consumer checks pass. The next frozen-binary short battle must still pass all unchanged capacity gates."
+}

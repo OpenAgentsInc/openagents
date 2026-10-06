@@ -5,7 +5,7 @@ use verse_engine::core::LifeId;
 use super::auth::{Challenge, ConnectionId, Gateway};
 use crate::{Command, Intent, events::Event, play::Ability, rules::Snapshot};
 
-pub const VERSION: u16 = 32;
+pub const VERSION: u16 = 33;
 pub const MAX_REQUEST_BYTES: usize = 16 * 1024;
 pub const MAX_RESPONSE_BYTES: usize = 2 * 1024 * 1024;
 
@@ -156,6 +156,7 @@ pub enum Body {
     MovementFrame {
         frame: crate::movement::frames::Frame,
     },
+    MovementCredit {},
     Snapshot {},
     Replicate {
         ack: Option<super::replication::Baseline>,
@@ -811,6 +812,10 @@ impl Gateway {
                 self.begin_movement_frames(id, life.into(), epoch)
                     .map_err(|e| ("command", e))?;
                 self.dispatch_body(id, now, Body::Snapshot {})
+            }
+            Body::MovementCredit {} => {
+                self.admission(id).map_err(|e| ("movement_credit", e))?;
+                Ok(Reply::Accepted)
             }
             Body::MovementFrame { frame } => {
                 self.submit_movement_frame(id, frame)
@@ -1891,6 +1896,56 @@ mod tests {
             Reply::Refused { .. }
         ));
     }
+    #[test]
+    fn movement_credit_reads_preserve_admission_and_cannot_renew_interval_clocks() {
+        let mut g = gateway();
+        let owner = key(213);
+        let observer = key(214);
+        g.enroll_primary(public(&owner)).unwrap();
+        g.enroll_spectator(public(&observer)).unwrap();
+        let id = join(&mut g, &owner);
+        let spectator = join(&mut g, &observer);
+        assert!(matches!(
+            send(&mut g, spectator, 2, Body::MovementCredit {}).body,
+            Reply::Refused { .. }
+        ));
+        g.tick(1. / 30.).unwrap();
+        let life = g.admission(id).unwrap().actor();
+        let epoch = g.admission(id).unwrap().epoch();
+        let entry = send(
+            &mut g,
+            id,
+            2,
+            Body::BeginMovementFrames {
+                life: life.into(),
+                epoch,
+            },
+        );
+        assert!(matches!(entry.body, Reply::Snapshot { .. }));
+        let epoch = g.admission(id).unwrap().epoch();
+        let before = g.game().movement_baseline(life).unwrap().unwrap();
+        let sequence = g.admission(id).unwrap().accepted_sequence();
+        let credit = send(&mut g, id, 3, Body::MovementCredit {});
+        assert!(matches!(credit.body, Reply::Accepted));
+        assert_eq!(
+            credit.control.as_ref().unwrap().credit_step,
+            g.game().physics_steps
+        );
+        assert!(credit.encode().unwrap().len() < 4096);
+        assert_eq!(g.admission(id).unwrap().accepted_sequence(), sequence);
+        assert_eq!(g.game().movement_baseline(life).unwrap().unwrap(), before);
+        // Repeated reads cannot keep an idle owned interval alive beyond its grace.
+        for request in 4..=17 {
+            g.tick(1. / 30.).unwrap();
+            let credit = send(&mut g, id, request, Body::MovementCredit {});
+            assert!(matches!(credit.body, Reply::Accepted));
+            assert_eq!(credit.control.unwrap().credit_step, g.game().physics_steps);
+        }
+        assert!(g.admission(id).unwrap().epoch() > epoch);
+        assert_eq!(g.game().movement_expiry.total, 1);
+        assert_eq!(g.game().movement_expiry.bootstrap, 1);
+    }
+
     #[test]
     fn owned_intervals_acknowledge_admission_before_body_time_and_refuse_foreign_controls() {
         use crate::movement::{

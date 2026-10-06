@@ -1849,7 +1849,8 @@ mod tests {
                 | Update::FrameBound { .. }
                 | Update::CommandBound { .. }
                 | Update::Outcome(_)
-                | Update::Inventory(_) => {
+                | Update::Inventory(_)
+                | Update::MovementCredit(_) => {
                     panic!("Spectator issued no private request")
                 }
             }

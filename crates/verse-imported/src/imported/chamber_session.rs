@@ -724,6 +724,9 @@ impl Session {
                         }
                     }
                 }
+                Ok(Update::MovementCredit(r)) => {
+                    self.observe_movement_credit(r.control.as_ref())?;
+                }
                 Ok(Update::Inventory(r)) => {
                     self.view.push_inventory(&r)?;
                     self.observe_movement_credit(r.control.as_ref())?;

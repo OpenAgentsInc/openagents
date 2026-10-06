@@ -34,7 +34,7 @@
     },
     "wire_version": {
       "source": "crates/verse-world/src/service/wire.rs",
-      "value": 32
+      "value": 33
     }
   },
   "generator": "scripts/verse-runtime-contract.py",
