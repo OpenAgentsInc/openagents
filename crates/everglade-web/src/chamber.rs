@@ -79,6 +79,9 @@ struct Page {
     damage: u64,
     look: Option<(i32, [i32; 2])>,
     last: f64,
+    render_scale: f64,
+    slow_frames: u8,
+    fast_frames: u16,
 }
 fn path(value: &str) -> Result<(), String> {
     if value.is_empty()
@@ -570,6 +573,9 @@ pub async fn run(
         damage: 0,
         look: None,
         last: 0.,
+        render_scale: 1.,
+        slow_frames: 0,
+        fast_frames: 0,
     }));
     for (label, name) in [
         ("Forward", "TouchForward"),
@@ -732,7 +738,30 @@ fn animate(window: Window, page: Rc<RefCell<Page>>) {
     let scheduler = window.clone();
     *callback.borrow_mut() = Some(Closure::wrap(Box::new(move |now: f64| {
         let mut p = page.borrow_mut();
-        let dt = ((now - p.last) / 1000.).clamp(0., 0.1) as f32;
+        let elapsed = now - p.last;
+        let dt = (elapsed / 1000.).clamp(0., 0.1) as f32;
+        if p.active && p.engine.is_some() && p.last > 0. && elapsed < 1000. {
+            // Keep graphics work within the shared thread's input and transport budget.
+            if elapsed > 40. {
+                p.slow_frames += 1;
+                p.fast_frames = 0;
+                if p.slow_frames >= 2 {
+                    p.render_scale = (p.render_scale * 0.75).max(1. / 16.);
+                    p.slow_frames = 0;
+                }
+            } else {
+                p.slow_frames = 0;
+                if elapsed < 20. {
+                    p.fast_frames += 1;
+                    if p.fast_frames >= 300 {
+                        p.render_scale = (p.render_scale * 1.1).min(1.);
+                        p.fast_frames = 0;
+                    }
+                } else {
+                    p.fast_frames = 0;
+                }
+            }
+        }
         p.last = now;
         if p.active {
             if let Ok(pads) = p.window.navigator().get_gamepads() {
@@ -801,12 +830,17 @@ fn animate(window: Window, page: Rc<RefCell<Page>>) {
                 p.notice
                     .set_text_content(Some(&format!("{error}. Reconnect to recover.")));
             }
+            let physical = size(&p.window, &p.canvas)
+                .map(|value| (f64::from(value) * p.render_scale).round().max(1.) as u32);
+            let _ = p
+                .canvas
+                .set_attribute("data-render-scale", &p.render_scale.to_string());
             let session_frame = p.session.as_ref().and_then(|s| {
                 s.frame_in(
                     &source.pack,
                     &p.atlas,
                     &source.scene,
-                    size(&p.window, &p.canvas),
+                    physical,
                     [
                         p.canvas.client_width().max(1) as f32,
                         p.canvas.client_height().max(1) as f32,
@@ -815,8 +849,8 @@ fn animate(window: Window, page: Rc<RefCell<Page>>) {
                 .ok()
             });
             if let Some(mut frame) = session_frame {
-                let _ = frame.scale_overlay(size(&p.window, &p.canvas).map(|value| value as f32));
-                let [w, h] = size(&p.window, &p.canvas);
+                let _ = frame.scale_overlay(physical.map(|value| value as f32));
+                let [w, h] = physical;
                 if p.canvas.width() != w {
                     p.canvas.set_width(w);
                 }
@@ -845,8 +879,16 @@ fn animate(window: Window, page: Rc<RefCell<Page>>) {
                 let life = session.owned_life();
                 let resources = session.hud().map(|h| {
                     format!(
-                        "Health {}/{}; mana {}/{}",
-                        h.resources.hp, h.resources.max_hp, h.resources.mana, h.resources.max_mana
+                        "Health {}/{}; mana {}/{}{}",
+                        h.resources.hp,
+                        h.resources.max_hp,
+                        h.resources.mana,
+                        h.resources.max_mana,
+                        if p.render_scale < 0.99 {
+                            "; graphics quality reduced"
+                        } else {
+                            ""
+                        }
                     )
                 });
                 if damage > p.damage {
