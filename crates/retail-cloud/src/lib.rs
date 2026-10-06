@@ -22,6 +22,7 @@
 //! - [`dispatch`]: one funded task, streamed by cursor.
 //! - [`meter`]: retained cumulative usage and quoted-ceiling enforcement.
 //! - [`cancel`]: separate stop, teardown, usage, and settled-charge receipts.
+//! - [`settle`]: atomic measured debits and unused hold releases.
 //! - [`journal`]: the durable intents and observations a restart reads.
 
 pub mod authority;
@@ -37,6 +38,7 @@ pub mod provision;
 pub mod recover;
 pub mod reserve;
 pub mod retain;
+pub mod settle;
 pub mod topup;
 
 /// Why a retail operation was refused.
@@ -75,6 +77,7 @@ pub(crate) const EXTRA_SCHEMAS: &[&str] = &[
     retain::SCHEMA,
     cancel::SCHEMA,
     recover::SCHEMA,
+    settle::SCHEMA,
 ];
 
 pub type Result<T> = std::result::Result<T, Error>;

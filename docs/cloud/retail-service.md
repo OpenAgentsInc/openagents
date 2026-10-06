@@ -187,3 +187,10 @@ disconnects reattaches with its cursor without cancelling or redispatching.
 when every declared check passed on the exact retained candidate,
 `check_failed` when one failed or ran on another candidate, and `unchecked`
 when the executor made no change.
+
+The [settlement module](../../crates/retail-cloud/src/settle.rs) binds the
+original quote and price book to retained final usage and execution or
+cancellation evidence. The central ledger posts the debit, obligations, and
+unused hold release in one transaction; a retry seals the same receipt.
+Unknown costs stay held. An unused hold release is separate from a payment
+refund, and a failed check does not erase measured compute charges.
