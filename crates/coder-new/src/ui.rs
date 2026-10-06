@@ -82,13 +82,18 @@ fn agent_rail(frame: &mut Frame, area: Rect, app: &App) {
         .max()
         .unwrap_or(0)) as u16;
     let narrow = area.width < 32;
+    let count_width = DEMOS
+        .iter()
+        .map(|agent| agent.tokens.width())
+        .max()
+        .unwrap_or(0);
     let token_labels: Vec<_> = DEMOS
         .iter()
         .map(|agent| {
             if narrow {
-                format!("↓ {}", agent.tokens)
+                format!("↓{:>count_width$}", agent.tokens)
             } else {
-                format!("↓ {} tokens", agent.tokens)
+                format!("↓ {:>count_width$} tokens", agent.tokens)
             }
         })
         .collect();

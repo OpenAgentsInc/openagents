@@ -9,6 +9,7 @@ use ratatui::{
     text::Text,
     widgets::{Block, Paragraph},
 };
+use unicode_width::UnicodeWidthStr;
 
 fn key(app: &mut App, code: KeyCode) {
     assert!(app.handle(Event::Key(KeyEvent::new(code, KeyModifiers::NONE))));
@@ -177,6 +178,16 @@ fn composer_text(rendered: &str) -> String {
         .join("\n")
 }
 
+fn expected_token_label(tokens: &str, compact: bool) -> String {
+    let width = DEMOS.iter().map(|demo| demo.tokens.width()).max().unwrap();
+    let padding = " ".repeat(width.saturating_sub(tokens.width()));
+    if compact {
+        format!("↓{padding}{tokens}")
+    } else {
+        format!("↓ {padding}{tokens} tokens")
+    }
+}
+
 fn assert_agent_rail(rendered: &str, elapsed_seconds: u64) {
     let rules = composer_rules(rendered);
     assert_eq!(rules.len(), 2);
@@ -184,6 +195,7 @@ fn assert_agent_rail(rendered: &str, elapsed_seconds: u64) {
     let right_edge = rule.trim_end().chars().count() - 2;
     let mut previous_row = composer_bottom;
     let mut task_column = None;
+    let mut separator_columns = None;
     for demo in &DEMOS {
         let (row, line) = rendered
             .lines()
@@ -205,10 +217,19 @@ fn assert_agent_rail(rendered: &str, elapsed_seconds: u64) {
             task_column = Some(column);
         }
         assert!(line.trim_end().ends_with(&format!(
-            "{} · ↓ {} tokens",
+            "{} · {}",
             elapsed_time(demo.elapsed_seconds.saturating_add(elapsed_seconds)),
-            demo.tokens
+            expected_token_label(demo.tokens, false)
         )));
+        let columns = (
+            line[..line.rfind('·').unwrap()].width(),
+            line[..line.find('↓').unwrap()].width(),
+        );
+        if let Some(expected) = separator_columns {
+            assert_eq!(columns, expected);
+        } else {
+            separator_columns = Some(columns);
+        }
         assert_eq!(line.trim_end().chars().count(), right_edge);
         previous_row = row;
     }
@@ -313,7 +334,10 @@ fn resizing_keeps_the_draft_cursor_visible_and_agent_rows_aligned() {
                     .lines()
                     .find(|line| line.contains(demo.name))
                     .unwrap();
-                assert!(row.trim_end().ends_with(&format!("↓ {}", demo.tokens)));
+                assert!(
+                    row.trim_end()
+                        .ends_with(&expected_token_label(demo.tokens, true))
+                );
                 assert!(!row.contains(&elapsed_time(demo.elapsed_seconds)));
             }
         }
@@ -532,6 +556,8 @@ fn selected_agent_keeps_the_rail_visible_and_tokens_aligned_after_resize() {
             let rules = composer_rules(&rendered);
             let bottom = rules[1].0;
             let right_edge = rules[1].1.trim_end().chars().count() - 2;
+            let mut arrow_column = None;
+            let mut dot_column = None;
             for (index, demo) in DEMOS.iter().enumerate() {
                 let (_, line) = rendered
                     .lines()
@@ -546,15 +572,29 @@ fn selected_agent_keeps_the_rail_visible_and_tokens_aligned_after_resize() {
                 }
                 let suffix = if width == 80 {
                     format!(
-                        "{} · ↓ {} tokens",
+                        "{} · {}",
                         elapsed_time(demo.elapsed_seconds.saturating_add(app.elapsed_seconds)),
-                        demo.tokens
+                        expected_token_label(demo.tokens, false)
                     )
                 } else {
-                    format!("↓ {}", demo.tokens)
+                    expected_token_label(demo.tokens, true)
                 };
                 assert!(line.trim_end().ends_with(&suffix));
                 assert_eq!(line.trim_end().chars().count(), right_edge);
+                let arrow = line[..line.find('↓').unwrap()].width();
+                if let Some(expected) = arrow_column {
+                    assert_eq!(arrow, expected);
+                } else {
+                    arrow_column = Some(arrow);
+                }
+                if width == 80 {
+                    let dot = line[..line.rfind('·').unwrap()].width();
+                    if let Some(expected) = dot_column {
+                        assert_eq!(dot, expected);
+                    } else {
+                        dot_column = Some(dot);
+                    }
+                }
             }
             assert_eq!(app.selected_agent, Some(selected));
         }
@@ -825,7 +865,10 @@ fn rail_elapsed_time_formats_units_and_preserves_the_clock_across_selection_and_
             .skip(composer_rules(&rendered)[1].0 + 1)
             .find(|line| line.contains(demo.name))
             .unwrap();
-        assert!(row.trim_end().ends_with(&format!("↓ {}", demo.tokens)));
+        assert!(
+            row.trim_end()
+                .ends_with(&expected_token_label(demo.tokens, true))
+        );
         assert!(!row.contains(&elapsed_time(demo.elapsed_seconds + 22)));
     }
     assert_eq!(app.elapsed_seconds, 22);
