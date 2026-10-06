@@ -2777,6 +2777,7 @@ dependencies = [
  "secp256k1 0.31.1",
  "serde",
  "serde_json",
+ "sha2 0.10.9",
  "tempfile",
  "tokio",
  "tokio-tungstenite 0.30.0",
@@ -13559,6 +13560,7 @@ dependencies = [
  "serde_json",
  "terminal-core",
  "terminal-gfx",
+ "terminal-studio",
  "verse-gfx",
  "wgpu",
  "winit",
@@ -13604,6 +13606,17 @@ dependencies = [
  "terminal-core",
  "verse-gfx",
  "winit",
+]
+
+[[package]]
+name = "terminal-studio"
+version = "0.1.0"
+dependencies = [
+ "coder-access",
+ "serde_json",
+ "tempfile",
+ "terminal-core",
+ "terminal-gfx",
 ]
 
 [[package]]
@@ -15033,6 +15046,7 @@ dependencies = [
  "tempfile",
  "terminal-control",
  "terminal-gfx",
+ "terminal-studio",
  "tokio",
  "tokio-tungstenite 0.30.0",
  "toml",

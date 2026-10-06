@@ -468,3 +468,11 @@ select it; ordinary clicks and `F` still open studio panels. Opening must
 not start a goal or task. Confirm that leaving Everglade clears the context.
 The isolated adapter and fake-transport checks cover identity, denied
 observation, restart, and repeated opening; this visible-window check remains.
+
+## Studio workbench projection (#10648)
+
+On the Mac, open the shared studio page with `F13` in the standalone window
+and at an Everglade station. Check goal and task rows, seat engines and
+spend, log tails, and memory against the existing studio panels. Confirm
+one scratch seat command with Enter twice, inspect the host receipt, and
+check that revoking observation clears the page. Archive any scratch tasks.

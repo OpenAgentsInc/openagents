@@ -133,9 +133,15 @@ pub trait Source: Send {
     /// when it holds one. A host source asks for one it does not hold, and
     /// it arrives in a later call.
     fn review(&mut self, task: &str) -> Option<TaskReview>;
-    /// The rights the source's host connection holds. A view offers only
-    /// the intents they allow, and the host checks them again. A fixture
-    /// holds none.
+    /// Whether the source is reachable without a known read failure.
+    fn available(&self) -> bool {
+        true
+    }
+    /// Whether task IDs belong to this computer's local run adapter.
+    fn local_runs(&self) -> bool {
+        false
+    }
+    /// The connection's independent rights; the host checks them again.
     fn rights(&self) -> &[Right] {
         &[]
     }
@@ -885,9 +891,28 @@ impl Studio {
         source.send(operation)
     }
 
-    /// The host's newest answer to something a panel sent or read, while
-    /// active.
+    /// Whether the admitted source is active and has no known read failure.
     #[must_use]
+    pub fn available(&self) -> bool {
+        self.active
+            && self.access().read
+            && self
+                .source
+                .as_ref()
+                .is_some_and(|source| source.available())
+    }
+
+    /// Whether the admitted source uses this computer's run adapter.
+    pub fn local_runs(&self) -> bool {
+        self.active
+            && self.access().read
+            && self
+                .source
+                .as_ref()
+                .is_some_and(|source| source.local_runs())
+    }
+
+    /// The host's newest answer to a sent operation or read.
     pub fn status(&self) -> Option<&Answer> {
         self.status.as_ref()
     }

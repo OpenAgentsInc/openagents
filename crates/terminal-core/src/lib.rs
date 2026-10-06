@@ -35,6 +35,7 @@ pub mod run;
 pub mod select;
 pub mod smart;
 pub mod stats;
+pub mod studio;
 pub mod thread;
 pub use application::Application as Overlay;
 pub(crate) use application::scroll;

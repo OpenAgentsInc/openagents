@@ -11,6 +11,7 @@ name = "openagents-terminal"
 path = "src/main.rs"
 
 [dependencies]
+terminal-studio = { path = "../terminal-studio" }
 terminal-core = { path = "../terminal-core" }
 terminal-gfx = { path = "../terminal-gfx" }
 verse-gfx = { path = "../verse-gfx", default-features = false }

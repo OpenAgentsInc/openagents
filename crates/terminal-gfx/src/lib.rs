@@ -2,7 +2,7 @@
 pub use terminal_control as control;
 pub mod draw;
 pub mod glyphs;
-mod helpers;
+pub mod helpers;
 mod integration;
 pub mod pty;
 use coder_ui::theme::Intensity;

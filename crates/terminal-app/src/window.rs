@@ -283,6 +283,12 @@ impl ApplicationHandler for App {
             } else {
                 Overlay::new()
             };
+            terminal.studio_transport = std::sync::Arc::new(terminal_studio::Native::new(
+                stress
+                    .as_ref()
+                    .map(|driver| driver.root().to_path_buf())
+                    .or_else(|| self.options.root.clone()),
+            ));
             terminal.mount = Mount::Window;
             terminal.open = true;
             terminal.focused = true;
@@ -443,6 +449,9 @@ impl ApplicationHandler for App {
                             state.terminal.shutdown();
                             state.terminal =
                                 Overlay::with(driver.root(), "/bin/sh".into(), programs[0].clone());
+                            state.terminal.studio_transport = std::sync::Arc::new(
+                                terminal_studio::Native::new(Some(driver.root().to_path_buf())),
+                            );
                             state.terminal.mount = Mount::Window;
                             let size = state.window.inner_size();
                             state

@@ -287,7 +287,11 @@ impl Overlay {
         if self.paper.on && self.open {
             // The sheet scrolls its transcript, a whole line at a time.
             let step = lines.round() as isize;
-            self.paper.scroll = self.paper.scroll.saturating_add_signed(step);
+            if self.paper.studio.open {
+                self.paper.studio.scroll = self.paper.studio.scroll.saturating_add_signed(-step);
+            } else {
+                self.paper.scroll = self.paper.scroll.saturating_add_signed(step);
+            }
             return true;
         }
         if !self.open || !self.bounds().contains(point) {

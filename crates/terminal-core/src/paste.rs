@@ -80,7 +80,7 @@ impl Application {
             return None;
         }
         let pane = self.focus_id()?;
-        if self.paper.on && !self.paper_running() {
+        if self.paper.on && (self.paper.studio.open || !self.paper_running()) {
             // The sheet's input line joins the lines; Enter decides.
             return None;
         }

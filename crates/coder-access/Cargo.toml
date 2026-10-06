@@ -16,6 +16,7 @@ required-features = ["host"]
 
 [dependencies]
 base64 = "0.22"
+sha2 = "0.10"
 coder-connect = { path = "../coder-connect", default-features = false }
 nostr = { path = "../nostr" }
 serde = { version = "1", features = ["derive"] }

@@ -24,7 +24,7 @@ crypt-fight = ["crypt", "verse-imported/crypt-fight"]
 panels = ["dep:rust-native-desktop", "dep:openagents-chat-app"]
 # The in-world terminal overlay: panes on PTYs of this computer, drawn
 # from a `coder-vt` grid. Native desktop only.
-terminal = ["dep:terminal-gfx", "dep:winit"]
+terminal = ["dep:terminal-studio", "dep:terminal-gfx", "dep:winit"]
 # The Agent Studio from a live host, over its same-user control socket.
 studio-host = ["dep:openagents-connect", "verse-zone-everglade/studio-host"]
 imported-desktop = ["dep:winit", "capture", "native-audio", "imported-surface", "verse-pbr/imported-desktop", "verse-imported/imported-desktop"]
@@ -82,6 +82,7 @@ coder-access = { path = "../coder-access", default-features = false }
 coder-ui = { path = "../coder-ui" }
 terminal-control = { path = "../terminal-control" }
 terminal-gfx = { path = "../terminal-gfx", optional = true }
+terminal-studio = { path = "../terminal-studio", optional = true }
 coder-vt = { path = "../coder-vt", optional = true }
 rust-native = { path = "../rust-native" }
 rust-native-desktop = { path = "../rust-native-desktop", default-features = false, optional = true }

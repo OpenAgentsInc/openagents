@@ -1017,6 +1017,7 @@ impl App {
         }) {
             self.terminal.clear_workshop();
         }
+        self.workbench_studio();
         use crate::zones::everglade::signals::{Signal, deliver};
         let events = self.runtime.take_studio_events();
         let Some(signal) = Signal::most_urgent(events.iter().map(|e| e.signal)) else {
@@ -1030,6 +1031,89 @@ impl App {
             && let Some(event) = events.iter().find(|e| e.signal == signal)
         {
             deliver::notify(event);
+        }
+    }
+
+    fn workbench_studio(&mut self) {
+        if self.terminal.workshop().is_none() {
+            return;
+        }
+        let studio = self.runtime.studio();
+        if !studio.available() {
+            self.terminal.paper.studio.revoke();
+            return;
+        }
+        let rights = studio.rights();
+        let Some(snapshot) = studio.source_snapshot() else {
+            return;
+        };
+        if self.terminal.paper.studio.view.as_ref().is_none_or(|view| {
+            view.stream != snapshot.stream
+                || view.sequence != snapshot.sequence
+                || view.operate != rights.contains(&coder_access::Right::Operate)
+        }) {
+            let projection = terminal_studio::studio::project(snapshot, &rights);
+            match projection {
+                Ok(mut view) => {
+                    if studio.local_runs() {
+                        view.local_runs =
+                            snapshot.view.tasks.iter().map(|t| t.task.clone()).collect();
+                    }
+                    let _ = self.terminal.paper.studio.update(view);
+                }
+                Err(error) => {
+                    self.terminal.paper.studio.revoke();
+                    self.terminal.paper.studio.notice = Some(error);
+                    return;
+                }
+            }
+        }
+        if let Some(line) = self.terminal.paper.studio.prepare.take() {
+            let workspace = self.terminal.paper.studio.workspace.as_deref().or_else(|| {
+                self.terminal
+                    .workshop()
+                    .and_then(|opening| opening.workspace.as_deref())
+            });
+            let prepared = terminal_studio::studio::prepare(snapshot, &rights, &line, workspace);
+            self.terminal.paper.studio.prepared(prepared);
+        }
+        if let Some(prepared) = self.terminal.paper.studio.send.take() {
+            let result = if prepared.stream != snapshot.stream
+                || !rights.contains(&coder_access::Right::Operate)
+            {
+                Err("Studio command is stale or revoked; nothing sent.".into())
+            } else {
+                serde_json::from_slice::<coder_access::Operation>(&prepared.bytes)
+                    .map_err(|e| e.to_string())
+                    .and_then(|operation| {
+                        self.runtime
+                            .studio_send(operation)
+                            .map(|id| {
+                                self.terminal.paper.studio.ticket = Some(id);
+                                format!("Submitted request {id}; awaiting the host's receipt.")
+                            })
+                            .map_err(|e| e.to_string())
+                    })
+            };
+            self.terminal.paper.studio.notice = Some(result.unwrap_or_else(|e| e));
+        }
+        if let Some(answer) = self
+            .runtime
+            .studio()
+            .status()
+            .filter(|answer| self.terminal.paper.studio.ticket == Some(answer.ticket))
+        {
+            self.terminal.paper.studio.ticket = None;
+            self.terminal.paper.studio.notice = Some(match &answer.result {
+                Ok(coder_access::Outcome::Dispatched { receipt }) => {
+                    format!("Host receipt: {} {}", receipt.operation, receipt.reference)
+                }
+                Ok(_) => format!(
+                    "Host answered {} request {}",
+                    answer.operation, answer.ticket
+                ),
+                Err(error) => format!("Host refused {}: {}", answer.operation, error),
+            });
         }
     }
 

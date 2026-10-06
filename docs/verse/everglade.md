@@ -39,7 +39,16 @@ opens it against this workshop's studio resources. At a studio station,
 `T` or `Shift+F` opens the shared sheet with existing goal, seat, and task
 references; Shift-clicking a station or seat does the same. Ordinary `F`
 and clicks retain the studio panels. The sheet names the selected context
-in its status area; detailed studio panes are a later adapter. Opening
+in its status area and shows the host's goals, task dependencies, seat
+routes and spend, bounded log tails, and shared memory. `F13` opens this
+studio page in either mount. Plain text submits a goal, `@seat text`
+messages a seat, and `/pause`, `/resume`, `/stop`, and `/task` reuse the
+studio commands. Enter prepares the action; another Enter confirms it.
+Escape rejects it. `/repo LABEL` selects an admitted workspace without
+submitting work. `/run TASK` opens an exact task's existing run adapter
+only for a local control-socket source; its checks and artifact panes keep
+their existing admission. Log tails are display text, not shell input.
+Approvals and exact-revision reviews still use their studio panels. Opening
 submits no work and grants no shell or review rights. Leaving the studio,
 losing observation rights, or a changed host stream drops the private
 context. Terminal furniture and floating windows remain separate design

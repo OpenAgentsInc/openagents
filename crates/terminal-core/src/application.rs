@@ -63,6 +63,7 @@ pub struct Application {
     /// The last text copied, from a selection or a program.
     pub copied: Option<String>,
     pub sessions: Option<Sessions>,
+    pub studio_transport: std::sync::Arc<dyn crate::studio::Transport>,
     pub panes: BTreeMap<PaneId, Pane>,
     pub tabs: Vec<Tab>,
     pub active: usize,
@@ -131,6 +132,7 @@ impl Application {
             clipboard_writes: true,
             copied: None,
             sessions: Some(sessions),
+            studio_transport: std::sync::Arc::new(()),
             panes: BTreeMap::new(),
             tabs: Vec::new(),
             active: 0,
@@ -907,7 +909,9 @@ impl Application {
         if matches!(key.code, KeyCode::Enter | KeyCode::NumpadEnter) {
             if key.pressed
                 && (key.repeat || key.synthetic)
-                && (self.smart.pending.is_some() || self.smart.draft.is_some())
+                && (self.smart.pending.is_some()
+                    || self.smart.draft.is_some()
+                    || self.paper.studio.open)
             {
                 return true;
             }
@@ -915,7 +919,9 @@ impl Application {
             self.smart.enter_down = key.pressed;
             if was_down
                 && key.pressed
-                && (self.smart.pending.is_some() || self.smart.draft.is_some())
+                && (self.smart.pending.is_some()
+                    || self.smart.draft.is_some()
+                    || self.paper.studio.open)
             {
                 return true;
             }

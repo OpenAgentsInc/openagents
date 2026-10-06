@@ -64,6 +64,8 @@ const HELP: &[&str] = &[
     "F10  quit",
     "F11  show this computer's background rules; F11 or ESC returns. There,",
     "     ENTER pauses or resumes the rule picked, after ENTER confirms it",
+    "F13  show studio goals, tasks, seats, logs, and memory; ENTER prepares a",
+    "     studio command, ENTER again confirms, and ESC rejects or returns.",
     "F12  show the plugin test results under this directory; F12 or ESC returns.",
     "     There, ENTER recomputes the one picked from its retained attempts and",
     "     shows whether they agree with its report. It runs and publishes nothing.",
@@ -209,6 +211,7 @@ pub struct Paper {
     pub rules: crate::rules::Page,
     /// The Gym page (F12): retained plugin evaluations.
     pub gym: crate::gym::Page,
+    pub studio: crate::studio::Page,
     cache: Option<(u64, usize, usize, Vec<Line>)>,
 }
 
@@ -245,6 +248,7 @@ impl Default for Paper {
             files: crate::files::Page::default(),
             rules: crate::rules::Page::default(),
             gym: crate::gym::Page::default(),
+            studio: crate::studio::Page::default(),
             cache: None,
         }
     }
@@ -316,16 +320,76 @@ impl Application {
             Logical::Named(named) => Some(*named),
             _ => None,
         };
+        if self.paper.studio.open {
+            if named == Some(NamedKey::F13) || key.code == KeyCode::Escape {
+                if self.paper.studio.pending.is_some() {
+                    self.paper.studio.pending = None;
+                } else {
+                    self.paper.studio.open = false;
+                }
+                return true;
+            }
+            if matches!(named, Some(NamedKey::F5 | NamedKey::F6 | NamedKey::F7)) {
+                return true;
+            }
+            if matches!(named, Some(NamedKey::PageUp | NamedKey::PageDown)) {
+                let half = self.paper.grid.0 as usize / 2;
+                self.paper.studio.scroll = if named == Some(NamedKey::PageUp) {
+                    self.paper.studio.scroll.saturating_sub(half)
+                } else {
+                    self.paper.studio.scroll.saturating_add(half)
+                };
+                return true;
+            }
+            if matches!(key.code, KeyCode::Enter | KeyCode::NumpadEnter) {
+                if !key.repeat && !key.synthetic {
+                    let line = self.paper.input.trim().to_owned();
+                    self.paper_take_line();
+                    if let Some(task) = line.strip_prefix("/run ") {
+                        if self
+                            .paper
+                            .studio
+                            .view
+                            .as_ref()
+                            .is_some_and(|view| view.local_runs.iter().any(|id| id == task))
+                        {
+                            self.paper.studio.open = false;
+                            self.paper.run.show(task, "local");
+                            self.paper_run_poll();
+                        } else {
+                            self.paper.studio.notice =
+                                Some("No admitted local run adapter for that task.".into());
+                        }
+                    } else {
+                        self.paper.studio.enter(line);
+                    }
+                }
+                return true;
+            }
+        }
         match named {
+            Some(NamedKey::F13) => {
+                self.paste_hold = None;
+                self.paper.studio.open = true;
+                self.paper.help = false;
+                self.paper.thread.open = false;
+                self.paper.run.open = false;
+                self.paper.files.open = false;
+                self.paper.rules.open = false;
+                self.paper.gym.open = false;
+                return true;
+            }
             Some(NamedKey::F1) => {
                 self.paper.help = !self.paper.help;
                 return true;
             }
             Some(NamedKey::F12) => {
+                self.paper.studio.open = false;
                 self.paper_gym_toggle();
                 return true;
             }
             Some(NamedKey::F11) => {
+                self.paper.studio.open = false;
                 self.paper.gym.open = false;
                 let page = &mut self.paper.rules;
                 page.open = !page.open;
@@ -359,10 +423,12 @@ impl Application {
                 return true;
             }
             Some(NamedKey::F4) => {
+                self.paper.studio.open = false;
                 self.paper_thread_toggle();
                 return true;
             }
             Some(NamedKey::F9) => {
+                self.paper.studio.open = false;
                 self.paper_run_toggle();
                 return true;
             }
@@ -484,7 +550,12 @@ impl Application {
         }
         let enter = matches!(key.code, KeyCode::Enter | KeyCode::NumpadEnter);
         // CONFIRM and REJECT act on a pending proposal from an empty line.
-        if let Some((_, proposal)) = self.smart.pending.clone() {
+        if let Some((_, proposal)) = self
+            .smart
+            .pending
+            .clone()
+            .filter(|_| !self.paper.studio.open)
+        {
             if key.code == KeyCode::Escape {
                 self.smart.pending = None;
                 self.paper_verdict(&proposal, Verdict::Rejected);
@@ -506,7 +577,7 @@ impl Application {
                 return true;
             }
         }
-        if self.paper_running() {
+        if !self.paper.studio.open && self.paper_running() {
             if let Some(bytes) = self.encode(key) {
                 self.send(&bytes);
             }
@@ -627,7 +698,7 @@ impl Application {
 
     /// A paste: into the input line, or to the running program.
     pub fn paper_paste(&mut self, text: &str) {
-        if self.paper_running() {
+        if !self.paper.studio.open && self.paper_running() {
             let bytes = match self.focused_pane() {
                 Some(pane) => pane.session.vt.paste(text),
                 None => return,
@@ -1583,6 +1654,8 @@ impl Application {
     /// Follows the shell: new blocks, finished blocks, the command table,
     /// and the git summary; starts a queued question when the last ends.
     pub fn paper_tick(&mut self) {
+        let transport = self.studio_transport.clone();
+        self.paper.studio.poll(transport.as_ref());
         self.paper_thread_read();
         self.paper_run_poll();
         self.paper_files_poll();
@@ -1775,6 +1848,25 @@ impl Application {
                     tone: Tone::Present,
                 }]);
             }
+        } else if self.paper.studio.open {
+            let mut wrapped = Vec::new();
+            for (text, tone) in crate::studio::lines(&self.paper.studio) {
+                wrap(&line(text, tone), text_width, &mut wrapped);
+            }
+            let total = wrapped.len();
+            self.paper.studio.scroll = self
+                .paper
+                .studio
+                .scroll
+                .min(total.saturating_sub(transcript_rows));
+            let start = self.paper.studio.scroll;
+            for row in wrapped.iter().skip(start).take(transcript_rows) {
+                body.push(vec![Span {
+                    text: row.text.clone(),
+                    tone: row.tone,
+                }]);
+            }
+            bar = Some((start, total));
         } else if self.paper.gym.open || self.paper.rules.open || self.paper.files.open {
             // A list reads from its top: the scroll counts lines down.
             let mut wrapped = Vec::new();
@@ -1949,7 +2041,9 @@ impl Application {
         sheet.rows.push(border());
         sheet.rows.push(vec![Span {
             text: fit(
-                if self.paper.gym.open {
+                if self.paper.studio.open {
+                    "F1 HELP F13 RETURN ENTER PREPARE OR CONFIRM ESC REJECT PGUP PGDN SCROLL"
+                } else if self.paper.gym.open {
                     GYM_KEYS
                 } else if self.paper.rules.open {
                     RULE_KEYS
@@ -1968,6 +2062,17 @@ impl Application {
     }
 
     fn paper_label(&self) -> (String, Tone) {
+        if self.paper.studio.open {
+            return (
+                if self.paper.studio.pending.is_some() {
+                    "CONFIRM? "
+                } else {
+                    "STUDIO > "
+                }
+                .into(),
+                Tone::Loud,
+            );
+        }
         if self.paper_running() {
             return ("RUN  ".into(), Tone::Present);
         }

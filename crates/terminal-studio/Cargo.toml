@@ -1,0 +1,19 @@
+[package]
+name = "terminal-studio"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+publish.workspace = true
+description = "Admitted studio projections and native host adapters for the shared workbench."
+
+[dependencies]
+coder-access = { path = "../coder-access", default-features = false }
+terminal-core = { path = "../terminal-core" }
+terminal-gfx = { path = "../terminal-gfx" }
+serde_json = "1"
+
+[dev-dependencies]
+tempfile = "3"
+
+[lints]
+workspace = true

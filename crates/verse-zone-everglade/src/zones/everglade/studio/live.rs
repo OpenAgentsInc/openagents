@@ -166,6 +166,7 @@ pub type Connect = Box<dyn Fn() -> Box<dyn Transport> + Send>;
 pub struct Live {
     connect: Connect,
     rights: Vec<Right>,
+    local_runs: bool,
     worker: Option<Worker>,
     /// The newest studio the worker read, not yet handed to the view.
     pending: Option<Snapshot>,
@@ -189,6 +190,7 @@ impl Live {
         Self {
             connect,
             rights,
+            local_runs: false,
             worker: None,
             pending: None,
             statuses: BTreeMap::new(),
@@ -204,10 +206,12 @@ impl Live {
     /// The socket's peer is the host's owner, which holds every right.
     #[must_use]
     pub fn control(path: PathBuf) -> Self {
-        Self::new(
+        let mut source = Self::new(
             Box::new(move || Box::new(ControlSocket::new(path.clone())) as Box<dyn Transport>),
             Right::ALL.to_vec(),
-        )
+        );
+        source.local_runs = true;
+        source
     }
 
     /// Whether the worker runs.
@@ -265,6 +269,12 @@ impl Live {
 }
 
 impl Source for Live {
+    fn available(&self) -> bool {
+        self.worker.is_some() && self.failing.is_none()
+    }
+    fn local_runs(&self) -> bool {
+        self.local_runs
+    }
     fn start(&mut self) {
         if self.worker.is_some() {
             return;
@@ -567,6 +577,26 @@ mod tests {
             Box::new(move || Box::new(host.clone()) as Box<dyn Transport>),
             vec![Right::Observe, Right::Operate],
         )
+    }
+
+    #[test]
+    fn outage_disables_facts_and_only_control_socket_sources_offer_local_runs() {
+        let host = Host::default();
+        let mut live = source(&host);
+        assert!(!live.available() && !live.local_runs());
+        live.start();
+        assert!(live.available());
+        live.take(Event::Failed(
+            "studio.snapshot",
+            Error::new(Code::Unavailable, "offline"),
+        ));
+        assert!(!live.available());
+        live.take(Event::Recovered);
+        assert!(live.available());
+        live.stop();
+        assert!(!live.available());
+        // Construction does not connect or create a host.
+        assert!(Live::control(PathBuf::from("/missing/scratch.sock")).local_runs());
     }
 
     #[test]

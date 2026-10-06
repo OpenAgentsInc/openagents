@@ -2818,3 +2818,64 @@ fn only_an_admitted_read_only_proposal_runs_without_enter() {
         assert_eq!(phase, Phase::Pending);
     }
 }
+
+#[test]
+fn studio_keys_never_enter_the_shell_and_only_physical_confirmation_sends() {
+    use crate::input::{KeyCode, Logical, NamedKey};
+    let transport = Arc::new(Fake::default());
+    let mut app = Application::new(Sessions(transport.clone()));
+    app.open = true;
+    app.focused = true;
+    app.paper.on = true;
+    app.ensure_started();
+    assert!(app.paper_running());
+    app.paper.studio.external = true;
+    app.paper
+        .studio
+        .update(crate::studio::View {
+            stream: "ab".into(),
+            sequence: 1,
+            rows: vec!["scratch studio".into()],
+            operate: true,
+            local_runs: Vec::new(),
+            workspaces: Vec::new(),
+        })
+        .unwrap();
+    press(&mut app, KeyCode::Unidentified, NamedKey::F13);
+    app.paper.input = "/pause @ada".into();
+    press(&mut app, KeyCode::Enter, NamedKey::Enter);
+    assert_eq!(
+        app.paper.studio.prepare.take().as_deref(),
+        Some("/pause @ada")
+    );
+    app.paper.studio.prepared(Ok(crate::studio::Prepared {
+        stream: "ab".into(),
+        description: "pause ada".into(),
+        bytes: b"exact operation".to_vec(),
+    }));
+    let synthetic = crate::KeyIn {
+        code: KeyCode::Enter,
+        logical: Logical::Named(NamedKey::Enter),
+        text: None,
+        plain: None,
+        pressed: true,
+        repeat: false,
+        synthetic: true,
+    };
+    app.key(&synthetic);
+    assert!(app.paper.studio.send.is_none());
+    let mut release = synthetic.clone();
+    release.pressed = false;
+    app.key(&release);
+    press(&mut app, KeyCode::Enter, NamedKey::Enter);
+    assert_eq!(
+        app.paper.studio.send.take().unwrap().bytes,
+        b"exact operation"
+    );
+    app.paste_clipboard("/pause\n@ada");
+    assert!(app.paper.input.contains("/pause"));
+    assert!(app.paste_hold.is_none());
+    assert!(transport.input.lock().unwrap().is_empty());
+    assert!(transport.requests.lock().unwrap().is_empty());
+    assert!(transport.commands.lock().unwrap().is_empty());
+}

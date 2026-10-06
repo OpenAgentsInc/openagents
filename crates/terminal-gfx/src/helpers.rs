@@ -174,7 +174,7 @@ pub fn read_thread(thread: &str, home: Option<&Path>) -> Receiver<terminal_core:
 /// Runs `openagents` with `args`, writing `input` to it, and answers its
 /// standard output and error, each bounded to `max` bytes, or why it did
 /// not answer within `deadline`.
-fn helper(
+pub fn helper(
     args: &[&str],
     input: Option<Vec<u8>>,
     home: Option<&Path>,

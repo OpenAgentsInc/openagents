@@ -104,11 +104,17 @@ impl crate::Application {
     /// admission. This never creates a shell, goal, task, or engine run.
     pub fn open_workshop(&mut self, opening: Opening, may_observe: bool) -> Result<(), String> {
         if !may_observe {
-            self.workshop = None;
+            self.clear_workshop();
             return Err("studio observation is not admitted".into());
         }
         opening.check()?;
+        if self.workshop.as_ref() != Some(&opening) {
+            self.paper.studio.revoke();
+        }
+        self.paste_hold = None;
         self.workshop = Some(opening);
+        self.paper.studio.external = true;
+        self.paper.studio.open = true;
         self.open = true;
         self.focused = true;
         self.prefix = false;
@@ -118,6 +124,7 @@ impl crate::Application {
     /// Drops private context on revocation, leaving the ordinary terminal.
     pub fn clear_workshop(&mut self) {
         self.workshop = None;
+        self.paper.studio.revoke();
     }
 
     #[must_use]
