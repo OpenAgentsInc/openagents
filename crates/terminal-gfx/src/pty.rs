@@ -414,6 +414,9 @@ impl Attachment for LocalAttachment {
                     self.ended = true;
                     Some(Event::End("detached".into()))
                 }
+                // This in-process host names no feature, so it sends none;
+                // the pane's own emulator reports its effects.
+                Body::Effect { .. } => self.poll(),
             },
             Err(TryRecvError::Empty) => None,
             Err(TryRecvError::Disconnected) => {

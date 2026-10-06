@@ -33,6 +33,18 @@
 //! budget per second, the smaller of the client's request and
 //! [`Config::rate_max`].
 //!
+//! # Side effects
+//!
+//! With [`Config::emulator`], each terminal runs one authoritative
+//! emulator ([`crate::emulator`]) that parses every output byte once. The
+//! host serves the effects feature: an attachment that names it receives
+//! bells, title and directory changes, and clipboard writes as effect
+//! frames, live and never replayed, and a clipboard write reaches only the
+//! interacting attachments of the principal who typed last. The host
+//! writes the program's query replies to the terminal itself whenever no
+//! interacting attachment predates the feature; an older client that
+//! answers queries keeps answering them, so a reply is never sent twice.
+//!
 //! # Authority
 //!
 //! [`Rights`] answers whether a principal holds `terminal` or `observe`.
@@ -58,6 +70,8 @@ use std::sync::{Arc, Mutex, MutexGuard, PoisonError, Weak};
 use std::thread::JoinHandle;
 use std::time::{Duration, Instant};
 
+use crate::emulator::{self, Effects, Emulator};
+use crate::ext::{Effect, Features};
 use crate::ring::Ring;
 use crate::wire::{
     self, Attach, Body, Cause, Close, Detach, Detached, Exit, Frame, Input, Launch, Mode, Open,
@@ -191,6 +205,9 @@ pub struct Config {
     /// Attachments per terminal.
     pub attachments_max: usize,
     pub wrap: Option<Arc<dyn Wrap>>,
+    /// Makes each terminal's authoritative emulator. When set, the host
+    /// owns query replies and serves the effects feature.
+    pub emulator: Option<emulator::Factory>,
 }
 
 impl std::fmt::Debug for Config {
@@ -204,6 +221,7 @@ impl std::fmt::Debug for Config {
             .field("ring_bytes", &self.ring_bytes)
             .field("idle", &self.idle)
             .field("wrap", &self.wrap.is_some())
+            .field("emulator", &self.emulator.is_some())
             .finish_non_exhaustive()
     }
 }
@@ -243,6 +261,7 @@ impl Config {
             terminals_max: 16,
             attachments_max: 8,
             wrap: None,
+            emulator: None,
         }
     }
 
@@ -251,6 +270,15 @@ impl Config {
     pub fn workspace(mut self, id: impl Into<String>, root: impl Into<PathBuf>) -> Self {
         self.workspaces.insert(id.into(), root.into());
         self
+    }
+
+    /// The extension features a host with this configuration serves.
+    #[must_use]
+    pub fn features(&self) -> Features {
+        Features {
+            effects: self.emulator.is_some(),
+            ..Features::NONE
+        }
     }
 }
 
@@ -344,6 +372,30 @@ struct Attachment {
     /// missing.
     sent: u64,
     bucket: Bucket,
+    /// Whether the attachment named the effects feature.
+    effects: bool,
+    /// Effects waiting for the output they follow, at most one of each
+    /// kind: a later title replaces an earlier one, and bells add up.
+    pending: VecDeque<(u64, Effect)>,
+}
+
+impl Attachment {
+    fn queue(&mut self, after: u64, effect: Effect) {
+        let same =
+            |queued: &Effect| std::mem::discriminant(queued) == std::mem::discriminant(&effect);
+        if let Some(index) = self.pending.iter().position(|(_, queued)| same(queued)) {
+            let (_, old) = self.pending.remove(index).expect("found");
+            let effect = match (old, effect) {
+                (Effect::Bell { count: old }, Effect::Bell { count }) => Effect::Bell {
+                    count: old.saturating_add(count),
+                },
+                (_, effect) => effect,
+            };
+            self.pending.push_back((after, effect));
+        } else {
+            self.pending.push_back((after, effect));
+        }
+    }
 }
 
 struct State {
@@ -355,6 +407,65 @@ struct State {
     closing: Option<Cause>,
     /// The last attach, detach, or input.
     activity: Instant,
+    /// The authoritative emulator, when the host runs one.
+    emulator: Option<Box<dyn Emulator>>,
+    /// The title and directory the emulator last reported.
+    title: String,
+    directory: Option<String>,
+    /// The principal that typed last, whose interacting attachments
+    /// receive clipboard writes.
+    typist: Option<String>,
+}
+
+impl State {
+    /// Whether the host answers the program's queries: it runs an emulator
+    /// and no interacting attachment predates the effects feature.
+    fn answers(&self) -> bool {
+        self.emulator.is_some()
+            && self
+                .attachments
+                .values()
+                .all(|attachment| attachment.mode != Mode::Interact || attachment.effects)
+    }
+
+    /// Hands the effects of output through `seq` to the attachments that
+    /// take them, and answers the replies the host writes.
+    fn effects(&mut self, seq: u64, effects: Effects) -> Vec<u8> {
+        let mut out = Vec::new();
+        if effects.bells > 0 {
+            out.push(Effect::Bell {
+                count: effects.bells,
+            });
+        }
+        if let Some(title) = effects.title {
+            self.title.clone_from(&title);
+            out.push(Effect::Title { title });
+        }
+        if let Some(dir) = effects.directory {
+            self.directory = Some(dir.clone());
+            out.push(Effect::Directory { dir });
+        }
+        let clipboard = effects
+            .clipboard
+            .map(|text| Effect::Clipboard { text })
+            .filter(|effect| effect.check().is_ok());
+        for attachment in self.attachments.values_mut().filter(|a| a.effects) {
+            for effect in out.iter().filter(|effect| effect.check().is_ok()) {
+                attachment.queue(seq, effect.clone());
+            }
+            if let Some(clipboard) = &clipboard
+                && attachment.mode == Mode::Interact
+                && self.typist.as_deref() == Some(attachment.principal.as_str())
+            {
+                attachment.queue(seq, clipboard.clone());
+            }
+        }
+        if self.answers() {
+            effects.replies
+        } else {
+            Vec::new()
+        }
+    }
 }
 
 struct Terminal {
@@ -413,6 +524,25 @@ fn pump_one(
     now: Instant,
 ) -> bool {
     loop {
+        if let Some(index) = attachment
+            .pending
+            .iter()
+            .position(|(after, _)| *after <= attachment.sent)
+        {
+            let (after, effect) = attachment.pending[index].clone();
+            let body = Body::Effect { after, effect };
+            match attachment
+                .sink
+                .deliver(&Frame::new(reference.clone(), id, body))
+            {
+                Ok(()) => {
+                    attachment.pending.remove(index);
+                }
+                Err(SinkError::Full) => return false,
+                Err(SinkError::Closed) => return true,
+            }
+            continue;
+        }
         if let Some(missed) = ring.missed(attachment.sent) {
             let body = Body::Gap {
                 from: missed.from,
@@ -537,10 +667,18 @@ impl Host {
         Ok((Status::Accepted, value))
     }
 
+    /// The extension features this host serves.
+    #[must_use]
+    pub fn features(&self) -> Features {
+        self.inner.config.features()
+    }
+
     /// Attaches `sink` to a terminal and replays what it retains after
-    /// `request.after`, reporting a gap for anything it discarded.
+    /// `request.after`, reporting a gap for anything it discarded. An
+    /// attachment that names the effects feature first receives the
+    /// terminal's current title and directory.
     pub fn attach(&self, principal: &str, request: &Attach, sink: Box<dyn FrameSink>) -> Outcome {
-        request.check()?;
+        request.check_with(self.features())?;
         let admitted = match request.mode {
             Mode::Interact => self.inner.rights.holds(principal, Right::Terminal),
             Mode::Observe => self.inner.may_read(principal),
@@ -572,16 +710,29 @@ impl Host {
         }
         let id = sys::random_id();
         let rate = request.rate.min(self.inner.config.rate_max);
-        state.attachments.insert(
-            id.clone(),
-            Attachment {
-                principal: principal.to_string(),
-                mode: request.mode,
-                sink,
-                sent: request.after,
-                bucket: Bucket::new(rate, self.inner.config.frame_max, now),
-            },
-        );
+        let mut attachment = Attachment {
+            principal: principal.to_string(),
+            mode: request.mode,
+            sink,
+            sent: request.after,
+            bucket: Bucket::new(rate, self.inner.config.frame_max, now),
+            effects: request.effects(),
+            pending: VecDeque::new(),
+        };
+        if attachment.effects {
+            if !state.title.is_empty() {
+                attachment.queue(
+                    0,
+                    Effect::Title {
+                        title: state.title.clone(),
+                    },
+                );
+            }
+            if let Some(dir) = &state.directory {
+                attachment.queue(0, Effect::Directory { dir: dir.clone() });
+            }
+        }
+        state.attachments.insert(id.clone(), attachment);
         state.activity = now;
         let value = Value::Attached {
             attachment: id,
@@ -654,7 +805,10 @@ impl Host {
                 "the terminal is not reading input",
             ));
         }
-        terminal.state().activity = Instant::now();
+        let mut state = terminal.state();
+        state.activity = Instant::now();
+        state.typist = Some(principal.to_string());
+        drop(state);
         let value = Value::Written {
             bytes: written as u64,
         };
@@ -678,7 +832,12 @@ impl Host {
                 format!("the terminal refused the size: {error}"),
             )
         })?;
-        terminal.state().size = request.size;
+        let mut state = terminal.state();
+        state.size = request.size;
+        if let Some(emulator) = state.emulator.as_mut() {
+            emulator.resize(request.size);
+        }
+        drop(state);
         self.inner
             .remember(&key(principal, &request.request), body, Value::Done);
         Ok((Status::Accepted, Value::Done))
@@ -949,6 +1108,10 @@ impl Inner {
                 ended: None,
                 closing: None,
                 activity: Instant::now(),
+                emulator: self.config.emulator.as_ref().map(|make| make(request.size)),
+                title: String::new(),
+                directory: None,
+                typist: None,
             }),
             reader: Mutex::new(None),
         });
@@ -1125,8 +1288,23 @@ fn read(terminal: &Terminal, frame_max: usize) {
                 sys::Read::Data(n) => {
                     let now = Instant::now();
                     let mut state = terminal.state();
-                    state.ring.push_output(buffer[..n].to_vec());
+                    let seq = state.ring.push_output(buffer[..n].to_vec());
+                    let effects = state
+                        .emulator
+                        .as_mut()
+                        .map(|emulator| emulator.output(&buffer[..n]));
+                    let replies = match effects {
+                        Some(effects) => state.effects(seq, effects),
+                        None => Vec::new(),
+                    };
                     terminal.pump(&mut state, now);
+                    drop(state);
+                    // The program waits for these; the terminal reads its
+                    // input promptly, and what it does not take is dropped
+                    // as a terminal would drop it.
+                    if !replies.is_empty() {
+                        let _ = terminal.process.write(&replies);
+                    }
                 }
                 sys::Read::Timeout => {}
                 sys::Read::Eof => eof = true,

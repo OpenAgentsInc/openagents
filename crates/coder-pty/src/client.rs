@@ -45,6 +45,9 @@ pub enum Applied {
     Exit(Exit),
     /// The host ended this attachment.
     Detached(Detached),
+    /// The host's emulator reported an effect of the output (the effects
+    /// feature). Nothing on the screen changed.
+    Effect(crate::ext::Effect),
     /// The frame failed validation or names another terminal.
     Refused(Refusal),
 }
@@ -147,6 +150,7 @@ impl TerminalState {
                 self.detached = Some(*reason);
                 Applied::Detached(*reason)
             }
+            Body::Effect { effect, .. } => Applied::Effect(effect.clone()),
         }
     }
 

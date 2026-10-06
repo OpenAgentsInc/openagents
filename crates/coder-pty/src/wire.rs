@@ -251,9 +251,25 @@ impl Attach {
     /// An attach that names the snapshot feature and starts by `join`.
     #[must_use]
     pub fn joining(mut self, join: crate::ext::Join) -> Self {
-        self.requires = vec![crate::ext::SNAPSHOT.into()];
+        self.requires.retain(|id| id != crate::ext::SNAPSHOT);
+        self.requires.insert(0, crate::ext::SNAPSHOT.into());
         self.join = Some(join);
         self
+    }
+
+    /// The same attach, also naming the effects feature.
+    #[must_use]
+    pub fn with_effects(mut self) -> Self {
+        if !self.effects() {
+            self.requires.push(crate::ext::EFFECTS.into());
+        }
+        self
+    }
+
+    /// Whether the attach names the effects feature.
+    #[must_use]
+    pub fn effects(&self) -> bool {
+        self.requires.iter().any(|id| id == crate::ext::EFFECTS)
     }
 
     /// Checks the attach as a base-profile host does: a request that names
@@ -265,7 +281,8 @@ impl Attach {
     /// Checks the attach as a host that serves `features` does.
     pub fn check_with(&self, features: crate::ext::Features) -> Result<(), Refusal> {
         version(&self.v, ATTACH)?;
-        let snapshot = features.admit(&self.requires, &[crate::ext::SNAPSHOT])?;
+        let snapshot =
+            features.admit(&self.requires, &[crate::ext::SNAPSHOT, crate::ext::EFFECTS])?;
         common_id(&self.request, "request")?;
         self.terminal.check()?;
         if self.rate == 0 {
@@ -699,6 +716,14 @@ pub enum Body {
     },
     /// The attachment ended. Not sequenced.
     Detached { reason: Detached },
+    /// An effect the output through sequence number `after` caused, or
+    /// with `after` 0 the terminal's current title or directory when the
+    /// attachment began. Not sequenced, never replayed, and sent only to
+    /// an attachment that named [`crate::ext::EFFECTS`].
+    Effect {
+        after: u64,
+        effect: crate::ext::Effect,
+    },
 }
 
 impl Body {
@@ -707,7 +732,7 @@ impl Body {
     pub fn seq(&self) -> Option<u64> {
         match self {
             Body::Output { seq, .. } | Body::Exit { seq, .. } => Some(*seq),
-            Body::Gap { .. } | Body::Detached { .. } => None,
+            Body::Gap { .. } | Body::Detached { .. } | Body::Effect { .. } => None,
         }
     }
 }
@@ -760,6 +785,7 @@ impl Frame {
                 }
             }
             Body::Detached { .. } => {}
+            Body::Effect { effect, .. } => effect.check()?,
         }
         Ok(())
     }

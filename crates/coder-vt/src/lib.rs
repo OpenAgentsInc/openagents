@@ -31,6 +31,7 @@
 //! [`input`] encodes keys and pastes the way xterm does, and [`mouse`]
 //! encodes mouse reports.
 
+mod authority;
 mod cell;
 mod continuation;
 pub mod input;
@@ -40,6 +41,7 @@ pub mod snapshot;
 
 use std::collections::{HashMap, VecDeque};
 
+pub use authority::Authority;
 pub use cell::{Attrs, Cell, Color, Flags, Row, Run};
 pub use continuation::CONTINUATION_MAX;
 pub use input::{Key, KeyModes, Modifiers, encode_key, encode_key_in, encode_paste};
@@ -185,6 +187,9 @@ pub struct Terminal {
     parser: vte::Parser,
     /// Where the parser stands, for a snapshot's continuation.
     tracker: continuation::Tracker,
+    /// An OSC string passed its bound and was abandoned; the rest of it is
+    /// dropped up to its terminator.
+    skipping: bool,
     state: State,
     generation: u64,
 }
@@ -211,6 +216,7 @@ impl Terminal {
         Terminal {
             parser: vte::Parser::new(),
             tracker: continuation::Tracker::default(),
+            skipping: false,
             state: State {
                 rows,
                 cols,
@@ -252,14 +258,48 @@ impl Terminal {
     }
 
     /// Applies output bytes. A sequence split across calls continues where
-    /// the previous call stopped.
+    /// the previous call stopped. An OSC string longer than a clipboard
+    /// write's bound is abandoned and the rest of it dropped, so parsing
+    /// holds bounded memory whatever the output.
     pub fn feed(&mut self, bytes: &[u8]) {
         if bytes.is_empty() {
             return;
         }
-        self.parser.advance(&mut self.state, bytes);
-        self.tracker.track(bytes);
+        let mut rest = bytes;
+        while !rest.is_empty() {
+            if self.skipping {
+                // An OSC string ends at BEL, a cancel, or an escape; the
+                // escape starts what follows.
+                let Some(end) = rest
+                    .iter()
+                    .position(|&byte| matches!(byte, 0x07 | 0x18 | 0x1a | 0x1b))
+                else {
+                    break;
+                };
+                self.skipping = false;
+                rest = if rest[end] == 0x1b {
+                    &rest[end..]
+                } else {
+                    &rest[end + 1..]
+                };
+                continue;
+            }
+            let taken = self.tracker.track(rest);
+            self.parser.advance(&mut self.state, &rest[..taken]);
+            if taken == rest.len() {
+                break;
+            }
+            self.abandon_osc();
+            rest = &rest[taken..];
+        }
         self.generation += 1;
+    }
+
+    /// Abandons the OSC string the parser is in and drops the rest of it.
+    fn abandon_osc(&mut self) {
+        self.parser = vte::Parser::new();
+        self.tracker = continuation::Tracker::default();
+        self.skipping = true;
     }
 
     /// Writes a line the client composed, such as a note that the host
@@ -269,6 +309,7 @@ impl Terminal {
     pub fn mark(&mut self, text: &str) {
         self.parser = vte::Parser::new();
         self.tracker = continuation::Tracker::default();
+        self.skipping = false;
         let line =
             self.state.dropped + self.state.scrollback.len() as u64 + self.state.cursor.row as u64;
         self.state

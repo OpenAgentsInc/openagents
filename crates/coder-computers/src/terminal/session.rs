@@ -185,6 +185,16 @@ fn open_refusal(error: &HostError) -> Option<Phase> {
     }
 }
 
+/// Whether an attach that named the effects feature was refused for naming
+/// it, by a host that predates the feature: attach again without it.
+fn refuses_feature(result: &TerminalResult) -> bool {
+    result.status == Status::Refused
+        && matches!(
+            result.reason,
+            Some(Reason::UnsupportedFeature | Reason::UnsupportedVersion)
+        )
+}
+
 /// The phase a refused attach ends in.
 fn attach_refusal(reason: Option<Reason>) -> Phase {
     match reason {
@@ -332,18 +342,26 @@ async fn drive(
     // first one sent the session to fresh presence for the generation.
     let mut attached_once = false;
     let mut rechecked = false;
+    // Whether to ask for the effects feature: the host answers queries and
+    // this device stops answering them. An older host refuses the feature,
+    // and the session attaches again without it.
+    let mut effects = true;
     loop {
         if !first {
             lock(model).set_phase(Phase::Reconnecting);
         }
         let after = ordered.state().resume_after();
-        let attach = TermRequest::Attach(Attach::new(
+        let mut attach = Attach::new(
             new_id(),
             reference.clone(),
             Mode::Interact,
             after,
             rate(&link),
-        ));
+        );
+        if effects {
+            attach = attach.with_effects();
+        }
+        let attach = TermRequest::Attach(attach);
         let attached = match until_left(commands, link.terminal(attach)).await {
             Ok(attached) => attached,
             Err(stop) => return stop,
@@ -354,6 +372,10 @@ async fn drive(
                 value: Some(Value::Attached { attachment, .. }),
                 ..
             }) => attachment,
+            Ok(result) if effects && refuses_feature(&result) => {
+                effects = false;
+                continue;
+            }
             Ok(result) if result.status == Status::Refused => {
                 // A terminal that already reported its exit stays exited.
                 if exited && result.reason == Some(Reason::Closed) {
@@ -421,6 +443,7 @@ async fn drive(
             &mut ordered,
             &mut exited,
             &mut host_size,
+            effects,
         )
         .await;
         match next {
@@ -513,6 +536,7 @@ async fn attached_loop(
     ordered: &mut Ordered,
     exited: &mut bool,
     host_size: &mut (u16, u16),
+    host_answers: bool,
 ) -> Next {
     let mut held_since: Option<Instant> = None;
     let mut checked = Instant::now();
@@ -530,7 +554,9 @@ async fn attached_loop(
                     && frame.attachment == attachment
                 {
                     let (replies, next) = apply(model, ordered, frame, exited);
-                    if !replies.is_empty() && !*exited {
+                    // With the effects feature the host's emulator answers
+                    // queries; answering here too would answer twice.
+                    if !replies.is_empty() && !*exited && !host_answers {
                         send_input(link, reference, model, replies).await;
                     }
                     if let Some(next) = next {
@@ -605,7 +631,10 @@ fn apply(
             Applied::Detached(Detached::Transport) | Applied::Behind { .. } => {
                 next.get_or_insert(Next::Reattach { new_link: false });
             }
-            Applied::Detached(Detached::Requested) | Applied::Duplicate | Applied::Refused(_) => {}
+            Applied::Detached(Detached::Requested)
+            | Applied::Duplicate
+            | Applied::Refused(_)
+            | Applied::Effect(_) => {}
         }
     }
     let replies = model.vt.take_replies();
@@ -804,6 +833,34 @@ mod tests {
             &mut exited,
         );
         assert!(matches!(next, Some(Next::Reattach { new_link: false })));
+    }
+
+    #[test]
+    fn effect_frames_change_nothing_on_screen() {
+        let (model, mut ordered, mut exited) = setup();
+        apply(&model, &mut ordered, output(1, "$ "), &mut exited);
+        let before = lock(&model).vt.text();
+        let bell = frame(Body::Effect {
+            after: 1,
+            effect: coder_host::pty::ext::Effect::Bell { count: 1 },
+        });
+        let (replies, next) = apply(&model, &mut ordered, bell, &mut exited);
+        assert!(replies.is_empty() && next.is_none());
+        assert_eq!(lock(&model).vt.text(), before);
+    }
+
+    #[test]
+    fn an_older_host_refusing_effects_gets_the_base_profile() {
+        let refused = |reason| {
+            TerminalResult::from_outcome(
+                "d".repeat(64),
+                Err(coder_host::pty::wire::Refusal::new(reason, "no")),
+            )
+        };
+        assert!(refuses_feature(&refused(Reason::UnsupportedFeature)));
+        assert!(refuses_feature(&refused(Reason::UnsupportedVersion)));
+        assert!(!refuses_feature(&refused(Reason::NotAdmitted)));
+        assert!(!refuses_feature(&refused(Reason::Lost)));
     }
 
     #[test]

@@ -278,7 +278,7 @@ which reveal that a device and a host exchange traffic.
 
 ## Extensions
 
-Added 2026-10-05. Three optional features extend the base profile. A host
+Added 2026-10-05. Four optional features extend the base profile. A host
 that implements one serves it; a client uses one only after the host
 advertises it. Nothing here adds a right, a relay authority, or an event
 kind: every extension operation needs the right its base operation needs,
@@ -289,6 +289,7 @@ travels on the same transports, and follows the same privacy rules.
 | `openagents.terminal-snapshot.v1` | `term-snapshot` | Attach by snapshot, the history operation, and record streams |
 | `openagents.terminal-blocks.v1` | `term-blocks` | Paged block-journal reads |
 | `openagents.terminal-sessions.v1` | `term-sessions` | Session records: membership and layout |
+| `openagents.terminal-effects.v1` | `term-effects` | The host answers queries; effects arrive as effect frames |
 
 ### Negotiation and compatibility
 
@@ -470,9 +471,16 @@ state: an unfinished escape sequence or a partial UTF-8 character. A client
 feeds them to a fresh parser before the first live frame, so the next output
 continues the sequence the host's emulator is in. The state already holds
 their effects, such as a control character inside the sequence, so the client
-feeds them for the parser's position only and applies nothing they do. A host whose unfinished
-input exceeds 4,096 bytes abandons it, as the parser would on a cancel, and
-sends no `CONTINUATION`.
+feeds them for the parser's position only and applies nothing they do.
+
+When the unfinished input exceeds 4,096 bytes, the host sends instead a
+short prefix that leaves a fresh parser with the same effects from then on,
+and brings its own parser to the matching state. Inside a control sequence
+or a DCS string, the prefix makes the sequence one the parser ignores. Inside
+an OSC string, the host abandons the string and drops the rest of it up to
+its terminator, and the prefix opens an OSC string no handler answers.
+Inside a partial UTF-8 character, both sides start a fresh parser and the
+host sends no `CONTINUATION`.
 
 `READY` means the client has everything it needs to draw and to resume
 parsing. `FINISH` is `{rows, complete}`: the number of history rows the
@@ -609,6 +617,42 @@ session can be listed and laid out without disclosing what ran in it. A
 host bounds the number of sessions per owner and refuses above it as
 `limit_exceeded`.
 
+### Effects
+
+A host that serves `openagents.terminal-effects.v1` runs one authoritative
+emulator per terminal and parses every output byte once, before any
+attachment sees it. An attach may name the feature in `requires`, alone or
+with the snapshot feature; it adds no field.
+
+- **Query replies.** The host writes the replies the program asks for, such
+  as device status, cursor position, and device attributes, to the
+  terminal's input. A client on an attachment that named the feature never
+  sends replies from its own emulator. While any `interact` attachment that
+  did not name the feature is attached, the host sends none: an older
+  client still answers, and a query is never answered twice.
+- **Effect frames.** The host sends an attachment that named the feature an
+  `effect` frame, `{type: "effect", after, effect}`, for each effect the
+  output caused. `after` is the sequence number of the output frame that
+  caused it, and the host delivers the frame only after that output frame or
+  a gap past it. Effect frames are not sequenced and are never replayed: a
+  reattach or a replay causes no effect again. An attachment's pending
+  effects hold at most one of each kind; a later title replaces an earlier
+  one, and bells add up.
+- **Kinds.** `effect` is one of `{kind: "bell", count}` (at least 1),
+  `{kind: "title", title}` (at most 1,024 bytes, no control characters),
+  `{kind: "directory", dir}` (the OSC 7 path, at most 4,096 bytes), and
+  `{kind: "clipboard", text}` (an OSC 52 write, at most 8,192 bytes, with no
+  control character but newline and tab). A new attachment first receives
+  the current title and directory with `after` 0.
+- **Clipboard.** A clipboard write reaches only the `interact` attachments
+  of the principal whose input the terminal took last; the host delivers a
+  longer or malformed write to no one. A client may refuse any write. A
+  program can never read a clipboard: the host answers no OSC 52 query.
+
+A client takes bells, titles, and clipboard writes from effect frames and
+not from its own parsing, so a device that joins late or replays the buffer
+rings no bell and writes no clipboard again.
+
 ### Extension privacy
 
 Snapshots, history, block records, and session records are terminal data
@@ -661,10 +705,13 @@ platforms without a Unix PTY the host refuses every open as `unavailable`.
 The fixtures are in
 [`crates/coder-pty/fixtures/nip-term.json`](../../crates/coder-pty/fixtures/nip-term.json).
 The [extensions](#extensions)' wire contract and its validation are in
-`coder_pty::ext`; no host serves them yet, so a host advertises none of their
-capabilities. Authoritative host emulation (#10653), `coder-vt` snapshots
-(#10654), the block journal (#10656), and session records (#10652) implement
-them.
+`coder_pty::ext`. The host serves the effects feature when it runs an
+emulator (`coder_pty::host::Config::emulator`, which `coder-host` fills with
+`coder_vt::Authority`), and `coder-host` advertises `term-effects`; the
+Coder mobile terminal screen names the feature and attaches again without it
+when an older host refuses it. `coder-vt` writes and restores snapshot
+streams (`coder_vt::snapshot`); no host serves snapshots, the block journal,
+or session records yet, so a host advertises none of their capabilities.
 
 ## Conformance
 

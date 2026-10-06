@@ -221,39 +221,106 @@ fn resizes_before_and_after_a_restore_match() {
 fn a_continuation_holds_exactly_the_unfinished_input() {
     let mut t = Terminal::new(3, 10, 0);
     t.feed(b"ok\x1b[1;");
-    assert_eq!(t.continuation(), Some(&b"\x1b[1;"[..]));
+    assert_eq!(t.continuation().as_deref(), Some(&b"\x1b[1;"[..]));
     t.feed(b"2H");
-    assert_eq!(t.continuation(), Some(&b""[..]));
+    assert_eq!(t.continuation().as_deref(), Some(&b""[..]));
     t.feed(&[0xe4, 0xb8]);
-    assert_eq!(t.continuation(), Some(&[0xe4, 0xb8][..]));
+    assert_eq!(t.continuation().as_deref(), Some(&[0xe4, 0xb8][..]));
     t.feed(&[0x96]);
-    assert_eq!(t.continuation(), Some(&b""[..]));
+    assert_eq!(t.continuation().as_deref(), Some(&b""[..]));
     t.feed(b"\x1b]0;title");
-    assert_eq!(t.continuation(), Some(&b"\x1b]0;title"[..]));
+    assert_eq!(t.continuation().as_deref(), Some(&b"\x1b]0;title"[..]));
+}
+
+/// Feeds `head` to a host, snapshots it, restores a client, and feeds
+/// `tail` to both, which must then agree; answers the continuation sent.
+fn across_a_snapshot(head: &[u8], tail: &[u8]) -> (Terminal, Vec<u8>) {
+    let mut host = Terminal::new(3, 30, SCROLLBACK);
+    host.feed(head);
+    let records = host.snapshot(&binding()).unwrap();
+    let sent = records
+        .iter()
+        .find_map(|record| match record {
+            Record::Continuation(bytes) => Some(bytes.clone()),
+            _ => None,
+        })
+        .unwrap_or_default();
+    assert!(sent.len() <= CONTINUATION_MAX);
+    let mut client = restore(&transport(&records, 4096).unwrap());
+    for piece in tail.chunks(5) {
+        host.feed(piece);
+        client.feed(piece);
+    }
+    assert_eq!(fingerprint(&client), fingerprint(&host));
+    (client, sent)
 }
 
 #[test]
-fn an_oversized_continuation_is_abandoned_on_both_sides() {
-    let mut whole = Terminal::new(3, 20, SCROLLBACK);
-    let mut host = Terminal::new(3, 20, SCROLLBACK);
+fn a_long_sequence_resumes_as_an_equivalent_short_one() {
+    let long = |prefix: &[u8], fill: u8| {
+        let mut bytes = prefix.to_vec();
+        bytes.resize(CONTINUATION_MAX + 100, fill);
+        bytes
+    };
+    // A CSI with too many parameters, an escape with many intermediates,
+    // a long DCS, an SOS string, and an escape followed by many line
+    // feeds: each is ignored the same way on both sides.
+    for (head, tail, shown) in [
+        (long(b"\x1b[1", b'0'), &b"m;1Hplain\x1b[1mbold"[..], "bold"),
+        (long(b"\x1b[", b';'), b"\n2mafter", "after"),
+        (long(b"\x1b ", b' '), b"Gnext", "next"),
+        (long(b"\x1bP1;2", b'3'), b"q#data\x1b\\done", "done"),
+        (long(b"\x1bPq", b'#'), b"\x9c#\x1b\\done", "done"),
+        (long(b"\x1bX", b'x'), b"\x1b\\done", "done"),
+        (long(b"\x1b", b'\n'), b"Mup", "up"),
+    ] {
+        let (client, sent) = across_a_snapshot(&head, tail);
+        assert!(sent.len() < 64, "{sent:?}");
+        assert!(client.text().contains(shown), "{:?}", client.text());
+    }
+}
+
+#[test]
+fn an_oversized_osc_string_is_abandoned_on_both_sides() {
     let mut long = b"\x1b]0;".to_vec();
     long.resize(CONTINUATION_MAX + 10, b'a');
-    host.feed(&long);
-    assert_eq!(host.continuation(), None);
-    let records = host.snapshot(&binding()).unwrap();
-    assert!(
-        !records
-            .iter()
-            .any(|record| matches!(record, Record::Continuation(_)))
-    );
-    // The host abandoned the title unset, as if it never arrived.
-    let mut client = restore(&transport(&records, 4096).unwrap());
-    for t in [&mut whole, &mut host, &mut client] {
-        t.feed(b"rest\x07after");
-    }
-    assert_eq!(fingerprint(&host), fingerprint(&whole));
-    assert_eq!(fingerprint(&client), fingerprint(&whole));
+    let (client, sent) = across_a_snapshot(&long, b"rest\x07after");
+    assert_eq!(sent, b"\x1b]999999;");
     assert_eq!(client.title(), "");
+    assert!(client.text().starts_with("after"), "{:?}", client.text());
+}
+
+#[test]
+fn a_long_run_of_broken_utf8_starts_both_parsers_fresh() {
+    let mut garbage = Vec::new();
+    for _ in 0..CONTINUATION_MAX {
+        garbage.extend_from_slice(&[0xc0, 0xff]);
+    }
+    garbage.push(0xe4);
+    let (_, sent) = across_a_snapshot(&garbage, "\u{4e16}ok".as_bytes());
+    assert!(sent.is_empty());
+}
+
+#[test]
+fn an_endless_osc_string_is_bounded_and_dropped() {
+    let mut t = Terminal::new(3, 20, 10);
+    t.feed(b"\x1b]0;");
+    let chunk = vec![b'z'; 64 * 1024];
+    for _ in 0..40 {
+        t.feed(&chunk);
+    }
+    // Past the bound the string is abandoned; its rest is dropped up to
+    // the terminator, and output after it prints.
+    assert_eq!(t.continuation().as_deref(), Some(&b"\x1b]999999;"[..]));
+    t.feed(b"zzz\x07shown");
+    assert_eq!(t.title(), "");
+    assert_eq!(t.text().lines().next(), Some("shown"));
+    // A clipboard write at its bound still arrives.
+    let mut write = b"\x1b]52;c;".to_vec();
+    write.extend(std::iter::repeat_n(b'A', coder_vt::MAX_CLIPBOARD));
+    write.push(0x07);
+    t.feed(&write);
+    assert!(t.take_clipboard().is_some());
 }
 
 fn scrolled(lines: usize) -> Terminal {

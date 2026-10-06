@@ -28,7 +28,7 @@ use coder_pty::ext::{
 use coder_pty::wire::{Exit, Reason, Refusal, Size, TerminalRef};
 
 use crate::cell::{Attrs, Cell, Color, Flags, Row};
-use crate::continuation::Ignore;
+use crate::continuation::{Ignore, OSC_IGNORED, Resume};
 use crate::mouse::{MouseEncoding, MouseMode};
 use crate::{
     Charset, CursorShape, CursorStyle, MAX_SIZE, MAX_TITLE, Modes, Saved, State, Terminal, input,
@@ -57,24 +57,60 @@ impl Terminal {
         self.state.epoch
     }
 
-    /// The input the parser holds unfinished: an escape sequence or a
-    /// partial UTF-8 character. Empty when the parser is at rest; `None`
-    /// when it is longer than [`CONTINUATION_MAX`].
+    /// What a snapshot taken now carries as its `CONTINUATION`: the input
+    /// the parser holds unfinished, an escape sequence or a partial UTF-8
+    /// character, and empty when the parser is at rest. Unfinished input
+    /// longer than [`CONTINUATION_MAX`] is replaced by a short prefix that
+    /// leaves a fresh parser with the same effects from then on; `None`
+    /// means a partial character the snapshot drops on both sides.
     #[must_use]
-    pub fn continuation(&self) -> Option<&[u8]> {
-        self.tracker.continuation()
+    pub fn continuation(&self) -> Option<Vec<u8>> {
+        if self.skipping {
+            return Some(OSC_IGNORED.to_vec());
+        }
+        match self.tracker.continuation() {
+            Ok(bytes) => Some(bytes.to_vec()),
+            Err(Resume::Equivalent { continuation, .. }) => Some(continuation.to_vec()),
+            Err(Resume::SkipOsc) => Some(OSC_IGNORED.to_vec()),
+            Err(Resume::Reset) => None,
+        }
+    }
+
+    /// Brings this parser to the state the continuation a snapshot just
+    /// sent restores: it makes a long sequence one that is ignored,
+    /// abandons a long OSC string, or drops a partial character.
+    fn settle(&mut self) {
+        if self.skipping {
+            return;
+        }
+        match self.tracker.continuation() {
+            Ok(_) => {}
+            Err(Resume::Equivalent {
+                continuation,
+                poison,
+            }) => {
+                self.parser.advance(&mut Ignore, poison);
+                self.tracker.rebase(continuation);
+            }
+            Err(Resume::SkipOsc) => self.abandon_osc(),
+            Err(Resume::Reset) => {
+                self.parser = vte::Parser::new();
+                self.tracker = Default::default();
+            }
+        }
     }
 
     /// A snapshot stream: the prefix through `READY`, then at most 2,000
     /// history rows and 1 MiB of `HISTORY` records, newest first, and
     /// `FINISH`.
     ///
-    /// Unfinished input longer than [`CONTINUATION_MAX`] is abandoned, as
-    /// a cancel would abandon it, so this parser and the client's agree.
-    /// A prefix past the 4 MiB bound refuses as `limit_exceeded` and
+    /// Unfinished input longer than [`CONTINUATION_MAX`] is sent as a
+    /// short equivalent ([`Terminal::continuation`]), and this parser
+    /// settles into the state it restores, so this parser and the client's
+    /// agree. A prefix past the 4 MiB bound refuses as `limit_exceeded` and
     /// changes nothing.
     pub fn snapshot(&mut self, binding: &Binding) -> Result<Vec<Record>, Refusal> {
-        let continuation = self.continuation().map(<[u8]>::to_vec);
+        let continuation = self.continuation();
         let mut records = vec![
             Record::Terminal(self.terminal_record(binding)),
             Record::State(self.state_record()),
@@ -118,9 +154,7 @@ impl Terminal {
         let complete = pages.last().map_or(end, |page| page.first) == first;
         records.extend(pages.into_iter().map(Record::History));
         records.push(Record::Finish(FinishRecord { rows, complete }));
-        if continuation.is_none() {
-            self.abandon();
-        }
+        self.settle();
         Ok(records)
     }
 
@@ -378,12 +412,6 @@ impl Terminal {
             });
         }
         (out, sent)
-    }
-
-    /// Drops unfinished input, as a cancel would.
-    fn abandon(&mut self) {
-        self.parser = vte::Parser::new();
-        self.tracker = Default::default();
     }
 }
 

@@ -1,5 +1,5 @@
 //! Where the parser stands, so a snapshot can carry the input it holds
-//! unfinished.
+//! unfinished, and so no sequence grows without bound.
 //!
 //! `vte` keeps its state private, so this mirrors its transitions closely
 //! enough to know when it is back in its ground state with no partial
@@ -11,10 +11,22 @@
 //! character resolved, it keeps the bytes until the next ASCII byte, which
 //! always resolves one. A longer continuation replays to the same parser
 //! state; a shorter one would not.
+//!
+//! When the unfinished input is longer than a snapshot carries, a short
+//! prefix stands in for it: one that leaves a fresh parser in a state with
+//! the same effects from then on, usually a sequence that will be ignored
+//! ([`Resume`]).
 
 /// The longest continuation a snapshot carries. NIP-TERM bounds the
 /// `CONTINUATION` record the same way.
 pub const CONTINUATION_MAX: usize = 4096;
+/// The longest OSC string kept: a clipboard write at its bound, and room
+/// for its parameters. A longer one is abandoned.
+pub(crate) const OSC_MAX: usize = crate::MAX_CLIPBOARD + 64;
+
+/// An OSC string no handler answers, which stands in for an abandoned one
+/// until its terminator.
+pub(crate) const OSC_IGNORED: &[u8] = b"\x1b]999999;";
 
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 enum Phase {
@@ -45,6 +57,23 @@ enum Utf8 {
     Dirty,
 }
 
+/// How a parser whose unfinished input is too long resumes elsewhere.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) enum Resume {
+    /// A fresh parser fed `continuation` matches this one once this one is
+    /// fed `poison`, which only makes the sequence it is in one that will
+    /// be ignored.
+    Equivalent {
+        continuation: &'static [u8],
+        poison: &'static [u8],
+    },
+    /// An OSC string: this parser abandons it and drops the rest of it,
+    /// and a fresh parser fed [`OSC_IGNORED`] ignores the same rest.
+    SkipOsc,
+    /// A partial character in plain text: both parsers start fresh.
+    Reset,
+}
+
 /// The parser's position and the bytes since it was last at rest.
 #[derive(Clone, Debug, Default)]
 pub(crate) struct Tracker {
@@ -53,17 +82,29 @@ pub(crate) struct Tracker {
     pending: Vec<u8>,
     /// The unfinished input outgrew [`CONTINUATION_MAX`].
     overflow: bool,
+    /// Bytes of the current OSC string.
+    osc: usize,
 }
 
 impl Tracker {
-    /// Follows `bytes`, which the parser just took.
-    pub(crate) fn track(&mut self, bytes: &[u8]) {
+    /// Follows `bytes`, which the parser takes next, and answers how many
+    /// it may take: all of them, or fewer when an OSC string would pass
+    /// [`OSC_MAX`], which the caller then abandons.
+    pub(crate) fn track(&mut self, bytes: &[u8]) -> usize {
         let mut rest = None;
+        let mut taken = bytes.len();
         for (index, &byte) in bytes.iter().enumerate() {
             if self.at_rest() && byte < 0x80 && byte != 0x1b {
                 // The common case: plain text and controls in ground.
                 rest = Some(index + 1);
                 continue;
+            }
+            if self.phase == Phase::Osc && !matches!(byte, 0x07 | 0x18 | 0x1a | 0x1b) {
+                if self.osc >= OSC_MAX {
+                    taken = index;
+                    break;
+                }
+                self.osc += 1;
             }
             self.step(byte);
             if self.at_rest() {
@@ -74,25 +115,67 @@ impl Tracker {
             Some(end) => {
                 self.pending.clear();
                 self.overflow = false;
-                &bytes[end..]
+                &bytes[end..taken]
             }
-            None => bytes,
+            None => &bytes[..taken],
         };
-        if self.overflow {
-            return;
+        if !self.overflow {
+            if self.pending.len() + tail.len() > CONTINUATION_MAX {
+                self.pending.clear();
+                self.overflow = true;
+            } else {
+                self.pending.extend_from_slice(tail);
+            }
         }
-        if self.pending.len() + tail.len() > CONTINUATION_MAX {
-            self.pending.clear();
-            self.overflow = true;
-        } else {
-            self.pending.extend_from_slice(tail);
-        }
+        taken
     }
 
-    /// The input the parser holds unfinished: empty at rest, and `None`
-    /// when it is too long to carry.
-    pub(crate) fn continuation(&self) -> Option<&[u8]> {
-        (!self.overflow).then_some(self.pending.as_slice())
+    /// The input the parser holds unfinished, empty at rest; or, when it is
+    /// too long to carry, how to resume instead.
+    pub(crate) fn continuation(&self) -> Result<&[u8], Resume> {
+        if !self.overflow {
+            return Ok(&self.pending);
+        }
+        Err(match self.phase {
+            Phase::Ground => Resume::Reset,
+            Phase::Escape => Resume::Equivalent {
+                continuation: b"\x1b",
+                poison: b"",
+            },
+            // A third intermediate makes the sequence one that is ignored.
+            Phase::EscapeIntermediate => Resume::Equivalent {
+                continuation: b"\x1b   ",
+                poison: b"   ",
+            },
+            // More parameters than a parser holds make it ignored.
+            Phase::Csi => Resume::Equivalent {
+                continuation: b"\x1b[;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;",
+                poison: b";;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;",
+            },
+            Phase::DcsEntry | Phase::DcsParam | Phase::DcsIntermediate | Phase::DcsIgnore => {
+                Resume::Equivalent {
+                    continuation: b"\x1bP1<",
+                    poison: b"1<",
+                }
+            }
+            Phase::DcsPassthrough => Resume::Equivalent {
+                continuation: b"\x1bPq",
+                poison: b"",
+            },
+            Phase::Osc => Resume::SkipOsc,
+            Phase::Ignore => Resume::Equivalent {
+                continuation: b"\x1bX",
+                poison: b"",
+            },
+        })
+    }
+
+    /// After a snapshot sent `continuation` in place of the input, holds
+    /// it as the input, as a parser restored from it would.
+    pub(crate) fn rebase(&mut self, continuation: &[u8]) {
+        let mut fresh = Tracker::default();
+        fresh.track(continuation);
+        *self = fresh;
     }
 
     fn at_rest(&self) -> bool {
@@ -124,7 +207,10 @@ impl Tracker {
                 0x50 => Phase::DcsEntry,
                 0x58 | 0x5e | 0x5f => Phase::Ignore,
                 0x5b => Phase::Csi,
-                0x5d => Phase::Osc,
+                0x5d => {
+                    self.osc = 0;
+                    Phase::Osc
+                }
                 0x30..=0x7e => Phase::Ground,
                 _ => Phase::Escape,
             },

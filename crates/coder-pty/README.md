@@ -11,7 +11,8 @@ missed, bounded and in order.
 | Module | Feature | Platforms | What it does |
 | --- | --- | --- | --- |
 | `wire` | always | all | The NIP-TERM request, result, and frame bodies, with validation. |
-| `ext` | always | all | The NIP-TERM extensions' wire contract: features and negotiation, record streams (framing, CRC-32C, assembly, and order), the snapshot join, history, block pages, and session records. No host serves them yet. |
+| `ext` | always | all | The NIP-TERM extensions' wire contract: features and negotiation, record streams (framing, CRC-32C, assembly, and order), the snapshot join, history, block pages, session records, and effect frames. The host serves only the effects feature. |
+| `emulator` | always | all | The seam for a host's authoritative emulator per terminal: output in, query replies and effects out. `coder_vt::Authority` implements it. |
 | `ring` | always | all | The bounded replay buffer: sequence numbers, discard, and missed ranges. |
 | `client` | always | all | `TerminalState` applies frames, ignores duplicates, detects lost frames, records gaps, and keeps a bounded plain-text `Screen`. |
 | `host` | `host` (default) | Unix, Windows | `Host` owns PTYs (a Windows pseudoconsole), process groups (job objects), rings, attachments, budgets, idle expiry, and shutdown. |
@@ -63,6 +64,13 @@ host.attach(device, &Attach::new(request2, terminal, Mode::Interact, 0, 64 * 102
   output frames, 256 KiB per second per attachment, 16 terminals, 8
   attachments per terminal, a 30-minute idle period, and 1,024 remembered
   request IDs.
+- **Side effects.** With `Config::emulator`, each terminal's emulator parses
+  every output byte once. The host writes query replies to the terminal
+  while no `interact` attachment predates the effects feature, and sends
+  bells, title and directory changes, and clipboard writes as live effect
+  frames to attachments that named it; a clipboard write goes only to the
+  principal that typed last. `coder-vt`'s `tests/authority.rs` checks one
+  reply for two devices and no repeat on reattach.
 
 ## Limits
 

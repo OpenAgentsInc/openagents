@@ -78,8 +78,10 @@ pub const PROTOCOL_VERSION: u32 = coder_reach::PROTOCOL_VERSION;
 
 /// Capability flags this host advertises in presence and its ready record.
 /// `task-engine` says its `task.create` accepts the engine the person asked
-/// for (#10081).
-pub const CAPABILITIES: [&str; 7] = [
+/// for (#10081). `term-effects` says terminals answer their programs'
+/// queries on the host and report bells, titles, and clipboard writes as
+/// effect frames (NIP-TERM's effects feature).
+pub const CAPABILITIES: [&str; 8] = [
     "activity-summary",
     "direct-tcp",
     "relay-control",
@@ -87,6 +89,7 @@ pub const CAPABILITIES: [&str; 7] = [
     "task-create",
     coder_access::protocol::TASK_ENGINE,
     "terminal",
+    coder_pty::ext::CAPABILITY_EFFECTS,
 ];
 
 /// Why a host or client operation failed. Messages carry no key, grant,

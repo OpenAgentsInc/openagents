@@ -11,10 +11,16 @@ description = "A small VT100/xterm terminal emulator: a character grid with colo
 # grid, modes, and replies are this crate's.
 vte = { version = "0.15", default-features = false, features = ["std"] }
 unicode-width = "0.2"
-# The NIP-TERM snapshot records `snapshot` writes and restores: the
-# portable wire half only, without PTYs.
+# The NIP-TERM snapshot records `snapshot` writes and restores, and the
+# emulator seam `Authority` fills: the portable wire half only, without
+# PTYs.
 coder-pty = { path = "../coder-pty", default-features = false }
 serde_json = "1"
+
+# The authority tests run real PTYs through the host half.
+[target.'cfg(unix)'.dev-dependencies]
+coder-pty = { path = "../coder-pty", features = ["host"] }
+tempfile = "3"
 
 [lints]
 workspace = true

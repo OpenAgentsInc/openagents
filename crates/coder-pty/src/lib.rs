@@ -32,6 +32,7 @@
 //! the wire types and client state build everywhere.
 
 pub mod client;
+pub mod emulator;
 pub mod ext;
 pub mod ring;
 pub mod wire;

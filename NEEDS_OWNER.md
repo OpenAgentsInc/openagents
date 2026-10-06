@@ -410,3 +410,14 @@ Also confirm the prices in [`docs/cloud/retail-prices.md`](docs/cloud/retail-pri
 sats an hour) and 100 sats of coordination per started task; nothing
 charged before the executor starts; and no payout of a purchased balance
 in v1. A different rate or refund policy is a new book version.
+
+## One terminal reply across two devices (#10653)
+
+Hosts now answer terminal queries themselves and send bells, titles, and
+clipboard writes as NIP-TERM effect frames. After the Mac app and any
+headless hosts run a build with this change, open one terminal from two
+devices, run a program that asks for the cursor position (`vim` or `htop`
+does), and confirm it draws normally on both with no stray `R` or `c`
+characters. The PTY-level checks, including one reply for two devices and the
+clipboard reaching only the typist, run on scratch hosts in `coder-vt`'s
+`tests/authority.rs`.

@@ -60,7 +60,8 @@ impl Ordered {
         let position = match &frame.body {
             Body::Output { seq, .. } | Body::Exit { seq, .. } => Some(*seq),
             Body::Gap { from, .. } => Some(*from),
-            Body::Detached { .. } => None,
+            // An effect is a notice, applied when it arrives.
+            Body::Detached { .. } | Body::Effect { .. } => None,
         };
         let mut applied = Vec::new();
         match position {

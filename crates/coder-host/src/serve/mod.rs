@@ -57,6 +57,8 @@ const HINT_LIFETIME: u64 = 60 * 60;
 const SUMMARY_RETENTION: u64 = 24 * 60 * 60;
 /// How long start waits for the first relay subscription.
 const RELAY_READY_WAIT: Duration = Duration::from_secs(10);
+/// History lines each terminal's emulator keeps.
+const TERMINAL_HISTORY: usize = 1000;
 
 /// State every serving task shares.
 pub(crate) struct Shared {
@@ -181,6 +183,9 @@ pub async fn start(config: Config, tasks: Arc<dyn Tasks>) -> Result<Running> {
     let owner = authority.owner()?;
 
     let mut terminals = coder_pty::host::Config::new();
+    // One emulator per terminal answers its program's queries and owns its
+    // side effects, so devices watching together never answer twice.
+    terminals.emulator = Some(coder_vt::Authority::factory(TERMINAL_HISTORY));
     bundled_commands_first(&mut terminals.base_env);
     terminals.generation = mailbox::terminal_generation(&host_key, config.generation);
     for (label, root) in &config.workspaces {

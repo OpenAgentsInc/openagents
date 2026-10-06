@@ -22,6 +22,10 @@ pub const SNAPSHOT: &str = "openagents.terminal-snapshot.v1";
 pub const BLOCKS: &str = "openagents.terminal-blocks.v1";
 /// The session-record feature.
 pub const SESSIONS: &str = "openagents.terminal-sessions.v1";
+/// The terminal-effects feature: the host's emulator answers the program's
+/// queries, and the attachment receives the effects its output caused as
+/// effect frames instead of acting on the output itself.
+pub const EFFECTS: &str = "openagents.terminal-effects.v1";
 
 /// The presence capability a host advertises for [`SNAPSHOT`].
 pub const CAPABILITY_SNAPSHOT: &str = "term-snapshot";
@@ -29,6 +33,8 @@ pub const CAPABILITY_SNAPSHOT: &str = "term-snapshot";
 pub const CAPABILITY_BLOCKS: &str = "term-blocks";
 /// The presence capability a host advertises for [`SESSIONS`].
 pub const CAPABILITY_SESSIONS: &str = "term-sessions";
+/// The presence capability a host advertises for [`EFFECTS`].
+pub const CAPABILITY_EFFECTS: &str = "term-effects";
 
 /// `v` of a records frame.
 pub const RECORDS: &str = "openagents.terminal-records.v1";
@@ -84,6 +90,7 @@ pub struct Features {
     pub snapshot: bool,
     pub blocks: bool,
     pub sessions: bool,
+    pub effects: bool,
 }
 
 impl Features {
@@ -92,12 +99,14 @@ impl Features {
         snapshot: false,
         blocks: false,
         sessions: false,
+        effects: false,
     };
     /// Every feature this module defines.
     pub const ALL: Features = Features {
         snapshot: true,
         blocks: true,
         sessions: true,
+        effects: true,
     };
 
     /// The features a host's presence capabilities advertise. A client
@@ -109,6 +118,7 @@ impl Features {
             snapshot: has(CAPABILITY_SNAPSHOT),
             blocks: has(CAPABILITY_BLOCKS),
             sessions: has(CAPABILITY_SESSIONS),
+            effects: has(CAPABILITY_EFFECTS),
         }
     }
 
@@ -125,6 +135,9 @@ impl Features {
         if self.sessions {
             out.push(CAPABILITY_SESSIONS);
         }
+        if self.effects {
+            out.push(CAPABILITY_EFFECTS);
+        }
         out
     }
 
@@ -133,6 +146,7 @@ impl Features {
             SNAPSHOT => Some(self.snapshot),
             BLOCKS => Some(self.blocks),
             SESSIONS => Some(self.sessions),
+            EFFECTS => Some(self.effects),
             _ => None,
         }
     }
@@ -185,6 +199,64 @@ fn ext_header(
         return Err(Refusal::malformed(format!("{expected} requires {feature}")));
     }
     common_id(request, "request")
+}
+
+// ---------------------------------------------------------------------------
+// Effects
+
+/// The longest clipboard write an effect frame carries, in bytes. A host
+/// delivers no longer write.
+pub const CLIPBOARD_MAX: usize = 8 * 1024;
+/// The longest directory an effect frame carries, in bytes.
+pub const DIRECTORY_MAX: usize = 4096;
+
+/// Something a terminal's output caused that a client acts on, as the
+/// host's emulator found it. With [`EFFECTS`], a client takes these from
+/// effect frames and never from its own parsing, so a replayed or
+/// snapshotted byte rings no bell and writes no clipboard twice.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(tag = "kind", rename_all = "snake_case", deny_unknown_fields)]
+pub enum Effect {
+    /// The program rang the bell `count` times.
+    Bell { count: u32 },
+    /// The window title the program set, or empty when it cleared it.
+    Title { title: String },
+    /// The working directory the shell reported (OSC 7).
+    Directory { dir: String },
+    /// The program asked to write the clipboard. Only the attachment whose
+    /// principal typed last receives it; a client may refuse it, and a
+    /// program can never read the clipboard.
+    Clipboard { text: String },
+}
+
+impl Effect {
+    pub fn check(&self) -> Result<(), Refusal> {
+        match self {
+            Effect::Bell { count } if *count == 0 => {
+                Err(Refusal::malformed("a bell rings at least once"))
+            }
+            Effect::Bell { .. } => Ok(()),
+            Effect::Title { title } => clean(title, 1024, "title"),
+            Effect::Directory { dir } => clean(dir, DIRECTORY_MAX, "directory"),
+            Effect::Clipboard { text } => {
+                if text.len() > CLIPBOARD_MAX {
+                    return Err(Refusal::new(
+                        Reason::LimitExceeded,
+                        "a clipboard write is longer than 8192 bytes",
+                    ));
+                }
+                if text
+                    .chars()
+                    .any(|c| c.is_control() && !matches!(c, '\n' | '\t'))
+                {
+                    return Err(Refusal::malformed(
+                        "a clipboard write contains a control character",
+                    ));
+                }
+                Ok(())
+            }
+        }
+    }
 }
 
 // ---------------------------------------------------------------------------
@@ -1707,6 +1779,7 @@ mod tests {
     fn features_follow_presence_capabilities() {
         let advertised = Features::advertised(&["task-engine", "term-snapshot"]);
         assert!(advertised.snapshot && !advertised.blocks && !advertised.sessions);
-        assert_eq!(Features::ALL.capabilities().len(), 3);
+        assert!(!advertised.effects);
+        assert_eq!(Features::ALL.capabilities().len(), 4);
     }
 }

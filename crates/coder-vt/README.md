@@ -45,7 +45,21 @@ nothing when it refuses.
 The continuation is the input since the parser was last at rest. The
 emulator follows `vte`'s states to know when that was; replaying the bytes
 into a fresh parser with no effects restores its position. Unfinished input
-longer than 4,096 bytes is abandoned on both sides, as a cancel would.
+longer than 4,096 bytes travels as a short prefix with the same effects from
+then on: a sequence that will be ignored, or for an OSC string, one no
+handler answers while the host drops the rest of the abandoned string.
+
+## Host authority
+
+`Authority` is the emulator a host runs for each terminal
+(`coder_pty::emulator`): it parses every output byte once, answers the
+program's queries, and reports bells, title and directory changes, and
+clipboard writes, which the host sends as NIP-TERM effect frames. A client on
+an attachment with the effects feature sends no replies of its own.
+
+Parsing holds bounded memory: an OSC string longer than a clipboard write's
+bound (1 MiB and its parameters) is abandoned, and the rest of it is dropped
+up to its terminator.
 
 A snapshot does not carry the alternate screen while the primary one shows,
 a saved cursor's character sets and origin mode, the character `REP`

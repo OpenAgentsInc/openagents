@@ -2997,6 +2997,7 @@ dependencies = [
  "coder-pty",
  "coder-reach",
  "coder-service",
+ "coder-vt",
  "futures-util",
  "keyring",
  "libc",
@@ -3219,6 +3220,7 @@ version = "0.1.0"
 dependencies = [
  "coder-pty",
  "serde_json",
+ "tempfile",
  "unicode-width",
  "vte",
 ]
