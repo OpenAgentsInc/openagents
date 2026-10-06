@@ -1,0 +1,100 @@
+{
+  "source_base_revision": "3896776166080cfba6ed740aa9a414b6a7582cb4",
+  "source_patch": "source.patch",
+  "executable_sha256": "38f60e87901770f14c4f0f9227f8c288aaf351c11fb52fa4c93cbc4f48adad5f",
+  "acceptance": "failed",
+  "failures": [
+    "/server/movement_expiry/total: Some(5.0) exceeds 0, or is unavailable",
+    "Player 13 late prediction p95 Some(0.3200397491455078) exceeds 0.25 meters or is unavailable",
+    "Player 15 late prediction p95 Some(0.274320125579834) exceeds 0.25 meters or is unavailable"
+  ],
+  "movement_expiry": {
+    "total": 5,
+    "admission": 0,
+    "primary_tick": 0,
+    "additional_tick": 5,
+    "bootstrap": 0,
+    "samples": [
+      {
+        "actor": 227,
+        "epoch": 7,
+        "authority_tick": 2157,
+        "origin": "additional_tick",
+        "world_step": 6228,
+        "confirmed_step": 6192,
+        "projected_step": 6192,
+        "received_at": 6212,
+        "applied_sequence": 4,
+        "queued_frames": 0,
+        "queued_steps": 0,
+        "first_start": null,
+        "last_end": null
+      },
+      {
+        "actor": 230,
+        "epoch": 5,
+        "authority_tick": 2159,
+        "origin": "additional_tick",
+        "world_step": 6236,
+        "confirmed_step": 6200,
+        "projected_step": 6200,
+        "received_at": 6224,
+        "applied_sequence": 4,
+        "queued_frames": 0,
+        "queued_steps": 0,
+        "first_start": null,
+        "last_end": null
+      },
+      {
+        "actor": 231,
+        "epoch": 5,
+        "authority_tick": 2159,
+        "origin": "additional_tick",
+        "world_step": 6236,
+        "confirmed_step": 6200,
+        "projected_step": 6200,
+        "received_at": 6216,
+        "applied_sequence": 4,
+        "queued_frames": 0,
+        "queued_steps": 0,
+        "first_start": null,
+        "last_end": null
+      },
+      {
+        "actor": 244,
+        "epoch": 7,
+        "authority_tick": 2650,
+        "origin": "additional_tick",
+        "world_step": 8200,
+        "confirmed_step": 8164,
+        "projected_step": 8164,
+        "received_at": 8184,
+        "applied_sequence": 4,
+        "queued_frames": 0,
+        "queued_steps": 0,
+        "first_start": null,
+        "last_end": null
+      },
+      {
+        "actor": 244,
+        "epoch": 9,
+        "authority_tick": 2677,
+        "origin": "additional_tick",
+        "world_step": 8308,
+        "confirmed_step": 8272,
+        "projected_step": 8272,
+        "received_at": 8292,
+        "applied_sequence": 4,
+        "queued_frames": 0,
+        "queued_steps": 0,
+        "first_start": null,
+        "last_end": null
+      }
+    ],
+    "omitted": 0
+  },
+  "qualification": "Twenty shared native sessions and one offscreen renderer on one Linux machine; not physical-device qualification.",
+  "checks": "25 worker tests passed, including a TLS regression for duplicate polling after interval entry.",
+  "conclusion": "Duplicate polling was corrected, but this run does not demonstrate a reduction in movement expiries.",
+  "limits_changed": false
+}
