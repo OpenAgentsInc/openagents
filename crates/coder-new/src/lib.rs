@@ -15,6 +15,8 @@ pub mod plugin_tools;
 pub mod plugins;
 pub mod programmatic;
 pub mod provider;
+pub mod resume;
+pub mod sessions;
 pub mod slash;
 pub mod snapshot;
 pub mod theme;
@@ -77,6 +79,8 @@ pub struct App {
     pub slash_hidden: bool,
     pub notice: Option<String>,
     pub model_picker: Option<models::Picker>,
+    pub resume_picker: Option<resume::Picker>,
+    history: resume::History,
     pub(crate) active_options: models::GenerationOptions,
     pending_export_path: Option<std::path::PathBuf>,
     active_delegation: Option<String>,
@@ -220,8 +224,12 @@ impl App {
             return;
         }
         self.cancel_request();
+        if !self.persist_session(true) {
+            return;
+        }
         self.select_agent(None);
         self.model_picker = None;
+        self.resume_picker = None;
         std::mem::swap(&mut self.draft, &mut self.other_draft);
         self.plugins.set_live(mode == Mode::Live);
         self.mode = mode;
@@ -233,7 +241,11 @@ impl App {
     }
 
     pub fn slash_hints(&self) -> Vec<slash::Command> {
-        if self.slash_hidden || self.model_picker.is_some() || self.screen != Screen::Conversation {
+        if self.slash_hidden
+            || self.model_picker.is_some()
+            || self.resume_picker.is_some()
+            || self.screen != Screen::Conversation
+        {
             return Vec::new();
         }
         slash::matches(&self.draft.text)
@@ -243,6 +255,7 @@ impl App {
     }
 
     pub fn cancel_request(&mut self) {
+        self.history.dirty |= self.live.busy;
         self.active_delegation = None;
         self.request_id = self.request_id.wrapping_add(1);
         self.request = None;
@@ -328,6 +341,7 @@ impl App {
         if update.id() != self.request_id || self.mode != Mode::Live {
             return;
         }
+        self.history.dirty |= self.live.busy;
         match update {
             live::Update::Delegation {
                 delegation,
@@ -454,6 +468,12 @@ impl App {
     }
 
     fn command(&mut self, command: slash::Command) {
+        if command == slash::Command::Resume {
+            if self.resume(None) {
+                self.draft = Draft::default();
+            }
+            return;
+        }
         self.draft = Draft::default();
         self.slash_selected = 0;
         self.slash_hidden = false;
@@ -467,6 +487,7 @@ impl App {
             slash::Command::Plugins => self.open_plugins(),
             slash::Command::Models => self.open_models(),
             slash::Command::Export => self.export(None),
+            slash::Command::Resume => unreachable!("Resume is handled before clearing the draft"),
             slash::Command::Help => self.notice = Some(slash::help()),
         }
     }
@@ -515,6 +536,9 @@ impl App {
             self.live.notice = Some("Wait for the current reply or press Esc to stop it.".into());
             return;
         }
+        if !self.ensure_session() {
+            return;
+        }
         if let Some(index) = self.selected_agent {
             self.submit_delegation(index);
             return;
@@ -532,6 +556,7 @@ impl App {
         self.live.partial.clear();
         self.live.partial_model = None;
         self.live.busy = true;
+        self.history.dirty = true;
         self.active_options = if key.is_some() {
             self.plugins.options.clone()
         } else {
@@ -611,6 +636,7 @@ impl App {
         child.running = true;
         child.started_at = self.elapsed_seconds;
         self.live.busy = true;
+        self.history.dirty = true;
         self.draft.cursor = 0;
         self.scroll = u16::MAX;
         let key = self
@@ -634,6 +660,7 @@ impl App {
     }
 
     pub fn open_plugins(&mut self) {
+        self.resume_picker = None;
         if !matches!(self.screen, Screen::Plugins | Screen::PluginSettings) {
             self.return_screen = self.screen;
         }
@@ -641,6 +668,7 @@ impl App {
     }
 
     pub fn open_models(&mut self) {
+        self.resume_picker = None;
         if !self.plugins.enabled {
             self.notice = Some("Turn on OpenRouter BYOK in /plugins to choose a model.".into());
             return;
@@ -753,7 +781,9 @@ impl App {
     pub fn handle(&mut self, event: Event) -> bool {
         match event {
             Event::Mouse(mouse)
-                if self.screen == Screen::Conversation && self.model_picker.is_none() =>
+                if self.screen == Screen::Conversation
+                    && self.model_picker.is_none()
+                    && self.resume_picker.is_none() =>
             {
                 match mouse.kind {
                     MouseEventKind::ScrollUp => self.scroll = self.scroll.saturating_sub(3),
@@ -763,7 +793,9 @@ impl App {
             }
             Event::Paste(text) => {
                 self.cursor_blink_frame = 0;
-                if let Some(picker) = &mut self.model_picker {
+                if self.resume_picker.is_some() {
+                    return true;
+                } else if let Some(picker) = &mut self.model_picker {
                     picker.paste(&text);
                 } else if self.screen == Screen::PluginSettings {
                     match self.plugins.selected_definition().id {
@@ -813,6 +845,16 @@ impl App {
                 {
                     self.model_picker = None;
                     self.open_plugins();
+                    return true;
+                }
+                if let Some(picker) = &mut self.resume_picker {
+                    match picker.handle(key) {
+                        resume::Action::Continue => {}
+                        resume::Action::Close => self.resume_picker = None,
+                        resume::Action::Select(id) => {
+                            self.resume(Some(&id));
+                        }
+                    }
                     return true;
                 }
                 if let Some(picker) = &mut self.model_picker {
@@ -1021,7 +1063,22 @@ impl App {
                         self.draft.insert("\n");
                     }
                     KeyCode::Enter if !ctrl => {
-                        if let Some(path) = self
+                        if let Some(selection) = self
+                            .draft
+                            .text
+                            .trim()
+                            .strip_prefix("/resume ")
+                            .map(str::trim)
+                            .map(str::to_owned)
+                        {
+                            if self.resume(if selection.is_empty() {
+                                None
+                            } else {
+                                Some(&selection)
+                            }) {
+                                self.draft = Draft::default();
+                            }
+                        } else if let Some(path) = self
                             .draft
                             .text
                             .trim()

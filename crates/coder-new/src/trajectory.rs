@@ -133,7 +133,11 @@ pub fn app_document(app: &App, cwd: &Path) -> Value {
     if let Some(index) = app.selected_agent
         && let Some(child) = app.delegations.get(index)
     {
-        return document(&child.chat, &child.id, chat_model(&child.chat), cwd);
+        let mut result = document(&child.chat, &child.id, chat_model(&child.chat), cwd);
+        app.plugins
+            .execution_settings(cwd.to_owned())
+            .redact(&mut result);
+        return result;
     }
     main_document(app, cwd)
 }
@@ -268,7 +272,10 @@ fn demo_call(name: &str, input: &str, output: &str, state: crate::tools::ToolSta
 
 /// Render the parent and all children regardless of the current UI selection.
 pub fn main_document(app: &App, cwd: &Path) -> Value {
-    let id = format!("coder-new-{}", atif::stamp(atif::now_ms()));
+    let id = app
+        .session_id()
+        .map(str::to_owned)
+        .unwrap_or_else(|| format!("coder-new-{}", atif::stamp(atif::now_ms())));
     let model = if app.plugins.enabled && app.plugins.key_configured {
         app.plugins.options.slug(&app.plugins.model)
     } else {
@@ -292,6 +299,9 @@ pub fn main_document(app: &App, cwd: &Path) -> Value {
                 .collect::<Vec<_>>()
         );
     }
+    app.plugins
+        .execution_settings(cwd.to_owned())
+        .redact(&mut result);
     result
 }
 

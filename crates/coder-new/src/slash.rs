@@ -17,6 +17,7 @@ pub enum Command {
     Plugins,
     Models,
     Export,
+    Resume,
     Help,
 }
 
@@ -27,6 +28,7 @@ pub const ALL: &[Command] = if crate::DEMO_AVAILABLE {
         Command::Plugins,
         Command::Models,
         Command::Export,
+        Command::Resume,
         Command::Help,
     ]
 } else {
@@ -34,6 +36,7 @@ pub const ALL: &[Command] = if crate::DEMO_AVAILABLE {
         Command::Plugins,
         Command::Models,
         Command::Export,
+        Command::Resume,
         Command::Help,
     ]
 };
@@ -48,6 +51,7 @@ impl Command {
             Self::Plugins => "plugins",
             Self::Models => "models",
             Self::Export => "export",
+            Self::Resume => "resume",
             Self::Help => "help",
         }
     }
@@ -60,6 +64,7 @@ impl Command {
             Self::Plugins => "Manage plugins",
             Self::Models => "Choose model and reasoning level",
             Self::Export => "Export this conversation as ATIF",
+            Self::Resume => "Resume a saved conversation",
             Self::Help => "Show commands and keys",
         }
     }
@@ -91,7 +96,7 @@ pub fn help() -> String {
     if crate::DEMO_AVAILABLE {
         text.push_str("/demo  Toggle demo/live\n");
     }
-    text.push_str("/plugins  Manage plugins\n/models  Choose a model for an enabled provider\n/export [path]  Export the selected conversation as ATIF\n/help  Show commands\nTab  Complete a command\nEsc  Close suggestions or stop a reply\nCtrl+C  Quit");
+    text.push_str("/plugins  Manage plugins\n/models  Choose a model for an enabled provider\n/export [path]  Export the selected conversation as ATIF\n/resume [number|id]  Resume a saved conversation\n/help  Show commands\nTab  Complete a command\nEsc  Close suggestions or stop a reply\nCtrl+C  Quit");
     text
 }
 

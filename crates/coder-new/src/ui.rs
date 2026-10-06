@@ -2,6 +2,7 @@
 
 mod models;
 mod plugins;
+mod resume;
 
 use coder_terminal::{Colors, Ladder, components::turn::markdown_body};
 use ratatui::{
@@ -49,6 +50,10 @@ pub fn render(frame: &mut Frame, app: &mut App) {
         width: area.width.saturating_sub(4),
         height: area.height.saturating_sub(2),
     };
+    if app.resume_picker.is_some() {
+        resume::render(frame, area, app);
+        return;
+    }
     if matches!(app.screen, Screen::Plugins | Screen::PluginSettings) {
         plugins::render(frame, area, app);
         if app.model_picker.is_some() {

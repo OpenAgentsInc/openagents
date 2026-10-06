@@ -2,7 +2,7 @@
 
 use std::{
     collections::BTreeMap,
-    fs::{self, File, OpenOptions},
+    fs,
     io::{self, Read},
     path::{Path, PathBuf},
     sync::{
@@ -18,7 +18,7 @@ use serde_json::{Value, json};
 
 use crate::{
     App, Mode, bundled_runtime::RuntimeEvent, live, models, plugin_definition::DEFINITIONS,
-    plugins::SettingsFocus, trajectory,
+    plugins::SettingsFocus, sessions as local_sessions, trajectory,
 };
 
 macro_rules! command_usage {
@@ -756,7 +756,7 @@ fn chat(
             "Supply one prompt with -p, --prompt-file, or --stdin.",
         ));
     }
-    let _lock = lock_session(context, &session)?;
+    let lease = lock_session(context, &session)?;
     let prompt = if let Some(prompt) = prompt {
         prompt
     } else if let Some(file) = file {
@@ -771,8 +771,8 @@ fn chat(
     if prompt.trim().is_empty() {
         return Err(usage("The prompt cannot be empty."));
     }
-    if session_path(context, &session)?.exists() {
-        trajectory::restore_app(app, &read_document(&session_path(context, &session)?)?)?;
+    if lease.exists()? {
+        trajectory::restore_app(app, &lease.read()?)?;
     }
     if let Some(id) = delegation {
         app.selected_agent = Some(
@@ -854,7 +854,7 @@ fn chat(
     let mut document = trajectory::main_document(app, &context.cwd);
     document["session_id"] = json!(session);
     document["trajectory_id"] = json!(session);
-    save_session(context, &session, &document)?;
+    lease.save(&document)?;
     if let Some(error) = &app.live.notice {
         return Err(error.clone().into());
     }
@@ -937,9 +937,9 @@ fn delegate(
     if args.len() != 1 {
         return Err(usage("Use delegate AGENT --task TEXT."));
     }
-    let _lock = lock_session(context, &session)?;
-    if session_path(context, &session)?.exists() {
-        trajectory::restore_app(app, &read_document(&session_path(context, &session)?)?)?;
+    let lease = lock_session(context, &session)?;
+    if lease.exists()? {
+        trajectory::restore_app(app, &lease.read()?)?;
     }
     let agent = args.remove(0);
     let execution = app.plugins.execution_settings(context.cwd.clone());
@@ -1073,7 +1073,7 @@ fn delegate(
             let mut document = trajectory::main_document(app, &context.cwd);
             document["session_id"] = json!(session);
             document["trajectory_id"] = json!(session);
-            save_session(context, &session, &document)?;
+            lease.save(&document)?;
             return Err(error.into());
         }
     };
@@ -1093,7 +1093,7 @@ fn delegate(
     let mut document = trajectory::main_document(app, &context.cwd);
     document["session_id"] = json!(session);
     document["trajectory_id"] = json!(session);
-    save_session(context, &session, &document)?;
+    lease.save(&document)?;
     Ok(json!({"session":session,"agent":agent,"reply":text,"result":output}))
 }
 
@@ -1122,117 +1122,36 @@ fn new_id() -> String {
     atif::log::session_id(atif::now_ms())
 }
 fn session_path(context: &Context, id: &str) -> Result<PathBuf, Error> {
-    if id.is_empty()
-        || id.len() > 128
-        || !id
-            .bytes()
-            .all(|byte| byte.is_ascii_alphanumeric() || b"_-".contains(&byte))
-    {
-        return Err(usage(
-            "Session IDs accept letters, numbers, underscores, and hyphens, up to 128 bytes.",
-        ));
-    }
-    Ok(context
-        .root
-        .join("sessions")
-        .join(format!("{id}.atif.json")))
+    local_sessions::Store::under(&context.root)
+        .path(id)
+        .map_err(|error| usage(&error))
 }
-fn lock_session(context: &Context, id: &str) -> Result<File, Error> {
-    let path = session_path(context, id)?.with_extension("lock");
-    let parent = path
-        .parent()
-        .ok_or_else(|| usage("Invalid session path."))?;
-    let mut builder = fs::DirBuilder::new();
-    builder.recursive(true);
-    #[cfg(unix)]
-    {
-        use std::os::unix::fs::DirBuilderExt;
-        builder.mode(0o700);
-    }
-    builder
-        .create(parent)
-        .map_err(|_| Error::from("Cannot create the chat session directory."))?;
-    if !fs::symlink_metadata(parent).is_ok_and(|metadata| metadata.is_dir()) {
-        return Err("The chat session directory is not a regular directory.".into());
-    }
-    if fs::symlink_metadata(&path).is_ok_and(|metadata| !metadata.is_file()) {
-        return Err("The chat session lock is not a regular file.".into());
-    }
-    let mut options = OpenOptions::new();
-    options.create(true).read(true).write(true);
-    #[cfg(unix)]
-    {
-        use std::os::unix::fs::OpenOptionsExt;
-        options.mode(0o600);
-    }
-    let file = options
-        .open(path)
-        .map_err(|_| Error::from("Cannot lock the chat session."))?;
-    file.try_lock()
-        .map_err(|_| Error::from("Another process is using this chat session."))?;
-    Ok(file)
-}
-
-fn save_session(context: &Context, id: &str, document: &Value) -> Result<(), Error> {
-    let path = session_path(context, id)?;
-    let temporary = path.with_extension(format!("{}.tmp", new_id()));
-    let result = trajectory::write(&temporary, document)
+fn lock_session(context: &Context, id: &str) -> Result<local_sessions::Lease, Error> {
+    session_path(context, id)?;
+    local_sessions::Store::under(&context.root)
+        .lease(id)
         .map_err(Error::from)
-        .and_then(|()| {
-            fs::rename(&temporary, &path).map_err(|_| Error::from("Cannot save the chat session."))
-        });
-    if result.is_err() {
-        let _ = fs::remove_file(temporary);
-    }
-    result
 }
 fn sessions(args: &[String], context: &Context) -> Result<Value, Error> {
+    let store = local_sessions::Store::under(&context.root);
     if args.is_empty() || args == ["list"] {
-        let root = context.root.join("sessions");
-        let mut values = Vec::new();
-        if root.exists() {
-            for entry in
-                fs::read_dir(&root).map_err(|_| Error::from("Cannot list chat sessions."))?
-            {
-                let entry = entry.map_err(|_| Error::from("Cannot list chat sessions."))?;
-                let name = entry.file_name().to_string_lossy().into_owned();
-                if let Some(id) = name.strip_suffix(".atif.json") {
-                    values.push(json!({"id":id,"path":entry.path()}));
-                }
-            }
-        }
-        values.sort_by_key(|value| value["id"].as_str().unwrap_or("").to_owned());
-        return Ok(json!({"sessions":values}));
+        return Ok(json!({"sessions":store.list()?}));
     }
     if args.len() != 2 {
         return Err(usage("Use sessions list, read ID, or delete ID."));
     }
-    let path = session_path(context, &args[1])?;
-    let _lock = lock_session(context, &args[1])?;
+    session_path(context, &args[1])?;
     match args[0].as_str() {
-        "read" => read_document(&path),
+        "read" => store.read(&args[1]).map_err(Error::from),
         "delete" => {
-            fs::remove_file(path).map_err(|_| Error::from("Cannot remove the chat session."))?;
+            lock_session(context, &args[1])?.delete()?;
             Ok(json!({"deleted":args[1]}))
         }
         _ => Err(usage("Use sessions list, read ID, or delete ID.")),
     }
 }
 fn read_document(path: &Path) -> Result<Value, Error> {
-    let metadata =
-        fs::symlink_metadata(path).map_err(|_| Error::from("Cannot read the chat session."))?;
-    if !metadata.is_file() || metadata.len() > 64 * 1024 * 1024 {
-        return Err("The chat session is not a regular file or exceeds 64 MiB.".into());
-    }
-    let value = serde_json::from_slice(
-        &fs::read(path).map_err(|_| Error::from("Cannot read the chat session."))?,
-    )
-    .map_err(|_| Error::from("The chat session is not valid JSON."))?;
-    if !atif::validate(&value).is_empty() {
-        return Err("The chat session is not valid ATIF.".into());
-    }
-    trajectory::from_document(&value)?;
-    Ok(value)
+    local_sessions::read_document(path).map_err(Error::from)
 }
 fn export(args: &[String], context: &Context) -> Result<Value, Error> {
     let mut args = args.to_vec();
@@ -1240,7 +1159,8 @@ fn export(args: &[String], context: &Context) -> Result<Value, Error> {
     if args.len() != 1 {
         return Err(usage("Use export ID [--output FILE]."));
     }
-    let document = read_document(&session_path(context, &args[0])?)?;
+    session_path(context, &args[0])?;
+    let document = local_sessions::Store::under(&context.root).read(&args[0])?;
     if let Some(output) = output {
         let path = context.cwd.join(output);
         trajectory::write(&path, &document)?;
@@ -1255,9 +1175,9 @@ fn import(args: &[String], context: &Context) -> Result<Value, Error> {
     if args.len() != 1 {
         return Err(usage("Use import FILE [--session ID]."));
     }
-    let _lock = lock_session(context, &session)?;
-    let path = session_path(context, &session)?;
-    if path.exists() {
+    let lease = lock_session(context, &session)?;
+    let path = lease.path().to_owned();
+    if lease.exists()? {
         return Err("That session already exists. Choose another ID.".into());
     }
     let mut document = read_document(&context.cwd.join(&args[0]))?;
@@ -1265,7 +1185,7 @@ fn import(args: &[String], context: &Context) -> Result<Value, Error> {
     document["session_id"] = json!(session);
     document["trajectory_id"] = json!(session);
     atif::upgrade(&mut document).map_err(|_| Error::from("Unsupported ATIF version."))?;
-    save_session(context, &session, &document)?;
+    lease.save(&document)?;
     Ok(json!({"session":session,"path":path}))
 }
 

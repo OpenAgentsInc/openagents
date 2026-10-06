@@ -76,6 +76,7 @@ fn main() -> io::Result<()> {
     }
     let openagents_root = model_access::store::openagents_dir();
     if let Some(root) = &openagents_root {
+        app.attach_session_store(coder_new::sessions::Store::under(root.join("coder-new")));
         if let Err(error) = app.load_plugin_settings(coder_new::plugin_store::Store::under(
             root.join("coder-new"),
         )) {
@@ -166,6 +167,7 @@ fn main() -> io::Result<()> {
         loop {
             app.elapsed_seconds = started.elapsed().as_secs();
             background.sync(&mut app);
+            app.persist_session(false);
             catalog.sync(&mut app);
             execute!(io::stdout(), BeginSynchronizedUpdate)?;
             terminal.draw(|frame| ui::render(frame, &mut app))?;
@@ -185,6 +187,8 @@ fn main() -> io::Result<()> {
                 }
                 app.copy_export_path(coder_terminal::clipboard::to_clipboard);
                 if !keep_running {
+                    app.cancel_request();
+                    app.persist_session(true);
                     break;
                 }
             }
@@ -195,6 +199,8 @@ fn main() -> io::Result<()> {
         }
         Ok(())
     })();
+    app.cancel_request();
+    app.persist_session(true);
     let extra_restore = restore_extras();
     ratatui::restore();
     result.and(extra_restore)
@@ -218,7 +224,7 @@ fn help() -> String {
         ""
     };
     format!(
-        "Coder terminal\n\nUsage: coder {modes} [--plugins | --plugin-settings | --models] [--snapshot]\n\n--live             Use enabled providers and tools (default).\n{demo_option}--plugins          Start with plugin management.\n--plugin-settings  Start with OpenRouter settings.\n--models           Open the model picker for an enabled provider.\n--snapshot         Write a 110×36 SVG to stdout; defaults to {snapshot_mode}.\n--version          Print the release version and build commit.\n\n{demo_command}/models chooses a model and reasoning level. /export [path] writes ATIF. Type / for commands; Up/Down selects, Tab completes, Enter runs. Cmd+P on macOS, Ctrl+P on Windows, F2, or /plugins opens plugins. Esc stops a reply. Ctrl+C quits."
+        "Coder terminal\n\nUsage: coder {modes} [--plugins | --plugin-settings | --models] [--snapshot]\n\n--live             Use enabled providers and tools (default).\n{demo_option}--plugins          Start with plugin management.\n--plugin-settings  Start with OpenRouter settings.\n--models           Open the model picker for an enabled provider.\n--snapshot         Write a 110×36 SVG to stdout; defaults to {snapshot_mode}.\n--version          Print the release version and build commit.\n\n{demo_command}/models chooses a model and reasoning level. /export [path] writes ATIF. /resume [number|id] reopens a saved conversation. Type / for commands; Up/Down selects, Tab completes, Enter runs. Cmd+P on macOS, Ctrl+P on Windows, F2, or /plugins opens plugins. Esc stops a reply. Ctrl+C quits."
     )
 }
 

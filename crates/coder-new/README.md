@@ -173,6 +173,17 @@ draft, cursor, preview messages, and scroll position while the preview is open.
 The working directory and branch appear at the top right. Only selected agent
 conversations show a title at the top left, using the agent's name.
 
+Live terminal conversations save automatically as private ATIF files in
+`~/.openagents/coder-new/sessions/`, the same store that `openagents coder`
+uses. Type `/resume` to open the 100 most recent conversations. Use Up/Down,
+Tab, or j/k to choose a chat, Enter to resume, and Esc to return to your draft.
+`/resume <number>` selects from the last displayed list; `/resume <id>` opens
+an exact session. Resuming restores the main transcript and subagent chats
+without rerunning recorded tools, then continues the same session. The current
+directory and plugin settings stay in effect. Stop active work before resuming.
+Streaming replies checkpoint every five seconds and save again when they end;
+typing and scrolling do not write session files. Demo conversations are not saved.
+
 The base background uses Coder's shared near-black color (`#0a0a0a`). White,
 gray, and composer-border colors retain the Grok Night values. Accents use the
 historical USGC palette: cyan, magenta, amber, orange, red, and green. Markdown
