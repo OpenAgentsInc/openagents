@@ -1,14 +1,13 @@
 # Coder terminal
 
 A Ratatui terminal with bundled plugins, live chat, and a separate demo mode.
-Interactive runs start in live mode. `/demo` toggles between live and demo;
+Interactive runs start in live mode with an empty transcript. `/demo` toggles between live and demo;
 `--demo` starts with the fixtures. Demo mode shows Read, Search, Edit, and Run
 examples, a diff, four running
 delegations, and a composer. Delegations use the same agent names, tasks, and
 token counts as the rail. Their magenta diamonds pulse while running commands
 show a rotating spinner. Each agent conversation has its own tool calls,
 arguments, results, and current activity.
-Press Tab with an ordinary draft to switch to the welcome view.
 
 Type `/` to see commands above the input, following the existing OpenAgents
 terminal's slash suggestions. The command and description occupy separate
@@ -138,7 +137,6 @@ the [API reference](https://openrouter.ai/docs/api_reference/overview), and
 ```sh
 cargo run -p coder-new
 cargo run -p coder-new -- --demo
-cargo run -p coder-new -- --welcome
 cargo run -p coder-new -- --plugins
 cargo run -p coder-new -- --plugin-settings
 cargo run -p coder-new -- --models
@@ -181,7 +179,6 @@ Export the actual Ratatui buffer without an interactive terminal:
 
 ```sh
 cargo run -p coder-new -- --snapshot > docs/coder-new/mockup.svg
-cargo run -p coder-new -- --welcome --snapshot > docs/coder-new/welcome.svg
 cargo run -p coder-new -- --live --plugins --snapshot > docs/coder-new/plugins.svg
 cargo run -p coder-new -- --live --plugin-settings --snapshot > docs/coder-new/plugin-settings.svg
 cargo run -p coder-new -- --live --snapshot > docs/coder-new/live.svg

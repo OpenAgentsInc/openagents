@@ -25,7 +25,6 @@ use unicode_width::UnicodeWidthStr;
 
 #[derive(Clone, Copy, Default, PartialEq, Eq)]
 pub enum Screen {
-    Welcome,
     #[default]
     Conversation,
     Plugins,
@@ -98,10 +97,7 @@ impl App {
     }
 
     pub fn slash_hints(&self) -> Vec<slash::Command> {
-        if self.slash_hidden
-            || self.model_picker.is_some()
-            || !matches!(self.screen, Screen::Conversation | Screen::Welcome)
-        {
+        if self.slash_hidden || self.model_picker.is_some() || self.screen != Screen::Conversation {
             return Vec::new();
         }
         slash::matches(&self.draft.text)
@@ -687,14 +683,6 @@ impl App {
                             .get_or_insert_with(|| "Request stopped.".into());
                     }
                     KeyCode::Esc => self.select_agent(None),
-                    KeyCode::Tab | KeyCode::BackTab => {
-                        self.screen = match self.screen {
-                            Screen::Welcome => Screen::Conversation,
-                            Screen::Conversation => Screen::Welcome,
-                            Screen::Plugins | Screen::PluginSettings => unreachable!(),
-                        };
-                        self.scroll = 0;
-                    }
                     KeyCode::PageUp => self.scroll = self.scroll.saturating_sub(5),
                     KeyCode::PageDown => self.scroll = self.scroll.saturating_add(5),
                     KeyCode::Enter if key.modifiers.contains(KeyModifiers::ALT) => {

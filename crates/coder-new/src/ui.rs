@@ -74,7 +74,6 @@ pub fn render(frame: &mut Frame, app: &mut App) {
     .areas(area);
     header_view(frame, header, app);
     match app.screen {
-        Screen::Welcome => welcome(frame, body),
         Screen::Conversation => conversation(frame, body, app),
         Screen::Plugins | Screen::PluginSettings => unreachable!(),
     }
@@ -295,46 +294,6 @@ fn header_view(frame: &mut Frame, area: Rect, app: &App) {
     }
 }
 
-fn welcome(frame: &mut Frame, area: Rect) {
-    let height = area.height.min(9);
-    let area = Rect {
-        y: area.y + area.height.saturating_sub(height) / 2,
-        height,
-        ..area
-    };
-    frame.render_widget(
-        Paragraph::new(Text::from(vec![
-            Line::from(Span::styled(
-                "What do you want to build?",
-                Style::default()
-                    .fg(t::TEXT_PRIMARY)
-                    .add_modifier(Modifier::BOLD),
-            )),
-            Line::default(),
-            Line::from(span(
-                "A place to think, make changes, and keep going.",
-                t::TEXT_SECONDARY,
-            )),
-            Line::default(),
-            Line::from(vec![
-                span("◇ ", t::ACCENT_SKILL),
-                span("Tools and models are plugins.", t::GRAY_BRIGHT),
-            ]),
-            Line::from(vec![
-                span("◇ ", t::ACCENT_MODEL),
-                span("Discover them on Nostr. Pay in sats.", t::GRAY_BRIGHT),
-            ]),
-            Line::default(),
-            Line::from(span(
-                "Type below, or press Tab to see a sample conversation.",
-                t::GRAY,
-            )),
-        ]))
-        .wrap(Wrap { trim: false }),
-        area,
-    );
-}
-
 fn message_body(text: &str, width: u16) -> Vec<Line<'static>> {
     t::usgc_lines(markdown_body(text, width, Ladder::new(Colors::True)))
 }
@@ -473,28 +432,6 @@ fn conversation(frame: &mut Frame, area: Rect, app: &mut App) {
 
 fn live_lines(app: &App, width: u16) -> Vec<Line<'static>> {
     let mut lines = Vec::new();
-    if app.live.entries.is_empty() {
-        lines.extend(wrap_display(
-            vec![
-                Line::from(span(
-                    if app.plugins.enabled && app.plugins.key_configured {
-                        "Ask OpenRouter a question."
-                    } else if app.plugins.bundled.microcoder {
-                        "Ask Microcoder to work in this directory."
-                    } else {
-                        "Enable a chat provider in /plugins to start."
-                    },
-                    t::TEXT_SECONDARY,
-                )),
-                Line::from(span(
-                    "Manage bundled tools and providers in /plugins.",
-                    t::GRAY,
-                )),
-                Line::default(),
-            ],
-            width,
-        ));
-    }
     for entry in &app.live.entries {
         match entry {
             crate::live::Entry::User(text) => {

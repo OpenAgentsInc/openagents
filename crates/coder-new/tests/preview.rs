@@ -32,7 +32,7 @@ fn screen(app: &mut App, width: u16, height: u16) -> String {
 }
 
 #[test]
-fn both_views_and_tiny_terminals_render() {
+fn conversation_and_tiny_terminals_render() {
     let mut app = App::default();
     let conversation = screen(&mut app, 110, 36);
     assert!(conversation.contains("Review the terminal with four agents."));
@@ -60,7 +60,7 @@ fn both_views_and_tiny_terminals_render() {
         }
     }
     key(&mut app, KeyCode::Tab);
-    assert!(screen(&mut app, 110, 36).contains("What do you want to build?"));
+    assert_eq!(screen(&mut app, 110, 36), conversation);
     for (width, height) in [(80, 24), (40, 12), (24, 10), (23, 9), (1, 1)] {
         screen(&mut app, width, height);
         app.screen = Screen::Conversation;
@@ -69,6 +69,18 @@ fn both_views_and_tiny_terminals_render() {
         ));
         screen(&mut app, width, height);
     }
+    let mut live = App::default();
+    live.set_mode(coder_new::Mode::Live);
+    let rendered = screen(&mut live, 110, 36);
+    assert!(
+        transcript_text(&rendered)
+            .lines()
+            .skip(2)
+            .all(|line| line.trim().is_empty())
+    );
+    assert_eq!(composer_rules(&rendered).len(), 2);
+    key(&mut live, KeyCode::Tab);
+    assert_eq!(screen(&mut live, 110, 36), rendered);
 }
 
 #[test]
@@ -680,13 +692,6 @@ fn header_and_rail_keep_compact_spacing_above_the_bottom_margin() {
                 assert_eq!(header.trim(), "openagents / main");
             }
         }
-        let mut welcome = App::default();
-        welcome.screen = Screen::Welcome;
-        welcome.selected_agent = Some(0);
-        let rendered = screen(&mut welcome, width, height);
-        let header = rendered.lines().nth(1).unwrap();
-        assert_eq!(header.trim(), "openagents / main");
-        assert_eq!(header.trim_end().chars().count(), usize::from(width - 2));
     }
 }
 

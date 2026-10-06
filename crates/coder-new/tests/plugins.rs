@@ -79,7 +79,7 @@ fn svg_text(svg: &str) -> String {
 }
 
 #[test]
-fn plugin_navigation_returns_to_the_chat_or_welcome_without_changing_chat_state() {
+fn plugin_navigation_returns_to_the_chat_without_changing_chat_state() {
     let mut app = App::default();
     key(&mut app, KeyCode::Down);
     paste(&mut app, "local chat message");
@@ -111,10 +111,10 @@ fn plugin_navigation_returns_to_the_chat_or_welcome_without_changing_chat_state(
     assert!(app.plugins.field(true).0.is_empty());
 
     key(&mut app, KeyCode::Tab);
-    assert!(app.screen == Screen::Welcome);
+    assert!(app.screen == Screen::Conversation);
     key(&mut app, KeyCode::F(2));
     key(&mut app, KeyCode::Esc);
-    assert!(app.screen == Screen::Welcome);
+    assert!(app.screen == Screen::Conversation);
     assert_eq!((app.draft.text.clone(), app.draft.cursor), draft);
     assert_eq!(app.selected_agent, selected);
 
