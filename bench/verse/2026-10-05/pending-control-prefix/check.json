@@ -21,6 +21,13 @@
       "command": "cargo +1.97.1 test -p verse-imported --features chamber-loopback imported::chamber_session -- --test-threads=1",
       "status": "passed",
       "tests": 6
+    },
+    "linux_consumer": {
+      "command": "cargo +1.97.1 build -p verse --no-default-features --features remote-chamber --example battle_scale",
+      "status": "passed",
+      "seconds": 39.54,
+      "executable_sha256": "4a153175d64098faeeb2be87050ce0b872cc68d2beddc7f7d21e219ac455a63b",
+      "source_base": "43f12d6e0bb48e22f151476a14aaab66cca9bee8"
     }
   },
   "scenario": "An acknowledged-at-authority command reply is withheld; a later staged cast must wait for its validated control header without an extra scene request, then bind and execute once in sequence.",

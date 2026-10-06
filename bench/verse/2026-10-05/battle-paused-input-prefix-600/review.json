@@ -1,0 +1,50 @@
+{
+  "schema": "verse.battle.review.v1",
+  "duration_seconds": 600,
+  "source_base": "43f12d6e0bb48e22f151476a14aaab66cca9bee8",
+  "executable_sha256": "4a153175d64098faeeb2be87050ce0b872cc68d2beddc7f7d21e219ac455a63b",
+  "acceptance": "failed",
+  "failures": [
+    "Authority throughput fell below ninety-eight percent of 30 Hz",
+    "/server/movement_expiry/total: Some(34.0) exceeds 0, or is unavailable",
+    "Player 0 prediction maximum Some(2.1153459548950195) exceeds 1 meters or is unavailable",
+    "Player 0 late prediction maximum Some(2.10001277923584) exceeds 1 meters or is unavailable",
+    "Player 0 late prediction maximum Some(2.1153459548950195) exceeds 1 meters or is unavailable",
+    "Player 0 late prediction maximum Some(1.581376552581787) exceeds 1 meters or is unavailable",
+    "Player 0 prediction maximum Some(2.139557123184204) exceeds 1 meters or is unavailable",
+    "Player 0 late prediction maximum Some(2.139557123184204) exceeds 1 meters or is unavailable",
+    "Player 0 late prediction maximum Some(2.100020408630371) exceeds 1 meters or is unavailable",
+    "A lifetime window exceeded the snapshot freshness budget",
+    "A lifetime window exceeded the snapshot freshness budget"
+  ],
+  "movement_expiry": 34,
+  "native_segments": [
+    {
+      "status": "complete",
+      "error": null,
+      "worker_error": null,
+      "prediction_failures": 0,
+      "last_prediction_failure": null,
+      "prediction_horizon_pauses": 223
+    },
+    {
+      "status": "complete",
+      "error": null,
+      "worker_error": null,
+      "prediction_failures": 0,
+      "last_prediction_failure": null,
+      "prediction_horizon_pauses": 935
+    }
+  ],
+  "files": {
+    "report.json": "07c4ece65b2616f82b3264f6a6b21a272b8507015d797a20a7d18f055e80f664",
+    "source.patch": "8665e7d1e8212107930fca3a6ce26f008ac7197d6f24bb1ecd94e7b8b25fc199"
+  },
+  "limitations": [
+    "No own compiler ran during measurement; the host is shared.",
+    "Both native segments completed without prediction or worker failures. Their 223 and 935 horizon pauses do not establish uninterrupted movement.",
+    "Movement expiry, authority throughput, maximum corrections, and two lifetime freshness windows fail acceptance.",
+    "The prior wall-history run recorded 100 expiries but both native segments stopped early. The 34 expiries here are not an isolated causal performance comparison.",
+    "Offscreen rendering does not measure physical input-to-display latency."
+  ]
+}
