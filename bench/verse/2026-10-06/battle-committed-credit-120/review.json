@@ -1,0 +1,29 @@
+{
+  "source_base_revision": "3896776166080cfba6ed740aa9a414b6a7582cb4",
+  "source_patch": "source.patch",
+  "executable_sha256": "83f00227238eafc69ab311d940dabf3c95bee013bdfff92c1af512e181e734a5",
+  "acceptance": "passed",
+  "failures": [],
+  "movement_expiry": {
+    "total": 0,
+    "admission": 0,
+    "primary_tick": 0,
+    "additional_tick": 0,
+    "bootstrap": 0,
+    "samples": [],
+    "omitted": 0
+  },
+  "limits_changed": false,
+  "route": {
+    "upstream_bytes": 23806837,
+    "downstream_bytes": 106011346,
+    "forwarded_chunks": 118122,
+    "queued_chunk_peak": 5
+  },
+  "render_p95_ms": {
+    "frame_cpu_ms": 8.326662,
+    "gpu_scene_ms": 7.068672,
+    "applied_snapshot_age_ms": 231.314235
+  },
+  "conclusion": "The 120-second all-native 20-player/40-NPC delayed-route battle passes every strict gate. One Linux machine and one offscreen renderer at 2560x1440; sustained ten-minute acceptance is still unproven."
+}
