@@ -1,0 +1,82 @@
+{
+  "schema": "verse.battle.review.v1",
+  "duration_seconds": 120,
+  "source_base": "43f12d6e0bb48e22f151476a14aaab66cca9bee8",
+  "executable_sha256": "e3140a37a9030fb0daf2c650e52072d0cf04c373cc47d77d62f82e9461c6fcdb",
+  "acceptance": "passed",
+  "failures": [],
+  "movement_expiry": 0,
+  "workload_ticks": 3598,
+  "storage_paused_seconds": 0.033777589,
+  "native_segments": [
+    {
+      "status": "complete",
+      "error": null,
+      "prediction_failures": 0,
+      "prediction_horizon_pauses": 0,
+      "correction_meters": {
+        "samples": 1361,
+        "omitted": 0,
+        "invalid": 0,
+        "p50": 0.0,
+        "p95": 0.08716995269060135,
+        "p99": 0.21336030960083008,
+        "maximum": 0.36483490467071533
+      }
+    },
+    {
+      "status": "complete",
+      "error": null,
+      "prediction_failures": 0,
+      "prediction_horizon_pauses": 0,
+      "correction_meters": {
+        "samples": 1513,
+        "omitted": 0,
+        "invalid": 0,
+        "p50": 0.0,
+        "p95": 0.0,
+        "p99": 0.0,
+        "maximum": 0.11254777014255524
+      }
+    }
+  ],
+  "render": {
+    "frame_cpu_ms": {
+      "samples": 7053,
+      "omitted": 0,
+      "invalid": 0,
+      "p50": 3.3563449999999997,
+      "p95": 5.215478,
+      "p99": 6.397044999999999,
+      "maximum": 10.464805
+    },
+    "gpu_scene_ms": {
+      "samples": 7052,
+      "omitted": 0,
+      "invalid": 0,
+      "p50": 4.39808,
+      "p95": 6.39488,
+      "p99": 8.645632,
+      "maximum": 11.721728
+    },
+    "applied_snapshot_age_ms": {
+      "samples": 7068,
+      "omitted": 0,
+      "invalid": 0,
+      "p50": 103.64343299999999,
+      "p95": 203.41234699999998,
+      "p99": 241.277771,
+      "maximum": 539.956871
+    }
+  },
+  "files": {
+    "report.json": "fa558de2e9dac5d2e95d12b8b4cfe690a1e72ca4e6db0ea1d947e77f2dbc5c1d",
+    "source.patch": "b5399a2842c6419767fb626d31474f2dc6944103ae7a9ae669ad978e440a2382"
+  },
+  "limitations": [
+    "One 120-second pass does not establish sustained acceptance. A ten-minute soak is running separately.",
+    "Snapshot byte diagnostics count verified wire payloads; previous reconstructed JSON totals are not directly comparable.",
+    "High-quality 2560x1440 licensed scene, ordinary unprivileged process, direct NVMe scratch storage, shared host, no own concurrent compiler.",
+    "Comparison source uses retained base and own patches; this is not a current-main host deployment or physical input-to-display measurement."
+  ]
+}
