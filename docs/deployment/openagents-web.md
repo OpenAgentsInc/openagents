@@ -424,3 +424,18 @@ production sidecar and runtime configuration were preserved. Both exact
 installer bodies, all 22 executable links and checksums, and the existing
 public pages and game assets passed checks on the `new` tag and production.
 Rollback: `--to-revisions coder-web-337c008eb0=100`.
+
+Everglade without offensive spells, with the owner's house and instanced
+rendering (ba484fcf52): the Plaza gate is gone, Everglade's hotbar has five
+movement and utility spells (Meteor Swarm and the sledgehammer only in
+local builds with the `dev-destruction` feature), round 8's trails and
+foliage, the Greco-futurism house, Alice's revised model, and instanced
+static meshes that cut Everglade's resident geometry from 208.7 MiB to
+116.6 MiB. Image `openagents/openagents-web:ba484fcf52`, built from GitHub by the
+automation account and applied as `chris@` from the live spec with only the
+revision name and image changed (`CODER_CHAT_SYNC` quoted). On the `new`
+tag, `/`, `/grid`, `/everglade`, `/druid`, and `/api/stats` answered
+200; headless Chrome drew Everglade on WebGPU and WebGL2 (`?gl`) with the
+five-slot hotbar, key 6 cast nothing there, and the Grove still cast Meteor
+Swarm and Thunderbolt, before traffic moved. Rollback:
+`--to-revisions coder-web-0a15818d70=100`.
