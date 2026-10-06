@@ -887,6 +887,11 @@ impl Client {
 /// Maximum requests awaiting verified responses on one duplex connection.
 pub const PIPELINE_CAPACITY: usize = 8;
 
+struct Outgoing {
+    bytes: Vec<u8>,
+    frame: Option<super::worker::FrameObservation>,
+}
+
 struct Pending {
     id: u64,
     body: Body,
@@ -900,7 +905,7 @@ pub struct Pipeline {
     last_response_bytes: Option<usize>,
     last_request_started: Option<web_time::Instant>,
     client: Client,
-    writes: tokio::sync::mpsc::Sender<Vec<u8>>,
+    writes: tokio::sync::mpsc::Sender<Outgoing>,
     responses: tokio::sync::mpsc::Receiver<Result<(Response, usize), String>>,
     pending: std::collections::VecDeque<Pending>,
     tasks: Vec<client_runtime::Task>,
@@ -916,26 +921,51 @@ impl Drop for Pipeline {
 }
 impl Client {
     /// Transfers an authenticated connection to bounded duplex IO.
-    pub fn pipeline(mut self) -> Result<Pipeline, String> {
+    pub fn pipeline(self) -> Result<Pipeline, String> {
+        self.pipeline_observed(None)
+    }
+    pub(super) fn pipeline_observed(
+        mut self,
+        observer: Option<super::worker::Observer>,
+    ) -> Result<Pipeline, String> {
         let stream = self.stream.take().ok_or("Chamber client is disconnected")?;
         let (mut reader, mut writer) = tokio::io::split(stream);
-        let (writes, mut outgoing) = tokio::sync::mpsc::channel::<Vec<u8>>(PIPELINE_CAPACITY);
+        let (writes, mut outgoing) = tokio::sync::mpsc::channel::<Outgoing>(PIPELINE_CAPACITY);
         let (incoming, responses) = tokio::sync::mpsc::channel(PIPELINE_CAPACITY);
         let errors = incoming.clone();
         let write = client_runtime::spawn(async move {
-            while let Some(bytes) = outgoing.recv().await {
+            while let Some(first) = outgoing.recv().await {
                 let result = timeout(DEADLINE, async {
                     // One millisecond lets a same-wake input and its reads share
                     // a write. The existing deadline includes this collection.
                     client_runtime::sleep(Duration::from_millis(1)).await;
-                    let mut frames = vec![bytes];
+                    let mut frames = vec![first.bytes];
+                    let mut traces: Vec<_> = first.frame.into_iter().collect();
                     while frames.len() < PIPELINE_CAPACITY {
                         match outgoing.try_recv() {
-                            Ok(bytes) => frames.push(bytes),
+                            Ok(outgoing) => {
+                                frames.push(outgoing.bytes);
+                                traces.extend(outgoing.frame);
+                            }
                             Err(_) => break,
                         }
                     }
-                    write_frame_batch(&mut writer, &frames, MAX_REQUEST_BYTES).await
+                    if let Some(observer) = &observer {
+                        for mut trace in traces.iter().copied() {
+                            trace.at = web_time::Instant::now();
+                            trace.phase = "transport_started";
+                            observer.frame(trace);
+                        }
+                    }
+                    write_frame_batch(&mut writer, &frames, MAX_REQUEST_BYTES).await?;
+                    if let Some(observer) = &observer {
+                        for mut trace in traces {
+                            trace.at = web_time::Instant::now();
+                            trace.phase = "transport_flushed";
+                            observer.frame(trace);
+                        }
+                    }
+                    Ok::<_, String>(())
                 })
                 .await
                 .map_err(|_| "Chamber write timed out".to_string())
@@ -1057,6 +1087,13 @@ impl Pipeline {
     }
     /// Enqueues once. A successful enqueue never implies authoritative acceptance.
     pub fn send(&mut self, body: Body) -> Result<u64, String> {
+        self.send_observed(body, None)
+    }
+    pub(super) fn send_observed(
+        &mut self,
+        body: Body,
+        frame: Option<super::worker::FrameObservation>,
+    ) -> Result<u64, String> {
         if !self.available() {
             return Err("Chamber pipeline is unavailable or full".into());
         }
@@ -1080,7 +1117,7 @@ impl Pipeline {
         .map_err(|_| "Cannot encode chamber request")?;
         Request::decode(&bytes)?;
         self.writes
-            .try_send(bytes)
+            .try_send(Outgoing { bytes, frame })
             .map_err(|_| "Chamber writer is unavailable")?;
         self.client.next_request = next;
         self.pending.push_back(Pending {
@@ -1268,6 +1305,111 @@ mod tests {
         assert_eq!(client.control().unwrap().accepted_sequence, 3);
         peer.await.unwrap();
     }
+    #[tokio::test]
+    async fn frame_write_observation_distinguishes_blocked_flush_from_acceptance() {
+        let (stream, mut peer) = tokio::io::duplex(8);
+        let life = super::super::wire::Life {
+            instance: 120,
+            actor: 14,
+            generation: 0,
+        };
+        let client = Client {
+            public_key: [1; 32],
+            stream: Some(Box::new(stream)),
+            instance: 120,
+            tick: 1,
+            control: Some(Control {
+                life,
+                epoch: 2,
+                accepted_sequence: 0,
+                world_step: 0,
+                credit_step: 0,
+                applied_movement: None,
+            }),
+            next_request: 2,
+            logged_in: true,
+            player: true,
+            inventory_revision: 0,
+            verified_at: None,
+            replication: Default::default(),
+        };
+        let observer = super::super::worker::Observer::default();
+        let mut pipeline = client.pipeline_observed(Some(observer.clone())).unwrap();
+        let trace = super::super::worker::FrameObservation {
+            at: web_time::Instant::now(),
+            phase: "enqueued",
+            actor: 14,
+            epoch: 2,
+            sequence: 1,
+            start: 0,
+            end: 4,
+            authority_tick: 1,
+            control_epoch: Some(2),
+            credit_step: Some(0),
+            pending_requests: 1,
+            queued_inputs: 0,
+        };
+        let frame = crate::movement::frames::Frame {
+            life: life.into(),
+            epoch: 2,
+            sequence: 1,
+            tick: 1,
+            start: 0,
+            steps: 4,
+            segments: vec![crate::movement::frames::Segment {
+                offset: 0,
+                axes: [0.; 2],
+                yaw: 0.,
+                until: 4,
+                jump: false,
+            }],
+        };
+        pipeline
+            .send_observed(Body::MovementFrame { frame }, Some(trace))
+            .unwrap();
+        let started = timeout(Duration::from_secs(1), async {
+            loop {
+                let frames = observer.drain().frames;
+                if let Some(frame) = frames.first().copied() {
+                    assert_eq!(frames.len(), 1);
+                    break frame;
+                }
+                client_runtime::sleep(Duration::from_millis(1)).await;
+            }
+        })
+        .await
+        .unwrap();
+        assert_eq!(started.phase, "transport_started");
+        client_runtime::sleep(Duration::from_millis(20)).await;
+        assert!(observer.drain().frames.is_empty());
+        let bytes = read_frame(&mut peer, MAX_REQUEST_BYTES).await.unwrap();
+        assert!(matches!(
+            Request::decode(&bytes).unwrap().body,
+            Body::MovementFrame { .. }
+        ));
+        let flushed = timeout(Duration::from_secs(1), async {
+            loop {
+                if let Some(frame) = observer.drain().frames.first().copied() {
+                    break frame;
+                }
+                client_runtime::sleep(Duration::from_millis(1)).await;
+            }
+        })
+        .await
+        .unwrap();
+        assert_eq!(flushed.phase, "transport_flushed");
+        assert!(flushed.at >= started.at && started.at >= trace.at);
+        assert_eq!(flushed.sequence, 1);
+        assert_eq!(pipeline.pending(), 1);
+        assert_eq!(pipeline.control().unwrap().accepted_sequence, 0);
+        for _ in 0..300 {
+            observer.frame(flushed);
+        }
+        let overflow = observer.drain();
+        assert_eq!(overflow.frames.len(), 256);
+        assert_eq!(overflow.omitted_frames, 44);
+    }
+
     #[tokio::test]
     async fn pipeline_sends_bounded_inputs_before_any_reply_and_preserves_partial_reads() {
         let keys = [key(201), key(202), key(203)];

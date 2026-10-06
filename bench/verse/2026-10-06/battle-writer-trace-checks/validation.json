@@ -1,0 +1,27 @@
+{
+  "candidate": "Bounded movement writer start and successful flush observations",
+  "toolchain": "1.97.1",
+  "features": [
+    "service-net",
+    "service-reach",
+    "studio"
+  ],
+  "checks": [
+    {
+      "filter": "frame_write_observation",
+      "passed": 1
+    },
+    {
+      "filter": "service::worker::tests",
+      "passed": 25
+    },
+    {
+      "filter": "pipeline",
+      "passed": 12
+    }
+  ],
+  "observation_capacity": 256,
+  "transport_write_is_authority_acceptance": false,
+  "queue_and_movement_limits_changed": false,
+  "battle_acceptance": "not yet measured"
+}

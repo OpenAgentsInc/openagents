@@ -27,6 +27,8 @@ pub struct Observation {
     pub queued_updates: usize,
 }
 /// Frame timing metadata excludes input axes and authentication material.
+/// Transport phases retain the enqueue control and queue context; their timestamp
+/// marks writer start or successful flush, neither of which proves admission.
 #[derive(Clone, Copy)]
 pub struct FrameObservation {
     pub at: Instant,
@@ -54,7 +56,7 @@ pub struct Observations {
 #[derive(Clone, Default)]
 pub struct Observer(std::sync::Arc<std::sync::Mutex<Observations>>);
 impl Observer {
-    fn frame(&self, value: FrameObservation) {
+    pub(super) fn frame(&self, value: FrameObservation) {
         let mut state = self.0.lock().unwrap_or_else(|poison| poison.into_inner());
         if state.frames.len() < 256 {
             state.frames.push(value);
@@ -75,6 +77,7 @@ impl Observer {
     }
     pub fn drain(&self) -> Observations {
         let mut state = self.0.lock().unwrap_or_else(|poison| poison.into_inner());
+        state.frames.sort_by_key(|frame| frame.at);
         Observations {
             samples: std::mem::take(&mut state.samples),
             frames: std::mem::take(&mut state.frames),
@@ -343,7 +346,7 @@ async fn run_impl(
         return Err("Invalid chamber replication cadence".into());
     }
     let work = async {
-        let mut client = client.pipeline()?;
+        let mut client = client.pipeline_observed(observer.clone())?;
         let mut interval = client_runtime::interval(cadence);
         interval.set_missed_tick_behavior(client_runtime::MissedTickBehavior::Skip);
         let mut next_inventory = client_runtime::Instant::now();
@@ -568,26 +571,28 @@ async fn run_impl(
                             }
                         }
                     };
-                    let frame = match &body {
-                        Body::MovementFrame { frame } if observer.is_some() => Some(frame.clone()),
+                    let trace = match &body {
+                        Body::MovementFrame { frame } if observer.is_some() => {
+                            Some(FrameObservation {
+                                at: Instant::now(),
+                                phase: "enqueued",
+                                actor: frame.life.actor,
+                                epoch: frame.epoch,
+                                sequence: frame.sequence,
+                                start: frame.start,
+                                end: frame.end()?,
+                                authority_tick: client.tick(),
+                                control_epoch: client.control().map(|c| c.epoch),
+                                credit_step: client.control().map(|c| c.credit_step),
+                                pending_requests: client.pending() + 1,
+                                queued_inputs: inputs.len(),
+                            })
+                        }
                         _ => None,
                     };
-                    client.send(body)?;
-                    if let (Some(observer), Some(frame)) = (&observer, frame) {
-                        observer.frame(FrameObservation {
-                            at: Instant::now(),
-                            phase: "enqueued",
-                            actor: frame.life.actor,
-                            epoch: frame.epoch,
-                            sequence: frame.sequence,
-                            start: frame.start,
-                            end: frame.end()?,
-                            authority_tick: client.tick(),
-                            control_epoch: client.control().map(|c| c.epoch),
-                            credit_step: client.control().map(|c| c.credit_step),
-                            pending_requests: client.pending(),
-                            queued_inputs: inputs.len(),
-                        });
+                    client.send_observed(body, trace)?;
+                    if let (Some(observer), Some(trace)) = (&observer, trace) {
+                        observer.frame(trace);
                     }
                     if lifecycle {
                         barrier = true;
