@@ -1,0 +1,26 @@
+{
+  "schema": "verse.regression.check.v1",
+  "scenario": "Event and inventory polling leave two duplex request slots for gameplay bursts; snapshot scheduling keeps its existing allowance.",
+  "checks": {
+    "worker_tests_before_integration": 31,
+    "worker_tests_after_integration": 31,
+    "integration_test_seconds": 38.94,
+    "commands": [
+      "CARGO_INCREMENTAL=0 cargo +1.97.1 test -p verse-world --features service-net service::worker -- --test-threads=1",
+      "rustfmt +1.97.1 --edition 2024 --check crates/verse-world/src/service/worker.rs",
+      "git diff --cached --check"
+    ]
+  },
+  "regression": "A TLS client enters grounded frame movement, queues five intervals, withholds replies while polling runs, and transmits two further intervals without awaiting any reply. The legacy single-input fixture still passes.",
+  "rejected_candidates": [
+    "Reserving four slots for all frame-mode reads caused delayed movement context failures.",
+    "Reserving two slots for all frame-mode reads delivered fewer body snapshots than the existing delayed-fixture requirement.",
+    "The frame-profile predicate based on control.applied_movement was absent from the direct-dispatch test fixture, so its burst regression retained the old polling behavior."
+  ],
+  "limitations": [
+    "The earlier process handle disappeared before its final result. Its older binary was not treated as current-source verification.",
+    "An incremental-link attempt failed with missing generated symbols. Rebuilding without incremental compilation passed; no caches were deleted.",
+    "No live battle improvement is established by these targeted worker checks.",
+    "Movement credit, expiry, command ordering, and battle acceptance gates remain unchanged."
+  ]
+}

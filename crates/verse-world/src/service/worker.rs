@@ -89,8 +89,11 @@ pub const UPDATE_CAPACITY: usize = 8;
 /// Leaves request capacity for 30 Hz input refreshes and spell commands.
 pub const NATIVE_CADENCE: Duration = Duration::from_millis(50);
 
-fn periodic_read_room(pending: usize, queued: bool) -> bool {
-    !queued && pending < super::client::PIPELINE_CAPACITY - 1
+fn periodic_read_room(pending: usize, queued: bool, auxiliary: bool) -> bool {
+    // Snapshots supply movement baselines. Auxiliary reads leave slots for a
+    // frame and a spell when the producer is waiting for its next credit burst.
+    let reserve = if auxiliary { 2 } else { 1 };
+    !queued && pending < super::client::PIPELINE_CAPACITY - reserve
 }
 
 /// Local input requests contain no principal, controller, or transport handle.
@@ -584,7 +587,7 @@ async fn run_impl(
             tokio::select! {
                 _ = client_runtime::sleep_until(snapshot_due), if !input_closed && !barrier
                     && staged.is_none() && client.available() && !snapshot_pending
-                    && periodic_read_room(client.pending(), !inputs.is_empty() || deferred.is_some())
+                    && periodic_read_room(client.pending(), !inputs.is_empty() || deferred.is_some(), false)
                     && last_snapshot_sent.is_some() && read_backoff.ready(0, client_runtime::Instant::now()) => {
                     client.send_snapshot()?;
                     last_snapshot_sent = Some(client_runtime::Instant::now());
@@ -680,14 +683,14 @@ async fn run_impl(
                         last_snapshot_sent = Some(client_runtime::Instant::now());
                         snapshot_pending = true;
                     }
-                    if client.available() && periodic_read_room(client.pending(), !inputs.is_empty() || deferred.is_some()) && client_runtime::Instant::now() >= next_events
+                    if client.available() && periodic_read_room(client.pending(), !inputs.is_empty() || deferred.is_some(), true) && client_runtime::Instant::now() >= next_events
                         && !events_pending && read_backoff.ready(1, client_runtime::Instant::now()) {
                         client.send(Body::Events { after: cursor.after(), limit: 64 })?;
                         events_pending = true;
                         next_events = client_runtime::Instant::now() + cadence.max(Duration::from_millis(200));
                     }
                     let life = client.control().map(|c| c.life);
-                    if client.available() && periodic_read_room(client.pending(), !inputs.is_empty() || deferred.is_some())
+                    if client.available() && periodic_read_room(client.pending(), !inputs.is_empty() || deferred.is_some(), true)
                         && !inventory_pending && life.is_some()
                         && read_backoff.ready(2, client_runtime::Instant::now())
                         && (life != inventory_life || client_runtime::Instant::now() >= next_inventory) {
@@ -1646,6 +1649,13 @@ mod tests {
     }
     #[tokio::test]
     async fn periodic_reads_leave_a_gameplay_slot_when_replies_are_withheld() {
+        withheld_reply_slots(false).await;
+    }
+    #[tokio::test]
+    async fn frame_credit_wait_reserves_the_next_gameplay_burst() {
+        withheld_reply_slots(true).await;
+    }
+    async fn withheld_reply_slots(frames: bool) {
         use crate::service::net::{
             read_frame,
             tests::{gateway, tls},
@@ -1656,6 +1666,7 @@ mod tests {
         use tokio_rustls::TlsAcceptor;
         let keys = [key(224), key(225), key(226)];
         let mut gateway = gateway(&keys);
+        gateway.tick(0.05).unwrap();
         let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
         let address = listener.local_addr().unwrap();
         let (server_tls, connector) = tls();
@@ -1673,6 +1684,17 @@ mod tests {
             write_frame(&mut socket, &response, MAX_RESPONSE_BYTES)
                 .await
                 .unwrap();
+            if frames {
+                let bytes = read_frame(&mut socket, MAX_REQUEST_BYTES).await.unwrap();
+                assert!(matches!(
+                    Request::decode(&bytes).unwrap().body,
+                    Body::BeginMovementFrames { .. }
+                ));
+                let response = gateway.dispatch_json(id, 0, &bytes).unwrap();
+                write_frame(&mut socket, &response, MAX_RESPONSE_BYTES)
+                    .await
+                    .unwrap();
+            }
             tokio::pin!(peer_stopping);
             loop {
                 tokio::select! {
@@ -1685,7 +1707,7 @@ mod tests {
                 }
             }
         });
-        let client = Client::connect(
+        let mut client = Client::connect(
             address,
             ServerName::try_from("localhost").unwrap(),
             connector.config().clone(),
@@ -1694,6 +1716,10 @@ mod tests {
         )
         .await
         .unwrap();
+        if frames {
+            let entry = client.begin_movement_frames().await.unwrap();
+            assert!(matches!(entry.body, Reply::Snapshot { .. }));
+        }
         let control = client.control().unwrap().clone();
         let frame_input = |token| Input::MovementFrame {
             token,
@@ -1738,9 +1764,12 @@ mod tests {
         .unwrap();
         // Polling has time to use the remaining observation slots while replies stay withheld.
         client_runtime::sleep(Duration::from_millis(150)).await;
-        input.send(frame_input(6)).await.unwrap();
+        let total = if frames { 7 } else { 6 };
+        for token in 6..=total {
+            input.send(frame_input(token)).await.unwrap();
+        }
         timeout(Duration::from_millis(300), async {
-            while commands < 6 {
+            while commands < total {
                 if observed.recv().await.unwrap() {
                     commands += 1;
                 }
@@ -1756,7 +1785,7 @@ mod tests {
             assert!(binding.is_ok());
             bound += 1;
         }
-        assert_eq!(bound, 6);
+        assert_eq!(bound, total);
         let _ = stop.send(());
         task.await.unwrap().unwrap();
         let _ = peer_stop.send(());
