@@ -891,10 +891,11 @@ struct Pending {
 /// Frame tasks own partial reads and writes independently of caller polling.
 pub struct Pipeline {
     last_turnaround: Option<Duration>,
+    last_response_bytes: Option<usize>,
     last_request_started: Option<web_time::Instant>,
     client: Client,
     writes: tokio::sync::mpsc::Sender<Vec<u8>>,
-    responses: tokio::sync::mpsc::Receiver<Result<Response, String>>,
+    responses: tokio::sync::mpsc::Receiver<Result<(Response, usize), String>>,
     pending: std::collections::VecDeque<Pending>,
     tasks: Vec<client_runtime::Task>,
     sequence: Option<(super::wire::Life, u64, u64)>,
@@ -934,6 +935,7 @@ impl Client {
             loop {
                 let result = match read_frame(&mut reader, MAX_RESPONSE_BYTES).await {
                     Ok(bytes) => serde_json::from_slice::<Response>(&bytes)
+                        .map(|response| (response, bytes.len()))
                         .map_err(|_| "Malformed chamber response".to_string()),
                     Err(error) => Err(error),
                 };
@@ -945,6 +947,7 @@ impl Client {
         });
         Ok(Pipeline {
             last_turnaround: None,
+            last_response_bytes: None,
             last_request_started: None,
             client: self,
             writes,
@@ -972,6 +975,10 @@ impl Pipeline {
     /// This is not a one-way network delay or isolated RTT.
     pub fn last_turnaround(&self) -> Option<Duration> {
         self.last_turnaround
+    }
+    /// Payload bytes of the latest verified reply, excluding the framing prefix.
+    pub fn last_response_bytes(&self) -> Option<usize> {
+        self.last_response_bytes
     }
     pub fn last_request_started(&self) -> Option<web_time::Instant> {
         self.last_request_started
@@ -1091,7 +1098,7 @@ impl Pipeline {
             Ok(None) => Err("Chamber response reader closed".into()),
             Err(_) => Err("Chamber request timed out".into()),
         };
-        let mut response = match result {
+        let (mut response, response_bytes) = match result {
             Ok(response) => response,
             Err(error) => {
                 self.fail();
@@ -1111,6 +1118,7 @@ impl Pipeline {
         }
         let pending = self.pending.pop_front().expect("Verified response context");
         self.last_turnaround = Some(pending.sent.elapsed());
+        self.last_response_bytes = Some(response_bytes);
         #[cfg(not(target_arch = "wasm32"))]
         let started = pending.sent.into_std();
         #[cfg(target_arch = "wasm32")]
@@ -1279,14 +1287,14 @@ mod tests {
                 responses.push(gateway.dispatch_json(id, 0, &bytes).unwrap());
             }
             use tokio::io::AsyncWriteExt;
-            let first = responses.remove(0);
+            let first = [b" \n".as_slice(), responses.remove(0).as_slice()].concat();
             socket
                 .write_all(&(first.len() as u32).to_be_bytes())
                 .await
                 .unwrap();
             socket.write_all(&first[..first.len() / 2]).await.unwrap();
             socket.flush().await.unwrap();
-            partial.send(()).unwrap();
+            partial.send(first.len()).unwrap();
             released.await.unwrap();
             socket.write_all(&first[first.len() / 2..]).await.unwrap();
             socket.flush().await.unwrap();
@@ -1316,13 +1324,14 @@ mod tests {
         }
         assert!(!pipeline.available());
         assert!(pipeline.send(Body::Snapshot {}).is_err());
-        partial_received.await.unwrap();
+        let first_bytes = partial_received.await.unwrap();
         assert!(
             timeout(Duration::from_millis(20), pipeline.receive())
                 .await
                 .is_err()
         );
         assert_eq!(pipeline.pending(), PIPELINE_CAPACITY);
+        assert_eq!(pipeline.last_response_bytes(), None);
         release.send(()).unwrap();
         for sequence in 1..=PIPELINE_CAPACITY as u64 {
             let (body, response) = timeout(Duration::from_secs(3), pipeline.receive())
@@ -1331,6 +1340,10 @@ mod tests {
                 .unwrap();
             assert!(matches!(body, Body::Command { command } if command.sequence == sequence));
             assert!(matches!(response.body, Reply::Accepted));
+            if sequence == 1 {
+                assert_eq!(pipeline.last_response_bytes(), Some(first_bytes));
+                assert!(first_bytes > serde_json::to_vec(&response).unwrap().len());
+            }
             assert_eq!(pipeline.control().unwrap().accepted_sequence, sequence);
         }
         assert_eq!(pipeline.pending(), 0);
