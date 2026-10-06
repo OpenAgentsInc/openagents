@@ -60,3 +60,48 @@ plain command without substitution, expansion, redirection, pipes, or
 sequencing. Anything else stays pending for Enter, and recovery never
 replays an execution. Coder worktree policies and studio merge approval do
 not read the setting.
+
+## Local ambiguous-line classifier (#10693)
+
+**Question.** Does a local decision model beat, or usefully augment, the
+structural fallback in `terminal_core::route::classify` for prompt lines
+whose first word the shell resolves?
+
+**Contract and cases.** The held-out set
+[`line-kinds.json`](../../crates/terminal-core/fixtures/line-kinds.json)
+(`openagents.terminal-line-kinds.v1`) holds 68 lines, each with the shell's
+report on its first word and what the person meant: 36 ambiguous, 6
+quoted, 6 alias or function, 4 long, 5 malformed, and 11 adversarial
+cases. It was written for this measurement and never used to tune the
+rules. The question asked the model is one `choice`, `command` or
+`request`, over the line and its first-word kind; the line never leaves
+the computer.
+
+**Declared budget.** A judgment must arrive within 150 ms, the preview's
+debounce, and must beat the structural answer on the lines the rules mark
+unsure; it never approves a command.
+
+| Decider | All 68 | The 24 the rules mark unsure | Warm latency |
+| --- | --- | --- | --- |
+| Structural rules | 57 (84%) | 20 | under 1 µs |
+| Laya, English checkpoint | 43 (63%) | 14 | p50 2.8 s, p99 3.9 s |
+| Laya, typed-decisions checkpoint | 41 (60%) | 13 | p50 2.6 s, p99 3.5 s |
+
+Laya ran in process on the CPU
+([`line_kind`](../../crates/laya/examples/line_kind.rs) example); its
+confidence never passed 0.71 and was mostly under 0.2. Lev, Apple's
+on-device model, already measures 305 ms to 1.7 s per answer
+([Lev surface notes](../lev/apple-fm-surface.md)), and Kev's decoders are
+larger than Laya's encoder, so neither can meet the budget either; they
+were not run.
+
+**Decision: no model in the route.** Every local model tried is less
+accurate than the rules, on all lines and on the unsure ones, and slower
+than the budget by an order of magnitude or more. The structural fallback
+stays the whole decision for rule 4, the `?` marks on unsure routes stay,
+and the explicit `# ` prefix still wins. Remote Jev stays off.
+`crates/terminal-core/tests/line_kinds.rs` holds the rules to their
+measured floor of 57.
+
+**What would reopen it.** A local checkpoint fine-tuned on line kinds that
+answers within the budget on the owner's computers.
