@@ -1,0 +1,31 @@
+diff --git a/crates/verse/examples/common/battle_player.rs b/crates/verse/examples/common/battle_player.rs
+index d81f42f912..6dd681d40f 100644
+--- a/crates/verse/examples/common/battle_player.rs
++++ b/crates/verse/examples/common/battle_player.rs
+@@ -242,6 +242,7 @@ pub async fn player(
+      let intent=if emission==usize::from(movement_first) {intent.clone()} else {Intent::Move {axes,yaw}};
+      token=token.checked_add(1).ok_or("Load input identities exhausted")?;
+      let moving=matches!(intent,Intent::Move {..});
++     let mut remaining_frame_credit=false;
+      let input=if movement_frames && moving {
+       let Some(baseline)=state.movement else {break};
+       let context=(baseline.life,baseline.epoch);
+@@ -262,6 +263,7 @@ pub async fn player(
+       let limit=world_step.checked_add(u64::from(verse_world::movement::frames::MAX_STEPS)).ok_or("Load movement credit exhausted")?;
+       let steps=limit.saturating_sub(start).min(u64::from(verse_world::movement::frames::MAX_STEPS)).min(u64::from(verse_world::movement::frames::MAX_STEPS-interval_work)) as u32;
+       if steps==0 {if movement_first {continue;} else {break;}}
++      remaining_frame_credit=start+u64::from(steps)<limit;
+       let frame=verse_world::movement::frames::Frame {life:baseline.life,epoch:baseline.epoch,sequence:0,tick:0,start,steps,
+        segments:vec![verse_world::movement::frames::Segment {offset:0,axes,yaw,until:start+verse_world::movement::HELD_STEPS,jump:false}]};
+       frame.validate_payload()?;
+@@ -269,7 +271,9 @@ pub async fn player(
+      } else {Input::TrackedCommand {token,life:hud.life,epoch,intent}};
+      let proposed_end=match &input {Input::MovementFrame {frame,..}=>Some(((frame.life,frame.epoch,frame.end()?),frame.steps)),_=>None};
+      match send.try_send(input) {
+-      Ok(())=>{outstanding.insert(token);if let Some((cursor,steps))=proposed_end {frame_cursor=Some(cursor);interval_work+=steps;} if moving {movement+=1;}},
++      Ok(())=>{outstanding.insert(token);if let Some((cursor,steps))=proposed_end {frame_cursor=Some(cursor);interval_work+=steps;
++       // Continue bounded intervals immediately while verified credit remains.
++       if remaining_frame_credit {clock.reset_immediately();}} if moving {movement+=1;}},
+       Err(tokio::sync::mpsc::error::TrySendError::Full(_))=>{pressure+=1;break;},
+       Err(_)=>return Err("Load worker input closed".into()),
+      }
