@@ -34,7 +34,7 @@ fn main() -> io::Result<()> {
             "--snapshot" => capture = true,
             "--help" | "-h" => {
                 println!(
-                    "Coder terminal\n\nUsage: coder-new [--live | --demo] [--welcome | --plugins | --plugin-settings | --models] [--snapshot]\n\n--live             Use direct OpenRouter chat (default).\n--demo             Use local example conversations.\n--welcome          Start with the welcome screen.\n--plugins          Start with plugin management.\n--plugin-settings  Start with OpenRouter settings.\n--models           Open the model picker for an enabled provider.\n--snapshot         Write a 110×36 SVG to stdout; defaults to demo.\n\n/demo toggles live and demo. /models chooses a model and reasoning level. Type / for commands; Up/Down selects, Tab completes, Enter runs. F2 or /plugins opens plugins. Esc stops a reply. Ctrl+C quits."
+                    "Coder terminal\n\nUsage: coder-new [--live | --demo] [--welcome | --plugins | --plugin-settings | --models] [--snapshot]\n\n--live             Use enabled providers and tools (default).\n--demo             Use local example conversations.\n--welcome          Start with the welcome screen.\n--plugins          Start with plugin management.\n--plugin-settings  Start with OpenRouter settings.\n--models           Open the model picker for an enabled provider.\n--snapshot         Write a 110×36 SVG to stdout; defaults to demo.\n\n/demo toggles live and demo. /models chooses a model and reasoning level. Type / for commands; Up/Down selects, Tab completes, Enter runs. F2 or /plugins opens plugins. Esc stops a reply. Ctrl+C quits."
                 );
                 return Ok(());
             }
@@ -53,11 +53,30 @@ fn main() -> io::Result<()> {
         }
         return io::stdout().write_all(snapshot::svg(&mut app, 110, 36).as_bytes());
     }
-    if let Some(root) = model_access::store::openagents_dir() {
+    let openagents_root = model_access::store::openagents_dir();
+    if let Some(root) = &openagents_root {
         if let Err(error) = app.load_plugin_settings(coder_new::plugin_store::Store::under(
             root.join("coder-new"),
         )) {
             app.notice = Some(error);
+        }
+    }
+    match std::env::current_dir() {
+        Ok(cwd) => match coder_new::credentials::load(&cwd, openagents_root.as_deref(), |name| {
+            std::env::var(name).ok()
+        }) {
+            Ok(imported) => app.plugins.bootstrap_credentials(imported),
+            Err(error) => {
+                if app.notice.is_none() {
+                    app.notice = Some(error);
+                }
+            }
+        },
+        Err(_) => {
+            if app.notice.is_none() {
+                app.notice =
+                    Some("Cannot determine the working directory for plugin credentials.".into());
+            }
         }
     }
     if models {

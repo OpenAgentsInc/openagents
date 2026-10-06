@@ -41,6 +41,8 @@ impl SettingsFocus {
 }
 
 pub struct Plugins {
+    pub selected: usize,
+    pub bundled: crate::bundled_settings::BundledSettings,
     pub enabled: bool,
     pub key_configured: bool,
     pub model: String,
@@ -60,6 +62,7 @@ pub struct Plugins {
     other_preferences: Preferences,
     saved_connection: Option<Connection>,
     store: Option<Store>,
+    explicit_preferences: bool,
 }
 
 struct Preferences {
@@ -83,6 +86,8 @@ impl Default for Preferences {
 impl Default for Plugins {
     fn default() -> Self {
         Self {
+            selected: 0,
+            bundled: crate::bundled_settings::BundledSettings::default(),
             enabled: false,
             key_configured: false,
             model: DEFAULT_MODEL.into(),
@@ -102,6 +107,7 @@ impl Default for Plugins {
             other_preferences: Preferences::default(),
             saved_connection: None,
             store: None,
+            explicit_preferences: false,
         }
     }
 }
@@ -131,6 +137,8 @@ impl Plugins {
     }
 
     pub fn load_settings(&mut self, store: Store) -> Result<(), String> {
+        let bundled_result = self.bundled.load(store.clone());
+        self.explicit_preferences = store.contains_settings();
         let loaded = store.load();
         self.store = Some(store);
         match loaded {
@@ -152,13 +160,34 @@ impl Plugins {
                 }
                 self.connection = Connection::Unchecked;
                 self.storage_error = None;
-                Ok(())
+                bundled_result
             }
             Err(error) => {
+                self.explicit_preferences = true;
                 self.storage_error = Some(error.clone());
                 Err(error)
             }
         }
+    }
+
+    /// Import startup credentials without writing files or overriding saved preferences.
+    pub fn bootstrap_credentials(&mut self, imported: crate::credentials::Imported) {
+        if self.live_key.is_none() {
+            self.live_key = imported.openrouter_key;
+        }
+        if self.live {
+            self.key_configured = self.live_key.is_some();
+            if self.key_configured && !self.explicit_preferences {
+                self.enabled = true;
+            }
+        } else {
+            self.other_preferences.key_configured = self.live_key.is_some();
+            if self.other_preferences.key_configured && !self.explicit_preferences {
+                self.other_preferences.enabled = true;
+            }
+        }
+        self.bundled
+            .set_jev_environment(imported.jev_key, imported.jev_endpoint);
     }
 
     pub fn storage_label(&self) -> &'static str {
@@ -204,6 +233,7 @@ impl Plugins {
             }
         }
         self.storage_error = None;
+        self.explicit_preferences = true;
         true
     }
 
@@ -259,6 +289,66 @@ impl Plugins {
         std::mem::swap(&mut self.model, &mut self.other_preferences.model);
         std::mem::swap(&mut self.options, &mut self.other_preferences.options);
         self.live = live;
+        self.bundled.set_live(live);
+    }
+
+    pub fn selected_definition(&self) -> &'static crate::plugin_definition::PluginDefinition {
+        &DEFINITIONS[self.selected.min(DEFINITIONS.len() - 1)]
+    }
+
+    pub fn enabled_for(&self, id: &str) -> bool {
+        if id == OPENROUTER_PLUGIN {
+            self.enabled
+        } else {
+            self.bundled.enabled(id)
+        }
+    }
+
+    pub fn status_for(&self, id: &str) -> &str {
+        if id == OPENROUTER_PLUGIN {
+            self.status()
+        } else {
+            self.bundled.status(id)
+        }
+    }
+
+    pub fn toggle_selected(&mut self) -> bool {
+        let id = self.selected_definition().id;
+        if id == OPENROUTER_PLUGIN {
+            self.toggle_enabled()
+        } else {
+            self.bundled.toggle(id)
+        }
+    }
+
+    pub fn select(&mut self, backwards: bool) {
+        self.selected = if backwards {
+            self.selected.saturating_sub(1)
+        } else {
+            (self.selected + 1).min(DEFINITIONS.len() - 1)
+        };
+    }
+
+    pub fn execution_settings(
+        &self,
+        cwd: std::path::PathBuf,
+    ) -> crate::plugin_tools::ExecutionSettings {
+        crate::plugin_tools::ExecutionSettings {
+            microcoder: self.bundled.microcoder,
+            cli: self.bundled.cli,
+            acp: self.bundled.acp,
+            jev_enabled: self.bundled.jev_enabled,
+            jev_key: self.bundled.jev_key(),
+            jev_model: self.bundled.jev_model().into(),
+            jev_endpoint: self.bundled.jev_endpoint().into(),
+            redaction_keys: self
+                .key_for_request()
+                .into_iter()
+                .chain(self.bundled.jev_key())
+                .collect(),
+            agents: self.bundled.acp_agents.clone(),
+            cwd,
+        }
     }
 
     pub fn key_for_request(&self) -> Option<model_access::ApiKey> {
@@ -402,9 +492,11 @@ impl Plugins {
             } else {
                 GenerationOptions::default()
             };
-            if !self.persist(self.enabled, &model, &options, key) {
+            let enabled = self.enabled || (!self.explicit_preferences && key.is_some());
+            if !self.persist(enabled, &model, &options, key) {
                 return false;
             }
+            self.enabled = enabled;
             if !self.key_draft.text.is_empty() {
                 self.live_key = Some(model_access::ApiKey::new(self.key_draft.text.clone()));
                 self.connection = Connection::Unchecked;
@@ -492,5 +584,82 @@ mod rail_tests {
         );
         plugins.set_live(true);
         assert_eq!(plugins.composer_rails()[0].text, DEFAULT_MODEL);
+    }
+
+    #[test]
+    fn startup_key_enables_openrouter_without_writing_settings() {
+        let temporary = tempfile::tempdir().unwrap();
+        let mut plugins = Plugins::default();
+        plugins
+            .load_settings(Store::under(temporary.path()))
+            .unwrap();
+        plugins.bootstrap_credentials(crate::credentials::Imported {
+            openrouter_key: Some(model_access::ApiKey::new("fixture-openrouter")),
+            jev_key: Some(model_access::ApiKey::new("fixture-jev")),
+            ..Default::default()
+        });
+        assert!(!plugins.enabled);
+        assert!(plugins.key_for_request().is_none());
+        assert!(plugins.bundled.jev_key().is_none());
+        plugins.set_live(true);
+        assert!(plugins.enabled && plugins.key_configured);
+        assert_eq!(
+            plugins.key_for_request().unwrap().expose(),
+            "fixture-openrouter"
+        );
+        assert_eq!(plugins.bundled.jev_key().unwrap().expose(), "fixture-jev");
+        assert!(plugins.bundled.jev_enabled);
+        assert!(!temporary.path().join("plugins.json").exists());
+        assert!(!temporary.path().join("bundled-plugins.json").exists());
+    }
+
+    #[test]
+    fn saved_disabled_preferences_survive_startup_imports_and_keep_saved_key() {
+        let temporary = tempfile::tempdir().unwrap();
+        let store = Store::under(temporary.path());
+        store
+            .save(&SavedPlugin {
+                key: Some(model_access::ApiKey::new("configured-key")),
+                ..Default::default()
+            })
+            .unwrap();
+        let original = std::fs::read(temporary.path().join("plugins.json")).unwrap();
+        let mut plugins = Plugins::default();
+        plugins.set_live(true);
+        plugins.load_settings(store).unwrap();
+        plugins.bootstrap_credentials(crate::credentials::Imported {
+            openrouter_key: Some(model_access::ApiKey::new("environment-key")),
+            ..Default::default()
+        });
+        assert!(!plugins.enabled);
+        assert!(plugins.key_configured);
+        assert_eq!(
+            plugins.key_for_request().unwrap().expose(),
+            "configured-key"
+        );
+        assert_eq!(
+            std::fs::read(temporary.path().join("plugins.json")).unwrap(),
+            original
+        );
+    }
+
+    #[test]
+    fn saved_off_without_a_key_stays_off_when_a_key_is_imported() {
+        let temporary = tempfile::tempdir().unwrap();
+        let store = Store::under(temporary.path());
+        store.save(&SavedPlugin::default()).unwrap();
+        let mut plugins = Plugins::default();
+        plugins.set_live(true);
+        plugins.load_settings(store).unwrap();
+        plugins.bootstrap_credentials(crate::credentials::Imported {
+            openrouter_key: Some(model_access::ApiKey::new("environment-key")),
+            ..Default::default()
+        });
+        assert!(!plugins.enabled);
+        assert!(plugins.key_configured);
+        assert_eq!(
+            plugins.key_for_request().unwrap().expose(),
+            "environment-key"
+        );
     }
 }

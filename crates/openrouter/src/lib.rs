@@ -7,8 +7,8 @@
 //! (`ChatFormatJsonSchemaConfig` and `ChatJsonSchemaConfig` there), the
 //! result's usage and cost, provider routing's `require_parameters`, the
 //! `response-healing` plugin, the SDK's error classes, the embeddings
-//! call, and a streamed chat reply ([`Client::stream`]). Tools and every
-//! other endpoint are left out.
+//! call, a streamed chat reply ([`Client::stream`]), and streamed function
+//! calls ([`Client::stream_tools`]). Other endpoints are left out.
 //!
 //! ```no_run
 //! # async fn run() -> Result<(), openrouter::Error> {
@@ -859,6 +859,173 @@ pub struct Streamed {
     pub milliseconds: u64,
 }
 
+/// One complete function call requested by a streamed reply.
+///
+/// The caller decides whether to execute it. Arguments hold a JSON object;
+/// the caller must also validate that object against the tool's schema.
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
+pub struct FunctionCall {
+    pub id: String,
+    pub name: String,
+    pub arguments: String,
+}
+
+/// A streamed reply and its complete, validated function calls.
+#[derive(Clone, Debug, Default)]
+pub struct ToolStreamed {
+    pub reply: Streamed,
+    pub calls: Vec<FunctionCall>,
+}
+
+const TOOL_CALL_LIMIT: usize = 16;
+const TOOL_ARGUMENT_LIMIT: usize = 64 * 1024;
+const TOOL_AGGREGATE_LIMIT: usize = 256 * 1024;
+const TOOL_ID_LIMIT: usize = 256;
+const TOOL_NAME_LIMIT: usize = 128;
+
+fn tool_decode(detail: &str) -> Error {
+    Error::Decode {
+        detail: detail.to_string(),
+        excerpt: String::new(),
+    }
+}
+
+/// Arguments, names, and IDs arrive as fragments keyed by a bounded index.
+#[derive(Default)]
+struct ToolCalls {
+    calls: std::collections::BTreeMap<usize, FunctionCall>,
+    bytes: usize,
+}
+
+impl ToolCalls {
+    fn push(&mut self, value: &Value) -> Result<(), Error> {
+        if value.is_null() {
+            return Ok(());
+        }
+        let fragments = value
+            .as_array()
+            .ok_or_else(|| tool_decode("streamed tool calls were not an array"))?;
+        for fragment in fragments {
+            if !fragment.is_object() {
+                return Err(tool_decode("a streamed tool call was not an object"));
+            }
+            let index = fragment["index"]
+                .as_u64()
+                .and_then(|index| usize::try_from(index).ok())
+                .filter(|index| *index < TOOL_CALL_LIMIT)
+                .ok_or_else(|| tool_decode("a streamed tool call had an invalid index"))?;
+            if let Some(kind) = fragment.get("type")
+                && !kind.is_null()
+                && kind.as_str() != Some("function")
+            {
+                return Err(tool_decode("a streamed tool call was not a function"));
+            }
+            let call = self.calls.entry(index).or_insert_with(|| FunctionCall {
+                id: String::new(),
+                name: String::new(),
+                arguments: String::new(),
+            });
+            Self::append(
+                &mut call.id,
+                fragment.get("id"),
+                TOOL_ID_LIMIT,
+                &mut self.bytes,
+            )?;
+            if let Some(function) = fragment.get("function")
+                && !function.is_null()
+            {
+                if !function.is_object() {
+                    return Err(tool_decode("a streamed function was not an object"));
+                }
+                Self::append(
+                    &mut call.name,
+                    function.get("name"),
+                    TOOL_NAME_LIMIT,
+                    &mut self.bytes,
+                )?;
+                Self::append(
+                    &mut call.arguments,
+                    function.get("arguments"),
+                    TOOL_ARGUMENT_LIMIT,
+                    &mut self.bytes,
+                )?;
+            }
+        }
+        Ok(())
+    }
+
+    fn append(
+        target: &mut String,
+        value: Option<&Value>,
+        limit: usize,
+        bytes: &mut usize,
+    ) -> Result<(), Error> {
+        let Some(value) = value.filter(|value| !value.is_null()) else {
+            return Ok(());
+        };
+        let text = value
+            .as_str()
+            .ok_or_else(|| tool_decode("a streamed function field was not text"))?;
+        if text.len() > limit.saturating_sub(target.len())
+            || text.len() > TOOL_AGGREGATE_LIMIT.saturating_sub(*bytes)
+        {
+            return Err(tool_decode(
+                "streamed function fields exceeded their size limit",
+            ));
+        }
+        target.push_str(text);
+        *bytes += text.len();
+        Ok(())
+    }
+
+    fn finish(self, finish_reason: Option<&str>) -> Result<Vec<FunctionCall>, Error> {
+        if self.calls.is_empty() {
+            if finish_reason == Some("tool_calls") {
+                return Err(tool_decode(
+                    "the stream reported tool calls but supplied none",
+                ));
+            }
+            return Ok(Vec::new());
+        }
+        if finish_reason != Some("tool_calls") {
+            return Err(tool_decode(
+                "the stream ended without completing its tool calls",
+            ));
+        }
+        let mut ids = std::collections::BTreeSet::new();
+        for call in self.calls.values() {
+            if call.id.is_empty()
+                || !call.id.bytes().all(|byte| {
+                    byte.is_ascii_alphanumeric() || matches!(byte, b'_' | b'-' | b'.' | b':')
+                })
+                || !ids.insert(&call.id)
+            {
+                return Err(tool_decode(
+                    "a streamed tool call had an invalid or duplicate ID",
+                ));
+            }
+            if call.name.is_empty()
+                || !call
+                    .name
+                    .bytes()
+                    .all(|byte| byte.is_ascii_alphanumeric() || matches!(byte, b'_' | b'-' | b'.'))
+            {
+                return Err(tool_decode(
+                    "a streamed tool call had an invalid or missing name",
+                ));
+            }
+            if !serde_json::from_str::<Value>(&call.arguments)
+                .is_ok_and(|arguments| arguments.is_object())
+            {
+                return Err(tool_decode(
+                    "streamed tool arguments were not a JSON object",
+                ));
+            }
+        }
+        Ok(self.calls.into_values().collect())
+    }
+}
+
 /// The Server-Sent Events reader for a streamed chat completion: bytes in,
 /// text deltas and the final chunk's fields out. Lines are split at LF (a
 /// CR before it is dropped) and decoded whole, so a character split across
@@ -869,6 +1036,7 @@ struct StreamReader {
     buffer: Vec<u8>,
     reply: Streamed,
     done: bool,
+    tools: Option<ToolCalls>,
 }
 
 impl StreamReader {
@@ -881,6 +1049,9 @@ impl StreamReader {
     ) -> Result<(), Error> {
         self.buffer.extend_from_slice(chunk);
         while let Some(end) = self.buffer.iter().position(|byte| *byte == b'\n') {
+            if end > ERROR_BODY_LIMIT * 64 {
+                return Err(tool_decode("a stream line exceeded its size limit"));
+            }
             let line: Vec<u8> = self.buffer.drain(..=end).collect();
             let line = std::str::from_utf8(&line[..end]).map_err(|_| Error::Decode {
                 detail: "a stream line was not UTF-8".to_string(),
@@ -939,6 +1110,11 @@ impl StreamReader {
             model_sink(model);
         }
         let choice = &chunk["choices"][0];
+        if let Some(tools) = &mut self.tools
+            && let Some(calls) = choice["delta"].get("tool_calls")
+        {
+            tools.push(calls)?;
+        }
         if let Some(delta) = choice["delta"]["content"].as_str()
             && !delta.is_empty()
         {
@@ -996,12 +1172,56 @@ impl Client {
     ) -> Result<Streamed, Error> {
         let mut request = request.clone();
         request.stream = true;
+        self.stream_body(&request, false, sink, model_sink)
+            .await
+            .map(|stream| stream.reply)
+    }
+
+    /// Streams text and function calls with the supplied wire messages and tools.
+    ///
+    /// `messages` replaces the request's text-only messages and can include
+    /// assistant function calls and tool results. The tool definitions accompany
+    /// every request. Provider routing requires support for every supplied
+    /// parameter. This makes one attempt, even when
+    /// an HTTP status or a late error would normally qualify for a retry.
+    ///
+    /// Calls are returned only after their IDs, names, argument objects, size
+    /// limits, and completion reason pass validation. This method executes none.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`Client::stream`]'s errors, and [`Error::Decode`] for malformed,
+    /// duplicate, incomplete, or oversized function calls.
+    pub async fn stream_tools(
+        &self,
+        request: &ChatRequest,
+        messages: &[Value],
+        tools: &[Value],
+        sink: &mut (dyn FnMut(&str) + Send),
+        model_sink: &mut (dyn FnMut(&str) + Send),
+    ) -> Result<ToolStreamed, Error> {
+        let mut body = serde_json::to_value(request)
+            .map_err(|_| tool_decode("the tool request could not be encoded"))?;
+        body["stream"] = Value::Bool(true);
+        body["messages"] = Value::Array(messages.to_vec());
+        body["tools"] = Value::Array(tools.to_vec());
+        body["provider"] = serde_json::json!({ "require_parameters": true });
+        self.stream_body(&body, true, sink, model_sink).await
+    }
+
+    async fn stream_body<B: Serialize>(
+        &self,
+        body: &B,
+        with_tools: bool,
+        sink: &mut (dyn FnMut(&str) + Send),
+        model_sink: &mut (dyn FnMut(&str) + Send),
+    ) -> Result<ToolStreamed, Error> {
         let started = std::time::Instant::now();
         let mut builder = self
             .http
             .post(format!("{}/chat/completions", self.config.base_url))
             .bearer_auth(self.config.api_key.expose())
-            .json(&request);
+            .json(body);
         if let Some(referer) = &self.config.referer {
             builder = builder.header("HTTP-Referer", referer);
         }
@@ -1036,7 +1256,10 @@ impl Client {
                 body: bounded_body(&text),
             });
         }
-        let mut reader = StreamReader::default();
+        let mut reader = StreamReader {
+            tools: with_tools.then(ToolCalls::default),
+            ..StreamReader::default()
+        };
         let mut first: Option<u64> = None;
         while let Some(chunk) = response.chunk().await.map_err(broken)? {
             let mut timed = |delta: &str| {
@@ -1056,10 +1279,15 @@ impl Client {
                 excerpt: excerpt(&reader.reply.text, 400),
             });
         }
+        let calls = reader
+            .tools
+            .map(|tools| tools.finish(reader.reply.finish_reason.as_deref()))
+            .transpose()?
+            .unwrap_or_default();
         let mut reply = reader.reply;
         reply.first_text_ms = first;
         reply.milliseconds = u64::try_from(started.elapsed().as_millis()).unwrap_or(u64::MAX);
-        Ok(reply)
+        Ok(ToolStreamed { reply, calls })
     }
 }
 
@@ -1221,6 +1449,293 @@ mod tests {
         );
         assert_eq!(reader.reply.model, "provider/second");
         assert_eq!(reader.reply.text, "One two");
+    }
+
+    #[test]
+    fn fragmented_tool_calls_preserve_order_text_model_and_usage() {
+        let chunks = [
+            serde_json::json!({
+                "model": "provider/model",
+                "choices": [{"delta": {
+                    "content": "Checking café. ",
+                    "tool_calls": [
+                        {"index": 1, "id": "call_", "type": "function", "function": {"name": "openagents_", "arguments": "{\"args\":"}},
+                        {"index": 0, "id": "judge_", "type": "function", "function": {"name": "j", "arguments": "{\"state\":\""}}
+                    ]
+                }}]
+            }),
+            serde_json::json!({"choices": [{"delta": {"tool_calls": [
+                {"index": 0, "id": "1", "function": {"name": "ev", "arguments": "café\"}"}},
+                {"index": 1, "id": "2", "function": {"name": "cli", "arguments": "[\"--help\"]}"}}
+            ]}}]}),
+            serde_json::json!({"choices": [{"delta": {}, "finish_reason": "tool_calls"}]}),
+            serde_json::json!({"choices": [], "usage": {"total_tokens": 23, "cost": 0.001}}),
+        ];
+        let mut body = chunks
+            .iter()
+            .map(|chunk| format!("data: {chunk}\r\n\r\n"))
+            .collect::<String>();
+        body.push_str("data: [DONE]\n\n");
+        let mut reader = StreamReader {
+            tools: Some(ToolCalls::default()),
+            ..StreamReader::default()
+        };
+        let mut text = String::new();
+        let mut models = Vec::new();
+        for byte in body.as_bytes() {
+            reader
+                .push(
+                    std::slice::from_ref(byte),
+                    &mut |delta| text.push_str(delta),
+                    &mut |model| models.push(model.to_string()),
+                )
+                .unwrap();
+        }
+        assert_eq!(text, "Checking café. ");
+        assert_eq!(models, ["provider/model"]);
+        assert_eq!(reader.reply.usage.total_tokens, 23);
+        assert_eq!(reader.reply.usage.cost, Some(0.001));
+        assert!(reader.done);
+        let calls = reader
+            .tools
+            .unwrap()
+            .finish(reader.reply.finish_reason.as_deref())
+            .unwrap();
+        assert_eq!(
+            calls,
+            [
+                FunctionCall {
+                    id: "judge_1".into(),
+                    name: "jev".into(),
+                    arguments: "{\"state\":\"café\"}".into()
+                },
+                FunctionCall {
+                    id: "call_2".into(),
+                    name: "openagents_cli".into(),
+                    arguments: "{\"args\":[\"--help\"]}".into()
+                },
+            ]
+        );
+    }
+
+    #[test]
+    fn tool_calls_reject_malformed_fields_and_out_of_bounds_indices() {
+        for fragment in [
+            serde_json::json!({}),
+            serde_json::json!({"index": -1}),
+            serde_json::json!({"index": TOOL_CALL_LIMIT}),
+            serde_json::json!({"index": 0, "type": "other"}),
+            serde_json::json!({"index": 0, "id": 7}),
+            serde_json::json!({"index": 0, "function": []}),
+            serde_json::json!({"index": 0, "function": {"name": 7}}),
+            serde_json::json!({"index": 0, "function": {"arguments": {}}}),
+            serde_json::json!(null),
+        ] {
+            assert!(matches!(
+                ToolCalls::default().push(&serde_json::json!([fragment])),
+                Err(Error::Decode { .. })
+            ));
+        }
+        assert!(ToolCalls::default().push(&serde_json::json!({})).is_err());
+    }
+
+    #[test]
+    fn tool_calls_validate_ids_names_arguments_and_completion_before_returning() {
+        assert!(ToolCalls::default().finish(Some("tool_calls")).is_err());
+        let valid = serde_json::json!({"index": 0, "id": "call_1", "function": {"name": "jev", "arguments": "{}"}});
+        for (path, value) in [
+            ("/id", serde_json::json!("")),
+            ("/id", serde_json::json!("bad id")),
+            ("/id", serde_json::json!("bad\u{1b}id")),
+            ("/function/name", serde_json::json!("")),
+            ("/function/name", serde_json::json!("bad name")),
+            ("/function/arguments", serde_json::json!("{\"partial\":")),
+            ("/function/arguments", serde_json::json!("[]")),
+        ] {
+            let mut fragment = valid.clone();
+            *fragment.pointer_mut(path).unwrap() = value;
+            let mut tools = ToolCalls::default();
+            tools.push(&serde_json::json!([fragment])).unwrap();
+            assert!(matches!(
+                tools.finish(Some("tool_calls")),
+                Err(Error::Decode { .. })
+            ));
+        }
+        let mut duplicate = valid.clone();
+        duplicate["index"] = 1.into();
+        let mut tools = ToolCalls::default();
+        tools
+            .push(&serde_json::json!([valid.clone(), duplicate]))
+            .unwrap();
+        assert!(tools.finish(Some("tool_calls")).is_err());
+        let mut tools = ToolCalls::default();
+        tools.push(&serde_json::json!([valid])).unwrap();
+        assert!(tools.finish(Some("length")).is_err());
+    }
+
+    #[test]
+    fn tool_call_limits_bound_each_argument_and_the_aggregate() {
+        for (field, text) in [
+            ("id", "a".repeat(TOOL_ID_LIMIT + 1)),
+            ("name", "a".repeat(TOOL_NAME_LIMIT + 1)),
+            ("arguments", "a".repeat(TOOL_ARGUMENT_LIMIT + 1)),
+        ] {
+            let mut fragment = serde_json::json!({"index": 0, "function": {}});
+            if field == "id" {
+                fragment["id"] = text.into();
+            } else {
+                fragment["function"][field] = text.into();
+            }
+            assert!(
+                ToolCalls::default()
+                    .push(&serde_json::json!([fragment]))
+                    .is_err()
+            );
+        }
+        let mut tools = ToolCalls::default();
+        for index in 0..4 {
+            tools
+                .push(&serde_json::json!([{
+                    "index": index, "function": {"arguments": "a".repeat(TOOL_ARGUMENT_LIMIT)}
+                }]))
+                .unwrap();
+        }
+        assert!(
+            tools
+                .push(&serde_json::json!([{
+                    "index": 4, "function": {"arguments": "a"}
+                }]))
+                .is_err()
+        );
+    }
+
+    async fn serve_tool_stream(
+        body: &str,
+        status: u16,
+    ) -> (Client, tokio::task::JoinHandle<Value>) {
+        use tokio::io::{AsyncReadExt, AsyncWriteExt};
+
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let address = listener.local_addr().unwrap();
+        let body = body.to_string();
+        let server = tokio::spawn(async move {
+            let (mut socket, _) = listener.accept().await.unwrap();
+            let mut request = Vec::new();
+            let mut buffer = [0u8; 4096];
+            let request_body = loop {
+                let read = socket.read(&mut buffer).await.unwrap();
+                assert_ne!(read, 0);
+                request.extend_from_slice(&buffer[..read]);
+                let Some(end) = request.windows(4).position(|part| part == b"\r\n\r\n") else {
+                    continue;
+                };
+                let headers = std::str::from_utf8(&request[..end]).unwrap();
+                let length: usize = headers
+                    .lines()
+                    .find_map(|line| {
+                        let (name, value) = line.split_once(':')?;
+                        name.eq_ignore_ascii_case("content-length")
+                            .then(|| value.trim().parse().unwrap())
+                    })
+                    .unwrap();
+                if request.len() >= end + 4 + length {
+                    break serde_json::from_slice::<Value>(&request[end + 4..end + 4 + length])
+                        .unwrap();
+                }
+            };
+            let response = format!(
+                "HTTP/1.1 {status} Test\r\ncontent-type: text/event-stream\r\ncontent-length: {}\r\nconnection: close\r\n\r\n{body}",
+                body.len()
+            );
+            socket.write_all(response.as_bytes()).await.unwrap();
+            request_body
+        });
+        let mut config = Config::new(ApiKey::new("fixture"));
+        config.base_url = format!("http://{address}");
+        config.timeout = Duration::from_secs(2);
+        config.retries = 3;
+        (Client::new(config).unwrap(), server)
+    }
+
+    #[tokio::test]
+    async fn a_tool_request_overrides_wire_messages_and_requires_provider_support() {
+        let body = concat!(
+            "data: {\"model\":\"provider/model\",\"choices\":[{\"delta\":{\"content\":\"Checking.\",\"tool_calls\":[{\"index\":0,\"id\":\"call_1\",\"type\":\"function\",\"function\":{\"name\":\"jev\",\"arguments\":\"{}\"}}]}}]}\n\n",
+            "data: {\"choices\":[{\"delta\":{},\"finish_reason\":\"tool_calls\"}],\"usage\":{\"total_tokens\":11}}\n\n",
+            "data: [DONE]\n\n"
+        );
+        let (client, server) = serve_tool_stream(body, 200).await;
+        let messages = [
+            serde_json::json!({"role": "assistant", "content": null, "tool_calls": [{"id": "previous", "type": "function", "function": {"name": "jev", "arguments": "{}"}}]}),
+            serde_json::json!({"role": "tool", "tool_call_id": "previous", "content": "{}"}),
+        ];
+        let tools = [
+            serde_json::json!({"type": "function", "function": {"name": "jev", "parameters": {"type": "object"}}}),
+        ];
+        let request = ChatRequest::new("openrouter/free", vec![Message::user("replaced")])
+            .effort("low")
+            .max_tokens(32);
+        let mut text = String::new();
+        let mut models = Vec::new();
+        let result = client
+            .stream_tools(
+                &request,
+                &messages,
+                &tools,
+                &mut |delta| text.push_str(delta),
+                &mut |model| models.push(model.to_string()),
+            )
+            .await
+            .unwrap();
+        assert_eq!(text, "Checking.");
+        assert_eq!(models, ["provider/model"]);
+        assert_eq!(result.reply.model, "provider/model");
+        assert_eq!(result.reply.usage.total_tokens, 11);
+        assert!(result.reply.first_text_ms.is_some());
+        assert_eq!(result.calls[0].name, "jev");
+        let sent = server.await.unwrap();
+        assert_eq!(sent["messages"], serde_json::json!(messages));
+        assert_eq!(sent["tools"], serde_json::json!(tools));
+        assert_eq!(sent["provider"]["require_parameters"], true);
+        assert_eq!(sent["stream"], true);
+        assert_eq!(sent["model"], "openrouter/free");
+        assert_eq!(sent["max_tokens"], 32);
+        assert_eq!(sent["reasoning"]["effort"], "low");
+    }
+
+    #[tokio::test]
+    async fn tool_stream_errors_never_retry_or_return_partial_calls() {
+        for (body, status) in [
+            (
+                concat!(
+                    "data: {\"model\":\"provider/model\",\"choices\":[{\"delta\":{\"content\":\"Checking.\",\"tool_calls\":[{\"index\":0,\"id\":\"call_1\",\"function\":{\"name\":\"jev\",\"arguments\":\"{}\"}}]}}]}\n\n",
+                    "data: {\"error\":{\"code\":503,\"message\":\"fixture late error\"}}\n\n"
+                ),
+                200,
+            ),
+            ("{\"error\":{\"message\":\"fixture refusal\"}}", 503),
+        ] {
+            let (client, server) = serve_tool_stream(body, status).await;
+            let request = ChatRequest::new("openrouter/free", Vec::new());
+            let mut text = String::new();
+            let error = client
+                .stream_tools(
+                    &request,
+                    &[],
+                    &[],
+                    &mut |delta| text.push_str(delta),
+                    &mut |_| {},
+                )
+                .await
+                .unwrap_err();
+            assert!(matches!(error, Error::Api { status: 503, .. }));
+            if status == 200 {
+                assert_eq!(text, "Checking.");
+            } else {
+                assert!(text.is_empty());
+            }
+            server.await.unwrap();
+        }
     }
 
     #[tokio::test]

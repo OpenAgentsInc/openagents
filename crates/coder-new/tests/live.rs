@@ -123,9 +123,10 @@ fn transcript(app: &App) -> Vec<(&str, &str)> {
     app.live
         .entries
         .iter()
-        .map(|entry| match entry {
-            Entry::User(text) => ("user", text.as_str()),
-            Entry::Assistant { text, .. } => ("assistant", text.as_str()),
+        .filter_map(|entry| match entry {
+            Entry::User(text) => Some(("user", text.as_str())),
+            Entry::Assistant { text, .. } => Some(("assistant", text.as_str())),
+            Entry::Tool { .. } => None,
         })
         .collect()
 }
@@ -206,6 +207,7 @@ fn slash_picker_completes_and_executes_commands_without_submitting_messages() {
 fn live_chat_preserves_the_draft_until_enabled_with_a_saved_key() {
     let mut app = App::default();
     app.set_mode(Mode::Live);
+    app.plugins.bundled.microcoder = false;
     assert!(app.live.entries.is_empty());
     assert!(!render(&mut app, 80, 24).contains("Delegate claude-code"));
     paste(&mut app, "live question");
@@ -247,6 +249,7 @@ fn live_chat_preserves_the_draft_until_enabled_with_a_saved_key() {
             model,
             messages,
             options,
+            ..
         } => {
             assert_eq!(model, "openrouter/free");
             assert_eq!(options, coder_new::models::GenerationOptions::default());
@@ -254,7 +257,7 @@ fn live_chat_preserves_the_draft_until_enabled_with_a_saved_key() {
             assert_eq!(messages[0].role, "user");
             assert_eq!(messages[0].content, "live question");
         }
-        Work::Check => panic!("expected a chat request"),
+        _ => panic!("expected a chat request"),
     }
     assert!(app.live.busy);
     assert!(app.draft.text.is_empty());
@@ -495,7 +498,7 @@ fn live_streaming_preserves_stopped_text_and_ignores_stale_updates() {
                 ]
             );
         }
-        Work::Check => panic!("expected a chat request"),
+        _ => panic!("expected a chat request"),
     }
     app.apply_update(Update::Delta {
         id: second.id,
@@ -584,7 +587,7 @@ fn completed_replies_keep_their_served_model_without_a_requested_model_fallback(
         .iter()
         .filter_map(|entry| match entry {
             Entry::Assistant { model, .. } => Some(model.as_deref()),
-            Entry::User(_) => None,
+            Entry::User(_) | Entry::Tool { .. } => None,
         })
         .collect();
     assert_eq!(models, [Some("provider/served-model:free"), None]);

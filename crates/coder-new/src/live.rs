@@ -1,12 +1,17 @@
-//! Background OpenRouter work and a transcript separate from demo fixtures.
+//! Background provider and plugin work, separate from demo fixtures.
 
-use std::sync::mpsc;
+use std::sync::{
+    Arc,
+    atomic::{AtomicBool, Ordering},
+    mpsc,
+};
 
 use model_access::ApiKey;
 use openrouter::{Message, Streamed};
 use tokio::sync::oneshot;
 
 use crate::provider::{KeyInfo, Provider};
+use crate::{bundled_runtime::RuntimeEvent, plugin_tools::ExecutionSettings};
 
 #[derive(Default)]
 pub struct Chat {
@@ -20,7 +25,16 @@ pub struct Chat {
 
 pub enum Entry {
     User(String),
-    Assistant { text: String, model: Option<String> },
+    Assistant {
+        text: String,
+        model: Option<String>,
+    },
+    Tool {
+        name: String,
+        input: serde_json::Value,
+        output: serde_json::Value,
+        running: bool,
+    },
 }
 
 impl Chat {
@@ -32,6 +46,18 @@ impl Chat {
                 Entry::Assistant { text, .. } => Message {
                     role: "assistant".into(),
                     content: text.clone(),
+                },
+                Entry::Tool {
+                    name,
+                    output,
+                    running,
+                    ..
+                } => Message {
+                    role: "assistant".into(),
+                    content: format!(
+                        "Tool observation from {name} ({}): {output}",
+                        if *running { "running" } else { "finished" }
+                    ),
                 },
             })
             .collect()
@@ -55,10 +81,18 @@ pub struct Request {
 
 pub enum Work {
     Check,
+    CheckJev {
+        endpoint: String,
+    },
     Chat {
         model: String,
         options: crate::models::GenerationOptions,
         messages: Vec<Message>,
+        execution: ExecutionSettings,
+    },
+    Microcoder {
+        messages: Vec<Message>,
+        execution: ExecutionSettings,
     },
 }
 
@@ -66,6 +100,17 @@ pub enum Update {
     Checked {
         id: u64,
         result: Result<KeyInfo, String>,
+    },
+    CheckedJev {
+        id: u64,
+        result: Result<Vec<String>, String>,
+    },
+    Tool {
+        id: u64,
+        name: String,
+        input: serde_json::Value,
+        output: serde_json::Value,
+        running: bool,
     },
     Delta {
         id: u64,
@@ -85,6 +130,8 @@ impl Update {
     pub fn id(&self) -> u64 {
         match self {
             Self::Checked { id, .. }
+            | Self::CheckedJev { id, .. }
+            | Self::Tool { id, .. }
             | Self::Delta { id, .. }
             | Self::Model { id, .. }
             | Self::Finished { id, .. } => *id,
@@ -92,7 +139,7 @@ impl Update {
     }
 }
 
-/// One active request. Canceling drops its network future without replaying it.
+/// One active request. Cancellation also waits for child process cleanup.
 #[derive(Default)]
 pub struct Background {
     active: Option<(u64, oneshot::Sender<()>, mpsc::Receiver<Update>)>,
@@ -120,17 +167,25 @@ impl Background {
             loop {
                 match receiver.try_recv() {
                     Ok(update) => {
-                        finished |=
-                            matches!(update, Update::Checked { .. } | Update::Finished { .. });
+                        finished |= matches!(
+                            update,
+                            Update::Checked { .. }
+                                | Update::CheckedJev { .. }
+                                | Update::Finished { .. }
+                        );
                         app.apply_update(update);
                     }
                     Err(mpsc::TryRecvError::Empty) => break,
                     Err(mpsc::TryRecvError::Disconnected) => {
                         if !finished {
                             let error =
-                                "The OpenRouter worker stopped before completing the request."
-                                    .into();
-                            app.apply_update(if app.checking_key {
+                                "The chat worker stopped before completing the request.".into();
+                            app.apply_update(if app.checking_jev {
+                                Update::CheckedJev {
+                                    id: *id,
+                                    result: Err(error),
+                                }
+                            } else if app.checking_key {
                                 Update::Checked {
                                     id: *id,
                                     result: Err(error),
@@ -177,7 +232,11 @@ fn run_with_provider(
     create: impl FnOnce(openrouter::ApiKey) -> Result<Provider, String>,
 ) {
     let id = request.id;
-    let checking = matches!(request.kind, Work::Check);
+    let checking = match request.kind {
+        Work::Check => 1,
+        Work::CheckJev { .. } => 2,
+        _ => 0,
+    };
     let result = tokio::runtime::Builder::new_current_thread()
         .enable_all()
         .build();
@@ -186,72 +245,131 @@ fn run_with_provider(
             id,
             checking,
             &sender,
-            "The OpenRouter worker could not start.".into(),
+            "The chat worker could not start.".into(),
         );
         return;
     };
     runtime.block_on(async move {
-        let provider = match create(openrouter::ApiKey::new(request.key.expose())) {
-            Ok(provider) => provider,
-            Err(error) => {
-                failure(id, checking, &sender, error);
-                return;
+        let cancel = Arc::new(AtomicBool::new(false));
+        let mut text_callback = |text: &str| {
+            let _ = sender.send(Update::Delta { id, text: text.into() });
+        };
+        let mut model_callback = |model: &str| {
+            let _ = sender.send(Update::Model { id, model: model.into() });
+        };
+        let mut event_callback = |event| {
+            if let RuntimeEvent::Tool { name, input, output, running } = event {
+                let _ = sender.send(Update::Tool { id, name, input, output, running });
             }
         };
         let work = async {
             let update = match request.kind {
-                Work::Check => Update::Checked {
+                Work::CheckJev { endpoint } => Update::CheckedJev {
                     id,
-                    result: provider.check().await,
+                    result: crate::jev_plugin::test_key(request.key.expose(), &endpoint).await,
                 },
-                Work::Chat {
-                    model,
-                    options,
-                    messages,
-                } => {
-                    let mut callback = |text: &str| {
-                        let _ = sender.send(Update::Delta {
-                            id,
-                            text: text.to_owned(),
-                        });
+                Work::Microcoder { messages, execution } => {
+                    let mut events = |event| {
+                        match event {
+                            RuntimeEvent::Text(text) => text_callback(&execution.redact_text(&text)),
+                            RuntimeEvent::Model(model) => model_callback(&model),
+                            RuntimeEvent::Tool { name, mut input, mut output, running } => {
+                                execution.redact(&mut input);
+                                execution.redact(&mut output);
+                                event_callback(RuntimeEvent::Tool { name, input, output, running });
+                            }
+                        }
                     };
-                    let mut model_callback = |model: &str| {
-                        let _ = sender.send(Update::Model {
-                            id,
-                            model: model.to_owned(),
-                        });
+                    let result = async {
+                        let mut context = Vec::new();
+                        let mut bytes = 0;
+                        for message in messages.iter().rev() {
+                            let row = format!("{}: {}", message.role, message.content);
+                            if bytes + row.len() > 56 * 1024 {
+                                break;
+                            }
+                            bytes += row.len();
+                            context.push(row);
+                        }
+                        context.reverse();
+                        let mut task = context.join("\n\n");
+                        if execution.cli {
+                            task.push_str("\n\nThe bundled OpenAgents CLI is enabled. Use openagents --help to discover commands, and openagents --json with an argument array's equivalent syntax for requested CLI work. Follow the user's authorization for effects.");
+                        }
+                        let task = execution.redact_text(&task);
+                        let client = execution.jev_client()?;
+                        let result = crate::bundled_runtime::microcoder_local(
+                            &task, &execution.cwd, client, &execution.redaction_keys,
+                            &cancel, &mut events,
+                        ).await?;
+                        let mut reply = Streamed {
+                            text: execution.redact_text(result["reply"].as_str().unwrap_or_default()),
+                            model: result["model"].as_str().unwrap_or_default().into(),
+                            ..Streamed::default()
+                        };
+                        reply.usage.total_tokens = result["tokens"].as_u64().unwrap_or_default();
+                        if !matches!(result["outcome"]["reason"].as_str(), Some("finished" | "tests_held" | "checks_passed")) {
+                            return Err(format!("Microcoder stopped: {}.", result["outcome"]));
+                        }
+                        if reply.text.is_empty() {
+                            return Err("Microcoder stopped before producing a reply. Inspect the tool results or retry with a smaller task.".into());
+                        }
+                        Ok(reply)
+                    }.await;
+                    Update::Finished { id, result }
+                }
+                kind => {
+                    let provider = match create(openrouter::ApiKey::new(request.key.expose())) {
+                        Ok(provider) => provider,
+                        Err(error) => {
+                            failure(id, checking, &sender, error);
+                            return;
+                        }
                     };
-                    Update::Finished {
-                        id,
-                        result: provider
-                            .stream_with_options_and_model(
-                                &model,
-                                &options,
-                                messages,
-                                &mut callback,
-                                &mut model_callback,
-                            )
-                            .await,
+                    match kind {
+                        Work::Check => Update::Checked { id, result: provider.check().await },
+                        Work::Chat { model, options, messages, execution } => Update::Finished {
+                            id,
+                            result: provider.chat_with_plugins(
+                                &model, &options, messages, &execution,
+                                &mut text_callback, &mut model_callback,
+                                &mut event_callback, &cancel,
+                            ).await,
+                        },
+                        _ => unreachable!(),
                     }
                 }
             };
             let _ = sender.send(update);
         };
-        tokio::select! { _ = canceled => {}, _ = work => {} }
+        tokio::pin!(work);
+        tokio::select! {
+            _ = canceled => {
+                cancel.store(true, Ordering::Relaxed);
+                // Process-backed tools need time to cancel and reap their group.
+                if checking == 0 {
+                    let _ = tokio::time::timeout(std::time::Duration::from_secs(5), &mut work).await;
+                }
+            },
+            _ = &mut work => {}
+        }
     });
 }
 
-fn failure(id: u64, checking: bool, sender: &mpsc::Sender<Update>, error: String) {
-    let update = if checking {
-        Update::Checked {
+fn failure(id: u64, checking: u8, sender: &mpsc::Sender<Update>, error: String) {
+    let update = match checking {
+        1 => Update::Checked {
             id,
             result: Err(error),
-        }
-    } else {
-        Update::Finished {
+        },
+        2 => Update::CheckedJev {
             id,
             result: Err(error),
-        }
+        },
+        _ => Update::Finished {
+            id,
+            result: Err(error),
+        },
     };
     let _ = sender.send(update);
 }
@@ -452,7 +570,9 @@ mod tests {
             "OpenRouter API key verified"
         );
 
-        key(&mut app, KeyCode::Char(' '));
+        if !app.plugins.enabled {
+            key(&mut app, KeyCode::Char(' '));
+        }
         assert!(app.plugins.enabled);
         key(&mut app, KeyCode::Esc);
         assert!(app.screen == Screen::Conversation);
@@ -486,8 +606,8 @@ mod tests {
         assert_eq!(body["model"], "fixture/model");
         assert_eq!(body["stream"], true);
         assert_eq!(
-            body["messages"],
-            json!([{"role":"user","content":"Loopback prompt"}])
+            body["messages"].as_array().unwrap().last().unwrap(),
+            &json!({"role":"user","content":"Loopback prompt"})
         );
         assert!(!request.contains("demo-only"));
         assert!(!crate::snapshot::svg(&mut app, 110, 36).contains(FIXTURE_TOKEN));

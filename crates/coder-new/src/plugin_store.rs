@@ -8,7 +8,7 @@ use std::{
 };
 
 use model_access::ApiKey;
-use serde::{Deserialize, Deserializer, Serialize};
+use serde::{Deserialize, Deserializer, Serialize, de::DeserializeOwned};
 
 use crate::models::{DEFAULT_MODEL, GenerationOptions};
 
@@ -109,6 +109,50 @@ fn read_key<'de, D: Deserializer<'de>>(deserializer: D) -> Result<Option<ApiKey>
 }
 
 impl Store {
+    pub fn contains_settings(&self) -> bool {
+        self.root.join("plugins.json").exists()
+    }
+
+    pub(crate) fn read_extra<T: DeserializeOwned>(
+        &self,
+        filename: &str,
+    ) -> Result<Option<T>, String> {
+        let path = self.root.join(filename);
+        let metadata = match fs::symlink_metadata(&path) {
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(None),
+            Err(_) => return Err(READ_ERROR.into()),
+            Ok(metadata) => metadata,
+        };
+        if !metadata.is_file() || metadata.len() > MAX_BYTES as u64 {
+            return Err(INVALID_ERROR.into());
+        }
+        let file = File::open(path).map_err(|_| READ_ERROR.to_owned())?;
+        let mut bytes = PrivateBytes(Vec::new());
+        file.take((MAX_BYTES + 1) as u64)
+            .read_to_end(&mut bytes.0)
+            .map_err(|_| READ_ERROR.to_owned())?;
+        if bytes.0.len() > MAX_BYTES {
+            return Err(INVALID_ERROR.into());
+        }
+        serde_json::from_slice(&bytes.0)
+            .map(Some)
+            .map_err(|_| INVALID_ERROR.into())
+    }
+
+    pub(crate) fn save_extra<T: Serialize>(
+        &self,
+        filename: &str,
+        settings: &T,
+    ) -> Result<(), String> {
+        let mut bytes =
+            PrivateBytes(serde_json::to_vec_pretty(settings).map_err(|_| WRITE_ERROR.to_owned())?);
+        bytes.0.push(b'\n');
+        if bytes.0.len() > MAX_BYTES {
+            return Err(WRITE_ERROR.into());
+        }
+        write_private(&self.root, filename, &bytes.0).map_err(|_| WRITE_ERROR.to_owned())
+    }
+
     #[must_use]
     pub fn under(root: impl Into<PathBuf>) -> Self {
         Self { root: root.into() }
@@ -182,7 +226,7 @@ impl Store {
         if bytes.0.len() > MAX_BYTES {
             return Err(WRITE_ERROR.into());
         }
-        write_private(&self.root, &bytes.0).map_err(|_| WRITE_ERROR.to_owned())
+        write_private(&self.root, "plugins.json", &bytes.0).map_err(|_| WRITE_ERROR.to_owned())
     }
 }
 
@@ -214,7 +258,7 @@ impl Drop for TemporaryFile {
     }
 }
 
-fn write_private(root: &Path, bytes: &[u8]) -> std::io::Result<()> {
+fn write_private(root: &Path, filename: &str, bytes: &[u8]) -> std::io::Result<()> {
     let mut builder = fs::DirBuilder::new();
     builder.recursive(true);
     #[cfg(unix)]
@@ -254,7 +298,7 @@ fn write_private(root: &Path, bytes: &[u8]) -> std::io::Result<()> {
         file.write_all(bytes)?;
         file.sync_all()?;
         drop(file);
-        fs::rename(&temporary.0, root.join("plugins.json"))?;
+        fs::rename(&temporary.0, root.join(filename))?;
         return Ok(());
     }
     Err(std::io::ErrorKind::AlreadyExists.into())

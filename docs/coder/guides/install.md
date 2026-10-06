@@ -1,8 +1,9 @@
 # Installing Coder
 
-`scripts/install-coder.sh` makes `coder` on your `PATH` run this
-repository's Coder Terminal (`crates/coder`), and `--rollback` switches back
-to the build it replaced.
+`scripts/install-coder.sh` installs this repository's Coder Terminal
+(`crates/coder`) as `coder` and the bundled OpenAgents CLI
+(`crates/openagents-cli`) as `openagents`. Both commands come from the same
+checkout. `--rollback` restores the builds they replaced.
 
 Status: implemented in `scripts/install-coder.sh`, with `coder --version`
 and `coder doctor` in `crates/coder` (`identity.rs`, `build.rs`, and
@@ -29,21 +30,23 @@ From a checkout of this repository:
 
 The script does four things:
 
-1. Builds `crates/coder` in release mode with the toolchain
+1. Builds `crates/coder` and `crates/openagents-cli` in release mode with the toolchain
    `rust-toolchain.toml` pins, in its own target directory,
    `~/.cache/openagents/target-install-coder`.
-2. Copies the binary to
-   `~/.openagents/versions/coder-openagents-<short-sha>`, with `-dirty`
+2. Checks that both binaries run with `--version`, then copies them to
+   `~/.openagents/versions/coder-openagents-<short-sha>` and
+   `~/.openagents/versions/openagents-openagents-<short-sha>`, with `-dirty`
    appended when the tree has uncommitted changes to tracked files.
-3. Points `~/.openagents/bin/coder` at that copy by renaming a new
-   symbolic link over the old one, so `coder` is always one build or the
-   other and never missing.
-4. Prints the build it replaced, records it in
-   `~/.openagents/versions/coder.previous`, and runs `coder --version`.
+3. Points `~/.openagents/bin/coder` and `~/.openagents/bin/openagents` at
+   those copies by renaming each new symbolic link over the old one.
+4. Prints the builds it replaces and records them in
+   `~/.openagents/versions/coder.previous` and
+   `~/.openagents/versions/openagents.previous`.
 
-A failed build leaves the link unchanged. The script expects
-`~/.openagents/bin` on your `PATH`, or `~/.local/bin/coder` linked to
-`~/.openagents/bin/coder`, and says so when neither resolves.
+A failed build, missing binary, or failed version check leaves both links
+unchanged. Put `~/.openagents/bin` on your `PATH` so Coder can find its CLI
+plugin's command. The installer reports either command that resolves to a
+different installation.
 
 | Variable | Effect |
 | --- | --- |
@@ -65,9 +68,11 @@ observer alone, `openagents pair` shows its QR code; see
 ./scripts/install-coder.sh --rollback
 ```
 
-Rollback points the link back at the recorded build and records the one it
-replaced, so a second rollback undoes the first. The install output also
-prints the one `ln -sfn` command that does the same thing by hand.
+Rollback restores both recorded builds and records the ones it replaces,
+so a second rollback undoes the first. If the install introduced the CLI,
+rollback removes its link; a second rollback restores it. A previous
+Coder-only installation has no CLI rollback record and leaves the CLI
+unchanged.
 
 `coder.previous` holds one build. Every switch, install or rollback, is
 also appended to `~/.openagents/versions/coder.history` as
@@ -77,6 +82,9 @@ installed before this script first ran, stays recorded:
 ```sh
 ln -sfn ~/.openagents/versions/coder-terminal-f2d85b12 ~/.openagents/bin/coder
 ```
+
+The CLI has the equivalent `openagents.previous` and `openagents.history`
+files.
 
 ## Which Coder is running
 

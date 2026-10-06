@@ -479,12 +479,17 @@ fn live_lines(app: &App, width: u16) -> Vec<Line<'static>> {
                 Line::from(span(
                     if app.plugins.enabled && app.plugins.key_configured {
                         "Ask OpenRouter a question."
+                    } else if app.plugins.bundled.microcoder {
+                        "Ask Microcoder to work in this directory."
                     } else {
-                        "Connect OpenRouter BYOK in /plugins to start."
+                        "Enable a chat provider in /plugins to start."
                     },
                     t::TEXT_SECONDARY,
                 )),
-                Line::from(span("Your messages go directly to OpenRouter.", t::GRAY)),
+                Line::from(span(
+                    "Manage bundled tools and providers in /plugins.",
+                    t::GRAY,
+                )),
                 Line::default(),
             ],
             width,
@@ -497,6 +502,47 @@ fn live_lines(app: &App, width: u16) -> Vec<Line<'static>> {
             }
             crate::live::Entry::Assistant { text, model } => {
                 reply_lines(&mut lines, text, model.as_deref(), width);
+            }
+            crate::live::Entry::Tool {
+                name,
+                input,
+                output,
+                running,
+            } => {
+                let glyph = if *running {
+                    crate::tools::spinner(app.animation_frame)
+                } else if output.get("error").is_some() {
+                    "×"
+                } else {
+                    "◆"
+                };
+                let summary = if input.is_null() {
+                    String::new()
+                } else {
+                    format!(" · {input}")
+                };
+                lines.push(Line::from(vec![
+                    span(format!(" {glyph} "), t::ACCENT_SKILL),
+                    Span::styled(
+                        "Plugin",
+                        Style::default()
+                            .fg(t::ACCENT_SKILL)
+                            .add_modifier(Modifier::BOLD),
+                    ),
+                    span(
+                        truncate(&format!(" {name}{summary}"), width.saturating_sub(9)),
+                        t::TEXT_PRIMARY,
+                    ),
+                ]));
+                let result = if *running {
+                    "Running".to_owned()
+                } else {
+                    output.to_string()
+                };
+                lines.push(Line::from(vec![
+                    span("   ╰ ", t::GRAY_DIM),
+                    span(truncate(&result, width.saturating_sub(5)), t::GRAY_BRIGHT),
+                ]));
             }
         }
         lines.push(Line::default());
@@ -517,7 +563,14 @@ fn live_lines(app: &App, width: u16) -> Vec<Line<'static>> {
                     format!("{} ", crate::tools::spinner(app.animation_frame)),
                     t::ACCENT_MODEL,
                 ),
-                span("OpenRouter is replying…", t::GRAY),
+                span(
+                    if app.plugins.enabled && app.plugins.key_configured {
+                        "OpenRouter is replying…"
+                    } else {
+                        "Microcoder is working…"
+                    },
+                    t::GRAY,
+                ),
             ])],
             width,
         ));

@@ -3112,16 +3112,22 @@ dependencies = [
 name = "coder-new"
 version = "0.1.0"
 dependencies = [
+ "acp-client",
  "code-highlight",
+ "coder-boundary",
  "coder-terminal",
  "coder-ui",
+ "codex-transport",
  "crossterm",
+ "jev",
+ "microcoder-loop",
  "model-access",
  "openrouter",
  "ratatui",
  "reqwest 0.12.28",
  "serde",
  "serde_json",
+ "supervise",
  "tempfile",
  "tokio",
  "unicode-segmentation",

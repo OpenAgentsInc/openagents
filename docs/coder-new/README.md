@@ -20,11 +20,15 @@ progress in the same transcript. These are local presentation fixtures.
 Edit examples reuse the Grok Build diff renderer and syntax highlighter,
 including line numbers and red and green change backgrounds.
 
-The [plugin manager](plugins.png) and [OpenRouter settings](plugin-settings.png)
-provide an enabled preference, configuration status, masked API key entry, an
-optional model ID, and a direct OpenRouter endpoint. Live mode checks keys and
-streams chat replies. Live plugin settings and keys persist in the private
-`~/.openagents/coder-new/plugins.json` file. Open plugins with F2
+The [plugin manager](plugins.png) ships Microcoder, Jev, OpenAgents CLI, and ACP
+Subagents enabled by default, and OpenRouter BYOK off unless a startup key is
+available. [OpenRouter settings](plugin-settings.png) and Jev settings provide
+masked key entry and key checks. The [Jev form](jev-settings.png) and
+[ACP editor](acp-settings.png) are also exported from the terminal renderer.
+Live OpenRouter chat executes enabled plugin
+tools and returns their results to the model; local Microcoder uses existing
+model logins. ACP settings define named local agent executables. Preferences
+and keys persist in private files under `~/.openagents/coder-new/`. Open plugins with F2
 or `/plugins`, or start with `--plugins` or `--plugin-settings`.
 Interactive runs start [live](live.png); `/demo` toggles the local fixtures.
 The [slash picker](slash-commands.png) filters commands above the input as you

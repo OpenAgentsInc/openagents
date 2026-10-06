@@ -21,6 +21,14 @@ pub enum RailBinding {
     SelectedModel,
 }
 
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum ToolBinding {
+    Microcoder,
+    Jev,
+    OpenAgentsCli,
+    AcpSubagent,
+}
+
 /// A registration is scoped by its plugin ID and its own ID.
 #[derive(Clone, Copy, Debug)]
 pub struct RailContribution {
@@ -36,22 +44,66 @@ pub struct RailContribution {
 pub struct PluginDefinition {
     pub id: &'static str,
     pub name: &'static str,
+    pub description: &'static str,
+    pub default_enabled: bool,
+    pub tools: &'static [ToolBinding],
     pub model_provider: Option<ModelProviderBinding>,
     pub composer_rails: &'static [RailContribution],
 }
 
-pub const DEFINITIONS: &[PluginDefinition] = &[PluginDefinition {
-    id: OPENROUTER_PLUGIN,
-    name: "OpenRouter BYOK",
-    model_provider: Some(ModelProviderBinding::OpenRouter),
-    composer_rails: &[RailContribution {
-        id: "selected-model",
-        slot: RailSlot::ComposerTopRight,
-        binding: RailBinding::SelectedModel,
-        priority: 100,
-        max_cells: 64,
-    }],
-}];
+pub const DEFINITIONS: &[PluginDefinition] = &[
+    PluginDefinition {
+        id: OPENROUTER_PLUGIN,
+        name: "OpenRouter BYOK",
+        description: "Use OpenRouter models with your own API key.",
+        default_enabled: false,
+        tools: &[],
+        model_provider: Some(ModelProviderBinding::OpenRouter),
+        composer_rails: &[RailContribution {
+            id: "selected-model",
+            slot: RailSlot::ComposerTopRight,
+            binding: RailBinding::SelectedModel,
+            priority: 100,
+            max_cells: 64,
+        }],
+    },
+    PluginDefinition {
+        id: "microcoder",
+        name: "Microcoder",
+        description: "The bundled coding loop, with local model logins and bounded commands.",
+        default_enabled: true,
+        tools: &[ToolBinding::Microcoder],
+        model_provider: None,
+        composer_rails: &[],
+    },
+    PluginDefinition {
+        id: "jev",
+        name: "Jev",
+        description: "Typed decisions and probabilities through the Jev SDK. Add your TypeSafe API key.",
+        default_enabled: true,
+        tools: &[ToolBinding::Jev],
+        model_provider: None,
+        composer_rails: &[],
+    },
+    PluginDefinition {
+        id: "openagents-cli",
+        name: "OpenAgents CLI",
+        description: "Discover and call the bundled openagents command in this working directory.",
+        default_enabled: true,
+        tools: &[ToolBinding::OpenAgentsCli],
+        model_provider: None,
+        composer_rails: &[],
+    },
+    PluginDefinition {
+        id: "acp-subagents",
+        name: "ACP Subagents",
+        description: "Define named ACP agents and delegate tasks to their registered executables.",
+        default_enabled: true,
+        tools: &[ToolBinding::AcpSubagent],
+        model_provider: None,
+        composer_rails: &[],
+    },
+];
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct ResolvedRail {
@@ -138,6 +190,9 @@ mod tests {
             PluginDefinition {
                 id: "z-provider",
                 name: "Z provider",
+                description: "",
+                default_enabled: false,
+                tools: &[],
                 model_provider: None,
                 composer_rails: &[RailContribution {
                     id: "model",
@@ -150,6 +205,9 @@ mod tests {
             PluginDefinition {
                 id: "a-provider",
                 name: "A provider",
+                description: "",
+                default_enabled: false,
+                tools: &[],
                 model_provider: None,
                 composer_rails: &[
                     RailContribution {
@@ -178,6 +236,9 @@ mod tests {
             PluginDefinition {
                 id: "0-provider",
                 name: "Lower priority provider",
+                description: "",
+                default_enabled: false,
+                tools: &[],
                 model_provider: None,
                 composer_rails: &[RailContribution {
                     id: "model",

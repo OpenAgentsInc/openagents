@@ -1,0 +1,1123 @@
+//! Adapters for the host-owned CLI, Microcoder, and configured ACP agents.
+
+use std::collections::BTreeMap;
+use std::path::{Path, PathBuf};
+use std::sync::{
+    Arc,
+    atomic::{AtomicBool, Ordering},
+};
+use std::time::{Duration, Instant};
+
+use acp_client::{Handler, Opening, Session, Update};
+use microcoder_loop::{
+    env::Env,
+    models::{
+        AnyGenerator, CodexGenerator, Generate, JevJudge, Judge, Judgment, OpenRouterGenerator,
+        QuestionSet,
+    },
+    run::{Event, Limits, Models, Observer},
+    state::{CommandResult, State},
+};
+use model_access::ApiKey;
+use serde::{Deserialize, Serialize};
+use serde_json::{Value, json};
+
+const TEXT_MAX: usize = 64 * 1024;
+const ARGUMENT_MAX: usize = 128;
+const ARGUMENT_BYTES: usize = 64 * 1024;
+const RUN_SECONDS: u64 = 600;
+const POLL: Duration = Duration::from_millis(50);
+
+/// A local executable the operator registers, addressed by its stable ID.
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(deny_unknown_fields)]
+pub struct AcpAgent {
+    pub id: String,
+    pub name: String,
+    pub program: PathBuf,
+    #[serde(default)]
+    pub arguments: Vec<String>,
+    #[serde(default)]
+    pub mode: Option<String>,
+    #[serde(default = "enabled")]
+    pub enabled: bool,
+}
+
+fn enabled() -> bool {
+    true
+}
+
+impl AcpAgent {
+    pub fn validate(&self) -> Result<(), String> {
+        if self.id.is_empty()
+            || self.id.len() > 64
+            || !self
+                .id
+                .bytes()
+                .all(|b| b.is_ascii_alphanumeric() || b"._-".contains(&b))
+        {
+            return Err(
+                "An ACP agent ID must use 1 to 64 letters, digits, dots, underscores, or hyphens."
+                    .into(),
+            );
+        }
+        if self.name.trim().is_empty()
+            || self.name.len() > 128
+            || self.name.chars().any(char::is_control)
+        {
+            return Err(
+                "An ACP agent needs a name of up to 128 bytes without control characters.".into(),
+            );
+        }
+        if self.program.as_os_str().is_empty() || self.program.to_string_lossy().contains('\0') {
+            return Err("An ACP agent needs an executable path or program name.".into());
+        }
+        validate_arguments(&self.arguments)?;
+        if self.mode.as_ref().is_some_and(|mode| {
+            mode.is_empty() || mode.len() > 128 || mode.chars().any(char::is_control)
+        }) {
+            return Err("An ACP mode must use 1 to 128 bytes without control characters.".into());
+        }
+        Ok(())
+    }
+}
+
+#[derive(Clone, Debug)]
+pub enum RuntimeEvent {
+    Text(String),
+    Model(String),
+    Tool {
+        name: String,
+        input: Value,
+        output: Value,
+        running: bool,
+    },
+}
+
+pub fn cli_tool_definition() -> Value {
+    json!({"type":"function","function":{
+        "name":"openagents_cli",
+        "description":"Run the bundled OpenAgents CLI in the current working directory. Pass an argument array, never a shell command. Use [\"--help\"] to discover command groups, then [\"GROUP\",\"--help\"] for syntax. The CLI supports computers, tasks, issues, settings, knowledge, relays, plugins, worlds, and wallets; commands retain their own access checks. JSON output is added by the host. Call only for work the user requested; do not send messages, publish, pay, or delete data without their authorization.",
+        "parameters":{"type":"object","properties":{"arguments":{"type":"array","items":{"type":"string"},"maxItems":128}},"required":["arguments"],"additionalProperties":false}
+    }})
+}
+
+pub fn acp_tool_definition(agents: &[AcpAgent]) -> Option<Value> {
+    let ids: Vec<&str> = agents
+        .iter()
+        .filter(|a| a.enabled && a.validate().is_ok())
+        .map(|a| a.id.as_str())
+        .collect();
+    if ids.is_empty() {
+        return None;
+    }
+    Some(json!({"type":"function","function":{
+        "name":"acp_subagent",
+        "description":"Delegate a bounded task to one of the operator's configured ACP agents in the current working directory. Choose a registered agent ID; the host supplies its executable. Include the task, relevant context, and the result you need. This starts one child session, streams its work, and closes it when the task ends. Permission requests are denied; an enabled plugin does not grant a child additional authority.",
+        "parameters":{"type":"object","properties":{"agent":{"type":"string","enum":ids},"task":{"type":"string","minLength":1,"maxLength":65536}},"required":["agent","task"],"additionalProperties":false}
+    }}))
+}
+
+pub fn microcoder_tool_definition() -> Value {
+    json!({"type":"function","function":{
+        "name":"microcoder",
+        "description":"Hand a concrete coding task to the bundled Microcoder loop. The existing loop uses structured next actions, Jev judgments when configured, and commands bounded to writes in the current checkout. State the desired result and relevant constraints. The host owns its time, step, and command limits and returns the reply, actual model, token usage, and ending.",
+        "parameters":{"type":"object","properties":{"task":{"type":"string","minLength":1,"maxLength":65536}},"required":["task"],"additionalProperties":false}
+    }})
+}
+
+fn validate_arguments(arguments: &[String]) -> Result<(), String> {
+    if arguments.len() > ARGUMENT_MAX
+        || arguments.iter().map(String::len).sum::<usize>() > ARGUMENT_BYTES
+        || arguments.iter().any(|a| a.contains('\0'))
+    {
+        Err("A command accepts up to 128 arguments and 64 KiB without NUL bytes.".into())
+    } else {
+        Ok(())
+    }
+}
+
+/// Find the release companion first, then a CLI explicitly installed on PATH.
+pub fn cli_binary() -> Option<PathBuf> {
+    let siblings = std::env::current_exe()
+        .ok()
+        .map(|exe| cli_companions(&exe))
+        .unwrap_or_default();
+    acp_client::process::first_executable(siblings.into_iter().chain(acp_client::process::on_path(
+        "openagents",
+        std::env::var_os("PATH").as_deref(),
+    )))
+}
+
+fn cli_companions(executable: &Path) -> Vec<PathBuf> {
+    let Some(parent) = executable.parent() else {
+        return vec![];
+    };
+    let mut companions = vec![];
+    if let Some(suffix) = executable
+        .file_name()
+        .and_then(|name| name.to_str())
+        .and_then(|name| {
+            name.strip_prefix("coder-new-openagents-")
+                .or_else(|| name.strip_prefix("coder-openagents-"))
+        })
+    {
+        companions.push(parent.join(format!("openagents-openagents-{suffix}")));
+    }
+    companions.push(parent.join(if cfg!(windows) {
+        "openagents.exe"
+    } else {
+        "openagents"
+    }));
+    companions
+}
+
+pub async fn cli(
+    arguments: &[String],
+    cwd: &Path,
+    cancel: &Arc<AtomicBool>,
+) -> Result<Value, String> {
+    let program = cli_binary().ok_or_else(|| {
+        "The bundled OpenAgents CLI is missing. Install Coder with scripts/install-coder.sh."
+            .to_string()
+    })?;
+    cli_at(&program, arguments, cwd, cancel).await
+}
+
+async fn cli_at(
+    program: &Path,
+    arguments: &[String],
+    cwd: &Path,
+    cancel: &Arc<AtomicBool>,
+) -> Result<Value, String> {
+    validate_arguments(arguments)?;
+    if cancel.load(Ordering::Relaxed) {
+        return Err("The CLI call was canceled before it started.".into());
+    }
+    let mut command = std::process::Command::new(program);
+    command.arg("--json").args(arguments).current_dir(cwd);
+    scrub_plugin_credentials(&mut command);
+    let job = supervise::Job::from_command(command)
+        .bounded(supervise::Limits::within(Duration::from_secs(300)).keeping(TEXT_MAX));
+    let stopped = wait_job(job, cancel).await?;
+    Ok(
+        json!({"exit":stopped.ending.code(),"stdout":String::from_utf8_lossy(&stopped.rest.bytes),"stderr":stopped.stderr.marked(),"timed_out":matches!(stopped.ending,supervise::Ending::TimedOut),"canceled":stopped.requested,"group_clear":stopped.group_clear,"truncated":!stopped.rest.gaps.is_empty()}),
+    )
+}
+
+async fn wait_job(
+    job: supervise::Job,
+    cancel: &Arc<AtomicBool>,
+) -> Result<supervise::Stopped, String> {
+    let live = job.start(supervise::Input::Null)?;
+    while !live.finished() {
+        if cancel.load(Ordering::Relaxed) {
+            return Ok(live.stop().await);
+        }
+        tokio::time::sleep(POLL).await;
+    }
+    Ok(live.wait().await)
+}
+
+fn scrub_credentials(command: &mut std::process::Command) {
+    for (name, _) in std::env::vars_os() {
+        let text = name.to_string_lossy();
+        if text.ends_with("_API_KEY") || text.ends_with("_TOKEN") || text.ends_with("_SECRET") {
+            command.env_remove(name);
+        }
+    }
+}
+
+fn scrub_plugin_credentials(command: &mut std::process::Command) {
+    for name in ["OPENROUTER_API_KEY", "TYPESAFE_API_KEY"] {
+        command.env_remove(name);
+    }
+}
+
+/// Keep this future alive after cancellation until process-group cleanup returns.
+pub async fn acp(
+    agent: &AcpAgent,
+    task: &str,
+    cwd: &Path,
+    cancel: &Arc<AtomicBool>,
+    emit: &mut dyn FnMut(RuntimeEvent),
+) -> Result<Value, String> {
+    agent.validate()?;
+    if !agent.enabled {
+        return Err("This ACP agent is turned off.".into());
+    }
+    validate_task(task)?;
+    let started = Instant::now();
+    let canceled =
+        || cancel.load(Ordering::Relaxed) || started.elapsed() >= Duration::from_secs(RUN_SECONDS);
+    if canceled() {
+        return Err("The ACP task was canceled before it started.".into());
+    }
+    let program = if agent.program.is_absolute() || agent.program.components().count() > 1 {
+        acp_client::process::first_executable([if agent.program.is_absolute() {
+            agent.program.clone()
+        } else {
+            cwd.join(&agent.program)
+        }])
+    } else {
+        acp_client::process::first_executable(acp_client::process::on_path(
+            &agent.program.to_string_lossy(),
+            std::env::var_os("PATH").as_deref(),
+        ))
+    }
+    .ok_or_else(|| format!("The executable for {} is unavailable.", agent.name))?;
+    let environment = std::env::vars()
+        .filter(|(name, _)| {
+            !(name.ends_with("_API_KEY") || name.ends_with("_TOKEN") || name.ends_with("_SECRET"))
+        })
+        .collect();
+    let opening = Opening {
+        spec: acp_client::process::Spec {
+            program,
+            arguments: agent.arguments.clone(),
+            cwd: cwd.to_path_buf(),
+            environment,
+        },
+        resume: None,
+        meta: None,
+        mode: agent.mode.clone(),
+    };
+    let mut session = Session::open(&opening, &canceled)
+        .await
+        .map_err(|error| error.to_string())?;
+    let id = session.id().to_owned();
+    let model = session.opened.model().map(str::to_owned);
+    if let Some(model) = &model {
+        emit(RuntimeEvent::Model(model.clone()));
+    }
+    let mut handler = AcpEvents {
+        emit,
+        text: String::new(),
+        tools: BTreeMap::new(),
+    };
+    let result = session
+        .prompt(
+            task,
+            Duration::from_secs(120),
+            &canceled,
+            Duration::from_secs(2),
+            &mut handler,
+        )
+        .await;
+    let text = handler.text;
+    let group_clear = session.close(Duration::from_secs(2)).await;
+    result.map(|reply| json!({"session":id,"reply":text,"model":model,"stop_reason":reply.stop_reason.as_str(),"usage":reply.usage,"group_clear":group_clear})).map_err(|error| format!("ACP task failed: {error}; process group cleared: {group_clear}."))
+}
+
+struct AcpEvents<'a> {
+    emit: &'a mut dyn FnMut(RuntimeEvent),
+    text: String,
+    tools: BTreeMap<String, (String, Value)>,
+}
+
+impl Handler for AcpEvents<'_> {
+    fn update(&mut self, update: Update) {
+        match update {
+            Update::AgentText(text) => {
+                let text = bounded(&text, TEXT_MAX.saturating_sub(self.text.len()));
+                self.text.push_str(&text);
+                (self.emit)(RuntimeEvent::Text(text));
+            }
+            Update::ToolCall {
+                id,
+                title,
+                raw_input,
+                status,
+                ..
+            } => {
+                self.tools.insert(id, (title.clone(), raw_input.clone()));
+                (self.emit)(RuntimeEvent::Tool {
+                    name: title,
+                    input: raw_input,
+                    output: Value::Null,
+                    running: status != "completed" && status != "failed",
+                });
+            }
+            Update::ToolCallUpdate {
+                id,
+                title,
+                status,
+                text,
+            } => {
+                let (name, input) = self
+                    .tools
+                    .entry(id.clone())
+                    .or_insert_with(|| (title.unwrap_or(id), Value::Null));
+                (self.emit)(RuntimeEvent::Tool {
+                    name: name.clone(),
+                    input: input.clone(),
+                    output: json!(text.map(|text| bounded(&text, TEXT_MAX))),
+                    running: status
+                        .as_deref()
+                        .is_none_or(|status| status != "completed" && status != "failed"),
+                });
+            }
+            _ => {}
+        }
+    }
+}
+
+fn validate_task(task: &str) -> Result<(), String> {
+    if task.trim().is_empty() || task.len() > TEXT_MAX {
+        Err("A task must contain 1 to 65,536 bytes.".into())
+    } else {
+        Ok(())
+    }
+}
+
+/// Resolve the existing local model providers without requiring OpenRouter.
+pub fn local_generator() -> Result<AnyGenerator, String> {
+    use codex_transport::codex::{CodexTransport, Login};
+    let session = format!("coder-new-{}", std::process::id());
+    if let Some(path) = Login::default_path() {
+        if let Ok(transport) = CodexTransport::new(path, &session) {
+            return Ok(AnyGenerator::Codex(CodexGenerator {
+                transport,
+                model: microcoder_loop::MODEL.into(),
+                effort: None,
+                cache_key: session,
+                images: vec![],
+            }));
+        }
+    }
+    microcoder_loop::claude::ClaudeGenerator::from_env(microcoder_loop::MODEL, None).map(AnyGenerator::Claude).map_err(|_| "Microcoder needs a Codex or Claude Code login, or an enabled OpenRouter BYOK plugin with a key.".into())
+}
+
+pub async fn microcoder_local(
+    task: &str,
+    cwd: &Path,
+    jev: Option<jev::Client>,
+    redaction_keys: &[ApiKey],
+    cancel: &Arc<AtomicBool>,
+    emit: &mut dyn FnMut(RuntimeEvent),
+) -> Result<Value, String> {
+    validate_task(task)?;
+    let generator = local_generator()?;
+    run_microcoder(task, cwd, &generator, jev, redaction_keys, cancel, emit).await
+}
+
+pub async fn microcoder_openrouter(
+    task: &str,
+    cwd: &Path,
+    client: openrouter::Client,
+    model: String,
+    effort: Option<String>,
+    jev: Option<jev::Client>,
+    redaction_keys: &[ApiKey],
+    cancel: &Arc<AtomicBool>,
+    emit: &mut dyn FnMut(RuntimeEvent),
+) -> Result<Value, String> {
+    validate_task(task)?;
+    let generator = OpenRouterGenerator {
+        client,
+        model,
+        effort,
+    };
+    run_microcoder(task, cwd, &generator, jev, redaction_keys, cancel, emit).await
+}
+
+async fn run_microcoder<G: Generate>(
+    task: &str,
+    cwd: &Path,
+    generator: &G,
+    jev: Option<jev::Client>,
+    redaction_keys: &[ApiKey],
+    cancel: &Arc<AtomicBool>,
+    emit: &mut dyn FnMut(RuntimeEvent),
+) -> Result<Value, String> {
+    if cancel.load(Ordering::Relaxed) {
+        return Err("The Microcoder task was canceled before it started.".into());
+    }
+    let directory = cwd
+        .canonicalize()
+        .map_err(|_| "The working directory is unavailable.".to_string())?;
+    let boundary = coder_boundary::Boundary::writing(&directory)
+        .owned_scratch_under(std::env::temp_dir())
+        .build()
+        .map_err(|error| format!("Microcoder could not bound its commands: {error}"))?;
+    let environment = Checkout {
+        directory: directory.clone(),
+        boundary,
+        cancel: Arc::clone(cancel),
+        redaction_keys,
+    };
+    let state = State {
+        task: redact_text(task, redaction_keys),
+        environment: format!(
+            "Working directory: {}. Commands may write only this checkout and the host's private scratch directory.",
+            directory.display()
+        ),
+        ..State::default()
+    };
+    let judge = PluginJudge(jev.map(|client| JevJudge { client }));
+    let canceled_generator = CancellableGenerator {
+        generator,
+        cancel,
+        redaction_keys,
+    };
+    let set = microcoder_loop::models::question_set();
+    let route = microcoder_loop::models::route_set();
+    let models = Models {
+        generator: &canceled_generator,
+        judge: &judge,
+        set: &set,
+        route: &route,
+        strong: None,
+        knowledge: None,
+    };
+    let limits = Limits {
+        max_steps: Some(24),
+        max_seconds: Some(RUN_SECONDS),
+        max_usd: 1.0,
+        command_seconds: 120,
+        test_seconds: 30,
+        acceptance: false,
+        stuck_steps: Some(microcoder_loop::run::STUCK_STEPS),
+        ..Limits::default()
+    };
+    let mut observer = MicrocoderEvents {
+        emit,
+        reply: String::new(),
+        model: None,
+        tokens: 0,
+        redaction_keys,
+    };
+    let (_, outcome) = microcoder_loop::run::run(
+        state,
+        "Complete the user's task.",
+        &environment,
+        &models,
+        &limits,
+        &mut observer,
+    )
+    .await;
+    let mut result = json!({"reply":observer.reply,"model":observer.model,"tokens":observer.tokens,"outcome":outcome});
+    for key in redaction_keys {
+        crate::plugin_tools::redact_value(&mut result, key.expose());
+    }
+    Ok(result)
+}
+
+struct PluginJudge(Option<JevJudge>);
+
+struct CancellableGenerator<'a, G> {
+    generator: &'a G,
+    cancel: &'a Arc<AtomicBool>,
+    redaction_keys: &'a [ApiKey],
+}
+
+impl<G: Generate> Generate for CancellableGenerator<'_, G> {
+    async fn generate(&self, system: &str, prompt: &str) -> microcoder_loop::models::Generated {
+        let system = redact_text(system, self.redaction_keys);
+        let prompt = redact_text(prompt, self.redaction_keys);
+        let mut generated = tokio::select! {
+            generated = self.generator.generate(&system, &prompt) => generated,
+            () = async { while !self.cancel.load(Ordering::Relaxed) { tokio::time::sleep(POLL).await; } } => microcoder_loop::models::Generated {
+                action: Err("The user canceled this generation.".into()),
+                model: String::new(), prompt_tokens: 0, completion_tokens: 0, usd: None, known_usd: 0.0,
+                cost_unknown: Some("A generation was canceled after it may have reached the provider.".into()),
+                usd_upper: None, cost_basis: microcoder_loop::models::Basis::ListPrice, milliseconds: 0,
+            },
+        };
+        generated.model = redact_text(&generated.model, self.redaction_keys);
+        generated.cost_unknown = generated
+            .cost_unknown
+            .map(|text| redact_text(&text, self.redaction_keys));
+        match &mut generated.action {
+            Ok(action) => {
+                action.rationale = redact_text(&action.rationale, self.redaction_keys);
+                action.reply = redact_text(&action.reply, self.redaction_keys);
+                for text in action
+                    .commands
+                    .iter_mut()
+                    .chain(&mut action.view)
+                    .chain(&mut action.expand)
+                {
+                    *text = redact_text(text, self.redaction_keys);
+                }
+            }
+            Err(error) => *error = redact_text(error, self.redaction_keys),
+        }
+        generated
+    }
+}
+
+impl Judge for PluginJudge {
+    async fn judge(&self, set: &QuestionSet, state: &Value) -> Judgment {
+        match &self.0 {
+            Some(judge) => judge.judge(set, state).await,
+            None => Judgment {
+                error: Some("Jev is not configured; no decision was made.".into()),
+                ..Judgment::free()
+            },
+        }
+    }
+}
+
+struct Checkout<'a> {
+    directory: PathBuf,
+    boundary: coder_boundary::Boundary,
+    cancel: Arc<AtomicBool>,
+    redaction_keys: &'a [ApiKey],
+}
+
+impl Env for Checkout<'_> {
+    async fn run(&self, script: &str, deadline: Duration) -> CommandResult {
+        let started = Instant::now();
+        let result = async {
+            #[cfg(unix)]
+            let mut command = self
+                .boundary
+                .command("/bin/sh", ["-c", script])
+                .map_err(|error| error.to_string())?;
+            #[cfg(windows)]
+            let mut command = self
+                .boundary
+                .command(
+                    "powershell.exe",
+                    ["-NoProfile", "-NonInteractive", "-Command", script],
+                )
+                .map_err(|error| error.to_string())?;
+            command.current_dir(&self.directory);
+            if let Some(scratch) = self.boundary.scratch() {
+                command.env("TMPDIR", scratch);
+            }
+            scrub_credentials(&mut command);
+            wait_job(
+                supervise::Job::from_command(command)
+                    .bounded(supervise::Limits::within(deadline).keeping(TEXT_MAX)),
+                &self.cancel,
+            )
+            .await
+        }
+        .await;
+        let (output, exit, timed_out) = match result {
+            Ok(stopped) => {
+                let mut text = String::from_utf8_lossy(&stopped.rest.bytes).into_owned();
+                if !stopped.stderr.text.is_empty() {
+                    text.push('\n');
+                    text.push_str(&stopped.stderr.marked());
+                }
+                if !stopped.group_clear {
+                    text.push_str("\nThe command's process group did not clear.");
+                }
+                (
+                    text,
+                    stopped.ending.code(),
+                    stopped.requested || matches!(stopped.ending, supervise::Ending::TimedOut),
+                )
+            }
+            Err(error) => (error, None, false),
+        };
+        CommandResult {
+            command: redact_text(script, self.redaction_keys),
+            exit,
+            timed_out,
+            seconds: started.elapsed().as_secs_f64(),
+            output: bounded(&redact_text(&output, self.redaction_keys), TEXT_MAX),
+        }
+    }
+
+    async fn read(&self, path: &str) -> Option<String> {
+        let path = self.directory.join(path).canonicalize().ok()?;
+        if !path.starts_with(&self.directory) {
+            return None;
+        }
+        let file = std::fs::File::open(path).ok()?;
+        use std::io::Read;
+        let mut bytes = Vec::new();
+        file.take(TEXT_MAX as u64).read_to_end(&mut bytes).ok()?;
+        Some(redact_text(
+            &String::from_utf8_lossy(&bytes),
+            self.redaction_keys,
+        ))
+    }
+
+    fn stopped(&self) -> bool {
+        self.cancel.load(Ordering::Relaxed)
+    }
+}
+
+struct MicrocoderEvents<'a> {
+    emit: &'a mut dyn FnMut(RuntimeEvent),
+    reply: String,
+    model: Option<String>,
+    tokens: u64,
+    redaction_keys: &'a [ApiKey],
+}
+
+impl Observer for MicrocoderEvents<'_> {
+    fn event(&mut self, _seconds: f64, event: &Event) {
+        match event {
+            Event::Generated { generated, .. } => {
+                if !generated.model.is_empty() {
+                    let model = redact_text(&generated.model, self.redaction_keys);
+                    self.model = Some(model.clone());
+                    (self.emit)(RuntimeEvent::Model(model));
+                }
+                self.tokens = self
+                    .tokens
+                    .saturating_add(generated.prompt_tokens)
+                    .saturating_add(generated.completion_tokens);
+                if let Ok(action) = &generated.action {
+                    if !action.reply.is_empty() {
+                        self.reply =
+                            bounded(&redact_text(&action.reply, self.redaction_keys), TEXT_MAX);
+                    }
+                    for command in &action.commands {
+                        (self.emit)(RuntimeEvent::Tool {
+                            name: "Run".into(),
+                            input: json!(redact_text(command, self.redaction_keys)),
+                            output: Value::Null,
+                            running: true,
+                        });
+                    }
+                    if action.finished && !self.reply.is_empty() {
+                        (self.emit)(RuntimeEvent::Text(self.reply.clone()));
+                    }
+                }
+            }
+            Event::Ran { result, .. } => (self.emit)(RuntimeEvent::Tool {
+                name: "Run".into(),
+                input: json!(result.command),
+                output: json!(result),
+                running: false,
+            }),
+            _ => {}
+        }
+    }
+}
+
+fn redact_text(text: &str, keys: &[ApiKey]) -> String {
+    let mut text = text.to_owned();
+    for key in keys {
+        if !key.expose().is_empty() {
+            text = text.replace(key.expose(), "[redacted]");
+        }
+    }
+    text
+}
+
+fn bounded(text: &str, bytes: usize) -> String {
+    let mut end = text.len().min(bytes);
+    while !text.is_char_boundary(end) {
+        end -= 1;
+    }
+    text[..end].into()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn agent(program: PathBuf) -> AcpAgent {
+        AcpAgent {
+            id: "reviewer".into(),
+            name: "Reviewer".into(),
+            program,
+            arguments: vec![],
+            mode: None,
+            enabled: true,
+        }
+    }
+
+    #[test]
+    fn configured_acp_agents_are_the_only_model_choices() {
+        let mut a = agent("/example/reviewer".into());
+        let definition = acp_tool_definition(&[a.clone()]).unwrap();
+        assert_eq!(
+            definition["function"]["parameters"]["properties"]["agent"]["enum"],
+            json!(["reviewer"])
+        );
+        assert!(definition.to_string().find("/example/reviewer").is_none());
+        a.enabled = false;
+        assert!(acp_tool_definition(&[a]).is_none());
+        let invalid = agent("".into());
+        assert!(acp_tool_definition(&[invalid]).is_none());
+    }
+
+    #[test]
+    fn installer_companions_follow_the_exact_versioned_coder_build() {
+        let parent = Path::new("/fixture/versions");
+        assert_eq!(
+            cli_companions(&parent.join("coder-openagents-abc-dirty"))[0],
+            parent.join("openagents-openagents-abc-dirty")
+        );
+        assert_eq!(
+            cli_companions(&parent.join("coder-new-openagents-xyz"))[0],
+            parent.join("openagents-openagents-xyz")
+        );
+        assert_eq!(
+            cli_companions(&parent.join("coder-new")),
+            vec![parent.join(if cfg!(windows) {
+                "openagents.exe"
+            } else {
+                "openagents"
+            })]
+        );
+    }
+
+    #[test]
+    fn cli_keeps_its_normal_authentication_environment() {
+        let mut command = std::process::Command::new("/fixture/openagents");
+        for name in ["GH_TOKEN", "OPENAGENTS_API_KEY", "OA_TOKEN"] {
+            command.env(name, "fixture-value");
+        }
+        scrub_plugin_credentials(&mut command);
+        let environment: BTreeMap<_, _> = command.get_envs().collect();
+        for name in ["GH_TOKEN", "OPENAGENTS_API_KEY", "OA_TOKEN"] {
+            assert_eq!(
+                environment.get(std::ffi::OsStr::new(name)),
+                Some(&Some(std::ffi::OsStr::new("fixture-value")))
+            );
+        }
+        for name in ["OPENROUTER_API_KEY", "TYPESAFE_API_KEY"] {
+            assert_eq!(environment.get(std::ffi::OsStr::new(name)), Some(&None));
+        }
+    }
+
+    #[test]
+    fn acp_tool_updates_keep_the_original_title_and_input() {
+        let mut events = vec![];
+        let input = json!({"path":"fixture.rs"});
+        let mut handler = AcpEvents {
+            emit: &mut |event| events.push(event),
+            text: String::new(),
+            tools: BTreeMap::new(),
+        };
+        handler.update(Update::ToolCall {
+            id: "read-1".into(),
+            title: "Read fixture.rs".into(),
+            kind: "read".into(),
+            status: "in_progress".into(),
+            raw_input: input.clone(),
+            tool: None,
+        });
+        handler.update(Update::ToolCallUpdate {
+            id: "read-1".into(),
+            title: Some("Read finished".into()),
+            status: None,
+            text: None,
+        });
+        handler.update(Update::ToolCallUpdate {
+            id: "read-1".into(),
+            title: None,
+            status: Some("completed".into()),
+            text: Some("contents".into()),
+        });
+        drop(handler);
+        assert_eq!(events.len(), 3);
+        for event in &events {
+            assert!(
+                matches!(event, RuntimeEvent::Tool {name,input:actual,..} if name == "Read fixture.rs" && actual == &input)
+            );
+        }
+        assert!(
+            matches!(&events[2], RuntimeEvent::Tool {running:false,output,..} if output == "contents")
+        );
+    }
+
+    #[tokio::test]
+    #[cfg(unix)]
+    async fn cli_passes_argv_without_a_shell_and_captures_bounded_json() {
+        use std::os::unix::fs::PermissionsExt;
+        let dir = tempfile::tempdir().unwrap();
+        let program = dir.path().join("openagents");
+        std::fs::write(&program, "#!/bin/sh\nprintf '%s\\n' \"$@\"\n").unwrap();
+        std::fs::set_permissions(&program, std::fs::Permissions::from_mode(0o755)).unwrap();
+        let result = cli_at(
+            &program,
+            &["doctor".into(), "$(touch injected)".into()],
+            dir.path(),
+            &Arc::new(AtomicBool::new(false)),
+        )
+        .await
+        .unwrap();
+        assert_eq!(result["exit"], 0);
+        assert_eq!(result["stdout"], "--json\ndoctor\n$(touch injected)\n");
+        assert!(result["group_clear"].as_bool().unwrap());
+        assert!(!dir.path().join("injected").exists());
+    }
+
+    #[tokio::test]
+    #[cfg(unix)]
+    async fn canceling_cli_cleans_up_its_children() {
+        use std::os::unix::fs::PermissionsExt;
+        let dir = tempfile::tempdir().unwrap();
+        let program = dir.path().join("openagents");
+        std::fs::write(&program, "#!/bin/sh\n(sleep 1; touch escaped) &\nwait\n").unwrap();
+        std::fs::set_permissions(&program, std::fs::Permissions::from_mode(0o755)).unwrap();
+        let cancel = Arc::new(AtomicBool::new(false));
+        let signal = Arc::clone(&cancel);
+        let (result, ()) = tokio::join!(cli_at(&program, &[], dir.path(), &cancel), async move {
+            tokio::time::sleep(Duration::from_millis(150)).await;
+            signal.store(true, Ordering::Relaxed);
+        });
+        let result = result.unwrap();
+        assert_eq!(result["canceled"], true);
+        assert_eq!(result["group_clear"], true);
+        tokio::time::sleep(Duration::from_millis(1100)).await;
+        assert!(!dir.path().join("escaped").exists());
+    }
+
+    #[tokio::test]
+    #[cfg(unix)]
+    async fn acp_uses_the_existing_protocol_and_closes_the_process_group() {
+        let dir = tempfile::tempdir().unwrap();
+        let recording = acp_client::replay::GROK_TURN;
+        let program =
+            acp_client::replay::script(dir.path(), &acp_client::replay::blocks(recording));
+        let mut events = vec![];
+        let result = acp(
+            &agent(program),
+            "Review this scratch task.",
+            dir.path(),
+            &Arc::new(AtomicBool::new(false)),
+            &mut |event| events.push(event),
+        )
+        .await
+        .unwrap();
+        assert_eq!(result["reply"], "done");
+        assert_eq!(result["stop_reason"], "end_turn");
+        assert_eq!(result["group_clear"], true);
+        assert!(
+            events
+                .iter()
+                .any(|event| matches!(event,RuntimeEvent::Text(text) if text == "done"))
+        );
+        let sent = acp_client::replay::received(dir.path());
+        assert_eq!(sent[1]["method"], "session/new");
+        assert_eq!(sent[2]["method"], "session/prompt");
+    }
+
+    #[tokio::test]
+    #[cfg(unix)]
+    async fn acp_permission_requests_do_not_gain_authority_from_enablement() {
+        let dir = tempfile::tempdir().unwrap();
+        let mut blocks = acp_client::replay::blocks(acp_client::replay::GROK_TURN);
+        let completed = std::mem::replace(
+            &mut blocks[2],
+            vec![
+                json!({"jsonrpc":"2.0","id":"permission-1","method":"session/request_permission","params":{"sessionId":"grok-session-1","toolCall":{"toolCallId":"write-1","title":"Change files","kind":"edit"},"options":[{"optionId":"allow","name":"Allow","kind":"allow_once"},{"optionId":"deny","name":"Deny","kind":"reject_once"}]}}),
+            ],
+        );
+        blocks.push(completed);
+        let program = acp_client::replay::script(dir.path(), &blocks);
+        let script = std::fs::read_to_string(&program).unwrap().replace(
+            "case \"$line\" in",
+            "case \"$line\" in\n    *'\"id\":\"permission-1\"'*) cat \"$dir/4.jsonl\" ;;",
+        );
+        std::fs::write(&program, script).unwrap();
+        let _ = acp(
+            &agent(program),
+            "Review this scratch task.",
+            dir.path(),
+            &Arc::new(AtomicBool::new(false)),
+            &mut |_| {},
+        )
+        .await
+        .unwrap();
+        let sent = acp_client::replay::received(dir.path());
+        let answer = sent
+            .iter()
+            .find(|frame| frame["id"] == "permission-1")
+            .unwrap();
+        assert_eq!(answer["result"]["outcome"]["optionId"], "deny");
+    }
+
+    #[tokio::test]
+    #[cfg(unix)]
+    async fn microcoder_uses_the_real_loop_with_offline_generation() {
+        use microcoder_loop::models::{Ask, Basis, Generated, NextAction};
+        struct Finished;
+        impl Generate for Finished {
+            async fn generate(&self, _system: &str, prompt: &str) -> Generated {
+                assert!(prompt.contains("A scratch task"));
+                Generated {
+                    action: Ok(NextAction {
+                        rationale: "Done.".into(),
+                        commands: vec![],
+                        view: vec![],
+                        freeze_tests: false,
+                        expand: vec![],
+                        finished: true,
+                        reply: "The scratch task is complete.".into(),
+                        ask: Ask::None,
+                    }),
+                    model: "fixture/model".into(),
+                    prompt_tokens: 25,
+                    completion_tokens: 10,
+                    usd: Some(0.0),
+                    known_usd: 0.0,
+                    cost_unknown: None,
+                    usd_upper: Some(0.0),
+                    cost_basis: Basis::Billed,
+                    milliseconds: 1,
+                }
+            }
+        }
+        let dir = tempfile::tempdir().unwrap();
+        if coder_boundary::Boundary::writing(dir.path())
+            .build()
+            .is_err()
+        {
+            return;
+        }
+        let mut events = vec![];
+        let result = run_microcoder(
+            "A scratch task",
+            dir.path(),
+            &Finished,
+            None,
+            &[],
+            &Arc::new(AtomicBool::new(false)),
+            &mut |event| events.push(event),
+        )
+        .await
+        .unwrap();
+        assert_eq!(result["reply"], "The scratch task is complete.");
+        assert_eq!(result["model"], "fixture/model");
+        assert_eq!(result["tokens"], 35);
+        assert_eq!(result["outcome"]["ending"]["reason"], "finished");
+        assert!(
+            events.iter().any(
+                |event| matches!(event,RuntimeEvent::Model(model) if model == "fixture/model")
+            )
+        );
+    }
+
+    #[tokio::test]
+    async fn canceling_generation_does_not_wait_for_the_provider() {
+        struct Waiting;
+        impl Generate for Waiting {
+            async fn generate(
+                &self,
+                _system: &str,
+                _prompt: &str,
+            ) -> microcoder_loop::models::Generated {
+                std::future::pending().await
+            }
+        }
+        let cancel = Arc::new(AtomicBool::new(true));
+        let generator = CancellableGenerator {
+            generator: &Waiting,
+            cancel: &cancel,
+            redaction_keys: &[],
+        };
+        let result = tokio::time::timeout(Duration::from_secs(1), generator.generate("", ""))
+            .await
+            .unwrap();
+        assert!(result.action.is_err());
+        assert!(result.usd.is_none());
+        assert!(result.cost_unknown.is_some());
+    }
+
+    #[tokio::test]
+    #[cfg(unix)]
+    async fn microcoder_redacts_command_and_file_observations_before_the_next_generation() {
+        use microcoder_loop::models::{Ask, Basis, Generated, NextAction};
+        const MARKER: &str = "fixture-saved-provider-credential";
+        struct Fixture(std::sync::atomic::AtomicUsize);
+        impl Generate for Fixture {
+            async fn generate(&self, _system: &str, prompt: &str) -> Generated {
+                let first = self.0.fetch_add(1, Ordering::Relaxed) == 0;
+                assert!(!prompt.contains(MARKER));
+                if !first {
+                    assert!(prompt.matches("[redacted]").count() >= 2);
+                }
+                Generated {
+                    action: Ok(NextAction {
+                        rationale: "Inspect the scratch configuration.".into(),
+                        commands: if first {
+                            vec!["cat .env".into()]
+                        } else {
+                            vec![]
+                        },
+                        view: vec![".env".into()],
+                        freeze_tests: false,
+                        expand: vec![],
+                        finished: !first,
+                        reply: if first {
+                            String::new()
+                        } else {
+                            "The configuration was inspected.".into()
+                        },
+                        ask: Ask::None,
+                    }),
+                    model: "fixture/model".into(),
+                    prompt_tokens: 1,
+                    completion_tokens: 1,
+                    usd: Some(0.0),
+                    known_usd: 0.0,
+                    cost_unknown: None,
+                    usd_upper: Some(0.0),
+                    cost_basis: Basis::Billed,
+                    milliseconds: 1,
+                }
+            }
+        }
+        let dir = tempfile::tempdir().unwrap();
+        let directory = dir.path().canonicalize().unwrap();
+        std::fs::write(
+            directory.join(".env"),
+            format!("OPENROUTER_API_KEY={MARKER}\n"),
+        )
+        .unwrap();
+        let Ok(boundary) = coder_boundary::Boundary::writing(&directory).build() else {
+            return;
+        };
+        let keys = vec![ApiKey::new(MARKER)];
+        let cancel = Arc::new(AtomicBool::new(false));
+        let environment = Checkout {
+            directory,
+            boundary,
+            cancel: Arc::clone(&cancel),
+            redaction_keys: &keys,
+        };
+        assert_eq!(
+            environment.read(".env").await.as_deref(),
+            Some("OPENROUTER_API_KEY=[redacted]\n")
+        );
+        let output = environment.run("cat .env", Duration::from_secs(5)).await;
+        assert_eq!(output.exit, Some(0));
+        assert!(output.output.contains("[redacted]"));
+        assert!(!output.output.contains(MARKER));
+        drop(environment);
+        let generator = Fixture(std::sync::atomic::AtomicUsize::new(0));
+        let mut events = vec![];
+        let result = run_microcoder(
+            "Inspect this scratch configuration.",
+            dir.path(),
+            &generator,
+            None,
+            &keys,
+            &cancel,
+            &mut |event| events.push(event),
+        )
+        .await
+        .unwrap();
+        assert_eq!(generator.0.load(Ordering::Relaxed), 2);
+        assert_eq!(result["reply"], "The configuration was inspected.");
+        assert!(!result.to_string().contains(MARKER));
+        assert!(events.iter().any(|event| matches!(event,RuntimeEvent::Tool {running:false,output,..} if output["output"].as_str().is_some_and(|output| output.contains("[redacted]")))));
+    }
+
+    #[tokio::test]
+    async fn unconfigured_jev_is_missing_evidence() {
+        let judge = PluginJudge(None);
+        let result = judge
+            .judge(
+                &microcoder_loop::models::question_set(),
+                &json!({"task":"A scratch task"}),
+            )
+            .await;
+        assert!(result.answers.is_empty());
+        assert!(result.error.as_deref().unwrap().contains("no decision"));
+        assert_eq!(result.usd, Some(0.0));
+    }
+}

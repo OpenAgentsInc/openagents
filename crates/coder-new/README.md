@@ -1,6 +1,6 @@
 # Coder terminal
 
-A Ratatui terminal with direct OpenRouter chat and a separate demo mode.
+A Ratatui terminal with bundled plugins, live chat, and a separate demo mode.
 Interactive runs start in live mode. `/demo` toggles between live and demo;
 `--demo` starts with the fixtures. Demo mode shows Read, Search, Edit, and Run
 examples, a diff, four running
@@ -33,19 +33,47 @@ User messages keep the compact prompt band. Markdown wraps to the transcript
 width while model labels stay separate from the message content.
 See the [Markdown transcript preview](../../docs/coder-new/markdown.svg).
 
-Press F2 or enter `/plugins` to manage **OpenRouter BYOK**.
-Space toggles its enabled preference; Enter opens connection settings. The
-settings screen has a masked **OpenRouter API key**, an optional model ID, and
+Press F2 or enter `/plugins` to manage the bundled plugins. Up/Down selects a
+plugin, Space turns it on or off, and Enter opens its settings. **Microcoder**,
+**Jev**, **OpenAgents CLI**, and **ACP Subagents** default to on. **OpenRouter
+BYOK** defaults to off; a key imported at startup enables it when no saved
+preference exists. Saving the first key also enables it. A saved off preference stays off.
+
+OpenRouter's settings screen has a masked **OpenRouter API key**, an optional model ID, and
 the fixed direct endpoint `https://openrouter.ai/api/v1`. Tab moves between
 fields and actions; Enter selects an action; Esc cancels or returns to chat.
 In live mode, **Test API key** checks the entered or saved key with
 `GET /api/v1/key`. Saving a key also checks it; successful checks show
-**Verified**, while errors report their cause. The enabled preference stays
-separate: turn the plugin on to send chat messages. The default model is
+**Verified**, while errors report their cause. Turning the plugin off retains
+the key and model settings. The default model is
 `openrouter/free`, including when you leave the model field blank.
 Replies stream from `/api/v1/chat/completions`
 on a background worker, with prior live messages included. Esc stops a reply;
 failed requests are not retried automatically.
+
+Enabled plugins register their tools and usage instructions for OpenRouter
+chat. Tool calls run on the background worker, appear in the transcript, and
+return their results to the model. Each turn allows at most eight model rounds
+and 32 plugin calls. **Microcoder** uses the existing coding loop, Jev judgments
+when configured, and commands bounded to the current checkout. With OpenRouter
+off or unconfigured, live chat uses Microcoder through an existing Codex or
+Claude Code login. That local loop retains its structured command protocol.
+**OpenAgents CLI** exposes `openagents_cli`, which accepts an argument array
+and adds `--json`. [Coder's installer](../../scripts/install-coder.sh) builds
+and installs the companion `openagents` binary with Coder.
+
+**Jev** has masked TypeSafe API key settings and a model ID, defaulting to
+`jev-latest`. Key checks list models without running inference. Its `jev` tool
+uses the existing Rust SDK to send state and typed Noul, Choice, or Score
+questions, then returns typed answers and probabilities. The registered
+instructions describe when to use those judgments and how to interpret them.
+**ACP Subagents** configures a JSON array of named local ACP executables with
+`id`, `name`, `program`, optional `arguments`, optional `mode`, and `enabled`.
+Paste definitions into its editor and press Ctrl+S to save. Chat delegates
+through `acp_subagent` using a registered ID; it cannot choose an executable.
+The host denies ACP permission requests and closes each child session.
+See the [Jev settings](../../docs/coder-new/jev-settings.svg) and
+[ACP settings](../../docs/coder-new/acp-settings.svg) previews.
 
 Enter `/models` to open a searchable picker, reimplemented from Grok Build's
 staged model and reasoning picker. Choices include the providing plugin, so
@@ -77,15 +105,21 @@ metadata leaves the label absent.
 See the [reply attribution preview](../../docs/coder-new/model-attribution.svg).
 
 Removing a key takes effect when you save. Disabling retains configuration.
-Live plugin preferences and the API key survive restarts in
-`~/.openagents/coder-new/plugins.json`. The directory uses `0700` permissions;
-the file uses `0600`. Saves replace the file atomically, and failed saves keep
+Live OpenRouter preferences and its key survive restarts in
+`~/.openagents/coder-new/plugins.json`; the other plugins use
+`~/.openagents/coder-new/bundled-plugins.json`. The directory uses `0700`
+permissions and the files use `0600`. Saves replace files atomically, and failed saves keep
 the previous settings and editable draft. Connection verification runs again
 when you test the restored key; verification status is not saved.
 The editable key draft clears on save or cancel. Keys stay redacted in the UI
 and errors. Demo settings and conversations last only until you quit, and demo
 mode makes no requests or settings writes. Switching modes keeps their
 preferences, drafts, and transcripts separate and cancels pending network work.
+Startup imports `OPENROUTER_API_KEY`, `TYPESAFE_API_KEY`, and
+`TYPESAFE_BASE_URL` from the process environment, then the working directory's
+`.env`. OpenRouter also accepts the existing `~/.openagents/openrouter.json`
+key file. Saved plugin keys take precedence. Imports do not write settings;
+`.env` values are read as literals without shell execution or expansion.
 OpenRouter's own upstream-provider BYOK settings are separate from
 this plugin's OpenRouter API key. See [OpenRouter authentication](https://openrouter.ai/docs/api_reference/authentication),
 the [API reference](https://openrouter.ai/docs/api_reference/overview), and
@@ -104,8 +138,8 @@ Type a draft, move with Left/Right or Home/End, and edit with Backspace/Delete.
 Alt+Enter adds a newline. Enter sends a live message or appends a demo message.
 Bracketed paste
 inserts text without sending it. Trackpad scrolling and PageUp/PageDown scroll the conversation;
-Ctrl+C quits. The demo tools and agents remain presentation fixtures; live mode
-provides OpenRouter chat, not tool execution or agent delegation.
+Ctrl+C quits. Demo tools and agents remain presentation fixtures; live mode
+runs enabled plugin tools and configured ACP delegations.
 
 The composer is a plain `❯` input with a blinking block cursor between
 edge-to-edge horizontal rules. In demo mode, the four rows below it show `claude-code`,

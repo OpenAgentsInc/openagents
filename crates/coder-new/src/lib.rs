@@ -1,11 +1,16 @@
-//! A Coder terminal with demo fixtures and direct OpenRouter live chat.
+//! A Coder terminal with bundled plugins, live chat, and demo fixtures.
 
 pub mod agents;
+pub mod bundled_runtime;
+pub mod bundled_settings;
+pub mod credentials;
+pub mod jev_plugin;
 pub mod live;
 pub mod model_catalog;
 pub mod models;
 pub mod plugin_definition;
 pub mod plugin_store;
+pub mod plugin_tools;
 pub mod plugins;
 pub mod provider;
 pub mod slash;
@@ -50,6 +55,7 @@ pub struct App {
     pub request: Option<live::Request>,
     pub request_id: u64,
     pub checking_key: bool,
+    pub checking_jev: bool,
     pub slash_selected: usize,
     pub slash_hidden: bool,
     pub notice: Option<String>,
@@ -70,7 +76,7 @@ impl App {
     pub fn load_plugin_settings(&mut self, store: plugin_store::Store) -> Result<(), String> {
         let result = self.plugins.load_settings(store);
         if self.screen == Screen::PluginSettings {
-            self.plugins.begin_settings();
+            self.open_plugin_settings();
         }
         result
     }
@@ -108,6 +114,7 @@ impl App {
         self.request_id = self.request_id.wrapping_add(1);
         self.request = None;
         self.checking_key = false;
+        self.checking_jev = false;
         if self.live.busy {
             if !self.live.partial.is_empty() {
                 self.live.entries.push(live::Entry::Assistant {
@@ -121,6 +128,23 @@ impl App {
         }
         if matches!(self.plugins.connection, plugins::Connection::Checking) {
             self.plugins.connection = plugins::Connection::Unchecked;
+        }
+        if matches!(
+            self.plugins.bundled.connection,
+            plugins::Connection::Checking
+        ) {
+            self.plugins.bundled.connection = plugins::Connection::Unchecked;
+        }
+        for entry in &mut self.live.entries {
+            if let live::Entry::Tool {
+                running, output, ..
+            } = entry
+            {
+                if *running {
+                    *running = false;
+                    *output = serde_json::json!({"error":"Stopped by the user."});
+                }
+            }
         }
     }
 
@@ -159,6 +183,32 @@ impl App {
                     Err(error) => plugins::Connection::Failed(error),
                 };
             }
+            live::Update::CheckedJev { result, .. } => {
+                self.checking_key = false;
+                self.checking_jev = false;
+                self.plugins.bundled.connection = match result {
+                    Ok(_) => plugins::Connection::Verified,
+                    Err(error) => plugins::Connection::Failed(error),
+                };
+            }
+            live::Update::Tool {
+                name,
+                input,
+                output,
+                running,
+                ..
+            } if self.live.busy => {
+                if let Some(live::Entry::Tool { input: previous_input, output: previous_output, running: previous_running, .. }) = self.live.entries.iter_mut().rev().find(|entry| {
+                    matches!(entry, live::Entry::Tool { name: previous, input: previous_input, running: true, .. } if previous == &name && (input.is_null() || previous_input == &input))
+                }) {
+                    if !input.is_null() { *previous_input = input; }
+                    *previous_output = output;
+                    *previous_running = running;
+                } else {
+                    self.live.entries.push(live::Entry::Tool { name, input, output, running });
+                }
+                self.scroll = u16::MAX;
+            }
             live::Update::Delta { text, .. } if self.live.busy => {
                 self.live.partial.push_str(&text);
                 self.scroll = u16::MAX;
@@ -168,6 +218,17 @@ impl App {
             }
             live::Update::Finished { result, .. } if self.live.busy => {
                 self.live.busy = false;
+                for entry in &mut self.live.entries {
+                    if let live::Entry::Tool {
+                        running, output, ..
+                    } = entry
+                    {
+                        if *running {
+                            *running = false;
+                            *output = serde_json::json!({"error":"The turn ended before this tool reported a result."});
+                        }
+                    }
+                }
                 match result {
                     Ok(reply) => {
                         self.live.tokens =
@@ -179,7 +240,9 @@ impl App {
                         self.live.partial.clear();
                         self.live.partial_model = None;
                         self.live.notice = None;
-                        self.plugins.connection = plugins::Connection::Verified;
+                        if self.plugins.enabled && self.plugins.key_configured {
+                            self.plugins.connection = plugins::Connection::Verified;
+                        }
                     }
                     Err(error) => {
                         if error.contains("HTTP 401") {
@@ -219,14 +282,21 @@ impl App {
             self.live.notice = Some("Wait for the current reply or press Esc to stop it.".into());
             return;
         }
-        if !self.plugins.enabled {
-            self.live.notice = Some("Turn on OpenRouter BYOK in /plugins.".into());
+        let key = self
+            .plugins
+            .key_for_request()
+            .filter(|_| self.plugins.enabled);
+        if key.is_none() && !self.plugins.bundled.microcoder {
+            self.live.notice = Some(
+                if self.plugins.enabled {
+                    "Add your OpenRouter API key or enable Microcoder in /plugins."
+                } else {
+                    "Turn on Microcoder or connect OpenRouter BYOK in /plugins."
+                }
+                .into(),
+            );
             return;
         }
-        let Some(key) = self.plugins.key_for_request() else {
-            self.live.notice = Some("Add your OpenRouter API key in /plugins.".into());
-            return;
-        };
         self.cancel_request();
         self.live
             .entries
@@ -238,14 +308,26 @@ impl App {
         self.live.busy = true;
         self.screen = Screen::Conversation;
         self.scroll = u16::MAX;
-        self.request = Some(live::Request {
-            id: self.request_id,
-            key,
-            kind: live::Work::Chat {
+        let execution = self.plugins.execution_settings(
+            std::env::current_dir().unwrap_or_else(|_| std::path::PathBuf::from(".")),
+        );
+        let kind = if key.is_some() {
+            live::Work::Chat {
                 model: self.plugins.model.clone(),
                 options: self.plugins.options.clone(),
                 messages: self.live.messages(),
-            },
+                execution,
+            }
+        } else {
+            live::Work::Microcoder {
+                messages: self.live.messages(),
+                execution,
+            }
+        };
+        self.request = Some(live::Request {
+            id: self.request_id,
+            key: key.unwrap_or_else(|| model_access::ApiKey::new("")),
+            kind,
         });
     }
 
@@ -272,8 +354,39 @@ impl App {
 
     pub fn open_plugin_settings(&mut self) {
         self.open_plugins();
-        self.plugins.begin_settings();
+        match self.plugins.selected_definition().id {
+            "openrouter-byok" => self.plugins.begin_settings(),
+            "jev" => self.plugins.bundled.begin_settings(),
+            "acp-subagents" => self.plugins.bundled.begin_acp(),
+            _ => {}
+        }
         self.screen = Screen::PluginSettings;
+    }
+
+    pub fn check_jev_key(&mut self) {
+        if self.mode != Mode::Live {
+            return;
+        }
+        if self.live.busy {
+            self.plugins.bundled.error = Some("Wait for the current reply before testing a key.");
+            return;
+        }
+        let Some(key) = self.plugins.bundled.key_for_check() else {
+            self.plugins.bundled.connection =
+                plugins::Connection::Failed("Add a TypeSafe API key first.".into());
+            return;
+        };
+        self.cancel_request();
+        self.plugins.bundled.connection = plugins::Connection::Checking;
+        self.checking_key = true;
+        self.checking_jev = true;
+        self.request = Some(live::Request {
+            id: self.request_id,
+            key,
+            kind: live::Work::CheckJev {
+                endpoint: self.plugins.bundled.jev_endpoint().into(),
+            },
+        });
     }
 
     pub fn tick(&mut self) {
@@ -317,6 +430,35 @@ impl App {
                 if let Some(picker) = &mut self.model_picker {
                     picker.paste(&text);
                 } else if self.screen == Screen::PluginSettings {
+                    match self.plugins.selected_definition().id {
+                        "jev" => {
+                            if self.plugins.bundled.focus == plugins::SettingsFocus::ApiKey {
+                                if self.checking_key {
+                                    self.cancel_request();
+                                }
+                                self.plugins.bundled.connection = plugins::Connection::Unchecked;
+                            }
+                            self.plugins.bundled.paste(&text);
+                            return true;
+                        }
+                        "acp-subagents" => {
+                            if self
+                                .plugins
+                                .bundled
+                                .acp_draft
+                                .text
+                                .len()
+                                .saturating_add(text.len())
+                                <= 48 * 1024
+                            {
+                                self.plugins.bundled.acp_draft.insert(&text);
+                                self.plugins.bundled.acp_error = None;
+                            }
+                            return true;
+                        }
+                        "openrouter-byok" => {}
+                        _ => return true,
+                    }
                     if self.mode == Mode::Live
                         && self.plugins.focus == plugins::SettingsFocus::ApiKey
                     {
@@ -353,6 +495,73 @@ impl App {
                     return true;
                 }
                 if self.screen == Screen::PluginSettings {
+                    match self.plugins.selected_definition().id {
+                        "jev" => {
+                            if self.mode == Mode::Live
+                                && self.plugins.bundled.focus == plugins::SettingsFocus::ApiKey
+                                && matches!(
+                                    key.code,
+                                    KeyCode::Char(_) | KeyCode::Backspace | KeyCode::Delete
+                                )
+                            {
+                                if self.checking_key {
+                                    self.cancel_request();
+                                }
+                                self.plugins.bundled.connection = plugins::Connection::Unchecked;
+                            }
+                            let closed = self.plugins.bundled.handle(key);
+                            if self.plugins.bundled.check_requested {
+                                self.check_jev_key();
+                            }
+                            if closed {
+                                self.screen = Screen::Plugins;
+                                if self.mode == Mode::Live {
+                                    if self.plugins.bundled.credential_changed || self.checking_key
+                                    {
+                                        let connection = self.plugins.bundled.connection.clone();
+                                        self.cancel_request();
+                                        self.plugins.bundled.connection = connection;
+                                    }
+                                    if self.plugins.bundled.saved
+                                        && self.plugins.bundled.jev_key().is_some()
+                                        && !self.live.busy
+                                        && !matches!(
+                                            self.plugins.bundled.connection,
+                                            plugins::Connection::Verified
+                                        )
+                                    {
+                                        self.check_jev_key();
+                                    }
+                                }
+                            }
+                            return true;
+                        }
+                        "acp-subagents" => {
+                            if ctrl && key.code == KeyCode::Char('s') {
+                                if self.plugins.bundled.save_acp() {
+                                    if self.mode == Mode::Live {
+                                        self.cancel_request();
+                                    }
+                                    self.screen = Screen::Plugins;
+                                }
+                            } else if key.code == KeyCode::Esc {
+                                self.plugins.bundled.cancel_acp();
+                                self.screen = Screen::Plugins;
+                            } else if key.code == KeyCode::Enter {
+                                self.plugins.bundled.acp_draft.insert("\n");
+                            } else {
+                                self.plugins.bundled.acp_draft.edit(key);
+                            }
+                            return true;
+                        }
+                        "openrouter-byok" => {}
+                        _ => {
+                            if matches!(key.code, KeyCode::Esc | KeyCode::Enter) {
+                                self.screen = Screen::Plugins;
+                            }
+                            return true;
+                        }
+                    }
                     if self.mode == Mode::Live
                         && self.plugins.focus == plugins::SettingsFocus::ApiKey
                         && matches!(
@@ -390,11 +599,10 @@ impl App {
                 }
                 if self.screen == Screen::Plugins {
                     match key.code {
+                        KeyCode::Up => self.plugins.select(true),
+                        KeyCode::Down => self.plugins.select(false),
                         KeyCode::Char(' ') => {
-                            if self.plugins.toggle_enabled()
-                                && !self.plugins.enabled
-                                && self.mode == Mode::Live
-                            {
+                            if self.plugins.toggle_selected() && self.mode == Mode::Live {
                                 self.cancel_request();
                             }
                         }
