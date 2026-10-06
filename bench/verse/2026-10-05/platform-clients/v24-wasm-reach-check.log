@@ -1,0 +1,37 @@
+warning: failed to save last-use data
+This may prevent cargo from accurately tracking what is being used in its global cache. This information is used for automatically removing unused data in the cache.
+
+database or disk is full
+
+Caused by:
+  Error code 13: database or disk is full
+    Checking wasm-bindgen v0.2.128
+    Checking futures-sink v0.3.34
+    Checking futures-util v0.3.34
+   Compiling zerocopy v0.8.57
+    Checking getrandom v0.3.4
+    Checking js-sys v0.3.105
+    Checking rand_core v0.10.1
+   Compiling getrandom v0.4.3
+    Checking rand_core v0.9.5
+    Checking ppv-lite86 v0.2.21
+   Compiling thiserror v2.0.20
+    Checking smallvec v1.16.1
+   Compiling httparse v1.10.1
+    Checking bytes v1.12.1
+    Checking icu_normalizer v2.3.0
+    Checking serde v1.0.229
+   Compiling secp256k1-sys v0.11.0
+    Checking rand_chacha v0.9.0
+error: The wasm32/64-unknown-unknown are not supported by default; you may need to enable the "wasm_js" crate feature. For more information see: https://docs.rs/getrandom/0.4.3/#webassembly-support
+   --> /home/christopherdavid/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/getrandom-0.4.3/src/backends.rs:176:17
+    |
+176 | /                 compile_error!(concat!(
+177 | |                     "The wasm32/64-unknown-unknown are not supported by default; \
+178 | |                     you may need to enable the \"wasm_js\" crate feature. \
+179 | |                     For more information see: \
+180 | |                     https://docs.rs/getrandom/", env!("CARGO_PKG_VERSION"), "/#webassembly-support"
+181 | |                 ));
+    | |__________________^
+
+error: could not compile `getrandom` (lib) due to 1 previous error

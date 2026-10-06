@@ -1,0 +1,267 @@
+{
+  "error": "restored grant rejoins timed out: World identity: 5c4e0dec7215e26833938730e5e505aa62504da85ba57106a46b5a2404fc9d8e\n\nChamber channel refused: not_admitted: host refused the channel\n\nForwardBackwardStrafe leftStrafe rightShoot BowFire BoltMagic MissileFireballMisty StepThunderwaveWebGreaseLightShieldJumpTarget nearestRespawnReconnect",
+  "results": [
+    {
+      "name": "authenticated joined HUD",
+      "value": true
+    },
+    {
+      "name": "visible controls and minimum targets",
+      "value": {
+        "viewport": [
+          1000,
+          679
+        ],
+        "panel": [
+          552,
+          373.453125,
+          448,
+          305.546875
+        ],
+        "buttons": [
+          {
+            "label": "Forward",
+            "width": 64.890625,
+            "height": 44
+          },
+          {
+            "label": "Backward",
+            "width": 74.53125,
+            "height": 44
+          },
+          {
+            "label": "Strafe left",
+            "width": 73.046875,
+            "height": 44
+          },
+          {
+            "label": "Strafe right",
+            "width": 81.203125,
+            "height": 44
+          },
+          {
+            "label": "Shoot Bow",
+            "width": 80.46875,
+            "height": 44
+          },
+          {
+            "label": "Fire Bolt",
+            "width": 65.625,
+            "height": 44
+          },
+          {
+            "label": "Magic Missile",
+            "width": 95.984375,
+            "height": 44
+          },
+          {
+            "label": "Fireball",
+            "width": 59.703125,
+            "height": 44
+          },
+          {
+            "label": "Misty Step",
+            "width": 78.21875,
+            "height": 44
+          },
+          {
+            "label": "Thunderwave",
+            "width": 96.765625,
+            "height": 44
+          },
+          {
+            "label": "Web",
+            "width": 44,
+            "height": 44
+          },
+          {
+            "label": "Grease",
+            "width": 59.71875,
+            "height": 44
+          },
+          {
+            "label": "Light",
+            "width": 44.90625,
+            "height": 44
+          },
+          {
+            "label": "Shield",
+            "width": 53.0625,
+            "height": 44
+          },
+          {
+            "label": "Jump",
+            "width": 48.59375,
+            "height": 44
+          },
+          {
+            "label": "Target nearest",
+            "width": 101.203125,
+            "height": 44
+          },
+          {
+            "label": "Respawn",
+            "width": 71.578125,
+            "height": 44
+          },
+          {
+            "label": "Reconnect",
+            "width": 79.71875,
+            "height": 44
+          }
+        ],
+        "identity": "World identity: 5c4e0dec7215e26833938730e5e505aa62504da85ba57106a46b5a2404fc9d8e"
+      }
+    },
+    {
+      "name": "small viewport and physical scaling",
+      "value": {
+        "css": [
+          360,
+          640
+        ],
+        "physical": [
+          720,
+          1280
+        ],
+        "panel": [
+          0,
+          352,
+          360,
+          288
+        ],
+        "viewport": [
+          360,
+          640
+        ]
+      }
+    },
+    {
+      "name": "blur releases session",
+      "value": true
+    },
+    {
+      "name": "focus rejoins same world identity",
+      "value": true
+    },
+    {
+      "name": "browser shortcuts and focus keys preserved",
+      "value": {
+        "shortcut": false,
+        "unbound": false,
+        "tab": false,
+        "space": true
+      }
+    },
+    {
+      "name": "keyboard and targeting do not panic",
+      "value": true
+    },
+    {
+      "name": "ungranted reconnect refused",
+      "value": true
+    }
+  ],
+  "events": [
+    {
+      "method": "Runtime.executionContextCreated",
+      "params": {
+        "context": {
+          "id": 1,
+          "origin": "://",
+          "name": "",
+          "uniqueId": "1630403336822531167.-819377522137273984",
+          "auxData": {
+            "isDefault": true,
+            "type": "default",
+            "frameId": "C19E0C76698AC3189AAB1365EFCE123A"
+          }
+        }
+      }
+    },
+    {
+      "method": "Page.frameStartedNavigating",
+      "params": {
+        "frameId": "C19E0C76698AC3189AAB1365EFCE123A",
+        "url": "http://127.0.0.1:41061/?zone=chamber&gl",
+        "loaderId": "AD30C17607B4B9ECD5CE11607159A34B",
+        "navigationType": "differentDocument"
+      }
+    },
+    {
+      "method": "Page.frameStartedLoading",
+      "params": {
+        "frameId": "C19E0C76698AC3189AAB1365EFCE123A"
+      }
+    },
+    {
+      "method": "Runtime.executionContextsCleared",
+      "params": {}
+    },
+    {
+      "method": "Runtime.executionContextsCleared",
+      "params": {}
+    },
+    {
+      "method": "Page.frameNavigated",
+      "params": {
+        "frame": {
+          "id": "C19E0C76698AC3189AAB1365EFCE123A",
+          "loaderId": "AD30C17607B4B9ECD5CE11607159A34B",
+          "url": "http://127.0.0.1:41061/?zone=chamber&gl",
+          "domainAndRegistry": "",
+          "securityOrigin": "http://127.0.0.1:41061",
+          "securityOriginDetails": {
+            "isLocalhost": true
+          },
+          "mimeType": "text/html",
+          "adFrameStatus": {
+            "adFrameType": "none"
+          },
+          "secureContextType": "SecureLocalhost",
+          "crossOriginIsolatedContextType": "NotIsolated",
+          "gatedAPIFeatures": []
+        },
+        "type": "Navigation"
+      }
+    },
+    {
+      "method": "Runtime.executionContextCreated",
+      "params": {
+        "context": {
+          "id": 2,
+          "origin": "http://127.0.0.1:41061",
+          "name": "",
+          "uniqueId": "-1077642279534678031.1474120593848194725",
+          "auxData": {
+            "isDefault": true,
+            "type": "default",
+            "frameId": "C19E0C76698AC3189AAB1365EFCE123A"
+          }
+        }
+      }
+    },
+    {
+      "method": "Page.domContentEventFired",
+      "params": {
+        "timestamp": 310098.047819
+      }
+    },
+    {
+      "method": "Page.loadEventFired",
+      "params": {
+        "timestamp": 310098.04838
+      }
+    },
+    {
+      "method": "Page.frameStoppedLoading",
+      "params": {
+        "frameId": "C19E0C76698AC3189AAB1365EFCE123A"
+      }
+    },
+    {
+      "method": "Page.frameResized",
+      "params": {}
+    }
+  ]
+}

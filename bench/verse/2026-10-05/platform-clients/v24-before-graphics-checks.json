@@ -1,0 +1,216 @@
+[
+  {
+    "name": "mobile-final",
+    "command": [
+      "cargo",
+      "test",
+      "--locked",
+      "--offline",
+      "-p",
+      "coder-mobile",
+      "--lib",
+      "chamber::tests"
+    ],
+    "exit_code": 0,
+    "elapsed_seconds": null,
+    "note": "Integrated native source; test runtime 0.44 seconds. Check orchestrator paused during authorized storage cleanup."
+  },
+  {
+    "name": "ritual-final",
+    "command": [
+      "cargo",
+      "test",
+      "--locked",
+      "--offline",
+      "-p",
+      "verse-imported",
+      "--features",
+      "remote-chamber",
+      "--lib",
+      "ritual::tests"
+    ],
+    "exit_code": 0,
+    "elapsed_seconds": 3.1591217517852783
+  },
+  {
+    "name": "content-final",
+    "command": [
+      "cargo",
+      "test",
+      "--locked",
+      "--offline",
+      "-p",
+      "verse-imported",
+      "--features",
+      "remote-chamber",
+      "--lib",
+      "remote_content::tests"
+    ],
+    "exit_code": 0,
+    "elapsed_seconds": 0.4656534194946289
+  },
+  {
+    "name": "bank-final",
+    "command": [
+      "cargo",
+      "test",
+      "--locked",
+      "--offline",
+      "-p",
+      "verse-engine",
+      "--lib",
+      "audio_bank"
+    ],
+    "exit_code": 0,
+    "elapsed_seconds": 37.92309260368347
+  },
+  {
+    "name": "world-final",
+    "command": [
+      "cargo",
+      "test",
+      "--locked",
+      "--offline",
+      "-p",
+      "verse-world",
+      "--features",
+      "service-reach,reach-client",
+      "--lib"
+    ],
+    "exit_code": 0,
+    "elapsed_seconds": 364.92877292633057
+  },
+  {
+    "name": "native-final",
+    "command": [
+      "cargo",
+      "check",
+      "--locked",
+      "--offline",
+      "-p",
+      "verse",
+      "--no-default-features",
+      "--features",
+      "imported-desktop,remote-chamber",
+      "--example",
+      "verse_play"
+    ],
+    "exit_code": 0,
+    "elapsed_seconds": 191.6574730873108
+  },
+  {
+    "name": "movement-native",
+    "command": [
+      "cargo",
+      "test",
+      "--locked",
+      "--offline",
+      "-p",
+      "verse-imported",
+      "--features",
+      "remote-chamber",
+      "--lib",
+      "held_movement_reaches"
+    ],
+    "exit_code": 0,
+    "note": "Native authority movement regression before integration; same test is rerun in final session suite."
+  },
+  {
+    "name": "session-final",
+    "command": [
+      "cargo",
+      "test",
+      "--locked",
+      "--offline",
+      "-p",
+      "verse-imported",
+      "--features",
+      "remote-chamber",
+      "--lib",
+      "chamber_session"
+    ],
+    "exit_code": 0,
+    "elapsed_seconds": 107.40600943565369
+  },
+  {
+    "name": "world-prediction-integration",
+    "command": [
+      "cargo",
+      "test",
+      "--locked",
+      "--offline",
+      "-p",
+      "verse-world",
+      "--features",
+      "service-reach,reach-client",
+      "--lib",
+      "prediction::local"
+    ],
+    "exit_code": 0,
+    "elapsed_seconds": 331.2665910720825
+  },
+  {
+    "name": "wasm-final",
+    "command": [
+      "cargo",
+      "build",
+      "--locked",
+      "--offline",
+      "-p",
+      "everglade-web",
+      "--target",
+      "wasm32-unknown-unknown"
+    ],
+    "exit_code": 0,
+    "elapsed_seconds": 125.08881783485413
+  },
+  {
+    "name": "format-final",
+    "command": [
+      "cargo",
+      "fmt",
+      "--check",
+      "-p",
+      "verse-world",
+      "-p",
+      "coder-reach",
+      "-p",
+      "verse-imported",
+      "-p",
+      "verse-content",
+      "-p",
+      "verse-engine",
+      "-p",
+      "coder-mobile",
+      "-p",
+      "verse",
+      "-p",
+      "everglade-web"
+    ],
+    "exit_code": 0,
+    "elapsed_seconds": 1.5558404922485352
+  },
+  {
+    "name": "diff-final",
+    "command": [
+      "git",
+      "diff",
+      "--check"
+    ],
+    "exit_code": 0,
+    "elapsed_seconds": 0.008858919143676758
+  },
+  {
+    "name": "browser-host-build",
+    "command": [
+      "cargo",
+      "build",
+      "--locked",
+      "--offline",
+      "--manifest-path",
+      "/run/verse-audit-build-agent1/browser-smoke/host/Cargo.toml"
+    ],
+    "exit_code": 0,
+    "note": "Rebuilt scratch REACH host after integration of prediction, physics, and network checkpoint changes."
+  }
+]

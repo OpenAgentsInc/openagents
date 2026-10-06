@@ -1,0 +1,107 @@
+{
+  "error": "{'before': {'position': [0.0, 0.0, -22.0], 'epoch': 4, 'sequence': 0, 'life': {'instance': 120, 'actor': 14, 'generation': 0}, 'tick': 53}, 'after': {'position': [0.0, 0.0, -22.0], 'epoch': 8, 'sequence': 0, 'life': {'instance': 120, 'actor': 14, 'generation': 0}, 'tick': 86}, 'distance': 0.0}",
+  "results": [
+    {
+      "name": "authenticated joined HUD",
+      "value": true
+    }
+  ],
+  "events": [
+    {
+      "method": "Runtime.executionContextCreated",
+      "params": {
+        "context": {
+          "id": 1,
+          "origin": "://",
+          "name": "",
+          "uniqueId": "8731013367362502938.5336619272134374126",
+          "auxData": {
+            "isDefault": true,
+            "type": "default",
+            "frameId": "A4A314C8452A754BE1D60FF4CD95DD8F"
+          }
+        }
+      }
+    },
+    {
+      "method": "Page.frameStartedNavigating",
+      "params": {
+        "frameId": "A4A314C8452A754BE1D60FF4CD95DD8F",
+        "url": "http://127.0.0.1:44225/?zone=chamber&gl",
+        "loaderId": "41DAF1083C6BBDAC424B85A0203F4367",
+        "navigationType": "differentDocument"
+      }
+    },
+    {
+      "method": "Page.frameStartedLoading",
+      "params": {
+        "frameId": "A4A314C8452A754BE1D60FF4CD95DD8F"
+      }
+    },
+    {
+      "method": "Runtime.executionContextsCleared",
+      "params": {}
+    },
+    {
+      "method": "Runtime.executionContextsCleared",
+      "params": {}
+    },
+    {
+      "method": "Page.frameNavigated",
+      "params": {
+        "frame": {
+          "id": "A4A314C8452A754BE1D60FF4CD95DD8F",
+          "loaderId": "41DAF1083C6BBDAC424B85A0203F4367",
+          "url": "http://127.0.0.1:44225/?zone=chamber&gl",
+          "domainAndRegistry": "",
+          "securityOrigin": "http://127.0.0.1:44225",
+          "securityOriginDetails": {
+            "isLocalhost": true
+          },
+          "mimeType": "text/html",
+          "adFrameStatus": {
+            "adFrameType": "none"
+          },
+          "secureContextType": "SecureLocalhost",
+          "crossOriginIsolatedContextType": "NotIsolated",
+          "gatedAPIFeatures": []
+        },
+        "type": "Navigation"
+      }
+    },
+    {
+      "method": "Runtime.executionContextCreated",
+      "params": {
+        "context": {
+          "id": 2,
+          "origin": "http://127.0.0.1:44225",
+          "name": "",
+          "uniqueId": "6316583178108769385.-3708207124666385831",
+          "auxData": {
+            "isDefault": true,
+            "type": "default",
+            "frameId": "A4A314C8452A754BE1D60FF4CD95DD8F"
+          }
+        }
+      }
+    },
+    {
+      "method": "Page.domContentEventFired",
+      "params": {
+        "timestamp": 312145.783053
+      }
+    },
+    {
+      "method": "Page.loadEventFired",
+      "params": {
+        "timestamp": 312145.783395
+      }
+    },
+    {
+      "method": "Page.frameStoppedLoading",
+      "params": {
+        "frameId": "A4A314C8452A754BE1D60FF4CD95DD8F"
+      }
+    }
+  ]
+}

@@ -1,0 +1,405 @@
+{
+  "schema": "verse.platform-clients.verification.v1",
+  "issue": 10742,
+  "source_commit": "d612edb9674282f8c287c27c776df9fe034b5481",
+  "source_base": "12dae4b894c2838dcd206381c91c607b9d91a560",
+  "source_patch_sha256": "fa75da745ac7b3a87b074e22748753fef5c8928069147f0981380277f582c519",
+  "toolchain": "rustc 1.97.1 (8bab26f4f 2026-07-14)\nbinary: rustc\ncommit-hash: 8bab26f4f68e0e26f0bb7960be334d5b520ea452\ncommit-date: 2026-07-14\nhost: x86_64-unknown-linux-gnu\nrelease: 1.97.1\nLLVM version: 22.1.6\n",
+  "native_build_environment": {
+    "PKG_CONFIG_PATH": "/nix/store/whfhyjs4xfkfjqid2nflj2cjk0ikl4az-alsa-lib-1.2.15.3-dev/lib/pkgconfig",
+    "CARGO_BUILD_JOBS": "1"
+  },
+  "native_target": "x86_64-unknown-linux-gnu",
+  "browser_target": "wasm32-unknown-unknown",
+  "wasm": {
+    "profile": "dev",
+    "bytes": 613909737,
+    "sha256": "3a04aae52eee4d28ebb5ce03c90fb5481c2df0b6ffc5cef0b985587773be13a6",
+    "build_path_in_warm_target": "/home/christopherdavid/work/openagents-target-agent1/wasm32-unknown-unknown/debug/everglade_web.wasm"
+  },
+  "source_phases": {
+    "intermediate": {
+      "base": "d3a46bc325",
+      "candidate": "306a005129",
+      "patch": "intermediate-source.patch",
+      "checks": [
+        "world-final",
+        "native-final"
+      ]
+    },
+    "first": {
+      "base": "93855e204d",
+      "candidate": "929daf762e",
+      "patch": "first-source.patch",
+      "checks": [
+        "mobile-final",
+        "ritual-final",
+        "content-final",
+        "bank-final"
+      ]
+    },
+    "latest": {
+      "base": "12dae4b894c2838dcd206381c91c607b9d91a560",
+      "candidate": "d612edb9674282f8c287c27c776df9fe034b5481",
+      "patch": "source.patch",
+      "checks": [
+        "world-prediction-integration",
+        "session-final",
+        "wasm-final",
+        "browser-host-build",
+        "format-final",
+        "diff-final"
+      ]
+    }
+  },
+  "checks": [
+    {
+      "name": "mobile-final",
+      "command": [
+        "cargo",
+        "test",
+        "--locked",
+        "--offline",
+        "-p",
+        "coder-mobile",
+        "--lib",
+        "chamber::tests"
+      ],
+      "exit_code": 0,
+      "elapsed_seconds": null,
+      "note": "Integrated native source; test runtime 0.44 seconds. Check orchestrator paused during authorized storage cleanup.",
+      "log": "v24-mobile-final.log",
+      "test_summaries": [
+        [
+          "6",
+          "0",
+          "0"
+        ]
+      ]
+    },
+    {
+      "name": "ritual-final",
+      "command": [
+        "cargo",
+        "test",
+        "--locked",
+        "--offline",
+        "-p",
+        "verse-imported",
+        "--features",
+        "remote-chamber",
+        "--lib",
+        "ritual::tests"
+      ],
+      "exit_code": 0,
+      "elapsed_seconds": 3.1591217517852783,
+      "log": "v24-ritual-final.log",
+      "test_summaries": [
+        [
+          "1",
+          "0",
+          "0"
+        ]
+      ]
+    },
+    {
+      "name": "content-final",
+      "command": [
+        "cargo",
+        "test",
+        "--locked",
+        "--offline",
+        "-p",
+        "verse-imported",
+        "--features",
+        "remote-chamber",
+        "--lib",
+        "remote_content::tests"
+      ],
+      "exit_code": 0,
+      "elapsed_seconds": 0.4656534194946289,
+      "log": "v24-content-final.log",
+      "test_summaries": [
+        [
+          "3",
+          "0",
+          "0"
+        ]
+      ]
+    },
+    {
+      "name": "bank-final",
+      "command": [
+        "cargo",
+        "test",
+        "--locked",
+        "--offline",
+        "-p",
+        "verse-engine",
+        "--lib",
+        "audio_bank"
+      ],
+      "exit_code": 0,
+      "elapsed_seconds": 37.92309260368347,
+      "log": "v24-bank-final.log",
+      "test_summaries": [
+        [
+          "5",
+          "0",
+          "0"
+        ]
+      ]
+    },
+    {
+      "name": "world-final",
+      "command": [
+        "cargo",
+        "test",
+        "--locked",
+        "--offline",
+        "-p",
+        "verse-world",
+        "--features",
+        "service-reach,reach-client",
+        "--lib"
+      ],
+      "exit_code": 0,
+      "elapsed_seconds": 364.92877292633057,
+      "log": "v24-world-final.log",
+      "test_summaries": [
+        [
+          "596",
+          "0",
+          "3"
+        ]
+      ]
+    },
+    {
+      "name": "native-final",
+      "command": [
+        "cargo",
+        "check",
+        "--locked",
+        "--offline",
+        "-p",
+        "verse",
+        "--no-default-features",
+        "--features",
+        "imported-desktop,remote-chamber",
+        "--example",
+        "verse_play"
+      ],
+      "exit_code": 0,
+      "elapsed_seconds": 191.6574730873108,
+      "log": "v24-native-final.log",
+      "test_summaries": []
+    },
+    {
+      "name": "movement-native",
+      "command": [
+        "cargo",
+        "test",
+        "--locked",
+        "--offline",
+        "-p",
+        "verse-imported",
+        "--features",
+        "remote-chamber",
+        "--lib",
+        "held_movement_reaches"
+      ],
+      "exit_code": 0,
+      "note": "Native authority movement regression before integration; same test is rerun in final session suite.",
+      "log": "v24-movement-native.log",
+      "test_summaries": [
+        [
+          "1",
+          "0",
+          "0"
+        ]
+      ]
+    },
+    {
+      "name": "world-prediction-integration",
+      "command": [
+        "cargo",
+        "test",
+        "--locked",
+        "--offline",
+        "-p",
+        "verse-world",
+        "--features",
+        "service-reach,reach-client",
+        "--lib",
+        "prediction::local"
+      ],
+      "exit_code": 0,
+      "elapsed_seconds": 331.2665910720825,
+      "log": "v24-world-prediction-integration.log",
+      "test_summaries": [
+        [
+          "31",
+          "0",
+          "0"
+        ]
+      ]
+    },
+    {
+      "name": "browser-host-build",
+      "command": [
+        "cargo",
+        "build",
+        "--locked",
+        "--offline",
+        "--manifest-path",
+        "/run/verse-audit-build-agent1/browser-smoke/host/Cargo.toml"
+      ],
+      "exit_code": 0,
+      "note": "Rebuilt scratch REACH host after integration of prediction, physics, and network checkpoint changes.",
+      "log": "v24-browser-host-build.log",
+      "test_summaries": []
+    },
+    {
+      "name": "session-final",
+      "command": [
+        "cargo",
+        "test",
+        "--locked",
+        "--offline",
+        "-p",
+        "verse-imported",
+        "--features",
+        "remote-chamber",
+        "--lib",
+        "chamber_session"
+      ],
+      "exit_code": 0,
+      "elapsed_seconds": 25.136322021484375,
+      "log": "v24-session-final.log",
+      "test_summaries": [
+        [
+          "7",
+          "0",
+          "0"
+        ]
+      ]
+    },
+    {
+      "name": "wasm-final",
+      "command": [
+        "cargo",
+        "build",
+        "--locked",
+        "--offline",
+        "-p",
+        "everglade-web",
+        "--target",
+        "wasm32-unknown-unknown"
+      ],
+      "exit_code": 0,
+      "elapsed_seconds": 12.523353099822998,
+      "log": "v24-wasm-final.log",
+      "test_summaries": []
+    },
+    {
+      "name": "format-final",
+      "command": [
+        "cargo",
+        "fmt",
+        "--check",
+        "-p",
+        "verse-world",
+        "-p",
+        "coder-reach",
+        "-p",
+        "verse-imported",
+        "-p",
+        "verse-content",
+        "-p",
+        "verse-engine",
+        "-p",
+        "coder-mobile",
+        "-p",
+        "verse",
+        "-p",
+        "everglade-web"
+      ],
+      "exit_code": 0,
+      "elapsed_seconds": 1.5674045085906982,
+      "log": "v24-format-final.log",
+      "test_summaries": []
+    },
+    {
+      "name": "diff-final",
+      "command": [
+        "git",
+        "diff",
+        "--check"
+      ],
+      "exit_code": 0,
+      "elapsed_seconds": 0.015523195266723633,
+      "log": "v24-diff-final.log",
+      "test_summaries": []
+    }
+  ],
+  "files": {
+    "source.patch": "fa75da745ac7b3a87b074e22748753fef5c8928069147f0981380277f582c519",
+    "intermediate-source.patch": "721bc53e06b884c058151ee571d7daf0ca002ee2c9a6da7f7164b1b5eb4bc1d9",
+    "first-source.patch": "6b589ade04fe081b5484b762575f2496809028f0dbb5893e0c20fdd5e00a0a2f",
+    "wasm-bindgen-tool.json": "af9dbe98210da4616ff383c05547e64d7d4c59f5b56bff772504fa1a8e065053",
+    "browser-cdp.py": "a0871f61e6c3338a4e39f7f78d283aa3c848205e82b24843c78639a107efa87f",
+    "browser-smoke.py": "dc9393f3c6582a8b84a337413f4cd5a684e831b0b86a3f14c8008099720884a8",
+    "browser-host-Cargo.lock": "7b3652fbd29d0ce734ba5ab2aac9b40792e7dc2707dde91a15e359aeb678e548",
+    "browser-host-Cargo.toml": "ae3c10e33587107f4b936a3c5cd6a02e2f655be20425749a356e0205895f7e42",
+    "browser-host.rs": "d154cfdc980ff17d5011c7311edbdfac7313a911e58cbc6192888d3825d5e1ec",
+    "browser-runtime.log": "4d7162bc80ca5143583d939ca8a1aff8713045e02b6eee65a9098c86157ab5d0",
+    "browser-host.log": "fde3cdd2c03036088ebc81a6c0b88d995f1c2e08d7e9e0980c92dc1bddc018a4",
+    "browser-narrow.png": "550ebbeb38c5bbf1d3035efd054e88257601df6714300b780f5268b617ea0443",
+    "browser-joined.png": "1bd9e64da67d9d151ce28c28fc283e942ee49d21a10a238122567473b8d3627f",
+    "browser-first-narrow.png": "7c5997b89f44c36228b24fed5e15b8d1dbc089bdc3b52ffb70e6e954ef444cb4",
+    "browser-first-joined.png": "bbe0f68eb9c8c1ae09fe61a52c1db0414016359aaf306555217cb77b2b5e0503",
+    "browser-host-result.json": "82519f7f46b669f06b2e30dbf985c836984d732283462729458db7116deebb79",
+    "browser-smoke.json": "80c7e574e4e7283794b3ddab52829c59621a92d3d9a072fbfea2c9c283c0c693",
+    "browser-cached-grant-failure.json": "dc2cc221dfdd953d7bd54a0a4220d102abbbbd31c3785155887e9c0b9f78ac40",
+    "browser-driver-stale-profile-failure.json": "0e89adb18f6864a59673a59ab46a905ec4907eb7be47c0b5ce09ac73dd38dbf8",
+    "browser-software-gpu-budget-failure.json": "407dbd1d82165060b0a194cd62be7f561da02ea89140c2d852008ea115c2e671",
+    "browser-movement-control-failure.json": "30fb2b383570ecca839ec7e5934eccf837fa052894f7f1d357b9b53710cf1bc6",
+    "browser-profile-cleanup.json": "183fe81a5ddf10037046111dff1433131c3ec22bbcb8cd216cc21054e3adbde2",
+    "browser-low-resolution-before-adaptation.json": "22a5b0be7862c38a81461cd56833ac82b21a2596d1de7a4f9b60e516f3a57599",
+    "v24-wasm-disk-link-failure.log": "9373b55115ab7bc79b82b30b092212f57c4d41bd4c8f79956174d3fa73ed721f",
+    "v24-native-environment-failure.log": "23dfa1d2bed48b842c4a9cbf60b345c24886d778837d6354438e7a881ae7905a",
+    "v24-wasm-reach-check-2.log": "70c8ba3b05246f717bf7dffa2e2c6e654f88e3ce59ef62c5b37558be03612b62",
+    "v24-wasm-reach-check.log": "5caf120f7b2b6109144255695244c3870718feac612d5ab2fc2b6d048b062b2e",
+    "v24-mobile-tests.log": "022124dc37d1bd03c79f6752f651f157100560c87e8fa270402c6f3fcc1b665c",
+    "v24-world-before-integration.log": "df490d7cb5f8f40d1429bee8762e55c0014d4e46b3ac777756bbaad60dbf70be",
+    "v24-reach-tests.log": "aa05150d50375fb5cc718c4dc48d02e070e2680f8971d2909b084776f4e0763d",
+    "v24-warm-recovery.json": "718ad3fd6980b8b3990d69fdb53b056134845a33c627d99564c89d44cad71935",
+    "v24-before-latest-wasm-final.log": "80dc8e755734df1e2763faf0518599716a97a6b23458a3090a940b51ae37c741",
+    "v24-before-latest-world-final.log": "cef4f553bd32cd157ea32b828eb5a53b80ac949b12f270ff220dfdf0fa6ac185",
+    "v24-before-latest-integration-checks.json": "cc7ad11f035ea346f7a7b83e363c0a2fbf072c2b371474ce86df21790376151b",
+    "v24-session-before-platform-integration.log": "cc6072b2a90f47aa62277669aa7adcb9e8ed8afbc79fe0da450f17ae97a2f5e4",
+    "v24-before-platform-integration-checks.json": "fc49cbf6ec6e2e82927f2526f1275051287784e7555479008034ad0be5141829",
+    "v24-before-graphics-checks.json": "228a1abacf65ceb7b8b3f74edff6d8ecf0419249b1fc47432e11bc3df53f9d3a",
+    "v24-diff-final.log": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "v24-format-final.log": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "v24-wasm-final.log": "a984d1ac052852228ee81f2c164b69a6bc1cf2292465e5609337f43980012274",
+    "v24-session-final.log": "c644dd9d2e528ba6d55d060aed8b6e52d6f6a95ea535f6d613eefb6434f48a09",
+    "v24-browser-host-build.log": "8bbf46c54fdd1fc086886c08afff17d1b28c63e0dbc357814c5cac3ee7d6167b",
+    "v24-world-prediction-integration.log": "3672ac9d8041c93402c65a6d33ed7d2ae36b289290abcda13859087be24c7dca",
+    "v24-movement-native.log": "db6af7cd04981d7c12c0658b26afe6879b4a503dcc3a6fed1c6cdb39db2ee17c",
+    "v24-native-final.log": "05dac01c35bf97c199f7a59a54772b6b50111fe7c511f2383f926b04ced031c6",
+    "v24-world-final.log": "8b2ce258b3e762f2e9dd2391522ef3661202fc5100a6da7a23b41d50beaa5264",
+    "v24-bank-final.log": "34580aa2c21ade08eb95f236f498780585b3740d59550de21f15dd03e5817ac6",
+    "v24-content-final.log": "d4d1738cad7938ed75015f81fc9d5715f70e7a4fe55c7c7000abe8d2b1b169aa",
+    "v24-ritual-final.log": "4a915b7829cf2a0366931d18e4e5b2c14b3097b2367012a6193a72e84fbbf1ad",
+    "v24-mobile-final.log": "49a5c1058e7bff775163efada6d0822a114de81c38882f9e11730e0f2197f744"
+  },
+  "limitations": [
+    "Headless Chromium with software WebGL2 exercises browser join, controls, resizing, focus/reconnect, and grant refusal/refresh. Physical-phone, hardware WebGPU/WebGL, screen-reader, real gamepad, thermal, crowded-world, and shared physical-device session acceptance remain unperformed.",
+    "Browser and phone have captions, not mounted device audio output.",
+    "DOM network allocation precedes the bounded Rust inbox.",
+    "Builds retain the existing warm target; recovered temporary caches are now backed by normal disk. After the user authorized disk cleanup, clean merged stale worktrees, duplicate incremental generations, obsolete executable variants, and library cache variants were removed; recent variants and live process files were preserved. A full-disk Wasm link failed with SIGBUS; its log is retained, and the final link must pass after cleanup. Cargo cache warnings do not invalidate passing compiler and test exit statuses.",
+    "The initial mobile test build overlapped an input API edit and failed on stale dependency metadata; a frozen-source rerun and the integrated final check pass.",
+    "Full-resolution software rendering failed movement before adaptive graphics resolution. The final 1000-by-800 CSS viewport passes movement and stopped input at a 237-by-190 backing resolution; hardware and crowded-world budgets remain unverified. The browser smoke supplies separate DOM WebSocket evidence; native parser checks alone do not establish it. The first smoke failed because browser caching retained a changed grant; the final smoke must pass after no-store configuration fetching."
+  ]
+}

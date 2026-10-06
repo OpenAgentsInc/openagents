@@ -1,0 +1,63 @@
+[package]
+name = "verse-platform-smoke"
+version = "0.0.0"
+edition = "2024"
+[dependencies]
+verse-world = {path="/home/christopherdavid/work/openagents-verse-audit/crates/verse-world",features=["service-reach","reach-client","studio"]}
+verse-engine = {path="/home/christopherdavid/work/openagents-verse-audit/crates/verse-engine"}
+verse-content = {path="/home/christopherdavid/work/openagents-verse-audit/crates/verse-content",features=["compiler"]}
+tokio = {version="1",features=["rt-multi-thread","macros","net","time"]}
+secp256k1 = "0.31.1"
+serde_json = "1"
+[profile.dev.package.sha2]
+opt-level = 3
+[profile.dev.package.verse]
+opt-level = 3
+[profile.dev.package.verse-content]
+opt-level = 3
+[profile.dev.package.verse-core]
+opt-level = 3
+[profile.dev.package.verse-gym]
+opt-level = 3
+[profile.dev.package.verse-imported]
+opt-level = 3
+[profile.dev.package.verse-host]
+opt-level = 3
+[profile.dev.package.verse-engine]
+opt-level = 3
+[profile.dev.package.verse-gfx]
+opt-level = 3
+[profile.dev.package.verse-net]
+opt-level = 3
+[profile.dev.package.verse-pbr]
+opt-level = 3
+[profile.dev.package.verse-world]
+opt-level = 3
+[profile.dev.package.verse-zone-everglade]
+opt-level = 3
+[profile.dev.package.verse-zone-grove]
+opt-level = 3
+[profile.dev.package.verse-zone-lab]
+opt-level = 3
+[profile.dev.package.verse-zone-lagrange]
+opt-level = 3
+[profile.dev.package.physics]
+opt-level = 3
+[profile.dev.package.wgpu]
+opt-level = 3
+[profile.dev.package.wgpu-core]
+opt-level = 3
+[profile.dev.package.wgpu-hal]
+opt-level = 3
+[profile.dev.package.naga]
+opt-level = 3
+[profile.dev.package.objc2]
+opt-level = 3
+[profile.dev.package.objc2-encode]
+opt-level = 3
+[profile.dev.package.serde_json]
+opt-level = 3
+[profile.dev.package.memchr]
+opt-level = 3
+[profile.dev.package.zmij]
+opt-level = 3

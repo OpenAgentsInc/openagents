@@ -1,0 +1,187 @@
+warning: failed to save last-use data
+This may prevent cargo from accurately tracking what is being used in its global cache. This information is used for automatically removing unused data in the cache.
+
+database or disk is full
+
+Caused by:
+  Error code 13: database or disk is full
+   Compiling secp256k1 v0.31.1
+   Compiling nostr v0.1.0 (/home/christopherdavid/work/openagents-verse-audit/crates/nostr)
+   Compiling hyper-util v0.1.20
+   Compiling hyper-rustls v0.27.9
+   Compiling reqwest v0.12.28
+   Compiling nostr-transport v0.1.0 (/home/christopherdavid/work/openagents-verse-audit/crates/nostr-transport)
+   Compiling crossterm v0.29.0
+   Compiling ratatui-crossterm v0.1.2
+   Compiling coder-history v0.1.0 (/home/christopherdavid/work/openagents-verse-audit/crates/coder-history)
+   Compiling ratatui v0.30.2
+   Compiling coder-connect v0.1.0 (/home/christopherdavid/work/openagents-verse-audit/crates/coder-connect)
+   Compiling code-highlight v0.1.0 (/home/christopherdavid/work/openagents-verse-audit/crates/code-highlight)
+   Compiling rust-native v0.1.0 (/home/christopherdavid/work/openagents-verse-audit/crates/rust-native)
+   Compiling coder-access v0.1.0 (/home/christopherdavid/work/openagents-verse-audit/crates/coder-access)
+   Compiling coder-reach v0.1.0 (/home/christopherdavid/work/openagents-verse-audit/crates/coder-reach)
+   Compiling naga v29.0.4
+   Compiling xp-ledger v0.1.0 (/home/christopherdavid/work/openagents-verse-audit/crates/xp-ledger)
+   Compiling wgpu-naga-bridge v29.0.4
+   Compiling coder-ui v0.1.0 (/home/christopherdavid/work/openagents-verse-audit/crates/coder-ui)
+   Compiling jev v0.1.0 (/home/christopherdavid/work/openagents-verse-audit/crates/jev)
+   Compiling wgpu-hal v29.0.4
+   Compiling model-access v0.1.0 (/home/christopherdavid/work/openagents-verse-audit/crates/model-access)
+   Compiling physics v0.1.0 (/home/christopherdavid/work/openagents-verse-audit/crates/physics)
+   Compiling tempfile v3.27.0
+   Compiling verse-engine v0.1.0 (/home/christopherdavid/work/openagents-verse-audit/crates/verse-engine)
+   Compiling wgpu-core-deps-windows-linux-android v29.0.4
+   Compiling verse-world v0.1.0 (/home/christopherdavid/work/openagents-verse-audit/crates/verse-world)
+warning: unused imports: `AsyncWriteExt` and `AsyncWrite`
+  --> crates/verse-world/src/service/net.rs:11:35
+   |
+11 |     io::{AsyncRead, AsyncReadExt, AsyncWrite, AsyncWriteExt},
+   |                                   ^^^^^^^^^^  ^^^^^^^^^^^^^
+   |
+   = note: `#[warn(unused_imports)]` (part of `#[warn(unused)]`) on by default
+
+warning: unused import: `AsyncReadExt`
+  --> crates/verse-world/src/service/net.rs:11:21
+   |
+11 |     io::{AsyncRead, AsyncReadExt, AsyncWrite, AsyncWriteExt},
+   |                     ^^^^^^^^^^^^
+
+warning: method `additional_characters` is never used
+    --> crates/verse-world/src/play.rs:2943:19
+     |
+ 428 | impl Game {
+     | --------- method in this implementation
+...
+2943 |     pub(crate) fn additional_characters(
+     |                   ^^^^^^^^^^^^^^^^^^^^^
+     |
+     = note: `#[warn(dead_code)]` (part of `#[warn(unused)]`) on by default
+
+warning: `verse-world` (lib) generated 3 warnings (run `cargo fix --lib -p verse-world` to apply 1 suggestion)
+   Compiling wgpu-core v29.0.4
+   Compiling reqwest v0.13.5
+   Compiling workbench v0.1.0 (/home/christopherdavid/work/openagents-verse-audit/crates/workbench)
+   Compiling noq-proto v1.3.0
+   Compiling n0-dns-resolver v0.1.0
+   Compiling wgpu v29.0.4
+   Compiling coder-boundary v0.1.0 (/home/christopherdavid/work/openagents-verse-audit/crates/coder-boundary)
+   Compiling iroh-metrics v1.0.2
+   Compiling iroh-dns v1.3.0
+   Compiling noq v1.3.0
+   Compiling verse-gfx v0.1.0 (/home/christopherdavid/work/openagents-verse-audit/crates/verse-gfx)
+   Compiling acto v0.8.2
+   Compiling iroh-relay v1.3.0
+   Compiling netwatch v0.19.3
+   Compiling route-contract v0.1.0 (/home/christopherdavid/work/openagents-verse-audit/crates/route-contract)
+   Compiling hickory-proto v0.26.3
+   Compiling verse-pbr v0.1.0 (/home/christopherdavid/work/openagents-verse-audit/crates/verse-pbr)
+   Compiling iroh v1.3.0
+   Compiling swarm-discovery v0.6.3
+   Compiling verse-net v0.1.0 (/home/christopherdavid/work/openagents-verse-audit/crates/verse-net)
+   Compiling playtest v0.1.0 (/home/christopherdavid/work/openagents-verse-audit/crates/playtest)
+   Compiling openagents-chat v0.1.0 (/home/christopherdavid/work/openagents-verse-audit/crates/openagents-chat)
+   Compiling verse-core v0.1.0 (/home/christopherdavid/work/openagents-verse-audit/crates/verse-core)
+   Compiling iroh-mdns-address-lookup v0.5.0
+   Compiling coder-pty v0.1.0 (/home/christopherdavid/work/openagents-verse-audit/crates/coder-pty)
+   Compiling zbus v5.19.0
+   Compiling coder-vt v0.1.0 (/home/christopherdavid/work/openagents-verse-audit/crates/coder-vt)
+   Compiling openagents-connect v0.1.0 (/home/christopherdavid/work/openagents-verse-audit/crates/openagents-connect)
+   Compiling secret-service v5.2.0
+   Compiling terminal-core v0.1.0 (/home/christopherdavid/work/openagents-verse-audit/crates/terminal-core)
+   Compiling codex-transport v0.1.0 (/home/christopherdavid/work/openagents-verse-audit/crates/codex-transport)
+   Compiling openrouter v0.1.0 (/home/christopherdavid/work/openagents-verse-audit/crates/openrouter)
+   Compiling zbus-secret-service-keyring-store v1.0.1
+   Compiling knowledge v0.1.0 (/home/christopherdavid/work/openagents-verse-audit/crates/knowledge)
+   Compiling verse-content v0.1.0 (/home/christopherdavid/work/openagents-verse-audit/crates/verse-content)
+   Compiling wasmtime-internal-cache v48.0.2
+   Compiling wasmtime-internal-jit-debug v48.0.2
+   Compiling wasmtime-internal-fiber v48.0.2
+   Compiling keyring v4.2.0
+   Compiling coder-service v0.1.0 (/home/christopherdavid/work/openagents-verse-audit/crates/coder-service)
+   Compiling background v0.1.0 (/home/christopherdavid/work/openagents-verse-audit/crates/background)
+   Compiling jev-hosted v0.1.0 (/home/christopherdavid/work/openagents-verse-audit/crates/jev-hosted)
+   Compiling coder-host v0.1.0 (/home/christopherdavid/work/openagents-verse-audit/crates/coder-host)
+   Compiling wasmtime v48.0.2
+   Compiling acp-client v0.1.0 (/home/christopherdavid/work/openagents-verse-audit/crates/acp-client)
+   Compiling schemars v1.2.2
+   Compiling globset v0.4.20
+   Compiling plugin v0.1.0 (/home/christopherdavid/work/openagents-verse-audit/crates/plugin)
+   Compiling gym v0.1.0 (/home/christopherdavid/work/openagents-verse-audit/crates/gym)
+   Compiling verse-zone-everglade v0.1.0 (/home/christopherdavid/work/openagents-verse-audit/crates/verse-zone-everglade)
+warning: variable does not need to be mutable
+   --> crates/verse-zone-everglade/src/zones/everglade/layout/streets.rs:275:9
+    |
+275 |     let mut try_put =
+    |         ----^^^^^^^
+    |         |
+    |         help: remove this `mut`
+    |
+    = note: `#[warn(unused_mut)]` (part of `#[warn(unused)]`) on by default
+
+warning: function `triangles` is never used
+   --> crates/verse-zone-everglade/src/zones/everglade/draw.rs:103:15
+    |
+103 | pub(super) fn triangles() -> u64 {
+    |               ^^^^^^^^^
+    |
+    = note: `#[warn(dead_code)]` (part of `#[warn(unused)]`) on by default
+
+warning: function `stream_triangles` is never used
+   --> crates/verse-zone-everglade/src/zones/everglade/draw.rs:112:4
+    |
+112 | fn stream_triangles() -> u64 {
+    |    ^^^^^^^^^^^^^^^^
+
+warning: `verse-zone-everglade` (lib) generated 3 warnings (run `cargo fix --lib -p verse-zone-everglade` to apply 1 suggestion)
+   Compiling verse-lagrange v0.1.0 (/home/christopherdavid/work/openagents-verse-audit/crates/verse-lagrange)
+   Compiling gym-bridge v0.1.0 (/home/christopherdavid/work/openagents-verse-audit/crates/gym-bridge)
+   Compiling gym-leaderboard v0.1.0 (/home/christopherdavid/work/openagents-verse-audit/crates/gym-leaderboard)
+   Compiling coder v0.1.0 (/home/christopherdavid/work/openagents-verse-audit/crates/coder)
+   Compiling verse-gym v0.1.0 (/home/christopherdavid/work/openagents-verse-audit/crates/verse-gym)
+   Compiling verse-zone-lagrange v0.1.0 (/home/christopherdavid/work/openagents-verse-audit/crates/verse-zone-lagrange)
+   Compiling verse-zone-grove v0.1.0 (/home/christopherdavid/work/openagents-verse-audit/crates/verse-zone-grove)
+   Compiling ext-eval v0.1.0 (/home/christopherdavid/work/openagents-verse-audit/crates/ext-eval)
+   Compiling coder-delegate v0.1.0 (/home/christopherdavid/work/openagents-verse-audit/crates/coder-delegate)
+   Compiling ignore v0.4.33
+   Compiling microcoder-loop v0.1.0 (/home/christopherdavid/work/openagents-verse-audit/crates/microcoder-loop)
+   Compiling coder-computers v0.1.0 (/home/christopherdavid/work/openagents-verse-audit/crates/coder-computers)
+   Compiling verse-imported v0.1.0 (/home/christopherdavid/work/openagents-verse-audit/crates/verse-imported)
+warning: unused variable: `numbers`
+    --> crates/verse-imported/src/imported/overlay.rs:1297:9
+     |
+1297 |     let numbers = atlas.font("numbers").layout_at_scale(1.0 / s).unwrap();
+     |         ^^^^^^^ help: if this is intentional, prefix it with an underscore: `_numbers`
+     |
+     = note: `#[warn(unused_variables)]` (part of `#[warn(unused)]`) on by default
+
+warning: `verse-imported` (lib) generated 1 warning (run `cargo fix --lib -p verse-imported` to apply 1 suggestion)
+   Compiling terminal-control v0.1.0 (/home/christopherdavid/work/openagents-verse-audit/crates/terminal-control)
+   Compiling verse-zone-crypt v0.1.0 (/home/christopherdavid/work/openagents-verse-audit/crates/verse-zone-crypt)
+   Compiling verse-zone-lab v0.1.0 (/home/christopherdavid/work/openagents-verse-audit/crates/verse-zone-lab)
+   Compiling capability v0.1.0 (/home/christopherdavid/work/openagents-verse-audit/crates/capability)
+   Compiling coder-terminal v0.1.0 (/home/christopherdavid/work/openagents-verse-audit/crates/coder-terminal)
+   Compiling receipts v0.1.0 (/home/christopherdavid/work/openagents-verse-audit/crates/receipts)
+   Compiling openagents-deck v0.1.0 (/home/christopherdavid/work/openagents-verse-audit/crates/openagents-deck)
+   Compiling verse v0.1.0 (/home/christopherdavid/work/openagents-verse-audit/crates/verse)
+   Compiling openagents-chat-app v0.1.0 (/home/christopherdavid/work/openagents-verse-audit/crates/openagents-chat-app)
+   Compiling push-gateway v0.1.0 (/home/christopherdavid/work/openagents-verse-audit/crates/push-gateway)
+   Compiling coder-mobile v0.1.0 (/home/christopherdavid/work/openagents-verse-audit/crates/coder-mobile)
+error[E0599]: no method named `rebind` found for struct `InputMap` in the current scope
+   --> crates/coder-mobile/src/chamber.rs:327:20
+    |
+327 |         self.input.rebind(bindings)?;
+    |                    ^^^^^^ method not found in `InputMap`
+
+warning: variable does not need to be mutable
+   --> crates/coder-mobile/src/bare_presence_tests.rs:395:9
+    |
+395 |     let mut frame = |scene: &mut Scene, limit: Duration, done: fn(&Scene) -> bool| {
+    |         ----^^^^^
+    |         |
+    |         help: remove this `mut`
+    |
+    = note: `#[warn(unused_mut)]` (part of `#[warn(unused)]`) on by default
+
+For more information about this error, try `rustc --explain E0599`.
+warning: `coder-mobile` (lib test) generated 1 warning
+error: could not compile `coder-mobile` (lib test) due to 1 previous error; 1 warning emitted

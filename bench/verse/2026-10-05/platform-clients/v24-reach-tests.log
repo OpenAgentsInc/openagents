@@ -1,0 +1,45 @@
+warning: failed to save last-use data
+This may prevent cargo from accurately tracking what is being used in its global cache. This information is used for automatically removing unused data in the cache.
+
+database or disk is full
+
+Caused by:
+  Error code 13: database or disk is full
+    Blocking waiting for file lock on build directory
+   Compiling tokio v1.53.1
+   Compiling nostr v0.1.0 (/home/christopherdavid/work/openagents-verse-audit/crates/nostr)
+   Compiling tokio-tungstenite v0.30.0
+   Compiling coder-reach v0.1.0 (/home/christopherdavid/work/openagents-verse-audit/crates/coder-reach)
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 4m 53s
+     Running unittests src/lib.rs (/home/christopherdavid/work/openagents-target-agent1/debug/deps/coder_reach-308f499d49c0b86e)
+
+running 26 tests
+test channel::tests::frame_reader_refuses_oversized_and_short_frames ... ok
+test hints::tests::mislabeled_and_unsafe_hints_refuse ... ok
+test hints::tests::stale_hints_refuse ... ok
+test hints::tests::selection_with_shareable_endpoints ... ok
+test websocket::tests::a_message_must_be_exactly_one_bounded_frame ... ok
+test websocket::tests::buffered_writes_split_on_frame_boundaries ... ok
+test hints::tests::selection_without_shareable_endpoints_never_falls_back_to_loopback ... ok
+test directory::tests::conflicting_revisions_refuse ... ok
+test presence::tests::compatibility_reads_the_host_advertisement ... ok
+test presence::tests::telemetry_bounds_and_strict_fields ... ok
+test directory::tests::invalid_directories_refuse ... ok
+test placement::tests::scores_by_weight_cpu_idle_and_memory ... ok
+test presence::tests::book_refuses_rollback ... ok
+test channel::tests::sealed_frames_bind_kind_and_sequence ... ok
+test placement::tests::edge_cases ... ok
+test presence::tests::unknown_capabilities_and_required_features ... ok
+test presence::tests::freshness_uses_receipt_time_and_refuses_future_samples ... ok
+test directory::tests::edits_and_conflict_resolution_produce_the_next_revision ... ok
+test placement::tests::skips_stale_overloaded_zero_weight_and_incompatible ... ok
+test directory::tests::host_published_directory_is_refused ... ok
+test hints::v2::tests::a_v2_record_carries_one_iroh_hint_and_reads_as_v1_without_it ... ok
+test hints::v2::tests::malformed_iroh_hints_refuse_the_record ... ok
+test directory::tests::directory_round_trip ... ok
+test hints::tests::hint_round_trip ... ok
+test presence::tests::presence_round_trip_and_wrong_signer ... ok
+test directory::tests::an_entry_advertises_world_instances ... ok
+
+test result: ok. 26 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.01s
+

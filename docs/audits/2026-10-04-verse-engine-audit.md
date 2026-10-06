@@ -91,7 +91,7 @@ code. Counts describe scope, not coverage or quality.
 | [`verse-world`](../../crates/verse-world/README.md) | 71 / 46,570 | Commands, combat, encounters, spells, movement, prediction, grants, TLS, client workers, replicas, character mutations, and recovery. |
 | [`physics`](../../crates/physics/src/lib.rs) | 25 / 11,509 | Rigid bodies, contacts, warm starting, joints, CCD primitives, mesh queries, character movement, walkable navigation, lifetimes, and traces. |
 | [`verse-lagrange`](../../crates/verse-lagrange/README.md) | 5 / 4,504 | Orbital mechanics, construction, fixed stepping, restorable zone state, and conservation fixtures. |
-| [`verse-ruins`](../../crates/verse-ruins/README.md) | 3 / 1,354 | Adapter boundary and retained source/provenance; selected vendored collision, replication, and server schedule interfaces. |
+| [`verse-ruins`](https://github.com/OpenAgentsInc/openagents/blob/e3d774841b39bca2a7a916ebe115e442bc7dffe2/crates/verse-ruins/README.md) | 3 / 1,354 | Adapter boundary and retained source/provenance; selected vendored collision, replication, and server schedule interfaces. |
 | [`verse-wow` at the original baseline](https://github.com/OpenAgentsInc/openagents/blob/e3d774841b39bca2a7a916ebe115e442bc7dffe2/crates/verse-wow/src/lib.rs) | Compatibility adapter | Imported snapshots, numeric motion bindings, and separation from original content. |
 | [`everglade-web`](../../crates/everglade-web/README.md) | 3 / 809 | Pinned pack fetching, local world mounting, input, and WebGPU/WebGL2 rendering. |
 | [Mobile surface](../../crates/coder-mobile/src/verse_app.rs) and [OpenAgents wrapper](../../crates/openagents-mobile/src/verse.rs) | Integration review | Rust-owned state, injected identity, native surface lifecycle, and feature boundaries. |
@@ -172,7 +172,7 @@ Evidence labels:
 | V21 | P2 | Admitted characters share locomotion, terrain contacts, and author diagnostics. | Code, recorded | Animation and character content | Complete, named-rig profile ([#10737](https://github.com/OpenAgentsInc/openagents/issues/10737)) |
 | V22 | P2 | Declared lighting profiles share shading semantics and tier references. | Code, recorded | Rendering and art direction | Complete, controlled profiles ([#10738](https://github.com/OpenAgentsInc/openagents/issues/10738)) |
 | V23 | P2 | Audio is a bounded mixer, not a complete game audio system. | Code, gap | Audio and platform adapters | Complete for the controlled native profile ([#10739](https://github.com/OpenAgentsInc/openagents/issues/10739)) |
-| V24 | P1 | Mobile/browser rendering does not establish authoritative game parity. | Code, gap | Platform world clients | In progress [#10742](https://github.com/OpenAgentsInc/openagents/issues/10742) |
+| V24 | P1 | Mobile/browser rendering does not establish authoritative game parity. | Code, gap | Platform world clients | Complete for the portable combat profile ([#10742](https://github.com/OpenAgentsInc/openagents/issues/10742)) |
 | V25 | P2 | MMO social and progression systems need dedicated domains. | Code, gap | Verse game services | Open |
 | V26 | P1 | Player-generated content needs publication and disclosure boundaries. | Code, gap | Content admission and product access | Open |
 | V27 | P1 | Replay evidence needs explicit revision/platform guarantees. | Code, gap | Simulation and replay | Open |
@@ -1772,29 +1772,63 @@ removed or owner device opened.
 PCM production and control-side queue draining. It proves no driver scheduling,
 physical output quality, worker scheduling latency, or general real-time deadline.
 [`NEEDS_OWNER.md`](../../NEEDS_OWNER.md) records device/focus/output verification.
-Browser and phone mounting remains V24. Providers must supply immutable admitted
+V24 mounts browser and phone captions; device output audio remains unimplemented. Providers must supply immutable admitted
 readers; compressed codecs, environmental occlusion, production scores, and
 recorded dialogue localization remain content/platform work. No complete AAA
 audio-production claim follows from these original cues.
 
-### V24: Shared rendering is narrower than multiplayer platform parity
+### V24: Authoritative platform clients and interruption lifecycle
 
-[`everglade-web`](../../crates/everglade-web/README.md) mounts an offline glade:
-no plaza, relay, or studio host. Native mobile uses shared Rust state and secure
-identity injection, but the inspected mobile surface mounts `WorldRuntime` and
-presence rather than the desktop remote chamber worker/view/prediction path.
-Raw TLS/TCP chamber connections also cannot be used directly by browser code.
+**Addressed:** [#10742](https://github.com/OpenAgentsInc/openagents/issues/10742)
+mounts the same authenticated client, worker, prediction view, and Rust-owned
+session over TLS or NIP-REACH TCP/WebSocket on native, and REACH WebSocket in
+`everglade-web`'s explicit `?zone=chamber` mode. The earlier audit paragraph
+understated mobile: the existing RITUAL visit already mounted the authoritative
+session. V24 extends that path and adds the browser mount; Grid relay presence
+and the offline glade remain separate modes.
 
-**Improve:** Adapt the authoritative client to the planned reachable channel and
-shared platform input/session lifecycle. Test touch/controller remapping, combat
-HUD, readable text, accessibility, network/focus interruptions, and device
-resource recovery. Preserve thin Swift/Kotlin glue and Rust-owned application
-state. Desktop feature success does not imply a phone has the same capabilities.
+Channel proof and chamber signing bind the same world key. Host grants do not
+confer a world role. Shared bounded framing, identity/content verification, and
+request validation run on both executors; browser scheduling uses the local
+executor and monotonic clock. The browser admits same-origin bounded content
+before joining, verifies texture/mip identity, and refreshes enrollment on
+reconnect without replaying uncertain commands. DOM buffering limits retained
+Rust data; they cannot bound allocation before a browser delivers a message.
 
-**Acceptance:** A desktop, physical phone, and supported browser share one
-authoritative instance, see the same outcomes, reconnect, and handle suspend/
-resume within their device budgets. Publish an explicit supported-platform and
-feature matrix; simulator or offline rendering checks do not establish parity.
+Validated mappings combine independent held controls, fence repeats and held
+inputs across focus/rebinding, and preserve the mobile visit's bindings across
+suspend/reconnect. Mobile and browser combat overlays scale logical text to
+physical pixels and show priority captions. Browser controls retain DOM Tab
+focus, have labels and minimum 44-pixel targets, and support keyboard, touch,
+pointer camera, and gamepad. Focus/visibility loss releases session and GPU
+resources; a fresh connection retains character authority through the existing
+host enrollment rather than trusting a stale local controller.
+
+**Evidence:** [platform client receipts](../../bench/verse/2026-10-05/platform-clients/README.md)
+retain the source patch, checks, and Wasm artifact digest. Native loopbacks cover
+TCP and WebSocket, foreign-signing-key refusal, same-character reconnect, and
+revocation. Mobile tests cover connection cancellation, suspend/resume, host
+loss, respawn, remapping, and viewport scaling. Shared session and content tests
+exercise the original authoritative path; Wasm linking verifies browser target
+compatibility. A fresh headless Chromium profile and scratch REACH host verify
+authenticated keyboard movement and stopped input against the server position
+and sequence,
+visible 44-pixel controls, narrow layout, focus release/rejoin, browser shortcuts,
+and refused/restored grants. A stale-config failure led to cache bypass on
+reconnect. Full-resolution software rendering initially starved movement at about four
+frames per second. Adaptive graphics resolution now passes the original
+1000-by-800 CSS viewport with a 237-by-190 backing canvas, stable control,
+and zero drift after input release. DOM controls and captions keep their
+logical size. Verified control handoffs also retire stale status messages.
+
+**Limits:** The [supported feature matrix](../verse/platform-clients.md)
+separates implemented paths from device acceptance. Physical-phone frame,
+thermal, network, and shared-instance outcomes, plus hardware browser GPU,
+gamepad, and screen-reader checks remain explicit owner steps in
+`NEEDS_OWNER.md`. Mobile and browser mount captions but no output audio adapter;
+inventory/quest panels remain desktop UI. Browser graphics and session work
+share one thread; adaptive resolution reduces graphics work within that budget. This delivery establishes a portable
+combat client. Complete platform and AAA MMORPG parity remain unverified.
 
 ### V25: MMO features require domains beyond the chamber
 

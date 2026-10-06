@@ -1,0 +1,25 @@
+[
+  {
+    "logical": "/run/verse-audit-build-agent1/outputs",
+    "backing": "/home/christopherdavid/work/openagents-target-agent1/debug/verse-audit-recovered-outputs",
+    "verified_files": 2055
+  },
+  {
+    "logical": "/run/verse-audit-build-agent1/incremental",
+    "backing": "/home/christopherdavid/work/openagents-target-agent1/debug/verse-audit-recovered-incremental",
+    "verified_files": 3006
+  },
+  {
+    "logical": "/run/verse-audit-build-agent1/fingerprints",
+    "backing": "/home/christopherdavid/work/openagents-target-agent1/debug/verse-audit-recovered-fingerprints",
+    "verified_files": 24303
+  },
+  {
+    "logical": "/run/verse-audit-build-agent1/build-scripts",
+    "backing": "/home/christopherdavid/work/openagents-target-agent1/debug/verse-audit-recovered-build-scripts",
+    "verified_files": 3546
+  },
+  {
+    "restored_missing_artifact_links": 1509
+  }
+]

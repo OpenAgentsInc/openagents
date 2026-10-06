@@ -1,0 +1,403 @@
+{
+  "schema": "verse.platform-browser-smoke.v1",
+  "pass": true,
+  "browser": "Chromium 152.0.7977.82",
+  "software_gpu": true,
+  "temporary_identity": true,
+  "runtime_artifacts": {
+    "everglade_web.js": {
+      "bytes": 144585,
+      "sha256": "81e0a498da213001b29adac409203fafa24ef310d70cd61b0395b4e2bdb73b20"
+    },
+    "everglade_web_bg.wasm": {
+      "bytes": 47605806,
+      "sha256": "5d9269b5926b1bf527a843d3424851f40ee09c4a6cf276d50e82ce306add59a9"
+    }
+  },
+  "results": [
+    {
+      "name": "authenticated joined HUD",
+      "value": true
+    },
+    {
+      "name": "adaptive graphics at original viewport",
+      "value": {
+        "viewport": [
+          1000,
+          800
+        ],
+        "physical": [
+          237,
+          190
+        ],
+        "scale": 0.2373046875
+      }
+    },
+    {
+      "name": "authoritative release stops movement",
+      "value": {
+        "after": {
+          "position": [
+            5.067300319671631,
+            0.0,
+            -22.0
+          ],
+          "epoch": 6,
+          "sequence": 73,
+          "life": {
+            "instance": 120,
+            "actor": 14,
+            "generation": 0
+          },
+          "tick": 171
+        },
+        "stopped": {
+          "position": [
+            5.067300319671631,
+            0.0,
+            -22.0
+          ],
+          "epoch": 6,
+          "sequence": 78,
+          "life": {
+            "instance": 120,
+            "actor": 14,
+            "generation": 0
+          },
+          "tick": 179
+        },
+        "drift": 0.0
+      }
+    },
+    {
+      "name": "software rendering cadence",
+      "value": [
+        1618.8,
+        1735.4,
+        1935.4,
+        1952.1,
+        2002.1,
+        2052.1,
+        2185.4,
+        2202.1,
+        2268.8,
+        2302.1,
+        2352.1,
+        2385.4,
+        2435.4,
+        2468.8,
+        2518.7,
+        2552,
+        2585.4,
+        2635.4,
+        2668.7,
+        2718.8,
+        2752.1,
+        2802.1,
+        2835.4,
+        2885.4,
+        2918.8,
+        2968.7,
+        3018.8,
+        3102.1,
+        3118.7,
+        3135.3,
+        3168.7,
+        3185.3,
+        3218.7,
+        3252.1,
+        3285.4,
+        3302,
+        3335.4,
+        3368.7,
+        3385.3,
+        3418.7,
+        3452,
+        3485.4,
+        3502,
+        3535.4,
+        3552,
+        3585.3,
+        3618.7,
+        3652.1,
+        3668.7,
+        3702.1,
+        3735.3,
+        3768.7,
+        3802.1,
+        3835.4,
+        3868.7,
+        3902.1,
+        3918.7,
+        3952,
+        3985.4,
+        4018.7,
+        4035.4,
+        4068.7,
+        4085.3,
+        4118.7,
+        4152,
+        4185.3,
+        4218.7,
+        4235.3,
+        4268.7,
+        4302,
+        4318.7,
+        4352,
+        4385.3,
+        4418.7,
+        4435.4,
+        4468.6,
+        4502,
+        4535.4,
+        4568.7,
+        4602,
+        4635.4,
+        4668.7,
+        4685.3,
+        4718.7,
+        4752,
+        4768.6,
+        4802,
+        4835.3,
+        4852,
+        4885.3,
+        4918.7,
+        4935.3,
+        4968.7,
+        5002,
+        5018.6,
+        5052,
+        5068.6,
+        5102,
+        5135.3,
+        5151.9,
+        5185.4,
+        5218.6,
+        5235.3,
+        5268.6,
+        5301.9,
+        5318.6,
+        5351.9,
+        5385.3,
+        5401.9,
+        5435.3,
+        5468.6,
+        5485.3,
+        5518.6,
+        5552,
+        5568.6,
+        5601.9,
+        5618.6,
+        5651.9,
+        5685.2,
+        5701.9,
+        5735.3,
+        5768.7,
+        5785.2,
+        5818.6,
+        5835.3
+      ]
+    },
+    {
+      "name": "authoritative keyboard movement",
+      "value": {
+        "before": {
+          "position": [
+            0.0,
+            0.0,
+            -22.0
+          ],
+          "epoch": 6,
+          "sequence": 50,
+          "life": {
+            "instance": 120,
+            "actor": 14,
+            "generation": 0
+          },
+          "tick": 138
+        },
+        "after": {
+          "position": [
+            5.067300319671631,
+            0.0,
+            -22.0
+          ],
+          "epoch": 6,
+          "sequence": 73,
+          "life": {
+            "instance": 120,
+            "actor": 14,
+            "generation": 0
+          },
+          "tick": 171
+        },
+        "distance": 5.067300319671631
+      }
+    },
+    {
+      "name": "visible controls and minimum targets",
+      "value": {
+        "viewport": [
+          1000,
+          800
+        ],
+        "panel": [
+          552,
+          440,
+          448,
+          360
+        ],
+        "buttons": [
+          {
+            "label": "Forward",
+            "width": 64.890625,
+            "height": 44
+          },
+          {
+            "label": "Backward",
+            "width": 74.53125,
+            "height": 44
+          },
+          {
+            "label": "Strafe left",
+            "width": 73.046875,
+            "height": 44
+          },
+          {
+            "label": "Strafe right",
+            "width": 81.203125,
+            "height": 44
+          },
+          {
+            "label": "Shoot Bow",
+            "width": 80.46875,
+            "height": 44
+          },
+          {
+            "label": "Fire Bolt",
+            "width": 65.625,
+            "height": 44
+          },
+          {
+            "label": "Magic Missile",
+            "width": 95.984375,
+            "height": 44
+          },
+          {
+            "label": "Fireball",
+            "width": 59.703125,
+            "height": 44
+          },
+          {
+            "label": "Misty Step",
+            "width": 78.21875,
+            "height": 44
+          },
+          {
+            "label": "Thunderwave",
+            "width": 96.765625,
+            "height": 44
+          },
+          {
+            "label": "Web",
+            "width": 44,
+            "height": 44
+          },
+          {
+            "label": "Grease",
+            "width": 59.71875,
+            "height": 44
+          },
+          {
+            "label": "Light",
+            "width": 44.90625,
+            "height": 44
+          },
+          {
+            "label": "Shield",
+            "width": 53.0625,
+            "height": 44
+          },
+          {
+            "label": "Jump",
+            "width": 48.59375,
+            "height": 44
+          },
+          {
+            "label": "Target nearest",
+            "width": 101.203125,
+            "height": 44
+          },
+          {
+            "label": "Respawn",
+            "width": 71.578125,
+            "height": 44
+          },
+          {
+            "label": "Reconnect",
+            "width": 79.71875,
+            "height": 44
+          }
+        ],
+        "identity": "World identity: 5c4e0dec7215e26833938730e5e505aa62504da85ba57106a46b5a2404fc9d8e"
+      }
+    },
+    {
+      "name": "small viewport and physical scaling",
+      "value": {
+        "css": [
+          360,
+          640
+        ],
+        "physical": [
+          171,
+          304
+        ],
+        "panel": [
+          0,
+          352,
+          360,
+          288
+        ],
+        "viewport": [
+          360,
+          640
+        ]
+      }
+    },
+    {
+      "name": "blur releases session",
+      "value": true
+    },
+    {
+      "name": "focus rejoins same world identity",
+      "value": true
+    },
+    {
+      "name": "browser shortcuts and focus keys preserved",
+      "value": {
+        "shortcut": false,
+        "unbound": false,
+        "tab": false,
+        "space": true
+      }
+    },
+    {
+      "name": "keyboard and targeting do not panic",
+      "value": true
+    },
+    {
+      "name": "ungranted reconnect refused",
+      "value": true
+    },
+    {
+      "name": "restored grant rejoins",
+      "value": true
+    }
+  ],
+  "exceptions": [],
+  "limitations": [
+    "Headless software WebGL2 on Linux is not supported-hardware, physical-phone, gamepad, screen-reader, thermal, crowded-world, or output-audio acceptance."
+  ]
+}

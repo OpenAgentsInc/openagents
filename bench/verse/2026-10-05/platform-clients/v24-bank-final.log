@@ -1,0 +1,13 @@
+   Compiling verse-engine v0.1.0 (/home/christopherdavid/work/openagents-verse-audit/crates/verse-engine)
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 37.81s
+     Running unittests src/lib.rs (/home/christopherdavid/work/openagents-target-agent1/debug/deps/verse_engine-5d784ff1d137472f)
+
+running 5 tests
+test audio_bank::tests::pcm_pins_localization_and_bank_capacity_are_enforced ... ok
+test audio_bank::tests::silent_output_keeps_captions_volumes_and_music_restore_position ... ok
+test audio_bank::tests::a_small_hud_shows_critical_captions_before_crowded_footsteps ... ok
+test audio_bank::tests::authored_long_stream_is_verified_before_a_frame_can_play ... ok
+test audio_bank::tests::authored_bank_is_pinned_and_invalid_edits_refuse ... ok
+
+test result: ok. 5 passed; 0 failed; 0 ignored; 0 measured; 148 filtered out; finished in 0.06s
+

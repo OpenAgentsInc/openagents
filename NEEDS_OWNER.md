@@ -454,6 +454,7 @@ text at device pixel ratios, keyboard focus, screen reader status, and gamepad
 remapping. Browser and phone have captions but no mounted audio output adapter;
 record that limitation rather than treating silent output as audio parity.
 The V24 receipts cover Rust tests, Wasm linking, and isolated headless DOM/
-software WebGL2 checks. Movement passes at 320 by 240; 1000-by-800 software
-rendering starves movement and fails that budget. They do not cover these physical
+software WebGL2 checks. The 1000-by-800 CSS viewport
+passes authority movement and stopped input after adaptive graphics resolution;
+full-resolution software rendering failed that budget before the fix. They do not cover these physical
 checks. Retain per-device evidence and file a new issue for any defect.

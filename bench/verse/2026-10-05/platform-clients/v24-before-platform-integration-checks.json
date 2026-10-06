@@ -1,0 +1,169 @@
+[
+  {
+    "name": "mobile-final",
+    "command": [
+      "cargo",
+      "test",
+      "--locked",
+      "--offline",
+      "-p",
+      "coder-mobile",
+      "--lib",
+      "chamber::tests"
+    ],
+    "exit_code": 0,
+    "elapsed_seconds": null,
+    "note": "Integrated native source; test runtime 0.44 seconds. Check orchestrator paused during authorized storage cleanup."
+  },
+  {
+    "name": "session-final",
+    "command": [
+      "cargo",
+      "test",
+      "--locked",
+      "--offline",
+      "-p",
+      "verse-imported",
+      "--features",
+      "remote-chamber",
+      "--lib",
+      "chamber_session"
+    ],
+    "exit_code": 0,
+    "elapsed_seconds": 300.709703207016
+  },
+  {
+    "name": "ritual-final",
+    "command": [
+      "cargo",
+      "test",
+      "--locked",
+      "--offline",
+      "-p",
+      "verse-imported",
+      "--features",
+      "remote-chamber",
+      "--lib",
+      "ritual::tests"
+    ],
+    "exit_code": 0,
+    "elapsed_seconds": 3.1591217517852783
+  },
+  {
+    "name": "content-final",
+    "command": [
+      "cargo",
+      "test",
+      "--locked",
+      "--offline",
+      "-p",
+      "verse-imported",
+      "--features",
+      "remote-chamber",
+      "--lib",
+      "remote_content::tests"
+    ],
+    "exit_code": 0,
+    "elapsed_seconds": 0.4656534194946289
+  },
+  {
+    "name": "bank-final",
+    "command": [
+      "cargo",
+      "test",
+      "--locked",
+      "--offline",
+      "-p",
+      "verse-engine",
+      "--lib",
+      "audio_bank"
+    ],
+    "exit_code": 0,
+    "elapsed_seconds": 37.92309260368347
+  },
+  {
+    "name": "world-final",
+    "command": [
+      "cargo",
+      "test",
+      "--locked",
+      "--offline",
+      "-p",
+      "verse-world",
+      "--features",
+      "service-reach,reach-client",
+      "--lib"
+    ],
+    "exit_code": 0,
+    "elapsed_seconds": 364.92877292633057
+  },
+  {
+    "name": "native-final",
+    "command": [
+      "cargo",
+      "check",
+      "--locked",
+      "--offline",
+      "-p",
+      "verse",
+      "--no-default-features",
+      "--features",
+      "imported-desktop,remote-chamber",
+      "--example",
+      "verse_play"
+    ],
+    "exit_code": 0,
+    "elapsed_seconds": 191.6574730873108
+  },
+  {
+    "name": "wasm-final",
+    "command": [
+      "cargo",
+      "build",
+      "--locked",
+      "--offline",
+      "-p",
+      "everglade-web",
+      "--target",
+      "wasm32-unknown-unknown"
+    ],
+    "exit_code": 0,
+    "elapsed_seconds": 703.0042440891266
+  },
+  {
+    "name": "format-final",
+    "command": [
+      "cargo",
+      "fmt",
+      "--check",
+      "-p",
+      "verse-world",
+      "-p",
+      "coder-reach",
+      "-p",
+      "verse-imported",
+      "-p",
+      "verse-content",
+      "-p",
+      "verse-engine",
+      "-p",
+      "coder-mobile",
+      "-p",
+      "verse",
+      "-p",
+      "everglade-web"
+    ],
+    "exit_code": 0,
+    "elapsed_seconds": 1.5069055557250977
+  },
+  {
+    "name": "diff-final",
+    "command": [
+      "git",
+      "diff",
+      "--check"
+    ],
+    "exit_code": 0,
+    "elapsed_seconds": 0.04165792465209961
+  }
+]

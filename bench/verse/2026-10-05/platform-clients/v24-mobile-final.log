@@ -1,0 +1,128 @@
+warning: failed to save last-use data
+This may prevent cargo from accurately tracking what is being used in its global cache. This information is used for automatically removing unused data in the cache.
+
+database or disk is full
+
+Caused by:
+  Error code 13: database or disk is full
+   Compiling coder-reach v0.1.0 (/home/christopherdavid/work/openagents-verse-audit/crates/coder-reach)
+   Compiling verse-engine v0.1.0 (/home/christopherdavid/work/openagents-verse-audit/crates/verse-engine)
+   Compiling verse-world v0.1.0 (/home/christopherdavid/work/openagents-verse-audit/crates/verse-world)
+warning: method `additional_characters` is never used
+    --> crates/verse-world/src/play.rs:2943:19
+     |
+ 428 | impl Game {
+     | --------- method in this implementation
+...
+2943 |     pub(crate) fn additional_characters(
+     |                   ^^^^^^^^^^^^^^^^^^^^^
+     |
+     = note: `#[warn(dead_code)]` (part of `#[warn(unused)]`) on by default
+
+warning: `verse-world` (lib) generated 1 warning
+   Compiling verse-gfx v0.1.0 (/home/christopherdavid/work/openagents-verse-audit/crates/verse-gfx)
+   Compiling verse-pbr v0.1.0 (/home/christopherdavid/work/openagents-verse-audit/crates/verse-pbr)
+   Compiling verse-net v0.1.0 (/home/christopherdavid/work/openagents-verse-audit/crates/verse-net)
+   Compiling verse-core v0.1.0 (/home/christopherdavid/work/openagents-verse-audit/crates/verse-core)
+   Compiling openagents-connect v0.1.0 (/home/christopherdavid/work/openagents-verse-audit/crates/openagents-connect)
+   Compiling terminal-core v0.1.0 (/home/christopherdavid/work/openagents-verse-audit/crates/terminal-core)
+   Compiling verse-content v0.1.0 (/home/christopherdavid/work/openagents-verse-audit/crates/verse-content)
+   Compiling coder-host v0.1.0 (/home/christopherdavid/work/openagents-verse-audit/crates/coder-host)
+   Compiling verse-zone-everglade v0.1.0 (/home/christopherdavid/work/openagents-verse-audit/crates/verse-zone-everglade)
+warning: variable does not need to be mutable
+   --> crates/verse-zone-everglade/src/zones/everglade/layout/streets.rs:275:9
+    |
+275 |     let mut try_put =
+    |         ----^^^^^^^
+    |         |
+    |         help: remove this `mut`
+    |
+    = note: `#[warn(unused_mut)]` (part of `#[warn(unused)]`) on by default
+
+warning: function `triangles` is never used
+   --> crates/verse-zone-everglade/src/zones/everglade/draw.rs:103:15
+    |
+103 | pub(super) fn triangles() -> u64 {
+    |               ^^^^^^^^^
+    |
+    = note: `#[warn(dead_code)]` (part of `#[warn(unused)]`) on by default
+
+warning: function `stream_triangles` is never used
+   --> crates/verse-zone-everglade/src/zones/everglade/draw.rs:112:4
+    |
+112 | fn stream_triangles() -> u64 {
+    |    ^^^^^^^^^^^^^^^^
+
+warning: `verse-zone-everglade` (lib) generated 3 warnings (run `cargo fix --lib -p verse-zone-everglade` to apply 1 suggestion)
+   Compiling coder v0.1.0 (/home/christopherdavid/work/openagents-verse-audit/crates/coder)
+   Compiling verse-gym v0.1.0 (/home/christopherdavid/work/openagents-verse-audit/crates/verse-gym)
+   Compiling verse-zone-lagrange v0.1.0 (/home/christopherdavid/work/openagents-verse-audit/crates/verse-zone-lagrange)
+   Compiling verse-zone-grove v0.1.0 (/home/christopherdavid/work/openagents-verse-audit/crates/verse-zone-grove)
+   Compiling coder-computers v0.1.0 (/home/christopherdavid/work/openagents-verse-audit/crates/coder-computers)
+   Compiling verse-imported v0.1.0 (/home/christopherdavid/work/openagents-verse-audit/crates/verse-imported)
+warning: unused variable: `numbers`
+    --> crates/verse-imported/src/imported/overlay.rs:1297:9
+     |
+1297 |     let numbers = atlas.font("numbers").layout_at_scale(1.0 / s).unwrap();
+     |         ^^^^^^^ help: if this is intentional, prefix it with an underscore: `_numbers`
+     |
+     = note: `#[warn(unused_variables)]` (part of `#[warn(unused)]`) on by default
+
+warning: `verse-imported` (lib) generated 1 warning (run `cargo fix --lib -p verse-imported` to apply 1 suggestion)
+   Compiling terminal-control v0.1.0 (/home/christopherdavid/work/openagents-verse-audit/crates/terminal-control)
+   Compiling verse-zone-crypt v0.1.0 (/home/christopherdavid/work/openagents-verse-audit/crates/verse-zone-crypt)
+   Compiling verse-zone-lab v0.1.0 (/home/christopherdavid/work/openagents-verse-audit/crates/verse-zone-lab)
+   Compiling verse v0.1.0 (/home/christopherdavid/work/openagents-verse-audit/crates/verse)
+   Compiling openagents-chat-app v0.1.0 (/home/christopherdavid/work/openagents-verse-audit/crates/openagents-chat-app)
+   Compiling coder-mobile v0.1.0 (/home/christopherdavid/work/openagents-verse-audit/crates/coder-mobile)
+warning: variable does not need to be mutable
+   --> crates/coder-mobile/src/bare_presence_tests.rs:395:9
+    |
+395 |     let mut frame = |scene: &mut Scene, limit: Duration, done: fn(&Scene) -> bool| {
+    |         ----^^^^^
+    |         |
+    |         help: remove this `mut`
+    |
+    = note: `#[warn(unused_mut)]` (part of `#[warn(unused)]`) on by default
+
+warning: field `dir` is never read
+   --> crates/coder-mobile/src/chamber.rs:116:9
+    |
+112 | pub(crate) struct Content {
+    |                   ------- field in this struct
+...
+116 |     pub dir: PathBuf,
+    |         ^^^
+    |
+    = note: `#[warn(dead_code)]` (part of `#[warn(unused)]`) on by default
+
+warning: variants `Legacy` and `Grid` are never constructed
+   --> crates/coder-mobile/src/verse_ffi.rs:154:5
+    |
+153 | pub(crate) enum Surface {
+    |                 ------- variants in this enum
+154 |     Legacy(verse::render::Renderer),
+    |     ^^^^^^
+155 |     Grid(verse::grid_engine::GridEngine),
+    |     ^^^^
+
+warning: function `engine_content` is never used
+   --> crates/coder-mobile/src/verse_ffi.rs:185:4
+    |
+185 | fn engine_content(scene: &Scene) -> Result<verse::grid_engine::Content, String> {
+    |    ^^^^^^^^^^^^^^
+
+warning: `coder-mobile` (lib test) generated 4 warnings (run `cargo fix --lib -p coder-mobile --tests` to apply 1 suggestion)
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 6m 41s
+     Running unittests src/lib.rs (/home/christopherdavid/work/openagents-target-agent1/debug/deps/coder_mobile-3b7d16214a19c8ec)
+
+running 6 tests
+test chamber::tests::suspend_drops_a_connection_in_flight_and_resume_connects_again ... ok
+test chamber::tests::missing_config_fails_without_blocking_the_frame ... ok
+test chamber::tests::a_host_that_goes_away_fails_the_play ... ok
+test chamber::tests::a_dead_player_respawns_from_the_phone ... ok
+test chamber::tests::touch_mapping_survives_resume_and_rejects_invalid_changes ... ok
+test chamber::tests::suspend_stops_the_worker_and_resume_rejoins_the_same_character ... ok
+
+test result: ok. 6 passed; 0 failed; 0 ignored; 0 measured; 129 filtered out; finished in 0.44s
+

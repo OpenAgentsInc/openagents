@@ -1,0 +1,91 @@
+warning: failed to save last-use data
+This may prevent cargo from accurately tracking what is being used in its global cache. This information is used for automatically removing unused data in the cache.
+
+database or disk is full
+
+Caused by:
+  Error code 13: database or disk is full
+    Checking rand v0.9.5
+    Checking idna_adapter v1.2.2
+    Checking secp256k1-sys v0.11.0
+    Checking secp256k1 v0.31.1
+    Checking idna v1.1.0
+    Checking futures-channel v0.3.34
+   Compiling tokio-macros v2.7.2
+    Checking nostr v0.1.0 (/home/christopherdavid/work/openagents-verse-audit/crates/nostr)
+    Checking tokio v1.53.1
+    Checking bytemuck v1.25.2
+    Checking gloo-timers v0.3.0
+    Checking url v2.5.8
+    Checking web-sys v0.3.105
+    Checking web-time v1.1.0
+    Checking wasm-bindgen-futures v0.4.78
+    Checking rtrb v0.4.0
+    Checking verse-engine v0.1.0 (/home/christopherdavid/work/openagents-verse-audit/crates/verse-engine)
+    Checking coder-reach v0.1.0 (/home/christopherdavid/work/openagents-verse-audit/crates/coder-reach)
+    Checking physics v0.1.0 (/home/christopherdavid/work/openagents-verse-audit/crates/physics)
+    Checking verse-world v0.1.0 (/home/christopherdavid/work/openagents-verse-audit/crates/verse-world)
+warning: unused imports: `net::SocketAddr` and `sync::Arc`
+ --> crates/verse-world/src/service/client.rs:2:11
+  |
+2 | use std::{net::SocketAddr, sync::Arc, time::Duration};
+  |           ^^^^^^^^^^^^^^^  ^^^^^^^^^
+  |
+  = note: `#[warn(unused_imports)]` (part of `#[warn(unused)]`) on by default
+
+error[E0599]: no method named `into_std` found for struct `web_time::Instant` in the current scope
+   --> crates/verse-world/src/service/client.rs:953:55
+    |
+953 |         self.last_request_started = Some(pending.sent.into_std());
+    |                                                       ^^^^^^^^
+    |
+help: there is a method `into` with a similar name
+    |
+953 -         self.last_request_started = Some(pending.sent.into_std());
+953 +         self.last_request_started = Some(pending.sent.into());
+    |
+
+error[E0599]: no method named `split` found for struct `Channel<S>` in the current scope
+  --> crates/verse-world/src/service/reach_client.rs:64:44
+   |
+64 |     let (mut reader, mut writer) = channel.split();
+   |                                            ^^^^^
+   |
+help: there is a method `into_split` with a similar name
+   |
+64 |     let (mut reader, mut writer) = channel.into_split();
+   |                                            +++++
+
+error[E0277]: the size for values of type `[u8]` cannot be known at compilation time
+  --> crates/verse-world/src/service/reach_client.rs:71:27
+   |
+71 |         while let Ok(Some(bytes)) = reader.recv().await {
+   |                           ^^^^^ doesn't have a size known at compile-time
+   |
+   = help: the trait `Sized` is not implemented for `[u8]`
+   = note: all local variables must have a statically known size
+
+error[E0277]: the size for values of type `[u8]` cannot be known at compilation time
+  --> crates/verse-world/src/service/reach_client.rs:71:22
+   |
+71 |         while let Ok(Some(bytes)) = reader.recv().await {
+   |                      ^^^^^^^^^^^ doesn't have a size known at compile-time
+   |
+   = help: the trait `Sized` is not implemented for `[u8]`
+note: required by a bound in `Some`
+  --> /rustc/8bab26f4f68e0e26f0bb7960be334d5b520ea452/library/core/src/option.rs:605:4
+
+error[E0277]: the size for values of type `[u8]` cannot be known at compilation time
+  --> crates/verse-world/src/service/reach_client.rs:71:51
+   |
+71 |         while let Ok(Some(bytes)) = reader.recv().await {
+   |                                                   ^^^^^ doesn't have a size known at compile-time
+   |
+   = help: the trait `Sized` is not implemented for `[u8]`
+note: required by an implicit `Sized` bound in `std::option::Option`
+  --> /rustc/8bab26f4f68e0e26f0bb7960be334d5b520ea452/library/core/src/option.rs:597:0
+
+Some errors have detailed explanations: E0277, E0599.
+For more information about an error, try `rustc --explain E0277`.
+warning: `verse-world` (lib) generated 1 warning
+error: could not compile `verse-world` (lib) due to 5 previous errors; 1 warning emitted

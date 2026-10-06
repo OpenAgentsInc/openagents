@@ -1,0 +1,22 @@
+[
+  {
+    "path": "/run/verse-audit-build-agent1/browser-smoke/profile-1791263587868593353",
+    "bytes": 63204494
+  },
+  {
+    "path": "/run/verse-audit-build-agent1/browser-smoke/profile-1791263259696677048",
+    "bytes": 63256899
+  },
+  {
+    "path": "/run/verse-audit-build-agent1/browser-smoke/profile-1791263226860837934",
+    "bytes": 60201391
+  },
+  {
+    "path": "/run/verse-audit-build-agent1/browser-smoke/profile-1791262889533591546",
+    "bytes": 60147106
+  },
+  {
+    "path": "/run/verse-audit-build-agent1/browser-smoke/profile-1791262659983450160",
+    "bytes": 60223290
+  }
+]

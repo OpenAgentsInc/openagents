@@ -1,0 +1,325 @@
+{
+  "schema": "verse.platform-browser-smoke.v1",
+  "pass": true,
+  "browser": "Chromium 152.0.7977.82",
+  "software_gpu": true,
+  "temporary_identity": true,
+  "runtime_artifacts": {
+    "everglade_web.js": {
+      "bytes": 144585,
+      "sha256": "2b3bfdda15e27ee82cfaf1d04f372776ab496426b045c80768b8189dd8b0d756"
+    },
+    "everglade_web_bg.wasm": {
+      "bytes": 47545110,
+      "sha256": "03779c4f0963bdcf3574cb125d2b6f5302d36925a2594edbedf8d5f6db171ffc"
+    }
+  },
+  "results": [
+    {
+      "name": "authenticated joined HUD",
+      "value": true
+    },
+    {
+      "name": "authoritative release stops movement",
+      "value": {
+        "after": {
+          "position": [
+            5.494019985198975,
+            0.0,
+            -22.0
+          ],
+          "epoch": 4,
+          "sequence": 31,
+          "life": {
+            "instance": 120,
+            "actor": 14,
+            "generation": 0
+          },
+          "tick": 79
+        },
+        "stopped": {
+          "position": [
+            5.494019985198975,
+            0.0,
+            -22.0
+          ],
+          "epoch": 4,
+          "sequence": 37,
+          "life": {
+            "instance": 120,
+            "actor": 14,
+            "generation": 0
+          },
+          "tick": 87
+        },
+        "drift": 0.0
+      }
+    },
+    {
+      "name": "software rendering cadence",
+      "value": [
+        1016.5,
+        1033.2,
+        1083.2,
+        1099.9,
+        1133.2,
+        1166.5,
+        1199.8,
+        1233.2,
+        1249.8,
+        1283.2,
+        1316.5,
+        1333.1,
+        1366.5,
+        1399.8,
+        1416.5,
+        1449.8,
+        1483.2,
+        1516.4,
+        1533.1,
+        1566.5,
+        1599.8,
+        1616.5,
+        1649.8,
+        1683.2,
+        1699.8,
+        1733.1,
+        1766.5,
+        1783.1,
+        1816.5,
+        1849.8,
+        1866.5,
+        1899.8,
+        1933.1,
+        1966.5,
+        1983.1,
+        2049.8,
+        2083.1,
+        2116.4,
+        2149.8,
+        2183.2,
+        2199.8,
+        2233.1,
+        2266.5,
+        2299.8,
+        2333.1,
+        2366.5,
+        2399.8,
+        2416.4,
+        2449.8,
+        2483.1,
+        2516.4,
+        2549.7,
+        2566.5,
+        2599.7,
+        2633.1,
+        2666.4,
+        2699.8,
+        2733.1,
+        2749.7,
+        2783.1,
+        2816.5
+      ]
+    },
+    {
+      "name": "authoritative keyboard movement",
+      "value": {
+        "before": {
+          "position": [
+            0.0,
+            0.0,
+            -22.0
+          ],
+          "epoch": 4,
+          "sequence": 8,
+          "life": {
+            "instance": 120,
+            "actor": 14,
+            "generation": 0
+          },
+          "tick": 46
+        },
+        "after": {
+          "position": [
+            5.494019985198975,
+            0.0,
+            -22.0
+          ],
+          "epoch": 4,
+          "sequence": 31,
+          "life": {
+            "instance": 120,
+            "actor": 14,
+            "generation": 0
+          },
+          "tick": 79
+        },
+        "distance": 5.494019985198975
+      }
+    },
+    {
+      "name": "visible controls and minimum targets",
+      "value": {
+        "viewport": [
+          1000,
+          800
+        ],
+        "panel": [
+          552,
+          470,
+          448,
+          330
+        ],
+        "buttons": [
+          {
+            "label": "Forward",
+            "width": 64.890625,
+            "height": 44
+          },
+          {
+            "label": "Backward",
+            "width": 74.53125,
+            "height": 44
+          },
+          {
+            "label": "Strafe left",
+            "width": 73.046875,
+            "height": 44
+          },
+          {
+            "label": "Strafe right",
+            "width": 81.203125,
+            "height": 44
+          },
+          {
+            "label": "Shoot Bow",
+            "width": 80.46875,
+            "height": 44
+          },
+          {
+            "label": "Fire Bolt",
+            "width": 65.625,
+            "height": 44
+          },
+          {
+            "label": "Magic Missile",
+            "width": 95.984375,
+            "height": 44
+          },
+          {
+            "label": "Fireball",
+            "width": 59.703125,
+            "height": 44
+          },
+          {
+            "label": "Misty Step",
+            "width": 78.21875,
+            "height": 44
+          },
+          {
+            "label": "Thunderwave",
+            "width": 96.765625,
+            "height": 44
+          },
+          {
+            "label": "Web",
+            "width": 44,
+            "height": 44
+          },
+          {
+            "label": "Grease",
+            "width": 59.71875,
+            "height": 44
+          },
+          {
+            "label": "Light",
+            "width": 44.90625,
+            "height": 44
+          },
+          {
+            "label": "Shield",
+            "width": 53.0625,
+            "height": 44
+          },
+          {
+            "label": "Jump",
+            "width": 48.59375,
+            "height": 44
+          },
+          {
+            "label": "Target nearest",
+            "width": 101.203125,
+            "height": 44
+          },
+          {
+            "label": "Respawn",
+            "width": 71.578125,
+            "height": 44
+          },
+          {
+            "label": "Reconnect",
+            "width": 79.71875,
+            "height": 44
+          }
+        ],
+        "identity": "World identity: 5c4e0dec7215e26833938730e5e505aa62504da85ba57106a46b5a2404fc9d8e"
+      }
+    },
+    {
+      "name": "small viewport and physical scaling",
+      "value": {
+        "css": [
+          360,
+          640
+        ],
+        "physical": [
+          720,
+          1280
+        ],
+        "panel": [
+          0,
+          352,
+          360,
+          288
+        ],
+        "viewport": [
+          360,
+          640
+        ]
+      }
+    },
+    {
+      "name": "blur releases session",
+      "value": true
+    },
+    {
+      "name": "focus rejoins same world identity",
+      "value": true
+    },
+    {
+      "name": "browser shortcuts and focus keys preserved",
+      "value": {
+        "shortcut": false,
+        "unbound": false,
+        "tab": false,
+        "space": true
+      }
+    },
+    {
+      "name": "keyboard and targeting do not panic",
+      "value": true
+    },
+    {
+      "name": "ungranted reconnect refused",
+      "value": true
+    },
+    {
+      "name": "restored grant rejoins",
+      "value": true
+    }
+  ],
+  "exceptions": [],
+  "limitations": [
+    "Headless software WebGL2 on Linux is not supported-hardware, physical-phone, gamepad, screen-reader, thermal, crowded-world, or output-audio acceptance."
+  ]
+}

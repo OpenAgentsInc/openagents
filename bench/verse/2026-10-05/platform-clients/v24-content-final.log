@@ -1,0 +1,36 @@
+warning: failed to connect to jobserver from environment variable `CARGO_MAKEFLAGS="-j --jobserver-fds=3,5 --jobserver-auth=3,5"`: cannot open file descriptor 3 from the jobserver environment variable value: Bad file descriptor (os error 9)
+  |
+  = note: the build environment is likely misconfigured
+
+warning: `physics` (lib) generated 1 warning
+warning: method `additional_characters` is never used
+    --> crates/verse-world/src/play.rs:2943:19
+     |
+ 428 | impl Game {
+     | --------- method in this implementation
+...
+2943 |     pub(crate) fn additional_characters(
+     |                   ^^^^^^^^^^^^^^^^^^^^^
+     |
+     = note: `#[warn(dead_code)]` (part of `#[warn(unused)]`) on by default
+
+warning: `verse-world` (lib) generated 1 warning
+warning: unused variable: `numbers`
+    --> crates/verse-imported/src/imported/overlay.rs:1297:9
+     |
+1297 |     let numbers = atlas.font("numbers").layout_at_scale(1.0 / s).unwrap();
+     |         ^^^^^^^ help: if this is intentional, prefix it with an underscore: `_numbers`
+     |
+     = note: `#[warn(unused_variables)]` (part of `#[warn(unused)]`) on by default
+
+warning: `verse-imported` (lib test) generated 1 warning (run `cargo fix --lib -p verse-imported --tests` to apply 1 suggestion)
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 0.31s
+     Running unittests src/lib.rs (/home/christopherdavid/work/openagents-target-agent1/debug/deps/verse_imported-d3e60c8db9a55768)
+
+running 3 tests
+test imported::remote_content::tests::equipment_preflight_requires_static_models_and_parent_sockets ... ok
+test imported::remote_content::tests::outfit_admission_refuses_missing_models_and_animation_states ... ok
+test imported::remote_content::tests::identity_binds_scene_geometry_and_verified_texture_bytes ... ok
+
+test result: ok. 3 passed; 0 failed; 0 ignored; 0 measured; 40 filtered out; finished in 0.10s
+
