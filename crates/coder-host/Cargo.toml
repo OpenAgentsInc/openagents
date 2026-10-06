@@ -30,6 +30,7 @@ host = [
 ]
 
 [dependencies]
+coder-host-wire = { path = "../coder-host-wire" }
 openagents-chat = { path = "../openagents-chat", optional = true }
 # The background rules runner `serve` starts (the disk cleanup monitor).
 background = { path = "../background", optional = true }

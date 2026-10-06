@@ -2801,6 +2801,25 @@ dependencies = [
 ]
 
 [[package]]
+name = "coder-browser"
+version = "0.1.0"
+dependencies = [
+ "coder-access",
+ "coder-host-wire",
+ "coder-pty",
+ "coder-reach",
+ "futures-util",
+ "gloo-timers",
+ "js-sys",
+ "nostr",
+ "secp256k1 0.31.1",
+ "serde_json",
+ "tokio",
+ "wasm-bindgen",
+ "web-sys",
+]
+
+[[package]]
 name = "coder-compositor"
 version = "0.1.0"
 dependencies = [
@@ -2981,6 +3000,7 @@ dependencies = [
  "coder-boundary",
  "coder-connect",
  "coder-history",
+ "coder-host-wire",
  "coder-link",
  "coder-pty",
  "coder-reach",
@@ -3006,6 +3026,17 @@ dependencies = [
  "tokio-rustls",
  "tokio-tungstenite 0.30.0",
  "windows-sys 0.61.2",
+]
+
+[[package]]
+name = "coder-host-wire"
+version = "0.1.0"
+dependencies = [
+ "coder-pty",
+ "coder-reach",
+ "nostr",
+ "serde",
+ "serde_json",
 ]
 
 [[package]]

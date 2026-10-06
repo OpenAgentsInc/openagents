@@ -1,3 +1,10 @@
+## Browser admitted terminal transport (#10685)
+
+Verify an enrolled browser against a scratch resident host through direct and
+relay routes, including route loss, grant revocation, and slow-relay replay.
+The Rust transport fixtures and wasm build verify protocol behavior; physical
+browser/network qualification remains unverified.
+
 # Owner checks
 
 ## Remote shell proposal controls (#10745)
