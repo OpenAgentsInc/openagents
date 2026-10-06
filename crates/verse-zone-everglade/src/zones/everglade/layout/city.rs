@@ -17,11 +17,11 @@
 //! observatory, which block by their own boxes (`generated`).
 
 use super::generated::{
-    BAKERY, BOARDWALK_CAFE, BOATHOUSE, BROWNSTONE, CLOCK_TOWER, CORNER_SHOP, COTTAGE_THATCH,
-    COTTAGE_TOWER, FARMHOUSE, FOUNTAIN, GAMBREL_BARN, GAMBREL_HOUSE, GAZEBO, GREENHOUSE,
-    GUILD_HALL, HIP_HOUSE, Instance, L_HOUSE, LANTERN_INN, LOG_CABIN, LOOKOUT, MARKET_HALL,
-    MEETING_HALL, MUSIC_HALL, Model, OBSERVATORY, ROW_TOWNHOUSE, SHOP_HOUSE, SMITHY, STONE_COTTAGE,
-    TAVERN, TIMBER_HOUSE, TOWNHOUSE_BALCONY, TOWNHOUSE_JETTIED, WINDMILL,
+    BAKERY, BOARDWALK_CAFE, BOATHOUSE, BROWNSTONE, CHAPEL, CLOCK_TOWER, CORNER_SHOP,
+    COTTAGE_THATCH, COTTAGE_TOWER, DORMER_HOUSE, FARMHOUSE, FOUNTAIN, GAMBREL_BARN, GAMBREL_HOUSE,
+    GAZEBO, GREENHOUSE, GUILD_HALL, HIP_HOUSE, Instance, L_HOUSE, LANTERN_INN, LOG_CABIN, LOOKOUT,
+    MARKET_HALL, MEETING_HALL, MUSIC_HALL, Model, NARROW_HOUSE, OBSERVATORY, SHOP_HOUSE, SMITHY,
+    STONE_COTTAGE, TALL_HOUSE, TAVERN, TIMBER_HOUSE, WINDMILL,
 };
 use super::{
     Collision, DOOR_HALF, EAST, NORTH, Piece, Placement, SOUTH, WALL_TOP, WEST, dress, height,
@@ -388,15 +388,15 @@ const fn stand_in(
 pub const STAND_INS: [StandIn; 74] = [
     stand_in("corner shop", "corner shop", &CORNER_SHOP, 0.0),
     stand_in("bakehouse", "bakehouse", &BAKERY, 0.0),
-    stand_in("tailor", "tailor", &TOWNHOUSE_BALCONY, 0.0),
-    stand_in("tea house", "tea house", &TOWNHOUSE_JETTIED, 0.0),
+    stand_in("tailor", "tailor", &DORMER_HOUSE, 0.0),
+    stand_in("tea house", "tea house", &TALL_HOUSE, 0.0),
     stand_in("print shop", "print shop", &CORNER_SHOP, 0.0),
-    stand_in("music shop", "music shop", &TOWNHOUSE_JETTIED, 0.0),
+    stand_in("music shop", "music shop", &TALL_HOUSE, 0.0),
     stand_in("market hall", "market hall", &MARKET_HALL, 0.0),
-    stand_in("townhouse 1", "townhouse 1", &TOWNHOUSE_JETTIED, 0.0),
-    stand_in("townhouse 3", "townhouse 3", &TOWNHOUSE_BALCONY, 0.0),
-    stand_in("townhouse 4", "townhouse 4", &TOWNHOUSE_BALCONY, 0.0),
-    stand_in("townhouse 6", "townhouse 6", &TOWNHOUSE_JETTIED, 0.0),
+    stand_in("townhouse 1", "townhouse 1", &TALL_HOUSE, 0.0),
+    stand_in("townhouse 3", "townhouse 3", &DORMER_HOUSE, 0.0),
+    stand_in("townhouse 4", "townhouse 4", &DORMER_HOUSE, 0.0),
+    stand_in("townhouse 6", "townhouse 6", &TALL_HOUSE, 0.0),
     // The Lantern Quarter: the round Music Hall, the meeting hall back from
     // Hearth Road behind its porch, the tavern on its corner, and the guild
     // hall, a little south so its turret clears the Music Hall.
@@ -408,10 +408,10 @@ pub const STAND_INS: [StandIn; 74] = [
     stand_in("the lantern", "the lantern", &TAVERN, 0.0),
     stand_in("guild hall", "guild hall", &GUILD_HALL, -2.0),
     stand_in("the snug", "the snug", &L_HOUSE, 0.0),
-    stand_in("brownstone 3 west", "brownstone 3", &ROW_TOWNHOUSE, -2.1),
-    stand_in("brownstone 3 east", "brownstone 3", &ROW_TOWNHOUSE, 2.1),
-    stand_in("brownstone 4 west", "brownstone 4", &ROW_TOWNHOUSE, -2.1),
-    stand_in("brownstone 4 east", "brownstone 4", &ROW_TOWNHOUSE, 2.1),
+    stand_in("brownstone 3 west", "brownstone 3", &NARROW_HOUSE, -2.1),
+    stand_in("brownstone 3 east", "brownstone 3", &NARROW_HOUSE, 2.1),
+    stand_in("brownstone 4 west", "brownstone 4", &NARROW_HOUSE, -2.1),
+    stand_in("brownstone 4 east", "brownstone 4", &NARROW_HOUSE, 2.1),
     stand_in("seminar house", "seminar house", &L_HOUSE, 0.0),
     // The drum tower stands at the middle of the hill's flat top.
     StandIn {
@@ -420,7 +420,7 @@ pub const STAND_INS: [StandIn; 74] = [
         ..stand_in("observatory", "observatory", &OBSERVATORY, 0.0)
     },
     stand_in("quiet cabin", "quiet cabin", &COTTAGE_TOWER, 0.0),
-    stand_in("studio", "studio", &TOWNHOUSE_BALCONY, 0.0),
+    stand_in("studio", "studio", &DORMER_HOUSE, 0.0),
     // The Boardwalk Cafés face each other across Studio Road, their decks
     // to the street.
     StandIn {
@@ -516,14 +516,18 @@ const fn brownstone(building: &'static str) -> StandIn {
 /// Generated models that stand on open ground rather than in a building's
 /// place: the boathouse on Lantern Pond's north bank, its arch to the
 /// water; the glasshouse in the community garden behind Brownstone Row;
-/// and the gazebo on the commons' east lawn.
-pub const GROUNDS: [Instance; 3] = [
+/// the gazebo on the commons' east lawn; and the wayside chapel on the
+/// north trail.
+pub const GROUNDS: [Instance; 4] = [
     Instance {
         scale: 0.8,
         ..Instance::new("boathouse", &BOATHOUSE, [4.5, 34.2], PI)
     },
     Instance::new("glasshouse", &GREENHOUSE, [-52.0, -58.0], PI),
     Instance::new("gazebo", &GAZEBO, [30.0, 26.0], -FRAC_PI_2),
+    // The eighth round's wayside chapel, its door to the north trail
+    // (`trails`).
+    Instance::new("chapel", &CHAPEL, [3.5, 124.0], FRAC_PI_2),
 ];
 
 /// The Fountain Plaza's fountain, on the plaza's west half clear of

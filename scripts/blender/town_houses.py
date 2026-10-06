@@ -777,6 +777,336 @@ def woodshed():
     return b
 
 
+# --------------------------------------------------------------------------
+# The eighth round's townhouses, after the kit-built ones they replace
+
+
+def arched_window(face, u, z, w, h, shutters=False, flowers=False):
+    """A window with a round head: a pane and a half-disc of glass in a
+    frame proud of the wall, as the kit's arched windows have."""
+    r = w / 2
+    if FAR:
+        face.box((u - r - 0.09, -0.04, z - 0.09), (u + r + 0.09, 0.0, z + h + r * 0.7), "glass", name="Glass")
+        return
+    face.window(u, z, w, h, shutters=shutters, flowers=flowers, cross=False)
+    n = 6
+    glass, rim = [], []
+    for i in range(n):
+        a0, a1 = math.pi * i / n, math.pi * (i + 1) / n
+        p = lambda a, rr, y: face.m @ Vector((u + rr * math.cos(a), y, z + h + rr * math.sin(a)))  # noqa: E731
+        glass.append([p(a1, r, -0.03), p(a0, r, -0.03), face.m @ Vector((u, -0.03, z + h))])
+        rim.append([p(a1, r + 0.1, -0.09), p(a0, r + 0.1, -0.09), p(a0, r, -0.09), p(a1, r, -0.09)])
+    face.b.solid("ArchGlass", bl.poly_mesh("ArchGlass", glass, face.b.mats["glass"]))
+    face.b.solid("ArchFrame", bl.poly_mesh("ArchFrame", rim, face.b.mats["wood"], tile=0.5))
+    face.box((u - 0.03, -0.06, z), (u + 0.03, 0.0, z + h + r), "wood", name="Mullion", band=DARK)
+
+
+def tile_courses(n=5):
+    """Fractions of a slope's run where a course of tiles stands proud, so
+    a slab roof reads as rows of round tiles from the street."""
+    return tuple((i + 0.5) / n for i in range(n))
+
+
+@model
+def tall_house():
+    """A narrow three-storey house, each storey jettied further over the
+    street, under a steep front gable: half-timbered from the first floor
+    up, with arched windows in the gable storey and a stone plinth."""
+    b = house("tall_house", {"plaster": "cream", "roof": "red", "timber": "mid"},
+              shutter=(0.36, 0.24, 0.14))
+    w, d, st, jet = 6.0, 8.0, 2.95, 0.45
+    hw = w / 2
+    b.block((-hw - 0.08, -0.08, 0.0), (hw + 0.08, d + 0.08, 0.45), "rock", name="Plinth", scale=1.5)
+    for k in range(3):
+        z0, z1, y0 = k * st, (k + 1) * st, -k * jet
+        slab_walls(b, w, d, z0, z1, y0=y0)
+        corner_posts(b, w, d, z0, z1, y0=y0)
+        if k:
+            jetty_joists(b, w, z0, jet, y=y0 + jet)
+    top = 3 * st
+    front = [Face(b, 0, (0, -k * jet, 0)) for k in range(3)]
+    # The ground floor: the door, an arched window, and a small one.
+    front[0].door(0.6, 1.05, 2.25, z=0.3, glazed=False)
+    front[0].box((-0.1, -0.5, 0.0), (1.3, 0.0, 0.3), "rock", name="Step", tile=1.0)
+    arched_window(front[0], -1.7, 1.0, 0.9, 1.0, shutters=True)
+    front[0].window(2.25, 1.0, 0.6, 1.0, shutters=False)
+    front[0].framing(0.45, st, -hw, hw, (-hw + 0.1, -0.6, 1.9, hw - 0.1), rails=())
+    # The first floor: a wide window of small panes between two others.
+    for u in (-2.0, 2.0):
+        front[1].window(u, st + 0.8, 0.8, 1.3, shutters=False, flowers=True)
+    front[1].window(0.0, st + 0.75, 1.5, 1.45, shutters=False)
+    front[1].framing(st, 2 * st, -hw, hw, (-hw + 0.1, -1.1, 1.1, hw - 0.1), rails=(st + 0.6,),
+                     braces=((-hw + 0.2, st + 0.16, -1.25, st + 0.58), (hw - 0.2, st + 0.16, 1.25, st + 0.58)))
+    # The gable storey: three arched windows, the middle one shuttered.
+    for u in (-1.9, 0.0, 1.9):
+        arched_window(front[2], u, 2 * st + 0.75, 0.7 if u else 0.85, 1.0, shutters=u == 0.0)
+    front[2].framing(2 * st, top, -hw, hw, (-hw + 0.1, -1.0, 1.0, hw - 0.1), rails=(2 * st + 0.6,))
+    for k in (1, 2):
+        for side, rot in ((-1, -90), (1, 90)):
+            f = Face(b, rot, (side * hw, d / 2 - k * jet / 2, 0))
+            f.window(-side * 1.0, k * st + 0.85, 0.8, 1.2, shutters=False)
+            f.framing(k * st, (k + 1) * st, -(d + k * jet) / 2, (d + k * jet) / 2, (-2.2, 0.0, 2.2),
+                      rails=(k * st + 0.6,),
+                      braces=((-(d + k * jet) / 2 + 0.2, k * st + 0.16, -2.3, (k + 1) * st - 0.2),
+                              ((d + k * jet) / 2 - 0.2, k * st + 0.16, 2.3, (k + 1) * st - 0.2)))
+    for side, rot in ((-1, -90), (1, 90)):
+        Face(b, rot, (side * hw, d / 2, 0)).window(side * 1.6, 1.0, 0.8, 1.1, shutters=False)
+    back = Face(b, 180, (0, d, 0))
+    for k in range(3):
+        back.window(-1.3, k * st + 0.9, 0.8, 1.2, shutters=k == 1)
+        back.window(1.3, k * st + 0.9, 0.8, 1.2, shutters=k == 1)
+        if k:
+            back.framing(k * st, (k + 1) * st, -hw, hw, (-hw + 0.1, -0.2, 0.2, hw - 0.1), rails=(k * st + 0.6,),
+                         braces=((-hw + 0.2, k * st + 0.16, -2.2, (k + 1) * st - 0.2),
+                                 (hw - 0.2, k * st + 0.16, 2.2, (k + 1) * st - 0.2)))
+    # The steep front gable, framed in timber with a king post and a small
+    # window under the ridge.
+    length = d + 2 * jet
+    yc = (d - 2 * jet) / 2
+    ridge = bl.slab_roof(b, w + 0.1, length, top + 0.02, 4.4, center=(0, yc), over=0.5, thick=0.2,
+                         courses=() if FAR else tile_courses())
+    gable = Face(b, 0, (0, -2 * jet - 0.01, 0))
+    gable.beam((-0.09, -0.05, top), (0.09, 0.0, ridge - 0.25))
+    gable.beam((-1.9, -0.05, top + 1.6), (1.9, 0.0, top + 1.76))
+    gable.brace(-2.9, top + 0.1, -0.15, ridge - 0.35)
+    gable.brace(2.9, top + 0.1, 0.15, ridge - 0.35)
+    arched_window(gable, 0.0, top + 2.0, 0.5, 0.6)
+    # Bargeboards along the gable's eaves.
+    ang = math.atan2(4.4, (w + 0.1) / 2)
+    run = ((w + 0.1) / 2 + 0.5) / math.cos(ang)
+    for turn in (0, 180):
+        xf = (Matrix.Translation(Vector((0, -2 * jet - 0.5, ridge))) @ Matrix.Rotation(math.radians(turn), 4, "Z")
+              @ Matrix.Rotation(ang, 4, "Y"))
+        b.solid("Barge", bl.box_mesh("Barge", (0.0, -0.07, -0.36), (run, 0.07, -0.02), b.mats["wood"], band=DARK,
+                                     xf=xf))
+    chimney(b, -1.5, d - 2.0, top, ridge + 0.2)
+    b.collide("ground", (-hw - 0.1, -0.1, 0), (hw + 0.1, d + 0.1, st))
+    b.collide("upper", (-hw - 0.1, -2 * jet - 0.1, st), (hw + 0.1, d + 0.1, top))
+    b.collide("step", (-0.1, -0.5, 0), (1.3, 0.0, 0.3))
+    b.roofs.append(((0.0, yc), False, (hw + 0.5, length / 2 + 0.5), top, ridge))
+    b.front = (0.6, -1.0)
+    return b
+
+
+@model
+def narrow_house():
+    """A narrow row house of three storeys for Brownstone Row's terraces:
+    a stone ground floor with a hooded door, jettied, half-timbered upper
+    storeys, blind party walls, and a steep front gable with a roof
+    window."""
+    b = house("narrow_house", {"plaster": "rose", "roof": "charcoal", "timber": "dark"},
+              shutter=(0.24, 0.30, 0.40))
+    w, d, st, jet = 4.0, 8.0, 2.95, 0.35
+    hw = w / 2
+    slab_walls(b, w, d, 0.0, st, mat="stone", thick=0.25)
+    for k in (1, 2):
+        slab_walls(b, w, d, k * st, (k + 1) * st, y0=-(k - 1) * jet - jet, thick=0.25)
+        corner_posts(b, w, d, k * st, (k + 1) * st, y0=-k * jet)
+        jetty_joists(b, w, k * st, jet, y=-(k - 1) * jet)
+    top = 3 * st
+    ground = Face(b, 0, (0, 0, 0))
+    ground.door(0.85, 1.0, 2.2, glazed=True)
+    ground.box((0.15, -0.55, 0.0), (1.55, 0.0, 0.18), "rock", name="Step", tile=1.0)
+    ground.box((0.2, -0.5, 2.45), (1.5, 0.0, 2.6), "stone", name="Hood")
+    ground.window(-0.95, 1.0, 0.9, 1.2, shutters=False)
+    ground.box((-1.55, -0.12, 2.25), (-0.35, 0.0, 2.45), "rock", name="Lintel", tile=1.0)
+    for k in (1, 2):
+        f = Face(b, 0, (0, -k * jet, 0))
+        z = k * st
+        for u in (-0.9, 0.9):
+            if k == 2:
+                arched_window(f, u, z + 0.8, 0.7, 1.05)
+            else:
+                f.window(u, z + 0.8, 0.75, 1.3, shutters=False, flowers=True)
+        f.framing(z, z + st, -hw, hw, (-hw + 0.1, 0.0, hw - 0.1), rails=(z + 0.6,),
+                  braces=((-hw + 0.2, z + 0.16, -0.15, z + 0.58), (hw - 0.2, z + 0.16, 0.15, z + 0.58)))
+    back = Face(b, 180, (0, d, 0))
+    for k in range(3):
+        back.window(0.0, k * st + 0.9, 0.8, 1.2, shutters=False)
+    length = d + 2 * jet
+    yc = (d - 2 * jet) / 2
+    ridge = bl.slab_roof(b, w + 0.1, length, top + 0.02, 3.6, center=(0, yc), over=0.4, thick=0.18,
+                         courses=() if FAR else tile_courses(4))
+    gable = Face(b, 0, (0, -2 * jet - 0.01, 0))
+    gable.beam((-0.08, -0.05, top), (0.08, 0.0, top + 0.6))
+    gable.window(0.0, top + 0.75, 0.55, 0.8, shutters=False, cross=False)
+    gable.brace(-1.9, top + 0.1, -0.35, top + 1.7)
+    gable.brace(1.9, top + 0.1, 0.35, top + 1.7)
+    chimney(b, 0.9, d - 1.2, top, ridge + 0.3, w=0.6)
+    b.collide("ground", (-hw - 0.05, -0.05, 0), (hw + 0.05, d + 0.05, st))
+    b.collide("upper", (-hw - 0.05, -2 * jet - 0.05, st), (hw + 0.05, d + 0.05, top))
+    b.collide("step", (0.15, -0.55, 0), (1.55, 0.0, 0.18))
+    b.roofs.append(((0.0, yc), False, (hw + 0.4, length / 2 + 0.4), top, ridge))
+    b.front = (0.85, -1.1)
+    return b
+
+
+@model
+def dormer_house():
+    """Two storeys with the ridge along the street: a jettied, half-timbered
+    upper floor with a balcony of crossed rails across its middle, two
+    gabled dormers, an arched door, and shutters on the ground floor."""
+    b = house("dormer_house", {"plaster": "ochre", "roof": "brown", "timber": "mid"},
+              shutter=(0.30, 0.20, 0.12))
+    w, d, g, up, jet = 8.0, 8.0, 3.0, 2.9, 0.5
+    hw = w / 2
+    top = g + up
+    b.block((-hw - 0.08, -0.08, 0.0), (hw + 0.08, d + 0.08, 0.5), "rock", name="Plinth", scale=1.5)
+    slab_walls(b, w, d, 0.0, g)
+    corner_posts(b, w, d, 0.0, g)
+    jetty_joists(b, w, g, jet)
+    slab_walls(b, w, d, g, top, y0=-jet)
+    corner_posts(b, w, d, g, top, y0=-jet)
+    front = Face(b, 0, (0, 0, 0))
+    front.door(0.0, 1.15, 2.2, z=0.0, glazed=False)
+    # A little gabled hood over the door, on two brackets.
+    bl.slab_roof(b, 1.9, 0.8, 2.45, 0.55, center=(0.0, -0.4), along_x=False, over=0.12, thick=0.1)
+    for u in (-0.85, 0.85):
+        front.beam((u - 0.06, -0.75, 1.95), (u + 0.06, 0.0, 2.45), band=DARK, name="Bracket")
+    for u in (-2.75, -1.45, 1.45, 2.75):
+        front.window(u, 0.95, 0.8, 1.3, shutters=abs(u) > 2, flowers=abs(u) < 2)
+    front.framing(0.5, g, -hw, hw, (-hw + 0.1, hw - 0.1), rails=())
+    upper = Face(b, 0, (0, -jet, 0))
+    for u in (-3.0, 3.0):
+        arched_window(upper, u, g + 0.85, 0.6, 1.1)
+    for u in (-1.0, 1.0):
+        upper.window(u, g + 0.8, 0.8, 1.3, shutters=False)
+    upper.framing(g, top, -hw, hw, (-hw + 0.1, -2.1, -0.05, 2.1, hw - 0.1), rails=(g + 0.6,),
+                  braces=((-hw + 0.2, top - 0.2, -3.6, g + 0.62), (hw - 0.2, top - 0.2, 3.6, g + 0.62)))
+    # The balcony on long joists across the middle bays, with crossed rails.
+    by0, by1 = -jet - 1.05, -jet
+    b.beam((-2.1, by0, g - 0.06), (2.1, by1, g + 0.08), band=DARK, name="Balcony")
+    for x in (-2.0, 0.0, 2.0):
+        b.beam((x - 0.07, by0 + 0.05, g - 0.6), (x + 0.07, by1, g - 0.06), band=DARK, name="Joist")
+        b.beam((x - 0.06, by0, g + 0.08), (x + 0.06, by0 + 0.12, g + 1.0), band=DARK, name="Post")
+    b.beam((-2.1, by0 - 0.02, g + 0.95), (2.1, by0 + 0.14, g + 1.06), band=LIGHT, name="Handrail")
+    for x0, x1 in ((-2.1, -2.0), (2.0, 2.1)):
+        b.beam((x0, by0, g + 0.95), (x1, by1, g + 1.06), band=LIGHT, name="Handrail")
+    rail = Face(b, 0, (0, by0 + 0.08, 0))
+    for x in () if FAR else (-1.0, 1.0):
+        rail.brace(x - 0.92, g + 0.12, x + 0.92, g + 0.9, w=0.09, out=0.05)
+        rail.brace(x + 0.92, g + 0.12, x - 0.92, g + 0.9, w=0.09, out=0.05)
+    for side, rot in ((-1, -90), (1, 90)):
+        f = Face(b, rot, (side * hw, d / 2, 0))
+        f.window(0.0, 0.95, 0.8, 1.2, shutters=True)
+        f.window(0.0, g + 0.85, 0.8, 1.2, shutters=False)
+        f.framing(g, top, -(d + jet) / 2, d / 2 - jet / 2, (-1.6, 1.6), rails=(g + 0.6,))
+    back = Face(b, 180, (0, d, 0))
+    for u in (-2.2, 2.2):
+        back.window(u, 0.95, 0.9, 1.2)
+        back.window(u, g + 0.85, 0.9, 1.2, shutters=False)
+    back.door(0.0, 1.0, 2.2)
+    back.framing(g, top, -hw, hw, (-hw + 0.1, 0.0, hw - 0.1), rails=(g + 0.6,))
+    # The roof runs along the street, steep, with two dormers on its front.
+    depth = d + jet
+    rise = 3.6
+    ridge = bl.slab_roof(b, depth, w, top + 0.02, rise, center=(0, (d - jet) / 2), along_x=True, over=0.5,
+                         thick=0.2, courses=() if FAR else tile_courses())
+    run = depth / 2 + 0.5
+    zf = lambda y: top + 0.02 + rise * (y + jet + 0.5) / run  # noqa: E731
+    for x in (-2.0, 2.0):
+        dormer(b, x, 0.2, zf(0.2) - 0.05, w=1.5, h=1.3, depth=1.9)
+    chimney(b, 2.7, d - 1.7, top, ridge + 0.4)
+    b.collide("ground", (-hw - 0.1, -0.1, 0), (hw + 0.1, d + 0.1, g))
+    b.collide("balcony", (-2.1, by0, g - 0.06), (2.1, by1, g + 1.06))
+    b.collide("upper", (-hw - 0.1, -jet - 0.1, g), (hw + 0.1, d + 0.1, top))
+    b.roofs.append(((0.0, (d - jet) / 2), True, (depth / 2 + 0.5, hw + 0.5), top, ridge))
+    b.front = (0.0, -1.2)
+    return b
+
+
+# --------------------------------------------------------------------------
+# The eighth round's landmarks for the trails toward the zone's edges
+
+
+@model
+def chapel():
+    """A small stone wayside chapel where a trail leaves the town: a steep
+    tiled roof, a bell cote over the front gable, an arched door under a
+    hood, arched windows down each side between buttresses, and a round
+    window in the gable."""
+    b = house("chapel", {"plaster": "cream", "roof": "slate", "timber": "dark"},
+              stone_tint=(0.62, 0.58, 0.52))
+    w, d, wall = 5.6, 9.0, 4.2
+    hw = w / 2
+    b.block((-hw - 0.15, -0.15, 0.0), (hw + 0.15, d + 0.15, 0.4), "rock", name="Plinth", scale=1.5)
+    slab_walls(b, w, d, 0.0, wall, mat="stone", thick=0.4)
+    front = Face(b, 0, (0, 0, 0))
+    front.door(0.0, 1.3, 2.4, z=0.4, glazed=False)
+    front.box((-1.0, -0.6, 0.0), (1.0, 0.0, 0.4), "rock", name="Step", tile=1.0)
+    if not FAR:
+        rim = []
+        for i in range(6):
+            a0, a1 = math.pi * i / 6, math.pi * (i + 1) / 6
+            p = lambda a, rr: front.m @ Vector((rr * math.cos(a), -0.14, 2.8 + rr * math.sin(a)))  # noqa: E731
+            rim.append([p(a1, 0.95), p(a0, 0.95), p(a0, 0.75), p(a1, 0.75)])
+        b.solid("DoorArch", bl.poly_mesh("DoorArch", rim, b.mats["rock"], tile=1.0))
+    for side, rot in ((-1, -90), (1, 90)):
+        f = Face(b, rot, (side * hw, d / 2, 0))
+        for u in (-2.2, 0.6):
+            arched_window(f, u * -side, 1.6, 0.7, 1.4)
+        for u in (-3.6, -0.8, 2.0, 4.3):
+            f.box((u * -side - 0.25, -0.45, 0.0), (u * -side + 0.25, 0.0, 2.6), "stone", name="Buttress",
+                  tile=1.0)
+            f.box((u * -side - 0.25, -0.3, 2.6), (u * -side + 0.25, 0.0, 3.2), "stone", name="Buttress", tile=1.0)
+    back = Face(b, 180, (0, d, 0))
+    arched_window(back, 0.0, 1.8, 0.9, 1.6)
+    ridge = bl.slab_roof(b, w, d, wall, 3.8, center=(0, d / 2), over=0.35, thick=0.2, gable="stone",
+                         courses=() if FAR else tile_courses(4))
+    gable = Face(b, 0, (0, -0.01, 0))
+    if not FAR:
+        b.solid("Rose", bl.disc_mesh("Rose", gable.m @ Vector((0, -0.02, wall + 1.3)), 0.5, 0, b.mats["glass"],
+                                     sides=10, depth=0.04))
+        b.solid("RoseRim", bl.disc_mesh("RoseRim", gable.m @ Vector((0, 0.0, wall + 1.3)), 0.62, 0,
+                                        b.mats["rock"], sides=10, depth=0.06))
+    # The bell cote: two stone piers and a little gable over a bell.
+    zc = ridge - 0.2
+    for x in (-0.55, 0.55):
+        b.block((x - 0.17, -0.25, zc - 0.4), (x + 0.17, 0.35, zc + 1.4), "stone", name="Cote", scale=1.0)
+    b.block((-0.75, -0.3, zc + 1.4), (0.75, 0.4, zc + 1.55), "rock", name="CoteCap", scale=1.0)
+    bl.slab_roof(b, 1.6, 0.8, zc + 1.55, 0.6, center=(0, 0.05), along_x=True, over=0.08, thick=0.1, gable="stone")
+    if not FAR:
+        b.solid("Bell", bl.frustum_mesh("Bell", (0, 0.05), 0.3, 0.12, zc + 0.6, zc + 1.2, 8, b.mats["iron"]))
+    b.collide("chapel", (-hw - 0.15, -0.15, 0), (hw + 0.15, d + 0.15, wall))
+    b.collide("buttresses", (-hw - 0.45, 0.1, 0), (hw + 0.45, d - 0.1, 2.6))
+    b.collide("step", (-1.0, -0.6, 0), (1.0, 0.0, 0.4))
+    b.roofs.append(((0.0, d / 2), False, (hw + 0.35, d / 2 + 0.35), wall, ridge))
+    b.front = (0.0, -1.2)
+    return b
+
+
+@model
+def trail_shelter():
+    """An open timber shelter where a trail meets the woods: four posts with
+    knee braces under a tiled gable, a bench along its back, and a notice
+    board on one post."""
+    b = house("trail_shelter", {"plaster": "cream", "roof": "brown", "timber": "dark"})
+    w, d, h = 3.6, 2.4, 2.4
+    hw = w / 2
+    for x in (-hw, hw):
+        for y in (0.0, d):
+            b.beam((x - 0.1, y - 0.1, 0.0), (x + 0.1, y + 0.1, h), band=DARK, name="Post")
+    for y in (0.0, d):
+        b.beam((-hw - 0.1, y - 0.1, h - 0.2), (hw + 0.1, y + 0.1, h), band=DARK, name="Plate")
+    if not FAR:
+        for x, s in ((-hw, 1), (hw, -1)):
+            for y in (0.0, d):
+                f = Face(b, 0, (0, y, 0))
+                f.brace(x, h - 0.7, x + s * 0.6, h - 0.15, w=0.1, out=0.05)
+    b.beam((-hw + 0.1, d - 0.5, 0.42), (hw - 0.1, d - 0.1, 0.5), band=LIGHT, name="Bench")
+    for x in (-hw + 0.4, hw - 0.4):
+        b.beam((x - 0.05, d - 0.45, 0.0), (x + 0.05, d - 0.15, 0.42), band=DARK, name="BenchLeg")
+    b.beam((-hw + 0.1, d - 0.12, 0.5), (hw - 0.1, d - 0.06, 1.0), band=LIGHT, name="BenchBack")
+    b.beam((hw + 0.1, -0.16, 1.1), (hw + 0.14, 0.4, 1.8), band=LIGHT, name="Notice")
+    if not FAR:
+        b.block((hw + 0.14, -0.1, 1.2), (hw + 0.16, 0.34, 1.7), "cloth2", name="Paper", scale=1.0)
+    bl.slab_roof(b, w + 0.2, d + 0.2, h, 1.1, center=(0, d / 2), along_x=True, over=0.35, thick=0.12,
+                 gable=None)
+    b.collide("posts", (-hw - 0.1, d - 0.5, 0), (hw + 0.1, d + 0.1, 0.5))
+    b.front = (0.0, -0.8)
+    return b
+
+
 def main():
     args = sys.argv[sys.argv.index("--") + 1:] if "--" in sys.argv else []
     if "--kit" in args:

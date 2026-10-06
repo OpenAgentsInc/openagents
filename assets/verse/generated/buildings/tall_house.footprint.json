@@ -1,0 +1,66 @@
+{
+  "model": "tall_house.glb",
+  "frame": "glTF: 1 unit = 1 m, +Y up, +Z out of the front door, origin on the ground at the center of the front wall",
+  "triangles": 3486,
+  "boxes": [
+    {
+      "name": "ground",
+      "center": [
+        0.0,
+        1.475,
+        -4.0
+      ],
+      "half_extents": [
+        3.1,
+        1.475,
+        4.1
+      ]
+    },
+    {
+      "name": "upper",
+      "center": [
+        0.0,
+        5.9,
+        -3.55
+      ],
+      "half_extents": [
+        3.1,
+        2.95,
+        4.55
+      ]
+    },
+    {
+      "name": "step",
+      "center": [
+        0.6,
+        0.15,
+        0.25
+      ],
+      "half_extents": [
+        0.7,
+        0.15,
+        0.25
+      ]
+    }
+  ],
+  "roofs": [
+    {
+      "center": [
+        0.0,
+        -3.55
+      ],
+      "slopes_z": false,
+      "half": [
+        3.5,
+        4.95
+      ],
+      "eave": 8.85,
+      "ridge": 13.27
+    }
+  ],
+  "front": [
+    0.6,
+    1.0
+  ],
+  "inside": null
+}

@@ -1,0 +1,66 @@
+{
+  "model": "narrow_house.glb",
+  "frame": "glTF: 1 unit = 1 m, +Y up, +Z out of the front door, origin on the ground at the center of the front wall",
+  "triangles": 1662,
+  "boxes": [
+    {
+      "name": "ground",
+      "center": [
+        0.0,
+        1.475,
+        -4.0
+      ],
+      "half_extents": [
+        2.05,
+        1.475,
+        4.05
+      ]
+    },
+    {
+      "name": "upper",
+      "center": [
+        0.0,
+        5.9,
+        -3.65
+      ],
+      "half_extents": [
+        2.05,
+        2.95,
+        4.4
+      ]
+    },
+    {
+      "name": "step",
+      "center": [
+        0.85,
+        0.09,
+        0.275
+      ],
+      "half_extents": [
+        0.7,
+        0.09,
+        0.275
+      ]
+    }
+  ],
+  "roofs": [
+    {
+      "center": [
+        0.0,
+        -3.65
+      ],
+      "slopes_z": false,
+      "half": [
+        2.4,
+        4.75
+      ],
+      "eave": 8.85,
+      "ridge": 12.47
+    }
+  ],
+  "front": [
+    0.85,
+    1.1
+  ],
+  "inside": null
+}

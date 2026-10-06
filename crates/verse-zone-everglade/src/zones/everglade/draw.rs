@@ -78,6 +78,10 @@ const YARD_ROUND: f32 = 2.5;
 const PATH_ROUND: f32 = 1.2;
 /// Linear albedo of the trodden path and of the yard.
 const PATH: [f32; 3] = [0.3, 0.24, 0.14];
+/// Where a trail's wear on the grass is whole and where it fades out, m
+/// from the trail's middle, and how much of the grass it covers.
+const TRAIL_WORN: (f32, f32) = (0.6, 2.4);
+const TRAIL_COVER: f32 = 0.85;
 const YARD_DIRT: [f32; 3] = [0.24, 0.2, 0.13];
 /// Linear albedo of the cobbles, lightest and darkest, and of the joints
 /// between them.
@@ -369,10 +373,16 @@ fn grass_tint(x: f32, z: f32) -> [u8; 4] {
     let lush = value_noise(x * 0.045 + 7.0, z * 0.045 - 3.0, 1 << 12, 71) - 0.5;
     let dry = (value_noise(x * 0.11, z * 0.11, 1 << 12, 73) - 0.55).max(0.0);
     let k = 1.0 + 0.35 * lush;
+    // The trails to the zone's edges are worn into the turf, so they
+    // follow the rising ground (`layout::trails`).
+    let d = super::layout::trails::distance(x, z);
+    let worn = 1.0 - ((d - TRAIL_WORN.0) / (TRAIL_WORN.1 - TRAIL_WORN.0)).clamp(0.0, 1.0);
+    let worn = worn * worn * (3.0 - 2.0 * worn) * TRAIL_COVER;
     let rgb: [u8; 3] = std::array::from_fn(|i| {
         let albedo = (GRASS[i] + (FOREST[i] - GRASS[i]) * t) * k;
         let straw = [0.2, 0.17, 0.05][i];
         let albedo = albedo + (straw - albedo) * dry * 0.9 * (1.0 - t);
+        let albedo = albedo + (PATH[i] * 0.75 - albedo) * worn;
         unorm(albedo / DETAIL_MEAN)
     });
     [rgb[0], rgb[1], rgb[2], 255]

@@ -134,6 +134,11 @@ without the small details, which `everglade_admit.py` admits into the pack's
 | `lantern_inn.glb` | 3,254 | 802 | Butter, red, dark | The Lantern Quarter's inn: lamplit windows, a double door, wall lanterns, a hanging sign, a timber-framed upper floor, and a hipped roof with two dormers |
 | `garden_shed.glb` | 418 | | Cream, red, dark | The seventh round's: a plastered garden shed on a stone plinth under a tiled gable, with a plank door, a shuttered window, and a water butt, placed as a prop in back gardens; no far level |
 | `woodshed.glb` | 478 | | Cream, brown, dark | The seventh round's: an open-fronted woodshed, a tiled lean-to on four posts over a plank back wall, with three courses of split logs and a chopping block, placed as a prop beside the cabins; no far level |
+| `tall_house.glb` | 3,486 | 1,276 | Cream, red, mid | The eighth round's: three storeys, each jettied further over the street, half-timbered with braces, arched windows in the gable storey, bargeboards on a steep front gable, and a stone plinth; it stands in the kit-built `townhouse_jettied`'s places |
+| `narrow_house.glb` | 1,662 | 622 | Rose, charcoal, dark | The eighth round's: a 4 m row house of three storeys, a stone ground floor with a hooded door, jettied, half-timbered upper storeys, blind party walls, and a front gable; two stand in each of the `row_townhouse` pairs' places |
+| `dormer_house.glb` | 2,936 | 1,048 | Ochre, brown, mid | The eighth round's: two storeys with the ridge along the street, a jettied, half-timbered upper floor with a balcony of crossed rails, two gabled dormers, a door hood, and shutters; it stands in the kit-built `townhouse_balcony`'s places |
+| `chapel.glb` | 1,034 | 402 | Gray stone, slate | The eighth round's wayside chapel on the north trail: buttressed stone walls, arched windows, a round gable window, a steep roof, and a bell cote over the front gable |
+| `trail_shelter.glb` | 228 | | Brown tiles, dark | The eighth round's open shelter where a trail meets the woods: four braced posts under a tiled roof, a bench, and a notice board; no far level |
 
 Each `<name>.footprint.json` lists axis-aligned collision boxes in the glb's
 frame: 1 unit = 1 m, +Y up, +Z out of the front door, and the origin on the

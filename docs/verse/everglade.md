@@ -193,6 +193,13 @@ The zone renderer gains textured static meshes:
   before) in 205 MiB; the pack is 11.2 MB. The seventh round's wild
   ground brings a street view to 337,000 to 544,000 and the merged city to
   2,886,002 triangles in 208 MiB; the pack, with Alice, is 11.0 MB.
+  The eighth round first freed room without changing what a walker sees:
+  lighter far levels and lighter townhouses took the merged city from
+  2,890,704 triangles in 208.7 MiB to 2,611,907 in 188.3 MiB. It then
+  spent about half of that on foliage, trails, and the chapel, and left
+  the rest as headroom for destruction's debris: the city merges
+  2,750,225 triangles in 198.9 MiB, places at most 1,462,510, and a street
+  view draws 326,000 to 500,000; the pack is 10.3 MB.
 - The sixth round's houses (`scripts/blender/town_houses.py`) are painted
   too: their plaster and tiles are named `HousePlaster` and `HouseTiles`
   (`scene::PAINTED`), and `layout::paint` gives each placed house colors of
@@ -392,6 +399,28 @@ woods, with ferns and grass at their edges; garden sheds stand in back
 gardens; and woodsheds stand beside cabins and farm buildings
 (`scripts/blender/town_houses.py` and `town_props.py`). The market's three
 stalls are one model now, painted red, blue, or gold where it stands.
+
+The eighth round (`layout::trails` and `layout::foliage::verdure`) adds
+trails to the zone's edges and a great deal more foliage. Eight trails
+leave the town's last streets where the map draws its dashed paths: north
+past Market Way, north-west past the beekeeper's hut, west from Hearth
+Road, south-west through Walden Woods, south from the farm lane,
+south-east past Observatory Hill, east from Foundry Road, and north-east
+out of Fernhollow. Each is worn into the turf, so it follows the rising
+ground through the tree ring and the forest belt; footpath pieces lay it
+across the flat clearing; waymark stones stand beside it in the woods;
+and nothing grows on it. A trail shelter with a bench stands where three
+of them meet the woods, and a stone wayside chapel with a bell cote
+stands beside the north trail. Groves of birch trios, rowans in berry,
+hazels, elders in flower, and fern banks, among copses, thickets, and
+young trees, grow on the wild ground and up the rising ground to the tree
+ring; the same undergrowth fills the forest floor past the ring, thickest
+along the trails; and elders, hazels, fern banks, and small trees grow in
+the gaps between the town's buildings. Three lighter townhouses
+(`tall_house`, `narrow_house`, and `dormer_house`, in Reference mode)
+replaced the kit-built jettied, balconied, and row townhouses, at about a
+quarter of their triangles, and are painted per place like the sixth
+round's houses.
 
 The town has ambient wildlife
 ([`wildlife`](../../crates/verse-zone-everglade/src/zones/everglade/wildlife.rs)): pairs of

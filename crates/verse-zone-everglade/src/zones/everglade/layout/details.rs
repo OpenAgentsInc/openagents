@@ -290,7 +290,7 @@ fn flowers(out: &mut Vec<Placement>, placed: &mut Placed) {
 /// The chimneys that smoke, in their generated model's frame: x, height,
 /// and z of each chimney's top, m, read from the chimney pieces of each
 /// glb that `scripts/blender/buildings.py` builds.
-const CHIMNEYS: [(&str, [f32; 3]); 20] = [
+const CHIMNEYS: [(&str, [f32; 3]); 21] = [
     ("generated/bakery", [3.3, 12.69, -5.7]),
     ("generated/smithy", [4.85, 10.53, -4.0]),
     ("generated/log_cabin", [-3.55, 5.87, -2.5]),
@@ -300,8 +300,6 @@ const CHIMNEYS: [(&str, [f32; 3]); 20] = [
     ("generated/tavern", [-4.23, 10.05, -6.2]),
     ("generated/guild_hall", [4.47, 9.96, -8.0]),
     ("generated/hip_house", [-2.63, 9.24, -5.2]),
-    ("generated/townhouse_jettied", [-1.63, 13.16, -6.0]),
-    ("generated/row_townhouse", [0.87, 12.62, -6.8]),
     ("generated/boardwalk_cafe", [2.47, 6.62, -4.8]),
     // The sixth round's (`scripts/blender/town_houses.py`).
     ("generated/shop_house", [1.9, 10.82, -7.4]),
@@ -312,6 +310,10 @@ const CHIMNEYS: [(&str, [f32; 3]); 20] = [
     ("generated/timber_house", [2.4, 10.02, -5.7]),
     ("generated/lantern_inn", [-3.0, 10.25, -5.1]),
     ("generated/lantern_inn", [3.4, 10.05, -5.9]),
+    // The eighth round's.
+    ("generated/tall_house", [-1.5, 13.87, -6.0]),
+    ("generated/narrow_house", [0.9, 13.17, -6.8]),
+    ("generated/dormer_house", [2.7, 10.32, -6.3]),
 ];
 
 /// Where smoke rises from the town's chimneys, a little above each top, m.

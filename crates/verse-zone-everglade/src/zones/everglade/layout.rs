@@ -29,6 +29,7 @@ pub mod generated;
 pub mod greens;
 pub mod parks;
 pub mod streets;
+pub mod trails;
 
 /// How a placement blocks walking.
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -636,9 +637,11 @@ pub fn paint(placement: &Placement) -> Paint {
             roof: Some(stripe),
         };
     }
-    // The sixth round's houses each take colors of their own from where
-    // they stand; a `None` keeps the model's.
-    if furnish::LIGHT_HOUSES.contains(&placement.model) {
+    // The sixth and eighth rounds' houses each take colors of their own
+    // from where they stand; a `None` keeps the model's.
+    if furnish::LIGHT_HOUSES.contains(&placement.model)
+        || furnish::TOWNHOUSES.contains(&placement.model)
+    {
         let [x, z] = placement.at;
         let k = (x * 7.0 + z * 13.0).round().abs() as u32;
         let plaster = PLASTERS[(noise(k, 72) * PLASTERS.len() as f32) as usize];
@@ -782,6 +785,7 @@ pub fn placements() -> Vec<Placement> {
     town(&mut out);
     paths(&mut out);
     glade(&mut out);
+    trails::clear(&mut out);
     out.push(Placement::new(
         "generated/concrete_tower",
         TOWER,

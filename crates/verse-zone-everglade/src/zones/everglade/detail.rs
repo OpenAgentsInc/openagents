@@ -66,8 +66,9 @@ const UNDERSTORY_MODELS: [&str; 17] = [
 /// flowers, mushrooms, and stepping stones, the flower beds and boxes, and
 /// the station furniture and small props, which are a few pixels tall
 /// beyond it.
-const COVER_MODELS: [&str; 35] = [
+const COVER_MODELS: [&str; 36] = [
     "foliage/fern_clump",
+    "foliage/fern_bank",
     "foliage/grass_tall",
     "foliage/wildflower_clump",
     "foliage/mushroom_ring",

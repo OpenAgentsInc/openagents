@@ -1272,6 +1272,102 @@ def cascade(m):
             frond(m, material, FERN[1], (x, 0.6, 0.3), i * 1.25, 0.6, 0.26)
 
 
+# --- The eighth round: more kinds for the wild ground and the gaps -------------
+
+
+def birch_trio(m):
+    """Three slender birches from one root, leaning apart, with pale bark,
+    dark knots, and small, light crowns: 6 to 8 m tall."""
+    rng = m.rng
+    b = flat("Bark_Birch", (0.70, 0.68, 0.63), 0.8)
+    knot = flat("Bark_Knot", (0.08, 0.07, 0.06), 0.9)
+    lobes = []
+    for i, (a, lean, h) in enumerate(((0.3, 0.5, 7.6), (2.4, 0.8, 6.3), (4.3, 0.6, 7.0))):
+        d = Vector((math.cos(a), math.sin(a), 0))
+        base = d * 0.3
+        mid = base + d * lean * 0.5 + UP * h * 0.5
+        top = base + d * lean * 1.4 + UP * h
+        tube(m, b, [base - UP * 0.2, mid, top], [0.14, 0.09, 0.035], sides=5)
+        for k in range(3):
+            z = 1.0 + k * 1.3 + rng.uniform(-0.2, 0.2)
+            p = base + d * lean * 0.5 * z / (h * 0.5) + UP * z
+            box(m, knot, p + d.cross(UP) * 0.06 * (1 if k % 2 else -1), (0.05, 0.05, 0.12), yaw=a)
+        for k in range(2):
+            s = d.cross(UP) * (1 if k else -1)
+            limb(m, b, mid + UP * 1.2, mid + UP * 2.6 + s * 1.0 + d * 0.4, 0.04, 0.015, sides=3, steps=1)
+        lobes.append((top - UP * 1.4 + d * 0.15, (1.25, 1.2, 1.9)))
+    canopy(m, lobes, "light", density=5.0, size=(0.9, 1.35), core_scale=0.5)
+
+
+def rowan(m):
+    """A rowan, about 5 m tall: a slim trunk, an open, oval crown, and
+    clusters of red berries hanging at its edges."""
+    rng = m.rng
+    b = bark("gray")
+    trunk(m, b, [(0, 0, 0), (0.05, 0, 1.8), (0.1, 0.05, 3.0)], [0.16, 0.13, 0.09], flare=1.4, sides=6, roots=3,
+          root_len=0.5)
+    for i in range(4):
+        a = i * 1.6 + 0.4
+        end = Vector((math.cos(a) * 1.4, math.sin(a) * 1.4, 4.0 + (i % 2) * 0.4))
+        limb(m, b, (0.1, 0.05, 2.6), end, 0.06, 0.025, bend=(0, 0, 0.3), sides=4, steps=1)
+    lobes = [((0.1, 0.0, 4.3), (1.7, 1.6, 1.4)), ((0.6, 0.5, 3.5), (1.1, 1.0, 0.9)),
+             ((-0.6, -0.4, 3.6), (1.1, 1.0, 0.9))]
+    canopy(m, lobes, "mid", density=4.5, size=(1.0, 1.5), core_scale=0.55)
+    berry = flat("Berry_Rowan", (0.62, 0.08, 0.02), 0.5)
+    for d in sphere_dirs(11, rng, up_bias=-0.2):
+        p = Vector((0.1, 0.0, 4.0)) + Vector((d.x * 1.75, d.y * 1.65, d.z * 1.3))
+        for k in range(3):
+            q = p + Vector((rng.uniform(-0.1, 0.1), rng.uniform(-0.1, 0.1), -0.08 * k))
+            box(m, berry, q, (0.11, 0.11, 0.09), yaw=rng.uniform(0, 3))
+
+
+def shrub_hazel(m):
+    """A hazel: a dozen thin stems fanning from the ground, leafy above head
+    height, with a few catkins hanging from the outer stems."""
+    rng = m.rng
+    b = bark("brown")
+    tops = []
+    for i in range(9):
+        a = 2 * math.pi * i / 9 + rng.uniform(-0.2, 0.2)
+        d = Vector((math.cos(a), math.sin(a), 0))
+        top = d * rng.uniform(0.7, 1.2) + UP * rng.uniform(2.4, 3.2)
+        limb(m, b, d * 0.15, top, 0.04, 0.015, bend=d * 0.15, sides=3, steps=1)
+        tops.append(top)
+    canopy(m, [((0, 0, 2.5), (1.4, 1.3, 1.0)), ((0.5, 0.3, 1.8), (0.9, 0.8, 0.7)),
+               ((-0.5, -0.4, 1.9), (0.9, 0.8, 0.7))], "mid", density=5.0, size=(0.9, 1.25), under=0.5,
+           core_scale=0.6)
+    catkin = flat("Catkin", (0.55, 0.5, 0.18), 0.9)
+    for t in tops[::2]:
+        box(m, catkin, t - UP * 0.25 + Vector((0.1, 0, 0)), (0.04, 0.04, 0.22))
+
+
+def shrub_elder(m):
+    """An elder in flower: an arching, open shrub with flat, cream umbels of
+    blossom held above its leaves."""
+    rng = m.rng
+    shrub(m, [((0, 0, 1.2), (1.3, 1.2, 1.0)), ((0.7, 0.4, 0.8), (0.8, 0.8, 0.7)),
+              ((-0.6, -0.5, 0.8), (0.8, 0.75, 0.65))], "dark", 6.0, (0.8, 1.1))
+    petals = atlas("Bloom_Cream", FLOWER["cream"], (1.0, 1.0, 0.92))
+    for d in sphere_dirs(22, rng, up_bias=0.7):
+        if d.z < 0.15:
+            continue
+        p = Vector((0, 0, 1.2)) + Vector((d.x * 1.3, d.y * 1.2, d.z * 1.05))
+        card(m, petals, FLOWER["cream"][1], p, (UP * 2 + d).normalized(), 0.34, 0.34, spin=rng.uniform(0, 6.3))
+
+
+def fern_bank(m):
+    """A drift of ferns about 3 m across, three clumps among tufts of grass,
+    for the woods' floor and the shade between buildings."""
+    rng = m.rng
+    material = atlas("Fern_Frond", FERN, (0.75, 0.95, 0.7))
+    for cx, cy, n, s in ((0.0, 0.0, 8, 1.0), (1.2, 0.5, 6, 0.8), (-1.0, 0.7, 6, 0.85)):
+        for i in range(n):
+            a = 2 * math.pi * i / n + rng.uniform(-0.25, 0.25)
+            frond(m, material, FERN[1], (cx + rng.uniform(-0.06, 0.06), cy + rng.uniform(-0.06, 0.06), 0), a,
+                  rng.uniform(0.7, 1.05) * s, rng.uniform(0.3, 0.4) * s, lift=rng.uniform(0.55, 0.8))
+    blades(m, atlas("Grass_Blade", GRASS), GRASS[1], 12, 1.4, 0.6, rng, center=(0.2, -0.5, 0))
+
+
 MODELS = {
     "oak_forked": oak_forked,
     "beech_tall": beech_tall,
@@ -1307,6 +1403,11 @@ MODELS = {
     "boulder_cluster": boulder_cluster,
     "campfire": campfire,
     "cascade": cascade,
+    "birch_trio": birch_trio,
+    "rowan": rowan,
+    "shrub_hazel": shrub_hazel,
+    "shrub_elder": shrub_elder,
+    "fern_bank": fern_bank,
 }
 
 

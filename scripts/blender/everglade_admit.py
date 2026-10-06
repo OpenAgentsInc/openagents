@@ -56,9 +56,6 @@ MODELS = [
     ("bandshell.glb", "bandshell"),
     # One stall; `layout::paint` gives each placed stall its awning's colors.
     ("market_stall_red.glb", "market_stall"),
-    ("buildings/townhouse_jettied.glb", "townhouse_jettied"),
-    ("buildings/townhouse_balcony.glb", "townhouse_balcony"),
-    ("buildings/row_townhouse.glb", "row_townhouse"),
     ("buildings/library.glb", "library"),
     ("buildings/tavern.glb", "tavern"),
     ("buildings/market_hall.glb", "market_hall"),
@@ -95,6 +92,14 @@ MODELS = [
         # The seventh round's outbuildings (`town_houses.py`).
         "garden_shed",
         "woodshed",
+        # The eighth round's townhouses (`town_houses.py`), in the places of
+        # the kit-built townhouses and row townhouses.
+        "tall_house",
+        "narrow_house",
+        "dormer_house",
+        # The eighth round's landmarks on the trails to the woods.
+        "chapel",
+        "trail_shelter",
     ]
 ] + [
     ("kit/roof_round_tiles_8x10.glb", "roof_round_tiles_8x10"),
@@ -192,6 +197,10 @@ FAR_MODELS = [
     "brownstone",
     "timber_house",
     "lantern_inn",
+    "tall_house",
+    "narrow_house",
+    "dormer_house",
+    "chapel",
 ]
 
 # Derived village images: file name, kit source, edge, and how it is made.

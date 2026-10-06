@@ -64,30 +64,6 @@ const fn gable(
     }
 }
 
-pub const TOWNHOUSE_JETTIED: Model = Model {
-    name: "generated/townhouse_jettied",
-    blocks: &[[-3.2, 3.2, -8.1, 0.1, 9.12]],
-    roofs: &[gable([0.0, -3.4], false, [4.1, 5.45], 8.5, 14.0)],
-    front: [0.0, 0.9],
-    inside: None,
-};
-
-pub const TOWNHOUSE_BALCONY: Model = Model {
-    name: "generated/townhouse_balcony",
-    blocks: &[[-4.2, 4.2, -8.1, 0.1, 6.12]],
-    roofs: &[gable([0.0, -3.6], true, [5.4, 5.2], 5.55, 12.1)],
-    front: [1.0, 0.9],
-    inside: None,
-};
-
-pub const ROW_TOWNHOUSE: Model = Model {
-    name: "generated/row_townhouse",
-    blocks: &[[-2.1, 2.1, -8.1, 0.1, 9.12]],
-    roofs: &[gable([0.0, -3.75], false, [2.75, 5.0], 8.75, 12.8)],
-    front: [1.0, 1.1],
-    inside: None,
-};
-
 pub const LIBRARY: Model = Model {
     name: "generated/library",
     blocks: &[
@@ -430,6 +406,53 @@ pub const LANTERN_INN: Model = Model {
     blocks: &[[-5.1, 5.1, -9.1, 0.1, 6.1]],
     roofs: &[gable([0.0, -4.5], true, [5.05, 1.3], 6.15, 9.45)],
     front: [0.0, 1.0],
+    inside: None,
+};
+
+/// The eighth round's townhouses (`scripts/blender/town_houses.py`), in
+/// the kit-built townhouses' places: a narrow house of three storeys, each
+/// jettied further over the street, under a steep front gable. The block
+/// is its upper storeys' reach, which the jetties carry 0.9 m forward.
+pub const TALL_HOUSE: Model = Model {
+    name: "generated/tall_house",
+    blocks: &[[-3.1, 3.1, -8.1, 0.1, 8.85]],
+    roofs: &[gable([0.0, -3.55], false, [3.55, 4.95], 8.87, 13.27)],
+    front: [0.6, 1.0],
+    inside: None,
+};
+
+/// A narrow row house of three storeys under a front gable, for Brownstone
+/// Row's terraces, two to a place.
+pub const NARROW_HOUSE: Model = Model {
+    name: "generated/narrow_house",
+    blocks: &[[-2.05, 2.05, -8.05, 0.05, 8.85]],
+    roofs: &[gable([0.0, -3.65], false, [2.45, 4.75], 8.87, 12.47)],
+    front: [0.85, 1.1],
+    inside: None,
+};
+
+/// Two storeys with the ridge along the street, a balcony across its
+/// jettied upper floor, and two dormers.
+pub const DORMER_HOUSE: Model = Model {
+    name: "generated/dormer_house",
+    blocks: &[[-4.1, 4.1, -8.1, 0.1, 5.9]],
+    roofs: &[gable([0.0, -3.75], true, [4.75, 4.5], 5.92, 9.52)],
+    front: [0.0, 1.2],
+    inside: None,
+};
+
+/// The eighth round's wayside chapel (`scripts/blender/town_houses.py`)
+/// beside the north trail: stone walls with buttresses down each side, a
+/// steep roof, and a bell cote over its front gable.
+pub const CHAPEL: Model = Model {
+    name: "generated/chapel",
+    blocks: &[
+        [-2.95, 2.95, -9.15, 0.15, 4.2],
+        [-3.25, 3.25, -8.9, -0.1, 2.6],
+        [-1.0, 1.0, 0.0, 0.6, 0.4],
+    ],
+    roofs: &[gable([0.0, -4.5], false, [3.15, 4.85], 4.2, 8.0)],
+    front: [0.0, 1.2],
     inside: None,
 };
 

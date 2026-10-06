@@ -44,6 +44,14 @@ pub const LIGHT_HOUSES: [&str; 6] = [
     "generated/lantern_inn",
 ];
 
+/// The eighth round's townhouses, which the zone paints like the sixth
+/// round's (`layout::paint`) but this round doesn't dress.
+pub const TOWNHOUSES: [&str; 3] = [
+    "generated/tall_house",
+    "generated/narrow_house",
+    "generated/dormer_house",
+];
+
 /// The heading that points a model's front from `from` toward `to`.
 fn toward(from: [f32; 2], to: [f32; 2]) -> f32 {
     (to[0] - from[0]).atan2(to[1] - from[1])

@@ -1,0 +1,66 @@
+{
+  "model": "dormer_house.glb",
+  "frame": "glTF: 1 unit = 1 m, +Y up, +Z out of the front door, origin on the ground at the center of the front wall",
+  "triangles": 2936,
+  "boxes": [
+    {
+      "name": "ground",
+      "center": [
+        0.0,
+        1.5,
+        -4.0
+      ],
+      "half_extents": [
+        4.1,
+        1.5,
+        4.1
+      ]
+    },
+    {
+      "name": "balcony",
+      "center": [
+        0.0,
+        3.5,
+        1.025
+      ],
+      "half_extents": [
+        2.1,
+        0.56,
+        0.525
+      ]
+    },
+    {
+      "name": "upper",
+      "center": [
+        0.0,
+        4.45,
+        -3.75
+      ],
+      "half_extents": [
+        4.1,
+        1.45,
+        4.35
+      ]
+    }
+  ],
+  "roofs": [
+    {
+      "center": [
+        0.0,
+        -3.75
+      ],
+      "slopes_z": true,
+      "half": [
+        4.75,
+        4.5
+      ],
+      "eave": 5.9,
+      "ridge": 9.52
+    }
+  ],
+  "front": [
+    0.0,
+    1.2
+  ],
+  "inside": null
+}

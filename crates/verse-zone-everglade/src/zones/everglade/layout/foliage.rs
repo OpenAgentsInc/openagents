@@ -22,6 +22,7 @@ use crate::controller::{Footprint, forward};
 use std::collections::HashMap;
 use std::f32::consts::{FRAC_PI_2, PI, TAU};
 
+mod verdure;
 mod wilds;
 
 /// The broadleaf trees, with the half width of each one's trunk and its
@@ -90,6 +91,7 @@ pub fn build(out: &mut Vec<Placement>, placed: &[([f32; 2], f32)]) {
     yards(out, &mut ground);
     verges(out, &mut ground);
     wilds::build(out, &mut ground);
+    verdure::build(out, &mut ground);
 }
 
 /// What stands where already, and the open ground: the checks of
@@ -168,10 +170,16 @@ impl Ground {
         })
     }
 
+    /// Whether a piece reaching `r` m from `(x, z)` stands on open ground
+    /// off the trails ([`super::trails`]).
+    fn open(&self, x: f32, z: f32, r: f32) -> bool {
+        self.clear(x, z, r) && !super::trails::on_trail(x, z, r)
+    }
+
     /// Whether a piece reaching `r` m from `(x, z)` stands on open ground:
     /// [`super::streets::clear`]'s rule, but also out in the woods past
-    /// the clearing, to the zone's edge.
-    fn open(&self, x: f32, z: f32, r: f32) -> bool {
+    /// the clearing, to the zone's edge. A trail counts as open.
+    fn clear(&self, x: f32, z: f32, r: f32) -> bool {
         let near = |p: [f32; 2], d: f32| (p[0] - x).hypot(p[1] - z) < d;
         x.abs() < HALF_EXTENT - 8.0 - r
             && z.abs() < HALF_EXTENT - 8.0 - r

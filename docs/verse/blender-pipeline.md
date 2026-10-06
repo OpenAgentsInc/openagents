@@ -362,6 +362,47 @@ sources shrank from 30,796,897 to 29,104,207 bytes and the pack from
 same triangles, positions, normals, colors, and materials as before, and
 every texture decodes to the same pixels.
 
+## Lighter far levels, townhouses, and trail models
+
+The eighth round made room in the merged city before adding to it:
+
+- `everglade_lod.py` removes every face no ray from outside reaches
+  before it simplifies a generated building or landmark (`hidden`): the
+  inner faces of walls, floors, and ceilings, and the parts buried in
+  others, with window glass counted as solid. A ray leaves from the middle
+  and corners of each face in 64 directions in front of it; a face that
+  no ray leaves the model from is dropped. The far levels lose 20 to 30
+  percent of their triangles; their outsides stay as they were.
+- The trees' far levels keep 34 percent of the nature kit's leaf cards and
+  28 percent of the foliage set's, each grown to keep the crown's cover,
+  over bark collapsed to 35 percent.
+- `town_houses.py` builds three townhouses in Reference mode in place of
+  the Compose ones that cost 10,000 to 13,000 triangles each, and far more
+  once cut on their block lattice: `tall_house` (3,486 triangles; three
+  storeys, each jettied, under a steep front gable), `narrow_house` (1,662;
+  a 4 m row house), and `dormer_house` (2,936; a balcony and two dormers).
+  `townhouse_jettied`, `townhouse_balcony`, and `row_townhouse` stay in
+  `assets/verse/generated/buildings/` but are no longer admitted.
+- `town_houses.py` also builds the wayside `chapel` (1,034) and the
+  `trail_shelter` (228), and `foliage.py` builds `birch_trio`, `rowan`,
+  `shrub_hazel`, `shrub_elder`, and `fern_bank`.
+
+To rebuild them, run:
+
+```sh
+$B -b --factory-startup --python scripts/blender/town_houses.py -- \
+    assets/verse/generated/buildings tall_house narrow_house dormer_house chapel trail_shelter
+$B -b --factory-startup --python scripts/blender/foliage.py -- \
+    birch_trio rowan shrub_hazel shrub_elder fern_bank
+python3 scripts/blender/everglade_admit.py
+python3 scripts/blender/foliage_admit.py
+$B -b --factory-startup --python scripts/blender/everglade_lod.py
+```
+
+Delete `far/trail_shelter.glb`; nothing admits it. Set
+`EVERGLADE_LOD_NO_COMPACT=1` to skip the compaction while iterating on far
+levels.
+
 ## How an agent makes a model
 
 1. Write `scripts/blender/<name>.py` that builds the model from primitives,

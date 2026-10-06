@@ -1,0 +1,26 @@
+{
+  "model": "trail_shelter.glb",
+  "frame": "glTF: 1 unit = 1 m, +Y up, +Z out of the front door, origin on the ground at the center of the front wall",
+  "triangles": 228,
+  "boxes": [
+    {
+      "name": "posts",
+      "center": [
+        0.0,
+        0.25,
+        -2.2
+      ],
+      "half_extents": [
+        1.9,
+        0.25,
+        0.3
+      ]
+    }
+  ],
+  "roofs": [],
+  "front": [
+    0.0,
+    0.8
+  ],
+  "inside": null
+}

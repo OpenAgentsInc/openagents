@@ -1205,9 +1205,9 @@ fn brownstone_row_crosses_glade_run_on_its_footbridge() {
         "generated/corner_shop",
         "generated/l_house",
         "generated/cottage_tower",
-        "generated/row_townhouse",
-        "generated/townhouse_jettied",
-        "generated/townhouse_balcony",
+        "generated/narrow_house",
+        "generated/tall_house",
+        "generated/dormer_house",
         "generated/footbridge",
     ] {
         assert!(placements.iter().any(|p| p.model == model), "{model}");

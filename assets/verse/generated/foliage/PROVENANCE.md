@@ -68,7 +68,12 @@ wall's center line at its base, with the wall's face 0.09 m toward +Z.
 | `boulder_cluster` | 356 | Boulders lying together with a fern |
 | `campfire` | 386 | Fire in a stone ring under a teepee of logs, three log seats |
 | `cascade` | 712 | Stream spilling over a weir of stones, with foam |
+| `birch_trio` | 414 | The eighth round's: three slender birches from one root, pale bark with dark knots, small light crowns |
+| `rowan` | 646 | The eighth round's: a rowan about 5 m tall, an open oval crown, and clusters of red berries |
+| `shrub_hazel` | 244 | The eighth round's: a hazel's fan of thin stems, leafy above head height, with catkins |
+| `shrub_elder` | 172 | The eighth round's: an elder in flower, with flat cream umbels over its leaves |
+| `fern_bank` | 156 | The eighth round's: a 3 m drift of three fern clumps among grass |
 
 `scripts/blender/everglade_lod.py` makes far levels of detail for the five
-broadleaf trees (`lod/foliage.*`). `scripts/blender/foliage_views.py` renders
+broadleaf trees, the birch trio, and the rowan (`lod/foliage.*`). `scripts/blender/foliage_views.py` renders
 any admitted model beside a 1.8 m figure for review.

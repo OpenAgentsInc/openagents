@@ -14,7 +14,9 @@ writes a lighter copy to `assets/verse/everglade/lod/<set>.<name>.gltf` and
   to see from the switch distance (nails, hinges, latches, and thin trim),
   rebuilds each slope of bumpy round tiles as one closed slab with the
   tiles' material and image coordinates, dissolves nearly flat faces within
-  each texture island, and shades by angle. A `building` then collapses
+  each texture island, and shades by angle. A `building` first loses every
+  face no ray from outside reaches (its inner walls, floors, and buried
+  parts), and then collapses
   toward the recipe's share of the source triangles while every vertex on
   an open edge stays put, so no wall or roof tears open; a `piece` keeps
   its shape.
@@ -57,9 +59,6 @@ RECIPES = {
     **{
         f"generated/{name}": ("building", BUILDING, 0.2)
         for name in [
-            "townhouse_jettied",
-            "townhouse_balcony",
-            "row_townhouse",
             "library",
             "tavern",
             "market_hall",
@@ -107,7 +106,7 @@ RECIPES = {
     },
     # The nature kit's trees and bushes: bark share, leaf cards kept.
     **{
-        f"nature/{name}": ("tree", 0.45, 0.5)
+        f"nature/{name}": ("tree", 0.35, 0.34)
         for name in [
             "Pine_1",
             "Pine_2",
@@ -121,13 +120,15 @@ RECIPES = {
     # The foliage set's trees (`foliage.py`), whose dark crown cores count
     # as bark: collapsed rather than thinned.
     **{
-        f"foliage/{name}": ("tree", 0.45, 0.4)
+        f"foliage/{name}": ("tree", 0.35, 0.28)
         for name in [
             "oak_forked",
             "beech_tall",
             "linden_broad",
             "willow_weeping",
             "oak_old",
+            "birch_trio",
+            "rowan",
         ]
     },
 }
@@ -415,7 +416,75 @@ def collapse_inside(o, target, keep):
         o.vertex_groups.remove(o.vertex_groups["keep"])
 
 
-def simplify(objs, share, smallest):
+def directions(count=64):
+    """`count` directions spread evenly over the sphere (a Fibonacci
+    lattice), the same on every run."""
+    out = []
+    golden = math.pi * (3.0 - math.sqrt(5.0))
+    for i in range(count):
+        y = 1.0 - 2.0 * (i + 0.5) / count
+        r = math.sqrt(max(0.0, 1.0 - y * y))
+        out.append(Vector((math.cos(golden * i) * r, y, math.sin(golden * i) * r)))
+    return out
+
+
+def hidden(bm):
+    """The faces no ray from outside the model reaches: the inner faces of
+    walls, floors, ceilings, and the parts buried inside others, which a
+    far level never shows. A face is seen when a ray from any of a few
+    points on it, in any of 64 directions in front of it, leaves the model
+    without striking another face or the ground under the model. Window
+    glass counts as solid: what stands behind it is a house's inside,
+    which a far level doesn't draw."""
+    from mathutils.bvhtree import BVHTree
+
+    if not bm.faces:
+        return []
+    bm.faces.ensure_lookup_table()
+    lo = Vector([min(v.co[i] for v in bm.verts) for i in range(3)])
+    hi = Vector([max(v.co[i] for v in bm.verts) for i in range(3)])
+    reach = (hi - lo).length * 2.0 + 1.0
+    # The ground under the model, so faces seen only from below are hidden.
+    # The model's frame is Blender's: z is up.
+    pad = reach
+    verts = [
+        Vector((lo.x - pad, lo.y - pad, lo.z - 0.02)),
+        Vector((hi.x + pad, lo.y - pad, lo.z - 0.02)),
+        Vector((hi.x + pad, hi.y + pad, lo.z - 0.02)),
+        Vector((lo.x - pad, hi.y + pad, lo.z - 0.02)),
+    ]
+    coords = [v.co.copy() for v in bm.verts] + verts
+    index = {v: i for i, v in enumerate(bm.verts)}
+    base = len(bm.verts)
+    polys = [[index[v] for v in f.verts] for f in bm.faces]
+    polys.append([base, base + 1, base + 2, base + 3])
+    tree = BVHTree.FromPolygons(coords, polys, epsilon=0.0)
+    spread = directions()
+    out = []
+    for f in bm.faces:
+        n = f.normal
+        if n.length < 0.5:
+            continue
+        center = f.calc_center_median()
+        points = [center] + [center + (v.co - center) * 0.8 for v in f.verts]
+        seen = False
+        for p in points:
+            origin = p + n * 2e-3
+            for d in spread:
+                if d.dot(n) <= 0.02:
+                    continue
+                hit = tree.ray_cast(origin + d * 1e-3, d, reach)
+                if hit[0] is None:
+                    seen = True
+                    break
+            if seen:
+                break
+        if not seen:
+            out.append(f)
+    return out
+
+
+def simplify(objs, share, smallest, shell=False):
     """The `building` and `piece` recipe: faithful and watertight. Round
     tiles become closed slabs; small loose parts go; nearly flat faces
     dissolve within each texture island; the rest collapses toward `share`
@@ -428,6 +497,8 @@ def simplify(objs, share, smallest):
     bm = bmesh.new()
     bm.from_mesh(o.data)
     bmesh.ops.remove_doubles(bm, verts=bm.verts, dist=1e-4)
+    if shell:
+        bmesh.ops.delete(bm, geom=hidden(bm), context="FACES")
     uv_layer = bm.loops.layers.uv.active
     tiles = {f for f in bm.faces if is_tiles(materials[f.material_index])}
     small = [
@@ -576,7 +647,7 @@ def build(model):
     if kind == "tree":
         source = thin(objs, share, extra)
     else:
-        source = simplify(objs, share, extra)
+        source = simplify(objs, share, extra, shell=kind == "building")
     after = triangles(kit.meshes())
     name = export(model, source_doc)
     print("LOD", json.dumps({"model": model, "source": source, "triangles": after}))
@@ -648,7 +719,8 @@ def main():
 main()
 # Compact what this script wrote, outside Blender's Python, which has no
 # Pillow (`everglade_compact.py`).
-subprocess.run(
-    ["python3", os.path.join(os.path.dirname(os.path.abspath(__file__)), "everglade_compact.py")],
-    check=True,
-)
+if not os.environ.get("EVERGLADE_LOD_NO_COMPACT"):
+    subprocess.run(
+        ["python3", os.path.join(os.path.dirname(os.path.abspath(__file__)), "everglade_compact.py")],
+        check=True,
+    )
