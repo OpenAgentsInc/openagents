@@ -441,29 +441,64 @@ impl Local {
                             fixed.remove_capsule(key);
                         }
                         let settings = physics::character::Settings::default();
-                        let correct = |feet: glam::DVec3| -> Result<Option<glam::DVec3>, String> {
-                            let corrected = physics::character::slide(
-                                &fixed, filter, settings, feet, delta, true,
-                            )?;
-                            let overlap = fixed.overlap(settings.capsule(corrected), filter)?;
+                        let clear = |feet: glam::DVec3| -> Result<bool, String> {
+                            let overlap = fixed.overlap(settings.capsule(feet), filter)?;
                             if overlap.truncated {
                                 return Err(
                                     "Prediction reconciliation query budget exceeded".into()
                                 );
                             }
-                            Ok((corrected.y == feet.y
-                                && overlap.hits.iter().all(|hit| hit.penetration <= 1e-5))
-                            .then_some(corrected))
+                            Ok(overlap.hits.iter().all(|hit| hit.penetration <= 1e-5))
                         };
-                        if let Some(feet) = correct(current.feet)? {
-                            let mut history = Vec::new();
-                            for (step, estimate) in self.estimates.range((
-                                std::ops::Bound::Excluded(baseline.physics_step),
-                                std::ops::Bound::Unbounded,
-                            )) {
-                                history.push((*step, correct(estimate.character.feet)?));
+                        // Independent translations can put adjacent samples on opposite
+                        // sides of a corner. Follow shifted targets in time order from
+                        // the confirmed anchor, bounded by already processed travel.
+                        let mut original = reference.character.feet;
+                        let mut corrected = baseline.character.feet;
+                        let mut history = Vec::new();
+                        let mut valid = clear(original)? && clear(corrected)?;
+                        for (step, estimate) in self.estimates.range((
+                            std::ops::Bound::Excluded(baseline.physics_step),
+                            std::ops::Bound::Unbounded,
+                        )) {
+                            if !valid {
+                                break;
                             }
-                            constrained = Some((feet, history));
+                            let feet = estimate.character.feet;
+                            if !clear(feet)? {
+                                history.push((*step, None));
+                                continue;
+                            }
+                            let next = physics::character::slide(
+                                &fixed,
+                                filter,
+                                settings,
+                                corrected,
+                                (feet + delta - corrected)
+                                    .clamp_length_max((feet - original).length()),
+                                true,
+                            )?;
+                            if next.y != feet.y || !clear(next)? {
+                                valid = false;
+                                break;
+                            }
+                            history.push((*step, Some(next)));
+                            original = feet;
+                            corrected = next;
+                        }
+                        if valid && clear(current.feet)? {
+                            let feet = physics::character::slide(
+                                &fixed,
+                                filter,
+                                settings,
+                                corrected,
+                                (current.feet + delta - corrected)
+                                    .clamp_length_max((current.feet - original).length()),
+                                true,
+                            )?;
+                            if feet.y == current.feet.y && clear(feet)? {
+                                constrained = Some((feet, history));
+                            }
                         }
                     }
                 }
@@ -1604,6 +1639,74 @@ mod tests {
             );
         }
     }
+    #[test]
+    fn constrained_confirmation_preserves_continuous_travel_around_a_wall_corner() {
+        use physics::queries::{ColliderKey, GeometrySnapshot, Pose, ShapeSnapshot, Usage};
+        let (mut local, mut baseline, mut source) = setup();
+        baseline.profile = movement::Profile::Frames;
+        baseline.epoch += 1;
+        baseline.character.feet = glam::DVec3::new(4., 0., 3.7);
+        source.colliders.push(ShapeSnapshot {
+            key: ColliderKey {
+                life: Life {
+                    instance: 7,
+                    entity: 0,
+                    generation: 0,
+                },
+                shape: 1,
+            },
+            layers: 1,
+            usage: Usage::Blocking,
+            pose: Pose::default(),
+            geometry: GeometrySnapshot::Box {
+                min: glam::DVec3::new(6., 0., -2.),
+                max: glam::DVec3::new(6.1, 4., 2.),
+            },
+        });
+        local.observe(baseline, &source, 2, 2).unwrap();
+        local
+            .queue(
+                1,
+                Intent::Move {
+                    axes: [0., 1.],
+                    yaw: 0.,
+                },
+            )
+            .unwrap();
+        for _ in 0..3 {
+            local.advance(0.1).unwrap();
+        }
+        let reference = local.estimates[&12];
+        baseline.physics_step = 12;
+        baseline.world_step = local.physics_step();
+        baseline.character = reference.character;
+        baseline.character.feet.x += 2.;
+        baseline.held = reference.held;
+        baseline.yaw = reference.yaw;
+        baseline.policy = reference.policy;
+        local.observe(baseline, &source, 3, 3).unwrap();
+        assert_eq!(
+            local.last_reconciliation.as_ref().unwrap().path,
+            "constrained_translation"
+        );
+        let mut previous = (baseline.physics_step, baseline.character.feet);
+        for (step, estimate) in local.estimates.range(12..) {
+            let allowed = 6.4008 * (*step - previous.0) as f64 / 120. + 0.0001;
+            assert!(
+                (estimate.character.feet - previous.1).length() <= allowed,
+                "Correction jumped between steps {} and {}: {:?} -> {:?}",
+                previous.0,
+                step,
+                previous.1,
+                estimate.character.feet
+            );
+            previous = (*step, estimate.character.feet);
+        }
+        let pose = local.pose().unwrap();
+        assert!((pose.position.x - 6.).abs() < 0.0001);
+        assert!(pose.position.z >= 2.35 - 0.0001);
+    }
+
     #[test]
     fn wall_constrained_confirmation_preserves_time_processed_before_later_crowd_geometry() {
         use physics::queries::{ColliderKey, GeometrySnapshot, Pose, ShapeSnapshot, Usage};
