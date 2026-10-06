@@ -2,27 +2,21 @@
 <title>Coder terminal UI preview</title>
 <rect width="100%" height="100%" fill="#0a0a0a"/>
 <g font-family="DejaVu Sans Mono, monospace" font-size="15">
-<text x="18" y="35" fill="#1abc9c" font-weight="normal">◆</text>
-<text x="36" y="35" fill="#e1e1e1" font-weight="bold">C</text>
-<text x="45" y="35" fill="#e1e1e1" font-weight="bold">o</text>
-<text x="54" y="35" fill="#e1e1e1" font-weight="bold">d</text>
-<text x="63" y="35" fill="#e1e1e1" font-weight="bold">e</text>
-<text x="72" y="35" fill="#e1e1e1" font-weight="bold">r</text>
-<text x="99" y="35" fill="#ff9e64" font-weight="normal">o</text>
-<text x="108" y="35" fill="#ff9e64" font-weight="normal">p</text>
-<text x="117" y="35" fill="#ff9e64" font-weight="normal">e</text>
-<text x="126" y="35" fill="#ff9e64" font-weight="normal">n</text>
-<text x="135" y="35" fill="#ff9e64" font-weight="normal">a</text>
-<text x="144" y="35" fill="#ff9e64" font-weight="normal">g</text>
-<text x="153" y="35" fill="#ff9e64" font-weight="normal">e</text>
-<text x="162" y="35" fill="#ff9e64" font-weight="normal">n</text>
-<text x="171" y="35" fill="#ff9e64" font-weight="normal">t</text>
-<text x="180" y="35" fill="#ff9e64" font-weight="normal">s</text>
-<text x="198" y="35" fill="#6c6c6c" font-weight="normal">/</text>
-<text x="216" y="35" fill="#6c6c6c" font-weight="normal">m</text>
-<text x="225" y="35" fill="#6c6c6c" font-weight="normal">a</text>
-<text x="234" y="35" fill="#6c6c6c" font-weight="normal">i</text>
-<text x="243" y="35" fill="#6c6c6c" font-weight="normal">n</text>
+<text x="819" y="35" fill="#ff9e64" font-weight="normal">o</text>
+<text x="828" y="35" fill="#ff9e64" font-weight="normal">p</text>
+<text x="837" y="35" fill="#ff9e64" font-weight="normal">e</text>
+<text x="846" y="35" fill="#ff9e64" font-weight="normal">n</text>
+<text x="855" y="35" fill="#ff9e64" font-weight="normal">a</text>
+<text x="864" y="35" fill="#ff9e64" font-weight="normal">g</text>
+<text x="873" y="35" fill="#ff9e64" font-weight="normal">e</text>
+<text x="882" y="35" fill="#ff9e64" font-weight="normal">n</text>
+<text x="891" y="35" fill="#ff9e64" font-weight="normal">t</text>
+<text x="900" y="35" fill="#ff9e64" font-weight="normal">s</text>
+<text x="918" y="35" fill="#6c6c6c" font-weight="normal">/</text>
+<text x="936" y="35" fill="#6c6c6c" font-weight="normal">m</text>
+<text x="945" y="35" fill="#6c6c6c" font-weight="normal">a</text>
+<text x="954" y="35" fill="#6c6c6c" font-weight="normal">i</text>
+<text x="963" y="35" fill="#6c6c6c" font-weight="normal">n</text>
 <text x="18" y="215" fill="#e1e1e1" font-weight="bold">W</text>
 <text x="27" y="215" fill="#e1e1e1" font-weight="bold">h</text>
 <text x="36" y="215" fill="#e1e1e1" font-weight="bold">a</text>

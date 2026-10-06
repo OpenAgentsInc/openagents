@@ -554,8 +554,7 @@ fn header_and_rail_keep_compact_spacing_above_the_bottom_margin() {
     let mut app = App::default();
     let rendered = screen(&mut app, 110, 36);
     let lines: Vec<_> = rendered.lines().collect();
-    let header = lines.iter().find(|line| line.contains("◆ Coder")).unwrap();
-    assert!(header.contains("openagents / main"));
+    assert!(lines[1].trim_end().ends_with("openagents / main"));
     assert!(!rendered.contains("UI preview"));
     assert!(!rendered.contains("Ctrl+C"));
     assert!(!rendered.contains("Enter preview"));
@@ -567,6 +566,35 @@ fn header_and_rail_keep_compact_spacing_above_the_bottom_margin() {
     assert!(lines.last().unwrap().trim().is_empty());
     assert!(!rendered.contains("6 plugins"));
     assert!(!rendered.contains("24,000 sats"));
+    for (width, height) in [(110, 36), (80, 24), (24, 12)] {
+        for selected in [None, Some(0), Some(1), Some(2), Some(3)] {
+            let mut app = App::default();
+            app.selected_agent = selected;
+            let rendered = screen(&mut app, width, height);
+            let lines: Vec<_> = rendered.lines().collect();
+            let header = lines[1];
+            assert!(header.trim_end().ends_with("main"));
+            assert_eq!(header.trim_end().chars().count(), usize::from(width - 2));
+            assert!(!rendered.contains("◆ Coder"));
+            assert!(!rendered.contains("Demo conversation"));
+            if width >= 80 || selected.is_none() {
+                assert!(header.contains("openagents / main"));
+            }
+            if let Some(index) = selected {
+                assert!(header.starts_with(&format!("  {}", DEMOS[index].name)));
+                assert!(lines[2].trim_start().starts_with("❯ "));
+            } else {
+                assert_eq!(header.trim(), "openagents / main");
+            }
+        }
+        let mut welcome = App::default();
+        welcome.screen = Screen::Welcome;
+        welcome.selected_agent = Some(0);
+        let rendered = screen(&mut welcome, width, height);
+        let header = rendered.lines().nth(1).unwrap();
+        assert_eq!(header.trim(), "openagents / main");
+        assert_eq!(header.trim_end().chars().count(), usize::from(width - 2));
+    }
 }
 
 #[test]

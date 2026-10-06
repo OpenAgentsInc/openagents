@@ -40,6 +40,9 @@ Selection loads that agent's demo messages immediately. Up from the first agent
 or Esc returns to the main conversation. Each conversation retains its own
 draft, cursor, preview messages, and scroll position while the preview is open.
 
+The working directory and branch appear at the top right. Only selected agent
+conversations show a title at the top left, using the agent's name.
+
 The base background uses Coder's shared near-black color (`#0a0a0a`). The other
 colors are exact 24-bit RGB values from Grok Build's default Grok Night theme,
 including the focused composer border. Use a truecolor terminal to

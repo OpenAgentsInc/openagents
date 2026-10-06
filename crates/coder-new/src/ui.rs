@@ -56,7 +56,7 @@ pub fn render(frame: &mut Frame, app: &mut App) {
         Constraint::Length(rail_height),
     ])
     .areas(area);
-    header_view(frame, header);
+    header_view(frame, header, app);
     match app.screen {
         Screen::Welcome => welcome(frame, body),
         Screen::Conversation => conversation(frame, body, app),
@@ -164,21 +164,47 @@ pub(crate) fn truncate(text: &str, width: u16) -> String {
     result
 }
 
-fn header_view(frame: &mut Frame, area: Rect) {
+fn header_view(frame: &mut Frame, area: Rect, app: &App) {
+    let agent = if app.screen == Screen::Conversation {
+        app.selected_agent.and_then(|index| DEMOS.get(index))
+    } else {
+        None
+    };
+    let title_width = agent.map_or(0, |agent| agent.name.width() as u16);
+    let context_width = area
+        .width
+        .saturating_sub(if agent.is_some() { title_width + 2 } else { 0 })
+        .min(17);
+    let context = Rect {
+        x: area.right().saturating_sub(context_width),
+        width: context_width,
+        ..area
+    };
     frame.render_widget(
         Paragraph::new(Line::from(vec![
-            span("◆ ", t::ACCENT_MODEL),
-            Span::styled(
-                "Coder",
-                Style::default()
-                    .fg(t::TEXT_PRIMARY)
-                    .add_modifier(Modifier::BOLD),
+            span(
+                truncate("openagents", context_width.saturating_sub(7)),
+                t::PATH,
             ),
-            span("  openagents", t::PATH),
             span(" / main", t::GRAY),
-        ])),
-        area,
+        ]))
+        .right_aligned(),
+        context,
     );
+    if let Some(agent) = agent {
+        frame.render_widget(
+            Paragraph::new(Span::styled(
+                agent.name,
+                Style::default()
+                    .fg(t::ACCENT_MODEL)
+                    .add_modifier(Modifier::BOLD),
+            )),
+            Rect {
+                width: title_width.min(area.width),
+                ..area
+            },
+        );
+    }
 }
 
 fn welcome(frame: &mut Frame, area: Rect) {
@@ -231,15 +257,7 @@ fn prompt(text: impl Into<String>) -> Line<'static> {
 
 fn conversation(frame: &mut Frame, area: Rect, app: &mut App) {
     let mut lines = if let Some(agent) = app.selected_agent.and_then(|index| DEMOS.get(index)) {
-        let mut lines = vec![
-            Line::from(Span::styled(
-                format!("{} · Demo conversation", agent.name),
-                Style::default()
-                    .fg(t::ACCENT_MODEL)
-                    .add_modifier(Modifier::BOLD),
-            )),
-            Line::default(),
-        ];
+        let mut lines = Vec::new();
         for (index, message) in agent.conversation.iter().enumerate() {
             match message {
                 DemoMessage::User(text) => lines.push(prompt(*text)),
