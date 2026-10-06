@@ -481,13 +481,16 @@ async fn the_download_page_links_only_the_release_candidates_and_the_source() {
     assert!(body.contains(&format!("href=\"{}\"", pages::MAC_DMG)));
     assert!(body.contains("macOS 13 or later"));
     assert!(body.contains("<strong>Applications</strong>"));
+    assert!(body.contains(&format!("<pre><code>{}</code></pre>", pages::CODER_SH)));
+    assert!(body.contains(&format!("<pre><code>{}</code></pre>", pages::CODER_PS1)));
+    assert!(body.contains("Run <code>coder</code> to open the new terminal"));
     assert!(body.contains(&format!("<pre><code>{}</code></pre>", pages::TERMINAL_SH)));
     assert!(body.contains(&format!("<pre><code>{}</code></pre>", pages::TERMINAL_PS1)));
     assert!(body.contains(&format!(
         "<a href=\"{}\">build from source</a>",
         pages::SOURCE
     )));
-    // Nothing else is downloadable here: no TestFlight, no Linux builds.
+    // The mobile apps and desktop Linux packages still build from source.
     assert!(!body.contains(pages::TESTFLIGHT));
     assert!(!body.contains("testflight") && !body.contains("TestFlight"));
     assert!(!body.contains("AppImage") && !body.contains("amd64.deb"));
@@ -498,11 +501,40 @@ async fn the_download_page_links_only_the_release_candidates_and_the_source() {
         .map(|rest| &rest[..rest.find('"').unwrap()])
         .filter(|href| href.starts_with("http"))
         .collect();
-    assert_eq!(links, [pages::MAC_DMG, pages::SOURCE], "{body}");
+    let mut expected = Vec::new();
+    for (_, platform) in pages::CODER_PLATFORMS {
+        let extension = if platform.starts_with("windows-") {
+            ".exe"
+        } else {
+            ""
+        };
+        for command in ["coder", "openagents", "microcoder"] {
+            expected.push(format!(
+                "{}/{command}-{}-{platform}{extension}",
+                pages::CODER_BASE,
+                pages::CODER_VERSION
+            ));
+        }
+        if platform.starts_with("windows-") {
+            expected.push(format!(
+                "{}/coder-boundary-{}-{platform}.exe",
+                pages::CODER_BASE,
+                pages::CODER_VERSION
+            ));
+        }
+    }
+    expected.push(format!(
+        "{}/SHA256SUMS-coder-{}",
+        pages::CODER_BASE,
+        pages::CODER_VERSION
+    ));
+    expected.extend([pages::MAC_DMG.to_owned(), pages::SOURCE.to_owned()]);
+    assert_eq!(links, expected, "{body}");
     for heading in [
-        "[1]</span> OpenAgents for Mac",
-        "[2]</span> OpenAgents Terminal",
-        "[3]</span> Everything else",
+        "[1]</span> Coder + OpenAgents CLI",
+        "[2]</span> OpenAgents for Mac",
+        "[3]</span> OpenAgents Terminal",
+        "[4]</span> Everything else",
     ] {
         assert!(body.contains(heading), "{heading}");
     }
@@ -520,6 +552,32 @@ async fn the_download_page_links_only_the_release_candidates_and_the_source() {
         assert_eq!(status, StatusCode::PERMANENT_REDIRECT, "{old}");
         assert_eq!(headers[header::LOCATION], new, "{old}");
     }
+}
+
+#[tokio::test]
+async fn hosted_cli_installers_serve_the_bundled_scripts_without_proxying() {
+    use std::sync::atomic::Ordering;
+    let root = tempfile::tempdir().unwrap();
+    let (url, hits) = echo_upstream().await;
+    let site = router(proxying(root.path(), &url));
+    for (uri, expected) in [
+        (
+            "/cli/install.sh",
+            include_str!("../../../scripts/install/coder.sh"),
+        ),
+        (
+            "/cli/install.ps1",
+            include_str!("../../../scripts/install/coder.ps1"),
+        ),
+    ] {
+        let (status, headers, body) = get_with(site.clone(), uri, "openagents.com").await;
+        assert_eq!(status, StatusCode::OK, "{uri}");
+        assert_eq!(headers[header::CONTENT_TYPE], "text/plain; charset=utf-8");
+        assert_eq!(headers[header::CACHE_CONTROL], "public, max-age=300");
+        assert_eq!(headers[header::X_CONTENT_TYPE_OPTIONS], "nosniff");
+        assert_eq!(body, expected, "{uri}");
+    }
+    assert_eq!(hits.load(Ordering::SeqCst), 0);
 }
 
 #[tokio::test]
@@ -972,6 +1030,8 @@ fn the_site_owns_its_pages_and_the_removed_sections() {
         "/download",
         "/install",
         "/desktop",
+        "/cli/install.sh",
+        "/cli/install.ps1",
         "/docs",
         "/docs/download",
         "/docs/install",

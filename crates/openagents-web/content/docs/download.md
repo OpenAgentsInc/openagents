@@ -1,7 +1,34 @@
 # Download
 
-The [download page](/download) has every link. Today there are two
-downloads, both release candidates of version 1.0.0.
+The [download page](/download) has every published release candidate and
+its install commands.
+
+## Coder + OpenAgents CLI
+
+Coder 1.0.0-rc.3 is the new terminal UI. Its installer also installs the
+OpenAgents CLI and the companion commands Coder uses.
+
+On macOS and Linux:
+
+```sh
+curl -fsSL https://openagents.com/cli/install.sh | bash
+```
+
+On Windows, in PowerShell:
+
+```powershell
+irm https://openagents.com/cli/install.ps1 | iex
+```
+
+The installer selects your platform, verifies the published SHA-256
+checksums, and installs under `~/.openagents/bin`
+(`%USERPROFILE%\.openagents\bin` on Windows). It adds that directory to your
+`PATH`. Open a new terminal, then run `coder` for the UI or
+`openagents --help` for the CLI. Run the install command again to update.
+The installer follows the `rc` channel by default.
+
+Use `/plugins` to configure plugins, `/models` to select a model, and
+`/demo` to switch between live conversations and the UI examples.
 
 ## OpenAgents for Mac
 

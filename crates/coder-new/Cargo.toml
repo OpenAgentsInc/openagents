@@ -1,10 +1,10 @@
 [package]
 name = "coder-new"
-version.workspace = true
+version = "1.0.0-rc.3"
 edition.workspace = true
 rust-version.workspace = true
 publish.workspace = true
-description = "A Ratatui mockup of the new Coder terminal."
+description = "The Coder terminal with model, tool, and subagent plugins."
 
 [dependencies]
 code-highlight = { path = "../code-highlight", features = ["grok"] }

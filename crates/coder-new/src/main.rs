@@ -14,10 +14,22 @@ use crossterm::{
 };
 
 fn main() -> io::Result<()> {
+    let args: Vec<_> = std::env::args().skip(1).collect();
+    if args
+        .iter()
+        .any(|arg| matches!(arg.as_str(), "--version" | "-V"))
+    {
+        println!(
+            "coder {} ({} {})",
+            env!("CARGO_PKG_VERSION"),
+            env!("CODER_GIT_COMMIT"),
+            env!("CODER_GIT_TREE"),
+        );
+        return Ok(());
+    }
     let mut app = App::default();
     let mut capture = false;
     let mut models = false;
-    let args: Vec<_> = std::env::args().skip(1).collect();
     if !args.iter().any(|arg| arg == "--demo")
         && (!args.iter().any(|arg| arg == "--snapshot") || args.iter().any(|arg| arg == "--live"))
     {
@@ -34,7 +46,7 @@ fn main() -> io::Result<()> {
             "--snapshot" => capture = true,
             "--help" | "-h" => {
                 println!(
-                    "Coder terminal\n\nUsage: coder-new [--live | --demo] [--welcome | --plugins | --plugin-settings | --models] [--snapshot]\n\n--live             Use enabled providers and tools (default).\n--demo             Use local example conversations.\n--welcome          Start with the welcome screen.\n--plugins          Start with plugin management.\n--plugin-settings  Start with OpenRouter settings.\n--models           Open the model picker for an enabled provider.\n--snapshot         Write a 110×36 SVG to stdout; defaults to demo.\n\n/demo toggles live and demo. /models chooses a model and reasoning level. Type / for commands; Up/Down selects, Tab completes, Enter runs. F2 or /plugins opens plugins. Esc stops a reply. Ctrl+C quits."
+                    "Coder terminal\n\nUsage: coder [--live | --demo] [--welcome | --plugins | --plugin-settings | --models] [--snapshot]\n\n--live             Use enabled providers and tools (default).\n--demo             Use local example conversations.\n--welcome          Start with the welcome screen.\n--plugins          Start with plugin management.\n--plugin-settings  Start with OpenRouter settings.\n--models           Open the model picker for an enabled provider.\n--snapshot         Write a 110×36 SVG to stdout; defaults to demo.\n--version          Print the release version and build commit.\n\n/demo toggles live and demo. /models chooses a model and reasoning level. Type / for commands; Up/Down selects, Tab completes, Enter runs. F2 or /plugins opens plugins. Esc stops a reply. Ctrl+C quits."
                 );
                 return Ok(());
             }

@@ -576,12 +576,15 @@ impl Env for Checkout<'_> {
                 .command("/bin/sh", ["-c", script])
                 .map_err(|error| error.to_string())?;
             #[cfg(windows)]
+            let shell = std::env::var_os("SystemRoot")
+                .map(PathBuf::from)
+                .filter(|root| root.is_absolute())
+                .ok_or_else(|| "Cannot locate the Windows system directory.".to_string())?
+                .join("System32/WindowsPowerShell/v1.0/powershell.exe");
+            #[cfg(windows)]
             let mut command = self
                 .boundary
-                .command(
-                    "powershell.exe",
-                    ["-NoProfile", "-NonInteractive", "-Command", script],
-                )
+                .command(shell, ["-NoProfile", "-NonInteractive", "-Command", script])
                 .map_err(|error| error.to_string())?;
             command.current_dir(&self.directory);
             if let Some(scratch) = self.boundary.scratch() {
