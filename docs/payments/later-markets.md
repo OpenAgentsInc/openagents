@@ -129,3 +129,33 @@ bytes. It tests exact artifact/replay, changed recipes, rights, group leakage,
 unknown costs, and forged improvement claims. It does not train a model or
 qualify independent worker operation. Real training and funded qualification
 remain unverified.
+
+## Evidence-based contributor payments
+
+The only proposed contribution class is `verified_optimization`. Its precommit
+pins source and evaluation groups, license, attribution, beneficiary, protected
+evaluator, policy, acceptance authority, funding authority, artifact contract,
+reward, expiry, and obligation identity. Evaluation groups must differ from
+source groups; the caller independently verifies their provenance and operator
+relationships before trusting a protected result.
+
+Accepted evidence must match the frozen terms and exact artifact, evaluation,
+acceptance, and measured improvement records. The protected evaluator's result
+is supplied outside contribution-controlled records. Tokens, activity counters,
+and XP are absent from the schema and create no payment. Worker-job fees,
+plugin per-call fees, data licenses, compute purchases, and optimization rewards
+remain separate obligations, even when one task earns more than one class.
+
+`record_contribution_earned` requires a separately verified acceptance and fully
+funded central receive receipt. It reuses central author payable shares,
+registered destinations, replay, unknown reservations, batching, and wallet
+reconciliation. It uses no plugin ID and funds no plugin launch bonus. Changed
+terms or another payment hash cannot duplicate the same obligation. Missing
+rights, unavailable protected evidence, unfunded claims, or unknown payout
+outcomes retain refusal or liability instead of inventing earnings.
+
+Run `scripts/qualification/later-markets.sh NEW_OUTPUT_DIRECTORY` to retain the
+bounded no-spend and fake-payment studies. The contribution fixture is
+synthetic and uses one operator; it proves the local funding/replay boundary,
+not independently useful work or real sats paid to a contributor. Real
+independent qualification and funded adoption remain unverified.

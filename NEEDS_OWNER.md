@@ -619,3 +619,13 @@ Neither platform has a qualified public artifact from this work.
   retain central payment receipts and an independently verified improvement.
   The current fixture uses synthetic checkpoint bytes and fake costs; real
   training, transferable improvement, and all funded cases are unverified.
+
+- Useful contribution payments (#10729): Freeze one optimization-bounty class,
+  source/evaluation group separation, license, attribution, beneficiary,
+  protected evaluator, acceptance/funding authorities, reward, and expiry.
+  Retain an independently controlled protected evaluation of the exact artifact
+  away from its sources, then authorize a bounded funded central receipt and
+  payout destination. Verify conservation, duplicate refusal, wallet lookup,
+  and unknown payout recovery. The synthetic contribution fixture uses fake
+  receipts; independent usefulness and every real contributor payment remain
+  unverified. XP and token/activity counts do not authorize sats.

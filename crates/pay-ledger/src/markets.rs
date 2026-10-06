@@ -3,6 +3,7 @@ use crate::{Error, Result};
 use serde::{Deserialize, Serialize};
 
 pub mod bids;
+pub mod contribution;
 pub mod custody;
 pub mod training;
 pub mod worker;
