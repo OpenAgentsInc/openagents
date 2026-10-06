@@ -29,5 +29,14 @@
     "This reproduces the distant-blocker branch, not the exact changed collider in the battle trace.",
     "No battle timing or correction improvement is claimed until a new measured run.",
     "Durability tail latency and request timeouts remain unresolved."
-  ]
+  ],
+  "consumer_build": {
+    "status": "passed",
+    "command": "cargo +1.97.1 build -p verse --no-default-features --features remote-chamber --example battle_scale",
+    "seconds": 624,
+    "source_base": "43f12d6e0bb48e22f151476a14aaab66cca9bee8",
+    "executable_sha256": "3d4ed0fe6a78e6ca434cf3ada133ec6da8a9b72662bae331a66f1abe645056e2",
+    "scope": "Linux comparison checkout plus retained own patches; not a host deployment from current main.",
+    "environment": "Same persistent target directory; dependencies rebuilt. Direct NVMe has 383 GiB ordinary-user free space at battle launch; the scratch battle runs without capabilities."
+  }
 }
