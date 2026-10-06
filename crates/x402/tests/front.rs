@@ -850,3 +850,6 @@ fn a_callers_own_provider_key_pays_a_model_cost_route_with_no_402() {
     );
     assert_eq!(priced.runs.load(Ordering::SeqCst), 0);
 }
+
+#[path = "front/funded.rs"]
+mod funded;

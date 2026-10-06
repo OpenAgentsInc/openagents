@@ -67,6 +67,7 @@ impl Request {
     }
 }
 
+#[derive(Clone, serde::Serialize, serde::Deserialize)]
 pub struct Response {
     pub status: u16,
     pub headers: Vec<(String, String)>,

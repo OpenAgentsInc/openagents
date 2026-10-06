@@ -23,5 +23,6 @@ thiserror = "2"
 
 
 [dev-dependencies]
+pay-ledger = { path = "../pay-ledger" }
 nostr = { path = "../nostr", features = ["test-invoice"] }
 tempfile = "3"

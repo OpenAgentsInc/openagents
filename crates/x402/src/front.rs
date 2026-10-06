@@ -14,12 +14,13 @@
 //! only then run the route's executor. A sink that refuses gets the key
 //! released and a `503`, and the executor does not run, so the same proof can
 //! be presented again once the ledger is back; nothing was sold twice and
-//! nothing was sold unrecorded.
+//! nothing was sold unrecorded. The funded execution adapter retains the
+//! claim for exact recovery instead of releasing it.
 
 use std::sync::Arc;
 
 use nostr::x402::{PaymentRequirements, binding_hash, decode_invoice, http_binding};
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 use serde_json::{Map, Value, json};
 
 use crate::facilitator::{Admission, Facilitator};
@@ -88,7 +89,7 @@ pub enum Price {
 }
 
 /// One named part of a quoted price, such as `endpoint` and `author_fee`.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct PricePart {
     pub name: String,
     pub msat: u64,
@@ -98,7 +99,7 @@ pub struct PricePart {
 /// release and the author whose fee is part of the price. The settlement
 /// carries the plugin, release, author, and fee, so the ledger can split
 /// the fee to the author.
-#[derive(Debug, Clone, Default, PartialEq, Eq)]
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Quote {
     pub price_msat: u64,
     /// The parts that sum to `price_msat`; the `402` names each one.
@@ -123,7 +124,7 @@ pub struct Unpriced {
 }
 
 impl Price {
-    fn quote(&self, call: &Call<'_>) -> Result<Quote, Unpriced> {
+    pub(crate) fn quote(&self, call: &Call<'_>) -> Result<Quote, Unpriced> {
         let unpriced = |message: String| Unpriced {
             status: 400,
             kind: "unpriced_request".into(),
@@ -202,7 +203,7 @@ fn match_path(pattern: &str, path: &str) -> Option<Vec<(String, String)>> {
 }
 
 /// Which encoding the proof came in.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum Scheme {
     X402,
@@ -211,7 +212,7 @@ pub enum Scheme {
 
 /// One settled payment, handed to the ledger before the purchase runs.
 /// Never carries a preimage or an invoice.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Settlement {
     pub payment_hash: String,
     pub request_hash: String,
@@ -304,6 +305,7 @@ pub struct Event {
 }
 
 /// The front's fixed configuration.
+#[derive(Clone)]
 pub struct Config {
     /// The public origin the routes are served under, such as
     /// `https://api.openagents.com`; a route's URL is this plus the request
@@ -326,6 +328,7 @@ pub struct Front<S: ReplayStore> {
     facilitator: Facilitator<S>,
     sink: Arc<dyn SettlementSink>,
     routes: Vec<Route>,
+    funded_purchase: Option<String>,
 }
 
 fn field_token(text: &str) -> bool {
@@ -398,7 +401,13 @@ impl<S: ReplayStore> Front<S> {
             facilitator,
             sink,
             routes,
+            funded_purchase: None,
         })
+    }
+
+    pub(crate) fn with_funded_purchase(mut self, purchase: String) -> Self {
+        self.funded_purchase = Some(purchase);
+        self
     }
 
     pub fn routes(&self) -> &[Route] {
@@ -623,6 +632,7 @@ impl<S: ReplayStore> Front<S> {
             request_hash: &request_hash,
             price,
             quote: &quote,
+            funded_purchase: self.funded_purchase.as_deref(),
             now,
         };
 
@@ -945,12 +955,11 @@ impl<S: ReplayStore> Front<S> {
             settled_at: paid.now,
         };
         if let Err(message) = self.sink.on_settled(&settlement) {
-            // Nothing ran and nothing was recorded: give the key back so the
-            // buyer's proof stays good for a retry.
+            // Ordinary resources release an unexecuted claim. Funded resources
+            // retain it for recovery of the original settlement and task.
             let released = self
                 .facilitator
-                .store()
-                .release(&admitted.proof.consumption_key);
+                .release_unexecuted(&admitted.proof.consumption_key);
             event.error_reason = Some(match released {
                 Ok(()) => message,
                 Err(error) => format!("{message}; release: {error}"),
@@ -1027,12 +1036,15 @@ struct Paid<'a> {
     request_hash: &'a str,
     price: u64,
     quote: &'a Quote,
+    funded_purchase: Option<&'a str>,
     now: u64,
 }
 
 impl Paid<'_> {
     fn purchase(&self) -> String {
-        format!("{}:{}", self.route.id, self.request_hash)
+        self.funded_purchase
+            .map(str::to_owned)
+            .unwrap_or_else(|| format!("{}:{}", self.route.id, self.request_hash))
     }
 }
 

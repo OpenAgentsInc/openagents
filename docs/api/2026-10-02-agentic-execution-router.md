@@ -336,6 +336,8 @@ resource, amount, expiry, and quote identity. Consume its payment hash atomicall
 across x402 and MPP, but let an exact idempotent retry retrieve the already-funded
 resource without consuming or charging again.
 
+The opt-in [`ExecutionFront`](../../crates/x402/src/execution.rs) implements fixed-charge funding with an authenticated funding scope and body-bound idempotency key and quote digest. It retains one invoice across both schemes, freezes the quote, and recovers the original task and settlement after a crash. Signed fake-invoice fixtures check these boundaries and conservation in the payment ledger. Public retail deployment and metered sessions remain separate work.
+
 Test a crash after payment consumption but before task creation. Recovery must
 find the funded request and create or recover only its original task. Test a
 crash after settlement but before author payout bookkeeping: a stable settlement

@@ -201,3 +201,18 @@ mod tests {
         fs::remove_dir_all(dir).unwrap();
     }
 }
+
+impl<S: ReplayStore + ?Sized> ReplayStore for std::sync::Arc<S> {
+    fn insert(&self, entry: &ReplayEntry) -> Result<(), ReplayError> {
+        (**self).insert(entry)
+    }
+    fn get(&self, key: &str) -> Result<Option<ReplayEntry>, ReplayError> {
+        (**self).get(key)
+    }
+    fn release(&self, key: &str) -> Result<(), ReplayError> {
+        (**self).release(key)
+    }
+    fn sweep(&self, now: u64) -> Result<usize, ReplayError> {
+        (**self).sweep(now)
+    }
+}

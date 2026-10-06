@@ -19,6 +19,7 @@
 //! `policy` is the buyer's standing ceilings, allowlist, and daily cap, and
 //! the ledger of what it paid. Nothing here pays.
 
+pub mod execution;
 pub mod facilitator;
 pub mod front;
 pub mod hosted;

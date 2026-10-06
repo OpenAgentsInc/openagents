@@ -208,6 +208,7 @@ pub struct Facilitator<S: ReplayStore> {
     store: S,
     skew: u64,
     profiles: SupportedProfiles,
+    recover_until: Option<u64>,
 }
 
 impl<S: ReplayStore> Facilitator<S> {
@@ -221,6 +222,27 @@ impl<S: ReplayStore> Facilitator<S> {
             store,
             skew,
             profiles,
+            recover_until: None,
+        }
+    }
+
+    /// Only the funded HTTP resource adapter may enable exact recovery.
+    pub(crate) fn for_funded_resource(store: S, skew: u64, recover_until: u64) -> Self {
+        Self {
+            store,
+            skew,
+            profiles: HTTP_ONLY,
+            recover_until: Some(recover_until),
+        }
+    }
+
+    pub(crate) fn release_unexecuted(&self, key: &str) -> Result<(), ReplayError> {
+        if self.recover_until.is_some() {
+            // Funding and its original obligation remain uncertain until the
+            // same resource reconciles them; never make this payment reusable.
+            Ok(())
+        } else {
+            self.store.release(key)
         }
     }
 
@@ -235,6 +257,57 @@ impl<S: ReplayStore> Facilitator<S> {
         purchase: &str,
         now: u64,
     ) -> Result<Admission, SettlementResponse> {
+        if let Some(until) = self.recover_until {
+            let proof = verify(requirements, payload, now, self.skew, self.profiles)
+                .map_err(|reason| SettlementResponse::failed(&requirements.network, reason))?;
+            let entry = ReplayEntry {
+                key: proof.consumption_key.clone(),
+                network: proof.network.clone(),
+                payment_hash: proof.payment_hash.clone(),
+                amount_msat: proof.invoice_amount_msat,
+                consumed_at: now,
+                retain_until: proof.retain_until.max(until),
+                purchase: purchase.into(),
+            };
+            match self.store.insert(&entry) {
+                Ok(()) => {}
+                Err(ReplayError::Duplicate(_)) => {
+                    let original = self
+                        .store
+                        .get(&entry.key)
+                        .map_err(|_| {
+                            SettlementResponse::failed(&proof.network, "replay_store_unavailable")
+                        })?
+                        .ok_or_else(|| {
+                            SettlementResponse::failed(&proof.network, "replay_store_unavailable")
+                        })?;
+                    if original.purchase != entry.purchase
+                        || original.network != entry.network
+                        || original.payment_hash != entry.payment_hash
+                        || original.amount_msat != entry.amount_msat
+                    {
+                        return Err(SettlementResponse::failed(
+                            &proof.network,
+                            DUPLICATE_SETTLEMENT,
+                        ));
+                    }
+                }
+                Err(_) => {
+                    return Err(SettlementResponse::failed(
+                        &proof.network,
+                        "replay_store_unavailable",
+                    ));
+                }
+            }
+            let response = SettlementResponse {
+                success: true,
+                error_reason: None,
+                transaction: proof.payment_hash.clone(),
+                network: proof.network.clone(),
+                amount: Some(proof.invoice_amount_msat.to_string()),
+            };
+            return Ok(Admission { proof, response });
+        }
         settle(
             &self.store,
             requirements,
