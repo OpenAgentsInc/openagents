@@ -718,7 +718,7 @@ Superlogical half.
 | Snapshot on join and history | Ring replay with gaps | `coder-vt` serialize and restore, snapshot and history frames, NIP-TERM text, conformance tests | 3 to 4 |
 | Sessions and saved layouts | Layout tree in Verse | Host session record, layouts on the host, restore | 1 to 2 |
 | Typist | Nothing | Host seat, take and release, pan rule, title badge | 1 |
-| Shares | Specified only | Share grant in NIP-TERM, `coder-access`, `coder-pty`, `coder-host`; pause; viewer list | 3 to 4 |
+| Shares | Share grant, enforcement, and the relay guest in `coder-pty` and `coder-host` (NIP-TERM [Shares](../../nips/openagents/NIP-TERM.md#shares), #10676) | Pause and viewer list (#10681) | 1 to 2 |
 | Block journal on host | Nothing | Journal, NIP-TERM reads | 1 |
 | Agents as typists | Verse control socket | Typist handoff to an agent, recording, badge | 1 |
 | Phone | Terminal screen and session | Blocks, proposals, thread link in the phone view | 1 to 2 |

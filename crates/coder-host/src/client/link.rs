@@ -437,119 +437,128 @@ impl Link {
 
     async fn relay_terminal(&self, relay: &str, request: &TermRequest) -> Result<TerminalResult> {
         let device = &self.device;
-        let now = unix_time()?;
-        let id = request.request();
-        let event = coder_reach::artifact::seal(
-            &request.to_value(),
-            request.schema(),
-            &device.secret,
-            device.host(),
-            id,
-            now,
-            now + TERMINAL_LIFETIME,
-        )?;
-        let reply = tokio::time::timeout(CALL_TIMEOUT, async {
-            let mut session =
-                coder_connect::transport::Session::connect(relay, &device.secret, device.policy)
-                    .await
-                    .map_err(|e| Error::Transport(e.message))?;
-            session
-                .exchange_event(
-                    &event,
-                    id,
-                    (now, now + TERMINAL_LIFETIME),
-                    device.host(),
-                    &device.key(),
-                )
-                .await
-                .map_err(|e| Error::Transport(e.message))
-        })
-        .await
-        .map_err(|_| Error::Transport("the host did not answer in time".into()))??;
-        let (result, _): (TerminalResult, _) = coder_reach::artifact::open(
-            &reply,
-            &device.secret,
-            device.host(),
-            &device.key(),
-            RESULT,
-        )?;
-        if result.request != id {
-            return Err(Error::Transport(
-                "the result answers another request".into(),
-            ));
-        }
-        Ok(result)
+        relay_terminal(&device.secret, device.host(), device.policy, relay, request).await
     }
 
     /// Deliver one attachment's relay-carried frames. Reconnects replay
     /// retained frames; the client state ignores the duplicates.
     fn subscribe(&self, relay: String, attachment: String) {
-        let device = self.device.clone();
-        let frames = self.frames_in.clone();
-        let task = tokio::spawn(async move {
-            let host = device.host().to_owned();
-            let me = device.key();
-            loop {
-                let Ok(mut socket) =
-                    Connection::connect(&relay, &device.secret, Duration::from_secs(110)).await
-                else {
-                    tokio::time::sleep(Duration::from_secs(1)).await;
-                    continue;
-                };
-                let filter =
-                    json!({"kinds": [3188], "authors": [host], "#p": [me], "#h": [attachment]});
-                if socket
-                    .send(json!(["REQ", attachment, filter]))
-                    .await
-                    .is_err()
-                {
-                    continue;
-                }
-                while let Ok(frame) = socket.next().await {
-                    if frame[0] != "EVENT" {
-                        continue;
-                    }
-                    let Ok(event) = serde_json::from_value(frame[2].clone()) else {
-                        continue;
-                    };
-                    let opened: std::result::Result<(Frame, _), _> =
-                        coder_reach::artifact::open(&event, &device.secret, &host, &me, FRAME);
-                    let incoming = match opened {
-                        Ok((frame, _))
-                            if frame.check().is_ok() && frame.attachment == attachment =>
-                        {
-                            Some(Incoming::Frame(frame))
-                        }
-                        Ok(_) => None,
-                        Err(_) => {
-                            let part: std::result::Result<(RecordsFrame, _), _> =
-                                coder_reach::artifact::open(
-                                    &event,
-                                    &device.secret,
-                                    &host,
-                                    &me,
-                                    RECORDS,
-                                );
-                            match part {
-                                Ok((part, _))
-                                    if part.check().is_ok() && part.attachment == attachment =>
-                                {
-                                    Some(Incoming::Records(part))
-                                }
-                                _ => None,
-                            }
-                        }
-                    };
-                    if let Some(incoming) = incoming
-                        && frames.send(incoming).is_err()
-                    {
-                        return;
-                    }
-                }
-            }
-        });
+        let task = subscribe(
+            self.device.secret,
+            self.device.host().to_owned(),
+            relay,
+            attachment,
+            self.frames_in.clone(),
+        );
         lock(&self.subscriptions).push(task);
     }
+}
+
+/// Send one NIP-TERM request to `host` as a sealed artifact on `relay`, and
+/// open the host's sealed result.
+pub(super) async fn relay_terminal(
+    secret: &secp256k1::SecretKey,
+    host: &str,
+    policy: coder_access::RelayPolicy,
+    relay: &str,
+    request: &TermRequest,
+) -> Result<TerminalResult> {
+    let now = unix_time()?;
+    let me = coder_reach::pubkey(secret);
+    let id = request.request();
+    let event = coder_reach::artifact::seal(
+        &request.to_value(),
+        request.schema(),
+        secret,
+        host,
+        id,
+        now,
+        now + TERMINAL_LIFETIME,
+    )?;
+    let reply = tokio::time::timeout(CALL_TIMEOUT, async {
+        let mut session = coder_connect::transport::Session::connect(relay, secret, policy)
+            .await
+            .map_err(|e| Error::Transport(e.message))?;
+        session
+            .exchange_event(&event, id, (now, now + TERMINAL_LIFETIME), host, &me)
+            .await
+            .map_err(|e| Error::Transport(e.message))
+    })
+    .await
+    .map_err(|_| Error::Transport("the host did not answer in time".into()))??;
+    let (result, _): (TerminalResult, _) =
+        coder_reach::artifact::open(&reply, secret, host, &me, RESULT)?;
+    if result.request != id {
+        return Err(Error::Transport(
+            "the result answers another request".into(),
+        ));
+    }
+    Ok(result)
+}
+
+/// Deliver one attachment's relay-carried frames from `host` to `frames`.
+/// Reconnects replay retained frames; the client state ignores the
+/// duplicates.
+pub(super) fn subscribe(
+    secret: secp256k1::SecretKey,
+    host: String,
+    relay: String,
+    attachment: String,
+    frames: mpsc::UnboundedSender<Incoming>,
+) -> JoinHandle<()> {
+    tokio::spawn(async move {
+        let me = coder_reach::pubkey(&secret);
+        loop {
+            let Ok(mut socket) =
+                Connection::connect(&relay, &secret, Duration::from_secs(110)).await
+            else {
+                tokio::time::sleep(Duration::from_secs(1)).await;
+                continue;
+            };
+            let filter =
+                json!({"kinds": [3188], "authors": [host], "#p": [me], "#h": [attachment]});
+            if socket
+                .send(json!(["REQ", attachment, filter]))
+                .await
+                .is_err()
+            {
+                continue;
+            }
+            while let Ok(frame) = socket.next().await {
+                if frame[0] != "EVENT" {
+                    continue;
+                }
+                let Ok(event) = serde_json::from_value(frame[2].clone()) else {
+                    continue;
+                };
+                let opened: std::result::Result<(Frame, _), _> =
+                    coder_reach::artifact::open(&event, &secret, &host, &me, FRAME);
+                let incoming = match opened {
+                    Ok((frame, _)) if frame.check().is_ok() && frame.attachment == attachment => {
+                        Some(Incoming::Frame(frame))
+                    }
+                    Ok(_) => None,
+                    Err(_) => {
+                        let part: std::result::Result<(RecordsFrame, _), _> =
+                            coder_reach::artifact::open(&event, &secret, &host, &me, RECORDS);
+                        match part {
+                            Ok((part, _))
+                                if part.check().is_ok() && part.attachment == attachment =>
+                            {
+                                Some(Incoming::Records(part))
+                            }
+                            _ => None,
+                        }
+                    }
+                };
+                if let Some(incoming) = incoming
+                    && frames.send(incoming).is_err()
+                {
+                    return;
+                }
+            }
+        }
+    })
 }
 
 fn lock<T>(mutex: &Mutex<T>) -> std::sync::MutexGuard<'_, T> {

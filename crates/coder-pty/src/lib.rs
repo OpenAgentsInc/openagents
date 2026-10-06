@@ -35,6 +35,7 @@ pub mod client;
 pub mod emulator;
 pub mod ext;
 pub mod ring;
+pub mod share;
 pub mod wire;
 
 #[cfg(feature = "host")]

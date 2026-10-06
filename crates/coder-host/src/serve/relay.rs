@@ -148,8 +148,11 @@ async fn terminal_request(shared: Arc<Shared>, relay: String, event: Event) {
     let _busy = busy.activity.begin();
     let Ok(now) = unix_time() else { return };
     let device = event.pubkey.clone();
-    // Only a key this host enrolled, even a revoked one, earns an answer.
-    if shared.authority.standing(&device, now) == Standing::Unknown {
+    // Only a key this host enrolled, even a revoked one, or a key holding
+    // a terminal share earns an answer.
+    if shared.authority.standing(&device, now) == Standing::Unknown
+        && !shared.pty.shared_with(&device)
+    {
         return;
     }
     let Some(schema) = schema(&shared, &event) else {

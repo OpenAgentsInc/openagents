@@ -61,6 +61,24 @@
 //! The host asks on every operation, and [`Host::tick`] asks again for
 //! every attachment, ending those whose right was revoked.
 //!
+//! # Shares
+//!
+//! With [`Config::shares`], the host serves the shares feature
+//! ([`crate::share`]): a device with `terminal` shares one terminal with
+//! another device key, to watch or to drive it, from a first readable
+//! sequence number until an expiry, and a share's grantee can narrow it
+//! further for a third device. The host keeps each share with its
+//! terminal and checks it on every operation: a share admits an attach to
+//! that terminal alone, and a drive share also input, resize, take, and
+//! release under the typist rule. No share opens, closes, or signals a
+//! terminal. An attachment under a share starts after the share's first
+//! readable sequence number and never receives anything written before
+//! it: no replay, title, or directory from before the share, and no
+//! snapshot or history unless the share starts at sequence 1. A share
+//! ends when it expires, when it or a share it narrows is ended, when the
+//! terminal's shares are all ended, or when its root issuer loses
+//! `terminal`; [`Host::tick`] then ends its attachments as `revoked`.
+//!
 //! # Lifetime
 //!
 //! A terminal survives its clients: detaching or dropping a transport does
@@ -83,6 +101,9 @@ use std::time::{Duration, Instant};
 use crate::emulator::{self, Effects, Emulator, HistoryRead};
 use crate::ext::{BlockPageRead, Effect, Features, History, Join, RecordsFrame, Seat};
 use crate::ring::Ring;
+use crate::share::{
+    DEPTH_MAX, LIFETIME_MAX, SHARES_MAX, ShareGrant, ShareMode, ShareRequest, Unshare,
+};
 use crate::wire::{
     self, Attach, Body, Cause, Close, Detach, Detached, Exit, Frame, Input, Launch, Mode, Open,
     Reason, Refusal, Resize, Signal, Size, Status, TerminalRef, Value,
@@ -133,6 +154,14 @@ pub enum Right {
 /// with its NIP-HOST grants; the host asks on every operation.
 pub trait Rights: Send + Sync {
     fn holds(&self, principal: &str, right: Right) -> bool;
+}
+
+/// Signs a share's terms for its grantee. The resident host seals the
+/// grant to the grantee's key under its own, so the grantee can read and
+/// verify its terms; the envelope admits nothing by itself.
+pub trait Authorize: Send + Sync {
+    /// The signed envelope that carries `grant`.
+    fn authorize(&self, grant: &ShareGrant) -> Result<serde_json::Value, Refusal>;
 }
 
 /// Why a sink did not take a frame.
@@ -273,6 +302,8 @@ pub struct Config {
     /// Makes each terminal's authoritative emulator. When set, the host
     /// owns query replies and serves the effects feature.
     pub emulator: Option<emulator::Factory>,
+    /// Signs share grants. When set, the host serves the shares feature.
+    pub shares: Option<Arc<dyn Authorize>>,
 }
 
 impl std::fmt::Debug for Config {
@@ -287,6 +318,7 @@ impl std::fmt::Debug for Config {
             .field("idle", &self.idle)
             .field("wrap", &self.wrap.is_some())
             .field("emulator", &self.emulator.is_some())
+            .field("shares", &self.shares.is_some())
             .finish_non_exhaustive()
     }
 }
@@ -327,6 +359,7 @@ impl Config {
             attachments_max: 8,
             wrap: None,
             emulator: None,
+            shares: None,
         }
     }
 
@@ -351,6 +384,7 @@ impl Config {
                 .emulator
                 .as_ref()
                 .is_some_and(|emulators| emulators.blocks()),
+            shares: self.shares.is_some(),
             ..Features::NONE
         }
     }
@@ -462,6 +496,8 @@ struct Attachment {
     /// Effects waiting for the output they follow, at most one of each
     /// kind: a later title replaces an earlier one, and bells add up.
     pending: VecDeque<(u64, Effect)>,
+    /// The share that admitted the attachment, when no right did.
+    share: Option<String>,
 }
 
 impl Attachment {
@@ -499,6 +535,9 @@ struct State {
     directory: Option<String>,
     /// The typist, when the terminal has one.
     typist: Option<Typist>,
+    /// The terminal's shares by ID, and its share epoch.
+    shares: BTreeMap<String, ShareGrant>,
+    share_epoch: u64,
 }
 
 /// Who types at a terminal: an attachment, or for a client that predates
@@ -604,6 +643,89 @@ impl State {
                 })
                 .map(|(id, _)| id.clone())
         })
+    }
+
+    /// The share `id` when it admits anything now: it is recorded, of the
+    /// current epoch, and unexpired, every share it narrows is too, and
+    /// the root share's issuer still holds `terminal`.
+    fn share_valid(&self, id: &str, now: u64, rights: &dyn Rights) -> Option<&ShareGrant> {
+        let grant = self.shares.get(id)?;
+        let mut link = grant;
+        for _ in 0..DEPTH_MAX {
+            if link.epoch != self.share_epoch || link.expires_at <= now {
+                return None;
+            }
+            match &link.parent {
+                Some(parent) => link = self.shares.get(parent)?,
+                None => return rights.holds(&link.issuer, Right::Terminal).then_some(grant),
+            }
+        }
+        None
+    }
+
+    /// The widest current share `principal` holds that covers `need`: the
+    /// earliest first readable sequence number, then the latest expiry.
+    fn share_for(
+        &self,
+        principal: &str,
+        need: ShareMode,
+        now: u64,
+        rights: &dyn Rights,
+    ) -> Option<&ShareGrant> {
+        self.shares
+            .values()
+            .filter(|grant| grant.grantee == principal && grant.mode >= need)
+            .filter(|grant| self.share_valid(&grant.share, now, rights).is_some())
+            .min_by_key(|grant| (grant.from, std::cmp::Reverse(grant.expires_at)))
+    }
+
+    /// Forgets shares that admit nothing any more, and ends the
+    /// attachments that no right or current share admits. Returns whether
+    /// it ended any.
+    fn sweep(
+        &mut self,
+        reference: &TerminalRef,
+        now: u64,
+        rights: &dyn Rights,
+        observers_read: bool,
+    ) -> bool {
+        let live: BTreeSet<String> = self
+            .shares
+            .keys()
+            .filter(|id| self.share_valid(id, now, rights).is_some())
+            .cloned()
+            .collect();
+        self.shares.retain(|id, _| live.contains(id));
+        let may_read = |principal: &str| {
+            rights.holds(principal, Right::Terminal)
+                || (observers_read && rights.holds(principal, Right::Observe))
+        };
+        let revoked: Vec<String> = self
+            .attachments
+            .iter()
+            .filter(|(_, attachment)| match &attachment.share {
+                Some(share) => !live.contains(share),
+                None => match attachment.mode {
+                    Mode::Interact => !rights.holds(&attachment.principal, Right::Terminal),
+                    Mode::Observe => !may_read(&attachment.principal),
+                },
+            })
+            .map(|(id, _)| id.clone())
+            .collect();
+        for id in &revoked {
+            if let Some(mut attachment) = self.attachments.remove(id) {
+                let body = Body::Detached {
+                    reason: Detached::Revoked,
+                };
+                let _ = attachment
+                    .sink
+                    .deliver(&Frame::new(reference.clone(), id, body));
+            }
+        }
+        if !revoked.is_empty() {
+            self.vacate();
+        }
+        !revoked.is_empty()
     }
 
     /// Whether the host answers the program's queries: it runs an emulator
@@ -998,11 +1120,14 @@ impl Host {
             Mode::Interact => self.inner.rights.holds(principal, Right::Terminal),
             Mode::Observe => self.inner.may_read(principal),
         };
-        if !admitted {
-            return Err(Refusal::new(
+        let refused = || {
+            Refusal::new(
                 Reason::NotAdmitted,
                 "this device may not attach to terminals",
-            ));
+            )
+        };
+        if !admitted && !self.features().shares {
+            return Err(refused());
         }
         let body = identity(principal, request);
         if let Some(outcome) = self.inner.retry(&key(principal, &request.request), &body) {
@@ -1011,6 +1136,26 @@ impl Host {
         let terminal = self.inner.find(&request.terminal)?;
         let now = Instant::now();
         let mut state = terminal.state();
+        // A device without the right attaches only under a share of this
+        // terminal, and reads nothing written before the share.
+        let share = if admitted {
+            None
+        } else {
+            let need = match request.mode {
+                Mode::Interact => ShareMode::Drive,
+                Mode::Observe => ShareMode::Watch,
+            };
+            let grant = state
+                .share_for(principal, need, unix_now(), &*self.inner.rights)
+                .ok_or_else(refused)?;
+            if joined && grant.from > 1 {
+                return Err(Refusal::new(
+                    Reason::NotAdmitted,
+                    "a share that starts after the terminal's first output joins by replay",
+                ));
+            }
+            Some((grant.share.clone(), grant.from))
+        };
         if request.after > state.ring.head() {
             return Err(Refusal::new(
                 Reason::Malformed,
@@ -1037,7 +1182,11 @@ impl Host {
             seated: request.typist(),
             seat_changed: request.typist(),
             pending: VecDeque::new(),
+            share: share.as_ref().map(|(id, _)| id.clone()),
         };
+        if let Some((_, from)) = &share {
+            attachment.sent = attachment.sent.max(from - 1);
+        }
         if joined {
             let State {
                 ring,
@@ -1068,7 +1217,9 @@ impl Host {
                 }
             }
         }
-        if attachment.effects {
+        // The title and directory may predate a share that starts later.
+        let disclosed = share.as_ref().is_none_or(|(_, from)| *from <= 1);
+        if attachment.effects && disclosed {
             if !state.title.is_empty() {
                 attachment.queue(
                     0,
@@ -1102,7 +1253,8 @@ impl Host {
     /// output.
     pub fn block_page(&self, principal: &str, request: &BlockPageRead) -> Outcome {
         request.check_with(self.features())?;
-        if !self.inner.may_read(principal) {
+        let admitted = self.inner.may_read(principal);
+        if !admitted && !self.features().shares {
             return Err(Refusal::new(
                 Reason::NotAdmitted,
                 "this device may not read terminals",
@@ -1110,11 +1262,24 @@ impl Host {
         }
         let terminal = self.inner.find(&request.terminal)?;
         let state = terminal.state();
-        let mut page = match state
-            .emulator
-            .as_ref()
-            .and_then(|emulator| emulator.blocks(request.before, request.limit))
-        {
+        // A share reads only the blocks that began after it starts.
+        let from = if admitted {
+            None
+        } else {
+            let grant = state
+                .share_for(principal, ShareMode::Watch, unix_now(), &*self.inner.rights)
+                .ok_or_else(|| {
+                    Refusal::new(
+                        Reason::NotAdmitted,
+                        "this device may not read this terminal",
+                    )
+                })?;
+            Some(grant.from)
+        };
+        let mut page = match state.emulator.as_ref().and_then(|emulator| match from {
+            None => emulator.blocks(request.before, request.limit),
+            Some(from) => emulator.blocks_from(from, request.before, request.limit),
+        }) {
             Some(page) => page?,
             None => {
                 return Err(Refusal::new(
@@ -1145,8 +1310,10 @@ impl Host {
         let terminal = self.inner.find(&request.terminal)?;
         let now = Instant::now();
         let mut state = terminal.state();
-        let mode = match state.attachments.get(&request.attachment) {
-            Some(attachment) if attachment.principal == principal => attachment.mode,
+        let (mode, share) = match state.attachments.get(&request.attachment) {
+            Some(attachment) if attachment.principal == principal => {
+                (attachment.mode, attachment.share.clone())
+            }
             _ => {
                 return Err(Refusal::new(
                     Reason::NotAdmitted,
@@ -1154,9 +1321,13 @@ impl Host {
                 ));
             }
         };
-        let admitted = match mode {
-            Mode::Interact => self.inner.rights.holds(principal, Right::Terminal),
-            Mode::Observe => self.inner.may_read(principal),
+        // History predates any share that starts after sequence 1.
+        let admitted = match (share, mode) {
+            (Some(share), _) => state
+                .share_valid(&share, unix_now(), &*self.inner.rights)
+                .is_some_and(|grant| grant.from <= 1),
+            (None, Mode::Interact) => self.inner.rights.holds(principal, Right::Terminal),
+            (None, Mode::Observe) => self.inner.may_read(principal),
         };
         let carries = state
             .attachments
@@ -1253,7 +1424,7 @@ impl Host {
     /// fewer than sent means it stopped reading input for a second.
     pub fn input(&self, principal: &str, request: &Input) -> Outcome {
         request.check_with(self.features())?;
-        self.inner.require(principal, Right::Terminal)?;
+        self.inner.require_drive(principal, &request.terminal)?;
         let body = identity(principal, request);
         if let Some(outcome) = self.inner.retry(&key(principal, &request.request), &body) {
             return outcome;
@@ -1284,7 +1455,7 @@ impl Host {
     /// Changes a terminal's size.
     pub fn resize(&self, principal: &str, request: &Resize) -> Outcome {
         request.check_with(self.features())?;
-        self.inner.require(principal, Right::Terminal)?;
+        self.inner.require_drive(principal, &request.terminal)?;
         let body = identity(principal, request);
         if let Some(outcome) = self.inner.retry(&key(principal, &request.request), &body) {
             return outcome;
@@ -1344,7 +1515,7 @@ impl Host {
     /// `not_typist`.
     pub fn seat(&self, principal: &str, request: &Seat) -> Outcome {
         request.check_with(self.features())?;
-        self.inner.require(principal, Right::Terminal)?;
+        self.inner.require_drive(principal, &request.terminal)?;
         let body = identity(principal, request);
         if let Some(outcome) = self.inner.retry(&key(principal, &request.request), &body) {
             return outcome;
@@ -1386,6 +1557,190 @@ impl Host {
         self.inner
             .remember(&key(principal, &request.request), body, Value::Done);
         Ok((Status::Accepted, Value::Done))
+    }
+
+    /// Shares a running terminal with another device key, under the
+    /// `terminal` right or, delegated, under the sender's own share, which
+    /// the new share may only narrow. A null `from` starts the share after
+    /// the terminal's newest output. The value carries the grant and the
+    /// envelope [`Config::shares`] signed.
+    pub fn share(&self, principal: &str, request: &ShareRequest) -> Outcome {
+        request.check_with(self.features())?;
+        let body = identity(principal, request);
+        if let Some(outcome) = self.inner.retry(&key(principal, &request.request), &body) {
+            return outcome;
+        }
+        let Some(authorize) = self.inner.config.shares.clone() else {
+            return Err(Refusal::new(
+                Reason::UnsupportedFeature,
+                "this host issues no shares",
+            ));
+        };
+        if request.grantee == principal {
+            return Err(Refusal::new(
+                Reason::Malformed,
+                "a share names another device",
+            ));
+        }
+        let now = unix_now();
+        if request.expires_at <= now || request.expires_at - now > LIFETIME_MAX {
+            return Err(Refusal::new(
+                Reason::Malformed,
+                "a share expires within seven days from now",
+            ));
+        }
+        let terminal = self.inner.running(&request.terminal)?;
+        let mut state = terminal.state();
+        let rights = &*self.inner.rights;
+        let next = state.ring.head() + 1;
+        let parent = match &request.parent {
+            None => {
+                if !rights.holds(principal, Right::Terminal) {
+                    return Err(Refusal::new(
+                        Reason::NotAdmitted,
+                        "sharing a terminal needs the terminal right",
+                    ));
+                }
+                None
+            }
+            Some(parent) => {
+                let grant = state
+                    .share_valid(parent, now, rights)
+                    .filter(|grant| grant.grantee == principal)
+                    .ok_or_else(|| {
+                        Refusal::new(Reason::NotAdmitted, "the parent is not this device's share")
+                    })?;
+                let mut depth = 1;
+                let mut link = grant;
+                while let Some(up) = link.parent.as_ref().and_then(|id| state.shares.get(id)) {
+                    depth += 1;
+                    link = up;
+                }
+                if depth >= DEPTH_MAX {
+                    return Err(Refusal::new(
+                        Reason::LimitExceeded,
+                        "the delegation chain is at its longest",
+                    ));
+                }
+                Some(grant.clone())
+            }
+        };
+        let from = request
+            .from
+            .unwrap_or_else(|| next.max(parent.as_ref().map_or(1, |p| p.from)));
+        if from > next {
+            return Err(Refusal::new(
+                Reason::Malformed,
+                "from names output the terminal has not produced",
+            ));
+        }
+        if state.shares.len() >= SHARES_MAX {
+            return Err(Refusal::new(
+                Reason::LimitExceeded,
+                "the terminal has its most shares",
+            ));
+        }
+        let grant = ShareGrant {
+            v: crate::share::GRANT.into(),
+            share: sys::random_id(),
+            terminal: terminal.reference.clone(),
+            issuer: principal.to_owned(),
+            grantee: request.grantee.clone(),
+            mode: request.mode,
+            from,
+            epoch: state.share_epoch,
+            parent: request.parent.clone(),
+            issued_at: now,
+            expires_at: request.expires_at,
+        };
+        grant.check()?;
+        if let Some(parent) = &parent
+            && !grant.narrows(parent)
+        {
+            return Err(Refusal::new(
+                Reason::NotAdmitted,
+                "a delegated share may only narrow its parent",
+            ));
+        }
+        let authorization = authorize.authorize(&grant)?;
+        state.shares.insert(grant.share.clone(), grant.clone());
+        drop(state);
+        let value = Value::Shared {
+            grant,
+            authorization,
+        };
+        self.inner
+            .remember(&key(principal, &request.request), body, value.clone());
+        Ok((Status::Accepted, value))
+    }
+
+    /// Ends one share and every share delegated from it, or every share of
+    /// the terminal, and ends their attachments at once as `revoked`. A
+    /// share's issuer, its grantee, or a device with `terminal` may end
+    /// one; ending them all needs `terminal`.
+    pub fn unshare(&self, principal: &str, request: &Unshare) -> Outcome {
+        request.check_with(self.features())?;
+        let body = identity(principal, request);
+        if let Some(outcome) = self.inner.retry(&key(principal, &request.request), &body) {
+            return outcome;
+        }
+        let terminal = self.inner.find(&request.terminal)?;
+        let mut state = terminal.state();
+        let operator = self.inner.rights.holds(principal, Right::Terminal);
+        match &request.share {
+            None if operator => {
+                state.share_epoch += 1;
+                state.shares.clear();
+            }
+            None => {
+                return Err(Refusal::new(
+                    Reason::NotAdmitted,
+                    "ending every share needs the terminal right",
+                ));
+            }
+            Some(id) => {
+                let grant = state
+                    .shares
+                    .get(id)
+                    .ok_or_else(|| Refusal::new(Reason::Unavailable, "no such share"))?;
+                if !operator && grant.issuer != principal && grant.grantee != principal {
+                    return Err(Refusal::new(
+                        Reason::NotAdmitted,
+                        "only the share's issuer or grantee may end it",
+                    ));
+                }
+                // The shares delegated from it lose their parent, and the
+                // sweep below forgets them.
+                state.shares.remove(id);
+            }
+        }
+        let now = Instant::now();
+        state.sweep(
+            &terminal.reference,
+            unix_now(),
+            &*self.inner.rights,
+            self.inner.config.observers_read,
+        );
+        terminal.pump(&mut state, now);
+        drop(state);
+        self.inner
+            .remember(&key(principal, &request.request), body, Value::Done);
+        Ok((Status::Accepted, Value::Done))
+    }
+
+    /// Whether `principal` holds a current share of any terminal. The
+    /// resident host answers such a device's terminal requests although
+    /// it holds no grant.
+    #[must_use]
+    pub fn shared_with(&self, principal: &str) -> bool {
+        let now = unix_now();
+        let terminals: Vec<Arc<Terminal>> = self.inner.terminals().values().cloned().collect();
+        terminals.iter().any(|terminal| {
+            terminal
+                .state()
+                .share_for(principal, ShareMode::Watch, now, &*self.inner.rights)
+                .is_some()
+        })
     }
 
     /// Ends a terminal and its process group, and waits until the child is
@@ -1469,6 +1824,29 @@ impl Inner {
             Err(Refusal::new(
                 Reason::NotAdmitted,
                 "this device lacks the terminal right",
+            ))
+        }
+    }
+
+    /// Admits an input, resize, take, or release: the `terminal` right, or
+    /// a current drive share of that terminal.
+    fn require_drive(&self, principal: &str, reference: &TerminalRef) -> Result<(), Refusal> {
+        if self.rights.holds(principal, Right::Terminal) {
+            return Ok(());
+        }
+        let shared = self.config.shares.is_some()
+            && self.find(reference).is_ok_and(|terminal| {
+                terminal
+                    .state()
+                    .share_for(principal, ShareMode::Drive, unix_now(), &*self.rights)
+                    .is_some()
+            });
+        if shared {
+            Ok(())
+        } else {
+            Err(Refusal::new(
+                Reason::NotAdmitted,
+                "this device may not type in this terminal",
             ))
         }
     }
@@ -1638,6 +2016,8 @@ impl Inner {
                 title: String::new(),
                 directory: None,
                 typist: None,
+                shares: BTreeMap::new(),
+                share_epoch: 1,
             }),
             reader: Mutex::new(None),
         });
@@ -1708,35 +2088,18 @@ impl Inner {
     }
 
     fn tick(&self, now: Instant) {
+        let unix = unix_now();
         let terminals: Vec<Arc<Terminal>> = self.terminals().values().cloned().collect();
         let mut expire = Vec::new();
         let mut remove = Vec::new();
         for terminal in terminals {
             let mut state = terminal.state();
-            let revoked: Vec<String> = state
-                .attachments
-                .iter()
-                .filter(|(_, attachment)| match attachment.mode {
-                    Mode::Interact => !self.rights.holds(&attachment.principal, Right::Terminal),
-                    Mode::Observe => !self.may_read(&attachment.principal),
-                })
-                .map(|(id, _)| id.clone())
-                .collect();
-            let any_revoked = !revoked.is_empty();
-            for id in revoked {
-                if let Some(mut attachment) = state.attachments.remove(&id) {
-                    let body = Body::Detached {
-                        reason: Detached::Revoked,
-                    };
-                    let _ =
-                        attachment
-                            .sink
-                            .deliver(&Frame::new(terminal.reference.clone(), &id, body));
-                }
-            }
-            if any_revoked {
-                state.vacate();
-            }
+            state.sweep(
+                &terminal.reference,
+                unix,
+                &*self.rights,
+                self.config.observers_read,
+            );
             terminal.pump(&mut state, now);
             let idle = state.attachments.is_empty()
                 && now.saturating_duration_since(state.activity) >= self.config.idle;
@@ -1894,4 +2257,11 @@ fn identity<T: serde::Serialize>(principal: &str, request: &T) -> String {
         "{principal} {}",
         serde_json::to_string(request).unwrap_or_default()
     )
+}
+
+/// Unix seconds from the system clock, which share expiry is measured in.
+fn unix_now() -> u64 {
+    std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map_or(0, |since| since.as_secs())
 }

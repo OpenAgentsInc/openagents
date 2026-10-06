@@ -101,6 +101,8 @@ pub struct Features {
     pub sessions: bool,
     pub effects: bool,
     pub typist: bool,
+    /// Terminal shares ([`crate::share`]).
+    pub shares: bool,
 }
 
 impl Features {
@@ -111,6 +113,7 @@ impl Features {
         sessions: false,
         effects: false,
         typist: false,
+        shares: false,
     };
     /// Every feature this module defines.
     pub const ALL: Features = Features {
@@ -119,6 +122,7 @@ impl Features {
         sessions: true,
         effects: true,
         typist: true,
+        shares: true,
     };
 
     /// The features a host's presence capabilities advertise. A client
@@ -132,6 +136,7 @@ impl Features {
             sessions: has(CAPABILITY_SESSIONS),
             effects: has(CAPABILITY_EFFECTS),
             typist: has(CAPABILITY_TYPIST),
+            shares: has(crate::share::CAPABILITY_SHARES),
         }
     }
 
@@ -154,6 +159,9 @@ impl Features {
         if self.typist {
             out.push(CAPABILITY_TYPIST);
         }
+        if self.shares {
+            out.push(crate::share::CAPABILITY_SHARES);
+        }
         out
     }
 
@@ -164,6 +172,7 @@ impl Features {
             SESSIONS => Some(self.sessions),
             EFFECTS => Some(self.effects),
             TYPIST => Some(self.typist),
+            crate::share::SHARES => Some(self.shares),
             _ => None,
         }
     }
@@ -203,7 +212,7 @@ pub enum Join {
     Snapshot,
 }
 
-fn ext_header(
+pub(crate) fn ext_header(
     v: &str,
     expected: &str,
     requires: &[String],
@@ -1868,7 +1877,7 @@ mod tests {
     fn features_follow_presence_capabilities() {
         let advertised = Features::advertised(&["task-engine", "term-snapshot"]);
         assert!(advertised.snapshot && !advertised.blocks && !advertised.sessions);
-        assert!(!advertised.effects && !advertised.typist);
-        assert_eq!(Features::ALL.capabilities().len(), 5);
+        assert!(!advertised.effects && !advertised.typist && !advertised.shares);
+        assert_eq!(Features::ALL.capabilities().len(), 6);
     }
 }

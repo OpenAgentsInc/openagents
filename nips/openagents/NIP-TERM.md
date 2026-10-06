@@ -278,11 +278,12 @@ which reveal that a device and a host exchange traffic.
 
 ## Extensions
 
-Added 2026-10-05. Five optional features extend the base profile. A host
+Added 2026-10-05. Six optional features extend the base profile. A host
 that implements one serves it; a client uses one only after the host
-advertises it. Nothing here adds a right, a relay authority, or an event
-kind: every extension operation needs the right its base operation needs,
-travels on the same transports, and follows the same privacy rules.
+advertises it. Nothing here adds a NIP-HOST right, a relay authority, or an
+event kind: every extension operation needs the right its base operation
+needs, or a [share](#shares) of that terminal, travels on the same
+transports, and follows the same privacy rules.
 
 | Feature ID | Presence capability | Adds |
 | --- | --- | --- |
@@ -291,6 +292,7 @@ travels on the same transports, and follows the same privacy rules.
 | `openagents.terminal-sessions.v1` | `term-sessions` | Session records: membership and layout |
 | `openagents.terminal-effects.v1` | `term-effects` | The host answers queries; effects arrive as effect frames |
 | `openagents.terminal-typist.v1` | `term-typist` | One typist per terminal: attachment-named input, take, and release |
+| `openagents.terminal-shares.v1` | `term-shares` | Share and unshare one terminal with another device key, to watch or drive |
 
 ### Negotiation and compatibility
 
@@ -717,6 +719,63 @@ when its own screen is smaller; scrolling, selection, and font size stay
 its own and never reach the host. Effect frames' clipboard writes go only to
 the typist.
 
+### Shares
+
+With `openagents.terminal-shares.v1`, a device that holds `terminal`
+shares one terminal with another device key, which need not be enrolled.
+A share is narrower than any NIP-HOST grant: it names one terminal, one
+grantee, and a mode, and it admits nothing else on the host.
+
+`openagents.terminal-share.v1` has `requires:
+["openagents.terminal-shares.v1"]`, `request`, `terminal`, `grantee` (a
+device key), `mode` (`watch` or `drive`), `from` (the first sequence number
+the grantee may read, or null for the terminal's head plus one), `expires_at`
+(Unix seconds, at most seven days ahead), and `parent` (null, or the
+sender's own share that this one narrows). The terminal must be running.
+
+- **Issuing.** A share with a null `parent` needs the `terminal` right. A
+  share with a `parent` needs no right: its sender must be the grantee of a
+  current `parent`, and the new share may only narrow it, with the same
+  terminal, a mode the parent covers (`drive` covers `watch`), a `from` at
+  or after the parent's, and an expiry no later than the parent's. A wider
+  delegation refuses as `not_admitted`. A chain is at most eight shares
+  long, and a terminal holds at most 32 shares.
+- **Grant.** The result value is `{kind: "shared", grant, authorization}`.
+  A grant is `{v: "openagents.terminal-share-grant.v1", share, terminal,
+  issuer, grantee, mode, from, epoch, parent, issued_at, expires_at}`, where
+  `epoch` is the terminal's share epoch when it was issued. `authorization`
+  is a private `3188` artifact with that grant as its body, signed by the
+  host key and sealed to the grantee, which the issuer hands to the grantee.
+  It lets the grantee read and verify its terms. It is not a bearer
+  credential: the host admits the grantee by its own record of the share.
+- **Admission.** A device without the right an operation needs is admitted
+  by a current share of that terminal. `watch` admits an `observe` attach
+  and block-page reads. `drive` also admits an `interact` attach, input,
+  resize, take, and release, under the [typist](#typist) rule. No share
+  admits open, close, or signal, any other terminal, or any NIP-HOST
+  operation; a share gives no world, task, review, or spending right. A
+  device that holds a share and no grant reaches the host through relay
+  artifacts, because a direct channel needs a grant.
+- **Disclosure.** An attachment under a share starts after `from - 1`
+  whatever its `after`, so replay, gaps, and late joins carry only later
+  output. Unless `from` is 1, the host refuses an attach by snapshot and a
+  history read as `not_admitted`, sends no title or directory that predates
+  the attachment, and answers block pages only with blocks whose command
+  began at or after `from`, counted as if no earlier block existed, with an
+  earlier directory blank. The rules follow the share, not the route.
+- **Ending.** A share ends when it expires, when it or a share it narrows
+  ends, when the root share's issuer loses `terminal`, and when every share
+  of the terminal ends. `openagents.terminal-unshare.v1` has the same
+  `requires`, `request`, `terminal`, and `share`: one share, which its
+  issuer, its grantee, or a device with `terminal` may end, or null for
+  every share of the terminal, which needs `terminal` and advances the
+  share epoch. The value is `done`. The host ends every attachment a share
+  admitted with `detached` reason `revoked` as the share ends, and at its
+  next periodic check after an expiry or a lost right.
+
+Shares live with their terminal and end with it; a host restart ends them
+all.
+
 ### Extension privacy
 
 Snapshots, history, block records, and session records are terminal data
@@ -785,7 +844,10 @@ it. Every block is `unattributed`: no NIP-TERM operation starts a command
 on someone's behalf yet. Every host enforces the typist rule and serves
 the typist feature (`term-typist`); the Coder mobile terminal screen names
 it, shows a **Type here** control while another device types, and draws at
-that device's size around the cursor. No host serves session records yet.
+that device's size around the cursor. Every resident host serves shares
+(`term-shares`), signing each grant with its host key; `coder_host::client::Guest`
+is a share holder without a grant, reaching the shared terminal over a relay.
+No host serves session records yet.
 
 ## Conformance
 

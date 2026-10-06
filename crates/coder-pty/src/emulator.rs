@@ -58,6 +58,21 @@ pub trait Emulator: Send {
         let _ = (before, limit);
         None
     }
+
+    /// A page of the block journal as a share that discloses output from
+    /// sequence number `from` sees it: only blocks whose command input
+    /// began in output at or after `from`, with `newest`, `oldest`, and
+    /// `more` counted over those blocks alone. `None` when this emulator
+    /// cannot tell where a block began, and a share then reads no blocks.
+    fn blocks_from(
+        &self,
+        from: u64,
+        before: Option<u64>,
+        limit: u16,
+    ) -> Option<Result<BlockPage, Refusal>> {
+        let _ = (from, before, limit);
+        None
+    }
 }
 
 /// A history read as an emulator answers it.

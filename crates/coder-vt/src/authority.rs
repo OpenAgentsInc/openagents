@@ -151,4 +151,13 @@ impl Emulator for Authority {
     fn blocks(&self, before: Option<u64>, limit: u16) -> Option<Result<BlockPage, Refusal>> {
         Some(self.journal.page(before, limit))
     }
+
+    fn blocks_from(
+        &self,
+        from: u64,
+        before: Option<u64>,
+        limit: u16,
+    ) -> Option<Result<BlockPage, Refusal>> {
+        Some(self.journal.page_from(from, before, limit))
+    }
 }

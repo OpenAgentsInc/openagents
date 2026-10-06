@@ -47,6 +47,7 @@ pub mod serve;
 pub mod sessions;
 #[cfg(feature = "host")]
 pub mod settings;
+pub mod share;
 #[cfg(feature = "host")]
 pub mod spend;
 pub mod tailnet;
@@ -83,8 +84,10 @@ pub const PROTOCOL_VERSION: u32 = coder_reach::PROTOCOL_VERSION;
 /// effect frames (NIP-TERM's effects feature); `term-snapshot` says a device
 /// can join a terminal by snapshot and read older history; `term-blocks`
 /// says it can page through a terminal's block journal; `term-typist` says
-/// one attachment types at a time, and take and release move the role.
-pub const CAPABILITIES: [&str; 11] = [
+/// one attachment types at a time, and take and release move the role;
+/// `term-shares` says a device with `terminal` can share one terminal with
+/// another device key to watch or drive.
+pub const CAPABILITIES: [&str; 12] = [
     "activity-summary",
     "direct-tcp",
     "relay-control",
@@ -96,6 +99,7 @@ pub const CAPABILITIES: [&str; 11] = [
     coder_pty::ext::CAPABILITY_SNAPSHOT,
     coder_pty::ext::CAPABILITY_BLOCKS,
     coder_pty::ext::CAPABILITY_TYPIST,
+    coder_pty::share::CAPABILITY_SHARES,
 ];
 
 /// Why a host or client operation failed. Messages carry no key, grant,

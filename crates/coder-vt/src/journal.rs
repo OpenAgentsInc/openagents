@@ -28,10 +28,28 @@ struct Point {
     col: usize,
 }
 
+/// Where in the output a block began, for a share that discloses only
+/// later output.
+#[derive(Clone, Copy, Debug)]
+struct Seen {
+    /// The output frame of the first mark of its command: the input, the
+    /// command line, or its output. The prompt before it is not part of
+    /// the record.
+    begun: u64,
+    /// The output frame that reported its directory.
+    dir: u64,
+}
+
 /// One terminal's block journal.
 #[derive(Debug, Default)]
 pub struct Journal {
     blocks: VecDeque<Block>,
+    /// Where each block began, in step with `blocks`.
+    seen: VecDeque<Seen>,
+    /// The output frame of the next block's first mark.
+    begun: Option<u64>,
+    /// The output frame that reported `dir`.
+    dir_seq: u64,
     next: u64,
     /// The running block's number.
     active: Option<u64>,
@@ -50,13 +68,23 @@ impl Journal {
             col: mark.col,
         };
         match &mark.event {
-            Event::Directory(dir) => self.dir = bounded(dir).0,
-            Event::Command(command) => self.command = Some(command.clone()),
-            Event::Input => self.input = Some(point),
+            Event::Directory(dir) => {
+                self.dir = bounded(dir).0;
+                self.dir_seq = seq;
+            }
+            Event::Command(command) => {
+                self.command = Some(command.clone());
+                self.begin(seq);
+            }
+            Event::Input => {
+                self.input = Some(point);
+                self.begin(seq);
+            }
             Event::Prompt | Event::Gap => {
                 self.abandon(now);
                 self.input = None;
                 self.command = None;
+                self.begun = None;
             }
             Event::Output => {
                 if self.active.is_some() {
@@ -71,7 +99,12 @@ impl Journal {
                 self.next += 1;
                 if self.blocks.len() == JOURNAL_MAX {
                     self.blocks.pop_front();
+                    self.seen.pop_front();
                 }
+                self.seen.push_back(Seen {
+                    begun: self.begun.take().map_or(seq, |begun| begun.min(seq)),
+                    dir: self.dir_seq,
+                });
                 self.blocks.push_back(Block {
                     block: self.next,
                     origin: Origin::Unattributed,
@@ -140,6 +173,11 @@ impl Journal {
             .find(|block| block.block == active)
     }
 
+    /// Notes the output frame of a mark that belongs to the next block.
+    fn begin(&mut self, seq: u64) {
+        self.begun = Some(self.begun.map_or(seq, |begun| begun.min(seq)));
+    }
+
     /// A new prompt or lost marks end the running block without its end
     /// mark.
     fn abandon(&mut self, now: u64) {
@@ -154,14 +192,40 @@ impl Journal {
     /// newest first. `retained` is false on every block; the host, which
     /// holds the replay buffer, fills it.
     pub fn page(&self, before: Option<u64>, limit: u16) -> Result<BlockPage, Refusal> {
+        self.page_from(1, before, limit)
+    }
+
+    /// A page as a share that discloses output from sequence number `from`
+    /// reads it: only blocks whose first mark came at or after `from`, as
+    /// if no earlier block existed. A directory reported before `from`
+    /// reads as empty.
+    pub fn page_from(
+        &self,
+        from: u64,
+        before: Option<u64>,
+        limit: u16,
+    ) -> Result<BlockPage, Refusal> {
         if limit == 0 || limit > BLOCK_LIMIT_MAX {
             return Err(Refusal::new(
                 Reason::Malformed,
                 "a block page asks 1 to 32 blocks",
             ));
         }
-        let oldest = self.blocks.front().map(|block| block.block);
-        let newest = self.blocks.back().map(|block| block.block);
+        let visible: Vec<Block> = self
+            .blocks
+            .iter()
+            .zip(&self.seen)
+            .filter(|(_, seen)| seen.begun >= from)
+            .map(|(block, seen)| {
+                let mut block = block.clone();
+                if seen.dir < from && from > 1 {
+                    block.dir = String::new();
+                }
+                block
+            })
+            .collect();
+        let oldest = visible.first().map(|block| block.block);
+        let newest = visible.last().map(|block| block.block);
         // Every block below `before` left the journal: blocks 1 up to the
         // oldest kept one are gone.
         if let Some(before) = before
@@ -174,8 +238,7 @@ impl Journal {
                 "those blocks left the journal",
             ));
         }
-        let blocks: Vec<Block> = self
-            .blocks
+        let blocks: Vec<Block> = visible
             .iter()
             .rev()
             .filter(|block| before.is_none_or(|before| block.block < before))

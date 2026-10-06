@@ -396,8 +396,9 @@ terminals only when the host sets `observers_read`, which is host-wide and
 off by default. Neither is the right grant for "show my build log to a
 friend in the workshop."
 
-Specify a narrower share as a NIP-TERM extension, decided by the host and
-checked per message like every other right:
+A narrower share is a NIP-TERM extension
+([Shares](../../nips/openagents/NIP-TERM.md#shares)), decided by the host
+and checked per message like every other right:
 
 - A **terminal share** binds one terminal reference, one grantee device key,
   a mode (`observe` or `interact`), the first sequence number the grantee may

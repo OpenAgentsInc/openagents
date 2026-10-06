@@ -220,6 +220,8 @@ pub async fn start(config: Config, tasks: Arc<dyn Tasks>) -> Result<Running> {
     for (label, root) in &config.workspaces {
         terminals = terminals.workspace(mailbox::workspace_id(label), root);
     }
+    // Shares are sealed to their grantee under the host key.
+    terminals.shares = Some(Arc::new(crate::share::Signer(authority.signing_key()?)));
     let pty = coder_pty::host::Host::new(terminals, Arc::new(Grants(authority.clone())));
 
     let listener = TcpListener::bind(config.listen)

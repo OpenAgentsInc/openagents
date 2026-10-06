@@ -7,6 +7,8 @@
 //!   device, and [`fetch_summaries`] its activity summaries.
 //! - [`Link`] is one proven route: a direct channel or relay fallback. It
 //!   carries NIP-HOST operations and NIP-TERM requests over either.
+//! - [`Guest`] is a device that holds a terminal share and no grant: it
+//!   reaches the one shared terminal through relay artifacts.
 //! - [`Connector`] implements the `coder-link` connector, so a `Registry`
 //!   decides when to connect and each attempt tries direct routes, over TCP
 //!   or WebSocket, before the relay.
@@ -28,6 +30,7 @@ use crate::mailbox::{self, Stream};
 use crate::{Error, Result, unix_time};
 
 mod connector;
+mod guest;
 pub mod iroh;
 mod link;
 pub mod nearby;
@@ -35,6 +38,7 @@ mod order;
 mod websocket;
 
 pub use connector::{Connector, Reports};
+pub use guest::Guest;
 pub use link::{Incoming, Link, Route};
 pub use order::Ordered;
 pub use websocket::{Stream as WebSocketStream, Tls as WebSocketTls, connect as connect_websocket};

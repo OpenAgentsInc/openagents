@@ -717,6 +717,12 @@ pub enum Value {
     Session {
         record: crate::ext::SessionRecord,
     },
+    /// A share the host issued (NIP-TERM's shares feature): its terms, and
+    /// the host-signed envelope sealed to the grantee that carries them.
+    Shared {
+        grant: crate::share::ShareGrant,
+        authorization: serde_json::Value,
+    },
 }
 
 /// The host's answer to one request.

@@ -417,3 +417,175 @@ async fn a_new_spend_request_wakes_the_phone_whose_grant_it_draws_on() {
     assert_eq!(wakes().await, 1);
     fixture.running.shutdown().await;
 }
+
+/// The output text a link or guest received within `wait`, and whether an
+/// attachment ended as revoked.
+async fn collect(
+    mut next: impl AsyncFnMut(Duration) -> Option<coder_host::client::Incoming>,
+    wait: Duration,
+) -> (String, bool) {
+    use coder_host::pty::wire::{Body, Detached};
+    let deadline = tokio::time::Instant::now() + wait;
+    let (mut text, mut revoked) = (String::new(), false);
+    loop {
+        let left = deadline.saturating_duration_since(tokio::time::Instant::now());
+        if left.is_zero() {
+            return (text, revoked);
+        }
+        match next(left).await {
+            Some(coder_host::client::Incoming::Frame(frame)) => match frame.body {
+                Body::Output { data, .. } => text.push_str(&String::from_utf8_lossy(&data)),
+                Body::Detached {
+                    reason: Detached::Revoked,
+                } => revoked = true,
+                _ => {}
+            },
+            Some(_) => {}
+            None => return (text, revoked),
+        }
+    }
+}
+
+async fn open_terminal(fixture: &Fixture, direct: &Link) -> TerminalRef {
+    let Outcome::Dispatched { receipt } = direct
+        .call(Operation::OpenTerminal { cols: 80, rows: 24 })
+        .await
+        .unwrap()
+    else {
+        panic!("terminal.open answered another outcome")
+    };
+    TerminalRef {
+        generation: terminal_generation(fixture.running.host_key(), 3),
+        terminal: receipt.reference,
+    }
+}
+
+/// A device the host never enrolled watches exactly one shared terminal
+/// over the relay, from the share on, and loses it when the share ends.
+#[cfg(unix)]
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn an_unenrolled_device_watches_one_shared_terminal_from_the_share_on() {
+    use coder_host::client::Guest;
+    use coder_host::pty::share::{ShareMode, ShareRequest, Unshare};
+
+    let fixture = fixture(3).await;
+    let operator = fixture.enroll(Rights::standard()).await;
+    let host = fixture.running.host_key().to_owned();
+    let direct = fixture.direct(&operator).await;
+    let reference = open_terminal(&fixture, &direct).await;
+    let other = open_terminal(&fixture, &direct).await;
+    let attached = direct
+        .terminal(TermRequest::Attach(Attach::new(
+            coder_host::reach::new_id(),
+            reference.clone(),
+            Mode::Interact,
+            0,
+            64 * 1024,
+        )))
+        .await
+        .unwrap();
+    assert_eq!(attached.status, Status::Accepted, "{attached:?}");
+    let typed = |text: &'static str| {
+        TermRequest::Input(Input::new(
+            coder_host::reach::new_id(),
+            reference.clone(),
+            text,
+        ))
+    };
+    // Each marker appears only as a command's output, never in its echo.
+    let result = direct
+        .terminal(typed("printf 'BEFORE%s\\n' X\n"))
+        .await
+        .unwrap();
+    assert_eq!(result.status, Status::Accepted, "{result:?}");
+    let (seen, _) = collect(
+        async |wait| direct.next_incoming(wait).await,
+        Duration::from_secs(2),
+    )
+    .await;
+    assert!(seen.contains("BEFOREX"), "{seen:?}");
+
+    let secret = key();
+    let share = ShareRequest::new(
+        coder_host::reach::new_id(),
+        reference.clone(),
+        pubkey(&secret),
+        ShareMode::Watch,
+        coder_host::unix_time().unwrap() + 600,
+    );
+    let shared = direct.terminal(TermRequest::Share(share)).await.unwrap();
+    let Some(Value::Shared {
+        grant,
+        authorization,
+    }) = shared.value
+    else {
+        panic!("share: {shared:?}")
+    };
+    let guest = Guest::new(&authorization, secret, &host, &fixture.relay, POLICY).unwrap();
+    assert_eq!(guest.grant(), &grant);
+    // The envelope is sealed to the grantee alone.
+    assert!(Guest::new(&authorization, key(), &host, &fixture.relay, POLICY).is_err());
+
+    let watching = guest
+        .terminal(TermRequest::Attach(Attach::new(
+            coder_host::reach::new_id(),
+            reference.clone(),
+            Mode::Observe,
+            0,
+            64 * 1024,
+        )))
+        .await
+        .unwrap();
+    assert_eq!(watching.status, Status::Accepted, "{watching:?}");
+    direct
+        .terminal(typed("printf 'AFTER%s\\n' Y\n"))
+        .await
+        .unwrap();
+    let (seen, _) = collect(
+        async |wait| guest.next_incoming(wait).await,
+        Duration::from_secs(3),
+    )
+    .await;
+    assert!(seen.contains("AFTERY"), "{seen:?}");
+    assert!(!seen.contains("BEFOREX"), "{seen:?}");
+
+    // The share admits nothing else: no input, no open, no other terminal.
+    for request in [
+        typed("whoami\n"),
+        TermRequest::Open(Open::new(
+            coder_host::reach::new_id(),
+            workspace_id("checkout"),
+            "",
+            Launch::Shell,
+            Size::new(24, 80),
+        )),
+        TermRequest::Attach(Attach::new(
+            coder_host::reach::new_id(),
+            other.clone(),
+            Mode::Observe,
+            0,
+            1024,
+        )),
+    ] {
+        let result = guest.terminal(request).await.unwrap();
+        assert_eq!(result.reason, Some(Reason::NotAdmitted), "{result:?}");
+    }
+
+    // Ending the share ends the attachment at once.
+    let ended = direct
+        .terminal(TermRequest::Unshare(Unshare::one(
+            coder_host::reach::new_id(),
+            reference.clone(),
+            &grant.share,
+        )))
+        .await
+        .unwrap();
+    assert_eq!(ended.status, Status::Accepted, "{ended:?}");
+    let (_, revoked) = collect(
+        async |wait| guest.next_incoming(wait).await,
+        Duration::from_secs(3),
+    )
+    .await;
+    assert!(revoked);
+    fixture.running.shutdown().await;
+}

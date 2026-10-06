@@ -12,7 +12,9 @@ use crate::unix_time;
 
 /// Run one terminal operation for `principal`. The terminal host asks the
 /// grant store for the right each operation needs; a revoked device is told
-/// `revoked` rather than `not_admitted`. `sink` builds the frame sink an
+/// `revoked` rather than `not_admitted`. A device without a current grant
+/// reaches the terminal host only while it holds a terminal share, which
+/// the terminal host checks per operation and terminal. `sink` builds the frame sink an
 /// attach delivers through. Blocking: run it off the async workers.
 pub(crate) fn run(
     shared: &Arc<Shared>,
@@ -33,6 +35,7 @@ pub(crate) fn run(
                 )),
             );
         }
+        Standing::Expired | Standing::Unknown if shared.pty.shared_with(principal) => {}
         Standing::Expired | Standing::Unknown => {
             return TerminalResult::from_outcome(
                 id,
@@ -55,6 +58,8 @@ pub(crate) fn run(
         TermRequest::History(r) => pty.history(principal, r),
         TermRequest::BlockPage(r) => pty.block_page(principal, r),
         TermRequest::Seat(r) => pty.seat(principal, r),
+        TermRequest::Share(r) => pty.share(principal, r),
+        TermRequest::Unshare(r) => pty.unshare(principal, r),
     };
     TerminalResult::from_outcome(id, outcome)
 }

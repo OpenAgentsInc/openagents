@@ -14,6 +14,7 @@
 use coder_pty::ext::{
     BLOCK_PAGE, BlockPageRead, HISTORY, History, RECORDS, RELEASE, RecordsFrame, Seat, TAKE,
 };
+use coder_pty::share::{SHARE, ShareRequest, UNSHARE, Unshare};
 use coder_pty::wire::{
     ATTACH, Attach, CLOSE, Close, DETACH, Detach, FRAME, Frame, INPUT, Input, OPEN, Open, RESIZE,
     RESULT, Reason, Refusal, Resize, SIGNAL, Signal, TerminalResult,
@@ -136,6 +137,11 @@ pub enum TermRequest {
     BlockPage(BlockPageRead),
     /// A take or release of the typist role (NIP-TERM's typist feature).
     Seat(Seat),
+    /// A share of one terminal with another device (NIP-TERM's shares
+    /// feature).
+    Share(ShareRequest),
+    /// The end of one share, or of every share of a terminal.
+    Unshare(Unshare),
 }
 
 impl TermRequest {
@@ -162,6 +168,8 @@ impl TermRequest {
             HISTORY => serde_json::from_value(value).map(Self::History),
             BLOCK_PAGE => serde_json::from_value(value).map(Self::BlockPage),
             TAKE | RELEASE => serde_json::from_value(value).map(Self::Seat),
+            SHARE => serde_json::from_value(value).map(Self::Share),
+            UNSHARE => serde_json::from_value(value).map(Self::Unshare),
             _ => {
                 return Err(Refusal::new(
                     Reason::UnsupportedVersion,
@@ -186,6 +194,8 @@ impl TermRequest {
             Self::History(r) => &r.request,
             Self::BlockPage(r) => &r.request,
             Self::Seat(r) => &r.request,
+            Self::Share(r) => &r.request,
+            Self::Unshare(r) => &r.request,
         }
     }
 
@@ -204,6 +214,8 @@ impl TermRequest {
             Self::BlockPage(_) => BLOCK_PAGE,
             Self::Seat(r) if r.takes() => TAKE,
             Self::Seat(_) => RELEASE,
+            Self::Share(_) => SHARE,
+            Self::Unshare(_) => UNSHARE,
         }
     }
 
@@ -221,6 +233,8 @@ impl TermRequest {
             Self::History(r) => serde_json::to_value(r),
             Self::BlockPage(r) => serde_json::to_value(r),
             Self::Seat(r) => serde_json::to_value(r),
+            Self::Share(r) => serde_json::to_value(r),
+            Self::Unshare(r) => serde_json::to_value(r),
         };
         value.unwrap_or(Value::Null)
     }
