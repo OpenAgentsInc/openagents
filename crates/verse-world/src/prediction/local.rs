@@ -391,20 +391,13 @@ impl Local {
                         };
                         if let Some(feet) = correct(current.feet)? {
                             let mut history = Vec::new();
-                            let mut valid = true;
                             for (step, estimate) in self.estimates.range((
                                 std::ops::Bound::Excluded(baseline.physics_step),
                                 std::ops::Bound::Unbounded,
                             )) {
-                                let Some(corrected) = correct(estimate.character.feet)? else {
-                                    valid = false;
-                                    break;
-                                };
-                                history.push((*step, corrected));
+                                history.push((*step, correct(estimate.character.feet)?));
                             }
-                            if valid {
-                                constrained = Some((feet, history));
-                            }
+                            constrained = Some((feet, history));
                         }
                     }
                 }
@@ -485,9 +478,16 @@ impl Local {
                 .as_mut()
                 .expect("Verified prediction character")
                 .feet = *feet;
+            // An obstructed historical sample cannot invalidate the separately
+            // checked current pose. Remove it so later confirmations cannot use
+            // that sample as a translation reference.
             for (step, corrected) in history {
-                if let Some(estimate) = self.estimates.get_mut(step) {
-                    estimate.character.feet = *corrected;
+                if let Some(corrected) = corrected {
+                    if let Some(estimate) = self.estimates.get_mut(step) {
+                        estimate.character.feet = *corrected;
+                    }
+                } else {
+                    self.estimates.remove(step);
                 }
             }
         } else if !same_travel {
@@ -1514,6 +1514,92 @@ mod tests {
         baseline.character.feet.x = 0.7;
         baseline.held.refresh([1., 0.], 0).unwrap();
         local.observe(baseline, &source, 4, 4).unwrap();
+        local.advance(0.).unwrap();
+        assert!(
+            (local.pose().unwrap().position.x - 5.64999).abs() < 0.0001,
+            "A later capsule erased processed pending travel: {:?}",
+            local.pose().unwrap().position
+        );
+        assert_eq!(local.physics_step(), 108);
+        assert_eq!(local.pending(), 9);
+        assert!(local.estimates.len() <= super::super::MAX_PENDING_STEPS as usize + 1);
+        local.advance(4. / 120.).unwrap();
+        assert!((local.pose().unwrap().position.x - 5.64999).abs() < 0.0001);
+    }
+
+    #[test]
+    fn invalid_historical_wall_pose_does_not_discard_a_valid_current_correction() {
+        use physics::queries::{ColliderKey, GeometrySnapshot, Pose, ShapeSnapshot, Usage};
+        let (mut local, mut baseline, mut source) = setup();
+        baseline.profile = movement::Profile::Frames;
+        baseline.epoch += 1;
+        source.colliders.push(ShapeSnapshot {
+            key: ColliderKey {
+                life: Life {
+                    instance: 7,
+                    entity: 0,
+                    generation: 0,
+                },
+                shape: 1,
+            },
+            layers: 1,
+            usage: Usage::Blocking,
+            pose: Pose::default(),
+            geometry: GeometrySnapshot::Box {
+                min: glam::DVec3::new(6., 0., -2.),
+                max: glam::DVec3::new(6.1, 4., 2.),
+            },
+        });
+        local.observe(baseline, &source, 2, 2).unwrap();
+        for token in 1..=9 {
+            local.queue(token, movement()).unwrap();
+            local.advance(0.1).unwrap();
+        }
+        assert!((local.pose().unwrap().position.x - 5.64999).abs() < 0.0001);
+        movement::advance(
+            &mut baseline.character,
+            local.collision.scene(),
+            Filter::blocking(7),
+            glam::DVec3::X * 6.4008,
+            false,
+            12,
+            1. / 120.,
+        )
+        .unwrap();
+        let capsule =
+            physics::character::Settings::default().capsule(glam::DVec3::new(0.7, 0., 0.));
+        source.colliders.push(ShapeSnapshot {
+            key: ColliderKey {
+                life: Life {
+                    instance: 7,
+                    entity: 216,
+                    generation: 0,
+                },
+                shape: 0,
+            },
+            layers: 1,
+            usage: Usage::Blocking,
+            pose: Pose::default(),
+            geometry: GeometrySnapshot::Capsule {
+                a: capsule.a,
+                b: capsule.b,
+                radius: capsule.radius,
+            },
+        });
+        local.update_geometry(&source, 3, 3).unwrap();
+        // A retained sample can become obstructed after a crowd correction.
+        // It must not erase the independently validated current wall constraint.
+        local.estimates.get_mut(&24).unwrap().character.feet.x = 6.05;
+        baseline.physics_step = 12;
+        baseline.world_step = 108;
+        baseline.character.feet.x = 0.7;
+        baseline.held.refresh([1., 0.], 0).unwrap();
+        local.observe(baseline, &source, 4, 4).unwrap();
+        assert_eq!(
+            local.last_reconciliation.as_ref().unwrap().path,
+            "constrained_translation"
+        );
+        assert!(!local.estimates.contains_key(&24));
         local.advance(0.).unwrap();
         assert!(
             (local.pose().unwrap().position.x - 5.64999).abs() < 0.0001,

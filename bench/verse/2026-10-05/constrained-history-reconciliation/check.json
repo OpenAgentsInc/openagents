@@ -1,0 +1,20 @@
+{
+  "schema": "verse.regression.check.v1",
+  "before": {
+    "command": "cargo +1.97.1 test -p verse-world --features service-net invalid_historical_wall_pose -- --test-threads=1",
+    "status": "failed",
+    "observed_path": "replay",
+    "expected_path": "constrained_translation"
+  },
+  "scenario": "A wall-constrained current pose remains valid while a retained historical estimate lies inside the same fixed wall. A later crowd pose must not erase already processed pending travel.",
+  "after": {
+    "command": "cargo +1.97.1 test -p verse-world --features service-net prediction:: -- --test-threads=1",
+    "status": "passed",
+    "tests": 42,
+    "formatting": "rustfmt +1.97.1 --edition 2024 crates/verse-world/src/prediction/local.rs; git diff --check"
+  },
+  "limitations": [
+    "This reproduces the invalid-history fallback branch, not every state in the measured battle trace.",
+    "The measured correction maximum is not yet improved by a new battle run."
+  ]
+}
