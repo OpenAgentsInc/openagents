@@ -1,0 +1,43 @@
+{
+  "source_base_revision": "3896776166080cfba6ed740aa9a414b6a7582cb4",
+  "source_patch": "source.patch",
+  "executable_sha256": "43edf12050fd0a934e1bfec0943f7ed3420e69a04ab7509186f26ba43f57b96b",
+  "acceptance": "failed",
+  "failures": [
+    "/server/movement_expiry/total: Some(1.0) exceeds 0, or is unavailable"
+  ],
+  "movement_expiry": {
+    "total": 1,
+    "admission": 0,
+    "primary_tick": 0,
+    "additional_tick": 1,
+    "bootstrap": 0,
+    "samples": [
+      {
+        "actor": 237,
+        "epoch": 14,
+        "authority_tick": 2822,
+        "origin": "additional_tick",
+        "world_step": 8888,
+        "confirmed_step": 8854,
+        "projected_step": 8854,
+        "received_at": 8868,
+        "applied_sequence": 4,
+        "queued_frames": 0,
+        "queued_steps": 0,
+        "first_start": null,
+        "last_end": null
+      }
+    ],
+    "omitted": 0
+  },
+  "limits_changed": false,
+  "checks": "Two framing tests, ten pipeline checks, and 25 worker tests passed. Original four-step movement flushing restored; unchanged-confirmation correction included.",
+  "conclusion": "All client prediction-correction gates pass. One transition-time movement expiry still prevents acceptance. One run does not establish a causal expiry reduction.",
+  "route": {
+    "forwarded_chunks": 127970,
+    "upstream_bytes": 23615648,
+    "downstream_bytes": 267952240,
+    "queued_chunk_peak": 8
+  }
+}
