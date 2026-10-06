@@ -58,13 +58,34 @@ impl Paint {
 /// copy of a kit piece, and the neutral image each samples: plaster, then
 /// roof tiles. The sixth round's houses (`scripts/blender/town_houses.py`)
 /// name theirs `HousePlaster` and `HouseTiles`; the pack names a house's
-/// color variant `~2`, `~3`, and so on, which still takes the paint.
-const PAINTED: [(&str, &str); 4] = [
-    ("/MI_Plaster", "village/T_Plaster_Luma"),
-    ("/MI_RoundTiles", "village/T_RoundTiles_Luma"),
-    ("/HousePlaster", "village/T_Plaster_Luma"),
-    ("/HouseTiles", "village/T_RoundTiles_Luma"),
+/// color variant `~2`, `~3`, and so on, which still takes the paint. The
+/// market stall's awning takes the plaster color on its cloth and first
+/// stripes and the roof color on its second, as plain colors without an
+/// image (`layout::paint`).
+const PAINTED: [(&str, Coat, Option<&str>); 7] = [
+    ("/MI_Plaster", Coat::Plaster, Some("village/T_Plaster_Luma")),
+    (
+        "/MI_RoundTiles",
+        Coat::Roof,
+        Some("village/T_RoundTiles_Luma"),
+    ),
+    (
+        "/HousePlaster",
+        Coat::Plaster,
+        Some("village/T_Plaster_Luma"),
+    ),
+    ("/HouseTiles", Coat::Roof, Some("village/T_RoundTiles_Luma")),
+    ("/Stall_Cloth", Coat::Plaster, None),
+    ("/Stall_StripeA", Coat::Plaster, None),
+    ("/Stall_StripeB", Coat::Roof, None),
 ];
+
+/// Which of a paint's two colors a material takes.
+#[derive(Clone, Copy)]
+enum Coat {
+    Plaster,
+    Roof,
+}
 
 /// Pack indices already copied into the scene.
 #[derive(Default)]
@@ -299,23 +320,24 @@ pub fn copy_painted(
 }
 
 /// The paint color that applies to pack material `index`, if any, and the
-/// neutral image it samples.
+/// neutral image it samples, if any.
+#[allow(clippy::type_complexity)]
 fn painted(
     pack: &ZonePack,
     index: u16,
     paint: Paint,
-) -> Result<Option<([f32; 3], &'static str)>, String> {
+) -> Result<Option<([f32; 3], Option<&'static str>)>, String> {
     let source = pack
         .materials
         .get(usize::from(index))
         .ok_or("The Everglade pack names a missing material")?;
     let base = source.name.split('~').next().unwrap_or_default();
     Ok(
-        match PAINTED.iter().enumerate().position(|(k, (name, _))| {
-            source.name.ends_with(name) || (k >= 2 && base.ends_with(name))
+        match PAINTED.iter().enumerate().find(|(k, (name, ..))| {
+            source.name.ends_with(name) || (*k >= 2 && base.ends_with(name))
         }) {
-            Some(k) if k % 2 == 0 => paint.plaster.map(|c| (c, PAINTED[0].1)),
-            Some(_) => paint.roof.map(|c| (c, PAINTED[1].1)),
+            Some((_, (_, Coat::Plaster, image))) => paint.plaster.map(|c| (c, *image)),
+            Some((_, (_, Coat::Roof, image))) => paint.roof.map(|c| (c, *image)),
             None => None,
         },
     )
@@ -346,7 +368,8 @@ fn look(
         .get(usize::from(index))
         .ok_or("The Everglade pack names a missing material")?;
     let (image, base_color) = match painted(pack, index, paint)? {
-        Some((c, luma)) => {
+        Some((c, None)) => (None, [c[0], c[1], c[2], source.base_color[3]]),
+        Some((c, Some(luma))) => {
             let texture = pack
                 .textures
                 .iter()

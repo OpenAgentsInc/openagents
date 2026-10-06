@@ -458,7 +458,7 @@ mod tests {
         assert!(carvable("generated/library"));
         assert!(carvable("generated/bandshell"));
         assert!(carvable("props/Workbench"));
-        assert!(carvable("generated/market_stall_red"));
+        assert!(carvable("generated/market_stall"));
         assert!(!carvable("nature/CommonTree_1"));
         assert!(!carvable("village/Floor_Brick"));
         assert!(!carvable("generated/oak_low"));

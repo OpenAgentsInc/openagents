@@ -54,9 +54,8 @@ MODELS = [
     ("observatory.glb", "observatory"),
     ("fountain.glb", "fountain"),
     ("bandshell.glb", "bandshell"),
-    ("market_stall_red.glb", "market_stall_red"),
-    ("market_stall_blue.glb", "market_stall_blue"),
-    ("market_stall_gold.glb", "market_stall_gold"),
+    # One stall; `layout::paint` gives each placed stall its awning's colors.
+    ("market_stall_red.glb", "market_stall"),
     ("buildings/townhouse_jettied.glb", "townhouse_jettied"),
     ("buildings/townhouse_balcony.glb", "townhouse_balcony"),
     ("buildings/row_townhouse.glb", "row_townhouse"),
@@ -93,6 +92,9 @@ MODELS = [
         "brownstone",
         "timber_house",
         "lantern_inn",
+        # The seventh round's outbuildings (`town_houses.py`).
+        "garden_shed",
+        "woodshed",
     ]
 ] + [
     ("kit/roof_round_tiles_8x10.glb", "roof_round_tiles_8x10"),
@@ -159,6 +161,10 @@ MODELS = [
         "flower_cart",
         "fountain_small",
         "boardwalk",
+        "thicket",
+        "young_trees",
+        "copse",
+        "footpath",
     ]
 ] + [
     (f"grove/{name}.glb", name)
@@ -467,4 +473,10 @@ def main():
 
 
 if __name__ == "__main__":
-    sys.exit(main())
+    status = main()
+    if not status:
+        # Compact what this script wrote (`everglade_compact.py`).
+        import everglade_compact
+
+        everglade_compact.main()
+    sys.exit(status)

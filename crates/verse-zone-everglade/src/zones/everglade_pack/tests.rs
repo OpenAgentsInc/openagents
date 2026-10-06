@@ -378,10 +378,15 @@ fn committed_manifests_admit_only_base_color_sources_with_licenses() {
         assert!(directory.join("README.md").is_file(), "{set} README");
         // Only images change in the kits' sets; the generated set records
         // each model's conversion from its committed glb, and the lod set
-        // each far level's recipe, or the script that built it.
+        // each far level's recipe, or the script that built it. Any of
+        // them may also be losslessly compacted (`everglade_compact.py`).
         for (name, transform) in &manifest.transforms {
+            let compacted = transform.contains("everglade_compact.py");
             if set == "generated" {
-                assert!(transform.contains("everglade_admit.py"), "{set}/{name}");
+                assert!(
+                    transform.contains("everglade_admit.py") || compacted,
+                    "{set}/{name}"
+                );
             } else if set == "foliage" {
                 assert!(transform.contains("foliage_admit.py"), "{set}/{name}");
             } else if set == "lod" {

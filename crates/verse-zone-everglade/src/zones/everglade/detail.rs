@@ -40,9 +40,9 @@ const COVER_SWITCH: u8 = 1;
 const UNDERSTORY_SWITCH: u8 = 2;
 
 /// Models drawn only nearer than [`UNDERSTORY`], by prefix: shrubs and
-/// brambles, deadwood, roots, small rocks and stones, ivy, roses, and
-/// hedges.
-const UNDERSTORY_MODELS: [&str; 15] = [
+/// brambles, deadwood, roots, small rocks and stones, ivy, roses, hedges,
+/// thickets, and footpaths.
+const UNDERSTORY_MODELS: [&str; 17] = [
     "foliage/shrub_",
     "foliage/bramble",
     "foliage/log_",
@@ -58,6 +58,8 @@ const UNDERSTORY_MODELS: [&str; 15] = [
     "generated/fallen_log",
     "generated/stump",
     "generated/mossy_rock",
+    "generated/thicket",
+    "generated/footpath",
 ];
 
 /// Models drawn only nearer than [`COVER`], by prefix: grass, ferns,

@@ -25,6 +25,10 @@ merges them by material. Each is a few hundred triangles at most:
 - Cafés: `cafe_table` (a round table, two chairs, and a parasol).
 - Trees: `birch_low`, `poplar_low`, `spruce_low`, `fruit_tree`, and
   `bush_round`, cheap stand-ins that vary the woods and the gardens.
+- Wild growth and trails, the seventh round's: `thicket` (bushes round two
+  saplings), `young_trees` (a birch, a spruce, and an oak, young), `copse`
+  (six young trees), and
+  `footpath` (3 m of path worn into the turf).
 
 Fronts face -Y in Blender, which is +Z (glTF's front) after export; the
 origin is the center of the base.
@@ -116,6 +120,8 @@ def materials():
         "tile": kit.mat("Prop_Tile", (0.4, 0.09, 0.05), 0.8),
         "water": kit.mat("Fountain_Water", (0.1, 0.36, 0.62), 0.15),
         "spray": kit.mat("Fountain_Spill", (0.4, 0.7, 0.9), 0.1),
+        # The seventh round's: worn earth for the footpaths.
+        "path": kit.mat("Prop_PathEarth", (0.29, 0.21, 0.12), 1.0),
     }
 
 
@@ -805,6 +811,82 @@ def fountain_small(m):
     kit.cyl("Jet", 0.07, 0.7, (0, 0, 2.05), m["spray"], verts=6, r2=0.02)
 
 
+# --- Seventh round: wild growth and footpaths --------------------------------
+
+
+def thicket(m):
+    """A wild thicket about 3 m across: a tangle of bushes round two
+    saplings, for the wild ground between the town and the woods and the
+    gaps between buildings. Near 270 triangles."""
+    rng = random.Random(71)
+    for i in range(5):
+        a = 2 * math.pi * i / 5 + rng.uniform(-0.3, 0.3)
+        r = rng.uniform(0.6, 1.1)
+        kit.ball("Bush%d" % i, rng.uniform(0.45, 0.7), (r * math.cos(a), r * math.sin(a), 0.35),
+                 m["leaf" if i % 2 else "leaf_dark"], segs=6, rings=4, scale=(1, 1, 0.8))
+    for i, (x, y, h) in enumerate(((0.25, 0.1, 2.6), (-0.4, -0.3, 2.1))):
+        kit.cyl("Stem%d" % i, 0.06, h, (x, y, h / 2), m["bark"], verts=4, r2=0.03, cap=False)
+        kit.ball("Top%d" % i, 0.55, (x, y, h), m["birch_leaf"], segs=6, rings=4, scale=(1, 1, 1.2))
+
+
+def young_trees(m):
+    """Three young trees of the woods' edge: a birch, a spruce, and an oak,
+    2.5 to 4 m tall, a meter or so apart. Near 150 triangles."""
+    kit.cyl("Birch", 0.08, 3.6, (0.0, 0.0, 1.8), m["birch"], verts=4, r2=0.04, cap=False)
+    kit.ball("BirchCrown", 0.7, (0.0, 0.0, 3.3), m["birch_leaf"], segs=6, rings=4, scale=(1, 1, 1.4))
+    kit.cyl("SpruceTrunk", 0.1, 0.6, (1.2, 0.5, 0.3), m["bark"], verts=4, r2=0.07, cap=False)
+    for i, (r, z, h) in enumerate(((0.95, 0.5, 1.5), (0.7, 1.5, 1.4), (0.45, 2.4, 1.2))):
+        kit.cyl("Tier%d" % i, r, h, (1.2, 0.5, z + h / 2), m["spruce"], verts=6, r2=0.03)
+    kit.cyl("OakTrunk", 0.1, 1.4, (-0.9, 0.7, 0.7), m["bark"], verts=4, r2=0.07, cap=False)
+    kit.ball("OakCrown", 0.85, (-0.9, 0.7, 2.0), m["leaf"], segs=6, rings=4, scale=(1, 1, 0.85))
+
+
+def copse(m):
+    """Six young trees about 5 m across, two each of birch, spruce, and oak,
+    2 to 4.5 m tall, at about 40 triangles a tree, so the wild ground can
+    hold hundreds of them and they show from across the town."""
+    rng = random.Random(97)
+    spots = [(0.0, 0.0), (1.6, 0.7), (-1.4, 1.1), (0.6, -1.7), (-1.9, -1.0), (2.1, -1.2)]
+    for i, (x, y) in enumerate(spots):
+        x += rng.uniform(-0.3, 0.3)
+        y += rng.uniform(-0.3, 0.3)
+        h = rng.uniform(2.0, 4.5)
+        kind = i % 3
+        if kind == 1:
+            kit.cyl("SpruceTrunk%d" % i, 0.09, 0.5, (x, y, 0.25), m["bark"], verts=4, r2=0.06, cap=False)
+            for k, (r, z0, t) in enumerate(((0.75, 0.4, 0.55), (0.5, 0.4 + 0.45 * h * 0.55, 0.5))):
+                kit.cyl("Tier%d_%d" % (i, k), r * h / 3.2, h * t, (x, y, z0 + h * t / 2), m["spruce"], verts=5,
+                        r2=0.02)
+        else:
+            bark, leaf = (m["birch"], m["birch_leaf"]) if kind == 0 else (m["bark"], m["leaf"])
+            kit.cyl("Trunk%d" % i, 0.07, h * 0.8, (x, y, h * 0.4), bark, verts=4, r2=0.035, cap=False)
+            r = 0.45 + 0.12 * h
+            kit.ball("Crown%d" % i, r, (x, y, h * 0.8), leaf, segs=6, rings=4, scale=(1, 1, 1.35))
+
+
+def footpath(m):
+    """Three meters of footpath worn into the turf, 1.2 m wide with ragged
+    edges, for the trails from the lanes into the woods. The zone lifts it a
+    few centimeters over the turf."""
+    rng = random.Random(83)
+    bm = bmesh.new()
+    left, right = [], []
+    for i in range(7):
+        y = -1.5 + i * 0.5
+        left.append(bm.verts.new((-0.6 + rng.uniform(-0.12, 0.12), y, 0.0)))
+        right.append(bm.verts.new((0.6 + rng.uniform(-0.12, 0.12), y, 0.0)))
+    for i in range(6):
+        bm.faces.new((left[i], right[i], right[i + 1], left[i + 1]))
+    mesh = bpy.data.meshes.new("Path")
+    bm.to_mesh(mesh)
+    bm.free()
+    o = bpy.data.objects.new("Path", mesh)
+    bpy.context.scene.collection.objects.link(o)
+    o.data.materials.append(m["path"])
+    for i, (x, y) in enumerate(((-0.3, -0.9), (0.25, 0.4), (-0.1, 1.1))):
+        kit.ball("Pebble%d" % i, 0.09, (x, y, 0.01), m["stone"], segs=4, rings=3, scale=(1.2, 1, 0.4))
+
+
 def boardwalk(m):
     """A 6 m by 3 m plank deck at the water's edge, its rail along the
     water side and the ends, open to the land, for the cafés' tables."""
@@ -832,6 +914,10 @@ PROPS = {
     "flower_cart": flower_cart,
     "fountain_small": fountain_small,
     "boardwalk": boardwalk,
+    "thicket": thicket,
+    "young_trees": young_trees,
+    "copse": copse,
+    "footpath": footpath,
     "flower_patch_spring": lambda m: flower_patch(m, SEASONS["flower_patch_spring"], 51),
     "flower_patch_summer": lambda m: flower_patch(m, SEASONS["flower_patch_summer"], 52),
     "flower_patch_autumn": lambda m: flower_patch(m, SEASONS["flower_patch_autumn"], 53),

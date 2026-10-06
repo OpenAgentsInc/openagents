@@ -36,6 +36,7 @@ import json
 import math
 import os
 import random
+import subprocess
 import sys
 
 import bmesh
@@ -80,9 +81,7 @@ RECIPES = {
             "observatory",
             "bandshell",
             "fountain",
-            "market_stall_red",
-            "market_stall_blue",
-            "market_stall_gold",
+            "market_stall",
         ]
     },
     "generated/roof_round_tiles_8x10": ("piece", PIECE, 0.6),
@@ -647,3 +646,9 @@ def main():
 
 
 main()
+# Compact what this script wrote, outside Blender's Python, which has no
+# Pillow (`everglade_compact.py`).
+subprocess.run(
+    ["python3", os.path.join(os.path.dirname(os.path.abspath(__file__)), "everglade_compact.py")],
+    check=True,
+)

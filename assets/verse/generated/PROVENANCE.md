@@ -53,7 +53,7 @@ The observatory and the bandshell sample the village kit's
 | `fountain.glb` | `fountain.py` | 2,460 | |
 | `observatory.glb` | `observatory.py` | 2,888 | |
 | `bandshell.glb` | `bandshell.py` | 1,380 | |
-| `market_stall_red.glb`, `market_stall_blue.glb`, `market_stall_green.glb`, `market_stall_gold.glb` | `market_stall.py` | 1,916 each | Everglade admits all but the green stall, which no place in the town had room for |
+| `market_stall_red.glb`, `market_stall_blue.glb`, `market_stall_green.glb`, `market_stall_gold.glb` | `market_stall.py` | 1,916 each | Everglade admits the red stall alone, as `generated/market_stall`, and paints each placed stall's awning red, blue, or gold (`layout::paint`) |
 | `training_dummy.glb` | `training_dummy.py` | 936 | |
 | `training_dummy_armored.glb` | `training_dummy.py` | 2,128 | |
 | `training_dummy_warded.glb` | `training_dummy.py` | 1,860 | |
@@ -166,10 +166,16 @@ them to `town/`:
 | `flower_cart.glb` | 712 | Hand carts of potted flowers on the plaza and before the shops |
 | `fountain_small.glb` | 240 | Small fountains by Market Row and on the lawns south of the commons |
 | `boardwalk.glb` | 340 | Plank decks with a rail on Lantern Pond's banks, for café tables |
+| `thicket.glb` | 268 | Bushes round two saplings, in the wild ground between the town and the woods and the gaps between buildings |
+| `young_trees.glb` | 156 | A young birch, spruce, and oak, in the wild patches and along the lanes toward the woods |
+| `copse.glb` | 256 | Six young trees, two each of birch, spruce, and oak, most of the wild patches |
+| `footpath.glb` | 60 | Three meters of path worn into the turf, for the trails from the town's edge toward the woods |
 
 The sixth round's pieces (`produce_stall` to `boardwalk`) were added on
 October 5, 2026, in Reference mode: built from primitives in the same
-shared flat-color materials, with nothing from a kit.
+shared flat-color materials, with nothing from a kit. The seventh round's
+(`thicket`, `young_trees`, `copse`, and `footpath`) were added the same way the same
+day.
 
 ## Kit pieces
 

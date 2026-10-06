@@ -1,0 +1,26 @@
+{
+  "model": "woodshed.glb",
+  "frame": "glTF: 1 unit = 1 m, +Y up, +Z out of the front door, origin on the ground at the center of the front wall",
+  "triangles": 478,
+  "boxes": [
+    {
+      "name": "shed",
+      "center": [
+        0.0,
+        0.95,
+        -0.8
+      ],
+      "half_extents": [
+        1.9,
+        0.95,
+        0.9
+      ]
+    }
+  ],
+  "roofs": [],
+  "front": [
+    0.0,
+    0.9
+  ],
+  "inside": null
+}

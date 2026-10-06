@@ -22,6 +22,8 @@ use crate::controller::{Footprint, forward};
 use std::collections::HashMap;
 use std::f32::consts::{FRAC_PI_2, PI, TAU};
 
+mod wilds;
+
 /// The broadleaf trees, with the half width of each one's trunk and its
 /// crown's radius, m, at scale one.
 const BROADLEAF: [(&str, f32, f32); 4] = [
@@ -73,6 +75,7 @@ const THICKETS: [([f32; 2], f32); 2] = [([-104.0, -88.0], 46.0), ([98.0, 84.0], 
 pub fn build(out: &mut Vec<Placement>, placed: &[([f32; 2], f32)]) {
     let mut ground = Ground::new(out, placed);
     let start = out.len();
+    wilds::outbuildings(out, &mut ground);
     walls(out, start);
     windows(out, start);
     fences(out, start);
@@ -86,6 +89,7 @@ pub fn build(out: &mut Vec<Placement>, placed: &[([f32; 2], f32)]) {
     planters(out, &mut ground);
     yards(out, &mut ground);
     verges(out, &mut ground);
+    wilds::build(out, &mut ground);
 }
 
 /// What stands where already, and the open ground: the checks of

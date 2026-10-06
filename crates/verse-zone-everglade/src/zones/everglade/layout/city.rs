@@ -973,8 +973,7 @@ fn market(out: &mut Vec<Placement>) {
     // Stalls on the plaza's east side, facing the fountain across it, with
     // their stock beside them.
     for (k, z) in [66.5_f32, 77.0].into_iter().enumerate() {
-        let stall = ["generated/market_stall_red", "generated/market_stall_blue"][k % 2];
-        prop(out, stall, [6.5, z], WEST);
+        prop(out, super::STALL, [6.5, z], WEST);
         prop(out, "generated/barrel", [7.9, z + 1.6], 0.3 * k as f32);
     }
     prop(out, "village/Prop_Crate", [8.0, 69.0], 0.4);

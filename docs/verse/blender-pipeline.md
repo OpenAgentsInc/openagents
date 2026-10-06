@@ -317,6 +317,51 @@ python3 scripts/blender/everglade_admit.py
 other scripts admit into their sets (`tower_admit.py`'s tower and
 `town_houses.py`'s far levels) while those files are there.
 
+## Wild growth, outbuildings, and compact sources
+
+For the seventh round, `town_houses.py` builds two outbuildings in
+Reference mode, `garden_shed` (418 triangles) and `woodshed` (478), which
+the zone places as props without far levels, and `town_props.py` builds
+`thicket` (268), `young_trees` (156), `copse` (256, six young trees), and
+`footpath` (60). To rebuild them,
+run:
+
+```sh
+$B -b --factory-startup --python scripts/blender/town_houses.py -- \
+    assets/verse/generated/buildings garden_shed woodshed
+$B -b --factory-startup --python scripts/blender/town_props.py -- \
+    assets/verse/generated/town thicket young_trees copse footpath
+python3 scripts/blender/everglade_admit.py
+```
+
+`town_houses.py` also writes far levels for the two sheds; nothing admits
+them, so delete `far/garden_shed.glb` and `far/woodshed.glb`.
+
+Everglade admits one market stall, `generated/market_stall`, built from
+`market_stall_red.glb`; the zone paints each placed stall's awning red,
+blue, or gold (`scene::PAINTED`, `layout::paint`), where the pack carried
+three stalls that differed only in those colors.
+
+`scripts/blender/everglade_compact.py` compacts the pack's sources without
+changing what the pack draws, and `everglade_admit.py`, `tower_admit.py`,
+`everglade_lod.py`, and `foliage_admit.py` run it when they finish:
+
+- In the `generated`, `foliage`, and `lod` sets, it rewrites each glTF and
+  buffer with only what the compiler reads: a second coordinate set and
+  the coordinates of an untextured, unpainted material are dropped, and
+  each accessor is tightly packed. The kits' models stay as they ship.
+- In every set but `beasts`, it recompresses each PNG losslessly with
+  `oxipng` (`cargo install oxipng`), keeping its 8-bit color type, and
+  checks that every pixel decodes the same. The compiler stores the
+  smaller PNG in the pack as it is.
+
+Each rewritten file's manifest transform records the step. On October 5,
+2026, this and the single stall freed 2,238,127 committed bytes: the
+sources shrank from 30,796,897 to 29,104,207 bytes and the pack from
+11,157,578 to 10,612,141. Every other model in the new pack draws the
+same triangles, positions, normals, colors, and materials as before, and
+every texture decodes to the same pixels.
+
 ## How an agent makes a model
 
 1. Write `scripts/blender/<name>.py` that builds the model from primitives,

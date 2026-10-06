@@ -106,4 +106,10 @@ def main():
 
 
 if __name__ == "__main__":
-    sys.exit(main())
+    status = main()
+    if not status:
+        # Compact what this script wrote (`everglade_compact.py`).
+        import everglade_compact
+
+        everglade_compact.main()
+    sys.exit(status)

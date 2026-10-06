@@ -608,10 +608,34 @@ fn painted() -> &'static [(([f32; 2], [f32; 2]), Paint)] {
     })
 }
 
+/// The market stall: one model whose awning `paint` colors
+/// (`scene::PAINTED`), in place of the red, blue, and gold stalls the pack
+/// carried before.
+pub const STALL: &str = "generated/market_stall";
+/// The stall's awnings, as `scripts/blender/market_stall.py` colors them:
+/// the cloth and its first stripes, then the second stripes, linear. Red,
+/// blue, and gold.
+const AWNINGS: [[[f32; 3]; 2]; 3] = [
+    [[0.72, 0.14, 0.12], [0.93, 0.87, 0.72]],
+    [[0.16, 0.30, 0.60], [0.93, 0.87, 0.72]],
+    [[0.85, 0.60, 0.10], [0.62, 0.16, 0.12]],
+];
+
 /// How `placement` is painted: a kit piece of a kit-built house takes its
 /// house's plaster and roof colors (`scene::Paint`), and a sixth-round
 /// house colors of its own; anything else keeps the kit's.
 pub fn paint(placement: &Placement) -> Paint {
+    // Each market stall takes one of the three awnings from where it
+    // stands.
+    if placement.model == STALL {
+        let [x, z] = placement.at;
+        let k = (x * 7.0 + z * 13.0).round().abs() as u32;
+        let [cloth, stripe] = AWNINGS[(noise(k, 74) * AWNINGS.len() as f32) as usize];
+        return Paint {
+            plaster: Some(cloth),
+            roof: Some(stripe),
+        };
+    }
     // The sixth round's houses each take colors of their own from where
     // they stand; a `None` keeps the model's.
     if furnish::LIGHT_HOUSES.contains(&placement.model) {
@@ -1312,8 +1336,7 @@ fn main_street(out: &mut Vec<Placement>) {
     }
     // Market stalls and benches across the street, by the commons.
     for (k, x) in [4.0_f32, 18.0, 32.0].into_iter().enumerate() {
-        let stall = ["generated/market_stall_blue", "generated/market_stall_red"][k % 2];
-        prop(out, stall, [x, 42.2], NORTH);
+        prop(out, STALL, [x, 42.2], NORTH);
         prop(out, "generated/barrel", [x + 2.0, 42.4], 0.4 * k as f32);
     }
     for x in [-3.0_f32, 11.0, 25.0, 38.0] {

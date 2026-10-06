@@ -132,6 +132,8 @@ without the small details, which `everglade_admit.py` admits into the pack's
 | `brownstone.glb` | 2,310 | 706 | Brown stone, flat roof | Three storeys over a raised basement, a stoop with iron rails, a hooded door, an areaway rail, and a bracketed cornice; the stone is the uneven brick recolored brown |
 | `timber_house.glb` | 2,246 | 728 | White, brown, dark | A stone ground floor under a jettied, timber-framed upper floor with St Andrew's crosses, a cross gable, and a balcony |
 | `lantern_inn.glb` | 3,254 | 802 | Butter, red, dark | The Lantern Quarter's inn: lamplit windows, a double door, wall lanterns, a hanging sign, a timber-framed upper floor, and a hipped roof with two dormers |
+| `garden_shed.glb` | 418 | | Cream, red, dark | The seventh round's: a plastered garden shed on a stone plinth under a tiled gable, with a plank door, a shuttered window, and a water butt, placed as a prop in back gardens; no far level |
+| `woodshed.glb` | 478 | | Cream, brown, dark | The seventh round's: an open-fronted woodshed, a tiled lean-to on four posts over a plank back wall, with three courses of split logs and a chopping block, placed as a prop beside the cabins; no far level |
 
 Each `<name>.footprint.json` lists axis-aligned collision boxes in the glb's
 frame: 1 unit = 1 m, +Y up, +Z out of the front door, and the origin on the

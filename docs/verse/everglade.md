@@ -185,7 +185,9 @@ The zone renderer gains textured static meshes:
   2,268,146 triangles in 153 MiB. After the sixth round's lighter houses
   replaced most kit-built ones, a street view draws 323,000 to 532,000
   (574,000 before), and the city merges 2,804,051 triangles (2,894,488
-  before) in 205 MiB; the pack is 11.2 MB.
+  before) in 205 MiB; the pack is 11.2 MB. The seventh round's wild
+  ground brings a street view to 337,000 to 544,000 and the merged city to
+  2,886,002 triangles in 208 MiB; the pack, with Alice, is 11.0 MB.
 - The sixth round's houses (`scripts/blender/town_houses.py`) are painted
   too: their plaster and tiles are named `HousePlaster` and `HouseTiles`
   (`scene::PAINTED`), and `layout::paint` gives each placed house colors of
@@ -373,6 +375,18 @@ crates, flower carts, benches, barrels, bins, planters, hand pumps, and
 small fountains stand before the new houses and along the lanes
 (`scripts/blender/town_props.py`). The orchard's dry-stone wall, which no
 earlier round could place, now stands.
+
+The seventh round (`layout::foliage::wilds`) grows the wild ground the map
+shows between the town and its woods, which earlier rounds left as open
+grass. Patches of young birches, spruces, and oaks stand among thickets,
+shrubs, and brambles on the ground between the last streets and the woods,
+with open meadow between them; young trees line the lanes that leave the
+town; small thickets and shrubs fill the narrow gaps between buildings;
+footpaths wander from the town's edge across the wild ground toward the
+woods, with ferns and grass at their edges; garden sheds stand in back
+gardens; and woodsheds stand beside cabins and farm buildings
+(`scripts/blender/town_houses.py` and `town_props.py`). The market's three
+stalls are one model now, painted red, blue, or gold where it stands.
 
 The town has ambient wildlife
 ([`wildlife`](../../crates/verse-zone-everglade/src/zones/everglade/wildlife.rs)): pairs of

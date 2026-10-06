@@ -146,11 +146,11 @@ fn signs(out: &mut Vec<Placement>, placed: &mut Placed) {
     }
 }
 
-/// A gold stall on Main Street's south side, facing the shops across it,
+/// A stall on Main Street's south side, facing the shops across it,
 /// east of the Fountain Plaza's corner. (A green stall beside it never
 /// found clear ground and left the pack in the sixth round.)
 fn stalls(out: &mut Vec<Placement>, placed: &mut Placed) {
-    for (model, x) in [("generated/market_stall_gold", 29.0)] {
+    for (model, x) in [(super::STALL, 29.0)] {
         let stall = Placement::new(model, [x, 42.4], 0.0, Collision::Bounds);
         if try_put(out, placed, stall, 1.4) {
             let crate_at = [x + 1.8, 42.0];

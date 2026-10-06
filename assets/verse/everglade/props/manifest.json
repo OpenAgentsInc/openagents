@@ -30,11 +30,11 @@
     "Scroll_1.gltf": "f8b03860718121bfe6975b31996a0bb36e978e208a7df5a52fe4b0f3efbb14aa",
     "Stool.bin": "6ca3a6bc9b415409d842a338a74c174d0efe4d4972bf8a924fda87c8bda40191",
     "Stool.gltf": "55a111d97463adb71a59eddb8bbee777c5743e66a58403b06e869cc35e4da670",
-    "T_Page_Noise.png": "f05ee39b63013dddbf7691a38e2739648a44d550d20a0fb6bda681ec40415a0c",
-    "T_Trim_Cloth_BaseColor.png": "003348b95f002ca3cc923f341ee04cf993d97d6030de4df83baf109792531cd6",
-    "T_Trim_Furniture_BaseColor.png": "27ffb35f11e8daa52e83ff8af58dc1286d4d3ba30d86f5950d78ebec74666c92",
-    "T_Trim_Metal_BaseColor.png": "640cf34d7a1e2825155f5fc032b1319666562357b4fe2ce0e5195e4b6d291e1c",
-    "T_Trim_Props_BaseColor.png": "e71fa51537e791854b987788f08bb253e160f9a86d971bbb61fca1df8fb40c3b",
+    "T_Page_Noise.png": "1230e93c8f92bd71cf921d3f4499bfd9ca2104a287357b481ccdecc08faa7c0d",
+    "T_Trim_Cloth_BaseColor.png": "f0605c17aa9919a44e194a2c9bcb974b10051e5ebf1cf625fe3e9d8d748cc6eb",
+    "T_Trim_Furniture_BaseColor.png": "2c16c48db6e729b7c568b03666cc4622aa1983e6f092e0775632d0a8686ba172",
+    "T_Trim_Metal_BaseColor.png": "157b74b54f7278fcff1067bbc70f57b6980113bac477561c74cca89294ead040",
+    "T_Trim_Props_BaseColor.png": "5dc58516081a2158917d9d0efff13b9c9733de894d38fa0877b61baf25242f52",
     "Table_Large.bin": "af7bfe0cbf0532e01543e4fd5d6d710df70106a7d938c4d74a50c8911ee9bf35",
     "Table_Large.gltf": "ffd4e5b803f38f02922c2b0303ae3b5a602f7c239e717b725c0553019be8fcf2",
     "Workbench.bin": "d26f2a0ba01b4a8db8d6820d1bd0d281297fea30e48c9952484167d18a637b39",
@@ -80,10 +80,10 @@
     "license.txt": "edad12240087a33e08fc031e4e66c2b2b4b2a6d4f086339bde04f741b385fbda"
   },
   "transforms": {
-    "T_Page_Noise.png": "downscaled to 512 px on the long edge with macOS sips -Z 512; then stored as the pack compiler writes it (compile::prepare_texture): 256 x 256 px, 8-bit gray",
-    "T_Trim_Cloth_BaseColor.png": "downscaled to 512 px on the long edge with macOS sips -Z 512; then stored as the pack compiler writes it (compile::prepare_texture): 256 x 256 px, 8-bit RGB",
-    "T_Trim_Furniture_BaseColor.png": "downscaled to 1024 px on the long edge with macOS sips -Z 1024; then stored as the pack compiler writes it (compile::prepare_texture): 512 x 512 px, 8-bit RGB",
-    "T_Trim_Metal_BaseColor.png": "downscaled to 512 px on the long edge with macOS sips -Z 512; then stored as the pack compiler writes it (compile::prepare_texture): 512 x 512 px, 8-bit RGB",
-    "T_Trim_Props_BaseColor.png": "downscaled to 1024 px on the long edge with macOS sips -Z 1024; then stored as the pack compiler writes it (compile::prepare_texture): 512 x 512 px, 8-bit RGB"
+    "T_Page_Noise.png": "downscaled to 512 px on the long edge with macOS sips -Z 512; then stored as the pack compiler writes it (compile::prepare_texture): 256 x 256 px, 8-bit gray; then recompressed losslessly by scripts/blender/everglade_compact.py with oxipng -o max --zopfli --nx --strip all",
+    "T_Trim_Cloth_BaseColor.png": "downscaled to 512 px on the long edge with macOS sips -Z 512; then stored as the pack compiler writes it (compile::prepare_texture): 256 x 256 px, 8-bit RGB; then recompressed losslessly by scripts/blender/everglade_compact.py with oxipng -o max --zopfli --nx --strip all",
+    "T_Trim_Furniture_BaseColor.png": "downscaled to 1024 px on the long edge with macOS sips -Z 1024; then stored as the pack compiler writes it (compile::prepare_texture): 512 x 512 px, 8-bit RGB; then recompressed losslessly by scripts/blender/everglade_compact.py with oxipng -o max --zopfli --nx --strip all",
+    "T_Trim_Metal_BaseColor.png": "downscaled to 512 px on the long edge with macOS sips -Z 512; then stored as the pack compiler writes it (compile::prepare_texture): 512 x 512 px, 8-bit RGB; then recompressed losslessly by scripts/blender/everglade_compact.py with oxipng -o max --zopfli --nx --strip all",
+    "T_Trim_Props_BaseColor.png": "downscaled to 1024 px on the long edge with macOS sips -Z 1024; then stored as the pack compiler writes it (compile::prepare_texture): 512 x 512 px, 8-bit RGB; then recompressed losslessly by scripts/blender/everglade_compact.py with oxipng -o max --zopfli --nx --strip all"
   }
 }

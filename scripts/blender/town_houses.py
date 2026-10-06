@@ -48,6 +48,15 @@ to `assets/verse/generated/buildings`.
 - `lantern_inn`: the Lantern Quarter's inn, with warm lamplit windows,
   wall lanterns, a hanging sign, and a hipped roof with dormers.
 
+The seventh round adds two outbuildings in the same mode, which the zone
+places as props:
+
+- `garden_shed`: a plastered shed under a tiled gable, with a plank door, a
+  shuttered window, and a water butt, for back gardens and the gaps
+  between houses.
+- `woodshed`: an open-fronted lean-to over stacked logs, with a chopping
+  block, for the cabins and the woods' edges.
+
 Each house also gets a far level of detail, `OUT_DIR/far/<name>.glb`: the
 same walls, roofs, timbers, and chimneys with each window and door one
 pane, and without the goods, signs, lanterns, joists, rails, and braces,
@@ -701,6 +710,70 @@ def lantern_inn():
     b.collide("inn", (-hw - 0.1, -0.1, 0), (hw + 0.1, d + 0.1, top))
     b.roofs.append(((0.0, d / 2), True, (d / 2 + 0.55, (w - d) / 2 + 0.8), top + 0.05, ridge))
     b.front = (0.0, -1.0)
+    return b
+
+
+# --------------------------------------------------------------------------
+# The seventh round's outbuildings, for back gardens and the woods' edges
+
+
+@model
+def garden_shed():
+    """A plastered garden shed on a stone plinth under a tiled gable, with a
+    plank door, a shuttered window, and a water butt at its side."""
+    b = house("garden_shed", {"plaster": "cream", "roof": "red", "timber": "dark"})
+    w, d, wall = 3.2, 2.6, 2.3
+    hw = w / 2
+    slab_walls(b, w, d, 0.0, wall, thick=0.2)
+    b.block((-hw - 0.08, -0.08, 0.0), (hw + 0.08, d + 0.08, 0.25), "rock", name="Plinth", scale=1.5)
+    corner_posts(b, w, d, 0.25, wall)
+    front = Face(b, 0, (0, 0, 0))
+    front.door(-0.6, 0.9, 1.95, z=0.25)
+    front.window(0.85, 1.15, 0.7, 0.6)
+    front.beam((-hw, -0.05, wall - 0.16), (hw, 0.0, wall))
+    side = Face(b, -90, (-hw, d / 2, 0))
+    side.window(0.0, 1.15, 0.7, 0.6, shutters=False)
+    ridge = bl.slab_roof(b, w, d, wall, 1.4, center=(0, d / 2), along_x=False, over=0.32, thick=0.12)
+    if not FAR:
+        b.solid("Butt", bl.prism_mesh("Butt", (hw + 0.4, 0.6), 0.32, 0.0, 0.85, 8, b.mats["wood"], band=DARK))
+        b.solid("ButtLid", bl.prism_mesh("ButtLid", (hw + 0.4, 0.6), 0.34, 0.85, 0.9, 8, b.mats["iron"]))
+    b.collide("shed", (-hw - 0.1, -0.1, 0), (hw + 0.1, d + 0.1, wall))
+    b.roofs.append(((0.0, d / 2), False, (hw + 0.32, d / 2 + 0.32), wall, ridge))
+    b.front = (-0.6, -0.9)
+    return b
+
+
+@model
+def woodshed():
+    """An open-fronted woodshed: a lean-to roof on four posts over a plank
+    back wall, with split logs stacked under it and a chopping block."""
+    b = house("woodshed", {"plaster": "cream", "roof": "brown", "timber": "dark"})
+    w, d, high, low = 3.6, 1.6, 2.4, 1.9
+    hw = w / 2
+    for x in (-hw, hw):
+        for y, top in ((0.0, high), (d, low)):
+            b.beam((x - 0.08, y - 0.08, 0.0), (x + 0.08, y + 0.08, top), band=DARK, name="Post")
+    b.beam((-hw, d - 0.06, 0.0), (hw, d, low), band=LIGHT, name="Boards")
+    for x in (-hw, hw):
+        b.beam((x - 0.03, 0.1, 0.0), (x + 0.03, d, low - 0.1), band=LIGHT, name="Boards")
+    # The roof falls from the open front to the back wall.
+    ang = math.atan2(high - low, d)
+    run = math.hypot(d + 0.6, (high - low) * (d + 0.6) / d)
+    xf = (Matrix.Translation(Vector((0, -0.3, high + (high - low) * 0.3 / d)))
+          @ Matrix.Rotation(-ang, 4, "X"))
+    b.solid("Roof", bl.box_mesh("Roof", (-hw - 0.3, 0.0, 0.0), (hw + 0.3, run, 0.12), b.mats["tiles"], xf=xf))
+    # Stacked logs, their cut ends to the front, in three courses.
+    if not FAR:
+        r = 0.18
+        for row in range(3):
+            z = 0.19 + row * 2 * r * 0.88
+            n = 8 - (row % 2)
+            for i in range(n):
+                x = -hw + 0.4 + (w - 0.8) * (i + 0.5 * (row % 2)) / 7
+                b.solid("Log", bl.log_mesh("Log", (x, 0.15, z), (x, d - 0.15, z), r, b.mats["wood"], sides=5))
+        b.solid("Block", bl.prism_mesh("Block", (hw + 0.7, -0.6), 0.3, 0.0, 0.5, 7, b.mats["wood"], band=DARK))
+    b.collide("shed", (-hw - 0.1, -0.1, 0), (hw + 0.1, d + 0.1, low))
+    b.front = (0.0, -0.9)
     return b
 
 

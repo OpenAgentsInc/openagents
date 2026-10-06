@@ -1,0 +1,40 @@
+{
+  "model": "garden_shed.glb",
+  "frame": "glTF: 1 unit = 1 m, +Y up, +Z out of the front door, origin on the ground at the center of the front wall",
+  "triangles": 418,
+  "boxes": [
+    {
+      "name": "shed",
+      "center": [
+        0.0,
+        1.15,
+        -1.3
+      ],
+      "half_extents": [
+        1.7,
+        1.15,
+        1.4
+      ]
+    }
+  ],
+  "roofs": [
+    {
+      "center": [
+        0.0,
+        -1.3
+      ],
+      "slopes_z": false,
+      "half": [
+        1.92,
+        1.62
+      ],
+      "eave": 2.3,
+      "ridge": 3.7
+    }
+  ],
+  "front": [
+    -0.6,
+    0.9
+  ],
+  "inside": null
+}
