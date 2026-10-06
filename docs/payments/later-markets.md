@@ -99,3 +99,33 @@ fake deposit, unknown release, serialized restart, lookup, remainder refund,
 and conservation report. The fake model uses no wallet or production ledger.
 Its outcome evidence cannot qualify a custody provider or prove a live refund.
 
+## Training and evaluation work
+
+The training profile pins corpus, dataset, baseline checkpoint, recipe, seed,
+worker class, deliverable contract, protected checker, evaluation partition,
+training source groups, provenance, and explicit train/evaluate/disclose/
+redistribute rights. Missing rights refuse the corresponding action. The
+caller must independently verify licensing and checker evidence; worker text
+cannot grant rights or choose the evaluator, metric, or protected labels.
+
+`tenancy::training` owns corpus partitions, provenance, recipes, trial history,
+and sealed artifact identity. Gym owns suite and checker evidence. LAB owns
+bounded execution, delivery, and acceptance. The market profile links those
+owners and grants no training engine, production model deployment, or inference
+purchase authority. A training group cannot overlap the protected evaluation
+groups even if a record changes its task or partition label.
+
+Compute charges, accepted improvement bounties, and data licenses have distinct
+obligation identities. An accepted improvement must match a separately verified
+checker receipt's exact artifact, terms, partition, acceptance, and score.
+Training, failed attempts, checking, and search costs must all be known,
+independently verified, and inside the frozen budget. Compute may still cost
+money when the improvement is rejected; a sealed artifact does not imply a
+bounty, serving admission, or rights to redistribute it.
+
+The `training_profile` fixture writes one explicitly synthetic checkpoint in a
+scratch worker directory and checks it against separately retained protected
+bytes. It tests exact artifact/replay, changed recipes, rights, group leakage,
+unknown costs, and forged improvement claims. It does not train a model or
+qualify independent worker operation. Real training and funded qualification
+remain unverified.

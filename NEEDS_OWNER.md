@@ -610,3 +610,12 @@ Neither platform has a qualified public artifact from this work.
   dispute records. Never infer escrow or refund support from exact Lightning
   payments. All funded custody and dispute cases remain unverified.
 
+- Training market qualification (#10728): Admit independent scratch operators,
+  signed dataset/checkpoint rights, the exact corpus partitions, frozen recipe,
+  seed, budget, worker class, artifact contract, and protected evaluator. Run a
+  no-spend training fixture and retain exact checkpoint/checker/restart records
+  plus all failed-training, checking, and search costs. Then separately fund
+  and authorize compute, data-license, and accepted-improvement obligations;
+  retain central payment receipts and an independently verified improvement.
+  The current fixture uses synthetic checkpoint bytes and fake costs; real
+  training, transferable improvement, and all funded cases are unverified.
