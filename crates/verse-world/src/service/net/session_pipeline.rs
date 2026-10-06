@@ -325,6 +325,20 @@ mod tests {
         }
     }
 
+    // A repetitive message compresses below the socket capacity and cannot
+    // exercise a blocked write. Fixed-seed varied bytes keep that boundary real.
+    fn blocked_write_payload() -> String {
+        let mut seed = 0x1234_5678u32;
+        std::iter::repeat_with(|| {
+            seed ^= seed << 13;
+            seed ^= seed >> 17;
+            seed ^= seed << 5;
+            char::from(b'!' + (seed % 90) as u8)
+        })
+        .take(16 * 1024)
+        .collect()
+    }
+
     #[tokio::test]
     async fn ready_reply_collection_preserves_unready_and_failed_boundaries() {
         let last = response(8, 12, 7);
@@ -523,7 +537,7 @@ mod tests {
         let mut large = response(1, 1, 0);
         large.body = Reply::Refused {
             code: "fixture".into(),
-            message: "x".repeat(16 * 1024),
+            message: blocked_write_payload(),
         };
         let large = large.encode().unwrap();
         reply.send(Ok((large.clone(), true))).unwrap();
@@ -710,7 +724,7 @@ mod tests {
         denied.control = None;
         denied.body = Reply::Refused {
             code: "fixture".into(),
-            message: "x".repeat(16 * 1024),
+            message: blocked_write_payload(),
         };
         let denied = denied.encode().unwrap();
         reply.send(Ok((denied.clone(), false))).unwrap();

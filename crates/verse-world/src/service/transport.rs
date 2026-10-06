@@ -10,15 +10,43 @@ pub trait Transport: AsyncRead + AsyncWrite + Unpin {}
 #[cfg(target_arch = "wasm32")]
 impl<T: AsyncRead + AsyncWrite + Unpin> Transport for T {}
 
-/// Reads a big-endian u32 byte length before allocating its bounded JSON payload.
+const COMPRESSED: u32 = 1 << 31;
+const COMPRESSION_THRESHOLD: usize = 4096;
+
+// Both encoded and decoded lengths remain inside the existing message budget.
+#[inline(never)]
+fn encode_frame(bytes: &[u8], max: usize) -> Result<Vec<u8>, String> {
+    if bytes.is_empty() || bytes.len() > max || bytes.len() >= COMPRESSED as usize {
+        return Err("Chamber frame exceeds byte budget".into());
+    }
+    if bytes.len() >= COMPRESSION_THRESHOLD {
+        let compressed = miniz_oxide::deflate::compress_to_vec(bytes, 1);
+        // Keep raw framing when compression barely shrinks the payload.
+        if compressed.len() + 4 <= bytes.len() - bytes.len() / 8 {
+            let size = (compressed.len() + 4) as u32;
+            let mut frame = Vec::with_capacity(size as usize + 4);
+            frame.extend_from_slice(&(size | COMPRESSED).to_be_bytes());
+            frame.extend_from_slice(&(bytes.len() as u32).to_be_bytes());
+            frame.extend_from_slice(&compressed);
+            return Ok(frame);
+        }
+    }
+    let mut frame = Vec::with_capacity(bytes.len() + 4);
+    frame.extend_from_slice(&(bytes.len() as u32).to_be_bytes());
+    frame.extend_from_slice(bytes);
+    Ok(frame)
+}
+
+/// Reads bounded raw JSON or a DEFLATE payload with a bounded decoded length.
 pub async fn read_frame<R: AsyncRead + Unpin>(
     reader: &mut R,
     max: usize,
 ) -> Result<Vec<u8>, String> {
-    let size = reader
+    let header = reader
         .read_u32()
         .await
-        .map_err(|_| "Chamber frame header unavailable")? as usize;
+        .map_err(|_| "Chamber frame header unavailable")?;
+    let size = (header & !COMPRESSED) as usize;
     if size == 0 || size > max {
         return Err("Chamber frame exceeds byte budget".into());
     }
@@ -27,20 +55,35 @@ pub async fn read_frame<R: AsyncRead + Unpin>(
         .read_exact(&mut bytes)
         .await
         .map_err(|_| "Chamber frame payload incomplete")?;
-    Ok(bytes)
+    decode_frame(header, bytes, max)
+}
+
+// Keep the bounded codec shared across generic native, TLS, and REACH readers.
+#[inline(never)]
+fn decode_frame(header: u32, bytes: Vec<u8>, max: usize) -> Result<Vec<u8>, String> {
+    if header & COMPRESSED == 0 {
+        return Ok(bytes);
+    }
+    if bytes.len() <= 4 {
+        return Err("Compressed chamber frame is incomplete".into());
+    }
+    let decoded = u32::from_be_bytes(bytes[..4].try_into().unwrap()) as usize;
+    if decoded == 0 || decoded > max {
+        return Err("Decoded chamber frame exceeds byte budget".into());
+    }
+    let result = miniz_oxide::inflate::decompress_to_vec_with_limit(&bytes[4..], decoded)
+        .map_err(|_| "Compressed chamber frame is invalid or exceeds its decoded length")?;
+    if result.len() != decoded {
+        return Err("Decoded chamber frame length mismatch".into());
+    }
+    Ok(result)
 }
 pub async fn write_frame<W: AsyncWrite + Unpin>(
     writer: &mut W,
     bytes: &[u8],
     max: usize,
 ) -> Result<(), String> {
-    if bytes.is_empty() || bytes.len() > max {
-        return Err("Chamber frame exceeds byte budget".into());
-    }
-    let length = u32::try_from(bytes.len()).map_err(|_| "Chamber frame length overflow")?;
-    let mut frame = Vec::with_capacity(bytes.len() + 4);
-    frame.extend_from_slice(&length.to_be_bytes());
-    frame.extend_from_slice(bytes);
+    let frame = encode_frame(bytes, max)?;
     writer
         .write_all(&frame)
         .await
@@ -61,20 +104,18 @@ pub(super) async fn write_frame_batch<W: AsyncWrite + Unpin>(
     if frames.is_empty() || frames.len() > super::client::PIPELINE_CAPACITY {
         return Err("Chamber frame batch exceeds request budget".into());
     }
-    let mut size = 0usize;
-    for bytes in frames {
-        if bytes.is_empty() || bytes.len() > max || u32::try_from(bytes.len()).is_err() {
-            return Err("Chamber frame exceeds byte budget".into());
-        }
-        size = size
-            .checked_add(bytes.len())
-            .and_then(|size| size.checked_add(4))
-            .ok_or("Chamber frame batch length overflow")?;
-    }
+    // Encode every frame before sending any prefix, including validation failures.
+    let encoded = frames
+        .iter()
+        .map(|bytes| encode_frame(bytes, max))
+        .collect::<Result<Vec<_>, _>>()?;
+    let size = encoded
+        .iter()
+        .try_fold(0usize, |size, frame| size.checked_add(frame.len()))
+        .ok_or("Chamber frame batch length overflow")?;
     let mut batch = Vec::with_capacity(size);
-    for bytes in frames {
-        batch.extend_from_slice(&(bytes.len() as u32).to_be_bytes());
-        batch.extend_from_slice(bytes);
+    for frame in encoded {
+        batch.extend_from_slice(&frame);
     }
     writer
         .write_all(&batch)
@@ -90,6 +131,58 @@ pub(super) async fn write_frame_batch<W: AsyncWrite + Unpin>(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[tokio::test]
+    async fn large_scene_frames_shrink_and_round_trip_with_small_ordered_replies() {
+        let scene =
+            br#"{"actors":[{"name":"Cultist of Anthropic","hp":15}],"geometry":[]}"#.repeat(2048);
+        let small = br#"{"accepted":true}"#.to_vec();
+        let encoded = encode_frame(&scene, scene.len()).unwrap();
+        assert_ne!(
+            u32::from_be_bytes(encoded[..4].try_into().unwrap()) & COMPRESSED,
+            0
+        );
+        assert!(encoded.len() < scene.len() / 4);
+        assert_eq!(&encode_frame(&small, scene.len()).unwrap()[4..], small);
+        let frames = vec![scene, small];
+        let max = frames[0].len();
+        let (mut writer, mut reader) = tokio::io::duplex(17);
+        let (sent, received) = tokio::join!(write_frame_batch(&mut writer, &frames, max), async {
+            vec![
+                read_frame(&mut reader, max).await.unwrap(),
+                read_frame(&mut reader, max).await.unwrap(),
+            ]
+        });
+        sent.unwrap();
+        assert_eq!(received, frames);
+    }
+
+    #[tokio::test]
+    async fn compressed_frames_enforce_encoded_and_decoded_bounds() {
+        let data = vec![b'a'; 8192];
+        let compressed = miniz_oxide::deflate::compress_to_vec(&data, 1);
+        for (declared, payload) in [
+            (8192u32, compressed.clone()), // Declared expansion exceeds the reader budget.
+            (32, compressed.clone()),      // Actual expansion exceeds the declared length.
+            (8193, compressed.clone()),    // The declared length must match exactly.
+            (8192, vec![0xff; 8]),         // Invalid compressed data.
+            (0, compressed),
+        ] {
+            let mut encoded = (((payload.len() + 4) as u32) | COMPRESSED)
+                .to_be_bytes()
+                .to_vec();
+            encoded.extend_from_slice(&declared.to_be_bytes());
+            encoded.extend_from_slice(&payload);
+            let max = if declared == 8192 && payload.len() > 8 {
+                4096
+            } else {
+                16384
+            };
+            assert!(read_frame(&mut encoded.as_slice(), max).await.is_err());
+        }
+        let oversized = (COMPRESSED | 65).to_be_bytes().to_vec();
+        assert!(read_frame(&mut oversized.as_slice(), 64).await.is_err());
+    }
 
     #[tokio::test]
     async fn batched_frames_preserve_boundaries_through_partial_writes() {

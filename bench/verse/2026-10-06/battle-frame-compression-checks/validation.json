@@ -1,0 +1,42 @@
+{
+  "scope": "Large chamber transport frames; battle acceptance remains pending.",
+  "checks": {
+    "framing": {
+      "passed": 4,
+      "world_optimization": 1
+    },
+    "pipeline": {
+      "passed": 11,
+      "world_optimization": 1
+    },
+    "delayed_route_serial": {
+      "passed": 7,
+      "world_optimization": 3
+    },
+    "worker": {
+      "passed": 25,
+      "world_optimization": 3
+    },
+    "formatting": "Targeted rustfmt and git diff --check pass.",
+    "runtime_contract": "python3.13 scripts/verse-runtime-contract.py --check passes."
+  },
+  "earlier_checks": {
+    "reduced_optimization_parallel_delayed": "3 passed, 4 failed.",
+    "reduced_optimization_serial_delayed": "4 passed, 3 failed.",
+    "retained_optimized_precompression_pressure": "20-player pressure case passes.",
+    "retained_optimized_compression_pressure": "20-player pressure case passes.",
+    "interrupted_build": "One slow optimized build was deliberately stopped before final fixture checks; not counted as passing."
+  },
+  "bounds_changed": false,
+  "wire_version": 32,
+  "production_world_optimization": 3,
+  "source_paths": [
+    "Cargo.toml",
+    "Cargo.lock",
+    "crates/verse-world/Cargo.toml",
+    "crates/verse-world/src/service/transport.rs",
+    "crates/verse-world/src/service/wire.rs",
+    "crates/verse-world/src/service/net/session_pipeline.rs"
+  ],
+  "conclusion": "Final-source serial delayed-route checks pass at normal optimization. Reduced-optimization timing-sensitive failures are retained; this receipt does not establish battle capacity."
+}

@@ -7,7 +7,7 @@ publish.workspace = true
 description = "Portable command admission and owned world authority for Verse"
 
 [features]
-service-client = ["service-auth", "dep:tokio", "dep:futures-util"]
+service-client = ["service-auth", "dep:tokio", "dep:futures-util", "dep:miniz_oxide"]
 reach-client = ["service-client", "dep:coder-reach"]
 service-net = ["service-client", "tokio/net", "dep:rustls", "dep:tokio-rustls"]
 service-auth = ["dep:secp256k1", "dep:getrandom"]
@@ -17,6 +17,7 @@ service-reach = ["service-net", "dep:coder-reach"]
 studio = ["dep:coder-access"]
 
 [dependencies]
+miniz_oxide = { version = "=0.8.9", optional = true }
 tokio = { version = "1", features = ["rt", "macros", "io-util", "sync", "time"], optional = true }
 rustls = { version = "0.23", default-features = false, features = ["ring", "std", "tls12"], optional = true }
 tokio-rustls = { version = "0.26", default-features = false, optional = true }

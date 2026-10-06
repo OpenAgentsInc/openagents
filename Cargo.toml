@@ -92,6 +92,10 @@ opt-level = 3
 [profile.dev.package.objc2-encode]
 opt-level = 3
 
+# Large chamber frames use a bounded lossless codec on the real-time transport.
+[profile.dev.package.miniz_oxide]
+opt-level = 3
+
 # Crowded replication spends server time parsing strings and formatting numbers.
 [profile.dev.package.serde_json]
 opt-level = 3

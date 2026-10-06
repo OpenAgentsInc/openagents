@@ -15433,6 +15433,7 @@ dependencies = [
  "getrandom 0.3.4",
  "glam",
  "gloo-timers",
+ "miniz_oxide 0.8.9",
  "physics",
  "rcgen",
  "rustls",

@@ -34,7 +34,7 @@
     },
     "wire_version": {
       "source": "crates/verse-world/src/service/wire.rs",
-      "value": 31
+      "value": 32
     }
   },
   "generator": "scripts/verse-runtime-contract.py",
@@ -42,11 +42,47 @@
     "everglade-web": {
       "features": {},
       "local_dependencies": {
+        "cfg(target_arch = \"wasm32\"):coder-access": {
+          "default_features": false,
+          "features": [],
+          "optional": false,
+          "path": "../coder-access"
+        },
+        "cfg(target_arch = \"wasm32\"):coder-browser": {
+          "default_features": true,
+          "features": [],
+          "optional": false,
+          "path": "../coder-browser"
+        },
+        "cfg(target_arch = \"wasm32\"):coder-host-wire": {
+          "default_features": true,
+          "features": [],
+          "optional": false,
+          "path": "../coder-host-wire"
+        },
+        "cfg(target_arch = \"wasm32\"):coder-pty": {
+          "default_features": false,
+          "features": [],
+          "optional": false,
+          "path": "../coder-pty"
+        },
         "cfg(target_arch = \"wasm32\"):coder-reach": {
           "default_features": true,
           "features": [],
           "optional": false,
           "path": "../coder-reach"
+        },
+        "cfg(target_arch = \"wasm32\"):terminal-core": {
+          "default_features": true,
+          "features": [],
+          "optional": false,
+          "path": "../terminal-core"
+        },
+        "cfg(target_arch = \"wasm32\"):terminal-gfx": {
+          "default_features": false,
+          "features": [],
+          "optional": false,
+          "path": "../terminal-gfx"
         },
         "cfg(target_arch = \"wasm32\"):verse": {
           "default_features": false,
@@ -159,6 +195,9 @@
           "verse-zone-everglade/studio-host"
         ],
         "terminal": [
+          "dep:openagents-chat",
+          "dep:workbench",
+          "dep:compute-workbench",
           "dep:terminal-studio",
           "dep:terminal-gfx",
           "dep:winit"
@@ -209,6 +248,14 @@
           "optional": true,
           "path": "../coder-vt"
         },
+        "all:compute-workbench": {
+          "default_features": true,
+          "features": [
+            "host"
+          ],
+          "optional": true,
+          "path": "../compute-workbench"
+        },
         "all:gym": {
           "default_features": true,
           "features": [],
@@ -232,6 +279,12 @@
           "features": [],
           "optional": false,
           "path": "../nostr"
+        },
+        "all:openagents-chat": {
+          "default_features": true,
+          "features": [],
+          "optional": true,
+          "path": "../openagents-chat"
         },
         "all:openagents-chat-app": {
           "default_features": true,
@@ -377,6 +430,12 @@
           "optional": false,
           "path": "../verse-zone-lagrange"
         },
+        "all:workbench": {
+          "default_features": true,
+          "features": [],
+          "optional": true,
+          "path": "../workbench"
+        },
         "all:xp-ledger": {
           "default_features": true,
           "features": [],
@@ -500,7 +559,8 @@
         "service-client": [
           "service-auth",
           "dep:tokio",
-          "dep:futures-util"
+          "dep:futures-util",
+          "dep:miniz_oxide"
         ],
         "service-net": [
           "service-client",

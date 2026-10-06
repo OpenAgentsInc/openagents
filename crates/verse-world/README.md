@@ -1093,3 +1093,10 @@ fixture executable. This SDK does not automatically record the TLS/REACH loop,
 realm accounts, economy transactions, storage-worker completions, or Studio
 operations. Those adapters must retain their own authority and durability
 records; this world's logical commit marker is not a realm durable revision.
+
+Wire version 32 allows large chamber frames to use lossless DEFLATE compression.
+The high bit of the big-endian length marks compression; the payload starts with
+the decoded u32 length. Both lengths retain the existing message byte limit,
+and decoding refuses expansion beyond the declared length. Frames smaller than
+4 KiB remain raw; larger frames compress only when they save at least one eighth
+of their bytes. Movement authority and ordered durable replies are unchanged.
