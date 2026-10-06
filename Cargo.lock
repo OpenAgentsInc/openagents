@@ -2808,15 +2808,18 @@ dependencies = [
  "coder-host-wire",
  "coder-pty",
  "coder-reach",
+ "coder-vt",
  "futures-util",
  "gloo-timers",
  "js-sys",
  "nostr",
  "secp256k1 0.31.1",
  "serde_json",
+ "terminal-core",
  "tokio",
  "wasm-bindgen",
  "web-sys",
+ "web-time",
 ]
 
 [[package]]
@@ -4830,15 +4833,23 @@ dependencies = [
 name = "everglade-web"
 version = "0.1.0"
 dependencies = [
+ "coder-access",
+ "coder-browser",
+ "coder-host-wire",
+ "coder-pty",
  "coder-reach",
  "console_error_panic_hook",
+ "futures-util",
  "glam",
+ "gloo-timers",
  "js-sys",
  "log",
  "raw-window-handle",
  "secp256k1 0.31.1",
  "serde",
  "serde_json",
+ "terminal-core",
+ "terminal-gfx",
  "verse",
  "verse-content",
  "verse-engine",
@@ -13624,6 +13635,7 @@ dependencies = [
  "serde_json",
  "sha2 0.10.9",
  "tempfile",
+ "web-time",
  "workbench",
 ]
 

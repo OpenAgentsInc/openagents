@@ -1025,7 +1025,7 @@ fn a_full_pane_searches_within_a_frame() {
         });
     }
     let query = crate::search::Query::parse("needle status:fail");
-    let started = std::time::Instant::now();
+    let started = web_time::Instant::now();
     let found = crate::search::search(&blocks, &query);
     let elapsed = started.elapsed();
     assert!(found.ids.is_empty());
@@ -1036,7 +1036,7 @@ fn a_full_pane_searches_within_a_frame() {
     );
     // The worst case: every block full and every word checked.
     let query = crate::search::Query::parse("needle");
-    let started = std::time::Instant::now();
+    let started = web_time::Instant::now();
     let _ = crate::search::search(&blocks, &query);
     let worst = started.elapsed();
     eprintln!("worst case {worst:?}");

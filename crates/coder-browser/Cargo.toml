@@ -6,6 +6,9 @@ rust-version.workspace = true
 publish.workspace = true
 description = "Browser client for explicitly admitted host terminals."
 [dependencies]
+terminal-core = { path = "../terminal-core" }
+coder-vt = { path = "../coder-vt" }
+web-time = "1.1.0"
 coder-access = { path = "../coder-access", default-features = false }
 coder-host-wire = { path = "../coder-host-wire" }
 coder-pty = { path = "../coder-pty", default-features = false }

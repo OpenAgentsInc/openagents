@@ -7,7 +7,7 @@
 //! error. A mount can record every frame for a stress run.
 
 use std::collections::VecDeque;
-use std::time::{Duration, Instant};
+use web_time::{Duration, Instant};
 
 /// One frame's time, in milliseconds.
 #[derive(Clone, Copy, Debug, Default, PartialEq, serde::Serialize)]

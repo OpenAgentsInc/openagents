@@ -12,7 +12,7 @@
 
 use serde::Deserialize;
 use std::sync::mpsc::Receiver;
-use std::time::{Duration, Instant};
+use web_time::{Duration, Instant};
 
 /// The most bytes of helper output the page reads.
 pub const READ_MAX: usize = 1024 * 1024;

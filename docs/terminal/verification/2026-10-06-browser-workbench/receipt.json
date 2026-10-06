@@ -1,0 +1,24 @@
+{
+  "schema": "openagents.browser-workbench.fixture.v1",
+  "toolchain": "1.97.1",
+  "isolation": "In-memory scratch host identities; no owner host or saved chat",
+  "checks": {
+    "coder-browser": 12,
+    "terminal-core": 60,
+    "everglade-web": 2,
+    "wasm32-unknown-unknown": "everglade-web consumer compilation passed"
+  },
+  "renderer": "Shared terminal-gfx draw on existing wgpu WebGPU/WebGL2 page renderer",
+  "physical_browser": "Unverified; export host_terminal_receipt during owner scratch run",
+  "limitations": [
+    "Unavailable atlas glyphs render as ?; Unicode input is preserved",
+    "Browser does not start local helpers or providers",
+    "Reconnect requires fresh caller-supplied admission; shell input is never replayed",
+    "Page destruction can interrupt detach; host expiry remains authoritative"
+  ],
+  "source_sha256": {
+    "crates/coder-browser/src/workbench.rs": "108fce767997a26cd22d9fe565b544bac0c0fc50f5e7affc1de091ff66542c14",
+    "crates/everglade-web/src/terminal.rs": "4c0fe8ce89743d5b37e68e23fe3ac989280f977fd4833bd1167c1ec1279101a9",
+    "crates/everglade-web/src/web.rs": "44b172cd10a53527e487482abe88479d40487bf579700fdc5233b18b6f10c20c"
+  }
+}

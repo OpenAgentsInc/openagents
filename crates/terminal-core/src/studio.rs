@@ -2,7 +2,7 @@
 //! command parser, and admission; reopening this page only reads.
 use serde::{Deserialize, Serialize};
 use std::sync::mpsc::Receiver;
-use std::time::{Duration, Instant};
+use web_time::{Duration, Instant};
 
 /// The mount's independently injected studio service.
 pub trait Transport: Send + Sync {

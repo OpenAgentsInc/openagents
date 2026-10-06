@@ -1,3 +1,11 @@
+## Browser host workbench (#10686)
+
+On a scratch host, open the same session in native and browser clients. Check
+reload, typist changes, full-screen snapshots, IME, clipboard permission denial,
+and exact proposal confirmation on WebGPU and WebGL2. Export
+`host_terminal_receipt()` for physical timing. Rust fixtures and wasm compilation
+pass; actual browser rendering and network performance remain unverified.
+
 ## Browser admitted terminal transport (#10685)
 
 Verify an enrolled browser against a scratch resident host through direct and

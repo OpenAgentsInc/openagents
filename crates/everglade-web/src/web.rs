@@ -638,6 +638,9 @@ impl Page {
             }
             self.rendered_revision = self.runtime.zone_revision;
         }
+        if super::terminal::active() {
+            self.input = super::input::Input::default();
+        }
         let input = self.input.take();
         let dt = self
             .runtime
@@ -665,6 +668,9 @@ impl Page {
             let mut ui = verse::ui::UiBatch::default();
             if let (Some(presence), Some(layout)) = (&self.presence, &self.layout) {
                 presence.draw(&mut ui, layout, css, &self.runtime, view.view_proj);
+            }
+            if let Some(atlas) = &self.layout {
+                super::terminal::draw(&mut ui, atlas, css);
             }
             for vertex in &mut ui.vertices {
                 vertex.pos = vertex.pos.map(|v| v * self.scale);
@@ -727,6 +733,9 @@ impl Page {
             if let Some(index) = tip {
                 zones::grove::hotbar::draw_tip(&mut ui, atlas, size, 0.0, layout, &bar, index);
             }
+        }
+        if let Some(atlas) = &self.layout {
+            super::terminal::draw(&mut ui, atlas, css);
         }
         for vertex in &mut ui.vertices {
             vertex.pos = vertex.pos.map(|v| v * self.scale);
@@ -1000,6 +1009,12 @@ fn listen(window: &Window, page: &Rc<RefCell<Page>>) -> Result<(), String> {
     let key = |down: bool| {
         let page = page.clone();
         move |event: KeyboardEvent| {
+            if super::terminal::active() {
+                if super::terminal::key(&event, down) {
+                    event.prevent_default();
+                }
+                return;
+            }
             let mut page = page.borrow_mut();
             // The Grove's rows 3 and 4 take Ctrl and Alt; elsewhere they
             // stay the browser's.
@@ -1058,6 +1073,10 @@ fn listen(window: &Window, page: &Rc<RefCell<Page>>) -> Result<(), String> {
         let page = page.clone();
         let target = canvas.clone();
         on(&canvas, "pointerdown", move |event: PointerEvent| {
+            if super::terminal::pointer(&event, Some(true)) {
+                event.prevent_default();
+                return;
+            }
             event.prevent_default();
             let _ = target.focus();
             let _ = target.set_pointer_capture(event.pointer_id());
@@ -1107,6 +1126,10 @@ fn listen(window: &Window, page: &Rc<RefCell<Page>>) -> Result<(), String> {
     {
         let page = page.clone();
         on(&canvas, "pointermove", move |event: PointerEvent| {
+            if super::terminal::pointer(&event, None) {
+                event.prevent_default();
+                return;
+            }
             let mut page = page.borrow_mut();
             // A card follows a resting mouse, not a drag that turns the view.
             if event.pointer_type() == "mouse" {
@@ -1129,6 +1152,10 @@ fn listen(window: &Window, page: &Rc<RefCell<Page>>) -> Result<(), String> {
     for name in ["pointerup", "pointercancel"] {
         let page = page.clone();
         on(&canvas, name, move |event: PointerEvent| {
+            if super::terminal::pointer(&event, Some(false)) {
+                event.prevent_default();
+                return;
+            }
             let mut page = page.borrow_mut();
             page.release_climb(Some(event.pointer_id()), None);
             let now = event.time_stamp();
@@ -1157,6 +1184,10 @@ fn listen(window: &Window, page: &Rc<RefCell<Page>>) -> Result<(), String> {
     {
         let page = page.clone();
         on(&canvas, "wheel", move |event: WheelEvent| {
+            if super::terminal::wheel(event.delta_y() as f32) {
+                event.prevent_default();
+                return;
+            }
             event.prevent_default();
             // Positive lines move the camera closer; a wheel line is about
             // 100 pixels.

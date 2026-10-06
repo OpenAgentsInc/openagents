@@ -128,3 +128,13 @@ authenticated REACH WebSocket. See [configuration and the platform feature
 matrix](../../docs/verse/platform-clients.md). This mode requires explicit host
 enrollment and admitted content; the offline glade and Grid presence remain
 separate modes. Wasm compilation does not establish browser device acceptance.
+
+## Admitted host terminal
+
+Call `open_host_terminal(config)` with the enrolled device key, host-signed
+access, host generation, terminal reference, optional session, advertised
+capabilities, mode, and admitted route. The Rust workbench uses the shared
+terminal renderer and controls. `close_host_terminal()` detaches without
+closing the host terminal; `host_terminal_receipt()` exports content-free
+render timing. Resource IDs persist for reattachment; credentials and shell
+input do not. Physical browser qualification remains in `NEEDS_OWNER.md`.

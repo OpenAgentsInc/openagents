@@ -3,7 +3,7 @@
 //! reports to programs that asked for the mouse. Shift keeps the mouse for
 //! selection even then.
 
-use std::time::{Duration, Instant};
+use web_time::{Duration, Instant};
 
 use coder_vt::{MouseButton, MouseEvent, MouseKind, MouseMode};
 

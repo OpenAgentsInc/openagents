@@ -22,3 +22,6 @@ mod input;
 mod presence_ui;
 #[cfg(target_arch = "wasm32")]
 mod web;
+
+#[cfg(target_arch = "wasm32")]
+mod terminal;

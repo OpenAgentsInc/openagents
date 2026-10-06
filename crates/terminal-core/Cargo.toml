@@ -7,6 +7,7 @@ publish.workspace = true
 description = "Shared terminal command blocks, request context, and explicit proposal approval."
 
 [dependencies]
+web-time = "1.1.0"
 coder-pty = { path = "../coder-pty", default-features = false }
 coder-vt = { path = "../coder-vt" }
 route-contract = { path = "../route-contract" }

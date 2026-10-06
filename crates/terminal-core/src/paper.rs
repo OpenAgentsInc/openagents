@@ -21,7 +21,7 @@ use crate::route::{Route, Table};
 use crate::smart::{Worker, id, scrub};
 use std::collections::VecDeque;
 use std::sync::mpsc::Receiver;
-use std::time::Instant;
+use web_time::Instant;
 
 /// The key strip, always shown on the sheet's last row. It fits the
 /// sheet's 120 columns; PGUP and PGDN scroll beside the scroll bar.

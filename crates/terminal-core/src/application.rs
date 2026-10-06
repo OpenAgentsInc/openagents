@@ -1,7 +1,7 @@
 //! Shared terminal application state, driven by application inputs and injected services.
 
 use std::collections::BTreeMap;
-use std::time::{Duration, Instant};
+use web_time::{Duration, Instant};
 
 use crate::input::{KeyCode, KeyIn, Logical, ModifiersState};
 

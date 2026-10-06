@@ -6,7 +6,7 @@ use crate::{
 };
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, mpsc::Receiver};
-use std::time::{Duration, Instant};
+use web_time::{Duration, Instant};
 
 pub const SCROLLBACK: usize = 5000;
 #[derive(Clone, Debug)]
@@ -37,6 +37,11 @@ pub enum Event {
 }
 /// A terminal attachment; implementations retain their protocol and platform objects.
 pub trait Attachment: Send {
+    /// A remote owner supplies grid size; a requested resize needs its confirmation.
+    fn host_grid(&self) -> bool {
+        false
+    }
+
     /// The terminal owner answers emulator queries once for all attachments.
     fn host_answers(&self) -> bool {
         false
@@ -236,6 +241,10 @@ impl Sessions {
     pub fn resize(&self, session: &mut Session, rows: u16, cols: u16) {
         let (rows, cols) = (rows.max(1), cols.max(1));
         if session.vt.rows() == rows as usize && session.vt.cols() == cols as usize {
+            return;
+        }
+        if session.attachment.host_grid() {
+            session.attachment.resize(rows, cols);
             return;
         }
         session.vt.resize(rows.into(), cols.into());

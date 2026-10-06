@@ -249,8 +249,12 @@ impl Relay for Socket {
                     return Err(Error::NotAdmitted);
                 }
                 Some("EVENT") if message[1].as_str() == self.subscription.as_deref() => {
-                    if self.frames.len() >= 64 { return Err(Error::Limit); }
-                    self.frames.push_back(serde_json::from_value(message[2].clone()).map_err(|_| Error::Malformed)?);
+                    if self.frames.len() >= 64 {
+                        return Err(Error::Limit);
+                    }
+                    self.frames.push_back(
+                        serde_json::from_value(message[2].clone()).map_err(|_| Error::Malformed)?,
+                    );
                 }
                 Some("EOSE" | "OK" | "NOTICE") => {}
                 _ => return Err(Error::Malformed),

@@ -14,6 +14,8 @@ use secp256k1::SecretKey;
 use std::{collections::VecDeque, time::Duration};
 use tokio::io::{AsyncRead, AsyncWrite};
 
+pub mod workbench;
+
 #[cfg(target_arch = "wasm32")]
 pub mod browser;
 
@@ -481,3 +483,7 @@ impl<R: Relay> Relayed<R> {
 
 #[cfg(test)]
 mod tests;
+
+#[cfg(target_arch = "wasm32")]
+pub use coder_reach::browser as reach_socket;
+pub use coder_reach::new_id as new_request_id;
