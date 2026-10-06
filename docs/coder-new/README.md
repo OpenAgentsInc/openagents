@@ -45,6 +45,12 @@ with explicit service interfaces, a shared task owner, typed workflows and
 judgments, a Nostr registry, and host-owned payments. Built-ins and installed
 extensions share interfaces while retaining their different trust boundaries.
 
+[NIP-REG](../../nips/openagents/NIP-REG.md) specifies the proposed curated plugin
+registries: exact publisher releases in inert EXT catalogs, with Nostr and
+GitHub/HTTPS sources carrying the same signed content. The registry client is
+not implemented. Plugin settings and keys stay in private host storage;
+registry discovery does not install, enable, or admit a plugin.
+
 The new specification should settle task/queue/stop semantics, plugin
 activation and replacement, durable recovery, and payment admission before
 choosing layouts and shortcuts. Each research document separates implemented

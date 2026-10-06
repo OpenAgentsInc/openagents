@@ -2,7 +2,7 @@
 
 `draft` `optional` — normative for CAP, PRG, EXT, RUN, CJ, CTX, POL, COORD,
 EVAL, OPT, KB, XP, CTRL, MKT, LAB, X402, SESS, WS, WORK, AUTO, ENV, LIVE,
-HOST, REACH, TERM, and SOV v1.
+HOST, REACH, TERM, SOV, and REG v1.
 
 The uppercase requirement words express conformance requirements. A reader
 MUST validate the complete required contract before any effect. Signatures

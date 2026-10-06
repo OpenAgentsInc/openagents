@@ -79,6 +79,11 @@ locators. They are discovery aids, not substitutes for this immutable release,
 dependency closure, or authority contract. A replaceable set is never an
 execution pin by itself.
 
+[NIP-REG](NIP-REG.md) defines independently curated plugin registries as inert
+catalog packages using these same releases and listings. It adds catalog
+membership and Nostr/GitHub/HTTPS mirror rules without changing publisher
+ownership, installation, or execution authority.
+
 ## Component types and operation descriptors
 
 Kinds are `program`, `plugin`, `capability`, `decision-function`, `skill`,

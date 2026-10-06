@@ -48,6 +48,12 @@ stay owner-encrypted by default; a public copy is a separate, usually redacted,
 publication with its own digest. It replaces the historical SA `39230`/`39231`
 records with two regular kinds, `3198` and `3199`, and implements no publisher yet.
 
+[NIP-REG](NIP-REG.md) is a **Designed** draft for curated plugin registries.
+A curator publishes an inert EXT catalog that pins original publishers' releases.
+Nostr relays and GitHub/HTTPS mirrors carry the same signed events and artifact
+bytes. Readers choose trust per registry; discovery does not install, enable,
+or admit a plugin. It allocates no new kinds and has no client implementation yet.
+
 The [81-document teardown review](../../docs/protocol/2026-09-26-teardown-coverage.md)
 adds six draft profiles: persistent engine sessions (SESS), workspace resources
 and synchronized views (WS), tracked work (WORK), bounded automation (AUTO),
@@ -236,6 +242,7 @@ conformance requires validation and enforcement for each advertised role.
 | [NIP-CAP](NIP-CAP.md) | Operation descriptions (its capability definitions), host bindings, grants, presence, and preferences. | `30180`, `30181`. |
 | [NIP-PRG](NIP-PRG.md) | Typed workflows, the default kind of contributed capability; seven step kinds, bounded composition, and plugin packet ABI. | `30182`, `30183`. |
 | [NIP-EXT](NIP-EXT.md) | Extension packages, the container a capability ships in: immutable releases, imports, host component sets, discovery, revocation, and namespace transfer; `eval-suite` components carry published test sets. | `3184`–`3186`, `30184`, `30185`; private records on shared `3188`. |
+| [NIP-REG](NIP-REG.md) | Designed curated plugin registries: curator identity, immutable catalogs pinning original publisher releases, per-registry trust, and equivalent Nostr and GitHub/HTTPS sources. | Existing EXT `3184` releases and `30184` heads; no new kinds. |
 | [NIP-RUN](NIP-RUN.md) | Encrypted durable journals, fencing, evidence, and recovery. | `3187`, `30186`. |
 | [NIP-CJ](NIP-CJ.md) | Conversation, typed-decision, and recoverable execution jobs; conversation offers, cards, and the test-set draft (`crates/nostr` `cj_conversation`). | `25900`/`26900`/`27000`, `25910`/`26910`/`27010`, `25920`/`26920`/`27020`. |
 | [NIP-DEC](NIP-DEC.md) | Decisions: one state (a string or object) and typed `noul`, `choice`, and `score` questions whose instructions and criteria are EntryType (string, object, array, or null), answered with probabilities; bounds, model aliases (`typesafe/jev-1.13`), HTTP-gateway equivalence with OpenRouter's status codes, and ATIF decision calls. Implemented in `crates/nostr` `decision`, served by the hosted decision worker. | The CJ decision family `25910`/`26910`/`27010`, `openagents.systemone.v1`. |

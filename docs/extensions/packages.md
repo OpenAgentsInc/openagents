@@ -167,6 +167,9 @@ Use signed Nostr identities and immutable records for remote distribution:
 - [NIP-EXT](../../nips/openagents/NIP-EXT.md) defines releases, listings,
   revocation checkpoints, and namespace migration. The module announcement
   remains a locator and does not implement this catalog.
+- [NIP-REG](../../nips/openagents/NIP-REG.md) designs curated registries as inert
+  EXT catalogs, with exact publisher release pins and equivalent signed Nostr
+  and GitHub/HTTPS sources. Registry discovery grants no installation or execution.
 
 Implement and verify NIP-EXT ownership proofs, signed payloads, explicit
 namespace migration, immutable release validation, revocation ordering, and

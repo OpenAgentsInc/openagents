@@ -156,6 +156,10 @@ lifecycle. Preserve these bounds instead of assuming a universal registry.
 Local inspect/use also performs no relay check, so an unknown revocation state
 is not a fresh proof of eligibility. See [local use][local-use].
 
+[NIP-REG](../../nips/openagents/NIP-REG.md) designs curated catalogs over this
+EXT foundation, with exact publisher release pins and equivalent signed Nostr
+and GitHub/HTTPS sources; the registry client remains unimplemented.
+
 The parser and production runtime also differ: [Coder dispatch][invoke-gap]
 refuses `Invoke`, even though NIP-PRG describes it. A [general schema
 evaluator][schema] exists, while the packet invocation path does not

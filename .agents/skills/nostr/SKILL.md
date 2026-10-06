@@ -61,6 +61,8 @@ Read the spec before the code. The files you need most often:
 - `nips/openagents/NIP-PRG.md` — programs.
 - `nips/openagents/NIP-EXT.md` — extension releases, discovery, revocation,
   foreign-format import, and compatible host component-set assessments.
+- `nips/openagents/NIP-REG.md` — curated plugin registries, exact publisher
+  release pins, per-registry trust, and signed Nostr and GitHub/HTTPS sources.
 - `nips/openagents/NIP-RUN.md` — encrypted durable journals and recovery.
 - `nips/openagents/NIP-CTX.md` — task frames, evidence views, and expansion.
 - `nips/openagents/NIP-POL.md` — instructions, approvals, disclosure, routing
@@ -116,11 +118,13 @@ Read the spec before the code. The files you need most often:
 - `docs/protocol/block-nips.md` — what the relay does with each Block NIP,
   including what it deliberately doesn't advertise.
 
-The OpenAgents lane contains 28 NIPs plus the shared contracts. X402, SESS, WS,
+The OpenAgents lane contains 30 NIPs plus the shared contracts. X402, SESS, WS,
 WORK, AUTO, ENV, LIVE, and SOV are **Designed** drafts, as are POL's learned
 preference lifecycle and EXT's import/component-set assessment additions.
-They allocate no new event kinds: private artifacts use `3188`, remote host
-operations use admitted CAP/CJ profiles, and effects leave RUN evidence.
+REG is a **Designed** profile using inert EXT catalogs and existing release/head
+kinds; no registry client is implemented. These profiles allocate no new event
+kinds: private artifacts use `3188`, remote host operations use admitted CAP/CJ
+profiles, and effects leave RUN evidence.
 Keeping an encrypted envelope does not implement the contract inside it.
 SOV does not restore the legacy `392xx` allocations or imply working key
 custody, guardians, or payments. REACH has a narrower `coder-reach`

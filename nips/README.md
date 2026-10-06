@@ -25,7 +25,7 @@ primitives they reuse. The [implementation plan](../docs/protocol/implementation
 tracks remaining work across all lanes. A draft revision changes the target;
 it does not make an existing reader conformant.
 
-The OpenAgents lane now contains 28 NIPs plus its shared contracts.
+The OpenAgents lane now contains 30 NIPs plus its shared contracts.
 [NIP-X402](openagents/NIP-X402.md) is a **Designed** draft for Lightning-paid
 operations before execution, separate from MKT/LAB payment after acceptance.
 It preserves standard x402 HTTP/MCP bindings; its `nostr:openagents:1` binding
@@ -45,6 +45,12 @@ agent trajectories: owner-encrypted `3188` artifacts by default, and public
 `3198` declarations with ordered `3199` chunks after a separate publication
 decision. It links trajectories to Coder tasks, RUN runs, and delegated
 sub-agents, and maps Block AO/AM/AE records onto ATIF steps.
+
+[NIP-REG](openagents/NIP-REG.md) is a **Designed** draft for curated plugin
+registries. It uses inert EXT catalog packages and existing release/head kinds.
+Nostr relays and GitHub/HTTPS mirrors carry the same signed events and verified
+artifact bytes; each reader chooses which curators to trust. Registry discovery
+does not install, enable, or admit a plugin. No registry client is implemented.
 
 The [teardown coverage ledger](../docs/protocol/2026-09-26-teardown-coverage.md)
 maps all 81 archived research documents to this set. Six further drafts cover
