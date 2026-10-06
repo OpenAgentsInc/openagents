@@ -20,8 +20,8 @@
 //! [`light`] gives Everglade's stage the fixtures' point lights near the
 //! player, nearest first, so a low tier's first eight are the ones that
 //! matter, and a moodier grade while the player is in the great room;
-//! everywhere else Everglade's look is unchanged. Candle halos and dust
-//! motes run in the town's particles ([`flames`], [`dust`]).
+//! everywhere else Everglade's look is unchanged. Candle halos run in the
+//! town's particles ([`flames`]).
 
 use super::generated::{GableRoof, Instance, Model};
 use crate::pbr::{Grade, Lamp, MAX_LAMPS, Neon};
@@ -135,7 +135,7 @@ impl Fixture {
 
 /// The house's lights, in its frame: x, height above its base, and z, m,
 /// as `greco_house.footprint.json`'s `lights`.
-pub const LIGHTS: [(Fixture, [f32; 3]); 16] = [
+pub const LIGHTS: [(Fixture, [f32; 3]); 20] = [
     (Fixture::Lantern, [-6.6, 4.92, -7.77]),
     (Fixture::Uplight, [-1.9, 2.5, -10.95]),
     (Fixture::Lantern, [-5.0, 2.02, 0.6]),
@@ -150,12 +150,16 @@ pub const LIGHTS: [(Fixture, [f32; 3]); 16] = [
     (Fixture::Sconce, [1.85, 4.17, -24.88]),
     (Fixture::Candles, [-6.3, 3.105, -24.3]),
     (Fixture::Brazier, [7.4, 2.95, -18.6]),
+    (Fixture::Sconce, [1.95, 4.17, -12.26]),
+    (Fixture::Sconce, [-1.95, 4.17, -12.26]),
+    (Fixture::Candles, [-8.4, 3.105, -12.9]),
+    (Fixture::Candles, [7.5, 3.105, -12.9]),
     (Fixture::Candles, [-8.7, 2.47, -15.7]),
     (Fixture::Lamp, [-8.8, 3.15, -21.7]),
 ];
 
 /// The flames, in the house's frame, for their halos.
-const FLAMES: [[f32; 3]; 11] = [
+const FLAMES: [[f32; 3]; 19] = [
     [0.38, 2.941, -21.85],
     [0.55, 3.001, -21.85],
     [0.72, 2.941, -21.85],
@@ -165,6 +169,14 @@ const FLAMES: [[f32; 3]; 11] = [
     [-6.3, 3.151, -24.3],
     [-6.1, 3.091, -24.3],
     [7.4, 2.68, -18.6],
+    [1.95, 4.156, -12.26],
+    [-1.95, 4.156, -12.26],
+    [-8.6, 3.091, -12.9],
+    [-8.4, 3.151, -12.9],
+    [-8.2, 3.091, -12.9],
+    [7.3, 3.091, -12.9],
+    [7.5, 3.151, -12.9],
+    [7.7, 3.091, -12.9],
     [-8.78, 2.446, -15.7],
     [-8.61, 2.376, -15.75],
 ];
@@ -179,15 +191,6 @@ const INDOOR_REACH: f32 = 34.0;
 /// from, to, m. Its floor is the podium's top, 1.6 m up; the range starts
 /// lower, so a walker the podium hasn't lifted yet counts as inside.
 const ROOM: ([f32; 2], [f32; 2], [f32; 2]) = ([-9.6, 9.6], [-25.2, -12.0], [-1.0, 6.2]);
-
-/// Motes hang in the light from the door and the tall east windows, in the
-/// house's frame.
-const DUST: [[f32; 3]; 4] = [
-    [0.0, 3.8, -14.0],
-    [0.0, 3.2, -16.6],
-    [7.5, 3.6, -15.4],
-    [7.5, 3.6, -21.8],
-];
 
 /// The great room's grade: a little darker, warmer, and more contrasty
 /// than the afternoon outside, with cool shadows against warm highlights,
@@ -296,12 +299,6 @@ pub fn light(neon: &mut Neon, at: Vec3, time: f32) {
 #[must_use]
 pub fn flames() -> Vec<Vec3> {
     FLAMES.iter().copied().map(world).collect()
-}
-
-/// Where dust hangs in the great room's light, in the world.
-#[must_use]
-pub fn dust() -> Vec<Vec3> {
-    DUST.iter().copied().map(world).collect()
 }
 
 #[cfg(test)]

@@ -975,6 +975,14 @@ def great_room(b):
         sconce(b, wall_face, u, FLOOR + 2.3)
     floor_candelabrum(b, -6.3, 24.3, FLOOR)
     brazier(b, 7.4, 18.6, FLOOR)
+    # The door end: sconces flanking the door on the facade's inner face,
+    # and candle stands in the front corners, so the room reads candlelit
+    # from the entrance too.
+    door_face = local((0, fy, 0), 180.0)
+    for u in (-1.95, 1.95):
+        sconce(b, door_face, u, FLOOR + 2.3)
+    floor_candelabrum(b, -8.4, 12.9, FLOOR)
+    floor_candelabrum(b, 7.5, 12.9, FLOOR)
     cove_light(b, x0, x1, fy, by, CEILING - 0.285)
     # The sitting room, off the entry: a long sofa with its back to the
     # west wall, facing across the room past a low table, on a second rug.

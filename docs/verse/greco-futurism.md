@@ -181,15 +181,14 @@ material:
   (`pbr::gpu::lamp_budget`). So the zone gives a building's lamps only
   while the player is near it (the outside's within 70 m, the inside's
   within 34 m), those on the player's side of the walls first, then the
-  nearest. A building lights at most 16 fixtures.
+  nearest. The owner's house has 20 fixtures, 12 of them inside.
 - **Grade.** While the player is in the great room, the stage takes a
   darker, warmer, and more contrasty grade (one stop down, cool shadows
   against warm highlights, and a vignette), so the candles read as pools
   of light. Everywhere else the zone's look is unchanged.
-- **Particles.** Each flame has a warm halo (`greco_candle_glow`), and a
-  few dust motes hang in the light from the door and the tall windows
-  (`greco_dust`), in the fx sprite pipeline
-  ([Particle effects](particles.md)).
+- **Particles.** Each flame has a warm halo (`greco_candle_glow`), in the
+  fx sprite pipeline ([Particle effects](particles.md)). Dust motes read
+  as noise in a daylit room, so the style leaves them out.
 - **Destruction.** The lights stay where the fixtures stood if the house
   breaks; they go out only with the zone.
 
@@ -282,13 +281,14 @@ house.
   the desk, in front of the engraved-door wall, a spot stays clear and lit
   for a workstation facing into the room (`estate::WORKSTATION`).
 - **Light.** A candelabrum on the desk, bronze sconces flanking the engraved
-  door, a tall candle stand by the workstation spot, a brazier across from
+  door and the front door, tall candle stands by the workstation spot and
+  in the front corners, a brazier across from
   the sofa, candles on a side table and a lamp by the sofa, a lamp by the
   desk, the cove's warm line round the coffers, and the dark wall's inlay
   glowing faintly. Outside, lanterns hang on the inner piers, lanterns on
   posts mark both flights of the stair, and uplights wash the door and its
   screens.
-- **Budget.** 5,636 triangles near and 1,016 far, with its light
+- **Budget.** 6,156 triangles near and 1,016 far, with its light
   fixtures.
 
 Rebuild it and admit it:
