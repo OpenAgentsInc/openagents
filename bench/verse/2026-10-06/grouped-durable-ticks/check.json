@@ -27,5 +27,13 @@
     "No new battle result establishes reduced pauses or expiry yet.",
     "The storage writer still pauses authority when its existing two-copy bound fills.",
     "Physical storage tail latency remains part of the measured operating envelope."
-  ]
+  ],
+  "consumer_build": {
+    "status": "passed",
+    "command": "cargo +1.97.1 build -p verse --no-default-features --features remote-chamber --example battle_scale",
+    "seconds": 53.92,
+    "source_base": "43f12d6e0bb48e22f151476a14aaab66cca9bee8",
+    "executable_sha256": "7fea1e6b4f3c25a0bcc0f634c525369721718627f147da49757192935c009dac",
+    "scope": "Linux comparison checkout plus retained own patches; not a host deployment from current main."
+  }
 }
