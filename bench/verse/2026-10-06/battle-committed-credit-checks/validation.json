@@ -1,0 +1,30 @@
+{
+  "candidate": "Immediate committed movement credit only for an empty reply prefix",
+  "checks": [
+    {
+      "filter": "credit_",
+      "passed": 11
+    },
+    {
+      "filter": "pipeline",
+      "passed": 12
+    },
+    {
+      "filter": "service::worker::tests",
+      "passed": 25
+    },
+    {
+      "filter": "service::worker::delayed::",
+      "passed": 7,
+      "test_threads": 1
+    }
+  ],
+  "toolchain": "1.97.1",
+  "features": [
+    "service-net",
+    "service-reach",
+    "studio"
+  ],
+  "limits_changed": false,
+  "battle_acceptance": "not yet measured"
+}

@@ -198,6 +198,7 @@
           "dep:openagents-chat",
           "dep:workbench",
           "dep:compute-workbench",
+          "dep:contribution-workbench",
           "dep:terminal-studio",
           "dep:terminal-gfx",
           "dep:winit"
@@ -255,6 +256,14 @@
           ],
           "optional": true,
           "path": "../compute-workbench"
+        },
+        "all:contribution-workbench": {
+          "default_features": true,
+          "features": [
+            "host"
+          ],
+          "optional": true,
+          "path": "../contribution-workbench"
         },
         "all:gym": {
           "default_features": true,

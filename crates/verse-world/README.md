@@ -1102,7 +1102,9 @@ and decoding refuses expansion beyond the declared length. Frames smaller than
 of their bytes. Movement authority and ordered durable replies are unchanged.
 
 Wire version 33 adds an owned `MovementCredit` read after interval entry. Its
-small reply grants time from the completed durable fence without a new scene
-projection or a movement acknowledgment. The native session preserves pending
+small reply grants time from a completed durable checkpoint without a new scene
+projection or a movement acknowledgment. With no outstanding replies, the host
+returns its committed credit immediately if it preserves the delivered control
+prefix; otherwise, it waits for the normal durable fence. The native session preserves pending
 inputs when consuming this credit. Reads cannot renew the server's movement
 clock, increase its lead allowance, or cross a character life or control epoch.

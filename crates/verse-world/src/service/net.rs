@@ -132,6 +132,41 @@ impl CommitView {
             authenticated: gateway.committed_connections(),
         }
     }
+    /// Reads only a durable owned clock that cannot regress the delivered prefix.
+    fn credit(
+        &self,
+        id: ConnectionId,
+        request_id: u64,
+        life: super::wire::Life,
+        prefix: &Response,
+    ) -> Option<DispatchReply> {
+        let control = self.controls.get(&id)?;
+        let previous = prefix.control.as_ref()?;
+        if !self.authenticated.contains(&id)
+            || self.instance != prefix.instance
+            || self.tick < prefix.tick
+            || control.life != life
+            || control.life != previous.life
+            || control.epoch != previous.epoch
+            || control.accepted_sequence < previous.accepted_sequence
+            || control.world_step < previous.world_step
+            || control.credit_step < previous.credit_step
+        {
+            return None;
+        }
+        Some(
+            Response {
+                version: VERSION,
+                request_id,
+                instance: self.instance,
+                tick: self.tick,
+                control: Some(control.clone()),
+                body: Reply::Accepted,
+            }
+            .encode()
+            .map(|bytes| (bytes, true)),
+        )
+    }
     fn busy(&self, id: ConnectionId, bytes: &[u8]) -> DispatchReply {
         let request = Request::decode(bytes)?;
         let control = self.controls.get(&id).cloned();
@@ -388,6 +423,7 @@ pub(super) enum Event {
         bytes: Vec<u8>,
         reply: oneshot::Sender<DispatchReply>,
         progress: Option<oneshot::Sender<RequestProgress>>,
+        delivered_prefix: Option<Response>,
     },
     Close(ConnectionId),
 }
@@ -789,9 +825,22 @@ async fn serve_loop<F: Future<Output = ()>>(
                         let result = joined.and_then(|_| gateway.open_json(now));
                         if let Err(Ok((id, _))) = reply.send(result) {let _ = gateway.close(id);}
                     }
-                    Some(Event::Request {id, bytes, reply, progress}) => {
+                    Some(Event::Request {id, bytes, reply, progress, delivered_prefix}) => {
                         stats.requests += 1;
                         if let Some(writer) = &writer {
+                            if let Some(prefix) = delivered_prefix.as_ref() {
+                                if let Ok(request) = Request::decode(&bytes) {
+                                    if matches!(request.body, Body::MovementCredit {}) {
+                                        if let Ok(admission) = gateway.admission(id) {
+                                            if let Some(result) = committed.credit(id, request.request_id, admission.actor().into(), prefix) {
+                                                dispatch_progress(progress, &result);
+                                                let _ = reply.send(result);
+                                                continue;
+                                            }
+                                        }
+                                    }
+                                }
+                            }
                             let room = pending.len() < QUEUE && fences.len() < 2 && writer.send.as_ref().unwrap().capacity() > 0;
                             let history = gateway.chamber.rewards.history_capacity().unwrap_or(false);
                             let mutating = Request::decode(&bytes).is_ok_and(|request| matches!(request.body,
@@ -1127,6 +1176,7 @@ async fn request_with_storage_backpressure(
             bytes: bytes.clone(),
             reply,
             progress: None,
+            delivered_prefix: None,
         })
         .await
         .map_err(|_| "Chamber host stopped")?;
@@ -1165,6 +1215,63 @@ pub(super) mod tests {
     use tokio_rustls::{TlsConnector, client::TlsStream};
     use verse_engine::director::Scene;
     type Stream = TlsStream<TcpStream>;
+    #[test]
+    fn committed_credit_reads_cannot_regress_or_cross_owned_control() {
+        let keys = [key(171), key(172), key(173)];
+        let (id, _) = gateway(&keys).open_json(0).unwrap();
+        let life = super::super::wire::Life {
+            instance: 120,
+            actor: 14,
+            generation: 2,
+        };
+        let control = Control {
+            life,
+            epoch: 3,
+            accepted_sequence: 7,
+            world_step: 12,
+            credit_step: 16,
+            applied_movement: None,
+        };
+        let prefix = Response {
+            version: VERSION,
+            request_id: 23,
+            instance: 120,
+            tick: 4,
+            control: Some(control.clone()),
+            body: Reply::Accepted,
+        };
+        let mut view = CommitView {
+            tick: 5,
+            instance: 120,
+            controls: BTreeMap::from([(id, control)]),
+            confirmations: BTreeMap::new(),
+            authenticated: std::collections::BTreeSet::from([id]),
+        };
+        view.controls.get_mut(&id).unwrap().credit_step = 20;
+        let (bytes, authenticated) = view.credit(id, 24, life, &prefix).unwrap().unwrap();
+        let reply: Response = serde_json::from_slice(&bytes).unwrap();
+        assert!(authenticated);
+        assert_eq!(reply.request_id, 24);
+        assert_eq!(reply.control.unwrap().credit_step, 20);
+        for field in 0..6 {
+            let mut stale = prefix.clone();
+            match field {
+                0 => stale.tick = 6,
+                1 => stale.control.as_mut().unwrap().epoch += 1,
+                2 => stale.control.as_mut().unwrap().accepted_sequence += 1,
+                3 => stale.control.as_mut().unwrap().world_step += 1,
+                4 => stale.control.as_mut().unwrap().credit_step = 21,
+                _ => stale.control.as_mut().unwrap().life.actor += 1,
+            }
+            assert!(view.credit(id, 24, life, &stale).is_none());
+        }
+        let mut foreign = life;
+        foreign.actor += 1;
+        assert!(view.credit(id, 24, foreign, &prefix).is_none());
+        view.authenticated.clear();
+        assert!(view.credit(id, 24, life, &prefix).is_none());
+    }
+
     #[test]
     fn durable_travel_confirmation_preserves_body_and_cannot_cross_admission_prefix() {
         let life = verse_engine::core::LifeId {

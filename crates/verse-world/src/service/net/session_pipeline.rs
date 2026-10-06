@@ -114,6 +114,7 @@ async fn submit(
     bytes: Vec<u8>,
     wait: bool,
     deadline: tokio::time::Instant,
+    delivered_prefix: Option<Response>,
 ) -> Result<Gate, String> {
     let (reply, receive) = oneshot::channel();
     let (progress, admission) = oneshot::channel();
@@ -122,6 +123,7 @@ async fn submit(
         bytes: bytes.clone(),
         reply,
         progress: Some(progress),
+        delivered_prefix,
     })
     .await
     .map_err(|_| "Chamber host stopped")?;
@@ -221,7 +223,7 @@ pub(super) async fn run<S: Transport + 'static>(
             }
             _ = async { tokio::time::sleep_until(retry.as_ref().unwrap().3).await }, if retry.is_some() => {
                 let (bytes, wait, deadline, _) = retry.take().unwrap();
-                gate = Some(submit(send, id, bytes, wait, deadline).await?);
+                gate = Some(submit(send, id, bytes, wait, deadline, None).await?);
             }
             result = async { pending.front_mut().unwrap().receive(&last).await }, if !pending.is_empty() && writing.is_none() => {
                 let (bytes, mut authenticated) = result?;
@@ -276,9 +278,11 @@ pub(super) async fn run<S: Transport + 'static>(
                     pending.push_back(Delivery::RateLimited(request.request_id));
                     continue;
                 }
+                let delivered_prefix = (matches!(request.body, Body::MovementCredit {})
+                    && pending.is_empty() && writing.is_none()).then(|| last.clone());
                 let wait = movement_storage_wait(true, &request.body);
                 gate = Some(submit(send, id, bytes, wait,
-                    tokio::time::Instant::now() + Duration::from_secs(2)).await?);
+                    tokio::time::Instant::now() + Duration::from_secs(2), delivered_prefix).await?);
             }
         }
     }
@@ -362,6 +366,106 @@ mod tests {
         assert!(authenticated);
         assert_eq!((decoded.request_id, decoded.tick), (9, 12));
         assert_eq!(decoded.control.unwrap().accepted_sequence, 7);
+    }
+
+    #[tokio::test]
+    async fn credit_fast_read_requires_an_empty_delivery_prefix() {
+        let (server, mut client) = tokio::io::duplex(65536);
+        let (send, mut events) = mpsc::channel(32);
+        let limits = admission::Limits::new();
+        let mut slot = limits.open("127.0.0.1".parse().unwrap()).unwrap();
+        slot.authenticate([1; 32]).unwrap();
+        let keys = [
+            super::super::tests::key(1),
+            super::super::tests::key(2),
+            super::super::tests::key(3),
+        ];
+        let (id, _) = super::super::tests::gateway(&keys).open(0).unwrap();
+        let task = tokio::spawn(async move {
+            run(
+                server,
+                &None,
+                &send,
+                &mut slot,
+                id,
+                response(0, 1, 0),
+                Instant::now(),
+                0,
+            )
+            .await
+        });
+        let mut replies = Vec::new();
+        for request_id in 1..=2 {
+            let bytes = serde_json::to_vec(&Request {
+                version: VERSION,
+                request_id,
+                body: Body::MovementCredit {},
+            })
+            .unwrap();
+            write_frame(&mut client, &bytes, MAX_REQUEST_BYTES)
+                .await
+                .unwrap();
+            let Event::Request {
+                reply,
+                progress,
+                delivered_prefix,
+                ..
+            } = timeout(Duration::from_secs(1), events.recv())
+                .await
+                .unwrap()
+                .unwrap()
+            else {
+                panic!("Expected credit request")
+            };
+            assert_eq!(delivered_prefix.is_some(), request_id == 1);
+            if let Some(prefix) = delivered_prefix {
+                assert_eq!(prefix.tick, 1);
+            }
+            progress
+                .unwrap()
+                .send(RequestProgress::Queued {
+                    authenticated: true,
+                })
+                .ok()
+                .unwrap();
+            replies.push(reply);
+        }
+        for (index, reply) in replies.into_iter().enumerate() {
+            let mut result = response(index as u64 + 1, index as u64 + 2, 0);
+            result.body = Reply::Accepted;
+            reply.send(Ok((result.encode().unwrap(), true))).unwrap();
+        }
+        for request_id in 1..=2 {
+            let bytes = timeout(
+                Duration::from_secs(1),
+                read_frame(&mut client, MAX_RESPONSE_BYTES),
+            )
+            .await
+            .unwrap()
+            .unwrap();
+            let result: Response = serde_json::from_slice(&bytes).unwrap();
+            assert_eq!(result.request_id, request_id);
+        }
+        let bytes = serde_json::to_vec(&Request {
+            version: VERSION,
+            request_id: 3,
+            body: Body::MovementCredit {},
+        })
+        .unwrap();
+        write_frame(&mut client, &bytes, MAX_REQUEST_BYTES)
+            .await
+            .unwrap();
+        let Event::Request {
+            delivered_prefix, ..
+        } = timeout(Duration::from_secs(1), events.recv())
+            .await
+            .unwrap()
+            .unwrap()
+        else {
+            panic!("Expected credit request")
+        };
+        assert_eq!(delivered_prefix.unwrap().tick, 3);
+        task.abort();
     }
 
     #[tokio::test]
