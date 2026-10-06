@@ -13613,11 +13613,15 @@ dependencies = [
 name = "terminal-studio"
 version = "0.1.0"
 dependencies = [
+ "coder",
  "coder-access",
+ "coder-host",
  "openagents-connect",
  "serde_json",
+ "sha2 0.10.9",
  "tempfile",
  "terminal-core",
+ "tokio",
 ]
 
 [[package]]

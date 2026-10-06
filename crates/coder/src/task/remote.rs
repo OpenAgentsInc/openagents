@@ -906,12 +906,34 @@ impl Tasks for Inbox {
     /// The studio of this task store, joined with its tasks. A store
     /// without a studio has an empty one; reading never creates it.
     fn studio(&self) -> Result<coder_host::access::studio::View, Code> {
-        if !super::studio::Studio::present(&self.store) {
-            return Ok(coder_host::access::studio::View::default());
+        use coder_host::access::studio::{MAX_REPOSITORIES, Repository, View};
+        let mut view = if super::studio::Studio::present(&self.store) {
+            let tasks = Store::open(&self.store).map_err(refusal)?;
+            let studio = super::studio::Studio::open(&self.store).map_err(studio_refusal)?;
+            studio.wire(&tasks, &self.store)
+        } else {
+            View::default()
+        };
+        // An admitted workspace can receive its first goal before it has
+        // any goal-derived summary. Publish its label, never its root.
+        for workspace in self.workspaces.keys() {
+            if view.repositories.len() >= MAX_REPOSITORIES {
+                break;
+            }
+            if !view
+                .repositories
+                .iter()
+                .any(|repo| &repo.workspace == workspace)
+            {
+                view.repositories.push(Repository {
+                    workspace: workspace.clone(),
+                    goals: 0,
+                    open_tasks: 0,
+                });
+            }
         }
-        let tasks = Store::open(&self.store).map_err(refusal)?;
-        let studio = super::studio::Studio::open(&self.store).map_err(studio_refusal)?;
-        Ok(studio.wire(&tasks, &self.store))
+        view.canonicalize();
+        Ok(view)
     }
 
     /// A studio intent on this store's coordinator. A task's question or
@@ -1264,6 +1286,24 @@ mod tests {
             images: Vec::new(),
             engine: None,
         }
+    }
+
+    #[test]
+    fn a_fresh_studio_advertises_admitted_labels_without_creating_state() {
+        let temp = tempfile::tempdir().unwrap();
+        let inbox = inbox(temp.path());
+        let view = inbox.studio().unwrap();
+        assert_eq!(view.repositories.len(), 1);
+        assert_eq!(view.repositories[0].workspace, "checkout");
+        assert_eq!(view.repositories[0].goals, 0);
+        assert!(view.goals.is_empty() && view.tasks.is_empty());
+        assert!(!temp.path().join("tasks").exists());
+        assert!(
+            !serde_json::to_string(&view)
+                .unwrap()
+                .contains(&temp.path().to_string_lossy().to_string())
+        );
+        view.validate().unwrap();
     }
 
     #[test]

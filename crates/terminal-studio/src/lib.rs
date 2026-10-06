@@ -1,6 +1,7 @@
 //! Shared studio presentation and admitted mount services, separate from
 //! the renderer and from the transport-free terminal application.
 mod native;
+pub mod opening;
 pub mod studio;
 use std::path::PathBuf;
 use std::sync::mpsc::Receiver;

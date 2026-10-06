@@ -6,7 +6,19 @@ rust-version.workspace = true
 publish.workspace = true
 description = "Admitted studio projections and native host adapters for the shared workbench."
 
+[features]
+acceptance = ["dep:coder", "dep:coder-host", "dep:tokio", "dep:tempfile"]
+
+[[example]]
+name = "studio-acceptance"
+required-features = ["acceptance"]
+
 [dependencies]
+coder = { path = "../coder", optional = true }
+coder-host = { path = "../coder-host", optional = true }
+tokio = { version = "1", features = ["rt-multi-thread", "macros"], optional = true }
+tempfile = { version = "3", optional = true }
+sha2 = "0.10"
 openagents-connect = { path = "../openagents-connect" }
 coder-access = { path = "../coder-access", default-features = false }
 terminal-core = { path = "../terminal-core" }
