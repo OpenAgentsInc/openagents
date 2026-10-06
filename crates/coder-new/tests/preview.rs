@@ -115,7 +115,7 @@ fn exported_preview_escapes_drafts_and_uses_the_rendered_canvas() {
     app.handle(Event::Paste("<build & test>".into()));
     let svg = snapshot::svg(&mut app, 110, 36);
     assert!(svg.starts_with("<svg "));
-    assert!(svg.contains("fill=\"#141414\""));
+    assert!(svg.contains("fill=\"#0a0a0a\""));
     assert!(svg.contains("&lt;"));
     assert!(svg.contains("&amp;"));
     assert!(svg.contains("&gt;"));

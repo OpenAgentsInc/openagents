@@ -75,7 +75,7 @@ pub const DEMOS: [DemoAgent; 4] = [
             DemoMessage::User("Verify the terminal preview uses the Grok Night palette."),
             DemoMessage::Tool("Checked the RGB values used by the renderer"),
             DemoMessage::Assistant(
-                "The preview uses the exact Grok Night RGB slots. The composer shares the base background, with quiet horizontal rules around the input.",
+                "The preview uses Grok Night colors with Coder's near-black background. The composer shares the base background, with quiet horizontal rules around the input.",
             ),
             DemoMessage::User("Do the exported previews use those same colors?"),
             DemoMessage::Tool("Compared the SVG export with the rendered terminal buffer"),

@@ -1,4 +1,4 @@
-//! Exact Grok Night RGB slots from Grok Build. See the crate's NOTICE.
+//! Grok Night RGB slots with Coder's shared near-black background. See NOTICE.
 
 use ratatui::style::Color;
 
@@ -6,7 +6,7 @@ const fn rgb(hex: u32) -> Color {
     Color::Rgb((hex >> 16) as u8, (hex >> 8) as u8, hex as u8)
 }
 
-pub const BG_BASE: Color = rgb(0x141414);
+pub const BG_BASE: Color = rgb(coder_ui::theme::NEAR_BLACK);
 pub const BG_LIGHT: Color = rgb(0x242424);
 pub const BG_DARK: Color = rgb(0x1c1c1c);
 pub const TEXT_PRIMARY: Color = rgb(0xe1e1e1);

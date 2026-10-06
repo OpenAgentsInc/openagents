@@ -25,8 +25,9 @@ Selection loads that agent's demo messages immediately. Up from the first agent
 or Esc returns to the main conversation. Each conversation retains its own
 draft, cursor, preview messages, and scroll position while the preview is open.
 
-All colors are exact 24-bit RGB values from Grok Build's default Grok Night
-theme, including the focused composer border. Use a truecolor terminal to
+The base background uses Coder's shared near-black color (`#0a0a0a`). The other
+colors are exact 24-bit RGB values from Grok Build's default Grok Night theme,
+including the focused composer border. Use a truecolor terminal to
 display them exactly. [NOTICE](NOTICE) records the source commit, `SOURCE_REV`,
 upstream source file, and license.
 
