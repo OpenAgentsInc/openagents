@@ -41,9 +41,9 @@ pub const GRECO_HOUSE: Model = Model {
         [-10.0, -1.35, -12.0, -11.6, 9.8],
         [1.35, 10.0, -12.0, -11.6, 9.8],
         [-10.0, 10.0, -25.6, -25.2, 9.8],
-        // The great room's desk and sofa.
+        // The great room's desk, and the sofa against its west wall.
         [-1.4, 1.4, -22.1, -21.1, 2.38],
-        [-2.2, 2.2, -14.9, -13.9, 2.44],
+        [-9.25, -8.25, -20.8, -16.4, 2.44],
     ],
     roofs: &[GableRoof {
         center: [0.0, -17.1],
@@ -53,7 +53,7 @@ pub const GRECO_HOUSE: Model = Model {
         ridge: 12.41,
     }],
     front: [0.0, 1.0],
-    inside: Some([0.0, -12.9]),
+    inside: Some([0.0, -18.0]),
 };
 
 /// Where the house stands: its stair's foot at Library Way's east end,
@@ -87,6 +87,23 @@ mod tests {
         // The doorway leads well inside, past the portico and the facade.
         let inside = OWNERS_HOUSE.world(GRECO_HOUSE.inside.unwrap());
         assert!(inside[0] > front[0] + 12.0);
+    }
+
+    #[test]
+    fn the_entry_axis_stays_clear_of_furniture() {
+        // From the door through the great room to its middle, a walk at
+        // least 2.5 m wide crosses no block: no sofa or table in the way.
+        let half = 1.25;
+        let (door, middle) = (-12.0, -18.0);
+        for &[x0, x1, z0, z1, _] in GRECO_HOUSE.blocks {
+            let across = x1 > -half && x0 < half;
+            let along = z1 > middle && z0 < door;
+            assert!(
+                !(across && along),
+                "{:?} blocks the entry",
+                [x0, x1, z0, z1]
+            );
+        }
     }
 
     #[test]

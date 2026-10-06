@@ -1257,6 +1257,29 @@ fn walk_across(from: [f32; 2], to: [f32; 2], seconds: f32) -> (Vec3, f32) {
 }
 
 #[test]
+fn a_walker_climbs_the_owners_stair_and_walks_into_the_great_room() {
+    // From Library Way's end, straight up the stair, between the round
+    // columns, through the open bronze doors, to the middle of the great
+    // room, with nothing in the way.
+    use crate::zones::everglade::layout::estate::{GRECO_HOUSE, OWNERS_HOUSE};
+    let street = layout::estate::WALK.0;
+    let middle = OWNERS_HOUSE.world(GRECO_HOUSE.inside.unwrap());
+    let (end, rose) = walk_across(street, middle, 8.0);
+    assert!(
+        end.x > middle[0] - 0.5,
+        "stopped at {end}, short of {middle:?}"
+    );
+    assert!(
+        (end.z - middle[1]).abs() < 0.3,
+        "kept to the entry axis: {end}"
+    );
+    assert!(
+        rose > 1.5,
+        "on the podium's floor, not under it: {rose} m up"
+    );
+}
+
+#[test]
 fn a_walker_crosses_glade_run_on_the_footbridge_from_either_bank() {
     let ([bx, bz], _) = layout::BRIDGE;
     for (from, to) in [

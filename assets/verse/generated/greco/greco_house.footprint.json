@@ -1,7 +1,7 @@
 {
   "model": "greco_house.glb",
   "frame": "glTF: 1 unit = 1 m, +Y up, +Z out of the front door, origin on the ground at the center of the front wall",
-  "triangles": 4802,
+  "triangles": 4480,
   "boxes": [
     {
       "name": "planter",
@@ -214,14 +214,14 @@
     {
       "name": "sofa",
       "center": [
-        0.0,
+        -8.75,
         2.03,
-        -14.4
+        -18.6
       ],
       "half_extents": [
-        2.2,
+        0.5,
         0.41,
-        0.5
+        2.2
       ]
     }
   ],
@@ -246,6 +246,6 @@
   ],
   "inside": [
     0.0,
-    -12.9
+    -18.0
   ]
 }

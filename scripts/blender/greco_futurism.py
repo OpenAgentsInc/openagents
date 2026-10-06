@@ -594,48 +594,6 @@ def rug(b, x0, x1, y0, y1, z, border=0.35):
             box(b, lo, hi, "walnut", skip="-z -x +x -y +y", name="RugFillet")
 
 
-# The 5 by 7 letters Verse draws its scene labels with
-# (`verse_core::label`), for the letters the inscription uses.
-LETTERS = {
-    "E": [31, 16, 16, 30, 16, 16, 31],
-    "F": [31, 16, 16, 30, 16, 16, 16],
-    "H": [17, 17, 17, 31, 17, 17, 17],
-    "N": [17, 25, 21, 19, 17, 17, 17],
-    "O": [14, 17, 17, 17, 17, 17, 14],
-    "R": [30, 17, 17, 30, 20, 18, 17],
-    "S": [15, 16, 16, 14, 1, 1, 30],
-    "T": [31, 4, 4, 4, 4, 4, 4],
-    "U": [17, 17, 17, 17, 17, 17, 14],
-    "W": [17, 17, 17, 21, 21, 21, 10],
-}
-
-
-def inscription(b, text, y, z, height=0.36, proud=0.03):
-    """Bronze letters cut into an architrave's face at y, facing -y, their
-    bottom at z, centered on x = 0: each run of lit cells in a row is one
-    flat strip just proud of the face."""
-    cell = height / 7.0
-    width = len(text) * 6 * cell - cell
-    for i, ch in enumerate(text):
-        rows = LETTERS.get(ch)
-        if rows is None:
-            continue
-        for r, bits in enumerate(rows):
-            zr = z + (6 - r) * cell
-            col = 0
-            while col < 5:
-                if bits & (1 << (4 - col)):
-                    start = col
-                    while col < 5 and bits & (1 << (4 - col)):
-                        col += 1
-                    x0 = -width / 2 + (i * 6 + start) * cell
-                    x1 = -width / 2 + (i * 6 + col) * cell
-                    box(b, (x0, y - proud, zr), (x1, y, zr + cell), "bronze", skip="+y -x +x -z +z",
-                        name="Letter")
-                else:
-                    col += 1
-
-
 # --------------------------------------------------------------------------
 # The owner's house
 
@@ -766,9 +724,6 @@ def house_body(b):
     # -- The crown: the entablature round the whole plan, the attic, the
     # flat roof, and the chimneys.
     entablature(b, -hw, hw, COLUMN_Y - COLUMN_D / 2 - 0.05, by, WALL_TOP)
-    if not FAR:
-        # The dedication on the architrave, over the door.
-        inscription(b, "HOUSE OF THE OWNER", COLUMN_Y - COLUMN_D / 2 - 0.05, WALL_TOP + 0.12)
     crown = WALL_TOP + ENTABLATURE
     box(b, (-hw + 0.5, COLUMN_Y + 0.2, crown), (hw - 0.5, by - 0.5, crown + ATTIC), "lime", skip="-z",
         name="Attic")
@@ -783,9 +738,9 @@ def house_body(b):
     # The ceiling slab's underside, over the great room and under the
     # upper floor.
     slab(b, -hw + t, hw - t, fy + t, by - t, CEILING, "shade", down=True, name="Ceiling")
-    # The forecourt's table and stools.
+    # The forecourt's table and stools, to one side of the walk up the stairs.
     if not FAR:
-        bench_long(b, 0.0, 3.5, FORECOURT)
+        bench_long(b, -6.6, 3.6, FORECOURT)
     for s in (-1, 1):
         planter(b, s * 3.6, y_portico + 0.9, FLOOR, size=0.9, ball=1.0)
     b.front = (0.0, -1.0)
@@ -832,14 +787,15 @@ def great_room(b):
     rug(b, -3.0, 3.0, 19.6, 23.8, FLOOR)
     desk(b, 0.0, 21.6, FLOOR + 0.02)
     lamp(b, 4.6, 23.6, FLOOR)
-    # The sitting room: a long sofa facing the dark wall across a low
-    # table, on a second rug.
-    rug(b, -3.6, 3.6, 13.4, 18.2, FLOOR)
-    sofa(b, 0.0, 14.4, FLOOR + 0.02, rot=180.0)
-    low_table(b, 0.0, 16.3, FLOOR + 0.02)
+    # The sitting room, off the entry: a long sofa with its back to the
+    # west wall, facing across the room past a low table, on a second rug.
+    # The walk from the door to the desk stays clear, at least 2.5 m wide.
+    rug(b, -9.4, -5.6, 15.8, 21.4, FLOOR)
+    sofa(b, -8.75, 18.6, FLOOR + 0.02, rot=90.0)
+    low_table(b, -7.0, 18.6, FLOOR + 0.02, rot=90.0)
     planter(b, -8.6, 24.2, FLOOR, size=0.8, ball=1.2)
     planter(b, 8.6, 13.2, FLOOR, size=0.8, ball=1.2)
-    b.inside = (0.0, 12.9)
+    b.inside = (0.0, 18.0)
 
 
 def new(name):

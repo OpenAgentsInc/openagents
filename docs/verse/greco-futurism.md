@@ -76,7 +76,6 @@ and a kit piece in `assets/verse/generated/greco/kit/`.
 | Chimney block | `chimney` | A plain limestone block with a cap band | 32 |
 | Circuit wall | `circuit_lines`, `circuit_panel` | Dark walnut paneling inscribed with faint copper circuit lines | 44 (6 by 4 m) |
 | Dentils | `dentils` | A row of small marble blocks under an interior cornice | 4 each |
-| Inscription | `inscription` | Bronze letters on an architrave, in Verse's 5 by 7 scene-label letters | about 18 a letter |
 
 The props share the vocabulary:
 
@@ -122,7 +121,7 @@ the pack.
 | Stone shade | `GrecoStoneShade` | 0.76, 0.70, 0.59 | 0.538, 0.448, 0.307 | Steps, the forecourt, plinths, the cornice's middle band, coves, and the ceiling slab |
 | Marble | `GrecoMarble` | 0.91, 0.90, 0.87 | 0.807, 0.787, 0.729 | The great room's floor, pilasters, door surround, and dentils |
 | Walnut | `GrecoWalnut` | The kit's wood trim image at 42 percent | Factor on `T_WoodTrim_BaseColor` | Lattice bars, the dark wall, bookcases, and furniture |
-| Bronze | `GrecoBronze` | 0.24, 0.15, 0.09 | 0.047, 0.020, 0.009 | Door leaves, frames, mullions, the inscription |
+| Bronze | `GrecoBronze` | 0.24, 0.15, 0.09 | 0.047, 0.020, 0.009 | Door leaves, frames, and mullions |
 | Copper | `GrecoCopper` | 0.66, 0.38, 0.20 | 0.393, 0.119, 0.033 | Circuit traces, pads, desk and lamp metal |
 | Red-brown | `GrecoRedBrown` | 0.40, 0.18, 0.11 | 0.133, 0.027, 0.012 | Frieze panels, rug borders, cushions, books |
 | Amber | `EmitAmber` | 1.00, 0.68, 0.30 | 1.000, 0.420, 0.073 | Door panes, the transom's slits, and the lamp shades |
@@ -169,7 +168,7 @@ Ways to stay in budget:
 - Drop every face nothing sees: the bottoms of steps and walls, the backs of
   trims against a wall, and the sides of beams that meet another beam. The
   script's `box` takes a `skip` list for this.
-- Draw circuit traces, frieze panels, and inscriptions as single flat
+- Draw circuit traces and frieze panels as single flat
   faces just proud of their surface: a trace costs 2 triangles rather than 10.
 - Use 12 sides for a column near and 6 far.
 - Build one object per model, so its glTF has one node.
@@ -180,7 +179,7 @@ Everglade draws a model's far level beyond 80 m. A Greco-futurism far level
 keeps the podium, steps, walls, columns at 6 sides, the entablature without
 its panels, the attic, the chimneys, and the hedges. It replaces each
 lattice, door, and window with one panel, and drops the interior, the
-glyphs, the inscription, and the furniture. Build it from the same script
+glyphs, and the furniture. Build it from the same script
 with `FAR` set, as `town_houses.py` does.
 
 ### Cells, collision, and destruction
@@ -197,9 +196,8 @@ with `FAR` set, as `town_houses.py` does.
   close the doorway.
 - **Destruction.** The building breaks like other generated models: it's cut
   on a lattice of blocks at most 3.5 m across and 3.2 m tall, and floors
-  and the roof fall when their columns go. Keep the inscription and the
-  circuit traces in the model, never as separate world lettering, so they
-  break with it.
+  and the roof fall when their columns go. Keep the circuit traces in the
+  model, never as separate world geometry, so they break with it.
 - **Smoke.** Greco-futurism chimneys don't smoke. They're part of the
   silhouette, not a sign of a hearth.
 
@@ -226,17 +224,18 @@ house.
   with a long walnut bench and two stools; six more between hedged planters
   rise to the portico on its 1.6 m podium.
 - **Portico.** Two round columns flank the door, with two square piers at
-  each end, under the full entablature. The architrave reads `HOUSE OF THE
-  OWNER` in bronze.
+  each end, under the full entablature, its architrave plain.
 - **Facade.** The bronze circuit door, its two leaves swung in against the
   reveals, under a glyph transom with amber slits; a lattice screen on each
   side; and a band of dark windows between bronze mullions above.
 - **Great room.** The enterable ground floor: 19 m by 13 m under a coffered
   ceiling, with marble pilasters between tall windows, a dark walnut wall
   inscribed with circuit lines, an engraved double door in a marble
-  surround, two bookcases, a desk on a rug, a long sofa and a low table on a
-  second rug, a floor lamp, and two planters.
-- **Budget.** 4,802 triangles near and 924 far. In Everglade it adds
+  surround, two bookcases, a desk on a rug, a long sofa against the west
+  wall with a low table on a second rug, a floor lamp, and two planters.
+  The walk from the door to the desk stays clear, at least 2.5 m wide, so
+  the desk and the engraved door are the view from the entrance.
+- **Budget.** 4,480 triangles near and 924 far. In Everglade it adds
   5,019 merged triangles net, since the wild ground's foliage keeps off
   its lot (2,750,225 to 2,755,244 of 2,900,000, after the eighth round).
 
