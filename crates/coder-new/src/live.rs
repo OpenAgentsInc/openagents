@@ -21,8 +21,10 @@ pub struct Chat {
     pub busy: bool,
     pub notice: Option<String>,
     pub tokens: u64,
+    pub(crate) cache: crate::ui::TranscriptCache,
 }
 
+#[derive(Clone, PartialEq)]
 pub enum Entry {
     User(String),
     Assistant {
@@ -35,9 +37,73 @@ pub enum Entry {
         output: serde_json::Value,
         running: bool,
     },
+    Delegation {
+        id: String,
+        name: String,
+        task: String,
+        running: bool,
+        output: serde_json::Value,
+    },
+}
+
+pub struct Delegation {
+    pub id: String,
+    pub name: String,
+    pub task: String,
+    pub chat: Chat,
+    pub started_at: u64,
+    pub elapsed_seconds: u64,
+    pub running: bool,
+    pub(crate) draft: crate::Draft,
+    pub(crate) scroll: u16,
 }
 
 impl Chat {
+    pub fn layout_builds(&self) -> usize {
+        self.cache.builds
+    }
+    pub fn finish_partial(&mut self) {
+        if !self.partial.is_empty() {
+            self.entries.push(Entry::Assistant {
+                text: std::mem::take(&mut self.partial),
+                model: self.partial_model.take(),
+            });
+        }
+    }
+
+    pub fn stop_tools(&mut self, reason: &str) {
+        for entry in &mut self.entries {
+            if let Entry::Tool {
+                running, output, ..
+            } = entry
+            {
+                if *running {
+                    *running = false;
+                    *output = serde_json::json!({"error":reason});
+                }
+            }
+        }
+    }
+
+    pub fn tool(
+        &mut self,
+        name: String,
+        input: serde_json::Value,
+        output: serde_json::Value,
+        running: bool,
+    ) {
+        self.finish_partial();
+        if let Some(Entry::Tool { input: previous_input, output: previous_output, running: previous_running, .. }) = self.entries.iter_mut().rev().find(|entry| {
+            matches!(entry, Entry::Tool { name: previous, input: previous_input, running: true, .. } if previous == &name && (input.is_null() || previous_input == &input))
+        }) {
+            if !input.is_null() { *previous_input = input; }
+            *previous_output = output;
+            *previous_running = running;
+        } else {
+            self.entries.push(Entry::Tool { name, input, output, running });
+        }
+    }
+
     pub fn messages(&self) -> Vec<Message> {
         self.entries
             .iter()
@@ -56,6 +122,19 @@ impl Chat {
                     role: "assistant".into(),
                     content: format!(
                         "Tool observation from {name} ({}): {output}",
+                        if *running { "running" } else { "finished" }
+                    ),
+                },
+                Entry::Delegation {
+                    name,
+                    task,
+                    running,
+                    output,
+                    ..
+                } => Message {
+                    role: "assistant".into(),
+                    content: format!(
+                        "Delegation to {name}: {task} ({}): {output}",
                         if *running { "running" } else { "finished" }
                     ),
                 },
@@ -95,6 +174,15 @@ pub enum Work {
         messages: Vec<Message>,
         execution: ExecutionSettings,
     },
+    Delegate {
+        delegation: String,
+        name: String,
+        tool: String,
+        arguments: serde_json::Value,
+        execution: ExecutionSettings,
+        model: String,
+        options: crate::models::GenerationOptions,
+    },
 }
 
 pub enum Update {
@@ -112,6 +200,13 @@ pub enum Update {
         input: serde_json::Value,
         output: serde_json::Value,
         running: bool,
+    },
+    Delegation {
+        id: u64,
+        delegation: String,
+        name: String,
+        task: String,
+        event: RuntimeEvent,
     },
     Delta {
         id: u64,
@@ -133,6 +228,7 @@ impl Update {
             Self::Checked { id, .. }
             | Self::CheckedJev { id, .. }
             | Self::Tool { id, .. }
+            | Self::Delegation { id, .. }
             | Self::Delta { id, .. }
             | Self::Model { id, .. }
             | Self::Finished { id, .. } => *id,
@@ -258,13 +354,34 @@ fn run_with_provider(
         let mut model_callback = |model: &str| {
             let _ = sender.send(Update::Model { id, model: model.into() });
         };
-        let mut event_callback = |event| {
-            if let RuntimeEvent::Tool { name, input, output, running } = event {
+        let mut event_callback = |event| match event {
+            RuntimeEvent::Tool { name, input, output, running } => {
                 let _ = sender.send(Update::Tool { id, name, input, output, running });
-            }
+            },
+            RuntimeEvent::Delegation { id: delegation, name, task, event } => {
+                let _ = sender.send(Update::Delegation { id, delegation, name, task, event: *event });
+            },
+            _ => {},
         };
         let work = async {
             let update = match request.kind {
+                Work::Delegate { delegation, name, tool, arguments, mut execution, model, options } => {
+                    if !request.key.expose().is_empty() {
+                        execution.redaction_keys.push(model_access::ApiKey::new(request.key.expose()));
+                    }
+                    let task = arguments["task"].as_str().unwrap_or_default().to_owned();
+                    let mut events = |event| event_callback(RuntimeEvent::Delegation {
+                        id: delegation.clone(), name: name.clone(), task: task.clone(), event: Box::new(event),
+                    });
+                    events(RuntimeEvent::Tool { name: tool.clone(), input: arguments.clone(), output: serde_json::Value::Null, running: true });
+                    let provider = if request.key.expose().is_empty() { None } else {
+                        openrouter::Client::new(openrouter::Config::new(openrouter::ApiKey::new(request.key.expose()))).ok().map(|client| crate::plugin_tools::GenerationProvider { client, model, effort: options.reasoning })
+                    };
+                    let result = execution.execute(&tool, arguments, provider, &cancel, &mut events).await;
+                    let output = match &result { Ok(value) => value.clone(), Err(error) => serde_json::json!({"error":error}) };
+                    events(RuntimeEvent::Tool { name: tool, input: serde_json::Value::Null, output, running: false });
+                    Update::Finished { id, result: result.map(|value| Streamed { text: value["reply"].as_str().unwrap_or_default().into(), model: value["model"].as_str().unwrap_or_default().into(), ..Streamed::default() }) }
+                },
                 Work::CheckJev { endpoint, model } => Update::CheckedJev {
                     id,
                     result: crate::jev_plugin::test_key_for_model(request.key.expose(), &endpoint, &model).await,
@@ -279,6 +396,7 @@ fn run_with_provider(
                                 execution.redact(&mut output);
                                 event_callback(RuntimeEvent::Tool { name, input, output, running });
                             }
+                            RuntimeEvent::Delegation { .. } => event_callback(event),
                         }
                     };
                     let result = async {
@@ -309,7 +427,7 @@ fn run_with_provider(
                             ..Streamed::default()
                         };
                         reply.usage.total_tokens = result["tokens"].as_u64().unwrap_or_default();
-                        if !matches!(result["outcome"]["reason"].as_str(), Some("finished" | "tests_held" | "checks_passed")) {
+                        if !matches!(result["outcome"]["ending"]["reason"].as_str(), Some("finished" | "tests_held" | "checks_passed" | "asked")) {
                             return Err(format!("Microcoder stopped: {}.", result["outcome"]));
                         }
                         if reply.text.is_empty() {

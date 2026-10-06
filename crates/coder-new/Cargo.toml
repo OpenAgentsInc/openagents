@@ -7,6 +7,8 @@ publish.workspace = true
 description = "The Coder terminal with model, tool, and subagent plugins."
 
 [dependencies]
+atif = { path = "../atif" }
+coder = { path = "../coder" }
 code-highlight = { path = "../code-highlight", features = ["grok"] }
 coder-terminal = { path = "../coder-terminal" }
 coder-ui = { path = "../coder-ui" }
@@ -23,7 +25,7 @@ ratatui = { version = "0.30", default-features = false, features = ["crossterm",
 reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls"] }
 serde_json = "1"
 serde = { version = "1", features = ["derive"] }
-tokio = { version = "1", features = ["macros", "rt", "sync", "time", "process", "io-util"] }
+tokio = { version = "1", features = ["macros", "rt", "sync", "time", "process", "io-util", "signal"] }
 unicode-segmentation = "1"
 unicode-width = "0.2"
 

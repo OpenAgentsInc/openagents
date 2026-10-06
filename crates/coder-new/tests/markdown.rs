@@ -1,7 +1,6 @@
 use coder_new::{
     App, Mode,
     live::{Entry, Update},
-    models::DEFAULT_MODEL,
     theme, ui,
 };
 use crossterm::event::{Event, KeyCode, KeyEvent, KeyModifiers};
@@ -49,6 +48,7 @@ fn live_app() -> App {
     let mut app = App::default();
     app.set_mode(Mode::Live);
     app.plugins.enabled = true;
+    app.plugins.key_configured = true;
     app
 }
 
@@ -222,7 +222,10 @@ fn narrow_transcripts_keep_long_code_and_table_content_accessible_by_scrolling()
         app.scroll = requested;
         let (buffer, cursor) = render(&mut app, 24, 12);
         let text = rows(&buffer).join("\n");
-        let compact: String = text.chars().filter(|ch| !ch.is_whitespace()).collect();
+        let compact: String = text
+            .chars()
+            .filter(|ch| ch.is_ascii_alphanumeric() || *ch == '_')
+            .collect();
         saw_code |= compact.contains(code_token);
         saw_table |= compact.contains(table_token);
         saw_end |= text.contains("After the table.");
@@ -231,7 +234,7 @@ fn narrow_transcripts_keep_long_code_and_table_content_accessible_by_scrolling()
         assert!(
             rows(&buffer)
                 .iter()
-                .any(|row| row.starts_with('─') && row.contains(DEFAULT_MODEL))
+                .any(|row| row.starts_with('─') && row.contains(":default"))
         );
         maximum_scroll = maximum_scroll.max(app.scroll);
         if app.scroll < requested {
@@ -249,4 +252,102 @@ fn narrow_transcripts_keep_long_code_and_table_content_accessible_by_scrolling()
     let (wide_again, _) = render(&mut app, 110, 36);
     assert_eq!(cell(&wide_again, "openai/gpt-6-luna").fg, theme::GRAY);
     assert!(rows(&wide_again).join("\n").contains(code_token));
+}
+
+fn table_columns(buffer: &Buffer) -> (Vec<u16>, std::ops::RangeInclusive<u16>) {
+    let top = (0..buffer.area.height)
+        .find(|&y| (0..buffer.area.width).any(|x| buffer[(x, y)].symbol() == "┌"))
+        .expect("table top border");
+    let bottom = (top..buffer.area.height)
+        .find(|&y| (0..buffer.area.width).any(|x| buffer[(x, y)].symbol() == "└"))
+        .expect("table bottom border");
+    let boundaries: Vec<_> = (0..buffer.area.width)
+        .filter(|&x| matches!(buffer[(x, top)].symbol(), "┌" | "┬" | "┐"))
+        .collect();
+    for y in top..=bottom {
+        let actual: Vec<_> = (0..buffer.area.width)
+            .filter(|&x| {
+                matches!(
+                    buffer[(x, y)].symbol(),
+                    "│" | "┌" | "┬" | "┐" | "├" | "┼" | "┤" | "└" | "┴" | "┘"
+                )
+            })
+            .collect();
+        assert_eq!(actual, boundaries, "table boundaries changed on row {y}");
+    }
+    (boundaries, top..=bottom)
+}
+
+#[test]
+fn transcript_tables_wrap_each_cell_without_breaking_the_grid_or_inline_styles() {
+    let source = include_str!("fixtures/microcoder-table.md");
+    let mut app = live_app();
+    app.live.entries.push(Entry::Assistant {
+        text: source.into(),
+        model: Some("openai/gpt-6-luna".into()),
+    });
+    for width in [35, 70, 110, 160] {
+        app.scroll = 0;
+        let (buffer, _) = render(&mut app, width, 180);
+        let text = rows(&buffer).join("\n");
+        assert!(!text.contains("<br"));
+        assert!(!text.contains("<BR"));
+        assert!(text.contains("The conversation continues"));
+        let (columns, table_rows) = table_columns(&buffer);
+        assert_eq!(columns.len(), 3);
+        assert!(columns[2] < width - 2);
+        for (column, expected) in [
+            (0, "Howyouinvokeit"),
+            (
+                1,
+                "source_begin_0123456789_abcdefghijklmnopqrstuvwxyz_source_end",
+            ),
+        ] {
+            let mut content = String::new();
+            for y in table_rows.clone() {
+                if buffer[(columns[column], y)].symbol() == "│" {
+                    for x in columns[column] + 1..columns[column + 1] {
+                        content.push_str(buffer[(x, y)].symbol());
+                    }
+                }
+            }
+            let content: String = content.chars().filter(|ch| !ch.is_whitespace()).collect();
+            assert!(
+                content.contains(expected),
+                "table lost cell content at width {width}"
+            );
+        }
+        for label in ["Model", "Tokens", "Status"] {
+            assert!(cell(&buffer, label).modifier.contains(Modifier::BOLD));
+        }
+        if width >= 70 {
+            assert_eq!(cell(&buffer, "microcoder").fg, theme::MD_CODE);
+        }
+    }
+    assert_eq!(app.live.messages()[0].content, source);
+}
+
+#[test]
+fn streaming_and_stopped_tables_keep_the_same_grid_at_a_given_width() {
+    let source = "| Aspect | Detail |\n| --- | --- |\n| Task | **Review** the code and return a concise result.<br>Preserve the existing behavior. |";
+    let mut app = live_app();
+    app.live.busy = true;
+    app.apply_update(Update::Delta {
+        id: app.request_id,
+        text: source.into(),
+    });
+    let (streaming, _) = render(&mut app, 60, 50);
+    table_columns(&streaming);
+    app.cancel_request();
+    let (stopped, _) = render(&mut app, 60, 50);
+    let (columns, rows) = table_columns(&stopped);
+    for y in rows {
+        for x in columns[0]..=columns[2] {
+            assert_eq!(streaming[(x, y)], stopped[(x, y)]);
+        }
+    }
+    let (narrow, _) = render(&mut app, 35, 50);
+    table_columns(&narrow);
+    let (wide_again, _) = render(&mut app, 60, 50);
+    assert_eq!(cell(&stopped, "Review"), cell(&wide_again, "Review"));
 }

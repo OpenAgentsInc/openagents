@@ -161,6 +161,29 @@ impl ExecutionSettings {
         {
             return Err("Keep API keys in plugin settings, outside tool arguments.".into());
         }
+        let mut emit = |event: RuntimeEvent| {
+            let event = match event {
+                RuntimeEvent::Text(text) => RuntimeEvent::Text(self.redact_text(&text)),
+                RuntimeEvent::Model(model) => RuntimeEvent::Model(self.redact_text(&model)),
+                RuntimeEvent::Tool {
+                    name,
+                    mut input,
+                    mut output,
+                    running,
+                } => {
+                    self.redact(&mut input);
+                    self.redact(&mut output);
+                    RuntimeEvent::Tool {
+                        name: self.redact_text(&name),
+                        input,
+                        output,
+                        running,
+                    }
+                }
+                event => event,
+            };
+            emit(event);
+        };
         let result = match name {
             "openagents_cli" if self.registered(ToolBinding::OpenAgentsCli) => {
                 let args: CliArguments = serde_json::from_value(arguments).map_err(
@@ -177,11 +200,7 @@ impl ExecutionSettings {
                     .iter()
                     .find(|agent| agent.id == args.agent && agent.enabled)
                     .ok_or("The requested ACP agent is not configured or is turned off.")?;
-                let mut child = |event| {
-                    if matches!(event, RuntimeEvent::Tool { .. }) {
-                        emit(event);
-                    }
-                };
+                let mut child = |event| emit(event);
                 bundled_runtime::acp(agent, &args.task, &self.cwd, cancel, &mut child).await
             }
             "microcoder" if self.registered(ToolBinding::Microcoder) => {
@@ -194,14 +213,21 @@ impl ExecutionSettings {
                     .chain(self.jev_key.iter())
                     .cloned()
                     .collect();
-                let mut child = |event| {
-                    if matches!(event, RuntimeEvent::Tool { .. }) {
-                        emit(event);
-                    }
-                };
                 match provider {
                     Some(provider) => {
-                        bundled_runtime::microcoder_openrouter(
+                        let options = crate::models::GenerationOptions {
+                            reasoning: provider.effort.clone(),
+                            max_tokens: None,
+                        };
+                        let mut child = |event| {
+                            emit(match event {
+                                RuntimeEvent::Model(model) => {
+                                    RuntimeEvent::Model(options.slug(&model))
+                                }
+                                event => event,
+                            })
+                        };
+                        let mut output = bundled_runtime::microcoder_openrouter(
                             &args.task,
                             &self.cwd,
                             provider.client,
@@ -212,9 +238,14 @@ impl ExecutionSettings {
                             cancel,
                             &mut child,
                         )
-                        .await
+                        .await?;
+                        if let Some(model) = output["model"].as_str() {
+                            output["model"] = json!(options.slug(model));
+                        }
+                        Ok(output)
                     }
                     None => {
+                        let mut child = |event| emit(event);
                         bundled_runtime::microcoder_local(
                             &args.task, &self.cwd, judge, &keys, cancel, &mut child,
                         )
@@ -362,6 +393,71 @@ mod tests {
         let mut value = json!({marker:[{"message":format!("before {marker} after")} ]});
         settings.redact(&mut value);
         assert!(!value.to_string().contains(marker));
+    }
+
+    #[tokio::test]
+    #[cfg(unix)]
+    async fn acp_streams_and_final_results_redact_configured_credentials() {
+        let dir = tempfile::tempdir().unwrap();
+        let request_key = "synthetic-acp-request-credential";
+        let jev_key = "synthetic-acp-jev-credential";
+        let mut blocks = acp_client::replay::blocks(acp_client::replay::GROK_TURN);
+        blocks[1][0]["result"]["configOptions"][0]["currentValue"] =
+            json!(format!("fixture/{request_key}"));
+        blocks[2][0]["params"]["update"]["title"] = json!(format!("Read {request_key}"));
+        blocks[2][0]["params"]["update"]["rawInput"] = json!({
+            request_key: {"path": format!("before {jev_key} after")},
+        });
+        blocks[2][1]["params"]["update"]["content"][0]["content"]["text"] =
+            json!(format!("Observation {request_key} and {jev_key}"));
+        blocks[2][2]["params"]["update"]["content"]["text"] =
+            json!(format!("Answer {request_key} and {jev_key}"));
+        let program = acp_client::replay::script(dir.path(), &blocks);
+        let mut settings = settings();
+        settings.acp = true;
+        settings.cwd = dir.path().to_owned();
+        settings.redaction_keys = vec![ApiKey::new(request_key)];
+        settings.jev_key = Some(ApiKey::new(jev_key));
+        settings.agents.push(AcpAgent {
+            id: "fixture".into(),
+            name: "Fixture ACP".into(),
+            program,
+            arguments: vec![],
+            mode: None,
+            enabled: true,
+        });
+        let mut events = vec![];
+        let result = settings
+            .execute(
+                "acp_subagent",
+                json!({"agent":"fixture","task":"Review the offline fixture."}),
+                None,
+                &Arc::new(AtomicBool::new(false)),
+                &mut |event| events.push(event),
+            )
+            .await
+            .unwrap();
+
+        assert_eq!(events.len(), 4);
+        assert!(matches!(&events[0], RuntimeEvent::Model(model) if model == "fixture/[redacted]"));
+        for event in &events[1..3] {
+            assert!(matches!(event, RuntimeEvent::Tool {name, input, ..}
+                if name == "Read [redacted]"
+                    && input["[redacted]"]["path"] == "before [redacted] after"));
+        }
+        assert!(
+            matches!(&events[2], RuntimeEvent::Tool {output, running:false, ..}
+            if output == "Observation [redacted] and [redacted]")
+        );
+        assert!(matches!(&events[3], RuntimeEvent::Text(text)
+            if text == "Answer [redacted] and [redacted]"));
+        assert_eq!(result["reply"], "Answer [redacted] and [redacted]");
+        assert_eq!(result["model"], "fixture/[redacted]");
+        assert_eq!(result["group_clear"], true);
+        for key in [request_key, jev_key] {
+            assert!(!format!("{events:?}").contains(key));
+            assert!(!result.to_string().contains(key));
+        }
     }
 
     #[test]

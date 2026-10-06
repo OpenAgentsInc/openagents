@@ -57,11 +57,12 @@ pub fn render(frame: &mut Frame, app: &mut App) {
         return;
     }
     let (draft, cursor) = app.draft.wrapped(terminal_width.saturating_sub(3));
-    let rail_height = if app.mode == Mode::Demo {
-        DEMOS.len() as u16
+    let rail_height = (if app.mode == Mode::Demo {
+        DEMOS.len()
     } else {
-        0
-    };
+        app.delegations.len()
+    })
+    .min(usize::from(area.height.saturating_sub(6))) as u16;
     let composer_height = (draft.len() as u16).clamp(1, 6) + 2;
     let reserved = rail_height + 3;
     let [header, body, _gap, composer, rail] = Layout::vertical([
@@ -100,49 +101,93 @@ pub fn render(frame: &mut Frame, app: &mut App) {
         },
         &draft,
         cursor,
-        app.mode == Mode::Live || app.selected_agent.is_none(),
+        app.selected_agent.is_none(),
         app.model_picker.is_none(),
         &app.plugins,
+        if app.mode == Mode::Live && !(app.plugins.enabled && app.plugins.key_configured) {
+            let chat = app
+                .selected_agent
+                .and_then(|index| app.delegations.get(index))
+                .map_or(&app.live, |agent| &agent.chat);
+            chat.partial_model
+                .as_deref()
+                .or_else(|| {
+                    chat.entries.iter().rev().find_map(|entry| match entry {
+                        crate::live::Entry::Assistant {
+                            model: Some(model), ..
+                        } => Some(model.as_str()),
+                        _ => None,
+                    })
+                })
+                .or(Some("openagents/gateway"))
+        } else {
+            None
+        },
     );
-    if app.mode == Mode::Demo {
-        agent_rail(frame, rail, app);
-    }
+    agent_rail(frame, rail, app);
     if app.model_picker.is_some() {
         models::render(frame, app);
     }
 }
 
 fn agent_rail(frame: &mut Frame, area: Rect, app: &App) {
-    let name_width = (2 + DEMOS
+    let agents: Vec<_> = if app.mode == Mode::Demo {
+        DEMOS
+            .iter()
+            .map(|agent| {
+                (
+                    agent.name,
+                    agent.task,
+                    agent.tokens.to_owned(),
+                    agent.elapsed_seconds.saturating_add(app.elapsed_seconds),
+                )
+            })
+            .collect()
+    } else {
+        app.delegations
+            .iter()
+            .map(|agent| {
+                (
+                    agent.name.as_str(),
+                    agent.task.as_str(),
+                    token_count(agent.chat.tokens),
+                    if agent.running {
+                        app.elapsed_seconds.saturating_sub(agent.started_at)
+                    } else {
+                        agent.elapsed_seconds
+                    },
+                )
+            })
+            .collect()
+    };
+    if area.height == 0 {
+        return;
+    }
+    let name_width = (2 + agents
         .iter()
-        .map(|demo| demo.name.width())
+        .map(|agent| agent.0.width())
         .max()
         .unwrap_or(0)) as u16;
     let narrow = area.width < 32;
-    let count_width = DEMOS
+    let count_width = agents
         .iter()
-        .map(|agent| agent.tokens.width())
+        .map(|agent| agent.2.width())
         .max()
         .unwrap_or(0);
-    let token_labels: Vec<_> = DEMOS
+    let token_labels: Vec<_> = agents
         .iter()
         .map(|agent| {
             if narrow {
-                format!("{:>count_width$}↓", agent.tokens)
+                format!("{:>count_width$}↓", agent.2)
             } else {
-                format!("{:>count_width$} tokens ↓", agent.tokens)
+                format!("{:>count_width$} tokens ↓", agent.2)
             }
         })
         .collect();
-    let timed_labels: Vec<_> = DEMOS
+    let timed_labels: Vec<_> = agents
         .iter()
         .zip(&token_labels)
-        .map(|(agent, tokens)| {
-            format!(
-                "{} · {tokens}",
-                elapsed_time(agent.elapsed_seconds.saturating_add(app.elapsed_seconds))
-            )
-        })
+        .map(|(agent, tokens)| format!("{} · {tokens}", elapsed_time(agent.3)))
         .collect();
     let show_elapsed = usize::from(area.width)
         >= usize::from(name_width)
@@ -152,9 +197,18 @@ fn agent_rail(frame: &mut Frame, area: Rect, app: &App) {
                 .map(|text| text.width())
                 .max()
                 .unwrap_or(0);
-    for (index, agent) in DEMOS.iter().enumerate() {
+    let first = app
+        .selected_agent
+        .unwrap_or(agents.len().saturating_sub(1))
+        .saturating_sub(usize::from(area.height).saturating_sub(1));
+    for (index, agent) in agents
+        .iter()
+        .enumerate()
+        .skip(first)
+        .take(usize::from(area.height))
+    {
         let row = Rect {
-            y: area.y + index as u16,
+            y: area.y + (index - first) as u16,
             height: 1,
             ..area
         };
@@ -181,31 +235,34 @@ fn agent_rail(frame: &mut Frame, area: Rect, app: &App) {
             Constraint::Length(token_width),
         ])
         .areas(row);
-        let prefix = match (narrow, active) {
-            (true, true) => "❯ ",
-            (true, false) => "  ",
-            (false, true) => "❯ ",
-            (false, false) => "○ ",
+        let prefix = if active {
+            "❯ "
+        } else if narrow {
+            "  "
+        } else {
+            "○ "
         };
         let name = Rect {
             width: name_width.min(activity.width),
             ..activity
         };
         let task_width = activity.width.saturating_sub(name_width + 2);
-        let spans = vec![
-            span(prefix, if active { t::ACCENT_MODEL } else { t::GRAY }),
-            Span::styled(
-                agent.name,
-                Style::default()
-                    .fg(if active {
-                        t::ACCENT_MODEL
-                    } else {
-                        t::TEXT_SECONDARY
-                    })
-                    .add_modifier(Modifier::BOLD),
-            ),
-        ];
-        frame.render_widget(Paragraph::new(Line::from(spans)), name);
+        frame.render_widget(
+            Paragraph::new(Line::from(vec![
+                span(prefix, if active { t::ACCENT_MODEL } else { t::GRAY }),
+                Span::styled(
+                    agent.0.to_owned(),
+                    Style::default()
+                        .fg(if active {
+                            t::ACCENT_MODEL
+                        } else {
+                            t::TEXT_SECONDARY
+                        })
+                        .add_modifier(Modifier::BOLD),
+                ),
+            ])),
+            name,
+        );
         if task_width > 0 {
             let task = Rect {
                 x: activity.x + name_width + 2,
@@ -213,7 +270,7 @@ fn agent_rail(frame: &mut Frame, area: Rect, app: &App) {
                 ..activity
             };
             frame.render_widget(
-                Paragraph::new(span(truncate(agent.task, task_width), t::GRAY)),
+                Paragraph::new(span(truncate(agent.1, task_width), t::GRAY)),
                 task,
             );
         }
@@ -221,6 +278,14 @@ fn agent_rail(frame: &mut Frame, area: Rect, app: &App) {
             Paragraph::new(span(suffix, t::GRAY)).right_aligned(),
             tokens,
         );
+    }
+}
+
+fn token_count(tokens: u64) -> String {
+    if tokens >= 1_000 {
+        format!("{:.1}k", tokens as f64 / 1_000.0)
+    } else {
+        tokens.to_string()
     }
 }
 
@@ -245,35 +310,48 @@ pub(crate) fn truncate(text: &str, width: u16) -> String {
 }
 
 fn header_view(frame: &mut Frame, area: Rect, app: &App) {
-    let agent = if app.screen == Screen::Conversation && app.mode == Mode::Demo {
-        app.selected_agent.and_then(|index| DEMOS.get(index))
+    let agent = if app.screen == Screen::Conversation {
+        app.selected_agent.and_then(|index| {
+            if app.mode == Mode::Demo {
+                DEMOS.get(index).map(|agent| agent.name)
+            } else {
+                app.delegations.get(index).map(|agent| agent.name.as_str())
+            }
+        })
     } else {
         None
     };
-    let title_width = agent.map_or(0, |agent| agent.name.width() as u16);
+    let title_width = agent.map_or(0, |name| name.width() as u16);
+    let directory = app
+        .cwd
+        .as_ref()
+        .and_then(|path| path.file_name())
+        .and_then(|name| name.to_str())
+        .unwrap_or("openagents");
+    let branch = app.branch.as_deref().unwrap_or("main");
+    let mode = if app.mode == Mode::Live {
+        "live · "
+    } else {
+        ""
+    };
     let context_width = area
         .width
         .saturating_sub(if agent.is_some() { title_width + 2 } else { 0 })
-        .min(if app.mode == Mode::Live { 24 } else { 17 });
+        .min((mode.width() + directory.width() + 3 + branch.width()) as u16);
     let context = Rect {
         x: area.right().saturating_sub(context_width),
         width: context_width,
         ..area
     };
-    let mut context_spans = Vec::new();
-    if app.mode == Mode::Live {
-        context_spans.push(span("live · ", t::ACCENT_MODEL));
-    }
-    context_spans.extend([
+    let prefix_width = (mode.width() + 3 + branch.width()) as u16;
+    let context_spans = vec![
+        span(mode, t::ACCENT_MODEL),
         span(
-            truncate(
-                "openagents",
-                context_width.saturating_sub(if app.mode == Mode::Live { 14 } else { 7 }),
-            ),
+            truncate(directory, context_width.saturating_sub(prefix_width)),
             t::PATH,
         ),
-        span(" / main", t::GRAY),
-    ]);
+        span(format!(" / {branch}"), t::GRAY),
+    ];
     frame.render_widget(
         Paragraph::new(Line::from(context_spans)).right_aligned(),
         context,
@@ -281,7 +359,7 @@ fn header_view(frame: &mut Frame, area: Rect, app: &App) {
     if let Some(agent) = agent {
         frame.render_widget(
             Paragraph::new(Span::styled(
-                agent.name,
+                agent.to_owned(),
                 Style::default()
                     .fg(t::ACCENT_MODEL)
                     .add_modifier(Modifier::BOLD),
@@ -346,6 +424,10 @@ fn wrap_display(lines: Vec<Line<'static>>, width: u16) -> Vec<Line<'static>> {
 }
 
 fn conversation(frame: &mut Frame, area: Rect, app: &mut App) {
+    if app.mode == Mode::Live {
+        live_conversation(frame, area, app);
+        return;
+    }
     let mut lines = if app.mode == Mode::Live {
         live_lines(app, area.width)
     } else if let Some(agent) = app.selected_agent.and_then(|index| DEMOS.get(index)) {
@@ -430,60 +512,220 @@ fn conversation(frame: &mut Frame, area: Rect, app: &mut App) {
     frame.render_widget(paragraph.scroll((app.scroll, 0)), area);
 }
 
-fn live_lines(app: &App, width: u16) -> Vec<Line<'static>> {
+fn entry_lines(entry: &crate::live::Entry, width: u16, phase: u8) -> Vec<Line<'static>> {
     let mut lines = Vec::new();
-    for entry in &app.live.entries {
-        match entry {
-            crate::live::Entry::User(text) => {
-                lines.extend(prompt(text, width));
-            }
-            crate::live::Entry::Assistant { text, model } => {
-                reply_lines(&mut lines, text, model.as_deref(), width);
-            }
-            crate::live::Entry::Tool {
-                name,
-                input,
-                output,
-                running,
-            } => {
-                let glyph = if *running {
-                    crate::tools::spinner(app.animation_frame)
-                } else if output.get("error").is_some() {
-                    "×"
-                } else {
-                    "◆"
-                };
-                let summary = if input.is_null() {
-                    String::new()
-                } else {
-                    format!(" · {input}")
-                };
-                lines.push(Line::from(vec![
-                    span(format!(" {glyph} "), t::ACCENT_SKILL),
-                    Span::styled(
-                        "Plugin",
-                        Style::default()
-                            .fg(t::ACCENT_SKILL)
-                            .add_modifier(Modifier::BOLD),
+    match entry {
+        crate::live::Entry::User(text) => {
+            lines.extend(prompt(text, width));
+        }
+        crate::live::Entry::Assistant { text, model } => {
+            reply_lines(&mut lines, text, model.as_deref(), width);
+        }
+        crate::live::Entry::Tool {
+            name,
+            input,
+            output,
+            running,
+        } => {
+            let glyph = if *running {
+                crate::tools::spinner(phase)
+            } else if output.get("error").is_some() {
+                "×"
+            } else {
+                "◆"
+            };
+            let native = matches!(name.as_str(), "Run" | "Read" | "Edit" | "Search");
+            let label = if native { name.as_str() } else { "Plugin" };
+            lines.push(Line::from(vec![
+                span(format!(" {glyph} "), t::ACCENT_SKILL),
+                Span::styled(
+                    label.to_owned(),
+                    Style::default()
+                        .fg(t::ACCENT_SKILL)
+                        .add_modifier(Modifier::BOLD),
+                ),
+                span(
+                    truncate(
+                        &if native {
+                            String::new()
+                        } else {
+                            format!(" {name}")
+                        },
+                        width.saturating_sub(9),
                     ),
-                    span(
-                        truncate(&format!(" {name}{summary}"), width.saturating_sub(9)),
-                        t::TEXT_PRIMARY,
-                    ),
-                ]));
-                let result = if *running {
-                    "Running".to_owned()
-                } else {
-                    output.to_string()
-                };
+                    t::TEXT_PRIMARY,
+                ),
+            ]));
+            lines.extend(crate::tools::parameter_lines(input, width));
+            if *running {
                 lines.push(Line::from(vec![
                     span("   ╰ ", t::GRAY_DIM),
-                    span(truncate(&result, width.saturating_sub(5)), t::GRAY_BRIGHT),
+                    span("Running", t::GRAY_BRIGHT),
                 ]));
+            } else {
+                lines.extend(crate::tools::parameter_lines(output, width));
             }
         }
-        lines.push(Line::default());
+        crate::live::Entry::Delegation {
+            name,
+            task,
+            running,
+            output,
+            ..
+        } => {
+            lines.push(Line::from(vec![
+                span(
+                    format!(
+                        " {} ",
+                        if *running {
+                            crate::tools::spinner(phase)
+                        } else if output.get("error").is_some() {
+                            "×"
+                        } else {
+                            "◆"
+                        }
+                    ),
+                    t::ACCENT_DELEGATE,
+                ),
+                Span::styled(
+                    "Delegate",
+                    Style::default()
+                        .fg(t::ACCENT_MODEL)
+                        .add_modifier(Modifier::BOLD),
+                ),
+                span(format!(" {name}"), t::TEXT_PRIMARY),
+            ]));
+            let status = if *running {
+                "Running"
+            } else if output.get("error").is_some() {
+                "Failed"
+            } else {
+                "Done"
+            };
+            let detail = format!("{} · {status}", truncate(task, width.saturating_sub(17)));
+            lines.push(Line::from(vec![
+                span("   ╰ ", t::GRAY_DIM),
+                span(detail, t::GRAY_BRIGHT),
+            ]));
+        }
     }
+    lines.push(Line::default());
+    lines
+}
+
+#[derive(Default)]
+pub struct TranscriptCache {
+    width: u16,
+    entries: Vec<CachedEntry>,
+    partial: Option<CachedEntry>,
+    pub builds: usize,
+}
+
+struct CachedEntry {
+    entry: crate::live::Entry,
+    lines: Vec<Line<'static>>,
+}
+
+impl TranscriptCache {
+    fn refresh(&mut self, chat: &crate::live::Chat, width: u16, phase: u8) {
+        if self.width != width {
+            self.entries.clear();
+            self.partial = None;
+            self.width = width;
+        }
+        self.entries.truncate(chat.entries.len());
+        for (index, entry) in chat.entries.iter().enumerate() {
+            if self
+                .entries
+                .get(index)
+                .is_none_or(|cached| cached.entry != *entry)
+            {
+                let cached = CachedEntry {
+                    entry: entry.clone(),
+                    lines: entry_lines(entry, width, phase),
+                };
+                if index < self.entries.len() {
+                    self.entries[index] = cached;
+                } else {
+                    self.entries.push(cached);
+                }
+                self.builds += 1;
+            } else if matches!(
+                entry,
+                crate::live::Entry::Tool { running: true, .. }
+                    | crate::live::Entry::Delegation { running: true, .. }
+            ) {
+                self.entries[index].lines = entry_lines(entry, width, phase);
+            }
+        }
+        if chat.partial.is_empty() {
+            self.partial = None;
+        } else {
+            let entry = crate::live::Entry::Assistant {
+                text: chat.partial.clone(),
+                model: chat.partial_model.clone(),
+            };
+            if self
+                .partial
+                .as_ref()
+                .is_none_or(|cached| cached.entry != entry)
+            {
+                self.partial = Some(CachedEntry {
+                    lines: entry_lines(&entry, width, phase),
+                    entry,
+                });
+                self.builds += 1;
+            }
+        }
+    }
+
+    fn blocks(&self) -> impl Iterator<Item = &CachedEntry> {
+        self.entries.iter().chain(self.partial.iter())
+    }
+
+    fn count(&self) -> usize {
+        self.blocks().map(|cached| cached.lines.len()).sum()
+    }
+
+    fn visible(
+        &self,
+        tail: &[Line<'static>],
+        mut offset: usize,
+        height: usize,
+    ) -> Vec<Line<'static>> {
+        let mut rows = Vec::with_capacity(height);
+        for block in self
+            .blocks()
+            .map(|cached| cached.lines.as_slice())
+            .chain(std::iter::once(tail))
+        {
+            if offset >= block.len() {
+                offset -= block.len();
+                continue;
+            }
+            rows.extend(
+                block
+                    .iter()
+                    .skip(offset)
+                    .take(height.saturating_sub(rows.len()))
+                    .cloned(),
+            );
+            offset = 0;
+            if rows.len() >= height {
+                break;
+            }
+        }
+        rows
+    }
+}
+
+fn live_lines(app: &App, width: u16) -> Vec<Line<'static>> {
+    let mut lines = app
+        .live
+        .entries
+        .iter()
+        .flat_map(|entry| entry_lines(entry, width, app.animation_frame))
+        .collect::<Vec<_>>();
     if !app.live.partial.is_empty() {
         reply_lines(
             &mut lines,
@@ -491,38 +733,58 @@ fn live_lines(app: &App, width: u16) -> Vec<Line<'static>> {
             app.live.partial_model.as_deref(),
             width,
         );
-        lines.push(Line::default());
-    }
-    if app.live.busy {
-        lines.extend(wrap_display(
-            vec![Line::from(vec![
-                span(
-                    format!("{} ", crate::tools::spinner(app.animation_frame)),
-                    t::ACCENT_MODEL,
-                ),
-                span(
-                    if app.plugins.enabled && app.plugins.key_configured {
-                        "OpenRouter is replying…"
-                    } else {
-                        "Microcoder is working…"
-                    },
-                    t::GRAY,
-                ),
-            ])],
-            width,
-        ));
-    }
-    if let Some(notice) = &app.live.notice {
-        lines.extend(wrap_display(
-            notice
-                .lines()
-                .map(|line| Line::from(span(line, t::DIFF_DELETE_FG)))
-                .collect(),
-            width,
-        ));
-        lines.push(Line::default());
     }
     lines
+}
+
+fn live_conversation(frame: &mut Frame, area: Rect, app: &mut App) {
+    let phase = app.animation_frame;
+    let notice = app.notice.clone();
+    let provider = if app.plugins.enabled && app.plugins.key_configured {
+        "OpenRouter is replying…"
+    } else {
+        "Coder is working…"
+    };
+    let chat = app
+        .selected_agent
+        .and_then(|index| app.delegations.get_mut(index))
+        .map_or(&mut app.live, |agent| &mut agent.chat);
+    let mut cache = std::mem::take(&mut chat.cache);
+    cache.refresh(chat, area.width, phase);
+    let mut tail = Vec::new();
+    if chat.busy {
+        tail.extend(wrap_display(
+            vec![Line::from(vec![
+                span(
+                    format!("{} ", crate::tools::spinner(phase)),
+                    t::ACCENT_MODEL,
+                ),
+                span(provider, t::GRAY),
+            ])],
+            area.width,
+        ));
+    }
+    for (message, color) in [
+        (chat.notice.as_ref(), t::DIFF_DELETE_FG),
+        (notice.as_ref(), t::GRAY_BRIGHT),
+    ] {
+        if let Some(message) = message {
+            tail.extend(
+                message_body(message, area.width)
+                    .into_iter()
+                    .map(|line| line.style(Style::default().fg(color))),
+            );
+            tail.push(Line::default());
+        }
+    }
+    let count = cache.count() + tail.len();
+    let max_scroll = count
+        .saturating_sub(usize::from(area.height))
+        .min(usize::from(u16::MAX)) as u16;
+    app.scroll = app.scroll.min(max_scroll);
+    let visible = cache.visible(&tail, usize::from(app.scroll), usize::from(area.height));
+    frame.render_widget(Paragraph::new(visible), area);
+    chat.cache = cache;
 }
 
 fn reply_lines(lines: &mut Vec<Line<'static>>, text: &str, model: Option<&str>, width: u16) {
@@ -530,6 +792,23 @@ fn reply_lines(lines: &mut Vec<Line<'static>>, text: &str, model: Option<&str>, 
         lines.push(Line::from(span(truncate(model, width), t::GRAY)).right_aligned());
     }
     lines.extend(message_body(text, width));
+}
+
+fn composer_rail_text(text: &str, width: u16) -> String {
+    if text.width() <= usize::from(width) {
+        return text.to_owned();
+    }
+    if text == "OpenRouter connected" && width >= 12 {
+        return "OpenRouter ✓".into();
+    }
+    if let Some((model, options)) = text.split_once(':') {
+        let suffix = format!(":{options}");
+        let suffix_width = suffix.width();
+        if suffix_width < usize::from(width) {
+            return format!("{}{}", truncate(model, width - suffix_width as u16), suffix);
+        }
+    }
+    truncate(text, width)
 }
 
 fn composer_view(
@@ -540,6 +819,7 @@ fn composer_view(
     main_selected: bool,
     cursor_visible: bool,
     plugins: &crate::plugins::Plugins,
+    fallback_model: Option<&str>,
 ) {
     let block = Block::default()
         .borders(Borders::TOP | Borders::BOTTOM)
@@ -547,12 +827,20 @@ fn composer_view(
         .style(Style::default().bg(t::BG_BASE));
     let inner = block.inner(area);
     frame.render_widget(block, area);
-    for contribution in plugins.composer_rails() {
+    let contributions = if let Some(model) = fallback_model {
+        crate::plugin_definition::resolve_composer_rails(
+            &[crate::plugin_definition::FALLBACK_PROVIDER],
+            |_, _| Some(model),
+        )
+    } else {
+        plugins.composer_rails()
+    };
+    for contribution in contributions {
         let offset = match contribution.slot {
             RailSlot::ComposerTopRight => 0,
             RailSlot::ComposerBottomRight => area.height.saturating_sub(1),
         };
-        let text = truncate(&contribution.text, area.width.saturating_sub(6));
+        let text = composer_rail_text(&contribution.text, area.width.saturating_sub(6));
         coder_terminal::rail(
             area,
             frame.buffer_mut(),

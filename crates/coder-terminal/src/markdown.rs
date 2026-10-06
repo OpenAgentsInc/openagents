@@ -223,7 +223,7 @@ pub struct Rendered {
 /// code block is one line per source line.
 pub fn render(source: &str) -> Vec<Rendered> {
     let mut lines = Vec::new();
-    blocks_lines(&parse(source), "", 0, &mut lines);
+    blocks_lines(&parse(source), "", 0, None, &mut lines);
     lines
 }
 
@@ -250,11 +250,13 @@ pub fn code_blocks(source: &str) -> Vec<String> {
 }
 
 /// Renders physical rows, preserving inline marks and hanging list indentation.
-/// Code and wide table rows wrap so a scrollable transcript keeps all their text.
+/// Code wraps by row; tables wrap within each cell before their borders are drawn.
 pub fn wrapped(source: &str, width: usize) -> Vec<Rendered> {
     let width = width.max(1);
     let mut rows = Vec::new();
-    for rendered in render(source) {
+    let mut lines = Vec::new();
+    blocks_lines(&parse(source), "", 0, Some(width), &mut lines);
+    for rendered in lines {
         let hang = rendered.hang.min(width.saturating_sub(1));
         for (index, range) in wrap_rows(&rendered.marked.text, width.saturating_sub(hang))
             .into_iter()
@@ -278,7 +280,13 @@ pub fn wrapped(source: &str, width: usize) -> Vec<Rendered> {
     rows
 }
 
-fn blocks_lines(blocks: &[Block], prefix: &str, hang: usize, out: &mut Vec<Rendered>) {
+fn blocks_lines(
+    blocks: &[Block],
+    prefix: &str,
+    hang: usize,
+    viewport: Option<usize>,
+    out: &mut Vec<Rendered>,
+) {
     for (index, block) in blocks.iter().enumerate() {
         if index > 0 {
             // Inside a quote the bar runs through the blank row, as
@@ -292,11 +300,17 @@ fn blocks_lines(blocks: &[Block], prefix: &str, hang: usize, out: &mut Vec<Rende
                 code: false,
             });
         }
-        block_lines(block, prefix, hang, out);
+        block_lines(block, prefix, hang, viewport, out);
     }
 }
 
-fn block_lines(block: &Block, prefix: &str, hang: usize, out: &mut Vec<Rendered>) {
+fn block_lines(
+    block: &Block,
+    prefix: &str,
+    hang: usize,
+    viewport: Option<usize>,
+    out: &mut Vec<Rendered>,
+) {
     match block {
         Block::Paragraph(inlines) => {
             out.push(marked_line(inlines, prefix, hang, Intensity::ThreeQuarters));
@@ -355,7 +369,7 @@ fn block_lines(block: &Block, prefix: &str, hang: usize, out: &mut Vec<Rendered>
             }
         }
         Block::Quote(blocks) => {
-            blocks_lines(blocks, &format!("{prefix}│ "), hang + 2, out);
+            blocks_lines(blocks, &format!("{prefix}│ "), hang + 2, viewport, out);
         }
         Block::List { start, items } => {
             for (index, item) in items.iter().enumerate() {
@@ -365,10 +379,12 @@ fn block_lines(block: &Block, prefix: &str, hang: usize, out: &mut Vec<Rendered>
                     (Some(first), None) => format!("{}. ", first + index as u64),
                     (None, None) => "• ".to_string(),
                 };
-                item_lines(item, &marker, prefix, hang, out);
+                item_lines(item, &marker, prefix, hang, viewport, out);
             }
         }
-        Block::Table { header, rows, .. } => table_lines(header, rows, prefix, hang, out),
+        Block::Table { header, rows, .. } => {
+            table_lines(header, rows, prefix, hang, viewport, out);
+        }
         Block::Rule => out.push(Rendered {
             marked: {
                 let mut marked = Marked::default();
@@ -414,18 +430,20 @@ fn highlighted(language: &str, body: &str, start: usize, open: bool) -> Option<V
     })
 }
 
-/// A table boxed as grok-build boxes one (`xai-grok-markdown` `parse.rs`,
-/// `format_border_line` and `format_styled_content_lines`): borders in the
-/// muted rule style, one cell of padding, the header bold, a divider under
-/// the header and between body rows. Columns take their natural widths.
+/// Boxes a table with grok-build's muted borders and bold header. With a
+/// viewport, column widths share its budget and each marked cell wraps before
+/// physical rows are assembled. A narrow viewport uses labeled cells instead.
 fn table_lines(
     header: &[Vec<Inline>],
     rows: &[Vec<Vec<Inline>>],
     prefix: &str,
     hang: usize,
+    viewport: Option<usize>,
     out: &mut Vec<Rendered>,
 ) {
+    use unicode_segmentation::UnicodeSegmentation;
     use unicode_width::UnicodeWidthStr;
+
     let columns = std::iter::once(header.len())
         .chain(rows.iter().map(Vec::len))
         .max()
@@ -434,11 +452,47 @@ fn table_lines(
         return;
     }
     let mut widths = vec![0usize; columns];
+    let mut word_widths = vec![0usize; columns];
+    let mut floors = vec![0usize; columns];
     for row in std::iter::once(header).chain(rows.iter().map(Vec::as_slice)) {
         for (index, cell) in row.iter().enumerate() {
-            widths[index] = widths[index].max(text_of(cell).width());
+            let text = text_of(cell);
+            widths[index] = widths[index].max(text.split('\n').map(str::width).max().unwrap_or(0));
+            word_widths[index] =
+                word_widths[index].max(text.split_whitespace().map(str::width).max().unwrap_or(0));
+            floors[index] = floors[index].max(
+                text.graphemes(true)
+                    .filter(|text| *text != "\n")
+                    .map(|text| text.width().max(1))
+                    .max()
+                    .unwrap_or(0),
+            );
+            word_widths[index] = word_widths[index].max(floors[index]);
+            widths[index] = widths[index].max(word_widths[index]);
         }
     }
+    if let Some(viewport) = viewport {
+        let overhead = columns.saturating_mul(3).saturating_add(1);
+        let available = viewport.saturating_sub(prefix.width());
+        let budget = available.saturating_sub(overhead);
+        if available < overhead || floors.iter().sum::<usize>() > budget {
+            stacked_table(header, rows, prefix, viewport, out);
+            return;
+        }
+        if widths.iter().sum::<usize>() > budget {
+            // Preserve whole words when they fit, otherwise grow from the
+            // widest grapheme in each column toward its word width.
+            let (base, target) = if word_widths.iter().sum::<usize>() <= budget {
+                (word_widths, widths)
+            } else {
+                (floors, word_widths)
+            };
+            widths = table_widths(base, &target, budget);
+        }
+    }
+    // These are already physical table rows. A list's hanging indent must
+    // not reduce their width again in the outer wrapping pass.
+    let hang = if viewport.is_some() { 0 } else { hang };
     let border = |left: char, mid: char, right: char| {
         let mut line = String::new();
         line.push(left);
@@ -459,40 +513,54 @@ fn table_lines(
             code: false,
         }
     };
-    let row_line = |cells: &[Vec<Inline>], bold: bool| {
-        let mut marked = Marked::default();
-        push_prefix(&mut marked, prefix);
-        marked.push("│", &BORDER);
-        for (index, width) in widths.iter().enumerate() {
-            let cell = cells.get(index).map(Vec::as_slice).unwrap_or(&[]);
-            marked.push(" ", &Marks::default());
-            for inline in cell {
-                let marks = Marks {
-                    bold: inline.marks.bold || bold,
-                    ..inline.marks.clone()
-                };
-                marked.push(&inline.text, &marks);
-            }
-            let pad = width.saturating_sub(text_of(cell).width()) + 1;
-            marked.push(&" ".repeat(pad), &Marks::default());
-            marked.push("│", &BORDER);
-        }
-        Rendered {
-            marked,
-            intensity: if bold {
-                Intensity::Full
-            } else {
-                Intensity::ThreeQuarters
-            },
-            hang,
-            code: false,
-        }
+    let row_lines = |cells: &[Vec<Inline>], bold: bool| {
+        let wrapped: Vec<Vec<Marked>> = widths
+            .iter()
+            .enumerate()
+            .map(|(index, width)| {
+                let cell = cells.get(index).map(Vec::as_slice).unwrap_or(&[]);
+                wrap_marked(&cell_marked(cell, bold), *width)
+            })
+            .collect();
+        let height = wrapped.iter().map(Vec::len).max().unwrap_or(1);
+        (0..height)
+            .map(|line| {
+                let mut marked = Marked::default();
+                push_prefix(&mut marked, prefix);
+                marked.push("│", &BORDER);
+                for (index, width) in widths.iter().enumerate() {
+                    marked.push(" ", &Marks::default());
+                    let mut used = 0;
+                    if let Some(cell) = wrapped[index].get(line) {
+                        for (text, marks) in cell.runs_in(0..cell.text.len()) {
+                            marked.push(&text, &marks);
+                        }
+                        used = cell.text.width();
+                    }
+                    marked.push(
+                        &" ".repeat(width.saturating_sub(used) + 1),
+                        &Marks::default(),
+                    );
+                    marked.push("│", &BORDER);
+                }
+                Rendered {
+                    marked,
+                    intensity: if bold {
+                        Intensity::Full
+                    } else {
+                        Intensity::ThreeQuarters
+                    },
+                    hang,
+                    code: false,
+                }
+            })
+            .collect::<Vec<_>>()
     };
     out.push(border('┌', '┬', '┐'));
-    out.push(row_line(header, true));
+    out.extend(row_lines(header, true));
     out.push(border('├', '┼', '┤'));
     for (index, row) in rows.iter().enumerate() {
-        out.push(row_line(row, false));
+        out.extend(row_lines(row, false));
         if index + 1 < rows.len() {
             out.push(border('├', '┼', '┤'));
         }
@@ -500,9 +568,137 @@ fn table_lines(
     out.push(border('└', '┴', '┘'));
 }
 
+/// Shares spare cells in proportion to each column's unmet width.
+fn table_widths(mut widths: Vec<usize>, targets: &[usize], budget: usize) -> Vec<usize> {
+    let extra = budget.saturating_sub(widths.iter().sum());
+    let wants: Vec<_> = targets
+        .iter()
+        .zip(&widths)
+        .map(|(target, base)| target.saturating_sub(*base))
+        .collect();
+    let total: usize = wants.iter().sum();
+    if total == 0 {
+        return widths;
+    }
+    for (width, want) in widths.iter_mut().zip(&wants) {
+        *width += ((*want as u128 * extra as u128) / total as u128) as usize;
+    }
+    let mut remaining = budget.saturating_sub(widths.iter().sum());
+    let mut indices: Vec<_> = (0..widths.len()).collect();
+    indices.sort_by_key(|&index| std::cmp::Reverse(targets[index].saturating_sub(widths[index])));
+    for index in indices {
+        if remaining == 0 {
+            break;
+        }
+        if widths[index] < targets[index] {
+            widths[index] += 1;
+            remaining -= 1;
+        }
+    }
+    widths
+}
+
+fn cell_marked(inlines: &[Inline], bold: bool) -> Marked {
+    let mut marked = Marked::default();
+    for inline in inlines {
+        marked.push(
+            &inline.text,
+            &Marks {
+                bold: bold || inline.marks.bold,
+                ..inline.marks.clone()
+            },
+        );
+    }
+    marked
+}
+
+fn wrap_marked(marked: &Marked, width: usize) -> Vec<Marked> {
+    wrap_rows(&marked.text, width)
+        .into_iter()
+        .map(|range| {
+            let mut row = Marked::default();
+            for (text, marks) in marked.runs_in(range) {
+                row.push(&text, &marks);
+            }
+            row
+        })
+        .collect()
+}
+
+/// Retains all cells when borders and grapheme floors cannot fit together.
+fn stacked_table(
+    header: &[Vec<Inline>],
+    rows: &[Vec<Vec<Inline>>],
+    prefix: &str,
+    viewport: usize,
+    out: &mut Vec<Rendered>,
+) {
+    use unicode_width::UnicodeWidthStr;
+    let width = viewport.saturating_sub(prefix.width()).max(1);
+    for (row_index, cells) in rows.iter().enumerate() {
+        if row_index > 0 {
+            out.push(Rendered {
+                marked: Marked::default(),
+                intensity: Intensity::Half,
+                hang: 0,
+                code: false,
+            });
+        }
+        for index in 0..header.len().max(cells.len()) {
+            let mut cell = cell_marked(header.get(index).map(Vec::as_slice).unwrap_or(&[]), true);
+            if !cell.text.is_empty() {
+                cell.push(": ", &MUTED);
+            }
+            for (text, marks) in
+                cell_marked(cells.get(index).map(Vec::as_slice).unwrap_or(&[]), false)
+                    .runs_in(0..usize::MAX)
+            {
+                cell.push(&text, &marks);
+            }
+            for row in wrap_marked(&cell, width) {
+                let mut marked = Marked::default();
+                push_prefix(&mut marked, prefix);
+                for (text, marks) in row.runs_in(0..row.text.len()) {
+                    marked.push(&text, &marks);
+                }
+                out.push(Rendered {
+                    marked,
+                    intensity: Intensity::ThreeQuarters,
+                    hang: 0,
+                    code: false,
+                });
+            }
+        }
+    }
+    if rows.is_empty() {
+        for cell in header {
+            for row in wrap_marked(&cell_marked(cell, true), width) {
+                let mut marked = Marked::default();
+                push_prefix(&mut marked, prefix);
+                for (text, marks) in row.runs_in(0..row.text.len()) {
+                    marked.push(&text, &marks);
+                }
+                out.push(Rendered {
+                    marked,
+                    intensity: Intensity::Full,
+                    hang: 0,
+                    code: false,
+                });
+            }
+        }
+    }
+}
+
 /// A list item's blocks: the marker leads the first line, padding the
 /// rest, and the item's wraps hang under the marker.
-fn item_lines(item: &Item, marker: &str, prefix: &str, hang: usize, out: &mut Vec<Rendered>) {
+fn item_lines(
+    item: &Item,
+    marker: &str,
+    prefix: &str,
+    hang: usize,
+    viewport: Option<usize>,
+    out: &mut Vec<Rendered>,
+) {
     let width = marker.chars().count();
     for (index, block) in item.blocks.iter().enumerate() {
         // A nested list sits right under its item's text, as grok-build
@@ -520,7 +716,13 @@ fn item_lines(item: &Item, marker: &str, prefix: &str, hang: usize, out: &mut Ve
         } else {
             " ".repeat(width)
         };
-        block_lines(block, &format!("{prefix}{lead}"), hang + width, out);
+        block_lines(
+            block,
+            &format!("{prefix}{lead}"),
+            hang + width,
+            viewport,
+            out,
+        );
     }
 }
 
@@ -983,7 +1185,11 @@ fn inlines(cursor: &mut Cursor<'_>, until: Option<TagEnd>) -> Vec<Inline> {
                 cursor.advance();
             }
             Event::Html(text) | Event::InlineHtml(text) => {
-                push(&mut runs, text, marks);
+                let cell_break = matches!(until, Some(TagEnd::TableCell))
+                    && ["<br>", "<br/>", "<br />"]
+                        .iter()
+                        .any(|tag| text.eq_ignore_ascii_case(tag));
+                push(&mut runs, if cell_break { "\n" } else { text }, marks);
                 cursor.advance();
             }
             Event::InlineMath(text) | Event::DisplayMath(text) => {
@@ -1316,6 +1522,132 @@ mod tests {
         assert!(bold(&table[1], "Name") && bold(&table[3], "Ready"));
         assert!(!bold(&table[3], "Parser"));
         assert!(table[0].marked.runs.iter().all(|(_, marks)| marks.muted));
+    }
+
+    #[test]
+    fn table_cells_wrap_inside_shared_borders_and_keep_marks() {
+        use unicode_width::UnicodeWidthStr;
+        let source = "| Aspect | Details |\n| --- | --- |\n| **Purpose** | Text around `microcoder_long_token` and [a link](https://example.com). |\n| Result | More text so both rows need independent cell wrapping. |";
+        for width in [18, 35, 70, 110] {
+            let lines = wrapped(source, width);
+            assert!(lines.iter().all(|line| line.marked.text.width() <= width));
+            let boundaries = |text: &str| {
+                let mut column = 0;
+                text.chars()
+                    .filter_map(|ch| {
+                        let at = column;
+                        column += ch.to_string().width();
+                        matches!(
+                            ch,
+                            '┌' | '┬' | '┐' | '├' | '┼' | '┤' | '└' | '┴' | '┘' | '│'
+                        )
+                        .then_some(at)
+                    })
+                    .collect::<Vec<_>>()
+            };
+            let wanted = boundaries(&lines[0].marked.text);
+            assert_eq!(wanted.len(), 3);
+            assert!(
+                lines
+                    .iter()
+                    .all(|line| boundaries(&line.marked.text) == wanted)
+            );
+            let code: String = lines
+                .iter()
+                .flat_map(|line| {
+                    line.marked
+                        .runs_in(0..line.marked.text.len())
+                        .into_iter()
+                        .filter(|(_, marks)| marks.code)
+                        .map(|(text, _)| text)
+                })
+                .collect();
+            assert_eq!(code, "microcoder_long_token");
+            let linked: String = lines
+                .iter()
+                .flat_map(|line| {
+                    line.marked
+                        .runs_in(0..line.marked.text.len())
+                        .into_iter()
+                        .filter(|(_, marks)| marks.link.is_some())
+                        .map(|(text, _)| text)
+                })
+                .collect();
+            assert_eq!(linked.replace(' ', ""), "alink");
+            let bold: String = lines
+                .iter()
+                .flat_map(|line| {
+                    line.marked
+                        .runs_in(0..line.marked.text.len())
+                        .into_iter()
+                        .filter(|(_, marks)| marks.bold)
+                        .map(|(text, _)| text)
+                })
+                .collect();
+            assert!(bold.contains("Purpose"));
+        }
+    }
+
+    #[test]
+    fn table_breaks_are_physical_rows_and_code_keeps_literal_html() {
+        let table = wrapped(
+            "| Name | Value |\n| --- | --- |\n| Breaks | first<br>second<br/>third<br />fourth<BR>fifth |\n| Code | `<br>` and <b>raw</b> |",
+            60,
+        );
+        for word in ["first", "second", "third", "fourth", "fifth"] {
+            assert_eq!(
+                table
+                    .iter()
+                    .filter(|line| line.marked.text.contains(word))
+                    .count(),
+                1
+            );
+        }
+        assert!(!table.iter().any(|line| line.marked.text.contains("<BR>")));
+        assert!(
+            table
+                .iter()
+                .any(|line| line.marked.text.contains("<b>raw</b>"))
+        );
+        assert!(
+            table
+                .iter()
+                .flat_map(|line| line.marked.runs_in(0..line.marked.text.len()))
+                .any(|(text, marks)| text == "<br>" && marks.code)
+        );
+        assert_eq!(texts(&render("outside<br>text")), ["outside<br>text"]);
+    }
+
+    #[test]
+    fn nested_tables_use_their_remaining_width_and_narrow_tables_keep_content() {
+        use unicode_width::UnicodeWidthStr;
+        let nested = wrapped(
+            "> - Table:\n>\n>   | Key | Value |\n>   | --- | --- |\n>   | 日本 | long words in the value |",
+            26,
+        );
+        assert!(nested.iter().all(|line| line.marked.text.width() <= 26));
+        let top = nested
+            .iter()
+            .find(|line| line.marked.text.contains('┌'))
+            .unwrap();
+        assert!(top.marked.text.starts_with("│   ┌"));
+        let widest = top.marked.text.width();
+        assert!(
+            nested
+                .iter()
+                .filter(|line| line.marked.text.contains('│') && line.marked.text.contains("│ "))
+                .any(|line| line.marked.text.width() == widest)
+        );
+
+        let source = "| A | B | C |\n| --- | --- | --- |\n| 日本語 | 👩‍💻 | tail |";
+        for width in 1..14 {
+            let lines = wrapped(source, width);
+            let text: String = lines.iter().map(|line| line.marked.text.as_str()).collect();
+            assert!(text.contains("日本語"), "width {width}");
+            assert!(text.contains("👩‍💻"), "width {width}");
+            assert!(text.contains("tail"), "width {width}");
+            assert!(!text.contains('┌'), "width {width}");
+        }
     }
 
     #[test]

@@ -69,6 +69,41 @@ app's; otherwise the command keeps its own under `~/.openagents/chat/`, and
 the router's typed metadata, and `--run-coder` accepts a Coder offer through
 the host. The full guide is [chat.md](chat.md).
 
+## Coder (`openagents coder`)
+
+`openagents coder` exposes the Coder terminal's chat runtime, plugin settings,
+model selection, and discovered ACP agents. Settings use the same private store
+under `~/.openagents/coder-new`; `--state DIR` selects another store, and `--in DIR`
+selects a working directory. Chat and delegation stream NDJSON with `--json`.
+
+```sh
+openagents coder status --json
+openagents coder chat -p "Review the parser" --session parser-review --json
+openagents coder models set openai/gpt-6-luna:low
+openagents coder plugins enable microcoder
+openagents coder agents list --json
+openagents coder delegate microcoder --task "Add a parser regression test" --json
+openagents coder sessions read parser-review --json
+openagents coder export parser-review --output parser-review.atif.json
+openagents coder import parser-review.atif.json --session imported-review
+```
+
+Repeat `chat --session ID` to continue a chat. Add `--delegation ID` to continue
+one child while preserving the parent and other children. `chat --demo` runs
+without a model request. `models list` includes the built-in OpenAgents gateway
+and models supplied by enabled plugins.
+
+`plugins configure openrouter-byok --stdin` and `plugins configure jev --stdin`
+accept a JSON object with `api_key`, `model`, `endpoint` (Jev only), and `enabled`.
+Use `api_key: null` to remove a saved key. Keys can also come from the terminal's
+supported environment variables and `.env` file. Commands never print a saved
+key. Run `openagents coder --help` for each command's syntax.
+
+Retained chats are ATIF-v1.8 documents under the store's `sessions` directory.
+Import and export run no tools. The terminal's `/export [path]` writes the selected
+chat, including child trajectories when exporting the main chat, to a private
+local file. Without a path, it writes under `~/.openagents/exports`.
+
 ## Local capability settings (`openagents settings`)
 
 `openagents settings show|get|set|unset` edits `~/.openagents/settings.json`,

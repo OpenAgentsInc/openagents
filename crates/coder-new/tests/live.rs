@@ -126,7 +126,7 @@ fn transcript(app: &App) -> Vec<(&str, &str)> {
         .filter_map(|entry| match entry {
             Entry::User(text) => Some(("user", text.as_str())),
             Entry::Assistant { text, .. } => Some(("assistant", text.as_str())),
-            Entry::Tool { .. } => None,
+            Entry::Tool { .. } | Entry::Delegation { .. } => None,
         })
         .collect()
 }
@@ -146,16 +146,22 @@ fn slash_picker_completes_and_executes_commands_without_submitting_messages() {
     paste(&mut app, "/");
     assert_eq!(
         app.slash_hints(),
-        [Command::Demo, Command::Plugins, Command::Help]
+        [
+            Command::Demo,
+            Command::Plugins,
+            Command::Export,
+            Command::Help
+        ]
     );
     key(&mut app, KeyCode::Up);
     assert_eq!(app.slash_selected, 0);
     for _ in 0..4 {
         key(&mut app, KeyCode::Down);
     }
-    assert_eq!(app.slash_selected, 2);
+    assert_eq!(app.slash_selected, 3);
     assert_eq!(app.selected_agent, None);
     assert!(render(&mut app, 80, 24).contains("❯ /help"));
+    key(&mut app, KeyCode::Up);
     key(&mut app, KeyCode::Up);
     key(&mut app, KeyCode::Tab);
     assert_eq!(app.draft.text, "/plugins");
@@ -204,30 +210,22 @@ fn slash_picker_completes_and_executes_commands_without_submitting_messages() {
 }
 
 #[test]
-fn live_chat_preserves_the_draft_until_enabled_with_a_saved_key() {
+fn live_chat_uses_the_no_setup_fallback_or_an_enabled_saved_key() {
+    let mut fallback = App::default();
+    fallback.set_mode(Mode::Live);
+    fallback.plugins.bundled.microcoder = false;
+    paste(&mut fallback, "live question");
+    key(&mut fallback, KeyCode::Enter);
+    let request = fallback.request.take().unwrap();
+    assert!(request.key.expose().is_empty());
+    assert!(matches!(request.kind, Work::Microcoder { .. }));
+    assert!(fallback.live.busy);
+    assert!(fallback.draft.text.is_empty());
+    assert_eq!(transcript(&fallback), [("user", "live question")]);
+    fallback.cancel_request();
+
     let mut app = App::default();
     app.set_mode(Mode::Live);
-    app.plugins.bundled.microcoder = false;
-    assert!(app.live.entries.is_empty());
-    assert!(!render(&mut app, 80, 24).contains("Delegate claude-code"));
-    paste(&mut app, "live question");
-    key(&mut app, KeyCode::Left);
-    let draft = (app.draft.text.clone(), app.draft.cursor);
-    key(&mut app, KeyCode::Enter);
-    assert_eq!((app.draft.text.clone(), app.draft.cursor), draft);
-    assert!(app.live.notice.as_deref().unwrap().contains("Turn on"));
-    assert!(app.request.is_none());
-    assert!(app.live.entries.is_empty());
-
-    key(&mut app, KeyCode::F(2));
-    key(&mut app, KeyCode::Char(' '));
-    key(&mut app, KeyCode::Esc);
-    key(&mut app, KeyCode::Enter);
-    assert_eq!((app.draft.text.clone(), app.draft.cursor), draft);
-    assert!(app.live.notice.as_deref().unwrap().contains("API key"));
-    assert!(app.request.is_none());
-    assert!(app.live.entries.is_empty());
-
     save_key(&mut app, KEY_INPUT, "");
     assert!(app.plugins.key_configured);
     assert!(app.plugins.field(true).0.is_empty());
@@ -240,6 +238,7 @@ fn live_chat_preserves_the_draft_until_enabled_with_a_saved_key() {
     assert_eq!(app.plugins.status(), "Verified");
     assert!(app.request.is_none());
     key(&mut app, KeyCode::Esc);
+    paste(&mut app, "live question");
     key(&mut app, KeyCode::Enter);
     let request = app.request.take().unwrap();
     assert_eq!(request.key.expose(), KEY_INPUT);
@@ -587,7 +586,7 @@ fn completed_replies_keep_their_served_model_without_a_requested_model_fallback(
         .iter()
         .filter_map(|entry| match entry {
             Entry::Assistant { model, .. } => Some(model.as_deref()),
-            Entry::User(_) | Entry::Tool { .. } => None,
+            Entry::User(_) | Entry::Tool { .. } | Entry::Delegation { .. } => None,
         })
         .collect();
     assert_eq!(models, [Some("provider/served-model:free"), None]);

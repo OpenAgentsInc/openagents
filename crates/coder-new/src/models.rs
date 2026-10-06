@@ -25,6 +25,18 @@ pub struct GenerationOptions {
 }
 
 impl GenerationOptions {
+    pub fn slug(&self, model: &str) -> String {
+        let mut slug = model.to_owned();
+        if let Some(reasoning) = &self.reasoning {
+            slug.push(':');
+            slug.push_str(reasoning);
+        }
+        if let Some(tokens) = self.max_tokens {
+            slug.push_str(&format!(":max-tokens={tokens}"));
+        }
+        slug
+    }
+
     pub fn valid(&self) -> bool {
         self.reasoning.as_deref().is_none_or(|effort| {
             matches!(

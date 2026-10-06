@@ -178,7 +178,7 @@ fn composer_rules(rendered: &str) -> Vec<(usize, &str)> {
     rendered
         .lines()
         .enumerate()
-        .filter(|(_, line)| !line.trim().is_empty() && line.trim().chars().all(|ch| ch == '─'))
+        .filter(|(_, line)| line.starts_with('─') && line.ends_with('─'))
         .collect()
 }
 

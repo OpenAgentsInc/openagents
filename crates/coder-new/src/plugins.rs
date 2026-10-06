@@ -125,13 +125,33 @@ pub enum Connection {
 
 impl Plugins {
     pub fn composer_rails(&self) -> Vec<ResolvedRail> {
+        let model = if self.options.reasoning.is_some() {
+            self.options.slug(&self.model)
+        } else {
+            let mut options = self.options.clone();
+            options.reasoning = Some("default".into());
+            options.slug(&self.model)
+        };
+        let status = if !self.key_configured {
+            "OpenRouter · no key"
+        } else {
+            match self.connection {
+                Connection::Verified => "OpenRouter connected",
+                Connection::Checking => "OpenRouter checking",
+                Connection::Unchecked => "OpenRouter ready",
+                Connection::Failed(_) => "OpenRouter connection error",
+            }
+        };
         resolve_composer_rails(DEFINITIONS, |definition, binding| {
             if !self.enabled || definition.id != OPENROUTER_PLUGIN {
                 return None;
             }
             match (definition.model_provider, binding) {
                 (Some(ModelProviderBinding::OpenRouter), RailBinding::SelectedModel) => {
-                    Some(self.model.as_str())
+                    Some(model.as_str())
+                }
+                (Some(ModelProviderBinding::OpenRouter), RailBinding::ConnectionStatus) => {
+                    Some(status)
                 }
                 _ => None,
             }
@@ -566,13 +586,22 @@ mod rail_tests {
         assert!(!plugins.key_configured);
         assert_eq!(
             plugins.composer_rails(),
-            vec![ResolvedRail {
-                slot: RailSlot::ComposerTopRight,
-                text: DEFAULT_MODEL.into(),
-            }]
+            vec![
+                ResolvedRail {
+                    slot: RailSlot::ComposerTopRight,
+                    text: format!("{DEFAULT_MODEL}:default"),
+                },
+                ResolvedRail {
+                    slot: RailSlot::ComposerBottomRight,
+                    text: "OpenRouter · no key".into(),
+                }
+            ]
         );
         assert!(plugins.set_model(&openrouter_catalog()[1], GenerationOptions::default()));
-        assert_eq!(plugins.composer_rails()[0].text, "openai/gpt-6-luna");
+        assert_eq!(
+            plugins.composer_rails()[0].text,
+            "openai/gpt-6-luna:default"
+        );
         assert!(plugins.toggle_enabled());
         assert!(plugins.composer_rails().is_empty());
     }
@@ -585,14 +614,20 @@ mod rail_tests {
         plugins.set_live(true);
         assert!(plugins.composer_rails().is_empty());
         plugins.toggle_enabled();
-        assert_eq!(plugins.composer_rails()[0].text, DEFAULT_MODEL);
+        assert_eq!(
+            plugins.composer_rails()[0].text,
+            format!("{DEFAULT_MODEL}:default")
+        );
         plugins.set_live(false);
         assert_eq!(
             plugins.composer_rails()[0].text,
-            "anthropic/claude-fable-5.1"
+            "anthropic/claude-fable-5.1:default"
         );
         plugins.set_live(true);
-        assert_eq!(plugins.composer_rails()[0].text, DEFAULT_MODEL);
+        assert_eq!(
+            plugins.composer_rails()[0].text,
+            format!("{DEFAULT_MODEL}:default")
+        );
     }
 
     #[test]

@@ -3873,6 +3873,803 @@
       ]
     },
     {
+      "name": "coder",
+      "summary": "Coder chat, models, plugins, ACP agents, sessions, and ATIF exports.",
+      "children": [
+        {
+          "name": "status",
+          "leaf": {
+            "path": [
+              "coder",
+              "status"
+            ],
+            "usage": [
+              "status"
+            ],
+            "forms": [
+              {
+                "tokens": [
+                  {
+                    "kind": "literal",
+                    "word": "status"
+                  }
+                ]
+              }
+            ],
+            "summary": "Provider, model, plugins, and working directory.",
+            "effect": "read_only",
+            "runs_on": "connected_computer"
+          }
+        },
+        {
+          "name": "chat",
+          "leaf": {
+            "path": [
+              "coder",
+              "chat"
+            ],
+            "usage": [
+              "chat [-p TEXT | --prompt-file FILE | --stdin] [--session ID] [--delegation ID] [--demo]"
+            ],
+            "forms": [
+              {
+                "tokens": [
+                  {
+                    "kind": "literal",
+                    "word": "chat"
+                  },
+                  {
+                    "kind": "positional",
+                    "name": "-p",
+                    "optional": true
+                  },
+                  {
+                    "kind": "positional",
+                    "name": "TEXT",
+                    "optional": true
+                  },
+                  {
+                    "kind": "option",
+                    "name": "prompt-file",
+                    "value": "FILE",
+                    "open": true,
+                    "optional": true
+                  },
+                  {
+                    "kind": "option",
+                    "name": "stdin",
+                    "optional": true
+                  },
+                  {
+                    "kind": "option",
+                    "name": "session",
+                    "value": "ID",
+                    "open": true,
+                    "optional": true
+                  },
+                  {
+                    "kind": "option",
+                    "name": "delegation",
+                    "value": "ID",
+                    "open": true,
+                    "optional": true
+                  },
+                  {
+                    "kind": "option",
+                    "name": "demo",
+                    "optional": true
+                  }
+                ]
+              }
+            ],
+            "summary": "Run the same chat and tools as the terminal.",
+            "effect": "long_running",
+            "runs_on": "connected_computer"
+          }
+        },
+        {
+          "name": "delegate",
+          "leaf": {
+            "path": [
+              "coder",
+              "delegate"
+            ],
+            "usage": [
+              "delegate AGENT --task TEXT [--session ID]"
+            ],
+            "forms": [
+              {
+                "tokens": [
+                  {
+                    "kind": "literal",
+                    "word": "delegate"
+                  },
+                  {
+                    "kind": "positional",
+                    "name": "AGENT"
+                  },
+                  {
+                    "kind": "option",
+                    "name": "task",
+                    "value": "TEXT",
+                    "open": true
+                  },
+                  {
+                    "kind": "option",
+                    "name": "session",
+                    "value": "ID",
+                    "open": true,
+                    "optional": true
+                  }
+                ]
+              }
+            ],
+            "summary": "Run Microcoder or an enabled ACP subagent.",
+            "effect": "long_running",
+            "runs_on": "connected_computer"
+          }
+        },
+        {
+          "name": "plugins",
+          "children": [
+            {
+              "name": "list",
+              "leaf": {
+                "path": [
+                  "coder",
+                  "plugins",
+                  "list"
+                ],
+                "usage": [
+                  "plugins list"
+                ],
+                "forms": [
+                  {
+                    "tokens": [
+                      {
+                        "kind": "literal",
+                        "word": "plugins"
+                      },
+                      {
+                        "kind": "literal",
+                        "word": "list"
+                      }
+                    ]
+                  }
+                ],
+                "summary": "List registered plugins and their status.",
+                "effect": "read_only",
+                "runs_on": "connected_computer"
+              }
+            },
+            {
+              "name": "enable",
+              "leaf": {
+                "path": [
+                  "coder",
+                  "plugins",
+                  "enable"
+                ],
+                "usage": [
+                  "plugins enable ID"
+                ],
+                "forms": [
+                  {
+                    "tokens": [
+                      {
+                        "kind": "literal",
+                        "word": "plugins"
+                      },
+                      {
+                        "kind": "literal",
+                        "word": "enable"
+                      },
+                      {
+                        "kind": "positional",
+                        "name": "ID"
+                      }
+                    ]
+                  }
+                ],
+                "summary": "Turn a registered plugin on.",
+                "effect": "local_write",
+                "runs_on": "connected_computer"
+              }
+            },
+            {
+              "name": "disable",
+              "leaf": {
+                "path": [
+                  "coder",
+                  "plugins",
+                  "disable"
+                ],
+                "usage": [
+                  "plugins disable ID"
+                ],
+                "forms": [
+                  {
+                    "tokens": [
+                      {
+                        "kind": "literal",
+                        "word": "plugins"
+                      },
+                      {
+                        "kind": "literal",
+                        "word": "disable"
+                      },
+                      {
+                        "kind": "positional",
+                        "name": "ID"
+                      }
+                    ]
+                  }
+                ],
+                "summary": "Turn a registered plugin off.",
+                "effect": "local_write",
+                "runs_on": "connected_computer"
+              }
+            },
+            {
+              "name": "configure",
+              "leaf": {
+                "path": [
+                  "coder",
+                  "plugins",
+                  "configure"
+                ],
+                "usage": [
+                  "plugins configure ID --stdin"
+                ],
+                "forms": [
+                  {
+                    "tokens": [
+                      {
+                        "kind": "literal",
+                        "word": "plugins"
+                      },
+                      {
+                        "kind": "literal",
+                        "word": "configure"
+                      },
+                      {
+                        "kind": "positional",
+                        "name": "ID"
+                      },
+                      {
+                        "kind": "option",
+                        "name": "stdin"
+                      }
+                    ]
+                  }
+                ],
+                "summary": "Configure OpenRouter or Jev with a JSON object: api_key, model, endpoint, enabled. An api_key of null removes the saved key.",
+                "effect": "local_write",
+                "runs_on": "connected_computer"
+              }
+            },
+            {
+              "name": "check",
+              "leaf": {
+                "path": [
+                  "coder",
+                  "plugins",
+                  "check"
+                ],
+                "usage": [
+                  "plugins check ID"
+                ],
+                "forms": [
+                  {
+                    "tokens": [
+                      {
+                        "kind": "literal",
+                        "word": "plugins"
+                      },
+                      {
+                        "kind": "literal",
+                        "word": "check"
+                      },
+                      {
+                        "kind": "positional",
+                        "name": "ID"
+                      }
+                    ]
+                  }
+                ],
+                "summary": "Check the configured API connection.",
+                "effect": "read_only",
+                "runs_on": "connected_computer"
+              }
+            }
+          ]
+        },
+        {
+          "name": "models",
+          "children": [
+            {
+              "name": "list",
+              "leaf": {
+                "path": [
+                  "coder",
+                  "models",
+                  "list"
+                ],
+                "usage": [
+                  "models list"
+                ],
+                "forms": [
+                  {
+                    "tokens": [
+                      {
+                        "kind": "literal",
+                        "word": "models"
+                      },
+                      {
+                        "kind": "literal",
+                        "word": "list"
+                      }
+                    ]
+                  }
+                ],
+                "summary": "Read the curated model catalog.",
+                "effect": "read_only",
+                "runs_on": "connected_computer"
+              }
+            },
+            {
+              "name": "set",
+              "leaf": {
+                "path": [
+                  "coder",
+                  "models",
+                  "set"
+                ],
+                "usage": [
+                  "models set SLUG [--reasoning EFFORT] [--max-tokens N]"
+                ],
+                "forms": [
+                  {
+                    "tokens": [
+                      {
+                        "kind": "literal",
+                        "word": "models"
+                      },
+                      {
+                        "kind": "literal",
+                        "word": "set"
+                      },
+                      {
+                        "kind": "positional",
+                        "name": "SLUG"
+                      },
+                      {
+                        "kind": "option",
+                        "name": "reasoning",
+                        "value": "EFFORT",
+                        "open": true,
+                        "optional": true
+                      },
+                      {
+                        "kind": "option",
+                        "name": "max-tokens",
+                        "value": "N",
+                        "open": true,
+                        "optional": true
+                      }
+                    ]
+                  }
+                ],
+                "summary": "Choose model and generation settings.",
+                "effect": "local_write",
+                "runs_on": "connected_computer"
+              }
+            }
+          ]
+        },
+        {
+          "name": "agents",
+          "children": [
+            {
+              "name": "list",
+              "leaf": {
+                "path": [
+                  "coder",
+                  "agents",
+                  "list"
+                ],
+                "usage": [
+                  "agents list"
+                ],
+                "forms": [
+                  {
+                    "tokens": [
+                      {
+                        "kind": "literal",
+                        "word": "agents"
+                      },
+                      {
+                        "kind": "literal",
+                        "word": "list"
+                      }
+                    ]
+                  }
+                ],
+                "summary": "Read discovered ACP agent choices.",
+                "effect": "read_only",
+                "runs_on": "connected_computer"
+              }
+            },
+            {
+              "name": "enable",
+              "leaf": {
+                "path": [
+                  "coder",
+                  "agents",
+                  "enable"
+                ],
+                "usage": [
+                  "agents enable ID"
+                ],
+                "forms": [
+                  {
+                    "tokens": [
+                      {
+                        "kind": "literal",
+                        "word": "agents"
+                      },
+                      {
+                        "kind": "literal",
+                        "word": "enable"
+                      },
+                      {
+                        "kind": "positional",
+                        "name": "ID"
+                      }
+                    ]
+                  }
+                ],
+                "summary": "Enable a discovered ACP agent.",
+                "effect": "local_write",
+                "runs_on": "connected_computer"
+              }
+            },
+            {
+              "name": "disable",
+              "leaf": {
+                "path": [
+                  "coder",
+                  "agents",
+                  "disable"
+                ],
+                "usage": [
+                  "agents disable ID"
+                ],
+                "forms": [
+                  {
+                    "tokens": [
+                      {
+                        "kind": "literal",
+                        "word": "agents"
+                      },
+                      {
+                        "kind": "literal",
+                        "word": "disable"
+                      },
+                      {
+                        "kind": "positional",
+                        "name": "ID"
+                      }
+                    ]
+                  }
+                ],
+                "summary": "Disable a discovered ACP agent.",
+                "effect": "local_write",
+                "runs_on": "connected_computer"
+              }
+            },
+            {
+              "name": "refresh",
+              "leaf": {
+                "path": [
+                  "coder",
+                  "agents",
+                  "refresh"
+                ],
+                "usage": [
+                  "agents refresh"
+                ],
+                "forms": [
+                  {
+                    "tokens": [
+                      {
+                        "kind": "literal",
+                        "word": "agents"
+                      },
+                      {
+                        "kind": "literal",
+                        "word": "refresh"
+                      }
+                    ]
+                  }
+                ],
+                "summary": "Discover installed ACP agents again.",
+                "effect": "read_only",
+                "runs_on": "connected_computer"
+              }
+            }
+          ]
+        },
+        {
+          "name": "sessions",
+          "children": [
+            {
+              "name": "list",
+              "leaf": {
+                "path": [
+                  "coder",
+                  "sessions",
+                  "list"
+                ],
+                "usage": [
+                  "sessions list"
+                ],
+                "forms": [
+                  {
+                    "tokens": [
+                      {
+                        "kind": "literal",
+                        "word": "sessions"
+                      },
+                      {
+                        "kind": "literal",
+                        "word": "list"
+                      }
+                    ]
+                  }
+                ],
+                "summary": "List retained local chats.",
+                "effect": "read_only",
+                "runs_on": "connected_computer"
+              }
+            },
+            {
+              "name": "read",
+              "leaf": {
+                "path": [
+                  "coder",
+                  "sessions",
+                  "read"
+                ],
+                "usage": [
+                  "sessions read ID"
+                ],
+                "forms": [
+                  {
+                    "tokens": [
+                      {
+                        "kind": "literal",
+                        "word": "sessions"
+                      },
+                      {
+                        "kind": "literal",
+                        "word": "read"
+                      },
+                      {
+                        "kind": "positional",
+                        "name": "ID"
+                      }
+                    ]
+                  }
+                ],
+                "summary": "Read one retained ATIF trajectory.",
+                "effect": "read_only",
+                "runs_on": "connected_computer"
+              }
+            },
+            {
+              "name": "delete",
+              "leaf": {
+                "path": [
+                  "coder",
+                  "sessions",
+                  "delete"
+                ],
+                "usage": [
+                  "sessions delete ID"
+                ],
+                "forms": [
+                  {
+                    "tokens": [
+                      {
+                        "kind": "literal",
+                        "word": "sessions"
+                      },
+                      {
+                        "kind": "literal",
+                        "word": "delete"
+                      },
+                      {
+                        "kind": "positional",
+                        "name": "ID"
+                      }
+                    ]
+                  }
+                ],
+                "summary": "Remove one retained chat.",
+                "effect": "local_write",
+                "runs_on": "connected_computer"
+              }
+            }
+          ]
+        },
+        {
+          "name": "export",
+          "leaf": {
+            "path": [
+              "coder",
+              "export"
+            ],
+            "usage": [
+              "export ID [--output FILE]"
+            ],
+            "forms": [
+              {
+                "tokens": [
+                  {
+                    "kind": "literal",
+                    "word": "export"
+                  },
+                  {
+                    "kind": "positional",
+                    "name": "ID"
+                  },
+                  {
+                    "kind": "option",
+                    "name": "output",
+                    "value": "FILE",
+                    "open": true,
+                    "optional": true
+                  }
+                ]
+              }
+            ],
+            "summary": "Export a retained chat as ATIF-v1.8.",
+            "effect": "local_write",
+            "runs_on": "connected_computer"
+          }
+        },
+        {
+          "name": "import",
+          "leaf": {
+            "path": [
+              "coder",
+              "import"
+            ],
+            "usage": [
+              "import FILE [--session ID]"
+            ],
+            "forms": [
+              {
+                "tokens": [
+                  {
+                    "kind": "literal",
+                    "word": "import"
+                  },
+                  {
+                    "kind": "positional",
+                    "name": "FILE"
+                  },
+                  {
+                    "kind": "option",
+                    "name": "session",
+                    "value": "ID",
+                    "open": true,
+                    "optional": true
+                  }
+                ]
+              }
+            ],
+            "summary": "Retain ATIF for viewing or continuing.",
+            "effect": "local_write",
+            "runs_on": "connected_computer"
+          }
+        }
+      ],
+      "options": [
+        {
+          "kind": "option",
+          "name": "prompt-file",
+          "value": "FILE",
+          "open": true,
+          "optional": true,
+          "repeated": true
+        },
+        {
+          "kind": "option",
+          "name": "stdin",
+          "optional": true,
+          "repeated": true
+        },
+        {
+          "kind": "option",
+          "name": "session",
+          "value": "ID",
+          "open": true,
+          "optional": true,
+          "repeated": true
+        },
+        {
+          "kind": "option",
+          "name": "delegation",
+          "value": "ID",
+          "open": true,
+          "optional": true,
+          "repeated": true
+        },
+        {
+          "kind": "option",
+          "name": "demo",
+          "optional": true,
+          "repeated": true
+        },
+        {
+          "kind": "option",
+          "name": "task",
+          "value": "TEXT",
+          "open": true,
+          "optional": true,
+          "repeated": true
+        },
+        {
+          "kind": "option",
+          "name": "reasoning",
+          "value": "EFFORT",
+          "open": true,
+          "optional": true,
+          "repeated": true
+        },
+        {
+          "kind": "option",
+          "name": "max-tokens",
+          "value": "N",
+          "open": true,
+          "optional": true,
+          "repeated": true
+        },
+        {
+          "kind": "option",
+          "name": "output",
+          "value": "FILE",
+          "open": true,
+          "optional": true,
+          "repeated": true
+        },
+        {
+          "kind": "option",
+          "name": "json",
+          "optional": true,
+          "repeated": true
+        },
+        {
+          "kind": "option",
+          "name": "in",
+          "value": "DIR",
+          "open": true,
+          "optional": true,
+          "repeated": true
+        },
+        {
+          "kind": "option",
+          "name": "state",
+          "value": "DIR",
+          "open": true,
+          "optional": true,
+          "repeated": true
+        }
+      ]
+    },
+    {
       "name": "task",
       "summary": "Durable local task requests and explicit execution.",
       "children": [

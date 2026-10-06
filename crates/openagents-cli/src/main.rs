@@ -127,6 +127,7 @@ Chat:
                `openagents` on a terminal opens it.
 
 Coder:
+  coder        Coder chat, models, plugins, ACP agents, sessions, and ATIF exports.
   task         Durable local task requests and explicit execution.
   issue        Claim, release, and pick up GitHub issues: the claim record
                every agent and Coder share.
@@ -273,6 +274,7 @@ fn main() -> ExitCode {
     };
     let rest = rest.to_vec();
     let code = match command.as_str() {
+        "coder" => coder_new::programmatic::run(&rest, json),
         "help" | "--help" | "-h" => {
             println!("{USAGE}");
             0

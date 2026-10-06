@@ -13,11 +13,13 @@ pub mod plugin_definition;
 pub mod plugin_store;
 pub mod plugin_tools;
 pub mod plugins;
+pub mod programmatic;
 pub mod provider;
 pub mod slash;
 pub mod snapshot;
 pub mod theme;
 pub mod tools;
+pub mod trajectory;
 pub mod ui;
 
 use crossterm::event::{Event, KeyCode, KeyEventKind, KeyModifiers, MouseEventKind};
@@ -52,6 +54,9 @@ pub struct App {
     pub elapsed_seconds: u64,
     pub plugins: plugins::Plugins,
     pub live: live::Chat,
+    pub delegations: Vec<live::Delegation>,
+    pub cwd: Option<std::path::PathBuf>,
+    pub branch: Option<String>,
     pub request: Option<live::Request>,
     pub request_id: u64,
     pub checking_key: bool,
@@ -60,6 +65,10 @@ pub struct App {
     pub slash_hidden: bool,
     pub notice: Option<String>,
     pub model_picker: Option<models::Picker>,
+    pub(crate) active_options: models::GenerationOptions,
+    active_delegation: Option<String>,
+    main_draft: Draft,
+    main_scroll: u16,
     other_draft: Draft,
     return_screen: Screen,
     saved_chats: [Chat; 5],
@@ -73,6 +82,114 @@ struct Chat {
 }
 
 impl App {
+    fn scroll_main_to_end(&mut self) {
+        if self.selected_agent.is_none() {
+            self.scroll = u16::MAX;
+        } else {
+            self.main_scroll = u16::MAX;
+        }
+    }
+    fn apply_delegation(
+        &mut self,
+        id: String,
+        name: String,
+        task: String,
+        event: bundled_runtime::RuntimeEvent,
+    ) {
+        let index = self
+            .delegations
+            .iter()
+            .position(|child| child.id == id)
+            .unwrap_or_else(|| {
+                self.live.entries.push(live::Entry::Delegation {
+                    id: id.clone(),
+                    name: name.clone(),
+                    task: task.clone(),
+                    running: true,
+                    output: serde_json::Value::Null,
+                });
+                self.delegations.push(live::Delegation {
+                    id: id.clone(),
+                    name: name.clone(),
+                    task: task.clone(),
+                    chat: live::Chat {
+                        entries: vec![live::Entry::User(task)],
+                        busy: true,
+                        ..live::Chat::default()
+                    },
+                    started_at: self.elapsed_seconds,
+                    elapsed_seconds: 0,
+                    running: true,
+                    draft: Draft::default(),
+                    scroll: u16::MAX,
+                });
+                self.delegations.len() - 1
+            });
+        let child = &mut self.delegations[index];
+        match event {
+            bundled_runtime::RuntimeEvent::Text(text) => child.chat.partial.push_str(&text),
+            bundled_runtime::RuntimeEvent::Model(model) => {
+                child.chat.partial_model = live::model_slug(&model)
+            }
+            bundled_runtime::RuntimeEvent::Tool {
+                name: tool,
+                input,
+                output,
+                running,
+            } if tool == "microcoder" || tool == "acp_subagent" => {
+                child.running = running;
+                child.chat.busy = running;
+                if !running {
+                    child.elapsed_seconds = self.elapsed_seconds.saturating_sub(child.started_at);
+                    child.chat.tokens = output
+                        .get("tokens")
+                        .and_then(serde_json::Value::as_u64)
+                        .or_else(|| {
+                            output
+                                .get("usage")
+                                .and_then(|usage| usage.get("total_tokens"))
+                                .and_then(serde_json::Value::as_u64)
+                        })
+                        .unwrap_or(0);
+                    if let Some(model) = output.get("model").and_then(serde_json::Value::as_str) {
+                        child.chat.partial_model = live::model_slug(model);
+                    }
+                    if child.chat.partial.is_empty() {
+                        if let Some(reply) = output.get("reply").and_then(serde_json::Value::as_str)
+                        {
+                            child.chat.partial = reply.into();
+                        }
+                    }
+                    child.chat.finish_partial();
+                    child
+                        .chat
+                        .stop_tools("The delegation ended before this tool returned.");
+                    child.chat.notice = output
+                        .get("error")
+                        .and_then(serde_json::Value::as_str)
+                        .map(str::to_owned);
+                }
+                if let Some(live::Entry::Delegation { running: state, output: result, .. }) = self.live.entries.iter_mut().find(|entry| matches!(entry, live::Entry::Delegation {id: previous,..} if previous == &id)) {
+                    *state = running;
+                    *result = output;
+                }
+                let _ = input;
+            }
+            bundled_runtime::RuntimeEvent::Tool {
+                name,
+                input,
+                output,
+                running,
+            } => child.chat.tool(name, input, output, running),
+            bundled_runtime::RuntimeEvent::Delegation { .. } => {}
+        }
+        if self.selected_agent == Some(index) {
+            self.scroll = u16::MAX;
+        } else {
+            child.scroll = u16::MAX;
+        }
+    }
+
     pub fn load_plugin_settings(&mut self, store: plugin_store::Store) -> Result<(), String> {
         let result = self.plugins.load_settings(store);
         if self.screen == Screen::PluginSettings {
@@ -86,6 +203,7 @@ impl App {
             return;
         }
         self.cancel_request();
+        self.select_agent(None);
         self.model_picker = None;
         std::mem::swap(&mut self.draft, &mut self.other_draft);
         self.plugins.set_live(mode == Mode::Live);
@@ -108,6 +226,7 @@ impl App {
     }
 
     pub fn cancel_request(&mut self) {
+        self.active_delegation = None;
         self.request_id = self.request_id.wrapping_add(1);
         self.request = None;
         self.checking_key = false;
@@ -142,6 +261,26 @@ impl App {
                     *output = serde_json::json!({"error":"Stopped by the user."});
                 }
             }
+            if let live::Entry::Delegation {
+                running, output, ..
+            } = entry
+            {
+                if *running {
+                    *running = false;
+                    *output = serde_json::json!({"error":"Stopped by the user."});
+                }
+            }
+        }
+        for delegation in &mut self.delegations {
+            if delegation.running {
+                delegation.running = false;
+                delegation.elapsed_seconds =
+                    self.elapsed_seconds.saturating_sub(delegation.started_at);
+                delegation.chat.busy = false;
+                delegation.chat.notice = Some("Stopped by the user.".into());
+                delegation.chat.finish_partial();
+                delegation.chat.stop_tools("Stopped by the user.");
+            }
         }
     }
 
@@ -173,6 +312,20 @@ impl App {
             return;
         }
         match update {
+            live::Update::Delegation {
+                delegation,
+                name,
+                task,
+                event,
+                ..
+            } if self.live.busy => {
+                let delegation = if self.active_delegation.as_deref() == Some(&delegation) {
+                    delegation
+                } else {
+                    format!("{}:{delegation}", self.request_id)
+                };
+                self.apply_delegation(delegation, name, task, event);
+            }
             live::Update::Checked { result, .. } => {
                 self.checking_key = false;
                 self.plugins.connection = match result {
@@ -204,17 +357,38 @@ impl App {
                 } else {
                     self.live.entries.push(live::Entry::Tool { name, input, output, running });
                 }
-                self.scroll = u16::MAX;
+                self.scroll_main_to_end();
             }
             live::Update::Delta { text, .. } if self.live.busy => {
                 self.live.partial.push_str(&text);
-                self.scroll = u16::MAX;
+                self.scroll_main_to_end();
             }
             live::Update::Model { model, .. } if self.live.busy => {
-                self.live.partial_model = live::model_slug(&model);
+                if model == "openagents/fallback" {
+                    self.active_options = models::GenerationOptions::default();
+                    return;
+                }
+                self.live.partial_model =
+                    live::model_slug(&model).map(|model| self.active_options.slug(&model));
             }
             live::Update::Finished { result, .. } if self.live.busy => {
                 self.live.busy = false;
+                if let Some(id) = self.active_delegation.take() {
+                    if let Some(child) = self.delegations.iter_mut().find(|child| child.id == id) {
+                        child.running = false;
+                        child.chat.busy = false;
+                        child.elapsed_seconds =
+                            self.elapsed_seconds.saturating_sub(child.started_at);
+                        if let Err(error) = result {
+                            child.chat.notice = Some(error);
+                        }
+                        child.chat.finish_partial();
+                        child
+                            .chat
+                            .stop_tools("The delegation ended before this tool returned.");
+                    }
+                    return;
+                }
                 for entry in &mut self.live.entries {
                     if let live::Entry::Tool {
                         running, output, ..
@@ -232,7 +406,8 @@ impl App {
                             self.live.tokens.saturating_add(reply.usage.total_tokens);
                         self.live.entries.push(live::Entry::Assistant {
                             text: reply.text,
-                            model: live::model_slug(&reply.model),
+                            model: live::model_slug(&reply.model)
+                                .map(|model| self.active_options.slug(&model)),
                         });
                         self.live.partial.clear();
                         self.live.partial_model = None;
@@ -255,7 +430,7 @@ impl App {
                         self.live.notice = Some(error);
                     }
                 }
-                self.scroll = u16::MAX;
+                self.scroll_main_to_end();
             }
             _ => {}
         }
@@ -270,30 +445,45 @@ impl App {
             slash::Command::Demo => self.set_mode(if self.mode == Mode::Demo { Mode::Live } else { Mode::Demo }),
             slash::Command::Plugins => self.open_plugins(),
             slash::Command::Models => self.open_models(),
-            slash::Command::Help => self.notice = Some("/demo  Toggle demo/live\n/plugins  Manage plugins\n/models  Choose a model for an enabled provider\n/help  Show commands\nTab  Complete a command\nEsc  Close suggestions or stop a reply\nCtrl+C  Quit".into()),
+            slash::Command::Export => self.export(None),
+            slash::Command::Help => self.notice = Some("/demo  Toggle demo/live\n/plugins  Manage plugins\n/models  Choose a model for an enabled provider\n/export [path]  Export the selected conversation as ATIF\n/help  Show commands\nTab  Complete a command\nEsc  Close suggestions or stop a reply\nCtrl+C  Quit".into()),
         }
     }
 
-    fn submit_live(&mut self) {
+    fn export(&mut self, path: Option<&std::path::Path>) {
+        let cwd = self.cwd.clone().unwrap_or_else(|| {
+            std::env::current_dir().unwrap_or_else(|_| std::path::PathBuf::from("."))
+        });
+        let root = model_access::store::openagents_dir();
+        self.notice = Some(
+            match trajectory::export_app(self, path, &cwd, root.as_deref()) {
+                Ok(path) => format!("Exported ATIF to {}.", path.display()),
+                Err(error) => error,
+            },
+        );
+        self.draft = Draft::default();
+    }
+
+    pub fn submit(&mut self, text: &str, cwd: &std::path::Path) {
+        self.cwd = Some(cwd.to_owned());
+        self.draft.text = text.into();
+        self.draft.cursor = text.len();
+        self.submit_live();
+    }
+
+    pub fn submit_live(&mut self) {
         if self.live.busy {
             self.live.notice = Some("Wait for the current reply or press Esc to stop it.".into());
+            return;
+        }
+        if let Some(index) = self.selected_agent {
+            self.submit_delegation(index);
             return;
         }
         let key = self
             .plugins
             .key_for_request()
             .filter(|_| self.plugins.enabled);
-        if key.is_none() && !self.plugins.bundled.microcoder {
-            self.live.notice = Some(
-                if self.plugins.enabled {
-                    "Add your OpenRouter API key or enable Microcoder in /plugins."
-                } else {
-                    "Turn on Microcoder or connect OpenRouter BYOK in /plugins."
-                }
-                .into(),
-            );
-            return;
-        }
         self.cancel_request();
         self.live
             .entries
@@ -303,11 +493,18 @@ impl App {
         self.live.partial.clear();
         self.live.partial_model = None;
         self.live.busy = true;
+        self.active_options = if key.is_some() {
+            self.plugins.options.clone()
+        } else {
+            models::GenerationOptions::default()
+        };
         self.screen = Screen::Conversation;
         self.scroll = u16::MAX;
-        let execution = self.plugins.execution_settings(
-            std::env::current_dir().unwrap_or_else(|_| std::path::PathBuf::from(".")),
-        );
+        let execution = self
+            .plugins
+            .execution_settings(self.cwd.clone().unwrap_or_else(|| {
+                std::env::current_dir().unwrap_or_else(|_| std::path::PathBuf::from("."))
+            }));
         let kind = if key.is_some() {
             live::Work::Chat {
                 model: self.plugins.model.clone(),
@@ -325,6 +522,75 @@ impl App {
             id: self.request_id,
             key: key.unwrap_or_else(|| model_access::ApiKey::new("")),
             kind,
+        });
+    }
+
+    fn submit_delegation(&mut self, index: usize) {
+        let Some(child) = self.delegations.get(index) else {
+            return;
+        };
+        let id = child.id.clone();
+        let name = child.name.clone();
+        let mut history = child.chat.messages();
+        let text = std::mem::take(&mut self.draft.text);
+        history.push(openrouter::Message::user(text.clone()));
+        let task = history
+            .into_iter()
+            .map(|message| format!("{}: {}", message.role, message.content))
+            .collect::<Vec<_>>()
+            .join("\n\n");
+        let execution = self
+            .plugins
+            .execution_settings(self.cwd.clone().unwrap_or_else(|| {
+                std::env::current_dir().unwrap_or_else(|_| std::path::PathBuf::from("."))
+            }));
+        let (tool, arguments) = if name == "microcoder" {
+            ("microcoder".to_owned(), serde_json::json!({"task":task}))
+        } else if let Some(agent) = execution
+            .agents
+            .iter()
+            .find(|agent| agent.name == name && agent.enabled)
+        {
+            (
+                "acp_subagent".to_owned(),
+                serde_json::json!({"agent":agent.id,"task":task}),
+            )
+        } else {
+            self.draft.text = text;
+            self.live.notice = Some(
+                "This delegated agent is unavailable or turned off. Enable it in /plugins.".into(),
+            );
+            return;
+        };
+        self.cancel_request();
+        self.active_delegation = Some(id.clone());
+        self.active_options = self.plugins.options.clone();
+        let child = &mut self.delegations[index];
+        child.chat.entries.push(live::Entry::User(text));
+        child.chat.notice = None;
+        child.chat.busy = true;
+        child.running = true;
+        child.started_at = self.elapsed_seconds;
+        self.live.busy = true;
+        self.draft.cursor = 0;
+        self.scroll = u16::MAX;
+        let key = self
+            .plugins
+            .key_for_request()
+            .filter(|_| self.plugins.enabled)
+            .unwrap_or_else(|| model_access::ApiKey::new(""));
+        self.request = Some(live::Request {
+            id: self.request_id,
+            key,
+            kind: live::Work::Delegate {
+                delegation: id,
+                name,
+                tool,
+                arguments,
+                execution,
+                model: self.plugins.model.clone(),
+                options: self.plugins.options.clone(),
+            },
         });
     }
 
@@ -405,6 +671,28 @@ impl App {
 
     fn select_agent(&mut self, selected: Option<usize>) {
         if self.selected_agent == selected {
+            return;
+        }
+        if self.mode == Mode::Live {
+            if selected.is_some_and(|index| index >= self.delegations.len()) {
+                return;
+            }
+            if let Some(previous) = self.selected_agent {
+                self.delegations[previous].draft = std::mem::take(&mut self.draft);
+                self.delegations[previous].scroll = self.scroll;
+            } else {
+                self.main_draft = std::mem::take(&mut self.draft);
+                self.main_scroll = self.scroll;
+            }
+            if let Some(next) = selected {
+                self.draft = std::mem::take(&mut self.delegations[next].draft);
+                self.scroll = self.delegations[next].scroll;
+            } else {
+                self.draft = std::mem::take(&mut self.main_draft);
+                self.scroll = self.main_scroll;
+            }
+            self.selected_agent = selected;
+            self.screen = Screen::Conversation;
             return;
         }
         let previous = self.selected_agent.map_or(0, |index| index + 1);
@@ -667,6 +955,12 @@ impl App {
                     )),
                     KeyCode::Up if self.mode == Mode::Demo => self
                         .select_agent(self.selected_agent.and_then(|index| index.checked_sub(1))),
+                    KeyCode::Down if !self.delegations.is_empty() => self.select_agent(Some(
+                        self.selected_agent
+                            .map_or(0, |index| (index + 1).min(self.delegations.len() - 1)),
+                    )),
+                    KeyCode::Up if self.mode == Mode::Live => self
+                        .select_agent(self.selected_agent.and_then(|index| index.checked_sub(1))),
                     KeyCode::Esc if self.mode == Mode::Live => {
                         self.cancel_request();
                         self.live
@@ -680,7 +974,17 @@ impl App {
                         self.draft.insert("\n");
                     }
                     KeyCode::Enter if !ctrl => {
-                        if let Some(command) = slash::parse(self.draft.text.trim()) {
+                        if let Some(path) = self
+                            .draft
+                            .text
+                            .trim()
+                            .strip_prefix("/export ")
+                            .map(str::trim)
+                            .filter(|path| !path.is_empty())
+                            .map(std::path::PathBuf::from)
+                        {
+                            self.export(Some(&path));
+                        } else if let Some(command) = slash::parse(self.draft.text.trim()) {
                             self.command(command);
                         } else if slash::is_command_word(self.draft.text.trim()) {
                             self.notice =

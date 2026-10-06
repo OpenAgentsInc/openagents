@@ -45,7 +45,7 @@ fn main() -> io::Result<()> {
             "--snapshot" => capture = true,
             "--help" | "-h" => {
                 println!(
-                    "Coder terminal\n\nUsage: coder [--live | --demo] [--plugins | --plugin-settings | --models] [--snapshot]\n\n--live             Use enabled providers and tools (default).\n--demo             Use local example conversations.\n--plugins          Start with plugin management.\n--plugin-settings  Start with OpenRouter settings.\n--models           Open the model picker for an enabled provider.\n--snapshot         Write a 110×36 SVG to stdout; defaults to demo.\n--version          Print the release version and build commit.\n\n/demo toggles live and demo. /models chooses a model and reasoning level. Type / for commands; Up/Down selects, Tab completes, Enter runs. F2 or /plugins opens plugins. Esc stops a reply. Ctrl+C quits."
+                    "Coder terminal\n\nUsage: coder [--live | --demo] [--plugins | --plugin-settings | --models] [--snapshot]\n\n--live             Use enabled providers and tools (default).\n--demo             Use local example conversations.\n--plugins          Start with plugin management.\n--plugin-settings  Start with OpenRouter settings.\n--models           Open the model picker for an enabled provider.\n--snapshot         Write a 110×36 SVG to stdout; defaults to demo.\n--version          Print the release version and build commit.\n\n/demo toggles live and demo. /models chooses a model and reasoning level. /export [path] writes ATIF. Type / for commands; Up/Down selects, Tab completes, Enter runs. F2 or /plugins opens plugins. Esc stops a reply. Ctrl+C quits."
                 );
                 return Ok(());
             }
@@ -99,8 +99,23 @@ fn main() -> io::Result<()> {
             std::env::var_os(name)
         }
     });
+    if let Ok(cwd) = std::env::current_dir() {
+        app.branch = std::process::Command::new("git")
+            .args(["branch", "--show-current"])
+            .current_dir(&cwd)
+            .output()
+            .ok()
+            .filter(|output| output.status.success())
+            .and_then(|output| String::from_utf8(output.stdout).ok())
+            .map(|branch| branch.trim().to_owned())
+            .filter(|branch| !branch.is_empty());
+        app.cwd = Some(cwd);
+    }
     if models {
         app.open_models();
+    }
+    if app.mode == Mode::Live && app.plugins.enabled && app.plugins.key_configured {
+        app.check_key();
     }
 
     let mut terminal = match ratatui::try_init() {
@@ -144,10 +159,18 @@ fn main() -> io::Result<()> {
                 terminal.hide_cursor()?;
             }
             execute!(io::stdout(), EndSynchronizedUpdate)?;
-            if event::poll(next_tick.saturating_duration_since(Instant::now()))?
-                && !app.handle(event::read()?)
-            {
-                break;
+            if event::poll(next_tick.saturating_duration_since(Instant::now()))? {
+                let mut keep_running = app.handle(event::read()?);
+                // Trackpads emit bursts; update the viewport once per drained batch.
+                for _ in 0..255 {
+                    if !keep_running || !event::poll(Duration::ZERO)? {
+                        break;
+                    }
+                    keep_running = app.handle(event::read()?);
+                }
+                if !keep_running {
+                    break;
+                }
             }
             if Instant::now() >= next_tick {
                 app.tick();

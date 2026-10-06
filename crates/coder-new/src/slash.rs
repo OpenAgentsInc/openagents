@@ -16,19 +16,21 @@ pub enum Command {
     Demo,
     Plugins,
     Models,
+    Export,
     Help,
 }
 
 /// Commands in the order shown by the picker.
-pub const ALL: [Command; 4] = [
+pub const ALL: [Command; 5] = [
     Command::Demo,
     Command::Plugins,
     Command::Models,
+    Command::Export,
     Command::Help,
 ];
 
 impl Command {
-    pub const ALL: [Self; 4] = ALL;
+    pub const ALL: [Self; 5] = ALL;
 
     /// The command word without its leading slash.
     pub const fn word(self) -> &'static str {
@@ -36,6 +38,7 @@ impl Command {
             Self::Demo => "demo",
             Self::Plugins => "plugins",
             Self::Models => "models",
+            Self::Export => "export",
             Self::Help => "help",
         }
     }
@@ -47,6 +50,7 @@ impl Command {
             Self::Demo => "Turn demo on",
             Self::Plugins => "Manage plugins",
             Self::Models => "Choose model and reasoning level",
+            Self::Export => "Export this conversation as ATIF",
             Self::Help => "Show commands and keys",
         }
     }

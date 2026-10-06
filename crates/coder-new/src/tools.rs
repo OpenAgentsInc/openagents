@@ -47,6 +47,71 @@ pub fn spinner(phase: u8) -> &'static str {
     FRAMES[usize::from(phase) % FRAMES.len()]
 }
 
+/// Display bounded parameter rows without letting serialized objects run off screen.
+pub fn parameter_lines(value: &serde_json::Value, width: u16) -> Vec<Line<'static>> {
+    use serde_json::Value;
+    fn fields(value: &Value, prefix: &str, depth: usize, result: &mut Vec<(String, String)>) {
+        match value {
+            Value::Object(object) if depth < 2 => {
+                for (key, value) in object {
+                    let key = if prefix.is_empty() {
+                        key.clone()
+                    } else {
+                        format!("{prefix}.{key}")
+                    };
+                    fields(value, &key, depth + 1, result);
+                }
+            }
+            Value::Null if prefix.is_empty() => {}
+            value => {
+                let text = match value {
+                    Value::String(text) => text.replace('\n', " ↵ "),
+                    _ => value.to_string(),
+                };
+                result.push((
+                    if prefix.is_empty() {
+                        "value".into()
+                    } else {
+                        prefix.into()
+                    },
+                    text,
+                ));
+            }
+        }
+    }
+    let mut values = Vec::new();
+    fields(value, "", 0, &mut values);
+    let omitted = values
+        .len()
+        .saturating_sub(if values.len() > 5 { 4 } else { 5 });
+    let mut rows = Vec::new();
+    for (key, value) in values.iter().take(if omitted > 0 { 4 } else { 5 }) {
+        let key = truncate(key, width.saturating_sub(8));
+        let available = width.saturating_sub(7 + key.width() as u16);
+        rows.push(
+            Line::from(vec![
+                styled("   │ ", t::GRAY_DIM),
+                styled(format!("{key}: "), t::MD_CODE),
+                styled(truncate(value, available), t::GRAY_BRIGHT),
+            ])
+            .style(Style::default().bg(t::BG_DARK)),
+        );
+    }
+    if omitted > 0 {
+        rows.push(
+            Line::from(vec![
+                styled("   │ ", t::GRAY_DIM),
+                styled(
+                    truncate(&format!("… {omitted} more fields"), width.saturating_sub(5)),
+                    t::GRAY,
+                ),
+            ])
+            .style(Style::default().bg(t::BG_DARK)),
+        );
+    }
+    rows
+}
+
 pub fn tool_lines(call: &ToolCall, phase: u8, width: u16) -> Vec<Line<'static>> {
     let (label, accent, input_color) = match call.kind {
         ToolKind::Read => ("Read", t::ACCENT_SKILL, t::PATH),

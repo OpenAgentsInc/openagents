@@ -3113,7 +3113,9 @@ name = "coder-new"
 version = "1.0.0-rc.3"
 dependencies = [
  "acp-client",
+ "atif",
  "code-highlight",
+ "coder",
  "coder-boundary",
  "coder-terminal",
  "coder-ui",
@@ -9802,6 +9804,7 @@ dependencies = [
  "coder-host",
  "coder-labor",
  "coder-link",
+ "coder-new",
  "coder-reach",
  "coder-service",
  "coder-ssh",

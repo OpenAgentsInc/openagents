@@ -19,6 +19,7 @@ pub enum RailSlot {
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum RailBinding {
     SelectedModel,
+    ConnectionStatus,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -59,13 +60,22 @@ pub const DEFINITIONS: &[PluginDefinition] = &[
         default_enabled: false,
         tools: &[],
         model_provider: Some(ModelProviderBinding::OpenRouter),
-        composer_rails: &[RailContribution {
-            id: "selected-model",
-            slot: RailSlot::ComposerTopRight,
-            binding: RailBinding::SelectedModel,
-            priority: 100,
-            max_cells: 64,
-        }],
+        composer_rails: &[
+            RailContribution {
+                id: "selected-model",
+                slot: RailSlot::ComposerTopRight,
+                binding: RailBinding::SelectedModel,
+                priority: 100,
+                max_cells: 64,
+            },
+            RailContribution {
+                id: "connection-status",
+                slot: RailSlot::ComposerBottomRight,
+                binding: RailBinding::ConnectionStatus,
+                priority: 100,
+                max_cells: 32,
+            },
+        ],
     },
     PluginDefinition {
         id: "microcoder",
@@ -104,6 +114,23 @@ pub const DEFINITIONS: &[PluginDefinition] = &[
         composer_rails: &[],
     },
 ];
+
+/// The built-in provider uses the same rail registration contract as provider plugins.
+pub const FALLBACK_PROVIDER: PluginDefinition = PluginDefinition {
+    id: "openagents-gateway",
+    name: "OpenAgents AI Gateway",
+    description: "The no-setup provider after local model logins.",
+    default_enabled: true,
+    tools: &[],
+    model_provider: None,
+    composer_rails: &[RailContribution {
+        id: "active-model",
+        slot: RailSlot::ComposerTopRight,
+        binding: RailBinding::SelectedModel,
+        priority: 10,
+        max_cells: 64,
+    }],
+};
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct ResolvedRail {

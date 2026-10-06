@@ -43,6 +43,28 @@ const TASK: &[Declared] = &[
     Declared::computer("restore", Effect::LocalWrite),
 ];
 
+const CODER: &[Declared] = &[
+    Declared::computer("status", Effect::ReadOnly),
+    Declared::computer("chat", Effect::LongRunning),
+    Declared::computer("delegate", Effect::LongRunning),
+    Declared::computer("plugins list", Effect::ReadOnly),
+    Declared::computer("plugins enable", Effect::LocalWrite),
+    Declared::computer("plugins disable", Effect::LocalWrite),
+    Declared::computer("plugins configure", Effect::LocalWrite),
+    Declared::computer("plugins check", Effect::ReadOnly),
+    Declared::computer("models list", Effect::ReadOnly),
+    Declared::computer("models set", Effect::LocalWrite),
+    Declared::computer("agents list", Effect::ReadOnly),
+    Declared::computer("agents enable", Effect::LocalWrite),
+    Declared::computer("agents disable", Effect::LocalWrite),
+    Declared::computer("agents refresh", Effect::ReadOnly),
+    Declared::computer("sessions list", Effect::ReadOnly),
+    Declared::computer("sessions read", Effect::ReadOnly),
+    Declared::computer("sessions delete", Effect::LocalWrite),
+    Declared::computer("export", Effect::LocalWrite),
+    Declared::computer("import", Effect::LocalWrite),
+];
+
 const PAIR: &[Declared] = &[Declared::screen("", Effect::Grants, "account.computers")];
 const DOCTOR: &[Declared] = &[Declared::computer("", Effect::ReadOnly)];
 const VERSION: &[Declared] = &[Declared::computer("", Effect::ReadOnly)];
@@ -139,6 +161,7 @@ pub fn help() -> Vec<GroupHelp<'static>> {
             Some(crate::screen::USAGE),
             crate::screen::EFFECTS,
         ),
+        group("coder", Some(coder_new::programmatic::USAGE), CODER),
         group("task", Some(coder::task::cli::USAGE), TASK),
         group("issue", Some(crate::issue::USAGE), crate::issue::EFFECTS),
         group(
