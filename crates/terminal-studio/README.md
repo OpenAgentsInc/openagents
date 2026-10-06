@@ -28,3 +28,6 @@ and exact operation. Direct console intents keep their existing path.
 Run the acceptance example with `--routed` to retain goal, decision, review,
 stale-review refusal, and merge receipts through the route adapter. Shell
 approval grants no Studio right; host policy still owns execution and spend.
+
+The [declared-route receipt](../../docs/verse/verification/2026-10-06-studio-route/README.md)
+retains the admitted route and binding beside the host result.

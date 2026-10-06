@@ -1,0 +1,1330 @@
+{
+  "schema": "openagents.workbench.studio-acceptance.v1",
+  "simulated": true,
+  "source_commit": "2816ea673709c00545f4a3e0c124cf8d61beb7e6",
+  "app": {
+    "component": "terminal-core shared sheet",
+    "capture_version": "0.1.0",
+    "capture_binary_sha256": "9c217f2681b4410aaa49adf79406ebbb61ba7d0694d608b99f1757e003ff508c",
+    "renderer": "none; semantic capture"
+  },
+  "host": {
+    "pubkey": "6bda36c6a00db2f6234de02bfb34ef8032313370b0fac192c8f7929057176fd8",
+    "implementation": "coder-host in-process scratch",
+    "protocol": "openagents.control.v1"
+  },
+  "declared_studio_routes": true,
+  "engine": "existing scripted studio engine; no model call",
+  "elapsed_ms": 914,
+  "limit": {
+    "scripted_passes": 32,
+    "socket_timeout_seconds": 10
+  },
+  "flow": {
+    "status": "passed",
+    "passes": 4,
+    "events": [
+      {
+        "declared_route": {
+          "schema": "openagents.route.studio.v1",
+          "request": "01c411e0f31fa6e540c54080fa077012c7907d6446079fd79aef523a8e8d25b5",
+          "snapshot": "sha256:d02c44f952457dc2129e76d58d32fd2f3ea57635bca9cbe2d346e9aa9320769d",
+          "binding": "sha256:8bd857361fbbaa06e0e95b01309ac3902bb8957de7d38bd79fc75fca140b7467",
+          "intent": {
+            "kind": "studio.goal.submit",
+            "text": "Greet with \"Hello, studio\" and document the greeting.",
+            "workspace": "scratch",
+            "lead": null
+          }
+        },
+        "admission": {
+          "schema": "openagents.route.admission-snapshot.v1",
+          "identity": {
+            "caller": {
+              "kind": "app_user",
+              "id": "scratch-local-operator"
+            },
+            "surface": "terminal",
+            "request": "01c411e0f31fa6e540c54080fa077012c7907d6446079fd79aef523a8e8d25b5"
+          },
+          "input": {
+            "request": "sha256:c4fba98f2ace93c0e7f5b57b1297488e958362a079a19329bd3339a7250daeda"
+          },
+          "route": {
+            "family": "local_command",
+            "result": "sha256:0372d1a6c79c37ebaa5226bd70855023fe524bea10c398bdd8647a4277f008b8",
+            "explicit": true,
+            "policy": "route-policy-v1",
+            "question_set": {
+              "id": "chat-router-v2",
+              "digest": "sha256:9996822b369f37afbef501367422544a170b4329b8c623ac735fa2f0faab9bdf"
+            }
+          },
+          "placement": {
+            "computer": "6bda36c6a00db2f6234de02bfb34ef8032313370b0fac192c8f7929057176fd8",
+            "workspace": {
+              "project": "scratch"
+            }
+          },
+          "effects": {
+            "reads": [
+              {
+                "kind": "system_directories"
+              }
+            ],
+            "writes": "none",
+            "network": {
+              "kind": "open"
+            },
+            "commands": "none",
+            "access": "boundary",
+            "os_deny": {
+              "platform": "macos",
+              "locations": [
+                "music",
+                "photos",
+                "documents",
+                "desktop",
+                "downloads",
+                "mail",
+                "messages",
+                "contacts",
+                "calendars",
+                "icloud_drive"
+              ],
+              "app_control": true
+            }
+          },
+          "disclosure": {
+            "recipients": [
+              {
+                "kind": "open_agents",
+                "id": "openagents"
+              },
+              {
+                "kind": "decision_provider",
+                "id": "typesafe"
+              }
+            ],
+            "context": [
+              "message",
+              "thread"
+            ]
+          },
+          "resources": {
+            "capacity": {
+              "kind": "not_needed"
+            }
+          },
+          "money": {
+            "byok": "ours",
+            "payers": [
+              {
+                "resource": "routing",
+                "payer": {
+                  "kind": "open_agents"
+                }
+              },
+              {
+                "resource": "decision",
+                "payer": {
+                  "kind": "open_agents"
+                }
+              },
+              {
+                "resource": "chat_model",
+                "payer": {
+                  "kind": "open_agents"
+                }
+              }
+            ],
+            "funding": "none",
+            "shown": false
+          },
+          "evidence": {
+            "deliverables": [
+              "answer"
+            ],
+            "check": "executor_exit"
+          }
+        },
+        "binding": {
+          "schema": "openagents.route.workbench-binding.v1",
+          "snapshot": "sha256:d02c44f952457dc2129e76d58d32fd2f3ea57635bca9cbe2d346e9aa9320769d",
+          "placement": {
+            "computer": "6bda36c6a00db2f6234de02bfb34ef8032313370b0fac192c8f7929057176fd8",
+            "generation": "18dbe243e06833b10001f88b",
+            "recipient": "6bda36c6a00db2f6234de02bfb34ef8032313370b0fac192c8f7929057176fd8"
+          }
+        },
+        "route_result": {
+          "schema": "openagents.route.studio-result.v1",
+          "request": "01c411e0f31fa6e540c54080fa077012c7907d6446079fd79aef523a8e8d25b5",
+          "route": "sha256:7e7ef850b6ed83e215d0b79a4d8cbf6b1c246c5c062bd269d4084e9b4c177c29",
+          "state": {
+            "state": "completed",
+            "outcome": {
+              "kind": "dispatched",
+              "receipt": {
+                "operation": "studio.goal.submit",
+                "reference": "g1-3822ceef"
+              }
+            }
+          }
+        },
+        "workbench_rows": [
+          "STUDIO ROUTE 01c411e0f31fa6e540c54080fa077012c7907d6446079fd79aef523a8e8d25b5",
+          "Host receipt: studio.goal.submit g1-3822ceef"
+        ]
+      },
+      {
+        "request": "01c411e0f31fa6e540c54080fa077012c7907d6446079fd79aef523a8e8d25b5",
+        "operation": {
+          "kind": "studio.goal.submit",
+          "text": "Greet with \"Hello, studio\" and document the greeting.",
+          "workspace": "scratch",
+          "lead": null
+        },
+        "outcome": {
+          "kind": "dispatched",
+          "receipt": {
+            "operation": "studio.goal.submit",
+            "reference": "g1-3822ceef"
+          }
+        },
+        "repeated_delivery_equal": true,
+        "confirmation": [
+          "STUDIO: GOALS, TASK WALL, SEATS, AND MEMORY",
+          "Host stream 18dbe243e06833b10001f88b sequence 1",
+          "Selected workspace: scratch",
+          "WORKSPACES (/repo LABEL selects without submitting work)",
+          "scratch",
+          "GOALS",
+          "TASK WALL (linked run IDs; logs are not a terminal)",
+          "STUDIO QUESTIONS AND TOOL APPROVALS (separate from shell proposals)",
+          "/answer DECISION TEXT answers the displayed revision; ENTER prepares, ENTER confirms.",
+          "SEATS",
+          "@ada Idle route codex:studio-sim (served engine unknown) paused false spend $0.00 task none",
+          "@grace Idle route codex:studio-sim (served engine unknown) paused false spend $0.00 task none",
+          "@lead Idle route codex:studio-sim (served engine unknown) paused false spend $0.00 task none",
+          "MEMORY (host entries; pinned plans first)",
+          "Plain text submits a goal; @seat text messages; /pause, /resume, /stop @seat.",
+          "/task TASK cancel|retry|prioritize|reassign @seat. ENTER prepares; ENTER confirms.",
+          "Workspace selected: scratch; no work submitted.",
+          "CONFIRM: new goal on scratch: Greet with \"Hello, studio\" and document the greeting.",
+          "ENTER sends once; ESC rejects."
+        ]
+      },
+      {
+        "keyboard_context": {
+          "v": "openagents.workbench-opening.v1",
+          "host": {
+            "kind": "local",
+            "instance": "61ea7d8cc08e3e5524022892c77f0475f3be2ffa720118b9a816896b0aef718d"
+          },
+          "stream": "18dbe243e06833b10001f88b",
+          "workspace": "scratch",
+          "goal": {
+            "v": "openagents.workbench-resource.v1",
+            "kind": "studio",
+            "host": {
+              "kind": "local",
+              "instance": "61ea7d8cc08e3e5524022892c77f0475f3be2ffa720118b9a816896b0aef718d"
+            },
+            "part": "goal",
+            "id": "g1-3822ceef",
+            "revision": {
+              "counter": 3
+            }
+          },
+          "seat": {
+            "v": "openagents.workbench-resource.v1",
+            "kind": "studio",
+            "host": {
+              "kind": "local",
+              "instance": "61ea7d8cc08e3e5524022892c77f0475f3be2ffa720118b9a816896b0aef718d"
+            },
+            "part": "seat",
+            "id": "lead",
+            "revision": {
+              "counter": 3
+            }
+          },
+          "task": {
+            "v": "openagents.workbench-resource.v1",
+            "kind": "studio",
+            "host": {
+              "kind": "local",
+              "instance": "61ea7d8cc08e3e5524022892c77f0475f3be2ffa720118b9a816896b0aef718d"
+            },
+            "part": "task",
+            "id": "6afa3617123a335399b8a052ea88266e9310f0f9d474ebbd92a655e9e13c4304",
+            "revision": {
+              "counter": 3
+            }
+          },
+          "thread": null,
+          "review": null
+        },
+        "workshop_context": {
+          "v": "openagents.workbench-opening.v1",
+          "host": {
+            "kind": "local",
+            "instance": "61ea7d8cc08e3e5524022892c77f0475f3be2ffa720118b9a816896b0aef718d"
+          },
+          "stream": "18dbe243e06833b10001f88b",
+          "workspace": "scratch",
+          "goal": {
+            "v": "openagents.workbench-resource.v1",
+            "kind": "studio",
+            "host": {
+              "kind": "local",
+              "instance": "61ea7d8cc08e3e5524022892c77f0475f3be2ffa720118b9a816896b0aef718d"
+            },
+            "part": "goal",
+            "id": "g1-3822ceef",
+            "revision": {
+              "counter": 3
+            }
+          },
+          "seat": {
+            "v": "openagents.workbench-resource.v1",
+            "kind": "studio",
+            "host": {
+              "kind": "local",
+              "instance": "61ea7d8cc08e3e5524022892c77f0475f3be2ffa720118b9a816896b0aef718d"
+            },
+            "part": "seat",
+            "id": "lead",
+            "revision": {
+              "counter": 3
+            }
+          },
+          "task": {
+            "v": "openagents.workbench-resource.v1",
+            "kind": "studio",
+            "host": {
+              "kind": "local",
+              "instance": "61ea7d8cc08e3e5524022892c77f0475f3be2ffa720118b9a816896b0aef718d"
+            },
+            "part": "task",
+            "id": "6afa3617123a335399b8a052ea88266e9310f0f9d474ebbd92a655e9e13c4304",
+            "revision": {
+              "counter": 3
+            }
+          },
+          "thread": null,
+          "review": null
+        },
+        "capture_kind": "headless_shared_sheet_semantics",
+        "sheet": [
+          "STUDIO: GOALS, TASK WALL, SEATS, AND MEMORY",
+          "Host stream 18dbe243e06833b10001f88b sequence 3",
+          "Selected workspace: scratch",
+          "WORKSPACES (/repo LABEL selects without submitting work)",
+          "scratch",
+          "GOALS",
+          "g1-3822ceef Planning 0/0 tasks $0.00 Greet with \"Hello, studio\" and document the greeting.",
+          "TASK WALL (linked run IDs; logs are not a terminal)",
+          "6afa3617123a335399b8a052ea88266e9310f0f9d474ebbd92a655e9e13c4304 Waiting @lead $0.00 Plan: Greet with \"Hello, studio\" and document the greeting.",
+          "  goal g1-3822ceef entry lead waits on none",
+          "  managed run 6afa3617123a335399b8a052ea88266e9310f0f9d474ebbd92a655e9e13c4304; checks and artifacts require its run adapter",
+          "STUDIO QUESTIONS AND TOOL APPROVALS (separate from shell proposals)",
+          "6afa3617123a335399b8a052ea88266e9310f0f9d474ebbd92a655e9e13c4304 Question seat lead task 6afa3617123a335399b8a052ea88266e9310f0f9d474ebbd92a655e9e13c4304 revision 4: Which greeting should the team use?",
+          "/answer DECISION TEXT answers the displayed revision; ENTER prepares, ENTER confirms.",
+          "SEATS",
+          "@ada Idle route codex:studio-sim (served engine unknown) paused false spend $0.00 task none",
+          "@grace Idle route codex:studio-sim (served engine unknown) paused false spend $0.00 task none",
+          "@lead Waiting route codex:studio-sim (served engine unknown) paused false spend $0.00 task 6afa3617123a335399b8a052ea88266e9310f0f9d474ebbd92a655e9e13c4304",
+          "  1791274068119 Thinking Which greeting should the team use?",
+          "MEMORY (host entries; pinned plans first)",
+          "Plain text submits a goal; @seat text messages; /pause, /resume, /stop @seat.",
+          "/task TASK cancel|retry|prioritize|reassign @seat. ENTER prepares; ENTER confirms.",
+          "Studio steering is not admitted."
+        ]
+      },
+      {
+        "reopened": true,
+        "reconnected_stream": "18dbe243e06833b10001f88b",
+        "new_dispatch": false
+      },
+      {
+        "declared_route": {
+          "schema": "openagents.route.studio.v1",
+          "request": "cca589d947106b2733b2a9862ccf4054ca4c7ca5f0d7ab3a7e12d589f6fa72b3",
+          "snapshot": "sha256:f570fc688e4a4f851c4fb63b61bfbc6351e31337084d7f78282b81afc43c7f63",
+          "binding": "sha256:df9ad839e9b0be8c1ff0d4bd6f8a0f3edc6dab5e006440ec95f092e0b3f69e02",
+          "intent": {
+            "kind": "studio.decision.answer",
+            "decision": "6afa3617123a335399b8a052ea88266e9310f0f9d474ebbd92a655e9e13c4304",
+            "based_on": 4,
+            "text": "Use \"Hello, studio\" exactly, with a capital H.",
+            "command": "80a1d351fbcea7744e2e47f6c20765301bfce32ab7955fcc7e400125c16f5878",
+            "issued_at": 1791274068
+          }
+        },
+        "admission": {
+          "schema": "openagents.route.admission-snapshot.v1",
+          "identity": {
+            "caller": {
+              "kind": "app_user",
+              "id": "scratch-local-operator"
+            },
+            "surface": "terminal",
+            "request": "cca589d947106b2733b2a9862ccf4054ca4c7ca5f0d7ab3a7e12d589f6fa72b3"
+          },
+          "input": {
+            "request": "sha256:b5a207f1a8f838ffa153718be9c4247f9e3956e55412e15cac3cdbc7cb7cacac"
+          },
+          "route": {
+            "family": "local_command",
+            "result": "sha256:0372d1a6c79c37ebaa5226bd70855023fe524bea10c398bdd8647a4277f008b8",
+            "explicit": true,
+            "policy": "route-policy-v1",
+            "question_set": {
+              "id": "chat-router-v2",
+              "digest": "sha256:9996822b369f37afbef501367422544a170b4329b8c623ac735fa2f0faab9bdf"
+            }
+          },
+          "placement": {
+            "computer": "6bda36c6a00db2f6234de02bfb34ef8032313370b0fac192c8f7929057176fd8",
+            "workspace": {
+              "project": "scratch"
+            }
+          },
+          "effects": {
+            "reads": [
+              {
+                "kind": "system_directories"
+              }
+            ],
+            "writes": "none",
+            "network": {
+              "kind": "open"
+            },
+            "commands": "none",
+            "access": "boundary",
+            "os_deny": {
+              "platform": "macos",
+              "locations": [
+                "music",
+                "photos",
+                "documents",
+                "desktop",
+                "downloads",
+                "mail",
+                "messages",
+                "contacts",
+                "calendars",
+                "icloud_drive"
+              ],
+              "app_control": true
+            }
+          },
+          "disclosure": {
+            "recipients": [
+              {
+                "kind": "open_agents",
+                "id": "openagents"
+              },
+              {
+                "kind": "decision_provider",
+                "id": "typesafe"
+              }
+            ],
+            "context": [
+              "message",
+              "thread"
+            ]
+          },
+          "resources": {
+            "capacity": {
+              "kind": "not_needed"
+            }
+          },
+          "money": {
+            "byok": "ours",
+            "payers": [
+              {
+                "resource": "routing",
+                "payer": {
+                  "kind": "open_agents"
+                }
+              },
+              {
+                "resource": "decision",
+                "payer": {
+                  "kind": "open_agents"
+                }
+              },
+              {
+                "resource": "chat_model",
+                "payer": {
+                  "kind": "open_agents"
+                }
+              }
+            ],
+            "funding": "none",
+            "shown": false
+          },
+          "evidence": {
+            "deliverables": [
+              "answer"
+            ],
+            "check": "executor_exit"
+          }
+        },
+        "binding": {
+          "schema": "openagents.route.workbench-binding.v1",
+          "snapshot": "sha256:f570fc688e4a4f851c4fb63b61bfbc6351e31337084d7f78282b81afc43c7f63",
+          "placement": {
+            "computer": "6bda36c6a00db2f6234de02bfb34ef8032313370b0fac192c8f7929057176fd8",
+            "generation": "18dbe243e06833b10001f88b",
+            "recipient": "6bda36c6a00db2f6234de02bfb34ef8032313370b0fac192c8f7929057176fd8"
+          }
+        },
+        "route_result": {
+          "schema": "openagents.route.studio-result.v1",
+          "request": "cca589d947106b2733b2a9862ccf4054ca4c7ca5f0d7ab3a7e12d589f6fa72b3",
+          "route": "sha256:cde98a0e465ca9dd0f0ec4becc99ed02cd5f604ecd7c4c957a7f3787bb083b50",
+          "state": {
+            "state": "completed",
+            "outcome": {
+              "kind": "dispatched",
+              "receipt": {
+                "operation": "studio.decision.answer",
+                "reference": "6afa3617123a335399b8a052ea88266e9310f0f9d474ebbd92a655e9e13c4304"
+              }
+            }
+          }
+        },
+        "workbench_rows": [
+          "STUDIO ROUTE cca589d947106b2733b2a9862ccf4054ca4c7ca5f0d7ab3a7e12d589f6fa72b3",
+          "Host receipt: studio.decision.answer 6afa3617123a335399b8a052ea88266e9310f0f9d474ebbd92a655e9e13c4304"
+        ]
+      },
+      {
+        "request": "cca589d947106b2733b2a9862ccf4054ca4c7ca5f0d7ab3a7e12d589f6fa72b3",
+        "operation": {
+          "kind": "studio.decision.answer",
+          "decision": "6afa3617123a335399b8a052ea88266e9310f0f9d474ebbd92a655e9e13c4304",
+          "based_on": 4,
+          "text": "Use \"Hello, studio\" exactly, with a capital H.",
+          "command": "80a1d351fbcea7744e2e47f6c20765301bfce32ab7955fcc7e400125c16f5878",
+          "issued_at": 1791274068
+        },
+        "outcome": {
+          "kind": "dispatched",
+          "receipt": {
+            "operation": "studio.decision.answer",
+            "reference": "6afa3617123a335399b8a052ea88266e9310f0f9d474ebbd92a655e9e13c4304"
+          }
+        },
+        "repeated_delivery_equal": true,
+        "confirmation": [
+          "STUDIO: QUESTIONS AND TOOL APPROVALS",
+          "Host stream 18dbe243e06833b10001f88b sequence 3",
+          "Selected workspace: scratch",
+          "STUDIO QUESTIONS AND TOOL APPROVALS (separate from shell proposals)",
+          "6afa3617123a335399b8a052ea88266e9310f0f9d474ebbd92a655e9e13c4304 Question seat lead task 6afa3617123a335399b8a052ea88266e9310f0f9d474ebbd92a655e9e13c4304 revision 4: Which greeting should the team use?",
+          "/answer DECISION TEXT answers the displayed revision; ENTER prepares, ENTER confirms.",
+          "Studio steering is not admitted.",
+          "CONFIRM: STUDIO Question 6afa3617123a335399b8a052ea88266e9310f0f9d474ebbd92a655e9e13c4304 revision 4: Which greeting should the team use? approval None; answer /answer 6afa3617123a335399b8a052ea88266e9310f0f9d474ebbd92a655e9e13c4304 Use \"Hello, studio\" exactly, with a capital H.",
+          "ENTER sends once; ESC rejects."
+        ]
+      },
+      {
+        "declared_route": {
+          "schema": "openagents.route.studio.v1",
+          "request": "c141bb7a34e5b272ba4262746131b481225d44ebe43a689ff165cd1bbeede4c4",
+          "snapshot": "sha256:57acb62e610cc1d26000516f7f76ed32fdbf31eac9e7457a77128e298dc18cfb",
+          "binding": "sha256:ae07c40a6cda60aaa618de8da2659dc81a0c2ac1d132e146b68fb21c905f256c",
+          "intent": {
+            "kind": "studio.review.open",
+            "task": "d76ccc223ddee95a03b5a2673ac920e62a5f2124348edcc5bc23c8d0e7f2b364"
+          }
+        },
+        "admission": {
+          "schema": "openagents.route.admission-snapshot.v1",
+          "identity": {
+            "caller": {
+              "kind": "app_user",
+              "id": "scratch-local-operator"
+            },
+            "surface": "terminal",
+            "request": "c141bb7a34e5b272ba4262746131b481225d44ebe43a689ff165cd1bbeede4c4"
+          },
+          "input": {
+            "request": "sha256:3c0580cea38db8e091d5496a32637651b3f69b54709bba932fbbd360139ef13d"
+          },
+          "route": {
+            "family": "local_command",
+            "result": "sha256:0372d1a6c79c37ebaa5226bd70855023fe524bea10c398bdd8647a4277f008b8",
+            "explicit": true,
+            "policy": "route-policy-v1",
+            "question_set": {
+              "id": "chat-router-v2",
+              "digest": "sha256:9996822b369f37afbef501367422544a170b4329b8c623ac735fa2f0faab9bdf"
+            }
+          },
+          "placement": {
+            "computer": "6bda36c6a00db2f6234de02bfb34ef8032313370b0fac192c8f7929057176fd8",
+            "workspace": {
+              "project": "scratch"
+            }
+          },
+          "effects": {
+            "reads": [
+              {
+                "kind": "system_directories"
+              }
+            ],
+            "writes": "none",
+            "network": {
+              "kind": "open"
+            },
+            "commands": "none",
+            "access": "boundary",
+            "os_deny": {
+              "platform": "macos",
+              "locations": [
+                "music",
+                "photos",
+                "documents",
+                "desktop",
+                "downloads",
+                "mail",
+                "messages",
+                "contacts",
+                "calendars",
+                "icloud_drive"
+              ],
+              "app_control": true
+            }
+          },
+          "disclosure": {
+            "recipients": [
+              {
+                "kind": "open_agents",
+                "id": "openagents"
+              },
+              {
+                "kind": "decision_provider",
+                "id": "typesafe"
+              }
+            ],
+            "context": [
+              "message",
+              "thread"
+            ]
+          },
+          "resources": {
+            "capacity": {
+              "kind": "not_needed"
+            }
+          },
+          "money": {
+            "byok": "ours",
+            "payers": [
+              {
+                "resource": "routing",
+                "payer": {
+                  "kind": "open_agents"
+                }
+              },
+              {
+                "resource": "decision",
+                "payer": {
+                  "kind": "open_agents"
+                }
+              },
+              {
+                "resource": "chat_model",
+                "payer": {
+                  "kind": "open_agents"
+                }
+              }
+            ],
+            "funding": "none",
+            "shown": false
+          },
+          "evidence": {
+            "deliverables": [
+              "answer"
+            ],
+            "check": "executor_exit"
+          }
+        },
+        "binding": {
+          "schema": "openagents.route.workbench-binding.v1",
+          "snapshot": "sha256:57acb62e610cc1d26000516f7f76ed32fdbf31eac9e7457a77128e298dc18cfb",
+          "placement": {
+            "computer": "6bda36c6a00db2f6234de02bfb34ef8032313370b0fac192c8f7929057176fd8",
+            "generation": "18dbe243e06833b10001f88b",
+            "recipient": "6bda36c6a00db2f6234de02bfb34ef8032313370b0fac192c8f7929057176fd8"
+          }
+        },
+        "route_result": {
+          "schema": "openagents.route.studio-result.v1",
+          "request": "c141bb7a34e5b272ba4262746131b481225d44ebe43a689ff165cd1bbeede4c4",
+          "route": "sha256:d413e72b5f5275ad20445d3435b84ac212dd3039f40abdba2747bb59f3a1abc6",
+          "state": {
+            "state": "completed",
+            "outcome": {
+              "kind": "review",
+              "review": {
+                "task": "d76ccc223ddee95a03b5a2673ac920e62a5f2124348edcc5bc23c8d0e7f2b364",
+                "base": "71a143d17ac579e2a730690f6118f375da1124ea",
+                "head_commit": "f83e11900983c732f9da3c4fe102581ab8b22f7f",
+                "head": "737ffc0b20de3e42626572f1191ed2edf25cab0c",
+                "files": [
+                  {
+                    "path": "README.md",
+                    "status": "modified",
+                    "added": 1,
+                    "removed": 1
+                  },
+                  {
+                    "path": "greeting.txt",
+                    "status": "modified",
+                    "added": 1,
+                    "removed": 1
+                  }
+                ],
+                "files_total": 2,
+                "added": 2,
+                "removed": 2,
+                "uncounted": 0,
+                "diff": "diff --git a/README.md b/README.md\nindex dc56b04..736b6e9 100644\n--- a/README.md\n+++ b/README.md\n@@ -1,5 +1,5 @@\n # Scratch\n \n-Status: draft\n+Status: greets people\n \n A scratch repository for the simulated team.\ndiff --git a/greeting.txt b/greeting.txt\nindex ce01362..cce24c6 100644\n--- a/greeting.txt\n+++ b/greeting.txt\n@@ -1 +1 @@\n-hello\n+Hello, studio\n",
+                "completeness": {
+                  "state": "complete"
+                }
+              }
+            }
+          }
+        },
+        "workbench_rows": [
+          "STUDIO ROUTE c141bb7a34e5b272ba4262746131b481225d44ebe43a689ff165cd1bbeede4c4",
+          "EXACT-REVISION REVIEW d76ccc223ddee95a03b5a2673ac920e62a5f2124348edcc5bc23c8d0e7f2b364",
+          "base 71a143d17ac579e2a730690f6118f375da1124ea",
+          "HEAD f83e11900983c732f9da3c4fe102581ab8b22f7f",
+          "tree 737ffc0b20de3e42626572f1191ed2edf25cab0c",
+          "diff Complete; 2 files +2 -2 uncounted 0",
+          "Independent checks and lead evidence: unknown in this review; inspect the managed run.",
+          "A studio merge is local and pushes nothing. Host admission decides each verdict.",
+          "Modified README.md +Some(1) -Some(1)",
+          "Modified greeting.txt +Some(1) -Some(1)",
+          "diff --git a/README.md b/README.md",
+          "index dc56b04..736b6e9 100644",
+          "--- a/README.md",
+          "+++ b/README.md",
+          "@@ -1,5 +1,5 @@",
+          " # Scratch",
+          " ",
+          "-Status: draft",
+          "+Status: greets people",
+          " ",
+          " A scratch repository for the simulated team.",
+          "diff --git a/greeting.txt b/greeting.txt",
+          "index ce01362..cce24c6 100644",
+          "--- a/greeting.txt",
+          "+++ b/greeting.txt",
+          "@@ -1 +1 @@",
+          "-hello",
+          "+Hello, studio"
+        ]
+      },
+      {
+        "declared_route": {
+          "schema": "openagents.route.studio.v1",
+          "request": "86a1f78dc83a4024859722353cde655fde27dc45a72aa37d0af480980e35a15a",
+          "snapshot": "sha256:03506aa98b35243023542650a0640d8fa6ec44054bba9be8123bba1a0a680106",
+          "binding": "sha256:6cb8c9d1b18cd180437c16927e1b90786b31f16a6e64ee96805ce6b0dd6e6ce3",
+          "intent": {
+            "kind": "studio.merge.decide",
+            "decision": {
+              "task": "d76ccc223ddee95a03b5a2673ac920e62a5f2124348edcc5bc23c8d0e7f2b364",
+              "base": "71a143d17ac579e2a730690f6118f375da1124ea",
+              "head_commit": "f83e11900983c732f9da3c4fe102581ab8b22f7f",
+              "head": "ffffffffffffffffffffffffffffffffffffffff",
+              "verdict": "merge",
+              "command": "91d43bf999828a7275f9ef5346079b3a4a80da987ddf26b9e77304a9a0bd5ace",
+              "issued_at": 100
+            }
+          }
+        },
+        "admission": {
+          "schema": "openagents.route.admission-snapshot.v1",
+          "identity": {
+            "caller": {
+              "kind": "app_user",
+              "id": "scratch-local-operator"
+            },
+            "surface": "terminal",
+            "request": "86a1f78dc83a4024859722353cde655fde27dc45a72aa37d0af480980e35a15a"
+          },
+          "input": {
+            "request": "sha256:71bb38170eaeb88f95f478bd62213c8ee7ba43cbc0572c5c40b7326f11a2fb4f"
+          },
+          "route": {
+            "family": "local_command",
+            "result": "sha256:0372d1a6c79c37ebaa5226bd70855023fe524bea10c398bdd8647a4277f008b8",
+            "explicit": true,
+            "policy": "route-policy-v1",
+            "question_set": {
+              "id": "chat-router-v2",
+              "digest": "sha256:9996822b369f37afbef501367422544a170b4329b8c623ac735fa2f0faab9bdf"
+            }
+          },
+          "placement": {
+            "computer": "6bda36c6a00db2f6234de02bfb34ef8032313370b0fac192c8f7929057176fd8",
+            "workspace": {
+              "project": "scratch"
+            }
+          },
+          "effects": {
+            "reads": [
+              {
+                "kind": "system_directories"
+              }
+            ],
+            "writes": "none",
+            "network": {
+              "kind": "open"
+            },
+            "commands": "none",
+            "access": "boundary",
+            "os_deny": {
+              "platform": "macos",
+              "locations": [
+                "music",
+                "photos",
+                "documents",
+                "desktop",
+                "downloads",
+                "mail",
+                "messages",
+                "contacts",
+                "calendars",
+                "icloud_drive"
+              ],
+              "app_control": true
+            }
+          },
+          "disclosure": {
+            "recipients": [
+              {
+                "kind": "open_agents",
+                "id": "openagents"
+              },
+              {
+                "kind": "decision_provider",
+                "id": "typesafe"
+              }
+            ],
+            "context": [
+              "message",
+              "thread"
+            ]
+          },
+          "resources": {
+            "capacity": {
+              "kind": "not_needed"
+            }
+          },
+          "money": {
+            "byok": "ours",
+            "payers": [
+              {
+                "resource": "routing",
+                "payer": {
+                  "kind": "open_agents"
+                }
+              },
+              {
+                "resource": "decision",
+                "payer": {
+                  "kind": "open_agents"
+                }
+              },
+              {
+                "resource": "chat_model",
+                "payer": {
+                  "kind": "open_agents"
+                }
+              }
+            ],
+            "funding": "none",
+            "shown": false
+          },
+          "evidence": {
+            "deliverables": [
+              "answer"
+            ],
+            "check": "executor_exit"
+          }
+        },
+        "binding": {
+          "schema": "openagents.route.workbench-binding.v1",
+          "snapshot": "sha256:03506aa98b35243023542650a0640d8fa6ec44054bba9be8123bba1a0a680106",
+          "placement": {
+            "computer": "6bda36c6a00db2f6234de02bfb34ef8032313370b0fac192c8f7929057176fd8",
+            "generation": "18dbe243e06833b10001f88b",
+            "recipient": "6bda36c6a00db2f6234de02bfb34ef8032313370b0fac192c8f7929057176fd8"
+          }
+        },
+        "route_result": {
+          "schema": "openagents.route.studio-result.v1",
+          "request": "86a1f78dc83a4024859722353cde655fde27dc45a72aa37d0af480980e35a15a",
+          "route": "sha256:a1ca3513833fa52d50dd27c5e79cb3e8059873ea56bae3140fab54ee24fcd986",
+          "state": {
+            "state": "refused",
+            "reason": "Stale: The task's worktree changed since this review. Read the review again before you decide."
+          }
+        },
+        "workbench_rows": [
+          "STUDIO ROUTE 86a1f78dc83a4024859722353cde655fde27dc45a72aa37d0af480980e35a15a",
+          "Host refused: Stale: The task's worktree changed since this review. Read the review again before you decide."
+        ]
+      },
+      {
+        "retained_artifact_manifest": {
+          "schema": "openagents.coder.task-artifacts.v1",
+          "source_snapshot": "8cf382599ecf080a9ebd447ccb53e8f34d5356efe44b66489f8c8b207272f1bb",
+          "candidate_snapshot": "4e8f4293a9c44f45425469427c34ff39f4aa587304458919cc9e2b1fb7ee0211",
+          "complete": true,
+          "omitted_changes": 0,
+          "changes": [
+            {
+              "change": "modified",
+              "path": "README.md"
+            },
+            {
+              "change": "modified",
+              "path": "greeting.txt"
+            }
+          ],
+          "entries": [
+            {
+              "path": "README.md",
+              "state": "retained",
+              "digest": "sha256:e13c05abd382457d785420d425fc4bd13bd859a6d74d96c16eae2f4ff399d691",
+              "bytes": 79,
+              "link_target": null
+            },
+            {
+              "path": "greeting.txt",
+              "state": "retained",
+              "digest": "sha256:858560f0947afb0abff0f21787e9cf324ebd0364baa1efdcfb2a6cc186a01a08",
+              "bytes": 14,
+              "link_target": null
+            }
+          ]
+        },
+        "retained_trace": "d76ccc223ddee95a03b5a2673ac920e62a5f2124348edcc5bc23c8d0e7f2b364.1.atif.jsonl"
+      },
+      {
+        "review": {
+          "task": "d76ccc223ddee95a03b5a2673ac920e62a5f2124348edcc5bc23c8d0e7f2b364",
+          "base": "71a143d17ac579e2a730690f6118f375da1124ea",
+          "head_commit": "f83e11900983c732f9da3c4fe102581ab8b22f7f",
+          "head": "737ffc0b20de3e42626572f1191ed2edf25cab0c",
+          "files": [
+            {
+              "path": "README.md",
+              "status": "modified",
+              "added": 1,
+              "removed": 1
+            },
+            {
+              "path": "greeting.txt",
+              "status": "modified",
+              "added": 1,
+              "removed": 1
+            }
+          ],
+          "files_total": 2,
+          "added": 2,
+          "removed": 2,
+          "uncounted": 0,
+          "diff": "diff --git a/README.md b/README.md\nindex dc56b04..736b6e9 100644\n--- a/README.md\n+++ b/README.md\n@@ -1,5 +1,5 @@\n # Scratch\n \n-Status: draft\n+Status: greets people\n \n A scratch repository for the simulated team.\ndiff --git a/greeting.txt b/greeting.txt\nindex ce01362..cce24c6 100644\n--- a/greeting.txt\n+++ b/greeting.txt\n@@ -1 +1 @@\n-hello\n+Hello, studio\n",
+          "completeness": {
+            "state": "complete"
+          }
+        },
+        "sheet": [
+          "STUDIO: EXACT-REVISION REVIEW",
+          "Host stream 18dbe243e06833b10001f88b sequence 7",
+          "Selected workspace: scratch",
+          "EXACT-REVISION REVIEW d76ccc223ddee95a03b5a2673ac920e62a5f2124348edcc5bc23c8d0e7f2b364",
+          "base 71a143d17ac579e2a730690f6118f375da1124ea",
+          "HEAD f83e11900983c732f9da3c4fe102581ab8b22f7f",
+          "tree 737ffc0b20de3e42626572f1191ed2edf25cab0c",
+          "diff Complete; 2 files +2 -2 uncounted 0",
+          "Independent checks and lead evidence: unknown in this review; inspect the managed run.",
+          "A studio merge is local and pushes nothing. Host admission decides each verdict.",
+          "Modified README.md +Some(1) -Some(1)",
+          "Modified greeting.txt +Some(1) -Some(1)",
+          "diff --git a/README.md b/README.md",
+          "index dc56b04..736b6e9 100644",
+          "--- a/README.md",
+          "+++ b/README.md",
+          "@@ -1,5 +1,5 @@",
+          " # Scratch",
+          " ",
+          "-Status: draft",
+          "+Status: greets people",
+          " ",
+          " A scratch repository for the simulated team.",
+          "diff --git a/greeting.txt b/greeting.txt",
+          "index ce01362..cce24c6 100644",
+          "--- a/greeting.txt",
+          "+++ b/greeting.txt",
+          "@@ -1 +1 @@",
+          "-hello",
+          "+Hello, studio",
+          "/merge, /changes TEXT, or /reject TEXT prepare a verdict; ENTER confirms.",
+          "Exact-revision review loaded."
+        ],
+        "task_checks": "not_run",
+        "run_evidence": {
+          "epoch": 1,
+          "admission": {
+            "grant": {
+              "schema": "openagents.coder.task-execution-grant.v1",
+              "task_id": "d76ccc223ddee95a03b5a2673ac920e62a5f2124348edcc5bc23c8d0e7f2b364",
+              "intent_digest": "sha256:416cee1b0e382c2a5a7a72ed8b9c1d7fb2c3c350f61482ed32f6b9b587bbaa8a",
+              "expected_revision": 1,
+              "expected_source_snapshot": null,
+              "program": "/tmp/studio-routed-home-7rkdu9ed/tmp/.tmpe6hE64/studio/tasks/scripted-engine.json",
+              "arguments": [],
+              "write_workspace": true,
+              "wall_seconds": 60,
+              "stream_bytes": 65536,
+              "memory_bytes": 67108864,
+              "requirements": null,
+              "adapter_configuration": null
+            },
+            "grant_digest": "sha256:084ae8e234627e7e24c1ee1490f4f7874b1e5843695a1e9701535c961aaa3014",
+            "grant_request": "{\n  \"schema\": \"openagents.coder.task-execution-grant.v1\",\n  \"task_id\": \"d76ccc223ddee95a03b5a2673ac920e62a5f2124348edcc5bc23c8d0e7f2b364\",\n  \"intent_digest\": \"sha256:416cee1b0e382c2a5a7a72ed8b9c1d7fb2c3c350f61482ed32f6b9b587bbaa8a\",\n  \"expected_revision\": 1,\n  \"expected_source_snapshot\": null,\n  \"program\": \"/tmp/studio-routed-home-7rkdu9ed/tmp/.tmpe6hE64/studio/tasks/scripted-engine.json\",\n  \"arguments\": [],\n  \"write_workspace\": true,\n  \"wall_seconds\": 60,\n  \"stream_bytes\": 65536,\n  \"memory_bytes\": 67108864,\n  \"requirements\": null,\n  \"adapter_configuration\": null\n}",
+            "workspace": "/tmp/studio-routed-home-7rkdu9ed/tmp/.tmpe6hE64/studio/host/studio-worktrees/d76ccc223ddee95a03b5a2673ac920e62a5f2124348edcc5bc23c8d0e7f2b364",
+            "source_revision": "71a143d17ac579e2a730690f6118f375da1124ea",
+            "source_snapshot": "8cf382599ecf080a9ebd447ccb53e8f34d5356efe44b66489f8c8b207272f1bb",
+            "program_digest": "sha256:95d9c96cb5ea7309cdc4d7cd413c8ad37ceb37125aa64ba843cf929ca4757def",
+            "adapter": "scripted",
+            "network": "none_scripted",
+            "read_scope": "workspace_scripted",
+            "authority": "local_os_user",
+            "trace_file": "d76ccc223ddee95a03b5a2673ac920e62a5f2124348edcc5bc23c8d0e7f2b364.1.atif.jsonl",
+            "context": {
+              "schema": "openagents.coder.task-context.v2",
+              "task_revision": 1,
+              "prompt": "You are seat `ada` on an Agent Studio team. Do this task in this checkout and leave your change in the working tree: the host commits it when it lands, so do not run git commit, merge, push, or any other Git command that writes.\n\nTask: Change the greeting\nMake greeting.txt say Hello, studio, and update the status line.\n\nIt is part of the goal: Greet with \"Hello, studio\" and document the greeting.\n\nShared memory:\n- (plan, from @lead) Plan for goal g1-3822ceef:\n- greet: Change the greeting [@ada]\n- docs: Document the greeting [@grace]\n- release: Write the changelog [@ada] (after greet, docs)\n",
+              "instructions": [],
+              "suites": [],
+              "digest": "b69f2e9244f4c14b2340e8bc0c539f03403d0d229cdf9cca7e5894ab1024db26"
+            }
+          },
+          "effect_id": "d76ccc223ddee95a03b5a2673ac920e62a5f2124348edcc5bc23c8d0e7f2b364:1:command",
+          "result": {
+            "ending": "model_finished",
+            "exit_code": 0,
+            "stop_requested": false,
+            "group_clear": true,
+            "elapsed_ms": 7,
+            "trace_digest": "sha256:cb4285d989ab0540df418fdbabb7e4ffa14f254c4dd44c039d577ab87c67009e",
+            "candidate_snapshot": "4e8f4293a9c44f45425469427c34ff39f4aa587304458919cc9e2b1fb7ee0211",
+            "artifact_file": "manifest-46efbe05afda7cf65eb7533687bc0959b44be541c4ab5b8fb7986abdb916a2b5.json",
+            "artifact_digest": "sha256:46efbe05afda7cf65eb7533687bc0959b44be541c4ab5b8fb7986abdb916a2b5",
+            "output_incomplete": false,
+            "cost_status": "priced",
+            "cost_microusd": 0,
+            "engine_microusd": 0,
+            "jev_microusd": 0
+          },
+          "process_id": null,
+          "recovery_reason": null,
+          "check_report": null
+        }
+      },
+      {
+        "declared_route": {
+          "schema": "openagents.route.studio.v1",
+          "request": "7027ee7dba2ca4a10fc08973a8bc8bea8306a4f3f8509b905e8d24f086acdd31",
+          "snapshot": "sha256:773f80ecdda1f6a083bb5e179a1383fabb39c8d0e4c9fe433f1be7c9dc2e4f3e",
+          "binding": "sha256:f12347e51bd25e5b72644347e6226a56a90dae0df09ffdea1d656f925097e7aa",
+          "intent": {
+            "kind": "studio.merge.decide",
+            "decision": {
+              "task": "d76ccc223ddee95a03b5a2673ac920e62a5f2124348edcc5bc23c8d0e7f2b364",
+              "base": "71a143d17ac579e2a730690f6118f375da1124ea",
+              "head_commit": "f83e11900983c732f9da3c4fe102581ab8b22f7f",
+              "head": "737ffc0b20de3e42626572f1191ed2edf25cab0c",
+              "verdict": "merge",
+              "command": "62d5407aa5c6434857cfa89ae1d2e5dd51b1ba15c112ad052d96f79720666462",
+              "issued_at": 1791274068
+            }
+          }
+        },
+        "admission": {
+          "schema": "openagents.route.admission-snapshot.v1",
+          "identity": {
+            "caller": {
+              "kind": "app_user",
+              "id": "scratch-local-operator"
+            },
+            "surface": "terminal",
+            "request": "7027ee7dba2ca4a10fc08973a8bc8bea8306a4f3f8509b905e8d24f086acdd31"
+          },
+          "input": {
+            "request": "sha256:2b0744221d71f801e6994e53993623f55a12cea3c82b02a2d523da9326313eb4"
+          },
+          "route": {
+            "family": "local_command",
+            "result": "sha256:0372d1a6c79c37ebaa5226bd70855023fe524bea10c398bdd8647a4277f008b8",
+            "explicit": true,
+            "policy": "route-policy-v1",
+            "question_set": {
+              "id": "chat-router-v2",
+              "digest": "sha256:9996822b369f37afbef501367422544a170b4329b8c623ac735fa2f0faab9bdf"
+            }
+          },
+          "placement": {
+            "computer": "6bda36c6a00db2f6234de02bfb34ef8032313370b0fac192c8f7929057176fd8",
+            "workspace": {
+              "project": "scratch"
+            }
+          },
+          "effects": {
+            "reads": [
+              {
+                "kind": "system_directories"
+              }
+            ],
+            "writes": "none",
+            "network": {
+              "kind": "open"
+            },
+            "commands": "none",
+            "access": "boundary",
+            "os_deny": {
+              "platform": "macos",
+              "locations": [
+                "music",
+                "photos",
+                "documents",
+                "desktop",
+                "downloads",
+                "mail",
+                "messages",
+                "contacts",
+                "calendars",
+                "icloud_drive"
+              ],
+              "app_control": true
+            }
+          },
+          "disclosure": {
+            "recipients": [
+              {
+                "kind": "open_agents",
+                "id": "openagents"
+              },
+              {
+                "kind": "decision_provider",
+                "id": "typesafe"
+              }
+            ],
+            "context": [
+              "message",
+              "thread"
+            ]
+          },
+          "resources": {
+            "capacity": {
+              "kind": "not_needed"
+            }
+          },
+          "money": {
+            "byok": "ours",
+            "payers": [
+              {
+                "resource": "routing",
+                "payer": {
+                  "kind": "open_agents"
+                }
+              },
+              {
+                "resource": "decision",
+                "payer": {
+                  "kind": "open_agents"
+                }
+              },
+              {
+                "resource": "chat_model",
+                "payer": {
+                  "kind": "open_agents"
+                }
+              }
+            ],
+            "funding": "none",
+            "shown": false
+          },
+          "evidence": {
+            "deliverables": [
+              "answer"
+            ],
+            "check": "executor_exit"
+          }
+        },
+        "binding": {
+          "schema": "openagents.route.workbench-binding.v1",
+          "snapshot": "sha256:773f80ecdda1f6a083bb5e179a1383fabb39c8d0e4c9fe433f1be7c9dc2e4f3e",
+          "placement": {
+            "computer": "6bda36c6a00db2f6234de02bfb34ef8032313370b0fac192c8f7929057176fd8",
+            "generation": "18dbe243e06833b10001f88b",
+            "recipient": "6bda36c6a00db2f6234de02bfb34ef8032313370b0fac192c8f7929057176fd8"
+          }
+        },
+        "route_result": {
+          "schema": "openagents.route.studio-result.v1",
+          "request": "7027ee7dba2ca4a10fc08973a8bc8bea8306a4f3f8509b905e8d24f086acdd31",
+          "route": "sha256:64ea890d0b7397737c39d695621ba6b9431c42ce3a9f4893f90c66217eded0d9",
+          "state": {
+            "state": "completed",
+            "outcome": {
+              "kind": "merged",
+              "merged": {
+                "task": "d76ccc223ddee95a03b5a2673ac920e62a5f2124348edcc5bc23c8d0e7f2b364",
+                "base": "71a143d17ac579e2a730690f6118f375da1124ea",
+                "head_commit": "f83e11900983c732f9da3c4fe102581ab8b22f7f",
+                "head": "737ffc0b20de3e42626572f1191ed2edf25cab0c",
+                "verdict": "merge",
+                "publication": {
+                  "operation": "8e4b99ab7416d8e97c5c4a1803f66583e59fac42aab4b11196cb62d1a2324389",
+                  "task": "d76ccc223ddee95a03b5a2673ac920e62a5f2124348edcc5bc23c8d0e7f2b364",
+                  "base": "71a143d17ac579e2a730690f6118f375da1124ea",
+                  "head_commit": "f83e11900983c732f9da3c4fe102581ab8b22f7f",
+                  "head": "737ffc0b20de3e42626572f1191ed2edf25cab0c",
+                  "landing": "branch",
+                  "state": "published",
+                  "branch": "main",
+                  "commit": "7591eb58fd6daa142ff93d7a5a11af976622f582",
+                  "note": "Merged into main in /tmp/studio-routed-home-7rkdu9ed/tmp/.tmpe6hE64/studio/fixture/checkout as 7591eb58fd6d; nothing was pushed."
+                }
+              }
+            }
+          }
+        },
+        "workbench_rows": [
+          "STUDIO ROUTE 7027ee7dba2ca4a10fc08973a8bc8bea8306a4f3f8509b905e8d24f086acdd31",
+          "Task d76ccc223ddee95a03b5a2673ac920e62a5f2124348edcc5bc23c8d0e7f2b364 Merge: base 71a143d17ac579e2a730690f6118f375da1124ea HEAD f83e11900983c732f9da3c4fe102581ab8b22f7f tree 737ffc0b20de3e42626572f1191ed2edf25cab0c",
+          "Local landing: Some(Publication { operation: \"8e4b99ab7416d8e97c5c4a1803f66583e59fac42aab4b11196cb62d1a2324389\", task: \"d76ccc223ddee95a03b5a2673ac920e62a5f2124348edcc5bc23c8d0e7f2b364\", base: \"71a143d17ac579e2a730690f6118f375da1124ea\", head_commit: \"f83e11900983c732f9da3c4fe102581ab8b22f7f\", head: \"737ffc0b20de3e42626572f1191ed2edf25cab0c\", landing: Branch, state: Published, branch: Some(\"main\"), commit: Some(\"7591eb58fd6daa142ff93d7a5a11af976622f582\"), url: None, note: \"Merged into main in /tmp/studio-routed-home-7rkdu9ed/tmp/.tmpe6hE64/studio/fixture/checkout as 7591eb58fd6d; nothing was pushed.\" })"
+        ]
+      },
+      {
+        "request": "7027ee7dba2ca4a10fc08973a8bc8bea8306a4f3f8509b905e8d24f086acdd31",
+        "operation": {
+          "kind": "studio.merge.decide",
+          "decision": {
+            "task": "d76ccc223ddee95a03b5a2673ac920e62a5f2124348edcc5bc23c8d0e7f2b364",
+            "base": "71a143d17ac579e2a730690f6118f375da1124ea",
+            "head_commit": "f83e11900983c732f9da3c4fe102581ab8b22f7f",
+            "head": "737ffc0b20de3e42626572f1191ed2edf25cab0c",
+            "verdict": "merge",
+            "command": "62d5407aa5c6434857cfa89ae1d2e5dd51b1ba15c112ad052d96f79720666462",
+            "issued_at": 1791274068
+          }
+        },
+        "outcome": {
+          "kind": "merged",
+          "merged": {
+            "task": "d76ccc223ddee95a03b5a2673ac920e62a5f2124348edcc5bc23c8d0e7f2b364",
+            "base": "71a143d17ac579e2a730690f6118f375da1124ea",
+            "head_commit": "f83e11900983c732f9da3c4fe102581ab8b22f7f",
+            "head": "737ffc0b20de3e42626572f1191ed2edf25cab0c",
+            "verdict": "merge",
+            "publication": {
+              "operation": "8e4b99ab7416d8e97c5c4a1803f66583e59fac42aab4b11196cb62d1a2324389",
+              "task": "d76ccc223ddee95a03b5a2673ac920e62a5f2124348edcc5bc23c8d0e7f2b364",
+              "base": "71a143d17ac579e2a730690f6118f375da1124ea",
+              "head_commit": "f83e11900983c732f9da3c4fe102581ab8b22f7f",
+              "head": "737ffc0b20de3e42626572f1191ed2edf25cab0c",
+              "landing": "branch",
+              "state": "published",
+              "branch": "main",
+              "commit": "7591eb58fd6daa142ff93d7a5a11af976622f582",
+              "note": "Merged into main in /tmp/studio-routed-home-7rkdu9ed/tmp/.tmpe6hE64/studio/fixture/checkout as 7591eb58fd6d; nothing was pushed."
+            }
+          }
+        },
+        "repeated_delivery_equal": true,
+        "confirmation": [
+          "STUDIO: EXACT-REVISION REVIEW",
+          "Host stream 18dbe243e06833b10001f88b sequence 7",
+          "Selected workspace: scratch",
+          "EXACT-REVISION REVIEW d76ccc223ddee95a03b5a2673ac920e62a5f2124348edcc5bc23c8d0e7f2b364",
+          "base 71a143d17ac579e2a730690f6118f375da1124ea",
+          "HEAD f83e11900983c732f9da3c4fe102581ab8b22f7f",
+          "tree 737ffc0b20de3e42626572f1191ed2edf25cab0c",
+          "diff Complete; 2 files +2 -2 uncounted 0",
+          "Independent checks and lead evidence: unknown in this review; inspect the managed run.",
+          "A studio merge is local and pushes nothing. Host admission decides each verdict.",
+          "Modified README.md +Some(1) -Some(1)",
+          "Modified greeting.txt +Some(1) -Some(1)",
+          "diff --git a/README.md b/README.md",
+          "index dc56b04..736b6e9 100644",
+          "--- a/README.md",
+          "+++ b/README.md",
+          "@@ -1,5 +1,5 @@",
+          " # Scratch",
+          " ",
+          "-Status: draft",
+          "+Status: greets people",
+          " ",
+          " A scratch repository for the simulated team.",
+          "diff --git a/greeting.txt b/greeting.txt",
+          "index ce01362..cce24c6 100644",
+          "--- a/greeting.txt",
+          "+++ b/greeting.txt",
+          "@@ -1 +1 @@",
+          "-hello",
+          "+Hello, studio",
+          "/merge, /changes TEXT, or /reject TEXT prepare a verdict; ENTER confirms.",
+          "Exact-revision review loaded.",
+          "CONFIRM: STUDIO REVIEW Merge d76ccc223ddee95a03b5a2673ac920e62a5f2124348edcc5bc23c8d0e7f2b364 base 71a143d17ac579e2a730690f6118f375da1124ea HEAD f83e11900983c732f9da3c4fe102581ab8b22f7f tree 737ffc0b20de3e42626572f1191ed2edf25cab0c; /merge",
+          "ENTER sends once; ESC rejects."
+        ]
+      }
+    ],
+    "scripted_turns": [
+      "ended turn 1 of 6afa3617123a335399b8a052ea88266e9310f0f9d474ebbd92a655e9e13c4304 (asked_question)",
+      "ended turn 2 of 6afa3617123a335399b8a052ea88266e9310f0f9d474ebbd92a655e9e13c4304 (model_finished)",
+      "ended turn 1 of 6253616f4dbaa39df415783cedfd1a7adfa8ff1b35b4cfb7f3f1a6cbb513aa6d (model_finished)",
+      "ended turn 1 of d76ccc223ddee95a03b5a2673ac920e62a5f2124348edcc5bc23c8d0e7f2b364 (model_finished)",
+      "ended turn 1 of 15352627cea7186df21a954180657971262b7503d0b423fd502da8454301c0b6 (model_finished)",
+      "ended turn 1 of b02ed73bc2fb2df3a955976c5b80777a9bc48c7b619072e440e6bd1d50ae86fe (model_finished)"
+    ],
+    "origin_before": "71a143d17ac579e2a730690f6118f375da1124ea",
+    "origin_after": "71a143d17ac579e2a730690f6118f375da1124ea",
+    "pushes_during_merge": 0,
+    "local_head": "7591eb58fd6daa142ff93d7a5a11af976622f582",
+    "task": "d76ccc223ddee95a03b5a2673ac920e62a5f2124348edcc5bc23c8d0e7f2b364",
+    "observed_host_spend": {
+      "microusd": 0
+    }
+  },
+  "archived_tasks": [
+    "15352627cea7186df21a954180657971262b7503d0b423fd502da8454301c0b6",
+    "6253616f4dbaa39df415783cedfd1a7adfa8ff1b35b4cfb7f3f1a6cbb513aa6d",
+    "6afa3617123a335399b8a052ea88266e9310f0f9d474ebbd92a655e9e13c4304",
+    "b02ed73bc2fb2df3a955976c5b80777a9bc48c7b619072e440e6bd1d50ae86fe",
+    "d76ccc223ddee95a03b5a2673ac920e62a5f2124348edcc5bc23c8d0e7f2b364"
+  ],
+  "cleanup_error": null,
+  "native_key_and_render_acceptance": "unverified; semantic capture only",
+  "real_engine_receipt": {
+    "status": "unverified",
+    "reason": "separate bounded owner qualification required"
+  }
+}
