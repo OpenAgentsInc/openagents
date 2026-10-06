@@ -414,6 +414,18 @@ impl<P: harvest::Propose> harvest::Propose for Gate<'_, P> {
     }
 }
 
+pub(crate) fn bounded_detail(text: &str) -> String {
+    let mut detail = String::new();
+    for c in text.chars() {
+        let c = if c.is_control() && c != '\n' { ' ' } else { c };
+        if detail.len() + c.len_utf8() > 2048 {
+            break;
+        }
+        detail.push(c);
+    }
+    detail
+}
+
 /// Read-only knowledge pane projection. Commands remain explicit session operations.
 pub struct Adapter {
     pub id: String,
@@ -443,12 +455,63 @@ impl ::workbench::pane::PaneAdapter for Adapter {
         Description {
             state: PaneState::Ready,
             title: "Knowledge candidate".into(),
-            detail: format!(
-                "{} selected sources; {} retained revisions; {} attempts. Candidate only; admission and publication require separate owner operations.",
-                self.session.selection.sources.len(),
-                self.session.candidates.len(),
-                self.session.attempts.len()
-            ),
+            detail: {
+                let summary = format!(
+                    "{} selected sources; {} retained revisions; {} attempts. Candidate only; publication and admission require separate owner operations.",
+                    self.session.selection.sources.len(),
+                    self.session.candidates.len(),
+                    self.session.attempts.len()
+                );
+                let sources = self
+                    .session
+                    .selection
+                    .sources
+                    .iter()
+                    .take(3)
+                    .map(|s| {
+                        format!(
+                            "{} / {} / {}",
+                            s.task.chars().take(64).collect::<String>(),
+                            s.run.chars().take(64).collect::<String>(),
+                            s.group.chars().take(64).collect::<String>()
+                        )
+                    })
+                    .collect::<Vec<_>>()
+                    .join("; ");
+                let costs = self
+                    .session
+                    .selection
+                    .costs
+                    .iter()
+                    .map(|(name, value)| {
+                        format!(
+                            "{name}: {}",
+                            value.map_or_else(|| "unknown".into(), |n| format!("${n:.5}"))
+                        )
+                    })
+                    .collect::<Vec<_>>()
+                    .join(", ");
+                let candidate = self
+                    .session
+                    .candidates
+                    .last()
+                    .map(|c| {
+                        format!(
+                            "Revision {}: {} ({} lint problems)\n{}",
+                            c.revision,
+                            c.digest,
+                            c.problems.len(),
+                            Entry::parse(&c.bytes).map_or_else(
+                                |_| "Candidate could not be parsed".into(),
+                                |e| e.body
+                            )
+                        )
+                    })
+                    .unwrap_or_else(|| "No candidate generated".into());
+                bounded_detail(&format!(
+                    "{summary}\nSources (preview): {sources}\nCosts: {costs}\n{candidate}"
+                ))
+            },
             actions: vec![
                 "harvest".into(),
                 "inspect".into(),

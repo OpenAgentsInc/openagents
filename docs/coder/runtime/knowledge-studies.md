@@ -108,3 +108,34 @@ helper. [#9670](https://github.com/OpenAgentsInc/openagents/issues/9670) records
 the original knowledge work; [#9683](https://github.com/OpenAgentsInc/openagents/issues/9683)
 owns the separately registered out-of-sample cohort. No measured improvement
 or entry admission follows from building this runner.
+
+## Reviewed fixed-pair profile
+
+`openagents.knowledge-reviewed-pairs.v1` is a local, fixture-backed admission
+profile in `knowledge::prospective`, not the cohort in #9683 or a public relay
+report. BIP-340 signatures bind the operator's pre-run commitment, an independent
+evaluator's complete report (including exact observation receipts), and the
+operator's explicit review. The commitment pins candidate bytes/version, source
+tasks/groups, independent development/confirmation cases, configuration,
+workload/environment digests, a total cost bound, scope, expiry, and the fixed
+policy. Every subject check must pass, and each partition must strictly improve
+its paired pass count; missing outcomes, unknown required costs, source leakage,
+self-evidence, changed pins, or missing review remain inconclusive. This rule
+supports only the declared fixed cases, not population or causal transfer claims.
+
+The review uses `openagents.eval-admission.v1` with exact subject, report,
+validation, policy, scope, issuer, and expiry references. This maps NIP-KB source
+exclusions, NIP-OPT precommitment, and NIP-EVAL independent scoped review without
+claiming a full wire-study implementation. `kb workbench review-draft SESSION
+EVIDENCE` prepares unsigned review bytes; `review-records SESSION EVIDENCE OPERATOR EVALUATOR` checks reader-selected public
+keys and shows
+all evidence and the assessment. Add `--knowledge-review EVIDENCE` to the native
+candidate pane, with `--knowledge-operator PUBKEY --knowledge-evaluator PUBKEY`,
+to show candidate/admitted/retired state. The publisher cannot choose the reader's
+trusted identities. Viewing or signing a
+review never activates instructions. The separate typed owner activation
+requires current instruction/disclosure authority, exact candidate/configuration/admission pins,
+and the owner's current retirement index for that scope; expiry
+or a signed retirement removes activation and preserves history. This profile
+publishes nothing and awards no XP. Real evaluator runs and physical controls
+remain unverified; the retained synthetic fixture proves the validation boundary.

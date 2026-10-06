@@ -79,6 +79,8 @@ Sharing entries (microcoder only):
                     encrypt exact entry bytes and their 3188 declaration
   workbench inspect SESSION
   workbench lint SESSION
+  workbench review-draft SESSION EVIDENCE
+  workbench review-records SESSION EVIDENCE OPERATOR EVALUATOR
   workbench harvest SELECTION STAGING OUTPUT
   workbench edit SESSION DOCUMENT OUTPUT
   workbench draft-study SESSION PLAN
@@ -990,6 +992,21 @@ async fn workbench(args: &[String]) -> Result<Value, String> {
     match args.iter().map(String::as_str).collect::<Vec<_>>().as_slice() {
         ["inspect", input] => serde_json::to_value(Session::read(Path::new(input))?).map_err(|e| e.to_string()),
         ["lint", input] => serde_json::to_value(Session::read(Path::new(input))?.lint(&crate::lint::Corpus::default())?).map_err(|e| e.to_string()),
+        ["review-draft", input, evidence] => {
+            let session = Session::read(Path::new(input))?;
+            let candidate = session.candidates.last().ok_or("No candidate selected")?;
+            let bundle = crate::prospective::Bundle::read(Path::new(evidence))?;
+            let now = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map_err(|e| e.to_string())?.as_secs();
+            serde_json::to_value(crate::prospective::review_draft(&bundle.plan, &bundle.report, &candidate.bytes, now)?).map_err(|e| e.to_string())
+        }
+        ["review-records", input, evidence, operator, evaluator] => {
+            let session = Session::read(Path::new(input))?;
+            let candidate = session.candidates.last().ok_or("No candidate selected")?;
+            let bundle = crate::prospective::Bundle::read(Path::new(evidence))?;
+            let now = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map_err(|e| e.to_string())?.as_secs();
+            let assessment = bundle.state(&candidate.bytes, now, &crate::prospective::Trust { operator: (*operator).into(), evaluator: (*evaluator).into() });
+            Ok(json!({"state":assessment.as_ref().ok(),"inconclusive":assessment.err(),"evidence":bundle}))
+        }
         ["harvest", input, staging, output] => {
             let selection: Selection = serde_json::from_str(&read(input)?).map_err(|e| e.to_string())?;
             let mut session = Session::new(selection)?;

@@ -25,6 +25,7 @@ pub mod harvest;
 pub mod lint;
 pub mod private;
 pub mod product;
+pub mod prospective;
 pub mod remote;
 pub mod search;
 pub mod snapshot;

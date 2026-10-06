@@ -18,6 +18,9 @@ use winit::{
 pub struct Options {
     root: Option<PathBuf>,
     knowledge_workbench: Option<PathBuf>,
+    knowledge_review: Option<PathBuf>,
+    knowledge_operator: Option<String>,
+    knowledge_evaluator: Option<String>,
     shell: Option<PathBuf>,
     socket: Option<PathBuf>,
     stress_out: Option<PathBuf>,
@@ -86,6 +89,25 @@ pub fn run() -> Result<(), String> {
                 options.latency_out =
                     Some(args.next().ok_or("Expected a latency report path")?.into())
             }
+            "--knowledge-operator" => {
+                options.knowledge_operator = Some(
+                    args.next()
+                        .ok_or("Expected the trusted operator public key")?,
+                )
+            }
+            "--knowledge-evaluator" => {
+                options.knowledge_evaluator = Some(
+                    args.next()
+                        .ok_or("Expected the trusted evaluator public key")?,
+                )
+            }
+            "--knowledge-review" => {
+                options.knowledge_review = Some(
+                    args.next()
+                        .ok_or("Expected retained knowledge evidence")?
+                        .into(),
+                )
+            }
             "--knowledge-workbench" => {
                 options.knowledge_workbench = Some(
                     args.next()
@@ -98,6 +120,14 @@ pub fn run() -> Result<(), String> {
             "--socket" => options.socket = Some(args.next().ok_or("--socket needs a path")?.into()),
             _ => return Err(format!("unknown option: {argument}")),
         }
+    }
+    if options.knowledge_review.is_some()
+        && (options.knowledge_operator.is_none() || options.knowledge_evaluator.is_none())
+    {
+        return Err("--knowledge-review requires --knowledge-operator and --knowledge-evaluator public keys".into());
+    }
+    if options.knowledge_review.is_some() && options.knowledge_workbench.is_none() {
+        return Err("--knowledge-review requires --knowledge-workbench".into());
     }
     if options.root.as_ref().is_some_and(|root| !root.is_dir()) {
         return Err("the scratch root must be an existing directory".into());
@@ -240,6 +270,108 @@ mod tests {
         let [w, h] = terminal_gfx::SHEET_POINTS;
         assert!((w / h - 1.5).abs() < f32::EPSILON);
     }
+    struct NoEffects;
+    impl terminal_core::pty::Transport for NoEffects {
+        fn shell(&self) -> &std::path::Path {
+            std::path::Path::new("/unused")
+        }
+        fn open(
+            &self,
+            _: &terminal_core::pty::Program,
+            _: u16,
+            _: u16,
+        ) -> Result<Box<dyn terminal_core::pty::Attachment>, String> {
+            panic!("Viewing a candidate must not open a terminal")
+        }
+        fn git_summary(
+            &self,
+            _: u64,
+            _: String,
+        ) -> std::sync::mpsc::Receiver<(u64, String, String)> {
+            panic!("Candidate inspection must not read git")
+        }
+        fn open_link(&self, _: &str) -> Result<(), String> {
+            panic!("Candidate inspection must not open links")
+        }
+        fn clipboard(&self) -> Option<String> {
+            None
+        }
+        fn copy(&self, _: &str) -> Result<(), String> {
+            panic!("Candidate inspection must not write the clipboard")
+        }
+        fn shutdown(&self) {}
+        fn thread_program(&self) -> Option<terminal_core::pty::Program> {
+            None
+        }
+        fn resolve(&self, _: &str) -> Option<std::path::PathBuf> {
+            None
+        }
+        fn request(
+            &self,
+            _: &terminal_core::bridge::Request,
+        ) -> Result<terminal_core::bridge::Connection, String> {
+            panic!("Viewing a candidate must not dispatch")
+        }
+    }
+    #[test]
+    fn cited_candidate_body_and_unknown_costs_reach_the_native_sheet() {
+        use knowledge::workbench::{Adapter, Selection, Session, Source};
+        let selection = Selection {
+            sources: vec![Source {
+                task: "source-task".into(),
+                run: "source-run".into(),
+                group: "source-group".into(),
+                artifact: knowledge::digest(b"source"),
+                citation: "Shell manual".into(),
+                disclosed: "Quoted arguments".into(),
+            }],
+            forbidden: Vec::new(),
+            costs: std::collections::BTreeMap::from([
+                ("acquisition_usd".into(), None),
+                ("setup_usd".into(), None),
+                ("checks_usd".into(), None),
+            ]),
+        };
+        let mut session = Session::new(selection).unwrap();
+        let document = "---\nid: shell.quoting\nversion: 1\nkind: method\ntitle: Shell quoting\nsummary: Quote arguments.\ntags: [shell]\napplies_when: Passing arguments.\nstatus: candidate\nauthor: scratch\nprovenance:\n  written_from: [reference]\n  cites: [\"Shell manual\"]\nevidence: []\n---\n\n## Details\n\nCited lesson text.\n";
+        session
+            .edit(document, &knowledge::lint::Corpus::default())
+            .unwrap();
+        let host = workbench::Host::Local {
+            instance: "11".repeat(32),
+        };
+        let subject = workbench::pane::Subject::Record {
+            host: host.clone(),
+            id: "lesson".into(),
+            revision: None,
+        };
+        let mut app = terminal_core::Application::new(terminal_core::pty::Sessions(
+            std::sync::Arc::new(NoEffects),
+        ));
+        app.open = true;
+        app.focused = true;
+        app.paper.on = true;
+        app.products.panes = std::mem::take(&mut app.products.panes).adapter(Box::new(Adapter {
+            id: "lesson".into(),
+            host,
+            session,
+        }));
+        app.products
+            .open(workbench::pane::PaneKind::Knowledge, &subject)
+            .unwrap();
+        let sheet = app.paper_sheet(120, 40, "00:00", "idle");
+        let shown = sheet
+            .rows
+            .iter()
+            .flatten()
+            .map(|span| span.text.as_str())
+            .collect::<Vec<_>>()
+            .join("\n");
+        assert!(shown.contains("Cited lesson text."));
+        assert!(shown.contains("source-task"));
+        assert!(shown.contains("setup_usd: unknown"));
+        assert!(sheet.caret.is_none());
+    }
 }
 
 impl ApplicationHandler for App {
@@ -309,12 +441,34 @@ impl ApplicationHandler for App {
                     id: "selected-knowledge".into(),
                     revision: None,
                 };
-                terminal.core.products.panes = std::mem::take(&mut terminal.core.products.panes)
-                    .adapter(Box::new(knowledge::workbench::Adapter {
-                        id: "selected-knowledge".into(),
-                        host,
-                        session,
-                    }));
+                let candidate = knowledge::workbench::Adapter {
+                    id: "selected-knowledge".into(),
+                    host,
+                    session,
+                };
+                let adapter: Box<dyn workbench::pane::PaneAdapter> =
+                    if let Some(evidence) = &self.options.knowledge_review {
+                        Box::new(knowledge::prospective::Adapter {
+                            candidate,
+                            evidence: knowledge::prospective::Bundle::read(evidence)?,
+                            trust: knowledge::prospective::Trust {
+                                operator: self
+                                    .options
+                                    .knowledge_operator
+                                    .clone()
+                                    .ok_or("Expected a trusted operator")?,
+                                evaluator: self
+                                    .options
+                                    .knowledge_evaluator
+                                    .clone()
+                                    .ok_or("Expected a trusted evaluator")?,
+                            },
+                        })
+                    } else {
+                        Box::new(candidate)
+                    };
+                terminal.core.products.panes =
+                    std::mem::take(&mut terminal.core.products.panes).adapter(adapter);
                 terminal
                     .core
                     .products
