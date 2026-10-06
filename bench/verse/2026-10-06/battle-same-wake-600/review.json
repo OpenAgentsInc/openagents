@@ -1,0 +1,74 @@
+{
+  "schema": "verse.battle.review.v1",
+  "duration_seconds": 600,
+  "source_base": "43f12d6e0bb48e22f151476a14aaab66cca9bee8",
+  "executable_sha256": "e3140a37a9030fb0daf2c650e52072d0cf04c373cc47d77d62f82e9461c6fcdb",
+  "acceptance": "failed",
+  "failures": [
+    "Player 0 late prediction p95 Some(0.28721433877944946) exceeds 0.25 meters or is unavailable",
+    "Player 0 prediction maximum Some(3.74442720413208) exceeds 1 meters or is unavailable",
+    "Player 0 late prediction p95 Some(0.42671966552734375) exceeds 0.25 meters or is unavailable",
+    "Player 0 late prediction maximum Some(3.74442720413208) exceeds 1 meters or is unavailable",
+    "Player 0 late prediction maximum Some(3.109057664871216) exceeds 1 meters or is unavailable",
+    "Player 0 late prediction p95 Some(0.3733797073364258) exceeds 0.25 meters or is unavailable",
+    "The soak lacks bounded steady resident memory evidence"
+  ],
+  "movement_expiry": 0,
+  "workload_ticks": 17835,
+  "storage_paused_seconds": 5.489793905999999,
+  "steady_memory": {
+    "first": {
+      "seconds": 30.186882185,
+      "bytes": 1337257984
+    },
+    "peak": {
+      "seconds": 595.221879952,
+      "bytes": 1408364544
+    },
+    "growth_bytes": 71106560,
+    "budget_bytes": 67108864
+  },
+  "native_segments": [
+    {
+      "status": "complete",
+      "error": null,
+      "prediction_failures": 0,
+      "prediction_horizon_pauses": 0,
+      "correction_meters": {
+        "samples": 6708,
+        "omitted": 0,
+        "invalid": 0,
+        "p50": 0.0,
+        "p95": 4.7980811359593645e-06,
+        "p99": 0.28394272923469543,
+        "maximum": 0.6400802135467529
+      }
+    },
+    {
+      "status": "complete",
+      "error": null,
+      "prediction_failures": 0,
+      "prediction_horizon_pauses": 58,
+      "correction_meters": {
+        "samples": 6296,
+        "omitted": 0,
+        "invalid": 0,
+        "p50": 0.0,
+        "p95": 0.023949498310685158,
+        "p99": 0.42671966552734375,
+        "maximum": 3.74442720413208
+      }
+    }
+  ],
+  "files": {
+    "report.json": "673db2b8f700aa17f08aee4212fffb840dd03780b999c2c82b33909e56a3ed6b",
+    "source.patch": "b5399a2842c6419767fb626d31474f2dc6944103ae7a9ae669ad978e440a2382"
+  },
+  "limitations": [
+    "Zero movement expiries does not establish overall acceptance: native correction and steady memory gates failed.",
+    "The second native segment had 58 prediction horizon pauses and a maximum 3.744427-meter correction.",
+    "Snapshot byte diagnostics count verified wire payloads; previous reconstructed JSON totals are not directly comparable.",
+    "High-quality 2560x1440 licensed scene, ordinary unprivileged process, direct NVMe scratch storage, shared host, no own concurrent compiler.",
+    "The comparison uses retained source base and own patches; this is not a current-main host deployment or physical input-to-display measurement."
+  ]
+}
