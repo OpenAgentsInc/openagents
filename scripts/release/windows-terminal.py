@@ -1,0 +1,196 @@
+#!/usr/bin/env python3
+"""Package qualified standalone Windows binaries without installing a host service."""
+import argparse
+import hashlib
+import json
+import os
+import platform
+from pathlib import Path
+import re
+import shutil
+import subprocess
+import zipfile
+import tempfile
+import urllib.request
+
+NAMES = ("openagents-terminal.exe", "openagents.exe", "microcoder.exe")
+CHECKS = ("isolated_install", "startup_input", "request_proposal_result", "clipboard_unicode_ime",
+          "resize_fullscreen", "output_frame_workload", "uninstall_cleanup",
+          "ctrl_signals", "close_reopen", "host_restart", "clipboard_refusal")
+
+
+def digest(path):
+    hasher = hashlib.sha256()
+    with path.open("rb") as source:
+        while block := source.read(1024 * 1024):
+            hasher.update(block)
+    return hasher.hexdigest()
+
+
+def is_pe_x64(path):
+    with path.open("rb") as source:
+        header = source.read(64)
+        if len(header) != 64 or header[:2] != b"MZ":
+            return False
+        offset = int.from_bytes(header[60:64], "little")
+        if offset > 1024 * 1024:
+            return False
+        source.seek(offset)
+        return source.read(6) == b"PE\x00\x00\x64\x86"
+
+
+def qualification(path, commit):
+    record = json.loads(path.read_text())
+    if (record.get("schema") != "openagents.native-terminal.windows-qualification.v1" or
+        record.get("commit") != commit or record.get("platform") != "windows-x86_64" or
+        not record.get("distribution") or record.get("backend") != "conpty" or
+        any(record.get("checks", {}).get(name) != "passed" for name in CHECKS)):
+        raise ValueError("A matching Windows qualification with every required check is needed.")
+    if set(record.get("executables", {})) != set(NAMES):
+        raise ValueError("Qualification must identify all three tested executables.")
+    return record
+
+
+def build(args):
+    if platform.system() != "Windows" or platform.machine() not in ("AMD64", "x86_64"):
+        raise ValueError("Build Windows x86-64 artifacts on that platform.")
+    repo = Path(__file__).resolve().parents[2]
+    def git(*words):
+        return subprocess.check_output(["git", *words], cwd=repo, text=True).strip()
+    commit = git("rev-parse", "HEAD")
+    if commit != git("rev-parse", "origin/main") or git("status", "--porcelain", "--untracked-files=no"):
+        raise ValueError("Build from a clean checkout of current origin/main.")
+    target = Path(os.environ.get("CARGO_TARGET_DIR", ""))
+    if not target.is_absolute() or target.resolve().is_relative_to(repo):
+        raise ValueError("Set an absolute reusable CARGO_TARGET_DIR outside the checkout.")
+    if args.out.exists():
+        raise ValueError("The artifact destination must not exist.")
+    env = dict(os.environ, OPENAGENTS_BUILD_COMMIT=commit)
+    # Separate build graphs keep the Verse runtime out of the graphical executable.
+    subprocess.run(["cargo", "build", "--locked", "--release", "-p", "terminal-app"], cwd=repo, env=env, check=True)
+    subprocess.run(["cargo", "build", "--locked", "--release", "-p", "openagents-cli", "-p", "microcoder"], cwd=repo, env=env, check=True)
+    if git("status", "--porcelain", "--untracked-files=no") or git("rev-parse", "HEAD") != commit:
+        raise ValueError("The build changed its source checkout.")
+    args.out.parent.mkdir(parents=True, exist_ok=True)
+    with tempfile.TemporaryDirectory(dir=args.out.parent) as directory:
+        pending = Path(directory)
+        for name in NAMES:
+            shutil.copy2(target / "release" / name, pending / name)
+        record = {"schema": "openagents.native-terminal.windows-build.v1", "commit": commit,
+                  "tree": git("rev-parse", "HEAD^{tree}"), "platform": "windows-x86_64",
+                  "executables": {name: digest(pending / name) for name in NAMES},
+                  "qualification": "not-run"}
+        (pending / "build-receipt.json").write_text(json.dumps(record, indent=2) + "\n")
+        pending.rename(args.out)
+    print(args.out)
+
+
+def package(args):
+    commit = subprocess.check_output(["git", "rev-parse", "origin/main"], text=True).strip()
+    record = qualification(args.qualification, commit)
+    if record.get("version") != args.version:
+        raise ValueError("Qualification version does not match the package.")
+    if not re.fullmatch(r"[0-9]+\.[0-9]+\.[0-9]+(?:-rc\.[1-9][0-9]*)?", args.version):
+        raise ValueError("Invalid version.")
+    # No cross-target or distribution coverage is inferred from one successful build.
+    for name in NAMES:
+        binary = args.binaries / name
+        if digest(binary) != record["executables"][name]:
+            raise ValueError(f"Tested executable changed: {name}")
+        if not is_pe_x64(binary):
+            raise ValueError(f"Expected a Windows x86-64 executable: {name}")
+    stage = args.out / args.version / "windows-x86_64"
+    if stage.exists():
+        raise ValueError("Refusing to replace an existing staged version.")
+    stage.parent.mkdir(parents=True, exist_ok=True)
+    with tempfile.TemporaryDirectory(dir=stage.parent) as directory:
+        pending = Path(directory)
+        bundle = pending / "openagents-terminal"
+        bundle.mkdir()
+        for name in NAMES:
+            shutil.copy2(args.binaries / name, bundle / name)
+        archive = pending / "OpenAgents-Terminal-windows-x86_64.zip"
+        with zipfile.ZipFile(archive, "w", compression=zipfile.ZIP_DEFLATED) as archive_file:
+            for name in NAMES:
+                archive_file.write(bundle / name, f"openagents-terminal/{name}")
+        shutil.copy2(args.qualification, pending / "qualification.json")
+        installer = Path(__file__).with_name("install-windows-terminal.py")
+        shutil.copy2(installer, pending / installer.name)
+        manifest = {"schema": "openagents.native-terminal.release.v1", "prefix": "openagents-terminal",
+                    "platform": "windows-x86_64", "version": args.version, "commit": commit,
+                    "distribution": record["distribution"], "backend": record["backend"],
+                    "executables": record["executables"], "archive": archive.name,
+                    "archive_sha256": digest(archive), "qualification_sha256": digest(args.qualification),
+                    "installer_sha256": digest(installer), "public_readback": "not-run"}
+        (pending / "release-manifest.json").write_text(json.dumps(manifest, indent=2) + "\n")
+        files = (archive.name, "release-manifest.json", "qualification.json", installer.name)
+        (pending / "SHA256SUMS").write_text("".join(f"{digest(pending / name)}  {name}\n" for name in files))
+        shutil.rmtree(bundle)
+        pending.rename(stage)
+    print(stage)
+
+
+def publish(args):
+    stage = args.stage
+    manifest = json.loads((stage / "release-manifest.json").read_text())
+    record = qualification(stage / "qualification.json", manifest["commit"])
+    if any(record.get(name) != manifest.get(name) for name in ("platform", "distribution", "backend", "executables", "version")):
+        raise ValueError("Qualification does not match the release manifest.")
+    if manifest.get("platform") != "windows-x86_64" or manifest.get("prefix") != "openagents-terminal":
+        raise ValueError("Invalid Windows release manifest.")
+    files = ("OpenAgents-Terminal-windows-x86_64.zip", "release-manifest.json",
+             "qualification.json", "install-windows-terminal.py")
+    expected = "".join(f"{digest(stage / name)}  {name}\n" for name in files)
+    if (stage / "SHA256SUMS").read_text() != expected:
+        raise ValueError("Release checksum file changed.")
+    for name, field in ((files[0], "archive_sha256"), (files[2], "qualification_sha256"),
+                        (files[3], "installer_sha256")):
+        if digest(stage / name) != manifest.get(field):
+            raise ValueError(f"Release object changed: {name}")
+    if not re.fullmatch(r"[a-z0-9][a-z0-9._-]+", args.bucket):
+        raise ValueError("Invalid bucket name.")
+    if not re.fullmatch(r"[0-9]+\.[0-9]+\.[0-9]+(?:-rc\.[1-9][0-9]*)?", manifest["version"]):
+        raise ValueError("Invalid version.")
+    prefix = f"gs://{args.bucket}/openagents-terminal/{manifest['version']}/windows-x86_64"
+    objects = (*files, "SHA256SUMS")
+    # Conditional creates never overwrite the existing desktop or macOS channel.
+    for name in objects:
+        subprocess.run(["gcloud", "storage", "cp", "--if-generation-match=0",
+                        str(stage / name), f"{prefix}/{name}"], check=True)
+    base = f"https://storage.googleapis.com/{args.bucket}/openagents-terminal/{manifest['version']}/windows-x86_64"
+    for name in objects:
+        with urllib.request.urlopen(f"{base}/{name}", timeout=120) as source:
+            hasher = hashlib.sha256()
+            while block := source.read(1024 * 1024):
+                hasher.update(block)
+        if hasher.hexdigest() != digest(stage / name):
+            raise ValueError(f"Public readback failed: {name}")
+    receipt = {"schema": "openagents.native-terminal.publication.v1", "commit": manifest["commit"],
+               "platform": "windows-x86_64", "version": manifest["version"], "base": base,
+               "public_readback": "passed", "objects": {name: digest(stage / name) for name in objects}}
+    (stage / "publication-receipt.json").write_text(json.dumps(receipt, indent=2) + "\n")
+    print("Windows package readback passed.")
+
+
+def main():
+    parser = argparse.ArgumentParser(description=__doc__)
+    commands = parser.add_subparsers(dest="command", required=True)
+    command = commands.add_parser("build")
+    command.add_argument("--out", type=Path, required=True)
+    command = commands.add_parser("package")
+    command.add_argument("--binaries", type=Path, required=True)
+    command.add_argument("--qualification", type=Path, required=True)
+    command.add_argument("--version", required=True)
+    command.add_argument("--out", type=Path, required=True)
+    command = commands.add_parser("publish")
+    command.add_argument("--stage", type=Path, required=True)
+    command.add_argument("--bucket", default="openagentsgemini-cli-releases")
+    args = parser.parse_args()
+    {"build": build, "package": package, "publish": publish}[args.command](args)
+
+
+if __name__ == "__main__":
+    try:
+        main()
+    except (ValueError, OSError, subprocess.CalledProcessError) as error:
+        raise SystemExit(str(error)) from error
