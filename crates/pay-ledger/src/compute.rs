@@ -16,8 +16,10 @@ use rusqlite::{Connection, OptionalExtension, TransactionBehavior, params};
 
 use crate::{Error, Ledger, Result};
 
+pub mod hold;
 pub mod purchase;
 
+pub use hold::{ComputeBalance, Hold, HoldRequest, HoldState};
 pub use purchase::{Purchase, PurchaseState, Receipt, TopUp};
 
 /// The kind of client a principal binds.

@@ -16,6 +16,7 @@
 //! - [`authority`]: observation, execution, disclosure, and spending,
 //!   admitted and checked independently before every side effect.
 //! - [`offer`]: immutable retail offers and their one funded request.
+//! - [`reserve`]: the funded request's hold in the central ledger.
 //! - [`journal`]: the durable intents and observations a restart reads.
 
 pub mod authority;
@@ -23,6 +24,7 @@ pub mod contract;
 pub mod fake;
 pub mod journal;
 pub mod offer;
+pub mod reserve;
 pub mod topup;
 
 /// Why a retail operation was refused.
@@ -44,6 +46,9 @@ pub enum Error {
     /// An offer or confirmation was refused, with its typed outcome.
     #[error("refused: {0:?}")]
     Refused(offer::OfferRefusal),
+    /// An authority the step needs is missing.
+    #[error("denied: {0:?}")]
+    Denied(authority::Denial),
 }
 
 /// Journal tables the modules add, created when the journal opens.

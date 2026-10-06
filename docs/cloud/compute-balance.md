@@ -76,3 +76,33 @@ The wallet keeps its keys; no client stores one.
 - An invoice issued before a crash and never recorded never reaches the
   customer, so it cannot be paid.
 - In v1 a purchased balance is not paid back out over Lightning.
+
+## Holds and settlement
+
+[`pay_ledger::compute::hold`](../../crates/pay-ledger/src/compute/hold.rs)
+holds a funded request's maximum charge before anything is provisioned
+([`retail_cloud::reserve`](../../crates/retail-cloud/src/reserve.rs) checks
+the spend right first).
+
+- **Identity.** A hold is bound to the account, the quote's digest, the
+  funded request, the execution identity, and the confirmed offer's digest.
+  The same funded request with the same terms reuses its hold; changed bytes
+  or terms conflict, and no other request can take the execution identity.
+- **No overspending.** A reservation runs in one immediate SQLite
+  transaction, so parallel requests against one balance never hold more
+  than it has available.
+- **States.** `held`, `unknown` (a crash or provider loss left the outcome
+  open; the whole hold stays reserved), and `settled`. A restart changes no
+  state, so it never frees an uncertain hold.
+- **Settlement.** `settle_hold` records the charge and posts it to the
+  central settlement table as the balance debit `debit:<hold>` (resource
+  `openagents.cloud.retail.v1`, all to OpenAgents) in the same transaction,
+  and releases the rest. A replay at the same charge returns the same debit;
+  another charge conflicts; a charge above the hold is refused. A charge of
+  zero posts no debit.
+- **Releases are not refunds.** The released part of a hold was never paid.
+  The balance shows it apart from settled charges.
+
+For every account, credited = available + held + settled, and available is
+never negative. Paid-call funding (x402), task dispatch, and provider bills
+keep their own journals, and decision-gateway quota is never money here.

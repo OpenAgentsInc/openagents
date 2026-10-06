@@ -39,3 +39,17 @@ CREATE TABLE IF NOT EXISTS compute_credit (
     amount_msat INTEGER NOT NULL CHECK(amount_msat > 0),
     at INTEGER NOT NULL
 );
+CREATE TABLE IF NOT EXISTS compute_hold (
+    id TEXT PRIMARY KEY,
+    account TEXT NOT NULL REFERENCES compute_account(id),
+    quote TEXT NOT NULL,
+    execution TEXT NOT NULL UNIQUE,
+    terms TEXT NOT NULL,
+    amount_msat INTEGER NOT NULL CHECK(amount_msat > 0),
+    state TEXT NOT NULL CHECK(state IN ('held','unknown','settled')),
+    charge_msat INTEGER CHECK(charge_msat IS NULL OR (charge_msat >= 0 AND charge_msat <= amount_msat)),
+    created_at INTEGER NOT NULL,
+    settled_at INTEGER,
+    CHECK((state = 'settled') = (charge_msat IS NOT NULL))
+);
+CREATE INDEX IF NOT EXISTS compute_hold_account ON compute_hold(account);
