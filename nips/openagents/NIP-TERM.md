@@ -32,8 +32,10 @@ device key that authenticated it: the verified signer of a `3188` envelope,
 or the device key a NIP-REACH channel proved.
 
 Every body has `v`, `requires`, and exactly the fields listed; unknown fields,
-versions, required features, and enum values refuse. The initial `requires`
-list is empty. IDs are common IDs (64 lowercase hexadecimal characters).
+versions, required features, and enum values refuse. The base profile's
+`requires` list is empty; the [extensions](#extensions) define three feature
+IDs, and a body that names one carries the fields that feature adds. IDs are
+common IDs (64 lowercase hexadecimal characters).
 Terminal input and output bytes are base64 with the standard alphabet and
 padding. Strings are bounded as stated; a host refuses rather than truncates.
 
@@ -274,6 +276,365 @@ which reveal that a device and a host exchange traffic.
 6. The host restarts. The laptop's reattach refuses as `lost`, and the laptop
    shows the terminal as lost rather than resumed.
 
+## Extensions
+
+Added 2026-10-05. Three optional features extend the base profile. A host
+that implements one serves it; a client uses one only after the host
+advertises it. Nothing here adds a right, a relay authority, or an event
+kind: every extension operation needs the right its base operation needs,
+travels on the same transports, and follows the same privacy rules.
+
+| Feature ID | Presence capability | Adds |
+| --- | --- | --- |
+| `openagents.terminal-snapshot.v1` | `term-snapshot` | Attach by snapshot, the history operation, and record streams |
+| `openagents.terminal-blocks.v1` | `term-blocks` | Paged block-journal reads |
+| `openagents.terminal-sessions.v1` | `term-sessions` | Session records: membership and layout |
+
+### Negotiation and compatibility
+
+A host lists the capability of each feature it serves among its
+[REACH](NIP-REACH.md) presence capabilities, and drops the capability before
+it stops serving the feature. A client names a feature in a request's
+`requires` list only when the host's current presence lists its capability.
+A body that names a feature carries the fields that feature adds; the same
+fields without the feature refuse as `malformed`.
+
+- **An older host.** A host that predates a feature refuses any request that
+  names it as `unsupported_feature`, and refuses an extension schema it
+  does not know as `unsupported_version`. A client that receives either
+  refusal after presence advertised the feature treats the presence as stale
+  and retries with the base profile: an attach without `requires` replays
+  the ring as before.
+- **An older client.** A host sends extension frames and extension result
+  values only in answer to a request that named the feature. An attachment
+  made without `requires` receives exactly the base profile's frames, so a
+  replay-only client never sees a body it does not know.
+- **Partial support.** The features are independent. A host can serve blocks
+  without snapshots; a request that names a feature the host does not serve
+  refuses as `unsupported_feature`, even when the host serves the others.
+
+### New refusal causes
+
+The extensions use three more shared codes:
+
+- `stale`: the request names a line epoch or a session revision that is no
+  longer current.
+- `content_unavailable`: the requested history rows or block-journal entries
+  left the host's retention.
+- `identity_mismatch`: a record stream or a reference binds a different
+  terminal or host generation than the frame or request that carries it.
+
+A client that receives `stale` reads the current state again; it never
+applies an answer bound to an earlier epoch or revision to the current one.
+
+### Line epochs
+
+A host that serves snapshots or blocks runs one authoritative emulator per
+terminal and numbers every line it has produced: the first line of the
+terminal is absolute line 0, and a line keeps its number as it scrolls into
+history. The *line epoch* is a positive integer, 1 when the terminal opens,
+that the host increases whenever absolute line numbers stop naming the same
+text: a full reset (`RIS`), an erase of the scrollback (`ED 3`), or any
+operation that renumbers retained lines. Every snapshot, history read, and
+block line range names the epoch it belongs to. An epoch is per terminal and
+per host generation.
+
+### Attach by snapshot
+
+With `openagents.terminal-snapshot.v1` in `requires`, an attach request
+carries one more field, `join`:
+
+- `replay`: the base behavior; the host replays the ring after `after`.
+- `snapshot`: `after` must be 0. Instead of replaying the ring, the host
+  sends a snapshot of its emulator's parsed state as a record stream, and
+  then the live frames that follow it.
+
+A host whose snapshot prefix (every record through `READY`) would exceed
+4 MiB refuses the attach as `limit_exceeded`; the client attaches again with
+`join: "replay"`. The result value is the base `attached` value.
+
+### Record streams
+
+A *record stream* is an ordered byte sequence of records. A host sends it to
+one attachment in records frames, `openagents.terminal-records.v1`:
+
+| Field | Contract |
+| --- | --- |
+| `terminal` | The terminal reference. |
+| `attachment` | The attachment the stream is for. |
+| `stream` | A common ID the host minted for this stream. |
+| `part` | The part's index, 0 for the first, one more for each later part. |
+| `last` | Whether this is the stream's final part. |
+| `data` | 1 to 8,192 bytes of the stream, base64. A record may span parts. |
+
+Records frames are not sequenced and take no sequence number. A client
+concatenates the parts of a stream in `part` order. Over a relay, parts can
+arrive out of order: a client holds at most 64 parts ahead of the next
+expected one and discards the stream when it would need more. A part index
+repeated with the same bytes is a duplicate and is ignored; with different
+bytes, or a part after `last`, the stream is malformed. A stream is at most
+16 MiB.
+
+Each record is a 10-byte header followed by its payload, all little-endian:
+
+| Bytes | Field |
+| --- | --- |
+| 0 to 1 | `tag`, an unsigned 16-bit record type |
+| 2 to 5 | `length`, an unsigned 32-bit payload length, at most 1,048,576 |
+| 6 to 9 | `crc32c`, the CRC-32C (Castagnoli) checksum of the payload |
+| 10 on | The payload |
+
+This is the record shape of libghostty's Snapshot v1 (tag, length, CRC-32C),
+reimplemented; the tags and payloads are this profile's own and do not
+interoperate with libghostty. A length above the bound, a length that runs
+past the end of a complete stream, a checksum that does not match, an
+unknown tag, or a record out of order makes the whole stream malformed.
+
+| Tag | Record | Payload |
+| --- | --- | --- |
+| 1 | `TERMINAL` | JSON object: the stream's binding |
+| 2 | `STATE` | JSON object: cursor, pen, modes, and other screen state |
+| 3 | `ROWS` | JSON object: a page of one screen's rows |
+| 4 | `CONTINUATION` | Raw bytes, at most 4,096: input the parser holds unfinished |
+| 5 | `READY` | Empty |
+| 6 | `HISTORY` | JSON object: a page of history rows |
+| 7 | `FINISH` | JSON object: what the stream sent |
+
+JSON payloads are compact UTF-8 objects with exactly the fields below; an
+unknown field refuses as `malformed`. Text in a payload is terminal data
+with every control character removed; a payload that contains one (U+0000
+to U+001F, U+007F to U+009F) is malformed.
+
+A snapshot stream orders its records as `TERMINAL`, `STATE`, the `ROWS` of
+the primary screen, the `ROWS` of the alternate screen when it is active,
+an optional `CONTINUATION`, `READY`, zero or more `HISTORY` pages, and
+`FINISH`. A history stream is `TERMINAL`, zero or more `HISTORY` pages, and
+`FINISH`.
+
+#### TERMINAL
+
+| Field | Contract |
+| --- | --- |
+| `format` | 1. |
+| `generation`, `terminal` | The terminal reference the stream describes. A value that differs from the records frame's `terminal` refuses as `identity_mismatch`. |
+| `epoch` | The line epoch. |
+| `through` | The last sequenced frame the state reflects, 0 when none. |
+| `size` | `{rows, cols}`. |
+| `history` | `{first, count}`: retained history is absolute lines `first` through `first + count - 1`, so screen row 0 is absolute line `first + count`. A client sizes its scroll bar from it before any page arrives. |
+| `exit` | The terminal's `exit` object when the process already ended and its `exit` frame is at or below `through`, else null. |
+
+#### STATE
+
+| Field | Contract |
+| --- | --- |
+| `alternate` | Whether the alternate screen is active. |
+| `cursor` | `{row, col, pending_wrap, visible, shape, blink}`; `row` and `col` lie within `size`, `shape` is `block`, `underline`, or `bar`. |
+| `pen` | The style new text takes (see `ROWS`). |
+| `saved_primary`, `saved_alternate` | `{row, col, pending_wrap, pen}` saved by `DECSC` for each screen, or null. |
+| `scroll` | `{top, bottom}`, the scrolling region, with `top < bottom < rows`. |
+| `tabs` | Tab-stop columns, ascending, distinct, each below `cols`. |
+| `modes` | `{private, ansi}`: the `DECSET` and `SM` mode numbers that are set, each list ascending and distinct, at most 64. |
+| `charsets` | `{g0, g1, shift}`: `ascii` or `dec_special` for each set, and the active set, 0 or 1. |
+| `keyboard` | `{primary, alternate}`: each screen's Kitty keyboard flag stack, bottom first, at most 16 entries. |
+| `title` | The window title, at most 1,024 bytes. |
+
+#### ROWS and HISTORY
+
+`ROWS` is `{screen, first, rows}`: `screen` is `primary` or `alternate`,
+`first` the screen row of the page's first row, and `rows` 1 to 64 rows.
+The pages of one screen cover rows 0 through `size.rows - 1` exactly once,
+in order.
+
+`HISTORY` is `{first, rows}`: the absolute line of the page's first row and
+1 to 256 rows, oldest first. Pages arrive newest first and are contiguous:
+the first page ends at absolute line `history.first + history.count - 1` in
+a snapshot stream, or at `before - 1` in a history stream, and each later
+page ends where the previous one began. No page starts before
+`history.first`.
+
+A row is `{wrapped, runs}`: `wrapped` says the row continues on the next
+line, and `runs` is a list of `{text, cells, style}`. `cells` is the number
+of columns the run's text occupies (a wide character takes two), at least
+1; the text is nonempty and at most 16 bytes per cell. The cells
+of a row's runs total at most `size.cols`; the rest of the row is blank in
+the default style. A style is `{fg, bg, flags, link}`: each color is
+`"default"`, `{"index": n}` (0 to 255), or `{"rgb": [r, g, b]}`; `flags` is
+a bit set of bold (1), dim (2), italic (4), underline (8), blink (16),
+inverse (32), hidden (64), and strike (128), and any other bit is
+malformed; `link` is the run's OSC 8 target, at most 2,048 bytes, or null.
+
+#### CONTINUATION, READY, and FINISH
+
+`CONTINUATION` holds the bytes since the parser was last in its ground
+state: an unfinished escape sequence or a partial UTF-8 character. A client
+feeds them to a fresh parser before the first live frame, so the next output
+continues the sequence the host's emulator is in. A host whose unfinished
+input exceeds 4,096 bytes abandons it, as the parser would on a cancel, and
+sends no `CONTINUATION`.
+
+`READY` means the client has everything it needs to draw and to resume
+parsing. `FINISH` is `{rows, complete}`: the number of history rows the
+stream sent, and whether they reach `history.first`. A snapshot stream sends
+at most 2,000 history rows and at most 1 MiB of `HISTORY` records; a client
+asks for older rows with the history operation.
+
+### The snapshot and live boundary
+
+The snapshot reflects every sequenced frame through `through` and nothing
+after it. The host delivers every part up to and including the one that
+completes `READY` before any sequenced frame of the attachment. After that
+part it delivers sequenced frames from `through + 1` and may interleave them
+with the stream's remaining parts. If the ring discarded frames after
+`through` before they were delivered, the attachment receives a `gap`, as in
+the base profile.
+
+A client applies a snapshot this way:
+
+1. It draws nothing from the stream until `READY`. A sequenced frame before
+   `READY` is a protocol error: the client discards the stream, detaches,
+   and attaches again.
+2. At `READY` it restores the screens and state, feeds the `CONTINUATION`
+   bytes to its parser, and sets its applied sequence number to `through`.
+   From then on the base profile's [client state](#client-state) applies.
+3. It places each `HISTORY` row at its absolute line. Live output that
+   scrolls rows into history takes the next absolute lines above the
+   screen, so history pages and live frames never collide.
+4. When a stream is malformed before `READY`, the client discards it and
+   attaches again (by snapshot or by replay). When it is malformed after
+   `READY`, the client keeps the screen it drew, discards the rest of the
+   stream, and reads missing history with the history operation.
+
+A snapshot is a view of parsed state, not a process checkpoint. It does not
+survive a host restart; a reference from an earlier generation still refuses
+as `lost`.
+
+### History
+
+`openagents.terminal-history.v1` reads older history rows into a record
+stream. It has `requires: ["openagents.terminal-snapshot.v1"]`, `request`,
+`terminal`, `attachment` (the principal's own attachment on that terminal),
+`epoch`, `before` (an absolute line; the rows end at `before - 1`), and
+`rows` (1 to 2,000). It requires the right that attachment needs.
+
+- A current epoch other than `epoch` refuses as `stale`.
+- A `before` above the newest history line plus one refuses as `malformed`.
+- A `before` at or below `history.first` refuses as `content_unavailable`:
+  the rows left the host's retention.
+- An attachment that is not the principal's refuses as `not_admitted`.
+
+The result value is `{kind: "stream", stream}`, and the stream (`TERMINAL`,
+`HISTORY` pages, `FINISH`) follows on the attachment.
+
+### Block journal
+
+With `openagents.terminal-blocks.v1`, a host keeps a bounded block journal
+per terminal from the shell-integration marks its emulator parses (OSC 133
+and OSC 7, and the hook's private command line). The journal holds each
+block's record without its output, and the output's sequence range. It lives
+and ends with the terminal; a host never writes it to disk or a log.
+
+`openagents.terminal-block-page.v1` has `requires:
+["openagents.terminal-blocks.v1"]`, `request`, `terminal`, `before` (a
+block number; the page holds older blocks, or null for the newest), and
+`limit` (1 to 32). It requires the `terminal` right, or `observe` under the
+host's observer policy. A `before` older than the oldest retained block
+refuses as `content_unavailable`.
+
+The result value is `{kind: "blocks", page}`. A page is `{newest, oldest,
+blocks, more}`: the newest and oldest retained block numbers (null when the
+journal is empty), at most `limit` blocks newest first, all below `before`,
+and whether older retained blocks remain. The host returns fewer blocks than
+`limit` to keep the result's JSON at most 12,288 bytes. A block is:
+
+| Field | Contract |
+| --- | --- |
+| `block` | A positive number, increasing per terminal and never reused in a generation. |
+| `origin` | `typed`, `proposal`, `agent`, or `unattributed`. A host records `unattributed` unless an attributed operation started the command. |
+| `command` | The command line, at most 1,024 bytes; `command_truncated` says whether the host cut it. |
+| `dir` | The working directory OSC 7 reported, at most 1,024 bytes, or empty. |
+| `started`, `ended` | Unix milliseconds, or null when unknown or still running. |
+| `status` | The exit status, or null. |
+| `state` | `running`, `finished`, or `abandoned` (a new prompt arrived without an end mark). |
+| `alternate` | Whether the command entered the alternate screen. Such a block has no output range. |
+| `output` | `{from, to}`, the sequence numbers of its output, or null. |
+| `retained` | Whether the ring still holds every frame of `output`. |
+| `lines` | `{epoch, start, end}`, its absolute lines, or null. |
+
+Marks are advisory: a program can print OSC 133 itself. A block record
+shapes how a client draws and navigates; it never authorizes running,
+sharing, or attaching anything.
+
+### Sessions
+
+With `openagents.terminal-sessions.v1`, a host keeps named *session*
+records: which terminals and other resources belong together, and a default
+layout. A session record survives host restarts; its terminals do not.
+
+`openagents.terminal-session-read.v1` has `requires:
+["openagents.terminal-sessions.v1"]`, `request`, and `session`. Its value is
+`{kind: "session", record}`. `openagents.terminal-session-write.v1` has the
+same `requires`, `request`, `session` (null to create a session), `base`
+(the revision the write replaces, 0 to create), and `record`. A write whose
+`base` is not the current revision refuses as `stale`; nothing is merged.
+The value is the stored record. Both require the `terminal` right.
+
+A record is `{session, revision, name, members, layout}`:
+
+- `session` is the host's common ID for the session: null in a create, and
+  in a write the same as the request's `session`.
+  `revision` increases by one per write; a write sends 0 and the host sets
+  it.
+- `name` is 1 to 128 bytes without control characters.
+- `members` is at most 64 entries `{member, kind, ...}`, each `member` a
+  distinct number from 1. A `terminal` member has `terminal`, a terminal
+  reference, and `state`, which a write sends as null and the host sets on
+  every read: `live`, `closed`, or `lost` (an earlier generation). A
+  `resource` member has `resource`, a JSON object of at most 2,048 bytes
+  that the workbench resource-reference contract defines; the host stores
+  it and returns it unchanged without resolving it.
+- `layout` is `{tabs, active}`: 1 to 16 tabs, each `{name, root}` with a
+  name of at most 64 bytes, and `active` the index of the selected tab. A
+  node is `{kind: "pane", member}` or `{kind: "split", axis, ratio, first,
+  second}`, where `axis` is `rows` or `columns` and `ratio` is the first
+  child's share in thousandths, 1 to 999. A tree is at most 16 deep, and a
+  member appears in at most one pane. A pane naming no member refuses as
+  `malformed`.
+
+A record's JSON is at most 12,288 bytes. It never holds terminal output, a
+title, a working directory, a command line, or an environment value, so a
+session can be listed and laid out without disclosing what ran in it. A
+host bounds the number of sessions per owner and refuses above it as
+`limit_exceeded`.
+
+### Extension privacy
+
+Snapshots, history, block records, and session records are terminal data
+under [Privacy and disclosure](#privacy-and-disclosure). A host builds a
+snapshot or a history stream for one attachment and keeps no copy after it
+is sent. Over a relay, records frames are sealed to the attached device and
+use the attachment ID as their mailbox, like base frames.
+
+### Extension conformance
+
+The fixtures are in
+[`crates/coder-pty/fixtures/nip-term-ext.json`](../../crates/coder-pty/fixtures/nip-term-ext.json),
+checked by `crates/coder-pty/tests/ext.rs`. They cover:
+
+- Every extension request and result value, round-tripped exactly.
+- A complete snapshot stream in one part, the same stream fragmented across
+  parts with records spanning them and parts arriving out of order, and a
+  history stream.
+- Streams with a corrupted checksum, a length past the bound, a length past
+  the end, an unknown tag, records out of order, a binding for another
+  generation, and an incomplete final part, each refused.
+- A history read that left retention, a stale epoch, and a bounded block
+  page.
+- A base-profile checker refusing an extension attach as
+  `unsupported_feature`, and a base-profile frame parser refusing a records
+  frame.
+- A join timeline: a sequenced frame before `READY` refused, then live
+  frames after `through` applied in order.
+
 ## Implementation status
 
 [`crates/coder-pty`](../../crates/coder-pty/README.md) implements the host
@@ -296,6 +657,11 @@ route, and reports `lost` after a host restart, drawing output with the
 platforms without a Unix PTY the host refuses every open as `unavailable`.
 The fixtures are in
 [`crates/coder-pty/fixtures/nip-term.json`](../../crates/coder-pty/fixtures/nip-term.json).
+The [extensions](#extensions)' wire contract and its validation are in
+`coder_pty::ext`; no host serves them yet, so a host advertises none of their
+capabilities. Authoritative host emulation (#10653), `coder-vt` snapshots
+(#10654), the block journal (#10656), and session records (#10652) implement
+them.
 
 ## Conformance
 

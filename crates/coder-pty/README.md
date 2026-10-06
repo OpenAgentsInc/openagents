@@ -11,6 +11,7 @@ missed, bounded and in order.
 | Module | Feature | Platforms | What it does |
 | --- | --- | --- | --- |
 | `wire` | always | all | The NIP-TERM request, result, and frame bodies, with validation. |
+| `ext` | always | all | The NIP-TERM extensions' wire contract: features and negotiation, record streams (framing, CRC-32C, assembly, and order), the snapshot join, history, block pages, and session records. No host serves them yet. |
 | `ring` | always | all | The bounded replay buffer: sequence numbers, discard, and missed ranges. |
 | `client` | always | all | `TerminalState` applies frames, ignores duplicates, detects lost frames, records gaps, and keeps a bounded plain-text `Screen`. |
 | `host` | `host` (default) | Unix, Windows | `Host` owns PTYs (a Windows pseudoconsole), process groups (job objects), rings, attachments, budgets, idle expiry, and shutdown. |

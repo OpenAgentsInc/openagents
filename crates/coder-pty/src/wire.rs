@@ -64,7 +64,7 @@ impl Size {
         Size { rows, cols }
     }
 
-    fn check(self) -> Result<(), Refusal> {
+    pub(crate) fn check(self) -> Result<(), Refusal> {
         let fits = |n: u16| (1..=DIMENSION_MAX).contains(&n);
         if fits(self.rows) && fits(self.cols) {
             Ok(())
@@ -91,7 +91,7 @@ pub struct TerminalRef {
 }
 
 impl TerminalRef {
-    fn check(&self) -> Result<(), Refusal> {
+    pub(crate) fn check(&self) -> Result<(), Refusal> {
         common_id(&self.generation, "generation")?;
         common_id(&self.terminal, "terminal")
     }
@@ -220,6 +220,11 @@ pub struct Attach {
     /// The most output bytes per second the client wants delivered. The
     /// host narrows it to its own ceiling; it never widens it.
     pub rate: u64,
+    /// How the attachment starts: by replay or by snapshot. Present
+    /// exactly when `requires` names the snapshot feature
+    /// ([`crate::ext::SNAPSHOT`]).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub join: Option<crate::ext::Join>,
 }
 
 impl Attach {
@@ -239,16 +244,46 @@ impl Attach {
             mode,
             after,
             rate,
+            join: None,
         }
     }
 
+    /// An attach that names the snapshot feature and starts by `join`.
+    #[must_use]
+    pub fn joining(mut self, join: crate::ext::Join) -> Self {
+        self.requires = vec![crate::ext::SNAPSHOT.into()];
+        self.join = Some(join);
+        self
+    }
+
+    /// Checks the attach as a base-profile host does: a request that names
+    /// any feature refuses as `unsupported_feature`.
     pub fn check(&self) -> Result<(), Refusal> {
-        header(&self.v, ATTACH, &self.requires, &self.request)?;
+        self.check_with(crate::ext::Features::NONE)
+    }
+
+    /// Checks the attach as a host that serves `features` does.
+    pub fn check_with(&self, features: crate::ext::Features) -> Result<(), Refusal> {
+        version(&self.v, ATTACH)?;
+        let snapshot = features.admit(&self.requires, &[crate::ext::SNAPSHOT])?;
+        common_id(&self.request, "request")?;
         self.terminal.check()?;
         if self.rate == 0 {
             return Err(Refusal::malformed("an attachment's rate must be positive"));
         }
-        Ok(())
+        match (snapshot, self.join) {
+            (false, None) | (true, Some(crate::ext::Join::Replay)) => Ok(()),
+            (true, Some(crate::ext::Join::Snapshot)) if self.after == 0 => Ok(()),
+            (true, Some(crate::ext::Join::Snapshot)) => Err(Refusal::malformed(
+                "an attach by snapshot starts after zero",
+            )),
+            (false, Some(_)) => Err(Refusal::malformed(
+                "join needs the snapshot feature in requires",
+            )),
+            (true, None) => Err(Refusal::malformed(
+                "the snapshot feature needs a join field",
+            )),
+        }
     }
 }
 
@@ -455,6 +490,15 @@ pub enum Reason {
     Lost,
     /// The terminal ended and the host no longer retains it.
     Closed,
+    /// The request names a line epoch or a session revision that is no
+    /// longer current. An extension cause.
+    Stale,
+    /// The requested history or journal entries left the host's
+    /// retention. An extension cause.
+    ContentUnavailable,
+    /// A stream or reference binds a different terminal or generation
+    /// than the body that carries it. An extension cause.
+    IdentityMismatch,
 }
 
 impl Reason {
@@ -472,6 +516,9 @@ impl Reason {
             Reason::Revoked => "revoked",
             Reason::Lost => "lost",
             Reason::Closed => "closed",
+            Reason::Stale => "stale",
+            Reason::ContentUnavailable => "content_unavailable",
+            Reason::IdentityMismatch => "identity_mismatch",
         }
     }
 }
@@ -543,6 +590,18 @@ pub enum Value {
         bytes: u64,
     },
     Done,
+    /// A record stream follows on the attachment. Answers a history read.
+    Stream {
+        stream: String,
+    },
+    /// A page of the block journal.
+    Blocks {
+        page: crate::ext::BlockPage,
+    },
+    /// A session record as the host stores it.
+    Session {
+        record: crate::ext::SessionRecord,
+    },
 }
 
 /// The host's answer to one request.
@@ -715,7 +774,7 @@ pub fn is_common_id(id: &str) -> bool {
             .all(|b| b.is_ascii_digit() || (b'a'..=b'f').contains(&b))
 }
 
-fn common_id(id: &str, what: &str) -> Result<(), Refusal> {
+pub(crate) fn common_id(id: &str, what: &str) -> Result<(), Refusal> {
     if is_common_id(id) {
         Ok(())
     } else {
@@ -725,7 +784,7 @@ fn common_id(id: &str, what: &str) -> Result<(), Refusal> {
     }
 }
 
-fn version(v: &str, expected: &str) -> Result<(), Refusal> {
+pub(crate) fn version(v: &str, expected: &str) -> Result<(), Refusal> {
     if v == expected {
         Ok(())
     } else if v.starts_with("openagents.terminal-") {
@@ -799,16 +858,16 @@ fn env_name(name: &str) -> Result<(), Refusal> {
 }
 
 /// Base64 (standard alphabet, padded) for byte fields.
-mod b64 {
+pub(crate) mod b64 {
     use base64::Engine as _;
     use base64::engine::general_purpose::STANDARD;
     use serde::{Deserialize, Deserializer, Serializer};
 
-    pub(super) fn serialize<S: Serializer>(bytes: &[u8], serializer: S) -> Result<S::Ok, S::Error> {
+    pub(crate) fn serialize<S: Serializer>(bytes: &[u8], serializer: S) -> Result<S::Ok, S::Error> {
         serializer.serialize_str(&STANDARD.encode(bytes))
     }
 
-    pub(super) fn deserialize<'de, D: Deserializer<'de>>(
+    pub(crate) fn deserialize<'de, D: Deserializer<'de>>(
         deserializer: D,
     ) -> Result<Vec<u8>, D::Error> {
         let text = String::deserialize(deserializer)?;
