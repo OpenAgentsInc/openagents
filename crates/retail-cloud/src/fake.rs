@@ -43,7 +43,10 @@ impl FakeWallet {
     }
 
     fn with<T>(&self, f: impl FnOnce(&mut WalletState) -> T) -> T {
-        let mut state = self.state.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
+        let mut state = self
+            .state
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
         f(&mut state)
     }
 
@@ -169,10 +172,14 @@ impl LightningWallet for FakeWallet {
     }
 
     fn open_channel(&self, _: &str, _: &str, _: u64, _: bool) -> Result<String, WalletError> {
-        Err(WalletError::Node("the fake receiver opens no channels".into()))
+        Err(WalletError::Node(
+            "the fake receiver opens no channels".into(),
+        ))
     }
 
     fn close_channel(&self, _: &str, _: &str, _: bool) -> Result<(), WalletError> {
-        Err(WalletError::Node("the fake receiver has no channels".into()))
+        Err(WalletError::Node(
+            "the fake receiver has no channels".into(),
+        ))
     }
 }

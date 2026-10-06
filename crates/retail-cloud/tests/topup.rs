@@ -102,7 +102,10 @@ fn unpaid_expired_unknown_and_short_receipts_never_credit() {
     // After expiry, unpaid invoices expire.
     let pass = topup::reconcile(&mut ledger, &wallet, NOW + 1_000).unwrap();
     assert_eq!(pass.expired, 2);
-    assert_eq!(pass.unknown, 2, "unknown purchases stay unknown without a full payment");
+    assert_eq!(
+        pass.unknown, 2,
+        "unknown purchases stay unknown without a full payment"
+    );
     assert_eq!(ledger.credited("acct-a").unwrap(), 0);
     let states: Vec<_> = ledger
         .top_ups("acct-a")

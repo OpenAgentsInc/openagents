@@ -38,9 +38,7 @@ pub struct TopUpRequest {
 pub fn request_hash(account: &str, purchase: &str, amount_sats: u64) -> [u8; 32] {
     let text = format!("openagents.cloud.top-up.v1\n{account}\n{purchase}\n{amount_sats}");
     let mut out = [0u8; 32];
-    out.copy_from_slice(
-        &hex::decode(sha256_hex(text.as_bytes())).unwrap_or_else(|_| vec![0; 32]),
-    );
+    out.copy_from_slice(&hex::decode(sha256_hex(text.as_bytes())).unwrap_or_else(|_| vec![0; 32]));
     out
 }
 
@@ -57,7 +55,8 @@ pub fn request_top_up(
     wallet: &impl LightningWallet,
     request: &TopUpRequest,
 ) -> Result<Purchase> {
-    let principal = ledger.resolve_principal(&request.principal, &request.credential, Need::Spend)?;
+    let principal =
+        ledger.resolve_principal(&request.principal, &request.credential, Need::Spend)?;
     let amount_msat = request
         .amount_sats
         .checked_mul(1000)

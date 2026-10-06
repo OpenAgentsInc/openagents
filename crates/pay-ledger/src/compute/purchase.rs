@@ -167,7 +167,9 @@ impl Ledger {
         }
         match receipt {
             Receipt::Pending => return Ok(purchase),
-            Receipt::Paid { received_msat, at } if *received_msat == purchase.top_up.amount_msat => {
+            Receipt::Paid { received_msat, at }
+                if *received_msat == purchase.top_up.amount_msat =>
+            {
                 tx.execute(
                     "INSERT INTO compute_credit(account,source,amount_msat,at) VALUES(?,?,?,?) ON CONFLICT(source) DO NOTHING",
                     params![

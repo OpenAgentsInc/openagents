@@ -12,7 +12,12 @@
 //! qualification passes (`NEEDS_OWNER.md`).
 //!
 //! - [`topup`]: Lightning top-ups credited once to the shared balance.
+//! - [`contract`]: the v1 computer and task classes as data.
+//! - [`authority`]: observation, execution, disclosure, and spending,
+//!   admitted and checked independently before every side effect.
 
+pub mod authority;
+pub mod contract;
 pub mod fake;
 pub mod topup;
 
