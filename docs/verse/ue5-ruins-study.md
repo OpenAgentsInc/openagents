@@ -6,17 +6,24 @@ plan in order of payoff, what an agent inventories from the downloaded
 project, and what the license lets us do with it. In short: we study the
 project and build our own models in Blender. Nothing from it ships.
 
-Status on October 5, 2026: the download stopped at 17,094 of 19,784 files,
-and the editor-level study list below hasn't started.
+Status on October 5, 2026: the project is installed and complete at
+`~/Documents/Unreal Projects/ValleyoftheAncient` (19,784 files, 92.1 GB,
+engine 5.7), and the editor-level study list below hasn't started, because
+Unreal Engine 5.7 isn't installed.
 
-The [content index](valley-of-the-ancient-index.md) inventories the download, and [Female character](female-character.md) specifies an original player character informed by Echo.
+The [content index](valley-of-the-ancient-index.md) inventories the installed
+project, and [Female character](female-character.md) specifies an original
+player character informed by Echo.
 
 ## The download
 
-The Epic Games Launcher is installing the Fab listing **Valley of the
-Ancient** (listing `0c19880e-21bd-42ba-8287-1caccc3951b1`, app
-`AncientGame_5.7`, engine association 5.7). It's not under
-`~/work/UnrealEngine` or `~/Documents/Unreal Projects`. Here is where it is:
+This section records the download as it stood at 17:50 local; the
+[content index](valley-of-the-ancient-index.md#where-it-is) has the
+installed location and the vault copy. The Epic Games Launcher installed the
+Fab listing **Valley of the Ancient** (listing
+`0c19880e-21bd-42ba-8287-1caccc3951b1`, app `AncientGame_5.7`, engine
+association 5.7). At 17:50 it wasn't yet under `~/work/UnrealEngine` or
+`~/Documents/Unreal Projects`. Here is where it was:
 
 | Path | What's there on October 5, 2026, about 17:50 local |
 | --- | --- |
@@ -33,16 +40,16 @@ which matches the owner's figure of roughly 205 GB. The data volume has
 | Folder | Size | Files |
 | --- | --- | --- |
 | `Content/AncientContent/Megascans/` (`3DAssets`, `Surfaces`, `3DPlants`, `Decals`) | 38.8 GB | 1,018 |
-| `Plugins/GameFeatures/AncientBattle/` (boss, destruction, battle map) | 16.8 GB | 2,481 |
+| `Plugins/GameFeatures/AncientBattle/` (boss, destruction, battle map) | 16.8 GB | 2,478 |
 | `DerivedDataCache/` | 16.5 GB | |
 | `Content/AncientContent/Geometry/` (`PillarCollection`, `MASS`, `Buttes`, `SpireRockCollection`, `StoneBlock`, `ErosionGround`, `GroundTiles`, and others) | 15.9 GB | 549 |
 | `Content/AncientContent/Characters/Echo/` | 1.6 GB | 183 |
 | `Content/AncientContent/` other (`Materials`, `Maps`, `Audio`, `Effects`, `Lighting`, `Clouds`) | 2.0 GB | |
 | `Content/__ExternalActors__/` (World Partition, one file per actor) | 0.4 GB | 14,244 |
-| `Config/`, `Source/`, `Plugins/GameFeatures/HoverDrone/`, `AncientGame.uproject` | small | |
+| `Config/`, `Source/`, `Plugins/GameFeatures/HoverDrone/`, `AncientGame.uproject` (renamed `ValleyoftheAncient.uproject` on install) | small | |
 
 The maps are `AncientWorld`, `Startup`, `Megascans_Asset_Zoo`, the battle map
-`L_AncientBattleGameplay`, and 170 MegaAssembly maps under
+`L_AncientBattleGameplay`, and 169 MegaAssembly maps under
 `Content/AncientContent/Maps/MASS/` (for example
 `Packed/MASS_Cliff_L_09_Packed.umap` and `Packed/MASS_Butte_XXL_01_Packed.umap`).
 
@@ -82,7 +89,7 @@ ours. Its claims and our corrections:
 | --- | --- |
 | Nanite builds offline cluster hierarchies, selects clusters by screen-space error, and streams cluster groups. | Right in outline. The hierarchy is a DAG of cluster groups, not a tree, so neighboring clusters simplify together without cracks, and selection runs per cluster in parallel. It also leaves out what makes small triangles cheap: a compute software rasterizer and a visibility buffer that shades each pixel once. |
 | 433 million input triangles became 882 million Nanite triangles and about 4.6 GB compressed in the 2020 demo, with tens of millions drawn per frame. | We haven't checked these numbers against the talk. If they're right, 882 million counts every level of the hierarchy, so it's the stored total, not a refinement of the source. Epic's 2020 talk described about a billion source triangles per frame reduced to about 20 million drawn. Treat both as approximate. |
-| The environments were assembled from Megascans "MegaAssemblies". | Right for Valley: the project carries 170 `MASS_*` maps, which are packed level instances of scans. |
+| The environments were assembled from Megascans "MegaAssemblies". | Right for Valley: the project carries 169 MegaAssembly maps, which are packed level instances of scans. |
 | Lumen's dynamic GI is half the look of stone corridors. | A judgment, and a fair one for enclosed spaces where bounce light sets the mood. |
 | World Partition streams cells. | Right. Valley also stores each actor in its own file (`__ExternalActors__`, 14,244 files). |
 | Valley includes Chaos-fractured destructible assets. | Right, with a qualifier: the boss destruction plays back recorded caches (for example `Robot_Head_Destruction_Cached.umap`), not a live simulation. |
@@ -226,7 +233,7 @@ feature it informs.
   size, the World Partition grid cell size and loading range, the data
   layers (light world and Dark World), and the actor count. Informs: the
   streaming plan (item 7) and zone size targets.
-- [ ] **MegaAssemblies.** List the 170 `MASS_*` maps by type (cliff, butte,
+- [ ] **MegaAssemblies.** List the 169 MegaAssembly maps by type (cliff, butte,
   boulder, ground, spike, fireplace). For five of them, count the member
   meshes and record their scale ranges and how they interlock. Informs:
   assemblies (item 6), and our **cliff assembly** and **boulder assembly**
