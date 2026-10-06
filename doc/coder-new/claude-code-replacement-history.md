@@ -1,9 +1,11 @@
-# Historical attempts to replace Claude Code
+# Claude Code replacement history and current terminal survey
 
 Research snapshot: October 6, 2026. This catalog is background for a new TUI
 specification. It covers the retained `docs/transcripts/001.md`–`289.md`
 archive and the removed, unreleased Gym preparation session linked by the
-[archive index](../../docs/transcripts/README.md).
+[archive index](../../docs/transcripts/README.md). The
+[current terminal survey](#current-terminal-survey) adds a source-based
+inventory of the implementations available for the new specification.
 
 Chris repeatedly replaces the interface where he works, but the replacement
 often keeps Claude Code as its executor. Attempts to own the execution loop
@@ -536,8 +538,8 @@ The current [288](../../docs/transcripts/288.md) previews OpenAgents 1.0.0;
 [289](../../docs/transcripts/289.md#L16-L18) presents a composable general
 agent across terminal, desktop, and mobile, with Coder loaded for repository
 work. These describe another consolidation of earlier capabilities. Neither
-establishes that Claude Code dependence has permanently ended. Later source
-code, measurements, and terminal work are outside this transcript catalog.
+establishes that Claude Code dependence has permanently ended. The source
+survey below examines later terminal work separately from this chronology.
 
 ## Earlier Claude exits that are not Claude Code exits
 
@@ -558,7 +560,487 @@ Sonnet connected directly to GitHub. Faerie's earlier
 [coding loop and failure analysis](../../docs/transcripts/032.md#L25-L75)
 is a predecessor to all of these, not an attempt to leave Claude Code.
 
-## What this history contributes to the new TUI spec
+## Current terminal survey
+
+This survey describes committed source as of October 6, 2026:
+
+- **This repository:** OpenAgents at
+  [`636354ddc0a4aa044f971fafd39b47978fa62658`](https://github.com/OpenAgentsInc/openagents/tree/636354ddc0a4aa044f971fafd39b47978fa62658).
+  Implementation and retained-evidence links below pin this revision.
+- **Sibling Coder repository:** `../coder`, inspected from a read-only
+  checkout of the upstream repository at
+  [`0b9916b42f9b8a261ffaf911b6630c9ca72660ad`](https://github.com/OpenAgentsInc/coder/tree/0b9916b42f9b8a261ffaf911b6630c9ca72660ad).
+  Its workspace version is `0.5.0`. Links to that repository pin this revision.
+  This does not include uncommitted changes in another local checkout.
+
+Source establishes implemented paths and retained checks. This survey does
+not run the apps, exercise real providers, or establish daily-driver parity
+with Claude Code. Older READMEs and roadmaps sometimes describe earlier
+behavior; the implementation takes precedence here.
+
+### The names refer to different layers
+
+| Area | What it owns | Entry points |
+| --- | --- | --- |
+| Coder terminal crates in this repository | Shared theme, editor, composer, terminal lifecycle, transcript components, and rendering helpers. | [`coder-terminal`](https://github.com/OpenAgentsInc/openagents/blob/636354ddc0a4aa044f971fafd39b47978fa62658/crates/coder-terminal/src/lib.rs#L1-L68), [`coder-ui`](https://github.com/OpenAgentsInc/openagents/blob/636354ddc0a4aa044f971fafd39b47978fa62658/crates/coder-ui/src/lib.rs). |
+| Standalone Coder in this repository | A small conversational shell over Coder's shared turn runner; separate task-management CLI. | [`coder` dispatch and screen](https://github.com/OpenAgentsInc/openagents/blob/636354ddc0a4aa044f971fafd39b47978fa62658/crates/coder/src/main.rs#L335-L453). |
+| Terminal app in `../coder` | A complete Coder session app, shared UI core and terminal renderer, local execution, delegated agents, session recovery, and attached clients. | [`coder-terminal-app` binary](https://github.com/OpenAgentsInc/coder/blob/0b9916b42f9b8a261ffaf911b6630c9ca72660ad/bins/coder-terminal/Cargo.toml#L6-L95). |
+| OpenAgents chat TUI | Full-screen OpenAgents threads with Coder runs, settings, plugins, and host integration. | [`openagents terminal` and bare `openagents`](https://github.com/OpenAgentsInc/openagents/blob/636354ddc0a4aa044f971fafd39b47978fa62658/crates/openagents-cli/src/screen.rs#L1-L44). |
+| OpenAgents plain TTY shell | An ordinary shell with explicit requests, inline proposals, and owner-confirmed commands. | [`openagents terminal shell`](https://github.com/OpenAgentsInc/openagents/blob/636354ddc0a4aa044f971fafd39b47978fa62658/crates/openagents-cli/src/screen.rs#L1475-L1531). |
+| Related native OpenAgents Terminal | A real shell and smart input in a native window or Verse sheet, with thread and workbench views. | [`openagents-terminal` binary](https://github.com/OpenAgentsInc/openagents/blob/636354ddc0a4aa044f971fafd39b47978fa62658/crates/terminal-app/Cargo.toml#L1-L24), [`terminal-core`](https://github.com/OpenAgentsInc/openagents/blob/636354ddc0a4aa044f971fafd39b47978fa62658/crates/terminal-core/src/application.rs#L51-L114). |
+
+The two repositories' `coder-terminal` crates are distinct implementations.
+Neither crate name alone identifies the full application. Likewise,
+`openagents terminal` is a terminal-hosted chat screen, while
+`openagents-terminal` is the native shell application. The `shell` subcommand
+adds a third surface that keeps the ordinary shell's editor and output.
+
+### Shared Coder terminal components in this repository
+
+**Existing foundation.** `coder-ui` supplies a four-level white palette;
+`coder-terminal` supplies the ratatui composer, grapheme-aware multiline
+editor, key mapping, Markdown renderer, spinner, guarded terminal modes,
+scrollback, and event transport. Color selection supports truecolor,
+indexed color, and `NO_COLOR`. Sources:
+[crate inventory](https://github.com/OpenAgentsInc/openagents/blob/636354ddc0a4aa044f971fafd39b47978fa62658/crates/coder-terminal/src/lib.rs#L1-L68),
+[palette](https://github.com/OpenAgentsInc/openagents/blob/636354ddc0a4aa044f971fafd39b47978fa62658/crates/coder-ui/src/theme.rs#L18-L46), and
+[terminal color selection](https://github.com/OpenAgentsInc/openagents/blob/636354ddc0a4aa044f971fafd39b47978fa62658/crates/coder-terminal/src/ladder.rs#L82-L133).
+
+The component layer can render turns, notes, cards, grouped tools, file diffs,
+delegations, run rails, and list overlays. Components are pure renderers;
+they do not own conversations, choose providers, or authorize actions. The
+OpenAgents TUI consumes these richer components. Their presence does not
+mean the smaller standalone `coder` screen exposes them. Sources:
+[component modules](https://github.com/OpenAgentsInc/openagents/blob/636354ddc0a4aa044f971fafd39b47978fa62658/crates/coder-terminal/src/components/mod.rs#L1-L33)
+and [OpenAgents row composition](https://github.com/OpenAgentsInc/openagents/blob/636354ddc0a4aa044f971fafd39b47978fa62658/crates/openagents-terminal/src/rows.rs#L1-L26).
+
+**Bounds and evidence.** Scrollback defaults to 5,000 logical lines and
+caches wrapping until the width changes. Live preview text has a 1 MiB
+buffer and reports dropped bytes; control events use an unbounded queue so
+command outcomes are not silently dropped. These are display bounds, not a
+bound on the agent's context or the process's total memory. Existing checks
+cover Unicode editing, history, cleanup, event ordering, narrow layouts,
+and component snapshots. Sources:
+[scrollback](https://github.com/OpenAgentsInc/openagents/blob/636354ddc0a4aa044f971fafd39b47978fa62658/crates/coder-terminal/src/scrollback.rs#L17-L66),
+[event lanes](https://github.com/OpenAgentsInc/openagents/blob/636354ddc0a4aa044f971fafd39b47978fa62658/crates/coder-terminal/src/events.rs#L1-L27),
+[preview limit](https://github.com/OpenAgentsInc/openagents/blob/636354ddc0a4aa044f971fafd39b47978fa62658/crates/coder-terminal/src/events.rs#L111-L129), and
+[component tests](https://github.com/OpenAgentsInc/openagents/blob/636354ddc0a4aa044f971fafd39b47978fa62658/crates/coder-terminal/tests/components.rs#L264-L447).
+
+The Rust Native adapter projects a limited view vocabulary onto this
+terminal palette and emits revision-bound activations. It is not a native
+control host or an authorization layer; unsupported properties and literal
+Markdown rendering remain explicit limits. See the
+[adapter boundary](https://github.com/OpenAgentsInc/openagents/blob/636354ddc0a4aa044f971fafd39b47978fa62658/crates/coder-terminal/src/native.rs#L1-L28) and
+[supported rendering](https://github.com/OpenAgentsInc/openagents/blob/636354ddc0a4aa044f971fafd39b47978fa62658/crates/coder-terminal/src/native.rs#L49-L112).
+
+### The smaller standalone Coder shell in this repository
+
+**Interaction.** The screen has a multiline composer, streaming and completed
+Markdown, proposal/verdict/progress/error rows, a spinner, scrolling, and a
+detail toggle. Enter submits; Alt+Enter or Ctrl+J inserts a newline. Readline
+editing and prompt history live in the shared editor. `/verbose`, `/v`, and
+Alt+V are its only screen commands. Every other slash-prefixed submission
+is rejected as an unknown command. Page Up and Page Down move ten rows.
+Sources: [composer keys](https://github.com/OpenAgentsInc/openagents/blob/636354ddc0a4aa044f971fafd39b47978fa62658/crates/coder-terminal/src/keys.rs#L30-L122),
+[screen controls](https://github.com/OpenAgentsInc/openagents/blob/636354ddc0a4aa044f971fafd39b47978fa62658/crates/coder/src/main.rs#L582-L629), and
+[transcript rendering](https://github.com/OpenAgentsInc/openagents/blob/636354ddc0a4aa044f971fafd39b47978fa62658/crates/coder/src/main.rs#L656-L880).
+
+**Queue and lifetime.** A busy turn accepts one pending draft in an `Option`;
+a later submission replaces it. This is not a durable FIFO queue. Ctrl+C
+exits the screen; empty Ctrl+D also exits. There is no screen-level
+per-turn cancellation, thread picker, run rail, or full-screen run view.
+The production event loop handles key events but does not integrate mouse
+or bracketed-paste events. The header captures the agent label once at
+startup, so it is not a live provider/account/failover display. Sources:
+[application state](https://github.com/OpenAgentsInc/openagents/blob/636354ddc0a4aa044f971fafd39b47978fa62658/crates/coder/src/main.rs#L192-L215),
+[header](https://github.com/OpenAgentsInc/openagents/blob/636354ddc0a4aa044f971fafd39b47978fa62658/crates/coder/src/main.rs#L526-L539), and
+[queue and input handling](https://github.com/OpenAgentsInc/openagents/blob/636354ddc0a4aa044f971fafd39b47978fa62658/crates/coder/src/main.rs#L550-L629).
+
+The `coder task` command family separately offers durable submission,
+execution, correction, cancellation, recovery, inspection, artifact, and
+archive operations. Submission is inert until explicitly executed with a
+grant. That task CLI does not make the small conversational screen a
+thread-management UI. See the [task CLI](https://github.com/OpenAgentsInc/openagents/blob/636354ddc0a4aa044f971fafd39b47978fa62658/crates/coder/src/task/cli.rs#L11-L39).
+
+**Claude Code dependence.** The shared turn runner can select Microcoder,
+Claude Code CLI, or Codex CLI; environment settings and available
+authentication affect selection. Microcoder owns the loop and tries Codex,
+Claude, then hosted Vertex transport. Its Claude transport still invokes
+the `claude` executable as a tools-disabled model call. That removes
+Claude's agent loop from that path, but retains its executable and login
+dependency. A whole-task Claude CLI delegation retains the foreign harness
+and session instead. Sources:
+[delegate selection](https://github.com/OpenAgentsInc/openagents/blob/636354ddc0a4aa044f971fafd39b47978fa62658/crates/coder/src/delegate_door.rs#L350-L384),
+[selection conditions](https://github.com/OpenAgentsInc/openagents/blob/636354ddc0a4aa044f971fafd39b47978fa62658/crates/coder/src/delegate_door.rs#L454-L520),
+[Microcoder provider order](https://github.com/OpenAgentsInc/openagents/blob/636354ddc0a4aa044f971fafd39b47978fa62658/crates/coder/src/delegate_door/microcoder.rs#L152-L163),
+[provider construction](https://github.com/OpenAgentsInc/openagents/blob/636354ddc0a4aa044f971fafd39b47978fa62658/crates/coder/src/delegate_door/microcoder.rs#L320-L345),
+[Claude model transport](https://github.com/OpenAgentsInc/openagents/blob/636354ddc0a4aa044f971fafd39b47978fa62658/crates/microcoder-loop/src/claude.rs#L1-L9), and
+[whole-task delegation](https://github.com/OpenAgentsInc/openagents/blob/636354ddc0a4aa044f971fafd39b47978fa62658/crates/coder/src/delegate_door.rs#L898-L938).
+
+The current conversational Microcoder path records spend but sets unbounded
+loop limits; older claims of a fixed dollar or step cap do not describe this
+path. The CLI turn also disables the separate issue-to-PR flow. See
+[current limits](https://github.com/OpenAgentsInc/openagents/blob/636354ddc0a4aa044f971fafd39b47978fa62658/crates/coder/src/delegate_door/microcoder.rs#L629-L634)
+and [CLI flow selection](https://github.com/OpenAgentsInc/openagents/blob/636354ddc0a4aa044f971fafd39b47978fa62658/crates/coder/src/delegate_door.rs#L932-L936).
+
+### The complete terminal app in the sibling Coder repository
+
+**Architecture and interface.** The sibling app uses ratatui/crossterm over
+the renderer-free `coder-ui-core` cell grid. Its shared core also serves
+other surfaces; the terminal binary does not depend on GPUI. The default
+transcript follows the tail until scrolled. Its composer includes directory
+and branch, slash suggestions, context estimates, token totals, active
+children, and available CPU/RAM readings. A delegation panel sits below it.
+Sources:
+[renderer](https://github.com/OpenAgentsInc/coder/blob/0b9916b42f9b8a261ffaf911b6630c9ca72660ad/crates/coder-terminal/src/render.rs#L1-L82),
+[shared UI core](https://github.com/OpenAgentsInc/coder/blob/0b9916b42f9b8a261ffaf911b6630c9ca72660ad/crates/coder-ui-core/coder_ui_core.rs#L1-L50), and
+[transcript screen](https://github.com/OpenAgentsInc/coder/blob/0b9916b42f9b8a261ffaf911b6630c9ca72660ad/bins/coder-terminal/src/screens/transcript.rs#L1-L156).
+
+The app adds a Resume picker, Plugins and gated Gym screens, child and
+delegation detail, a bounded read-only syntax-highlighted file viewer, and
+an optional fleet/order console. Editing includes grapheme-aware selection,
+soft wrapping, persistent prompt history, slash/path completion, mouse
+selection, and platform clipboard/OSC 52 copying. Pasted or dropped image
+paths produce multimodal attachments, limited to 4 MB per image, with HEIC
+conversion. Sources:
+[screen inventory](https://github.com/OpenAgentsInc/coder/blob/0b9916b42f9b8a261ffaf911b6630c9ca72660ad/bins/coder-terminal/src/screens.rs#L1-L40),
+[editor](https://github.com/OpenAgentsInc/coder/blob/0b9916b42f9b8a261ffaf911b6630c9ca72660ad/crates/coder-ui-core/input.rs#L1-L40),
+[history](https://github.com/OpenAgentsInc/coder/blob/0b9916b42f9b8a261ffaf911b6630c9ca72660ad/crates/coder-terminal/src/composer/history.rs#L16-L63),
+[completion](https://github.com/OpenAgentsInc/coder/blob/0b9916b42f9b8a261ffaf911b6630c9ca72660ad/crates/coder-terminal/src/composer/complete.rs#L1-L170),
+[file viewer](https://github.com/OpenAgentsInc/coder/blob/0b9916b42f9b8a261ffaf911b6630c9ca72660ad/bins/coder-terminal/src/file_viewer.rs#L1-L129), and
+[image attachment path](https://github.com/OpenAgentsInc/coder/blob/0b9916b42f9b8a261ffaf911b6630c9ca72660ad/bins/coder-terminal/src/image.rs#L1-L85).
+
+**Sessions beyond the screen.** Scrubbed JSONL journals retain entries,
+turns, checkpoints, and child references. Durable context tracks projected
+occupancy; outage handling preserves completed tool results and resumes
+interrupted responses. `serve` runs the same session loop without a screen;
+attached terminals, CLI clients, and phone clients submit to one writer.
+Admission supports loopback, allowlisted devices, expiring one-use pairing,
+and registered account devices, with revocable submit/drive grants.
+Sources:
+[journal](https://github.com/OpenAgentsInc/coder/blob/0b9916b42f9b8a261ffaf911b6630c9ca72660ad/bins/coder-terminal/src/history.rs#L1-L38),
+[checkpoint and child records](https://github.com/OpenAgentsInc/coder/blob/0b9916b42f9b8a261ffaf911b6630c9ca72660ad/bins/coder-terminal/src/history.rs#L135-L186),
+[context projection](https://github.com/OpenAgentsInc/coder/blob/0b9916b42f9b8a261ffaf911b6630c9ca72660ad/bins/coder-terminal/src/context.rs#L112-L188),
+[recovery](https://github.com/OpenAgentsInc/coder/blob/0b9916b42f9b8a261ffaf911b6630c9ca72660ad/bins/coder-terminal/src/outage.rs#L57-L130),
+[shared writer](https://github.com/OpenAgentsInc/coder/blob/0b9916b42f9b8a261ffaf911b6630c9ca72660ad/bins/coder-terminal/src/writer.rs#L1-L15), and
+[device admission](https://github.com/OpenAgentsInc/coder/blob/0b9916b42f9b8a261ffaf911b6630c9ca72660ad/bins/coder-terminal/src/admission.rs#L11-L53).
+
+A libghostty-vt owner parses child-terminal output and publishes snapshots.
+`drive` gives one client keyboard/resize authority; `panes` exposes the
+child fleet through tmux. Native writer children normally receive isolated
+Git worktrees; read-only children share the selected directory. Native
+workers have durable admission and recovery machinery that foreign
+adapters do not share. Sources:
+[terminal owner](https://github.com/OpenAgentsInc/coder/blob/0b9916b42f9b8a261ffaf911b6630c9ca72660ad/bins/coder-terminal/src/terminals.rs#L1-L38),
+[drive protocol](https://github.com/OpenAgentsInc/coder/blob/0b9916b42f9b8a261ffaf911b6630c9ca72660ad/bins/coder-terminal/src/drive.rs#L1-L27), and
+[child isolation](https://github.com/OpenAgentsInc/coder/blob/0b9916b42f9b8a261ffaf911b6630c9ca72660ad/bins/coder-terminal/src/isolation.rs#L1-L49).
+See also the [native/foreign recovery boundary](https://github.com/OpenAgentsInc/coder/blob/0b9916b42f9b8a261ffaf911b6630c9ca72660ad/bins/coder-terminal/src/delegate.rs#L1-L10).
+
+Cross-screen survival requires a living writer. An attached terminal is a
+client; an ordinary interactive terminal owns its loop. `serve` runs until
+stopped, and `--with-parent` also ends it when stdin closes. Shutdown records
+unfinished calls and child references; a retained `left_running` label is
+not proof that a child continues uninterrupted after its owner exits.
+Sources:
+[attached client](https://github.com/OpenAgentsInc/coder/blob/0b9916b42f9b8a261ffaf911b6630c9ca72660ad/bins/coder-terminal/src/attach.rs#L1-L19),
+[writer lifetime](https://github.com/OpenAgentsInc/coder/blob/0b9916b42f9b8a261ffaf911b6630c9ca72660ad/bins/coder-terminal/src/writer.rs#L238-L265), and
+[shutdown records](https://github.com/OpenAgentsInc/coder/blob/0b9916b42f9b8a261ffaf911b6630c9ca72660ad/bins/coder-terminal/src/session_shutdown.rs#L9-L66).
+
+While a turn is busy or recovering, submitted prompts wait in FIFO order
+and run as separate turns, rather than immediately steering the current
+turn. The pending queue lives in memory and is not restored by the journal.
+`/queue cancel` clears it. Once notices and child views have handled their
+keys, two Esc presses request cancellation of an active turn; child task
+stopping has a separate `TaskStop` route. Ctrl+O releases or recaptures the
+mouse for the enclosing terminal; it has a different meaning from Ctrl+O
+in the OpenAgents TUI. Sources:
+[prompt queue](https://github.com/OpenAgentsInc/coder/blob/0b9916b42f9b8a261ffaf911b6630c9ca72660ad/bins/coder-terminal/src/queue.rs#L13-L105),
+[queue controls](https://github.com/OpenAgentsInc/coder/blob/0b9916b42f9b8a261ffaf911b6630c9ca72660ad/bins/coder-terminal/src/operator.rs#L381-L395),
+[busy submission](https://github.com/OpenAgentsInc/coder/blob/0b9916b42f9b8a261ffaf911b6630c9ca72660ad/bins/coder-terminal/src/session.rs#L1212-L1218), and
+[stop and mouse handling](https://github.com/OpenAgentsInc/coder/blob/0b9916b42f9b8a261ffaf911b6630c9ca72660ad/bins/coder-terminal/src/session_input.rs#L74-L122).
+See [child task stopping](https://github.com/OpenAgentsInc/coder/blob/0b9916b42f9b8a261ffaf911b6630c9ca72660ad/bins/coder-terminal/src/session_called.rs#L147-L161).
+
+**Execution and commands.** The active `Agent` tool defaults to native Coder,
+with scoped child tools and task output/stop controls. Native Coder owns
+its engine and supports local inference, so Claude Code is not required
+for native tasks. Available foreign adapters include Claude Code through
+the Claude Agent SDK and Codex through `codex app-server`, as well as other
+local/cloud agents. A retained legacy `delegate` route instead prefers
+available Claude Code, then native Coder; it is currently undeclared in
+the normal foreground tool list. Sources:
+[active delegation](https://github.com/OpenAgentsInc/coder/blob/0b9916b42f9b8a261ffaf911b6630c9ca72660ad/bins/coder-terminal/src/delegation.rs#L281-L425),
+[native worker](https://github.com/OpenAgentsInc/coder/blob/0b9916b42f9b8a261ffaf911b6630c9ca72660ad/bins/coder-terminal/src/native_worker.rs#L19-L89),
+[foreign adapters](https://github.com/OpenAgentsInc/coder/blob/0b9916b42f9b8a261ffaf911b6630c9ca72660ad/bins/coder-terminal/src/delegate.rs#L139-L196), and
+[legacy preference](https://github.com/OpenAgentsInc/coder/blob/0b9916b42f9b8a261ffaf911b6630c9ca72660ad/bins/coder-terminal/src/agent_catalog.rs#L87-L131).
+
+A shared command catalog drives help and completion, with session-bound
+controls and standalone operations. It includes context/compaction,
+permissions/plan, queue/history/resume, children, plugins/MCP, and repository
+operations. `/autopilot` persists missions with proposal/confirmation,
+pause/resume/stop, and fanout settings; it reports unlanded branches rather
+than landing them automatically. A catalog entry alone does not establish
+the depth of its implementation. Sources:
+[catalog contract](https://github.com/OpenAgentsInc/coder/blob/0b9916b42f9b8a261ffaf911b6630c9ca72660ad/crates/coder-contract/src/command.rs#L1-L21),
+[visible command selection](https://github.com/OpenAgentsInc/coder/blob/0b9916b42f9b8a261ffaf911b6630c9ca72660ad/bins/coder-terminal/src/session_commands.rs#L29-L44), and
+[autopilot lifecycle](https://github.com/OpenAgentsInc/coder/blob/0b9916b42f9b8a261ffaf911b6630c9ca72660ad/bins/coder-terminal/src/autopilot_mission.rs#L170-L280).
+
+**Limits relevant to a replacement spec.**
+
+- Normal foreground requests advertise eleven ported Claude-style tools,
+  plus `windows` when available. The tool-list builder ignores the supplied
+  capabilities: retained plugin/MCP dispatch does not make those tools
+  available to the foreground model. See
+  [tool declaration](https://github.com/OpenAgentsInc/coder/blob/0b9916b42f9b8a261ffaf911b6630c9ca72660ad/bins/coder-terminal/src/service.rs#L129-L145).
+- Sessions start in `bypass`; other modes ask on selected effects or refuse
+  writes/execution/delegation. Foreign adapters retain different permission
+  contracts, so a parent mode is not proof of identical child behavior. See
+  [parent modes](https://github.com/OpenAgentsInc/coder/blob/0b9916b42f9b8a261ffaf911b6630c9ca72660ad/bins/coder-terminal/src/permission.rs#L1-L68)
+  and [foreign harness setup](https://github.com/OpenAgentsInc/coder/blob/0b9916b42f9b8a261ffaf911b6630c9ca72660ad/bins/coder-terminal/src/delegate.rs#L496-L563).
+  The [session initializer](https://github.com/OpenAgentsInc/coder/blob/0b9916b42f9b8a261ffaf911b6630c9ca72660ad/bins/coder-terminal/src/session.rs#L627)
+  sets the default mode.
+- Plugins start disabled; none passes the default suite's no-regression
+  criterion. Network plugins are refused. Gym is opt-in; chat sync remains
+  a gated feature in preparation. See
+  [plugin defaults](https://github.com/OpenAgentsInc/coder/blob/0b9916b42f9b8a261ffaf911b6630c9ca72660ad/bins/coder-terminal/src/plugin_settings.rs#L1-L29),
+  [network-plugin refusal](https://github.com/OpenAgentsInc/coder/blob/0b9916b42f9b8a261ffaf911b6630c9ca72660ad/bins/coder-terminal/src/plugin_settings.rs#L970-L986),
+  [Gym gate](https://github.com/OpenAgentsInc/coder/blob/0b9916b42f9b8a261ffaf911b6630c9ca72660ad/bins/coder-terminal/src/features.rs#L3-L14), and
+  [sync gate](https://github.com/OpenAgentsInc/coder/blob/0b9916b42f9b8a261ffaf911b6630c9ca72660ad/bins/coder-terminal/src/sync.rs#L34-L47).
+- `/agents`, `/review`, and `/verify` record a preferred role, but active
+  `Agent` launches do not consume it: the translated call sets no role.
+  `/rewind`
+  restores recorded direct mutations with intervening-change checks, not
+  arbitrary shell or foreign-agent changes. See
+  [operator commands](https://github.com/OpenAgentsInc/coder/blob/0b9916b42f9b8a261ffaf911b6630c9ca72660ad/bins/coder-terminal/src/operator.rs#L166-L238),
+  [role setting](https://github.com/OpenAgentsInc/coder/blob/0b9916b42f9b8a261ffaf911b6630c9ca72660ad/bins/coder-terminal/src/operator.rs#L92-L103), and
+  [active child translation](https://github.com/OpenAgentsInc/coder/blob/0b9916b42f9b8a261ffaf911b6630c9ca72660ad/bins/coder-terminal/src/delegation.rs#L324-L339).
+- Some settings are shallower than their names suggest: `/vim` toggles a
+  flag without changing the input handler; `/theme` stores a setting while
+  the renderer selects its fixed palette; `/ssh` validates a target and
+  describes it without opening a connection. See
+  [Vim toggle](https://github.com/OpenAgentsInc/coder/blob/0b9916b42f9b8a261ffaf911b6630c9ca72660ad/bins/coder-terminal/src/operator.rs#L206-L212),
+  [input handler](https://github.com/OpenAgentsInc/coder/blob/0b9916b42f9b8a261ffaf911b6630c9ca72660ad/bins/coder-terminal/src/session_input.rs#L131-L139),
+  [theme storage](https://github.com/OpenAgentsInc/coder/blob/0b9916b42f9b8a261ffaf911b6630c9ca72660ad/crates/coder-tools/src/command.rs#L659-L672),
+  [palette selection](https://github.com/OpenAgentsInc/coder/blob/0b9916b42f9b8a261ffaf911b6630c9ca72660ad/crates/coder-terminal/src/ladder.rs#L33-L76), and
+  [SSH command](https://github.com/OpenAgentsInc/coder/blob/0b9916b42f9b8a261ffaf911b6630c9ca72660ad/crates/coder-tools/src/remainder.rs#L157-L177).
+- The editor understands graphemes, but the grid stores one `char` per cell;
+  wide/combining-glyph rendering still needs demonstrated coverage. Pane
+  integration currently implements tmux, and Windows child PTY methods
+  return an unsupported-host error. See
+  [cell storage](https://github.com/OpenAgentsInc/coder/blob/0b9916b42f9b8a261ffaf911b6630c9ca72660ad/crates/coder-ui-core/grid.rs#L177-L182),
+  [pane backend](https://github.com/OpenAgentsInc/coder/blob/0b9916b42f9b8a261ffaf911b6630c9ca72660ad/bins/coder-terminal/src/panes.rs#L60-L76), and
+  [Windows PTY methods](https://github.com/OpenAgentsInc/coder/blob/0b9916b42f9b8a261ffaf911b6630c9ca72660ad/bins/coder-terminal/src/pty.rs#L220-L288).
+
+Renderer golden tests, app regression fixtures, a PTY screen harness, and
+multi-platform release scripts exist. They provide useful starting evidence,
+not a new live acceptance result from this survey. See
+[renderer goldens](https://github.com/OpenAgentsInc/coder/blob/0b9916b42f9b8a261ffaf911b6630c9ca72660ad/crates/coder-terminal/tests/golden.rs#L1-L10)
+and [PTY harness](https://github.com/OpenAgentsInc/coder/blob/0b9916b42f9b8a261ffaf911b6630c9ca72660ad/ops/tests/terminal-screen.py).
+
+### OpenAgents Terminal: the chat TUI
+
+**Architecture and routing.** Bare `openagents` on a TTY, or explicit
+`openagents terminal`, opens the full-screen chat app. `openagents-terminal`
+owns screen state; `openagents-cli` supplies pairing, host, settings, and
+plugin operations; the shared chat client owns conversations and routing.
+The client can use this computer's host, an in-process local store, or a
+paired computer. Automatic host selection can fall back to local; an
+explicit bad socket is an error. Sources:
+[launch and options](https://github.com/OpenAgentsInc/openagents/blob/636354ddc0a4aa044f971fafd39b47978fa62658/crates/openagents-cli/src/screen.rs#L1-L44),
+[screen boundary](https://github.com/OpenAgentsInc/openagents/blob/636354ddc0a4aa044f971fafd39b47978fa62658/crates/openagents-terminal/src/lib.rs#L1-L26), and
+[client selection](https://github.com/OpenAgentsInc/openagents/blob/636354ddc0a4aa044f971fafd39b47978fa62658/crates/openagents-chat/src/client.rs#L830-L946).
+
+Repository work goes through Coder's shared task bridge. Settings determine
+whether Coder starts immediately or offers a run; a detached controller
+owns the task, with grants and durable storage. Local runs normally use a
+detached Git worktree at repository HEAD, without copying uncommitted
+changes. Provider preferences and fallback belong to Coder, rather than a
+new TUI-specific model loop. Local results retain their actual check scope;
+an executor's successful exit is not silently presented as independently
+verified correctness. Sources:
+[chat-to-task bridge](https://github.com/OpenAgentsInc/openagents/blob/636354ddc0a4aa044f971fafd39b47978fa62658/crates/coder/src/task/chat_client.rs#L150-L257),
+[worktree and provider defaults](https://github.com/OpenAgentsInc/openagents/blob/636354ddc0a4aa044f971fafd39b47978fa62658/crates/coder/src/task/local.rs#L9-L80),
+[detached controller](https://github.com/OpenAgentsInc/openagents/blob/636354ddc0a4aa044f971fafd39b47978fa62658/crates/coder/src/task/autostart.rs#L985-L1006), and
+[result labeling](https://github.com/OpenAgentsInc/openagents/blob/636354ddc0a4aa044f971fafd39b47978fa62658/crates/openagents-chat/src/client.rs#L1758-L1801).
+
+Shared command effects decide whether a proposed command runs immediately,
+needs Enter confirmation, or cannot run from chat. This policy is separate
+from Coder's execution grants and provider-specific approval behavior. See
+[command admission](https://github.com/OpenAgentsInc/openagents/blob/636354ddc0a4aa044f971fafd39b47978fa62658/crates/openagents-chat/src/client.rs#L1979-L2025).
+
+**Transcript and run controls.** Typed rows show turns, notes, cards,
+commands, tool output, exits, thoughts, questions, provider switches, and
+run changes. Ctrl+O expands details. A compact rail shows agent, activity,
+and elapsed time; completed runs leave the rail after 30 seconds while
+remaining in the log. Ctrl+R opens the current run; Alt+1–9 or `/open N`
+opens a numbered run. The run composer sends steering or answers; how
+steering works depends on the executor, including cancellation and restart
+for agents that accept only initial instructions. Sources:
+[row types](https://github.com/OpenAgentsInc/openagents/blob/636354ddc0a4aa044f971fafd39b47978fa62658/crates/openagents-terminal/src/rows.rs#L12-L208),
+[rail lifecycle](https://github.com/OpenAgentsInc/openagents/blob/636354ddc0a4aa044f971fafd39b47978fa62658/crates/openagents-terminal/src/rail.rs#L23-L175),
+[run submission](https://github.com/OpenAgentsInc/openagents/blob/636354ddc0a4aa044f971fafd39b47978fa62658/crates/openagents-terminal/src/app.rs#L1085-L1146), and
+[executor steering](https://github.com/OpenAgentsInc/openagents/blob/636354ddc0a4aa044f971fafd39b47978fa62658/crates/coder/src/task/local.rs#L1521-L1591).
+
+Esc is contextual: it closes views or dismisses their active interaction
+before reaching task controls. In the thread picker it first leaves search
+or clears a query. Other states reject a proposal or stop active work.
+Closing a run view is not itself a stop. `/quit`, empty Ctrl+D, or double
+empty Ctrl+C closes the TUI while a detached Coder task keeps working. Returning to its
+thread reconnects to the run. Ordinary chat submission during streaming
+is refused with the draft preserved; it is not queued. Sources:
+[Esc handling](https://github.com/OpenAgentsInc/openagents/blob/636354ddc0a4aa044f971fafd39b47978fa62658/crates/openagents-terminal/src/app.rs#L544-L595),
+[busy submission](https://github.com/OpenAgentsInc/openagents/blob/636354ddc0a4aa044f971fafd39b47978fa62658/crates/openagents-terminal/src/app.rs#L1109-L1112),
+[quit handling](https://github.com/OpenAgentsInc/openagents/blob/636354ddc0a4aa044f971fafd39b47978fa62658/crates/openagents-terminal/src/screen.rs#L947-L960), and
+[CLI handoff](https://github.com/OpenAgentsInc/openagents/blob/636354ddc0a4aa044f971fafd39b47978fa62658/crates/openagents-cli/src/screen.rs#L333-L342).
+See also [thread hydration and task follow](https://github.com/OpenAgentsInc/openagents/blob/636354ddc0a4aa044f971fafd39b47978fa62658/crates/openagents-terminal/src/screen.rs#L656-L685).
+
+**Commands and retained state.** The screen has 17 slash commands:
+`/new`, `/resume [ID or title]`, `/threads`, `/stop`, `/export`, `/settings`,
+`/connect`, `/plugins`, `/background [words]`, `/worktrees`, `/import`,
+`/efficiency`, `/expand`, `/run`, `/open N`, `/help`, and `/quit`. Tab completes
+an unambiguous slash prefix. An unknown single lowercase `/word` errors;
+other unmatched slash-leading text goes to the router. Consequently `/tmp`
+errors, while `/tmp/file` is a message. Sources:
+[command list and descriptions](https://github.com/OpenAgentsInc/openagents/blob/636354ddc0a4aa044f971fafd39b47978fa62658/crates/openagents-terminal/src/slash.rs#L12-L122),
+[parser](https://github.com/OpenAgentsInc/openagents/blob/636354ddc0a4aa044f971fafd39b47978fa62658/crates/openagents-terminal/src/slash.rs#L143-L172), and
+[Tab completion](https://github.com/OpenAgentsInc/openagents/blob/636354ddc0a4aa044f971fafd39b47978fa62658/crates/openagents-terminal/src/app.rs#L607-L615).
+
+The thread picker groups the current folder, general chats, and other
+projects, with new/open, archive, expand/collapse, ID-copy, and search
+controls. Search matches title, project, and ID prefixes rather than message
+bodies. The picker requests at most 200 threads. Prompt history keeps up to 500 entries;
+last-thread state remembers up to 256 folders. `--continue`, `--thread`,
+`--resume`, `--scratch`, and read-only `--observe` expose different launch
+semantics. Sources:
+[picker grouping](https://github.com/OpenAgentsInc/openagents/blob/636354ddc0a4aa044f971fafd39b47978fa62658/crates/openagents-terminal/src/picker.rs#L83-L131),
+[picker controls](https://github.com/OpenAgentsInc/openagents/blob/636354ddc0a4aa044f971fafd39b47978fa62658/crates/openagents-terminal/src/picker.rs#L225-L330),
+[search](https://github.com/OpenAgentsInc/openagents/blob/636354ddc0a4aa044f971fafd39b47978fa62658/crates/openagents-terminal/src/picker.rs#L665-L724),
+[prompt history](https://github.com/OpenAgentsInc/openagents/blob/636354ddc0a4aa044f971fafd39b47978fa62658/crates/openagents-terminal/src/prompts.rs#L1-L57),
+[last-thread state](https://github.com/OpenAgentsInc/openagents/blob/636354ddc0a4aa044f971fafd39b47978fa62658/crates/openagents-terminal/src/last.rs#L13-L45), and
+[observe handling](https://github.com/OpenAgentsInc/openagents/blob/636354ddc0a4aa044f971fafd39b47978fa62658/crates/openagents-terminal/src/screen.rs#L347-L356).
+
+Settings edit Coder start behavior, permitted providers, and credentials;
+plugins can be installed, toggled, and invoked. Background rules have
+confirmation and watcher controls. Worktree controls inspect storage and
+archive ended tasks. ATIF export retains thread/task evidence. Host-backed
+import copies Claude Code/Codex messages and text replies; it does not
+reconstruct their full tool state or foreign harness. Sources:
+[plugin and import operations](https://github.com/OpenAgentsInc/openagents/blob/636354ddc0a4aa044f971fafd39b47978fa62658/crates/openagents-cli/src/screen.rs#L586-L634),
+[worktree operations](https://github.com/OpenAgentsInc/openagents/blob/636354ddc0a4aa044f971fafd39b47978fa62658/crates/openagents-cli/src/screen.rs#L665-L681), and
+[ATIF export](https://github.com/OpenAgentsInc/openagents/blob/636354ddc0a4aa044f971fafd39b47978fa62658/crates/openagents-terminal/src/screen.rs#L718-L755).
+The [importer contract](https://github.com/OpenAgentsInc/openagents/blob/636354ddc0a4aa044f971fafd39b47978fa62658/crates/coder-host/src/sessions.rs#L1-L32)
+also limits each imported turn and keeps the newest 200 turns.
+
+**Input, files, and recovery.** Bracketed paste normalizes newlines without
+submitting. Mouse drag selects text and copies it through OSC 52; clicked
+paths open a read-only viewer, preferring the run worktree for relative
+paths. The viewer rejects files over 2 MiB and probable binary files.
+Ctrl+Y copies the latest completed OpenAgents reply and then its code blocks.
+The chat send operation is text-only: this TUI does not currently provide
+image/file attachment or `@`-mention input. Sources:
+[paste](https://github.com/OpenAgentsInc/openagents/blob/636354ddc0a4aa044f971fafd39b47978fa62658/crates/openagents-terminal/src/app.rs#L458-L478),
+[reply copying](https://github.com/OpenAgentsInc/openagents/blob/636354ddc0a4aa044f971fafd39b47978fa62658/crates/openagents-terminal/src/app.rs#L949-L977),
+[path and mouse handling](https://github.com/OpenAgentsInc/openagents/blob/636354ddc0a4aa044f971fafd39b47978fa62658/crates/openagents-terminal/src/app.rs#L1608-L1670),
+[viewer](https://github.com/OpenAgentsInc/openagents/blob/636354ddc0a4aa044f971fafd39b47978fa62658/crates/openagents-terminal/src/view.rs#L163-L237), and
+[send operation](https://github.com/OpenAgentsInc/openagents/blob/636354ddc0a4aa044f971fafd39b47978fa62658/crates/openagents-terminal/src/app.rs#L1125-L1132).
+
+Reconnect uses stable send IDs, retains partial replies, and retries
+interruptibly with bounded backoff; semantic refusals return immediately.
+The screen reports reconnection and allows Esc to stop observation/retry.
+Client tests and PTY fixtures cover these flows, but this survey does not
+run them. Sources:
+[reconnect policy](https://github.com/OpenAgentsInc/openagents/blob/636354ddc0a4aa044f971fafd39b47978fa62658/crates/openagents-chat/src/client.rs#L71-L108),
+[partial-reply retention](https://github.com/OpenAgentsInc/openagents/blob/636354ddc0a4aa044f971fafd39b47978fa62658/crates/openagents-chat/src/client.rs#L1415-L1438),
+[send retry](https://github.com/OpenAgentsInc/openagents/blob/636354ddc0a4aa044f971fafd39b47978fa62658/crates/openagents-chat/src/client.rs#L2160-L2224),
+[reconnect display](https://github.com/OpenAgentsInc/openagents/blob/636354ddc0a4aa044f971fafd39b47978fa62658/crates/openagents-terminal/src/app.rs#L1328-L1337), and
+[PTY fixture](https://github.com/OpenAgentsInc/openagents/blob/636354ddc0a4aa044f971fafd39b47978fa62658/crates/openagents-terminal/tests/pty.rs#L623-L640).
+
+### OpenAgents Terminal: the plain TTY shell
+
+`openagents terminal shell [--root PATH] [--shell PATH]` opens a real shell
+through the new `terminal-tty` crate. Ordinary editing, commands, and
+full-screen program output remain with the shell. Explicit `# ` requests
+use the shared typed chat bridge and return inline proposals; this path
+does not use the native sheet's automatic command/question classifier.
+The existing chat TUI remains a separate entry point. Sources:
+[shell entry point](https://github.com/OpenAgentsInc/openagents/blob/636354ddc0a4aa044f971fafd39b47978fa62658/crates/openagents-cli/src/screen.rs#L1475-L1531),
+[shell launch](https://github.com/OpenAgentsInc/openagents/blob/636354ddc0a4aa044f971fafd39b47978fa62658/crates/terminal-tty/src/runner.rs#L151-L198),
+[output forwarding](https://github.com/OpenAgentsInc/openagents/blob/636354ddc0a4aa044f971fafd39b47978fa62658/crates/terminal-tty/src/runner.rs#L223-L238), and
+[ordinary input](https://github.com/OpenAgentsInc/openagents/blob/636354ddc0a4aa044f971fafd39b47978fa62658/crates/terminal-tty/src/runner.rs#L329-L343).
+
+Ctrl+G starts approval of the displayed proposal; when the owner warns,
+Ctrl+Y confirms that exact revision. `# /edit KEY COMMAND` creates another
+revision; `# /reject KEY` rejects it. Approval requires a fresh idle prompt
+outside bracketed paste; other input disables the displayed approval.
+Completed commands return a typed result to the same thread. Unknown
+acknowledgments do not cause execution or submission to replay. Sources:
+[approval keys](https://github.com/OpenAgentsInc/openagents/blob/636354ddc0a4aa044f971fafd39b47978fa62658/crates/terminal-tty/src/runner.rs#L257-L328),
+[edit and reject](https://github.com/OpenAgentsInc/openagents/blob/636354ddc0a4aa044f971fafd39b47978fa62658/crates/terminal-tty/src/runner.rs#L355-L394),
+[completion match](https://github.com/OpenAgentsInc/openagents/blob/636354ddc0a4aa044f971fafd39b47978fa62658/crates/terminal-tty/src/runner.rs#L515-L559), and
+[shared result client](https://github.com/OpenAgentsInc/openagents/blob/636354ddc0a4aa044f971fafd39b47978fa62658/crates/openagents-cli/src/chat_shell.rs#L102-L137).
+
+This client owns its local shell for its own lifetime and starts a fresh
+thread per launch. It offers no shell `--thread` or `--continue` option,
+detached shell session, or additional coding harness. Supported hooks cover
+zsh, bash 4.4 or later, and fish 3.3 or later; other shells retain ordinary
+input with requests/proposals disabled. The session permits one request in
+flight and at most 256 requests. Scratch real-shell fixtures exercise
+edited proposals and result delivery through a fake helper; physical
+SSH/tmux use and a signed-in provider remain unverified. Sources:
+[request limits](https://github.com/OpenAgentsInc/openagents/blob/636354ddc0a4aa044f971fafd39b47978fa62658/crates/terminal-tty/src/runner.rs#L395-L400),
+[cleanup and shell support](https://github.com/OpenAgentsInc/openagents/blob/636354ddc0a4aa044f971fafd39b47978fa62658/crates/terminal-tty/src/runner.rs#L570-L601),
+[fixture scope](https://github.com/OpenAgentsInc/openagents/blob/636354ddc0a4aa044f971fafd39b47978fa62658/crates/terminal-tty/tests/plain.rs#L1-L2), and
+[remaining physical checks](https://github.com/OpenAgentsInc/openagents/blob/636354ddc0a4aa044f971fafd39b47978fa62658/NEEDS_OWNER.md#L30-L32).
+
+### Related native OpenAgents Terminal work
+
+The native `openagents-terminal` app is useful reference material for shell
+integration, even though it is a separate surface from the chat TUI.
+`terminal-core` owns terminal state, blocks, smart input, and product views;
+`terminal-gfx` supplies rendering, local PTYs, and the helper bridge;
+`terminal-app` supplies the window. Verse embeds the shared terminal too.
+The local adapter runs a real shell through `coder-pty` and supports zsh,
+bash, and fish. Blocks retain command, directory, completion, elapsed time,
+and bounded output. Sources:
+[application boundary](https://github.com/OpenAgentsInc/openagents/blob/636354ddc0a4aa044f971fafd39b47978fa62658/crates/terminal-core/src/application.rs#L51-L114),
+[native adapter](https://github.com/OpenAgentsInc/openagents/blob/636354ddc0a4aa044f971fafd39b47978fa62658/crates/terminal-gfx/src/native.rs#L55-L118),
+[shell adapter](https://github.com/OpenAgentsInc/openagents/blob/636354ddc0a4aa044f971fafd39b47978fa62658/crates/terminal-gfx/src/pty.rs#L165-L304), and
+[block retention](https://github.com/OpenAgentsInc/openagents/blob/636354ddc0a4aa044f971fafd39b47978fa62658/crates/terminal-core/src/blocks.rs#L10-L154).
+
+Smart input classifies commands and questions locally, with explicit
+overrides. Questions attach shell context to an OpenAgents thread through
+the shared helper; the renderer does not own another model loop. Typed
+shell proposals bind to the originating request, thread, directory, and
+context. Enter confirms; commands that may change state require another
+confirmation. Unknown outcomes do not cause automatic replay. Optional
+workspace-scoped read-only autorun is off by default. F4 reads the same
+thread; Studio and other workbench views project existing resources and
+require their own action grants. Sources:
+[proposal checks](https://github.com/OpenAgentsInc/openagents/blob/636354ddc0a4aa044f971fafd39b47978fa62658/crates/terminal-core/src/smart.rs#L269-L362),
+[question binding](https://github.com/OpenAgentsInc/openagents/blob/636354ddc0a4aa044f971fafd39b47978fa62658/crates/terminal-core/src/smart.rs#L670-L730),
+[helper bridge](https://github.com/OpenAgentsInc/openagents/blob/636354ddc0a4aa044f971fafd39b47978fa62658/crates/terminal-gfx/src/helpers.rs#L14-L76),
+[autorun setting](https://github.com/OpenAgentsInc/openagents/blob/636354ddc0a4aa044f971fafd39b47978fa62658/crates/terminal-core/src/autorun.rs#L1-L14), and
+[workbench resources](https://github.com/OpenAgentsInc/openagents/blob/636354ddc0a4aa044f971fafd39b47978fa62658/docs/terminal/workbench-resources.md#L124-L195).
+
+Current work also adds a private-terminal viewer list and confirmed
+watch/drive sharing controls, plus a browser projection of an admitted
+terminal session. Browser rendering has retained scratch checks; physical
+browser behavior remains unverified. Sources:
+[sharing controls](https://github.com/OpenAgentsInc/openagents/blob/636354ddc0a4aa044f971fafd39b47978fa62658/crates/terminal-core/src/sharing.rs#L1-L105) and
+[browser receipt](https://github.com/OpenAgentsInc/openagents/blob/636354ddc0a4aa044f971fafd39b47978fa62658/docs/terminal/verification/2026-10-06-browser-workbench/receipt.json).
+
+Its local shell sessions are process-bound: hiding a pane preserves it,
+but shutting down the pane/application closes local sessions. This differs
+from the durable chat threads and detached Coder tasks. The retained Mac
+receipt covers a real helper/shell flow with simulated key events and
+offscreen rendering, and says signing/publication and further Mac checks
+are paused. The Studio receipt uses scratch scripted resources. Neither
+establishes that the native app is a published, physically tested daily
+replacement. Sources:
+[session cleanup](https://github.com/OpenAgentsInc/openagents/blob/636354ddc0a4aa044f971fafd39b47978fa62658/crates/terminal-core/src/application.rs#L1378-L1393),
+[Mac receipt and release status](https://github.com/OpenAgentsInc/openagents/blob/636354ddc0a4aa044f971fafd39b47978fa62658/docs/verse/verification/2026-10-05-smart-terminal/README.md#L3-L75), and
+[Studio receipt scope](https://github.com/OpenAgentsInc/openagents/blob/636354ddc0a4aa044f971fafd39b47978fa62658/docs/verse/verification/2026-10-06-studio-workbench/README.md#L3-L25).
+
+## What the history and current code contribute to the new TUI spec
 
 These are evidence-backed questions for the specification, not a finished
 design or a demand to reproduce every past feature:
@@ -584,6 +1066,20 @@ design or a demand to reproduce every past feature:
   benchmark win establish different things. The next spec needs an explicit
   criterion for completing ordinary and difficult work without being forced
   back into the old product.
+- **Specify which current foundations to reuse.** The public Coder toolkit
+  already supplies a composer and typed transcript components; OpenAgents
+  supplies durable threads and task integration; sibling Coder supplies a
+  richer session owner, image input, attached clients, and child control.
+  They have different ownership and persistence contracts.
+- **Make queue and stop semantics explicit.** The small shell replaces its
+  one queued draft; OpenAgents rejects an ordinary submission while a reply
+  streams; sibling Coder holds prompts in FIFO order; closing an OpenAgents
+  run view leaves work running. The next spec should
+  name the desired behavior and acceptance cases for each state.
+- **Check availability through the whole path.** A visible plugin catalog,
+  retained dispatcher, slash-command name, or foreign-agent adapter is not
+  proof that the active model can invoke it or that recovery and permission
+  semantics match the native path.
 
 The catalog groups interface revisions and supporting infrastructure with
 their parent attempts. Payments, marketplaces, training, political statements,
