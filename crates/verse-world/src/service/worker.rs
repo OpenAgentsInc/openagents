@@ -23,9 +23,27 @@ pub struct Observation {
     pub queued_inputs: usize,
     pub queued_updates: usize,
 }
+/// Frame timing metadata excludes input axes and authentication material.
+#[derive(Clone, Copy)]
+pub struct FrameObservation {
+    pub at: Instant,
+    pub phase: &'static str,
+    pub actor: u64,
+    pub epoch: u64,
+    pub sequence: u64,
+    pub start: u64,
+    pub end: u64,
+    pub authority_tick: u64,
+    pub control_epoch: Option<u64>,
+    pub credit_step: Option<u64>,
+    pub pending_requests: usize,
+    pub queued_inputs: usize,
+}
 #[derive(Default)]
 pub struct Observations {
     pub samples: Vec<Observation>,
+    pub frames: Vec<FrameObservation>,
+    pub omitted_frames: u64,
     pub omitted: u64,
     pub snapshot_verified_at: Option<Instant>,
 }
@@ -33,6 +51,14 @@ pub struct Observations {
 #[derive(Clone, Default)]
 pub struct Observer(std::sync::Arc<std::sync::Mutex<Observations>>);
 impl Observer {
+    fn frame(&self, value: FrameObservation) {
+        let mut state = self.0.lock().unwrap_or_else(|poison| poison.into_inner());
+        if state.frames.len() < 256 {
+            state.frames.push(value);
+        } else {
+            state.omitted_frames = state.omitted_frames.saturating_add(1);
+        }
+    }
     fn observe(&self, value: Observation) {
         let mut state = self.0.lock().unwrap_or_else(|poison| poison.into_inner());
         if value.accepted_snapshot {
@@ -48,6 +74,8 @@ impl Observer {
         let mut state = self.0.lock().unwrap_or_else(|poison| poison.into_inner());
         Observations {
             samples: std::mem::take(&mut state.samples),
+            frames: std::mem::take(&mut state.frames),
+            omitted_frames: std::mem::take(&mut state.omitted_frames),
             omitted: state.omitted,
             snapshot_verified_at: state.snapshot_verified_at,
         }
@@ -503,7 +531,27 @@ async fn run_impl(
                             }
                         }
                     };
+                    let frame = match &body {
+                        Body::MovementFrame { frame } if observer.is_some() => Some(frame.clone()),
+                        _ => None,
+                    };
                     client.send(body)?;
+                    if let (Some(observer), Some(frame)) = (&observer, frame) {
+                        observer.frame(FrameObservation {
+                            at: Instant::now(),
+                            phase: "enqueued",
+                            actor: frame.life.actor,
+                            epoch: frame.epoch,
+                            sequence: frame.sequence,
+                            start: frame.start,
+                            end: frame.end()?,
+                            authority_tick: client.tick(),
+                            control_epoch: client.control().map(|c| c.epoch),
+                            credit_step: client.control().map(|c| c.credit_step),
+                            pending_requests: client.pending(),
+                            queued_inputs: inputs.len(),
+                        });
+                    }
                     if lifecycle {
                         barrier = true;
                         teleport_barrier = teleport;
@@ -571,6 +619,16 @@ async fn run_impl(
                             Update::Inventory(response)
                         }
                         Body::MovementFrame { frame } => {
+                            if let Some(observer) = &observer {
+                                observer.frame(FrameObservation {
+                                    at: Instant::now(), phase: "acknowledged", actor: frame.life.actor,
+                                    epoch: frame.epoch, sequence: frame.sequence, start: frame.start,
+                                    end: frame.end()?, authority_tick: response.tick,
+                                    control_epoch: response.control.as_ref().map(|c| c.epoch),
+                                    credit_step: response.control.as_ref().map(|c| c.credit_step),
+                                    pending_requests: client.pending(), queued_inputs: inputs.len(),
+                                });
+                            }
                             if let Reply::Refused { message, .. } = &response.body {
                                 if !interval_control_changed(&frame, response.control.as_ref()) {
                                     return Err(format!("Movement interval refused; reconnect before sending another interval: {message}"));

@@ -1,0 +1,25 @@
+{
+  "schema": "verse.regression.check.v1",
+  "scenario": "Retain bounded worker enqueue and acknowledgment metadata around headless movement context transitions.",
+  "checks": {
+    "worker_tests": 30,
+    "worker_test_seconds": 38.86,
+    "commands": [
+      "cargo +1.97.1 test -p verse-world --features service-net service::worker -- --test-threads=1",
+      "cargo +1.97.1 build -p verse --no-default-features --features remote-chamber --example battle_scale"
+    ],
+    "linux_consumer_build_seconds": 199,
+    "executable_sha256": "103ca41cfe7c0f3fb5026045bafb91482217b0501586a41265b48a99b513d8fa"
+  },
+  "bounds": {
+    "worker_samples_per_drain": 256,
+    "headless_recent_frames": 128,
+    "retained_context_transitions": 8
+  },
+  "limitations": [
+    "Enqueue timing is a local pipeline handoff, not a socket-write completion or authority admission timestamp.",
+    "This diagnostic change does not alter movement credit, expiry, or acceptance gates.",
+    "The Linux comparison checkout uses source base 43f12d6e0bb48e22f151476a14aaab66cca9bee8 and retained own patches; it is not a current-main host deployment.",
+    "The initial test invocation omitted service-net and was stopped before completion; only the corrected invocation is counted."
+  ]
+}

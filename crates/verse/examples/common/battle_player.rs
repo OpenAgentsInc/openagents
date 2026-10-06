@@ -31,6 +31,7 @@ struct ProducerObservation {
 struct ProducerTransition {
     before: VecDeque<ProducerObservation>,
     after: ProducerObservation,
+    frames: VecDeque<serde_json::Value>,
 }
 fn sample(values: &mut Vec<f64>, value: f64) -> bool {
     if values.len() < 8192 {
@@ -121,6 +122,8 @@ pub async fn player(
     let mut producer_context = None;
     let mut producer_transitions = Vec::new();
     let mut omitted_producer_transitions = 0u64;
+    let mut frame_trace = VecDeque::new();
+    let mut omitted_frame_trace = 0u64;
     let began = tokio::time::Instant::now();
     let result=async {
   loop {
@@ -129,6 +132,11 @@ pub async fn player(
     _=clock.tick()=>{
      let observations=observer.drain();
      omitted_observer+=observations.omitted;
+     omitted_frame_trace+=observations.omitted_frames;
+     for frame in observations.frames {
+      if frame_trace.len()==128 {frame_trace.pop_front();}
+      frame_trace.push_back(serde_json::json!({"elapsed_ms":frame.at.saturating_duration_since(began.into_std()).as_millis(),"phase":frame.phase,"actor":frame.actor,"epoch":frame.epoch,"sequence":frame.sequence,"start":frame.start,"end":frame.end,"authority_tick":frame.authority_tick,"control_epoch":frame.control_epoch,"credit_step":frame.credit_step,"pending_requests":frame.pending_requests,"queued_inputs":frame.queued_inputs}));
+     }
      for observation in observations.samples {
       if !sample(&mut turnaround,observation.turnaround_ms) {omitted_turnaround+=1;}
       if !sample(by_kind.entry(observation.kind.into()).or_default(), observation.turnaround_ms) { *omitted_by_kind.entry(observation.kind.into()).or_default() += 1; }
@@ -184,7 +192,7 @@ pub async fn player(
        let observation=ProducerObservation {elapsed_ms:began.elapsed().as_millis(),actor:baseline.life.actor,epoch:baseline.epoch,profile:baseline.profile,confirmed_step:baseline.physics_step,snapshot_world_step:baseline.world_step,verified_credit:credit.filter(|(life,e,_)|(*life,*e)==(baseline.life,baseline.epoch)).map(|(_,_,step)|step),cursor:frame_cursor.filter(|(life,e,_)|(*life,*e)==(baseline.life,baseline.epoch)).map(|(_,_,step)|step),outstanding:outstanding.len(),pending:pending.len(),input_depth:send.max_capacity()-send.capacity()};
        let context=(baseline.life,baseline.epoch);
        if producer_context.is_some_and(|old|old!=context) {
-        if producer_transitions.len()<8 {producer_transitions.push(ProducerTransition {before:producer_recent.clone(),after:observation.clone()});}
+        if producer_transitions.len()<8 {producer_transitions.push(ProducerTransition {before:producer_recent.clone(),after:observation.clone(),frames:frame_trace.clone()});}
         else {omitted_producer_transitions=omitted_producer_transitions.saturating_add(1);}
        }
        producer_context=Some(context);
@@ -307,6 +315,6 @@ pub async fn player(
         .map(|(kind, values)| (kind, summary(values)))
         .collect::<BTreeMap<_, _>>();
     Ok(
-        serde_json::json!({"player":index,"status":if failure_stage.is_some() {"failed"} else {"complete"},"failure_stage":failure_stage,"observation_error":observation_error,"worker_error":worker_error,"omitted_refusal_samples":refused.saturating_sub(refusal_trace.len() as u64),"refusal_trace":refusal_trace,"omitted_latency_samples":omitted_latency,"snapshots":snapshots,"snapshot_bytes":snapshot_bytes,"maximum_actors":max_actors,"maximum_players":max_players,"maximum_live_hostiles":max_live_hostiles,"battle_occupancy":{"samples":battle_samples,"minimum_live_hostiles":(battle_samples>0).then_some(battle_live_min),"mean_live_hostiles":(battle_samples>0).then(||battle_live_total as f64/battle_samples as f64)},"movement_profile":if movement_frames {"authority_credit_intervals"} else {"legacy_commands"},"observed_frame_snapshots":observed_frame_snapshots,"movement_inputs":movement,"producer_timing":{"observations":producer_observations,"first":producer_first,"recent":producer_recent,"window_capacity":128,"transitions":producer_transitions,"transition_capacity":8,"omitted_transitions":omitted_producer_transitions},"bound_frames":bound_frames,"battle_framed_snapshots":battle_framed,"confirmed_interval_steps":confirmed_steps,"input_pressure":pressure,"unacknowledged_bound_operations":pending.len(),"unbound_inputs":outstanding.len(),"refusals":refused,"accepted_casts":casts,"accepted_operations":operations,"request_turnaround_ms":summary(turnaround),"request_turnaround_by_kind_ms":by_kind,"omitted_request_samples_by_kind":omitted_by_kind,"pending_request_peak":peak_pending,"queued_input_peak":peak_inputs,"snapshot_verified_age_ms":summary(snapshot_age),"omitted_request_samples":omitted_turnaround,"omitted_age_samples":omitted_age,"omitted_observer_samples":omitted_observer,"minimum_hp":(min_hp!=i32::MAX).then_some(min_hp),"binding_to_outcome_ms":summary(latency)}),
+        serde_json::json!({"player":index,"status":if failure_stage.is_some() {"failed"} else {"complete"},"failure_stage":failure_stage,"observation_error":observation_error,"worker_error":worker_error,"omitted_refusal_samples":refused.saturating_sub(refusal_trace.len() as u64),"refusal_trace":refusal_trace,"omitted_latency_samples":omitted_latency,"snapshots":snapshots,"snapshot_bytes":snapshot_bytes,"maximum_actors":max_actors,"maximum_players":max_players,"maximum_live_hostiles":max_live_hostiles,"battle_occupancy":{"samples":battle_samples,"minimum_live_hostiles":(battle_samples>0).then_some(battle_live_min),"mean_live_hostiles":(battle_samples>0).then(||battle_live_total as f64/battle_samples as f64)},"movement_profile":if movement_frames {"authority_credit_intervals"} else {"legacy_commands"},"observed_frame_snapshots":observed_frame_snapshots,"movement_inputs":movement,"frame_timing":{"recent":frame_trace,"window_capacity":128,"omitted":omitted_frame_trace},"producer_timing":{"observations":producer_observations,"first":producer_first,"recent":producer_recent,"window_capacity":128,"transitions":producer_transitions,"transition_capacity":8,"omitted_transitions":omitted_producer_transitions},"bound_frames":bound_frames,"battle_framed_snapshots":battle_framed,"confirmed_interval_steps":confirmed_steps,"input_pressure":pressure,"unacknowledged_bound_operations":pending.len(),"unbound_inputs":outstanding.len(),"refusals":refused,"accepted_casts":casts,"accepted_operations":operations,"request_turnaround_ms":summary(turnaround),"request_turnaround_by_kind_ms":by_kind,"omitted_request_samples_by_kind":omitted_by_kind,"pending_request_peak":peak_pending,"queued_input_peak":peak_inputs,"snapshot_verified_age_ms":summary(snapshot_age),"omitted_request_samples":omitted_turnaround,"omitted_age_samples":omitted_age,"omitted_observer_samples":omitted_observer,"minimum_hp":(min_hp!=i32::MAX).then_some(min_hp),"binding_to_outcome_ms":summary(latency)}),
     )
 }
