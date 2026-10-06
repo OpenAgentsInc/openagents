@@ -224,11 +224,17 @@ fn composer_uses_two_rules_and_expands_for_a_multiline_draft() {
     for (_, rule) in &rules {
         assert_eq!(*rule, "─".repeat(110));
     }
-    assert!(empty.lines().nth(rules[0].0 + 1).unwrap().starts_with("❯ "));
+    assert!(
+        empty
+            .lines()
+            .nth(rules[0].0 + 1)
+            .unwrap()
+            .starts_with(" ❯ ")
+    );
     let mut terminal = Terminal::new(TestBackend::new(110, 36)).unwrap();
     terminal.draw(|frame| ui::render(frame, &mut app)).unwrap();
     let cursor = terminal.get_cursor_position().unwrap();
-    assert_eq!(cursor.x, 2);
+    assert_eq!(cursor.x, 3);
     assert_eq!(usize::from(cursor.y), rules[0].0 + 1);
     assert!(!empty.contains(" Message "));
     assert!(!composer_text(&empty).chars().any(|ch| "│╭╮╰╯".contains(ch)));
@@ -259,18 +265,18 @@ fn composer_uses_two_rules_and_expands_for_a_multiline_draft() {
     assert_eq!(rules[1].0 - rules[0].0, 3);
     assert_eq!(
         wrapped.lines().nth(rules[0].0 + 1).unwrap(),
-        format!("❯ {}", "a".repeat(108))
+        format!(" ❯ {}", "a".repeat(107))
     );
     assert!(
         wrapped
             .lines()
             .nth(rules[0].0 + 2)
             .unwrap()
-            .starts_with("  a")
+            .starts_with("   aa")
     );
     terminal.draw(|frame| ui::render(frame, &mut app)).unwrap();
     let cursor = terminal.get_cursor_position().unwrap();
-    assert_eq!(cursor.x, 3);
+    assert_eq!(cursor.x, 5);
     assert_eq!(usize::from(cursor.y), rules[1].0 - 1);
 }
 

@@ -44,7 +44,7 @@ pub fn render(frame: &mut Frame, app: &mut App) {
         width: area.width.saturating_sub(4),
         height: area.height.saturating_sub(2),
     };
-    let (draft, cursor) = app.draft.wrapped(terminal_width.saturating_sub(2));
+    let (draft, cursor) = app.draft.wrapped(terminal_width.saturating_sub(3));
     let rail_height = DEMOS.len() as u16;
     let composer_height = (draft.len() as u16).clamp(1, 6) + 2;
     let reserved = rail_height + 3;
@@ -365,12 +365,12 @@ fn composer_view(
         .style(Style::default().bg(t::BG_BASE));
     let inner = block.inner(area);
     frame.render_widget(block, area);
-    if inner.width < 3 || inner.height == 0 {
+    if inner.width < 4 || inner.height == 0 {
         return;
     }
     frame.render_widget(
         Paragraph::new(span(
-            "❯",
+            " ❯",
             if main_selected {
                 t::TEXT_SECONDARY
             } else {
@@ -380,8 +380,8 @@ fn composer_view(
         inner,
     );
     let text_area = Rect {
-        x: inner.x + 2,
-        width: inner.width - 2,
+        x: inner.x + 3,
+        width: inner.width - 3,
         ..inner
     };
     let scroll = cursor.1.saturating_sub(text_area.height.saturating_sub(1));

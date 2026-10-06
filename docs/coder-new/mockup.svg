@@ -1155,7 +1155,7 @@
 <text x="963" y="575" fill="#505058" font-weight="normal">─</text>
 <text x="972" y="575" fill="#505058" font-weight="normal">─</text>
 <text x="981" y="575" fill="#505058" font-weight="normal">─</text>
-<text x="0" y="595" fill="#c8c8c8" font-weight="normal">❯</text>
+<text x="9" y="595" fill="#c8c8c8" font-weight="normal">❯</text>
 <text x="0" y="615" fill="#505058" font-weight="normal">─</text>
 <text x="9" y="615" fill="#505058" font-weight="normal">─</text>
 <text x="18" y="615" fill="#505058" font-weight="normal">─</text>
@@ -1485,7 +1485,7 @@
 <text x="945" y="695" fill="#6c6c6c" font-weight="normal">e</text>
 <text x="954" y="695" fill="#6c6c6c" font-weight="normal">n</text>
 <text x="963" y="695" fill="#6c6c6c" font-weight="normal">s</text>
-<g><rect x="18" y="580" width="9" height="20" fill="#c8c8c8"/>
+<g><rect x="27" y="580" width="9" height="20" fill="#c8c8c8"/>
 <animate attributeName="opacity" values="1;0;1" keyTimes="0;0.5;1" dur="1s" calcMode="discrete" repeatCount="indefinite"/></g>
 </g>
 </svg>
