@@ -476,3 +476,12 @@ and at an Everglade station. Check goal and task rows, seat engines and
 spend, log tails, and memory against the existing studio panels. Confirm
 one scratch seat command with Enter twice, inspect the host receipt, and
 check that revoking observation clears the page. Archive any scratch tasks.
+
+## Studio workbench approvals and reviews (#10649)
+
+On a Mac, open the studio sheet from Everglade and the standalone window.
+Verify the visible question, approval command, directory, risk, and standing
+rule before confirming. Read a completed scratch task with `/review TASK`,
+then verify that its three revisions and diff remain legible before deciding.
+Focused adapter and host tests use scratch data; native rendering and a
+physical owner-device run remain unverified here.

@@ -11,6 +11,9 @@
 //! in order. Requests are closed enums: an unknown operation or field is
 //! `malformed`.
 
+pub mod client;
+pub use client::OperationClient;
+
 use std::path::{Path, PathBuf};
 
 use serde::{Deserialize, Serialize};

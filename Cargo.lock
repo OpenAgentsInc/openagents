@@ -13614,10 +13614,10 @@ name = "terminal-studio"
 version = "0.1.0"
 dependencies = [
  "coder-access",
+ "openagents-connect",
  "serde_json",
  "tempfile",
  "terminal-core",
- "terminal-gfx",
 ]
 
 [[package]]

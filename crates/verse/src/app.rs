@@ -1040,7 +1040,16 @@ impl App {
         }
         let studio = self.runtime.studio();
         if !studio.available() {
+            let refusal = studio
+                .status()
+                .and_then(|answer| answer.result.as_ref().err())
+                .map(ToString::to_string);
             self.terminal.paper.studio.revoke();
+            if let Some(refusal) = refusal {
+                self.terminal.paper.studio.notice = Some(format!(
+                    "{refusal}. Studio observation unavailable; no automatic replay."
+                ));
+            }
             return;
         }
         let rights = studio.rights();
@@ -1051,6 +1060,7 @@ impl App {
             view.stream != snapshot.stream
                 || view.sequence != snapshot.sequence
                 || view.operate != rights.contains(&coder_access::Right::Operate)
+                || view.review != rights.contains(&coder_access::Right::Review)
         }) {
             let projection = terminal_studio::studio::project(snapshot, &rights);
             match projection {
@@ -1068,19 +1078,47 @@ impl App {
                 }
             }
         }
+        if let Some(task) = self.terminal.paper.studio.review_task.clone() {
+            let stream = snapshot.stream.clone();
+            if let Some(review) = self.runtime.studio_review(&task) {
+                self.terminal.paper.studio.review_task = None;
+                self.terminal
+                    .paper
+                    .studio
+                    .reviewed(terminal_studio::studio::project_review(&stream, &review));
+            }
+        }
+        let Some(snapshot) = self.runtime.studio().source_snapshot() else {
+            return;
+        };
         if let Some(line) = self.terminal.paper.studio.prepare.take() {
             let workspace = self.terminal.paper.studio.workspace.as_deref().or_else(|| {
                 self.terminal
                     .workshop()
                     .and_then(|opening| opening.workspace.as_deref())
             });
-            let prepared = terminal_studio::studio::prepare(snapshot, &rights, &line, workspace);
+            let prepared = serde_json::from_slice::<coder_access::studio::Snapshot>(
+                &self.terminal.paper.studio.prepare_source,
+            )
+            .map_err(|e| e.to_string())
+            .and_then(|displayed| {
+                terminal_studio::studio::prepare(
+                    self.terminal.paper.studio.prepare_review.as_ref(),
+                    &displayed,
+                    &rights,
+                    &line,
+                    workspace,
+                )
+            });
             self.terminal.paper.studio.prepared(prepared);
         }
         if let Some(prepared) = self.terminal.paper.studio.send.take() {
             let result = if prepared.stream != snapshot.stream
-                || !rights.contains(&coder_access::Right::Operate)
-            {
+                || !rights.contains(&if prepared.review {
+                    coder_access::Right::Review
+                } else {
+                    coder_access::Right::Operate
+                }) {
                 Err("Studio command is stale or revoked; nothing sent.".into())
             } else {
                 serde_json::from_slice::<coder_access::Operation>(&prepared.bytes)
@@ -1107,6 +1145,9 @@ impl App {
             self.terminal.paper.studio.notice = Some(match &answer.result {
                 Ok(coder_access::Outcome::Dispatched { receipt }) => {
                     format!("Host receipt: {} {}", receipt.operation, receipt.reference)
+                }
+                Ok(coder_access::Outcome::Merged { merged }) => {
+                    format!("Host merge result: {merged:?}")
                 }
                 Ok(_) => format!(
                     "Host answered {} request {}",

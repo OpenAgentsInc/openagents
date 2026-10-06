@@ -1,7 +1,8 @@
-//! Existing same-user studio CLI adapters with bounded helper processes.
+//! Typed operations over the existing same-user studio control socket.
+use coder_access::{Operation, Outcome};
+use openagents_connect::control::OperationClient;
 use std::path::{Path, PathBuf};
 use std::sync::mpsc::{self, Receiver};
-use terminal_gfx::helpers::helper;
 
 fn scoped_socket(socket: PathBuf, home: Option<&Path>) -> Result<PathBuf, String> {
     if let Some(home) = home {
@@ -37,33 +38,17 @@ fn studio_socket(home: Option<&Path>) -> Result<PathBuf, String> {
 }
 
 fn studio_snapshot(home: Option<&Path>) -> Result<coder_access::studio::Snapshot, String> {
-    let socket = studio_socket(home)?;
-    let socket = socket.to_string_lossy();
-    let (stdout, stderr) = helper(
-        &[
-            "--json",
-            "studio",
-            "watch",
-            "--limit",
-            "1",
-            "--control-socket",
-            &socket,
-        ],
-        None,
-        home,
-        64 * 1024,
-        std::time::Duration::from_secs(35),
-    )?;
-    let mut value: serde_json::Value = serde_json::from_slice(&stdout).map_err(|_| {
-        format!(
-            "Studio snapshot unavailable: {}",
-            String::from_utf8_lossy(&stderr)
+    let mut client = OperationClient::new(studio_socket(home)?);
+    match client
+        .call(
+            &coder_access::studio_intents::mint(),
+            &Operation::StudioSnapshot {},
         )
-    })?;
-    if let Some(object) = value.as_object_mut() {
-        object.remove("kind");
+        .map_err(|e| e.to_string())?
+    {
+        Outcome::Studio { snapshot } => Ok(*snapshot),
+        _ => Err("Host answered another studio operation.".into()),
     }
-    serde_json::from_value(value).map_err(|e| format!("Studio snapshot unavailable: {e}"))
 }
 
 #[cfg(test)]
@@ -103,7 +88,11 @@ pub fn studio_read(home: Option<&Path>) -> Receiver<Result<terminal_core::studio
         let result = studio_snapshot(home.as_deref()).and_then(|snapshot| {
             let mut view = crate::studio::project(
                 &snapshot,
-                &[coder_access::Right::Observe, coder_access::Right::Operate],
+                &[
+                    coder_access::Right::Observe,
+                    coder_access::Right::Operate,
+                    coder_access::Right::Review,
+                ],
             )?;
             view.local_runs = snapshot.view.tasks.iter().map(|t| t.task.clone()).collect();
             Ok(view)
@@ -114,23 +103,33 @@ pub fn studio_read(home: Option<&Path>) -> Receiver<Result<terminal_core::studio
 }
 
 pub fn studio_prepare(
+    source: &[u8],
+    review: Option<&terminal_core::studio::Review>,
     line: &str,
-    home: Option<&Path>,
+    _home: Option<&Path>,
     workspace: Option<&str>,
 ) -> Receiver<Result<terminal_core::studio::Prepared, String>> {
     let (tx, rx) = mpsc::channel();
-    let home = home.map(Path::to_path_buf);
+    let source = source.to_vec();
+    let review = review.cloned();
     let line = line.to_owned();
     let workspace = workspace.map(str::to_owned);
     std::thread::spawn(move || {
-        let result = studio_snapshot(home.as_deref()).and_then(|snapshot| {
-            crate::studio::prepare(
-                &snapshot,
-                &[coder_access::Right::Observe, coder_access::Right::Operate],
-                &line,
-                workspace.as_deref(),
-            )
-        });
+        let result = serde_json::from_slice::<coder_access::studio::Snapshot>(&source)
+            .map_err(|error| error.to_string())
+            .and_then(|snapshot| {
+                crate::studio::prepare(
+                    review.as_ref(),
+                    &snapshot,
+                    &[
+                        coder_access::Right::Observe,
+                        coder_access::Right::Operate,
+                        coder_access::Right::Review,
+                    ],
+                    &line,
+                    workspace.as_deref(),
+                )
+            });
         let _ = tx.send(result);
     });
     rx
@@ -152,33 +151,59 @@ pub fn studio_send(
             let operation: coder_access::Operation =
                 serde_json::from_slice(&prepared.bytes).map_err(|e| e.to_string())?;
             operation.validate().map_err(|e| e.to_string())?;
-            let expected = operation.name();
-            let mut args = crate::studio::arguments(operation)?;
-            // Naming the socket forces the existing CLI host path: a host
-            // disappearing after the read must not fall back to a local store.
-            let socket = studio_socket(home.as_deref())?;
-            args.splice(
-                2..2,
-                [
-                    "--control-socket".into(),
-                    socket.to_string_lossy().into_owned(),
-                ],
-            );
-            let refs = args.iter().map(String::as_str).collect::<Vec<_>>();
-            let (stdout, stderr) = helper(
-                &refs,
-                None,
-                home.as_deref(),
-                64 * 1024,
-                std::time::Duration::from_secs(70),
-            )?;
-            if stdout.is_empty() {
-                return Err(format!(
-                    "Studio outcome unknown; no automatic replay: {}",
-                    String::from_utf8_lossy(&stderr)
-                ));
+            let mut client = OperationClient::new(studio_socket(home.as_deref())?);
+            let outcome = client
+                .call(&prepared.request, &operation)
+                .map_err(|error| {
+                    if matches!(
+                        error.code,
+                        coder_access::Code::Unavailable | coder_access::Code::Transport
+                    ) {
+                        format!("Studio outcome unknown: {error}; no automatic replay.")
+                    } else {
+                        error.to_string()
+                    }
+                })?;
+            match outcome {
+                Outcome::Dispatched { receipt } => Ok(format!(
+                    "Host receipt: {} {}",
+                    receipt.operation, receipt.reference
+                )),
+                Outcome::Merged { merged } => Ok(format!("Host merge receipt: {:?}", merged)),
+                _ => Err("Host answered another studio operation; no automatic replay.".into()),
             }
-            crate::studio::receipt(&stdout, expected)
+        })();
+        let _ = tx.send(result);
+    });
+    rx
+}
+
+pub fn studio_review(
+    task: &str,
+    home: Option<&Path>,
+) -> Receiver<Result<terminal_core::studio::Review, String>> {
+    let (tx, rx) = mpsc::channel();
+    let task = task.to_owned();
+    let home = home.map(Path::to_path_buf);
+    std::thread::spawn(move || {
+        let result = (|| {
+            let snapshot = studio_snapshot(home.as_deref())?;
+            if !snapshot.view.tasks.iter().any(|row| row.task == task) {
+                return Err("Task is not in the admitted snapshot.".into());
+            }
+            let mut client = OperationClient::new(studio_socket(home.as_deref())?);
+            match client
+                .call(
+                    &coder_access::studio_intents::mint(),
+                    &Operation::OpenReview { task },
+                )
+                .map_err(|e| e.to_string())?
+            {
+                Outcome::Review { review } => {
+                    crate::studio::project_review(&snapshot.stream, &review)
+                }
+                _ => Err("Host answered another review operation.".into()),
+            }
         })();
         let _ = tx.send(result);
     });

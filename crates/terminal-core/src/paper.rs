@@ -66,6 +66,7 @@ const HELP: &[&str] = &[
     "     ENTER pauses or resumes the rule picked, after ENTER confirms it",
     "F13  show studio goals, tasks, seats, logs, and memory; ENTER prepares a",
     "     studio command, ENTER again confirms, and ESC rejects or returns.",
+    "F14  show studio questions and approvals; F15 shows review controls.",
     "F12  show the plugin test results under this directory; F12 or ESC returns.",
     "     There, ENTER recomputes the one picked from its retained attempts and",
     "     shows whether they agree with its report. It runs and publishes nothing.",
@@ -368,9 +369,23 @@ impl Application {
             }
         }
         match named {
-            Some(NamedKey::F13) => {
+            Some(NamedKey::F13 | NamedKey::F14 | NamedKey::F15) => {
                 self.paste_hold = None;
                 self.paper.studio.open = true;
+                if named == Some(NamedKey::F14) {
+                    self.paper.studio.section = crate::studio::Section::Decisions;
+                    self.paper.studio.scroll = 0;
+                    self.paper.studio.notice = Some("Studio questions and tool approvals: /answer DECISION TEXT or /always DECISION. Shell proposals remain separate.".into());
+                } else if named == Some(NamedKey::F15) {
+                    self.paper.studio.section = crate::studio::Section::Review;
+                    self.paper.studio.scroll = 0;
+                    self.paper.studio.notice =
+                        Some("Exact-revision review: /review TASK reads the change.".into());
+                }
+                if named == Some(NamedKey::F13) {
+                    self.paper.studio.section = crate::studio::Section::Studio;
+                    self.paper.studio.scroll = 0;
+                }
                 self.paper.help = false;
                 self.paper.thread.open = false;
                 self.paper.run.open = false;

@@ -20,10 +20,15 @@ impl terminal_core::studio::Transport for Native {
     }
     fn prepare_studio(
         &self,
+        source: &[u8],
+        review: Option<&terminal_core::studio::Review>,
         line: &str,
         workspace: Option<&str>,
     ) -> Receiver<Result<Prepared, String>> {
-        native::studio_prepare(line, self.home.as_deref(), workspace)
+        native::studio_prepare(source, review, line, self.home.as_deref(), workspace)
+    }
+    fn read_review(&self, task: &str) -> Receiver<Result<terminal_core::studio::Review, String>> {
+        native::studio_review(task, self.home.as_deref())
     }
     fn send_studio(&self, command: &Prepared) -> Receiver<Result<String, String>> {
         native::studio_send(command, self.home.as_deref())

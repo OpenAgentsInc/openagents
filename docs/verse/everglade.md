@@ -520,3 +520,11 @@ Everglade is the Agent Studio's place in the world:
 
 - Whether Fantasy Props may join the two named kits for furniture, or whether
   stations use only village and nature pieces.
+
+The studio sheet labels questions and tool approvals separately from shell
+proposals. `F14` shows their controls: `/answer DECISION TEXT` answers the
+displayed revision, and `/always DECISION` records only the host's offered
+standing rule. `F15` shows review controls: `/review TASK` reads the exact
+base, HEAD, and tree; `/merge`, `/changes TEXT`, and `/reject TEXT` prepare
+verdicts under Review rights. Merge lands a studio change locally and pushes
+nothing. The host's stale or refused answer remains visible.

@@ -2833,9 +2833,13 @@ fn studio_keys_never_enter_the_shell_and_only_physical_confirmation_sends() {
     app.paper
         .studio
         .update(crate::studio::View {
+            source: Vec::new(),
+            review: false,
+            tasks: Vec::new(),
             stream: "ab".into(),
             sequence: 1,
             rows: vec!["scratch studio".into()],
+            decisions: Vec::new(),
             operate: true,
             local_runs: Vec::new(),
             workspaces: Vec::new(),
@@ -2849,6 +2853,8 @@ fn studio_keys_never_enter_the_shell_and_only_physical_confirmation_sends() {
         Some("/pause @ada")
     );
     app.paper.studio.prepared(Ok(crate::studio::Prepared {
+        request: "a".repeat(64),
+        review: false,
         stream: "ab".into(),
         description: "pause ada".into(),
         bytes: b"exact operation".to_vec(),

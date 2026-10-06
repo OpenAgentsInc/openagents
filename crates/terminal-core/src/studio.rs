@@ -13,12 +13,20 @@ pub trait Transport: Send + Sync {
     }
     fn prepare_studio(
         &self,
+        source: &[u8],
+        review: Option<&Review>,
         line: &str,
         workspace: Option<&str>,
     ) -> Receiver<Result<crate::studio::Prepared, String>> {
-        let _ = (line, workspace);
+        let _ = (source, review, line, workspace);
         let (tx, rx) = std::sync::mpsc::channel();
         let _ = tx.send(Err("this mount prepares no studio commands".into()));
+        rx
+    }
+    fn read_review(&self, task: &str) -> Receiver<Result<Review, String>> {
+        let _ = task;
+        let (tx, rx) = std::sync::mpsc::channel();
+        let _ = tx.send(Err("this mount reads no studio reviews".into()));
         rx
     }
     fn send_studio(&self, command: &crate::studio::Prepared) -> Receiver<Result<String, String>> {
@@ -42,10 +50,18 @@ fn ready<T>(receiver: &Receiver<Result<T, String>>) -> Option<Result<T, String>>
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct View {
+    #[serde(default)]
+    pub source: Vec<u8>,
     pub stream: String,
     pub sequence: u64,
     pub rows: Vec<String>,
+    #[serde(default)]
+    pub decisions: Vec<String>,
     pub operate: bool,
+    #[serde(default)]
+    pub review: bool,
+    #[serde(default)]
+    pub tasks: Vec<String>,
     #[serde(default)]
     pub local_runs: Vec<String>,
     #[serde(default)]
@@ -54,23 +70,47 @@ pub struct View {
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct Prepared {
+    pub request: String,
     pub stream: String,
     pub description: String,
     pub bytes: Vec<u8>,
+    pub review: bool,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct Review {
+    pub stream: String,
+    pub task: String,
+    pub rows: Vec<String>,
+    pub source: Vec<u8>,
+}
+
+#[derive(Clone, Copy, Default, PartialEq, Eq)]
+pub enum Section {
+    #[default]
+    Studio,
+    Decisions,
+    Review,
 }
 
 #[derive(Default)]
 pub struct Page {
     pub open: bool,
+    pub section: Section,
     /// The world mount supplies its already admitted source instead of
     /// asking the local helper to choose a different host.
     pub external: bool,
     pub view: Option<View>,
+    pub review: Option<Review>,
+    pub review_task: Option<String>,
+    reviewing: Option<Receiver<Result<Review, String>>>,
     pub workspace: Option<String>,
     pub scroll: usize,
     pub notice: Option<String>,
     pub pending: Option<Prepared>,
     pub prepare: Option<String>,
+    pub prepare_source: Vec<u8>,
+    pub prepare_review: Option<Review>,
     pub send: Option<Prepared>,
     pub ticket: Option<u64>,
     read: Option<Receiver<Result<View, String>>>,
@@ -81,7 +121,10 @@ pub struct Page {
 
 impl Page {
     pub fn update(&mut self, view: View) -> Result<(), String> {
-        if view.stream.is_empty()
+        if view.tasks.len() > 256
+            || view.tasks.iter().any(|id| id.is_empty() || id.len() > 128)
+            || view.source.len() > 64 * 1024
+            || view.stream.is_empty()
             || view.stream.len() > 64
             || view.workspaces.len() > 64
             || view
@@ -93,6 +136,9 @@ impl Page {
                 .local_runs
                 .iter()
                 .any(|id| id.is_empty() || id.len() > 128)
+            || view.decisions.len() > 2048
+            || view.decisions.iter().any(|row| row.len() > 4096)
+            || view.decisions.iter().map(String::len).sum::<usize>() > 256 * 1024
             || view.rows.len() > 2048
             || view.rows.iter().any(|row| row.len() > 4096)
             || view.rows.iter().map(String::len).sum::<usize>() > 256 * 1024
@@ -107,7 +153,10 @@ impl Page {
         {
             return Err("studio update is older than the displayed facts".into());
         }
-        if !view.operate
+        if self
+            .view
+            .as_ref()
+            .is_some_and(|old| (old.operate && !view.operate) || (old.review && !view.review))
             || self
                 .view
                 .as_ref()
@@ -117,6 +166,8 @@ impl Page {
             self.preparing = None;
             self.pending = None;
             self.prepare = None;
+            self.prepare_source.clear();
+            self.prepare_review = None;
             self.send = None;
         }
         if self
@@ -125,6 +176,9 @@ impl Page {
             .is_some_and(|old| old.stream != view.stream)
         {
             self.workspace = None;
+            self.review = None;
+            self.review_task = None;
+            self.reviewing = None;
         }
         if self
             .workspace
@@ -146,10 +200,15 @@ impl Page {
         self.sending = None;
         self.checked = None;
         self.view = None;
+        self.review = None;
+        self.review_task = None;
+        self.reviewing = None;
         self.workspace = None;
         self.ticket = None;
         self.pending = None;
         self.prepare = None;
+        self.prepare_source.clear();
+        self.prepare_review = None;
         self.send = None;
         self.notice = Some(if uncertain {
             "Studio observation is unavailable; a sent command has an unknown outcome. No automatic replay."
@@ -160,14 +219,34 @@ impl Page {
         match result {
             Ok(prepared)
                 if prepared.bytes.len() <= 64 * 1024
-                    && self
-                        .view
-                        .as_ref()
-                        .is_some_and(|v| v.operate && v.stream == prepared.stream) =>
+                    && self.view.as_ref().is_some_and(|v| {
+                        (if prepared.review { v.review } else { v.operate })
+                            && v.stream == prepared.stream
+                    }) =>
             {
                 self.pending = Some(prepared);
             }
             Ok(_) => self.notice = Some("Studio command is stale or not admitted.".into()),
+            Err(error) => self.notice = Some(error),
+        }
+    }
+
+    pub fn reviewed(&mut self, result: Result<Review, String>) {
+        match result {
+            Ok(review)
+                if review.source.len() <= 64 * 1024
+                    && review.rows.len() <= 2048
+                    && review.rows.iter().all(|row| row.len() <= 4096)
+                    && review.rows.iter().map(String::len).sum::<usize>() <= 256 * 1024
+                    && self.view.as_ref().is_some_and(|v| {
+                        v.stream == review.stream && v.tasks.contains(&review.task)
+                    }) =>
+            {
+                self.pending = None;
+                self.review = Some(review);
+                self.notice = Some("Exact-revision review loaded.".into());
+            }
+            Ok(_) => self.notice = Some("Review is stale or exceeds its bounds.".into()),
             Err(error) => self.notice = Some(error),
         }
     }
@@ -178,6 +257,22 @@ impl Page {
             || self.send.is_some()
             || self.prepare.is_some()
         {
+            return;
+        }
+        if let Some(task) = line.strip_prefix("/review ") {
+            self.section = Section::Review;
+            self.pending = None;
+            if self
+                .view
+                .as_ref()
+                .is_some_and(|view| view.tasks.iter().any(|id| id == task))
+            {
+                self.review = None;
+                self.review_task = Some(task.to_owned());
+                self.notice = Some("Reading the task's exact revisions.".into());
+            } else {
+                self.notice = Some("That task is not in the admitted snapshot.".into());
+            }
             return;
         }
         if let Some(workspace) = line.strip_prefix("/repo ") {
@@ -198,16 +293,18 @@ impl Page {
         }
         if let Some(prepared) = self.pending.take() {
             if line.is_empty()
-                && self
-                    .view
-                    .as_ref()
-                    .is_some_and(|v| v.operate && v.stream == prepared.stream)
+                && self.view.as_ref().is_some_and(|v| {
+                    (if prepared.review { v.review } else { v.operate })
+                        && v.stream == prepared.stream
+                })
             {
                 self.send = Some(prepared);
             } else {
                 self.notice = Some("Command rejected; enter the revised command again.".into());
             }
-        } else if !line.is_empty() && self.view.as_ref().is_some_and(|v| v.operate) {
+        } else if !line.is_empty() && self.view.as_ref().is_some_and(|v| v.operate || v.review) {
+            self.prepare_source = self.view.as_ref().unwrap().source.clone();
+            self.prepare_review = self.review.clone();
             self.prepare = Some(line);
         } else {
             self.notice = Some("Studio steering is not admitted.".into());
@@ -241,8 +338,22 @@ impl Page {
                 }
             }
         }
+        if self.reviewing.is_none() {
+            if let Some(task) = self.review_task.take() {
+                self.reviewing = Some(transport.read_review(&task));
+            }
+        }
+        if let Some(result) = self.reviewing.as_ref().and_then(ready) {
+            self.reviewing = None;
+            self.reviewed(result);
+        }
         if let Some(line) = self.prepare.take() {
-            self.preparing = Some(transport.prepare_studio(&line, self.workspace.as_deref()));
+            self.preparing = Some(transport.prepare_studio(
+                &self.prepare_source,
+                self.prepare_review.as_ref(),
+                &line,
+                self.workspace.as_deref(),
+            ));
         }
         if let Some(result) = self.preparing.as_ref().and_then(ready) {
             self.preparing = None;
@@ -262,7 +373,12 @@ impl Page {
 pub fn lines(page: &Page) -> Vec<(String, crate::paper::Tone)> {
     use crate::paper::Tone;
     let mut rows = vec![(
-        "STUDIO: GOALS, TASK WALL, SEATS, AND MEMORY".into(),
+        match page.section {
+            Section::Studio => "STUDIO: GOALS, TASK WALL, SEATS, AND MEMORY",
+            Section::Decisions => "STUDIO: QUESTIONS AND TOOL APPROVALS",
+            Section::Review => "STUDIO: EXACT-REVISION REVIEW",
+        }
+        .into(),
         Tone::Loud,
     )];
     if let Some(view) = &page.view {
@@ -273,9 +389,28 @@ pub fn lines(page: &Page) -> Vec<(String, crate::paper::Tone)> {
         if let Some(workspace) = &page.workspace {
             rows.push((format!("Selected workspace: {workspace}"), Tone::Loud));
         }
-        rows.extend(view.rows.iter().map(|row| (row.clone(), Tone::Present)));
+        let facts: &[String] = match page.section {
+            Section::Studio => &view.rows,
+            Section::Decisions => &view.decisions,
+            Section::Review => &[],
+        };
+        rows.extend(facts.iter().map(|row| (row.clone(), Tone::Present)));
     } else {
         rows.push(("Studio facts unavailable.".into(), Tone::Quiet));
+    }
+    if page.section == Section::Review
+        && let Some(review) = &page.review
+    {
+        rows.extend(review.rows.iter().map(|row| (row.clone(), Tone::Present)));
+        rows.push((
+            if page.view.as_ref().is_some_and(|view| view.review) {
+                "/merge, /changes TEXT, or /reject TEXT prepare a verdict; ENTER confirms."
+            } else {
+                "Read-only review; Review right is not admitted."
+            }
+            .into(),
+            Tone::Loud,
+        ));
     }
     if let Some(notice) = &page.notice {
         rows.push((notice.clone(), Tone::Loud));
@@ -292,19 +427,25 @@ mod tests {
     use super::*;
     fn view(stream: &str, operate: bool) -> View {
         View {
+            source: Vec::new(),
             stream: stream.into(),
             sequence: 4,
             rows: vec!["retained facts".into()],
+            decisions: Vec::new(),
             operate,
+            review: false,
+            tasks: Vec::new(),
             local_runs: Vec::new(),
             workspaces: vec!["scratch".into()],
         }
     }
     fn prepared() -> Prepared {
         Prepared {
+            request: "a".repeat(64),
             stream: "ab".into(),
             description: "pause ada".into(),
             bytes: b"exact typed command".to_vec(),
+            review: false,
         }
     }
 
@@ -370,5 +511,27 @@ mod tests {
         assert_eq!(page.workspace.as_deref(), Some("scratch"));
         page.update(view("cd", false)).unwrap();
         assert!(page.workspace.is_none());
+    }
+    #[test]
+    fn review_permission_is_independent_and_revocation_disarms_confirmation() {
+        let mut view = view("ab", false);
+        view.review = true;
+        view.source = b"displayed snapshot".to_vec();
+        view.tasks = vec!["studio-g-a".into()];
+        let mut page = Page::default();
+        page.update(view.clone()).unwrap();
+        page.enter("/review studio-g-a".into());
+        assert_eq!(page.review_task.take().as_deref(), Some("studio-g-a"));
+        page.enter("/merge".into());
+        assert_eq!(page.prepare_source, b"displayed snapshot");
+        page.prepare = None;
+        let mut command = prepared();
+        command.review = true;
+        page.prepared(Ok(command));
+        assert!(page.pending.is_some());
+        view.review = false;
+        page.update(view).unwrap();
+        page.enter(String::new());
+        assert!(page.pending.is_none() && page.send.is_none());
     }
 }
