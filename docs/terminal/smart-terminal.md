@@ -316,6 +316,15 @@ F7 on the sheet, or Ctrl+B then t in the panes, types the corrected line
 without pressing Enter, and again for the next choice. Nothing runs until
 you press Enter, and what the mistyped command already did stays done.
 
+Ctrl+B then f in the panes searches the pane's kept blocks by command and
+output, with `status:ok`, `status:fail`, `status:running`, `status:N`, and
+`dir:TEXT` filters (`crates/terminal-core/src/search.rs`). Enter or Down
+selects the next older match, Up the newer one, and the block actions (y, d,
+r) then act on it; search itself runs and attaches nothing. It names what it
+could not read: blocks the pane no longer keeps, output cut by scrollback or
+the 16 KB bound, and running blocks. Host block-journal pages are not read
+yet; the search covers the blocks the pane holds.
+
 The label before the input line (`SHELL >` or `ASK   >`) updates as you
 type, so ENTER always does what it shows. What a question means stays the
 chat router's decision (`chat-router-v1`,

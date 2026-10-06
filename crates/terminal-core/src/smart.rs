@@ -646,7 +646,18 @@ impl super::Overlay {
         } else {
             (current + 1).min(blocks.len() - 1)
         };
-        let block = &blocks[index];
+        let id = blocks[index].id;
+        self.show_block(pane_id, id);
+    }
+
+    /// Selects block `id` in `pane_id` and scrolls the pane to its start.
+    pub fn show_block(&mut self, pane_id: PaneId, id: u64) {
+        let Some(pane) = self.panes.get_mut(&pane_id) else {
+            return;
+        };
+        let Some(block) = pane.session.blocks.get(id) else {
+            return;
+        };
         self.smart.selected = Some((pane_id, block.id));
         let top = pane.session.vt.history_dropped() + pane.session.vt.scrollback_len() as u64;
         pane.scroll = top.saturating_sub(block.start.line) as usize;
@@ -656,6 +667,7 @@ impl super::Overlay {
             block.status,
             block.elapsed_ms.unwrap_or_default()
         ));
+        pane.render_revision = pane.render_revision.wrapping_add(1);
     }
 
     pub fn copy_block(&mut self) {

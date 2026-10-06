@@ -8,6 +8,7 @@ pub mod correct;
 pub mod fish;
 pub mod proposals;
 pub mod route;
+pub mod search;
 pub mod zsh;
 
 pub mod application;

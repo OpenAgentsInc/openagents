@@ -700,3 +700,99 @@ fn a_missing_command_offers_corrections_that_run_nothing() {
     assert_eq!(app.paper.input, "git status");
     assert!(transport.input.lock().unwrap().is_empty());
 }
+
+#[test]
+fn block_search_selects_matches_and_sends_nothing_to_the_shell() {
+    use crate::input::{KeyCode, NamedKey};
+    let transport = Arc::new(Fake::default());
+    let mut app = Application::new(Sessions(transport.clone()));
+    app.toggle();
+    app.ensure_started();
+    app.paper.on = false;
+    let run = |cwd: &str, command: &str, output: &str, status: i32| {
+        format!(
+            "\x1b]7;file://localhost{cwd}\x07\x1b]133;A\x07$ \x1b]133;B\x07{command}\r\n\x1b]777;openagents;command;{}\x07\x1b]133;C\x07{output}\r\n\x1b]133;D;{status}\x07",
+            hex(command)
+        )
+    };
+    let output = [
+        run("/work/app", "cargo test", "1 failed", 101),
+        run("/work/lib", "cargo test", "ok", 0),
+        run("/work/app", "ls", "Cargo.toml", 0),
+        "\x1b]133;A\x07$ ".to_owned(),
+    ]
+    .concat();
+    transport
+        .output
+        .lock()
+        .unwrap()
+        .push_back(output.into_bytes());
+    app.tick();
+    let pane = app.focus_id().unwrap();
+    assert_eq!(app.panes[&pane].session.blocks.records.len(), 3);
+    app.open_find();
+    typing(&mut app, "cargo test dir:app");
+    assert_eq!(app.smart.selected, Some((pane, 1)));
+    assert!(
+        app.find_prompt().unwrap().contains("1 of 1"),
+        "{:?}",
+        app.find_prompt()
+    );
+    // Clearing the directory filter: the newest match first, then older.
+    for _ in 0.."dir:app".len() {
+        press(&mut app, KeyCode::Backspace, NamedKey::Backspace);
+    }
+    assert_eq!(app.smart.selected, Some((pane, 2)));
+    press(&mut app, KeyCode::ArrowDown, NamedKey::ArrowDown);
+    assert_eq!(app.smart.selected, Some((pane, 1)));
+    press(&mut app, KeyCode::ArrowUp, NamedKey::ArrowUp);
+    assert_eq!(app.smart.selected, Some((pane, 2)));
+    // Enter moves to the next match; it never reaches the shell.
+    press(&mut app, KeyCode::Enter, NamedKey::Enter);
+    assert_eq!(app.smart.selected, Some((pane, 1)));
+    assert!(transport.input.lock().unwrap().is_empty());
+    press(&mut app, KeyCode::Escape, NamedKey::Escape);
+    assert!(app.find.is_none());
+    assert_eq!(app.smart.selected, Some((pane, 1)));
+    // The selected block's own actions still apply.
+    app.copy_block();
+    assert_eq!(app.copied.as_deref(), Some("$ cargo test\n1 failed"));
+}
+
+#[test]
+fn a_full_pane_searches_within_a_frame() {
+    let mut blocks = crate::blocks::Blocks::default();
+    let output = "ordinary build output line\n".repeat(crate::blocks::MAX_OUTPUT / 27);
+    for id in 1..=crate::blocks::MAX_BLOCKS as u64 {
+        blocks.records.push_back(crate::blocks::Block {
+            id,
+            command: format!("cargo build -p crate{id}"),
+            cwd: Some("/work".into()),
+            start: crate::blocks::Position { line: id, col: 0 },
+            end: Some(crate::blocks::Position { line: id, col: 1 }),
+            status: Some(0),
+            started_ms: 0,
+            elapsed_ms: None,
+            output: output.clone(),
+            truncated: false,
+            collapsed: false,
+        });
+    }
+    let query = crate::search::Query::parse("needle status:fail");
+    let started = std::time::Instant::now();
+    let found = crate::search::search(&blocks, &query);
+    let elapsed = started.elapsed();
+    assert!(found.ids.is_empty());
+    eprintln!(
+        "searched {} blocks of {} bytes in {elapsed:?}",
+        blocks.records.len(),
+        output.len()
+    );
+    // The worst case: every block full and every word checked.
+    let query = crate::search::Query::parse("needle");
+    let started = std::time::Instant::now();
+    let _ = crate::search::search(&blocks, &query);
+    let worst = started.elapsed();
+    eprintln!("worst case {worst:?}");
+    assert!(worst < std::time::Duration::from_millis(250), "{worst:?}");
+}
