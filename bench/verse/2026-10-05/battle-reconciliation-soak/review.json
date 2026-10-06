@@ -1,0 +1,44 @@
+{
+  "schema": "verse.battle.review.v1",
+  "source_base": "43f12d6e0bb48e22f151476a14aaab66cca9bee8",
+  "executable_sha256": "f384071923bd2f7c49411e1e8aced032ad4f05940dfd82112e94ba652d11b017",
+  "duration_seconds": 120,
+  "status": "complete",
+  "acceptance": "failed",
+  "failures": [
+    "/server/movement_expiry/total: Some(10.0) exceeds 0, or is unavailable"
+  ],
+  "movement_expiry": 10,
+  "render_cpu_p95_ms": 7.5528,
+  "render_gpu_p95_ms": 7.016448,
+  "snapshot_age_p95_ms": 216.981328,
+  "recovery": {
+    "characters_checked": 20,
+    "active_receipts": 52,
+    "ledger_revision": 200,
+    "retained_events": 512,
+    "checkpoint_bytes": 356133,
+    "restored_checkpoint_bytes": 356133,
+    "live_hostiles": 40,
+    "actor_count": 60
+  },
+  "primary_corrections": [
+    {
+      "maximum_meters": 0.6400800347328186,
+      "decision": "translation"
+    },
+    {
+      "maximum_meters": 0.0,
+      "decision": "replay"
+    }
+  ],
+  "limitations": [
+    "This run requested 120 seconds. It was previously described incorrectly as a 600-second soak.",
+    "The corrected 600-second run is a separate measurement.",
+    "Offscreen rendering does not measure physical input-to-display latency."
+  ],
+  "files": {
+    "combined-reconciliation-soak-01.json": "6742edad31bda48857631c56bd7a058aed8bf8e4e3acc99fe7a684c77b518535",
+    "source.patch": "181bb14bf3b7664952ebf6f5b25665910c255f08d5d39675fa2af550e53387e7"
+  }
+}
