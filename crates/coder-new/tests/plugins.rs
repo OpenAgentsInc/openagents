@@ -1,5 +1,5 @@
 use coder_new::{App, Screen, plugins::SettingsFocus, snapshot, ui};
-use crossterm::event::{Event, KeyCode, KeyEvent, KeyModifiers};
+use crossterm::event::{Event, KeyCode, KeyEvent, KeyEventKind, KeyModifiers};
 use ratatui::{Terminal, backend::TestBackend};
 
 const KEY_INPUT: &str = "redaction_probe";
@@ -124,6 +124,51 @@ fn plugin_navigation_returns_to_the_chat_without_changing_chat_state() {
     assert!(command_app.screen == Screen::Plugins);
     assert!(command_app.messages.is_empty());
     assert!(command_app.draft.text.is_empty());
+}
+
+#[test]
+fn plugin_shortcuts_open_over_other_screens_without_changing_drafts() {
+    for (code, modifiers) in [
+        (KeyCode::Char('p'), KeyModifiers::CONTROL),
+        (KeyCode::Char('P'), KeyModifiers::SUPER),
+    ] {
+        let mut app = App::default();
+        key(&mut app, KeyCode::Down);
+        paste(&mut app, "unsent chat draft");
+        key(&mut app, KeyCode::Left);
+        app.scroll = 7;
+        let draft = (app.draft.text.clone(), app.draft.cursor);
+        let selected = app.selected_agent;
+        app.plugins.enabled = true;
+        app.open_models();
+        assert!(app.model_picker.is_some());
+
+        let shortcut = KeyEvent::new(code, modifiers);
+        assert!(app.handle(Event::Key(shortcut)));
+        assert!(app.screen == Screen::Plugins);
+        assert!(app.model_picker.is_none());
+        assert!(app.request.is_none());
+        key(&mut app, KeyCode::Enter);
+        paste(&mut app, KEY_INPUT);
+        let settings_draft = app.plugins.field(true);
+        assert!(app.handle(Event::Key(shortcut)));
+        assert!(app.screen == Screen::Plugins);
+        assert_eq!(app.plugins.field(true), settings_draft);
+        assert!(!app.plugins.key_configured);
+        key(&mut app, KeyCode::Esc);
+        assert!(app.screen == Screen::Conversation);
+        assert_eq!((app.draft.text.clone(), app.draft.cursor), draft);
+        assert_eq!(app.selected_agent, selected);
+        assert_eq!(app.scroll, 7);
+
+        let mut released = shortcut;
+        released.kind = KeyEventKind::Release;
+        assert!(app.handle(Event::Key(released)));
+        assert!(app.screen == Screen::Conversation);
+        key(&mut app, KeyCode::Char('p'));
+        assert!(app.screen == Screen::Conversation);
+        assert_eq!(app.draft.text, "unsent chat drafpt");
+    }
 }
 
 #[test]

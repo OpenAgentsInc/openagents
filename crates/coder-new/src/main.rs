@@ -4,6 +4,10 @@ use std::{
 };
 
 use coder_new::{App, Mode, live::Background, snapshot, ui};
+#[cfg(unix)]
+use crossterm::event::{
+    KeyboardEnhancementFlags, PopKeyboardEnhancementFlags, PushKeyboardEnhancementFlags,
+};
 use crossterm::{
     cursor::{SetCursorStyle, Show},
     event::{
@@ -45,7 +49,7 @@ fn main() -> io::Result<()> {
             "--snapshot" => capture = true,
             "--help" | "-h" => {
                 println!(
-                    "Coder terminal\n\nUsage: coder [--live | --demo] [--plugins | --plugin-settings | --models] [--snapshot]\n\n--live             Use enabled providers and tools (default).\n--demo             Use local example conversations.\n--plugins          Start with plugin management.\n--plugin-settings  Start with OpenRouter settings.\n--models           Open the model picker for an enabled provider.\n--snapshot         Write a 110×36 SVG to stdout; defaults to demo.\n--version          Print the release version and build commit.\n\n/demo toggles live and demo. /models chooses a model and reasoning level. /export [path] writes ATIF. Type / for commands; Up/Down selects, Tab completes, Enter runs. F2 or /plugins opens plugins. Esc stops a reply. Ctrl+C quits."
+                    "Coder terminal\n\nUsage: coder [--live | --demo] [--plugins | --plugin-settings | --models] [--snapshot]\n\n--live             Use enabled providers and tools (default).\n--demo             Use local example conversations.\n--plugins          Start with plugin management.\n--plugin-settings  Start with OpenRouter settings.\n--models           Open the model picker for an enabled provider.\n--snapshot         Write a 110×36 SVG to stdout; defaults to demo.\n--version          Print the release version and build commit.\n\n/demo toggles live and demo. /models chooses a model and reasoning level. /export [path] writes ATIF. Type / for commands; Up/Down selects, Tab completes, Enter runs. Cmd+P on macOS, Ctrl+P on Windows, F2, or /plugins opens plugins. Esc stops a reply. Ctrl+C quits."
                 );
                 return Ok(());
             }
@@ -132,6 +136,11 @@ fn main() -> io::Result<()> {
         previous_hook(info);
     }));
     let result: io::Result<()> = (|| {
+        #[cfg(unix)]
+        execute!(
+            io::stdout(),
+            PushKeyboardEnhancementFlags(KeyboardEnhancementFlags::DISAMBIGUATE_ESCAPE_CODES)
+        )?;
         execute!(
             io::stdout(),
             EnableBracketedPaste,
@@ -185,6 +194,8 @@ fn main() -> io::Result<()> {
 }
 
 fn restore_extras() -> io::Result<()> {
+    #[cfg(unix)]
+    execute!(io::stdout(), PopKeyboardEnhancementFlags)?;
     execute!(
         io::stdout(),
         EndSynchronizedUpdate,

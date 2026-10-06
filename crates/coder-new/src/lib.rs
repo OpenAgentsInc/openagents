@@ -768,6 +768,14 @@ impl App {
                 if ctrl && key.code == KeyCode::Char('c') {
                     return false;
                 }
+                if matches!(key.code, KeyCode::Char('p' | 'P'))
+                    && (key.modifiers == KeyModifiers::SUPER
+                        || key.modifiers == KeyModifiers::CONTROL)
+                {
+                    self.model_picker = None;
+                    self.open_plugins();
+                    return true;
+                }
                 if let Some(picker) = &mut self.model_picker {
                     match picker.handle(key) {
                         models::Action::Continue => {}
