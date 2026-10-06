@@ -234,23 +234,56 @@ impl Local {
     ) -> Result<(), String> {
         baseline.validate()?;
         if let Some(old) = self.baseline {
-            if observation <= self.observation
-                || tick < self.tick
-                || baseline.life.instance != old.life.instance
+            let rejection = if observation <= self.observation {
+                Some("observation order")
+            } else if tick < self.tick {
+                Some("authority tick")
+            } else if baseline.life.instance != old.life.instance
                 || baseline.life.actor != old.life.actor
-                || baseline.life.generation < old.life.generation
-                || baseline.epoch < old.epoch
-                || (baseline.epoch == old.epoch
-                    && (baseline.physics_step < old.physics_step
-                        || baseline.applied_sequence < old.applied_sequence
-                        || baseline.life != old.life
-                        || baseline.profile != old.profile
-                        || (baseline.profile == movement::Profile::Frames
-                            && baseline.physics_step > self.step)
-                        || (baseline.profile == movement::Profile::Frames
-                            && baseline.world_step < old.world_step)))
             {
-                return Err("Local prediction observation regressed".into());
+                Some("actor identity")
+            } else if baseline.life.generation < old.life.generation {
+                Some("life generation")
+            } else if baseline.epoch < old.epoch {
+                Some("control epoch")
+            } else if baseline.epoch == old.epoch {
+                if baseline.physics_step < old.physics_step {
+                    Some("confirmed physics step")
+                } else if baseline.applied_sequence < old.applied_sequence {
+                    Some("applied sequence")
+                } else if baseline.life != old.life {
+                    Some("life changed without an epoch")
+                } else if baseline.profile != old.profile {
+                    Some("profile changed without an epoch")
+                } else if baseline.profile == movement::Profile::Frames
+                    && baseline.physics_step > self.step
+                {
+                    Some("confirmation ahead of local simulation")
+                } else if baseline.profile == movement::Profile::Frames
+                    && baseline.world_step < old.world_step
+                {
+                    Some("world step")
+                } else {
+                    None
+                }
+            } else {
+                None
+            };
+            if let Some(reason) = rejection {
+                return Err(format!(
+                    "Local prediction observation regressed: {reason}; observation {observation}/{}, tick {tick}/{}, epoch {}/{}, confirmed step {}/{}, local step {}, world step {}/{}, sequence {}/{}",
+                    self.observation,
+                    self.tick,
+                    baseline.epoch,
+                    old.epoch,
+                    baseline.physics_step,
+                    old.physics_step,
+                    self.step,
+                    baseline.world_step,
+                    old.world_step,
+                    baseline.applied_sequence,
+                    old.applied_sequence,
+                ));
             }
         }
         let reset = self.context() != Some((baseline.life, baseline.epoch));
