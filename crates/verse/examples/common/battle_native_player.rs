@@ -30,7 +30,7 @@ pub async fn player(
     index: usize,
     end: tokio::time::Instant,
     scene: Scene,
-    pack: Pack,
+    pack: Option<Pack>,
     tap: Option<mpsc::Sender<Tap>>,
     atlas: Option<std::sync::Arc<verse::ui::Atlas>>,
 ) -> Result<serde_json::Value, String> {
@@ -82,6 +82,7 @@ pub async fn player(
         began + Duration::from_secs(2) + Duration::from_millis(index as u64 * 75);
     let mut cast = 0usize;
     let mut responses = 0u64;
+    let mut frontline_yaw = None;
     let result=async {
       let mut clock=tokio::time::interval(Duration::from_secs_f64(1./60.));clock.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
       while tokio::time::Instant::now()<end {
@@ -90,6 +91,13 @@ pub async fn player(
         while let Ok(update)=output.try_recv() {
           match &update {
             Update::Snapshot(response)=>if let Reply::Snapshot {state}=&response.body {
+              if index==19 {
+                frontline_yaw=state.hud.as_ref().filter(|h|h.life.generation==0).and_then(|h| {
+                  let owned=state.presentation.actors.iter().find(|a|verse_engine::core::LifeId::from(a.life)==h.life)?.actor.position;
+                  let target=state.presentation.actors.iter().filter(|a|a.health>0 && a.visible && !a.actor.friendly && a.actor.nameplate && a.actor.model!="adventurer").min_by(|a,b|a.actor.position.distance_squared(owned).total_cmp(&b.actor.position.distance_squared(owned)))?;
+                  let direction=target.actor.position-owned;Some((-direction.x).atan2(-direction.z))
+                });
+              }
               max_players=max_players.max(state.presentation.actors.iter().filter(|p|p.actor.model=="adventurer").count());
               if state.presentation.time>=20. {occupancy+=1;min_hostiles=min_hostiles.min(state.presentation.actors.iter().filter(|p|p.health>0 && !p.actor.friendly && p.actor.model!="adventurer").count());}
               if let Some(baseline)=state.movement.filter(|b|b.profile==verse_world::movement::Profile::Frames) {
@@ -115,19 +123,21 @@ pub async fn player(
         let now=Instant::now();let dt=now.duration_since(last).as_secs_f64().min(0.1);last=now;
         if let Some(hud)=session.hud() {min_hp=min_hp.min(hud.resources.hp);}
         if session.dead() {session.respawn();}
+        let frontline_initial_life=index==19 && session.hud().is_some_and(|h|h.life.generation==0);
         if session.controlled(&scene) && session.movement_frames() && bound_frames>=10 {
-          if now>=next_operation && session.idle() {
+          if !frontline_initial_life && now>=next_operation && session.idle() {
             let input=match operation {0=>Input::EquipGear(verse_world::service::equipment::Slot::Head,501),1=>Input::ClaimQuest(1),_=>Input::UseItem(502)};
             session.send(input);operation+=1;next_operation=now+Duration::from_secs(6);
           }
           if now>=next_cast {
             let abilities=[Ability::Shield,Ability::Fireball,Ability::Web,Ability::Grease,Ability::Light,Ability::Thunderwave,Ability::MistyStep,Ability::Bow,Ability::FireBolt,Ability::MagicMissile];
-            session.target_nearest();session.cast(&scene,abilities[cast%abilities.len()]);cast+=1;next_cast=now+Duration::from_secs(2);
+            session.target_nearest();session.cast(&scene,if frontline_initial_life {Ability::FireBolt} else {abilities[cast%abilities.len()]});cast+=1;next_cast=now+Duration::from_secs(2);
           }
         }
         let phase=((began.elapsed().as_secs_f64()+index as f64*0.2).rem_euclid(8.)).floor() as u32;
         let axes=match phase {0=>[0.,1.],1=>[1.,0.],2=>[0.,-1.],3=>[-1.,0.],_=>[0.,0.]};
-        session.steer(&scene,axes,dt as f32,session.movement_frames())?;
+        if frontline_initial_life {if let Some(yaw)=frontline_yaw {session.yaw=yaw;}}
+        session.steer(&scene,if frontline_initial_life {[0.,1.]} else {axes},dt as f32,session.movement_frames())?;
         if session.controlled(&scene) {movements+=1;}
         let prediction_delay=session.prediction_delay_steps() as f64 * 1000. / 120.;
         measurements.record(frame,"input_to_prediction_clock_delay_ms",prediction_delay);
@@ -151,8 +161,8 @@ pub async fn player(
           measurements.record(frame,"queued_inputs",sample.queued_inputs as f64);window.record(frame,"queued_inputs",sample.queued_inputs as f64);
         }
         if let Some(at)=observations.snapshot_verified_at {measurements.record(frame,"snapshot_verified_age_ms",at.elapsed().as_secs_f64()*1000.);}
-        if let (Some(tap),Some(atlas))=(&tap,&atlas) {
-          let started=Instant::now();let drawn=session.frame(&pack,atlas,&scene,[1280,720])?;
+        if let (Some(tap),Some(atlas),Some(pack))=(&tap,&atlas,&pack) {
+          let started=Instant::now();let drawn=session.frame(pack,atlas,&scene,[1280,720])?;
           measurements.record(frame,"frame_projection_cpu_ms",started.elapsed().as_secs_f64()*1000.);
           if let Some(age)=session.snapshot_age() {
             if tap.try_send(Tap {frame:drawn,applied_at:Instant::now()-age,projection_ms:started.elapsed().as_secs_f64()*1000.}).is_err() {omitted_taps+=1;}

@@ -108,7 +108,25 @@ pub fn failures(report: &Value) -> Vec<String> {
             if samples == 0 || framed as f64 / (samples as f64) < 0.8 {
                 failures.push(format!("Player {} did not sustain interval movement for eighty percent of battle snapshots",player["player"]));
             }
-            if player["player"] == 0 {
+            if report["native_sessions"].as_u64() == Some(20)
+                && segment["movement_profile"] != "native_session_intervals"
+            {
+                failures.push(format!(
+                    "Player {} did not use the declared native session",
+                    player["player"]
+                ));
+            }
+            if segment["movement_profile"] == "native_session_intervals" {
+                for field in ["prediction_failures", "prediction_horizon_pauses"] {
+                    if segment[field].as_u64() != Some(0) {
+                        failures.push(format!(
+                            "Player {} {field} is nonzero or unavailable",
+                            player["player"]
+                        ));
+                    }
+                }
+            }
+            if player["player"] == 0 || segment["movement_profile"] == "native_session_intervals" {
                 for (field, maximum) in [("p95", 0.25), ("maximum", 1.)] {
                     let value = segment["measurements"]["steady"]["prediction_correction_meters"]
                         [field]
@@ -118,7 +136,7 @@ pub fn failures(report: &Value) -> Vec<String> {
                     }
                 }
             }
-            if player["player"] == 0 {
+            if player["player"] == 0 || segment["movement_profile"] == "native_session_intervals" {
                 for window in segment["windows"]
                     .as_array()
                     .into_iter()
@@ -130,7 +148,7 @@ pub fn failures(report: &Value) -> Vec<String> {
                             window["measurements"]["steady"]["prediction_correction_meters"][field]
                                 .as_f64();
                         if value.is_none_or(|v| !v.is_finite() || v > maximum) {
-                            failures.push(format!("Player 0 late prediction {field} {value:?} exceeds {maximum} meters or is unavailable"));
+                            failures.push(format!("Player {} late prediction {field} {value:?} exceeds {maximum} meters or is unavailable",player["player"]));
                         }
                     }
                 }
@@ -267,6 +285,34 @@ mod tests {
         let segment = serde_json::json!({"status":"complete","maximum_players":20,"battle_occupancy":{"samples":100,"minimum_live_hostiles":40},"observed_frame_snapshots":100,"battle_framed_snapshots":100,"movement_inputs":100,"bound_frames":30,"confirmed_interval_steps":360,"accepted_operations":{"equipment":1,"quest_claim":1,"item_use":1,"respawn":1},"accepted_casts":{"Fireball":1,"Web":1,"Thunderwave":1},"measurements":{"steady":{"prediction_correction_meters":{"p95":0.01,"maximum":0.1}}}});
         let mut report = serde_json::json!({"status":"complete","mode":"network","seconds":60,"server":{"movement_expiry":{"total":0},"ticks":1800,"workload_ticks":1800,"request_queue_peak":20,"writer_queue_peak":2,"held_reply_bytes_peak":1000000,"failure":null,"simulation":{"steady":{"p99_upper_bound_ms":16.}},"admission":{"active_peak":20}},"render":{"measurements":{"steady":{"applied_snapshot_age_ms":{"p95":100.}}}},"recovery":{"active_receipts":32,"retained_events":512,"characters_checked":20,"live_hostiles":40,"checkpoint_bytes":300000},"route":{"connections":40,"refused_connections":0,"omitted_error_details":0,"error_details":[]},"disconnect_windows_seconds":[30.,60.],"players":(0..20).map(|player|serde_json::json!({"player":player,"segments":[segment.clone(),segment.clone()]})).collect::<Vec<_>>()});
         assert!(failures(&report).is_empty());
+        report["players"][7]["segments"][0]["prediction_failures"] = serde_json::json!(0);
+        report["players"][7]["segments"][0]["prediction_horizon_pauses"] = serde_json::json!(0);
+        report["players"][7]["segments"][0]["movement_profile"] =
+            serde_json::json!("native_session_intervals");
+        report["players"][7]["segments"][0]["measurements"]["steady"]["prediction_correction_meters"]
+            ["p95"] = serde_json::json!(0.3);
+        assert!(
+            failures(&report)
+                .iter()
+                .any(|f| f.contains("Player 7 prediction p95"))
+        );
+        report["players"][7]["segments"][0]["measurements"]["steady"]["prediction_correction_meters"]
+            ["p95"] = serde_json::json!(0.01);
+        assert!(failures(&report).is_empty());
+        report["players"][7]["segments"][0]["prediction_failures"] = serde_json::json!(1);
+        assert!(
+            failures(&report)
+                .iter()
+                .any(|f| f.contains("Player 7 prediction_failures"))
+        );
+        report["players"][7]["segments"][0]["prediction_failures"] = serde_json::json!(0);
+        report["native_sessions"] = serde_json::json!(20);
+        assert!(
+            failures(&report)
+                .iter()
+                .any(|f| f.contains("declared native session"))
+        );
+        report.as_object_mut().unwrap().remove("native_sessions");
         report["server"]["movement_expiry"]["total"] = serde_json::json!(13);
         assert!(
             failures(&report)

@@ -6,8 +6,6 @@
 mod battle_acceptance;
 #[path = "common/battle_native_player.rs"]
 mod battle_native_player;
-#[path = "common/battle_player.rs"]
-mod battle_player;
 use glam::Vec3;
 use rustls::{
     ClientConfig, RootCertStore, ServerConfig,
@@ -678,7 +676,7 @@ async fn run(
         let tls = client_tls.clone();
         let segment_directory = segment_directory.clone();
         let scene = scene.clone();
-        let pack = pack.clone();
+        let pack = (index == 0).then(|| pack.clone());
         let tap = if index == 0 { Some(tap.clone()) } else { None };
         let atlas = if index == 0 {
             Some(atlas.clone())
@@ -698,20 +696,16 @@ async fn run(
                         break;
                     }
                 };
-                let segment = if index == 0 {
-                    battle_native_player::player(
-                        client,
-                        index,
-                        deadline,
-                        scene.clone(),
-                        pack.clone(),
-                        tap.clone(),
-                        atlas.clone(),
-                    )
-                    .await?
-                } else {
-                    battle_player::player(client, index, deadline, true, true).await?
-                };
+                let segment = battle_native_player::player(
+                    client,
+                    index,
+                    deadline,
+                    scene.clone(),
+                    pack.clone(),
+                    tap.clone(),
+                    atlas.clone(),
+                )
+                .await?;
                 let path = segment_directory
                     .join(format!("player-{index}-segment-{}.json", segments.len()));
                 match SegmentRecord::write(path, segment) {
@@ -874,7 +868,7 @@ fn main() -> Result<(), String> {
     {
         return Err("Invalid capacity mode or duration".into());
     }
-    let mut report = serde_json::json!({"schema":"verse.battle.capacity.v1","mode":args[0],"seconds":seconds,"players":PLAYERS,"native_sessions":1,"headless_workers":19,"hostile_npcs":HOSTILES,"cultist_health":20000,"frontline_player":19,"frontline_initial_position":[-6.,0.,-8.],"frontline_initial_life_recipe":"approach the nearest hostile and cast only Fire Bolt; defer inventory, healing, crowd control, Shield, and Misty Step until the first actual respawn","delay_profile":"pipeline","delay_ms_per_chunk":40,"jitter_ms_per_chunk":20,"wire_version":verse_world::service::wire::VERSION,"debug_assertions":cfg!(debug_assertions),"status":"running","budgets":{"movement_expiries":0,"simulation_p99_upper_bound_ms":1000./30.,"render_cpu_p95_ms":1000./60.,"render_gpu_p95_ms":1000./60.,"snapshot_age_p95_ms":400.,"minimum_live_hostiles":HOSTILES,"minimum_authority_tick_fraction":0.98,"battle_framed_snapshot_fraction":0.8,"prediction_correction_p95_meters":0.25,"prediction_correction_maximum_meters":1.,"checkpoint_bytes":1048576,"request_queue_peak":128,"writer_queue_peak":2,"held_reply_bytes_peak":33554432,"steady_rss_growth_bytes":67108864},"limits":["Scratch authority and clients share this process and machine.","Offscreen rendering has no display surface, capture, or physical input-to-display measurement.","Authority mode reports simulated duration and in-process authenticated command dispatch; network modes use actual wall time, TLS workers, and durable storage.","GPU timestamp observations exclude display and final pending slots; bounded omissions are retained."]});
+    let mut report = serde_json::json!({"schema":"verse.battle.capacity.v1","mode":args[0],"seconds":seconds,"players":PLAYERS,"native_sessions":if args[0]=="authority" {0} else {PLAYERS},"headless_workers":0,"unrendered_native_sessions":if args[0]=="authority" {0} else if args[0]=="combined" {PLAYERS-1} else {PLAYERS},"rendered_native_sessions":usize::from(args[0]=="combined"),"hostile_npcs":HOSTILES,"cultist_health":20000,"frontline_player":19,"frontline_initial_position":[-6.,0.,-8.],"frontline_initial_life_recipe":"approach the nearest hostile and cast only Fire Bolt; defer inventory, healing, crowd control, Shield, and Misty Step until the first actual respawn","delay_profile":"pipeline","delay_ms_per_chunk":40,"jitter_ms_per_chunk":20,"wire_version":verse_world::service::wire::VERSION,"debug_assertions":cfg!(debug_assertions),"status":"running","budgets":{"movement_expiries":0,"simulation_p99_upper_bound_ms":1000./30.,"render_cpu_p95_ms":1000./60.,"render_gpu_p95_ms":1000./60.,"snapshot_age_p95_ms":400.,"minimum_live_hostiles":HOSTILES,"minimum_authority_tick_fraction":0.98,"battle_framed_snapshot_fraction":0.8,"prediction_correction_p95_meters":0.25,"prediction_correction_maximum_meters":1.,"checkpoint_bytes":1048576,"request_queue_peak":128,"writer_queue_peak":2,"held_reply_bytes_peak":33554432,"steady_rss_growth_bytes":67108864},"limits":["Scratch authority and clients share this process and machine.","Offscreen rendering has no display surface, capture, or physical input-to-display measurement.","Authority mode reports simulated duration and in-process authenticated command dispatch; network modes use actual wall time, TLS workers, and durable storage.","GPU timestamp observations exclude display and final pending slots; bounded omissions are retained."]});
     let resolution = resolution()?;
     report["render_resolution"] = serde_json::json!({"width":resolution.0,"height":resolution.1});
     use sha2::{Digest, Sha256};
@@ -883,7 +877,6 @@ fn main() -> Result<(), String> {
         "executable_sha256":executable_digest()?,
         "harness_sha256":format!("{:x}",Sha256::digest(include_bytes!("battle_scale.rs"))),
         "native_driver_sha256":format!("{:x}",Sha256::digest(include_bytes!("common/battle_native_player.rs"))),
-        "headless_driver_sha256":format!("{:x}",Sha256::digest(include_bytes!("common/battle_player.rs"))),
         "acceptance_sha256":format!("{:x}",Sha256::digest(include_bytes!("common/battle_acceptance.rs"))),
         "world_net_sha256":format!("{:x}",Sha256::digest(include_bytes!("../../verse-world/src/service/net.rs"))),
         "worker_sha256":format!("{:x}",Sha256::digest(include_bytes!("../../verse-world/src/service/worker.rs"))),
