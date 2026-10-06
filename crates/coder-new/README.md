@@ -76,7 +76,8 @@ to preserve the agent names.
 Press Down to select the first agent, then Up/Down to switch conversations.
 Trackpad scrolling affects only the transcript and preserves the selected agent.
 Selection loads that agent's demo messages immediately. Up from the first agent
-or Esc returns to the main conversation. Each conversation retains its own
+or Esc returns to the main conversation. A subtle background spans the selected row.
+Each conversation retains its own
 draft, cursor, preview messages, and scroll position while the preview is open.
 
 The working directory and branch appear at the top right. Only selected agent

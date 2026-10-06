@@ -148,6 +148,17 @@ fn agent_rail(frame: &mut Frame, area: Rect, app: &App) {
             height: 1,
             ..area
         };
+        let active = app.selected_agent == Some(index);
+        if active {
+            frame.render_widget(
+                Block::default().style(Style::default().bg(t::BG_DARK)),
+                Rect {
+                    x: frame.area().x,
+                    width: frame.area().width,
+                    ..row
+                },
+            );
+        }
         let suffix = if show_elapsed {
             &timed_labels[index]
         } else {
@@ -160,7 +171,6 @@ fn agent_rail(frame: &mut Frame, area: Rect, app: &App) {
             Constraint::Length(token_width),
         ])
         .areas(row);
-        let active = app.selected_agent == Some(index);
         let prefix = match (narrow, active) {
             (true, true) => "❯ ",
             (true, false) => "  ",
