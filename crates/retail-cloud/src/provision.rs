@@ -194,6 +194,11 @@ pub fn advance(
     template: &str,
     now: i64,
 ) -> Result<Provisioning> {
+    if journal.cleanup_requested(&funded.execution)? {
+        return Err(Error::Invalid(
+            "cleanup prevents new execution or provisioning",
+        ));
+    }
     if let Some(found) = journal.provisioning(&funded.execution)?
         && matches!(
             found.state,

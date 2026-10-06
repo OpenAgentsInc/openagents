@@ -37,6 +37,34 @@ impl Journal {
     ///
     /// A SQLite failure.
     pub fn open(path: impl AsRef<Path>) -> Result<Self> {
+        let path = path.as_ref();
+        match std::fs::symlink_metadata(path) {
+            Ok(metadata) if !metadata.is_file() || metadata.file_type().is_symlink() => {
+                return Err(crate::Error::Invalid(
+                    "the journal must be a regular private file",
+                ));
+            }
+            Ok(_) => {}
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
+                let mut options = std::fs::OpenOptions::new();
+                options.write(true).create_new(true);
+                #[cfg(unix)]
+                {
+                    use std::os::unix::fs::OpenOptionsExt as _;
+                    options.mode(0o600);
+                }
+                options
+                    .open(path)
+                    .map_err(|_| crate::Error::Invalid("cannot create the private journal"))?;
+            }
+            Err(_) => return Err(crate::Error::Invalid("cannot inspect the private journal")),
+        }
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt as _;
+            std::fs::set_permissions(path, std::fs::Permissions::from_mode(0o600))
+                .map_err(|_| crate::Error::Invalid("cannot restrict the private journal"))?;
+        }
         Self::initialize(Connection::open(path)?)
     }
 
@@ -50,6 +78,7 @@ impl Journal {
     }
 
     fn initialize(connection: Connection) -> Result<Self> {
+        connection.pragma_update(None, "secure_delete", "ON")?;
         connection.busy_timeout(std::time::Duration::from_secs(5))?;
         connection.execute_batch(SCHEMA)?;
         for extra in crate::EXTRA_SCHEMAS {

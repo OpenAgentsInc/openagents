@@ -182,6 +182,11 @@ pub fn dispatch(
     current: &Current,
     now: i64,
 ) -> Result<Dispatch> {
+    if journal.cleanup_requested(&funded.execution)? {
+        return Err(Error::Invalid(
+            "cleanup prevents new execution or provisioning",
+        ));
+    }
     if let Some(found) = journal.dispatch(&funded.execution)?
         && found.state == DispatchState::Acknowledged
     {

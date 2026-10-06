@@ -33,6 +33,7 @@ pub mod meter;
 pub mod offer;
 pub mod provision;
 pub mod reserve;
+pub mod retain;
 pub mod topup;
 
 /// Why a retail operation was refused.
@@ -68,6 +69,7 @@ pub(crate) const EXTRA_SCHEMAS: &[&str] = &[
     material::SCHEMA,
     dispatch::SCHEMA,
     meter::SCHEMA,
+    retain::SCHEMA,
 ];
 
 pub type Result<T> = std::result::Result<T, Error>;

@@ -126,6 +126,8 @@ to repeat after any crash:
   teardown.
 - Nothing widens the provider or the computer class automatically.
 
+`retail_cloud::retain` records cleanup duties before provider deletion, retains declared bounded task artifacts in the private journal for 30 days, and records missing delivery separately from acknowledged resource deletion; a service worker reconciles all recorded provisioning attempts after client loss, and observing retained artifacts requires the original read grant.
+
 ## Source and credentials
 
 [`retail_cloud::material`](../../crates/retail-cloud/src/material.rs)
