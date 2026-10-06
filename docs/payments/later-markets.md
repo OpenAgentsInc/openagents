@@ -43,3 +43,28 @@ shutdown, current-admission checks, and fake central payout fault tests. Its
 operator is shared, source is synthetic, and total CPU/storage/energy cost is
 unmetered. It does not qualify independent commercial operation. The exact
 independent and funded qualification remains in `NEEDS_OWNER.md`.
+
+## Explicit negotiated bids
+
+RFQs and quotes stay private to admitted recipients. `markets::bids` checks
+exact capability, source, and disclosure compatibility; current quote expiry,
+capacity, and bounded known costs; and a maximum of 64 offers. The frozen
+comparison rule orders eligible quotes by all-in declared cost, then quote
+digest. It retains every nonwinner. Readiness is current admission evidence,
+not a guarantee that discovery remains available.
+
+Comparison yields an inert suggestion. The buyer separately approves one
+selection that pins the complete canonical bid fingerprint, order, admission,
+payer, price, and fee limit. Changed terms, stale readiness, and accepting a
+losing quote under that selection refuse. Bilateral confirmation and the
+host's current grants still precede execution. No comparison or selection
+calls a wallet or creates a payable share; losing offers create no obligation.
+
+Run `cargo run -p pay-ledger --example bid-qualification` to retain the
+synthetic no-spend comparison baseline. It reports measured comparison
+latency separately from unmeasured provider quote latency and coordination
+cost. It reports zero accepted orders, dispatches, and payments. An independent
+provider study must retain RFQ/quote timestamps, buyer acceptance outcomes,
+and incremental search, check, and coordination costs before funded adoption.
+The baseline does not satisfy that independent study.
+

@@ -591,3 +591,13 @@ startup, fullscreen, Unicode/IME, clipboard, resize, process cleanup, and frame
 workload observations with executable hashes, then publish and verify the
 public installer readback. The tooling refuses qualification marked not-run.
 Neither platform has a qualified public artifact from this work.
+
+
+- Negotiated bids (#10726): After the independent no-spend operator rehearsal
+  above, ask two eligible separately controlled providers for private quotes;
+  retain quote timestamps and expiry, exact terms, current capacity, buyer
+  selection and acceptance, nonwinner disposition, and measured incremental
+  coordination cost. The synthetic `bid-qualification` example measures only
+  local comparison latency; provider quote latency and all-in coordination
+  cost remain unverified. Do not adopt funded bidding before that study.
+
