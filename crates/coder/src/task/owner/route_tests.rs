@@ -228,6 +228,24 @@ async fn a_routed_message_delivers_a_retained_patch_with_an_independent_check() 
         Dispatch::Followed
     );
     assert_eq!(counted(&task.intent.workspace.path), 1);
+    // The task view a workbench pane reads (#10698) carries the same route:
+    // its request, snapshot, placement, a verified outcome, and a cost the
+    // run never reported, which stays unknown rather than settled. Reading
+    // it twice dispatches nothing.
+    for _ in 0..2 {
+        let view = crate::task::view::read(&dir, "task-one", None, 10).unwrap();
+        let shown = crate::task::cli::with_route(serde_json::json!(view), &dir, "task-one");
+        let route = &shown["route"];
+        assert_eq!(route["request"], "req-ok");
+        assert_eq!(route["thread"], THREAD);
+        assert_eq!(route["snapshot"], serde_json::json!(record.snapshot_digest));
+        assert_eq!(route["computer"], THIS_COMPUTER);
+        assert_eq!(route["runs"][0]["task"], "task-one");
+        assert_eq!(route["outcome"], "verified");
+        assert_eq!(route["cost"]["state"], "unknown");
+        assert_eq!(route["cancellation"], "none");
+    }
+    assert_eq!(counted(&task.intent.workspace.path), 1);
 }
 
 /// A denied grant: revoked between admission and dispatch, the route is

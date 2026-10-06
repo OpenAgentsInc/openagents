@@ -409,6 +409,20 @@ fn the_journal_keeps_the_latest_record_of_each_request() {
     assert_eq!(journal.latest("thread-1", "req-1"), Some(record.clone()));
     assert_eq!(journal.of_task("thread-1", "task-1"), Some(record.clone()));
     assert_eq!(journal.latest("thread-1", "req-2"), None);
+    // A pane that knows only the task finds the same record in any thread,
+    // and reading it twice writes nothing.
+    let bytes = std::fs::read(dir.path().join("routes/thread-1.jsonl")).unwrap();
+    assert_eq!(journal.find_task("task-1"), Some(record.clone()));
+    assert_eq!(journal.find_task("task-1"), Some(record.clone()));
+    assert_eq!(journal.find_task("task-2"), None);
+    assert_eq!(
+        std::fs::read(dir.path().join("routes/thread-1.jsonl")).unwrap(),
+        bytes
+    );
+    assert_eq!(
+        Journal::at(dir.path().join("none")).find_task("task-1"),
+        None
+    );
     // A thread name that is not a plain id is never a path.
     record.thread = Some("../escape".into());
     assert!(journal.write(&record).is_err());

@@ -302,7 +302,7 @@ pub async fn run_with_json(arguments: &[String], json: bool) -> u8 {
         }
         Operation::View(id, cursor, limit) => {
             return match task::view::read(&directory, id, cursor.as_ref(), *limit) {
-                Ok(view) => output(&json!(view)),
+                Ok(view) => output(&with_route(json!(view), &directory, id)),
                 Err(error) => failure(error.code(), error),
             };
         }
@@ -482,6 +482,22 @@ fn task_table(tasks: &[Value]) -> String {
         ));
     }
     lines.join("\n")
+}
+
+/// Adds the route the task belongs to (#10698), read from the route
+/// journal beside the store, so a workbench pane shows the route's
+/// identities, placement, payers, and cost state beside the run. Reading
+/// never writes the journal; a task no route started has no `route`.
+pub(crate) fn with_route(mut view: Value, store: &std::path::Path, task: &str) -> Value {
+    if let Some(record) = openagents_chat::route::Journal::beside(store).find_task(task)
+        && let Value::Object(map) = &mut view
+    {
+        map.insert(
+            "route".into(),
+            json!(route_contract::view::RouteView::of(&record)),
+        );
+    }
+    view
 }
 
 fn output(value: &Value) -> u8 {

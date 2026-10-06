@@ -933,6 +933,26 @@ impl Journal {
             .rev()
             .find(|record| record.runs.iter().any(|run: &RunOutcome| run.task == task))
     }
+
+    /// The latest record in any thread whose runs include `task`: what a
+    /// workbench pane follows when it knows only the task (#10698).
+    /// Reading never writes, so reopening a pane dispatches nothing.
+    #[must_use]
+    pub fn find_task(&self, task: &str) -> Option<RouteRecord> {
+        let mut threads: Vec<String> = std::fs::read_dir(&self.dir)
+            .ok()?
+            .filter_map(Result::ok)
+            .filter_map(|entry| {
+                let name = entry.file_name().into_string().ok()?;
+                name.strip_suffix(".jsonl").map(str::to_owned)
+            })
+            .collect();
+        threads.sort();
+        threads
+            .iter()
+            .filter_map(|thread| self.of_task(thread, task))
+            .max_by_key(|record| record.received_ms)
+    }
 }
 
 /// Whether a record waits for the person (an offer, or a command to

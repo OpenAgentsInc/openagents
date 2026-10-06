@@ -33,6 +33,9 @@
 //! - [`price_book`]: the retail cloud price book (#10706): sats prices per
 //!   computer and task class, one credit per sat, the quote an offer shows
 //!   with the payer of every resource, and settlement for every ending.
+//! - [`view`]: the workbench's read-only view of one route (#10698):
+//!   identities, placement, executor, payers, checks, and the cost,
+//!   outcome, and cancellation states a pane keeps apart.
 //! - [`eval`]: the labeled evaluation split for route families
 //!   (`fixtures/route-families-v1.json`).
 //!
@@ -51,6 +54,7 @@ pub mod recipe;
 pub mod record;
 pub mod route;
 pub mod snapshot;
+pub mod view;
 
 pub use digest::{Digest, digest_of};
 pub use lifecycle::{Lifecycle, Projection, TaskDisposition};
@@ -89,3 +93,6 @@ mod binding_tests;
 
 #[cfg(test)]
 mod price_book_tests;
+
+#[cfg(test)]
+mod view_tests;

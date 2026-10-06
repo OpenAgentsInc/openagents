@@ -124,9 +124,23 @@ pub struct Run {
     pub cost_usd: Option<f64>,
     #[serde(default)]
     pub cost_status: String,
+    /// The route this run belongs to, from the shared route journal
+    /// (`route_contract::view`, #10698); absent for a task no route
+    /// started.
+    #[serde(default)]
+    pub route: Option<Value>,
 }
 
 impl Run {
+    /// The route view, when the owner sent one: `None` when absent,
+    /// `Some(Err)` when it does not read as a route view.
+    #[must_use]
+    pub fn route(&self) -> Option<Result<route_contract::view::RouteView, ()>> {
+        self.route
+            .as_ref()
+            .map(|value| serde_json::from_value(value.clone()).map_err(|_| ()))
+    }
+
     /// Whether the run may still change: queued, running, or cancelling.
     #[must_use]
     pub fn live(&self) -> bool {
@@ -561,6 +575,7 @@ pub fn lines(page: &Page) -> Vec<(String, crate::paper::Tone)> {
             Tone::Loud,
         ));
     }
+    out.extend(route_lines(run));
     let controls = if page.controls() {
         "CONTROLS ENTER steers with the line, F7 cancels the run (ENTER confirms)"
     } else {
@@ -634,4 +649,200 @@ pub fn lines(page: &Page) -> Vec<(String, crate::paper::Tone)> {
         }
     }
     out
+}
+
+fn microusd(value: u64) -> String {
+    format!("${:.4}", value as f64 / 1_000_000.0)
+}
+
+/// A serialized enum's wire word with spaces.
+fn wire<T: serde::Serialize>(value: T) -> String {
+    serde_json::to_value(value)
+        .ok()
+        .and_then(|value| value.as_str().map(word))
+        .unwrap_or_default()
+}
+
+/// The route lines (#10698): the request and thread the run belongs to,
+/// where it runs, who executes and pays, and the route's outcome, cost,
+/// and cancellation, each in the record's own words. An unknown cost, an
+/// unverified finish, and a requested cancellation are never shown as a
+/// settled cost, a verified one, or an acknowledged one.
+#[must_use]
+pub fn route_lines(run: &Run) -> Vec<(String, crate::paper::Tone)> {
+    use crate::ascii::ascii;
+    use crate::paper::Tone;
+    use route_contract::view::{Cancellation, Cost};
+    let view = match run.route() {
+        None => {
+            return vec![(
+                "ROUTE none recorded: this task was not started by a routed request".into(),
+                Tone::Quiet,
+            )];
+        }
+        Some(Err(())) => {
+            return vec![(
+                "ROUTE unreadable: the route record is not a route view".into(),
+                Tone::Present,
+            )];
+        }
+        Some(Ok(view)) => view,
+    };
+    let mut out = Vec::new();
+    out.push((
+        format!(
+            "ROUTE {}  REQUEST {}  THREAD {}  STATE {}",
+            wire(view.family),
+            ascii(&view.request),
+            ascii(view.thread.as_deref().unwrap_or("-")),
+            wire(view.state),
+        ),
+        Tone::Loud,
+    ));
+    let mut executor: Vec<String> = view.executor.engines.iter().map(|e| ascii(e)).collect();
+    executor.extend(view.executor.model.as_deref().map(ascii));
+    executor.extend(view.executor.capability.as_deref().map(ascii));
+    out.push((
+        format!(
+            "COMPUTER {}  GRANT {}  EXECUTOR {}",
+            ascii(view.computer.as_deref().unwrap_or("none")),
+            ascii(view.grant.as_deref().unwrap_or("none")),
+            if executor.is_empty() {
+                "none".to_owned()
+            } else {
+                executor.join(", ")
+            }
+        ),
+        Tone::Present,
+    ));
+    let payers: Vec<String> = view
+        .payers
+        .iter()
+        .map(|line| format!("{} by {}", wire(line.resource), ascii(&line.payer)))
+        .collect();
+    out.push((
+        format!(
+            "PAYERS {}",
+            if payers.is_empty() {
+                "none named".to_owned()
+            } else {
+                payers.join(", ")
+            }
+        ),
+        Tone::Present,
+    ));
+    let cost = match view.cost {
+        Cost::None => "none: nothing ran".to_owned(),
+        Cost::Unknown {
+            known_microusd,
+            missing,
+        } => format!(
+            "unknown: {missing} run(s) reported no cost ({} known so far)",
+            microusd(known_microusd)
+        ),
+        Cost::Recorded { microusd: value } => {
+            format!("{} recorded; the route may still move", microusd(value))
+        }
+        Cost::Settled { microusd: value } => format!("{} settled", microusd(value)),
+    };
+    let cancel = match view.cancellation {
+        Cancellation::None => "none",
+        Cancellation::Requested => "requested, not acknowledged",
+        Cancellation::Acknowledged => "acknowledged",
+    };
+    out.push((
+        format!(
+            "OUTCOME {}  ROUTE COST {cost}  CANCEL {cancel}",
+            view.outcome.label()
+        ),
+        Tone::Present,
+    ));
+    for line in &view.runs {
+        out.push((
+            format!(
+                "  ROUTE RUN {}  {}  {}  check {}  {} artifacts",
+                ascii(&line.task),
+                ascii(line.engine.as_deref().unwrap_or("-")),
+                wire(line.state),
+                wire(line.check),
+                line.artifacts
+            ),
+            Tone::Quiet,
+        ));
+    }
+    out
+}
+
+#[cfg(test)]
+mod route_tests {
+    use super::{Page, Run, lines};
+
+    fn run(route: Option<serde_json::Value>) -> Run {
+        let mut value = serde_json::json!({
+            "task": {"task_id": "task-1", "revision": 3, "status": "finished",
+                     "execution": "finished", "checks": "not_run"},
+            "evidence": {"state": "sealed", "total_steps": 0, "steps": []},
+        });
+        if let Some(route) = route {
+            value["route"] = route;
+        }
+        serde_json::from_value(value).unwrap()
+    }
+
+    fn route(cost: serde_json::Value, outcome: &str, cancellation: &str) -> serde_json::Value {
+        serde_json::json!({
+            "schema": route_contract::view::VIEW_SCHEMA,
+            "request": "req-1", "thread": "th-1", "family": "coder",
+            "state": "completed", "snapshot": format!("sha256:{}", "a".repeat(64)),
+            "computer": "this-computer", "grant": "grant-1 epoch 2",
+            "executor": {"engines": ["codex"]},
+            "payers": [{"resource": "executor", "payer": "login:codex"}],
+            "runs": [{"task": "task-1", "engine": "codex", "state": "completed",
+                      "check": "unchecked", "artifacts": 2}],
+            "cost": cost, "outcome": outcome, "cancellation": cancellation,
+        })
+    }
+
+    fn text(run: Run) -> String {
+        let mut page = Page::default();
+        page.show("task-1", "local");
+        page.shown = Some(Ok(run));
+        lines(&page)
+            .into_iter()
+            .map(|(line, _)| line)
+            .collect::<Vec<_>>()
+            .join("\n")
+    }
+
+    #[test]
+    fn the_run_page_shows_the_routes_identities_and_keeps_states_apart() {
+        let shown = text(run(Some(route(
+            serde_json::json!({"state": "unknown", "known_microusd": 0, "missing": 1}),
+            "unchecked",
+            "requested",
+        ))));
+        assert!(shown.contains("ROUTE coder  REQUEST req-1  THREAD th-1  STATE completed"));
+        assert!(shown.contains("COMPUTER this-computer  GRANT grant-1 epoch 2  EXECUTOR codex"));
+        assert!(shown.contains("PAYERS executor by login:codex"));
+        assert!(shown.contains("OUTCOME finished, not verified"));
+        assert!(shown.contains("ROUTE COST unknown: 1 run(s) reported no cost"));
+        assert!(shown.contains("CANCEL requested, not acknowledged"));
+        assert!(shown.contains("ROUTE RUN task-1  codex  completed  check unchecked  2 artifacts"));
+        assert!(!shown.contains("settled"));
+        let shown = text(run(Some(route(
+            serde_json::json!({"state": "settled", "microusd": 1_500}),
+            "verified",
+            "acknowledged",
+        ))));
+        assert!(
+            shown.contains("OUTCOME verified  ROUTE COST $0.0015 settled  CANCEL acknowledged")
+        );
+        assert!(shown.is_ascii());
+    }
+
+    #[test]
+    fn a_run_without_a_route_or_with_an_unreadable_one_says_so() {
+        assert!(text(run(None)).contains("ROUTE none recorded"));
+        assert!(text(run(Some(serde_json::json!({"request": 1})))).contains("ROUTE unreadable"));
+    }
 }

@@ -23,7 +23,7 @@ fn d(byte: &str) -> Digest {
     Digest::of_bytes(byte.as_bytes())
 }
 
-fn plan() -> DispatchPlan {
+pub(crate) fn plan() -> DispatchPlan {
     DispatchPlan {
         class: TaskClass::Exploration,
         fan_out: FanOut::OnePerEngine,

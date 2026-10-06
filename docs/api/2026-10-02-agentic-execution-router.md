@@ -796,3 +796,12 @@ does not wait for the terminal snapshot protocol; each new adapter receives
 its own retained qualification. Studio routing, the public API, composed
 graphs, and additional payment rails remain later extensions rather than
 prerequisites for the first Grid or direct studio release.
+
+Route views (#10698): [`route_contract::view`](../../crates/route-contract/src/view.rs)
+(`openagents.route.view.v1`) projects a route record for a workbench pane:
+the request, thread, snapshot, computer, grant, executor, payer per
+resource, and each run, with unknown, recorded, and settled cost, verified
+and unverified completion, and requested and acknowledged cancellation kept
+apart. `openagents --json task view` carries it as `route`, read from the
+route journal by task (`Journal::find_task`), and the run page (F9) draws it
+in the Grid and the standalone window alike. Reading never dispatches.
