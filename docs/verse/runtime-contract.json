@@ -339,7 +339,9 @@
         },
         "all:terminal-studio": {
           "default_features": true,
-          "features": [],
+          "features": [
+            "onboarding-host"
+          ],
           "optional": true,
           "path": "../terminal-studio"
         },
