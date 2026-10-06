@@ -61,6 +61,12 @@ pub const GRECO_HOUSE: Model = Model {
         // west wall.
         [-1.4, 1.4, -22.1, -21.1, 2.38],
         [6.95, 7.85, -19.05, -18.15, 2.6],
+        // The workshop agent's workstation at the spot kept for it, the
+        // console she works at by the east wall, and the lectern where she
+        // waits for an approval.
+        [-6.1, -3.1, -23.1, -22.1, 2.38],
+        [8.85, 9.55, -22.3, -20.9, 2.6],
+        [4.75, 5.25, -15.25, -14.75, 2.66],
         [-9.25, -8.25, -20.8, -16.4, 2.44],
     ],
     roofs: &[GableRoof {
@@ -301,6 +307,93 @@ pub fn flames() -> Vec<Vec3> {
     FLAMES.iter().copied().map(world).collect()
 }
 
+/// The great room's floor over the house's ground, m: the podium's top.
+pub const FLOOR: f32 = 1.62;
+
+/// The workshop agent's spots in the great room, in the house's frame:
+/// where she stands, and the point she faces there. She sits at the
+/// workstation ([`WORKSTATION`]) facing the room, works at the console by
+/// the east wall
+/// while a command runs, and waits at the lectern for an approval, all
+/// off the entry walkway.
+pub const ALICE_SEAT: ([f32; 2], [f32; 2]) = ([-4.6, -23.75], [-4.6, -20.0]);
+/// Her place at the console by the east wall: the workbench.
+pub const ALICE_WORKBENCH: ([f32; 2], [f32; 2]) = ([8.1, -21.6], [9.2, -21.6]);
+/// Her place behind the lectern: the podium.
+pub const ALICE_PODIUM: ([f32; 2], [f32; 2]) = ([5.0, -15.95], [5.0, -13.0]);
+/// The middle of her screens, in the house's frame, and its height over
+/// the floor, m: where she looks while she types.
+pub const ALICE_SCREENS: ([f32; 2], f32) = ([-4.6, -22.4], 1.0);
+/// The square she walks in, in the house's frame: its center and half
+/// side, m. It holds the great room.
+pub const ALICE_ROOM: ([f32; 2], f32) = ([0.0, -18.4], 9.5);
+
+/// Which of her spots a station puts her at.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum AliceSpot {
+    Seat,
+    Workbench,
+    Podium,
+}
+
+impl AliceSpot {
+    /// The spot for a studio station: commands and tests at the console,
+    /// approvals at the lectern, and everything else at her workstation.
+    #[must_use]
+    pub fn of(station: coder_access::studio::Station) -> Self {
+        use coder_access::studio::Station;
+        match station {
+            Station::Workbench | Station::ProvingGround => Self::Workbench,
+            Station::Podium => Self::Podium,
+            _ => Self::Seat,
+        }
+    }
+
+    /// Where she stands and the point she faces, in the house's frame.
+    #[must_use]
+    pub fn local(self) -> ([f32; 2], [f32; 2]) {
+        match self {
+            Self::Seat => ALICE_SEAT,
+            Self::Workbench => ALICE_WORKBENCH,
+            Self::Podium => ALICE_PODIUM,
+        }
+    }
+
+    /// Where she stands, x and z, and her heading as the controller's yaw.
+    #[must_use]
+    pub fn world(self) -> ([f32; 2], f32) {
+        let (at, toward) = self.local();
+        let [x, z] = OWNERS_HOUSE.world(at);
+        let [tx, tz] = OWNERS_HOUSE.world(toward);
+        ([x, z], (tx - x).atan2(tz - z))
+    }
+}
+
+/// The great room's floor height in the world, m.
+#[must_use]
+pub fn floor() -> f32 {
+    super::super::height(OWNERS_HOUSE.at[0], OWNERS_HOUSE.at[1]) + FLOOR
+}
+
+/// Her screens' middle in the world, for her look while she types.
+#[must_use]
+pub fn alice_screens() -> glam::Vec3 {
+    let ([x, z], up) = ALICE_SCREENS;
+    let [x, z] = OWNERS_HOUSE.world([x, z]);
+    glam::Vec3::new(x, floor() + up, z)
+}
+
+/// The square she walks in: the great room, on its floor.
+#[must_use]
+pub fn alice_area() -> verse_world::social::seats::Area {
+    let (center, half) = ALICE_ROOM;
+    verse_world::social::seats::Area {
+        center: OWNERS_HOUSE.world(center),
+        half,
+        floor: Some(floor()),
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -371,11 +464,16 @@ mod tests {
     }
 
     #[test]
-    fn the_workstation_spot_is_clear_and_lit() {
+    fn the_workstation_spot_holds_only_the_workstation_and_is_lit() {
         let [wx, wz] = WORKSTATION;
         for &[x0, x1, z0, z1, _] in GRECO_HOUSE.blocks {
             let near = wx > x0 - 1.0 && wx < x1 + 1.0 && wz > z0 - 1.0 && wz < z1 + 1.0;
-            assert!(!near, "{:?} crowds the workstation", [x0, x1, z0, z1]);
+            let workstation = [x0, x1, z0, z1] == [-6.1, -3.1, -23.1, -22.1];
+            assert!(
+                !near || workstation,
+                "{:?} crowds the workstation",
+                [x0, x1, z0, z1]
+            );
         }
         let lit = LIGHTS.iter().filter(|(f, at)| {
             let (_, _, range) = f.light();
@@ -399,6 +497,89 @@ mod tests {
                 !on || p.model == GRECO_HOUSE.name,
                 "{} at {x}, {z}",
                 p.model
+            );
+        }
+    }
+    /// The house's own blocks, in its frame, around the great room's
+    /// center, as the walker routes her.
+    fn room_blocks() -> Vec<crate::controller::Footprint> {
+        let ([cx, cz], _) = ALICE_ROOM;
+        GRECO_HOUSE
+            .blocks
+            .iter()
+            .map(|&[x0, x1, z0, z1, _]| crate::controller::Footprint {
+                min: [x0 - cx, z0 - cz],
+                max: [x1 - cx, z1 - cz],
+            })
+            .collect()
+    }
+
+    #[test]
+    fn alice_works_inside_the_great_room_reachable_from_the_door() {
+        use verse_world::social::nav;
+        let ([cx, cz], half) = ALICE_ROOM;
+        let blocks = room_blocks();
+        // Just inside the front door, past the facade.
+        let door = [0.0 - cx, -12.4 - cz];
+        for spot in [AliceSpot::Seat, AliceSpot::Workbench, AliceSpot::Podium] {
+            let ([x, z], toward) = spot.local();
+            // Inside the walls, off the entry walkway, and facing into the
+            // house's interior.
+            assert!(
+                x.abs() < 9.55 - 0.4 && z < -12.0 - 0.4 && z > -25.2 + 0.4,
+                "{spot:?}"
+            );
+            assert!(
+                !(x.abs() < 1.25 && z > -18.0),
+                "{spot:?} stands on the walkway"
+            );
+            assert!(toward[0].is_finite() && toward[1].is_finite());
+            let route = nav::plan(door, [x - cx, z - cz], &blocks, half)
+                .unwrap_or_else(|e| panic!("{spot:?} is out of reach of the door: {e:?}"));
+            assert!(!route.waypoints.is_empty());
+            // Between her spots too, as she walks while she works.
+            for other in [AliceSpot::Seat, AliceSpot::Workbench, AliceSpot::Podium] {
+                let ([ox, oz], _) = other.local();
+                nav::plan([x - cx, z - cz], [ox - cx, oz - cz], &blocks, half)
+                    .unwrap_or_else(|e| panic!("{spot:?} to {other:?}: {e:?}"));
+            }
+        }
+        // Her room's square holds every spot, inside the walker's bounds.
+        let world = alice_area();
+        assert_eq!(world.center, OWNERS_HOUSE.world(ALICE_ROOM.0));
+        assert!((world.floor.unwrap() - floor()).abs() < 1e-6);
+    }
+
+    #[test]
+    fn the_player_can_walk_up_and_talk_to_her_across_her_workstation() {
+        use verse_world::social::nav;
+        let ([cx, cz], half) = ALICE_ROOM;
+        let blocks = room_blocks();
+        let ([x, z], toward) = ALICE_SEAT;
+        let len = (toward[0] - x).hypot(toward[1] - z);
+        // Where `--workshop-ask` and the captures stand the player.
+        let walk_up = 2.2;
+        let stand = [
+            x + (toward[0] - x) / len * walk_up,
+            z + (toward[1] - z) / len * walk_up,
+        ];
+        let reach = super::super::super::studio::TALK_REACH;
+        assert!((stand[0] - x).hypot(stand[1] - z) <= reach);
+        nav::plan(
+            [0.0 - cx, -12.4 - cz],
+            [stand[0] - cx, stand[1] - cz],
+            &blocks,
+            half,
+        )
+        .expect("the player walks from the door to her workstation");
+        // She is seen from the door: nothing tall stands between them.
+        for &[x0, x1, z0, z1, top] in GRECO_HOUSE.blocks {
+            let across = x1 > -0.3 && x0 < 0.3;
+            let along = z1 > -21.1 && z0 < -12.0;
+            assert!(
+                !(across && along && top > FLOOR + 1.0),
+                "{:?}",
+                [x0, x1, z0, z1]
             );
         }
     }

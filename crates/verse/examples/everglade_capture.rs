@@ -107,7 +107,7 @@ fn main() -> Result<(), String> {
         other if other.starts_with("air:") => (glam::Vec3::new(0.0, 0.0, -20.0), 0.0, 0.0),
         // Alice, the workshop agent, as a host answered for her: the
         // player stands in front of her wherever her work puts her.
-        other if other.starts_with("alice:") => (glam::Vec3::new(0.0, 0.0, 5.0), 0.0, 20.0),
+        other if other.starts_with("alice") => (glam::Vec3::new(0.0, 0.0, 5.0), 0.0, 20.0),
         // A free camera; the player stands out of its way, at the spawn.
         other if other.starts_with("look:") => (glam::Vec3::new(0.0, 0.0, -29.0), 0.0, 0.0),
         "town-north" => (glam::Vec3::new(-11.0, 0.0, 14.0), 0.35, 30.0),
@@ -176,9 +176,11 @@ fn main() -> Result<(), String> {
         None
     };
     let idle = InputState::default();
-    let workshop = match view.strip_prefix("alice:") {
-        Some(file) => Some(alice(&mut runtime, Path::new(file), &idle)?),
-        None => None,
+    let workshop = match view.split_once(':') {
+        Some((how @ ("alice" | "alice-door" | "alice-walk"), files)) => {
+            Some(alice(&mut runtime, how, files, &idle)?)
+        }
+        _ => None,
     };
     if view.starts_with("reverse") {
         reverse(&mut runtime, &view, &idle)?;
@@ -377,38 +379,78 @@ fn studio(_: &mut WorldRuntime, _: &str, _: Option<usize>) -> Result<(), String>
     Err("the studio views need the model-host feature".into())
 }
 
-/// `alice:FILE`: Alice as the host's `studio.agent.list` answer in FILE
-/// (the JSON `openagents --json agent list` prints, or one agent's view)
-/// shows her, with the player standing in front of her.
+/// Alice as a host's `studio.agent.list` answer shows her (the JSON
+/// `openagents --json agent list` prints, or one agent's view), in the
+/// owner's house:
+///
+/// - `alice:FILE`: across her workstation, facing her, as `--workshop-ask`
+///   stands the player.
+/// - `alice-door:FILE`: from just inside the front door, looking down the
+///   great room at her.
+/// - `alice-walk:FROM,TO`: from the door, a moment after the answer in TO
+///   sends her from where FROM put her, so she is on her way.
 fn alice(
     runtime: &mut WorldRuntime,
-    file: &Path,
+    how: &str,
+    files: &str,
     idle: &InputState,
 ) -> Result<verse::workshop::Workshop, String> {
-    use coder_access::agent::AgentView;
-    let text = std::fs::read_to_string(file).map_err(|e| format!("{}: {e}", file.display()))?;
-    let value: serde_json::Value =
-        serde_json::from_str(&text).map_err(|e| format!("{}: {e}", file.display()))?;
-    let view: AgentView = match value.get("agents") {
-        Some(agents) => serde_json::from_value::<Vec<AgentView>>(agents.clone())
-            .map_err(|e| format!("{}: {e}", file.display()))?
-            .into_iter()
-            .find(|a| a.name == verse::workshop::NAME)
-            .ok_or("the answer has no alice")?,
-        None => serde_json::from_value(value).map_err(|e| format!("{}: {e}", file.display()))?,
+    use zones::everglade::layout::estate::{AliceSpot, OWNERS_HOUSE};
+    let read = |file: &str| -> Result<verse::workshop::Workshop, String> {
+        use coder_access::agent::AgentView;
+        let text = std::fs::read_to_string(file).map_err(|e| format!("{file}: {e}"))?;
+        let value: serde_json::Value =
+            serde_json::from_str(&text).map_err(|e| format!("{file}: {e}"))?;
+        let view: AgentView = match value.get("agents") {
+            Some(agents) => serde_json::from_value::<Vec<AgentView>>(agents.clone())
+                .map_err(|e| format!("{file}: {e}"))?
+                .into_iter()
+                .find(|a| a.name == verse::workshop::NAME)
+                .ok_or("the answer has no alice")?,
+            None => serde_json::from_value(value).map_err(|e| format!("{file}: {e}"))?,
+        };
+        Ok(verse::workshop::Workshop::showing(view))
     };
-    let workshop = verse::workshop::Workshop::showing(view);
+    let (first, then) = match files.split_once(',') {
+        Some((from, to)) => (from, Some(to)),
+        None => (files, None),
+    };
+    let mut workshop = read(first)?;
     runtime.set_studio_resident(workshop.seats());
     runtime.update_studio(true, 0.0);
-    let at = runtime
-        .studio()
-        .seat_position(verse::workshop::NAME)
-        .ok_or("Alice has no seat")?;
-    let toward = glam::Vec3::new(0.0 - at.x, 0.0, 8.0 - at.z).normalize_or(glam::Vec3::Z);
-    runtime.set_spawn(at + toward * 2.6, (-toward.x).atan2(-toward.z))?;
+    let floor = zones::everglade::layout::estate::floor();
+    match how {
+        "alice" => {
+            let at = runtime
+                .studio()
+                .seat_position(verse::workshop::NAME)
+                .ok_or("Alice has no seat")?;
+            let (_, facing) = AliceSpot::Seat.world();
+            let toward = glam::Vec3::new(facing.sin(), 0.0, facing.cos());
+            let stand = at + toward * verse::workshop::WALK_UP;
+            runtime.set_spawn(
+                glam::Vec3::new(stand.x, floor, stand.z),
+                (-toward.x).atan2(-toward.z),
+            )?;
+        }
+        _ => {
+            let [x, z] = OWNERS_HOUSE.world([0.0, -12.6]);
+            let [tx, tz] = OWNERS_HOUSE.world([0.0, -20.0]);
+            runtime.set_spawn(glam::Vec3::new(x, floor, z), (tx - x).atan2(tz - z))?;
+        }
+    }
     for _ in 0..20 {
         runtime.update_studio(true, 0.05);
         runtime.tick(idle, 0.05);
+    }
+    if let Some(to) = then {
+        workshop = read(to)?;
+        runtime.set_studio_resident(workshop.seats());
+        // A second and a half into her walk.
+        for _ in 0..30 {
+            runtime.update_studio(true, 0.05);
+            runtime.tick(idle, 0.05);
+        }
     }
     Ok(workshop)
 }

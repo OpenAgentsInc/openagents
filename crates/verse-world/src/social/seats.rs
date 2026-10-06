@@ -35,6 +35,19 @@ pub const MAX_WALK: f32 = 12.0;
 /// How near a waypoint counts as reached, m.
 const ARRIVED: f32 = 0.05;
 
+/// Where a seat that works away from the studio walks: a square of its
+/// own, routed apart from the studio's ground, on a floor of its own, such
+/// as the workshop agent in the owner's house.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct Area {
+    /// The square's center, x and z, m.
+    pub center: [f32; 2],
+    /// Half its side, m.
+    pub half: f32,
+    /// The floor it walks on, m, in place of the ground.
+    pub floor: Option<f32>,
+}
+
 /// One seat's position and walk.
 #[derive(Clone, Debug, PartialEq)]
 pub struct Walker {
@@ -57,6 +70,8 @@ pub struct Walker {
     following: bool,
     /// Whether the world authority's last pose had the seat walking.
     posed_walking: bool,
+    /// Where it walks, when not the studio's ground.
+    area: Option<Area>,
 }
 
 impl Walker {
@@ -76,9 +91,66 @@ impl Walker {
             speed: 0.0,
             following: false,
             posed_walking: false,
+            area: None,
         };
         walker.skip_to(home, facing);
         walker
+    }
+
+    /// The same seat, walking `area` instead of the studio's ground.
+    #[must_use]
+    pub fn within(mut self, area: Area) -> Self {
+        self.area = Some(area);
+        let (home, facing) = (self.home, self.home_facing);
+        self.skip_to(home, facing);
+        self
+    }
+
+    /// The area it walks, when not the studio's ground.
+    #[must_use]
+    pub fn area(&self) -> Option<Area> {
+        self.area
+    }
+
+    /// The height it stands at, at `(x, z)`, m.
+    fn ground(&self, x: f32, z: f32) -> f32 {
+        self.area
+            .and_then(|area| area.floor)
+            .unwrap_or_else(|| height(x, z))
+    }
+
+    /// A route from `start` to `target` around `blockers`, in its area.
+    fn route(
+        &self,
+        start: [f32; 2],
+        target: [f32; 2],
+        blockers: &[Footprint],
+    ) -> Result<super::nav::Route, super::nav::NavError> {
+        let Some(area) = self.area else {
+            return super::nav::plan(start, target, blockers, SEAT_EXTENT);
+        };
+        let [cx, cz] = area.center;
+        let reach = area.half + 2.0;
+        let local: Vec<Footprint> = blockers
+            .iter()
+            .filter(|b| {
+                b.max[0] > cx - reach
+                    && b.min[0] < cx + reach
+                    && b.max[1] > cz - reach
+                    && b.min[1] < cz + reach
+            })
+            .map(|b| Footprint {
+                min: [b.min[0] - cx, b.min[1] - cz],
+                max: [b.max[0] - cx, b.max[1] - cz],
+            })
+            .collect();
+        let shift = |p: [f32; 2]| [p[0] - cx, p[1] - cz];
+        let mut route = super::nav::plan(shift(start), shift(target), &local, area.half)?;
+        route.destination = target;
+        for point in &mut route.waypoints {
+            *point = [point[0] + cx, point[1] + cz];
+        }
+        Ok(route)
     }
 
     /// Its feet.
@@ -132,7 +204,7 @@ impl Walker {
         self.target = target;
         self.facing = facing;
         self.route.clear();
-        self.pos = Vec3::new(target[0], height(target[0], target[1]), target[1]);
+        self.pos = Vec3::new(target[0], self.ground(target[0], target[1]), target[1]);
         self.yaw = facing;
     }
 
@@ -160,7 +232,8 @@ impl Walker {
             return;
         }
         let start = [self.pos.x, self.pos.z];
-        let route = super::nav::plan(start, target, blockers, SEAT_EXTENT)
+        let route = self
+            .route(start, target, blockers)
             .map(|route| route.waypoints)
             .unwrap_or_else(|_| vec![target]);
         let length = route_length(start, &route);
@@ -180,7 +253,7 @@ impl Walker {
     /// [`MAX_WALK`].
     fn walk_to(&mut self, target: [f32; 2], facing: f32, blockers: &[Footprint]) -> bool {
         let start = [self.pos.x, self.pos.z];
-        let Ok(route) = super::nav::plan(start, target, blockers, SEAT_EXTENT) else {
+        let Ok(route) = self.route(start, target, blockers) else {
             return false;
         };
         let length = route_length(start, &route.waypoints);
@@ -256,7 +329,7 @@ impl Walker {
                 left = 0.0;
             }
         }
-        self.pos.y = height(self.pos.x, self.pos.z);
+        self.pos.y = self.ground(self.pos.x, self.pos.z);
         if self.route.is_empty() {
             self.yaw = self.facing;
         }

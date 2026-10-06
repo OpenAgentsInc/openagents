@@ -663,3 +663,52 @@ fn navigation_uses_only_the_source_snapshot_not_resident_seats() {
     studio.set_active(false);
     assert!(studio.source_snapshot().is_none());
 }
+
+#[test]
+fn the_workshop_agent_works_and_walks_in_the_owners_house() {
+    use super::super::layout::estate::{ALICE_ROOM, AliceSpot, OWNERS_HOUSE, floor};
+    let mut alice = seat(WORKSHOP_AGENT, 100, Activity::Thinking);
+    alice.look = "alice".into();
+    let mut studio = Studio::default();
+    studio.set_active(true);
+    studio.set_resident(vec![alice.clone()]);
+    // She sits at her workstation on the great room's floor, drawn as
+    // herself, seated and typing.
+    let at = studio.seat_position(WORKSHOP_AGENT).unwrap();
+    let (spot, _) = AliceSpot::Seat.world();
+    assert!((at.x - spot[0]).abs() < 1e-3 && (at.z - spot[1]).abs() < 1e-3);
+    assert!((at.y - floor()).abs() < 1e-3, "{at}");
+    let figure = studio.figures().remove(0);
+    assert_eq!(figure.form, Some("npc/alice"));
+    assert_eq!(figure.posture, Posture::Type);
+    // The workshop's last desk is free: she is nowhere near it.
+    assert!(at.distance(ground(DESKS[3].seat)) > 50.0);
+    // A command sends her to the console by the east wall, on the floor,
+    // never outside the house.
+    alice.activity = Activity::Running;
+    alice.station = At::Workbench;
+    studio.set_resident(vec![alice.clone()]);
+    let ([cx, cz], half) = ALICE_ROOM;
+    let center = OWNERS_HOUSE.world([cx, cz]);
+    for _ in 0..80 {
+        studio.tick(0.1);
+        let p = studio.seat_position(WORKSHOP_AGENT).unwrap();
+        assert!(
+            (p.x - center[0]).abs() <= half && (p.z - center[1]).abs() <= half,
+            "{p}"
+        );
+        assert!((p.y - floor()).abs() < 1e-3, "{p}");
+    }
+    let (bench, _) = AliceSpot::Workbench.world();
+    let p = studio.seat_position(WORKSHOP_AGENT).unwrap();
+    assert!((p.x - bench[0]).hypot(p.z - bench[1]) < 0.1, "{p}");
+    assert_eq!(studio.figures()[0].posture, Posture::Work);
+    // Waiting on the owner, she stands behind the lectern.
+    alice.activity = Activity::Waiting;
+    alice.station = At::Podium;
+    studio.set_resident(vec![alice]);
+    walk(&mut studio, 8.0);
+    let (lectern, _) = AliceSpot::Podium.world();
+    let p = studio.seat_position(WORKSHOP_AGENT).unwrap();
+    assert!((p.x - lectern[0]).hypot(p.z - lectern[1]) < 0.1, "{p}");
+}

@@ -58,9 +58,10 @@ What was built:
   (the format needs no new section). She is the workshop agent's body
   ([Workshop agent](workshop-agent.md)): the studio draws the seat whose
   look is `alice` as this form (`everglade::npcs::form_of`), so she sits at
-  the last desk in the workshop hall, walks to the Workbench and the Podium
-  with the player's retargeted walk, and holds the studio's postures, which
-  the zone authors from her idle. She no longer stands by the approach.
+  her workstation in the owner's house, walks to its console and its
+  lectern with the player's retargeted walk, and holds the studio's
+  postures, which the zone authors from her idle. She no longer stands by
+  the approach.
 - **High definition.** The near levels are built coarse and subdivided
   (`lod0`'s head too), then shaded smooth with weighted normals, keeping
   creases sharper than 60 degrees. Long hair falls past her shoulders in

@@ -642,6 +642,8 @@ struct SeatAgent {
     tint: [f32; 3],
     /// The pack form its look names, if any ([`super::npcs::form_of`]).
     form: Option<&'static str>,
+    /// The workshop agent, who works in the owner's house.
+    home: bool,
     plate_text: [String; 3],
     /// The nameplate's faces in plate space: its face in the XY plane,
     /// facing -Z, its bottom at the origin.
@@ -966,7 +968,14 @@ impl Studio {
         let mut seats = Vec::with_capacity(view.seats.len());
         for (index, seat) in view.seats.iter().enumerate() {
             let (slot, count) = sharing(view, index);
-            let (target, facing) = standing(seat.station, seat.desk, slot, count);
+            // The workshop agent works in the owner's house, not at a
+            // workshop desk.
+            let home = seat.seat == WORKSHOP_AGENT;
+            let (target, facing) = if home {
+                super::layout::estate::AliceSpot::of(seat.station).world()
+            } else {
+                standing(seat.station, seat.desk, slot, count)
+            };
             let plate_text = nameplate(seat);
             let existing = self
                 .seats
@@ -979,9 +988,15 @@ impl Studio {
                     agent
                 }
                 None => {
+                    let walk = Walker::standing(target, facing);
+                    let walk = if home {
+                        walk.within(super::layout::estate::alice_area())
+                    } else {
+                        walk
+                    };
                     let agent = SeatAgent {
                         name: seat.seat.clone(),
-                        walk: Walker::standing(target, facing),
+                        walk,
                         gait: Gait::default(),
                         activity: seat.activity,
                         station: seat.station,
@@ -991,6 +1006,7 @@ impl Studio {
                         form: super::npcs::form_of(&seat.look),
                         plate_text: Default::default(),
                         plate: Mesh::default(),
+                        home,
                     };
                     agent
                 }
@@ -999,7 +1015,8 @@ impl Studio {
             agent.station = seat.station;
             agent.desk = seat.desk;
             agent.own_desk =
-                seat.station == wire::Station::Desk && (seat.desk as usize) < DESKS.len();
+                seat.station == wire::Station::Desk && (home || (seat.desk as usize) < DESKS.len());
+            agent.home = home;
             agent.tint = tint(seat, index);
             agent.form = super::npcs::form_of(&seat.look);
             if agent.plate_text != plate_text {
@@ -1232,6 +1249,9 @@ impl Studio {
             .find(|b| matches!(&b.speech.to, Addressee::Seat(to) if *to == seat.name));
         if let Some(at) = listening.and_then(|b| self.seat_position(&b.speech.speaker)) {
             return Some(head(at));
+        }
+        if seat.own_desk && seat.home && !seat.walking() && !seat.walk.following() {
+            return Some(super::layout::estate::alice_screens());
         }
         if seat.own_desk
             && !seat.walking()

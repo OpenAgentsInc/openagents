@@ -1,14 +1,16 @@
 //! The workshop agent in Everglade (`docs/verse/workshop-agent.md`): Alice
-//! at her desk, as a client of the resident host.
+//! at her workstation in the owner's house, as a client of the resident
+//! host.
 //!
 //! The host is the only authority over her: it plans each request, gives
 //! each command its effect class, journals every step, and holds her
 //! proposals for your CONFIRM or REJECT (`coder::task::agent_host`). This
 //! window asks for `studio.agent.list` over the host's same-user control
-//! socket and draws what comes back: her seat at her desk, drawn as her own
-//! character, with her activity and status on her nameplate, walking to
-//! the Workbench while a command runs and the Podium while a proposal
-//! waits ([`Workshop::seats`]).
+//! socket and draws what comes back: her seat, drawn as her own
+//! character at her workstation in the owner's house, with her activity
+//! and status on her nameplate, walking to the console by the east wall
+//! (her Workbench) while a command runs and to the lectern (her Podium)
+//! while a proposal waits ([`Workshop::seats`]).
 //!
 //! Walk up to her and press the interact key to open her panel, anchored
 //! to the bottom of the window ([`Workshop::rows`]): a status row that
@@ -42,12 +44,17 @@ use crate::zones::everglade::studio::live::{ControlSocket, Transport};
 
 /// The workshop agent's name.
 pub const NAME: &str = crate::zones::everglade::studio::WORKSHOP_AGENT;
-/// Her desk in the workshop hall: the last of the four.
-pub const DESK: u32 = 3;
+/// Her seat's desk number: none of the workshop's four, which stay the
+/// studio's. She works at her own workstation in the owner's house
+/// (`everglade::layout::estate::AliceSpot`).
+pub const DESK: u32 = 100;
 /// Her look: Alice's own character.
 pub const LOOK: &str = "alice";
 /// How near her the player stands to talk to her, m.
 pub const REACH: f32 = crate::zones::everglade::studio::TALK_REACH;
+/// How far in front of her, across her workstation, `--workshop-ask` and
+/// the captures stand the player, m: within [`REACH`], clear of the desk.
+pub const WALK_UP: f32 = 2.2;
 /// The time between two characters she types.
 const TYPE_EVERY: Duration = Duration::from_millis(35);
 /// How long she waits for a new pane's prompt before typing anyway.
@@ -717,7 +724,7 @@ impl Workshop {
             role: seat_wire::Role::Worker,
             route: self.plate_status(),
             look: LOOK.into(),
-            desk: self.view.as_ref().map_or(DESK, |v| v.desk),
+            desk: DESK,
             activity,
             station,
             task: None,
@@ -732,7 +739,7 @@ impl Workshop {
     /// The nameplate's third row: her last outcome, else her model.
     fn plate_status(&self) -> String {
         let Some(view) = &self.view else {
-            return "no host".into();
+            return "owner only".into();
         };
         if view.state != "active" {
             return view.state.clone();
@@ -1167,7 +1174,7 @@ mod tests {
         let seat = &alone.seats()[0];
         assert_eq!((seat.seat.as_str(), seat.look.as_str()), (NAME, LOOK));
         assert_eq!(seat.station, seat_wire::Station::Desk);
-        assert_eq!(seat.route, "no host");
+        assert_eq!(seat.route, "owner only");
         let (mut workshop, _) = connected(view());
         let mut busy = view();
         busy.activity = Activity::Testing;
