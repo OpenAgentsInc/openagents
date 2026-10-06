@@ -34,6 +34,7 @@ pub mod material;
 pub mod meter;
 pub mod offer;
 pub mod provision;
+pub mod recover;
 pub mod reserve;
 pub mod retain;
 pub mod topup;
@@ -73,6 +74,7 @@ pub(crate) const EXTRA_SCHEMAS: &[&str] = &[
     meter::SCHEMA,
     retain::SCHEMA,
     cancel::SCHEMA,
+    recover::SCHEMA,
 ];
 
 pub type Result<T> = std::result::Result<T, Error>;
