@@ -1,0 +1,1065 @@
+{
+  "source_base_revision": "3896776166080cfba6ed740aa9a414b6a7582cb4",
+  "source_patch": "source.patch",
+  "executable_sha256": "79433e9130fac42a6379d74d3e87f3c7b969d2afaa469dabc604f9464cb321cb",
+  "acceptance": "failed",
+  "failures": [
+    "/server/movement_expiry/total: Some(3.0) exceeds 0, or is unavailable",
+    "Player 6 late prediction p95 Some(0.25701904296875) exceeds 0.25 meters or is unavailable",
+    "Player 9 late prediction p95 Some(0.2519201636314392) exceeds 0.25 meters or is unavailable",
+    "Player 17 prediction maximum Some(2.634028196334839) exceeds 1 meters or is unavailable",
+    "Player 17 late prediction maximum Some(2.634028196334839) exceeds 1 meters or is unavailable",
+    "Player 18 prediction maximum Some(1.1827850341796875) exceeds 1 meters or is unavailable",
+    "Player 18 late prediction maximum Some(1.1827850341796875) exceeds 1 meters or is unavailable"
+  ],
+  "limits_changed": false,
+  "measurement_scope": "Twenty shared native sessions and one offscreen renderer on one Linux machine; delayed TCP chunks without packet loss.",
+  "movement_expiry": {
+    "total": 3,
+    "admission": 0,
+    "primary_tick": 0,
+    "additional_tick": 3,
+    "bootstrap": 0,
+    "samples": [
+      {
+        "actor": 232,
+        "epoch": 7,
+        "authority_tick": 2172,
+        "origin": "additional_tick",
+        "world_step": 6288,
+        "confirmed_step": 6252,
+        "projected_step": 6252,
+        "received_at": 6268,
+        "applied_sequence": 3,
+        "queued_frames": 0,
+        "queued_steps": 0,
+        "first_start": null,
+        "last_end": null
+      },
+      {
+        "actor": 234,
+        "epoch": 12,
+        "authority_tick": 3255,
+        "origin": "additional_tick",
+        "world_step": 10620,
+        "confirmed_step": 10584,
+        "projected_step": 10584,
+        "received_at": 10596,
+        "applied_sequence": 4,
+        "queued_frames": 0,
+        "queued_steps": 0,
+        "first_start": null,
+        "last_end": null
+      },
+      {
+        "actor": 231,
+        "epoch": 13,
+        "authority_tick": 3770,
+        "origin": "additional_tick",
+        "world_step": 12680,
+        "confirmed_step": 12644,
+        "projected_step": 12644,
+        "received_at": 12664,
+        "applied_sequence": 4,
+        "queued_frames": 0,
+        "queued_steps": 0,
+        "first_start": null,
+        "last_end": null
+      }
+    ],
+    "omitted": 0
+  },
+  "correction_cases": [
+    {
+      "player": 17,
+      "segment": 0,
+      "measurements": {
+        "samples": 1232,
+        "omitted": 0,
+        "invalid": 0,
+        "p50": 0.0,
+        "p95": 0.16001999378204346,
+        "p99": 0.3200400471687317,
+        "maximum": 2.634028196334839
+      },
+      "maximum_detail": {
+        "seconds": 52.701713442,
+        "distance": 2.634028196334839,
+        "detail": {
+          "tick": 1956,
+          "request_id": 1750,
+          "life": {
+            "instance": 9300,
+            "actor": 243,
+            "generation": 0
+          },
+          "epoch": 2,
+          "before": [
+            -3.136267900466919,
+            0.6603493094444275,
+            4.452071189880371
+          ],
+          "after": [
+            -1.2365939617156982,
+            9.999999747378752e-06,
+            2.7511022090911865
+          ],
+          "pending": 5,
+          "baseline": {
+            "profile": "frames",
+            "world_step": 5428,
+            "life": {
+              "instance": 9300,
+              "actor": 243,
+              "generation": 0
+            },
+            "epoch": 2,
+            "applied_sequence": 1257,
+            "physics_step": 5413,
+            "held": {
+              "axes": [
+                0.0,
+                0.0
+              ],
+              "until": 5469
+            },
+            "policy": {
+              "walking_scale": 1.0,
+              "jump_allowed": true
+            },
+            "character": {
+              "feet": [
+                -1.2365940755256533,
+                0.04647428974917993,
+                2.1110222525061837
+              ],
+              "vertical_speed": 0.0,
+              "support": {
+                "life": {
+                  "instance": 9300,
+                  "entity": 230,
+                  "generation": 0
+                },
+                "shape": 0
+              },
+              "support_pose": {
+                "position": [
+                  0.0,
+                  0.0,
+                  0.0
+                ],
+                "rotation": [
+                  0.0,
+                  0.0,
+                  0.0,
+                  1.0
+                ]
+              },
+              "external": [
+                0.0,
+                0.0,
+                0.0
+              ],
+              "gravity": null,
+              "peak": null,
+              "landed": null
+            },
+            "yaw": 3.1415927410125732
+          },
+          "timing_before": {
+            "recovery_blocks": 0,
+            "embedding_deferrals": 198,
+            "horizon_pauses": 0,
+            "separating_steps": 9,
+            "last_embedding": "Prediction holds actor LifeId { instance: 9300, actor: 243, generation: 0 } at DVec3(-1.329964691443299, 0.0, 2.107732593434613): contact ColliderKey { life: Life { instance: 9300, entity: 236, generation: 0 }, shape: 0 }, penetration 0.21225189434455827, normal DVec3(-0.9999577882048954, 0.0, -0.009188134107268701), observed tick 1841, replay step 4972",
+            "render_floor": 52,
+            "deferred_steps": [],
+            "motor_history_steps": 21,
+            "last_reconciliation": {
+              "previous_baseline": {
+                "profile": "frames",
+                "world_step": 5420,
+                "life": {
+                  "instance": 9300,
+                  "actor": 243,
+                  "generation": 0
+                },
+                "epoch": 2,
+                "applied_sequence": 1256,
+                "physics_step": 5407,
+                "held": {
+                  "axes": [
+                    0.0,
+                    0.0
+                  ],
+                  "until": 5464
+                },
+                "policy": {
+                  "walking_scale": 1.0,
+                  "jump_allowed": true
+                },
+                "character": {
+                  "feet": [
+                    -1.2365940755256533,
+                    0.04647428974917997,
+                    2.1110222525061837
+                  ],
+                  "vertical_speed": 0.0,
+                  "support": {
+                    "life": {
+                      "instance": 9300,
+                      "entity": 230,
+                      "generation": 0
+                    },
+                    "shape": 0
+                  },
+                  "support_pose": {
+                    "position": [
+                      0.0,
+                      0.0,
+                      0.0
+                    ],
+                    "rotation": [
+                      0.0,
+                      0.0,
+                      0.0,
+                      1.0
+                    ]
+                  },
+                  "external": [
+                    0.0,
+                    0.0,
+                    0.0
+                  ],
+                  "gravity": null,
+                  "peak": null,
+                  "landed": null
+                },
+                "yaw": 3.1415927410125732
+              },
+              "completed_estimate": {
+                "character": {
+                  "feet": [
+                    -3.1362678950675846,
+                    0.91786178974918,
+                    3.811990994876789
+                  ],
+                  "vertical_speed": -0.981,
+                  "support": null,
+                  "support_pose": null,
+                  "external": [
+                    0.0,
+                    0.0,
+                    0.0
+                  ],
+                  "gravity": null,
+                  "peak": 0.94511178974918,
+                  "landed": null
+                },
+                "held": {
+                  "axes": [
+                    0.0,
+                    0.0
+                  ],
+                  "until": 5469
+                },
+                "yaw": 3.1415927410125732,
+                "policy": {
+                  "walking_scale": 1.0,
+                  "jump_allowed": true
+                }
+              },
+              "fixed_geometry_matches": true,
+              "blocking_geometry_matches": true,
+              "dirty_before": false,
+              "path": "replay"
+            },
+            "steps_per_second": 120,
+            "step": 5433,
+            "simulated": 5433,
+            "fraction": 0.06593985110521317,
+            "baseline_step": 5413,
+            "inputs": [
+              {
+                "token": 2323,
+                "sequence": 1258,
+                "superseded_by": null,
+                "step": 5413,
+                "intent": {
+                  "Move": {
+                    "axes": [
+                      0.0,
+                      0.0
+                    ],
+                    "yaw": 3.1415927410125732
+                  }
+                }
+              },
+              {
+                "token": 2325,
+                "sequence": 1259,
+                "superseded_by": null,
+                "step": 5417,
+                "intent": {
+                  "Move": {
+                    "axes": [
+                      0.0,
+                      0.0
+                    ],
+                    "yaw": 3.1415927410125732
+                  }
+                }
+              },
+              {
+                "token": 2326,
+                "sequence": 1259,
+                "superseded_by": null,
+                "step": 5421,
+                "intent": {
+                  "Move": {
+                    "axes": [
+                      0.0,
+                      1.0
+                    ],
+                    "yaw": 3.1415927410125732
+                  }
+                }
+              },
+              {
+                "token": 2328,
+                "sequence": 1260,
+                "superseded_by": null,
+                "step": 5426,
+                "intent": {
+                  "Move": {
+                    "axes": [
+                      0.0,
+                      1.0
+                    ],
+                    "yaw": 3.1415927410125732
+                  }
+                }
+              },
+              {
+                "token": 2330,
+                "sequence": null,
+                "superseded_by": null,
+                "step": 5431,
+                "intent": {
+                  "Move": {
+                    "axes": [
+                      0.0,
+                      1.0
+                    ],
+                    "yaw": 3.1415927410125732
+                  }
+                }
+              }
+            ]
+          },
+          "timing_after": {
+            "recovery_blocks": 0,
+            "embedding_deferrals": 198,
+            "horizon_pauses": 0,
+            "separating_steps": 9,
+            "last_embedding": "Prediction holds actor LifeId { instance: 9300, actor: 243, generation: 0 } at DVec3(-1.329964691443299, 0.0, 2.107732593434613): contact ColliderKey { life: Life { instance: 9300, entity: 236, generation: 0 }, shape: 0 }, penetration 0.21225189434455827, normal DVec3(-0.9999577882048954, 0.0, -0.009188134107268701), observed tick 1841, replay step 4972",
+            "render_floor": 52,
+            "deferred_steps": [],
+            "motor_history_steps": 21,
+            "last_reconciliation": {
+              "previous_baseline": {
+                "profile": "frames",
+                "world_step": 5428,
+                "life": {
+                  "instance": 9300,
+                  "actor": 243,
+                  "generation": 0
+                },
+                "epoch": 2,
+                "applied_sequence": 1257,
+                "physics_step": 5413,
+                "held": {
+                  "axes": [
+                    0.0,
+                    0.0
+                  ],
+                  "until": 5469
+                },
+                "policy": {
+                  "walking_scale": 1.0,
+                  "jump_allowed": true
+                },
+                "character": {
+                  "feet": [
+                    -1.2365940755256533,
+                    0.04647428974917993,
+                    2.1110222525061837
+                  ],
+                  "vertical_speed": 0.0,
+                  "support": {
+                    "life": {
+                      "instance": 9300,
+                      "entity": 230,
+                      "generation": 0
+                    },
+                    "shape": 0
+                  },
+                  "support_pose": {
+                    "position": [
+                      0.0,
+                      0.0,
+                      0.0
+                    ],
+                    "rotation": [
+                      0.0,
+                      0.0,
+                      0.0,
+                      1.0
+                    ]
+                  },
+                  "external": [
+                    0.0,
+                    0.0,
+                    0.0
+                  ],
+                  "gravity": null,
+                  "peak": null,
+                  "landed": null
+                },
+                "yaw": 3.1415927410125732
+              },
+              "completed_estimate": {
+                "character": {
+                  "feet": [
+                    -1.2365940755256533,
+                    0.04647428974917993,
+                    2.1110222525061837
+                  ],
+                  "vertical_speed": 0.0,
+                  "support": {
+                    "life": {
+                      "instance": 9300,
+                      "entity": 230,
+                      "generation": 0
+                    },
+                    "shape": 0
+                  },
+                  "support_pose": {
+                    "position": [
+                      0.0,
+                      0.0,
+                      0.0
+                    ],
+                    "rotation": [
+                      0.0,
+                      0.0,
+                      0.0,
+                      1.0
+                    ]
+                  },
+                  "external": [
+                    0.0,
+                    0.0,
+                    0.0
+                  ],
+                  "gravity": null,
+                  "peak": null,
+                  "landed": null
+                },
+                "held": {
+                  "axes": [
+                    0.0,
+                    0.0
+                  ],
+                  "until": 5469
+                },
+                "yaw": 3.1415927410125732,
+                "policy": {
+                  "walking_scale": 1.0,
+                  "jump_allowed": true
+                }
+              },
+              "fixed_geometry_matches": false,
+              "blocking_geometry_matches": false,
+              "dirty_before": false,
+              "path": "replay"
+            },
+            "steps_per_second": 120,
+            "step": 5433,
+            "simulated": 5433,
+            "fraction": 0.06593985110521317,
+            "baseline_step": 5413,
+            "inputs": [
+              {
+                "token": 2323,
+                "sequence": 1258,
+                "superseded_by": null,
+                "step": 5413,
+                "intent": {
+                  "Move": {
+                    "axes": [
+                      0.0,
+                      0.0
+                    ],
+                    "yaw": 3.1415927410125732
+                  }
+                }
+              },
+              {
+                "token": 2325,
+                "sequence": 1259,
+                "superseded_by": null,
+                "step": 5417,
+                "intent": {
+                  "Move": {
+                    "axes": [
+                      0.0,
+                      0.0
+                    ],
+                    "yaw": 3.1415927410125732
+                  }
+                }
+              },
+              {
+                "token": 2326,
+                "sequence": 1259,
+                "superseded_by": null,
+                "step": 5421,
+                "intent": {
+                  "Move": {
+                    "axes": [
+                      0.0,
+                      1.0
+                    ],
+                    "yaw": 3.1415927410125732
+                  }
+                }
+              },
+              {
+                "token": 2328,
+                "sequence": 1260,
+                "superseded_by": null,
+                "step": 5426,
+                "intent": {
+                  "Move": {
+                    "axes": [
+                      0.0,
+                      1.0
+                    ],
+                    "yaw": 3.1415927410125732
+                  }
+                }
+              },
+              {
+                "token": 2330,
+                "sequence": null,
+                "superseded_by": null,
+                "step": 5431,
+                "intent": {
+                  "Move": {
+                    "axes": [
+                      0.0,
+                      1.0
+                    ],
+                    "yaw": 3.1415927410125732
+                  }
+                }
+              }
+            ]
+          },
+          "previous_life": {
+            "instance": 9300,
+            "actor": 243,
+            "generation": 0
+          },
+          "previous_epoch": 2,
+          "reset_reason": null
+        }
+      }
+    },
+    {
+      "player": 18,
+      "segment": 0,
+      "measurements": {
+        "samples": 1211,
+        "omitted": 0,
+        "invalid": 0,
+        "p50": 0.0,
+        "p95": 0.160020112991333,
+        "p99": 0.37338000535964966,
+        "maximum": 1.1827850341796875
+      },
+      "maximum_detail": {
+        "seconds": 38.173132182,
+        "distance": 1.1827850341796875,
+        "detail": {
+          "stage": "applied_movement_confirmation",
+          "tick": 1523,
+          "request_id": 1203,
+          "life": {
+            "instance": 9300,
+            "actor": 244,
+            "generation": 0
+          },
+          "epoch": 2,
+          "before": [
+            4.915948390960693,
+            2.2474250866027843e-22,
+            -4.458939075469971
+          ],
+          "after": [
+            6.083199977874756,
+            2.2474250866027843e-22,
+            -4.650000095367432
+          ],
+          "pending": 3,
+          "baseline": {
+            "profile": "frames",
+            "world_step": 3696,
+            "life": {
+              "instance": 9300,
+              "actor": 244,
+              "generation": 0
+            },
+            "epoch": 2,
+            "applied_sequence": 840,
+            "physics_step": 3684,
+            "held": {
+              "axes": [
+                1.0,
+                0.0
+              ],
+              "until": 3741
+            },
+            "policy": {
+              "walking_scale": 1.0,
+              "jump_allowed": true
+            },
+            "character": {
+              "feet": [
+                6.083199796094953,
+                2.247425204391994e-22,
+                -4.650000072123778
+              ],
+              "vertical_speed": 0.0,
+              "support": {
+                "life": {
+                  "instance": 9300,
+                  "entity": 0,
+                  "generation": 0
+                },
+                "shape": 0
+              },
+              "support_pose": {
+                "position": [
+                  0.0,
+                  0.0,
+                  0.0
+                ],
+                "rotation": [
+                  0.0,
+                  0.0,
+                  0.0,
+                  1.0
+                ]
+              },
+              "external": [
+                0.0,
+                0.0,
+                0.0
+              ],
+              "gravity": null,
+              "peak": null,
+              "landed": null
+            },
+            "yaw": 3.1415927410125732
+          },
+          "timing_before": {
+            "recovery_blocks": 0,
+            "embedding_deferrals": 212,
+            "horizon_pauses": 0,
+            "separating_steps": 89,
+            "last_embedding": "Prediction holds actor LifeId { instance: 9300, actor: 244, generation: 0 } at DVec3(4.963059756174145, 2.247425204391994e-22, -4.649999974198023): contact ColliderKey { life: Life { instance: 9300, entity: 230, generation: 0 }, shape: 0 }, penetration 0.13900860135037285, normal DVec3(0.6057180142250355, 0.0, 0.7956793872177911), observed tick 1519, replay step 3686",
+            "render_floor": 68,
+            "deferred_steps": [
+              3686,
+              3687,
+              3688
+            ],
+            "motor_history_steps": 29,
+            "last_reconciliation": {
+              "previous_baseline": {
+                "profile": "frames",
+                "world_step": 3684,
+                "life": {
+                  "instance": 9300,
+                  "actor": 244,
+                  "generation": 0
+                },
+                "epoch": 2,
+                "applied_sequence": 837,
+                "physics_step": 3673,
+                "held": {
+                  "axes": [
+                    1.0,
+                    0.0
+                  ],
+                  "until": 3731
+                },
+                "policy": {
+                  "walking_scale": 1.0,
+                  "jump_allowed": true
+                },
+                "character": {
+                  "feet": [
+                    6.083199796094953,
+                    2.247425204391994e-22,
+                    -4.650000072123778
+                  ],
+                  "vertical_speed": 0.0,
+                  "support": {
+                    "life": {
+                      "instance": 9300,
+                      "entity": 0,
+                      "generation": 0
+                    },
+                    "shape": 0
+                  },
+                  "support_pose": {
+                    "position": [
+                      0.0,
+                      0.0,
+                      0.0
+                    ],
+                    "rotation": [
+                      0.0,
+                      0.0,
+                      0.0,
+                      1.0
+                    ]
+                  },
+                  "external": [
+                    0.0,
+                    0.0,
+                    0.0
+                  ],
+                  "gravity": null,
+                  "peak": null,
+                  "landed": null
+                },
+                "yaw": 3.1415927410125732
+              },
+              "completed_estimate": {
+                "character": {
+                  "feet": [
+                    5.86983978849099,
+                    2.247425204391994e-22,
+                    -4.650000053471254
+                  ],
+                  "vertical_speed": 0.0,
+                  "support": {
+                    "life": {
+                      "instance": 9300,
+                      "entity": 0,
+                      "generation": 0
+                    },
+                    "shape": 0
+                  },
+                  "support_pose": {
+                    "position": [
+                      0.0,
+                      0.0,
+                      0.0
+                    ],
+                    "rotation": [
+                      0.0,
+                      0.0,
+                      0.0,
+                      1.0
+                    ]
+                  },
+                  "external": [
+                    0.0,
+                    0.0,
+                    0.0
+                  ],
+                  "gravity": null,
+                  "peak": null,
+                  "landed": null
+                },
+                "held": {
+                  "axes": [
+                    1.0,
+                    0.0
+                  ],
+                  "until": 3735
+                },
+                "yaw": 3.1415927410125732,
+                "policy": {
+                  "walking_scale": 1.0,
+                  "jump_allowed": true
+                }
+              },
+              "fixed_geometry_matches": true,
+              "blocking_geometry_matches": true,
+              "dirty_before": false,
+              "path": "translation"
+            },
+            "steps_per_second": 120,
+            "step": 3705,
+            "simulated": 3705,
+            "fraction": 0.020690280944108963,
+            "baseline_step": 3677,
+            "inputs": [
+              {
+                "token": 1557,
+                "sequence": 840,
+                "superseded_by": null,
+                "step": 3681,
+                "intent": {
+                  "Move": {
+                    "axes": [
+                      1.0,
+                      0.0
+                    ],
+                    "yaw": 3.1415927410125732
+                  }
+                }
+              },
+              {
+                "token": 1559,
+                "sequence": 841,
+                "superseded_by": null,
+                "step": 3686,
+                "intent": {
+                  "Move": {
+                    "axes": [
+                      1.0,
+                      0.0
+                    ],
+                    "yaw": 3.1415927410125732
+                  }
+                }
+              },
+              {
+                "token": 1562,
+                "sequence": 843,
+                "superseded_by": null,
+                "step": 3693,
+                "intent": {
+                  "Move": {
+                    "axes": [
+                      1.0,
+                      0.0
+                    ],
+                    "yaw": 3.1415927410125732
+                  }
+                }
+              },
+              {
+                "token": 1564,
+                "sequence": 844,
+                "superseded_by": null,
+                "step": 3699,
+                "intent": {
+                  "Move": {
+                    "axes": [
+                      1.0,
+                      0.0
+                    ],
+                    "yaw": 3.1415927410125732
+                  }
+                }
+              }
+            ]
+          },
+          "timing_after": {
+            "recovery_blocks": 0,
+            "embedding_deferrals": 212,
+            "horizon_pauses": 0,
+            "separating_steps": 89,
+            "last_embedding": "Prediction holds actor LifeId { instance: 9300, actor: 244, generation: 0 } at DVec3(4.963059756174145, 2.247425204391994e-22, -4.649999974198023): contact ColliderKey { life: Life { instance: 9300, entity: 230, generation: 0 }, shape: 0 }, penetration 0.13900860135037285, normal DVec3(0.6057180142250355, 0.0, 0.7956793872177911), observed tick 1519, replay step 3686",
+            "render_floor": 68,
+            "deferred_steps": [
+              3686,
+              3687,
+              3688
+            ],
+            "motor_history_steps": 22,
+            "last_reconciliation": {
+              "previous_baseline": {
+                "profile": "frames",
+                "world_step": 3692,
+                "life": {
+                  "instance": 9300,
+                  "actor": 244,
+                  "generation": 0
+                },
+                "epoch": 2,
+                "applied_sequence": 838,
+                "physics_step": 3677,
+                "held": {
+                  "axes": [
+                    1.0,
+                    0.0
+                  ],
+                  "until": 3735
+                },
+                "policy": {
+                  "walking_scale": 1.0,
+                  "jump_allowed": true
+                },
+                "character": {
+                  "feet": [
+                    6.083199796094953,
+                    2.247425204391994e-22,
+                    -4.650000072123778
+                  ],
+                  "vertical_speed": 0.0,
+                  "support": {
+                    "life": {
+                      "instance": 9300,
+                      "entity": 0,
+                      "generation": 0
+                    },
+                    "shape": 0
+                  },
+                  "support_pose": {
+                    "position": [
+                      0.0,
+                      0.0,
+                      0.0
+                    ],
+                    "rotation": [
+                      0.0,
+                      0.0,
+                      0.0,
+                      1.0
+                    ]
+                  },
+                  "external": [
+                    0.0,
+                    0.0,
+                    0.0
+                  ],
+                  "gravity": null,
+                  "peak": null,
+                  "landed": null
+                },
+                "yaw": 3.1415927410125732
+              },
+              "completed_estimate": {
+                "character": {
+                  "feet": [
+                    5.709819782788017,
+                    2.247425204391994e-22,
+                    -4.65000003948186
+                  ],
+                  "vertical_speed": 0.0,
+                  "support": {
+                    "life": {
+                      "instance": 9300,
+                      "entity": 0,
+                      "generation": 0
+                    },
+                    "shape": 0
+                  },
+                  "support_pose": {
+                    "position": [
+                      0.0,
+                      0.0,
+                      0.0
+                    ],
+                    "rotation": [
+                      0.0,
+                      0.0,
+                      0.0,
+                      1.0
+                    ]
+                  },
+                  "external": [
+                    0.0,
+                    0.0,
+                    0.0
+                  ],
+                  "gravity": null,
+                  "peak": null,
+                  "landed": null
+                },
+                "held": {
+                  "axes": [
+                    1.0,
+                    0.0
+                  ],
+                  "until": 3741
+                },
+                "yaw": 3.1415927410125732,
+                "policy": {
+                  "walking_scale": 1.0,
+                  "jump_allowed": true
+                }
+              },
+              "fixed_geometry_matches": true,
+              "blocking_geometry_matches": true,
+              "dirty_before": false,
+              "path": "replay"
+            },
+            "steps_per_second": 120,
+            "step": 3705,
+            "simulated": 3705,
+            "fraction": 0.020690280944108963,
+            "baseline_step": 3684,
+            "inputs": [
+              {
+                "token": 1559,
+                "sequence": 841,
+                "superseded_by": null,
+                "step": 3686,
+                "intent": {
+                  "Move": {
+                    "axes": [
+                      1.0,
+                      0.0
+                    ],
+                    "yaw": 3.1415927410125732
+                  }
+                }
+              },
+              {
+                "token": 1562,
+                "sequence": 843,
+                "superseded_by": null,
+                "step": 3693,
+                "intent": {
+                  "Move": {
+                    "axes": [
+                      1.0,
+                      0.0
+                    ],
+                    "yaw": 3.1415927410125732
+                  }
+                }
+              },
+              {
+                "token": 1564,
+                "sequence": 844,
+                "superseded_by": null,
+                "step": 3699,
+                "intent": {
+                  "Move": {
+                    "axes": [
+                      1.0,
+                      0.0
+                    ],
+                    "yaw": 3.1415927410125732
+                  }
+                }
+              }
+            ]
+          }
+        }
+      }
+    }
+  ],
+  "trace_limit": "Frame enqueue records local writer handoff, not socket send or authority admission."
+}
