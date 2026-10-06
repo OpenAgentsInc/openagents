@@ -2885,3 +2885,72 @@ fn studio_keys_never_enter_the_shell_and_only_physical_confirmation_sends() {
     assert!(transport.requests.lock().unwrap().is_empty());
     assert!(transport.commands.lock().unwrap().is_empty());
 }
+
+#[test]
+fn read_only_product_panes_render_in_grid_and_window_and_keys_run_nothing() {
+    use crate::input::{KeyCode, NamedKey};
+    use workbench::pane::{Description, PaneAdapter, PaneKind, PaneState, Subject};
+    use workbench::{Host, Kind, ResourceRef};
+    struct Evidence;
+    impl PaneAdapter for Evidence {
+        fn kind(&self) -> PaneKind {
+            PaneKind::Evaluation
+        }
+        fn describe(&self, _: &Subject) -> Description {
+            Description {state:PaneState::Ready,title:"Exact capability evidence".into(),detail:"Baseline cost: unknown\nSubject cost: 0\nFailed comparison retained\nSettlement unavailable".into(),actions:vec!["inspect".into()]}
+        }
+    }
+    let fake = Arc::new(Fake::default());
+    let mount = || {
+        let mut app = Application::new(Sessions(fake.clone()));
+        app.open = true;
+        app.focused = true;
+        app.paper.on = true;
+        app.ensure_started();
+        app.products.panes = std::mem::take(&mut app.products.panes).adapter(Box::new(Evidence));
+        let subject = Subject::Resource {
+            resource: ResourceRef::new(
+                Kind::Evidence,
+                Host::Local {
+                    instance: "a".repeat(64),
+                },
+                "original-flow",
+            ),
+        };
+        app.products.open(PaneKind::Evaluation, &subject).unwrap();
+        app
+    };
+    let (mut grid, mut window) = (mount(), mount());
+    let sheet = grid.paper_sheet(120, 40, "00:00", "idle");
+    assert_eq!(sheet, window.paper_sheet(120, 40, "00:00", "idle"));
+    let shown = sheet
+        .rows
+        .iter()
+        .flatten()
+        .map(|s| s.text.as_str())
+        .collect::<Vec<_>>()
+        .join("\n");
+    assert!(shown.contains("Exact capability evidence"));
+    assert!(shown.contains("Failed comparison retained"));
+    assert!(shown.contains("Settlement unavailable"));
+    assert!(sheet.caret.is_none());
+    let pane = grid.focus_id().unwrap();
+    grid.panes.get_mut(&pane).unwrap().typist = Some("agent-typist".into());
+    grid.paste_hold = Some(crate::paste::Held {
+        pane,
+        text: "echo unintended\n".into(),
+        lines: 1,
+    });
+    let before = fake.input.lock().unwrap().len();
+    press(&mut grid, KeyCode::Enter, NamedKey::Enter);
+    assert_eq!(fake.input.lock().unwrap().len(), before);
+    assert_eq!(grid.panes[&pane].typist.as_deref(), Some("agent-typist"));
+    assert!(fake.requests.lock().unwrap().is_empty());
+    assert!(fake.commands.lock().unwrap().is_empty());
+    press(&mut grid, KeyCode::Escape, NamedKey::Escape);
+    assert!(grid.products.focus.is_none());
+    press(&mut grid, KeyCode::Unidentified, NamedKey::F16);
+    assert_eq!(grid.products.focus, Some(0));
+    press(&mut grid, KeyCode::Unidentified, NamedKey::F2);
+    assert!(fake.commands.lock().unwrap().is_empty());
+}

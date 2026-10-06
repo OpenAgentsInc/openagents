@@ -67,6 +67,8 @@ const HELP: &[&str] = &[
     "F13  show studio goals, tasks, seats, logs, and memory; ENTER prepares a",
     "     studio command, ENTER again confirms, and ESC rejects or returns.",
     "F14  show studio questions and approvals; F15 shows review controls.",
+    "F16  reopen or leave retained product panes; F2 refreshes their read-only",
+    "     facts, UP/DOWN picks a pane, and PGUP/PGDN scrolls. ENTER runs nothing.",
     "F12  show the plugin test results under this directory; F12 or ESC returns.",
     "     There, ENTER recomputes the one picked from its retained attempts and",
     "     shows whether they agree with its report. It runs and publishes nothing.",
@@ -321,6 +323,45 @@ impl Application {
             Logical::Named(named) => Some(*named),
             _ => None,
         };
+        if named == Some(NamedKey::F16) {
+            if self.products.focus.is_some() {
+                self.products.focus = None;
+            } else if !self.products.open.is_empty() {
+                self.products.refresh();
+                self.products.focus = Some(self.products.open.len() - 1);
+                self.products.scroll = 0;
+            }
+            self.paper.help = false;
+            return true;
+        }
+        if self.products.focus.is_some() && !self.paper.help {
+            if named == Some(NamedKey::F1) {
+                self.paper.help = true;
+            } else if key.code == KeyCode::Escape {
+                self.products.focus = None;
+            } else if named == Some(NamedKey::F2) {
+                self.products.refresh();
+            } else if matches!(named, Some(NamedKey::PageUp | NamedKey::PageDown)) {
+                let half = (self.paper.grid.0 as usize / 2).max(1);
+                self.products.scroll = if named == Some(NamedKey::PageUp) {
+                    self.products.scroll.saturating_sub(half)
+                } else {
+                    self.products.scroll.saturating_add(half)
+                };
+            } else if key.code == KeyCode::ArrowUp {
+                self.products.focus = self.products.focus.map(|i| i.saturating_sub(1));
+                self.products.scroll = 0;
+            } else if key.code == KeyCode::ArrowDown {
+                self.products.focus = self
+                    .products
+                    .focus
+                    .map(|i| (i + 1).min(self.products.open.len().saturating_sub(1)));
+                self.products.scroll = 0;
+            } else if named == Some(NamedKey::F10) {
+                self.paper.quit = true;
+            }
+            return true;
+        }
         if self.paper.studio.open {
             if named == Some(NamedKey::F13) || key.code == KeyCode::Escape {
                 if self.paper.studio.pending.is_some() {
@@ -1863,6 +1904,58 @@ impl Application {
                     tone: Tone::Present,
                 }]);
             }
+        } else if let Some((index, product)) = self
+            .products
+            .focus
+            .and_then(|i| self.products.open.get(i).map(|p| (i, p)))
+        {
+            let mut wrapped = Vec::new();
+            let state = match &product.state {
+                workbench::pane::PaneState::Ready => "Ready",
+                workbench::pane::PaneState::Missing => "Missing",
+                workbench::pane::PaneState::Stale { .. } => "Changed revision",
+                workbench::pane::PaneState::Revoked => "Access revoked",
+                workbench::pane::PaneState::Unavailable => "Unavailable",
+                workbench::pane::PaneState::Fallback { .. } => "Fallback view",
+            };
+            for (text, tone) in [
+                (
+                    format!(
+                        "{} ({}/{})",
+                        product.title,
+                        index + 1,
+                        self.products.open.len()
+                    ),
+                    Tone::Loud,
+                ),
+                (
+                    format!("{}: {}", product.pane.label(), state),
+                    Tone::Present,
+                ),
+                (format!("Source: {}", product.subject.id()), Tone::Quiet),
+            ] {
+                wrap(&line(text, tone), text_width, &mut wrapped);
+            }
+            for text in product.detail.lines() {
+                wrap(
+                    &line(text.to_owned(), Tone::Present),
+                    text_width,
+                    &mut wrapped,
+                );
+            }
+            let total = wrapped.len();
+            self.products.scroll = self
+                .products
+                .scroll
+                .min(total.saturating_sub(transcript_rows));
+            let start = self.products.scroll;
+            for row in wrapped.iter().skip(start).take(transcript_rows) {
+                body.push(vec![Span {
+                    text: row.text.clone(),
+                    tone: row.tone,
+                }]);
+            }
+            bar = Some((start, total));
         } else if self.paper.studio.open {
             let mut wrapped = Vec::new();
             for (text, tone) in crate::studio::lines(&self.paper.studio) {
@@ -2027,7 +2120,8 @@ impl Application {
             text: label.clone(),
             tone: Tone::Quiet,
         }];
-        if self.paper_running()
+        if self.products.focus.is_some()
+            || self.paper_running()
             || (self.smart.pending.is_some() && self.paper.input.is_empty())
             || (self.paper.run.open && self.paper_run_armed())
             || self.paper.files.open
@@ -2056,7 +2150,9 @@ impl Application {
         sheet.rows.push(border());
         sheet.rows.push(vec![Span {
             text: fit(
-                if self.paper.studio.open {
+                if self.products.focus.is_some() {
+                    "F1 HELP F2 REFRESH F16 RETURN UP DOWN PICK PGUP PGDN SCROLL ESC RETURN"
+                } else if self.paper.studio.open {
                     "F1 HELP F13 RETURN ENTER PREPARE OR CONFIRM ESC REJECT PGUP PGDN SCROLL"
                 } else if self.paper.gym.open {
                     GYM_KEYS
@@ -2077,6 +2173,9 @@ impl Application {
     }
 
     fn paper_label(&self) -> (String, Tone) {
+        if self.products.focus.is_some() {
+            return ("READ ONLY > ".into(), Tone::Quiet);
+        }
         if self.paper.studio.open {
             return (
                 if self.paper.studio.pending.is_some() {
@@ -2158,6 +2257,9 @@ impl Application {
     }
 
     fn paper_input_hint(&self) -> String {
+        if self.products.focus.is_some() {
+            return "F2 refreshes; ESC returns to your shell.".into();
+        }
         if let Some(using) = self
             .paper
             .gym

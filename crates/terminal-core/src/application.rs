@@ -948,6 +948,15 @@ impl Application {
         if !key.pressed {
             return true;
         }
+        // Product inspection cannot confirm a held paste or take back a
+        // terminal typist. Its navigation remains inside the read-only sheet.
+        if (self.paper.on && self.products.focus.is_some())
+            || key.logical == Logical::Named(crate::input::NamedKey::F16)
+        {
+            self.paper.on = true;
+            self.paste_hold = None;
+            return self.paper_key(key);
+        }
         // A key the person presses in a pane an agent drives takes it
         // back before the key does anything else.
         if !key.synthetic

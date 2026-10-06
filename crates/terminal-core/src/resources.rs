@@ -100,6 +100,8 @@ pub struct Products {
     pub panes: workbench::pane::Panes,
     pub open: Vec<workbench::pane::PaneDescriptor>,
     pub focus: Option<usize>,
+    /// Lines scrolled in the focused read-only sheet.
+    pub scroll: usize,
 }
 
 impl Default for Products {
@@ -128,6 +130,7 @@ impl Default for Products {
             panes,
             open: Vec::new(),
             focus: None,
+            scroll: 0,
         }
     }
 }
@@ -165,6 +168,7 @@ impl Products {
             }
         };
         self.focus = Some(index);
+        self.scroll = 0;
         Ok(descriptor)
     }
 
