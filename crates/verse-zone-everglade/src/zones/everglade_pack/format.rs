@@ -139,8 +139,11 @@ impl Limits {
         model_triangles: 20_000,
         // 36 MB before the foliage set's 1 MB of sources and the
         // watertight far levels, which keep 40 percent of a building's
-        // triangles rather than 15.
-        committed_bytes: 42_000_000,
+        // triangles rather than 15. 42 MB before Alice, the first placed
+        // character (`npc/alice`), whose model, atlas, and clips add
+        // 0.41 MB to the pack; her sources sit with the character sources,
+        // outside this budget.
+        committed_bytes: 42_400_000,
         character_triangles: 40_000,
         body_bytes: 48 * 1024 * 1024,
     };

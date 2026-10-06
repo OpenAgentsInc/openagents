@@ -28,6 +28,10 @@ pub fn build(pack: &ZonePack, placements: &[Placement]) -> Result<Solids, String
     for (footprint, top) in layout::city::kit_blocks() {
         solids.add_block(footprint, top);
     }
+    // The placed characters, such as Alice by the approach.
+    for (footprint, top) in super::npcs::blocks() {
+        solids.add_block(footprint, top);
+    }
     // The footbridge is carved: its deck's own columns carry a walker over
     // Glade Run, and they go when it breaks.
     Ok(solids)

@@ -22,6 +22,7 @@ pub mod draw;
 pub mod floaters;
 pub mod hotbar;
 pub mod layout;
+pub mod npcs;
 pub mod player;
 pub mod pose;
 pub mod scene;
@@ -160,7 +161,8 @@ impl Everglade {
         let placements = layout::placements();
         let mut zone = Self::with_solids(pack, at, solids::build(pack, &placements)?)?;
         zone.smoke = Some(Self::chimney_smoke(&placements));
-        let creatures = wildlife::creatures(pack, &placements);
+        let mut creatures = wildlife::creatures(pack, &placements);
+        creatures.extend(npcs::creatures());
         zone.wildlife = Some(Box::new(wildlife::Wildlife::new(pack, creatures)?));
         Ok(zone)
     }
@@ -607,6 +609,9 @@ impl Everglade {
         world
             .blockers
             .extend(layout::city::blocks().into_iter().map(|(f, _)| f));
+        world
+            .blockers
+            .extend(npcs::blocks().into_iter().map(|(f, _)| f));
         boards::draw(&mut world.mesh);
         Ok(world)
     }

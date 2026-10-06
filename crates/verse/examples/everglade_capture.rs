@@ -1,5 +1,5 @@
 //! Offline visual acceptance of Everglade with the shared renderer.
-//! Usage: everglade_capture OUTPUT.png [approach|winds|sky|yard|hall|lane-east|lane-west|reverse|reverse-top|overhead|town-north|town-west|tooltip|city-market|city-stoop|city-lantern|city-brownstone|city-observatory|city-foundry|studio-yard|studio-hall|studio-atrium|eyes|hall-eyes|at:X,Z,YAW,TILT|air:EX,EY,EZ,TX,TZ] [FRAME]
+//! Usage: everglade_capture OUTPUT.png [approach|winds|sky|yard|hall|lane-east|lane-west|reverse|reverse-top|overhead|town-north|town-west|tooltip|city-market|city-stoop|city-lantern|city-brownstone|city-observatory|city-foundry|studio-yard|studio-hall|studio-atrium|eyes|hall-eyes|at:X,Z,YAW,TILT|air:EX,EY,EZ,TX,TZ|look:EX,EY,EZ,TX,TY,TZ] [FRAME]
 //!
 //! Installs Everglade from the committed, pinned pack, as a portal entry
 //! does after the download, and renders one of these views with the zone
@@ -38,6 +38,8 @@
 //!   `YAW` radians, with the camera tilted by `TILT`.
 //! - `air:EX,EY,EZ,TX,TZ`: as `overhead`, from an eye at `(EX, EY, EZ)`
 //!   looking at `(TX, 0, TZ)`, for a closer look at one district.
+//! - `look:EX,EY,EZ,TX,TY,TZ`: a free camera at `(EX, EY, EZ)` looking at
+//!   `(TX, TY, TZ)`, such as a close look at a placed character's face.
 //! - `studio-atrium`: inside the gate, at the goal board, with the goal
 //!   bar and its waiting badge over the view.
 //! - `studio-yard`, `studio-hall`, and `studio-atrium`: views of a running
@@ -103,6 +105,8 @@ fn main() -> Result<(), String> {
         "hall" | "studio-hall" => (glam::Vec3::new(0.0, 0.0, 5.0), 0.0, 20.0),
         "overhead" => (glam::Vec3::new(0.0, 0.0, -20.0), 0.0, 0.0),
         other if other.starts_with("air:") => (glam::Vec3::new(0.0, 0.0, -20.0), 0.0, 0.0),
+        // A free camera; the player stands out of its way, at the spawn.
+        other if other.starts_with("look:") => (glam::Vec3::new(0.0, 0.0, -29.0), 0.0, 0.0),
         "town-north" => (glam::Vec3::new(-11.0, 0.0, 14.0), 0.35, 30.0),
         "town-west" => (glam::Vec3::new(-34.0, 0.0, 40.0), 2.9, 30.0),
         // The city's districts, from their streets.
@@ -232,6 +236,20 @@ fn aerial(view: &str) -> Result<Option<(glam::Vec3, glam::Vec3)>, String> {
         return Ok(Some((
             glam::Vec3::new(0.0, 210.0, -230.0),
             glam::Vec3::new(0.0, 0.0, 0.0),
+        )));
+    }
+    if let Some(rest) = view.strip_prefix("look:") {
+        let v: Vec<f32> = rest
+            .split(',')
+            .map(str::parse)
+            .collect::<Result<_, _>>()
+            .map_err(|_| format!("`{view}` is not look:EX,EY,EZ,TX,TY,TZ"))?;
+        let [ex, ey, ez, tx, ty, tz] = v[..] else {
+            return Err(format!("`{view}` is not look:EX,EY,EZ,TX,TY,TZ"));
+        };
+        return Ok(Some((
+            glam::Vec3::new(ex, ey, ez),
+            glam::Vec3::new(tx, ty, tz),
         )));
     }
     let Some(rest) = view.strip_prefix("air:") else {

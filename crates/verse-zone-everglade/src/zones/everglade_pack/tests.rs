@@ -468,6 +468,20 @@ fn committed_sources_compile_within_budgets_to_the_pinned_pack() {
     for name in ["beasts/bear", "beasts/wolf", "beasts/eagle"] {
         assert!(pack.form(name).is_some(), "{name}");
     }
+    // Alice, the placed character: the Universal rig, the player's eight
+    // clips, her own Everglade budget, and one 512-pixel atlas.
+    let alice = pack.form(compile::ALICE_FORM).expect("Alice");
+    // The Universal 65 joints and the mesh's and armature's own nodes.
+    assert_eq!(alice.joints.len(), 67);
+    for (name, _) in compile::PLAYER_CLIPS {
+        assert!(alice.clip(name).is_some(), "Alice {name}");
+    }
+    assert!(alice.triangles() <= 16_000, "{}", alice.triangles());
+    assert_eq!(alice.primitives.len(), 1);
+    let atlas = pack.materials[alice.primitives[0].material as usize]
+        .texture
+        .unwrap();
+    assert_eq!(pack.textures[atlas as usize].width, 512);
     assert!(compiled.triangles >= player.triangles());
     for primitive in &player.primitives {
         let texture = pack.materials[primitive.material as usize].texture.unwrap();

@@ -206,6 +206,7 @@ fn prop_bounds_become_navigation_blockers() {
         .chain(layout::board_blockers())
         .chain(layout::pond_blockers())
         .chain(layout::city::blocks().into_iter().map(|(f, _)| f))
+        .chain(super::npcs::blocks().into_iter().map(|(f, _)| f))
         .collect();
     assert_eq!(world().blockers, expected);
     for placement in &placements {

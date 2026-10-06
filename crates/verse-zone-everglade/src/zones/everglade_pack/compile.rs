@@ -83,6 +83,17 @@ pub const PLAYER_SOURCES: &str = "../characters/quaternius";
 /// The appearance the ritual chamber's player wears by default
 /// (`verse_play`).
 pub const PLAYER_APPEARANCE: &str = "male-ranger";
+/// Alice's sources, our own original character, relative to the player's
+/// ([`PLAYER_SOURCES`]).
+pub const ALICE_SOURCES: &str = "../original/alice";
+/// The variant of Alice the pack carries: the Everglade budget's, 16,000
+/// triangles or fewer with a 512-pixel atlas, which desktop, web, and
+/// phone share.
+pub const ALICE_VARIANT: &str = "lod1";
+/// Alice's name in the pack. She is a character the world places (an NPC),
+/// not a body the player can choose. She travels as a form beside the Wild
+/// Shape beasts, so the format needs no new section.
+pub const ALICE_FORM: &str = "npc/alice";
 /// The longest edge of the player's outfit image.
 pub const PLAYER_TEXTURE_EDGE: u32 = 512;
 /// The longest edge of the player's other base-color images that cover at
@@ -692,18 +703,42 @@ impl Builder<'_> {
     /// converts it from the chamber's basis back to the sources' space.
     fn player(&mut self, sources: &Path) -> Result<Character, String> {
         crate::imported::inventory::verify_characters(sources)?;
+        self.character(
+            sources,
+            &format!("player/{PLAYER_APPEARANCE}"),
+            |engine, scratch| {
+                crate::imported::characters::appearance(engine, scratch, sources, PLAYER_APPEARANCE)
+            },
+        )
+    }
+
+    /// Alice ([`ALICE_VARIANT`] of her verified sources under `alice`), on
+    /// the Universal rig with the player's clips from `sources`, as
+    /// [`ALICE_FORM`].
+    fn alice(&mut self, sources: &Path, alice: &Path) -> Result<Character, String> {
+        crate::imported::inventory::verify_characters(sources)?;
+        crate::imported::inventory::verify_alice(alice)?;
+        self.character(sources, ALICE_FORM, |engine, scratch| {
+            crate::imported::characters::alice(engine, scratch, sources, alice, ALICE_VARIANT)
+        })
+    }
+
+    /// The pack character `name` from the model `build` makes, with the
+    /// player's clips.
+    fn character(
+        &mut self,
+        sources: &Path,
+        name: &str,
+        build: impl FnOnce(
+            &mut verse_engine::assets::Pack,
+            &Path,
+        ) -> Result<verse_engine::assets::Model, String>,
+    ) -> Result<Character, String> {
         // The importer writes its bounded images beside its pack; they are
         // read back, bounded again, and removed.
         let scratch =
             std::env::temp_dir().join(format!("verse-everglade-player-{}", std::process::id()));
         std::fs::create_dir_all(&scratch).map_err(|e| format!("{}: {e}", scratch.display()))?;
-        let result = self.player_in(sources, &scratch);
-        let _ = std::fs::remove_dir_all(&scratch);
-        result
-    }
-
-    fn player_in(&mut self, sources: &Path, scratch: &Path) -> Result<Character, String> {
-        use crate::imported::characters;
         let mut engine = verse_engine::assets::Pack {
             inventory: None,
             version: 1,
@@ -712,7 +747,21 @@ impl Builder<'_> {
             textures: Vec::new(),
             placements: Vec::new(),
         };
-        let mut model = characters::appearance(&mut engine, scratch, sources, PLAYER_APPEARANCE)?;
+        let result = build(&mut engine, &scratch)
+            .and_then(|model| self.character_in(sources, &scratch, &engine, model, name));
+        let _ = std::fs::remove_dir_all(&scratch);
+        result
+    }
+
+    fn character_in(
+        &mut self,
+        sources: &Path,
+        scratch: &Path,
+        engine: &verse_engine::assets::Pack,
+        mut model: verse_engine::assets::Model,
+        name: &str,
+    ) -> Result<Character, String> {
+        use crate::imported::characters;
         characters::retarget_clip(
             &mut model,
             &sources.join("animations.glb"),
@@ -756,7 +805,7 @@ impl Builder<'_> {
             } else {
                 PLAYER_DETAIL_EDGE / 2
             };
-            let material = self.player_material(&engine, scratch, surface, edge)?;
+            let material = self.player_material(engine, scratch, surface, edge)?;
             let vertices: Vec<SkinnedVertex> = surface
                 .vertices
                 .iter()
@@ -825,7 +874,7 @@ impl Builder<'_> {
             weld(primitive);
         }
         Ok(Character {
-            name: format!("player/{PLAYER_APPEARANCE}"),
+            name: name.to_owned(),
             joints,
             primitives,
             clips,
@@ -1223,6 +1272,9 @@ pub fn compile(
     if let Some(sources) = player {
         let character = builder.player(sources)?;
         builder.contents.character = Some(character);
+        let alice = builder.alice(sources, &sources.join(ALICE_SOURCES))?;
+        builder.contents.forms.push(alice);
+        builder.contents.forms.sort_by(|a, b| a.name.cmp(&b.name));
     }
     let contents = builder.contents;
     let bytes = format::encode(&contents, limits)?;
