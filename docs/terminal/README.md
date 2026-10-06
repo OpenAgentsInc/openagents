@@ -357,3 +357,11 @@ program against the live chat worker with a throwaway HOME:
 OA_TERMINAL_LIVE='cargo run -q -p openagents-cli --bin openagents -- terminal --scratch' \
   cargo test -p openagents-terminal --test pty -- --ignored --nocapture live
 ```
+
+The standalone Linux package tooling is `scripts/release/linux-terminal.py`.
+Its `package` command requires an executable-hash qualification for one observed
+Linux x86-64 distribution and X11 or Wayland backend; `publish` creates immutable
+platform-specific objects and verifies public readback. The separate
+`install-linux-terminal.py` verifies the qualification, archive, and each helper
+before installing into an explicit empty directory. No Linux graphical release
+is claimed until those checks run against real binaries.
