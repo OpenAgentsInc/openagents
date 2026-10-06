@@ -412,3 +412,15 @@ committed installers as plain text. The image was built from GitHub commit
 were preserved. The download page, both exact installer bodies, and the
 existing public pages passed checks on the `new` tag and production.
 Rollback: `--to-revisions coder-web-1726d56f8d=100`.
+
+## 2026-10-06: Coder-only downloads
+
+Revision `coder-web-0a15818d70` serves 100% of traffic. `/download` and its
+guide offer only Coder RC3 installers and the companion bundles for seven
+platforms; the legacy Terminal and desktop Mac downloads are removed.
+Cloud Build `43a22f4e-d0d9-4a6a-bb06-ed4780086393` built the web server from
+commit `0a15818d70` over the previous image's unchanged game assets. The
+production sidecar and runtime configuration were preserved. Both exact
+installer bodies, all 22 executable links and checksums, and the existing
+public pages and game assets passed checks on the `new` tag and production.
+Rollback: `--to-revisions coder-web-337c008eb0=100`.
