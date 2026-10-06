@@ -1,7 +1,10 @@
 //! One terminal on a linked host, driven over the host's current link.
 //!
 //! [`Session::start`] spawns a task that asks the host to open a shell with
-//! NIP-HOST `terminal.open`, then attaches with NIP-TERM in `interact` mode
+//! NIP-HOST `terminal.open`, and [`Session::attach`] one that attaches to a
+//! terminal the host already runs, such as the one a screen showed before
+//! the app went to the background. Either attaches with NIP-TERM in
+//! `interact` mode, or `observe` mode when the model only watches,
 //! and applies the attachment's frames in sequence order to the model's
 //! emulator. Input, resize, and close travel as NIP-TERM requests on the same
 //! link. The task never queues input for later: while the link is down,
@@ -28,7 +31,7 @@ use coder_host::client::{Link, Ordered, Route};
 use coder_host::mailbox::terminal_generation;
 use coder_host::message::TermRequest;
 use coder_host::pty::client::{Applied, TerminalState};
-use coder_host::pty::ext::{Join, RecordsFrame, Seat};
+use coder_host::pty::ext::{BlockPageRead, BlockState, Join, RecordsFrame, Seat};
 use coder_host::pty::wire::{
     Attach, Body, Cause, Close, Detach, Detached, Exit, Frame, Input, Mode, Reason, Resize, Size,
     Status, TerminalRef, TerminalResult, Value,
@@ -39,7 +42,7 @@ use tokio::runtime::Handle;
 use tokio::sync::mpsc;
 use tokio::time::Instant;
 
-use super::model::{Model, Phase, SCROLLBACK, Typing};
+use super::model::{BlockRow, Blocks, Model, Phase, SCROLLBACK, Typing};
 use crate::controller::describe;
 
 /// The current link to a host, as the Computers service's supervisor holds
@@ -67,8 +70,23 @@ enum Command {
     Resize(u16, u16),
     /// Take the typist role.
     Take,
+    /// Read a page of the block journal older than this block, or the
+    /// newest page.
+    Blocks(Option<u64>),
     Close,
     Leave,
+}
+
+/// The most blocks one page shows.
+pub const BLOCK_PAGE: u16 = 8;
+
+/// Which terminal a session drives.
+#[derive(Clone, Debug, PartialEq, Eq)]
+enum Target {
+    /// A new shell the host opens.
+    Open,
+    /// A terminal the host already runs.
+    Attach(TerminalRef),
 }
 
 /// A running terminal session. Dropping it detaches.
@@ -88,10 +106,47 @@ impl Session {
     /// returns, on `runtime`.
     #[must_use]
     pub fn start(runtime: &Handle, links: Links, model: Model) -> Self {
+        Self::spawn(runtime, links, model, Target::Open)
+    }
+
+    /// Attach to the terminal `reference` names, which the host already
+    /// runs, without opening another. A host that restarted since answers
+    /// `lost`, and the screen says so rather than opening a new shell.
+    #[must_use]
+    pub fn attach(runtime: &Handle, links: Links, model: Model, reference: TerminalRef) -> Self {
+        Self::spawn(runtime, links, model, Target::Attach(reference))
+    }
+
+    fn spawn(runtime: &Handle, links: Links, model: Model, target: Target) -> Self {
         let model = Arc::new(Mutex::new(model));
         let (commands, receiver) = mpsc::unbounded_channel();
-        runtime.spawn(run(links, model.clone(), receiver));
+        runtime.spawn(run(links, model.clone(), receiver, target));
         Session { model, commands }
+    }
+
+    /// Show the newest page of the terminal's block journal, or the page
+    /// older than block `before`.
+    pub fn blocks(&self, before: Option<u64>) {
+        {
+            let mut model = self.model();
+            if model.phase != Phase::Attached {
+                model.blocks = Blocks::Unavailable("Not connected.".into());
+                model.touch();
+                return;
+            }
+            model.blocks = Blocks::Reading;
+            model.touch();
+        }
+        let _ = self.commands.send(Command::Blocks(before));
+    }
+
+    /// Hide the block list.
+    pub fn hide_blocks(&self) {
+        let mut model = self.model();
+        if model.blocks != Blocks::Hidden {
+            model.blocks = Blocks::Hidden;
+            model.touch();
+        }
     }
 
     /// The screen's state.
@@ -107,6 +162,11 @@ impl Session {
         }
         {
             let mut model = self.model();
+            if model.watch {
+                model.notice = Some("You're watching this terminal; typing isn't sent.".into());
+                model.touch();
+                return;
+            }
             if model.phase != Phase::Attached {
                 model.notice = Some("Not connected. What you typed wasn't sent.".into());
                 model.touch();
@@ -118,7 +178,15 @@ impl Session {
 
     /// Resize the grid and tell the host.
     pub fn resize(&self, rows: u16, cols: u16) {
-        let changed = self.model().resize(rows, cols);
+        let mut model = self.model();
+        if model.watch {
+            // A watcher draws at the terminal's size and never sets it.
+            model.view = super::model::clamp(rows, cols);
+            model.touch();
+            return;
+        }
+        let changed = model.resize(rows, cols);
+        drop(model);
         if let Some((rows, cols)) = changed {
             let _ = self.commands.send(Command::Resize(rows, cols));
         }
@@ -461,8 +529,9 @@ async fn run(
     links: Links,
     model: Arc<Mutex<Model>>,
     mut commands: mpsc::UnboundedReceiver<Command>,
+    target: Target,
 ) {
-    let ended = match drive(&links, &model, &mut commands).await {
+    let ended = match drive(&links, &model, &mut commands, target).await {
         Stop::Left => Phase::Left,
         Stop::Ended(phase) => phase,
     };
@@ -486,11 +555,23 @@ async fn drive(
     links: &Links,
     model: &Arc<Mutex<Model>>,
     commands: &mut mpsc::UnboundedReceiver<Command>,
+    target: Target,
 ) -> Stop {
-    let (mut link, mut reference, mut host_size) = match open(links, model, commands).await {
+    let opened = match target {
+        Target::Open => open(links, model, commands).await,
+        Target::Attach(reference) => {
+            lock(model).set_phase(Phase::Connecting);
+            // The terminal's size is the host's; the first attach says it.
+            wait_link(links, commands, true)
+                .await
+                .map(|link| (link, reference, (0, 0)))
+        }
+    };
+    let (mut link, mut reference, mut host_size) = match opened {
         Ok(opened) => opened,
         Err(stop) => return stop,
     };
+    let watch = lock(model).watch;
     // The client state tracks sequence numbers and gaps; the emulator in
     // the model draws the output.
     let mut ordered = Ordered::new(TerminalState::new(reference.clone(), 1, 1));
@@ -515,13 +596,8 @@ async fn drive(
         } else {
             ordered.state().resume_after()
         };
-        let mut attach = Attach::new(
-            new_id(),
-            reference.clone(),
-            Mode::Interact,
-            after,
-            rate(&link),
-        );
+        let mode = if watch { Mode::Observe } else { Mode::Interact };
+        let mut attach = Attach::new(new_id(), reference.clone(), mode, after, rate(&link));
         if level.snapshot() {
             attach = attach.joining(Join::Snapshot);
         }
@@ -539,9 +615,17 @@ async fn drive(
         let attachment = match attached {
             Ok(TerminalResult {
                 status: Status::Accepted | Status::Duplicate,
-                value: Some(Value::Attached { attachment, .. }),
+                value:
+                    Some(Value::Attached {
+                        attachment, size, ..
+                    }),
                 ..
-            }) => attachment,
+            }) => {
+                if host_size == (0, 0) {
+                    host_size = (size.rows, size.cols);
+                }
+                attachment
+            }
             Ok(result) if level != Features::Base && refuses_feature(&result) => {
                 level = level.fewer();
                 continue;
@@ -591,16 +675,21 @@ async fn drive(
         {
             let mut model = lock(model);
             model.route = Some(route(&link));
+            model.reference = Some((reference.generation.clone(), reference.terminal.clone()));
+            if watch {
+                // A watcher draws at the host's size.
+                model.seat(Typing::Elsewhere, host_size);
+            }
             if !exited {
                 model.set_phase(Phase::Attached);
             }
             model.touch();
         }
-        let speaker = Speaker((level == Features::Typist).then(|| attachment.clone()));
+        let speaker = Speaker((level == Features::Typist && !watch).then(|| attachment.clone()));
         // The screen may have changed size while opening or detached. A
         // host with another typist refuses it, and this screen follows.
         let size = lock(model).size();
-        if size != host_size && !exited {
+        if size != host_size && !exited && !watch {
             let _ = request(&link, speaker.resize(&reference, size.0, size.1)).await;
             host_size = size;
         }
@@ -899,6 +988,18 @@ async fn handle(
             // The typist frame that follows sets the role and the size.
             None
         }
+        Command::Blocks(before) => {
+            let read = BlockPageRead::new(new_id(), reference.clone(), before, BLOCK_PAGE);
+            let answer = request(link, TermRequest::BlockPage(read)).await;
+            let blocks = blocks_from(answer);
+            let mut model = lock(model);
+            // The person may have hidden the list meanwhile.
+            if model.blocks == Blocks::Reading {
+                model.blocks = blocks;
+                model.touch();
+            }
+            None
+        }
         Command::Close => {
             if exited {
                 return None;
@@ -916,6 +1017,45 @@ async fn handle(
             // The exit frame follows on the attachment.
             None
         }
+    }
+}
+
+/// The block list a block-page answer shows.
+fn blocks_from(answer: Result<TerminalResult, HostError>) -> Blocks {
+    match answer {
+        Ok(TerminalResult {
+            value: Some(Value::Blocks { page }),
+            ..
+        }) => Blocks::Page {
+            more: page.more,
+            rows: page
+                .blocks
+                .into_iter()
+                .map(|block| BlockRow {
+                    number: block.block,
+                    command: block.command,
+                    dir: block.dir,
+                    outcome: match (block.state, block.status) {
+                        (BlockState::Running, _) => "running".into(),
+                        (BlockState::Abandoned, _) => "abandoned".into(),
+                        (BlockState::Finished, Some(0)) => "ok".into(),
+                        (BlockState::Finished, Some(code)) => format!("exit {code}"),
+                        (BlockState::Finished, None) => "done".into(),
+                    },
+                })
+                .collect(),
+        },
+        Ok(result) => Blocks::Unavailable(match result.reason {
+            Some(Reason::UnsupportedFeature | Reason::UnsupportedVersion) => {
+                "This computer's host keeps no command list for terminals.".into()
+            }
+            Some(Reason::ContentUnavailable) => "Older commands left the host's list.".into(),
+            Some(Reason::NotAdmitted | Reason::Revoked) => {
+                "This device may not read this terminal's commands.".into()
+            }
+            _ => "The computer didn't send the command list.".into(),
+        }),
+        Err(_) => Blocks::Unavailable("Couldn't reach the computer.".into()),
     }
 }
 

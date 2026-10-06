@@ -94,6 +94,31 @@ pub enum Typing {
     Elsewhere,
 }
 
+/// One command from the host's block journal, as the screen lists it.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct BlockRow {
+    /// The host's block number, increasing per terminal.
+    pub number: u64,
+    pub command: String,
+    pub dir: String,
+    /// `running`, `ok`, `exit N`, or `abandoned`.
+    pub outcome: String,
+}
+
+/// What the screen knows of the terminal's block journal.
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+pub enum Blocks {
+    /// Not asked for, or hidden again.
+    #[default]
+    Hidden,
+    /// Asked for; the host has not answered yet.
+    Reading,
+    /// A page, newest first, and whether older blocks remain.
+    Page { rows: Vec<BlockRow>, more: bool },
+    /// The host keeps no journal, or refused the read. The text says why.
+    Unavailable(String),
+}
+
 /// The screen's state. The session task writes the phase and output; the
 /// screen writes the modifier the accessory row latched.
 #[derive(Debug)]
@@ -129,6 +154,15 @@ pub struct Model {
     pub view: (u16, u16),
     /// A size to send the host now that this screen may set it.
     pub pending_resize: Option<(u16, u16)>,
+    /// The terminal this screen is attached to, once the host named it, as
+    /// `(generation, terminal)`. A screen recreated after the app returns
+    /// from the background attaches to it again instead of opening another.
+    pub reference: Option<(String, String)>,
+    /// This screen only watches: it attaches in `observe` mode and sends
+    /// no input. The host enforces the same.
+    pub watch: bool,
+    /// The block journal, when the person asked for it.
+    pub blocks: Blocks,
 }
 
 impl Model {
@@ -151,6 +185,9 @@ impl Model {
             typing: Typing::Unknown,
             view: (rows, cols),
             pending_resize: None,
+            reference: None,
+            watch: false,
+            blocks: Blocks::Hidden,
         }
     }
 
@@ -246,16 +283,14 @@ impl Model {
             self.typing = typing;
             self.touch();
         }
-        let grid = if typing == Typing::Elsewhere {
-            size
-        } else {
-            self.view
-        };
+        // A watcher always draws at the terminal's size and never sets it.
+        let follows = typing == Typing::Elsewhere || self.watch;
+        let grid = if follows { size } else { self.view };
         if (usize::from(grid.0), usize::from(grid.1)) != (self.vt.rows(), self.vt.cols()) {
             self.vt.resize(usize::from(grid.0), usize::from(grid.1));
             self.touch();
         }
-        if typing != Typing::Elsewhere && size != self.view {
+        if !follows && size != self.view {
             self.pending_resize = Some(self.view);
         }
     }

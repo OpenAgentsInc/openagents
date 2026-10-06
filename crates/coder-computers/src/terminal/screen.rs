@@ -12,10 +12,17 @@
 //! and the clipboard, and polls with `terminal_poll`, whose smaller packet
 //! carries the view only when it changed. The session starts once the host
 //! reports a size, so the shell opens at the size it is shown at.
+//!
+//! [`Terminal::reference`] names the terminal once attached. A screen
+//! recreated after the app returns from the background, or after its
+//! surface was torn down, passes it to [`Terminal::reattach`] and attaches
+//! to the same terminal instead of opening another, optionally only to
+//! watch it.
 
 use crate::live::Terminals;
 use crate::terminal::session::Session;
-use crate::terminal::{Model, Phase, TerminalIntent, view};
+use crate::terminal::{Blocks, Model, Phase, TerminalIntent, view};
+use coder_host::pty::wire::TerminalRef;
 use coder_vt::{Key, Modifiers};
 use rust_native::{Activation, ValidatedView};
 use serde::Serialize;
@@ -71,6 +78,8 @@ pub struct Terminal {
     drawn: u64,
     current: Option<ValidatedView<TerminalIntent>>,
     paste: bool,
+    /// The terminal to attach to instead of opening one.
+    target: Option<TerminalRef>,
 }
 
 /// A key the native host names: an editing key's name or one character.
@@ -136,12 +145,45 @@ impl Terminal {
             drawn: 0,
             current: None,
             paste: false,
+            target: None,
         };
         terminal.redraw();
         if terminal.current.is_none() {
             return Err("The terminal screen could not be drawn.".into());
         }
         Ok(terminal)
+    }
+
+    /// Open the screen on a terminal the host already runs, named by
+    /// [`Terminal::reference`] from an earlier screen, and attach to it
+    /// once the native host reports a size. With `watch` the screen
+    /// attaches in `observe` mode and sends nothing.
+    pub fn reattach(
+        host: String,
+        label: String,
+        terminals: Option<Terminals>,
+        runtime: Handle,
+        reference: (String, String),
+        watch: bool,
+    ) -> Result<Self, String> {
+        let mut terminal = Self::open(host, label, terminals, runtime)?;
+        let (generation, id) = reference;
+        terminal.target = Some(TerminalRef {
+            generation,
+            terminal: id,
+        });
+        terminal.with_model(|model| {
+            model.watch = watch;
+            model.touch();
+        });
+        terminal.redraw();
+        Ok(terminal)
+    }
+
+    /// The terminal this screen is attached to, as `(generation,
+    /// terminal)`, once the host named it.
+    pub fn reference(&mut self) -> Option<(String, String)> {
+        self.with_model(|model| model.reference.clone())
     }
 
     fn with_model<T>(&mut self, work: impl FnOnce(&mut Model) -> T) -> T {
@@ -198,7 +240,10 @@ impl Terminal {
         match &self.terminals {
             Some(terminals) if !model.phase.ended() => {
                 let links = terminals.links(&self.host);
-                self.session = Some(Session::start(&self.runtime, links, model));
+                self.session = Some(match self.target.clone() {
+                    Some(reference) => Session::attach(&self.runtime, links, model, reference),
+                    None => Session::start(&self.runtime, links, model),
+                });
             }
             _ => self.idle = Some(model),
         }
@@ -271,8 +316,30 @@ impl Terminal {
                     session.close();
                 }
             }
+            TerminalIntent::Blocks | TerminalIntent::OlderBlocks { .. } => {
+                let before = match intent {
+                    TerminalIntent::OlderBlocks { before } => Some(before),
+                    _ => None,
+                };
+                match &self.session {
+                    Some(session) => session.blocks(before),
+                    None => self.with_model(|model| {
+                        model.blocks = Blocks::Unavailable("Not connected.".into());
+                        model.touch();
+                    }),
+                }
+            }
+            TerminalIntent::HideBlocks => match &self.session {
+                Some(session) => session.hide_blocks(),
+                None => self.with_model(|model| {
+                    model.blocks = Blocks::Hidden;
+                    model.touch();
+                }),
+            },
             TerminalIntent::Reopen => {
                 let size = self.with_model(|model| model.size());
+                // A new terminal, never the old one again.
+                self.target = None;
                 self.session = None;
                 self.idle = Some(Model::new(self.host.clone(), self.label.clone(), 24, 80));
                 self.resize(size.0, size.1);

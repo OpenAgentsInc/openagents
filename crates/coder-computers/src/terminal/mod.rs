@@ -18,5 +18,5 @@ pub mod screen;
 #[cfg(feature = "live")]
 pub mod session;
 
-pub use model::{Model, Phase, Typing};
+pub use model::{BlockRow, Blocks, Model, Phase, Typing};
 pub use project::{AccessoryKey, TerminalIntent, view};

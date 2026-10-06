@@ -3,7 +3,9 @@
 //! The root stack has three children a platform can place separately:
 //!
 //! - `terminal-header`: the host, the session's status, gap and refusal
-//!   notices, and **Back**, **End terminal**, and **Open a new terminal**.
+//!   notices, and **Back**, **Commands**, **End terminal**, and **Open a
+//!   new terminal**. With the command list open it also lists the newest
+//!   blocks of the host's block journal, a page at a time.
 //! - `terminal-grid`: one node per grid row. A row whose cells share one
 //!   look is one `terminal` text node; otherwise it is a horizontal stack of
 //!   runs. The platform draws each run monospaced on one line, so the grid
@@ -15,7 +17,7 @@
 //! every Coder surface. Output text is shown as data; nothing in it becomes
 //! a control.
 
-use super::model::{Model, Phase, Typing};
+use super::model::{Blocks, Model, Phase, Typing};
 use coder_ui::theme::{Intensity, NEAR_BLACK, NEAR_BLACK_TINT};
 use coder_vt::{Attrs, Color as VtColor, Flags, Key};
 use rust_native::style::{Color, Space, Style, TextWeight};
@@ -79,6 +81,14 @@ pub enum TerminalIntent {
     Reopen,
     /// Take the typist role from another device.
     Take,
+    /// Show the newest commands from the host's block journal.
+    Blocks,
+    /// Show the page of commands older than this block.
+    OlderBlocks {
+        before: u64,
+    },
+    /// Hide the command list.
+    HideBlocks,
 }
 
 /// Nodes kept for everything except the grid rows.
@@ -461,7 +471,23 @@ pub fn view(model: &Model, instance: &str, revision: u64) -> View<TerminalIntent
             ));
         }
     } else {
-        if model.typing == Typing::Elsewhere {
+        let listing = !matches!(model.blocks, Blocks::Hidden);
+        actions.push(if listing {
+            button(
+                "terminal-blocks-hide",
+                "Hide commands",
+                TerminalIntent::HideBlocks,
+                true,
+            )
+        } else {
+            button(
+                "terminal-blocks",
+                "Commands",
+                TerminalIntent::Blocks,
+                attached,
+            )
+        });
+        if model.typing == Typing::Elsewhere && !model.watch {
             actions.push(button(
                 "terminal-take",
                 "Type here",
@@ -469,12 +495,14 @@ pub fn view(model: &Model, instance: &str, revision: u64) -> View<TerminalIntent
                 attached,
             ));
         }
-        actions.push(button(
-            "terminal-end",
-            "End terminal",
-            TerminalIntent::Close,
-            attached,
-        ));
+        if !model.watch {
+            actions.push(button(
+                "terminal-end",
+                "End terminal",
+                TerminalIntent::Close,
+                attached,
+            ));
+        }
     }
     header.push(stack(
         "terminal-actions",
@@ -482,12 +510,17 @@ pub fn view(model: &Model, instance: &str, revision: u64) -> View<TerminalIntent
         Space::Md,
         actions,
     ));
+    if let Some(list) = block_list(&model.blocks) {
+        header.push(list);
+    }
 
     let mut grid_node = stack("terminal-grid", Axis::Vertical, Space::None, grid(model));
     grid_node.style.background = Some(rgb(NEAR_BLACK));
 
+    // A watcher sends no keys.
+    let typing = attached && !model.watch;
     let key = |key: AccessoryKey, id: &str, label: &str| {
-        button(id, label, TerminalIntent::Key { key }, attached)
+        button(id, label, TerminalIntent::Key { key }, typing)
     };
     let keys = vec![
         key(AccessoryKey::Escape, "terminal-key-escape", "Esc"),
@@ -496,7 +529,7 @@ pub fn view(model: &Model, instance: &str, revision: u64) -> View<TerminalIntent
             "terminal-key-ctrl",
             if model.ctrl { "Ctrl on" } else { "Ctrl" },
             TerminalIntent::Ctrl,
-            attached,
+            typing,
         ),
         key(AccessoryKey::Left, "terminal-key-left", "Left"),
         key(AccessoryKey::Up, "terminal-key-up", "Up"),
@@ -506,14 +539,9 @@ pub fn view(model: &Model, instance: &str, revision: u64) -> View<TerminalIntent
             "terminal-key-interrupt",
             "^C",
             TerminalIntent::Interrupt,
-            attached,
+            typing,
         ),
-        button(
-            "terminal-key-paste",
-            "Paste",
-            TerminalIntent::Paste,
-            attached,
-        ),
+        button("terminal-key-paste", "Paste", TerminalIntent::Paste, typing),
     ];
 
     let root = stack(
@@ -529,8 +557,73 @@ pub fn view(model: &Model, instance: &str, revision: u64) -> View<TerminalIntent
     View::new(instance, revision, root)
 }
 
+/// The command list: each block's outcome, command, and directory, newest
+/// first, with **Older commands** while the journal holds more. Commands
+/// are output from the host and shown as text only.
+fn block_list(blocks: &Blocks) -> Option<Node<TerminalIntent>> {
+    let children = match blocks {
+        Blocks::Hidden => return None,
+        Blocks::Reading => vec![text(
+            "terminal-blocks-status",
+            "Reading the computer's command list…",
+            TextRole::Status,
+        )],
+        Blocks::Unavailable(reason) => {
+            vec![text("terminal-blocks-status", reason, TextRole::Status)]
+        }
+        Blocks::Page { rows, more } => {
+            let mut children: Vec<Node<TerminalIntent>> = rows
+                .iter()
+                .map(|row| {
+                    let command = if row.command.is_empty() {
+                        "(command not recorded)"
+                    } else {
+                        row.command.as_str()
+                    };
+                    let mut line = format!("[{}] {command}", row.outcome);
+                    if !row.dir.is_empty() {
+                        line = format!("{line}  in {}", row.dir);
+                    }
+                    text(
+                        format!("terminal-block-{}", row.number),
+                        line,
+                        TextRole::Body,
+                    )
+                })
+                .collect();
+            if children.is_empty() {
+                children.push(text(
+                    "terminal-blocks-status",
+                    "No commands recorded yet. The host lists commands from shells it starts with its integration hooks.",
+                    TextRole::Status,
+                ));
+            }
+            if let (true, Some(oldest)) = (*more, rows.last()) {
+                children.push(button(
+                    "terminal-blocks-older",
+                    "Older commands",
+                    TerminalIntent::OlderBlocks {
+                        before: oldest.number,
+                    },
+                    true,
+                ));
+            }
+            children
+        }
+    };
+    Some(stack(
+        "terminal-blocks-list",
+        Axis::Vertical,
+        Space::Xs,
+        children,
+    ))
+}
+
 fn status(model: &Model) -> String {
     let mut line = model.phase.describe();
+    if model.watch && !model.phase.ended() {
+        line = format!("{line} · Watching");
+    }
     if model.phase == Phase::Attached {
         if let Some(route) = &model.route {
             line = format!("Connected {route}");
@@ -770,5 +863,82 @@ mod tests {
             _ => marker,
         };
         assert_eq!(first.style.weight, Some(TextWeight::Bold));
+    }
+
+    #[test]
+    fn the_command_list_pages_and_a_watcher_gets_no_keys() {
+        use super::super::model::{BlockRow, Blocks};
+        let press = |view: &rust_native::ValidatedView<TerminalIntent>, node: &str| {
+            view.activate(&Activation {
+                instance: "terminal:1".into(),
+                revision: view.view().revision,
+                node: node.into(),
+            })
+            .cloned()
+        };
+        let mut model = attached(4, 40);
+        let closed = view(&model, "terminal:1", 1).validate().unwrap();
+        assert_eq!(
+            press(&closed, "terminal-blocks"),
+            Ok(TerminalIntent::Blocks)
+        );
+        assert!(find(&closed.view().root, "terminal-blocks-list").is_none());
+
+        model.blocks = Blocks::Page {
+            rows: vec![
+                BlockRow {
+                    number: 7,
+                    command: "make test".into(),
+                    dir: "/srv/app".into(),
+                    outcome: "exit 1".into(),
+                },
+                BlockRow {
+                    number: 6,
+                    command: "make".into(),
+                    dir: String::new(),
+                    outcome: "ok".into(),
+                },
+            ],
+            more: true,
+        };
+        let open = view(&model, "terminal:1", 2).validate().unwrap();
+        let mut parts = Vec::new();
+        texts(&open.view().root, &mut parts);
+        let line = |key: &str| {
+            parts
+                .iter()
+                .find(|(k, _)| k == key)
+                .map(|(_, v)| v.clone())
+                .unwrap()
+        };
+        assert_eq!(line("terminal-block-7"), "[exit 1] make test  in /srv/app");
+        assert_eq!(line("terminal-block-6"), "[ok] make");
+        assert_eq!(
+            press(&open, "terminal-blocks-older"),
+            Ok(TerminalIntent::OlderBlocks { before: 6 })
+        );
+        assert_eq!(
+            press(&open, "terminal-blocks-hide"),
+            Ok(TerminalIntent::HideBlocks)
+        );
+
+        model.blocks = Blocks::Unavailable("no list".into());
+        model.watch = true;
+        let watching = view(&model, "terminal:1", 3).validate().unwrap();
+        let mut parts = Vec::new();
+        texts(&watching.view().root, &mut parts);
+        assert!(parts.iter().any(|(_, v)| v == "no list"));
+        assert!(
+            parts
+                .iter()
+                .any(|(k, v)| k == "terminal-status" && v.contains("Watching"))
+        );
+        // A watcher has no keys, no End terminal, and no Type here.
+        assert!(press(&watching, "terminal-key-up").is_err());
+        assert!(press(&watching, "terminal-key-paste").is_err());
+        assert!(find(&watching.view().root, "terminal-end").is_none());
+        model.typing = Typing::Elsewhere;
+        let elsewhere = view(&model, "terminal:1", 4).validate().unwrap();
+        assert!(find(&elsewhere.view().root, "terminal-take").is_none());
     }
 }

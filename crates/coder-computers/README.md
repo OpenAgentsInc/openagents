@@ -180,6 +180,15 @@ grants, connections, and relay traffic. Three services implement it:
   link drops, the supervisor replaces the route, or a frame goes missing for
   two seconds, and reports `lost` when the host restarted. Typed input is never
   queued while detached; the screen says it wasn't sent.
+- `Session::attach` and `terminal::screen::Terminal::reattach` attach to a
+  terminal the host already runs, named by the model's `reference`, instead
+  of opening another: a screen recreated after the app returns from the
+  background keeps its terminal, and a host restart shows as `lost`. A model
+  with `watch` set attaches in `observe` mode, draws at the terminal's size,
+  and sends no input, resize, or close; the host enforces the same.
+- **Commands** reads the host's block journal (NIP-TERM's blocks feature) a
+  page of eight at a time: each command's outcome, text, and directory,
+  shown as text only. A host without the feature says it keeps no list.
 
 The **Terminal** control is enabled only for an online host on which this
 device holds `terminal`; otherwise its reason says which right is missing. The
