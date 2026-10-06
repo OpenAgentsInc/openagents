@@ -79,3 +79,23 @@ single texel, authored compressed chains, and vertex-varying alpha remain conten
 production limits.
 
 The dedicated `verse-host` and network service use `core::FixedSchedule`. Actor identities use `LifeId`; actor storage remains in `verse-world` rather than adopting the separate `Entities` container. Applications supply generic `MountPose` values to the admitted renderer frame, including planar grips and offset socket frames.
+
+
+`audio_bank` admits versioned cue banks with bounded sources, mix buses,
+priorities, and localized captions. The original bank declares reproducible
+procedural cues. Decoded mono clips must match their PCM pins; streamed music and
+dialogue declare stereo little-endian float PCM, sample rate, frame count, and
+SHA-256. `prepare_stream_reader` verifies the supplied immutable reader before
+playback, then returns its prepared voice and bounded feeder. The caller supplies
+an immutable snapshot or provider; the bank selects no file or network path.
+Compressed decoding belongs on a provider worker. Streamed tracks are finite;
+original clip ambience supports looping.
+
+`audio::Mixer` separates control-side preparation from callback admission. It
+holds at most 128 logical voices, mixes 32 audible voices, bounds streaming to
+eight sources, advances virtual clip clocks analytically, and retains completed
+resources for off-callback reclamation. Music has two replacement slots; effects
+cannot displace music. Dialogue ducks music. Suspension freezes source clocks.
+`audio_bank::Scene` retains captions, volume settings, and zone music progress
+without a device. These contracts do not establish hardware audio deadlines or
+complete environmental acoustics.

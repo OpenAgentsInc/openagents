@@ -362,10 +362,16 @@ impl Scene {
         position: Vec3,
         now: f64,
     ) -> Result<Prepared, String> {
+        let prepared = self.bank.prepare(id, life, position, 0)?;
+        self.caption(id, life, now)?;
+        Ok(prepared)
+    }
+    /// Streaming providers can publish the same authored caption independently.
+    pub fn caption(&mut self, id: &str, life: Option<LifeId>, now: f64) -> Result<(), String> {
         if !now.is_finite() || now < 0.0 {
             return Err("Invalid audio presentation time".into());
         }
-        let prepared = self.bank.prepare(id, life, position, 0)?;
+        self.bank.cue(id).ok_or("Unknown audio cue")?;
         self.captions.retain(|c| c.expires > now);
         if let Some(text) = self.bank.caption(id, &self.locale) {
             let priority = self.bank.cue(id).unwrap().priority;
@@ -388,7 +394,7 @@ impl Scene {
                         self.captions.swap_remove(i);
                     } else {
                         self.caption_drops = self.caption_drops.saturating_add(1);
-                        return Ok(prepared);
+                        return Ok(());
                     }
                 }
                 self.captions.push(Caption {
@@ -400,7 +406,7 @@ impl Scene {
                 });
             }
         }
-        Ok(prepared)
+        Ok(())
     }
     pub fn clear_captions(&mut self) {
         self.captions.clear();
@@ -423,24 +429,43 @@ impl Scene {
             if cue.bus != Bus::Music {
                 return Err("Zone music cue must use the music bus".into());
             }
-            let same = self.zone.as_deref() == Some(zone);
-            let start = if same {
-                self.music
-                    .as_ref()
-                    .filter(|(old, _)| old == id)
-                    .map_or(0, |(_, p)| p.frame())
-            } else {
-                0
-            };
+            let start = self.zone_music_position(zone, id)?;
             let prepared = self.bank.prepare(id, None, Vec3::ZERO, start)?;
-            self.zone = Some(zone.into());
-            self.music = Some((id.into(), prepared.progress()));
+            self.bind_zone_music(zone, id, prepared.progress())?;
             Ok(Some(prepared))
         } else {
             self.zone = Some(zone.into());
             self.music = None;
             Ok(None)
         }
+    }
+    /// Prepare from this position, submit successfully, then bind the new clock.
+    pub fn zone_music_position(&self, zone: &str, id: &str) -> Result<u64, String> {
+        if !identifier(zone) || self.bank.cue(id).is_none_or(|c| c.bus != Bus::Music) {
+            return Err("Invalid zone music binding".into());
+        }
+        Ok(if self.zone.as_deref() == Some(zone) {
+            self.music
+                .as_ref()
+                .filter(|(old, _)| old == id)
+                .map_or(0, |(_, p)| p.frame())
+        } else {
+            0
+        })
+    }
+    pub fn bind_zone_music(
+        &mut self,
+        zone: &str,
+        id: &str,
+        progress: crate::audio::Progress,
+    ) -> Result<(), String> {
+        self.zone_music_position(zone, id)?;
+        if self.zone.as_deref() != Some(zone) {
+            self.clear_captions();
+        }
+        self.zone = Some(zone.into());
+        self.music = Some((id.into(), progress));
+        Ok(())
     }
     pub fn music_position(&self) -> Option<u64> {
         self.music.as_ref().map(|(_, p)| p.frame())
@@ -524,16 +549,35 @@ mod tests {
             bank.prepare_stream_reader("ritual_ambience", std::io::Cursor::new(changed), 0, 128)
                 .is_err()
         );
+        let bank = Arc::new(bank);
+        let mut scene = Scene::new(bank.clone(), "en").unwrap();
+        scene.caption("ritual_ambience", None, 1.).unwrap();
+        assert_eq!(scene.captions(2.).count(), 1);
         let (prepared, mut reader) = bank
             .prepare_stream_reader("ritual_ambience", std::io::Cursor::new(bytes), 500, 128)
             .unwrap();
         assert_eq!(reader.remaining(), 500);
         let progress = prepared.progress();
+        scene
+            .bind_zone_music("forest", "ritual_ambience", progress.clone())
+            .unwrap();
         reader.pump().unwrap();
         let mut mixer = crate::audio::Mixer::new(48000).unwrap();
         assert!(mixer.play_rt(prepared).is_ok());
         mixer.render_rt(&mut [0.; 128]).unwrap();
         assert_eq!(progress.frame(), 564);
+        assert_eq!(
+            scene
+                .zone_music_position("forest", "ritual_ambience")
+                .unwrap(),
+            564
+        );
+        assert_eq!(
+            scene
+                .zone_music_position("chamber", "ritual_ambience")
+                .unwrap(),
+            0
+        );
     }
     #[test]
     fn silent_output_keeps_captions_volumes_and_music_restore_position() {

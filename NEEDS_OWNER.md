@@ -429,3 +429,14 @@ and a second phone build):
 The PTY-level checks run on scratch hosts in `coder-vt`'s
 `tests/authority.rs` and `tests/join.rs` and in `coder-pty`'s
 `tests/typist.rs`.
+
+## Verify native Verse audio on physical output after V23 (#10739)
+
+After installing the matching native chamber build, listen to a crowded fight,
+remove and reconnect the selected output device, change focus, and suspend and
+resume the application. Confirm that critical cues remain audible, music resumes
+at its retained position, and sound remains clean. With no output device, confirm
+that captions and master/music controls (F9–F12) still work. The committed V23
+checks use a headless callback and controlled PCM production; they do not open an
+owner device or prove driver scheduling. Browser and phone mounting remains V24.
+Open a new issue for a defect found in this device run.

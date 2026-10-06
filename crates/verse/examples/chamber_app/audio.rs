@@ -105,9 +105,17 @@ impl Audio {
         let result = (|| -> Result<Output, String> {
             let output = Output::open()?;
             output.volume(self.scene.master, self.scene.buses)?;
-            if let Some(music) = self.scene.enter_zone("chamber", Some("ritual_ambience"))? {
-                output.play_prepared(music)?;
-            }
+            let start = self
+                .scene
+                .zone_music_position("chamber", "ritual_ambience")?;
+            let music = self
+                .scene
+                .bank
+                .prepare("ritual_ambience", None, Vec3::ZERO, start)?;
+            let progress = music.progress();
+            output.play_prepared(music)?;
+            self.scene
+                .bind_zone_music("chamber", "ritual_ambience", progress)?;
             Ok(output)
         })();
         match result {
