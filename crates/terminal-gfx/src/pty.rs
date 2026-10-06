@@ -333,6 +333,12 @@ impl Transport for Local {
     fn rule_command(&self, verb: &str, id: &str) -> Receiver<Result<(), String>> {
         super::helpers::rule_command(verb, id, self.helper_home.as_deref())
     }
+    fn read_studies(&self, root: &str) -> Receiver<terminal_core::gym::ListRead> {
+        super::helpers::read_studies(root, self.helper_home.as_deref())
+    }
+    fn read_study(&self, dir: &str) -> Receiver<terminal_core::gym::Read> {
+        super::helpers::read_study(dir, self.helper_home.as_deref())
+    }
     fn task_command(&self, verb: &str, bytes: &[u8]) -> Receiver<terminal_core::run::Sent> {
         super::helpers::task_command(verb, bytes, self.helper_home.as_deref())
     }

@@ -30,7 +30,10 @@ The owner's words, verbatim:
   and the key strip names them at all times: F1 help, F2 context, F3 copy,
   F4 thread, F5 shell (run the line as a shell command), F6 ask, F7 fix,
   F8 panes, F9 run, F10 quit, and F11 rules (this computer's background
-  rules, which ENTER pauses or resumes after CONFIRM).
+  rules, which ENTER pauses or resumes after CONFIRM). The strip is full
+  at 120 columns, so F12 (plugin test results, recomputed from their
+  retained attempts) is named in F1 help, and its page's strip names its
+  own keys.
 - **One conversation page.** F4 draws the conversation the input line's
   questions go to in place of the transcript, as plain text with its state
   (`reading`, `current`, `reply arriving`, `missing`, or `unavailable`).

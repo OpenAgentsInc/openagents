@@ -307,6 +307,48 @@ pub fn read_rules(home: Option<&Path>) -> Receiver<terminal_core::rules::Read> {
     receiver
 }
 
+/// Lists the plugin test results under `root`; the listing reads each
+/// report without checking it.
+pub fn read_studies(root: &str, home: Option<&Path>) -> Receiver<terminal_core::gym::ListRead> {
+    use terminal_core::gym::{READ_MAX, decode_list};
+    let (sender, receiver) = mpsc::channel();
+    let root = root.to_owned();
+    let home = home.map(Path::to_path_buf);
+    std::thread::spawn(move || {
+        let read = helper(
+            &["--json", "plugin", "test", "studies", &root],
+            None,
+            home.as_deref(),
+            READ_MAX,
+            std::time::Duration::from_secs(20),
+        )
+        .and_then(|(stdout, stderr)| decode_list(&stdout, &stderr));
+        let _ = sender.send(read);
+    });
+    receiver
+}
+
+/// Recomputes the retained plugin test result in `dir` from its attempts.
+/// It runs nothing and publishes nothing.
+pub fn read_study(dir: &str, home: Option<&Path>) -> Receiver<terminal_core::gym::Read> {
+    use terminal_core::gym::{READ_MAX, decode};
+    let (sender, receiver) = mpsc::channel();
+    let dir = dir.to_owned();
+    let home = home.map(Path::to_path_buf);
+    std::thread::spawn(move || {
+        let read = helper(
+            &["--json", "plugin", "test", "show", &dir],
+            None,
+            home.as_deref(),
+            READ_MAX,
+            std::time::Duration::from_secs(60),
+        )
+        .and_then(|(stdout, stderr)| decode(&stdout, &stderr, &dir));
+        let _ = sender.send(read);
+    });
+    receiver
+}
+
 /// Pauses or resumes background rule `id` through the host's existing
 /// command; `verb` is `pause` or `resume` and nothing else.
 pub fn rule_command(verb: &str, id: &str, home: Option<&Path>) -> Receiver<Result<(), String>> {

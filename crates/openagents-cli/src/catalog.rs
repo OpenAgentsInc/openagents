@@ -105,6 +105,10 @@ pub(crate) const EXT_USAGE: &str = "usage: openagents plugin COMMAND [OPTIONS]
   test check EVENT [TARGET] [--runs N] [--concurrency N] [--trust] [--coder PATH]
       [--questions DIR] [--blossom URL]
         Rerun a published test result and publish a confirm or a dispute.
+  test studies [DIR]
+        List the test results under DIR, newest first.
+  test show RESULTS
+        Recompute a retained test result from its attempts; runs nothing.
   defaults sync [--root PUBKEY] [--catalog DIR]... [--into DIR]
         Write the plugins Coder uses for everyone (the newest coder-defaults
         release) into the directory Coder reads.
@@ -136,6 +140,8 @@ pub(crate) const EXT_EFFECTS: &[Declared] = &[
     crate::ext_eval::EFFECTS[2],
     crate::ext_eval::EFFECTS[3],
     crate::ext_eval::EFFECTS[4],
+    crate::ext_eval::EFFECTS[5],
+    crate::ext_eval::EFFECTS[6],
     Declared::computer("defaults sync", Effect::LocalWrite),
     Declared::computer("defaults show", Effect::ReadOnly),
 ];

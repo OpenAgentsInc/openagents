@@ -53,6 +53,15 @@ pub(crate) const USAGE: &str = "usage: openagents plugin test COMMAND [OPTIONS]
         3189 result signed by your world key. --validates names a
         published result on the same plugin that this result, on a second
         test set, externally validates.
+  studies [DIR]
+        List the results directories under DIR (default .): results/*,
+        evals/results/*, and */evals/results/*, newest first. Lists only.
+  show RESULTS
+        Reopen a results directory and recompute its report from every
+        retained attempt: coverage, cost, measurements, and the verdict
+        under the gate the suite names. Prints whether the attempts agree
+        with the report, dispute it, or can't verify it. Runs nothing and
+        publishes nothing.
   check EVENT [TARGET] [--runs N] [--concurrency N] [--grant read|write|exec|network]...
       [--trust] [--output-dir DIR] [--coder PATH] [--questions DIR] [--relay URL]
       [--blossom URL] [--as PROFILE]
@@ -83,6 +92,8 @@ pub(crate) const EFFECTS: &[Declared] = &[
     Declared::computer("test publish", Effect::Publishes),
     Declared::computer("test check", Effect::LongRunning),
     Declared::computer("test release", Effect::Publishes),
+    Declared::computer("test studies", Effect::ReadOnly),
+    Declared::computer("test show", Effect::ReadOnly),
 ];
 
 /// The package record file at an extension's root.
@@ -115,8 +126,73 @@ pub fn run(output: &Output, words: &[String]) -> u8 {
         "publish" => publish(output, &args),
         "check" => check(output, &args),
         "release" => release(output, &args),
+        "studies" => studies(output, &args),
+        "show" => show(output, &args),
         other => output.usage(NAME, &format!("unknown command `{other}`"), USAGE),
     }
+}
+
+/// `studies [DIR]`: the retained results directories, unchecked.
+fn studies(output: &Output, args: &Args) -> u8 {
+    let root = args
+        .positional()
+        .first()
+        .map_or_else(|| PathBuf::from("."), PathBuf::from);
+    let listed = ext_eval::study::list(&root);
+    output.emit(
+        &json!({
+            "v": ext_eval::study::STUDIES_SCHEMA,
+            "root": root.display().to_string(),
+            "studies": listed,
+        }),
+        |value| {
+            let rows = value["studies"].as_array().cloned().unwrap_or_default();
+            if rows.is_empty() {
+                return format!("no results under {}", root.display());
+            }
+            rows.iter()
+                .map(|row| {
+                    format!(
+                        "{}  {}  {}",
+                        row["reported"].as_str().unwrap_or("?"),
+                        row["subject"].as_str().unwrap_or("?"),
+                        row["dir"].as_str().unwrap_or_default()
+                    )
+                })
+                .collect::<Vec<_>>()
+                .join("\n")
+        },
+    );
+    0
+}
+
+/// `show RESULTS`: the retained report, recomputed. Exits 0 when the
+/// attempts agree with the report, 1 otherwise.
+fn show(output: &Output, args: &Args) -> u8 {
+    let Some(dir) = args.positional().first() else {
+        return output.usage(NAME, "show needs a results directory", USAGE);
+    };
+    let study = match ext_eval::study::reopen(Path::new(dir)) {
+        Ok(study) => study,
+        Err(message) => return output.fail(NAME, &message),
+    };
+    let agrees = study.agreement == ext_eval::study::Agreement::Agrees;
+    let value = serde_json::to_value(&study).unwrap_or_default();
+    output.emit(&value, |value| {
+        let mut lines = vec![format!(
+            "{}  reported {}, recomputed {}",
+            value["shown"].as_str().unwrap_or_default(),
+            value["reported"].as_str().unwrap_or("nothing"),
+            value["recomputed"].as_str().unwrap_or("unknown"),
+        )];
+        for key in ["problems", "missing"] {
+            for line in value[key].as_array().into_iter().flatten() {
+                lines.push(format!("{key}: {}", line.as_str().unwrap_or_default()));
+            }
+        }
+        lines.join("\n")
+    });
+    if agrees { 0 } else { EXIT_FAILURE }
 }
 
 /// The gate `--gate` names, checked against the gates the profile knows.

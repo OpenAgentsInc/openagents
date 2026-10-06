@@ -43,6 +43,13 @@ struct Fake {
     rules: Mutex<Option<serde_json::Value>>,
     /// Every pause or resume sent: its verb and rule.
     rule_commands: Mutex<Vec<(String, String)>>,
+    /// What `plugin test studies` answers, and every directory listed.
+    studies: Mutex<Option<serde_json::Value>>,
+    study_lists: Mutex<Vec<String>>,
+    /// What `plugin test show` answers, by results directory, and every
+    /// directory read.
+    study: Mutex<std::collections::BTreeMap<String, serde_json::Value>>,
+    study_reads: Mutex<Vec<String>>,
 }
 struct Pane {
     bridge: bool,
@@ -184,6 +191,30 @@ impl Transport for Fake {
         let answer = match self.rules.lock().unwrap().clone() {
             Some(rules) => crate::rules::decode(rules.to_string().as_bytes(), b""),
             None => crate::rules::decode(b"", br#"{"error":"the host's rules store is locked"}"#),
+        };
+        sender.send(answer).unwrap();
+        receiver
+    }
+    fn read_studies(&self, root: &str) -> mpsc::Receiver<crate::gym::ListRead> {
+        self.study_lists.lock().unwrap().push(root.to_owned());
+        let (sender, receiver) = mpsc::channel();
+        let answer = match self.studies.lock().unwrap().clone() {
+            Some(studies) => crate::gym::decode_list(studies.to_string().as_bytes(), b""),
+            None => crate::gym::decode_list(b"", br#"{"error":"openagents is not installed"}"#),
+        };
+        sender.send(answer).unwrap();
+        receiver
+    }
+    fn read_study(&self, dir: &str) -> mpsc::Receiver<crate::gym::Read> {
+        self.study_reads.lock().unwrap().push(dir.to_owned());
+        let (sender, receiver) = mpsc::channel();
+        let answer = match self.study.lock().unwrap().get(dir) {
+            Some(study) => crate::gym::decode(study.to_string().as_bytes(), b"", dir),
+            None => crate::gym::decode(
+                br#"{"error":"report.json: No such file or directory"}"#,
+                b"",
+                dir,
+            ),
         };
         sender.send(answer).unwrap();
         receiver
@@ -1898,4 +1929,223 @@ fn the_rules_page_shows_host_rules_and_pauses_them_only_after_confirm() {
     // ESC returns to the transcript.
     press(&mut app, KeyCode::Escape, NamedKey::Escape);
     assert!(!app.paper.rules.open);
+}
+
+fn study_fixture(dir: &str, agreement: &str, shown: &str, reported: &str) -> serde_json::Value {
+    let recomputed = if agreement == "unverifiable" {
+        serde_json::Value::Null
+    } else {
+        serde_json::json!("pass")
+    };
+    serde_json::json!({
+        "v": "openagents.ext-eval-study.v1",
+        "dir": dir,
+        "report": format!("sha256:{}", "a".repeat(64)),
+        "suite": "5be6:repo-map-tests/eval-suite",
+        "suite_ref": {},
+        "gate": "ext-eval-v2",
+        "gate_digest": format!("sha256:{}", "b".repeat(64)),
+        "subject": {
+            "definition": {"id": "5be6:repo-map/repo-map",
+                           "artifact": {"digest": format!("sha256:{}", "c".repeat(64))}},
+            "lock": {"digest": format!("sha256:{}", "d".repeat(64))},
+        },
+        "baseline": {
+            "definition": {"id": "5be6:coder/coder",
+                           "artifact": {"digest": format!("sha256:{}", "e".repeat(64))}},
+            "lock": {"digest": format!("sha256:{}", "f".repeat(64))},
+        },
+        "evaluator": "0b1c",
+        "started_at": 1_790_000_000u64,
+        "ended_at": 1_790_000_900u64,
+        "defaults": null,
+        "development": 2,
+        "held_out": 0,
+        "reported": reported,
+        "recomputed": recomputed,
+        "agreement": agreement,
+        "shown": shown,
+        "coverage": {
+            "subject": {"planned": 2, "attempted": 4, "completed": 3, "refused": 0,
+                        "failed": 0, "cancelled": 0, "unknown": 1, "excluded": 0},
+            "baseline": {"planned": 2, "attempted": 4, "completed": 4, "refused": 0,
+                         "failed": 0, "cancelled": 0, "unknown": 0, "excluded": 0},
+        },
+        "totals": {
+            "subject": {"cost_usd": null, "cost_unknown": 1, "seconds": 41.5,
+                        "seconds_unknown": 0, "cases_scored": 2, "cases_passed": 2,
+                        "cases_unknown": 0},
+            "baseline": {"cost_usd": 0.0123, "cost_unknown": 0, "seconds": 30.0,
+                         "seconds_unknown": 0, "cases_scored": 2, "cases_passed": 1,
+                         "cases_unknown": 0},
+        },
+        "cases": [
+            {"id": "callers", "kind": "should-fire", "compared": true, "subject_only": false,
+             "subject": {"planned": 2, "scored": 1, "runs_passed": 1, "score": 1.0, "passed": true},
+             "baseline": {"planned": 2, "scored": 2, "runs_passed": 0, "score": 0.0, "passed": false},
+             "change": 1.0},
+        ],
+        "attempts": [
+            {"case": "callers", "arm": "subject", "attempt": 1, "outcome": "completed",
+             "reason": null, "score": 1.0, "passed": true, "cost_usd": 0.004, "seconds": 20.5,
+             "grades": "retained", "trajectory": "retained"},
+            {"case": "callers", "arm": "subject", "attempt": 2, "outcome": "unknown",
+             "reason": null, "score": null, "passed": null, "cost_usd": null, "seconds": 21.0,
+             "grades": "retained", "trajectory": "missing"},
+        ],
+        "partial": "1 run did not finish",
+        "limitations": ["Trajectories stay private; the report carries their digests."],
+        "published": null,
+        "relay": null,
+        "problems": if agreement == "disputes" {
+            serde_json::json!(["the retained attempts give fail, and the report says pass"])
+        } else {
+            serde_json::json!([])
+        },
+        "missing": if agreement == "unverifiable" {
+            serde_json::json!(["the ext-eval-v2 gate is not on this computer"])
+        } else {
+            serde_json::json!([])
+        },
+    })
+}
+
+#[test]
+fn the_gym_page_recomputes_a_retained_study_and_runs_nothing() {
+    use crate::input::{KeyCode, NamedKey};
+    let transport = Arc::new(Fake {
+        bridge: true,
+        ..Fake::default()
+    });
+    let mut app = Application::new(Sessions(transport.clone()));
+    app.paper.on = true;
+    app.toggle();
+    app.ensure_started();
+    let sheet = |app: &mut Application| app.paper_sheet(120, 40, "12:00:00", "0.50");
+    let key = |app: &mut Application, named: NamedKey| press(app, KeyCode::Unidentified, named);
+    let arrow = |app: &mut Application, code: KeyCode| press(app, code, NamedKey::Unidentified);
+    transport
+        .output
+        .lock()
+        .unwrap()
+        .push_back(b"\x1b]7;file:///test/work\x07\x1b]133;A\x07$ \x1b]133;B\x07".to_vec());
+    app.tick();
+
+    // Without the helper the listing is unavailable and nothing is read.
+    key(&mut app, NamedKey::F12);
+    app.tick();
+    let text = sheet(&mut app).text();
+    assert!(
+        text.contains("GYM studies under /test/work  [unavailable]"),
+        "{text}"
+    );
+    assert!(text.contains("openagents is not installed"));
+    press(&mut app, KeyCode::Enter, NamedKey::Enter);
+    assert!(transport.study_reads.lock().unwrap().is_empty());
+    key(&mut app, NamedKey::F12);
+    assert!(!app.paper.gym.open);
+
+    let agreed = "/test/work/evals/results/2026-10-05T12-00-00Z";
+    let disputed = "/test/work/results/2026-10-04T09-00-00Z";
+    *transport.studies.lock().unwrap() = Some(serde_json::json!({
+        "v": "openagents.ext-eval-studies.v1",
+        "root": "/test/work",
+        "studies": [
+            {"dir": agreed, "subject": "5be6:repo-map/repo-map", "reported": "pass",
+             "ended_at": 1_790_000_900u64},
+            {"dir": disputed, "subject": "5be6:repo-map/repo-map", "reported": "pass",
+             "ended_at": 1_789_000_000u64},
+            {"dir": "/test/work/results/gone", "subject": null, "reported": "inconclusive",
+             "ended_at": null},
+        ],
+    }));
+    transport.study.lock().unwrap().insert(
+        agreed.into(),
+        study_fixture(agreed, "agrees", "Better", "pass"),
+    );
+    transport.study.lock().unwrap().insert(
+        disputed.into(),
+        study_fixture(disputed, "disputes", "Disputed", "pass"),
+    );
+    key(&mut app, NamedKey::F12);
+    app.tick();
+    let page = sheet(&mut app);
+    let text = page.text();
+    for row in 0..40 {
+        let row_text = page.row_text(row);
+        assert_eq!(row_text.len(), 120, "row {row}: {row_text:?}");
+        assert!(
+            row_text.chars().all(|c| (' '..='~').contains(&c)),
+            "row {row}"
+        );
+    }
+    assert_eq!(
+        transport.study_lists.lock().unwrap().as_slice(),
+        ["/test/work".to_owned(), "/test/work".to_owned()]
+    );
+    assert!(text.contains("GYM studies under /test/work  3 results  [current]"));
+    assert!(text.contains("The verdicts listed are the reports' own, unchecked."));
+    assert!(text.contains("> 5be6:repo-map/repo-map  reported pass  ended "));
+    assert!(
+        page.row_text(37)
+            .starts_with("| GYM > UP DOWN pick a result")
+    );
+    assert!(page.row_text(39).starts_with(crate::paper::GYM_KEYS));
+
+    // ENTER recomputes the picked study: both arms, the exact release,
+    // unknown costs kept unknown, and every attempt.
+    press(&mut app, KeyCode::Enter, NamedKey::Enter);
+    app.tick();
+    let text = sheet(&mut app).text();
+    assert!(
+        text.contains(
+            "STUDY Better  reported pass, recomputed pass  [the retained attempts agree]"
+        ),
+        "{text}"
+    );
+    assert!(text.contains("SUBJECT 5be6:repo-map/repo-map  package cccccccccccc"));
+    assert!(text.contains("run lock dddddddddddd"));
+    assert!(text.contains("BASELINE 5be6:coder/coder"));
+    assert!(text.contains("GATE ext-eval-v2 bbbbbbbbbbbb"));
+    assert!(text.contains("not published"));
+    assert!(text.contains("PARTIAL 1 run did not finish"));
+    assert!(text.contains("SUBJECT 4 attempted of 2 cases: 3 completed"));
+    assert!(text.contains("1 unknown"));
+    assert!(text.contains("cost unknown (1 of 4 attempts unknown)  time 41.5 s"));
+    assert!(text.contains("cost $0.0123  time 30.0 s"));
+    assert!(text.contains("callers subject #2  unknown  -  score -  cost unknown"));
+    assert!(text.contains("transcript missing"));
+    assert!(text.contains("Reading ran and published nothing."));
+
+    // A disputed study never shows the report's Better.
+    press(&mut app, KeyCode::Escape, NamedKey::Escape);
+    assert!(app.paper.gym.open && app.paper.gym.viewing.is_none());
+    arrow(&mut app, KeyCode::ArrowDown);
+    press(&mut app, KeyCode::Enter, NamedKey::Enter);
+    app.tick();
+    let text = sheet(&mut app).text();
+    assert!(text.contains(
+        "STUDY Disputed  reported pass, recomputed pass  [the retained attempts dispute"
+    ));
+    assert!(text.contains("DISPUTES the retained attempts give fail, and the report says pass"));
+    assert!(!text.contains("STUDY Better"));
+
+    // One that can't be read says so.
+    press(&mut app, KeyCode::Escape, NamedKey::Escape);
+    arrow(&mut app, KeyCode::ArrowDown);
+    press(&mut app, KeyCode::Enter, NamedKey::Enter);
+    app.tick();
+    let text = sheet(&mut app).text();
+    assert!(text.contains("[unavailable]"));
+    assert!(text.contains("report.json: No such file or directory"));
+
+    // Reading never asked the host or a door for anything else.
+    assert_eq!(transport.study_reads.lock().unwrap().len(), 3);
+    assert!(transport.commands.lock().unwrap().is_empty());
+    assert!(transport.rule_commands.lock().unwrap().is_empty());
+    assert!(transport.requests.lock().unwrap().is_empty());
+
+    press(&mut app, KeyCode::Escape, NamedKey::Escape);
+    press(&mut app, KeyCode::Escape, NamedKey::Escape);
+    assert!(!app.paper.gym.open);
 }

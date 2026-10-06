@@ -59,6 +59,7 @@ pub mod html;
 pub mod record;
 pub mod report;
 pub mod score;
+pub mod study;
 pub mod trajectory;
 pub mod workspace;
 

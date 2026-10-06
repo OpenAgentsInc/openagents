@@ -173,6 +173,25 @@ pause|resume ID`, only after CONFIRM; a refusal says why. Editing stays with
 `openagents background edit`, which the page names. There is no scheduler
 or rules store in the terminal.
 
+F12 shows retained plugin evaluations and their paired comparisons
+([#10663](https://github.com/OpenAgentsInc/openagents/issues/10663),
+`terminal_core::gym`). It lists the results directories under the shell's
+directory through `openagents --json plugin test studies DIR`, with each
+report's own verdict marked unchecked. ENTER recomputes the one picked
+through `openagents --json plugin test show DIR`
+([reopening a result](../extensions/evaluation.md#reopening-a-result)) and
+shows the exact plugin release and run lock of both arms, the suite and
+gate digests, the partition, whether the run was marginal over
+`coder-defaults` and whether it was published, coverage and known or
+unknown cost and time per arm, each case with and without the plugin, and
+every attempt with its outcome, grades, and transcript state. The heading
+shows the verdict's words only when the retained attempts agree with the
+report; otherwise it shows `Disputed` with each contradiction, or
+`Unverified` with what is missing. Nothing on the page runs, calls a door,
+or publishes; it names `openagents plugin test publish` and `check`. The
+120-column key strip is full, so F1 help names F12, and the page's own key
+strip names its keys.
+
 ## Consumers
 
 `terminal-core` is the owner of a mount's local panes. The standalone

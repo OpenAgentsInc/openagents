@@ -580,6 +580,26 @@ Exit codes: `0` Better or a clean single-arm run, `1` Worse,
 inconclusive, or a load failure, `2` partial, `64` invalid usage, and
 `130` or `143` on a signal.
 
+### Reopening a result
+
+`openagents plugin test studies [DIR]` lists the results directories under
+`DIR` (`results/*`, `evals/results/*`, and `*/evals/results/*`), newest
+first, with each report's own verdict, unchecked.
+`openagents plugin test show RESULTS` reopens one and recomputes it from
+every retained attempt (`ext_eval::study`): it rebuilds each run from its
+grades document, checks the suite files, grades, and transcripts against
+the digests the report names, scores the runs again, and asks the gate
+the suite names for the verdict. It answers `agrees` when the coverage,
+measurements, and verdict all recompute; `disputes` when the retained
+files contradict the report; and `unverifiable` when something it needs is
+missing, including the gate on a computer that does not hold that exact
+version. Only a result that agrees shows its verdict's words; the others
+show `Disputed` or `Unverified`. An inconclusive verdict stays No clear
+change, and a missing cost or time stays unknown in its arm's count. It
+calls no door, runs nothing, publishes nothing, and exits `0` only when the
+attempts agree. The terminal's F12 page draws the same answer
+([workbench resources](../terminal/workbench-resources.md)).
+
 ## Publishing and the Gym
 
 `openagents ext eval publish` (on the phone, **Add to the Gym**) makes a

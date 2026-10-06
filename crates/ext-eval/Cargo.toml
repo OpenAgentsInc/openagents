@@ -73,6 +73,10 @@ name = "runner"
 required-features = ["runner"]
 
 [[test]]
+name = "study"
+required-features = ["runner"]
+
+[[test]]
 name = "blob"
 required-features = ["runner"]
 

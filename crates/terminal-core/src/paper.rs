@@ -28,6 +28,10 @@ use std::time::Instant;
 /// The key strip on the rules page.
 pub const RULE_KEYS: &str = "F1 HELP  F10 QUIT  F11 RETURN  UP DOWN PICK  ENTER PAUSE OR RESUME, THEN CONFIRM  ESC REJECT OR RETURN";
 
+/// The key strip on the Gym page.
+pub const GYM_KEYS: &str =
+    "F1 HELP  F10 QUIT  F12 RETURN  UP DOWN PICK  ENTER RECOMPUTE  ESC RETURN  PGUP PGDN SCROLL";
+
 /// The key strip on the files page.
 pub const FILE_KEYS: &str =
     "F1 HELP  F2 RETURN  F10 QUIT  UP DOWN PICK  ENTER OPEN  ESC RETURN  PGUP PGDN SCROLL";
@@ -61,6 +65,10 @@ const HELP: &[&str] = &[
     "F10  quit",
     "F11  show this computer's background rules; F11 or ESC returns. There,",
     "     ENTER pauses or resumes the rule picked, after ENTER confirms it",
+    "F12  show the plugin test results under this directory; F12 or ESC returns.",
+    "     There, ENTER recomputes the one picked from its retained attempts and",
+    "     shows whether they agree with its report. It runs and publishes nothing.",
+    "     (The key strip is full, so F12 is named here.)",
     "",
     "A proposed command waits in the transcript. ENTER on an empty input line",
     "confirms it and runs it in your shell; ESC rejects it.",
@@ -194,6 +202,8 @@ pub struct Paper {
     pub files: crate::files::Page,
     /// The background rules page (F11).
     pub rules: crate::rules::Page,
+    /// The Gym page (F12): retained plugin evaluations.
+    pub gym: crate::gym::Page,
     cache: Option<(u64, usize, usize, Vec<Line>)>,
 }
 
@@ -229,6 +239,7 @@ impl Default for Paper {
             run: crate::run::Page::default(),
             files: crate::files::Page::default(),
             rules: crate::rules::Page::default(),
+            gym: crate::gym::Page::default(),
             cache: None,
         }
     }
@@ -305,7 +316,12 @@ impl Application {
                 self.paper.help = !self.paper.help;
                 return true;
             }
+            Some(NamedKey::F12) => {
+                self.paper_gym_toggle();
+                return true;
+            }
             Some(NamedKey::F11) => {
+                self.paper.gym.open = false;
                 let page = &mut self.paper.rules;
                 page.open = !page.open;
                 if page.open {
@@ -395,6 +411,16 @@ impl Application {
                 self.paper.quit = true;
                 return true;
             }
+            Some(NamedKey::PageUp | NamedKey::PageDown) if self.paper.gym.open => {
+                let half = self.paper.grid.0 as usize / 2;
+                let page = &mut self.paper.gym;
+                page.scroll = if named == Some(NamedKey::PageUp) {
+                    page.scroll.saturating_sub(half)
+                } else {
+                    page.scroll.saturating_add(half)
+                };
+                return true;
+            }
             Some(NamedKey::PageUp | NamedKey::PageDown) if self.paper.rules.open => {
                 let half = self.paper.grid.0 as usize / 2;
                 let page = &mut self.paper.rules;
@@ -475,6 +501,10 @@ impl Application {
             if let Some(bytes) = self.encode(key) {
                 self.send(&bytes);
             }
+            return true;
+        }
+        if self.paper.gym.open {
+            self.paper_gym_key(key.code, enter);
             return true;
         }
         if self.paper.rules.open {
@@ -639,6 +669,7 @@ impl Application {
     fn paper_run_toggle(&mut self) {
         self.paper.files.open = false;
         self.paper.rules.open = false;
+        self.paper.gym.open = false;
         if self.paper.run.open {
             self.paper.run.open = false;
             return;
@@ -762,6 +793,115 @@ impl Application {
             page.reading = Some(reading);
             page.dirty = false;
             page.reads += 1;
+        }
+    }
+
+    /// F12: lists the plugin test results under the shell's directory, or
+    /// returns. Listing only reads.
+    fn paper_gym_toggle(&mut self) {
+        let page = &mut self.paper.gym;
+        page.open = !page.open;
+        if !page.open {
+            return;
+        }
+        self.paper.help = false;
+        self.paper.rules.open = false;
+        let root = self
+            .paper_pane()
+            .and_then(|pane| self.panes.get(&pane))
+            .and_then(|pane| pane.session.blocks.cwd.clone())
+            .unwrap_or_else(|| ".".into());
+        let listing = self.sessions().0.read_studies(&root);
+        let page = &mut self.paper.gym;
+        page.root = Some(root);
+        page.listed = None;
+        page.listing = Some(listing);
+        page.viewing = None;
+        page.shown = None;
+        page.reading = None;
+        page.scroll = 0;
+        page.reads += 1;
+    }
+
+    /// A key on the Gym page: the arrows pick or scroll, ENTER recomputes
+    /// the picked study (again, on its page), and ESC steps back.
+    fn paper_gym_key(&mut self, code: KeyCode, enter: bool) {
+        let page = &mut self.paper.gym;
+        let count = match &page.listed {
+            Some(Ok(studies)) => studies.studies.len(),
+            _ => 0,
+        };
+        let dir = match (&page.viewing, page.picked()) {
+            (Some(dir), _) => Some(dir.clone()),
+            (None, Some(study)) => Some(study.dir.clone()),
+            (None, None) => None,
+        };
+        match code {
+            KeyCode::Escape if page.viewing.is_some() => {
+                page.viewing = None;
+                page.shown = None;
+                page.reading = None;
+                page.scroll = 0;
+            }
+            KeyCode::Escape => page.open = false,
+            KeyCode::ArrowUp if page.viewing.is_some() => {
+                page.scroll = page.scroll.saturating_sub(1);
+            }
+            KeyCode::ArrowDown if page.viewing.is_some() => {
+                page.scroll = page.scroll.saturating_add(1);
+            }
+            KeyCode::ArrowUp => page.selected = page.selected.saturating_sub(1),
+            KeyCode::ArrowDown => page.selected = (page.selected + 1).min(count.saturating_sub(1)),
+            _ if enter => {
+                let Some(dir) = dir else {
+                    return;
+                };
+                if page.reading.is_some() {
+                    return;
+                }
+                let reading = self.sessions().0.read_study(&dir);
+                let page = &mut self.paper.gym;
+                if page.viewing.as_deref() != Some(dir.as_str()) {
+                    page.scroll = 0;
+                }
+                page.viewing = Some(dir);
+                page.shown = None;
+                page.reading = Some(reading);
+                page.reads += 1;
+            }
+            _ => {}
+        }
+    }
+
+    /// Takes a finished listing or study for the Gym page.
+    fn paper_gym_poll(&mut self) {
+        use std::sync::mpsc::TryRecvError;
+        let page = &mut self.paper.gym;
+        if let Some(listing) = &page.listing {
+            match listing.try_recv() {
+                Ok(read) => {
+                    page.listed = Some(read);
+                    page.listing = None;
+                }
+                Err(TryRecvError::Empty) => {}
+                Err(TryRecvError::Disconnected) => {
+                    page.listed = Some(Err("the reader ended without an answer".into()));
+                    page.listing = None;
+                }
+            }
+        }
+        if let Some(reading) = &page.reading {
+            match reading.try_recv() {
+                Ok(read) => {
+                    page.shown = Some(read);
+                    page.reading = None;
+                }
+                Err(TryRecvError::Empty) => {}
+                Err(TryRecvError::Disconnected) => {
+                    page.shown = Some(Err("the reader ended without an answer".into()));
+                    page.reading = None;
+                }
+            }
         }
     }
 
@@ -974,6 +1114,7 @@ impl Application {
     fn paper_thread_toggle(&mut self) {
         self.paper.files.open = false;
         self.paper.rules.open = false;
+        self.paper.gym.open = false;
         if self.paper.thread.open {
             self.paper.thread.open = false;
             return;
@@ -1159,6 +1300,7 @@ impl Application {
         self.paper_run_poll();
         self.paper_files_poll();
         self.paper_rules_poll();
+        self.paper_gym_poll();
         let Some(pane_id) = self.paper_pane() else {
             return;
         };
@@ -1346,10 +1488,12 @@ impl Application {
                     tone: Tone::Present,
                 }]);
             }
-        } else if self.paper.rules.open || self.paper.files.open {
+        } else if self.paper.gym.open || self.paper.rules.open || self.paper.files.open {
             // A list reads from its top: the scroll counts lines down.
             let mut wrapped = Vec::new();
-            let lines = if self.paper.rules.open {
+            let lines = if self.paper.gym.open {
+                crate::gym::lines(&self.paper.gym, unix_now())
+            } else if self.paper.rules.open {
                 crate::rules::lines(&self.paper.rules, unix_now())
             } else {
                 crate::files::lines(&self.paper.files)
@@ -1359,7 +1503,9 @@ impl Application {
             }
             let total = wrapped.len();
             let rules = self.paper.rules.open;
-            let (scroll, viewing) = if rules {
+            let (scroll, viewing) = if self.paper.gym.open {
+                (&mut self.paper.gym.scroll, self.paper.gym.viewing.is_some())
+            } else if rules {
                 (&mut self.paper.rules.scroll, false)
             } else {
                 (
@@ -1492,6 +1638,7 @@ impl Application {
             || (self.paper.run.open && self.paper_run_armed())
             || self.paper.files.open
             || self.paper.rules.open
+            || self.paper.gym.open
         {
             spans.push(Span {
                 text: fit(&self.paper_input_hint(), inner - label.len()),
@@ -1515,7 +1662,9 @@ impl Application {
         sheet.rows.push(border());
         sheet.rows.push(vec![Span {
             text: fit(
-                if self.paper.rules.open {
+                if self.paper.gym.open {
+                    GYM_KEYS
+                } else if self.paper.rules.open {
                     RULE_KEYS
                 } else if self.paper.files.open {
                     FILE_KEYS
@@ -1537,6 +1686,9 @@ impl Application {
         }
         if self.smart.pending.is_some() && self.paper.input.is_empty() {
             return ("CONFIRM? ".into(), Tone::Loud);
+        }
+        if self.paper.gym.open {
+            return ("GYM > ".into(), Tone::Quiet);
         }
         if self.paper.rules.open {
             return ("RULES > ".into(), Tone::Quiet);
@@ -1569,6 +1721,13 @@ impl Application {
     }
 
     fn paper_input_hint(&self) -> String {
+        if self.paper.gym.open {
+            return if self.paper.gym.viewing.is_some() {
+                "UP DOWN scroll, ENTER recomputes again, ESC returns to the list".into()
+            } else {
+                "UP DOWN pick a result, ENTER recomputes it, ESC returns".into()
+            };
+        }
         if self.paper.rules.open {
             return match &self.paper.rules.change {
                 Some(change) if change.state == crate::rules::Changed::Armed => format!(

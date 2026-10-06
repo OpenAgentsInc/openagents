@@ -134,11 +134,7 @@ pub(crate) fn suite_artifacts(
     gate_file: &[u8],
     artifacts: &mut Artifacts,
 ) -> (ArtifactRef, ArtifactRef) {
-    let mut ordered: Vec<&Case> = suite.cases.iter().collect();
-    ordered.sort_by(|left, right| left.name.cmp(&right.name));
-    let entries: Vec<Value> = ordered.into_iter().map(case_entry).collect();
-    // `nostr::eval_ext` checks the manifest and writes its canonical bytes.
-    let manifest = nostr::eval_ext::case_manifest(&entries).unwrap_or_default();
+    let manifest = case_manifest(suite);
     let cases = ArtifactRef::of(&manifest, JSON, Some(CASE_SCHEMA));
     artifacts.insert("cases.json".to_string(), manifest);
     let ids: Vec<&str> = suite.cases.iter().map(|case| case.name.as_str()).collect();
@@ -247,6 +243,16 @@ pub(crate) fn suite_artifacts(
     );
     suite_ref.event.clone_from(&identity.suite_release);
     (suite_ref, partition)
+}
+
+/// `cases.json`'s exact bytes for `suite`: each case's files by digest,
+/// in name order.
+pub(crate) fn case_manifest(suite: &Suite) -> Vec<u8> {
+    let mut ordered: Vec<&Case> = suite.cases.iter().collect();
+    ordered.sort_by(|left, right| left.name.cmp(&right.name));
+    let entries: Vec<Value> = ordered.into_iter().map(case_entry).collect();
+    // `nostr::eval_ext` checks the manifest and writes its canonical bytes.
+    nostr::eval_ext::case_manifest(&entries).unwrap_or_default()
 }
 
 fn case_entry(case: &Case) -> Value {
@@ -602,7 +608,7 @@ fn measurement(
 }
 
 #[allow(clippy::cast_precision_loss)]
-fn measurements(scores: &Scores, evidence: &[Value]) -> Vec<Value> {
+pub(crate) fn measurements(scores: &Scores, evidence: &[Value]) -> Vec<Value> {
     let mut out = Vec::new();
     let arms = [
         (Arm::Subject, Some(&scores.subject)),
@@ -1017,7 +1023,7 @@ fn suite_metrics(report: &Value, artifacts: &Artifacts) -> Option<BTreeSet<Strin
 
 /// The document `reference` names, when its exact bytes are among the
 /// artifacts.
-fn find(artifacts: &Artifacts, reference: &Value) -> Option<Value> {
+pub(crate) fn find(artifacts: &Artifacts, reference: &Value) -> Option<Value> {
     let parsed = nostr::contracts::parse_artifact(reference).ok()?;
     artifacts
         .values()

@@ -353,21 +353,58 @@ pub struct Scores {
     pub comparison: ExtEvalComparison,
 }
 
+/// What a plan decides about one case.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct CasePlan {
+    /// Runs planned per arm.
+    pub planned: u32,
+    /// Whether the baseline arm runs the case.
+    pub baseline_runs: bool,
+    /// Whether every grader is subject-only.
+    pub subject_only: bool,
+}
+
 impl Scores {
     /// Scores graded runs against the plan.
     #[must_use]
     pub fn compute(suite: &Suite, plan: &Plan, runs: &[GradedRun], group: &str) -> Self {
+        Self::compute_with(
+            suite,
+            plan.baseline,
+            &|case| CasePlan {
+                planned: plan.runs_for(case),
+                baseline_runs: plan.baseline_runs(case),
+                subject_only: case.subject_only(&plan.extension_operations),
+            },
+            runs,
+            group,
+        )
+    }
+
+    /// Scores graded runs against a plan given case by case: what a reader
+    /// of a retained report does, which knows from the runs document which
+    /// attempts each case planned in each arm rather than the options the
+    /// runner was given.
+    #[must_use]
+    pub fn compute_with(
+        suite: &Suite,
+        baseline: bool,
+        plan_of: &dyn Fn(&Case) -> CasePlan,
+        runs: &[GradedRun],
+        group: &str,
+    ) -> Self {
         let mut cases = Vec::with_capacity(suite.cases.len());
         for case in &suite.cases {
-            let planned = plan.runs_for(case);
+            let case_plan = plan_of(case);
+            let planned = case_plan.planned;
             let of = |arm: Arm| -> Vec<&GradedRun> {
                 runs.iter()
                     .filter(|run| run.case == case.name && run.arm == arm)
                     .collect()
             };
             let subject = CaseArm::of(&of(Arm::Subject), planned);
-            let baseline = plan
-                .baseline_runs(case)
+            let baseline = case_plan
+                .baseline_runs
                 .then(|| CaseArm::of(&of(Arm::Baseline), planned));
             let compared = baseline.as_ref().is_some_and(|baseline| {
                 baseline.score.is_some()
@@ -387,7 +424,7 @@ impl Scores {
                 id: case.name.clone(),
                 kind: case.kind,
                 compared,
-                subject_only: case.subject_only(&plan.extension_operations),
+                subject_only: case_plan.subject_only,
                 subject,
                 baseline,
                 change,
@@ -395,9 +432,8 @@ impl Scores {
         }
 
         let subject = summary(&cases, runs, Arm::Subject, suite.cases.len());
-        let baseline = plan
-            .baseline
-            .then(|| summary(&cases, runs, Arm::Baseline, suite.cases.len()));
+        let baseline_summary =
+            baseline.then(|| summary(&cases, runs, Arm::Baseline, suite.cases.len()));
         let compared: Vec<&CaseScore> = cases.iter().filter(|case| case.compared).collect();
         let change = match (
             mean(compared.iter().filter_map(|case| case.subject.score)),
@@ -410,11 +446,11 @@ impl Scores {
             (Some(subject), Some(baseline)) => Some(subject - baseline),
             _ => None,
         };
-        let comparison = comparison(group, plan, &compared, runs);
+        let comparison = comparison(group, baseline, &compared, runs);
         Self {
             cases,
             subject,
-            baseline,
+            baseline: baseline_summary,
             change,
             comparison,
         }
@@ -464,7 +500,7 @@ fn summary(cases: &[CaseScore], runs: &[GradedRun], arm: Arm, total: usize) -> A
 /// The comparison the gate reads, over compared cases.
 fn comparison(
     group: &str,
-    plan: &Plan,
+    baseline_present: bool,
     compared: &[&CaseScore],
     runs: &[GradedRun],
 ) -> ExtEvalComparison {
@@ -518,7 +554,7 @@ fn comparison(
     };
     ExtEvalComparison {
         group: group.to_string(),
-        baseline_present: plan.baseline,
+        baseline_present,
         cases: compared.len(),
         runs: fewest,
         subject_passed: passed(Arm::Subject),

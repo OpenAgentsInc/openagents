@@ -54,7 +54,7 @@ impl Verdict {
         }
     }
 
-    fn of(gate: GateVerdict) -> Self {
+    pub(crate) fn of(gate: GateVerdict) -> Self {
         match gate {
             GateVerdict::Passed => Self::Pass,
             GateVerdict::Failed => Self::Fail,

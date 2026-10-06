@@ -481,7 +481,7 @@
               "serve"
             ],
             "usage": [
-              "serve [--owner KEY] [--relay URL]... [--workspace LABEL=PATH]... [--listen ADDR] [--listen-websocket ADDR] [--allow-nonloopback] [--websocket-tls-cert FILE --websocket-tls-key FILE --websocket-name NAME] [--advertise lan|tailnet|public=HOST:PORT|URL]... [--tailnet-admission RIGHTS [--no-tailnet-chats]] [--generation N] [--runtime FILE | --no-runtime] [--tasks DIR] [--loopback] [--no-telemetry] [--iroh [--iroh-relay URL | --no-iroh-relay] [--iroh-bind ADDR]...] [--control | --control-socket PATH] [--keychain | --keys DIR] [--label NAME] [--studio-sim]"
+              "serve [--owner KEY] [--relay URL]... [--workspace LABEL=PATH]... [--listen ADDR] [--listen-websocket ADDR] [--allow-nonloopback] [--websocket-tls-cert FILE --websocket-tls-key FILE --websocket-name NAME] [--advertise lan|tailnet|public=HOST:PORT|URL]... [--tailnet-admission RIGHTS [--no-tailnet-chats]] [--generation N] [--runtime FILE | --no-runtime] [--tasks DIR] [--loopback] [--no-telemetry] [--iroh [--iroh-relay URL | --no-iroh-relay] [--iroh-bind ADDR]...] [--control | --control-socket PATH] [--keychain | --keys DIR] [--label NAME] [--terminal-shell PATH] [--studio-sim]"
             ],
             "forms": [
               {
@@ -666,6 +666,13 @@
                     "kind": "option",
                     "name": "label",
                     "value": "NAME",
+                    "open": true,
+                    "optional": true
+                  },
+                  {
+                    "kind": "option",
+                    "name": "terminal-shell",
+                    "value": "PATH",
                     "open": true,
                     "optional": true
                   },
@@ -912,6 +919,14 @@
           "kind": "option",
           "name": "label",
           "value": "NAME",
+          "open": true,
+          "optional": true,
+          "repeated": true
+        },
+        {
+          "kind": "option",
+          "name": "terminal-shell",
+          "value": "PATH",
           "open": true,
           "optional": true,
           "repeated": true
@@ -17517,6 +17532,75 @@
                 ],
                 "summary": "Rerun a published test result and publish a confirm or a dispute.",
                 "effect": "long_running",
+                "runs_on": "connected_computer"
+              }
+            },
+            {
+              "name": "studies",
+              "leaf": {
+                "path": [
+                  "plugin",
+                  "test",
+                  "studies"
+                ],
+                "usage": [
+                  "test studies [DIR]"
+                ],
+                "forms": [
+                  {
+                    "tokens": [
+                      {
+                        "kind": "literal",
+                        "word": "test"
+                      },
+                      {
+                        "kind": "literal",
+                        "word": "studies"
+                      },
+                      {
+                        "kind": "positional",
+                        "name": "DIR",
+                        "optional": true
+                      }
+                    ]
+                  }
+                ],
+                "summary": "List the test results under DIR, newest first.",
+                "effect": "read_only",
+                "runs_on": "connected_computer"
+              }
+            },
+            {
+              "name": "show",
+              "leaf": {
+                "path": [
+                  "plugin",
+                  "test",
+                  "show"
+                ],
+                "usage": [
+                  "test show RESULTS"
+                ],
+                "forms": [
+                  {
+                    "tokens": [
+                      {
+                        "kind": "literal",
+                        "word": "test"
+                      },
+                      {
+                        "kind": "literal",
+                        "word": "show"
+                      },
+                      {
+                        "kind": "positional",
+                        "name": "RESULTS"
+                      }
+                    ]
+                  }
+                ],
+                "summary": "Recompute a retained test result from its attempts; runs nothing.",
+                "effect": "read_only",
                 "runs_on": "connected_computer"
               }
             }

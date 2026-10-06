@@ -91,6 +91,23 @@ pub trait Transport: Send + Sync {
         let _ = sender.send(Err("this mount reads no background rules".into()));
         receiver
     }
+    /// Lists the plugin test results under directory `root`, reading each
+    /// report without checking it. A mount without the helper answers that
+    /// it cannot.
+    fn read_studies(&self, root: &str) -> Receiver<crate::gym::ListRead> {
+        let _ = root;
+        let (sender, receiver) = std::sync::mpsc::channel();
+        let _ = sender.send(Err("this mount reads no plugin test results".into()));
+        receiver
+    }
+    /// Recomputes the retained plugin test result in `dir` from its
+    /// attempts, only reading.
+    fn read_study(&self, dir: &str) -> Receiver<crate::gym::Read> {
+        let _ = dir;
+        let (sender, receiver) = std::sync::mpsc::channel();
+        let _ = sender.send(Err("this mount reads no plugin test results".into()));
+        receiver
+    }
     /// Pauses or resumes background rule `id` (`verb` is `pause` or
     /// `resume`) through the host's existing command.
     fn rule_command(&self, verb: &str, id: &str) -> Receiver<Result<(), String>> {
