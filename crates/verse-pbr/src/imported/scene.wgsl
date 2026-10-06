@@ -7,6 +7,9 @@ struct Material { params:vec4<f32>,channels:vec4<f32>,emission:vec4<f32>,maps:ve
 @group(0) @binding(0) var<uniform> frame:Frame;
 @group(0) @binding(1) var shadows:texture_depth_2d_array;
 @group(0) @binding(2) var shadow_sampler:sampler_comparison;
+@group(0) @binding(3) var fire_noise:texture_3d<f32>;
+@group(0) @binding(4) var fire_lut:texture_2d<f32>;
+@group(0) @binding(5) var fire_sampler:sampler;
 @group(1) @binding(0) var image:texture_2d<f32>;
 @group(1) @binding(1) var tex_sampler:sampler;
 @group(1) @binding(2) var<uniform> material:Material;
@@ -121,6 +124,10 @@ fn fog_amount(p:vec3<f32>)->f32{
  if material.maps.z>0.5 {ao=mix(1.0,textureSample(occlusion_image,tex_sampler,v.uv).r,material.channels.y);}
  var emission=material.emission.rgb;
  if material.maps.w>0.5 {emission*=textureSample(emission_image,tex_sampler,v.uv).rgb;}
+ if pose.params.w>0.5 && frame.settings.w>0.0 {
+  let volume=verse_fire_volume(v.uv*2.0-1.0,v.pos,pose.params.z,tex.a,u32(frame.settings.w),fire_noise,fire_lut,fire_sampler,fire_sampler);
+  return vec4(volume.rgb*v.tint*1.6/max(volume.a,0.001),volume.a*pose.params.y);
+ }
  if pose.params.x>1.5 {
   let color=tex.rgb*1.6;
   return vec4(color*v.tint,tex.a*pose.params.y);

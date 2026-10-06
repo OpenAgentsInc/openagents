@@ -1,0 +1,16 @@
+{
+  "upstream": "https://github.com/dgreenheck/threejs-fire-pro",
+  "upstream_revision": "c284f0b13ed2234752087b8dce24f0cb38854147",
+  "license": "MIT",
+  "checks": {
+    "command": "cargo test -p verse-pbr --lib -- --test-threads=1",
+    "passed": 86,
+    "failed": 0,
+    "ignored": 7,
+    "format": "cargo fmt -p verse-pbr"
+  },
+  "capture_command": "cargo run -p verse-pbr --example fire_capture -- OUTPUT_DIRECTORY",
+  "capture": "Real GPU output; identical scene settings between before/after, no image grading or image editing.",
+  "inspection": "Inspected both times in physical and battle renderer. Fire changes from white to thermal orange in the battle fixture; physical smoke remains unchanged. Dense overlapping particles still produce broad bright cores.",
+  "limits": "Procedural particle-proxy density; no sparse fluid simulation, smoke self-shadowing, or new fire-driven scene lights. This fixture does not establish multiplayer frame-time performance."
+}

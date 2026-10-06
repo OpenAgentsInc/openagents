@@ -109,6 +109,7 @@ struct Frame {
     /// A neon stage's key light color (rgb), with w 1 when set; white
     /// otherwise.
     key_tint: [f32; 4],
+    fire_control: [f32; 4],
 }
 
 impl Frame {
@@ -599,6 +600,8 @@ pub struct Photo {
     fx_group: wgpu::BindGroup,
     /// The display's headroom over reference white for space frames.
     pub headroom: f32,
+    /// Enable bounded optical fire; disabling it keeps the original flipbooks for comparisons.
+    pub fire_volumes: bool,
 }
 
 fn shader(device: &wgpu::Device, label: &str, source: &str) -> wgpu::ShaderModule {
@@ -693,6 +696,14 @@ const ADDITIVE: wgpu::BlendState = wgpu::BlendState {
 };
 
 impl Photo {
+    fn fire_control(&self) -> [f32; 4] {
+        let steps = match self.capability.quality.tier {
+            Tier::Low => 0.0,
+            Tier::Medium => 8.0,
+            Tier::High => 16.0,
+        };
+        [steps, if self.fire_volumes { 1.0 } else { 0.0 }, 0.0, 0.0]
+    }
     pub fn new(
         device: &wgpu::Device,
         queue: &wgpu::Queue,
@@ -1223,6 +1234,14 @@ impl Photo {
                     ty: wgpu::BindingType::Sampler(wgpu::SamplerBindingType::Filtering),
                     count: None,
                 },
+                texture_entry(3, wgpu::TextureViewDimension::D3, float),
+                texture_entry(4, wgpu::TextureViewDimension::D2, float),
+                wgpu::BindGroupLayoutEntry {
+                    binding: 5,
+                    visibility: wgpu::ShaderStages::FRAGMENT,
+                    ty: wgpu::BindingType::Sampler(wgpu::SamplerBindingType::Filtering),
+                    count: None,
+                },
             ],
         });
         let sprite_layout = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
@@ -1245,6 +1264,16 @@ impl Photo {
             mipmap_filter: wgpu::MipmapFilterMode::Linear,
             ..Default::default()
         });
+        let [fire_noise, fire_lut] = crate::fx::fire::textures(device, queue);
+        let fire_sampler = device.create_sampler(&wgpu::SamplerDescriptor {
+            label: Some("Verse fire volume"),
+            address_mode_u: wgpu::AddressMode::Repeat,
+            address_mode_v: wgpu::AddressMode::Repeat,
+            address_mode_w: wgpu::AddressMode::Repeat,
+            mag_filter: wgpu::FilterMode::Linear,
+            min_filter: wgpu::FilterMode::Linear,
+            ..Default::default()
+        });
         let fx_group = device.create_bind_group(&wgpu::BindGroupDescriptor {
             label: Some("verse fx sheets"),
             layout: &fx_layout,
@@ -1256,6 +1285,18 @@ impl Photo {
                 wgpu::BindGroupEntry {
                     binding: 1,
                     resource: wgpu::BindingResource::Sampler(&fx_sampler),
+                },
+                wgpu::BindGroupEntry {
+                    binding: 3,
+                    resource: wgpu::BindingResource::TextureView(&fire_noise),
+                },
+                wgpu::BindGroupEntry {
+                    binding: 4,
+                    resource: wgpu::BindingResource::TextureView(&fire_lut),
+                },
+                wgpu::BindGroupEntry {
+                    binding: 5,
+                    resource: wgpu::BindingResource::Sampler(&fire_sampler),
                 },
             ],
         });
@@ -1486,6 +1527,7 @@ impl Photo {
             sprites: Stream::new(device, "verse sprites"),
             fx_group,
             headroom: 1.0,
+            fire_volumes: true,
         })
     }
 
@@ -2089,6 +2131,7 @@ impl Photo {
             sky_zenith: [0.0; 4],
             sky_horizon: [0.0; 4],
             sky_sun: [0.0; 4],
+            fire_control: self.fire_control(),
             ..Frame::zeroed()
         };
         frame.set_cascades(&shadow);
@@ -2482,6 +2525,7 @@ impl Photo {
             sky_zenith: [0.0; 4],
             sky_horizon: [0.0; 4],
             sky_sun: [0.0; 4],
+            fire_control: self.fire_control(),
             ..Frame::zeroed()
         };
         let mut uniform = frame(reversed, neon.line_width, 1.0);

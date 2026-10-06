@@ -356,6 +356,8 @@ impl Gpu {
 }
 /// Persistent offscreen renderer; frames come directly from owned GPU passes.
 pub struct Renderer {
+    /// Enables bounded optical integration for fire effects.
+    pub fire_volumes: bool,
     pub last_lighting: verse_engine::lighting::FrameLighting,
     #[cfg(feature = "imported-surface")]
     instance: wgpu::Instance,
@@ -549,6 +551,9 @@ fn make_pose(pack: &Pack, instance: Option<&Instance>) -> Result<Pose, String> {
         }
         if pack.models[&i.model].source.starts_with("verse/ribbon/") {
             pose.params = [4.0, i.emission.x.clamp(0.0, 1.0), i.time, 0.0];
+        }
+        if matches!(i.model.as_str(), "particle-fire" | "effect-fire") {
+            pose.params[3] = 1.0;
         }
         for (dst, m) in pose.bones.iter_mut().zip(if i.actor.is_none() {
             animation::pose_selected(&pack.models[&i.model], i.animation, i.time)?
@@ -905,6 +910,32 @@ impl Renderer {
                     ty: wgpu::BindingType::Sampler(wgpu::SamplerBindingType::Comparison),
                     count: None,
                 },
+                wgpu::BindGroupLayoutEntry {
+                    binding: 3,
+                    visibility: wgpu::ShaderStages::FRAGMENT,
+                    ty: wgpu::BindingType::Texture {
+                        sample_type: wgpu::TextureSampleType::Float { filterable: true },
+                        view_dimension: wgpu::TextureViewDimension::D3,
+                        multisampled: false,
+                    },
+                    count: None,
+                },
+                wgpu::BindGroupLayoutEntry {
+                    binding: 4,
+                    visibility: wgpu::ShaderStages::FRAGMENT,
+                    ty: wgpu::BindingType::Texture {
+                        sample_type: wgpu::TextureSampleType::Float { filterable: true },
+                        view_dimension: wgpu::TextureViewDimension::D2,
+                        multisampled: false,
+                    },
+                    count: None,
+                },
+                wgpu::BindGroupLayoutEntry {
+                    binding: 5,
+                    visibility: wgpu::ShaderStages::FRAGMENT,
+                    ty: wgpu::BindingType::Sampler(wgpu::SamplerBindingType::Filtering),
+                    count: None,
+                },
             ],
         });
         let pose_layout = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
@@ -1002,6 +1033,15 @@ impl Renderer {
             min_filter: wgpu::FilterMode::Linear,
             ..Default::default()
         });
+        let fire_textures = crate::fx::fire::textures(&device, &queue);
+        let fire_sampler = device.create_sampler(&wgpu::SamplerDescriptor {
+            address_mode_u: wgpu::AddressMode::Repeat,
+            address_mode_v: wgpu::AddressMode::Repeat,
+            address_mode_w: wgpu::AddressMode::Repeat,
+            mag_filter: wgpu::FilterMode::Linear,
+            min_filter: wgpu::FilterMode::Linear,
+            ..Default::default()
+        });
         let frame_group = device.create_bind_group(&wgpu::BindGroupDescriptor {
             label: None,
             layout: &frame_layout,
@@ -1017,6 +1057,18 @@ impl Renderer {
                 wgpu::BindGroupEntry {
                     binding: 2,
                     resource: wgpu::BindingResource::Sampler(&shadow_sampler),
+                },
+                wgpu::BindGroupEntry {
+                    binding: 3,
+                    resource: wgpu::BindingResource::TextureView(&fire_textures[0]),
+                },
+                wgpu::BindGroupEntry {
+                    binding: 4,
+                    resource: wgpu::BindingResource::TextureView(&fire_textures[1]),
+                },
+                wgpu::BindGroupEntry {
+                    binding: 5,
+                    resource: wgpu::BindingResource::Sampler(&fire_sampler),
                 },
             ],
         });
@@ -1385,6 +1437,7 @@ impl Renderer {
             device_recoveries: 0,
             last_device_loss: None,
             last_timings: FrameTimings::default(),
+            fire_volumes: true,
             last_lighting: Default::default(),
             gpu_timer,
             submitted_frames: 0,
@@ -1768,7 +1821,16 @@ impl Renderer {
             lighting.shadow_count(),
             &self.shadowed_lights,
         );
-        let frame = lighting::frame(view, lighting, &shadowed)?;
+        let mut frame = lighting::frame(view, lighting, &shadowed)?;
+        frame.meta[3] = if self.fire_volumes {
+            match self.admission.quality.tier {
+                verse_engine::quality::Tier::Low => 0.0,
+                verse_engine::quality::Tier::Medium => 8.0,
+                verse_engine::quality::Tier::High => 16.0,
+            }
+        } else {
+            0.0
+        };
         self.last_lighting = verse_engine::lighting::FrameLighting {
             profile: verse_engine::lighting::PointProfile::Authored,
             exposure: lighting.exposure,

@@ -160,6 +160,8 @@ impl Admission {
             h = (h / 2).max(1);
         }
         total += 2 * bytes + (verse_engine::lighting::GRADE_LUT_SIZE as u64).pow(3) * 8;
+        // Static 32³ R8 turbulence and 512-entry RGBA16F spectral lookup.
+        total += 32 * 32 * 32 + 512 * 8;
         total
             + u64::from(self.quality.local_shadow_size()).pow(2)
                 * u64::from(self.shadow_texture_layers())

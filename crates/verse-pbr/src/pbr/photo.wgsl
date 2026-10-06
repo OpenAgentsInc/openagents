@@ -91,6 +91,7 @@ struct Frame {
     lamps: array<vec4<f32>, 64>,
     // rgb a neon stage's key light color; w 1 when set, white otherwise.
     key_tint: vec4<f32>,
+    fire_control: vec4<f32>,
 };
 
 @group(0) @binding(0) var<uniform> f: Frame;
@@ -1498,6 +1499,14 @@ fn fs_glow(i: GlowOut) -> @location(0) vec4<f32> {
 
 @group(3) @binding(0) var fx_sheets: texture_2d_array<f32>;
 @group(3) @binding(1) var fx_sampler: sampler;
+@group(3) @binding(3) var fire_noise: texture_3d<f32>;
+@group(3) @binding(4) var fire_lut: texture_2d<f32>;
+@group(3) @binding(5) var fire_sampler: sampler;
+
+// Fire Pro volume-march.wgsl: bounded emission/absorption integration.
+// Copyright 2026 Daniel Greenheck, MIT (assets/verse/fx/LICENSE-fire-pro.txt).
+// Verse supplies a turbulent procedural field inside the existing particle proxy;
+// this is not Fire Pro's sparse voxel fluid solver.
 
 struct SpriteIn {
     @location(0) pos: vec3<f32>,
@@ -1536,7 +1545,12 @@ fn fs_sprite(i: SpriteOut) -> @location(0) vec4<f32> {
     let a = textureSample(fx_sheets, fx_sampler, i.uv_a, layer);
     let b = textureSample(fx_sheets, fx_sampler, i.uv_b, layer);
     // Premultiplied color and coverage.
-    let texel = mix(a, b, clamp(i.params.x, 0.0, 1.0));
+    var texel = mix(a, b, clamp(i.params.x, 0.0, 1.0));
+    if layer == 0 && f.fire_control.x > 0.0 && f.fire_control.y > 0.5 {
+        let volume = verse_fire_volume(fract(i.uv_a * 4.0) * 2.0 - 1.0, i.world, f.params.y, texel.a, u32(f.fire_control.x), fire_noise, fire_lut, fire_sampler, fx_sampler);
+        // Keep the authored flipbook silhouette while adding optical hot cores.
+        texel = vec4<f32>(volume.rgb, volume.a);
+    }
     let alpha = i.color.a;
     // Emitted light in luminance, through the exposure.
     let emitted = expose(texel.rgb * i.color.rgb);

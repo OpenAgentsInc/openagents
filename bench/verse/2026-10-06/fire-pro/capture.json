@@ -1,0 +1,106 @@
+[
+  {
+    "image": "before-early.png",
+    "seconds": 0.800000011920929,
+    "fire_volumes": false,
+    "sprite_vertices": 990,
+    "resolution": [
+      1600,
+      1000
+    ],
+    "adapter": "AdapterInfo { name: \"Apple M5 Max\", vendor: 0, device: 0, device_type: IntegratedGpu, device_pci_bus_id: \"\", driver: \"\", driver_info: \"\", backend: Metal, subgroup_min_size: 4, subgroup_max_size: 64, transient_saves_memory: true }",
+    "sha256": "52d930b181728e85ee7ac959b01e56998533c3ccd4519c1390a931b5d25afdd6",
+    "renderer": "physical"
+  },
+  {
+    "image": "after-early.png",
+    "seconds": 0.800000011920929,
+    "fire_volumes": true,
+    "sprite_vertices": 990,
+    "resolution": [
+      1600,
+      1000
+    ],
+    "adapter": "AdapterInfo { name: \"Apple M5 Max\", vendor: 0, device: 0, device_type: IntegratedGpu, device_pci_bus_id: \"\", driver: \"\", driver_info: \"\", backend: Metal, subgroup_min_size: 4, subgroup_max_size: 64, transient_saves_memory: true }",
+    "sha256": "209929c65405380d750d2f1712a1f343d7335bf7bc8e554c320b5e76dc6fa2a6",
+    "renderer": "physical"
+  },
+  {
+    "image": "before-late.png",
+    "seconds": 1.7000000476837158,
+    "fire_volumes": false,
+    "sprite_vertices": 990,
+    "resolution": [
+      1600,
+      1000
+    ],
+    "adapter": "AdapterInfo { name: \"Apple M5 Max\", vendor: 0, device: 0, device_type: IntegratedGpu, device_pci_bus_id: \"\", driver: \"\", driver_info: \"\", backend: Metal, subgroup_min_size: 4, subgroup_max_size: 64, transient_saves_memory: true }",
+    "sha256": "302e2488e4959a79f77fa961555e39a3695c0104b86a42b28a250ff80bf6e9af",
+    "renderer": "physical"
+  },
+  {
+    "image": "after-late.png",
+    "seconds": 1.7000000476837158,
+    "fire_volumes": true,
+    "sprite_vertices": 990,
+    "resolution": [
+      1600,
+      1000
+    ],
+    "adapter": "AdapterInfo { name: \"Apple M5 Max\", vendor: 0, device: 0, device_type: IntegratedGpu, device_pci_bus_id: \"\", driver: \"\", driver_info: \"\", backend: Metal, subgroup_min_size: 4, subgroup_max_size: 64, transient_saves_memory: true }",
+    "sha256": "267a5ad80f09c26041a6fbfa6e3e0279b5497cd0f93bb9c0c9664b1ce800af39",
+    "renderer": "physical"
+  },
+  {
+    "image": "battle-before-early.png",
+    "seconds": 0.8,
+    "fire_volumes": false,
+    "renderer": "imported",
+    "asset": "generated original effect-fire",
+    "resolution": [
+      1600,
+      1000
+    ],
+    "instances": 135,
+    "sha256": "b289835749b2849ecea276a013ec3d99231c1ad2779078ac8a0029866fbea6d0"
+  },
+  {
+    "image": "battle-before-late.png",
+    "seconds": 1.7,
+    "fire_volumes": false,
+    "renderer": "imported",
+    "asset": "generated original effect-fire",
+    "resolution": [
+      1600,
+      1000
+    ],
+    "instances": 135,
+    "sha256": "08e23d0cf255250d7d2f619c2042febf5d1a8d12779cdb9f30097173a703def4"
+  },
+  {
+    "image": "battle-after-early.png",
+    "seconds": 0.8,
+    "fire_volumes": true,
+    "renderer": "imported",
+    "asset": "generated original effect-fire",
+    "resolution": [
+      1600,
+      1000
+    ],
+    "instances": 135,
+    "sha256": "97aa6693cc0798618182ff55706c5ca2d4249e48e0d0c7f0ea0dd287d71ae4aa"
+  },
+  {
+    "image": "battle-after-late.png",
+    "seconds": 1.7,
+    "fire_volumes": true,
+    "renderer": "imported",
+    "asset": "generated original effect-fire",
+    "resolution": [
+      1600,
+      1000
+    ],
+    "instances": 135,
+    "sha256": "8039f53287f442e948f6c00457ff9d42feda0498defe3f1d07d04046fcad5c7e"
+  }
+]

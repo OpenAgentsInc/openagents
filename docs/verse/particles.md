@@ -231,3 +231,22 @@ or converted; every sprite here is our own Blender render.
 | `grove_burning` | Each burning dummy, while it burns | Licking flames, a thread of smoke |
 | `grove_area_ring` | A Grove burst's area, scaled to its radius | A faint ring of light spreading over the ground, in place of a drawn outline |
 | `grove_thorn_wall` | Each 2 m stretch of Wall of Thorns | A bramble hedge of dark leaves over a little dust |
+
+Fire particles now use a bounded optical-volume shader on medium and high quality
+(8 and 16 samples per fragment); low quality retains the original flipbooks.
+The authored sheets still define particle silhouettes, lifetimes, and blend modes.
+The Rust spectral blackbody table and WGSL emission/absorption integration are
+ported from [Fire Pro](https://github.com/dgreenheck/threejs-fire-pro), revision
+`c284f0b13ed2234752087b8dce24f0cb38854147`, under its
+[MIT license](../../assets/verse/fx/LICENSE-fire-pro.txt). Verse supplies a
+procedural turbulent density field inside each particle proxy; this does not
+implement Fire Pro's sparse fluid solver. Existing lamps provide surface lighting,
+and existing smoke particles retain their scene-lit alpha pass.
+
+`cargo run -p verse-pbr --example fire_capture -- OUTPUT_DIRECTORY` writes matching
+1600 × 1000 before/after pictures at two fixed times, using identical particles,
+camera, lights, exposure, and grading through the physical renderer. It also
+writes battle-renderer comparisons using the generated original `effect-fire`
+asset. Both renderers share the same optical integration and spectral table;
+other effect types retain their existing shading. The fixed lookup payload is
+36 KiB per renderer.
