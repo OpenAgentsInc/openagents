@@ -100,7 +100,9 @@ impl WorldRuntime {
                 self.zone_load_progress(received, total);
             }
             Some(everglade_pack::LoadEvent::Ready(pack)) => {
-                if self.zone_state.destination == ZoneId::Grove {
+                if self.zone_state.destination == ZoneId::MeteorStressTest {
+                    self.install_meteor_stress_test(&pack);
+                } else if self.zone_state.destination == ZoneId::Grove {
                     self.install_grove(&pack);
                 } else if self.zone_state.destination == ZoneId::Crypt {
                     self.install_crypt(&pack);
@@ -249,6 +251,48 @@ impl WorldRuntime {
                 .unwrap_or_else(|| "Everglade enters only from the plaza".into()))
         }
     }
+    /// Installs the standalone castle with five autonomous meteor casters.
+    pub fn install_meteor_stress_test(&mut self, pack: &everglade_pack::ZonePack) {
+        if self.is_hosted() || !self.is_plaza() {
+            return;
+        }
+        let mut spawn = self.player;
+        spawn.pos = super::meteor_stress::SPAWN;
+        spawn.yaw = 0.0;
+        let (world, glade) = match super::meteor_stress::build(pack, &spawn) {
+            Ok(built) => built,
+            Err(error) => {
+                self.zone_load_failed(&error);
+                return;
+            }
+        };
+        self.zone_state.plaza_pose = Some((self.player.pos, self.player.yaw));
+        self.world = world;
+        self.zone_state.everglade = Some(glade);
+        self.zone = ZoneId::MeteorStressTest;
+        self.zone_state.loading = LoadState::Idle;
+        self.zone_state.error = None;
+        self.zone_state.progress = 1.0;
+        self.zone_revision = self.zone_revision.saturating_add(1);
+        let _ = self.set_spawn(super::meteor_stress::SPAWN, 0.0);
+        self.player.set_surface_height(super::everglade::height(
+            self.player.pos.x,
+            self.player.pos.z,
+        ));
+        self.camera = crate::camera::FollowCamera::default();
+        self.camera.pitch = -0.2;
+        self.camera.distance = 6.0;
+    }
+
+    /// Loads the standalone meteor stress test from the plaza.
+    pub fn enter_meteor_stress_test(&mut self) -> Result<(), String> {
+        if !self.is_plaza() || self.zone_loading() {
+            return Err("Meteor Stress Test enters only from the plaza".into());
+        }
+        self.zone_state.destination = ZoneId::MeteorStressTest;
+        self.start_zone_load(ZoneId::MeteorStressTest)
+    }
+
     /// Enter the Grove with Everglade's verified pack: the meadow, its
     /// dummies, and Everglade's character and movement
     /// ([`super::grove`]).
@@ -794,7 +838,10 @@ impl WorldRuntime {
     ) -> Option<[super::everglade::hotbar::Slot; super::everglade::hotbar::COUNT]> {
         use super::everglade::{hotbar::Slot, spells::Spell};
         // The crypt is walked with Everglade's bar.
-        if !matches!(self.zone, ZoneId::Everglade | ZoneId::Crypt) {
+        if !matches!(
+            self.zone,
+            ZoneId::Everglade | ZoneId::Crypt | ZoneId::MeteorStressTest
+        ) {
             return None;
         }
         let glade = self.zone_state.everglade.as_ref()?;
@@ -864,7 +911,7 @@ impl WorldRuntime {
     /// outside the town.
     #[must_use]
     pub fn everglade_wreckage(&self) -> Option<[usize; 3]> {
-        if self.zone != ZoneId::Everglade {
+        if !matches!(self.zone, ZoneId::Everglade | ZoneId::MeteorStressTest) {
             return None;
         }
         let town = self.zone_state.everglade.as_ref()?.town()?;
@@ -883,7 +930,7 @@ impl WorldRuntime {
     /// in the demolition yard, whose own hotbar draws them.
     #[must_use]
     pub fn everglade_swarm(&self) -> Option<super::everglade::demolition::meteor::Status> {
-        if self.zone != ZoneId::Everglade {
+        if !matches!(self.zone, ZoneId::Everglade | ZoneId::MeteorStressTest) {
             return None;
         }
         let glade = self.zone_state.everglade.as_ref()?;
@@ -936,7 +983,10 @@ impl WorldRuntime {
     /// Whether this zone has things Meteor Swarm breaks: Everglade's town
     /// or yard, or the Grove's tower.
     fn breaks_things(&self) -> bool {
-        matches!(self.zone, ZoneId::Everglade | ZoneId::Grove)
+        matches!(
+            self.zone,
+            ZoneId::Everglade | ZoneId::Grove | ZoneId::MeteorStressTest
+        )
     }
 
     /// How many tall buildings' tops are toppling now in Everglade's town
@@ -1240,6 +1290,21 @@ impl WorldRuntime {
             add("step", "Step", Intent::Step, true);
             add("return", "Plaza", Intent::Return, true);
             Lab::caption(&lab.snapshot())
+        } else if self.zone == ZoneId::MeteorStressTest {
+            add("meteor_swarm", "Meteor Swarm", Intent::MeteorSwarm, true);
+            add("rebuild", "Rebuild castle", Intent::Rebuild, true);
+            add("levitate", "Levitate", Intent::Levitate, true);
+            add("return", self.return_label(), Intent::Return, true);
+            let counts = self
+                .zone_state
+                .everglade
+                .as_ref()
+                .and_then(Everglade::town)
+                .map_or([0, 0], |town| town.bombardment());
+            format!(
+                "Meteor Stress Test · {} casters · {} meteors in flight · 6: cast · R: rebuild · automatic rebuild every 45 s",
+                counts[0], counts[1]
+            )
         } else if self.zone_state.crypt.is_some() {
             add("jump", "Jump", Intent::Jump, !self.player.airborne());
             add("return", self.return_label(), Intent::Return, true);
@@ -1526,7 +1591,7 @@ impl WorldRuntime {
         // The Grove and the crypt walk with Everglade's character.
         if !matches!(
             destination,
-            ZoneId::Everglade | ZoneId::Grove | ZoneId::Crypt
+            ZoneId::Everglade | ZoneId::Grove | ZoneId::Crypt | ZoneId::MeteorStressTest
         ) {
             return Err("This zone has no pack to load".into());
         }
@@ -1948,6 +2013,10 @@ impl WorldRuntime {
                     state.error = Some(error.chars().take(180).collect());
                 }
             }
+        } else if self.zone == ZoneId::MeteorStressTest {
+            if let Some(glade) = &mut state.everglade {
+                glade.tick(dt, &self.player, &super::meteor_stress::figures());
+            }
         } else if let Some(everglade) = &mut state.everglade {
             // The seats move first, so the characters pose where they stand.
             state.studio.set_player(Some(self.player.pos));
@@ -2010,7 +2079,7 @@ impl WorldRuntime {
             mesh.extend(&everglade.spell_mesh_from(&self.player, eye));
             // The studio's nameplates, lamps, marks, bubbles, particles, and
             // live boards, and boxy seats when there is no character.
-            if everglade.demolition().is_none() {
+            if self.zone == ZoneId::Everglade && everglade.demolition().is_none() {
                 mesh.extend(
                     &self
                         .zone_state

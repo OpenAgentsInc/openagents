@@ -644,8 +644,16 @@ impl Pool {
     }
 }
 
+/// An autonomous caster with its own targeting, cast, and meteor state.
+struct Bombardier {
+    player: PlayerController,
+    swarm: Swarm,
+    due: f32,
+    target: usize,
+}
+
 /// Everglade's destructible town: its buildings, the rules over the raised
-/// ones, the hammer and the spell, and what they draw.
+/// ones, the hammer and the spells, and what they draw.
 pub struct Town {
     wreck: Wreck,
     /// The pool material each pack material takes under each paint.
@@ -673,6 +681,8 @@ pub struct Town {
     hammer: Hammer,
     wield: f32,
     swarm: Swarm,
+    bombardiers: Vec<Bombardier>,
+    rebuild: f32,
     floaters: Vec<Floater>,
     clock: f32,
 }
@@ -954,6 +964,8 @@ impl Town {
             hammer: Hammer::default(),
             wield: 0.0,
             swarm: Swarm::default(),
+            bombardiers: Vec::new(),
+            rebuild: 45.0,
             floaters: Vec::new(),
             clock: 0.0,
         };
@@ -1053,6 +1065,18 @@ impl Town {
         &self.swarm
     }
 
+    /// Returns the number of autonomous casters and their live meteors.
+    #[must_use]
+    pub fn bombardment(&self) -> [usize; 2] {
+        [
+            self.bombardiers.len(),
+            self.bombardiers
+                .iter()
+                .map(|caster| caster.swarm.meteors_left())
+                .sum(),
+        ]
+    }
+
     /// Puts the targeting ring on the first surface the ray from `origin`
     /// along `direction` meets, within range of `player`: the ground, a
     /// roof, or a wall, the inner face of a far wall seen through a hole
@@ -1081,10 +1105,34 @@ impl Town {
         self.swarm.cancel();
     }
 
+    /// Starts five independent casters against this town's buildings.
+    /// The castle rebuilds every 45 seconds to keep the bombardment running.
+    pub fn start_bombardment(&mut self, positions: [Vec3; 5]) {
+        self.bombardiers = positions
+            .into_iter()
+            .enumerate()
+            .map(|(i, pos)| Bombardier {
+                player: PlayerController::new(pos, (-pos.x).atan2(-pos.z)),
+                swarm: Swarm::default(),
+                due: 1.0 + i as f32 * 0.6,
+                target: i,
+            })
+            .collect();
+        self.rebuild = 45.0;
+    }
+
     /// Where the camera is this frame, shaken by the meteors' blasts.
     #[must_use]
     pub fn shake(&self) -> Vec3 {
-        self.swarm.shake()
+        if self.bombardiers.is_empty() {
+            return self.swarm.shake();
+        }
+        self.bombardiers
+            .iter()
+            .fold(self.swarm.shake(), |shake, caster| {
+                shake + caster.swarm.shake()
+            })
+            .clamp(Vec3::splat(-0.8), Vec3::splat(0.8))
     }
 
     /// Whether the hammer is in hand or swinging, and Meteor Swarm's state.
@@ -1106,6 +1154,11 @@ impl Town {
         self.wreck.site = Wreck::empty_site(&self.wreck.floors);
         self.wreck.refs.clear();
         self.swarm.reset();
+        self.rebuild = 45.0;
+        for (i, caster) in self.bombardiers.iter_mut().enumerate() {
+            caster.swarm.reset();
+            caster.due = 1.0 + i as f32 * 0.6;
+        }
         self.floaters.clear();
         self.sync();
     }
@@ -1166,6 +1219,63 @@ impl Town {
         }
         let blows = self.swarm.tick(dt, player, &mut self.wreck);
         self.number(&blows);
+        if !self.bombardiers.is_empty() {
+            self.rebuild -= dt;
+            if self.rebuild <= 0.0 {
+                self.restore();
+            }
+        }
+        let mut npc_blows = Vec::new();
+        for caster in &mut self.bombardiers {
+            caster.due -= dt;
+            if caster.due <= 0.0 && !caster.swarm.casting() {
+                let targets: Vec<_> = self
+                    .wreck
+                    .buildings
+                    .iter()
+                    .filter(|building| {
+                        building.destructible()
+                            && Vec3::new(
+                                building.rect.0[0],
+                                caster.player.pos.y,
+                                building.rect.0[1],
+                            )
+                            .distance(caster.player.pos)
+                                < 30.0
+                    })
+                    .collect();
+                if !targets.is_empty() {
+                    let building = targets[caster.target % targets.len()];
+                    let at = Vec3::new(
+                        building.rect.0[0],
+                        building.base
+                            + (building.top - building.base) * [0.2, 0.45, 0.7][caster.target % 3],
+                        building.rect.0[1],
+                    );
+                    let origin = caster.player.pos + Vec3::Y * 1.6;
+                    let aim =
+                        meteor::surface_aim(origin, (at - origin).normalize(), &|from, to| {
+                            self.wreck.ray(from, to)
+                        });
+                    if caster.swarm.target_with(Strike::Meteors).is_ok() {
+                        if let Some(aim) = aim {
+                            caster.swarm.aim_on(aim, &caster.player);
+                        } else {
+                            caster
+                                .swarm
+                                .aim_at(Vec3::new(at.x, building.base, at.z), &caster.player);
+                        }
+                        caster.swarm.confirm(&caster.player);
+                    }
+                    caster.target = caster.target.wrapping_add(1);
+                }
+                caster.due = 5.0;
+            }
+            npc_blows.extend(caster.swarm.tick(dt, &caster.player, &mut self.wreck));
+            // NPC impacts have no separate combat log; drain them every frame.
+            caster.swarm.take_impacts();
+        }
+        self.number(&npc_blows);
         let now = self.clock;
         self.floaters.retain(|f| now - f.start < FLOAT);
         self.wreck.site.tick(dt);
@@ -1533,6 +1643,11 @@ impl Town {
         let solids = &self.current;
         self.swarm
             .draw_over(&mut mesh, eye, &|x, z| solids.top(x, z));
+        for caster in &self.bombardiers {
+            caster
+                .swarm
+                .draw_over(&mut mesh, eye, &|x, z| solids.top(x, z));
+        }
         if !self.floaters.is_empty() {
             let mut painter = Painter::new(eye);
             for floater in &self.floaters {

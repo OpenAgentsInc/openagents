@@ -74,6 +74,8 @@ pub struct Options {
     /// Open straight into the Grove, the druid training field, once the
     /// window shows (`verse --grove`).
     pub grove: bool,
+    /// Open the standalone castle bombardment zone.
+    pub meteor_stress_test: bool,
     /// Open straight into the crypt lab once the window shows (`verse
     /// --crypt`).
     pub crypt: bool,
@@ -117,6 +119,7 @@ impl Default for Options {
             studio_muted: false,
             everglade: false,
             grove: false,
+            meteor_stress_test: false,
             crypt: false,
             demolition: false,
             frame_times: false,
@@ -1639,7 +1642,9 @@ impl App {
     }
 
     fn open_everglade(&mut self, zone: zones::ZoneId) {
-        let entered = if zone == zones::ZoneId::Grove {
+        let entered = if zone == zones::ZoneId::MeteorStressTest {
+            self.runtime.enter_meteor_stress_test()
+        } else if zone == zones::ZoneId::Grove {
             self.runtime.enter_grove()
         } else if zone == zones::ZoneId::Crypt {
             self.runtime.enter_crypt()
@@ -2276,7 +2281,7 @@ impl App {
     fn in_bare_everglade(&self) -> bool {
         matches!(
             self.runtime.zone,
-            zones::ZoneId::Everglade | zones::ZoneId::Crypt
+            zones::ZoneId::Everglade | zones::ZoneId::Crypt | zones::ZoneId::MeteorStressTest
         ) && self.runtime.zone_load_state() == zones::LoadState::Idle
     }
 
@@ -2562,7 +2567,10 @@ impl App {
             // aim or stops its cast, and R restores the buildings or the
             // Grove's tower.
             if (self.in_bare_everglade()
-                && self.runtime.zone == zones::ZoneId::Everglade
+                && matches!(
+                    self.runtime.zone,
+                    zones::ZoneId::Everglade | zones::ZoneId::MeteorStressTest
+                )
                 && !self.runtime.in_demolition())
                 || (self.in_bare_grove() && self.runtime.grove_swarm().is_some())
             {
@@ -3687,6 +3695,22 @@ impl App {
                             &swarm,
                         );
                     }
+                    if self.runtime.zone == zones::ZoneId::MeteorStressTest {
+                        bar.text(
+                            atlas,
+                            20.0,
+                            20.0,
+                            "Meteor Stress Test · 5 casters · castle rebuilds every 45 s",
+                            [1.0, 0.8, 0.4, 1.0],
+                        );
+                        bar.text(
+                            atlas,
+                            20.0,
+                            20.0 + atlas.line,
+                            "WASD: approach · 6: Meteor Swarm · click: cast · R: rebuild · 1: levitate",
+                            [0.9, 0.9, 0.9, 1.0],
+                        );
+                    }
                     for vertex in &mut bar.vertices {
                         vertex.pos = vertex.pos.map(|v| v * self.scale);
                     }
@@ -4172,6 +4196,10 @@ impl ApplicationHandler for App {
             self.open_pending_everglade();
         }
         // `--grove` likewise, through the same pending load.
+        if std::mem::take(&mut self.connection_options.meteor_stress_test) {
+            self.everglade_pending = Some(zones::ZoneId::MeteorStressTest);
+            self.open_pending_everglade();
+        }
         if std::mem::take(&mut self.connection_options.grove) {
             self.everglade_pending = Some(zones::ZoneId::Grove);
             self.open_pending_everglade();

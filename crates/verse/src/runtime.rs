@@ -253,7 +253,9 @@ impl WorldRuntime {
         (self.bare && self.is_plaza())
             || matches!(
                 self.zone,
-                crate::zones::ZoneId::Everglade | crate::zones::ZoneId::Crypt
+                crate::zones::ZoneId::Everglade
+                    | crate::zones::ZoneId::Crypt
+                    | crate::zones::ZoneId::MeteorStressTest
             )
     }
 
@@ -525,9 +527,18 @@ impl WorldRuntime {
         // Meteor Swarm's blasts and a Thunderwave shake the camera.
         framing.eye += match self.zone {
             crate::zones::ZoneId::Grove => self.grove_shake(),
-            crate::zones::ZoneId::Everglade => self.demolition_shake(),
+            crate::zones::ZoneId::Everglade | crate::zones::ZoneId::MeteorStressTest => {
+                self.demolition_shake()
+            }
             _ => Vec3::ZERO,
         };
+        if self.zone == crate::zones::ZoneId::MeteorStressTest {
+            // Simultaneous impacts must not shake the low camera below terrain.
+            framing.eye.y = framing
+                .eye
+                .y
+                .max(crate::zones::everglade::height(framing.eye.x, framing.eye.z) + 0.3);
+        }
         View {
             view_proj: self
                 .camera
@@ -573,6 +584,7 @@ impl WorldRuntime {
                 crate::zones::ZoneId::Everglade
                     | crate::zones::ZoneId::Grove
                     | crate::zones::ZoneId::Crypt
+                    | crate::zones::ZoneId::MeteorStressTest
             )
     }
 

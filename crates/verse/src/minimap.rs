@@ -282,6 +282,20 @@ impl MapHud {
                 )
                 .collect()
             }
+            crate::zones::ZoneId::MeteorStressTest => vec![
+                Landmark {
+                    id: "castle",
+                    label: "Castle",
+                    x: 0.0,
+                    z: 8.0,
+                },
+                Landmark {
+                    id: "return",
+                    label: "Plaza portal",
+                    x: 0.0,
+                    z: crate::zones::meteor_stress::RETURN_PORTAL.z,
+                },
+            ],
             crate::zones::ZoneId::Grove => {
                 let portal = crate::zones::ZoneId::Grove.portal();
                 vec![Landmark {

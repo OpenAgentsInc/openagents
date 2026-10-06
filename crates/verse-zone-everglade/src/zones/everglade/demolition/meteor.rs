@@ -403,6 +403,11 @@ impl Default for Swarm {
 }
 
 impl Swarm {
+    /// How many meteors are on their way.
+    pub fn meteors_left(&self) -> usize {
+        self.meteors.len()
+    }
+
     /// Refills the mana, clears the cooldown, and ends every cast, meteor,
     /// and mark, as the yard's rebuild does.
     pub fn reset(&mut self) {
@@ -1611,10 +1616,5 @@ impl Swarm {
     /// Seconds of cooldown left.
     pub fn cooldown_left(&self) -> f32 {
         self.cooldown
-    }
-
-    /// How many meteors are on their way.
-    pub fn meteors_left(&self) -> usize {
-        self.meteors.len()
     }
 }

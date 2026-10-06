@@ -657,3 +657,9 @@ settings alongside the content revision. View counts include cached maps and
 are not elapsed GPU time. See the
 [V22 audit and retained references](../audits/2026-10-04-verse-engine-audit.md#v22-lighting-needs-one-tested-art-and-device-contract)
 for the controlled scene comparisons and physical-device limits.
+
+Run `verse --meteor-stress-test` to open the standalone Meteor Stress Test.
+The castle uses the Grove’s concrete tower kit, with five NPCs continuously
+casting Meteor Swarm at its walls and turrets. Press **6** and click a surface
+to cast your own swarm, **R** to rebuild, or **1** to levitate. The castle
+rebuilds every 45 seconds; this zone runs offline.

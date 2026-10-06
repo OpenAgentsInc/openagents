@@ -23,6 +23,7 @@ mod grove_tests;
 mod grove_tower_tests;
 #[cfg(test)]
 mod lab_tests;
+pub mod meteor_stress;
 pub mod operators;
 mod runtime;
 mod sight;
@@ -67,15 +68,17 @@ pub enum ZoneId {
     /// The candlelit crypt lab ([`crypt`]), walked as Everglade's
     /// character.
     Crypt,
+    MeteorStressTest,
 }
 impl ZoneId {
-    pub const ALL: [Self; 6] = [
+    pub const ALL: [Self; 7] = [
         Self::Plaza,
         Self::Lagrange1,
         Self::PhysicsLab,
         Self::Everglade,
         Self::Grove,
         Self::Crypt,
+        Self::MeteorStressTest,
     ];
 
     /// The zone a command line names, by world identifier or label
@@ -99,6 +102,7 @@ impl ZoneId {
             Self::Everglade => "verse-everglade",
             Self::Grove => "verse-grove",
             Self::Crypt => "verse-crypt",
+            Self::MeteorStressTest => "verse-meteor-stress-test",
         }
     }
     pub const fn label(self) -> &'static str {
@@ -109,6 +113,7 @@ impl ZoneId {
             Self::Everglade => "Everglade",
             Self::Grove => "Grove",
             Self::Crypt => "Crypt",
+            Self::MeteorStressTest => "Meteor Stress Test",
         }
     }
     pub const fn half_extent(self) -> f32 {
@@ -116,7 +121,7 @@ impl ZoneId {
             Self::Plaza => crate::world::HALF,
             Self::Lagrange1 => 150.0,
             Self::PhysicsLab => lab::HALF_EXTENT,
-            Self::Everglade | Self::Grove => everglade::HALF_EXTENT,
+            Self::Everglade | Self::Grove | Self::MeteorStressTest => everglade::HALF_EXTENT,
             Self::Crypt => crypt::HALF_EXTENT,
         }
     }
@@ -146,6 +151,7 @@ impl ZoneId {
             Self::Grove => vec![(Self::Plaza, grove::RETURN_PORTAL)],
             // The heavy door is the way out; it draws no arch.
             Self::Crypt => vec![(Self::Plaza, crypt::DOOR)],
+            Self::MeteorStressTest => vec![(Self::Plaza, meteor_stress::RETURN_PORTAL)],
         }
     }
     /// Short arch lettering for a destination.
@@ -157,6 +163,7 @@ impl ZoneId {
             Self::Everglade => "EVERGLADE",
             Self::Grove => "GROVE",
             Self::Crypt => "CRYPT",
+            Self::MeteorStressTest => "METEOR STRESS TEST",
         }
     }
 }
@@ -189,7 +196,7 @@ pub fn atmosphere(zone: ZoneId) -> Atmosphere {
         },
         ZoneId::Everglade => everglade::ATMOSPHERE,
         // The Grove's dusk haze, glowing toward the low Sun.
-        ZoneId::Grove => grove::light::ATMOSPHERE,
+        ZoneId::Grove | ZoneId::MeteorStressTest => grove::light::ATMOSPHERE,
         // The candlelit hall's near-black air and low fog.
         ZoneId::Crypt => Atmosphere {
             color: crypt::FIELD,
@@ -372,7 +379,7 @@ pub(crate) fn arch(
         ZoneId::Plaza => crate::palette::amber(Intensity::Half),
         ZoneId::Lagrange1 => [0.35, 0.7, 1.0],
         ZoneId::PhysicsLab => [0.3, 0.85, 1.0],
-        ZoneId::Everglade | ZoneId::Grove => [0.95, 0.85, 0.4],
+        ZoneId::Everglade | ZoneId::Grove | ZoneId::MeteorStressTest => [0.95, 0.85, 0.4],
         ZoneId::Crypt => [1.0, 0.56, 0.24],
     };
     // Broken concentric arcs leave the destination visible through the opening.
