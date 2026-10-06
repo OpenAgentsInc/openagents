@@ -1,0 +1,41 @@
+{
+  "schema": "verse.targeted.check.v1",
+  "source_base": "e89b20d2aa",
+  "changed_source": "crates/verse-world/src/service/worker_delayed.rs",
+  "changed_source_sha256": "58509571d9be61bfe08976d65c695dfbf8f0a67155089999320a7b712d445890",
+  "build_features": [
+    "service-net"
+  ],
+  "toolchain": "1.97.1",
+  "test_command": "/Users/christopherdavid/work/openagents-target-agent1/debug/deps/verse_world-9720140bfe2605e4 service::worker::delayed --nocapture --test-threads=1",
+  "tests_passed": 6,
+  "tests_failed": 0,
+  "duration_seconds": 25.45,
+  "new_cases": [
+    {
+      "name": "cast_during_shared_writer_stall_preserves_native_intervals",
+      "players": 20,
+      "upstream_delay_ms": 40,
+      "downstream_delay_ms": 40,
+      "writer_stall_ms": 1200,
+      "mode_resets": 0,
+      "prediction_maximum_meters": 0,
+      "cast_accepted": true
+    },
+    {
+      "name": "mixed_cast_and_native_interval_stream_preserve_control",
+      "players": 1,
+      "upstream_delay_ms": 67,
+      "downstream_delay_ms": 100,
+      "writer_stall_ms": 0,
+      "mode_resets": 0,
+      "prediction_maximum_meters": 0,
+      "cast_accepted": true
+    }
+  ],
+  "limitations": [
+    "No rendering or 40 hostile NPC workload in these fixtures.",
+    "A passing native-stream fixture does not prove the combined battle continuity gate.",
+    "The initial no-feature build was stopped and supplies no verification evidence."
+  ]
+}

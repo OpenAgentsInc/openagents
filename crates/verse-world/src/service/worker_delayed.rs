@@ -38,19 +38,27 @@ async fn delay<R: AsyncRead + Unpin, W: AsyncWrite + Unpin>(
 }
 #[tokio::test]
 async fn delayed_bootstrap_and_native_interval_stream_use_one_owned_timeline() {
-    interval_stream(false, 0, 67, 100, 0).await;
+    interval_stream(false, 0, 67, 100, 0, false).await;
 }
 #[tokio::test]
 async fn durable_writer_stall_preserves_owned_interval_timeline() {
-    interval_stream(true, 300, 0, 0, 0).await;
+    interval_stream(true, 300, 0, 0, 0, false).await;
 }
 #[tokio::test]
 async fn delayed_route_and_long_writer_stall_preserve_owned_interval_timeline() {
-    interval_stream(true, 1200, 40, 40, 0).await;
+    interval_stream(true, 1200, 40, 40, 0, false).await;
 }
 #[tokio::test]
 async fn shared_player_pressure_and_long_writer_stall_preserve_owned_interval_timeline() {
-    interval_stream(true, 1200, 40, 40, 19).await;
+    interval_stream(true, 1200, 40, 40, 19, false).await;
+}
+#[tokio::test]
+async fn mixed_cast_and_native_interval_stream_preserve_control() {
+    interval_stream(false, 0, 67, 100, 0, true).await;
+}
+#[tokio::test]
+async fn cast_during_shared_writer_stall_preserves_native_intervals() {
+    interval_stream(true, 1200, 40, 40, 19, true).await;
 }
 async fn interval_stream(
     durable_stall: bool,
@@ -58,6 +66,7 @@ async fn interval_stream(
     up_ms: u64,
     down_ms: u64,
     pressure_players: usize,
+    cast_during_movement: bool,
 ) {
     use super::super::net::tests::{key, start};
     use rustls::pki_types::ServerName;
@@ -211,6 +220,9 @@ async fn interval_stream(
     let mut next_frame = baseline.physics_step;
     let mut bound = 0;
     let mut accepted = 0;
+    let mut cast_sent = false;
+    let mut cast_sequence = None;
+    let mut accepted_casts = 0;
     let mut corrections = Vec::new();
     let mut stall_armed = false;
     let mut recent = std::collections::VecDeque::new();
@@ -225,7 +237,30 @@ async fn interval_stream(
                     local.bind_movement_frame(&binding.unwrap()).unwrap();
                     bound += 1;
                 }
+                Update::CommandBound { binding, .. } if cast_during_movement => {
+                    let command = binding.unwrap();
+                    assert!(matches!(
+                        command.intent,
+                        Intent::Cast {
+                            ability: crate::play::Ability::Shield,
+                            ..
+                        }
+                    ));
+                    assert!(cast_sequence.replace(command.sequence).is_none());
+                }
                 Update::Outcome(response) => {
+                    if response
+                        .control
+                        .as_ref()
+                        .is_some_and(|c| Some(c.accepted_sequence) == cast_sequence)
+                    {
+                        assert!(
+                            matches!(response.body, Reply::Accepted),
+                            "Cast must execute during movement: {:?}",
+                            response.body
+                        );
+                        accepted_casts += 1;
+                    }
                     if let Some(control) = &response.control {
                         if local.context() == Some((control.life.into(), control.epoch))
                             && local.movement_profile() == Some(Profile::Frames)
@@ -311,6 +346,26 @@ async fn interval_stream(
                 .unwrap();
             next_input = now + Duration::from_millis(33);
         }
+        if cast_during_movement
+            && !cast_sent
+            && started.elapsed() >= Duration::from_millis(if durable_stall { 1500 } else { 500 })
+        {
+            token += 1;
+            input
+                .send(Input::TrackedCommand {
+                    token,
+                    life: baseline.life,
+                    epoch: baseline.epoch,
+                    intent: Intent::Cast {
+                        ability: crate::play::Ability::Shield,
+                        target: None,
+                        aim: [0., 0., 1.],
+                    },
+                })
+                .await
+                .unwrap();
+            cast_sent = true;
+        }
         let steps = local
             .movement_frame_limit()
             .unwrap()
@@ -332,6 +387,10 @@ async fn interval_stream(
         "bound={bound} accepted={accepted} observations={}",
         corrections.len()
     );
+    if cast_during_movement {
+        assert!(cast_sent && cast_sequence.is_some());
+        assert_eq!(accepted_casts, 1);
+    }
     corrections.sort_by(f32::total_cmp);
     let p95 = corrections[(corrections.len() as f64 * 0.95).ceil() as usize - 1];
     eprintln!(
