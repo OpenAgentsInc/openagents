@@ -376,3 +376,15 @@ answered 200, headless Chrome drew the town on WebGPU and WebGL2 (`?gl`)
 and the Grove, and a Meteor Swarm cast with real key and mouse input
 destroyed the workshop hall in front of spawn without stopping the page,
 before traffic moved. Rollback: `--to-revisions coder-web-f6ed2aa223=100`.
+
+The Grove at dusk with the tower goes live (2c68a678f4): dusk lighting and
+spell lights, the sacred grove, the concrete tower that topples, Meteor
+Swarm and Thunderbolt on keys 1 and 2, Fire Breath damage to the tower, 3D
+surface aiming, and the dragon. Image `openagents/openagents-web:2c68a678f4`,
+built from GitHub by the automation account and applied as `chris@` from the
+live spec with only the revision name and image changed (`CODER_CHAT_SYNC`
+quoted). On the `new` tag, `/`, `/grid`, `/everglade`, `/druid`, and
+`/api/stats` answered 200, and headless Chrome drew the Grove on WebGPU and
+WebGL2 (`?gl`) and Everglade. A Meteor Swarm cast with real key and mouse
+input showed its ring and falling meteors before traffic moved. Rollback:
+`--to-revisions coder-web-9cbc7e6dd4=100`.
