@@ -88,6 +88,14 @@
       "phase": "Final integration including the corrected GPU fixture; world checks exercise prediction and contacts, native checks exercise the consumers",
       "source_manifest": "source.json",
       "ignored": 5
+    },
+    {
+      "log": "world-latest-main.log",
+      "command": "RUSTC_WRAPPER=/run/verse-audit-build-agent1/rustc.py CARGO_TARGET_DIR=/home/christopherdavid/work/openagents-target-agent1 CARGO_BUILD_JOBS=1 cargo test -p verse-world --config 'profile.test.package.verse-world.debug=0' --config 'profile.test.package.verse-world.opt-level=0' --lib",
+      "passed": 361,
+      "ignored": 0,
+      "phase": "Final world integration including prediction diagnostics and dead-player control retirement; tested before the evidence-only parent update.",
+      "source_manifest": "source-latest-main.json"
     }
   ],
   "executables": {
@@ -120,13 +128,18 @@
       "logical": "/home/christopherdavid/work/openagents-target-agent1/debug/deps/verse_imported-8f44d1f342630fd4",
       "physical": "/run/verse-audit-build-agent1/outputs/verse_imported/-8f44d1f342630fd4/verse_imported-8f44d1f342630fd4",
       "sha256": "b7c3d035c2c3f92dd091fed3850e86a3c98f910926027b8e652bdb7883ed89d7"
+    },
+    "world-latest-main.log": {
+      "logical": "/home/christopherdavid/work/openagents-target-agent1/debug/deps/verse_world-4c80089a9320f263",
+      "physical": "/run/verse-audit-build-agent1/outputs/verse_world/-4c80089a9320f263/verse_world-4c80089a9320f263",
+      "sha256": "fc2e076b1e96d49bfd590ef860b9bbc4535d90f9ff617d99117c63549a9138ce"
     }
   },
   "source": "source.json",
   "retained_logs": "Trailing blank lines are removed. Historical phases and observed failures are explicitly labeled.",
   "storage": "The original warm target remains in use. Private RAM scratch retains relocated audit caches and outputs behind logical target paths; compiler/linker wrappers are retained. No archive or incremental data is intentionally deleted. Restoration awaits sufficient persistent disk capacity.",
   "artifacts_sha256": {
-    "README.md": "02e86b31c400e6223bfb40d0b8e1f5229506f18bbea9e5c4dc3ebef5c116dfba",
+    "README.md": "0f339d49d2087e6a5fb65a9f576b14fbf299f27f23a34693d380c73257cba575",
     "archive-relocation.json": "1c875603f31e90baf2c92257a60885092ad8cd8f1995da30ed61b55314bc9d7e",
     "cc-ram-linker.py": "87ff7d8f4ff686cf2d67f4f776c818e4f35713400f1eacc6e15516b3bb69a3c6",
     "completed-executables.json": "70961bffc92b8781bc0c018dcbcd9813082f69c880b5cc5073b0ca487d5605e4",
@@ -179,7 +192,9 @@
     "world-support-executable.json": "168e3b6540f5bf08107e43028650b538495e4aaaacf9f603d22c63729432473f",
     "world-support-main.log": "83978360ec9727787258fffc02efe97195edc8524da7bfa7a25c45e046f77d47",
     "world-support-no-space.log": "c27cbb4082b42dbc2a303df7d4cb00fdda2e4b1971852469f59b0fd91c53b6c3",
-    "world-support.log": "f365cfe97a5dc5954ee7f7ec138e6c26d9768a0365e08f9e5d59bd5889848710"
+    "world-support.log": "f365cfe97a5dc5954ee7f7ec138e6c26d9768a0365e08f9e5d59bd5889848710",
+    "world-latest-main.log": "b33df5b1fd7dfebc70dd8a9e8d9b4d7ca8cedd902be3c124f63902ddeddeeb2a",
+    "source-latest-main.json": "7426e9f51a57cbb857747f907530d94379568e42cdafcfb5e3382495fe232811"
   },
   "gpu_phase_note": "The capture predates final selection-geometry reconciliation integration. That integration adds a physics cache comparison and changes prediction; it leaves the direct terrain ray, locomotion controller, compiler, imported renderer, and GPU fixture source unchanged. Final world and native checks pass after integration."
 }

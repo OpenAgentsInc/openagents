@@ -40,7 +40,9 @@ capture. GPU timestamp queries are disabled, so this is a palette integration
 check, not a GPU timing result.
 
 The final main integration preserves travel when nonblocking selection geometry
-changes. Against it, all 360 default world tests and 54 native client tests pass.
+changes. Against it, all 360 default world tests and 54 native client tests pass. A later
+main integration adds prediction diagnostics and retires dead-player controls;
+all 361 default world tests pass against that revision.
 The GPU capture predates that integration; the change leaves the direct terrain
 ray, locomotion controller, renderer, and fixture source unchanged. Source
 manifests and verification phases distinguish both revisions.

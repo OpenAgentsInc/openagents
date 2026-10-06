@@ -1,0 +1,6 @@
+{
+  "schema": "verse.source.reference.v1",
+  "commit": "7d4c593df08056411168ae96c1bc393560bbb9d7",
+  "tree": "95fdc2de938a299afa656754b77193e777bf888c",
+  "phase": "Final world integration including prediction diagnostics and dead-player control retirement; tested before the evidence-only parent update."
+}

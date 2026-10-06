@@ -1628,7 +1628,7 @@ focused terrain-query check passes against that addition. Content passes 24
 tests and its CLI workflow before the final pitch-sign correction; the final
 named-rig fixture passes against the corrected controller. Renderer library
 checks pass 80 tests with six ignored graphics checks against current main.
-The final geometry integration also passes all 360 default world tests, including
+The final geometry and control integration also passes all 361 default world tests, including
 prediction and contact isolation. The merged native client passes 54 tests with five ignored graphics checks;
 the final offscreen Vulkan check separately passes on an RTX 4080, with 29
 planted contacts and zero equipment-socket matrix error over 18 frames. Its
