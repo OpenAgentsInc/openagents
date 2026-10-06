@@ -47,6 +47,21 @@ fn summary(mut values: Vec<f64>) -> serde_json::Value {
         (!values.is_empty()).then(|| values[((values.len() - 1) as f64 * 0.95).ceil() as usize]);
     serde_json::json!({"samples":values.len(),"p95":p95,"max":values.last()})
 }
+// Verified credit wakes the interval producer without granting elapsed wall time.
+fn credit_wakes_frames(
+    previous: Option<(verse_engine::core::LifeId, u64, u64)>,
+    latest: Option<(verse_engine::core::LifeId, u64, u64)>,
+    movement: Option<verse_world::movement::Baseline>,
+) -> bool {
+    let (Some((life, epoch, step)), Some(baseline)) = (latest, movement) else {
+        return false;
+    };
+    baseline.profile == verse_world::movement::Profile::Frames
+        && (baseline.life, baseline.epoch) == (life, epoch)
+        && previous.is_none_or(|(old_life, old_epoch, old_step)| {
+            (old_life, old_epoch) != (life, epoch) || step > old_step
+        })
+}
 pub async fn player(
     client: Client,
     index: usize,
@@ -242,7 +257,10 @@ pub async fn player(
     }
     update=receive.recv()=>match update.ok_or("Load worker output closed")? {
      Update::Snapshot(response)=>{
-      credit=response.control.as_ref().map(|c|(c.life.into(),c.epoch,c.credit_step));
+      let latest_credit=response.control.as_ref().map(|c|(c.life.into(),c.epoch,c.credit_step));
+      let movement=match &response.body {Reply::Snapshot {state}=>state.movement,_=>None};
+      if credit_wakes_frames(credit,latest_credit,movement) {clock.reset_immediately();}
+      credit=latest_credit;
       epoch=response.control.as_ref().ok_or("Load lost player control")?.epoch;
       snapshot_bytes+=serde_json::to_vec(&response).map_err(|_|"Cannot size load snapshot")?.len() as u64;
       let Reply::Snapshot {state:latest}=response.body else {return Err("Load snapshot refused".into())};
@@ -269,7 +287,9 @@ pub async fn player(
       Err(message)=>{outstanding.remove(&token);refused+=1;if refusal_trace.len()<32 {refusal_trace.push(serde_json::json!({"stage":"frame_binding","message":message}));}},
      },
      Update::Outcome(response)=>{
-      credit=response.control.as_ref().map(|c|(c.life.into(),c.epoch,c.credit_step));
+      let latest_credit=response.control.as_ref().map(|c|(c.life.into(),c.epoch,c.credit_step));
+      if credit_wakes_frames(credit,latest_credit,state.as_ref().and_then(|s|s.movement)) {clock.reset_immediately();}
+      credit=latest_credit;
       if let Some(control)=response.control.as_ref() {epoch=control.epoch;}
       if let Some((started,ability,entry,token))=pending.pop_front() {
        if let Some(token)=token {outstanding.remove(&token);}

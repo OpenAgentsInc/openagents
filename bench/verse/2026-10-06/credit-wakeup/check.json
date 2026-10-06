@@ -1,0 +1,19 @@
+{
+  "schema": "verse.regression.check.v1",
+  "scenario": "Headless interval production wakes on a newer verified authority credit matching its frame baseline. Duplicate credit, retired contexts, and arrival movement preserve the existing timer.",
+  "checks": {
+    "battle_acceptance_tests": 3,
+    "test_compile_seconds": 5.85,
+    "consumer_build_seconds": 12.67,
+    "commands": [
+      "cargo +1.97.1 test -p verse --no-default-features --features remote-chamber --example battle_scale",
+      "cargo +1.97.1 build -p verse --no-default-features --features remote-chamber --example battle_scale"
+    ],
+    "executable_sha256": "0e251ed67f2216776528660ec91df4e029e9cb954db586f45ff2b61b391b39fa"
+  },
+  "limitations": [
+    "The targeted tests check battle gates and compilation; live movement behavior requires the separately retained comparison battle.",
+    "This changes only the headless battle producer. It does not alter native input, server interval credit, expiry, or acceptance gates.",
+    "The Linux comparison checkout uses source base 43f12d6e0bb48e22f151476a14aaab66cca9bee8 plus retained own patches."
+  ]
+}
