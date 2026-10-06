@@ -24,7 +24,7 @@ crypt-fight = ["crypt", "verse-imported/crypt-fight"]
 panels = ["dep:rust-native-desktop", "dep:openagents-chat-app"]
 # The in-world terminal overlay: panes on PTYs of this computer, drawn
 # from a `coder-vt` grid. Native desktop only.
-terminal = ["dep:openagents-chat", "dep:workbench", "dep:compute-workbench", "dep:terminal-studio", "dep:terminal-gfx", "dep:winit"]
+terminal = ["dep:openagents-chat", "dep:workbench", "dep:compute-workbench", "dep:contribution-workbench", "dep:terminal-studio", "dep:terminal-gfx", "dep:winit"]
 # The Agent Studio from a live host, over its same-user control socket.
 studio-host = ["dep:openagents-connect", "verse-zone-everglade/studio-host"]
 imported-desktop = ["dep:winit", "capture", "native-audio", "imported-surface", "verse-pbr/imported-desktop", "verse-imported/imported-desktop"]
@@ -44,6 +44,7 @@ browser-chamber = ["web", "verse-imported/chamber-client", "verse-world/reach-cl
 
 [dependencies]
 openagents-chat = { path = "../openagents-chat", optional = true }
+contribution-workbench = { path = "../contribution-workbench", features = ["host"], optional = true }
 compute-workbench = { path = "../compute-workbench", features = ["host"], optional = true }
 rtrb = { version = "=0.4.0", optional = true }
 verse-content = { path = "../verse-content", features = ["compiler"] }

@@ -13,6 +13,7 @@ use sha2::{Digest, Sha256};
 use std::{collections::BTreeMap, path::Path};
 
 pub mod compute;
+pub mod contribution;
 pub mod markets;
 pub mod payee;
 pub mod payout;
@@ -264,6 +265,14 @@ pub struct Ledger {
 impl Ledger {
     pub fn open(path: impl AsRef<Path>) -> Result<Self> {
         Self::initialize(Connection::open(path)?)
+    }
+    /// Open an existing ledger without creating files, installing rules, or migrating tables.
+    /// Queries against an unsupported schema return an error.
+    pub fn open_read_only(path: impl AsRef<Path>) -> Result<Self> {
+        let connection =
+            Connection::open_with_flags(path, rusqlite::OpenFlags::SQLITE_OPEN_READ_ONLY)?;
+        connection.busy_timeout(std::time::Duration::from_secs(5))?;
+        Ok(Self { connection })
     }
     pub fn in_memory() -> Result<Self> {
         Self::initialize(Connection::open_in_memory()?)

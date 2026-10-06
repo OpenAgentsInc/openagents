@@ -428,8 +428,9 @@ impl Bundle {
             .and_then(|_| file.sync_all())
             .map_err(|e| e.to_string())
     }
-    /// Read-only assessment. A local kb-study result cannot satisfy this profile.
-    pub fn state(&self, candidate: &str, now: u64, trust: &Trust) -> Result<State, String> {
+    /// Verify the independent report without requiring an operator admission.
+    /// Local study results cannot satisfy this signed prospective profile.
+    pub fn check_report(&self, candidate: &str, trust: &Trust) -> Result<(), String> {
         if trust.operator != self.plan.record.operator
             || trust.evaluator != self.plan.record.evaluator
         {
@@ -443,6 +444,12 @@ impl Bundle {
         if self.plan.signer != frozen.operator || self.report.signer != frozen.evaluator {
             return Err("Evidence signer does not hold its precommitted role".into());
         }
+        Ok(())
+    }
+    /// Read-only assessment. A local kb-study result cannot satisfy this profile.
+    pub fn state(&self, candidate: &str, now: u64, trust: &Trust) -> Result<State, String> {
+        self.check_report(candidate, trust)?;
+        let frozen = &self.plan.record;
         let review = self
             .review
             .as_ref()

@@ -11,6 +11,7 @@ name = "openagents-terminal"
 path = "src/main.rs"
 
 [dependencies]
+contribution-workbench = { path = "../contribution-workbench", features = ["host"] }
 compute-workbench = { path = "../compute-workbench", features = ["host"] }
 knowledge = { path = "../knowledge" }
 openagents-chat = { path = "../openagents-chat" }

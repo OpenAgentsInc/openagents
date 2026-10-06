@@ -263,3 +263,43 @@ older name for `openagents plugin` and still works.
 
 The [glossary](../glossary.md#one-vocabulary-what-you-can-add) explains
 each internal term.
+
+## Inspect contribution evidence
+
+OpenAgents Terminal and Verse use the same read-only contribution pane. Pass
+`--contribution-workbench CONFIG` to `openagents-terminal`, or pass
+`--terminal --contribution-workbench CONFIG` to Verse. Keep the configuration
+and selected evidence files private (mode `0600` on Unix). Paths select existing
+retained records; opening a pane runs no plugin, publishes nothing, and pays
+nothing.
+
+```json
+{
+  "plugins": ["/absolute/path/to/reviewed-plugin-owner"],
+  "knowledge": ["/absolute/path/to/knowledge-session.json"],
+  "reviews": ["/absolute/path/to/signed-prospective-bundle.json"],
+  "events": ["/absolute/path/to/retained-signed-event.json"],
+  "documents": ["/absolute/path/to/pinned-manifest.json"],
+  "operators": [],
+  "evaluators": [],
+  "referees": [],
+  "ledger": null
+}
+```
+
+Use hex public keys for the operators, evaluators, and XP referees you trust.
+Select all signed results, checks, release events, quests, and awards needed to
+verify a claim, and the manifest and admission documents their digests pin.
+Keep signed retirement bundles beside earlier admission bundles: retirement
+wins for that admission regardless of file order. A changed exact version
+needs its own evidence. Local comparisons, publication, installation, actual
+route invocation, independent validation, operator adoption, signed credit,
+and settlement appear separately. Source text, model output, payer aliases,
+and invoices are excluded.
+
+The optional `ledger` selects an existing payment ledger opened read-only. A
+settled contribution requires an exact signed release's author share in a
+payout recorded as sent, with a wallet reference and a positive recorded sent
+amount. The pane labels this as a local ledger claim. A payout batch's amount
+is not the individual share's amount. Failed, uncertain, missing, and unrelated
+payments establish no settlement; no selected receipt means unavailable.

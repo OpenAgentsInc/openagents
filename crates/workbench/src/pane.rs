@@ -333,12 +333,13 @@ pub trait PaneAdapter: Send {
 #[derive(Default)]
 pub struct Panes {
     adapters: Vec<Box<dyn PaneAdapter>>,
+    host_adapters: Vec<(Host, Box<dyn PaneAdapter>)>,
     fallbacks: Vec<(PaneKind, View)>,
 }
 
 impl std::fmt::Debug for Panes {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        let kinds: Vec<PaneKind> = self.adapters.iter().map(|a| a.kind()).collect();
+        let kinds = self.kinds();
         f.debug_struct("Panes")
             .field("adapters", &kinds)
             .field("fallbacks", &self.fallbacks)
@@ -360,6 +361,15 @@ impl Panes {
         self
     }
 
+    /// Register one host's domain adapter. Exact host matches precede the kind fallback.
+    #[must_use]
+    pub fn adapter_for_host(mut self, host: Host, adapter: Box<dyn PaneAdapter>) -> Self {
+        self.host_adapters
+            .retain(|(known, value)| known != &host || value.kind() != adapter.kind());
+        self.host_adapters.push((host, adapter));
+        self
+    }
+
     /// Declares what shows for `kind` when no adapter describes it.
     ///
     /// # Errors
@@ -374,7 +384,13 @@ impl Panes {
     /// The kinds an adapter describes here.
     #[must_use]
     pub fn kinds(&self) -> Vec<PaneKind> {
-        self.adapters.iter().map(|adapter| adapter.kind()).collect()
+        let mut kinds: Vec<_> = self.adapters.iter().map(|adapter| adapter.kind()).collect();
+        for (_, adapter) in &self.host_adapters {
+            if !kinds.contains(&adapter.kind()) {
+                kinds.push(adapter.kind());
+            }
+        }
+        kinds
     }
 
     /// The pane for `subject` shown as `pane`: its adapter's description,
@@ -386,7 +402,13 @@ impl Panes {
     /// A subject that does not fit the kind.
     pub fn resolve(&self, pane: PaneKind, subject: &Subject) -> Result<PaneDescriptor, Refusal> {
         subject.check(pane)?;
-        let Some(adapter) = self.adapters.iter().find(|adapter| adapter.kind() == pane) else {
+        let Some(adapter) = self
+            .host_adapters
+            .iter()
+            .find(|(host, adapter)| host == subject.host() && adapter.kind() == pane)
+            .map(|(_, adapter)| adapter)
+            .or_else(|| self.adapters.iter().find(|adapter| adapter.kind() == pane))
+        else {
             let view = self
                 .fallbacks
                 .iter()

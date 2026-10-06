@@ -19,6 +19,7 @@ pub struct Options {
     capability_flow: Option<PathBuf>,
     root: Option<PathBuf>,
     knowledge_workbench: Option<PathBuf>,
+    contribution_workbench: Option<PathBuf>,
     compute_workbench: Option<PathBuf>,
     knowledge_review: Option<PathBuf>,
     knowledge_operator: Option<String>,
@@ -118,6 +119,13 @@ pub fn run() -> Result<(), String> {
                 options.knowledge_review = Some(
                     args.next()
                         .ok_or("Expected retained knowledge evidence")?
+                        .into(),
+                )
+            }
+            "--contribution-workbench" => {
+                options.contribution_workbench = Some(
+                    args.next()
+                        .ok_or("Expected private contribution configuration")?
                         .into(),
                 )
             }
@@ -537,6 +545,12 @@ impl ApplicationHandler for App {
                     .core
                     .products
                     .open(workbench::pane::PaneKind::Knowledge, &subject)?;
+            }
+            if let Some(path) = &self.options.contribution_workbench {
+                contribution_workbench::host::mount(
+                    &mut terminal.core,
+                    contribution_workbench::host::Config::load(path)?,
+                )?;
             }
             if let Some(path) = &self.options.compute_workbench {
                 compute_workbench::host::mount(

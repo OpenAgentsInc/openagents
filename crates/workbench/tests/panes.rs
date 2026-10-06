@@ -257,3 +257,46 @@ fn descriptors_refuse_unknown_fields_and_actions_off_ready() {
         workbench::Reason::UnsupportedVersion
     );
 }
+
+#[test]
+fn exact_host_receipts_coexist_replace_deterministically_and_preserve_fallback() {
+    struct Receipt(&'static str);
+    impl PaneAdapter for Receipt {
+        fn kind(&self) -> PaneKind {
+            PaneKind::Receipt
+        }
+        fn describe(&self, _: &Subject) -> Description {
+            Description::only(PaneState::Ready, self.0)
+        }
+    }
+    let compute = Host::Local {
+        instance: "ab".repeat(32),
+    };
+    let contribution = Host::Local {
+        instance: "cd".repeat(32),
+    };
+    let wrong = Host::Local {
+        instance: "ef".repeat(32),
+    };
+    let panes = Panes::new()
+        .adapter(Box::new(Receipt("legacy")))
+        .adapter_for_host(compute.clone(), Box::new(Receipt("compute")))
+        .adapter_for_host(contribution.clone(), Box::new(Receipt("old contribution")))
+        .adapter_for_host(contribution.clone(), Box::new(Receipt("contribution")));
+    for (host, title) in [
+        (compute, "compute"),
+        (contribution, "contribution"),
+        (wrong, "legacy"),
+    ] {
+        let subject = Subject::Record {
+            host,
+            id: "receipt".into(),
+            revision: None,
+        };
+        assert_eq!(
+            panes.resolve(PaneKind::Receipt, &subject).unwrap().title,
+            title
+        );
+    }
+    assert_eq!(panes.kinds(), vec![PaneKind::Receipt]);
+}

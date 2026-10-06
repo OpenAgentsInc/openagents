@@ -3472,6 +3472,24 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "3d52eff69cd5e647efe296129160853a42795992097e8af39800e1060caeea9b"
 
 [[package]]
+name = "contribution-workbench"
+version = "0.1.0"
+dependencies = [
+ "knowledge",
+ "nostr",
+ "openagents-chat",
+ "pay-ledger",
+ "route-contract",
+ "secp256k1 0.31.1",
+ "serde",
+ "serde_json",
+ "tempfile",
+ "terminal-core",
+ "workbench",
+ "xp-ledger",
+]
+
+[[package]]
 name = "convert_case"
 version = "0.10.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -13646,6 +13664,7 @@ version = "1.0.0-rc.2"
 dependencies = [
  "bytemuck",
  "compute-workbench",
+ "contribution-workbench",
  "knowledge",
  "openagents-chat",
  "pollster",
@@ -15172,6 +15191,7 @@ dependencies = [
  "coder-ui",
  "coder-vt",
  "compute-workbench",
+ "contribution-workbench",
  "cpal",
  "futures-util",
  "getrandom 0.3.4",
