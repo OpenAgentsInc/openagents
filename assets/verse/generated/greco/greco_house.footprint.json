@@ -1,0 +1,251 @@
+{
+  "model": "greco_house.glb",
+  "frame": "glTF: 1 unit = 1 m, +Y up, +Z out of the front door, origin on the ground at the center of the front wall",
+  "triangles": 7002,
+  "boxes": [
+    {
+      "name": "planter",
+      "center": [
+        -7.45,
+        0.6,
+        -0.84
+      ],
+      "half_extents": [
+        2.95,
+        0.6,
+        0.84
+      ]
+    },
+    {
+      "name": "planter",
+      "center": [
+        7.45,
+        0.6,
+        -0.84
+      ],
+      "half_extents": [
+        2.95,
+        0.6,
+        0.84
+      ]
+    },
+    {
+      "name": "planter",
+      "center": [
+        -5.8,
+        1.65,
+        -6.74
+      ],
+      "half_extents": [
+        1.4,
+        1.05,
+        1.14
+      ]
+    },
+    {
+      "name": "planter",
+      "center": [
+        5.8,
+        1.65,
+        -6.74
+      ],
+      "half_extents": [
+        1.4,
+        1.05,
+        1.14
+      ]
+    },
+    {
+      "name": "pier",
+      "center": [
+        -9.4,
+        5.7,
+        -8.6
+      ],
+      "half_extents": [
+        0.55,
+        4.1,
+        0.55
+      ]
+    },
+    {
+      "name": "pier",
+      "center": [
+        -6.6,
+        5.7,
+        -8.6
+      ],
+      "half_extents": [
+        0.55,
+        4.1,
+        0.55
+      ]
+    },
+    {
+      "name": "pier",
+      "center": [
+        6.6,
+        5.7,
+        -8.6
+      ],
+      "half_extents": [
+        0.55,
+        4.1,
+        0.55
+      ]
+    },
+    {
+      "name": "pier",
+      "center": [
+        9.4,
+        5.7,
+        -8.6
+      ],
+      "half_extents": [
+        0.55,
+        4.1,
+        0.55
+      ]
+    },
+    {
+      "name": "column",
+      "center": [
+        -2.1,
+        5.7,
+        -8.6
+      ],
+      "half_extents": [
+        0.57,
+        4.1,
+        0.57
+      ]
+    },
+    {
+      "name": "column",
+      "center": [
+        2.1,
+        5.7,
+        -8.6
+      ],
+      "half_extents": [
+        0.57,
+        4.1,
+        0.57
+      ]
+    },
+    {
+      "name": "wall",
+      "center": [
+        -9.8,
+        5.7,
+        -18.6
+      ],
+      "half_extents": [
+        0.25,
+        4.1,
+        7.0
+      ]
+    },
+    {
+      "name": "wall",
+      "center": [
+        9.8,
+        5.7,
+        -18.6
+      ],
+      "half_extents": [
+        0.25,
+        4.1,
+        7.0
+      ]
+    },
+    {
+      "name": "facade",
+      "center": [
+        -5.675,
+        5.7,
+        -11.8
+      ],
+      "half_extents": [
+        4.325,
+        4.1,
+        0.2
+      ]
+    },
+    {
+      "name": "facade",
+      "center": [
+        5.675,
+        5.7,
+        -11.8
+      ],
+      "half_extents": [
+        4.325,
+        4.1,
+        0.2
+      ]
+    },
+    {
+      "name": "back",
+      "center": [
+        0.0,
+        5.7,
+        -25.4
+      ],
+      "half_extents": [
+        10.0,
+        4.1,
+        0.2
+      ]
+    },
+    {
+      "name": "desk",
+      "center": [
+        0.0,
+        2.0,
+        -21.6
+      ],
+      "half_extents": [
+        1.4,
+        0.38,
+        0.5
+      ]
+    },
+    {
+      "name": "sofa",
+      "center": [
+        0.0,
+        2.03,
+        -14.4
+      ],
+      "half_extents": [
+        2.2,
+        0.41,
+        0.5
+      ]
+    }
+  ],
+  "roofs": [
+    {
+      "center": [
+        0.0,
+        -17.1
+      ],
+      "slopes_z": true,
+      "half": [
+        8.5,
+        9.5
+      ],
+      "eave": 12.4,
+      "ridge": 12.41
+    }
+  ],
+  "front": [
+    0.0,
+    1.0
+  ],
+  "inside": [
+    0.0,
+    -12.9
+  ]
+}
