@@ -54,6 +54,7 @@ pub(crate) fn run(
         TermRequest::Close(r) => pty.close(principal, r),
         TermRequest::History(r) => pty.history(principal, r),
         TermRequest::BlockPage(r) => pty.block_page(principal, r),
+        TermRequest::Seat(r) => pty.seat(principal, r),
     };
     TerminalResult::from_outcome(id, outcome)
 }

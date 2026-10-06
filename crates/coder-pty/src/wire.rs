@@ -272,6 +272,21 @@ impl Attach {
         self.requires.iter().any(|id| id == crate::ext::EFFECTS)
     }
 
+    /// The same attach, also naming the typist feature.
+    #[must_use]
+    pub fn with_typist(mut self) -> Self {
+        if !self.typist() {
+            self.requires.push(crate::ext::TYPIST.into());
+        }
+        self
+    }
+
+    /// Whether the attach names the typist feature.
+    #[must_use]
+    pub fn typist(&self) -> bool {
+        self.requires.iter().any(|id| id == crate::ext::TYPIST)
+    }
+
     /// Checks the attach as a base-profile host does: a request that names
     /// any feature refuses as `unsupported_feature`.
     pub fn check(&self) -> Result<(), Refusal> {
@@ -281,8 +296,14 @@ impl Attach {
     /// Checks the attach as a host that serves `features` does.
     pub fn check_with(&self, features: crate::ext::Features) -> Result<(), Refusal> {
         version(&self.v, ATTACH)?;
-        let snapshot =
-            features.admit(&self.requires, &[crate::ext::SNAPSHOT, crate::ext::EFFECTS])?;
+        let snapshot = features.admit(
+            &self.requires,
+            &[
+                crate::ext::SNAPSHOT,
+                crate::ext::EFFECTS,
+                crate::ext::TYPIST,
+            ],
+        )?;
         common_id(&self.request, "request")?;
         self.terminal.check()?;
         if self.rate == 0 {
@@ -352,6 +373,10 @@ pub struct Input {
     pub terminal: TerminalRef,
     #[serde(with = "b64")]
     pub data: Vec<u8>,
+    /// The attachment typing. Present exactly when `requires` names the
+    /// typist feature ([`crate::ext::TYPIST`]).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub attachment: Option<String>,
 }
 
 impl Input {
@@ -367,11 +392,32 @@ impl Input {
             request: request.into(),
             terminal,
             data: data.into(),
+            attachment: None,
         }
     }
 
+    /// The same input from `attachment`, naming the typist feature.
+    #[must_use]
+    pub fn from_attachment(mut self, attachment: impl Into<String>) -> Self {
+        self.requires = vec![crate::ext::TYPIST.into()];
+        self.attachment = Some(attachment.into());
+        self
+    }
+
     pub fn check(&self) -> Result<(), Refusal> {
-        header(&self.v, INPUT, &self.requires, &self.request)?;
+        self.check_with(crate::ext::Features::NONE)
+    }
+
+    /// Checks the input as a host that serves `features` does.
+    pub fn check_with(&self, features: crate::ext::Features) -> Result<(), Refusal> {
+        seat_header(
+            &self.v,
+            INPUT,
+            &self.requires,
+            &self.request,
+            self.attachment.as_deref(),
+            features,
+        )?;
         self.terminal.check()?;
         if self.data.is_empty() {
             return Err(Refusal::malformed(
@@ -396,6 +442,9 @@ pub struct Resize {
     pub request: String,
     pub terminal: TerminalRef,
     pub size: Size,
+    /// The attachment resizing, with the typist feature.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub attachment: Option<String>,
 }
 
 impl Resize {
@@ -407,11 +456,32 @@ impl Resize {
             request: request.into(),
             terminal,
             size,
+            attachment: None,
         }
     }
 
+    /// The same resize from `attachment`, naming the typist feature.
+    #[must_use]
+    pub fn from_attachment(mut self, attachment: impl Into<String>) -> Self {
+        self.requires = vec![crate::ext::TYPIST.into()];
+        self.attachment = Some(attachment.into());
+        self
+    }
+
     pub fn check(&self) -> Result<(), Refusal> {
-        header(&self.v, RESIZE, &self.requires, &self.request)?;
+        self.check_with(crate::ext::Features::NONE)
+    }
+
+    /// Checks the resize as a host that serves `features` does.
+    pub fn check_with(&self, features: crate::ext::Features) -> Result<(), Refusal> {
+        seat_header(
+            &self.v,
+            RESIZE,
+            &self.requires,
+            &self.request,
+            self.attachment.as_deref(),
+            features,
+        )?;
         self.terminal.check()?;
         self.size.check()
     }
@@ -437,6 +507,9 @@ pub struct Signal {
     pub request: String,
     pub terminal: TerminalRef,
     pub signal: SignalKind,
+    /// The attachment signaling, with the typist feature.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub attachment: Option<String>,
 }
 
 impl Signal {
@@ -448,11 +521,32 @@ impl Signal {
             request: request.into(),
             terminal,
             signal,
+            attachment: None,
         }
     }
 
+    /// The same signal from `attachment`, naming the typist feature.
+    #[must_use]
+    pub fn from_attachment(mut self, attachment: impl Into<String>) -> Self {
+        self.requires = vec![crate::ext::TYPIST.into()];
+        self.attachment = Some(attachment.into());
+        self
+    }
+
     pub fn check(&self) -> Result<(), Refusal> {
-        header(&self.v, SIGNAL, &self.requires, &self.request)?;
+        self.check_with(crate::ext::Features::NONE)
+    }
+
+    /// Checks the signal as a host that serves `features` does.
+    pub fn check_with(&self, features: crate::ext::Features) -> Result<(), Refusal> {
+        seat_header(
+            &self.v,
+            SIGNAL,
+            &self.requires,
+            &self.request,
+            self.attachment.as_deref(),
+            features,
+        )?;
         self.terminal.check()
     }
 }
@@ -516,6 +610,9 @@ pub enum Reason {
     /// A stream or reference binds a different terminal or generation
     /// than the body that carries it. An extension cause.
     IdentityMismatch,
+    /// Another attachment is the typist: only it types, resizes, and
+    /// signals until the role moves. An extension cause.
+    NotTypist,
 }
 
 impl Reason {
@@ -536,6 +633,7 @@ impl Reason {
             Reason::Stale => "stale",
             Reason::ContentUnavailable => "content_unavailable",
             Reason::IdentityMismatch => "identity_mismatch",
+            Reason::NotTypist => "not_typist",
         }
     }
 }
@@ -724,6 +822,11 @@ pub enum Body {
         after: u64,
         effect: crate::ext::Effect,
     },
+    /// Which attachment is the typist now, or null for none, and the size
+    /// the terminal runs at. Not sequenced; sent to an attachment that
+    /// named [`crate::ext::TYPIST`] when it begins and whenever the role
+    /// moves.
+    Typist { typist: Option<String>, size: Size },
 }
 
 impl Body {
@@ -732,7 +835,10 @@ impl Body {
     pub fn seq(&self) -> Option<u64> {
         match self {
             Body::Output { seq, .. } | Body::Exit { seq, .. } => Some(*seq),
-            Body::Gap { .. } | Body::Detached { .. } | Body::Effect { .. } => None,
+            Body::Gap { .. }
+            | Body::Detached { .. }
+            | Body::Effect { .. }
+            | Body::Typist { .. } => None,
         }
     }
 }
@@ -786,6 +892,12 @@ impl Frame {
             }
             Body::Detached { .. } => {}
             Body::Effect { effect, .. } => effect.check()?,
+            Body::Typist { typist, size } => {
+                if let Some(typist) = typist {
+                    common_id(typist, "typist")?;
+                }
+                size.check()?;
+            }
         }
         Ok(())
     }
@@ -821,6 +933,33 @@ pub(crate) fn version(v: &str, expected: &str) -> Result<(), Refusal> {
     } else {
         Err(Refusal::malformed(format!("expected {expected}")))
     }
+}
+
+/// The header of an input, resize, or signal: the base header, or with
+/// the typist feature, the attachment it names.
+fn seat_header(
+    v: &str,
+    expected: &str,
+    requires: &[String],
+    request: &str,
+    attachment: Option<&str>,
+    features: crate::ext::Features,
+) -> Result<(), Refusal> {
+    version(v, expected)?;
+    let typist = features.admit(requires, &[crate::ext::TYPIST])?;
+    match (typist, attachment) {
+        (true, Some(attachment)) => common_id(attachment, "attachment")?,
+        (false, None) => {}
+        (true, None) => {
+            return Err(Refusal::malformed("the typist feature needs an attachment"));
+        }
+        (false, Some(_)) => {
+            return Err(Refusal::malformed(
+                "attachment needs the typist feature in requires",
+            ));
+        }
+    }
+    common_id(request, "request")
 }
 
 fn header(v: &str, expected: &str, requires: &[String], request: &str) -> Result<(), Refusal> {

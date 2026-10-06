@@ -45,6 +45,16 @@
 //! interacting attachment predates the feature; an older client that
 //! answers queries keeps answering them, so a reply is never sent twice.
 //!
+//! # Typist
+//!
+//! A terminal has at most one typist: the `interact` attachment whose
+//! input, size, and signals it takes. The first attachment to type at a
+//! terminal without one becomes it; take and release move the role; and it
+//! ends when that attachment does. Input, resize, and signal from anyone
+//! else refuse as `not_typist`. A client that predates the typist feature
+//! names no attachment, so its requests count as its device's: they pass
+//! while its device is the typist or nobody is.
+//!
 //! # Authority
 //!
 //! [`Rights`] answers whether a principal holds `terminal` or `observe`.
@@ -71,7 +81,7 @@ use std::thread::JoinHandle;
 use std::time::{Duration, Instant};
 
 use crate::emulator::{self, Effects, Emulator, HistoryRead};
-use crate::ext::{BlockPageRead, Effect, Features, History, Join, RecordsFrame};
+use crate::ext::{BlockPageRead, Effect, Features, History, Join, RecordsFrame, Seat};
 use crate::ring::Ring;
 use crate::wire::{
     self, Attach, Body, Cause, Close, Detach, Detached, Exit, Frame, Input, Launch, Mode, Open,
@@ -331,6 +341,7 @@ impl Config {
     #[must_use]
     pub fn features(&self) -> Features {
         Features {
+            typist: true,
             effects: self.emulator.is_some(),
             snapshot: self
                 .emulator
@@ -444,6 +455,10 @@ struct Attachment {
     /// the next sequenced frame, so a snapshot's `READY` always precedes
     /// the frames after its `through`.
     parts: VecDeque<RecordsFrame>,
+    /// Whether the attachment named the typist feature.
+    seated: bool,
+    /// The typist moved, or the size changed, since it was last told.
+    seat_changed: bool,
     /// Effects waiting for the output they follow, at most one of each
     /// kind: a later title replaces an earlier one, and bells add up.
     pending: VecDeque<(u64, Effect)>,
@@ -482,12 +497,115 @@ struct State {
     /// The title and directory the emulator last reported.
     title: String,
     directory: Option<String>,
-    /// The principal that typed last, whose interacting attachments
-    /// receive clipboard writes.
-    typist: Option<String>,
+    /// The typist, when the terminal has one.
+    typist: Option<Typist>,
+}
+
+/// Who types at a terminal: an attachment, or for a client that predates
+/// the typist feature, a device.
+#[derive(Clone, Debug, PartialEq, Eq)]
+struct Typist {
+    principal: String,
+    attachment: Option<String>,
+}
+
+fn not_typist() -> Refusal {
+    Refusal::new(
+        Reason::NotTypist,
+        "another attachment is typing in this terminal; take the role first",
+    )
 }
 
 impl State {
+    /// Admits an input, resize, or signal from `principal` through
+    /// `attachment` (the typist feature) or its device (without it). With
+    /// `acquire`, a terminal without a typist makes the sender the typist.
+    fn seat(
+        &mut self,
+        principal: &str,
+        attachment: Option<&str>,
+        acquire: bool,
+    ) -> Result<(), Refusal> {
+        if let Some(id) = attachment {
+            let own = self.attachments.get(id).is_some_and(|attachment| {
+                attachment.principal == principal && attachment.mode == Mode::Interact
+            });
+            if !own {
+                return Err(Refusal::new(
+                    Reason::NotAdmitted,
+                    "the attachment is not this device's interacting one",
+                ));
+            }
+        }
+        let sender = Typist {
+            principal: principal.to_owned(),
+            attachment: attachment.map(str::to_owned),
+        };
+        match &self.typist {
+            None => {
+                if acquire {
+                    self.set_typist(Some(sender));
+                }
+                Ok(())
+            }
+            Some(typist) if typist.principal != principal => Err(not_typist()),
+            Some(typist) => match (&typist.attachment, attachment) {
+                (Some(current), Some(id)) if current != id => Err(not_typist()),
+                // A device's older client named no attachment; this one does.
+                (None, Some(_)) => {
+                    self.set_typist(Some(sender));
+                    Ok(())
+                }
+                _ => Ok(()),
+            },
+        }
+    }
+
+    fn set_typist(&mut self, typist: Option<Typist>) {
+        if self.typist != typist {
+            self.typist = typist;
+            self.seat_changed();
+        }
+    }
+
+    /// Marks every attachment that named the typist feature to be told.
+    fn seat_changed(&mut self) {
+        for attachment in self.attachments.values_mut() {
+            attachment.seat_changed |= attachment.seated;
+        }
+    }
+
+    /// Ends the role when its attachment, or for a device-level typist
+    /// every interacting attachment of that device, is gone.
+    fn vacate(&mut self) {
+        let gone = self
+            .typist
+            .as_ref()
+            .is_some_and(|typist| match &typist.attachment {
+                Some(id) => !self.attachments.contains_key(id),
+                None => !self.attachments.values().any(|attachment| {
+                    attachment.principal == typist.principal && attachment.mode == Mode::Interact
+                }),
+            });
+        if gone {
+            self.set_typist(None);
+        }
+    }
+
+    /// The typist's attachment as other attachments see it: its own, or a
+    /// device-level typist's first interacting attachment.
+    fn typist_attachment(&self) -> Option<String> {
+        let typist = self.typist.as_ref()?;
+        typist.attachment.clone().or_else(|| {
+            self.attachments
+                .iter()
+                .find(|(_, attachment)| {
+                    attachment.principal == typist.principal && attachment.mode == Mode::Interact
+                })
+                .map(|(id, _)| id.clone())
+        })
+    }
+
     /// Whether the host answers the program's queries: it runs an emulator
     /// and no interacting attachment predates the effects feature.
     fn answers(&self) -> bool {
@@ -519,13 +637,20 @@ impl State {
             .clipboard
             .map(|text| Effect::Clipboard { text })
             .filter(|effect| effect.check().is_ok());
-        for attachment in self.attachments.values_mut().filter(|a| a.effects) {
+        for (attachment_id, attachment) in self.attachments.iter_mut().filter(|(_, a)| a.effects) {
             for effect in out.iter().filter(|effect| effect.check().is_ok()) {
                 attachment.queue(seq, effect.clone());
             }
+            let typing = self.typist.as_ref().is_some_and(|typist| {
+                typist.principal == attachment.principal
+                    && typist
+                        .attachment
+                        .as_ref()
+                        .is_none_or(|id| *id == **attachment_id)
+            });
             if let Some(clipboard) = &clipboard
                 && attachment.mode == Mode::Interact
-                && self.typist.as_deref() == Some(attachment.principal.as_str())
+                && typing
             {
                 attachment.queue(seq, clipboard.clone());
             }
@@ -554,8 +679,23 @@ impl Terminal {
         self.state().ended.is_some()
     }
 
+    /// Admits an input, resize, or signal under the typist rule, and tells
+    /// the attachments that follow the role when it moved.
+    fn seat(
+        &self,
+        principal: &str,
+        attachment: Option<&str>,
+        acquire: bool,
+    ) -> Result<(), Refusal> {
+        let mut state = self.state();
+        state.seat(principal, attachment, acquire)?;
+        self.pump(&mut state, Instant::now());
+        Ok(())
+    }
+
     /// Delivers what each attachment can take now.
     fn pump(&self, state: &mut State, now: Instant) {
+        let seat = (state.typist_attachment(), state.size);
         let State {
             ring,
             attachments,
@@ -570,13 +710,23 @@ impl Terminal {
                 ring,
                 emulator: emulator.as_deref_mut(),
                 exit: *ended,
+                seat: &seat,
             };
             if pump_one(&mut source, id, attachment, now) {
                 finished.push(id.clone());
             }
         }
-        for id in finished {
-            attachments.remove(&id);
+        if !finished.is_empty() {
+            for id in finished {
+                attachments.remove(&id);
+            }
+            // The typist's attachment ended: tell the others now. The role
+            // can end only once, so this recurses at most once.
+            let before = state.typist.clone();
+            state.vacate();
+            if state.typist != before {
+                self.pump(state, now);
+            }
         }
     }
 
@@ -601,6 +751,8 @@ struct Source<'a> {
     emulator: Option<&'a mut (dyn Emulator + 'static)>,
     /// The process's exit, once the ring holds it.
     exit: Option<Exit>,
+    /// The typist's attachment and the terminal's size.
+    seat: &'a (Option<String>, Size),
 }
 
 impl Source<'_> {
@@ -635,6 +787,19 @@ fn pump_one(source: &mut Source<'_>, id: &str, attachment: &mut Attachment, now:
     let reference = source.reference;
     let ring = source.ring;
     loop {
+        if attachment.seat_changed {
+            let (typist, size) = source.seat.clone();
+            let body = Body::Typist { typist, size };
+            match attachment
+                .sink
+                .deliver(&Frame::new(reference.clone(), id, body))
+            {
+                Ok(()) => attachment.seat_changed = false,
+                Err(SinkError::Full) => return false,
+                Err(SinkError::Closed) => return true,
+            }
+            continue;
+        }
         if let Some(index) = attachment
             .pending
             .iter()
@@ -869,6 +1034,8 @@ impl Host {
             effects: request.effects(),
             joined,
             parts: VecDeque::new(),
+            seated: request.typist(),
+            seat_changed: request.typist(),
             pending: VecDeque::new(),
         };
         if joined {
@@ -879,11 +1046,13 @@ impl Host {
                 ..
             } = &mut *state;
             let head = ring.head();
+            let seat = (None, Size::new(1, 1));
             let mut source = Source {
                 reference: &terminal.reference,
                 ring,
                 emulator: emulator.as_deref_mut(),
                 exit: *ended,
+                seat: &seat,
             };
             match source.snapshot(&id) {
                 Some(Ok(parts)) => {
@@ -1070,7 +1239,10 @@ impl Host {
                 body,
             ));
         }
-        state.activity = Instant::now();
+        let now = Instant::now();
+        state.activity = now;
+        state.vacate();
+        terminal.pump(&mut state, now);
         drop(state);
         self.inner
             .remember(&key(principal, &request.request), body, Value::Done);
@@ -1080,13 +1252,14 @@ impl Host {
     /// Types into a terminal. Returns how many bytes the terminal took;
     /// fewer than sent means it stopped reading input for a second.
     pub fn input(&self, principal: &str, request: &Input) -> Outcome {
-        request.check()?;
+        request.check_with(self.features())?;
         self.inner.require(principal, Right::Terminal)?;
         let body = identity(principal, request);
         if let Some(outcome) = self.inner.retry(&key(principal, &request.request), &body) {
             return outcome;
         }
         let terminal = self.inner.running(&request.terminal)?;
+        terminal.seat(principal, request.attachment.as_deref(), true)?;
         let written = terminal.process.write(&request.data).map_err(|error| {
             Refusal::new(
                 Reason::Unavailable,
@@ -1099,10 +1272,7 @@ impl Host {
                 "the terminal is not reading input",
             ));
         }
-        let mut state = terminal.state();
-        state.activity = Instant::now();
-        state.typist = Some(principal.to_string());
-        drop(state);
+        terminal.state().activity = Instant::now();
         let value = Value::Written {
             bytes: written as u64,
         };
@@ -1113,13 +1283,15 @@ impl Host {
 
     /// Changes a terminal's size.
     pub fn resize(&self, principal: &str, request: &Resize) -> Outcome {
-        request.check()?;
+        request.check_with(self.features())?;
         self.inner.require(principal, Right::Terminal)?;
         let body = identity(principal, request);
         if let Some(outcome) = self.inner.retry(&key(principal, &request.request), &body) {
             return outcome;
         }
         let terminal = self.inner.running(&request.terminal)?;
+        // A resize follows the typist but never makes one.
+        terminal.seat(principal, request.attachment.as_deref(), false)?;
         terminal.process.resize(request.size).map_err(|error| {
             Refusal::new(
                 Reason::Unavailable,
@@ -1127,10 +1299,14 @@ impl Host {
             )
         })?;
         let mut state = terminal.state();
-        state.size = request.size;
+        if state.size != request.size {
+            state.size = request.size;
+            state.seat_changed();
+        }
         if let Some(emulator) = state.emulator.as_mut() {
             emulator.resize(request.size);
         }
+        terminal.pump(&mut state, Instant::now());
         drop(state);
         self.inner
             .remember(&key(principal, &request.request), body, Value::Done);
@@ -1139,13 +1315,14 @@ impl Host {
 
     /// Signals a terminal's foreground process group.
     pub fn signal(&self, principal: &str, request: &Signal) -> Outcome {
-        request.check()?;
+        request.check_with(self.features())?;
         self.inner.require(principal, Right::Terminal)?;
         let body = identity(principal, request);
         if let Some(outcome) = self.inner.retry(&key(principal, &request.request), &body) {
             return outcome;
         }
         let terminal = self.inner.running(&request.terminal)?;
+        terminal.seat(principal, request.attachment.as_deref(), true)?;
         terminal
             .process
             .signal_foreground(request.signal)
@@ -1155,6 +1332,57 @@ impl Host {
                     format!("the signal was not delivered: {error}"),
                 )
             })?;
+        self.inner
+            .remember(&key(principal, &request.request), body, Value::Done);
+        Ok((Status::Accepted, Value::Done))
+    }
+
+    /// Takes or releases the typist role for one of the principal's own
+    /// `interact` attachments. A take always succeeds for such an
+    /// attachment and tells every attachment that named the feature; a
+    /// release from an attachment that is not the typist refuses as
+    /// `not_typist`.
+    pub fn seat(&self, principal: &str, request: &Seat) -> Outcome {
+        request.check_with(self.features())?;
+        self.inner.require(principal, Right::Terminal)?;
+        let body = identity(principal, request);
+        if let Some(outcome) = self.inner.retry(&key(principal, &request.request), &body) {
+            return outcome;
+        }
+        let terminal = self.inner.running(&request.terminal)?;
+        let mut state = terminal.state();
+        let own = state
+            .attachments
+            .get(&request.attachment)
+            .is_some_and(|attachment| {
+                attachment.principal == principal && attachment.mode == Mode::Interact
+            });
+        if !own {
+            return Err(Refusal::new(
+                Reason::NotAdmitted,
+                "the attachment is not this device's interacting one",
+            ));
+        }
+        if request.takes() {
+            state.set_typist(Some(Typist {
+                principal: principal.to_owned(),
+                attachment: Some(request.attachment.clone()),
+            }));
+        } else {
+            let holds = state.typist.as_ref().is_some_and(|typist| {
+                typist.principal == principal
+                    && typist
+                        .attachment
+                        .as_ref()
+                        .is_none_or(|id| *id == request.attachment)
+            });
+            if !holds {
+                return Err(not_typist());
+            }
+            state.set_typist(None);
+        }
+        terminal.pump(&mut state, Instant::now());
+        drop(state);
         self.inner
             .remember(&key(principal, &request.request), body, Value::Done);
         Ok((Status::Accepted, Value::Done))
@@ -1494,6 +1722,7 @@ impl Inner {
                 })
                 .map(|(id, _)| id.clone())
                 .collect();
+            let any_revoked = !revoked.is_empty();
             for id in revoked {
                 if let Some(mut attachment) = state.attachments.remove(&id) {
                     let body = Body::Detached {
@@ -1504,6 +1733,9 @@ impl Inner {
                             .sink
                             .deliver(&Frame::new(terminal.reference.clone(), &id, body));
                 }
+            }
+            if any_revoked {
+                state.vacate();
             }
             terminal.pump(&mut state, now);
             let idle = state.attachments.is_empty()

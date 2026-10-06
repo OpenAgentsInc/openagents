@@ -28,7 +28,7 @@ use coder_host::client::{Link, Ordered, Route};
 use coder_host::mailbox::terminal_generation;
 use coder_host::message::TermRequest;
 use coder_host::pty::client::{Applied, TerminalState};
-use coder_host::pty::ext::{Join, RecordsFrame};
+use coder_host::pty::ext::{Join, RecordsFrame, Seat};
 use coder_host::pty::wire::{
     Attach, Body, Cause, Close, Detach, Detached, Exit, Frame, Input, Mode, Reason, Resize, Size,
     Status, TerminalRef, TerminalResult, Value,
@@ -39,7 +39,7 @@ use tokio::runtime::Handle;
 use tokio::sync::mpsc;
 use tokio::time::Instant;
 
-use super::model::{Model, Phase, SCROLLBACK};
+use super::model::{Model, Phase, SCROLLBACK, Typing};
 use crate::controller::describe;
 
 /// The current link to a host, as the Computers service's supervisor holds
@@ -65,6 +65,8 @@ const GENERATION_TRIES: u32 = 10;
 enum Command {
     Bytes(Vec<u8>),
     Resize(u16, u16),
+    /// Take the typist role.
+    Take,
     Close,
     Leave,
 }
@@ -120,6 +122,11 @@ impl Session {
         if let Some((rows, cols)) = changed {
             let _ = self.commands.send(Command::Resize(rows, cols));
         }
+    }
+
+    /// Take the typist role from another device, so this screen types.
+    pub fn take(&self) {
+        let _ = self.commands.send(Command::Take);
     }
 
     /// End the shell on the host.
@@ -209,6 +216,8 @@ const HELD_BEFORE_READY: usize = 4096;
 /// The NIP-TERM features an attach asks for, most first.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 enum Features {
+    /// Join by snapshot, with effects and the typist role.
+    Typist,
     /// Join by snapshot, with effects.
     Snapshot,
     /// Replay, with effects: the host answers queries.
@@ -220,9 +229,37 @@ enum Features {
 impl Features {
     fn fewer(self) -> Self {
         match self {
+            Features::Typist => Features::Snapshot,
             Features::Snapshot => Features::Effects,
             Features::Effects | Features::Base => Features::Base,
         }
+    }
+
+    fn snapshot(self) -> bool {
+        matches!(self, Features::Typist | Features::Snapshot)
+    }
+}
+
+/// How this session's input, resizes, and takes name it: by its
+/// attachment, once it attached with the typist feature.
+#[derive(Clone, Debug, Default)]
+struct Speaker(Option<String>);
+
+impl Speaker {
+    fn input(&self, reference: &TerminalRef, data: &[u8]) -> TermRequest {
+        let input = Input::new(new_id(), reference.clone(), data);
+        TermRequest::Input(match &self.0 {
+            Some(attachment) => input.from_attachment(attachment),
+            None => input,
+        })
+    }
+
+    fn resize(&self, reference: &TerminalRef, rows: u16, cols: u16) -> TermRequest {
+        let resize = Resize::new(new_id(), reference.clone(), Size::new(rows, cols));
+        TermRequest::Resize(match &self.0 {
+            Some(attachment) => resize.from_attachment(attachment),
+            None => resize,
+        })
     }
 }
 
@@ -231,6 +268,8 @@ impl Features {
 struct Joining {
     /// The host answers queries (the effects feature).
     host_answers: bool,
+    /// How requests name this attachment.
+    speaker: Speaker,
     /// The record streams of an attachment that joined by snapshot.
     streams: Option<Streams>,
     /// Whether sequenced frames apply now: always on replay, and after the
@@ -241,10 +280,11 @@ struct Joining {
 }
 
 impl Joining {
-    fn new(level: Features, reference: &TerminalRef) -> Self {
-        let snapshot = level == Features::Snapshot;
+    fn new(level: Features, reference: &TerminalRef, speaker: Speaker) -> Self {
+        let snapshot = level.snapshot();
         Joining {
             host_answers: level != Features::Base,
+            speaker,
             streams: snapshot.then(|| Streams::new(reference.clone(), SCROLLBACK)),
             ready: !snapshot,
             held: Vec::new(),
@@ -463,16 +503,17 @@ async fn drive(
     // The features to ask for: a join by snapshot with effects, effects
     // alone, or the base profile. An older host refuses a feature, and the
     // session attaches again asking for less.
-    let mut level = Features::Snapshot;
+    let mut level = Features::Typist;
     loop {
         if !first {
             lock(model).set_phase(Phase::Reconnecting);
         }
         // A join by snapshot starts from the host's state, not a sequence
         // number; the others resume after the last applied frame.
-        let after = match level {
-            Features::Snapshot => 0,
-            _ => ordered.state().resume_after(),
+        let after = if level.snapshot() {
+            0
+        } else {
+            ordered.state().resume_after()
         };
         let mut attach = Attach::new(
             new_id(),
@@ -481,11 +522,14 @@ async fn drive(
             after,
             rate(&link),
         );
-        if level == Features::Snapshot {
+        if level.snapshot() {
             attach = attach.joining(Join::Snapshot);
         }
         if level != Features::Base {
             attach = attach.with_effects();
+        }
+        if level == Features::Typist {
+            attach = attach.with_typist();
         }
         let attach = TermRequest::Attach(attach);
         let attached = match until_left(commands, link.terminal(attach)).await {
@@ -552,10 +596,12 @@ async fn drive(
             }
             model.touch();
         }
-        // The screen may have changed size while opening or detached.
+        let speaker = Speaker((level == Features::Typist).then(|| attachment.clone()));
+        // The screen may have changed size while opening or detached. A
+        // host with another typist refuses it, and this screen follows.
         let size = lock(model).size();
         if size != host_size && !exited {
-            let _ = request(&link, resize(&reference, size.0, size.1)).await;
+            let _ = request(&link, speaker.resize(&reference, size.0, size.1)).await;
             host_size = size;
         }
         first = false;
@@ -569,7 +615,7 @@ async fn drive(
             &mut ordered,
             &mut exited,
             &mut host_size,
-            &mut Joining::new(level, &reference),
+            &mut Joining::new(level, &reference, speaker),
         )
         .await;
         match next {
@@ -627,14 +673,6 @@ async fn newer_reference(link: &Link, reference: &TerminalRef) -> Option<Termina
     None
 }
 
-fn resize(reference: &TerminalRef, rows: u16, cols: u16) -> TermRequest {
-    TermRequest::Resize(Resize::new(
-        new_id(),
-        reference.clone(),
-        Size::new(rows, cols),
-    ))
-}
-
 async fn request(link: &Link, request: TermRequest) -> Result<TerminalResult, HostError> {
     link.terminal(request).await
 }
@@ -670,7 +708,9 @@ async fn attached_loop(
         tokio::select! {
             command = commands.recv() => {
                 let command = command.unwrap_or(Command::Leave);
-                if let Some(next) = handle(command, model, link, reference, *exited, host_size).await {
+                if let Some(next) =
+                    handle(command, model, link, reference, *exited, host_size, &joining.speaker).await
+                {
                     return next;
                 }
             }
@@ -713,11 +753,21 @@ async fn attached_loop(
                     // With the effects feature the host's emulator answers
                     // queries; answering here too would answer twice.
                     if !replies.is_empty() && !*exited && !joining.host_answers {
-                        send_input(link, reference, model, replies).await;
+                        send_input(link, reference, model, replies, &joining.speaker).await;
                     }
                     if let Some(next) = next {
                         return next;
                     }
+                }
+                // This screen may set the size again: it took the role, or
+                // nobody holds it.
+                let pending = lock(model).pending_resize.take();
+                if let Some((rows, cols)) = pending
+                    && !*exited
+                    && *host_size != (rows, cols)
+                {
+                    let _ = request(link, joining.speaker.resize(reference, rows, cols)).await;
+                    *host_size = (rows, cols);
                 }
             }
         }
@@ -778,6 +828,14 @@ fn apply(
             Applied::Detached(Detached::Transport) | Applied::Behind { .. } => {
                 next.get_or_insert(Next::Reattach { new_link: false });
             }
+            Applied::Typist { typist, size } => {
+                let typing = match typist {
+                    None => Typing::Free,
+                    Some(id) if id == frame.attachment => Typing::Mine,
+                    Some(_) => Typing::Elsewhere,
+                };
+                model.seat(typing, (size.rows, size.cols));
+            }
             Applied::Detached(Detached::Requested)
             | Applied::Duplicate
             | Applied::Refused(_)
@@ -797,6 +855,7 @@ async fn handle(
     reference: &TerminalRef,
     exited: bool,
     host_size: &mut (u16, u16),
+    speaker: &Speaker,
 ) -> Option<Next> {
     match command {
         Command::Leave => Some(Next::Stop(Stop::Left)),
@@ -804,13 +863,38 @@ async fn handle(
             if exited {
                 return None;
             }
-            send_input(link, reference, model, bytes).await
+            send_input(link, reference, model, bytes, speaker).await
         }
         Command::Resize(rows, cols) => {
             if !exited && *host_size != (rows, cols) {
-                let _ = request(link, resize(reference, rows, cols)).await;
-                *host_size = (rows, cols);
+                let resized = request(link, speaker.resize(reference, rows, cols)).await;
+                if matches!(resized, Ok(ref result) if result.status != Status::Refused) {
+                    *host_size = (rows, cols);
+                }
             }
+            None
+        }
+        Command::Take => {
+            let Some(attachment) = &speaker.0 else {
+                let mut model = lock(model);
+                model.notice =
+                    Some("This computer's host can't hand over typing; update it.".into());
+                model.touch();
+                return None;
+            };
+            if exited {
+                return None;
+            }
+            let take = Seat::take(new_id(), reference.clone(), attachment);
+            let taken = request(link, TermRequest::Seat(take)).await;
+            let mut model = lock(model);
+            if matches!(taken, Ok(ref result) if result.status != Status::Refused) {
+                model.notice = None;
+            } else {
+                model.notice = Some("The computer didn't hand over typing. Try again.".into());
+            }
+            model.touch();
+            // The typist frame that follows sets the role and the size.
             None
         }
         Command::Close => {
@@ -838,17 +922,21 @@ async fn send_input(
     reference: &TerminalRef,
     model: &Arc<Mutex<Model>>,
     bytes: Vec<u8>,
+    speaker: &Speaker,
 ) -> Option<Next> {
     for chunk in bytes.chunks(INPUT_CHUNK) {
-        let sent = request(
-            link,
-            TermRequest::Input(Input::new(new_id(), reference.clone(), chunk)),
-        )
-        .await;
+        let sent = request(link, speaker.input(reference, chunk)).await;
         match sent {
             Ok(result) if result.status == Status::Refused => {
                 let mut model = lock(model);
+                if result.reason == Some(Reason::NotTypist) {
+                    model.typing = Typing::Elsewhere;
+                }
                 model.notice = Some(match result.reason {
+                    Some(Reason::NotTypist) => {
+                        "Another device is typing in this terminal. Tap Type here to take over."
+                            .into()
+                    }
                     Some(Reason::NotAdmitted | Reason::Revoked) => {
                         "The computer refused your input: this device lacks the terminal right."
                             .into()
@@ -994,6 +1082,25 @@ mod tests {
         let (replies, next) = apply(&model, &mut ordered, bell, &mut exited);
         assert!(replies.is_empty() && next.is_none());
         assert_eq!(lock(&model).vt.text(), before);
+    }
+
+    #[test]
+    fn typist_frames_set_the_role_and_the_grid() {
+        let (model, mut ordered, mut exited) = setup();
+        let mine = frame(Body::Typist {
+            typist: Some("c".repeat(64)),
+            size: Size::new(6, 50),
+        });
+        apply(&model, &mut ordered, mine, &mut exited);
+        assert_eq!(lock(&model).typing, Typing::Mine);
+        let other = frame(Body::Typist {
+            typist: Some("e".repeat(64)),
+            size: Size::new(20, 90),
+        });
+        apply(&model, &mut ordered, other, &mut exited);
+        let model = lock(&model);
+        assert_eq!(model.typing, Typing::Elsewhere);
+        assert_eq!(model.size(), (20, 90));
     }
 
     #[test]

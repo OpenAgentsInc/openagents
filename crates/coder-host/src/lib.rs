@@ -82,8 +82,9 @@ pub const PROTOCOL_VERSION: u32 = coder_reach::PROTOCOL_VERSION;
 /// queries on the host and report bells, titles, and clipboard writes as
 /// effect frames (NIP-TERM's effects feature); `term-snapshot` says a device
 /// can join a terminal by snapshot and read older history; `term-blocks`
-/// says it can page through a terminal's block journal.
-pub const CAPABILITIES: [&str; 10] = [
+/// says it can page through a terminal's block journal; `term-typist` says
+/// one attachment types at a time, and take and release move the role.
+pub const CAPABILITIES: [&str; 11] = [
     "activity-summary",
     "direct-tcp",
     "relay-control",
@@ -94,6 +95,7 @@ pub const CAPABILITIES: [&str; 10] = [
     coder_pty::ext::CAPABILITY_EFFECTS,
     coder_pty::ext::CAPABILITY_SNAPSHOT,
     coder_pty::ext::CAPABILITY_BLOCKS,
+    coder_pty::ext::CAPABILITY_TYPIST,
 ];
 
 /// Why a host or client operation failed. Messages carry no key, grant,

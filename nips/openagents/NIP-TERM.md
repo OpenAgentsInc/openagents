@@ -278,7 +278,7 @@ which reveal that a device and a host exchange traffic.
 
 ## Extensions
 
-Added 2026-10-05. Four optional features extend the base profile. A host
+Added 2026-10-05. Five optional features extend the base profile. A host
 that implements one serves it; a client uses one only after the host
 advertises it. Nothing here adds a right, a relay authority, or an event
 kind: every extension operation needs the right its base operation needs,
@@ -290,6 +290,7 @@ travels on the same transports, and follows the same privacy rules.
 | `openagents.terminal-blocks.v1` | `term-blocks` | Paged block-journal reads |
 | `openagents.terminal-sessions.v1` | `term-sessions` | Session records: membership and layout |
 | `openagents.terminal-effects.v1` | `term-effects` | The host answers queries; effects arrive as effect frames |
+| `openagents.terminal-typist.v1` | `term-typist` | One typist per terminal: attachment-named input, take, and release |
 
 ### Negotiation and compatibility
 
@@ -316,7 +317,7 @@ fields without the feature refuse as `malformed`.
 
 ### New refusal causes
 
-The extensions use three more shared codes:
+The extensions use four more shared codes:
 
 - `stale`: the request names a line epoch or a session revision that is no
   longer current.
@@ -324,6 +325,8 @@ The extensions use three more shared codes:
   left the host's retention.
 - `identity_mismatch`: a record stream or a reference binds a different
   terminal or host generation than the frame or request that carries it.
+- `not_typist`: another attachment holds the typist role, so the host takes
+  no input, resize, or signal from this one until the role moves.
 
 A client that receives `stale` reads the current state again; it never
 applies an answer bound to an earlier epoch or revision to the current one.
@@ -657,14 +660,62 @@ with the snapshot feature; it adds no field.
   `{kind: "clipboard", text}` (an OSC 52 write, at most 8,192 bytes, with no
   control character but newline and tab). A new attachment first receives
   the current title and directory with `after` 0.
-- **Clipboard.** A clipboard write reaches only the `interact` attachments
-  of the principal whose input the terminal took last; the host delivers a
-  longer or malformed write to no one. A client may refuse any write. A
+- **Clipboard.** A clipboard write reaches only the typist
+  ([Typist](#typist)): its attachment, or a device-level typist's
+  `interact` attachments. The host delivers a longer or malformed write to
+  no one. A client may refuse any write. A
   program can never read a clipboard: the host answers no OSC 52 query.
 
 A client takes bells, titles, and clipboard writes from effect frames and
 not from its own parsing, so a device that joins late or replays the buffer
 rings no bell and writes no clipboard again.
+
+### Typist
+
+A terminal has at most one *typist*: the `interact` attachment whose input,
+size, and signals it takes. A host that serves
+`openagents.terminal-typist.v1` enforces the role for every input, resize,
+and signal, whichever transport or socket carries it, and keeps no input
+for a device that cannot send it now.
+
+With the feature in `requires`, input, resize, and signal requests carry one
+more field, `attachment`: the sender's own `interact` attachment on the
+terminal. Naming another device's attachment, or an `observe` one, refuses
+as `not_admitted`. An attach may name the feature; that attachment then
+receives typist frames.
+
+- **Acquisition.** At a terminal without a typist, the first attachment to
+  send input or a signal becomes the typist. A resize from a terminal
+  without a typist applies and makes nobody the typist.
+- **Refusal.** Input, resize, and signal from any other attachment refuse as
+  `not_typist`. Only the typist's size reaches the terminal.
+- **Take and release.** `openagents.terminal-take.v1` and
+  `openagents.terminal-release.v1` have `requires:
+  ["openagents.terminal-typist.v1"]`, `request`, `terminal`, and
+  `attachment` (the sender's own `interact` attachment), and need the
+  `terminal` right. A take makes that attachment the typist at once, from
+  whoever held the role. A release from the typist ends the role; from any
+  other attachment it refuses as `not_typist`. The result value is `done`.
+- **End.** The role ends when its attachment ends: a detach, a closed
+  transport, a revoked grant, or the terminal's end. A new attachment, even
+  the same device's on a new route, is not the typist until it takes the
+  role or types at a terminal without one. A host restart ends every role,
+  as it ends every terminal reference.
+- **Older clients.** A request without the feature names no attachment, so
+  the host counts it as its device's: it applies while that device holds the
+  role or nobody does, and at a terminal without a typist it makes the
+  device the typist until the device's last `interact` attachment ends or
+  another attachment takes the role.
+- **Typist frames.** An attachment that named the feature receives
+  `{type: "typist", typist, size}` when it begins and whenever the role or
+  the terminal's size changes: the typist's attachment ID, or null for none
+  (a device-level typist shows as one of that device's attachments), and
+  the terminal's size. Typist frames are not sequenced and never replayed.
+
+A viewer draws at the typist's size and shows the part around the cursor
+when its own screen is smaller; scrolling, selection, and font size stay
+its own and never reach the host. Effect frames' clipboard writes go only to
+the typist.
 
 ### Extension privacy
 
@@ -731,7 +782,10 @@ older host refuses a feature. The same emulator keeps the block journal
 `coder-host` advertises `term-blocks`; `coder host serve --terminal-shell
 PATH` runs a zsh, bash, or fish with the shell-integration hooks that feed
 it. Every block is `unattributed`: no NIP-TERM operation starts a command
-on someone's behalf yet. No host serves session records yet.
+on someone's behalf yet. Every host enforces the typist rule and serves
+the typist feature (`term-typist`); the Coder mobile terminal screen names
+it, shows a **Type here** control while another device types, and draws at
+that device's size around the cursor. No host serves session records yet.
 
 ## Conformance
 

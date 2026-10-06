@@ -416,7 +416,7 @@ impl Attachment for LocalAttachment {
                 }
                 // This in-process host names no feature, so it sends none;
                 // the pane's own emulator reports its effects.
-                Body::Effect { .. } => self.poll(),
+                Body::Effect { .. } | Body::Typist { .. } => self.poll(),
             },
             Err(TryRecvError::Empty) => None,
             Err(TryRecvError::Disconnected) => {

@@ -261,6 +261,11 @@ impl Terminal {
                 self.send(bytes);
             }
             TerminalIntent::Paste => self.paste = true,
+            TerminalIntent::Take => {
+                if let Some(session) = &self.session {
+                    session.take();
+                }
+            }
             TerminalIntent::Close => {
                 if let Some(session) = &self.session {
                     session.close();

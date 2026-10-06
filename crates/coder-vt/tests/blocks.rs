@@ -155,7 +155,14 @@ fn a_host_without_a_journal_refuses_block_reads() {
     let mut config = Config::new().workspace(WORKSPACE, root.path());
     config.emulator = None;
     let plain = Host::new(config, Arc::new(Grants));
-    assert_eq!(plain.features(), Features::NONE);
+    // Without an emulator the host serves only the typist rule.
+    assert_eq!(
+        plain.features(),
+        Features {
+            typist: true,
+            ..Features::NONE
+        }
+    );
     let terminal = open(&plain);
     assert_eq!(
         read(&plain, OWNER, &terminal).unwrap_err(),

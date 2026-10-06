@@ -15,7 +15,7 @@
 //! every Coder surface. Output text is shown as data; nothing in it becomes
 //! a control.
 
-use super::model::{Model, Phase};
+use super::model::{Model, Phase, Typing};
 use coder_ui::theme::{Intensity, NEAR_BLACK, NEAR_BLACK_TINT};
 use coder_vt::{Attrs, Color as VtColor, Flags, Key};
 use rust_native::style::{Color, Space, Style, TextWeight};
@@ -77,6 +77,8 @@ pub enum TerminalIntent {
     Close,
     /// Open a new terminal after this one ended.
     Reopen,
+    /// Take the typist role from another device.
+    Take,
 }
 
 /// Nodes kept for everything except the grid rows.
@@ -339,10 +341,24 @@ fn row_nodes(runs: &Runs) -> usize {
 fn grid(model: &Model) -> Vec<Node<TerminalIntent>> {
     let vt = &model.vt;
     let (cursor_row, cursor_col) = vt.cursor();
+    // A grid larger than the screen, at another typist's size, shows the
+    // part around the cursor.
+    let (rows_shown, first_row) = window(vt.rows(), usize::from(model.view.0), cursor_row);
+    let (cols_shown, first_col) = window(vt.cols(), usize::from(model.view.1), cursor_col);
+    let screen: Vec<coder_vt::Row> = vt.screen()[first_row..first_row + rows_shown]
+        .iter()
+        .map(|row| coder_vt::Row {
+            cells: row.cells[first_col..first_col + cols_shown].to_vec(),
+            wrapped: row.wrapped,
+        })
+        .collect();
+    let (cursor_row, cursor_col) = (
+        cursor_row.wrapping_sub(first_row),
+        cursor_col.wrapping_sub(first_col),
+    );
     let show_cursor = model.phase == Phase::Attached && vt.cursor_visible();
     let cursor = |index: usize| (show_cursor && index == cursor_row).then_some(cursor_col);
-    let mut rows: Vec<Runs> = vt
-        .screen()
+    let mut rows: Vec<Runs> = screen
         .iter()
         .enumerate()
         .map(|(index, row)| trim(styled_runs(row, cursor(index))))
@@ -359,7 +375,7 @@ fn grid(model: &Model) -> Vec<Node<TerminalIntent>> {
             break;
         };
         total -= row_nodes(&rows[index]);
-        rows[index] = trim(plain_runs(&vt.screen()[index], cursor(index)));
+        rows[index] = trim(plain_runs(&screen[index], cursor(index)));
         total += row_nodes(&rows[index]);
     }
     rows.into_iter()
@@ -387,6 +403,16 @@ fn grid(model: &Model) -> Vec<Node<TerminalIntent>> {
             }
         })
         .collect()
+}
+
+/// The span of `total` cells a screen of `shown` shows, keeping `cursor`
+/// in it: how many, and the first.
+fn window(total: usize, shown: usize, cursor: usize) -> (usize, usize) {
+    let shown = shown.clamp(1, total.max(1));
+    let first = cursor
+        .saturating_sub(shown - 1)
+        .min(total.saturating_sub(shown));
+    (shown, first)
 }
 
 /// The terminal screen for one revision.
@@ -435,6 +461,14 @@ pub fn view(model: &Model, instance: &str, revision: u64) -> View<TerminalIntent
             ));
         }
     } else {
+        if model.typing == Typing::Elsewhere {
+            actions.push(button(
+                "terminal-take",
+                "Type here",
+                TerminalIntent::Take,
+                attached,
+            ));
+        }
         actions.push(button(
             "terminal-end",
             "End terminal",
@@ -688,6 +722,33 @@ mod tests {
             find(&ended.view().root, "terminal-row-0").unwrap().element,
             Element::Text { .. }
         ));
+    }
+
+    #[test]
+    fn a_viewer_sees_type_here_and_the_part_of_a_larger_grid_around_the_cursor() {
+        let mut model = attached(4, 10);
+        assert!(find(&view(&model, "terminal:1", 1).root, "terminal-take").is_none());
+        model.seat(super::Typing::Elsewhere, (8, 30));
+        for line in 0..7 {
+            model.vt.feed(format!("line {line}\r\n").as_bytes());
+        }
+        model.vt.feed(b"\x1b[25Gend");
+        let validated = view(&model, "terminal:1", 1).validate().unwrap();
+        let take = validated.activate(&Activation {
+            instance: "terminal:1".into(),
+            revision: validated.view().revision,
+            node: "terminal-take".into(),
+        });
+        assert_eq!(take.cloned(), Ok(TerminalIntent::Take));
+        let view = validated.view();
+        // Four rows of eight, ending at the cursor's; ten columns of thirty,
+        // ending at the cursor's.
+        assert!(find(&view.root, "terminal-row-3").is_some());
+        assert!(find(&view.root, "terminal-row-4").is_none());
+        assert_eq!(row_text(view, 3).trim_end(), "      end");
+        assert_eq!(super::window(30, 10, 27), (10, 18));
+        assert_eq!(super::window(8, 4, 1), (4, 0));
+        assert_eq!(super::window(5, 40, 3), (5, 0));
     }
 
     #[test]

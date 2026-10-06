@@ -278,7 +278,14 @@ fn an_older_device_keeps_answering_and_the_host_stays_quiet() {
 fn a_host_without_an_emulator_refuses_the_effects_feature() {
     let fixture = fixture(false);
     let host = &fixture.host;
-    assert_eq!(host.features(), Features::NONE);
+    // Without an emulator the host serves only the typist rule.
+    assert_eq!(
+        host.features(),
+        Features {
+            typist: true,
+            ..Features::NONE
+        }
+    );
     let terminal = open(host);
     let (sink, _frames) = channel(16);
     let request = Attach::new(id(), terminal, Mode::Interact, 0, 1 << 20).with_effects();

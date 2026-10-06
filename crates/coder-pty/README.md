@@ -80,6 +80,13 @@ host.attach(device, &Attach::new(request2, terminal, Mode::Interact, 0, 64 * 102
   principal's own attachment. A sink carries record streams only when it
   says so (`FrameSink::carries_records`); `deliveries` is an in-process one.
   `coder-vt`'s `tests/join.rs` checks each path on real PTYs.
+- **Typist.** At most one `interact` attachment types at a terminal:
+  input, resize, and signal from anyone else refuse as `not_typist`, and
+  `Host::seat` takes or releases the role. The first to type at a terminal
+  without one takes it, and it ends with its attachment. A client without the
+  typist feature counts as its device. `tests/typist.rs` covers racing
+  devices, take and release, detach and revocation, a second route of the
+  same device, and an older client.
 - **Block journal.** When the emulator keeps one (`Emulators::blocks`),
   `Host::block_page` reads a page of it under the `terminal` right or the
   observer policy, and sets each block's `retained` from the ring.

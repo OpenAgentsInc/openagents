@@ -26,6 +26,9 @@ pub const SESSIONS: &str = "openagents.terminal-sessions.v1";
 /// queries, and the attachment receives the effects its output caused as
 /// effect frames instead of acting on the output itself.
 pub const EFFECTS: &str = "openagents.terminal-effects.v1";
+/// The typist feature: input, resize, and signal name their attachment,
+/// and take and release move the one typist role.
+pub const TYPIST: &str = "openagents.terminal-typist.v1";
 
 /// The presence capability a host advertises for [`SNAPSHOT`].
 pub const CAPABILITY_SNAPSHOT: &str = "term-snapshot";
@@ -35,6 +38,8 @@ pub const CAPABILITY_BLOCKS: &str = "term-blocks";
 pub const CAPABILITY_SESSIONS: &str = "term-sessions";
 /// The presence capability a host advertises for [`EFFECTS`].
 pub const CAPABILITY_EFFECTS: &str = "term-effects";
+/// The presence capability a host advertises for [`TYPIST`].
+pub const CAPABILITY_TYPIST: &str = "term-typist";
 
 /// `v` of a records frame.
 pub const RECORDS: &str = "openagents.terminal-records.v1";
@@ -46,6 +51,10 @@ pub const BLOCK_PAGE: &str = "openagents.terminal-block-page.v1";
 pub const SESSION_READ: &str = "openagents.terminal-session-read.v1";
 /// `v` of a session write.
 pub const SESSION_WRITE: &str = "openagents.terminal-session-write.v1";
+/// `v` of a take: an attachment becomes the typist.
+pub const TAKE: &str = "openagents.terminal-take.v1";
+/// `v` of a release: the typist gives the role up.
+pub const RELEASE: &str = "openagents.terminal-release.v1";
 
 /// The bytes of a record header: tag, length, and checksum.
 pub const RECORD_HEADER: usize = 10;
@@ -91,6 +100,7 @@ pub struct Features {
     pub blocks: bool,
     pub sessions: bool,
     pub effects: bool,
+    pub typist: bool,
 }
 
 impl Features {
@@ -100,6 +110,7 @@ impl Features {
         blocks: false,
         sessions: false,
         effects: false,
+        typist: false,
     };
     /// Every feature this module defines.
     pub const ALL: Features = Features {
@@ -107,6 +118,7 @@ impl Features {
         blocks: true,
         sessions: true,
         effects: true,
+        typist: true,
     };
 
     /// The features a host's presence capabilities advertise. A client
@@ -119,6 +131,7 @@ impl Features {
             blocks: has(CAPABILITY_BLOCKS),
             sessions: has(CAPABILITY_SESSIONS),
             effects: has(CAPABILITY_EFFECTS),
+            typist: has(CAPABILITY_TYPIST),
         }
     }
 
@@ -138,6 +151,9 @@ impl Features {
         if self.effects {
             out.push(CAPABILITY_EFFECTS);
         }
+        if self.typist {
+            out.push(CAPABILITY_TYPIST);
+        }
         out
     }
 
@@ -147,6 +163,7 @@ impl Features {
             BLOCKS => Some(self.blocks),
             SESSIONS => Some(self.sessions),
             EFFECTS => Some(self.effects),
+            TYPIST => Some(self.typist),
             _ => None,
         }
     }
@@ -199,6 +216,78 @@ fn ext_header(
         return Err(Refusal::malformed(format!("{expected} requires {feature}")));
     }
     common_id(request, "request")
+}
+
+// ---------------------------------------------------------------------------
+// Typist
+
+/// Take or release the typist role for one of the principal's own
+/// `interact` attachments: `v` is [`TAKE`] or [`RELEASE`].
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct Seat {
+    pub v: String,
+    pub requires: Vec<String>,
+    pub request: String,
+    pub terminal: TerminalRef,
+    pub attachment: String,
+}
+
+impl Seat {
+    /// Make `attachment` the typist.
+    #[must_use]
+    pub fn take(
+        request: impl Into<String>,
+        terminal: TerminalRef,
+        attachment: impl Into<String>,
+    ) -> Self {
+        Seat::with(TAKE, request, terminal, attachment)
+    }
+
+    /// Give the role up from `attachment`.
+    #[must_use]
+    pub fn release(
+        request: impl Into<String>,
+        terminal: TerminalRef,
+        attachment: impl Into<String>,
+    ) -> Self {
+        Seat::with(RELEASE, request, terminal, attachment)
+    }
+
+    fn with(
+        v: &str,
+        request: impl Into<String>,
+        terminal: TerminalRef,
+        attachment: impl Into<String>,
+    ) -> Self {
+        Seat {
+            v: v.into(),
+            requires: vec![TYPIST.into()],
+            request: request.into(),
+            terminal,
+            attachment: attachment.into(),
+        }
+    }
+
+    /// Whether this is a take, rather than a release.
+    #[must_use]
+    pub fn takes(&self) -> bool {
+        self.v == TAKE
+    }
+
+    pub fn check_with(&self, features: Features) -> Result<(), Refusal> {
+        let expected = if self.v == RELEASE { RELEASE } else { TAKE };
+        ext_header(
+            &self.v,
+            expected,
+            &self.requires,
+            &self.request,
+            TYPIST,
+            features,
+        )?;
+        self.terminal.check()?;
+        common_id(&self.attachment, "attachment")
+    }
 }
 
 // ---------------------------------------------------------------------------
@@ -1779,7 +1868,7 @@ mod tests {
     fn features_follow_presence_capabilities() {
         let advertised = Features::advertised(&["task-engine", "term-snapshot"]);
         assert!(advertised.snapshot && !advertised.blocks && !advertised.sessions);
-        assert!(!advertised.effects);
-        assert_eq!(Features::ALL.capabilities().len(), 4);
+        assert!(!advertised.effects && !advertised.typist);
+        assert_eq!(Features::ALL.capabilities().len(), 5);
     }
 }

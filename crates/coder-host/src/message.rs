@@ -11,7 +11,9 @@
 //! frame starts with one flag byte: `1` when more fragments follow and `0`
 //! for the last. A message is at most [`MAX_MESSAGE_BYTES`] bytes.
 
-use coder_pty::ext::{BLOCK_PAGE, BlockPageRead, HISTORY, History, RECORDS, RecordsFrame};
+use coder_pty::ext::{
+    BLOCK_PAGE, BlockPageRead, HISTORY, History, RECORDS, RELEASE, RecordsFrame, Seat, TAKE,
+};
 use coder_pty::wire::{
     ATTACH, Attach, CLOSE, Close, DETACH, Detach, FRAME, Frame, INPUT, Input, OPEN, Open, RESIZE,
     RESULT, Reason, Refusal, Resize, SIGNAL, Signal, TerminalResult,
@@ -132,6 +134,8 @@ pub enum TermRequest {
     History(History),
     /// A block-journal page read (NIP-TERM's blocks feature).
     BlockPage(BlockPageRead),
+    /// A take or release of the typist role (NIP-TERM's typist feature).
+    Seat(Seat),
 }
 
 impl TermRequest {
@@ -157,6 +161,7 @@ impl TermRequest {
             CLOSE => serde_json::from_value(value).map(Self::Close),
             HISTORY => serde_json::from_value(value).map(Self::History),
             BLOCK_PAGE => serde_json::from_value(value).map(Self::BlockPage),
+            TAKE | RELEASE => serde_json::from_value(value).map(Self::Seat),
             _ => {
                 return Err(Refusal::new(
                     Reason::UnsupportedVersion,
@@ -180,6 +185,7 @@ impl TermRequest {
             Self::Close(r) => &r.request,
             Self::History(r) => &r.request,
             Self::BlockPage(r) => &r.request,
+            Self::Seat(r) => &r.request,
         }
     }
 
@@ -196,6 +202,8 @@ impl TermRequest {
             Self::Close(_) => CLOSE,
             Self::History(_) => HISTORY,
             Self::BlockPage(_) => BLOCK_PAGE,
+            Self::Seat(r) if r.takes() => TAKE,
+            Self::Seat(_) => RELEASE,
         }
     }
 
@@ -212,6 +220,7 @@ impl TermRequest {
             Self::Close(r) => serde_json::to_value(r),
             Self::History(r) => serde_json::to_value(r),
             Self::BlockPage(r) => serde_json::to_value(r),
+            Self::Seat(r) => serde_json::to_value(r),
         };
         value.unwrap_or(Value::Null)
     }
@@ -451,5 +460,14 @@ mod tests {
         assert_eq!(request.schema(), BLOCK_PAGE);
         let decoded = ToHost::decode(&ToHost::Terminal(request).encode());
         assert!(matches!(decoded, Ok(ToHost::Terminal(TermRequest::BlockPage(r))) if r == page));
+        for seat in [
+            Seat::take("g".repeat(64), read.terminal.clone(), "c".repeat(64)),
+            Seat::release("h".repeat(64), read.terminal.clone(), "c".repeat(64)),
+        ] {
+            let request = TermRequest::Seat(seat.clone());
+            assert_eq!(request.schema(), seat.v);
+            let decoded = ToHost::decode(&ToHost::Terminal(request).encode());
+            assert!(matches!(decoded, Ok(ToHost::Terminal(TermRequest::Seat(r))) if r == seat));
+        }
     }
 }

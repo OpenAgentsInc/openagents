@@ -79,6 +79,21 @@ impl Phase {
     }
 }
 
+/// Who types at the terminal, as far as this screen knows (NIP-TERM's
+/// typist feature).
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Typing {
+    /// The host has not said, or does not serve the feature.
+    Unknown,
+    /// Nobody: the next device to type takes the role.
+    Free,
+    /// This screen.
+    Mine,
+    /// Another device. This screen draws at its size and cannot type until
+    /// it takes the role.
+    Elsewhere,
+}
+
 /// The screen's state. The session task writes the phase and output; the
 /// screen writes the modifier the accessory row latched.
 #[derive(Debug)]
@@ -106,6 +121,14 @@ pub struct Model {
     /// it, for a reader that wants the stream rather than the grid. After a
     /// join by snapshot, that is the output after the snapshot.
     pub tap: Option<std::sync::mpsc::Sender<Vec<u8>>>,
+    /// Who types at the terminal.
+    pub typing: Typing,
+    /// This screen's own grid size. While another device types, the grid
+    /// follows that device's size and the screen shows the part of it
+    /// around the cursor.
+    pub view: (u16, u16),
+    /// A size to send the host now that this screen may set it.
+    pub pending_resize: Option<(u16, u16)>,
 }
 
 impl Model {
@@ -125,6 +148,9 @@ impl Model {
             notice: None,
             revision: 1,
             tap: None,
+            typing: Typing::Unknown,
+            view: (rows, cols),
+            pending_resize: None,
         }
     }
 
@@ -192,15 +218,46 @@ impl Model {
         bytes
     }
 
-    /// Change the grid size. Returns the clamped size when it changed.
+    /// Change the screen's size. Returns the clamped size when the grid
+    /// changed with it; while another device types, the grid keeps that
+    /// device's size.
     pub fn resize(&mut self, rows: u16, cols: u16) -> Option<(u16, u16)> {
         let (rows, cols) = clamp(rows, cols);
+        if self.view != (rows, cols) {
+            self.view = (rows, cols);
+            self.touch();
+        }
+        if self.typing == Typing::Elsewhere {
+            return None;
+        }
         if usize::from(rows) == self.vt.rows() && usize::from(cols) == self.vt.cols() {
             return None;
         }
         self.vt.resize(usize::from(rows), usize::from(cols));
         self.touch();
         Some((rows, cols))
+    }
+
+    /// Records who types now. Another device's typing sets the grid to
+    /// the terminal's `size`; this screen's own, or nobody's, returns the
+    /// grid to the screen's size and asks for it on the host.
+    pub fn seat(&mut self, typing: Typing, size: (u16, u16)) {
+        if self.typing != typing {
+            self.typing = typing;
+            self.touch();
+        }
+        let grid = if typing == Typing::Elsewhere {
+            size
+        } else {
+            self.view
+        };
+        if (usize::from(grid.0), usize::from(grid.1)) != (self.vt.rows(), self.vt.cols()) {
+            self.vt.resize(usize::from(grid.0), usize::from(grid.1));
+            self.touch();
+        }
+        if typing != Typing::Elsewhere && size != self.view {
+            self.pending_resize = Some(self.view);
+        }
     }
 
     /// The grid size.
@@ -261,6 +318,26 @@ mod tests {
         assert_eq!(model.size(), (2, MAX_COLS));
         assert_eq!(model.resize(30, 50), Some((30, 50)));
         assert_eq!(model.resize(30, 50), None);
+    }
+
+    #[test]
+    fn a_viewer_draws_at_the_typists_size_and_returns_to_its_own() {
+        let mut model = Model::new("h", "Mac", 10, 40);
+        model.seat(Typing::Elsewhere, (30, 100));
+        assert_eq!(model.size(), (30, 100));
+        // The screen's own size changes, but the grid keeps the typist's.
+        assert_eq!(model.resize(12, 44), None);
+        assert_eq!(model.view, (12, 44));
+        assert_eq!(model.size(), (30, 100));
+        assert_eq!(model.pending_resize, None);
+        // Taking the role returns the grid to the screen and asks the host.
+        model.seat(Typing::Mine, (30, 100));
+        assert_eq!(model.size(), (12, 44));
+        assert_eq!(model.pending_resize, Some((12, 44)));
+        // Already at the screen's size, nothing is asked.
+        model.pending_resize = None;
+        model.seat(Typing::Free, (12, 44));
+        assert_eq!(model.pending_resize, None);
     }
 
     #[test]

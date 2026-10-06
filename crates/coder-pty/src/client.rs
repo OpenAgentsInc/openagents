@@ -48,6 +48,12 @@ pub enum Applied {
     /// The host's emulator reported an effect of the output (the effects
     /// feature). Nothing on the screen changed.
     Effect(crate::ext::Effect),
+    /// The typist role moved (the typist feature): the typist's
+    /// attachment, or none, and the size the terminal runs at.
+    Typist {
+        typist: Option<String>,
+        size: crate::wire::Size,
+    },
     /// The frame failed validation or names another terminal.
     Refused(Refusal),
 }
@@ -151,6 +157,10 @@ impl TerminalState {
                 Applied::Detached(*reason)
             }
             Body::Effect { effect, .. } => Applied::Effect(effect.clone()),
+            Body::Typist { typist, size } => Applied::Typist {
+                typist: typist.clone(),
+                size: *size,
+            },
         }
     }
 
