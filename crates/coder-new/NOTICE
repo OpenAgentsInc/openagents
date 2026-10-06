@@ -14,3 +14,7 @@ Changes: retain only the RGB slots used by this mockup, rename the exported
 constants for their Theme slots, and omit terminal color quantization.
 The base background uses OpenAgents' shared Coder near-black value.
 The screen layout, editor, and SVG exporter are implemented in OpenAgents.
+
+The mock Edit calls reuse the Grok diff renderer in coder-terminal and the
+Grok Night syntax highlighter in code-highlight. Their source attribution
+and licenses are retained in code-highlight/NOTICE.

@@ -8,6 +8,11 @@ show a rotating spinner. Each agent conversation has its own tool calls,
 arguments, results, and current activity.
 Press Tab to switch to the welcome view.
 
+Edit examples reuse Coder's port of Grok Build's diff renderer and syntax
+highlighter. Rust tokens keep their syntax colors on red and green change
+backgrounds, with line numbers and wrapping. The main view shows a cursor
+change; the `grok-build` conversation shows a larger style change.
+
 Mock plugin calls show their qualified operation, arguments, result, and running
 state. The main conversation uses `terminal-inspector.layout.inspect` and
 `palette-audit.colors.check`. Agent conversations also use keyboard and

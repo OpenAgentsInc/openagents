@@ -32,7 +32,7 @@ pub const MAIN_TOOLS: [ToolCall; 4] = [
     ToolCall {
         kind: ToolKind::Edit,
         input: "crates/coder-new/src/main.rs",
-        output: "- SetCursorStyle::SteadyBar\n+ SetCursorStyle::BlinkingBlock",
+        output: "@@ -48 +48 @@\n-let cursor = (\"▏\", SetCursorStyle::SteadyBar);\n+let cursor = (\"█\", SetCursorStyle::BlinkingBlock);",
         state: ToolState::Complete,
     },
     ToolCall {
@@ -185,9 +185,9 @@ pub const DEMOS: [DemoAgent; 4] = [
                 state: ToolState::Complete,
             }),
             DemoMessage::Tool(ToolCall {
-                kind: ToolKind::Search,
-                input: "\"NEAR_BLACK\" crates/coder-ui/src/theme.rs",
-                output: "#0a0a0a · shared near-black background",
+                kind: ToolKind::Edit,
+                input: "crates/coder-new/src/theme.rs",
+                output: "@@ -8,3 +8,4 @@\n fn diff_style() -> Style {\n-    Style::default().fg(Color::Green)\n+    let background = Color::Rgb(6, 56, 6);\n+    Style::default().bg(background)\n }",
                 state: ToolState::Complete,
             }),
             DemoMessage::Plugin(PluginCall {

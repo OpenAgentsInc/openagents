@@ -3112,6 +3112,8 @@ dependencies = [
 name = "coder-new"
 version = "0.1.0"
 dependencies = [
+ "code-highlight",
+ "coder-terminal",
  "coder-ui",
  "crossterm",
  "ratatui",

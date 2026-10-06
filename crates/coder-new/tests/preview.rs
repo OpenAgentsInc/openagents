@@ -1,8 +1,14 @@
 use coder_new::agents::{DEMOS, DemoMessage, MAIN_PLUGINS, MAIN_TOOLS};
-use coder_new::tools::{PluginCall, ToolCall, ToolKind, ToolState};
-use coder_new::{App, Screen, snapshot, ui};
+use coder_new::tools::{PluginCall, ToolCall, ToolKind, ToolState, tool_lines};
+use coder_new::{App, Screen, snapshot, theme, ui};
 use crossterm::event::{Event, KeyCode, KeyEvent, KeyEventKind, KeyModifiers};
-use ratatui::{Terminal, backend::TestBackend};
+use ratatui::{
+    Terminal,
+    backend::TestBackend,
+    style::Style,
+    text::Text,
+    widgets::{Block, Paragraph},
+};
 
 fn key(app: &mut App, code: KeyCode) {
     assert!(app.handle(Event::Key(KeyEvent::new(code, KeyModifiers::NONE))));
@@ -329,7 +335,23 @@ fn assert_tool_calls<'a>(rendered: &str, calls: impl Iterator<Item = &'a ToolCal
             ToolKind::Run => "Run",
         };
         assert!(text.contains(&format!("{kind}{}", compact_text(call.input))));
-        assert!(text.contains(&compact_text(call.output)));
+        if matches!(
+            (call.kind, call.state),
+            (ToolKind::Edit, ToolState::Complete)
+        ) {
+            assert!(!text.contains("@@"));
+            for patch_line in call.output.lines().filter(|line| !line.starts_with("@@")) {
+                let code = patch_line
+                    .strip_prefix(['+', '-', ' '])
+                    .unwrap_or(patch_line);
+                assert!(
+                    text.contains(&compact_text(code)),
+                    "missing edited code: {code}"
+                );
+            }
+        } else {
+            assert!(text.contains(&compact_text(call.output)));
+        }
         match call.state {
             ToolState::Complete => {
                 assert!(text.contains(&format!("◆{kind}{}", compact_text(call.input))));
@@ -637,4 +659,80 @@ fn animation_ticks_change_running_indicators_without_changing_conversation_state
     assert_eq!(app.animation_frame, phase);
     assert_eq!(snapshot::svg(&mut app, 110, 70), fixed_snapshot);
     assert_eq!(conversation_state(&app), state);
+}
+
+#[test]
+fn edit_calls_highlight_old_and_new_code_on_bands_with_an_unpainted_gutter() {
+    let main_edit = MAIN_TOOLS
+        .iter()
+        .find(|call| call.kind == ToolKind::Edit)
+        .unwrap();
+    let grok_edit = DEMOS
+        .iter()
+        .find(|demo| demo.name == "grok-build")
+        .unwrap()
+        .conversation
+        .iter()
+        .find_map(|message| match message {
+            DemoMessage::Tool(call) if call.kind == ToolKind::Edit => Some(call),
+            _ => None,
+        })
+        .unwrap();
+    for call in [main_edit, grok_edit] {
+        for width in [24, 80, 110] {
+            let lines = tool_lines(call, 0, width);
+            for line in lines.iter().skip(1) {
+                assert!(line.width() <= usize::from(width));
+            }
+            let height = lines.len() as u16;
+            let mut terminal = Terminal::new(TestBackend::new(width, height)).unwrap();
+            terminal
+                .draw(|frame| {
+                    let area = frame.area();
+                    frame.render_widget(
+                        Block::default().style(Style::default().bg(theme::BG_BASE)),
+                        area,
+                    );
+                    frame.render_widget(Paragraph::new(Text::from(lines)), area);
+                })
+                .unwrap();
+            let buffer = terminal.backend().buffer();
+            for (band, gutter_color) in [
+                (theme::DIFF_DELETE_BG, theme::DIFF_DELETE_FG),
+                (theme::DIFF_INSERT_BG, theme::DIFF_INSERT_FG),
+            ] {
+                let mut foregrounds = Vec::new();
+                let mut changed_rows = 0;
+                let mut numbered_rows = 0;
+                for y in 1..height {
+                    let Some(start) = (0..width).find(|x| buffer[(*x, y)].bg == band) else {
+                        continue;
+                    };
+                    changed_rows += 1;
+                    assert!(start > 0);
+                    for x in 0..start {
+                        let cell = &buffer[(x, y)];
+                        assert_eq!(cell.bg, theme::BG_BASE);
+                        if cell.symbol().chars().any(|ch| ch.is_ascii_digit()) {
+                            numbered_rows += 1;
+                            assert_eq!(cell.fg, gutter_color);
+                        }
+                    }
+                    for x in start..width {
+                        let cell = &buffer[(x, y)];
+                        assert_eq!(cell.bg, band);
+                        if !cell.symbol().trim().is_empty() && !foregrounds.contains(&cell.fg) {
+                            foregrounds.push(cell.fg);
+                        }
+                    }
+                }
+                assert!(changed_rows > 0);
+                assert!(numbered_rows > 0);
+                assert!(
+                    foregrounds.len() >= 2,
+                    "code has no syntax color variation at width {width}"
+                );
+            }
+        }
+    }
 }

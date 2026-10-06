@@ -243,7 +243,9 @@ fn conversation(frame: &mut Frame, area: Rect, app: &mut App) {
         for (index, message) in agent.conversation.iter().enumerate() {
             match message {
                 DemoMessage::User(text) => lines.push(prompt(*text)),
-                DemoMessage::Tool(call) => lines.extend(tool_lines(call, app.animation_frame)),
+                DemoMessage::Tool(call) => {
+                    lines.extend(tool_lines(call, app.animation_frame, area.width));
+                }
                 DemoMessage::Plugin(call) => lines.extend(plugin_lines(call, app.animation_frame)),
                 DemoMessage::Assistant(text) => {
                     lines.push(Line::from(span(*text, t::TEXT_SECONDARY)));
@@ -265,7 +267,7 @@ fn conversation(frame: &mut Frame, area: Rect, app: &mut App) {
             Line::default(),
         ];
         for call in &MAIN_TOOLS {
-            lines.extend(tool_lines(call, app.animation_frame));
+            lines.extend(tool_lines(call, app.animation_frame, area.width));
         }
         for call in &MAIN_PLUGINS {
             lines.extend(plugin_lines(call, app.animation_frame));

@@ -1,5 +1,7 @@
 //! Local tool, plugin, and delegation displays for the conversation previews.
 
+use code_highlight::grok::{ColorLevel, Palette};
+use coder_terminal::components::diff;
 use ratatui::{
     style::{Color, Modifier, Style},
     text::{Line, Span},
@@ -45,7 +47,7 @@ pub fn spinner(phase: u8) -> &'static str {
     FRAMES[usize::from(phase) % FRAMES.len()]
 }
 
-pub fn tool_lines(call: &ToolCall, phase: u8) -> Vec<Line<'static>> {
+pub fn tool_lines(call: &ToolCall, phase: u8, width: u16) -> Vec<Line<'static>> {
     let (label, accent, input_color) = match call.kind {
         ToolKind::Read => ("Read", t::ACCENT_SKILL, t::PATH),
         ToolKind::Search => ("Search", t::ACCENT_SKILL, t::ACCENT_SUCCESS),
@@ -67,6 +69,33 @@ pub fn tool_lines(call: &ToolCall, phase: u8) -> Vec<Line<'static>> {
         styled(call.input, input_color),
     ])];
 
+    if call.kind == ToolKind::Edit && call.state == ToolState::Complete {
+        let changes = diff::hunks(call.output);
+        let added = changes
+            .iter()
+            .flatten()
+            .filter(|line| line.tag == diff::ChangeTag::Insert)
+            .count();
+        let removed = changes
+            .iter()
+            .flatten()
+            .filter(|line| line.tag == diff::ChangeTag::Delete)
+            .count();
+        lines[0].spans.extend([
+            styled(format!(" +{added}"), t::DIFF_INSERT_FG),
+            styled(format!(" -{removed}"), t::DIFF_DELETE_FG),
+        ]);
+        lines.extend(diff::lines(
+            call.output,
+            call.input,
+            0,
+            usize::from(width),
+            Palette::Night,
+            ColorLevel::TrueColor,
+        ));
+        return lines;
+    }
+
     match call.state {
         ToolState::Running => lines.push(Line::from(vec![
             styled("   ╰ ", t::GRAY_DIM),
@@ -81,19 +110,10 @@ pub fn tool_lines(call: &ToolCall, phase: u8) -> Vec<Line<'static>> {
         ToolState::Complete => {
             for (index, output) in call.output.lines().enumerate() {
                 let prefix = if index == 0 { "   ╰ " } else { "     " };
-                let (foreground, background) = match (call.kind, output.as_bytes().first()) {
-                    (ToolKind::Edit, Some(b'+')) => (t::DIFF_INSERT_FG, Some(t::DIFF_INSERT_BG)),
-                    (ToolKind::Edit, Some(b'-')) => (t::DIFF_DELETE_FG, Some(t::DIFF_DELETE_BG)),
-                    _ => (t::GRAY_BRIGHT, None),
-                };
-                let mut line = Line::from(vec![
+                lines.push(Line::from(vec![
                     styled(prefix, t::GRAY_DIM),
-                    styled(output, foreground),
-                ]);
-                if let Some(background) = background {
-                    line = line.style(Style::default().bg(background));
-                }
-                lines.push(line);
+                    styled(output, t::GRAY_BRIGHT),
+                ]));
             }
         }
     }

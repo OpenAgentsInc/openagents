@@ -17,6 +17,8 @@ delegation components that match the rail. Magenta diamonds pulse on running
 delegations; selected agent conversations show their own tools and command
 spinners. Mock plugin calls show qualified operations, arguments, results, and
 progress in the same transcript. These are local presentation fixtures.
+Edit examples reuse the Grok Build diff renderer and syntax highlighter,
+including line numbers and red and green change backgrounds.
 
 1. [Claude Code replacement history and current terminal survey](claude-code-replacement-history.md)
    catalogs the retained attempts and compares today's Coder and OpenAgents
