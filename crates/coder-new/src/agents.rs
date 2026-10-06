@@ -69,7 +69,7 @@ pub const MAIN_PLUGINS: [PluginCall; 2] = [
     PluginCall {
         plugin: "palette-audit",
         operation: "colors.check",
-        input: "Grok Night · #0a0a0a",
+        input: "USGC · #0a0a0a",
         output: "Comparing tool accents and diff backgrounds",
         state: ToolState::Running,
     },
@@ -200,19 +200,19 @@ pub const DEMOS: [DemoAgent; 4] = [
             DemoMessage::Tool(ToolCall {
                 kind: ToolKind::Read,
                 input: "crates/coder-new/src/theme.rs",
-                output: "Grok Night colors and the shared Coder background",
+                output: "USGC accents and the shared Coder background",
                 state: ToolState::Complete,
             }),
             DemoMessage::Tool(ToolCall {
                 kind: ToolKind::Edit,
                 input: "crates/coder-new/src/theme.rs",
-                output: "@@ -8,3 +8,4 @@\n fn diff_style() -> Style {\n-    Style::default().fg(Color::Green)\n+    let background = Color::Rgb(6, 56, 6);\n+    Style::default().bg(background)\n }",
+                output: "@@ -8,3 +8,4 @@\n fn diff_style() -> Style {\n-    Style::default().fg(Color::Green)\n+    let background = Color::Rgb(0, 41, 17);\n+    Style::default().bg(background)\n }",
                 state: ToolState::Complete,
             }),
             DemoMessage::Plugin(PluginCall {
                 plugin: "palette-audit",
                 operation: "colors.check",
-                input: "Terminal and SVG · Grok Night · #0a0a0a",
+                input: "Terminal and SVG · USGC · #0a0a0a",
                 output: "Shared background and tool accents match the exported cells",
                 state: ToolState::Complete,
             }),

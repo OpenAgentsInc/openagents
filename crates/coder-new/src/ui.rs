@@ -336,7 +336,7 @@ fn welcome(frame: &mut Frame, area: Rect) {
 }
 
 fn message_body(text: &str, width: u16) -> Vec<Line<'static>> {
-    markdown_body(text, width, Ladder::new(Colors::True))
+    t::usgc_lines(markdown_body(text, width, Ladder::new(Colors::True)))
 }
 
 fn prompt(text: &str, width: u16) -> Vec<Line<'static>> {

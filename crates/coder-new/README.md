@@ -160,11 +160,12 @@ draft, cursor, preview messages, and scroll position while the preview is open.
 The working directory and branch appear at the top right. Only selected agent
 conversations show a title at the top left, using the agent's name.
 
-The base background uses Coder's shared near-black color (`#0a0a0a`). The other
-colors are exact 24-bit RGB values from Grok Build's default Grok Night theme,
-including the focused composer border. Use a truecolor terminal to
-display them exactly. [NOTICE](NOTICE) records the source commit, `SOURCE_REV`,
-upstream source file, and license.
+The base background uses Coder's shared near-black color (`#0a0a0a`). White,
+gray, and composer-border colors retain the Grok Night values. Accents use the
+historical USGC palette: cyan, magenta, amber, orange, red, and green. Markdown
+and syntax highlighting use the same accents, with dark red and green diff
+bands. Use a truecolor terminal to display them exactly. [NOTICE](NOTICE)
+records the palette references and renderer attribution.
 
 Export the actual Ratatui buffer without an interactive terminal:
 

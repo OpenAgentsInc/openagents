@@ -5,8 +5,8 @@ architectural recommendations for a new specification. They are research
 inputs, not a finished TUI spec or claims of tested replacement quality.
 
 The [Ratatui terminal](../../crates/coder-new/README.md) runs with
-`cargo run -p coder-new`. It uses the Grok Build Grok Night palette with Coder's
-shared near-black background.
+`cargo run -p coder-new`. It uses historical USGC accents with Coder's shared
+near-black background and the existing white and gray styling.
 The [conversation preview](mockup.png) and [welcome preview](welcome.png)
 are exported from the same render function as the terminal. Four sample agent
 rows beneath the input show their current tasks, elapsed time, and token counts.

@@ -116,7 +116,7 @@ fn main() -> io::Result<()> {
             SetCursorStyle::BlinkingBlock
         )?;
         let ratatui::style::Color::Rgb(r, g, b) = coder_new::theme::TEXT_SECONDARY else {
-            unreachable!("Grok Night uses RGB colors");
+            unreachable!("Coder uses RGB colors");
         };
         write!(io::stdout(), "\x1b]12;#{r:02x}{g:02x}{b:02x}\x07")?;
         io::stdout().flush()?;
