@@ -93,11 +93,18 @@ mod tests {
     fn nothing_else_stands_on_the_lot() {
         // Every other placement keeps off the house's footprint, so none
         // pokes through its floors or closes its doorway.
-        let ([cx, cz], [hx, hz]) = ([OWNERS_HOUSE.at[0] + 13.05, OWNERS_HOUSE.at[1]], [13.05, 10.9]);
+        let ([cx, cz], [hx, hz]) = (
+            [OWNERS_HOUSE.at[0] + 13.05, OWNERS_HOUSE.at[1]],
+            [13.05, 10.9],
+        );
         for p in super::super::placements() {
             let [x, z] = p.at;
             let on = (x - cx).abs() < hx && (z - cz).abs() < hz;
-            assert!(!on || p.model == GRECO_HOUSE.name, "{} at {x}, {z}", p.model);
+            assert!(
+                !on || p.model == GRECO_HOUSE.name,
+                "{} at {x}, {z}",
+                p.model
+            );
         }
     }
 }

@@ -237,8 +237,8 @@ house.
   surround, two bookcases, a desk on a rug, a long sofa and a low table on a
   second rug, a floor lamp, and two planters.
 - **Budget.** 4,802 triangles near and 924 far. In Everglade it adds
-  3,202 merged triangles net, since the wild ground's foliage keeps off
-  its lot (2,890,704 to 2,893,906 of 2,900,000).
+  5,019 merged triangles net, since the wild ground's foliage keeps off
+  its lot (2,750,225 to 2,755,244 of 2,900,000, after the eighth round).
 
 Rebuild it and admit it:
 
