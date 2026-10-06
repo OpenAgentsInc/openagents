@@ -60,6 +60,7 @@ pub mod recipe;
 pub mod record;
 pub mod route;
 pub mod snapshot;
+pub mod studio;
 pub mod view;
 
 pub use digest::{Digest, digest_of};

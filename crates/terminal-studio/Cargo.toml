@@ -14,6 +14,8 @@ name = "studio-acceptance"
 required-features = ["acceptance"]
 
 [dependencies]
+route-contract = { path = "../route-contract" }
+openagents-chat = { path = "../openagents-chat" }
 coder = { path = "../coder", optional = true }
 coder-host = { path = "../coder-host", optional = true }
 tokio = { version = "1", features = ["rt-multi-thread", "macros"], optional = true }

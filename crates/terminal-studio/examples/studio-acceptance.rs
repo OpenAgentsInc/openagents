@@ -47,6 +47,7 @@ fn enter(
     client: &mut OperationClient,
     line: &str,
     events: &mut Vec<Value>,
+    routes: &mut Option<Routes>,
 ) -> Result<Outcome, String> {
     page.enter(line.to_owned());
     let line = page
@@ -72,9 +73,13 @@ fn enter(
     }
     let operation: Operation =
         serde_json::from_slice(&prepared.bytes).map_err(|e| e.to_string())?;
-    let outcome = client
-        .call(&prepared.request, &operation)
-        .map_err(|e| e.to_string())?;
+    let outcome = if let Some(routes) = routes {
+        routes.send(&prepared.request, &operation, &snapshot.stream, events)?
+    } else {
+        client
+            .call(&prepared.request, &operation)
+            .map_err(|e| e.to_string())?
+    };
     // Exact transport redelivery must return the same host answer.
     let repeated = client
         .call(&prepared.request, &operation)
@@ -87,6 +92,111 @@ fn enter(
         "repeated_delivery_equal":true,"confirmation":confirmation}),
     );
     Ok(outcome)
+}
+
+struct Routes {
+    socket: PathBuf,
+    host: String,
+    journal: openagents_chat::studio::FileJournal,
+}
+impl Routes {
+    fn send(
+        &mut self,
+        request: &str,
+        operation: &Operation,
+        stream: &str,
+        events: &mut Vec<Value>,
+    ) -> Result<Outcome, String> {
+        use route_contract::snapshot::{CheckScope, Surface, WorkspaceBinding};
+        use route_contract::{
+            binding::{HostPlacement, WorkbenchBinding},
+            studio::{Intent, StudioRoute},
+        };
+        let intent: Intent =
+            serde_json::from_value(serde_json::to_value(operation).map_err(|e| e.to_string())?)
+                .map_err(|e| e.to_string())?;
+        // The fixture explicitly admits local Studio operations. It admits no
+        // model, network, or spend; scripted execution remains host-owned.
+        let situation = openagents_chat::route::Situation {
+            surface: Surface::Terminal,
+            caller: "scratch-local-operator".into(),
+            request: request.into(),
+            thread: None,
+            computer: self.host.clone(),
+            project: Some(WorkspaceBinding {
+                project: sim::WORKSPACE.into(),
+                path: None,
+            }),
+            ready: false,
+            bound: None,
+            check: CheckScope::ExecutorExit,
+        };
+        let mut snapshot = openagents_chat::route::admit(
+            &route_contract::RouteResult::LocalCommand {
+                action: route_contract::route::LocalAction::Screen {
+                    screen: "studio".into(),
+                    target: None,
+                },
+            },
+            &situation,
+            None,
+            "declared scratch Studio operation",
+            None,
+        );
+        snapshot.route.explicit = true;
+        snapshot.input.request = route_contract::digest_of(&intent);
+        snapshot.placement.computer = Some(self.host.clone());
+        snapshot.placement.workspace = situation.project;
+        let binding = WorkbenchBinding {
+            schema: route_contract::BINDING_SCHEMA.into(),
+            snapshot: snapshot.digest(),
+            parent: None,
+            placement: HostPlacement {
+                computer: self.host.clone(),
+                recipient: self.host.clone(),
+                generation: stream.into(),
+            },
+            run: None,
+            terminal: None,
+            resources: Vec::new(),
+        };
+        let route = StudioRoute {
+            schema: route_contract::studio::SCHEMA.into(),
+            request: request.into(),
+            snapshot: snapshot.digest(),
+            binding: binding.digest(),
+            intent,
+        };
+        let mut host =
+            terminal_studio::route::LocalHost::new(self.socket.clone(), binding.placement.clone());
+        let result = openagents_chat::studio::dispatch(
+            &route,
+            &snapshot,
+            &binding,
+            &mut host,
+            &mut self.journal,
+            false,
+        )?;
+        let repeated = openagents_chat::studio::dispatch(
+            &route,
+            &snapshot,
+            &binding,
+            &mut host,
+            &mut self.journal,
+            false,
+        )?;
+        if result != repeated {
+            return Err("Declared route replay changed its retained result".into());
+        }
+        events.push(json!({"declared_route":route,"route_result":result,"workbench_rows":terminal_studio::route::rows(&result, stream)?}));
+        match result.state {
+            openagents_chat::studio::State::Completed { outcome } => Ok(*outcome),
+            openagents_chat::studio::State::Refused { reason } => {
+                Err(format!("Studio route refused: {reason}"))
+            }
+            _ => Err("Declared route was not completed".into()),
+        }
+    }
 }
 
 fn binary_digest() -> Result<String, std::io::Error> {
@@ -120,6 +230,7 @@ fn flow(
     scratch: &sim::Scratch,
     client: &mut OperationClient,
     output: &Path,
+    routes: &mut Option<Routes>,
 ) -> Result<Value, String> {
     let engine = sim::Engine::open(&scratch.root, &scratch.store).map_err(|e| e.to_string())?;
     let before = git_head(&scratch.fixture.origin)?;
@@ -129,7 +240,7 @@ fn flow(
     page.external = true;
     page.update(studio::project(&read(client)?, RIGHTS)?)?;
     page.enter(format!("/repo {}", sim::WORKSPACE));
-    enter(&mut page, client, sim::GOAL, &mut events)?;
+    enter(&mut page, client, sim::GOAL, &mut events, routes)?;
     let mut opened = false;
     let mut answered = false;
     let mut turns = Vec::new();
@@ -186,6 +297,7 @@ fn flow(
                 client,
                 &format!("/answer {} {}", decision.decision, sim::ANSWER),
                 &mut events,
+                routes,
             )?;
             answered = true;
             continue;
@@ -196,17 +308,41 @@ fn flow(
             .iter()
             .find(|task| task.entry == "greet" && task.status == TaskStatus::Done)
         {
-            let Outcome::Review { review } = client
-                .call(
-                    &coder_access::studio_intents::mint(),
-                    &Operation::OpenReview {
-                        task: task.task.clone(),
-                    },
-                )
-                .map_err(|e| e.to_string())?
-            else {
+            let operation = Operation::OpenReview {
+                task: task.task.clone(),
+            };
+            let request = coder_access::studio_intents::mint();
+            let outcome = if let Some(routes) = routes {
+                routes.send(&request, &operation, &snapshot.stream, &mut events)?
+            } else {
+                client
+                    .call(&request, &operation)
+                    .map_err(|e| e.to_string())?
+            };
+            let Outcome::Review { review } = outcome else {
                 return Err("Host answered another review.".into());
             };
+            if let Some(routes) = routes {
+                let mut stale = (*review).clone();
+                stale.head = "f".repeat(40);
+                let operation = coder_access::studio_intents::Action::Decide {
+                    review: Box::new(stale),
+                    verdict: coder_access::studio::Verdict::Merge,
+                    text: String::new(),
+                }
+                .operation(100);
+                let result = routes.send(
+                    &coder_access::studio_intents::mint(),
+                    &operation,
+                    &snapshot.stream,
+                    &mut events,
+                );
+                if !result.is_err_and(|reason| reason.contains("Stale")) {
+                    return Err(
+                        "The real scratch host did not refuse the stale routed review".into(),
+                    );
+                }
+            }
             page.section = Section::Review;
             page.reviewed(Ok(studio::project_review(&snapshot.stream, &review)?));
             let task_record = Store::open(&scratch.store)
@@ -260,7 +396,7 @@ fn flow(
             events.push(json!({"retained_artifact_manifest":manifest,"retained_trace":trace_file}));
             events.push(json!({"review":review,"sheet":capture(&page),
                 "task_checks":task_record.checks,"run_evidence":task_record.run}));
-            let outcome = enter(&mut page, client, "/merge", &mut events)?;
+            let outcome = enter(&mut page, client, "/merge", &mut events, routes)?;
             let Outcome::Merged { merged } = &outcome else {
                 return Err("Host did not answer the merge.".into());
             };
@@ -327,8 +463,8 @@ fn archive(scratch: &sim::Scratch, client: &mut OperationClient) -> Result<Vec<S
 #[tokio::main(flavor = "multi_thread", worker_threads = 2)]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let args: Vec<String> = std::env::args().collect();
-    if args.len() != 3 {
-        return Err("Usage: studio-acceptance SOURCE_COMMIT OUTPUT_DIRECTORY".into());
+    if args.len() != 3 && !(args.len() == 4 && args[3] == "--routed") {
+        return Err("Usage: studio-acceptance SOURCE_COMMIT OUTPUT_DIRECTORY [--routed]".into());
     }
     coder_access::review::revision(&args[1])?;
     let output = PathBuf::from(&args[2]);
@@ -362,7 +498,16 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let started = Instant::now();
     let capture_binary = binary_digest()?;
     let mut client = OperationClient::new(scratch.socket.clone());
-    let result = flow(&scratch, &mut client, &output);
+    let mut routes = if args.len() == 4 {
+        Some(Routes {
+            socket: scratch.socket.clone(),
+            host: host_id.clone(),
+            journal: openagents_chat::studio::FileJournal::open(scratch.dir.join("route-journal"))?,
+        })
+    } else {
+        None
+    };
+    let result = flow(&scratch, &mut client, &output, &mut routes);
     let cleanup = archive(&scratch, &mut client);
     running.shutdown().await;
     let passed = result.is_ok() && cleanup.is_ok();
@@ -370,6 +515,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         "source_commit":args[1],"app":{"component":"terminal-core shared sheet","capture_version":env!("CARGO_PKG_VERSION"),
             "capture_binary_sha256":capture_binary,"renderer":"none; semantic capture"},
         "host":{"pubkey":host_id,"implementation":"coder-host in-process scratch", "protocol":openagents_connect::control::VERSION},
+        "declared_studio_routes":routes.is_some(),
         "engine":"existing scripted studio engine; no model call","elapsed_ms":started.elapsed().as_millis(),
         "limit":{"scripted_passes":32,"socket_timeout_seconds":10},
         "flow":result.unwrap_or_else(|error| json!({"status":"failed","error":error})),

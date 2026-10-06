@@ -9634,6 +9634,7 @@ name = "openagents-chat"
 version = "0.1.0"
 dependencies = [
  "atif",
+ "coder-access",
  "futures-util",
  "model-access",
  "nostr",
@@ -13616,7 +13617,9 @@ dependencies = [
  "coder",
  "coder-access",
  "coder-host",
+ "openagents-chat",
  "openagents-connect",
+ "route-contract",
  "serde_json",
  "sha2 0.10.9",
  "tempfile",

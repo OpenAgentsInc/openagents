@@ -20,3 +20,11 @@ The `studio-acceptance` example (feature `acceptance`) drives this sheet through
 a scripted scratch host and retains its receipt, trace, and artifact bytes.
 See the [acceptance receipt](../../docs/verse/verification/2026-10-06-studio-workbench/README.md)
 for results, isolation, limits, and reproduction.
+
+Declared Studio requests can use `route::LocalHost` with the shared
+`openagents_chat::studio` dispatcher and its private locked journal. The
+versioned extension in `route_contract::studio` pins the admission, placement,
+and exact operation. Direct console intents keep their existing path.
+Run the acceptance example with `--routed` to retain goal, decision, review,
+stale-review refusal, and merge receipts through the route adapter. Shell
+approval grants no Studio right; host policy still owns execution and spend.

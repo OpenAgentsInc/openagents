@@ -123,6 +123,17 @@ linking Coder, and neither `coder::router` nor the gateway owns them. Coder
 depends on it; the reverse never happens. The HTTP adapter will be a separate
 crate that depends on it.
 
+The declared Studio extension (#10700) lives in
+[`route-contract::studio`](../../crates/route-contract/src/studio.rs), beside
+the frozen route families. It pins the operation, admission, placement, and
+request identity. [`openagents-chat::studio`](../../crates/openagents-chat/src/studio.rs)
+journals before dispatch, checks current rights and generation, and forwards
+the existing coordinator intent. Unknown delivery requires explicit exact
+reconciliation. Studio operations confer no execution, disclosure, or spend
+grant; the host's existing policies still apply. Direct intents remain
+independent, and free-text Studio classification is not implemented by this
+adapter.
+
 ## 4. Admission and route contract
 
 Build the eligible candidate set in code **before** asking Jev to rank it.

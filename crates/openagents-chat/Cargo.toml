@@ -7,6 +7,7 @@ publish.workspace = true
 description = "Shared OpenAgents hosted chat transport, state, and encrypted storage."
 
 [dependencies]
+coder-access = { path = "../coder-access", default-features = false }
 # Each thread renders as one ATIF trajectory (`thread`).
 atif = { path = "../atif" }
 nostr = { path = "../nostr" }
