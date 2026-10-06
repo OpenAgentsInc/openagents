@@ -64,6 +64,7 @@ pub(crate) fn run(
         TermRequest::Share(r) => pty.share(principal, r),
         TermRequest::Unshare(r) => pty.unshare(principal, r),
         TermRequest::SharePause(r) => pty.pause(principal, r),
+        TermRequest::Handoff(r) => pty.hand_off(principal, r),
         TermRequest::Viewers(r) => pty.viewers(principal, r),
         TermRequest::SessionRead(_)
         | TermRequest::SessionWrite(_)

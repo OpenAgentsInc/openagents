@@ -734,6 +734,24 @@ when its own screen is smaller; scrolling, selection, and font size stay
 its own and never reach the host. Effect frames' clipboard writes go only to
 the typist.
 
+- **Agent handoff.** `openagents.terminal-handoff.v1` has the typist
+  feature's `requires`, `request`, `terminal`, `attachment` (the sender's
+  own `interact` attachment, which holds the role, or the terminal has no
+  typist), `agent` (the agent's key), `thread`, and `run`, and needs
+  `terminal`. The result value is `{kind: "handed_off", lease}`, and typist
+  frames name `lease` as the typist. The agent types with
+  `openagents.terminal-agent-input.v1` (`requires`, `request`, `terminal`,
+  `lease`, and `data`, as input), which the host carries only from an agent
+  producer it runs; it applies only while that lease holds the role on
+  that terminal and refuses as `not_typist` otherwise. The agent gains no
+  attachment and reads nothing: a handoff is typing authority, never a
+  screen read. The handoff ends at once when a device with `terminal`
+  types, signals, or takes the role, when the handing attachment ends,
+  and when its right is revoked. Commands that begin on the screen while
+  the agent holds the role are journaled with origin `agent`. The host
+  keeps, for the handoff's thread, each agent input's request, byte count,
+  and time, never its bytes.
+
 ### Shares
 
 With `openagents.terminal-shares.v1`, a device that holds `terminal`
@@ -874,8 +892,8 @@ older host refuses a feature. The same emulator keeps the block journal
 (`coder_vt::journal`), so the host serves the blocks feature and
 `coder-host` advertises `term-blocks`; `coder host serve --terminal-shell
 PATH` runs a zsh, bash, or fish with the shell-integration hooks that feed
-it. Every block is `unattributed`: no NIP-TERM operation starts a command
-on someone's behalf yet. Every host enforces the typist rule and serves
+it. A block is `agent` while an agent holds the role under a handoff, and
+`unattributed` otherwise. Every host enforces the typist rule and serves
 the typist feature (`term-typist`); the Coder mobile terminal screen names
 it, shows a **Type here** control while another device types, and draws at
 that device's size around the cursor. Every resident host serves shares

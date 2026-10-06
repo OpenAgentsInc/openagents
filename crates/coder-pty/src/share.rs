@@ -300,6 +300,8 @@ pub struct Viewers {
     pub viewers: Vec<Viewer>,
     pub shares: Vec<ShareGrant>,
     pub paused: bool,
+    /// The agent that holds the typist role, when one does.
+    pub agent: Option<crate::ext::AgentTypist>,
 }
 
 /// The terms of one share, as the host records and signs them.

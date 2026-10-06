@@ -5,8 +5,8 @@
 //! Marks are advisory. A program can print OSC 133 itself, so a record
 //! shapes how a client draws and navigates and never authorizes anything.
 //! A command that ends without its end mark is `abandoned`, not finished,
-//! and every record is `unattributed` until an attributed operation can
-//! start a command.
+//! and a record is `agent` while an agent holds the typist role under a
+//! handoff ([`Journal::attribute`]) and `unattributed` otherwise.
 
 use std::collections::VecDeque;
 
@@ -50,6 +50,8 @@ pub struct Journal {
     begun: Option<u64>,
     /// The output frame that reported `dir`.
     dir_seq: u64,
+    /// Who starts the next blocks, when known.
+    origin: Option<Origin>,
     next: u64,
     /// The running block's number.
     active: Option<u64>,
@@ -107,7 +109,7 @@ impl Journal {
                 });
                 self.blocks.push_back(Block {
                     block: self.next,
-                    origin: Origin::Unattributed,
+                    origin: self.origin.unwrap_or(Origin::Unattributed),
                     command,
                     command_truncated,
                     dir: self.dir.clone(),
@@ -171,6 +173,11 @@ impl Journal {
             .iter_mut()
             .rev()
             .find(|block| block.block == active)
+    }
+
+    /// Who starts the commands that begin from now on.
+    pub fn attribute(&mut self, origin: Origin) {
+        self.origin = (origin != Origin::Unattributed).then_some(origin);
     }
 
     /// Notes the output frame of a mark that belongs to the next block.

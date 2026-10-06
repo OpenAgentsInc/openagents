@@ -721,6 +721,11 @@ pub enum Value {
     Sessions {
         sessions: Vec<crate::ext::SessionEntry>,
     },
+    /// The typist role passed to an agent under this handoff ID (the typist
+    /// feature).
+    HandedOff {
+        lease: String,
+    },
     /// A terminal's attachments and shares (NIP-TERM's shares feature).
     Viewers {
         viewers: crate::share::Viewers,

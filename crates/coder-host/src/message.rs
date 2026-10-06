@@ -12,9 +12,9 @@
 //! for the last. A message is at most [`MAX_MESSAGE_BYTES`] bytes.
 
 use coder_pty::ext::{
-    BLOCK_PAGE, BlockPageRead, HISTORY, History, RECORDS, RELEASE, RecordsFrame, SESSION_LIST,
-    SESSION_READ, SESSION_REMOVE, SESSION_WRITE, Seat, SessionList, SessionRead, SessionRemove,
-    SessionWrite, TAKE,
+    BLOCK_PAGE, BlockPageRead, HANDOFF, HISTORY, Handoff, History, RECORDS, RELEASE, RecordsFrame,
+    SESSION_LIST, SESSION_READ, SESSION_REMOVE, SESSION_WRITE, Seat, SessionList, SessionRead,
+    SessionRemove, SessionWrite, TAKE,
 };
 use coder_pty::share::{
     PAUSE, SHARE, SharePause, ShareRequest, UNSHARE, Unshare, VIEWERS, ViewersRead,
@@ -146,6 +146,8 @@ pub enum TermRequest {
     Share(ShareRequest),
     /// The end of one share, or of every share of a terminal.
     Unshare(Unshare),
+    /// A handoff of the typist role to an agent (NIP-TERM's typist feature).
+    Handoff(Handoff),
     /// A pause or resume of every share of a terminal.
     SharePause(SharePause),
     /// A read of a terminal's attachments and shares.
@@ -183,6 +185,7 @@ impl TermRequest {
             TAKE | RELEASE => serde_json::from_value(value).map(Self::Seat),
             SHARE => serde_json::from_value(value).map(Self::Share),
             UNSHARE => serde_json::from_value(value).map(Self::Unshare),
+            HANDOFF => serde_json::from_value(value).map(Self::Handoff),
             PAUSE => serde_json::from_value(value).map(Self::SharePause),
             VIEWERS => serde_json::from_value(value).map(Self::Viewers),
             SESSION_READ => serde_json::from_value(value).map(Self::SessionRead),
@@ -215,6 +218,7 @@ impl TermRequest {
             Self::Seat(r) => &r.request,
             Self::Share(r) => &r.request,
             Self::Unshare(r) => &r.request,
+            Self::Handoff(r) => &r.request,
             Self::SharePause(r) => &r.request,
             Self::Viewers(r) => &r.request,
             Self::SessionRead(r) => &r.request,
@@ -241,6 +245,7 @@ impl TermRequest {
             Self::Seat(_) => RELEASE,
             Self::Share(_) => SHARE,
             Self::Unshare(_) => UNSHARE,
+            Self::Handoff(_) => HANDOFF,
             Self::SharePause(_) => PAUSE,
             Self::Viewers(_) => VIEWERS,
             Self::SessionRead(_) => SESSION_READ,
@@ -266,6 +271,7 @@ impl TermRequest {
             Self::Seat(r) => serde_json::to_value(r),
             Self::Share(r) => serde_json::to_value(r),
             Self::Unshare(r) => serde_json::to_value(r),
+            Self::Handoff(r) => serde_json::to_value(r),
             Self::SharePause(r) => serde_json::to_value(r),
             Self::Viewers(r) => serde_json::to_value(r),
             Self::SessionRead(r) => serde_json::to_value(r),

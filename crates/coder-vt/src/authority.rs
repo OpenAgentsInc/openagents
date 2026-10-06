@@ -152,6 +152,10 @@ impl Emulator for Authority {
         Some(self.journal.page(before, limit))
     }
 
+    fn attribute(&mut self, origin: coder_pty::ext::Origin) {
+        self.journal.attribute(origin);
+    }
+
     fn blocks_from(
         &self,
         from: u64,

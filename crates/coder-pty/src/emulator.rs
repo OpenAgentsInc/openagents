@@ -59,6 +59,12 @@ pub trait Emulator: Send {
         None
     }
 
+    /// Who starts the commands that begin from now on: an agent while one
+    /// holds the typist role, and nobody known otherwise.
+    fn attribute(&mut self, origin: crate::ext::Origin) {
+        let _ = origin;
+    }
+
     /// A page of the block journal as a share that discloses output from
     /// sequence number `from` sees it: only blocks whose command input
     /// began in output at or after `from`, with `newest`, `oldest`, and

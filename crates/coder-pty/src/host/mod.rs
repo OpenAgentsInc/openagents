@@ -99,7 +99,10 @@ use std::thread::JoinHandle;
 use std::time::{Duration, Instant};
 
 use crate::emulator::{self, Effects, Emulator, HistoryRead};
-use crate::ext::{BlockPageRead, Effect, Features, History, Join, RecordsFrame, Seat};
+use crate::ext::{
+    AGENT_LOG_MAX, AgentEvidence, AgentInput, AgentTypist, BlockPageRead, Effect, Features,
+    Handoff, History, Join, Origin, RecordsFrame, Seat,
+};
 use crate::ring::Ring;
 use crate::share::{
     DEPTH_MAX, LIFETIME_MAX, SHARES_MAX, ShareGrant, ShareMode, SharePause, ShareRequest, Unshare,
@@ -549,6 +552,17 @@ struct State {
     /// The newest sequence number no share may read since the last resume,
     /// or 0.
     cut: u64,
+    /// The agent that holds the typist role under a handoff, when one does.
+    agent: Option<AgentSeat>,
+}
+
+/// An agent's hold on the typist role.
+struct AgentSeat {
+    typist: AgentTypist,
+    /// The attachment that handed the role over. The handoff ends with it.
+    by: String,
+    /// What the agent typed, for the thread's private evidence.
+    log: VecDeque<AgentEvidence>,
 }
 
 /// Who types at a terminal: an attachment, or for a client that predates
@@ -575,6 +589,7 @@ impl State {
         principal: &str,
         attachment: Option<&str>,
         acquire: bool,
+        reclaims: bool,
     ) -> Result<(), Refusal> {
         if let Some(id) = attachment {
             let own = self.attachments.get(id).is_some_and(|attachment| {
@@ -591,6 +606,12 @@ impl State {
             principal: principal.to_owned(),
             attachment: attachment.map(str::to_owned),
         };
+        // A key from a device with `terminal` takes the role back from an
+        // agent at once.
+        if self.agent.is_some() && reclaims && acquire {
+            self.set_typist(Some(sender));
+            return Ok(());
+        }
         match &self.typist {
             None => {
                 if acquire {
@@ -616,6 +637,19 @@ impl State {
             self.typist = typist;
             self.seat_changed();
         }
+        // The handoff ends as soon as the role leaves the agent.
+        let leased = self.agent.as_ref().is_some_and(|agent| {
+            self.typist.as_ref().is_some_and(|typist| {
+                typist.principal == agent.typist.agent
+                    && typist.attachment.as_deref() == Some(agent.typist.lease.as_str())
+            })
+        });
+        if self.agent.is_some() && !leased {
+            self.agent = None;
+            if let Some(emulator) = self.emulator.as_mut() {
+                emulator.attribute(Origin::Unattributed);
+            }
+        }
     }
 
     /// Marks every attachment that named the typist feature to be told.
@@ -632,6 +666,18 @@ impl State {
             .typist
             .as_ref()
             .is_some_and(|typist| match &typist.attachment {
+                // An agent's role lasts while the attachment that handed it
+                // over does.
+                Some(id)
+                    if self
+                        .agent
+                        .as_ref()
+                        .is_some_and(|agent| agent.typist.lease == *id) =>
+                {
+                    self.agent
+                        .as_ref()
+                        .is_none_or(|agent| !self.attachments.contains_key(&agent.by))
+                }
                 Some(id) => !self.attachments.contains_key(id),
                 None => !self.attachments.values().any(|attachment| {
                     attachment.principal == typist.principal && attachment.mode == Mode::Interact
@@ -836,8 +882,20 @@ impl Terminal {
         attachment: Option<&str>,
         acquire: bool,
     ) -> Result<(), Refusal> {
+        self.seat_as(principal, attachment, acquire, false)
+    }
+
+    /// As [`Terminal::seat`], and with `reclaims` a sender with the
+    /// `terminal` right takes the role back from an agent.
+    fn seat_as(
+        &self,
+        principal: &str,
+        attachment: Option<&str>,
+        acquire: bool,
+        reclaims: bool,
+    ) -> Result<(), Refusal> {
         let mut state = self.state();
-        state.seat(principal, attachment, acquire)?;
+        state.seat(principal, attachment, acquire, reclaims)?;
         self.pump(&mut state, Instant::now());
         Ok(())
     }
@@ -1514,7 +1572,8 @@ impl Host {
             return outcome;
         }
         let terminal = self.inner.running(&request.terminal)?;
-        terminal.seat(principal, request.attachment.as_deref(), true)?;
+        let owner = self.inner.rights.holds(principal, Right::Terminal);
+        terminal.seat_as(principal, request.attachment.as_deref(), true, owner)?;
         let written = terminal.process.write(&request.data).map_err(|error| {
             Refusal::new(
                 Reason::Unavailable,
@@ -1577,7 +1636,8 @@ impl Host {
             return outcome;
         }
         let terminal = self.inner.running(&request.terminal)?;
-        terminal.seat(principal, request.attachment.as_deref(), true)?;
+        let owner = self.inner.rights.holds(principal, Right::Terminal);
+        terminal.seat_as(principal, request.attachment.as_deref(), true, owner)?;
         terminal
             .process
             .signal_foreground(request.signal)
@@ -1812,6 +1872,128 @@ impl Host {
         Ok((Status::Accepted, Value::Done))
     }
 
+    /// Hands the typist role to an agent, bound to a thread and a run.
+    /// The sender needs `terminal` and its own `interact` attachment, which
+    /// must hold the role or find the terminal without a typist. The agent
+    /// then types through [`Host::agent_input`] under the returned lease,
+    /// with the same typist checks a device has; it gains no attachment
+    /// and reads nothing. The handoff ends when a device with `terminal`
+    /// types, signals, or takes the role, when the handing attachment
+    /// ends, or when its right is revoked. Commands that begin while the
+    /// agent types are journaled as `agent`.
+    pub fn hand_off(&self, principal: &str, request: &Handoff) -> Outcome {
+        request.check_with(self.features())?;
+        self.inner.require(principal, Right::Terminal)?;
+        let body = identity(principal, request);
+        if let Some(outcome) = self.inner.retry(&key(principal, &request.request), &body) {
+            return outcome;
+        }
+        if request.agent == principal {
+            return Err(Refusal::new(
+                Reason::Malformed,
+                "a handoff names another key",
+            ));
+        }
+        let terminal = self.inner.running(&request.terminal)?;
+        let mut state = terminal.state();
+        state.seat(principal, Some(&request.attachment), false, false)?;
+        let lease = sys::random_id();
+        let typist = AgentTypist {
+            agent: request.agent.clone(),
+            thread: request.thread.clone(),
+            run: request.run.clone(),
+            lease: lease.clone(),
+        };
+        state.agent = Some(AgentSeat {
+            typist,
+            by: request.attachment.clone(),
+            log: VecDeque::new(),
+        });
+        state.set_typist(Some(Typist {
+            principal: request.agent.clone(),
+            attachment: Some(lease.clone()),
+        }));
+        if let Some(emulator) = state.emulator.as_mut() {
+            emulator.attribute(Origin::Agent);
+        }
+        terminal.pump(&mut state, Instant::now());
+        drop(state);
+        let value = Value::HandedOff { lease };
+        self.inner
+            .remember(&key(principal, &request.request), body, value.clone());
+        Ok((Status::Accepted, value))
+    }
+
+    /// Types for the agent `agent` under its handoff. It applies only while
+    /// that handoff holds the role on that terminal: a reclaimed, ended, or
+    /// other terminal's lease refuses, and an exact retry answers once
+    /// without writing again. Each input is recorded, without its bytes,
+    /// for the thread's private evidence ([`Host::agent_evidence`]).
+    pub fn agent_input(&self, agent: &str, request: &AgentInput) -> Outcome {
+        request.check_with(self.features())?;
+        let body = identity(agent, request);
+        if let Some(outcome) = self.inner.retry(&key(agent, &request.request), &body) {
+            return outcome;
+        }
+        let terminal = self.inner.running(&request.terminal)?;
+        {
+            let state = terminal.state();
+            let current = state
+                .agent
+                .as_ref()
+                .filter(|seat| seat.typist.agent == agent && seat.typist.lease == request.lease);
+            if current.is_none() {
+                return Err(Refusal::new(
+                    Reason::NotTypist,
+                    "this handoff no longer holds the typist role",
+                ));
+            }
+        }
+        let written = terminal.process.write(&request.data).map_err(|error| {
+            Refusal::new(
+                Reason::Unavailable,
+                format!("the terminal refused input: {error}"),
+            )
+        })?;
+        let mut state = terminal.state();
+        state.activity = Instant::now();
+        if let Some(seat) = state.agent.as_mut() {
+            seat.log.push_back(AgentEvidence {
+                request: request.request.clone(),
+                agent: agent.to_owned(),
+                thread: seat.typist.thread.clone(),
+                run: seat.typist.run.clone(),
+                bytes: written as u64,
+                at: unix_now().saturating_mul(1000),
+            });
+            if seat.log.len() > AGENT_LOG_MAX {
+                seat.log.pop_front();
+            }
+        }
+        drop(state);
+        let value = Value::Written {
+            bytes: written as u64,
+        };
+        self.inner
+            .remember(&key(agent, &request.request), body, value.clone());
+        Ok((Status::Accepted, value))
+    }
+
+    /// Takes the evidence the current handoff recorded on a terminal: its
+    /// binding and each input, without the bytes. A host-local read for the
+    /// thread the handoff names.
+    pub fn agent_evidence(
+        &self,
+        terminal: &TerminalRef,
+    ) -> Result<Option<(AgentTypist, Vec<AgentEvidence>)>, Refusal> {
+        let terminal = self.inner.find(terminal)?;
+        let mut state = terminal.state();
+        Ok(state
+            .agent
+            .as_mut()
+            .map(|seat| (seat.typist.clone(), seat.log.drain(..).collect())))
+    }
+
     /// Pauses or resumes every share of a terminal, which needs the
     /// `terminal` right. While paused no output, effect, or snapshot
     /// reaches an attachment under a share, and each is told so. On resume
@@ -1880,6 +2062,7 @@ impl Host {
                 viewers,
                 shares,
                 paused: state.paused,
+                agent: state.agent.as_ref().map(|agent| agent.typist.clone()),
             },
         };
         Ok((Status::Accepted, value))
@@ -2177,6 +2360,7 @@ impl Inner {
                 share_epoch: 1,
                 paused: false,
                 cut: 0,
+                agent: None,
             }),
             reader: Mutex::new(None),
         });

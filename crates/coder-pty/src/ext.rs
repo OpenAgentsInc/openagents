@@ -306,6 +306,147 @@ impl Seat {
 }
 
 // ---------------------------------------------------------------------------
+// Agent typists
+
+/// `v` of a handoff: the sender's attachment hands the typist role to an
+/// agent.
+pub const HANDOFF: &str = "openagents.terminal-handoff.v1";
+/// `v` of an agent's input under a handoff.
+pub const AGENT_INPUT: &str = "openagents.terminal-agent-input.v1";
+/// How many agent inputs a handoff's evidence log keeps.
+pub const AGENT_LOG_MAX: usize = 256;
+
+/// Hand the typist role to an agent, bound to the thread and run it works
+/// for. The sender's own `interact` attachment must hold the role or the
+/// terminal must have no typist.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct Handoff {
+    pub v: String,
+    pub requires: Vec<String>,
+    pub request: String,
+    pub terminal: TerminalRef,
+    pub attachment: String,
+    /// The agent's key.
+    pub agent: String,
+    pub thread: String,
+    pub run: String,
+}
+
+impl Handoff {
+    #[must_use]
+    pub fn new(
+        request: impl Into<String>,
+        terminal: TerminalRef,
+        attachment: impl Into<String>,
+        agent: impl Into<String>,
+        thread: impl Into<String>,
+        run: impl Into<String>,
+    ) -> Self {
+        Handoff {
+            v: HANDOFF.into(),
+            requires: vec![TYPIST.into()],
+            request: request.into(),
+            terminal,
+            attachment: attachment.into(),
+            agent: agent.into(),
+            thread: thread.into(),
+            run: run.into(),
+        }
+    }
+
+    pub fn check_with(&self, features: Features) -> Result<(), Refusal> {
+        ext_header(
+            &self.v,
+            HANDOFF,
+            &self.requires,
+            &self.request,
+            TYPIST,
+            features,
+        )?;
+        self.terminal.check()?;
+        common_id(&self.attachment, "attachment")?;
+        common_id(&self.agent, "agent")?;
+        common_id(&self.thread, "thread")?;
+        common_id(&self.run, "run")
+    }
+}
+
+/// An agent's input under the handoff `lease`.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct AgentInput {
+    pub v: String,
+    pub requires: Vec<String>,
+    pub request: String,
+    pub terminal: TerminalRef,
+    pub lease: String,
+    #[serde(with = "b64")]
+    pub data: Vec<u8>,
+}
+
+impl AgentInput {
+    #[must_use]
+    pub fn new(
+        request: impl Into<String>,
+        terminal: TerminalRef,
+        lease: impl Into<String>,
+        data: impl Into<Vec<u8>>,
+    ) -> Self {
+        AgentInput {
+            v: AGENT_INPUT.into(),
+            requires: vec![TYPIST.into()],
+            request: request.into(),
+            terminal,
+            lease: lease.into(),
+            data: data.into(),
+        }
+    }
+
+    pub fn check_with(&self, features: Features) -> Result<(), Refusal> {
+        ext_header(
+            &self.v,
+            AGENT_INPUT,
+            &self.requires,
+            &self.request,
+            TYPIST,
+            features,
+        )?;
+        self.terminal.check()?;
+        common_id(&self.lease, "lease")?;
+        if self.data.is_empty() || self.data.len() > wire::INPUT_MAX {
+            return Err(Refusal::malformed("input is 1 to 4096 bytes"));
+        }
+        Ok(())
+    }
+}
+
+/// The agent that holds a terminal's typist role, and what it works for.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct AgentTypist {
+    pub agent: String,
+    pub thread: String,
+    pub run: String,
+    /// The handoff's ID, which typist frames name as the typist.
+    pub lease: String,
+}
+
+/// One input an agent sent, as the thread's private evidence records it:
+/// never the bytes, only who sent how many, when, and for what.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct AgentEvidence {
+    pub request: String,
+    pub agent: String,
+    pub thread: String,
+    pub run: String,
+    pub bytes: u64,
+    /// Unix milliseconds.
+    pub at: u64,
+}
+
+// ---------------------------------------------------------------------------
 // Effects
 
 /// The longest clipboard write an effect frame carries, in bytes. A host
