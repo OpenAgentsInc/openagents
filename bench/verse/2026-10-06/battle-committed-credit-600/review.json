@@ -1,0 +1,104 @@
+{
+  "source_base_revision": "3896776166080cfba6ed740aa9a414b6a7582cb4",
+  "source_patch": "source.patch",
+  "executable_sha256": "83f00227238eafc69ab311d940dabf3c95bee013bdfff92c1af512e181e734a5",
+  "acceptance": "failed",
+  "failures": [
+    "/server/movement_expiry/total: Some(4.0) exceeds 0, or is unavailable",
+    "Player 1 late prediction p95 Some(0.3495151102542877) exceeds 0.25 meters or is unavailable",
+    "Player 4 late prediction p95 Some(0.2743196487426758) exceeds 0.25 meters or is unavailable",
+    "Player 4 late prediction p95 Some(0.2743196487426758) exceeds 0.25 meters or is unavailable",
+    "Player 6 prediction maximum Some(1.0766171216964722) exceeds 1 meters or is unavailable",
+    "Player 6 late prediction p95 Some(0.2536443769931793) exceeds 0.25 meters or is unavailable",
+    "Player 6 late prediction maximum Some(1.0766171216964722) exceeds 1 meters or is unavailable",
+    "Player 8 prediction maximum Some(1.7025872468948364) exceeds 1 meters or is unavailable",
+    "Player 8 late prediction maximum Some(1.7025872468948364) exceeds 1 meters or is unavailable",
+    "Player 10 late prediction p95 Some(0.26670002937316895) exceeds 0.25 meters or is unavailable",
+    "Player 12 late prediction p95 Some(0.2585325837135315) exceeds 0.25 meters or is unavailable",
+    "Player 13 late prediction p95 Some(0.40386104583740234) exceeds 0.25 meters or is unavailable",
+    "Player 17 late prediction p95 Some(0.2743196487426758) exceeds 0.25 meters or is unavailable"
+  ],
+  "movement_expiry": {
+    "total": 4,
+    "admission": 0,
+    "primary_tick": 1,
+    "additional_tick": 3,
+    "bootstrap": 0,
+    "samples": [
+      {
+        "actor": 238,
+        "epoch": 16,
+        "authority_tick": 9089,
+        "origin": "additional_tick",
+        "world_step": 33956,
+        "confirmed_step": 33920,
+        "projected_step": 33920,
+        "received_at": 33928,
+        "applied_sequence": 169,
+        "queued_frames": 0,
+        "queued_steps": 0,
+        "first_start": null,
+        "last_end": null
+      },
+      {
+        "actor": 231,
+        "epoch": 14,
+        "authority_tick": 9199,
+        "origin": "additional_tick",
+        "world_step": 34396,
+        "confirmed_step": 34360,
+        "projected_step": 34360,
+        "received_at": 34376,
+        "applied_sequence": 239,
+        "queued_frames": 0,
+        "queued_steps": 0,
+        "first_start": null,
+        "last_end": null
+      },
+      {
+        "actor": 14,
+        "epoch": 34,
+        "authority_tick": 17177,
+        "origin": "primary_tick",
+        "world_step": 66308,
+        "confirmed_step": 66272,
+        "projected_step": 66272,
+        "received_at": 66280,
+        "applied_sequence": 706,
+        "queued_frames": 0,
+        "queued_steps": 0,
+        "first_start": null,
+        "last_end": null
+      },
+      {
+        "actor": 233,
+        "epoch": 25,
+        "authority_tick": 17411,
+        "origin": "additional_tick",
+        "world_step": 67244,
+        "confirmed_step": 67208,
+        "projected_step": 67208,
+        "received_at": 67216,
+        "applied_sequence": 721,
+        "queued_frames": 0,
+        "queued_steps": 0,
+        "first_start": null,
+        "last_end": null
+      }
+    ],
+    "omitted": 0
+  },
+  "limits_changed": false,
+  "route": {
+    "upstream_bytes": 124452041,
+    "downstream_bytes": 550182121,
+    "forwarded_chunks": 595101,
+    "queued_chunk_peak": 6
+  },
+  "render_p95_ms": {
+    "frame_cpu_ms": 7.497296,
+    "gpu_scene_ms": 7.09632,
+    "applied_snapshot_age_ms": 232.78799
+  },
+  "conclusion": "The same binary passes the short run but fails sustained acceptance: four late movement expiries and several late correction gates. Rendering and snapshot-age gates pass. No sustained capacity acceptance is claimed."
+}
