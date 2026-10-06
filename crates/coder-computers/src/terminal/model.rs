@@ -119,6 +119,66 @@ pub enum Blocks {
     Unavailable(String),
 }
 
+/// One saved session as the list shows it.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct SavedEntry {
+    pub session: String,
+    pub name: String,
+    pub members: u16,
+}
+
+/// One member of a saved session.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum SavedMember {
+    /// A host terminal. `state` is `live`, `closed`, `lost`, or `unknown`.
+    Terminal {
+        member: u16,
+        generation: String,
+        terminal: String,
+        state: &'static str,
+    },
+    /// A linked chat thread, by its ID.
+    Thread { member: u16, thread: String },
+    /// Another workbench resource the phone shows as a reference only.
+    Other {
+        member: u16,
+        kind: String,
+        id: String,
+    },
+}
+
+impl SavedMember {
+    #[must_use]
+    pub fn member(&self) -> u16 {
+        match self {
+            SavedMember::Terminal { member, .. }
+            | SavedMember::Thread { member, .. }
+            | SavedMember::Other { member, .. } => *member,
+        }
+    }
+}
+
+/// What the screen knows of the host's saved sessions (NIP-TERM's
+/// sessions feature).
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+pub enum Saved {
+    /// Not asked for, or hidden again.
+    #[default]
+    Hidden,
+    /// Asked for; the host has not answered yet.
+    Reading,
+    /// The host's sessions.
+    List(Vec<SavedEntry>),
+    /// One session's members, in the order the host keeps them.
+    Open {
+        session: String,
+        name: String,
+        members: Vec<SavedMember>,
+    },
+    /// The host keeps no sessions, or refused. The text says why.
+    Unavailable(String),
+}
+
 /// The screen's state. The session task writes the phase and output; the
 /// screen writes the modifier the accessory row latched.
 #[derive(Debug)]
@@ -163,6 +223,8 @@ pub struct Model {
     pub watch: bool,
     /// The block journal, when the person asked for it.
     pub blocks: Blocks,
+    /// The host's saved sessions, when the person asked for them.
+    pub saved: Saved,
 }
 
 impl Model {
@@ -188,6 +250,7 @@ impl Model {
             reference: None,
             watch: false,
             blocks: Blocks::Hidden,
+            saved: Saved::Hidden,
         }
     }
 

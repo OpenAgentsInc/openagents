@@ -1,6 +1,7 @@
 //! A phone screen recreated after the app went to the background attaches
 //! to the terminal it showed instead of opening another, can watch it
-//! without typing, and reads the host's command list (#10683).
+//! without typing, and reads the host's command list and saved sessions
+//! (#10683).
 //!
 //! A real host on the synthetic NIP-42 relay serves one enrolled device
 //! over a relay route. One machine, loopback only, with scratch state.
@@ -16,10 +17,12 @@ use std::sync::Arc;
 use std::time::{Duration, Instant};
 
 use coder_computers::terminal::session::{Links, Session};
-use coder_computers::terminal::{Blocks, Model, Phase};
+use coder_computers::terminal::{Blocks, Model, Phase, Saved, SavedMember};
 use coder_host::access::{RelayPolicy, Rights};
 use coder_host::client::{Device, Link, fetch_reach};
 use coder_host::config::Config;
+use coder_host::message::TermRequest;
+use coder_host::pty::ext::{Layout, Member, Node, SessionRecord, SessionWrite, Tab};
 use coder_host::pty::wire::TerminalRef;
 use coder_host::reach::pubkey;
 use coder_host::{NoTasks, Running};
@@ -96,6 +99,7 @@ fn a_recreated_screen_reattaches_watches_and_lists_commands() {
         }
     });
     let link = Arc::new(Link::relay_at(device.clone(), relay.clone(), 1));
+    let writer = link.clone();
     let links: Links = Arc::new(move || Ok(link.clone()));
     // A second screen, as on another phone, has a link of its own: one
     // link's frames go to one screen.
@@ -150,6 +154,76 @@ fn a_recreated_screen_reattaches_watches_and_lists_commands() {
         }
     );
     again.hide_blocks();
+
+    // A saved session holds this terminal and a thread link, as the
+    // desktop workbench saves it; the phone lists it and opens it.
+    let record = SessionRecord {
+        session: None,
+        revision: 0,
+        name: "build".into(),
+        members: vec![
+            Member::Terminal {
+                member: 1,
+                terminal: TerminalRef {
+                    generation: reference.0.clone(),
+                    terminal: reference.1.clone(),
+                },
+                state: None,
+            },
+            Member::Resource {
+                member: 2,
+                resource: serde_json::json!({"kind": "thread", "id": "7".repeat(64)}),
+            },
+        ],
+        layout: Layout {
+            tabs: vec![Tab {
+                name: "main".into(),
+                root: Node::Pane { member: 1 },
+            }],
+            active: 0,
+        },
+    };
+    let written = runtime
+        .block_on(writer.terminal(TermRequest::SessionWrite(SessionWrite::new(
+            coder_host::reach::new_id(),
+            None,
+            0,
+            record,
+        ))))
+        .unwrap();
+    assert!(written.reason.is_none(), "{written:?}");
+    again.saved(None);
+    until(&again, "the session list", |model| {
+        matches!(model.saved, Saved::List(_))
+    });
+    let Saved::List(entries) = again.model().saved.clone() else {
+        unreachable!()
+    };
+    assert_eq!(entries.len(), 1);
+    assert_eq!((entries[0].name.as_str(), entries[0].members), ("build", 2));
+    again.saved(Some(entries[0].session.clone()));
+    until(&again, "the session", |model| {
+        matches!(model.saved, Saved::Open { .. })
+    });
+    let Saved::Open { members, .. } = again.model().saved.clone() else {
+        unreachable!()
+    };
+    assert_eq!(
+        members,
+        vec![
+            SavedMember::Terminal {
+                member: 1,
+                generation: reference.0.clone(),
+                terminal: reference.1.clone(),
+                state: "live",
+            },
+            SavedMember::Thread {
+                member: 2,
+                thread: "7".repeat(64),
+            },
+        ]
+    );
+    again.hide_saved();
     assert_eq!(again.model().blocks, Blocks::Hidden);
 
     // A watching screen attaches in observe mode and sends nothing.

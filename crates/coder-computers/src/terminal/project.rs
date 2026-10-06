@@ -5,7 +5,9 @@
 //! - `terminal-header`: the host, the session's status, gap and refusal
 //!   notices, and **Back**, **Commands**, **End terminal**, and **Open a
 //!   new terminal**. With the command list open it also lists the newest
-//!   blocks of the host's block journal, a page at a time.
+//!   blocks of the host's block journal, a page at a time. **Sessions**
+//!   lists the host's saved sessions and one session's members: its
+//!   terminals, which a tap attaches to, and its linked threads.
 //! - `terminal-grid`: one node per grid row. A row whose cells share one
 //!   look is one `terminal` text node; otherwise it is a horizontal stack of
 //!   runs. The platform draws each run monospaced on one line, so the grid
@@ -17,7 +19,7 @@
 //! every Coder surface. Output text is shown as data; nothing in it becomes
 //! a control.
 
-use super::model::{Blocks, Model, Phase, Typing};
+use super::model::{Blocks, Model, Phase, Saved, SavedMember, Typing};
 use coder_ui::theme::{Intensity, NEAR_BLACK, NEAR_BLACK_TINT};
 use coder_vt::{Attrs, Color as VtColor, Flags, Key};
 use rust_native::style::{Color, Space, Style, TextWeight};
@@ -89,6 +91,18 @@ pub enum TerminalIntent {
     },
     /// Hide the command list.
     HideBlocks,
+    /// List the host's saved sessions.
+    Saved,
+    /// Show one saved session's members.
+    OpenSaved {
+        session: String,
+    },
+    /// Attach this screen to a live terminal of the open saved session.
+    SwitchTerminal {
+        member: u16,
+    },
+    /// Hide the saved sessions.
+    HideSaved,
 }
 
 /// Nodes kept for everything except the grid rows.
@@ -487,6 +501,21 @@ pub fn view(model: &Model, instance: &str, revision: u64) -> View<TerminalIntent
                 attached,
             )
         });
+        actions.push(if matches!(model.saved, Saved::Hidden) {
+            button(
+                "terminal-saved",
+                "Sessions",
+                TerminalIntent::Saved,
+                attached,
+            )
+        } else {
+            button(
+                "terminal-saved-hide",
+                "Hide sessions",
+                TerminalIntent::HideSaved,
+                true,
+            )
+        });
         if model.typing == Typing::Elsewhere && !model.watch {
             actions.push(button(
                 "terminal-take",
@@ -511,6 +540,9 @@ pub fn view(model: &Model, instance: &str, revision: u64) -> View<TerminalIntent
         actions,
     ));
     if let Some(list) = block_list(&model.blocks) {
+        header.push(list);
+    }
+    if let Some(list) = saved_list(model) {
         header.push(list);
     }
 
@@ -613,6 +645,96 @@ fn block_list(blocks: &Blocks) -> Option<Node<TerminalIntent>> {
     };
     Some(stack(
         "terminal-blocks-list",
+        Axis::Vertical,
+        Space::Xs,
+        children,
+    ))
+}
+
+/// The saved sessions, or one session's members. A session's name and its
+/// members' IDs come from the host and show as text only.
+fn saved_list(model: &Model) -> Option<Node<TerminalIntent>> {
+    let status = |value: &str| text("terminal-saved-status", value, TextRole::Status);
+    let children = match &model.saved {
+        Saved::Hidden => return None,
+        Saved::Reading => vec![status("Reading the computer's saved sessions…")],
+        Saved::Unavailable(reason) => vec![status(reason)],
+        Saved::List(entries) if entries.is_empty() => {
+            vec![status("This computer has no saved sessions.")]
+        }
+        Saved::List(entries) => entries
+            .iter()
+            .enumerate()
+            .map(|(index, entry)| {
+                let noun = if entry.members == 1 { "item" } else { "items" };
+                button(
+                    &format!("terminal-saved-{index}"),
+                    &format!("{} ({} {noun})", entry.name, entry.members),
+                    TerminalIntent::OpenSaved {
+                        session: entry.session.clone(),
+                    },
+                    true,
+                )
+            })
+            .collect(),
+        Saved::Open { name, members, .. } => {
+            let current = model.reference.as_ref();
+            let mut children = vec![text(
+                "terminal-saved-name",
+                format!("Session: {name}"),
+                TextRole::Body,
+            )];
+            for member in members {
+                let key = format!("terminal-saved-member-{}", member.member());
+                children.push(match member {
+                    SavedMember::Terminal {
+                        member,
+                        generation,
+                        terminal,
+                        state,
+                    } => {
+                        let short = &terminal[..terminal.len().min(8)];
+                        let here = current.is_some_and(|(g, t)| g == generation && t == terminal);
+                        if here {
+                            text(
+                                key,
+                                format!("Terminal {short}: this screen"),
+                                TextRole::Body,
+                            )
+                        } else if *state == "live" {
+                            button(
+                                &key,
+                                &format!("Terminal {short}: open"),
+                                TerminalIntent::SwitchTerminal { member: *member },
+                                model.phase != Phase::Connecting,
+                            )
+                        } else {
+                            text(key, format!("Terminal {short}: {state}"), TextRole::Status)
+                        }
+                    }
+                    SavedMember::Thread { thread, .. } => text(
+                        key,
+                        format!("Thread {}: open it in Chat", &thread[..thread.len().min(8)]),
+                        TextRole::Body,
+                    ),
+                    SavedMember::Other { kind, id, .. } => text(
+                        key,
+                        format!("{kind} {}", &id[..id.len().min(16)]),
+                        TextRole::Status,
+                    ),
+                });
+            }
+            children.push(button(
+                "terminal-saved-all",
+                "All sessions",
+                TerminalIntent::Saved,
+                true,
+            ));
+            children
+        }
+    };
+    Some(stack(
+        "terminal-saved-list",
         Axis::Vertical,
         Space::Xs,
         children,
@@ -940,5 +1062,92 @@ mod tests {
         model.typing = Typing::Elsewhere;
         let elsewhere = view(&model, "terminal:1", 4).validate().unwrap();
         assert!(find(&elsewhere.view().root, "terminal-take").is_none());
+    }
+
+    #[test]
+    fn a_saved_session_opens_live_terminals_and_shows_threads() {
+        use super::super::model::{Saved, SavedEntry, SavedMember};
+        let press = |view: &rust_native::ValidatedView<TerminalIntent>, node: &str| {
+            view.activate(&Activation {
+                instance: "terminal:1".into(),
+                revision: view.view().revision,
+                node: node.into(),
+            })
+            .cloned()
+        };
+        let mut model = attached(4, 40);
+        let closed = view(&model, "terminal:1", 1).validate().unwrap();
+        assert_eq!(press(&closed, "terminal-saved"), Ok(TerminalIntent::Saved));
+
+        model.saved = Saved::List(vec![SavedEntry {
+            session: "s".repeat(64),
+            name: "build".into(),
+            members: 3,
+        }]);
+        let list = view(&model, "terminal:1", 2).validate().unwrap();
+        assert_eq!(
+            press(&list, "terminal-saved-0"),
+            Ok(TerminalIntent::OpenSaved {
+                session: "s".repeat(64)
+            })
+        );
+
+        model.reference = Some(("g".repeat(64), "a".repeat(64)));
+        model.saved = Saved::Open {
+            session: "s".repeat(64),
+            name: "build".into(),
+            members: vec![
+                SavedMember::Terminal {
+                    member: 1,
+                    generation: "g".repeat(64),
+                    terminal: "a".repeat(64),
+                    state: "live",
+                },
+                SavedMember::Terminal {
+                    member: 2,
+                    generation: "g".repeat(64),
+                    terminal: "b".repeat(64),
+                    state: "live",
+                },
+                SavedMember::Terminal {
+                    member: 3,
+                    generation: "f".repeat(64),
+                    terminal: "c".repeat(64),
+                    state: "lost",
+                },
+                SavedMember::Thread {
+                    member: 4,
+                    thread: "7".repeat(64),
+                },
+            ],
+        };
+        let open = view(&model, "terminal:1", 3).validate().unwrap();
+        // This screen's own terminal and a lost one cannot be opened.
+        assert!(press(&open, "terminal-saved-member-1").is_err());
+        assert!(press(&open, "terminal-saved-member-3").is_err());
+        assert_eq!(
+            press(&open, "terminal-saved-member-2"),
+            Ok(TerminalIntent::SwitchTerminal { member: 2 })
+        );
+        let mut parts = Vec::new();
+        texts(&open.view().root, &mut parts);
+        let line = |key: &str| parts.iter().find(|(k, _)| k == key).unwrap().1.clone();
+        assert_eq!(
+            line("terminal-saved-member-1"),
+            "Terminal aaaaaaaa: this screen"
+        );
+        assert_eq!(line("terminal-saved-member-3"), "Terminal cccccccc: lost");
+        assert_eq!(
+            line("terminal-saved-member-4"),
+            "Thread 77777777: open it in Chat"
+        );
+        assert_eq!(
+            press(&open, "terminal-saved-all"),
+            Ok(TerminalIntent::Saved)
+        );
+        assert_eq!(
+            press(&open, "terminal-saved-hide"),
+            Ok(TerminalIntent::HideSaved)
+        );
     }
 }

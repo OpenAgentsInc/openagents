@@ -189,6 +189,10 @@ grants, connections, and relay traffic. Three services implement it:
 - **Commands** reads the host's block journal (NIP-TERM's blocks feature) a
   page of eight at a time: each command's outcome, text, and directory,
   shown as text only. A host without the feature says it keeps no list.
+- **Sessions** lists the host's saved sessions (NIP-TERM's sessions feature)
+  and one session's members: a live terminal opens on tap through
+  `Session::attach`, a closed or lost one says so, and a linked thread shows
+  as a link to Chat. Pending proposals are not on the host yet (#10745).
 
 The **Terminal** control is enabled only for an online host on which this
 device holds `terminal`; otherwise its reason says which right is missing. The

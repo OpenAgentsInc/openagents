@@ -21,7 +21,7 @@
 
 use crate::live::Terminals;
 use crate::terminal::session::Session;
-use crate::terminal::{Blocks, Model, Phase, TerminalIntent, view};
+use crate::terminal::{Blocks, Model, Phase, Saved, SavedMember, TerminalIntent, view};
 use coder_host::pty::wire::TerminalRef;
 use coder_vt::{Key, Modifiers};
 use rust_native::{Activation, ValidatedView};
@@ -336,6 +336,53 @@ impl Terminal {
                     model.touch();
                 }),
             },
+            TerminalIntent::Saved | TerminalIntent::OpenSaved { .. } => {
+                let session = match intent {
+                    TerminalIntent::OpenSaved { session } => Some(session),
+                    _ => None,
+                };
+                match &self.session {
+                    Some(running) => running.saved(session),
+                    None => self.with_model(|model| {
+                        model.saved = Saved::Unavailable("Not connected.".into());
+                        model.touch();
+                    }),
+                }
+            }
+            TerminalIntent::HideSaved => match &self.session {
+                Some(session) => session.hide_saved(),
+                None => self.with_model(|model| {
+                    model.saved = Saved::Hidden;
+                    model.touch();
+                }),
+            },
+            TerminalIntent::SwitchTerminal { member } => {
+                let (target, size) = self.with_model(|model| {
+                    let target = match &model.saved {
+                        Saved::Open { members, .. } => members.iter().find_map(|m| match m {
+                            SavedMember::Terminal {
+                                member: id,
+                                generation,
+                                terminal,
+                                ..
+                            } if *id == member => Some(TerminalRef {
+                                generation: generation.clone(),
+                                terminal: terminal.clone(),
+                            }),
+                            _ => None,
+                        }),
+                        _ => None,
+                    };
+                    (target, model.view)
+                });
+                if let Some(target) = target {
+                    // Leave this terminal running and attach to the other.
+                    self.target = Some(target);
+                    self.session = None;
+                    self.idle = Some(Model::new(self.host.clone(), self.label.clone(), 24, 80));
+                    self.resize(size.0, size.1);
+                }
+            }
             TerminalIntent::Reopen => {
                 let size = self.with_model(|model| model.size());
                 // A new terminal, never the old one again.

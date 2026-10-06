@@ -31,7 +31,10 @@ use coder_host::client::{Link, Ordered, Route};
 use coder_host::mailbox::terminal_generation;
 use coder_host::message::TermRequest;
 use coder_host::pty::client::{Applied, TerminalState};
-use coder_host::pty::ext::{BlockPageRead, BlockState, Join, RecordsFrame, Seat};
+use coder_host::pty::ext::{
+    BlockPageRead, BlockState, Join, Member, MemberState, RecordsFrame, Seat, SessionList,
+    SessionRead, SessionRecord,
+};
 use coder_host::pty::wire::{
     Attach, Body, Cause, Close, Detach, Detached, Exit, Frame, Input, Mode, Reason, Resize, Size,
     Status, TerminalRef, TerminalResult, Value,
@@ -42,7 +45,9 @@ use tokio::runtime::Handle;
 use tokio::sync::mpsc;
 use tokio::time::Instant;
 
-use super::model::{BlockRow, Blocks, Model, Phase, SCROLLBACK, Typing};
+use super::model::{
+    BlockRow, Blocks, Model, Phase, SCROLLBACK, Saved, SavedEntry, SavedMember, Typing,
+};
 use crate::controller::describe;
 
 /// The current link to a host, as the Computers service's supervisor holds
@@ -73,6 +78,8 @@ enum Command {
     /// Read a page of the block journal older than this block, or the
     /// newest page.
     Blocks(Option<u64>),
+    /// List the host's saved sessions, or read the one named.
+    Saved(Option<String>),
     Close,
     Leave,
 }
@@ -138,6 +145,30 @@ impl Session {
             model.touch();
         }
         let _ = self.commands.send(Command::Blocks(before));
+    }
+
+    /// Show the host's saved sessions, or the members of the one named.
+    pub fn saved(&self, session: Option<String>) {
+        {
+            let mut model = self.model();
+            if model.phase != Phase::Attached {
+                model.saved = Saved::Unavailable("Not connected.".into());
+                model.touch();
+                return;
+            }
+            model.saved = Saved::Reading;
+            model.touch();
+        }
+        let _ = self.commands.send(Command::Saved(session));
+    }
+
+    /// Hide the saved sessions.
+    pub fn hide_saved(&self) {
+        let mut model = self.model();
+        if model.saved != Saved::Hidden {
+            model.saved = Saved::Hidden;
+            model.touch();
+        }
     }
 
     /// Hide the block list.
@@ -1000,6 +1031,19 @@ async fn handle(
             }
             None
         }
+        Command::Saved(session) => {
+            let read = match session {
+                None => TermRequest::SessionList(SessionList::new(new_id())),
+                Some(session) => TermRequest::SessionRead(SessionRead::new(new_id(), session)),
+            };
+            let saved = saved_from(request(link, read).await);
+            let mut model = lock(model);
+            if model.saved == Saved::Reading {
+                model.saved = saved;
+                model.touch();
+            }
+            None
+        }
         Command::Close => {
             if exited {
                 return None;
@@ -1017,6 +1061,85 @@ async fn handle(
             // The exit frame follows on the attachment.
             None
         }
+    }
+}
+
+/// The saved-session view a session list or read answer shows.
+fn saved_from(answer: Result<TerminalResult, HostError>) -> Saved {
+    match answer {
+        Ok(TerminalResult {
+            value: Some(Value::Sessions { sessions }),
+            ..
+        }) => Saved::List(
+            sessions
+                .into_iter()
+                .map(|entry| SavedEntry {
+                    session: entry.session,
+                    name: entry.name,
+                    members: entry.members,
+                })
+                .collect(),
+        ),
+        Ok(TerminalResult {
+            value: Some(Value::Session { record }),
+            ..
+        }) => saved_record(record),
+        Ok(result) => Saved::Unavailable(match result.reason {
+            Some(Reason::UnsupportedFeature | Reason::UnsupportedVersion) => {
+                "This computer's host keeps no saved sessions; update it.".into()
+            }
+            Some(Reason::NotAdmitted | Reason::Revoked) => {
+                "This device may not read this computer's saved sessions.".into()
+            }
+            Some(Reason::Unavailable) => "The computer can't read its saved sessions now.".into(),
+            _ => "The computer didn't send its saved sessions.".into(),
+        }),
+        Err(_) => Saved::Unavailable("Couldn't reach the computer.".into()),
+    }
+}
+
+/// One session's members as the screen shows them. A resource member is
+/// a workbench reference the host stores unresolved: a thread shows as a
+/// link, anything else as its kind and ID.
+pub(crate) fn saved_record(record: SessionRecord) -> Saved {
+    let members = record
+        .members
+        .into_iter()
+        .map(|member| match member {
+            Member::Terminal {
+                member,
+                terminal,
+                state,
+            } => SavedMember::Terminal {
+                member,
+                generation: terminal.generation,
+                terminal: terminal.terminal,
+                state: match state {
+                    Some(MemberState::Live) => "live",
+                    Some(MemberState::Closed) => "closed",
+                    Some(MemberState::Lost) => "lost",
+                    None => "unknown",
+                },
+            },
+            Member::Resource { member, resource } => {
+                let kind = resource["kind"].as_str().unwrap_or("resource").to_owned();
+                let id = resource["id"]
+                    .as_str()
+                    .or_else(|| resource[kind.as_str()].as_str())
+                    .unwrap_or("")
+                    .to_owned();
+                if kind == "thread" && !id.is_empty() {
+                    SavedMember::Thread { member, thread: id }
+                } else {
+                    SavedMember::Other { member, kind, id }
+                }
+            }
+        })
+        .collect();
+    Saved::Open {
+        session: record.session.unwrap_or_default(),
+        name: record.name,
+        members,
     }
 }
 

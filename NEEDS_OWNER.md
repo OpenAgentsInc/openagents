@@ -485,3 +485,14 @@ rule before confirming. Read a completed scratch task with `/review TASK`,
 then verify that its three revisions and diff remain legible before deciding.
 Focused adapter and host tests use scratch data; native rendering and a
 physical owner-device run remain unverified here.
+## Phone terminal sessions, commands, and watching (#10683)
+
+On an iPhone and an Android phone enrolled with `terminal` on a host built
+from current `main`, open **Terminal** on that host. Run a command, send the
+app to the background, and return: the screen shows the same shell, not a new
+one. Tap **Commands** and confirm the list (the shell needs the host's
+integration hooks to record commands). On the desktop, save a session that
+holds the terminal and a thread; on the phone, tap **Sessions**, open it, and
+tap another live terminal to switch to it. Rotate the phone, paste, and use
+the soft keyboard in each. Restart the host and confirm the screen says the
+terminal was lost. Approving pending proposals from the phone is #10745.
