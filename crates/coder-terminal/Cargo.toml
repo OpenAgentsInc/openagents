@@ -7,6 +7,7 @@ description = "The Coder terminal: one white ladder, a framed composer, and the 
 publish.workspace = true
 
 [dependencies]
+base64 = "0.22"
 # grok-build's syntax highlighting for fenced code in replies and diffs.
 code-highlight = { path = "../code-highlight", features = ["grok"] }
 coder-ui = { path = "../coder-ui" }

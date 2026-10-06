@@ -66,6 +66,7 @@ pub struct App {
     pub notice: Option<String>,
     pub model_picker: Option<models::Picker>,
     pub(crate) active_options: models::GenerationOptions,
+    pending_export_path: Option<std::path::PathBuf>,
     active_delegation: Option<String>,
     main_draft: Draft,
     main_scroll: u16,
@@ -451,17 +452,35 @@ impl App {
     }
 
     fn export(&mut self, path: Option<&std::path::Path>) {
+        self.pending_export_path = None;
         let cwd = self.cwd.clone().unwrap_or_else(|| {
             std::env::current_dir().unwrap_or_else(|_| std::path::PathBuf::from("."))
         });
         let root = model_access::store::openagents_dir();
         self.notice = Some(
             match trajectory::export_app(self, path, &cwd, root.as_deref()) {
-                Ok(path) => format!("Exported ATIF to {}.", path.display()),
+                Ok(path) => {
+                    let path = path.canonicalize().unwrap_or(path);
+                    let notice = format!("Exported ATIF to {}.", path.display());
+                    self.pending_export_path = Some(path);
+                    notice
+                }
                 Err(error) => error,
             },
         );
         self.draft = Draft::default();
+    }
+
+    /// Copy a saved export path once, through the terminal's clipboard adapter.
+    pub fn copy_export_path(&mut self, copy: impl FnOnce(&str) -> std::io::Result<()>) {
+        let Some(path) = self.pending_export_path.take() else {
+            return;
+        };
+        let status = match copy(&path.to_string_lossy()) {
+            Ok(()) => "Path copied to clipboard.".to_owned(),
+            Err(error) => format!("Cannot copy path to clipboard: {error}."),
+        };
+        self.notice = Some(format!("Exported ATIF to {}. {status}", path.display()));
     }
 
     pub fn submit(&mut self, text: &str, cwd: &std::path::Path) {

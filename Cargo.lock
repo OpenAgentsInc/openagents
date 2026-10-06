@@ -3256,6 +3256,7 @@ dependencies = [
 name = "coder-terminal"
 version = "0.1.0"
 dependencies = [
+ "base64 0.22.1",
  "code-highlight",
  "coder-ui",
  "crossterm",
@@ -9971,7 +9972,6 @@ name = "openagents-terminal"
 version = "1.0.0-rc.2"
 dependencies = [
  "atif",
- "base64 0.22.1",
  "code-highlight",
  "coder-terminal",
  "coder-vt",

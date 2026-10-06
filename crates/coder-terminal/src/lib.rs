@@ -34,6 +34,7 @@
 //! list overlay. Each is pure and styled through the [`Ladder`], with text
 //! snapshots under `tests/snapshots/`.
 
+pub mod clipboard;
 pub mod components;
 mod composer;
 pub mod decision;

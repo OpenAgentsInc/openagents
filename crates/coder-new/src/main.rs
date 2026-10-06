@@ -177,6 +177,7 @@ fn main() -> io::Result<()> {
                     }
                     keep_running = app.handle(event::read()?);
                 }
+                app.copy_export_path(coder_terminal::clipboard::to_clipboard);
                 if !keep_running {
                     break;
                 }

@@ -13,8 +13,6 @@ description = "OpenAgents Terminal: a full-screen chat with OpenAgents over the 
 [dependencies]
 # `/export` writes the thread as an ATIF trajectory and checks it first.
 atif = { path = "../atif" }
-# A copy goes to the terminal's clipboard as OSC 52, which is base64.
-base64 = "0.22"
 # The file view highlights code as code blocks do: grok-build's syntect.
 code-highlight = { path = "../code-highlight", features = ["grok"] }
 coder-terminal = { path = "../coder-terminal" }
