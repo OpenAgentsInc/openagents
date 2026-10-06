@@ -7,7 +7,7 @@ out=$(cd "$out" && pwd)
 export CARGO_TARGET_DIR=${CARGO_TARGET_DIR:?reuse the agent Cargo target}
 export CODER_LABOR_ACCEPTANCE_DIR="$out"
 cargo test -j 1 -p pay-ledger --test worker_profile -- --nocapture > "$out/worker-contract.log" 2>&1
-cargo test -j 1 -p coder-labor bounded_coding_order_runs_separate_buyer_check_and_accepts_over_relay -- --nocapture > "$out/free-order.log" 2>&1
+python3 "$(dirname "$0")/reap-orphans.py" cargo test -j 1 -p coder-labor bounded_coding_order_runs_separate_buyer_check_and_accepts_over_relay -- --nocapture > "$out/free-order.log" 2>&1
 cargo test -j 1 -p pay-ledger --test payouts -- --nocapture > "$out/fake-payout.log" 2>&1
 cat > "$out/qualification.txt" <<'REPORT'
 Profile: openagents.independent-worker-qualification.v1

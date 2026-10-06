@@ -88,7 +88,8 @@ or expand funding. LAB retains those separate review and execution records.
 A known failed refund leaves the liability held; an unknown release or refund
 reserves principal and fees and blocks later effects. Exact attempts replay as
 observations. Lookup may resolve the same retained attempt without resending;
-changed amount, fee, or outcome refuses. Missing parties, late resolution,
+changed principal or a fee above the reserved cap refuses. A verified final
+lookup releases unused fee reservation; final outcomes and fees cannot change. Missing parties, late resolution,
 unavailable history, uncertain custody, and unsupported rails require manual
 reconciliation while liabilities remain retained. The custodian bears custody
 and insolvency exposure; the worker bears postacceptance credit risk without
@@ -159,3 +160,8 @@ bounded no-spend and fake-payment studies. The contribution fixture is
 synthetic and uses one operator; it proves the local funding/replay boundary,
 not independently useful work or real sats paid to a contributor. Real
 independent qualification and funded adoption remain unverified.
+
+The committed [qualification evidence](fixtures/later-market-qualification.json)
+retains the synthetic worker receipt, comparison timing, fake custody
+conservation, protected training artifact, and fake funded contribution report.
+Its explicit limits remain part of the evidence.

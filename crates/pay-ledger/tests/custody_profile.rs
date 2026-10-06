@@ -163,3 +163,25 @@ fn failed_refund_preserves_liability_and_expired_or_over_fee_release_refuses() {
         .unwrap();
     assert_eq!(study.held_msat().unwrap(), 0);
 }
+#[test]
+fn failed_unknown_release_returns_the_reserved_fee_without_losing_liability() {
+    let mut study = Study::new(terms()).unwrap();
+    let mut pending = release();
+    pending.outcome = Outcome::Unknown;
+    pending.fee_msat = 20;
+    study.attempt(pending.clone(), &authority(), 1).unwrap();
+    assert_eq!(study.held_msat().unwrap(), 480);
+    assert!(
+        study
+            .reconcile(&pending.id, Outcome::Confirmed, 600, 21)
+            .is_err()
+    );
+    study
+        .reconcile(&pending.id, Outcome::Failed, 600, 0)
+        .unwrap();
+    assert_eq!(study.held_msat().unwrap(), 1100);
+    let mut retry = release();
+    retry.id = pin('b');
+    study.attempt(retry, &authority(), 2).unwrap();
+    assert_eq!(study.held_msat().unwrap(), 490);
+}

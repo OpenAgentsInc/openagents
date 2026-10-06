@@ -124,15 +124,19 @@ impl Study {
             .iter_mut()
             .find(|a| a.id == id)
             .ok_or(Error::Invalid("custody lookup attempt"))?;
-        if retained.amount_msat != amount_msat || retained.fee_msat != fee_msat {
+        if retained.amount_msat != amount_msat || fee_msat < 0 || fee_msat > retained.fee_msat {
             return Err(Error::Conflict("custody lookup terms"));
         }
         if retained.outcome == outcome {
+            if retained.fee_msat != fee_msat {
+                return Err(Error::Conflict("custody final fee"));
+            }
             return Ok(());
         }
         if retained.outcome != Outcome::Unknown || (outcome == Outcome::Failed && fee_msat != 0) {
             return Err(Error::Denied("custody final outcome"));
         }
+        retained.fee_msat = fee_msat;
         retained.outcome = outcome;
         self.held_msat()?;
         Ok(())

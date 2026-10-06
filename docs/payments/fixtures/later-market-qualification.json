@@ -1,0 +1,192 @@
+{
+  "schema": "openagents.later-market-qualification-evidence.v1",
+  "synthetic": true,
+  "independent_operators": false,
+  "funded_adoption": "unverified",
+  "no_spend_worker": {
+    "schema": "openagents.free-labor-acceptance-fixture.v1",
+    "synthetic_source": true,
+    "independent_operators": false,
+    "production_relay": false,
+    "encrypted_events": 10,
+    "provider_elapsed_ms": 28,
+    "buyer_checker_elapsed_ms": 28,
+    "inference_calls": 0,
+    "all_in_cost_usd": null,
+    "cost_reason": "host CPU, storage, and energy are unmetered",
+    "free_order_price_msat": 0,
+    "payment": "not_applicable",
+    "acceptance_event": "2897850c297a0c0ff995636cb2bf5156e0e99feebc278404f578f0ccd46b0c38",
+    "source": "one synthetic Rust file",
+    "result": "accepted",
+    "duplicate_execution": "same retained run",
+    "restart": "both roles reconstructed acceptance after relay shutdown"
+  },
+  "bids": {
+    "accepted_orders": 0,
+    "comparison_latency_us": 46,
+    "declared_comparison_cost_msat": 0,
+    "dispatches": 0,
+    "funded_adoption": "unverified",
+    "incremental_coordination_cost_msat": null,
+    "independent_operators": false,
+    "losing_quotes": [
+      "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+    ],
+    "payments": 0,
+    "quote_latency_us": null,
+    "schema": "openagents.bid-qualification.v1",
+    "suggested_quote": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+    "synthetic": true
+  },
+  "custody": {
+    "deposit_msat": 1100,
+    "fake_rail": true,
+    "fees_msat": 10,
+    "funded_qualification": "unverified",
+    "held_msat": 0,
+    "production_custody_available": false,
+    "refunded_msat": 90,
+    "released_msat": 1000,
+    "schema": "openagents.custody-qualification.v1",
+    "study": {
+      "attempts": [
+        {
+          "amount_msat": 1000,
+          "effect": {
+            "release": {
+              "acceptance": "8888888888888888888888888888888888888888888888888888888888888888",
+              "delivery": "6666666666666666666666666666666666666666666666666666666666666666",
+              "milestone": 0,
+              "verification": "7777777777777777777777777777777777777777777777777777777777777777"
+            }
+          },
+          "fee_msat": 10,
+          "id": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "outcome": "confirmed"
+        },
+        {
+          "amount_msat": 90,
+          "effect": "refund",
+          "fee_msat": 0,
+          "id": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+          "outcome": "confirmed"
+        }
+      ],
+      "terms": {
+        "acceptance_due_at": 10,
+        "buyer": "2222222222222222222222222222222222222222222222222222222222222222",
+        "custody_policy": "5555555555555555555555555555555555555555555555555555555555555555",
+        "deposit_msat": 1100,
+        "fee_budget_msat": 100,
+        "max_rework": 1,
+        "milestones_msat": [
+          1000
+        ],
+        "order": "1111111111111111111111111111111111111111111111111111111111111111",
+        "provider": "3333333333333333333333333333333333333333333333333333333333333333",
+        "resolution_due_at": 20,
+        "resolver": "4444444444444444444444444444444444444444444444444444444444444444"
+      }
+    }
+  },
+  "retained_contract_reports": [
+    {
+      "acceptance": {
+        "acceptance_receipt": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+        "accepted_at": 1792022399,
+        "artifact": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "evaluated_at": 1792022398,
+        "evaluation_receipt": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+        "improvement": 1,
+        "terms_fingerprint": "b326b214c974958618f6c56109e9b2dec9436a6d51ce523578acd677decf9bb9"
+      },
+      "bonus_msat": 0,
+      "duplicate_obligations": 0,
+      "fake_funding": true,
+      "funded_qualification": "unverified",
+      "independent_operators": false,
+      "payout_outcome": "unknown",
+      "platform_fee_msat": 500,
+      "received_msat": 10500,
+      "reserved_reward_msat": 10000,
+      "reward_msat": 10000,
+      "schema": "openagents.contribution-qualification.v1",
+      "synthetic": true,
+      "terms": {
+        "acceptance_authority": "8888888888888888888888888888888888888888888888888888888888888888",
+        "artifact_contract": "0000000000000000000000000000000000000000000000000000000000000000",
+        "attribution": "4444444444444444444444444444444444444444444444444444444444444444",
+        "beneficiary": "5555555555555555555555555555555555555555555555555555555555555555",
+        "class": "verified_optimization",
+        "committed_at": 1792022397,
+        "evaluation_group": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+        "evaluation_policy": "7777777777777777777777777777777777777777777777777777777777777777",
+        "expires_at": 1792022500,
+        "funding_authority": "9999999999999999999999999999999999999999999999999999999999999999",
+        "license": "3333333333333333333333333333333333333333333333333333333333333333",
+        "obligation": "1111111111111111111111111111111111111111111111111111111111111111",
+        "protected_evaluator": "6666666666666666666666666666666666666666666666666666666666666666",
+        "reward_msat": 10000,
+        "source": "2222222222222222222222222222222222222222222222222222222222222222",
+        "source_group": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+      }
+    },
+    {
+      "evidence": {
+        "accepted": true,
+        "artifact": "eda47f1ce0b76a440bea712dcf5c1c8cf09b824567cde945dec37a856227e568",
+        "check_cost_msat": 10,
+        "evaluation_partition": "9999999999999999999999999999999999999999999999999999999999999999",
+        "failed_attempt_cost_msat": 5,
+        "improvement": 1,
+        "protected_checker_receipt": "1111111111111111111111111111111111111111111111111111111111111111",
+        "search_cost_msat": 20,
+        "terms_fingerprint": "f8f650c194294368c12f1db7efedc4d85a4110bc3c2afffc7408aabd9ce2adc8",
+        "training_cost_msat": 40
+      },
+      "fake_all_in_msat": 75,
+      "funded_qualification": "unverified",
+      "independent_operators": false,
+      "real_training": "unverified",
+      "restart": "same pinned artifact and checker receipt",
+      "schema": "openagents.training-qualification.v1",
+      "synthetic_checkpoint": true,
+      "terms": {
+        "baseline_checkpoint": "4444444444444444444444444444444444444444444444444444444444444444",
+        "checker": "8888888888888888888888888888888888888888888888888888888888888888",
+        "compute_obligation": "dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
+        "corpus": "2222222222222222222222222222222222222222222222222222222222222222",
+        "data_license_obligation": "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
+        "dataset": "3333333333333333333333333333333333333333333333333333333333333333",
+        "deliverable_contract": "7777777777777777777777777777777777777777777777777777777777777777",
+        "evaluation_partition": "9999999999999999999999999999999999999999999999999999999999999999",
+        "improvement_obligation": "eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee",
+        "max_all_in_msat": 100,
+        "order": "1111111111111111111111111111111111111111111111111111111111111111",
+        "recipe": "5555555555555555555555555555555555555555555555555555555555555555",
+        "requires_disclosure": false,
+        "requires_redistribution": false,
+        "rights": {
+          "disclose": false,
+          "evaluate": true,
+          "license": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+          "provenance": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+          "redistribute": false,
+          "train": true
+        },
+        "seed": 7,
+        "training_groups": [
+          "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+        ],
+        "worker_class": "6666666666666666666666666666666666666666666666666666666666666666"
+      }
+    }
+  ],
+  "limits": [
+    "No independent operator qualification",
+    "No measured provider quote latency or incremental coordination cost",
+    "No real training or useful contribution qualification",
+    "No production custody or real payments"
+  ]
+}
