@@ -242,6 +242,7 @@ struct Voice {
     position: f64,
     age: u64,
     release: Option<u32>,
+    release_total: u32,
     done: bool,
 }
 #[derive(Clone, Copy, Debug, Default, serde::Serialize)]
@@ -412,6 +413,7 @@ impl Mixer {
             position,
             age: 0,
             release: None,
+            release_total: 0,
             done: false,
         };
         self.next_id = next;
@@ -431,6 +433,7 @@ impl Mixer {
         for voice in &mut self.voices {
             if voice.prepared.emitter.life == Some(life) && voice.release.is_none() {
                 voice.release = Some(self.rate / 100);
+                voice.release_total = self.rate / 100;
             }
         }
     }
@@ -440,6 +443,7 @@ impl Mixer {
         };
         if voice.release.is_none() {
             voice.release = Some(self.rate / 100);
+            voice.release_total = self.rate / 100;
         }
         true
     }
@@ -447,6 +451,7 @@ impl Mixer {
         for voice in &mut self.voices {
             if voice.prepared.bus == bus && voice.release.is_none() {
                 voice.release = Some(self.rate / 5);
+                voice.release_total = self.rate / 5;
             }
         }
     }
@@ -614,7 +619,9 @@ impl Mixer {
                     },
                 };
                 let attack = (voice.age as f64 / fade).min(1.0);
-                let release = voice.release.map_or(1.0, |left| f64::from(left) / fade);
+                let release = voice.release.map_or(1.0, |left| {
+                    f64::from(left) / f64::from(voice.release_total.max(1))
+                });
                 let tail = match &voice.prepared.source {
                     Source::Clip(clip) if !emitter.looping => {
                         ((clip.samples.len() as f64 - voice.cursor + step) / step / fade)
@@ -824,13 +831,20 @@ mod rt_tests {
                     .is_ok()
             );
         }
-        let critical = Prepared::clip(clip.clone(), emitter(false), Bus::Effects, 220, 0).unwrap();
+        let mut critical_emitter = emitter(false);
+        critical_emitter.gain = 0.9;
+        let critical =
+            Prepared::clip(clip.clone(), critical_emitter, Bus::Effects, 220, 0).unwrap();
         let cp = critical.progress();
         assert!(mixer.play_rt(critical).is_ok());
         let mut pcm = [0.; 1024];
         mixer.render_rt(&mut pcm).unwrap();
         assert_eq!(progress.frame(), 512);
         assert_eq!(cp.frame(), 512);
+        assert!(
+            pcm.iter().any(|v| *v > 0.4),
+            "The critical voice must contribute audible PCM"
+        );
         assert_eq!(mixer.stats.audible, 32);
         assert_eq!(mixer.stats.virtual_voices, 96);
         assert_eq!(mixer.stats.stolen, 1);
@@ -879,6 +893,30 @@ mod rt_tests {
         mixer.stop_bus(Bus::Dialogue);
         mixer.render_rt(&mut [0.; 3200]).unwrap();
         assert_eq!(mixer.voice_count(), 120);
+    }
+    #[test]
+    fn long_music_release_decays_without_a_gain_spike() {
+        let clip = Clip::new(vec![0.5; 48000], 48000).unwrap();
+        let mut mixer = Mixer::new(48000).unwrap();
+        assert!(
+            mixer
+                .play_rt(Prepared::clip(clip, emitter(true), Bus::Music, 80, 0).unwrap())
+                .is_ok()
+        );
+        let mut pcm = [0.; 1024];
+        mixer.render_rt(&mut pcm).unwrap();
+        let baseline = pcm[1022];
+        assert!(baseline > 0.);
+        mixer.stop_bus(Bus::Music);
+        mixer.render_rt(&mut pcm).unwrap();
+        assert!(pcm.iter().all(|v| *v <= baseline + 1e-6));
+        let early = pcm[1022];
+        for _ in 0..17 {
+            mixer.render_rt(&mut pcm).unwrap();
+        }
+        assert!(pcm[1022] < early * 0.1);
+        mixer.render_rt(&mut pcm).unwrap();
+        assert_eq!(mixer.voice_count(), 0);
     }
     #[test]
     fn streamed_loop_restores_source_clock_and_pause_freezes_it() {
