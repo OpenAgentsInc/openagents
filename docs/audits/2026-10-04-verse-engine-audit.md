@@ -48,8 +48,11 @@ Historical failed battles remain retained. The accepted profile uses one native
 renderer and nineteen headless clients on one machine. V20 remediation in
 [#10736](https://github.com/OpenAgentsInc/openagents/issues/10736) adds a validated
 content workbench, undoable edits, authority previews, and sealed playable
-generations. Broader animation, art, coordinated operations, device, and
-population readiness remains open in V21–V28.
+generations. V21 remediation in
+[#10737](https://github.com/OpenAgentsInc/openagents/issues/10737) adds admitted
+locomotion, terrain contacts, aim, crowd sampling, and character diagnostics.
+Broader art, coordinated operations, device, and population readiness remains
+open in V22–V28.
 
 The [engine roadmap](../verse/engine/roadmap.md) already names a battle with
 about 20 authenticated players and 40 active NPCs. That milestone now has a bounded accepted profile. Neither a 64-player admission limit nor a video with two
@@ -162,7 +165,7 @@ Evidence labels:
 | V18 | P0 | Contained crowd recovery and a durable 20/40 battle pass the declared profile. | Recorded, code | Movement failure handling and scale acceptance | Complete ([#10637](https://github.com/OpenAgentsInc/openagents/issues/10637)), one native renderer |
 | V19 | P1 | Persistent operations lack complete live diagnostics and recovery tooling. | Code, gap | World operations | Complete ([#10735](https://github.com/OpenAgentsInc/openagents/issues/10735)) |
 | V20 | P2 | Content production still requires Rust implementation work. | Code, gap | Rust authoring tools | Complete ([#10736](https://github.com/OpenAgentsInc/openagents/issues/10736)) |
-| V21 | P2 | Animation needs production locomotion and authoring support. | Code, gap | Animation and character content | In progress ([#10737](https://github.com/OpenAgentsInc/openagents/issues/10737)) |
+| V21 | P2 | Admitted characters share locomotion, terrain contacts, and author diagnostics. | Code, recorded | Animation and character content | Complete, named-rig profile ([#10737](https://github.com/OpenAgentsInc/openagents/issues/10737)) |
 | V22 | P2 | Lighting paths need a common visual and performance contract. | Code, risk | Rendering and art direction | Open |
 | V23 | P2 | Audio is a bounded mixer, not a complete game audio system. | Code, gap | Audio and platform adapters | Open |
 | V24 | P1 | Mobile/browser rendering does not establish authoritative game parity. | Code, gap | Platform world clients | Open |
@@ -1584,7 +1587,7 @@ arbitrary skeletons.
 on slopes and stairs without sliding, socket drift, or stale markers. Animation
 quality tiers reduce crowd cost without altering damage timing.
 
-**Status:** In progress in [#10737](https://github.com/OpenAgentsInc/openagents/issues/10737).
+**Status:** Complete, named-rig profile, in [#10737](https://github.com/OpenAgentsInc/openagents/issues/10737).
 
 **Remediation:** The shared Rust locomotion controller admits named root, spine,
 and two-bone leg chains against the retained skin and inverse binds. The
@@ -1619,16 +1622,24 @@ zero socket matrix difference. Pose samples fall from 300 to 152 and 79;
 marker sequences match across tiers. The same independent combat script retains
 identical ordered authority checkpoint hashes, cast outcomes, and damage events
 across tiers. Each visual update leaves its authority checkpoint unchanged.
-The engine passes 151 tests. The optimized world suite passes 576 tests and
+The merged engine passes 152 tests. The optimized world suite passes 576 tests and
 three ignored helpers before the spectator geometry addition; the final
 focused terrain-query check passes against that addition. Content passes 24
 tests and its CLI workflow before the final pitch-sign correction; the final
 named-rig fixture passes against the corrected controller. Renderer library
-checks pass 78 tests with six ignored graphics checks. Native client and
-offscreen palette integration checks remain in progress.
+checks pass 80 tests with six ignored graphics checks against current main.
+The merged native client passes 54 tests with five ignored graphics checks;
+the final offscreen Vulkan check separately passes on an RTX 4080, with 29
+planted contacts and zero equipment-socket matrix error over 18 frames. Its
+retained frame shows both bodies and their socket-mounted wands. Query terrain
+is not drawn in that diagnostic image. Source phases, exact build profiles,
+executable and artifact hashes, observed fixture failures, and disk workarounds
+remain retained.
 
 **Remaining limits:** The fixture scripts body placement rather than proving a
-complete motor traversal across terrain. Named mappings and proportion/reorder
+complete motor traversal across terrain. The default graph supplies forward
+gaits; dedicated backward/strafe clips still need authored admission and
+fixtures. Named mappings and proportion/reorder
 admission do not establish arbitrary skeleton retargeting or facial animation.
 Root motion is explicitly in place; gameplay root motion requires a future
 authority contract. The retained behavior profiles and sampling counters do

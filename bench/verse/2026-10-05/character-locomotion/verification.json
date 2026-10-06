@@ -1,0 +1,146 @@
+{
+  "schema": "verse.locomotion.verification.v1",
+  "recorded_at_utc": "2026-10-06T01:01:58.506100+00:00",
+  "checks": [
+    {
+      "log": "engine-main.log",
+      "command": "RUSTC_WRAPPER=/run/verse-audit-build-agent1/rustc.py CARGO_TARGET_DIR=/home/christopherdavid/work/openagents-target-agent1 CARGO_BUILD_JOBS=1 cargo test -p verse-engine --features asset-io --lib",
+      "passed": 152,
+      "phase": "Merged source"
+    },
+    {
+      "log": "world-full-before-observer.log",
+      "command": "CARGO_TARGET_DIR=/home/christopherdavid/work/openagents-target-agent1 CARGO_BUILD_JOBS=1 cargo test -p verse-world --features service-net --config 'profile.test.package.verse-world.debug=0' --lib",
+      "passed": 576,
+      "ignored": 3,
+      "phase": "Before observer geometry API and main integration; optimized world behavior suite"
+    },
+    {
+      "log": "world-support-main.log",
+      "command": "RUSTC_WRAPPER=/run/verse-audit-build-agent1/rustc.py CARGO_TARGET_DIR=/home/christopherdavid/work/openagents-target-agent1 CARGO_BUILD_JOBS=1 cargo test -p verse-world --config 'profile.test.package.verse-world.debug=0' --config 'profile.test.package.verse-world.opt-level=0' --lib animation_support",
+      "passed": 1,
+      "phase": "Merged source"
+    },
+    {
+      "log": "content-before-pitch.log",
+      "command": "CARGO_TARGET_DIR=/home/christopherdavid/work/openagents-target-agent1 CARGO_BUILD_JOBS=1 cargo test -p verse-content --features compiler --config 'profile.test.package.verse-world.debug=0' --config 'profile.test.package.verse-world.opt-level=0' --config 'profile.test.package.verse-content.debug=0' --lib --test author",
+      "passed": {
+        "library": 24,
+        "cli": 1
+      },
+      "ignored": 1,
+      "phase": "Before final pitch-sign correction and main integration"
+    },
+    {
+      "log": "rigs.log",
+      "command": "VERSE_LOCOMOTION_EVIDENCE=<absolute>/named-rigs.json CARGO_TARGET_DIR=/home/christopherdavid/work/openagents-target-agent1 CARGO_BUILD_JOBS=1 cargo test -p verse-content --features compiler --config 'profile.test.package.verse-world.debug=0' --config 'profile.test.package.verse-world.opt-level=0' --config 'profile.test.package.verse-content.debug=0' --test locomotion",
+      "passed": 1,
+      "phase": "Final controller before main integration; audited locomotion, graph, compiler, rig, and combat fixture source stays unchanged through integration"
+    },
+    {
+      "log": "pbr-main.log",
+      "command": "RUSTC_WRAPPER=/run/verse-audit-build-agent1/rustc.py CARGO_TARGET_DIR=/home/christopherdavid/work/openagents-target-agent1 CARGO_BUILD_JOBS=1 cargo test -p verse-pbr --features imported-surface --config 'profile.test.package.verse-world.debug=0' --config 'profile.test.package.verse-world.opt-level=0' --config 'profile.test.package.verse-content.debug=0' --config 'profile.test.package.verse-pbr.debug=0' --config 'profile.test.package.verse-pbr.opt-level=0' --lib",
+      "passed": 80,
+      "ignored": 6,
+      "phase": "Merged source"
+    },
+    {
+      "log": "imported-main-before-fixture-binding.log",
+      "command": "RUSTC_WRAPPER=/run/verse-audit-build-agent1/rustc.py CARGO_TARGET_DIR=/home/christopherdavid/work/openagents-target-agent1 CARGO_BUILD_JOBS=1 cargo test -p verse-imported --features remote-chamber,imported-desktop,crypt-fight --config 'profile.test.package.verse-world.debug=0' --config 'profile.test.package.verse-world.opt-level=0' --config 'profile.test.package.verse-content.debug=0' --config 'profile.test.package.verse-pbr.debug=0' --config 'profile.test.package.verse-pbr.opt-level=0' --config 'profile.test.package.verse-imported.debug=0' --config 'profile.test.package.verse-imported.opt-level=0' --lib",
+      "passed": 54,
+      "ignored": 5,
+      "phase": "Merged production code, before changing the ignored GPU fixture static wand from named Idle to legacy default; its executable was replaced before hashing"
+    },
+    {
+      "log": "gpu-main.log",
+      "command": "env -u DISPLAY -u WAYLAND_DISPLAY WGPU_BACKEND=vulkan TMPDIR=/run/verse-audit-build-agent1/test-tmp VERSE_LOCOMOTION_GPU_EVIDENCE=<absolute-evidence-directory> RUSTC_WRAPPER=/run/verse-audit-build-agent1/rustc.py CARGO_TARGET_DIR=/home/christopherdavid/work/openagents-target-agent1 CARGO_BUILD_JOBS=1 cargo test -p verse-imported --features remote-chamber,imported-desktop,crypt-fight --config 'profile.test.package.verse-world.debug=0' --config 'profile.test.package.verse-world.opt-level=0' --config 'profile.test.package.verse-content.debug=0' --config 'profile.test.package.verse-pbr.debug=0' --config 'profile.test.package.verse-pbr.opt-level=0' --config 'profile.test.package.verse-imported.debug=0' --config 'profile.test.package.verse-imported.opt-level=0' --lib terrain_aim_and_equipment_use_the_same_rendered_palette -- --ignored --nocapture",
+      "passed": 1,
+      "phase": "Final source including corrected ignored fixture"
+    },
+    {
+      "command": "cargo fmt -p verse-engine -p verse-world -p verse-content -p verse-pbr -p verse-imported --check",
+      "exit_code": 0
+    },
+    {
+      "command": "git diff --check",
+      "exit_code": 0
+    },
+    {
+      "command": "Check relative documentation links and retained artifact SHA-256 values",
+      "exit_code": 0
+    }
+  ],
+  "executables": {
+    "engine-main.log": {
+      "logical": "/home/christopherdavid/work/openagents-target-agent1/debug/deps/verse_engine-0dfba4dc924d9bac",
+      "physical": "/run/verse-audit-build-agent1/outputs/verse_engine/-0dfba4dc924d9bac/verse_engine-0dfba4dc924d9bac",
+      "sha256": "2bed420830524bb327a778f65e9a74b8f75c2668816c99a7ee9d9e63953b8910"
+    },
+    "world-support-main.log": {
+      "logical": "/home/christopherdavid/work/openagents-target-agent1/debug/deps/verse_world-4c80089a9320f263",
+      "physical": "/run/verse-audit-build-agent1/outputs/verse_world/-4c80089a9320f263/verse_world-4c80089a9320f263",
+      "sha256": "285c9f224506e0c18d5b5db7705f594abf93c76a8e5cc950dc6d01cb878fe2c8"
+    },
+    "pbr-main.log": {
+      "logical": "/home/christopherdavid/work/openagents-target-agent1/debug/deps/verse_pbr-391839f822d1e00e",
+      "physical": "/run/verse-audit-build-agent1/outputs/verse_pbr/-391839f822d1e00e/verse_pbr-391839f822d1e00e",
+      "sha256": "9a1dce3db58fc846b8706a906c8f778734d3b080148e9dfdb6ced05e3f9c6fb1"
+    },
+    "gpu-main.log": {
+      "logical": "/home/christopherdavid/work/openagents-target-agent1/debug/deps/verse_imported-8f44d1f342630fd4",
+      "physical": "/run/verse-audit-build-agent1/outputs/verse_imported/-8f44d1f342630fd4/verse_imported-8f44d1f342630fd4",
+      "sha256": "ad17a172418193c8b0e6645f68b2a421b1c3a5eaf808e7164d4c43032aae39c4"
+    }
+  },
+  "source": "source.json",
+  "retained_logs": "Trailing blank lines are removed. Historical phases and observed failures are explicitly labeled.",
+  "storage": "The original warm target remains in use. Private RAM scratch retains relocated audit caches and outputs behind logical target paths; compiler/linker wrappers are retained. No archive or incremental data is intentionally deleted. Restoration awaits sufficient persistent disk capacity.",
+  "artifacts_sha256": {
+    "README.md": "5c16238bd89732b09a8368f2c2738e19563d8fc1357bcf529bc30ea17c8473d0",
+    "archive-relocation.json": "1c875603f31e90baf2c92257a60885092ad8cd8f1995da30ed61b55314bc9d7e",
+    "cc-ram-linker.py": "87ff7d8f4ff686cf2d67f4f776c818e4f35713400f1eacc6e15516b3bb69a3c6",
+    "completed-executables.json": "70961bffc92b8781bc0c018dcbcd9813082f69c880b5cc5073b0ca487d5605e4",
+    "content-before-pitch.log": "20bc3bfcfefe4789ae43cc56a019cf57d022b27c7b92a044c1f80dfca704697e",
+    "content-help-executable.json": "1b6fe346e94ef56e17e27c4479aac8d127aac321ea38df9d755b7a89a5ad90e9",
+    "core-relocations.json": "5fd573bcece1d30a7dd8e7de5cb18c3e8e41d128ee456436a8290baecac97f85",
+    "earlier-cli-executables.json": "9111d510ae017e2be70a6612a10ef0184207d52c35c2a2a19c8a195ecfbe9a75",
+    "earlier-engine-executables.json": "c15295cfd61c274bf5f19ed09542a7e5b1c34155cca64300c5f4422806dc0eba",
+    "engine-executable-receipt.json": "dd3475dc8618d057d135d5c13da04ae836f38c068e57361a3c07b835d98b3b33",
+    "engine-idle-executable.json": "5d3f67e272232e88e249e229621205c34500c081c6820a1bd9784cc680c56e36",
+    "engine-main.log": "47aa893dcb064561c1e8d15c72d3b7bcde704e875ae1be9149793a16e48b2ad6",
+    "engine.log": "3e6e8daf49ed71265bd94bbac4751d4c2cc650d16a1050f36867382ad49e9c40",
+    "failed-linker-executable.json": "daaef91431cf48f5f10c49f64be0b06b040719bfb958a685ad2a3239911abdf1",
+    "final-completed-executables.json": "72b980ab934d51b70c73fcd9ee7668586495d9d38d415c9319a15f579b8352ad",
+    "gpu-main.log": "cc0bed9ef5d03199aa72dc43e94f23ff4298f5749318c44893f439283cf15ff4",
+    "gpu-static-binding-refusal.log": "d10a1231e321453ad65813fa44a0640e2924785bc091b7ac24355d576ca405bc",
+    "imported-before-main.log": "383197d8bba60d67e774daed1da75711d32c4484e9c86d409b4595a9ebafc67e",
+    "imported-engine-no-space.log": "64925055c4b9c0178aa23ee7e345306f1b48e77efaf67eedea526705f5777ee3",
+    "imported-fixture-type-error.log": "dede7c233b747d7be9f40296e7e30399a04443545887ab2c1b4beb54ad13386f",
+    "imported-main-before-fixture-binding.log": "db39eff5fe641c101f4b18f3d572f5cc8ffae80bfe1668de0c4b7657226701ed",
+    "incremental-relocation.json": "0b2a397469d22373786b79c4ef2f41f0d09f0cb2d26e848885e75815a995f764",
+    "named-rigs.json": "e52ebc6e775b886e2d714272094bde458128ee81fea7f4f36da28ea5c4689fa7",
+    "obsolete-executables.json": "cfe60913e3cff8b33fcad1ce66fdd4d13522906f082fb4fbced933584d36efa7",
+    "pbr-link-no-space.log": "4cc48a2829d7b8ae05a9d0dfbe033edb711352c6bc0a74cbb00887ae28de2888",
+    "pbr-main.log": "5ba5a2faf391005053fd05697b698719566d53ec9a63a60dc860ee14f146f841",
+    "pbr-query-cache-no-space.log": "ae864721def99ffed636985bb88e88577b770ad3f7aeab244b335ae89cc685ed",
+    "pbr.log": "ec34d12968c0d8220240436094095299e5774bbf58750aa7ad97feeeddb2b92c",
+    "prior-completed-executables.json": "00871b009e555451e1e2fb6045d4b757cdbe281524e9c3eaf544703ea93648b8",
+    "renderer.json": "6f447793b366df1aead2851b632d62f0fcfabe4c00de139dd05f28e7f8f361a3",
+    "rigs-before-pitch.log": "6f3e5fb6ce840e5e6da3c9cfa58cd704c7d65cab14b52928b9d401711d01035c",
+    "rigs-evidence-path-failure.log": "34c00032f34d2f44cc339c64efc27a244196187cd3c91ff2aed5a0d93a2d1223",
+    "rigs-final-executable.json": "97a0223b5b8648524c3242ed3cd7d97bc06dd4a1e81e3a38f7a6e56650b78305",
+    "rigs.log": "958bdde98f33b844dbfbb5b10887328de5601e887a1b2f5a595a5be3c29a8365",
+    "rustc-output-wrapper.py": "cf9d2cf12281bcfe42e3cff2ca0c5ce278c9f40422313fef0ba7faf3f8f26587",
+    "rustc-ram-wrapper.py": "55c7a3de3c0c528cb38f77dd661bc187ae28ca68d057d2da2f0b5a89641e9d9e",
+    "source-before-main.json": "fce6a15d9aee4b0de0fd4184c9d8cb527d68a204e1a1e554bf4237040f471b86",
+    "source-before-main.patch.gz": "ad01c2651440c4b2ba7e212e24fc1cc923d73ca0035a83c9c558e488bacaf013",
+    "source.json": "6452f7d0ddff4122f04250c6c25d8433bcd01ee5c101ccedabc1cac2401667a8",
+    "source.patch.gz": "6218ee36a21c2f286e441a8657fb71762f245320cfb8e2db76de305f1794a95f",
+    "terrain-aim-equipment.png": "8ad50cf536129a93e37f6c0a69128e6b6f766128ac6c70d6296fa554ab922d7f",
+    "world-full-before-observer.log": "af16df24d71e875f2955c11f5c7fb7504da6e02ecc08ea3a30428a6b69bce75b",
+    "world-support-executable.json": "168e3b6540f5bf08107e43028650b538495e4aaaacf9f603d22c63729432473f",
+    "world-support-main.log": "83978360ec9727787258fffc02efe97195edc8524da7bfa7a25c45e046f77d47",
+    "world-support-no-space.log": "c27cbb4082b42dbc2a303df7d4cb00fdda2e4b1971852469f59b0fd91c53b6c3",
+    "world-support.log": "f365cfe97a5dc5954ee7f7ec138e6c26d9768a0365e08f9e5d59bd5889848710"
+  }
+}

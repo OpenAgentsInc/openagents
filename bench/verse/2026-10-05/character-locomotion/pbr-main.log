@@ -1,0 +1,355 @@
+   Compiling verse-engine v0.1.0 (/home/christopherdavid/work/openagents-verse-audit/crates/verse-engine)
+warning: failed to connect to jobserver from environment variable `CARGO_MAKEFLAGS="-j --jobserver-fds=3,5 --jobserver-auth=3,5"`: cannot open file descriptor 3 from the jobserver environment variable value: Bad file descriptor (os error 9)
+  |
+  = note: the build environment is likely misconfigured
+
+warning: `verse-engine` (lib) generated 1 warning
+   Compiling verse-world v0.1.0 (/home/christopherdavid/work/openagents-verse-audit/crates/verse-world)
+warning: method `additional_characters` is never used
+    --> crates/verse-world/src/play.rs:2943:19
+     |
+ 428 | impl Game {
+     | --------- method in this implementation
+...
+2943 |     pub(crate) fn additional_characters(
+     |                   ^^^^^^^^^^^^^^^^^^^^^
+     |
+     = note: `#[warn(dead_code)]` (part of `#[warn(unused)]`) on by default
+
+warning: method `movement_confirmations` is never used
+  --> crates/verse-world/src/play/framed_movement.rs:49:19
+   |
+ 8 | impl Game {
+   | --------- method in this implementation
+...
+49 |     pub(crate) fn movement_confirmations(&self, life: LifeId) -> Vec<crate::movement::Baseline> {
+   |                   ^^^^^^^^^^^^^^^^^^^^^^
+
+warning: multiple fields are never read
+   --> crates/verse-world/src/play/multiplayer.rs:134:5
+    |
+133 | pub(crate) struct PortablePlayer {
+    |                   -------------- fields in this struct
+134 |     definition: crate::content::Character,
+    |     ^^^^^^^^^^
+135 |     catalog_remaining: BTreeMap<u8, f32>,
+    |     ^^^^^^^^^^^^^^^^^
+136 |     dice: Option<crate::spells::Dice>,
+    |     ^^^^
+137 |     combat: crate::rules::transfer::Portable,
+    |     ^^^^^^
+138 |     controls: Controls,
+    |     ^^^^^^^^
+139 |     bow_remaining: f32,
+    |     ^^^^^^^^^^^^^
+140 |     time: f32,
+    |     ^^^^
+141 |     yaw: f32,
+    |     ^^^
+142 |     appearance: verse_engine::director::Actor,
+    |     ^^^^^^^^^^
+    |
+    = note: `PortablePlayer` has a derived impl for the trait `Clone`, but this is intentionally ignored during dead code analysis
+
+warning: methods `take_transfer_player`, `take_resident_player`, and `put_transfer_player` are never used
+   --> crates/verse-world/src/play/multiplayer.rs:145:19
+    |
+144 | impl Game {
+    | --------- methods in this implementation
+145 |     pub(crate) fn take_transfer_player(&mut self, actor: u64) -> Result<PortablePlayer, String> {
+    |                   ^^^^^^^^^^^^^^^^^^^^
+...
+154 |     pub(crate) fn take_resident_player(&mut self, actor: u64) -> Result<PortablePlayer, String> {
+    |                   ^^^^^^^^^^^^^^^^^^^^
+...
+284 |     pub(crate) fn put_transfer_player(
+    |                   ^^^^^^^^^^^^^^^^^^^
+
+warning: methods `account_spawn` and `migrate_content` are never used
+    --> crates/verse-world/src/play/multiplayer.rs:426:19
+     |
+ 332 | impl Game {
+     | --------- methods in this implementation
+...
+ 426 |     pub(crate) fn account_spawn(&self) -> Result<Vec3, String> {
+     |                   ^^^^^^^^^^^^^
+...
+1396 |     pub(crate) fn migrate_content(
+     |                   ^^^^^^^^^^^^^^^
+
+warning: method `live_hostiles` is never used
+    --> crates/verse-world/src/rules.rs:1113:19
+     |
+ 225 | impl Simulation {
+     | --------------- method in this implementation
+...
+1113 |     pub(crate) fn live_hostiles(&self) -> usize {
+     |                   ^^^^^^^^^^^^^
+
+warning: fields `state` and `elapsed` are never read
+ --> crates/verse-world/src/rules/transfer.rs:5:5
+  |
+4 | pub(crate) struct Portable {
+  |                   -------- fields in this struct
+5 |     state: PlayerState,
+  |     ^^^^^
+6 |     elapsed: f32,
+  |     ^^^^^^^
+  |
+  = note: `Portable` has a derived impl for the trait `Clone`, but this is intentionally ignored during dead code analysis
+
+warning: method `defeated` is never used
+ --> crates/verse-world/src/rules/transfer.rs:9:19
+  |
+8 | impl Portable {
+  | ------------- method in this implementation
+9 |     pub(crate) fn defeated(&self) -> bool {
+  |                   ^^^^^^^^
+
+warning: method `put_player` is never used
+  --> crates/verse-world/src/rules/transfer.rs:58:19
+   |
+13 | impl Simulation {
+   | --------------- method in this implementation
+...
+58 |     pub(crate) fn put_player(&mut self, id: u32, mut portable: Portable) -> Result<(), String> {
+   |                   ^^^^^^^^^^
+
+warning: methods `fork`, `committed_controls`, `principal`, and `refresh_binding` are never used
+   --> crates/verse-world/src/service/auth.rs:139:19
+    |
+136 | impl Gateway {
+    | ------------ methods in this implementation
+...
+139 |     pub(super) fn fork(&self) -> Self {
+    |                   ^^^^
+...
+251 |     pub(super) fn committed_controls(&self) -> BTreeMap<ConnectionId, super::wire::Control> {
+    |                   ^^^^^^^^^^^^^^^^^^
+...
+550 |     pub(super) fn principal(&self, connection: ConnectionId) -> Result<Principal, String> {
+    |                   ^^^^^^^^^
+...
+554 |     pub(super) fn refresh_binding(&mut self, connection: ConnectionId) -> Result<(), String> {
+    |                   ^^^^^^^^^^^^^^^
+
+warning: method `fork` is never used
+   --> crates/verse-world/src/service/replication.rs:206:19
+    |
+205 | impl Sender {
+    | ----------- method in this implementation
+206 |     pub(super) fn fork(&self) -> Self {
+    |                   ^^^^
+
+warning: method `history_roots` is never used
+   --> crates/verse-world/src/service/rewards.rs:168:31
+    |
+167 | impl Checkpoint {
+    | --------------- method in this implementation
+168 |     pub(in crate::service) fn history_roots(&self) -> Vec<Option<[u8; 32]>> {
+    |                               ^^^^^^^^^^^^^
+
+warning: methods `revision`, `history_capacity`, and `attach` are never used
+   --> crates/verse-world/src/service/rewards.rs:246:19
+    |
+216 | impl Ledger {
+    | ----------- methods in this implementation
+...
+246 |     pub(super) fn revision(&self) -> u64 {
+    |                   ^^^^^^^^
+...
+250 |     pub(super) fn history_capacity(&self) -> Result<bool, String> {
+    |                   ^^^^^^^^^^^^^^^^
+...
+256 |     pub(super) fn attach(&mut self, archive: history::History) -> Result<(), String> {
+    |                   ^^^^^^
+
+warning: multiple associated items are never used
+   --> crates/verse-world/src/service/rewards/history.rs:54:31
+    |
+ 53 | impl History {
+    | ------------ associated items in this implementation
+ 54 |     pub(in crate::service) fn open(path: &Path) -> Result<Self, String> {
+    |                               ^^^^
+...
+ 88 |     pub(in crate::service) fn temporary() -> Result<Self, String> {
+    |                               ^^^^^^^^^
+...
+104 |     pub(in crate::service) fn reachable(
+    |                               ^^^^^^^^^
+...
+139 |     pub(in crate::service) fn verify_node(&self, digest: [u8; 32]) -> Result<(), String> {
+    |                               ^^^^^^^^^^^
+...
+142 |     pub(super) fn same_directory(&self, other: &Self) -> bool {
+    |                   ^^^^^^^^^^^^^^
+...
+145 |     pub(in crate::service) fn defer_writes(&self) {
+    |                               ^^^^^^^^^^^^
+...
+148 |     pub(in crate::service) fn has_capacity(&self) -> Result<bool, String> {
+    |                               ^^^^^^^^^^^^
+...
+157 |     pub(in crate::service) fn synchronize(&self) -> Result<(), String> {
+    |                               ^^^^^^^^^^^
+
+warning: method `history_roots` is never used
+  --> crates/verse-world/src/service/rewards/books.rs:38:31
+   |
+37 | impl Book {
+   | --------- method in this implementation
+38 |     pub(in crate::service) fn history_roots(&self) -> [history::Root; 2] {
+   |                               ^^^^^^^^^^^^^
+
+warning: methods `realm_character`, `activate_books`, `register_book`, `take_book`, and `put_book` are never used
+   --> crates/verse-world/src/service/rewards/books.rs:43:31
+    |
+ 42 | impl Ledger {
+    | ----------- methods in this implementation
+ 43 |     pub(in crate::service) fn realm_character(&self, actor: u64) -> Option<u64> {
+    |                               ^^^^^^^^^^^^^^^
+...
+ 46 |     pub(in crate::service) fn activate_books(
+    |                               ^^^^^^^^^^^^^^
+...
+170 |     pub(in crate::service) fn register_book(
+    |                               ^^^^^^^^^^^^^
+...
+193 |     pub(in crate::service) fn take_book(
+    |                               ^^^^^^^^^
+...
+208 |     pub(in crate::service) fn put_book(
+    |                               ^^^^^^^^
+
+warning: field `owner` is never read
+   --> crates/verse-world/src/service/save.rs:110:16
+    |
+109 | pub(super) struct Prepared {
+    |                   -------- field in this struct
+110 |     pub(super) owner: [u8; 32],
+    |                ^^^^^
+
+warning: methods `instance` and `expanded` are never used
+   --> crates/verse-world/src/service/save.rs:168:19
+    |
+125 | impl Prepared {
+    | ------------- methods in this implementation
+...
+168 |     pub(super) fn instance(&self) -> u64 {
+    |                   ^^^^^^^^
+...
+182 |     pub(super) fn expanded(&self) -> Result<serde_json::Value, String> {
+    |                   ^^^^^^^^
+
+warning: function `count_world_encoding` is never used
+   --> crates/verse-world/src/service/save.rs:236:4
+    |
+236 | fn count_world_encoding(metadata_bytes: usize, world: &str) -> Result<usize, String> {
+    |    ^^^^^^^^^^^^^^^^^^^^
+
+warning: method `transfer_cooldowns` is never used
+  --> crates/verse-world/src/utilities.rs:58:19
+   |
+57 | impl Controls {
+   | ------------- method in this implementation
+58 |     pub(crate) fn transfer_cooldowns(&self, source_time: f32, destination_time: f32) -> Self {
+   |                   ^^^^^^^^^^^^^^^^^^
+
+warning: `verse-world` (lib) generated 21 warnings (1 duplicate)
+   Compiling verse-content v0.1.0 (/home/christopherdavid/work/openagents-verse-audit/crates/verse-content)
+warning: `verse-content` (lib) generated 1 warning (1 duplicate)
+   Compiling verse-gfx v0.1.0 (/home/christopherdavid/work/openagents-verse-audit/crates/verse-gfx)
+   Compiling verse-pbr v0.1.0 (/home/christopherdavid/work/openagents-verse-audit/crates/verse-pbr)
+warning: `verse-pbr` (lib test) generated 1 warning (1 duplicate)
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 24.78s
+     Running unittests src/lib.rs (/home/christopherdavid/work/openagents-target-agent1/debug/deps/verse_pbr-391839f822d1e00e)
+
+running 86 tests
+test imported::admission::tests::the_pose_block_fits_the_gles_uniform_limit ... ok
+test imported::gpu_timing::tests::native_timestamp_resolve_without_shadow_pass ... ignored, Requires a native GPU; proves unwritten shadow queries are not resolved
+test imported::gpu_timing::tests::native_timestamp_resolve_without_video_capture ... ignored, Requires a native GPU; run explicitly when diagnosing timestamp readback
+test imported::culling::tests::cube_faces_keep_crossing_bounds_and_reject_only_separated_geometry ... ok
+test imported::gpu_timing::tests::invalid_sample_reasons_are_counted_and_examples_are_bounded ... ok
+test imported::gpu_timing::tests::timestamp_units_and_invalid_order_are_explicit ... ok
+test imported::culling::tests::bone_bounds_contain_weighted_skinning_and_refuse_unsafe_culling ... ok
+test imported::lighting::tests::fog_packs_its_density_and_shape ... ok
+test imported::lighting::tests::all_cube_faces_look_outward_and_bad_lights_are_refused ... ok
+test imported::lighting::tests::shadowed_lights_come_first_and_keep_their_flicker ... ok
+test imported::material_gpu::tests::lines_and_unlit_surfaces_keep_their_own_materials ... ok
+test imported::mip_tests::uploaded_roles_and_material_bindings_match_linear_light_and_mask_recipes ... ignored, requires a native GPU; uses generated assets and no display
+test imported::lighting::tests::uniform_capacity_admits_all_slots_and_refuses_overflow ... ok
+test imported::material_gpu::tests::shared_source_has_separate_channel_and_effective_cutoff_variants ... ok
+test imported::shadow_cache::tests::exhaustion_refuses_without_relabeling_previous_pose ... ok
+test imported::material_gpu::tests::packing_preserves_factors_and_presence_flags ... ok
+test imported::material_gpu::tests::shared_base_color_does_not_merge_distinct_materials ... ok
+test imported::tests::additive_instances_match_uniform_pixels_and_reduce_draws ... ignored, requires a GPU; compares additive batching with the uniform fallback
+test imported::shadow_cache::tests::face_keys_track_light_pose_caster_revision_and_removal ... ok
+test imported::tests::device_loss_preserves_actor_playback_without_surface_or_source_files ... ignored, requires a Vulkan adapter; device recovery uses only scratch assets
+test imported::shadow_cache::tests::pose_identity_and_eligibility_changes_remove_cached_casters ... ok
+test imported::flat::tests::odd_line_indices_are_refused ... ok
+test mesh::tests::a_cube_has_twelve_edges_and_twelve_triangles ... ok
+test pbr::environment::tests::clouds_cover_more_of_the_sky_as_cover_grows ... ok
+test imported::tests::corpse_grounding_ignores_world_translation_but_tracks_skin_and_basis_changes ... ok
+test imported::tests::reload_motion_identity_ignores_source_paths_and_tracks_animation_changes ... ok
+test mesh::tests::cube_edges_are_unit_length ... ok
+test pbr::bake::tests::a_corner_is_occluded_and_open_ground_is_not ... ok
+test pbr::environment::tests::dusk_glows_toward_a_low_sun ... ok
+test pbr::environment::tests::the_cpu_sky_matches_the_sky_pass_landmarks ... ok
+test pbr::bake::tests::rays_hit_the_nearest_face_and_miss_open_space ... ok
+test pbr::gpu::tests::a_fixed_key_shadow_is_one_map_and_a_cascaded_one_follows_the_tier ... ok
+test pbr::gpu::tests::earthshine_at_l1_is_a_few_millionths_of_sunlight ... ok
+test pbr::gpu::tests::half_floats_round_trip_the_values_the_probes_hold ... ok
+test pbr::gpu::tests::lower_tiers_shade_fewer_lamps ... ok
+test pbr::gpu::tests::the_tier_sets_the_shadow_filter_and_material_detail_constants ... ok
+test pbr::gpu::tests::the_tier_gates_the_screen_space_passes ... ok
+test pbr::screen::tests::the_uniform_carries_the_light_only_when_one_casts ... ok
+test pbr::sky::tests::epoch_and_j2000_are_the_published_julian_dates ... ok
+test pbr::sky::tests::malformed_catalogues_are_refused ... ok
+test pbr::sky::tests::star_colors_run_from_blue_to_red_and_magnitudes_scale ... ok
+test pbr::sky::tests::the_earth_is_past_the_september_equinox_at_the_epoch ... ok
+test pbr::sky::tests::the_sun_lies_in_the_scene_minus_z_direction_in_celestial_terms ... ok
+test pbr::sky::tests::the_celestial_basis_is_a_rotation_that_keeps_ecliptic_north_up ... ok
+test pbr::tests::lamps_light_only_when_valid_and_flicker_within_bounds ... ok
+test pbr::tests::stages_draw_daylight_only_when_asked ... ok
+test pbr::textured::tests::invalid_scenes_are_refused ... ok
+test pbr::textured::tests::mip_chains_skip_levels_above_the_device_limit ... ok
+test pbr::textured::tests::a_mirroring_placement_keeps_front_faces_counterclockwise ... ok
+test pbr::textured::tests::emission_rides_in_the_material_uniform_and_is_bounded ... ok
+test pbr::textured::tests::mips_average_color_in_linear_light ... ok
+test pbr::textured::tests::only_masked_cells_discard_and_only_blended_cells_skip_depth_and_shadows ... ok
+test pbr::textured::tests::the_cutoff_keeps_alpha_at_or_above_it ... ok
+test pbr::textured::tests::placements_merge_into_cells_per_material ... ok
+test pbr::bake::tests::a_sunlit_white_floor_lights_a_probe_from_below ... ok
+test pbr::textured::tests::blended_cells_draw_last_from_far_to_near ... ok
+test pbr::textured::tests::frustum_culling_keeps_boxes_in_view_and_drops_boxes_behind ... ok
+test pbr::textured::tests::double_sided_materials_draw_both_faces ... ok
+test imported::admission::tests::the_cut_scene_shader_declares_a_block_within_the_limit ... ok
+test pbr::textured::tests::a_cells_near_and_far_levels_draw_in_turn_with_hysteresis ... ok
+test pbr::textured::tests::index_ranges_find_each_placements_triangles_in_the_merge ... ok
+test pbr::textured_bake::tests::the_key_follows_the_sun_and_the_light_channel_round_trips ... ok
+test streaming::tests::gpu_partial_uploads_draw_and_rebuild_without_source_files ... ignored, Explicit scratch GPU: partial image rows, both depth conventions, retained rebuild
+test pbr::textured_bake::tests::open_ground_sees_the_whole_sky ... ok
+test pbr::textured_bake::tests::a_point_under_a_roof_is_occluded ... ok
+test pbr::textured_bake::tests::a_white_wall_beside_sunlit_grass_turns_green ... ok
+test pbr::textured::tests::oversized_mask_fitting_preserves_coverage_before_runtime_cooking ... ok
+test imported::instancing::tests::storage_shader_validates_and_reads_an_instance_index ... ok
+test pbr::textured::tests::masked_mips_keep_their_alpha_coverage_at_the_cutoff ... ok
+test imported::instancing::tests::world_storage_shader_validates_independent_flat_pose_indices ... ok
+test streaming::tests::cooked_shader_validates_both_depth_conventions ... ok
+test imported::tests::textured_skin_shader_validates ... ok
+test pbr::screen::tests::the_screen_shader_validates_and_matches_its_uniform ... ok
+test pbr::textured_bake::tests::a_job_delivers_vertices_to_the_scene_and_probes_to_the_zone ... ok
+test pbr::screen::tests::a_corner_darkens_the_floor_at_the_wall_base ... ok
+test pbr::textured_bake::tests::probes_darken_under_cover_and_characters_sample_them ... ok
+test pbr::textured_bake::tests::a_leaf_card_occludes_partially_and_stays_lit ... ok
+test pbr::gpu::tests::the_frame_uniform_matches_the_shader ... ok
+test pbr::textured_bake::tests::the_threaded_bake_matches_the_stepped_one ... ok
+test pbr::screen::tests::a_flat_floor_is_unoccluded_and_casts_no_contact_shadow ... ok
+test pbr::environment::tests::the_sky_light_takes_the_keys_level_and_the_skys_gradient ... ok
+test pbr::environment::tests::the_reflection_cube_holds_the_drawn_sky ... ok
+test pbr::textured::tests::files_that_pack_the_same_image_share_it_and_keep_their_emission ... ok
+test imported::flat::tests::lines_take_their_tint_and_fade_into_the_fog ... ok
+test pbr::gpu::tests::bundled_sky_textures_decode_at_their_documented_sizes ... ok
+test pbr::textured::tests::the_quaternius_props_import_with_shared_trim_sheets ... ok
+
+test result: ok. 80 passed; 0 failed; 6 ignored; 0 measured; 0 filtered out; finished in 0.86s

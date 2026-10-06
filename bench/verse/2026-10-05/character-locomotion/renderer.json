@@ -1,0 +1,4893 @@
+{
+  "schema": "verse.locomotion.renderer.v1",
+  "adapter": "NVIDIA GeForce RTX 4080",
+  "device": {
+    "name": "NVIDIA GeForce RTX 4080",
+    "vendor": 4318,
+    "device": 9988,
+    "backend": "Vulkan",
+    "device_type": "DiscreteGpu",
+    "driver": "NVIDIA",
+    "driver_info": "595.71.05",
+    "timestamp_feature_supported": true,
+    "timestamp_query_enabled": false,
+    "timestamp_period_ns": 1.0,
+    "multisample_count": 4,
+    "quality": "high",
+    "scene_format": "Rgba16Float",
+    "shadow_views": 24,
+    "shadow_view_dimension": "D2Array",
+    "shadow_texture_layers": 24,
+    "local_shadows": true,
+    "pose_bones": 256,
+    "pose_block_bytes": 16464,
+    "instanced_poses": true,
+    "mip_recipe_version": 1,
+    "mip_variants": 34,
+    "shadow_size": 512,
+    "budget": {
+      "instances": 1024,
+      "optional_effects": 768,
+      "surfaces": 16384,
+      "target_bytes": 1073741824,
+      "geometry_bytes": 1073741824,
+      "texture_bytes": 1073741824,
+      "buffer_bytes": 1073741824,
+      "cpu_frame_ms": 16.666666666666668,
+      "gpu_frame_ms": 16.666666666666668
+    }
+  },
+  "models": [
+    "universal-male-peasant",
+    "universal-female-ranger"
+  ],
+  "contacts": 29,
+  "maximum_socket_error": 0.0,
+  "frames": [
+    {
+      "tick": 0,
+      "poses": [
+        {
+          "life": {
+            "instance": 1,
+            "actor": 14,
+            "generation": 0
+          },
+          "model": "universal-male-peasant",
+          "semantic": "walk",
+          "graph_state": 2,
+          "selection_epoch": 1,
+          "phase": 0.0,
+          "source_epoch": 1,
+          "phase_owner": 1,
+          "parameters": [
+            {
+              "boolean": false
+            },
+            {
+              "boolean": false
+            },
+            {
+              "boolean": true
+            },
+            {
+              "boolean": false
+            },
+            {
+              "boolean": false
+            },
+            {
+              "boolean": false
+            },
+            {
+              "boolean": false
+            },
+            {
+              "boolean": false
+            },
+            {
+              "boolean": false
+            },
+            {
+              "boolean": false
+            },
+            {
+              "boolean": false
+            },
+            {
+              "boolean": false
+            },
+            {
+              "boolean": false
+            },
+            {
+              "boolean": false
+            },
+            {
+              "boolean": false
+            },
+            {
+              "boolean": false
+            },
+            {
+              "boolean": false
+            },
+            {
+              "scalar": 1.7999999523162842
+            }
+          ],
+          "tier": "full",
+          "evaluated": true,
+          "bones_sampled": 70,
+          "ground_available": true,
+          "adjustment": {
+            "inputs": {
+              "speed": 0.0,
+              "turn_rate": 0.0,
+              "aim": {
+                "yaw": 0.20000000298023224,
+                "pitch": 0.10000000149011612
+              },
+              "reset": true
+            },
+            "probes": 1,
+            "contacts": [
+              {
+                "position": [
+                  -1.2913339138031006,
+                  0.011813359335064888,
+                  -0.23626717925071716
+                ],
+                "normal": [
+                  0.0,
+                  0.9987523555755615,
+                  0.049937617033720016
+                ]
+              },
+              null
+            ],
+            "planted": [
+              true,
+              false
+            ],
+            "foot_error": [
+              0.00010422730701975524,
+              0.0
+            ],
+            "reach_clamps": 0,
+            "root_horizontal_removed": 0.0,
+            "root_yaw_removed": 1.3234888223126632e-23
+          }
+        },
+        {
+          "life": {
+            "instance": 1,
+            "actor": 15,
+            "generation": 0
+          },
+          "model": "universal-female-ranger",
+          "semantic": "walk",
+          "graph_state": 2,
+          "selection_epoch": 1,
+          "phase": 0.0,
+          "source_epoch": 1,
+          "phase_owner": 1,
+          "parameters": [
+            {
+              "boolean": false
+            },
+            {
+              "boolean": false
+            },
+            {
+              "boolean": true
+            },
+            {
+              "boolean": false
+            },
+            {
+              "boolean": false
+            },
+            {
+              "boolean": false
+            },
+            {
+              "boolean": false
+            },
+            {
+              "boolean": false
+            },
+            {
+              "boolean": false
+            },
+            {
+              "boolean": false
+            },
+            {
+              "boolean": false
+            },
+            {
+              "boolean": false
+            },
+            {
+              "boolean": false
+            },
+            {
+              "boolean": false
+            },
+            {
+              "boolean": false
+            },
+            {
+              "boolean": false
+            },
+            {
+              "boolean": false
+            },
+            {
+              "scalar": 1.7999999523162842
+            }
+          ],
+          "tier": "full",
+          "evaluated": true,
+          "bones_sampled": 75,
+          "ground_available": true,
+          "adjustment": {
+            "inputs": {
+              "speed": 0.0,
+              "turn_rate": 0.0,
+              "aim": {
+                "yaw": 0.20000000298023224,
+                "pitch": 0.10000000149011612
+              },
+              "reset": true
+            },
+            "probes": 1,
+            "contacts": [
+              {
+                "position": [
+                  1.0895265340805054,
+                  0.1599999964237213,
+                  -0.2380029857158661
+                ],
+                "normal": [
+                  0.0,
+                  1.0,
+                  0.0
+                ]
+              },
+              null
+            ],
+            "planted": [
+              true,
+              false
+            ],
+            "foot_error": [
+              7.450580596923828e-8,
+              0.0
+            ],
+            "reach_clamps": 0,
+            "root_horizontal_removed": 0.0,
+            "root_yaw_removed": 1.3234888223126632e-23
+          }
+        }
+      ],
+      "timings": {
+        "frame": 1,
+        "gpu_samples": [
+          null,
+          null,
+          null
+        ],
+        "gpu_health": null,
+        "gpu_timestamps_available": false,
+        "gpu_query_poll_cpu_ms": null,
+        "prepare_ms": 0.40841500000000003,
+        "encode_ms": 3.894685,
+        "command_encode_ms": 3.759419,
+        "shadow_encode_ms": 0.003996,
+        "world_encode_ms": 3.472304,
+        "overlay_encode_ms": 0.0009180000000000001,
+        "command_finish_ms": 0.277977,
+        "queue_submit_ms": 0.13480799999999998,
+        "gpu_wait_ms": 5.951814,
+        "readback_copy_ms": 0.107473,
+        "total_ms": 10.362411,
+        "instances": 4,
+        "actor_roots": 2,
+        "mounts": 2,
+        "optional_effects": 0,
+        "dropped_effects": 0,
+        "surface_batches": 15,
+        "shadow_views": 0,
+        "upload_bytes": 85056,
+        "grounded_vertices": 0,
+        "readback": true,
+        "shadow_draws": 0,
+        "world_draws": 13,
+        "cached_shadow_casters": 0,
+        "static_shadow_refreshes": 0,
+        "marker_events": 0,
+        "graph_instances": 2,
+        "pose_samples": 2,
+        "pose_reuses": 0,
+        "sampled_bones": 145,
+        "foot_probes": 2
+      }
+    },
+    {
+      "tick": 1,
+      "poses": [
+        {
+          "life": {
+            "instance": 1,
+            "actor": 14,
+            "generation": 0
+          },
+          "model": "universal-male-peasant",
+          "semantic": "walk",
+          "graph_state": 2,
+          "selection_epoch": 1,
+          "phase": 0.023076923564076424,
+          "source_epoch": 1,
+          "phase_owner": 1,
+          "parameters": [
+            {
+              "boolean": false
+            },
+            {
+              "boolean": false
+            },
+            {
+              "boolean": true
+            },
+            {
+              "boolean": false
+            },
+            {
+              "boolean": false
+            },
+            {
+              "boolean": false
+            },
+            {
+              "boolean": false
+            },
+            {
+              "boolean": false
+            },
+            {
+              "boolean": false
+            },
+            {
+              "boolean": false
+            },
+            {
+              "boolean": false
+            },
+            {
+              "boolean": false
+            },
+            {
+              "boolean": false
+            },
+            {
+              "boolean": false
+            },
+            {
+              "boolean": false
+            },
+            {
+              "boolean": false
+            },
+            {
+              "boolean": false
+            },
+            {
+              "scalar": 1.7999998331069946
+            }
+          ],
+          "tier": "full",
+          "evaluated": true,
+          "bones_sampled": 70,
+          "ground_available": true,
+          "adjustment": {
+            "inputs": {
+              "speed": 1.7999998331069946,
+              "turn_rate": 0.0,
+              "aim": {
+                "yaw": 0.20000000298023224,
+                "pitch": 0.10000000149011612
+              },
+              "reset": false
+            },
+            "probes": 1,
+            "contacts": [
+              {
+                "position": [
+                  -1.2913339138031006,
+                  0.011813359335064888,
+                  -0.23626717925071716
+                ],
+                "normal": [
+                  0.0,
+                  0.9987523555755615,
+                  0.049937617033720016
+                ]
+              },
+              null
+            ],
+            "planted": [
+              true,
+              false
+            ],
+            "foot_error": [
+              9.094592456904138e-8,
+              0.0
+            ],
+            "reach_clamps": 0,
+            "root_horizontal_removed": 0.0,
+            "root_yaw_removed": 1.3234888223126632e-23
+          }
+        },
+        {
+          "life": {
+            "instance": 1,
+            "actor": 15,
+            "generation": 0
+          },
+          "model": "universal-female-ranger",
+          "semantic": "walk",
+          "graph_state": 2,
+          "selection_epoch": 1,
+          "phase": 0.023076923564076424,
+          "source_epoch": 1,
+          "phase_owner": 1,
+          "parameters": [
+            {
+              "boolean": false
+            },
+            {
+              "boolean": false
+            },
+            {
+              "boolean": true
+            },
+            {
+              "boolean": false
+            },
+            {
+              "boolean": false
+            },
+            {
+              "boolean": false
+            },
+            {
+              "boolean": false
+            },
+            {
+              "boolean": false
+            },
+            {
+              "boolean": false
+            },
+            {
+              "boolean": false
+            },
+            {
+              "boolean": false
+            },
+            {
+              "boolean": false
+            },
+            {
+              "boolean": false
+            },
+            {
+              "boolean": false
+            },
+            {
+              "boolean": false
+            },
+            {
+              "boolean": false
+            },
+            {
+              "boolean": false
+            },
+            {
+              "scalar": 1.7999998331069946
+            }
+          ],
+          "tier": "full",
+          "evaluated": true,
+          "bones_sampled": 75,
+          "ground_available": true,
+          "adjustment": {
+            "inputs": {
+              "speed": 1.7999998331069946,
+              "turn_rate": 0.0,
+              "aim": {
+                "yaw": 0.20000000298023224,
+                "pitch": 0.10000000149011612
+              },
+              "reset": false
+            },
+            "probes": 1,
+            "contacts": [
+              {
+                "position": [
+                  1.0895265340805054,
+                  0.1599999964237213,
+                  -0.2380029857158661
+                ],
+                "normal": [
+                  0.0,
+                  1.0,
+                  0.0
+                ]
+              },
+              null
+            ],
+            "planted": [
+              true,
+              false
+            ],
+            "foot_error": [
+              6.664001972467304e-8,
+              0.0
+            ],
+            "reach_clamps": 0,
+            "root_horizontal_removed": 0.0,
+            "root_yaw_removed": 1.3234888223126632e-23
+          }
+        }
+      ],
+      "timings": {
+        "frame": 2,
+        "gpu_samples": [
+          null,
+          null,
+          null
+        ],
+        "gpu_health": null,
+        "gpu_timestamps_available": false,
+        "gpu_query_poll_cpu_ms": null,
+        "prepare_ms": 0.38561999999999996,
+        "encode_ms": 0.279837,
+        "command_encode_ms": 0.235725,
+        "shadow_encode_ms": 0.001606,
+        "world_encode_ms": 0.046122,
+        "overlay_encode_ms": 0.0014670000000000002,
+        "command_finish_ms": 0.181542,
+        "queue_submit_ms": 0.043568,
+        "gpu_wait_ms": 0.195486,
+        "readback_copy_ms": 0.16519399999999998,
+        "total_ms": 1.026197,
+        "instances": 4,
+        "actor_roots": 2,
+        "mounts": 2,
+        "optional_effects": 0,
+        "dropped_effects": 0,
+        "surface_batches": 15,
+        "shadow_views": 0,
+        "upload_bytes": 85056,
+        "grounded_vertices": 0,
+        "readback": true,
+        "shadow_draws": 0,
+        "world_draws": 13,
+        "cached_shadow_casters": 0,
+        "static_shadow_refreshes": 0,
+        "marker_events": 0,
+        "graph_instances": 2,
+        "pose_samples": 2,
+        "pose_reuses": 0,
+        "sampled_bones": 145,
+        "foot_probes": 2
+      }
+    },
+    {
+      "tick": 2,
+      "poses": [
+        {
+          "life": {
+            "instance": 1,
+            "actor": 14,
+            "generation": 0
+          },
+          "model": "universal-male-peasant",
+          "semantic": "walk",
+          "graph_state": 2,
+          "selection_epoch": 1,
+          "phase": 0.04615384712815285,
+          "source_epoch": 1,
+          "phase_owner": 1,
+          "parameters": [
+            {
+              "boolean": false
+            },
+            {
+              "boolean": false
+            },
+            {
+              "boolean": true
+            },
+            {
+              "boolean": false
+            },
+            {
+              "boolean": false
+            },
+            {
+              "boolean": false
+            },
+            {
+              "boolean": false
+            },
+            {
+              "boolean": false
+            },
+            {
+              "boolean": false
+            },
+            {
+              "boolean": false
+            },
+            {
+              "boolean": false
+            },
+            {
+              "boolean": false
+            },
+            {
+              "boolean": false
+            },
+            {
+              "boolean": false
+            },
+            {
+              "boolean": false
+            },
+            {
+              "boolean": false
+            },
+            {
+              "boolean": false
+            },
+            {
+              "scalar": 1.7999998331069946
+            }
+          ],
+          "tier": "full",
+          "evaluated": true,
+          "bones_sampled": 70,
+          "ground_available": true,
+          "adjustment": {
+            "inputs": {
+              "speed": 1.7999998331069946,
+              "turn_rate": 0.0,
+              "aim": {
+                "yaw": 0.20000000298023224,
+                "pitch": 0.10000000149011612
+              },
+              "reset": false
+            },
+            "probes": 1,
+            "contacts": [
+              {
+                "position": [
+                  -1.2913339138031006,
+                  0.011813359335064888,
+                  -0.23626717925071716
+                ],
+                "normal": [
+                  0.0,
+                  0.9987523555755615,
+                  0.049937617033720016
+                ]
+              },
+              null
+            ],
+            "planted": [
+              true,
+              false
+            ],
+            "foot_error": [
+              2.107342389479072e-8,
+              0.0
+            ],
+            "reach_clamps": 0,
+            "root_horizontal_removed": 0.0,
+            "root_yaw_removed": 1.3234888223126632e-23
+          }
+        },
+        {
+          "life": {
+            "instance": 1,
+            "actor": 15,
+            "generation": 0
+          },
+          "model": "universal-female-ranger",
+          "semantic": "walk",
+          "graph_state": 2,
+          "selection_epoch": 1,
+          "phase": 0.04615384712815285,
+          "source_epoch": 1,
+          "phase_owner": 1,
+          "parameters": [
+            {
+              "boolean": false
+            },
+            {
+              "boolean": false
+            },
+            {
+              "boolean": true
+            },
+            {
+              "boolean": false
+            },
+            {
+              "boolean": false
+            },
+            {
+              "boolean": false
+            },
+            {
+              "boolean": false
+            },
+            {
+              "boolean": false
+            },
+            {
+              "boolean": false
+            },
+            {
+              "boolean": false
+            },
+            {
+              "boolean": false
+            },
+            {
+              "boolean": false
+            },
+            {
+              "boolean": false
+            },
+            {
+              "boolean": false
+            },
+            {
+              "boolean": false
+            },
+            {
+              "boolean": false
+            },
+            {
+              "boolean": false
+            },
+            {
+              "scalar": 1.7999998331069946
+            }
+          ],
+          "tier": "full",
+          "evaluated": true,
+          "bones_sampled": 75,
+          "ground_available": true,
+          "adjustment": {
+            "inputs": {
+              "speed": 1.7999998331069946,
+              "turn_rate": 0.0,
+              "aim": {
+                "yaw": 0.20000000298023224,
+                "pitch": 0.10000000149011612
+              },
+              "reset": false
+            },
+            "probes": 1,
+            "contacts": [
+              {
+                "position": [
+                  1.0895265340805054,
+                  0.1599999964237213,
+                  -0.2380029857158661
+                ],
+                "normal": [
+                  0.0,
+                  1.0,
+                  0.0
+                ]
+              },
+              null
+            ],
+            "planted": [
+              true,
+              false
+            ],
+            "foot_error": [
+              1.6924465739975858e-7,
+              0.0
+            ],
+            "reach_clamps": 0,
+            "root_horizontal_removed": 0.0,
+            "root_yaw_removed": 1.3234888223126632e-23
+          }
+        }
+      ],
+      "timings": {
+        "frame": 3,
+        "gpu_samples": [
+          null,
+          null,
+          null
+        ],
+        "gpu_health": null,
+        "gpu_timestamps_available": false,
+        "gpu_query_poll_cpu_ms": null,
+        "prepare_ms": 0.428257,
+        "encode_ms": 0.373092,
+        "command_encode_ms": 0.334355,
+        "shadow_encode_ms": 0.0018599999999999999,
+        "world_encode_ms": 0.058378,
+        "overlay_encode_ms": 0.0017430000000000002,
+        "command_finish_ms": 0.26553299999999996,
+        "queue_submit_ms": 0.038383999999999995,
+        "gpu_wait_ms": 0.176314,
+        "readback_copy_ms": 0.162736,
+        "total_ms": 1.14044,
+        "instances": 4,
+        "actor_roots": 2,
+        "mounts": 2,
+        "optional_effects": 0,
+        "dropped_effects": 0,
+        "surface_batches": 15,
+        "shadow_views": 0,
+        "upload_bytes": 85056,
+        "grounded_vertices": 0,
+        "readback": true,
+        "shadow_draws": 0,
+        "world_draws": 13,
+        "cached_shadow_casters": 0,
+        "static_shadow_refreshes": 0,
+        "marker_events": 0,
+        "graph_instances": 2,
+        "pose_samples": 2,
+        "pose_reuses": 0,
+        "sampled_bones": 145,
+        "foot_probes": 2
+      }
+    },
+    {
+      "tick": 3,
+      "poses": [
+        {
+          "life": {
+            "instance": 1,
+            "actor": 14,
+            "generation": 0
+          },
+          "model": "universal-male-peasant",
+          "semantic": "walk",
+          "graph_state": 2,
+          "selection_epoch": 1,
+          "phase": 0.06923076510429382,
+          "source_epoch": 1,
+          "phase_owner": 1,
+          "parameters": [
+            {
+              "boolean": false
+            },
+            {
+              "boolean": false
+            },
+            {
+              "boolean": true
+            },
+            {
+              "boolean": false
+            },
+            {
+              "boolean": false
+            },
+            {
+              "boolean": false
+            },
+            {
+              "boolean": false
+            },
+            {
+              "boolean": false
+            },
+            {
+              "boolean": false
+            },
+            {
+              "boolean": false
+            },
+            {
+              "boolean": false
+            },
+            {
+              "boolean": false
+            },
+            {
+              "boolean": false
+            },
+            {
+              "boolean": false
+            },
+            {
+              "boolean": false
+            },
+            {
+              "boolean": false
+            },
+            {
+              "boolean": false
+            },
+            {
+              "scalar": 1.7999999523162842
+            }
+          ],
+          "tier": "full",
+          "evaluated": true,
+          "bones_sampled": 70,
+          "ground_available": true,
+          "adjustment": {
+            "inputs": {
+              "speed": 1.7999999523162842,
+              "turn_rate": 0.0,
+              "aim": {
+                "yaw": 0.20000000298023224,
+                "pitch": 0.10000000149011612
+              },
+              "reset": false
+            },
+            "probes": 1,
+            "contacts": [
+              {
+                "position": [
+                  -1.2913339138031006,
+                  0.011813359335064888,
+                  -0.23626717925071716
+                ],
+                "normal": [
+                  0.0,
+                  0.9987523555755615,
+                  0.049937617033720016
+                ]
+              },
+              null
+            ],
+            "planted": [
+              true,
+              false
+            ],
+            "foot_error": [
+              2.494554109944147e-7,
+              0.0
+            ],
+            "reach_clamps": 0,
+            "root_horizontal_removed": 0.0,
+            "root_yaw_removed": 1.3234888223126632e-23
+          }
+        },
+        {
+          "life": {
+            "instance": 1,
+            "actor": 15,
+            "generation": 0
+          },
+          "model": "universal-female-ranger",
+          "semantic": "walk",
+          "graph_state": 2,
+          "selection_epoch": 1,
+          "phase": 0.06923076510429382,
+          "source_epoch": 1,
+          "phase_owner": 1,
+          "parameters": [
+            {
+              "boolean": false
+            },
+            {
+              "boolean": false
+            },
+            {
+              "boolean": true
+            },
+            {
+              "boolean": false
+            },
+            {
+              "boolean": false
+            },
+            {
+              "boolean": false
+            },
+            {
+              "boolean": false
+            },
+            {
+              "boolean": false
+            },
+            {
+              "boolean": false
+            },
+            {
+              "boolean": false
+            },
+            {
+              "boolean": false
+            },
+            {
+              "boolean": false
+            },
+            {
+              "boolean": false
+            },
+            {
+              "boolean": false
+            },
+            {
+              "boolean": false
+            },
+            {
+              "boolean": false
+            },
+            {
+              "boolean": false
+            },
+            {
+              "scalar": 1.7999999523162842
+            }
+          ],
+          "tier": "full",
+          "evaluated": true,
+          "bones_sampled": 75,
+          "ground_available": true,
+          "adjustment": {
+            "inputs": {
+              "speed": 1.7999999523162842,
+              "turn_rate": 0.0,
+              "aim": {
+                "yaw": 0.20000000298023224,
+                "pitch": 0.10000000149011612
+              },
+              "reset": false
+            },
+            "probes": 1,
+            "contacts": [
+              {
+                "position": [
+                  1.0895265340805054,
+                  0.1599999964237213,
+                  -0.2380029857158661
+                ],
+                "normal": [
+                  0.0,
+                  1.0,
+                  0.0
+                ]
+              },
+              null
+            ],
+            "planted": [
+              true,
+              false
+            ],
+            "foot_error": [
+              2.4027400513659813e-7,
+              0.0
+            ],
+            "reach_clamps": 0,
+            "root_horizontal_removed": 0.0,
+            "root_yaw_removed": 1.3234888223126632e-23
+          }
+        }
+      ],
+      "timings": {
+        "frame": 4,
+        "gpu_samples": [
+          null,
+          null,
+          null
+        ],
+        "gpu_health": null,
+        "gpu_timestamps_available": false,
+        "gpu_query_poll_cpu_ms": null,
+        "prepare_ms": 0.30666299999999996,
+        "encode_ms": 0.295898,
+        "command_encode_ms": 0.266235,
+        "shadow_encode_ms": 0.001206,
+        "world_encode_ms": 0.047104999999999994,
+        "overlay_encode_ms": 0.001641,
+        "command_finish_ms": 0.209536,
+        "queue_submit_ms": 0.029427000000000002,
+        "gpu_wait_ms": 0.168797,
+        "readback_copy_ms": 0.133296,
+        "total_ms": 0.904687,
+        "instances": 4,
+        "actor_roots": 2,
+        "mounts": 2,
+        "optional_effects": 0,
+        "dropped_effects": 0,
+        "surface_batches": 15,
+        "shadow_views": 0,
+        "upload_bytes": 85056,
+        "grounded_vertices": 0,
+        "readback": true,
+        "shadow_draws": 0,
+        "world_draws": 13,
+        "cached_shadow_casters": 0,
+        "static_shadow_refreshes": 0,
+        "marker_events": 0,
+        "graph_instances": 2,
+        "pose_samples": 2,
+        "pose_reuses": 0,
+        "sampled_bones": 145,
+        "foot_probes": 2
+      }
+    },
+    {
+      "tick": 4,
+      "poses": [
+        {
+          "life": {
+            "instance": 1,
+            "actor": 14,
+            "generation": 0
+          },
+          "model": "universal-male-peasant",
+          "semantic": "walk",
+          "graph_state": 2,
+          "selection_epoch": 1,
+          "phase": 0.0923076868057251,
+          "source_epoch": 1,
+          "phase_owner": 1,
+          "parameters": [
+            {
+              "boolean": false
+            },
+            {
+              "boolean": false
+            },
+            {
+              "boolean": true
+            },
+            {
+              "boolean": false
+            },
+            {
+              "boolean": false
+            },
+            {
+              "boolean": false
+            },
+            {
+              "boolean": false
+            },
+            {
+              "boolean": false
+            },
+            {
+              "boolean": false
+            },
+            {
+              "boolean": false
+            },
+            {
+              "boolean": false
+            },
+            {
+              "boolean": false
+            },
+            {
+              "boolean": false
+            },
+            {
+              "boolean": false
+            },
+            {
+              "boolean": false
+            },
+            {
+              "boolean": false
+            },
+            {
+              "boolean": false
+            },
+            {
+              "scalar": 1.7999998331069946
+            }
+          ],
+          "tier": "full",
+          "evaluated": true,
+          "bones_sampled": 70,
+          "ground_available": true,
+          "adjustment": {
+            "inputs": {
+              "speed": 1.7999998331069946,
+              "turn_rate": 0.0,
+              "aim": {
+                "yaw": 0.20000000298023224,
+                "pitch": 0.10000000149011612
+              },
+              "reset": false
+            },
+            "probes": 1,
+            "contacts": [
+              {
+                "position": [
+                  -1.2913339138031006,
+                  0.011813359335064888,
+                  -0.23626717925071716
+                ],
+                "normal": [
+                  0.0,
+                  0.9987523555755615,
+                  0.049937617033720016
+                ]
+              },
+              null
+            ],
+            "planted": [
+              true,
+              false
+            ],
+            "foot_error": [
+              1.2731557319511921e-7,
+              0.0
+            ],
+            "reach_clamps": 0,
+            "root_horizontal_removed": 0.0,
+            "root_yaw_removed": 1.3234888223126632e-23
+          }
+        },
+        {
+          "life": {
+            "instance": 1,
+            "actor": 15,
+            "generation": 0
+          },
+          "model": "universal-female-ranger",
+          "semantic": "walk",
+          "graph_state": 2,
+          "selection_epoch": 1,
+          "phase": 0.0923076868057251,
+          "source_epoch": 1,
+          "phase_owner": 1,
+          "parameters": [
+            {
+              "boolean": false
+            },
+            {
+              "boolean": false
+            },
+            {
+              "boolean": true
+            },
+            {
+              "boolean": false
+            },
+            {
+              "boolean": false
+            },
+            {
+              "boolean": false
+            },
+            {
+              "boolean": false
+            },
+            {
+              "boolean": false
+            },
+            {
+              "boolean": false
+            },
+            {
+              "boolean": false
+            },
+            {
+              "boolean": false
+            },
+            {
+              "boolean": false
+            },
+            {
+              "boolean": false
+            },
+            {
+              "boolean": false
+            },
+            {
+              "boolean": false
+            },
+            {
+              "boolean": false
+            },
+            {
+              "boolean": false
+            },
+            {
+              "scalar": 1.7999998331069946
+            }
+          ],
+          "tier": "full",
+          "evaluated": true,
+          "bones_sampled": 75,
+          "ground_available": true,
+          "adjustment": {
+            "inputs": {
+              "speed": 1.7999998331069946,
+              "turn_rate": 0.0,
+              "aim": {
+                "yaw": 0.20000000298023224,
+                "pitch": 0.10000000149011612
+              },
+              "reset": false
+            },
+            "probes": 1,
+            "contacts": [
+              {
+                "position": [
+                  1.0895265340805054,
+                  0.1599999964237213,
+                  -0.2380029857158661
+                ],
+                "normal": [
+                  0.0,
+                  1.0,
+                  0.0
+                ]
+              },
+              null
+            ],
+            "planted": [
+              true,
+              false
+            ],
+            "foot_error": [
+              6.143906006172983e-8,
+              0.0
+            ],
+            "reach_clamps": 0,
+            "root_horizontal_removed": 0.0,
+            "root_yaw_removed": 1.3234888223126632e-23
+          }
+        }
+      ],
+      "timings": {
+        "frame": 5,
+        "gpu_samples": [
+          null,
+          null,
+          null
+        ],
+        "gpu_health": null,
+        "gpu_timestamps_available": false,
+        "gpu_query_poll_cpu_ms": null,
+        "prepare_ms": 0.308653,
+        "encode_ms": 0.28706899999999996,
+        "command_encode_ms": 0.25862999999999997,
+        "shadow_encode_ms": 0.001094,
+        "world_encode_ms": 0.045781,
+        "overlay_encode_ms": 0.001665,
+        "command_finish_ms": 0.203726,
+        "queue_submit_ms": 0.02819,
+        "gpu_wait_ms": 0.173616,
+        "readback_copy_ms": 0.125325,
+        "total_ms": 0.894697,
+        "instances": 4,
+        "actor_roots": 2,
+        "mounts": 2,
+        "optional_effects": 0,
+        "dropped_effects": 0,
+        "surface_batches": 15,
+        "shadow_views": 0,
+        "upload_bytes": 85056,
+        "grounded_vertices": 0,
+        "readback": true,
+        "shadow_draws": 0,
+        "world_draws": 13,
+        "cached_shadow_casters": 0,
+        "static_shadow_refreshes": 0,
+        "marker_events": 0,
+        "graph_instances": 2,
+        "pose_samples": 2,
+        "pose_reuses": 0,
+        "sampled_bones": 145,
+        "foot_probes": 2
+      }
+    },
+    {
+      "tick": 5,
+      "poses": [
+        {
+          "life": {
+            "instance": 1,
+            "actor": 14,
+            "generation": 0
+          },
+          "model": "universal-male-peasant",
+          "semantic": "walk",
+          "graph_state": 2,
+          "selection_epoch": 1,
+          "phase": 0.11538460850715637,
+          "source_epoch": 1,
+          "phase_owner": 1,
+          "parameters": [
+            {
+              "boolean": false
+            },
+            {
+              "boolean": false
+            },
+            {
+              "boolean": true
+            },
+            {
+              "boolean": false
+            },
+            {
+              "boolean": false
+            },
+            {
+              "boolean": false
+            },
+            {
+              "boolean": false
+            },
+            {
+              "boolean": false
+            },
+            {
+              "boolean": false
+            },
+            {
+              "boolean": false
+            },
+            {
+              "boolean": false
+            },
+            {
+              "boolean": false
+            },
+            {
+              "boolean": false
+            },
+            {
+              "boolean": false
+            },
+            {
+              "boolean": false
+            },
+            {
+              "boolean": false
+            },
+            {
+              "boolean": false
+            },
+            {
+              "scalar": 1.799999713897705
+            }
+          ],
+          "tier": "full",
+          "evaluated": true,
+          "bones_sampled": 70,
+          "ground_available": true,
+          "adjustment": {
+            "inputs": {
+              "speed": 1.799999713897705,
+              "turn_rate": 0.0,
+              "aim": {
+                "yaw": 0.20000000298023224,
+                "pitch": 0.10000000149011612
+              },
+              "reset": false
+            },
+            "probes": 1,
+            "contacts": [
+              {
+                "position": [
+                  -1.2913339138031006,
+                  0.011813359335064888,
+                  -0.23626717925071716
+                ],
+                "normal": [
+                  0.0,
+                  0.9987523555755615,
+                  0.049937617033720016
+                ]
+              },
+              null
+            ],
+            "planted": [
+              true,
+              false
+            ],
+            "foot_error": [
+              1.3075715799004684e-7,
+              0.0
+            ],
+            "reach_clamps": 0,
+            "root_horizontal_removed": 0.0,
+            "root_yaw_removed": 1.3234888223126632e-23
+          }
+        },
+        {
+          "life": {
+            "instance": 1,
+            "actor": 15,
+            "generation": 0
+          },
+          "model": "universal-female-ranger",
+          "semantic": "walk",
+          "graph_state": 2,
+          "selection_epoch": 1,
+          "phase": 0.11538460850715637,
+          "source_epoch": 1,
+          "phase_owner": 1,
+          "parameters": [
+            {
+              "boolean": false
+            },
+            {
+              "boolean": false
+            },
+            {
+              "boolean": true
+            },
+            {
+              "boolean": false
+            },
+            {
+              "boolean": false
+            },
+            {
+              "boolean": false
+            },
+            {
+              "boolean": false
+            },
+            {
+              "boolean": false
+            },
+            {
+              "boolean": false
+            },
+            {
+              "boolean": false
+            },
+            {
+              "boolean": false
+            },
+            {
+              "boolean": false
+            },
+            {
+              "boolean": false
+            },
+            {
+              "boolean": false
+            },
+            {
+              "boolean": false
+            },
+            {
+              "boolean": false
+            },
+            {
+              "boolean": false
+            },
+            {
+              "scalar": 1.799999713897705
+            }
+          ],
+          "tier": "full",
+          "evaluated": true,
+          "bones_sampled": 75,
+          "ground_available": true,
+          "adjustment": {
+            "inputs": {
+              "speed": 1.799999713897705,
+              "turn_rate": 0.0,
+              "aim": {
+                "yaw": 0.20000000298023224,
+                "pitch": 0.10000000149011612
+              },
+              "reset": false
+            },
+            "probes": 1,
+            "contacts": [
+              {
+                "position": [
+                  1.0895265340805054,
+                  0.1599999964237213,
+                  -0.2380029857158661
+                ],
+                "normal": [
+                  0.0,
+                  1.0,
+                  0.0
+                ]
+              },
+              null
+            ],
+            "planted": [
+              true,
+              false
+            ],
+            "foot_error": [
+              1.2644053981603065e-7,
+              0.0
+            ],
+            "reach_clamps": 0,
+            "root_horizontal_removed": 0.0,
+            "root_yaw_removed": 1.3234888223126632e-23
+          }
+        }
+      ],
+      "timings": {
+        "frame": 6,
+        "gpu_samples": [
+          null,
+          null,
+          null
+        ],
+        "gpu_health": null,
+        "gpu_timestamps_available": false,
+        "gpu_query_poll_cpu_ms": null,
+        "prepare_ms": 0.312022,
+        "encode_ms": 0.286387,
+        "command_encode_ms": 0.258043,
+        "shadow_encode_ms": 0.0011480000000000001,
+        "world_encode_ms": 0.045853000000000005,
+        "overlay_encode_ms": 0.001557,
+        "command_finish_ms": 0.203015,
+        "queue_submit_ms": 0.028095000000000002,
+        "gpu_wait_ms": 0.169015,
+        "readback_copy_ms": 0.131908,
+        "total_ms": 0.899369,
+        "instances": 4,
+        "actor_roots": 2,
+        "mounts": 2,
+        "optional_effects": 0,
+        "dropped_effects": 0,
+        "surface_batches": 15,
+        "shadow_views": 0,
+        "upload_bytes": 85056,
+        "grounded_vertices": 0,
+        "readback": true,
+        "shadow_draws": 0,
+        "world_draws": 13,
+        "cached_shadow_casters": 0,
+        "static_shadow_refreshes": 0,
+        "marker_events": 0,
+        "graph_instances": 2,
+        "pose_samples": 2,
+        "pose_reuses": 0,
+        "sampled_bones": 145,
+        "foot_probes": 2
+      }
+    },
+    {
+      "tick": 6,
+      "poses": [
+        {
+          "life": {
+            "instance": 1,
+            "actor": 14,
+            "generation": 0
+          },
+          "model": "universal-male-peasant",
+          "semantic": "walk",
+          "graph_state": 2,
+          "selection_epoch": 1,
+          "phase": 0.13846153020858765,
+          "source_epoch": 1,
+          "phase_owner": 1,
+          "parameters": [
+            {
+              "boolean": false
+            },
+            {
+              "boolean": false
+            },
+            {
+              "boolean": true
+            },
+            {
+              "boolean": false
+            },
+            {
+              "boolean": false
+            },
+            {
+              "boolean": false
+            },
+            {
+              "boolean": false
+            },
+            {
+              "boolean": false
+            },
+            {
+              "boolean": false
+            },
+            {
+              "boolean": false
+            },
+            {
+              "boolean": false
+            },
+            {
+              "boolean": false
+            },
+            {
+              "boolean": false
+            },
+            {
+              "boolean": false
+            },
+            {
+              "boolean": false
+            },
+            {
+              "boolean": false
+            },
+            {
+              "boolean": false
+            },
+            {
+              "scalar": 1.8000001907348633
+            }
+          ],
+          "tier": "full",
+          "evaluated": true,
+          "bones_sampled": 70,
+          "ground_available": true,
+          "adjustment": {
+            "inputs": {
+              "speed": 1.8000001907348633,
+              "turn_rate": 0.0,
+              "aim": {
+                "yaw": 0.20000000298023224,
+                "pitch": 0.10000000149011612
+              },
+              "reset": false
+            },
+            "probes": 1,
+            "contacts": [
+              {
+                "position": [
+                  -1.2913339138031006,
+                  0.011813359335064888,
+                  -0.23626717925071716
+                ],
+                "normal": [
+                  0.0,
+                  0.9987523555755615,
+                  0.049937617033720016
+                ]
+              },
+              null
+            ],
+            "planted": [
+              true,
+              false
+            ],
+            "foot_error": [
+              1.9082797564351495e-7,
+              0.0
+            ],
+            "reach_clamps": 0,
+            "root_horizontal_removed": 0.0,
+            "root_yaw_removed": 1.3234888223126632e-23
+          }
+        },
+        {
+          "life": {
+            "instance": 1,
+            "actor": 15,
+            "generation": 0
+          },
+          "model": "universal-female-ranger",
+          "semantic": "walk",
+          "graph_state": 2,
+          "selection_epoch": 1,
+          "phase": 0.13846153020858765,
+          "source_epoch": 1,
+          "phase_owner": 1,
+          "parameters": [
+            {
+              "boolean": false
+            },
+            {
+              "boolean": false
+            },
+            {
+              "boolean": true
+            },
+            {
+              "boolean": false
+            },
+            {
+              "boolean": false
+            },
+            {
+              "boolean": false
+            },
+            {
+              "boolean": false
+            },
+            {
+              "boolean": false
+            },
+            {
+              "boolean": false
+            },
+            {
+              "boolean": false
+            },
+            {
+              "boolean": false
+            },
+            {
+              "boolean": false
+            },
+            {
+              "boolean": false
+            },
+            {
+              "boolean": false
+            },
+            {
+              "boolean": false
+            },
+            {
+              "boolean": false
+            },
+            {
+              "boolean": false
+            },
+            {
+              "scalar": 1.8000001907348633
+            }
+          ],
+          "tier": "full",
+          "evaluated": true,
+          "bones_sampled": 75,
+          "ground_available": true,
+          "adjustment": {
+            "inputs": {
+              "speed": 1.8000001907348633,
+              "turn_rate": 0.0,
+              "aim": {
+                "yaw": 0.20000000298023224,
+                "pitch": 0.10000000149011612
+              },
+              "reset": false
+            },
+            "probes": 1,
+            "contacts": [
+              {
+                "position": [
+                  1.0895265340805054,
+                  0.1599999964237213,
+                  -0.2380029857158661
+                ],
+                "normal": [
+                  0.0,
+                  1.0,
+                  0.0
+                ]
+              },
+              null
+            ],
+            "planted": [
+              true,
+              false
+            ],
+            "foot_error": [
+              1.611807078916172e-7,
+              0.0
+            ],
+            "reach_clamps": 0,
+            "root_horizontal_removed": 0.0,
+            "root_yaw_removed": 1.3234888223126632e-23
+          }
+        }
+      ],
+      "timings": {
+        "frame": 7,
+        "gpu_samples": [
+          null,
+          null,
+          null
+        ],
+        "gpu_health": null,
+        "gpu_timestamps_available": false,
+        "gpu_query_poll_cpu_ms": null,
+        "prepare_ms": 0.369171,
+        "encode_ms": 0.285821,
+        "command_encode_ms": 0.258096,
+        "shadow_encode_ms": 0.001095,
+        "world_encode_ms": 0.046251,
+        "overlay_encode_ms": 0.001582,
+        "command_finish_ms": 0.202599,
+        "queue_submit_ms": 0.027481,
+        "gpu_wait_ms": 0.23647100000000001,
+        "readback_copy_ms": 0.136639,
+        "total_ms": 1.028151,
+        "instances": 4,
+        "actor_roots": 2,
+        "mounts": 2,
+        "optional_effects": 0,
+        "dropped_effects": 0,
+        "surface_batches": 15,
+        "shadow_views": 0,
+        "upload_bytes": 85056,
+        "grounded_vertices": 0,
+        "readback": true,
+        "shadow_draws": 0,
+        "world_draws": 13,
+        "cached_shadow_casters": 0,
+        "static_shadow_refreshes": 0,
+        "marker_events": 0,
+        "graph_instances": 2,
+        "pose_samples": 2,
+        "pose_reuses": 0,
+        "sampled_bones": 145,
+        "foot_probes": 2
+      }
+    },
+    {
+      "tick": 7,
+      "poses": [
+        {
+          "life": {
+            "instance": 1,
+            "actor": 14,
+            "generation": 0
+          },
+          "model": "universal-male-peasant",
+          "semantic": "walk",
+          "graph_state": 2,
+          "selection_epoch": 1,
+          "phase": 0.16153845191001892,
+          "source_epoch": 1,
+          "phase_owner": 1,
+          "parameters": [
+            {
+              "boolean": false
+            },
+            {
+              "boolean": false
+            },
+            {
+              "boolean": true
+            },
+            {
+              "boolean": false
+            },
+            {
+              "boolean": false
+            },
+            {
+              "boolean": false
+            },
+            {
+              "boolean": false
+            },
+            {
+              "boolean": false
+            },
+            {
+              "boolean": false
+            },
+            {
+              "boolean": false
+            },
+            {
+              "boolean": false
+            },
+            {
+              "boolean": false
+            },
+            {
+              "boolean": false
+            },
+            {
+              "boolean": false
+            },
+            {
+              "boolean": false
+            },
+            {
+              "boolean": false
+            },
+            {
+              "boolean": false
+            },
+            {
+              "scalar": 1.8000001907348633
+            }
+          ],
+          "tier": "full",
+          "evaluated": true,
+          "bones_sampled": 70,
+          "ground_available": true,
+          "adjustment": {
+            "inputs": {
+              "speed": 1.8000001907348633,
+              "turn_rate": 0.0,
+              "aim": {
+                "yaw": 0.20000000298023224,
+                "pitch": 0.10000000149011612
+              },
+              "reset": false
+            },
+            "probes": 1,
+            "contacts": [
+              {
+                "position": [
+                  -1.2913339138031006,
+                  0.011813359335064888,
+                  -0.23626717925071716
+                ],
+                "normal": [
+                  0.0,
+                  0.9987523555755615,
+                  0.049937617033720016
+                ]
+              },
+              null
+            ],
+            "planted": [
+              true,
+              false
+            ],
+            "foot_error": [
+              1.2753339717619383e-7,
+              0.0
+            ],
+            "reach_clamps": 0,
+            "root_horizontal_removed": 0.0,
+            "root_yaw_removed": 1.3234888223126632e-23
+          }
+        },
+        {
+          "life": {
+            "instance": 1,
+            "actor": 15,
+            "generation": 0
+          },
+          "model": "universal-female-ranger",
+          "semantic": "walk",
+          "graph_state": 2,
+          "selection_epoch": 1,
+          "phase": 0.16153845191001892,
+          "source_epoch": 1,
+          "phase_owner": 1,
+          "parameters": [
+            {
+              "boolean": false
+            },
+            {
+              "boolean": false
+            },
+            {
+              "boolean": true
+            },
+            {
+              "boolean": false
+            },
+            {
+              "boolean": false
+            },
+            {
+              "boolean": false
+            },
+            {
+              "boolean": false
+            },
+            {
+              "boolean": false
+            },
+            {
+              "boolean": false
+            },
+            {
+              "boolean": false
+            },
+            {
+              "boolean": false
+            },
+            {
+              "boolean": false
+            },
+            {
+              "boolean": false
+            },
+            {
+              "boolean": false
+            },
+            {
+              "boolean": false
+            },
+            {
+              "boolean": false
+            },
+            {
+              "boolean": false
+            },
+            {
+              "scalar": 1.8000001907348633
+            }
+          ],
+          "tier": "full",
+          "evaluated": true,
+          "bones_sampled": 75,
+          "ground_available": true,
+          "adjustment": {
+            "inputs": {
+              "speed": 1.8000001907348633,
+              "turn_rate": 0.0,
+              "aim": {
+                "yaw": 0.20000000298023224,
+                "pitch": 0.10000000149011612
+              },
+              "reset": false
+            },
+            "probes": 1,
+            "contacts": [
+              {
+                "position": [
+                  1.0895265340805054,
+                  0.1599999964237213,
+                  -0.2380029857158661
+                ],
+                "normal": [
+                  0.0,
+                  1.0,
+                  0.0
+                ]
+              },
+              null
+            ],
+            "planted": [
+              true,
+              false
+            ],
+            "foot_error": [
+              1.341104507446289e-7,
+              0.0
+            ],
+            "reach_clamps": 0,
+            "root_horizontal_removed": 0.0,
+            "root_yaw_removed": 1.3234888223126632e-23
+          }
+        }
+      ],
+      "timings": {
+        "frame": 8,
+        "gpu_samples": [
+          null,
+          null,
+          null
+        ],
+        "gpu_health": null,
+        "gpu_timestamps_available": false,
+        "gpu_query_poll_cpu_ms": null,
+        "prepare_ms": 0.311397,
+        "encode_ms": 0.287809,
+        "command_encode_ms": 0.260218,
+        "shadow_encode_ms": 0.0011409999999999999,
+        "world_encode_ms": 0.04585,
+        "overlay_encode_ms": 0.001528,
+        "command_finish_ms": 0.204987,
+        "queue_submit_ms": 0.027346,
+        "gpu_wait_ms": 0.171694,
+        "readback_copy_ms": 0.14033500000000002,
+        "total_ms": 0.911267,
+        "instances": 4,
+        "actor_roots": 2,
+        "mounts": 2,
+        "optional_effects": 0,
+        "dropped_effects": 0,
+        "surface_batches": 15,
+        "shadow_views": 0,
+        "upload_bytes": 85056,
+        "grounded_vertices": 0,
+        "readback": true,
+        "shadow_draws": 0,
+        "world_draws": 13,
+        "cached_shadow_casters": 0,
+        "static_shadow_refreshes": 0,
+        "marker_events": 0,
+        "graph_instances": 2,
+        "pose_samples": 2,
+        "pose_reuses": 0,
+        "sampled_bones": 145,
+        "foot_probes": 2
+      }
+    },
+    {
+      "tick": 8,
+      "poses": [
+        {
+          "life": {
+            "instance": 1,
+            "actor": 14,
+            "generation": 0
+          },
+          "model": "universal-male-peasant",
+          "semantic": "walk",
+          "graph_state": 2,
+          "selection_epoch": 1,
+          "phase": 0.1846153736114502,
+          "source_epoch": 1,
+          "phase_owner": 1,
+          "parameters": [
+            {
+              "boolean": false
+            },
+            {
+              "boolean": false
+            },
+            {
+              "boolean": true
+            },
+            {
+              "boolean": false
+            },
+            {
+              "boolean": false
+            },
+            {
+              "boolean": false
+            },
+            {
+              "boolean": false
+            },
+            {
+              "boolean": false
+            },
+            {
+              "boolean": false
+            },
+            {
+              "boolean": false
+            },
+            {
+              "boolean": false
+            },
+            {
+              "boolean": false
+            },
+            {
+              "boolean": false
+            },
+            {
+              "boolean": false
+            },
+            {
+              "boolean": false
+            },
+            {
+              "boolean": false
+            },
+            {
+              "boolean": false
+            },
+            {
+              "scalar": 1.7999993562698364
+            }
+          ],
+          "tier": "full",
+          "evaluated": true,
+          "bones_sampled": 70,
+          "ground_available": true,
+          "adjustment": {
+            "inputs": {
+              "speed": 1.7999993562698364,
+              "turn_rate": 0.0,
+              "aim": {
+                "yaw": 0.20000000298023224,
+                "pitch": 0.10000000149011612
+              },
+              "reset": false
+            },
+            "probes": 1,
+            "contacts": [
+              {
+                "position": [
+                  -1.2913339138031006,
+                  0.011813359335064888,
+                  -0.23626717925071716
+                ],
+                "normal": [
+                  0.0,
+                  0.9987523555755615,
+                  0.049937617033720016
+                ]
+              },
+              null
+            ],
+            "planted": [
+              true,
+              false
+            ],
+            "foot_error": [
+              4.71216097253091e-8,
+              0.0
+            ],
+            "reach_clamps": 0,
+            "root_horizontal_removed": 0.0,
+            "root_yaw_removed": 1.3234888223126632e-23
+          }
+        },
+        {
+          "life": {
+            "instance": 1,
+            "actor": 15,
+            "generation": 0
+          },
+          "model": "universal-female-ranger",
+          "semantic": "walk",
+          "graph_state": 2,
+          "selection_epoch": 1,
+          "phase": 0.1846153736114502,
+          "source_epoch": 1,
+          "phase_owner": 1,
+          "parameters": [
+            {
+              "boolean": false
+            },
+            {
+              "boolean": false
+            },
+            {
+              "boolean": true
+            },
+            {
+              "boolean": false
+            },
+            {
+              "boolean": false
+            },
+            {
+              "boolean": false
+            },
+            {
+              "boolean": false
+            },
+            {
+              "boolean": false
+            },
+            {
+              "boolean": false
+            },
+            {
+              "boolean": false
+            },
+            {
+              "boolean": false
+            },
+            {
+              "boolean": false
+            },
+            {
+              "boolean": false
+            },
+            {
+              "boolean": false
+            },
+            {
+              "boolean": false
+            },
+            {
+              "boolean": false
+            },
+            {
+              "boolean": false
+            },
+            {
+              "scalar": 1.7999993562698364
+            }
+          ],
+          "tier": "full",
+          "evaluated": true,
+          "bones_sampled": 75,
+          "ground_available": true,
+          "adjustment": {
+            "inputs": {
+              "speed": 1.7999993562698364,
+              "turn_rate": 0.0,
+              "aim": {
+                "yaw": 0.20000000298023224,
+                "pitch": 0.10000000149011612
+              },
+              "reset": false
+            },
+            "probes": 1,
+            "contacts": [
+              {
+                "position": [
+                  1.0895265340805054,
+                  0.1599999964237213,
+                  -0.2380029857158661
+                ],
+                "normal": [
+                  0.0,
+                  1.0,
+                  0.0
+                ]
+              },
+              null
+            ],
+            "planted": [
+              true,
+              false
+            ],
+            "foot_error": [
+              2.4575624024691933e-7,
+              0.0
+            ],
+            "reach_clamps": 0,
+            "root_horizontal_removed": 0.0,
+            "root_yaw_removed": 1.3234888223126632e-23
+          }
+        }
+      ],
+      "timings": {
+        "frame": 9,
+        "gpu_samples": [
+          null,
+          null,
+          null
+        ],
+        "gpu_health": null,
+        "gpu_timestamps_available": false,
+        "gpu_query_poll_cpu_ms": null,
+        "prepare_ms": 0.304962,
+        "encode_ms": 0.281837,
+        "command_encode_ms": 0.25417799999999996,
+        "shadow_encode_ms": 0.001095,
+        "world_encode_ms": 0.045403,
+        "overlay_encode_ms": 0.001466,
+        "command_finish_ms": 0.19994699999999999,
+        "queue_submit_ms": 0.027410999999999998,
+        "gpu_wait_ms": 0.17497100000000002,
+        "readback_copy_ms": 0.132264,
+        "total_ms": 0.8940670000000001,
+        "instances": 4,
+        "actor_roots": 2,
+        "mounts": 2,
+        "optional_effects": 0,
+        "dropped_effects": 0,
+        "surface_batches": 15,
+        "shadow_views": 0,
+        "upload_bytes": 85056,
+        "grounded_vertices": 0,
+        "readback": true,
+        "shadow_draws": 0,
+        "world_draws": 13,
+        "cached_shadow_casters": 0,
+        "static_shadow_refreshes": 0,
+        "marker_events": 0,
+        "graph_instances": 2,
+        "pose_samples": 2,
+        "pose_reuses": 0,
+        "sampled_bones": 145,
+        "foot_probes": 2
+      }
+    },
+    {
+      "tick": 9,
+      "poses": [
+        {
+          "life": {
+            "instance": 1,
+            "actor": 14,
+            "generation": 0
+          },
+          "model": "universal-male-peasant",
+          "semantic": "walk",
+          "graph_state": 2,
+          "selection_epoch": 1,
+          "phase": 0.20769229531288147,
+          "source_epoch": 1,
+          "phase_owner": 1,
+          "parameters": [
+            {
+              "boolean": false
+            },
+            {
+              "boolean": false
+            },
+            {
+              "boolean": true
+            },
+            {
+              "boolean": false
+            },
+            {
+              "boolean": false
+            },
+            {
+              "boolean": false
+            },
+            {
+              "boolean": false
+            },
+            {
+              "boolean": false
+            },
+            {
+              "boolean": false
+            },
+            {
+              "boolean": false
+            },
+            {
+              "boolean": false
+            },
+            {
+              "boolean": false
+            },
+            {
+              "boolean": false
+            },
+            {
+              "boolean": false
+            },
+            {
+              "boolean": false
+            },
+            {
+              "boolean": false
+            },
+            {
+              "boolean": false
+            },
+            {
+              "scalar": 1.7999992370605469
+            }
+          ],
+          "tier": "full",
+          "evaluated": true,
+          "bones_sampled": 70,
+          "ground_available": true,
+          "adjustment": {
+            "inputs": {
+              "speed": 1.7999992370605469,
+              "turn_rate": 0.0,
+              "aim": {
+                "yaw": 0.20000000298023224,
+                "pitch": 0.10000000149011612
+              },
+              "reset": false
+            },
+            "probes": 1,
+            "contacts": [
+              {
+                "position": [
+                  -1.2913339138031006,
+                  0.011813359335064888,
+                  -0.23626717925071716
+                ],
+                "normal": [
+                  0.0,
+                  0.9987523555755615,
+                  0.049937617033720016
+                ]
+              },
+              null
+            ],
+            "planted": [
+              true,
+              false
+            ],
+            "foot_error": [
+              1.2377833513710357e-7,
+              0.0
+            ],
+            "reach_clamps": 0,
+            "root_horizontal_removed": 0.0,
+            "root_yaw_removed": 1.3234888223126632e-23
+          }
+        },
+        {
+          "life": {
+            "instance": 1,
+            "actor": 15,
+            "generation": 0
+          },
+          "model": "universal-female-ranger",
+          "semantic": "walk",
+          "graph_state": 2,
+          "selection_epoch": 1,
+          "phase": 0.20769229531288147,
+          "source_epoch": 1,
+          "phase_owner": 1,
+          "parameters": [
+            {
+              "boolean": false
+            },
+            {
+              "boolean": false
+            },
+            {
+              "boolean": true
+            },
+            {
+              "boolean": false
+            },
+            {
+              "boolean": false
+            },
+            {
+              "boolean": false
+            },
+            {
+              "boolean": false
+            },
+            {
+              "boolean": false
+            },
+            {
+              "boolean": false
+            },
+            {
+              "boolean": false
+            },
+            {
+              "boolean": false
+            },
+            {
+              "boolean": false
+            },
+            {
+              "boolean": false
+            },
+            {
+              "boolean": false
+            },
+            {
+              "boolean": false
+            },
+            {
+              "boolean": false
+            },
+            {
+              "boolean": false
+            },
+            {
+              "scalar": 1.7999992370605469
+            }
+          ],
+          "tier": "full",
+          "evaluated": true,
+          "bones_sampled": 75,
+          "ground_available": true,
+          "adjustment": {
+            "inputs": {
+              "speed": 1.7999992370605469,
+              "turn_rate": 0.0,
+              "aim": {
+                "yaw": 0.20000000298023224,
+                "pitch": 0.10000000149011612
+              },
+              "reset": false
+            },
+            "probes": 1,
+            "contacts": [
+              {
+                "position": [
+                  1.0895265340805054,
+                  0.1599999964237213,
+                  -0.2380029857158661
+                ],
+                "normal": [
+                  0.0,
+                  1.0,
+                  0.0
+                ]
+              },
+              null
+            ],
+            "planted": [
+              true,
+              false
+            ],
+            "foot_error": [
+              7.598131190889035e-8,
+              0.0
+            ],
+            "reach_clamps": 0,
+            "root_horizontal_removed": 0.0,
+            "root_yaw_removed": 1.3234888223126632e-23
+          }
+        }
+      ],
+      "timings": {
+        "frame": 10,
+        "gpu_samples": [
+          null,
+          null,
+          null
+        ],
+        "gpu_health": null,
+        "gpu_timestamps_available": false,
+        "gpu_query_poll_cpu_ms": null,
+        "prepare_ms": 0.302144,
+        "encode_ms": 0.283845,
+        "command_encode_ms": 0.25421699999999997,
+        "shadow_encode_ms": 0.0011480000000000001,
+        "world_encode_ms": 0.045605,
+        "overlay_encode_ms": 0.001502,
+        "command_finish_ms": 0.199833,
+        "queue_submit_ms": 0.029391999999999998,
+        "gpu_wait_ms": 0.172408,
+        "readback_copy_ms": 0.13129600000000002,
+        "total_ms": 0.889729,
+        "instances": 4,
+        "actor_roots": 2,
+        "mounts": 2,
+        "optional_effects": 0,
+        "dropped_effects": 0,
+        "surface_batches": 15,
+        "shadow_views": 0,
+        "upload_bytes": 85056,
+        "grounded_vertices": 0,
+        "readback": true,
+        "shadow_draws": 0,
+        "world_draws": 13,
+        "cached_shadow_casters": 0,
+        "static_shadow_refreshes": 0,
+        "marker_events": 0,
+        "graph_instances": 2,
+        "pose_samples": 2,
+        "pose_reuses": 0,
+        "sampled_bones": 145,
+        "foot_probes": 2
+      }
+    },
+    {
+      "tick": 10,
+      "poses": [
+        {
+          "life": {
+            "instance": 1,
+            "actor": 14,
+            "generation": 0
+          },
+          "model": "universal-male-peasant",
+          "semantic": "walk",
+          "graph_state": 2,
+          "selection_epoch": 1,
+          "phase": 0.23076921701431274,
+          "source_epoch": 1,
+          "phase_owner": 1,
+          "parameters": [
+            {
+              "boolean": false
+            },
+            {
+              "boolean": false
+            },
+            {
+              "boolean": true
+            },
+            {
+              "boolean": false
+            },
+            {
+              "boolean": false
+            },
+            {
+              "boolean": false
+            },
+            {
+              "boolean": false
+            },
+            {
+              "boolean": false
+            },
+            {
+              "boolean": false
+            },
+            {
+              "boolean": false
+            },
+            {
+              "boolean": false
+            },
+            {
+              "boolean": false
+            },
+            {
+              "boolean": false
+            },
+            {
+              "boolean": false
+            },
+            {
+              "boolean": false
+            },
+            {
+              "boolean": false
+            },
+            {
+              "boolean": false
+            },
+            {
+              "scalar": 1.8000001907348633
+            }
+          ],
+          "tier": "full",
+          "evaluated": true,
+          "bones_sampled": 70,
+          "ground_available": true,
+          "adjustment": {
+            "inputs": {
+              "speed": 1.8000001907348633,
+              "turn_rate": 0.0,
+              "aim": {
+                "yaw": 0.20000000298023224,
+                "pitch": 0.10000000149011612
+              },
+              "reset": false
+            },
+            "probes": 1,
+            "contacts": [
+              {
+                "position": [
+                  -1.2913339138031006,
+                  0.011813359335064888,
+                  -0.23626717925071716
+                ],
+                "normal": [
+                  0.0,
+                  0.9987523555755615,
+                  0.049937617033720016
+                ]
+              },
+              null
+            ],
+            "planted": [
+              true,
+              false
+            ],
+            "foot_error": [
+              1.9599417555582477e-7,
+              0.0
+            ],
+            "reach_clamps": 0,
+            "root_horizontal_removed": 0.0,
+            "root_yaw_removed": 1.3234888223126632e-23
+          }
+        },
+        {
+          "life": {
+            "instance": 1,
+            "actor": 15,
+            "generation": 0
+          },
+          "model": "universal-female-ranger",
+          "semantic": "walk",
+          "graph_state": 2,
+          "selection_epoch": 1,
+          "phase": 0.23076921701431274,
+          "source_epoch": 1,
+          "phase_owner": 1,
+          "parameters": [
+            {
+              "boolean": false
+            },
+            {
+              "boolean": false
+            },
+            {
+              "boolean": true
+            },
+            {
+              "boolean": false
+            },
+            {
+              "boolean": false
+            },
+            {
+              "boolean": false
+            },
+            {
+              "boolean": false
+            },
+            {
+              "boolean": false
+            },
+            {
+              "boolean": false
+            },
+            {
+              "boolean": false
+            },
+            {
+              "boolean": false
+            },
+            {
+              "boolean": false
+            },
+            {
+              "boolean": false
+            },
+            {
+              "boolean": false
+            },
+            {
+              "boolean": false
+            },
+            {
+              "boolean": false
+            },
+            {
+              "boolean": false
+            },
+            {
+              "scalar": 1.8000001907348633
+            }
+          ],
+          "tier": "full",
+          "evaluated": true,
+          "bones_sampled": 75,
+          "ground_available": true,
+          "adjustment": {
+            "inputs": {
+              "speed": 1.8000001907348633,
+              "turn_rate": 0.0,
+              "aim": {
+                "yaw": 0.20000000298023224,
+                "pitch": 0.10000000149011612
+              },
+              "reset": false
+            },
+            "probes": 1,
+            "contacts": [
+              {
+                "position": [
+                  1.0895265340805054,
+                  0.1599999964237213,
+                  -0.2380029857158661
+                ],
+                "normal": [
+                  0.0,
+                  1.0,
+                  0.0
+                ]
+              },
+              null
+            ],
+            "planted": [
+              true,
+              false
+            ],
+            "foot_error": [
+              1.4057727071303816e-7,
+              0.0
+            ],
+            "reach_clamps": 0,
+            "root_horizontal_removed": 0.0,
+            "root_yaw_removed": 1.3234888223126632e-23
+          }
+        }
+      ],
+      "timings": {
+        "frame": 11,
+        "gpu_samples": [
+          null,
+          null,
+          null
+        ],
+        "gpu_health": null,
+        "gpu_timestamps_available": false,
+        "gpu_query_poll_cpu_ms": null,
+        "prepare_ms": 0.30673700000000004,
+        "encode_ms": 0.283775,
+        "command_encode_ms": 0.256223,
+        "shadow_encode_ms": 0.00117,
+        "world_encode_ms": 0.045989,
+        "overlay_encode_ms": 0.0015379999999999999,
+        "command_finish_ms": 0.20133,
+        "queue_submit_ms": 0.02732,
+        "gpu_wait_ms": 0.16976,
+        "readback_copy_ms": 0.128128,
+        "total_ms": 0.8884369999999999,
+        "instances": 4,
+        "actor_roots": 2,
+        "mounts": 2,
+        "optional_effects": 0,
+        "dropped_effects": 0,
+        "surface_batches": 15,
+        "shadow_views": 0,
+        "upload_bytes": 85056,
+        "grounded_vertices": 0,
+        "readback": true,
+        "shadow_draws": 0,
+        "world_draws": 13,
+        "cached_shadow_casters": 0,
+        "static_shadow_refreshes": 0,
+        "marker_events": 0,
+        "graph_instances": 2,
+        "pose_samples": 2,
+        "pose_reuses": 0,
+        "sampled_bones": 145,
+        "foot_probes": 2
+      }
+    },
+    {
+      "tick": 11,
+      "poses": [
+        {
+          "life": {
+            "instance": 1,
+            "actor": 14,
+            "generation": 0
+          },
+          "model": "universal-male-peasant",
+          "semantic": "walk",
+          "graph_state": 2,
+          "selection_epoch": 1,
+          "phase": 0.253846138715744,
+          "source_epoch": 1,
+          "phase_owner": 1,
+          "parameters": [
+            {
+              "boolean": false
+            },
+            {
+              "boolean": false
+            },
+            {
+              "boolean": true
+            },
+            {
+              "boolean": false
+            },
+            {
+              "boolean": false
+            },
+            {
+              "boolean": false
+            },
+            {
+              "boolean": false
+            },
+            {
+              "boolean": false
+            },
+            {
+              "boolean": false
+            },
+            {
+              "boolean": false
+            },
+            {
+              "boolean": false
+            },
+            {
+              "boolean": false
+            },
+            {
+              "boolean": false
+            },
+            {
+              "boolean": false
+            },
+            {
+              "boolean": false
+            },
+            {
+              "boolean": false
+            },
+            {
+              "boolean": false
+            },
+            {
+              "scalar": 1.8000001907348633
+            }
+          ],
+          "tier": "full",
+          "evaluated": true,
+          "bones_sampled": 70,
+          "ground_available": true,
+          "adjustment": {
+            "inputs": {
+              "speed": 1.8000001907348633,
+              "turn_rate": 0.0,
+              "aim": {
+                "yaw": 0.20000000298023224,
+                "pitch": 0.10000000149011612
+              },
+              "reset": false
+            },
+            "probes": 1,
+            "contacts": [
+              {
+                "position": [
+                  -1.2913339138031006,
+                  0.011813359335064888,
+                  -0.23626717925071716
+                ],
+                "normal": [
+                  0.0,
+                  0.9987523555755615,
+                  0.049937617033720016
+                ]
+              },
+              null
+            ],
+            "planted": [
+              false,
+              false
+            ],
+            "foot_error": [
+              0.005914236418902874,
+              0.0
+            ],
+            "reach_clamps": 1,
+            "root_horizontal_removed": 0.0,
+            "root_yaw_removed": 1.3234888223126632e-23
+          }
+        },
+        {
+          "life": {
+            "instance": 1,
+            "actor": 15,
+            "generation": 0
+          },
+          "model": "universal-female-ranger",
+          "semantic": "walk",
+          "graph_state": 2,
+          "selection_epoch": 1,
+          "phase": 0.253846138715744,
+          "source_epoch": 1,
+          "phase_owner": 1,
+          "parameters": [
+            {
+              "boolean": false
+            },
+            {
+              "boolean": false
+            },
+            {
+              "boolean": true
+            },
+            {
+              "boolean": false
+            },
+            {
+              "boolean": false
+            },
+            {
+              "boolean": false
+            },
+            {
+              "boolean": false
+            },
+            {
+              "boolean": false
+            },
+            {
+              "boolean": false
+            },
+            {
+              "boolean": false
+            },
+            {
+              "boolean": false
+            },
+            {
+              "boolean": false
+            },
+            {
+              "boolean": false
+            },
+            {
+              "boolean": false
+            },
+            {
+              "boolean": false
+            },
+            {
+              "boolean": false
+            },
+            {
+              "boolean": false
+            },
+            {
+              "scalar": 1.8000001907348633
+            }
+          ],
+          "tier": "full",
+          "evaluated": true,
+          "bones_sampled": 75,
+          "ground_available": true,
+          "adjustment": {
+            "inputs": {
+              "speed": 1.8000001907348633,
+              "turn_rate": 0.0,
+              "aim": {
+                "yaw": 0.20000000298023224,
+                "pitch": 0.10000000149011612
+              },
+              "reset": false
+            },
+            "probes": 1,
+            "contacts": [
+              {
+                "position": [
+                  1.0895265340805054,
+                  0.1599999964237213,
+                  -0.2380029857158661
+                ],
+                "normal": [
+                  0.0,
+                  1.0,
+                  0.0
+                ]
+              },
+              null
+            ],
+            "planted": [
+              true,
+              false
+            ],
+            "foot_error": [
+              2.4027400513659813e-7,
+              0.0
+            ],
+            "reach_clamps": 0,
+            "root_horizontal_removed": 0.0,
+            "root_yaw_removed": 1.3234888223126632e-23
+          }
+        }
+      ],
+      "timings": {
+        "frame": 12,
+        "gpu_samples": [
+          null,
+          null,
+          null
+        ],
+        "gpu_health": null,
+        "gpu_timestamps_available": false,
+        "gpu_query_poll_cpu_ms": null,
+        "prepare_ms": 0.320955,
+        "encode_ms": 0.281792,
+        "command_encode_ms": 0.254247,
+        "shadow_encode_ms": 0.001139,
+        "world_encode_ms": 0.045997,
+        "overlay_encode_ms": 0.001641,
+        "command_finish_ms": 0.199231,
+        "queue_submit_ms": 0.027302,
+        "gpu_wait_ms": 0.170598,
+        "readback_copy_ms": 0.129281,
+        "total_ms": 0.902663,
+        "instances": 4,
+        "actor_roots": 2,
+        "mounts": 2,
+        "optional_effects": 0,
+        "dropped_effects": 0,
+        "surface_batches": 15,
+        "shadow_views": 0,
+        "upload_bytes": 85056,
+        "grounded_vertices": 0,
+        "readback": true,
+        "shadow_draws": 0,
+        "world_draws": 13,
+        "cached_shadow_casters": 0,
+        "static_shadow_refreshes": 0,
+        "marker_events": 2,
+        "graph_instances": 2,
+        "pose_samples": 2,
+        "pose_reuses": 0,
+        "sampled_bones": 145,
+        "foot_probes": 2
+      }
+    },
+    {
+      "tick": 12,
+      "poses": [
+        {
+          "life": {
+            "instance": 1,
+            "actor": 14,
+            "generation": 0
+          },
+          "model": "universal-male-peasant",
+          "semantic": "walk",
+          "graph_state": 2,
+          "selection_epoch": 1,
+          "phase": 0.2769230604171753,
+          "source_epoch": 1,
+          "phase_owner": 1,
+          "parameters": [
+            {
+              "boolean": false
+            },
+            {
+              "boolean": false
+            },
+            {
+              "boolean": true
+            },
+            {
+              "boolean": false
+            },
+            {
+              "boolean": false
+            },
+            {
+              "boolean": false
+            },
+            {
+              "boolean": false
+            },
+            {
+              "boolean": false
+            },
+            {
+              "boolean": false
+            },
+            {
+              "boolean": false
+            },
+            {
+              "boolean": false
+            },
+            {
+              "boolean": false
+            },
+            {
+              "boolean": false
+            },
+            {
+              "boolean": false
+            },
+            {
+              "boolean": false
+            },
+            {
+              "boolean": false
+            },
+            {
+              "boolean": false
+            },
+            {
+              "scalar": 1.8000001907348633
+            }
+          ],
+          "tier": "full",
+          "evaluated": true,
+          "bones_sampled": 70,
+          "ground_available": true,
+          "adjustment": {
+            "inputs": {
+              "speed": 1.8000001907348633,
+              "turn_rate": 0.0,
+              "aim": {
+                "yaw": 0.20000000298023224,
+                "pitch": 0.10000000149011612
+              },
+              "reset": false
+            },
+            "probes": 1,
+            "contacts": [
+              {
+                "position": [
+                  -1.2890504598617554,
+                  0.010862837545573711,
+                  -0.21725675463676453
+                ],
+                "normal": [
+                  0.0,
+                  0.9987523555755615,
+                  0.049937617033720016
+                ]
+              },
+              null
+            ],
+            "planted": [
+              false,
+              false
+            ],
+            "foot_error": [
+              0.015747185796499252,
+              0.0
+            ],
+            "reach_clamps": 1,
+            "root_horizontal_removed": 0.0,
+            "root_yaw_removed": 1.3234888223126632e-23
+          }
+        },
+        {
+          "life": {
+            "instance": 1,
+            "actor": 15,
+            "generation": 0
+          },
+          "model": "universal-female-ranger",
+          "semantic": "walk",
+          "graph_state": 2,
+          "selection_epoch": 1,
+          "phase": 0.2769230604171753,
+          "source_epoch": 1,
+          "phase_owner": 1,
+          "parameters": [
+            {
+              "boolean": false
+            },
+            {
+              "boolean": false
+            },
+            {
+              "boolean": true
+            },
+            {
+              "boolean": false
+            },
+            {
+              "boolean": false
+            },
+            {
+              "boolean": false
+            },
+            {
+              "boolean": false
+            },
+            {
+              "boolean": false
+            },
+            {
+              "boolean": false
+            },
+            {
+              "boolean": false
+            },
+            {
+              "boolean": false
+            },
+            {
+              "boolean": false
+            },
+            {
+              "boolean": false
+            },
+            {
+              "boolean": false
+            },
+            {
+              "boolean": false
+            },
+            {
+              "boolean": false
+            },
+            {
+              "boolean": false
+            },
+            {
+              "scalar": 1.8000001907348633
+            }
+          ],
+          "tier": "full",
+          "evaluated": true,
+          "bones_sampled": 75,
+          "ground_available": true,
+          "adjustment": {
+            "inputs": {
+              "speed": 1.8000001907348633,
+              "turn_rate": 0.0,
+              "aim": {
+                "yaw": 0.20000000298023224,
+                "pitch": 0.10000000149011612
+              },
+              "reset": false
+            },
+            "probes": 1,
+            "contacts": [
+              {
+                "position": [
+                  1.0895265340805054,
+                  0.1599999964237213,
+                  -0.2380029857158661
+                ],
+                "normal": [
+                  0.0,
+                  1.0,
+                  0.0
+                ]
+              },
+              null
+            ],
+            "planted": [
+              true,
+              false
+            ],
+            "foot_error": [
+              1.3075715799004684e-7,
+              0.0
+            ],
+            "reach_clamps": 0,
+            "root_horizontal_removed": 0.0,
+            "root_yaw_removed": 1.3234888223126632e-23
+          }
+        }
+      ],
+      "timings": {
+        "frame": 13,
+        "gpu_samples": [
+          null,
+          null,
+          null
+        ],
+        "gpu_health": null,
+        "gpu_timestamps_available": false,
+        "gpu_query_poll_cpu_ms": null,
+        "prepare_ms": 0.31335199999999996,
+        "encode_ms": 0.280054,
+        "command_encode_ms": 0.25268799999999997,
+        "shadow_encode_ms": 0.001041,
+        "world_encode_ms": 0.045125,
+        "overlay_encode_ms": 0.0015910000000000002,
+        "command_finish_ms": 0.198824,
+        "queue_submit_ms": 0.027125,
+        "gpu_wait_ms": 0.169295,
+        "readback_copy_ms": 0.12783,
+        "total_ms": 0.8905770000000001,
+        "instances": 4,
+        "actor_roots": 2,
+        "mounts": 2,
+        "optional_effects": 0,
+        "dropped_effects": 0,
+        "surface_batches": 15,
+        "shadow_views": 0,
+        "upload_bytes": 85056,
+        "grounded_vertices": 0,
+        "readback": true,
+        "shadow_draws": 0,
+        "world_draws": 13,
+        "cached_shadow_casters": 0,
+        "static_shadow_refreshes": 0,
+        "marker_events": 0,
+        "graph_instances": 2,
+        "pose_samples": 2,
+        "pose_reuses": 0,
+        "sampled_bones": 145,
+        "foot_probes": 2
+      }
+    },
+    {
+      "tick": 13,
+      "poses": [
+        {
+          "life": {
+            "instance": 1,
+            "actor": 14,
+            "generation": 0
+          },
+          "model": "universal-male-peasant",
+          "semantic": "walk",
+          "graph_state": 2,
+          "selection_epoch": 1,
+          "phase": 0.29999998211860657,
+          "source_epoch": 1,
+          "phase_owner": 1,
+          "parameters": [
+            {
+              "boolean": false
+            },
+            {
+              "boolean": false
+            },
+            {
+              "boolean": true
+            },
+            {
+              "boolean": false
+            },
+            {
+              "boolean": false
+            },
+            {
+              "boolean": false
+            },
+            {
+              "boolean": false
+            },
+            {
+              "boolean": false
+            },
+            {
+              "boolean": false
+            },
+            {
+              "boolean": false
+            },
+            {
+              "boolean": false
+            },
+            {
+              "boolean": false
+            },
+            {
+              "boolean": false
+            },
+            {
+              "boolean": false
+            },
+            {
+              "boolean": false
+            },
+            {
+              "boolean": false
+            },
+            {
+              "boolean": false
+            },
+            {
+              "scalar": 1.8000001907348633
+            }
+          ],
+          "tier": "full",
+          "evaluated": true,
+          "bones_sampled": 70,
+          "ground_available": true,
+          "adjustment": {
+            "inputs": {
+              "speed": 1.8000001907348633,
+              "turn_rate": 0.0,
+              "aim": {
+                "yaw": 0.20000000298023224,
+                "pitch": 0.10000000149011612
+              },
+              "reset": false
+            },
+            "probes": 1,
+            "contacts": [
+              {
+                "position": [
+                  -1.2895700931549072,
+                  0.010987706482410431,
+                  -0.21975412964820862
+                ],
+                "normal": [
+                  0.0,
+                  0.9987523555755615,
+                  0.049937617033720016
+                ]
+              },
+              null
+            ],
+            "planted": [
+              false,
+              false
+            ],
+            "foot_error": [
+              0.02137834019958973,
+              0.0
+            ],
+            "reach_clamps": 1,
+            "root_horizontal_removed": 0.0,
+            "root_yaw_removed": 1.3234888223126632e-23
+          }
+        },
+        {
+          "life": {
+            "instance": 1,
+            "actor": 15,
+            "generation": 0
+          },
+          "model": "universal-female-ranger",
+          "semantic": "walk",
+          "graph_state": 2,
+          "selection_epoch": 1,
+          "phase": 0.29999998211860657,
+          "source_epoch": 1,
+          "phase_owner": 1,
+          "parameters": [
+            {
+              "boolean": false
+            },
+            {
+              "boolean": false
+            },
+            {
+              "boolean": true
+            },
+            {
+              "boolean": false
+            },
+            {
+              "boolean": false
+            },
+            {
+              "boolean": false
+            },
+            {
+              "boolean": false
+            },
+            {
+              "boolean": false
+            },
+            {
+              "boolean": false
+            },
+            {
+              "boolean": false
+            },
+            {
+              "boolean": false
+            },
+            {
+              "boolean": false
+            },
+            {
+              "boolean": false
+            },
+            {
+              "boolean": false
+            },
+            {
+              "boolean": false
+            },
+            {
+              "boolean": false
+            },
+            {
+              "boolean": false
+            },
+            {
+              "scalar": 1.8000001907348633
+            }
+          ],
+          "tier": "full",
+          "evaluated": true,
+          "bones_sampled": 75,
+          "ground_available": true,
+          "adjustment": {
+            "inputs": {
+              "speed": 1.8000001907348633,
+              "turn_rate": 0.0,
+              "aim": {
+                "yaw": 0.20000000298023224,
+                "pitch": 0.10000000149011612
+              },
+              "reset": false
+            },
+            "probes": 1,
+            "contacts": [
+              {
+                "position": [
+                  1.0895265340805054,
+                  0.1599999964237213,
+                  -0.2380029857158661
+                ],
+                "normal": [
+                  0.0,
+                  1.0,
+                  0.0
+                ]
+              },
+              null
+            ],
+            "planted": [
+              true,
+              false
+            ],
+            "foot_error": [
+              1.6049041562382627e-7,
+              0.0
+            ],
+            "reach_clamps": 0,
+            "root_horizontal_removed": 0.0,
+            "root_yaw_removed": 1.3234888223126632e-23
+          }
+        }
+      ],
+      "timings": {
+        "frame": 14,
+        "gpu_samples": [
+          null,
+          null,
+          null
+        ],
+        "gpu_health": null,
+        "gpu_timestamps_available": false,
+        "gpu_query_poll_cpu_ms": null,
+        "prepare_ms": 0.310788,
+        "encode_ms": 0.286028,
+        "command_encode_ms": 0.25251100000000004,
+        "shadow_encode_ms": 0.001046,
+        "world_encode_ms": 0.045039,
+        "overlay_encode_ms": 0.001557,
+        "command_finish_ms": 0.198607,
+        "queue_submit_ms": 0.033273,
+        "gpu_wait_ms": 0.167944,
+        "readback_copy_ms": 0.12859399999999999,
+        "total_ms": 0.8933949999999999,
+        "instances": 4,
+        "actor_roots": 2,
+        "mounts": 2,
+        "optional_effects": 0,
+        "dropped_effects": 0,
+        "surface_batches": 15,
+        "shadow_views": 0,
+        "upload_bytes": 85056,
+        "grounded_vertices": 0,
+        "readback": true,
+        "shadow_draws": 0,
+        "world_draws": 13,
+        "cached_shadow_casters": 0,
+        "static_shadow_refreshes": 0,
+        "marker_events": 0,
+        "graph_instances": 2,
+        "pose_samples": 2,
+        "pose_reuses": 0,
+        "sampled_bones": 145,
+        "foot_probes": 2
+      }
+    },
+    {
+      "tick": 14,
+      "poses": [
+        {
+          "life": {
+            "instance": 1,
+            "actor": 14,
+            "generation": 0
+          },
+          "model": "universal-male-peasant",
+          "semantic": "walk",
+          "graph_state": 2,
+          "selection_epoch": 1,
+          "phase": 0.32307690382003784,
+          "source_epoch": 1,
+          "phase_owner": 1,
+          "parameters": [
+            {
+              "boolean": false
+            },
+            {
+              "boolean": false
+            },
+            {
+              "boolean": true
+            },
+            {
+              "boolean": false
+            },
+            {
+              "boolean": false
+            },
+            {
+              "boolean": false
+            },
+            {
+              "boolean": false
+            },
+            {
+              "boolean": false
+            },
+            {
+              "boolean": false
+            },
+            {
+              "boolean": false
+            },
+            {
+              "boolean": false
+            },
+            {
+              "boolean": false
+            },
+            {
+              "boolean": false
+            },
+            {
+              "boolean": false
+            },
+            {
+              "boolean": false
+            },
+            {
+              "boolean": false
+            },
+            {
+              "boolean": false
+            },
+            {
+              "scalar": 1.8000001907348633
+            }
+          ],
+          "tier": "full",
+          "evaluated": true,
+          "bones_sampled": 70,
+          "ground_available": true,
+          "adjustment": {
+            "inputs": {
+              "speed": 1.8000001907348633,
+              "turn_rate": 0.0,
+              "aim": {
+                "yaw": 0.20000000298023224,
+                "pitch": 0.10000000149011612
+              },
+              "reset": false
+            },
+            "probes": 1,
+            "contacts": [
+              {
+                "position": [
+                  -1.2903413772583008,
+                  0.01116576325148344,
+                  -0.2233152687549591
+                ],
+                "normal": [
+                  0.0,
+                  0.9987523555755615,
+                  0.049937617033720016
+                ]
+              },
+              null
+            ],
+            "planted": [
+              false,
+              false
+            ],
+            "foot_error": [
+              0.02484622411429882,
+              0.0
+            ],
+            "reach_clamps": 1,
+            "root_horizontal_removed": 0.0,
+            "root_yaw_removed": 1.3234888223126632e-23
+          }
+        },
+        {
+          "life": {
+            "instance": 1,
+            "actor": 15,
+            "generation": 0
+          },
+          "model": "universal-female-ranger",
+          "semantic": "walk",
+          "graph_state": 2,
+          "selection_epoch": 1,
+          "phase": 0.32307690382003784,
+          "source_epoch": 1,
+          "phase_owner": 1,
+          "parameters": [
+            {
+              "boolean": false
+            },
+            {
+              "boolean": false
+            },
+            {
+              "boolean": true
+            },
+            {
+              "boolean": false
+            },
+            {
+              "boolean": false
+            },
+            {
+              "boolean": false
+            },
+            {
+              "boolean": false
+            },
+            {
+              "boolean": false
+            },
+            {
+              "boolean": false
+            },
+            {
+              "boolean": false
+            },
+            {
+              "boolean": false
+            },
+            {
+              "boolean": false
+            },
+            {
+              "boolean": false
+            },
+            {
+              "boolean": false
+            },
+            {
+              "boolean": false
+            },
+            {
+              "boolean": false
+            },
+            {
+              "boolean": false
+            },
+            {
+              "scalar": 1.8000001907348633
+            }
+          ],
+          "tier": "full",
+          "evaluated": true,
+          "bones_sampled": 75,
+          "ground_available": true,
+          "adjustment": {
+            "inputs": {
+              "speed": 1.8000001907348633,
+              "turn_rate": 0.0,
+              "aim": {
+                "yaw": 0.20000000298023224,
+                "pitch": 0.10000000149011612
+              },
+              "reset": false
+            },
+            "probes": 1,
+            "contacts": [
+              {
+                "position": [
+                  1.0895265340805054,
+                  0.1599999964237213,
+                  -0.2380029857158661
+                ],
+                "normal": [
+                  0.0,
+                  1.0,
+                  0.0
+                ]
+              },
+              null
+            ],
+            "planted": [
+              true,
+              false
+            ],
+            "foot_error": [
+              1.519626238177807e-7,
+              0.0
+            ],
+            "reach_clamps": 0,
+            "root_horizontal_removed": 0.0,
+            "root_yaw_removed": 1.3234888223126632e-23
+          }
+        }
+      ],
+      "timings": {
+        "frame": 15,
+        "gpu_samples": [
+          null,
+          null,
+          null
+        ],
+        "gpu_health": null,
+        "gpu_timestamps_available": false,
+        "gpu_query_poll_cpu_ms": null,
+        "prepare_ms": 0.307205,
+        "encode_ms": 0.28681399999999996,
+        "command_encode_ms": 0.259673,
+        "shadow_encode_ms": 0.000999,
+        "world_encode_ms": 0.045091,
+        "overlay_encode_ms": 0.0015710000000000001,
+        "command_finish_ms": 0.205756,
+        "queue_submit_ms": 0.026902000000000002,
+        "gpu_wait_ms": 0.168356,
+        "readback_copy_ms": 0.13394399999999998,
+        "total_ms": 0.896354,
+        "instances": 4,
+        "actor_roots": 2,
+        "mounts": 2,
+        "optional_effects": 0,
+        "dropped_effects": 0,
+        "surface_batches": 15,
+        "shadow_views": 0,
+        "upload_bytes": 85056,
+        "grounded_vertices": 0,
+        "readback": true,
+        "shadow_draws": 0,
+        "world_draws": 13,
+        "cached_shadow_casters": 0,
+        "static_shadow_refreshes": 0,
+        "marker_events": 0,
+        "graph_instances": 2,
+        "pose_samples": 2,
+        "pose_reuses": 0,
+        "sampled_bones": 145,
+        "foot_probes": 2
+      }
+    },
+    {
+      "tick": 15,
+      "poses": [
+        {
+          "life": {
+            "instance": 1,
+            "actor": 14,
+            "generation": 0
+          },
+          "model": "universal-male-peasant",
+          "semantic": "walk",
+          "graph_state": 2,
+          "selection_epoch": 1,
+          "phase": 0.3461538255214691,
+          "source_epoch": 1,
+          "phase_owner": 1,
+          "parameters": [
+            {
+              "boolean": false
+            },
+            {
+              "boolean": false
+            },
+            {
+              "boolean": true
+            },
+            {
+              "boolean": false
+            },
+            {
+              "boolean": false
+            },
+            {
+              "boolean": false
+            },
+            {
+              "boolean": false
+            },
+            {
+              "boolean": false
+            },
+            {
+              "boolean": false
+            },
+            {
+              "boolean": false
+            },
+            {
+              "boolean": false
+            },
+            {
+              "boolean": false
+            },
+            {
+              "boolean": false
+            },
+            {
+              "boolean": false
+            },
+            {
+              "boolean": false
+            },
+            {
+              "boolean": false
+            },
+            {
+              "boolean": false
+            },
+            {
+              "scalar": 1.8000001907348633
+            }
+          ],
+          "tier": "full",
+          "evaluated": true,
+          "bones_sampled": 70,
+          "ground_available": true,
+          "adjustment": {
+            "inputs": {
+              "speed": 1.8000001907348633,
+              "turn_rate": 0.0,
+              "aim": {
+                "yaw": 0.20000000298023224,
+                "pitch": 0.10000000149011612
+              },
+              "reset": false
+            },
+            "probes": 0,
+            "contacts": [
+              null,
+              null
+            ],
+            "planted": [
+              false,
+              false
+            ],
+            "foot_error": [
+              0.0,
+              0.0
+            ],
+            "reach_clamps": 0,
+            "root_horizontal_removed": 0.0,
+            "root_yaw_removed": 1.3234888223126632e-23
+          }
+        },
+        {
+          "life": {
+            "instance": 1,
+            "actor": 15,
+            "generation": 0
+          },
+          "model": "universal-female-ranger",
+          "semantic": "walk",
+          "graph_state": 2,
+          "selection_epoch": 1,
+          "phase": 0.3461538255214691,
+          "source_epoch": 1,
+          "phase_owner": 1,
+          "parameters": [
+            {
+              "boolean": false
+            },
+            {
+              "boolean": false
+            },
+            {
+              "boolean": true
+            },
+            {
+              "boolean": false
+            },
+            {
+              "boolean": false
+            },
+            {
+              "boolean": false
+            },
+            {
+              "boolean": false
+            },
+            {
+              "boolean": false
+            },
+            {
+              "boolean": false
+            },
+            {
+              "boolean": false
+            },
+            {
+              "boolean": false
+            },
+            {
+              "boolean": false
+            },
+            {
+              "boolean": false
+            },
+            {
+              "boolean": false
+            },
+            {
+              "boolean": false
+            },
+            {
+              "boolean": false
+            },
+            {
+              "boolean": false
+            },
+            {
+              "scalar": 1.8000001907348633
+            }
+          ],
+          "tier": "full",
+          "evaluated": true,
+          "bones_sampled": 75,
+          "ground_available": true,
+          "adjustment": {
+            "inputs": {
+              "speed": 1.8000001907348633,
+              "turn_rate": 0.0,
+              "aim": {
+                "yaw": 0.20000000298023224,
+                "pitch": 0.10000000149011612
+              },
+              "reset": false
+            },
+            "probes": 1,
+            "contacts": [
+              {
+                "position": [
+                  1.0895265340805054,
+                  0.1599999964237213,
+                  -0.2380029857158661
+                ],
+                "normal": [
+                  0.0,
+                  1.0,
+                  0.0
+                ]
+              },
+              null
+            ],
+            "planted": [
+              true,
+              false
+            ],
+            "foot_error": [
+              1.7881393432617188e-7,
+              0.0
+            ],
+            "reach_clamps": 0,
+            "root_horizontal_removed": 0.0,
+            "root_yaw_removed": 1.3234888223126632e-23
+          }
+        }
+      ],
+      "timings": {
+        "frame": 16,
+        "gpu_samples": [
+          null,
+          null,
+          null
+        ],
+        "gpu_health": null,
+        "gpu_timestamps_available": false,
+        "gpu_query_poll_cpu_ms": null,
+        "prepare_ms": 0.30174599999999996,
+        "encode_ms": 0.287644,
+        "command_encode_ms": 0.26055300000000003,
+        "shadow_encode_ms": 0.001072,
+        "world_encode_ms": 0.045984,
+        "overlay_encode_ms": 0.001469,
+        "command_finish_ms": 0.20577,
+        "queue_submit_ms": 0.026848,
+        "gpu_wait_ms": 0.170844,
+        "readback_copy_ms": 0.127123,
+        "total_ms": 0.887389,
+        "instances": 4,
+        "actor_roots": 2,
+        "mounts": 2,
+        "optional_effects": 0,
+        "dropped_effects": 0,
+        "surface_batches": 15,
+        "shadow_views": 0,
+        "upload_bytes": 85056,
+        "grounded_vertices": 0,
+        "readback": true,
+        "shadow_draws": 0,
+        "world_draws": 13,
+        "cached_shadow_casters": 0,
+        "static_shadow_refreshes": 0,
+        "marker_events": 0,
+        "graph_instances": 2,
+        "pose_samples": 2,
+        "pose_reuses": 0,
+        "sampled_bones": 145,
+        "foot_probes": 1
+      }
+    },
+    {
+      "tick": 16,
+      "poses": [
+        {
+          "life": {
+            "instance": 1,
+            "actor": 14,
+            "generation": 0
+          },
+          "model": "universal-male-peasant",
+          "semantic": "walk",
+          "graph_state": 2,
+          "selection_epoch": 1,
+          "phase": 0.3692307472229004,
+          "source_epoch": 1,
+          "phase_owner": 1,
+          "parameters": [
+            {
+              "boolean": false
+            },
+            {
+              "boolean": false
+            },
+            {
+              "boolean": true
+            },
+            {
+              "boolean": false
+            },
+            {
+              "boolean": false
+            },
+            {
+              "boolean": false
+            },
+            {
+              "boolean": false
+            },
+            {
+              "boolean": false
+            },
+            {
+              "boolean": false
+            },
+            {
+              "boolean": false
+            },
+            {
+              "boolean": false
+            },
+            {
+              "boolean": false
+            },
+            {
+              "boolean": false
+            },
+            {
+              "boolean": false
+            },
+            {
+              "boolean": false
+            },
+            {
+              "boolean": false
+            },
+            {
+              "boolean": false
+            },
+            {
+              "scalar": 1.7999985218048096
+            }
+          ],
+          "tier": "full",
+          "evaluated": true,
+          "bones_sampled": 70,
+          "ground_available": true,
+          "adjustment": {
+            "inputs": {
+              "speed": 1.7999985218048096,
+              "turn_rate": 0.0,
+              "aim": {
+                "yaw": 0.20000000298023224,
+                "pitch": 0.10000000149011612
+              },
+              "reset": false
+            },
+            "probes": 0,
+            "contacts": [
+              null,
+              null
+            ],
+            "planted": [
+              false,
+              false
+            ],
+            "foot_error": [
+              0.0,
+              0.0
+            ],
+            "reach_clamps": 0,
+            "root_horizontal_removed": 0.0,
+            "root_yaw_removed": 1.3234888223126632e-23
+          }
+        },
+        {
+          "life": {
+            "instance": 1,
+            "actor": 15,
+            "generation": 0
+          },
+          "model": "universal-female-ranger",
+          "semantic": "walk",
+          "graph_state": 2,
+          "selection_epoch": 1,
+          "phase": 0.3692307472229004,
+          "source_epoch": 1,
+          "phase_owner": 1,
+          "parameters": [
+            {
+              "boolean": false
+            },
+            {
+              "boolean": false
+            },
+            {
+              "boolean": true
+            },
+            {
+              "boolean": false
+            },
+            {
+              "boolean": false
+            },
+            {
+              "boolean": false
+            },
+            {
+              "boolean": false
+            },
+            {
+              "boolean": false
+            },
+            {
+              "boolean": false
+            },
+            {
+              "boolean": false
+            },
+            {
+              "boolean": false
+            },
+            {
+              "boolean": false
+            },
+            {
+              "boolean": false
+            },
+            {
+              "boolean": false
+            },
+            {
+              "boolean": false
+            },
+            {
+              "boolean": false
+            },
+            {
+              "boolean": false
+            },
+            {
+              "scalar": 1.7999985218048096
+            }
+          ],
+          "tier": "full",
+          "evaluated": true,
+          "bones_sampled": 75,
+          "ground_available": true,
+          "adjustment": {
+            "inputs": {
+              "speed": 1.7999985218048096,
+              "turn_rate": 0.0,
+              "aim": {
+                "yaw": 0.20000000298023224,
+                "pitch": 0.10000000149011612
+              },
+              "reset": false
+            },
+            "probes": 1,
+            "contacts": [
+              {
+                "position": [
+                  1.0895265340805054,
+                  0.1599999964237213,
+                  -0.2380029857158661
+                ],
+                "normal": [
+                  0.0,
+                  1.0,
+                  0.0
+                ]
+              },
+              null
+            ],
+            "planted": [
+              true,
+              false
+            ],
+            "foot_error": [
+              0.0,
+              0.0
+            ],
+            "reach_clamps": 0,
+            "root_horizontal_removed": 0.0,
+            "root_yaw_removed": 1.3234888223126632e-23
+          }
+        }
+      ],
+      "timings": {
+        "frame": 17,
+        "gpu_samples": [
+          null,
+          null,
+          null
+        ],
+        "gpu_health": null,
+        "gpu_timestamps_available": false,
+        "gpu_query_poll_cpu_ms": null,
+        "prepare_ms": 0.294539,
+        "encode_ms": 0.288874,
+        "command_encode_ms": 0.261671,
+        "shadow_encode_ms": 0.00102,
+        "world_encode_ms": 0.045369,
+        "overlay_encode_ms": 0.0015099999999999998,
+        "command_finish_ms": 0.207349,
+        "queue_submit_ms": 0.026972,
+        "gpu_wait_ms": 0.169921,
+        "readback_copy_ms": 0.130357,
+        "total_ms": 0.8837240000000001,
+        "instances": 4,
+        "actor_roots": 2,
+        "mounts": 2,
+        "optional_effects": 0,
+        "dropped_effects": 0,
+        "surface_batches": 15,
+        "shadow_views": 0,
+        "upload_bytes": 85056,
+        "grounded_vertices": 0,
+        "readback": true,
+        "shadow_draws": 0,
+        "world_draws": 13,
+        "cached_shadow_casters": 0,
+        "static_shadow_refreshes": 0,
+        "marker_events": 0,
+        "graph_instances": 2,
+        "pose_samples": 2,
+        "pose_reuses": 0,
+        "sampled_bones": 145,
+        "foot_probes": 1
+      }
+    },
+    {
+      "tick": 17,
+      "poses": [
+        {
+          "life": {
+            "instance": 1,
+            "actor": 14,
+            "generation": 0
+          },
+          "model": "universal-male-peasant",
+          "semantic": "walk",
+          "graph_state": 2,
+          "selection_epoch": 1,
+          "phase": 0.3923076391220093,
+          "source_epoch": 1,
+          "phase_owner": 1,
+          "parameters": [
+            {
+              "boolean": false
+            },
+            {
+              "boolean": false
+            },
+            {
+              "boolean": true
+            },
+            {
+              "boolean": false
+            },
+            {
+              "boolean": false
+            },
+            {
+              "boolean": false
+            },
+            {
+              "boolean": false
+            },
+            {
+              "boolean": false
+            },
+            {
+              "boolean": false
+            },
+            {
+              "boolean": false
+            },
+            {
+              "boolean": false
+            },
+            {
+              "boolean": false
+            },
+            {
+              "boolean": false
+            },
+            {
+              "boolean": false
+            },
+            {
+              "boolean": false
+            },
+            {
+              "boolean": false
+            },
+            {
+              "boolean": false
+            },
+            {
+              "scalar": 1.8000017404556274
+            }
+          ],
+          "tier": "full",
+          "evaluated": true,
+          "bones_sampled": 70,
+          "ground_available": true,
+          "adjustment": {
+            "inputs": {
+              "speed": 1.8000017404556274,
+              "turn_rate": 0.0,
+              "aim": {
+                "yaw": 0.20000000298023224,
+                "pitch": 0.10000000149011612
+              },
+              "reset": false
+            },
+            "probes": 0,
+            "contacts": [
+              null,
+              null
+            ],
+            "planted": [
+              false,
+              false
+            ],
+            "foot_error": [
+              0.0,
+              0.0
+            ],
+            "reach_clamps": 0,
+            "root_horizontal_removed": 0.0,
+            "root_yaw_removed": 1.3234888223126632e-23
+          }
+        },
+        {
+          "life": {
+            "instance": 1,
+            "actor": 15,
+            "generation": 0
+          },
+          "model": "universal-female-ranger",
+          "semantic": "walk",
+          "graph_state": 2,
+          "selection_epoch": 1,
+          "phase": 0.3923076391220093,
+          "source_epoch": 1,
+          "phase_owner": 1,
+          "parameters": [
+            {
+              "boolean": false
+            },
+            {
+              "boolean": false
+            },
+            {
+              "boolean": true
+            },
+            {
+              "boolean": false
+            },
+            {
+              "boolean": false
+            },
+            {
+              "boolean": false
+            },
+            {
+              "boolean": false
+            },
+            {
+              "boolean": false
+            },
+            {
+              "boolean": false
+            },
+            {
+              "boolean": false
+            },
+            {
+              "boolean": false
+            },
+            {
+              "boolean": false
+            },
+            {
+              "boolean": false
+            },
+            {
+              "boolean": false
+            },
+            {
+              "boolean": false
+            },
+            {
+              "boolean": false
+            },
+            {
+              "boolean": false
+            },
+            {
+              "scalar": 1.8000017404556274
+            }
+          ],
+          "tier": "full",
+          "evaluated": true,
+          "bones_sampled": 75,
+          "ground_available": true,
+          "adjustment": {
+            "inputs": {
+              "speed": 1.8000017404556274,
+              "turn_rate": 0.0,
+              "aim": {
+                "yaw": 0.20000000298023224,
+                "pitch": 0.10000000149011612
+              },
+              "reset": false
+            },
+            "probes": 1,
+            "contacts": [
+              {
+                "position": [
+                  1.0895265340805054,
+                  0.1599999964237213,
+                  -0.2380029857158661
+                ],
+                "normal": [
+                  0.0,
+                  1.0,
+                  0.0
+                ]
+              },
+              null
+            ],
+            "planted": [
+              true,
+              false
+            ],
+            "foot_error": [
+              8.429369557916289e-8,
+              0.0
+            ],
+            "reach_clamps": 0,
+            "root_horizontal_removed": 0.0,
+            "root_yaw_removed": 1.3234888223126632e-23
+          }
+        }
+      ],
+      "timings": {
+        "frame": 18,
+        "gpu_samples": [
+          null,
+          null,
+          null
+        ],
+        "gpu_health": null,
+        "gpu_timestamps_available": false,
+        "gpu_query_poll_cpu_ms": null,
+        "prepare_ms": 0.308527,
+        "encode_ms": 0.28831100000000004,
+        "command_encode_ms": 0.261051,
+        "shadow_encode_ms": 0.001104,
+        "world_encode_ms": 0.045794,
+        "overlay_encode_ms": 0.001577,
+        "command_finish_ms": 0.20610299999999998,
+        "queue_submit_ms": 0.027013,
+        "gpu_wait_ms": 0.168552,
+        "readback_copy_ms": 0.128217,
+        "total_ms": 0.893645,
+        "instances": 4,
+        "actor_roots": 2,
+        "mounts": 2,
+        "optional_effects": 0,
+        "dropped_effects": 0,
+        "surface_batches": 15,
+        "shadow_views": 0,
+        "upload_bytes": 85056,
+        "grounded_vertices": 0,
+        "readback": true,
+        "shadow_draws": 0,
+        "world_draws": 13,
+        "cached_shadow_casters": 0,
+        "static_shadow_refreshes": 0,
+        "marker_events": 0,
+        "graph_instances": 2,
+        "pose_samples": 2,
+        "pose_reuses": 0,
+        "sampled_bones": 145,
+        "foot_probes": 1
+      }
+    }
+  ]
+}

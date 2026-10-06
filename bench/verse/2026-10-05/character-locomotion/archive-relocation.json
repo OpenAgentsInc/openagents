@@ -1,0 +1,7 @@
+{
+  "source": "/home/christopherdavid/work/openagents-target-agent1/debug/deps/libverse_engine-57b236a4cf67bd7d.rlib",
+  "temporary": "/run/verse-audit-build-agent1/previous/libverse_engine-57b236a4cf67bd7d.rlib",
+  "bytes": 62798832,
+  "sha256": "9d2fc1104e3c940eb5bc9c8e3bc071096a01358971ef0cd3abb51244fbbc9e95",
+  "reason": "Retain the V21 native build dependency archive in RAM and preserve the warm target path; no archive data is deleted."
+}

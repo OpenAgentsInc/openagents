@@ -106,7 +106,7 @@ fn terrain_aim_and_equipment_use_the_same_rendered_palette() {
                 actor: None,
                 model: "gear-wand".into(),
                 transform: Mat4::IDENTITY,
-                animation: State::Idle.into(),
+                animation: 0.into(),
                 time: 0.,
                 animation_epoch: None,
                 emission: Vec3::ONE,

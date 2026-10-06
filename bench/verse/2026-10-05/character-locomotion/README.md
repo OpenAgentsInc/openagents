@@ -20,7 +20,7 @@ tiers. The checkpoint before and after every visual update is identical. This
 establishes presentation isolation; it does not establish cross-build or
 cross-architecture floating-point determinism.
 
-The engine suite passes 151 tests. The full optimized world suite passes 576
+The merged engine suite passes 152 tests. The full optimized world suite passes 576
 tests with three ignored helpers before the observer geometry addition; a final
 focused check verifies that addition without advancing prediction or authority.
 The content suite passes 24 tests and its CLI workflow before the final aim-pitch
@@ -29,20 +29,38 @@ The content editor test covers graph admission, rejection without a journal
 mutation, cached diagnostics, undo, and redo. Actual compiler admission covers
 all six standard outfits.
 
+Against current main, the renderer passes 80 library tests with six graphics
+checks ignored. The native client passes 54 tests with five graphics checks
+ignored. The explicit offscreen Vulkan check separately passes on an NVIDIA
+GeForce RTX 4080 at the high renderer tier. `renderer.json` retains its adapter,
+device profile, per-frame animation diagnostics, and counters. Over 18 frames,
+it records 29 planted contacts and zero equipment-socket matrix error. Bodies
+and equipment use the same final palette. The query terrain is not drawn in the
+capture. GPU timestamp queries are disabled, so this is a palette integration
+check, not a GPU timing result.
+
+![Two admitted outfits and their socket-mounted wands after terrain and aim adjustments.](terrain-aim-equipment.png)
+
 Checks use the pinned Rust toolchain and the existing warm Cargo target. Some
 behavior fixtures use package-specific zero-debug or zero-optimization test
 overrides to fit the shared disk. Their sample counts describe algorithm work,
 not measured CPU or GPU frame time. GPU skinning still runs every frame.
 
-The disk filled during a terrain-query build. The first final rig run also
+The disk filled during terrain-query compilation, renderer linking, and native
+dependency compilation. The first final rig run also
 failed its evidence write because its relative destination resolved under the
 crate directory; the retry uses an absolute destination. Both failures are
-retained. Executable retirement receipts preserve hashes and provenance for
+retained. The native fixture initially lacked a terrain-coordinate type
+annotation, and the first GPU run refused an undeclared idle state on the static
+wand. The corrected GPU fixture uses the wand's legacy default binding. Native
+library results before that test-only binding correction remain labeled as
+such; the final GPU executable has its own recorded hash.
+Executable retirement receipts preserve hashes and provenance for
 completed or obsolete audit checks. Each retirement checks all hard links and
 visible process executable inodes. Dependency archives remain in the existing
-target. Relocation receipts preserve the audit's incremental data in private RAM
+target paths. Relocation receipts preserve the audit's incremental data in private RAM
 scratch while the shared disk is full; existing target paths remain linked. The
-retained wrappers redirect affected incremental writes and final test linking,
+retained wrappers redirect affected incremental writes and compiler outputs,
 without changing the declared optimization or debug profiles. Owner processes
 and devices remain untouched. The incremental data must return to persistent
 storage after disk capacity is available.
@@ -50,4 +68,4 @@ storage after disk capacity is available.
 These fixtures cover explicitly named Universal skeleton mappings and retained
 licensed assets. They do not prove arbitrary retargeting, facial performance,
 animation-driven gameplay root motion, a complete motor traversal over terrain,
-physical-device budgets, or production art quality.
+backward/strafe gait admission, physical-device budgets, or production art quality.
