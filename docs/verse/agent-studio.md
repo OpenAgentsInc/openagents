@@ -520,6 +520,11 @@ only on a task store that admits scripted turns, which this computer's own
 store never does; and never while the root's auto-start policy is on. A real
 engine's admission is unchanged.
 
+The [shared-sheet acceptance receipt](verification/2026-10-06-studio-workbench/README.md)
+retains a scripted goal, question, exact review, and local merge with matching
+opening contexts and archived scratch tasks. Native and real-engine
+qualification remain separate owner checks.
+
 ## Delivery
 
 Each stage lands as its own issue, with its own checks.

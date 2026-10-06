@@ -1,0 +1,492 @@
+{
+  "schema": "openagents.workbench.studio-acceptance.v1",
+  "simulated": true,
+  "source_commit": "edcacd9581d751dc90ce11c051a98ee60333d31e",
+  "app": {
+    "component": "terminal-core shared sheet",
+    "capture_version": "0.1.0",
+    "capture_binary_sha256": "26b28bbe93f69ba64739d1cfc4527bbb5decdfcd8e69c91d57ac4379b6011e4e",
+    "renderer": "none; semantic capture"
+  },
+  "host": {
+    "pubkey": "c508b7e4a25c89d779b46ad944d2c9a29de0b1afbab776ff67ea0f7c692e6e23",
+    "implementation": "coder-host in-process scratch",
+    "protocol": "openagents.control.v1"
+  },
+  "engine": "existing scripted studio engine; no model call",
+  "elapsed_ms": 798,
+  "limit": {
+    "scripted_passes": 32,
+    "socket_timeout_seconds": 10
+  },
+  "flow": {
+    "status": "passed",
+    "passes": 4,
+    "events": [
+      {
+        "request": "95b56f4dbeea7a7c0713b8d7c841ee85b329055b07bdbc293919643a42555b91",
+        "operation": {
+          "kind": "studio.goal.submit",
+          "text": "Greet with \"Hello, studio\" and document the greeting.",
+          "workspace": "scratch",
+          "lead": null
+        },
+        "outcome": {
+          "kind": "dispatched",
+          "receipt": {
+            "operation": "studio.goal.submit",
+            "reference": "g1-fcf3d406"
+          }
+        },
+        "repeated_delivery_equal": true,
+        "confirmation": [
+          "STUDIO: GOALS, TASK WALL, SEATS, AND MEMORY",
+          "Host stream 18dbe15f956f6c520001c973 sequence 1",
+          "Selected workspace: scratch",
+          "WORKSPACES (/repo LABEL selects without submitting work)",
+          "scratch",
+          "GOALS",
+          "TASK WALL (linked run IDs; logs are not a terminal)",
+          "STUDIO QUESTIONS AND TOOL APPROVALS (separate from shell proposals)",
+          "/answer DECISION TEXT answers the displayed revision; ENTER prepares, ENTER confirms.",
+          "SEATS",
+          "@ada Idle route codex:studio-sim (served engine unknown) paused false spend $0.00 task none",
+          "@grace Idle route codex:studio-sim (served engine unknown) paused false spend $0.00 task none",
+          "@lead Idle route codex:studio-sim (served engine unknown) paused false spend $0.00 task none",
+          "MEMORY (host entries; pinned plans first)",
+          "Plain text submits a goal; @seat text messages; /pause, /resume, /stop @seat.",
+          "/task TASK cancel|retry|prioritize|reassign @seat. ENTER prepares; ENTER confirms.",
+          "Workspace selected: scratch; no work submitted.",
+          "CONFIRM: new goal on scratch: Greet with \"Hello, studio\" and document the greeting.",
+          "ENTER sends once; ESC rejects."
+        ]
+      },
+      {
+        "keyboard_context": {
+          "v": "openagents.workbench-opening.v1",
+          "host": {
+            "kind": "local",
+            "instance": "c70b885a1942d196a1103598bad6171abd2a4279bea32f9fdd01d44b550d02ac"
+          },
+          "stream": "18dbe15f956f6c520001c973",
+          "workspace": "scratch",
+          "goal": {
+            "v": "openagents.workbench-resource.v1",
+            "kind": "studio",
+            "host": {
+              "kind": "local",
+              "instance": "c70b885a1942d196a1103598bad6171abd2a4279bea32f9fdd01d44b550d02ac"
+            },
+            "part": "goal",
+            "id": "g1-fcf3d406",
+            "revision": {
+              "counter": 2
+            }
+          },
+          "seat": {
+            "v": "openagents.workbench-resource.v1",
+            "kind": "studio",
+            "host": {
+              "kind": "local",
+              "instance": "c70b885a1942d196a1103598bad6171abd2a4279bea32f9fdd01d44b550d02ac"
+            },
+            "part": "seat",
+            "id": "lead",
+            "revision": {
+              "counter": 2
+            }
+          },
+          "task": {
+            "v": "openagents.workbench-resource.v1",
+            "kind": "studio",
+            "host": {
+              "kind": "local",
+              "instance": "c70b885a1942d196a1103598bad6171abd2a4279bea32f9fdd01d44b550d02ac"
+            },
+            "part": "task",
+            "id": "9a2dd190de5b1c733f047e721032f9af127b84312803ad9afc2c497190bfbe67",
+            "revision": {
+              "counter": 2
+            }
+          },
+          "thread": null,
+          "review": null
+        },
+        "workshop_context": {
+          "v": "openagents.workbench-opening.v1",
+          "host": {
+            "kind": "local",
+            "instance": "c70b885a1942d196a1103598bad6171abd2a4279bea32f9fdd01d44b550d02ac"
+          },
+          "stream": "18dbe15f956f6c520001c973",
+          "workspace": "scratch",
+          "goal": {
+            "v": "openagents.workbench-resource.v1",
+            "kind": "studio",
+            "host": {
+              "kind": "local",
+              "instance": "c70b885a1942d196a1103598bad6171abd2a4279bea32f9fdd01d44b550d02ac"
+            },
+            "part": "goal",
+            "id": "g1-fcf3d406",
+            "revision": {
+              "counter": 2
+            }
+          },
+          "seat": {
+            "v": "openagents.workbench-resource.v1",
+            "kind": "studio",
+            "host": {
+              "kind": "local",
+              "instance": "c70b885a1942d196a1103598bad6171abd2a4279bea32f9fdd01d44b550d02ac"
+            },
+            "part": "seat",
+            "id": "lead",
+            "revision": {
+              "counter": 2
+            }
+          },
+          "task": {
+            "v": "openagents.workbench-resource.v1",
+            "kind": "studio",
+            "host": {
+              "kind": "local",
+              "instance": "c70b885a1942d196a1103598bad6171abd2a4279bea32f9fdd01d44b550d02ac"
+            },
+            "part": "task",
+            "id": "9a2dd190de5b1c733f047e721032f9af127b84312803ad9afc2c497190bfbe67",
+            "revision": {
+              "counter": 2
+            }
+          },
+          "thread": null,
+          "review": null
+        },
+        "capture_kind": "headless_shared_sheet_semantics",
+        "sheet": [
+          "STUDIO: GOALS, TASK WALL, SEATS, AND MEMORY",
+          "Host stream 18dbe15f956f6c520001c973 sequence 2",
+          "Selected workspace: scratch",
+          "WORKSPACES (/repo LABEL selects without submitting work)",
+          "scratch",
+          "GOALS",
+          "g1-fcf3d406 Planning 0/0 tasks $0.00 Greet with \"Hello, studio\" and document the greeting.",
+          "TASK WALL (linked run IDs; logs are not a terminal)",
+          "9a2dd190de5b1c733f047e721032f9af127b84312803ad9afc2c497190bfbe67 Waiting @lead $0.00 Plan: Greet with \"Hello, studio\" and document the greeting.",
+          "  goal g1-fcf3d406 entry lead waits on none",
+          "  managed run 9a2dd190de5b1c733f047e721032f9af127b84312803ad9afc2c497190bfbe67; checks and artifacts require its run adapter",
+          "STUDIO QUESTIONS AND TOOL APPROVALS (separate from shell proposals)",
+          "9a2dd190de5b1c733f047e721032f9af127b84312803ad9afc2c497190bfbe67 Question seat lead task 9a2dd190de5b1c733f047e721032f9af127b84312803ad9afc2c497190bfbe67 revision 4: Which greeting should the team use?",
+          "/answer DECISION TEXT answers the displayed revision; ENTER prepares, ENTER confirms.",
+          "SEATS",
+          "@ada Idle route codex:studio-sim (served engine unknown) paused false spend $0.00 task none",
+          "@grace Idle route codex:studio-sim (served engine unknown) paused false spend $0.00 task none",
+          "@lead Waiting route codex:studio-sim (served engine unknown) paused false spend $0.00 task 9a2dd190de5b1c733f047e721032f9af127b84312803ad9afc2c497190bfbe67",
+          "  1791273087632 Thinking Which greeting should the team use?",
+          "MEMORY (host entries; pinned plans first)",
+          "Plain text submits a goal; @seat text messages; /pause, /resume, /stop @seat.",
+          "/task TASK cancel|retry|prioritize|reassign @seat. ENTER prepares; ENTER confirms.",
+          "Studio steering is not admitted."
+        ]
+      },
+      {
+        "reopened": true,
+        "reconnected_stream": "18dbe15f956f6c520001c973",
+        "new_dispatch": false
+      },
+      {
+        "request": "95e007b74036561e24356d4a7afb56242562db877ca2e5818eec8a7463f304f5",
+        "operation": {
+          "kind": "studio.decision.answer",
+          "decision": "9a2dd190de5b1c733f047e721032f9af127b84312803ad9afc2c497190bfbe67",
+          "based_on": 4,
+          "text": "Use \"Hello, studio\" exactly, with a capital H.",
+          "command": "1245eeab3ebf8a3a97e501166b0c86725a16c8e1c1027e8192e399fb3ba0ad32",
+          "issued_at": 1791273087
+        },
+        "outcome": {
+          "kind": "dispatched",
+          "receipt": {
+            "operation": "studio.decision.answer",
+            "reference": "9a2dd190de5b1c733f047e721032f9af127b84312803ad9afc2c497190bfbe67"
+          }
+        },
+        "repeated_delivery_equal": true,
+        "confirmation": [
+          "STUDIO: QUESTIONS AND TOOL APPROVALS",
+          "Host stream 18dbe15f956f6c520001c973 sequence 2",
+          "Selected workspace: scratch",
+          "STUDIO QUESTIONS AND TOOL APPROVALS (separate from shell proposals)",
+          "9a2dd190de5b1c733f047e721032f9af127b84312803ad9afc2c497190bfbe67 Question seat lead task 9a2dd190de5b1c733f047e721032f9af127b84312803ad9afc2c497190bfbe67 revision 4: Which greeting should the team use?",
+          "/answer DECISION TEXT answers the displayed revision; ENTER prepares, ENTER confirms.",
+          "Studio steering is not admitted.",
+          "CONFIRM: STUDIO Question 9a2dd190de5b1c733f047e721032f9af127b84312803ad9afc2c497190bfbe67 revision 4: Which greeting should the team use? approval None; answer /answer 9a2dd190de5b1c733f047e721032f9af127b84312803ad9afc2c497190bfbe67 Use \"Hello, studio\" exactly, with a capital H.",
+          "ENTER sends once; ESC rejects."
+        ]
+      },
+      {
+        "retained_artifact_manifest": {
+          "schema": "openagents.coder.task-artifacts.v1",
+          "source_snapshot": "67caedbebe95b0c6e4fb795ab89ff270be1fbb655c4a612803de0133420ba758",
+          "candidate_snapshot": "a5a382ef74cd90823f050fab34464997b4a88eeb4426c18dd2c4528dc8be2003",
+          "complete": true,
+          "omitted_changes": 0,
+          "changes": [
+            {
+              "change": "modified",
+              "path": "README.md"
+            },
+            {
+              "change": "modified",
+              "path": "greeting.txt"
+            }
+          ],
+          "entries": [
+            {
+              "path": "README.md",
+              "state": "retained",
+              "digest": "sha256:e13c05abd382457d785420d425fc4bd13bd859a6d74d96c16eae2f4ff399d691",
+              "bytes": 79,
+              "link_target": null
+            },
+            {
+              "path": "greeting.txt",
+              "state": "retained",
+              "digest": "sha256:858560f0947afb0abff0f21787e9cf324ebd0364baa1efdcfb2a6cc186a01a08",
+              "bytes": 14,
+              "link_target": null
+            }
+          ]
+        },
+        "retained_trace": "b7f9484f271d046dd7f0b577eb36a57e60068c942df66817c95a03c88e9839c7.1.atif.jsonl"
+      },
+      {
+        "review": {
+          "task": "b7f9484f271d046dd7f0b577eb36a57e60068c942df66817c95a03c88e9839c7",
+          "base": "71a143d17ac579e2a730690f6118f375da1124ea",
+          "head_commit": "d3862d2921f3a248fff5ec6b63e51abf37b3102d",
+          "head": "737ffc0b20de3e42626572f1191ed2edf25cab0c",
+          "files": [
+            {
+              "path": "README.md",
+              "status": "modified",
+              "added": 1,
+              "removed": 1
+            },
+            {
+              "path": "greeting.txt",
+              "status": "modified",
+              "added": 1,
+              "removed": 1
+            }
+          ],
+          "files_total": 2,
+          "added": 2,
+          "removed": 2,
+          "uncounted": 0,
+          "diff": "diff --git a/README.md b/README.md\nindex dc56b04..736b6e9 100644\n--- a/README.md\n+++ b/README.md\n@@ -1,5 +1,5 @@\n # Scratch\n \n-Status: draft\n+Status: greets people\n \n A scratch repository for the simulated team.\ndiff --git a/greeting.txt b/greeting.txt\nindex ce01362..cce24c6 100644\n--- a/greeting.txt\n+++ b/greeting.txt\n@@ -1 +1 @@\n-hello\n+Hello, studio\n",
+          "completeness": {
+            "state": "complete"
+          }
+        },
+        "sheet": [
+          "STUDIO: EXACT-REVISION REVIEW",
+          "Host stream 18dbe15f956f6c520001c973 sequence 5",
+          "Selected workspace: scratch",
+          "EXACT-REVISION REVIEW b7f9484f271d046dd7f0b577eb36a57e60068c942df66817c95a03c88e9839c7",
+          "base 71a143d17ac579e2a730690f6118f375da1124ea",
+          "HEAD d3862d2921f3a248fff5ec6b63e51abf37b3102d",
+          "tree 737ffc0b20de3e42626572f1191ed2edf25cab0c",
+          "diff Complete; 2 files +2 -2 uncounted 0",
+          "Independent checks and lead evidence: unknown in this review; inspect the managed run.",
+          "A studio merge is local and pushes nothing. Host admission decides each verdict.",
+          "Modified README.md +Some(1) -Some(1)",
+          "Modified greeting.txt +Some(1) -Some(1)",
+          "diff --git a/README.md b/README.md",
+          "index dc56b04..736b6e9 100644",
+          "--- a/README.md",
+          "+++ b/README.md",
+          "@@ -1,5 +1,5 @@",
+          " # Scratch",
+          " ",
+          "-Status: draft",
+          "+Status: greets people",
+          " ",
+          " A scratch repository for the simulated team.",
+          "diff --git a/greeting.txt b/greeting.txt",
+          "index ce01362..cce24c6 100644",
+          "--- a/greeting.txt",
+          "+++ b/greeting.txt",
+          "@@ -1 +1 @@",
+          "-hello",
+          "+Hello, studio",
+          "/merge, /changes TEXT, or /reject TEXT prepare a verdict; ENTER confirms.",
+          "Exact-revision review loaded."
+        ],
+        "task_checks": "not_run",
+        "run_evidence": {
+          "epoch": 1,
+          "admission": {
+            "grant": {
+              "schema": "openagents.coder.task-execution-grant.v1",
+              "task_id": "b7f9484f271d046dd7f0b577eb36a57e60068c942df66817c95a03c88e9839c7",
+              "intent_digest": "sha256:9bc5d79d4b67f3e00ea619ff500206e62ceb38bd68eaaa6a5bd6471a8302321f",
+              "expected_revision": 1,
+              "expected_source_snapshot": null,
+              "program": "/tmp/openagents-workbench-home-_dgtpfny/tmp/.tmpCev3Jz/studio/tasks/scripted-engine.json",
+              "arguments": [],
+              "write_workspace": true,
+              "wall_seconds": 60,
+              "stream_bytes": 65536,
+              "memory_bytes": 67108864,
+              "requirements": null,
+              "adapter_configuration": null
+            },
+            "grant_digest": "sha256:39d99cb8ef31e549bcb6c64fa510fc73508808add5a9fa1c771ee49496b1e889",
+            "grant_request": "{\n  \"schema\": \"openagents.coder.task-execution-grant.v1\",\n  \"task_id\": \"b7f9484f271d046dd7f0b577eb36a57e60068c942df66817c95a03c88e9839c7\",\n  \"intent_digest\": \"sha256:9bc5d79d4b67f3e00ea619ff500206e62ceb38bd68eaaa6a5bd6471a8302321f\",\n  \"expected_revision\": 1,\n  \"expected_source_snapshot\": null,\n  \"program\": \"/tmp/openagents-workbench-home-_dgtpfny/tmp/.tmpCev3Jz/studio/tasks/scripted-engine.json\",\n  \"arguments\": [],\n  \"write_workspace\": true,\n  \"wall_seconds\": 60,\n  \"stream_bytes\": 65536,\n  \"memory_bytes\": 67108864,\n  \"requirements\": null,\n  \"adapter_configuration\": null\n}",
+            "workspace": "/tmp/openagents-workbench-home-_dgtpfny/tmp/.tmpCev3Jz/studio/host/studio-worktrees/b7f9484f271d046dd7f0b577eb36a57e60068c942df66817c95a03c88e9839c7",
+            "source_revision": "71a143d17ac579e2a730690f6118f375da1124ea",
+            "source_snapshot": "67caedbebe95b0c6e4fb795ab89ff270be1fbb655c4a612803de0133420ba758",
+            "program_digest": "sha256:95d9c96cb5ea7309cdc4d7cd413c8ad37ceb37125aa64ba843cf929ca4757def",
+            "adapter": "scripted",
+            "network": "none_scripted",
+            "read_scope": "workspace_scripted",
+            "authority": "local_os_user",
+            "trace_file": "b7f9484f271d046dd7f0b577eb36a57e60068c942df66817c95a03c88e9839c7.1.atif.jsonl",
+            "context": {
+              "schema": "openagents.coder.task-context.v2",
+              "task_revision": 1,
+              "prompt": "You are seat `ada` on an Agent Studio team. Do this task in this checkout and leave your change in the working tree: the host commits it when it lands, so do not run git commit, merge, push, or any other Git command that writes.\n\nTask: Change the greeting\nMake greeting.txt say Hello, studio, and update the status line.\n\nIt is part of the goal: Greet with \"Hello, studio\" and document the greeting.\n\nShared memory:\n- (plan, from @lead) Plan for goal g1-fcf3d406:\n- greet: Change the greeting [@ada]\n- docs: Document the greeting [@grace]\n- release: Write the changelog [@ada] (after greet, docs)\n",
+              "instructions": [],
+              "suites": [],
+              "digest": "8bcc207cc718ff13637b02c2f0e806e5213d2a853440c828bc6bce486f5be6d4"
+            }
+          },
+          "effect_id": "b7f9484f271d046dd7f0b577eb36a57e60068c942df66817c95a03c88e9839c7:1:command",
+          "result": {
+            "ending": "model_finished",
+            "exit_code": 0,
+            "stop_requested": false,
+            "group_clear": true,
+            "elapsed_ms": 9,
+            "trace_digest": "sha256:0f33eeeb622daaba1f7cb266377ab0b8c471e2ba49c8e943a2ea554633fc2c09",
+            "candidate_snapshot": "a5a382ef74cd90823f050fab34464997b4a88eeb4426c18dd2c4528dc8be2003",
+            "artifact_file": "manifest-9846c25342a58eb8c38e4956011945431fd717171ddd8649d00ddb92a4007801.json",
+            "artifact_digest": "sha256:9846c25342a58eb8c38e4956011945431fd717171ddd8649d00ddb92a4007801",
+            "output_incomplete": false,
+            "cost_status": "priced",
+            "cost_microusd": 0,
+            "engine_microusd": 0,
+            "jev_microusd": 0
+          },
+          "process_id": null,
+          "recovery_reason": null,
+          "check_report": null
+        }
+      },
+      {
+        "request": "d2f2bb93a13511bea346114042f9a660f62e3b32fdfdc8a2a6040659d975da4a",
+        "operation": {
+          "kind": "studio.merge.decide",
+          "decision": {
+            "task": "b7f9484f271d046dd7f0b577eb36a57e60068c942df66817c95a03c88e9839c7",
+            "base": "71a143d17ac579e2a730690f6118f375da1124ea",
+            "head_commit": "d3862d2921f3a248fff5ec6b63e51abf37b3102d",
+            "head": "737ffc0b20de3e42626572f1191ed2edf25cab0c",
+            "verdict": "merge",
+            "command": "741596d28d05598ea79eb57d5cdce8e135a5b2fa38d71171d0d55265f32ba84d",
+            "issued_at": 1791273088
+          }
+        },
+        "outcome": {
+          "kind": "merged",
+          "merged": {
+            "task": "b7f9484f271d046dd7f0b577eb36a57e60068c942df66817c95a03c88e9839c7",
+            "base": "71a143d17ac579e2a730690f6118f375da1124ea",
+            "head_commit": "d3862d2921f3a248fff5ec6b63e51abf37b3102d",
+            "head": "737ffc0b20de3e42626572f1191ed2edf25cab0c",
+            "verdict": "merge",
+            "publication": {
+              "operation": "8c4d8614a5f183dbdb53c12fb78fef4ed90e6acdb0705d7f0e03b77fd01cde6f",
+              "task": "b7f9484f271d046dd7f0b577eb36a57e60068c942df66817c95a03c88e9839c7",
+              "base": "71a143d17ac579e2a730690f6118f375da1124ea",
+              "head_commit": "d3862d2921f3a248fff5ec6b63e51abf37b3102d",
+              "head": "737ffc0b20de3e42626572f1191ed2edf25cab0c",
+              "landing": "branch",
+              "state": "published",
+              "branch": "main",
+              "commit": "656d919b5755b8ca4ec2c09347ca1b5bd6842bd1",
+              "note": "Merged into main in /tmp/openagents-workbench-home-_dgtpfny/tmp/.tmpCev3Jz/studio/fixture/checkout as 656d919b5755; nothing was pushed."
+            }
+          }
+        },
+        "repeated_delivery_equal": true,
+        "confirmation": [
+          "STUDIO: EXACT-REVISION REVIEW",
+          "Host stream 18dbe15f956f6c520001c973 sequence 5",
+          "Selected workspace: scratch",
+          "EXACT-REVISION REVIEW b7f9484f271d046dd7f0b577eb36a57e60068c942df66817c95a03c88e9839c7",
+          "base 71a143d17ac579e2a730690f6118f375da1124ea",
+          "HEAD d3862d2921f3a248fff5ec6b63e51abf37b3102d",
+          "tree 737ffc0b20de3e42626572f1191ed2edf25cab0c",
+          "diff Complete; 2 files +2 -2 uncounted 0",
+          "Independent checks and lead evidence: unknown in this review; inspect the managed run.",
+          "A studio merge is local and pushes nothing. Host admission decides each verdict.",
+          "Modified README.md +Some(1) -Some(1)",
+          "Modified greeting.txt +Some(1) -Some(1)",
+          "diff --git a/README.md b/README.md",
+          "index dc56b04..736b6e9 100644",
+          "--- a/README.md",
+          "+++ b/README.md",
+          "@@ -1,5 +1,5 @@",
+          " # Scratch",
+          " ",
+          "-Status: draft",
+          "+Status: greets people",
+          " ",
+          " A scratch repository for the simulated team.",
+          "diff --git a/greeting.txt b/greeting.txt",
+          "index ce01362..cce24c6 100644",
+          "--- a/greeting.txt",
+          "+++ b/greeting.txt",
+          "@@ -1 +1 @@",
+          "-hello",
+          "+Hello, studio",
+          "/merge, /changes TEXT, or /reject TEXT prepare a verdict; ENTER confirms.",
+          "Exact-revision review loaded.",
+          "CONFIRM: STUDIO REVIEW Merge b7f9484f271d046dd7f0b577eb36a57e60068c942df66817c95a03c88e9839c7 base 71a143d17ac579e2a730690f6118f375da1124ea HEAD d3862d2921f3a248fff5ec6b63e51abf37b3102d tree 737ffc0b20de3e42626572f1191ed2edf25cab0c; /merge",
+          "ENTER sends once; ESC rejects."
+        ]
+      }
+    ],
+    "scripted_turns": [
+      "ended turn 1 of 9a2dd190de5b1c733f047e721032f9af127b84312803ad9afc2c497190bfbe67 (asked_question)",
+      "ended turn 2 of 9a2dd190de5b1c733f047e721032f9af127b84312803ad9afc2c497190bfbe67 (model_finished)",
+      "ended turn 1 of 9c28150e681ed15012904b42ec6ed2ee6b6609537ac7090985d2023ffa060701 (model_finished)",
+      "ended turn 1 of b7f9484f271d046dd7f0b577eb36a57e60068c942df66817c95a03c88e9839c7 (model_finished)",
+      "ended turn 1 of 26d991b04c3fc3e571f19ad720313834aaecb1c0d09bb000b24c6abbd4ee6282 (model_finished)",
+      "ended turn 1 of 3d78c0706edde249c756d283dc3405fadf5092d8c82c52bf53a15a88dea737e6 (model_finished)"
+    ],
+    "origin_before": "71a143d17ac579e2a730690f6118f375da1124ea",
+    "origin_after": "71a143d17ac579e2a730690f6118f375da1124ea",
+    "pushes_during_merge": 0,
+    "local_head": "656d919b5755b8ca4ec2c09347ca1b5bd6842bd1",
+    "task": "b7f9484f271d046dd7f0b577eb36a57e60068c942df66817c95a03c88e9839c7",
+    "observed_host_spend": {
+      "microusd": 0
+    }
+  },
+  "archived_tasks": [
+    "26d991b04c3fc3e571f19ad720313834aaecb1c0d09bb000b24c6abbd4ee6282",
+    "3d78c0706edde249c756d283dc3405fadf5092d8c82c52bf53a15a88dea737e6",
+    "9a2dd190de5b1c733f047e721032f9af127b84312803ad9afc2c497190bfbe67",
+    "9c28150e681ed15012904b42ec6ed2ee6b6609537ac7090985d2023ffa060701",
+    "b7f9484f271d046dd7f0b577eb36a57e60068c942df66817c95a03c88e9839c7"
+  ],
+  "cleanup_error": null,
+  "native_key_and_render_acceptance": "unverified; semantic capture only",
+  "real_engine_receipt": {
+    "status": "unverified",
+    "reason": "separate bounded owner qualification required"
+  }
+}

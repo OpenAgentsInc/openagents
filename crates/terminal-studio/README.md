@@ -15,3 +15,8 @@ decision revision and exact host rule. `/review TASK` reads the exact base,
 HEAD, and tree; `/merge`, `/changes TEXT`, and `/reject TEXT` bind those
 revisions and require Review independently of Operate. Merge lands a studio
 change locally and pushes nothing. The host reports stale or refused actions.
+
+The `studio-acceptance` example (feature `acceptance`) drives this sheet through
+a scripted scratch host and retains its receipt, trace, and artifact bytes.
+See the [acceptance receipt](../../docs/verse/verification/2026-10-06-studio-workbench/README.md)
+for results, isolation, limits, and reproduction.

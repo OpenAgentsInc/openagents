@@ -1,5 +1,21 @@
 # Owner checks
 
+## Shared studio native and real-engine qualification (#10650)
+
+The [scripted receipt](docs/verse/verification/2026-10-06-studio-workbench/README.md)
+passes through the shared sheet and scratch host. On the Mac, confirm physical
+T/workshop entry names the same resources, confirmation sends once, and exact
+review/merge remains visible after reopening. Retain a separate bounded
+real-engine run with source/app/host/engine IDs, request and review revisions,
+trace and artifact hashes, actual checks, spend, failures, and cleanup.
+Follow the [task admission](docs/coder/guides/tasks.md) and
+[host auto-start](docs/coder/runtime/host-autostart.md) contracts. Use an
+explicit temporary HOME, root, task store, and repository with separately
+granted credentials; never use the owner's normal host or chat lists. Set
+wall, output, concurrency, and spend limits before starting, and archive every
+created task. Historical live audits do not qualify this new sheet. Open a
+new issue if qualification finds a defect.
+
 ## Smart terminal Mac verification (#10642–#10644)
 
 The sheet refactor you asked for is implemented: Retina text, one smart input
