@@ -1,5 +1,5 @@
 use coder_new::agents::{DEMOS, DemoMessage, MAIN_PLUGINS, MAIN_TOOLS, elapsed_time};
-use coder_new::tools::{PluginCall, ToolCall, ToolKind, ToolState, tool_lines};
+use coder_new::tools::{PluginCall, ToolCall, ToolKind, ToolState, spinner, tool_lines};
 use coder_new::{App, Screen, snapshot, theme, ui};
 use crossterm::event::{Event, KeyCode, KeyEvent, KeyEventKind, KeyModifiers};
 use ratatui::{
@@ -823,4 +823,90 @@ fn rail_elapsed_time_formats_units_and_preserves_the_clock_across_selection_and_
         assert!(!row.contains(&elapsed_time(demo.elapsed_seconds + 22)));
     }
     assert_eq!(app.elapsed_seconds, 22);
+}
+
+#[test]
+fn input_restarts_cursor_blink_without_restarting_visible_spinners_or_delegation_pulses() {
+    let mut app = App::default();
+    for _ in 0..5 {
+        app.tick();
+    }
+    assert_eq!(app.cursor_blink_frame, 5);
+    let before = screen(&mut app, 110, 70);
+    let plugin_header = before
+        .lines()
+        .find(|line| line.contains("Plugin palette-audit.colors.check"))
+        .unwrap()
+        .to_owned();
+    assert!(plugin_header.contains(&format!("{} Plugin", spinner(5))));
+    let svg = snapshot::svg(&mut app, 110, 70);
+    let diamonds: Vec<_> = svg
+        .lines()
+        .filter(|line| line.ends_with(">◆</text>"))
+        .collect();
+    let mut repeat = KeyEvent::new(KeyCode::Char('b'), KeyModifiers::NONE);
+    repeat.kind = KeyEventKind::Repeat;
+    for event in [
+        Event::Key(KeyEvent::new(KeyCode::Char('a'), KeyModifiers::NONE)),
+        Event::Paste(" pasted".into()),
+        Event::Key(KeyEvent::new(KeyCode::Backspace, KeyModifiers::NONE)),
+        Event::Key(KeyEvent::new(KeyCode::Left, KeyModifiers::NONE)),
+        Event::Key(KeyEvent::new(KeyCode::Right, KeyModifiers::NONE)),
+        Event::Key(repeat),
+    ] {
+        assert!(app.handle(event));
+        assert_eq!(app.cursor_blink_frame, 0);
+        let rendered = screen(&mut app, 110, 70);
+        assert_eq!(
+            rendered
+                .lines()
+                .find(|line| line.contains("Plugin palette-audit.colors.check"))
+                .unwrap(),
+            plugin_header
+        );
+        let current = snapshot::svg(&mut app, 110, 70);
+        assert_eq!(
+            current
+                .lines()
+                .filter(|line| line.ends_with(">◆</text>"))
+                .collect::<Vec<_>>(),
+            diamonds
+        );
+    }
+    app.tick();
+    assert_eq!(app.cursor_blink_frame, 1);
+    assert!(
+        screen(&mut app, 110, 70)
+            .contains(&format!("{} Plugin palette-audit.colors.check", spinner(6)))
+    );
+    key(&mut app, KeyCode::Down);
+    let running = DEMOS[0]
+        .conversation
+        .iter()
+        .find_map(|message| match message {
+            DemoMessage::Tool(call)
+                if call.kind == ToolKind::Run && call.state == ToolState::Running =>
+            {
+                Some(call)
+            }
+            _ => None,
+        })
+        .unwrap();
+    let run_header = format!("{} Run {}", spinner(6), running.input);
+    assert!(screen(&mut app, 110, 70).contains(&run_header));
+    key(&mut app, KeyCode::Char('q'));
+    app.handle(Event::Paste(" edited".into()));
+    key(&mut app, KeyCode::Backspace);
+    assert_eq!(app.cursor_blink_frame, 0);
+    assert!(screen(&mut app, 110, 70).contains(&run_header));
+    app.tick();
+    assert_eq!(app.cursor_blink_frame, 1);
+    assert!(screen(&mut app, 110, 70).contains(&format!("{} Run {}", spinner(7), running.input)));
+    key(&mut app, KeyCode::Down);
+    assert!(screen(&mut app, 110, 70).contains(&format!("{} Run", spinner(7))));
+    key(&mut app, KeyCode::Esc);
+    assert!(
+        screen(&mut app, 110, 70)
+            .contains(&format!("{} Plugin palette-audit.colors.check", spinner(7)))
+    );
 }

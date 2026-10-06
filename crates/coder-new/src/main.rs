@@ -68,7 +68,7 @@ fn main() -> io::Result<()> {
             execute!(io::stdout(), BeginSynchronizedUpdate)?;
             terminal.draw(|frame| ui::render(frame, &mut app))?;
             // Keep the block blinking while progress updates move the terminal cursor.
-            if app.animation_frame >= 4 {
+            if app.cursor_blink_frame >= 4 {
                 terminal.hide_cursor()?;
             }
             execute!(io::stdout(), EndSynchronizedUpdate)?;
