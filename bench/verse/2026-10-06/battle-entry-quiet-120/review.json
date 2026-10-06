@@ -1,0 +1,53 @@
+{
+  "source_base_revision": "3896776166080cfba6ed740aa9a414b6a7582cb4",
+  "source_patch": "source.patch",
+  "executable_sha256": "8ba207c252a7da9e37ec538e27e9f579651e4141bb6615f5255c77f6b6fc7e42",
+  "acceptance": "failed",
+  "failures": [
+    "/server/movement_expiry/total: Some(2.0) exceeds 0, or is unavailable",
+    "Player 1 late prediction p95 Some(0.26669979095458984) exceeds 0.25 meters or is unavailable"
+  ],
+  "movement_expiry": {
+    "total": 2,
+    "admission": 0,
+    "primary_tick": 0,
+    "additional_tick": 2,
+    "bootstrap": 0,
+    "samples": [
+      {
+        "actor": 232,
+        "epoch": 5,
+        "authority_tick": 2165,
+        "origin": "additional_tick",
+        "world_step": 6260,
+        "confirmed_step": 6224,
+        "projected_step": 6224,
+        "received_at": 6248,
+        "applied_sequence": 4,
+        "queued_frames": 0,
+        "queued_steps": 0,
+        "first_start": null,
+        "last_end": null
+      },
+      {
+        "actor": 245,
+        "epoch": 13,
+        "authority_tick": 3288,
+        "origin": "additional_tick",
+        "world_step": 10752,
+        "confirmed_step": 10718,
+        "projected_step": 10718,
+        "received_at": 10732,
+        "applied_sequence": 1,
+        "queued_frames": 0,
+        "queued_steps": 0,
+        "first_start": null,
+        "last_end": null
+      }
+    ],
+    "omitted": 0
+  },
+  "limits_changed": false,
+  "checks": "25 worker tests pass, including first-frame polling priority at native cadence. One sequential Linux build completed before measurement.",
+  "conclusion": "The polling change does not qualify the battle. Two startup expiries and player 1 correction p95 of 0.26670 meters fail acceptance. Actor 232 starts with only its first movement request pending, so queued periodic reads alone do not explain the remaining failure. Its initial credit runs out before a second credit cycle reaches authority."
+}
