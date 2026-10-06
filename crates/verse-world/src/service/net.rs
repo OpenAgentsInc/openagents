@@ -795,7 +795,7 @@ async fn serve_loop<F: Future<Output = ()>>(
                             let room = pending.len() < QUEUE && fences.len() < 2 && writer.send.as_ref().unwrap().capacity() > 0;
                             let history = gateway.chamber.rewards.history_capacity().unwrap_or(false);
                             let mutating = Request::decode(&bytes).is_ok_and(|request| matches!(request.body,
-                                Body::Authenticate {..} | Body::Social {..} | Body::BeginMovementFrames {..} | Body::MovementFrame {..} | Body::Command {..} | Body::Respawn {..} | Body::ClaimQuest {..}
+                                Body::Authenticate {..} | Body::Social {..} | Body::BeginMovementFrames {..} | Body::MovementFrame {..} | Body::Command {..} | Body::Respawn {..} | Body::ClaimQuest {..} | Body::QuestCycle {..}
                                 | Body::AcceptQuest {..} | Body::UseItem {..} | Body::EquipOutfit {..} | Body::EquipGear {..}));
                             if !mutating && !dirty {
                                 if let Some(mut entry) = fences.last_entry() {

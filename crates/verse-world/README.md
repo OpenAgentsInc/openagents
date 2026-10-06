@@ -620,7 +620,8 @@ chambers retain in-memory history until attached to a store or network host.
 Host JSON accepts an optional sorted `rewards` array of NPC targets and grants,
 for example `[{"target":2,"experience":45,"items":[{"id":1,"count":1}],"quests":[{"id":1,"count":1}]}]`.
 The cooperative version-one policy grants every enrolled adventurer, including
-disconnected or dead party members, once per defeated NPC life. Spectators receive
+disconnected or defeated residents, once per defeated NPC life. This policy does
+not consult persistent party membership. Spectators receive
 none. Respawns and instance resets create new NPC life generations; saved source
 IDs and the event cursor prevent duplicate rewards after recovery. Changed reward
 policies are refused on recovery. With no configured rewards, combat grants none.
@@ -634,7 +635,8 @@ their experience, bounded item stacks, and quest counters while dead. Spectators
 are refused. `service::client::Client::inventory` validates the owned life, counts,
 and nonregressing transaction revision. The [combat reward receipt](../../bench/verse/2026-10-04/combat-rewards/run.json)
 retains real loopback TLS spell/reward/restart assertions and their synthetic
-fixture limits. Equipment and combat stat progression remain.
+fixture limits. The bounded class, level, and equipment derivation is described
+in [Party membership, progression, and trades](#party-membership-progression-and-trades).
 
 The native worker refreshes owned inventory once per second and immediately after
 an owned-life change; spectators send no inventory requests. `service::view::View`
@@ -654,16 +656,17 @@ Host JSON accepts optional version-one `progression` configuration, for example
 `{"version":1,"levels":[0,100,300],"quests":[{"id":1,"name":"Disrupt the summoning","objective":1,"goal":12,"experience":75,"items":[{"id":1,"count":2}]},{"id":2,"name":"Secure the chamber","prerequisites":[1],"objective":1,"goal":24,"experience":150,"items":[]}]}`.
 Campaign quests without prerequisites are available to every enrolled character.
 An optional `prerequisites` array lists up to 16 sorted, unique earlier quest IDs.
-The host unlocks a quest only after that character claims every prerequisite in
-the same instance. Kill reward counters supply objectives, including counters
+The host unlocks a quest only after that character claims every prerequisite.
+Realm character receipt books preserve these completions across instances. Kill reward counters supply objectives, including counters
 earned before unlocking; claims select only the quest ID under the current owned life
 and control epoch. The host checks availability and completion and applies configured rewards
-once per character and instance, including across respawn, reset, and recovery.
+once per character and quest cycle, including across respawn, reset, and recovery.
 Durable hosts commit before acknowledging claims. Saved progression configuration
 is immutable on recovery; earlier saves upgrade with no configured quests and
-level one. Level thresholds affect presentation only. Abandonment,
-repeatable quests, quest givers, and combat stat scaling remain.
-Wire version fifteen carries quest availability. Locked quests show their status
+level one. Level thresholds also derive bounded class and equipment resource limits.
+Authored repeatable quests and cycle operations are described in
+[Party membership, progression, and trades](#party-membership-progression-and-trades).
+Wire version fifteen introduced quest availability. Locked quests show their status
 and expose no claim action. Recovery replays prerequisite claims in ledger order
 and rejects follow-up claims whose prerequisites are absent. Existing saves
 without prerequisite arrays retain their original behavior.
@@ -781,9 +784,9 @@ world effects and input stop. The transferred character loses its old connection
 unrelated players and spectators retain their sessions. Their replication
 baselines resynchronize with increasing revision counters. Character receipt books preserve original
 mutation outcomes across local actor changes and repeated transfers; an old item
-use cannot debit or heal again. Save version 11, character schema 3, retains these
-books and the public guest policy; versions 1–10 remain readable under their
-original schema rules.
+use cannot debit or heal again. Save version 12, character schema 4, retains these
+books, the public guest policy, and quest cycles. Versions 1–11 remain readable
+under their original schema rules; legacy resource limits upgrade without healing.
 
 `service::realm::net::serve` hosts prebound TLS listeners with the existing wire
 protocol and SDK. A separate coordinator thread owns storage and all games; TLS
@@ -869,6 +872,53 @@ checkpoint, limited to 8 MiB, and shared reward history. Changed character
 catalogs require migration. Whole-world archival checkpoints, growing immutable
 storage, and serialized commit cost still need operating budgets and retention
 work. These limits do not establish AAA population or throughput acceptance.
+
+## Party membership, progression, and trades
+
+Wire version 30 exposes `Client::services` and `Client::service_action` over an
+authenticated realm connection. Every request names the expected stable character;
+the server checks the current account, resident actor, and connection. Mutations
+also name the realm and a nonzero 16-byte operation ID. Retain that ID and the
+same action across an uncertain result. Immutable receipts return the original
+outcome, including after transfer and restart; changed actions are refused.
+
+A character can join one party of eight members and one guild of 64 members.
+Leaders invite and remove members; invited characters join or decline. Leaving
+transfers leadership to the lowest remaining character ID. Membership confers
+no chat, world-control, or Studio permission. Private service reads expose only
+the admitted character's memberships, invitations, items, and pending offers.
+
+`Materialize` assigns identity to one already-owned gear unit. Each identity pins
+its gear definition digest, stable owner, and version. Consumables and outfits
+remain counted items. A trade names sorted item IDs and their expected versions,
+with up to eight items per side and a deadline of at most five minutes. The offer
+locks its sender's items; acceptance by the named recipient checks both sides
+and matching destination definitions. One realm publication selects both reward
+ledgers, ownership changes, cleared locks, and the retry receipt. Changed or
+equipped last units refuse the whole exchange. Either participant can cancel,
+including after expiry or a requested item's transfer. Characters retain at most
+64 item identities, 16 invitations, and 16 pending offers each.
+
+The local host's `Control::party_loot` publishes an authored outcome through the
+existing reward ledger. The first nonzero event ID freezes the party's resident
+recipients and amounts. Retries cannot include newly joined members or award a
+transferred character again. A grant has at most eight item and objective entries;
+dormant characters receive no new party loot. This trusted adapter does not give
+clients authority to invent combat outcomes.
+
+`Client::quest_cycle` and the worker's `Input::QuestCycle` capture an expected
+cycle with each accept, claim, abandon, or reset. Abandon advances the cycle;
+giver quests require a new acceptance, and auto-active quests start a fresh window. An authored `repeatable` quest can reset after
+completion; reset starts a fresh objective window immediately. Earlier completions
+still satisfy prerequisites. Old claims return their original receipt and cannot
+claim a later window. Authored class health and mana gain 10 health and one mana
+per level after the first, plus owned equipped gear, capped at 600 and 60.
+Derivation preserves wounds and current mana; ordinary progression does not heal.
+The character's authored spell catalog and save difficulty remain its class values.
+
+These are engine and SDK operations. Crafting, auctions, mail, matchmaking,
+reputation, a complete commerce UI, and automatic party combat attribution remain
+outside this profile. Existing single-cycle UI actions continue to name cycle zero.
 
 ## Hosted social profiles
 

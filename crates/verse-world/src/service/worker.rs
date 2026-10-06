@@ -112,6 +112,11 @@ pub enum Input {
         epoch: u64,
     },
     Respawn,
+    QuestCycle {
+        quest: u64,
+        cycle: u64,
+        action: super::progression::Action,
+    },
     ClaimQuest(u64),
     AcceptQuest(u64, verse_engine::core::LifeId),
     UseItem(u64),
@@ -219,6 +224,7 @@ fn fresh_control(
         | Input::UseItem(_)
         | Input::EquipGear(_, _)
         | Input::EquipOutfit(_)
+        | Input::QuestCycle { .. }
         | Input::ClaimQuest(_)
         | Input::AcceptQuest(_, _) => match control {
             Some(c) => (c.life.into(), c.epoch),
@@ -491,6 +497,17 @@ async fn run_impl(
                                         epoch,
                                     }
                                 }
+                                Input::QuestCycle {
+                                    quest,
+                                    cycle,
+                                    action,
+                                } => Body::QuestCycle {
+                                    life: control.life,
+                                    epoch: control.epoch,
+                                    quest,
+                                    cycle,
+                                    action,
+                                },
                                 Input::AcceptQuest(quest, giver) => Body::AcceptQuest {
                                     life: control.life,
                                     epoch: control.epoch,

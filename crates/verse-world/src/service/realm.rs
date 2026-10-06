@@ -16,6 +16,7 @@ mod disk;
 mod lifecycle;
 pub mod net;
 mod registry;
+mod services;
 mod transfer;
 pub use registry::{Account, Character, Residence};
 pub use transfer::Transfer;
@@ -99,6 +100,7 @@ pub struct Realm {
     dirty: BTreeSet<u64>,
     transfer_commit: bool,
     lifecycle_commit: bool,
+    services_commit: bool,
 }
 impl Realm {
     pub fn open(root: &Path) -> Result<Self, String> {
@@ -566,10 +568,15 @@ impl Realm {
             Body::Snapshot {}
                 | Body::Replicate { .. }
                 | Body::Inventory {}
+                | Body::Services { .. }
                 | Body::Account {}
                 | Body::Events { .. }
         );
-        let response = if let Some(result) = self.lifecycle_request(lease, id, now, &request.body) {
+        let service = self.services_request(lease, id, now, &request.body);
+        let service_handled = service.is_some();
+        let response = if let Some(result) =
+            service.or_else(|| self.lifecycle_request(lease, id, now, &request.body))
+        {
             if self.poisoned {
                 return Err("Realm requires recovery after an uncertain commit".into());
             }
@@ -588,7 +595,12 @@ impl Realm {
                     applied_movement: None,
                 }),
                 body: result.unwrap_or_else(|message| super::wire::Reply::Refused {
-                    code: "character_lifecycle".into(),
+                    code: if service_handled {
+                        "game_services"
+                    } else {
+                        "character_lifecycle"
+                    }
+                    .into(),
                     message,
                 }),
             }
@@ -599,7 +611,7 @@ impl Realm {
                 .unwrap()
                 .dispatch_json(id, now, bytes)?
         };
-        if mutating || self.dirty.contains(&lease.instance) {
+        if mutating && !service_handled || self.dirty.contains(&lease.instance) {
             self.publish(&[lease.instance])?;
         }
         Ok(response)

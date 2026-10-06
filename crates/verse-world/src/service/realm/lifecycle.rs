@@ -9,7 +9,7 @@ impl Realm {
         result
     }
 
-    fn owned(&self, character: u64, principal: [u8; 32]) -> Result<Character, String> {
+    pub(super) fn owned(&self, character: u64, principal: [u8; 32]) -> Result<Character, String> {
         let saved = self.character(character)?;
         let account = self
             .account_for_key(principal)?

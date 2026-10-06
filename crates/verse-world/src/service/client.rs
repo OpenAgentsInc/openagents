@@ -264,6 +264,51 @@ impl Client {
         })
         .await
     }
+    pub async fn services(&mut self, character: u64) -> Result<super::game_services::View, String> {
+        match self.request_ready(Body::Services { character }).await?.body {
+            Reply::Services { view } => Ok(view),
+            Reply::Refused { message, .. } => Err(message),
+            _ => Err("Realm service view is missing".into()),
+        }
+    }
+    pub async fn service_action(
+        &mut self,
+        realm: [u8; 32],
+        character: u64,
+        operation: [u8; 16],
+        action: super::game_services::Action,
+    ) -> Result<super::game_services::Receipt, String> {
+        match self
+            .request_ready(Body::ServiceAction {
+                realm,
+                character,
+                operation,
+                action,
+            })
+            .await?
+            .body
+        {
+            Reply::ServiceApplied { receipt } => Ok(receipt),
+            Reply::Refused { message, .. } => Err(message),
+            _ => Err("Realm service receipt is missing".into()),
+        }
+    }
+    pub async fn quest_cycle(
+        &mut self,
+        quest: u64,
+        cycle: u64,
+        action: super::progression::Action,
+    ) -> Result<Response, String> {
+        let control = self.control().ok_or("Client has no admitted adventurer")?;
+        self.request_ready(Body::QuestCycle {
+            life: control.life,
+            epoch: control.epoch,
+            quest,
+            cycle,
+            action,
+        })
+        .await
+    }
     pub async fn claim_quest(&mut self, quest: u64) -> Result<Response, String> {
         let control = self.control().ok_or("Client has no admitted adventurer")?;
         self.request_ready(Body::ClaimQuest {
@@ -583,6 +628,74 @@ impl Client {
             }
             (Reply::Snapshot { state }, Body::Snapshot {} | Body::Replicate { .. }) => {
                 state.validate_control(self.instance, &r.control)
+            }
+            (Reply::Services { view }, Body::Services { character }) => {
+                view.validate()?;
+                if view.character != *character
+                    || view.realm == [0; 32]
+                    || view.groups.len() > 2
+                    || view.invitations.len() > 16
+                    || view.items.len() > 64
+                    || view.offers.len() > 16
+                    || view
+                        .items
+                        .iter()
+                        .any(|i| i.owner != *character || i.version == 0)
+                    || view
+                        .offers
+                        .iter()
+                        .any(|o| o.from != *character && o.to != *character)
+                {
+                    return Err("Realm service view is incompatible".into());
+                }
+                Ok(())
+            }
+            (
+                Reply::ServiceApplied { receipt },
+                Body::ServiceAction {
+                    realm,
+                    character,
+                    operation,
+                    action,
+                },
+            ) => {
+                if receipt.realm != *realm
+                    || receipt.character != *character
+                    || receipt.operation != *operation
+                    || receipt.digest != super::game_services::action_digest(action)?
+                {
+                    return Err("Realm service acknowledgment is incompatible".into());
+                }
+                receipt.validate(action)?;
+                Ok(())
+            }
+            (
+                Reply::QuestCycleChanged {
+                    quest,
+                    cycle,
+                    action,
+                    revision,
+                },
+                Body::QuestCycle {
+                    life,
+                    epoch,
+                    quest: requested,
+                    cycle: expected,
+                    action: intent,
+                },
+            ) => {
+                if quest != requested
+                    || cycle != expected
+                    || action != intent
+                    || *revision == 0
+                    || *quest == 0
+                    || r.control
+                        .as_ref()
+                        .is_none_or(|c| c.life != *life || c.epoch != *epoch)
+                {
+                    return Err("Quest cycle acknowledgment is incompatible".into());
+                }
+                Ok(())
             }
             (
                 Reply::QuestAccepted { quest, revision },
@@ -1218,6 +1331,7 @@ mod tests {
                 version: 1,
                 levels: vec![0, 100],
                 quests: vec![Quest {
+                    repeatable: false,
                     dialogue: None,
                     giver: Some(2),
                     prerequisites: vec![],
@@ -1430,6 +1544,7 @@ mod tests {
                 levels: vec![0, 100, 300],
                 quests: vec![
                     super::super::progression::Quest {
+                        repeatable: false,
                         dialogue: None,
                         giver: None,
                         prerequisites: vec![],
@@ -1441,6 +1556,7 @@ mod tests {
                         items: vec![Entry { id: 1, count: 2 }],
                     },
                     super::super::progression::Quest {
+                        repeatable: false,
                         dialogue: None,
                         giver: None,
                         prerequisites: vec![1],
@@ -1670,6 +1786,7 @@ mod tests {
                 version: 1,
                 levels: vec![0, 100, 300],
                 quests: vec![Quest {
+                    repeatable: false,
                     dialogue: None,
                     giver: None,
                     prerequisites: vec![],

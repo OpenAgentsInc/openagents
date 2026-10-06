@@ -19,6 +19,11 @@ use tokio_rustls::TlsAcceptor;
 const QUEUE: usize = 128;
 
 enum Operation {
+    PartyLoot {
+        instance: u64,
+        grant: super::super::game_services::Loot,
+        reply: oneshot::Sender<Result<super::super::game_services::LootReceipt, String>>,
+    },
     Account {
         id: u64,
         reply: oneshot::Sender<Result<Account, String>>,
@@ -72,6 +77,21 @@ pub fn channel() -> (Control, Commands) {
     (Control(send), Commands(receive))
 }
 impl Control {
+    pub async fn party_loot(
+        &self,
+        instance: u64,
+        grant: super::super::game_services::Loot,
+    ) -> Result<super::super::game_services::LootReceipt, String> {
+        let (reply, receive) = oneshot::channel();
+        self.send(Operation::PartyLoot {
+            instance,
+            grant,
+            reply,
+        })
+        .await?;
+        receive.await.map_err(|_| "Realm operator stopped")?
+    }
+
     pub async fn account(&self, id: u64) -> Result<Account, String> {
         let (reply, receive) = oneshot::channel();
         self.send(Operation::Account { id, reply }).await?;
@@ -286,6 +306,17 @@ fn coordinator(
                 }
             }
             Work::Operator(operation) => match operation {
+                Operation::PartyLoot {
+                    instance,
+                    grant,
+                    reply,
+                } => {
+                    let result = match leases.get(&instance) {
+                        Some(lease) => realm.party_loot(lease, grant, clock),
+                        None => Err("Realm loot authority is unavailable".into()),
+                    };
+                    let _ = reply.send(result);
+                }
                 Operation::Account { id, reply } => {
                     let _ = reply.send(realm.account(id));
                 }

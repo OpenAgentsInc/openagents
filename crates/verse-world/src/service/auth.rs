@@ -367,6 +367,20 @@ impl Gateway {
         self.chamber
             .accept_quest(b.principal, b.session, life, epoch, quest, giver)
     }
+    pub fn quest_cycle(
+        &mut self,
+        id: ConnectionId,
+        life: LifeId,
+        epoch: u64,
+        quest: u64,
+        cycle: u64,
+        action: super::progression::Action,
+    ) -> Result<super::rewards::Receipt, String> {
+        self.view_cache = None;
+        let b = self.binding(id)?;
+        self.chamber
+            .quest_cycle(b.principal, b.session, life, epoch, quest, cycle, action)
+    }
     pub fn claim_quest(
         &mut self,
         id: ConnectionId,

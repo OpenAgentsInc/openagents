@@ -3,9 +3,18 @@ use super::rewards::{Character, Entry, Ledger, Transaction};
 use serde::{Deserialize, Serialize};
 const ACCEPT_DOMAIN: &[u8; 8] = b"VACCEPT1";
 const CLAIM_DOMAIN: &[u8; 8] = b"VQUEST01";
+const CYCLE_DOMAIN: &[u8; 8] = b"VQCYCLE1";
+fn zero(value: &u64) -> bool {
+    *value == 0
+}
+fn no(value: &bool) -> bool {
+    !*value
+}
 #[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct Quest {
+    #[serde(default, skip_serializing_if = "no")]
+    pub repeatable: bool,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub dialogue: Option<Dialogue>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -22,8 +31,36 @@ pub struct Quest {
 #[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct Acceptance {
+    #[serde(default, skip_serializing_if = "no")]
+    pub automatic: bool,
     pub quest: u64,
     pub baseline: u32,
+    #[serde(default, skip_serializing_if = "zero")]
+    pub cycle: u64,
+    #[serde(default, skip_serializing_if = "Transition::start")]
+    pub transition: Transition,
+}
+#[derive(Clone, Copy, Debug, Default, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum Transition {
+    #[default]
+    Start,
+    Abandon,
+    Reset,
+}
+impl Transition {
+    fn start(&self) -> bool {
+        *self == Self::Start
+    }
+}
+/// Every action names its expected cycle; delayed claims cannot claim a new cycle.
+#[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(tag = "action", rename_all = "snake_case", deny_unknown_fields)]
+pub enum Action {
+    Accept { giver: verse_engine::core::LifeId },
+    Claim,
+    Abandon,
+    Reset,
 }
 #[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -65,6 +102,8 @@ impl Level {
 #[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct Progress {
+    pub cycle: u64,
+    pub repeatable: bool,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub dialogue: Option<Dialogue>,
     pub accepted: bool,
@@ -194,11 +233,13 @@ impl Config {
         self.quests
             .iter()
             .map(|quest| Progress {
+                cycle: ledger.character(actor).map_or(0, |c| c.cycle(quest.id)),
+                repeatable: quest.repeatable,
                 dialogue: quest.dialogue.clone(),
                 accepted: quest.giver.is_none()
                     || ledger
                         .character(actor)
-                        .is_some_and(|c| c.claimed_quests.contains(&quest.id))
+                        .is_some_and(|c| c.completed(quest.id))
                     || ledger
                         .character(actor)
                         .is_some_and(|c| c.accepted_quests.contains_key(&quest.id)),
@@ -212,7 +253,7 @@ impl Config {
                 goal: quest.goal,
                 claimed: ledger
                     .character(actor)
-                    .is_some_and(|c| c.claimed_quests.contains(&quest.id)),
+                    .is_some_and(|c| c.completed(quest.id)),
                 experience: quest.experience,
                 items: quest.items.clone(),
             })
@@ -240,7 +281,18 @@ impl Config {
             .find(|q| q.id == acceptance.quest)
             .ok_or("Accepted quest is not defined")?;
         if quest.giver.is_none()
-            || tx != &quest.acceptance(tx.instance, tx.actor, acceptance.baseline)
+            || acceptance.transition != Transition::Start
+            || acceptance.cycle != ledger.character(tx.actor).map_or(0, |c| c.cycle(quest.id))
+            || ledger
+                .character(tx.actor)
+                .is_some_and(|c| c.completed(quest.id))
+            || tx
+                != &quest.acceptance_at(
+                    tx.instance,
+                    tx.actor,
+                    acceptance.baseline,
+                    acceptance.cycle,
+                )
             || acceptance.baseline != quest.count(ledger.character(tx.actor))
             || !self.available(quest, tx.actor, ledger)
         {
@@ -261,13 +313,51 @@ impl Config {
             .iter()
             .find(|quest| quest.id == id)
             .ok_or("Claimed campaign quest is not defined")?;
-        if transaction != &quest.transaction(transaction.instance, transaction.actor)
+        let cycle = u64::from_be_bytes(transaction.source[24..].try_into().unwrap());
+        if cycle
+            != ledger
+                .character(transaction.actor)
+                .map_or(0, |c| c.cycle(id))
+            || transaction != &quest.transaction_at(transaction.instance, transaction.actor, cycle)
             || quest.progress(ledger.character(transaction.actor)) < quest.goal
             || !self.available(quest, transaction.actor, ledger)
         {
             return Err(
                 "Campaign claim does not match its definition or completed objective".into(),
             );
+        }
+        Ok(())
+    }
+    pub(super) fn validate_cycle(&self, tx: &Transaction, ledger: &Ledger) -> Result<(), String> {
+        let change = tx.acceptance.ok_or("Quest cycle payload is absent")?;
+        let quest = self
+            .quests
+            .iter()
+            .find(|q| q.id == change.quest)
+            .ok_or("Quest is not defined")?;
+        let character = ledger.character(tx.actor).cloned().unwrap_or_default();
+        let allowed = match change.transition {
+            Transition::Start => false,
+            Transition::Abandon => {
+                !character.completed(quest.id)
+                    && self.available(quest, tx.actor, ledger)
+                    && (quest.giver.is_none() || character.accepted_quests.contains_key(&quest.id))
+            }
+            Transition::Reset => quest.repeatable && character.completed(quest.id),
+        };
+        if !allowed
+            || change.cycle != character.cycle(quest.id)
+            || change.baseline != quest.count(Some(&character))
+            || tx
+                != &quest.cycle_transaction(
+                    tx.instance,
+                    tx.actor,
+                    change.cycle,
+                    change.baseline,
+                    change.transition,
+                )
+        {
+            return Err("Quest cycle transition is stale or unavailable".into());
         }
         Ok(())
     }
@@ -280,10 +370,10 @@ impl Quest {
             .unwrap_or(0)
     }
     pub(super) fn progress(&self, character: Option<&Character>) -> u32 {
-        if character.is_some_and(|c| c.claimed_quests.contains(&self.id)) {
+        if character.is_some_and(|c| c.completed(self.id)) {
             return self.goal;
         }
-        if self.giver.is_none() {
+        if self.giver.is_none() && character.is_none_or(|c| c.cycle(self.id) == 0) {
             return self.count(character);
         }
         character
@@ -293,21 +383,50 @@ impl Quest {
             })
     }
     pub(super) fn acceptance(&self, instance: u64, actor: u64, baseline: u32) -> Transaction {
-        let mut tx = self.transaction(instance, actor);
+        self.acceptance_at(instance, actor, baseline, 0)
+    }
+    pub(super) fn acceptance_at(
+        &self,
+        instance: u64,
+        actor: u64,
+        baseline: u32,
+        cycle: u64,
+    ) -> Transaction {
+        let mut tx = self.transaction_at(instance, actor, cycle);
         tx.source[..8].copy_from_slice(ACCEPT_DOMAIN);
         tx.experience = 0;
         tx.items.clear();
         tx.acceptance = Some(Acceptance {
+            automatic: self.giver.is_none(),
             quest: self.id,
             baseline,
+            cycle,
+            transition: Transition::Start,
         });
         tx
     }
     pub(super) fn transaction(&self, instance: u64, actor: u64) -> Transaction {
+        self.transaction_at(instance, actor, 0)
+    }
+    pub(super) fn cycle_transaction(
+        &self,
+        instance: u64,
+        actor: u64,
+        cycle: u64,
+        baseline: u32,
+        transition: Transition,
+    ) -> Transaction {
+        let mut tx = self.acceptance_at(instance, actor, baseline, cycle);
+        tx.source[..8].copy_from_slice(CYCLE_DOMAIN);
+        tx.acceptance.as_mut().unwrap().transition = transition;
+        tx
+    }
+    pub(super) fn transaction_at(&self, instance: u64, actor: u64, cycle: u64) -> Transaction {
         let mut source = [0; 32];
         source[..8].copy_from_slice(CLAIM_DOMAIN);
         source[8..16].copy_from_slice(&instance.to_be_bytes());
         source[16..24].copy_from_slice(&self.id.to_be_bytes());
+        source[24..].copy_from_slice(&cycle.to_be_bytes());
         Transaction {
             acceptance: None,
             outfit: None,
@@ -323,7 +442,10 @@ impl Quest {
     }
 }
 pub(super) fn reserved(source: &[u8; 32]) -> bool {
-    source[..8] == CLAIM_DOMAIN[..] || acceptance_source(source)
+    source[..8] == CLAIM_DOMAIN[..] || acceptance_source(source) || cycle_source(source)
+}
+pub(super) fn cycle_source(source: &[u8; 32]) -> bool {
+    source[..8] == CYCLE_DOMAIN[..]
 }
 pub(super) fn acceptance_source(source: &[u8; 32]) -> bool {
     source[..8] == ACCEPT_DOMAIN[..]
@@ -368,6 +490,7 @@ mod tests {
             levels: vec![0],
             quests: vec![
                 Quest {
+                    repeatable: false,
                     dialogue: None,
                     giver: None,
                     prerequisites: vec![],
@@ -379,6 +502,7 @@ mod tests {
                     items: vec![],
                 },
                 Quest {
+                    repeatable: false,
                     dialogue: None,
                     giver: None,
                     prerequisites: vec![1],
@@ -412,6 +536,7 @@ mod tests {
             version: 1,
             levels: vec![0, 100, 300],
             quests: vec![Quest {
+                repeatable: false,
                 dialogue: None,
                 giver: None,
                 prerequisites: vec![],
@@ -492,6 +617,8 @@ mod marker_tests {
     #[test]
     fn markers_follow_enrollment_objectives_claims_and_prerequisites() {
         let mut progress = Progress {
+            cycle: 0,
+            repeatable: false,
             dialogue: None,
             accepted: false,
             giver: Some(42),

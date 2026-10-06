@@ -83,6 +83,7 @@ fn config(root: &Path) -> Config {
             version: 1,
             levels: vec![0, 100, 300],
             quests: vec![Quest {
+                repeatable: false,
                 id: 101,
                 name: "Ritual".into(),
                 objective: 2,
@@ -290,8 +291,8 @@ fn populated_legacy_save_migrates_preserving_receipts_ownership_and_completed_qu
     let reviewed = plan(&store, &f);
     assert_eq!(reviewed.source.character_schema, 1);
     assert_eq!(reviewed.source.save_version, 8);
-    assert_eq!(reviewed.target.character_schema, 3);
-    assert_eq!(reviewed.target.save_version, 11);
+    assert_eq!(reviewed.target.character_schema, 4);
+    assert_eq!(reviewed.target.save_version, 12);
     assert_eq!(reviewed.source.rules, "verse-chamber-owned-v18");
     assert_eq!(reviewed.target.rules, crate::play::RULES_REVISION);
     assert_eq!(std::fs::read(root.join("chamber.json")).unwrap(), original);
@@ -394,7 +395,7 @@ fn populated_legacy_save_migrates_preserving_receipts_ownership_and_completed_qu
             .unwrap()
             .player
             .max_hp,
-        240
+        250
     );
     assert!(gateway.game().actor_life(101).is_some());
     assert!(gateway.game().actor_life(6).is_none());

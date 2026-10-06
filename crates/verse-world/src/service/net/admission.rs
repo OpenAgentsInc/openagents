@@ -355,7 +355,7 @@ impl Slot {
         let (projection, cost) = match body {
             Body::Snapshot {} => (true, 32),
             Body::Replicate { .. } => (true, 8),
-            Body::Inventory {} | Body::Account {} => (true, 8),
+            Body::Inventory {} | Body::Account {} | Body::Services { .. } => (true, 8),
             Body::Events { .. } => (true, 4),
             _ => (false, 1),
         };

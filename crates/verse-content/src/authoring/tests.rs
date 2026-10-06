@@ -310,6 +310,7 @@ fn quest_references_catalog_tuning_and_collision_use_runtime_contracts() {
     giver.friendly = true;
     giver.position = [2., 0., -22.].into();
     let quest = verse_world::service::progression::Quest {
+        repeatable: false,
         dialogue: None,
         giver: Some(100),
         prerequisites: vec![],

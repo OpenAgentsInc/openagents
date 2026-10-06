@@ -148,6 +148,7 @@ pub(super) fn open(root: &Path) -> Result<Realm, String> {
         dirty: std::collections::BTreeSet::new(),
         transfer_commit: false,
         lifecycle_commit: false,
+        services_commit: false,
     };
     let instances: Vec<_> = realm.manifest.instances.keys().copied().collect();
     for id in &instances {
@@ -216,6 +217,7 @@ fn boundary(realm: &Realm, name: &str) {
         stage == name
             || realm.transfer_commit && stage == format!("transfer_{name}")
             || realm.lifecycle_commit && stage == format!("lifecycle_{name}")
+            || realm.services_commit && stage == format!("services_{name}")
     }) {
         std::process::exit(86);
     }

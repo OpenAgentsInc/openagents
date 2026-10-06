@@ -5,7 +5,7 @@ use verse_engine::core::LifeId;
 use super::auth::{Challenge, ConnectionId, Gateway};
 use crate::{Command, Intent, events::Event, play::Ability, rules::Snapshot};
 
-pub const VERSION: u16 = 29;
+pub const VERSION: u16 = 30;
 pub const MAX_REQUEST_BYTES: usize = 16 * 1024;
 pub const MAX_RESPONSE_BYTES: usize = 2 * 1024 * 1024;
 
@@ -116,6 +116,15 @@ impl From<Input> for Command<Ability> {
 #[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(tag = "type", rename_all = "snake_case", deny_unknown_fields)]
 pub enum Body {
+    Services {
+        character: u64,
+    },
+    ServiceAction {
+        realm: [u8; 32],
+        character: u64,
+        operation: [u8; 16],
+        action: super::game_services::Action,
+    },
     Account {},
     SelectCharacter {
         character: u64,
@@ -164,6 +173,13 @@ pub enum Body {
         epoch: u64,
         outfit: u64,
         operation: [u8; 16],
+    },
+    QuestCycle {
+        life: Life,
+        epoch: u64,
+        quest: u64,
+        cycle: u64,
+        action: super::progression::Action,
     },
     AcceptQuest {
         life: Life,
@@ -485,6 +501,12 @@ impl Inventory {
 #[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(tag = "type", rename_all = "snake_case", deny_unknown_fields)]
 pub enum Reply {
+    Services {
+        view: super::game_services::View,
+    },
+    ServiceApplied {
+        receipt: super::game_services::Receipt,
+    },
     Account {
         account: super::accounts::Account,
     },
@@ -508,6 +530,12 @@ pub enum Reply {
     },
     QuestAccepted {
         quest: u64,
+        revision: u64,
+    },
+    QuestCycleChanged {
+        quest: u64,
+        cycle: u64,
+        action: super::progression::Action,
         revision: u64,
     },
     QuestClaimed {
@@ -713,7 +741,11 @@ impl Gateway {
         body: Body,
     ) -> Result<Reply, (&'static str, String)> {
         match body {
-            Body::Account {} | Body::SelectCharacter { .. } | Body::Logout { .. } => Err((
+            Body::Services { .. }
+            | Body::ServiceAction { .. }
+            | Body::Account {}
+            | Body::SelectCharacter { .. }
+            | Body::Logout { .. } => Err((
                 "realm_required",
                 "Character lifecycle requires a realm".into(),
             )),
@@ -819,6 +851,23 @@ impl Gateway {
                 Ok(Reply::ItemUsed {
                     item,
                     operation,
+                    revision: receipt.revision,
+                })
+            }
+            Body::QuestCycle {
+                life,
+                epoch,
+                quest,
+                cycle,
+                action,
+            } => {
+                let receipt = self
+                    .quest_cycle(id, life.into(), epoch, quest, cycle, action)
+                    .map_err(|e| ("quest", e))?;
+                Ok(Reply::QuestCycleChanged {
+                    quest,
+                    cycle,
+                    action,
                     revision: receipt.revision,
                 })
             }

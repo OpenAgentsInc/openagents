@@ -211,6 +211,7 @@ fn make_world(
             version: 1,
             levels: vec![0, 100, 1000],
             quests: vec![progression::Quest {
+                repeatable: false,
                 dialogue: None,
                 giver: None,
                 prerequisites: vec![],

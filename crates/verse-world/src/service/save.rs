@@ -18,7 +18,7 @@ struct Owner {
     key: [u8; 32],
     actor: u64,
 }
-pub const CHARACTER_SCHEMA: u16 = 3;
+pub const CHARACTER_SCHEMA: u16 = 4;
 #[derive(Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 struct Saved {
@@ -196,7 +196,7 @@ impl Prepared {
         let (world, world_bytes) = self.game.checkpoint_parts()?;
         let ledger = self.rewards.checkpoint();
         let saved = Saved {
-            version: 11,
+            version: 12,
             content: self.content,
             world: String::from_utf8(world_bytes).map_err(|_| "Cannot encode saved world")?,
             rewards: ledger.is_none().then(|| self.rewards.transactions()),
@@ -273,7 +273,7 @@ pub(super) fn decode_with_history(
         return Err("Saved chamber byte budget exceeded".into());
     }
     let saved: Saved = serde_json::from_slice(bytes).map_err(|_| "Invalid saved chamber")?;
-    if !matches!(saved.version, 1..=11)
+    if !matches!(saved.version, 1..=12)
         || (saved.version < 11 && (saved.guests.is_some() || saved.configured_players != 0))
         || saved.configured_players > 63
         || (saved.version == 1 && saved.rewards.is_some())
@@ -285,6 +285,8 @@ pub(super) fn decode_with_history(
                 || saved.character_schema
                     != Some(if saved.version == 9 {
                         2
+                    } else if saved.version < 12 {
+                        3
                     } else {
                         CHARACTER_SCHEMA
                     })
@@ -358,7 +360,12 @@ pub(super) fn decode_with_history(
             }
         }
     }
-    for (life, _, _) in chamber.game.controlled_effects() {
+    let lives = chamber
+        .game
+        .controlled_effects()
+        .map(|(life, _, _)| life)
+        .collect::<Vec<_>>();
+    for life in lives {
         let character = chamber
             .rewards
             .character(life.actor)
@@ -371,15 +378,35 @@ pub(super) fn decode_with_history(
             .accepted_quests
             .keys()
             .chain(&character.claimed_quests)
+            .chain(character.quest_cycles.keys())
+            .chain(character.completed_cycles.keys())
         {
             if !chamber.progression.quests.iter().any(|q| q.id == *id) {
                 return Err("Saved character references an undefined quest".into());
             }
         }
-        let (hp, mana) = chamber.equipment.limits(&character)?;
+        let (hp, mana) = chamber.resource_limits(life.actor, &character)?;
         let resources = chamber.game.player_snapshot(life)?.player;
-        if resources.max_hp != hp || resources.max_mana != mana {
-            return Err("Saved equipment resource limits do not match owned selections".into());
+        if saved.version < 12 {
+            if !character.quest_cycles.is_empty() || !character.completed_cycles.is_empty() {
+                // Cycle zero completions are the legacy claim representation.
+                if !character.quest_cycles.is_empty()
+                    || character.completed_cycles.values().any(|c| *c != 0)
+                {
+                    return Err("Legacy save cannot contain quest cycles".into());
+                }
+            }
+            let old = chamber.equipment.limits(&character)?;
+            if (resources.max_hp, resources.max_mana) != old
+                && (resources.max_hp, resources.max_mana) != (hp, mana)
+            {
+                return Err("Legacy character resource limits are incompatible".into());
+            }
+            chamber.game.equipment_limits(life.actor, hp, mana)?;
+        } else if resources.max_hp != hp || resources.max_mana != mana {
+            return Err(
+                "Saved class, level, and equipment resource limits are inconsistent".into(),
+            );
         }
     }
     if saved.version == 1 && (!saved.reward_policy.is_empty() || saved.reward_cursor != 0) {
@@ -614,6 +641,7 @@ mod tests {
             version: 1,
             levels: vec![0, 100],
             quests: vec![Quest {
+                repeatable: false,
                 dialogue: None,
                 giver: Some(2),
                 prerequisites: vec![],
@@ -642,6 +670,144 @@ mod tests {
         })
         .unwrap();
     }
+    #[test]
+    fn quest_cycles_refuse_stale_claims_and_survive_recovery() {
+        use super::super::progression::Action;
+        let (g, keys) = fixture_at(Some(Vec3::new(-1., 0., -22.)));
+        let mut config = giver_campaign();
+        config.quests[0].repeatable = true;
+        let mut g = g.with_progression(config).unwrap();
+        let connection = join(&mut g, &keys[0]);
+        let admission = g.admission(connection).unwrap();
+        let life = admission.actor();
+        let epoch = admission.epoch();
+        let giver = g.game().actor_life(2).unwrap();
+        g.quest_cycle(connection, life, epoch, 1, 0, Action::Accept { giver })
+            .unwrap();
+        let abandon = g
+            .quest_cycle(connection, life, epoch, 1, 0, Action::Abandon)
+            .unwrap();
+        objective(&mut g, life.actor, 2, 90);
+        assert!(
+            g.quest_cycle(connection, life, epoch, 1, 0, Action::Claim)
+                .is_err()
+        );
+        g.quest_cycle(connection, life, epoch, 1, 1, Action::Accept { giver })
+            .unwrap();
+        assert!(
+            g.quest_cycle(connection, life, epoch, 1, 1, Action::Claim)
+                .is_err()
+        );
+        objective(&mut g, life.actor, 2, 91);
+        let claim = g
+            .quest_cycle(connection, life, epoch, 1, 1, Action::Claim)
+            .unwrap();
+        let reset = g
+            .quest_cycle(connection, life, epoch, 1, 1, Action::Reset)
+            .unwrap();
+        assert_eq!(
+            g.quest_cycle(connection, life, epoch, 1, 0, Action::Abandon)
+                .unwrap(),
+            abandon
+        );
+        assert_eq!(
+            g.quest_cycle(connection, life, epoch, 1, 1, Action::Claim)
+                .unwrap(),
+            claim
+        );
+        assert_eq!(
+            g.quest_cycle(connection, life, epoch, 1, 1, Action::Reset)
+                .unwrap(),
+            reset
+        );
+        assert!(
+            g.quest_cycle(connection, life, epoch, 1, 1, Action::Abandon)
+                .is_err()
+        );
+        assert!(
+            g.quest_cycle(connection, life, epoch, 1, 2, Action::Claim)
+                .is_err()
+        );
+        assert_eq!(g.character_rewards(life.actor).unwrap().experience, 75);
+        objective(&mut g, life.actor, 2, 92);
+        let second = g
+            .quest_cycle(connection, life, epoch, 1, 2, Action::Claim)
+            .unwrap();
+        assert_eq!(g.character_rewards(life.actor).unwrap().experience, 150);
+        assert_eq!(g.quest_log(life.actor)[0].cycle, 2);
+        let snapshot = g.checkpoint().unwrap();
+        let mut recovered = Gateway::restore(&snapshot, [6; 32], 240).unwrap();
+        let connection = join(&mut recovered, &keys[0]);
+        let admission = recovered.admission(connection).unwrap();
+        assert_eq!(
+            recovered
+                .quest_cycle(
+                    connection,
+                    admission.actor(),
+                    admission.epoch(),
+                    1,
+                    2,
+                    Action::Claim
+                )
+                .unwrap(),
+            second
+        );
+        assert_eq!(
+            recovered.character_rewards(life.actor).unwrap().experience,
+            150
+        );
+        assert!(
+            recovered
+                .quest_cycle(
+                    connection,
+                    admission.actor(),
+                    admission.epoch(),
+                    1,
+                    9,
+                    Action::Claim
+                )
+                .is_err()
+        );
+    }
+
+    #[test]
+    fn automatic_quest_abandonment_starts_a_fresh_durable_window() {
+        use super::super::progression::Action;
+        let (g, keys) = fixture();
+        let mut config = giver_campaign();
+        config.quests[0].giver = None;
+        config.quests[0].repeatable = true;
+        let mut g = g.with_progression(config).unwrap();
+        let connection = join(&mut g, &keys[0]);
+        let admission = g.admission(connection).unwrap();
+        let life = admission.actor();
+        let epoch = admission.epoch();
+        objective(&mut g, life.actor, 1, 93);
+        g.quest_cycle(connection, life, epoch, 1, 0, Action::Abandon)
+            .unwrap();
+        assert_eq!(g.quest_log(life.actor)[0].progress, 0);
+        objective(&mut g, life.actor, 2, 94);
+        g.quest_cycle(connection, life, epoch, 1, 1, Action::Claim)
+            .unwrap();
+        g.quest_cycle(connection, life, epoch, 1, 1, Action::Reset)
+            .unwrap();
+        g.quest_cycle(connection, life, epoch, 1, 2, Action::Abandon)
+            .unwrap();
+        assert!(
+            g.quest_cycle(connection, life, epoch, 1, 3, Action::Claim)
+                .is_err()
+        );
+        objective(&mut g, life.actor, 2, 95);
+        g.quest_cycle(connection, life, epoch, 1, 3, Action::Claim)
+            .unwrap();
+        assert_eq!(g.character_rewards(life.actor).unwrap().experience, 150);
+        let saved = g.checkpoint().unwrap();
+        assert!(Gateway::restore(&saved, [6; 32], 240).is_ok());
+        let mut corrupt: serde_json::Value = serde_json::from_slice(&saved).unwrap();
+        corrupt["progression"]["quests"] = serde_json::json!([]);
+        assert!(Gateway::restore(&serde_json::to_vec(&corrupt).unwrap(), [6; 32], 240).is_err());
+    }
+
     #[test]
     fn npc_enrollment_baselines_retries_and_claims_survive_recovery() {
         let (g, keys) = fixture_at(Some(Vec3::new(-1., 0., -22.)));
@@ -796,6 +962,7 @@ mod tests {
             levels: vec![0, 100],
             quests: vec![
                 Quest {
+                    repeatable: false,
                     dialogue: None,
                     giver: None,
                     prerequisites: vec![],
@@ -807,6 +974,7 @@ mod tests {
                     items: vec![],
                 },
                 Quest {
+                    repeatable: false,
                     dialogue: None,
                     giver: None,
                     prerequisites: vec![1],
@@ -892,6 +1060,7 @@ mod tests {
             version: 1,
             levels: vec![0, 100, 300],
             quests: vec![Quest {
+                repeatable: false,
                 dialogue: None,
                 giver: None,
                 prerequisites: vec![],
@@ -1011,6 +1180,13 @@ mod tests {
         legacy.as_object_mut().unwrap().remove("equipment");
         legacy.as_object_mut().unwrap().remove("progression");
         legacy["rewards"].as_array_mut().unwrap().truncate(2);
+        let mut old_world = g.chamber.game.clone();
+        for actor in [own.actor().actor, other.actor().actor] {
+            old_world.equipment_limits(actor, 200, 20).unwrap();
+        }
+        legacy["world"] = String::from_utf8(old_world.checkpoint().unwrap())
+            .unwrap()
+            .into();
         let legacy = Gateway::restore(&serde_json::to_vec(&legacy).unwrap(), [6; 32], 240).unwrap();
         assert_eq!(
             legacy
@@ -1084,7 +1260,7 @@ mod tests {
         assert_eq!(upgraded.game().player_life(), g.game().player_life());
         let saved: serde_json::Value =
             serde_json::from_slice(&upgraded.checkpoint().unwrap()).unwrap();
-        assert_eq!(saved["version"], 11);
+        assert_eq!(saved["version"], 12);
     }
     #[test]
     fn recovery_items_spend_once_restore_only_owned_resources_and_validate_saved_debits() {

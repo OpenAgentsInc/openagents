@@ -13,6 +13,7 @@ pub mod client_runtime;
 pub mod equipment;
 #[cfg(feature = "service-auth")]
 pub mod event_cursor;
+pub mod game_services;
 #[cfg(feature = "service-net")]
 pub mod host;
 pub mod items;
@@ -144,6 +145,7 @@ impl Chamber {
             || items::reserved(&transaction.source)
             || outfits::reserved(&transaction.source)
             || equipment::reserved(&transaction.source)
+            || game_services::trade_source(&transaction.source)
             || transaction.acceptance.is_some()
             || transaction.equipment.is_some()
             || transaction.outfit.is_some()
@@ -151,7 +153,7 @@ impl Chamber {
         {
             return Err("Campaign claim source is reserved".into());
         }
-        self.rewards.apply(transaction)
+        self.apply_progression(transaction)
     }
     fn restore_reward(
         &mut self,
@@ -162,7 +164,10 @@ impl Chamber {
         {
             return Err("Saved reward character or instance is foreign".into());
         }
-        if progression::acceptance_source(&transaction.source) {
+        if progression::cycle_source(&transaction.source) {
+            self.progression
+                .validate_cycle(&transaction, &self.rewards)?;
+        } else if progression::acceptance_source(&transaction.source) {
             self.progression
                 .validate_acceptance(&transaction, &self.rewards)?;
         } else if transaction.acceptance.is_some() {
@@ -171,7 +176,9 @@ impl Chamber {
             self.progression
                 .validate_claim(&transaction, &self.rewards)?;
         }
-        if items::reserved(&transaction.source) {
+        if game_services::trade_source(&transaction.source) {
+            game_services::validate_trade(&transaction)?;
+        } else if items::reserved(&transaction.source) {
             self.items.validate_use(&transaction)?;
         } else if !transaction.spent.is_empty() {
             return Err("Saved debit source is not an admitted item use".into());
@@ -212,7 +219,7 @@ impl Chamber {
         }
         let mut next = self.rewards.clone();
         let receipt = next.apply(tx)?;
-        let (hp, mana) = self.equipment.limits(next.character(life.actor).unwrap())?;
+        let (hp, mana) = self.resource_limits(life.actor, next.character(life.actor).unwrap())?;
         self.game.equipment_limits(life.actor, hp, mana)?;
         self.rewards = next;
         Ok(receipt)
@@ -336,36 +343,15 @@ impl Chamber {
         quest: u64,
         giver: LifeId,
     ) -> Result<rewards::Receipt, String> {
-        let admission = self.admission(principal, session)?;
-        if admission.actor() != life || admission.epoch() != epoch {
-            return Err("Quest acceptance life or control is stale or foreign".into());
-        }
-        let quest = self
-            .progression
-            .quests
-            .iter()
-            .find(|q| q.id == quest)
-            .ok_or("Quest is not defined")?;
-        if quest.giver != Some(giver.actor) || giver.instance != life.instance {
-            return Err("Quest giver does not match its authored definition".into());
-        }
-        if let Some(baseline) = self
-            .rewards
-            .character(life.actor)
-            .and_then(|c| c.accepted_quests.get(&quest.id))
-        {
-            return self
-                .rewards
-                .apply(quest.acceptance(life.instance, life.actor, *baseline));
-        }
-        self.quest_interaction(life, giver)?;
-        let tx = quest.acceptance(
-            life.instance,
-            life.actor,
-            quest.count(self.rewards.character(life.actor)),
-        );
-        self.progression.validate_acceptance(&tx, &self.rewards)?;
-        self.rewards.apply(tx)
+        self.quest_cycle(
+            principal,
+            session,
+            life,
+            epoch,
+            quest,
+            0,
+            progression::Action::Accept { giver },
+        )
     }
     pub fn claim_quest(
         &mut self,
@@ -375,33 +361,112 @@ impl Chamber {
         epoch: u64,
         quest: u64,
     ) -> Result<rewards::Receipt, String> {
+        self.quest_cycle(
+            principal,
+            session,
+            life,
+            epoch,
+            quest,
+            0,
+            progression::Action::Claim,
+        )
+    }
+    pub fn quest_cycle(
+        &mut self,
+        principal: Principal,
+        session: Session,
+        life: LifeId,
+        epoch: u64,
+        quest: u64,
+        cycle: u64,
+        action: progression::Action,
+    ) -> Result<rewards::Receipt, String> {
         let admission = self.admission(principal, session)?;
         if admission.actor() != life || admission.epoch() != epoch {
-            return Err("Quest claim life or control is stale or foreign".into());
+            return Err("Quest life or control is stale or foreign".into());
         }
         let quest = self
             .progression
             .quests
             .iter()
             .find(|q| q.id == quest)
-            .ok_or("Campaign quest is not defined")?;
-        let transaction = quest.transaction(life.instance, life.actor);
-        if let Some(receipt) = self.rewards.receipt(life.actor, transaction.source)? {
+            .cloned()
+            .ok_or("Quest is not defined")?;
+        let baseline = quest.count(self.rewards.character(life.actor));
+        let tx = match action {
+            progression::Action::Accept { giver } => {
+                if quest.giver != Some(giver.actor) || giver.instance != life.instance {
+                    return Err("Quest giver does not match its authored definition".into());
+                }
+                quest.acceptance_at(life.instance, life.actor, baseline, cycle)
+            }
+            progression::Action::Claim => quest.transaction_at(life.instance, life.actor, cycle),
+            progression::Action::Abandon | progression::Action::Reset => quest.cycle_transaction(
+                life.instance,
+                life.actor,
+                cycle,
+                baseline,
+                if matches!(action, progression::Action::Abandon) {
+                    progression::Transition::Abandon
+                } else {
+                    progression::Transition::Reset
+                },
+            ),
+        };
+        if let Some(receipt) = self.rewards.receipt(life.actor, tx.source)? {
+            if receipt.transaction.acceptance.map(|a| a.transition)
+                != tx.acceptance.map(|a| a.transition)
+            {
+                return Err("Quest cycle already binds a different transition".into());
+            }
             return Ok(receipt);
         }
-        self.progression
-            .validate_claim(&transaction, &self.rewards)?;
-        if !self.rewards.contains(life.actor, transaction.source)? {
-            if let Some(giver) = quest.giver {
-                self.quest_interaction(
-                    life,
-                    self.game
-                        .actor_life(giver)
-                        .ok_or("Quest giver is unavailable")?,
-                )?;
+        match action {
+            progression::Action::Accept { giver } => {
+                self.quest_interaction(life, giver)?;
+                self.progression.validate_acceptance(&tx, &self.rewards)?;
             }
+            progression::Action::Claim => {
+                self.progression.validate_claim(&tx, &self.rewards)?;
+                if let Some(giver) = quest.giver {
+                    self.quest_interaction(
+                        life,
+                        self.game
+                            .actor_life(giver)
+                            .ok_or("Quest giver is unavailable")?,
+                    )?;
+                }
+            }
+            _ => self.progression.validate_cycle(&tx, &self.rewards)?,
         }
-        self.rewards.apply(transaction)
+        self.apply_progression(tx)
+    }
+    fn resource_limits(
+        &self,
+        actor: u64,
+        character: &rewards::Character,
+    ) -> Result<(i32, i32), String> {
+        let life = self
+            .game
+            .actor_life(actor)
+            .ok_or("Character is unavailable")?;
+        let definition = &self
+            .game
+            .actor_state(life)
+            .ok_or("Character class is unavailable")?
+            .definition;
+        let level = self.progression.level(character.experience)?.level;
+        self.equipment
+            .derived_limits(character, definition.health, definition.mana, level)
+    }
+    fn apply_progression(&mut self, tx: rewards::Transaction) -> Result<rewards::Receipt, String> {
+        let actor = tx.actor;
+        let mut next = self.rewards.clone();
+        let receipt = next.apply(tx)?;
+        let (hp, mana) = self.resource_limits(actor, next.character(actor).unwrap())?;
+        self.game.equipment_limits(actor, hp, mana)?;
+        self.rewards = next;
+        Ok(receipt)
     }
 
     pub fn character_rewards(&self, actor: u64) -> Option<&rewards::Character> {
@@ -483,7 +548,23 @@ impl Chamber {
                 }
             }
         }
-        self.rewards.batch(transactions)?;
+        let actors = transactions
+            .iter()
+            .map(|tx| tx.actor)
+            .collect::<std::collections::BTreeSet<_>>();
+        let mut next = self.rewards.clone();
+        next.batch(transactions)?;
+        let limits = actors
+            .into_iter()
+            .map(|actor| {
+                self.resource_limits(actor, next.character(actor).unwrap())
+                    .map(|limits| (actor, limits))
+            })
+            .collect::<Result<Vec<_>, _>>()?;
+        for (actor, (hp, mana)) in limits {
+            self.game.equipment_limits(actor, hp, mana)?;
+        }
+        self.rewards = next;
         self.reward_cursor = latest;
         Ok(())
     }
@@ -779,11 +860,18 @@ impl Chamber {
             .collect::<Vec<_>>()
         {
             let character = self.rewards.character(actor).cloned().unwrap_or_default();
-            let (hp, mana) = self.equipment.limits(&character)?;
+            let (hp, mana) = self.resource_limits(actor, &character)?;
             self.game.equipment_limits(actor, hp, mana)?;
-            if hp > 200 || mana > 20 {
+            let definition = &self
+                .game
+                .actor_state(self.game.actor_life(actor).unwrap())
+                .unwrap()
+                .definition;
+            let extra_health = (hp - definition.health) as u32;
+            let extra_mana = (mana - definition.mana) as u32;
+            if extra_health != 0 || extra_mana != 0 {
                 self.game
-                    .recover_player_resources(actor, (hp - 200) as u32, (mana - 20) as u32)?;
+                    .recover_player_resources(actor, extra_health, extra_mana)?;
             }
         }
         Ok(())

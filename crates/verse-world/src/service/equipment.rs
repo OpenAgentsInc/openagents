@@ -108,7 +108,26 @@ impl Catalog {
             .ok_or_else(|| "Equipment item is not defined".into())
     }
     pub fn limits(&self, character: &Character) -> Result<(i32, i32), String> {
-        let (mut hp, mut mana) = (200, 20);
+        self.derived_limits(character, 200, 20, 1)
+    }
+    /// Resource limits preserve the authored class and never heal existing wounds.
+    pub fn derived_limits(
+        &self,
+        character: &Character,
+        base_health: i32,
+        base_mana: i32,
+        level: u16,
+    ) -> Result<(i32, i32), String> {
+        if !(200..=600).contains(&base_health)
+            || !(20..=60).contains(&base_mana)
+            || !(1..=100).contains(&level)
+        {
+            return Err("Invalid class resource limits or level".into());
+        }
+        let (mut hp, mut mana) = (
+            base_health + 10 * i32::from(level - 1),
+            base_mana + i32::from(level - 1),
+        );
         for (&slot, &item) in &character.equipment {
             let g = self.item(item)?;
             if g.slot != slot || character.items.get(&item).copied().unwrap_or(0) == 0 {
@@ -117,7 +136,7 @@ impl Catalog {
             hp += g.health as i32;
             mana += g.mana as i32;
         }
-        Ok((hp, mana))
+        Ok((hp.min(600), mana.min(60)))
     }
     pub(super) fn validate_change(&self, tx: &Transaction) -> Result<(), String> {
         if !reserved(&tx.source)

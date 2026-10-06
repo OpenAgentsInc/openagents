@@ -989,6 +989,7 @@ mod tests {
                 version: 1,
                 levels: vec![0],
                 quests: vec![Quest {
+                    repeatable: false,
                     dialogue: None,
                     giver: Some(2),
                     prerequisites: vec![],
@@ -1113,6 +1114,8 @@ mod tests {
                 next: None,
             },
             quest_log: vec![Progress {
+                cycle: 0,
+                repeatable: false,
                 dialogue: None,
                 accepted: true,
                 giver: Some(2),

@@ -41,6 +41,10 @@ pub struct Transaction {
 #[derive(Clone, Debug, Default, Eq, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct Character {
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub quest_cycles: BTreeMap<u64, u64>,
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub completed_cycles: BTreeMap<u64, u64>,
     pub claimed_quests: BTreeSet<u64>,
     pub accepted_quests: BTreeMap<u64, u32>,
     pub experience: u64,
@@ -48,6 +52,18 @@ pub struct Character {
     pub quests: BTreeMap<u64, u32>,
     pub outfit: u64,
     pub equipment: BTreeMap<super::equipment::Slot, u64>,
+}
+impl Character {
+    pub fn cycle(&self, quest: u64) -> u64 {
+        self.quest_cycles.get(&quest).copied().unwrap_or(0)
+    }
+    pub fn completed(&self, quest: u64) -> bool {
+        self.completed_cycles
+            .get(&quest)
+            .copied()
+            .or_else(|| self.claimed_quests.contains(&quest).then_some(0))
+            == Some(self.cycle(quest))
+    }
 }
 
 /// Selects eligible resident recipients for an authored defeat reward.
@@ -311,6 +327,16 @@ impl Ledger {
                 || character.quests.len() > MAX_ENTRIES
                 || character.accepted_quests.len() > MAX_ENTRIES
                 || character.claimed_quests.len() > MAX_ENTRIES
+                || character.quest_cycles.len() > MAX_ENTRIES
+                || character.completed_cycles.len() > MAX_ENTRIES
+                || character
+                    .quest_cycles
+                    .iter()
+                    .any(|(q, c)| *q == 0 || *c == 0)
+                || character
+                    .completed_cycles
+                    .iter()
+                    .any(|(q, c)| !character.claimed_quests.contains(q) || *c > character.cycle(*q))
                 || character.claimed_quests.contains(&0)
                 || character
                     .items
@@ -424,13 +450,47 @@ impl Ledger {
         if let Some(acceptance) = transaction.acceptance {
             if acceptance.quest == 0
                 || acceptance.baseline > MAX_COUNT
-                || next.accepted_quests.contains_key(&acceptance.quest)
-                || next.accepted_quests.len() >= MAX_ENTRIES
+                || acceptance.cycle != next.cycle(acceptance.quest)
             {
-                return Err("Invalid or repeated quest acceptance".into());
+                return Err("Invalid or stale quest cycle".into());
             }
-            next.accepted_quests
-                .insert(acceptance.quest, acceptance.baseline);
+            use super::progression::Transition;
+            match acceptance.transition {
+                Transition::Start => {
+                    if next.completed(acceptance.quest)
+                        || next.accepted_quests.contains_key(&acceptance.quest)
+                        || next.accepted_quests.len() >= MAX_ENTRIES
+                    {
+                        return Err("Invalid or repeated quest acceptance".into());
+                    }
+                    next.accepted_quests
+                        .insert(acceptance.quest, acceptance.baseline);
+                }
+                Transition::Abandon | Transition::Reset => {
+                    if !super::progression::cycle_source(&transaction.source)
+                        || (acceptance.transition == Transition::Reset)
+                            != next.completed(acceptance.quest)
+                        || (acceptance.transition == Transition::Abandon
+                            && !next.accepted_quests.contains_key(&acceptance.quest)
+                            && !acceptance.automatic)
+                        || (!next.quest_cycles.contains_key(&acceptance.quest)
+                            && next.quest_cycles.len() >= MAX_ENTRIES)
+                    {
+                        return Err("Invalid quest cycle transition".into());
+                    }
+                    let cycle = acceptance
+                        .cycle
+                        .checked_add(1)
+                        .ok_or("Quest cycles exhausted")?;
+                    next.quest_cycles.insert(acceptance.quest, cycle);
+                    next.accepted_quests.remove(&acceptance.quest);
+                    // Automatic quests retain an active objective window after abandonment.
+                    if acceptance.transition == Transition::Reset || acceptance.automatic {
+                        next.accepted_quests
+                            .insert(acceptance.quest, acceptance.baseline);
+                    }
+                }
+            }
         }
         next.experience = next
             .experience
@@ -480,10 +540,17 @@ impl Ledger {
         }
         if transaction.source[..8] == *b"VQUEST01" {
             let quest = u64::from_be_bytes(transaction.source[16..24].try_into().unwrap());
-            if quest == 0 || next.claimed_quests.len() >= MAX_ENTRIES {
+            let cycle = u64::from_be_bytes(transaction.source[24..].try_into().unwrap());
+            if quest == 0
+                || cycle != next.cycle(quest)
+                || next.completed(quest)
+                || (!next.claimed_quests.contains(&quest)
+                    && next.claimed_quests.len() >= MAX_ENTRIES)
+            {
                 return Err("Claimed quest budget exceeded".into());
             }
             next.claimed_quests.insert(quest);
+            next.completed_cycles.insert(quest, cycle);
         }
         let receipt = Receipt {
             revision: self
@@ -646,6 +713,7 @@ mod tests {
         let mut ledger = Ledger::default();
         ledger.attach(archive.clone()).unwrap();
         let quest = super::super::progression::Quest {
+            repeatable: false,
             dialogue: None,
             giver: Some(2),
             prerequisites: vec![],

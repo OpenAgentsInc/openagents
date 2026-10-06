@@ -230,7 +230,7 @@ impl Store {
                 .character_rewards(life.actor)
                 .cloned()
                 .unwrap_or_default();
-            let (hp, mana) = target.equipment.limits(&character)?;
+            let (hp, mana) = gateway.chamber.resource_limits(life.actor, &character)?;
             gateway
                 .chamber
                 .game
