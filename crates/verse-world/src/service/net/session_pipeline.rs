@@ -1,11 +1,12 @@
 //! Ordered admission proceeds independently of ordered durable reply delivery.
 use super::*;
+use crate::service::transport::write_frame_batch;
 use std::{collections::VecDeque, future::Future, pin::Pin};
 
 const CAPACITY: usize = 8;
 type WriteFlight<S> = Pin<
     Box<
-        dyn Future<Output = Result<(tokio::io::WriteHalf<S>, usize, Response, bool), String>>
+        dyn Future<Output = Result<(tokio::io::WriteHalf<S>, Vec<(usize, Response, bool)>), String>>
             + Send,
     >,
 >;
@@ -42,6 +43,47 @@ enum Delivery {
     RateLimited(u64),
 }
 impl Delivery {
+    // Collect only successful replies already available. An unready or failed
+    // reply stays at the ordered boundary until earlier writes finish.
+    fn take_ready(&mut self, last: &Response) -> Option<(Vec<u8>, bool)> {
+        match self {
+            Self::Host(receive) => match receive.try_recv() {
+                Ok(Ok(reply)) => Some(reply),
+                Ok(Err(error)) => {
+                    *self = Self::Ready(Some(Err(error)));
+                    None
+                }
+                Err(oneshot::error::TryRecvError::Empty) => None,
+                Err(oneshot::error::TryRecvError::Closed) => {
+                    *self = Self::Ready(Some(Err("Chamber host stopped".into())));
+                    None
+                }
+            },
+            Self::Ready(result) => {
+                if result.as_ref().is_some_and(Result::is_ok) {
+                    result.take().and_then(Result::ok)
+                } else {
+                    None
+                }
+            }
+            Self::RateLimited(request_id) => {
+                let mut response = last.clone();
+                response.request_id = *request_id;
+                response.body = Reply::Refused {
+                    code: "rate_limited".into(),
+                    message: "Chamber request work budget exceeded; no operation was admitted"
+                        .into(),
+                };
+                match response.encode() {
+                    Ok(bytes) => Some((bytes, true)),
+                    Err(error) => {
+                        *self = Self::Ready(Some(Err(error)));
+                        None
+                    }
+                }
+            }
+        }
+    }
     async fn receive(&mut self, last: &Response) -> DispatchReply {
         match self {
             Self::Host(receive) => receive.await.map_err(|_| "Chamber host stopped")?,
@@ -119,6 +161,7 @@ pub(super) async fn run<S: Transport + 'static>(
     let (read, write) = tokio::io::split(stream);
     let mut writer = Some(write);
     let mut writing: Option<WriteFlight<S>> = None;
+    let mut writing_count = 0usize;
     // Partial frame reads are owned by this task and are never cancelled by reply polling.
     let mut reader = Reader::new(read);
     let mut pending = VecDeque::<Delivery>::new();
@@ -138,12 +181,15 @@ pub(super) async fn run<S: Transport + 'static>(
             biased;
             _ = slot.cancelled() => return Err("Chamber connection was superseded".into()),
             completed = async { writing.as_mut().unwrap().await }, if writing.is_some() => {
-                let (write, bytes, delivered, authenticated) = completed?;
+                let (write, delivered) = completed?;
                 writing = None;
+                writing_count = 0;
                 writer = Some(write);
-                slot.delivered(bytes, Some(delivered.tick));
-                last = delivered;
-                if !authenticated { return Err("Chamber connection is not authenticated".into()); }
+                for (bytes, response, authenticated) in delivered {
+                    slot.delivered(bytes, Some(response.tick));
+                    last = response;
+                    if !authenticated { return Err("Chamber connection is not authenticated".into()); }
+                }
             }
             progress = async { (&mut gate.as_mut().unwrap().progress).await }, if gate.is_some() => {
                 let current = gate.take().unwrap();
@@ -178,24 +224,43 @@ pub(super) async fn run<S: Transport + 'static>(
                 gate = Some(submit(send, id, bytes, wait, deadline).await?);
             }
             result = async { pending.front_mut().unwrap().receive(&last).await }, if !pending.is_empty() && writing.is_none() => {
-                let (bytes, authenticated) = result?;
+                let (bytes, mut authenticated) = result?;
                 pending.pop_front();
                 let bytes = refusal_prefix(bytes, &last)?;
                 let response: ResponseHeader = serde_json::from_slice(&bytes).map_err(|_| "Invalid chamber response")?;
                 if !authenticated {
                     terminal = Some("Chamber connection is not authenticated".into());
                 }
+                let mut prefix = response.refusal_template();
+                let mut frames = vec![bytes];
+                let mut delivered = vec![(frames[0].len(), prefix.clone(), authenticated)];
+                // A durable fence can release several replies together. Preserve
+                // every correlated frame while flushing their ready prefix once.
+                while authenticated && frames.len() < CAPACITY {
+                    let Some((bytes, next_authenticated)) = pending.front_mut()
+                        .and_then(|reply| reply.take_ready(&prefix)) else { break; };
+                    pending.pop_front();
+                    let bytes = refusal_prefix(bytes, &prefix)?;
+                    let response: ResponseHeader = serde_json::from_slice(&bytes)
+                        .map_err(|_| "Invalid chamber response")?;
+                    prefix = response.refusal_template();
+                    authenticated = next_authenticated;
+                    if !authenticated { terminal = Some("Chamber connection is not authenticated".into()); }
+                    delivered.push((bytes.len(), prefix.clone(), authenticated));
+                    frames.push(bytes);
+                }
+                writing_count = frames.len();
                 let mut write = writer.take().expect("Idle chamber reply writer");
                 // Keep the partial write future alive across admission polls. A
                 // slow reader cannot stall inbound movement or duplicate a frame.
                 writing = Some(Box::pin(async move {
-                    timeout(WRITE, write_frame(&mut write, &bytes, MAX_RESPONSE_BYTES))
+                    timeout(WRITE, write_frame_batch(&mut write, &frames, MAX_RESPONSE_BYTES))
                         .await.map_err(|_| "Chamber write timed out")??;
-                    Ok((write, bytes.len(), response.refusal_template(), authenticated))
+                    Ok((write, delivered))
                 }));
             }
             incoming = reader.receive.recv(), if terminal.is_none() && gate.is_none()
-                && retry.is_none() && pending.len() + usize::from(writing.is_some()) < CAPACITY => {
+                && retry.is_none() && pending.len() + writing_count < CAPACITY => {
                 let bytes = match incoming {
                     Some(Ok(bytes)) => bytes,
                     Some(Err(error)) => { terminal = Some(error); continue; }
@@ -258,6 +323,31 @@ mod tests {
             assert_eq!(result.tick, 12);
             assert_eq!(result.control.unwrap().accepted_sequence, 7);
         }
+    }
+
+    #[tokio::test]
+    async fn ready_reply_collection_preserves_unready_and_failed_boundaries() {
+        let last = response(8, 12, 7);
+        let (send, receive) = oneshot::channel();
+        let mut reply = Delivery::Host(receive);
+        assert!(reply.take_ready(&last).is_none());
+        send.send(Err("Durability failed".into())).unwrap();
+        assert!(reply.take_ready(&last).is_none());
+        assert_eq!(reply.receive(&last).await.unwrap_err(), "Durability failed");
+        let (send, receive) = oneshot::channel();
+        let mut reply = Delivery::Host(receive);
+        drop(send);
+        assert!(reply.take_ready(&last).is_none());
+        assert_eq!(
+            reply.receive(&last).await.unwrap_err(),
+            "Chamber host stopped"
+        );
+        let mut reply = Delivery::RateLimited(9);
+        let (bytes, authenticated) = reply.take_ready(&last).unwrap();
+        let decoded: Response = serde_json::from_slice(&bytes).unwrap();
+        assert!(authenticated);
+        assert_eq!((decoded.request_id, decoded.tick), (9, 12));
+        assert_eq!(decoded.control.unwrap().accepted_sequence, 7);
     }
 
     #[tokio::test]
@@ -439,7 +529,7 @@ mod tests {
         reply.send(Ok((large.clone(), true))).unwrap();
         // No response bytes are consumed while the server's bounded socket fills.
         tokio::time::sleep(Duration::from_millis(40)).await;
-        for request_id in 2..=9 {
+        for request_id in 2..=10 {
             let frame = crate::movement::frames::Frame {
                 life: verse_engine::core::LifeId {
                     instance: 1,
@@ -512,7 +602,37 @@ mod tests {
             read_frame(&mut read, MAX_RESPONSE_BYTES).await.unwrap(),
             large
         );
-        for request_id in 2..=8 {
+        // Seven ready replies now share a blocked write. Only its one free
+        // request slot can admit more work, regardless of the number of flushes.
+        let Event::Request {
+            bytes,
+            reply,
+            progress,
+            ..
+        } = timeout(Duration::from_secs(1), events.recv())
+            .await
+            .unwrap()
+            .unwrap()
+        else {
+            panic!("Missing single free request slot");
+        };
+        assert_eq!(Request::decode(&bytes).unwrap().request_id, 9);
+        progress
+            .unwrap()
+            .send(RequestProgress::Queued {
+                authenticated: true,
+            })
+            .unwrap_or_else(|_| panic!("Admission receiver stopped"));
+        reply
+            .send(Ok((response(9, 1, 9).encode().unwrap(), true)))
+            .unwrap();
+        assert!(
+            timeout(Duration::from_millis(30), events.recv())
+                .await
+                .is_err(),
+            "A blocked reply batch bypassed the eight-request bound"
+        );
+        for request_id in 2..=9 {
             let bytes = timeout(
                 Duration::from_secs(1),
                 read_frame(&mut read, MAX_RESPONSE_BYTES),
@@ -534,7 +654,7 @@ mod tests {
         else {
             panic!("Missing released admission")
         };
-        assert_eq!(Request::decode(&bytes).unwrap().request_id, 9);
+        assert_eq!(Request::decode(&bytes).unwrap().request_id, 10);
         task.abort();
         let _ = task.await;
     }
