@@ -32,6 +32,7 @@ pub struct Timing {
     render_floor: u64,
     deferred_steps: Vec<u64>,
     motor_history_steps: usize,
+    last_reconciliation: Option<Reconciliation>,
     steps_per_second: u16,
     step: u64,
     simulated: u64,
@@ -54,18 +55,28 @@ struct Input {
     step: u64,
     intent: Intent<Ability>,
 }
-#[derive(Clone, Copy)]
+#[derive(Clone, Copy, serde::Serialize)]
 struct Estimate {
     character: physics::character::Character,
     held: movement::Held,
     yaw: f32,
     policy: movement::Policy,
 }
+/// One reconciliation decision, retained without growing the input history.
+#[derive(Clone, Copy, serde::Serialize)]
+struct Reconciliation {
+    previous_baseline: Option<Baseline>,
+    completed_estimate: Option<Estimate>,
+    fixed_geometry_matches: bool,
+    dirty_before: bool,
+    path: &'static str,
+}
 pub struct Local {
     recovery: movement::RecoveryObservations,
     embedding_deferrals: u64,
     separating_steps: u64,
     last_embedding: Option<String>,
+    last_reconciliation: Option<Reconciliation>,
     collision: SceneCache,
     baseline: Option<Baseline>,
     world_credit: u64,
@@ -92,6 +103,7 @@ impl Local {
             embedding_deferrals: 0,
             separating_steps: 0,
             last_embedding: None,
+            last_reconciliation: None,
             collision: SceneCache::new(instance),
             baseline: None,
             world_credit: 0,
@@ -113,6 +125,7 @@ impl Local {
         }
     }
     pub fn clear(&mut self) {
+        self.last_reconciliation = None;
         self.baseline = None;
         self.world_credit = 0;
         self.render_floor = 0;
@@ -137,6 +150,7 @@ impl Local {
             render_floor: self.render_floor,
             deferred_steps: self.deferred_steps.iter().copied().collect(),
             motor_history_steps: self.estimates.len(),
+            last_reconciliation: self.last_reconciliation,
             steps_per_second: 120,
             step: self.step,
             simulated: self.simulated,
@@ -239,6 +253,14 @@ impl Local {
             }
         }
         let reset = self.context() != Some((baseline.life, baseline.epoch));
+        let mut reconciliation = Reconciliation {
+            previous_baseline: self.baseline,
+            completed_estimate: self.estimates.get(&baseline.physics_step).copied(),
+            fixed_geometry_matches: geometry
+                .is_none_or(|geometry| self.collision.fixed_geometry_matches(geometry)),
+            dirty_before: self.dirty,
+            path: "replay",
+        };
         let same_travel = baseline.profile == movement::Profile::Frames
             && self.baseline.is_some_and(|mut previous| {
                 previous.world_step = baseline.world_step;
@@ -435,6 +457,18 @@ impl Local {
             self.world_credit.max(baseline.world_step)
         };
         self.baseline = Some(baseline);
+        reconciliation.path = if reset {
+            "control_reset"
+        } else if same_travel {
+            "same_travel"
+        } else if translation.is_some() {
+            "translation"
+        } else if constrained.is_some() {
+            "constrained_translation"
+        } else {
+            "replay"
+        };
+        self.last_reconciliation = Some(reconciliation);
         self.tick = tick;
         self.observation = observation;
         if translation.is_some() || constrained.is_some() {

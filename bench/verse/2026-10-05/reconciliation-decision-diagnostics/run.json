@@ -1,0 +1,16 @@
+{
+  "schema": "verse.reconciliation.diagnostics.v1",
+  "issue": 10559,
+  "tests": {
+    "command": "cargo test -p verse-world --features service-auth,service-reach prediction:: -- --nocapture",
+    "passed": 39,
+    "failed": 0
+  },
+  "source_sha256": "134eb00240f1c0fd9d3757e1451ccd9cf0cf12fb7e2de9d8630d82aa56b28f84",
+  "log_sha256": "a93499b483af085e07091758b9ebe5d9b7a29d098a19826b4d251e9813f2c974",
+  "scope": [
+    "Retains exactly one reconciliation decision: prior baseline, completed motor estimate, fixed geometry match, replay state, and selected path.",
+    "Timing capture preserves the existing bounded input history.",
+    "Behavioral prediction and battle acceptance remain unresolved; a traced battle capture is next."
+  ]
+}
