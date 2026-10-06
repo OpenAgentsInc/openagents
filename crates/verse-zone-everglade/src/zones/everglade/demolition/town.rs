@@ -470,6 +470,28 @@ impl Target for Wreck {
         speed: f32,
         face: Vec3,
     ) -> Vec<Blow> {
+        // An actual impact takes priority over the freshness reservation of
+        // other buildings. Otherwise concurrent swarms can hit static walls
+        // without producing any physical destruction.
+        let nearest = self
+            .buildings
+            .iter()
+            .enumerate()
+            .filter(|(_, building)| building.destructible() && building.distance(center) <= radius)
+            .min_by(|(_, a), (_, b)| a.distance(center).total_cmp(&b.distance(center)))
+            .map(|(index, _)| index);
+        if let Some(building) = nearest {
+            while !self.lift(building, &[building]) {
+                let old = self
+                    .lifted
+                    .iter()
+                    .filter(|entry| entry.building != building)
+                    .min_by(|a, b| a.hit.total_cmp(&b.hit))
+                    .map(|entry| entry.building);
+                let Some(old) = old else { break };
+                self.let_go(old);
+            }
+        }
         self.lift_near(&[center], radius);
         let blows = self
             .site
@@ -1133,6 +1155,7 @@ impl Town {
                 shake + caster.swarm.shake()
             })
             .clamp(Vec3::splat(-0.8), Vec3::splat(0.8))
+            * 0.03
     }
 
     /// Whether the hammer is in hand or swinging, and Meteor Swarm's state.

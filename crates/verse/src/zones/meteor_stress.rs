@@ -174,6 +174,32 @@ mod integration_tests {
                 .map(|b| b.pieces.len())
                 .collect::<Vec<_>>()
         );
+        // Four large towers cannot share the piece budget. Each immediate
+        // hit must still break blocks while earlier hits are fresh.
+        let town = runtime
+            .zone_state
+            .everglade
+            .as_mut()
+            .unwrap()
+            .town_mut()
+            .unwrap();
+        let targets: Vec<_> = town
+            .buildings()
+            .iter()
+            .take(4)
+            .map(|building| {
+                glam::Vec3::new(building.rect.0[0], building.base + 4.0, building.rect.0[1])
+            })
+            .collect();
+        for at in targets {
+            let blows = town.blast(at, 8.0, 1000, glam::Vec3::ZERO);
+            assert!(
+                blows.iter().any(|blow| blow.broke),
+                "each fresh tower impact must produce debris"
+            );
+            assert!(town.site().pieces().len() <= MAX_PIECES);
+        }
+        runtime.zone_intent(Intent::Rebuild).unwrap();
         runtime.zone_intent(Intent::MeteorSwarm).unwrap();
         assert!(runtime.demolition_targeting());
         let mut flying = false;
@@ -194,6 +220,7 @@ mod integration_tests {
                 .iter()
                 .any(|piece| piece.status != Status::Standing);
             assert!(town.site().pieces().len() <= MAX_PIECES);
+            assert!(town.shake().abs().max_element() <= 0.024001);
             let eye = runtime.view(1.6).eye;
             assert!(eye.y >= everglade::height(eye.x, eye.z) + 0.25);
         }
