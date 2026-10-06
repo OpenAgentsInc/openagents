@@ -693,3 +693,11 @@ funded receipt to the gate; check `retail-qualify health` is clean; and
 publish the contract and prices to customers. Isolated install and customer
 onboarding on the native clients, real capacity behavior, and incident
 handling on a live service are unverified.
+
+## Alice in the owner's house
+
+Deploy Everglade pack `4cfbbe2bfe74bba084436b5a5fd8dc09ec0c770fcdd613f9ef92986749950abb`
+so Verse can download the house with Alice's workstation. Then run the flow in
+[Talk to Alice in your house](docs/verse/workshop-agent.md#talk-to-alice-in-your-house)
+on your own host: the scratch-host run verified each step, but not your
+host, your Codex login's limits, or another person's device being refused.

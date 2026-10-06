@@ -8,9 +8,14 @@ implemented, and on NIPs that are drafts; [What exists and what is
 missing](#what-exists-and-what-is-missing) says which parts exist.
 
 The workshop agent is **Alice**, our original character
-([Female character](female-character.md)). She sits at the last desk in the
-workshop hall, drawn as her own character, and you walk up and press F to
-talk to her. The host is the only authority: it plans, checks, journals,
+([Female character](female-character.md)). She works in the owner's house
+at the east end of Library Way ([Greco-futurism](greco-futurism.md#the-owners-house)):
+she sits at her workstation in the great room, drawn as her own character,
+and you walk in through the front door, up to her desk, and press F to talk
+to her. While a command runs she stands at the console by the east wall, and
+while she waits for your approval she stands behind the lectern; her walks
+stay inside the great room, and the walk from the door stays clear. The
+workshop hall's four desks stay the studio's. The host is the only authority: it plans, checks, journals,
 and answers her requests through the `studio.agent.*` NIP-HOST operations
 ([`coder::task::agent_host`](../../crates/coder/src/task/agent_host.rs)), and
 Verse, `openagents agent`, and the smart terminal's `@alice` are clients.
@@ -26,6 +31,7 @@ code changes in her own worktree for you to merge at the Merge station.
 ## Contents
 
 - [Summary](#summary)
+- [Talk to Alice in your house](#talk-to-alice-in-your-house)
 - [What the NIPs contribute](#what-the-nips-contribute)
 - [What exists in code](#what-exists-in-code)
 - [Definition](#definition)
@@ -42,7 +48,7 @@ code changes in her own worktree for you to merge at the Merge station.
 ## Summary
 
 The workshop agent is one named agent with its own Nostr key, attested by
-your key. It stands at a desk in the Everglade workshop. You give it work by
+your key. It works at a desk in Everglade: Alice's is in the owner's house. You give it work by
 walking up and typing, from the smart terminal, from your phone, or from the
 Task Wall. It does the work on your computers through the resident Coder
 host. It opens terminals and types in them as a visible typist, runs Coder
@@ -69,6 +75,42 @@ Four decisions shape the design:
 4. **The first demo is small.** One named agent at a desk on this Mac. You
    walk up, type a request, and it runs the request in a terminal pane it
    drives, then reports back. See [Roadmap](#roadmap).
+
+## Talk to Alice in your house
+
+Alice answers only her owner. The host admits a `studio.agent.*` request
+only from the owner's key or from a device the owner granted (`operate` for
+asking, approving, and stopping; `observe` for reading), and refuses
+everyone else with `Forbidden`. A Verse with no host, such as the web build,
+draws her as `ALICE / owner only` and gives no F prompt.
+
+To go through the whole flow:
+
+1. Run the host. On a Mac, the OpenAgents desktop app runs it; elsewhere,
+   `openagents studio up --repo REPO` starts one.
+1. Open Alice once, with your key attesting hers:
+   `openagents agent new alice --workspace DIR --owner-key KEYFILE`.
+   `DIR` is where her terminal commands run; task-mode changes go in her own
+   worktree of the studio's repository.
+1. Start Verse in your house with `verse --owners-house`, or walk to the
+   east end of Library Way and in through the front door. Walk up to her
+   workstation and press F.
+1. Type a request and press Enter.
+   - A read-only request, such as `run the atif tests and tell me if they
+     pass`, opens a terminal pane titled `driven by alice`. She types the
+     command there and stands at the console by the east wall while it
+     runs, then returns to her desk and reports.
+   - A command that changes something, such as `run touch FILE`, waits at
+     the lectern: Enter confirms it and Esc rejects it.
+   - A code change, such as `fix the typo in README.md`, runs in her own
+     worktree and waits at the Merge station. Review it with
+     `openagents studio review TASK --diff` and merge it with
+     `openagents studio merge TASK --head TREE`.
+1. To take her pane back, press Ctrl+` and any key; she stops and says so.
+1. F2 shows her memory (type to add a note), F4 her journal, F7 stops her
+   (Enter confirms; four journaled steps), and F8 pauses or resumes her.
+   `openagents agent show|stop|pause|resume alice` do the same from a
+   shell. Her record, memory, and journal survive a host or Verse restart.
 
 ## What the NIPs contribute
 
@@ -436,13 +478,17 @@ the desk, on the phone, or with `openagents agent log NAME`.
 - **Look.** An outfitted character from the Everglade pack in your colors,
   the same pipeline studio seats use (`player::Cast`), with a look you
   choose. Its nameplate shows its name, its activity word, and its route.
-- **Desk.** A desk in the workshop hall with its monitor showing its
-  current terminal or task log tail, and a logbook you can open.
-- **Stations.** It walks to the stations its activity maps to, as seats do:
-  reading to the Library, editing to its desk, running commands to the
-  Workbench, testing to the Proving ground, judging to the Oracle, waiting
-  on you to the Podium, blocked to the Lounge. Movement is presentation; it
-  never gates or delays work.
+- **Desk.** Alice's workstation in the owner's house: a long walnut desk
+  with three slim amber screens, a keyboard, and her chair, facing the great
+  room (`everglade::layout::estate::AliceSpot`).
+- **Stations.** It walks to the stations its activity maps to, as seats do.
+  Alice's stations are in the house: running commands and testing at the
+  console by the east wall (her Workbench), waiting on you behind the
+  lectern (her Podium), and everything else at her workstation. A studio
+  seat walks the workshop's stations: reading to the Library, editing to
+  its desk, running commands to the Workbench, testing to the Proving
+  ground, judging to the Oracle, waiting on you to the Podium, blocked to
+  the Lounge. Movement is presentation; it never gates or delays work.
 - **Idle.** With nothing to do, it tidies its desk, reads at the Library, or
   stands by the hearth. When you enter the workshop it greets you once with
   a NIP-MV `greet` gesture and the number of things waiting for you.
@@ -453,9 +499,10 @@ the desk, on the phone, or with `openagents agent log NAME`.
 ### How others see it
 
 In a shared Everglade instance, viewers with the `world` right see the
-agent walk, as seats do today. Opening its desk panel needs `observe`;
-sending it work needs `operate`. A watch-only guest sees its name, station,
-and activity word, and nothing about its work. Outside instances you host,
+agent walk, as seats do today. Only the owner and devices the owner granted
+reach her: reading her panel needs `observe`, and sending her work needs
+`operate`; the host refuses everyone else. A watch-only guest sees her name,
+station, and activity word, and nothing about her work. Outside instances you host,
 others see it only if you opt in to publishing its NIP-MV entity state.
 
 ### Leveling
@@ -556,7 +603,7 @@ commits between October 3 and 5, 2026. The state is as of October 6, 2026.
 
 | Area | State | What is there | Missing | Agent-hours left |
 | --- | --- | --- | --- | --- |
-| Resident seat | Done | Alice at the last desk, drawn from the host's agent view whether or not a goal runs; task mode adds a worker studio seat for her on first use, and a direct request is a one-task goal for her seat (`Studio::submit_direct`) | None | 0 |
+| Resident seat | Done | Alice at her workstation in the owner's house, drawn from the host's agent view whether or not a goal runs; task mode adds a worker studio seat for her on first use, and a direct request is a one-task goal for her seat (`Studio::submit_direct`) | None | 0 |
 | Agent record and key | Done | `agent.json` with state, route, desk, and her public key; her secret key in `key` (mode `0600`) beside it; the owner's NIP-OA `auth` attestation with a `created_at<` expiry of at most a year; `openagents agent new`, `attest`, `list`, `show`, `stop`, `pause`, `resume`, and `retire` | The key in the host's keychain or key store rather than a file | 0.5 |
 | Walk-up composer | Done | The desk panel, anchored to the bottom of the window: status row, transcript with a scroll bar, `PROPOSED:` line, input line, key strip; F2 memory, F4 journal, F7 stop, F8 pause or resume, each of the last two after CONFIRM | None | 0 |
 | Request routing | Partial | `auto`, `task`, and `terminal` modes; a word list chooses for `auto` | The typed task-or-terminal question and its threshold | 1 |
