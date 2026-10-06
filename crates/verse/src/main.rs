@@ -40,7 +40,7 @@
 //! `--studio-notice <text>` leads Everglade's caption with a notice;
 //! `openagents studio up` passes both.
 //!
-//! In Everglade's workshop, `ada`, the workshop agent, sits at the last
+//! In Everglade's workshop, `alice`, the workshop agent, sits at the last
 //! desk; walk up to her and press F to talk (`docs/verse/workshop-agent.md`).
 //! `--workshop-ask <text>` walks you up to her once she is at her desk,
 //! types that request into her panel, and sends it six seconds later, for

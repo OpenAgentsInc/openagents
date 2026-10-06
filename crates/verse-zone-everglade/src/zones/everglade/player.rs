@@ -921,12 +921,17 @@ fn tint(color: [f32; 3]) -> [u8; 4] {
 /// then each seat.
 pub struct Cast {
     rig: Rig,
+    /// The pack's placed characters' rigs, by form, such as Alice's: a
+    /// seat whose figure names one draws as it ([`SeatFigure::form`]).
+    forms: Vec<(String, Rig)>,
     player: Actor,
     /// Each seat's playback, by name, in the order last drawn.
     seats: Vec<(String, Actor)>,
     /// The scene for `copies` characters, rebuilt when the count changes.
     scene: Arc<TexturedScene>,
     copies: usize,
+    /// The forms the scene draws after the copies, in order.
+    drawn_forms: Vec<String>,
     vertices: Arc<Vec<TexturedVertex>>,
     /// Seconds into the player's sledgehammer swing, while one plays.
     swing: Option<f32>,
@@ -946,13 +951,27 @@ impl Cast {
             return Ok(None);
         };
         let rig = Rig::build(pack, character)?;
+        // A placed character that cannot play is left out; its seat draws
+        // as the player's character.
+        let forms = pack
+            .forms
+            .iter()
+            .filter(|form| form.name.starts_with("npc/"))
+            .filter_map(|form| {
+                Rig::build_with(pack, form, true)
+                    .ok()
+                    .map(|rig| (form.name.clone(), rig))
+            })
+            .collect();
         let mut cast = Self {
             scene: Arc::new(rig.scene(1)),
             vertices: Arc::new(rig.template.clone()),
             rig,
+            forms,
             player: Actor::new(),
             seats: Vec::new(),
             copies: 1,
+            drawn_forms: Vec::new(),
             swing: None,
             hold: None,
         };
@@ -989,24 +1008,56 @@ impl Cast {
             .map(|hold| hold.moved(root));
         rig.skin(&joints, root, None, &mut vertices);
         let mut actors = std::mem::take(&mut self.seats);
-        for seat in seats {
+        // Seats drawn as the player's character first, then each seat drawn
+        // as a placed character's form, in the scene's order.
+        let form_of = |seat: &SeatFigure| {
+            seat.form
+                .and_then(|form| self.forms.iter().position(|(name, _)| name == form))
+        };
+        let ordered: Vec<(&SeatFigure, Option<usize>)> = seats
+            .iter()
+            .map(|seat| (seat, form_of(seat)))
+            .filter(|(_, form)| form.is_none())
+            .chain(
+                seats
+                    .iter()
+                    .map(|seat| (seat, form_of(seat)))
+                    .filter(|(_, form)| form.is_some()),
+            )
+            .collect();
+        let mut forms_drawn = Vec::new();
+        for (seat, form) in &ordered {
             let mut actor = actors
                 .iter()
                 .position(|(name, _)| *name == seat.name)
                 .map_or_else(Actor::new, |i| actors.swap_remove(i).1);
+            let (seat_rig, tinted) = match form {
+                Some(index) => {
+                    forms_drawn.push(self.forms[*index].0.clone());
+                    (&self.forms[*index].1, None)
+                }
+                None => (rig, Some(tint(seat.tint))),
+            };
             let mut joints = actor
-                .advance(rig, Play::of(seat), seat.speed, dt)
+                .advance(seat_rig, Play::of(seat), seat.speed, dt)
                 .unwrap_or_default();
             let root = Mat4::from_rotation_translation(Quat::from_rotation_y(seat.yaw), seat.pos);
-            let look = actor.aim(rig, &joints, root, seat.yaw, seat.look, dt);
-            rig.turn_head(&mut joints, look);
-            rig.skin(&joints, root, Some(tint(seat.tint)), &mut vertices);
+            let look = actor.aim(seat_rig, &joints, root, seat.yaw, seat.look, dt);
+            seat_rig.turn_head(&mut joints, look);
+            seat_rig.skin(&joints, root, tinted, &mut vertices);
             self.seats.push((seat.name.clone(), actor));
         }
-        let copies = 1 + seats.len();
-        if copies != self.copies {
-            self.scene = Arc::new(rig.scene(copies));
+        let copies = 1 + seats.len() - forms_drawn.len();
+        if copies != self.copies || forms_drawn != self.drawn_forms {
+            let mut scene = rig.scene(copies);
+            for name in &forms_drawn {
+                if let Some((_, form)) = self.forms.iter().find(|(n, _)| n == name) {
+                    scene = super::demolition::join(&scene, &form.scene(1));
+                }
+            }
+            self.scene = Arc::new(scene);
             self.copies = copies;
+            self.drawn_forms = forms_drawn;
         }
         self.vertices = Arc::new(vertices);
     }
@@ -1314,6 +1365,7 @@ mod tests {
             posture,
             look: None,
             tint: [0.45, 0.75, 1.0],
+            form: None,
         }
     }
 
@@ -1378,6 +1430,44 @@ mod tests {
     }
 
     #[test]
+    fn the_workshop_agent_draws_as_alice_and_sits_at_her_desk() {
+        let pack = super::super::tests::pack();
+        let at = PlayerController::new(Vec3::ZERO, 0.0);
+        let mut cast = Cast::new(pack, &at).unwrap().expect("the pack's character");
+        let alice = pack
+            .form(crate::zones::everglade_pack::compile::ALICE_FORM)
+            .expect("the committed pack carries Alice");
+        let player = cast.figure().vertices.len();
+        let rig = &cast.forms.iter().find(|(n, _)| n == &alice.name).unwrap().1;
+        let hers = rig.template.len();
+        // She sits typing at her desk: her rig authors the seated postures
+        // from her idle, as it does for the player's character.
+        assert!(rig.authored(Posture::Type) && rig.authored(Posture::Sit));
+        let seats = [
+            SeatFigure {
+                form: super::super::npcs::form_of("alice"),
+                ..figure("alice", 0.0, Posture::Type)
+            },
+            figure("grace", 0.0, Posture::Wait),
+        ];
+        for _ in 0..5 {
+            cast.advance(&at, &seats, 0.05);
+        }
+        let all = cast.figure();
+        all.validate().unwrap();
+        assert_eq!(all.vertices.len(), 2 * player + hers);
+        // Walking to the Workbench she plays her walk.
+        let walking = [SeatFigure {
+            form: super::super::npcs::form_of("alice"),
+            ..figure("alice", 1.4, Posture::Stand)
+        }];
+        cast.advance(&at, &walking, 0.05);
+        let moved = cast.figure();
+        moved.validate().unwrap();
+        assert_eq!(moved.vertices.len(), player + hers);
+    }
+
+    #[test]
     fn the_cast_draws_the_player_and_every_seat_as_one_figure() {
         let pack = super::super::tests::pack();
         let at = PlayerController::new(Vec3::ZERO, 0.0);
@@ -1398,6 +1488,7 @@ mod tests {
                 pos: Vec3::new(-2.0, 0.0, 4.0),
                 look: Some(Vec3::new(0.0, 1.6, 0.0)),
                 tint: [1.0, 0.82, 0.35],
+                form: None,
                 ..figure("grace", 0.0, Posture::Wait)
             },
         ];

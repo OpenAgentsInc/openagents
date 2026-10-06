@@ -111,8 +111,8 @@ const BEACON: f32 = 7.0;
 /// The most characters a nameplate line shows.
 const PLATE_CHARS: usize = 24;
 /// The workshop agent's seat name, which a desktop window adds as a
-/// resident seat (`crate::workshop`).
-pub const WORKSHOP_AGENT: &str = "ada";
+/// resident seat (`crate::workshop`): Alice, drawn as her own character.
+pub const WORKSHOP_AGENT: &str = "alice";
 /// How near the workshop agent the player stands to talk to her, m.
 pub const TALK_REACH: f32 = 2.4;
 
@@ -616,6 +616,9 @@ pub struct SeatFigure {
     pub look: Option<Vec3>,
     /// Its outfit's color.
     pub tint: [f32; 3],
+    /// The pack form it is drawn as in place of the player's character,
+    /// such as Alice's own (`npc/alice`) for the workshop agent.
+    pub form: Option<&'static str>,
 }
 
 /// One seat as the glade draws it.
@@ -631,6 +634,8 @@ struct SeatAgent {
     desk: u32,
     own_desk: bool,
     tint: [f32; 3],
+    /// The pack form its look names, if any ([`super::npcs::form_of`]).
+    form: Option<&'static str>,
     plate_text: [String; 3],
     /// The nameplate's faces in plate space: its face in the XY plane,
     /// facing -Z, its bottom at the origin.
@@ -682,8 +687,9 @@ pub struct Studio {
     /// The studio as the source last sent it, before resident seats join.
     hosted: Option<Snapshot>,
     /// Seats this computer draws beside the source's, such as the workshop
-    /// agent at its desk (`docs/verse/workshop-agent.md`). A source seat of
-    /// the same name wins.
+    /// agent at its desk (`docs/verse/workshop-agent.md`). A resident seat
+    /// wins over a source seat of the same name: the workshop agent's task
+    /// mode gives her a studio seat too, and her own view says more.
     resident: Vec<wire::Seat>,
 }
 
@@ -908,8 +914,9 @@ impl Studio {
             view: View::default(),
         });
         for seat in &self.resident {
-            if !snapshot.view.seats.iter().any(|s| s.seat == seat.seat) {
-                snapshot.view.seats.push(seat.clone());
+            match snapshot.view.seats.iter_mut().find(|s| s.seat == seat.seat) {
+                Some(hosted) => *hosted = seat.clone(),
+                None => snapshot.view.seats.push(seat.clone()),
             }
         }
         snapshot
@@ -956,6 +963,7 @@ impl Studio {
                         desk: seat.desk,
                         own_desk: false,
                         tint: tint(seat, index),
+                        form: super::npcs::form_of(&seat.look),
                         plate_text: Default::default(),
                         plate: Mesh::default(),
                     };
@@ -968,6 +976,7 @@ impl Studio {
             agent.own_desk =
                 seat.station == wire::Station::Desk && (seat.desk as usize) < DESKS.len();
             agent.tint = tint(seat, index);
+            agent.form = super::npcs::form_of(&seat.look);
             if agent.plate_text != plate_text {
                 agent.plate = plate(&plate_text, Attention::of(seat.activity));
                 agent.plate_text = plate_text;
@@ -1163,6 +1172,7 @@ impl Studio {
                     posture,
                     look: self.look(seat, speaking),
                     tint: seat.tint,
+                    form: seat.form,
                 }
             })
             .collect()

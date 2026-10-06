@@ -55,9 +55,12 @@ What was built:
   (`openagents.verse.character-sources.v1`). `crates/verse-content`'s
   `characters::alice` imports a variant and gives her every Universal clip.
 - **Placement.** The Everglade pack carries `lod1` as the form `npc/alice`
-  (the format needs no new section). `everglade::npcs` stands her idle west
-  of the approach, at (-4.6, -21.6), turned toward arrivals, in a 0.6 m block
-  of the solids. She has no dialogue or behavior yet.
+  (the format needs no new section). She is the workshop agent's body
+  ([Workshop agent](workshop-agent.md)): the studio draws the seat whose
+  look is `alice` as this form (`everglade::npcs::form_of`), so she sits at
+  the last desk in the workshop hall, walks to the Workbench and the Podium
+  with the player's retargeted walk, and holds the studio's postures, which
+  the zone authors from her idle. She no longer stands by the approach.
 - **Figure and fit.** A woman's figure: a bust under the tunic and coat, a
   waist the sash cinches, hips as wide as her shoulders, slimmer arms and
   neck, and boots 27 cm long. The coat follows the figure, fitted at the

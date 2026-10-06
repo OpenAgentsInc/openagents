@@ -964,7 +964,15 @@ impl App {
             studio_target: None,
             panel_shift: false,
             terminal: terminal_overlay(),
-            workshop: crate::workshop::Workshop::default(),
+            // Alice is a client of the host the studio reads, over the same
+            // control socket; a test never reaches the person's own host.
+            workshop: crate::workshop::Workshop::control(
+                options
+                    .studio_socket
+                    .clone()
+                    .or_else(openagents_connect::control::socket_path)
+                    .filter(|_| !cfg!(test) || options.studio_socket.is_some()),
+            ),
             workshop_send_at: None,
             terminal_press: false,
             stress: options
@@ -1307,6 +1315,10 @@ impl App {
             KeyCode::Backspace => PanelKey::Backspace,
             KeyCode::PageUp => PanelKey::PageUp,
             KeyCode::PageDown => PanelKey::PageDown,
+            KeyCode::F2 => PanelKey::Memory,
+            KeyCode::F4 => PanelKey::Journal,
+            KeyCode::F7 => PanelKey::Stop,
+            KeyCode::F8 => PanelKey::Pause,
             _ => {
                 for c in event.text.as_deref().unwrap_or("").chars() {
                     self.workshop.key(PanelKey::Char(c));
