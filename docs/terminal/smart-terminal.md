@@ -565,7 +565,7 @@ The model is Superlogical's session with the Verse overlay's controls.
 | Verse overlay and in-world screens | `terminal-gfx` into the frame or a texture | The same | In-world screens per the [in-world terminal](../verse/in-world-terminal.md#in-world-screens-others-see) plan; the world carries bindings, never bytes. |
 | Phone | Today, the Rust Native terminal view in `coder-computers`; later the grid renderer | NIP-TERM through `coder_computers::live` | Blocks, threads, and proposals fit the phone well: tap a proposal to run it on your computer. |
 | Browser | `terminal-gfx` on WebGPU or WebGL2 (`wasm32`) | A host WebSocket over a tailnet, or relay artifacts at the lower rate | Needs a `wasm32` session transport. |
-| Plain TTY | A degraded mode over SSH: the shell hook gives `#` requests and inline proposals in your normal terminal, and `openagents terminal` stays the thread view | Local | A TTY multiplexer client (a tmux-like redraw of host terminals with `coder-vt` and ratatui) is possible later and not planned. |
+| Plain TTY | A degraded mode over SSH: the shell hook gives `#` requests and inline proposals in your normal terminal, and `openagents terminal` stays the thread view | Local | The optional [TTY multiplexer](../../crates/terminal-mux/README.md) draws admitted host grids with ratatui; it retains TTY redraw limitations. |
 
 ### Context and consent
 

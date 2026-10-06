@@ -13694,6 +13694,22 @@ dependencies = [
 ]
 
 [[package]]
+name = "terminal-mux"
+version = "0.1.0"
+dependencies = [
+ "coder-pty",
+ "coder-terminal",
+ "coder-vt",
+ "crossterm",
+ "libc",
+ "ratatui",
+ "tempfile",
+ "terminal-core",
+ "terminal-remote",
+ "web-time",
+]
+
+[[package]]
 name = "terminal-remote"
 version = "0.1.0"
 dependencies = [

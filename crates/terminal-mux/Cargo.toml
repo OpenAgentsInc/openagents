@@ -1,0 +1,33 @@
+[package]
+name = "terminal-mux"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+publish.workspace = true
+description = "Optional bounded TTY projection of admitted durable host terminals."
+
+[features]
+host = ["dep:terminal-remote"]
+
+[dependencies]
+terminal-core = { path = "../terminal-core" }
+coder-vt = { path = "../coder-vt" }
+coder-pty = { path = "../coder-pty", default-features = false }
+coder-terminal = { path = "../coder-terminal" }
+terminal-remote = { path = "../terminal-remote", optional = true }
+crossterm = "0.29"
+ratatui = "0.30"
+web-time = "1.1.0"
+
+[dev-dependencies]
+coder-pty = { path = "../coder-pty", features = ["host"] }
+libc = "0.2"
+tempfile = "3"
+
+[[bin]]
+name = "openagents-mux"
+path = "src/main.rs"
+required-features = ["host"]
+
+[lints]
+workspace = true
