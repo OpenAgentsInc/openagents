@@ -14,7 +14,7 @@ use glam::Vec3;
 
 const DT: f32 = 0.02;
 
-fn slots(runtime: &WorldRuntime) -> [Slot; COUNT] {
+fn slots(runtime: &WorldRuntime) -> Vec<Slot> {
     runtime.everglade_hotbar().expect("inside Everglade")
 }
 
@@ -57,9 +57,10 @@ fn fall_time(runtime: &mut WorldRuntime, at: Vec3) -> f32 {
 
 #[test]
 fn the_hotbar_holds_levitate_then_four_spells_with_keys_one_to_five() {
-    // Meteor Swarm and the sledgehammer follow on 6 and 7
-    // (`demolition::town_tests`).
-    let intents: Vec<_> = SLOTS[..5].iter().map(|(intent, ..)| *intent).collect();
+    // No offensive spell follows them (owner, 2026-10-05); a
+    // `dev-destruction` build adds Meteor Swarm and the sledgehammer on 6
+    // and 7 only while the dev switch is on (`town_tests`).
+    let intents: Vec<_> = SLOTS[..COUNT].iter().map(|(intent, ..)| *intent).collect();
     assert_eq!(
         intents,
         [
@@ -70,7 +71,7 @@ fn the_hotbar_holds_levitate_then_four_spells_with_keys_one_to_five() {
             Intent::WallOfStone,
         ]
     );
-    assert_eq!(COUNT, 7);
+    assert_eq!(COUNT, 5);
     for (index, spell) in Spell::ALL.into_iter().enumerate() {
         assert_eq!(Spell::of(spell.intent()), Some(spell));
         assert_eq!(SLOTS[index + 1].0, spell.intent());
@@ -95,11 +96,12 @@ fn the_hotbar_holds_levitate_then_four_spells_with_keys_one_to_five() {
     // The fifth slot, under key 5, is Wall of Stone.
     let point = [left + (8.0 + 42.0 * 4.0 + 18.0), top + height / 2.0];
     assert_eq!(
-        crate::zones::everglade::hotbar::hit(point, size, 0.0),
+        crate::zones::everglade::hotbar::hit(point, size, 0.0, COUNT),
         Some(Intent::WallOfStone)
     );
     let runtime = entered();
     let bar = slots(&runtime);
+    assert_eq!(bar.len(), COUNT, "the bar is the five slots");
     // Standing on the clearing, Feather Fall waits for a fall; the walls
     // and Reverse Gravity can be cast.
     assert!(!bar[1].enabled);

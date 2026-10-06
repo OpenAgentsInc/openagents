@@ -265,10 +265,53 @@ mobile zone identifiers, tests, and capture example. The ground is generated in
 Rust: a gentle heightfield, flat inside the clearing, rising toward the tree
 ring, with grass and path textures. Its sign reads `EVERGLADE`.
 
-The town's kit buildings break. Key 6 on the hotbar aims Meteor Swarm and
-key 7 swings the sledgehammer, both free and without a cooldown; `R`
-restores every building. The workshop hall is protected. See
-[Destructible buildings](destructible-buildings.md#everglades-town).
+Everglade has no arch back to the plaza (owner, October 5, 2026). To leave,
+press `G` on the desktop's Grid, tap **Leave** at the top right on a phone,
+or use the zone panel's **Plaza** button in Coder's plaza. The browser page
+opens Everglade on its own and has no Grid to return to; leave the page to
+leave the zone.
+
+### Hotbar
+
+The hotbar holds movement and utility spells only, on keys 1 to 5:
+Levitate (hold `1` or `L`), Feather Fall, Wind Wall, Reverse Gravity, and
+Wall of Stone. Each acts on the player alone; none damages a building, a
+creature, or a player. The player casts no offensive spell in Everglade
+(owner, October 5, 2026).
+
+The town's kit buildings still break: the demolition system, the carved
+buildings, the support graph, and the physics stay, so the world can break
+them, and later events or the owner's tools can. The workshop hall is
+protected. See
+[Destructible buildings](destructible-buildings.md#everglades-town). The
+[Grove](druid-demo.md) keeps Meteor Swarm, the Thunderbolt, and its other
+spells, and the demolition yard (`verse --demolition`, or `?demolition` on
+the web page) is a separate scene that keeps its sledgehammer and Meteor
+Swarm. So does the Meteor Stress Test's castle, which shows Everglade's
+hotbar with both on keys 6 and 7.
+
+### Dev destruction
+
+To test destruction in Everglade locally, build Verse with the
+`dev-destruction` Cargo feature and switch it on with `--dev-destruction`
+or `VERSE_DEV_DESTRUCTION=1`:
+
+```sh
+cargo run -p verse --features dev-destruction -- --everglade --dev-destruction
+```
+
+The hotbar then gains Meteor Swarm on key 6 and the sledgehammer on key 7,
+both free and without a cooldown, and `R` restores every building, as
+before. Without the switch, the hotbar keeps its five slots even in a dev
+build.
+
+Production builds can't enable it. The feature is off by default, and no
+default, `desktop`, or `web` feature, release script, or the
+`openagents-web` image enables it. `verse-zone-everglade` refuses to compile
+with the feature for `wasm32`, iOS, or Android, so the web page and the
+phone apps can't carry it, and no URL parameter, stored value, console call,
+or setting can turn it on there. A build without the feature refuses
+`--dev-destruction` and ignores the variable.
 
 ## Layout
 
@@ -473,7 +516,7 @@ The studio's stations stay where they were:
 
 | Place | Built from | Studio station |
 | --- | --- | --- |
-| Approach path | Stepping-stone paths, flowers, ferns | Spawn and return |
+| Approach path | Stepping-stone paths, flowers, ferns | Spawn |
 | Yard notice board | Wooden frame, fence pieces, banners | Task Wall |
 | Workshop hall | Plaster and timber walls, round-tile roof, wide windows, double doors | Desks: one workbench per seat, each with a monitor board |
 | Hall gallery | Bookcases, book stands, scrolls | Library |
@@ -508,6 +551,7 @@ Everglade is the Agent Studio's place in the world:
 - The OpenAgents app's Grid opens Everglade through a walk-in arch, with the
   shared pack loader's progress, Cancel, and Retry; see
   [the Grid's portal to Everglade](mobile.md#the-grids-portal-to-everglade).
+  Everglade's **Leave** button returns to the Grid.
 - A shared instance runs on a chamber host (`"profile": "everglade"`) beside
   the Coder host. The host walks the seats from the studio snapshot, and every
   viewer draws them where the host places them. A viewer's NIP-HOST `world`

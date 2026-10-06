@@ -89,7 +89,7 @@ pub const STATIONS: [Station; 10] = [
     Station {
         id: "approach",
         place: "Approach path",
-        studio: "Spawn and return",
+        studio: "Spawn",
         sign: "APPROACH",
         at: [-3.0, -27.0],
         facing: FRAC_PI_2,

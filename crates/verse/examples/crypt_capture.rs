@@ -189,7 +189,7 @@ fn main() -> Result<(), String> {
         if let Some(slots) = runtime.everglade_hotbar() {
             hotbar::draw(&mut ui, &atlas, size, 0.0, &slots);
             if let Some(index) = tip {
-                hotbar::draw_tip(&mut ui, &atlas, size, 0.0, index);
+                hotbar::draw_tip(&mut ui, &atlas, size, 0.0, slots.len(), index);
             }
         }
         let pixels = renderer.render(runtime.view(aspect), &runtime.dynamic_mesh(), &ui)?;

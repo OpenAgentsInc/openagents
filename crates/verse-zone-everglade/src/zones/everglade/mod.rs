@@ -79,7 +79,10 @@ pub const ATMOSPHERE: super::Atmosphere = super::Atmosphere {
     }),
 };
 
-/// The return portal, at the start of the approach path.
+/// The start of the approach path, where the return portal to the plaza
+/// stood. Everglade has no arch now; the layout still keeps this spot
+/// clear so the pack and the path stay where they were. The zone panel's
+/// return control leaves the zone.
 pub const RETURN_PORTAL: Vec3 = Vec3::new(0.0, 0.0, -32.0);
 /// Spacing of the baked light probes characters sample, m. The town's
 /// square is 510 m across, and the bake keeps at most 64 probes a side, so

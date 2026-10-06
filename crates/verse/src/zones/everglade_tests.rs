@@ -122,7 +122,8 @@ fn the_everglade_portal_loads_the_pinned_pack_and_returns_to_the_plaza_pose() {
     );
     // Frames draw on the zone's lit stage, which textured meshes need.
     let dynamic = runtime.zone_dynamic_mesh();
-    assert!(!dynamic.lines.is_empty());
+    // No return arch draws: Everglade has none.
+    assert!(dynamic.lines.is_empty());
     let stage = dynamic.neon.expect("a lit stage");
     assert!(stage.key.is_some());
     assert_eq!(stage.field, atmosphere(ZoneId::Everglade).color);
@@ -215,11 +216,12 @@ fn identity_and_atmosphere_are_the_zones_own() {
     assert!(air.color[0] > air.color[1] && air.color[1] > air.color[2]);
     // The fog closes the view before the edge of the square.
     assert!(air.fog_end < HALF_EXTENT * 2.0 * std::f32::consts::SQRT_2);
-    let portal = ZoneId::Everglade.portal();
-    assert_eq!(ZoneId::Everglade.portals().len(), 1);
-    assert_eq!(ZoneId::Everglade.portals()[0].0, ZoneId::Plaza);
-    assert!(portal.x.hypot(portal.z) < CLEARING_RADIUS);
-    assert_eq!(portal.y, height(portal.x, portal.z));
+    // Everglade has no arch back to the plaza (owner, 2026-10-05); the
+    // spot where it stood stays on the clearing's level ground.
+    assert!(ZoneId::Everglade.portals().is_empty());
+    assert_eq!(ZoneId::Everglade.portal(), None);
+    assert!(RETURN_PORTAL.x.hypot(RETURN_PORTAL.z) < CLEARING_RADIUS);
+    assert_eq!(RETURN_PORTAL.y, height(RETURN_PORTAL.x, RETURN_PORTAL.z));
 }
 
 #[test]
@@ -238,7 +240,8 @@ fn no_blocker_covers_a_path() {
             "the road {a:?} to {b:?} is blocked"
         );
     }
-    // The paths start at the return portal and reach both doorways.
+    // The paths start where the return portal stood and reach both
+    // doorways.
     assert_eq!(PATHS[0][0][1], RETURN_PORTAL.z + 1.0);
     let south = HALL.0[1] - HALL.1[1];
     assert!(PATHS[2..].iter().all(|[a, b]| a[1] < south && b[1] > south));
@@ -247,7 +250,7 @@ fn no_blocker_covers_a_path() {
 #[test]
 fn stations_have_fixed_reachable_points_and_furniture_ahead() {
     let mut ids = std::collections::BTreeSet::new();
-    let portal = ZoneId::Everglade.portal();
+    let portal = RETURN_PORTAL;
     let blockers = &world().blockers;
     let spawn = [Everglade::spawn().x, Everglade::spawn().z];
     for station in &STATIONS {
@@ -378,7 +381,7 @@ fn the_camera_stays_inside_the_hall_with_the_player() {
 }
 
 #[test]
-fn the_map_lists_the_return_portal_and_the_studio_stations() {
+fn the_map_lists_the_studio_stations_and_no_return_portal() {
     let mut hud = crate::minimap::MapHud::default();
     hud.expanded = true;
     let map = hud.snapshot_for_zone(
@@ -390,8 +393,9 @@ fn the_map_lists_the_return_portal_and_the_studio_stations() {
         ZoneId::Everglade,
     );
     let ids: Vec<&str> = map.landmarks.iter().map(|l| l.id).collect();
-    assert_eq!(ids[0], "return");
-    assert_eq!(ids.len(), STATIONS.len());
+    // Everglade has no arch back to the plaza to mark.
+    assert!(!ids.contains(&"return"));
+    assert_eq!(ids.len(), STATIONS.len() - 1);
     for station in STATIONS.iter().filter(|s| s.id != "approach") {
         assert!(ids.contains(&station.id), "{}", station.id);
     }
@@ -595,7 +599,7 @@ fn facing(runtime: &mut WorldRuntime, gate: crate::zones::Gate) {
 }
 
 #[test]
-fn walking_through_the_grids_everglade_arch_loads_the_pack_and_the_grid_arch_returns() {
+fn walking_through_the_grids_everglade_arch_loads_the_pack_and_return_comes_back() {
     let mut runtime = WorldRuntime::bare();
     // Without zone storage the Grid has no arch to Everglade.
     assert!(runtime.everglade_gate().is_none());
@@ -631,8 +635,8 @@ fn walking_through_the_grids_everglade_arch_loads_the_pack_and_the_grid_arch_ret
     assert_eq!(runtime.zone, ZoneId::Everglade);
     assert!(runtime.is_bare());
     assert_eq!(runtime.player.pos, Everglade::spawn());
-    // The panel's return reads The Grid, and the zone's arch is lettered
-    // for it.
+    // The panel's return reads The Grid. Everglade draws no arch back
+    // (owner, 2026-10-05), and nothing near spawn offers one.
     let inside = runtime.zone_snapshot(1.0);
     assert!(
         inside
@@ -640,20 +644,24 @@ fn walking_through_the_grids_everglade_arch_loads_the_pack_and_the_grid_arch_ret
             .iter()
             .any(|c| c.action == Intent::Return && c.label == "The Grid")
     );
-    let back = crate::zones::Gate::fixed(RETURN_PORTAL);
-    assert_eq!(
-        runtime.grid_portal_mesh().lines.len(),
-        back.mesh(ZoneId::Everglade, "THE GRID", 0.0).lines.len()
-    );
+    assert!(runtime.grid_portal_mesh().lines.is_empty());
+    assert!(!inside.portal.near && !inside.portal.visible);
+    assert!(!runtime.zone_hit(1.0, 0.5, 0.5));
 
-    // Walking through the return arch, once the crossing's one-second
-    // cooldown has passed, comes back in front of the Grid's arch, facing
-    // away, so walking on does not enter again.
+    // Walking across where the return arch stood, once the crossing's
+    // one-second cooldown has passed, stays in Everglade.
     for _ in 0..70 {
         runtime.tick(&InputState::default(), 1.0 / 60.0);
     }
-    facing(&mut runtime, back);
-    assert!(walk_until(&mut runtime, 3.0, WorldRuntime::is_plaza));
+    facing(&mut runtime, crate::zones::Gate::fixed(RETURN_PORTAL));
+    assert!(!walk_until(&mut runtime, 3.0, WorldRuntime::is_plaza));
+    assert_eq!(runtime.zone, ZoneId::Everglade);
+
+    // The return control (G on the desktop, Leave on a phone) comes back
+    // in front of the Grid's arch, facing away, so walking on does not
+    // enter again.
+    runtime.zone_intent(Intent::Return).unwrap();
+    assert!(runtime.is_plaza());
     let (front, away) = gate.front();
     assert_eq!(runtime.player.pos, front);
     assert!((runtime.player.yaw - crate::controller::wrap(away)).abs() < 1e-5);

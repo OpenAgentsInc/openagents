@@ -62,6 +62,11 @@ the glade, as `verse --demolition` does: `1` or a quick tap swings the
 sledgehammer, `2` aims Meteor Swarm (a click or a quick tap casts it where
 the circle is, and right click or `Esc` cancels), and `R` rebuilds the
 cottages.
+
+The glade itself has no offensive spell: its hotbar is Levitate and four
+utility spells on keys 1 to 5. The `dev-destruction` feature that puts
+Meteor Swarm and the sledgehammer on it does not compile for `wasm32`, so
+this module can't carry it.
 ### Grove mode
 
 The same module starts in the Grove, the druid training field

@@ -231,8 +231,8 @@ pack first.
   world**, or Android's Back gesture, closes it. For simulator checks,
   `--verse-script everglade,station=podium,interact,s=text` enters
   Everglade, stands at the podium, opens its panel, and sends `text`.
-- **Returning.** The return arch, lettered **THE GRID**, stands 7 m behind
-  Everglade's spawn. Walking through it comes back 3.5 m in front of the Grid's Everglade arch, facing away from
+- **Returning.** Everglade has no return arch. **Leave**, at the top right,
+  comes back 3.5 m in front of the Grid's Everglade arch, facing away from
   it, and presence rejoins `verse-bare` there.
 
 ### The Grid's portal to Lagrange 1

@@ -79,6 +79,12 @@ if [ -z "${AR_wasm32_unknown_unknown:-}" ] && [ -x "$(dirname "$CC_wasm32_unknow
 fi
 
 cd "$root"
+# The page never carries Everglade's dev-only destruction; the crate also
+# refuses to compile it for wasm32.
+if cargo tree --locked --target "$target" -p everglade-web -e features 2>/dev/null | grep -q 'dev-destruction'; then
+  echo "the web build enables dev-destruction; production builds must not" >&2
+  exit 1
+fi
 cargo build --release --locked --target "$target" -p everglade-web
 mkdir -p "$out"
 wasm-bindgen --target web --no-typescript --out-dir "$out" \

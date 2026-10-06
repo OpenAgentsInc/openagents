@@ -60,6 +60,9 @@ fn main() -> Result<(), String> {
         }
         "town" => {
             runtime.install_everglade(&pack);
+            // Everglade's hotbar has Meteor Swarm only in a dev build
+            // (`--features dev-destruction`).
+            runtime.set_dev_destruction(true)?;
             let ([cx, cz], [_, hz]) = zones::everglade::layout::COTTAGE;
             let base = zones::everglade::height(cx, cz);
             (

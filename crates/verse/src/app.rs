@@ -99,6 +99,10 @@ pub struct Options {
     /// Open Everglade as the demolition yard (`--demolition`): two kit
     /// cottages to knock down with a sledgehammer.
     pub demolition: bool,
+    /// Put Meteor Swarm and the sledgehammer on Everglade's hotbar, a local
+    /// test of destruction (`--dev-destruction`). Only a build with the
+    /// `dev-destruction` feature accepts it.
+    pub dev_destruction: bool,
     /// Print one JSON line of frame times per second to stdout.
     pub frame_times: bool,
     /// A scripted terminal stress run in Everglade's town (the
@@ -151,6 +155,7 @@ impl Default for Options {
             meteor_stress_test: false,
             crypt: false,
             demolition: false,
+            dev_destruction: false,
             frame_times: false,
             terminal_stress: None,
             studio_notice: None,
@@ -1076,6 +1081,7 @@ impl App {
             None => None,
         };
         runtime.set_demolition(options.demolition);
+        runtime.set_dev_destruction(options.dev_destruction)?;
         let zone_operators = zone_operators_for(session.as_ref());
         Ok(Self {
             window: None,
@@ -2829,9 +2835,9 @@ impl App {
     }
 
     /// Everglade draws no map and no zone panel, only the movement hotbar
-    /// (owner, 2026-10-04): the glade is the screen, and the player leaves
-    /// through the arch. A load in progress or a failed one still shows the
-    /// panel.
+    /// (owner, 2026-10-04): the glade is the screen. It has no arch back
+    /// (owner, 2026-10-05); G leaves for the Grid. A load in progress or a
+    /// failed one still shows the panel.
     /// The crypt walks as Everglade does, with its hotbar and no map.
     fn in_bare_everglade(&self) -> bool {
         matches!(
@@ -2869,8 +2875,10 @@ impl App {
             None
         } else if self.in_bare_everglade() && self.runtime.demolition_bar().is_some() {
             zones::everglade::demolition::hotbar::slot_under(at, size, HOTBAR_BOTTOM)
-        } else if self.in_bare_everglade() && self.runtime.everglade_hotbar().is_some() {
-            zones::everglade::hotbar::slot_under(at, size, HOTBAR_BOTTOM)
+        } else if self.in_bare_everglade()
+            && let Some(slots) = self.runtime.everglade_hotbar()
+        {
+            zones::everglade::hotbar::slot_under(at, size, HOTBAR_BOTTOM, slots.len())
         } else if self.in_bare_grove() && self.runtime.grove_bar().is_some() {
             zones::grove::hotbar::slot_under(at, size, HOTBAR_BOTTOM, self.grove_layout(size))
         } else {
@@ -2906,10 +2914,25 @@ impl App {
         if self.runtime.in_demolition() {
             return zones::everglade::demolition::hotbar::hit(at, size, HOTBAR_BOTTOM);
         }
-        zones::everglade::hotbar::hit_of(at, size, HOTBAR_BOTTOM, zones::everglade::hotbar::COUNT)
-            .map(|index| {
-                zones::everglade::hotbar::SLOTS[self.runtime.everglade_hotbar_order()[index]].0
-            })
+        zones::everglade::hotbar::hit_ordered(
+            at,
+            size,
+            HOTBAR_BOTTOM,
+            &self.runtime.everglade_hotbar_order(),
+        )
+    }
+
+    /// How many slots Everglade's hotbar shows: its five, or seven in the
+    /// Meteor Stress Test or with the dev build's destruction switched on.
+    fn everglade_bar_len(&self) -> usize {
+        self.runtime
+            .everglade_hotbar()
+            .map_or(zones::everglade::hotbar::COUNT, |slots| slots.len())
+    }
+
+    /// Everglade's tray frame in logical points on a screen of `size`.
+    fn everglade_tray(&self, size: [f32; 2]) -> [f32; 4] {
+        zones::everglade::hotbar::frame_of(size, HOTBAR_BOTTOM, self.everglade_bar_len())
     }
 
     fn map_visible(&self) -> bool {
@@ -3121,21 +3144,25 @@ impl App {
                     return self.zone_action(intent);
                 }
             }
+            // Everglade has no arch back: G leaves for the Grid.
+            if code == KeyCode::KeyG
+                && self.in_bare_everglade()
+                && self.runtime.zone == zones::ZoneId::Everglade
+            {
+                self.zone_action(ZoneIntent::Return);
+                return;
+            }
             // In the crypt, F at the door leaves, whichever way the player
             // faces.
             if code == KeyCode::KeyF && self.runtime.crypt_door_near() {
                 self.zone_action(ZoneIntent::Return);
                 return;
             }
-            // Everglade's town and the Grove: Escape leaves Meteor Swarm's
-            // aim or stops its cast, and R restores the buildings or the
-            // Grove's tower.
-            if (self.in_bare_everglade()
-                && matches!(
-                    self.runtime.zone,
-                    zones::ZoneId::Everglade | zones::ZoneId::MeteorStressTest
-                )
-                && !self.runtime.in_demolition())
+            // The Meteor Stress Test, Everglade's town with the dev build's
+            // destruction on, and the Grove: Escape leaves Meteor Swarm's
+            // aim or stops its cast, and R restores the buildings, the
+            // castle, or the Grove's tower.
+            if (self.in_bare_everglade() && self.runtime.everglade_swarm().is_some())
                 || (self.in_bare_grove() && self.runtime.grove_swarm().is_some())
             {
                 if code == KeyCode::Escape && self.runtime.demolition_cancel() {
@@ -3145,22 +3172,25 @@ impl App {
                     return self.zone_action(ZoneIntent::Rebuild);
                 }
             }
-            // Number keys follow the zone's displayed spell order.
+            // Number keys follow the zone's displayed spell order. In
+            // Everglade, 2 to 5 cast the utility spells; with the dev
+            // build's destruction on, 6 aims Meteor Swarm and 7 swings the
+            // sledgehammer.
             if self.in_bare_everglade() {
-                let slot = match code {
-                    KeyCode::Digit1 => Some(0),
-                    KeyCode::Digit2 => Some(1),
-                    KeyCode::Digit3 => Some(2),
-                    KeyCode::Digit4 => Some(3),
-                    KeyCode::Digit5 => Some(4),
-                    KeyCode::Digit6 => Some(5),
-                    KeyCode::Digit7 => Some(6),
-                    _ => None,
+                let n = match code {
+                    KeyCode::Digit1 => 1,
+                    KeyCode::Digit2 => 2,
+                    KeyCode::Digit3 => 3,
+                    KeyCode::Digit4 => 4,
+                    KeyCode::Digit5 => 5,
+                    KeyCode::Digit6 => 6,
+                    KeyCode::Digit7 => 7,
+                    _ => 0,
                 };
-                if let Some((intent, ..)) = slot.and_then(|i| {
-                    zones::everglade::hotbar::SLOTS.get(self.runtime.everglade_hotbar_order()[i])
-                }) {
-                    self.zone_action(*intent);
+                if let Some(intent) =
+                    zones::everglade::hotbar::key_intent(n, &self.runtime.everglade_hotbar_order())
+                {
+                    self.zone_action(intent);
                     return;
                 }
             }
@@ -4148,7 +4178,7 @@ impl App {
                     // the terminal's panes show, it sits under them in the
                     // hotbar's place.
                     let logical = size.map(|v| v / self.scale);
-                    let tray = zones::everglade::hotbar::frame(logical, HOTBAR_BOTTOM);
+                    let tray = self.everglade_tray(logical);
                     let (bottom, top) = if self.terminal.open {
                         (
                             0.0,
@@ -4203,7 +4233,7 @@ impl App {
                 // In the crypt, the door's panel stands above the hotbar.
                 let crypt_clearance = || {
                     let logical = size.map(|v| v / self.scale);
-                    let tray = zones::everglade::hotbar::frame(logical, HOTBAR_BOTTOM);
+                    let tray = self.everglade_tray(logical);
                     (logical[1] - tray[1] + 8.0).clamp(12.0, 2048.0)
                 };
                 let _ = self
@@ -4266,7 +4296,7 @@ impl App {
                             atlas,
                             size.map(|v| v / self.scale),
                             HOTBAR_BOTTOM,
-                            zones::everglade::hotbar::COUNT,
+                            slots.len(),
                             &swarm,
                         );
                     }
@@ -4372,7 +4402,7 @@ impl App {
         // The terminal's hotbar button: right of Everglade's tray, else in
         // the bottom-right corner.
         let tray = self.in_bare_everglade().then(|| {
-            zones::everglade::hotbar::frame(size.map(|v| v / self.scale), HOTBAR_BOTTOM)
+            self.everglade_tray(size.map(|v| v / self.scale))
                 .map(|v| v * self.scale)
         });
         self.terminal.button = Some(crate::terminal::Overlay::button_for(size, self.scale, tray));
@@ -4532,10 +4562,10 @@ impl App {
                     eprintln!("verse: stress run opened {} panes", ids.len());
                 }
                 Action::WindWall => self.zone_action(ZoneIntent::WindWall),
+                // Everglade's hotbar has no Meteor Swarm; the run drives
+                // the town's demolition directly.
                 Action::MeteorSwarm => {
-                    self.zone_action(ZoneIntent::MeteorSwarm);
-                    self.aim_meteor_swarm();
-                    self.runtime.demolition_confirm();
+                    self.runtime.scripted_meteor_swarm();
                 }
                 Action::Key(c) => {
                     let (code, logical) = if c == '\r' {

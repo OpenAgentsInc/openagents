@@ -237,7 +237,7 @@ admissible as it is.
 2. Follow the map's districts. Mix generated buildings with kit-built ones
    so streets vary; avoid repeating one model in a row.
 3. Keep the zone's invariants: in Everglade, the workshop, Agent Studio's
-   stations, the yard, the spawn view, and the return arch keep working;
+   stations, the yard, and the spawn view keep working;
    every door is reachable from spawn; no blocker covers a road.
 4. Small props must cull with distance; check the drawn-triangle budget.
 

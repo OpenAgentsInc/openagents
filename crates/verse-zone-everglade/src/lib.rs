@@ -7,6 +7,17 @@
 
 pub mod zones;
 
+// Meteor Swarm and the sledgehammer in Everglade are a local test of
+// destruction, never a production feature: a browser or phone build cannot
+// carry them, so no page, setting, or console call can turn them on there.
+#[cfg(all(
+    feature = "dev-destruction",
+    any(target_arch = "wasm32", target_os = "ios", target_os = "android")
+))]
+compile_error!(
+    "the dev-destruction feature is for local desktop builds only; the web and phone builds must not enable it"
+);
+
 // The paths these zones were written against inside `crates/verse`.
 use verse_core::{avatar, fx, tooltip, world};
 use verse_gfx::{palette, ui};
@@ -26,4 +37,42 @@ mod imported {
 /// The scene label, as `verse::doors` names it.
 mod doors {
     pub use verse_core::label::label as scene_label;
+}
+
+#[cfg(test)]
+mod production_tests {
+    /// Reads `path` under the workspace root.
+    fn read(path: &str) -> String {
+        let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../..");
+        std::fs::read_to_string(root.join(path)).unwrap_or_else(|e| panic!("{path}: {e}"))
+    }
+
+    /// The web build, the phone apps, and the release scripts never enable
+    /// `dev-destruction`: only Verse's own opt-in feature names it.
+    #[test]
+    fn production_builds_never_enable_dev_destruction() {
+        let verse = read("crates/verse/Cargo.toml");
+        for line in verse.lines() {
+            if line.contains("dev-destruction") && !line.trim_start().starts_with('#') {
+                assert!(
+                    line.starts_with("dev-destruction = "),
+                    "only Verse's opt-in feature may name it: {line}"
+                );
+            }
+        }
+        for path in [
+            "crates/everglade-web/Cargo.toml",
+            "crates/coder-mobile/Cargo.toml",
+            "crates/openagents-mobile/Cargo.toml",
+            "crates/openagents-web/Dockerfile",
+            "scripts/release/testflight.sh",
+            "scripts/release/terminal.sh",
+        ] {
+            assert!(!read(path).contains("dev-destruction"), "{path}");
+        }
+        // The web build asks for no features and checks for this one.
+        let web = read("scripts/build-everglade-web.sh");
+        assert!(!web.contains("--features") && !web.contains("--all-features"));
+        assert!(web.contains("grep -q 'dev-destruction'"));
+    }
 }

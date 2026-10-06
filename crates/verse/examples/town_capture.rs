@@ -15,7 +15,9 @@
 //! - `restored.png`: the street after `R` restores the town.
 //!
 //! It prints the median and slowest frame's simulation and dynamic mesh
-//! time, and how many figure vertices the ruin draws.
+//! time, and how many figure vertices the ruin draws. Everglade's hotbar
+//! has Meteor Swarm and the sledgehammer only in a dev build, so run it with
+//! `--features dev-destruction`.
 use std::path::{Path, PathBuf};
 use verse::{
     controller::InputState,
@@ -47,6 +49,7 @@ fn main() -> Result<(), String> {
         return Err("Everglade did not install from the pinned pack".into());
     }
     runtime.settle_zone_light();
+    runtime.set_dev_destruction(true)?;
     let mut atlas = verse::ui::Atlas::new(16.0);
     zones::everglade::hotbar::add_sprites(&mut atlas)?;
     let idle = InputState::default();
@@ -138,7 +141,7 @@ fn shot(runtime: &WorldRuntime, atlas: &verse::ui::Atlas, path: &Path) -> Result
             atlas,
             size,
             14.0,
-            zones::everglade::hotbar::COUNT,
+            zones::everglade::hotbar::FULL_COUNT,
             &swarm,
         );
     }

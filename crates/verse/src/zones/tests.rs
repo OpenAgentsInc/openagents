@@ -323,7 +323,9 @@ fn walking_through_the_grid_portal_enters_a_neutral_lagrange_1_and_flying_back_r
         .unwrap();
     assert_eq!(back.label, "The Grid");
     // Fly the pack through the return arch: it comes back on its own.
-    let portal = ZoneId::Lagrange1.portal();
+    let portal = ZoneId::Lagrange1
+        .portal()
+        .expect("Lagrange 1's return arch");
     runtime
         .zone_state
         .lagrange

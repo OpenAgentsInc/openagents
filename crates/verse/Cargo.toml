@@ -41,6 +41,11 @@ chamber-loopback = ["remote-chamber", "tokio/io-util", "verse-imported/chamber-l
 # are native-only by target, so this feature only adds what the web needs.
 web = ["wgpu/webgl", "imported-surface"]
 browser-chamber = ["web", "verse-imported/chamber-client", "verse-world/reach-client"]
+# Dev only: Meteor Swarm and the sledgehammer on Everglade's hotbar behind
+# `verse --dev-destruction`, to test destruction locally. Never in a
+# default, web, phone, or release build; the web and phone targets refuse
+# to compile with it.
+dev-destruction = ["verse-zone-everglade/dev-destruction"]
 
 [dependencies]
 openagents-chat = { path = "../openagents-chat", optional = true }

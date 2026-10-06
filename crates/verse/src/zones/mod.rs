@@ -127,9 +127,10 @@ impl ZoneId {
             Self::Crypt => crypt::HALF_EXTENT,
         }
     }
-    /// The zone's primary portal: the plaza's Lagrange 1 arch, or a zone's return.
-    pub fn portal(self) -> glam::Vec3 {
-        self.portals()[0].1
+    /// The zone's primary portal: the plaza's Lagrange 1 arch, or a zone's
+    /// return. Everglade has none.
+    pub fn portal(self) -> Option<glam::Vec3> {
+        self.portals().first().map(|&(_, at)| at)
     }
     /// Every portal in this zone with its destination.
     pub fn portals(self) -> Vec<(ZoneId, glam::Vec3)> {
@@ -149,7 +150,9 @@ impl ZoneId {
             }
             Self::Lagrange1 => vec![(Self::Plaza, lagrange::RETURN_PORTAL)],
             Self::PhysicsLab => vec![(Self::Plaza, lab::RETURN_PORTAL)],
-            Self::Everglade => vec![(Self::Plaza, everglade::RETURN_PORTAL)],
+            // Everglade has no arch back; its zone panel's return control
+            // leaves.
+            Self::Everglade => Vec::new(),
             Self::Grove => vec![(Self::Plaza, grove::RETURN_PORTAL)],
             // The heavy door is the way out; it draws no arch.
             Self::Crypt => vec![(Self::Plaza, crypt::DOOR)],
@@ -288,6 +291,10 @@ pub(crate) struct State {
     crypt: Option<crypt::Crypt>,
     /// Open Everglade as the demolition yard (`verse --demolition`).
     demolition: bool,
+    /// Meteor Swarm and the sledgehammer on Everglade's hotbar, a local test
+    /// of destruction (`verse --dev-destruction`). Only a `dev-destruction`
+    /// build can set it ([`crate::runtime::WorldRuntime::set_dev_destruction`]).
+    dev_destruction: bool,
     /// The Agent Studio Everglade draws. It keeps its source across visits
     /// and observes only while the player is in Everglade.
     studio: everglade::studio::Studio,
@@ -322,6 +329,7 @@ impl Default for State {
             grove: None,
             crypt: None,
             demolition: false,
+            dev_destruction: false,
             studio: everglade::studio::Studio::default(),
             studio_notice: None,
             destination: ZoneId::Everglade,

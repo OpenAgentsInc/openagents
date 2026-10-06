@@ -13,6 +13,11 @@ model-host = ["dep:coder"]
 studio-host = ["dep:openagents-connect"]
 # The studio's sounds and desktop notices.
 desktop = ["dep:openagents-chat-app"]
+# Dev only: Meteor Swarm and the sledgehammer on Everglade's hotbar, for
+# testing destruction locally (`verse --features dev-destruction --
+# --everglade --dev-destruction`). Off by default; the web and phone builds
+# refuse to compile with it, and no release script enables it.
+dev-destruction = []
 
 [dependencies]
 atif = { path = "../atif" }

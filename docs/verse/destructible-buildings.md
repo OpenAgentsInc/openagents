@@ -605,9 +605,14 @@ through the shared [`kit.rs`](../../crates/verse-zone-everglade/src/zones/evergl
 [`hammer.rs`](../../crates/verse-zone-everglade/src/zones/everglade/demolition/hammer.rs),
 and [`site.rs`](../../crates/verse-zone-everglade/src/zones/everglade/demolition/site.rs).
 
-- **Controls.** Key 6 on Everglade's hotbar aims Meteor Swarm (a click or a
-  tap casts it, right click or `Esc` cancels) and key 7 swings the
-  sledgehammer. Both cost nothing and have no cooldown; the 2.5 s cast bar
+- **Controls.** The player casts no offensive spell in Everglade (owner,
+  October 5, 2026): its hotbar has neither, and the town's buildings break
+  only when something drives the demolition directly. In a local build
+  with the `dev-destruction` feature, `verse --everglade --dev-destruction`
+  puts them back: key 6 aims Meteor Swarm (a click or a tap casts it,
+  right click or `Esc` cancels) and key 7 swings the sledgehammer (see
+  [Dev destruction](everglade.md#dev-destruction)). Both cost nothing and
+  have no cooldown; the 2.5 s cast bar
   and the targeting circle stay. The circle lies over whatever is highest
   under it, roofs included, and a cursor over a building puts it there
   rather than on the ground hidden inside. `R` restores every building.

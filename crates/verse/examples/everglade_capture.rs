@@ -207,7 +207,14 @@ fn main() -> Result<(), String> {
                 .iter()
                 .position(|(intent, ..)| *intent == zones::Intent::WindWall)
                 .ok_or("the hotbar has no Wind Wall")?;
-            zones::everglade::hotbar::draw_tip(&mut ui, &atlas, [1280.0, 800.0], 14.0, wind);
+            zones::everglade::hotbar::draw_tip(
+                &mut ui,
+                &atlas,
+                [1280.0, 800.0],
+                14.0,
+                slots.len(),
+                wind,
+            );
         }
     }
     if let Some(summary) = runtime

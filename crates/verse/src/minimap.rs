@@ -261,27 +261,28 @@ impl MapHud {
                     z: -3.0,
                 },
             ],
-            crate::zones::ZoneId::Everglade => {
-                let portal = crate::zones::ZoneId::Everglade.portal();
-                std::iter::once(Landmark {
+            // Everglade has no arch back to the plaza; its zone panel's
+            // return control leaves.
+            crate::zones::ZoneId::Everglade => crate::zones::everglade::STATIONS
+                .iter()
+                .filter(|s| s.id != "approach")
+                .map(|s| Landmark {
+                    id: s.id,
+                    label: s.studio,
+                    x: s.at[0],
+                    z: s.at[1],
+                })
+                .collect(),
+            crate::zones::ZoneId::Grove => crate::zones::ZoneId::Grove
+                .portal()
+                .map(|portal| Landmark {
                     id: "return",
                     label: "Plaza portal",
                     x: portal.x,
                     z: portal.z - 3.0,
                 })
-                .chain(
-                    crate::zones::everglade::STATIONS
-                        .iter()
-                        .filter(|s| s.id != "approach")
-                        .map(|s| Landmark {
-                            id: s.id,
-                            label: s.studio,
-                            x: s.at[0],
-                            z: s.at[1],
-                        }),
-                )
-                .collect()
-            }
+                .into_iter()
+                .collect(),
             crate::zones::ZoneId::MeteorStressTest => vec![
                 Landmark {
                     id: "castle",
@@ -296,15 +297,6 @@ impl MapHud {
                     z: crate::zones::meteor_stress::RETURN_PORTAL.z,
                 },
             ],
-            crate::zones::ZoneId::Grove => {
-                let portal = crate::zones::ZoneId::Grove.portal();
-                vec![Landmark {
-                    id: "return",
-                    label: "Plaza portal",
-                    x: portal.x,
-                    z: portal.z - 3.0,
-                }]
-            }
         };
         let expanded_extra = 76.0 + landmarks.len().div_ceil(3) as f32 * 28.0;
         let [top, right, bottom, left] = self.insets;

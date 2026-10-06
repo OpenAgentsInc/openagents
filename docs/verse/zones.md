@@ -133,9 +133,10 @@ physics API gaps the lab works around.
 ### Everglade controls
 
 You walk the plaza character over the glade's generated ground; the camera
-stays above the slope. The map lists the return portal and the studio
-stations, and the caption names the station whose marker you stand at.
-**Plaza** returns. Station coordinates are fixed in
+stays above the slope. The map lists the studio stations, and the caption
+names the station whose marker you stand at. Everglade has no return arch:
+**Plaza** returns in Coder's plaza, `G` on the desktop's Grid, and
+**Leave** on a phone. Station coordinates are fixed in
 [`zones/everglade/mod.rs`](../../crates/verse-zone-everglade/src/zones/everglade/mod.rs)
 (`STATIONS`); the textured layout replaces the markers at the same points.
 

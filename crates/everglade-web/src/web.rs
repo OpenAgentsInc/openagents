@@ -693,17 +693,13 @@ impl Page {
         if let (Some(layout), Some(slots)) = (&self.layout, self.runtime.everglade_hotbar()) {
             zones::everglade::hotbar::draw(&mut ui, layout, self.css_size(), 0.0, &slots);
             if let Some(index) = tip {
-                zones::everglade::hotbar::draw_tip(&mut ui, layout, self.css_size(), 0.0, index);
-            }
-            // Meteor Swarm's help and cast bar over the tray.
-            if let Some(swarm) = self.runtime.everglade_swarm() {
-                zones::everglade::demolition::hotbar::draw_town(
+                zones::everglade::hotbar::draw_tip(
                     &mut ui,
                     layout,
                     self.css_size(),
                     0.0,
-                    zones::everglade::hotbar::COUNT,
-                    &swarm,
+                    slots.len(),
+                    index,
                 );
             }
         }
@@ -795,8 +791,8 @@ impl Page {
         } else if self.runtime.grove_bar().is_some() {
             let index = zones::grove::hotbar::slot_under(at, size, 0.0, self.grove_layout())?;
             Some((index, zones::grove::hotbar::intent(index)?))
-        } else if self.runtime.everglade_hotbar().is_some() {
-            let index = zones::everglade::hotbar::slot_under(at, size, 0.0)?;
+        } else if let Some(slots) = self.runtime.everglade_hotbar() {
+            let index = zones::everglade::hotbar::slot_under(at, size, 0.0, slots.len())?;
             Some((index, zones::everglade::hotbar::SLOTS.get(index)?.0))
         } else {
             None
@@ -934,12 +930,11 @@ impl Page {
         if self.runtime.everglade_hotbar().is_none() {
             return false;
         }
-        let slots = &zones::everglade::hotbar::SLOTS;
+        let order = self.runtime.everglade_hotbar_order();
         let slot = code
             .strip_prefix("Digit")
             .and_then(|d| d.parse::<usize>().ok())
-            .filter(|&n| (1..=slots.len()).contains(&n))
-            .map(|n| slots[n - 1].0);
+            .and_then(|n| zones::everglade::hotbar::key_intent(n, &order));
         let intent = match (code, slot) {
             (_, Some(intent)) => intent,
             ("KeyL", _) => zones::Intent::Levitate,
@@ -1029,8 +1024,8 @@ fn listen(window: &Window, page: &Rc<RefCell<Page>>) -> Result<(), String> {
             }
             // The demolition yard's hotbar: 1 swings the sledgehammer, 2
             // aims Meteor Swarm, and R rebuilds. Escape leaves the aim or
-            // stops the cast, there and in Everglade's town, where R
-            // restores the buildings.
+            // stops the cast, there and in the Grove, where R restores the
+            // tower. Everglade's town has no offensive spell on the web.
             if down && event.code() == "Escape" && page.runtime.demolition_cancel() {
                 event.prevent_default();
                 return;

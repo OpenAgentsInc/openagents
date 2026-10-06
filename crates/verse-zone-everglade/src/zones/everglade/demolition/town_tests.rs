@@ -370,22 +370,6 @@ fn the_hammer_breaks_a_town_wall() {
     assert!(town.raised().contains(&cottage));
 }
 
-#[test]
-fn the_hotbar_ends_with_meteor_swarm_and_the_sledgehammer() {
-    use crate::zones::Intent;
-    use crate::zones::everglade::hotbar::{COUNT, SLOTS, card};
-    let tail: Vec<Intent> = SLOTS[COUNT - 2..].iter().map(|(i, ..)| *i).collect();
-    assert_eq!(tail, [Intent::MeteorSwarm, Intent::Swing]);
-    let meteor = card(COUNT - 2).expect("a card");
-    assert!(
-        meteor
-            .details
-            .iter()
-            .any(|(d, _)| d.contains("No mana, no cooldown"))
-    );
-    assert!(SLOTS[COUNT - 2].2.text.contains("R restores the town"));
-}
-
 /// Breaks the cottage's south wall sections on the ground story within
 /// 2.5 m of its middle, and lets the town catch up. Returns the cottage.
 fn open_the_cottage(town: &mut Town, player: &PlayerController) -> usize {

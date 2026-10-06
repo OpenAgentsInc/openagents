@@ -1620,12 +1620,23 @@ impl Scene {
             }
             return self.pointer_at(id, phase, x, y, self.pointer_clock.elapsed().as_secs_f64());
         }
+        // Everglade has no arch back to the Grid; its Leave button is the
+        // way out.
         if matches!(phase, PointerPhase::Down)
             && self.everglade_hotbar_shown()
+            && self.on_everglade_leave(point)
+        {
+            self.cancel_taps();
+            return self.zone_intent(ZoneIntent::Return);
+        }
+        if matches!(phase, PointerPhase::Down)
+            && self.everglade_hotbar_shown()
+            && let Some(slots) = self.world.everglade_hotbar()
             && let Some(index) = verse::zones::everglade::hotbar::slot_under(
                 point,
                 self.lifecycle.viewport().logical_size(),
                 self.hotbar_bottom(),
+                slots.len(),
             )
         {
             self.cancel_taps();
@@ -3052,6 +3063,7 @@ impl Scene {
                             &layout,
                             self.lifecycle.viewport().logical_size(),
                             self.hotbar_bottom(),
+                            slots.len(),
                             index,
                         );
                     }
@@ -3062,10 +3074,15 @@ impl Scene {
                             &layout,
                             self.lifecycle.viewport().logical_size(),
                             self.hotbar_bottom(),
-                            verse::zones::everglade::hotbar::COUNT,
+                            slots.len(),
                             &swarm,
                         );
                     }
+                    // Everglade's Leave button, where the chamber's stands:
+                    // the zone has no arch back to the Grid.
+                    let [lx, ly, lw, lh] = self.chamber_leave_rect();
+                    bar.rect(&layout, lx, ly, lw, lh, [0.1, 0.1, 0.12, 0.8]);
+                    bar.text(&layout, lx + 12.0, ly + 9.0, "LEAVE", [1.0; 4]);
                     for vertex in &mut bar.vertices {
                         vertex.pos = vertex.pos.map(|v| v * scale);
                     }
@@ -3278,6 +3295,13 @@ impl Scene {
         (0..CHAMBER_SLOTS.len())
             .map(|i| [x0 + i as f32 * (slot + gap), size[1] - bottom - slot, slot])
             .collect()
+    }
+
+    /// Whether `point` (logical points) is on Everglade's Leave button,
+    /// which stands where the chamber's does.
+    fn on_everglade_leave(&self, point: [f32; 2]) -> bool {
+        let [x, y, w, h] = self.chamber_leave_rect();
+        point[0] >= x && point[0] <= x + w && point[1] >= y && point[1] <= y + h
     }
 
     /// The Leave button's rectangle, top right under the insets.

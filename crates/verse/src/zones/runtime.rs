@@ -437,18 +437,15 @@ impl WorldRuntime {
         self.zone == ZoneId::Crypt && super::crypt::near_door(self.player.pos)
     }
 
-    /// The nearest portal in this zone and its destination.
-    fn nearest_portal(&self) -> (ZoneId, Vec3) {
+    /// The nearest portal in this zone and its destination, or `None` in a
+    /// zone without one, such as Everglade.
+    fn nearest_portal(&self) -> Option<(ZoneId, Vec3)> {
         let at = self.player.pos;
-        self.zone
-            .portals()
-            .into_iter()
-            .min_by(|a, b| {
-                let da = (a.1 - at).x.hypot((a.1 - at).z);
-                let db = (b.1 - at).x.hypot((b.1 - at).z);
-                da.total_cmp(&db)
-            })
-            .unwrap_or((ZoneId::Plaza, self.zone.portal()))
+        self.zone.portals().into_iter().min_by(|a, b| {
+            let da = (a.1 - at).x.hypot((a.1 - at).z);
+            let db = (b.1 - at).x.hypot((b.1 - at).z);
+            da.total_cmp(&db)
+        })
     }
     fn portal_in_reach(&self, at: Vec3) -> bool {
         // The crypt's door opens from closer than an arch.
@@ -499,7 +496,7 @@ impl WorldRuntime {
                 let destination = if intent == Intent::Retry {
                     self.zone_state.destination
                 } else {
-                    self.nearest_portal().0
+                    self.nearest_portal().ok_or("Approach a portal")?.0
                 };
                 self.zone_state.destination = destination;
                 if destination == ZoneId::Lagrange1 {
@@ -679,6 +676,9 @@ impl WorldRuntime {
                 self.zone_state.error = None;
             }
             Intent::Swing | Intent::Rebuild => {
+                if !self.casts_destruction() {
+                    return Err("Everglade has no offensive spells".into());
+                }
                 self.zone_state
                     .everglade
                     .as_mut()
@@ -687,6 +687,9 @@ impl WorldRuntime {
                 self.zone_state.error = None;
             }
             Intent::MeteorSwarm => {
+                if !self.casts_destruction() {
+                    return Err("Everglade has no offensive spells".into());
+                }
                 let player = self.player.clone();
                 self.zone_state
                     .everglade
@@ -830,21 +833,40 @@ impl WorldRuntime {
                 .map(|_| ()),
         )
     }
-    /// Source slot indices in the zone's displayed hotbar order.
-    pub fn everglade_hotbar_order(&self) -> [usize; super::everglade::hotbar::COUNT] {
+    /// Source slot indices in the zone's displayed hotbar order: displayed
+    /// slot `i` is `SLOTS[order[i]]`. The Meteor Stress Test puts Meteor
+    /// Swarm first and Levitate sixth; elsewhere the bar keeps
+    /// [`super::everglade::hotbar::SLOTS`] order. It has one entry per slot
+    /// [`Self::everglade_hotbar`] shows.
+    #[must_use]
+    pub fn everglade_hotbar_order(&self) -> Vec<usize> {
+        use super::everglade::hotbar::{COUNT, FULL_COUNT, in_order};
         if self.zone == ZoneId::MeteorStressTest {
-            [5, 1, 2, 3, 4, 0, 6]
+            vec![5, 1, 2, 3, 4, 0, 6]
+        } else if self.everglade_destruction() {
+            in_order(FULL_COUNT)
         } else {
-            [0, 1, 2, 3, 4, 5, 6]
+            in_order(COUNT)
         }
     }
 
-    /// Everglade's hotbar of movement and spells, in
-    /// [`super::everglade::hotbar::SLOTS`] order, or `None` outside Everglade.
+    /// The intent of the hotbar slot displayed at `index`, in the zone's
+    /// order ([`Self::everglade_hotbar_order`]).
     #[must_use]
-    pub fn everglade_hotbar(
-        &self,
-    ) -> Option<[super::everglade::hotbar::Slot; super::everglade::hotbar::COUNT]> {
+    pub fn everglade_slot_intent(&self, index: usize) -> Option<Intent> {
+        let order = self.everglade_hotbar_order();
+        super::everglade::hotbar::SLOTS
+            .get(*order.get(index)?)
+            .map(|(intent, ..)| *intent)
+    }
+
+    /// Everglade's hotbar of movement and utility spells, in displayed
+    /// order ([`Self::everglade_hotbar_order`]), or `None` outside Everglade.
+    /// It has [`super::everglade::hotbar::COUNT`] slots, and Meteor Swarm and
+    /// the sledgehammer too only in the Meteor Stress Test, or while
+    /// [`Self::dev_destruction`] is on in Everglade.
+    #[must_use]
+    pub fn everglade_hotbar(&self) -> Option<Vec<super::everglade::hotbar::Slot>> {
         use super::everglade::{hotbar::Slot, spells::Spell};
         // The crypt is walked with Everglade's bar.
         if !matches!(
@@ -864,8 +886,13 @@ impl WorldRuntime {
             active: glade.levitating,
             cooldown: 0.0,
         };
-        // Meteor Swarm and the sledgehammer, once the town's buildings can
-        // break: free, without a cooldown.
+        let mut bar = vec![levitate, feather, wind, reverse, stone];
+        if !self.everglade_destruction() {
+            return Some(bar);
+        }
+        // Meteor Swarm and the sledgehammer in the Meteor Stress Test, or
+        // in Everglade's town with the dev build's destruction on, once the
+        // buildings can break: free, without a cooldown.
         let on = |enabled, active| Slot {
             enabled,
             active,
@@ -878,16 +905,55 @@ impl WorldRuntime {
         let meteor = swarm.map_or(on(false, false), |s| {
             on(s.ready || s.targeting, s.targeting || s.casting.is_some())
         });
-        let slots = [
-            levitate,
-            feather,
-            wind,
-            reverse,
-            stone,
-            meteor,
-            on(glade.town().is_some(), wielding),
-        ];
-        Some(self.everglade_hotbar_order().map(|index| slots[index]))
+        bar.extend([meteor, on(glade.town().is_some(), wielding)]);
+        Some(
+            self.everglade_hotbar_order()
+                .into_iter()
+                .map(|index| bar[index])
+                .collect(),
+        )
+    }
+
+    /// Calls Meteor Swarm down on the ground ahead of the player in
+    /// Everglade's town without the hotbar, for a scripted run such as the
+    /// terminal stress run; no input reaches it. Returns whether the cast
+    /// began.
+    pub fn scripted_meteor_swarm(&mut self) -> bool {
+        if self.zone != ZoneId::Everglade {
+            return false;
+        }
+        let player = self.player.clone();
+        let Some(glade) = self.zone_state.everglade.as_mut() else {
+            return false;
+        };
+        glade.meteor_swarm(&player).is_ok() && glade.confirm_swarm(&player)
+    }
+
+    /// Whether Everglade's hotbar carries Meteor Swarm and the sledgehammer:
+    /// only in a `dev-destruction` build, and only after
+    /// [`Self::set_dev_destruction`] switched them on.
+    #[must_use]
+    pub fn dev_destruction(&self) -> bool {
+        super::everglade::hotbar::DEV_DESTRUCTION && self.zone_state.dev_destruction
+    }
+
+    /// Switches Meteor Swarm and the sledgehammer on Everglade's hotbar on
+    /// or off, for a local test of destruction (`verse --dev-destruction`).
+    ///
+    /// # Errors
+    ///
+    /// Returns a message when asked to switch them on in a build without
+    /// the `dev-destruction` feature, which every web, phone, and release
+    /// build is.
+    pub fn set_dev_destruction(&mut self, on: bool) -> Result<(), String> {
+        if on && !super::everglade::hotbar::DEV_DESTRUCTION {
+            return Err(
+                "This build has no dev destruction; build Verse with --features dev-destruction"
+                    .into(),
+            );
+        }
+        self.zone_state.dev_destruction = on;
+        Ok(())
     }
 
     /// How far Meteor Swarm's blasts shake the camera this frame, in the
@@ -907,7 +973,7 @@ impl WorldRuntime {
     /// yard or Everglade's town.
     #[must_use]
     pub fn demolition_targeting(&self) -> bool {
-        self.breaks_things()
+        self.casts_destruction()
             && self
                 .zone_state
                 .everglade
@@ -940,7 +1006,7 @@ impl WorldRuntime {
     /// in the demolition yard, whose own hotbar draws them.
     #[must_use]
     pub fn everglade_swarm(&self) -> Option<super::everglade::demolition::meteor::Status> {
-        if !matches!(self.zone, ZoneId::Everglade | ZoneId::MeteorStressTest) {
+        if !self.everglade_destruction() {
             return None;
         }
         let glade = self.zone_state.everglade.as_ref()?;
@@ -968,7 +1034,7 @@ impl WorldRuntime {
 
     /// Casts Meteor Swarm at its circle. Returns whether the cast began.
     pub fn demolition_confirm(&mut self) -> bool {
-        if !self.breaks_things() {
+        if !self.casts_destruction() {
             return false;
         }
         let player = self.player.clone();
@@ -981,7 +1047,7 @@ impl WorldRuntime {
     /// Leaves Meteor Swarm's targeting or stops its cast, spending
     /// nothing. Returns whether there was either to stop.
     pub fn demolition_cancel(&mut self) -> bool {
-        if !self.breaks_things() {
+        if !self.casts_destruction() {
             return false;
         }
         self.zone_state
@@ -997,6 +1063,30 @@ impl WorldRuntime {
             self.zone,
             ZoneId::Everglade | ZoneId::Grove | ZoneId::MeteorStressTest
         )
+    }
+
+    /// Whether the player may cast Meteor Swarm or swing the sledgehammer
+    /// here: in the Grove, the Meteor Stress Test, the demolition yard, and
+    /// in Everglade's town
+    /// only while [`Self::dev_destruction`] is on. Everglade's buildings
+    /// still break; the player just has no offensive spell there.
+    fn casts_destruction(&self) -> bool {
+        match self.zone {
+            ZoneId::Grove | ZoneId::MeteorStressTest => true,
+            ZoneId::Everglade => self.in_demolition() || self.dev_destruction(),
+            _ => false,
+        }
+    }
+
+    /// Whether Everglade's hotbar carries Meteor Swarm and the sledgehammer
+    /// here: in the Meteor Stress Test, and in Everglade's town only while
+    /// [`Self::dev_destruction`] is on.
+    fn everglade_destruction(&self) -> bool {
+        match self.zone {
+            ZoneId::MeteorStressTest => true,
+            ZoneId::Everglade => self.dev_destruction(),
+            _ => false,
+        }
     }
 
     /// How many tall buildings' tops are toppling now in Everglade's town
@@ -1384,13 +1474,14 @@ impl WorldRuntime {
                 None => caption,
             }
         } else if portal.near && portal.visible {
-            if self.nearest_portal().0 == ZoneId::Lagrange1 {
+            let nearest = self.nearest_portal().map(|(zone, _)| zone);
+            if nearest == Some(ZoneId::Lagrange1) {
                 add("enter", "Enter L1", Intent::Enter, true);
                 "Lagrange 1 · Sun–Earth L1 station".into()
-            } else if self.nearest_portal().0 == ZoneId::PhysicsLab {
+            } else if nearest == Some(ZoneId::PhysicsLab) {
                 add("enter", "Enter Lab", Intent::Enter, true);
                 "Physics Lab · live rigid-body sandbox".into()
-            } else if self.nearest_portal().0 == ZoneId::Crypt {
+            } else if nearest == Some(ZoneId::Crypt) {
                 add(
                     "enter",
                     "Enter Crypt",
@@ -1428,7 +1519,16 @@ impl WorldRuntime {
         }
     }
     fn zone_portal(&self, aspect: f32) -> PortalProjection {
-        let at = self.nearest_portal().1;
+        let Some((_, at)) = self.nearest_portal() else {
+            // No arch here to approach or tap.
+            return PortalProjection {
+                near: false,
+                visible: false,
+                screen_x: 0.5,
+                screen_y: 0.5,
+                distance: f32::MAX,
+            };
+        };
         let offset = self.player.pos - at;
         let distance = offset.x.hypot(offset.z);
         let anchor = at + Vec3::new(0.0, 2.5, -0.3);
@@ -1472,7 +1572,9 @@ impl WorldRuntime {
         y: f32,
         entities: &crate::mesh::Mesh,
     ) -> bool {
-        let portal = self.nearest_portal().1;
+        let Some((_, portal)) = self.nearest_portal() else {
+            return false;
+        };
         // The Grid's portal is walked through; nothing on the Grid is tapped.
         if self.is_bare() && self.is_plaza() || !self.portal_in_reach(portal) || self.zone_loading()
         {

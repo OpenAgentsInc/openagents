@@ -51,6 +51,14 @@
 //! quick left click or `1` swings, `2` aims Meteor Swarm at a circle of
 //! ground that a click casts, and `R` rebuilds the cottages.
 //!
+//! Everglade has no arch back to the plaza; `G` leaves for the Grid. Its
+//! hotbar holds no offensive spell. `--dev-destruction`, or
+//! `VERSE_DEV_DESTRUCTION=1`, puts Meteor Swarm (6) and the sledgehammer (7)
+//! back on it to test destruction locally, in a build with the
+//! `dev-destruction` feature only (`cargo run -p verse --features
+//! dev-destruction -- --everglade --dev-destruction`); any other build
+//! refuses the flag and ignores the variable.
+//!
 //! `verse --seed-rooms <relay-key-file>` creates the NIP-29 chat rooms as
 //! the relay; `scripts/verse-relay.sh` runs it.
 //!
@@ -173,6 +181,12 @@ fn parse(mut args: impl Iterator<Item = String>) -> Result<(Option<Shot>, Option
     if let Ok(relay) = std::env::var("VERSE_XP_RELAY") {
         options.xp_relay = Some(relay);
     }
+    // A build without the dev-destruction feature ignores the variable.
+    if verse::zones::everglade::hotbar::DEV_DESTRUCTION
+        && std::env::var("VERSE_DEV_DESTRUCTION").is_ok_and(|v| v == "1")
+    {
+        options.dev_destruction = true;
+    }
     let mut board = false;
     let mut at = None;
     let mut shot: Option<Shot> = None;
@@ -270,6 +284,14 @@ fn parse(mut args: impl Iterator<Item = String>) -> Result<(Option<Shot>, Option
             "--demolition" => {
                 options.everglade = true;
                 options.demolition = true;
+            }
+            "--dev-destruction" => {
+                if !verse::zones::everglade::hotbar::DEV_DESTRUCTION {
+                    return Err("--dev-destruction needs a build with the dev-destruction \
+                         feature: cargo run -p verse --features dev-destruction"
+                        .into());
+                }
+                options.dev_destruction = true;
             }
             "--frame-times" => options.frame_times = true,
             "--studio-notice" => options.studio_notice = Some(value()?),

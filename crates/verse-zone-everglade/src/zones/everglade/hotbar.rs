@@ -1,23 +1,35 @@
 //! Everglade's hotbar, drawn as the chamber's action bar is: a beveled tray
 //! of game-icons.net art with a number key on each slot. Levitate comes
 //! first, held to rise, then the spells that need no enemy
-//! ([`super::spells`]), none with a cooldown, and last Meteor Swarm and the
-//! sledgehammer, which break the town's buildings
-//! ([`super::demolition::town`]). The icons are sprites in the
-//! HUD's atlas, added by [`add_sprites`]. Resting the pointer on a slot, or
-//! holding a touch on it, shows its card ([`crate::tooltip`]) with the
-//! name and sentence kept in [`SLOTS`].
+//! ([`super::spells`]), none with a cooldown. Nothing on Everglade's bar
+//! damages a building, a creature, or a player. Meteor Swarm and the
+//! sledgehammer, which break buildings ([`super::demolition::town`]),
+//! follow in [`SLOTS`] for the Meteor Stress Test's castle, and for
+//! Everglade's town only in a `dev-destruction` build with that test
+//! switched on ([`DEV_DESTRUCTION`]). The runtime chooses how many slots
+//! show ([`COUNT`] or [`FULL_COUNT`]). The icons are sprites in the HUD's atlas, added by
+//! [`add_sprites`]. Resting the pointer on a slot, or holding a touch on it,
+//! shows its card ([`crate::tooltip`]) with the name and sentence kept in
+//! [`SLOTS`].
 
 use super::super::Intent;
 use crate::tooltip::{self, Card, Tip, palette};
 use crate::ui::{Atlas, UiBatch};
 
-/// How many slots the bar has.
-pub const COUNT: usize = 7;
+/// How many slots the bar has: Levitate and the four utility spells.
+pub const COUNT: usize = 5;
+
+/// Whether this build carries the dev-only destruction slots.
+pub const DEV_DESTRUCTION: bool = cfg!(feature = "dev-destruction");
+
+/// How many slots the bar has where destruction is on: [`COUNT`], then
+/// Meteor Swarm and the sledgehammer.
+pub const FULL_COUNT: usize = COUNT + 2;
 
 /// One slot: the intent it sends, its icon sprite, and its card's name and
-/// sentence. Number keys 1 to 7 press them in order.
-pub const SLOTS: [(Intent, &str, Tip); COUNT] = [
+/// sentence. Number keys press them in order. The first [`COUNT`] are
+/// Everglade's bar; the last two show only where destruction is on.
+pub const SLOTS: [(Intent, &str, Tip); FULL_COUNT] = [
     (
         Intent::Levitate,
         "levitate-icon",
@@ -76,6 +88,27 @@ pub const SLOTS: [(Intent, &str, Tip); COUNT] = [
     ),
 ];
 
+/// The slots shown: the first `count` of [`SLOTS`], at most all of them.
+#[must_use]
+pub fn shown(count: usize) -> &'static [(Intent, &'static str, Tip)] {
+    &SLOTS[..count.min(FULL_COUNT)]
+}
+
+/// The identity order of a bar of `count` slots: each shown slot in
+/// [`SLOTS`] order.
+#[must_use]
+pub fn in_order(count: usize) -> Vec<usize> {
+    (0..shown(count).len()).collect()
+}
+
+/// The intent of the slot that number key `n` presses in a tray whose
+/// displayed slot `i` is `SLOTS[order[i]]`.
+#[must_use]
+pub fn key_intent(n: usize, order: &[usize]) -> Option<Intent> {
+    let index = *order.get(n.checked_sub(1)?)?;
+    SLOTS.get(index).map(|(intent, ..)| *intent)
+}
+
 /// Whether a slot can be used now, whether its toggle or spell is on, and
 /// the fraction of its cooldown left (always 0 in Everglade; the Grove's
 /// bar shares this type).
@@ -110,12 +143,13 @@ pub fn add_sprites(atlas: &mut Atlas) -> Result<(), String> {
     Ok(())
 }
 
-/// The tray's frame in logical points for a screen of `size`: centered at
-/// the bottom as the chamber's bar is, raised `bottom` points more (to clear
-/// a phone's sticks).
+/// The tray's frame in logical points for a screen of `size` and a bar of
+/// [`COUNT`] slots: centered at the bottom as the chamber's bar is, raised
+/// `bottom` points more (to clear a phone's sticks). [`frame_of`] lays out
+/// a bar of another length.
 #[must_use]
 pub fn frame(size: [f32; 2], bottom: f32) -> [f32; 4] {
-    frame_of(size, bottom, SLOTS.len())
+    frame_of(size, bottom, COUNT)
 }
 
 /// The frame of a tray of `count` slots, as [`frame`] lays it out.
@@ -140,10 +174,10 @@ pub fn slot_rect_of(size: [f32; 2], bottom: f32, count: usize, index: usize) -> 
     [x, y, icon, icon]
 }
 
-/// The index of the slot under `point`, if any.
+/// The index of the slot under `point` in a bar of `count` slots, if any.
 #[must_use]
-pub fn slot_under(point: [f32; 2], size: [f32; 2], bottom: f32) -> Option<usize> {
-    hit_of(point, size, bottom, COUNT)
+pub fn slot_under(point: [f32; 2], size: [f32; 2], bottom: f32, count: usize) -> Option<usize> {
+    hit_of(point, size, bottom, shown(count).len())
 }
 
 /// Slot `index`'s card: its name and sentence, its keys, and for a spell
@@ -174,28 +208,38 @@ fn card_with_key(index: usize, displayed: usize) -> Option<Card> {
     Some(card)
 }
 
-/// Draws slot `index`'s card over the tray into `ui`, kept on screen.
-pub fn draw_tip(ui: &mut UiBatch, atlas: &Atlas, size: [f32; 2], bottom: f32, index: usize) {
-    draw_tip_ordered(ui, atlas, size, bottom, index, &[0, 1, 2, 3, 4, 5, 6]);
+/// Draws displayed slot `index`'s card over a tray of `count` slots in
+/// [`SLOTS`] order into `ui`, kept on screen.
+pub fn draw_tip(
+    ui: &mut UiBatch,
+    atlas: &Atlas,
+    size: [f32; 2],
+    bottom: f32,
+    count: usize,
+    index: usize,
+) {
+    draw_tip_ordered(ui, atlas, size, bottom, index, &in_order(count));
 }
 
-/// Draws a card with its displayed key in a reordered tray.
+/// Draws a card with its displayed key in a reordered tray, whose
+/// displayed slot `i` is `SLOTS[order[i]]`.
 pub fn draw_tip_ordered(
     ui: &mut UiBatch,
     atlas: &Atlas,
     size: [f32; 2],
     bottom: f32,
     index: usize,
-    order: &[usize; COUNT],
+    order: &[usize],
 ) {
-    let Some(&source) = order.get(index) else {
+    let count = order.len().min(FULL_COUNT);
+    if index >= count {
+        return;
+    }
+    let Some(card) = card_with_key(order[index], index) else {
         return;
     };
-    let Some(card) = card_with_key(source, index) else {
-        return;
-    };
-    let [x, _, w, _] = slot_rect_of(size, bottom, COUNT, index);
-    let [_, top, _, height] = frame(size, bottom);
+    let [x, _, w, _] = slot_rect_of(size, bottom, count, index);
+    let [_, top, _, height] = frame_of(size, bottom, count);
     tooltip::draw(ui, atlas, &card, [x, top, w, height], size);
 }
 
@@ -211,10 +255,24 @@ fn slot_at(size: [f32; 2], frame: [f32; 4], index: usize) -> ([f32; 2], f32) {
     )
 }
 
-/// The intent under `point`, if any.
+/// The intent under `point` in a bar of `count` slots in [`SLOTS`] order,
+/// if any.
 #[must_use]
-pub fn hit(point: [f32; 2], size: [f32; 2], bottom: f32) -> Option<Intent> {
-    hit_of(point, size, bottom, SLOTS.len()).map(|index| SLOTS[index].0)
+pub fn hit(point: [f32; 2], size: [f32; 2], bottom: f32, count: usize) -> Option<Intent> {
+    hit_ordered(point, size, bottom, &in_order(count))
+}
+
+/// The intent under `point` in a tray whose displayed slot `i` is
+/// `SLOTS[order[i]]`, if any.
+#[must_use]
+pub fn hit_ordered(
+    point: [f32; 2],
+    size: [f32; 2],
+    bottom: f32,
+    order: &[usize],
+) -> Option<Intent> {
+    let index = hit_of(point, size, bottom, order.len().min(FULL_COUNT))?;
+    SLOTS.get(order[index]).map(|(intent, ..)| *intent)
 }
 
 /// The index of the slot under `point` in a tray of `count` slots.
@@ -227,21 +285,24 @@ pub fn hit_of(point: [f32; 2], size: [f32; 2], bottom: f32, count: usize) -> Opt
     })
 }
 
-/// Draws the tray with `slots` (in [`SLOTS`] order) into `ui`.
-pub fn draw(ui: &mut UiBatch, atlas: &Atlas, size: [f32; 2], bottom: f32, slots: &[Slot; COUNT]) {
-    draw_ordered(ui, atlas, size, bottom, slots, &[0, 1, 2, 3, 4, 5, 6]);
+/// Draws the tray with `slots` (in [`SLOTS`] order, one per shown slot)
+/// into `ui`.
+pub fn draw(ui: &mut UiBatch, atlas: &Atlas, size: [f32; 2], bottom: f32, slots: &[Slot]) {
+    draw_ordered(ui, atlas, size, bottom, slots, &in_order(slots.len()));
 }
 
-/// Draws a tray with its icons in `order` and states in displayed order.
+/// Draws a tray with its icons in `order` (displayed slot `i` is
+/// `SLOTS[order[i]]`) and `slots`' states in displayed order.
 pub fn draw_ordered(
     ui: &mut UiBatch,
     atlas: &Atlas,
     size: [f32; 2],
     bottom: f32,
-    slots: &[Slot; COUNT],
-    order: &[usize; COUNT],
+    slots: &[Slot],
+    order: &[usize],
 ) {
-    let keys: Vec<String> = (1..=COUNT).map(|n| n.to_string()).collect();
+    let order = &order[..order.len().min(slots.len()).min(FULL_COUNT)];
+    let keys: Vec<String> = (1..=order.len()).map(|n| n.to_string()).collect();
     let sprites: Vec<(&str, &str)> = order
         .iter()
         .map(|&index| &SLOTS[index])
@@ -326,15 +387,15 @@ mod tests {
         for (size, bottom) in [(DESKTOP, 14.0), (PHONE, 120.0)] {
             for index in 0..COUNT {
                 let rect = slot_rect_of(size, bottom, COUNT, index);
-                assert_eq!(slot_under(center(rect), size, bottom), Some(index));
-                assert_eq!(hit(center(rect), size, bottom), Some(SLOTS[index].0));
+                assert_eq!(slot_under(center(rect), size, bottom, COUNT), Some(index));
+                assert_eq!(hit(center(rect), size, bottom, COUNT), Some(SLOTS[index].0));
                 // Just past the icon's right edge is the gap to the next.
                 let gap = [rect[0] + rect[2] + 1.0, rect[1] + rect[3] * 0.5];
-                assert_eq!(slot_under(gap, size, bottom), None);
+                assert_eq!(slot_under(gap, size, bottom, COUNT), None);
             }
             let [left, top, width, _] = frame(size, bottom);
             assert_eq!(
-                slot_under([left + width * 0.5, top - 4.0], size, bottom),
+                slot_under([left + width * 0.5, top - 4.0], size, bottom, COUNT),
                 None
             );
         }
@@ -354,13 +415,62 @@ mod tests {
             assert_eq!(card.title, tip.name);
             assert!(card.details[0].0.contains(&(index + 1).to_string()));
         }
-        assert!(card(COUNT).is_none());
+        assert!(card(FULL_COUNT).is_none());
         // Wind Wall's card says what walking into it does now.
         let wind = SLOTS
             .iter()
             .position(|(intent, ..)| *intent == Intent::WindWall)
             .unwrap();
         assert!(SLOTS[wind].2.text.contains("throws you upward"));
+    }
+
+    #[test]
+    fn the_bar_is_movement_and_utility_spells_on_keys_1_to_5() {
+        let bar: Vec<Intent> = shown(COUNT).iter().map(|(i, ..)| *i).collect();
+        assert_eq!(
+            bar,
+            [
+                Intent::Levitate,
+                Intent::FeatherFall,
+                Intent::WindWall,
+                Intent::ReverseGravity,
+                Intent::WallOfStone,
+            ]
+        );
+        for (n, intent) in bar.iter().enumerate() {
+            assert_eq!(key_intent(n + 1, &in_order(COUNT)), Some(*intent));
+        }
+        assert_eq!(key_intent(0, &in_order(COUNT)), None);
+        assert_eq!(key_intent(6, &in_order(COUNT)), None);
+        assert_eq!(key_intent(7, &in_order(COUNT)), None);
+        assert!(
+            bar.iter()
+                .all(|i| !matches!(i, Intent::MeteorSwarm | Intent::Swing)),
+            "Everglade's bar has no offensive slot"
+        );
+        assert_eq!(shown(FULL_COUNT + 3).len(), FULL_COUNT);
+    }
+
+    #[test]
+    fn the_full_bar_ends_with_meteor_swarm_and_the_sledgehammer() {
+        let tail: Vec<Intent> = shown(FULL_COUNT)[COUNT..]
+            .iter()
+            .map(|(i, ..)| *i)
+            .collect();
+        assert_eq!(tail, [Intent::MeteorSwarm, Intent::Swing]);
+        assert_eq!(
+            key_intent(6, &in_order(FULL_COUNT)),
+            Some(Intent::MeteorSwarm)
+        );
+        assert_eq!(key_intent(7, &in_order(FULL_COUNT)), Some(Intent::Swing));
+        let meteor = card(COUNT).expect("a card");
+        assert!(
+            meteor
+                .details
+                .iter()
+                .any(|(d, _)| d.contains("No mana, no cooldown"))
+        );
+        assert!(SLOTS[COUNT].2.text.contains("R restores the town"));
     }
 
     #[test]

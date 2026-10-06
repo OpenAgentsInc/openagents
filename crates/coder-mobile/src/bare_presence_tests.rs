@@ -473,10 +473,12 @@ fn the_everglade_arch_loads_its_pack_moves_presence_and_the_return_rejoins() {
         .iter()
         .position(|(intent, ..)| *intent == Intent::Levitate)
         .unwrap();
-    let step = width / verse::zones::everglade::hotbar::SLOTS.len() as f32;
+    let count = verse::zones::everglade::hotbar::COUNT;
+    assert_eq!(scene.world.everglade_hotbar().unwrap().len(), count);
+    let step = width / count as f32;
     let (x, y) = (left + step * (slot as f32 + 0.5), top + height / 2.0);
     assert_eq!(
-        verse::zones::everglade::hotbar::hit([x, y], size, bottom),
+        verse::zones::everglade::hotbar::hit([x, y], size, bottom, count),
         Some(Intent::Levitate)
     );
     let [sx, sy] = scene.stick_center();
@@ -514,9 +516,13 @@ fn the_everglade_arch_loads_its_pack_moves_presence_and_the_return_rejoins() {
     assert!(scene.zone_intent(Intent::Interact).is_err());
     assert!(scene.studio.is_none());
 
-    // Leaving (as walking back through THE GRID arch does) returns to the
-    // Grid in front of the arch, and presence rejoins.
-    scene.zone_intent(Intent::Return).unwrap();
+    // Everglade has no arch back; its Leave button returns to the Grid in
+    // front of the arch, and presence rejoins.
+    assert!(scene.world.zone.portals().is_empty());
+    let [lx, ly, lw, lh] = scene.chamber_leave_rect();
+    scene
+        .pointer(12, PointerPhase::Down, lx + lw / 2.0, ly + lh / 2.0)
+        .unwrap();
     assert!(scene.world.is_plaza());
     assert_eq!(scene.world.player.pos, front);
     assert_eq!(
