@@ -95,6 +95,20 @@ the same request makes the plugin there, in steps
 A plugin that only brings skills needs no workflow: its package record names
 no `program`, and `skills/` holds at least one `.md` file.
 
+A reviewed draft can also be retained with `openagents plugin workbench freeze
+--root DIR --review FILE`. The typed review contains `flow`, the existing chat `snapshot` with its
+original Coder task binding and routed plugin interview, `directory`, and
+author/fee/payout `declarations`. The snapshot is owner-supplied evidence;
+freezing never starts or verifies an engine run.
+`show` reads its retained record and reviewed draft files; `approve --request FILE` names the exact
+package and tree digests and one separate comparison, publication,
+installation, enabling, or independent reuse choice. The native terminal and Verse
+`--capability-flow DIR` mount the same read-only workbench pane. Unknown
+actions are retained without replay; a failed comparison remains evidence,
+and unreported costs and unsettled fees stay labeled as such. Reuse names a
+distinct owner-declared `source_task`; the retained result contains the actual
+route request, thread, artifacts, and checks returned by the use engine.
+
 ## Write a plugin
 
 A plugin is a directory with a package record, `package.json`, at its

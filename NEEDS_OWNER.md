@@ -44,6 +44,10 @@ Run `openagents terminal shell` in a scratch directory on the Mac and through yo
 
 On a scratch Mac host, check physical full-screen keys, selection, clipboard, and resize in both shared mounts. Close each mount and attach the other to its exact retained generation and terminal; confirm the process continues. The automated scratch acceptance covers projection, reattachment, route changes, refused offline input, and restart loss. Device rendering remains unverified.
 
+## Retained capability workflow pane (#10665)
+
+On a scratch Mac build from current main, open a retained flow with `openagents-terminal --root SCRATCH --capability-flow FLOW` and `verse --capability-flow FLOW`. Check that the shared product pane shows its original task, exact release, comparison costs, and failed/unknown actions after reopening. Physical display/input and publication through an owner-selected real signing key remain unverified; offline acceptance uses a temporary signer and registry.
+
 ## Remote shell proposal controls (#10745)
 
 On scratch state in a Mac build from current main, create a desktop shell proposal and open the same terminal from the phone. Confirm that the proposal shows its exact command and revision, confirmation runs once, and its command block appears. Check that a watch screen has no enabled approval control. The Rust scratch-terminal and phone-projection tests cover these behaviors; physical controls remain unverified.

@@ -144,6 +144,9 @@ pub(crate) const EXT_EFFECTS: &[Declared] = &[
     Declared::computer("disable", Effect::LocalWrite),
     Declared::computer("inspect", Effect::ReadOnly),
     Declared::computer("use", Effect::LocalWrite),
+    Declared::computer("workbench freeze", Effect::LocalWrite),
+    Declared::computer("workbench show", Effect::ReadOnly),
+    Declared::computer("workbench approve", Effect::Publishes),
     crate::ext_eval::EFFECTS[0],
     crate::ext_eval::EFFECTS[1],
     crate::ext_eval::EFFECTS[2],
@@ -229,6 +232,10 @@ pub fn ext(output: &Output, words: &[String]) -> u8 {
     }
     if words.first().is_some_and(|word| word == "run") {
         return crate::ext_run::run(output, &words[1..]);
+    }
+    #[cfg(unix)]
+    if let Some(code) = crate::plugin_workbench::run(output, words) {
+        return code;
     }
     #[cfg(unix)]
     if let Some(code) = crate::plugin_new::run(output, words) {

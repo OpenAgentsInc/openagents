@@ -970,3 +970,29 @@ mod tests {
         );
     }
 }
+
+#[cfg(test)]
+pub(crate) fn scratch_workbench_use(
+    layout: &Layout,
+    pin: CapabilityPin,
+    request: &str,
+    workspace: &Path,
+    thread: &str,
+    routes: &Path,
+    artifacts: &Path,
+) -> Result<Value, String> {
+    let id = pin.id.clone();
+    use_plugin(
+        layout,
+        &Use {
+            plugin: &id,
+            pin,
+            request,
+            workspace,
+            thread,
+        },
+        &Journal::at(routes.to_path_buf()),
+        artifacts,
+        &mut Workflow::default(),
+    )
+}

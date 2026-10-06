@@ -45,6 +45,7 @@ const HOTBAR_BOTTOM: f32 = 0.0;
 /// How the window joins the shared world.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Options {
+    pub capability_flow: Option<std::path::PathBuf>,
     /// Private authenticated compute account configuration for the shared sheet.
     pub compute_workbench: Option<std::path::PathBuf>,
     /// Optional local floating studio screen, independent of work placement.
@@ -129,6 +130,7 @@ impl Default for Options {
             terminal_host: None,
             terminal_store: None,
             terminal_reference: None,
+            capability_flow: None,
             compute_workbench: None,
             workbench_screen: None,
             workbench_screen_bounds: [40, 60, 900, 600],
@@ -821,6 +823,40 @@ fn terminal_overlay(options: &Options) -> Result<crate::terminal::Overlay, Strin
         && let Err(error) = overlay.listen(&path)
     {
         eprintln!("verse: the terminal control socket is off: {error}");
+    }
+    if let Some(root) = &options.capability_flow {
+        let owner = openagents_chat::plugin_workbench::Owner::open(
+            root.clone(),
+            openagents_chat::client::NoCoder,
+        );
+        let record = owner.read()?;
+        let subject = workbench::pane::Subject::Resource {
+            resource: workbench::ResourceRef::new(
+                workbench::Kind::Evidence,
+                workbench::Host::Local {
+                    instance: openagents_chat::plugin_workbench::local_instance(root),
+                },
+                record.source.flow,
+            ),
+        };
+        let draft = openagents_chat::plugin_workbench::DraftPane::open(root.clone());
+        let subjects = draft.subjects()?;
+        overlay.core.products.panes =
+            std::mem::take(&mut overlay.core.products.panes).adapter(Box::new(draft));
+        for file in subjects {
+            overlay
+                .core
+                .products
+                .open(workbench::pane::PaneKind::Artifact, &file)?;
+        }
+        overlay.core.products.panes =
+            std::mem::take(&mut overlay.core.products.panes).adapter(Box::new(owner));
+        overlay
+            .core
+            .products
+            .open(workbench::pane::PaneKind::Evaluation, &subject)?;
+        overlay.core.paper.on = true;
+        overlay.open = true;
     }
     if let Some(path) = &options.compute_workbench {
         compute_workbench::host::mount(

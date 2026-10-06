@@ -13641,6 +13641,7 @@ dependencies = [
  "bytemuck",
  "compute-workbench",
  "knowledge",
+ "openagents-chat",
  "pollster",
  "serde_json",
  "terminal-core",
@@ -15179,6 +15180,7 @@ dependencies = [
  "naga",
  "nostr",
  "objc2 0.6.4",
+ "openagents-chat",
  "openagents-chat-app",
  "openagents-connect",
  "physics",
@@ -15223,6 +15225,7 @@ dependencies = [
  "webpki-roots 1.0.9",
  "wgpu",
  "winit",
+ "workbench",
  "xp-ledger",
 ]
 

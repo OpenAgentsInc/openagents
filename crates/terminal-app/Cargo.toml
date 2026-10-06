@@ -13,6 +13,7 @@ path = "src/main.rs"
 [dependencies]
 compute-workbench = { path = "../compute-workbench", features = ["host"] }
 knowledge = { path = "../knowledge" }
+openagents-chat = { path = "../openagents-chat" }
 workbench = { path = "../workbench" }
 terminal-studio = { path = "../terminal-studio" }
 terminal-core = { path = "../terminal-core" }

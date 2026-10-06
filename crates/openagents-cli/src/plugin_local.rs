@@ -34,7 +34,19 @@ pub fn run(output: &Output, words: &[String]) -> Option<u8> {
         "installed" => list(),
         "enable" | "disable" => first
             .ok_or_else(|| format!("{command} needs the plugin's name"))
-            .and_then(|plugin| enable(plugin, command == "enable")),
+            .and_then(|plugin| {
+                let args = crate::Args::parse(rest, &[])?;
+                match (args.option("version"), args.option("digest")) {
+                    (None, None) => enable(plugin, command == "enable"),
+                    (Some(version), Some(digest)) => enable_exact_in(
+                        &layout()?,
+                        plugin,
+                        command == "enable",
+                        Some((version, digest)),
+                    ),
+                    _ => Err("Exact enabling needs both --version and --digest.".into()),
+                }
+            }),
         _ => return None,
     };
     Some(match result {
@@ -67,6 +79,7 @@ fn install(dir: &Path) -> Result<serde_json::Value, String> {
 
 /// Installs the plugin in `dir` under `layout`, off.
 pub(crate) fn install_into(layout: &Layout, dir: &Path) -> Result<serde_json::Value, String> {
+    let _lock = plugins::mutation_lock(layout)?;
     let dir = dir
         .canonicalize()
         .map_err(|error| format!("{}: {error}", dir.display()))?;
@@ -87,6 +100,14 @@ pub(crate) fn install_into(layout: &Layout, dir: &Path) -> Result<serde_json::Va
     if version.contains('/') || version.contains("..") {
         return Err(format!("version {version:?} cannot name a folder"));
     }
+    // Installation is a separate choice from enabling, including when an
+    // earlier version under this ID was on. The mutation lock remains held.
+    let mut enabled = plugins::enabled(layout);
+    enabled.remove(&format!("{key}:{}", package.slug));
+    let bytes =
+        serde_json::to_vec_pretty(&json!({"enabled": enabled})).map_err(|e| e.to_string())?;
+    background::store::write_atomic(&layout.enabled_plugins(), &bytes)
+        .map_err(|e| e.to_string())?;
     let into = layout
         .extensions()
         .join(&key)
@@ -128,8 +149,17 @@ fn enable(name: &str, on: bool) -> Result<serde_json::Value, String> {
 }
 
 fn enable_in(layout: &Layout, name: &str, on: bool) -> Result<serde_json::Value, String> {
+    enable_exact_in(layout, name, on, None)
+}
+
+pub(crate) fn enable_exact_in(
+    layout: &Layout,
+    name: &str,
+    on: bool,
+    pin: Option<(&str, &str)>,
+) -> Result<serde_json::Value, String> {
     let layout = layout.clone();
-    let plugin = plugins::set_enabled(&layout, name, on)?;
+    let plugin = plugins::set_enabled_exact(&layout, name, on, pin)?;
     let mut text = match (on, plugin.background.is_empty()) {
         (true, false) => format!(
             "{} is on. It runs in the background here; `openagents background list` shows it.",
@@ -254,6 +284,19 @@ mod tests {
         assert!(!to.join("evals/results").exists());
         assert!(!to.join("target").exists());
         assert!(!to.join("link").exists());
+    }
+
+    #[test]
+    fn installing_a_reviewed_release_does_not_inherit_enabled_state() {
+        let home = tempfile::tempdir().unwrap();
+        let layout = Layout::new(home.path(), None).unwrap();
+        let repo = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../plugins/disk-cleanup");
+        let installed = install_into(&layout, &repo).unwrap();
+        let id = installed["plugin"]["id"].as_str().unwrap();
+        plugins::set_enabled(&layout, id, true).unwrap();
+        assert!(plugins::find(&layout, id).unwrap().enabled);
+        install_into(&layout, &repo).unwrap();
+        assert!(!plugins::find(&layout, id).unwrap().enabled);
     }
 
     /// #10305: turning a background plugin on shows its rule's dry run and

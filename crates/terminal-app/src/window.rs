@@ -16,6 +16,7 @@ use winit::{
 
 #[derive(Default)]
 pub struct Options {
+    capability_flow: Option<PathBuf>,
     root: Option<PathBuf>,
     knowledge_workbench: Option<PathBuf>,
     compute_workbench: Option<PathBuf>,
@@ -44,6 +45,13 @@ pub fn run() -> Result<(), String> {
     let mut args = std::env::args().skip(1);
     while let Some(argument) = args.next() {
         match argument.as_str() {
+            "--capability-flow" => {
+                options.capability_flow = Some(
+                    args.next()
+                        .ok_or("Expected a retained capability flow directory")?
+                        .into(),
+                )
+            }
             "--startup-out" => {
                 options.startup_out =
                     Some(args.next().ok_or("Expected a startup report path")?.into())
@@ -77,7 +85,7 @@ pub fn run() -> Result<(), String> {
             }
             "--help" | "-h" => {
                 println!(
-                    "OpenAgents Terminal\nUsage: openagents-terminal [--root DIR] [--shell PATH] [--socket PATH] [--host KEY --paired-store DIR --terminal GENERATION/TERMINAL]\n\nStarts your login shell under one fixed sheet. Type a command or a question; ENTER runs or asks. F1 shows the keys.\nCtrl+B % or \" splits; Ctrl+B c opens a tab. Cmd+Q exits on macOS.\n--root isolates shell and helper HOME for a scratch run.\nThe native package supports macOS arm64; Linux is a development platform.\n--stress-out FILE runs the shared workload; --busy N --seconds S --warmup S configure it.\n--startup-out FILE records process entry to first presented frame.\n--background opens behind the active app and keeps drawing while covered.\n--latency-out FILE records key-to-frame times on the sheet until quit."
+                    "OpenAgents Terminal\nUsage: openagents-terminal [--root DIR] [--shell PATH] [--socket PATH] [--host KEY --paired-store DIR --terminal GENERATION/TERMINAL]\n\nStarts your login shell under one fixed sheet. --capability-flow DIR opens its retained capability workflow beside the shell. Type a command or a question; ENTER runs or asks. F1 shows the keys.\nCtrl+B % or \" splits; Ctrl+B c opens a tab. Cmd+Q exits on macOS.\n--root isolates shell and helper HOME for a scratch run.\nThe native package supports macOS arm64; Linux is a development platform.\n--stress-out FILE runs the shared workload; --busy N --seconds S --warmup S configure it.\n--startup-out FILE records process entry to first presented frame.\n--background opens behind the active app and keeps drawing while covered.\n--latency-out FILE records key-to-frame times on the sheet until quit."
                 );
                 return Ok(());
             }
@@ -525,6 +533,39 @@ impl ApplicationHandler for App {
                     &mut terminal.core,
                     compute_workbench::host::Config::load(path)?,
                 )?;
+            }
+            if let Some(root) = &self.options.capability_flow {
+                use workbench::pane::{PaneKind, Subject};
+                let owner = openagents_chat::plugin_workbench::Owner::open(
+                    root.clone(),
+                    openagents_chat::client::NoCoder,
+                );
+                let record = owner.read()?;
+                let instance = openagents_chat::plugin_workbench::local_instance(root);
+                let subject = Subject::Resource {
+                    resource: workbench::ResourceRef::new(
+                        workbench::Kind::Evidence,
+                        workbench::Host::Local { instance },
+                        record.source.flow,
+                    ),
+                };
+                let draft = openagents_chat::plugin_workbench::DraftPane::open(root.clone());
+                let subjects = draft.subjects()?;
+                terminal.core.products.panes =
+                    std::mem::take(&mut terminal.core.products.panes).adapter(Box::new(draft));
+                for file in subjects {
+                    terminal
+                        .core
+                        .products
+                        .open(workbench::pane::PaneKind::Artifact, &file)?;
+                }
+                terminal.core.products.panes =
+                    std::mem::take(&mut terminal.core.products.panes).adapter(Box::new(owner));
+                terminal
+                    .core
+                    .products
+                    .open(PaneKind::Evaluation, &subject)?;
+                terminal.core.paper.on = true;
             }
             terminal.focused = true;
             terminal.fit(

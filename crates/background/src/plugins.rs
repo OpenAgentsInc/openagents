@@ -132,7 +132,48 @@ pub fn find(layout: &Layout, name: &str) -> Result<Installed, String> {
 /// # Errors
 /// No such plugin, a rule the host refuses, or the file cannot be written.
 pub fn set_enabled(layout: &Layout, name: &str, on: bool) -> Result<Installed, String> {
+    set_enabled_exact(layout, name, on, None)
+}
+
+/// Serialize installs and enabling across local callers.
+pub fn mutation_lock(layout: &Layout) -> Result<std::fs::File, String> {
+    let root = layout.extensions();
+    std::fs::create_dir_all(&root).map_err(|e| e.to_string())?;
+    let path = root.join(".mutation.lock");
+    if std::fs::symlink_metadata(&path).is_ok_and(|m| !m.is_file()) {
+        return Err("The installed plugin lock is unsafe.".into());
+    }
+    let mut options = std::fs::OpenOptions::new();
+    options.create(true).truncate(false).write(true);
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::OpenOptionsExt;
+        options.mode(0o600);
+    }
+    let file = options.open(path).map_err(|e| e.to_string())?;
+    file.try_lock()
+        .map_err(|_| "Another plugin mutation is in progress.".to_owned())?;
+    Ok(file)
+}
+
+/// Enable only the reviewed installed version and package bytes when pinned.
+/// The pin is checked under the same lock that serializes installations.
+pub fn set_enabled_exact(
+    layout: &Layout,
+    name: &str,
+    on: bool,
+    pin: Option<(&str, &str)>,
+) -> Result<Installed, String> {
+    let _lock = mutation_lock(layout)?;
     let plugin = find(layout, name)?;
+    if let Some((version, digest)) = pin {
+        use sha2::{Digest as _, Sha256};
+        let bytes = std::fs::read(plugin.dir.join("package.json")).map_err(|e| e.to_string())?;
+        let actual = format!("sha256:{:x}", Sha256::digest(bytes));
+        if plugin.version != version || actual != digest {
+            return Err("The installed plugin differs from the reviewed release.".into());
+        }
+    }
     if on {
         for id in &plugin.background {
             load_rule(&plugin, id)?;
@@ -524,4 +565,40 @@ fn is_slug(text: &str) -> bool {
             .bytes()
             .all(|b| b.is_ascii_lowercase() || b.is_ascii_digit() || b == b'-')
         && !text.starts_with('-')
+}
+
+#[cfg(test)]
+mod exact_release_tests {
+    use super::*;
+    use sha2::{Digest as _, Sha256};
+
+    #[test]
+    fn exact_enabling_refuses_changed_version_bytes_and_concurrent_installs() {
+        let home = tempfile::tempdir().unwrap();
+        let layout = Layout::new(home.path(), None).unwrap();
+        let into = layout.extensions().join(LOCAL_KEY).join("hello/0.1.0");
+        std::fs::create_dir_all(&into).unwrap();
+        let bytes =
+            serde_json::to_vec(&json!({"v":1,"slug":"hello","version":"0.1.0","name":"Hello"}))
+                .unwrap();
+        std::fs::write(into.join("package.json"), &bytes).unwrap();
+        let digest = format!("sha256:{:x}", Sha256::digest(&bytes));
+        assert!(set_enabled_exact(&layout, "hello", true, Some(("0.2.0", &digest))).is_err());
+        assert!(set_enabled_exact(&layout, "hello", true, Some(("0.1.0", "sha256:bad"))).is_err());
+        assert!(enabled(&layout).is_empty());
+        let lock = mutation_lock(&layout).unwrap();
+        assert!(set_enabled_exact(&layout, "hello", true, Some(("0.1.0", &digest))).is_err());
+        drop(lock);
+        assert!(
+            set_enabled_exact(&layout, "hello", true, Some(("0.1.0", &digest)))
+                .unwrap()
+                .enabled
+        );
+        std::fs::write(
+            into.join("package.json"),
+            b"{\"v\":1,\"slug\":\"hello\",\"version\":\"0.1.0\",\"name\":\"Changed\"}",
+        )
+        .unwrap();
+        assert!(set_enabled_exact(&layout, "hello", true, Some(("0.1.0", &digest))).is_err());
+    }
 }

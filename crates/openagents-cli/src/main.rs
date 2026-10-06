@@ -60,6 +60,8 @@ mod plugin_new;
 mod plugin_registry;
 #[cfg(unix)]
 mod plugin_use;
+#[cfg(unix)]
+mod plugin_workbench;
 mod provider_key;
 mod quest;
 mod reach;

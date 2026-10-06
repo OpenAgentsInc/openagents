@@ -13,6 +13,7 @@ pub mod migrate;
 pub mod pane;
 pub mod plan;
 pub mod plugin_flow;
+pub mod plugin_workbench;
 pub mod remote;
 pub mod route;
 pub mod router;
