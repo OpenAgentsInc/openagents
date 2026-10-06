@@ -188,7 +188,7 @@ impl Routes {
         if result != repeated {
             return Err("Declared route replay changed its retained result".into());
         }
-        events.push(json!({"declared_route":route,"route_result":result,"workbench_rows":terminal_studio::route::rows(&result, stream)?}));
+        events.push(json!({"declared_route":route,"admission":snapshot,"binding":binding,"route_result":result,"workbench_rows":terminal_studio::route::rows(&result, stream)?}));
         match result.state {
             openagents_chat::studio::State::Completed { outcome } => Ok(*outcome),
             openagents_chat::studio::State::Refused { reason } => {
