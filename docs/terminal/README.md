@@ -371,3 +371,11 @@ Use `# ` for an explicit request. An inline proposal stays pending: Ctrl+G shows
 its warning and Ctrl+Y confirms its exact revision. `# /edit KEY COMMAND` creates
 another revision; `# /reject KEY` rejects it. Ordinary keys, full-screen output,
 and the existing `openagents terminal` thread view keep their behavior.
+
+Windows x86-64 release tooling is in `scripts/release/windows-terminal.py`.
+Run `build` on Windows with the MSVC target, then qualify the exact three
+executables before `package` and `publish`. The separate ZIP installer verifies
+all artifacts into a new directory. Windows shell, helper, font, clipboard,
+and local named-pipe adapters are implemented; native window qualification and
+public artifacts remain unverified. Local exact proposals remain unavailable
+until the host can inspect a Windows shell's current directory safely.

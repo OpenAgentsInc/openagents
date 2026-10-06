@@ -582,3 +582,12 @@ viewer and typist markers. Pause and confirm both recipient panes blank;
 resume and confirm a gap without paused output; revoke and confirm both detach.
 The scratch host checks the sharing protocol and privacy cuts. Physical native
 presentation, clipboard delivery, and device interaction remain unverified.
+
+## Standalone Linux and Windows qualification (#10689, #10690)
+
+On isolated Linux x86-64 and Windows x86-64 machines, build the matching
+standalone app and helpers with the platform release script. Retain native
+startup, fullscreen, Unicode/IME, clipboard, resize, process cleanup, and frame
+workload observations with executable hashes, then publish and verify the
+public installer readback. The tooling refuses qualification marked not-run.
+Neither platform has a qualified public artifact from this work.
