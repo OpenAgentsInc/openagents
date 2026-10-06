@@ -12,9 +12,16 @@
   },
   "scope": "Framed prediction pauses at the existing 256-step horizon without discarding submitted intervals or accumulating excess elapsed time. Legacy command-mode horizon retirement remains unchanged.",
   "limitations": [
-    "Read-only pause-count accessors and the battle report consumer are queued for Linux compilation.",
     "No battle performance improvement is established by the unit checks.",
     "Living-player interval timeouts remain unresolved."
   ],
-  "repair": "The first full prediction run passed 39 and failed two legacy-mode retirement assertions; restricting preservation to framed mode restored all 41 checks."
+  "repair": "The first full prediction run passed 39 and failed two legacy-mode retirement assertions; restricting preservation to framed mode restored all 41 checks.",
+  "consumer_build": {
+    "command": "cargo +1.97.1 build -p verse --no-default-features --features remote-chamber --example battle_scale",
+    "status": "passed",
+    "host": "coderos-4080",
+    "source_base": "43f12d6e0bb48e22f151476a14aaab66cca9bee8",
+    "executable_sha256": "8be81fcbc319600a39659afcbdac8fc3114fc9b293a1be07afe81b3d07429ad6",
+    "source": "Private measurement checkout with preceding retained patches plus the horizon-recovery patch; not a deployment of latest main."
+  }
 }
