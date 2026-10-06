@@ -83,6 +83,18 @@ const CHIP_RADIUS: f32 = 1.8;
 /// one cast's damage once within it.
 const SWARM_WINDOW: f32 = 2.0;
 
+/// A line from the caster's mouth or hand at `at`, along `toward` for
+/// `length` m, restarted on the axis through the caster's `feet`: the
+/// controller keeps that axis out of every wall, while a mouth or hand
+/// held ahead of it can already be inside the wall in front, and a hit
+/// test from there finds the wall behind. Returns the start and the
+/// length that still ends where the line did.
+fn from_body(feet: Vec3, at: Vec3, toward: Vec3, length: f32) -> (Vec3, f32) {
+    let axis = Vec3::new(feet.x, at.y, feet.z);
+    let ahead = (at - axis).dot(toward).max(0.0);
+    (axis, length + ahead)
+}
+
 /// A strike the Grove's own lightning makes on the tower, if it reaches
 /// it: Call Lightning's bolt at a point, or Lightning Bolt's line.
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -150,6 +162,9 @@ pub struct Grove {
     model: draw::Model,
     /// Each form the pack carries, in [`Form::ALL`] order.
     beasts: Vec<Option<Beast>>,
+    /// How far each form reaches ahead of its feet and how tall it
+    /// stands, m, at its modeled size, in [`Form::ALL`] order.
+    reach: Vec<Option<[f32; 2]>>,
     /// The beast's shape the druid wears, if any.
     shape: Option<Shape>,
     /// The Circle of the Land's chosen land.
@@ -226,6 +241,7 @@ impl Grove {
             .map(|beast| beast.as_ref().map(Beast::figure))
             .collect();
         let model = draw::Model::new(pack, glade.cast_figure().as_ref(), &forms, dummies.len())?;
+        let reach = forms.iter().map(|f| f.as_ref().map(shape::reach)).collect();
         Ok(Self {
             dummies,
             dice: Dice::new(kit::DICE_SEED),
@@ -236,6 +252,7 @@ impl Grove {
             log: Vec::new(),
             model,
             beasts,
+            reach,
             shape: None,
             land: Land::Arid,
             auras: Vec::new(),
@@ -773,12 +790,16 @@ impl Grove {
         let Some(town) = glade.town_mut() else {
             return;
         };
-        for chip in chips {
-            match chip {
+        // Every chip finds what it meets before any of them blasts: the
+        // lines of one breath all meet the wall in front, rather than each
+        // line passing through the hole the one before it made and taking
+        // out the wall behind.
+        let blasts: Vec<(Vec3, i32, Vec3)> = chips
+            .into_iter()
+            .filter_map(|chip| match chip {
                 Chip::At { at, damage } => {
-                    if town.touches(at, CHIP_REACH) {
-                        town.blast(at, CHIP_RADIUS, damage, Vec3::ZERO);
-                    }
+                    town.touches(at, CHIP_REACH)
+                        .then_some((at, damage, Vec3::ZERO))
                 }
                 Chip::Line {
                     from,
@@ -787,14 +808,15 @@ impl Grove {
                     damage,
                 } => {
                     let steps = (length / 0.5).ceil() as usize;
-                    if let Some(at) = (0..=steps)
+                    (0..=steps)
                         .map(|i| from + toward * (i as f32 * 0.5))
                         .find(|p| town.touches(*p, 0.3))
-                    {
-                        town.blast(at, CHIP_RADIUS, damage, -toward);
-                    }
+                        .map(|at| (at, damage, -toward))
                 }
-            }
+            })
+            .collect();
+        for (at, damage, face) in blasts {
+            town.blast(at, CHIP_RADIUS, damage, face);
         }
         let now = self.time;
         self.swarmed.retain(|&(_, t)| now - t < SWARM_WINDOW);

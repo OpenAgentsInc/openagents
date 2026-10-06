@@ -354,8 +354,9 @@ impl Grove {
                     // with the dice's average.
                     if def.kind == Damage::Lightning {
                         let (count, sides) = def.dice;
+                        let (from, length) = super::from_body(feet, hand, forward, length);
                         self.chips.push(super::Chip::Line {
-                            from: hand,
+                            from,
                             toward: forward,
                             length,
                             damage: (count * (sides + 1) / 2) as i32,

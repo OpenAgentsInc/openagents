@@ -289,6 +289,9 @@ struct Fall {
     members: Vec<usize>,
     /// The two point joints on its hinge line while it turns over it.
     joints: Vec<JointId>,
+    /// The standing blocks under the hinge line; once none stands, the
+    /// joints go and the top falls free rather than hang in the air.
+    hinge: Vec<usize>,
     /// Which way it tips, and when it began, s.
     toward: DVec3,
     since: f64,
@@ -379,6 +382,14 @@ pub struct Site {
     /// frozen in place, by body.
     resting: BTreeMap<u32, f64>,
     frozen: std::collections::BTreeSet<u32>,
+    /// The fixed bodies each frozen body touched when it froze: the
+    /// ground, standing pieces, or other frozen debris. It stays frozen
+    /// only while one of them is still there and itself held.
+    rests: BTreeMap<u32, Vec<u32>>,
+    /// Set when something frozen debris may rest on goes: a piece breaks,
+    /// comes loose, or joins a toppling top, a chunk ends, or debris
+    /// thaws. [`Site::hold_frozen`] then checks what is frozen.
+    unsettled: bool,
 }
 
 impl Site {
@@ -407,6 +418,8 @@ impl Site {
             last_blast: None,
             resting: BTreeMap::new(),
             frozen: std::collections::BTreeSet::new(),
+            rests: BTreeMap::new(),
+            unsettled: false,
         };
         site.raise();
         site
@@ -474,6 +487,8 @@ impl Site {
         self.last_blast = None;
         self.resting.clear();
         self.frozen.clear();
+        self.rests.clear();
+        self.unsettled = false;
     }
 
     /// Piece `index`'s body as built: static, where it was placed.
@@ -617,6 +632,7 @@ impl Site {
         self.thrown.clear();
         self.resting.clear();
         let frozen = std::mem::take(&mut self.frozen);
+        self.rests.clear();
         // Frozen debris moves again in the rebuilt world.
         let thaw = |id: BodyId| {
             let mut body = old[id];
@@ -657,6 +673,7 @@ impl Site {
         self.index_buildings();
         self.pending = 0.0;
         self.revision += 1;
+        self.unsettled = true;
     }
 
     /// Rebuilds every piece as it was first raised.
@@ -664,6 +681,7 @@ impl Site {
         self.rng = self.seed;
         self.raise();
         self.revision += 1;
+        self.unsettled = true;
     }
 
     #[must_use]
@@ -861,6 +879,7 @@ impl Site {
             self.dust(at, 3, 1.0, matter);
         }
         self.revision += 1;
+        self.unsettled = true;
         self.cap_chunks();
     }
 
@@ -888,7 +907,7 @@ impl Site {
             let chunk = &mut self.pieces[p].chunks[i];
             chunk.gone = true;
             let body = chunk.body;
-            self.world.remove_body(body);
+            self.remove_chunk(body);
         }
     }
 
@@ -1343,10 +1362,12 @@ impl Site {
             body: id,
             members: upper,
             joints,
+            hinge,
             toward,
             since: self.world.time(),
         });
         self.revision += 1;
+        self.unsettled = true;
     }
 
     /// Piece `piece`'s body as it moves now: its own body, or for a piece of
@@ -1454,6 +1475,7 @@ impl Site {
         }
         self.world.remove_body(fall.body);
         self.revision += 1;
+        self.unsettled = true;
         if !shatter {
             return;
         }
@@ -1499,7 +1521,16 @@ impl Site {
                 .dot(DVec3::Y)
                 .clamp(-1.0, 1.0)
                 .acos();
-            if !self.falls[index].joints.is_empty() && tilt > HINGE_RELEASE.to_radians() {
+            // It leaves the hinge once it leans far enough, or once nothing
+            // under the hinge stands: the joints hold it to the ground's
+            // body at a fixed point, which would leave it hanging there.
+            let unhinged = !self.falls[index]
+                .hinge
+                .iter()
+                .any(|&i| self.pieces[i].status == Status::Standing);
+            if !self.falls[index].joints.is_empty()
+                && (tilt > HINGE_RELEASE.to_radians() || unhinged)
+            {
                 let joints = std::mem::take(&mut self.falls[index].joints);
                 for joint in joints {
                     self.world.remove_joint(joint);
@@ -1790,6 +1821,7 @@ impl Site {
         let id = self.pieces[piece].body;
         self.pieces[piece].status = Status::Loose;
         self.revision += 1;
+        self.unsettled = true;
         let outward = match spec.role {
             Role::Wall { side, .. } | Role::Gable { side, .. } => Some(side),
             Role::Post { a, .. } => Some(a),
@@ -1825,7 +1857,9 @@ impl Site {
     fn rouse(&mut self, id: BodyId) {
         if self.frozen.remove(&id.0) && !self.world[id].removed {
             self.world[id].kind = BodyKind::Dynamic;
+            self.unsettled = true;
         }
+        self.rests.remove(&id.0);
         self.resting.remove(&id.0);
         self.world.wake(id);
     }
@@ -1844,9 +1878,69 @@ impl Site {
         }
     }
 
+    /// Whether body `id` holds up debris frozen on it: the ground, a
+    /// standing piece, or frozen debris that is itself held.
+    fn holds(&self, id: u32) -> bool {
+        if id == 0 {
+            return true;
+        }
+        let Some(body) = self.world.bodies().get(id as usize) else {
+            return false;
+        };
+        if body.removed || body.kind != BodyKind::Static {
+            return false;
+        }
+        if self.frozen.contains(&id) {
+            return self.rests.contains_key(&id);
+        }
+        // A static body that isn't frozen is a standing piece.
+        self.owner_of(BodyId(id))
+            .is_some_and(|piece| self.pieces[piece].status == Status::Standing)
+    }
+
+    /// Moves again every frozen body with no chain of frozen debris down to
+    /// the ground or a standing piece, and wakes what sleeps on it, so
+    /// nothing is left frozen in the air when what it rested on goes. It
+    /// runs only after something debris may rest on has gone, and costs
+    /// one pass over the frozen debris for each layer that thaws.
+    fn hold_frozen(&mut self) {
+        if !self.unsettled {
+            return;
+        }
+        loop {
+            let thaw: Vec<u32> = self
+                .rests
+                .iter()
+                .filter(|(_, under)| !under.iter().any(|&u| self.holds(u)))
+                .map(|(&id, _)| id)
+                .collect();
+            if thaw.is_empty() {
+                break;
+            }
+            for id in thaw {
+                self.rests.remove(&id);
+                self.rouse(BodyId(id));
+                wake_near(&mut self.world, BodyId(id));
+            }
+        }
+        self.unsettled = false;
+    }
+
+    /// Removes chunk body `id` when it ends, waking what sleeps on it and
+    /// checking the debris frozen on it.
+    fn remove_chunk(&mut self, id: BodyId) {
+        wake_near(&mut self.world, id);
+        self.world.remove_body(id);
+        self.frozen.remove(&id.0);
+        self.rests.remove(&id.0);
+        self.resting.remove(&id.0);
+        self.unsettled = true;
+    }
+
     /// Advances the yard by `dt` seconds of wall time.
     pub fn tick(&mut self, dt: f32) {
         self.age_dust(dt);
+        self.hold_frozen();
         let any_moving = self.pieces.iter().any(|p| match p.status {
             Status::Standing => false,
             Status::Loose => true,
@@ -1878,25 +1972,25 @@ impl Site {
         // or debris already frozen): only these may freeze, so a piece
         // slowed at the top of its arc or resting on moving debris never
         // freezes in midair.
-        let supported: std::collections::BTreeSet<u32> = {
+        let mut supported: BTreeMap<u32, Vec<u32>> = BTreeMap::new();
+        {
             let bodies = self.world.bodies();
             let fixed = |id: physics::BodyId| {
                 bodies
                     .get(id.0 as usize)
                     .is_some_and(|b| b.kind == BodyKind::Static)
             };
-            self.world
-                .contacts
-                .iter()
-                .flat_map(|c| {
-                    [
-                        fixed(c.body_a).then_some(c.body_b.0),
-                        fixed(c.body_b).then_some(c.body_a.0),
-                    ]
-                })
-                .flatten()
-                .collect()
-        };
+            for c in &self.world.contacts {
+                for (body, other) in [(c.body_a, c.body_b), (c.body_b, c.body_a)] {
+                    if fixed(other) {
+                        let under = supported.entry(body.0).or_default();
+                        if !under.contains(&other.0) {
+                            under.push(other.0);
+                        }
+                    }
+                }
+            }
+        }
         for (index, body) in self.world.bodies_mut().iter_mut().enumerate() {
             if body.kind == BodyKind::Dynamic {
                 let thrown = self
@@ -1926,7 +2020,7 @@ impl Site {
                 if debris {
                     let slow = body.vel.length() < FREEZE_SPEED
                         && body.omega.length() < 2.0 * FREEZE_SPEED
-                        && supported.contains(&(index as u32));
+                        && supported.contains_key(&(index as u32));
                     let rest = self.resting.entry(index as u32).or_insert(0.0);
                     *rest = if slow { *rest + STEP } else { 0.0 };
                     if *rest > FREEZE_AFTER {
@@ -1936,6 +2030,9 @@ impl Site {
                         body.sleeping = false;
                         self.frozen.insert(index as u32);
                         self.resting.remove(&(index as u32));
+                        if let Some(under) = supported.remove(&(index as u32)) {
+                            self.rests.insert(index as u32, under);
+                        }
                     }
                 }
             }
@@ -2002,14 +2099,19 @@ impl Site {
         }
         self.tend_falls();
         let time = self.world.time();
+        let mut ended = Vec::new();
         for piece in &mut self.pieces {
             for chunk in &mut piece.chunks {
                 if !chunk.gone && time >= chunk.until {
                     chunk.gone = true;
-                    self.world.remove_body(chunk.body);
+                    ended.push(chunk.body);
                 }
             }
         }
+        for body in ended {
+            self.remove_chunk(body);
+        }
+        self.hold_frozen();
     }
 
     /// Adds `count` puffs of `matter`'s dust at `at`, `scale` times the
@@ -2308,3 +2410,7 @@ impl Target for Site {
         }
     }
 }
+
+#[cfg(test)]
+#[path = "sky_tests.rs"]
+mod sky_tests;

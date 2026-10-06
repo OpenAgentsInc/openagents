@@ -543,3 +543,322 @@ fn through_a_hole_in_the_tower_the_aim_finds_the_far_side_inside() {
         .count();
     assert!(hurt >= 1, "the far side took the blast");
 }
+
+/// World boxes, min and max corners, of everything in `site` that is
+/// standing, loose, or a live chunk, each with a label.
+fn solid_boxes(
+    site: &crate::zones::everglade::demolition::site::Site,
+) -> Vec<(String, Vec3, Vec3)> {
+    let mut out = Vec::new();
+    let corners = |frame: glam::Mat4, half: Vec3| {
+        let (mut lo, mut hi) = (Vec3::splat(f32::INFINITY), Vec3::splat(f32::NEG_INFINITY));
+        for i in 0..8 {
+            let c = Vec3::new(
+                if i & 1 == 0 { -half.x } else { half.x },
+                if i & 2 == 0 { -half.y } else { half.y },
+                if i & 4 == 0 { -half.z } else { half.z },
+            );
+            let p = frame.transform_point3(c);
+            lo = lo.min(p);
+            hi = hi.max(p);
+        }
+        (lo, hi)
+    };
+    for (i, (spec, piece)) in site.specs().iter().zip(site.pieces()).enumerate() {
+        match piece.status {
+            Status::Standing | Status::Loose => {
+                let pose = site.piece_pose(i);
+                let (mut lo, mut hi) = (Vec3::splat(f32::INFINITY), Vec3::splat(f32::NEG_INFINITY));
+                for c in &spec.colliders {
+                    let (a, b) = corners(pose * c.frame(), c.half.as_vec3());
+                    lo = lo.min(a);
+                    hi = hi.max(b);
+                }
+                let label = format!(
+                    "piece {i} {:?} {:?} rubble={} toppling={}",
+                    spec.role,
+                    piece.status,
+                    piece.rubble,
+                    piece.local.is_some()
+                );
+                out.push((label, lo, hi));
+            }
+            Status::Broken => {
+                for (k, chunk) in spec.chunks.iter().enumerate() {
+                    if let Some(pose) = site.chunk_pose(i, k) {
+                        let (lo, hi) = corners(pose * chunk.frame(), chunk.half.as_vec3() * 0.94);
+                        out.push((format!("chunk {i}.{k}"), lo, hi));
+                    }
+                }
+            }
+        }
+    }
+    out
+}
+
+/// Everything in `site` whose underside is more than 3 m up and that
+/// rests on no chain of boxes down to the ground: what hangs in the sky.
+/// A box rests on another that reaches up to its underside and overlaps
+/// it across and whose top is near its underside, give or take half a
+/// metre for tilted boxes: a wall beside a block does not hold it up.
+fn floating(site: &crate::zones::everglade::demolition::site::Site) -> Vec<String> {
+    let boxes = solid_boxes(site);
+    let mut grounded: Vec<bool> = boxes.iter().map(|(_, lo, _)| lo.y < 1.0).collect();
+    let mut changed = true;
+    while changed {
+        changed = false;
+        for b in 0..boxes.len() {
+            if grounded[b] {
+                continue;
+            }
+            let (_, blo, bhi) = &boxes[b];
+            let held = (0..boxes.len()).any(|a| {
+                let (_, alo, ahi) = &boxes[a];
+                grounded[a]
+                    && a != b
+                    && alo.x < bhi.x + 0.5
+                    && blo.x < ahi.x + 0.5
+                    && alo.z < bhi.z + 0.5
+                    && blo.z < ahi.z + 0.5
+                    && ahi.y >= blo.y - 0.5
+                    && ahi.y <= blo.y + 1.2
+                    && alo.y < blo.y + 0.2
+            });
+            if held {
+                grounded[b] = true;
+                changed = true;
+            }
+        }
+    }
+    boxes
+        .iter()
+        .zip(&grounded)
+        .filter(|((_, lo, _), g)| !**g && lo.y > 3.0)
+        .map(|((label, lo, hi), _)| format!("{label} from {lo} to {hi}"))
+        .collect()
+}
+
+/// Lets the wreck settle, then fails if anything hangs in the air. It
+/// looks before most chunks end, which would hide what hangs.
+fn settles_with_nothing_in_the_air(runtime: &mut WorldRuntime, what: &str) {
+    idle(runtime, 6.0);
+    let site = town(runtime).site();
+    let high = floating(site);
+    assert!(
+        high.is_empty(),
+        "{what}: {} things hang in the air:\n{}",
+        high.len(),
+        high.join("\n")
+    );
+}
+
+/// How many of the tower's blocks no longer stand.
+fn fallen(runtime: &WorldRuntime) -> usize {
+    let site = town(runtime).site();
+    pieces(runtime)
+        .iter()
+        .filter(|(i, _)| site.pieces()[*i].status != Status::Standing)
+        .count()
+}
+
+/// Blows the south face and the sides beside it out of the level `y` m
+/// up, as the undercut test does, so the top topples south over a hinge.
+fn undercut(runtime: &mut WorldRuntime, y: f32) {
+    let wreck = town_mut(runtime);
+    for x in [-1.8, 0.0, 1.8] {
+        wreck.blast(
+            Vec3::new(TOWER[0] + x, y, TOWER[1] - 2.9),
+            2.4,
+            400,
+            Vec3::NEG_Z,
+        );
+    }
+    for x in [-2.9, 2.9] {
+        wreck.blast(
+            Vec3::new(TOWER[0] + x, y, TOWER[1] - 0.6),
+            1.6,
+            400,
+            Vec3::X * x.signum(),
+        );
+    }
+}
+
+#[test]
+fn a_stump_blown_out_from_under_settled_debris_leaves_nothing_in_the_air() {
+    // The owner's report: the top topples and its debris comes to rest
+    // and freezes on the stump, then the stump's lower part goes. Debris
+    // that froze on the stump, or on other frozen debris, more than a
+    // few metres above the blasts used to stay frozen in the sky.
+    let mut runtime = before_tower(40.0);
+    undercut(&mut runtime, 8.6);
+    idle(&mut runtime, 10.0);
+    assert_eq!(town(&runtime).site().toppling(), 0, "the top came down");
+    for y in [0.5f32, 2.0, 3.5, 5.0] {
+        let wreck = town_mut(&mut runtime);
+        for x in [-1.8, 0.0, 1.8] {
+            wreck.blast(
+                Vec3::new(TOWER[0] + x, y, TOWER[1] + 2.9),
+                2.4,
+                400,
+                Vec3::Z,
+            );
+            wreck.blast(
+                Vec3::new(TOWER[0] + x, y, TOWER[1] - 2.9),
+                2.4,
+                400,
+                Vec3::NEG_Z,
+            );
+        }
+        idle(&mut runtime, 1.0);
+    }
+    settles_with_nothing_in_the_air(&mut runtime, "the stump's foot blown out");
+}
+
+/// In the dragon's shape `back` m south of the tower, facing it, with its
+/// Fire Breath slot.
+fn dragon_before_tower(back: f32) -> (WorldRuntime, u8) {
+    let mut runtime = before_tower(back);
+    cast(&mut runtime, Spell::Shapechange);
+    idle(
+        &mut runtime,
+        crate::zones::grove::dragon::SWAP + crate::zones::grove::dragon::GROW + 0.1,
+    );
+    let breath = slots::slot_of(
+        Spell::FireBreath,
+        grove(&runtime).form(),
+        grove(&runtime).land(),
+    )
+    .expect("the dragon's row holds Fire Breath");
+    (runtime, breath as u8)
+}
+
+#[test]
+fn fire_breath_on_the_towers_foot_leaves_nothing_in_the_air() {
+    for back in [9.0, 5.0] {
+        let (mut runtime, breath) = dragon_before_tower(back);
+        // Debris from an earlier undercut lies on the stump when the
+        // breath takes its foot.
+        undercut(&mut runtime, 8.6);
+        idle(&mut runtime, 10.0);
+        for _ in 0..10 {
+            runtime
+                .zone_intent(Intent::GroveSlot(breath))
+                .expect("the breath");
+            idle(&mut runtime, 1.5);
+        }
+        assert!(fallen(&runtime) > 40, "the breath took the stump down");
+        settles_with_nothing_in_the_air(&mut runtime, &format!("Fire Breath from {back} m"));
+    }
+}
+
+/// Casts `spell`, Meteor Swarm or the Thunderbolt, at the tower's south
+/// face `y` m up, and waits `wait` seconds.
+fn strike_the_face(runtime: &mut WorldRuntime, spell: Spell, y: f32, wait: f32) {
+    cast(runtime, spell);
+    aim(runtime, Vec3::new(TOWER[0], y, TOWER[1] - 2.8));
+    assert!(runtime.demolition_confirm());
+    idle(runtime, wait);
+}
+
+#[test]
+fn meteor_swarms_on_the_towers_foot_leave_nothing_in_the_air() {
+    let mut runtime = before_tower(16.0);
+    // Topple the top, let its debris settle, then cut the stump's foot.
+    for y in [8.6, 7.4, 8.6, 6.2] {
+        strike_the_face(&mut runtime, Spell::MeteorSwarm, y, meteor::CAST + 2.5);
+    }
+    idle(&mut runtime, 8.0);
+    for y in [2.0, 3.5, 1.5, 4.5] {
+        strike_the_face(&mut runtime, Spell::MeteorSwarm, y, meteor::CAST + 2.5);
+    }
+    assert!(fallen(&runtime) > 40, "the meteors brought the tower down");
+    settles_with_nothing_in_the_air(&mut runtime, "Meteor Swarm");
+}
+
+#[test]
+fn thunderbolts_on_the_towers_foot_leave_nothing_in_the_air() {
+    let mut runtime = before_tower(14.0);
+    for y in [8.6, 7.4, 8.6, 6.2, 8.0] {
+        strike_the_face(&mut runtime, Spell::Thunderbolt, y, meteor::BOLT_CAST + 2.5);
+    }
+    idle(&mut runtime, 8.0);
+    for y in [2.0, 3.5, 1.5, 4.5, 2.5, 1.0] {
+        strike_the_face(&mut runtime, Spell::Thunderbolt, y, meteor::BOLT_CAST + 2.5);
+    }
+    assert!(fallen(&runtime) > 40, "the bolts brought the tower down");
+    settles_with_nothing_in_the_air(&mut runtime, "the Thunderbolt");
+}
+
+/// The tower's south face, z.
+const SOUTH_FACE: f32 = TOWER[1] - 2.8;
+
+/// Walks the player straight ahead for `seconds`.
+fn walk(runtime: &mut WorldRuntime, seconds: f32) {
+    let ahead = InputState {
+        forward: true,
+        ..InputState::default()
+    };
+    for _ in 0..(seconds / DT).round() as usize {
+        runtime.tick(&ahead, DT);
+    }
+}
+
+#[test]
+fn the_dragon_pressed_against_the_tower_keeps_its_head_out_of_the_wall() {
+    let (mut runtime, _) = dragon_before_tower(12.0);
+    walk(&mut runtime, 4.0);
+    let feet = runtime.player.pos;
+    // Its jaws are 5 m ahead of its feet and its snout a little short of
+    // them: walking into the wall stops it with its head before the face.
+    assert!(
+        feet.z <= SOUTH_FACE - 4.4,
+        "the dragon's feet at {feet} put its head into the wall at z = {SOUTH_FACE}"
+    );
+    assert!(
+        feet.z > SOUTH_FACE - 6.5,
+        "it walked up to the wall: {feet}"
+    );
+    // Flying into it at the jaws' height stops it the same way.
+    let glade = runtime.zone_state.everglade.as_ref().unwrap();
+    let solids = glade.solids();
+    use verse_world::social::sight::Sight;
+    let from = feet + Vec3::Y * 3.1;
+    assert_eq!(solids.sweep(from, from + Vec3::Z * 4.4, 0.3), 1.0);
+}
+
+#[test]
+fn point_blank_fire_breath_breaks_the_near_wall_not_the_far_one() {
+    let (mut runtime, breath) = dragon_before_tower(12.0);
+    walk(&mut runtime, 4.0);
+    runtime
+        .zone_intent(Intent::GroveSlot(breath))
+        .expect("the breath");
+    // Looks the frame the fire lands, before what it breaks falls on the
+    // rest.
+    for _ in 0..(2.0 / DT) as usize {
+        runtime.tick(&InputState::default(), DT);
+        let site = town(&runtime).site();
+        if site
+            .specs()
+            .iter()
+            .zip(site.pieces())
+            .any(|(s, p)| p.hit_points < s.hit_points)
+        {
+            break;
+        }
+    }
+    let site = town(&runtime).site();
+    let hurt: Vec<Vec3> = pieces(&runtime)
+        .into_iter()
+        .filter(|(i, _)| site.pieces()[*i].hit_points < site.specs()[*i].hit_points)
+        .map(|(_, c)| c)
+        .collect();
+    assert!(
+        hurt.iter().any(|c| c.z < TOWER[1] - 1.0),
+        "the near wall took the fire: {hurt:?}"
+    );
+    assert!(
+        hurt.iter().all(|c| c.z < TOWER[1] + 1.0),
+        "the far wall was spared: {hurt:?}"
+    );
+}

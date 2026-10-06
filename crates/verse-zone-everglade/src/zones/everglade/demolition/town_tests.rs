@@ -470,3 +470,131 @@ fn through_a_blown_out_wall_the_aim_finds_the_far_walls_inner_face() {
         .count();
     assert!(hurt >= 2, "{hurt} far wall pieces took damage");
 }
+
+/// The world boxes, min and max corners, of everything in `site` that
+/// stands, lies loose, or is a live chunk.
+fn solid_boxes(site: &super::site::Site) -> Vec<(String, Vec3, Vec3)> {
+    let corners = |frame: glam::Mat4, half: Vec3| {
+        let (mut lo, mut hi) = (Vec3::splat(f32::INFINITY), Vec3::splat(f32::NEG_INFINITY));
+        for i in 0..8 {
+            let c = Vec3::new(
+                if i & 1 == 0 { -half.x } else { half.x },
+                if i & 2 == 0 { -half.y } else { half.y },
+                if i & 4 == 0 { -half.z } else { half.z },
+            );
+            let p = frame.transform_point3(c);
+            lo = lo.min(p);
+            hi = hi.max(p);
+        }
+        (lo, hi)
+    };
+    let mut out = Vec::new();
+    for (i, (spec, piece)) in site.specs().iter().zip(site.pieces()).enumerate() {
+        if piece.status == Status::Broken {
+            for (k, chunk) in spec.chunks.iter().enumerate() {
+                if let Some(pose) = site.chunk_pose(i, k) {
+                    let (lo, hi) = corners(pose * chunk.frame(), chunk.half.as_vec3() * 0.94);
+                    out.push((format!("chunk {i}.{k}"), lo, hi));
+                }
+            }
+            continue;
+        }
+        let pose = site.piece_pose(i);
+        let (mut lo, mut hi) = (Vec3::splat(f32::INFINITY), Vec3::splat(f32::NEG_INFINITY));
+        for c in &spec.colliders {
+            let (a, b) = corners(pose * c.frame(), c.half.as_vec3());
+            lo = lo.min(a);
+            hi = hi.max(b);
+        }
+        out.push((
+            format!("piece {i} {:?} {:?}", spec.role, piece.status),
+            lo,
+            hi,
+        ));
+    }
+    out
+}
+
+/// Everything in `site` whose underside is more than 3 m over `ground`
+/// and that rests on no chain of boxes down to it.
+fn hanging(site: &super::site::Site, ground: f32) -> Vec<String> {
+    let boxes = solid_boxes(site);
+    let mut held: Vec<bool> = boxes.iter().map(|(_, lo, _)| lo.y < ground + 1.0).collect();
+    let mut changed = true;
+    while changed {
+        changed = false;
+        for b in 0..boxes.len() {
+            if held[b] {
+                continue;
+            }
+            let (_, blo, bhi) = &boxes[b];
+            let on = (0..boxes.len()).any(|a| {
+                let (_, alo, ahi) = &boxes[a];
+                held[a]
+                    && alo.x < bhi.x + 0.5
+                    && blo.x < ahi.x + 0.5
+                    && alo.z < bhi.z + 0.5
+                    && blo.z < ahi.z + 0.5
+                    && ahi.y >= blo.y - 0.5
+                    && ahi.y <= blo.y + 1.2
+                    && alo.y < blo.y + 0.2
+            });
+            if on {
+                held[b] = true;
+                changed = true;
+            }
+        }
+    }
+    boxes
+        .iter()
+        .zip(&held)
+        .filter(|((_, lo, _), h)| !**h && lo.y > ground + 3.0)
+        .map(|((label, lo, hi), _)| format!("{label} from {lo} to {hi}"))
+        .collect()
+}
+
+#[test]
+fn a_tall_building_cut_from_under_its_debris_leaves_nothing_in_the_air() {
+    let mut town = town();
+    let tallest = town
+        .buildings()
+        .iter()
+        .enumerate()
+        .filter(|(_, b)| b.is_carved() && b.destructible())
+        .max_by(|a, b| (a.1.top - a.1.base).total_cmp(&(b.1.top - b.1.base)))
+        .map(|(i, _)| i)
+        .expect("the town has a carved building");
+    let b = &town.buildings()[tallest];
+    let ([cx, cz], [hx, hz]) = b.rect;
+    let (base, tall) = (b.base, b.top - b.base);
+    let player = caster(Vec3::new(cx, base, cz), hz + 25.0);
+    // Blow its south face out a third of the way up, and let what falls
+    // come to rest on what stands.
+    let y = base + tall * 0.35;
+    for x in [-0.6, 0.0, 0.6] {
+        town.blast(
+            Vec3::new(cx + x * hx, y, cz - hz - 0.1),
+            2.4,
+            400,
+            Vec3::NEG_Z,
+        );
+    }
+    run(&mut town, &player, 10.0);
+    // Then cut its foot from both faces, up to 5 m.
+    for up in [0.5, 2.0, 3.5, 5.0] {
+        for x in [-0.6, 0.0, 0.6] {
+            for (z, face) in [(-hz - 0.1, Vec3::NEG_Z), (hz + 0.1, Vec3::Z)] {
+                town.blast(Vec3::new(cx + x * hx, base + up, cz + z), 2.4, 400, face);
+            }
+        }
+        run(&mut town, &player, 1.0);
+    }
+    run(&mut town, &player, 6.0);
+    let high = hanging(town.site(), base);
+    assert!(
+        high.is_empty(),
+        "{} things hang in the air:\n{}",
+        high.len(),
+        high.join("\n")
+    );
+}

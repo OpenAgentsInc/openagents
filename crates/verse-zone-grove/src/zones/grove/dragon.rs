@@ -20,6 +20,7 @@
 use super::kit::{Area, FT};
 use super::*;
 use crate::fx::{Handle, Spawn};
+use verse_world::social::sight::Sight;
 
 /// When the new shape bursts out, s after the cast.
 pub const SWAP: f32 = 1.0;
@@ -27,6 +28,10 @@ pub const SWAP: f32 = 1.0;
 pub const SWAP_BACK: f32 = 0.7;
 /// How long the new shape takes to grow to its size after the swap, s.
 pub const GROW: f32 = 0.55;
+/// The radius of a beast's head and neck, m, and the lowest height over
+/// its feet at which their reach is kept clear, m, above a step it climbs.
+const HEAD_RADIUS: f32 = 0.35;
+const LOWEST_PROBE: f32 = 0.75;
 /// When the breath's fire leaves the jaws and when it ends, s after the
 /// cast: the breath clip draws in first.
 pub const BREATH_START: f32 = 0.55;
@@ -225,6 +230,39 @@ impl Grove {
             glade.altitude = player.pos.y + 3.0;
         }
         glade.set_lift(form.map_or(1.0, Form::lift));
+    }
+
+    /// Keeps the shape's head and neck out of what is solid. The controller
+    /// keeps only a narrow column around the feet clear, which fits the
+    /// druid, but a beast reaches far ahead of its feet, the dragon's jaws
+    /// 5 m, so its head would pass into a wall its feet stand short of.
+    /// After each step the shape's reach is swept ahead from its body's
+    /// axis at three heights, and it steps back as far as the nearest
+    /// solid cuts the reach short, though never into what stands behind.
+    pub fn keep_clear(&self, glade: &Everglade, player: &mut PlayerController) {
+        let Some(form) = self.form() else {
+            return;
+        };
+        let Some(Some([front, top])) = self.reach.get(form.index()).copied() else {
+            return;
+        };
+        let (front, top) = (front * form.scale(), top * form.scale());
+        let forward = player.forward().with_y(0.0).normalize_or_zero();
+        if forward == Vec3::ZERO || front <= crate::controller::RADIUS {
+            return;
+        }
+        let solids = glade.solids();
+        let mut back = 0.0f32;
+        for share in [0.35f32, 0.6, 0.85] {
+            let from = player.pos + Vec3::Y * (top * share).max(LOWEST_PROBE);
+            let to = from + forward * front;
+            back = back.max((1.0 - solids.sweep(from, to, HEAD_RADIUS)) * front);
+        }
+        if back > 1e-3 {
+            let from = player.pos + Vec3::Y * LOWEST_PROBE;
+            let room = solids.sweep(from, from - forward * back, crate::controller::RADIUS);
+            player.pos -= forward * back * room;
+        }
     }
 
     /// The shape's pace for `player`: the dragon's in the air while it
@@ -493,10 +531,13 @@ impl Grove {
             for pitch in [0.0f32, -0.12] {
                 let yaw = glam::Quat::from_rotation_y(half * 0.9 * k as f32 / 2.0);
                 let dir = (yaw * forward + Vec3::Y * pitch).normalize_or(forward);
+                // From the neck's base, so the first wall the line meets
+                // is the one the dragon faces even when its jaws are in it.
+                let (from, length) = super::from_body(feet, jaws, dir, length);
                 self.chips.push(super::Chip::Line {
-                    from: jaws,
+                    from,
                     toward: dir,
-                    length: length,
+                    length,
                     damage: BREATH_STRUCTURE_DAMAGE,
                 });
             }

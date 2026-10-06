@@ -179,6 +179,18 @@ impl Form {
     }
 }
 
+/// How far `figure`, a form in its bind pose, reaches ahead of its feet
+/// and how tall it stands, m, at its modeled size: its front faces +z.
+#[must_use]
+pub fn reach(figure: &crate::pbr::textured::Figure) -> [f32; 2] {
+    figure
+        .vertices
+        .iter()
+        .fold([0.0f32, 0.0f32], |[front, top], v| {
+            [front.max(v.pos[2]), top.max(v.pos[1])]
+        })
+}
+
 /// Each form the pack carries, ready to pose, in [`Form::ALL`] order; a
 /// form the pack lacks is `None` and can't be taken.
 ///

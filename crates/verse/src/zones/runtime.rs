@@ -1935,6 +1935,7 @@ impl WorldRuntime {
         } else if let (Some(glade), Some(grove)) = (&mut state.everglade, &mut state.grove) {
             glade.tick(dt, &self.player, &[]);
             grove.tick(dt, glade, &self.player);
+            grove.keep_clear(glade, &mut self.player);
             // The shape's pace holds however the player is placed.
             self.player.set_pace(grove.pace(glade, &self.player));
             // Held hotbar keys recast at their fixed rate, each casting
