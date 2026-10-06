@@ -27,11 +27,26 @@ struct ProducerObservation {
     pending: usize,
     input_depth: usize,
 }
+#[derive(Clone, serde::Serialize)]
+struct FrameTrace {
+    elapsed_ms: u128,
+    phase: &'static str,
+    actor: u64,
+    epoch: u64,
+    sequence: u64,
+    start: u64,
+    end: u64,
+    authority_tick: u64,
+    control_epoch: Option<u64>,
+    credit_step: Option<u64>,
+    pending_requests: usize,
+    queued_inputs: usize,
+}
 #[derive(serde::Serialize)]
 struct ProducerTransition {
     before: VecDeque<ProducerObservation>,
     after: ProducerObservation,
-    frames: VecDeque<serde_json::Value>,
+    frames: VecDeque<FrameTrace>,
 }
 fn sample(values: &mut Vec<f64>, value: f64) -> bool {
     if values.len() < 8192 {
@@ -150,7 +165,7 @@ pub async fn player(
      omitted_frame_trace+=observations.omitted_frames;
      for frame in observations.frames {
       if frame_trace.len()==128 {frame_trace.pop_front();}
-      frame_trace.push_back(serde_json::json!({"elapsed_ms":frame.at.saturating_duration_since(began.into_std()).as_millis(),"phase":frame.phase,"actor":frame.actor,"epoch":frame.epoch,"sequence":frame.sequence,"start":frame.start,"end":frame.end,"authority_tick":frame.authority_tick,"control_epoch":frame.control_epoch,"credit_step":frame.credit_step,"pending_requests":frame.pending_requests,"queued_inputs":frame.queued_inputs}));
+      frame_trace.push_back(FrameTrace {elapsed_ms:frame.at.saturating_duration_since(began.into_std()).as_millis(),phase:frame.phase,actor:frame.actor,epoch:frame.epoch,sequence:frame.sequence,start:frame.start,end:frame.end,authority_tick:frame.authority_tick,control_epoch:frame.control_epoch,credit_step:frame.credit_step,pending_requests:frame.pending_requests,queued_inputs:frame.queued_inputs});
      }
      for observation in observations.samples {
       if !sample(&mut turnaround,observation.turnaround_ms) {omitted_turnaround+=1;}
