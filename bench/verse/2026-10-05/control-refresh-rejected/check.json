@@ -1,0 +1,32 @@
+{
+  "schema": "verse.candidate.review.v1",
+  "status": "rejected",
+  "candidate": "Owned control-only preflight refresh",
+  "patch_sha256": "84ac2c918f76a9a9645abef28bda40c5ec56e520c17e124dfa39d3038260b378",
+  "checks": [
+    {
+      "command": "cargo +1.97.1 test -p verse-world --features service-net service:: -- --test-threads=1",
+      "passed": 239,
+      "failed": 2,
+      "ignored": 3
+    },
+    {
+      "command": "cargo +1.97.1 test -p verse-world --features service-net service::worker:: -- --nocapture --test-threads=1",
+      "passed": 28,
+      "failed": 1,
+      "failure": "cast_during_shared_writer_stall_preserves_native_intervals: stale_tick refusal"
+    },
+    {
+      "scope": "Movement-only automatic control refresh",
+      "passed": 28,
+      "failed": 1,
+      "failure": "cast_during_shared_writer_stall_preserves_native_intervals: Movement interval control is stale or unavailable"
+    }
+  ],
+  "decision": "Remove the entire uncommitted candidate. Retain wire version 29 and existing refresh behavior. Passing focused reruns do not override the repeated shared-stall failures.",
+  "limitations": [
+    "The existing delayed fixture passed before the candidate; no unchanged-baseline timing rerun was made on the heavily loaded Mac.",
+    "These failures reject this candidate; they do not establish the cause of the measured battle timeouts.",
+    "No runtime performance benefit is claimed."
+  ]
+}
