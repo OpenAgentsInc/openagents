@@ -660,6 +660,24 @@ impl Session {
         }
     }
 
+    fn observe_movement_credit(
+        &mut self,
+        control: Option<&verse_world::service::wire::Control>,
+    ) -> Result<(), String> {
+        if let Some(control) = control.filter(|c| {
+            self.prediction.context() == Some((c.life.into(), c.epoch))
+                && self.prediction.movement_profile()
+                    == Some(verse_world::movement::Profile::Frames)
+        }) {
+            self.prediction.movement_credit(
+                control.life.into(),
+                control.epoch,
+                control.credit_step,
+            )?;
+        }
+        Ok(())
+    }
+
     /// Applies every update the worker delivered.
     ///
     /// # Errors
@@ -668,8 +686,11 @@ impl Session {
         for _ in 0..worker::UPDATE_CAPACITY {
             match self.output.try_recv() {
                 Ok(Update::Snapshot(r)) => self.snapshot(scene, &r)?,
-                Ok(Update::Events { delivery, .. }) => {
+                Ok(Update::Events {
+                    delivery, control, ..
+                }) => {
                     self.view.push_events(&delivery)?;
+                    self.observe_movement_credit(control.as_ref())?;
                     for event in &delivery.events {
                         match event.kind {
                             verse_world::events::Kind::Damage { .. } => self.damage_events += 1,
@@ -678,7 +699,10 @@ impl Session {
                         }
                     }
                 }
-                Ok(Update::Inventory(r)) => self.view.push_inventory(&r)?,
+                Ok(Update::Inventory(r)) => {
+                    self.view.push_inventory(&r)?;
+                    self.observe_movement_credit(r.control.as_ref())?;
+                }
                 Ok(Update::MovementSuperseded { token, replacement }) => {
                     let before = self.prediction.pose();
                     self.pending.retain(|(_, pending)| *pending != Some(token));
@@ -767,17 +791,7 @@ impl Session {
                 },
                 Ok(Update::Outcome(r)) => {
                     self.confirm_applied_movement(&r)?;
-                    if let Some(control) = r.control.as_ref().filter(|c| {
-                        self.prediction.context() == Some((c.life.into(), c.epoch))
-                            && self.prediction.movement_profile()
-                                == Some(verse_world::movement::Profile::Frames)
-                    }) {
-                        self.prediction.movement_credit(
-                            control.life.into(),
-                            control.epoch,
-                            control.credit_step,
-                        )?;
-                    }
+                    self.observe_movement_credit(r.control.as_ref())?;
                     if self.frame_entry_pending {
                         self.frame_entry_pending = false;
                         if matches!(r.body, Reply::Refused { .. }) {

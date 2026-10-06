@@ -321,7 +321,13 @@ pub async fn player(
       }
      }
      Update::MovementSuperseded {token,..}=>{outstanding.remove(&token);},
-     Update::Events {..}|Update::Inventory(_)=>{},
+     auxiliary @ (Update::Events {..}|Update::Inventory(_))=>{
+      let control=match &auxiliary {Update::Events {control,..}=>control.as_ref(),Update::Inventory(response)=>response.control.as_ref(),_=>unreachable!()};
+      let latest_credit=control.map(|c|(c.life.into(),c.epoch,c.credit_step));
+      if credit_wakes_frames(credit,latest_credit,state.as_ref().and_then(|s|s.movement)) {clock.reset_immediately();}
+      credit=latest_credit;
+      if let Some(control)=control {epoch=control.epoch;}
+     },
     }
    }
   }

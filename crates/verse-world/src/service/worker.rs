@@ -6,7 +6,7 @@ use super::client_runtime;
 use super::{
     client::Client,
     event_cursor::{Cursor, Delivery},
-    wire::{Body, Reply, Response},
+    wire::{Body, Control, Reply, Response},
 };
 use crate::{Command, Intent, play::Ability};
 use std::time::Duration;
@@ -133,6 +133,7 @@ pub enum Update {
     Events {
         delivery: Delivery,
         checkpoint: Vec<u8>,
+        control: Option<Control>,
     },
     /// Emitted before transmission. An error consumes the input without an outcome.
     CommandBound {
@@ -631,7 +632,7 @@ async fn run_impl(
                             events_pending = false;
                             if read_backoff.observe(1, &response.body, client_runtime::Instant::now())? { continue; }
                             let delivery = cursor.admit(&response,after,limit)?;
-                            Update::Events { delivery, checkpoint: cursor.checkpoint()? }
+                            Update::Events { delivery, checkpoint: cursor.checkpoint()?, control: response.control }
                         }
                         Body::Inventory {} => {
                             inventory_pending = false;
@@ -823,7 +824,13 @@ mod tests {
             while received.contains(&false) {
                 match output.recv().await.unwrap() {
                     Update::Snapshot(_) => received[0] = true,
-                    Update::Events { .. } => received[1] = true,
+                    Update::Events { control, .. } => {
+                        assert!(
+                            control.is_some(),
+                            "Owned event credit must reach the consumer"
+                        );
+                        received[1] = true;
+                    }
                     Update::Inventory(_) => received[2] = true,
                     Update::Outcome(response) => {
                         assert!(matches!(response.body, Reply::Accepted));

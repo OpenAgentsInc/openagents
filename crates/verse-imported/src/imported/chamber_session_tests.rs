@@ -770,3 +770,67 @@ fn bounded_native_input_reports_pressure_and_closed_update_streams() {
     drop(updates);
     assert!(session.consume(&scene).is_err());
 }
+
+#[test]
+fn event_credit_advances_intervals_without_a_new_scene_and_fences_old_epochs() {
+    use verse_world::service::{
+        event_cursor::Delivery,
+        wire::{Response, VERSION},
+    };
+    let host = Loopback::start(false).unwrap();
+    let scene = Loopback::scene().unwrap();
+    let mut connected = joined(&host, &scene);
+    assert!(until(&mut connected, &scene, |s| s.movement_frames()));
+    let replica = connected.view.replica();
+    let snapshot = Response {
+        version: VERSION,
+        request_id: 1,
+        instance: replica
+            .latest()
+            .unwrap()
+            .hud
+            .as_ref()
+            .unwrap()
+            .life
+            .instance,
+        tick: replica.tick().unwrap(),
+        control: replica.control().cloned(),
+        body: Reply::Snapshot {
+            state: replica.latest().unwrap().clone(),
+        },
+    };
+    connected.stop();
+    let (input, _inputs, updates, output) = worker::channels();
+    let mut session =
+        Session::attached(View::new(snapshot.instance, 10., 0).unwrap(), input, output);
+    updates
+        .try_send(Update::Snapshot(snapshot.clone()))
+        .unwrap();
+    session.consume(&scene).unwrap();
+    let baseline = session.prediction.confirmed().unwrap();
+    let mut control = snapshot.control.unwrap();
+    control.credit_step = control.credit_step.max(session.prediction.physics_step()) + 12;
+    let deliver = |control| Update::Events {
+        delivery: Delivery {
+            events: Vec::new(),
+            gap: None,
+        },
+        checkpoint: Vec::new(),
+        control: Some(control),
+    };
+    updates.try_send(deliver(control.clone())).unwrap();
+    session.consume(&scene).unwrap();
+    session.prediction.recover_world_credit().unwrap();
+    let after = session.prediction.physics_step();
+    assert!(after > baseline.physics_step);
+    assert_eq!(session.prediction.confirmed().unwrap(), baseline);
+    control.epoch += 1;
+    control.credit_step += 120;
+    updates.try_send(deliver(control)).unwrap();
+    session.consume(&scene).unwrap();
+    assert_eq!(session.prediction.physics_step(), after);
+    assert_eq!(
+        session.prediction.context(),
+        Some((baseline.life, baseline.epoch))
+    );
+}
