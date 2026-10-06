@@ -232,9 +232,12 @@ pub async fn player(
        producer_recent.push_back(observation);
       }
      }
+     // Flush available movement before a cast can wait for a fresh control header.
+     // Keep the cast even when this wake has no additional interval credit.
+     let movement_first=movement_frames && matches!(intent,Intent::Cast {..}) && state.movement.is_some_and(|baseline|baseline.profile==verse_world::movement::Profile::Frames);
      let mut interval_work=0;
      for emission in 0..if movement_frames {2} else {1} {
-     let intent=if emission==0 {intent.clone()} else {Intent::Move {axes,yaw}};
+     let intent=if emission==usize::from(movement_first) {intent.clone()} else {Intent::Move {axes,yaw}};
      token=token.checked_add(1).ok_or("Load input identities exhausted")?;
      let moving=matches!(intent,Intent::Move {..});
      let input=if movement_frames && moving {
@@ -256,7 +259,7 @@ pub async fn player(
       let world_step=credit.filter(|(life,epoch,_)|(*life,*epoch)==context).map_or(baseline.world_step,|(_,_,step)|step.max(baseline.world_step));
       let limit=world_step.checked_add(u64::from(verse_world::movement::frames::MAX_STEPS)).ok_or("Load movement credit exhausted")?;
       let steps=limit.saturating_sub(start).min(u64::from(verse_world::movement::frames::MAX_STEPS)).min(u64::from(verse_world::movement::frames::MAX_STEPS-interval_work)) as u32;
-      if steps==0 {break;}
+      if steps==0 {if movement_first {continue;} else {break;}}
       let frame=verse_world::movement::frames::Frame {life:baseline.life,epoch:baseline.epoch,sequence:0,tick:0,start,steps,
        segments:vec![verse_world::movement::frames::Segment {offset:0,axes,yaw,until:start+verse_world::movement::HELD_STEPS,jump:false}]};
       frame.validate_payload()?;
