@@ -18,12 +18,14 @@
 //! - [`offer`]: immutable retail offers and their one funded request.
 //! - [`reserve`]: the funded request's hold in the central ledger.
 //! - [`provision`]: one admitted sandbox per funded execution.
+//! - [`material`]: admitted source and the customer's key, nothing else.
 //! - [`journal`]: the durable intents and observations a restart reads.
 
 pub mod authority;
 pub mod contract;
 pub mod fake;
 pub mod journal;
+pub mod material;
 pub mod offer;
 pub mod provision;
 pub mod reserve;
@@ -51,10 +53,13 @@ pub enum Error {
     /// An authority the step needs is missing.
     #[error("denied: {0:?}")]
     Denied(authority::Denial),
+    /// Material was not delivered.
+    #[error("material refused: {0:?}")]
+    Material(material::MaterialRefusal),
 }
 
 /// Journal tables the modules add, created when the journal opens.
-pub(crate) const EXTRA_SCHEMAS: &[&str] = &[provision::SCHEMA];
+pub(crate) const EXTRA_SCHEMAS: &[&str] = &[provision::SCHEMA, material::SCHEMA];
 
 pub type Result<T> = std::result::Result<T, Error>;
 

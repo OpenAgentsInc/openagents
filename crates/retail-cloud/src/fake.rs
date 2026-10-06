@@ -431,3 +431,116 @@ impl crate::provision::Provider for FakeProvider {
         })
     }
 }
+
+/// A simulated sandbox filesystem and command log.
+#[derive(Default)]
+pub struct FakeSandbox {
+    state: Mutex<SandboxState>,
+}
+
+#[derive(Default)]
+struct SandboxState {
+    /// (resource, path) -> contents.
+    files: BTreeMap<(String, String), String>,
+    /// Every command line the sandbox ran, per resource.
+    commands: Vec<(String, String)>,
+    head_override: Option<String>,
+    dirty: bool,
+    no_private_files: bool,
+}
+
+impl FakeSandbox {
+    #[must_use]
+    pub fn new() -> Self {
+        Self::default()
+    }
+
+    fn with<T>(&self, f: impl FnOnce(&mut SandboxState) -> T) -> T {
+        let mut state = self
+            .state
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        f(&mut state)
+    }
+
+    /// The clone checks out this commit instead of the requested one.
+    pub fn set_head(&self, head: &str) {
+        self.with(|s| s.head_override = Some(head.into()));
+    }
+    /// The clone's tree is dirty.
+    pub fn set_dirty(&self, dirty: bool) {
+        self.with(|s| s.dirty = dirty);
+    }
+    /// The sandbox cannot keep a private file.
+    pub fn set_no_private_files(&self, no: bool) {
+        self.with(|s| s.no_private_files = no);
+    }
+    /// Every file in `resource`, path and contents.
+    #[must_use]
+    pub fn files(&self, resource: &str) -> Vec<(String, String)> {
+        self.with(|s| {
+            s.files
+                .iter()
+                .filter(|((r, _), _)| r == resource)
+                .map(|((_, p), c)| (p.clone(), c.clone()))
+                .collect()
+        })
+    }
+    /// Every command line the sandbox ran.
+    #[must_use]
+    pub fn commands(&self) -> Vec<String> {
+        self.with(|s| s.commands.iter().map(|(_, c)| c.clone()).collect())
+    }
+}
+
+impl crate::material::Sandbox for FakeSandbox {
+    fn write_private(&self, resource: &str, path: &str, contents: &str) -> crate::Result<bool> {
+        Ok(self.with(|s| {
+            if s.no_private_files {
+                return false;
+            }
+            s.commands.push((
+                resource.into(),
+                format!("install -m 0600 /dev/stdin {path}"),
+            ));
+            s.files
+                .insert((resource.into(), path.into()), contents.into());
+            true
+        }))
+    }
+
+    fn clone_source(
+        &self,
+        resource: &str,
+        source: &crate::authority::Source,
+    ) -> crate::Result<(String, bool)> {
+        Ok(self.with(|s| {
+            s.commands.push((
+                resource.into(),
+                format!(
+                    "git clone --no-recurse-submodules {} work && git -C work checkout {}",
+                    source.repository, source.commit
+                ),
+            ));
+            (
+                s.head_override.clone().unwrap_or(source.commit.clone()),
+                !s.dirty,
+            )
+        }))
+    }
+
+    fn remove(&self, resource: &str, path: &str) -> crate::Result<()> {
+        self.with(|s| {
+            s.commands.push((resource.into(), format!("rm -f {path}")));
+            s.files.remove(&(resource.to_owned(), path.to_owned()));
+        });
+        Ok(())
+    }
+
+    fn exists(&self, resource: &str, path: &str) -> crate::Result<bool> {
+        Ok(self.with(|s| {
+            s.files
+                .contains_key(&(resource.to_owned(), path.to_owned()))
+        }))
+    }
+}

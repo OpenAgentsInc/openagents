@@ -112,3 +112,32 @@ pub fn rights(funded: &FundedRequest) -> Current {
         ..Current::default()
     }
 }
+
+pub const TEMPLATE: &str = "oa-coder-main-20261006";
+
+/// Reserve and provision `funded` until its sandbox is ready; returns the
+/// sandbox.
+pub fn ready(
+    journal: &mut Journal,
+    ledger: &mut Ledger,
+    provider: &retail_cloud::fake::FakeProvider,
+    funded: &FundedRequest,
+) -> String {
+    retail_cloud::reserve::reserve(ledger, funded, &rights(funded), NOW + 2).unwrap();
+    for t in 0..5 {
+        let record = retail_cloud::provision::advance(
+            journal,
+            ledger,
+            provider,
+            funded,
+            &rights(funded),
+            TEMPLATE,
+            NOW + 3 + t,
+        )
+        .unwrap();
+        if let retail_cloud::provision::ProvisionState::Ready { resource, .. } = record.state {
+            return resource;
+        }
+    }
+    panic!("the sandbox never became ready")
+}

@@ -125,3 +125,34 @@ to repeat after any crash:
   cost is the operator's. Abandoned sandboxes are kept in the journal for
   teardown.
 - Nothing widens the provider or the computer class automatically.
+
+## Source and credentials
+
+[`retail_cloud::material`](../../crates/retail-cloud/src/material.rs)
+
+A retail sandbox receives exactly two things: the admitted public source at
+its exact commit, and the customer's own API key for the admitted model
+payer. `deliver` reads nothing else to fill a gap: no owner or operator
+credential, no Secret Manager entry, and no environment variable.
+
+- Only this execution's own ready sandbox receives its material; another
+  customer's execution is refused.
+- The clone must check out the admitted commit with a clean tree, or the
+  delivery refuses (`source_unverified`).
+- The key is written to `/tmp/oa-retail/<execution>/provider.key` with mode
+  0600 through standard input. It never appears in a command line, the
+  environment, a log, a manifest, or an artifact. `scrub` redacts it from
+  any text before it is kept. `CustomerSecret` prints as `redacted` and
+  zeroes its bytes when dropped.
+- The journal records the sandbox, source, payer, key path, and the key's
+  SHA-256 digest, never the key. `remove_credentials` deletes the file at
+  teardown, checks that it is gone, and records the removal.
+
+| Refusal | When |
+| --- | --- |
+| `provider_changed` | The key is for another provider than the admitted payer; a new offer is needed |
+| `source_changed` | The source differs from the admitted one, for example a wider repository; a new offer is needed |
+| `own_login_export` | The customer offered an engine login; a login never leaves the customer's computer in v1 |
+| `paid_provider_unsupported` | OpenAgents-paid model access is not part of the v1 class |
+| `source_unverified` | `HEAD` is not the admitted commit, or the tree is dirty |
+| `isolation_unsupported` | The sandbox cannot keep a private file |
