@@ -86,10 +86,12 @@ pub const PLAYER_APPEARANCE: &str = "male-ranger";
 /// Alice's sources, our own original character, relative to the player's
 /// ([`PLAYER_SOURCES`]).
 pub const ALICE_SOURCES: &str = "../original/alice";
-/// The variant of Alice the pack carries: the Everglade budget's, 16,000
-/// triangles or fewer with a 512-pixel atlas, which desktop, web, and
-/// phone share.
+/// The variant of Alice the pack carries for close views: her near level,
+/// 45,000 triangles or fewer, smooth enough for a head-and-shoulders view,
+/// with a 1,024-pixel atlas.
 pub const ALICE_VARIANT: &str = "lod1";
+/// Her near atlas's longest edge.
+pub const ALICE_TEXTURE_EDGE: u32 = 1024;
 /// Alice's name in the pack. She is a character the world places (an NPC),
 /// not a body the player can choose. She travels as a form beside the Wild
 /// Shape beasts, so the format needs no new section.
@@ -706,29 +708,38 @@ impl Builder<'_> {
         self.character(
             sources,
             &format!("player/{PLAYER_APPEARANCE}"),
+            PLAYER_TEXTURE_EDGE,
             |engine, scratch| {
                 crate::imported::characters::appearance(engine, scratch, sources, PLAYER_APPEARANCE)
             },
         )
     }
 
-    /// Alice ([`ALICE_VARIANT`] of her verified sources under `alice`), on
-    /// the Universal rig with the player's clips from `sources`, as
-    /// [`ALICE_FORM`].
-    fn alice(&mut self, sources: &Path, alice: &Path) -> Result<Character, String> {
+    /// Alice's `variant` of her verified sources under `alice`, on the
+    /// Universal rig with the player's clips from `sources`, as `name`, her
+    /// atlas bounded to `edge`.
+    fn alice(
+        &mut self,
+        sources: &Path,
+        alice: &Path,
+        variant: &str,
+        name: &str,
+        edge: u32,
+    ) -> Result<Character, String> {
         crate::imported::inventory::verify_characters(sources)?;
         crate::imported::inventory::verify_alice(alice)?;
-        self.character(sources, ALICE_FORM, |engine, scratch| {
-            crate::imported::characters::alice(engine, scratch, sources, alice, ALICE_VARIANT)
+        self.character(sources, name, edge, |engine, scratch| {
+            crate::imported::characters::alice(engine, scratch, sources, alice, variant)
         })
     }
 
     /// The pack character `name` from the model `build` makes, with the
-    /// player's clips.
+    /// player's clips, its most-used image bounded to `edge`.
     fn character(
         &mut self,
         sources: &Path,
         name: &str,
+        edge: u32,
         build: impl FnOnce(
             &mut verse_engine::assets::Pack,
             &Path,
@@ -748,7 +759,7 @@ impl Builder<'_> {
             placements: Vec::new(),
         };
         let result = build(&mut engine, &scratch)
-            .and_then(|model| self.character_in(sources, &scratch, &engine, model, name));
+            .and_then(|model| self.character_in(sources, &scratch, &engine, model, name, edge));
         let _ = std::fs::remove_dir_all(&scratch);
         result
     }
@@ -760,6 +771,7 @@ impl Builder<'_> {
         engine: &verse_engine::assets::Pack,
         mut model: verse_engine::assets::Model,
         name: &str,
+        outfit_edge: u32,
     ) -> Result<Character, String> {
         use crate::imported::characters;
         characters::retarget_clip(
@@ -799,7 +811,7 @@ impl Builder<'_> {
         let mut primitives: Vec<SkinnedPrimitive> = Vec::new();
         for surface in model.surfaces.iter().filter(|s| !s.indices.is_empty()) {
             let edge = if Some(surface.texture) == outfit {
-                PLAYER_TEXTURE_EDGE
+                outfit_edge
             } else if covered[&surface.texture] >= PLAYER_DETAIL_TRIANGLES {
                 PLAYER_DETAIL_EDGE
             } else {
@@ -1272,8 +1284,15 @@ pub fn compile(
     if let Some(sources) = player {
         let character = builder.player(sources)?;
         builder.contents.character = Some(character);
-        let alice = builder.alice(sources, &sources.join(ALICE_SOURCES))?;
-        builder.contents.forms.push(alice);
+        let root = sources.join(ALICE_SOURCES);
+        let near = builder.alice(
+            sources,
+            &root,
+            ALICE_VARIANT,
+            ALICE_FORM,
+            ALICE_TEXTURE_EDGE,
+        )?;
+        builder.contents.forms.push(near);
         builder.contents.forms.sort_by(|a, b| a.name.cmp(&b.name));
     }
     let contents = builder.contents;

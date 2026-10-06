@@ -134,8 +134,10 @@ impl Limits {
         pack_bytes: 12 * 1024 * 1024,
         decoded_texture_bytes: 48 * 1024 * 1024,
         texture_edge: 1024,
-        // 480,000 before the foliage set and the faithful far levels.
-        triangles: 540_000,
+        // 480,000 before the foliage set and the faithful far levels;
+        // 540,000 before Alice's high-definition level (`npc/alice`), a
+        // smooth close-up character for the workshop's desk.
+        triangles: 590_000,
         model_triangles: 20_000,
         // 36 MB before the foliage set's 1 MB of sources and the
         // watertight far levels, which keep 40 percent of a building's
@@ -144,7 +146,9 @@ impl Limits {
         // 0.41 MB to the pack; her sources sit with the character sources,
         // outside this budget.
         committed_bytes: 42_400_000,
-        character_triangles: 40_000,
+        // 40,000 before Alice's high-definition level, the workshop
+        // agent's body, seen close at her desk.
+        character_triangles: 48_000,
         body_bytes: 48 * 1024 * 1024,
     };
 }

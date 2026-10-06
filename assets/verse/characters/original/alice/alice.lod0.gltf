@@ -1434,47 +1434,47 @@
   {
    "bufferView": 0,
    "componentType": 5126,
-   "count": 14413,
+   "count": 58065,
    "type": "VEC3",
    "min": [
-    -0.8520573973655701,
-    -0.004000000189989805,
-    -0.21999774873256683
+    -0.850361704826355,
+    -0.0040000006556510925,
+    -0.21598243713378906
    ],
    "max": [
-    0.8520573973655701,
-    2.001645565032959,
-    0.17399999499320984
+    0.8503616452217102,
+    1.9627982378005981,
+    0.1731109470129013
    ]
   },
   {
    "bufferView": 1,
    "componentType": 5126,
-   "count": 14413,
+   "count": 58065,
    "type": "VEC3"
   },
   {
    "bufferView": 2,
    "componentType": 5126,
-   "count": 14413,
+   "count": 58065,
    "type": "VEC2"
   },
   {
    "bufferView": 3,
    "componentType": 5121,
-   "count": 14413,
+   "count": 58065,
    "type": "VEC4"
   },
   {
    "bufferView": 4,
    "componentType": 5126,
-   "count": 14413,
+   "count": 58065,
    "type": "VEC4"
   },
   {
    "bufferView": 5,
    "componentType": 5123,
-   "count": 53244,
+   "count": 269988,
    "type": "SCALAR"
   },
   {
@@ -1488,48 +1488,48 @@
   {
    "buffer": 0,
    "byteOffset": 0,
-   "byteLength": 172956,
+   "byteLength": 696780,
    "target": 34962
   },
   {
    "buffer": 0,
-   "byteOffset": 172956,
-   "byteLength": 172956,
+   "byteOffset": 696780,
+   "byteLength": 696780,
    "target": 34962
   },
   {
    "buffer": 0,
-   "byteOffset": 345912,
-   "byteLength": 115304,
+   "byteOffset": 1393560,
+   "byteLength": 464520,
    "target": 34962
   },
   {
    "buffer": 0,
-   "byteOffset": 461216,
-   "byteLength": 57652,
+   "byteOffset": 1858080,
+   "byteLength": 232260,
    "target": 34962
   },
   {
    "buffer": 0,
-   "byteOffset": 518868,
-   "byteLength": 230608,
+   "byteOffset": 2090340,
+   "byteLength": 929040,
    "target": 34962
   },
   {
    "buffer": 0,
-   "byteOffset": 749476,
-   "byteLength": 106488,
+   "byteOffset": 3019380,
+   "byteLength": 539976,
    "target": 34963
   },
   {
    "buffer": 0,
-   "byteOffset": 855964,
+   "byteOffset": 3559356,
    "byteLength": 4160
   }
  ],
  "buffers": [
   {
-   "byteLength": 860124,
+   "byteLength": 3563516,
    "uri": "alice.lod0.bin"
   }
  ]

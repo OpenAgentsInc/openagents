@@ -67,18 +67,20 @@ import kit  # noqa: E402
 BASE = os.path.join(
     kit.REPO, "assets", "verse", "characters", "quaternius", "base", "Superhero_Female_FullBody.gltf"
 )
-OUT = os.path.join(kit.REPO, "assets", "verse", "characters", "original", "alice")
+OUT = os.path.join(kit.REPO, "assets", "verse", "characters", "original", "alice", "build")
 
 # Ring segments, hair grid, finger detail, station stride, atlas edge, and
 # the triangle budget per variant (docs/verse/female-character.md).
 LODS = {
-    "lod0": dict(limb=16, torso=28, head=(32, 22), hair=(48, 16), finger=6, fingers=True, stride=1,
-                 tex=1024, budget=24000, samples=128),
-    "lod1": dict(limb=12, torso=22, head=(24, 16), hair=(36, 12), finger=5, fingers=True, stride=1,
-                 tex=512, budget=16000, samples=96),
-    "lod2": dict(limb=10, torso=16, head=(18, 12), hair=(26, 9), finger=4, fingers=False, stride=2,
+    # Near levels are built coarse and subdivided once (`subdiv`), so every
+    # surface is smooth; far levels are built at their final density.
+    "lod0": dict(limb=16, torso=32, head=(32, 22), hair=(60, 12), finger=6, fingers=True, stride=1,
+                 tex=2048, budget=100000, samples=128, subdiv=1, head_subdiv=1),
+    "lod1": dict(limb=8, torso=16, head=(24, 16), hair=(36, 7), finger=4, fingers=True, stride=1,
+                 tex=1024, budget=46000, samples=96, subdiv=1),
+    "lod2": dict(limb=10, torso=16, head=(18, 12), hair=(30, 6), finger=4, fingers=False, stride=2,
                  tex=256, budget=10000, samples=64, head_ratio=0.45),
-    "lod3": dict(limb=6, torso=10, head=(10, 8), hair=(14, 6), finger=3, fingers=False, stride=3,
+    "lod3": dict(limb=6, torso=10, head=(10, 8), hair=(14, 4), finger=3, fingers=False, stride=3,
                  tex=256, budget=3000, samples=48, lite=True, head_ratio=0.12),
 }
 
@@ -345,6 +347,8 @@ def gauss(x, w):
 # The base head's left eye center, and how much larger Alice's eyes are.
 EYE_CENTER = Vector((0.0315, -0.06, 1.656))
 EYE_GROW = 0.16
+# Levels a channel in the baked atlas (seven bits).
+LEVELS = 127
 # Her arms are this much slimmer than the lofts' first measurements.
 ARM_SLIM = 0.88
 
@@ -397,11 +401,17 @@ def reshape(p):
         if w > 0:
             q.x += (p.x - c.x) * EYE_GROW * w
             q.z += (p.z - c.z) * EYE_GROW * w
+    # Nostrils closed to a soft underside: open nostrils render as dark
+    # holes at a game's distance.
+    nostril = smoothstep(0.018, 0.012, abs(p.x)) * smoothstep(1.596, 1.600, p.z) * smoothstep(1.614, 1.609, p.z)
+    nostril *= smoothstep(-0.084, -0.090, p.y)
+    if nostril > 0:
+        q.z = lerp(q.z, max(q.z, 1.6045), nostril)
     # Ears laid closer to the head, so the bob falls over them.
-    ear = smoothstep(0.066, 0.078, abs(p.x)) * gauss(p.z - 1.64, 0.05)
+    ear = smoothstep(0.062, 0.074, abs(p.x)) * gauss(p.z - 1.64, 0.06)
     if ear > 0:
         out = abs(q.x) - 0.066
-        q.x = math.copysign(0.066 + out * (1 - 0.6 * ear), q.x)
+        q.x = math.copysign(0.066 + out * (1 - 0.92 * ear), q.x)
     return q
 
 
@@ -437,21 +447,23 @@ def ubc_head(lod):
         moved = reshape(c)
         # Larger, and turned up a little, so her gaze meets yours rather
         # than resting under heavy lids.
-        up = Matrix.Rotation(math.radians(-9), 3, "X")
+        up = Matrix.Rotation(math.radians(-6), 3, "X")
         for v in vs:
-            v.co = moved + up @ ((v.co - c) * (1 + EYE_GROW))
+            v.co = moved + up @ ((v.co - c) * (1 + EYE_GROW + 0.035))
     # Brows follow the brow ridge.
     for side in (1, -1):
         vs = [v for v in brows.data.vertices if v.co.x * side > 0]
         mz = sum(v.co.z for v in vs) / len(vs)
         for v in vs:
             co = v.co.copy()
+            # A little shorter at the outer end, inside the hairline.
+            co.x = math.copysign(0.004 + abs(co.x) * 0.84, co.x)
             # Full enough to read at a distance, a little higher, and the
             # inner ends lifted most, so her resting look is open rather
             # than stern.
             inner = smoothstep(0.045, 0.012, abs(co.x))
             arch = gauss(abs(co.x) - 0.034, 0.012)
-            co.z = mz + (co.z - mz) * 0.68 + 0.0055 + 0.002 * inner + 0.0025 * arch
+            co.z = mz + (co.z - mz) * 0.68 + 0.0055 + 0.0055 * inner + 0.0025 * arch
             v.co = reshape(co)
     for o in (body, eyes, brows):
         uv = o.data.uv_layers
@@ -497,7 +509,7 @@ def ubc_head(lod):
             t = (p.z - c.z) / 0.0095
             e = math.hypot(u, t)
             if t > -0.15:
-                lash = max(lash, smoothstep(0.82, 0.98, e) * smoothstep(1.45, 1.15, e))
+                lash = max(lash, smoothstep(0.88, 0.99, e) * smoothstep(1.30, 1.10, e))
             elif t > -1.2:
                 lash = max(lash, 0.35 * smoothstep(0.9, 1.0, e) * smoothstep(1.3, 1.1, e))
             outer = (p.x - c.x) * (1 if c.x > 0 else -1)
@@ -613,7 +625,9 @@ TORSO = [
     (1.06, 0.120, 0.090, 0.006, 2.3, True),
     (1.12, 0.124, 0.092, 0.000, 2.3, False),
     (1.19, 0.136, 0.100, -0.004, 2.4, True),
+    (1.225, 0.141, 0.104, -0.004, 2.4, False),
     (1.26, 0.146, 0.108, -0.004, 2.4, False),
+    (1.29, 0.149, 0.107, -0.002, 2.45, False),
     (1.32, 0.152, 0.106, 0.000, 2.5, True),
     (1.38, 0.156, 0.098, 0.010, 2.6, False),
     (1.43, 0.146, 0.086, 0.015, 2.6, True),
@@ -638,11 +652,14 @@ def torso_at(z):
 
 
 def bust(d, p):
-    """The torso's bust, stylized and modest, and shoulder blades."""
+    """The torso's bust, a round, natural dome on each side rather than a
+    point, and the shoulder blades."""
     out = 0.0
     if d.y < 0:
         for sx in (-1, 1):
-            out += 0.064 * exp(-(((p.x - sx * 0.068) / 0.050) ** 2)) * exp(-(((p.z - 1.255) / 0.058) ** 2)) * (-d.y)
+            r2 = ((p.x - sx * 0.068) / 0.060) ** 2 + ((p.z - 1.248) / 0.064) ** 2
+            # A super-Gaussian: a full, rounded front that falls off softly.
+            out += 0.050 * exp(-(r2 ** 1.6)) * (-d.y) ** 0.6
     if d.y > 0:
         out += 0.006 * exp(-(((abs(p.x) - 0.08) / 0.05) ** 2)) * exp(-(((p.z - 1.36) / 0.06) ** 2)) * d.y
     return out
@@ -779,55 +796,127 @@ class Alice:
 
     # Hair --------------------------------------------------------------------------------
 
+    def body_radius(self, z, d):
+        """How far her clothed body reaches from its axis at height z in the
+        horizontal direction d (a unit vector), and that axis: the coat
+        below the shoulders, the collar and neck above."""
+        if z <= 1.468:
+            a, b, yc, n = self.coat_size(z)
+            c = Vector((0, yc, 0))
+            phi = math.atan2(d.y, d.x)
+            th = phi
+            for _ in range(4):
+                p = section_point(z, th, sizes=(a, b, yc, n))
+                got = math.atan2(p.y - yc, p.x)
+                th += math.atan2(math.sin(phi - got), math.cos(phi - got))
+            p = section_point(z, th, sizes=(a, b, yc, n))
+            return math.hypot(p.x, p.y - yc), c
+        # The collar's roll, then the slim neck above it.
+        r = lerp(0.104, 0.046, smoothstep(1.47, 1.56, z))
+        return r, Vector((0, lerp(0.028, 0.012, smoothstep(1.47, 1.56, z)), 0))
+
+    def drape(self, p, gap):
+        """`p` pushed out, horizontally, to `gap` beyond her clothed body."""
+        _, _, yc, _ = torso_at(min(p.z, 1.5))
+        c = Vector((0, yc, 0))
+        h = Vector((p.x - c.x, p.y - c.y, 0))
+        if h.length < 1e-6:
+            return p
+        d = h.normalized()
+        need, axis = self.body_radius(p.z, d)
+        h = Vector((p.x - axis.x, p.y - axis.y, 0))
+        r = h.length
+        want = need + gap
+        # A soft maximum, so the hair rolls over the shoulder smoothly.
+        k = 0.012
+        soft = 0.5 * (r + want + math.sqrt((r - want) ** 2 + k * k))
+        if r < 1e-6:
+            return p
+        return Vector((axis.x, axis.y, p.z)) + Vector((h.x, h.y, 0)) * (soft / r)
+
+    @staticmethod
+    def w_hair(z):
+        """Hair rides the head above the jaw, then the neck, then, where it
+        lies on the shoulders and back, the upper spine."""
+        a = smoothstep(1.60, 1.53, z)
+        b = smoothstep(1.53, 1.44, z)
+        w = {"Head": (1 - a)}
+        if a * (1 - b) > 0:
+            w["neck_01"] = a * (1 - b)
+        if a * b > 0:
+            w["spine_03"] = a * b
+        return {k: v for k, v in w.items() if v > 1e-4}
+
     def hair(self):
-        """A chin-length layered bob with a side part on her left and a fringe
-        swept across her right brow: one shell with thickness."""
+        """Long, layered hair past her shoulders, with side-swept bangs over
+        her right brow and a side part on her left: one shell with
+        thickness, in clumps whose tapered tips cut a layered hem. It lies
+        on her shoulders and back, and three tapered locks fall in front."""
         M = self.M
         M.part = "hair"
         cols, nrows = self.L["hair"]
-        out_off = 0.011
-        thick = 0.010
+        nrows *= 2
+        out_off = 0.013
+        thick = 0.009
         ph_eq = 1.62
-        P, W = [], []
+        clumps = max(10, cols // 3)
         columns = []
         for j in range(cols):
             th = -pi / 2 + 2 * pi * j / cols
             al = math.atan2(math.sin(th + pi / 2), math.cos(th + pi / 2))
             aa = abs(al)
+            frac = (j * clumps / cols) % 1.0
+            clump = sin(pi * frac) ** 2
             # Where the column leaves the skull: the hairline in front, the
             # equator at the sides and back.
             hairline = 0.62 + 0.30 * min(1.0, aa / 1.25) ** 2 + 0.28 * smoothstep(0.55, 1.0, aa)
-            fringe = 0.44 * exp(-(((al + 0.05) / 0.78) ** 2)) * smoothstep(1.15, 0.45, al)
-            # Tapered locks at the fringe's edge, not one cut line.
-            locks = 0.05 * abs(((al * 11 / pi) % 2) - 1) * smoothstep(0.05, 0.25, fringe)
-            ph_face = min(1.20, hairline + fringe + locks)
-            k = smoothstep(1.02, 1.38, aa)
+            bangs = 0.50 * exp(-(((al + 0.10) / 0.70) ** 2)) * smoothstep(1.10, 0.40, al)
+            # The bangs end in tapered locks, longest at each clump's middle.
+            tips = 0.07 * clump * smoothstep(0.05, 0.25, bangs) * smoothstep(0.95, 0.65, aa)
+            ph_face = min(1.24, hairline + bangs + tips)
+            k = smoothstep(0.98, 1.45, aa)
             ph_end = lerp(ph_face, ph_eq, k)
-            z_end = 1.532 + 0.016 * (aa / pi) + 0.007 * abs(((al * 9 / pi) % 2) - 1)
-            columns.append((th, al, ph_end, k, z_end))
-        for th, al, ph_end, k, z_end in columns:
+            # Layered length: at the collarbone in front, past the shoulder
+            # blades at the back, each clump ending in a tapered tip.
+            z_end = lerp(1.50, 1.30, smoothstep(1.25, 2.3, aa)) - 0.045 * clump * k
+            columns.append((th, al, ph_end, k, z_end, clump))
+        P = []
+        for th, al, ph_end, k, z_end, clump in columns:
             p_eq = self.head_point(th, ph_end)
             n_eq = self.head_normal(th, ph_end)
             skull = (ph_end - 0.06) * 0.10
             drop = max(0.0, (p_eq.z - z_end)) * k
             total = skull + drop
             col = []
+            # Half the rows over the skull and half down the fall, so the
+            # crown stays round when the level is subdivided.
             for i in range(nrows + 1):
-                d = total * i / nrows
+                u = i / nrows
+                if drop > 0:
+                    d = skull * min(1.0, 2 * u) + drop * max(0.0, 2 * u - 1)
+                else:
+                    d = skull * u
                 if d <= skull + 1e-9 or drop <= 0:
                     ph = 0.06 + (ph_end - 0.06) * min(1.0, d / skull)
-                    # The fringe sweeps toward her right as it falls.
-                    tt = th
-                    p = self.head_point(tt, ph) + self.head_normal(tt, ph) * out_off
+                    # The bangs sweep toward her right as they fall, and
+                    # stand a little off her forehead.
+                    sweep = -0.10 * smoothstep(0.8, 1.2, ph) * smoothstep(0.7, 0.0, abs(al + 0.1))
+                    tt = th + sweep
+                    lift = 0.004 * smoothstep(0.9, 1.15, ph) * smoothstep(0.9, 0.2, abs(al))
+                    p = self.head_point(tt, ph) + self.head_normal(tt, ph) * (out_off + lift)
                     groove = -0.004 * exp(-(((al - 0.45) / 0.07) ** 2)) * smoothstep(0.95, 0.4, ph)
-                    ridge = 0.0022 * sin(al * 17) * smoothstep(0.35, 0.9, ph)
+                    ridge = 0.004 * clump * smoothstep(0.35, 0.9, ph)
                     p = p + self.head_normal(tt, ph) * (groove + ridge)
                 else:
                     f = (d - skull) / drop
                     radial = Vector((p_eq.x - self.HC.x, p_eq.y - self.HC.y, 0)).normalized()
                     p = p_eq + n_eq * out_off
-                    p = p + Vector((0, 0, -(p_eq.z - z_end) * f * k / max(k, 1e-6) if k > 0 else 0))
-                    p = p + radial * (0.014 * f - 0.012 * smoothstep(0.75, 1.0, f) + 0.003 * sin(al * 17))
+                    p = p + Vector((0, 0, -(p_eq.z - z_end) * f))
+                    # Volume at the crown's fall, clumps, and a slight inward
+                    # turn at the tips.
+                    p = p + radial * (0.016 * sin(pi * min(1.0, f * 1.6)) + 0.005 * clump
+                                      - 0.006 * smoothstep(0.85, 1.0, f))
+                    p = self.drape(p, 0.010 + 0.004 * clump)
                 col.append(p)
             P.append(col)
         # Smooth over the ears: the rays that fit the skull catch them, and
@@ -844,12 +933,46 @@ class Alice:
             P = Q
         # Rows bottom to top, columns counterclockwise: faces point out.
         rows = [[P[j][nrows - i] for j in range(cols)] for i in range(nrows + 1)]
-        W = [[rigid("Head") for _ in r] for r in rows]
+        W = [[self.w_hair(p.z) for p in r] for r in rows]
         out, inn = shell(M, rows, W, thick, "hair", "hair_inner", "hair_inner", wrap=True,
                          rims=(True, False, False, False))
         top_out = out[-1]
         fan(M, top_out, self.head_point(0, 0) + Vector((0, 0, out_off + 0.002)), rigid("Head"), "hair",
             Vector((0, 0, 1)))
+        if not self.L.get("lite"):
+            self.locks()
+
+    def locks(self):
+        """Three tapered locks that fall in front of her shoulders onto her
+        chest: two on her left, one on her right."""
+        M = self.M
+        M.part = "hair"
+        segs = 6
+        steps = 7 if self.L["stride"] == 1 else 4
+        for s, al0, z_tip, toward in ((1, 1.28, 1.31, 0.62), (1, 1.42, 1.35, 0.85), (-1, 1.32, 1.33, 0.70)):
+            th0 = -pi / 2 + s * al0
+            # Starting under the side hair, below the ear, so the lock emerges
+            # from beneath it rather than through it.
+            start = self.head_point(th0, 1.62) - Vector((0, 0, 0.06))
+            path = []
+            for i in range(steps + 1):
+                t = i / steps
+                z = lerp(start.z, z_tip, t)
+                al = lerp(al0, toward, smoothstep(0.0, 0.8, t))
+                d = Vector((cos(-pi / 2 + s * al), sin(-pi / 2 + s * al), 0))
+                r0 = math.hypot(start.x, start.y - self.HC.y)
+                p = Vector((0, self.HC.y, z)) + d * r0
+                path.append(self.drape(p, 0.010))
+            rings = []
+            for i, c in enumerate(path):
+                t = i / steps
+                nxt = path[min(i + 1, steps)]
+                prv = path[max(i - 1, 0)]
+                axis = (nxt - prv).normalized()
+                out = Vector((c.x, c.y - 0.02, 0)).normalized()
+                width = 0.022 * (1 - t) ** 0.7 + 0.002
+                rings.append(dict(c=c, axis=axis, ref=out, rx=0.0035 * (1 - 0.6 * t) + 0.001, ry=width))
+            loft(M, rings, segs, "hair", lambda p: self.w_hair(p.z), cap0=True, cap1=True, dome=0.004)
 
     # Arms and hands -------------------------------------------------------------------------
 
@@ -1077,8 +1200,8 @@ class Alice:
         (0.47, 0.236, 0.186, 55, True), (0.52, 0.231, 0.181, 53, False), (0.60, 0.224, 0.172, 49, True),
         (0.70, 0.216, 0.162, 44, False), (0.80, 0.210, 0.154, 38, True), (0.88, 0.206, 0.148, 33, False),
         (0.94, 0.200, 0.140, 30, True), (1.00, 0.168, 0.120, 27, False), (1.06, 0.136, 0.104, 26, True),
-        (1.12, 0.140, 0.106, 25, False), (1.19, 0.152, 0.114, 23, True), (1.26, 0.162, 0.122, 21, False),
-        (1.32, 0.168, 0.120, 19, True), (1.38, 0.172, 0.113, 17, False), (1.43, 0.162, 0.101, 15, True),
+        (1.12, 0.140, 0.106, 25, False), (1.19, 0.152, 0.114, 23, True), (1.225, 0.157, 0.118, 22, False),
+        (1.26, 0.162, 0.122, 21, False), (1.29, 0.165, 0.121, 20, False), (1.32, 0.168, 0.120, 19, True), (1.38, 0.172, 0.113, 17, False), (1.43, 0.162, 0.101, 15, True),
         (1.468, 0.118, 0.084, 14, True),
     ]
 
@@ -1141,8 +1264,8 @@ class Alice:
         M.extend_mirrored(L)
 
     def hood(self):
-        """The hood, worn down: a collar about the neck and the hood's folds
-        lying on her upper back, lined in linen."""
+        """The coat's collar: a soft roll about her neck. (Her long hair now
+        lies where a hood worn down would.)"""
         M = self.M
         M.part = "coat"
         segs = max(8, self.L["limb"])
@@ -1165,34 +1288,15 @@ class Alice:
             P.append(row)
         W = [[self.torso_chain.weights(p) for p in row] for row in P]
         grid(M, P, W, "coat", wrap=True)
-        # The hood's body on the back: a soft, flattened dome.
-        c0 = Vector((0, 0.112, 1.425))
-        rings = []
-        n = max(5, self.L["torso"] // 4)
-        for i in range(n + 1):
-            v = -pi / 2 + pi * i / n
-            rings.append(dict(c=c0 + Vector((0, 0.008 * cos(v), 0.066 * sin(v))), axis=(0, 0, 1), ref=(1, 0, 0),
-                              rx=max(0.008, 0.100 * cos(v)), ry=max(0.006, 0.032 * cos(v)), n=2.2,
-                              shape=lambda d, p: 0.012 * max(0.0, -d.y) * 0))
-        start = len(M.f)
-
-        def w_hood(p):
-            return mix(rigid("spine_03"), rigid("neck_01"), 0.25 * smoothstep(1.43, 1.49, p.z))
-
-        loft(M, rings, max(8, self.L["torso"] // 2), "coat", w_hood, cap0=True, cap1=True)
-        # The lining shows where the hood folds open toward her neck.
-        for k in range(start, len(M.f)):
-            cz = sum(M.v[i].z for i in M.f[k]) / len(M.f[k])
-            cy = sum(M.v[i].y for i in M.f[k]) / len(M.f[k])
-            if cz > 1.46 and cy < 0.112:
-                M.m[k] = "lining"
 
     def sash(self):
         M = self.M
         M.part = "gear"
         segs = self.L["torso"]
         rings = []
-        for z, g in ((0.985, 0.010), (1.005, 0.015), (1.045, 0.015), (1.068, 0.010)):
+        # A soft band with two folds across it.
+        for z, g in ((0.985, 0.010), (0.998, 0.015), (1.012, 0.017), (1.024, 0.013), (1.038, 0.017),
+                     (1.052, 0.015), (1.068, 0.010)):
             a, b, yc, _ = self.coat_size(z)
             n = 2.3
             rings.append(dict(c=Vector((0, yc, z)), axis=(0, 0, 1), ref=(1, 0, 0), rx=a + g, ry=b + g, n=n))
@@ -1399,7 +1503,7 @@ class Alice:
         """Alice's own clothes and gear."""
         self.tunic()
         self.coat()
-        self.hood()
+        self.hood()  # the collar
         self.sash()
         if not self.L.get("lite"):
             self.strap()
@@ -1434,7 +1538,7 @@ def material(name):
         "linen": ("noise", 0.05), "linen_shade": ("noise", 0.05), "coat": ("noise", 0.08),
         "coat_inner": ("noise", 0.06), "coat_trim": ("noise", 0.06), "leather": ("noise", 0.12),
         "leather_dark": ("noise", 0.10), "leggings": ("noise", 0.05), "sash": ("noise", 0.06),
-        "hair": ("strands", 0.30), "hair_inner": ("strands", 0.20), "wood": ("grain", 0.25),
+        "hair": ("strands", 0.38), "hair_inner": ("strands", 0.20), "wood": ("grain", 0.25),
     }.get(name)
     if not variation:
         bsdf.inputs["Base Color"].default_value = (*col, 1)
@@ -1482,7 +1586,7 @@ def material(name):
         mul = nt.nodes.new("ShaderNodeMath")
         mul.operation = "MULTIPLY_ADD"
         nt.links.new(at.outputs[0], mul.inputs[0])
-        mul.inputs[1].default_value = 34.0
+        mul.inputs[1].default_value = 64.0
         nt.links.new(noise.outputs["Fac"], mul.inputs[2])
         sn = nt.nodes.new("ShaderNodeMath")
         sn.operation = "SINE"
@@ -1490,13 +1594,27 @@ def material(name):
         half = nt.nodes.new("ShaderNodeMath")
         half.operation = "MULTIPLY_ADD"
         nt.links.new(sn.outputs[0], half.inputs[0])
-        half.inputs[1].default_value = 0.5
-        half.inputs[2].default_value = 0.5
-        # A sheen band near the crown.
+        half.inputs[1].default_value = 0.3
+        half.inputs[2].default_value = 0.35
+        # Darker at the roots, lighter toward the ends.
+        length = nt.nodes.new("ShaderNodeMapRange")
+        nt.links.new(sep.outputs["Z"], length.inputs["Value"])
+        length.inputs["From Min"].default_value = 1.76
+        length.inputs["From Max"].default_value = 1.32
+        length.inputs["To Min"].default_value = -0.25
+        length.inputs["To Max"].default_value = 0.40
+        ends = nt.nodes.new("ShaderNodeMath")
+        ends.operation = "ADD"
+        nt.links.new(half.outputs[0], ends.inputs[0])
+        nt.links.new(length.outputs["Result"], ends.inputs[1])
+        half = ends
+        # A soft sheen band across the crown.
         band = nt.nodes.new("ShaderNodeMapRange")
         nt.links.new(sep.outputs["Z"], band.inputs["Value"])
-        band.inputs["From Min"].default_value = 1.66
-        band.inputs["From Max"].default_value = 1.74
+        band.data_type = "FLOAT"
+        band.interpolation_type = "SMOOTHERSTEP"
+        band.inputs["From Min"].default_value = 1.68
+        band.inputs["From Max"].default_value = 1.73
         mx = nt.nodes.new("ShaderNodeMath")
         mx.operation = "ADD"
         nt.links.new(half.outputs[0], mx.inputs[0])
@@ -1578,7 +1696,7 @@ def face_material(obj):
     floor.blend_type = "LIGHTEN"
     floor.inputs["Factor"].default_value = 1.0
     nt.links.new(soft.outputs["Result"], floor.inputs["A"])
-    floor.inputs["B"].default_value = (*(typical * 0.66).tolist(), 1)
+    floor.inputs["B"].default_value = (*(typical * 0.82).tolist(), 1)
     soft = floor
     mul = nt.nodes.new("ShaderNodeMix")
     mul.data_type = "RGBA"
@@ -1689,6 +1807,57 @@ def join_head(obj, head, eyes):
     return obj
 
 
+def drop_ears(head):
+    """Removes the ears and the skull's sides behind them once the hair is
+    fitted: her long hair covers them, and they would only poke through."""
+    bm = bmesh.new()
+    bm.from_mesh(head.data)
+
+    def ear(c):
+        return abs(c.x) > 0.064 and 1.585 < c.z < 1.715 and c.y > -0.03
+
+    gone = [f for f in bm.faces if any(ear(v.co) for v in f.verts)]
+    bmesh.ops.delete(bm, geom=gone, context="FACES")
+    bmesh.ops.delete(bm, geom=[v for v in bm.verts if not v.link_faces], context="VERTS")
+    bm.to_mesh(head.data)
+    bm.free()
+
+
+def subdivide(obj, levels):
+    """Subdivides `obj` `levels` times, keeping its weights."""
+    if not levels:
+        return
+    bpy.ops.object.select_all(action="DESELECT")
+    bpy.context.view_layer.objects.active = obj
+    obj.select_set(True)
+    mod = obj.modifiers.new("Subdivision", "SUBSURF")
+    mod.levels = levels
+    mod.render_levels = levels
+    mod.quality = 3
+    mod.uv_smooth = "PRESERVE_BOUNDARIES"
+    bpy.ops.object.modifier_move_to_index(modifier=mod.name, index=0)
+    bpy.ops.object.modifier_apply(modifier=mod.name)
+
+
+def smooth(obj):
+    """Four influences a vertex at most, none below a 255th, normalized;
+    then smooth shading with weighted normals, keeping creases sharper than
+    60 degrees, such as the coat's hems and the boots' soles."""
+    bpy.ops.object.select_all(action="DESELECT")
+    bpy.context.view_layer.objects.active = obj
+    obj.select_set(True)
+    bpy.ops.object.vertex_group_limit_total(group_select_mode="ALL", limit=4)
+    bpy.ops.object.vertex_group_normalize_all(group_select_mode="ALL", lock_active=False)
+    bpy.ops.object.vertex_group_clean(group_select_mode="ALL", limit=0.004)
+    bpy.ops.object.vertex_group_normalize_all(group_select_mode="ALL", lock_active=False)
+    bpy.ops.object.shade_smooth_by_angle(angle=math.radians(60))
+    weighted = obj.modifiers.new("WeightedNormal", "WEIGHTED_NORMAL")
+    weighted.keep_sharp = True
+    weighted.weight = 50
+    bpy.ops.object.modifier_move_to_index(modifier=weighted.name, index=0)
+    bpy.ops.object.modifier_apply(modifier=weighted.name)
+
+
 def check_weights(obj):
     """Every vertex has one to four influences summing to one."""
     bad = 0
@@ -1743,7 +1912,7 @@ def bake(obj, lod):
     scene.world.light_settings.distance = 0.07
     size = lod["tex"]
     images = {}
-    for kind in ("color", "ao", "normal"):
+    for kind in ("color", "ao", "normal", "mask"):
         img = bpy.data.images.new(f"alice_{kind}", size, size, float_buffer=True)
         img.colorspace_settings.name = "Non-Color" if kind != "color" else "Linear Rec.709"
         images[kind] = img
@@ -1751,9 +1920,16 @@ def bake(obj, lod):
     obj.select_set(True)
     bpy.context.view_layer.objects.active = obj
     for kind, args in (("color", dict(type="DIFFUSE", pass_filter={"COLOR"})), ("ao", dict(type="AO")),
-                       ("normal", dict(type="NORMAL", normal_space="OBJECT"))):
+                       ("normal", dict(type="NORMAL", normal_space="OBJECT")),
+                       ("mask", dict(type="EMIT"))):
         for slot in obj.material_slots:
             nt = slot.material.node_tree
+            if kind == "mask":
+                # The face's mask: its materials glow white for this pass.
+                face = slot.material.name.split(".")[0] in ("face_skin", "eyes", "glint", "brow")
+                bsdf = nt.nodes["Principled BSDF"]
+                bsdf.inputs["Emission Color"].default_value = (1, 1, 1, 1) if face else (0, 0, 0, 1)
+                bsdf.inputs["Emission Strength"].default_value = 1.0
             node = nt.nodes.get("bake") or nt.nodes.new("ShaderNodeTexImage")
             node.name = "bake"
             node.image = images[kind]
@@ -1769,11 +1945,16 @@ def bake(obj, lod):
         ao = sum(np.roll(ao, s - 2, axis=axis) * k[s] for s in range(5))
     up = px["normal"][..., 2:3] * 2 - 1
     shade = (0.60 + 0.40 * np.clip(ao, 0, 1) ** 0.85) * (0.92 + 0.10 * np.clip(up, -1, 1))
+    # The face takes little occlusion: deep sockets, nostrils, and the
+    # mouth's corners otherwise bake to dark wedges at a game's distance.
+    face = np.clip(px["mask"][..., :1], 0, 1)
+    face_shade = 0.90 + 0.10 * np.clip(ao, 0, 1)
+    shade = shade * (1 - face) + face_shade * face
     lin = np.clip(color * shade, 0, 1)
     srgb = np.where(lin <= 0.0031308, lin * 12.92, 1.055 * np.power(lin, 1 / 2.4) - 0.055)
-    # Six bits a channel: soft shading shows no banding at a character's
-    # size on screen, and the atlas compresses to about half.
-    srgb = np.round(np.clip(srgb, 0, 1) * 63) / 63
+    # Fewer levels a channel than eight bits: soft shading shows no banding
+    # at a character's size on screen, and the atlas compresses far better.
+    srgb = np.round(np.clip(srgb, 0, 1) * LEVELS) / LEVELS
     out = np.concatenate([srgb, np.ones_like(srgb[..., :1])], axis=-1)
     final = bpy.data.images.new("Alice_BaseColor", size, size, alpha=False)
     final.colorspace_settings.name = "sRGB"
@@ -1854,16 +2035,24 @@ def main():
     head, eyes = ubc_head(lod)
     alice = Alice(Rig(joints), lod)
     M = alice.build(head, eyes)
+    drop_ears(head)
     obj = to_object(M, arm)
     parts = {}
     for f, tag in zip(M.f, M.tag):
         parts[tag] = parts.get(tag, 0) + len(f) - 2
+    # The near levels are built coarse and subdivided, so nothing reads
+    # faceted; lod0 subdivides the head too.
+    subdivide(obj, lod.get("subdiv", 0))
+    subdivide(head, lod.get("head_subdiv", 0))
+    if lod.get("subdiv"):
+        parts = {k: v * 4 ** lod["subdiv"] for k, v in parts.items()}
     parts["head"] = sum(len(p.vertices) - 2 for p in head.data.polygons)
     parts["eyes"] = sum(len(p.vertices) - 2 for p in eyes.data.polygons)
     obj = join_head(obj, head, eyes)
+    smooth(obj)
     check_weights(obj)
-    tris = sum(parts.values())
-    print("PARTS", variant, json.dumps(parts))
+    tris = sum(len(p.vertices) - 2 for p in obj.data.polygons)
+    print("PARTS", variant, tris, json.dumps(parts))
     assert tris <= lod["budget"], f"{variant}: {tris} triangles exceeds {lod['budget']}"
     if quick:
         quick_views(quick, variant)

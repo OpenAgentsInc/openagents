@@ -27,12 +27,13 @@ pub const APPEARANCES: [&str; 6] = [
 /// base head.
 pub const ORIGINAL_APPEARANCES: [&str; 1] = ["alice"];
 /// Alice's variants and their triangle budgets
-/// (`docs/verse/female-character.md`): `lod0` for the chamber, `lod1` for
-/// the Everglade pack, `lod2` for phones once packs split by tier, and
-/// `lod3` for distant players once skinned levels of detail exist.
+/// (`docs/verse/female-character.md`): `lod0`, subdivided with a 2,048-pixel
+/// atlas, for the chamber's close views; `lod1`, subdivided, for Everglade
+/// within 14 m; `lod2` for Everglade beyond it; and `lod3` for distant
+/// players once skinned levels of detail exist.
 pub const ALICE_VARIANTS: [(&str, usize); 4] = [
-    ("lod0", 24_000),
-    ("lod1", 16_000),
+    ("lod0", 100_000),
+    ("lod1", 46_000),
     ("lod2", 10_000),
     ("lod3", 3_000),
 ];

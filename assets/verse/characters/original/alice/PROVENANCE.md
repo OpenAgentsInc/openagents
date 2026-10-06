@@ -5,8 +5,8 @@ Alice is an original character for Verse, placed in the world as an NPC
 
 | File | Made by |
 | --- | --- |
-| `alice.<variant>.glb` | `scripts/blender/alice.py` in Blender 5.2.2 LTS, headless: `Blender -b --factory-startup --python scripts/blender/alice.py -- <variant>` |
-| `alice.<variant>.gltf`, `.bin`, `.png`, `manifest.json`, `license.txt` | `python3 scripts/blender/character_admit.py`, from the glb files |
+| `build/alice.<variant>.glb` (not committed) | `scripts/blender/alice.py` in Blender 5.2.2 LTS, headless: `Blender -b --factory-startup --python scripts/blender/alice.py -- <variant>` |
+| `alice.<variant>.gltf`, `.bin`, `.png`, `manifest.json`, `license.txt` | `python3 scripts/blender/character_admit.py`, from the build glb files |
 
 Modes, per the asset runbook:
 

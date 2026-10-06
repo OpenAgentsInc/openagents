@@ -61,6 +61,15 @@ What was built:
   the last desk in the workshop hall, walks to the Workbench and the Podium
   with the player's retargeted walk, and holds the studio's postures, which
   the zone authors from her idle. She no longer stands by the approach.
+- **High definition.** The near levels are built coarse and subdivided
+  (`lod0`'s head too), then shaded smooth with weighted normals, keeping
+  creases sharper than 60 degrees. Long hair falls past her shoulders in
+  clumps with tapered tips, with side-swept bangs, three locks in front of
+  her shoulders, and a painted strand texture (darker roots, lighter ends,
+  a sheen band); it rides the neck and upper spine where it lies on her
+  back. Her nostrils close to a soft underside, her ears are removed under
+  the hair, and the face bakes with almost no occlusion, so no dark wedges
+  show in the eyes, nose, or mouth.
 - **Figure and fit.** A woman's figure: a bust under the tunic and coat, a
   waist the sash cinches, hips as wide as her shoulders, slimmer arms and
   neck, and boots 27 cm long. The coat follows the figure, fitted at the
@@ -72,19 +81,21 @@ What was built:
 
 | Variant | Triangles | Budget | Atlas |
 | --- | ---: | ---: | --- |
-| `lod0` (chamber) | 17,748 | 24,000 | 1024 |
-| `lod1` (Everglade pack) | 14,165 | 16,000 | 512 |
-| `lod2` (phone, once packs split) | 6,455 | 10,000 | 256 |
-| `lod3` (distant, once skinned levels of detail exist) | 2,577 | 3,000 | 256 |
+| `lod0` (chamber, close views) | 89,996 | 100,000 | 2048 |
+| `lod1` (Everglade, the workshop seat) | 36,670 | 46,000 | 1024 |
+| `lod2` (phones, once packs split by tier) | 6,897 | 10,000 | 256 |
+| `lod3` (distant, once skinned levels of detail exist) | 2,574 | 3,000 | 256 |
 
-She adds 0.41 MB to the Everglade pack, so its committed budget rose from
-42.0 MB to 42.4 MB (`Limits::EVERGLADE`). To rebuild and review her:
+`Limits::EVERGLADE` allows a 48,000-triangle character for her near level
+and 590,000 triangles in the pack. The glb files `alice.py` writes go to
+`build/`, which isn't committed; the admitted glTF files are. To rebuild and
+review her:
 
 ```sh
 B=/Applications/Blender.app/Contents/MacOS/Blender
 for v in lod0 lod1 lod2 lod3; do $B -b --factory-startup --python scripts/blender/alice.py -- $v; done
 python3 scripts/blender/character_admit.py
-$B -b --factory-startup --python scripts/blender/alice_views.py -- assets/verse/characters/original/alice/alice.lod0.glb OUT_DIR
+$B -b --factory-startup --python scripts/blender/alice_views.py -- assets/verse/characters/original/alice/build/alice.lod0.glb OUT_DIR
 ```
 
 `alice_views.py` renders the turnaround, a turntable, face close-ups,

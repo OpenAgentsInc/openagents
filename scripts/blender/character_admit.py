@@ -36,7 +36,9 @@ import numpy as np
 ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
 BASE = os.path.join(ROOT, "assets", "verse", "characters", "quaternius", "base", "Superhero_Female_FullBody.gltf")
 DIR = os.path.join(ROOT, "assets", "verse", "characters", "original", "alice")
-BUDGETS = {"lod0": 24000, "lod1": 16000, "lod2": 10000, "lod3": 3000}
+BUDGETS = {"lod0": 100000, "lod1": 46000, "lod2": 10000, "lod3": 3000}
+# Where alice.py writes its glb files: build output, not committed.
+BUILD = os.path.join(DIR, "build")
 LICENSE = b"""Alice, an original player character for Verse
 
 Made by OpenAgents with scripts/blender/alice.py. Her body, hair, clothing,
@@ -138,7 +140,7 @@ def globals_by_name(doc):
 
 
 def admit(variant, base):
-    glb = os.path.join(DIR, f"alice.{variant}.glb")
+    glb = os.path.join(BUILD, f"alice.{variant}.glb")
     doc, blob = read_glb(glb)
     assert len(doc["skins"]) == 1, "one skin"
     skin = doc["skins"][0]
@@ -269,14 +271,14 @@ def admit(variant, base):
         "image": [width, height],
         "joint_drift_m": float(drift),
         "rest_rotation_delta": float(rot_drift),
-        "source": f"{stem}.glb",
+        "source": f"build/{stem}.glb",
         "source_sha256": sha(open(glb, "rb").read()),
     }
 
 
 def main():
     base = json.load(open(BASE))
-    variants = [v for v in BUDGETS if os.path.exists(os.path.join(DIR, f"alice.{v}.glb"))]
+    variants = [v for v in BUDGETS if os.path.exists(os.path.join(BUILD, f"alice.{v}.glb"))]
     if not variants:
         sys.exit("no alice.<variant>.glb; run scripts/blender/alice.py first")
     report = [admit(v, base) for v in variants]
@@ -284,7 +286,7 @@ def main():
         f.write(LICENSE)
     files = {}
     for name in sorted(os.listdir(DIR)):
-        if name.endswith((".glb", ".gltf", ".bin", ".png")) or name in ("license.txt", "PROVENANCE.md"):
+        if name.endswith((".gltf", ".bin", ".png")) or name in ("license.txt", "PROVENANCE.md"):
             files[name] = sha(open(os.path.join(DIR, name), "rb").read())
     manifest = {
         "schema": "openagents.verse.character-sources.v1",
