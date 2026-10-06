@@ -1,0 +1,43 @@
+{
+  "schema": "verse.battle.review.v1",
+  "duration_seconds": 120,
+  "source_base": "43f12d6e0bb48e22f151476a14aaab66cca9bee8",
+  "executable_sha256": "3d4ed0fe6a78e6ca434cf3ada133ec6da8a9b72662bae331a66f1abe645056e2",
+  "acceptance": "failed",
+  "failures": [
+    "Authority throughput fell below ninety-eight percent of 30 Hz",
+    "/render/measurements/steady/applied_snapshot_age_ms/p95: Some(527.689175) exceeds 400, or is unavailable",
+    "/server/movement_expiry/total: Some(11.0) exceeds 0, or is unavailable"
+  ],
+  "movement_expiry": 11,
+  "storage_paused_seconds": 9.098409777999997,
+  "native_segments": [
+    {
+      "status": "complete",
+      "error": null,
+      "worker_error": null,
+      "prediction_failures": 0,
+      "last_prediction_failure": null,
+      "prediction_horizon_pauses": 225
+    },
+    {
+      "status": "complete",
+      "error": null,
+      "worker_error": null,
+      "prediction_failures": 0,
+      "last_prediction_failure": null,
+      "prediction_horizon_pauses": 0
+    }
+  ],
+  "files": {
+    "report.json": "43ac13fcbb1f73831b44b96b67c8b54b52de8d76da6f60b34e74dd447dd7ca06",
+    "source.patch": "17eaa1e60a2e3d5f99bcabb1b4fd8511f9da39a917896144cdea8e208670f422"
+  },
+  "environment": "Ordinary christopherdavid process without capabilities, direct ext4 NVMe scratch storage, 383 GiB ordinary-user free space at launch. Previous direct run required reserved-space capability with no ordinary-user free blocks.",
+  "limitations": [
+    "No own compiler ran during measurement; the host is shared.",
+    "Both native segments and all correction gates pass, but movement expiry, throughput, and snapshot freshness still fail.",
+    "Code and storage conditions changed since the preceding run; lower corrections and stalls do not isolate the causal gain.",
+    "Offscreen rendering does not measure physical input-to-display latency."
+  ]
+}
