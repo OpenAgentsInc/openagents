@@ -1,21 +1,27 @@
 # Workshop agent
 
-Status: proposal, October 5, 2026, with a phase 1 demo implemented. It
-specifies a persistent agent that you own, that has a desk in the Everglade
-workshop, and that does work on your computers through the Coder host. It
-builds on the [Agent Studio](agent-studio.md), which is implemented, and on
-NIPs that are drafts; each section says which parts exist.
+Status: phases 1 and 2 implemented, and phase 3's scheduler and templates,
+October 6, 2026. It specifies a persistent agent that you own, that has a
+desk in the Everglade workshop, and that does work on your computers through
+the Coder host. It builds on the [Agent Studio](agent-studio.md), which is
+implemented, and on NIPs that are drafts; [What exists and what is
+missing](#what-exists-and-what-is-missing) says which parts exist.
 
-The phase 1 demo runs in desktop Verse on this computer: `ada` sits at the
-last desk in the workshop, and you walk up and press F to talk to her. Her
-record and journal are in `~/.openagents/host/agents/ada/`
-([`coder::task::agent`](../../crates/coder/src/task/agent.rs)). She plans
-with Microcoder's step on the first provider with capacity, types read-only
-commands into a terminal pane titled `driven by ada`, and asks CONFIRM or
-REJECT for anything else ([`verse::workshop`](../../crates/verse/src/workshop.rs)).
-In this demo the request runs in the Verse process, not through the
-`studio.agent.*` NIP-HOST operations, and she has no key, attestation,
-memory, or task mode yet.
+The workshop agent is **Alice**, our original character
+([Female character](female-character.md)). She sits at the last desk in the
+workshop hall, drawn as her own character, and you walk up and press F to
+talk to her. The host is the only authority: it plans, checks, journals,
+and answers her requests through the `studio.agent.*` NIP-HOST operations
+([`coder::task::agent_host`](../../crates/coder/src/task/agent_host.rs)), and
+Verse, `openagents agent`, and the smart terminal's `@alice` are clients.
+Her record, key, journal, memory, and standing jobs are in
+`~/.openagents/host/agents/alice/`
+([`coder::task::agent`](../../crates/coder/src/task/agent.rs)); a record the
+phase 1 demo left under `agents/ada/` moves there, with its journal, the
+first time a host or Verse opens her. She plans with Microcoder's step on the
+first provider with capacity, types read-only commands into a terminal pane
+titled `driven by alice`, asks CONFIRM or REJECT for anything else, and does
+code changes in her own worktree for you to merge at the Merge station.
 
 ## Contents
 
@@ -139,7 +145,9 @@ leases, and the agent uses no media.
 | Trainer XP, curve, profiles, key links, cards | Implemented | [Trainer leveling](agent-trainer-leveling.md) |
 | Bram, quest log, the Apprentice's Road | Specified only | [Quest line](first-agent-quests.md) |
 | Agent builds, stats, classes, condition | Specified only | [GDD](gdd.md#the-agent) |
-| A scheduler for recurring work | Missing | None |
+| A scheduler for recurring work | Implemented for standing jobs | [`agent_jobs.rs`](../../crates/coder/src/task/agent_jobs.rs) |
+| The workshop agent's host runtime, record, memory, and jobs | Implemented | [`agent_host.rs`](../../crates/coder/src/task/agent_host.rs), [`agent.rs`](../../crates/coder/src/task/agent.rs), [`agent_memory.rs`](../../crates/coder/src/task/agent_memory.rs) |
+| The secret screen | Implemented | [`secret-screen`](../../crates/secret-screen/src/lib.rs) |
 
 ## Definition
 
@@ -174,7 +182,7 @@ sender's `operate` right, journals the request, and hands it to the agent.
 | Entry point | How |
 | --- | --- |
 | In the world | Walk to the agent, or its desk, and press `E`. Its desk panel opens with a composer, its current work, its memory, and its journal. The agent turns to face you while you type. |
-| Smart terminal | Start a request with the agent's name (`@ada run the atif tests`) or set the input chip to the agent. The request carries the context strip's context. Until the smart terminal ships, `openagents agent ask NAME TEXT` does the same. |
+| Smart terminal | Start a request with the agent's name (`@alice run the atif tests`). The request carries the directory the line was typed in. `openagents agent ask NAME TEXT` does the same. |
 | Phone | The agent's card on a paired computer's screen, with a composer. It sends NIP-HOST `studio.agent.ask` over the direct channel or CJ. |
 | Task Wall | A card assigned to the agent. Goals can name it as a worker, as with any seat. |
 | Standing jobs | A job fires and creates a request from its own record. See [Standing jobs](#standing-jobs). |
@@ -216,7 +224,10 @@ for later. Three jobs ship as templates:
 
 The agent does two kinds of work. It chooses between them with a typed
 question over the request, the same way the chat router chooses a route; you
-can also force one.
+can also force one. Until the typed question has a measured threshold, a
+word list stands in for it (`agent_host::choose_mode`): a request that
+starts with a change verb, such as "fix" or "add", is task mode, and
+anything else is terminal mode.
 
 ### Task mode: changes in a worktree
 
@@ -238,7 +249,7 @@ a workspace root or its own worktree, and becomes that terminal's typist.
 
 - **Typist rules.** These follow the [smart terminal](../terminal/smart-terminal.md#agents-attached-to-panes).
   The agent types only into terminals it opened, or into one you hand to
-  it. The pane's title shows `driven by ada`. Any key you press takes the
+  it. The pane's title shows `driven by alice`. Any key you press takes the
   typist role back at once, and the agent stops. Every key it sends is
   journaled.
 - **One command at a time.** The Microcoder loop proposes commands; a
@@ -270,7 +281,7 @@ places:
   ATIF trace. Threads are the host's chat threads, so they sync to the
   desktop app and the phone.
 - On the phone: a NIP-WS activity summary whose headline comes from host
-  state ("ada: atif tests failed, 2 of 31"), never from engine text, with a
+  state ("alice: failed exit 101"), never from engine text, with a
   Block PL wake.
 
 ## Persistence
@@ -541,60 +552,55 @@ Estimates are agent-hours at this repository's measured pace, on the basis
 the [smart terminal](../terminal/smart-terminal.md#what-exists-and-what-is-missing)
 states: one coding agent working one area, including tests and a capture or
 receipt, with several areas running in parallel. The pace comes from 795
-commits between October 3 and 5, 2026.
+commits between October 3 and 5, 2026. The state is as of October 6, 2026.
 
-| Area | Exists | Missing | Agent-hours |
-| --- | --- | --- | --- |
-| Resident seat | Studio seats, desks, routes | Seat that persists across goals; direct requests outside a goal | 1 to 2 |
-| Agent record and key | Host key storage, OA verification | Record, key generation, OA attestation, `openagents agent` commands | 1 |
-| Walk-up composer | Everglade panels, console, seat panel | Desk panel with composer, memory, journal; facing the player | 1 to 2 |
-| Request routing | Chat router, typed questions | Task-or-terminal question and its threshold | 1 |
-| Typist | Nothing | Host seat, take and release, badge (smart terminal row) | 1 |
-| Agents as typists | Verse control socket | Handoff to an agent, recording (smart terminal row) | 1 |
-| Terminal executor | `coder-pty`, Microcoder loop | Executor that types into a TERM terminal and reads its block; sentinel until OSC 133 | 2 to 3 |
-| Effect classes and decisions | Studio decisions, rules, deny list | Effect-class question for terminal commands; second key for destructive ones | 1 to 2 |
-| Reporting | Thread store, WS summaries, speech bubbles | Agent reports in all three places | 1 |
-| Journal and kill switch | Studio intents, task cancel, device revoke | Journal, stop sequence, pause, retire | 1 to 2 |
-| Memory | Studio shared memory, the trace scrubber | Per-agent typed memory, the scrubber moved to a shared crate as a secret screen, preference acceptance, selection receipts | 2 to 3 |
-| Standing jobs | Issue pickup and flow, local checks | Scheduler, admission per occurrence, three templates | 3 to 4 |
-| Phone | Studio over a paired computer | Agent card, composer, memory and journal views | 2 |
-| Other computers | NIP-HOST delegation, REACH | Agent key as a device; invitation flow for it | 2 |
-| Smart terminal `@agent` | Specified input line | Route `@name` requests to the agent | 0.5, after the input line ships |
-| Service record | Studio task outcomes | Counts at the desk | 0.5 |
-| NIP-MV opt-in | `verse control` | Publish the agent's entity state with `role: agent` | 1 |
-| Memory relay mirror | Relay AE storage gates | AE client: blinded tags, head selection, conflict detection | 3 |
-| `work-accept` XP rule | NIP-XP rules, referee tools | Rule, fixtures, ledger support | 3 to 4 |
+| Area | State | What is there | Missing | Agent-hours left |
+| --- | --- | --- | --- | --- |
+| Resident seat | Done | Alice at the last desk, drawn from the host's agent view whether or not a goal runs; task mode adds a worker studio seat for her on first use, and a direct request is a one-task goal for her seat (`Studio::submit_direct`) | None | 0 |
+| Agent record and key | Done | `agent.json` with state, route, desk, and her public key; her secret key in `key` (mode `0600`) beside it; the owner's NIP-OA `auth` attestation with a `created_at<` expiry of at most a year; `openagents agent new`, `attest`, `list`, `show`, `stop`, `pause`, `resume`, and `retire` | The key in the host's keychain or key store rather than a file | 0.5 |
+| Walk-up composer | Done | The desk panel, anchored to the bottom of the window: status row, transcript with a scroll bar, `PROPOSED:` line, input line, key strip; F2 memory, F4 journal, F7 stop, F8 pause or resume, each of the last two after CONFIRM | None | 0 |
+| Request routing | Partial | `auto`, `task`, and `terminal` modes; a word list chooses for `auto` | The typed task-or-terminal question and its threshold | 1 |
+| Typist | Done | The pane badge `driven by alice`, take-back on any key | NIP-TERM typist record with `kind: "agent"` | 0.5 |
+| Agents as typists | Done | The host hands each checked command to the window that asked with a typist, which types it and reports the block (`studio.agent.ran`); a request without a typist runs under the host's subprocess supervisor | Typing into a host-owned NIP-TERM terminal that every device can attach to | 2 |
+| Terminal executor | Done | Typing a few characters a frame, the smart terminal's command blocks as completion marks, the output block back to the host | As above | 0 |
+| Effect classes and decisions | Partial | The closed read-only list and the deny list on the host; CONFIRM or REJECT bound to the step, answered once, journaled with the answering device | The second key for destructive commands; standing rules for her; a typed effect-class question | 1.5 |
+| Reporting | Done | Her transcript and nameplate; her own chat thread on the host, which syncs to the desktop app and the phone; a NIP-WS summary whose headline is host state | Walking to you in the world when she reports (she goes to the Podium only to ask) | 0.5 |
+| Journal and kill switch | Done | Stop's four steps, each journaled; pause; resume; retire deletes her key and keeps her journal | Revoking grants on other computers, once she has any | 0 |
+| Memory | Done | Typed entries (project, preference, outcome, note) of at most 2 KiB; preferences she proposes wait for your acceptance; the secret screen moved to the shared `secret-screen` crate, which refuses credential shapes and this host's exact credential values; forgetting journals that it forgot, not what; briefings of at most 12 KiB with the selection receipt journaled | Edit and export; relevance beyond shared words | 1 |
+| Standing jobs | Done | The scheduler on the host's sweep, admission per occurrence (her state, expiry, occurrences, budget, capacity), refusals journaled and skipped, a missed slot fired once, and the three templates, all off until you turn one on | Program actions from `programs/`; metered spend per occurrence (each is recorded as unmetered) | 1.5 |
+| Phone | Partial | WS summaries and her thread reach the phone | Agent card, composer, memory and journal views | 2 |
+| Other computers | Missing | None | Agent key as a device; invitation flow for it | 2 |
+| Smart terminal `@agent` | Done | `@alice TEXT` on the input line routes to her through `openagents agent ask` | None | 0 |
+| Service record | Done | Requests, finished, and merged counts from her journal, at the desk and in `openagents agent list` | None | 0 |
+| NIP-MV opt-in | Missing | None | Publish her entity state with `role: agent` | 1 |
+| Memory relay mirror | Missing | None | AE client: blinded tags, head selection, conflict detection | 3 |
+| `work-accept` XP rule | Missing | None | Rule, fixtures, ledger support | 3 to 4 |
 
-Everything above totals about 30 to 35 agent-hours, and the first two
-phases about 19. With four agents in parallel, that is about two days, not
-weeks. The two typist rows are the smart terminal's own and are counted
-once. Owner checks on real computers are separate and go in
-`NEEDS_OWNER.md`.
+About 22 agent-hours remain, most of them phases 4 and 5. Owner checks on
+real computers are separate and go in `NEEDS_OWNER.md`.
 
 ## Roadmap
 
-1. **Demo: one agent at a desk on this Mac.** About 9 agent-hours,
-   half a day with three agents in parallel. A resident seat named by
-   `openagents agent new ada`, with a key and attestation. You walk up in
-   Everglade, press `E`, and type "run the atif tests and tell me what
-   fails." The agent walks to the Workbench, opens a terminal on this Mac in
-   that workspace, types `cargo test -p atif` with `driven by ada` in the
-   pane's title, waits for the result, walks back to you, and says
-   "atif: 31 passed." The report is in its thread. Read-only commands only;
-   anything else stops at the podium. The journal and the agent record
-   survive a restart. Acceptance: a capture of each step on a scratch host
-   under a temporary `HOME`, with every task archived.
-2. **Real work.** About 10 agent-hours. Task mode through the studio with
-   the Merge station; memory with preference acceptance and the secret
-   screen; the stop, pause, and retire actions; reports on the phone through
-   WS summaries; `@ada` from the smart terminal once its input line ships.
-3. **Standing jobs.** About 4 agent-hours. The scheduler and the three
-   templates: nightly check, watch issues, and keep it green.
+1. **Demo: one agent at a desk on this Mac.** Done, with Alice. A resident
+   seat named by `openagents agent new alice`, with a key and attestation.
+   You walk up in Everglade, press F, and type "run the atif tests and tell
+   me what fails." She walks to the Workbench, types `cargo test -p atif` in
+   a pane titled `driven by alice`, waits for the result, goes back to her
+   desk, and reports. The report is in her thread. Read-only commands only;
+   anything else waits at the Podium. The journal and the record survive a
+   restart.
+2. **Real work.** Done. Task mode through the studio with the Merge station;
+   memory with preference acceptance and the secret screen; the stop, pause,
+   and retire actions; reports on the phone through WS summaries; `@alice`
+   from the smart terminal.
+3. **Standing jobs.** Done for the scheduler, admission per occurrence, and
+   the three templates: nightly check, watch issues, and keep it green, all
+   off by default. Program actions remain.
 4. **Other computers.** About 2 agent-hours. A delegated grant to the
    agent's key on your Linux host; terminal mode and task mode there.
-5. **Presence and growth.** About 8 agent-hours. Service record, NIP-MV
-   opt-in, the AE memory mirror, and, after you decide on it, the
-   `work-accept` rule.
+5. **Presence and growth.** About 7 agent-hours. NIP-MV opt-in, the AE
+   memory mirror, and, after you decide on it, the `work-accept` rule. The
+   service record is done.
 
 The [workbench roadmap](../terminal/workbench-roadmap.md) owns the terminal
 work that phase 1 shares (typist, agents as typists); this page adds no
@@ -602,15 +608,22 @@ second implementation of it.
 
 ## Open questions for the owner
 
+Until the owner says otherwise, the implementation takes these defaults,
+which the owner set on October 6, 2026, for the first three:
+
 1. **Seat or separate service.** This page makes the agent a resident studio
    seat. Is that right, or should it be a separate host service that uses
-   the studio only for task mode?
+   the studio only for task mode? **Default: a resident studio seat**, not a
+   separate service.
 2. **Terminal mode on your checkout.** Terminal mode may open in a workspace
    root and run non-read-only commands there with approval. Should it be
-   limited to the agent's own worktree instead?
+   limited to the agent's own worktree instead? **Default: in terminal mode
+   she may run read-only commands anywhere in the workspace, and
+   non-read-only commands only after your CONFIRM; task mode works only in
+   her own worktree.**
 3. **Read-only commands without asking.** Should `read_only` commands run
    without a decision by default, or should every command wait for you until
-   you add rules?
+   you add rules? **Default: read-only commands run without asking.**
 4. **Pull requests.** Should "open a pull request" be a podium decision the
    agent can request, or only something you do from the Merge station?
 5. **Its key on other computers.** Is a delegated NIP-HOST grant to the
