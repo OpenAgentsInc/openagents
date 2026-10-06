@@ -7,6 +7,10 @@ browser/network qualification remains unverified.
 
 # Owner checks
 
+## Knowledge candidate pane (#10666)
+
+On a scratch Mac session, open a retained candidate with `openagents-terminal --knowledge-workbench SESSION` and confirm that its source count and candidate status remain visible; use `kb workbench inspect SESSION` for exact candidate bytes and trial costs. The fake-proposer harvest and Rust pane tests pass; physical rendering and a paid proposer run remain unverified.
+
 ## Remote shell proposal controls (#10745)
 
 On scratch state in a Mac build from current main, create a desktop shell proposal and open the same terminal from the phone. Confirm that the proposal shows its exact command and revision, confirmation runs once, and its command block appears. Check that a watch screen has no enabled approval control. The Rust scratch-terminal and phone-projection tests cover these behaviors; physical controls remain unverified.

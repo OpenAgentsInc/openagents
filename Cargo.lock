@@ -7416,6 +7416,7 @@ dependencies = [
  "serde_json",
  "sha2 0.10.9",
  "tokio",
+ "workbench",
  "xp-ledger",
 ]
 
@@ -13590,6 +13591,7 @@ name = "terminal-app"
 version = "1.0.0-rc.2"
 dependencies = [
  "bytemuck",
+ "knowledge",
  "pollster",
  "serde_json",
  "terminal-core",
@@ -13598,6 +13600,7 @@ dependencies = [
  "verse-gfx",
  "wgpu",
  "winit",
+ "workbench",
 ]
 
 [[package]]

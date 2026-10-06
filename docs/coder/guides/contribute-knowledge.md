@@ -238,3 +238,16 @@ Runs never show a withdrawn entry again, and readers see the reason. A
 withdrawal doesn't revoke XP already awarded; only the referee can revoke
 an award, with a signed reason. Removal from a relay isn't erasure: signed
 events may remain on other relays.
+
+## Retain a workbench candidate
+
+`kb workbench harvest SELECTION STAGING OUTPUT` reads an explicit JSON source
+selection (task, run, source group, artifact digest, citation, disclosed text,
+forbidden strings, and acquisition/setup/check costs), uses an empty staging
+directory, and retains a private candidate session. `kb workbench inspect SESSION`
+shows its revisions and all attempts; `kb workbench edit SESSION DOCUMENT OUTPUT`
+lints an edit into a new session. Open that session with
+`openagents-terminal --knowledge-workbench SESSION`. `kb workbench draft-study
+SESSION PLAN` pins the current candidate and excludes its source tasks and groups
+from confirmation. These operations neither publish nor activate knowledge; a
+study draft is not admission evidence.

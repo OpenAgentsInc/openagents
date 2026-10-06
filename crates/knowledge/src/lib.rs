@@ -30,6 +30,7 @@ pub mod search;
 pub mod snapshot;
 pub mod study;
 pub mod transfer;
+pub mod workbench;
 mod write;
 
 pub use write::{archive, date, pending, set_evidence, set_status, template, today, version_path};
@@ -37,14 +38,14 @@ pub use write::{archive, date, pending, set_evidence, set_status, template, toda
 use std::fmt;
 use std::path::{Path, PathBuf};
 
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 
 pub use xp_ledger as xp;
 pub use xp_ledger::entry::{Entry, Kind, Status, digest, valid_id};
 pub use xp_ledger::front;
 
 /// A problem with one file or entry.
-#[derive(Clone, Debug, PartialEq, Serialize)]
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub struct Problem {
     /// The file or entry ID.
     pub at: String,

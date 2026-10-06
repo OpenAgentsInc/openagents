@@ -7,6 +7,7 @@ description = "The shared knowledge base: entries, the lint, and lexical and emb
 publish.workspace = true
 
 [dependencies]
+workbench = { path = "../workbench" }
 codex-transport = { path = "../codex-transport" }
 # The codebase index file is gzip-compressed.
 flate2 = "1"

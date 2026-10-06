@@ -11,6 +11,8 @@ name = "openagents-terminal"
 path = "src/main.rs"
 
 [dependencies]
+knowledge = { path = "../knowledge" }
+workbench = { path = "../workbench" }
 terminal-studio = { path = "../terminal-studio" }
 terminal-core = { path = "../terminal-core" }
 terminal-gfx = { path = "../terminal-gfx" }

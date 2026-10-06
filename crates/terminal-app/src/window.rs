@@ -17,6 +17,7 @@ use winit::{
 #[derive(Default)]
 pub struct Options {
     root: Option<PathBuf>,
+    knowledge_workbench: Option<PathBuf>,
     shell: Option<PathBuf>,
     socket: Option<PathBuf>,
     stress_out: Option<PathBuf>,
@@ -84,6 +85,13 @@ pub fn run() -> Result<(), String> {
             "--latency-out" => {
                 options.latency_out =
                     Some(args.next().ok_or("Expected a latency report path")?.into())
+            }
+            "--knowledge-workbench" => {
+                options.knowledge_workbench = Some(
+                    args.next()
+                        .ok_or("Expected a retained knowledge session")?
+                        .into(),
+                )
             }
             "--root" => options.root = Some(args.next().ok_or("--root needs a directory")?.into()),
             "--shell" => options.shell = Some(args.next().ok_or("--shell needs a path")?.into()),
@@ -291,6 +299,27 @@ impl ApplicationHandler for App {
             ));
             terminal.mount = Mount::Window;
             terminal.open = true;
+            if let Some(path) = &self.options.knowledge_workbench {
+                let session = knowledge::workbench::Session::read(path)?;
+                let host = workbench::Host::Local {
+                    instance: knowledge::digest(path.as_os_str().as_encoded_bytes())[7..].into(),
+                };
+                let subject = workbench::pane::Subject::Record {
+                    host: host.clone(),
+                    id: "selected-knowledge".into(),
+                    revision: None,
+                };
+                terminal.core.products.panes = std::mem::take(&mut terminal.core.products.panes)
+                    .adapter(Box::new(knowledge::workbench::Adapter {
+                        id: "selected-knowledge".into(),
+                        host,
+                        session,
+                    }));
+                terminal
+                    .core
+                    .products
+                    .open(workbench::pane::PaneKind::Knowledge, &subject)?;
+            }
             terminal.focused = true;
             terminal.fit(
                 &atlas,

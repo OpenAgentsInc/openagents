@@ -77,6 +77,12 @@ Sharing entries (microcoder only):
   snapshot-check FILE  verify a complete inert snapshot without loading models
   private-seal ID --recipient KEY --retain-until UNIX --output FILE
                     encrypt exact entry bytes and their 3188 declaration
+  workbench inspect SESSION
+  workbench lint SESSION
+  workbench harvest SELECTION STAGING OUTPUT
+  workbench edit SESSION DOCUMENT OUTPUT
+  workbench draft-study SESSION PLAN
+                    retain cited candidates; draft only, never activate or publish
   private-show FILE  decrypt an explicitly selected bundle for local inspection
   private-grant FILE --model-recipient LABEL... --output FILE
                     authorize exact model recipients for this private artifact
@@ -303,6 +309,12 @@ pub async fn main(args: &[String]) -> u8 {
 
 /// Runs the local knowledge commands and returns a structured result.
 pub async fn result(args: &[String]) -> Result<(u8, Value), (u8, String)> {
+    if args.first().map(String::as_str) == Some("workbench") {
+        return workbench(&args[1..])
+            .await
+            .map(|v| (0, v))
+            .map_err(|e| (2, e));
+    }
     let value = async {
         let command = args
             .first()
@@ -386,6 +398,10 @@ fn withdraw_json(o: &Options) -> Result<Value, (u8, String)> {
 }
 
 async fn run(args: &[String]) -> Result<u8, String> {
+    if args.first().map(String::as_str) == Some("workbench") {
+        println!("{}", workbench(&args[1..]).await?);
+        return Ok(0);
+    }
     let command = args.first().ok_or(USAGE)?.clone();
     let o = parse(&args[1..])?;
     match command.as_str() {
@@ -953,4 +969,46 @@ fn review(o: &Options) -> Result<u8, String> {
         println!("run kb review --apply to demote them");
     }
     Ok(0)
+}
+
+/// Explicit retained knowledge operations. Outputs are new private files.
+async fn workbench(args: &[String]) -> Result<Value, String> {
+    use crate::workbench::{Selection, Session};
+    let read = |path: &str| -> Result<String, String> {
+        use std::io::Read;
+        let mut bytes = String::new();
+        std::fs::File::open(path)
+            .map_err(|e| e.to_string())?
+            .take(4 * 1024 * 1024 + 1)
+            .read_to_string(&mut bytes)
+            .map_err(|e| e.to_string())?;
+        if bytes.len() > 4 * 1024 * 1024 {
+            return Err("Knowledge input exceeds 4 MiB".into());
+        }
+        Ok(bytes)
+    };
+    match args.iter().map(String::as_str).collect::<Vec<_>>().as_slice() {
+        ["inspect", input] => serde_json::to_value(Session::read(Path::new(input))?).map_err(|e| e.to_string()),
+        ["lint", input] => serde_json::to_value(Session::read(Path::new(input))?.lint(&crate::lint::Corpus::default())?).map_err(|e| e.to_string()),
+        ["harvest", input, staging, output] => {
+            let selection: Selection = serde_json::from_str(&read(input)?).map_err(|e| e.to_string())?;
+            let mut session = Session::new(selection)?;
+            let proposer = CodexProposer::from_login(harvest::MODEL)?;
+            let result = session.harvest::<_, Embedder>(Path::new(staging), &proposer, &crate::lint::Corpus::default()).await;
+            session.save(Path::new(output))?;
+            Ok(json!({"session":output,"harvest_error":result.err(),"candidates":session.candidates.len()}))
+        }
+        ["edit", input, document, output] => {
+            let mut session = Session::read(Path::new(input))?;
+            session.edit(&read(document)?, &crate::lint::Corpus::default())?;
+            session.save(Path::new(output))?;
+            Ok(json!({"session":output,"candidate":session.candidates.last()}))
+        }
+        ["draft-study", input, plan] => {
+            let session = Session::read(Path::new(input))?;
+            let plan = serde_json::from_str(&read(plan)?).map_err(|e| e.to_string())?;
+            serde_json::to_value(session.draft_study(plan)?).map_err(|e| e.to_string())
+        }
+        _ => Err("Use kb workbench inspect SESSION; harvest SELECTION STAGING OUTPUT; edit SESSION DOCUMENT OUTPUT; or draft-study SESSION PLAN".into()),
+    }
 }
