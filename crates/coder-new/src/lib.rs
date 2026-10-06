@@ -3,6 +3,7 @@
 pub mod agents;
 pub mod snapshot;
 pub mod theme;
+pub mod tools;
 pub mod ui;
 
 use crossterm::event::{Event, KeyCode, KeyEventKind, KeyModifiers};
@@ -23,6 +24,7 @@ pub struct App {
     pub messages: Vec<String>,
     pub scroll: u16,
     pub selected_agent: Option<usize>,
+    pub animation_frame: u8,
     saved_chats: [Chat; 5],
 }
 
@@ -34,6 +36,10 @@ struct Chat {
 }
 
 impl App {
+    pub fn tick(&mut self) {
+        self.animation_frame = self.animation_frame.wrapping_add(1) % 8;
+    }
+
     fn select_agent(&mut self, selected: Option<usize>) {
         if self.selected_agent == selected {
             return;
@@ -56,8 +62,12 @@ impl App {
     /// Returns false when the preview should close.
     pub fn handle(&mut self, event: Event) -> bool {
         match event {
-            Event::Paste(text) => self.draft.insert(&text),
+            Event::Paste(text) => {
+                self.animation_frame = 0;
+                self.draft.insert(&text);
+            }
             Event::Key(key) if key.kind != KeyEventKind::Release => {
+                self.animation_frame = 0;
                 let ctrl = key.modifiers.contains(KeyModifiers::CONTROL);
                 if ctrl && key.code == KeyCode::Char('c') {
                     return false;

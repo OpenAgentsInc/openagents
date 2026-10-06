@@ -12,6 +12,10 @@ are exported from the same render function as the terminal. Four sample agent
 rows beneath the input show their current tasks and token counts.
 Up/Down loads their demo conversations; Esc returns to the main conversation.
 The [selected conversation preview](agent-conversation.png) shows the active row.
+The main transcript includes Read, Search, Edit, and Run examples and four
+delegation components that match the rail. Magenta diamonds pulse on running
+delegations; selected agent conversations show their own tools and command
+spinners. These are local presentation fixtures.
 
 1. [Claude Code replacement history and current terminal survey](claude-code-replacement-history.md)
    catalogs the retained attempts and compares today's Coder and OpenAgents

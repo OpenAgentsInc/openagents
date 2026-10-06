@@ -13,8 +13,9 @@ use unicode_width::UnicodeWidthStr;
 
 use crate::{
     App, Screen,
-    agents::{DEMOS, DemoMessage},
+    agents::{DEMOS, DemoMessage, MAIN_TOOLS},
     theme as t,
+    tools::{delegation_lines, tool_lines},
 };
 
 fn span(text: impl Into<String>, color: Color) -> Span<'static> {
@@ -239,32 +240,33 @@ fn conversation(frame: &mut Frame, area: Rect, app: &mut App) {
             )),
             Line::default(),
         ];
-        for message in agent.conversation {
-            lines.push(match message {
-                DemoMessage::User(text) => prompt(*text),
-                DemoMessage::Tool(text) => {
-                    Line::from(vec![span(" ◇ ", t::GRAY_DIM), span(*text, t::GRAY_BRIGHT)])
+        for (index, message) in agent.conversation.iter().enumerate() {
+            match message {
+                DemoMessage::User(text) => lines.push(prompt(*text)),
+                DemoMessage::Tool(call) => lines.extend(tool_lines(call, app.animation_frame)),
+                DemoMessage::Assistant(text) => {
+                    lines.push(Line::from(span(*text, t::TEXT_SECONDARY)));
                 }
-                DemoMessage::Assistant(text) => Line::from(span(*text, t::TEXT_SECONDARY)),
-            });
-            lines.push(Line::default());
+            }
+            let grouped = matches!(message, DemoMessage::Tool(_))
+                && matches!(
+                    agent.conversation.get(index + 1),
+                    Some(DemoMessage::Tool(_))
+                );
+            if !grouped {
+                lines.push(Line::default());
+            }
         }
         lines
     } else {
-        vec![
-            Line::default().style(Style::default().bg(t::BG_LIGHT)),
-            prompt("Sketch the new Coder terminal. Start with the screen."),
-            Line::default().style(Style::default().bg(t::BG_LIGHT)),
+        let mut lines = vec![
+            prompt("Review the terminal with four agents."),
             Line::default(),
-            Line::from(vec![
-                span(" ◇ ", t::GRAY_DIM),
-                span("Read 3 files, Searched 2 patterns", t::GRAY_BRIGHT),
-            ]),
-            Line::from(vec![
-                span(" ◆ ", t::ACCENT_SUCCESS),
-                span("Create ", t::GRAY_BRIGHT),
-                span("crates/coder-new", t::PATH),
-            ]),
+        ];
+        for call in &MAIN_TOOLS {
+            lines.extend(tool_lines(call, app.animation_frame));
+        }
+        lines.extend([
             Line::default(),
             Line::from(Span::styled(
                 "Conversation first",
@@ -273,43 +275,11 @@ fn conversation(frame: &mut Frame, area: Rect, app: &mut App) {
                     .add_modifier(Modifier::BOLD),
             )),
             Line::default(),
-            Line::from(span(
-                "Keep the work in one conversation. Tool calls stay compact, and your next message is always within reach.",
-                t::TEXT_SECONDARY,
-            )),
-            Line::default(),
-            Line::from(vec![
-                span("  • ", t::GRAY),
-                span(
-                    "One quiet column for messages and results.",
-                    t::TEXT_SECONDARY,
-                ),
-            ]),
-            Line::from(vec![
-                span("  • ", t::GRAY),
-                span("A composer that stays on screen.", t::TEXT_SECONDARY),
-            ]),
-            Line::from(vec![
-                span("  • ", t::GRAY),
-                span(
-                    "Plugins for tools, models, and workflows.",
-                    t::TEXT_SECONDARY,
-                ),
-            ]),
-            Line::default(),
-            Line::from(vec![
-                span("Next: ", t::TEXT_SECONDARY),
-                span("the layout", t::MD_CODE),
-                span(", then the interactions.", t::TEXT_SECONDARY),
-            ]),
-            Line::default(),
-            Line::from(span(" src/main.rs", t::GRAY)).style(Style::default().bg(t::BG_DARK)),
-            Line::from(span(" - let app = OldTerminal::new();", t::DIFF_DELETE_FG))
-                .style(Style::default().bg(t::DIFF_DELETE_BG)),
-            Line::from(span(" + let app = Coder::new();", t::DIFF_INSERT_FG))
-                .style(Style::default().bg(t::DIFF_INSERT_BG)),
-            Line::default(),
-        ]
+        ]);
+        for agent in &DEMOS {
+            lines.extend(delegation_lines(agent, app.animation_frame));
+        }
+        lines
     };
     for message in &app.messages {
         for (index, line) in message.split('\n').enumerate() {

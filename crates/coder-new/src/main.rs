@@ -1,10 +1,14 @@
-use std::io::{self, Write};
+use std::{
+    io::{self, Write},
+    time::{Duration, Instant},
+};
 
 use coder_new::{App, Screen, snapshot, ui};
 use crossterm::{
-    cursor::SetCursorStyle,
+    cursor::{SetCursorStyle, Show},
     event::{self, DisableBracketedPaste, EnableBracketedPaste},
     execute,
+    terminal::{BeginSynchronizedUpdate, EndSynchronizedUpdate},
 };
 
 fn main() -> io::Result<()> {
@@ -56,10 +60,24 @@ fn main() -> io::Result<()> {
         };
         write!(io::stdout(), "\x1b]12;#{r:02x}{g:02x}{b:02x}\x07")?;
         io::stdout().flush()?;
+        let interval = Duration::from_millis(125);
+        let mut next_tick = Instant::now() + interval;
         loop {
+            execute!(io::stdout(), BeginSynchronizedUpdate)?;
             terminal.draw(|frame| ui::render(frame, &mut app))?;
-            if !app.handle(event::read()?) {
+            // Keep the block blinking while progress updates move the terminal cursor.
+            if app.animation_frame >= 4 {
+                terminal.hide_cursor()?;
+            }
+            execute!(io::stdout(), EndSynchronizedUpdate)?;
+            if event::poll(next_tick.saturating_duration_since(Instant::now()))?
+                && !app.handle(event::read()?)
+            {
                 break;
+            }
+            if Instant::now() >= next_tick {
+                app.tick();
+                next_tick = Instant::now() + interval;
             }
         }
         Ok(())
@@ -72,8 +90,10 @@ fn main() -> io::Result<()> {
 fn restore_extras() -> io::Result<()> {
     execute!(
         io::stdout(),
+        EndSynchronizedUpdate,
         DisableBracketedPaste,
-        SetCursorStyle::DefaultUserShape
+        SetCursorStyle::DefaultUserShape,
+        Show
     )?;
     write!(io::stdout(), "\x1b]112\x07")?;
     io::stdout().flush()

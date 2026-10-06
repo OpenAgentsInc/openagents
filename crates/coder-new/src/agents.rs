@@ -1,5 +1,7 @@
 //! Sample activity for the four agent rows beneath the composer.
 
+use crate::tools::{ToolCall, ToolKind, ToolState};
+
 pub struct DemoAgent {
     pub name: &'static str,
     pub task: &'static str,
@@ -9,9 +11,36 @@ pub struct DemoAgent {
 
 pub enum DemoMessage {
     User(&'static str),
-    Tool(&'static str),
+    Tool(ToolCall),
     Assistant(&'static str),
 }
+
+pub const MAIN_TOOLS: [ToolCall; 4] = [
+    ToolCall {
+        kind: ToolKind::Read,
+        input: "docs/coder-new/",
+        output: "4 documents reviewed",
+        state: ToolState::Complete,
+    },
+    ToolCall {
+        kind: ToolKind::Search,
+        input: "\"composer|agent_rail\" crates/coder-new/src/",
+        output: "8 matches in 3 files",
+        state: ToolState::Complete,
+    },
+    ToolCall {
+        kind: ToolKind::Edit,
+        input: "crates/coder-new/src/main.rs",
+        output: "- SetCursorStyle::SteadyBar\n+ SetCursorStyle::BlinkingBlock",
+        state: ToolState::Complete,
+    },
+    ToolCall {
+        kind: ToolKind::Run,
+        input: "cargo fmt -p coder-new --check",
+        output: "Exit 0 · formatting passed",
+        state: ToolState::Complete,
+    },
+];
 
 pub const DEMOS: [DemoAgent; 4] = [
     DemoAgent {
@@ -20,51 +49,88 @@ pub const DEMOS: [DemoAgent; 4] = [
         tokens: "8.2k",
         conversation: &[
             DemoMessage::User("Review the composer keyboard navigation."),
-            DemoMessage::Tool("Read the draft editor and checked paste handling"),
+            DemoMessage::Tool(ToolCall {
+                kind: ToolKind::Read,
+                input: "crates/coder-new/src/lib.rs",
+                output: "Draft editing and per-conversation state",
+                state: ToolState::Complete,
+            }),
+            DemoMessage::Tool(ToolCall {
+                kind: ToolKind::Search,
+                input: "\"KeyCode|KeyEventKind\" crates/coder-new/src/lib.rs",
+                output: "18 matches · editing, selection, and key releases",
+                state: ToolState::Complete,
+            }),
             DemoMessage::Assistant(
-                "The composer keeps text editing local. Left and Right move through whole graphemes, and pasted text stays in the draft until you press Enter.",
+                "The input keeps pasted text local and restores each conversation's draft. Left and Right move through whole graphemes.",
             ),
-            DemoMessage::User("Keep my draft when I switch conversations."),
-            DemoMessage::Tool(
-                "Checked draft and cursor restoration across four agent conversations",
-            ),
-            DemoMessage::Assistant(
-                "Each conversation keeps its own draft and cursor. Switching agents restores the text exactly where you left it.",
-            ),
+            DemoMessage::User("Check cursor restoration while switching agents."),
+            DemoMessage::Tool(ToolCall {
+                kind: ToolKind::Run,
+                input: "cargo test -p coder-new switching_restores_each_conversations_draft_cursor_messages_and_scroll",
+                output: "Checking draft, cursor, messages, and scroll restoration",
+                state: ToolState::Running,
+            }),
         ],
     },
     DemoAgent {
         name: "codex",
-        task: "Checking the footer placement",
+        task: "Checking the agent rail placement",
         tokens: "12.4k",
         conversation: &[
-            DemoMessage::User("Check the agent rail placement at different terminal sizes."),
-            DemoMessage::Tool("Rendered the input and rail at 110, 80, and 24 columns"),
+            DemoMessage::User("Check the agent rail at wide and narrow terminal sizes."),
+            DemoMessage::Tool(ToolCall {
+                kind: ToolKind::Read,
+                input: "crates/coder-new/src/ui.rs",
+                output: "Composer rules, agent columns, and token alignment",
+                state: ToolState::Complete,
+            }),
+            DemoMessage::Tool(ToolCall {
+                kind: ToolKind::Run,
+                input: "cargo test -p coder-new selected_agent_keeps_the_rail_visible_and_tokens_aligned_after_resize",
+                output: "Exit 0 · 80- and 24-column views checked",
+                state: ToolState::Complete,
+            }),
             DemoMessage::Assistant(
-                "The rail stays below the input. Agent names remain visible, and every token count lines up on the right.",
+                "Agent names and token counts stay visible. Long tasks end with an ellipsis, and narrow terminals shorten the token label.",
             ),
-            DemoMessage::User("What happens when the task description is too long?"),
-            DemoMessage::Tool("Checked task truncation with a narrow viewport"),
-            DemoMessage::Assistant(
-                "Long task descriptions end with an ellipsis. Narrow terminals shorten the token label so the name and count still fit.",
-            ),
+            DemoMessage::User("Verify there are no blank rows between the input and the rail."),
+            DemoMessage::Tool(ToolCall {
+                kind: ToolKind::Run,
+                input: "cargo test -p coder-new header_and_rail_use_compact_spacing_at_the_terminal_bottom",
+                output: "Checking consecutive rows and the final terminal row",
+                state: ToolState::Running,
+            }),
         ],
     },
     DemoAgent {
         name: "devin-cli",
-        task: "Inspecting the compact status row",
+        task: "Checking conversation switching",
         tokens: "4.7k",
         conversation: &[
-            DemoMessage::User("Inspect the compact plugin and wallet status row."),
-            DemoMessage::Tool("Read the sample plugin labels and wallet balance"),
+            DemoMessage::User("Keep each agent conversation's draft independent."),
+            DemoMessage::Tool(ToolCall {
+                kind: ToolKind::Read,
+                input: "crates/coder-new/src/lib.rs",
+                output: "Conversation selection and saved draft state",
+                state: ToolState::Complete,
+            }),
+            DemoMessage::Tool(ToolCall {
+                kind: ToolKind::Search,
+                input: "\"saved_chats|select_agent\" crates/coder-new/src/lib.rs",
+                output: "5 conversation slots · main and four agents",
+                state: ToolState::Complete,
+            }),
             DemoMessage::Assistant(
-                "The status row shows six plugins and the sample balance of 24,000 sats. It fits beneath the four agent rows without crowding the input.",
+                "Each conversation keeps its own draft, messages, and scroll position. Switching restores the cursor where you left it.",
             ),
-            DemoMessage::User("Keep the status quiet while I read a conversation."),
-            DemoMessage::Tool("Checked status colors against the conversation text"),
-            DemoMessage::Assistant(
-                "Plugin and wallet values use dim text. The selected conversation and its messages remain the focus.",
-            ),
+            DemoMessage::User("Exercise a switch away from a multiline draft."),
+            DemoMessage::Tool(ToolCall {
+                kind: ToolKind::Run,
+                input: "cargo test -p coder-new switching_restores_each_conversations_draft_cursor_messages_and_scroll",
+                output: "Switching across all four agents and back to main",
+                state: ToolState::Running,
+            }),
         ],
     },
     DemoAgent {
@@ -72,16 +138,29 @@ pub const DEMOS: [DemoAgent; 4] = [
         task: "Verifying the preview colors",
         tokens: "3.1k",
         conversation: &[
-            DemoMessage::User("Verify the terminal preview uses the Grok Night palette."),
-            DemoMessage::Tool("Checked the RGB values used by the renderer"),
+            DemoMessage::User("Verify the terminal preview colors."),
+            DemoMessage::Tool(ToolCall {
+                kind: ToolKind::Read,
+                input: "crates/coder-new/src/theme.rs",
+                output: "Grok Night colors and the shared Coder background",
+                state: ToolState::Complete,
+            }),
+            DemoMessage::Tool(ToolCall {
+                kind: ToolKind::Search,
+                input: "\"NEAR_BLACK\" crates/coder-ui/src/theme.rs",
+                output: "#0a0a0a · shared near-black background",
+                state: ToolState::Complete,
+            }),
             DemoMessage::Assistant(
-                "The preview uses Grok Night colors with Coder's near-black background. The composer shares the base background, with quiet horizontal rules around the input.",
+                "The terminal and SVG export use the same colors. The composer shares Coder's near-black background and uses quiet horizontal rules.",
             ),
-            DemoMessage::User("Do the exported previews use those same colors?"),
-            DemoMessage::Tool("Compared the SVG export with the rendered terminal buffer"),
-            DemoMessage::Assistant(
-                "The SVG reads the same rendered cells as the terminal. Its foreground, background, and selected agent colors come from the same palette.",
-            ),
+            DemoMessage::User("Compare the terminal and exported preview."),
+            DemoMessage::Tool(ToolCall {
+                kind: ToolKind::Run,
+                input: "cargo run -p coder-new -- --snapshot",
+                output: "Rendering tool rows, delegation components, and the composer",
+                state: ToolState::Running,
+            }),
         ],
     },
 ];

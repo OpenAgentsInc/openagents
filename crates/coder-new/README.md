@@ -1,7 +1,11 @@
 # Coder terminal mockup
 
 A standalone Ratatui screen preview for the new Coder terminal. The default
-view shows a sample conversation, compact tool calls, a diff, and a composer.
+view shows Read, Search, Edit, and Run examples, a diff, four running
+delegations, and a composer. Delegations use the same agent names, tasks, and
+token counts as the rail. Their magenta diamonds pulse while running commands
+show a rotating spinner. Each agent conversation has its own tool calls,
+arguments, results, and current activity.
 Press Tab to switch to the welcome view.
 
 ```sh

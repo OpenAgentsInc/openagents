@@ -1,4 +1,5 @@
-use coder_new::agents::{DEMOS, DemoMessage};
+use coder_new::agents::{DEMOS, DemoMessage, MAIN_TOOLS};
+use coder_new::tools::{ToolCall, ToolKind, ToolState};
 use coder_new::{App, Screen, snapshot, ui};
 use crossterm::event::{Event, KeyCode, KeyEvent, KeyEventKind, KeyModifiers};
 use ratatui::{Terminal, backend::TestBackend};
@@ -28,6 +29,18 @@ fn both_views_and_tiny_terminals_render() {
     assert!(conversation.contains("Conversation first"));
     assert_eq!(composer_rules(&conversation).len(), 2);
     assert!(!conversation.contains("Sample data"));
+    let main = screen(&mut app, 110, 70);
+    let body = transcript_text(&main);
+    assert_tool_calls(&body, MAIN_TOOLS.iter());
+    let lines: Vec<_> = body.lines().collect();
+    for demo in &DEMOS {
+        let row = lines
+            .iter()
+            .position(|line| line.contains(&format!("Delegate {}", demo.name)))
+            .unwrap();
+        assert!(lines[row + 1].contains(demo.task));
+        assert!(lines[row + 2].contains(&format!("Running · {} tokens", demo.tokens)));
+    }
     key(&mut app, KeyCode::Tab);
     assert!(screen(&mut app, 110, 36).contains("What do you want to build?"));
     for (width, height) in [(80, 24), (40, 12), (24, 10), (23, 9), (1, 1)] {
@@ -130,6 +143,16 @@ fn composer_rules(rendered: &str) -> Vec<(usize, &str)> {
         .collect()
 }
 
+fn composer_text(rendered: &str) -> String {
+    let rules = composer_rules(rendered);
+    rendered
+        .lines()
+        .skip(rules[0].0)
+        .take(rules[1].0 - rules[0].0 + 1)
+        .collect::<Vec<_>>()
+        .join("\n")
+}
+
 fn assert_agent_rail(rendered: &str) {
     let rules = composer_rules(rendered);
     assert_eq!(rules.len(), 2);
@@ -183,7 +206,7 @@ fn composer_uses_two_rules_and_expands_for_a_multiline_draft() {
     assert_eq!(cursor.x, 2);
     assert_eq!(usize::from(cursor.y), rules[0].0 + 1);
     assert!(!empty.contains(" Message "));
-    assert!(!empty.chars().any(|ch| "│╭╮╰╯".contains(ch)));
+    assert!(!composer_text(&empty).chars().any(|ch| "│╭╮╰╯".contains(ch)));
 
     app.handle(Event::Paste("first\nsecond\nthird".into()));
     key(&mut app, KeyCode::Left);
@@ -193,7 +216,11 @@ fn composer_uses_two_rules_and_expands_for_a_multiline_draft() {
     let rules = composer_rules(&expanded);
     assert_eq!(rules.len(), 2);
     assert_eq!(rules[1].0 - rules[0].0, 4);
-    assert!(!expanded.chars().any(|ch| "│╭╮╰╯".contains(ch)));
+    assert!(
+        !composer_text(&expanded)
+            .chars()
+            .any(|ch| "│╭╮╰╯".contains(ch))
+    );
     terminal.draw(|frame| ui::render(frame, &mut app)).unwrap();
     let cursor = terminal.get_cursor_position().unwrap();
     assert_eq!(usize::from(cursor.y), rules[1].0 - 1);
@@ -265,19 +292,53 @@ fn compact_text(text: &str) -> String {
     text.chars().filter(|ch| !ch.is_whitespace()).collect()
 }
 
+fn transcript_text(rendered: &str) -> String {
+    let composer_top = composer_rules(rendered)[0].0;
+    rendered
+        .lines()
+        .take(composer_top)
+        .collect::<Vec<_>>()
+        .join("\n")
+}
+
+fn assert_tool_calls<'a>(rendered: &str, calls: impl Iterator<Item = &'a ToolCall>) {
+    let text = compact_text(rendered);
+    for call in calls {
+        let kind = match call.kind {
+            ToolKind::Read => "Read",
+            ToolKind::Search => "Search",
+            ToolKind::Edit => "Edit",
+            ToolKind::Run => "Run",
+        };
+        assert!(text.contains(&format!("{kind}{}", compact_text(call.input))));
+        assert!(text.contains(&compact_text(call.output)));
+        match call.state {
+            ToolState::Complete => {
+                assert!(text.contains(&format!("◆{kind}{}", compact_text(call.input))));
+            }
+            ToolState::Running => assert!(text.contains("╰Running")),
+            ToolState::Failed => assert!(text.contains("╰Failed")),
+        }
+    }
+}
+
 #[test]
 fn selecting_each_agent_loads_its_own_demo_conversation() {
     let mut app = App::default();
     for (index, demo) in DEMOS.iter().enumerate() {
         key(&mut app, KeyCode::Down);
         assert_eq!(app.selected_agent, Some(index));
-        let rendered = screen(&mut app, 110, 40);
-        let composer_top = composer_rules(&rendered)[0].0;
-        let body = rendered
-            .lines()
-            .take(composer_top)
-            .collect::<Vec<_>>()
-            .join("\n");
+        let rendered = screen(&mut app, 110, 70);
+        let body = transcript_text(&rendered);
+        assert_tool_calls(
+            &body,
+            demo.conversation
+                .iter()
+                .filter_map(|message| match message {
+                    DemoMessage::Tool(call) => Some(call),
+                    _ => None,
+                }),
+        );
         let prompt = demo
             .conversation
             .iter()
@@ -439,4 +500,81 @@ fn header_and_rail_use_compact_spacing_at_the_terminal_bottom() {
     assert_eq!(bottom + DEMOS.len(), lines.len() - 1);
     assert!(!rendered.contains("6 plugins"));
     assert!(!rendered.contains("24,000 sats"));
+}
+
+#[test]
+fn animation_ticks_change_running_indicators_without_changing_conversation_state() {
+    let mut app = App::default();
+    app.handle(Event::Paste("retained draft 界".into()));
+    app.messages.push("retained message".into());
+    let before = screen(&mut app, 110, 70);
+    let state = conversation_state(&app);
+    let selected = app.selected_agent;
+    let phase = app.animation_frame;
+    let fixed_snapshot = snapshot::svg(&mut app, 110, 70);
+    assert_eq!(snapshot::svg(&mut app, 110, 70), fixed_snapshot);
+    let is_spinner = |ch: &char| ('\u{2800}'..='\u{28ff}').contains(ch);
+    assert_eq!(before.chars().filter(is_spinner).count(), 0);
+
+    app.tick();
+    let after = screen(&mut app, 110, 70);
+    assert_ne!(app.animation_frame, phase);
+    assert_eq!(before, after);
+    let pulsed_snapshot = snapshot::svg(&mut app, 110, 70);
+    assert_ne!(fixed_snapshot, pulsed_snapshot);
+    let changed: Vec<_> = fixed_snapshot
+        .lines()
+        .zip(pulsed_snapshot.lines())
+        .filter(|(before_line, after_line)| before_line != after_line)
+        .collect();
+    assert_eq!(changed.len(), DEMOS.len());
+    for (before_line, after_line) in changed {
+        assert!(before_line.ends_with(">◆</text>"));
+        assert!(after_line.ends_with(">◆</text>"));
+    }
+    assert_eq!(conversation_state(&app), state);
+    assert_eq!(app.selected_agent, selected);
+    for _ in 0..7 {
+        app.tick();
+    }
+    assert_eq!(app.animation_frame, phase);
+    assert_eq!(snapshot::svg(&mut app, 110, 70), fixed_snapshot);
+
+    key(&mut app, KeyCode::Down);
+    app.handle(Event::Paste("agent draft 界".into()));
+    app.messages.push("agent message".into());
+    let before = screen(&mut app, 110, 70);
+    let state = conversation_state(&app);
+    let selected = app.selected_agent;
+    let fixed_snapshot = snapshot::svg(&mut app, 110, 70);
+    assert_eq!(snapshot::svg(&mut app, 110, 70), fixed_snapshot);
+    assert_eq!(before.chars().filter(is_spinner).count(), 1);
+    app.tick();
+    let after = screen(&mut app, 110, 70);
+    assert_ne!(before, after);
+    assert_eq!(after.chars().filter(is_spinner).count(), 1);
+    for (before_row, after_row) in before.lines().zip(after.lines()) {
+        if before_row != after_row {
+            assert!(before_row.chars().any(|ch| is_spinner(&ch)));
+            assert!(after_row.chars().any(|ch| is_spinner(&ch)));
+            assert_eq!(
+                before_row
+                    .chars()
+                    .filter(|ch| !is_spinner(ch))
+                    .collect::<String>(),
+                after_row
+                    .chars()
+                    .filter(|ch| !is_spinner(ch))
+                    .collect::<String>()
+            );
+        }
+    }
+    assert_eq!(conversation_state(&app), state);
+    assert_eq!(app.selected_agent, selected);
+    for _ in 0..7 {
+        app.tick();
+    }
+    assert_eq!(app.animation_frame, phase);
+    assert_eq!(snapshot::svg(&mut app, 110, 70), fixed_snapshot);
+    assert_eq!(conversation_state(&app), state);
 }
