@@ -26,6 +26,9 @@ use crossterm::event::{Event, KeyCode, KeyEventKind, KeyModifiers, MouseEventKin
 use unicode_segmentation::UnicodeSegmentation;
 use unicode_width::UnicodeWidthStr;
 
+/// Demo fixtures are available only in local development builds.
+pub const DEMO_AVAILABLE: bool = cfg!(debug_assertions);
+
 #[derive(Clone, Copy, Default, PartialEq, Eq)]
 pub enum Screen {
     #[default]
@@ -34,11 +37,20 @@ pub enum Screen {
     PluginSettings,
 }
 
-#[derive(Clone, Copy, Default, PartialEq, Eq)]
+#[derive(Clone, Copy, PartialEq, Eq)]
 pub enum Mode {
-    #[default]
     Demo,
     Live,
+}
+
+impl Default for Mode {
+    fn default() -> Self {
+        if DEMO_AVAILABLE {
+            Self::Demo
+        } else {
+            Self::Live
+        }
+    }
 }
 
 #[derive(Default)]
@@ -200,6 +212,10 @@ impl App {
     }
 
     pub fn set_mode(&mut self, mode: Mode) {
+        if mode == Mode::Demo && !DEMO_AVAILABLE {
+            self.notice = Some("Demo mode is available only in local development builds.".into());
+            return;
+        }
         if self.mode == mode {
             return;
         }
@@ -443,11 +459,15 @@ impl App {
         self.slash_hidden = false;
         self.notice = None;
         match command {
-            slash::Command::Demo => self.set_mode(if self.mode == Mode::Demo { Mode::Live } else { Mode::Demo }),
+            slash::Command::Demo => self.set_mode(if self.mode == Mode::Demo {
+                Mode::Live
+            } else {
+                Mode::Demo
+            }),
             slash::Command::Plugins => self.open_plugins(),
             slash::Command::Models => self.open_models(),
             slash::Command::Export => self.export(None),
-            slash::Command::Help => self.notice = Some("/demo  Toggle demo/live\n/plugins  Manage plugins\n/models  Choose a model for an enabled provider\n/export [path]  Export the selected conversation as ATIF\n/help  Show commands\nTab  Complete a command\nEsc  Close suggestions or stop a reply\nCtrl+C  Quit".into()),
+            slash::Command::Help => self.notice = Some(slash::help()),
         }
     }
 

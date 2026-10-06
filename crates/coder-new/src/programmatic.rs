@@ -21,9 +21,14 @@ use crate::{
     plugins::SettingsFocus, trajectory,
 };
 
-pub const USAGE: &str = "usage: openagents coder COMMAND [OPTIONS]
+macro_rules! command_usage {
+    ($demo:literal) => {
+        concat!(
+            "usage: openagents coder COMMAND [OPTIONS]
   status                              Provider, model, plugins, and working directory.
-  chat [-p TEXT | --prompt-file FILE | --stdin] [--session ID] [--delegation ID] [--demo]
+  chat [-p TEXT | --prompt-file FILE | --stdin] [--session ID] [--delegation ID]",
+            $demo,
+            "
                                       Run the same chat and tools as the terminal.
   delegate AGENT --task TEXT [--session ID]
                                       Run Microcoder or an enabled ACP subagent.
@@ -49,7 +54,16 @@ pub const USAGE: &str = "usage: openagents coder COMMAND [OPTIONS]
 Options: --json streams NDJSON events for chat and delegation.
          --in DIR sets the working directory; --state DIR sets the Coder store.
 Settings default to ~/.openagents/coder-new. Sessions use its sessions directory.
-Keys are accepted through environment variables or configuration stdin, never printed.";
+Keys are accepted through environment variables or configuration stdin, never printed."
+        )
+    };
+}
+
+pub const USAGE: &str = if crate::DEMO_AVAILABLE {
+    command_usage!(" [--demo]")
+} else {
+    command_usage!("")
+};
 
 /// Explicit roots and environment make command execution usable from other hosts.
 pub struct Context {
@@ -87,8 +101,20 @@ fn usage(message: &str) -> Error {
     }
 }
 
+fn check_demo(arguments: &[String], available: bool) -> Result<(), Error> {
+    if !available && arguments.iter().any(|argument| argument == "--demo") {
+        return Err(usage(
+            "Demo mode is available only in local development builds.",
+        ));
+    }
+    Ok(())
+}
+
 /// Dispatch one CLI call. JSON mode streams events, followed by a result document.
 pub fn run(arguments: &[String], json_mode: bool) -> u8 {
+    if let Err(error) = check_demo(arguments, crate::DEMO_AVAILABLE) {
+        return print_error(error, json_mode);
+    }
     if arguments.is_empty()
         || arguments
             .iter()
@@ -257,6 +283,16 @@ pub fn execute(
     context: &Context,
     emit: &mut dyn FnMut(Value),
 ) -> Result<Value, Error> {
+    execute_with_demo_policy(arguments, context, emit, crate::DEMO_AVAILABLE)
+}
+
+fn execute_with_demo_policy(
+    arguments: &[String],
+    context: &Context,
+    emit: &mut dyn FnMut(Value),
+    demo_available: bool,
+) -> Result<Value, Error> {
+    check_demo(arguments, demo_available)?;
     let Some((command, rest)) = arguments.split_first() else {
         return Err(usage("Choose a Coder command."));
     };
@@ -1255,6 +1291,47 @@ mod tests {
             &mut |_| {},
         )
     }
+
+    #[test]
+    fn final_builds_reject_demo_before_loading_state_or_emitting_events() {
+        let temp = tempfile::tempdir().unwrap();
+        let context = context(&temp);
+        for words in [
+            vec!["chat", "-p", "hello", "--session", "test", "--demo"],
+            vec!["plugins", "enable", "openrouter-byok", "--demo"],
+            vec!["export", "missing", "--output", "copy.json", "--demo"],
+        ] {
+            let arguments = words
+                .iter()
+                .map(|word| (*word).to_owned())
+                .collect::<Vec<_>>();
+            let error = execute_with_demo_policy(
+                &arguments,
+                &context,
+                &mut |_| panic!("A rejected command must not emit events."),
+                false,
+            )
+            .unwrap_err();
+            assert!(error.usage);
+            assert_eq!(
+                error.message,
+                "Demo mode is available only in local development builds."
+            );
+            assert!(!context.root.exists());
+            assert!(!context.cwd.join("copy.json").exists());
+        }
+    }
+
+    #[test]
+    fn demo_policy_keeps_development_help_and_allows_regular_final_commands() {
+        let demo = ["chat".into(), "--demo".into()];
+        assert!(check_demo(&demo, true).is_ok());
+        assert!(check_demo(&["status".into()], false).is_ok());
+        assert!(command_usage!(" [--demo]").contains("[--demo]"));
+        assert!(!command_usage!("").contains("demo"));
+        assert_eq!(USAGE.contains("[--demo]"), crate::DEMO_AVAILABLE);
+    }
+
     #[test]
     fn command_settings_use_the_same_store_without_exposing_keys() {
         let temp = tempfile::tempdir().unwrap();

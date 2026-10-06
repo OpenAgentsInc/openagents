@@ -23,13 +23,7 @@ pub(super) fn render(frame: &mut Frame, area: Rect, app: &App) {
     } else {
         "Plugins"
     };
-    let context_width = if area.width >= 48 && app.mode == Mode::Live {
-        24
-    } else if area.width >= 42 {
-        17
-    } else {
-        0
-    };
+    let context_width = if area.width >= 42 { 17 } else { 0 };
     frame.render_widget(
         Paragraph::new(Span::styled(
             truncate(title, area.width.saturating_sub(context_width + 2)),
@@ -42,14 +36,6 @@ pub(super) fn render(frame: &mut Frame, area: Rect, app: &App) {
     if context_width > 0 {
         frame.render_widget(
             Paragraph::new(Line::from(vec![
-                span(
-                    if app.mode == Mode::Live {
-                        "live · "
-                    } else {
-                        ""
-                    },
-                    t::ACCENT_MODEL,
-                ),
                 span("openagents", t::TEXT_PRIMARY),
                 span(" / main", t::GRAY),
             ]))

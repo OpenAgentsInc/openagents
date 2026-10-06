@@ -10,7 +10,7 @@ use ratatui::{
 
 use crate::theme as t;
 
-/// A command supported by the preview.
+/// A terminal command.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum Command {
     Demo,
@@ -21,16 +21,25 @@ pub enum Command {
 }
 
 /// Commands in the order shown by the picker.
-pub const ALL: [Command; 5] = [
-    Command::Demo,
-    Command::Plugins,
-    Command::Models,
-    Command::Export,
-    Command::Help,
-];
+pub const ALL: &[Command] = if crate::DEMO_AVAILABLE {
+    &[
+        Command::Demo,
+        Command::Plugins,
+        Command::Models,
+        Command::Export,
+        Command::Help,
+    ]
+} else {
+    &[
+        Command::Plugins,
+        Command::Models,
+        Command::Export,
+        Command::Help,
+    ]
+};
 
 impl Command {
-    pub const ALL: [Self; 5] = ALL;
+    pub const ALL: &'static [Self] = ALL;
 
     /// The command word without its leading slash.
     pub const fn word(self) -> &'static str {
@@ -61,7 +70,8 @@ pub fn matches(text: &str) -> Vec<Command> {
     let Some(word) = command_prefix(text) else {
         return Vec::new();
     };
-    ALL.into_iter()
+    ALL.iter()
+        .copied()
         .filter(|command| command.word().starts_with(word))
         .collect()
 }
@@ -72,7 +82,17 @@ pub fn parse(text: &str) -> Option<Command> {
         return None;
     }
     let word = &text[1..];
-    ALL.into_iter().find(|command| command.word() == word)
+    ALL.iter().copied().find(|command| command.word() == word)
+}
+
+/// Help for the commands available in this build.
+pub fn help() -> String {
+    let mut text = String::new();
+    if crate::DEMO_AVAILABLE {
+        text.push_str("/demo  Toggle demo/live\n");
+    }
+    text.push_str("/plugins  Manage plugins\n/models  Choose a model for an enabled provider\n/export [path]  Export the selected conversation as ATIF\n/help  Show commands\nTab  Complete a command\nEsc  Close suggestions or stop a reply\nCtrl+C  Quit");
+    text
 }
 
 /// Whether text is a complete command word, including an unknown one.
@@ -146,8 +166,11 @@ mod tests {
 
     #[test]
     fn suggestions_accept_only_a_leading_slash_and_lowercase_prefix() {
-        assert_eq!(matches("/"), ALL);
-        assert_eq!(matches("/d"), [Command::Demo]);
+        assert_eq!(matches("/").as_slice(), ALL);
+        assert_eq!(
+            matches("/d").contains(&Command::Demo),
+            crate::DEMO_AVAILABLE
+        );
         assert_eq!(matches("/plugins"), [Command::Plugins]);
         assert!(matches("/unknown").is_empty());
         for text in ["", "demo", " /d", "/D", "/d ", "/demo on", "/usr/bin"] {
@@ -157,7 +180,7 @@ mod tests {
 
     #[test]
     fn submission_distinguishes_known_commands_unknown_words_and_messages() {
-        for command in ALL {
+        for &command in ALL {
             let text = format!("/{}", command.word());
             assert_eq!(parse(&text), Some(command));
             assert!(is_command_word(&text));
@@ -172,5 +195,16 @@ mod tests {
             assert_eq!(parse(text), None, "{text:?}");
             assert!(!is_command_word(text), "{text:?}");
         }
+    }
+
+    #[test]
+    fn demo_availability_agrees_across_commands_help_and_default_mode() {
+        assert_eq!(parse("/demo").is_some(), crate::DEMO_AVAILABLE);
+        assert_eq!(help().contains("/demo"), crate::DEMO_AVAILABLE);
+        assert_eq!(ALL.contains(&Command::Demo), crate::DEMO_AVAILABLE);
+        assert_eq!(
+            crate::Mode::default() == crate::Mode::Demo,
+            crate::DEMO_AVAILABLE
+        );
     }
 }

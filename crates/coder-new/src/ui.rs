@@ -329,23 +329,17 @@ fn header_view(frame: &mut Frame, area: Rect, app: &App) {
         .and_then(|name| name.to_str())
         .unwrap_or("openagents");
     let branch = app.branch.as_deref().unwrap_or("main");
-    let mode = if app.mode == Mode::Live {
-        "live · "
-    } else {
-        ""
-    };
     let context_width = area
         .width
         .saturating_sub(if agent.is_some() { title_width + 2 } else { 0 })
-        .min((mode.width() + directory.width() + 3 + branch.width()) as u16);
+        .min((directory.width() + 3 + branch.width()) as u16);
     let context = Rect {
         x: area.right().saturating_sub(context_width),
         width: context_width,
         ..area
     };
-    let prefix_width = (mode.width() + 3 + branch.width()) as u16;
+    let prefix_width = (3 + branch.width()) as u16;
     let context_spans = vec![
-        span(mode, t::ACCENT_MODEL),
         span(
             truncate(directory, context_width.saturating_sub(prefix_width)),
             t::TEXT_PRIMARY,

@@ -656,6 +656,19 @@ fn selected_agent_keeps_the_rail_visible_and_tokens_aligned_after_resize() {
 
 #[test]
 fn header_and_rail_keep_compact_spacing_above_the_bottom_margin() {
+    let mut live = App::default();
+    live.set_mode(coder_new::Mode::Live);
+    for target in [
+        Screen::Conversation,
+        Screen::Plugins,
+        Screen::PluginSettings,
+    ] {
+        live.screen = target;
+        let rendered = screen(&mut live, 110, 36);
+        let header = rendered.lines().nth(1).unwrap();
+        assert!(header.trim_end().ends_with("openagents / main"));
+        assert!(!header.contains("live"));
+    }
     let mut app = App::default();
     let rendered = screen(&mut app, 110, 36);
     let lines: Vec<_> = rendered.lines().collect();

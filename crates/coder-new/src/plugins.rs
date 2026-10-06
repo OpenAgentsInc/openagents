@@ -104,7 +104,7 @@ impl Default for Plugins {
             check_requested: false,
             saved: false,
             credential_changed: false,
-            live: false,
+            live: !crate::DEMO_AVAILABLE,
             live_key: None,
             other_preferences: Preferences::default(),
             saved_connection: None,

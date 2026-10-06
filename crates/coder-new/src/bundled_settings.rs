@@ -196,7 +196,7 @@ impl Default for BundledSettings {
             model_draft: Draft::default(),
             endpoint_draft: Draft::default(),
             remove_key: false,
-            live: false,
+            live: !crate::DEMO_AVAILABLE,
             other: defaults,
             store: None,
             configured: false,

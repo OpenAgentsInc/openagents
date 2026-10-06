@@ -3,7 +3,7 @@ use std::{
     time::{Duration, Instant},
 };
 
-use coder_new::{App, Mode, live::Background, snapshot, ui};
+use coder_new::{App, DEMO_AVAILABLE, Mode, live::Background, snapshot, ui};
 #[cfg(unix)]
 use crossterm::event::{
     KeyboardEnhancementFlags, PopKeyboardEnhancementFlags, PushKeyboardEnhancementFlags,
@@ -34,23 +34,29 @@ fn main() -> io::Result<()> {
     let mut app = App::default();
     let mut capture = false;
     let mut models = false;
-    if !args.iter().any(|arg| arg == "--demo")
-        && (!args.iter().any(|arg| arg == "--snapshot") || args.iter().any(|arg| arg == "--live"))
+    if !DEMO_AVAILABLE
+        || !args.iter().any(|arg| arg == "--demo")
+            && (!args.iter().any(|arg| arg == "--snapshot")
+                || args.iter().any(|arg| arg == "--live"))
     {
         app.set_mode(Mode::Live);
     }
     for arg in args {
         match arg.as_str() {
             "--live" => app.set_mode(Mode::Live),
-            "--demo" => app.set_mode(Mode::Demo),
+            "--demo" if DEMO_AVAILABLE => app.set_mode(Mode::Demo),
+            "--demo" => {
+                return Err(io::Error::new(
+                    io::ErrorKind::InvalidInput,
+                    "Demo mode is available only in local development builds.",
+                ));
+            }
             "--plugins" => app.open_plugins(),
             "--plugin-settings" => app.open_plugin_settings(),
             "--models" => models = true,
             "--snapshot" => capture = true,
             "--help" | "-h" => {
-                println!(
-                    "Coder terminal\n\nUsage: coder [--live | --demo] [--plugins | --plugin-settings | --models] [--snapshot]\n\n--live             Use enabled providers and tools (default).\n--demo             Use local example conversations.\n--plugins          Start with plugin management.\n--plugin-settings  Start with OpenRouter settings.\n--models           Open the model picker for an enabled provider.\n--snapshot         Write a 110×36 SVG to stdout; defaults to demo.\n--version          Print the release version and build commit.\n\n/demo toggles live and demo. /models chooses a model and reasoning level. /export [path] writes ATIF. Type / for commands; Up/Down selects, Tab completes, Enter runs. Cmd+P on macOS, Ctrl+P on Windows, F2, or /plugins opens plugins. Esc stops a reply. Ctrl+C quits."
-                );
+                println!("{}", help());
                 return Ok(());
             }
             _ => {
@@ -192,6 +198,28 @@ fn main() -> io::Result<()> {
     let extra_restore = restore_extras();
     ratatui::restore();
     result.and(extra_restore)
+}
+
+fn help() -> String {
+    let modes = if DEMO_AVAILABLE {
+        "[--live | --demo]"
+    } else {
+        "[--live]"
+    };
+    let demo_option = if DEMO_AVAILABLE {
+        "--demo             Use local example conversations.\n"
+    } else {
+        ""
+    };
+    let snapshot_mode = if DEMO_AVAILABLE { "demo" } else { "live" };
+    let demo_command = if DEMO_AVAILABLE {
+        "/demo toggles live and demo. "
+    } else {
+        ""
+    };
+    format!(
+        "Coder terminal\n\nUsage: coder {modes} [--plugins | --plugin-settings | --models] [--snapshot]\n\n--live             Use enabled providers and tools (default).\n{demo_option}--plugins          Start with plugin management.\n--plugin-settings  Start with OpenRouter settings.\n--models           Open the model picker for an enabled provider.\n--snapshot         Write a 110×36 SVG to stdout; defaults to {snapshot_mode}.\n--version          Print the release version and build commit.\n\n{demo_command}/models chooses a model and reasoning level. /export [path] writes ATIF. Type / for commands; Up/Down selects, Tab completes, Enter runs. Cmd+P on macOS, Ctrl+P on Windows, F2, or /plugins opens plugins. Esc stops a reply. Ctrl+C quits."
+    )
 }
 
 fn restore_extras() -> io::Result<()> {

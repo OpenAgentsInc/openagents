@@ -32,7 +32,8 @@ tools and returns their results to the model; local Microcoder uses existing
 model logins. ACP settings define named local agent executables. Preferences
 and keys persist in private files under `~/.openagents/coder-new/`. Open plugins with F2
 or `/plugins`, or start with `--plugins` or `--plugin-settings`.
-Interactive runs start [live](live.png); `/demo` toggles the local fixtures.
+Interactive runs start [live](live.png). Local development builds support `/demo`
+and `--demo` for fixtures; final builds always use live mode.
 The [slash picker](slash-commands.png) filters commands above the input as you
 type, following the existing OpenAgents terminal. Snapshots dispatch no requests.
 
