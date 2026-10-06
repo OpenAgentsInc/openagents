@@ -29,10 +29,11 @@ pub(crate) const USAGE: &str = "usage: openagents verse COMMAND [OPTIONS]
   tail [--wait SECONDS]     Follow poses, gestures, states, and chat as they arrive,
                             then report the live population and frame cadence.
   me                        This identity's public key and last known state.
-  load [--players N] [--wait SECONDS]
+  load [--players N] [--wait SECONDS] [--max-age-ms MS]
                             Listen to every pose frame in the world (default 30 s)
                             and report each publisher's rate, gaps, and frame age;
-                            exit 1 when fewer than N publishers sent a frame.
+                            exit 1 when fewer than N publishers sent a frame, or
+                            when a frame arrived more than MS after it was stamped.
   walkers N [--hz RATE] [--loopback] [--wait SECONDS]
                             Walk N simulated players with fresh keys in loops in
                             front of the spawn (default world verse-bare) at the
@@ -412,7 +413,7 @@ fn run_group(output: &Output, words: &[String], group: &str) -> u8 {
         "look" => (&["at", "radius", "wait"], 0, 0),
         "chat" => (&["limit"], 0, 0),
         "tail" => (&["wait"], 0, 0),
-        "load" => (&["wait", "players"], 0, 0),
+        "load" => (&["wait", "players", "max-age-ms"], 0, 0),
         "walkers" => (&["wait", "hz"], 1, 1),
         "me" | "leave" | "blocked" => (&[], 0, 0),
         "block" | "unblock" | "mute" | "unmute" => (&[], 1, 1),

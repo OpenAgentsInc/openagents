@@ -267,6 +267,7 @@ impl Publisher {
             "max_gap_ms": self.gaps_ms.iter().max().copied().unwrap_or(0),
             "age_p50_ms": percentile(&ages, 50),
             "age_p95_ms": percentile(&ages, 95),
+            "age_max_ms": ages.last().copied(),
             "entities": self.entities,
         })
     }
@@ -282,9 +283,20 @@ fn percentile(sorted: &[i64], p: usize) -> Option<i64> {
 
 /// `verse load`: listens to every pose frame in the world for `wait`
 /// seconds (default 30) and reports what each publisher delivered. With
-/// `--players N`, exits 1 when fewer than N publishers sent a frame.
+/// `--players N`, exits 1 when fewer than N publishers sent a frame; with
+/// `--max-age-ms MS`, also when any frame arrived more than MS after its
+/// publisher stamped it.
 pub fn load(output: &Output, context: &mut Context, args: &Args, wait: u64) -> Result<u8, String> {
     let expected: usize = args.number("players", 0)?;
+    let max_age: Option<i64> = match args.option("max-age-ms") {
+        Some(text) => Some(
+            text.parse::<i64>()
+                .ok()
+                .filter(|ms| *ms > 0)
+                .ok_or_else(|| "--max-age-ms takes a positive number".to_owned())?,
+        ),
+        None => None,
+    };
     let wait = Duration::from_secs(if wait == 0 { 30 } else { wait });
     let world = context.world.clone();
     let mut scene = Scene::default();
@@ -316,6 +328,11 @@ pub fn load(output: &Output, context: &mut Context, args: &Args, wait: u64) -> R
     gaps.sort_unstable();
     let seen = publishers.len();
     let missing = expected.saturating_sub(seen);
+    let oldest = publishers
+        .values()
+        .filter_map(|p| p.ages_ms.iter().max().copied())
+        .max();
+    let too_old = max_age.is_some_and(|max| oldest.is_some_and(|oldest| oldest > max));
     let receipt = json!({
         "world": world,
         "relay": relay_url(args.option("relay")),
@@ -326,6 +343,9 @@ pub fn load(output: &Output, context: &mut Context, args: &Args, wait: u64) -> R
         "frames": frames,
         "frames_per_second": if seconds > 0.0 { (frames as f64 / seconds * 100.0).round() / 100.0 } else { 0.0 },
         "worst_gap_ms": gaps.last().copied().unwrap_or(0),
+        "oldest_age_ms": oldest,
+        "max_age_ms": max_age,
+        "too_old": too_old,
         "per_publisher": publishers.iter().map(|(k, p)| (k.clone(), p.report())).collect::<BTreeMap<_, _>>(),
     });
     output.emit(&receipt, |v| {
@@ -345,12 +365,18 @@ pub fn load(output: &Output, context: &mut Context, args: &Args, wait: u64) -> R
                 ));
             }
         }
+        if v["too_old"] == true {
+            text.push_str(&format!(
+                "\na frame arrived {} ms after it was stamped, over {} ms",
+                v["oldest_age_ms"], v["max_age_ms"]
+            ));
+        }
         if v["missing"].as_u64().unwrap_or(0) > 0 {
             text.push_str(&format!("\n{} expected players sent nothing", v["missing"]));
         }
         text
     });
-    Ok(u8::from(missing > 0))
+    Ok(u8::from(missing > 0 || too_old))
 }
 
 #[cfg(test)]
@@ -405,6 +431,7 @@ mod tests {
         assert_eq!(report["max_gap_ms"], 200);
         assert_eq!(report["entities"], 1);
         assert!(report["age_p95_ms"].as_i64().is_some());
+        assert!(report["age_max_ms"].as_i64() >= report["age_p95_ms"].as_i64());
         assert_eq!(percentile(&[1, 2, 3, 4], 50), Some(2));
         assert_eq!(percentile(&[], 50), None);
     }

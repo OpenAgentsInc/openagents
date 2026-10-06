@@ -147,7 +147,7 @@ Each slice ships behind its own issue with a test a person can run; the epic is 
 | 6. The phone in the chamber (G5.3) | #10586 | Same as slice 5 from a phone |
 | 7. The Grid in the browser (G6) | #10587 | Open `/grid`, walk, and see the phone's player |
 | 8. Admission and abuse controls (G7) | #10588 | Block a walker; it disappears for you and stays gone after relaunch; a 21st walker is refused by the cap |
-| 9. The 20-player soak (G1, G2) | #10589 | 20 walkers plus a phone, a desktop, and a browser for 30 minutes: frame-time p95 under the device budget on each, no refusals, receipt retained |
+| 9. The 20-player soak (G1, G2) | #10589 | 20 walkers plus a phone, a desktop, and a browser for 30 minutes: frame-time p95 under the device budget on each, no refusals, receipt retained. The sustained 20-player movement soak is the `battle_scale` harness and gates of #10559; `verse load --max-age-ms 1000` checks the 1-second frame-age limit at a viewer beside `verse walkers` |
 
 Slices 1 to 4 need no new authority and land first. Slice 5 waits on
 nothing but a machine to host the instance. The browser's chamber client
