@@ -13,7 +13,8 @@ Press Tab with an ordinary draft to switch to the welcome view.
 Type `/` to see commands above the input, following the existing OpenAgents
 terminal's slash suggestions. The command and description occupy separate
 columns. Typing filters the list; Up/Down selects, Tab completes, Enter runs,
-and Esc dismisses it. The supported commands are `/demo`, `/plugins`, and `/help`.
+and Esc dismisses it. The supported commands are `/demo`, `/plugins`, `/models`,
+and `/help`. `/models` appears when a model provider plugin is enabled.
 
 Edit examples reuse Coder's port of Grok Build's diff renderer and syntax
 highlighter. Rust tokens keep their syntax colors on red and green change
@@ -33,10 +34,26 @@ fields and actions; Enter selects an action; Esc cancels or returns to chat.
 In live mode, **Test API key** checks the entered or saved key with
 `GET /api/v1/key`. Saving a key also checks it; successful checks show
 **Verified**, while errors report their cause. The enabled preference stays
-separate: turn the plugin on to send chat messages. A blank model uses your
-OpenRouter account default. Replies stream from `/api/v1/chat/completions`
+separate: turn the plugin on to send chat messages. The default model is
+`openrouter/free`, including when you leave the model field blank.
+Replies stream from `/api/v1/chat/completions`
 on a background worker, with prior live messages included. Esc stops a reply;
 failed requests are not retried automatically.
+
+Enter `/models` to open a searchable picker, reimplemented from Grok Build's
+staged model and reasoning picker. Choices include the providing plugin, so
+different plugins can offer the same model ID. For OpenRouter, the initial
+shortlist contains the free router, GPT-6 Luna, GPT-6.1 Sol, Claude Fable 5.1,
+Gemini 3.5 Flash, DeepSeek V4.1 Flash, and Grok 4.7. Live mode refreshes only
+these seven models through public single-model lookups. The picker offers the
+model's supported reasoning levels and a maximum output-token limit; automatic
+routers omit fixed reasoning controls. Enter advances and saves on the final
+step. Esc returns to the previous step or closes without applying changes.
+Live model settings persist with the plugin; demo choices remain separate.
+The selected settings apply to subsequent chat requests.
+See the [model](../../docs/coder-new/models.svg),
+[reasoning](../../docs/coder-new/model-reasoning.svg), and
+[output limit](../../docs/coder-new/model-output.svg) previews.
 
 Removing a key takes effect when you save. Disabling retains configuration.
 Live plugin preferences and the API key survive restarts in
@@ -59,6 +76,7 @@ cargo run -p coder-new -- --demo
 cargo run -p coder-new -- --welcome
 cargo run -p coder-new -- --plugins
 cargo run -p coder-new -- --plugin-settings
+cargo run -p coder-new -- --models
 ```
 
 Type a draft, move with Left/Right or Home/End, and edit with Backspace/Delete.
@@ -101,6 +119,7 @@ cargo run -p coder-new -- --welcome --snapshot > docs/coder-new/welcome.svg
 cargo run -p coder-new -- --live --plugins --snapshot > docs/coder-new/plugins.svg
 cargo run -p coder-new -- --live --plugin-settings --snapshot > docs/coder-new/plugin-settings.svg
 cargo run -p coder-new -- --live --snapshot > docs/coder-new/live.svg
+cargo run -p coder-new -- --models --snapshot > docs/coder-new/models.svg
 ```
 
 Snapshots default to demo and never dispatch network work, including with `--live`.

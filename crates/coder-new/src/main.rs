@@ -16,6 +16,7 @@ use crossterm::{
 fn main() -> io::Result<()> {
     let mut app = App::default();
     let mut capture = false;
+    let mut models = false;
     let args: Vec<_> = std::env::args().skip(1).collect();
     if !args.iter().any(|arg| arg == "--demo")
         && (!args.iter().any(|arg| arg == "--snapshot") || args.iter().any(|arg| arg == "--live"))
@@ -29,10 +30,11 @@ fn main() -> io::Result<()> {
             "--welcome" => app.screen = Screen::Welcome,
             "--plugins" => app.open_plugins(),
             "--plugin-settings" => app.open_plugin_settings(),
+            "--models" => models = true,
             "--snapshot" => capture = true,
             "--help" | "-h" => {
                 println!(
-                    "Coder terminal\n\nUsage: coder-new [--live | --demo] [--welcome | --plugins | --plugin-settings] [--snapshot]\n\n--live             Use direct OpenRouter chat (default).\n--demo             Use local example conversations.\n--welcome          Start with the welcome screen.\n--plugins          Start with plugin management.\n--plugin-settings  Start with OpenRouter settings.\n--snapshot         Write a 110×36 SVG to stdout; defaults to demo.\n\n/demo toggles live and demo. Type / for commands; Up/Down selects, Tab completes, Enter runs. F2 or /plugins opens plugins. Esc stops a reply. Ctrl+C quits."
+                    "Coder terminal\n\nUsage: coder-new [--live | --demo] [--welcome | --plugins | --plugin-settings | --models] [--snapshot]\n\n--live             Use direct OpenRouter chat (default).\n--demo             Use local example conversations.\n--welcome          Start with the welcome screen.\n--plugins          Start with plugin management.\n--plugin-settings  Start with OpenRouter settings.\n--models           Open the model picker for an enabled provider.\n--snapshot         Write a 110×36 SVG to stdout; defaults to demo.\n\n/demo toggles live and demo. /models chooses a model and reasoning level. Type / for commands; Up/Down selects, Tab completes, Enter runs. F2 or /plugins opens plugins. Esc stops a reply. Ctrl+C quits."
                 );
                 return Ok(());
             }
@@ -45,15 +47,21 @@ fn main() -> io::Result<()> {
         }
     }
     if capture {
+        if models {
+            app.plugins.enabled = true;
+            app.open_models();
+        }
         return io::stdout().write_all(snapshot::svg(&mut app, 110, 36).as_bytes());
     }
-
     if let Some(root) = model_access::store::openagents_dir() {
         if let Err(error) = app.load_plugin_settings(coder_new::plugin_store::Store::under(
             root.join("coder-new"),
         )) {
             app.notice = Some(error);
         }
+    }
+    if models {
+        app.open_models();
     }
 
     let mut terminal = match ratatui::try_init() {
@@ -85,9 +93,11 @@ fn main() -> io::Result<()> {
         let started = Instant::now();
         let mut next_tick = started + interval;
         let mut background = Background::default();
+        let mut catalog = coder_new::model_catalog::Loader::default();
         loop {
             app.elapsed_seconds = started.elapsed().as_secs();
             background.sync(&mut app);
+            catalog.sync(&mut app);
             execute!(io::stdout(), BeginSynchronizedUpdate)?;
             terminal.draw(|frame| ui::render(frame, &mut app))?;
             // Keep the block blinking while progress updates move the terminal cursor.

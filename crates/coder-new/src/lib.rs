@@ -2,6 +2,8 @@
 
 pub mod agents;
 pub mod live;
+pub mod model_catalog;
+pub mod models;
 pub mod plugin_store;
 pub mod plugins;
 pub mod provider;
@@ -50,6 +52,7 @@ pub struct App {
     pub slash_selected: usize,
     pub slash_hidden: bool,
     pub notice: Option<String>,
+    pub model_picker: Option<models::Picker>,
     other_draft: Draft,
     return_screen: Screen,
     saved_chats: [Chat; 5],
@@ -76,6 +79,7 @@ impl App {
             return;
         }
         self.cancel_request();
+        self.model_picker = None;
         std::mem::swap(&mut self.draft, &mut self.other_draft);
         self.plugins.set_live(mode == Mode::Live);
         self.mode = mode;
@@ -87,10 +91,16 @@ impl App {
     }
 
     pub fn slash_hints(&self) -> Vec<slash::Command> {
-        if self.slash_hidden || !matches!(self.screen, Screen::Conversation | Screen::Welcome) {
+        if self.slash_hidden
+            || self.model_picker.is_some()
+            || !matches!(self.screen, Screen::Conversation | Screen::Welcome)
+        {
             return Vec::new();
         }
         slash::matches(&self.draft.text)
+            .into_iter()
+            .filter(|command| *command != slash::Command::Models || self.plugins.enabled)
+            .collect()
     }
 
     pub fn cancel_request(&mut self) {
@@ -191,7 +201,8 @@ impl App {
         match command {
             slash::Command::Demo => self.set_mode(if self.mode == Mode::Demo { Mode::Live } else { Mode::Demo }),
             slash::Command::Plugins => self.open_plugins(),
-            slash::Command::Help => self.notice = Some("/demo  Toggle demo/live\n/plugins  Manage plugins\n/help  Show commands\nTab  Complete a command\nEsc  Close suggestions or stop a reply\nCtrl+C  Quit".into()),
+            slash::Command::Models => self.open_models(),
+            slash::Command::Help => self.notice = Some("/demo  Toggle demo/live\n/plugins  Manage plugins\n/models  Choose a model for an enabled provider\n/help  Show commands\nTab  Complete a command\nEsc  Close suggestions or stop a reply\nCtrl+C  Quit".into()),
         }
     }
 
@@ -223,6 +234,7 @@ impl App {
             key,
             kind: live::Work::Chat {
                 model: self.plugins.model.clone(),
+                options: self.plugins.options.clone(),
                 messages: self.live.messages(),
             },
         });
@@ -233,6 +245,20 @@ impl App {
             self.return_screen = self.screen;
         }
         self.screen = Screen::Plugins;
+    }
+
+    pub fn open_models(&mut self) {
+        if !self.plugins.enabled {
+            self.notice = Some("Turn on OpenRouter BYOK in /plugins to choose a model.".into());
+            return;
+        }
+        self.model_picker = Some(models::Picker::new(
+            models::openrouter_catalog(),
+            models::OPENROUTER_PLUGIN,
+            &self.plugins.model,
+            self.plugins.options.clone(),
+            self.mode == Mode::Live,
+        ));
     }
 
     pub fn open_plugin_settings(&mut self) {
@@ -268,14 +294,20 @@ impl App {
     /// Returns false when the preview should close.
     pub fn handle(&mut self, event: Event) -> bool {
         match event {
-            Event::Mouse(mouse) if self.screen == Screen::Conversation => match mouse.kind {
-                MouseEventKind::ScrollUp => self.scroll = self.scroll.saturating_sub(3),
-                MouseEventKind::ScrollDown => self.scroll = self.scroll.saturating_add(3),
-                _ => {}
-            },
+            Event::Mouse(mouse)
+                if self.screen == Screen::Conversation && self.model_picker.is_none() =>
+            {
+                match mouse.kind {
+                    MouseEventKind::ScrollUp => self.scroll = self.scroll.saturating_sub(3),
+                    MouseEventKind::ScrollDown => self.scroll = self.scroll.saturating_add(3),
+                    _ => {}
+                }
+            }
             Event::Paste(text) => {
                 self.cursor_blink_frame = 0;
-                if self.screen == Screen::PluginSettings {
+                if let Some(picker) = &mut self.model_picker {
+                    picker.paste(&text);
+                } else if self.screen == Screen::PluginSettings {
                     if self.mode == Mode::Live
                         && self.plugins.focus == plugins::SettingsFocus::ApiKey
                     {
@@ -296,6 +328,20 @@ impl App {
                 let ctrl = key.modifiers.contains(KeyModifiers::CONTROL);
                 if ctrl && key.code == KeyCode::Char('c') {
                     return false;
+                }
+                if let Some(picker) = &mut self.model_picker {
+                    match picker.handle(key) {
+                        models::Action::Continue => {}
+                        models::Action::Close => self.model_picker = None,
+                        models::Action::Save(model, options) => {
+                            if self.plugins.set_model(&model, options) {
+                                self.model_picker = None;
+                            } else if let Some(picker) = &mut self.model_picker {
+                                picker.error = self.plugins.storage_error.clone();
+                            }
+                        }
+                    }
+                    return true;
                 }
                 if self.screen == Screen::PluginSettings {
                     if self.mode == Mode::Live

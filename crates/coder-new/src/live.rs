@@ -47,6 +47,7 @@ pub enum Work {
     Check,
     Chat {
         model: String,
+        options: crate::models::GenerationOptions,
         messages: Vec<Message>,
     },
 }
@@ -185,7 +186,11 @@ fn run_with_provider(
                     id,
                     result: provider.check().await,
                 },
-                Work::Chat { model, messages } => {
+                Work::Chat {
+                    model,
+                    options,
+                    messages,
+                } => {
                     let mut callback = |text: &str| {
                         let _ = sender.send(Update::Delta {
                             id,
@@ -194,7 +199,9 @@ fn run_with_provider(
                     };
                     Update::Finished {
                         id,
-                        result: provider.stream(&model, messages, &mut callback).await,
+                        result: provider
+                            .stream_with_options(&model, &options, messages, &mut callback)
+                            .await,
                     }
                 }
             };
@@ -250,6 +257,10 @@ mod tests {
         key(&mut app, KeyCode::Enter);
         assert!(app.handle(Event::Paste(FIXTURE_TOKEN.into())));
         key(&mut app, KeyCode::Enter);
+        key(&mut app, KeyCode::Home);
+        for _ in 0..app.plugins.field(false).0.chars().count() {
+            key(&mut app, KeyCode::Delete);
+        }
         assert!(app.handle(Event::Paste("fixture/model".into())));
         key(&mut app, KeyCode::Enter);
         key(&mut app, KeyCode::Enter);

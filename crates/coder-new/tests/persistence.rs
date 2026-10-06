@@ -155,7 +155,7 @@ fn drafts_key_checks_cancel_and_demo_edits_leave_live_storage_unchanged() {
     let mut reopened = load(&dir, Mode::Demo);
     assert!(!reopened.plugins.enabled);
     assert!(!reopened.plugins.key_configured);
-    assert!(reopened.plugins.model.is_empty());
+    assert_eq!(reopened.plugins.model, "openrouter/free");
     assert!(reopened.plugins.key_for_request().is_none());
     reopened.set_mode(Mode::Live);
     assert!(reopened.plugins.enabled);
@@ -239,7 +239,7 @@ fn invalid_existing_settings_are_reported_and_preserved_until_successfully_reloa
     key(&mut app, KeyCode::Enter);
     assert!(app.screen == Screen::PluginSettings);
     assert!(app.plugins.key_for_request().is_none());
-    assert!(app.plugins.model.is_empty());
+    assert_eq!(app.plugins.model, "openrouter/free");
     assert_eq!(fs::read(&path).unwrap(), invalid);
     key(&mut app, KeyCode::Esc);
 

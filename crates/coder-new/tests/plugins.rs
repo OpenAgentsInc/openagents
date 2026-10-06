@@ -52,7 +52,7 @@ fn configure(app: &mut App, model: &str) {
     app.open_plugin_settings();
     paste(app, KEY_INPUT);
     key(app, KeyCode::Enter);
-    paste(app, model);
+    replace_model(app, model);
     key(app, KeyCode::Enter);
     key(app, KeyCode::Enter);
     assert!(app.screen == Screen::Plugins);
@@ -132,7 +132,7 @@ fn enablement_and_key_configuration_have_separate_states() {
     app.open_plugins();
     assert!(!app.plugins.enabled);
     assert!(!app.plugins.key_configured);
-    assert!(app.plugins.model.is_empty());
+    assert_eq!(app.plugins.model, "openrouter/free");
     assert_eq!(app.plugins.status(), "Disabled");
     key(&mut app, KeyCode::Char(' '));
     assert_eq!(app.plugins.status(), "Setup required");
@@ -140,7 +140,7 @@ fn enablement_and_key_configuration_have_separate_states() {
 
     key(&mut app, KeyCode::Enter);
     key(&mut app, KeyCode::Enter);
-    paste(&mut app, "model-before-key");
+    replace_model(&mut app, "model-before-key");
     key(&mut app, KeyCode::Enter);
     key(&mut app, KeyCode::Enter);
     assert!(app.screen == Screen::Plugins);
@@ -187,8 +187,8 @@ fn enablement_and_key_configuration_have_separate_states() {
     replace_model(&mut app, "");
     key(&mut app, KeyCode::Enter);
     key(&mut app, KeyCode::Enter);
-    assert!(app.plugins.model.is_empty());
-    assert!(render(&mut app, 80, 24).text.contains("Account default"));
+    assert_eq!(app.plugins.model, "openrouter/free");
+    assert!(render(&mut app, 80, 24).text.contains("openrouter/free"));
 }
 
 #[test]

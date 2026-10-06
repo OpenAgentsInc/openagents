@@ -10,6 +10,8 @@ use std::{
 use model_access::ApiKey;
 use serde::{Deserialize, Deserializer, Serialize};
 
+use crate::models::{DEFAULT_MODEL, GenerationOptions};
+
 const VERSION: u32 = 1;
 const MAX_BYTES: usize = 64 * 1024;
 const MAX_MODEL_BYTES: usize = 1024;
@@ -21,11 +23,23 @@ const WRITE_ERROR: &str =
 static NEXT_TEMP: AtomicU64 = AtomicU64::new(0);
 
 /// The settings saved for OpenRouter BYOK. Debug output hides the key.
-#[derive(Clone, Debug, Default)]
+#[derive(Clone, Debug)]
 pub struct SavedPlugin {
     pub enabled: bool,
     pub model: String,
     pub key: Option<ApiKey>,
+    pub options: GenerationOptions,
+}
+
+impl Default for SavedPlugin {
+    fn default() -> Self {
+        Self {
+            enabled: false,
+            model: DEFAULT_MODEL.into(),
+            key: None,
+            options: GenerationOptions::default(),
+        }
+    }
 }
 
 /// A settings directory provided by the caller. This type never discovers a home directory.
@@ -42,6 +56,8 @@ struct StoredPlugin {
     model: String,
     #[serde(deserialize_with = "read_key")]
     api_key: Option<ApiKey>,
+    #[serde(default)]
+    options: GenerationOptions,
 }
 
 #[derive(Serialize)]
@@ -50,6 +66,7 @@ struct PluginDocument<'a> {
     enabled: bool,
     model: &'a str,
     api_key: Option<&'a str>,
+    options: &'a GenerationOptions,
 }
 
 fn read_key<'de, D: Deserializer<'de>>(deserializer: D) -> Result<Option<ApiKey>, D::Error> {
@@ -124,13 +141,14 @@ impl Store {
         }
         let stored: StoredPlugin =
             serde_json::from_slice(&bytes.0).map_err(|_| INVALID_ERROR.to_owned())?;
-        if stored.version != VERSION || !valid_model(&stored.model) {
+        if stored.version != VERSION || !valid_model(&stored.model) || !stored.options.valid() {
             return Err(INVALID_ERROR.into());
         }
         Ok(SavedPlugin {
             enabled: stored.enabled,
-            model: stored.model,
+            model: normalized_model(&stored.model).into(),
             key: stored.api_key,
+            options: stored.options,
         })
     }
 
@@ -142,6 +160,7 @@ impl Store {
         // Do not overwrite a damaged or newer document if loading it failed.
         self.load()?;
         if !valid_model(&settings.model)
+            || !settings.options.valid()
             || settings.key.as_ref().is_some_and(|key| {
                 key.is_empty()
                     || key.expose().len() > MAX_KEY_BYTES
@@ -153,8 +172,9 @@ impl Store {
         let document = PluginDocument {
             version: VERSION,
             enabled: settings.enabled,
-            model: &settings.model,
+            model: normalized_model(&settings.model),
             api_key: settings.key.as_ref().map(ApiKey::expose),
+            options: &settings.options,
         };
         let mut bytes =
             PrivateBytes(serde_json::to_vec_pretty(&document).map_err(|_| WRITE_ERROR.to_owned())?);
@@ -168,6 +188,14 @@ impl Store {
 
 fn valid_model(model: &str) -> bool {
     model.len() <= MAX_MODEL_BYTES && !model.chars().any(char::is_control)
+}
+
+fn normalized_model(model: &str) -> &str {
+    if model.trim().is_empty() {
+        DEFAULT_MODEL
+    } else {
+        model
+    }
 }
 
 struct PrivateBytes(Vec<u8>);
@@ -241,6 +269,7 @@ mod tests {
             enabled: true,
             model: "example/model".into(),
             key: Some(ApiKey::new("fake-plugin-key")),
+            ..SavedPlugin::default()
         }
     }
 
@@ -250,8 +279,9 @@ mod tests {
         let root = temporary.path().join("coder-new");
         let settings = Store::under(&root).load().unwrap();
         assert!(!settings.enabled);
-        assert!(settings.model.is_empty());
+        assert_eq!(settings.model, DEFAULT_MODEL);
         assert!(settings.key.is_none());
+        assert_eq!(settings.options, GenerationOptions::default());
         assert!(!root.exists());
     }
 
@@ -274,6 +304,98 @@ mod tests {
                 .contains("fake-plugin-key")
         );
         assert_eq!(fs::read_dir(root).unwrap().count(), 1);
+    }
+
+    #[test]
+    fn version_one_settings_without_options_load_with_defaults() {
+        let temporary = tempfile::tempdir().unwrap();
+        let path = temporary.path().join("plugins.json");
+        let store = Store::under(temporary.path());
+        for (model, expected) in [
+            ("", DEFAULT_MODEL),
+            ("   ", DEFAULT_MODEL),
+            ("example/model", "example/model"),
+        ] {
+            let document = serde_json::json!({
+                "version": 1,
+                "enabled": true,
+                "model": model,
+                "api_key": "fake-plugin-key",
+            });
+            let original = serde_json::to_vec(&document).unwrap();
+            fs::write(&path, &original).unwrap();
+            let loaded = store.load().unwrap();
+            assert!(loaded.enabled);
+            assert_eq!(loaded.model, expected);
+            assert_eq!(loaded.options, GenerationOptions::default());
+            assert_eq!(loaded.key.unwrap().expose(), "fake-plugin-key");
+            assert_eq!(fs::read(&path).unwrap(), original);
+        }
+    }
+
+    #[test]
+    fn generation_options_round_trip_and_blank_models_use_free_router() {
+        let temporary = tempfile::tempdir().unwrap();
+        let store = Store::under(temporary.path());
+        let settings = SavedPlugin {
+            model: "   ".into(),
+            options: GenerationOptions {
+                reasoning: Some("high".into()),
+                max_tokens: Some(8_192),
+            },
+            ..settings()
+        };
+        store.save(&settings).unwrap();
+        let loaded = store.load().unwrap();
+        assert_eq!(loaded.model, DEFAULT_MODEL);
+        assert_eq!(loaded.options, settings.options);
+        let document: serde_json::Value =
+            serde_json::from_slice(&fs::read(temporary.path().join("plugins.json")).unwrap())
+                .unwrap();
+        assert_eq!(document["version"], VERSION);
+        assert_eq!(document["model"], DEFAULT_MODEL);
+        assert_eq!(document["options"]["reasoning"], "high");
+        assert_eq!(document["options"]["max_tokens"], 8_192);
+    }
+
+    #[test]
+    fn invalid_generation_options_are_refused_without_overwriting_settings() {
+        let temporary = tempfile::tempdir().unwrap();
+        let store = Store::under(temporary.path());
+        let path = temporary.path().join("plugins.json");
+        store.save(&settings()).unwrap();
+        let original = fs::read(&path).unwrap();
+        for options in [
+            GenerationOptions {
+                reasoning: Some("unsupported".into()),
+                max_tokens: None,
+            },
+            GenerationOptions {
+                reasoning: None,
+                max_tokens: Some(0),
+            },
+            GenerationOptions {
+                reasoning: None,
+                max_tokens: Some(32_769),
+            },
+        ] {
+            let invalid = SavedPlugin {
+                options: options.clone(),
+                ..settings()
+            };
+            assert_eq!(store.save(&invalid).unwrap_err(), WRITE_ERROR);
+            assert_eq!(fs::read(&path).unwrap(), original);
+
+            let mut document: serde_json::Value = serde_json::from_slice(&original).unwrap();
+            document["options"] = serde_json::to_value(options).unwrap();
+            let invalid_document = serde_json::to_vec(&document).unwrap();
+            fs::write(&path, &invalid_document).unwrap();
+            assert_eq!(store.load().unwrap_err(), INVALID_ERROR);
+            assert!(store.save(&settings()).is_err());
+            assert_eq!(fs::read(&path).unwrap(), invalid_document);
+            fs::write(&path, &original).unwrap();
+        }
+        assert_eq!(fs::read_dir(temporary.path()).unwrap().count(), 1);
     }
 
     #[cfg(unix)]

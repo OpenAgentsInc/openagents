@@ -105,17 +105,50 @@ impl Provider {
         })
     }
 
-    /// Streams one request. A blank model uses the OpenRouter account default.
+    /// Streams one request. A blank model uses the free router.
     pub async fn stream(
         &self,
         model: &str,
         messages: Vec<Message>,
         callback: &mut (dyn FnMut(&str) + Send),
     ) -> Result<Streamed, String> {
+        self.stream_with_options(
+            model,
+            &crate::models::GenerationOptions::default(),
+            messages,
+            callback,
+        )
+        .await
+    }
+
+    pub async fn stream_with_options(
+        &self,
+        model: &str,
+        options: &crate::models::GenerationOptions,
+        messages: Vec<Message>,
+        callback: &mut (dyn FnMut(&str) + Send),
+    ) -> Result<Streamed, String> {
         if messages.is_empty() {
             return Err("Add a message before requesting a reply.".into());
         }
-        let request = ChatRequest::new(model.trim(), messages);
+        if !options.valid() {
+            return Err("The model settings are invalid.".into());
+        }
+        let model = model.trim();
+        let mut request = ChatRequest::new(
+            if model.is_empty() {
+                crate::models::DEFAULT_MODEL
+            } else {
+                model
+            },
+            messages,
+        );
+        if let Some(effort) = &options.reasoning {
+            request = request.effort(effort);
+        }
+        if let Some(limit) = options.max_tokens {
+            request = request.max_tokens(limit);
+        }
         self.chat
             .stream(&request, callback)
             .await
@@ -290,7 +323,7 @@ mod tests {
     }
 
     #[test]
-    fn streaming_delivers_deltas_usage_and_account_default_request() {
+    fn streaming_delivers_deltas_usage_and_explicit_free_router_request() {
         let body = concat!(
             ": keep-alive\n\n",
             "data: {\"model\":\"fixture/model\",\"choices\":[{\"delta\":{\"content\":\"Hello \"}}]}\n\n",
@@ -314,8 +347,33 @@ mod tests {
         assert_eq!(reply.usage.cost, Some(0.001));
         let request = server.join().unwrap();
         assert!(request.starts_with("POST /api/v1/chat/completions HTTP/1.1"));
-        assert!(!request.contains(r#""model":"#));
+        assert!(request.contains(r#""model":"openrouter/free""#));
         assert!(request.contains(r#""stream":true"#));
+    }
+
+    #[test]
+    fn streaming_sends_selected_model_reasoning_and_output_limit() {
+        let body = "data: {\"choices\":[{\"delta\":{\"content\":\"Hello\"},\"finish_reason\":\"stop\"}]}\n\ndata: [DONE]\n\n";
+        let (base, server) = fixture(200, "text/event-stream", body);
+        let provider = Provider::with_base(ApiKey::new(FIXTURE_TOKEN), &base).unwrap();
+        let options = crate::models::GenerationOptions {
+            reasoning: Some("high".into()),
+            max_tokens: Some(8192),
+        };
+        runtime()
+            .block_on(provider.stream_with_options(
+                "openai/gpt-6-luna",
+                &options,
+                vec![Message::user("hello")],
+                &mut |_| {},
+            ))
+            .unwrap();
+        let request = server.join().unwrap();
+        let (_, body) = request.split_once("\r\n\r\n").unwrap();
+        let body: Value = serde_json::from_str(body).unwrap();
+        assert_eq!(body["model"], "openai/gpt-6-luna");
+        assert_eq!(body["reasoning"]["effort"], "high");
+        assert_eq!(body["max_tokens"], 8192);
     }
 
     #[test]

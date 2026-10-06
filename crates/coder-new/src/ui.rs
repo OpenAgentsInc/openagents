@@ -1,5 +1,6 @@
 //! The same render function draws the terminal and exported previews.
 
+mod models;
 mod plugins;
 
 use ratatui::{
@@ -48,6 +49,9 @@ pub fn render(frame: &mut Frame, app: &mut App) {
     };
     if matches!(app.screen, Screen::Plugins | Screen::PluginSettings) {
         plugins::render(frame, area, app);
+        if app.model_picker.is_some() {
+            models::render(frame, app);
+        }
         return;
     }
     let (draft, cursor) = app.draft.wrapped(terminal_width.saturating_sub(3));
@@ -96,9 +100,13 @@ pub fn render(frame: &mut Frame, app: &mut App) {
         &draft,
         cursor,
         app.mode == Mode::Live || app.selected_agent.is_none(),
+        app.model_picker.is_none(),
     );
     if app.mode == Mode::Demo {
         agent_rail(frame, rail, app);
+    }
+    if app.model_picker.is_some() {
+        models::render(frame, app);
     }
 }
 
@@ -481,6 +489,7 @@ fn composer_view(
     draft: &[String],
     cursor: (u16, u16),
     main_selected: bool,
+    cursor_visible: bool,
 ) {
     let block = Block::default()
         .borders(Borders::TOP | Borders::BOTTOM)
@@ -515,8 +524,10 @@ fn composer_view(
             .collect::<Vec<_>>(),
     );
     frame.render_widget(Paragraph::new(text).scroll((scroll, 0)), text_area);
-    frame.set_cursor_position((
-        text_area.x + cursor.0.min(text_area.width.saturating_sub(1)),
-        text_area.y + cursor.1.saturating_sub(scroll),
-    ));
+    if cursor_visible {
+        frame.set_cursor_position((
+            text_area.x + cursor.0.min(text_area.width.saturating_sub(1)),
+            text_area.y + cursor.1.saturating_sub(scroll),
+        ));
+    }
 }

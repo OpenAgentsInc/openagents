@@ -3,7 +3,7 @@ use coder_new::{
     live::{Entry, Request, Update, Work},
     plugins::{Connection, SettingsFocus},
     provider::KeyInfo,
-    slash::{self, Command},
+    slash::Command,
     snapshot, ui,
 };
 use crossterm::event::{Event, KeyCode, KeyEvent, KeyModifiers};
@@ -68,6 +68,10 @@ fn save_key(app: &mut App, input: &str, model: &str) {
     app.open_plugin_settings();
     paste(app, input);
     key(app, KeyCode::Enter);
+    key(app, KeyCode::Home);
+    for _ in 0..app.plugins.field(false).0.chars().count() {
+        key(app, KeyCode::Delete);
+    }
     paste(app, model);
     key(app, KeyCode::Enter);
     key(app, KeyCode::Enter);
@@ -139,7 +143,10 @@ fn reply(text: &str, tokens: u64) -> Streamed {
 fn slash_picker_completes_and_executes_commands_without_submitting_messages() {
     let mut app = App::default();
     paste(&mut app, "/");
-    assert_eq!(app.slash_hints(), slash::ALL);
+    assert_eq!(
+        app.slash_hints(),
+        [Command::Demo, Command::Plugins, Command::Help]
+    );
     key(&mut app, KeyCode::Up);
     assert_eq!(app.slash_selected, 0);
     for _ in 0..4 {
@@ -236,8 +243,13 @@ fn live_chat_preserves_the_draft_until_enabled_with_a_saved_key() {
     assert_eq!(request.key.expose(), KEY_INPUT);
     assert!(!format!("{:?}", request.key).contains(KEY_INPUT));
     match request.kind {
-        Work::Chat { model, messages } => {
-            assert!(model.is_empty());
+        Work::Chat {
+            model,
+            messages,
+            options,
+        } => {
+            assert_eq!(model, "openrouter/free");
+            assert_eq!(options, coder_new::models::GenerationOptions::default());
             assert_eq!(messages.len(), 1);
             assert_eq!(messages[0].role, "user");
             assert_eq!(messages[0].content, "live question");
@@ -329,7 +341,7 @@ fn demo_and_live_keep_separate_preferences_drafts_and_transcripts() {
     assert!(app.draft.text.is_empty());
     assert!(!app.plugins.enabled);
     assert!(!app.plugins.key_configured);
-    assert!(app.plugins.model.is_empty());
+    assert_eq!(app.plugins.model, "openrouter/free");
     app.open_plugins();
     key(&mut app, KeyCode::Char(' '));
     save_key(&mut app, KEY_INPUT, "live-model");

@@ -15,20 +15,27 @@ use crate::theme as t;
 pub enum Command {
     Demo,
     Plugins,
+    Models,
     Help,
 }
 
 /// Commands in the order shown by the picker.
-pub const ALL: [Command; 3] = [Command::Demo, Command::Plugins, Command::Help];
+pub const ALL: [Command; 4] = [
+    Command::Demo,
+    Command::Plugins,
+    Command::Models,
+    Command::Help,
+];
 
 impl Command {
-    pub const ALL: [Self; 3] = ALL;
+    pub const ALL: [Self; 4] = ALL;
 
     /// The command word without its leading slash.
     pub const fn word(self) -> &'static str {
         match self {
             Self::Demo => "demo",
             Self::Plugins => "plugins",
+            Self::Models => "models",
             Self::Help => "help",
         }
     }
@@ -39,6 +46,7 @@ impl Command {
             Self::Demo if demo => "Turn demo off",
             Self::Demo => "Turn demo on",
             Self::Plugins => "Manage plugins",
+            Self::Models => "Choose model and reasoning level",
             Self::Help => "Show commands and keys",
         }
     }

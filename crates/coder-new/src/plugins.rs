@@ -5,6 +5,7 @@ use unicode_segmentation::UnicodeSegmentation;
 
 use crate::{
     Draft,
+    models::{DEFAULT_MODEL, GenerationOptions, Model, OPENROUTER_PLUGIN},
     plugin_store::{SavedPlugin, Store},
 };
 
@@ -36,11 +37,11 @@ impl SettingsFocus {
     }
 }
 
-#[derive(Default)]
 pub struct Plugins {
     pub enabled: bool,
     pub key_configured: bool,
     pub model: String,
+    pub options: GenerationOptions,
     pub focus: SettingsFocus,
     key_draft: Draft,
     model_draft: Draft,
@@ -58,11 +59,48 @@ pub struct Plugins {
     store: Option<Store>,
 }
 
-#[derive(Default)]
 struct Preferences {
     enabled: bool,
     key_configured: bool,
     model: String,
+    options: GenerationOptions,
+}
+
+impl Default for Preferences {
+    fn default() -> Self {
+        Self {
+            enabled: false,
+            key_configured: false,
+            model: DEFAULT_MODEL.into(),
+            options: GenerationOptions::default(),
+        }
+    }
+}
+
+impl Default for Plugins {
+    fn default() -> Self {
+        Self {
+            enabled: false,
+            key_configured: false,
+            model: DEFAULT_MODEL.into(),
+            options: GenerationOptions::default(),
+            focus: SettingsFocus::default(),
+            key_draft: Draft::default(),
+            model_draft: Draft::default(),
+            remove_key: false,
+            error: None,
+            storage_error: None,
+            connection: Connection::default(),
+            check_requested: false,
+            saved: false,
+            credential_changed: false,
+            live: false,
+            live_key: None,
+            other_preferences: Preferences::default(),
+            saved_connection: None,
+            store: None,
+        }
+    }
 }
 
 #[derive(Clone, Default)]
@@ -84,12 +122,14 @@ impl Plugins {
                     enabled: saved.enabled,
                     key_configured: saved.key.is_some(),
                     model: saved.model,
+                    options: saved.options,
                 };
                 self.live_key = saved.key;
                 if self.live {
                     self.enabled = preferences.enabled;
                     self.key_configured = preferences.key_configured;
                     self.model = preferences.model;
+                    self.options = preferences.options;
                 } else {
                     self.other_preferences = preferences;
                 }
@@ -114,18 +154,32 @@ impl Plugins {
 
     pub fn toggle_enabled(&mut self) -> bool {
         let enabled = !self.enabled;
-        if self.live && !self.persist(enabled, &self.model.clone(), self.live_key.clone()) {
+        if self.live
+            && !self.persist(
+                enabled,
+                &self.model.clone(),
+                &self.options.clone(),
+                self.live_key.clone(),
+            )
+        {
             return false;
         }
         self.enabled = enabled;
         true
     }
 
-    fn persist(&mut self, enabled: bool, model: &str, key: Option<model_access::ApiKey>) -> bool {
+    fn persist(
+        &mut self,
+        enabled: bool,
+        model: &str,
+        options: &GenerationOptions,
+        key: Option<model_access::ApiKey>,
+    ) -> bool {
         if let Some(store) = &self.store {
             if let Err(error) = store.save(&SavedPlugin {
                 enabled,
                 model: model.into(),
+                options: options.clone(),
                 key,
             }) {
                 self.storage_error = Some(error);
@@ -133,6 +187,31 @@ impl Plugins {
             }
         }
         self.storage_error = None;
+        true
+    }
+
+    pub fn set_model(&mut self, model: &Model, options: GenerationOptions) -> bool {
+        if model.plugin != OPENROUTER_PLUGIN
+            || !options.valid()
+            || options
+                .reasoning
+                .as_ref()
+                .is_some_and(|effort| !model.efforts.contains(effort))
+            || options.max_tokens.is_some_and(|limit| {
+                !model.supports_output_limit
+                    || model
+                        .max_output_tokens
+                        .is_some_and(|maximum| limit > maximum)
+            })
+        {
+            self.storage_error = Some("This model does not support those settings.".into());
+            return false;
+        }
+        if self.live && !self.persist(self.enabled, &model.id, &options, self.live_key.clone()) {
+            return false;
+        }
+        self.model.clone_from(&model.id);
+        self.options = options;
         true
     }
 
@@ -161,6 +240,7 @@ impl Plugins {
             &mut self.other_preferences.key_configured,
         );
         std::mem::swap(&mut self.model, &mut self.other_preferences.model);
+        std::mem::swap(&mut self.options, &mut self.other_preferences.options);
         self.live = live;
     }
 
@@ -299,8 +379,13 @@ impl Plugins {
             } else {
                 self.live_key.clone()
             };
-            let model = self.model_draft.text.trim().to_owned();
-            if !self.persist(self.enabled, &model, key) {
+            let model = self.edited_model();
+            let options = if model == self.model {
+                self.options.clone()
+            } else {
+                GenerationOptions::default()
+            };
+            if !self.persist(self.enabled, &model, &options, key) {
                 return false;
             }
             if !self.key_draft.text.is_empty() {
@@ -319,11 +404,24 @@ impl Plugins {
             self.key_configured =
                 !self.key_draft.text.is_empty() || (self.key_configured && !self.remove_key);
         }
-        self.model = self.model_draft.text.trim().into();
+        let model = self.edited_model();
+        if model != self.model {
+            self.options = GenerationOptions::default();
+        }
+        self.model = model;
         self.discard_draft();
         self.saved = true;
         self.saved_connection = None;
         true
+    }
+
+    fn edited_model(&self) -> String {
+        let model = self.model_draft.text.trim();
+        if model.is_empty() {
+            DEFAULT_MODEL.into()
+        } else {
+            model.into()
+        }
     }
 
     fn restore_connection(&mut self) {

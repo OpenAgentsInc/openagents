@@ -152,13 +152,10 @@ fn manager(frame: &mut Frame, area: Rect, app: &App) {
             },
             area.width,
         ),
+        detail("Model", &p.model, area.width),
         detail(
-            "Model",
-            if p.model.is_empty() {
-                "Account default"
-            } else {
-                &p.model
-            },
+            "Reasoning",
+            p.options.reasoning.as_deref().unwrap_or("Model default"),
             area.width,
         ),
         detail("Endpoint", ENDPOINT, area.width),
@@ -217,7 +214,7 @@ fn settings(frame: &mut Frame, area: Rect, app: &App) {
     lines.push(Line::default());
     let model_row = field(
         &mut lines,
-        "Model ID (optional)",
+        "Model ID",
         p.field(false),
         p.focus == SettingsFocus::Model,
         area.width,
@@ -225,7 +222,7 @@ fn settings(frame: &mut Frame, area: Rect, app: &App) {
     );
     lines.push(Line::from(span(
         truncate(
-            "Leave blank to use your OpenRouter account default.",
+            "Default: openrouter/free · Use /models to choose.",
             area.width,
         ),
         t::GRAY,
@@ -303,7 +300,7 @@ fn settings(frame: &mut Frame, area: Rect, app: &App) {
         .saturating_sub(area.height.saturating_sub(2))
         .min(max_scroll);
     frame.render_widget(Paragraph::new(Text::from(lines)).scroll((scroll, 0)), area);
-    if let Some((column, row)) = cursor {
+    if let Some((column, row)) = cursor.filter(|_| app.model_picker.is_none()) {
         frame.set_cursor_position((area.x + column, area.y + row - scroll));
     }
 }
