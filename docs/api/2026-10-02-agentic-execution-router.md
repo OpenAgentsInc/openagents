@@ -539,6 +539,24 @@ Launch paid traffic only after phase 4's accounting and recovery gates pass.
 Roll out one task class and a small opt-in partner cohort first. Keep route
 promotion reversible without relabeling tasks already in flight.
 
+### Capability dispatch (2026-10-05, #10670)
+
+[`openagents_chat::capability`](../../crates/openagents-chat/src/capability.rs)
+dispatches an admitted `plugin` route once. It runs only a noncoding release
+whose exact pin (ID, version, and digest) is in the surface's catalog and not
+excluded, with arguments that fit the release's typed schema; anything else
+refuses as `route_not_allowed` before a run. A release whose recipient, fee,
+or fee payer differs from the snapshot is a new offer. The capability's
+owner runs it through a `Runner`, and
+`RouteRecord::capability_ran` keeps the output's artifact digest and its
+check in the route journal, which also holds the record before the run; a
+record that ran is followed, never run again. A missing capability returns
+the build or install offer and installs nothing. `capability::fallback`
+admits a model fallback only when the candidate widens nothing, adds no
+payer, costs no more than the admitted quote, and is a model the catalog
+lists as adequate; otherwise it is a new offer. The fixtures route the Gym's
+start-eval program through the shared policy and journal.
+
 ### Test matrix
 
 Use scripted executors, fake clocks, fake wallets, temporary homes, and scratch

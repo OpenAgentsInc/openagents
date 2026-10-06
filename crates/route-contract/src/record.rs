@@ -121,6 +121,20 @@ pub struct RouteRecord {
     pub payer_keys: Vec<PayerKey>,
 }
 
+/// What one run of an admitted plugin or program produced.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct CapabilityRun {
+    /// The run ended without an error of its own.
+    pub ok: bool,
+    /// Digests of the artifacts it produced, retained by the caller.
+    pub artifacts: Vec<Digest>,
+    /// The check on its output: `unchecked` when none ran.
+    pub check: CheckLabel,
+    pub wall_ms: Option<u64>,
+    /// `None` when the cost is unknown, never a stand-in zero.
+    pub cost_microusd: Option<u64>,
+}
+
 /// Why a record refuses a move.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum Refused {
@@ -322,6 +336,51 @@ impl RouteRecord {
             cost_microusd: Some(0),
             wall_ms,
             artifacts: Vec::new(),
+            payer: None,
+            payer_keys: Vec::new(),
+        });
+        self.settle_if_done(now_ms);
+        Ok(())
+    }
+
+    /// A plugin or program route ran once (#10670): the digests of what it
+    /// produced and the check on them settle it. A failed run, or one whose
+    /// check failed, ends `failed`; a run is never recorded twice.
+    ///
+    /// # Errors
+    ///
+    /// Another family, a record not admitted, or one that already ran.
+    pub fn capability_ran(&mut self, run: CapabilityRun, now_ms: u64) -> Result<(), Refused> {
+        let to = if run.ok && run.check != CheckLabel::CheckFailed {
+            Lifecycle::Completed
+        } else {
+            Lifecycle::Failed
+        };
+        let from = self.state;
+        if self.family() != RouteFamily::Plugin
+            || !matches!(from, Lifecycle::Admitted | Lifecycle::DispatchPending)
+            || !self.runs.is_empty()
+        {
+            return Err(Refused::Step { from, to });
+        }
+        let task = format!("capability:{}", self.request);
+        self.push(Some(&task), from, to, "capability_exit", None);
+        if let Some(last) = self.transitions.last_mut() {
+            last.artifacts.clone_from(&run.artifacts);
+        }
+        self.state = to;
+        self.runs.push(RunOutcome {
+            task,
+            engine: None,
+            revision: None,
+            projection: Projection {
+                state: to,
+                check: run.check,
+                cancel_requested: false,
+            },
+            cost_microusd: run.cost_microusd,
+            wall_ms: run.wall_ms,
+            artifacts: run.artifacts,
             payer: None,
             payer_keys: Vec::new(),
         });

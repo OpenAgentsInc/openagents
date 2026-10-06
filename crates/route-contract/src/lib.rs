@@ -55,7 +55,7 @@ pub mod snapshot;
 pub use digest::{Digest, digest_of};
 pub use lifecycle::{Lifecycle, Projection, TaskDisposition};
 pub use offer::Offer;
-pub use record::{Observation, RouteRecord, RunOutcome};
+pub use record::{CapabilityRun, Observation, RouteRecord, RunOutcome};
 pub use route::{DispatchPlan, RouteFamily, RouteResult};
 pub use snapshot::AdmissionSnapshot;
 
