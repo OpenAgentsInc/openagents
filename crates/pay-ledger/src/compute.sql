@@ -17,3 +17,25 @@ CREATE TABLE IF NOT EXISTS compute_principal (
     revoked_at INTEGER
 );
 CREATE INDEX IF NOT EXISTS compute_principal_account ON compute_principal(account);
+CREATE TABLE IF NOT EXISTS compute_purchase (
+    id TEXT PRIMARY KEY,
+    account TEXT NOT NULL REFERENCES compute_account(id),
+    amount_msat INTEGER NOT NULL CHECK(amount_msat > 0),
+    payment_hash TEXT NOT NULL UNIQUE,
+    invoice TEXT NOT NULL,
+    created_at INTEGER NOT NULL,
+    expires_at INTEGER NOT NULL CHECK(expires_at > created_at),
+    state TEXT NOT NULL CHECK(state IN ('pending','paid','expired','unknown')),
+    observed_at INTEGER,
+    detail TEXT
+);
+CREATE INDEX IF NOT EXISTS compute_purchase_account ON compute_purchase(account);
+-- Credits only: holds and charges live on compute_hold. `source` is the
+-- stable settlement source (`topup:<payment hash>`), so a credit posts once.
+CREATE TABLE IF NOT EXISTS compute_credit (
+    seq INTEGER PRIMARY KEY AUTOINCREMENT,
+    account TEXT NOT NULL REFERENCES compute_account(id),
+    source TEXT NOT NULL UNIQUE,
+    amount_msat INTEGER NOT NULL CHECK(amount_msat > 0),
+    at INTEGER NOT NULL
+);

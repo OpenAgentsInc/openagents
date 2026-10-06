@@ -40,3 +40,39 @@ The other two retail authorities are elsewhere, and none implies another:
 
 Pairing a device, joining a world, holding a balance, or paying an invoice
 grants none of them.
+
+## Top-ups
+
+A top-up buys credits over Lightning through the existing receiver wallet
+([`retail_cloud::topup`](../../crates/retail-cloud/src/topup.rs) over
+[`pay_ledger::compute::purchase`](../../crates/pay-ledger/src/compute/purchase.rs)).
+The wallet keeps its keys; no client stores one.
+
+1. A principal with the spend right asks for a purchase: an ID it chooses,
+   and a whole number of sats up to 1,000,000.
+2. The wallet issues one exact invoice that expires in 15 minutes. Its
+   description hash commits to the account, the purchase ID, and the
+   amount.
+3. The ledger records the purchase, and only then does the client see the
+   invoice. A retry with the same purchase ID returns the recorded invoice
+   and never asks the wallet again; the same ID with another amount
+   conflicts.
+4. The wallet's callback, or a reconciliation pass that looks each open
+   purchase up, reports what happened.
+
+| Purchase state | Meaning | Credited |
+| --- | --- | --- |
+| `pending` | Issued and not yet paid | No |
+| `paid` | The wallet received exactly the invoice's amount | Once, from source `topup:<payment hash>` |
+| `expired` | Past its expiry and never paid | No |
+| `unknown` | The wallet has no record, reported a different amount, or reported success without an amount | No, until a full payment is reported |
+
+- A duplicate callback, a concurrent observer, or a replay after a crash
+  finds the credit already posted: each payment hash credits once.
+- A failed lookup changes nothing. A pending invoice past its expiry
+  expires; a failure report before expiry leaves it payable.
+- A payment reported after the invoice expired still credits, once, because
+  the money arrived.
+- An invoice issued before a crash and never recorded never reaches the
+  customer, so it cannot be paid.
+- In v1 a purchased balance is not paid back out over Lightning.

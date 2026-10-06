@@ -16,6 +16,10 @@ use rusqlite::{Connection, OptionalExtension, TransactionBehavior, params};
 
 use crate::{Error, Ledger, Result};
 
+pub mod purchase;
+
+pub use purchase::{Purchase, PurchaseState, Receipt, TopUp};
+
 /// The kind of client a principal binds.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum PrincipalKind {
