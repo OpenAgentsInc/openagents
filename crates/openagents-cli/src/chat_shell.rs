@@ -99,6 +99,44 @@ pub(super) async fn request(output: &Output, args: &Args) -> Result<u8, Failure>
     Ok(super::code(ended))
 }
 
+pub(super) async fn result(output: &Output, args: &Args) -> Result<u8, Failure> {
+    if args.positional() != ["-"] {
+        return Err(Failure::Usage(
+            "shell-result reads one typed result from stdin (`-`)".into(),
+        ));
+    }
+    let mut text = String::new();
+    std::io::stdin()
+        .take(256 * 1024 + 1)
+        .read_to_string(&mut text)
+        .map_err(|_| Failure::Failed("cannot read terminal result".into()))?;
+    if text.len() > 256 * 1024 {
+        return Err(Failure::Usage("terminal result exceeds its limit".into()));
+    }
+    let result: terminal_tty::ResultRequest = serde_json::from_str(&text)
+        .map_err(|_| Failure::Usage("invalid typed terminal result".into()))?;
+    let message = result.message().map_err(|why| Failure::Usage(why.into()))?;
+    let mut printer = Printer::new(output);
+    let mut client = super::open_as(
+        args,
+        Some(&result.proposal.thread),
+        false,
+        &mut printer,
+        openagents_chat::router::Caller::TERMINAL,
+    )
+    .await?;
+    let ended = client
+        .send_terminal(
+            &result.proposal.thread,
+            &result.identity(),
+            false,
+            &message,
+            &mut |event| printer.print(event),
+        )
+        .await?;
+    Ok(super::code(ended))
+}
+
 /// The reply's text without its typed plan, and the plan's one command.
 /// Only a whole plan on the reply's last line, or a reply that is only a
 /// plan, becomes a proposal; prose and Markdown never become input.

@@ -15,6 +15,7 @@ name = "openagents"
 path = "src/main.rs"
 
 [dependencies]
+terminal-tty = { path = "../terminal-tty" }
 terminal-core = { path = "../terminal-core" }
 axum = "0.8"
 coder-delegate = { path = "../coder-delegate" }

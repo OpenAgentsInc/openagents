@@ -365,3 +365,9 @@ platform-specific objects and verifies public readback. The separate
 `install-linux-terminal.py` verifies the qualification, archive, and each helper
 before installing into an explicit empty directory. No Linux graphical release
 is claimed until those checks run against real binaries.
+
+`openagents terminal shell` opens a hook-only shell with the shared thread client.
+Use `# ` for an explicit request. An inline proposal stays pending: Ctrl+G shows
+its warning and Ctrl+Y confirms its exact revision. `# /edit KEY COMMAND` creates
+another revision; `# /reject KEY` rejects it. Ordinary keys, full-screen output,
+and the existing `openagents terminal` thread view keep their behavior.

@@ -89,6 +89,22 @@ pub(crate) fn parse(params: &[&[u8]]) -> Option<Event> {
     }
 }
 
+/// fish's native OSC 133 carries its command before the output boundary.
+pub(crate) fn output_command(params: &[&[u8]]) -> Option<String> {
+    let [b"133", b"C", rest @ ..] = params else {
+        return None;
+    };
+    let mut commands = rest
+        .iter()
+        .filter_map(|field| field.strip_prefix(b"cmdline_url="));
+    let encoded = commands.next()?;
+    if commands.next().is_some() || encoded.len() > MAX_TEXT * 3 {
+        return None;
+    }
+    let command = decode_percent(std::str::from_utf8(encoded).ok()?)?;
+    (!command.is_empty() && command.len() <= MAX_TEXT).then_some(command)
+}
+
 fn digit(byte: u8) -> Option<u8> {
     match byte {
         b'0'..=b'9' => Some(byte - b'0'),
@@ -138,4 +154,23 @@ fn decode_percent(text: &str) -> Option<String> {
         });
     }
     printable(bytes)
+}
+
+#[cfg(test)]
+mod native_command_tests {
+    use super::*;
+    #[test]
+    fn native_output_command_is_bounded_printable_and_unambiguous() {
+        assert_eq!(
+            output_command(&[b"133", b"C", b"cmdline_url=printf%20hello"]),
+            Some("printf hello".into())
+        );
+        assert_eq!(output_command(&[b"133", b"C", b"cmdline_url=%00"]), None);
+        assert_eq!(
+            output_command(&[b"133", b"C", b"cmdline_url=a", b"cmdline_url=b"]),
+            None
+        );
+        let large = format!("cmdline_url={}", "x".repeat(MAX_TEXT + 1));
+        assert_eq!(output_command(&[b"133", b"C", large.as_bytes()]), None);
+    }
 }

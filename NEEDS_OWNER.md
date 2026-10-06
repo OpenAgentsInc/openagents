@@ -27,6 +27,10 @@ On a scratch Mac session, open a retained candidate with `openagents-terminal --
 
 Compile the thin iOS and Android hosts with their native SDKs, then use a scratch host to check CJK and combining text, full-screen output, IME commits, SELECT/drag/COPY, horizontal pan, proposal controls, background recovery, and surface recreation on supported Metal/Vulkan devices; retain output, frame-time, and memory measurements. Unsupported GPU paths retain the native terminal screen; this work does not add an on-device shell. The grid remains bounded at 80 × 240 cells and 500 scrollback rows; each frame prepares at most 4,096 glyph characters in 1,024 reserved atlas rows. Native builds, measured frame/memory budgets, and physical recovery remain unverified.
 
+## Plain TTY physical sessions (#10687)
+
+Run `openagents terminal shell` in a scratch directory on the Mac and through your usual SSH/tmux setup; confirm native editing, full-screen controls, and the existing thread view remain usable. Scratch bash, zsh, and fish fixtures verify exact edited proposals and one result without a real engine; physical SSH/tmux and a signed-in provider remain unverified.
+
 ## Remote shell proposal controls (#10745)
 
 On scratch state in a Mac build from current main, create a desktop shell proposal and open the same terminal from the phone. Confirm that the proposal shows its exact command and revision, confirmation runs once, and its command block appears. Check that a watch screen has no enabled approval control. The Rust scratch-terminal and phone-projection tests cover these behaviors; physical controls remain unverified.

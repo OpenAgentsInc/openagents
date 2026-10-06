@@ -9785,6 +9785,7 @@ dependencies = [
  "supervise",
  "tempfile",
  "terminal-core",
+ "terminal-tty",
  "tokio",
  "tokio-tungstenite 0.30.0",
  "toml",
@@ -13676,6 +13677,19 @@ dependencies = [
  "tempfile",
  "terminal-core",
  "tokio",
+]
+
+[[package]]
+name = "terminal-tty"
+version = "0.1.0"
+dependencies = [
+ "coder-pty",
+ "coder-vt",
+ "libc",
+ "serde",
+ "serde_json",
+ "tempfile",
+ "terminal-core",
 ]
 
 [[package]]

@@ -1,0 +1,23 @@
+[package]
+name = "terminal-tty"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+publish.workspace = true
+description = "Hook-only terminal requests and exact pending proposals without a graphical runtime."
+
+[dependencies]
+coder-pty = { path = "../coder-pty" }
+coder-vt = { path = "../coder-vt" }
+terminal-core = { path = "../terminal-core" }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+
+[target.'cfg(unix)'.dependencies]
+libc = "0.2"
+
+[dev-dependencies]
+tempfile = "3"
+
+[lints]
+workspace = true

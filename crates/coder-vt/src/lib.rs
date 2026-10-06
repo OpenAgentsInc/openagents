@@ -1464,6 +1464,10 @@ impl vte::Perform for State {
             && let Some(event) = shell::parse(params)
         {
             let line = self.dropped + self.scrollback.len() as u64 + self.cursor.row as u64;
+            if let Some(command) = shell::output_command(params) {
+                self.shell
+                    .push(line, self.cursor.col, shell::Event::Command(command));
+            }
             self.shell.push(line, self.cursor.col, event);
             return;
         }

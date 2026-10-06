@@ -57,6 +57,8 @@ pub(crate) const USAGE: &str = "usage: openagents chat COMMAND [OPTIONS]
         and its events stream here. --no-run only shows the offer instead.
         `openagents settings` chooses the providers, whether Coder asks
         first, the project folders, and what its commands may reach.
+  shell-result -
+        Record one exact approved shell result on its existing thread.
   shell-request -
         Submit a typed live-shell request from stdin. Commands remain pending.
   follow --thread ID
@@ -153,6 +155,7 @@ needed, and nothing prints a key.";
 pub(crate) const EFFECTS: &[Declared] = &[
     Declared::computer("send", Effect::Publishes),
     Declared::computer("shell-request", Effect::Publishes),
+    Declared::computer("shell-result", Effect::Publishes),
     Declared::computer("threads", Effect::ReadOnly),
     Declared::computer("read", Effect::ReadOnly),
     Declared::computer("export", Effect::ReadOnly),
@@ -209,6 +212,7 @@ impl From<client::Error> for Failure {
 /// The `openagents chat` commands; any other first word starts a message.
 const COMMANDS: &[&str] = &[
     "shell-request",
+    "shell-result",
     "send",
     "threads",
     "read",
@@ -331,6 +335,7 @@ async fn dispatch(output: &Output, command: &str, args: &Args) -> Result<u8, Fai
     };
     match command {
         "shell-request" => shell::request(output, args).await,
+        "shell-result" => shell::result(output, args).await,
         "work" => {
             no_positional(args)?;
             work::work(output, args).await

@@ -45,6 +45,8 @@ pub struct Blocks {
     /// The shell's command table, as its hook last reported it.
     pub table: Option<String>,
     pub at_prompt: bool,
+    /// Explicit prompt and editor marks observed since this projection started.
+    pub prompt_revision: u64,
     pub request: Option<String>,
     input: Option<Position>,
     command: Option<String>,
@@ -82,13 +84,17 @@ impl Blocks {
                 self.request = None;
             }
             Event::Directory(cwd) => self.cwd = Some(cwd),
-            Event::Buffer(buffer) if self.at_prompt => self.buffer = Some(buffer),
+            Event::Buffer(buffer) if self.at_prompt => {
+                self.prompt_revision = self.prompt_revision.saturating_add(1);
+                self.buffer = Some(buffer);
+            }
             Event::Word(word) if self.at_prompt => self.word = Some(word),
             Event::Table(table) => self.table = Some(table),
             Event::Request(request) if self.at_prompt => self.request = Some(request),
             Event::Buffer(_) | Event::Word(_) | Event::Request(_) => {}
             Event::Command(command) => self.command = Some(command),
             Event::Prompt => {
+                self.prompt_revision = self.prompt_revision.saturating_add(1);
                 // A missing completion mark leaves an uncertain block, not a success.
                 self.active = None;
                 self.input = None;

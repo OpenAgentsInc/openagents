@@ -28,8 +28,8 @@ use serde_json::Value;
 
 use crate::{Args, Output, runtime};
 
-pub(crate) const USAGE: &str =
-    "usage: openagents terminal [--thread ID] [--continue] [--scratch] [--local] [--socket PATH]
+pub(crate) const USAGE: &str = "usage: openagents terminal shell [--root PATH] [--shell PATH]
+       openagents terminal [--thread ID] [--continue] [--scratch] [--local] [--socket PATH]
                           [--computer HOST] [--resume [ID|TITLE]] [--observe]
 OpenAgents Terminal: a full-screen chat with OpenAgents in this terminal.
 Type a message and press Enter. It opens on a new thread; --continue opens
@@ -49,7 +49,10 @@ command opens this screen when it runs on a terminal.";
 /// router's command tree (`coder::cli_route::tree`). It holds the
 /// terminal until the person quits.
 #[cfg(test)]
-pub(crate) const EFFECTS: &[Declared] = &[Declared::computer("", Effect::LongRunning)];
+pub(crate) const EFFECTS: &[Declared] = &[
+    Declared::computer("", Effect::LongRunning),
+    Declared::computer("shell", Effect::LongRunning),
+];
 
 const OPTIONS: &[&str] = &["thread", "socket", "computer", "resume"];
 // `--new` is the default now and still accepted.
@@ -63,6 +66,9 @@ const ANSWER_HINT: &str = "Type your answer and press Enter.";
 const PLUGINS_WAIT: Duration = Duration::from_secs(15);
 
 pub fn run(output: &Output, words: &[String]) -> u8 {
+    if words.first().is_some_and(|word| word == "shell") {
+        return plain_shell(output, &words[1..]);
+    }
     if words
         .first()
         .is_some_and(|word| matches!(word.as_str(), "help" | "-h" | "--help"))
@@ -1463,5 +1469,64 @@ mod slot_row_tests {
         );
         assert_eq!(rows[1].detail, "size not read");
         assert!(rows.iter().all(|row| row.task.is_none() && !row.ended));
+    }
+}
+
+fn plain_shell(output: &Output, words: &[String]) -> u8 {
+    if output.json() {
+        return output.usage(
+            "terminal shell",
+            "This is an interactive shell; omit --json.",
+            "openagents terminal shell [--root PATH] [--shell PATH]",
+        );
+    }
+    let args = match Args::parse(words, &[]) {
+        Ok(args) => args,
+        Err(message) => {
+            return output.usage(
+                "terminal shell",
+                &message,
+                "openagents terminal shell [--root PATH] [--shell PATH]",
+            );
+        }
+    };
+    if !args.positional().is_empty()
+        || args
+            .option_names()
+            .iter()
+            .any(|name| !["root", "shell"].contains(name))
+    {
+        return output.usage(
+            "terminal shell",
+            "unknown argument",
+            "openagents terminal shell [--root PATH] [--shell PATH]",
+        );
+    }
+    #[cfg(unix)]
+    {
+        let root = args
+            .option("root")
+            .map(PathBuf::from)
+            .unwrap_or_else(|| std::env::current_dir().unwrap_or_else(|_| "/".into()));
+        let shell = args
+            .option("shell")
+            .map(PathBuf::from)
+            .or_else(|| std::env::var_os("SHELL").map(PathBuf::from))
+            .unwrap_or_else(|| "/bin/sh".into());
+        let helper = match std::env::current_exe() {
+            Ok(path) => path,
+            Err(error) => return output.fail("terminal shell", &error.to_string()),
+        };
+        match terminal_tty::runner::run(&root, &shell, &helper) {
+            Ok(code) => code.clamp(0, 255) as u8,
+            Err(error) => output.fail("terminal shell", &error),
+        }
+    }
+    #[cfg(not(unix))]
+    {
+        output.fail(
+            "terminal shell",
+            "Hook-only shells are unavailable on this platform.",
+        )
     }
 }
