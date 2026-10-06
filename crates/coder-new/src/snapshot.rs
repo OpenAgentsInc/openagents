@@ -19,6 +19,7 @@ pub fn svg(app: &mut App, width: u16, height: u16) -> String {
     let cursor = terminal
         .get_cursor_position()
         .expect("the memory backend is infallible");
+    let cursor_visible = terminal.backend().cursor_visible();
     let buffer = terminal.backend().buffer();
     let mut svg = format!(
         "<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"{}\" height=\"{}\" viewBox=\"0 0 {} {}\" role=\"img\">\n<title>Coder terminal UI preview</title>\n<rect width=\"100%\" height=\"100%\" fill=\"{}\"/>\n<g font-family=\"DejaVu Sans Mono, monospace\" font-size=\"15\">\n",
@@ -60,7 +61,7 @@ pub fn svg(app: &mut App, width: u16, height: u16) -> String {
             .expect("writing to a String succeeds");
         }
     }
-    if width >= 24 && height >= 12 {
+    if cursor_visible {
         writeln!(
             svg,
             "<g><rect x=\"{}\" y=\"{}\" width=\"9\" height=\"20\" fill=\"{}\"/>",

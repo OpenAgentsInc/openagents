@@ -1,6 +1,7 @@
 //! A local screen preview, with no agent, registry, or wallet connection.
 
 pub mod agents;
+pub mod plugins;
 pub mod snapshot;
 pub mod theme;
 pub mod tools;
@@ -15,6 +16,8 @@ pub enum Screen {
     Welcome,
     #[default]
     Conversation,
+    Plugins,
+    PluginSettings,
 }
 
 #[derive(Default)]
@@ -27,6 +30,8 @@ pub struct App {
     pub animation_frame: u8,
     pub cursor_blink_frame: u8,
     pub elapsed_seconds: u64,
+    pub plugins: plugins::Plugins,
+    return_screen: Screen,
     saved_chats: [Chat; 5],
 }
 
@@ -38,6 +43,19 @@ struct Chat {
 }
 
 impl App {
+    pub fn open_plugins(&mut self) {
+        if !matches!(self.screen, Screen::Plugins | Screen::PluginSettings) {
+            self.return_screen = self.screen;
+        }
+        self.screen = Screen::Plugins;
+    }
+
+    pub fn open_plugin_settings(&mut self) {
+        self.open_plugins();
+        self.plugins.begin_settings();
+        self.screen = Screen::PluginSettings;
+    }
+
     pub fn tick(&mut self) {
         self.animation_frame = self.animation_frame.wrapping_add(1) % 8;
         self.cursor_blink_frame = self.cursor_blink_frame.wrapping_add(1) % 8;
@@ -67,7 +85,11 @@ impl App {
         match event {
             Event::Paste(text) => {
                 self.cursor_blink_frame = 0;
-                self.draft.insert(&text);
+                if self.screen == Screen::PluginSettings {
+                    self.plugins.paste(&text);
+                } else if self.screen != Screen::Plugins {
+                    self.draft.insert(&text);
+                }
             }
             Event::Key(key) if key.kind != KeyEventKind::Release => {
                 self.cursor_blink_frame = 0;
@@ -75,7 +97,23 @@ impl App {
                 if ctrl && key.code == KeyCode::Char('c') {
                     return false;
                 }
+                if self.screen == Screen::PluginSettings {
+                    if self.plugins.handle(key) {
+                        self.screen = Screen::Plugins;
+                    }
+                    return true;
+                }
+                if self.screen == Screen::Plugins {
+                    match key.code {
+                        KeyCode::Char(' ') => self.plugins.enabled = !self.plugins.enabled,
+                        KeyCode::Enter => self.open_plugin_settings(),
+                        KeyCode::Esc | KeyCode::F(2) => self.screen = self.return_screen,
+                        _ => {}
+                    }
+                    return true;
+                }
                 match key.code {
+                    KeyCode::F(2) => self.open_plugins(),
                     KeyCode::Down => self.select_agent(Some(
                         self.selected_agent
                             .map_or(0, |index| (index + 1).min(agents::DEMOS.len() - 1)),
@@ -87,6 +125,7 @@ impl App {
                         self.screen = match self.screen {
                             Screen::Welcome => Screen::Conversation,
                             Screen::Conversation => Screen::Welcome,
+                            Screen::Plugins | Screen::PluginSettings => unreachable!(),
                         };
                         self.scroll = 0;
                     }
@@ -96,27 +135,17 @@ impl App {
                         self.draft.insert("\n");
                     }
                     KeyCode::Enter if !ctrl => {
-                        if !self.draft.text.trim().is_empty() {
+                        if self.draft.text.trim() == "/plugins" {
+                            self.draft = Draft::default();
+                            self.open_plugins();
+                        } else if !self.draft.text.trim().is_empty() {
                             self.messages.push(std::mem::take(&mut self.draft.text));
                             self.draft.cursor = 0;
                             self.screen = Screen::Conversation;
                             self.scroll = u16::MAX;
                         }
                     }
-                    KeyCode::Char(ch)
-                        if !key
-                            .modifiers
-                            .intersects(KeyModifiers::CONTROL | KeyModifiers::ALT) =>
-                    {
-                        self.draft.insert(&ch.to_string());
-                    }
-                    KeyCode::Backspace => self.draft.backspace(),
-                    KeyCode::Delete => self.draft.delete(),
-                    KeyCode::Left => self.draft.cursor = self.draft.previous(),
-                    KeyCode::Right => self.draft.cursor = self.draft.next(),
-                    KeyCode::Home => self.draft.cursor = 0,
-                    KeyCode::End => self.draft.cursor = self.draft.text.len(),
-                    _ => {}
+                    _ => self.draft.edit(key),
                 }
             }
             _ => {}
@@ -132,6 +161,25 @@ pub struct Draft {
 }
 
 impl Draft {
+    fn edit(&mut self, key: crossterm::event::KeyEvent) {
+        match key.code {
+            KeyCode::Char(ch)
+                if !key
+                    .modifiers
+                    .intersects(KeyModifiers::CONTROL | KeyModifiers::ALT) =>
+            {
+                self.insert(&ch.to_string());
+            }
+            KeyCode::Backspace => self.backspace(),
+            KeyCode::Delete => self.delete(),
+            KeyCode::Left => self.cursor = self.previous(),
+            KeyCode::Right => self.cursor = self.next(),
+            KeyCode::Home => self.cursor = 0,
+            KeyCode::End => self.cursor = self.text.len(),
+            _ => {}
+        }
+    }
+
     fn insert(&mut self, text: &str) {
         let clean: String = text
             .replace("\r\n", "\n")

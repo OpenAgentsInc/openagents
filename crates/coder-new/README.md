@@ -18,9 +18,27 @@ state. The main conversation uses `terminal-inspector.layout.inspect` and
 `palette-audit.colors.check`. Agent conversations also use keyboard and
 conversation audit examples. These fixtures do not load or invoke plugins.
 
+Press F2 or enter `/plugins` to manage the example **OpenRouter BYOK** plugin.
+Space toggles its enabled preference; Enter opens connection settings. The
+settings screen has a masked **OpenRouter API key**, an optional model ID, and
+the fixed direct endpoint `https://openrouter.ai/api/v1`. Tab moves between
+fields and actions; Enter selects an action; Esc cancels or returns to chat.
+Save and cancel preserve the distinction between the enabled preference and
+configuration: an enabled plugin without a key shows **Setup required**;
+adding a key shows **Configured**, with verification still pending. Removing
+a key takes effect when you save. Disabling retains the configuration.
+These screens keep preferences in memory and discard the entered key after
+save or cancel. They do not validate keys, call OpenRouter, or activate a
+provider. OpenRouter's own upstream-provider BYOK settings are separate from
+this example's OpenRouter API key. See [OpenRouter authentication](https://openrouter.ai/docs/api_reference/authentication),
+the [API reference](https://openrouter.ai/docs/api_reference/overview), and
+[OpenRouter BYOK](https://openrouter.ai/docs/guides/overview/auth/byok).
+
 ```sh
 cargo run -p coder-new
 cargo run -p coder-new -- --welcome
+cargo run -p coder-new -- --plugins
+cargo run -p coder-new -- --plugin-settings
 ```
 
 Type a draft, move with Left/Right or Home/End, and edit with Backspace/Delete.
@@ -57,6 +75,8 @@ Export the actual Ratatui buffer without an interactive terminal:
 ```sh
 cargo run -p coder-new -- --snapshot > docs/coder-new/mockup.svg
 cargo run -p coder-new -- --welcome --snapshot > docs/coder-new/welcome.svg
+cargo run -p coder-new -- --plugins --snapshot > docs/coder-new/plugins.svg
+cargo run -p coder-new -- --plugin-settings --snapshot > docs/coder-new/plugin-settings.svg
 ```
 
 The [research index](../../docs/coder-new/README.md) contains the history and

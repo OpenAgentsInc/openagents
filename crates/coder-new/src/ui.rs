@@ -1,5 +1,7 @@
 //! The same render function draws the terminal and exported previews.
 
+mod plugins;
+
 use ratatui::{
     Frame,
     layout::{Constraint, Layout, Rect},
@@ -44,6 +46,10 @@ pub fn render(frame: &mut Frame, app: &mut App) {
         width: area.width.saturating_sub(4),
         height: area.height.saturating_sub(2),
     };
+    if matches!(app.screen, Screen::Plugins | Screen::PluginSettings) {
+        plugins::render(frame, area, app);
+        return;
+    }
     let (draft, cursor) = app.draft.wrapped(terminal_width.saturating_sub(3));
     let rail_height = DEMOS.len() as u16;
     let composer_height = (draft.len() as u16).clamp(1, 6) + 2;
@@ -60,6 +66,7 @@ pub fn render(frame: &mut Frame, app: &mut App) {
     match app.screen {
         Screen::Welcome => welcome(frame, body),
         Screen::Conversation => conversation(frame, body, app),
+        Screen::Plugins | Screen::PluginSettings => unreachable!(),
     }
     composer_view(
         frame,

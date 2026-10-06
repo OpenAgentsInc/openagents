@@ -17,10 +17,12 @@ fn main() -> io::Result<()> {
     for arg in std::env::args().skip(1) {
         match arg.as_str() {
             "--welcome" => app.screen = Screen::Welcome,
+            "--plugins" => app.open_plugins(),
+            "--plugin-settings" => app.open_plugin_settings(),
             "--snapshot" => capture = true,
             "--help" | "-h" => {
                 println!(
-                    "Coder terminal UI preview\n\nUsage: coder-new [--welcome] [--snapshot]\n\n--welcome   Start with the welcome screen.\n--snapshot  Write a 110×36 SVG preview to stdout.\n\nUp/Down selects agent conversations. Esc returns to main. Tab switches views. Ctrl+C closes the preview."
+                    "Coder terminal UI preview\n\nUsage: coder-new [--welcome | --plugins | --plugin-settings] [--snapshot]\n\n--welcome          Start with the welcome screen.\n--plugins          Start with plugin management.\n--plugin-settings  Start with OpenRouter settings.\n--snapshot         Write a 110×36 SVG preview to stdout.\n\nUp/Down selects agent conversations. Esc returns to main. Tab switches views. F2 or /plugins opens plugins. Ctrl+C closes the preview."
                 );
                 return Ok(());
             }

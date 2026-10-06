@@ -20,6 +20,12 @@ progress in the same transcript. These are local presentation fixtures.
 Edit examples reuse the Grok Build diff renderer and syntax highlighter,
 including line numbers and red and green change backgrounds.
 
+The [plugin manager](plugins.png) and [OpenRouter settings](plugin-settings.png)
+mock an enabled preference, configuration status, masked API key entry, an
+optional model ID, and a direct OpenRouter endpoint. Open them with F2 or
+`/plugins`, or start with `--plugins` or `--plugin-settings`. They make no
+provider requests and retain no credentials.
+
 1. [Claude Code replacement history and current terminal survey](claude-code-replacement-history.md)
    catalogs the retained attempts and compares today's Coder and OpenAgents
    terminal surfaces.
