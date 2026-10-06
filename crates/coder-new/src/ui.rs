@@ -70,6 +70,7 @@ pub fn render(frame: &mut Frame, app: &mut App) {
         },
         &draft,
         cursor,
+        app.selected_agent.is_none(),
     );
     agent_rail(frame, rail, app);
 }
@@ -351,7 +352,13 @@ fn conversation(frame: &mut Frame, area: Rect, app: &mut App) {
     frame.render_widget(paragraph.scroll((app.scroll, 0)), area);
 }
 
-fn composer_view(frame: &mut Frame, area: Rect, draft: &[String], cursor: (u16, u16)) {
+fn composer_view(
+    frame: &mut Frame,
+    area: Rect,
+    draft: &[String],
+    cursor: (u16, u16),
+    main_selected: bool,
+) {
     let block = Block::default()
         .borders(Borders::TOP | Borders::BOTTOM)
         .border_style(Style::default().fg(t::PROMPT_BORDER_ACTIVE))
@@ -361,7 +368,17 @@ fn composer_view(frame: &mut Frame, area: Rect, draft: &[String], cursor: (u16, 
     if inner.width < 3 || inner.height == 0 {
         return;
     }
-    frame.render_widget(Paragraph::new(span("❯", t::TEXT_SECONDARY)), inner);
+    frame.render_widget(
+        Paragraph::new(span(
+            "❯",
+            if main_selected {
+                t::TEXT_SECONDARY
+            } else {
+                t::GRAY_DIM
+            },
+        )),
+        inner,
+    );
     let text_area = Rect {
         x: inner.x + 2,
         width: inner.width - 2,
