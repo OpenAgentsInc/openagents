@@ -13,11 +13,10 @@ fn main() -> io::Result<()> {
     for arg in std::env::args().skip(1) {
         match arg.as_str() {
             "--welcome" => app.screen = Screen::Welcome,
-            "--agents" => app.agents.open(),
             "--snapshot" => capture = true,
             "--help" | "-h" => {
                 println!(
-                    "Coder terminal UI preview\n\nUsage: coder-new [--welcome] [--agents] [--snapshot]\n\n--welcome   Start with the welcome screen.\n--agents    Open the background-agent demo list.\n--snapshot  Write a 110×36 SVG preview to stdout.\n\nDown selects the agent footer; Enter opens it. Tab switches views. Ctrl+C closes the preview."
+                    "Coder terminal UI preview\n\nUsage: coder-new [--welcome] [--snapshot]\n\n--welcome   Start with the welcome screen.\n--snapshot  Write a 110×36 SVG preview to stdout.\n\nTab switches views. Ctrl+C closes the preview."
                 );
                 return Ok(());
             }

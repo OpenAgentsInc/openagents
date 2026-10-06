@@ -5,13 +5,13 @@ use ratatui::{
     layout::{Constraint, Layout, Margin, Rect},
     style::{Color, Modifier, Style},
     text::{Line, Span, Text},
-    widgets::{Block, BorderType, Borders, Paragraph, Wrap},
+    widgets::{Block, Borders, Paragraph, Wrap},
 };
 
 use unicode_segmentation::UnicodeSegmentation;
 use unicode_width::UnicodeWidthStr;
 
-use crate::{App, Screen, agents::AgentView, theme as t};
+use crate::{App, Screen, agents::DEMOS, theme as t};
 
 fn span(text: impl Into<String>, color: Color) -> Span<'static> {
     Span::styled(text.into(), Style::default().fg(color))
@@ -36,25 +36,21 @@ pub fn render(frame: &mut Frame, app: &mut App) {
         horizontal: 2,
         vertical: 1,
     });
-    let (draft, cursor) = app.draft.wrapped(area.width.saturating_sub(6));
-    let managing = matches!(app.agents.view, AgentView::List | AgentView::Detail);
-    let footer_height = u16::from(!managing && !app.agents.demos.is_empty());
-    let status_height = u16::from(!managing && area.height >= 16);
-    let help_height = u16::from(!managing);
-    let header_height = if area.height < 16 { 2 } else { 3 };
-    let gap_height = u16::from(area.height >= 16);
-    let input_height = match app.agents.view {
-        AgentView::List => 12,
-        AgentView::Detail => 16,
-        _ => (draft.len() as u16).clamp(3, 6) + 2,
-    };
-    let reserved = header_height + gap_height + footer_height + status_height + help_height + 1;
-    let [header, body, _gap, composer, agents, status, help] = Layout::vertical([
+    let (draft, cursor) = app.draft.wrapped(area.width.saturating_sub(2));
+    let cramped = area.height < 14;
+    let header_height = if cramped { 2 } else { 3 };
+    let gap_height = u16::from(!cramped);
+    let rail_height = DEMOS.len() as u16 + u16::from(!cramped);
+    let status_height = u16::from(!cramped);
+    let help_height = u16::from(!cramped);
+    let composer_height = (draft.len() as u16).clamp(1, 6) + 2;
+    let reserved = header_height + gap_height + rail_height + status_height + help_height + 1;
+    let [header, body, _gap, composer, rail, status, help] = Layout::vertical([
         Constraint::Length(header_height),
         Constraint::Min(1),
         Constraint::Length(gap_height),
-        Constraint::Length(input_height.min(area.height.saturating_sub(reserved))),
-        Constraint::Length(footer_height),
+        Constraint::Length(composer_height.min(area.height.saturating_sub(reserved))),
+        Constraint::Length(rail_height),
         Constraint::Length(status_height),
         Constraint::Length(help_height),
     ])
@@ -64,19 +60,8 @@ pub fn render(frame: &mut Frame, app: &mut App) {
         Screen::Welcome => welcome(frame, body),
         Screen::Conversation => conversation(frame, body, app),
     }
-    if managing {
-        agent_pane(frame, composer, app);
-    } else {
-        composer_view(
-            frame,
-            composer,
-            &draft,
-            cursor,
-            app.draft.text.is_empty(),
-            app.agents.view == AgentView::Composer,
-        );
-        agent_footer(frame, agents, app);
-    }
+    composer_view(frame, composer, &draft, cursor);
+    agent_rail(frame, rail);
 
     let [left, right] =
         Layout::horizontal([Constraint::Percentage(50), Constraint::Percentage(50)]).areas(status);
@@ -103,33 +88,45 @@ pub fn render(frame: &mut Frame, app: &mut App) {
     frame.render_widget(Paragraph::new(span(hints, t::GRAY_DIM)), help);
 }
 
-fn agent_footer(frame: &mut Frame, area: Rect, app: &App) {
-    if area.height == 0 {
-        return;
-    }
-    let count = app.agents.demos.len();
-    let label = format!("{count} local agent{}", if count == 1 { "" } else { "s" });
-    let focused = app.agents.view == AgentView::Footer;
-    let style = if focused {
-        Style::default().fg(t::BG_BASE).bg(t::ACCENT_MODEL)
-    } else {
-        Style::default().fg(t::ACCENT_MODEL)
-    };
-    frame.render_widget(
-        Paragraph::new(Line::from(vec![
-            span("  ", t::GRAY_DIM),
-            Span::styled(label, style),
-            span(
-                if focused {
-                    " · Enter to view tasks"
-                } else {
-                    " · ↓ to manage"
-                },
-                t::GRAY,
+fn agent_rail(frame: &mut Frame, area: Rect) {
+    let offset = area.height.saturating_sub(DEMOS.len() as u16);
+    for (index, agent) in DEMOS.iter().enumerate() {
+        let row = Rect {
+            y: area.y + offset + index as u16,
+            height: 1,
+            ..area
+        };
+        let narrow = area.width < 32;
+        let suffix = if narrow {
+            format!("↓ {}", agent.tokens)
+        } else {
+            format!("↓ {} tokens", agent.tokens)
+        };
+        let token_width = suffix.width() as u16;
+        let [activity, tokens] =
+            Layout::horizontal([Constraint::Min(1), Constraint::Length(token_width)]).areas(row);
+        let prefix = if narrow { "" } else { "  ○ " };
+        let name_width = prefix.width() + agent.name.width();
+        let task_width = usize::from(activity.width).saturating_sub(name_width + 3);
+        let mut spans = vec![
+            span(prefix, t::GRAY),
+            Span::styled(
+                agent.name,
+                Style::default()
+                    .fg(t::TEXT_SECONDARY)
+                    .add_modifier(Modifier::BOLD),
             ),
-        ])),
-        area,
-    );
+        ];
+        if task_width > 0 {
+            spans.push(span(": ", t::GRAY));
+            spans.push(span(truncate(agent.task, task_width as u16), t::GRAY));
+        }
+        frame.render_widget(Paragraph::new(Line::from(spans)), activity);
+        frame.render_widget(
+            Paragraph::new(span(suffix, t::GRAY)).right_aligned(),
+            tokens,
+        );
+    }
 }
 
 fn truncate(text: &str, width: u16) -> String {
@@ -150,146 +147,6 @@ fn truncate(text: &str, width: u16) -> String {
         result.push('…');
     }
     result
-}
-
-fn agent_pane(frame: &mut Frame, area: Rect, app: &mut App) {
-    if area.height == 0 {
-        return;
-    }
-    let title_style = Style::default()
-        .fg(t::ACCENT_MODEL)
-        .add_modifier(Modifier::BOLD);
-    let dim_heading = Style::default().fg(t::GRAY).add_modifier(Modifier::BOLD);
-    let compact = area.height < 12;
-    let mut lines = Vec::new();
-    if !compact {
-        lines.push(Line::from(span(
-            "─".repeat(usize::from(area.width)),
-            t::ACCENT_MODEL,
-        )));
-        lines.push(Line::default());
-    }
-    let mut hints = "↑/↓ to select · Enter to view · x to stop · ctrl+x ctrl+k to stop all agents · ←/Esc to close";
-    if app.agents.view == AgentView::List {
-        lines.push(Line::from(Span::styled("  Background tasks", title_style)));
-        if !compact {
-            lines.push(Line::from(span(
-                format!("  {} active agents", app.agents.demos.len()),
-                t::GRAY,
-            )));
-            lines.push(Line::default());
-            lines.push(Line::from(Span::styled(
-                format!("    Local agents ({})", app.agents.demos.len()),
-                dim_heading,
-            )));
-        }
-        let visible = if compact {
-            area.height.saturating_sub(2) as usize
-        } else {
-            app.agents.demos.len()
-        };
-        let start = if compact {
-            app.agents
-                .selected
-                .saturating_sub(visible.saturating_sub(1))
-        } else {
-            0
-        };
-        for (index, agent) in app
-            .agents
-            .demos
-            .iter()
-            .enumerate()
-            .skip(start)
-            .take(visible)
-        {
-            let selected = app.agents.selected == index;
-            lines.push(Line::from(vec![
-                span(if selected { "  ❯ " } else { "    " }, t::TEXT_SECONDARY),
-                span(
-                    truncate(agent.name, area.width.saturating_sub(4)),
-                    if selected {
-                        t::ACCENT_SKILL
-                    } else {
-                        t::TEXT_SECONDARY
-                    },
-                ),
-                span(" (running)", t::GRAY),
-            ]));
-        }
-    } else if let Some(agent) = app.agents.demos.get(app.agents.selected) {
-        hints = "← to go back · Esc/Enter/Space to close · x to stop · PgUp/PgDn scroll";
-        lines.push(Line::from(Span::styled(
-            format!(
-                "  {}",
-                truncate(
-                    &format!("{} › {}", agent.name, agent.description),
-                    area.width.saturating_sub(2)
-                )
-            ),
-            title_style,
-        )));
-        if !compact {
-            lines.push(Line::from(span(
-                format!(
-                    "  {} · {} tokens · {} tools",
-                    agent.elapsed, agent.tokens, agent.tools
-                ),
-                t::GRAY,
-            )));
-            lines.push(Line::default());
-            lines.push(Line::from(Span::styled("  Progress", dim_heading)));
-        }
-        for (index, activity) in agent.progress.iter().enumerate() {
-            let latest = index + 1 == agent.progress.len();
-            lines.push(Line::from(span(
-                format!(
-                    "  {}{}",
-                    if latest { "› " } else { "  " },
-                    truncate(activity, area.width.saturating_sub(4))
-                ),
-                if latest { t::TEXT_SECONDARY } else { t::GRAY },
-            )));
-        }
-        if !compact {
-            lines.push(Line::default());
-            lines.push(Line::from(Span::styled("  Prompt", dim_heading)));
-            lines.push(Line::from(span(format!("  {}", agent.prompt), t::GRAY)));
-        }
-    }
-    let content = Rect {
-        height: area.height.saturating_sub(1),
-        ..area
-    };
-    let paragraph = Paragraph::new(Text::from(lines));
-    let paragraph = if app.agents.view == AgentView::Detail {
-        paragraph.wrap(Wrap { trim: false })
-    } else {
-        paragraph
-    };
-    let max_scroll = paragraph
-        .line_count(content.width)
-        .saturating_sub(usize::from(content.height))
-        .min(usize::from(u16::MAX)) as u16;
-    let scroll = if app.agents.view == AgentView::Detail {
-        app.agents.detail_scroll = app.agents.detail_scroll.min(max_scroll);
-        app.agents.detail_scroll
-    } else {
-        0
-    };
-    frame.render_widget(paragraph.scroll((scroll, 0)), content);
-    let help = Rect {
-        y: area.y + area.height - 1,
-        height: 1,
-        ..area
-    };
-    frame.render_widget(
-        Paragraph::new(Span::styled(
-            format!("  {hints}"),
-            Style::default().fg(t::GRAY).add_modifier(Modifier::ITALIC),
-        )),
-        help,
-    );
 }
 
 fn header_view(frame: &mut Frame, area: Rect) {
@@ -465,24 +322,12 @@ fn conversation(frame: &mut Frame, area: Rect, app: &mut App) {
     frame.render_widget(paragraph.scroll((app.scroll, 0)), area);
 }
 
-fn composer_view(
-    frame: &mut Frame,
-    area: Rect,
-    draft: &[String],
-    cursor: (u16, u16),
-    empty: bool,
-    focused: bool,
-) {
+fn composer_view(frame: &mut Frame, area: Rect, draft: &[String], cursor: (u16, u16)) {
     let block = Block::default()
-        .borders(Borders::ALL)
-        .border_type(BorderType::Rounded)
+        .borders(Borders::TOP | Borders::BOTTOM)
         .border_style(Style::default().fg(t::PROMPT_BORDER_ACTIVE))
-        .style(Style::default().bg(t::BG_BASE))
-        .title(Line::from(span(" Message ", t::TEXT_SECONDARY)));
-    let inner = block.inner(area).inner(Margin {
-        horizontal: 1,
-        vertical: 0,
-    });
+        .style(Style::default().bg(t::BG_BASE));
+    let inner = block.inner(area);
     frame.render_widget(block, area);
     if inner.width < 3 || inner.height == 0 {
         return;
@@ -494,21 +339,15 @@ fn composer_view(
         ..inner
     };
     let scroll = cursor.1.saturating_sub(text_area.height.saturating_sub(1));
-    let text = if empty {
-        Text::from(span("Describe what you want to build…", t::GRAY_DIM))
-    } else {
-        Text::from(
-            draft
-                .iter()
-                .map(|line| Line::from(span(line.clone(), t::TEXT_PRIMARY)))
-                .collect::<Vec<_>>(),
-        )
-    };
+    let text = Text::from(
+        draft
+            .iter()
+            .map(|line| Line::from(span(line.clone(), t::TEXT_PRIMARY)))
+            .collect::<Vec<_>>(),
+    );
     frame.render_widget(Paragraph::new(text).scroll((scroll, 0)), text_area);
-    if focused {
-        frame.set_cursor_position((
-            text_area.x + cursor.0.min(text_area.width.saturating_sub(1)),
-            text_area.y + cursor.1.saturating_sub(scroll),
-        ));
-    }
+    frame.set_cursor_position((
+        text_area.x + cursor.0.min(text_area.width.saturating_sub(1)),
+        text_area.y + cursor.1.saturating_sub(scroll),
+    ));
 }

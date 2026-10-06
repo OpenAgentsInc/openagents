@@ -7,7 +7,6 @@ Press Tab to switch to the welcome view.
 ```sh
 cargo run -p coder-new
 cargo run -p coder-new -- --welcome
-cargo run -p coder-new -- --agents
 ```
 
 Type a draft, move with Left/Right or Home/End, and edit with Backspace/Delete.
@@ -16,14 +15,10 @@ inserts text without sending it. PageUp/PageDown scroll the conversation;
 Ctrl+C quits. The preview makes no network requests, runs no tools, and saves
 no messages. All conversation, agent, plugin, and wallet values are sample data.
 
-Below the composer, `4 local agents` opens the background task previews for
-`claude-code`, `codex`, `devin-cli`, and `grok-build`. Press Down to select the
-footer, then Enter or Down to open the list. Up/Down select a task; Enter opens
-its progress, elapsed time, tool count, token count, and sample prompt.
-PageUp/PageDown scroll the details in narrow terminals. Left goes
-back; Esc closes the pane and restores your draft. Press x to remove the selected
-demo, or Ctrl+X then Ctrl+K to remove all demos. These controls affect only the
-preview's sample data. Restart the preview to restore the four demos.
+The composer is a plain `❯` input between horizontal rules. Four rows below it
+show `claude-code`, `codex`, `devin-cli`, and `grok-build`, each with its current
+sample task and a token count aligned on the right. Narrow terminals truncate
+task text and shorten the token label to preserve the agent names.
 
 All colors are exact 24-bit RGB values from Grok Build's default Grok Night
 theme, including the focused composer border. Use a truecolor terminal to
@@ -35,7 +30,6 @@ Export the actual Ratatui buffer without an interactive terminal:
 ```sh
 cargo run -p coder-new -- --snapshot > docs/coder-new/mockup.svg
 cargo run -p coder-new -- --welcome --snapshot > docs/coder-new/welcome.svg
-cargo run -p coder-new -- --agents --snapshot > docs/coder-new/agents.svg
 ```
 
 The [research index](../../docs/coder-new/README.md) contains the history and

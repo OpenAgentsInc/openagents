@@ -22,29 +22,17 @@ pub struct App {
     pub draft: Draft,
     pub messages: Vec<String>,
     pub scroll: u16,
-    pub agents: agents::Agents,
 }
 
 impl App {
     /// Returns false when the preview should close.
     pub fn handle(&mut self, event: Event) -> bool {
         match event {
-            Event::Paste(text)
-                if !matches!(
-                    self.agents.view,
-                    agents::AgentView::List | agents::AgentView::Detail
-                ) =>
-            {
-                self.agents.view = agents::AgentView::Composer;
-                self.draft.insert(&text);
-            }
+            Event::Paste(text) => self.draft.insert(&text),
             Event::Key(key) if key.kind != KeyEventKind::Release => {
                 let ctrl = key.modifiers.contains(KeyModifiers::CONTROL);
                 if ctrl && key.code == KeyCode::Char('c') {
                     return false;
-                }
-                if self.agents.handle(key) {
-                    return true;
                 }
                 match key.code {
                     KeyCode::Tab | KeyCode::BackTab => {

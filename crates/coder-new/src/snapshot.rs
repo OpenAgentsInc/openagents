@@ -8,7 +8,7 @@ use ratatui::{
     style::{Color, Modifier},
 };
 
-use crate::{App, agents::AgentView, theme as t, ui};
+use crate::{App, theme as t, ui};
 
 pub fn svg(app: &mut App, width: u16, height: u16) -> String {
     let mut terminal =
@@ -58,7 +58,7 @@ pub fn svg(app: &mut App, width: u16, height: u16) -> String {
         }
     }
     svg.push_str("</g>\n");
-    if width >= 24 && height >= 12 && app.agents.view == AgentView::Composer {
+    if width >= 24 && height >= 12 {
         let cursor = terminal
             .get_cursor_position()
             .expect("the memory backend is infallible");
