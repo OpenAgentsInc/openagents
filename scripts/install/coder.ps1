@@ -133,7 +133,7 @@ try {
     for ($CoderIndex = $CoderChanged.Count - 1; $CoderIndex -ge 0; $CoderIndex--) {
         $CoderPrevious = $CoderChanged[$CoderIndex]
         try {
-            if ($CoderPrevious.Existed) { [IO.File]::Replace($CoderPrevious.Backup, $CoderPrevious.Destination, $null, $true) }
+            if ($CoderPrevious.Existed) { [IO.File]::Replace($CoderPrevious.Backup, $CoderPrevious.Destination, [NullString]::Value, $true) }
             else { [IO.File]::Delete($CoderPrevious.Destination) }
         } catch {
             $CoderKeepWork = $true

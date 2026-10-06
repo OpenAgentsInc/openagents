@@ -1,5 +1,12 @@
 # Releasing OpenAgents Terminal
 
+Coder's new terminal uses `scripts/release/coder.sh` and the separate
+`coder/` bucket prefix. It ships `coder`, `openagents`, and `microcoder`
+for all seven platforms, plus `coder-boundary.exe` on Windows. Publish a
+complete release with `--version 1.0.0-rc.3 --publish --channel rc`, then
+publish its installers with `--publish-installers` from the same commit.
+The website serves those installers at `/cli/install.sh` and `/cli/install.ps1`.
+
 The shipped OpenAgents Terminal chat TUI is in the `openagents` program
 ([user guide](../terminal/README.md)). A release is seven platforms of two
 bare executables each, a checksum file, and a channel pointer, in the public

@@ -97,6 +97,12 @@ pub(crate) const EXT_USAGE: &str = "usage: openagents plugin COMMAND [OPTIONS]
   use PLUGIN --version V --digest D [--request TEXT] [--in WORKSPACE] [--thread ID]
         Run an installed plugin's workflow once through the shared route,
         only while exactly that release is installed and on.
+  workbench freeze --root DIR --review FILE
+        Retain a reviewed plugin draft and its original flow and task.
+  workbench show --root DIR
+        Read the retained flow, tests, comparisons, and action outcomes.
+  workbench approve --root DIR --request FILE
+        Execute one exact reviewed action from a typed JSON request.
   test run TARGET [--runs N] [--case GLOB]... [--tag TAG]... [--baseline on|off]
       [--concurrency N] [--grant read|write|exec|network]... [--trust]
       [--door NAME] [--eval-dir DIR] [--output-dir DIR] [--keep-temp] [--coder PATH]

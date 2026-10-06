@@ -2048,11 +2048,18 @@ mod local_run {
         let root = tempfile::tempdir().unwrap();
         let top = checkout(root.path());
         let store = root.path().join("tasks");
+        // Local selects the second turn with the wall clock. Keep this
+        // refusal active throughout both turns rather than using a past reset.
+        let now = coder::task::autostart::unix_now();
+        let reset = now + 3_600;
+        let mut limit: Value = serde_json::from_str(LIMIT).unwrap();
+        limit["error"]["resets_at"] = json!(reset);
+        let refusal = Refusal::codex(429, &limit.to_string(), now).unwrap();
         let script = VecDeque::from([
             // Turn 1: Codex refuses for its usage limit, Claude Code writes
             // the test and asks.
             (
-                vec![Err(Refusal::codex(429, LIMIT, during_limit()).unwrap())],
+                vec![Err(refusal)],
                 vec![
                     Ok(write("printf 'import unittest\\n' > test_slugs.py")),
                     Ok(asking(
@@ -2119,7 +2126,7 @@ mod local_run {
             })
             .unwrap();
         assert_eq!(switched.to.as_deref(), Some("claude:claude-opus-5-5"));
-        assert_eq!(switched.resets_at, Some(RESET));
+        assert_eq!(switched.resets_at, Some(reset));
         let CoderEvent::Question(asked) = &turn_one.last().unwrap().event else {
             panic!()
         };

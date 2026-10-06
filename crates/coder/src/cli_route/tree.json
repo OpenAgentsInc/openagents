@@ -3131,6 +3131,35 @@
           }
         },
         {
+          "name": "shell-result",
+          "leaf": {
+            "path": [
+              "chat",
+              "shell-result"
+            ],
+            "usage": [
+              "shell-result -"
+            ],
+            "forms": [
+              {
+                "tokens": [
+                  {
+                    "kind": "literal",
+                    "word": "shell-result"
+                  },
+                  {
+                    "kind": "positional",
+                    "name": "-"
+                  }
+                ]
+              }
+            ],
+            "summary": "Record one exact approved shell result on its existing thread.",
+            "effect": "publishes",
+            "runs_on": "connected_computer"
+          }
+        },
+        {
           "name": "shell-request",
           "leaf": {
             "path": [
@@ -3705,6 +3734,22 @@
                 "name": "observe",
                 "optional": true,
                 "repeated": true
+              },
+              {
+                "kind": "option",
+                "name": "root",
+                "value": "PATH",
+                "open": true,
+                "optional": true,
+                "repeated": true
+              },
+              {
+                "kind": "option",
+                "name": "shell",
+                "value": "PATH",
+                "open": true,
+                "optional": true,
+                "repeated": true
               }
             ]
           }
@@ -3713,6 +3758,47 @@
         "effect": "long_running",
         "runs_on": "connected_computer"
       },
+      "children": [
+        {
+          "name": "shell",
+          "leaf": {
+            "path": [
+              "terminal",
+              "shell"
+            ],
+            "usage": [
+              "shell [--root PATH] [--shell PATH]"
+            ],
+            "forms": [
+              {
+                "tokens": [
+                  {
+                    "kind": "literal",
+                    "word": "shell"
+                  },
+                  {
+                    "kind": "option",
+                    "name": "root",
+                    "value": "PATH",
+                    "open": true,
+                    "optional": true
+                  },
+                  {
+                    "kind": "option",
+                    "name": "shell",
+                    "value": "PATH",
+                    "open": true,
+                    "optional": true
+                  }
+                ]
+              }
+            ],
+            "summary": "Run an interactive shell in PATH (default the current directory). --shell selects the shell executable (default SHELL or /bin/sh).",
+            "effect": "long_running",
+            "runs_on": "connected_computer"
+          }
+        }
+      ],
       "options": [
         {
           "kind": "option",
@@ -3733,6 +3819,22 @@
         {
           "kind": "option",
           "name": "observe",
+          "optional": true,
+          "repeated": true
+        },
+        {
+          "kind": "option",
+          "name": "root",
+          "value": "PATH",
+          "open": true,
+          "optional": true,
+          "repeated": true
+        },
+        {
+          "kind": "option",
+          "name": "shell",
+          "value": "PATH",
+          "open": true,
           "optional": true,
           "repeated": true
         },
@@ -18265,6 +18367,131 @@
           }
         },
         {
+          "name": "workbench",
+          "children": [
+            {
+              "name": "freeze",
+              "leaf": {
+                "path": [
+                  "plugin",
+                  "workbench",
+                  "freeze"
+                ],
+                "usage": [
+                  "workbench freeze --root DIR --review FILE"
+                ],
+                "forms": [
+                  {
+                    "tokens": [
+                      {
+                        "kind": "literal",
+                        "word": "workbench"
+                      },
+                      {
+                        "kind": "literal",
+                        "word": "freeze"
+                      },
+                      {
+                        "kind": "option",
+                        "name": "root",
+                        "value": "DIR",
+                        "open": true
+                      },
+                      {
+                        "kind": "option",
+                        "name": "review",
+                        "value": "FILE",
+                        "open": true
+                      }
+                    ]
+                  }
+                ],
+                "summary": "Retain a reviewed plugin draft and its original flow and task.",
+                "effect": "local_write",
+                "runs_on": "connected_computer"
+              }
+            },
+            {
+              "name": "show",
+              "leaf": {
+                "path": [
+                  "plugin",
+                  "workbench",
+                  "show"
+                ],
+                "usage": [
+                  "workbench show --root DIR"
+                ],
+                "forms": [
+                  {
+                    "tokens": [
+                      {
+                        "kind": "literal",
+                        "word": "workbench"
+                      },
+                      {
+                        "kind": "literal",
+                        "word": "show"
+                      },
+                      {
+                        "kind": "option",
+                        "name": "root",
+                        "value": "DIR",
+                        "open": true
+                      }
+                    ]
+                  }
+                ],
+                "summary": "Read the retained flow, tests, comparisons, and action outcomes.",
+                "effect": "read_only",
+                "runs_on": "connected_computer"
+              }
+            },
+            {
+              "name": "approve",
+              "leaf": {
+                "path": [
+                  "plugin",
+                  "workbench",
+                  "approve"
+                ],
+                "usage": [
+                  "workbench approve --root DIR --request FILE"
+                ],
+                "forms": [
+                  {
+                    "tokens": [
+                      {
+                        "kind": "literal",
+                        "word": "workbench"
+                      },
+                      {
+                        "kind": "literal",
+                        "word": "approve"
+                      },
+                      {
+                        "kind": "option",
+                        "name": "root",
+                        "value": "DIR",
+                        "open": true
+                      },
+                      {
+                        "kind": "option",
+                        "name": "request",
+                        "value": "FILE",
+                        "open": true
+                      }
+                    ]
+                  }
+                ],
+                "summary": "Execute one exact reviewed action from a typed JSON request.",
+                "effect": "publishes",
+                "runs_on": "connected_computer"
+              }
+            }
+          ]
+        },
+        {
           "name": "test",
           "children": [
             {
@@ -18933,6 +19160,22 @@
         },
         {
           "kind": "option",
+          "name": "root",
+          "value": "DIR",
+          "open": true,
+          "optional": true,
+          "repeated": true
+        },
+        {
+          "kind": "option",
+          "name": "review",
+          "value": "FILE",
+          "open": true,
+          "optional": true,
+          "repeated": true
+        },
+        {
+          "kind": "option",
           "name": "runs",
           "value": "N",
           "open": true,
@@ -19057,14 +19300,6 @@
           "kind": "option",
           "name": "gate",
           "value": "ID",
-          "open": true,
-          "optional": true,
-          "repeated": true
-        },
-        {
-          "kind": "option",
-          "name": "root",
-          "value": "PUBKEY",
           "open": true,
           "optional": true,
           "repeated": true

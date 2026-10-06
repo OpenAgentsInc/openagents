@@ -65,7 +65,8 @@ impl Drop for Stop {
 
 #[test]
 fn keys_and_control_start_without_relay_and_status_explains_missing_iroh() {
-    let home = tempfile::tempdir().unwrap();
+    // Keep the Unix socket below macOS's 103-byte path limit.
+    let home = tempfile::tempdir_in("/tmp").unwrap();
     let keys = home.path().join("keys");
     let log_path = home.path().join("host.log");
     let log = std::fs::File::create(&log_path).unwrap();

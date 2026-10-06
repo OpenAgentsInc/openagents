@@ -28,9 +28,12 @@ use serde_json::Value;
 
 use crate::{Args, Output, runtime};
 
-pub(crate) const USAGE: &str = "usage: openagents terminal shell [--root PATH] [--shell PATH]
-       openagents terminal [--thread ID] [--continue] [--scratch] [--local] [--socket PATH]
+pub(crate) const USAGE: &str =
+    "usage: openagents terminal [--thread ID] [--continue] [--scratch] [--local] [--socket PATH]
                           [--computer HOST] [--resume [ID|TITLE]] [--observe]
+  shell [--root PATH] [--shell PATH]
+        Run an interactive shell in PATH (default the current directory).
+        --shell selects the shell executable (default SHELL or /bin/sh).
 OpenAgents Terminal: a full-screen chat with OpenAgents in this terminal.
 Type a message and press Enter. It opens on a new thread; --continue opens
 the last thread you had open in this folder, --thread ID opens that thread,

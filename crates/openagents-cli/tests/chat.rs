@@ -282,22 +282,10 @@ async fn chat_streams_routes_continues_threads_and_exports_atif() {
             .get("project")
             .is_none()
     );
-    // Scratch chat does not create a persistent chat store. Startup may
-    // create the hosted Jev credential, but only inside this test's HOME.
+    // Scratch chat creates no persistent chat store or hosted decision key.
+    // The fixture relay answers without asking a hosted decision door.
     assert!(!home.path().join(".openagents/chat").exists());
-    let decision = home.path().join(".openagents/decision.key");
-    let key = std::fs::read_to_string(&decision).unwrap();
-    assert!(
-        SecretKey::from_byte_array(
-            (0..32)
-                .map(|at| u8::from_str_radix(&key[at * 2..at * 2 + 2], 16).unwrap())
-                .collect::<Vec<_>>()
-                .try_into()
-                .unwrap()
-        )
-        .is_ok()
-    );
-    assert!(!phone.stdout.contains(key.trim()) && !phone.stderr.contains(key.trim()));
+    assert!(!home.path().join(".openagents/decision.key").exists());
 
     // A streamed general answer, in this command's own store.
     let haiku = run!("--json", "chat", "--local", "Write a haiku about rain");
@@ -561,6 +549,8 @@ async fn settings_change_the_local_run_and_the_defaults_change_nothing() {
             "coder.shadow_budget_usd": null,
             "coder.claude": "session",
             "coder.codex": "loop",
+            "coder.slot_cap_gb": null,
+            "coder.slot_free_gb": null,
             "models.payer": "ours",
         })
     );

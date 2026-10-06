@@ -383,7 +383,7 @@ fn group_node(name: &str, summary: &str, help: &GroupHelp<'_>) -> Result<Node, V
     if let Some(text) = help.usage {
         node.options = usage::options(text);
     }
-    if rows.is_empty() {
+    if rows.is_empty() || help.declared.iter().any(|command| command.path.is_empty()) {
         let form = match help.usage {
             Some(text) => {
                 usage::bare(name, text).map_err(|error| vec![format!("{name}: {error}")])?
@@ -514,6 +514,31 @@ Options: --store DIR.";
             tree.leaf(&["doctor".to_string()]).unwrap().command(),
             "openagents doctor"
         );
+    }
+
+    #[test]
+    fn an_explicit_bare_command_keeps_its_subcommands() {
+        let tree = build(
+            "usage: openagents COMMAND\n  terminal     Open a chat or shell.",
+            &[GroupHelp {
+                name: "terminal",
+                usage: Some(
+                    "usage: openagents terminal [--thread ID]\n  shell [--root DIR]     Open a shell.",
+                ),
+                declared: &[
+                    Declared::computer("", Effect::LongRunning),
+                    Declared::computer("shell", Effect::LongRunning),
+                ],
+                alias: false,
+            }],
+        )
+        .unwrap();
+        let chat = tree.leaf(&["terminal".into()]).unwrap();
+        assert_eq!(chat.usage, ["openagents terminal [--thread ID]"]);
+        assert_eq!(chat.effect, Effect::LongRunning);
+        let shell = tree.leaf(&["terminal".into(), "shell".into()]).unwrap();
+        assert_eq!(shell.usage, ["shell [--root DIR]"]);
+        assert_eq!(shell.effect, Effect::LongRunning);
     }
 
     #[test]
