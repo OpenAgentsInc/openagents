@@ -6,6 +6,8 @@ archive and the removed, unreleased Gym preparation session linked by the
 [archive index](../../docs/transcripts/README.md). The
 [current terminal survey](#current-terminal-survey) adds a source-based
 inventory of the implementations available for the new specification.
+Companion research covers [typed plugins, Nostr, and payments](plugin-architecture-carry-forward.md)
+and [lessons from DeepSeek Harness](deepseek-harness-lessons.md).
 
 Chris repeatedly replaces the interface where he works, but the replacement
 often keeps Claude Code as its executor. Attempts to own the execution loop
