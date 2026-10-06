@@ -39,7 +39,7 @@ fn render(app: &mut App, width: u16, height: u16) -> Canvas {
 }
 
 fn focus(app: &mut App, target: SettingsFocus) {
-    for _ in 0..5 {
+    for _ in 0..6 {
         if app.plugins.focus == target {
             return;
         }
@@ -295,6 +295,7 @@ fn settings_focus_stays_visible_after_resize_and_actions_hide_the_cursor() {
     let focuses = [
         (SettingsFocus::ApiKey, None),
         (SettingsFocus::Model, None),
+        (SettingsFocus::TestKey, Some("Test API key")),
         (SettingsFocus::Save, Some("Save settings")),
         (SettingsFocus::RemoveKey, Some("Remove API key")),
         (SettingsFocus::Cancel, Some("Cancel")),

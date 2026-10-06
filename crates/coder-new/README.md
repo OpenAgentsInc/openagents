@@ -1,12 +1,19 @@
-# Coder terminal mockup
+# Coder terminal
 
-A standalone Ratatui screen preview for the new Coder terminal. The default
-view shows Read, Search, Edit, and Run examples, a diff, four running
+A Ratatui terminal with direct OpenRouter chat and a separate demo mode.
+Interactive runs start in live mode. `/demo` toggles between live and demo;
+`--demo` starts with the fixtures. Demo mode shows Read, Search, Edit, and Run
+examples, a diff, four running
 delegations, and a composer. Delegations use the same agent names, tasks, and
 token counts as the rail. Their magenta diamonds pulse while running commands
 show a rotating spinner. Each agent conversation has its own tool calls,
 arguments, results, and current activity.
-Press Tab to switch to the welcome view.
+Press Tab with an ordinary draft to switch to the welcome view.
+
+Type `/` to see commands above the input, following the existing OpenAgents
+terminal's slash suggestions. The command and description occupy separate
+columns. Typing filters the list; Up/Down selects, Tab completes, Enter runs,
+and Esc dismisses it. The supported commands are `/demo`, `/plugins`, and `/help`.
 
 Edit examples reuse Coder's port of Grok Build's diff renderer and syntax
 highlighter. Rust tokens keep their syntax colors on red and green change
@@ -18,37 +25,47 @@ state. The main conversation uses `terminal-inspector.layout.inspect` and
 `palette-audit.colors.check`. Agent conversations also use keyboard and
 conversation audit examples. These fixtures do not load or invoke plugins.
 
-Press F2 or enter `/plugins` to manage the example **OpenRouter BYOK** plugin.
+Press F2 or enter `/plugins` to manage **OpenRouter BYOK**.
 Space toggles its enabled preference; Enter opens connection settings. The
 settings screen has a masked **OpenRouter API key**, an optional model ID, and
 the fixed direct endpoint `https://openrouter.ai/api/v1`. Tab moves between
 fields and actions; Enter selects an action; Esc cancels or returns to chat.
-Save and cancel preserve the distinction between the enabled preference and
-configuration: an enabled plugin without a key shows **Setup required**;
-adding a key shows **Configured**, with verification still pending. Removing
-a key takes effect when you save. Disabling retains the configuration.
-These screens keep preferences in memory and discard the entered key after
-save or cancel. They do not validate keys, call OpenRouter, or activate a
-provider. OpenRouter's own upstream-provider BYOK settings are separate from
-this example's OpenRouter API key. See [OpenRouter authentication](https://openrouter.ai/docs/api_reference/authentication),
+In live mode, **Test API key** checks the entered or saved key with
+`GET /api/v1/key`. Saving a key also checks it; successful checks show
+**Verified**, while errors report their cause. The enabled preference stays
+separate: turn the plugin on to send chat messages. A blank model uses your
+OpenRouter account default. Replies stream from `/api/v1/chat/completions`
+on a background worker, with prior live messages included. Esc stops a reply;
+failed requests are not retried automatically.
+
+Removing a key takes effect when you save. Disabling retains configuration.
+Preferences, credentials, and conversations last only until you quit. The
+editable key draft clears on save or cancel; a saved live key stays in a private,
+redacted credential holder in memory. Demo mode retains only mock configuration
+state and makes no requests. Switching modes keeps their preferences, drafts,
+and transcripts separate and cancels pending network work.
+OpenRouter's own upstream-provider BYOK settings are separate from
+this plugin's OpenRouter API key. See [OpenRouter authentication](https://openrouter.ai/docs/api_reference/authentication),
 the [API reference](https://openrouter.ai/docs/api_reference/overview), and
 [OpenRouter BYOK](https://openrouter.ai/docs/guides/overview/auth/byok).
 
 ```sh
 cargo run -p coder-new
+cargo run -p coder-new -- --demo
 cargo run -p coder-new -- --welcome
 cargo run -p coder-new -- --plugins
 cargo run -p coder-new -- --plugin-settings
 ```
 
 Type a draft, move with Left/Right or Home/End, and edit with Backspace/Delete.
-Alt+Enter adds a newline. Enter appends a local preview message. Bracketed paste
+Alt+Enter adds a newline. Enter sends a live message or appends a demo message.
+Bracketed paste
 inserts text without sending it. PageUp/PageDown scroll the conversation;
-Ctrl+C quits. The preview makes no network requests, runs no tools, and saves
-no messages. All conversation and agent values are sample data.
+Ctrl+C quits. The demo tools and agents remain presentation fixtures; live mode
+provides OpenRouter chat, not tool execution or agent delegation.
 
 The composer is a plain `❯` input with a blinking block cursor between
-edge-to-edge horizontal rules. The four rows below it show `claude-code`,
+edge-to-edge horizontal rules. In demo mode, the four rows below it show `claude-code`,
 `codex`, `devin-cli`, and `grok-build`. Agent
 names and current tasks occupy separate aligned columns, with elapsed time
 beside the token counts on the right, such as `1h 12m 38s · ↓ 8.2k tokens`.
@@ -75,9 +92,12 @@ Export the actual Ratatui buffer without an interactive terminal:
 ```sh
 cargo run -p coder-new -- --snapshot > docs/coder-new/mockup.svg
 cargo run -p coder-new -- --welcome --snapshot > docs/coder-new/welcome.svg
-cargo run -p coder-new -- --plugins --snapshot > docs/coder-new/plugins.svg
-cargo run -p coder-new -- --plugin-settings --snapshot > docs/coder-new/plugin-settings.svg
+cargo run -p coder-new -- --live --plugins --snapshot > docs/coder-new/plugins.svg
+cargo run -p coder-new -- --live --plugin-settings --snapshot > docs/coder-new/plugin-settings.svg
+cargo run -p coder-new -- --live --snapshot > docs/coder-new/live.svg
 ```
+
+Snapshots default to demo and never dispatch network work, including with `--live`.
 
 The [research index](../../docs/coder-new/README.md) contains the history and
 architecture inputs for the future specification.

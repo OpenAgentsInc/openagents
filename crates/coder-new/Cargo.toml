@@ -10,8 +10,13 @@ description = "A Ratatui mockup of the new Coder terminal."
 code-highlight = { path = "../code-highlight", features = ["grok"] }
 coder-terminal = { path = "../coder-terminal" }
 coder-ui = { path = "../coder-ui" }
+model-access = { path = "../model-access" }
+openrouter = { path = "../openrouter" }
 crossterm = "0.29"
 ratatui = { version = "0.30", default-features = false, features = ["crossterm", "layout-cache", "unstable-rendered-line-info"] }
+reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls"] }
+serde_json = "1"
+tokio = { version = "1", features = ["macros", "rt", "sync", "time"] }
 unicode-segmentation = "1"
 unicode-width = "0.2"
 

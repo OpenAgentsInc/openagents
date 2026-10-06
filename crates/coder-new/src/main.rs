@@ -3,7 +3,7 @@ use std::{
     time::{Duration, Instant},
 };
 
-use coder_new::{App, Screen, snapshot, ui};
+use coder_new::{App, Mode, Screen, live::Background, snapshot, ui};
 use crossterm::{
     cursor::{SetCursorStyle, Show},
     event::{self, DisableBracketedPaste, EnableBracketedPaste},
@@ -14,15 +14,23 @@ use crossterm::{
 fn main() -> io::Result<()> {
     let mut app = App::default();
     let mut capture = false;
-    for arg in std::env::args().skip(1) {
+    let args: Vec<_> = std::env::args().skip(1).collect();
+    if !args.iter().any(|arg| arg == "--demo")
+        && (!args.iter().any(|arg| arg == "--snapshot") || args.iter().any(|arg| arg == "--live"))
+    {
+        app.set_mode(Mode::Live);
+    }
+    for arg in args {
         match arg.as_str() {
+            "--live" => app.set_mode(Mode::Live),
+            "--demo" => app.set_mode(Mode::Demo),
             "--welcome" => app.screen = Screen::Welcome,
             "--plugins" => app.open_plugins(),
             "--plugin-settings" => app.open_plugin_settings(),
             "--snapshot" => capture = true,
             "--help" | "-h" => {
                 println!(
-                    "Coder terminal UI preview\n\nUsage: coder-new [--welcome | --plugins | --plugin-settings] [--snapshot]\n\n--welcome          Start with the welcome screen.\n--plugins          Start with plugin management.\n--plugin-settings  Start with OpenRouter settings.\n--snapshot         Write a 110×36 SVG preview to stdout.\n\nUp/Down selects agent conversations. Esc returns to main. Tab switches views. F2 or /plugins opens plugins. Ctrl+C closes the preview."
+                    "Coder terminal\n\nUsage: coder-new [--live | --demo] [--welcome | --plugins | --plugin-settings] [--snapshot]\n\n--live             Use direct OpenRouter chat (default).\n--demo             Use local example conversations.\n--welcome          Start with the welcome screen.\n--plugins          Start with plugin management.\n--plugin-settings  Start with OpenRouter settings.\n--snapshot         Write a 110×36 SVG to stdout; defaults to demo.\n\n/demo toggles live and demo. Type / for commands; Up/Down selects, Tab completes, Enter runs. F2 or /plugins opens plugins. Esc stops a reply. Ctrl+C quits."
                 );
                 return Ok(());
             }
@@ -65,8 +73,10 @@ fn main() -> io::Result<()> {
         let interval = Duration::from_millis(125);
         let started = Instant::now();
         let mut next_tick = started + interval;
+        let mut background = Background::default();
         loop {
             app.elapsed_seconds = started.elapsed().as_secs();
+            background.sync(&mut app);
             execute!(io::stdout(), BeginSynchronizedUpdate)?;
             terminal.draw(|frame| ui::render(frame, &mut app))?;
             // Keep the block blinking while progress updates move the terminal cursor.

@@ -1,0 +1,164 @@
+//! Slash commands and their suggestions above the composer.
+
+use ratatui::{
+    Frame,
+    layout::Rect,
+    style::{Modifier, Style},
+    text::{Line, Span},
+    widgets::{Block, Paragraph},
+};
+
+use crate::theme as t;
+
+/// A command supported by the preview.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum Command {
+    Demo,
+    Plugins,
+    Help,
+}
+
+/// Commands in the order shown by the picker.
+pub const ALL: [Command; 3] = [Command::Demo, Command::Plugins, Command::Help];
+
+impl Command {
+    pub const ALL: [Self; 3] = ALL;
+
+    /// The command word without its leading slash.
+    pub const fn word(self) -> &'static str {
+        match self {
+            Self::Demo => "demo",
+            Self::Plugins => "plugins",
+            Self::Help => "help",
+        }
+    }
+
+    /// The action described by the picker in the current demo mode.
+    pub const fn about(self, demo: bool) -> &'static str {
+        match self {
+            Self::Demo if demo => "Turn demo off",
+            Self::Demo => "Turn demo on",
+            Self::Plugins => "Manage plugins",
+            Self::Help => "Show commands and keys",
+        }
+    }
+}
+
+/// Commands matching a leading slash and an unfinished lowercase word.
+pub fn matches(text: &str) -> Vec<Command> {
+    let Some(word) = command_prefix(text) else {
+        return Vec::new();
+    };
+    ALL.into_iter()
+        .filter(|command| command.word().starts_with(word))
+        .collect()
+}
+
+/// A known command written as an exact `/word`.
+pub fn parse(text: &str) -> Option<Command> {
+    if !is_command_word(text) {
+        return None;
+    }
+    let word = &text[1..];
+    ALL.into_iter().find(|command| command.word() == word)
+}
+
+/// Whether text is a complete command word, including an unknown one.
+pub fn is_command_word(text: &str) -> bool {
+    command_prefix(text).is_some_and(|word| !word.is_empty())
+}
+
+fn command_prefix(text: &str) -> Option<&str> {
+    let word = text.strip_prefix('/')?;
+    word.bytes()
+        .all(|byte| byte.is_ascii_lowercase())
+        .then_some(word)
+}
+
+/// Draw suggestions in the rows supplied immediately above the composer.
+pub fn render(frame: &mut Frame, area: Rect, hints: &[Command], selected: usize, demo: bool) {
+    if area.width == 0 || area.height == 0 || hints.is_empty() {
+        return;
+    }
+    let shown = hints.len().min(usize::from(area.height));
+    let selected = selected.min(hints.len() - 1);
+    let first = selected.saturating_sub(shown - 1);
+    let usage_width = hints
+        .iter()
+        .map(|command| command.word().len() + 1)
+        .max()
+        .unwrap_or(0);
+    frame.render_widget(
+        Block::default().style(Style::default().bg(t::BG_BASE)),
+        area,
+    );
+    let top = area.bottom().saturating_sub(shown as u16);
+    for (offset, command) in hints.iter().enumerate().skip(first).take(shown) {
+        let active = offset == selected;
+        let background = if active { t::BG_LIGHT } else { t::BG_BASE };
+        let usage = format!("/{}", command.word());
+        let line = Line::from(vec![
+            Span::styled(
+                if active { " ❯ " } else { "   " },
+                Style::default().fg(t::ACCENT_MODEL),
+            ),
+            Span::styled(
+                format!("{usage:<usage_width$}  "),
+                Style::default()
+                    .fg(if active {
+                        t::TEXT_PRIMARY
+                    } else {
+                        t::TEXT_SECONDARY
+                    })
+                    .add_modifier(if active {
+                        Modifier::BOLD
+                    } else {
+                        Modifier::empty()
+                    }),
+            ),
+            Span::styled(command.about(demo), Style::default().fg(t::GRAY)),
+        ])
+        .style(Style::default().bg(background));
+        let row = Rect {
+            y: top + (offset - first) as u16,
+            height: 1,
+            ..area
+        };
+        frame.render_widget(Paragraph::new(line), row);
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn suggestions_accept_only_a_leading_slash_and_lowercase_prefix() {
+        assert_eq!(matches("/"), ALL);
+        assert_eq!(matches("/d"), [Command::Demo]);
+        assert_eq!(matches("/plugins"), [Command::Plugins]);
+        assert!(matches("/unknown").is_empty());
+        for text in ["", "demo", " /d", "/D", "/d ", "/demo on", "/usr/bin"] {
+            assert!(matches(text).is_empty(), "{text:?}");
+        }
+    }
+
+    #[test]
+    fn submission_distinguishes_known_commands_unknown_words_and_messages() {
+        for command in ALL {
+            let text = format!("/{}", command.word());
+            assert_eq!(parse(&text), Some(command));
+            assert!(is_command_word(&text));
+        }
+        assert_eq!(parse("/unknown"), None);
+        assert!(is_command_word("/unknown"));
+        assert_eq!(parse("/dem"), None);
+        assert!(is_command_word("/dem"));
+        for text in [
+            "", "/", "/Help", "/demo on", "/usr/bin", " /demo", "/demo ", "help",
+        ] {
+            assert_eq!(parse(text), None, "{text:?}");
+            assert!(!is_command_word(text), "{text:?}");
+        }
+    }
+}

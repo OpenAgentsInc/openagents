@@ -216,6 +216,7 @@ struct ProviderPreferences {
 /// One chat completions request, not streamed.
 #[derive(Clone, Debug, Serialize, PartialEq)]
 pub struct ChatRequest {
+    #[serde(skip_serializing_if = "String::is_empty")]
     pub model: String,
     pub messages: Vec<Message>,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -1084,6 +1085,13 @@ mod tests {
         assert_eq!(body["stream"], false);
         assert_eq!(body["reasoning"]["effort"], "low");
         assert!(body.get("temperature").is_none());
+    }
+
+    #[test]
+    fn a_blank_model_is_omitted_for_the_account_default() {
+        let body = serde_json::to_value(ChatRequest::new("", vec![Message::user("hi")])).unwrap();
+        assert!(body.get("model").is_none());
+        assert_eq!(body["messages"][0]["content"], "hi");
     }
 
     #[test]

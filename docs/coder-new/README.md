@@ -4,7 +4,7 @@ These documents establish the history, current implementations, and
 architectural recommendations for a new specification. They are research
 inputs, not a finished TUI spec or claims of tested replacement quality.
 
-The first [Ratatui mockup](../../crates/coder-new/README.md) runs with
+The [Ratatui terminal](../../crates/coder-new/README.md) runs with
 `cargo run -p coder-new`. It uses the Grok Build Grok Night palette with Coder's
 shared near-black background.
 The [conversation preview](mockup.png) and [welcome preview](welcome.png)
@@ -21,10 +21,13 @@ Edit examples reuse the Grok Build diff renderer and syntax highlighter,
 including line numbers and red and green change backgrounds.
 
 The [plugin manager](plugins.png) and [OpenRouter settings](plugin-settings.png)
-mock an enabled preference, configuration status, masked API key entry, an
-optional model ID, and a direct OpenRouter endpoint. Open them with F2 or
-`/plugins`, or start with `--plugins` or `--plugin-settings`. They make no
-provider requests and retain no credentials.
+provide an enabled preference, configuration status, masked API key entry, an
+optional model ID, and a direct OpenRouter endpoint. Live mode checks keys and
+streams chat replies; keys stay in memory until you quit. Open plugins with F2
+or `/plugins`, or start with `--plugins` or `--plugin-settings`.
+Interactive runs start [live](live.png); `/demo` toggles the local fixtures.
+The [slash picker](slash-commands.png) filters commands above the input as you
+type, following the existing OpenAgents terminal. Snapshots dispatch no requests.
 
 1. [Claude Code replacement history and current terminal survey](claude-code-replacement-history.md)
    catalogs the retained attempts and compares today's Coder and OpenAgents

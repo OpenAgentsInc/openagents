@@ -10,7 +10,7 @@ use ratatui::{
 
 use super::{span, truncate};
 use crate::{
-    App, Draft, Screen,
+    App, Draft, Mode, Screen,
     plugins::{ENDPOINT, SettingsFocus},
     theme as t,
 };
@@ -21,7 +21,13 @@ pub(super) fn render(frame: &mut Frame, area: Rect, app: &App) {
     } else {
         "Plugins"
     };
-    let context_width = if area.width >= 42 { 17 } else { 0 };
+    let context_width = if area.width >= 48 && app.mode == Mode::Live {
+        24
+    } else if area.width >= 42 {
+        17
+    } else {
+        0
+    };
     frame.render_widget(
         Paragraph::new(Span::styled(
             truncate(title, area.width.saturating_sub(context_width + 2)),
@@ -34,6 +40,14 @@ pub(super) fn render(frame: &mut Frame, area: Rect, app: &App) {
     if context_width > 0 {
         frame.render_widget(
             Paragraph::new(Line::from(vec![
+                span(
+                    if app.mode == Mode::Live {
+                        "live · "
+                    } else {
+                        ""
+                    },
+                    t::ACCENT_MODEL,
+                ),
                 span("openagents", t::PATH),
                 span(" / main", t::GRAY),
             ]))
@@ -62,6 +76,12 @@ fn manager(frame: &mut Frame, area: Rect, app: &App) {
     let p = &app.plugins;
     let enabled = if p.enabled { "[ on  ]" } else { "[ off ]" };
     let status_color = match (p.enabled, p.key_configured) {
+        (true, true)
+            if app.mode == Mode::Live
+                && matches!(p.connection, crate::plugins::Connection::Failed(_)) =>
+        {
+            t::DIFF_DELETE_FG
+        }
         (true, true) => t::ACCENT_SUCCESS,
         (true, false) => t::COMMAND,
         _ => t::GRAY,
@@ -122,7 +142,11 @@ fn manager(frame: &mut Frame, area: Rect, app: &App) {
         detail(
             "API key",
             if p.key_configured {
-                "Added · not verified"
+                if app.mode == Mode::Live {
+                    "Added"
+                } else {
+                    "Added · not verified"
+                }
             } else {
                 "Not configured"
             },
@@ -138,6 +162,7 @@ fn manager(frame: &mut Frame, area: Rect, app: &App) {
             area.width,
         ),
         detail("Endpoint", ENDPOINT, area.width),
+        detail("Connection", p.connection_label(), area.width),
     ]);
     frame.render_widget(
         Paragraph::new(Text::from(lines)).wrap(ratatui::widgets::Wrap { trim: false }),
@@ -200,6 +225,36 @@ fn settings(frame: &mut Frame, area: Rect, app: &App) {
         t::GRAY,
     )));
     lines.push(Line::default());
+    let test_row = action(
+        &mut lines,
+        "Test API key",
+        p.focus == SettingsFocus::TestKey,
+        t::ACCENT_SKILL,
+    );
+    let connection_label = if matches!(p.connection, crate::plugins::Connection::Checking) {
+        format!(
+            "{} {}",
+            crate::tools::spinner(app.animation_frame),
+            p.connection_label()
+        )
+    } else {
+        p.connection_label().into()
+    };
+    lines.push(Line::from(span(
+        truncate(&connection_label, area.width),
+        match p.connection {
+            crate::plugins::Connection::Verified => t::ACCENT_SUCCESS,
+            crate::plugins::Connection::Failed(_) => t::DIFF_DELETE_FG,
+            _ => t::GRAY,
+        },
+    )));
+    if app.mode == Mode::Live {
+        lines.push(Line::from(span(
+            truncate("The key stays in memory until you quit.", area.width),
+            t::GRAY,
+        )));
+    }
+    lines.push(Line::default());
     let save_row = action(
         &mut lines,
         "Save settings",
@@ -226,6 +281,7 @@ fn settings(frame: &mut Frame, area: Rect, app: &App) {
     let focus_row = match p.focus {
         SettingsFocus::ApiKey => key_row,
         SettingsFocus::Model => model_row,
+        SettingsFocus::TestKey => test_row,
         SettingsFocus::Save => save_row,
         SettingsFocus::RemoveKey => remove_row,
         SettingsFocus::Cancel => cancel_row,

@@ -14,7 +14,7 @@ use unicode_segmentation::UnicodeSegmentation;
 use unicode_width::UnicodeWidthStr;
 
 use crate::{
-    App, Screen,
+    App, Mode, Screen,
     agents::{DEMOS, DemoMessage, MAIN_PLUGINS, MAIN_TOOLS, elapsed_time},
     theme as t,
     tools::{delegation_lines, plugin_lines, tool_lines},
@@ -51,7 +51,11 @@ pub fn render(frame: &mut Frame, app: &mut App) {
         return;
     }
     let (draft, cursor) = app.draft.wrapped(terminal_width.saturating_sub(3));
-    let rail_height = DEMOS.len() as u16;
+    let rail_height = if app.mode == Mode::Demo {
+        DEMOS.len() as u16
+    } else {
+        0
+    };
     let composer_height = (draft.len() as u16).clamp(1, 6) + 2;
     let reserved = rail_height + 3;
     let [header, body, _gap, composer, rail] = Layout::vertical([
@@ -68,6 +72,20 @@ pub fn render(frame: &mut Frame, app: &mut App) {
         Screen::Conversation => conversation(frame, body, app),
         Screen::Plugins | Screen::PluginSettings => unreachable!(),
     }
+    let hints = app.slash_hints();
+    let height = (hints.len() as u16).min(composer.y.saturating_sub(body.y));
+    crate::slash::render(
+        frame,
+        Rect {
+            x: terminal_x,
+            width: terminal_width,
+            y: composer.y.saturating_sub(height),
+            height,
+        },
+        &hints,
+        app.slash_selected,
+        app.mode == Mode::Demo,
+    );
     composer_view(
         frame,
         Rect {
@@ -77,9 +95,11 @@ pub fn render(frame: &mut Frame, app: &mut App) {
         },
         &draft,
         cursor,
-        app.selected_agent.is_none(),
+        app.mode == Mode::Live || app.selected_agent.is_none(),
     );
-    agent_rail(frame, rail, app);
+    if app.mode == Mode::Demo {
+        agent_rail(frame, rail, app);
+    }
 }
 
 fn agent_rail(frame: &mut Frame, area: Rect, app: &App) {
@@ -205,7 +225,7 @@ pub(crate) fn truncate(text: &str, width: u16) -> String {
 }
 
 fn header_view(frame: &mut Frame, area: Rect, app: &App) {
-    let agent = if app.screen == Screen::Conversation {
+    let agent = if app.screen == Screen::Conversation && app.mode == Mode::Demo {
         app.selected_agent.and_then(|index| DEMOS.get(index))
     } else {
         None
@@ -214,21 +234,28 @@ fn header_view(frame: &mut Frame, area: Rect, app: &App) {
     let context_width = area
         .width
         .saturating_sub(if agent.is_some() { title_width + 2 } else { 0 })
-        .min(17);
+        .min(if app.mode == Mode::Live { 24 } else { 17 });
     let context = Rect {
         x: area.right().saturating_sub(context_width),
         width: context_width,
         ..area
     };
-    frame.render_widget(
-        Paragraph::new(Line::from(vec![
-            span(
-                truncate("openagents", context_width.saturating_sub(7)),
-                t::PATH,
+    let mut context_spans = Vec::new();
+    if app.mode == Mode::Live {
+        context_spans.push(span("live · ", t::ACCENT_MODEL));
+    }
+    context_spans.extend([
+        span(
+            truncate(
+                "openagents",
+                context_width.saturating_sub(if app.mode == Mode::Live { 14 } else { 7 }),
             ),
-            span(" / main", t::GRAY),
-        ]))
-        .right_aligned(),
+            t::PATH,
+        ),
+        span(" / main", t::GRAY),
+    ]);
+    frame.render_widget(
+        Paragraph::new(Line::from(context_spans)).right_aligned(),
         context,
     );
     if let Some(agent) = agent {
@@ -296,7 +323,9 @@ fn prompt(text: impl Into<String>) -> Line<'static> {
 }
 
 fn conversation(frame: &mut Frame, area: Rect, app: &mut App) {
-    let mut lines = if let Some(agent) = app.selected_agent.and_then(|index| DEMOS.get(index)) {
+    let mut lines = if app.mode == Mode::Live {
+        live_lines(app)
+    } else if let Some(agent) = app.selected_agent.and_then(|index| DEMOS.get(index)) {
         let mut lines = Vec::new();
         for (index, message) in agent.conversation.iter().enumerate() {
             match message {
@@ -337,7 +366,7 @@ fn conversation(frame: &mut Frame, area: Rect, app: &mut App) {
         lines.push(Line::default());
         lines
     };
-    for message in &app.messages {
+    for message in app.messages.iter().filter(|_| app.mode == Mode::Demo) {
         for (index, line) in message.split('\n').enumerate() {
             lines.push(if index == 0 {
                 prompt(line)
@@ -355,6 +384,14 @@ fn conversation(frame: &mut Frame, area: Rect, app: &mut App) {
             Line::default(),
         ]);
     }
+    if let Some(notice) = &app.notice {
+        lines.extend(
+            notice
+                .lines()
+                .map(|text| Line::from(span(text, t::GRAY_BRIGHT))),
+        );
+        lines.push(Line::default());
+    }
     let paragraph = Paragraph::new(Text::from(lines)).wrap(Wrap { trim: false });
     let max_scroll = paragraph
         .line_count(area.width)
@@ -362,6 +399,70 @@ fn conversation(frame: &mut Frame, area: Rect, app: &mut App) {
         .min(usize::from(u16::MAX)) as u16;
     app.scroll = app.scroll.min(max_scroll);
     frame.render_widget(paragraph.scroll((app.scroll, 0)), area);
+}
+
+fn live_lines(app: &App) -> Vec<Line<'static>> {
+    let mut lines = Vec::new();
+    if app.live.entries.is_empty() {
+        lines.extend([
+            Line::from(span(
+                if app.plugins.enabled && app.plugins.key_configured {
+                    "Ask OpenRouter a question."
+                } else {
+                    "Connect OpenRouter BYOK in /plugins to start."
+                },
+                t::TEXT_SECONDARY,
+            )),
+            Line::from(span("Your messages go directly to OpenRouter.", t::GRAY)),
+            Line::default(),
+        ]);
+    }
+    for entry in &app.live.entries {
+        match entry {
+            crate::live::Entry::User(text) => {
+                for (index, line) in text.lines().enumerate() {
+                    lines.push(if index == 0 {
+                        prompt(line)
+                    } else {
+                        Line::from(span(format!("   {line}"), t::TEXT_PRIMARY))
+                            .style(Style::default().bg(t::BG_LIGHT))
+                    });
+                }
+            }
+            crate::live::Entry::Assistant(text) => lines.extend(
+                text.lines()
+                    .map(|line| Line::from(span(line, t::TEXT_SECONDARY))),
+            ),
+        }
+        lines.push(Line::default());
+    }
+    if !app.live.partial.is_empty() {
+        lines.extend(
+            app.live
+                .partial
+                .lines()
+                .map(|line| Line::from(span(line, t::TEXT_SECONDARY))),
+        );
+        lines.push(Line::default());
+    }
+    if app.live.busy {
+        lines.push(Line::from(vec![
+            span(
+                format!("{} ", crate::tools::spinner(app.animation_frame)),
+                t::ACCENT_MODEL,
+            ),
+            span("OpenRouter is replying…", t::GRAY),
+        ]));
+    }
+    if let Some(notice) = &app.live.notice {
+        lines.extend(
+            notice
+                .lines()
+                .map(|line| Line::from(span(line, t::DIFF_DELETE_FG))),
+        );
+        lines.push(Line::default());
+    }
+    lines
 }
 
 fn composer_view(
