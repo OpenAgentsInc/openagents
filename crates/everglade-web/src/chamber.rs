@@ -118,6 +118,9 @@ async fn fetch_inner(window: &Window, path_value: &str, max: usize) -> Result<Ve
     let init = web_sys::RequestInit::new();
     init.set_signal(Some(&abort.0.signal()));
     init.set_credentials(web_sys::RequestCredentials::Omit);
+    if path_value == "chamber.json" {
+        init.set_cache(web_sys::RequestCache::NoStore);
+    }
     init.set_redirect(web_sys::RequestRedirect::Error);
     let request = web_sys::Request::new_with_str_and_init(path_value, &init)
         .map_err(|_| "Cannot request chamber content")?;
@@ -476,6 +479,7 @@ pub async fn run(
         ("max-width", "min(28rem, 100vw)"),
         ("max-height", "45vh"),
         ("overflow", "auto"),
+        ("overflow-wrap", "anywhere"),
         ("z-index", "1"),
         ("padding", "0.5rem"),
         ("box-sizing", "border-box"),
