@@ -1,0 +1,140 @@
+warning: failed to connect to jobserver from environment variable `CARGO_MAKEFLAGS="-j --jobserver-fds=3,5 --jobserver-auth=3,5"`: cannot open file descriptor 3 from the jobserver environment variable value: Bad file descriptor (os error 9)
+  |
+  = note: the build environment is likely misconfigured
+
+warning: `physics` (lib) generated 1 warning
+   Compiling verse-engine v0.1.0 (/home/christopherdavid/work/openagents-verse-audit/crates/verse-engine)
+warning: `verse-engine` (lib) generated 1 warning (1 duplicate)
+   Compiling verse-world v0.1.0 (/home/christopherdavid/work/openagents-verse-audit/crates/verse-world)
+warning: method `additional_characters` is never used
+    --> crates/verse-world/src/play.rs:2943:19
+     |
+ 428 | impl Game {
+     | --------- method in this implementation
+...
+2943 |     pub(crate) fn additional_characters(
+     |                   ^^^^^^^^^^^^^^^^^^^^^
+     |
+     = note: `#[warn(dead_code)]` (part of `#[warn(unused)]`) on by default
+
+warning: `verse-world` (lib) generated 2 warnings (1 duplicate)
+   Compiling verse-gfx v0.1.0 (/home/christopherdavid/work/openagents-verse-audit/crates/verse-gfx)
+warning: `verse-gfx` (lib) generated 1 warning (1 duplicate)
+   Compiling verse-pbr v0.1.0 (/home/christopherdavid/work/openagents-verse-audit/crates/verse-pbr)
+warning: `verse-pbr` (lib) generated 1 warning (1 duplicate)
+   Compiling verse-net v0.1.0 (/home/christopherdavid/work/openagents-verse-audit/crates/verse-net)
+warning: `verse-net` (lib) generated 1 warning (1 duplicate)
+   Compiling verse-core v0.1.0 (/home/christopherdavid/work/openagents-verse-audit/crates/verse-core)
+warning: `verse-core` (lib) generated 1 warning (1 duplicate)
+   Compiling verse-content v0.1.0 (/home/christopherdavid/work/openagents-verse-audit/crates/verse-content)
+warning: `verse-content` (lib) generated 1 warning (1 duplicate)
+   Compiling openagents-chat v0.1.0 (/home/christopherdavid/work/openagents-verse-audit/crates/openagents-chat)
+warning: `openagents-chat` (lib) generated 1 warning (1 duplicate)
+   Compiling verse-host v0.1.0 (/home/christopherdavid/work/openagents-verse-audit/crates/verse-host)
+   Compiling openagents-connect v0.1.0 (/home/christopherdavid/work/openagents-verse-audit/crates/openagents-connect)
+warning: `openagents-connect` (lib) generated 1 warning (1 duplicate)
+   Compiling terminal-core v0.1.0 (/home/christopherdavid/work/openagents-verse-audit/crates/terminal-core)
+warning: `terminal-core` (lib) generated 1 warning (1 duplicate)
+   Compiling verse-zone-everglade v0.1.0 (/home/christopherdavid/work/openagents-verse-audit/crates/verse-zone-everglade)
+warning: variable does not need to be mutable
+   --> crates/verse-zone-everglade/src/zones/everglade/layout/streets.rs:275:9
+    |
+275 |     let mut try_put =
+    |         ----^^^^^^^
+    |         |
+    |         help: remove this `mut`
+    |
+    = note: `#[warn(unused_mut)]` (part of `#[warn(unused)]`) on by default
+
+warning: function `triangles` is never used
+   --> crates/verse-zone-everglade/src/zones/everglade/draw.rs:103:15
+    |
+103 | pub(super) fn triangles() -> u64 {
+    |               ^^^^^^^^^
+    |
+    = note: `#[warn(dead_code)]` (part of `#[warn(unused)]`) on by default
+
+warning: function `stream_triangles` is never used
+   --> crates/verse-zone-everglade/src/zones/everglade/draw.rs:112:4
+    |
+112 | fn stream_triangles() -> u64 {
+    |    ^^^^^^^^^^^^^^^^
+
+warning: `verse-zone-everglade` (lib) generated 4 warnings (1 duplicate) (run `cargo fix --lib -p verse-zone-everglade` to apply 1 suggestion)
+   Compiling gym-leaderboard v0.1.0 (/home/christopherdavid/work/openagents-verse-audit/crates/gym-leaderboard)
+warning: `gym-leaderboard` (lib) generated 1 warning (1 duplicate)
+   Compiling verse-lagrange v0.1.0 (/home/christopherdavid/work/openagents-verse-audit/crates/verse-lagrange)
+warning: `verse-lagrange` (lib) generated 1 warning (1 duplicate)
+   Compiling coder-host v0.1.0 (/home/christopherdavid/work/openagents-verse-audit/crates/coder-host)
+warning: `coder-host` (lib) generated 1 warning (1 duplicate)
+   Compiling verse-gym v0.1.0 (/home/christopherdavid/work/openagents-verse-audit/crates/verse-gym)
+warning: `verse-gym` (lib) generated 1 warning (1 duplicate)
+   Compiling verse-zone-lagrange v0.1.0 (/home/christopherdavid/work/openagents-verse-audit/crates/verse-zone-lagrange)
+warning: `verse-zone-lagrange` (lib) generated 1 warning (1 duplicate)
+   Compiling verse-zone-grove v0.1.0 (/home/christopherdavid/work/openagents-verse-audit/crates/verse-zone-grove)
+warning: `verse-zone-grove` (lib) generated 1 warning (1 duplicate)
+   Compiling terminal-control v0.1.0 (/home/christopherdavid/work/openagents-verse-audit/crates/terminal-control)
+warning: `terminal-control` (lib) generated 1 warning (1 duplicate)
+   Compiling verse-zone-ruins v0.1.0 (/home/christopherdavid/work/openagents-verse-audit/crates/verse-zone-ruins)
+warning: `verse-zone-ruins` (lib) generated 1 warning (1 duplicate)
+warning: `verse-host` (lib) generated 1 warning (1 duplicate)
+   Compiling verse-imported v0.1.0 (/home/christopherdavid/work/openagents-verse-audit/crates/verse-imported)
+warning: unused variable: `numbers`
+    --> crates/verse-imported/src/imported/overlay.rs:1297:9
+     |
+1297 |     let numbers = atlas.font("numbers").layout_at_scale(1.0 / s).unwrap();
+     |         ^^^^^^^ help: if this is intentional, prefix it with an underscore: `_numbers`
+     |
+     = note: `#[warn(unused_variables)]` (part of `#[warn(unused)]`) on by default
+
+warning: `verse-imported` (lib) generated 2 warnings (1 duplicate) (run `cargo fix --lib -p verse-imported` to apply 1 suggestion)
+   Compiling verse-zone-lab v0.1.0 (/home/christopherdavid/work/openagents-verse-audit/crates/verse-zone-lab)
+warning: `verse-zone-lab` (lib) generated 1 warning (1 duplicate)
+   Compiling verse-zone-crypt v0.1.0 (/home/christopherdavid/work/openagents-verse-audit/crates/verse-zone-crypt)
+warning: `verse-zone-crypt` (lib) generated 1 warning (1 duplicate)
+   Compiling verse v0.1.0 (/home/christopherdavid/work/openagents-verse-audit/crates/verse)
+warning: unused import: `boards`
+ --> crates/verse/src/zones/studio_tests.rs:5:41
+  |
+5 | use crate::zones::everglade::{STATIONS, boards, height};
+  |                                         ^^^^^^
+  |
+  = note: `#[warn(unused_imports)]` (part of `#[warn(unused)]`) on by default
+
+warning: unused import: `Station as At`
+ --> crates/verse/src/zones/studio_tests.rs:9:40
+  |
+9 | use coder_access::studio::{Role, Seat, Station as At};
+  |                                        ^^^^^^^^^^^^^
+
+warning: function `ground` is never used
+  --> crates/verse/src/zones/studio_tests.rs:43:4
+   |
+43 | fn ground(at: [f32; 2]) -> Vec3 {
+   |    ^^^^^^
+   |
+   = note: `#[warn(dead_code)]` (part of `#[warn(unused)]`) on by default
+
+warning: function `walk` is never used
+  --> crates/verse/src/zones/studio_tests.rs:48:4
+   |
+48 | fn walk(studio: &mut Studio, seconds: f32) {
+   |    ^^^^
+
+warning: `verse` (lib test) generated 5 warnings (1 duplicate) (run `cargo fix --lib -p verse --tests` to apply 2 suggestions)
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 53.40s
+     Running unittests src/lib.rs (/home/christopherdavid/work/openagents-target-agent1/debug/deps/verse-c0cfb5a636f9bf73)
+
+running 10 tests
+test gles_tests::an_unterminated_block_is_refused - should panic ... ok
+test gles_tests::variants_differ_only_where_gles_needs_them ... ok
+test gles_tests::the_engine_scene_shader_translates_to_glsl_es_300 ... ok
+test gles_tests::the_default_photo_shader_does_not_translate_to_glsl_es ... ok
+test gles_tests::textured_entries_translate_and_only_masked_entries_discard ... ok
+test gles_tests::sun_cascades_sample_a_depth_array_on_glsl_es ... ok
+test gles_tests::daylight_sky_validates_without_textures ... ok
+test gles_tests::the_sky_light_and_height_fog_translate_for_webgl2 ... ok
+test gles_tests::default_variants_are_valid_and_translate_to_metal ... ok
+test gles_tests::every_shader_translates_to_glsl_es_300 ... ok
+
+test result: ok. 10 passed; 0 failed; 0 ignored; 0 measured; 288 filtered out; finished in 2.04s

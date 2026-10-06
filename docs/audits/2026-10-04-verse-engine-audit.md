@@ -51,8 +51,10 @@ content workbench, undoable edits, authority previews, and sealed playable
 generations. V21 remediation in
 [#10737](https://github.com/OpenAgentsInc/openagents/issues/10737) adds admitted
 locomotion, terrain contacts, aim, crowd sampling, and character diagnostics.
-Broader art, coordinated operations, device, and population readiness remains
-open in V22–V28.
+V22 remediation in [#10738](https://github.com/OpenAgentsInc/openagents/issues/10738)
+adds shared shading semantics, contribution-ranked physical lamps, and tiered
+lighting references. Broader art, coordinated operations, device, and population
+readiness remains open in V23–V28.
 
 The [engine roadmap](../verse/engine/roadmap.md) already names a battle with
 about 20 authenticated players and 40 active NPCs. That milestone now has a bounded accepted profile. Neither a 64-player admission limit nor a video with two
@@ -166,7 +168,7 @@ Evidence labels:
 | V19 | P1 | Persistent operations lack complete live diagnostics and recovery tooling. | Code, gap | World operations | Complete ([#10735](https://github.com/OpenAgentsInc/openagents/issues/10735)) |
 | V20 | P2 | Content production still requires Rust implementation work. | Code, gap | Rust authoring tools | Complete ([#10736](https://github.com/OpenAgentsInc/openagents/issues/10736)) |
 | V21 | P2 | Admitted characters share locomotion, terrain contacts, and author diagnostics. | Code, recorded | Animation and character content | Complete, named-rig profile ([#10737](https://github.com/OpenAgentsInc/openagents/issues/10737)) |
-| V22 | P2 | Lighting paths need a common visual and performance contract. | Code, risk | Rendering and art direction | Open |
+| V22 | P2 | Declared lighting profiles share shading semantics and tier references. | Code, recorded | Rendering and art direction | Complete, controlled profiles ([#10738](https://github.com/OpenAgentsInc/openagents/issues/10738)) |
 | V23 | P2 | Audio is a bounded mixer, not a complete game audio system. | Code, gap | Audio and platform adapters | Open |
 | V24 | P1 | Mobile/browser rendering does not establish authoritative game parity. | Code, gap | Platform world clients | Open |
 | V25 | P2 | MMO social and progression systems need dedicated domains. | Code, gap | Verse game services | Open |
@@ -1652,24 +1654,66 @@ or production character art quality. V22–V28 retain their respective scope.
 
 ### V22: Lighting needs one tested art and device contract
 
-The chamber has validated local metallic/roughness materials, fog, HDR output,
-32 lights, and up to four cube-shadow sources.
-[`pbr`](../../crates/verse-pbr/src/pbr/mod.rs) has a different environment pipeline
-with quality tiers, cascades, screen-space effects, and baked irradiance.
-[`textured_bake`](../../crates/verse-pbr/src/pbr/textured_bake.rs) now bakes Everglade
-vertex ambient and probes. The Everglade compiler intentionally retains only
-base-color maps from environment models. These are distinct supported profiles,
-not one common high-fidelity material path.
+**Complete for the declared controlled profiles in
+[#10738](https://github.com/OpenAgentsInc/openagents/issues/10738).** The chamber,
+physical daylight stage, and space sky retain distinct light and ambient
+profiles with common material and output semantics. This establishes an engine
+contract and reproducible references, not final production art approval.
 
-**Improve:** Define common material semantics, light units/exposure, shadow
-priority, color grading, transparency, and sky/ambient behavior. Add clustered
-light selection, more shadow work, temporal effects, or improved reflections
-only where art requirements and GPU measurements justify them. Diagnose the
-current foreground/readability problems before adding a general GI system.
+[`PointProfile`](../../crates/verse-engine/src/lighting.rs) declares the retained
+chamber attenuation separately from physical candela attenuation. Chamber
+intensity remains authored relative intensity; it is not relabeled as a
+photometric measurement. Both native shaders expand the same
+[`shading.wgsl`](../../crates/verse-pbr/src/shading.wgsl) before backend
+translation. The physical camera uses the common EV100 conversion; base exposure
+is applied once before the existing output grade's additional offset in stops.
+Recent split toning and dusk settings remain supported.
 
-**Acceptance:** Indoor torch/spell scenes and outdoor forest/station scenes
-retain readable characters, calibrated materials, and bounded shadow cost at
-every supported tier. Visual comparisons name exposure and content revisions.
+Linear base-color factors, perceptual roughness, metallic weighting, sRGB color
+images, linear data channels, and alpha coverage retain declared semantics.
+Surviving masked chamber fragments now write full coverage, and blended coverage
+is clamped. Straight and premultiplied blend states remain explicit. Physical
+textured scenes still have a narrower map set than chamber materials; the
+Everglade compiler intentionally retains base-color maps. This work does not
+claim a common full-fidelity normal-map or layered-material pipeline.
+
+Physical stage lamps use the chamber shadow selector's contribution estimate
+rather than source-list order. A bright visible source in slot 31 survives every
+8/16/32-lamp budget; offscreen sources cannot displace it. Chamber shadows retain
+cache hysteresis and their 6/12/24-view limits. Physical stage cascades remain
+2/2/3; the physical space sky uses one sun map. There are no added lighting,
+reflection, GI, or temporal passes.
+
+The renderers expose prepared per-frame lighting settings: linear exposure,
+grade stops, selected points and shadowed points, ambient profile, and active
+shadow size/count. The ambient profile distinguishes authored diffuse fill,
+hemispheric probes, daylight sky illumination, and the space profile's Sun,
+Earth, and optional irradiance probes. Active map counts include cached maps;
+they are not GPU timing or full-scene frame budgets.
+
+[Retained acceptance](../../bench/verse/2026-10-05/lighting-contract/README.md)
+contains all twelve 640 × 360 Vulkan captures on an NVIDIA GeForce RTX 4080:
+torch and spell profiles, a daylight forest-light profile, and the physical
+station-light/space-sky profile, each at low, medium, and high. The same admitted
+original procedural character appears with gray and metallic reference cards.
+Each comparison names the generated content digest, source revision, exposure,
+quality tier, and shadow limits. Character-versus-background comparisons pass
+at every tier, with RGB-difference p95 above 12 display code values and more
+than 100 changed character-region pixels. This metric and the images establish
+visibility in the declared references; they do not measure perceptual quality.
+
+Verification passes 155 engine tests, 80 renderer tests with seven explicit GPU
+helpers ignored, all three selected GPU runs, and ten focused GLES/Metal shader
+translation tests in the Verse consumer. The source and commands are retained.
+The existing warm target remains in use; private RAM retains compiler outputs
+when the shared disk fills. Checks use scratch assets and headless GPU targets without owner host services or chats.
+
+The references use procedural geometry under the named lighting profiles,
+rather than complete forest or station content. Full-zone art review,
+traversal/adaptation comparisons, phone/browser measurements, and production
+frame-time targets remain broader acceptance work. No physical-device FPS or
+full-zone shadow-cost claim follows from these captures. V24 and V28 retain
+platform and readiness-reporting scope.
 
 ### V23: Audio needs a content and lifecycle layer
 

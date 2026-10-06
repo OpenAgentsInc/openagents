@@ -632,3 +632,36 @@ with a three-recovery bound. Physical browser callers await
 `render::Layer` own its recreation. See the
 [V11 audit and retained measurements](../audits/2026-10-04-verse-engine-audit.md#v11-shared-renderer-budgets-and-bounded-device-recovery-are-implemented)
 for the tested quality profiles and platform limits.
+
+
+## Lighting and material profiles
+
+Both render paths use linear base-color factors, perceptual roughness, metallic
+weights, and the shared output grade. Color and emission images use sRGB RGB;
+alpha and data channels remain linear. Opaque and surviving masked fragments
+write full coverage. Blended coverage stays between zero and one; the chamber
+uses straight-alpha blending, and physical textured surfaces use premultiplied
+alpha. Their blend states preserve the same coverage semantics.
+
+The chamber keeps its authored point-light units, distance falloff, diffuse
+ambient fill, and exposure multiplier. Physical stages use candela for point
+lights, lux for directional and ambient illumination, and
+`verse_engine::lighting::exposure` to convert EV100 before the output grade.
+These profiles are declared separately: chamber intensity is not calibrated
+candela. The shared shader contains both attenuation functions. Camera exposure
+is a linear multiplier; `Grade::exposure` is an additional offset in stops.
+
+Physical stage lamps now use visible contribution ranking, preserving the most
+important lights within the 8/16/32-lamp tier budgets. Chamber shadow priority
+uses the same contribution estimate with cache hysteresis; its local shadow
+limits remain 6/12/24 views. Physical stages use their tier's cascade count,
+and the space sky uses one fixed sun map. Baked irradiance and the daylight sky
+remain physical-profile features. The Everglade base-color path does not gain
+normal or metallic/roughness maps through this change.
+
+`Renderer::last_lighting` and `Photo::last_lighting` expose exposure, grade stops,
+point-source selection, ambient profile, and active shadow views. Capture these
+settings alongside the content revision. View counts include cached maps and
+are not elapsed GPU time. See the
+[V22 audit and retained references](../audits/2026-10-04-verse-engine-audit.md#v22-lighting-needs-one-tested-art-and-device-contract)
+for the controlled scene comparisons and physical-device limits.

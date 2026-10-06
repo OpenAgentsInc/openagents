@@ -1,0 +1,243 @@
+{
+  "schema": "verse.lighting.verification.v1",
+  "checks": [
+    {
+      "name": "engine",
+      "command": [
+        "cargo",
+        "test",
+        "-p",
+        "verse-engine",
+        "--features",
+        "asset-io",
+        "--lib"
+      ],
+      "environment": {},
+      "log": "engine.log",
+      "exit_code": 0
+    },
+    {
+      "name": "pbr",
+      "command": [
+        "cargo",
+        "test",
+        "-p",
+        "verse-pbr",
+        "--features",
+        "imported-surface",
+        "--config",
+        "profile.test.package.verse-world.debug=0",
+        "--config",
+        "profile.test.package.verse-world.opt-level=0",
+        "--config",
+        "profile.test.package.verse-content.debug=0",
+        "--config",
+        "profile.test.package.verse-pbr.debug=0",
+        "--config",
+        "profile.test.package.verse-pbr.opt-level=0",
+        "--lib"
+      ],
+      "environment": {},
+      "log": "pbr.log",
+      "exit_code": 0
+    },
+    {
+      "name": "gpu-low",
+      "command": [
+        "cargo",
+        "test",
+        "-p",
+        "verse-pbr",
+        "--features",
+        "imported-surface",
+        "--config",
+        "profile.test.package.verse-world.debug=0",
+        "--config",
+        "profile.test.package.verse-world.opt-level=0",
+        "--config",
+        "profile.test.package.verse-content.debug=0",
+        "--config",
+        "profile.test.package.verse-pbr.debug=0",
+        "--config",
+        "profile.test.package.verse-pbr.opt-level=0",
+        "--lib",
+        "indoor_and_outdoor_lighting_keep_the_character_readable",
+        "--",
+        "--ignored",
+        "--nocapture"
+      ],
+      "environment": {
+        "VERSE_QUALITY": "low",
+        "VERSE_LIGHTING_EVIDENCE": "/run/verse-audit-build-agent1/v22-lighting-accepted",
+        "TMPDIR": "/run/verse-audit-build-agent1/test-tmp",
+        "WGPU_BACKEND": "vulkan"
+      },
+      "log": "gpu-low.log",
+      "exit_code": 0
+    },
+    {
+      "name": "gpu-medium",
+      "command": [
+        "cargo",
+        "test",
+        "-p",
+        "verse-pbr",
+        "--features",
+        "imported-surface",
+        "--config",
+        "profile.test.package.verse-world.debug=0",
+        "--config",
+        "profile.test.package.verse-world.opt-level=0",
+        "--config",
+        "profile.test.package.verse-content.debug=0",
+        "--config",
+        "profile.test.package.verse-pbr.debug=0",
+        "--config",
+        "profile.test.package.verse-pbr.opt-level=0",
+        "--lib",
+        "indoor_and_outdoor_lighting_keep_the_character_readable",
+        "--",
+        "--ignored",
+        "--nocapture"
+      ],
+      "environment": {
+        "VERSE_QUALITY": "medium",
+        "VERSE_LIGHTING_EVIDENCE": "/run/verse-audit-build-agent1/v22-lighting-accepted",
+        "TMPDIR": "/run/verse-audit-build-agent1/test-tmp",
+        "WGPU_BACKEND": "vulkan"
+      },
+      "log": "gpu-medium.log",
+      "exit_code": 0
+    },
+    {
+      "name": "gpu-high",
+      "command": [
+        "cargo",
+        "test",
+        "-p",
+        "verse-pbr",
+        "--features",
+        "imported-surface",
+        "--config",
+        "profile.test.package.verse-world.debug=0",
+        "--config",
+        "profile.test.package.verse-world.opt-level=0",
+        "--config",
+        "profile.test.package.verse-content.debug=0",
+        "--config",
+        "profile.test.package.verse-pbr.debug=0",
+        "--config",
+        "profile.test.package.verse-pbr.opt-level=0",
+        "--lib",
+        "indoor_and_outdoor_lighting_keep_the_character_readable",
+        "--",
+        "--ignored",
+        "--nocapture"
+      ],
+      "environment": {
+        "VERSE_QUALITY": "high",
+        "VERSE_LIGHTING_EVIDENCE": "/run/verse-audit-build-agent1/v22-lighting-accepted",
+        "TMPDIR": "/run/verse-audit-build-agent1/test-tmp",
+        "WGPU_BACKEND": "vulkan"
+      },
+      "log": "gpu-high.log",
+      "exit_code": 0
+    },
+    {
+      "name": "gles",
+      "command": [
+        "cargo",
+        "test",
+        "-p",
+        "verse",
+        "--no-default-features",
+        "--config",
+        "profile.test.package.verse-world.debug=0",
+        "--config",
+        "profile.test.package.verse-world.opt-level=0",
+        "--config",
+        "profile.test.package.verse-content.debug=0",
+        "--config",
+        "profile.test.package.verse-pbr.debug=0",
+        "--config",
+        "profile.test.package.verse-pbr.opt-level=0",
+        "--config",
+        "profile.test.package.verse.debug=0",
+        "--config",
+        "profile.test.package.verse.opt-level=0",
+        "--lib",
+        "gles_tests"
+      ],
+      "environment": {},
+      "log": "gles.log",
+      "exit_code": 0,
+      "phase_note": "The checked production shading and GLES consumer source is unchanged; later edits change only capture geometry and diagnostic wording."
+    }
+  ],
+  "shared_environment": {
+    "RUSTC_WRAPPER": "/run/verse-audit-build-agent1/rustc.py",
+    "CARGO_TARGET_DIR": "/home/christopherdavid/work/openagents-target-agent1",
+    "CARGO_BUILD_JOBS": "1"
+  },
+  "executables": {
+    "engine": {
+      "logical": "/home/christopherdavid/work/openagents-target-agent1/debug/deps/verse_engine-0dfba4dc924d9bac",
+      "physical": "/run/verse-audit-build-agent1/outputs/verse_engine/-0dfba4dc924d9bac/verse_engine-0dfba4dc924d9bac",
+      "sha256": "f36314b862170f86eb065b36edb5eb7a50c8fa52b9bafff7470fa10abacea742"
+    },
+    "pbr": {
+      "logical": "/home/christopherdavid/work/openagents-target-agent1/debug/deps/verse_pbr-391839f822d1e00e",
+      "physical": "/run/verse-audit-build-agent1/outputs/verse_pbr/-391839f822d1e00e/verse_pbr-391839f822d1e00e",
+      "sha256": "67fcc8314f08264921fd8031168fdcb458602cc380e166b1411bfdd141928147"
+    },
+    "gpu-low": {
+      "logical": "/home/christopherdavid/work/openagents-target-agent1/debug/deps/verse_pbr-391839f822d1e00e",
+      "physical": "/run/verse-audit-build-agent1/outputs/verse_pbr/-391839f822d1e00e/verse_pbr-391839f822d1e00e",
+      "sha256": "67fcc8314f08264921fd8031168fdcb458602cc380e166b1411bfdd141928147"
+    },
+    "gpu-medium": {
+      "logical": "/home/christopherdavid/work/openagents-target-agent1/debug/deps/verse_pbr-391839f822d1e00e",
+      "physical": "/run/verse-audit-build-agent1/outputs/verse_pbr/-391839f822d1e00e/verse_pbr-391839f822d1e00e",
+      "sha256": "67fcc8314f08264921fd8031168fdcb458602cc380e166b1411bfdd141928147"
+    },
+    "gpu-high": {
+      "logical": "/home/christopherdavid/work/openagents-target-agent1/debug/deps/verse_pbr-391839f822d1e00e",
+      "physical": "/run/verse-audit-build-agent1/outputs/verse_pbr/-391839f822d1e00e/verse_pbr-391839f822d1e00e",
+      "sha256": "67fcc8314f08264921fd8031168fdcb458602cc380e166b1411bfdd141928147"
+    },
+    "gles": {
+      "logical": "/home/christopherdavid/work/openagents-target-agent1/debug/deps/verse-c0cfb5a636f9bf73",
+      "physical": "/run/verse-audit-build-agent1/outputs/verse/-c0cfb5a636f9bf73/verse-c0cfb5a636f9bf73",
+      "sha256": "c1e9a71db2ff8f9d5f792d4f5bf182a54408e4515ef5aaae52801269cda02b70"
+    }
+  },
+  "artifacts_sha256": {
+    "README.md": "96220fb5c30d9c36f980d2b4c4047de6621e9d7f6d562e213ef1e3bc1fa8254a",
+    "engine.log": "530b74f204b0bb6191d1fd284b707f994e4557d7c207d2945e67fb67a0716ffb",
+    "forest-high.png": "14829694688ec421342af54f7978e3f9e4574072c70902cdd16cc89315ef8990",
+    "forest-low.png": "eac737c069c463bd73fefa7958714b5d4ae5dfd576d3e7f55b61b6c505d699c0",
+    "forest-medium.png": "d6341d84bb80185f97ffb0ad0f2746819efd1ef7cea37fd383aa7ade9a84fd8b",
+    "gles-disk-failure.log": "da8b4b4eaaade931b4f7a60a1f0507f83877d827eb8a54b3c90b6fb532d666a6",
+    "gles.log": "b3832cd012899fb644903733b47801f14f6c58b8225aaecb72df8a38707402b8",
+    "gpu-high.log": "1f3f975dcc6dc233f0287e240ca8e10bd0f0fe0b9f49b6d7783348cd226f45ba",
+    "gpu-low.log": "aefbf5df6b96ce311199b0f799b8924c6ec7b9af8ca0927debf2107f41ff7ef7",
+    "gpu-medium.log": "0614bcae6c84c8fc2824b1e5a923e4835adb89565bb9995b0d6e9100aff5b371",
+    "high.json": "77da81b32d1ec5e27457e2a9e7e9aec5291e6f2d3e246b2792eb910285c10df4",
+    "low.json": "e20ec6d79d45565cb402f08260915e000c03a16692dd51ebb15356285ad74347",
+    "medium.json": "4b30231eeefadcca0d7bfd7abb93a46e67700aaa0d01c25fb9db06e6701e8def",
+    "pbr.log": "96bc551ec44922ae51754302aff1294f50498dba80ba4f852b609a6f9a322306",
+    "rustc-storage-wrapper.py": "91421e052eaed43d26dfd877c6206e4f645992cdfb487cadda4a0d009556d8ca",
+    "source.json": "c2b0fa15712b50a5b86aeec7a4663e6c4faebc18844df033f9920aab3682518f",
+    "source.patch.gz": "1367de099dadb37a78ac9ca38f745d176bfce42d2d5d077e14d6ae346706a043",
+    "spell-high.png": "cf145acce7386065a3778cb5768de0c6c3cf7688a5db64496b0be8c756afd6fe",
+    "spell-low.png": "ea9a6bba7ca307a66d01395dde18e9efba7d555713b5933a38546d198f423c0d",
+    "spell-medium.png": "2541cf5cafa9d811ea6e82299cbb262f09a3b26825d3d7fedb122cde0343345c",
+    "station-high.png": "16586fc78f80b0cdf1580bc20674684178d736162040b41c3acc5f4890fa6b61",
+    "station-low.png": "28f7878a8df5531ffb2879706f4864d48b72d2333fd88e92a71ed68dceef7d2c",
+    "station-medium.png": "c68e4071f5e0903e9025d2450271a4aa72c4837f985689fb759d572c5ad15505",
+    "torch-high.png": "fd942e672f7de9119959c20ec09c7cb946f000308e89e7026945513412f6ff7a",
+    "torch-low.png": "b5f2234eeb024acf3b585517f65f8b2e5c1e110751f22eba5dd70f9e4b071a44",
+    "torch-medium.png": "fb10335cb3f7c3da0f58f031322da53f327b7c1aa1420f2f1c8e7ce859ad4d2b"
+  },
+  "limits": "Controlled procedural references on one headless Vulkan adapter; no full-zone art, adaptation traversal, physical phone/browser, or frame-time acceptance. Target caches remain retained in private RAM until persistent storage is available."
+}
