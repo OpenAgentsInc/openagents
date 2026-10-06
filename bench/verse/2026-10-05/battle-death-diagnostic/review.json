@@ -1,0 +1,35 @@
+{
+  "schema": "verse.battle.review.v1",
+  "duration_seconds": 120,
+  "source_base": "43f12d6e0bb48e22f151476a14aaab66cca9bee8",
+  "main_fixes": [
+    "321dd72b9e",
+    "ed221aa307"
+  ],
+  "executable_sha256": "0c835925b273185f272dcc8ae60645a45170d4cb9a8295e066e73c610e30993c",
+  "acceptance": "failed",
+  "failures": [
+    "/server/movement_expiry/total: Some(12.0) exceeds 0, or is unavailable"
+  ],
+  "movement_expiry": 12,
+  "native_segment_errors": [
+    null,
+    null
+  ],
+  "p95": {
+    "frame_cpu_ms": 8.078372,
+    "gpu_scene_ms": 7.17824,
+    "applied_snapshot_age_ms": 218.890771
+  },
+  "files": {
+    "report.json": "b164fe31f8c6e6fd073cf2228eb101f375b503754ca09778493a71d9447244f4",
+    "source.patch": "a5f5f9f74899b562b52c990a8640ff49f25c851a79d03c98b74edc9ba1c6f21a"
+  },
+  "limitations": [
+    "No own compiler ran during measurement; the host is shared.",
+    "This 120-second run does not establish long-duration native stability.",
+    "The native prediction regression did not reproduce.",
+    "Twelve movement expiries remain; no runtime improvement from death retirement is established.",
+    "Offscreen rendering does not measure physical input-to-display latency."
+  ]
+}
