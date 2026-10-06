@@ -727,9 +727,19 @@ mod tests {
         let mut reclaimed = 0u64;
         let mut peak_backlog = 0;
         let mut operations = (0, 0);
+        let mut minimum_voices = 128;
         for _ in 0..1000 {
             while feeder.pump() > 0 {}
-            for _ in 0..63 {
+            let needed = 128 - callback.mixer.voice_count();
+            assert!(needed < 63);
+            for _ in 0..needed {
+                assert!(
+                    ordinary
+                        .push(Command::Play(cue(Bus::Effects, 20, true)))
+                        .is_ok()
+                );
+            }
+            for _ in needed..63 {
                 assert!(
                     ordinary
                         .push(Command::Listener(Vec3::ZERO, Vec3::X))
@@ -747,6 +757,7 @@ mod tests {
             let (a, d) = OPS.with(Cell::get);
             operations.0 += a;
             operations.1 += d;
+            minimum_voices = minimum_voices.min(callback.mixer.voice_count());
             times.push(ns);
             peak_backlog = peak_backlog.max(retired.slots());
             let gc_start = std::time::Instant::now();
@@ -761,11 +772,12 @@ mod tests {
         let stats = callback.mixer.stats;
         println!(
             "AUDIO_PROFILE {}",
-            serde_json::json!({"schema":"verse.audio.deadline.v1","bank":bank.digest,"profile":"headless-callback-debug-48k-stereo-512","samples":times.len(),"logical_voices":128,"audible_limit":32,"commands_per_callback":64,"music_streams":1,"producer":"bounded pump before callback; no device pacing","budget_ns":10666666,"p50_ns":times[499],"p95_ns":times[949],"p99_ns":times[989],"max_ns":times[999],"overruns":times.iter().filter(|&&n|n>10666666).count(),"allocations":operations.0,"deallocations":operations.1,"stream_gaps":stats.stream_gaps,"music_advanced_frames":music_progress.frame()-initial,"stolen":stats.stolen,"retirement_blocked":stats.retirement_blocked,"reclaimed_sources":reclaimed,"retirement_peak_backlog":peak_backlog,"reclamation":"control-side draining of the native retirement queue","reclaim_p95_ns":reclaim_times[949],"reclaim_p99_ns":reclaim_times[989],"reclaim_max_ns":reclaim_times[999]})
+            serde_json::json!({"schema":"verse.audio.deadline.v1","bank":bank.digest,"profile":"headless-callback-debug-48k-stereo-512","samples":times.len(),"logical_voice_target":128,"minimum_voices_after_callback":minimum_voices,"audible_limit":32,"commands_per_callback":64,"music_streams":1,"producer":"bounded pump before callback; no device pacing","budget_ns":10666666,"p50_ns":times[499],"p95_ns":times[949],"p99_ns":times[989],"max_ns":times[999],"overruns":times.iter().filter(|&&n|n>10666666).count(),"allocations":operations.0,"deallocations":operations.1,"stream_gaps":stats.stream_gaps,"music_advanced_frames":music_progress.frame()-initial,"stolen":stats.stolen,"retirement_blocked":stats.retirement_blocked,"reclaimed_sources":reclaimed,"retirement_peak_backlog":peak_backlog,"reclamation":"control-side draining of the native retirement queue","reclaim_p95_ns":reclaim_times[949],"reclaim_p99_ns":reclaim_times[989],"reclaim_max_ns":reclaim_times[999]})
         );
         assert_eq!(operations, (0, 0));
         assert_eq!(stats.stream_gaps, 0);
         assert_eq!(music_progress.frame() - initial, 512000);
+        assert!(minimum_voices >= 126);
         assert!(times[989] < 10666666);
     }
 }
