@@ -34,6 +34,7 @@ use glam::{Mat4, Vec3};
 use wgpu::util::DeviceExt;
 
 use super::environment::{SkyInputs, SkyLightGpu};
+use super::instanced::{self, GpuVertex, Instance, Prepared};
 use super::output::{self, Look, Output, OutputTargets};
 use super::screen::{self as screen_space, ScreenGpu, ScreenTargets, ScreenUniform};
 use super::textured::{self, Pass, TexturedMaterial, TexturedScene, TexturedVertex};
@@ -378,14 +379,24 @@ struct Prepass {
     masked: wgpu::RenderPipeline,
 }
 
-/// Textured static meshes on the GPU: merged vertices and indices uploaded
-/// once, and one bind group per material.
+/// Textured static meshes on the GPU: merged cells and shared meshes
+/// uploaded once ([`Prepared`]), their instance records, the light texture,
+/// and one bind group per material.
 pub struct TexturedGpu {
     vertices: wgpu::Buffer,
     indices: wgpu::Buffer,
+    instances: wgpu::Buffer,
+    /// Merged cells, then runs of instances.
     batches: Vec<textured::Batch>,
     materials: Vec<TexturedMaterial>,
     groups: Vec<wgpu::BindGroup>,
+    /// The light texture, its rows a layer, and the texels it holds.
+    light: wgpu::Texture,
+    light_group: wgpu::BindGroup,
+    light_rows: u32,
+    texels: usize,
+    /// Whether this is a figure, whose vertices are rewritten each frame.
+    figure: bool,
     /// The scene's index edits applied so far
     /// ([`textured::IndexEdits::revision`]); part of the static casters'
     /// identity, so a cached shadow redraws after an edit.
@@ -432,12 +443,64 @@ impl TexturedGpu {
         }
     }
 
-    /// Rewrites a figure's vertices; the caller has checked their count
-    /// against the uploaded mesh ([`textured::Figure::validate`]).
+    /// Rewrites a figure's vertices and their light; the caller has checked
+    /// their count against the uploaded mesh
+    /// ([`textured::Figure::validate`]). For a static scene, `vertices` are
+    /// a finished light bake's, in [`TexturedScene::merge`]'s order, and
+    /// only their light is written.
     pub fn write_vertices(&self, queue: &wgpu::Queue, vertices: &[TexturedVertex]) {
-        let bytes: &[u8] = bytemuck::cast_slice(vertices);
-        if !bytes.is_empty() && bytes.len() as u64 <= self.vertices.size() {
-            queue.write_buffer(&self.vertices, 0, bytes);
+        if self.figure {
+            let packed: Vec<GpuVertex> = vertices.iter().map(GpuVertex::pack).collect();
+            let bytes: &[u8] = bytemuck::cast_slice(&packed);
+            if !bytes.is_empty() && bytes.len() as u64 <= self.vertices.size() {
+                queue.write_buffer(&self.vertices, 0, bytes);
+            }
+        }
+        if vertices.len() == self.texels {
+            self.write_lights(queue, vertices.iter().map(|v| v.light));
+        }
+    }
+
+    /// Writes the light texture from `lights`, one texel a vertex in
+    /// [`TexturedScene::merge`]'s order.
+    fn write_lights(&self, queue: &wgpu::Queue, lights: impl Iterator<Item = [u8; 4]>) {
+        let size = self.light.size();
+        // Only the rows the lights fill change.
+        let rows = (self.texels as u64).div_ceil(u64::from(size.width)).max(1) as u32;
+        let mut texels = vec![0u8; (rows * size.width * 4) as usize];
+        for (texel, light) in texels.chunks_exact_mut(4).zip(lights) {
+            texel.copy_from_slice(&light);
+        }
+        for layer in 0..size.depth_or_array_layers {
+            let first = layer * self.light_rows;
+            if first >= rows {
+                break;
+            }
+            let height = (rows - first).min(self.light_rows);
+            let start = (first * size.width * 4) as usize;
+            queue.write_texture(
+                wgpu::TexelCopyTextureInfo {
+                    texture: &self.light,
+                    mip_level: 0,
+                    origin: wgpu::Origin3d {
+                        x: 0,
+                        y: 0,
+                        z: layer,
+                    },
+                    aspect: wgpu::TextureAspect::All,
+                },
+                &texels[start..start + (height * size.width * 4) as usize],
+                wgpu::TexelCopyBufferLayout {
+                    offset: 0,
+                    bytes_per_row: Some(size.width * 4),
+                    rows_per_image: Some(height),
+                },
+                wgpu::Extent3d {
+                    width: size.width,
+                    height,
+                    depth_or_array_layers: 1,
+                },
+            );
         }
     }
 }
@@ -504,6 +567,11 @@ pub struct Photo {
     pipelines: Pipelines,
     /// A textured material's image, sampler, and factors (group 2).
     material_layout: wgpu::BindGroupLayout,
+    /// A textured scene's light texture (group 3, binding 2), which the
+    /// vertex shader reads ([`super::instanced`]).
+    light_layout: wgpu::BindGroupLayout,
+    /// What the textured draws of the last frame cost, every pass counted.
+    stats: std::cell::Cell<DrawStats>,
     /// Cooked and uploaded base-color images by name, size, a sample of
     /// their texels, and role: the world scene's and the figures' drawn
     /// since, so a figure whose scene changes (a town's chunks growing
@@ -551,15 +619,41 @@ fn lit_layout() -> wgpu::VertexBufferLayout<'static> {
     }
 }
 
-fn textured_layout() -> wgpu::VertexBufferLayout<'static> {
-    const ATTRIBUTES: [wgpu::VertexAttribute; 5] = wgpu::vertex_attr_array![
-        0 => Float32x3, 1 => Float32x3, 2 => Float32x2, 3 => Unorm8x4, 4 => Unorm8x4
+/// A textured draw's two streams: [`GpuVertex`] per vertex and
+/// [`Instance`] per instance.
+fn textured_layout() -> [wgpu::VertexBufferLayout<'static>; 2] {
+    const VERTEX: [wgpu::VertexAttribute; 4] = wgpu::vertex_attr_array![
+        0 => Float32x3, 1 => Snorm16x2, 2 => Float32x2, 3 => Unorm8x4
     ];
-    wgpu::VertexBufferLayout {
-        array_stride: std::mem::size_of::<TexturedVertex>() as u64,
-        step_mode: wgpu::VertexStepMode::Vertex,
-        attributes: &ATTRIBUTES,
-    }
+    const INSTANCE: [wgpu::VertexAttribute; 4] = wgpu::vertex_attr_array![
+        4 => Float32x4, 5 => Float32x4, 6 => Float32x4, 7 => Uint32
+    ];
+    [
+        wgpu::VertexBufferLayout {
+            array_stride: std::mem::size_of::<GpuVertex>() as u64,
+            step_mode: wgpu::VertexStepMode::Vertex,
+            attributes: &VERTEX,
+        },
+        wgpu::VertexBufferLayout {
+            array_stride: std::mem::size_of::<Instance>() as u64,
+            step_mode: wgpu::VertexStepMode::Instance,
+            attributes: &INSTANCE,
+        },
+    ]
+}
+
+/// What a frame's textured draws cost, every pass counted: the shadow
+/// cascades, the depth prepass, and the scene.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, serde::Serialize)]
+pub struct DrawStats {
+    /// Indexed draw calls.
+    pub draws: u64,
+    /// Instances those calls drew; a merged cell is one.
+    pub instances: u64,
+    pub triangles: u64,
+    /// The scene pass's share of each.
+    pub scene_draws: u64,
+    pub scene_triangles: u64,
 }
 
 fn depth_state(write: bool, compare: wgpu::CompareFunction) -> wgpu::DepthStencilState {
@@ -949,6 +1043,21 @@ impl Photo {
             layout: &empty_layout,
             entries: &[],
         });
+        // A scene's baked light, one texel a vertex, read by the vertex
+        // shader. Group 3 binding 0 and 1 are the fx sheets' in this module.
+        let light_layout = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
+            label: Some("verse textured light"),
+            entries: &[wgpu::BindGroupLayoutEntry {
+                binding: 2,
+                visibility: wgpu::ShaderStages::VERTEX,
+                ty: wgpu::BindingType::Texture {
+                    sample_type: wgpu::TextureSampleType::Float { filterable: false },
+                    view_dimension: wgpu::TextureViewDimension::D2Array,
+                    multisampled: false,
+                },
+                count: None,
+            }],
+        });
         // Group 1 holds the guides' adapted luminance, which the pass binds
         // for the legacy faces anyway; textured shaders do not read it.
         let textured_layout_groups =
@@ -958,6 +1067,7 @@ impl Photo {
                     Some(&scene_layout),
                     Some(&guide_layout),
                     Some(&material_layout),
+                    Some(&light_layout),
                 ],
                 immediate_size: 0,
             });
@@ -970,6 +1080,7 @@ impl Photo {
             ],
             immediate_size: 0,
         });
+        let textured_buffers = textured_layout();
         let textured_pipeline = |pass: Pass, double_sided: bool| {
             let raster = textured::raster(pass, double_sided);
             let targets = color(raster.blend.then_some(PREMULTIPLIED));
@@ -980,7 +1091,7 @@ impl Photo {
                     module: &module,
                     entry_point: Some("vs_textured"),
                     compilation_options: options.clone(),
-                    buffers: &[textured_layout()],
+                    buffers: &textured_buffers,
                 },
                 primitive: wgpu::PrimitiveState {
                     topology: triangles,
@@ -1014,7 +1125,7 @@ impl Photo {
                     module: &module,
                     entry_point: Some("vs_shadow_textured"),
                     compilation_options: options.clone(),
-                    buffers: &[textured_layout()],
+                    buffers: &textured_buffers,
                 },
                 primitive: wgpu::PrimitiveState {
                     topology: triangles,
@@ -1076,13 +1187,13 @@ impl Photo {
                 textured: pipeline(
                     &shadow_layout,
                     "vs_shadow_textured",
-                    &[textured_layout()],
+                    &textured_buffers,
                     None,
                 ),
                 masked: pipeline(
                     &masked_shadow_layout,
                     "vs_shadow_textured",
-                    &[textured_layout()],
+                    &textured_buffers,
                     Some("fs_shadow_masked"),
                 ),
             }
@@ -1359,6 +1470,8 @@ impl Photo {
             sky_light,
             pipelines,
             material_layout,
+            light_layout,
+            stats: std::cell::Cell::default(),
             cooked: std::sync::Mutex::default(),
             empty_group,
             textured_sampler,
@@ -1439,26 +1552,20 @@ impl Photo {
         self.rebuild_groups(device);
     }
 
-    /// Uploads a merged textured scene once: its vertices and indices, each
-    /// image with its mip chain (coverage-preserving for masked materials,
+    /// Uploads a textured scene's GPU layout once ([`Prepared`]): its
+    /// vertices, indices, instance records, and light texture, each image
+    /// with its mip chain (coverage-preserving for masked materials,
     /// without levels above the device's texture limit), and each
-    /// material's factors.
+    /// material's factors. A light bake that finishes later rewrites the
+    /// light texture ([`TexturedGpu::write_vertices`]).
     pub fn upload_textured(
         &self,
         device: &wgpu::Device,
         queue: &wgpu::Queue,
         scene: &TexturedScene,
-        merged: &textured::Merged,
+        prepared: &Prepared,
     ) -> TexturedGpu {
-        // A light bake that finishes after the upload rewrites the vertices.
-        self.upload_textured_with(
-            device,
-            queue,
-            scene,
-            merged,
-            wgpu::BufferUsages::VERTEX | wgpu::BufferUsages::COPY_DST,
-            false,
-        )
+        self.upload_textured_with(device, queue, scene, prepared, false)
     }
 
     /// Uploads a [`textured::Figure`]'s images, materials, and indices, with
@@ -1473,10 +1580,15 @@ impl Photo {
             device,
             queue,
             &figure.scene,
-            &figure.merged(),
-            wgpu::BufferUsages::VERTEX | wgpu::BufferUsages::COPY_DST,
+            &Prepared::of_merged(&figure.merged()),
             true,
         )
+    }
+
+    /// What the textured draws of the last frame cost.
+    #[must_use]
+    pub fn draw_stats(&self) -> DrawStats {
+        self.stats.get()
     }
 
     fn upload_textured_with(
@@ -1484,8 +1596,7 @@ impl Photo {
         device: &wgpu::Device,
         queue: &wgpu::Queue,
         scene: &TexturedScene,
-        merged: &textured::Merged,
-        vertex_usage: wgpu::BufferUsages,
+        prepared: &Prepared,
         figure: bool,
     ) -> TexturedGpu {
         let max = device.limits().max_texture_dimension_2d;
@@ -1564,21 +1675,54 @@ impl Photo {
             })
             .collect();
         // Buffers cannot be empty; an empty scene draws no batches.
-        let vertex_bytes: &[u8] = if merged.vertices.is_empty() {
-            &[0; std::mem::size_of::<TexturedVertex>()]
+        let vertex_bytes: &[u8] = if prepared.vertices.is_empty() {
+            &[0; std::mem::size_of::<GpuVertex>()]
         } else {
-            bytemuck::cast_slice(&merged.vertices)
+            bytemuck::cast_slice(&prepared.vertices)
         };
-        let index_bytes: &[u8] = if merged.indices.is_empty() {
+        let index_bytes: &[u8] = if prepared.indices.is_empty() {
             &[0; 4]
         } else {
-            bytemuck::cast_slice(&merged.indices)
+            bytemuck::cast_slice(&prepared.indices)
         };
-        TexturedGpu {
+        let records = if prepared.instances.is_empty() {
+            &[Instance::MERGED][..]
+        } else {
+            &prepared.instances[..]
+        };
+        let (light_rows, layers) = instanced::light_extent(prepared.lights.len());
+        let light = device.create_texture(&wgpu::TextureDescriptor {
+            label: Some("verse textured light"),
+            size: wgpu::Extent3d {
+                width: instanced::LIGHT_WIDTH,
+                height: light_rows,
+                depth_or_array_layers: layers,
+            },
+            mip_level_count: 1,
+            sample_count: 1,
+            dimension: wgpu::TextureDimension::D2,
+            format: wgpu::TextureFormat::Rgba8Unorm,
+            usage: wgpu::TextureUsages::TEXTURE_BINDING | wgpu::TextureUsages::COPY_DST,
+            view_formats: &[],
+        });
+        let light_view = light.create_view(&wgpu::TextureViewDescriptor {
+            dimension: Some(wgpu::TextureViewDimension::D2Array),
+            ..Default::default()
+        });
+        let light_group = device.create_bind_group(&wgpu::BindGroupDescriptor {
+            label: Some("verse textured light"),
+            layout: &self.light_layout,
+            entries: &[wgpu::BindGroupEntry {
+                binding: 2,
+                resource: wgpu::BindingResource::TextureView(&light_view),
+            }],
+        });
+        let gpu = TexturedGpu {
             vertices: device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
                 label: Some("verse textured vertices"),
                 contents: vertex_bytes,
-                usage: vertex_usage,
+                // A figure's are rewritten each frame.
+                usage: wgpu::BufferUsages::VERTEX | wgpu::BufferUsages::COPY_DST,
             }),
             indices: device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
                 label: Some("verse textured indices"),
@@ -1586,14 +1730,26 @@ impl Photo {
                 // Zones rewrite ranges of a static scene's indices.
                 usage: wgpu::BufferUsages::INDEX | wgpu::BufferUsages::COPY_DST,
             }),
-            batches: merged.batches.clone(),
+            instances: device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
+                label: Some("verse textured instances"),
+                contents: bytemuck::cast_slice(records),
+                usage: wgpu::BufferUsages::VERTEX,
+            }),
+            batches: prepared.items.clone(),
             materials: scene.materials.clone(),
             groups,
+            light,
+            light_group,
+            light_rows,
+            texels: prepared.lights.len(),
+            figure,
             edits: 0,
-            near: vec![true; merged.batches.len()],
+            near: vec![true; prepared.items.len()],
             placed: false,
             levels: 0,
-        }
+        };
+        gpu.write_lights(queue, prepared.lights.iter().copied());
+        gpu
     }
 
     /// A figure's batches in drawing order, never culled.
@@ -1634,17 +1790,21 @@ impl Photo {
         let Some(gpu) = textured else {
             return;
         };
+        let order: Vec<usize> = order
+            .iter()
+            .copied()
+            .filter(|&i| gpu.materials[gpu.batches[i].material].alpha.pass() == which)
+            .collect();
         let mut sides = None;
         let mut bound = None;
-        for &i in order {
-            let batch = &gpu.batches[i];
+        for draw in instanced::draws(&gpu.batches, &order) {
+            let batch = &gpu.batches[draw.item];
             let material = &gpu.materials[batch.material];
-            if material.alpha.pass() != which {
-                continue;
-            }
             if sides.is_none() {
                 pass.set_vertex_buffer(0, gpu.vertices.slice(..));
+                pass.set_vertex_buffer(1, gpu.instances.slice(..));
                 pass.set_index_buffer(gpu.indices.slice(..), wgpu::IndexFormat::Uint32);
+                pass.set_bind_group(3, &gpu.light_group, &[]);
             }
             if sides != Some(material.double_sided) {
                 let pipeline = &self.pipelines.textured[which as usize];
@@ -1655,8 +1815,36 @@ impl Photo {
                 pass.set_bind_group(2, &gpu.groups[batch.material], &[]);
                 bound = Some(batch.material);
             }
-            pass.draw_indexed(batch.first..batch.first + batch.count, 0, 0..1);
+            self.draw_run(pass, gpu, draw, true);
         }
+    }
+
+    /// Issues `draw` from its first instance record, with the records bound
+    /// once a pass (OpenGL ES offsets the instance stream for it), and
+    /// counts its cost.
+    fn draw_run(
+        &self,
+        pass: &mut wgpu::RenderPass<'_>,
+        gpu: &TexturedGpu,
+        draw: instanced::Draw,
+        scene: bool,
+    ) {
+        let first = draw.instances.first;
+        pass.draw_indexed(
+            draw.first..draw.first + draw.count,
+            0,
+            first..first + draw.instances.count,
+        );
+        let mut stats = self.stats.get();
+        let triangles = u64::from(draw.count / 3) * u64::from(draw.instances.count);
+        stats.draws += 1;
+        stats.instances += u64::from(draw.instances.count);
+        stats.triangles += triangles;
+        if scene {
+            stats.scene_draws += 1;
+            stats.scene_triangles += triangles;
+        }
+        self.stats.set(stats);
     }
 
     /// Size-dependent targets, rebuilt when the size changes.
@@ -1766,6 +1954,7 @@ impl Photo {
         world: Batches<'_>,
         ui: Option<(&wgpu::RenderPipeline, &wgpu::BindGroup, &wgpu::Buffer, u32)>,
     ) {
+        self.stats.set(DrawStats::default());
         match stage {
             Stage::Space(sky) => {
                 self.encode_space(device, queue, encoder, output, targets, view, sky, world)
@@ -2152,6 +2341,7 @@ impl Photo {
                 continue;
             };
             pass.set_vertex_buffer(0, gpu.vertices.slice(..));
+            pass.set_vertex_buffer(1, gpu.instances.slice(..));
             pass.set_index_buffer(gpu.indices.slice(..), wgpu::IndexFormat::Uint32);
             for masked in [false, true] {
                 if masked {
@@ -2160,18 +2350,23 @@ impl Photo {
                 } else {
                     pass.set_pipeline(opaque_pipeline);
                 }
-                for (i, batch) in gpu.batches.iter().enumerate() {
-                    let cell_pass = gpu.materials[batch.material].alpha.pass();
-                    if textured::raster(cell_pass, false).shadow != Some(masked)
-                        || !gpu.shown(i)
-                        || (k == 0 && !keep(batch))
-                    {
-                        continue;
+                let order: Vec<usize> = (0..gpu.batches.len())
+                    .filter(|&i| {
+                        let batch = &gpu.batches[i];
+                        let cell_pass = gpu.materials[batch.material].alpha.pass();
+                        textured::raster(cell_pass, false).shadow == Some(masked)
+                            && gpu.shown(i)
+                            && (k != 0 || keep(batch))
+                    })
+                    .collect();
+                let mut bound = None;
+                for draw in instanced::draws(&gpu.batches, &order) {
+                    let material = gpu.batches[draw.item].material;
+                    if masked && bound != Some(material) {
+                        pass.set_bind_group(2, &gpu.groups[material], &[]);
+                        bound = Some(material);
                     }
-                    if masked {
-                        pass.set_bind_group(2, &gpu.groups[batch.material], &[]);
-                    }
-                    pass.draw_indexed(batch.first..batch.first + batch.count, 0, 0..1);
+                    self.draw_run(pass, gpu, draw, false);
                 }
             }
         }

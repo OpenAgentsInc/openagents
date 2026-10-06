@@ -171,24 +171,43 @@ pub fn build_painted(
             placement.scale,
         )))
     };
-    for (placement, &carved) in placements.iter().zip(&carved) {
+    // The town hides and carves its buildings' pieces by rewriting their
+    // merged indices (`demolition::town`), so they merge into their cells;
+    // everything else may draw as an instance of a shared mesh.
+    let kit = super::demolition::town::kit_members(placements);
+    let editable = |index: usize| carved[index] || kit.contains(&index);
+    let place = |scene: &mut TexturedScene, index: usize, mesh, transform, level| {
+        if editable(index) {
+            scene.place_detail(mesh, transform, level);
+        } else {
+            scene.place_instanced(mesh, transform, level);
+        }
+    };
+    for (index, (placement, &carved)) in placements.iter().zip(&carved).enumerate() {
         let colors = paint(placement);
         let cut = lattice(placement, carved)?;
         let (mesh, bounds) = mesh(pack, placement.model, colors, cut, &mut scene, &mut copied)?;
         let (level, _) = detail::plan(pack, placement.model);
-        scene.place_detail(mesh, placement.transform(), level);
+        place(&mut scene, index, mesh, placement.transform(), level);
         blockers.extend(placement.footprints(bounds));
     }
     // Far levels of detail follow, in layout order (`detail::far_placements`).
     // A far level is not split: its few large triangles hide with the
     // block their middle lies in.
-    for (placement, far) in placements
+    for (index, (placement, far)) in placements
         .iter()
         .zip(detail::far_placements(pack, placements))
+        .enumerate()
     {
         if let Some((far, _)) = far {
             let (mesh, _) = mesh(pack, far, paint(placement), None, &mut scene, &mut copied)?;
-            scene.place_detail(mesh, placement.transform(), detail::FAR_DETAIL);
+            place(
+                &mut scene,
+                index,
+                mesh,
+                placement.transform(),
+                detail::FAR_DETAIL,
+            );
         }
     }
     scene.validate()?;

@@ -22,7 +22,8 @@ use winit::window::Window;
 use crate::mesh::{Mesh, Vertex};
 use crate::pbr::LitVertex;
 use crate::pbr::gpu::{Batches, Capability, Photo, PhotoTargets, Stage, TexturedGpu};
-use crate::pbr::textured::{BakedVertices, IndexEdits, Merged, TexturedScene};
+use crate::pbr::instanced::Prepared;
+use crate::pbr::textured::{BakedVertices, IndexEdits, TexturedScene};
 use crate::ui::{Atlas, UiBatch, UiVertex};
 
 const DEPTH: wgpu::TextureFormat = wgpu::TextureFormat::Depth32Float;
@@ -1309,24 +1310,22 @@ pub(crate) fn mesh_resources(mesh: &Mesh) -> Result<verse_engine::quality::Resou
         .chain(mesh.figure.iter().map(|figure| &figure.scene))
     {
         scene.validate()?;
-        let primitive_bytes = |primitive: &crate::pbr::textured::Primitive| {
-            (primitive.vertices.len() * std::mem::size_of::<crate::pbr::textured::TexturedVertex>()
-                + primitive.indices.len() * 4) as u64
-        };
         if scene.placements.is_empty() {
-            result.geometry_bytes += scene
+            // A figure: its mesh drawn once, a light texel a vertex.
+            let (vertices, indices) = scene
                 .meshes
                 .iter()
                 .flat_map(|mesh| &mesh.primitives)
-                .map(primitive_bytes)
-                .sum::<u64>();
+                .fold((0, 0), |(v, i), p| {
+                    (v + p.vertices.len(), i + p.indices.len())
+                });
+            result.geometry_bytes += (vertices
+                * std::mem::size_of::<crate::pbr::instanced::GpuVertex>()
+                + indices * 4) as u64
+                + crate::pbr::instanced::light_bytes(vertices);
         } else {
-            result.geometry_bytes += scene
-                .placements
-                .iter()
-                .flat_map(|place| &scene.meshes[place.mesh].primitives)
-                .map(primitive_bytes)
-                .sum::<u64>();
+            // Merged cells, shared meshes, instances, and the light texture.
+            result.geometry_bytes += scene.gpu_bytes();
         }
         for variant in scene.mip_variants() {
             let image = &scene.images[variant.texture];
@@ -1459,10 +1458,11 @@ fn lit_finite(vertices: &[LitVertex]) -> bool {
     })
 }
 
-/// A world's textured scene with its merged cells.
-type PreparedTextured = (std::sync::Arc<TexturedScene>, Merged);
+/// A world's textured scene with its GPU layout.
+type PreparedTextured = (std::sync::Arc<TexturedScene>, Prepared);
 
-/// Merges the world's textured meshes into cells for upload.
+/// The world's textured meshes as the renderer uploads them: merged cells
+/// and shared meshes with their instances.
 ///
 /// # Errors
 ///
@@ -1471,7 +1471,7 @@ fn prepare_textured(world: &Mesh) -> Result<Option<PreparedTextured>, String> {
     world
         .textured
         .as_ref()
-        .map(|scene| scene.merge().map(|merged| (scene.clone(), merged)))
+        .map(|scene| Prepared::of_scene(scene).map(|prepared| (scene.clone(), prepared)))
         .transpose()
 }
 
@@ -1735,6 +1735,13 @@ impl Offscreen {
     /// # Errors
     ///
     /// Returns a message when the frame is invalid or the GPU fails.
+    /// What the last frame's textured draws cost, or `None` before the
+    /// physical renderer has drawn.
+    #[must_use]
+    pub fn draw_stats(&self) -> Option<crate::pbr::gpu::DrawStats> {
+        self.scene.photo.as_ref().map(Photo::draw_stats)
+    }
+
     pub fn render(&mut self, view: View, dynamic: &Mesh, ui: &UiBatch) -> Result<Vec<u8>, String> {
         self.render_with_overlay(view, dynamic, ui, None)
     }
@@ -2849,7 +2856,7 @@ mod tests {
         // A figure past the whole reserve for moving geometry.
         const FIGURE: usize = 3 * 700_000;
         assert!(
-            (FIGURE * (std::mem::size_of::<crate::pbr::textured::TexturedVertex>() + 4)) as u64
+            (FIGURE * (std::mem::size_of::<crate::pbr::instanced::GpuVertex>() + 4)) as u64
                 > quality.budget().dynamic_geometry_bytes
         );
         let mut scene = TexturedScene::default();

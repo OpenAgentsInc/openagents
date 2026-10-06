@@ -26,6 +26,7 @@
 pub mod bake;
 pub mod environment;
 pub mod gpu;
+pub mod instanced;
 pub mod output;
 pub mod screen;
 pub mod sky;

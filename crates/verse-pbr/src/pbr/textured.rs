@@ -9,7 +9,10 @@
 //!
 //! The renderer merges placements into [`CELL`]-meter cells per material, as
 //! `imported::merge` does for the lair, and draws each cell with one indexed
-//! call; nothing depends on GPU instancing. Materials follow glTF 2.0's
+//! call. A mesh placed many times with [`TexturedScene::place_instanced`]
+//! uploads once instead and draws its copies as instances, in runs per cell
+//! ([`super::instanced`]); OpenGL ES 3.0, WebGL2, and WebGPU all draw
+//! instances, so every backend shares that path. Materials follow glTF 2.0's
 //! metallic-roughness model at its simplest: a base-color image times a
 //! linear factor and the vertex color, uniform metallic and roughness, an
 //! alpha mode (opaque, masked at a cutoff, or blended), and a double-sided
@@ -50,13 +53,22 @@ pub const MAX_IMAGES: usize = 64;
 pub const MAX_MATERIALS: usize = 1024;
 /// Most placements in one scene.
 pub const MAX_PLACEMENTS: usize = 1 << 16;
-/// Most bytes of merged vertices and indices, the zone geometry bound.
-/// Everglade's city, about 2 million triangles with its far levels of
-/// detail and its carved models split on their block lattices, merges to
-/// about 175 MiB. The vertices and the indices are separate buffers, each
-/// well under wgpu's default 256 MiB buffer limit, which phones and
-/// browsers keep.
+/// Most bytes a scene keeps on the GPU, the zone geometry bound: merged
+/// cells, shared meshes, instance records, and the light texture
+/// ([`super::instanced::Layout::bytes`]). The vertices and the indices are
+/// separate buffers, each well under wgpu's default 256 MiB buffer limit,
+/// which phones and browsers keep.
 pub const MAX_BYTES: usize = 224 * 1024 * 1024;
+/// Most bytes of [`TexturedScene::merge`], which the light bake builds on
+/// the CPU: every placement's vertices as [`TexturedVertex`]es and its
+/// 32-bit indices, instances counted once each. Everglade's city merged to
+/// 209 MiB when the GPU drew that merge; instancing took the merge off the
+/// GPU, and this bound keeps the bake's memory within what phones and
+/// browsers spare a worker.
+pub const MAX_MERGE_BYTES: usize = 448 * 1024 * 1024;
+/// The fewest instanced placements of one mesh that draw as instances
+/// ([`TexturedScene::instanced`]).
+pub const MIN_INSTANCES: usize = 2;
 /// Most switch distances in one scene ([`TexturedScene::switches`]).
 pub const MAX_SWITCHES: usize = 8;
 /// How far past its switch distance a cell must move before it changes
@@ -310,6 +322,11 @@ pub struct Placement {
     pub transform: Mat4,
     /// The distances it draws at.
     pub detail: Detail,
+    /// Whether it may draw as an instance of its mesh, sharing the mesh's
+    /// uploaded triangles with the other copies, rather than merged into
+    /// its cell ([`TexturedScene::place_instanced`]). An instanced
+    /// placement has no index ranges, so a zone cannot hide or carve it.
+    pub instanced: bool,
 }
 
 /// The distances a placement draws at, by its cell's distance from the eye
@@ -566,11 +583,48 @@ impl TexturedScene {
             mesh,
             transform,
             detail,
+            instanced: false,
         });
     }
 
+    /// Places a copy of mesh `mesh`, as [`Self::place_detail`] does, that
+    /// may draw as an instance: when at least [`MIN_INSTANCES`] instanced
+    /// placements share its mesh, the renderer uploads the mesh once and
+    /// draws every copy from it, so repeated trees, props, and kit pieces
+    /// cost their triangles once ([`super::instanced`]). A zone that edits
+    /// a placement's indices ([`Self::index_ranges`]) places it with
+    /// [`Self::place_detail`] instead.
+    pub fn place_instanced(&mut self, mesh: usize, transform: Mat4, detail: Detail) {
+        self.placements.push(Placement {
+            mesh,
+            transform,
+            detail,
+            instanced: true,
+        });
+    }
+
+    /// Whether each placement draws as an instance: it was placed with
+    /// [`Self::place_instanced`], and at least [`MIN_INSTANCES`] such
+    /// placements share its mesh. A mesh placed once gains nothing from
+    /// instancing and merges into its cell.
+    #[must_use]
+    pub fn instanced(&self) -> Vec<bool> {
+        let mut counts = vec![0usize; self.meshes.len()];
+        for p in &self.placements {
+            if p.instanced
+                && let Some(count) = counts.get_mut(p.mesh)
+            {
+                *count += 1;
+            }
+        }
+        self.placements
+            .iter()
+            .map(|p| p.instanced && counts.get(p.mesh).is_some_and(|&n| n >= MIN_INSTANCES))
+            .collect()
+    }
+
     /// The level a cell of `detail` at `cell` draws at.
-    fn level(&self, detail: Detail, cell: (i32, i32)) -> Level {
+    pub(crate) fn level(&self, detail: Detail, cell: (i32, i32)) -> Level {
         let anchor = [(cell.0 as f32 + 0.5) * CELL, (cell.1 as f32 + 0.5) * CELL];
         match detail {
             Detail::Always => Level::Always,
@@ -622,20 +676,8 @@ impl TexturedScene {
                 return Err("textured placement has an invalid mesh or transform".into());
             }
         }
-        let bytes = self.placements.iter().try_fold(0usize, |sum, placement| {
-            self.meshes[placement.mesh]
-                .primitives
-                .iter()
-                .try_fold(sum, |sum, p| {
-                    let size = p
-                        .vertices
-                        .len()
-                        .checked_mul(std::mem::size_of::<TexturedVertex>())?
-                        .checked_add(p.indices.len().checked_mul(4)?)?;
-                    sum.checked_add(size)
-                })
-        });
-        if bytes.is_none_or(|bytes| bytes > MAX_BYTES) {
+        let layout = super::instanced::Layout::of(self);
+        if layout.bytes() > MAX_BYTES as u64 || layout.merge_bytes() > MAX_MERGE_BYTES as u64 {
             return Err("textured scene exceeds its GPU bounds".into());
         }
         Ok(())
@@ -669,21 +711,38 @@ impl TexturedScene {
     /// material, [`CELL`], and [`Detail`]. A mirroring transform reverses its
     /// triangles' winding so front faces stay counterclockwise.
     ///
+    /// The placements that draw merged come first, in the cells the renderer
+    /// uploads ([`super::instanced::Prepared`]), so their indices are the
+    /// ones [`Self::index_ranges`] finds. The instanced placements
+    /// ([`Self::instanced`]) follow in cells of their own: the renderer
+    /// draws them from their shared meshes, and this order numbers their
+    /// vertices for the light bake, whose light each instance reads.
+    ///
     /// # Errors
     ///
     /// Returns the validation error when the scene is out of bounds.
     pub fn merge(&self) -> Result<Merged, String> {
         self.validate()?;
+        let instanced = self.instanced();
+        let mut merged = Merged::default();
+        self.merge_into(&mut merged, |i| !instanced[i]);
+        self.merge_into(&mut merged, |i| instanced[i]);
+        Ok(merged)
+    }
+
+    /// Merges the placements `which` keeps into world-space cells, appended
+    /// to `merged`.
+    pub(crate) fn merge_into(&self, merged: &mut Merged, which: impl Fn(usize) -> bool) {
         type Cell = (Vec<TexturedVertex>, Vec<u32>);
         let mut cells: BTreeMap<(Pass, usize, i32, i32, Detail), Cell> = BTreeMap::new();
-        for placement in &self.placements {
+        for (index, placement) in self.placements.iter().enumerate() {
+            if !which(index) {
+                continue;
+            }
             let t = placement.transform;
             let normals = Mat3::from_mat4(t).inverse().transpose();
             let mirrored = t.determinant() < 0.0;
-            let cell = (
-                (t.w_axis.x / CELL).floor() as i32,
-                (t.w_axis.z / CELL).floor() as i32,
-            );
+            let cell = cell_of(t);
             for p in &self.meshes[placement.mesh].primitives {
                 let pass = self.materials[p.material].alpha.pass();
                 let (vertices, indices) = cells
@@ -705,17 +764,13 @@ impl TexturedScene {
                 }
             }
         }
-        let mut merged = Merged::default();
         for ((_, material, x, z, detail), (vertices, indices)) in cells {
             if indices.is_empty() {
                 continue;
             }
             let base = merged.vertices.len() as u32;
             let first = merged.indices.len() as u32;
-            let (min, max) = vertices.iter().fold(
-                (Vec3::splat(f32::INFINITY), Vec3::splat(f32::NEG_INFINITY)),
-                |(min, max), v| (min.min(v.pos.into()), max.max(v.pos.into())),
-            );
+            let (min, max) = bounds(&vertices);
             merged.indices.extend(indices.iter().map(|i| i + base));
             merged.vertices.extend(vertices);
             merged.batches.push(Batch {
@@ -725,13 +780,32 @@ impl TexturedScene {
                 min,
                 max,
                 level: self.level(detail, (x, z)),
+                run: None,
             });
         }
-        Ok(merged)
+    }
+
+    /// Bytes the renderer keeps on the GPU for this scene: vertices,
+    /// indices, instance records, and the light texture
+    /// ([`super::instanced::Layout`]).
+    #[must_use]
+    pub fn gpu_bytes(&self) -> u64 {
+        super::instanced::Layout::of(self).bytes()
+    }
+
+    /// What a frame seen through `view_proj` from `eye` draws of this scene
+    /// when fog is total at `far` meters, each cell and run of instances at
+    /// the level it draws at from there, counted as the renderer draws it.
+    #[must_use]
+    pub fn frame_cost(&self, view_proj: Mat4, eye: Vec3, far: f32) -> FrameCost {
+        super::instanced::Prepared::of_scene(self)
+            .map(|prepared| prepared.frame_cost(view_proj, eye, far))
+            .unwrap_or_default()
     }
 
     /// Where each placement's triangles land in [`Self::merge`]'s indices:
-    /// for every placement, one range per primitive with triangles. Only
+    /// for every placement that draws merged, one range per primitive with
+    /// triangles, and none for an instanced one ([`Self::instanced`]). Only
     /// counts are taken, so this is cheap beside a merge.
     #[must_use]
     pub fn index_ranges(&self) -> Vec<Vec<IndexRange>> {
@@ -740,13 +814,15 @@ impl TexturedScene {
         let mut counts: BTreeMap<Key, (u32, u32)> = BTreeMap::new();
         let mut local: Vec<Vec<(Key, u32, u32, u32, usize)>> =
             Vec::with_capacity(self.placements.len());
-        for placement in &self.placements {
-            let t = placement.transform;
-            let cell = (
-                (t.w_axis.x / CELL).floor() as i32,
-                (t.w_axis.z / CELL).floor() as i32,
-            );
+        let instanced = self.instanced();
+        for (placement, &instanced) in self.placements.iter().zip(&instanced) {
             let mut ranges = Vec::new();
+            // An instance draws from its shared mesh: nothing to rewrite.
+            if instanced {
+                local.push(ranges);
+                continue;
+            }
+            let cell = cell_of(placement.transform);
             let primitives = self
                 .meshes
                 .get(placement.mesh)
@@ -1160,6 +1236,7 @@ impl Figure {
                     min: Vec3::splat(f32::NEG_INFINITY),
                     max: Vec3::splat(f32::INFINITY),
                     level: Level::Always,
+                    run: None,
                 });
             }
         }
@@ -1176,6 +1253,32 @@ pub struct Merged {
     pub batches: Vec<Batch>,
 }
 
+/// The cell a placement merges into: its translation's, on the ground.
+pub(crate) fn cell_of(transform: Mat4) -> (i32, i32) {
+    (
+        (transform.w_axis.x / CELL).floor() as i32,
+        (transform.w_axis.z / CELL).floor() as i32,
+    )
+}
+
+/// The box around `vertices`.
+pub(crate) fn bounds(vertices: &[TexturedVertex]) -> (Vec3, Vec3) {
+    vertices.iter().fold(
+        (Vec3::splat(f32::INFINITY), Vec3::splat(f32::NEG_INFINITY)),
+        |(min, max), v| (min.min(v.pos.into()), max.max(v.pos.into())),
+    )
+}
+
+/// What one view of a scene draws ([`TexturedScene::frame_cost`]).
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub struct FrameCost {
+    /// Cells of one material in view at their level.
+    pub cells: u64,
+    /// Indexed draw calls.
+    pub draws: u64,
+    pub triangles: u64,
+}
+
 /// One cell of one material: a range of the merged indices and its bounds.
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct Batch {
@@ -1186,6 +1289,10 @@ pub struct Batch {
     pub max: Vec3,
     /// The distances it draws at.
     pub level: Level,
+    /// For a run of instances, the instance records that draw this range of
+    /// a shared mesh's indices; `None` for a merged cell, which draws once
+    /// in world space.
+    pub run: Option<super::instanced::Run>,
 }
 
 /// The order cells draw in: opaque, then masked, each in merge order so

@@ -1001,17 +1001,62 @@ struct TexturedMaterial {
 @group(2) @binding(1) var base_sampler: sampler;
 @group(2) @binding(2) var<uniform> material: TexturedMaterial;
 
+// Baked ambient light (`pbr::textured_bake`), one texel a vertex
+// (`pbr::instanced`): rgb encodes a diffuse multiplier as 4 × value², alpha
+// the open sky fraction; zero alpha means no bake reached the vertex. Group
+// 3's bindings 0 and 1 are the fx sheets'.
+@group(3) @binding(2) var light_map: texture_2d_array<f32>;
+
+// A vertex (`pbr::instanced::GpuVertex`) and its instance
+// (`pbr::instanced::Instance`). A merged cell is one instance whose
+// transform is the identity and whose light starts at zero.
 struct TexturedIn {
+    // Mesh space for an instance, world space for a merged cell.
     @location(0) pos: vec3<f32>,
-    @location(1) normal: vec3<f32>,
+    // Octahedrally encoded unit normal.
+    @location(1) normal: vec2<f32>,
     @location(2) uv: vec2<f32>,
     // Linear vertex color, glTF's COLOR_0.
     @location(3) color: vec4<f32>,
-    // Baked ambient light (`pbr::textured_bake`): rgb encodes a diffuse
-    // multiplier as 4 × value², alpha the open sky fraction; zero alpha
-    // means no bake reached the vertex.
-    @location(4) light: vec4<f32>,
+    // The top three rows of the instance's transform.
+    @location(4) row0: vec4<f32>,
+    @location(5) row1: vec4<f32>,
+    @location(6) row2: vec4<f32>,
+    // The light texel of this instance's vertex 0, modulo 2^32.
+    @location(7) light: u32,
 };
+
+fn instance_world(v: TexturedIn) -> vec3<f32> {
+    let p = vec4<f32>(v.pos, 1.0);
+    return vec3<f32>(dot(v.row0, p), dot(v.row1, p), dot(v.row2, p));
+}
+
+// The normal through the instance's transform: its cofactor matrix, which is
+// the inverse transpose times the determinant, so a scaled or mirrored
+// instance shades as its merged copy does.
+fn instance_normal(v: TexturedIn) -> vec3<f32> {
+    let e = v.normal;
+    var n = vec3<f32>(e.x, e.y, 1.0 - abs(e.x) - abs(e.y));
+    let t = max(-n.z, 0.0);
+    n.x = n.x + select(t, -t, n.x >= 0.0);
+    n.y = n.y + select(t, -t, n.y >= 0.0);
+    let c0 = vec3<f32>(v.row0.x, v.row1.x, v.row2.x);
+    let c1 = vec3<f32>(v.row0.y, v.row1.y, v.row2.y);
+    let c2 = vec3<f32>(v.row0.z, v.row1.z, v.row2.z);
+    let cofactor = mat3x3<f32>(cross(c1, c2), cross(c2, c0), cross(c0, c1));
+    let flip = select(1.0, -1.0, dot(c0, cross(c1, c2)) < 0.0);
+    return normalize(cofactor * n) * flip;
+}
+
+// The vertex's baked light: texel `light + index` of the light texture, read
+// across its 2048-texel rows (`instanced::LIGHT_WIDTH`) and its layers.
+fn instance_light(v: TexturedIn, index: u32) -> vec4<f32> {
+    let texel = v.light + index;
+    let rows = textureDimensions(light_map, 0).y;
+    let row = texel >> 11u;
+    let layer = row / rows;
+    return textureLoad(light_map, vec2<i32>(i32(texel & 2047u), i32(row - layer * rows)), i32(layer), 0);
+}
 
 struct TexturedOut {
     @builtin(position) clip: vec4<f32>,
@@ -1032,14 +1077,15 @@ fn baked_ambient(light: vec4<f32>) -> vec4<f32> {
 }
 
 @vertex
-fn vs_textured(v: TexturedIn) -> TexturedOut {
+fn vs_textured(v: TexturedIn, @builtin(vertex_index) index: u32) -> TexturedOut {
     var o: TexturedOut;
-    o.clip = f.view_proj * vec4<f32>(v.pos, 1.0);
-    o.world = v.pos;
-    o.normal = v.normal;
+    let world = instance_world(v);
+    o.clip = f.view_proj * vec4<f32>(world, 1.0);
+    o.world = world;
+    o.normal = instance_normal(v);
     o.uv = v.uv;
     o.color = v.color;
-    o.ambient = baked_ambient(v.light);
+    o.ambient = baked_ambient(instance_light(v, index));
     return o;
 }
 
@@ -1098,7 +1144,7 @@ struct TexturedShadowOut {
 @vertex
 fn vs_shadow_textured(v: TexturedIn) -> TexturedShadowOut {
     var o: TexturedShadowOut;
-    o.clip = f.light * vec4<f32>(v.pos, 1.0);
+    o.clip = f.light * vec4<f32>(instance_world(v), 1.0);
     o.uv = v.uv;
     o.alpha = v.color.a;
     return o;
