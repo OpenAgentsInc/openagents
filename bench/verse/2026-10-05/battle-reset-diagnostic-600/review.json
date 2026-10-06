@@ -1,0 +1,55 @@
+{
+  "schema": "verse.battle.review.v1",
+  "duration_seconds": 600,
+  "source_base": "43f12d6e0bb48e22f151476a14aaab66cca9bee8",
+  "executable_sha256": "2336237737cb6e2adc68d8ff03d07d483bbc943839993f9a2704260f77d7506e",
+  "acceptance": "failed",
+  "failures": [
+    "Authority throughput fell below ninety-eight percent of 30 Hz",
+    "/server/movement_expiry/total: Some(196.0) exceeds 0, or is unavailable",
+    "Player 0 lacks sustained interval battle observations",
+    "Player 0 late prediction p95 None exceeds 0.25 meters or is unavailable",
+    "Player 0 late prediction maximum None exceeds 1 meters or is unavailable",
+    "Player 0 lacks sustained interval battle observations",
+    "A lifetime window exceeded the snapshot freshness budget",
+    "A lifetime window exceeded the snapshot freshness budget",
+    "A lifetime window exceeded the snapshot freshness budget",
+    "A lifetime window exceeded the snapshot freshness budget",
+    "A lifetime window exceeded the snapshot freshness budget",
+    "A lifetime window exceeded the snapshot freshness budget",
+    "A lifetime window exceeded the snapshot freshness budget",
+    "A lifetime window exceeded the snapshot freshness budget",
+    "A lifetime window exceeded the snapshot freshness budget",
+    "A lifetime window exceeded the snapshot freshness budget",
+    "A lifetime window exceeded the snapshot freshness budget"
+  ],
+  "movement_expiry": 196,
+  "native_segments": [
+    {
+      "error": "Local prediction observation regressed: confirmation ahead of local simulation; observation 5626/5625, tick 5645/5645, epoch 12/12, confirmed step 20177/20168, local step 20168, world step 20188/20180, sequence 390/388",
+      "prediction_failures": 1,
+      "last_prediction_failure": "Local prediction exceeded its correction horizon"
+    },
+    {
+      "error": "Local prediction observation regressed: confirmation ahead of local simulation; observation 3314/3313, tick 8493/8493, epoch 23/23, confirmed step 31564/31554, local step 31554, world step 31576/31572, sequence 578/575",
+      "prediction_failures": 1,
+      "last_prediction_failure": "Local prediction exceeded its correction horizon"
+    }
+  ],
+  "p95": {
+    "frame_cpu_ms": 7.400964,
+    "gpu_scene_ms": 6.990848,
+    "applied_snapshot_age_ms": 229.372416
+  },
+  "files": {
+    "report.json": "b73cbd9d69a2fcf5e5586a90c3602a332ecd96a596b94e5e92c1731d447eb122",
+    "source.patch": "08e55dee1b8719bcf3e49725ed6aebb19f79ff5471863b08b1620fade9c9f9e0"
+  },
+  "limitations": [
+    "No own compiler ran during measurement; the host is shared.",
+    "Both native segments stopped early; sustained native participation is incomplete.",
+    "The diagnostic confirms correction-horizon resets before ahead-of-clock confirmations; a behavior fix is still pending.",
+    "Movement expiry and snapshot freshness failures remain.",
+    "Offscreen rendering does not measure physical input-to-display latency."
+  ]
+}
