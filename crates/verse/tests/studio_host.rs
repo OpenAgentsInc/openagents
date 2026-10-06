@@ -463,8 +463,8 @@ fn run(host: &Host) {
     assert!(status_text(&answer).contains("`stale`"));
 
     // The review reloads at the new revisions, and a decision there is
-    // taken: **Reject**, with the reviewer's note, records it and closes
-    // the task, keeping its worktree for inspection. A **Merge** would
+    // taken: **Reject**, confirmed, with the reviewer's note, records it
+    // and closes the task, keeping its worktree for inspection. A **Merge** would
     // publish through the forge, which a scratch repository has none of.
     let fresh = read(&mut studio, Some(&review.head));
     assert_ne!(fresh.head_commit, review.head_commit);
@@ -480,6 +480,18 @@ fn run(host: &Host) {
         )
         .is_empty(),
         "a note waits for the decision"
+    );
+    // **Reject** waits for a confirming press, as the panel shows it.
+    assert!(
+        press(
+            &mut studio,
+            &mut station,
+            &mut panel,
+            Intent::Action(reject),
+            Some(&fresh)
+        )
+        .is_empty(),
+        "the first press arms the rejection"
     );
     let tickets = press(
         &mut studio,
