@@ -183,11 +183,9 @@ impl Output {
     }
     pub fn play_prepared(&self, prepared: Prepared) -> Result<(), String> {
         let protected = prepared.priority() >= 128 || prepared.bus() != Bus::Effects;
-        if prepared.bus() == Bus::Music {
+        if prepared.bus() == Bus::Music && !prepared.is_streaming() {
             let (prepared, mut feeder) = prepared.into_streaming(8192)?;
             while feeder.pump() > 0 {}
-            // Failed admission drops the stream on this control thread.
-            self.send(Command::Play(prepared), protected)?;
             let mut workers = self
                 .workers
                 .lock()
@@ -201,6 +199,11 @@ impl Output {
                     i += 1;
                 }
             }
+            if workers.len() >= 12 {
+                return Err("Audio streaming workers are full".into());
+            }
+            // Failed admission drops the stream on this control thread.
+            self.send(Command::Play(prepared), protected)?;
             workers.push(std::thread::spawn(move || {
                 while !feeder.closed() {
                     feeder.pump();
@@ -479,4 +482,236 @@ fn capture(rate: u32, counters: Arc<Counters>) -> Result<Capture, String> {
         }
     });
     Ok((Some(sender), Some(worker)))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::alloc::{GlobalAlloc, Layout, System};
+    use std::cell::Cell;
+    std::thread_local! {static TRACK:Cell<bool>=const {Cell::new(false)}; static OPS:Cell<(u64,u64)>=const {Cell::new((0,0))};}
+    struct Allocator;
+    #[global_allocator]
+    static ALLOC: Allocator = Allocator;
+    unsafe impl GlobalAlloc for Allocator {
+        unsafe fn alloc(&self, l: Layout) -> *mut u8 {
+            TRACK.with(|t| {
+                if t.get() {
+                    OPS.with(|o| {
+                        let (a, d) = o.get();
+                        o.set((a + 1, d));
+                    })
+                }
+            });
+            unsafe { System.alloc(l) }
+        }
+        unsafe fn dealloc(&self, p: *mut u8, l: Layout) {
+            TRACK.with(|t| {
+                if t.get() {
+                    OPS.with(|o| {
+                        let (a, d) = o.get();
+                        o.set((a, d + 1));
+                    })
+                }
+            });
+            unsafe { System.dealloc(p, l) }
+        }
+        unsafe fn realloc(&self, p: *mut u8, l: Layout, n: usize) -> *mut u8 {
+            TRACK.with(|t| {
+                if t.get() {
+                    OPS.with(|o| {
+                        let (a, d) = o.get();
+                        o.set((a + 1, d + 1));
+                    })
+                }
+            });
+            unsafe { System.realloc(p, l, n) }
+        }
+    }
+    fn fixture(
+        gc_capacity: usize,
+    ) -> (
+        Callback,
+        Producer<Command>,
+        Producer<Command>,
+        Consumer<Retired>,
+    ) {
+        let (ordinary, ordinary_rx) = RingBuffer::new(128);
+        let (critical, critical_rx) = RingBuffer::new(16);
+        let (gc, retired) = RingBuffer::new(gc_capacity);
+        (
+            Callback {
+                mixer: Mixer::new(48000).unwrap(),
+                ordinary: ordinary_rx,
+                critical: critical_rx,
+                gc,
+                counters: Arc::new(Counters::default()),
+                controls: Arc::new(Controls::default()),
+                capture: None,
+                rate: 48000,
+            },
+            ordinary,
+            critical,
+            retired,
+        )
+    }
+    fn cue(bus: Bus, priority: u8, looping: bool) -> Prepared {
+        Prepared::clip(
+            Clip::new(vec![0.25; 48000], 48000).unwrap(),
+            Emitter {
+                life: None,
+                position: Vec3::ZERO,
+                range: 35.,
+                gain: 0.01,
+                pitch: 1.,
+                looping,
+            },
+            bus,
+            priority,
+            0,
+        )
+        .unwrap()
+    }
+    #[test]
+    fn actual_callback_does_no_allocation_or_resource_destruction() {
+        let (mut callback, mut ordinary, mut critical, mut retired) = fixture(1);
+        for _ in 0..128 {
+            assert!(
+                ordinary
+                    .push(Command::Play(cue(Bus::Effects, 20, false)))
+                    .is_ok()
+            );
+        }
+        assert!(
+            critical
+                .push(Command::Play(cue(Bus::Effects, 220, false)))
+                .is_ok()
+        );
+        let mut data = [0f32; 1024];
+        OPS.with(|o| o.set((0, 0)));
+        TRACK.with(|t| t.set(true));
+        for _ in 0..120 {
+            callback.render(&mut data, 2);
+        }
+        TRACK.with(|t| t.set(false));
+        assert_eq!(OPS.with(Cell::get), (0, 0));
+        assert!(callback.counters.nonzero.load(Ordering::Relaxed) > 0);
+        while let Ok(value) = retired.pop() {
+            drop(value);
+        }
+        callback.reclaim();
+    }
+    #[test]
+    fn critical_queue_survives_ordinary_saturation_and_controls_work_without_commands() {
+        let (mut callback, mut ordinary, mut critical, _retired) = fixture(256);
+        for _ in 0..128 {
+            assert!(
+                ordinary
+                    .push(Command::Play(cue(Bus::Effects, 20, true)))
+                    .is_ok()
+            );
+        }
+        assert!(
+            ordinary
+                .push(Command::Listener(Vec3::ZERO, Vec3::X))
+                .is_err()
+        );
+        let prepared = cue(Bus::Effects, 220, true);
+        let progress = prepared.progress();
+        assert!(critical.push(Command::Play(prepared)).is_ok());
+        let mut data = [0f32; 1024];
+        callback.render(&mut data, 2);
+        assert_eq!(progress.frame(), 512);
+        callback.controls.suspended.store(true, Ordering::Release);
+        callback.render(&mut data, 2);
+        assert_eq!(progress.frame(), 512);
+        assert!(data.iter().all(|v| *v == 0.));
+        callback.controls.suspended.store(false, Ordering::Release);
+        callback.controls.master.store(0, Ordering::Release);
+        callback.render(&mut data, 2);
+        assert_eq!(progress.frame(), 1024);
+        assert!(data.iter().all(|v| *v == 0.));
+    }
+    #[test]
+    fn output_channel_conversion_and_trailing_samples_are_defined() {
+        let (mut callback, _ordinary, _critical, _retired) = fixture(256);
+        let mut mono = [1f32; 17];
+        callback.render(&mut mono, 1);
+        assert!(mono.iter().all(|v| *v == 0.));
+        let mut surround = [1f32; 19];
+        callback.render(&mut surround, 8);
+        assert!(surround.iter().all(|v| *v == 0.));
+        let mut signed = [1i16; 1024];
+        callback.render(&mut signed, 2);
+        assert!(signed.iter().all(|v| *v == 0));
+        let mut unsigned = [0u16; 1024];
+        callback.render(&mut unsigned, 2);
+        assert!(unsigned.iter().all(|v| *v == 32768));
+    }
+    #[test]
+    #[ignore = "Explicit CPU audio deadline evidence; opens no device"]
+    fn crowded_callback_deadline_profile() {
+        let (mut callback, mut ordinary, mut critical, mut retired) = fixture(256);
+        let bank = verse_engine::audio_bank::Bank::original().unwrap();
+        let music = bank
+            .prepare("ritual_ambience", None, Vec3::ZERO, 0)
+            .unwrap();
+        let music_progress = music.progress();
+        let (music, mut feeder) = music.into_streaming(8192).unwrap();
+        while feeder.pump() > 0 {}
+        assert!(critical.push(Command::Play(music)).is_ok());
+        for _ in 0..127 {
+            assert!(
+                ordinary
+                    .push(Command::Play(cue(Bus::Effects, 20, true)))
+                    .is_ok()
+            );
+        }
+        let mut data = [0f32; 1024];
+        for _ in 0..10 {
+            while feeder.pump() > 0 {}
+            callback.render(&mut data, 2);
+            while let Ok(value) = retired.pop() {
+                drop(value);
+            }
+        }
+        let initial = music_progress.frame();
+        let mut times = Vec::with_capacity(1000);
+        let mut operations = (0, 0);
+        for _ in 0..1000 {
+            while feeder.pump() > 0 {}
+            for _ in 0..63 {
+                assert!(
+                    ordinary
+                        .push(Command::Listener(Vec3::ZERO, Vec3::X))
+                        .is_ok()
+                );
+            }
+            let effect = bank.prepare("impact", None, Vec3::ZERO, 0).unwrap();
+            assert!(critical.push(Command::Play(effect)).is_ok());
+            OPS.with(|o| o.set((0, 0)));
+            TRACK.with(|t| t.set(true));
+            let start = std::time::Instant::now();
+            callback.render(&mut data, 2);
+            let ns = start.elapsed().as_nanos() as u64;
+            TRACK.with(|t| t.set(false));
+            let (a, d) = OPS.with(Cell::get);
+            operations.0 += a;
+            operations.1 += d;
+            times.push(ns);
+            while let Ok(value) = retired.pop() {
+                drop(value);
+            }
+        }
+        times.sort_unstable();
+        let stats = callback.mixer.stats;
+        println!(
+            "AUDIO_PROFILE {}",
+            serde_json::json!({"schema":"verse.audio.deadline.v1","bank":bank.digest,"profile":"headless-callback-debug-48k-stereo-512","samples":times.len(),"logical_voices":128,"audible_limit":32,"commands_per_callback":64,"music_streams":1,"producer":"bounded pump before callback; no device pacing","budget_ns":10666666,"p50_ns":times[499],"p95_ns":times[949],"p99_ns":times[989],"max_ns":times[999],"overruns":times.iter().filter(|&&n|n>10666666).count(),"allocations":operations.0,"deallocations":operations.1,"stream_gaps":stats.stream_gaps,"music_advanced_frames":music_progress.frame()-initial,"stolen":stats.stolen,"retirement_blocked":stats.retirement_blocked})
+        );
+        assert_eq!(operations, (0, 0));
+        assert_eq!(stats.stream_gaps, 0);
+        assert_eq!(music_progress.frame() - initial, 512000);
+        assert!(times[989] < 10666666);
+    }
 }

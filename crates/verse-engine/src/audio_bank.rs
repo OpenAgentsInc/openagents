@@ -363,6 +363,39 @@ mod tests {
         assert!(Bank::admit(spec, BTreeMap::new()).is_err());
     }
     #[test]
+    fn pcm_pins_localization_and_bank_capacity_are_enforced() {
+        let original = Bank::original().unwrap();
+        let clip = Clip::new(vec![0.25; 8000], 8000).unwrap();
+        let mut spec = original.spec.clone();
+        spec.sources = vec![Source::Pcm {
+            id: "decoded".into(),
+            rate: 8000,
+            frames: 8000,
+            sha256: pcm_digest(&clip),
+        }];
+        spec.cues = vec![spec.cues[0].clone()];
+        spec.cues[0].source = "decoded".into();
+        let decoded = BTreeMap::from([("decoded".into(), clip.clone())]);
+        assert!(Bank::admit(spec.clone(), decoded.clone()).is_ok());
+        let wrong = BTreeMap::from([("decoded".into(), Clip::new(vec![0.5; 8000], 8000).unwrap())]);
+        assert!(Bank::admit(spec.clone(), wrong).is_err());
+        spec.cues[0].captions.remove("en");
+        spec.cues[0].captions.insert("fr".into(), "Pas".into());
+        assert!(Bank::admit(spec.clone(), decoded.clone()).is_err());
+        spec.cues[0]
+            .captions
+            .insert("en".into(), "Footsteps".into());
+        let bank = Bank::admit(spec.clone(), decoded.clone()).unwrap();
+        assert_eq!(bank.caption("footstep", "fr"), Some("Pas"));
+        spec.cues[0]
+            .captions
+            .insert("en".into(), "Bad\ncaption".into());
+        assert!(Bank::admit(spec, decoded).is_err());
+        let mut spec = original.spec.clone();
+        spec.sources = vec![spec.sources[0].clone(); 257];
+        assert!(Bank::admit(spec, BTreeMap::new()).is_err());
+    }
+    #[test]
     fn silent_output_keeps_captions_volumes_and_music_restore_position() {
         let mut scene = Scene::new(Arc::new(Bank::original().unwrap()), "en").unwrap();
         scene.volume(0.0).unwrap();

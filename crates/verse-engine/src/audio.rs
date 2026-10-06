@@ -182,6 +182,9 @@ impl Prepared {
             worker,
         ))
     }
+    pub fn is_streaming(&self) -> bool {
+        matches!(self.source, Source::Stream(_))
+    }
     pub fn bus(&self) -> Bus {
         self.bus
     }
