@@ -392,3 +392,15 @@ Wire version 29 adds applied movement confirmations to owned response controls.
 Deploy matching builds of `verse-host` and each native chamber client before
 using this protocol on a real host. The V18 capacity checks use scratch TLS
 hosts and offscreen rendering; they do not deploy or exercise owner devices.
+
+## Review the first retail cloud contract (#10704)
+
+[`docs/cloud/retail-contract.md`](docs/cloud/retail-contract.md) freezes the
+first paid cloud class for implementation: Boat `large` sandboxes, one per
+task (not the GCE pool); a public-GitHub-repository change returned as a
+patch with customer-declared checks and no publication; Codex on the
+customer's own OpenAI key, with hosted Vertex fallback off; at most 4
+retail sandboxes at once and 60 minutes a task. Confirm these choices
+before #10705 to #10711 build on them. A change is a new contract version
+(`openagents.cloud.retail.v2`), not an edit of v1. Paid availability stays
+off until the funded qualification passes.
