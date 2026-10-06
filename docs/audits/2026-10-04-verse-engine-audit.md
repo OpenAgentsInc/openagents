@@ -173,7 +173,7 @@ Evidence labels:
 | V22 | P2 | Declared lighting profiles share shading semantics and tier references. | Code, recorded | Rendering and art direction | Complete, controlled profiles ([#10738](https://github.com/OpenAgentsInc/openagents/issues/10738)) |
 | V23 | P2 | Audio is a bounded mixer, not a complete game audio system. | Code, gap | Audio and platform adapters | Complete for the controlled native profile ([#10739](https://github.com/OpenAgentsInc/openagents/issues/10739)) |
 | V24 | P1 | Mobile/browser rendering does not establish authoritative game parity. | Code, gap | Platform world clients | Complete for the portable combat profile ([#10742](https://github.com/OpenAgentsInc/openagents/issues/10742)) |
-| V25 | P2 | MMO social and progression systems need dedicated domains. | Code, gap | Verse game services | In progress [#10743](https://github.com/OpenAgentsInc/openagents/issues/10743) |
+| V25 | P2 | MMO social and progression systems need dedicated domains. | Code, gap | Verse game services | Addressed [#10743](https://github.com/OpenAgentsInc/openagents/issues/10743) |
 | V26 | P1 | Player-generated content needs publication and disclosure boundaries. | Code, gap | Content admission and product access | Open |
 | V27 | P1 | Replay evidence needs explicit revision/platform guarantees. | Code, gap | Simulation and replay | Open |
 | V28 | P1 | Status documentation trails the implementation. | Code | Runtime documentation | Open |
@@ -1830,26 +1830,61 @@ inventory/quest panels remain desktop UI. Browser graphics and session work
 share one thread; adaptive resolution reduces graphics work within that budget. This delivery establishes a portable
 combat client. Complete platform and AAA MMORPG parity remain unverified.
 
-### V25: MMO features require domains beyond the chamber
+### V25: Persistent party progression and atomic gear trades
 
-The service has XP thresholds, prerequisite quests, giver enrollment/dialogue,
-consumables, outfits, and two equipment slots. Gear currently contributes health
-and mana. These should not be described as absent. They do not implement a full
-class/stat/progression model, inventory item instances, trading, crafting,
-auction/mail, parties, guilds, matchmaking, or persistent faction/reputation
-systems. NIP-XP work achievements and world character progression also have
-different authority and identity contracts.
+**Addressed:** [#10743](https://github.com/OpenAgentsInc/openagents/issues/10743)
+adds typed realm game services over stable character identities. Authenticated
+requests check the current account, resident character, and connection; mutations
+also bind the realm, a nonzero operation ID, and the exact action. The existing
+immutable registry selects membership, item ownership, offers, and original retry
+receipts without imposing a lifetime transaction cap.
 
-**Improve:** Define a coherent playable loop and then implement the required
-domains behind typed authority operations. Separate social presence/chat from
-party, guild, loot, and economy membership. Add item instance identity and
-atomic transfer before any trade. Build abandon/repeat/reset rules for quests,
-and deterministic stat derivation before expanding equipment catalogs.
+A character can belong to one eight-member party and one 64-member guild.
+Leaders invite and remove members; recipients join or decline, and departure
+transfers leadership. Membership grants no chat, Studio, or world-control right.
+Private reads expose only the admitted character's memberships and pending work.
 
-**Acceptance:** A party completes a progression loop across sessions and zones;
-loot, inventory, and quest changes survive retries and restart. Unauthorized
-membership changes and duplicate trades cannot create items or rewards. Defer
-commerce breadth until those guarantees are established.
+Individually identified gear pins its authored definition digest, stable owner,
+and version. Materialization allocates an already-owned unit. An offer locks only
+its sender's items; the named recipient consents at acceptance. Both inventories,
+item owners, versions, cleared locks, and the receipt publish through one realm
+head. A changed destination definition, stale version, missing unit, or equipped
+last unit refuses the complete exchange. Either participant can cancel, including
+after expiry or a requested item's transfer. Each character retains at most 64
+gear identities, 16 invitations, and 16 pending offers; an offer carries up to
+eight items per side and lasts at most five minutes.
+
+The separate trusted host party-loot operation uses the reward ledger and freezes
+resident recipients and authored amounts under the first event ID. Membership
+changes, logout, transfer, and retry cannot enlarge an earlier grant. Authored
+quests now have durable cycles, abandonment, and repeatable reset windows; old
+claims return their original outcome without claiming a later cycle. Ever-completed
+quests still satisfy prerequisites. Class health and mana combine the authored
+character definition, 10 health and one mana per level after the first, and
+owned equipped gear, capped at 600 and 60. Derivation preserves current resources
+and wounds. Legacy saves upgrade without healing. Save version 12, character
+schema 4, and wire version 30 carry this profile.
+
+The [retained evidence](../../bench/verse/2026-10-06/game-services/README.md)
+binds the final source revision and test executable to 599 world tests, 25
+content compiler tests, the battle consumer check, and formatting. The actual
+two-listener TLS fixture authenticates two party members across two instances,
+claims and repeats a quest, exchanges gear by consent, verifies class/level/gear
+limits, transfers, logs out, reconnects, resumes, and restarts. Exact retries
+leave experience at 200. Other checks cover guild membership, foreign mutation,
+conflicting operation reuse, changed definitions, expiry, recipient-item changes,
+quest abandonment, invalid recovery, and five process-death publication boundaries.
+Recovery selects both old inventories or both new inventories, with matching
+item ownership and an exact retry receipt.
+
+This is a bounded native TLS engine and SDK profile. Existing UI actions remain
+cycle zero; typed SDK and worker operations expose later cycles. Standalone REACH
+chambers need a realm adapter to offer these operations. Automatic party combat
+contribution attribution, crafting, auctions, mail, matchmaking, faction/reputation,
+and a complete commerce UI remain outside this loop. The correctness fixture is
+not raid throughput, distributed failover, phone/browser UI acceptance, or a
+complete AAA class and economy system. NIP-XP work achievements retain separate
+authority from world character progression.
 
 ### V26: Creator content and studio data need explicit admission
 

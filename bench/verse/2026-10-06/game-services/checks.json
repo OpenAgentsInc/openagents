@@ -1,0 +1,78 @@
+{
+  "schema": "verse.game-services.verification.v1",
+  "source_commit": "7a315a853e39c2ebc7a0c4ba749e6c12cd78c98b",
+  "source_parent": "bb3c685b1b80c8fff4fdcf3aac2d45b2db48f68d",
+  "source_patch_sha256": "bb5e74aaebecf2cab4635bc81b40672da19f197c8a0738e9c06a3131ae57d13f",
+  "source_files_sha256": {
+    "crates/verse-content/src/authoring/tests.rs": "00f2b11f01816b7b5d60da16f8c3f934353b49f96aa681184effb8985e8f137a",
+    "crates/verse-world/README.md": "6f78079eadd9bb4a89d8eb201900612cc8443dbab41d6ae4d62a5584714fe7cb",
+    "crates/verse-world/src/service.rs": "cf7bd9ab3f3e4474f3abd63930aa05e4a70b3b2414b1d4f6fc8078d685acb680",
+    "crates/verse-world/src/service/auth.rs": "e0c8c081f1d463c350ad94f89a08a6689622cc02f990f7cb8417a520eb7b4417",
+    "crates/verse-world/src/service/client.rs": "6e2675e4940f59dc045bb87846e6a32c5e04e401daa0d674fc4e08af05b98a77",
+    "crates/verse-world/src/service/equipment.rs": "60121266ce7dfb22054a046e9fb5101e537c913c0711689e44eee70fbffe90c0",
+    "crates/verse-world/src/service/game_services.rs": "6e6c13672c811b29ce1c92bff1ad3532c766380e1439b50128772409bd6f7284",
+    "crates/verse-world/src/service/net.rs": "3f055c36d0d4870e9dbd0743bbba3f2b88cd7d7991b8423d2b8de73734b7be78",
+    "crates/verse-world/src/service/net/admission.rs": "49d5910624d119fb9d3e71f4345211cb466438b97ddb7a294a6ced203494c2c6",
+    "crates/verse-world/src/service/persistence/migration.rs": "6376c039eda73d51e9efc8d38a627b26dda245dbb5cc1d515ef026b68a0f5b2a",
+    "crates/verse-world/src/service/persistence/migration/tests.rs": "6c9742d4e9702b6350ea16a2c6fab5f70add40a1d19e95812e51b4cbead7dfca",
+    "crates/verse-world/src/service/progression.rs": "27e530951465b78445b8dbbec18a7aff4868b9381b1181146c7a723976a5be5c",
+    "crates/verse-world/src/service/realm.rs": "78c1ea7adbd38c6b2f16d474f77cd591fdfdf56a14ec9014eb90e4eff73598b3",
+    "crates/verse-world/src/service/realm/disk.rs": "c19f3227bc082dc56fb38cfa8ebccb236951ca9fe5515fb09ed586bbfe8715a2",
+    "crates/verse-world/src/service/realm/lifecycle.rs": "b9aaa69436ae203fc67b7d9b293e37348857e1bc9888fc8ba37e21d4ad6da591",
+    "crates/verse-world/src/service/realm/net.rs": "0627737b08abf7ce90cbbb9847d1b18c43ea3280542e9d62d5689b97ff9871fd",
+    "crates/verse-world/src/service/realm/registry.rs": "2facc73df3e82cc51a85a4cc2742381e90e0c65b988b28ea304476a90edb58bc",
+    "crates/verse-world/src/service/realm/services.rs": "c9afadcb84ba8cac879058e5eaaaf3dec311a0749c3cd190a0a8dd75bdfae07c",
+    "crates/verse-world/src/service/realm/services/tests.rs": "198758e842f9e6780bdd3950d451f3b48a7a34522f2765e62e8804eadacd6f3f",
+    "crates/verse-world/src/service/rewards.rs": "9a41a8077a3ecdd1d5f31a0a2a55ac8c5ec0bc30c203bd25636de064bf462caf",
+    "crates/verse-world/src/service/save.rs": "7834a9997cad412ec385f1bc6efa4e629b9b211696506acd73ff20844a13278f",
+    "crates/verse-world/src/service/view.rs": "fe489fe6133bb85368f54dbb2e271f4de07142d574e7fd256b94d0c5835d1271",
+    "crates/verse-world/src/service/wire.rs": "1d0c956baf830c59b930bb19abb05e1540c3f4619a45d08e726e2b8c223603ab",
+    "crates/verse-world/src/service/worker.rs": "64fd0982aa2400ba4ff785f2802546f96d28b83d8ec6d5448d053091fdcdab12",
+    "crates/verse/examples/battle_scale.rs": "4c71a6e924a4e656c0ad5ef7638136223ce4ed72caf11423d1791cec87c45a6b"
+  },
+  "toolchain": "rustc 1.97.1 (8bab26f4f 2026-07-14)",
+  "target": "x86_64-unknown-linux-gnu",
+  "profile": "test; workspace Verse packages opt-level 3",
+  "test_executable_sha256": "52c0c509943b2a016144ad42d1129e889eeb2dd4d848ba33f6565b7f1f067c72",
+  "integration": {
+    "pre_rebase_candidate": "e2967db4fc",
+    "rust_source_and_direct_dependency_manifests_unchanged": true,
+    "note": "Upstream host, workshop, and Meteor presentation changes are integrated. Verified world/content sources and their direct dependency manifests are unchanged; the battle consumer check passed on this main revision. The private cache restore helper retained an already-active incremental cache when an archived duplicate existed.",
+    "previous_candidate": "0b009888103581d936888167bd3151e8092f02b9",
+    "native_consumer_rechecked": true
+  },
+  "checks": [
+    {
+      "command": "cargo test -p verse-world --features service-net --lib",
+      "passed": 599,
+      "ignored": 3,
+      "exit_code": 0
+    },
+    {
+      "command": "cargo test -p verse-content --features compiler --lib",
+      "passed": 25,
+      "ignored": 1,
+      "exit_code": 0
+    },
+    {
+      "command": "cargo check -p verse --no-default-features --features remote-chamber --example battle_scale",
+      "exit_code": 0
+    },
+    {
+      "command": "cargo fmt -p verse-world -p verse-content -p verse --check",
+      "exit_code": 0
+    },
+    {
+      "command": "retained test executable --exact service::realm::services::tests::real_tls_party_adventure_claims_trades_transfers_and_restarts --nocapture",
+      "passed": 1,
+      "exit_code": 0
+    }
+  ],
+  "limitations": [
+    "Local two-character correctness fixture, not a raid throughput or production content acceptance.",
+    "Party loot uses the separately trusted local authored outcome adapter; automatic combat contribution attribution is not implemented.",
+    "Existing UI actions remain cycle zero; typed SDK and worker operations expose later cycles.",
+    "Realm services run on the native TLS realm adapter; standalone REACH chambers do not implement these realm operations.",
+    "Historical receipts and immutable registry files require the realm retention policy."
+  ]
+}

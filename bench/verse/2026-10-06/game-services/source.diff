@@ -1,0 +1,3889 @@
+diff --git a/crates/verse-content/src/authoring/tests.rs b/crates/verse-content/src/authoring/tests.rs
+index 54672016e9..8eb5f0434c 100644
+--- a/crates/verse-content/src/authoring/tests.rs
++++ b/crates/verse-content/src/authoring/tests.rs
+@@ -310,6 +310,7 @@ fn quest_references_catalog_tuning_and_collision_use_runtime_contracts() {
+     giver.friendly = true;
+     giver.position = [2., 0., -22.].into();
+     let quest = verse_world::service::progression::Quest {
++        repeatable: false,
+         dialogue: None,
+         giver: Some(100),
+         prerequisites: vec![],
+diff --git a/crates/verse-world/README.md b/crates/verse-world/README.md
+index a3e01e31ed..e83db6daa2 100644
+--- a/crates/verse-world/README.md
++++ b/crates/verse-world/README.md
+@@ -620,7 +620,8 @@ chambers retain in-memory history until attached to a store or network host.
+ Host JSON accepts an optional sorted `rewards` array of NPC targets and grants,
+ for example `[{"target":2,"experience":45,"items":[{"id":1,"count":1}],"quests":[{"id":1,"count":1}]}]`.
+ The cooperative version-one policy grants every enrolled adventurer, including
+-disconnected or dead party members, once per defeated NPC life. Spectators receive
++disconnected or defeated residents, once per defeated NPC life. This policy does
++not consult persistent party membership. Spectators receive
+ none. Respawns and instance resets create new NPC life generations; saved source
+ IDs and the event cursor prevent duplicate rewards after recovery. Changed reward
+ policies are refused on recovery. With no configured rewards, combat grants none.
+@@ -634,7 +635,8 @@ their experience, bounded item stacks, and quest counters while dead. Spectators
+ are refused. `service::client::Client::inventory` validates the owned life, counts,
+ and nonregressing transaction revision. The [combat reward receipt](../../bench/verse/2026-10-04/combat-rewards/run.json)
+ retains real loopback TLS spell/reward/restart assertions and their synthetic
+-fixture limits. Equipment and combat stat progression remain.
++fixture limits. The bounded class, level, and equipment derivation is described
++in [Party membership, progression, and trades](#party-membership-progression-and-trades).
+ 
+ The native worker refreshes owned inventory once per second and immediately after
+ an owned-life change; spectators send no inventory requests. `service::view::View`
+@@ -654,16 +656,17 @@ Host JSON accepts optional version-one `progression` configuration, for example
+ `{"version":1,"levels":[0,100,300],"quests":[{"id":1,"name":"Disrupt the summoning","objective":1,"goal":12,"experience":75,"items":[{"id":1,"count":2}]},{"id":2,"name":"Secure the chamber","prerequisites":[1],"objective":1,"goal":24,"experience":150,"items":[]}]}`.
+ Campaign quests without prerequisites are available to every enrolled character.
+ An optional `prerequisites` array lists up to 16 sorted, unique earlier quest IDs.
+-The host unlocks a quest only after that character claims every prerequisite in
+-the same instance. Kill reward counters supply objectives, including counters
++The host unlocks a quest only after that character claims every prerequisite.
++Realm character receipt books preserve these completions across instances. Kill reward counters supply objectives, including counters
+ earned before unlocking; claims select only the quest ID under the current owned life
+ and control epoch. The host checks availability and completion and applies configured rewards
+-once per character and instance, including across respawn, reset, and recovery.
++once per character and quest cycle, including across respawn, reset, and recovery.
+ Durable hosts commit before acknowledging claims. Saved progression configuration
+ is immutable on recovery; earlier saves upgrade with no configured quests and
+-level one. Level thresholds affect presentation only. Abandonment,
+-repeatable quests, quest givers, and combat stat scaling remain.
+-Wire version fifteen carries quest availability. Locked quests show their status
++level one. Level thresholds also derive bounded class and equipment resource limits.
++Authored repeatable quests and cycle operations are described in
++[Party membership, progression, and trades](#party-membership-progression-and-trades).
++Wire version fifteen introduced quest availability. Locked quests show their status
+ and expose no claim action. Recovery replays prerequisite claims in ledger order
+ and rejects follow-up claims whose prerequisites are absent. Existing saves
+ without prerequisite arrays retain their original behavior.
+@@ -781,9 +784,9 @@ world effects and input stop. The transferred character loses its old connection
+ unrelated players and spectators retain their sessions. Their replication
+ baselines resynchronize with increasing revision counters. Character receipt books preserve original
+ mutation outcomes across local actor changes and repeated transfers; an old item
+-use cannot debit or heal again. Save version 11, character schema 3, retains these
+-books and the public guest policy; versions 1–10 remain readable under their
+-original schema rules.
++use cannot debit or heal again. Save version 12, character schema 4, retains these
++books, the public guest policy, and quest cycles. Versions 1–11 remain readable
++under their original schema rules; legacy resource limits upgrade without healing.
+ 
+ `service::realm::net::serve` hosts prebound TLS listeners with the existing wire
+ protocol and SDK. A separate coordinator thread owns storage and all games; TLS
+@@ -870,6 +873,53 @@ catalogs require migration. Whole-world archival checkpoints, growing immutable
+ storage, and serialized commit cost still need operating budgets and retention
+ work. These limits do not establish AAA population or throughput acceptance.
+ 
++## Party membership, progression, and trades
++
++Wire version 30 exposes `Client::services` and `Client::service_action` over an
++authenticated realm connection. Every request names the expected stable character;
++the server checks the current account, resident actor, and connection. Mutations
++also name the realm and a nonzero 16-byte operation ID. Retain that ID and the
++same action across an uncertain result. Immutable receipts return the original
++outcome, including after transfer and restart; changed actions are refused.
++
++A character can join one party of eight members and one guild of 64 members.
++Leaders invite and remove members; invited characters join or decline. Leaving
++transfers leadership to the lowest remaining character ID. Membership confers
++no chat, world-control, or Studio permission. Private service reads expose only
++the admitted character's memberships, invitations, items, and pending offers.
++
++`Materialize` assigns identity to one already-owned gear unit. Each identity pins
++its gear definition digest, stable owner, and version. Consumables and outfits
++remain counted items. A trade names sorted item IDs and their expected versions,
++with up to eight items per side and a deadline of at most five minutes. The offer
++locks its sender's items; acceptance by the named recipient checks both sides
++and matching destination definitions. One realm publication selects both reward
++ledgers, ownership changes, cleared locks, and the retry receipt. Changed or
++equipped last units refuse the whole exchange. Either participant can cancel,
++including after expiry or a requested item's transfer. Characters retain at most
++64 item identities, 16 invitations, and 16 pending offers each.
++
++The local host's `Control::party_loot` publishes an authored outcome through the
++existing reward ledger. The first nonzero event ID freezes the party's resident
++recipients and amounts. Retries cannot include newly joined members or award a
++transferred character again. A grant has at most eight item and objective entries;
++dormant characters receive no new party loot. This trusted adapter does not give
++clients authority to invent combat outcomes.
++
++`Client::quest_cycle` and the worker's `Input::QuestCycle` capture an expected
++cycle with each accept, claim, abandon, or reset. Abandon advances the cycle;
++giver quests require a new acceptance, and auto-active quests start a fresh window. An authored `repeatable` quest can reset after
++completion; reset starts a fresh objective window immediately. Earlier completions
++still satisfy prerequisites. Old claims return their original receipt and cannot
++claim a later window. Authored class health and mana gain 10 health and one mana
++per level after the first, plus owned equipped gear, capped at 600 and 60.
++Derivation preserves wounds and current mana; ordinary progression does not heal.
++The character's authored spell catalog and save difficulty remain its class values.
++
++These are engine and SDK operations. Crafting, auctions, mail, matchmaking,
++reputation, a complete commerce UI, and automatic party combat attribution remain
++outside this profile. Existing single-cycle UI actions continue to name cycle zero.
++
+ ## Hosted social profiles
+ 
+ `play::Game::social_in` creates a closed social profile without hostile actors.
+diff --git a/crates/verse-world/src/service.rs b/crates/verse-world/src/service.rs
+index 1153066a40..6db88dfe4a 100644
+--- a/crates/verse-world/src/service.rs
++++ b/crates/verse-world/src/service.rs
+@@ -13,6 +13,7 @@ pub mod client_runtime;
+ pub mod equipment;
+ #[cfg(feature = "service-auth")]
+ pub mod event_cursor;
++pub mod game_services;
+ #[cfg(feature = "service-net")]
+ pub mod host;
+ pub mod items;
+@@ -144,6 +145,7 @@ impl Chamber {
+             || items::reserved(&transaction.source)
+             || outfits::reserved(&transaction.source)
+             || equipment::reserved(&transaction.source)
++            || game_services::trade_source(&transaction.source)
+             || transaction.acceptance.is_some()
+             || transaction.equipment.is_some()
+             || transaction.outfit.is_some()
+@@ -151,7 +153,7 @@ impl Chamber {
+         {
+             return Err("Campaign claim source is reserved".into());
+         }
+-        self.rewards.apply(transaction)
++        self.apply_progression(transaction)
+     }
+     fn restore_reward(
+         &mut self,
+@@ -162,7 +164,10 @@ impl Chamber {
+         {
+             return Err("Saved reward character or instance is foreign".into());
+         }
+-        if progression::acceptance_source(&transaction.source) {
++        if progression::cycle_source(&transaction.source) {
++            self.progression
++                .validate_cycle(&transaction, &self.rewards)?;
++        } else if progression::acceptance_source(&transaction.source) {
+             self.progression
+                 .validate_acceptance(&transaction, &self.rewards)?;
+         } else if transaction.acceptance.is_some() {
+@@ -171,7 +176,9 @@ impl Chamber {
+             self.progression
+                 .validate_claim(&transaction, &self.rewards)?;
+         }
+-        if items::reserved(&transaction.source) {
++        if game_services::trade_source(&transaction.source) {
++            game_services::validate_trade(&transaction)?;
++        } else if items::reserved(&transaction.source) {
+             self.items.validate_use(&transaction)?;
+         } else if !transaction.spent.is_empty() {
+             return Err("Saved debit source is not an admitted item use".into());
+@@ -212,7 +219,7 @@ impl Chamber {
+         }
+         let mut next = self.rewards.clone();
+         let receipt = next.apply(tx)?;
+-        let (hp, mana) = self.equipment.limits(next.character(life.actor).unwrap())?;
++        let (hp, mana) = self.resource_limits(life.actor, next.character(life.actor).unwrap())?;
+         self.game.equipment_limits(life.actor, hp, mana)?;
+         self.rewards = next;
+         Ok(receipt)
+@@ -336,36 +343,15 @@ impl Chamber {
+         quest: u64,
+         giver: LifeId,
+     ) -> Result<rewards::Receipt, String> {
+-        let admission = self.admission(principal, session)?;
+-        if admission.actor() != life || admission.epoch() != epoch {
+-            return Err("Quest acceptance life or control is stale or foreign".into());
+-        }
+-        let quest = self
+-            .progression
+-            .quests
+-            .iter()
+-            .find(|q| q.id == quest)
+-            .ok_or("Quest is not defined")?;
+-        if quest.giver != Some(giver.actor) || giver.instance != life.instance {
+-            return Err("Quest giver does not match its authored definition".into());
+-        }
+-        if let Some(baseline) = self
+-            .rewards
+-            .character(life.actor)
+-            .and_then(|c| c.accepted_quests.get(&quest.id))
+-        {
+-            return self
+-                .rewards
+-                .apply(quest.acceptance(life.instance, life.actor, *baseline));
+-        }
+-        self.quest_interaction(life, giver)?;
+-        let tx = quest.acceptance(
+-            life.instance,
+-            life.actor,
+-            quest.count(self.rewards.character(life.actor)),
+-        );
+-        self.progression.validate_acceptance(&tx, &self.rewards)?;
+-        self.rewards.apply(tx)
++        self.quest_cycle(
++            principal,
++            session,
++            life,
++            epoch,
++            quest,
++            0,
++            progression::Action::Accept { giver },
++        )
+     }
+     pub fn claim_quest(
+         &mut self,
+@@ -374,34 +360,113 @@ impl Chamber {
+         life: LifeId,
+         epoch: u64,
+         quest: u64,
++    ) -> Result<rewards::Receipt, String> {
++        self.quest_cycle(
++            principal,
++            session,
++            life,
++            epoch,
++            quest,
++            0,
++            progression::Action::Claim,
++        )
++    }
++    pub fn quest_cycle(
++        &mut self,
++        principal: Principal,
++        session: Session,
++        life: LifeId,
++        epoch: u64,
++        quest: u64,
++        cycle: u64,
++        action: progression::Action,
+     ) -> Result<rewards::Receipt, String> {
+         let admission = self.admission(principal, session)?;
+         if admission.actor() != life || admission.epoch() != epoch {
+-            return Err("Quest claim life or control is stale or foreign".into());
++            return Err("Quest life or control is stale or foreign".into());
+         }
+         let quest = self
+             .progression
+             .quests
+             .iter()
+             .find(|q| q.id == quest)
+-            .ok_or("Campaign quest is not defined")?;
+-        let transaction = quest.transaction(life.instance, life.actor);
+-        if let Some(receipt) = self.rewards.receipt(life.actor, transaction.source)? {
++            .cloned()
++            .ok_or("Quest is not defined")?;
++        let baseline = quest.count(self.rewards.character(life.actor));
++        let tx = match action {
++            progression::Action::Accept { giver } => {
++                if quest.giver != Some(giver.actor) || giver.instance != life.instance {
++                    return Err("Quest giver does not match its authored definition".into());
++                }
++                quest.acceptance_at(life.instance, life.actor, baseline, cycle)
++            }
++            progression::Action::Claim => quest.transaction_at(life.instance, life.actor, cycle),
++            progression::Action::Abandon | progression::Action::Reset => quest.cycle_transaction(
++                life.instance,
++                life.actor,
++                cycle,
++                baseline,
++                if matches!(action, progression::Action::Abandon) {
++                    progression::Transition::Abandon
++                } else {
++                    progression::Transition::Reset
++                },
++            ),
++        };
++        if let Some(receipt) = self.rewards.receipt(life.actor, tx.source)? {
++            if receipt.transaction.acceptance.map(|a| a.transition)
++                != tx.acceptance.map(|a| a.transition)
++            {
++                return Err("Quest cycle already binds a different transition".into());
++            }
+             return Ok(receipt);
+         }
+-        self.progression
+-            .validate_claim(&transaction, &self.rewards)?;
+-        if !self.rewards.contains(life.actor, transaction.source)? {
+-            if let Some(giver) = quest.giver {
+-                self.quest_interaction(
+-                    life,
+-                    self.game
+-                        .actor_life(giver)
+-                        .ok_or("Quest giver is unavailable")?,
+-                )?;
++        match action {
++            progression::Action::Accept { giver } => {
++                self.quest_interaction(life, giver)?;
++                self.progression.validate_acceptance(&tx, &self.rewards)?;
+             }
++            progression::Action::Claim => {
++                self.progression.validate_claim(&tx, &self.rewards)?;
++                if let Some(giver) = quest.giver {
++                    self.quest_interaction(
++                        life,
++                        self.game
++                            .actor_life(giver)
++                            .ok_or("Quest giver is unavailable")?,
++                    )?;
++                }
++            }
++            _ => self.progression.validate_cycle(&tx, &self.rewards)?,
+         }
+-        self.rewards.apply(transaction)
++        self.apply_progression(tx)
++    }
++    fn resource_limits(
++        &self,
++        actor: u64,
++        character: &rewards::Character,
++    ) -> Result<(i32, i32), String> {
++        let life = self
++            .game
++            .actor_life(actor)
++            .ok_or("Character is unavailable")?;
++        let definition = &self
++            .game
++            .actor_state(life)
++            .ok_or("Character class is unavailable")?
++            .definition;
++        let level = self.progression.level(character.experience)?.level;
++        self.equipment
++            .derived_limits(character, definition.health, definition.mana, level)
++    }
++    fn apply_progression(&mut self, tx: rewards::Transaction) -> Result<rewards::Receipt, String> {
++        let actor = tx.actor;
++        let mut next = self.rewards.clone();
++        let receipt = next.apply(tx)?;
++        let (hp, mana) = self.resource_limits(actor, next.character(actor).unwrap())?;
++        self.game.equipment_limits(actor, hp, mana)?;
++        self.rewards = next;
++        Ok(receipt)
+     }
+ 
+     pub fn character_rewards(&self, actor: u64) -> Option<&rewards::Character> {
+@@ -483,7 +548,23 @@ impl Chamber {
+                 }
+             }
+         }
+-        self.rewards.batch(transactions)?;
++        let actors = transactions
++            .iter()
++            .map(|tx| tx.actor)
++            .collect::<std::collections::BTreeSet<_>>();
++        let mut next = self.rewards.clone();
++        next.batch(transactions)?;
++        let limits = actors
++            .into_iter()
++            .map(|actor| {
++                self.resource_limits(actor, next.character(actor).unwrap())
++                    .map(|limits| (actor, limits))
++            })
++            .collect::<Result<Vec<_>, _>>()?;
++        for (actor, (hp, mana)) in limits {
++            self.game.equipment_limits(actor, hp, mana)?;
++        }
++        self.rewards = next;
+         self.reward_cursor = latest;
+         Ok(())
+     }
+@@ -779,11 +860,18 @@ impl Chamber {
+             .collect::<Vec<_>>()
+         {
+             let character = self.rewards.character(actor).cloned().unwrap_or_default();
+-            let (hp, mana) = self.equipment.limits(&character)?;
++            let (hp, mana) = self.resource_limits(actor, &character)?;
+             self.game.equipment_limits(actor, hp, mana)?;
+-            if hp > 200 || mana > 20 {
++            let definition = &self
++                .game
++                .actor_state(self.game.actor_life(actor).unwrap())
++                .unwrap()
++                .definition;
++            let extra_health = (hp - definition.health) as u32;
++            let extra_mana = (mana - definition.mana) as u32;
++            if extra_health != 0 || extra_mana != 0 {
+                 self.game
+-                    .recover_player_resources(actor, (hp - 200) as u32, (mana - 20) as u32)?;
++                    .recover_player_resources(actor, extra_health, extra_mana)?;
+             }
+         }
+         Ok(())
+diff --git a/crates/verse-world/src/service/auth.rs b/crates/verse-world/src/service/auth.rs
+index 04aae3f8e5..5d29b48915 100644
+--- a/crates/verse-world/src/service/auth.rs
++++ b/crates/verse-world/src/service/auth.rs
+@@ -367,6 +367,20 @@ impl Gateway {
+         self.chamber
+             .accept_quest(b.principal, b.session, life, epoch, quest, giver)
+     }
++    pub fn quest_cycle(
++        &mut self,
++        id: ConnectionId,
++        life: LifeId,
++        epoch: u64,
++        quest: u64,
++        cycle: u64,
++        action: super::progression::Action,
++    ) -> Result<super::rewards::Receipt, String> {
++        self.view_cache = None;
++        let b = self.binding(id)?;
++        self.chamber
++            .quest_cycle(b.principal, b.session, life, epoch, quest, cycle, action)
++    }
+     pub fn claim_quest(
+         &mut self,
+         id: ConnectionId,
+diff --git a/crates/verse-world/src/service/client.rs b/crates/verse-world/src/service/client.rs
+index f06046c581..66e53bd040 100644
+--- a/crates/verse-world/src/service/client.rs
++++ b/crates/verse-world/src/service/client.rs
+@@ -264,6 +264,51 @@ impl Client {
+         })
+         .await
+     }
++    pub async fn services(&mut self, character: u64) -> Result<super::game_services::View, String> {
++        match self.request_ready(Body::Services { character }).await?.body {
++            Reply::Services { view } => Ok(view),
++            Reply::Refused { message, .. } => Err(message),
++            _ => Err("Realm service view is missing".into()),
++        }
++    }
++    pub async fn service_action(
++        &mut self,
++        realm: [u8; 32],
++        character: u64,
++        operation: [u8; 16],
++        action: super::game_services::Action,
++    ) -> Result<super::game_services::Receipt, String> {
++        match self
++            .request_ready(Body::ServiceAction {
++                realm,
++                character,
++                operation,
++                action,
++            })
++            .await?
++            .body
++        {
++            Reply::ServiceApplied { receipt } => Ok(receipt),
++            Reply::Refused { message, .. } => Err(message),
++            _ => Err("Realm service receipt is missing".into()),
++        }
++    }
++    pub async fn quest_cycle(
++        &mut self,
++        quest: u64,
++        cycle: u64,
++        action: super::progression::Action,
++    ) -> Result<Response, String> {
++        let control = self.control().ok_or("Client has no admitted adventurer")?;
++        self.request_ready(Body::QuestCycle {
++            life: control.life,
++            epoch: control.epoch,
++            quest,
++            cycle,
++            action,
++        })
++        .await
++    }
+     pub async fn claim_quest(&mut self, quest: u64) -> Result<Response, String> {
+         let control = self.control().ok_or("Client has no admitted adventurer")?;
+         self.request_ready(Body::ClaimQuest {
+@@ -584,6 +629,74 @@ impl Client {
+             (Reply::Snapshot { state }, Body::Snapshot {} | Body::Replicate { .. }) => {
+                 state.validate_control(self.instance, &r.control)
+             }
++            (Reply::Services { view }, Body::Services { character }) => {
++                view.validate()?;
++                if view.character != *character
++                    || view.realm == [0; 32]
++                    || view.groups.len() > 2
++                    || view.invitations.len() > 16
++                    || view.items.len() > 64
++                    || view.offers.len() > 16
++                    || view
++                        .items
++                        .iter()
++                        .any(|i| i.owner != *character || i.version == 0)
++                    || view
++                        .offers
++                        .iter()
++                        .any(|o| o.from != *character && o.to != *character)
++                {
++                    return Err("Realm service view is incompatible".into());
++                }
++                Ok(())
++            }
++            (
++                Reply::ServiceApplied { receipt },
++                Body::ServiceAction {
++                    realm,
++                    character,
++                    operation,
++                    action,
++                },
++            ) => {
++                if receipt.realm != *realm
++                    || receipt.character != *character
++                    || receipt.operation != *operation
++                    || receipt.digest != super::game_services::action_digest(action)?
++                {
++                    return Err("Realm service acknowledgment is incompatible".into());
++                }
++                receipt.validate(action)?;
++                Ok(())
++            }
++            (
++                Reply::QuestCycleChanged {
++                    quest,
++                    cycle,
++                    action,
++                    revision,
++                },
++                Body::QuestCycle {
++                    life,
++                    epoch,
++                    quest: requested,
++                    cycle: expected,
++                    action: intent,
++                },
++            ) => {
++                if quest != requested
++                    || cycle != expected
++                    || action != intent
++                    || *revision == 0
++                    || *quest == 0
++                    || r.control
++                        .as_ref()
++                        .is_none_or(|c| c.life != *life || c.epoch != *epoch)
++                {
++                    return Err("Quest cycle acknowledgment is incompatible".into());
++                }
++                Ok(())
++            }
+             (
+                 Reply::QuestAccepted { quest, revision },
+                 Body::AcceptQuest {
+@@ -1218,6 +1331,7 @@ mod tests {
+                 version: 1,
+                 levels: vec![0, 100],
+                 quests: vec![Quest {
++                    repeatable: false,
+                     dialogue: None,
+                     giver: Some(2),
+                     prerequisites: vec![],
+@@ -1430,6 +1544,7 @@ mod tests {
+                 levels: vec![0, 100, 300],
+                 quests: vec![
+                     super::super::progression::Quest {
++                        repeatable: false,
+                         dialogue: None,
+                         giver: None,
+                         prerequisites: vec![],
+@@ -1441,6 +1556,7 @@ mod tests {
+                         items: vec![Entry { id: 1, count: 2 }],
+                     },
+                     super::super::progression::Quest {
++                        repeatable: false,
+                         dialogue: None,
+                         giver: None,
+                         prerequisites: vec![1],
+@@ -1670,6 +1786,7 @@ mod tests {
+                 version: 1,
+                 levels: vec![0, 100, 300],
+                 quests: vec![Quest {
++                    repeatable: false,
+                     dialogue: None,
+                     giver: None,
+                     prerequisites: vec![],
+diff --git a/crates/verse-world/src/service/equipment.rs b/crates/verse-world/src/service/equipment.rs
+index d4e285ee6c..86736a82e7 100644
+--- a/crates/verse-world/src/service/equipment.rs
++++ b/crates/verse-world/src/service/equipment.rs
+@@ -108,7 +108,26 @@ impl Catalog {
+             .ok_or_else(|| "Equipment item is not defined".into())
+     }
+     pub fn limits(&self, character: &Character) -> Result<(i32, i32), String> {
+-        let (mut hp, mut mana) = (200, 20);
++        self.derived_limits(character, 200, 20, 1)
++    }
++    /// Resource limits preserve the authored class and never heal existing wounds.
++    pub fn derived_limits(
++        &self,
++        character: &Character,
++        base_health: i32,
++        base_mana: i32,
++        level: u16,
++    ) -> Result<(i32, i32), String> {
++        if !(200..=600).contains(&base_health)
++            || !(20..=60).contains(&base_mana)
++            || !(1..=100).contains(&level)
++        {
++            return Err("Invalid class resource limits or level".into());
++        }
++        let (mut hp, mut mana) = (
++            base_health + 10 * i32::from(level - 1),
++            base_mana + i32::from(level - 1),
++        );
+         for (&slot, &item) in &character.equipment {
+             let g = self.item(item)?;
+             if g.slot != slot || character.items.get(&item).copied().unwrap_or(0) == 0 {
+@@ -117,7 +136,7 @@ impl Catalog {
+             hp += g.health as i32;
+             mana += g.mana as i32;
+         }
+-        Ok((hp, mana))
++        Ok((hp.min(600), mana.min(60)))
+     }
+     pub(super) fn validate_change(&self, tx: &Transaction) -> Result<(), String> {
+         if !reserved(&tx.source)
+diff --git a/crates/verse-world/src/service/game_services.rs b/crates/verse-world/src/service/game_services.rs
+new file mode 100644
+index 0000000000..b04820b18d
+--- /dev/null
++++ b/crates/verse-world/src/service/game_services.rs
+@@ -0,0 +1,346 @@
++//! Stable character membership and consent-based gear exchange in a realm.
++use serde::{Deserialize, Serialize};
++pub type Id = [u8; 32];
++#[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize, Deserialize)]
++#[serde(rename_all = "snake_case")]
++pub enum Kind {
++    Party,
++    Guild,
++}
++impl Kind {
++    pub fn capacity(self) -> usize {
++        match self {
++            Self::Party => 8,
++            Self::Guild => 64,
++        }
++    }
++}
++#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
++#[serde(deny_unknown_fields)]
++pub struct Group {
++    pub id: Id,
++    pub kind: Kind,
++    pub name: String,
++    pub leader: u64,
++    pub members: Vec<u64>,
++    pub invites: Vec<u64>,
++    pub revision: u64,
++}
++#[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize, Deserialize)]
++#[serde(deny_unknown_fields)]
++pub struct Token {
++    pub id: Id,
++    pub version: u64,
++}
++#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
++#[serde(deny_unknown_fields)]
++pub struct Item {
++    pub id: Id,
++    pub owner: u64,
++    pub definition: u64,
++    pub catalog: Id,
++    pub version: u64,
++    pub locked: Option<Id>,
++}
++#[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize, Deserialize)]
++#[serde(rename_all = "snake_case")]
++pub enum Status {
++    Offered,
++    Accepted,
++    Cancelled,
++}
++#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
++#[serde(deny_unknown_fields)]
++pub struct Offer {
++    pub id: Id,
++    pub from: u64,
++    pub to: u64,
++    pub give: Vec<Token>,
++    pub want: Vec<Token>,
++    pub expires_ms: u64,
++    pub status: Status,
++}
++#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
++#[serde(tag = "action", rename_all = "snake_case", deny_unknown_fields)]
++pub enum Action {
++    Create {
++        kind: Kind,
++        name: String,
++    },
++    Invite {
++        group: Id,
++        target: u64,
++    },
++    Join {
++        group: Id,
++    },
++    Decline {
++        group: Id,
++    },
++    Leave {
++        group: Id,
++    },
++    Remove {
++        group: Id,
++        target: u64,
++    },
++    Materialize {
++        definition: u64,
++    },
++    Offer {
++        to: u64,
++        give: Vec<Token>,
++        want: Vec<Token>,
++        expires_ms: u64,
++    },
++    Accept {
++        offer: Id,
++    },
++    Cancel {
++        offer: Id,
++    },
++}
++#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
++#[serde(tag = "outcome", rename_all = "snake_case", deny_unknown_fields)]
++pub enum Outcome {
++    Group { group: Group },
++    Item { item: Item },
++    Trade { offer: Offer },
++}
++#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
++#[serde(deny_unknown_fields)]
++pub struct Receipt {
++    pub realm: Id,
++    pub character: u64,
++    pub operation: [u8; 16],
++    pub digest: Id,
++    pub outcome: Outcome,
++}
++#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
++#[serde(deny_unknown_fields)]
++pub struct View {
++    pub realm: Id,
++    pub character: u64,
++    pub groups: Vec<Group>,
++    pub invitations: Vec<Group>,
++    pub items: Vec<Item>,
++    pub offers: Vec<Offer>,
++}
++/// Amounts are supplied only by the local authoritative host.
++#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
++#[serde(deny_unknown_fields)]
++pub struct Loot {
++    pub event: Id,
++    pub party: Id,
++    pub experience: u64,
++    pub items: Vec<super::rewards::Entry>,
++    pub quests: Vec<super::rewards::Entry>,
++}
++#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
++#[serde(deny_unknown_fields)]
++pub struct LootReceipt {
++    pub grant: Loot,
++    pub recipients: Vec<u64>,
++    pub receipts: Vec<super::rewards::Receipt>,
++}
++
++pub(super) fn trade_source(source: &[u8; 32]) -> bool {
++    source[..8] == *b"VTRADE01"
++}
++pub(super) fn validate_trade(tx: &super::rewards::Transaction) -> Result<(), String> {
++    if !trade_source(&tx.source)
++        || tx.source[8..] == [0; 24]
++        || tx.experience != 0
++        || !tx.quests.is_empty()
++        || tx.acceptance.is_some()
++        || tx.outfit.is_some()
++        || tx.equipment.is_some()
++        || tx.items.is_empty() && tx.spent.is_empty()
++    {
++        return Err("Invalid saved realm trade transaction".into());
++    }
++    super::rewards::entries(&tx.items)?;
++    super::rewards::entries(&tx.spent)
++}
++pub fn action_digest(action: &Action) -> Result<Id, String> {
++    use sha2::Digest;
++    Ok(sha2::Sha256::digest(
++        serde_json::to_vec(action).map_err(|_| "Cannot encode service action")?,
++    )
++    .into())
++}
++impl Group {
++    pub fn validate(&self) -> Result<(), String> {
++        if self.id == [0; 32]
++            || self.revision == 0
++            || self.name.trim().is_empty()
++            || self.name.len() > 80
++            || !self.name.bytes().all(|b| (32..=126).contains(&b))
++            || self.members.len() > self.kind.capacity()
++            || self.invites.len() > 64
++            || self.members.windows(2).any(|w| w[0] >= w[1])
++            || self.invites.windows(2).any(|w| w[0] >= w[1])
++            || self.members.contains(&0)
++            || self.invites.contains(&0)
++            || self.members.iter().any(|id| self.invites.contains(id))
++            || (self.members.is_empty() && (self.leader != 0 || !self.invites.is_empty()))
++            || (!self.members.is_empty() && !self.members.contains(&self.leader))
++        {
++            return Err("Invalid realm group projection".into());
++        }
++        Ok(())
++    }
++}
++impl Item {
++    pub fn validate(&self) -> Result<(), String> {
++        if self.id == [0; 32]
++            || self.owner == 0
++            || self.definition == 0
++            || self.catalog == [0; 32]
++            || self.version == 0
++            || self.locked == Some([0; 32])
++        {
++            return Err("Invalid item instance projection".into());
++        }
++        Ok(())
++    }
++}
++impl Offer {
++    pub fn validate(&self) -> Result<(), String> {
++        if self.id == [0; 32]
++            || self.from == 0
++            || self.to == 0
++            || self.from == self.to
++            || self.expires_ms == 0
++            || self.give.is_empty() && self.want.is_empty()
++            || [&self.give, &self.want].iter().any(|tokens| {
++                tokens.len() > 8
++                    || tokens.windows(2).any(|w| w[0].id >= w[1].id)
++                    || tokens.iter().any(|t| t.id == [0; 32] || t.version == 0)
++            })
++            || self
++                .give
++                .iter()
++                .any(|t| self.want.iter().any(|other| t.id == other.id))
++        {
++            return Err("Invalid trade offer projection".into());
++        }
++        Ok(())
++    }
++}
++impl View {
++    pub fn validate(&self) -> Result<(), String> {
++        if self.realm == [0; 32]
++            || self.character == 0
++            || self.groups.len() > 2
++            || self.invitations.len() > 16
++            || self.items.len() > 64
++            || self.offers.len() > 16
++            || self.groups.len() == 2 && self.groups[0].kind == self.groups[1].kind
++            || self
++                .groups
++                .iter()
++                .any(|g| !g.members.contains(&self.character))
++            || self
++                .invitations
++                .iter()
++                .any(|g| !g.invites.contains(&self.character))
++            || self.items.windows(2).any(|w| w[0].id >= w[1].id)
++            || self.offers.windows(2).any(|w| w[0].id >= w[1].id)
++            || self.items.iter().any(|i| i.owner != self.character)
++            || self.offers.iter().any(|o| {
++                o.status != Status::Offered || o.from != self.character && o.to != self.character
++            })
++        {
++            return Err("Invalid private realm service projection".into());
++        }
++        for g in self.groups.iter().chain(&self.invitations) {
++            g.validate()?;
++        }
++        for i in &self.items {
++            i.validate()?;
++        }
++        for o in &self.offers {
++            o.validate()?;
++        }
++        Ok(())
++    }
++}
++impl Receipt {
++    pub fn validate(&self, action: &Action) -> Result<(), String> {
++        if self.realm == [0; 32]
++            || self.character == 0
++            || self.operation == [0; 16]
++            || self.digest != action_digest(action)?
++        {
++            return Err("Invalid service receipt identity".into());
++        }
++        match &self.outcome {
++            Outcome::Group { group } => group.validate()?,
++            Outcome::Item { item } => item.validate()?,
++            Outcome::Trade { offer } => offer.validate()?,
++        }
++        let matches = match (action, &self.outcome) {
++            (Action::Create { kind, name }, Outcome::Group { group }) => {
++                group.kind == *kind
++                    && group.name == *name
++                    && group.leader == self.character
++                    && group.members == [self.character]
++            }
++            (Action::Invite { group, target }, Outcome::Group { group: result }) => {
++                result.id == *group
++                    && result.leader == self.character
++                    && result.invites.contains(target)
++            }
++            (Action::Join { group }, Outcome::Group { group: result }) => {
++                result.id == *group && result.members.contains(&self.character)
++            }
++            (Action::Decline { group }, Outcome::Group { group: result }) => {
++                result.id == *group && !result.invites.contains(&self.character)
++            }
++            (Action::Leave { group }, Outcome::Group { group: result }) => {
++                result.id == *group && !result.members.contains(&self.character)
++            }
++            (Action::Remove { group, target }, Outcome::Group { group: result }) => {
++                result.id == *group && !result.members.contains(target)
++            }
++            (Action::Materialize { definition }, Outcome::Item { item }) => {
++                item.definition == *definition
++                    && item.owner == self.character
++                    && item.version == 1
++                    && item.locked.is_none()
++            }
++            (
++                Action::Offer {
++                    to,
++                    give,
++                    want,
++                    expires_ms,
++                },
++                Outcome::Trade { offer },
++            ) => {
++                offer.from == self.character
++                    && offer.to == *to
++                    && offer.give == *give
++                    && offer.want == *want
++                    && offer.expires_ms == *expires_ms
++                    && offer.status == Status::Offered
++            }
++            (Action::Accept { offer }, Outcome::Trade { offer: result }) => {
++                result.id == *offer
++                    && result.to == self.character
++                    && result.status == Status::Accepted
++            }
++            (Action::Cancel { offer }, Outcome::Trade { offer: result }) => {
++                result.id == *offer
++                    && (result.from == self.character || result.to == self.character)
++                    && result.status == Status::Cancelled
++            }
++            _ => false,
++        };
++        if !matches {
++            return Err("Service receipt outcome does not match its action".into());
++        }
++        Ok(())
++    }
++}
+diff --git a/crates/verse-world/src/service/net.rs b/crates/verse-world/src/service/net.rs
+index 18f31f5dbd..47767b01cc 100644
+--- a/crates/verse-world/src/service/net.rs
++++ b/crates/verse-world/src/service/net.rs
+@@ -795,7 +795,7 @@ async fn serve_loop<F: Future<Output = ()>>(
+                             let room = pending.len() < QUEUE && fences.len() < 2 && writer.send.as_ref().unwrap().capacity() > 0;
+                             let history = gateway.chamber.rewards.history_capacity().unwrap_or(false);
+                             let mutating = Request::decode(&bytes).is_ok_and(|request| matches!(request.body,
+-                                Body::Authenticate {..} | Body::Social {..} | Body::BeginMovementFrames {..} | Body::MovementFrame {..} | Body::Command {..} | Body::Respawn {..} | Body::ClaimQuest {..}
++                                Body::Authenticate {..} | Body::Social {..} | Body::BeginMovementFrames {..} | Body::MovementFrame {..} | Body::Command {..} | Body::Respawn {..} | Body::ClaimQuest {..} | Body::QuestCycle {..}
+                                 | Body::AcceptQuest {..} | Body::UseItem {..} | Body::EquipOutfit {..} | Body::EquipGear {..}));
+                             if !mutating && !dirty {
+                                 if let Some(mut entry) = fences.last_entry() {
+diff --git a/crates/verse-world/src/service/net/admission.rs b/crates/verse-world/src/service/net/admission.rs
+index 171592b333..f0880aae67 100644
+--- a/crates/verse-world/src/service/net/admission.rs
++++ b/crates/verse-world/src/service/net/admission.rs
+@@ -355,7 +355,7 @@ impl Slot {
+         let (projection, cost) = match body {
+             Body::Snapshot {} => (true, 32),
+             Body::Replicate { .. } => (true, 8),
+-            Body::Inventory {} | Body::Account {} => (true, 8),
++            Body::Inventory {} | Body::Account {} | Body::Services { .. } => (true, 8),
+             Body::Events { .. } => (true, 4),
+             _ => (false, 1),
+         };
+diff --git a/crates/verse-world/src/service/persistence/migration.rs b/crates/verse-world/src/service/persistence/migration.rs
+index 06950f61bb..896ad05b9f 100644
+--- a/crates/verse-world/src/service/persistence/migration.rs
++++ b/crates/verse-world/src/service/persistence/migration.rs
+@@ -230,7 +230,7 @@ impl Store {
+                 .character_rewards(life.actor)
+                 .cloned()
+                 .unwrap_or_default();
+-            let (hp, mana) = target.equipment.limits(&character)?;
++            let (hp, mana) = gateway.chamber.resource_limits(life.actor, &character)?;
+             gateway
+                 .chamber
+                 .game
+diff --git a/crates/verse-world/src/service/persistence/migration/tests.rs b/crates/verse-world/src/service/persistence/migration/tests.rs
+index 469cff15df..eb7afc4360 100644
+--- a/crates/verse-world/src/service/persistence/migration/tests.rs
++++ b/crates/verse-world/src/service/persistence/migration/tests.rs
+@@ -83,6 +83,7 @@ fn config(root: &Path) -> Config {
+             version: 1,
+             levels: vec![0, 100, 300],
+             quests: vec![Quest {
++                repeatable: false,
+                 id: 101,
+                 name: "Ritual".into(),
+                 objective: 2,
+@@ -290,8 +291,8 @@ fn populated_legacy_save_migrates_preserving_receipts_ownership_and_completed_qu
+     let reviewed = plan(&store, &f);
+     assert_eq!(reviewed.source.character_schema, 1);
+     assert_eq!(reviewed.source.save_version, 8);
+-    assert_eq!(reviewed.target.character_schema, 3);
+-    assert_eq!(reviewed.target.save_version, 11);
++    assert_eq!(reviewed.target.character_schema, 4);
++    assert_eq!(reviewed.target.save_version, 12);
+     assert_eq!(reviewed.source.rules, "verse-chamber-owned-v18");
+     assert_eq!(reviewed.target.rules, crate::play::RULES_REVISION);
+     assert_eq!(std::fs::read(root.join("chamber.json")).unwrap(), original);
+@@ -394,7 +395,7 @@ fn populated_legacy_save_migrates_preserving_receipts_ownership_and_completed_qu
+             .unwrap()
+             .player
+             .max_hp,
+-        240
++        250
+     );
+     assert!(gateway.game().actor_life(101).is_some());
+     assert!(gateway.game().actor_life(6).is_none());
+diff --git a/crates/verse-world/src/service/progression.rs b/crates/verse-world/src/service/progression.rs
+index d17ded63c5..b25beac063 100644
+--- a/crates/verse-world/src/service/progression.rs
++++ b/crates/verse-world/src/service/progression.rs
+@@ -3,9 +3,18 @@ use super::rewards::{Character, Entry, Ledger, Transaction};
+ use serde::{Deserialize, Serialize};
+ const ACCEPT_DOMAIN: &[u8; 8] = b"VACCEPT1";
+ const CLAIM_DOMAIN: &[u8; 8] = b"VQUEST01";
++const CYCLE_DOMAIN: &[u8; 8] = b"VQCYCLE1";
++fn zero(value: &u64) -> bool {
++    *value == 0
++}
++fn no(value: &bool) -> bool {
++    !*value
++}
+ #[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+ #[serde(deny_unknown_fields)]
+ pub struct Quest {
++    #[serde(default, skip_serializing_if = "no")]
++    pub repeatable: bool,
+     #[serde(default, skip_serializing_if = "Option::is_none")]
+     pub dialogue: Option<Dialogue>,
+     #[serde(default, skip_serializing_if = "Option::is_none")]
+@@ -22,8 +31,36 @@ pub struct Quest {
+ #[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize, Deserialize)]
+ #[serde(deny_unknown_fields)]
+ pub struct Acceptance {
++    #[serde(default, skip_serializing_if = "no")]
++    pub automatic: bool,
+     pub quest: u64,
+     pub baseline: u32,
++    #[serde(default, skip_serializing_if = "zero")]
++    pub cycle: u64,
++    #[serde(default, skip_serializing_if = "Transition::start")]
++    pub transition: Transition,
++}
++#[derive(Clone, Copy, Debug, Default, Eq, PartialEq, Serialize, Deserialize)]
++#[serde(rename_all = "snake_case")]
++pub enum Transition {
++    #[default]
++    Start,
++    Abandon,
++    Reset,
++}
++impl Transition {
++    fn start(&self) -> bool {
++        *self == Self::Start
++    }
++}
++/// Every action names its expected cycle; delayed claims cannot claim a new cycle.
++#[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize, Deserialize)]
++#[serde(tag = "action", rename_all = "snake_case", deny_unknown_fields)]
++pub enum Action {
++    Accept { giver: verse_engine::core::LifeId },
++    Claim,
++    Abandon,
++    Reset,
+ }
+ #[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+ #[serde(deny_unknown_fields)]
+@@ -65,6 +102,8 @@ impl Level {
+ #[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+ #[serde(deny_unknown_fields)]
+ pub struct Progress {
++    pub cycle: u64,
++    pub repeatable: bool,
+     #[serde(default, skip_serializing_if = "Option::is_none")]
+     pub dialogue: Option<Dialogue>,
+     pub accepted: bool,
+@@ -194,11 +233,13 @@ impl Config {
+         self.quests
+             .iter()
+             .map(|quest| Progress {
++                cycle: ledger.character(actor).map_or(0, |c| c.cycle(quest.id)),
++                repeatable: quest.repeatable,
+                 dialogue: quest.dialogue.clone(),
+                 accepted: quest.giver.is_none()
+                     || ledger
+                         .character(actor)
+-                        .is_some_and(|c| c.claimed_quests.contains(&quest.id))
++                        .is_some_and(|c| c.completed(quest.id))
+                     || ledger
+                         .character(actor)
+                         .is_some_and(|c| c.accepted_quests.contains_key(&quest.id)),
+@@ -212,7 +253,7 @@ impl Config {
+                 goal: quest.goal,
+                 claimed: ledger
+                     .character(actor)
+-                    .is_some_and(|c| c.claimed_quests.contains(&quest.id)),
++                    .is_some_and(|c| c.completed(quest.id)),
+                 experience: quest.experience,
+                 items: quest.items.clone(),
+             })
+@@ -240,7 +281,18 @@ impl Config {
+             .find(|q| q.id == acceptance.quest)
+             .ok_or("Accepted quest is not defined")?;
+         if quest.giver.is_none()
+-            || tx != &quest.acceptance(tx.instance, tx.actor, acceptance.baseline)
++            || acceptance.transition != Transition::Start
++            || acceptance.cycle != ledger.character(tx.actor).map_or(0, |c| c.cycle(quest.id))
++            || ledger
++                .character(tx.actor)
++                .is_some_and(|c| c.completed(quest.id))
++            || tx
++                != &quest.acceptance_at(
++                    tx.instance,
++                    tx.actor,
++                    acceptance.baseline,
++                    acceptance.cycle,
++                )
+             || acceptance.baseline != quest.count(ledger.character(tx.actor))
+             || !self.available(quest, tx.actor, ledger)
+         {
+@@ -261,7 +313,12 @@ impl Config {
+             .iter()
+             .find(|quest| quest.id == id)
+             .ok_or("Claimed campaign quest is not defined")?;
+-        if transaction != &quest.transaction(transaction.instance, transaction.actor)
++        let cycle = u64::from_be_bytes(transaction.source[24..].try_into().unwrap());
++        if cycle
++            != ledger
++                .character(transaction.actor)
++                .map_or(0, |c| c.cycle(id))
++            || transaction != &quest.transaction_at(transaction.instance, transaction.actor, cycle)
+             || quest.progress(ledger.character(transaction.actor)) < quest.goal
+             || !self.available(quest, transaction.actor, ledger)
+         {
+@@ -271,6 +328,39 @@ impl Config {
+         }
+         Ok(())
+     }
++    pub(super) fn validate_cycle(&self, tx: &Transaction, ledger: &Ledger) -> Result<(), String> {
++        let change = tx.acceptance.ok_or("Quest cycle payload is absent")?;
++        let quest = self
++            .quests
++            .iter()
++            .find(|q| q.id == change.quest)
++            .ok_or("Quest is not defined")?;
++        let character = ledger.character(tx.actor).cloned().unwrap_or_default();
++        let allowed = match change.transition {
++            Transition::Start => false,
++            Transition::Abandon => {
++                !character.completed(quest.id)
++                    && self.available(quest, tx.actor, ledger)
++                    && (quest.giver.is_none() || character.accepted_quests.contains_key(&quest.id))
++            }
++            Transition::Reset => quest.repeatable && character.completed(quest.id),
++        };
++        if !allowed
++            || change.cycle != character.cycle(quest.id)
++            || change.baseline != quest.count(Some(&character))
++            || tx
++                != &quest.cycle_transaction(
++                    tx.instance,
++                    tx.actor,
++                    change.cycle,
++                    change.baseline,
++                    change.transition,
++                )
++        {
++            return Err("Quest cycle transition is stale or unavailable".into());
++        }
++        Ok(())
++    }
+ }
+ impl Quest {
+     pub(super) fn count(&self, character: Option<&Character>) -> u32 {
+@@ -280,10 +370,10 @@ impl Quest {
+             .unwrap_or(0)
+     }
+     pub(super) fn progress(&self, character: Option<&Character>) -> u32 {
+-        if character.is_some_and(|c| c.claimed_quests.contains(&self.id)) {
++        if character.is_some_and(|c| c.completed(self.id)) {
+             return self.goal;
+         }
+-        if self.giver.is_none() {
++        if self.giver.is_none() && character.is_none_or(|c| c.cycle(self.id) == 0) {
+             return self.count(character);
+         }
+         character
+@@ -293,21 +383,50 @@ impl Quest {
+             })
+     }
+     pub(super) fn acceptance(&self, instance: u64, actor: u64, baseline: u32) -> Transaction {
+-        let mut tx = self.transaction(instance, actor);
++        self.acceptance_at(instance, actor, baseline, 0)
++    }
++    pub(super) fn acceptance_at(
++        &self,
++        instance: u64,
++        actor: u64,
++        baseline: u32,
++        cycle: u64,
++    ) -> Transaction {
++        let mut tx = self.transaction_at(instance, actor, cycle);
+         tx.source[..8].copy_from_slice(ACCEPT_DOMAIN);
+         tx.experience = 0;
+         tx.items.clear();
+         tx.acceptance = Some(Acceptance {
++            automatic: self.giver.is_none(),
+             quest: self.id,
+             baseline,
++            cycle,
++            transition: Transition::Start,
+         });
+         tx
+     }
+     pub(super) fn transaction(&self, instance: u64, actor: u64) -> Transaction {
++        self.transaction_at(instance, actor, 0)
++    }
++    pub(super) fn cycle_transaction(
++        &self,
++        instance: u64,
++        actor: u64,
++        cycle: u64,
++        baseline: u32,
++        transition: Transition,
++    ) -> Transaction {
++        let mut tx = self.acceptance_at(instance, actor, baseline, cycle);
++        tx.source[..8].copy_from_slice(CYCLE_DOMAIN);
++        tx.acceptance.as_mut().unwrap().transition = transition;
++        tx
++    }
++    pub(super) fn transaction_at(&self, instance: u64, actor: u64, cycle: u64) -> Transaction {
+         let mut source = [0; 32];
+         source[..8].copy_from_slice(CLAIM_DOMAIN);
+         source[8..16].copy_from_slice(&instance.to_be_bytes());
+         source[16..24].copy_from_slice(&self.id.to_be_bytes());
++        source[24..].copy_from_slice(&cycle.to_be_bytes());
+         Transaction {
+             acceptance: None,
+             outfit: None,
+@@ -323,7 +442,10 @@ impl Quest {
+     }
+ }
+ pub(super) fn reserved(source: &[u8; 32]) -> bool {
+-    source[..8] == CLAIM_DOMAIN[..] || acceptance_source(source)
++    source[..8] == CLAIM_DOMAIN[..] || acceptance_source(source) || cycle_source(source)
++}
++pub(super) fn cycle_source(source: &[u8; 32]) -> bool {
++    source[..8] == CYCLE_DOMAIN[..]
+ }
+ pub(super) fn acceptance_source(source: &[u8; 32]) -> bool {
+     source[..8] == ACCEPT_DOMAIN[..]
+@@ -368,6 +490,7 @@ mod tests {
+             levels: vec![0],
+             quests: vec![
+                 Quest {
++                    repeatable: false,
+                     dialogue: None,
+                     giver: None,
+                     prerequisites: vec![],
+@@ -379,6 +502,7 @@ mod tests {
+                     items: vec![],
+                 },
+                 Quest {
++                    repeatable: false,
+                     dialogue: None,
+                     giver: None,
+                     prerequisites: vec![1],
+@@ -412,6 +536,7 @@ mod tests {
+             version: 1,
+             levels: vec![0, 100, 300],
+             quests: vec![Quest {
++                repeatable: false,
+                 dialogue: None,
+                 giver: None,
+                 prerequisites: vec![],
+@@ -492,6 +617,8 @@ mod marker_tests {
+     #[test]
+     fn markers_follow_enrollment_objectives_claims_and_prerequisites() {
+         let mut progress = Progress {
++            cycle: 0,
++            repeatable: false,
+             dialogue: None,
+             accepted: false,
+             giver: Some(42),
+diff --git a/crates/verse-world/src/service/realm.rs b/crates/verse-world/src/service/realm.rs
+index d95324b55e..ec7933b9c4 100644
+--- a/crates/verse-world/src/service/realm.rs
++++ b/crates/verse-world/src/service/realm.rs
+@@ -16,6 +16,7 @@ mod disk;
+ mod lifecycle;
+ pub mod net;
+ mod registry;
++mod services;
+ mod transfer;
+ pub use registry::{Account, Character, Residence};
+ pub use transfer::Transfer;
+@@ -99,6 +100,7 @@ pub struct Realm {
+     dirty: BTreeSet<u64>,
+     transfer_commit: bool,
+     lifecycle_commit: bool,
++    services_commit: bool,
+ }
+ impl Realm {
+     pub fn open(root: &Path) -> Result<Self, String> {
+@@ -566,10 +568,15 @@ impl Realm {
+             Body::Snapshot {}
+                 | Body::Replicate { .. }
+                 | Body::Inventory {}
++                | Body::Services { .. }
+                 | Body::Account {}
+                 | Body::Events { .. }
+         );
+-        let response = if let Some(result) = self.lifecycle_request(lease, id, now, &request.body) {
++        let service = self.services_request(lease, id, now, &request.body);
++        let service_handled = service.is_some();
++        let response = if let Some(result) =
++            service.or_else(|| self.lifecycle_request(lease, id, now, &request.body))
++        {
+             if self.poisoned {
+                 return Err("Realm requires recovery after an uncertain commit".into());
+             }
+@@ -588,7 +595,12 @@ impl Realm {
+                     applied_movement: None,
+                 }),
+                 body: result.unwrap_or_else(|message| super::wire::Reply::Refused {
+-                    code: "character_lifecycle".into(),
++                    code: if service_handled {
++                        "game_services"
++                    } else {
++                        "character_lifecycle"
++                    }
++                    .into(),
+                     message,
+                 }),
+             }
+@@ -599,7 +611,7 @@ impl Realm {
+                 .unwrap()
+                 .dispatch_json(id, now, bytes)?
+         };
+-        if mutating || self.dirty.contains(&lease.instance) {
++        if mutating && !service_handled || self.dirty.contains(&lease.instance) {
+             self.publish(&[lease.instance])?;
+         }
+         Ok(response)
+diff --git a/crates/verse-world/src/service/realm/disk.rs b/crates/verse-world/src/service/realm/disk.rs
+index 189cef6b2c..87fbfd6554 100644
+--- a/crates/verse-world/src/service/realm/disk.rs
++++ b/crates/verse-world/src/service/realm/disk.rs
+@@ -148,6 +148,7 @@ pub(super) fn open(root: &Path) -> Result<Realm, String> {
+         dirty: std::collections::BTreeSet::new(),
+         transfer_commit: false,
+         lifecycle_commit: false,
++        services_commit: false,
+     };
+     let instances: Vec<_> = realm.manifest.instances.keys().copied().collect();
+     for id in &instances {
+@@ -216,6 +217,7 @@ fn boundary(realm: &Realm, name: &str) {
+         stage == name
+             || realm.transfer_commit && stage == format!("transfer_{name}")
+             || realm.lifecycle_commit && stage == format!("lifecycle_{name}")
++            || realm.services_commit && stage == format!("services_{name}")
+     }) {
+         std::process::exit(86);
+     }
+diff --git a/crates/verse-world/src/service/realm/lifecycle.rs b/crates/verse-world/src/service/realm/lifecycle.rs
+index e66ce9ab87..d7226c2ef7 100644
+--- a/crates/verse-world/src/service/realm/lifecycle.rs
++++ b/crates/verse-world/src/service/realm/lifecycle.rs
+@@ -9,7 +9,7 @@ impl Realm {
+         result
+     }
+ 
+-    fn owned(&self, character: u64, principal: [u8; 32]) -> Result<Character, String> {
++    pub(super) fn owned(&self, character: u64, principal: [u8; 32]) -> Result<Character, String> {
+         let saved = self.character(character)?;
+         let account = self
+             .account_for_key(principal)?
+diff --git a/crates/verse-world/src/service/realm/net.rs b/crates/verse-world/src/service/realm/net.rs
+index 23a774d7c1..a512647273 100644
+--- a/crates/verse-world/src/service/realm/net.rs
++++ b/crates/verse-world/src/service/realm/net.rs
+@@ -19,6 +19,11 @@ use tokio_rustls::TlsAcceptor;
+ const QUEUE: usize = 128;
+ 
+ enum Operation {
++    PartyLoot {
++        instance: u64,
++        grant: super::super::game_services::Loot,
++        reply: oneshot::Sender<Result<super::super::game_services::LootReceipt, String>>,
++    },
+     Account {
+         id: u64,
+         reply: oneshot::Sender<Result<Account, String>>,
+@@ -72,6 +77,21 @@ pub fn channel() -> (Control, Commands) {
+     (Control(send), Commands(receive))
+ }
+ impl Control {
++    pub async fn party_loot(
++        &self,
++        instance: u64,
++        grant: super::super::game_services::Loot,
++    ) -> Result<super::super::game_services::LootReceipt, String> {
++        let (reply, receive) = oneshot::channel();
++        self.send(Operation::PartyLoot {
++            instance,
++            grant,
++            reply,
++        })
++        .await?;
++        receive.await.map_err(|_| "Realm operator stopped")?
++    }
++
+     pub async fn account(&self, id: u64) -> Result<Account, String> {
+         let (reply, receive) = oneshot::channel();
+         self.send(Operation::Account { id, reply }).await?;
+@@ -286,6 +306,17 @@ fn coordinator(
+                 }
+             }
+             Work::Operator(operation) => match operation {
++                Operation::PartyLoot {
++                    instance,
++                    grant,
++                    reply,
++                } => {
++                    let result = match leases.get(&instance) {
++                        Some(lease) => realm.party_loot(lease, grant, clock),
++                        None => Err("Realm loot authority is unavailable".into()),
++                    };
++                    let _ = reply.send(result);
++                }
+                 Operation::Account { id, reply } => {
+                     let _ = reply.send(realm.account(id));
+                 }
+diff --git a/crates/verse-world/src/service/realm/registry.rs b/crates/verse-world/src/service/realm/registry.rs
+index 3961b54f49..218897ee75 100644
+--- a/crates/verse-world/src/service/realm/registry.rs
++++ b/crates/verse-world/src/service/realm/registry.rs
+@@ -28,6 +28,7 @@ pub enum Residence {
+ #[derive(Clone, Serialize, Deserialize)]
+ #[serde(tag = "record", rename_all = "snake_case", deny_unknown_fields)]
+ pub(super) enum Record {
++    Service(super::services::Record),
+     Account(Account),
+     Character(Character),
+     Credential {
+@@ -178,6 +179,7 @@ pub(super) fn put(realm: &Realm, mut root: Root, records: Vec<Record>) -> Result
+     let mut keyed = Vec::with_capacity(records.len());
+     for record in records {
+         let key = match &record {
++            Record::Service(r) => r.key(),
+             Record::Account(a) => account_key(a.id),
+             Record::Character(c) => character_key(c.id),
+             Record::Credential { key, .. } => credential_key(*key),
+diff --git a/crates/verse-world/src/service/realm/services.rs b/crates/verse-world/src/service/realm/services.rs
+new file mode 100644
+index 0000000000..8846205ead
+--- /dev/null
++++ b/crates/verse-world/src/service/realm/services.rs
+@@ -0,0 +1,709 @@
++//! Immutable service records and atomic realm publication.
++use super::super::game_services as api;
++use super::*;
++use api::{Action, Group, Id, Item, Kind, Offer, Outcome, Status};
++#[derive(Clone, Default, Serialize, Deserialize)]
++#[serde(deny_unknown_fields)]
++pub(super) struct Member {
++    character: u64,
++    party: Option<Id>,
++    guild: Option<Id>,
++    invites: Vec<Id>,
++    items: Vec<Id>,
++    offers: Vec<Id>,
++}
++impl Member {
++    fn group(&self, kind: Kind) -> Option<Id> {
++        match kind {
++            Kind::Party => self.party,
++            Kind::Guild => self.guild,
++        }
++    }
++    fn set_group(&mut self, kind: Kind, id: Option<Id>) {
++        match kind {
++            Kind::Party => self.party = id,
++            Kind::Guild => self.guild = id,
++        }
++    }
++}
++#[derive(Clone, Serialize, Deserialize)]
++#[serde(tag = "service", rename_all = "snake_case", deny_unknown_fields)]
++pub(super) enum Record {
++    Member(Member),
++    Group(Group),
++    Item(Item),
++    Offer(Offer),
++    Receipt(api::Receipt),
++    Loot(api::LootReceipt),
++}
++fn key(domain: &[u8], bytes: &[u8]) -> Id {
++    let mut value = b"verse.realm.services.v1\0".to_vec();
++    value.extend_from_slice(domain);
++    value.push(0);
++    value.extend_from_slice(bytes);
++    disk::digest(&value)
++}
++fn receipt_key(character: u64, operation: [u8; 16]) -> Id {
++    let mut data = character.to_be_bytes().to_vec();
++    data.extend_from_slice(&operation);
++    key(b"receipt", &data)
++}
++impl Record {
++    pub(super) fn key(&self) -> Id {
++        match self {
++            Self::Member(m) => key(b"member", &m.character.to_be_bytes()),
++            Self::Group(g) => key(b"group", &g.id),
++            Self::Item(i) => key(b"item", &i.id),
++            Self::Offer(o) => key(b"offer", &o.id),
++            Self::Receipt(r) => receipt_key(r.character, r.operation),
++            Self::Loot(r) => key(b"loot", &r.grant.event),
++        }
++    }
++}
++fn ordered<T: Ord>(values: &[T], cap: usize) -> bool {
++    values.len() <= cap && values.windows(2).all(|w| w[0] < w[1])
++}
++fn insert<T: Ord>(values: &mut Vec<T>, value: T, cap: usize) -> Result<(), String> {
++    if let Err(index) = values.binary_search(&value) {
++        if values.len() >= cap {
++            return Err("Service membership budget exceeded".into());
++        }
++        values.insert(index, value);
++    }
++    Ok(())
++}
++fn remove<T: PartialEq>(values: &mut Vec<T>, value: &T) {
++    values.retain(|v| v != value);
++}
++struct Plan {
++    records: BTreeMap<Id, Record>,
++    games: BTreeMap<u64, Gateway>,
++}
++impl Plan {
++    fn new() -> Self {
++        Self {
++            records: BTreeMap::new(),
++            games: BTreeMap::new(),
++        }
++    }
++    fn put(&mut self, r: Record) {
++        self.records.insert(r.key(), r);
++    }
++}
++impl Realm {
++    fn service_record(&self, id: Id) -> Result<Option<Record>, String> {
++        match registry::get(self, self.manifest.registry_root, id)? {
++            Some(registry::Record::Service(r)) if r.key() == id => Ok(Some(r)),
++            None => Ok(None),
++            _ => Err("Realm service record identity differs".into()),
++        }
++    }
++    fn member(&self, character: u64) -> Result<Member, String> {
++        match self.service_record(key(b"member", &character.to_be_bytes()))? {
++            Some(Record::Member(m))
++                if ordered(&m.invites, 16) && ordered(&m.items, 64) && ordered(&m.offers, 16) =>
++            {
++                Ok(m)
++            }
++            None => Ok(Member {
++                character,
++                ..Default::default()
++            }),
++            _ => Err("Invalid realm membership".into()),
++        }
++    }
++    fn group(&self, id: Id) -> Result<Group, String> {
++        match self.service_record(key(b"group", &id))? {
++            Some(Record::Group(g))
++                if ordered(&g.members, g.kind.capacity())
++                    && ordered(&g.invites, 64)
++                    && (g.members.is_empty() && g.leader == 0 || g.members.contains(&g.leader)) =>
++            {
++                Ok(g)
++            }
++            _ => Err("Realm group is unavailable".into()),
++        }
++    }
++    fn item_instance(&self, id: Id) -> Result<Item, String> {
++        match self.service_record(key(b"item", &id))? {
++            Some(Record::Item(i)) if i.owner != 0 && i.version != 0 => Ok(i),
++            _ => Err("Item instance is unavailable".into()),
++        }
++    }
++    fn offer(&self, id: Id) -> Result<Offer, String> {
++        match self.service_record(key(b"offer", &id))? {
++            Some(Record::Offer(o)) if o.give.len() <= 8 && o.want.len() <= 8 => Ok(o),
++            _ => Err("Trade offer is unavailable".into()),
++        }
++    }
++    fn service_character(
++        &self,
++        lease: &Lease,
++        connection: ConnectionId,
++        character: u64,
++    ) -> Result<(), String> {
++        let gateway = &self.games[&lease.instance];
++        let principal = gateway.principal(connection)?.0;
++        let admission = gateway.admission(connection)?;
++        match self.owned(character, principal)?.residence {
++            Residence::Resident { instance, actor }
++                if instance == lease.instance
++                    && actor == admission.actor().actor
++                    && gateway.chamber.rewards.realm_character(actor) == Some(character) =>
++            {
++                Ok(())
++            }
++            _ => Err("Service character does not match the admitted connection".into()),
++        }
++    }
++    fn service_resident(&self, character: u64, now: u64) -> Result<(u64, u64), String> {
++        let placement = self
++            .manifest
++            .characters
++            .get(&character)
++            .ok_or("Service character is not resident")?;
++        let slot = &self.manifest.instances[&placement.instance];
++        if slot.phase == Phase::Stopped || slot.owner.is_none() || slot.expires_ms <= now {
++            return Err("Service character authority is unavailable".into());
++        }
++        Ok((placement.instance, placement.actor))
++    }
++    fn service_commit(&mut self, mut plan: Plan, instances: &[u64]) -> Result<(), String> {
++        for (instance, gateway) in &plan.games {
++            super::super::save::decode_with_history(
++                &gateway.checkpoint()?,
++                gateway.content().ok_or("Service content is missing")?,
++                *instance,
++                Some(self.history.clone()),
++            )?;
++        }
++        let root = registry::put(
++            self,
++            self.manifest.registry_root,
++            plan.records
++                .into_values()
++                .map(registry::Record::Service)
++                .collect(),
++        )?;
++        for (instance, game) in std::mem::take(&mut plan.games) {
++            self.games.insert(instance, game);
++        }
++        self.manifest.registry_root = root;
++        self.services_commit = true;
++        let result = self.publish(instances);
++        self.services_commit = false;
++        result
++    }
++    pub fn services_view(
++        &mut self,
++        lease: &Lease,
++        connection: ConnectionId,
++        character: u64,
++        now: u64,
++    ) -> Result<api::View, String> {
++        self.check(lease, now)?;
++        self.service_character(lease, connection, character)?;
++        let m = self.member(character)?;
++        let view = api::View {
++            realm: self.manifest.id,
++            character,
++            groups: [m.party, m.guild]
++                .into_iter()
++                .flatten()
++                .map(|id| self.group(id))
++                .collect::<Result<_, _>>()?,
++            invitations: m
++                .invites
++                .into_iter()
++                .map(|id| self.group(id))
++                .collect::<Result<_, _>>()?,
++            items: m
++                .items
++                .into_iter()
++                .map(|id| self.item_instance(id))
++                .collect::<Result<_, _>>()?,
++            offers: m
++                .offers
++                .into_iter()
++                .map(|id| self.offer(id))
++                .collect::<Result<_, _>>()?,
++        };
++        view.validate()?;
++        Ok(view)
++    }
++    pub fn services_action(
++        &mut self,
++        lease: &Lease,
++        connection: ConnectionId,
++        realm: Id,
++        character: u64,
++        operation: [u8; 16],
++        action: Action,
++        now: u64,
++    ) -> Result<api::Receipt, String> {
++        self.check(lease, now)?;
++        self.service_character(lease, connection, character)?;
++        if realm != self.manifest.id || operation == [0; 16] {
++            return Err("Service realm or operation identity is incompatible".into());
++        }
++        let digest =
++            disk::digest(&serde_json::to_vec(&action).map_err(|_| "Cannot encode service action")?);
++        if let Some(Record::Receipt(r)) = self.service_record(receipt_key(character, operation))? {
++            return if r.realm == realm && r.digest == digest {
++                Ok(r)
++            } else {
++                Err("Service operation already binds a different action".into())
++            };
++        }
++        let mut identity = realm.to_vec();
++        identity.extend_from_slice(&character.to_be_bytes());
++        identity.extend_from_slice(&operation);
++        let id = key(b"identity", &identity);
++        let mut plan = Plan::new();
++        let outcome = match action {
++            Action::Create { kind, name } => {
++                if name.trim().is_empty()
++                    || name.len() > 80
++                    || !name.bytes().all(|b| (32..=126).contains(&b))
++                {
++                    return Err("Invalid group name".into());
++                }
++                let mut m = self.member(character)?;
++                if m.group(kind).is_some() {
++                    return Err("Character already belongs to this group kind".into());
++                }
++                let g = Group {
++                    id,
++                    kind,
++                    name,
++                    leader: character,
++                    members: vec![character],
++                    invites: vec![],
++                    revision: 1,
++                };
++                m.set_group(kind, Some(id));
++                plan.put(Record::Member(m));
++                plan.put(Record::Group(g.clone()));
++                Outcome::Group { group: g }
++            }
++            Action::Invite { group, target } => {
++                self.character(target)?;
++                let mut g = self.group(group)?;
++                let mut m = self.member(target)?;
++                if g.leader != character || g.members.contains(&target) || m.group(g.kind).is_some()
++                {
++                    return Err("Group invitation is unauthorized or unavailable".into());
++                }
++                insert(&mut g.invites, target, 64)?;
++                insert(&mut m.invites, group, 16)?;
++                g.revision = g
++                    .revision
++                    .checked_add(1)
++                    .ok_or("Group revisions exhausted")?;
++                plan.put(Record::Member(m));
++                plan.put(Record::Group(g.clone()));
++                Outcome::Group { group: g }
++            }
++            Action::Join { group } => {
++                let mut g = self.group(group)?;
++                let mut m = self.member(character)?;
++                if !g.invites.contains(&character)
++                    || !m.invites.contains(&group)
++                    || m.group(g.kind).is_some()
++                    || g.leader == 0
++                {
++                    return Err("Group join requires a current invitation".into());
++                }
++                insert(&mut g.members, character, g.kind.capacity())?;
++                remove(&mut g.invites, &character);
++                remove(&mut m.invites, &group);
++                m.set_group(g.kind, Some(group));
++                g.revision = g
++                    .revision
++                    .checked_add(1)
++                    .ok_or("Group revisions exhausted")?;
++                plan.put(Record::Member(m));
++                plan.put(Record::Group(g.clone()));
++                Outcome::Group { group: g }
++            }
++            Action::Decline { group } => {
++                let mut g = self.group(group)?;
++                let mut m = self.member(character)?;
++                if !g.invites.contains(&character) || !m.invites.contains(&group) {
++                    return Err("Group invitation is unavailable".into());
++                }
++                remove(&mut g.invites, &character);
++                remove(&mut m.invites, &group);
++                g.revision = g
++                    .revision
++                    .checked_add(1)
++                    .ok_or("Group revisions exhausted")?;
++                plan.put(Record::Member(m));
++                plan.put(Record::Group(g.clone()));
++                Outcome::Group { group: g }
++            }
++            Action::Leave { group } | Action::Remove { group, target: _ } => {
++                let target = match action {
++                    Action::Remove { target, .. } => target,
++                    _ => character,
++                };
++                let mut g = self.group(group)?;
++                let mut m = self.member(target)?;
++                if !g.members.contains(&target)
++                    || m.group(g.kind) != Some(group)
++                    || (target != character && g.leader != character)
++                {
++                    return Err("Group removal is unauthorized".into());
++                }
++                remove(&mut g.members, &target);
++                m.set_group(g.kind, None);
++                if g.leader == target {
++                    g.leader = g.members.first().copied().unwrap_or(0);
++                }
++                if g.members.is_empty() {
++                    for invited in std::mem::take(&mut g.invites) {
++                        let mut member = self.member(invited)?;
++                        remove(&mut member.invites, &group);
++                        plan.put(Record::Member(member));
++                    }
++                }
++                g.revision = g
++                    .revision
++                    .checked_add(1)
++                    .ok_or("Group revisions exhausted")?;
++                plan.put(Record::Member(m));
++                plan.put(Record::Group(g.clone()));
++                Outcome::Group { group: g }
++            }
++            Action::Materialize { definition } => {
++                let (instance, actor) = self.service_resident(character, now)?;
++                let game = &self.games[&instance];
++                let gear = game.equipment().item(definition)?;
++                let mut m = self.member(character)?;
++                let allocated = m
++                    .items
++                    .iter()
++                    .map(|id| self.item_instance(*id))
++                    .collect::<Result<Vec<_>, _>>()?
++                    .iter()
++                    .filter(|i| i.definition == definition)
++                    .count();
++                let owned = game
++                    .character_rewards(actor)
++                    .and_then(|c| c.items.get(&definition))
++                    .copied()
++                    .unwrap_or(0);
++                if allocated >= owned as usize {
++                    return Err("No unallocated owned gear remains".into());
++                }
++                let item = Item {
++                    id,
++                    owner: character,
++                    definition,
++                    catalog: disk::digest(
++                        &serde_json::to_vec(gear).map_err(|_| "Cannot encode gear definition")?,
++                    ),
++                    version: 1,
++                    locked: None,
++                };
++                insert(&mut m.items, id, 64)?;
++                plan.put(Record::Member(m));
++                plan.put(Record::Item(item.clone()));
++                Outcome::Item { item }
++            }
++            Action::Offer {
++                to,
++                give,
++                want,
++                expires_ms,
++            } => {
++                if to == character
++                    || expires_ms <= now
++                    || expires_ms > now.saturating_add(300_000)
++                    || give.is_empty() && want.is_empty()
++                {
++                    return Err("Invalid trade recipient, deadline, or empty exchange".into());
++                }
++                self.service_resident(to, now)?;
++                let offer = Offer {
++                    id,
++                    from: character,
++                    to,
++                    give,
++                    want,
++                    expires_ms,
++                    status: Status::Offered,
++                };
++                for (owner, tokens) in [(character, &offer.give), (to, &offer.want)] {
++                    if tokens.len() > 8 || !tokens.windows(2).all(|w| w[0].id < w[1].id) {
++                        return Err("Trade items require bounded sorted unique identities".into());
++                    }
++                    for token in tokens {
++                        let mut item = self.item_instance(token.id)?;
++                        if item.owner != owner
++                            || item.version != token.version
++                            || item.locked.is_some()
++                        {
++                            return Err("Trade item ownership, version, or lock is stale".into());
++                        }
++                        if owner == character {
++                            item.locked = Some(id);
++                            plan.put(Record::Item(item));
++                        }
++                    }
++                    let mut m = self.member(owner)?;
++                    insert(&mut m.offers, id, 16)?;
++                    plan.put(Record::Member(m));
++                }
++                plan.put(Record::Offer(offer.clone()));
++                Outcome::Trade { offer }
++            }
++            Action::Accept { offer } | Action::Cancel { offer } => {
++                let mut offer = self.offer(offer)?;
++                let accept = matches!(action, Action::Accept { .. });
++                if offer.status != Status::Offered
++                    || (accept && (offer.to != character || now >= offer.expires_ms))
++                    || (!accept && offer.from != character && offer.to != character)
++                {
++                    return Err("Trade consent is unauthorized, expired, or already settled".into());
++                }
++                self.settle_trade(&mut plan, &offer, accept, now)?;
++                offer.status = if accept {
++                    Status::Accepted
++                } else {
++                    Status::Cancelled
++                };
++                plan.put(Record::Offer(offer.clone()));
++                Outcome::Trade { offer }
++            }
++        };
++        let receipt = api::Receipt {
++            realm,
++            character,
++            operation,
++            digest,
++            outcome,
++        };
++        plan.put(Record::Receipt(receipt.clone()));
++        let mut instances = plan.games.keys().copied().collect::<Vec<_>>();
++        if !instances.contains(&lease.instance) {
++            instances.push(lease.instance);
++        }
++        self.service_commit(plan, &instances)?;
++        Ok(receipt)
++    }
++}
++impl Realm {
++    fn settle_trade(
++        &self,
++        plan: &mut Plan,
++        offer: &Offer,
++        accept: bool,
++        now: u64,
++    ) -> Result<(), String> {
++        let mut from = self.member(offer.from)?;
++        let mut to = self.member(offer.to)?;
++        if !from.offers.contains(&offer.id) || !to.offers.contains(&offer.id) {
++            return Err("Trade participants lost the offer".into());
++        }
++        let mut giving = Vec::new();
++        let mut wanting = Vec::new();
++        for (owner, tokens, items) in [
++            (offer.from, &offer.give, &mut giving),
++            (offer.to, &offer.want, &mut wanting),
++        ] {
++            if !accept && owner == offer.to {
++                continue;
++            }
++            for token in tokens {
++                let item = self.item_instance(token.id)?;
++                let expected_lock = if owner == offer.from {
++                    Some(offer.id)
++                } else {
++                    None
++                };
++                if item.owner != owner
++                    || item.version != token.version
++                    || item.locked != expected_lock
++                {
++                    return Err("Trade item is stale or belongs to another offer".into());
++                }
++                items.push(item);
++            }
++        }
++        for (owner, member, other, outgoing, incoming) in [
++            (offer.from, &mut from, offer.to, &giving, &wanting),
++            (offer.to, &mut to, offer.from, &wanting, &giving),
++        ] {
++            remove(&mut member.offers, &offer.id);
++            if accept {
++                let (instance, actor) = self.service_resident(owner, now)?;
++                let game = plan
++                    .games
++                    .entry(instance)
++                    .or_insert_with(|| self.games[&instance].fork());
++                for item in incoming {
++                    let gear = game.equipment().item(item.definition)?;
++                    if disk::digest(
++                        &serde_json::to_vec(gear).map_err(|_| "Cannot encode gear definition")?,
++                    ) != item.catalog
++                    {
++                        return Err(
++                            "Destination gear definition differs from the item instance".into()
++                        );
++                    }
++                }
++                let entries = |items: &[Item]| {
++                    let mut counts = BTreeMap::<u64, u32>::new();
++                    for item in items {
++                        *counts.entry(item.definition).or_default() += 1;
++                    }
++                    counts
++                        .into_iter()
++                        .map(|(id, count)| super::super::rewards::Entry { id, count })
++                        .collect::<Vec<_>>()
++                };
++                let mut source = [0; 32];
++                source[..8].copy_from_slice(b"VTRADE01");
++                source[8..].copy_from_slice(&offer.id[..24]);
++                let tx = super::super::rewards::Transaction {
++                    instance,
++                    actor,
++                    source,
++                    experience: 0,
++                    items: entries(incoming),
++                    spent: entries(outgoing),
++                    quests: vec![],
++                    acceptance: None,
++                    outfit: None,
++                    equipment: None,
++                };
++                game.chamber.apply_progression(tx)?;
++                for item in outgoing {
++                    remove(&mut member.items, &item.id);
++                }
++                for item in incoming {
++                    insert(&mut member.items, item.id, 64)?;
++                }
++            }
++            for original in outgoing {
++                let mut item = original.clone();
++                item.locked = None;
++                if accept {
++                    item.owner = other;
++                    item.version = item
++                        .version
++                        .checked_add(1)
++                        .ok_or("Item versions exhausted")?;
++                }
++                plan.put(Record::Item(item));
++            }
++        }
++        plan.put(Record::Member(from));
++        plan.put(Record::Member(to));
++        Ok(())
++    }
++    /// Publishes one authored party outcome and freezes its eligible recipients.
++    pub fn party_loot(
++        &mut self,
++        lease: &Lease,
++        grant: api::Loot,
++        now: u64,
++    ) -> Result<api::LootReceipt, String> {
++        self.check(lease, now)?;
++        if grant.event == [0; 32] || grant.items.len() > 8 || grant.quests.len() > 8 {
++            return Err("Party loot requires a nonzero authoritative event".into());
++        }
++        if let Some(Record::Loot(receipt)) = self.service_record(key(b"loot", &grant.event))? {
++            return if receipt.grant == grant {
++                Ok(receipt)
++            } else {
++                Err("Party loot event already binds different recipients or amounts".into())
++            };
++        }
++        let group = self.group(grant.party)?;
++        if group.kind != Kind::Party {
++            return Err("Party loot requires a party".into());
++        }
++        let recipients = group
++            .members
++            .into_iter()
++            .filter(|id| self.manifest.characters.contains_key(id))
++            .collect::<Vec<_>>();
++        if recipients.is_empty() {
++            return Err("Party loot has no eligible resident recipients".into());
++        }
++        let mut plan = Plan::new();
++        let mut receipts = Vec::new();
++        for character in &recipients {
++            let (instance, actor) = self.service_resident(*character, now)?;
++            let gateway = plan
++                .games
++                .entry(instance)
++                .or_insert_with(|| self.games[&instance].fork());
++            let mut source = [0; 32];
++            source[..8].copy_from_slice(b"VPLOOT01");
++            source[8..].copy_from_slice(&disk::digest(&grant.event)[..24]);
++            receipts.push(gateway.grant_reward(super::super::rewards::Transaction {
++                instance,
++                actor,
++                source,
++                experience: grant.experience,
++                items: grant.items.clone(),
++                quests: grant.quests.clone(),
++                acceptance: None,
++                spent: vec![],
++                outfit: None,
++                equipment: None,
++            })?);
++        }
++        let receipt = api::LootReceipt {
++            grant,
++            recipients,
++            receipts,
++        };
++        plan.put(Record::Loot(receipt.clone()));
++        let mut instances = plan.games.keys().copied().collect::<Vec<_>>();
++        if !instances.contains(&lease.instance) {
++            instances.push(lease.instance);
++        }
++        self.service_commit(plan, &instances)?;
++        Ok(receipt)
++    }
++    pub(super) fn services_request(
++        &mut self,
++        lease: &Lease,
++        connection: ConnectionId,
++        now: u64,
++        body: &Body,
++    ) -> Option<Result<super::super::wire::Reply, String>> {
++        use super::super::wire::Reply;
++        match body {
++            Body::Services { character } => Some(
++                self.services_view(lease, connection, *character, now)
++                    .map(|view| Reply::Services { view }),
++            ),
++            Body::ServiceAction {
++                realm,
++                character,
++                operation,
++                action,
++            } => Some(
++                self.services_action(
++                    lease,
++                    connection,
++                    *realm,
++                    *character,
++                    *operation,
++                    action.clone(),
++                    now,
++                )
++                .map(|receipt| Reply::ServiceApplied { receipt }),
++            ),
++            _ => None,
++        }
++    }
++}
++
++#[cfg(test)]
++mod tests;
+diff --git a/crates/verse-world/src/service/realm/services/tests.rs b/crates/verse-world/src/service/realm/services/tests.rs
+new file mode 100644
+index 0000000000..0165684e86
+--- /dev/null
++++ b/crates/verse-world/src/service/realm/services/tests.rs
+@@ -0,0 +1,1042 @@
++use super::*;
++use crate::service::{
++    Chamber,
++    net::tests::key,
++    wire::{Hello, Reply, Response, VERSION},
++};
++fn gateway(instance: u64, who: u8) -> Gateway {
++    let scene = verse_engine::director::Scene::from_json(include_bytes!(
++        "../../../../../../assets/verse/original/ritual.json"
++    ))
++    .unwrap();
++    let mut game = crate::play::Game::combat_in(scene, false, instance).unwrap();
++    game.time = game.scene.cut_at;
++    game.tick(0., [0.; 2]).unwrap();
++    game.encounter
++        .as_mut()
++        .unwrap()
++        .postpone_casts_until(600.)
++        .unwrap();
++    if who == 11 {
++        let mut class = crate::content::Character::default();
++        class.key = "guardian".into();
++        class.health = 300;
++        class.mana = 40;
++        game.configure_character(game.player_life(), class).unwrap();
++    }
++    let mut gateway = Gateway::new(Chamber::new(game).unwrap())
++        .unwrap()
++        .with_content([9; 32])
++        .unwrap()
++        .with_progression(crate::service::progression::Config {
++            version: 1,
++            levels: vec![0, 100, 300],
++            quests: vec![crate::service::progression::Quest {
++                repeatable: true,
++                dialogue: None,
++                giver: None,
++                prerequisites: vec![],
++                id: 1,
++                name: "Party expedition".into(),
++                objective: 1,
++                goal: 2,
++                experience: 75,
++                items: vec![],
++            }],
++        })
++        .unwrap()
++        .with_equipment(crate::service::equipment::Catalog {
++            version: 1,
++            gear: vec![
++                crate::service::equipment::Gear {
++                    id: 10,
++                    name: "Hat".into(),
++                    slot: crate::service::equipment::Slot::Head,
++                    model: "gear-hat".into(),
++                    offset: [0; 3],
++                    health: 100,
++                    mana: 5,
++                },
++                crate::service::equipment::Gear {
++                    id: 11,
++                    name: "Wand".into(),
++                    slot: crate::service::equipment::Slot::MainHand,
++                    model: "gear-wand".into(),
++                    offset: [0; 3],
++                    health: 25,
++                    mana: 10,
++                },
++            ],
++        })
++        .unwrap();
++    gateway
++        .enroll_primary(key(who).x_only_public_key().0.serialize())
++        .unwrap();
++    gateway
++}
++fn setup(root: &Path, now: u64) -> (Realm, Lease, Lease, u64, u64) {
++    let mut realm = Realm::open(root).unwrap();
++    realm
++        .create(gateway(1001, 11), "127.0.0.1:4001".parse().unwrap(), 4, now)
++        .unwrap();
++    realm
++        .create(gateway(1002, 12), "127.0.0.1:4002".parse().unwrap(), 4, now)
++        .unwrap();
++    let alice = realm
++        .characters()
++        .find(|(_, k, _)| *k == key(11).x_only_public_key().0.serialize())
++        .unwrap()
++        .0;
++    let bob = realm
++        .characters()
++        .find(|(_, k, _)| *k == key(12).x_only_public_key().0.serialize())
++        .unwrap()
++        .0;
++    let a = realm.acquire(1001, [1; 32], now).unwrap();
++    let b = realm.acquire(1002, [2; 32], now).unwrap();
++    (realm, a, b, alice, bob)
++}
++fn connect(realm: &mut Realm, lease: &Lease, who: u8, now: u64) -> ConnectionId {
++    let (connection, hello) = realm.open_connection(lease, now).unwrap();
++    let hello: Hello = serde_json::from_slice(&hello).unwrap();
++    let pair = key(who);
++    let public = pair.x_only_public_key().0.serialize();
++    let signature = secp256k1::Secp256k1::new()
++        .sign_schnorr_no_aux_rand(&hello.challenge.signing_digest(public), &pair)
++        .to_byte_array()
++        .to_vec();
++    let response = dispatch(
++        realm,
++        lease,
++        connection,
++        Body::Authenticate {
++            public_key: public,
++            signature,
++        },
++        now,
++    );
++    assert!(matches!(response.body, Reply::Accepted));
++    connection
++}
++fn dispatch(
++    realm: &mut Realm,
++    lease: &Lease,
++    connection: ConnectionId,
++    body: Body,
++    now: u64,
++) -> Response {
++    serde_json::from_slice(
++        &realm
++            .dispatch(
++                lease,
++                connection,
++                now,
++                &serde_json::to_vec(&Request {
++                    version: VERSION,
++                    request_id: 1,
++                    body,
++                })
++                .unwrap(),
++            )
++            .unwrap(),
++    )
++    .unwrap()
++}
++fn apply(
++    realm: &mut Realm,
++    lease: &Lease,
++    connection: ConnectionId,
++    character: u64,
++    nonce: u8,
++    action: Action,
++) -> api::Receipt {
++    let response = dispatch(
++        realm,
++        lease,
++        connection,
++        Body::ServiceAction {
++            realm: realm.manifest.id,
++            character,
++            operation: [nonce; 16],
++            action,
++        },
++        1,
++    );
++    match response.body {
++        Reply::ServiceApplied { receipt } => receipt,
++        other => panic!("Service action failed: {other:?}"),
++    }
++}
++fn group_id(receipt: api::Receipt) -> Id {
++    match receipt.outcome {
++        Outcome::Group { group } => group.id,
++        _ => panic!("Expected group"),
++    }
++}
++fn item(receipt: api::Receipt) -> Item {
++    match receipt.outcome {
++        Outcome::Item { item } => item,
++        _ => panic!("Expected item"),
++    }
++}
++fn offer(receipt: api::Receipt) -> Offer {
++    match receipt.outcome {
++        Outcome::Trade { offer } => offer,
++        _ => panic!("Expected trade"),
++    }
++}
++fn party(
++    realm: &mut Realm,
++    a: &Lease,
++    b: &Lease,
++    ca: ConnectionId,
++    cb: ConnectionId,
++    alice: u64,
++    bob: u64,
++) -> Id {
++    let id = group_id(apply(
++        realm,
++        a,
++        ca,
++        alice,
++        1,
++        Action::Create {
++            kind: Kind::Party,
++            name: "Expedition".into(),
++        },
++    ));
++    apply(
++        realm,
++        a,
++        ca,
++        alice,
++        2,
++        Action::Invite {
++            group: id,
++            target: bob,
++        },
++    );
++    apply(realm, b, cb, bob, 1, Action::Join { group: id });
++    id
++}
++fn loot(event: u8, party: Id) -> api::Loot {
++    api::Loot {
++        event: [event; 32],
++        party,
++        experience: 25,
++        items: vec![
++            crate::service::rewards::Entry { id: 10, count: 1 },
++            crate::service::rewards::Entry { id: 11, count: 1 },
++        ],
++        quests: vec![crate::service::rewards::Entry { id: 1, count: 2 }],
++    }
++}
++#[test]
++fn authenticated_membership_loot_and_cross_instance_trade_are_durable() {
++    let dir = tempfile::tempdir().unwrap();
++    let root = dir.path().join("realm");
++    let (mut realm, a, b, alice, bob) = setup(&root, 0);
++    let ca = connect(&mut realm, &a, 11, 1);
++    let cb = connect(&mut realm, &b, 12, 1);
++    let party = party(&mut realm, &a, &b, ca, cb, alice, bob);
++    let guild = group_id(apply(
++        &mut realm,
++        &a,
++        ca,
++        alice,
++        3,
++        Action::Create {
++            kind: Kind::Guild,
++            name: "Explorers".into(),
++        },
++    ));
++    apply(
++        &mut realm,
++        &a,
++        ca,
++        alice,
++        4,
++        Action::Invite {
++            group: guild,
++            target: bob,
++        },
++    );
++    apply(&mut realm, &b, cb, bob, 2, Action::Decline { group: guild });
++    apply(
++        &mut realm,
++        &a,
++        ca,
++        alice,
++        5,
++        Action::Invite {
++            group: guild,
++            target: bob,
++        },
++    );
++    apply(&mut realm, &b, cb, bob, 3, Action::Join { group: guild });
++    let grant = realm.party_loot(&a, loot(40, party), 1).unwrap();
++    assert_eq!(grant.recipients, vec![alice, bob]);
++    let hat = item(apply(
++        &mut realm,
++        &a,
++        ca,
++        alice,
++        6,
++        Action::Materialize { definition: 10 },
++    ));
++    let wand = item(apply(
++        &mut realm,
++        &b,
++        cb,
++        bob,
++        4,
++        Action::Materialize { definition: 11 },
++    ));
++    assert!(realm.services_view(&b, cb, alice, 1).is_err());
++    assert!(
++        realm
++            .services_action(
++                &a,
++                ca,
++                realm.manifest.id,
++                alice,
++                [6; 16],
++                Action::Materialize { definition: 11 },
++                1
++            )
++            .is_err()
++    );
++    let trade = offer(apply(
++        &mut realm,
++        &a,
++        ca,
++        alice,
++        7,
++        Action::Offer {
++            to: bob,
++            give: vec![api::Token {
++                id: hat.id,
++                version: 1,
++            }],
++            want: vec![api::Token {
++                id: wand.id,
++                version: 1,
++            }],
++            expires_ms: 1000,
++        },
++    ));
++    assert!(
++        realm
++            .services_action(
++                &a,
++                ca,
++                realm.manifest.id,
++                alice,
++                [8; 16],
++                Action::Accept { offer: trade.id },
++                1
++            )
++            .is_err()
++    );
++    let before = realm.games[&1001].checkpoint().unwrap();
++    realm.games.get_mut(&1002).unwrap().chamber.equipment.gear[0].health += 1;
++    assert!(
++        realm
++            .services_action(
++                &b,
++                cb,
++                realm.manifest.id,
++                bob,
++                [5; 16],
++                Action::Accept { offer: trade.id },
++                1
++            )
++            .is_err()
++    );
++    assert_eq!(realm.games[&1001].checkpoint().unwrap(), before);
++    assert_eq!(realm.item_instance(hat.id).unwrap().owner, alice);
++    realm.games.get_mut(&1002).unwrap().chamber.equipment.gear[0].health -= 1;
++    let accepted = apply(
++        &mut realm,
++        &b,
++        cb,
++        bob,
++        5,
++        Action::Accept { offer: trade.id },
++    );
++    assert_eq!(realm.item_instance(hat.id).unwrap().owner, bob);
++    assert_eq!(realm.item_instance(wand.id).unwrap().owner, alice);
++    assert_eq!(realm.item_instance(hat.id).unwrap().version, 2);
++    assert_eq!(
++        apply(
++            &mut realm,
++            &b,
++            cb,
++            bob,
++            5,
++            Action::Accept { offer: trade.id }
++        ),
++        accepted
++    );
++    assert!(
++        realm
++            .services_action(
++                &a,
++                ca,
++                realm.manifest.id,
++                alice,
++                [9; 16],
++                Action::Offer {
++                    to: bob,
++                    give: vec![api::Token {
++                        id: hat.id,
++                        version: 1
++                    }],
++                    want: vec![],
++                    expires_ms: 1000
++                },
++                1
++            )
++            .is_err()
++    );
++    let actor = realm.manifest.characters[&alice].actor;
++    assert!(
++        !realm.games[&1001]
++            .character_rewards(actor)
++            .unwrap()
++            .items
++            .contains_key(&10)
++    );
++    drop(realm);
++    let mut realm = Realm::open(&root).unwrap();
++    let a = realm.acquire(1001, [3; 32], 2).unwrap();
++    let b = realm.acquire(1002, [4; 32], 2).unwrap();
++    let ca = connect(&mut realm, &a, 11, 2);
++    let cb = connect(&mut realm, &b, 12, 2);
++    assert_eq!(
++        realm.services_view(&a, ca, alice, 2).unwrap().groups.len(),
++        2
++    );
++    assert_eq!(
++        realm
++            .services_action(
++                &b,
++                cb,
++                realm.manifest.id,
++                bob,
++                [5; 16],
++                Action::Accept { offer: trade.id },
++                2
++            )
++            .unwrap(),
++        accepted
++    );
++    assert_eq!(realm.party_loot(&a, loot(40, party), 2).unwrap(), grant);
++    let moved = realm
++        .transfer(&a, &b, alice, [19; 16], [3., 0., 0.], 2)
++        .unwrap();
++    assert_eq!(moved.destination.instance, 1002);
++    let connection = connect(&mut realm, &b, 11, 2);
++    let view = realm.services_view(&b, connection, alice, 2).unwrap();
++    assert_eq!(view.items[0].id, wand.id);
++    assert!(realm.services_view(&a, ca, alice, 2).is_err());
++    realm
++        .logout(&b, key(11).x_only_public_key().0.serialize(), alice, 2)
++        .unwrap();
++    assert_eq!(realm.party_loot(&a, loot(40, party), 2).unwrap(), grant);
++    realm
++        .resume(
++            &b,
++            key(11).x_only_public_key().0.serialize(),
++            alice,
++            [3., 0., 0.],
++            2,
++        )
++        .unwrap();
++    let connection = connect(&mut realm, &b, 11, 2);
++    assert_eq!(
++        realm.services_view(&b, connection, alice, 2).unwrap().items[0].owner,
++        alice
++    );
++}
++#[tokio::test]
++async fn real_tls_party_adventure_claims_trades_transfers_and_restarts() {
++    use crate::service::{client::Client, net::tests::tls, progression::Action as QuestAction};
++    use rustls::pki_types::ServerName;
++    use tokio::{net::TcpListener, sync::oneshot};
++    let dir = tempfile::tempdir().unwrap();
++    let root = dir.path().join("realm");
++    let now = std::time::SystemTime::now()
++        .duration_since(std::time::UNIX_EPOCH)
++        .unwrap()
++        .as_millis() as u64;
++    let (mut realm, a, b, alice, bob) = setup(&root, now);
++    let left = TcpListener::bind("127.0.0.1:0").await.unwrap();
++    let right = TcpListener::bind("127.0.0.1:0").await.unwrap();
++    let left_addr = left.local_addr().unwrap();
++    let right_addr = right.local_addr().unwrap();
++    realm.set_endpoint(&a, left_addr, now).unwrap();
++    realm.set_endpoint(&b, right_addr, now).unwrap();
++    let (tls, connector) = tls();
++    let (stop, shutdown) = oneshot::channel();
++    let (control, commands) = super::super::net::channel();
++    let server = tokio::spawn(super::super::net::serve(
++        realm,
++        vec![(a, left), (b, right)],
++        tls,
++        commands,
++        async {
++            let _ = shutdown.await;
++        },
++    ));
++    let mut ca = Client::connect_with_content(
++        left_addr,
++        ServerName::try_from("localhost").unwrap(),
++        connector.config().clone(),
++        1001,
++        Some([9; 32]),
++        &key(11),
++    )
++    .await
++    .unwrap();
++    let mut cb = Client::connect_with_content(
++        right_addr,
++        ServerName::try_from("localhost").unwrap(),
++        connector.config().clone(),
++        1002,
++        Some([9; 32]),
++        &key(12),
++    )
++    .await
++    .unwrap();
++    let identity = ca.services(alice).await.unwrap().realm;
++    let party = group_id(
++        ca.service_action(
++            identity,
++            alice,
++            [1; 16],
++            Action::Create {
++                kind: Kind::Party,
++                name: "Expedition".into(),
++            },
++        )
++        .await
++        .unwrap(),
++    );
++    ca.service_action(
++        identity,
++        alice,
++        [2; 16],
++        Action::Invite {
++            group: party,
++            target: bob,
++        },
++    )
++    .await
++    .unwrap();
++    cb.service_action(identity, bob, [1; 16], Action::Join { group: party })
++        .await
++        .unwrap();
++    assert!(cb.services(alice).await.is_err());
++    let grant = control.party_loot(1001, loot(50, party)).await.unwrap();
++    assert_eq!(grant.recipients, vec![alice, bob]);
++    for client in [&mut ca, &mut cb] {
++        assert!(matches!(
++            client
++                .quest_cycle(1, 0, QuestAction::Claim)
++                .await
++                .unwrap()
++                .body,
++            Reply::QuestCycleChanged { .. }
++        ));
++        let inv = client.inventory().await.unwrap();
++        assert_eq!(inv.level.level, 2);
++        assert_eq!(inv.experience, 100);
++    }
++    let hat = item(
++        ca.service_action(
++            identity,
++            alice,
++            [3; 16],
++            Action::Materialize { definition: 10 },
++        )
++        .await
++        .unwrap(),
++    );
++    let wand = item(
++        cb.service_action(
++            identity,
++            bob,
++            [2; 16],
++            Action::Materialize { definition: 11 },
++        )
++        .await
++        .unwrap(),
++    );
++    let trade = offer(
++        ca.service_action(
++            identity,
++            alice,
++            [4; 16],
++            Action::Offer {
++                to: bob,
++                give: vec![api::Token {
++                    id: hat.id,
++                    version: 1,
++                }],
++                want: vec![api::Token {
++                    id: wand.id,
++                    version: 1,
++                }],
++                expires_ms: now + 300_000,
++            },
++        )
++        .await
++        .unwrap(),
++    );
++    assert!(
++        ca.service_action(identity, alice, [5; 16], Action::Accept { offer: trade.id })
++            .await
++            .is_err()
++    );
++    let accepted = cb
++        .service_action(identity, bob, [3; 16], Action::Accept { offer: trade.id })
++        .await
++        .unwrap();
++    assert_eq!(
++        cb.service_action(identity, bob, [3; 16], Action::Accept { offer: trade.id })
++            .await
++            .unwrap(),
++        accepted
++    );
++    ca.equip_gear(crate::service::equipment::Slot::MainHand, 11, [31; 16])
++        .await
++        .unwrap();
++    let stats = ca.snapshot().await.unwrap().snapshot.player;
++    assert_eq!((stats.max_hp, stats.max_mana), (335, 51));
++    assert!(stats.hp <= 300);
++    ca.quest_cycle(1, 0, QuestAction::Reset).await.unwrap();
++    assert!(matches!(
++        ca.quest_cycle(1, 1, QuestAction::Claim).await.unwrap().body,
++        Reply::Refused { .. }
++    ));
++    ca.quest_cycle(1, 0, QuestAction::Claim).await.unwrap();
++    assert_eq!(ca.inventory().await.unwrap().experience, 100);
++    control.party_loot(1001, loot(51, party)).await.unwrap();
++    ca.quest_cycle(1, 1, QuestAction::Claim).await.unwrap();
++    assert_eq!(ca.inventory().await.unwrap().experience, 200);
++    let moved = control
++        .transfer(1001, 1002, alice, [19; 16], [3., 0., 0.])
++        .await
++        .unwrap();
++    assert_eq!(moved.destination.instance, 1002);
++    assert!(ca.snapshot().await.is_err());
++    let mut ca = Client::connect_with_content(
++        right_addr,
++        ServerName::try_from("localhost").unwrap(),
++        connector.config().clone(),
++        1002,
++        Some([9; 32]),
++        &key(11),
++    )
++    .await
++    .unwrap();
++    assert_eq!(ca.services(alice).await.unwrap().items[0].id, wand.id);
++    assert!(matches!(
++        ca.logout().await.unwrap().body,
++        Reply::LoggedOut { .. }
++    ));
++    assert!(!ca.connected());
++    let mut ca = Client::connect_with_content(
++        right_addr,
++        ServerName::try_from("localhost").unwrap(),
++        connector.config().clone(),
++        1002,
++        Some([9; 32]),
++        &key(11),
++    )
++    .await
++    .unwrap();
++    assert!(ca.control().is_none());
++    assert!(ca.services(alice).await.is_err());
++    assert!(ca.connected());
++    ca.select_character(alice).await.unwrap();
++    assert_eq!(ca.inventory().await.unwrap().experience, 200);
++    ca.quest_cycle(1, 1, QuestAction::Claim).await.unwrap();
++    assert_eq!(ca.inventory().await.unwrap().experience, 200);
++    assert_eq!(
++        control.party_loot(1001, loot(50, party)).await.unwrap(),
++        grant
++    );
++    drop(ca);
++    drop(cb);
++    stop.send(()).unwrap();
++    let exit = server.await.unwrap().unwrap();
++    assert!(exit.failure.is_none(), "{:?}", exit.failure);
++    let stats = exit.stats;
++    drop(exit.realm);
++    let mut realm = Realm::open(&root).unwrap();
++    let now = std::time::SystemTime::now()
++        .duration_since(std::time::UNIX_EPOCH)
++        .unwrap()
++        .as_millis() as u64;
++    let a = realm.acquire(1001, [3; 32], now + 1000).unwrap();
++    let b = realm.acquire(1002, [4; 32], now + 1000).unwrap();
++    let ca = connect(&mut realm, &b, 11, now + 1000);
++    let cb = connect(&mut realm, &b, 12, now + 1000);
++    assert_eq!(
++        realm
++            .services_view(&b, ca, alice, now + 1000)
++            .unwrap()
++            .items[0]
++            .id,
++        wand.id
++    );
++    assert_eq!(
++        realm
++            .services_action(
++                &b,
++                cb,
++                identity,
++                bob,
++                [3; 16],
++                Action::Accept { offer: trade.id },
++                now + 1000
++            )
++            .unwrap(),
++        accepted
++    );
++    assert_eq!(
++        realm.party_loot(&a, loot(50, party), now + 1000).unwrap(),
++        grant
++    );
++    let actor = realm.manifest.characters[&alice].actor;
++    assert_eq!(
++        realm.games[&1002]
++            .character_rewards(actor)
++            .unwrap()
++            .experience,
++        200
++    );
++    if let Ok(path) = std::env::var("VERSE_GAME_SERVICES_RECEIPT") {
++        std::fs::write(
++            path,
++            serde_json::to_vec_pretty(&serde_json::json!({
++                "schema": "verse.realm.game-services.acceptance.v1", "instances": 2,
++                "authenticated_characters": 2, "stable_party_members": 2, "quest_cycles": 2,
++                "item_instances": 2, "trade_consent": "offer owner and target acceptance",
++                "trade_exact_retry": true, "foreign_mutation_refused": true,
++                "guardian_level_two_with_wand": { "max_hp": 335, "max_mana": 51 },
++                "logout_resume": true, "zone_transfer": true, "restart": true,
++                "party_event_recipients_frozen": true, "final_character_experience": 200,
++                "host_loot": "trusted local authored outcome adapter", "stats": stats
++            }))
++            .unwrap(),
++        )
++        .unwrap();
++    }
++}
++#[test]
++fn services_crash_child() {
++    let Ok(root) = std::env::var("VERSE_GAME_SERVICES_CHILD_ROOT") else {
++        return;
++    };
++    let mut realm = Realm::open(Path::new(&root)).unwrap();
++    let a = realm.acquire(1001, [1; 32], 2).unwrap();
++    let b = realm.acquire(1002, [2; 32], 2).unwrap();
++    let bob = realm
++        .characters()
++        .find(|(_, k, _)| *k == key(12).x_only_public_key().0.serialize())
++        .unwrap()
++        .0;
++    let connection = connect(&mut realm, &b, 12, 2);
++    let trade = realm.member(bob).unwrap().offers[0];
++    realm
++        .services_action(
++            &b,
++            connection,
++            realm.manifest.id,
++            bob,
++            [5; 16],
++            Action::Accept { offer: trade },
++            2,
++        )
++        .unwrap();
++    let _ = a;
++    panic!("Service publication crash boundary did not fire");
++}
++#[test]
++fn every_trade_publication_boundary_selects_both_inventories_and_owners() {
++    for stage in [
++        "before_snapshots",
++        "after_snapshots",
++        "before_seal",
++        "after_seal",
++        "after_directory_sync",
++    ] {
++        let dir = tempfile::tempdir().unwrap();
++        let root = dir.path().join("realm");
++        let (mut realm, a, b, alice, bob) = setup(&root, 0);
++        let ca = connect(&mut realm, &a, 11, 1);
++        let cb = connect(&mut realm, &b, 12, 1);
++        let party = party(&mut realm, &a, &b, ca, cb, alice, bob);
++        realm.party_loot(&a, loot(60, party), 1).unwrap();
++        let hat = item(apply(
++            &mut realm,
++            &a,
++            ca,
++            alice,
++            3,
++            Action::Materialize { definition: 10 },
++        ));
++        let wand = item(apply(
++            &mut realm,
++            &b,
++            cb,
++            bob,
++            2,
++            Action::Materialize { definition: 11 },
++        ));
++        let trade = offer(apply(
++            &mut realm,
++            &a,
++            ca,
++            alice,
++            4,
++            Action::Offer {
++                to: bob,
++                give: vec![api::Token {
++                    id: hat.id,
++                    version: 1,
++                }],
++                want: vec![api::Token {
++                    id: wand.id,
++                    version: 1,
++                }],
++                expires_ms: 1000,
++            },
++        ));
++        drop(realm);
++        let output = std::process::Command::new(std::env::current_exe().unwrap())
++            .args([
++                "--exact",
++                "service::realm::services::tests::services_crash_child",
++                "--nocapture",
++                "--test-threads=1",
++            ])
++            .env("VERSE_GAME_SERVICES_CHILD_ROOT", &root)
++            .env("VERSE_REALM_CRASH_AT", format!("services_{stage}"))
++            .output()
++            .unwrap();
++        assert_eq!(
++            output.status.code(),
++            Some(86),
++            "{stage}: {}",
++            String::from_utf8_lossy(&output.stderr)
++        );
++        let mut realm = Realm::open(&root).unwrap();
++        let a = realm.acquire(1001, [3; 32], 3).unwrap();
++        let b = realm.acquire(1002, [4; 32], 3).unwrap();
++        let sealed = matches!(stage, "after_seal" | "after_directory_sync");
++        assert_eq!(
++            realm.item_instance(hat.id).unwrap().owner,
++            if sealed { bob } else { alice }
++        );
++        assert_eq!(
++            realm.item_instance(wand.id).unwrap().owner,
++            if sealed { alice } else { bob }
++        );
++        let ca_actor = realm.manifest.characters[&alice].actor;
++        let cb_actor = realm.manifest.characters[&bob].actor;
++        let ca_items = &realm.games[&1001]
++            .character_rewards(ca_actor)
++            .unwrap()
++            .items;
++        let cb_items = &realm.games[&1002]
++            .character_rewards(cb_actor)
++            .unwrap()
++            .items;
++        assert_eq!(
++            ca_items.get(&10).copied().unwrap_or(0),
++            if sealed { 0 } else { 1 }
++        );
++        assert_eq!(
++            cb_items.get(&11).copied().unwrap_or(0),
++            if sealed { 0 } else { 1 }
++        );
++        assert_eq!(
++            ca_items.get(&11).copied().unwrap_or(0),
++            if sealed { 2 } else { 1 }
++        );
++        assert_eq!(
++            cb_items.get(&10).copied().unwrap_or(0),
++            if sealed { 2 } else { 1 }
++        );
++        let cb = connect(&mut realm, &b, 12, 3);
++        let first = realm
++            .services_action(
++                &b,
++                cb,
++                realm.manifest.id,
++                bob,
++                [5; 16],
++                Action::Accept { offer: trade.id },
++                3,
++            )
++            .unwrap();
++        assert_eq!(
++            realm
++                .services_action(
++                    &b,
++                    cb,
++                    realm.manifest.id,
++                    bob,
++                    [5; 16],
++                    Action::Accept { offer: trade.id },
++                    3
++                )
++                .unwrap(),
++            first
++        );
++        assert_eq!(realm.item_instance(hat.id).unwrap().owner, bob);
++        let _ = a;
++        println!("trade boundary {stage}: paired inventories and ownership, exact retry");
++    }
++}
++#[test]
++fn offers_lock_only_the_sender_and_cancel_after_requested_items_change_owner() {
++    let dir = tempfile::tempdir().unwrap();
++    let root = dir.path().join("realm");
++    let (mut realm, a, b, alice, bob) = setup(&root, 0);
++    let ca = connect(&mut realm, &a, 11, 1);
++    let cb = connect(&mut realm, &b, 12, 1);
++    let party = party(&mut realm, &a, &b, ca, cb, alice, bob);
++    realm.party_loot(&a, loot(60, party), 1).unwrap();
++    let hat = item(apply(
++        &mut realm,
++        &a,
++        ca,
++        alice,
++        3,
++        Action::Materialize { definition: 10 },
++    ));
++    let wand = item(apply(
++        &mut realm,
++        &b,
++        cb,
++        bob,
++        2,
++        Action::Materialize { definition: 11 },
++    ));
++    let first = offer(apply(
++        &mut realm,
++        &a,
++        ca,
++        alice,
++        4,
++        Action::Offer {
++            to: bob,
++            give: vec![api::Token {
++                id: hat.id,
++                version: 1,
++            }],
++            want: vec![api::Token {
++                id: wand.id,
++                version: 1,
++            }],
++            expires_ms: 1000,
++        },
++    ));
++    assert_eq!(realm.item_instance(hat.id).unwrap().locked, Some(first.id));
++    assert_eq!(realm.item_instance(wand.id).unwrap().locked, None);
++    let gift = offer(apply(
++        &mut realm,
++        &b,
++        cb,
++        bob,
++        3,
++        Action::Offer {
++            to: alice,
++            give: vec![api::Token {
++                id: wand.id,
++                version: 1,
++            }],
++            want: vec![],
++            expires_ms: 1000,
++        },
++    ));
++    apply(
++        &mut realm,
++        &a,
++        ca,
++        alice,
++        5,
++        Action::Accept { offer: gift.id },
++    );
++    assert!(
++        realm
++            .services_action(
++                &b,
++                cb,
++                realm.manifest.id,
++                bob,
++                [4; 16],
++                Action::Accept { offer: first.id },
++                1
++            )
++            .is_err()
++    );
++    apply(
++        &mut realm,
++        &b,
++        cb,
++        bob,
++        4,
++        Action::Cancel { offer: first.id },
++    );
++    assert_eq!(realm.item_instance(hat.id).unwrap().locked, None);
++    assert_eq!(realm.item_instance(wand.id).unwrap().owner, alice);
++    assert_eq!(realm.item_instance(wand.id).unwrap().version, 2);
++    let expiring = offer(apply(
++        &mut realm,
++        &a,
++        ca,
++        alice,
++        6,
++        Action::Offer {
++            to: bob,
++            give: vec![api::Token {
++                id: hat.id,
++                version: 1,
++            }],
++            want: vec![],
++            expires_ms: 1000,
++        },
++    ));
++    assert!(
++        realm
++            .services_action(
++                &b,
++                cb,
++                realm.manifest.id,
++                bob,
++                [5; 16],
++                Action::Accept { offer: expiring.id },
++                1000
++            )
++            .is_err()
++    );
++    realm
++        .services_action(
++            &b,
++            cb,
++            realm.manifest.id,
++            bob,
++            [5; 16],
++            Action::Cancel { offer: expiring.id },
++            1000,
++        )
++        .unwrap();
++    assert_eq!(realm.item_instance(hat.id).unwrap().owner, alice);
++    assert_eq!(realm.item_instance(hat.id).unwrap().locked, None);
++}
+diff --git a/crates/verse-world/src/service/rewards.rs b/crates/verse-world/src/service/rewards.rs
+index 549b9b5895..eb39cbcd52 100644
+--- a/crates/verse-world/src/service/rewards.rs
++++ b/crates/verse-world/src/service/rewards.rs
+@@ -41,6 +41,10 @@ pub struct Transaction {
+ #[derive(Clone, Debug, Default, Eq, PartialEq, Serialize, Deserialize)]
+ #[serde(deny_unknown_fields)]
+ pub struct Character {
++    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
++    pub quest_cycles: BTreeMap<u64, u64>,
++    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
++    pub completed_cycles: BTreeMap<u64, u64>,
+     pub claimed_quests: BTreeSet<u64>,
+     pub accepted_quests: BTreeMap<u64, u32>,
+     pub experience: u64,
+@@ -49,6 +53,18 @@ pub struct Character {
+     pub outfit: u64,
+     pub equipment: BTreeMap<super::equipment::Slot, u64>,
+ }
++impl Character {
++    pub fn cycle(&self, quest: u64) -> u64 {
++        self.quest_cycles.get(&quest).copied().unwrap_or(0)
++    }
++    pub fn completed(&self, quest: u64) -> bool {
++        self.completed_cycles
++            .get(&quest)
++            .copied()
++            .or_else(|| self.claimed_quests.contains(&quest).then_some(0))
++            == Some(self.cycle(quest))
++    }
++}
+ 
+ /// Selects eligible resident recipients for an authored defeat reward.
+ #[derive(Clone, Debug, Default, Eq, PartialEq, Serialize, Deserialize)]
+@@ -311,6 +327,16 @@ impl Ledger {
+                 || character.quests.len() > MAX_ENTRIES
+                 || character.accepted_quests.len() > MAX_ENTRIES
+                 || character.claimed_quests.len() > MAX_ENTRIES
++                || character.quest_cycles.len() > MAX_ENTRIES
++                || character.completed_cycles.len() > MAX_ENTRIES
++                || character
++                    .quest_cycles
++                    .iter()
++                    .any(|(q, c)| *q == 0 || *c == 0)
++                || character
++                    .completed_cycles
++                    .iter()
++                    .any(|(q, c)| !character.claimed_quests.contains(q) || *c > character.cycle(*q))
+                 || character.claimed_quests.contains(&0)
+                 || character
+                     .items
+@@ -424,13 +450,47 @@ impl Ledger {
+         if let Some(acceptance) = transaction.acceptance {
+             if acceptance.quest == 0
+                 || acceptance.baseline > MAX_COUNT
+-                || next.accepted_quests.contains_key(&acceptance.quest)
+-                || next.accepted_quests.len() >= MAX_ENTRIES
++                || acceptance.cycle != next.cycle(acceptance.quest)
+             {
+-                return Err("Invalid or repeated quest acceptance".into());
++                return Err("Invalid or stale quest cycle".into());
++            }
++            use super::progression::Transition;
++            match acceptance.transition {
++                Transition::Start => {
++                    if next.completed(acceptance.quest)
++                        || next.accepted_quests.contains_key(&acceptance.quest)
++                        || next.accepted_quests.len() >= MAX_ENTRIES
++                    {
++                        return Err("Invalid or repeated quest acceptance".into());
++                    }
++                    next.accepted_quests
++                        .insert(acceptance.quest, acceptance.baseline);
++                }
++                Transition::Abandon | Transition::Reset => {
++                    if !super::progression::cycle_source(&transaction.source)
++                        || (acceptance.transition == Transition::Reset)
++                            != next.completed(acceptance.quest)
++                        || (acceptance.transition == Transition::Abandon
++                            && !next.accepted_quests.contains_key(&acceptance.quest)
++                            && !acceptance.automatic)
++                        || (!next.quest_cycles.contains_key(&acceptance.quest)
++                            && next.quest_cycles.len() >= MAX_ENTRIES)
++                    {
++                        return Err("Invalid quest cycle transition".into());
++                    }
++                    let cycle = acceptance
++                        .cycle
++                        .checked_add(1)
++                        .ok_or("Quest cycles exhausted")?;
++                    next.quest_cycles.insert(acceptance.quest, cycle);
++                    next.accepted_quests.remove(&acceptance.quest);
++                    // Automatic quests retain an active objective window after abandonment.
++                    if acceptance.transition == Transition::Reset || acceptance.automatic {
++                        next.accepted_quests
++                            .insert(acceptance.quest, acceptance.baseline);
++                    }
++                }
+             }
+-            next.accepted_quests
+-                .insert(acceptance.quest, acceptance.baseline);
+         }
+         next.experience = next
+             .experience
+@@ -480,10 +540,17 @@ impl Ledger {
+         }
+         if transaction.source[..8] == *b"VQUEST01" {
+             let quest = u64::from_be_bytes(transaction.source[16..24].try_into().unwrap());
+-            if quest == 0 || next.claimed_quests.len() >= MAX_ENTRIES {
++            let cycle = u64::from_be_bytes(transaction.source[24..].try_into().unwrap());
++            if quest == 0
++                || cycle != next.cycle(quest)
++                || next.completed(quest)
++                || (!next.claimed_quests.contains(&quest)
++                    && next.claimed_quests.len() >= MAX_ENTRIES)
++            {
+                 return Err("Claimed quest budget exceeded".into());
+             }
+             next.claimed_quests.insert(quest);
++            next.completed_cycles.insert(quest, cycle);
+         }
+         let receipt = Receipt {
+             revision: self
+@@ -646,6 +713,7 @@ mod tests {
+         let mut ledger = Ledger::default();
+         ledger.attach(archive.clone()).unwrap();
+         let quest = super::super::progression::Quest {
++            repeatable: false,
+             dialogue: None,
+             giver: Some(2),
+             prerequisites: vec![],
+diff --git a/crates/verse-world/src/service/save.rs b/crates/verse-world/src/service/save.rs
+index 376d0d0651..1c4cb87250 100644
+--- a/crates/verse-world/src/service/save.rs
++++ b/crates/verse-world/src/service/save.rs
+@@ -18,7 +18,7 @@ struct Owner {
+     key: [u8; 32],
+     actor: u64,
+ }
+-pub const CHARACTER_SCHEMA: u16 = 3;
++pub const CHARACTER_SCHEMA: u16 = 4;
+ #[derive(Serialize, Deserialize)]
+ #[serde(deny_unknown_fields)]
+ struct Saved {
+@@ -196,7 +196,7 @@ impl Prepared {
+         let (world, world_bytes) = self.game.checkpoint_parts()?;
+         let ledger = self.rewards.checkpoint();
+         let saved = Saved {
+-            version: 11,
++            version: 12,
+             content: self.content,
+             world: String::from_utf8(world_bytes).map_err(|_| "Cannot encode saved world")?,
+             rewards: ledger.is_none().then(|| self.rewards.transactions()),
+@@ -273,7 +273,7 @@ pub(super) fn decode_with_history(
+         return Err("Saved chamber byte budget exceeded".into());
+     }
+     let saved: Saved = serde_json::from_slice(bytes).map_err(|_| "Invalid saved chamber")?;
+-    if !matches!(saved.version, 1..=11)
++    if !matches!(saved.version, 1..=12)
+         || (saved.version < 11 && (saved.guests.is_some() || saved.configured_players != 0))
+         || saved.configured_players > 63
+         || (saved.version == 1 && saved.rewards.is_some())
+@@ -285,6 +285,8 @@ pub(super) fn decode_with_history(
+                 || saved.character_schema
+                     != Some(if saved.version == 9 {
+                         2
++                    } else if saved.version < 12 {
++                        3
+                     } else {
+                         CHARACTER_SCHEMA
+                     })
+@@ -358,7 +360,12 @@ pub(super) fn decode_with_history(
+             }
+         }
+     }
+-    for (life, _, _) in chamber.game.controlled_effects() {
++    let lives = chamber
++        .game
++        .controlled_effects()
++        .map(|(life, _, _)| life)
++        .collect::<Vec<_>>();
++    for life in lives {
+         let character = chamber
+             .rewards
+             .character(life.actor)
+@@ -371,15 +378,35 @@ pub(super) fn decode_with_history(
+             .accepted_quests
+             .keys()
+             .chain(&character.claimed_quests)
++            .chain(character.quest_cycles.keys())
++            .chain(character.completed_cycles.keys())
+         {
+             if !chamber.progression.quests.iter().any(|q| q.id == *id) {
+                 return Err("Saved character references an undefined quest".into());
+             }
+         }
+-        let (hp, mana) = chamber.equipment.limits(&character)?;
++        let (hp, mana) = chamber.resource_limits(life.actor, &character)?;
+         let resources = chamber.game.player_snapshot(life)?.player;
+-        if resources.max_hp != hp || resources.max_mana != mana {
+-            return Err("Saved equipment resource limits do not match owned selections".into());
++        if saved.version < 12 {
++            if !character.quest_cycles.is_empty() || !character.completed_cycles.is_empty() {
++                // Cycle zero completions are the legacy claim representation.
++                if !character.quest_cycles.is_empty()
++                    || character.completed_cycles.values().any(|c| *c != 0)
++                {
++                    return Err("Legacy save cannot contain quest cycles".into());
++                }
++            }
++            let old = chamber.equipment.limits(&character)?;
++            if (resources.max_hp, resources.max_mana) != old
++                && (resources.max_hp, resources.max_mana) != (hp, mana)
++            {
++                return Err("Legacy character resource limits are incompatible".into());
++            }
++            chamber.game.equipment_limits(life.actor, hp, mana)?;
++        } else if resources.max_hp != hp || resources.max_mana != mana {
++            return Err(
++                "Saved class, level, and equipment resource limits are inconsistent".into(),
++            );
+         }
+     }
+     if saved.version == 1 && (!saved.reward_policy.is_empty() || saved.reward_cursor != 0) {
+@@ -614,6 +641,7 @@ mod tests {
+             version: 1,
+             levels: vec![0, 100],
+             quests: vec![Quest {
++                repeatable: false,
+                 dialogue: None,
+                 giver: Some(2),
+                 prerequisites: vec![],
+@@ -642,6 +670,144 @@ mod tests {
+         })
+         .unwrap();
+     }
++    #[test]
++    fn quest_cycles_refuse_stale_claims_and_survive_recovery() {
++        use super::super::progression::Action;
++        let (g, keys) = fixture_at(Some(Vec3::new(-1., 0., -22.)));
++        let mut config = giver_campaign();
++        config.quests[0].repeatable = true;
++        let mut g = g.with_progression(config).unwrap();
++        let connection = join(&mut g, &keys[0]);
++        let admission = g.admission(connection).unwrap();
++        let life = admission.actor();
++        let epoch = admission.epoch();
++        let giver = g.game().actor_life(2).unwrap();
++        g.quest_cycle(connection, life, epoch, 1, 0, Action::Accept { giver })
++            .unwrap();
++        let abandon = g
++            .quest_cycle(connection, life, epoch, 1, 0, Action::Abandon)
++            .unwrap();
++        objective(&mut g, life.actor, 2, 90);
++        assert!(
++            g.quest_cycle(connection, life, epoch, 1, 0, Action::Claim)
++                .is_err()
++        );
++        g.quest_cycle(connection, life, epoch, 1, 1, Action::Accept { giver })
++            .unwrap();
++        assert!(
++            g.quest_cycle(connection, life, epoch, 1, 1, Action::Claim)
++                .is_err()
++        );
++        objective(&mut g, life.actor, 2, 91);
++        let claim = g
++            .quest_cycle(connection, life, epoch, 1, 1, Action::Claim)
++            .unwrap();
++        let reset = g
++            .quest_cycle(connection, life, epoch, 1, 1, Action::Reset)
++            .unwrap();
++        assert_eq!(
++            g.quest_cycle(connection, life, epoch, 1, 0, Action::Abandon)
++                .unwrap(),
++            abandon
++        );
++        assert_eq!(
++            g.quest_cycle(connection, life, epoch, 1, 1, Action::Claim)
++                .unwrap(),
++            claim
++        );
++        assert_eq!(
++            g.quest_cycle(connection, life, epoch, 1, 1, Action::Reset)
++                .unwrap(),
++            reset
++        );
++        assert!(
++            g.quest_cycle(connection, life, epoch, 1, 1, Action::Abandon)
++                .is_err()
++        );
++        assert!(
++            g.quest_cycle(connection, life, epoch, 1, 2, Action::Claim)
++                .is_err()
++        );
++        assert_eq!(g.character_rewards(life.actor).unwrap().experience, 75);
++        objective(&mut g, life.actor, 2, 92);
++        let second = g
++            .quest_cycle(connection, life, epoch, 1, 2, Action::Claim)
++            .unwrap();
++        assert_eq!(g.character_rewards(life.actor).unwrap().experience, 150);
++        assert_eq!(g.quest_log(life.actor)[0].cycle, 2);
++        let snapshot = g.checkpoint().unwrap();
++        let mut recovered = Gateway::restore(&snapshot, [6; 32], 240).unwrap();
++        let connection = join(&mut recovered, &keys[0]);
++        let admission = recovered.admission(connection).unwrap();
++        assert_eq!(
++            recovered
++                .quest_cycle(
++                    connection,
++                    admission.actor(),
++                    admission.epoch(),
++                    1,
++                    2,
++                    Action::Claim
++                )
++                .unwrap(),
++            second
++        );
++        assert_eq!(
++            recovered.character_rewards(life.actor).unwrap().experience,
++            150
++        );
++        assert!(
++            recovered
++                .quest_cycle(
++                    connection,
++                    admission.actor(),
++                    admission.epoch(),
++                    1,
++                    9,
++                    Action::Claim
++                )
++                .is_err()
++        );
++    }
++
++    #[test]
++    fn automatic_quest_abandonment_starts_a_fresh_durable_window() {
++        use super::super::progression::Action;
++        let (g, keys) = fixture();
++        let mut config = giver_campaign();
++        config.quests[0].giver = None;
++        config.quests[0].repeatable = true;
++        let mut g = g.with_progression(config).unwrap();
++        let connection = join(&mut g, &keys[0]);
++        let admission = g.admission(connection).unwrap();
++        let life = admission.actor();
++        let epoch = admission.epoch();
++        objective(&mut g, life.actor, 1, 93);
++        g.quest_cycle(connection, life, epoch, 1, 0, Action::Abandon)
++            .unwrap();
++        assert_eq!(g.quest_log(life.actor)[0].progress, 0);
++        objective(&mut g, life.actor, 2, 94);
++        g.quest_cycle(connection, life, epoch, 1, 1, Action::Claim)
++            .unwrap();
++        g.quest_cycle(connection, life, epoch, 1, 1, Action::Reset)
++            .unwrap();
++        g.quest_cycle(connection, life, epoch, 1, 2, Action::Abandon)
++            .unwrap();
++        assert!(
++            g.quest_cycle(connection, life, epoch, 1, 3, Action::Claim)
++                .is_err()
++        );
++        objective(&mut g, life.actor, 2, 95);
++        g.quest_cycle(connection, life, epoch, 1, 3, Action::Claim)
++            .unwrap();
++        assert_eq!(g.character_rewards(life.actor).unwrap().experience, 150);
++        let saved = g.checkpoint().unwrap();
++        assert!(Gateway::restore(&saved, [6; 32], 240).is_ok());
++        let mut corrupt: serde_json::Value = serde_json::from_slice(&saved).unwrap();
++        corrupt["progression"]["quests"] = serde_json::json!([]);
++        assert!(Gateway::restore(&serde_json::to_vec(&corrupt).unwrap(), [6; 32], 240).is_err());
++    }
++
+     #[test]
+     fn npc_enrollment_baselines_retries_and_claims_survive_recovery() {
+         let (g, keys) = fixture_at(Some(Vec3::new(-1., 0., -22.)));
+@@ -796,6 +962,7 @@ mod tests {
+             levels: vec![0, 100],
+             quests: vec![
+                 Quest {
++                    repeatable: false,
+                     dialogue: None,
+                     giver: None,
+                     prerequisites: vec![],
+@@ -807,6 +974,7 @@ mod tests {
+                     items: vec![],
+                 },
+                 Quest {
++                    repeatable: false,
+                     dialogue: None,
+                     giver: None,
+                     prerequisites: vec![1],
+@@ -892,6 +1060,7 @@ mod tests {
+             version: 1,
+             levels: vec![0, 100, 300],
+             quests: vec![Quest {
++                repeatable: false,
+                 dialogue: None,
+                 giver: None,
+                 prerequisites: vec![],
+@@ -1011,6 +1180,13 @@ mod tests {
+         legacy.as_object_mut().unwrap().remove("equipment");
+         legacy.as_object_mut().unwrap().remove("progression");
+         legacy["rewards"].as_array_mut().unwrap().truncate(2);
++        let mut old_world = g.chamber.game.clone();
++        for actor in [own.actor().actor, other.actor().actor] {
++            old_world.equipment_limits(actor, 200, 20).unwrap();
++        }
++        legacy["world"] = String::from_utf8(old_world.checkpoint().unwrap())
++            .unwrap()
++            .into();
+         let legacy = Gateway::restore(&serde_json::to_vec(&legacy).unwrap(), [6; 32], 240).unwrap();
+         assert_eq!(
+             legacy
+@@ -1084,7 +1260,7 @@ mod tests {
+         assert_eq!(upgraded.game().player_life(), g.game().player_life());
+         let saved: serde_json::Value =
+             serde_json::from_slice(&upgraded.checkpoint().unwrap()).unwrap();
+-        assert_eq!(saved["version"], 11);
++        assert_eq!(saved["version"], 12);
+     }
+     #[test]
+     fn recovery_items_spend_once_restore_only_owned_resources_and_validate_saved_debits() {
+diff --git a/crates/verse-world/src/service/view.rs b/crates/verse-world/src/service/view.rs
+index 9c097ffb38..2faf101538 100644
+--- a/crates/verse-world/src/service/view.rs
++++ b/crates/verse-world/src/service/view.rs
+@@ -989,6 +989,7 @@ mod tests {
+                 version: 1,
+                 levels: vec![0],
+                 quests: vec![Quest {
++                    repeatable: false,
+                     dialogue: None,
+                     giver: Some(2),
+                     prerequisites: vec![],
+@@ -1113,6 +1114,8 @@ mod tests {
+                 next: None,
+             },
+             quest_log: vec![Progress {
++                cycle: 0,
++                repeatable: false,
+                 dialogue: None,
+                 accepted: true,
+                 giver: Some(2),
+diff --git a/crates/verse-world/src/service/wire.rs b/crates/verse-world/src/service/wire.rs
+index 1595010b31..2c683bc5e3 100644
+--- a/crates/verse-world/src/service/wire.rs
++++ b/crates/verse-world/src/service/wire.rs
+@@ -5,7 +5,7 @@ use verse_engine::core::LifeId;
+ use super::auth::{Challenge, ConnectionId, Gateway};
+ use crate::{Command, Intent, events::Event, play::Ability, rules::Snapshot};
+ 
+-pub const VERSION: u16 = 29;
++pub const VERSION: u16 = 30;
+ pub const MAX_REQUEST_BYTES: usize = 16 * 1024;
+ pub const MAX_RESPONSE_BYTES: usize = 2 * 1024 * 1024;
+ 
+@@ -116,6 +116,15 @@ impl From<Input> for Command<Ability> {
+ #[derive(Clone, Debug, Serialize, Deserialize)]
+ #[serde(tag = "type", rename_all = "snake_case", deny_unknown_fields)]
+ pub enum Body {
++    Services {
++        character: u64,
++    },
++    ServiceAction {
++        realm: [u8; 32],
++        character: u64,
++        operation: [u8; 16],
++        action: super::game_services::Action,
++    },
+     Account {},
+     SelectCharacter {
+         character: u64,
+@@ -165,6 +174,13 @@ pub enum Body {
+         outfit: u64,
+         operation: [u8; 16],
+     },
++    QuestCycle {
++        life: Life,
++        epoch: u64,
++        quest: u64,
++        cycle: u64,
++        action: super::progression::Action,
++    },
+     AcceptQuest {
+         life: Life,
+         epoch: u64,
+@@ -485,6 +501,12 @@ impl Inventory {
+ #[derive(Clone, Debug, Serialize, Deserialize)]
+ #[serde(tag = "type", rename_all = "snake_case", deny_unknown_fields)]
+ pub enum Reply {
++    Services {
++        view: super::game_services::View,
++    },
++    ServiceApplied {
++        receipt: super::game_services::Receipt,
++    },
+     Account {
+         account: super::accounts::Account,
+     },
+@@ -510,6 +532,12 @@ pub enum Reply {
+         quest: u64,
+         revision: u64,
+     },
++    QuestCycleChanged {
++        quest: u64,
++        cycle: u64,
++        action: super::progression::Action,
++        revision: u64,
++    },
+     QuestClaimed {
+         quest: u64,
+         revision: u64,
+@@ -713,7 +741,11 @@ impl Gateway {
+         body: Body,
+     ) -> Result<Reply, (&'static str, String)> {
+         match body {
+-            Body::Account {} | Body::SelectCharacter { .. } | Body::Logout { .. } => Err((
++            Body::Services { .. }
++            | Body::ServiceAction { .. }
++            | Body::Account {}
++            | Body::SelectCharacter { .. }
++            | Body::Logout { .. } => Err((
+                 "realm_required",
+                 "Character lifecycle requires a realm".into(),
+             )),
+@@ -822,6 +854,23 @@ impl Gateway {
+                     revision: receipt.revision,
+                 })
+             }
++            Body::QuestCycle {
++                life,
++                epoch,
++                quest,
++                cycle,
++                action,
++            } => {
++                let receipt = self
++                    .quest_cycle(id, life.into(), epoch, quest, cycle, action)
++                    .map_err(|e| ("quest", e))?;
++                Ok(Reply::QuestCycleChanged {
++                    quest,
++                    cycle,
++                    action,
++                    revision: receipt.revision,
++                })
++            }
+             Body::AcceptQuest {
+                 life,
+                 epoch,
+diff --git a/crates/verse-world/src/service/worker.rs b/crates/verse-world/src/service/worker.rs
+index 2479edc2b5..81fa46645c 100644
+--- a/crates/verse-world/src/service/worker.rs
++++ b/crates/verse-world/src/service/worker.rs
+@@ -112,6 +112,11 @@ pub enum Input {
+         epoch: u64,
+     },
+     Respawn,
++    QuestCycle {
++        quest: u64,
++        cycle: u64,
++        action: super::progression::Action,
++    },
+     ClaimQuest(u64),
+     AcceptQuest(u64, verse_engine::core::LifeId),
+     UseItem(u64),
+@@ -219,6 +224,7 @@ fn fresh_control(
+         | Input::UseItem(_)
+         | Input::EquipGear(_, _)
+         | Input::EquipOutfit(_)
++        | Input::QuestCycle { .. }
+         | Input::ClaimQuest(_)
+         | Input::AcceptQuest(_, _) => match control {
+             Some(c) => (c.life.into(), c.epoch),
+@@ -491,6 +497,17 @@ async fn run_impl(
+                                         epoch,
+                                     }
+                                 }
++                                Input::QuestCycle {
++                                    quest,
++                                    cycle,
++                                    action,
++                                } => Body::QuestCycle {
++                                    life: control.life,
++                                    epoch: control.epoch,
++                                    quest,
++                                    cycle,
++                                    action,
++                                },
+                                 Input::AcceptQuest(quest, giver) => Body::AcceptQuest {
+                                     life: control.life,
+                                     epoch: control.epoch,
+diff --git a/crates/verse/examples/battle_scale.rs b/crates/verse/examples/battle_scale.rs
+index 8d3047f66e..12adf9ff22 100644
+--- a/crates/verse/examples/battle_scale.rs
++++ b/crates/verse/examples/battle_scale.rs
+@@ -211,6 +211,7 @@ fn make_world(
+             version: 1,
+             levels: vec![0, 100, 1000],
+             quests: vec![progression::Quest {
++                repeatable: false,
+                 dialogue: None,
+                 giver: None,
+                 prerequisites: vec![],
+diff --git a/docs/audits/2026-10-04-verse-engine-audit.md b/docs/audits/2026-10-04-verse-engine-audit.md
+index 9d2f3205d7..b46c9c217e 100644
+--- a/docs/audits/2026-10-04-verse-engine-audit.md
++++ b/docs/audits/2026-10-04-verse-engine-audit.md
+@@ -173,7 +173,7 @@ Evidence labels:
+ | V22 | P2 | Declared lighting profiles share shading semantics and tier references. | Code, recorded | Rendering and art direction | Complete, controlled profiles ([#10738](https://github.com/OpenAgentsInc/openagents/issues/10738)) |
+ | V23 | P2 | Audio is a bounded mixer, not a complete game audio system. | Code, gap | Audio and platform adapters | Complete for the controlled native profile ([#10739](https://github.com/OpenAgentsInc/openagents/issues/10739)) |
+ | V24 | P1 | Mobile/browser rendering does not establish authoritative game parity. | Code, gap | Platform world clients | Complete for the portable combat profile ([#10742](https://github.com/OpenAgentsInc/openagents/issues/10742)) |
+-| V25 | P2 | MMO social and progression systems need dedicated domains. | Code, gap | Verse game services | Open |
++| V25 | P2 | MMO social and progression systems need dedicated domains. | Code, gap | Verse game services | In progress [#10743](https://github.com/OpenAgentsInc/openagents/issues/10743) |
+ | V26 | P1 | Player-generated content needs publication and disclosure boundaries. | Code, gap | Content admission and product access | Open |
+ | V27 | P1 | Replay evidence needs explicit revision/platform guarantees. | Code, gap | Simulation and replay | Open |
+ | V28 | P1 | Status documentation trails the implementation. | Code | Runtime documentation | Open |
