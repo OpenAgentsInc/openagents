@@ -82,7 +82,6 @@ RECIPES = {
             "fountain",
             "market_stall_red",
             "market_stall_blue",
-            "market_stall_green",
             "market_stall_gold",
         ]
     },
@@ -113,7 +112,6 @@ RECIPES = {
         for name in [
             "Pine_1",
             "Pine_2",
-            "CommonTree_1",
             "CommonTree_3",
             "CommonTree_4",
             "CommonTree_5",
@@ -613,6 +611,17 @@ def write_manifest():
                 )
             )
             transforms[name + ext] = how
+    # Keep the far levels other scripts admit into the set
+    # (`everglade_admit.py` for `town_houses.py`'s), while their files are
+    # there.
+    path = os.path.join(OUT, "manifest.json")
+    if os.path.isfile(path):
+        before = json.load(open(path))
+        for file, digest in before["files"].items():
+            if file not in files and os.path.isfile(os.path.join(OUT, file)):
+                files[file] = digest
+                originals[file] = before["originals"][file]
+                transforms[file] = before["transforms"][file]
     manifest = {
         "schema": "openagents.verse.source-manifest.v1",
         "creator": "OpenAgents",

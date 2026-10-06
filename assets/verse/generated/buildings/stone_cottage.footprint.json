@@ -1,0 +1,53 @@
+{
+  "model": "stone_cottage.glb",
+  "frame": "glTF: 1 unit = 1 m, +Y up, +Z out of the front door, origin on the ground at the center of the front wall",
+  "triangles": 974,
+  "boxes": [
+    {
+      "name": "house",
+      "center": [
+        0.0,
+        1.55,
+        -3.5
+      ],
+      "half_extents": [
+        4.1,
+        1.55,
+        3.6
+      ]
+    },
+    {
+      "name": "stack",
+      "center": [
+        4.35,
+        2.775,
+        -3.2
+      ],
+      "half_extents": [
+        0.35,
+        2.775,
+        0.8
+      ]
+    }
+  ],
+  "roofs": [
+    {
+      "center": [
+        0.0,
+        -3.5
+      ],
+      "slopes_z": true,
+      "half": [
+        4.05,
+        1.1
+      ],
+      "eave": 3.15,
+      "ridge": 6.15
+    }
+  ],
+  "front": [
+    -0.4,
+    0.9
+  ],
+  "inside": null
+}

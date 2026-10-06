@@ -56,7 +56,6 @@ MODELS = [
     ("bandshell.glb", "bandshell"),
     ("market_stall_red.glb", "market_stall_red"),
     ("market_stall_blue.glb", "market_stall_blue"),
-    ("market_stall_green.glb", "market_stall_green"),
     ("market_stall_gold.glb", "market_stall_gold"),
     ("buildings/townhouse_jettied.glb", "townhouse_jettied"),
     ("buildings/townhouse_balcony.glb", "townhouse_balcony"),
@@ -87,6 +86,13 @@ MODELS = [
         "cottage_thatch",
         "hip_house",
         "gambrel_barn",
+        # The sixth round's lighter town houses (`town_houses.py`).
+        "shop_house",
+        "gambrel_house",
+        "stone_cottage",
+        "brownstone",
+        "timber_house",
+        "lantern_inn",
     ]
 ] + [
     ("kit/roof_round_tiles_8x10.glb", "roof_round_tiles_8x10"),
@@ -146,6 +152,13 @@ MODELS = [
         "park_bench",
         "fruit_tree_bloom",
         "cafe_umbrella",
+        "produce_stall",
+        "crate_stack",
+        "street_bin",
+        "water_pump",
+        "flower_cart",
+        "fountain_small",
+        "boardwalk",
     ]
 ] + [
     (f"grove/{name}.glb", name)
@@ -161,6 +174,18 @@ MODELS = [
         "grove_training_ring",
         "grove_hanging_lantern",
     ]
+]
+
+# Far levels of detail that `town_houses.py` builds itself, admitted into
+# the pack's `lod` set as `lod/generated.<name>`, beside `everglade_lod.py`'s.
+LOD = os.path.join(EVERGLADE, "lod")
+FAR_MODELS = [
+    "shop_house",
+    "gambrel_house",
+    "stone_cottage",
+    "brownstone",
+    "timber_house",
+    "lantern_inn",
 ]
 
 # Derived village images: file name, kit source, edge, and how it is made.
@@ -259,7 +284,7 @@ def read_glb(path):
     return data, doc, blob
 
 
-def convert(source, name, village_means):
+def convert(source, name, village_means, out=None):
     raw, doc, blob = read_glb(os.path.join(SOURCES, source))
     images = doc.get("images", [])
     image_views = {img["bufferView"] for img in images if "bufferView" in img}
@@ -322,8 +347,9 @@ def convert(source, name, village_means):
     for key in ("extensionsUsed", "extensionsRequired"):
         doc.pop(key, None)
     text = (json.dumps(doc, sort_keys=True, separators=(",", ":")) + "\n").encode()
-    open(os.path.join(OUT, f"{name}.gltf"), "wb").write(text)
-    open(os.path.join(OUT, f"{name}.bin"), "wb").write(bin_bytes)
+    out = out or OUT
+    open(os.path.join(out, f"{name}.gltf"), "wb").write(text)
+    open(os.path.join(out, f"{name}.bin"), "wb").write(bin_bytes)
     return sha(raw), text, bin_bytes
 
 
@@ -335,6 +361,33 @@ def raw_doc_textures(raw):
 
 def doc_textures_source(textures, index):
     return textures[index]["source"]
+
+
+def admit_far(means):
+    """Converts each of `FAR_MODELS`' far levels into the `lod` set and
+    adds them to its manifest, leaving `everglade_lod.py`'s entries as they
+    are."""
+    path = os.path.join(LOD, "manifest.json")
+    manifest = json.load(open(path))
+    for name in FAR_MODELS:
+        source = f"buildings/far/{name}.glb"
+        lod = f"generated.{name}"
+        glb_digest, text, bin_bytes = convert(source, lod, means, out=LOD)
+        how = (
+            f"far level of detail of generated/{name}, built by "
+            "scripts/blender/town_houses.py and converted from "
+            f"assets/verse/generated/{source} by scripts/blender/everglade_admit.py"
+        )
+        for file, data in [(f"{lod}.gltf", text), (f"{lod}.bin", bin_bytes)]:
+            manifest["files"][file] = sha(data)
+            manifest["originals"][file] = glb_digest
+            manifest["transforms"][file] = how
+        print(f"{lod}: {len(text)} + {len(bin_bytes)} bytes")
+    for key in ("files", "originals", "transforms"):
+        manifest[key] = dict(
+            sorted((f, v) for f, v in manifest[key].items() if os.path.isfile(os.path.join(LOD, f)))
+        )
+    write_manifest(path, manifest)
 
 
 def write_manifest(path, manifest):
@@ -377,6 +430,17 @@ def main():
     license_text = open(os.path.join(VILLAGE, "license.txt"), "rb").read()
     open(os.path.join(OUT, "license.txt"), "wb").write(license_text)
     files["license.txt"] = originals["license.txt"] = sha(license_text)
+    # Keep the entries other scripts admit into the set (`tower_admit.py`),
+    # while their files are there.
+    path = os.path.join(OUT, "manifest.json")
+    if os.path.isfile(path):
+        before = json.load(open(path))
+        for file, digest in before["files"].items():
+            if file not in files and os.path.isfile(os.path.join(OUT, file)):
+                files[file] = digest
+                originals[file] = before["originals"][file]
+                if file in before.get("transforms", {}):
+                    transforms[file] = before["transforms"][file]
     write_manifest(
         os.path.join(OUT, "manifest.json"),
         {
@@ -389,6 +453,7 @@ def main():
             "transforms": dict(sorted(transforms.items())),
         },
     )
+    admit_far(means)
     path = os.path.join(VILLAGE, "manifest.json")
     village = json.load(open(path))
     for name, (data, kit_digest, transform) in derived.items():

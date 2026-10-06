@@ -92,9 +92,10 @@ fn the_survey_maps_the_kit_buildings_and_carves_everything_else() {
     let town = town();
     let buildings = town.buildings();
     let kit: Vec<&Building> = buildings.iter().filter(|b| !b.is_carved()).collect();
-    // The lane's and Main Street's houses and the city's storied
-    // buildings, most of the town, map onto the kit rules.
-    assert!(kit.len() >= 40, "{} kit buildings", kit.len());
+    // The lane's and Main Street's houses, the halls, and the city's
+    // remaining storied buildings map onto the kit rules; the sixth
+    // round's lighter houses carve.
+    assert!(kit.len() >= 20, "{} kit buildings", kit.len());
     // The workshop hall is the studio's, and breaks like the rest.
     let hall = building(&town, HALL);
     assert!(buildings[hall].destructible());

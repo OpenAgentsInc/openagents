@@ -53,7 +53,7 @@ The observatory and the bandshell sample the village kit's
 | `fountain.glb` | `fountain.py` | 2,460 | |
 | `observatory.glb` | `observatory.py` | 2,888 | |
 | `bandshell.glb` | `bandshell.py` | 1,380 | |
-| `market_stall_red.glb`, `market_stall_blue.glb`, `market_stall_green.glb`, `market_stall_gold.glb` | `market_stall.py` | 1,916 each | |
+| `market_stall_red.glb`, `market_stall_blue.glb`, `market_stall_green.glb`, `market_stall_gold.glb` | `market_stall.py` | 1,916 each | Everglade admits all but the green stall, which no place in the town had room for |
 | `training_dummy.glb` | `training_dummy.py` | 936 | |
 | `training_dummy_armored.glb` | `training_dummy.py` | 2,128 | |
 | `training_dummy_warded.glb` | `training_dummy.py` | 1,860 | |
@@ -159,6 +159,17 @@ them to `town/`:
 | `park_bench.glb` | 156 | Well Square, Lantern Pond, and the commons walk |
 | `fruit_tree_bloom.glb` | 356 | Orchards in spring blossom |
 | `cafe_umbrella.glb` | 160 | Café parasols by Lantern Pond |
+| `produce_stall.glb` | 372 | A trestle of produce crates under a striped canvas, on the Fountain Plaza |
+| `crate_stack.glb` | 284 | Crates, a sack, and a keg by the plaza's stalls and the shops |
+| `street_bin.glb` | 128 | Litter bins along Main Street, Library Way, Brownstone Row, and before the homes |
+| `water_pump.glb` | 220 | Hand pumps over stone troughs on the plaza, Market Row, and Stoop Lane |
+| `flower_cart.glb` | 712 | Hand carts of potted flowers on the plaza and before the shops |
+| `fountain_small.glb` | 240 | Small fountains by Market Row and on the lawns south of the commons |
+| `boardwalk.glb` | 340 | Plank decks with a rail on Lantern Pond's banks, for café tables |
+
+The sixth round's pieces (`produce_stall` to `boardwalk`) were added on
+October 5, 2026, in Reference mode: built from primitives in the same
+shared flat-color materials, with nothing from a kit.
 
 ## Kit pieces
 

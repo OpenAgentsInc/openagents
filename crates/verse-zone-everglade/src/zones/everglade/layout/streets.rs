@@ -84,6 +84,8 @@ pub fn build(out: &mut Vec<Placement>) {
     // The third round last, so the earlier rounds keep their places.
     super::details::build(out, &mut placed);
     super::greens::build(out, &mut placed);
+    // The sixth round's, round the lighter town houses.
+    super::furnish::build(out, &mut placed);
     woods(out);
     // The fifth round's foliage, round everything else.
     super::foliage::build(out, &placed);
@@ -266,8 +268,21 @@ fn ponds(out: &mut Vec<Placement>) {
     }
 }
 
-/// A low dry-stone wall along the orchard's south and east sides.
+/// A low dry-stone wall along the orchard's south and east sides. The
+/// wall stands on the orchard's own reserved ground, which `clear` keeps
+/// every other piece off, so it checks only the roads and earlier pieces.
 fn orchard_wall(out: &mut Vec<Placement>, placed: &mut Vec<([f32; 2], f32)>) {
+    let mut try_put =
+        |out: &mut Vec<Placement>, placed: &mut Vec<([f32; 2], f32)>, p: Placement, r: f32| {
+            let [x, z] = p.at;
+            let crowded = placed
+                .iter()
+                .any(|(q, qr)| (q[0] - x).hypot(q[1] - z) < qr + r + 0.3);
+            if !crowded && !on_road(x, z, r) {
+                placed.push((p.at, r));
+                out.push(p);
+            }
+        };
     let ([ox, oz], [ohx, ohz]) = city::ORCHARD;
     let (west, east, south, north) = (ox - ohx, ox + ohx, oz - ohz - 1.0, oz + ohz);
     let mut x = west + 1.0;

@@ -369,6 +369,70 @@ pub const GAMBREL_BARN: Model = Model {
     inside: None,
 };
 
+/// The sixth round's lighter town houses (`scripts/blender/town_houses.py`):
+/// a narrow shop under a front gable. Its upper floor juts over the
+/// street; the block is the ground floor's. The zone paints each of these
+/// houses in its own colors (`layout::paint`).
+pub const SHOP_HOUSE: Model = Model {
+    name: "generated/shop_house",
+    blocks: &[[-3.9, 3.9, -9.1, 0.1, 6.1]],
+    roofs: &[gable([0.0, -4.28], false, [4.4, 5.28], 6.1, 9.82)],
+    front: [0.0, 1.0],
+    inside: None,
+};
+
+/// The gambrel house, its gable to the street. Its landing surface is the
+/// shallow upper roof between the knees; its porch blocks low.
+pub const GAMBREL_HOUSE: Model = Model {
+    name: "generated/gambrel_house",
+    blocks: &[
+        [-4.12, 4.12, -8.12, 0.12, 3.4],
+        [-1.4, 1.4, 0.0, 1.6, 0.6],
+        [-3.4, 3.4, -8.12, 0.12, 4.9],
+    ],
+    roofs: &[gable([0.0, -4.0], false, [2.5, 4.45], 5.8, 7.0)],
+    front: [0.0, 2.4],
+    inside: None,
+};
+
+/// The stone cottage under its hipped roof, with its chimney stack on its
+/// east side (+x).
+pub const STONE_COTTAGE: Model = Model {
+    name: "generated/stone_cottage",
+    blocks: &[[-4.1, 4.1, -7.1, 0.1, 3.1], [4.0, 4.7, -4.0, -2.4, 5.55]],
+    roofs: &[gable([0.0, -3.5], true, [4.05, 1.1], 3.15, 6.15)],
+    front: [-0.4, 0.9],
+    inside: None,
+};
+
+/// The brownstone: a flat roof behind its cornice, and its stoop, which
+/// climbs 3 m out from the front wall, blocking low.
+pub const BROWNSTONE: Model = Model {
+    name: "generated/brownstone",
+    blocks: &[[-4.1, 4.1, -8.1, 0.1, 10.7], [1.1, 3.3, 0.0, 3.0, 1.4]],
+    roofs: &[gable([0.0, -4.0], true, [3.8, 3.8], 10.82, 10.83)],
+    front: [2.2, 3.6],
+    inside: None,
+};
+
+/// The timber-framed house; its main ridge runs along the street.
+pub const TIMBER_HOUSE: Model = Model {
+    name: "generated/timber_house",
+    blocks: &[[-4.1, 4.1, -9.1, 0.1, 5.9]],
+    roofs: &[gable([0.0, -4.25], true, [5.25, 4.5], 5.9, 9.12)],
+    front: [-2.3, 1.0],
+    inside: None,
+};
+
+/// The Lantern Quarter's inn under its hipped roof.
+pub const LANTERN_INN: Model = Model {
+    name: "generated/lantern_inn",
+    blocks: &[[-5.1, 5.1, -9.1, 0.1, 6.1]],
+    roofs: &[gable([0.0, -4.5], true, [5.05, 1.3], 6.15, 9.45)],
+    front: [0.0, 1.0],
+    inside: None,
+};
+
 /// One generated model placed in the town.
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct Instance {

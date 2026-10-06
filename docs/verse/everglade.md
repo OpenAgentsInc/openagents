@@ -183,7 +183,14 @@ The zone renderer gains textured static meshes:
   305,000 rather than 808,000. Captures at walking distances show no
   change. With the fourth round's trees and dressing, a street view draws
   210,000 to 410,000 (the Lantern Quarter 355,000), and the city merges
-  2,268,146 triangles in 153 MiB.
+  2,268,146 triangles in 153 MiB. After the sixth round's lighter houses
+  replaced most kit-built ones, a street view draws 323,000 to 532,000
+  (574,000 before), and the city merges 2,804,051 triangles (2,894,488
+  before) in 205 MiB; the pack is 11.2 MB.
+- The sixth round's houses (`scripts/blender/town_houses.py`) are painted
+  too: their plaster and tiles are named `HousePlaster` and `HouseTiles`
+  (`scene::PAINTED`), and `layout::paint` gives each placed house colors of
+  its own from where it stands, so one model reads as many houses.
 - Everglade's atmosphere has its own colors: an afternoon daylight sky
   (`pbr::Daylight`) from warm horizon haze to a blue zenith, with a low,
   warm sun that draws long shadows across the streets, a Sun in the key
@@ -258,7 +265,7 @@ jetties and the rowboats, breaks like the other props.
 The city's buildings are a table in `layout::city`. Most are the workshop's
 own kit pieces, one to three stories under round-tile roofs, painted in
 varied plaster and roof colors, and each wall run blocks walking as one
-footprint. Thirty-seven places hold a whole generated building instead
+footprint. Seventy-four places hold a whole generated building instead
 (`city::STAND_INS`), mixed among the kit-built ones: jettied and balconied
 townhouses on Main Street, Stoop Lane, and in the Creative District, corner
 shops at Main Street's corners, the bakehouse with its bread oven on Main
@@ -301,7 +308,7 @@ clearing's edge. The third round (`layout::details`) adds Well Square, a
 second, smaller plaza south of Hearth Road with a well, benches, two-armed
 lamps, and flowers; paper lanterns strung across Lantern Road and more
 two-armed lamps in the Lantern Quarter; painted signs before Main Street's
-shops; green and gold stalls on Main Street; the barn's yard; benches round
+shops; a gold stall on Main Street; the barn's yard; benches round
 Lantern Pond and along the commons walk; and drifts of spring flowers on
 the commons, summer flowers on the town's lawns, and autumn flowers at the
 woods' edges. Wood smoke rises from the bakehouse's stack, the smithy's
@@ -340,6 +347,34 @@ gateways line some lanes; and planters line the paved streets. Trunks,
 rocks, logs, stumps, hedges, and planters block walking; shrubs, ferns,
 grass, roots, and ivy don't. None of it breaks but the wall dressing.
 
+The sixth round (`layout::furnish`, with `city::STAND_INS`) made the town
+denser and more varied for less. `scripts/blender/town_houses.py` builds
+six lighter houses in the village kit's style, at a quarter to a third of a
+kit-built house's triangles, each with a far level of detail of its own: a
+narrow shop whose two display windows show goods on shelves through clear
+glass, under an awning and a jettied, half-timbered upper floor; a gambrel
+house with a porch; a stone cottage under a hipped roof with a dormer and
+an outside chimney stack; a brownstone of three storeys over a raised
+basement, with a stoop and iron rails; a timber-framed house with a cross
+gable and a balcony; and the Lantern Quarter's inn, with lamplit windows,
+wall lanterns, and a hipped roof with dormers. They take the places of 26
+kit-built houses: shops on Main Street and the Fountain Plaza, inns and
+timber houses in the Lantern Quarter, brownstones and stone cottages on
+both sides of Brownstone Row, and gambrel, stone, and timber houses on
+Stoop Lane, in the Knowledge District, and in the Foundry. Market Row, a
+new lane behind Main Street's far blocks on each side of the Fountain
+Plaza, holds twelve more, as the map's dense blocks north of Main Street.
+Each house is painted in its own colors and smokes from its chimneys. The
+Fountain Plaza became a market, with produce stalls, crates, a flower cart,
+and a hand pump; plank decks with café tables and a parasol stand on
+Lantern Pond's banks; the brownstones and the row houses across from them
+have back gardens with a picket fence, flower and vegetable beds, and a
+bench; litter bins line Main Street, Library Way, and Brownstone Row; and
+crates, flower carts, benches, barrels, bins, planters, hand pumps, and
+small fountains stand before the new houses and along the lanes
+(`scripts/blender/town_props.py`). The orchard's dry-stone wall, which no
+earlier round could place, now stands.
+
 The town has ambient wildlife
 ([`wildlife`](../../crates/verse-zone-everglade/src/zones/everglade/wildlife.rs)): pairs of
 songbirds circling over the commons, Main Street, Walden Woods, and
@@ -356,14 +391,14 @@ farther than 60 m from the player is neither posed nor drawn.
 | District | Built from | Roads |
 | --- | --- | --- |
 | The Commons | Lantern Pond with reeds, stones, lily pads, a jetty, and a rowboat, the generated boathouse on its north bank, benches, park trees, wildflowers, the generated bandshell, the gazebo on the east lawn | The commons walk, west of the hall |
-| Main Street | Twelve shops (bakery, café, bookshop, grocer, tailor, print shop, and more), the generated bakehouse with its bread oven, two generated corner shops and three townhouses among them, red, blue, green, and gold market stalls, lamps, painted shop signs, flower boxes, bunting, street trees | Main Street, about 200 m long, cobbled |
-| Fountain Plaza | A cobbled plaza with the generated fountain, stalls, barrels, a hand cart, two cafés with tables out front, planters, the generated market hall with its stock under the arcade | Market Way |
+| Main Street | Twelve shops (bakery, café, bookshop, grocer, tailor, print shop, and more), the generated bakehouse with its bread oven, two generated corner shops, two shop houses, and three townhouses among them, red, blue, and gold market stalls, lamps, painted shop signs, flower boxes, bunting, street trees, litter bins; Market Row behind the far blocks, with twelve houses, shops, and an inn | Main Street, about 200 m long, cobbled; Market Row |
+| Fountain Plaza | A cobbled market with the generated fountain, awninged and produce stalls, crates, barrels, a hand cart, a flower cart, a hand pump, a shop house and a timber house with tables out front, planters, the generated market hall with its stock under the arcade | Market Way |
 | Creative District | The Makers' Hall, a studio, two generated Boardwalk Cafés with tables on their decks, the Atelier Hall, the Sculpture Walk's statues, sculpture, and sundial | Studio Road |
 | The Foundry | The Server Barn and fab yard, a workshop, the Fab Hall, the generated smithy with its open forge, an annex | Foundry Road |
 | Knowledge District | The Stacks (the generated library up its steps), the Old College, the generated clock tower on its square, the college hall, the archive, the map room, an L-shaped seminar house, the generated observatory on Observatory Hill, Reed Pond and its jetty, the long meadow's wildflowers and its log cabin | Library Way |
 | Stoop Lane | Ten homes and townhouses, four of them generated, with lanterns, flower boxes, and little gardens, the cottage, a well | Stoop Lane, Hearth Road |
 | Lantern Quarter | The generated Music Hall, meeting hall, tavern, and guild hall, the choir house, the pubs, an L-shaped house, bunting, paper lanterns across Lantern Road, two-armed lamps, a well; Well Square with its two hipped houses, well, and benches | Hearth Road, Lantern Road |
-| Brownstone Row | Four two-story brownstones with stoops, two terraces of generated row houses, six row houses, the community garden behind its picket fence with the glasshouse, the footbridge over Glade Run | Brownstone Row |
+| Brownstone Row | Four brownstones with stoops and iron rails, two terraces of generated row houses, two more brownstones, stone cottages, and gambrel houses across the street, back gardens with fences, beds, and benches, the community garden behind its picket fence with the glasshouse, the footbridge over Glade Run | Brownstone Row |
 | Walden Woods | The writing and code cabins, the generated cottage with its tower, the woodcutter's thatched cottage, the prototype shed, the Thinking Pond and its jetty, stands of firs, broadleafs, spruces, and birches over ferns, shrubs, brambles, mossy rocks, fallen logs, stumps, and toadstools | The woods paths, Lantern Road |
 | Fernhollow | The lookout tower and the log cabin by the Fern Pond, firs, broadleafs, spruces, and birches over ferns, shrubs, mossy rocks, and toadstools | The Fernhollow path |
 | Gardens and orchards | Fenced beds, an orchard of fruit trees behind a dry-stone wall with a gate, the beekeeper's hut and hives | The orchard lane |

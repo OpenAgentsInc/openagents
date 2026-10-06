@@ -64,7 +64,7 @@ const UNDERSTORY_MODELS: [&str; 15] = [
 /// flowers, mushrooms, and stepping stones, the flower beds and boxes, and
 /// the station furniture and small props, which are a few pixels tall
 /// beyond it.
-const COVER_MODELS: [&str; 31] = [
+const COVER_MODELS: [&str; 35] = [
     "foliage/fern_clump",
     "foliage/grass_tall",
     "foliage/wildflower_clump",
@@ -96,6 +96,10 @@ const COVER_MODELS: [&str; 31] = [
     "generated/sundial",
     "generated/beehives",
     "generated/hay_bales",
+    "generated/crate_stack",
+    "generated/street_bin",
+    "generated/water_pump",
+    "generated/flower_cart",
 ];
 
 /// The pack's name for the far level of `model`: `lod/<set>.<name>`.

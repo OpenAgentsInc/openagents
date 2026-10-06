@@ -55,10 +55,15 @@ impl Paint {
 }
 
 /// The kit materials a paint replaces, in the village set or a generated
-/// copy of a kit piece, and the neutral image each samples.
-const PAINTED: [(&str, &str); 2] = [
+/// copy of a kit piece, and the neutral image each samples: plaster, then
+/// roof tiles. The sixth round's houses (`scripts/blender/town_houses.py`)
+/// name theirs `HousePlaster` and `HouseTiles`; the pack names a house's
+/// color variant `~2`, `~3`, and so on, which still takes the paint.
+const PAINTED: [(&str, &str); 4] = [
     ("/MI_Plaster", "village/T_Plaster_Luma"),
     ("/MI_RoundTiles", "village/T_RoundTiles_Luma"),
+    ("/HousePlaster", "village/T_Plaster_Luma"),
+    ("/HouseTiles", "village/T_RoundTiles_Luma"),
 ];
 
 /// Pack indices already copied into the scene.
@@ -304,12 +309,12 @@ fn painted(
         .materials
         .get(usize::from(index))
         .ok_or("The Everglade pack names a missing material")?;
+    let base = source.name.split('~').next().unwrap_or_default();
     Ok(
-        match PAINTED
-            .iter()
-            .position(|(name, _)| source.name.ends_with(name))
-        {
-            Some(0) => paint.plaster.map(|c| (c, PAINTED[0].1)),
+        match PAINTED.iter().enumerate().position(|(k, (name, _))| {
+            source.name.ends_with(name) || (k >= 2 && base.ends_with(name))
+        }) {
+            Some(k) if k % 2 == 0 => paint.plaster.map(|c| (c, PAINTED[0].1)),
             Some(_) => paint.roof.map(|c| (c, PAINTED[1].1)),
             None => None,
         },

@@ -1,0 +1,66 @@
+{
+  "model": "gambrel_house.glb",
+  "frame": "glTF: 1 unit = 1 m, +Y up, +Z out of the front door, origin on the ground at the center of the front wall",
+  "triangles": 1716,
+  "boxes": [
+    {
+      "name": "house",
+      "center": [
+        0.0,
+        1.7,
+        -4.0
+      ],
+      "half_extents": [
+        4.12,
+        1.7,
+        4.12
+      ]
+    },
+    {
+      "name": "porch",
+      "center": [
+        0.0,
+        0.3,
+        0.8
+      ],
+      "half_extents": [
+        1.4,
+        0.3,
+        0.8
+      ]
+    },
+    {
+      "name": "loft",
+      "center": [
+        0.0,
+        2.45,
+        -4.0
+      ],
+      "half_extents": [
+        3.4,
+        2.45,
+        4.12
+      ]
+    }
+  ],
+  "roofs": [
+    {
+      "center": [
+        0.0,
+        -4.0
+      ],
+      "slopes_z": false,
+      "half": [
+        2.5,
+        4.45
+      ],
+      "eave": 5.8,
+      "ridge": 7.0
+    }
+  ],
+  "front": [
+    0.0,
+    2.4
+  ],
+  "inside": null
+}

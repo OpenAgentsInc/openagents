@@ -111,6 +111,11 @@ def materials():
         "blossom": kit.mat("Prop_Blossom", (0.92, 0.55, 0.66), 0.8),
         "blossom_white": kit.mat("Prop_BlossomWhite", (0.95, 0.88, 0.9), 0.8),
         "awning_teal": kit.mat("Prop_AwningTeal", (0.05, 0.38, 0.36), 0.9),
+        # The sixth round's: street_props.py's flowerpot tile and the
+        # fountain's water.
+        "tile": kit.mat("Prop_Tile", (0.4, 0.09, 0.05), 0.8),
+        "water": kit.mat("Fountain_Water", (0.1, 0.36, 0.62), 0.15),
+        "spray": kit.mat("Fountain_Spill", (0.4, 0.7, 0.9), 0.1),
     }
 
 
@@ -687,7 +692,146 @@ def cafe_umbrella(m):
     kit.cyl("TableLeg", 0.04, 0.72, (0, 0, 0.36), m["iron"], verts=5)
 
 
+# --- Sixth round: the market, the streets, and the water's edge ----------
+
+
+def awning_panels(m, x0, x1, y0, y1, z0, z1, colors, n=6):
+    """A sloped striped canvas from (y0, z0) to (y1, z1) across x0..x1."""
+    for k in range(n):
+        a, c = x0 + (x1 - x0) * k / n, x0 + (x1 - x0) * (k + 1) / n
+        bm = bmesh.new()
+        vs = [bm.verts.new(p) for p in ((a, y0, z0), (c, y0, z0), (c, y1, z1), (a, y1, z1))]
+        bm.faces.new(vs)
+        me = bpy.data.meshes.new("Canvas%d" % k)
+        bm.to_mesh(me)
+        bm.free()
+        o = bpy.data.objects.new("Canvas%d" % k, me)
+        bpy.context.scene.collection.objects.link(o)
+        o.data.materials.append(m[colors[k % len(colors)]])
+        kit.solidify(o, 0.02)
+
+
+def produce_stall(m):
+    """A light market stall: a trestle table of produce crates under a
+    sloped, striped canvas on four poles, 2.4 m wide."""
+    for x in (-1.15, 1.15):
+        kit.cyl("PoleFront", 0.04, 2.1, (x, -0.75, 1.05), m["oak_dark"], verts=5)
+        kit.cyl("PoleBack", 0.04, 2.5, (x, 0.75, 1.25), m["oak_dark"], verts=5)
+    awning_panels(m, -1.3, 1.3, 0.85, -1.05, 2.5, 2.0, ("awning_teal", "cream_cloth"))
+    kit.box("Table", (2.3, 1.1, 0.06), (0, 0, 0.82), m["oak"])
+    for x in (-1.0, 1.0):
+        kit.box("Trestle", (0.06, 0.9, 0.8), (x, 0, 0.4), m["oak_dark"])
+    produce = ("fruit", "cabbage", "yellow", "orange", "fruit", "cabbage")
+    for i, x in enumerate((-0.75, 0.0, 0.75)):
+        for j, y in enumerate((-0.25, 0.25)):
+            z = 0.95 if j == 0 else 1.05
+            kit.box("Crate", (0.6, 0.42, 0.18), (x, y, z - 0.04), m["oak"], rot=(0.18 if j == 0 else 0.0, 0, 0))
+            kit.box("Produce", (0.52, 0.34, 0.1), (x, y, z + 0.08), m[produce[(i + 3 * j) % 6]],
+                    rot=(0.18 if j == 0 else 0.0, 0, 0))
+    kit.box("Sack", (0.4, 0.35, 0.5), (1.0, 0.65, 0.25), m["sack"], bevel=0.06)
+    kit.box("CrateLow", (0.55, 0.45, 0.4), (-0.95, 0.7, 0.2), m["oak"])
+
+
+def crate_stack(m):
+    """Crates stacked by a wall or a stall, with a sack and a small barrel."""
+    kit.box("Crate", (0.8, 0.7, 0.6), (0, 0, 0.3), m["oak"], bevel=0.03)
+    kit.box("Crate", (0.7, 0.65, 0.55), (0.82, 0.05, 0.275), m["oak_dark"], bevel=0.03)
+    kit.box("Crate", (0.62, 0.6, 0.5), (0.1, 0.02, 0.85), m["oak"], rot=(0, 0, 0.25), bevel=0.03)
+    for x in (-0.38, 0.38):
+        kit.box("Slat", (0.04, 0.72, 0.6), (x, 0, 0.3), m["oak_dark"])
+    kit.box("Sack", (0.45, 0.4, 0.55), (-0.65, -0.1, 0.27), m["sack"], bevel=0.08)
+    kit.cyl("Keg", 0.24, 0.55, (0.75, -0.6, 0.275), m["oak"], verts=8)
+    for z in (0.08, 0.47):
+        kit.cyl("Hoop", 0.25, 0.04, (0.75, -0.6, z), m["iron"], verts=8)
+
+
+def street_bin(m):
+    """A slatted litter bin on an iron post, with a lid."""
+    kit.cyl("Post", 0.04, 0.9, (0, 0.28, 0.45), m["iron"], verts=5)
+    kit.cyl("Bin", 0.24, 0.62, (0, 0, 0.55), m["paint_green"], verts=8, r2=0.27)
+    kit.cyl("Rim", 0.28, 0.05, (0, 0, 0.87), m["iron"], verts=8)
+    kit.cyl("Lid", 0.27, 0.14, (0, 0, 0.96), m["paint_green"], verts=8, r2=0.1)
+    kit.cyl("Band", 0.255, 0.04, (0, 0, 0.35), m["iron"], verts=8)
+
+
+def water_pump(m):
+    """A cast-iron hand pump with its curved handle over a stone trough."""
+    kit.box("Trough", (1.4, 0.6, 0.5), (0, 0.25, 0.25), m["stone"], bevel=0.04)
+    kit.box("Water", (1.2, 0.42, 0.04), (0, 0.25, 0.46), m["water"])
+    kit.box("Plinth", (0.5, 0.5, 0.15), (0, -0.4, 0.075), m["stone_dark"])
+    kit.cyl("Barrel", 0.12, 1.2, (0, -0.4, 0.75), m["iron"], verts=8)
+    kit.cyl("Head", 0.15, 0.2, (0, -0.4, 1.4), m["iron"], verts=8)
+    kit.cyl("Cap", 0.1, 0.18, (0, -0.4, 1.58), m["iron"], verts=8, r2=0.02)
+    kit.cyl("Spout", 0.05, 0.42, (0, -0.16, 1.255), m["iron"], verts=6, rot=(math.radians(-117), 0, 0))
+    kit.box("Handle", (0.05, 0.7, 0.05), (0, -0.725, 1.625), m["iron"], rot=(math.radians(-21), 0, 0))
+    kit.ball("Knob", 0.06, (0, -1.05, 1.75), m["iron"], segs=6, rings=4)
+
+
+def flower_cart(m):
+    """A two-wheeled hand cart heaped with potted flowers, its shafts down."""
+    kit.box("Bed", (1.5, 0.95, 0.08), (0, 0, 0.62), m["oak"])
+    for y in (-0.47, 0.47):
+        kit.box("Side", (1.5, 0.05, 0.3), (0, y, 0.78), m["paint_blue"])
+    for x in (-0.75, 0.75):
+        kit.box("End", (0.05, 0.95, 0.3), (x, 0, 0.78), m["paint_blue"])
+    for y in (-0.55, 0.55):
+        kit.cyl("Wheel", 0.4, 0.06, (0.15, y, 0.4), m["oak_dark"], verts=10, rot=(math.pi / 2, 0, 0))
+        kit.cyl("Hub", 0.08, 0.1, (0.15, y, 0.4), m["iron"], verts=6, rot=(math.pi / 2, 0, 0))
+    for y in (-0.35, 0.35):
+        kit.box("Shaft", (1.2, 0.05, 0.05), (-1.25, y, 0.35), m["oak_dark"], rot=(0, math.radians(-17), 0))
+    kit.box("Leg", (0.05, 0.05, 0.5), (0.65, 0, 0.35), m["oak_dark"])
+    colors = ("red", "yellow", "pink", "violet", "white", "orange")
+    rng = random.Random(61)
+    for i in range(3):
+        for j in range(2):
+            x, y = -0.48 + i * 0.48, -0.22 + j * 0.44
+            kit.cyl("Pot", 0.16, 0.24, (x, y, 0.78), m["tile"], verts=6, r2=0.12)
+            kit.ball("Leaves", 0.2, (x, y, 0.98), m["leaf"], segs=6, rings=3, scale=(1, 1, 0.7))
+            for k in range(2):
+                a = rng.uniform(0, math.tau)
+                kit.ball("Bloom", 0.08, (x + 0.1 * math.cos(a), y + 0.1 * math.sin(a), 1.08 + 0.03 * k),
+                         m[colors[(i * 2 + j + k) % 6]], segs=5, rings=3)
+
+
+def fountain_small(m):
+    """A small round fountain: an octagonal basin with a fluted pedestal,
+    a bowl, and a jet, for a square or a garden."""
+    kit.cyl("Basin", 1.5, 0.55, (0, 0, 0.275), m["stone"], verts=8)
+    kit.ring("Rim", 1.52, 0.1, (0, 0, 0.58), m["stone_dark"], segs=8, minor_segs=4)
+    kit.cyl("Pool", 1.46, 0.04, (0, 0, 0.56), m["water"], verts=8)
+    kit.cyl("Pedestal", 0.22, 1.1, (0, 0, 1.0), m["stone"], verts=8, r2=0.16)
+    kit.cyl("Bowl", 0.2, 0.22, (0, 0, 1.6), m["stone"], verts=10, r2=0.7)
+    kit.cyl("BowlWater", 0.64, 0.03, (0, 0, 1.72), m["water"], verts=10)
+    kit.cyl("Jet", 0.07, 0.7, (0, 0, 2.05), m["spray"], verts=6, r2=0.02)
+
+
+def boardwalk(m):
+    """A 6 m by 3 m plank deck at the water's edge, its rail along the
+    water side and the ends, open to the land, for the cafés' tables."""
+    kit.box("Deck", (6.0, 3.0, 0.1), (0, 0, 0.05), m["oak"])
+    for i in range(13):
+        x = -2.95 + i * 0.49
+        kit.box("Seam", (0.03, 3.0, 0.012), (x, 0, 0.105), m["oak_dark"])
+    for x in (-2.9, -1.0, 1.0, 2.9):
+        kit.box("Post", (0.1, 0.1, 0.95), (x, 1.42, 0.55), m["oak_dark"])
+    kit.box("Rail", (6.0, 0.08, 0.08), (0, 1.42, 1.0), m["oak"])
+    kit.box("Rail", (6.0, 0.05, 0.05), (0, 1.42, 0.55), m["oak"])
+    for x in (-2.95, 2.95):
+        for y in (-1.4, 0.0):
+            kit.box("Post", (0.1, 0.1, 0.95), (x, y, 0.55), m["oak_dark"])
+        kit.box("Rail", (0.08, 2.9, 0.08), (x, 0.0, 1.0), m["oak"])
+    kit.cyl("Lantern", 0.05, 0.6, (2.9, 1.42, 1.3), m["iron"], verts=5)
+    kit.box("LanternGlass", (0.2, 0.2, 0.26), (2.9, 1.42, 1.72), m["glow"])
+
+
 PROPS = {
+    "produce_stall": produce_stall,
+    "crate_stack": crate_stack,
+    "street_bin": street_bin,
+    "water_pump": water_pump,
+    "flower_cart": flower_cart,
+    "fountain_small": fountain_small,
+    "boardwalk": boardwalk,
     "flower_patch_spring": lambda m: flower_patch(m, SEASONS["flower_patch_spring"], 51),
     "flower_patch_summer": lambda m: flower_patch(m, SEASONS["flower_patch_summer"], 52),
     "flower_patch_autumn": lambda m: flower_patch(m, SEASONS["flower_patch_autumn"], 53),

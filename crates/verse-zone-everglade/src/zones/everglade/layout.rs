@@ -24,6 +24,7 @@ use verse_world::social::everglade::DESK_SEATS;
 pub mod city;
 pub mod details;
 pub mod foliage;
+pub mod furnish;
 pub mod generated;
 pub mod greens;
 pub mod parks;
@@ -608,9 +609,21 @@ fn painted() -> &'static [(([f32; 2], [f32; 2]), Paint)] {
 }
 
 /// How `placement` is painted: a kit piece of a kit-built house takes its
-/// house's plaster and roof colors (`scene::Paint`); anything else keeps
-/// the kit's.
+/// house's plaster and roof colors (`scene::Paint`), and a sixth-round
+/// house colors of its own; anything else keeps the kit's.
 pub fn paint(placement: &Placement) -> Paint {
+    // The sixth round's houses each take colors of their own from where
+    // they stand; a `None` keeps the model's.
+    if furnish::LIGHT_HOUSES.contains(&placement.model) {
+        let [x, z] = placement.at;
+        let k = (x * 7.0 + z * 13.0).round().abs() as u32;
+        let plaster = PLASTERS[(noise(k, 72) * PLASTERS.len() as f32) as usize];
+        let roof = ROOFS[(noise(k, 73) * ROOFS.len() as f32) as usize];
+        return Paint {
+            plaster: plaster.map(|c| tint(c, PLASTER_LUMA)),
+            roof: roof.map(|c| tint(c, TILES_LUMA)),
+        };
+    }
     if !placement.model.starts_with("village/") && placement.model != HOUSE_ROOF {
         return Paint::default();
     }

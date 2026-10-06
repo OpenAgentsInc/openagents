@@ -286,6 +286,37 @@ $B -b --factory-startup --python scripts/blender/foliage.py
 python3 scripts/blender/foliage_admit.py
 ```
 
+## Lighter town houses
+
+`town_houses.py` builds six houses in Reference mode for the sixth round:
+boxes, slabs, and triangles in the village kit's style, sampling only its
+base-color images, reusing `buildings.py`'s materials, roofs (`slab_roof`,
+`hip_roof`, and `gambrel_slab`), signs, lanterns, and awnings. A house
+costs 974 to 3,254 triangles where a kit-built one costs 8,000 to 13,000:
+window frames, sills, shutters, and timbers are boxes without their side
+against the wall, and every house is one object, so its glTF has one node.
+The shop, the gambrel house, the stone cottage, the brownstone, the timber
+house, and the inn each also write a far level of detail to
+`far/<name>.glb` (the same build with each window and door one pane and
+the small details left out, 22 to 32 percent of the triangles), which
+`everglade_admit.py` admits into the pack's `lod` set. Their plaster and
+tiles are named `HousePlaster` and `HouseTiles`, which the zone repaints
+per house. `town_props.py` gained the market's and the streets' pieces:
+`produce_stall`, `crate_stack`, `street_bin`, `water_pump`,
+`flower_cart`, `fountain_small`, and `boardwalk`. To rebuild them, run:
+
+```sh
+$B -b --factory-startup --python scripts/blender/town_houses.py
+$B -b --factory-startup --python scripts/blender/town_props.py -- \
+    assets/verse/generated/town produce_stall crate_stack street_bin \
+    water_pump flower_cart fountain_small boardwalk
+python3 scripts/blender/everglade_admit.py
+```
+
+`everglade_admit.py` and `everglade_lod.py` keep the manifest entries that
+other scripts admit into their sets (`tower_admit.py`'s tower and
+`town_houses.py`'s far levels) while those files are there.
+
 ## How an agent makes a model
 
 1. Write `scripts/blender/<name>.py` that builds the model from primitives,

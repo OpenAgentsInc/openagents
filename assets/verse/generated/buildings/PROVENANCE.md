@@ -102,6 +102,37 @@ logs, a bread oven, a forge, windmill sails, and glazing.
 | `hip_house.glb` | 10,770 | Sky, slate, dark | Two storeys under a hipped roof, with a chimney and a door lantern |
 | `gambrel_barn.glb` | 374 | Barn red, charcoal | Board barn under a gambrel roof with big doors, a hayloft door, and a cupola |
 
+The sixth round, generated on October 5, 2026, by
+`scripts/blender/town_houses.py` in Blender 5.2.2 LTS, run headless:
+
+```sh
+$B -b --factory-startup --python scripts/blender/town_houses.py -- \
+    assets/verse/generated/buildings [NAME ...] [--kit KIT_DIR]
+```
+
+These are Reference mode: built from boxes, slabs, and triangles in the
+kit's style, not from its wall pieces, using only the kit's base-color
+images (`T_Plaster_BaseColor`, `T_RoundTiles_BaseColor`,
+`T_WoodTrim_BaseColor`, `T_UnevenBrick_BaseColor`, `T_RockTrim_BaseColor`,
+and `T_MetalOrnaments_BaseColor`), recolored as above, plus the kit's
+`Roof_Support2` under the hanging signs. Each costs a quarter to a third of
+a kit-built house's triangles, so they replace most of the city's kit-built
+houses. Their plaster and tile materials are named `HousePlaster` and
+`HouseTiles`, so the zone paints each placed house in its own colors; the
+colors below are a house's own. The script also writes each house's far
+level of detail to `far/<name>.glb`, with each window and door one pane and
+without the small details, which `everglade_admit.py` admits into the pack's
+`lod` set.
+
+| Model | Triangles | Far level | Plaster, roof, timber | What it is |
+| --- | ---: | ---: | --- | --- |
+| `shop_house.glb` | 2,598 | 752 | Rose, red, dark | A narrow shop under a front gable: two display windows whose alcoves show goods on shelves through clear glass, a painted shop front and fascia, a striped awning, a hanging sign, and a jettied, half-timbered upper floor with window boxes |
+| `gambrel_house.glb` | 1,716 | 486 | Sage, charcoal, dark | A gambrel roof with its gable to the street, windows in the gable, a porch over the door, and a stone plinth |
+| `stone_cottage.glb` | 974 | 314 | Cream, brown, dark | A stone cottage under a steep hipped roof, a dormer over the door, and a stone chimney stack up its side |
+| `brownstone.glb` | 2,310 | 706 | Brown stone, flat roof | Three storeys over a raised basement, a stoop with iron rails, a hooded door, an areaway rail, and a bracketed cornice; the stone is the uneven brick recolored brown |
+| `timber_house.glb` | 2,246 | 728 | White, brown, dark | A stone ground floor under a jettied, timber-framed upper floor with St Andrew's crosses, a cross gable, and a balcony |
+| `lantern_inn.glb` | 3,254 | 802 | Butter, red, dark | The Lantern Quarter's inn: lamplit windows, a double door, wall lanterns, a hanging sign, a timber-framed upper floor, and a hipped roof with two dormers |
+
 Each `<name>.footprint.json` lists axis-aligned collision boxes in the glb's
 frame: 1 unit = 1 m, +Y up, +Z out of the front door, and the origin on the
 ground at the center of the main front wall. Steps, a library entrance bay,

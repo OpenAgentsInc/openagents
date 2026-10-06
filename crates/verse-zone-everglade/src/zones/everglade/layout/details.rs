@@ -146,13 +146,11 @@ fn signs(out: &mut Vec<Placement>, placed: &mut Placed) {
     }
 }
 
-/// A green and a gold stall on Main Street's south side, facing the shops
-/// across it, east of the Fountain Plaza's corner.
+/// A gold stall on Main Street's south side, facing the shops across it,
+/// east of the Fountain Plaza's corner. (A green stall beside it never
+/// found clear ground and left the pack in the sixth round.)
 fn stalls(out: &mut Vec<Placement>, placed: &mut Placed) {
-    for (model, x) in [
-        ("generated/market_stall_green", 24.0),
-        ("generated/market_stall_gold", 29.0),
-    ] {
+    for (model, x) in [("generated/market_stall_gold", 29.0)] {
         let stall = Placement::new(model, [x, 42.4], 0.0, Collision::Bounds);
         if try_put(out, placed, stall, 1.4) {
             let crate_at = [x + 1.8, 42.0];
@@ -292,7 +290,7 @@ fn flowers(out: &mut Vec<Placement>, placed: &mut Placed) {
 /// The chimneys that smoke, in their generated model's frame: x, height,
 /// and z of each chimney's top, m, read from the chimney pieces of each
 /// glb that `scripts/blender/buildings.py` builds.
-const CHIMNEYS: [(&str, [f32; 3]); 12] = [
+const CHIMNEYS: [(&str, [f32; 3]); 20] = [
     ("generated/bakery", [3.3, 12.69, -5.7]),
     ("generated/smithy", [4.85, 10.53, -4.0]),
     ("generated/log_cabin", [-3.55, 5.87, -2.5]),
@@ -305,6 +303,15 @@ const CHIMNEYS: [(&str, [f32; 3]); 12] = [
     ("generated/townhouse_jettied", [-1.63, 13.16, -6.0]),
     ("generated/row_townhouse", [0.87, 12.62, -6.8]),
     ("generated/boardwalk_cafe", [2.47, 6.62, -4.8]),
+    // The sixth round's (`scripts/blender/town_houses.py`).
+    ("generated/shop_house", [1.9, 10.82, -7.4]),
+    ("generated/gambrel_house", [1.4, 8.1, -6.5]),
+    ("generated/stone_cottage", [4.35, 7.25, -3.2]),
+    ("generated/brownstone", [-3.55, 12.5, -4.4]),
+    ("generated/brownstone", [3.55, 12.3, -5.6]),
+    ("generated/timber_house", [2.4, 10.02, -5.7]),
+    ("generated/lantern_inn", [-3.0, 10.25, -5.1]),
+    ("generated/lantern_inn", [3.4, 10.05, -5.9]),
 ];
 
 /// Where smoke rises from the town's chimneys, a little above each top, m.

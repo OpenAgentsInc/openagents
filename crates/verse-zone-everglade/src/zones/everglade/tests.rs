@@ -87,7 +87,7 @@ fn the_world_is_ground_textured_placements_and_boards() {
     let placements = layout::placements();
     let fars = super::detail::far_placements(pack(), &placements);
     let far_count = fars.iter().flatten().count();
-    assert!(far_count > 1000, "{far_count}");
+    assert!(far_count > 600, "{far_count}");
     assert_eq!(
         scene.placements.len(),
         placements.len() + far_count + ground.placements.len()

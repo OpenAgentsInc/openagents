@@ -378,14 +378,17 @@ fn committed_manifests_admit_only_base_color_sources_with_licenses() {
         assert!(directory.join("README.md").is_file(), "{set} README");
         // Only images change in the kits' sets; the generated set records
         // each model's conversion from its committed glb, and the lod set
-        // each far level's recipe.
+        // each far level's recipe, or the script that built it.
         for (name, transform) in &manifest.transforms {
             if set == "generated" {
                 assert!(transform.contains("everglade_admit.py"), "{set}/{name}");
             } else if set == "foliage" {
                 assert!(transform.contains("foliage_admit.py"), "{set}/{name}");
             } else if set == "lod" {
-                assert!(transform.contains("everglade_lod.py"), "{set}/{name}");
+                assert!(
+                    transform.contains("everglade_lod.py") || transform.contains("town_houses.py"),
+                    "{set}/{name}"
+                );
             } else if compile::FORM_SETS.contains(&set) {
                 assert!(transform.contains("beasts_admit.py"), "{set}/{name}");
             } else {
@@ -414,7 +417,7 @@ fn committed_sources_compile_within_budgets_to_the_pinned_pack() {
     );
     let pack = format::decode(&compiled.bytes, &Limits::EVERGLADE).unwrap();
     for name in [
-        "nature/CommonTree_1",
+        "nature/CommonTree_3",
         "nature/RockPath_Round_Wide",
         "village/Wall_Plaster_Straight",
         "village/Window_Wide_Flat1",

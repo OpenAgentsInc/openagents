@@ -1,0 +1,53 @@
+{
+  "model": "brownstone.glb",
+  "frame": "glTF: 1 unit = 1 m, +Y up, +Z out of the front door, origin on the ground at the center of the front wall",
+  "triangles": 2310,
+  "boxes": [
+    {
+      "name": "house",
+      "center": [
+        0.0,
+        5.35,
+        -4.0
+      ],
+      "half_extents": [
+        4.1,
+        5.35,
+        4.1
+      ]
+    },
+    {
+      "name": "stoop",
+      "center": [
+        2.2,
+        0.7,
+        1.5
+      ],
+      "half_extents": [
+        1.1,
+        0.7,
+        1.5
+      ]
+    }
+  ],
+  "roofs": [
+    {
+      "center": [
+        0.0,
+        -4.0
+      ],
+      "slopes_z": true,
+      "half": [
+        3.8,
+        3.8
+      ],
+      "eave": 10.82,
+      "ridge": 10.83
+    }
+  ],
+  "front": [
+    2.2,
+    3.6
+  ],
+  "inside": null
+}
