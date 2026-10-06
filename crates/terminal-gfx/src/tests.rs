@@ -1121,3 +1121,98 @@ fn a_live_shell_proposal_waits_for_exact_enter_and_destructive_confirmation() {
     assert!(records[0].output.contains("approved_once"));
     overlay.shutdown();
 }
+
+#[test]
+fn floating_workbench_draw_and_watch_do_not_create_or_drive_a_terminal() {
+    use terminal_core::opening::{Host, OPENING, Opening};
+    let mut overlay = Overlay::new();
+    let resource = terminal_core::opening::ResourceRef::new(
+        terminal_core::opening::Kind::Studio,
+        Host::Local {
+            instance: "a".repeat(64),
+        },
+        "task-1",
+    )
+    .studio(terminal_core::opening::StudioPart::Task)
+    .with_revision(terminal_core::opening::Revision::Counter(1));
+    let opening = Opening {
+        v: OPENING.into(),
+        host: Host::Local {
+            instance: "a".repeat(64),
+        },
+        stream: "ab".into(),
+        workspace: None,
+        goal: None,
+        seat: None,
+        task: Some(resource.clone()),
+        thread: None,
+        review: None,
+    };
+    overlay.open_workshop(opening.clone(), true).unwrap();
+    let screen = crate::screen::Screen::new(
+        resource.clone(),
+        opening.clone(),
+        crate::screen::Mode::Watch,
+        "rights-v1".into(),
+    )
+    .unwrap();
+    overlay.configure_screen(&screen, Rect::new(30.0, 50.0, 600.0, 400.0));
+    assert_eq!(screen.resource, resource);
+    assert_eq!(screen.opening, opening);
+    let mut atlas = crate::ui::Atlas::new(14.0);
+    let mut batch = crate::ui::UiBatch::default();
+    overlay.draw(&mut batch, &mut atlas, [1000.0, 800.0]);
+    assert!(!batch.vertices.is_empty());
+    assert!(overlay.tabs.is_empty());
+    assert!(overlay.panes.is_empty());
+    assert_eq!(overlay.workshop(), Some(&opening));
+    let enter = KeyIn {
+        code: KeyCode::Enter,
+        logical: Logical::Named(NamedKey::Enter),
+        text: Some("\n".into()),
+        plain: None,
+        pressed: true,
+        repeat: false,
+        synthetic: false,
+    };
+    assert!(overlay.key(&enter));
+    assert!(overlay.press([40.0, 60.0]));
+    assert!(overlay.wheel([40.0, 60.0], 4.0));
+    assert!(overlay.paper.studio.prepare.is_none());
+    assert!(overlay.paper.studio.send.is_none());
+    assert!(overlay.tabs.is_empty());
+    // Drive keys stay on the admitted studio sheet, even with a shell shortcut.
+    overlay.screen_watch = false;
+    overlay.modifiers(ModifiersState::CONTROL | ModifiersState::SHIFT);
+    overlay.key(&KeyIn {
+        code: KeyCode::KeyT,
+        logical: Logical::Character(SmolStr::new("t")),
+        text: Some("t".into()),
+        ..enter
+    });
+    assert!(overlay.tabs.is_empty());
+    overlay.key(&KeyIn {
+        code: KeyCode::Escape,
+        logical: Logical::Named(NamedKey::Escape),
+        text: None,
+        plain: None,
+        pressed: true,
+        repeat: false,
+        synthetic: false,
+    });
+    assert!(!overlay.open);
+    // An unsupported surface fallback must preserve Watch's input boundary.
+    overlay.open = true;
+    overlay.screen_rect = None;
+    overlay.screen_watch = true;
+    assert!(overlay.key(&KeyIn {
+        code: KeyCode::Enter,
+        logical: Logical::Named(NamedKey::Enter),
+        text: Some("\n".into()),
+        plain: None,
+        pressed: true,
+        repeat: false,
+        synthetic: false
+    }));
+    assert!(overlay.tabs.is_empty());
+}

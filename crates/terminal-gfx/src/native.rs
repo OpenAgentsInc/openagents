@@ -60,6 +60,9 @@ pub struct Overlay {
     fallback: Option<glyphs::Fallback>,
     cache: BTreeMap<PaneId, (CacheKey, Vec<UiVertex>)>,
     control: Option<control::Listener>,
+    /// Local presentation bounds and input policy; never shared through presence.
+    pub screen_rect: Option<Rect>,
+    pub screen_watch: bool,
 }
 impl std::ops::Deref for Overlay {
     type Target = terminal_core::Application;
@@ -122,9 +125,44 @@ impl Overlay {
             fallback: None,
             cache: BTreeMap::new(),
             control: None,
+            screen_rect: None,
+            screen_watch: false,
         }
     }
+    /// Mounts a supported local screen; unsupported resources keep the ordinary overlay.
+    pub fn configure_screen(&mut self, screen: &crate::screen::Screen, bounds: Rect) {
+        self.screen_rect = (screen.surface() == crate::screen::Surface::Studio).then_some(bounds);
+        self.screen_watch = screen.mode == crate::screen::Mode::Watch
+            || screen.surface() == crate::screen::Surface::Overlay;
+    }
+
     pub fn key(&mut self, key: &KeyIn) -> bool {
+        if self.screen_watch {
+            if !self.core.open {
+                return false;
+            }
+            if key.code == KeyCode::KeyT && key.pressed {
+                self.core.open = false;
+                self.core.focused = false;
+            }
+            return self.core.open || key.code == KeyCode::KeyT;
+        }
+        if self.screen_rect.is_some() {
+            if !self.core.open {
+                return false;
+            }
+            if key.code == KeyCode::KeyT && key.pressed && key.text.is_none() {
+                self.core.open = false;
+                self.core.focused = false;
+                return true;
+            }
+            let taken = self.core.paper_key(&input(key));
+            if !self.core.paper.studio.open {
+                self.core.open = false;
+                self.core.focused = false;
+            }
+            return taken;
+        }
         let taken = self.core.key(&input(key));
         // In the Grid, F10 puts the sheet away; the window's mount quits.
         if self.mount == Mount::Overlay && self.core.paper.quit {
@@ -149,22 +187,55 @@ impl Overlay {
         }
     }
     pub fn fit(&mut self, atlas: &Atlas, size: [f32; 2]) {
+        if self.screen_rect.is_some() || self.screen_watch {
+            return;
+        }
         self.core.fit_metrics(draw::cell_size(atlas), size);
         self.core.area = self.pane_area(size, self.core.cell);
     }
     pub fn press(&mut self, point: [f32; 2]) -> bool {
+        if self.screen_watch {
+            return self.core.open;
+        }
+        if self.screen_rect.is_some() {
+            return self.core.open;
+        }
         self.core.press(point)
     }
     pub fn release(&mut self, point: [f32; 2]) -> bool {
+        if self.screen_watch {
+            return self.core.open;
+        }
+        if self.screen_rect.is_some() {
+            return self.core.open;
+        }
         self.core.release(point)
     }
     pub fn wheel(&mut self, point: [f32; 2], lines: f32) -> bool {
+        if self.screen_watch {
+            return self.core.open;
+        }
+        if self.screen_rect.is_some() {
+            return self.core.open;
+        }
         self.core.wheel(point, lines)
     }
     pub fn pointer(&mut self, point: [f32; 2]) {
+        if self.screen_watch {
+            return;
+        }
+        if self.screen_rect.is_some() {
+            return;
+        }
         self.core.pointer(point);
     }
     pub fn button(&mut self, button: mouse::Button, pressed: bool, point: [f32; 2]) -> bool {
+        if self.screen_watch {
+            return self.core.open;
+        }
+        if self.screen_rect.is_some() {
+            return self.core.open;
+        }
         self.core.button(button, pressed, point)
     }
     pub fn shutdown(&mut self) {
@@ -331,6 +402,9 @@ impl Overlay {
     }
 
     fn draw_overlay(&mut self, batch: &mut UiBatch, atlas: &mut Atlas, size: [f32; 2]) {
+        if self.screen_rect.is_some() && (!self.core.open || !self.core.paper.studio.open) {
+            return;
+        }
         if !self.core.open {
             // Sessions keep running hidden; their output still applies.
             self.tick();
@@ -338,6 +412,10 @@ impl Overlay {
         }
         self.core.cell = draw::cell_size(atlas);
         self.core.area = self.pane_area(size, self.core.cell);
+        if self.core.workshop().is_some() && self.core.paper.studio.open {
+            self.draw_paper(batch, atlas, size);
+            return;
+        }
         self.ensure_started();
         if self.core.tabs.is_empty() {
             self.core.open = false;
@@ -956,6 +1034,14 @@ impl Overlay {
     /// frame at the center of the screen.
     #[must_use]
     pub fn sheet_rect(&self, size: [f32; 2]) -> Rect {
+        if let Some(rect) = self.screen_rect {
+            return Rect::new(
+                rect.x.clamp(0.0, size[0]),
+                rect.y.clamp(0.0, size[1]),
+                rect.w.min(size[0] - rect.x.max(0.0)).max(0.0),
+                rect.h.min(size[1] - rect.y.max(0.0)).max(0.0),
+            );
+        }
         match self.mount {
             Mount::Window => Rect::new(0.0, 0.0, size[0], size[1]),
             Mount::Overlay => {
@@ -986,7 +1072,9 @@ impl Overlay {
         let rows = (frame.h / ch).floor() as usize;
         // Keep the grid the program sees in step before reading output.
         self.core.area = frame;
-        self.tick();
+        if self.core.workshop().is_none() {
+            self.tick();
+        }
         if !self.core.open {
             return;
         }

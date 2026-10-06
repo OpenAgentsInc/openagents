@@ -47,6 +47,9 @@ const HOTBAR_BOTTOM: f32 = 0.0;
 pub struct Options {
     /// Private authenticated compute account configuration for the shared sheet.
     pub compute_workbench: Option<std::path::PathBuf>,
+    /// Optional local floating studio screen, independent of work placement.
+    pub workbench_screen: Option<terminal_gfx::screen::Mode>,
+    pub workbench_screen_bounds: [u16; 4],
     /// Profile name; each profile is its own player key.
     pub profile: String,
     /// Relay URL, or `None` to play offline.
@@ -127,6 +130,8 @@ impl Default for Options {
             terminal_store: None,
             terminal_reference: None,
             compute_workbench: None,
+            workbench_screen: None,
+            workbench_screen_bounds: [40, 60, 900, 600],
             studio_muted: false,
             everglade: false,
             grove: false,
@@ -602,6 +607,12 @@ struct App {
     panel_shift: bool,
     /// The terminal overlay (T), its panes, and their sessions.
     terminal: crate::terminal::Overlay,
+    screen_mode: Option<terminal_gfx::screen::Mode>,
+    screen_bounds: [u16; 4],
+    screen: Option<terminal_gfx::screen::Screen>,
+    screen_vertices: Vec<crate::ui::UiVertex>,
+    screen_clock: Instant,
+    screen_viewport: Option<([u32; 2], u32, u64)>,
     /// The workshop agent at her desk in Everglade, her panel, and the
     /// pane she drives.
     workshop: crate::workshop::Workshop,
@@ -1011,6 +1022,12 @@ impl App {
             studio_target: None,
             panel_shift: false,
             terminal: terminal_overlay(options)?,
+            screen_mode: options.workbench_screen,
+            screen_bounds: options.workbench_screen_bounds,
+            screen: None,
+            screen_vertices: Vec::new(),
+            screen_clock: Instant::now(),
+            screen_viewport: None,
             // Alice is a client of the host the studio reads, over the same
             // control socket; a test never reaches the person's own host.
             workshop: crate::workshop::Workshop::control(
@@ -1082,6 +1099,7 @@ impl App {
     }
 
     fn workbench_studio(&mut self) {
+        self.validate_screen();
         if self.terminal.workshop().is_none() {
             return;
         }
@@ -1099,7 +1117,14 @@ impl App {
             }
             return;
         }
-        let rights = studio.rights();
+        let mut rights = studio.rights();
+        if self
+            .screen
+            .as_ref()
+            .is_some_and(|screen| screen.mode == terminal_gfx::screen::Mode::Watch)
+        {
+            rights.retain(|right| *right == coder_access::Right::Observe);
+        }
         let Some(snapshot) = studio.source_snapshot() else {
             return;
         };
@@ -1121,6 +1146,7 @@ impl App {
                 Err(error) => {
                     self.terminal.paper.studio.revoke();
                     self.terminal.paper.studio.notice = Some(error);
+                    self.screen_vertices.clear();
                     return;
                 }
             }
@@ -1521,6 +1547,7 @@ impl App {
                 return;
             }
             self.terminal.clear_workshop();
+            self.clear_screen();
         }
         self.terminal.toggle();
         if self.terminal.focused {
@@ -1554,12 +1581,94 @@ impl App {
                     review.as_ref(),
                 )
             });
-        match opening.and_then(|opening| self.terminal.open_workshop(opening, true)) {
+        let disclosure = format!("{:?}", studio.rights());
+        let opening = opening.and_then(|opening| {
+            if let Some(mode) = self.screen_mode {
+                let Some(resource) = opening
+                    .task
+                    .as_ref()
+                    .or(opening.seat.as_ref())
+                    .or(opening.goal.as_ref())
+                    .cloned()
+                else {
+                    self.clear_screen();
+                    return self.terminal.open_workshop(opening, true);
+                };
+                self.screen = Some(terminal_gfx::screen::Screen::new(
+                    resource,
+                    opening.clone(),
+                    mode,
+                    disclosure.clone(),
+                )?);
+                self.screen_vertices.clear();
+                let [x, y, w, h] = self.screen_bounds.map(|value| value as f32 * self.scale);
+                if let Some(screen) = &self.screen {
+                    self.terminal
+                        .configure_screen(screen, crate::terminal::layout::Rect::new(x, y, w, h));
+                }
+            }
+            self.terminal.open_workshop(opening, true)
+        });
+        match opening {
             Ok(()) => self.take_keys_for_terminal(),
             Err(reason) => {
                 self.terminal.clear_workshop();
+                self.clear_screen();
                 self.terminal.notice = Some(reason);
             }
+        }
+    }
+
+    fn clear_screen(&mut self) {
+        self.screen = None;
+        self.screen_vertices.clear();
+        self.screen_viewport = None;
+        self.terminal.screen_rect = None;
+        self.terminal.screen_watch = false;
+    }
+
+    /// Current observation admission is checked before cached private pixels are reused.
+    fn validate_screen(&mut self) {
+        let Some(screen) = &self.screen else {
+            return;
+        };
+        let studio = self.runtime.studio();
+        let rights = studio.rights();
+        let selected = studio.source_snapshot().is_some_and(|snapshot| {
+            use crate::terminal::opening::StudioPart;
+            match screen.resource.part {
+                Some(StudioPart::Task) => snapshot
+                    .view
+                    .tasks
+                    .iter()
+                    .any(|record| record.task == screen.resource.id),
+                Some(StudioPart::Seat) => snapshot
+                    .view
+                    .seats
+                    .iter()
+                    .any(|record| record.seat == screen.resource.id),
+                Some(StudioPart::Goal) => snapshot
+                    .view
+                    .goals
+                    .iter()
+                    .any(|record| record.goal == screen.resource.id),
+                _ => screen.resource.id == snapshot.stream,
+            }
+        });
+        let admitted = selected
+            && studio.available()
+            && studio.source_snapshot().is_some_and(|snapshot| {
+                screen.admitted(
+                    &snapshot.stream,
+                    &format!("{rights:?}"),
+                    rights.contains(&coder_access::Right::Observe),
+                )
+            });
+        if !admitted {
+            self.terminal.clear_workshop();
+            self.terminal.open = false;
+            self.terminal.focused = false;
+            self.clear_screen();
         }
     }
 
@@ -1574,6 +1683,7 @@ impl App {
     /// is its then, so none moves the character. Returns false when the
     /// world should handle the key.
     fn terminal_key(&mut self, key: &crate::terminal::KeyIn) -> bool {
+        self.validate_screen();
         let was = self.terminal.focused;
         let taken = self.terminal.key(key);
         if !was && self.terminal.focused {
@@ -3148,6 +3258,7 @@ impl App {
     }
 
     fn button(&mut self, button: MouseButton, pressed: bool) {
+        self.validate_screen();
         if button == MouseButton::Left {
             if pressed && self.terminal.on_button(self.cursor) {
                 self.terminal_press = true;
@@ -4069,11 +4180,50 @@ impl App {
         });
         self.terminal.button = Some(crate::terminal::Overlay::button_for(size, self.scale, tray));
         self.terminal.scale = self.scale;
+        self.validate_screen();
         // The terminal overlay draws over every other HUD element. It may
         // add fallback glyphs to the atlas, which the renderer then takes.
         match &mut self.atlas {
             Some(atlas) => {
-                self.terminal.draw(&mut ui, atlas, size);
+                if let Some(screen) = &mut self.screen {
+                    let [x, y, w, h] = self.screen_bounds.map(|value| value as f32 * self.scale);
+                    self.terminal.screen_rect =
+                        Some(crate::terminal::layout::Rect::new(x, y, w, h));
+                    let viewport = (
+                        size.map(f32::to_bits),
+                        self.scale.to_bits(),
+                        atlas.revision(),
+                    );
+                    let changed = self.screen_viewport != Some(viewport);
+                    if changed {
+                        self.screen_vertices.clear();
+                    }
+                    let visible = self.terminal.open;
+                    if !visible {
+                        self.screen_vertices.clear();
+                    }
+                    let active = self
+                        .mount
+                        .as_ref()
+                        .is_some_and(|mount| mount.active() && mount.viewport().drawable());
+                    if screen.frame(
+                        self.screen_clock.elapsed().as_millis() as u64,
+                        visible,
+                        active,
+                    ) {
+                        let mut screen_batch = crate::ui::UiBatch::default();
+                        self.terminal.draw(&mut screen_batch, atlas, size);
+                        self.screen_vertices = screen_batch.vertices;
+                        self.screen_viewport = Some((
+                            size.map(f32::to_bits),
+                            self.scale.to_bits(),
+                            atlas.revision(),
+                        ));
+                    }
+                    ui.vertices.extend_from_slice(&self.screen_vertices);
+                } else {
+                    self.terminal.draw(&mut ui, atlas, size);
+                }
                 if atlas.revision() != self.atlas_revision {
                     self.atlas_revision = atlas.revision();
                     let uploaded = match (&mut self.grid, &mut self.renderer) {
@@ -4088,7 +4238,8 @@ impl App {
                     }
                 }
             }
-            None => self.terminal.tick(),
+            None if self.screen.is_none() => self.terminal.tick(),
+            None => (),
         }
         // A request over the control socket may have given the overlay
         // focus (or taken it): the character stops, as it does for T.

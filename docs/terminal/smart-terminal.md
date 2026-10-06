@@ -799,3 +799,5 @@ below are later design choices, not blockers for today's three issues.
     adapter (its clients attaching to our hosts) more valuable?
 11. **Windows.** The `coder-pty` host supports ConPTY. Is Windows a target
     for the window in phase 2, or later?
+
+Verse can mount admitted studio references as a local floating screen with `--workbench-screen watch` or `--workbench-screen drive`. Set its position and size in logical points with `--workbench-screen-bounds x,y,width,height`. At a studio station, T or Shift+F selects the same workbench context; opening creates no shell or task. Watch blocks input and drive uses the current studio rights. Changes to observation rights or the source stream clear the screen; reopening requires a new selection. Screens draw at most 30 frames per second while visible and active. The native screen supports studio views; other resource kinds use the ordinary overlay. Placement and private view data stay on this client and never enter world presence.

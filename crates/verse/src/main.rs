@@ -223,6 +223,30 @@ fn parse(mut args: impl Iterator<Item = String>) -> Result<(Option<Shot>, Option
             "--gym-connection" => options.gym_connection = Some(value()?.into()),
             "--studio-sim" => options.studio_sim = true,
             "--compute-workbench" => options.compute_workbench = Some(value()?.into()),
+            "--workbench-screen" => {
+                options.workbench_screen = Some(match value()?.as_str() {
+                    "watch" => terminal_gfx::screen::Mode::Watch,
+                    "drive" => terminal_gfx::screen::Mode::Drive,
+                    _ => return Err("--workbench-screen requires watch or drive".into()),
+                })
+            }
+            "--workbench-screen-bounds" => {
+                let raw = value()?;
+                let values = raw
+                    .split(',')
+                    .map(str::parse::<u16>)
+                    .collect::<Result<Vec<_>, _>>()
+                    .map_err(|_| "screen bounds require four positive integers".to_owned())?;
+                options.workbench_screen_bounds = values
+                    .try_into()
+                    .map_err(|_| "screen bounds require x,y,width,height")?;
+                if options.workbench_screen_bounds[2..]
+                    .iter()
+                    .any(|value| *value < 160)
+                {
+                    return Err("screen width and height must be at least 160 points".into());
+                }
+            }
             "--studio-socket" => options.studio_socket = Some(value()?.into()),
             "--terminal-host" => options.terminal_host = Some(value()?),
             "--terminal-store" => options.terminal_store = Some(value()?.into()),
