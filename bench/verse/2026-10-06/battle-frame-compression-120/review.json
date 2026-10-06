@@ -1,0 +1,65 @@
+{
+  "source_base_revision": "3896776166080cfba6ed740aa9a414b6a7582cb4",
+  "source_patch": "source.patch",
+  "executable_sha256": "d0a75e5f3efed84fe922627232137a01db7161af07027378885d584b78e02563",
+  "acceptance": "failed",
+  "failures": [
+    "/server/movement_expiry/total: Some(2.0) exceeds 0, or is unavailable",
+    "Player 11 late prediction p95 Some(0.26670002937316895) exceeds 0.25 meters or is unavailable",
+    "Player 13 late prediction p95 Some(0.26670026779174805) exceeds 0.25 meters or is unavailable",
+    "Player 14 late prediction p95 Some(0.26670002937316895) exceeds 0.25 meters or is unavailable"
+  ],
+  "movement_expiry": {
+    "total": 2,
+    "admission": 0,
+    "primary_tick": 0,
+    "additional_tick": 2,
+    "bootstrap": 0,
+    "samples": [
+      {
+        "actor": 241,
+        "epoch": 2,
+        "authority_tick": 623,
+        "origin": "additional_tick",
+        "world_step": 92,
+        "confirmed_step": 56,
+        "projected_step": 56,
+        "received_at": 68,
+        "applied_sequence": 3,
+        "queued_frames": 0,
+        "queued_steps": 0,
+        "first_start": null,
+        "last_end": null
+      },
+      {
+        "actor": 243,
+        "epoch": 2,
+        "authority_tick": 623,
+        "origin": "additional_tick",
+        "world_step": 92,
+        "confirmed_step": 56,
+        "projected_step": 56,
+        "received_at": 72,
+        "applied_sequence": 4,
+        "queued_frames": 0,
+        "queued_steps": 0,
+        "first_start": null,
+        "last_end": null
+      }
+    ],
+    "omitted": 0
+  },
+  "limits_changed": false,
+  "route": {
+    "upstream_bytes": 23680126,
+    "downstream_bytes": 106062710,
+    "forwarded_chunks": 117610,
+    "queued_chunk_peak": 5
+  },
+  "render_p95_ms": {
+    "frame_cpu_ms": 8.060466,
+    "gpu_scene_ms": 6.991872,
+    "applied_snapshot_age_ms": 232.672305
+  },
+  "conclusion": "Downstream wire bytes decreased from the preceding run, but two initial-entry expiries and three late correction gates still fail. No capacity acceptance is claimed."
+}
