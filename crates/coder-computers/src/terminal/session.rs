@@ -836,10 +836,12 @@ fn apply(
                 };
                 model.seat(typing, (size.rows, size.cols));
             }
+            // The owner's own attachments are never under a share.
             Applied::Detached(Detached::Requested)
             | Applied::Duplicate
             | Applied::Refused(_)
-            | Applied::Effect(_) => {}
+            | Applied::Effect(_)
+            | Applied::Paused(_) => {}
         }
     }
     let replies = model.vt.take_replies();

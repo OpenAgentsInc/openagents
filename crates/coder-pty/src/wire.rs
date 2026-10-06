@@ -721,6 +721,10 @@ pub enum Value {
     Sessions {
         sessions: Vec<crate::ext::SessionEntry>,
     },
+    /// A terminal's attachments and shares (NIP-TERM's shares feature).
+    Viewers {
+        viewers: crate::share::Viewers,
+    },
     /// A share the host issued (NIP-TERM's shares feature): its terms, and
     /// the host-signed envelope sealed to the grantee that carries them.
     Shared {
@@ -837,6 +841,11 @@ pub enum Body {
     /// named [`crate::ext::TYPIST`] when it begins and whenever the role
     /// moves.
     Typist { typist: Option<String>, size: Size },
+    /// Sharing paused or resumed (NIP-TERM's shares feature). Not
+    /// sequenced; sent only to an attachment a share admitted, when it
+    /// begins under a pause and whenever the pause changes. A client
+    /// blanks the pane while paused.
+    Paused { paused: bool },
 }
 
 impl Body {
@@ -848,7 +857,8 @@ impl Body {
             Body::Gap { .. }
             | Body::Detached { .. }
             | Body::Effect { .. }
-            | Body::Typist { .. } => None,
+            | Body::Typist { .. }
+            | Body::Paused { .. } => None,
         }
     }
 }
@@ -900,7 +910,7 @@ impl Frame {
                     ));
                 }
             }
-            Body::Detached { .. } => {}
+            Body::Detached { .. } | Body::Paused { .. } => {}
             Body::Effect { effect, .. } => effect.check()?,
             Body::Typist { typist, size } => {
                 if let Some(typist) = typist {

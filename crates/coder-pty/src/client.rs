@@ -54,6 +54,9 @@ pub enum Applied {
         typist: Option<String>,
         size: crate::wire::Size,
     },
+    /// Sharing paused or resumed (the shares feature). Blank the pane
+    /// while paused; the output from the pause arrives as a gap.
+    Paused(bool),
     /// The frame failed validation or names another terminal.
     Refused(Refusal),
 }
@@ -161,6 +164,7 @@ impl TerminalState {
                 typist: typist.clone(),
                 size: *size,
             },
+            Body::Paused { paused } => Applied::Paused(*paused),
         }
     }
 

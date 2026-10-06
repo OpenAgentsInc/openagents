@@ -29,6 +29,10 @@ pub const SHARE: &str = "openagents.terminal-share.v1";
 pub const UNSHARE: &str = "openagents.terminal-unshare.v1";
 /// `v` of a share grant, and the schema of its signed envelope.
 pub const GRANT: &str = "openagents.terminal-share-grant.v1";
+/// `v` of a pause or resume of every share of a terminal.
+pub const PAUSE: &str = "openagents.terminal-share-pause.v1";
+/// `v` of a read of a terminal's attachments and shares.
+pub const VIEWERS: &str = "openagents.terminal-viewers.v1";
 
 /// The longest a share lasts, in seconds: seven days.
 pub const LIFETIME_MAX: u64 = 7 * 24 * 60 * 60;
@@ -191,6 +195,111 @@ impl Unshare {
         }
         Ok(())
     }
+}
+
+/// Pause or resume what every share of a terminal reads. While paused,
+/// no output reaches an attachment under a share; on resume each receives
+/// a gap for the paused output, and nothing from before the resume is
+/// readable under a share again.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct SharePause {
+    pub v: String,
+    pub requires: Vec<String>,
+    pub request: String,
+    pub terminal: TerminalRef,
+    pub paused: bool,
+}
+
+impl SharePause {
+    #[must_use]
+    pub fn new(request: impl Into<String>, terminal: TerminalRef, paused: bool) -> Self {
+        SharePause {
+            v: PAUSE.into(),
+            requires: vec![SHARES.into()],
+            request: request.into(),
+            terminal,
+            paused,
+        }
+    }
+
+    pub fn check(&self) -> Result<(), Refusal> {
+        self.check_with(Features::ALL)
+    }
+
+    pub fn check_with(&self, features: Features) -> Result<(), Refusal> {
+        ext_header(
+            &self.v,
+            PAUSE,
+            &self.requires,
+            &self.request,
+            SHARES,
+            features,
+        )?;
+        self.terminal.check()
+    }
+}
+
+/// Read who is attached to a terminal and which shares it has.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct ViewersRead {
+    pub v: String,
+    pub requires: Vec<String>,
+    pub request: String,
+    pub terminal: TerminalRef,
+}
+
+impl ViewersRead {
+    #[must_use]
+    pub fn new(request: impl Into<String>, terminal: TerminalRef) -> Self {
+        ViewersRead {
+            v: VIEWERS.into(),
+            requires: vec![SHARES.into()],
+            request: request.into(),
+            terminal,
+        }
+    }
+
+    pub fn check(&self) -> Result<(), Refusal> {
+        self.check_with(Features::ALL)
+    }
+
+    pub fn check_with(&self, features: Features) -> Result<(), Refusal> {
+        ext_header(
+            &self.v,
+            VIEWERS,
+            &self.requires,
+            &self.request,
+            SHARES,
+            features,
+        )?;
+        self.terminal.check()
+    }
+}
+
+/// One attachment as the viewer list shows it: who, how, and under which
+/// share, never what it read.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct Viewer {
+    pub attachment: String,
+    pub device: String,
+    pub mode: crate::wire::Mode,
+    /// The share that admitted it, or null for a device right.
+    pub share: Option<String>,
+    /// Whether it holds the typist role.
+    pub typist: bool,
+}
+
+/// A terminal's attachments, its current shares, and whether sharing is
+/// paused.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct Viewers {
+    pub viewers: Vec<Viewer>,
+    pub shares: Vec<ShareGrant>,
+    pub paused: bool,
 }
 
 /// The terms of one share, as the host records and signs them.

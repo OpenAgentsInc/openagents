@@ -508,3 +508,128 @@ fn a_share_request_is_bounded_and_idempotent() {
         Reason::UnsupportedFeature
     );
 }
+
+/// Everything one device received within `wait`: output text, gaps,
+/// pause notices, and whether it was detached as revoked.
+#[derive(Debug, Default)]
+struct Seen {
+    text: String,
+    gaps: Vec<(u64, u64, Option<u64>)>,
+    pauses: Vec<bool>,
+    revoked: bool,
+}
+
+fn seen(frames: &Receiver<Frame>, wait: Duration) -> Seen {
+    let deadline = Instant::now() + wait;
+    let mut seen = Seen::default();
+    while Instant::now() < deadline {
+        while let Ok(frame) = frames.try_recv() {
+            match frame.body {
+                Body::Output { data, .. } => seen.text.push_str(&String::from_utf8_lossy(&data)),
+                Body::Gap { from, to, bytes } => seen.gaps.push((from, to, bytes)),
+                Body::Paused { paused } => seen.pauses.push(paused),
+                Body::Detached {
+                    reason: Detached::Revoked,
+                } => seen.revoked = true,
+                _ => {}
+            }
+        }
+        std::thread::sleep(Duration::from_millis(20));
+    }
+    seen
+}
+
+#[test]
+fn a_pause_blanks_every_share_and_its_output_never_arrives() {
+    use coder_pty::share::{SharePause, ViewersRead};
+    let f = fixture();
+    let terminal = f.open();
+    let (owner, _owner_frames) = f.attach(OWNER, &terminal, Mode::Interact).unwrap();
+    for (grantee, mode) in [(FRIEND, ShareMode::Watch), (THIRD, ShareMode::Drive)] {
+        f.share(
+            OWNER,
+            ShareRequest::new(id(), terminal.clone(), grantee, mode, now() + 600),
+        )
+        .unwrap();
+    }
+    let (_, watching) = f.attach(FRIEND, &terminal, Mode::Observe).unwrap();
+    let (driver, driving) = f.attach(THIRD, &terminal, Mode::Interact).unwrap();
+
+    // The owner sees who watches and who types, and no output.
+    let take = Seat::take(id(), terminal.clone(), &driver);
+    f.host.seat(THIRD, &take).unwrap();
+    let Ok((_, Value::Viewers { viewers })) = f
+        .host
+        .viewers(OWNER, &ViewersRead::new(id(), terminal.clone()))
+    else {
+        panic!("viewers")
+    };
+    assert_eq!(viewers.viewers.len(), 3);
+    assert_eq!(viewers.shares.len(), 2);
+    assert!(!viewers.paused);
+    let typing: Vec<&str> = viewers
+        .viewers
+        .iter()
+        .filter(|viewer| viewer.typist)
+        .map(|viewer| viewer.device.as_str())
+        .collect();
+    assert_eq!(typing, vec![THIRD]);
+    assert!(viewers.viewers.iter().filter(|v| v.share.is_some()).count() == 2);
+    // A share holder reads no viewer list.
+    assert_eq!(
+        f.host
+            .viewers(FRIEND, &ViewersRead::new(id(), terminal.clone()))
+            .unwrap_err()
+            .reason,
+        Reason::NotAdmitted
+    );
+    let take = Seat::take(id(), terminal.clone(), &owner);
+    f.host.seat(OWNER, &take).unwrap();
+
+    f.host
+        .pause(OWNER, &SharePause::new(id(), terminal.clone(), true))
+        .unwrap();
+    f.type_in(OWNER, &terminal, &owner, "secret-while-paused\n")
+        .unwrap();
+    let head = f.settle(&terminal, 0);
+    for frames in [&watching, &driving] {
+        let during = seen(frames, Duration::from_millis(300));
+        assert_eq!(during.pauses, vec![true]);
+        assert!(!during.text.contains("secret"), "{during:?}");
+    }
+    // Nobody but the owner pauses or resumes.
+    assert_eq!(
+        f.host
+            .pause(FRIEND, &SharePause::new(id(), terminal.clone(), false))
+            .unwrap_err()
+            .reason,
+        Reason::NotAdmitted
+    );
+
+    f.host
+        .pause(OWNER, &SharePause::new(id(), terminal.clone(), false))
+        .unwrap();
+    f.type_in(OWNER, &terminal, &owner, "after-resume\n")
+        .unwrap();
+    for frames in [&watching, &driving] {
+        let after = seen(frames, Duration::from_millis(600));
+        assert_eq!(after.pauses, vec![false]);
+        assert!(after.text.contains("after-resume"), "{after:?}");
+        assert!(!after.text.contains("secret"), "{after:?}");
+        // One truthful gap through the resume, without the paused size.
+        assert_eq!(after.gaps.len(), 1, "{after:?}");
+        assert_eq!(after.gaps[0].1, head);
+        assert_eq!(after.gaps[0].2, None);
+    }
+    // A late join under the same share replays nothing from the pause.
+    let (_, late) = f.attach(FRIEND, &terminal, Mode::Observe).unwrap();
+    let joined = seen(&late, Duration::from_millis(400));
+    assert!(!joined.text.contains("secret"), "{joined:?}");
+
+    // Ending every share detaches both recipients.
+    f.host
+        .unshare(OWNER, &Unshare::all(id(), terminal.clone()))
+        .unwrap();
+    assert!(seen(&watching, Duration::from_millis(300)).revoked);
+    assert!(seen(&driving, Duration::from_millis(300)).revoked);
+}

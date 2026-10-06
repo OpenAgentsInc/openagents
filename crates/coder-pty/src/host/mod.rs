@@ -102,7 +102,8 @@ use crate::emulator::{self, Effects, Emulator, HistoryRead};
 use crate::ext::{BlockPageRead, Effect, Features, History, Join, RecordsFrame, Seat};
 use crate::ring::Ring;
 use crate::share::{
-    DEPTH_MAX, LIFETIME_MAX, SHARES_MAX, ShareGrant, ShareMode, ShareRequest, Unshare,
+    DEPTH_MAX, LIFETIME_MAX, SHARES_MAX, ShareGrant, ShareMode, SharePause, ShareRequest, Unshare,
+    Viewer, Viewers, ViewersRead,
 };
 use crate::wire::{
     self, Attach, Body, Cause, Close, Detach, Detached, Exit, Frame, Input, Launch, Mode, Open,
@@ -498,6 +499,11 @@ struct Attachment {
     pending: VecDeque<(u64, Effect)>,
     /// The share that admitted the attachment, when no right did.
     share: Option<String>,
+    /// The pause it was last told of, for an attachment under a share.
+    told_paused: bool,
+    /// After a resume: the newest sequence number the pause covered, which
+    /// the attachment receives as one gap before any later output.
+    skip_to: Option<u64>,
 }
 
 impl Attachment {
@@ -538,6 +544,11 @@ struct State {
     /// The terminal's shares by ID, and its share epoch.
     shares: BTreeMap<String, ShareGrant>,
     share_epoch: u64,
+    /// Whether sharing is paused: no output reaches a share's attachment.
+    paused: bool,
+    /// The newest sequence number no share may read since the last resume,
+    /// or 0.
+    cut: u64,
 }
 
 /// Who types at a terminal: an attachment, or for a client that predates
@@ -679,6 +690,17 @@ impl State {
             .min_by_key(|grant| (grant.from, std::cmp::Reverse(grant.expires_at)))
     }
 
+    /// The first sequence number `grant` reads now: its own, or later
+    /// after a pause, and nothing yet written while one lasts.
+    fn readable(&self, grant: &ShareGrant) -> u64 {
+        let cut = if self.paused {
+            self.ring.head()
+        } else {
+            self.cut
+        };
+        grant.from.max(cut + 1)
+    }
+
     /// Forgets shares that admit nothing any more, and ends the
     /// attachments that no right or current share admits. Returns whether
     /// it ended any.
@@ -759,7 +781,12 @@ impl State {
             .clipboard
             .map(|text| Effect::Clipboard { text })
             .filter(|effect| effect.check().is_ok());
-        for (attachment_id, attachment) in self.attachments.iter_mut().filter(|(_, a)| a.effects) {
+        let paused = self.paused;
+        for (attachment_id, attachment) in self
+            .attachments
+            .iter_mut()
+            .filter(|(_, a)| a.effects && !(paused && a.share.is_some()))
+        {
             for effect in out.iter().filter(|effect| effect.check().is_ok()) {
                 attachment.queue(seq, effect.clone());
             }
@@ -823,6 +850,8 @@ impl Terminal {
             attachments,
             emulator,
             ended,
+            paused,
+            cut,
             ..
         } = state;
         let mut finished = Vec::new();
@@ -833,6 +862,8 @@ impl Terminal {
                 emulator: emulator.as_deref_mut(),
                 exit: *ended,
                 seat: &seat,
+                paused: *paused,
+                cut: *cut,
             };
             if pump_one(&mut source, id, attachment, now) {
                 finished.push(id.clone());
@@ -875,6 +906,10 @@ struct Source<'a> {
     exit: Option<Exit>,
     /// The typist's attachment and the terminal's size.
     seat: &'a (Option<String>, Size),
+    /// Whether sharing is paused, and the newest sequence number no share
+    /// may read.
+    paused: bool,
+    cut: u64,
 }
 
 impl Source<'_> {
@@ -922,6 +957,48 @@ fn pump_one(source: &mut Source<'_>, id: &str, attachment: &mut Attachment, now:
             }
             continue;
         }
+        if attachment.share.is_some() {
+            if attachment.told_paused != source.paused {
+                let body = Body::Paused {
+                    paused: source.paused,
+                };
+                match attachment
+                    .sink
+                    .deliver(&Frame::new(reference.clone(), id, body))
+                {
+                    Ok(()) => attachment.told_paused = source.paused,
+                    Err(SinkError::Full) => return false,
+                    Err(SinkError::Closed) => return true,
+                }
+                continue;
+            }
+            if source.paused {
+                return false;
+            }
+            if let Some(to) = attachment.skip_to.take()
+                && to > attachment.sent
+            {
+                // The paused output is missing for good; its size stays
+                // the sharer's.
+                let body = Body::Gap {
+                    from: attachment.sent + 1,
+                    to,
+                    bytes: None,
+                };
+                match attachment
+                    .sink
+                    .deliver(&Frame::new(reference.clone(), id, body))
+                {
+                    Ok(()) => attachment.sent = to,
+                    Err(SinkError::Full) => {
+                        attachment.skip_to = Some(to);
+                        return false;
+                    }
+                    Err(SinkError::Closed) => return true,
+                }
+                continue;
+            }
+        }
         if let Some(index) = attachment
             .pending
             .iter()
@@ -963,7 +1040,9 @@ fn pump_one(source: &mut Source<'_>, id: &str, attachment: &mut Attachment, now:
         {
             return true;
         }
+        // A fresh snapshot would show a share what a pause hid.
         if attachment.joined
+            && (attachment.share.is_none() || source.cut == 0)
             && ring.missed(attachment.sent).is_some()
             && let Some(Ok(parts)) = source.snapshot(id)
         {
@@ -1148,13 +1227,14 @@ impl Host {
             let grant = state
                 .share_for(principal, need, unix_now(), &*self.inner.rights)
                 .ok_or_else(refused)?;
-            if joined && grant.from > 1 {
+            let from = state.readable(grant);
+            if joined && from > 1 {
                 return Err(Refusal::new(
                     Reason::NotAdmitted,
                     "a share that starts after the terminal's first output joins by replay",
                 ));
             }
-            Some((grant.share.clone(), grant.from))
+            Some((grant.share.clone(), from))
         };
         if request.after > state.ring.head() {
             return Err(Refusal::new(
@@ -1183,6 +1263,8 @@ impl Host {
             seat_changed: request.typist(),
             pending: VecDeque::new(),
             share: share.as_ref().map(|(id, _)| id.clone()),
+            told_paused: false,
+            skip_to: None,
         };
         if let Some((_, from)) = &share {
             attachment.sent = attachment.sent.max(from - 1);
@@ -1202,6 +1284,8 @@ impl Host {
                 emulator: emulator.as_deref_mut(),
                 exit: *ended,
                 seat: &seat,
+                paused: false,
+                cut: 0,
             };
             match source.snapshot(&id) {
                 Some(Ok(parts)) => {
@@ -1274,7 +1358,7 @@ impl Host {
                         "this device may not read this terminal",
                     )
                 })?;
-            Some(grant.from)
+            Some(state.readable(grant))
         };
         let mut page = match state.emulator.as_ref().and_then(|emulator| match from {
             None => emulator.blocks(request.before, request.limit),
@@ -1325,7 +1409,7 @@ impl Host {
         let admitted = match (share, mode) {
             (Some(share), _) => state
                 .share_valid(&share, unix_now(), &*self.inner.rights)
-                .is_some_and(|grant| grant.from <= 1),
+                .is_some_and(|grant| state.readable(grant) <= 1),
             (None, Mode::Interact) => self.inner.rights.holds(principal, Right::Terminal),
             (None, Mode::Observe) => self.inner.may_read(principal),
         };
@@ -1728,6 +1812,79 @@ impl Host {
         Ok((Status::Accepted, Value::Done))
     }
 
+    /// Pauses or resumes every share of a terminal, which needs the
+    /// `terminal` right. While paused no output, effect, or snapshot
+    /// reaches an attachment under a share, and each is told so. On resume
+    /// each receives one gap for the paused output, without its size, and
+    /// nothing up to the resume is readable under a share again: replay,
+    /// history, snapshots, titles, and block reads all start after it.
+    pub fn pause(&self, principal: &str, request: &SharePause) -> Outcome {
+        request.check_with(self.features())?;
+        self.inner.require(principal, Right::Terminal)?;
+        let body = identity(principal, request);
+        if let Some(outcome) = self.inner.retry(&key(principal, &request.request), &body) {
+            return outcome;
+        }
+        let terminal = self.inner.find(&request.terminal)?;
+        let mut state = terminal.state();
+        if request.paused {
+            state.paused = true;
+        } else if state.paused {
+            let head = state.ring.head();
+            state.paused = false;
+            state.cut = head;
+            for attachment in state.attachments.values_mut() {
+                if attachment.share.is_some() {
+                    attachment.skip_to = Some(head);
+                    attachment.pending.clear();
+                    attachment.parts.clear();
+                }
+            }
+        }
+        terminal.pump(&mut state, Instant::now());
+        drop(state);
+        self.inner
+            .remember(&key(principal, &request.request), body, Value::Done);
+        Ok((Status::Accepted, Value::Done))
+    }
+
+    /// Who is attached to a terminal, under which right or share, who
+    /// types, the terminal's current shares, and whether sharing is
+    /// paused. It needs the `terminal` right and discloses no output.
+    pub fn viewers(&self, principal: &str, request: &ViewersRead) -> Outcome {
+        request.check_with(self.features())?;
+        self.inner.require(principal, Right::Terminal)?;
+        let terminal = self.inner.find(&request.terminal)?;
+        let state = terminal.state();
+        let typist = state.typist_attachment();
+        let now = unix_now();
+        let viewers = state
+            .attachments
+            .iter()
+            .map(|(id, attachment)| Viewer {
+                attachment: id.clone(),
+                device: attachment.principal.clone(),
+                mode: attachment.mode,
+                share: attachment.share.clone(),
+                typist: typist.as_deref() == Some(id.as_str()),
+            })
+            .collect();
+        let shares = state
+            .shares
+            .keys()
+            .filter_map(|id| state.share_valid(id, now, &*self.inner.rights))
+            .cloned()
+            .collect();
+        let value = Value::Viewers {
+            viewers: Viewers {
+                viewers,
+                shares,
+                paused: state.paused,
+            },
+        };
+        Ok((Status::Accepted, value))
+    }
+
     /// Whether `principal` holds a current share of any terminal. The
     /// resident host answers such a device's terminal requests although
     /// it holds no grant.
@@ -2018,6 +2175,8 @@ impl Inner {
                 typist: None,
                 shares: BTreeMap::new(),
                 share_epoch: 1,
+                paused: false,
+                cut: 0,
             }),
             reader: Mutex::new(None),
         });

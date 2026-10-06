@@ -16,7 +16,9 @@ use coder_pty::ext::{
     SESSION_READ, SESSION_REMOVE, SESSION_WRITE, Seat, SessionList, SessionRead, SessionRemove,
     SessionWrite, TAKE,
 };
-use coder_pty::share::{SHARE, ShareRequest, UNSHARE, Unshare};
+use coder_pty::share::{
+    PAUSE, SHARE, SharePause, ShareRequest, UNSHARE, Unshare, VIEWERS, ViewersRead,
+};
 use coder_pty::wire::{
     ATTACH, Attach, CLOSE, Close, DETACH, Detach, FRAME, Frame, INPUT, Input, OPEN, Open, RESIZE,
     RESULT, Reason, Refusal, Resize, SIGNAL, Signal, TerminalResult,
@@ -144,6 +146,10 @@ pub enum TermRequest {
     Share(ShareRequest),
     /// The end of one share, or of every share of a terminal.
     Unshare(Unshare),
+    /// A pause or resume of every share of a terminal.
+    SharePause(SharePause),
+    /// A read of a terminal's attachments and shares.
+    Viewers(ViewersRead),
     /// Session records (NIP-TERM's sessions feature).
     SessionRead(SessionRead),
     SessionWrite(SessionWrite),
@@ -177,6 +183,8 @@ impl TermRequest {
             TAKE | RELEASE => serde_json::from_value(value).map(Self::Seat),
             SHARE => serde_json::from_value(value).map(Self::Share),
             UNSHARE => serde_json::from_value(value).map(Self::Unshare),
+            PAUSE => serde_json::from_value(value).map(Self::SharePause),
+            VIEWERS => serde_json::from_value(value).map(Self::Viewers),
             SESSION_READ => serde_json::from_value(value).map(Self::SessionRead),
             SESSION_WRITE => serde_json::from_value(value).map(Self::SessionWrite),
             SESSION_LIST => serde_json::from_value(value).map(Self::SessionList),
@@ -207,6 +215,8 @@ impl TermRequest {
             Self::Seat(r) => &r.request,
             Self::Share(r) => &r.request,
             Self::Unshare(r) => &r.request,
+            Self::SharePause(r) => &r.request,
+            Self::Viewers(r) => &r.request,
             Self::SessionRead(r) => &r.request,
             Self::SessionWrite(r) => &r.request,
             Self::SessionList(r) => &r.request,
@@ -231,6 +241,8 @@ impl TermRequest {
             Self::Seat(_) => RELEASE,
             Self::Share(_) => SHARE,
             Self::Unshare(_) => UNSHARE,
+            Self::SharePause(_) => PAUSE,
+            Self::Viewers(_) => VIEWERS,
             Self::SessionRead(_) => SESSION_READ,
             Self::SessionWrite(_) => SESSION_WRITE,
             Self::SessionList(_) => SESSION_LIST,
@@ -254,6 +266,8 @@ impl TermRequest {
             Self::Seat(r) => serde_json::to_value(r),
             Self::Share(r) => serde_json::to_value(r),
             Self::Unshare(r) => serde_json::to_value(r),
+            Self::SharePause(r) => serde_json::to_value(r),
+            Self::Viewers(r) => serde_json::to_value(r),
             Self::SessionRead(r) => serde_json::to_value(r),
             Self::SessionWrite(r) => serde_json::to_value(r),
             Self::SessionList(r) => serde_json::to_value(r),

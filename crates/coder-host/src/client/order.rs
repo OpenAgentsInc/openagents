@@ -62,7 +62,10 @@ impl Ordered {
             Body::Gap { from, .. } => Some(*from),
             // An effect or a typist change is a notice, applied when it
             // arrives.
-            Body::Detached { .. } | Body::Effect { .. } | Body::Typist { .. } => None,
+            Body::Detached { .. }
+            | Body::Effect { .. }
+            | Body::Typist { .. }
+            | Body::Paused { .. } => None,
         };
         let mut applied = Vec::new();
         match position {

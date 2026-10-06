@@ -788,6 +788,25 @@ sender's own share that this one narrows). The terminal must be running.
   admitted with `detached` reason `revoked` as the share ends, and at its
   next periodic check after an expiry or a lost right.
 
+- **Pause.** `openagents.terminal-share-pause.v1` has the same
+  `requires`, `request`, `terminal`, and `paused`, and needs `terminal`.
+  While a terminal's sharing is paused, no output, effect, or record stream
+  reaches an attachment a share admitted. Each such attachment receives
+  `{type: "paused", paused}`, an unsequenced frame sent only to
+  attachments under a share, when it begins under a pause and whenever the
+  pause changes; its client blanks the pane while paused. On resume each
+  receives one `gap` through the newest frame at the resume, with `bytes`
+  null, and from then on a share reads nothing up to the resume: replay,
+  history, snapshots, titles, directories, and block pages all start after
+  it, as if `from` had advanced. The value is `done`.
+- **Viewers.** `openagents.terminal-viewers.v1` has the same `requires`,
+  `request`, and `terminal`, and needs `terminal`. Its value is `{kind:
+  "viewers", viewers}`: `{viewers, shares, paused}`, where each viewer is
+  `{attachment, device, mode, share, typist}` (`share` null for a device
+  right) and `shares` the terminal's current grants. It carries no output,
+  title, directory, or command, and the host publishes none of it in
+  presence or any world traffic.
+
 Shares live with their terminal and end with it; a host restart ends them
 all.
 

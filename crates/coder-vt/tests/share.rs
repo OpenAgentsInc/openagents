@@ -157,3 +157,55 @@ fn a_share_reads_only_blocks_and_state_from_after_it_began() {
         Attach::new(id(), terminal.clone(), Mode::Observe, 0, 1 << 20).joining(Join::Snapshot);
     assert!(host.attach(FRIEND, &snapshot, Box::new(sink)).is_ok());
 }
+
+#[test]
+fn after_a_pause_no_read_reconstructs_what_ran_during_it() {
+    use coder_pty::share::SharePause;
+    let root = tempfile::tempdir().unwrap();
+    let mut config = Config::new().workspace(WORKSPACE, root.path());
+    config.emulator = Some(Authority::factory(100));
+    config.shares = Some(Arc::new(Stamp));
+    let host = Host::new(config, Arc::new(Grants));
+    let terminal = match host.open(
+        OWNER,
+        &Open::new(id(), WORKSPACE, "", marked(), Size::new(24, 80)),
+    ) {
+        Ok((Status::Accepted, Value::Opened { terminal, .. })) => terminal,
+        other => panic!("open: {other:?}"),
+    };
+    wait_for(&host, &terminal, 1);
+    // A share of everything, snapshots included, until the pause.
+    let whole = ShareRequest::new(id(), terminal.clone(), FRIEND, ShareMode::Watch, later(600))
+        .from_sequence(1);
+    host.share(OWNER, &whole).unwrap();
+    assert_eq!(read(&host, FRIEND, &terminal).unwrap().blocks.len(), 1);
+
+    host.pause(OWNER, &SharePause::new(id(), terminal.clone(), true))
+        .unwrap();
+    let snapshot = || {
+        let (sink, _parts) = deliveries(4096);
+        let request =
+            Attach::new(id(), terminal.clone(), Mode::Observe, 0, 1 << 20).joining(Join::Snapshot);
+        host.attach(FRIEND, &request, Box::new(sink))
+            .map(drop)
+            .map_err(|refusal| refusal.reason)
+    };
+    assert_eq!(snapshot(), Err(Reason::NotAdmitted));
+    host.input(OWNER, &Input::new(id(), terminal.clone(), b"go\n".to_vec()))
+        .unwrap();
+    wait_for(&host, &terminal, 2);
+    assert!(read(&host, FRIEND, &terminal).unwrap().blocks.is_empty());
+    host.pause(OWNER, &SharePause::new(id(), terminal.clone(), false))
+        .unwrap();
+
+    // After the resume the command run during the pause stays hidden, and
+    // a snapshot, which would show the screen, is refused.
+    let page = read(&host, FRIEND, &terminal).unwrap();
+    assert!(
+        page.blocks.iter().all(|block| block.command != "make"),
+        "{page:?}"
+    );
+    assert_eq!(snapshot(), Err(Reason::NotAdmitted));
+    // The owner still reads both.
+    assert_eq!(read(&host, OWNER, &terminal).unwrap().blocks.len(), 2);
+}
