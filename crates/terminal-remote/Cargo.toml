@@ -7,6 +7,7 @@ publish.workspace = true
 description = "Shared terminal mounts over the paired-host shell client."
 
 [dependencies]
+coder-host = { path = "../coder-host", default-features = false }
 terminal-core = { path = "../terminal-core" }
 coder-pty = { path = "../coder-pty", default-features = false }
 coder-vt = { path = "../coder-vt" }

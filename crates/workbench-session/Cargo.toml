@@ -1,0 +1,14 @@
+[package]
+name = "workbench-session"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+publish.workspace = true
+description = "Read-only resolution of owner-bound workbench session members and device layouts."
+[dependencies]
+workbench = { path = "../workbench" }
+coder-pty = { path = "../coder-pty", default-features = false }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+[lints]
+workspace = true

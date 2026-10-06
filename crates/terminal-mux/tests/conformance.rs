@@ -305,3 +305,121 @@ fn command_navigation_uses_the_current_host_epoch() {
     mux.pump();
     assert!(mux.panes[0].session.blocks.records.is_empty());
 }
+
+#[test]
+fn saved_mixed_hosts_and_local_resource_keep_layout_and_route_identity() {
+    use coder_pty::ext::{Axis, Layout, Member, Node, SessionRecord, Tab};
+    use workbench::{Host, Kind, ResourceRef};
+    let (old, states) = fixture(3);
+    drop(old);
+    let resources = [
+        ResourceRef::terminal(
+            Host::Paired {
+                key: "a".repeat(64),
+            },
+            "1".repeat(64),
+            "3".repeat(64),
+        ),
+        ResourceRef::terminal(
+            Host::Paired {
+                key: "b".repeat(64),
+            },
+            "2".repeat(64),
+            "4".repeat(64),
+        ),
+        ResourceRef::new(
+            Kind::Thread,
+            Host::Local {
+                instance: "c".repeat(64),
+            },
+            "local-thread",
+        ),
+    ];
+    let saved = workbench_session::Saved {
+        v: workbench_session::SCHEMA.into(),
+        owner: Host::Paired {
+            key: "f".repeat(64),
+        },
+        record: SessionRecord {
+            session: Some("e".repeat(64)),
+            revision: 2,
+            name: "mixed".into(),
+            members: resources
+                .iter()
+                .enumerate()
+                .map(|(i, r)| Member::Resource {
+                    member: i as u16 + 1,
+                    resource: serde_json::to_value(r).unwrap(),
+                })
+                .collect(),
+            layout: Layout {
+                tabs: vec![
+                    Tab {
+                        name: "two hosts".into(),
+                        root: Node::Split {
+                            axis: Axis::Columns,
+                            ratio: 500,
+                            first: Box::new(Node::Pane { member: 1 }),
+                            second: Box::new(Node::Pane { member: 2 }),
+                        },
+                    },
+                    Tab {
+                        name: "local thread".into(),
+                        root: Node::Pane { member: 3 },
+                    },
+                ],
+                active: 0,
+            },
+        },
+    };
+    states[0]
+        .events
+        .lock()
+        .unwrap()
+        .push_back(Output::Status("direct-A".into()));
+    states[1]
+        .events
+        .lock()
+        .unwrap()
+        .push_back(Output::Status("relay-B".into()));
+    states[2]
+        .events
+        .lock()
+        .unwrap()
+        .push_back(Output::Status("local-thread: reference only".into()));
+    states[2].available.store(false, Ordering::SeqCst);
+    let transports = states
+        .iter()
+        .map(|s| Sessions(Arc::new(Fake(s.clone()))))
+        .collect();
+    let mut mux = Mux::attach_saved(transports, &saved, "", None).unwrap();
+    mux.pump();
+    let mut terminal = Terminal::new(TestBackend::new(80, 24)).unwrap();
+    terminal.draw(|frame| mux.draw(frame)).unwrap();
+    let text = terminal
+        .backend()
+        .buffer()
+        .content
+        .iter()
+        .map(|c| c.symbol())
+        .collect::<String>();
+    assert!(text.contains("direct-A") && text.contains("relay-B"));
+    prefix(&mut mux, 'n');
+    assert_eq!(mux.active, 2);
+    key(&mut mux, KeyCode::Char('x'), KeyModifiers::NONE);
+    assert!(states[2].input.lock().unwrap().is_empty());
+    prefix(&mut mux, '1');
+    assert_eq!(mux.active, 0);
+    prefix(&mut mux, 'o');
+    assert_eq!(mux.active, 1);
+    prefix(&mut mux, '"');
+    assert_eq!(
+        saved.record.layout.tabs[0].root,
+        Node::Split {
+            axis: Axis::Columns,
+            ratio: 500,
+            first: Box::new(Node::Pane { member: 1 }),
+            second: Box::new(Node::Pane { member: 2 })
+        }
+    );
+}

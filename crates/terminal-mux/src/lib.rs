@@ -35,6 +35,11 @@ pub struct Mux {
     prefix: bool,
     pub detached: bool,
     pub notice: String,
+    saved_layout: Option<coder_pty::ext::Layout>,
+    member_ids: Vec<u16>,
+    resource_titles: Vec<String>,
+    saved_tab: usize,
+    zoomed: bool,
 }
 impl Mux {
     /// Each transport must attach its explicitly admitted reference.
@@ -53,7 +58,104 @@ impl Mux {
             });
         }
         Ok(Self { panes, active: 0, split: None, prefix: false, detached: false,
+            saved_layout: None, member_ids: Vec::new(), resource_titles: Vec::new(), saved_tab: 0, zoomed: false,
             notice: "Ctrl+B: n/p tab, %/\" split, o focus, j/k blocks, r live, d detach; twice forwards prefix. TTY: cropped grid; no images or resource activation.".into() })
+    }
+    /// Restores the host layout without transferring resource ownership.
+    /// The caller supplies independently admitted transports in member order.
+    pub fn attach_saved(
+        transports: Vec<Sessions>,
+        saved: &workbench_session::Saved,
+        device: &str,
+        local: Option<&workbench_session::Override>,
+    ) -> Result<Self, String> {
+        let members = saved.members()?;
+        if members.len() != transports.len() {
+            return Err("Every saved member needs its own transport or typed fallback.".into());
+        }
+        let layout = saved.layout(device, local)?;
+        let mut mux = Self::attach(transports)?;
+        mux.member_ids = members.iter().map(|m| m.member).collect();
+        mux.resource_titles = members
+            .iter()
+            .map(|m| {
+                format!(
+                    "{:?} {} · {:?} · generation {}",
+                    m.resource.kind,
+                    m.resource.id,
+                    m.resource.host,
+                    m.resource.generation.as_deref().unwrap_or("durable")
+                )
+            })
+            .collect();
+        mux.saved_tab = layout.active as usize;
+        mux.saved_layout = Some(layout);
+        mux.focus_saved_tab();
+        Ok(mux)
+    }
+    fn focus_saved_tab(&mut self) {
+        let Some(layout) = &self.saved_layout else {
+            return;
+        };
+        fn first(node: &coder_pty::ext::Node) -> u16 {
+            match node {
+                coder_pty::ext::Node::Pane { member } => *member,
+                coder_pty::ext::Node::Split { first: node, .. } => first(node),
+            }
+        }
+        let member = first(&layout.tabs[self.saved_tab].root);
+        if let Some(i) = self.member_ids.iter().position(|id| *id == member) {
+            self.active = i;
+        }
+    }
+    fn saved_key(&mut self, code: KeyCode) -> bool {
+        let Some(layout) = &mut self.saved_layout else {
+            return false;
+        };
+        match code {
+            KeyCode::Char(c @ '1'..='8') => {
+                let tab = c as usize - '1' as usize;
+                if tab < layout.tabs.len() {
+                    self.saved_tab = tab;
+                    self.focus_saved_tab();
+                }
+            }
+            KeyCode::Char('n') => {
+                self.saved_tab = (self.saved_tab + 1) % layout.tabs.len();
+                self.focus_saved_tab();
+            }
+            KeyCode::Char('p') => {
+                self.saved_tab = (self.saved_tab + layout.tabs.len() - 1) % layout.tabs.len();
+                self.focus_saved_tab();
+            }
+            KeyCode::Char('o') => {
+                let indices = self
+                    .regions(Rect::new(0, 0, 80, 24))
+                    .into_iter()
+                    .map(|(i, _)| i)
+                    .collect::<Vec<_>>();
+                if let Some(pos) = indices.iter().position(|i| *i == self.active) {
+                    self.active = indices[(pos + 1) % indices.len()];
+                }
+            }
+            KeyCode::Char('%' | '"') => {
+                if let coder_pty::ext::Node::Split { axis, .. } =
+                    &mut layout.tabs[self.saved_tab].root
+                {
+                    *axis = if code == KeyCode::Char('%') {
+                        coder_pty::ext::Axis::Columns
+                    } else {
+                        coder_pty::ext::Axis::Rows
+                    };
+                } else {
+                    self.notice =
+                        "This tab has one admitted member; no extra shell was opened.".into();
+                }
+            }
+            KeyCode::Char('z') => self.zoomed = !self.zoomed,
+            _ => return false,
+        }
+        true
     }
     /// One global time and byte budget, starting at the focused pane.
     pub fn pump(&mut self) -> u64 {
@@ -160,6 +262,9 @@ impl Mux {
                 self.send(&[2]);
                 return;
             }
+            if self.saved_key(key.code) {
+                return;
+            }
             match key.code {
                 KeyCode::Char('d') => self.detached = true,
                 KeyCode::Char('n' | 'o') => self.active = (self.active + 1) % self.panes.len(),
@@ -255,6 +360,53 @@ impl Mux {
             height: area.height.saturating_sub(2),
             ..area
         };
+        if let Some(layout) = &self.saved_layout {
+            if self.zoomed {
+                return vec![(self.active, body)];
+            }
+            fn collect(
+                node: &coder_pty::ext::Node,
+                rect: Rect,
+                ids: &[u16],
+                out: &mut Vec<(usize, Rect)>,
+            ) {
+                match node {
+                    coder_pty::ext::Node::Pane { member } => {
+                        if let Some(index) = ids.iter().position(|id| id == member) {
+                            out.push((index, rect));
+                        }
+                    }
+                    coder_pty::ext::Node::Split {
+                        axis,
+                        ratio,
+                        first,
+                        second,
+                    } => {
+                        let direction = match axis {
+                            coder_pty::ext::Axis::Rows => Direction::Vertical,
+                            coder_pty::ext::Axis::Columns => Direction::Horizontal,
+                        };
+                        let halves = Layout::default()
+                            .direction(direction)
+                            .constraints([
+                                Constraint::Ratio(u32::from(*ratio), 1000),
+                                Constraint::Ratio(u32::from(1000 - *ratio), 1000),
+                            ])
+                            .split(rect);
+                        collect(first, halves[0], ids, out);
+                        collect(second, halves[1], ids, out);
+                    }
+                }
+            }
+            let mut out = Vec::new();
+            collect(
+                &layout.tabs[self.saved_tab].root,
+                body,
+                &self.member_ids,
+                &mut out,
+            );
+            return out;
+        }
         if let Some(direction) = self.split.filter(|_| self.panes.len() > 1) {
             let halves = Layout::default()
                 .direction(direction)
@@ -270,20 +422,36 @@ impl Mux {
     }
     pub fn draw(&mut self, frame: &mut Frame) {
         let area = frame.area();
-        let tabs = self
-            .panes
-            .iter()
-            .enumerate()
-            .map(|(i, p)| {
-                format!(
-                    "{}{}:{}",
-                    if i == self.active { "*" } else { " " },
-                    i + 1,
-                    p.session.vt.title()
-                )
-            })
-            .collect::<Vec<_>>()
-            .join(" | ");
+        let tabs = if let Some(layout) = &self.saved_layout {
+            layout
+                .tabs
+                .iter()
+                .enumerate()
+                .map(|(i, tab)| {
+                    format!(
+                        "{}{}:{}",
+                        if i == self.saved_tab { "*" } else { " " },
+                        i + 1,
+                        tab.name
+                    )
+                })
+                .collect::<Vec<_>>()
+                .join(" | ")
+        } else {
+            self.panes
+                .iter()
+                .enumerate()
+                .map(|(i, p)| {
+                    format!(
+                        "{}{}:{}",
+                        if i == self.active { "*" } else { " " },
+                        i + 1,
+                        p.session.vt.title()
+                    )
+                })
+                .collect::<Vec<_>>()
+                .join(" | ")
+        };
         frame.render_widget(
             Paragraph::new(tabs),
             Rect {
@@ -306,17 +474,19 @@ impl Mux {
             } else {
                 "read only"
             };
-            let title = format!(
-                "{} · {} · {}",
-                index + 1,
-                availability,
-                pane.session
-                    .exited
-                    .as_ref()
-                    .or(pane.session.status.as_ref())
-                    .map(String::as_str)
-                    .unwrap_or("connecting")
-            );
+            let identity = self
+                .resource_titles
+                .get(index)
+                .cloned()
+                .unwrap_or_else(|| (index + 1).to_string());
+            let status = pane
+                .session
+                .exited
+                .as_ref()
+                .or(pane.session.status.as_ref())
+                .map(String::as_str)
+                .unwrap_or("connecting");
+            let title = format!("{status} · {availability} · {identity}");
             let border = Block::default().borders(Borders::ALL).title(title);
             let inner = border.inner(rect);
             frame.render_widget(border, rect);

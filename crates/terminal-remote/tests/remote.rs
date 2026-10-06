@@ -101,7 +101,7 @@ done
         let link = Arc::new(Link::relay_at(device.clone(), relay.clone(), 1));
         let current = Arc::new(Mutex::new(Some(link.clone())));
         let get = current.clone();
-        let transport = Remote::injected(
+        let mut transport = Remote::injected(
             host.clone(),
             label.into(),
             Arc::new(move || {
@@ -116,6 +116,7 @@ done
             reference.clone(),
             Arc::new(Local),
         );
+        transport.pin_admission();
         let sessions = Sessions(Arc::new(transport));
         let mut session = sessions.open(&Program::Shell, 24, 80).unwrap();
         if reference.is_none() {

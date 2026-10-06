@@ -13703,10 +13703,14 @@ dependencies = [
  "crossterm",
  "libc",
  "ratatui",
+ "serde",
+ "serde_json",
  "tempfile",
  "terminal-core",
  "terminal-remote",
  "web-time",
+ "workbench",
+ "workbench-session",
 ]
 
 [[package]]
@@ -17174,6 +17178,16 @@ version = "0.1.0"
 dependencies = [
  "serde",
  "serde_json",
+]
+
+[[package]]
+name = "workbench-session"
+version = "0.1.0"
+dependencies = [
+ "coder-pty",
+ "serde",
+ "serde_json",
+ "workbench",
 ]
 
 [[package]]

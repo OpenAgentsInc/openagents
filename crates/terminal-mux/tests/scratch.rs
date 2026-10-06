@@ -190,9 +190,12 @@ fn outer_child() {
         .base_env
         .push(("HOME".into(), PathBuf::from(&root).display().to_string()));
     config.emulator = Some(coder_vt::Authority::factory(5000));
-    let host = Arc::new(Host::new(config, Arc::new(Grant)));
+    let hosts = [
+        Arc::new(Host::new(config.clone(), Arc::new(Grant))),
+        Arc::new(Host::new(config, Arc::new(Grant))),
+    ];
     let mut refs = Vec::new();
-    for _ in 0..2 {
+    for host in &hosts {
         let launch=Launch::Command{program:"/bin/sh".into(),args:vec!["-c".into(),"stty -echo; printf x >> counter; printf 'HOST-%s\\n' $$; while IFS= read -r line; do eval \"$line\"; done".into()]};
         let (Status::Accepted, Value::Opened { terminal, .. }) = host
             .open(
@@ -207,19 +210,76 @@ fn outer_child() {
     }
     let groups = refs
         .iter()
-        .map(|r| host.process_group(r).unwrap())
+        .enumerate()
+        .map(|(i, r)| hosts[i].process_group(r).unwrap())
         .collect::<Vec<_>>();
+    let saved = workbench_session::Saved {
+        v: workbench_session::SCHEMA.into(),
+        owner: workbench::Host::Paired {
+            key: "f".repeat(64),
+        },
+        record: coder_pty::ext::SessionRecord {
+            session: Some("e".repeat(64)),
+            revision: 1,
+            name: "Two independently admitted hosts".into(),
+            members: refs
+                .iter()
+                .enumerate()
+                .map(|(i, r)| coder_pty::ext::Member::Resource {
+                    member: i as u16 + 1,
+                    resource: serde_json::to_value(workbench::ResourceRef::terminal(
+                        workbench::Host::Paired {
+                            key: if i == 0 { "a" } else { "b" }.repeat(64),
+                        },
+                        r.generation.clone(),
+                        r.terminal.clone(),
+                    ))
+                    .unwrap(),
+                })
+                .collect(),
+            layout: coder_pty::ext::Layout {
+                tabs: vec![coder_pty::ext::Tab {
+                    name: "shared".into(),
+                    root: coder_pty::ext::Node::Split {
+                        axis: coder_pty::ext::Axis::Columns,
+                        ratio: 500,
+                        first: Box::new(coder_pty::ext::Node::Pane { member: 1 }),
+                        second: Box::new(coder_pty::ext::Node::Pane { member: 2 }),
+                    },
+                }],
+                active: 0,
+            },
+        },
+    };
+    let retained = serde_json::to_vec(&saved).unwrap();
     for round in 0..2 {
         let transports = refs
             .iter()
-            .map(|r| {
+            .enumerate()
+            .map(|(i, r)| {
                 Sessions(Arc::new(Mount {
-                    host: host.clone(),
+                    host: hosts[i].clone(),
                     reference: r.clone(),
                 }))
             })
             .collect();
-        let mut mux = terminal_mux::Mux::attach(transports).unwrap();
+        let restored: workbench_session::Saved = serde_json::from_slice(&retained).unwrap();
+        let device = if round == 0 { "c" } else { "d" }.repeat(64);
+        let mut layout = restored.record.layout.clone();
+        if round == 1
+            && let coder_pty::ext::Node::Split { ratio, .. } = &mut layout.tabs[0].root
+        {
+            *ratio = 400;
+        }
+        let local = workbench_session::Override {
+            device: device.clone(),
+            session: restored.record.session.clone(),
+            revision: 1,
+            layout,
+        };
+        let mut mux =
+            terminal_mux::Mux::attach_saved(transports, &restored, &device, Some(&local)).unwrap();
+        assert_eq!(serde_json::to_vec(&restored).unwrap(), retained);
         let guard = coder_terminal::Guard::full_screen_with_mouse().unwrap();
         let mut terminal =
             ratatui::Terminal::new(ratatui::backend::CrosstermBackend::new(std::io::stdout()))
@@ -242,7 +302,8 @@ fn outer_child() {
         assert_eq!(
             groups,
             refs.iter()
-                .map(|r| host.process_group(r).unwrap())
+                .enumerate()
+                .map(|(i, r)| hosts[i].process_group(r).unwrap())
                 .collect::<Vec<_>>()
         );
         assert_eq!(
@@ -252,7 +313,9 @@ fn outer_child() {
         println!("ROUND-{round}-SAME-PROCESSES");
         std::io::stdout().flush().unwrap();
     }
-    host.shutdown();
+    for host in hosts {
+        host.shutdown();
+    }
 }
 fn read_until(master: &mut std::fs::File, text: &str, log: &mut Vec<u8>) {
     let deadline = Instant::now() + Duration::from_secs(25);

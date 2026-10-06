@@ -38,3 +38,24 @@ uses two scratch host PTYs, a nested full-screen program, split/tab controls,
 and detach/reattach with unchanged process groups. Other fixtures check
 query ownership, paste and mouse modes, refused input, bounded redraw, and
 terminal-mode restoration on unwind. No owner host or real home is used.
+
+## Saved sessions across hosts
+
+```sh
+cargo run -p terminal-mux --features host --bin openagents-mux -- \
+  --store PAIRED_DEVICE_STORE --session SAVED_SESSION.json \
+  --layout THIS_DEVICE_LAYOUT.json
+```
+
+The versioned `workbench-session::Saved` envelope holds the session owner's
+NIP-TERM `SessionRecord`. Cross-host members use typed workbench resource
+references; base terminal members belong to the session owner. Each terminal
+uses its own host's current paired grant. A changed grant requires a new
+explicit mount, and a host restart retains the lost reference. There is no
+fallback to the layout owner or a local shell. Nonterminal resources retain
+their exact owner and ID as read-only references for the resource client.
+
+The optional `workbench-session::Override` file binds the actual paired-store
+device key, session ID, revision, and layout. Its tree changes only this
+client's view. `n` and `p` switch saved tabs, `o` switches panes, and split
+controls change the local split axis without writing the host's layout.

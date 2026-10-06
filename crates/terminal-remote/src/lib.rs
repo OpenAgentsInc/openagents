@@ -60,6 +60,37 @@ impl Remote {
             _owner: Some((live, runtime)),
         })
     }
+    /// Pins this explicit mount to the admitted host grant. Route repair is
+    /// allowed; replacing its computer, rights, or disclosure needs a new mount.
+    pub fn pin_admission(&mut self) {
+        let links = self.links.clone();
+        let expected = self.host.clone();
+        let pinned = Arc::new(Mutex::new(None));
+        self.links = Arc::new(move || {
+            let link = links()?;
+            if link.device().host() != expected {
+                return Err(coder_host::access::Error::new(
+                    coder_host::access::Code::Denied,
+                    "The connection belongs to another computer.",
+                ));
+            }
+            let grant = link.device().access().grant.clone();
+            let mut pinned = pinned.lock().map_err(|_| {
+                coder_host::access::Error::new(
+                    coder_host::access::Code::Denied,
+                    "The admission pin is unavailable.",
+                )
+            })?;
+            if pinned.as_ref().is_some_and(|old| old != &grant) {
+                return Err(coder_host::access::Error::new(
+                    coder_host::access::Code::Denied,
+                    "The grant or disclosure changed. Admit a new mount explicitly.",
+                ));
+            }
+            *pinned = Some(grant);
+            Ok(link)
+        });
+    }
     /// Injects the platform's already admitted and supervised host connection.
     pub fn injected(
         host: String,
@@ -286,14 +317,14 @@ impl Attachment for RemoteAttachment {
         let model = self.session.model();
         let status = format!(
             "{} · {} · {} · {} {}",
+            model.route.as_deref().unwrap_or("unavailable"),
+            model.phase.describe(),
             model.label,
             model
                 .reference
                 .as_ref()
                 .map(|r| r.0.get(..12).unwrap_or(&r.0))
                 .unwrap_or("unavailable"),
-            model.route.as_deref().unwrap_or("unavailable"),
-            model.phase.describe(),
             model.notice.as_deref().unwrap_or("")
         );
         if self.phase.as_ref() != Some(&status) {
@@ -339,6 +370,12 @@ impl Attachment for RemoteAttachment {
             }
         }
     }
+}
+
+/// The paired store's actual device identity; a layout cannot choose another client.
+pub fn device_id(store: &Path) -> Result<String, String> {
+    let key = coder_computers::live::load_or_create_key(store)?;
+    Ok(coder_host::reach::pubkey(&key))
 }
 
 /// Validates an exact retained reference without opening a replacement terminal.
