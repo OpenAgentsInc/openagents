@@ -20,11 +20,19 @@ pub enum Action {
     },
     Pause(bool),
     Revoke(Option<String>),
+    Handoff {
+        agent: String,
+        thread: String,
+        run: String,
+    },
 }
 
 impl Action {
     fn confirmation(&self) -> String {
         match self {
+            Self::Handoff { agent, thread, run } => format!(
+                "Hand typing to agent {agent} for thread {thread}, run {run}. Typing grants no screen reads; any owner key reclaims control."
+            ),
             Self::Read => "Refresh the private viewer list.".into(),
             Self::Issue {
                 grantee,
@@ -68,8 +76,20 @@ impl Page {
             view.paused || !view.shares.is_empty() || view.viewers.len() > 1 || view.agent.is_some()
         })
     }
+    /// A short leading badge remains visible when pane titles are clipped.
+    pub fn agent_badge(&self) -> Option<String> {
+        let agent = self.view.as_ref()?.agent.as_ref()?;
+        let key: String = agent.agent.chars().take(8).collect();
+        let stale = self
+            .last_seen
+            .is_some_and(|time| time.elapsed() > Duration::from_secs(5));
+        Some(format!(
+            "[AGENT {key}{}]",
+            if stale { " stale" } else { "" }
+        ))
+    }
     pub fn marker(&self) -> String {
-        match &self.view {
+        let marker = match &self.view {
             None => "SHARING unknown (F17)".into(),
             Some(view) => format!(
                 "SHARING {} | {} viewers | {} shares | typist {} (F17)",
@@ -89,19 +109,23 @@ impl Page {
                 view.shares.len(),
                 view.agent
                     .as_ref()
-                    .map(|agent| agent.agent.as_str())
+                    .map(|agent| format!("agent {}", agent.agent))
                     .or_else(|| view
                         .viewers
                         .iter()
                         .find(|v| v.typist)
-                        .map(|v| v.device.as_str()))
-                    .unwrap_or("none")
+                        .map(|v| v.device.clone()))
+                    .unwrap_or_else(|| "none".into())
             ),
+        };
+        match self.agent_badge() {
+            Some(badge) => format!("{badge} {marker}"),
+            None => marker,
         }
     }
     pub fn lines(&self) -> Vec<String> {
         let mut lines = vec![
-            "PRIVATE TERMINAL SHARING".into(),
+            "Private terminal sharing and agent typing".into(),
             self.marker(),
             "New shares disclose future output only. Drive also permits input and resize.".into(),
             "Viewer input stays private except when the program echoes it.".into(),
@@ -109,8 +133,15 @@ impl Page {
             "Issue: /watch DEVICE EXPIRY_UNIX or /drive DEVICE EXPIRY_UNIX".into(),
             "Revoke one: /revoke SHARE_ID. Shares expire within seven days.".into(),
             "C copies the last sealed share authorization. PgUp/PgDn scroll.".into(),
+            "Agent handoff: /agent AGENT_KEY THREAD_ID RUN_ID. Attach individual blocks separately for observation.".into(),
         ];
         if let Some(view) = &self.view {
+            if let Some(agent) = &view.agent {
+                lines.push(format!(
+                    "[AGENT TYPIST] {} | thread {} | run {}. An owner key reclaims control.",
+                    agent.agent, agent.thread, agent.run
+                ));
+            }
             for viewer in &view.viewers {
                 lines.push(format!(
                     "Viewer {} {:?} {}",
@@ -216,6 +247,13 @@ impl Application {
             Ok(Value::Shared { authorization, .. }) => {
                 self.sharing.authorization = Some(authorization.to_string());
                 self.sharing.notice = Some("Share confirmed. C copies its sealed authorization for private delivery to the recipient.".into());
+                self.sharing_send(Action::Read);
+            }
+            Ok(Value::HandedOff { .. }) => {
+                self.sharing.notice = Some(
+                    "The host confirmed agent typing. An owner key immediately reclaims the role."
+                        .into(),
+                );
                 self.sharing_send(Action::Read);
             }
             Ok(Value::Done) => {
@@ -344,14 +382,50 @@ fn parse(input: &str) -> Result<Action, &'static str> {
                 .parse()
                 .map_err(|_| "Expiry must be a Unix timestamp.")?,
         }),
+        ["/agent", agent, thread, run] if id(agent) && id(thread) && id(run) => {
+            Ok(Action::Handoff {
+                agent: agent.to_string(),
+                thread: thread.to_string(),
+                run: run.to_string(),
+            })
+        }
         ["/revoke", share] if id(share) => Ok(Action::Revoke(Some(share.to_string()))),
-        _ => Err("Use /watch DEVICE EXPIRY_UNIX, /drive DEVICE EXPIRY_UNIX, or /revoke SHARE_ID."),
+        _ => Err(
+            "Use /watch DEVICE EXPIRY_UNIX, /drive DEVICE EXPIRY_UNIX, /revoke SHARE_ID, or /agent KEY THREAD RUN.",
+        ),
     }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn an_agent_badge_leads_a_clipped_title_and_clears_on_reclaim() {
+        let mut page = Page::default();
+        page.view = Some(Viewers {
+            viewers: Vec::new(),
+            shares: Vec::new(),
+            paused: false,
+            agent: Some(coder_pty::ext::AgentTypist {
+                agent: "b".repeat(64),
+                thread: "c".repeat(64),
+                run: "d".repeat(64),
+                lease: "e".repeat(64),
+            }),
+        });
+        assert_eq!(page.agent_badge().as_deref(), Some("[AGENT bbbbbbbb]"));
+        let title = page.marker();
+        assert!(
+            title
+                .chars()
+                .take(16)
+                .collect::<String>()
+                .starts_with("[AGENT bbbbbbbb]")
+        );
+        page.view.as_mut().unwrap().agent = None;
+        assert!(page.agent_badge().is_none());
+    }
+
     #[test]
     fn issue_is_future_only_and_explicit() {
         let key = "a".repeat(64);
@@ -363,6 +437,20 @@ mod tests {
                 expires_at: 123
             })
         );
+        assert_eq!(
+            parse(&format!(
+                "/agent {} {} {}",
+                "b".repeat(64),
+                "c".repeat(64),
+                "d".repeat(64)
+            )),
+            Ok(Action::Handoff {
+                agent: "b".repeat(64),
+                thread: "c".repeat(64),
+                run: "d".repeat(64)
+            })
+        );
+        assert!(parse("/agent someone thread run").is_err());
         assert!(parse("/drive someone 123").is_err());
         assert!(parse(&format!("/watch {} 123 replay", "a".repeat(64))).is_err());
     }

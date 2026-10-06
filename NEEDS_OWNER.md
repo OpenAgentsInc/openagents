@@ -573,6 +573,7 @@ terminal was lost. Approving pending proposals from the phone is #10745.
   authorize one fixed invoice, payer, worker destination, fee cap, and spend
   limit; retain central receive/share/payout and both wallet receipts, including
   unknown-outcome recovery. No funded worker scenario has run.
+
 ## Terminal sharing controls (#10681)
 
 On the Mac standalone terminal and the Verse terminal, connect to an enrolled
@@ -629,3 +630,14 @@ Neither platform has a qualified public artifact from this work.
   and unknown payout recovery. The synthetic contribution fixture uses fake
   receipts; independent usefulness and every real contributor payment remain
   unverified. XP and token/activity counts do not authorize sats.
+
+## Terminal agent handoff (#10682)
+
+On a standalone and Verse terminal attached to a resident host from current
+main, use F17 and `/agent AGENT_KEY THREAD_ID RUN_ID` to confirm one handoff.
+Check the private agent badge and press an owner key to reclaim control.
+The scoped host-local producer and scratch PTY/relay tests verify admission,
+attribution, revocation, replay refusal, and private thread/run evidence.
+Physical native keyboard and badge presentation remain unverified. A handoff
+admits at most 256 distinct inputs and grants no screen observation; consent
+separately to individual block attachments. No live model producer was run.

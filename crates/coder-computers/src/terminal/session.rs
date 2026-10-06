@@ -81,6 +81,11 @@ pub enum SharingCommand {
     },
     Pause(bool),
     Revoke(Option<String>),
+    Handoff {
+        agent: String,
+        thread: String,
+        run: String,
+    },
 }
 
 enum Command {
@@ -1113,6 +1118,20 @@ async fn handle(
         Command::Sharing { action, answer } => {
             use coder_host::pty::share::{SharePause, ShareRequest, Unshare, ViewersRead};
             let operation = match action {
+                SharingCommand::Handoff { agent, thread, run } => {
+                    let Some(attachment) = &speaker.0 else {
+                        let _ = answer.send(Err("This attachment cannot hand off typing.".into()));
+                        return None;
+                    };
+                    TermRequest::Handoff(coder_host::pty::ext::Handoff::new(
+                        new_id(),
+                        reference.clone(),
+                        attachment.clone(),
+                        agent,
+                        thread,
+                        run,
+                    ))
+                }
                 SharingCommand::Read => {
                     TermRequest::Viewers(ViewersRead::new(new_id(), reference.clone()))
                 }

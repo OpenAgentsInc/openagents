@@ -189,6 +189,63 @@ done
             };
             assert!(!viewers.paused);
             assert!(viewers.shares.is_empty());
+            let Value::HandedOff { lease } = share(Action::Handoff {
+                agent: grantee.clone(),
+                thread: "e".repeat(64),
+                run: "f".repeat(64),
+            }) else {
+                panic!("handoff acknowledgment")
+            };
+            assert_eq!(lease.len(), 64);
+            let Value::Viewers { viewers } = share(Action::Read) else {
+                panic!("agent badge")
+            };
+            let agent = viewers.agent.unwrap();
+            assert_eq!(agent.agent, grantee);
+            assert_eq!(agent.thread, "e".repeat(64));
+            assert_eq!(agent.run, "f".repeat(64));
+            let terminal = session.reference().unwrap();
+            let producer = running
+                .terminal_agent_producer(&grantee, &terminal, &lease)
+                .unwrap();
+            let evidence_root = temp.path().join("agent-evidence");
+            std::fs::create_dir(&evidence_root).unwrap();
+            std::fs::set_permissions(&evidence_root, std::fs::Permissions::from_mode(0o700))
+                .unwrap();
+            let evidence = coder_pty::host::PrivateEvidence::open(&evidence_root).unwrap();
+            let generated = coder_pty::host::GeneratedInput {
+                request: coder_host::reach::new_id(),
+                terminal,
+                thread: agent.thread.clone(),
+                run: agent.run.clone(),
+                data: b"printf 'admitted-agent-marker\\n'\n".to_vec(),
+            };
+            producer.produce(&generated, &evidence).unwrap();
+            until(&sessions, &mut session, "admitted-agent-marker");
+            let records = std::fs::read_to_string(
+                evidence_root
+                    .join(&agent.thread)
+                    .join(format!("{}.jsonl", generated.request)),
+            )
+            .unwrap();
+            assert!(records.contains("written"));
+            assert!(!records.contains("admitted-agent-marker"));
+            sessions.input(&session, b"printf 'owner-reclaimed\\n'\n");
+            let mut stale = generated;
+            stale.request = coder_host::reach::new_id();
+
+            until(&sessions, &mut session, "owner-reclaimed");
+            let Value::Viewers { viewers } = session
+                .sharing(Action::Read)
+                .unwrap()
+                .recv_timeout(Duration::from_secs(20))
+                .unwrap()
+                .unwrap()
+            else {
+                panic!("reclaimed role")
+            };
+            assert!(viewers.agent.is_none());
+            assert!(producer.produce(&stale, &evidence).is_err());
         }
 
         if label == "Verse" {

@@ -560,7 +560,10 @@ impl Overlay {
                 title = format!("{title}  [driven by {typist}; any key takes it back]");
             }
             if self.core.sharing.pane == Some(id) && self.core.sharing.active() {
-                title = format!("{title}  [{}]", self.core.sharing.marker());
+                title = match self.core.sharing.agent_badge() {
+                    Some(badge) => format!("{badge} {title}  [{}]", self.core.sharing.marker()),
+                    None => format!("{title}  [{}]", self.core.sharing.marker()),
+                };
             }
             let mut detail = pane.session.cwd.clone().unwrap_or_default();
             if pane.scroll > 0 {

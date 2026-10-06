@@ -3168,6 +3168,7 @@ version = "0.1.0"
 dependencies = [
  "base64 0.22.1",
  "coder-boundary",
+ "coder-vt",
  "libc",
  "serde",
  "serde_json",

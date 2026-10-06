@@ -139,3 +139,16 @@ drop killing a process group that ignores `SIGHUP` and `SIGTERM`, idle
 expiry, lost generations, exact input retries, workspace and environment
 admission, per-attachment rates, and a terminal inside a write boundary.
 `tests/wire.rs` checks the NIP-TERM fixtures in `fixtures/nip-term.json`.
+
+### Agent typing
+
+An owner explicitly hands off a terminal's typist seat with a thread and run.
+`Host::agent_producer` connects a host-local producer to that exact private
+lease; the resident host exposes it through `Running::terminal_agent_producer`.
+`AgentProducer::produce` validates generated input against those identities,
+records a byte-free attempt in a private per-thread directory, and calls the
+host's input admission. An interrupted attempt remains unknown and cannot be
+replayed. Each lease admits at most 256 distinct input IDs. The producer has
+no reader, and typing authority grants no observation of blocks or screens.
+An owner key reclaims the seat; shares alone cannot reclaim it. The native
+and Verse pane title shows a leading agent badge. No model starts on handoff.

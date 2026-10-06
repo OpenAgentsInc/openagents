@@ -465,15 +465,20 @@ impl Attachment for LocalAttachment {
         &self,
         action: terminal_core::sharing::Action,
     ) -> Option<std::sync::mpsc::Receiver<Result<Value, String>>> {
-        use coder_pty::share::{SharePause, ShareRequest, Unshare, ViewersRead};
+        use coder_pty::share::{SharePause, ShareRequest, Unshare};
         use terminal_core::sharing::Action;
-        if !self.host.features().shares {
-            return None;
-        }
         let result = match action {
-            Action::Read => self.host.viewers(
+            Action::Read => self.host.owner_viewers(PRINCIPAL, &self.terminal),
+            Action::Handoff { agent, thread, run } => self.host.hand_off(
                 PRINCIPAL,
-                &ViewersRead::new(request(), self.terminal.clone()),
+                &coder_pty::ext::Handoff::new(
+                    request(),
+                    self.terminal.clone(),
+                    self.attachment.clone(),
+                    agent,
+                    thread,
+                    run,
+                ),
             ),
             Action::Issue {
                 grantee,

@@ -99,7 +99,7 @@ pub(crate) struct Shared {
     pub(crate) secret: SecretKey,
     pub(crate) host_key: String,
     pub(crate) owner: String,
-    pub(crate) pty: coder_pty::host::Host,
+    pub(crate) pty: Arc<coder_pty::host::Host>,
     pub(crate) tasks: Arc<dyn Tasks>,
     pub(crate) publisher: Publisher,
     pub(crate) listen: SocketAddr,
@@ -224,7 +224,10 @@ pub async fn start(config: Config, tasks: Arc<dyn Tasks>) -> Result<Running> {
     }
     // Shares are sealed to their grantee under the host key.
     terminals.shares = Some(Arc::new(crate::share::Signer(authority.signing_key()?)));
-    let pty = coder_pty::host::Host::new(terminals, Arc::new(Grants(authority.clone())));
+    let pty = Arc::new(coder_pty::host::Host::new(
+        terminals,
+        Arc::new(Grants(authority.clone())),
+    ));
 
     let listener = TcpListener::bind(config.listen)
         .await
@@ -378,6 +381,17 @@ impl Running {
     #[must_use]
     pub fn generation(&self) -> u64 {
         self.shared.config.generation
+    }
+
+    /// Connects a host-local agent producer to an owner's explicit terminal handoff.
+    /// The producer receives no terminal reader or task execution authority.
+    pub fn terminal_agent_producer(
+        &self,
+        agent: &str,
+        terminal: &coder_pty::wire::TerminalRef,
+        lease: &str,
+    ) -> std::result::Result<coder_pty::host::AgentProducer, coder_pty::wire::Refusal> {
+        self.shared.pty.agent_producer(agent, terminal, lease)
     }
 
     /// How many terminals the host holds, running or ended. A host-local

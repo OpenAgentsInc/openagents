@@ -113,7 +113,9 @@ use crate::wire::{
     Reason, Refusal, Resize, Signal, Size, Status, TerminalRef, Value,
 };
 
+mod agent;
 mod cmdline;
+pub use agent::{AgentProducer, GeneratedInput, PrivateEvidence};
 mod proposals;
 #[cfg(unix)]
 mod sys;
@@ -560,6 +562,7 @@ struct State {
     last_input: Option<u64>,
     /// The agent that holds the typist role under a handoff, when one does.
     agent: Option<AgentSeat>,
+    retired_agents: VecDeque<AgentSeat>,
 }
 
 /// An agent's hold on the typist role.
@@ -569,6 +572,7 @@ struct AgentSeat {
     by: String,
     /// What the agent typed, for the thread's private evidence.
     log: VecDeque<AgentEvidence>,
+    seen: BTreeSet<String>,
 }
 
 /// Who types at a terminal: an attachment, or for a client that predates
@@ -651,7 +655,20 @@ impl State {
             })
         });
         if self.agent.is_some() && !leased {
-            self.agent = None;
+            if let Some(agent) = self.agent.take()
+                && !agent.log.is_empty()
+            {
+                self.retired_agents.push_back(agent);
+                while self
+                    .retired_agents
+                    .iter()
+                    .map(|agent| agent.log.len())
+                    .sum::<usize>()
+                    > AGENT_LOG_MAX
+                {
+                    self.retired_agents.pop_front();
+                }
+            }
             if let Some(emulator) = self.emulator.as_mut() {
                 emulator.attribute(Origin::Unattributed);
             }
@@ -1915,10 +1932,13 @@ impl Host {
             run: request.run.clone(),
             lease: lease.clone(),
         };
+        // Retire the previous lease before installing a replacement.
+        state.set_typist(None);
         state.agent = Some(AgentSeat {
             typist,
             by: request.attachment.clone(),
             log: VecDeque::new(),
+            seen: BTreeSet::new(),
         });
         state.set_typist(Some(Typist {
             principal: request.agent.clone(),
@@ -1939,7 +1959,9 @@ impl Host {
     /// that handoff holds the role on that terminal: a reclaimed, ended, or
     /// other terminal's lease refuses, and an exact retry answers once
     /// without writing again. Each input is recorded, without its bytes,
-    /// for the thread's private evidence ([`Host::agent_evidence`]).
+    /// for the thread's private evidence ([`Host::agent_evidence`]). A lease
+    /// admits at most 256 distinct input IDs, retained until it ends, so an
+    /// evicted retry cannot type again. Further input needs explicit renewal.
     pub fn agent_input(&self, agent: &str, request: &AgentInput) -> Outcome {
         request.check_with(self.features())?;
         let body = identity(agent, request);
@@ -1960,6 +1982,36 @@ impl Host {
                 ));
             }
         }
+        let admitted = state
+            .agent
+            .as_ref()
+            .and_then(|seat| state.attachments.get(&seat.by))
+            .is_some_and(|attachment| {
+                self.inner
+                    .rights
+                    .holds(&attachment.principal, Right::Terminal)
+            });
+        if !admitted {
+            state.set_typist(None);
+            return Err(Refusal::new(
+                Reason::NotAdmitted,
+                "The handing device no longer has terminal authority.",
+            ));
+        }
+        let seat = state.agent.as_mut().expect("the lease was checked");
+        if seat.seen.contains(&request.request) {
+            return Err(Refusal::new(
+                Reason::Stale,
+                "This agent input was already admitted.",
+            ));
+        }
+        if seat.seen.len() >= AGENT_LOG_MAX {
+            return Err(Refusal::new(
+                Reason::LimitExceeded,
+                "Renew explicit handoff after 256 distinct inputs.",
+            ));
+        }
+        seat.seen.insert(request.request.clone());
         state.input_epoch = state.input_epoch.saturating_add(1);
         state.last_input = Some(state.ring.head());
         let written = terminal.process.write(&request.data).map_err(|error| {
@@ -1991,15 +2043,18 @@ impl Host {
         Ok((Status::Accepted, value))
     }
 
-    /// Takes the evidence the current handoff recorded on a terminal: its
-    /// binding and each input, without the bytes. A host-local read for the
-    /// thread the handoff names.
+    /// Takes the oldest undrained handoff's private input evidence, without
+    /// the bytes. Reclaiming the role preserves bounded evidence. This host-local
+    /// read belongs to the thread the handoff names.
     pub fn agent_evidence(
         &self,
         terminal: &TerminalRef,
     ) -> Result<Option<(AgentTypist, Vec<AgentEvidence>)>, Refusal> {
         let terminal = self.inner.find(terminal)?;
         let mut state = terminal.state();
+        if let Some(mut seat) = state.retired_agents.pop_front() {
+            return Ok(Some((seat.typist, seat.log.drain(..).collect())));
+        }
         Ok(state
             .agent
             .as_mut()
@@ -2047,8 +2102,14 @@ impl Host {
     /// paused. It needs the `terminal` right and discloses no output.
     pub fn viewers(&self, principal: &str, request: &ViewersRead) -> Outcome {
         request.check_with(self.features())?;
+        self.owner_viewers(principal, &request.terminal)
+    }
+
+    /// Reads private attachment and agent metadata for a host-local owner.
+    pub fn owner_viewers(&self, principal: &str, reference: &TerminalRef) -> Outcome {
+        reference.check()?;
         self.inner.require(principal, Right::Terminal)?;
-        let terminal = self.inner.find(&request.terminal)?;
+        let terminal = self.inner.find(reference)?;
         let state = terminal.state();
         let typist = state.typist_attachment();
         let now = unix_now();
@@ -2376,6 +2437,7 @@ impl Inner {
                 paused: false,
                 cut: 0,
                 agent: None,
+                retired_agents: VecDeque::new(),
             }),
             reader: Mutex::new(None),
         });

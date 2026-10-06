@@ -193,6 +193,9 @@ impl Attachment for RemoteAttachment {
         use terminal_core::sharing::Action;
         Some(self.session.owner_sharing(match action {
             Action::Read => SharingCommand::Read,
+            Action::Handoff { agent, thread, run } => {
+                SharingCommand::Handoff { agent, thread, run }
+            }
             Action::Issue {
                 grantee,
                 mode,
@@ -212,9 +215,7 @@ impl Attachment for RemoteAttachment {
     }
     fn input_available(&self) -> bool {
         let model = self.session.model();
-        model.phase == coder_computers::terminal::Phase::Attached
-            && !model.watch
-            && model.typing != coder_computers::terminal::Typing::Elsewhere
+        model.phase == coder_computers::terminal::Phase::Attached && !model.watch
     }
     fn reference(&self) -> Option<TerminalRef> {
         let model = self.session.model();
