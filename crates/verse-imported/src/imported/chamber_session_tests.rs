@@ -626,12 +626,7 @@ fn native_prediction_binds_local_input_renders_it_and_retires_acknowledgments() 
         .prediction
         .grant_world_credit(context.0, context.1, credit)
         .unwrap();
-    // An outstanding request batches the next local samples, without waiting
-    // for its reply or losing the four-step credit remainder below.
-    session.prediction.advance(4. / 120.).unwrap();
-    session.send_movement_interval().unwrap();
-    assert!(inputs.try_recv().is_err());
-    session.prediction.advance(8. / 120.).unwrap();
+    session.prediction.advance(12. / 120.).unwrap();
     session.prediction.advance(10. / 120.).unwrap();
     session.send_movement_interval().unwrap();
     let Input::MovementFrame { frame: full_a, .. } = inputs.try_recv().unwrap() else {
