@@ -55,6 +55,11 @@ struct Fake {
     /// Every `plugin use` sent: plugin, version, digest, request, and
     /// workspace. The fake owner runs a request once and follows it after.
     uses: Mutex<Vec<[String; 5]>>,
+    /// Knowledge entries `kb show` answers, by ID, and what `kb search`
+    /// lists (possibly older versions); the studio's goals.
+    entries: Mutex<std::collections::BTreeMap<String, serde_json::Value>>,
+    hits: Mutex<Vec<serde_json::Value>>,
+    goals: Mutex<Option<serde_json::Value>>,
 }
 struct Pane {
     bridge: bool,
@@ -248,6 +253,43 @@ impl Transport for Fake {
         let (sender, receiver) = mpsc::channel();
         sender
             .send(crate::gym::decode_use(answer.to_string().as_bytes(), b""))
+            .unwrap();
+        receiver
+    }
+    fn search_knowledge(&self, _query: &str) -> mpsc::Receiver<crate::knowledge::HitsRead> {
+        let hits: Vec<serde_json::Value> = self
+            .hits
+            .lock()
+            .unwrap()
+            .iter()
+            .map(|entry| serde_json::json!({"id": entry["id"], "score": 1.0, "entry": entry}))
+            .collect();
+        let answer = serde_json::json!({"query": "budget", "hits": hits}).to_string();
+        let (sender, receiver) = mpsc::channel();
+        sender
+            .send(crate::knowledge::decode_hits(answer.as_bytes(), b""))
+            .unwrap();
+        receiver
+    }
+    fn read_entry(&self, id: &str) -> mpsc::Receiver<crate::knowledge::ShownRead> {
+        let answer = match self.entries.lock().unwrap().get(id) {
+            Some(entry) => serde_json::json!({"entry": entry, "pending": null}).to_string(),
+            None => r#"{"error":"no entry"}"#.to_owned(),
+        };
+        let (sender, receiver) = mpsc::channel();
+        sender
+            .send(crate::knowledge::decode_shown(answer.as_bytes(), b"", id))
+            .unwrap();
+        receiver
+    }
+    fn read_goals(&self) -> mpsc::Receiver<crate::knowledge::GoalsRead> {
+        let answer = self.goals.lock().unwrap().clone().map_or_else(
+            || r#"{"error":"no studio"}"#.to_owned(),
+            |goals| goals.to_string(),
+        );
+        let (sender, receiver) = mpsc::channel();
+        sender
+            .send(crate::knowledge::decode_goals(answer.as_bytes(), b""))
             .unwrap();
         receiver
     }
@@ -2406,6 +2448,7 @@ fn a_noncoding_plugin_turns_notes_into_one_checked_artifact_from_the_page() {
         ["state"] = serde_json::json!("missing");
     key(&mut app, NamedKey::F2);
     key(&mut app, NamedKey::F2);
+    key(&mut app, NamedKey::F2);
     app.tick();
     assert!(
         sheet(&mut app)
@@ -2413,4 +2456,157 @@ fn a_noncoding_plugin_turns_notes_into_one_checked_artifact_from_the_page() {
             .contains("output cccccccccccc missing")
     );
     assert!(transport.requests.lock().unwrap().is_empty());
+}
+
+fn knowledge_entry(id: &str, version: u32, status: &str, body: &str) -> serde_json::Value {
+    serde_json::json!({
+        "id": id, "version": version, "kind": "procedure", "title": format!("About {id}"),
+        "summary": "s", "tags": [], "applies_when": "", "status": status,
+        "author": "c".repeat(64), "written_from": ["run-7"], "cites": ["docs/budget.md"],
+        "evidence": ["reviewed 2026-10-01"], "answer": null, "body": body,
+        "digest": format!("sha256:{}{version}", "e".repeat(63)),
+    })
+}
+
+#[test]
+fn knowledge_and_plans_are_cited_at_exact_versions_and_sent_as_previewed() {
+    use crate::input::{KeyCode, NamedKey};
+    let transport = Arc::new(Fake {
+        bridge: true,
+        ..Fake::default()
+    });
+    let mut app = Application::new(Sessions(transport.clone()));
+    app.paper.on = true;
+    app.toggle();
+    app.ensure_started();
+    let sheet = |app: &mut Application| app.paper_sheet(120, 40, "12:00:00", "0.50");
+    let key = |app: &mut Application, named: NamedKey| press(app, KeyCode::Unidentified, named);
+    let arrow = |app: &mut Application, code: KeyCode| press(app, code, NamedKey::Unidentified);
+    transport
+        .output
+        .lock()
+        .unwrap()
+        .push_back(b"\x1b]7;file:///test/work\x07\x1b]133;A\x07$ \x1b]133;B\x07".to_vec());
+    app.tick();
+    *transport.studies.lock().unwrap() =
+        Some(serde_json::json!({"root": "/test/work", "studies": []}));
+    *transport.components.lock().unwrap() = Some(serde_json::json!({"plugins": []}));
+    *transport.goals.lock().unwrap() = Some(serde_json::json!({"goals": [
+        {"goal_id": "g1", "status": "working", "text": "Ship the offsite budget",
+         "entries": [{"id": "e1", "seat": "ana", "progress": "running", "title": "Draft the budget"}]},
+    ], "spend": {}}));
+    let admitted = knowledge_entry("budget-rules", 2, "admitted", "Keep travel under $500.");
+    let candidate = knowledge_entry("venue-tips", 1, "candidate", "Book early.");
+    let moved = knowledge_entry("room-codes", 4, "admitted", "Room codes rotate weekly.");
+    *transport.hits.lock().unwrap() = vec![
+        admitted.clone(),
+        candidate.clone(),
+        knowledge_entry("room-codes", 3, "admitted", "old"),
+    ];
+    for entry in [&admitted, &candidate, &moved] {
+        transport
+            .entries
+            .lock()
+            .unwrap()
+            .insert(entry["id"].as_str().unwrap().into(), entry.clone());
+    }
+
+    key(&mut app, NamedKey::F12);
+    app.tick();
+    key(&mut app, NamedKey::F2);
+    key(&mut app, NamedKey::F2);
+    app.tick();
+    let page = sheet(&mut app);
+    assert!(
+        page.row_text(37).starts_with("| FIND > "),
+        "{}",
+        page.row_text(37)
+    );
+    let text = page.text();
+    assert!(
+        text.contains("KNOWLEDGE AND PLANS  0 cited with the next question"),
+        "{text}"
+    );
+    assert!(text.contains("STUDIO PLANS (studio memory, not published knowledge)"));
+    assert!(text.contains("> plan g1  working  1 steps  Ship the offsite budget"));
+
+    // Search, then the picks: plan, admitted, candidate, moved.
+    typing(&mut app, "budget");
+    press(&mut app, KeyCode::Enter, NamedKey::Enter);
+    app.tick();
+    let text = sheet(&mut app).text();
+    assert!(text.contains("budget-rules v2  admitted  by cccccccc...  About budget-rules"));
+    assert!(text.contains("venue-tips v1  candidate"));
+
+    // The plan opens and is cited as studio memory.
+    press(&mut app, KeyCode::Enter, NamedKey::Enter);
+    let text = sheet(&mut app).text();
+    assert!(text.contains("PLAN g1  working  digest "), "{text}");
+    assert!(text.contains("[ana] Draft the budget  running"));
+    press(&mut app, KeyCode::Enter, NamedKey::Enter);
+    press(&mut app, KeyCode::Escape, NamedKey::Escape);
+
+    // The admitted entry opens with its provenance and is cited.
+    arrow(&mut app, KeyCode::ArrowDown);
+    press(&mut app, KeyCode::Enter, NamedKey::Enter);
+    app.tick();
+    let text = sheet(&mut app).text();
+    assert!(
+        text.contains("ENTRY budget-rules version 2  admitted  [ENTER cites it]"),
+        "{text}"
+    );
+    assert!(text.contains("WRITTEN FROM run-7"));
+    assert!(text.contains("EVIDENCE reviewed 2026-10-01"));
+    press(&mut app, KeyCode::Enter, NamedKey::Enter);
+    press(&mut app, KeyCode::Escape, NamedKey::Escape);
+
+    // A candidate and a version that moved since the search are refused.
+    arrow(&mut app, KeyCode::ArrowDown);
+    press(&mut app, KeyCode::Enter, NamedKey::Enter);
+    app.tick();
+    press(&mut app, KeyCode::Enter, NamedKey::Enter);
+    assert!(
+        sheet(&mut app)
+            .text()
+            .contains("NOT CITED venue-tips version 1 is a candidate, not admitted context")
+    );
+    press(&mut app, KeyCode::Escape, NamedKey::Escape);
+    arrow(&mut app, KeyCode::ArrowDown);
+    press(&mut app, KeyCode::Enter, NamedKey::Enter);
+    app.tick();
+    press(&mut app, KeyCode::Enter, NamedKey::Enter);
+    let text = sheet(&mut app).text();
+    assert!(
+        text.contains("CHANGED since the search found version 3"),
+        "{text}"
+    );
+    assert!(text.contains("NOT CITED room-codes changed since the search (now version 4)"));
+    press(&mut app, KeyCode::Escape, NamedKey::Escape);
+    assert_eq!(app.paper.gym.knowledge.cited.len(), 2);
+
+    // The page previews exactly what the next question sends.
+    let text = sheet(&mut app).text();
+    assert!(text.contains("KNOWLEDGE AND PLANS  2 cited with the next question"));
+    assert!(text.contains("| Knowledge budget-rules version 2 (admitted), by "));
+    assert!(text.contains("| Keep travel under $500."));
+    let preview = crate::context::Context {
+        cited: app.paper.gym.knowledge.cited.clone(),
+        ..crate::context::Context::default()
+    }
+    .preview();
+
+    // Asking sends the citations once, with that preview.
+    press(&mut app, KeyCode::Escape, NamedKey::Escape);
+    key(&mut app, NamedKey::F12);
+    app.paper_ask("How much can we spend on travel?");
+    let requests = transport.requests.lock().unwrap();
+    let request = requests.last().expect("the question was sent");
+    assert_eq!(request.context.cited.len(), 2);
+    assert_eq!(request.context.cited[0].kind, "plan");
+    assert_eq!(request.context.cited[1].id, "budget-rules");
+    assert_eq!(request.context.cited[1].version, "2");
+    let message = request.message().unwrap();
+    assert!(message.contains(preview.trim_end()), "{message}");
+    drop(requests);
+    assert!(app.paper.gym.knowledge.cited.is_empty());
 }

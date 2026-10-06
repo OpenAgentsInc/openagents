@@ -352,6 +352,15 @@ impl Transport for Local {
             self.helper_home.as_deref(),
         )
     }
+    fn search_knowledge(&self, query: &str) -> Receiver<terminal_core::knowledge::HitsRead> {
+        super::helpers::search_knowledge(query, self.helper_home.as_deref())
+    }
+    fn read_entry(&self, id: &str) -> Receiver<terminal_core::knowledge::ShownRead> {
+        super::helpers::read_entry(id, self.helper_home.as_deref())
+    }
+    fn read_goals(&self) -> Receiver<terminal_core::knowledge::GoalsRead> {
+        super::helpers::read_goals(self.helper_home.as_deref())
+    }
     fn read_study(&self, dir: &str) -> Receiver<terminal_core::gym::Read> {
         super::helpers::read_study(dir, self.helper_home.as_deref())
     }

@@ -29,7 +29,7 @@ use std::time::Instant;
 pub const RULE_KEYS: &str = "F1 HELP  F10 QUIT  F11 RETURN  UP DOWN PICK  ENTER PAUSE OR RESUME, THEN CONFIRM  ESC REJECT OR RETURN";
 
 /// The key strip on the Gym page.
-pub const GYM_KEYS: &str = "F1 HELP  F2 RESULTS OR PLUGINS  F10 QUIT  F12 RETURN  UP DOWN PICK  ENTER OPEN  ESC RETURN  PGUP PGDN SCROLL";
+pub const GYM_KEYS: &str = "F1 HELP  F2 RESULTS, PLUGINS, OR KNOWLEDGE  F10 QUIT  F12 RETURN  UP DOWN PICK  ENTER OPEN  ESC RETURN  PGUP PGDN SCROLL";
 
 /// The key strip on the files page.
 pub const FILE_KEYS: &str =
@@ -69,7 +69,10 @@ const HELP: &[&str] = &[
     "     shows whether they agree with its report. It runs and publishes nothing.",
     "     F2 there lists the installed plugins by exact release; ENTER opens the",
     "     newest result for exactly that release. Type a request and ENTER to",
-    "     use the picked plugin once; ENTER confirms and ESC rejects.",
+    "     use the picked plugin once; ENTER confirms and ESC rejects. F2 again",
+    "     shows knowledge and studio plans: type words and ENTER to search, ENTER",
+    "     opens the item picked, and ENTER cites an admitted version with the",
+    "     next question, or removes it; the page shows exactly what is sent.",
     "     (The key strip is full, so F12 is named here.)",
     "",
     "A proposed command waits in the transcript. ENTER on an empty input line",
@@ -510,7 +513,7 @@ impl Application {
             return true;
         }
         if self.paper.gym.open {
-            let typing = self.paper.gym.components
+            let typing = (self.paper.gym.components || self.paper.gym.knowledge.open)
                 && self.paper.gym.viewing.is_none()
                 && !matches!(
                     key.code,
@@ -848,11 +851,25 @@ impl Application {
         if page.viewing.is_some() {
             return;
         }
-        page.components = !page.components;
         page.scroll = 0;
-        if !page.components {
+        if page.knowledge.open {
+            page.knowledge.open = false;
             return;
         }
+        if page.components {
+            page.components = false;
+            let knowledge = &mut page.knowledge;
+            knowledge.open = true;
+            knowledge.opened = None;
+            knowledge.shown = None;
+            knowledge.picked = 0;
+            let goals = self.sessions().0.read_goals();
+            let knowledge = &mut self.paper.gym.knowledge;
+            knowledge.goals = None;
+            knowledge.goals_reading = Some(goals);
+            return;
+        }
+        page.components = true;
         let root = page.root.clone().unwrap_or_else(|| ".".into());
         let holding = self.sessions().0.read_components(&root);
         let page = &mut self.paper.gym;
@@ -865,6 +882,10 @@ impl Application {
     /// the picked study (again, on its page) or opens the newest result for
     /// the picked plugin's exact release, and ESC steps back.
     fn paper_gym_key(&mut self, code: KeyCode, enter: bool) {
+        if self.paper.gym.knowledge.open && self.paper.gym.viewing.is_none() {
+            self.paper_knowledge_key(code, enter);
+            return;
+        }
         let page = &mut self.paper.gym;
         let components = page.components && page.viewing.is_none();
         let count = if components {
@@ -981,10 +1002,113 @@ impl Application {
         }
     }
 
+    /// A key on the knowledge view: a typed line and ENTER search; the
+    /// arrows pick; ENTER on an empty line opens the item picked, and on an
+    /// opened item cites it or removes it; ESC steps back.
+    fn paper_knowledge_key(&mut self, code: KeyCode, enter: bool) {
+        let line = self.paper.input.trim().to_owned();
+        let page = &mut self.paper.gym.knowledge;
+        let count = page.items().len();
+        match code {
+            KeyCode::Escape if page.opened.is_some() => {
+                page.opened = None;
+                page.shown = None;
+                page.showing = None;
+            }
+            KeyCode::Escape => {
+                page.open = false;
+                self.paper.gym.scroll = 0;
+            }
+            KeyCode::ArrowUp if page.opened.is_none() => {
+                page.picked = page.picked.saturating_sub(1);
+            }
+            KeyCode::ArrowDown if page.opened.is_none() => {
+                page.picked = (page.picked + 1).min(count.saturating_sub(1));
+            }
+            _ if enter && !line.is_empty() => {
+                self.paper.set_input(String::new());
+                let searching = self.sessions().0.search_knowledge(&line);
+                let page = &mut self.paper.gym.knowledge;
+                page.query = Some(line);
+                page.hits = None;
+                page.searching = Some(searching);
+                page.opened = None;
+                page.shown = None;
+            }
+            _ if enter && page.opened.is_some() => {
+                let words = page.toggle();
+                if !words.is_empty() {
+                    self.notice = Some(words);
+                }
+            }
+            _ if enter => {
+                let Some(item) = page.items().into_iter().nth(page.picked) else {
+                    return;
+                };
+                if let crate::knowledge::Item::Knowledge(entry) = &item {
+                    let showing = self.sessions().0.read_entry(&entry.id);
+                    self.paper.gym.knowledge.showing = Some(showing);
+                }
+                let page = &mut self.paper.gym.knowledge;
+                page.shown = None;
+                page.opened = Some(item);
+                self.paper.gym.scroll = 0;
+            }
+            _ => {}
+        }
+    }
+
+    /// Takes a finished search, entry, or studio read for the knowledge
+    /// view.
+    fn paper_knowledge_poll(&mut self) {
+        use std::sync::mpsc::TryRecvError;
+        let page = &mut self.paper.gym.knowledge;
+        if let Some(receiver) = &page.searching {
+            match receiver.try_recv() {
+                Ok(read) => {
+                    page.hits = Some(read);
+                    page.searching = None;
+                }
+                Err(TryRecvError::Empty) => {}
+                Err(TryRecvError::Disconnected) => {
+                    page.hits = Some(Err("the search ended without an answer".into()));
+                    page.searching = None;
+                }
+            }
+        }
+        if let Some(receiver) = &page.showing {
+            match receiver.try_recv() {
+                Ok(read) => {
+                    page.shown = Some(read);
+                    page.showing = None;
+                }
+                Err(TryRecvError::Empty) => {}
+                Err(TryRecvError::Disconnected) => {
+                    page.shown = Some(Err("the read ended without an answer".into()));
+                    page.showing = None;
+                }
+            }
+        }
+        if let Some(receiver) = &page.goals_reading {
+            match receiver.try_recv() {
+                Ok(read) => {
+                    page.goals = Some(read);
+                    page.goals_reading = None;
+                }
+                Err(TryRecvError::Empty) => {}
+                Err(TryRecvError::Disconnected) => {
+                    page.goals = Some(Err("the studio ended without an answer".into()));
+                    page.goals_reading = None;
+                }
+            }
+        }
+    }
+
     /// Takes a finished listing, plugin read, use, or study for the Gym
     /// page; a finished use reads the plugins again to show its run.
     fn paper_gym_poll(&mut self) {
         use std::sync::mpsc::TryRecvError;
+        self.paper_knowledge_poll();
         let page = &mut self.paper.gym;
         if let Some(sending) = &page.sending {
             let answer = match sending.try_recv() {
@@ -1367,6 +1491,21 @@ impl Application {
             && let Some(binding) = pane.session.binding(String::new())
         {
             context.directory = Some(binding.cwd);
+        }
+        if !self.paper.gym.knowledge.cited.is_empty() {
+            context.cited = std::mem::take(&mut self.paper.gym.knowledge.cited);
+            let names: Vec<String> = context
+                .cited
+                .iter()
+                .map(|cited| {
+                    if cited.kind == "plan" {
+                        format!("plan {}", cited.id)
+                    } else {
+                        format!("{} v{}", cited.id, cited.version)
+                    }
+                })
+                .collect();
+            attached = Some(format!("cited {}", names.join(", ")));
         }
         if let Some(block) = self.paper_attachable().cloned() {
             context.attach(&block, &scrub);
@@ -1836,7 +1975,11 @@ impl Application {
             return ("CONFIRM? ".into(), Tone::Loud);
         }
         if self.paper_gym_typing() {
-            return ("USE > ".into(), Tone::Loud);
+            return if self.paper.gym.knowledge.open {
+                ("FIND > ".into(), Tone::Loud)
+            } else {
+                ("USE > ".into(), Tone::Loud)
+            };
         }
         if self.paper.gym.open {
             return if self
@@ -1878,7 +2021,7 @@ impl Application {
     fn paper_gym_typing(&self) -> bool {
         let page = &self.paper.gym;
         page.open
-            && page.components
+            && (page.components || page.knowledge.open)
             && page.viewing.is_none()
             && !page
                 .using

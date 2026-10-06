@@ -21,6 +21,7 @@ pub mod files;
 pub mod gym;
 pub mod input;
 pub mod keys;
+pub mod knowledge;
 pub mod layout;
 pub mod mouse;
 pub mod paper;

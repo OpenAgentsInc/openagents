@@ -125,6 +125,27 @@ pub trait Transport: Send + Sync {
         let _ = sender.send(Err("this mount runs no plugins".into()));
         receiver
     }
+    /// Searches local and trusted knowledge entries for `query`, lexically,
+    /// with no model.
+    fn search_knowledge(&self, query: &str) -> Receiver<crate::knowledge::HitsRead> {
+        let _ = query;
+        let (sender, receiver) = std::sync::mpsc::channel();
+        let _ = sender.send(Err("this mount reads no knowledge".into()));
+        receiver
+    }
+    /// Reads knowledge entry `id` at its current version.
+    fn read_entry(&self, id: &str) -> Receiver<crate::knowledge::ShownRead> {
+        let _ = id;
+        let (sender, receiver) = std::sync::mpsc::channel();
+        let _ = sender.send(Err("this mount reads no knowledge".into()));
+        receiver
+    }
+    /// Reads the studio's goals and their plans.
+    fn read_goals(&self) -> Receiver<crate::knowledge::GoalsRead> {
+        let (sender, receiver) = std::sync::mpsc::channel();
+        let _ = sender.send(Err("this mount reads no studio".into()));
+        receiver
+    }
     /// Recomputes the retained plugin test result in `dir` from its
     /// attempts, only reading.
     fn read_study(&self, dir: &str) -> Receiver<crate::gym::Read> {

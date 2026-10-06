@@ -358,6 +358,8 @@ pub struct Page {
     pub held: Option<ComponentsRead>,
     pub holding: Option<Receiver<ComponentsRead>>,
     pub component: usize,
+    /// The knowledge and plans view (F2 after the plugins).
+    pub knowledge: crate::knowledge::Page,
     /// A `use` of the picked plugin from the input line.
     pub using: Option<Using>,
     pub sending: Option<Receiver<UseRead>>,
@@ -866,6 +868,8 @@ fn study_lines(page: &Page) -> Vec<(String, crate::paper::Tone)> {
 pub fn lines(page: &Page, now: u64) -> Vec<(String, crate::paper::Tone)> {
     if page.viewing.is_some() {
         study_lines(page)
+    } else if page.knowledge.open {
+        crate::knowledge::lines(&page.knowledge)
     } else if page.components {
         component_lines(page, now)
     } else {

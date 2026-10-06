@@ -391,6 +391,77 @@ pub fn plugin_use(terms: [&str; 5], home: Option<&Path>) -> Receiver<terminal_co
     receiver
 }
 
+/// Searches local and trusted knowledge entries, lexically: no model runs
+/// and nothing is spent.
+pub fn search_knowledge(
+    query: &str,
+    home: Option<&Path>,
+) -> Receiver<terminal_core::knowledge::HitsRead> {
+    use terminal_core::knowledge::{READ_MAX, decode_hits};
+    let (sender, receiver) = mpsc::channel();
+    let query = query.to_owned();
+    let home = home.map(Path::to_path_buf);
+    std::thread::spawn(move || {
+        let read = helper(
+            &[
+                "--json",
+                "kb",
+                "search",
+                &query,
+                "--lexical",
+                "--limit",
+                "20",
+            ],
+            None,
+            home.as_deref(),
+            READ_MAX,
+            std::time::Duration::from_secs(30),
+        )
+        .and_then(|(stdout, stderr)| decode_hits(&stdout, &stderr));
+        let _ = sender.send(read);
+    });
+    receiver
+}
+
+/// Reads knowledge entry `id` at its current version.
+pub fn read_entry(id: &str, home: Option<&Path>) -> Receiver<terminal_core::knowledge::ShownRead> {
+    use terminal_core::knowledge::{READ_MAX, decode_shown};
+    let (sender, receiver) = mpsc::channel();
+    let id = id.to_owned();
+    let home = home.map(Path::to_path_buf);
+    std::thread::spawn(move || {
+        let read = helper(
+            &["--json", "kb", "show", &id],
+            None,
+            home.as_deref(),
+            READ_MAX,
+            std::time::Duration::from_secs(20),
+        )
+        .and_then(|(stdout, stderr)| decode_shown(&stdout, &stderr, &id));
+        let _ = sender.send(read);
+    });
+    receiver
+}
+
+/// Reads the studio's goals and their plans.
+pub fn read_goals(home: Option<&Path>) -> Receiver<terminal_core::knowledge::GoalsRead> {
+    use terminal_core::knowledge::{READ_MAX, decode_goals};
+    let (sender, receiver) = mpsc::channel();
+    let home = home.map(Path::to_path_buf);
+    std::thread::spawn(move || {
+        let read = helper(
+            &["--json", "studio", "goal", "list"],
+            None,
+            home.as_deref(),
+            READ_MAX,
+            std::time::Duration::from_secs(20),
+        )
+        .and_then(|(stdout, stderr)| decode_goals(&stdout, &stderr));
+        let _ = sender.send(read);
+    });
+    receiver
+}
+
 /// Recomputes the retained plugin test result in `dir` from its attempts.
 /// It runs nothing and publishes nothing.
 pub fn read_study(dir: &str, home: Option<&Path>) -> Receiver<terminal_core::gym::Read> {

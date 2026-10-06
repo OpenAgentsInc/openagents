@@ -229,6 +229,25 @@ read again from the request or the workspace; other outputs stay
 unchecked and say so. The noncoding receipt is
 [2026-10-06-noncoding-action-items](../verse/verification/2026-10-06-noncoding-action-items/README.md).
 
+F2 once more shows knowledge and studio plans
+([#10662](https://github.com/OpenAgentsInc/openagents/issues/10662),
+`terminal_core::knowledge`). Studio plans come from
+`openagents --json studio goal list` and are labeled studio memory, not
+published knowledge. A line typed at `FIND >` searches knowledge through
+`openagents --json kb search TEXT --lexical`, the local and trusted
+entries with no model call. ENTER opens the item picked: an entry through
+`kb show ID`, with its version, status, author, digest, written-from
+provenance, citations, evidence, and any newer candidate waiting beside
+it. ENTER on an opened item cites it with the next question, or removes
+it. Only an `admitted` entry whose shown version and digest are the ones
+the search found is cited; a candidate, a withdrawn entry, or one that
+changed since the search is refused and says why. A plan is cited by the
+digest of the plan as read. The citations are the request context's
+`cited` list, so the page's `SENT WITH THE NEXT QUESTION` preview is the
+text `Context::preview` sends, and the next question carries them once.
+Nothing is copied into another store; editing and publishing stay with
+`openagents kb` and `openagents studio`.
+
 ## Consumers
 
 `terminal-core` is the owner of a mount's local panes. The standalone
