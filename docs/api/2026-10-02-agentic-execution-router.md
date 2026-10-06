@@ -805,3 +805,13 @@ and unverified completion, and requested and acknowledged cancellation kept
 apart. `openagents --json task view` carries it as `route`, read from the
 route journal by task (`Journal::find_task`), and the run page (F9) draws it
 in the Grid and the standalone window alike. Reading never dispatches.
+
+Remote placement (#10699): [`openagents_chat::remote`](../../crates/openagents-chat/src/remote.rs)
+places an admitted route on the paired computer the person selected, under
+the grant the client holds for it (the `operate` right, the revocation
+epoch, and an admitted host-scoped workspace) and a pinned source revision,
+and binds the host generation and recipient. Dispatch rechecks the binding
+first, journals the recipient and idempotency key (`RouteRecord::sent`)
+before asking the host, and after a lost acknowledgment asks the same host
+what that key created. A revoked or stale grant or another host refuses,
+and nothing falls back to this computer or to another one.

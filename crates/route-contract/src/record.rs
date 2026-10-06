@@ -119,6 +119,19 @@ pub struct RouteRecord {
     /// ran on ours. The snapshot's `money` names the payer per resource.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub payer_keys: Vec<PayerKey>,
+    /// A remote dispatch sent before its acknowledgment arrived (#10699):
+    /// the recipient host and the idempotency key. Recovery asks that host
+    /// for that key and never sends the work anywhere else.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub sent: Option<Sent>,
+}
+
+/// A dispatch sent to a remote host, kept before the host is asked.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct Sent {
+    pub recipient: String,
+    pub key: String,
 }
 
 /// What one run of an admitted plugin or program produced.
@@ -178,6 +191,7 @@ impl RouteRecord {
             received_ms: now_ms,
             settled_ms: None,
             payer_keys: Vec::new(),
+            sent: None,
         })
     }
 
