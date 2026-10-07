@@ -1094,15 +1094,19 @@ portable PowerShell fixtures and Windows cross-checks do not qualify that native
   The current fixture uses synthetic checkpoint bytes and fake costs; real
   training, transferable improvement, and all funded cases are unverified.
 
-- Useful contribution payments (#10729): Freeze one optimization-bounty class,
-  source/evaluation group separation, license, attribution, beneficiary,
-  protected evaluator, acceptance/funding authorities, reward, and expiry.
-  Retain an independently controlled protected evaluation of the exact artifact
-  away from its sources, then authorize a bounded funded central receipt and
-  payout destination. Verify conservation, duplicate refusal, wallet lookup,
-  and unknown payout recovery. The synthetic contribution fixture uses fake
-  receipts; independent usefulness and every real contributor payment remain
-  unverified. XP and token/activity counts do not authorize sats.
+- Useful contribution payments O7 (#10729; REV-49, #10856): Qualify one real
+  protected Choice-accuracy checkpoint obligation through `contribution-service`.
+  Admit independently controlled evaluator and acceptance keys, private evidence
+  outside worker custody, current signed item/group/license permissions, exact
+  baseline/artifact bytes, a frozen native policy/recipe, complete known bills,
+  explicit reward/fee/budget/expiry, the central receiver, and the contributor's
+  registered payout destination. Then separately authorize bounded real funding
+  and the existing central payout path; retain exact receiver and payout lookup
+  evidence, including unknown recovery. Synthetic protected/fake-wallet checks
+  prove local admission and accounting only. Real independent usefulness,
+  transferable improvement, licensed data, funded adoption, and every real
+  contributor payout remain unverified. XP and activity authorize no sats. No
+  owner host deploy is required for the standalone private operator adapter.
 
 ## Terminal agent handoff (#10682)
 

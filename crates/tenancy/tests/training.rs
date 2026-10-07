@@ -309,6 +309,13 @@ fn the_full_flow_seals_a_candidate_and_delete_tombstones_the_corpus() {
         "retention": {"days": 30, "access": "owner", "artifacts": "digests-only"}
     });
     let sealed = book.seal_candidate(&candidate.to_string()).unwrap();
+    sealed.verify().unwrap();
+    let mut changed_seal = sealed.clone();
+    changed_seal
+        .identities
+        .code
+        .insert("trainer".into(), "changed revision".into());
+    assert!(changed_seal.verify().is_err());
     assert!(sealed.signature.starts_with("sha256:"));
     let admission = sealed.admission_candidate();
     assert_eq!(admission.artifact_signature, sealed.signature);

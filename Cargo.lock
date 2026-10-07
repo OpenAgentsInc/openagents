@@ -3510,6 +3510,26 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "3d52eff69cd5e647efe296129160853a42795992097e8af39800e1060caeea9b"
 
 [[package]]
+name = "contribution-service"
+version = "0.1.0"
+dependencies = [
+ "clap",
+ "fs2",
+ "gym",
+ "libc",
+ "nostr",
+ "openagents-wallet",
+ "pay-ledger",
+ "rusqlite",
+ "secp256k1 0.31.1",
+ "serde",
+ "serde_json",
+ "sha2 0.10.9",
+ "tempfile",
+ "tenancy",
+]
+
+[[package]]
 name = "contribution-workbench"
 version = "0.1.0"
 dependencies = [

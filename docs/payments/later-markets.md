@@ -155,6 +155,55 @@ terms or another payment hash cannot duplicate the same obligation. Missing
 rights, unavailable protected evidence, unfunded claims, or unknown payout
 outcomes retain refusal or liability instead of inventing earnings.
 
+`contribution-service` implements one private operator adapter: a frozen tenant
+checkpoint whose Choice accuracy improves on protected Gym confirmation. It
+rereads the native corpus, recipe, complete trial history, candidate seal,
+actual adapter/head/tokenizer bytes, receipt chains, locked spend, transfer,
+and deployment gates. Signed current permissions bind every source group,
+license, and corpus item; admitted evaluator and acceptance keys bind the
+recomputed result. Source files and funding state stay outside the worker root.
+Distinct keys and private paths provide local admission boundaries; they do
+not attest that different people control the keys.
+
+The adapter joins every required training, checking, search, failed-attempt,
+license, and compute bill to the same obligation and the existing REV-25
+customer evidence. Unknown costs refuse funding. It requests one signed exact
+central invoice through the resident's atomic node-bound operation, looks up
+only that receiver, requires the exact observed inbound transferred amount,
+and rechecks current sources before calling `record_contribution_earned`. A changed resident refuses before dispatch. LDK
+lookup omits invoice text and inbound routing fees; the retained signed invoice
+remains authoritative, a returned conflicting invoice refuses, and absent fee
+expense remains unknown in the finance view. The invoice request reserves the
+resident's 60-second reply window inside the earliest rights, terms, or grant
+expiry; the retained signed timestamp determines its effective expiry. Lost issuance or lookup
+replies retain unknown state. Reconciliation refreshes the clock after lookup
+and refuses expired current admission before central accrual. A receiver-observation digest is
+durable before the central mutation. There is no automatic second invoice,
+caller-supplied trust verdict, training engine, serving activation, or default reward, fee, or
+production threshold.
+
+Build the `contribution-service` binary under a build lease. Its private
+`--config ABSOLUTE_FILE` uses [the versioned configuration](../../crates/contribution-service/src/types.rs)
+with explicit protected, worker,
+state, and existing central-ledger paths. `assess`, `prepare`, `reconcile`, and
+`finance --output NEW_PRIVATE_DIRECTORY` also require `--wallet-home
+ABSOLUTE_DIRECTORY` for the explicitly admitted central resident. `statement`
+reads funding, liability, and exact payout attempts without opening a wallet;
+unknown payout attempts remain outstanding. `finance` exports a checkpointed
+read-only central snapshot and a versioned contribution view joined to the
+existing Gym customer cost report. The cost report keeps its original delivery
+classification; a protected checkpoint does not create coding-task acceptance.
+The contribution view separates collected funding, platform allocation,
+contributor allocation, outstanding liability, and known or unknown expenses.
+Keep exports private; they contain customer evidence. Existing central
+payout commands own sending and reconciliation. No host deploy is required for
+this local operator adapter.
+
+The protected synthetic tests use temporary roots, distinct test signers, and
+a fake signed Lightning invoice. They establish local verification, exact
+accounting, export, and restart behavior. They do not qualify useful real work,
+a license, an independent operator, funded adoption, or a sent payout.
+
 Run `scripts/qualification/later-markets.sh NEW_OUTPUT_DIRECTORY` to retain the
 bounded no-spend and fake-payment studies. The contribution fixture is
 synthetic and uses one operator; it proves the local funding/replay boundary,

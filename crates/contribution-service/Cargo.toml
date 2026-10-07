@@ -1,0 +1,29 @@
+[package]
+name = "contribution-service"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+publish.workspace = true
+description = "Protected contribution evaluation and exact central funding."
+
+[dependencies]
+clap = { version = "4", features = ["derive"] }
+fs2 = "0.4"
+gym = { path = "../gym" }
+libc = "0.2"
+nostr = { path = "../nostr" }
+openagents-wallet = { path = "../wallet", default-features = false }
+pay-ledger = { path = "../pay-ledger" }
+rusqlite = { version = "0.31", features = ["bundled"] }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+sha2 = "0.10"
+tenancy = { path = "../tenancy" }
+
+[dev-dependencies]
+nostr = { path = "../nostr", features = ["test-invoice"] }
+secp256k1 = "0.31.1"
+tempfile = "3"
+
+[lints]
+workspace = true

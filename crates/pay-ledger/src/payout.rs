@@ -160,6 +160,27 @@ impl Ledger {
         read_one(&self.connection, id)
     }
 
+    /// Read bounded payout attempts that include an exact settlement share.
+    /// Failed and unknown attempts remain visible. This performs no payment.
+    pub fn settlement_payouts(&self, key: &str) -> Result<Vec<Payout>> {
+        if key.is_empty() || key.len() > 512 || key.chars().any(char::is_control) {
+            return Err(Error::Invalid("settlement payout identity"));
+        }
+        let mut query = self.connection.prepare("SELECT DISTINCT payout FROM (SELECT payout FROM payout_item WHERE settlement=?1 UNION SELECT payout FROM bonus_payout_item WHERE settlement=?1) ORDER BY payout LIMIT 257")?;
+        let ids = query
+            .query_map([key], |row| row.get::<_, String>(0))?
+            .collect::<std::result::Result<Vec<_>, _>>()?;
+        if ids.len() > 256 {
+            return Err(Error::Invalid("settlement payout attempts exceed bound"));
+        }
+        ids.into_iter()
+            .map(|id| {
+                self.payout(&id)?
+                    .ok_or(Error::Invalid("settlement payout is absent"))
+            })
+            .collect()
+    }
+
     /// Payouts by state, oldest first; `None` lists every payout.
     pub fn payouts(&self, states: Option<&[PayoutState]>) -> Result<Vec<Payout>> {
         let mut stmt = self

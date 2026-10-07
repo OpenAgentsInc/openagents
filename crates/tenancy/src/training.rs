@@ -1265,6 +1265,25 @@ impl fmt::Display for SealFault {
 impl std::error::Error for SealFault {}
 
 impl CandidateDoc {
+    /// Recompute the native seal before a consumer trusts its artifact identity.
+    pub fn verify(&self) -> Result<(), SealFault> {
+        if self.v != CANDIDATE_SCHEMA {
+            return Err(SealFault::Schema {
+                found: self.v.clone(),
+            });
+        }
+        if self.signature
+            != digest_field(
+                &serde_json::to_value(self).map_err(|e| SealFault::Malformed(e.to_string()))?,
+            )
+        {
+            return Err(SealFault::Unknown {
+                what: "the candidate seal signature changed".into(),
+            });
+        }
+        Ok(())
+    }
+
     /// The `admission::Candidate` an admission record binds: the model
     /// id the door publishes, the adapter name, and the seal signature
     /// as `artifact_signature`.
