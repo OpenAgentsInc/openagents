@@ -6,10 +6,15 @@
 //! deadline, and the independent check. [`Plan::check`] refuses anything
 //! outside the v1 contract. [`run_fake`] runs the plan end to end on fakes
 //! and must pass before real funding is enabled. [`run_funded`] is the
-//! owner's step: this build has no live wallet or Boat binding, so it
-//! refuses and says what is missing rather than claim a funded outcome.
+//! owner's step: without configured live bindings it refuses and says what
+//! is missing rather than claim a funded outcome; with them it runs the
+//! plan on the resident receiver wallet and the live Boat binding (#10748).
+//! [`run_simulated`] runs those same adapters against simulated backends.
+
+use std::time::Duration;
 
 use retail_cloud::authority::Source;
+use retail_cloud::boat::{BoatAdapter, BoatConfig};
 use retail_cloud::contract::{self, TaskRequest};
 use retail_cloud::dispatch::{self, CheckRun, ExecutorEnd, TaskStatus};
 use retail_cloud::{Error, Result, recover, retain, settle};
@@ -17,7 +22,9 @@ use route_contract::price_book::Ending;
 use route_contract::snapshot::Recipient;
 use serde::{Deserialize, Serialize};
 
+use crate::bindings::{BindingRefusal, Bindings};
 use crate::harness::{World, rights};
+use crate::{bound, sim};
 
 pub const PLAN_SCHEMA: &str = "openagents.cloud.retail-qualification-plan.v1";
 pub const RECEIPT_SCHEMA: &str = "openagents.cloud.retail-qualification.v1";
@@ -74,7 +81,7 @@ impl Plan {
         route_contract::digest_of(self).to_string()
     }
 
-    fn request(&self) -> TaskRequest {
+    pub(crate) fn request(&self) -> TaskRequest {
         TaskRequest {
             source: self.source.clone(),
             task: self.task.clone(),
@@ -132,6 +139,11 @@ pub enum Mode {
     Fake,
     /// Real funds and a real sandbox: only with the owner.
     Funded,
+    /// The live adapters against simulated backends: the resident wallet
+    /// socket over a simulated Lightning network, and the Boat binding over
+    /// a fake Boat API. It proves the bindings, not a funded outcome, and
+    /// the launch gate never accepts it.
+    Simulated,
 }
 
 /// What the qualification retained.
@@ -159,10 +171,20 @@ pub struct QualificationReceipt {
     pub provider_seconds: Option<u64>,
     pub teardown_acknowledged: bool,
     pub ledger_conserved: bool,
+    /// The receiver's record of the paid top-up carries a preimage whose
+    /// SHA-256 is the payment hash.
+    #[serde(default)]
+    pub preimage_verified: bool,
+    /// What the run was bound to, in plain words.
+    #[serde(default)]
+    pub bindings: Option<String>,
+    /// What the simulated backends observed; only on a simulated run.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub simulation: Option<SimulationReport>,
 }
 
 impl QualificationReceipt {
-    fn empty(plan: &Plan, mode: Mode, label: &str) -> Self {
+    pub(crate) fn empty(plan: &Plan, mode: Mode, label: &str) -> Self {
         Self {
             schema: RECEIPT_SCHEMA.into(),
             mode,
@@ -184,6 +206,9 @@ impl QualificationReceipt {
             provider_seconds: None,
             teardown_acknowledged: false,
             ledger_conserved: false,
+            preimage_verified: false,
+            bindings: None,
+            simulation: None,
         }
     }
 }
@@ -325,19 +350,40 @@ pub enum FundedRefusal {
     NotConfirmed,
     /// The fake run of this plan did not pass.
     FakeNotPassing,
-    /// This build has no live wallet or Boat binding; the owner runs the
+    /// No live bindings were configured (`--bindings`); the owner runs the
     /// funded step from the runbook.
     NoLiveBinding,
+    /// The configured bindings are refused.
+    Bindings { refusal: BindingRefusal },
+    /// The Boat binding could not be built.
+    BoatUnavailable,
 }
 
+/// What a funded receipt says about itself.
+pub const FUNDED_LABEL: &str = "FUNDED QUALIFICATION: real sats paid to the resident receiver wallet and one real Boat sandbox under the separate retail account.";
+/// What a simulated receipt says about itself.
+pub const SIMULATED_LABEL: &str = "SIMULATION: the live adapters (the resident wallet socket client and the Boat binding) against a simulated Lightning network and a loopback fake Boat API. No real payment, credential, machine, or owner account was used. It proves the bindings, not a funded outcome.";
+/// The simulated customer's model key; never a real key.
+pub const SIMULATED_MODEL_KEY: &str = "sk-sim-retail-qualification-0000";
+const SIMULATED_BOAT_KEY: &str = "sim-retail-boat-key-0000";
+
 /// The owner's funded step. It checks the plan, the owner's confirmation of
-/// its exact digest, and a passing fake run, then refuses because this
-/// build binds no live wallet or Boat account. It never moves money.
+/// its exact digest, and a passing fake run. Without `bindings` it refuses
+/// with [`FundedRefusal::NoLiveBinding`]. With them, it checks them for a
+/// funded run, resolves the retail Boat key and the test customer's model
+/// key through `env`, and runs the plan on the resident receiver wallet and
+/// the live Boat binding. The owner pays the printed invoice.
 ///
 /// # Errors
 ///
-/// Always a [`FundedRefusal`] in this build.
-pub fn run_funded(plan: &Plan, confirmed_digest: &str) -> std::result::Result<(), FundedRefusal> {
+/// A [`FundedRefusal`]; a run that started returns its receipt instead,
+/// qualified or not.
+pub fn run_funded(
+    plan: &Plan,
+    confirmed_digest: &str,
+    bindings: Option<&Bindings>,
+    env: &dyn Fn(&str) -> Option<String>,
+) -> std::result::Result<QualificationReceipt, FundedRefusal> {
     plan.check()
         .map_err(|refusal| FundedRefusal::Plan { refusal })?;
     if confirmed_digest != plan.digest() {
@@ -346,7 +392,189 @@ pub fn run_funded(plan: &Plan, confirmed_digest: &str) -> std::result::Result<()
     if !run_fake(plan).qualified {
         return Err(FundedRefusal::FakeNotPassing);
     }
-    Err(FundedRefusal::NoLiveBinding)
+    let Some(bindings) = bindings else {
+        return Err(FundedRefusal::NoLiveBinding);
+    };
+    let secrets = bindings
+        .check(true, env)
+        .map_err(|refusal| FundedRefusal::Bindings { refusal })?;
+    let wallet = openagents_wallet::resident::RemoteWallet::probe(&bindings.wallet_home).ok_or(
+        FundedRefusal::Bindings {
+            refusal: BindingRefusal::WalletUnreachable,
+        },
+    )?;
+    let boat = BoatAdapter::new(
+        secrets.boat_key,
+        &BoatConfig {
+            base_url: bindings.boat_api_base.clone(),
+            org: bindings.boat_org.clone(),
+            state_dir: bindings.state_dir.join("boat"),
+            retry: None,
+        },
+    )
+    .map_err(|_| FundedRefusal::BoatUnavailable)?;
+    let mut receipt = bound::run(
+        &bound::Run {
+            plan,
+            wallet: &wallet,
+            boat: &boat,
+            payer: &bound::OwnerPays,
+            model_provider: bindings.model_provider.clone(),
+            model_key: secrets.model_key,
+            template: bindings.template.clone(),
+            state_dir: &bindings.state_dir,
+            poll: Duration::from_millis(bindings.poll_millis),
+            payment_wait: Duration::from_secs(bindings.payment_wait_seconds),
+        },
+        Mode::Funded,
+        FUNDED_LABEL,
+    );
+    receipt.bindings = Some(format!(
+        "openagents-wallet resident receiver at its control socket; Boat {}{}",
+        bindings.boat_api_base,
+        bindings
+            .boat_org
+            .as_deref()
+            .map(|org| format!(" organization {org}"))
+            .unwrap_or_default()
+    ));
+    Ok(receipt)
+}
+
+/// What the simulated backends observed, retained beside the receipt.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct SimulationReport {
+    pub invoices_issued: u64,
+    pub payer_proofs: usize,
+    /// Create requests Boat received, including the retry after a lost reply.
+    pub boat_create_requests: u64,
+    pub boat_sandboxes_created: usize,
+    pub boat_sandboxes_left: usize,
+    pub executors_started: u64,
+    pub owner_commands: usize,
+    /// No command line carried the customer's key.
+    pub key_kept_off_command_lines: bool,
+    /// No sandbox file still held the key at the end.
+    pub key_removed: bool,
+    pub unauthorized_requests: u64,
+}
+
+/// Run `plan` on the live adapters against the simulated backends: the
+/// resident receiver wallet's socket over a simulated Lightning network,
+/// and the Boat binding over a loopback fake Boat API whose first create
+/// reply is lost. Nothing real is paid, started, or read.
+#[must_use]
+pub fn run_simulated(plan: &Plan) -> QualificationReceipt {
+    let receipt = QualificationReceipt::empty(plan, Mode::Simulated, SIMULATED_LABEL);
+    let fail = |mut receipt: QualificationReceipt, why: String| {
+        receipt.failure = Some(why);
+        receipt
+    };
+    let Ok(dir) = tempfile::tempdir() else {
+        return fail(receipt, "temporary directory".into());
+    };
+    let network = sim::SimNetwork::new();
+    let wallet_home = dir.path().join("wallet");
+    let resident = match sim::Resident::serve(&wallet_home, network.receiver()) {
+        Ok(resident) => resident,
+        Err(error) => return fail(receipt, error.to_string()),
+    };
+    let fake = match sim::FakeBoat::start(SIMULATED_BOAT_KEY) {
+        Ok(fake) => fake,
+        Err(error) => return fail(receipt, error.to_string()),
+    };
+    fake.set_usage_seconds(90);
+    fake.lose_next_create_reply();
+    let bindings = Bindings {
+        schema: crate::bindings::SCHEMA.into(),
+        simulation: true,
+        wallet_home: wallet_home.clone(),
+        boat_api_base: fake.base().to_owned(),
+        boat_org: None,
+        template: retail_cloud::provision::template("20261006"),
+        state_dir: dir.path().join("state"),
+        model_provider: "openai".into(),
+        payment_wait_seconds: 30,
+        poll_millis: 10,
+    };
+    let env = |name: &str| match name {
+        crate::bindings::BOAT_KEY_ENV => Some(SIMULATED_BOAT_KEY.to_owned()),
+        crate::bindings::MODEL_KEY_ENV => Some(SIMULATED_MODEL_KEY.to_owned()),
+        _ => None,
+    };
+    let secrets = match bindings.check(false, &env) {
+        Ok(secrets) => secrets,
+        Err(refusal) => return fail(receipt, format!("bindings refused: {refusal:?}")),
+    };
+    let Some(wallet) = openagents_wallet::resident::RemoteWallet::probe(&wallet_home) else {
+        return fail(receipt, "the resident wallet did not answer".into());
+    };
+    let boat = match BoatAdapter::new(
+        secrets.boat_key,
+        &BoatConfig {
+            base_url: bindings.boat_api_base.clone(),
+            org: None,
+            state_dir: bindings.state_dir.join("boat"),
+            retry: Some(boat::RetryPolicy {
+                max_retries: 2,
+                base_delay: Duration::from_millis(5),
+                max_delay: Duration::from_millis(50),
+            }),
+        },
+    ) {
+        Ok(boat) => boat,
+        Err(error) => return fail(receipt, error.to_string()),
+    };
+    let payer = network.payer();
+    let mut receipt = bound::run(
+        &bound::Run {
+            plan,
+            wallet: &wallet,
+            boat: &boat,
+            payer: &payer,
+            model_provider: bindings.model_provider.clone(),
+            model_key: secrets.model_key,
+            template: bindings.template.clone(),
+            state_dir: &bindings.state_dir,
+            poll: Duration::from_millis(bindings.poll_millis),
+            payment_wait: Duration::from_secs(bindings.payment_wait_seconds),
+        },
+        Mode::Simulated,
+        SIMULATED_LABEL,
+    );
+    let commands = fake.commands();
+    let report = SimulationReport {
+        invoices_issued: network.issued(),
+        payer_proofs: payer.proofs.lock().map_or(0, |proofs| proofs.len()),
+        boat_create_requests: fake.create_requests(),
+        boat_sandboxes_created: fake.sandboxes_created(),
+        boat_sandboxes_left: fake.active(),
+        executors_started: fake.executors_started(),
+        owner_commands: commands.len(),
+        key_kept_off_command_lines: commands.iter().all(|c| !c.contains(SIMULATED_MODEL_KEY)),
+        key_removed: fake.files_containing(SIMULATED_MODEL_KEY).is_empty(),
+        unauthorized_requests: fake.unauthorized(),
+    };
+    drop(resident);
+    receipt.bindings = Some(
+        "SIMULATED: openagents-wallet RemoteWallet over the resident socket, served by a simulated Lightning receiver; retail_cloud::boat::BoatAdapter over a loopback fake Boat API".into(),
+    );
+    let effects_hold = report.invoices_issued == 1
+        && report.payer_proofs == 1
+        && report.boat_sandboxes_created == 1
+        && report.boat_sandboxes_left == 0
+        && report.executors_started == 1
+        && report.key_kept_off_command_lines
+        && report.key_removed
+        && report.unauthorized_requests == 0;
+    if !effects_hold {
+        receipt.qualified = false;
+        receipt
+            .failure
+            .get_or_insert_with(|| format!("simulated effects did not hold: {report:?}"));
+    }
+    receipt.simulation = Some(report);
+    receipt
 }
 
 /// The checked-in plan fixture.

@@ -5,8 +5,9 @@
 //! delete it, and read its billed seconds. The v1 class pins Boat
 //! (`docs/cloud/retail-contract.md`): one `large` sandbox per task from the
 //! newest ready daily template, started with no account environment.
-//! [`crate::fake::FakeProvider`] simulates it for every test; a live Boat
-//! binding runs only in the owner's funded qualification (`NEEDS_OWNER.md`).
+//! [`crate::fake::FakeProvider`] simulates it for every test; the live Boat
+//! binding (`crate::boat`, feature `boat`) runs only in the owner's funded
+//! qualification (`NEEDS_OWNER.md`).
 //!
 //! [`advance`] moves one funded execution's provisioning forward by one
 //! observation, and is safe to call again after any crash:

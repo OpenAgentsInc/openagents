@@ -24,8 +24,12 @@
 //! - [`cancel`]: separate stop, teardown, usage, and settled-charge receipts.
 //! - [`settle`]: atomic measured debits and unused hold releases.
 //! - [`journal`]: the durable intents and observations a restart reads.
+//! - `boat` (feature `boat`): the live Boat binding for the provider,
+//!   sandbox, task-owner, stop, and artifact seams (#10748).
 
 pub mod authority;
+#[cfg(feature = "boat")]
+pub mod boat;
 pub mod cancel;
 pub mod contract;
 pub mod dispatch;
@@ -66,6 +70,9 @@ pub enum Error {
     /// Material was not delivered.
     #[error("material refused: {0:?}")]
     Material(material::MaterialRefusal),
+    /// A live binding's call failed; its effect may be unknown.
+    #[error("remote: {0}")]
+    Remote(String),
 }
 
 /// Journal tables the modules add, created when the journal opens.

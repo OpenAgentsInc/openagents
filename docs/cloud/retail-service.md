@@ -100,9 +100,11 @@ it, and read its billed seconds. The v1 class pins one Boat `large` sandbox
 per task from the daily template `oa-coder-main-<date>`, started with no
 account environment (`no_env`), labeled with the customer's account and the
 provisioning identity `<execution>#<attempt>`, with a lifetime of the quoted
-seconds plus 20 minutes. Tests use `retail_cloud::fake::FakeProvider`; a live
-Boat binding runs only in the owner's funded qualification
-(`NEEDS_OWNER.md`).
+seconds plus 20 minutes. Tests use `retail_cloud::fake::FakeProvider`. The
+live Boat binding, [`retail_cloud::boat`](../../crates/retail-cloud/src/boat.rs)
+(feature `boat`), implements this seam and the sandbox, task-owner, stop, and
+artifact seams; it runs only in the owner's funded qualification
+([qualification](retail-qualification.md), `NEEDS_OWNER.md`).
 
 `advance` moves one funded execution forward by one observation and is safe
 to repeat after any crash:

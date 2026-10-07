@@ -665,20 +665,28 @@ to the payer's own BOLT12 offer. Retain the deposit and refund payment
 hashes and the ledger's session summary. A real deposit, a real refund, and
 third-party MPP client compatibility are unverified.
 
-## Funded retail cloud qualification (#10722, #10723)
+## Funded retail cloud qualification (#10722, #10723, #10748)
 
 The fake-payment acceptance run and the fake qualification of the
-checked-in plan pass
+checked-in plan pass, and the live bindings (the resident receiver wallet's
+socket client and `retail_cloud::boat::BoatAdapter`) qualify against a
+simulated Lightning network and a loopback fake Boat API
 ([`docs/cloud/retail-qualification.md`](docs/cloud/retail-qualification.md),
-receipts in `docs/cloud/evidence/2026-10-06-retail-fake-*.json`). After
-"Review the first retail cloud contract", follow the owner runbook there:
-approve live wallet and Boat bindings under a separate retail account,
-review the plan digest (`retail-qualify plan`), pay its top-up of at most
-1,000 sats, and run `retail-qualify qualify --funded --confirm DIGEST` once.
-This build refuses the funded step (`no_live_binding`) until those bindings
-exist. Keep the receipt, ledger rows, Boat usage, and artifacts; check the
-sandbox is deleted and nothing stays held. Real readiness, latency, Boat
-billing, and Lightning top-ups are unverified.
+receipts in `docs/cloud/evidence/2026-10-06-retail-fake-*.json` and
+`2026-10-06-retail-simulated-qualification.json`). After "Review the first
+retail cloud contract", follow the owner runbook there: run the resident
+receiver wallet on mainnet under its own home, create a separate retail
+Boat account with its own key (`OPENAGENTS_RETAIL_BOAT_API_KEY`, never
+`BOAT_API_KEY`), give the test customer its own OpenAI key
+(`OPENAGENTS_RETAIL_CUSTOMER_MODEL_KEY`), write a bindings file, review the
+plan digest (`retail-qualify plan`), and run `retail-qualify qualify
+--funded --confirm DIGEST --bindings PATH` once, paying its printed top-up
+of at most 1,000 sats. Keep the receipt, the state directory's ledger and
+journal, Boat usage, and artifacts; check the sandbox is deleted and
+nothing stays held. Real readiness, latency, Boat billing, Lightning
+top-ups, and the owner program (`owner-v1.sh`) on a real daily template
+(its `git`, `setsid`, and `codex login --with-api-key`) are unverified. A
+failed run opens a defect issue.
 
 ## Launch the retail cloud service (#10724)
 

@@ -11972,6 +11972,7 @@ dependencies = [
 name = "retail-cloud"
 version = "0.1.0"
 dependencies = [
+ "boat",
  "hex",
  "openagents-wallet",
  "pay-ledger",
@@ -11982,13 +11983,18 @@ dependencies = [
  "sha2 0.10.9",
  "tempfile",
  "thiserror 2.0.20",
+ "tokio",
 ]
 
 [[package]]
 name = "retail-qualify"
 version = "0.1.0"
 dependencies = [
+ "base64 0.22.1",
+ "boat",
  "compute-workbench",
+ "hex",
+ "openagents-wallet",
  "pay-ledger",
  "retail-cloud",
  "route-contract",

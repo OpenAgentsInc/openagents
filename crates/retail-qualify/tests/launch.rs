@@ -37,6 +37,13 @@ fn paid_capacity_stays_closed_until_a_funded_qualification() {
         closed(&gate(true, Some(fake.clone()), FREE)),
         Some(Closed::QualificationNotValid)
     );
+    // Nor does a qualified simulation of the live bindings (#10748).
+    let mut simulated = fake.clone();
+    simulated.mode = Mode::Simulated;
+    assert_eq!(
+        closed(&gate(true, Some(simulated), FREE)),
+        Some(Closed::QualificationNotValid)
+    );
     let mut funded = fake.clone();
     funded.mode = Mode::Funded;
     let mut failed = funded.clone();

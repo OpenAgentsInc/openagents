@@ -53,6 +53,8 @@ pub struct DispatchSpec {
     pub max_seconds: u64,
     /// `codex`, the one v1 engine.
     pub engine: String,
+    /// The task text the executor is asked to do, as admitted.
+    pub prompt: String,
 }
 
 /// How the executor ended.
@@ -164,6 +166,7 @@ pub fn spec(funded: &FundedRequest) -> DispatchSpec {
         checks: funded.task.checks.clone(),
         max_seconds: funded.quote.max_seconds,
         engine: "codex".into(),
+        prompt: funded.task.task.clone(),
     }
 }
 

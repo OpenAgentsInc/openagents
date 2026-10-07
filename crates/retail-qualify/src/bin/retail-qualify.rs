@@ -5,7 +5,7 @@ use std::process::ExitCode;
 
 fn usage() -> ExitCode {
     eprintln!(
-        "usage: retail-qualify accept [--out PATH]\n       retail-qualify plan [--plan PATH]\n       retail-qualify qualify --fake [--plan PATH] [--out PATH]\n       retail-qualify qualify --funded --confirm PLAN_DIGEST [--plan PATH]\n       retail-qualify advertise [--contract-confirmed] [--receipt PATH] [--plan PATH]\n       retail-qualify health --journal PATH --ledger PATH"
+        "usage: retail-qualify accept [--out PATH]\n       retail-qualify plan [--plan PATH]\n       retail-qualify qualify --fake [--plan PATH] [--out PATH]\n       retail-qualify qualify --simulated [--plan PATH] [--out PATH]\n       retail-qualify qualify --funded --confirm PLAN_DIGEST [--bindings PATH] [--plan PATH] [--out PATH]\n       retail-qualify advertise [--contract-confirmed] [--receipt PATH] [--plan PATH]\n       retail-qualify health --journal PATH --ledger PATH"
     );
     ExitCode::from(2)
 }
@@ -70,8 +70,27 @@ fn main() -> ExitCode {
                     .and_then(|i| args.get(i + 1))
                     .cloned()
                     .unwrap_or_default();
-                return match retail_qualify::qualify::run_funded(&plan, &confirm) {
-                    Ok(()) => ExitCode::SUCCESS,
+                let bindings = match flag(&args, "--bindings") {
+                    Some(path) => match std::fs::read_to_string(path)
+                        .map_err(|e| e.to_string())
+                        .and_then(|t| serde_json::from_str(&t).map_err(|e| e.to_string()))
+                    {
+                        Ok(bindings) => Some(bindings),
+                        Err(error) => {
+                            eprintln!("cannot read the bindings {path}: {error}");
+                            return ExitCode::FAILURE;
+                        }
+                    },
+                    None => None,
+                };
+                let env = |name: &str| std::env::var(name).ok();
+                return match retail_qualify::qualify::run_funded(
+                    &plan,
+                    &confirm,
+                    bindings.as_ref(),
+                    &env,
+                ) {
+                    Ok(receipt) => receipt_out(&receipt, out),
                     Err(refusal) => {
                         eprintln!(
                             "funded qualification refused: {refusal:?}. Follow docs/cloud/retail-qualification.md."
@@ -80,19 +99,13 @@ fn main() -> ExitCode {
                     }
                 };
             }
+            if args.iter().any(|a| a == "--simulated") {
+                return receipt_out(&retail_qualify::qualify::run_simulated(&plan), out);
+            }
             if !args.iter().any(|a| a == "--fake") {
                 return usage();
             }
-            let receipt = retail_qualify::qualify::run_fake(&plan);
-            let Ok(json) = serde_json::to_string_pretty(&receipt) else {
-                return ExitCode::FAILURE;
-            };
-            let code = write(&json, out);
-            if receipt.qualified {
-                code
-            } else {
-                ExitCode::FAILURE
-            }
+            receipt_out(&retail_qualify::qualify::run_fake(&plan), out)
         }
         Some("advertise") => {
             let plan = match load_plan(&args) {
@@ -158,6 +171,22 @@ fn main() -> ExitCode {
             }
         }
         _ => usage(),
+    }
+}
+
+/// Write a qualification receipt; fail unless it qualified.
+fn receipt_out(
+    receipt: &retail_qualify::qualify::QualificationReceipt,
+    out: Option<&String>,
+) -> ExitCode {
+    let Ok(json) = serde_json::to_string_pretty(receipt) else {
+        return ExitCode::FAILURE;
+    };
+    let code = write(&json, out);
+    if receipt.qualified {
+        code
+    } else {
+        ExitCode::FAILURE
     }
 }
 

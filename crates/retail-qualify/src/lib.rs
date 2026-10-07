@@ -5,8 +5,13 @@
 //! - [`acceptance`]: the integrated fake-payment acceptance run (#10722).
 //! - [`launch`]: the fail-closed launch gate and operator health (#10724).
 //! - [`qualify`]: the bounded funded-qualification plan and runner (#10723).
+//! - [`bindings`], [`bound`], [`sim`]: the live wallet and Boat bindings, the
+//!   runner on them, and the simulated backends that test them (#10748).
 
 pub mod acceptance;
+pub mod bindings;
+pub mod bound;
 pub mod harness;
 pub mod launch;
 pub mod qualify;
+pub mod sim;

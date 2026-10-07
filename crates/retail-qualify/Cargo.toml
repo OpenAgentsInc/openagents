@@ -11,9 +11,13 @@ name = "retail-qualify"
 path = "src/bin/retail-qualify.rs"
 
 [dependencies]
+base64 = "0.22"
+boat = { path = "../boat" }
 compute-workbench = { path = "../compute-workbench", features = ["host"] }
+hex = "0.4"
+openagents-wallet = { path = "../wallet", default-features = false }
 pay-ledger = { path = "../pay-ledger" }
-retail-cloud = { path = "../retail-cloud" }
+retail-cloud = { path = "../retail-cloud", features = ["boat"] }
 route-contract = { path = "../route-contract" }
 rusqlite = { version = "0.31", features = ["bundled"] }
 serde = { version = "1", features = ["derive"] }

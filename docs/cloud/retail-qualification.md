@@ -1,8 +1,10 @@
 # Retail cloud qualification
 
-Status: the fake-payment acceptance run passes. Paid availability stays off
+Status: the fake-payment acceptance run passes, and the live wallet and Boat
+bindings qualify against simulated backends. Paid availability stays off
 until the owner confirms the [retail contract](retail-contract.md) and the
-funded qualification below passes (`NEEDS_OWNER.md`).
+funded qualification below passes on real sats and a real Boat sandbox
+(`NEEDS_OWNER.md`).
 
 [`retail-qualify`](../../crates/retail-qualify) holds the integrated
 acceptance run, the funded-qualification plan and runner, and the launch
@@ -79,10 +81,84 @@ cargo run -p retail-qualify -- qualify --funded --confirm PLAN_DIGEST
   [`evidence/2026-10-06-retail-fake-qualification.json`](evidence/2026-10-06-retail-fake-qualification.json):
   104 sats charged and 20 sats released for 90 metered seconds.
 - `qualify --funded` checks the plan, requires `--confirm` to name the
-  plan's exact digest, and requires the fake run to pass. This build binds
-  no live receiver wallet or Boat account, so it then refuses
-  (`no_live_binding`, exit status 3). It never moves money and never claims
-  a funded outcome.
+  plan's exact digest, and requires the fake run to pass. Without
+  `--bindings` it then refuses (`no_live_binding`, exit status 3). With
+  them, it runs the plan on the live bindings below and writes a receipt
+  labeled `FUNDED QUALIFICATION`. It never pays anything itself: it prints
+  the top-up invoice and waits for the owner to pay it.
+- `qualify --simulated` runs the same live adapters against simulated
+  backends and writes a receipt labeled `SIMULATION`. The launch gate never
+  accepts it.
+
+### Live bindings
+
+[`retail_qualify::bindings`](../../crates/retail-qualify/src/bindings.rs)
+reads a bindings file (`openagents.cloud.retail-bindings.v1`):
+
+```json
+{
+  "schema": "openagents.cloud.retail-bindings.v1",
+  "simulation": false,
+  "wallet_home": "/path/to/retail-wallet",
+  "boat_api_base": "https://boat.dev/api/v1",
+  "boat_org": "RETAIL_ORG",
+  "template": "oa-coder-main-20261006",
+  "state_dir": "/path/to/new-empty-directory",
+  "model_provider": "openai",
+  "payment_wait_seconds": 900,
+  "poll_millis": 5000
+}
+```
+
+- **Receiver wallet.** The resident `openagents-wallet` node answering at
+  `wallet_home/control.sock`, reached through its socket client
+  (`openagents_wallet::resident::RemoteWallet`), the same
+  `LightningWallet` contract the top-up path uses. The run checks that the
+  paid invoice's recorded preimage hashes to its payment hash.
+- **Boat.** [`retail_cloud::boat::BoatAdapter`](../../crates/retail-cloud/src/boat.rs)
+  implements the provider, sandbox, task-owner, stop, and artifact seams
+  over the Boat API. Creates carry an idempotency key derived from the
+  provisioning identity, so a lost reply finds the same sandbox. Deletion
+  counts only when Boat's deletion operation completes. The adapter writes
+  a fixed `sh` program, [`owner-v1.sh`](../../crates/retail-cloud/src/owner-v1.sh),
+  to the sandbox and runs one verb at a time through the commands API: it
+  clones the admitted commit, keeps the key file at mode 0600, runs the
+  engine and the frozen checks, scrubs the key from the patch and logs, and
+  writes the status, events, manifest, and stop receipts the adapter reads
+  back. The key travels only in a files API body, never on a command line.
+- **Secrets.** The retail Boat key comes from
+  `OPENAGENTS_RETAIL_BOAT_API_KEY` and the test customer's own model key
+  from `OPENAGENTS_RETAIL_CUSTOMER_MODEL_KEY`. The run never reads
+  `BOAT_API_KEY` or Secret Manager for its own use, and refuses a retail
+  key equal to the operator's `BOAT_API_KEY`.
+- **Refusals.** Simulated bindings on a funded run, any Boat base other
+  than `https://boat.dev/api/v1`, a template that is not a daily
+  `oa-coder-main-YYYYMMDD`, a missing key, a state directory with files in
+  it, or no resident wallet answering. Each refuses before any wallet or
+  Boat call.
+
+### Simulated funded qualification
+
+```sh
+cargo run -p retail-qualify -- qualify --simulated --out docs/cloud/evidence/2026-10-06-retail-simulated-qualification.json
+```
+
+The run starts the real resident wallet server on a private socket over a
+simulated Lightning network (`lnsim` invoices with real preimages), and a
+fake Boat API on loopback that speaks the HTTP the `boat` SDK sends and
+simulates the owner program's verbs. The first create reply is lost on
+purpose. The receipt's `simulation` block retains what the backends saw.
+[`retail-cloud/tests/owner_script.rs`](../../crates/retail-cloud/tests/owner_script.rs)
+runs `owner-v1.sh` itself with `sh` against a local Git repository and a
+stub engine.
+
+[`evidence/2026-10-06-retail-simulated-qualification.json`](evidence/2026-10-06-retail-simulated-qualification.json)
+is the retained receipt: qualified, the preimage verified, the check
+`verified`, 90 metered seconds settling at 100 sats with 24 sats released,
+nothing held, and the ledger conserved. Boat saw two create requests and
+created one sandbox, one executor started, the sandbox was deleted, and the
+customer's key never appeared on a command line and was removed. It proves
+the bindings, not a funded outcome.
 
 ### Owner runbook
 
@@ -90,17 +166,24 @@ Each step is the owner's; none runs without them (`NEEDS_OWNER.md`).
 
 1. Confirm the retail contract and the price book ("Review the first retail
    cloud contract").
-2. Approve binding the live adapters: the resident receiver wallet for
-   top-ups and a Boat account for the `Provider`, `Sandbox`, and task-owner
-   seams, under a separate retail account, never the operator allowance
-   used by `chat work --on boat`.
-3. Create the test account and principal, and review the plan: run
-   `retail-qualify plan` and keep the digest.
-4. Pay the plan's top-up invoice (at most 1,000 sats) from a wallet you
-   control.
-5. Run `retail-qualify qualify --funded --confirm DIGEST` once. Keep the
-   receipt, the ledger's settlement and hold rows, the Boat usage for the
+2. Set up the live bindings: run the resident receiver wallet on mainnet
+   under its own home (`OPENAGENTS_WALLET_HOME=DIR openagents x402 node
+   serve`), create a separate retail Boat account or organization with its
+   own API key (never the operator allowance used by `chat work --on
+   boat`), and give the test customer an OpenAI key of its own. Write a
+   bindings file as above with a new, empty `state_dir`, and export
+   `OPENAGENTS_RETAIL_BOAT_API_KEY` and
+   `OPENAGENTS_RETAIL_CUSTOMER_MODEL_KEY`.
+3. Review the plan: run `retail-qualify plan` and keep the digest.
+4. Run `retail-qualify qualify --funded --confirm DIGEST --bindings PATH
+   --out RECEIPT.json` once. It prints the top-up invoice (at most 1,000
+   sats); pay it from a wallet you control within the wait. Keep the
+   receipt, the ledger and journal in `state_dir`, the Boat usage for the
    sandbox, and the retained artifacts.
+5. The first real run also checks what the simulation cannot: that the
+   daily template has `git`, `setsid`, and a `codex` that accepts
+   `login --with-api-key` and `exec --full-auto`, and that Boat's files and
+   commands APIs behave as the fake Boat server assumes.
 6. Check that the Boat sandbox is deleted, the charge is at most the
    ceiling, and nothing is held. Any unknown charge stays held until
    reconciled.
