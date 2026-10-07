@@ -135,7 +135,9 @@ cast instead of one agent.
    included.
 6. **Kill switch.** F7 at a member's station, `openagents agent stop NAME`,
    or the phone stops that member in the four journaled steps.
-   `openagents agent stop --all` (new) stops the crew.
+   On the selected Unix host, `openagents agent crew stop --cohort floor
+   --all` stops all native sales members; `--members paul,erin` selects an
+   exact subset. These owner-only controls leave unrelated agents alone.
 7. **Honest work only.** A member's plan and its station show work that
    exists, as [Generative agents](generative-agents.md#what-to-skip)
    requires. A member with nothing to do is idle at its station.
@@ -199,7 +201,15 @@ The crew needs a few additions to this machinery, counted as phase 0 of the
   its role's station with its own look, instead of only the seat whose look
   is `alice` (`everglade::npcs::form_of` in
   [`npcs.rs`](../../crates/verse-zone-everglade/src/zones/everglade/npcs.rs)).
-- **Crew stop and pause.** `openagents agent stop --all` and `pause --all`.
+- **Crew stop and pause.** `openagents agent crew stop --cohort floor
+  --all` persists revocation before invoking each member's existing
+  controller. Use `pause` instead of `stop` to keep standing jobs. `crew status` retains per-member failures and unknown effects.
+  `crew resume` requires the same selection and `--expected` current digest;
+  overlapping stopped cohorts still hold, disabled jobs stay off, and stale
+  queued work or approval subjects cannot resume. The host outbox's separate
+  adapter seals a pending handoff under this epoch fence before delivery;
+  already admitted delivery keeps its original outcome, including unknown.
+  The initial adapter is explicitly unavailable and authorizes no sending.
 
 No new event kinds. Everything is a host record or a NIP-HOST operation, as
 for Alice.

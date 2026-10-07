@@ -137,6 +137,90 @@ fn native_crew_creation_charter_verdict_restart_and_refusals() {
         .status
         .success()
     );
+    let pause = ok(&["crew", "pause", "--cohort", "floor", "--all"]);
+    assert_eq!(pause["state"], "complete");
+    assert_eq!(
+        pause["members"]["paul"]["pending_dispatch"]["enabled"],
+        false
+    );
+    assert_eq!(ok(&["show", "paul"])["record"]["state"], "paused");
+    assert_eq!(ok(&["show", "alice"])["record"]["state"], "active");
+    assert!(
+        !run(&["ask", "paul", "Remember a rejected note."])
+            .status
+            .success()
+    );
+    assert!(!run(&["resume", "paul"]).status.success());
+    assert!(
+        !run(&[
+            "crew",
+            "stop",
+            "--cohort",
+            "invalid",
+            "--all",
+            "--members",
+            "paul"
+        ])
+        .status
+        .success()
+    );
+    assert!(
+        !run(&["crew", "stop", "--cohort", "invalid", "--members", "alice"])
+            .status
+            .success()
+    );
+    let digest = ok(&["crew", "status"])["digest"]
+        .as_str()
+        .unwrap()
+        .to_owned();
+    let wrong = format!("sha256:{}", "0".repeat(64));
+    assert!(
+        !run(&[
+            "crew",
+            "resume",
+            "--cohort",
+            "floor",
+            "--all",
+            "--expected",
+            &wrong
+        ])
+        .status
+        .success()
+    );
+    ok(&[
+        "crew",
+        "resume",
+        "--cohort",
+        "floor",
+        "--all",
+        "--expected",
+        &digest,
+    ]);
+    assert_eq!(ok(&["show", "paul"])["record"]["state"], "active");
+    let stopped = ok(&[
+        "crew",
+        "stop",
+        "--cohort",
+        "subset",
+        "--members",
+        "paul,researcher",
+    ]);
+    assert_eq!(stopped["selected"], json!(["paul", "researcher"]));
+    assert_eq!(ok(&["show", "researcher"])["record"]["state"], "stopped");
+    let digest = ok(&["crew", "status"])["digest"]
+        .as_str()
+        .unwrap()
+        .to_owned();
+    ok(&[
+        "crew",
+        "resume",
+        "--cohort",
+        "subset",
+        "--members",
+        "paul,researcher",
+        "--expected",
+        &digest,
+    ]);
     let input = dir.path().join("verdict.json");
     std::fs::write(&input, serde_json::to_vec(&json!({
         "id":"review-1", "subject":{"kind":"issue","reference":"github:issue/1","revision":1,"sha256":"a".repeat(64)},
@@ -183,6 +267,8 @@ fn native_crew_creation_charter_verdict_restart_and_refusals() {
             .status
             .success()
     );
+    let final_stop = ok(&["crew", "stop", "--cohort", "floor", "--all"]);
+    assert_eq!(final_stop["state"], "complete");
     runtime.block_on(running.shutdown());
     let restarted = runtime.block_on(async {
         let tasks = Inbox::new(&tasks_root, BTreeMap::new()).with_agents(Agents::new(
@@ -200,6 +286,20 @@ fn native_crew_creation_charter_verdict_restart_and_refusals() {
         ok(&["show", "paul"])["record"]["crew_charter"]["revision"],
         2
     );
+    assert_eq!(ok(&["show", "paul"])["record"]["state"], "stopped");
+    assert!(
+        !run(&["ask", "paul", "Remember a rejected note after restart."])
+            .status
+            .success()
+    );
+    assert!(
+        ok(&["crew", "status"])["history"]
+            .as_object()
+            .unwrap()
+            .values()
+            .any(|v| v == &final_stop)
+    );
+    assert_eq!(ok(&["show", "alice"])["record"]["state"], "active");
     assert!(!root.join("agents/paul/policy.json").exists());
     assert!(!root.join("agents/researcher/verdicts").exists());
     runtime.block_on(restarted.shutdown());

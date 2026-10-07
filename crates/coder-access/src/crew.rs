@@ -10,6 +10,71 @@ pub const VERDICT_SCHEMA: &str = "openagents.crew-verdict.v1";
 /// Keeps the largest typed collection within a native agent reply.
 pub const MAX_VERDICTS: usize = 24;
 
+/// An owner action over a selected sales cohort, distinct from send approval.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "kebab-case")]
+pub enum ControlAction {
+    Stop,
+    Pause,
+    Resume,
+}
+
+/// All native sales members, including later members, or a named exact subset.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(
+    tag = "kind",
+    content = "members",
+    rename_all = "kebab-case",
+    deny_unknown_fields
+)]
+pub enum Selection {
+    AllSales,
+    Members(Vec<String>),
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct Control {
+    pub cohort: String,
+    pub selection: Selection,
+    pub action: ControlAction,
+    pub expected: Option<String>,
+    pub reason: String,
+}
+impl Control {
+    pub fn validate(&self) -> Result<()> {
+        crate::agent::name(&self.cohort)?;
+        text(&self.reason, 512)?;
+        if let Selection::Members(members) = &self.selection {
+            let unique: std::collections::BTreeSet<_> = members.iter().collect();
+            if members.is_empty() || members.len() > 32 || unique.len() != members.len() {
+                return fail(
+                    Code::Bounds,
+                    "Select 1 to 32 distinct native sales members.",
+                );
+            }
+            for member in members {
+                crate::agent::name(member)?;
+            }
+        }
+        if self.expected.as_ref().is_some_and(|value| {
+            value.strip_prefix("sha256:").is_none_or(|hex| {
+                hex.len() != 64
+                    || !hex
+                        .bytes()
+                        .all(|b| b.is_ascii_hexdigit() && !b.is_ascii_uppercase())
+            })
+        }) || self.action == ControlAction::Resume && self.expected.is_none()
+        {
+            return fail(
+                Code::Malformed,
+                "Resume needs the exact current crew-control digest.",
+            );
+        }
+        Ok(())
+    }
+}
+
 /// A job, separate from NIP-SOV's authority, controller, and custodian.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "kebab-case")]

@@ -869,6 +869,20 @@ no execution authority beyond that handoff: the host's auto-start policy
 still decides whether the task runs.
 Unlike every other operation, the host does not retain a `thread.list`,
 `thread.read`, or `verse.private` reply (see [Admission order and retention](#admission-order-and-retention)).
+
+`studio.agent.crew.status` carries no fields and returns the owner's current
+crew-control digest and retained cleanup results. `studio.agent.crew.control`
+carries `{control: {cohort, selection, action, expected, reason}}`, with
+`action` `stop`, `pause`, or `resume`; `selection` is `{kind: "all-sales"}` or
+`{kind: "members", members: [NAME, ...]}` for 1 to 32 exact native sales
+members. Both require the owner's own key, not a delegated device. Resume
+requires the same named selection and exact current `sha256:` control digest
+as `expected`. The selected Unix host persists the new revocation epoch before
+member cleanup. A response distinguishes retained failures and unknown effects;
+it grants no approval or delivery authority. An external outbox seals its own
+exact approved pending handoff under the epoch lock and delivers after releasing
+it; an already admitted unknown outcome remains unknown across restart.
+
 The `studio.*` operations carry the
 [Agent Studio](../../docs/verse/agent-studio.md#the-client-is-a-view): the
 host's studio coordinator is the source of truth, and a device sends

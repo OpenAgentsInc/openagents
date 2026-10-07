@@ -1501,3 +1501,13 @@ that the wake and foam trail show and the frame rate holds; then board
 the rowboat from the jetty with F, row across and back, and step out onto
 the jetty. With a second player in the same world, have them board as the
 passenger, and check that both see the same boat as it moves.
+
+## Sales cohort activation O1/O6/O8 (REV-52, #10859)
+
+The selected Unix host's owner-only crew controls are qualified with isolated
+native members and a fake external outbox. Before real sales activity, qualify
+stop/pause and explicit resume on the chosen deployment, including the exact
+REV-62 approval, durable handoff, suppression, and delivery-recovery adapter.
+The default adapter is disabled. Fixtures authorize no campaign, recipient,
+funds, or real contact; an interrupted or unknown external effect remains
+unknown. Human-led first revenue needs none of this activation.

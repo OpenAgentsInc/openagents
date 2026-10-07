@@ -30,6 +30,7 @@ pub mod adapter;
 pub mod agent;
 pub mod agent_consolidate;
 pub mod agent_crew;
+pub mod agent_crew_control;
 pub mod agent_engrams;
 pub mod agent_git_sign;
 pub mod agent_host;

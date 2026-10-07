@@ -333,7 +333,7 @@ impl Dispatch for Dispatcher {
             if !agent_setup_admits(&self.shared.owner, device, grant) {
                 return self.noted(Err(Refusal::because(
                     Code::Forbidden,
-                    "Only the owner's own key changes crew identity, charters, or verdicts.",
+                    "Only the owner's own key changes crew identity, charters, verdicts, or cohort controls.",
                 )));
             }
             // Load only: an existing host never mints another owner.
@@ -716,6 +716,15 @@ mod agent_tests {
                 workspace: "/work/repo".into(),
                 job_role: JobRole::SalesLead,
             },
+            Operation::ControlCrew {
+                control: coder_access::crew::Control {
+                    cohort: "floor".into(),
+                    selection: coder_access::crew::Selection::AllSales,
+                    action: coder_access::crew::ControlAction::Stop,
+                    expected: None,
+                    reason: "Owner stop.".into(),
+                },
+            },
             Operation::SetAgentCharter {
                 agent: "paul".into(),
                 job_role: JobRole::SalesLead,
@@ -753,6 +762,9 @@ mod agent_tests {
                 Some(("grant", 1))
             ));
         }
+        assert!(Operation::CrewStatus {}.owner_agent());
+        assert!(Operation::CrewStatus {}.reads_only());
+        assert!(Operation::CrewStatus {}.agent());
         assert!(
             !Operation::ListAgentVerdicts {
                 agent: "paul".into()

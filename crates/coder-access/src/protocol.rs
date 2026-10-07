@@ -886,6 +886,12 @@ pub enum Operation {
         workspace: String,
         job_role: crate::crew::JobRole,
     },
+    /// Owner-only cohort observation; no admission, resume, or send approval.
+    #[serde(rename = "studio.agent.crew.status")]
+    CrewStatus {},
+    /// Owner-only cohort lifecycle and pending-subject revocation.
+    #[serde(rename = "studio.agent.crew.control")]
+    ControlCrew { control: crate::crew::Control },
     /// Owner-only machine charter edit. It grants no tools or access rights.
     #[serde(rename = "studio.agent.charter.set")]
     SetAgentCharter {
@@ -934,6 +940,7 @@ impl Operation {
                 | Self::ListAgentMemory { .. }
                 | Self::ListAgentJobs { .. }
                 | Self::ListAgentVerdicts { .. }
+                | Self::CrewStatus {}
                 | Self::AgentLog { .. }
                 | Self::ListAgentWorkspaces {}
         )
@@ -960,6 +967,8 @@ impl Operation {
                 | Self::ListAgentWorkspaces {}
                 | Self::NewCrewAgent { .. }
                 | Self::SetAgentCharter { .. }
+                | Self::CrewStatus {}
+                | Self::ControlCrew { .. }
                 | Self::RecordAgentVerdict { .. }
                 | Self::NewAgent { .. }
                 | Self::RetireAgent { .. }
@@ -976,6 +985,8 @@ impl Operation {
             Self::NewAgent { .. }
                 | Self::NewCrewAgent { .. }
                 | Self::SetAgentCharter { .. }
+                | Self::CrewStatus {}
+                | Self::ControlCrew { .. }
                 | Self::RecordAgentVerdict { .. }
                 | Self::RetireAgent { .. }
                 | Self::RotateAgent { .. }
@@ -1114,6 +1125,8 @@ impl Operation {
             Self::ListAgentWorkspaces {} => "studio.agent.workspaces",
             Self::NewCrewAgent { .. } => "studio.agent.crew.new",
             Self::SetAgentCharter { .. } => "studio.agent.charter.set",
+            Self::CrewStatus {} => "studio.agent.crew.status",
+            Self::ControlCrew { .. } => "studio.agent.crew.control",
             Self::RecordAgentVerdict { .. } => "studio.agent.verdict.record",
             Self::ListAgentVerdicts { .. } => "studio.agent.verdict.list",
             Self::NewAgent { .. } => "studio.agent.new",
@@ -1147,6 +1160,7 @@ impl Operation {
             | Self::ListAgentMemory { .. }
             | Self::ListAgentJobs { .. }
             | Self::ListAgentVerdicts { .. }
+            | Self::CrewStatus {}
             | Self::AgentLog { .. }
             | Self::ListAgentWorkspaces {} => Some(Right::Observe),
             Self::CreateTask { .. }
@@ -1186,6 +1200,7 @@ impl Operation {
             | Self::EditAgentJobs { .. }
             | Self::NewCrewAgent { .. }
             | Self::SetAgentCharter { .. }
+            | Self::ControlCrew { .. }
             | Self::RecordAgentVerdict { .. }
             | Self::NewAgent { .. }
             | Self::RetireAgent { .. }
@@ -1421,6 +1436,8 @@ impl Operation {
                 }
                 .validate()?;
             }
+            Self::ControlCrew { control } => control.validate()?,
+            Self::CrewStatus {} => {}
             Self::RecordAgentVerdict { agent, verdict } => {
                 crate::agent::name(agent)?;
                 verdict.validate()?;

@@ -12578,6 +12578,276 @@
           ]
         },
         {
+          "name": "crew",
+          "children": [
+            {
+              "name": "status",
+              "leaf": {
+                "path": [
+                  "agent",
+                  "crew",
+                  "status"
+                ],
+                "usage": [
+                  "crew status"
+                ],
+                "forms": [
+                  {
+                    "tokens": [
+                      {
+                        "kind": "literal",
+                        "word": "crew"
+                      },
+                      {
+                        "kind": "literal",
+                        "word": "status"
+                      }
+                    ]
+                  }
+                ],
+                "summary": "Owner-only current cohort digest and retained cleanup results.",
+                "effect": "read_only",
+                "runs_on": "connected_computer"
+              }
+            },
+            {
+              "name": "stop",
+              "leaf": {
+                "path": [
+                  "agent",
+                  "crew",
+                  "stop"
+                ],
+                "usage": [
+                  "crew stop|pause --cohort NAME --all [--reason TEXT]",
+                  "crew stop|pause --cohort NAME --members NAMES [--reason TEXT]"
+                ],
+                "forms": [
+                  {
+                    "tokens": [
+                      {
+                        "kind": "literal",
+                        "word": "crew"
+                      },
+                      {
+                        "kind": "literal",
+                        "word": "stop"
+                      },
+                      {
+                        "kind": "option",
+                        "name": "cohort",
+                        "value": "NAME",
+                        "open": true
+                      },
+                      {
+                        "kind": "option",
+                        "name": "all"
+                      },
+                      {
+                        "kind": "option",
+                        "name": "reason",
+                        "value": "TEXT",
+                        "open": true,
+                        "optional": true
+                      }
+                    ]
+                  },
+                  {
+                    "tokens": [
+                      {
+                        "kind": "literal",
+                        "word": "crew"
+                      },
+                      {
+                        "kind": "literal",
+                        "word": "stop"
+                      },
+                      {
+                        "kind": "option",
+                        "name": "cohort",
+                        "value": "NAME",
+                        "open": true
+                      },
+                      {
+                        "kind": "option",
+                        "name": "members",
+                        "value": "NAMES",
+                        "open": true
+                      },
+                      {
+                        "kind": "option",
+                        "name": "reason",
+                        "value": "TEXT",
+                        "open": true,
+                        "optional": true
+                      }
+                    ]
+                  }
+                ],
+                "summary": "Stop or pause all native sales members and revoke pending subjects. Other agents stay as they are.",
+                "effect": "publishes",
+                "runs_on": "connected_computer"
+              }
+            },
+            {
+              "name": "pause",
+              "leaf": {
+                "path": [
+                  "agent",
+                  "crew",
+                  "pause"
+                ],
+                "usage": [
+                  "crew stop|pause --cohort NAME --all [--reason TEXT]",
+                  "crew stop|pause --cohort NAME --members NAMES [--reason TEXT]"
+                ],
+                "forms": [
+                  {
+                    "tokens": [
+                      {
+                        "kind": "literal",
+                        "word": "crew"
+                      },
+                      {
+                        "kind": "literal",
+                        "word": "pause"
+                      },
+                      {
+                        "kind": "option",
+                        "name": "cohort",
+                        "value": "NAME",
+                        "open": true
+                      },
+                      {
+                        "kind": "option",
+                        "name": "all"
+                      },
+                      {
+                        "kind": "option",
+                        "name": "reason",
+                        "value": "TEXT",
+                        "open": true,
+                        "optional": true
+                      }
+                    ]
+                  },
+                  {
+                    "tokens": [
+                      {
+                        "kind": "literal",
+                        "word": "crew"
+                      },
+                      {
+                        "kind": "literal",
+                        "word": "pause"
+                      },
+                      {
+                        "kind": "option",
+                        "name": "cohort",
+                        "value": "NAME",
+                        "open": true
+                      },
+                      {
+                        "kind": "option",
+                        "name": "members",
+                        "value": "NAMES",
+                        "open": true
+                      },
+                      {
+                        "kind": "option",
+                        "name": "reason",
+                        "value": "TEXT",
+                        "open": true,
+                        "optional": true
+                      }
+                    ]
+                  }
+                ],
+                "summary": "Stop or pause all native sales members and revoke pending subjects. Other agents stay as they are.",
+                "effect": "publishes",
+                "runs_on": "connected_computer"
+              }
+            },
+            {
+              "name": "resume",
+              "leaf": {
+                "path": [
+                  "agent",
+                  "crew",
+                  "resume"
+                ],
+                "usage": [
+                  "crew resume --cohort NAME --all --expected DIGEST",
+                  "crew resume --cohort NAME --members NAMES --expected DIGEST"
+                ],
+                "forms": [
+                  {
+                    "tokens": [
+                      {
+                        "kind": "literal",
+                        "word": "crew"
+                      },
+                      {
+                        "kind": "literal",
+                        "word": "resume"
+                      },
+                      {
+                        "kind": "option",
+                        "name": "cohort",
+                        "value": "NAME",
+                        "open": true
+                      },
+                      {
+                        "kind": "option",
+                        "name": "all"
+                      },
+                      {
+                        "kind": "option",
+                        "name": "expected",
+                        "value": "DIGEST",
+                        "open": true
+                      }
+                    ]
+                  },
+                  {
+                    "tokens": [
+                      {
+                        "kind": "literal",
+                        "word": "crew"
+                      },
+                      {
+                        "kind": "literal",
+                        "word": "resume"
+                      },
+                      {
+                        "kind": "option",
+                        "name": "cohort",
+                        "value": "NAME",
+                        "open": true
+                      },
+                      {
+                        "kind": "option",
+                        "name": "members",
+                        "value": "NAMES",
+                        "open": true
+                      },
+                      {
+                        "kind": "option",
+                        "name": "expected",
+                        "value": "DIGEST",
+                        "open": true
+                      }
+                    ]
+                  }
+                ],
+                "summary": "Explicitly resume the same full selection at its current digest. Disabled jobs stay off; stale approvals cannot resume.",
+                "effect": "publishes",
+                "runs_on": "connected_computer"
+              }
+            }
+          ]
+        },
+        {
           "name": "attest",
           "leaf": {
             "path": [
@@ -14168,6 +14438,36 @@
         },
         {
           "kind": "option",
+          "name": "cohort",
+          "value": "NAME",
+          "open": true,
+          "optional": true,
+          "repeated": true
+        },
+        {
+          "kind": "option",
+          "name": "all",
+          "optional": true,
+          "repeated": true
+        },
+        {
+          "kind": "option",
+          "name": "reason",
+          "value": "TEXT",
+          "open": true,
+          "optional": true,
+          "repeated": true
+        },
+        {
+          "kind": "option",
+          "name": "members",
+          "value": "NAMES",
+          "open": true,
+          "optional": true,
+          "repeated": true
+        },
+        {
+          "kind": "option",
           "name": "mode",
           "value": "MODE",
           "open": true,
@@ -14185,14 +14485,6 @@
         {
           "kind": "option",
           "name": "wait",
-          "optional": true,
-          "repeated": true
-        },
-        {
-          "kind": "option",
-          "name": "reason",
-          "value": "TEXT",
-          "open": true,
           "optional": true,
           "repeated": true
         },

@@ -349,6 +349,45 @@ mod tests {
     }
 
     #[test]
+    fn crew_forms_assemble_valid_all_and_member_controls() {
+        use coder::cli_route::params::{self, Filled, Values};
+
+        let tree = generate().unwrap();
+        let group = tree.group("agent").unwrap();
+        for action in ["stop", "pause", "resume"] {
+            let path: Vec<String> = ["agent", "crew", action]
+                .into_iter()
+                .map(str::to_owned)
+                .collect();
+            let leaf = tree.leaf(&path).unwrap();
+            assert_eq!(leaf.effect, Effect::Publishes);
+            assert_eq!(leaf.forms.len(), 2);
+            for form in &leaf.forms {
+                let mut values = Values::from([("--cohort".into(), Filled::Word("floor".into()))]);
+                let options = params::params(form);
+                let all = options.iter().any(|p| p.key == "--all");
+                if all {
+                    values.insert("--all".into(), Filled::On);
+                } else {
+                    assert!(options.iter().any(|p| p.key == "--members"));
+                    values.insert("--members".into(), Filled::Word("paul,erin".into()));
+                }
+                if action == "resume" {
+                    values.insert(
+                        "--expected".into(),
+                        Filled::Word(format!("sha256:{}", "a".repeat(64))),
+                    );
+                }
+                let argv = params::argv(leaf, form, &values).unwrap();
+                params::validate(leaf, group, &argv).unwrap();
+                assert_eq!(argv.iter().any(|arg| arg == "--all"), all);
+                assert_eq!(argv.iter().any(|arg| arg == "--members"), !all);
+                assert!(!argv.iter().any(|arg| arg.contains('|')));
+            }
+        }
+    }
+
+    #[test]
     fn money_and_secrets_are_labeled() {
         let tree = generate().unwrap_or_else(|errors| panic!("{errors}"));
         let effect = |path: &str| {

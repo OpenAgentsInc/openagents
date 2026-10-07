@@ -42,6 +42,19 @@ pub const USAGE: &str = "usage: openagents agent COMMAND [--root DIR] [--control
                A question-set digest is a reference, not proof of a decision.
   verdict NAME list
                Read signed retained recommendations. They grant no approval.
+  crew status  Owner-only current cohort digest and retained cleanup results.
+  crew stop|pause --cohort NAME --all [--reason TEXT]
+               Stop or pause all native sales members and revoke pending subjects.
+               Other agents stay as they are.
+  crew stop|pause --cohort NAME --members NAMES [--reason TEXT]
+               Stop or pause a comma-separated exact subset of native sales members.
+               Other agents stay as they are.
+  crew resume --cohort NAME --all --expected DIGEST
+               Explicitly resume the same full selection at its current digest.
+               Disabled jobs stay off; stale approvals cannot resume.
+  crew resume --cohort NAME --members NAMES --expected DIGEST
+               Explicitly resume the same exact subset at its current digest.
+               Disabled jobs stay off; stale approvals cannot resume.
   attest NAME --owner-key FILE [--days N]
                Attest her key again.
   renew NAME --owner-key FILE [--days N]
@@ -169,6 +182,10 @@ pub(crate) const EFFECTS: &[Declared] = &[
     Declared::computer("charter", Effect::Publishes),
     Declared::computer("verdict record", Effect::Publishes),
     Declared::computer("verdict list", Effect::ReadOnly),
+    Declared::computer("crew status", Effect::ReadOnly),
+    Declared::computer("crew stop", Effect::Publishes),
+    Declared::computer("crew pause", Effect::Publishes),
+    Declared::computer("crew resume", Effect::Publishes),
     Declared::computer("attest", Effect::LocalWrite),
     Declared::computer("renew", Effect::LocalWrite),
     Declared::computer("list", Effect::ReadOnly),
@@ -208,7 +225,7 @@ pub(crate) const EFFECTS: &[Declared] = &[
     Declared::computer("jobs renew", Effect::LocalWrite),
 ];
 
-const SWITCHES: &[&str] = &["wait", "from-relay", "orphans"];
+const SWITCHES: &[&str] = &["wait", "from-relay", "orphans", "all"];
 
 pub fn run(output: &Output, words: &[String]) -> u8 {
     if words
@@ -230,6 +247,8 @@ pub fn run(output: &Output, words: &[String]) -> u8 {
     let words: Vec<&str> = args.positional().iter().map(String::as_str).collect();
     let now = coder::task::autostart::unix_now();
     let result = match words.as_slice() {
+        ["crew", "status"] => crew_status(output, &args),
+        ["crew", action @ ("stop" | "pause" | "resume")] => crew_control(output, &args, action),
         ["new", name] => new(output, &root, name, &args, now),
         ["charter", name] => charter(output, name, &args),
         ["verdict", name, "record", file] => verdict(output, name, file, &args),
@@ -302,6 +321,52 @@ pub fn run(output: &Output, words: &[String]) -> u8 {
             crate::EXIT_FAILURE
         }
     }
+}
+
+fn crew_status(output: &Output, args: &Args) -> Result<(), Fail> {
+    let value = call(args, &Operation::CrewStatus {})?;
+    output.emit(&value, |v| {
+        serde_json::to_string_pretty(v).unwrap_or_default()
+    });
+    Ok(())
+}
+
+fn crew_control(output: &Output, args: &Args, action: &str) -> Result<(), Fail> {
+    use coder_access::crew::{Control, ControlAction, Selection};
+    let selection = match (args.switch("all"), args.option("members")) {
+        (true, None) => Selection::AllSales,
+        (false, Some(names)) => Selection::Members(names.split(',').map(str::to_owned).collect()),
+        _ => {
+            return Err(Fail::Failed(
+                "Select exactly one of --all or --members NAMES.".into(),
+            ));
+        }
+    };
+    let control = Control {
+        cohort: args
+            .option("cohort")
+            .ok_or_else(|| Fail::Failed("Name the owner cohort with --cohort NAME.".into()))?
+            .into(),
+        selection,
+        action: match action {
+            "stop" => ControlAction::Stop,
+            "pause" => ControlAction::Pause,
+            _ => ControlAction::Resume,
+        },
+        expected: args.option("expected").map(str::to_owned),
+        reason: args
+            .option("reason")
+            .unwrap_or("Owner crew control from the command line.")
+            .into(),
+    };
+    control
+        .validate()
+        .map_err(|e| Fail::Failed(e.to_string()))?;
+    let value = call(args, &Operation::ControlCrew { control })?;
+    output.emit(&value, |v| {
+        serde_json::to_string_pretty(v).unwrap_or_default()
+    });
+    Ok(())
 }
 
 enum Fail {

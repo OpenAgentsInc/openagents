@@ -115,7 +115,7 @@ impl Agents {
                 live.queue
                     .iter()
                     .enumerate()
-                    .map(|(i, q)| (format!("request:{}", i + 1), q.text.clone()))
+                    .map(|(i, q)| (format!("request:{}", i + 1), q.queued.text.clone()))
                     .collect()
             })
             .unwrap_or_default();

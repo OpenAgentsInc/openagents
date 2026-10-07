@@ -401,6 +401,69 @@ async fn revocation_during_a_pending_request_refuses() {
 }
 
 #[tokio::test]
+async fn crew_controls_with_revoked_or_expired_device_grants_never_dispatch() {
+    let f = Fixture::served(0, false).await;
+    let (phone, operator) = f.enroll("standard").await;
+    let operation = Operation::ControlCrew {
+        control: crate::crew::Control {
+            cohort: "floor".into(),
+            selection: crate::crew::Selection::AllSales,
+            action: crate::crew::ControlAction::Stop,
+            expected: None,
+            reason: "Synthetic owner control.".into(),
+        },
+    };
+    let pending = operator.prepare(operation.clone(), now()).unwrap();
+    f.host().revoke(&pubkey(&phone), now()).unwrap();
+    let reply = exchange(&f.relay, &phone, &pending, &f.host_key)
+        .await
+        .unwrap();
+    assert_eq!(
+        operator
+            .verify_reply(&pending, &reply, now())
+            .unwrap_err()
+            .code,
+        Code::Revoked
+    );
+    let (phone, operator) = f.enroll("standard").await;
+    let grant = operator.access().unwrap().grant.clone();
+    let at = grant.expires_at;
+    let mut pending = forge(
+        &phone,
+        &f.host_key,
+        &f.relay,
+        Some((&grant.grant, grant.epoch)),
+        operation,
+    );
+    pending.request.issued_at = at;
+    pending.request.expires_at = at + 60;
+    pending.event = seal(
+        &pending.request,
+        REQUEST,
+        &phone,
+        &f.host_key,
+        &pending.request.request,
+        at,
+        at + 60,
+    )
+    .unwrap();
+    let mut recorder = f.recorder.clone();
+    let reply = f
+        .host()
+        .handle_with_clock(&pending.event, &f.relay, || Ok(at), &mut recorder)
+        .unwrap();
+    let body: Reply = open(&reply, &phone, &f.host_key, &pubkey(&phone), REPLY).unwrap();
+    assert_eq!(
+        body.result,
+        ReplyResult::Refused {
+            code: Code::Expired,
+            missing: None
+        }
+    );
+    assert_eq!(f.recorder.count(), 0);
+}
+
+#[tokio::test]
 async fn stale_epoch_and_copied_grants_refuse() {
     let f = Fixture::served(0, false).await;
     let (phone, first) = f.enroll("standard").await;

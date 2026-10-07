@@ -46,9 +46,11 @@ use coder_host::{AgentReport, Code, Principal};
 use nostr::activity_summary::{Attention, Phase};
 
 use super::agent::{self, Decision, Doing, Entry, Kind, Outcome, Record, Report, State, Store};
+use super::agent_crew_control::{self as crew_control, Guard as CrewGuard, Stamp as CrewStamp};
 use super::agent_jobs::{self, Facts, Jobs};
 use super::agent_memory::{self, Author, Memory, MemoryKind};
 use super::coder_v1::{self, Ended, Event as CoderEvent};
+use coder_host::access::crew::{ControlAction, Selection};
 
 /// How long a waiting proposal waits for the owner.
 pub const DECISION_LIMIT: Duration = Duration::from_secs(60 * 60);
@@ -84,6 +86,11 @@ struct Queued {
     fix_on_failure: bool,
 }
 
+struct Admitted {
+    queued: Queued,
+    crew: Option<CrewStamp>,
+}
+
 /// One agent as the host holds it while it runs.
 struct Live {
     doing: Doing,
@@ -94,8 +101,9 @@ struct Live {
     pending: Option<(wire::Proposal, Sender<Decision>)>,
     run: Option<(wire::Step, Sender<wire::Ran>)>,
     busy: bool,
-    queue: VecDeque<Queued>,
+    queue: VecDeque<Admitted>,
     cancel: Arc<AtomicBool>,
+    crew: Option<CrewStamp>,
     release: u64,
     /// A task-mode change: its goal and where it stands.
     change: Option<(String, wire::Change)>,
@@ -116,6 +124,7 @@ impl Default for Live {
             busy: false,
             queue: VecDeque::new(),
             cancel: Arc::new(AtomicBool::new(false)),
+            crew: None,
             release: 0,
             change: None,
             sequence: 0,
@@ -259,6 +268,7 @@ pub struct Agents {
     relay_sync: Arc<super::agent_sync::Sweeper>,
     /// Where the owner's NIP-IA archive requests go.
     relays: Arc<dyn super::agent_sync::Connector>,
+    dispatch_revoker: crew_control::DispatchRevoker,
 }
 
 impl std::fmt::Debug for Agents {
@@ -336,7 +346,200 @@ impl Agents {
             mind: super::agent_steer::default_mind(),
             relay_sync: super::agent_sync::Sweeper::new(Arc::new(super::agent_sync::Live)),
             relays: Arc::new(super::agent_sync::Live),
+            dispatch_revoker: Arc::new(crew_control::NoOutbox),
         }
+    }
+
+    /// Revoke local pending subjects through the separately owned host outbox.
+    /// The adapter grants no authority and never delivers from Coder.
+    #[must_use]
+    pub fn with_dispatch_revoker(mut self, revoker: crew_control::DispatchRevoker) -> Self {
+        self.dispatch_revoker = revoker;
+        self
+    }
+
+    fn crew_guard(&self, record: &Record) -> Result<Option<CrewGuard>, Code> {
+        if record.job_role.is_none() {
+            return Ok(None);
+        }
+        CrewGuard::open(&self.root)
+            .map(Some)
+            .map_err(|why| coder_host::tasks::refuse(Code::Unavailable, why))
+    }
+
+    /// Owner-only durable cohort control through the same member controllers.
+    /// A partial result keeps its revocation and never asserts an external
+    /// command or delivery stopped.
+    pub fn control_crew(
+        &self,
+        key: &str,
+        principal: &Principal,
+        op: &Operation,
+    ) -> Result<serde_json::Value, Code> {
+        if principal.grant.is_some() {
+            return Err(coder_host::tasks::refuse(
+                Code::Forbidden,
+                "Only the owner's own key controls the crew.",
+            ));
+        }
+        let mut guard = CrewGuard::open(&self.root)
+            .map_err(|why| coder_host::tasks::refuse(Code::Unavailable, why))?;
+        let Operation::ControlCrew { control } = op else {
+            return if matches!(op, Operation::CrewStatus {}) {
+                serde_json::to_value(&guard.book).map_err(|_| Code::Unavailable)
+            } else {
+                Err(Code::Unsupported)
+            };
+        };
+        self.screen.check(&control.reason).map_err(|_| {
+            coder_host::tasks::refuse(
+                Code::Malformed,
+                "Keep credentials out of crew control reasons.",
+            )
+        })?;
+        control
+            .validate()
+            .map_err(|e| coder_host::tasks::refuse(e.code, e.message))?;
+        let mut names = Vec::new();
+        for store in Store::all(&self.root) {
+            let record = store
+                .load()
+                .map_err(|why| coder_host::tasks::refuse(Code::Unavailable, why))?
+                .ok_or(Code::Unavailable)?;
+            if record.job_role.is_some()
+                && match &control.selection {
+                    Selection::AllSales => true,
+                    Selection::Members(selected) => selected.contains(&record.name),
+                }
+            {
+                names.push(record.name);
+            }
+        }
+        names.sort();
+        if let Selection::Members(selected) = &control.selection {
+            if selected.iter().any(|name| !names.contains(name)) {
+                return Err(coder_host::tasks::refuse(
+                    Code::Malformed,
+                    "Every selected name must be a current native sales member.",
+                ));
+            }
+        }
+        let receipt = guard
+            .book
+            .begin(
+                key,
+                &principal.device,
+                control.clone(),
+                &names,
+                (self.clock)(),
+            )
+            .map_err(|why| coder_host::tasks::refuse(Code::Conflict, why))?;
+        if receipt.state != "applying" {
+            return serde_json::to_value(receipt).map_err(|_| Code::Unavailable);
+        }
+        // Persist the revocation before touching a controller. A crash keeps
+        // admissions blocked until this exact owner request is retried.
+        guard
+            .save()
+            .map_err(|why| coder_host::tasks::refuse(Code::Unavailable, why))?;
+        let mut results = BTreeMap::new();
+        for name in &receipt.selected {
+            guard
+                .check()
+                .map_err(|why| coder_host::tasks::refuse(Code::Unavailable, why))?;
+            let result = (|| -> Result<serde_json::Value, Code> {
+                let (store, record) = self.store(name)?;
+                if record.job_role.is_none() {
+                    return Err(Code::Conflict);
+                }
+                let pending = self
+                    .dispatch_revoker
+                    .revoke(name, receipt.epoch)
+                    .and_then(|value| {
+                        value.validate()?;
+                        Ok(value)
+                    });
+                // Recheck after the adapter returns before any native mutation.
+                guard
+                    .check()
+                    .map_err(|why| coder_host::tasks::refuse(Code::Unavailable, why))?;
+                let lifecycle = match control.action {
+                    ControlAction::Stop => {
+                        self.stop_inner(name, &control.reason, &principal.device)?
+                    }
+                    ControlAction::Pause => {
+                        let interrupted = self.revoke_live(name);
+                        let mut lifecycle = self.pause_inner(name, true, &principal.device)?;
+                        lifecycle["interrupted_effect"] =
+                            serde_json::json!(if interrupted { "unknown" } else { "none" });
+                        if interrupted {
+                            lifecycle["state"] = serde_json::json!("unknown");
+                        }
+                        lifecycle
+                    }
+                    ControlAction::Resume => {
+                        if guard.book.remains_blocked_after(&record, key) {
+                            serde_json::json!({"state":"complete","member_state":record.state.word(),"resume":"blocked_by_other_cohort"})
+                        } else {
+                            self.pause_inner(name, false, &principal.device)?
+                        }
+                    }
+                };
+                let mut result = serde_json::json!({"state":lifecycle["state"],"lifecycle":lifecycle,"epoch":receipt.epoch});
+                match pending {
+                    Ok(value) => {
+                        if value.unknown > 0 {
+                            result["state"] = serde_json::json!("partial");
+                        }
+                        result["pending_dispatch"] =
+                            serde_json::to_value(value).map_err(|_| Code::Unavailable)?;
+                    }
+                    Err(why) => {
+                        result["state"] = serde_json::json!("partial");
+                        result["pending_dispatch"] = serde_json::json!({"state":"unknown","reason":bounded(&secret_screen::redact(&why),512)});
+                    }
+                }
+                let _ = store.append(&Entry::new(
+                    (self.clock)(),
+                    Kind::Control,
+                    &format!(
+                        "crew {} epoch {}: {:?}",
+                        control.cohort, receipt.epoch, control.action
+                    ),
+                ));
+                Ok(result)
+            })();
+            results.insert(name.clone(), result.unwrap_or_else(|code| serde_json::json!({"state":"partial","lifecycle":"unknown","refusal":format!("{code:?}")})));
+        }
+        let receipt = guard
+            .book
+            .finish(key, results)
+            .map_err(|why| coder_host::tasks::refuse(Code::Unavailable, why))?;
+        guard
+            .save()
+            .map_err(|why| coder_host::tasks::refuse(Code::Unavailable, why))?;
+        serde_json::to_value(receipt).map_err(|_| Code::Unavailable)
+    }
+
+    fn revoke_live(&self, name: &str) -> bool {
+        self.with_live(name, |live| {
+            live.cancel.store(true, Ordering::SeqCst);
+            live.release += 1;
+            live.queue.clear();
+            if let Some((_, answer)) = live.pending.take() {
+                let _ = answer.send(Decision::Reject);
+            }
+            let interrupted = live.run.take();
+            if let Some((_, reply)) = &interrupted {
+                let _ = reply.send(wire::Ran {
+                    lost: Some(
+                        "Crew control interrupted this command; its effect is unknown.".into(),
+                    ),
+                    ..wire::Ran::default()
+                });
+            }
+            interrupted.is_some() || live.busy
+        })
     }
 
     /// Sync engrams through `connector` instead of the real relays, as a
@@ -451,7 +654,13 @@ impl Agents {
             Ok(Some(record)) => {
                 // A record from before phase 4 gains its definition and
                 // roles, and her profile follows her attestation.
-                let record = store.fill_identity(record.clone(), now).unwrap_or(record);
+                // Native sales setup fills its identity before admission. Do
+                // not lazily save an older lifecycle snapshot during a stop.
+                let record = if record.job_role.is_some() {
+                    record
+                } else {
+                    store.fill_identity(record.clone(), now).unwrap_or(record)
+                };
                 let _ = super::agent_profile::refresh(&store, &record, now);
                 self.reconcile_once(&store, now);
                 Ok((store, record))
@@ -536,6 +745,17 @@ impl Agents {
                         Code::Forbidden,
                         "This sales charter refuses the request before changing member state.",
                     ));
+                }
+                if let Some(guard) = self.crew_guard(&record)? {
+                    guard
+                        .check()
+                        .map_err(|why| coder_host::tasks::refuse(Code::Unavailable, why))?;
+                    if guard.book.blocked(&record) {
+                        return Err(coder_host::tasks::refuse(
+                            Code::Conflict,
+                            "The crew remains stopped or paused until its owner explicitly resumes it.",
+                        ));
+                    }
                 }
                 // The owner asking her is the owner wanting her to work: a
                 // paused agent resumes for it. The kill switch's stop holds
@@ -666,6 +886,8 @@ impl Agents {
         role: coder_host::access::crew::JobRole,
         owner: Option<&secp256k1::SecretKey>,
     ) -> Result<serde_json::Value, Code> {
+        let guard = CrewGuard::open(&self.root)
+            .map_err(|why| coder_host::tasks::refuse(Code::Unavailable, why))?;
         let _shared = self.lock();
         let store = Store::new(&self.root, name)
             .map_err(|why| coder_host::tasks::refuse(Code::Malformed, why))?;
@@ -680,7 +902,13 @@ impl Agents {
                 ));
             }
         }
-        self.create_as(name, workspace, owner, agent::preset(role.preset()))
+        self.create_as(
+            name,
+            workspace,
+            owner,
+            agent::preset(role.preset()),
+            Some(&guard),
+        )
     }
 
     pub fn owner_crew(
@@ -708,6 +936,8 @@ impl Agents {
                         "Keep credentials out of crew charters.",
                     )
                 })?;
+                let _guard = CrewGuard::open(&self.root)
+                    .map_err(|why| coder_host::tasks::refuse(Code::Unavailable, why))?;
                 let shared = self.lock();
                 if shared
                     .live
@@ -762,8 +992,17 @@ impl Agents {
         workspace: &Path,
         owner: Option<&secp256k1::SecretKey>,
     ) -> Result<serde_json::Value, Code> {
+        let preset = agent::preset(name);
+        let guard = if preset.and_then(|p| p.job_role).is_some() {
+            Some(
+                CrewGuard::open(&self.root)
+                    .map_err(|why| coder_host::tasks::refuse(Code::Unavailable, why))?,
+            )
+        } else {
+            None
+        };
         let _shared = self.lock();
-        self.create_as(name, workspace, owner, agent::preset(name))
+        self.create_as(name, workspace, owner, preset, guard.as_ref())
     }
 
     fn create_as(
@@ -772,6 +1011,7 @@ impl Agents {
         workspace: &Path,
         owner: Option<&secp256k1::SecretKey>,
         preset: Option<&agent::Preset>,
+        guard: Option<&CrewGuard>,
     ) -> Result<serde_json::Value, Code> {
         let refuse = coder_host::tasks::refuse;
         let store = Store::new(&self.root, name).map_err(|why| refuse(Code::Malformed, why))?;
@@ -794,6 +1034,17 @@ impl Agents {
         let mut record = store
             .ensure_key(record, now)
             .map_err(|why| refuse(Code::Unavailable, why))?;
+        if let Some(guard) = guard {
+            guard
+                .check()
+                .map_err(|why| refuse(Code::Unavailable, why))?;
+            if guard.book.blocked(&record) && !record.state.is_gone() {
+                record.state = State::Stopped;
+                store
+                    .save(&record)
+                    .map_err(|why| refuse(Code::Unavailable, why))?;
+            }
+        }
         // The host's owner key renews an attestation that is missing, no
         // longer verifies, or expires within the renewal warning.
         let renew = match (&record.pubkey, &record.attestation) {
@@ -1122,6 +1373,13 @@ impl Agents {
 
     fn ask(&self, key: &str, name: &str, queued: Queued) -> Result<(), Code> {
         let (store, record) = self.store(name)?;
+        let guard = self.crew_guard(&record)?;
+        let crew = guard
+            .as_ref()
+            .map(|guard| guard.book.stamp(&record))
+            .transpose()
+            .map_err(|why| coder_host::tasks::refuse(Code::Conflict, why))?
+            .flatten();
         if let Some(charter) = &record.crew_charter {
             if !charter.drafting
                 || queued.mode == Mode::Task
@@ -1201,6 +1459,21 @@ impl Agents {
                 ));
             }
         }
+        if current.state != State::Active {
+            return Err(coder_host::tasks::refuse(
+                Code::Conflict,
+                "The current native member starts nothing new.",
+            ));
+        }
+        if let Some(guard) = &guard {
+            guard
+                .check()
+                .map_err(|why| coder_host::tasks::refuse(Code::Unavailable, why))?;
+            guard
+                .book
+                .check_stamp(&current, &crew)
+                .map_err(|why| coder_host::tasks::refuse(Code::Conflict, why))?;
+        }
         if shared.asked.iter().any(|k| k == key) {
             return Ok(());
         }
@@ -1215,12 +1488,13 @@ impl Agents {
         if busy {
             live.say(&format!("queued: {}", one_line(&queued.text)));
         }
-        live.queue.push_back(queued);
+        live.queue.push_back(Admitted { queued, crew });
         shared.asked.push_back(key.to_string());
         while shared.asked.len() > ASKED_MAX {
             shared.asked.pop_front();
         }
         drop(shared);
+        drop(guard);
         drop(store);
         if !busy {
             self.next(&record.name);
@@ -1231,27 +1505,51 @@ impl Agents {
     /// Starts the next waiting request for `name`, when one waits and she
     /// is free.
     fn next(&self, name: &str) {
-        let queued = {
+        let Ok((store, record)) = self.store(name) else {
+            return;
+        };
+        let Ok(guard) = self.crew_guard(&record) else {
+            return;
+        };
+        let Ok(Some(record)) = store.load() else {
+            return;
+        };
+        if store.custody(&record).is_err() {
+            return;
+        }
+        let (admitted, cancel) = {
             let mut shared = self.lock();
             let live = shared.live.entry(name.to_string()).or_default();
             if live.busy {
                 return;
             }
-            let Some(queued) = live.queue.pop_front() else {
+            let Some(admitted) = live.queue.pop_front() else {
                 return;
             };
+            if record.state != State::Active
+                || guard.as_ref().is_some_and(|guard| {
+                    guard.check().is_err()
+                        || guard.book.check_stamp(&record, &admitted.crew).is_err()
+                })
+            {
+                live.queue.clear();
+                live.say("The original admission was revoked; no queued work starts.");
+                return;
+            }
             live.busy = true;
+            live.crew = admitted.crew.clone();
             live.cancel = Arc::new(AtomicBool::new(false));
             live.headline.clear();
             live.doing = Doing::Thinking;
-            queued
+            (admitted, live.cancel.clone())
         };
+        drop(guard);
         let agents = self.clone();
         let owned = name.to_string();
         let spawned = std::thread::Builder::new()
             .name(format!("agent-{owned}"))
             .spawn(move || {
-                agents.work(&owned, queued);
+                agents.work(&owned, admitted, cancel);
                 {
                     let mut shared = agents.lock();
                     if let Some(live) = shared.live.get_mut(&owned) {
@@ -1272,17 +1570,30 @@ impl Agents {
     }
 
     /// One request, to its report.
-    fn work(&self, name: &str, queued: Queued) {
+    fn work(&self, name: &str, admitted: Admitted, cancel: Arc<AtomicBool>) {
+        let Admitted { queued, crew } = admitted;
         let now = (self.clock)();
         let Ok((store, record)) = self.store(name) else {
             return;
         };
-        let cancel = self
-            .lock()
-            .live
-            .get(name)
-            .map(|l| l.cancel.clone())
-            .unwrap_or_default();
+        let Ok(guard) = self.crew_guard(&record) else {
+            return;
+        };
+        let Ok(Some(record)) = store.load() else {
+            return;
+        };
+        if store.custody(&record).is_err() {
+            return;
+        }
+        if cancel.load(Ordering::SeqCst)
+            || record.state != State::Active
+            || guard.as_ref().is_some_and(|guard| {
+                guard.check().is_err() || guard.book.check_stamp(&record, &crew).is_err()
+            })
+        {
+            return;
+        }
+        drop(guard);
         if record.crew_charter.as_ref().is_some_and(|charter| {
             !charter.drafting
                 || queued.mode == Mode::Task
@@ -1369,7 +1680,17 @@ impl Agents {
                 queued.text, queued.context
             )
         };
-        let report = self.coder_turn(&store, &record, &queued, &cwd, &text, &briefing, &carried);
+        let report = self.coder_turn(
+            &store,
+            &record,
+            &queued,
+            &cwd,
+            &text,
+            &briefing,
+            &carried,
+            cancel.clone(),
+            crew.clone(),
+        );
         let report = if cancel.load(Ordering::SeqCst) {
             Report {
                 outcome: Outcome::Stopped,
@@ -1391,7 +1712,12 @@ impl Agents {
                 fix_on_failure: false,
                 ..queued.clone()
             };
-            self.with_live(name, |live| live.queue.push_back(fix));
+            self.with_live(name, |live| {
+                live.queue.push_back(Admitted {
+                    queued: fix,
+                    crew: crew.clone(),
+                })
+            });
         }
         // What ran is project memory when it passed.
         if report.outcome == Outcome::Done && report.headline == "ok exit 0" {
@@ -1763,8 +2089,24 @@ impl Agents {
     }
 
     fn decide(&self, name: &str, step: u64, confirm: bool, from: &str) -> Result<(), Code> {
-        let (store, _) = self.store(name)?;
+        let (store, record) = self.store(name)?;
+        let guard = self.crew_guard(&record)?;
+        if let Some(guard) = &guard {
+            guard
+                .check()
+                .map_err(|why| coder_host::tasks::refuse(Code::Unavailable, why))?;
+            guard
+                .book
+                .stamp(&record)
+                .map_err(|why| coder_host::tasks::refuse(Code::Conflict, why))?;
+        }
         let pending = self.with_live(name, |live| {
+            if guard
+                .as_ref()
+                .is_some_and(|g| g.book.check_stamp(&record, &live.crew).is_err())
+            {
+                return None;
+            }
             if live.pending.as_ref().is_some_and(|(p, _)| p.step == step) {
                 live.pending.take()
             } else {
@@ -1821,6 +2163,38 @@ impl Agents {
     /// # Errors
     /// No such agent, or her record cannot be written.
     pub fn stop(&self, name: &str, reason: &str, from: &str) -> Result<(), Code> {
+        let (_, record) = self.store(name)?;
+        let mut guard = self.crew_guard(&record)?;
+        let pending = if let Some(guard) = &mut guard {
+            let epoch = guard
+                .book
+                .revoke_member(name)
+                .map_err(|why| coder_host::tasks::refuse(Code::Unavailable, why))?;
+            guard
+                .save()
+                .map_err(|why| coder_host::tasks::refuse(Code::Unavailable, why))?;
+            let result = self.dispatch_revoker.revoke(name, epoch).and_then(|value| {
+                value.validate()?;
+                Ok(value)
+            });
+            guard
+                .check()
+                .map_err(|why| coder_host::tasks::refuse(Code::Unavailable, why))?;
+            Some(result)
+        } else {
+            None
+        };
+        self.stop_inner(name, reason, from)?;
+        if pending.is_some_and(|r| r.is_err()) {
+            return Err(coder_host::tasks::refuse(
+                Code::Unavailable,
+                "The native member stopped; pending external cleanup is unknown.",
+            ));
+        }
+        Ok(())
+    }
+
+    fn stop_inner(&self, name: &str, reason: &str, from: &str) -> Result<serde_json::Value, Code> {
         let (store, mut record) = self.store(name)?;
         let p = record.refer();
         let now = (self.clock)();
@@ -1838,20 +2212,24 @@ impl Agents {
                 reason.trim()
             }
         ));
+        let mut failures = Vec::new();
         // 1. Standing jobs off.
         match Jobs::new(store.clone()).disable_all() {
             Ok(on) => note(&format!("stop 1 of 4: turned off {on} standing jobs")),
-            Err(why) => note(&format!(
-                "stop 1 of 4: could not turn off {} jobs: {why}",
-                p.their()
-            )),
+            Err(why) => {
+                failures.push(format!("standing_jobs: {why}"));
+                note(&format!(
+                    "stop 1 of 4: could not turn off {} jobs: {why}",
+                    p.their()
+                ));
+            }
         }
         // 2. Release every pane she drives, with Ctrl+C to her command.
         let interrupted = format!(
             "stopped by the owner; {} command was interrupted",
             p.their()
         );
-        let (typing, change) = self.with_live(name, |live| {
+        let (typing, change, active_loop) = self.with_live(name, |live| {
             live.cancel.store(true, Ordering::SeqCst);
             live.release += 1;
             live.queue.clear();
@@ -1868,8 +2246,9 @@ impl Agents {
             live.doing = Doing::Idle;
             live.headline = "stopped".into();
             live.say(&format!("{name}: stopped."));
-            (typing, live.change.clone())
+            (typing, live.change.clone(), live.busy)
         });
+        let interrupted_effect = typing.is_some();
         note(&match typing {
             Some(step) => format!(
                 "stop 2 of 4: released {} panes and interrupted step {}; its effect is unknown",
@@ -1883,7 +2262,13 @@ impl Agents {
         });
         // 3. Cancel her running and queued tasks.
         let cancelled = self.cancel_tasks(name, &p, change.as_ref().map(|(g, _)| g.as_str()));
-        note(&format!("stop 3 of 4: {cancelled}"));
+        if let Err(why) = &cancelled {
+            failures.push(why.clone());
+        }
+        note(&format!(
+            "stop 3 of 4: {}",
+            cancelled.unwrap_or_else(|why| why)
+        ));
         // 4. Her grants on other computers.
         note(&format!(
             "stop 4 of 4: {} holds no grants on other computers to revoke",
@@ -1895,30 +2280,43 @@ impl Agents {
                 .save(&record)
                 .map_err(|why| coder_host::tasks::refuse(Code::Unavailable, why))?;
         }
-        Ok(())
+        Ok(
+            serde_json::json!({"state":if !failures.is_empty() {"partial"} else if active_loop || interrupted_effect {"unknown"} else {"complete"},
+            "member_state":record.state.word(), "failures":failures, "active_loop_cancel_requested":active_loop,
+            "interrupted_effect":if interrupted_effect {"unknown"} else {"none"},
+            "remote_grants":"none_held"}),
+        )
     }
 
-    fn cancel_tasks(&self, name: &str, p: &super::agent::Refer, goal: Option<&str>) -> String {
+    fn cancel_tasks(
+        &self,
+        name: &str,
+        p: &super::agent::Refer,
+        goal: Option<&str>,
+    ) -> Result<String, String> {
         use super::studio::Studio;
         if !Studio::present(&self.tasks) {
-            return format!("{} has no studio tasks", p.they());
+            return Ok(format!("{} has no studio tasks", p.they()));
         }
         let (Ok(mut tasks), Ok(mut studio)) =
             (super::Store::open(&self.tasks), Studio::open(&self.tasks))
         else {
-            return format!("could not open the studio to cancel {} tasks", p.their());
+            return Err(format!(
+                "could not open the studio to cancel {} tasks",
+                p.their()
+            ));
         };
         if studio.state().seat(name).is_none() {
-            return format!("{} has no studio seat or tasks", p.they());
+            return Ok(format!("{} has no studio seat or tasks", p.they()));
         }
         match studio.stop_seat(&mut tasks, name) {
-            Ok(returned) => format!(
+            Ok(returned) => Ok(format!(
                 "cancelled {} studio work{}; {} task(s) returned to the board as planned",
                 p.their(),
                 goal.map(|g| format!(" for goal {g}")).unwrap_or_default(),
                 returned.len()
-            ),
-            Err(why) => format!("could not cancel {} studio work: {why}", p.their()),
+            )),
+            Err(why) => Err(format!("could not cancel {} studio work: {why}", p.their())),
         }
     }
 
@@ -1928,6 +2326,48 @@ impl Agents {
     /// # Errors
     /// No such agent, a retired one, or her record cannot be written.
     pub fn pause(&self, name: &str, pause: bool, from: &str) -> Result<(), Code> {
+        let (_, record) = self.store(name)?;
+        let mut guard = self.crew_guard(&record)?;
+        if !pause && guard.as_ref().is_some_and(|g| g.book.blocked(&record)) {
+            return Err(coder_host::tasks::refuse(
+                Code::Conflict,
+                "Resume the owner's exact crew cohort first.",
+            ));
+        }
+        let pending = if pause {
+            if let Some(guard) = &mut guard {
+                let epoch = guard
+                    .book
+                    .revoke_member(name)
+                    .map_err(|why| coder_host::tasks::refuse(Code::Unavailable, why))?;
+                guard
+                    .save()
+                    .map_err(|why| coder_host::tasks::refuse(Code::Unavailable, why))?;
+                let result = self.dispatch_revoker.revoke(name, epoch).and_then(|value| {
+                    value.validate()?;
+                    Ok(value)
+                });
+                guard
+                    .check()
+                    .map_err(|why| coder_host::tasks::refuse(Code::Unavailable, why))?;
+                Some(result)
+            } else {
+                None
+            }
+        } else {
+            None
+        };
+        self.pause_inner(name, pause, from)?;
+        if pending.is_some_and(|r| r.is_err()) {
+            return Err(coder_host::tasks::refuse(
+                Code::Unavailable,
+                "The native member paused; pending external cleanup is unknown.",
+            ));
+        }
+        Ok(())
+    }
+
+    fn pause_inner(&self, name: &str, pause: bool, from: &str) -> Result<serde_json::Value, Code> {
         let (store, mut record) = self.store(name)?;
         if record.state.is_gone() {
             return Err(coder_host::tasks::refuse(
@@ -1947,24 +2387,37 @@ impl Agents {
         );
         entry.from = Some(from.to_string());
         let _ = store.append(&entry);
-        if !pause && let Ok(mut studio) = super::studio::Studio::open(&self.tasks) {
-            if studio.state().seat(name).is_some()
-                && let Ok(mut tasks) = super::Store::open(&self.tasks)
-            {
-                let _ = studio.resume_seat(&mut tasks, name, (self.clock)());
+        let mut failures = Vec::new();
+        if super::studio::Studio::present(&self.tasks) {
+            match super::studio::Studio::open(&self.tasks) {
+                Ok(mut studio) if studio.state().seat(name).is_some() => {
+                    let changed = if pause {
+                        studio.pause_seat(name).map_err(|why| why.to_string())
+                    } else {
+                        match super::Store::open(&self.tasks) {
+                            Ok(mut tasks) => studio
+                                .resume_seat(&mut tasks, name, (self.clock)())
+                                .map(|_| ())
+                                .map_err(|why| why.to_string()),
+                            Err(why) => Err(why.to_string()),
+                        }
+                    };
+                    if let Err(why) = changed {
+                        failures.push(format!("studio: {why}"));
+                    }
+                }
+                Ok(_) => {}
+                Err(why) => failures.push(format!("studio: {why}")),
             }
-        } else if pause
-            && super::studio::Studio::present(&self.tasks)
-            && let Ok(mut studio) = super::studio::Studio::open(&self.tasks)
-            && studio.state().seat(name).is_some()
-        {
-            let _ = studio.pause_seat(name);
         }
         self.with_live(name, |live| {
             live.cancel = Arc::new(AtomicBool::new(false));
             live.say(&format!("{name}: {word}."));
         });
-        Ok(())
+        Ok(
+            serde_json::json!({"state":if failures.is_empty() {"complete"} else {"partial"},
+            "member_state":record.state.word(), "failures":failures, "jobs_reenabled":false}),
+        )
     }
 
     fn edit_memory(&self, name: &str, edit: &wire::MemoryEdit) -> Result<String, Code> {
@@ -2484,3 +2937,7 @@ mod tests;
 #[cfg(test)]
 #[path = "agent_crew_tests.rs"]
 mod crew_tests;
+
+#[cfg(all(test, unix))]
+#[path = "agent_crew_stop_tests.rs"]
+mod crew_stop_tests;

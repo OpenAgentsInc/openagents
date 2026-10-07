@@ -418,7 +418,7 @@ impl Tasks for Inbox {
 
     fn new_agent(
         &self,
-        _key: &str,
+        key: &str,
         principal: &Principal,
         op: &Operation,
         owner: Option<&secp256k1::SecretKey>,
@@ -430,6 +430,9 @@ impl Tasks for Inbox {
             ));
         };
         match op {
+            Operation::CrewStatus {} | Operation::ControlCrew { .. } => {
+                agents.control_crew(key, principal, op)
+            }
             Operation::NewCrewAgent {
                 agent,
                 workspace,

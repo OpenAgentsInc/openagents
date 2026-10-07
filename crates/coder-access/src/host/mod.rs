@@ -1202,6 +1202,8 @@ impl Host {
             | Operation::AgentLog { .. }
             | Operation::ListAgentWorkspaces {}
             | Operation::NewCrewAgent { .. }
+            | Operation::CrewStatus {}
+            | Operation::ControlCrew { .. }
             | Operation::SetAgentCharter { .. }
             | Operation::RecordAgentVerdict { .. }
             | Operation::ListAgentVerdicts { .. }

@@ -52,6 +52,7 @@ struct HostHands<'a> {
     state: PathBuf,
     session: String,
     cancel: Arc<AtomicBool>,
+    crew: Option<CrewStamp>,
     policy: Policy,
     places: Places,
     engine: Option<Box<dyn coder_v1::Engine>>,
@@ -217,6 +218,13 @@ impl Hands for HostHands<'_> {
     fn coder(&mut self, prompt: &str) -> Turned {
         if self.stop.load(Ordering::SeqCst) || self.cancel.load(Ordering::SeqCst) {
             return Turned::ended(self.stopped());
+        }
+        if let Some(stamp) = &self.crew {
+            let admitted = CrewGuard::open(&self.agents.root)
+                .and_then(|guard| guard.pending_stamp(&self.name));
+            if admitted.as_ref().ok() != Some(stamp) {
+                return Turned::ended(TurnEnd::Stopped);
+            }
         }
         let name = self.name.clone();
         let mut engine = match self.engine.take() {
@@ -553,6 +561,38 @@ impl Hands for HostHands<'_> {
     }
 }
 
+type ModelFence = Arc<dyn Fn() -> Result<(), String> + Send + Sync>;
+struct FencedPlanner {
+    inner: Box<dyn agent_steer::Planner>,
+    fence: ModelFence,
+}
+impl agent_steer::Planner for FencedPlanner {
+    fn plan(
+        &mut self,
+        ask: &agent_steer::Ask,
+    ) -> Result<(agent_steer::Plan, agent_steer::Spent), String> {
+        (self.fence)()?;
+        self.inner.plan(ask)
+    }
+    fn report(
+        &mut self,
+        ask: &agent_steer::Ask,
+    ) -> Result<Option<(String, agent_steer::Spent)>, String> {
+        (self.fence)()?;
+        self.inner.report(ask)
+    }
+}
+struct FencedJudge {
+    inner: Box<dyn agent_steer::Judge>,
+    fence: ModelFence,
+}
+impl agent_steer::Judge for FencedJudge {
+    fn judge(&mut self, state: &serde_json::Value) -> Result<agent_steer::Judgment, String> {
+        (self.fence)()?;
+        self.inner.judge(state)
+    }
+}
+
 impl Agents {
     /// Runs `text` for her to its report: she plans, steers Coder in her
     /// Coder session in `cwd`, judges, follows up, and reports
@@ -567,6 +607,8 @@ impl Agents {
         text: &str,
         briefing: &str,
         carried: &[crate::task::agent_recall::Ref],
+        cancel: Arc<AtomicBool>,
+        crew: Option<CrewStamp>,
     ) -> Report {
         let name = record.name.clone();
         let clock = self.clock;
@@ -663,6 +705,31 @@ impl Agents {
                 "over budget",
             );
         }
+        let fence: ModelFence = {
+            let cancel = cancel.clone();
+            let root = self.root.clone();
+            let name = name.clone();
+            let original = crew.clone();
+            Arc::new(move || {
+                if cancel.load(Ordering::SeqCst) {
+                    return Err("The original member request was cancelled.".into());
+                }
+                if let Some(original) = &original {
+                    let guard = CrewGuard::open(&root)?;
+                    if guard.pending_stamp(&name)? != *original {
+                        return Err("The original crew admission was revoked.".into());
+                    }
+                }
+                Ok(())
+            })
+        };
+        if fence().is_err() {
+            return Report {
+                outcome: Outcome::Stopped,
+                reply: "The original crew request stopped before planning.".into(),
+                headline: "stopped".into(),
+            };
+        }
         let mut mind = match (self.mind)(record) {
             Ok(mind) => mind,
             Err(why) => {
@@ -673,12 +740,16 @@ impl Agents {
                 );
             }
         };
-        let cancel = self
-            .lock()
-            .live
-            .get(&name)
-            .map(|l| l.cancel.clone())
-            .unwrap_or_default();
+        mind.planner = Box::new(FencedPlanner {
+            inner: mind.planner,
+            fence: fence.clone(),
+        });
+        mind.judge = mind.judge.map(|inner| {
+            Box::new(FencedJudge {
+                inner,
+                fence: fence.clone(),
+            }) as Box<dyn agent_steer::Judge>
+        });
         let state = self
             .coder_state
             .clone()
@@ -698,6 +769,7 @@ impl Agents {
             state,
             session: coder_v1::coder_session_for(&name),
             cancel,
+            crew,
             places: Places::on_host(&self.root, cwd),
             policy: policy.clone(),
             engine: None,

@@ -236,6 +236,16 @@ Each hire has:
 6. **The hire trains.** A new hire starts in training and may not draft a
    message for a real person until it is certified.
 
+**Owner stop and pause.** The selected Unix native host supports
+`openagents agent crew stop --cohort floor --all`, or an exact
+`--members` subset. Use `pause` instead of `stop` to keep standing jobs. It persists revocation before cleanup and retains partial
+or unknown results through restart. `crew status` supplies the digest for
+explicit `crew resume --expected DIGEST`; resume preserves disabled jobs and
+never revives old queued work or approval subjects. The conditional REV-62
+outbox must seal each exact approved handoff under the native epoch fence;
+its adapter remains disabled until configured and verified. Delivery and its
+original unknown outcome stay outside Coder. Human-led R0/R1 stays independent.
+
 **Retiring is firing.** Paul may propose a retirement, for example for a
 hire that keeps failing certification or whose queue is empty for two weeks;
 the owner may retire any agent at any time. Retirement is the workshop
