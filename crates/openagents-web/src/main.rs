@@ -3,7 +3,7 @@ use std::path::PathBuf;
 
 const USAGE: &str = "usage: openagents-web [--store DIRECTORY] [--listen ADDRESS] \
 [--pay-host http://HOST:PORT] [--public-host HOST]... [--upstream http://HOST:PORT] \
-[--everglade DIRECTORY]";
+[--everglade DIRECTORY] [--pilot-config PRIVATE_JSON]";
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
@@ -22,6 +22,11 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             "--pay-host" => pay_host = Some(value),
             "--upstream" => upstream = Some(value),
             "--everglade" => config.everglade = Some(PathBuf::from(value)),
+            "--pilot-config" => {
+                config.pilot = Some(std::sync::Arc::new(openagents_web::pilot::Intake::load(
+                    std::path::Path::new(&value),
+                )?))
+            }
             _ => return Err(USAGE.into()),
         }
     }
@@ -52,7 +57,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         ));
     }
     let listener = tokio::net::TcpListener::bind(listen).await?;
-    println!("OpenAgents web is listening on http://{listen} (development backend)");
+    let bound = listener.local_addr()?;
+    config.port = bound.port();
+    println!("OpenAgents web is listening on http://{bound} (development backend)");
     let router = openagents_web::router(config);
     axum::serve(
         listener,

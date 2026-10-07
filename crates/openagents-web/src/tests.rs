@@ -65,7 +65,7 @@ async fn get(router: Router, uri: &str) -> (StatusCode, String) {
 }
 
 /// Every public HTML page a development server serves.
-const PAGES: [&str; 42] = [
+const PAGES: [&str; 44] = [
     "/",
     "/live",
     "/everglade",
@@ -74,6 +74,8 @@ const PAGES: [&str; 42] = [
     "/stats",
     "/efficiency",
     "/download",
+    "/pilot",
+    "/pilot/install",
     "/terms",
     "/privacy",
     "/connect",
@@ -950,7 +952,7 @@ async fn a_question_must_end_with_the_visitor() {
 /// An upstream that answers every request with `418` and a JSON echo of
 /// what reached it, and joins an `Upgrade: echo` on `/ws` to an echo of
 /// its bytes. It counts what it was sent.
-async fn echo_upstream() -> (String, Arc<std::sync::atomic::AtomicUsize>) {
+pub(crate) async fn echo_upstream() -> (String, Arc<std::sync::atomic::AtomicUsize>) {
     use std::sync::atomic::{AtomicUsize, Ordering};
     let hits = Arc::new(AtomicUsize::new(0));
     let counted = hits.clone();

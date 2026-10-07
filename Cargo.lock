@@ -10054,6 +10054,7 @@ dependencies = [
  "coder",
  "discovery",
  "futures-util",
+ "hmac 0.12.1",
  "hyper",
  "hyper-util",
  "openagents-chat",

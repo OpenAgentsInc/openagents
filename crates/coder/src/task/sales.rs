@@ -9,6 +9,8 @@ use std::io::{Read, Write};
 use std::path::{Path, PathBuf};
 use std::time::{Duration, SystemTime};
 
+pub mod intake;
+
 pub const SCHEMA: &str = "openagents.sales.pipeline.v1";
 pub const COMMAND_SCHEMA: &str = "openagents.sales.pipeline-command.v1";
 pub const LEAD_SCHEMA: &str = "openagents.sales.lead.v1";
@@ -135,6 +137,9 @@ pub struct Lead {
     pub ownership_acceptance: String,
     pub details: Details,
     pub proposed_handoff: Option<Handoff>,
+    /// Immutable public-intake provenance; manual records have none.
+    #[serde(default)]
+    pub intake: Option<intake::Provenance>,
 }
 #[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -214,6 +219,10 @@ struct State {
     receipts: BTreeMap<String, Recorded>,
     suppressions: BTreeMap<String, Suppression>,
     audit: Vec<Audit>,
+    #[serde(default)]
+    intakes: BTreeMap<String, intake::Grant>,
+    #[serde(default)]
+    intake_submissions: BTreeMap<String, intake::RecordedSubmission>,
 }
 impl Default for State {
     fn default() -> Self {
@@ -227,6 +236,8 @@ impl Default for State {
             receipts: BTreeMap::new(),
             suppressions: BTreeMap::new(),
             audit: vec![],
+            intakes: BTreeMap::new(),
+            intake_submissions: BTreeMap::new(),
         }
     }
 }
@@ -405,6 +416,8 @@ impl Store {
             || state.principals.len() > MAX_PRINCIPALS
             || state.audit.len() > MAX_RECEIPTS
             || state.suppressions.len() > MAX_RECEIPTS
+            || state.intakes.len() > MAX_PRINCIPALS
+            || state.intake_submissions.len() > MAX_RECEIPTS - MAX_LEADS
         {
             return Err("unsupported or oversized sales state".into());
         }
@@ -868,6 +881,7 @@ impl Store {
                     ownership_acceptance: ownership_acceptance.clone(),
                     details: input.details.clone(),
                     proposed_handoff: None,
+                    intake: None,
                 },
             );
         } else {

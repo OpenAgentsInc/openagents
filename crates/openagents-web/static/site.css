@@ -173,6 +173,13 @@ html.stage body{display:block}
 .stats-series g:hover .stats-bar{fill:var(--w100)}
 .stats-series figcaption{color:var(--w50);margin:.25rem 0 0}
 
+/* /pilot: a bounded private request, with no client-side script. */
+.pilot-form label{display:block;margin:1rem 0}
+.pilot-form input:not([type=checkbox]):not([type=hidden]),.pilot-form textarea{display:block;width:100%;box-sizing:border-box;background:var(--bg);color:var(--w100);border:1px solid var(--w50);font:inherit;padding:.5rem;margin-top:.4rem}
+.pilot-consent input{margin-right:.5ch}
+.pilot-reference{overflow-wrap:anywhere}
+.pilot-trap{position:absolute;left:-10000px;width:1px;height:1px;overflow:hidden}
+
 @media (max-width:640px){
   html{font-size:13px}
   .site-header nav,.site-footer,main{width:calc(100% - 32px)}

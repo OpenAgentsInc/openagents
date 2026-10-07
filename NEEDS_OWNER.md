@@ -108,6 +108,32 @@ review before transferring generic material, and authorize publication
 separately. The synthetic review proves the manual package, not real removal,
 customer acceptance, support responsibility, or permission to reuse their work.
 
+## Public pilot publication and intake O1 (REV-05, #10812)
+
+Review the [frozen offer](docs/sales/README.md#first-workflow-offer-v1) and
+public copy before publishing or activating real intake. The default `/pilot`
+page shows proposed terms and unavailable intake. Code completion uses isolated
+Rust and browser fixtures and needs no production host deployment; publishing
+the reviewed page or enabling real contact intake is this separate owner step.
+
+Privately name the responsible pipeline owner and public support email; accept
+standing review responsibility, request-only email consent, its version,
+one through 30 days of intake retention, a review duration within seven days,
+and a lifetime lead cap from 1 through 32. Provision a distinct create-only
+credential with [the intake procedure](crates/openagents-web/README.md#permissioned-pilot-intake).
+Select an exact HTTPS origin beside the canonical durable private pipeline,
+and ensure deployment logs omit bodies, cookies, and request queries. A site
+deployment without that root keeps intake unavailable; no remote pipeline
+transport or replica-local contact store is provided. Human review must verify
+self-asserted contact permission before real follow-up; O6 separately governs
+outbound automation.
+
+The selected pilot installer builds `coder` and `openagents` from a recorded
+clean commit on macOS arm64 through `scripts/install-coder.sh`. General native
+release downloads do not qualify this path. Qualify that exact installation and
+accept the private buyer agreement before work. Fixtures establish neither
+commercial activation nor customer acceptance.
+
 ## Private pipeline O1/O6 (REV-04, #10811)
 
 Before entering real leads, initialize the [private pipeline](docs/sales/README.md#private-sales-pipeline)

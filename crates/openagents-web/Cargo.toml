@@ -5,6 +5,7 @@ edition.workspace = true
 rust-version.workspace = true
 publish.workspace = true
 description = "The OpenAgents website: public pages, legal documents, the install and pairing pages, and the local read-only task browser."
+default-run = "openagents-web"
 
 [dependencies]
 axum = "0.8"
@@ -12,6 +13,7 @@ base64 = "0.22"
 coder = { path = "../coder" }
 discovery = { path = "../discovery" }
 futures-util = "0.3"
+hmac = "0.12.1"
 hyper = { version = "1", features = ["client", "http1"] }
 hyper-util = { version = "0.1", features = ["client-legacy", "http1", "tokio"] }
 openagents-chat = { path = "../openagents-chat" }

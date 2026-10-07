@@ -19,6 +19,7 @@ mod layout;
 mod markdown;
 mod pages;
 pub mod palette;
+pub mod pilot;
 mod tasks;
 pub mod upstream;
 mod wellknown;
@@ -72,6 +73,9 @@ pub struct Config {
     /// under `/everglade/`. Without it, `/everglade` says Everglade is
     /// unavailable.
     pub everglade: Option<PathBuf>,
+    /// Optional create-only capability into the host-private sales pipeline.
+    /// Without owner-accepted terms, the proposed offer has no intake form.
+    pub pilot: Option<Arc<pilot::Intake>>,
 }
 
 impl Config {
@@ -89,6 +93,7 @@ impl Config {
             upstream: None,
             pay_upstream: None,
             everglade: None,
+            pilot: None,
         }
     }
 }
@@ -132,6 +137,7 @@ pub fn router(config: Config) -> Router {
         .route("/favicon.svg", get(favicon))
         .route("/favicon.ico", get(favicon))
         .merge(pages::routes())
+        .merge(pilot::routes())
         .merge(ask::routes())
         .merge(tasks::routes())
         .merge(wellknown::routes())
@@ -170,9 +176,13 @@ async fn guard(hosts: Hosts, request: Request, next: Next) -> Response {
     let local = hosts.local(&host);
     let path = request.uri().path();
     let browser = path == "/app" || path.starts_with("/app/");
+    // Intake requests can carry contact content. An unconfigured host must
+    // refuse them locally rather than forwarding them to another service.
+    let intake = path == "/pilot" || path.starts_with("/pilot/");
     let public = hosts.public.contains(&host);
     if let Some(upstream) = &hosts.upstream
         && !browser
+        && !intake
         && (!(local || public) || !upstream::owned(path))
     {
         return upstream.forward(request).await;
