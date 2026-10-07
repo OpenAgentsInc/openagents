@@ -1,8 +1,8 @@
 # Agent identity and engrams
 
-Status: specification, October 7, 2026. The epic is
+Status: implemented, October 7, 2026. The epic is
 [#10807](https://github.com/OpenAgentsInc/openagents/issues/10807), and
-[Phases](#phases) lists one issue per phase. It turns the workshop agent from Coder wearing a name tag
+[Phases](#phases) lists one issue per phase; all nine are closed. It turns the workshop agent from Coder wearing a name tag
 into an agent of her own: Alice has her own key, her own memory as engrams,
 and her own loop, and she steers plain Coder as a tool. Bob, Paul, and the
 rest of [the crew](crew.md) follow on the same machinery.

@@ -76,7 +76,7 @@ separate visual work later.
 | Member | Role | Station in Everglade | Today | Phase |
 | --- | --- | --- | --- | --- |
 | Alice | Workshop agent: coding through Coder V1 | Her workstation in the owner's house | Implemented | Done |
-| Bob | Town builder: villagers, routines, placements | The map room, Knowledge District | Nothing; townsfolk are proposed | 1 |
+| Bob | Town builder: villagers, routines, placements | The map room, Knowledge District | Made on the shared machinery (own key, memory, and Coder session); no station in Everglade yet | 1 |
 | Carol | The issue lane | The Task Wall, workshop hall | Unnamed subagents and `issue_pick.rs` | 2 |
 | Dave | Deploys and operations | The Server Barn, the Foundry | A runbook run by hand | 2 |
 | Peggy | Prover: packages evidence | The Proving ground, workshop hall | Task-owner evidence, captures, receipts | 2 |
