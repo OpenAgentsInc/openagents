@@ -240,6 +240,61 @@ fn run(
     })
 }
 
+/// The vertices where two bakes differ most, so a reader can see where
+/// the backends disagree.
+fn outliers(scene: &Scene, a: &Products, b: &Products) -> serde_json::Value {
+    let describe = |i: usize, difference: f32, values: serde_json::Value| {
+        let v = &scene.vertices[i];
+        json!({
+            "vertex": i,
+            "difference": difference,
+            "pos": v.pos,
+            "normal": v.normal,
+            "foliage": scene.foliage[i],
+            "far": scene.far[i],
+            "values": values,
+        })
+    };
+    let worst = |differences: Vec<f32>| {
+        let mut order: Vec<usize> = (0..differences.len()).collect();
+        order.sort_by(|&x, &y| differences[y].total_cmp(&differences[x]));
+        order.truncate(5);
+        order.into_iter().map(move |i| (i, differences[i]))
+    };
+    let ambient = worst(
+        a.vertex_ambient
+            .iter()
+            .zip(&b.vertex_ambient)
+            .map(|(x, y)| (0..3).map(|c| (x[c] - y[c]).abs()).fold(0.0, f32::max))
+            .collect(),
+    )
+    .map(|(i, d)| describe(i, d, json!([a.vertex_ambient[i], b.vertex_ambient[i]])))
+    .collect::<Vec<_>>();
+    let sun = a
+        .vertex_sun
+        .iter()
+        .zip(&b.vertex_sun)
+        .enumerate()
+        .flat_map(|(k, (x, y))| {
+            worst(x.iter().zip(y).map(|(p, q)| (p - q).abs()).collect())
+                .map(|(i, d)| describe(i, d, json!({"sun": k, "values": [x[i], y[i]]})))
+                .collect::<Vec<_>>()
+        })
+        .collect::<Vec<_>>();
+    let faint = scene.triangles.iter().filter(|t| t.opacity < 0.01).count();
+    let partial = scene
+        .triangles
+        .iter()
+        .filter(|t| t.opacity < verse_pbr::pbr::bake::SOLID)
+        .count();
+    json!({
+        "ambient": ambient,
+        "sun": sun,
+        "partial_triangles": partial,
+        "clear_triangles": faint,
+    })
+}
+
 fn main() -> ExitCode {
     match parse(std::env::args().skip(1)).and_then(|options| execute(&options)) {
         Ok(()) => ExitCode::SUCCESS,
@@ -294,6 +349,7 @@ fn execute(options: &Options) -> Result<(), String> {
             "agreement": agreement,
             "tolerance": GPU_TOLERANCE,
             "within_tolerance": within,
+            "outliers": outliers(&scene, &main.products, &second.products),
         }))
     } else {
         None

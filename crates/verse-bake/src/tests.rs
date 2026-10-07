@@ -209,6 +209,8 @@ fn the_cpu_backend_multiplies_partial_occluders_and_stops_at_solid_ones() {
     assert!((hits[2].transmittance - 0.343).abs() < 1e-4);
     assert_eq!(hits[2].triangle, MISS);
     assert_eq!(hits[3], RayHit::CLEAR);
+    // Down the panes' shared diagonal, each pane counts once.
+    assert!((hits[4].transmittance - 0.343).abs() < 1e-4);
     assert!((hits[4].distance - 1.0).abs() < 1e-4);
     assert!((4..6).contains(&hits[4].triangle));
 }
@@ -249,6 +251,53 @@ mod gpu {
                 // their shared edge.
                 assert_eq!(e.triangle / 2, g.triangle / 2, "{e:?} {g:?}");
             }
+        }
+    }
+
+    #[test]
+    fn both_backends_meet_the_face_of_a_thin_slab_that_faces_the_ray() {
+        // The top and bottom of a slab of no thickness, in both orders and
+        // both windings, so neither list order nor winding decides.
+        let corners = [
+            Vec3::new(-1.0, 1.0, -1.0),
+            Vec3::new(1.0, 1.0, -1.0),
+            Vec3::new(0.0, 1.0, 1.0),
+        ];
+        let reversed = [corners[0], corners[2], corners[1]];
+        let face = |corners, normal: Vec3| scene::Triangle {
+            corners,
+            normal,
+            albedo: Vec3::ONE,
+            opacity: 1.0,
+            vertices: [0; 3],
+        };
+        let triangles = vec![
+            face(corners, Vec3::Y),
+            face(reversed, -Vec3::Y),
+            face(reversed.map(|c| c + Vec3::X * 3.0), Vec3::Y),
+            face(corners.map(|c| c + Vec3::X * 3.0), -Vec3::Y),
+        ];
+        let Some(mut gpu) = gpu(&triangles) else {
+            return;
+        };
+        let mut cpu = CpuBackend::new(&triangles, 1);
+        let rays = [0.0, 3.0]
+            .into_iter()
+            .flat_map(|x| {
+                [
+                    Ray::new(Vec3::new(x, 3.0, 0.0), -Vec3::Y, 10.0, NEAREST),
+                    Ray::new(Vec3::new(x, -2.0, 0.0), Vec3::Y, 10.0, NEAREST),
+                ]
+            })
+            .collect::<Vec<_>>();
+        let expected = cpu.trace(&rays).unwrap();
+        assert_eq!(
+            expected.iter().map(|h| h.triangle).collect::<Vec<_>>(),
+            [0, 1, 2, 3]
+        );
+        let got = gpu.trace(&rays).unwrap();
+        for (e, g) in expected.iter().zip(&got) {
+            assert_eq!(e.triangle, g.triangle, "{e:?} {g:?}");
         }
     }
 

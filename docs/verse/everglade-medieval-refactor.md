@@ -543,6 +543,13 @@ reimplemented from published papers.
   multithreaded CPU backend that agrees with it within a stated tolerance.
   Deterministic by a fixed seed. Starts once P2 gives a compiled kit-town
   scene.
+  Landed in `crates/verse-bake`. Everglade's current scene (4.3 million
+  vertices, 2.4 million triangles, 128 rays a vertex, two bounces) bakes
+  in 122 s on the 4080's GPU and 317 s on its CPU with 24 threads; the
+  first CPU bake, on a Mac with 4 threads, took 851 s. The two backends
+  agree within `GPU_TOLERANCE`: mean differences are under 0.0001, the
+  99th percentile is under 0.001, and the largest are 0.18 for one
+  vertex's ambient light, 0.06 for sun visibility, and 0.01 for probes.
 - **B2 (#10906): lightmap layers in the kit pack.** Sky, sun at four
   positions, and lamps, as second-UV lightmaps and a probe grid, through
   the artifact queue, with today's load-time bake as the fallback. Needs

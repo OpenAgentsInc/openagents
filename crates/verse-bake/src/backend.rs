@@ -20,6 +20,9 @@ pub const NEAREST: u32 = 0;
 /// A ray that reports only the light that passes, and stops once almost
 /// none does.
 pub const SHADOW: u32 = 1;
+/// A ray that reports only the nearest triangle whose normal side faces
+/// it; the GPU backend uses it to learn the hardware's winding.
+pub const FRONT: u32 = 2;
 /// [`RayHit::triangle`] of a ray that crossed nothing.
 pub const MISS: u32 = u32::MAX;
 /// The nearest distance a ray counts a crossing at, m, so a ray does not meet

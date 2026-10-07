@@ -8,7 +8,11 @@
 //! way the CPU walk treats them: the shader looks up the nearest triangle's
 //! opacity, and if light passes it, continues the query just past that hit,
 //! multiplying the transmittance, until a solid triangle, open sky, or
-//! [`LAYERS`] crossings. Written from the ray query model in the Vulkan and
+//! [`LAYERS`] crossings. Stepping a millionth of the distance past each hit
+//! counts a surface once where the ray meets it on an edge two triangles
+//! share, as the CPU walk does. Where the nearest face looks away from the
+//! ray, a second query that culls back faces finds a face at the same
+//! distance that looks toward it, which is the face the CPU walk reports. Written from the ray query model in the Vulkan and
 //! WGSL specifications; no vendor SDK code is used or linked.
 //!
 //! The backend runs on Vulkan adapters only, such as `coderos-4080`'s, and
@@ -46,15 +50,35 @@ struct Hit {
 @group(0) @binding(2) var<storage, read> rays: array<Ray>;
 @group(0) @binding(3) var<storage, read_write> hits: array<Hit>;
 @group(0) @binding(4) var<uniform> count: vec4<u32>;
+@group(0) @binding(5) var<storage, read> normals: array<vec4<f32>>;
 
-// The CPU walk's constants: crate::backend::{T_MIN, DARK, SHADOW, MISS} and
-// verse_pbr::pbr::bake::SOLID.
+// The CPU walk's constants: crate::backend::{T_MIN, DARK, NEAREST, SHADOW,
+// FRONT, MISS} and verse_pbr::pbr::bake::SOLID.
 const T_MIN: f32 = 1e-4;
 const DARK: f32 = 1e-3;
 const SOLID: f32 = 0.999;
+const NEAREST: u32 = 0u;
 const SHADOW: u32 = 1u;
+const FRONT: u32 = 2u;
 const MISS: u32 = 0xffffffffu;
 const LAYERS: u32 = 64u;
+
+// verse_pbr's Layers::gap: far enough past a hit that the triangle across a
+// shared edge is not met again, near enough that a surface a fraction of a
+// millimeter behind still is.
+fn gap(t: f32) -> f32 {
+    return max(t * 1e-6, 1e-7);
+}
+
+// The nearest triangle between `tmin` and `tmax`. The backend winds every
+// triangle so that the hardware's front face is the side its normal faces.
+fn closest(origin: vec3<f32>, dir: vec3<f32>, tmin: f32, tmax: f32, flags: u32) -> RayIntersection {
+    var query: ray_query;
+    rayQueryInitialize(&query, scene, RayDesc(flags, 0xffu, tmin, tmax, origin, dir));
+    // Every triangle is opaque, so one step finishes the traversal.
+    _ = rayQueryProceed(&query);
+    return rayQueryGetCommittedIntersection(&query);
+}
 
 @compute @workgroup_size(64)
 fn trace(@builtin(global_invocation_id) id: vec3<u32>) {
@@ -63,6 +87,16 @@ fn trace(@builtin(global_invocation_id) id: vec3<u32>) {
         return;
     }
     let ray = rays[i];
+    let facing = RAY_FLAG_FORCE_OPAQUE | RAY_FLAG_CULL_BACK_FACING;
+    if (ray.kind == FRONT) {
+        let hit = closest(ray.origin, ray.dir, T_MIN, ray.reach, facing);
+        if (hit.kind == RAY_QUERY_INTERSECTION_NONE) {
+            hits[i] = Hit(1.0, 0.0, MISS, 0u);
+        } else {
+            hits[i] = Hit(1.0, hit.t, hit.primitive_index, 0u);
+        }
+        return;
+    }
     var transmittance = 1.0;
     var distance = 0.0;
     var triangle = MISS;
@@ -71,18 +105,27 @@ fn trace(@builtin(global_invocation_id) id: vec3<u32>) {
         if (start >= ray.reach) {
             break;
         }
-        var query: ray_query;
-        rayQueryInitialize(&query, scene,
-            RayDesc(RAY_FLAG_FORCE_OPAQUE, 0xffu, start, ray.reach, ray.origin, ray.dir));
-        // Every triangle is opaque, so one step finishes the traversal.
-        _ = rayQueryProceed(&query);
-        let hit = rayQueryGetCommittedIntersection(&query);
+        let hit = closest(ray.origin, ray.dir, start, ray.reach, RAY_FLAG_FORCE_OPAQUE);
         if (hit.kind == RAY_QUERY_INTERSECTION_NONE) {
             break;
         }
         if (triangle == MISS) {
             triangle = hit.primitive_index;
             distance = hit.t;
+            // Of faces at the same distance, such as the top and bottom of
+            // a slab of no thickness, the ray meets the one facing it.
+            if (ray.kind == NEAREST && dot(normals[triangle].xyz, ray.dir) >= 0.0) {
+                let front = closest(ray.origin, ray.dir, start,
+                    min(hit.t + gap(hit.t), ray.reach), facing);
+                if (front.kind != RAY_QUERY_INTERSECTION_NONE) {
+                    triangle = front.primitive_index;
+                    distance = front.t;
+                    if (opacity[triangle] >= SOLID) {
+                        transmittance = 0.0;
+                        break;
+                    }
+                }
+            }
         }
         let o = opacity[hit.primitive_index];
         if (o >= SOLID) {
@@ -94,7 +137,7 @@ fn trace(@builtin(global_invocation_id) id: vec3<u32>) {
             transmittance = 0.0;
             break;
         }
-        start = hit.t + max(hit.t * 1e-6, T_MIN);
+        start = hit.t + gap(hit.t);
     }
     if (ray.kind == SHADOW) {
         triangle = MISS;
@@ -118,6 +161,7 @@ struct Traced {
     layout: wgpu::BindGroupLayout,
     tlas: wgpu::Tlas,
     opacity: wgpu::Buffer,
+    normals: wgpu::Buffer,
     // Keeps the bottom level and its vertices alive with the top level.
     _blas: wgpu::Blas,
     _vertices: wgpu::Buffer,
@@ -166,24 +210,81 @@ impl GpuBackend {
         if info.backend != wgpu::Backend::Vulkan {
             return Err(format!("{name} is not a Vulkan adapter"));
         }
-        let traced = if triangles.is_empty() {
-            None
-        } else {
-            Some(Self::build(&device, &queue, triangles))
-        };
-        Ok(Self {
+        let mut backend = Self {
             device,
             queue,
             adapter: name,
-            traced,
-        })
+            traced: None,
+        };
+        let front = backend.front_winding()?;
+        if !triangles.is_empty() {
+            backend.traced = Some(Self::build(
+                &backend.device,
+                &backend.queue,
+                triangles,
+                front,
+            ));
+        }
+        Ok(backend)
     }
 
-    fn build(device: &wgpu::Device, queue: &wgpu::Queue, triangles: &[Triangle]) -> Traced {
+    /// Which winding the hardware counts as a triangle's front face: `true`
+    /// when a triangle whose corners turn counterclockwise seen from the
+    /// side its normal faces is front-facing. The answer comes from tracing
+    /// one triangle, so it holds whatever convention the driver follows.
+    fn front_winding(&self) -> Result<bool, String> {
+        let probe = Triangle {
+            corners: [
+                glam::Vec3::new(-1.0, 0.0, -1.0),
+                glam::Vec3::new(0.0, 0.0, 1.0),
+                glam::Vec3::new(1.0, 0.0, -1.0),
+            ],
+            normal: glam::Vec3::Y,
+            albedo: glam::Vec3::ONE,
+            opacity: 1.0,
+            vertices: [0; 3],
+        };
+        let traced = Self::build(&self.device, &self.queue, &[probe], true);
+        let ray = Ray::new(
+            glam::Vec3::new(0.0, 1.0, -0.5),
+            -glam::Vec3::Y,
+            2.0,
+            crate::backend::FRONT,
+        );
+        Ok(self.dispatch(&traced, &[ray])?[0].triangle != MISS)
+    }
+
+    /// The acceleration structure over `triangles`, each wound so that its
+    /// normal side is the hardware's front face, given `front` from
+    /// [`Self::front_winding`].
+    fn build(
+        device: &wgpu::Device,
+        queue: &wgpu::Queue,
+        triangles: &[Triangle],
+        front: bool,
+    ) -> Traced {
         let positions: Vec<[f32; 3]> = triangles
             .iter()
-            .flat_map(|t| t.corners.map(|c| c.to_array()))
+            .flat_map(|t| {
+                let [a, b, c] = t.corners;
+                let counterclockwise = (b - a).cross(c - a).dot(t.normal) > 0.0;
+                let corners = if counterclockwise == front {
+                    [a, b, c]
+                } else {
+                    [a, c, b]
+                };
+                corners.map(|c| c.to_array())
+            })
             .collect();
+        let normals: Vec<[f32; 4]> = triangles
+            .iter()
+            .map(|t| t.normal.extend(0.0).to_array())
+            .collect();
+        let normals = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
+            label: Some("verse-bake normals"),
+            contents: bytemuck::cast_slice(&normals),
+            usage: wgpu::BufferUsages::STORAGE,
+        });
         let vertices = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
             label: Some("verse-bake vertices"),
             contents: bytemuck::cast_slice(&positions),
@@ -274,6 +375,7 @@ impl GpuBackend {
                 storage(1, true),
                 storage(2, true),
                 storage(3, false),
+                storage(5, true),
                 wgpu::BindGroupLayoutEntry {
                     binding: 4,
                     visibility: wgpu::ShaderStages::COMPUTE,
@@ -304,6 +406,7 @@ impl GpuBackend {
             layout,
             tlas,
             opacity,
+            normals,
             _blas: blas,
             _vertices: vertices,
         }
@@ -357,6 +460,10 @@ impl GpuBackend {
                 wgpu::BindGroupEntry {
                     binding: 4,
                     resource: count.as_entire_binding(),
+                },
+                wgpu::BindGroupEntry {
+                    binding: 5,
+                    resource: traced.normals.as_entire_binding(),
                 },
             ],
         });

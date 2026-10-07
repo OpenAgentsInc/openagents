@@ -1668,22 +1668,6 @@ on the bed and on your character, and the frame rate holds; do the same in
 `everglade-web` under WebGL2 (Low). Native underwater sound is wired in
 the mixer but no zone drives it yet.
 
-## Everglade bake on the 4080 (#10905)
-
-The offline baker's CPU backend is tested here; its GPU backend (Vulkan ray
-queries, `verse-bake --features gpu`) has not run, because this Mac has no
-Vulkan ray queries and SSH placement to `coderos-4080` is not configured
-(see "Remote placement for gates and benchmarks"). On `coderos-4080`, at the
-pushed commit, run `cargo test -p verse-bake --features gpu --lib gpu` and
-check that both GPU tests pass rather than print `skipped`. Then time a bake
-on each backend and compare them: `cargo run --release -p verse-bake
---features gpu,everglade -- --everglade
-assets/verse/everglade/<PACK_SHA256>.vtp --backend gpu --compare --threads
-16 --out bake-out`. Check that the receipt's `compared.within_tolerance` is
-`true`, and record its `wall_ms` and the CPU run's `compared.wall_ms`. Once
-the full kit town from P4 and P5 lands, bake it the same way. For
-comparison, Everglade's current scene (4.3 million vertices, 2.4 million
-triangles) baked on this Mac's CPU backend with four workers in 851 s.
 ## Native plugin commission activation (REV-30, #10837)
 
 Use the existing authoritative private merchant ledger, protected original

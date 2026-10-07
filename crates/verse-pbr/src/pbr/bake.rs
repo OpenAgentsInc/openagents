@@ -55,6 +55,57 @@ pub struct IndexedTrace {
     pub nearest: Option<(f32, u32)>,
 }
 
+/// The most partial occluders one ray tells apart. Past this many, a
+/// crossing counts without checking whether it repeats an earlier one.
+const LAYERS: usize = 64;
+
+/// The partial occluders a ray crosses, each surface once. A ray through
+/// the edge two triangles share meets both at the same distance, and a ray
+/// through a vertex meets every triangle around it, but light crosses the
+/// surface only once. Crossings within [`Layers::gap`] of a counted one
+/// are taken as the same surface.
+#[derive(Clone, Copy, Debug)]
+struct Layers {
+    distances: [f32; LAYERS],
+    len: usize,
+    /// The fraction of light the counted crossings pass.
+    passed: f32,
+}
+
+impl Default for Layers {
+    fn default() -> Self {
+        Self {
+            distances: [0.0; LAYERS],
+            len: 0,
+            passed: 1.0,
+        }
+    }
+}
+
+impl Layers {
+    /// How far apart two crossings must lie to count as two surfaces: a
+    /// millionth of the distance, and at least 0.1 µm. It is a few rounding
+    /// steps of the distance, so it joins the triangles around an edge or a
+    /// vertex but never a separate surface just behind one.
+    fn gap(t: f32) -> f32 {
+        (t * 1e-6).max(1e-7)
+    }
+
+    /// Counts a crossing at distance `t` of a surface of `opacity`, unless
+    /// it repeats one already counted.
+    fn cross(&mut self, t: f32, opacity: f32) {
+        let seen = &self.distances[..self.len];
+        if seen.iter().any(|&d| (d - t).abs() < Self::gap(d.max(t))) {
+            return;
+        }
+        if self.len < LAYERS {
+            self.distances[self.len] = t;
+            self.len += 1;
+        }
+        self.passed *= 1.0 - opacity.min(1.0);
+    }
+}
+
 /// Everything one ray meets within its range.
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct Trace {
@@ -221,7 +272,10 @@ impl Bvh {
 
     /// The light that passes within `max` meters along the ray, and the
     /// nearest triangle it crosses. Partial occluders multiply the
-    /// transmittance by one minus their opacity; a solid one stops it.
+    /// transmittance by one minus their opacity, once for each surface
+    /// even where the ray meets it on an edge two triangles share; a solid
+    /// one stops it. Of two faces at the same distance, the nearest is the
+    /// one that faces the ray.
     #[must_use]
     pub fn trace(&self, origin: Vec3, dir: Vec3, max: f32) -> Trace {
         let (transmittance, nearest) = self.crossings(origin, dir, max);
@@ -255,38 +309,55 @@ impl Bvh {
     /// The transmittance along a ray and the nearest crossing, as an
     /// internal triangle index.
     fn crossings(&self, origin: Vec3, dir: Vec3, max: f32) -> (f32, Option<(f32, usize)>) {
-        let mut transmittance = 1.0f32;
+        let mut layers = Layers::default();
+        let mut solid = false;
         let mut nearest: Option<(f32, usize)> = None;
+        let mut facing: Option<(f32, usize)> = None;
         self.walk(origin, dir, max, |t, i| {
             if nearest.is_none_or(|(d, _)| t < d) {
                 nearest = Some((t, i));
             }
+            if self.triangles[i].normal.dot(dir) < 0.0 && facing.is_none_or(|(d, _)| t < d) {
+                facing = Some((t, i));
+            }
             let opacity = self.triangles[i].opacity;
             if opacity >= SOLID {
-                transmittance = 0.0;
+                solid = true;
                 // Nothing beyond a solid face matters, but a nearer one may.
                 Some(false)
             } else {
-                transmittance *= 1.0 - opacity;
+                layers.cross(t, opacity);
                 None
             }
         });
-        (transmittance, nearest)
+        // Where two faces coincide, such as the top and bottom of a slab of
+        // no thickness, the ray meets the one that faces it.
+        let nearest = match (nearest, facing) {
+            (Some((t, i)), Some(front))
+                if self.triangles[i].normal.dot(dir) >= 0.0 && front.0 <= t + Layers::gap(t) =>
+            {
+                Some(front)
+            }
+            (nearest, _) => nearest,
+        };
+        (if solid { 0.0 } else { layers.passed }, nearest)
     }
 
     /// The fraction of light that passes within `max` meters along the ray,
     /// stopping early once almost nothing passes.
     #[must_use]
     pub fn transmittance(&self, origin: Vec3, dir: Vec3, max: f32) -> f32 {
-        let mut transmittance = 1.0f32;
-        self.walk(origin, dir, max, |_, i| {
-            transmittance *= 1.0 - self.triangles[i].opacity.min(1.0);
-            (transmittance < 1e-3).then(|| {
-                transmittance = 0.0;
-                true
-            })
+        let mut layers = Layers::default();
+        let mut dark = false;
+        self.walk(origin, dir, max, |t, i| {
+            let opacity = self.triangles[i].opacity;
+            if opacity < SOLID {
+                layers.cross(t, opacity);
+            }
+            dark = opacity >= SOLID || layers.passed < 1e-3;
+            dark.then_some(true)
         });
-        transmittance
+        if dark { 0.0 } else { layers.passed }
     }
 
     /// Whether anything lies within `max` meters along the ray.
@@ -332,7 +403,8 @@ impl Bvh {
                     {
                         match found(t, i as usize) {
                             Some(true) => return,
-                            Some(false) => limit = t,
+                            // Faces that coincide with this one still count.
+                            Some(false) => limit = t + Layers::gap(t),
                             None => {}
                         }
                     }
@@ -635,6 +707,60 @@ mod tests {
                 params: [0.0, 0.8, 0.0, 1.0],
             })
             .to_vec()
+    }
+
+    #[test]
+    fn a_ray_through_a_shared_edge_crosses_the_surface_once() {
+        // Two halves of a glass pane at y = 1 that stops 30 percent; the
+        // ray runs down their shared diagonal.
+        let half = |corners: [Vec3; 3]| Occluder {
+            corners,
+            normal: Vec3::Y,
+            albedo: Vec3::splat(0.5),
+            opacity: 0.3,
+        };
+        let bvh = Bvh::from_occluders([
+            half([
+                Vec3::new(-1.0, 1.0, -1.0),
+                Vec3::new(1.0, 1.0, -1.0),
+                Vec3::new(1.0, 1.0, 1.0),
+            ]),
+            half([
+                Vec3::new(-1.0, 1.0, -1.0),
+                Vec3::new(1.0, 1.0, 1.0),
+                Vec3::new(-1.0, 1.0, 1.0),
+            ]),
+        ]);
+        let origin = Vec3::new(0.25, 3.0, 0.25);
+        let trace = bvh.trace(origin, -Vec3::Y, 10.0);
+        assert!((trace.transmittance - 0.7).abs() < 1e-6, "{trace:?}");
+        assert!((bvh.transmittance(origin, -Vec3::Y, 10.0) - 0.7).abs() < 1e-6);
+        // Off the edge, still one crossing.
+        let off = Vec3::new(0.5, 3.0, -0.25);
+        assert!((bvh.transmittance(off, -Vec3::Y, 10.0) - 0.7).abs() < 1e-6);
+    }
+
+    #[test]
+    fn of_two_coincident_faces_a_ray_meets_the_one_facing_it() {
+        // A slab of no thickness: a dark face down and a white face up.
+        let face = |normal: Vec3, albedo: f32| Occluder {
+            corners: [
+                Vec3::new(-1.0, 1.0, -1.0),
+                Vec3::new(1.0, 1.0, -1.0),
+                Vec3::new(0.0, 1.0, 1.0),
+            ],
+            normal,
+            albedo: Vec3::splat(albedo),
+            opacity: 1.0,
+        };
+        for order in [[0, 1], [1, 0]] {
+            let faces = [face(-Vec3::Y, 0.1), face(Vec3::Y, 0.9)];
+            let bvh = Bvh::from_occluders(order.map(|k| faces[k]));
+            let down = bvh.trace(Vec3::new(0.0, 3.0, 0.0), -Vec3::Y, 10.0);
+            assert_eq!(down.nearest.unwrap().0.albedo, Vec3::splat(0.9));
+            let up = bvh.trace(Vec3::ZERO, Vec3::Y, 10.0);
+            assert_eq!(up.nearest.unwrap().0.albedo, Vec3::splat(0.1));
+        }
     }
 
     #[test]
