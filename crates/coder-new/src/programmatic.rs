@@ -833,6 +833,7 @@ fn chat(
         });
     } else {
         let _gate = GateGuard::install(context);
+        let restored_entries = app.live.entries.len();
         app.submit(&prompt, &context.cwd);
         if !app.live.busy {
             return Err(app
@@ -844,8 +845,28 @@ fn chat(
         }
         let mut background = live::Background::default();
         let mut partial = PartialStream::default();
-        let mut previous = BTreeMap::new();
-        let mut child_previous = BTreeMap::new();
+        // A continued session streams only this turn's entries, not the
+        // history it restored.
+        let mut previous: BTreeMap<usize, Value> = app
+            .live
+            .entries
+            .iter()
+            .enumerate()
+            .take(restored_entries)
+            .map(|(index, entry)| (index, entry_value(entry)))
+            .collect();
+        let mut child_previous: BTreeMap<(String, usize), Value> = app
+            .delegations
+            .iter()
+            .flat_map(|child| {
+                child
+                    .chat
+                    .entries
+                    .iter()
+                    .enumerate()
+                    .map(|(index, entry)| ((child.id.clone(), index), entry_value(entry)))
+            })
+            .collect();
         let mut child_partial = BTreeMap::new();
         let started = std::time::Instant::now();
         let mut changed = false;

@@ -26,6 +26,9 @@ struct Following {
     /// The person pressed a key: take the session over as soon as its
     /// holder lets go.
     takeover: bool,
+    /// Keep the newest work in view; scrolling up lets go of it, and
+    /// End takes it up again.
+    stick: bool,
 }
 
 /// A stable newest-first snapshot of saved conversations.
@@ -287,6 +290,7 @@ impl App {
             id: id.to_owned(),
             seen: None,
             takeover: false,
+            stick: true,
         });
         self.notice = Some(format!(
             "Following {id}. Press any key to take over the conversation."
@@ -353,7 +357,7 @@ impl App {
         if trajectory::restore_app(&mut restored, document).is_err() {
             return;
         }
-        let at_end = self.main_scroll == u16::MAX || self.scroll == u16::MAX;
+        let at_end = self.history.following.as_ref().is_none_or(|f| f.stick);
         self.live = restored.live;
         self.delegations = restored.delegations;
         if at_end || self.live.entries.is_empty() {
@@ -362,6 +366,12 @@ impl App {
         }
         self.screen = Screen::Conversation;
         self.history.dirty = false;
+    }
+
+    pub(crate) fn follow_stick(&mut self, stick: bool) {
+        if let Some(following) = &mut self.history.following {
+            following.stick = stick;
+        }
     }
 
     /// A key while following asks to take the session over; Ctrl+C quits.
@@ -377,10 +387,16 @@ impl App {
         match key.code {
             KeyCode::PageUp | KeyCode::Up => {
                 self.scroll = self.scroll.saturating_sub(3);
+                self.follow_stick(false);
                 return true;
             }
             KeyCode::PageDown | KeyCode::Down => {
                 self.scroll = self.scroll.saturating_add(3);
+                return true;
+            }
+            KeyCode::End => {
+                self.scroll = u16::MAX;
+                self.follow_stick(true);
                 return true;
             }
             _ => {}

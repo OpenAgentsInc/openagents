@@ -785,7 +785,10 @@ impl App {
                 Event::Key(key) => self.follow_key(key),
                 Event::Mouse(mouse) => {
                     match mouse.kind {
-                        MouseEventKind::ScrollUp => self.scroll = self.scroll.saturating_sub(3),
+                        MouseEventKind::ScrollUp => {
+                            self.scroll = self.scroll.saturating_sub(3);
+                            self.follow_stick(false);
+                        }
                         MouseEventKind::ScrollDown => self.scroll = self.scroll.saturating_add(3),
                         _ => {}
                     }
