@@ -31,13 +31,9 @@ const RUN_SECONDS: u64 = 600;
 const WRITE_SECONDS: u64 = 30 * 60;
 const POLL: Duration = Duration::from_millis(50);
 
-/// Whether this process's chat lets the native Codex bridge edit its
-/// working directory (`openagents coder chat --codex-writes`). Off, Codex
-/// runs read-only, as it always did. On, each Codex delegation runs under
-/// Codex's own `workspace-write` sandbox, which writes the working
-/// directory and its temporary files and turns the network off. A gated
-/// chat ([`crate::approval`]) keeps Codex read-only and asks nobody.
-static CODEX_WRITES: AtomicBool = AtomicBool::new(false);
+/// Codex starts with full access. Explicitly gated chats keep Codex
+/// read-only without requesting write approval.
+static CODEX_WRITES: AtomicBool = AtomicBool::new(true);
 
 /// Lets Codex delegations in this process edit their working directory, or
 /// keeps them read-only. A chat sets it for its run.
@@ -48,6 +44,7 @@ pub fn allow_codex_writes(on: bool) {
 /// The sandbox the native Codex bridge runs a delegation in.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum CodexSandbox {
+    FullAccess,
     ReadOnly,
     WorkspaceWrite,
 }
@@ -55,6 +52,7 @@ pub enum CodexSandbox {
 impl CodexSandbox {
     fn word(self) -> &'static str {
         match self {
+            Self::FullAccess => "danger-full-access",
             Self::ReadOnly => "read-only",
             Self::WorkspaceWrite => "workspace-write",
         }
@@ -62,17 +60,14 @@ impl CodexSandbox {
 
     fn seconds(self) -> u64 {
         match self {
+            Self::FullAccess => WRITE_SECONDS,
             Self::ReadOnly => RUN_SECONDS,
             Self::WorkspaceWrite => WRITE_SECONDS,
         }
     }
 }
 
-/// The sandbox for the next Codex delegation: read-only unless the chat
-/// allows writes. A gated chat's Codex is always read-only and asks
-/// nobody: a gated chat answers questions and runs commands one approval
-/// at a time, and a read-only lookup never waits on a person. Writes are
-/// for an ungated turn in a task's own worktree.
+/// Full access by default; explicitly gated chats keep Codex read-only.
 fn codex_sandbox() -> Result<CodexSandbox, String> {
     if !crate::approval::tools_allowed() {
         return Err("The crew charter refuses Codex delegation, including read-only work.".into());
@@ -83,10 +78,10 @@ fn codex_sandbox() -> Result<CodexSandbox, String> {
     ))
 }
 
-/// Codex writes only when the chat allows it and no approval gate runs.
+/// Full access requires write permission and an ungated chat.
 fn sandbox_for(writes: bool, gated: bool) -> CodexSandbox {
     if writes && !gated {
-        CodexSandbox::WorkspaceWrite
+        CodexSandbox::FullAccess
     } else {
         CodexSandbox::ReadOnly
     }
@@ -205,13 +200,12 @@ pub fn cli_tool_definition() -> Value {
 pub fn run_tool_definition() -> Value {
     json!({"type":"function","function":{
         "name":"Run",
-        "description":"Run one shell command in the working directory and return its exit status and output. Read-only commands run at once: pwd, ls, cat, head, tail, rg, grep, find, wc, git status, log, diff, and show, cargo metadata and tree, and any program's --version or --help. A command that changes files, the repository, or this computer waits for the owner's CONFIRM or REJECT. Never start an interactive program or a pager.",
+        "description":"Run one shell command in the working directory and return its exit status and output. Commands have full filesystem and network access by default. Follow the user's instructions. An explicitly gated host can require CONFIRM or REJECT for changes. Never start an interactive program or a pager.",
         "parameters":{"type":"object","properties":{"command":{"type":"string","minLength":1,"maxLength":8192}},"required":["command"],"additionalProperties":false}
     }})
 }
 
-/// Runs `script` for the `run` tool: inside the checkout's write boundary,
-/// after the approval gate, as `{"exit","output","timed_out"}`.
+/// Runs `script` with full access unless the host explicitly installs a gate.
 ///
 /// # Errors
 /// The working directory is unavailable or the boundary cannot be built.
@@ -224,10 +218,7 @@ pub async fn run_command(
     let directory = cwd
         .canonicalize()
         .map_err(|_| "The working directory is unavailable.".to_string())?;
-    let boundary = coder_boundary::Boundary::writing(&directory)
-        .owned_scratch_under(std::env::temp_dir())
-        .build()
-        .map_err(|error| format!("The host could not bound the command: {error}"))?;
+    let boundary = command_boundary(&directory)?;
     let checkout = Checkout {
         directory,
         boundary,
@@ -263,7 +254,7 @@ pub fn acp_tool_definition(agents: &[AcpAgent]) -> Option<Value> {
     }
     Some(json!({"type":"function","function":{
         "name":"acp_subagent",
-        "description":"Delegate a task to a registered local agent through ACP or the built-in native Codex bridge. Use exactly the agent the user names; never substitute another agent. If that agent is unavailable, report the reason and let the user choose. The host supplies the executable. Include the task, relevant context, and the result you need. This starts one child session, streams its work, and closes it when the task ends. ACP permission requests are denied. The native Codex bridge keeps Codex's configured model and uses a read-only sandbox without approval prompts, unless the host let this chat's Codex edit the working directory under Codex's workspace-write sandbox; an enabled plugin does not grant additional authority.",
+        "description":"Delegate a task to a registered local agent through ACP or the built-in native Codex bridge. Use exactly the agent the user names; never substitute another agent. If that agent is unavailable, report the reason and let the user choose. The host supplies the executable. Include the task, relevant context, and the result you need. This starts one child session, streams its work, and closes it when the task ends. Agents start with full permissions by default: native Codex has no sandbox or approval prompts, and ACP permission requests are approved. Explicit host approval policies still apply.",
         "parameters":{"type":"object","properties":{"agent":{"type":"string","enum":ids},"task":{"type":"string","minLength":1,"maxLength":65536}},"required":["agent","task"],"additionalProperties":false}
     }}))
 }
@@ -489,17 +480,14 @@ async fn codex_cli(
         return Err("The crew charter refuses Codex delegation, including read-only work.".into());
     }
     let mut command = std::process::Command::new(program);
+    command.args(["exec", "--json", "--skip-git-repo-check"]);
+    if sandbox == CodexSandbox::FullAccess {
+        command.arg("--dangerously-bypass-approvals-and-sandbox");
+    } else {
+        command.args(["--sandbox", sandbox.word()]);
+    }
     command
-        .args([
-            "exec",
-            "--json",
-            "--skip-git-repo-check",
-            "--sandbox",
-            sandbox.word(),
-            "-c",
-            "approval_policy=\"never\"",
-            "-",
-        ])
+        .args(["-c", "approval_policy=\"never\"", "-"])
         .current_dir(cwd);
     let (mark, value) = coder_delegate::delegate::Agent::Codex.engine_mark();
     command.env(mark, value);
@@ -693,6 +681,20 @@ struct AcpEvents<'a> {
 }
 
 impl Handler for AcpEvents<'_> {
+    fn permission(
+        &mut self,
+        request: &acp_client::wire::PermissionRequest,
+    ) -> acp_client::wire::PermissionAnswer {
+        let option = if !crate::approval::gated() {
+            request.allow()
+        } else {
+            request.reject()
+        };
+        option.map_or(acp_client::wire::PermissionAnswer::Cancelled, |option| {
+            acp_client::wire::PermissionAnswer::Selected(option.to_owned())
+        })
+    }
+
     fn update(&mut self, update: Update) {
         match update {
             Update::AgentText(text) => {
@@ -909,10 +911,7 @@ async fn run_microcoder<G: Generate>(
     let directory = cwd
         .canonicalize()
         .map_err(|_| "The working directory is unavailable.".to_string())?;
-    let boundary = coder_boundary::Boundary::writing(&directory)
-        .owned_scratch_under(std::env::temp_dir())
-        .build()
-        .map_err(|error| format!("Microcoder could not bound its commands: {error}"))?;
+    let boundary = command_boundary(&directory)?;
     let environment = Checkout {
         directory: directory.clone(),
         boundary,
@@ -922,7 +921,7 @@ async fn run_microcoder<G: Generate>(
     let state = State {
         task: redact_text(task, redaction_keys),
         environment: format!(
-            "Working directory: {}. Commands may write only this checkout and the host's private scratch directory.",
+            "Working directory: {}. Commands have full filesystem and network access unless the host explicitly installs an approval policy.",
             directory.display()
         ),
         ..State::default()
@@ -1063,9 +1062,20 @@ impl Judge for PluginJudge {
     }
 }
 
+fn command_boundary(directory: &Path) -> Result<Option<coder_boundary::Boundary>, String> {
+    if !crate::approval::gated() {
+        return Ok(None);
+    }
+    coder_boundary::Boundary::writing(directory)
+        .owned_scratch_under(std::env::temp_dir())
+        .build()
+        .map(Some)
+        .map_err(|error| format!("The host could not bound the command: {error}"))
+}
+
 struct Checkout<'a> {
     directory: PathBuf,
-    boundary: coder_boundary::Boundary,
+    boundary: Option<coder_boundary::Boundary>,
     cancel: Arc<AtomicBool>,
     redaction_keys: &'a [ApiKey],
 }
@@ -1085,10 +1095,7 @@ impl Env for Checkout<'_> {
         }
         let result = async {
             #[cfg(unix)]
-            let mut command = self
-                .boundary
-                .command("/bin/sh", ["-c", script])
-                .map_err(|error| error.to_string())?;
+            let shell = PathBuf::from("/bin/sh");
             #[cfg(windows)]
             let shell = std::env::var_os("SystemRoot")
                 .map(PathBuf::from)
@@ -1096,12 +1103,25 @@ impl Env for Checkout<'_> {
                 .ok_or_else(|| "Cannot locate the Windows system directory.".to_string())?
                 .join("System32/WindowsPowerShell/v1.0/powershell.exe");
             #[cfg(windows)]
-            let mut command = self
-                .boundary
-                .command(shell, ["-NoProfile", "-NonInteractive", "-Command", script])
-                .map_err(|error| error.to_string())?;
+            let arguments = ["-NoProfile", "-NonInteractive", "-Command", script];
+            #[cfg(unix)]
+            let arguments = ["-c", script];
+            let mut command = match &self.boundary {
+                Some(boundary) => boundary
+                    .command(shell, arguments)
+                    .map_err(|error| error.to_string())?,
+                None => {
+                    let mut command = std::process::Command::new(shell);
+                    command.args(arguments);
+                    command
+                }
+            };
             command.current_dir(&self.directory);
-            if let Some(scratch) = self.boundary.scratch() {
+            if let Some(scratch) = self
+                .boundary
+                .as_ref()
+                .and_then(|boundary| boundary.scratch())
+            {
                 command.env("TMPDIR", scratch);
             }
             scrub_credentials(&mut command);
@@ -1145,7 +1165,7 @@ impl Env for Checkout<'_> {
             return None;
         }
         let path = self.directory.join(path).canonicalize().ok()?;
-        if !path.starts_with(&self.directory) {
+        if self.boundary.is_some() && !path.starts_with(&self.directory) {
             return None;
         }
         let file = std::fs::File::open(path).ok()?;
@@ -1236,6 +1256,74 @@ mod tests {
     use super::*;
 
     #[tokio::test]
+    #[cfg(unix)]
+    async fn default_commands_can_write_and_read_outside_the_working_directory() {
+        let dir = tempfile::tempdir().unwrap();
+        let cwd = dir.path().join("checkout");
+        std::fs::create_dir(&cwd).unwrap();
+        let cancel = Arc::new(AtomicBool::new(false));
+        let result = run_command("printf 'full access' > ../result", &cwd, &[], &cancel)
+            .await
+            .unwrap();
+        assert_eq!(result["exit"], 0, "{result}");
+        assert_eq!(
+            std::fs::read_to_string(dir.path().join("result")).unwrap(),
+            "full access"
+        );
+        let environment = Checkout {
+            directory: cwd.clone(),
+            boundary: command_boundary(&cwd).unwrap(),
+            cancel,
+            redaction_keys: &[],
+        };
+        assert_eq!(
+            environment.read("../result").await.as_deref(),
+            Some("full access")
+        );
+        assert!(
+            crate::plugins::Plugins::default()
+                .execution_settings(cwd)
+                .shell
+        );
+    }
+
+    #[test]
+    fn an_explicit_approval_gate_still_refuses_acp_permissions() {
+        let desk = crate::approval::Desk::new();
+        crate::approval::install(Some(crate::approval::Gate {
+            desk: Arc::clone(&desk),
+            cancel: Arc::new(AtomicBool::new(false)),
+        }));
+        struct Reset;
+        impl Drop for Reset {
+            fn drop(&mut self) {
+                crate::approval::install(None);
+            }
+        }
+        let _reset = Reset;
+        let request = serde_json::from_value(json!({
+            "options": [
+                {"optionId":"allow","name":"Allow","kind":"allow_once"},
+                {"optionId":"deny","name":"Deny","kind":"reject_once"}
+            ]
+        }))
+        .unwrap();
+        let mut emit = |_| {};
+        let mut handler = AcpEvents {
+            emit: &mut emit,
+            text: String::new(),
+            tools: BTreeMap::new(),
+        };
+        assert_eq!(
+            handler.permission(&request),
+            acp_client::wire::PermissionAnswer::Selected("deny".into())
+        );
+        desk.close();
+        assert_eq!(codex_sandbox().unwrap(), CodexSandbox::ReadOnly);
+        assert!(desk.drain().is_empty());
+    }
+
+    #[tokio::test]
     async fn crew_tool_free_scope_refuses_native_fallback_reads_and_commands() {
         let dir = tempfile::tempdir().unwrap();
         let directory = dir.path().canonicalize().unwrap();
@@ -1256,7 +1344,7 @@ mod tests {
         let _reset = Reset;
         let environment = Checkout {
             directory,
-            boundary,
+            boundary: Some(boundary),
             cancel: Arc::new(AtomicBool::new(false)),
             redaction_keys: &[],
         };
@@ -1271,7 +1359,7 @@ mod tests {
 
     #[test]
     fn a_gated_chat_keeps_codex_read_only_and_asks_nobody() {
-        assert_eq!(sandbox_for(true, false), CodexSandbox::WorkspaceWrite);
+        assert_eq!(sandbox_for(true, false), CodexSandbox::FullAccess);
         assert_eq!(sandbox_for(true, true), CodexSandbox::ReadOnly);
         assert_eq!(sandbox_for(false, false), CodexSandbox::ReadOnly);
         assert_eq!(sandbox_for(false, true), CodexSandbox::ReadOnly);
@@ -1319,7 +1407,11 @@ mod tests {
             .unwrap_err();
             assert!(error.contains("crew charter"));
         }
-        for sandbox in [CodexSandbox::ReadOnly, CodexSandbox::WorkspaceWrite] {
+        for sandbox in [
+            CodexSandbox::FullAccess,
+            CodexSandbox::ReadOnly,
+            CodexSandbox::WorkspaceWrite,
+        ] {
             assert!(
                 codex_cli(
                     &program,
@@ -1371,7 +1463,7 @@ mod tests {
 
     #[tokio::test]
     #[cfg(unix)]
-    async fn native_codex_streams_its_own_protocol_and_keeps_read_only_permissions() {
+    async fn native_codex_starts_with_full_permissions_and_streams_its_protocol() {
         use std::os::unix::fs::PermissionsExt;
         let dir = tempfile::tempdir().unwrap();
         let program = dir.path().join("codex");
@@ -1412,9 +1504,10 @@ printf '%s\n' '{"type":"turn.completed","usage":{"input_tokens":11,"output_token
         );
         let args = std::fs::read_to_string(dir.path().join("args")).unwrap();
         assert!(args.starts_with("exec\n--json\n"));
-        assert!(args.contains("--sandbox\nread-only\n"));
+        assert_eq!(result["sandbox"], "danger-full-access");
+        assert!(args.contains("--dangerously-bypass-approvals-and-sandbox\n"));
         assert!(args.contains("approval_policy=\"never\""));
-        assert!(!args.contains("bypass"));
+        assert!(!args.contains("--sandbox\n"));
         assert!(!args.contains("-m\n"));
         assert!(events.iter().any(
             |event| matches!(event, RuntimeEvent::Tool { name, running: true, .. } if name == "Run")
@@ -1734,7 +1827,7 @@ printf '%s\n' '{"type":"turn.completed","usage":{"input_tokens":5,"output_tokens
 
     #[tokio::test]
     #[cfg(unix)]
-    async fn acp_permission_requests_do_not_gain_authority_from_enablement() {
+    async fn acp_permission_requests_are_approved_by_default() {
         let dir = tempfile::tempdir().unwrap();
         let mut blocks = acp_client::replay::blocks(acp_client::replay::GROK_TURN);
         let completed = std::mem::replace(
@@ -1764,7 +1857,7 @@ printf '%s\n' '{"type":"turn.completed","usage":{"input_tokens":5,"output_tokens
             .iter()
             .find(|frame| frame["id"] == "permission-1")
             .unwrap();
-        assert_eq!(answer["result"]["outcome"]["optionId"], "deny");
+        assert_eq!(answer["result"]["outcome"]["optionId"], "allow");
     }
 
     #[tokio::test]
@@ -1915,7 +2008,7 @@ printf '%s\n' '{"type":"turn.completed","usage":{"input_tokens":5,"output_tokens
         let cancel = Arc::new(AtomicBool::new(false));
         let environment = Checkout {
             directory,
-            boundary,
+            boundary: Some(boundary),
             cancel: Arc::clone(&cancel),
             redaction_keys: &keys,
         };

@@ -18,6 +18,7 @@ pub struct Chat {
     pub entries: Vec<Entry>,
     pub partial: String,
     pub partial_model: Option<String>,
+    pub reply_started_at: Option<std::time::Instant>,
     pub busy: bool,
     pub notice: Option<String>,
     pub tokens: u64,
@@ -34,6 +35,7 @@ pub enum Entry {
     Assistant {
         text: String,
         model: Option<String>,
+        elapsed_ms: Option<u64>,
     },
     Tool {
         name: String,
@@ -63,12 +65,18 @@ pub struct Delegation {
 }
 
 impl Chat {
+    pub fn reply_elapsed_ms(&self) -> Option<u64> {
+        self.reply_started_at
+            .map(|started| started.elapsed().as_millis().min(u128::from(u64::MAX)) as u64)
+    }
+
     pub fn layout_builds(&self) -> usize {
         self.cache.builds
     }
     pub fn finish_partial(&mut self) {
         if !self.partial.is_empty() {
             self.entries.push(Entry::Assistant {
+                elapsed_ms: self.reply_elapsed_ms(),
                 text: std::mem::take(&mut self.partial),
                 model: self.partial_model.take(),
             });
@@ -828,7 +836,7 @@ mod tests {
         assert_eq!(app.live.tokens, 5);
         assert!(matches!(
             &app.live.entries[1],
-            Entry::Assistant { text, model }
+            Entry::Assistant { text, model, .. }
                 if text == "Loopback reply" && model.as_deref() == Some("fixture/model")
         ));
 

@@ -19,7 +19,6 @@ pub enum RailSlot {
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum RailBinding {
     SelectedModel,
-    ConnectionStatus,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -62,22 +61,13 @@ pub const DEFINITIONS: &[PluginDefinition] = &[
         default_enabled: false,
         tools: &[],
         model_provider: Some(ModelProviderBinding::OpenRouter),
-        composer_rails: &[
-            RailContribution {
-                id: "selected-model",
-                slot: RailSlot::ComposerTopRight,
-                binding: RailBinding::SelectedModel,
-                priority: 100,
-                max_cells: 64,
-            },
-            RailContribution {
-                id: "connection-status",
-                slot: RailSlot::ComposerBottomRight,
-                binding: RailBinding::ConnectionStatus,
-                priority: 100,
-                max_cells: 32,
-            },
-        ],
+        composer_rails: &[RailContribution {
+            id: "selected-model",
+            slot: RailSlot::ComposerTopRight,
+            binding: RailBinding::SelectedModel,
+            priority: 100,
+            max_cells: 64,
+        }],
     },
     PluginDefinition {
         id: "microcoder",

@@ -678,7 +678,9 @@ async fn provider_dispatch_uses_host_refs_and_keeps_response_strings_as_bounded_
     );
     let requests = server.join().unwrap();
     assert_eq!(requests.len(), 5);
-    assert_eq!(requests[0]["tools"].as_array().unwrap().len(), 2);
+    let tools = requests[0]["tools"].as_array().unwrap();
+    assert_eq!(tools.len(), 3);
+    assert!(tools.iter().any(|tool| tool["function"]["name"] == "Run"));
     let observation = requests[2]["messages"].as_array().unwrap().last().unwrap();
     assert_eq!(observation["role"], "tool");
     let content = observation["content"].as_str().unwrap();

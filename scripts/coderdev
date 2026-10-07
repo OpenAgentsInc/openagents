@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Build the coder binary from this checkout, then run it from the caller's
+# Build the current Coder terminal from this checkout, then run it from the caller's
 # directory with the caller's arguments.
 #
 # The build uses the toolchain that rust-toolchain.toml pins and Cargo's own
@@ -8,13 +8,14 @@
 # runs by mistake.
 #
 # Environment:
-#   CARGO_TARGET_DIR   Where Cargo writes the build; default target/ in the
-#                      checkout. Honored for both the build and the launch.
+#   CARGO_TARGET_DIR   Where Cargo writes the build; default
+#                      ~/work/openagents-target-agent1, outside the checkout.
 #   CODERDEV_ENV_FILE  Optional file of KEY=VALUE lines to load before the
 #                      binary starts. It is sourced in this process only, so
 #                      nothing reaches the parent shell, and nothing is printed.
 #   CODERDEV_CARGO     Cargo command to run; default cargo. Tests point this at
 #                      a stub.
+#   CODERDEV_LEASE_BIN OpenAgents command that supplies the build lease.
 #
 # Diagnostics go to standard error as one line: the source revision, whether
 # the tree is dirty, and the executable path. A timestamp is not provenance;
@@ -24,26 +25,41 @@ set -euo pipefail
 source_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 launch_dir="$PWD"
 cargo="${CODERDEV_CARGO:-cargo}"
-target_dir="${CARGO_TARGET_DIR:-${source_dir}/target}"
+target_dir="${CARGO_TARGET_DIR:-$HOME/work/openagents-target-agent1}"
 case "$target_dir" in
   /*) ;;
   *) target_dir="${launch_dir}/${target_dir}" ;;
 esac
 export CARGO_TARGET_DIR="$target_dir"
+export CODER_BUILD_COMMIT="$(git -C "$source_dir" rev-parse HEAD)"
 
 revision="$(git -C "$source_dir" rev-parse --short HEAD 2>/dev/null || echo unknown)"
 dirty=clean
 if test -n "$(git -C "$source_dir" status --porcelain --untracked-files=no 2>/dev/null)"; then
   dirty=dirty
 fi
+export CODER_BUILD_DIRTY=0
+if test "$dirty" = dirty; then export CODER_BUILD_DIRTY=1; fi
+
+lease="${CODERDEV_LEASE_BIN:-${target_dir}/debug/openagents}"
+if ! "$lease" lease list >/dev/null 2>&1; then
+  lease="$(command -v openagents || true)"
+  if test -z "$lease" || ! "$lease" lease list >/dev/null 2>&1; then
+    # Bootstrap the broker once when the installed release has no lease command.
+    (cd "$source_dir" && "$cargo" build --quiet -p openagents-cli --bin openagents)
+    lease="${target_dir}/debug/openagents"
+  fi
+fi
 
 # Build from the source tree; the subshell keeps the launch directory intact.
-(cd "$source_dir" && "$cargo" build --quiet -p coder --bin coder) || {
+(cd "$source_dir" && "$lease" lease build --keep-target-dir --priority owner -- \
+  "$cargo" build --quiet -p coder-new --bin coder-new \
+  -p openagents-cli --bin openagents -p microcoder --bin microcoder) || {
   echo "coderdev: build failed; not running the previous executable" >&2
   exit 1
 }
 
-binary="${target_dir}/debug/coder"
+binary="${target_dir}/debug/coder-new"
 test -x "$binary" || {
   echo "coderdev: build produced no executable at ${binary}" >&2
   exit 1

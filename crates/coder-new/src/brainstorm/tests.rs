@@ -189,6 +189,7 @@ fn add_child(app: &mut App) {
         task: "Review public fixture accounts.".into(),
         chat: crate::live::Chat {
             entries: vec![Entry::Assistant {
+                elapsed_ms: None,
                 text: "An earlier child reply.".into(),
                 model: Some("synthetic/child".into()),
             }],
@@ -513,6 +514,7 @@ fn headless_lookup_returns_its_current_bounded_observation_or_error_without_a_pr
     let (mut app, fixture) = fixture_app();
     app.live.tokens = 42;
     app.live.entries.push(Entry::Assistant {
+        elapsed_ms: None,
         text: "An earlier model reply.".into(),
         model: Some("synthetic/previous".into()),
     });
@@ -597,6 +599,7 @@ fn headless_child_lookup_uses_its_own_turn_boundary_and_following_conversation()
         running: false,
     });
     app.live.entries.push(Entry::Assistant {
+        elapsed_ms: None,
         text: "An earlier parent reply.".into(),
         model: Some("synthetic/parent".into()),
     });

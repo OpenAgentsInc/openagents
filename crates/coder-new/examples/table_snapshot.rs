@@ -13,6 +13,7 @@ fn main() {
     app.live.entries.extend([
         Entry::User("Explain the local coding loop.".into()),
         Entry::Assistant {
+            elapsed_ms: None,
             text: include_str!("../tests/fixtures/microcoder-table.md").into(),
             model: Some("openai/gpt-6-luna:low".into()),
         },

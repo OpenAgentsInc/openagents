@@ -32,8 +32,8 @@ pub struct ExecutionSettings {
     /// workshop agent's charter. The model reads them as system
     /// instructions every turn; the transcript never shows them.
     pub instructions: Option<String>,
-    /// Whether the `run` tool is offered: only while an approval gate
-    /// decides each command ([`crate::approval`]).
+    /// Whether the `Run` tool is offered. Commands have full access unless
+    /// the host explicitly installs an approval gate ([`crate::approval`]).
     pub shell: bool,
     pub brainstorm: Option<crate::brainstorm::Native>,
     pub disclosure_desk: Option<Arc<crate::approval::Desk>>,
@@ -147,10 +147,10 @@ impl ExecutionSettings {
             guidance.push_str("The OpenAgents CLI ships beside Coder and is available through openagents_cli for requested OpenAgents work. Answer conversational questions directly; read [\"--help\"] or a group's --help only when you need a command you do not know. Use argument arrays and its --json output. The command covers computers, Coder tasks and issues, settings, knowledge, plugin registries, relay identities, shared worlds, and wallets. It enforces each command's existing rights; do not assume a chat tool grants access.\n");
         }
         if self.shell {
-            guidance.push_str("The Run tool runs one shell command in the working directory. Use read-only commands such as pwd, ls, cat, rg, git status, and toolchain --version to look before you answer. A command that changes anything waits for the owner's CONFIRM or REJECT; a rejected command stays rejected.\n");
+            guidance.push_str("The Run tool runs shell commands with full filesystem and network access by default. Follow the user's instructions and any explicit host approval policy; a rejected command stays rejected.\n");
         }
         if self.registered(ToolBinding::Microcoder) {
-            guidance.push_str("The Microcoder plugin runs the existing local coding loop. Delegate concrete work with a complete task and relevant constraints; its commands write within the current checkout. It uses the selected OpenRouter model when this chat has that provider, otherwise the existing Codex or Claude Code login. Jev judgments are used only when the Jev plugin is enabled and configured.\n");
+            guidance.push_str("The Microcoder plugin runs the existing local coding loop. Delegate concrete work with a complete task and relevant constraints; its commands have full filesystem and network access unless the host explicitly installs an approval policy. It uses the selected OpenRouter model when this chat has that provider, otherwise the existing Codex or Claude Code login. Jev judgments are used only when the Jev plugin is enabled and configured.\n");
         }
         if self.registered(ToolBinding::AcpSubagent) {
             let agents: Vec<String> = self
@@ -160,7 +160,7 @@ impl ExecutionSettings {
                 .map(|agent| format!("{} ({})", agent.id, agent.name))
                 .collect();
             if !agents.is_empty() {
-                guidance.push_str(&format!("Local subagents are available through acp_subagent: {}. Delegate only to those registered IDs. When the user names an agent, use that exact agent; never substitute another agent or Microcoder. If it is unavailable or turned off, explain how to enable it instead of trying another engine. Do not use CLI commands to bypass the selected agent. They share the current working directory and retain their native permission semantics; the host denies permission requests.\n",agents.join(", ")));
+                guidance.push_str(&format!("Local subagents are available through acp_subagent: {}. Delegate only to those registered IDs. When the user names an agent, use that exact agent; never substitute another agent or Microcoder. If it is unavailable or turned off, explain how to enable it instead of trying another engine. Do not use CLI commands to bypass the selected agent. They share the current working directory and start with full permissions by default. Native Codex has no sandbox or approval prompts; ACP permission requests are approved unless the host explicitly installs an approval policy.\n",agents.join(", ")));
             } else {
                 guidance.push_str("No local subagent is enabled for this request. If the user requested a named agent, explain that it is unavailable or turned off; do not substitute another agent or Microcoder.\n");
             }

@@ -513,7 +513,7 @@ fn conversation(frame: &mut Frame, area: Rect, app: &mut App) {
         lines.extend(wrap_display(
             notice
                 .lines()
-                .map(|text| Line::from(span(text, t::GRAY_BRIGHT)))
+                .map(|text| Line::from(span(text, t::GRAY)))
                 .collect(),
             area.width,
         ));
@@ -534,8 +534,12 @@ fn entry_lines(entry: &crate::live::Entry, width: u16, phase: u8) -> Vec<Line<'s
         crate::live::Entry::User(text) => {
             lines.extend(prompt(text, width));
         }
-        crate::live::Entry::Assistant { text, model } => {
-            reply_lines(&mut lines, text, model.as_deref(), width);
+        crate::live::Entry::Assistant {
+            text,
+            model,
+            elapsed_ms,
+        } => {
+            reply_lines(&mut lines, text, model.as_deref(), *elapsed_ms, width);
         }
         crate::live::Entry::Tool {
             name,
@@ -682,6 +686,7 @@ impl TranscriptCache {
             self.partial = None;
         } else {
             let entry = crate::live::Entry::Assistant {
+                elapsed_ms: None,
                 text: chat.partial.clone(),
                 model: chat.partial_model.clone(),
             };
@@ -751,6 +756,7 @@ fn live_lines(app: &App, width: u16) -> Vec<Line<'static>> {
             &mut lines,
             &app.live.partial,
             app.live.partial_model.as_deref(),
+            None,
             width,
         );
     }
@@ -760,11 +766,6 @@ fn live_lines(app: &App, width: u16) -> Vec<Line<'static>> {
 fn live_conversation(frame: &mut Frame, area: Rect, app: &mut App) {
     let phase = app.animation_frame;
     let notice = app.notice.clone();
-    let provider = if app.plugins.enabled && app.plugins.key_configured {
-        "OpenRouter is replying…"
-    } else {
-        "Coder is working…"
-    };
     let chat = app
         .selected_agent
         .and_then(|index| app.delegations.get_mut(index))
@@ -779,20 +780,26 @@ fn live_conversation(frame: &mut Frame, area: Rect, app: &mut App) {
                     format!("{} ", crate::tools::spinner(phase)),
                     t::ACCENT_MODEL,
                 ),
-                span(provider, t::GRAY),
+                span("Working", t::GRAY),
             ])],
             area.width,
         ));
     }
     for (message, color) in [
         (chat.notice.as_ref(), t::DIFF_DELETE_FG),
-        (notice.as_ref(), t::GRAY_BRIGHT),
+        (notice.as_ref(), t::GRAY),
     ] {
         if let Some(message) = message {
             tail.extend(
                 message_body(message, area.width)
                     .into_iter()
-                    .map(|line| line.style(Style::default().fg(color))),
+                    .map(|mut line| {
+                        line.style.fg = Some(color);
+                        for span in &mut line.spans {
+                            span.style.fg = Some(color);
+                        }
+                        line
+                    }),
             );
             tail.push(Line::default());
         }
@@ -807,19 +814,31 @@ fn live_conversation(frame: &mut Frame, area: Rect, app: &mut App) {
     chat.cache = cache;
 }
 
-fn reply_lines(lines: &mut Vec<Line<'static>>, text: &str, model: Option<&str>, width: u16) {
-    if let Some(model) = model {
-        lines.push(Line::from(span(truncate(model, width), t::GRAY)).right_aligned());
-    }
+fn reply_lines(
+    lines: &mut Vec<Line<'static>>,
+    text: &str,
+    model: Option<&str>,
+    elapsed_ms: Option<u64>,
+    width: u16,
+) {
     lines.extend(message_body(text, width));
+    let elapsed = elapsed_ms.map(|ms| format!("{:.1}s", ms as f64 / 1000.0));
+    let footer = match (model, elapsed) {
+        (Some(model), Some(elapsed)) => {
+            let suffix = format!(" · {elapsed}");
+            let available = width.saturating_sub(suffix.width() as u16);
+            format!("{}{suffix}", truncate(model, available))
+        }
+        (Some(model), None) => model.to_owned(),
+        (None, Some(elapsed)) => elapsed,
+        (None, None) => return,
+    };
+    lines.push(Line::from(span(truncate(&footer, width), t::GRAY)).right_aligned());
 }
 
 fn composer_rail_text(text: &str, width: u16) -> String {
     if text.width() <= usize::from(width) {
         return text.to_owned();
-    }
-    if text == "OpenRouter connected" && width >= 12 {
-        return "OpenRouter ✓".into();
     }
     if let Some((model, options)) = text.split_once(':') {
         let suffix = format!(":{options}");

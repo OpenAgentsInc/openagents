@@ -53,6 +53,37 @@ fn live_app() -> App {
 }
 
 #[test]
+fn system_notices_use_dim_text_and_errors_keep_their_color() {
+    for width in [110, 40] {
+        let mut app = live_app();
+        app.live.entries.push(Entry::Assistant {
+            elapsed_ms: None,
+            text: "Assistant reply.".into(),
+            model: None,
+        });
+        app.notice = Some("Exported ATIF to `chat.atif.json`.\nPath copied to clipboard.".into());
+        app.live.notice = Some("Provider unavailable.".into());
+        let (buffer, _) = render(&mut app, width, 36);
+        for text in [
+            "Exported ATIF",
+            "chat.atif.json",
+            "Path copied",
+            "clipboard.",
+        ] {
+            let (x, y) = position(&buffer, text);
+            for offset in 0..text.len() as u16 {
+                assert_eq!(buffer[(x + offset, y)].fg, theme::GRAY, "{text}");
+            }
+        }
+        assert_ne!(cell(&buffer, "Assistant reply.").fg, theme::GRAY);
+        assert_eq!(
+            cell(&buffer, "Provider unavailable.").fg,
+            theme::DIFF_DELETE_FG
+        );
+    }
+}
+
+#[test]
 fn replies_render_markdown_structure_and_grok_code_styles() {
     let source = "# Available tools\n\n\
         * **Search the web** - retrieve current information.\n\
@@ -69,6 +100,7 @@ fn replies_render_markdown_structure_and_grok_code_styles() {
         ```";
     let mut app = live_app();
     app.live.entries.push(Entry::Assistant {
+        elapsed_ms: None,
         text: source.into(),
         model: Some("openai/gpt-6-luna".into()),
     });
@@ -204,6 +236,7 @@ fn narrow_transcripts_keep_long_code_and_table_content_accessible_by_scrolling()
     let table_token = "table_begin_0123456789_abcdefghijklmnopqrstuvwxyz_table_end";
     let mut app = live_app();
     app.live.entries.push(Entry::Assistant {
+        elapsed_ms: None,
         text: format!(
             "## Before the example\n\n```rust\nconst LABEL: &str = \"{code_token}\";\n```\n\n| Output |\n| --- |\n| {table_token} |\n\nAfter the table."
         ),
@@ -234,7 +267,7 @@ fn narrow_transcripts_keep_long_code_and_table_content_accessible_by_scrolling()
         assert!(
             rows(&buffer)
                 .iter()
-                .any(|row| row.starts_with('─') && row.contains(":default"))
+                .any(|row| row.starts_with('─') && row.contains(coder_new::models::DEFAULT_MODEL))
         );
         maximum_scroll = maximum_scroll.max(app.scroll);
         if app.scroll < requested {
@@ -283,6 +316,7 @@ fn transcript_tables_wrap_each_cell_without_breaking_the_grid_or_inline_styles()
     let source = include_str!("fixtures/microcoder-table.md");
     let mut app = live_app();
     app.live.entries.push(Entry::Assistant {
+        elapsed_ms: None,
         text: source.into(),
         model: Some("openai/gpt-6-luna".into()),
     });

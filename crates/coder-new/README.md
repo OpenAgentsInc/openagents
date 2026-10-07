@@ -118,9 +118,13 @@ installation directories. Its settings show a checkbox list; new agents default
 to on. Up/Down selects an agent, Space or Enter toggles it, and R refreshes
 detection. Live choices save immediately and persist across restarts. Agents
 turned off or no longer installed are excluded from chat's tools. Claude Code
-and Codex require their installed ACP adapters. Chat delegates through
+requires its installed ACP adapter. Codex uses its native CLI bridge when no
+ACP adapter is installed. Chat delegates through
 `acp_subagent` using a registered ID; it cannot choose an executable.
-The host denies ACP permission requests and closes each child session.
+Coder starts tools and subagents with full filesystem and network access.
+Native Codex bypasses approvals and its sandbox, and ACP permission requests
+are approved. Explicitly gated hosts retain their approval policies. The host
+closes each child session.
 See the [Jev settings](../../docs/coder-new/jev-settings.svg) and
 [ACP settings](../../docs/coder-new/acp-settings.svg) previews.
 

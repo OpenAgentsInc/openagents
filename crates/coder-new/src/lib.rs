@@ -184,6 +184,7 @@ impl App {
                     chat: live::Chat {
                         entries: vec![live::Entry::User(task)],
                         busy: true,
+                        reply_started_at: Some(std::time::Instant::now()),
                         ..live::Chat::default()
                     },
                     started_at: self.elapsed_seconds,
@@ -332,6 +333,7 @@ impl App {
         if self.live.busy {
             if !self.live.partial.is_empty() {
                 self.live.entries.push(live::Entry::Assistant {
+                    elapsed_ms: self.live.reply_elapsed_ms(),
                     text: std::mem::take(&mut self.live.partial),
                     model: self.live.partial_model.take(),
                 });
@@ -579,6 +581,7 @@ impl App {
                         self.live.tokens =
                             self.live.tokens.saturating_add(reply.usage.total_tokens);
                         self.live.entries.push(live::Entry::Assistant {
+                            elapsed_ms: self.live.reply_elapsed_ms(),
                             text: reply.text,
                             model: live::model_slug(&reply.model)
                                 .map(|model| self.active_options.slug(&model)),
@@ -596,6 +599,7 @@ impl App {
                         }
                         if !self.live.partial.is_empty() {
                             self.live.entries.push(live::Entry::Assistant {
+                                elapsed_ms: self.live.reply_elapsed_ms(),
                                 text: std::mem::take(&mut self.live.partial),
                                 model: self.live.partial_model.take(),
                             });
@@ -764,6 +768,7 @@ impl App {
                 true,
             );
             chat.busy = true;
+            chat.reply_started_at = Some(std::time::Instant::now());
             chat.notice = None;
             if let brainstorm::Conversation::Delegation(id) = conversation {
                 if let Some(child) = self.delegations.iter_mut().find(|child| &child.id == id) {
@@ -845,6 +850,7 @@ impl App {
         self.live.partial.clear();
         self.live.partial_model = None;
         self.live.busy = true;
+        self.live.reply_started_at = Some(std::time::Instant::now());
         self.history.dirty = true;
         self.active_options = if key.is_some() {
             self.plugins.options.clone()
@@ -859,7 +865,6 @@ impl App {
                 std::env::current_dir().unwrap_or_else(|_| std::path::PathBuf::from("."))
             }));
         execution.instructions = self.live.instructions.clone();
-        execution.shell = crate::approval::gated();
         if key.is_some()
             && execution.brainstorm.is_some()
             && execution.disclosure_desk.is_none()
@@ -933,6 +938,7 @@ impl App {
         child.chat.entries.push(live::Entry::User(text));
         child.chat.notice = None;
         child.chat.busy = true;
+        child.chat.reply_started_at = Some(std::time::Instant::now());
         child.running = true;
         child.started_at = self.elapsed_seconds;
         self.live.busy = true;

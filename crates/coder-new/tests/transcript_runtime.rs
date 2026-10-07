@@ -277,6 +277,7 @@ fn microcoder_work_stays_in_its_selectable_child_chat_and_trackpad_keeps_the_sel
 
     for index in 0..40 {
         app.delegations[0].chat.entries.push(Entry::Assistant {
+            elapsed_ms: None,
             text: format!("Child history {index}."),
             model: None,
         });
@@ -481,6 +482,7 @@ fn submitting_in_a_selected_child_routes_the_follow_up_to_that_delegation() {
 fn a_thousand_message_transcript_reuses_layout_while_scrolling_and_editing_the_draft() {
     let mut app = live_app();
     app.live.entries = (0..1_000).map(|index| Entry::Assistant {
+ elapsed_ms: None,
         text:format!("Message {index}: **bold text**, `inline_code`, and a [link](https://example.com).\n\n```rust\nlet value = {index};\n```\n\n| Field | Value |\n| --- | --- |\n| Count | {index} |"),
         model:Some("fixture/model:low".into()),
     }).collect();

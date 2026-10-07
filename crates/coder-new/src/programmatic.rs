@@ -55,9 +55,9 @@ macro_rules! command_usage {
 Options: --json streams NDJSON events for chat and delegation.
          --approvals stdin asks before any command that is not read-only:
          an approval event, answered by `confirm ID` or `reject ID` on stdin.
-         --codex-writes lets a chat's Codex delegations edit the working
-         directory under Codex's workspace-write sandbox, with no network;
-         with --approvals, Codex stays read-only and asks nobody.
+         Codex and other tools start with full filesystem and network access.
+         --codex-writes is accepted for compatibility; full access is the default.
+         With --approvals, Codex stays read-only and asks nobody.
          --approvals tool-free refuses all model tools, including reads.
          --in DIR sets the working directory; --state DIR sets the Coder store.
 Settings default to ~/.openagents/coder-new. Sessions use its sessions directory.
@@ -897,6 +897,7 @@ pub(crate) fn chat(
         };
         target.entries.push(live::Entry::User(prompt));
         target.entries.push(live::Entry::Assistant {
+            elapsed_ms: None,
             text: "Demo reply. Live execution uses the terminal's provider and plugin runtime."
                 .into(),
             model: Some("demo/local".into()),
@@ -1123,8 +1124,12 @@ fn stream_delta<'a>(chat: &'a live::Chat, previous: &mut PartialStream) -> Optio
 fn entry_value(entry: &live::Entry) -> Value {
     match entry {
         live::Entry::User(text) => json!({"source":"user","text":text}),
-        live::Entry::Assistant { text, model } => {
-            json!({"source":"assistant","text":text,"model":model})
+        live::Entry::Assistant {
+            text,
+            model,
+            elapsed_ms,
+        } => {
+            json!({"source":"assistant","text":text,"model":model,"elapsed_ms":elapsed_ms})
         }
         live::Entry::Tool {
             name,
@@ -1249,6 +1254,7 @@ fn delegate(
     app.live.entries.push(live::Entry::User(display_task));
     app.live.busy = true;
     let started = std::time::Instant::now();
+    app.live.reply_started_at = Some(started);
     let result = loop {
         app.elapsed_seconds = started.elapsed().as_secs();
         if let Some(desk) = &context.approvals {
@@ -1309,6 +1315,7 @@ fn delegate(
         .unwrap_or("")
         .to_owned();
     app.live.entries.push(live::Entry::Assistant {
+        elapsed_ms: app.live.reply_elapsed_ms(),
         text: text.clone(),
         model: output
             .get("model")

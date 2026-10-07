@@ -6,7 +6,9 @@ set -euo pipefail
 cd "$(dirname "$0")/.."
 launcher="$PWD/scripts/coderdev"
 
-work="$(mktemp -d /tmp/coderdev-test.XXXXXX)"
+scratch="${OPENAGENTS_SCRATCH:-$HOME/.openagents/scratch/coderdev-tests}"
+mkdir -p "$scratch"
+work="$(mktemp -d "$scratch/coderdev-test.XXXXXX")"
 trap 'rm -rf "$work"' EXIT
 mkdir -p "$work/bin" "$work/elsewhere"
 
@@ -18,15 +20,27 @@ set -eu
 echo "build $PWD $*" >>"$STUB_LOG"
 test -z "${STUB_FAIL:-}" || { echo "error: could not compile" >&2; exit 101; }
 mkdir -p "$CARGO_TARGET_DIR/debug"
-cat >"$CARGO_TARGET_DIR/debug/coder" <<'BIN'
+cat >"$CARGO_TARGET_DIR/debug/coder-new" <<'BIN'
 #!/usr/bin/env bash
 printf 'cwd=%s\n' "$PWD"
 for a in "$@"; do printf 'arg=[%s]\n' "$a"; done
 printf 'env=%s\n' "${CODERDEV_TEST_SECRET:-unset}"
 BIN
-chmod +x "$CARGO_TARGET_DIR/debug/coder"
+chmod +x "$CARGO_TARGET_DIR/debug/coder-new"
 EOF
 chmod +x "$work/bin/cargo"
+cat >"$work/bin/openagents" <<'EOF'
+#!/usr/bin/env bash
+set -eu
+test "$1" = lease
+if test "$2" = list; then exit 0; fi
+printf '%s\n' "$*" >>"$STUB_LEASE_LOG"
+while test "$1" != --; do shift; done
+shift
+exec "$@"
+EOF
+chmod +x "$work/bin/openagents"
+export CODERDEV_LEASE_BIN="$work/bin/openagents" STUB_LEASE_LOG="$work/lease.log"
 export STUB_LOG="$work/build.log" CODERDEV_CARGO="$work/bin/cargo"
 export CARGO_TARGET_DIR="$work/target"
 
@@ -42,8 +56,11 @@ grep -qxF 'arg=[]' <<<"$out" || fail "empty argument not forwarded"
 grep -qxF 'env=unset' <<<"$out" || fail "env leaked without env file"
 grep -q '^coderdev: coder [0-9a-f]\{7,\} (clean\|dirty) ' "$work/stderr" \
   || fail "no build identity line: $(cat "$work/stderr")"
-grep -q -- "--bin coder" "$STUB_LOG" || fail "binary not selected explicitly"
-grep -q -- "-p coder " "$STUB_LOG" || fail "package not selected explicitly"
+grep -q -- "--bin coder-new" "$STUB_LOG" || fail "current terminal binary not selected"
+grep -q -- "-p coder-new " "$STUB_LOG" || fail "current terminal package not selected"
+grep -q -- "-p openagents-cli --bin openagents" "$STUB_LOG" || fail "companion CLI not built"
+grep -q -- "-p microcoder --bin microcoder" "$STUB_LOG" || fail "companion engine not built"
+grep -qxF 'lease build --keep-target-dir --priority owner -- '"$CODERDEV_CARGO"' build --quiet -p coder-new --bin coder-new -p openagents-cli --bin openagents -p microcoder --bin microcoder' "$STUB_LEASE_LOG" || fail "build lease not used"
 grep -q "^build $PWD " "$STUB_LOG" || fail "build did not run in the source tree"
 
 # Every launch asks Cargo; Cargo decides freshness. Two launches, two calls.
@@ -65,7 +82,7 @@ test -z "${CODERDEV_TEST_SECRET:-}" || fail "env leaked into the parent shell"
 
 # A relative CARGO_TARGET_DIR resolves against the launch directory.
 out="$(cd "$work/elsewhere" && CARGO_TARGET_DIR=rel "$launcher" 2>"$work/stderr")"
-test -x "$work/elsewhere/rel/debug/coder" || fail "relative target dir not honored"
-grep -q "$work/elsewhere/rel/debug/coder" "$work/stderr" || fail "identity line lacks executable path"
+test -x "$work/elsewhere/rel/debug/coder-new" || fail "relative target dir not honored"
+grep -q "$work/elsewhere/rel/debug/coder-new" "$work/stderr" || fail "identity line lacks executable path"
 
 echo "test-coderdev: ok"

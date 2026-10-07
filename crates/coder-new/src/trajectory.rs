@@ -31,8 +31,15 @@ pub fn document(chat: &Chat, id: &str, model: &str, cwd: &Path) -> Value {
     for (index, entry) in chat.entries.iter().enumerate() {
         let step = match entry {
             Entry::User(text) => Step::said(Source::User, text),
-            Entry::Assistant { text, model } => {
-                let step = Step::said(Source::Agent, text);
+            Entry::Assistant {
+                text,
+                model,
+                elapsed_ms,
+            } => {
+                let mut step = Step::said(Source::Agent, text);
+                if let Some(elapsed_ms) = elapsed_ms {
+                    step = step.taking(*elapsed_ms);
+                }
                 if let Some(model) = model {
                     step.by(model)
                 } else {
@@ -104,6 +111,9 @@ pub fn document(chat: &Chat, id: &str, model: &str, cwd: &Path) -> Value {
     if !chat.partial.is_empty() {
         let mut step = Step::said(Source::Agent, &chat.partial).noting("partial", json!(true));
         step.model = chat.partial_model.clone();
+        if let Some(elapsed_ms) = chat.reply_elapsed_ms() {
+            step = step.taking(elapsed_ms);
+        }
         steps.push(step);
     }
     let mut result = atif::document(&session, &steps);
@@ -199,6 +209,7 @@ fn append_demo_messages(chat: &mut Chat, messages: &[String]) {
     for message in messages {
         chat.entries.push(Entry::User(message.clone()));
         chat.entries.push(Entry::Assistant {
+            elapsed_ms: None,
             text: "Preview message added. No agent is connected.".into(),
             model: Some("demo/local".into()),
         });
@@ -212,6 +223,7 @@ fn demo_chat(agent: &crate::agents::DemoAgent) -> Chat {
         chat.entries.push(match message {
             DemoMessage::User(text) => Entry::User((*text).into()),
             DemoMessage::Assistant(text) => Entry::Assistant {
+                elapsed_ms: None,
                 text: (*text).into(),
                 model: Some("demo/local".into()),
             },
@@ -409,6 +421,10 @@ pub fn from_document(value: &Value) -> Result<Chat, String> {
             Some("agent") => {
                 if !text.is_empty() {
                     chat.entries.push(Entry::Assistant {
+                        elapsed_ms: step
+                            .get("extra")
+                            .and_then(|extra| extra.get("duration_ms"))
+                            .and_then(Value::as_u64),
                         text,
                         model: step
                             .get("model_name")
@@ -575,6 +591,7 @@ mod tests {
             running: false,
         });
         chat.entries.push(Entry::Assistant {
+            elapsed_ms: Some(5500),
             text: "**Valid**".into(),
             model: Some("openai/gpt-6-luna:low".into()),
         });
@@ -588,6 +605,14 @@ mod tests {
         assert!(write(&path, &document).is_err());
         let imported = read(&path).unwrap();
         assert_eq!(imported.tokens, 42);
+        assert_eq!(document["steps"][2]["extra"]["duration_ms"], 5500);
+        assert!(matches!(
+            &imported.entries[2],
+            Entry::Assistant {
+                elapsed_ms: Some(5500),
+                ..
+            }
+        ));
         assert!(
             matches!(&imported.entries[1],Entry::Tool{output,..} if output["long"].as_str().unwrap().len()==20000)
         );
@@ -625,12 +650,7 @@ mod tests {
             busy: true,
             ..Chat::default()
         };
-        let exported = document(
-            &chat,
-            "pending",
-            "auto",
-            Path::new("/workspace"),
-        );
+        let exported = document(&chat, "pending", "auto", Path::new("/workspace"));
         assert_eq!(
             exported["steps"][0]["tool_calls"][0]["extra"]["running"],
             true
@@ -664,6 +684,7 @@ mod tests {
                 entries: vec![
                     Entry::User("Review the parser".into()),
                     Entry::Assistant {
+                        elapsed_ms: None,
                         text: "Reviewed".into(),
                         model: Some("model/actual:low".into()),
                     },

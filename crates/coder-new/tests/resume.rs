@@ -36,6 +36,7 @@ fn seed(store: &Store, id: &str, title: &str, cwd: &Path, age: u64) -> Value {
     chat.entries = vec![
         Entry::User(title.into()),
         Entry::Assistant {
+            elapsed_ms: None,
             text: "**Saved reply**".into(),
             model: Some("openai/example:low".into()),
         },
@@ -448,6 +449,7 @@ fn following_reloads_the_held_session_and_a_key_takes_it_over() {
 
     // The agent saves more; the pane shows it without a key.
     chat.entries.push(Entry::Assistant {
+        elapsed_ms: None,
         text: "atif: 31 passed.".into(),
         model: Some("openai/example:low".into()),
     });

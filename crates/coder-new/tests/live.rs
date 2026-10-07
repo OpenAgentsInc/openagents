@@ -266,7 +266,10 @@ fn live_chat_uses_the_no_setup_fallback_or_an_enabled_saved_key() {
     assert_eq!(transcript(&app), [("user", "live question")]);
     let rendered = render(&mut app, 80, 24);
     assert!(rendered.contains("live question"));
-    assert!(rendered.contains("OpenRouter is replying"));
+    assert!(rendered.contains(&format!(
+        "{} Working",
+        coder_new::tools::spinner(app.animation_frame)
+    )));
     assert_key_hidden(&mut app);
 }
 
@@ -631,7 +634,7 @@ fn invalid_model_metadata_clears_observed_attribution_and_is_not_stored() {
     });
     assert!(matches!(
         app.live.entries.last().unwrap(),
-        Entry::Assistant { text, model: None } if text == "partial answer"
+        Entry::Assistant { text, model: None, .. } if text == "partial answer"
     ));
 
     let second = submit(&mut app, "next question");
