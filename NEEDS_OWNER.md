@@ -1,3 +1,13 @@
+## Archive the medieval town kit in the private bucket (#10894)
+
+The `gcloud` login on this Mac needs reauthentication, so the kit's
+vendor files are not archived yet. Run `gcloud auth login`, then
+`scripts/unreal/medieval_town_archive.py archive
+~/.openagents/verse/private/medieval-town/export`. It uploads the vault
+copy's `Content` directory (2.4 GB) and the export's `digests.json` to
+`gs://openagentsgemini-verse-private-assets/vendor/medieval-town/`. The
+export itself is done and deterministic.
+
 ## Admit the villagers' fuller days (town clock)
 
 The town clock now runs by default. On it, a daylight town hour is 4.25

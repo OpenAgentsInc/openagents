@@ -19,12 +19,19 @@ Usage:
     scripts/unreal/medieval_town_export.py --steps meshes --limit 5
     scripts/unreal/medieval_town_export.py --catalog-only
 
-Afterward it runs `scripts/unreal/medieval_town_catalog.py` over the output.
+Afterward it normalizes the output so two runs give the same bytes: Unreal's
+glTF writer leaves the alignment padding between buffer views uninitialized,
+and a map names each Blueprint's dynamic material instance by a per-run
+object ID. It zeroes the padding and drops the IDs, then runs
+`scripts/unreal/medieval_town_catalog.py` over the output.
+`scripts/unreal/medieval_town_archive.py compare` checks two runs.
 """
 
 import argparse
 import json
 import os
+import re
+import struct
 import shutil
 import subprocess
 import sys
@@ -139,6 +146,54 @@ def run_editor(editor, project_dir, out, args):
     return code
 
 
+# A Blueprint's generated component path carries a per-run ID, such as
+# `..._C_CAT_UAID_FCB214DDF97AD60803_1791285944.`; the rest names the same
+# object in every run.
+RUN_ID = re.compile(r"_UAID_[0-9A-F]+_[0-9]+")
+
+
+def normalize_glb(path):
+    """Zeroes the bytes of a .glb's binary chunk that no buffer view covers,
+    which Unreal leaves uninitialized. Returns whether the file changed."""
+    data = bytearray(path.read_bytes())
+    if data[:4] != b"glTF" or len(data) < 28:
+        return False
+    json_length = struct.unpack_from("<I", data, 12)[0]
+    document = json.loads(data[20:20 + json_length])
+    start = 20 + json_length
+    if start + 8 > len(data):
+        return False
+    bin_length = struct.unpack_from("<I", data, start)[0]
+    body = start + 8
+    covered = bytearray(bin_length)
+    for view in document.get("bufferViews", []):
+        if view.get("buffer", 0) != 0:
+            continue
+        offset = view.get("byteOffset", 0)
+        covered[offset:offset + view["byteLength"]] = b"\x01" * view["byteLength"]
+    changed = False
+    for i, used in enumerate(covered):
+        if not used and data[body + i] != 0:
+            data[body + i] = 0
+            changed = True
+    if changed:
+        path.write_bytes(bytes(data))
+    return changed
+
+
+def normalize(export_dir):
+    """Makes an export's bytes depend only on the source."""
+    glbs = sum(normalize_glb(p) for p in sorted((export_dir / "meshes").rglob("*.glb")))
+    maps = 0
+    for path in sorted((export_dir / "maps").glob("*.json")):
+        text = path.read_text()
+        cleaned = RUN_ID.sub("", text)
+        if cleaned != text:
+            path.write_text(cleaned)
+            maps += 1
+    print(f"normalized {glbs} glTF files and {maps} maps")
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument("--source", type=Path, default=DEFAULT_SOURCE, help="the pack's Content directory (vault copy)")
@@ -150,12 +205,17 @@ def main():
     parser.add_argument("--match", default="")
     parser.add_argument("--catalog-only", action="store_true")
     parser.add_argument("--no-catalog", action="store_true")
+    parser.add_argument("--normalize-only", action="store_true", help="normalize an existing export and stop")
     args = parser.parse_args()
 
     out_root = args.out.expanduser()
     refuse_inside_repo(out_root)
     export_dir = out_root / "export"
     project_dir = out_root / "ue" / PROJECT
+
+    if args.normalize_only:
+        normalize(export_dir)
+        return
 
     if not args.catalog_only:
         if free_gb(out_root) < MIN_FREE_GB:
@@ -176,6 +236,7 @@ def main():
         print("source unchanged")
         if code != 0:
             sys.exit(code)
+        normalize(export_dir)
 
     if not args.no_catalog:
         subprocess.run(

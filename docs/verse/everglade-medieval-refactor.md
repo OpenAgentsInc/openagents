@@ -53,6 +53,7 @@ Unreal's own editor exports the pack; there is no Rust `.uasset` reader.
 | --- | --- |
 | [`scripts/unreal/medieval_town_export.py`](../../scripts/unreal/medieval_town_export.py) | The driver. Builds a scratch project under `~/.openagents/verse/private/medieval-town/ue/`, clones the vault copy's content into it (APFS clones, no extra disk), and runs Unreal headless with a clean environment. It refuses an output inside the repository, stops under 25 GB free, and fails if the source's files change during the run. |
 | [`scripts/unreal/medieval_town_ue.py`](../../scripts/unreal/medieval_town_ue.py) | Runs inside `UnrealEditor -run=pythonscript -unattended -nullrhi`: no window opens and nothing renders. Writes one `.glb` per static mesh (and a `.lod0.glb` where Unreal renders a reduced LOD0), every texture as PNG (EXR for floating-point sources), `materials.json`, and `maps/<map>.json` with every placed mesh and its transform. It never saves a package. |
+| [`scripts/unreal/medieval_town_archive.py`](../../scripts/unreal/medieval_town_archive.py) | Digests an export (`digests.json`), compares two exports file by file, and archives the vendor content and the digests in the private bucket under `vendor/medieval-town/`. |
 | [`scripts/unreal/medieval_town_catalog.py`](../../scripts/unreal/medieval_town_catalog.py) | Writes `catalog.json`, `layout.json`, and `catalog.md` beside the export. |
 | [`scripts/blender/medieval_kit.py`](../../scripts/blender/medieval_kit.py) | Rebuilds each material as Verse draws it (base color, tiling, tint) and renders a thumbnail per mesh. |
 | [`scripts/unreal/medieval_town_contact_sheet.py`](../../scripts/unreal/medieval_town_contact_sheet.py) | Lays the thumbnails out as labeled contact sheets per category. |
@@ -70,7 +71,17 @@ scripts/unreal/medieval_town_export.py
 scripts/unreal/medieval_town_contact_sheet.py \
   ~/.openagents/verse/private/medieval-town/export \
   ~/.openagents/verse/private/medieval-town/thumbs OUT_DIR
+scripts/unreal/medieval_town_archive.py archive \
+  ~/.openagents/verse/private/medieval-town/export
 ```
+
+The driver normalizes its output so the export is deterministic: Unreal's
+glTF writer leaves the padding between buffer views uninitialized, and the
+town map names each Blueprint's dynamic material instance by a per-run ID.
+After the driver zeroes the padding and drops the IDs, two runs of
+October 7, 2026 matched in all 708 digested files, except the one merged
+backdrop building that exports past the end of its buffer (see
+[Pieces that exported badly](#pieces-that-exported-badly)).
 
 A full export takes about 2 to 4 minutes on this Mac and writes 2.2 GB,
 almost all of it textures. The editor needed three workarounds, all in the
