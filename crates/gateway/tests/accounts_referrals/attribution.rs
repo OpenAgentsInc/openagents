@@ -195,6 +195,7 @@ fn configure_money(d: &mut Deployment, customers: &[&Joined]) -> std::path::Path
     }
     drop(ledger);
     d.config.money = Some(gateway::money::Money {
+        hierarchical_budgets: false,
         ledger: path.clone(),
         doors: [(
             "acme-kev".into(),

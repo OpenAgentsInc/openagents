@@ -267,6 +267,7 @@ async fn exercise(binary: Option<std::ffi::OsString>) {
     }
     drop(ledger);
     d.config.money = Some(gateway::money::Money {
+        hierarchical_budgets: false,
         ledger: ledger_path.clone(),
         doors: BTreeMap::from([(
             "acme-kev".into(),
