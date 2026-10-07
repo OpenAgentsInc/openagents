@@ -6,6 +6,7 @@ use sha2::{Digest, Sha256};
 use std::collections::{BTreeMap, BTreeSet};
 use std::fs::{self, OpenOptions};
 use std::io::{Read, Write};
+#[cfg(unix)]
 use std::os::unix::fs::OpenOptionsExt;
 use std::path::{Component, Path};
 
@@ -276,9 +277,12 @@ impl Reader<'_> {
                 return Err("symlink evidence is refused".into());
             }
         }
-        let mut file = OpenOptions::new()
-            .read(true)
-            .custom_flags(libc::O_NOFOLLOW | libc::O_NONBLOCK)
+        let mut options = OpenOptions::new();
+        options.read(true);
+        // Outside Unix the symlink check above is the only guard.
+        #[cfg(unix)]
+        options.custom_flags(libc::O_NOFOLLOW | libc::O_NONBLOCK);
+        let mut file = options
             .open(&path)
             .map_err(|_| "cannot open retained evidence")?;
         if !file.metadata().map_err(|e| e.to_string())?.is_file() {
@@ -651,12 +655,11 @@ pub fn project(report_bytes: &[u8], review: &PublicReview) -> Result<PublicRepor
 
 /// Create a private output without overwriting an earlier reviewed record.
 pub fn write_private(path: &Path, bytes: &[u8]) -> Result<(), String> {
-    let mut file = OpenOptions::new()
-        .write(true)
-        .create_new(true)
-        .mode(0o600)
-        .open(path)
-        .map_err(|e| e.to_string())?;
+    let mut options = OpenOptions::new();
+    options.write(true).create_new(true);
+    #[cfg(unix)]
+    options.mode(0o600);
+    let mut file = options.open(path).map_err(|e| e.to_string())?;
     file.write_all(bytes)
         .and_then(|()| file.sync_all())
         .map_err(|e| e.to_string())?;
@@ -1075,5 +1078,21 @@ mod boundary_tests {
                 .unknown_items,
             1
         );
+    }
+}
+
+/// Whether `meta` is a private directory: a real directory, not a symlink,
+/// that no group or other user can reach. Outside Unix there are no mode
+/// bits to check, so no directory counts as private and callers refuse.
+pub(crate) fn private_dir(meta: &std::fs::Metadata) -> bool {
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        meta.is_dir() && !meta.file_type().is_symlink() && meta.permissions().mode() & 0o077 == 0
+    }
+    #[cfg(not(unix))]
+    {
+        let _ = meta;
+        false
     }
 }

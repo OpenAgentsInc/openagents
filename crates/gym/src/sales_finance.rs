@@ -7,7 +7,8 @@ use serde::{Deserialize, Serialize};
 use std::collections::{BTreeMap, BTreeSet};
 use std::fs;
 use std::io::Read;
-use std::os::unix::fs::{OpenOptionsExt, PermissionsExt};
+#[cfg(unix)]
+use std::os::unix::fs::OpenOptionsExt;
 use std::path::Path;
 
 pub const SCHEMA: &str = "openagents.gym.sales-finance.v1";
@@ -362,7 +363,7 @@ fn cash_unit(unit: &str) -> bool {
 }
 fn private_root(root: &Path) -> Result<(), String> {
     let meta = fs::symlink_metadata(root).map_err(|_| "private finance root is unavailable")?;
-    if !meta.is_dir() || meta.file_type().is_symlink() || meta.permissions().mode() & 0o077 != 0 {
+    if !sales_evidence::private_dir(&meta) {
         return Err("finance source root must be a private directory".into());
     }
     Ok(())
@@ -1400,9 +1401,15 @@ pub fn project(bytes: &[u8], review: &Review) -> Result<Aggregate, String> {
 }
 fn bounded_file(path: &Path, max: usize) -> Result<Vec<u8>, String> {
     let mut bytes = Vec::new();
-    let file = fs::OpenOptions::new()
-        .read(true)
-        .custom_flags(libc::O_NOFOLLOW | libc::O_NONBLOCK)
+    let mut options = fs::OpenOptions::new();
+    options.read(true);
+    #[cfg(unix)]
+    options.custom_flags(libc::O_NOFOLLOW | libc::O_NONBLOCK);
+    #[cfg(not(unix))]
+    if fs::symlink_metadata(path).map_or(true, |m| m.file_type().is_symlink()) {
+        return Err("finance input is unavailable".into());
+    }
+    let file = options
         .open(path)
         .map_err(|_| "finance input is unavailable")?;
     let meta = file

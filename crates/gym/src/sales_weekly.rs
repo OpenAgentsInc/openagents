@@ -9,7 +9,6 @@ use receipts::sales_funnel::{
 use receipts::service_sale::Reference;
 use serde::{Deserialize, Serialize};
 use std::collections::{BTreeMap, BTreeSet};
-use std::os::unix::fs::PermissionsExt;
 use std::path::Path;
 
 pub const SCHEMA: &str = "openagents.gym.sales-weekly.v1";
@@ -214,7 +213,7 @@ pub fn rebuild(root: &Path, bytes: &[u8], now: u64) -> Result<Report, String> {
     }
     let meta = std::fs::symlink_metadata(root)
         .map_err(|_| "private weekly evidence root is unavailable")?;
-    if !meta.is_dir() || meta.file_type().is_symlink() || meta.permissions().mode() & 0o077 != 0 {
+    if !crate::sales_evidence::private_dir(&meta) {
         return Err("weekly evidence root must be a private directory".into());
     }
     let manifest: Manifest =
