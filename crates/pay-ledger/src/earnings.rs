@@ -209,7 +209,8 @@ impl Ledger {
                 "WITH active AS (
                 SELECT i.settlement,i.party,i.role,p.state,p.id
                 FROM (SELECT payout,settlement,party,role FROM payout_item
-                      UNION ALL SELECT payout,settlement,party,role FROM bonus_payout_item) i
+                      UNION ALL SELECT payout,settlement,party,role FROM bonus_payout_item
+                      UNION ALL SELECT payout,settlement,party,role FROM commission_payout_item) i
                 JOIN payout p ON p.id=i.payout AND p.state!='failed'
             )
             SELECT s.role,s.amount_msat,a.state,a.id

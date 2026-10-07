@@ -166,7 +166,7 @@ impl Ledger {
         if key.is_empty() || key.len() > 512 || key.chars().any(char::is_control) {
             return Err(Error::Invalid("settlement payout identity"));
         }
-        let mut query = self.connection.prepare("SELECT DISTINCT payout FROM (SELECT payout FROM payout_item WHERE settlement=?1 UNION SELECT payout FROM bonus_payout_item WHERE settlement=?1) ORDER BY payout LIMIT 257")?;
+        let mut query = self.connection.prepare("SELECT DISTINCT payout FROM (SELECT payout FROM payout_item WHERE settlement=?1 UNION SELECT payout FROM bonus_payout_item WHERE settlement=?1 UNION SELECT payout FROM commission_payout_item WHERE settlement=?1) ORDER BY payout LIMIT 257")?;
         let ids = query
             .query_map([key], |row| row.get::<_, String>(0))?
             .collect::<std::result::Result<Vec<_>, _>>()?;
@@ -487,6 +487,9 @@ pub fn tick(
 ) -> Result<Vec<Step>> {
     let mut steps = vec![];
     recover(ledger, rails, now, &mut steps)?;
+    if ledger.commission_payouts_held()? {
+        return Ok(steps);
+    }
     let open: Vec<String> = ledger
         .payouts(Some(&[
             PayoutState::Planned,
@@ -517,6 +520,13 @@ pub fn tick(
             });
             continue;
         };
+        if !ledger.commission_payout_qualified(&party, &payee.destination_kind, owed)? {
+            steps.push(Step::Unpayable {
+                party,
+                kind: "commission-policy-or-minimum".into(),
+            });
+            continue;
+        }
         let threshold = match payee.destination_kind.as_str() {
             "spark" => policy.spark_threshold_msat,
             "lud16" => policy.lightning_threshold_msat,

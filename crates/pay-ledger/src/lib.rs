@@ -12,6 +12,8 @@ use serde::Deserialize;
 use sha2::{Digest, Sha256};
 use std::{collections::BTreeMap, path::Path};
 
+pub mod adjustment;
+pub mod commission;
 pub mod compute;
 pub mod contribution;
 pub mod earnings;
@@ -264,6 +266,8 @@ impl PayoutState {
 
 pub struct Ledger {
     connection: Connection,
+    #[cfg(unix)]
+    custody: Option<commission::Custody>,
 }
 impl Ledger {
     pub fn open(path: impl AsRef<Path>) -> Result<Self> {
@@ -275,7 +279,11 @@ impl Ledger {
         let connection =
             Connection::open_with_flags(path, rusqlite::OpenFlags::SQLITE_OPEN_READ_ONLY)?;
         connection.busy_timeout(std::time::Duration::from_secs(5))?;
-        Ok(Self { connection })
+        Ok(Self {
+            connection,
+            #[cfg(unix)]
+            custody: None,
+        })
     }
     /// Stable identity of the native ledger records. It survives reopen and
     /// backup; paths, configured issuer names, and payer labels do not define it.
@@ -304,6 +312,11 @@ impl Ledger {
         payout::create_table(&mut connection)?;
         connection.execute_batch(include_str!("compute.sql"))?;
         connection.execute_batch(earnings::TABLES)?;
+        connection.execute_batch(adjustment::TABLES)?;
+        connection.execute_batch(commission::TABLES)?;
+        connection.execute_batch("BEGIN IMMEDIATE;")?;
+        connection.execute_batch(include_str!("payable.sql"))?;
+        connection.execute_batch("COMMIT;")?;
         // Existing ledgers predate plugin release attribution. Serialize the
         // check and alteration so concurrent receiver opens migrate once.
         let tx = connection.transaction_with_behavior(TransactionBehavior::Immediate)?;
@@ -316,7 +329,11 @@ impl Ledger {
             tx.execute_batch("ALTER TABLE settlement ADD COLUMN release_id TEXT;")?;
         }
         tx.commit()?;
-        let mut ledger = Self { connection };
+        let mut ledger = Self {
+            connection,
+            #[cfg(unix)]
+            custody: None,
+        };
         ledger.load_rule(V1, &digest(V1))?;
         Ok(ledger)
     }
@@ -473,7 +490,7 @@ impl Ledger {
         if key.is_empty() || key.len() > 512 || key.chars().any(char::is_control) {
             return Err(Error::Invalid("settlement identity"));
         }
-        let mut stmt=self.connection.prepare("SELECT s.settlement,s.party,s.role,s.amount_msat FROM payable_share s WHERE s.settlement=? AND s.amount_msat>0 AND NOT EXISTS (SELECT 1 FROM payout_item i JOIN payout p ON p.id=i.payout WHERE i.settlement=s.settlement AND i.party=s.party AND i.role=s.role AND p.state='sent') AND NOT EXISTS (SELECT 1 FROM bonus_payout_item i JOIN payout p ON p.id=i.payout WHERE i.settlement=s.settlement AND i.party=s.party AND i.role=s.role AND p.state='sent') ORDER BY s.party,s.role LIMIT 33")?;
+        let mut stmt=self.connection.prepare("SELECT s.settlement,s.party,s.role,s.amount_msat FROM payable_share s WHERE s.settlement=? AND s.amount_msat>0 AND NOT EXISTS (SELECT 1 FROM payout_item i JOIN payout p ON p.id=i.payout WHERE i.settlement=s.settlement AND i.party=s.party AND i.role=s.role AND p.state='sent') AND NOT EXISTS (SELECT 1 FROM bonus_payout_item i JOIN payout p ON p.id=i.payout WHERE i.settlement=s.settlement AND i.party=s.party AND i.role=s.role AND p.state='sent') AND NOT EXISTS (SELECT 1 FROM commission_payout_item i JOIN payout p ON p.id=i.payout WHERE i.settlement=s.settlement AND i.party=s.party AND i.role=s.role AND p.state='sent') ORDER BY s.party,s.role LIMIT 33")?;
         let rows = stmt
             .query_map([key], |r| {
                 Ok(Share {
@@ -535,6 +552,11 @@ impl Ledger {
         let tx = self
             .connection
             .transaction_with_behavior(TransactionBehavior::Immediate)?;
+        if commission::payouts_held_in(&tx)? {
+            return Err(Error::Denied(
+                "native refund or reversal funding remains unresolved",
+            ));
+        }
         let destination: String = tx.query_row(
             "SELECT destination_kind || ':' || destination_value FROM payee WHERE party=?",
             [party],
@@ -557,6 +579,11 @@ impl Ledger {
                 .checked_add(value)
                 .ok_or(Error::Invalid("payout overflow"))?;
         }
+        if !commission::qualify_reservation(&tx, party, &destination, amount, items)? {
+            return Err(Error::Denied(
+                "original commission destination or minimum is unqualified",
+            ));
+        }
         let rail = if destination.starts_with("spark:") {
             "spark"
         } else {
@@ -568,7 +595,13 @@ impl Ledger {
             params![id, party, amount, destination, rail, attempts, at, at],
         )?;
         for item in items {
-            let table = if item.role == "first_paid_call" {
+            tx.execute(
+                "INSERT INTO native_payout_claim VALUES(?,?,?,?,?)",
+                params![id, item.settlement, party, item.role, item.amount_msat],
+            )?;
+            let table = if item.role == "commission" {
+                "commission_payout_item"
+            } else if item.role == "first_paid_call" {
                 "bonus_payout_item"
             } else {
                 "payout_item"
@@ -638,7 +671,7 @@ pub(crate) fn register_payee_in(connection: &Connection, payee: Payee) -> Result
     Ok(())
 }
 
-pub(crate) const AVAILABLE: &str = "NOT EXISTS (SELECT 1 FROM payout_item i JOIN payout p ON p.id=i.payout WHERE i.settlement=s.settlement AND i.party=s.party AND i.role=s.role AND p.state!='failed') AND NOT EXISTS (SELECT 1 FROM bonus_payout_item i JOIN payout p ON p.id=i.payout WHERE i.settlement=s.settlement AND i.party=s.party AND i.role=s.role AND p.state!='failed')";
+pub(crate) const AVAILABLE: &str = "NOT EXISTS (SELECT 1 FROM commission_payout_item i JOIN payout p ON p.id=i.payout WHERE i.settlement=s.settlement AND i.party=s.party AND i.role=s.role AND p.state!='failed') AND NOT EXISTS (SELECT 1 FROM payout_item i JOIN payout p ON p.id=i.payout WHERE i.settlement=s.settlement AND i.party=s.party AND i.role=s.role AND p.state!='failed') AND NOT EXISTS (SELECT 1 FROM bonus_payout_item i JOIN payout p ON p.id=i.payout WHERE i.settlement=s.settlement AND i.party=s.party AND i.role=s.role AND p.state!='failed')";
 fn available_shares(connection: &Connection, party: &str) -> Result<Vec<Share>> {
     let mut stmt = connection.prepare(&format!("SELECT s.settlement,s.party,s.role,s.amount_msat FROM payable_share s JOIN settlement t ON t.payment_hash=s.settlement WHERE s.party=? AND s.amount_msat>0 AND {AVAILABLE} ORDER BY t.seq,s.role"))?;
     let rows = stmt.query_map([party], |r| {

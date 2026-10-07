@@ -102,6 +102,10 @@ pub enum Kind {
     PayoutAmount,
     /// A payout `unknown` past the grace period, or one still settling.
     PayoutUnknown,
+    /// A native refund lacks an exact original outbound payment.
+    RefundMismatch,
+    /// Native refund creation or settlement is still uncertain.
+    RefundUnknown,
     /// A `failed` payout (its shares returned) the wallet recorded as sent:
     /// paying the shares again would pay twice.
     FailedButSent,
@@ -172,6 +176,8 @@ pub struct Figures {
     pub received_msat: i64,
     pub payouts_sent: i64,
     pub paid_msat: i64,
+    pub refunded_msat: i64,
+    pub refund_unknown: i64,
     /// Unreserved, unpaid shares, OpenAgents' own included.
     pub accrued_msat: i64,
     /// Shares held by planned, sending, and unknown payouts.
@@ -317,7 +323,17 @@ pub fn references(ledger: &Ledger) -> Result<(Vec<String>, Vec<String>)> {
             }
         }
     }
+    for r in ledger.native_commission_refunds()? {
+        if let Some(invoice) = r.invoice {
+            let invoice = nostr::x402::decode_invoice(&invoice)
+                .map_err(|_| crate::Error::Invalid("retained native refund invoice"))?;
+            receiver.push(hex_hash(invoice.payment_hash()));
+        }
+    }
     Ok((receiver, spark))
+}
+fn hex_hash(bytes: [u8; 32]) -> String {
+    bytes.iter().map(|b| format!("{b:02x}")).collect()
 }
 
 fn finding(kind: Kind, severity: Severity, detail: String) -> Finding {
@@ -343,7 +359,9 @@ pub fn reconcile(ledger: &Ledger, snapshot: &Snapshot, now: i64) -> Result<Repor
         received_msat: totals.received_msat,
         accrued_msat: totals.accrued_msat,
         reserved_msat: totals.reserved_msat,
-        owed_msat: totals.accrued_msat + totals.reserved_msat,
+        owed_msat: totals.accrued_msat
+            + totals.reserved_msat
+            + ledger.commission_held_liability()?,
         ..Figures::default()
     };
 
@@ -481,6 +499,58 @@ pub fn reconcile(ledger: &Ledger, snapshot: &Snapshot, now: i64) -> Result<Repor
                 }
             }
             PayoutState::Planned | PayoutState::Sending => {}
+        }
+    }
+
+    for refund in ledger.native_commission_refunds()? {
+        let reference = refund
+            .invoice
+            .as_ref()
+            .map(|invoice| nostr::x402::decode_invoice(invoice).map(|v| hex_hash(v.payment_hash())))
+            .transpose()
+            .map_err(|_| crate::Error::Invalid("retained native refund invoice"))?;
+        if let Some(reference) = &reference {
+            explained.insert(("receiver", reference.clone()));
+        }
+        let record = reference
+            .as_ref()
+            .and_then(|reference| receiver.get(reference.as_str()));
+        if refund.state == "reversed" {
+            figures.refunded_msat += refund.amount_msat as i64;
+            if snapshot.receiver.is_some()
+                && record.is_none_or(|r| {
+                    r.direction != Direction::Outbound
+                        || r.status != Status::Succeeded
+                        || r.amount_msat != Some(refund.amount_msat as i64)
+                })
+            {
+                findings.push(Finding {
+                    wallet: Some("receiver"),
+                    reference,
+                    ledger_msat: Some(refund.amount_msat as i64),
+                    ..finding(
+                        Kind::RefundMismatch,
+                        Severity::Drift,
+                        "Native refund needs its original exact merchant outbound record.".into(),
+                    )
+                });
+            }
+        } else if refund.state != "failed" {
+            figures.refund_unknown += 1;
+            findings.push(Finding{wallet:Some("receiver"),reference,ledger_msat:Some(refund.amount_msat as i64),..finding(Kind::RefundUnknown,Severity::Notice,"Native refund is unresolved; original preparation and liabilities remain held.".into())});
+        } else if record
+            .is_some_and(|r| r.direction == Direction::Outbound && r.status == Status::Succeeded)
+        {
+            findings.push(Finding {
+                wallet: Some("receiver"),
+                reference,
+                ledger_msat: Some(refund.amount_msat as i64),
+                ..finding(
+                    Kind::RefundMismatch,
+                    Severity::Drift,
+                    "Failed native refund has a succeeded outbound wallet record.".into(),
+                )
+            });
         }
     }
 
