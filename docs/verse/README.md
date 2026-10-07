@@ -26,6 +26,7 @@ where that studio lives, built from CC0 Quaternius kits. [The Apprentice's Road]
 proposed quest line that eases new players from a first walk in the glade to
 a team of agents on their own repository.
 [Destructible buildings](destructible-buildings.md) specifies what the engine needs for a player to smash Everglade's buildings with a sledgehammer, and orders the work.
+[Water](water.md) specifies the water system: Three.js Water Pro's capabilities plus rivers, buoyancy, swimming, spells on water, and rain, on every quality tier, with phased issues.
 [In-world terminal](in-world-terminal.md) specifies a multiplexed, shareable terminal overlay and in-world screens over NIP-TERM and `coder-vt`, and plans a first demo in Everglade. [Workshop agent](workshop-agent.md) specifies a persistent, named agent you own, Alice, who works at her workstation in the owner's house in Everglade and on your computers through the Coder host. [Generated models with Blender](blender-pipeline.md) is how
 scripts build and convert models for zone packs; the [asset runbook](asset-runbook.md) is the procedure.
 The [crypt lab](../../assets/verse/generated/chamber/PROVENANCE.md) is a standalone original hall built that way.
