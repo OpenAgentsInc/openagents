@@ -96,6 +96,8 @@ struct Book {
     revision: u64,
     selected: Option<Selection>,
     purchases: BTreeMap<String, Purchase>,
+    #[serde(default)]
+    credential_operations: BTreeMap<String, credentials::Operation>,
 }
 impl Default for Book {
     fn default() -> Self {
@@ -104,6 +106,7 @@ impl Default for Book {
             revision: 0,
             selected: None,
             purchases: BTreeMap::new(),
+            credential_operations: BTreeMap::new(),
         }
     }
 }
@@ -224,6 +227,7 @@ fn request(value: &Value) -> Result<jev::SystemOneRequest> {
     Ok(request)
 }
 fn check(book: &Book) -> Result<()> {
+    credentials::check_operations(&book.credential_operations)?;
     if book.schema != SCHEMA || book.purchases.len() > MAX_PURCHASES {
         return Err("Invalid customer state.".into());
     }
@@ -329,6 +333,12 @@ impl Store {
                 recovered = true;
             }
         }
+        for operation in book.credential_operations.values_mut() {
+            if operation.status == credentials::CredentialStatus::Pending {
+                operation.status = credentials::CredentialStatus::Unknown;
+                recovered = true;
+            }
+        }
         let mut store = Self {
             dir,
             lock,
@@ -413,6 +423,9 @@ impl Store {
         Ok(jev::ApiKey::new(text))
     }
     pub fn client(&self, origin_url: &str, name: &str) -> Result<jev::Client> {
+        self.client_with_key(origin_url, self.credential(name)?)
+    }
+    fn client_with_key(&self, origin_url: &str, key: jev::ApiKey) -> Result<jev::Client> {
         let origin_url = origin(origin_url)?;
         let http = reqwest::Client::builder()
             .redirect(reqwest::redirect::Policy::none())
@@ -421,7 +434,7 @@ impl Store {
         jev::Client::new(
             jev::Config::new()
                 .base_url(origin_url)
-                .api_key(self.credential(name)?)
+                .api_key(key)
                 .http_client(http),
         )
         .map_err(|_| "Customer transport configuration failed.".into())
@@ -746,17 +759,68 @@ impl Store {
         workspace: &str,
         door: &str,
     ) -> Result<Selection> {
+        self.select_expected(origin_url, credential_alias, workspace, door, None)
+            .await
+    }
+    pub async fn select_account(
+        &mut self,
+        origin_url: &str,
+        credential_alias: &str,
+        account: &str,
+        workspace: &str,
+        door: &str,
+    ) -> Result<Selection> {
+        self.select_expected(origin_url, credential_alias, workspace, door, Some(account))
+            .await
+    }
+    async fn select_expected(
+        &mut self,
+        origin_url: &str,
+        credential_alias: &str,
+        workspace: &str,
+        door: &str,
+        expected: Option<&str>,
+    ) -> Result<Selection> {
         let canonical_origin = origin(origin_url)?;
         let client = self.client(&canonical_origin, credential_alias)?;
         let context = client.account().purchase_context(workspace, door).await
             .map_err(|_| "Customer selection is unavailable; authentication, membership, or the selected resource must be restored.")?;
+        if expected.is_some_and(|account| account != context.account) {
+            return Err("Authenticated customer differs from the requested account; selection is unchanged.".into());
+        }
         let selection = Selection {
             origin: canonical_origin,
             credential_alias: credential_alias.into(),
             context,
         };
+        for operation in self.book.credential_operations.values() {
+            if operation.command_output_alias() == Some(credential_alias)
+                && (operation.command_origin() != selection.origin
+                    || operation.command_account() != selection.context.account)
+            {
+                return Err(
+                    "Issued credential differs from its original account or origin.".into(),
+                );
+            }
+        }
         self.bind(selection.clone())?;
         Ok(selection)
+    }
+    pub async fn current_selection(&self) -> Result<Selection> {
+        let context = self.current_context().await?;
+        let selected = self
+            .book
+            .selected
+            .as_ref()
+            .ok_or("Select a customer first.")?;
+        let current = Selection {
+            context,
+            ..selected.clone()
+        };
+        if !same_customer(selected, &current) {
+            return Err("Current customer differs from the retained selection.".into());
+        }
+        Ok(current)
     }
     async fn current_context(&self) -> Result<Context> {
         let selected = self
@@ -782,6 +846,9 @@ impl Store {
         self.approve(id, reviewed_digest, &current, now)
     }
 }
+
+mod credentials;
+pub use credentials::{CredentialAction, CredentialCommand, CredentialStatus, CredentialView};
 
 #[cfg(test)]
 mod tests;

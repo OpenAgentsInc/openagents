@@ -93,6 +93,43 @@ rechecks current custody and writes owner-approved delayed counts with no
 publication. The [weekly evidence guide](../sales/evidence.md#consented-weekly-operating-review)
 defines the manifests, review, privacy boundaries, and qualification limits.
 
+## Commercial customer (`openagents customer`)
+
+`openagents customer` binds the installed client to the existing gateway account,
+workspace, payer, and decision resource. It requires an absolute private `--root`
+and explicit credential aliases; it never uses a provider login, paired host,
+wallet, or ambient API key as spending authority. Import a key with `import
+--alias NAME --input FILE`, read its account with `account --origin URL --alias
+NAME`, then use `select --origin URL --alias NAME --account ID --workspace ID
+--door NAME`. `current` reads fresh rights or reports an unavailable connection;
+`history` and `show --purchase ID` retain the selected customer's original records.
+
+`quote --purchase ID --input FILE` freezes the exact private decision request,
+payer, price, and charge ceiling. Review the emitted quote, approve its exact
+`quote_digest` with `approve --purchase ID --digest DIGEST`, then use `invoke
+--purchase ID` once. Rotation or changed rights require a new quote and approval.
+An interrupted dispatch remains unknown and blocks another purchase for that
+payer; `reconcile --purchase ID [--receipt DIGEST]` only reads original settlement
+evidence. Invocation prints the requested result; retain it privately if needed.
+
+`change --input FILE` reads a private JSON intent with `id`, `origin`, `account`,
+`credential_alias`, and `action`. Actions are `sign-in` with `output_alias`,
+`rotate` with `workspace`, `key`, and `output_alias`, `revoke` with `workspace` and
+`key`, or `sign-out`. `recover` uses `workspace`, `output_alias`,
+`credential_alias: null`, and a separate private `--recovery-token FILE`.
+Issued aliases are immutable; selecting one remains a separate command.
+Exact retries read the retained outcome without repeating the mutation.
+Unknown outcomes refuse renamed retries. `inspect --operation ID` authenticates
+a retained once-issued credential after interruption without acknowledging an
+unknown historical effect or silently switching accounts. `credentials` reads
+operation references for the selected customer.
+
+Inputs require private regular files, and the store uses mode `0700` directories
+and `0600` files. HTTPS origins are supported; HTTP is restricted to explicit
+loopback fixtures. Missing account, funding, or resource admission remains
+unavailable. Qualify the installed connection and selected commercial offer
+through [the owner gates](../../NEEDS_OWNER.md#customer-connection-o8-rev-09-10816).
+
 ## Coder (`openagents coder`)
 
 `openagents coder` exposes the Coder terminal's chat runtime, plugin settings,

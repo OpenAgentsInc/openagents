@@ -305,6 +305,18 @@ proves code behavior, not a real provider, buyer acceptance, measured savings,
 or another release/platform/store qualification. Publication and paid-service
 activation still require O1 and the private agreement.
 
+## Customer connection O8 (REV-09, #10816)
+
+Qualify the installed macOS arm64 CLI's [commercial customer commands](docs/cli/README.md#commercial-customer-openagents-customer)
+against the chosen gateway's existing account/session and funded-decision
+configuration. Supply real credentials privately, verify the intended customer,
+workspace, payer, current rights, recovery, rotation, revocation, and retained
+receipt attribution, and record external customer acceptance. Keep the selected
+offer unavailable until its O5 backend, funding, price, result, and charge evidence
+is qualified. Isolated fixtures establish client behavior; they do not establish
+real funding, production deployment, customer acceptance, or another platform's
+account connection. Device pairing and provider login confer no spend authority.
+
 ## First workflow offer O1 (REV-01, #10808)
 
 Before selling [Coder pilot v1](docs/sales/README.md#first-workflow-offer-v1),

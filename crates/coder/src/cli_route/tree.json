@@ -6770,6 +6770,549 @@
       ]
     },
     {
+      "name": "customer",
+      "summary": "Bind gateway customers, credentials, and exact approved purchases.",
+      "children": [
+        {
+          "name": "import",
+          "leaf": {
+            "path": [
+              "customer",
+              "import"
+            ],
+            "usage": [
+              "import --alias NAME --input FILE"
+            ],
+            "forms": [
+              {
+                "tokens": [
+                  {
+                    "kind": "literal",
+                    "word": "import"
+                  },
+                  {
+                    "kind": "option",
+                    "name": "alias",
+                    "value": "NAME",
+                    "open": true
+                  },
+                  {
+                    "kind": "option",
+                    "name": "input",
+                    "value": "FILE",
+                    "open": true
+                  }
+                ]
+              }
+            ],
+            "summary": "Import an immutable credential alias from a private file; prints no key.",
+            "effect": "secret",
+            "runs_on": "connected_computer"
+          }
+        },
+        {
+          "name": "account",
+          "leaf": {
+            "path": [
+              "customer",
+              "account"
+            ],
+            "usage": [
+              "account --origin URL --alias NAME"
+            ],
+            "forms": [
+              {
+                "tokens": [
+                  {
+                    "kind": "literal",
+                    "word": "account"
+                  },
+                  {
+                    "kind": "option",
+                    "name": "origin",
+                    "value": "URL",
+                    "open": true
+                  },
+                  {
+                    "kind": "option",
+                    "name": "alias",
+                    "value": "NAME",
+                    "open": true
+                  }
+                ]
+              }
+            ],
+            "summary": "Read the authenticated account and workspace membership identifiers.",
+            "effect": "read_only",
+            "runs_on": "connected_computer"
+          }
+        },
+        {
+          "name": "select",
+          "leaf": {
+            "path": [
+              "customer",
+              "select"
+            ],
+            "usage": [
+              "select --origin URL --alias NAME --account ID --workspace ID --door NAME"
+            ],
+            "forms": [
+              {
+                "tokens": [
+                  {
+                    "kind": "literal",
+                    "word": "select"
+                  },
+                  {
+                    "kind": "option",
+                    "name": "origin",
+                    "value": "URL",
+                    "open": true
+                  },
+                  {
+                    "kind": "option",
+                    "name": "alias",
+                    "value": "NAME",
+                    "open": true
+                  },
+                  {
+                    "kind": "option",
+                    "name": "account",
+                    "value": "ID",
+                    "open": true
+                  },
+                  {
+                    "kind": "option",
+                    "name": "workspace",
+                    "value": "ID",
+                    "open": true
+                  },
+                  {
+                    "kind": "option",
+                    "name": "door",
+                    "value": "NAME",
+                    "open": true
+                  }
+                ]
+              }
+            ],
+            "summary": "Bind the explicitly named commercial customer, payer, and resource.",
+            "effect": "local_write",
+            "runs_on": "connected_computer"
+          }
+        },
+        {
+          "name": "current",
+          "leaf": {
+            "path": [
+              "customer",
+              "current"
+            ],
+            "usage": [
+              "current"
+            ],
+            "forms": [
+              {
+                "tokens": [
+                  {
+                    "kind": "literal",
+                    "word": "current"
+                  }
+                ]
+              }
+            ],
+            "summary": "Read stored selection and current server rights, or explicit unavailable state.",
+            "effect": "read_only",
+            "runs_on": "connected_computer"
+          }
+        },
+        {
+          "name": "history",
+          "leaf": {
+            "path": [
+              "customer",
+              "history"
+            ],
+            "usage": [
+              "history"
+            ],
+            "forms": [
+              {
+                "tokens": [
+                  {
+                    "kind": "literal",
+                    "word": "history"
+                  }
+                ]
+              }
+            ],
+            "summary": "Read only the selected customer's historical purchase references.",
+            "effect": "read_only",
+            "runs_on": "connected_computer"
+          }
+        },
+        {
+          "name": "show",
+          "leaf": {
+            "path": [
+              "customer",
+              "show"
+            ],
+            "usage": [
+              "show --purchase ID"
+            ],
+            "forms": [
+              {
+                "tokens": [
+                  {
+                    "kind": "literal",
+                    "word": "show"
+                  },
+                  {
+                    "kind": "option",
+                    "name": "purchase",
+                    "value": "ID",
+                    "open": true
+                  }
+                ]
+              }
+            ],
+            "summary": "Read one selected-customer quote, approval, receipt, and unresolved ceiling.",
+            "effect": "read_only",
+            "runs_on": "connected_computer"
+          }
+        },
+        {
+          "name": "quote",
+          "leaf": {
+            "path": [
+              "customer",
+              "quote"
+            ],
+            "usage": [
+              "quote --purchase ID --input FILE"
+            ],
+            "forms": [
+              {
+                "tokens": [
+                  {
+                    "kind": "literal",
+                    "word": "quote"
+                  },
+                  {
+                    "kind": "option",
+                    "name": "purchase",
+                    "value": "ID",
+                    "open": true
+                  },
+                  {
+                    "kind": "option",
+                    "name": "input",
+                    "value": "FILE",
+                    "open": true
+                  }
+                ]
+              }
+            ],
+            "summary": "Freeze exact private decision input with current payer, price, and ceiling.",
+            "effect": "local_write",
+            "runs_on": "connected_computer"
+          }
+        },
+        {
+          "name": "approve",
+          "leaf": {
+            "path": [
+              "customer",
+              "approve"
+            ],
+            "usage": [
+              "approve --purchase ID --digest DIGEST"
+            ],
+            "forms": [
+              {
+                "tokens": [
+                  {
+                    "kind": "literal",
+                    "word": "approve"
+                  },
+                  {
+                    "kind": "option",
+                    "name": "purchase",
+                    "value": "ID",
+                    "open": true
+                  },
+                  {
+                    "kind": "option",
+                    "name": "digest",
+                    "value": "DIGEST",
+                    "open": true
+                  }
+                ]
+              }
+            ],
+            "summary": "Approve the exact reviewed quote after rechecking current server rights.",
+            "effect": "grants",
+            "runs_on": "connected_computer"
+          }
+        },
+        {
+          "name": "invoke",
+          "leaf": {
+            "path": [
+              "customer",
+              "invoke"
+            ],
+            "usage": [
+              "invoke --purchase ID"
+            ],
+            "forms": [
+              {
+                "tokens": [
+                  {
+                    "kind": "literal",
+                    "word": "invoke"
+                  },
+                  {
+                    "kind": "option",
+                    "name": "purchase",
+                    "value": "ID",
+                    "open": true
+                  }
+                ]
+              }
+            ],
+            "summary": "Invoke the approved purchase once; print its result and settlement state.",
+            "effect": "spends",
+            "runs_on": "connected_computer"
+          }
+        },
+        {
+          "name": "reconcile",
+          "leaf": {
+            "path": [
+              "customer",
+              "reconcile"
+            ],
+            "usage": [
+              "reconcile --purchase ID [--receipt DIGEST]"
+            ],
+            "forms": [
+              {
+                "tokens": [
+                  {
+                    "kind": "literal",
+                    "word": "reconcile"
+                  },
+                  {
+                    "kind": "option",
+                    "name": "purchase",
+                    "value": "ID",
+                    "open": true
+                  },
+                  {
+                    "kind": "option",
+                    "name": "receipt",
+                    "value": "DIGEST",
+                    "open": true,
+                    "optional": true
+                  }
+                ]
+              }
+            ],
+            "summary": "Read original settlement proof; never dispatch a purchase again.",
+            "effect": "local_write",
+            "runs_on": "connected_computer"
+          }
+        },
+        {
+          "name": "change",
+          "leaf": {
+            "path": [
+              "customer",
+              "change"
+            ],
+            "usage": [
+              "change --input FILE [--recovery-token FILE]"
+            ],
+            "forms": [
+              {
+                "tokens": [
+                  {
+                    "kind": "literal",
+                    "word": "change"
+                  },
+                  {
+                    "kind": "option",
+                    "name": "input",
+                    "value": "FILE",
+                    "open": true
+                  },
+                  {
+                    "kind": "option",
+                    "name": "recovery-token",
+                    "value": "FILE",
+                    "open": true,
+                    "optional": true
+                  }
+                ]
+              }
+            ],
+            "summary": "Apply one private credential intent: sign-in, recover, rotate, revoke, or sign-out. Its ID prevents replay after uncertain responses.",
+            "effect": "secret",
+            "runs_on": "connected_computer"
+          }
+        },
+        {
+          "name": "credentials",
+          "leaf": {
+            "path": [
+              "customer",
+              "credentials"
+            ],
+            "usage": [
+              "credentials"
+            ],
+            "forms": [
+              {
+                "tokens": [
+                  {
+                    "kind": "literal",
+                    "word": "credentials"
+                  }
+                ]
+              }
+            ],
+            "summary": "Read credential-operation references for the selected customer.",
+            "effect": "read_only",
+            "runs_on": "connected_computer"
+          }
+        },
+        {
+          "name": "inspect",
+          "leaf": {
+            "path": [
+              "customer",
+              "inspect"
+            ],
+            "usage": [
+              "inspect --operation ID"
+            ],
+            "forms": [
+              {
+                "tokens": [
+                  {
+                    "kind": "literal",
+                    "word": "inspect"
+                  },
+                  {
+                    "kind": "option",
+                    "name": "operation",
+                    "value": "ID",
+                    "open": true
+                  }
+                ]
+              }
+            ],
+            "summary": "Verify a retained once-issued credential after interruption; never replay the mutation or silently select its account.",
+            "effect": "secret",
+            "runs_on": "connected_computer"
+          }
+        }
+      ],
+      "options": [
+        {
+          "kind": "option",
+          "name": "alias",
+          "value": "NAME",
+          "open": true,
+          "optional": true,
+          "repeated": true
+        },
+        {
+          "kind": "option",
+          "name": "input",
+          "value": "FILE",
+          "open": true,
+          "optional": true,
+          "repeated": true
+        },
+        {
+          "kind": "option",
+          "name": "origin",
+          "value": "URL",
+          "open": true,
+          "optional": true,
+          "repeated": true
+        },
+        {
+          "kind": "option",
+          "name": "account",
+          "value": "ID",
+          "open": true,
+          "optional": true,
+          "repeated": true
+        },
+        {
+          "kind": "option",
+          "name": "workspace",
+          "value": "ID",
+          "open": true,
+          "optional": true,
+          "repeated": true
+        },
+        {
+          "kind": "option",
+          "name": "door",
+          "value": "NAME",
+          "open": true,
+          "optional": true,
+          "repeated": true
+        },
+        {
+          "kind": "option",
+          "name": "purchase",
+          "value": "ID",
+          "open": true,
+          "optional": true,
+          "repeated": true
+        },
+        {
+          "kind": "option",
+          "name": "digest",
+          "value": "DIGEST",
+          "open": true,
+          "optional": true,
+          "repeated": true
+        },
+        {
+          "kind": "option",
+          "name": "receipt",
+          "value": "DIGEST",
+          "open": true,
+          "optional": true,
+          "repeated": true
+        },
+        {
+          "kind": "option",
+          "name": "recovery-token",
+          "value": "FILE",
+          "open": true,
+          "optional": true,
+          "repeated": true
+        },
+        {
+          "kind": "option",
+          "name": "operation",
+          "value": "ID",
+          "open": true,
+          "optional": true,
+          "repeated": true
+        }
+      ]
+    },
+    {
       "name": "scratch",
       "summary": "Make and print this session's durable scratch directory, under ~/.openagents/scratch, for files that must outlive a reboot.",
       "leaf": {

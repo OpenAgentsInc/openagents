@@ -33,6 +33,7 @@ mod cloud;
 mod computer;
 #[cfg(unix)]
 mod connect;
+mod customer;
 mod discover;
 mod efficiency;
 mod eval;
@@ -144,6 +145,7 @@ Coder:
   lease        Run a command under a lease on a shared resource (build slots,
                quiet, the screen, the GPU), and list holders and waiters.
   sales        Inspect and update the host-private lead/account pipeline.
+  customer     Bind gateway customers, credentials, and exact approved purchases.
   scratch      Make and print this session's durable scratch directory, under
                ~/.openagents/scratch, for files that must outlive a reboot.
   browser      Run a command beside a Chrome of its own: a fresh profile and
@@ -334,6 +336,7 @@ fn main() -> ExitCode {
         "issue" => issue::run(&output, &rest),
         "lease" | "leases" => lease::run(&output, &rest),
         "sales" => sales::run(&output, &rest),
+        "customer" => customer::run(&output, &rest),
         "scratch" => scratch::run(&output, &rest),
         "browser" => browser::run(&output, &rest),
         "capacity" => capacity::run(&output, &rest),
