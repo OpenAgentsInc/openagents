@@ -179,6 +179,19 @@ evidence where available. Review the exact report and disclosure rights before
 publishing its aggregate projection. Synthetic tests establish the adapter,
 not a real customer result, measured savings, or a deployed routing improvement.
 
+## Selected install and first task O8 (REV-02, #10809)
+
+Use the [pinned macOS arm64 source-install path](docs/sales/README.md#selected-installation-and-first-task-rev-02)
+with a genuine external buyer's supported Codex login, authorized public
+repository commit, approved recipients/payers, and frozen independent checks.
+Record actual setup time, installed binary digests, private runbook/support
+references, accepted candidate, failures/repairs, and full costs. Disable hosted
+cloud and default hosted decisions; disable or separately admit any existing
+decision-provider configuration before buyer work. The isolated offline fixture
+proves code behavior, not a real provider, buyer acceptance, measured savings,
+or another release/platform/store qualification. Publication and paid-service
+activation still require O1 and the private agreement.
+
 ## First workflow offer O1 (REV-01, #10808)
 
 Before selling [Coder pilot v1](docs/sales/README.md#first-workflow-offer-v1),

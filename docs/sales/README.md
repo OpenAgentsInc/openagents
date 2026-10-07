@@ -124,7 +124,7 @@ Paid plugins remain the first proposed small product purchase in the
 | Delivery cap | One buyer, one repository, one change, at most one repair attempt, and a seven-calendar-day pilot with a dated review. At most three operator hours cover discovery, setup, delivery, and support. Each attempt stops at 30 minutes; each check stops at 15 minutes. These are operator-run engagement limits, not new automatic Coder controls. |
 | Service price | Proposed fixed fee **USD 250**, invoice after the buyer accepts the checked patch and runbook, due in seven calendar days. This is a new design default, not a historical price, demonstrated margin, or active rate. O1 must approve it or create a new offer version before quoting. No fee is earned for an unaccepted result. |
 | Payment and trial | A separately issued service invoice and owner-selected external payment route; retain the invoice, confirmed payment, and buyer acceptance privately. No product balance is credited. Default free discovery is one 30-minute conversation, with **zero** promotional credits and no provider subsidy. The owner approves any exception before spending or quoting. |
-| Resource payers | The buyer pays their model provider and uses their own computer. OpenAgents earns only the service fee. Approved Codex/Claude routing and any separately configured Jev connection name their recipients and payer before use; disable [sponsored cloud fallback](../coder/runtime/cloud-fallback.md) with `CODER_CLOUD=off`. No operator credential or unapproved paid provider is used. Subscription capacity, list-price estimates, and actual API charges remain separate; the buyer accepts a provider budget privately. |
+| Resource payers | The buyer pays their model provider and uses their own computer. OpenAgents earns only the service fee. Approved Codex/Claude routing and any separately configured Jev connection name their recipients and payer before use; disable [sponsored cloud fallback](../coder/runtime/cloud-fallback.md) with `CODER_CLOUD=off` and default hosted decisions with `OPENAGENTS_JEV_HOSTED=off`. Existing decision-provider configuration must be disabled or separately admitted. No operator credential or unapproved paid provider is used. Subscription capacity, list-price estimates, and actual API charges remain separate; the buyer accepts a provider budget privately. |
 | Delivery and support owner | The OpenAgents owner supplies delivery and one named private support contact until a collaborator accepts that role. Acknowledge requests within one business day during the agreed business hours; support lasts through the pilot review and stays inside the three-hour cap. There is no availability SLA or continuing maintenance promise. |
 
 **Data policy.** Public source still needs disclosure permission. The buyer
@@ -385,6 +385,62 @@ Agents and plugins become things people can find, trust, and pay for.
   availability or work quality. A first partner plugin and separate public
   discoverability pilot are planned in
   [`docs/plugins/brainstorm-v1-integration.md`](../plugins/brainstorm-v1-integration.md).
+
+## Selected installation and first task (REV-02)
+
+The initial service selects source-built `coder` and companion `openagents` on
+macOS arm64 from clean commit
+`52736d04dde8575b2b62d1e519fc2d25949dde5f`. The
+[qualification record](install-qualification.json) pins the installer, release
+binaries, setup time, and check artifacts. This path uses the existing
+[source installer](../../scripts/install-coder.sh), terminal/headless turn, and
+buyer-owned Codex login. Other client, platform, provider, and store combinations
+need separate qualification.
+
+1. Check out the pinned commit in a clean clone. Run
+   `./scripts/install-coder.sh`, then start a terminal with its installed
+   `~/.openagents/bin` on `PATH`. Confirm `coder --version` and
+   `openagents --version` identify the same clean commit.
+2. Use your own supported Codex login. Set `CODER_CLOUD=off` and
+   `OPENAGENTS_JEV_HOSTED=off`, and select `CODER_DELEGATE=always` with
+   `CODER_DELEGATE_AGENT=codex` so an unavailable Codex login refuses instead of
+   choosing another provider. Existing `TYPESAFE_*`, `CODER_DECISION_*`, or
+   `~/.openagents/jev.json` configuration can still enable decision access;
+   disable it for this environment without deleting saved configuration, or
+   separately approve its exact recipient and payer before work.
+3. Run `coder doctor`. Confirm the selected executor is Codex, its login is
+   available, and the displayed decision/cloud settings match the agreement.
+   Missing login is a setup refusal, not a completed task. Resolve it before
+   sending buyer content.
+4. Freeze the authorized repository commit and acceptance commands in an
+   isolated worktree. Use the [headless guide](../coder/guides/headless.md) for
+   the task and private trace. Retain the exact candidate patch and check that
+   candidate independently in a separate clean worktree; an answered turn alone
+   does not establish delivery acceptance.
+5. On failure, retain its typed result and private trace. On interruption, stop
+   the caller and its supervised executor through the existing task/terminal
+   controls, inspect any partial effects, and leave acceptance unknown. Start a
+   fresh attempt only after that inspection; do not automatically replay an
+   uncertain effect. A fresh process must recheck the retained candidate.
+
+Keep the previous installed binary pair for recovery. The installer restores
+both prior commands if either staged command fails its version probe. Use
+`./scripts/install-coder.sh --rollback` to restore the previous pair. Support
+receives the source revision, binary/patch/check digests, refusal or failure
+status, and agreed redacted diagnostic references, never credentials or private
+source copied into an issue.
+
+For reproducible code acceptance, run
+[`scripts/qualify-coder-first-task.py`](../../scripts/qualify-coder-first-task.py)
+with the absolute installed `--coder`, full `--commit`, and a new `--root` under
+`openagents scratch`. Run the checker from current main against the pinned
+installed pair; the pinned installation revision predates this acceptance tool.
+It exercises the actual installed binaries with an offline
+Codex protocol fixture, isolated HOME, disabled hosted decisions/cloud, and
+independent candidate, failure, stopped-effect, and restart checks. It uses no
+real provider login. This establishes deterministic code behavior;
+[O8](../../NEEDS_OWNER.md#selected-install-and-first-task-o8-rev-02-10809)
+still requires a genuine buyer installation and accepted task.
 
 ## What exists today
 

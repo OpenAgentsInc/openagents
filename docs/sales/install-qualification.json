@@ -1,0 +1,218 @@
+{
+  "schema": "openagents.sales.install-qualification.v1",
+  "issue": "REV-02 / #10809",
+  "recorded_on": "2026-10-07",
+  "scope": {
+    "client": "source-built legacy coder terminal/headless with companion openagents",
+    "platform": "macos_arm64",
+    "profile": "release",
+    "provider": "offline Codex CLI protocol fixture",
+    "real_provider_qualified": false,
+    "real_customer_qualified": false,
+    "commercial_activation": false,
+    "owner_host_used": false,
+    "network_configuration": "Hosted decisions and cloud disabled; no decision profile, provider keys, or live CLI. This record does not assert OS network isolation."
+  },
+  "source": {
+    "commit": "52736d04dde8575b2b62d1e519fc2d25949dde5f",
+    "tree": "4e309b648b91dd6ed3ed327aa5e5c4addb112f97",
+    "installer": "scripts/install-coder.sh",
+    "installer_sha256": "a1cae47fe1c44ad4c6bd19785ffa5a7012f74812db4a9e01822a9b45412ece1c"
+  },
+  "installed_artifacts": {
+    "coder": {
+      "sha256": "3f98c8c4517e3806970e3a8721f73cda7f184fe75e7ea6b4e518dca98361fe79",
+      "version": "coder 0.1.0 (OpenAgentsInc/openagents 52736d04dd clean)",
+      "file": "Mach-O 64-bit executable arm64"
+    },
+    "openagents": {
+      "sha256": "1c5b5d05a7015825cabf65d5add583ce4233ea36f6911918ea5e9077ee61aa0f",
+      "version": "openagents 1.0.0-rc.4 (OpenAgentsInc/openagents 52736d04dd clean)",
+      "file": "Mach-O 64-bit executable arm64"
+    }
+  },
+  "setup": {
+    "observed_install_seconds": 126.232,
+    "cache": "Reused external Cargo target and populated compiler/dependency caches. Cold buyer setup time is unqualified.",
+    "command": "OPENAGENTS_HOME=PRIVATE_INSTALL CARGO_TARGET_DIR=REUSED_EXTERNAL_TARGET ./scripts/install-coder.sh",
+    "isolated_home": true
+  },
+  "acceptance": {
+    "script": "scripts/qualify-coder-first-task.py",
+    "script_sha256": "e636a481342a2b24b59c5a15688cfb58dd1e7c36e1d0a74192cdebf27c6fa60c",
+    "command": "python3 scripts/qualify-coder-first-task.py --coder ABSOLUTE_INSTALLED_CODER --commit 52736d04dde8575b2b62d1e519fc2d25949dde5f --root NEW_DIRECTORY_UNDER_OPENAGENTS_SCRATCH",
+    "checks": {
+      "missing_login": {
+        "exit": 1,
+        "elapsed_seconds": 0.021
+      },
+      "doctor": {
+        "exit": 0,
+        "elapsed_seconds": 0.028
+      },
+      "success": {
+        "exit": 0,
+        "elapsed_seconds": 0.449
+      },
+      "independent_check": {
+        "exit": 0,
+        "elapsed_seconds": 0.106
+      },
+      "failure": {
+        "exit": 1,
+        "elapsed_seconds": 0.254
+      },
+      "restart": {
+        "exit": 0,
+        "elapsed_seconds": 0.268
+      },
+      "restart_check": {
+        "exit": 0,
+        "elapsed_seconds": 0.035
+      }
+    },
+    "stopped": {
+      "exit": -15,
+      "classification": "caller_stopped_partial_effect_unaccepted",
+      "partial_effect_retained": true,
+      "executor_group_stopped": true,
+      "independent_inspection": "evidence/stopped-effect-check.stdout"
+    },
+    "candidate_sha256": "294816a2f28d864144a9cd8cefb450c119b8169ae8ba3b7f799308c0d906eb53",
+    "independent_candidate": "Exact retained patch applied and checked in a separate clean detached worktree. Stopped effects inspected before a fresh attempt.",
+    "retained_private_artifacts": {
+      "evidence/stopped.stdout": {
+        "sha256": "84afe70ea60778d73a46e9c5ba73f6f85b9f67f84fc46f37d4988ffd8ca831ed",
+        "bytes": 828
+      },
+      "evidence/stopped-effect-check.stdout": {
+        "sha256": "689b732510eb469796c0ef71ea27f0fbb558178e190816f1a2d7267111b53ae6",
+        "bytes": 87
+      },
+      "evidence/failure.stderr": {
+        "sha256": "c5f46bbf006d0b318f32ca5f71de1ba8e1aa23c7ae1be2ca2b602949fc158c1e",
+        "bytes": 984
+      },
+      "evidence/independent-check.stdout": {
+        "sha256": "b43ec62bac4c75e08cbe981d16cf49e72f61a2c18042a442ade9b1428df6ab7e",
+        "bytes": 33
+      },
+      "evidence/doctor.stderr": {
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "bytes": 0
+      },
+      "evidence/candidate.patch": {
+        "sha256": "294816a2f28d864144a9cd8cefb450c119b8169ae8ba3b7f799308c0d906eb53",
+        "bytes": 147
+      },
+      "evidence/missing-login.stderr": {
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "bytes": 0
+      },
+      "evidence/stopped.atif.jsonl": {
+        "sha256": "1a559ec8427c11d8bb7f83ef8ae263902dc2acaf279143d206b30598ecf64dd9",
+        "bytes": 1469
+      },
+      "evidence/success.atif.jsonl": {
+        "sha256": "d526c26a442fc5a83333a112a01e5b43fe58c56e7d1005533f1474198cf55a07",
+        "bytes": 16917
+      },
+      "evidence/missing-login.stdout": {
+        "sha256": "0ade2eaec559c2882f17c08b454e1664ba357904359181c4412534b90698c58d",
+        "bytes": 400
+      },
+      "evidence/independent-check.stderr": {
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "bytes": 0
+      },
+      "evidence/failure.stdout": {
+        "sha256": "f20a17e1271a9a52c07a4ad0fc9e3272aa7854d6fd6291ba22555c120d578cd4",
+        "bytes": 1246
+      },
+      "evidence/stopped-effect-check.stderr": {
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "bytes": 0
+      },
+      "evidence/doctor.stdout": {
+        "sha256": "d336a6c8de233e9c379539cea83f281b5f6ea7077d8101df7ed7f959fd93313e",
+        "bytes": 2492
+      },
+      "evidence/stopped.stderr": {
+        "sha256": "ff31f7b653700a72e2e7e101f15f948592b4a9e4da6bb292a12de0fd2653baaa",
+        "bytes": 984
+      },
+      "evidence/restart-check.stderr": {
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "bytes": 0
+      },
+      "evidence/success.stderr": {
+        "sha256": "fa0cfe02f33cc2da23450574b7df4bbf82df69f308814bae17d30a11fb72a306",
+        "bytes": 1008
+      },
+      "evidence/failure.atif.jsonl": {
+        "sha256": "bfa7021ad7be76e9975313ff5f7c725498cf8143c0dc1711e1a930af0522bdd6",
+        "bytes": 15227
+      },
+      "evidence/restart.atif.jsonl": {
+        "sha256": "f6fe99f896c74203ac99c6242038d67c401643b2e7eeb8366b46b9ed026a2c57",
+        "bytes": 16974
+      },
+      "evidence/openagents-version.stdout": {
+        "sha256": "06054ea76932848b982e15e4fd5a5811c2dcf94aab76b2f6d8236e6c71d74e4f",
+        "bytes": 66
+      },
+      "evidence/restart.stderr": {
+        "sha256": "0f07f343f1b8b9f3ee931d8e6e0cd6af625c81e056f49103eef1bf9771e61c78",
+        "bytes": 1008
+      },
+      "evidence/coder-version.stderr": {
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "bytes": 0
+      },
+      "evidence/coder-version.stdout": {
+        "sha256": "462b3e1f2f8dba7eb81bb0753f3eb8bf7a1dd344db1c68b3269ab4330e5851a6",
+        "bytes": 56
+      },
+      "evidence/restart.stdout": {
+        "sha256": "feea0cbc0428ca9eb8ffc24b4ad7afe5c54c7d4081cf4bf70a97aa31de7950ff",
+        "bytes": 1304
+      },
+      "evidence/success.stdout": {
+        "sha256": "4e83ad366c165088d23e98a547bff18b98cf53937f6d82319b6ff31cc6f53143",
+        "bytes": 1304
+      },
+      "evidence/openagents-version.stderr": {
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "bytes": 0
+      },
+      "evidence/restart-check.stdout": {
+        "sha256": "cd607dfb39ca74e2159f975913e4cb84f119b89dfbe10b000a94f02d63e05194",
+        "bytes": 59
+      }
+    }
+  },
+  "focused_verification": [
+    {
+      "command": "cargo test --locked --offline -p coder --bin coder checkup::tests",
+      "passed": 1,
+      "log_sha256": "9ccdf1851620d743a4947a60a23995c4c6668b3b9afc13cc1c2f01d38554dfb4"
+    },
+    {
+      "command": "cargo fmt -p coder -- --check",
+      "passed": true,
+      "log_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "command": "scripts/test-install-coder.sh",
+      "passed": true,
+      "stdout_sha256": "04f17206a4ea4c54778347c7fd3149ae05dca126c0415f59b3d7f4496bdfab02",
+      "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "coverage": "Paired installation, rollback, failed/incomplete build, and missing or invalid companion CLI using installer regression fixtures."
+    }
+  ],
+  "qualification_limits": [
+    "Synthetic task and CLI fixture establish deterministic code acceptance only.",
+    "No buyer agreement, actual provider bill, measured commercial savings, store/device acceptance, or live deployment was performed.",
+    "O8 retains genuine external installation and accepted work; O1 retains service activation."
+  ]
+}
