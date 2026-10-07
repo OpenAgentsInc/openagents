@@ -85,6 +85,19 @@ purchase needs separate authorization; these isolated checks authorize no
 payment, refund, deployment, or public offer. The remaining commercial gates
 must pass before launch.
 
+## Shared commercial funding (#10828)
+
+Before offering a shared balance, approve the canonical customer references,
+original conversion terms, adapter scopes, and protected controller policy.
+Activate the intended empty resident wallet explicitly; possession of a node key
+or a copied seed grants no shared spending authority. Qualify funding, concurrent
+Gateway, compute, and Plugin purchases, refund recovery, and source-loss handling
+on the intended deployment with private credentials and owner-controlled funds.
+Retain a consistent backup of the canonical ledger and protected policy alongside
+the wallet seed, store, custody manifest, required marker, and original handoff database. A restored
+or moved deployment requires renewed custody qualification before it can spend.
+Isolated tests establish neither funded production use nor customer consent.
+
 ## Commercial mapping activation O1 (REV-19, #10826)
 
 Review the explicit native product sources, canonical customer and workspace,

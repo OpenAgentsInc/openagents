@@ -44,6 +44,22 @@ pub enum Request {
         request_hash: String,
         expiry_secs: u32,
     },
+    ActivateSharedCustody {
+        manifest: crate::custody::Manifest,
+    },
+    CustodialPay {
+        permit: crate::custody::Permit,
+        writer: String,
+    },
+    CustodialReceive {
+        permit: crate::custody::Permit,
+        writer: String,
+    },
+    CustodialResult {
+        expected_node: String,
+        intent: String,
+        writer: String,
+    },
     Pay {
         invoice: String,
         max_fee_msat: u64,
@@ -126,6 +142,47 @@ fn io_error(context: &str, error: std::io::Error) -> WalletError {
 /// What the resident needs from the node beyond `LightningWallet`.
 pub trait Served: LightningWallet {
     fn status(&self) -> serde_json::Value;
+    fn custodial_pay(&self, admitted: &crate::custody::Admitted) -> Result<Proof, WalletError> {
+        let permit = admitted.take()?;
+        let crate::custody::Terms::Pay {
+            invoice,
+            max_fee_msat,
+            wait_secs,
+        } = &permit.terms
+        else {
+            return Err(WalletError::Invalid(
+                "Exact custody payment required.".into(),
+            ));
+        };
+        self.pay_from_node(
+            &permit.node,
+            invoice,
+            *max_fee_msat,
+            Duration::from_secs(*wait_secs),
+        )
+    }
+    fn custodial_receive(
+        &self,
+        admitted: &crate::custody::Admitted,
+    ) -> Result<IssuedInvoice, WalletError> {
+        let permit = admitted.take()?;
+        let crate::custody::Terms::Receive {
+            amount_msat,
+            request_hash,
+            expiry_secs,
+        } = &permit.terms
+        else {
+            return Err(WalletError::Invalid(
+                "Exact custody funding required.".into(),
+            ));
+        };
+        self.receive_exact_from_node(
+            &permit.node,
+            *amount_msat,
+            crate::parse_hash32(request_hash)?,
+            *expiry_secs,
+        )
+    }
     fn buy_channel(
         &self,
         lsp_balance_sat: u64,
@@ -143,6 +200,7 @@ pub struct Server {
     path: PathBuf,
     started_at: u64,
     stop: Arc<AtomicBool>,
+    financial: Arc<std::sync::Mutex<()>>,
 }
 
 impl Server {
@@ -162,6 +220,9 @@ impl Server {
         std::fs::create_dir_all(home)
             .map_err(|error| WalletError::Setup(format!("{}: {error}", home.display())))?;
         let listener = UnixListener::bind(&path).map_err(|error| io_error("bind", error))?;
+        use std::os::unix::fs::PermissionsExt;
+        std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o600))
+            .map_err(|error| io_error("private socket", error))?;
         listener
             .set_nonblocking(true)
             .map_err(|error| io_error("bind", error))?;
@@ -170,6 +231,7 @@ impl Server {
             path,
             started_at: now(),
             stop: Arc::new(AtomicBool::new(false)),
+            financial: Arc::new(std::sync::Mutex::new(())),
         })
     }
 
@@ -189,7 +251,11 @@ impl Server {
                 Ok((stream, _)) => {
                     let wallet = Arc::clone(&wallet);
                     let started_at = self.started_at;
-                    std::thread::spawn(move || answer(stream, &*wallet, started_at));
+                    let home = self.path.parent().expect("wallet socket parent").to_owned();
+                    let financial = Arc::clone(&self.financial);
+                    std::thread::spawn(move || {
+                        answer(stream, &*wallet, started_at, &home, &financial)
+                    });
                 }
                 Err(error) if error.kind() == std::io::ErrorKind::WouldBlock => {
                     std::thread::sleep(Duration::from_millis(100));
@@ -206,7 +272,13 @@ impl Drop for Server {
     }
 }
 
-fn answer<W: Served>(stream: UnixStream, wallet: &W, started_at: u64) {
+fn answer<W: Served>(
+    stream: UnixStream,
+    wallet: &W,
+    started_at: u64,
+    home: &Path,
+    financial: &std::sync::Mutex<()>,
+) {
     let _ = stream.set_read_timeout(Some(Duration::from_secs(5)));
     let mut reader = BufReader::new(&stream);
     let mut line = String::new();
@@ -214,10 +286,32 @@ fn answer<W: Served>(stream: UnixStream, wallet: &W, started_at: u64) {
         return;
     }
     let response = match serde_json::from_str::<Request>(line.trim()) {
-        Ok(request) => match handle(request, wallet, started_at) {
-            Ok(value) => Response::Ok(value),
-            Err(error) => Response::Err(error),
-        },
+        Ok(request) => {
+            let needs_lock = matches!(
+                &request,
+                Request::ActivateSharedCustody { .. }
+                    | Request::CustodialPay { .. }
+                    | Request::CustodialReceive { .. }
+                    | Request::Pay { .. }
+                    | Request::PayFromNode { .. }
+                    | Request::ReceiveExact { .. }
+                    | Request::ReceiveExactFromNode { .. }
+                    | Request::FundingAddress
+                    | Request::OpenChannel { .. }
+                    | Request::BuyChannel { .. }
+                    | Request::SendOnchain { .. }
+                    | Request::CloseChannel { .. }
+            );
+            let _held = if needs_lock {
+                Some(financial.lock().expect("wallet financial mutex"))
+            } else {
+                None
+            };
+            match handle(request, wallet, started_at, home) {
+                Ok(value) => Response::Ok(value),
+                Err(error) => Response::Err(error),
+            }
+        }
         Err(error) => Response::Err(WalletError::Invalid(format!("request: {error}"))),
     };
     let mut text = serde_json::to_string(&response).unwrap_or_default();
@@ -230,8 +324,76 @@ fn handle<W: Served>(
     request: Request,
     wallet: &W,
     started_at: u64,
+    home: &Path,
 ) -> Result<serde_json::Value, WalletError> {
+    if matches!(
+        &request,
+        Request::Pay { .. }
+            | Request::PayFromNode { .. }
+            | Request::ReceiveExact { .. }
+            | Request::ReceiveExactFromNode { .. }
+            | Request::FundingAddress
+            | Request::OpenChannel { .. }
+            | Request::BuyChannel { .. }
+            | Request::SendOnchain { .. }
+            | Request::CloseChannel { .. }
+    ) {
+        crate::custody::refuse_raw(home)?;
+    }
     match request {
+        Request::ActivateSharedCustody { manifest } => {
+            if let Some(old) = crate::custody::read(home)? {
+                if old == manifest {
+                    return value(old);
+                }
+                return Err(WalletError::Setup("Shared custody is immutable.".into()));
+            }
+            let balance = wallet.balance()?;
+            if wallet.node_id() != manifest.node
+                || balance.onchain_total_sats != 0
+                || balance.lightning_total_sats != 0
+                || balance.onchain_spendable_sats != 0
+                || balance.anchor_reserve_sats != 0
+                || !wallet.channels()?.is_empty()
+                || !wallet.payments()?.is_empty()
+            {
+                return Err(WalletError::Setup(
+                    "Shared wallet activation requires the exact empty unencumbered node.".into(),
+                ));
+            }
+            crate::custody::install(home, &manifest)?;
+            value(manifest)
+        }
+        Request::CustodialPay { permit, writer } => {
+            let admitted = crate::custody::admit(home, &wallet.node_id(), permit, &writer)?;
+            let result = value(wallet.custodial_pay(&admitted)?)?;
+            admitted.seal_result(&result)?;
+            Ok(result)
+        }
+        Request::CustodialReceive { permit, writer } => {
+            let admitted = crate::custody::admit(home, &wallet.node_id(), permit, &writer)?;
+            let result = value(wallet.custodial_receive(&admitted)?)?;
+            admitted.seal_result(&result)?;
+            Ok(result)
+        }
+        Request::CustodialResult {
+            expected_node,
+            intent,
+            writer,
+        } => {
+            if wallet.node_id() != expected_node {
+                return Err(WalletError::NodeMismatch {
+                    expected_node,
+                    actual_node: wallet.node_id(),
+                });
+            }
+            value(crate::custody::result(
+                home,
+                &expected_node,
+                &intent,
+                &writer,
+            )?)
+        }
         Request::Ping => Ok(serde_json::json!({ "pid": std::process::id() })),
         Request::Status => value(Resident {
             pid: std::process::id(),
@@ -453,6 +615,66 @@ impl RemoteWallet {
     }
 }
 
+impl RemoteWallet {
+    pub fn activate_shared_custody(
+        &self,
+        manifest: crate::custody::Manifest,
+    ) -> Result<crate::custody::Manifest, WalletError> {
+        self.typed(&Request::ActivateSharedCustody { manifest }, REPLY_WAIT)
+    }
+    pub fn custodial_pay(
+        &self,
+        permit: crate::custody::Permit,
+        writer: &str,
+    ) -> Result<Proof, WalletError> {
+        let wait = match &permit.terms {
+            crate::custody::Terms::Pay { wait_secs, .. } => {
+                Duration::from_secs(*wait_secs).saturating_add(PAY_SLACK)
+            }
+            _ => {
+                return Err(WalletError::Invalid(
+                    "Exact custody payment required.".into(),
+                ));
+            }
+        };
+        self.typed(
+            &Request::CustodialPay {
+                permit,
+                writer: writer.into(),
+            },
+            wait,
+        )
+    }
+    pub fn custodial_receive(
+        &self,
+        permit: crate::custody::Permit,
+        writer: &str,
+    ) -> Result<IssuedInvoice, WalletError> {
+        self.typed(
+            &Request::CustodialReceive {
+                permit,
+                writer: writer.into(),
+            },
+            REPLY_WAIT,
+        )
+    }
+    pub fn custodial_result(
+        &self,
+        expected_node: &str,
+        intent: &str,
+        writer: &str,
+    ) -> Result<Option<serde_json::Value>, WalletError> {
+        self.typed(
+            &Request::CustodialResult {
+                expected_node: expected_node.into(),
+                intent: intent.into(),
+                writer: writer.into(),
+            },
+            REPLY_WAIT,
+        )
+    }
+}
+
 impl LightningWallet for RemoteWallet {
     fn node_id(&self) -> String {
         self.node_id.clone()
@@ -599,11 +821,13 @@ impl LightningWallet for RemoteWallet {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use sha2::Digest;
 
     #[derive(Default)]
     struct Fake {
         replacement: AtomicBool,
         operations: std::sync::atomic::AtomicU64,
+        empty: AtomicBool,
     }
 
     impl LightningWallet for Fake {
@@ -641,7 +865,18 @@ mod tests {
             self.operations.fetch_add(1, Ordering::Relaxed);
             Ok(None)
         }
+        fn payments(&self) -> Result<Vec<PaymentRecord>, WalletError> {
+            Ok(Vec::new())
+        }
         fn balance(&self) -> Result<Balance, WalletError> {
+            if self.empty.load(Ordering::Relaxed) {
+                return Ok(Balance {
+                    onchain_total_sats: 0,
+                    onchain_spendable_sats: 0,
+                    lightning_total_sats: 0,
+                    anchor_reserve_sats: 0,
+                });
+            }
             Ok(Balance {
                 onchain_total_sats: 1,
                 onchain_spendable_sats: 2,
@@ -706,6 +941,82 @@ mod tests {
         let _ = std::fs::remove_dir_all(&home);
         std::fs::create_dir_all(&home).unwrap();
         home
+    }
+
+    #[test]
+    fn shared_custody_refuses_raw_restart_and_consumes_only_an_exact_current_handoff() {
+        use crate::custody::{Manifest, Permit, Terms};
+        use std::os::unix::fs::PermissionsExt;
+        let home = temp_home("sc");
+        std::fs::set_permissions(&home, std::fs::Permissions::from_mode(0o700)).unwrap();
+        let controller = home.join("c.sock");
+        let listener = UnixListener::bind(&controller).unwrap();
+        std::fs::set_permissions(&controller, std::fs::Permissions::from_mode(0o600)).unwrap();
+        let allowed = Arc::new(AtomicBool::new(false));
+        let gate = allowed.clone();
+        let callback = std::thread::spawn(move || {
+            for _ in 0..3 {
+                let (mut stream, _) = listener.accept().unwrap();
+                let mut line = String::new();
+                BufReader::new(&stream).read_line(&mut line).unwrap();
+                let request: serde_json::Value = serde_json::from_str(&line).unwrap();
+                let permit = &request["custody_authorization"];
+                let body = serde_json::json!({"authorized":gate.load(Ordering::SeqCst),"origin":permit["origin"],"intent":permit["intent"]});
+                writeln!(stream, "{body}").unwrap();
+            }
+        });
+        let server = Server::bind(&home).unwrap();
+        let stop = server.stop_flag();
+        let fake = Arc::new(Fake::default());
+        let node = fake.node_id();
+        let wallet = fake.clone();
+        let serving = std::thread::spawn(move || server.run(wallet));
+        let remote = RemoteWallet::probe(&home).unwrap();
+        let writer = "aa".repeat(32);
+        let manifest = Manifest {
+            schema: crate::custody::SCHEMA.into(),
+            origin: "bb".repeat(32),
+            node: node.clone(),
+            controller,
+            writer_digest: format!("{:x}", sha2::Sha256::digest(writer.as_bytes())),
+        };
+        assert!(remote.activate_shared_custody(manifest.clone()).is_err());
+        fake.empty.store(true, Ordering::Relaxed);
+        remote.activate_shared_custody(manifest.clone()).unwrap();
+        assert!(remote.pay("raw", 1, Duration::from_secs(1)).is_err());
+        assert!(remote.receive_exact(1000, [1; 32], 60).is_err());
+        assert!(remote.funding_address().is_err());
+        assert!(remote.send_onchain("raw", 1).is_err());
+        let permit = Permit::sign(
+            &manifest.origin,
+            &node,
+            &"cc".repeat(32),
+            Terms::Pay {
+                invoice: "original".into(),
+                max_fee_msat: 1,
+                wait_secs: 1,
+            },
+            &writer,
+        )
+        .unwrap();
+        let before = fake.operations.load(Ordering::Relaxed);
+        assert!(remote.custodial_pay(permit.clone(), &writer).is_err());
+        assert_eq!(fake.operations.load(Ordering::Relaxed), before);
+        allowed.store(true, Ordering::SeqCst);
+        assert!(matches!(
+            remote.custodial_pay(permit.clone(), &writer),
+            Err(WalletError::Failed { .. })
+        ));
+        assert_eq!(fake.operations.load(Ordering::Relaxed), before + 1);
+        assert!(remote.custodial_pay(permit, &writer).is_err());
+        assert_eq!(fake.operations.load(Ordering::Relaxed), before + 1);
+        callback.join().unwrap();
+        stop.store(true, Ordering::Relaxed);
+        let _ = UnixStream::connect(socket_path(&home));
+        serving.join().unwrap();
+        // Custody survives reopening without a controller option.
+        assert!(crate::custody::refuse_raw(&home).is_err());
+        std::fs::remove_dir_all(home).unwrap();
     }
 
     #[test]

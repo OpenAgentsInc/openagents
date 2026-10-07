@@ -16,6 +16,7 @@ use sha2::{Digest, Sha256};
 
 pub mod budgets;
 pub mod funding;
+pub mod shared;
 
 pub const SCHEMA: &str = "openagents.money.v2";
 const LEGACY_SCHEMA: &str = "openagents.money.v1";
@@ -92,6 +93,17 @@ pub enum CreditKind {
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(tag = "kind", rename_all = "kebab-case", deny_unknown_fields)]
 pub enum Operation {
+    SharedCustody {
+        mode: receipts::shared_spend::Mode,
+    },
+    SharedProject {
+        reference: receipts::shared_spend::Reference,
+        operation: Box<Operation>,
+    },
+    SharedMigration {
+        previous: String,
+        mode: receipts::shared_spend::Mode,
+    },
     Create {
         currency: String,
         spend_limit: u64,
@@ -214,6 +226,8 @@ pub enum Phase {
 
 #[derive(Clone, Debug, Serialize)]
 pub struct Hold {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub shared: Option<receipts::shared_spend::Reference>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub budget: Option<budgets::Admission>,
     pub price: Price,
@@ -263,6 +277,7 @@ pub struct Balance {
 
 #[derive(Clone, Debug)]
 struct Account {
+    shared: Option<receipts::shared_spend::Mode>,
     currency: String,
     spend_limit: u64,
     topups_allowed: bool,
@@ -322,7 +337,9 @@ impl Account {
             .as_ref()
             .map(|book| book.summary(&self.allocation_usage()?, at, price))
             .transpose()?;
-        let available = if let Some(summary) = &summary {
+        let available = if self.shared.is_some() {
+            0
+        } else if let Some(summary) = &summary {
             // Every unit remains attributed even when a chargeback exceeds the
             // credit left in its lot. Existing holds survive as operator risk.
             let assets = self
@@ -387,6 +404,13 @@ struct State {
 
 impl State {
     fn apply(&mut self, mutation: &Mutation, at: u64) -> Result<bool, String> {
+        let (operation, projection) = match &mutation.operation {
+            Operation::SharedProject {
+                reference,
+                operation,
+            } => (&**operation, Some(reference)),
+            operation => (operation, None),
+        };
         identity(&mutation.workspace)?;
         identity(&mutation.source)?;
         identity(&mutation.audit)?;
@@ -401,7 +425,7 @@ impl State {
         if at < self.latest_at {
             return Err("accounting clock moved backward; no admission is allowed".into());
         }
-        if let Operation::ReserveScoped { attempt, .. } = &mutation.operation
+        if let Operation::ReserveScoped { attempt, .. } = operation
             && self
                 .accounts
                 .values()
@@ -410,7 +434,7 @@ impl State {
             return Err("attempt already reserved under its original native payer".into());
         }
         if let Operation::BeginFunding { funding } | Operation::BeginQuotedFunding { funding, .. } =
-            &mutation.operation
+            operation
             && self
                 .accounts
                 .values()
@@ -455,7 +479,7 @@ impl State {
             currency: code,
             spend_limit,
             topups_allowed,
-        } = &mutation.operation
+        } = operation
         {
             currency(code)?;
             if self.accounts.contains_key(&mutation.workspace) {
@@ -464,6 +488,7 @@ impl State {
             self.accounts.insert(
                 mutation.workspace.clone(),
                 Account {
+                    shared: None,
                     currency: code.clone(),
                     spend_limit: *spend_limit,
                     topups_allowed: *topups_allowed,
@@ -479,7 +504,85 @@ impl State {
                 .accounts
                 .get_mut(&mutation.workspace)
                 .ok_or("workspace account is missing")?;
-            match &mutation.operation {
+            if account.shared.is_some()
+                && projection.is_none()
+                && !matches!(
+                    operation,
+                    Operation::SharedCustody { .. }
+                        | Operation::SharedMigration { .. }
+                        | Operation::BudgetPolicy { .. }
+                )
+            {
+                return Err(
+                    "Native financial operations are disabled by retained shared custody.".into(),
+                );
+            }
+            if let Some(reference) = projection {
+                if account
+                    .shared
+                    .as_ref()
+                    .is_none_or(|mode| !mode.same_native(&reference.mode))
+                {
+                    return Err("Original shared mode changed.".into());
+                }
+                if !matches!(
+                    operation,
+                    Operation::Reserve { .. }
+                        | Operation::ReserveScoped { .. }
+                        | Operation::Settle { .. }
+                        | Operation::Unknown { .. }
+                        | Operation::Release { .. }
+                ) {
+                    return Err("Unsupported shared native effect.".into());
+                }
+            }
+            match operation {
+                Operation::SharedMigration { previous, mode } => {
+                    let old = account
+                        .shared
+                        .as_ref()
+                        .ok_or("Original shared custody is required.")?;
+                    if old == mode {
+                        return Ok(false);
+                    }
+                    if &old.binding_digest != previous || !old.same_native(mode) {
+                        return Err("Explicit original native custody review is required.".into());
+                    }
+                    account.shared = Some(mode.clone());
+                }
+                Operation::SharedCustody { mode } => {
+                    if let Some(old) = &account.shared {
+                        if old != mode {
+                            return Err("Native shared custody is immutable.".into());
+                        }
+                    } else {
+                        if account.credited != 0
+                            || !account.holds.is_empty()
+                            || account
+                                .funding
+                                .as_ref()
+                                .is_some_and(|b| !b.funding.is_empty() || !b.lots.is_empty())
+                        {
+                            return Err(
+                                "Shared activation requires an empty unencumbered native account."
+                                    .into(),
+                            );
+                        }
+                        mode.conversion.validate()?;
+                        if mode.source.workspace.as_deref() != Some(mutation.workspace.as_str())
+                            || mode.conversion.source
+                                != (funding::Unit::CurrencyMillionths {
+                                    currency: account.currency.clone(),
+                                })
+                        {
+                            return Err("Shared source or reviewed currency changed.".into());
+                        }
+                        account.shared = Some(mode.clone());
+                    }
+                }
+                Operation::SharedProject { .. } => {
+                    return Err("Nested shared projection is refused.".into());
+                }
                 Operation::Credit {
                     amount,
                     credit_kind,
@@ -617,9 +720,7 @@ impl State {
                         return Err("price version was reused for changed terms".into());
                     }
                     let reserved = price.quote(maximum_usage)?;
-                    let budget = if let Operation::ReserveScoped { budget, .. } =
-                        &mutation.operation
-                    {
+                    let budget = if let Operation::ReserveScoped { budget, .. } = operation {
                         let book = account.budgets.as_ref().ok_or("budget policy is missing")?;
                         if let Some(blocked) = book.check(&account.holds, budget, reserved, at)? {
                             return Err(blocked.to_string());
@@ -646,6 +747,7 @@ impl State {
                     account.holds.insert(
                         attempt.clone(),
                         Hold {
+                            shared: projection.cloned(),
                             budget,
                             price: price.clone(),
                             request_digest: request_digest.clone(),
@@ -821,6 +923,7 @@ pub struct Ledger {
     head: String,
     bytes: u64,
     poisoned: bool,
+    shared_clients: BTreeMap<String, pay_ledger::shared::Client>,
 }
 
 impl Ledger {
@@ -855,6 +958,7 @@ impl Ledger {
             head: String::new(),
             bytes: bytes.len() as u64,
             poisoned: false,
+            shared_clients: BTreeMap::new(),
         };
         for line in bytes.split(|b| *b == b'\n').filter(|line| !line.is_empty()) {
             let entry: Entry = serde_json::from_slice(line).map_err(|e| e.to_string())?;
@@ -920,6 +1024,10 @@ impl Ledger {
     }
 
     fn apply_at(&mut self, mutation: Mutation, at: u64) -> Result<bool, String> {
+        self.shared_guard(&mutation)?;
+        self.append_at(mutation, at)
+    }
+    fn append_at(&mut self, mutation: Mutation, at: u64) -> Result<bool, String> {
         if self.poisoned {
             return Err("money ledger requires recovery after a write failure".into());
         }

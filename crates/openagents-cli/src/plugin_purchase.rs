@@ -360,6 +360,7 @@ fn execute(a: &Args) -> Result<View, String> {
             expires_at_ms: 0,
             recovery_authorization: None,
             commercial,
+            shared: None,
         };
         use std::io::Read;
         let mut random = [0u8; 32];
@@ -426,6 +427,21 @@ fn execute(a: &Args) -> Result<View, String> {
                 .saturating_add(invoice.expiry_seconds())
                 .saturating_mul(1000),
         );
+        if let Some(client) = shared_client(&offer.payer)? {
+            let binding: pay_ledger::shared::Binding = serde_json::from_value(
+                client
+                    .call(pay_ledger::shared::Operation::Binding {})
+                    .map_err(|e| e.to_string())?,
+            )
+            .map_err(|_| "Invalid current shared plugin binding.")?;
+            let intent = commercial_spend::wallet::plugin_intent(id, &offer, binding.clone())
+                .map_err(|_| "Shared plugin conversion or original invoice is unqualified.")?;
+            offer.shared = Some(receipts::shared_spend::Reference {
+                intent: intent.id.clone(),
+                digest: intent.digest(),
+                mode: binding.mode(),
+            });
+        }
         return store.quote_plugin_with_recovery(id, offer, request, current, at, Some(secret));
     }
     let view = store.plugin_view(id)?;
@@ -561,6 +577,18 @@ fn recover_original(
     at: u64,
     (offer, body, secret): (Offer, Vec<u8>, String),
 ) -> Result<View, String> {
+    if let Some(reference) = &offer.shared {
+        let client = shared_client(&offer.payer)?
+            .ok_or("The original shared custodian is required for recovery.")?;
+        check_shared_reader(&client, reference)?;
+        client
+            .call(pay_ledger::shared::Operation::ReconcilePlugin {
+                id: reference.intent.clone(),
+            })
+            .map_err(
+                |_| "Original canonical payment reconciliation is unavailable; never repay.",
+            )?;
+    }
     use openagents_wallet::{PaymentDirection, PaymentStatus};
     let invoice =
         nostr::x402::decode_invoice(offer.invoice()).map_err(|_| "Retained invoice is invalid.")?;
@@ -693,13 +721,60 @@ fn buy_reviewed(
         return Err("The approved payer node changed; no payment was dispatched.".into());
     }
     let authorization = store.plugin_invocation_authorization_reviewed(id, current, commercial)?;
+    let shared = shared_client(payer)?;
+    if let Some(reference) = &offer.shared {
+        let client = shared
+            .as_ref()
+            .ok_or("Original shared custody is required; no raw payment fallback is allowed.")?;
+        check_shared_client(client, reference)?;
+        let binding: pay_ledger::shared::Binding = serde_json::from_value(
+            client
+                .call(pay_ledger::shared::Operation::Binding {})
+                .map_err(|_| "Current shared spending authority is unavailable.")?,
+        )
+        .map_err(|_| "Invalid shared binding.")?;
+        if binding.mode() != reference.mode {
+            return Err(
+                "Shared purchase mapping changed; review a new purchase before payment.".into(),
+            );
+        }
+    } else if shared.is_some() {
+        return Err("Shared custody requires an originally reviewed canonical intent; review a new purchase.".into());
+    }
     let (offer, body) = store.begin_plugin_reviewed(id, current, payer, packet, commercial, at)?;
-    let proof = match wallet.pay_from_node(
-        &payer.node,
-        offer.invoice(),
-        offer.max_fee_msat,
-        Duration::from_secs(wait),
-    ) {
+    let payment = if let (Some(client), Some(reference)) = (&shared, &offer.shared) {
+        let binding: pay_ledger::shared::Binding = serde_json::from_value(
+            client
+                .call(pay_ledger::shared::Operation::Binding {})
+                .map_err(|_| "Current shared spending authority is unavailable.")?,
+        )
+        .map_err(|_| "Invalid shared binding.")?;
+        let intent = commercial_spend::wallet::plugin_intent(id, &offer, binding)
+            .map_err(|_| "Original shared intent changed.")?;
+        if intent.digest() != reference.digest || intent.id != reference.intent {
+            return store.plugin_unknown(id);
+        }
+        client
+            .call(pay_ledger::shared::Operation::DispatchPlugin {
+                intent,
+                wait_secs: wait,
+            })
+            .ok()
+            .and_then(|v| serde_json::from_value::<pay_ledger::shared::Outcome>(v).ok())
+            .and_then(|o| o.expense)
+            .and_then(|v| serde_json::from_value(v).ok())
+            .ok_or(openagents_wallet::WalletError::Node(
+                "Original shared payment remains unresolved.".into(),
+            ))
+    } else {
+        wallet.pay_from_node(
+            &payer.node,
+            offer.invoice(),
+            offer.max_fee_msat,
+            Duration::from_secs(wait),
+        )
+    };
+    let proof = match payment {
         Ok(proof) => proof,
         Err(_) => return store.plugin_unknown(id),
     };
@@ -773,6 +848,56 @@ fn buy_reviewed(
     }
     // A 402, execution failure, or lost acknowledgement never pays a replacement invoice.
     store.plugin_unknown(id)
+}
+fn shared_client(payer: &Payer) -> Result<Option<pay_ledger::shared::Client>, String> {
+    let Some(mode) = openagents_wallet::custody::read(&payer.home)
+        .map_err(|_| "Retained shared wallet custody is unavailable.")?
+    else {
+        return Ok(None);
+    };
+    let config: pay_ledger::shared::ClientConfig = serde_json::from_slice(&Store::private_input(
+        &payer.home.join("shared-client.json"),
+        16 * 1024,
+    )?)
+    .map_err(
+        |_| "The protected shared client selection is required; raw wallet payment is disabled.",
+    )?;
+    if config.origin != mode.origin || config.socket != mode.controller || payer.node != mode.node {
+        return Err("Shared client differs from the original wallet custodian.".into());
+    }
+    Ok(Some(pay_ledger::shared::Client { config }))
+}
+fn check_shared_client(
+    client: &pay_ledger::shared::Client,
+    reference: &receipts::shared_spend::Reference,
+) -> Result<(), String> {
+    if client.config.binding != reference.mode.binding
+        || client.config.origin != reference.mode.origin
+        || client.config.socket != reference.mode.socket
+    {
+        return Err("The original shared source and custodian are required.".into());
+    }
+    Ok(())
+}
+fn check_shared_reader(
+    client: &pay_ledger::shared::Client,
+    reference: &receipts::shared_spend::Reference,
+) -> Result<(), String> {
+    if client.config.origin != reference.mode.origin
+        || client.config.socket != reference.mode.socket
+    {
+        return Err("The original shared custodian is required for recovery.".into());
+    }
+    let current: pay_ledger::shared::Binding = serde_json::from_value(
+        client
+            .call(pay_ledger::shared::Operation::Identity {})
+            .map_err(|_| "Current native read authority is required for shared recovery.")?,
+    )
+    .map_err(|_| "Invalid native shared identity.")?;
+    if !current.mode().same_native(&reference.mode) {
+        return Err("The original native buyer source is required for recovery.".into());
+    }
+    Ok(())
 }
 
 #[cfg(test)]

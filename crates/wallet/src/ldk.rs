@@ -32,6 +32,7 @@ const PEER_RECONNECT_WAIT: Duration = Duration::from_secs(30);
 const PEER_DIAL_INTERVAL: Duration = Duration::from_secs(5);
 
 pub struct LdkWallet {
+    home: std::path::PathBuf,
     node: Node,
     network: crate::config::Network,
     /// The configured LSP's protocol, when one opens channels just in time.
@@ -133,6 +134,7 @@ impl LdkWallet {
             .build()
             .map_err(|error| WalletError::Setup(format!("node: {error}")))?;
         Ok(Self {
+            home: home.into(),
             node,
             network: config.network,
             jit: config
@@ -155,6 +157,7 @@ impl LdkWallet {
         channel_expiry_blocks: u32,
         announce: bool,
     ) -> Result<serde_json::Value, WalletError> {
+        crate::custody::refuse_raw(&self.home)?;
         let status = self
             .node
             .lsps1_liquidity()
@@ -181,6 +184,7 @@ impl LdkWallet {
     /// Send `amount_sats` from the on-chain wallet to `address`; returns the
     /// transaction id.
     pub fn send_onchain(&self, address: &str, amount_sats: u64) -> Result<String, WalletError> {
+        crate::custody::refuse_raw(&self.home)?;
         let address = ldk_node::bitcoin::Address::from_str(address)
             .map_err(|error| WalletError::Invalid(format!("address: {error}")))?
             .require_network(network(self.network))
@@ -307,12 +311,8 @@ impl LdkWallet {
     }
 }
 
-impl LightningWallet for LdkWallet {
-    fn node_id(&self) -> String {
-        self.node.node_id().to_string()
-    }
-
-    fn receive_exact(
+impl LdkWallet {
+    fn receive_core(
         &self,
         amount_msat: u64,
         request_hash: [u8; 32],
@@ -345,7 +345,12 @@ impl LightningWallet for LdkWallet {
         })
     }
 
-    fn pay(&self, invoice: &str, max_fee_msat: u64, wait: Duration) -> Result<Proof, WalletError> {
+    fn pay_core(
+        &self,
+        invoice: &str,
+        max_fee_msat: u64,
+        wait: Duration,
+    ) -> Result<Proof, WalletError> {
         let (parsed, hash, amount_msat) =
             check_payable(invoice, network(self.network), unix_now())?;
         let hash_hex = hex::encode(hash);
@@ -407,7 +412,26 @@ impl LightningWallet for LdkWallet {
             std::thread::sleep(Duration::from_millis(200));
         }
     }
+}
 
+impl LightningWallet for LdkWallet {
+    fn node_id(&self) -> String {
+        self.node.node_id().to_string()
+    }
+
+    fn receive_exact(
+        &self,
+        amount_msat: u64,
+        request_hash: [u8; 32],
+        expiry_secs: u32,
+    ) -> Result<IssuedInvoice, WalletError> {
+        crate::custody::refuse_raw(&self.home)?;
+        self.receive_core(amount_msat, request_hash, expiry_secs)
+    }
+    fn pay(&self, invoice: &str, max_fee_msat: u64, wait: Duration) -> Result<Proof, WalletError> {
+        crate::custody::refuse_raw(&self.home)?;
+        self.pay_core(invoice, max_fee_msat, wait)
+    }
     fn lookup(&self, payment_hash: [u8; 32]) -> Result<Option<PaymentRecord>, WalletError> {
         Ok(self.payment(payment_hash).as_ref().map(record))
     }
@@ -457,6 +481,7 @@ impl LightningWallet for LdkWallet {
     }
 
     fn funding_address(&self) -> Result<String, WalletError> {
+        crate::custody::refuse_raw(&self.home)?;
         self.node
             .onchain_payment()
             .new_address()
@@ -471,6 +496,7 @@ impl LightningWallet for LdkWallet {
         amount_sats: u64,
         announce: bool,
     ) -> Result<String, WalletError> {
+        crate::custody::refuse_raw(&self.home)?;
         let node_id = pubkey(node_id)?;
         let address = socket(address)?;
         let result = if announce {
@@ -491,6 +517,7 @@ impl LightningWallet for LdkWallet {
         counterparty: &str,
         force: bool,
     ) -> Result<(), WalletError> {
+        crate::custody::refuse_raw(&self.home)?;
         let id = ldk_node::UserChannelId(user_channel_id.parse::<u128>().map_err(|_| {
             WalletError::Invalid(format!(
                 "channel id `{user_channel_id}` is not the decimal user_channel_id `channel list` prints"
@@ -744,6 +771,61 @@ impl crate::resident::Served for LdkWallet {
         LdkWallet::status(self)
     }
 
+    fn custodial_pay(&self, admitted: &crate::custody::Admitted) -> Result<Proof, WalletError> {
+        let permit = admitted.take()?;
+        let manifest = crate::custody::read(&self.home)?
+            .ok_or_else(|| WalletError::Setup("Shared custody is required.".into()))?;
+        if manifest.node != self.node_id()
+            || manifest.node != permit.node
+            || manifest.origin != permit.origin
+        {
+            return Err(WalletError::Setup(
+                "Shared custodian identity changed.".into(),
+            ));
+        }
+        let crate::custody::Terms::Pay {
+            invoice,
+            max_fee_msat,
+            wait_secs,
+        } = &permit.terms
+        else {
+            return Err(WalletError::Invalid(
+                "Exact custody payment required.".into(),
+            ));
+        };
+        self.pay_core(invoice, *max_fee_msat, Duration::from_secs(*wait_secs))
+    }
+    fn custodial_receive(
+        &self,
+        admitted: &crate::custody::Admitted,
+    ) -> Result<IssuedInvoice, WalletError> {
+        let permit = admitted.take()?;
+        let manifest = crate::custody::read(&self.home)?
+            .ok_or_else(|| WalletError::Setup("Shared custody is required.".into()))?;
+        if manifest.node != self.node_id()
+            || manifest.node != permit.node
+            || manifest.origin != permit.origin
+        {
+            return Err(WalletError::Setup(
+                "Shared custodian identity changed.".into(),
+            ));
+        }
+        let crate::custody::Terms::Receive {
+            amount_msat,
+            request_hash,
+            expiry_secs,
+        } = &permit.terms
+        else {
+            return Err(WalletError::Invalid(
+                "Exact custody funding required.".into(),
+            ));
+        };
+        self.receive_core(
+            *amount_msat,
+            crate::parse_hash32(request_hash)?,
+            *expiry_secs,
+        )
+    }
     fn buy_channel(
         &self,
         lsp_balance_sat: u64,

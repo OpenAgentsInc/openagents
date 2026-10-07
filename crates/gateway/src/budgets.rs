@@ -42,6 +42,32 @@ pub(crate) fn with_current<T>(
     door: Option<&str>,
     run: impl FnOnce(&Actor, &Store) -> Result<T, String>,
 ) -> Result<T, String> {
+    with_current_action(state, credential, workspace, door, None, run)
+}
+pub(crate) fn with_current_shared<T>(
+    state: &ServeState,
+    credential: &Credential,
+    workspace: &str,
+    door: &str,
+    run: impl FnOnce(&Actor, &Store) -> Result<T, String>,
+) -> Result<T, String> {
+    with_current_action(
+        state,
+        credential,
+        workspace,
+        Some(door),
+        Some("shared-spend"),
+        run,
+    )
+}
+fn with_current_action<T>(
+    state: &ServeState,
+    credential: &Credential,
+    workspace: &str,
+    door: Option<&str>,
+    extra_action: Option<&str>,
+    run: impl FnOnce(&Actor, &Store) -> Result<T, String>,
+) -> Result<T, String> {
     let accounts =
         Accounts::open(&state.dir).map_err(|_| "Current account authority is unavailable.")?;
     accounts
@@ -75,6 +101,9 @@ pub(crate) fn with_current<T>(
                             .map_err(|_| "The original credential is no longer active.")?;
                     if key.tenant != ws.tenant
                         || key.scopes.as_ref().is_some_and(|scope| {
+                            if extra_action.is_some_and(|action| !scope.permits_action(action)) {
+                                return true;
+                            }
                             if let Some(door) = door {
                                 !scope.permits_action("inference") || !scope.permits_model(door)
                             } else {

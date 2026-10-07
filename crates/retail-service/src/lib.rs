@@ -170,6 +170,21 @@ impl<B: Backend, W: LightningWallet + Send + Sync + 'static> Service<B, W> {
             wallet,
         })
     }
+    /// Enable the exact persistent shared binding; this does not grant native execution.
+    pub fn with_shared_spend(self, config: pay_ledger::shared::ClientConfig) -> Result<Self> {
+        let mut store = self.lock()?;
+        store.ledger.configure_shared_client(config)?;
+        let client = store
+            .ledger
+            .shared_adapter_call(pay_ledger::shared::Operation::Binding {})?;
+        let binding: pay_ledger::shared::Binding =
+            serde_json::from_value(client).map_err(|_| Error::Denied)?;
+        if self.wallet.node_id() != binding.custodian_node {
+            return Err(Error::Denied);
+        }
+        drop(store);
+        Ok(self)
+    }
     pub(crate) fn lock(&self) -> Result<MutexGuard<'_, Store>> {
         let store = self
             .store
@@ -256,13 +271,27 @@ impl<B: Backend, W: LightningWallet + Send + Sync + 'static> Service<B, W> {
                     .operations
                     .as_ref()
                     .is_some_and(|o| o.worker_healthy(http::now())));
+        let shared_ready = store.ledger.shared_owner()?.is_none()
+            || store
+                .ledger
+                .shared_adapter_call(pay_ledger::shared::Operation::Binding {})
+                .ok()
+                .and_then(|value| serde_json::from_value::<pay_ledger::shared::Binding>(value).ok())
+                .is_some_and(|binding| {
+                    binding.custodian_node == self.wallet.node_id()
+                        && self
+                            .config
+                            .grants
+                            .iter()
+                            .any(|grant| grant.account == binding.source.account)
+                });
         let mut advertisement = launch::advertise(&Gate {
             contract_confirmed: self.config.contract_confirmed,
             qualification,
             supported_plan: self.config.supported_plan.clone(),
             capacity: self.capacity(store, exclude)?,
         });
-        if !healthy {
+        if !healthy || !shared_ready {
             advertisement.paid_capacity = None;
             advertisement.closed = Some(launch::Closed::OperationalIncident);
         }
@@ -360,7 +389,7 @@ impl<B: Backend, W: LightningWallet + Send + Sync + 'static> Service<B, W> {
             Request::Account {} => {
                 let b = store.ledger.compute_balance(&identity.account)?;
                 let commercial = self.commercial_ref(store, &identity.account)?;
-                let mut value = json!({"account":identity.account,"generation":identity.generation,"capabilities":{"observe":grant.observe,"spend":identity.rights.spend,"execute":grant.execute,"disclose":grant.disclose},"balance":{"credited_msat":b.credited_msat,"available_msat":b.available_msat,"held_msat":b.held_msat,"settled_msat":b.settled_msat,"released_msat":b.released_msat}});
+                let mut value = json!({"account":identity.account,"generation":identity.generation,"capabilities":{"observe":grant.observe,"spend":identity.rights.spend,"execute":grant.execute,"disclose":grant.disclose},"balance":b});
                 if let Some(commercial) = commercial {
                     value["commercial"] = serde_json::to_value(commercial)?;
                 }
@@ -407,17 +436,48 @@ impl<B: Backend, W: LightningWallet + Send + Sync + 'static> Service<B, W> {
                 purchase_value(record, commercial.as_ref())
             }
             Request::TopUpStatus { purchase } => {
-                let record = store
+                if store
                     .ledger
-                    .top_up(&purchase)?
-                    .filter(|p| p.top_up.account == identity.account)
-                    .ok_or(Error::Denied)?;
-                let commercial = store.funding_commercial(
-                    &purchase,
-                    &identity.account,
-                    record.top_up.amount_msat,
-                )?;
-                purchase_value(record, commercial.as_ref())
+                    .shared_retail_binding(&identity.account)?
+                    .is_some()
+                {
+                    let value = store.ledger.shared_adapter_call(
+                        pay_ledger::shared::Operation::FundingStatus {
+                            purchase: purchase.clone(),
+                        },
+                    )?;
+                    let amount = value["original_terms"]["amount_msat"]
+                        .as_u64()
+                        .ok_or(Error::Denied)?
+                        / 1000;
+                    let request = retail_cloud::topup::TopUpRequest {
+                        principal: identity.id.clone(),
+                        credential: String::new(),
+                        purchase: purchase.clone(),
+                        amount_sats: amount,
+                        now,
+                    };
+                    let record =
+                        retail_cloud::topup::shared_purchase(&identity.account, &request, value)?;
+                    let commercial = store.funding_commercial(
+                        &purchase,
+                        &identity.account,
+                        record.top_up.amount_msat,
+                    )?;
+                    purchase_value(record, commercial.as_ref())
+                } else {
+                    let record = store
+                        .ledger
+                        .top_up(&purchase)?
+                        .filter(|p| p.top_up.account == identity.account)
+                        .ok_or(Error::Denied)?;
+                    let commercial = store.funding_commercial(
+                        &purchase,
+                        &identity.account,
+                        record.top_up.amount_msat,
+                    )?;
+                    purchase_value(record, commercial.as_ref())
+                }
             }
             Request::Offer { idempotency, task } => {
                 if !grant.execute || !grant.disclose {

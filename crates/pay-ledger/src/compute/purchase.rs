@@ -18,7 +18,7 @@ pub const TOP_UP_MAX_MSAT: i64 = 1_000_000_000;
 pub const TOP_UP_EXPIRY_MAX_SECS: i64 = 3_600;
 
 /// A top-up the receiver wallet issued an invoice for.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct TopUp {
     /// The purchase identity; a retry of the same purchase reuses it.
     pub id: String,
@@ -31,7 +31,7 @@ pub struct TopUp {
     pub expires_at: i64,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub enum PurchaseState {
     /// Issued and not yet paid.
     Pending,
@@ -67,7 +67,7 @@ impl PurchaseState {
 }
 
 /// A top-up as the ledger keeps it.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct Purchase {
     pub top_up: TopUp,
     pub state: PurchaseState,
@@ -77,7 +77,7 @@ pub struct Purchase {
 }
 
 /// What the receiver wallet reports for an invoice.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub enum Receipt {
     /// Paid; `received_msat` is what the wallet received.
     Paid { received_msat: i64, at: i64 },
@@ -100,6 +100,13 @@ impl Ledger {
     /// Record a top-up's invoice. Recording the same purchase again returns
     /// it unchanged; the same ID or payment hash with other terms conflicts.
     pub fn open_top_up(&mut self, top_up: &TopUp) -> Result<Purchase> {
+        if self.shared_retail_binding(&top_up.account)?.is_some()
+            || (self.shared_pool(&top_up.account)? && !self.shared_writer)
+        {
+            return Err(Error::Denied(
+                "shared retail funding belongs to the canonical custodian",
+            ));
+        }
         if top_up.id.is_empty()
             || top_up.id.len() > 128
             || top_up.amount_msat <= 0
@@ -157,6 +164,13 @@ impl Ledger {
     /// the account exactly once; anything else credits nothing. A paid
     /// purchase stays paid whatever is observed later.
     pub fn observe_top_up(&mut self, payment_hash: &str, receipt: &Receipt) -> Result<Purchase> {
+        if let Some(purchase) = read_purchase(&self.connection, "payment_hash", payment_hash)? {
+            if self.shared_pool(&purchase.top_up.account)? && !self.shared_writer {
+                return Err(Error::Denied(
+                    "canonical funding confirmation belongs to the custodian",
+                ));
+            }
+        }
         let tx = self
             .connection
             .transaction_with_behavior(TransactionBehavior::Immediate)?;
@@ -170,6 +184,19 @@ impl Ledger {
             Receipt::Paid { received_msat, at }
                 if *received_msat == purchase.top_up.amount_msat =>
             {
+                let shared: bool = tx.query_row(
+                    "SELECT EXISTS(SELECT 1 FROM shared_binding WHERE pool=?)",
+                    [&purchase.top_up.account],
+                    |r| r.get(0),
+                )?;
+                if shared {
+                    crate::shared::claim_inbound_in(
+                        &tx,
+                        payment_hash,
+                        "funding",
+                        &purchase.top_up.id,
+                    )?;
+                }
                 tx.execute(
                     "INSERT INTO compute_credit(account,source,amount_msat,at) VALUES(?,?,?,?) ON CONFLICT(source) DO NOTHING",
                     params![

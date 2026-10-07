@@ -23,6 +23,7 @@ pub mod payee;
 pub mod payout;
 pub mod reconcile;
 pub mod session;
+pub mod shared;
 
 pub const V1: &str = include_str!("../rules/v1.toml");
 pub const OPENAGENTS: &str = "openagents";
@@ -269,6 +270,8 @@ pub struct Ledger {
     connection: Connection,
     #[cfg(unix)]
     custody: Option<commission::Custody>,
+    shared_client: Option<shared::Client>,
+    shared_writer: bool,
 }
 impl Ledger {
     pub fn open(path: impl AsRef<Path>) -> Result<Self> {
@@ -284,6 +287,8 @@ impl Ledger {
             connection,
             #[cfg(unix)]
             custody: None,
+            shared_client: None,
+            shared_writer: false,
         })
     }
     /// Stable identity of the native ledger records. It survives reopen and
@@ -331,10 +336,14 @@ impl Ledger {
             tx.execute_batch("ALTER TABLE settlement ADD COLUMN release_id TEXT;")?;
         }
         tx.commit()?;
+        connection.execute_batch(shared::TABLES)?;
+        connection.execute_batch(shared::accounting::TABLES)?;
         let mut ledger = Self {
             connection,
             #[cfg(unix)]
             custody: None,
+            shared_client: None,
+            shared_writer: false,
         };
         ledger.load_rule(V1, &digest(V1))?;
         Ok(ledger)

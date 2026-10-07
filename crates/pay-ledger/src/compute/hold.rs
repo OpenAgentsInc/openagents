@@ -18,6 +18,7 @@
 //! Conservation: for every account, credited = available + held + settled.
 
 use rusqlite::{Connection, OptionalExtension, TransactionBehavior, params};
+use serde::{Deserialize, Serialize};
 
 use crate::{Error, Ledger, Rail, Recorded, Result, SettlementInput, Split, record_settlement_in};
 
@@ -25,7 +26,7 @@ use crate::{Error, Ledger, Rail, Recorded, Result, SettlementInput, Split, recor
 pub const RETAIL_RESOURCE: &str = "openagents.cloud.retail.v1";
 
 /// A request to hold funds.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct HoldRequest {
     /// The funded request's identity.
     pub id: String,
@@ -40,7 +41,7 @@ pub struct HoldRequest {
     pub at: i64,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub enum HoldState {
     Held,
     /// The outcome is open; the whole hold stays reserved.
@@ -69,7 +70,7 @@ impl HoldState {
 }
 
 /// A hold as the ledger keeps it.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Hold {
     pub request: HoldRequest,
     pub state: HoldState,
@@ -88,7 +89,7 @@ impl Hold {
 
 /// An account's balance, split so that
 /// `credited == available + held + settled`.
-#[derive(Debug, Default, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Default, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub struct ComputeBalance {
     /// Every credited top-up.
     pub credited_msat: i64,
@@ -101,9 +102,39 @@ pub struct ComputeBalance {
     /// Returned to the balance by settled holds. Already counted in
     /// `available_msat`; shown separately, never as a refund.
     pub released_msat: i64,
+    #[serde(default, skip_serializing_if = "zero")]
+    pub refunded_msat: i64,
+    #[serde(default, skip_serializing_if = "zero")]
+    pub reversed_msat: i64,
+    #[serde(default, skip_serializing_if = "zero")]
+    pub recovered_msat: i64,
+    #[serde(default, skip_serializing_if = "zero")]
+    pub restricted_msat: i64,
+    #[serde(default, skip_serializing_if = "zero")]
+    pub protected_loss_msat: i64,
+}
+fn zero(value: &i64) -> bool {
+    *value == 0
 }
 
-fn balance_in(connection: &Connection, account: &str) -> Result<ComputeBalance> {
+pub(crate) fn balance_in(connection: &Connection, account: &str) -> Result<ComputeBalance> {
+    let shared_table: bool = connection.query_row(
+        "SELECT EXISTS(SELECT 1 FROM sqlite_master WHERE type='table' AND name='shared_binding')",
+        [],
+        |r| r.get(0),
+    )?;
+    let pooled: Option<String> = if shared_table {
+        connection
+            .query_row(
+                "SELECT pool FROM shared_binding WHERE retail_account=?",
+                [account],
+                |r| r.get(0),
+            )
+            .optional()?
+    } else {
+        None
+    };
+    let account = pooled.as_deref().unwrap_or(account);
     let credited: i64 = connection.query_row(
         "SELECT COALESCE(SUM(amount_msat),0) FROM compute_credit WHERE account=?",
         [account],
@@ -117,16 +148,53 @@ fn balance_in(connection: &Connection, account: &str) -> Result<ComputeBalance> 
         [account],
         |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?)),
     )?;
+    let accounting: bool = connection.query_row(
+        "SELECT EXISTS(SELECT 1 FROM sqlite_master WHERE type='table' AND name='shared_refund')",
+        [],
+        |r| r.get(0),
+    )?;
+    let (refunded, reversed, recovered, loss): (i64, i64, i64, i64) = if accounting {
+        connection.query_row(
+        "SELECT COALESCE((SELECT SUM(returned) FROM shared_refund WHERE pool=?1),0),COALESCE((SELECT SUM(amount) FROM shared_funding_reversal WHERE pool=?1),0),COALESCE((SELECT SUM(recovered) FROM shared_funding_reversal WHERE pool=?1),0),COALESCE((SELECT SUM(loss) FROM shared_refund WHERE pool=?1),0)+COALESCE((SELECT SUM(loss) FROM shared_funding_reversal WHERE pool=?1),0)",
+        [account], |r|Ok((r.get(0)?,r.get(1)?,r.get(2)?,r.get(3)?)),
+    )?
+    } else {
+        (0, 0, 0, 0)
+    };
+    let remaining = credited
+        .checked_add(refunded)
+        .and_then(|v| v.checked_sub(recovered))
+        .and_then(|v| v.checked_sub(held))
+        .and_then(|v| v.checked_sub(settled))
+        .ok_or(Error::Invalid("canonical balance overflow"))?;
+    if remaining < 0 {
+        return Err(Error::Conflict("original shared backing is missing"));
+    }
     Ok(ComputeBalance {
         credited_msat: credited,
-        available_msat: credited - held - settled,
+        available_msat: if loss > 0 { 0 } else { remaining },
         held_msat: held,
         settled_msat: settled,
         released_msat: released,
+        refunded_msat: refunded,
+        reversed_msat: reversed,
+        recovered_msat: recovered,
+        restricted_msat: if loss > 0 { remaining } else { 0 },
+        protected_loss_msat: loss,
     })
 }
 
 impl Ledger {
+    /// Seal shared liability before the owning provider's original handoff.
+    /// The provider journal still prevents a second create or dispatch.
+    pub fn shared_retail_handoff(&self, id: &str) -> Result<()> {
+        let Some(out) = self.shared_retail_outcome(id)? else {
+            return Ok(());
+        };
+        let client = self.shared_retail_client(&out)?;
+        client.call(crate::shared::Operation::RetailHandoff { id: id.into() })?;
+        Ok(())
+    }
     /// The account's balance.
     pub fn compute_balance(&self, account: &str) -> Result<ComputeBalance> {
         balance_in(&self.connection, account)
@@ -143,6 +211,24 @@ impl Ledger {
     /// [`Error::Conflict`] for a reused identity, and [`Error::Invalid`] for
     /// a malformed request.
     pub fn reserve(&mut self, request: &HoldRequest) -> Result<Hold> {
+        if self.shared_pool(&request.account)? {
+            return Err(Error::Denied(
+                "canonical pool reservations belong to the controller",
+            ));
+        }
+        if let Some(binding) = self.shared_retail_binding(&request.account)? {
+            let client = self
+                .shared_client
+                .as_ref()
+                .filter(|c| c.config.binding == binding.id)
+                .ok_or(Error::Denied(
+                    "shared retail requires its admitted controller; native spending is disabled",
+                ))?;
+            let value = client.call(crate::shared::Operation::RetailReserve {
+                request: request.clone(),
+            })?;
+            return serde_json::from_value(value).map_err(|_| Error::Invalid("shared retail hold"));
+        }
         if request.id.is_empty()
             || request.quote.is_empty()
             || request.execution.is_empty()
@@ -191,6 +277,11 @@ impl Ledger {
     /// Mark a hold's outcome unknown. The whole hold stays reserved until a
     /// settlement with a known charge.
     pub fn mark_hold_unknown(&mut self, id: &str) -> Result<Hold> {
+        if let Some(out) = self.shared_retail_outcome(id)? {
+            let client = self.shared_retail_client(&out)?;
+            let value = client.call(crate::shared::Operation::RetailUnknown { id: id.into() })?;
+            return serde_json::from_value(value).map_err(|_| Error::Invalid("shared retail hold"));
+        }
         let tx = self
             .connection
             .transaction_with_behavior(TransactionBehavior::Immediate)?;
@@ -205,11 +296,32 @@ impl Ledger {
 
     /// One hold by its funded request identity.
     pub fn hold(&self, id: &str) -> Result<Option<Hold>> {
+        if let Some(out) = self.shared_retail_outcome(id)? {
+            return Ok(Some(Self::shared_retail_hold(&out)?));
+        }
         read_hold(&self.connection, "id", id)
     }
 
     /// One hold by its execution identity.
     pub fn hold_for_execution(&self, execution: &str) -> Result<Option<Hold>> {
+        let ids: Vec<String> = {
+            let mut q = self.connection.prepare("SELECT i.id FROM shared_intent i JOIN (SELECT id,bytes FROM shared_binding UNION ALL SELECT id,bytes FROM shared_binding_version) b ON i.binding=b.id WHERE json_extract(i.bytes,'$.execution')=? AND json_extract(b.bytes,'$.source.product')='retail' LIMIT 2")?;
+            q.query_map([execution], |r| r.get(0))?
+                .collect::<std::result::Result<_, _>>()?
+        };
+        if ids.len() > 1 {
+            return Err(Error::Conflict("native retail execution is ambiguous"));
+        }
+        for id in ids {
+            let out = self
+                .shared_outcome(&id)?
+                .ok_or(Error::Invalid("shared retail intent disappeared"))?;
+            if out.intent.binding.source.product == receipts::purchase::CommercialProduct::Retail
+                && out.intent.execution == execution
+            {
+                return Ok(Some(Self::shared_retail_hold(&out)?));
+            }
+        }
         read_hold(&self.connection, "execution", execution)
     }
 
@@ -240,6 +352,18 @@ impl Ledger {
         charge_msat: i64,
         at: i64,
     ) -> Result<(Hold, Option<Recorded>)> {
+        if let Some(out) = self.shared_retail_outcome(id)? {
+            let client = self.shared_retail_client(&out)?;
+            let value = client.call(crate::shared::Operation::RetailSettle {
+                id: id.into(),
+                charge_msat,
+                at,
+            })?;
+            let hold = serde_json::from_value(value)
+                .map_err(|_| Error::Invalid("shared retail settled hold"))?;
+            let record = crate::read_record(&self.connection, &format!("debit:{}", out.intent.id))?;
+            return Ok((hold, record));
+        }
         let tx = self
             .connection
             .transaction_with_behavior(TransactionBehavior::Immediate)?;
@@ -283,7 +407,11 @@ impl Ledger {
     }
 }
 
-fn read_hold(connection: &Connection, column: &str, value: &str) -> Result<Option<Hold>> {
+pub(crate) fn read_hold(
+    connection: &Connection,
+    column: &str,
+    value: &str,
+) -> Result<Option<Hold>> {
     let sql = if column == "id" {
         "SELECT id,account,quote,execution,terms,amount_msat,created_at,state,charge_msat,settled_at FROM compute_hold WHERE id=?"
     } else {

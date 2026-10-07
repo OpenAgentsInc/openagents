@@ -13,6 +13,7 @@ boat = ["dep:boat", "dep:tokio"]
 [dependencies]
 boat = { path = "../boat", optional = true }
 hex = "0.4"
+nostr = { path = "../nostr" }
 openagents-wallet = { path = "../wallet", default-features = false }
 pay-ledger = { path = "../pay-ledger" }
 route-contract = { path = "../route-contract" }

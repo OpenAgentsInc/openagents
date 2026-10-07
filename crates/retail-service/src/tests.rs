@@ -1475,6 +1475,7 @@ fn operating_host(f: &Fixture, mode: package::Mode) -> (package::Host, std::path
     std::fs::set_permissions(&ingress, std::fs::Permissions::from_mode(0o600)).unwrap();
     let host = package::Host {
         commercial: None,
+        shared_spend: None,
         schema: package::HOST_SCHEMA.into(),
         customer,
         listen: "127.0.0.1:9042".parse().unwrap(),
@@ -2113,3 +2114,6 @@ fn changed_commercial_membership_stops_new_worker_effects_and_preserves_original
         .is_err()
     );
 }
+
+#[path = "tests/shared.rs"]
+mod shared;

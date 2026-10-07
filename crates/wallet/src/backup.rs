@@ -136,6 +136,11 @@ pub fn write(home: &Path, dest: &Path) -> Result<Manifest, WalletError> {
     if config.exists() {
         plan.push((config, dest.join(CONFIG_FILE)));
     }
+    if crate::custody::read(home)?.is_some() {
+        for name in [crate::custody::FILE, crate::custody::REQUIRED_FILE] {
+            plan.push((home.join(name), dest.join(name)));
+        }
+    }
     for (from, to) in plan {
         copy_private(&from, &to)?;
         let mut entry = digest(&to)?;
@@ -149,6 +154,14 @@ pub fn write(home: &Path, dest: &Path) -> Result<Manifest, WalletError> {
         create_private_dir(&store_dir)?;
         let to = store_dir.join(STORE_FILE);
         snapshot_store(&store, &to)?;
+        let mut entry = digest(&to)?;
+        entry.path = relative(dest, &to);
+        files.push(entry);
+    }
+    let handoffs = home.join("shared-handoffs.sqlite");
+    if handoffs.exists() {
+        let to = dest.join("shared-handoffs.sqlite");
+        snapshot_store(&handoffs, &to)?;
         let mut entry = digest(&to)?;
         entry.path = relative(dest, &to);
         files.push(entry);
@@ -184,6 +197,19 @@ pub fn verify(dest: &Path) -> Result<Manifest, WalletError> {
         )));
     }
     for entry in &manifest.files {
+        if !matches!(
+            entry.path.as_str(),
+            SEED_FILE
+                | CONFIG_FILE
+                | "shared-custody.json"
+                | "shared-custody.required"
+                | "shared-handoffs.sqlite"
+        ) && entry.path != format!("{STORE_DIR}/{STORE_FILE}")
+        {
+            return Err(WalletError::Invalid(
+                "Backup entry is outside the native wallet files.".into(),
+            ));
+        }
         let file = dest.join(&entry.path);
         let found = digest(&file)?;
         if found.sha256 != entry.sha256 {
@@ -195,6 +221,8 @@ pub fn verify(dest: &Path) -> Result<Manifest, WalletError> {
             )));
         }
     }
+    // A shared backup must retain both custody files and its handoff evidence.
+    crate::custody::read(dest)?;
     Ok(manifest)
 }
 

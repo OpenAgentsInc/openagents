@@ -150,6 +150,14 @@ pub(crate) async fn submit(
             return job_error(status, code, &message, None);
         }
     };
+    if crate::shared_spend::unsupported(&state, &caller) {
+        return job_error(
+            StatusCode::SERVICE_UNAVAILABLE,
+            "shared_route_disabled",
+            "Durable classification jobs are disabled under shared custody.",
+            None,
+        );
+    }
     // The submission runs the synchronous route's parse and validation —
     // a request it would refuse is refused here identically, and
     // nothing is persisted.

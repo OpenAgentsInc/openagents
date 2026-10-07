@@ -1,0 +1,30 @@
+[package]
+name = "commercial-spend"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+publish.workspace = true
+description = "Private canonical commercial funding and spend controller"
+
+[dependencies]
+commercial-accounts = { path = "../commercial-accounts" }
+coder = { path = "../coder", default-features = false }
+pay-ledger = { path = "../pay-ledger" }
+receipts = { path = "../receipts" }
+tenancy = { path = "../tenancy" }
+openagents-wallet = { path = "../wallet", default-features = false }
+openagents-x402 = { path = "../x402" }
+nostr = { path = "../nostr" }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+sha2 = "0.10"
+hex = "0.4"
+libc = "0.2"
+thiserror = "2"
+
+[dev-dependencies]
+tempfile = "3"
+nostr = { path = "../nostr", features = ["test-invoice"] }
+
+[lints]
+workspace = true

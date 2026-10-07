@@ -57,6 +57,13 @@ pub fn request_top_up(
 ) -> Result<Purchase> {
     let principal =
         ledger.resolve_principal(&request.principal, &request.credential, Need::Spend)?;
+    if ledger.shared_retail_binding(&principal.account)?.is_some() {
+        let value = ledger.shared_adapter_call(pay_ledger::shared::Operation::Funding {
+            purchase: request.purchase.clone(),
+            amount_sats: request.amount_sats,
+        })?;
+        return shared_purchase(&principal.account, request, value);
+    }
     let amount_msat = request
         .amount_sats
         .checked_mul(1000)
@@ -90,6 +97,38 @@ pub fn request_top_up(
         created_at: request.now,
         expires_at: request.now + i64::from(INVOICE_EXPIRY_SECS),
     })?)
+}
+
+pub fn shared_purchase(
+    account: &str,
+    request: &TopUpRequest,
+    value: serde_json::Value,
+) -> Result<Purchase> {
+    let issued: openagents_wallet::IssuedInvoice = serde_json::from_value(value["invoice"].clone())
+        .map_err(|_| Error::Invalid("original shared funding invoice unavailable; never remint"))?;
+    let invoice = nostr::x402::decode_invoice(&issued.bolt11)
+        .map_err(|_| Error::Invalid("invalid original shared funding invoice"))?;
+    Ok(Purchase {
+        top_up: TopUp {
+            id: request.purchase.clone(),
+            account: account.into(),
+            amount_msat: issued
+                .amount_msat
+                .try_into()
+                .map_err(|_| Error::Invalid("shared amount"))?,
+            payment_hash: issued.payment_hash,
+            invoice: issued.bolt11,
+            created_at: invoice.created_at() as i64,
+            expires_at: (invoice.created_at() + invoice.expiry_seconds()) as i64,
+        },
+        state: match value["state"].as_str() {
+            Some("paid") => pay_ledger::compute::PurchaseState::Paid,
+            Some("pending") => pay_ledger::compute::PurchaseState::Pending,
+            _ => pay_ledger::compute::PurchaseState::Unknown,
+        },
+        observed_at: value["observed_at"].as_i64(),
+        detail: None,
+    })
 }
 
 /// The wallet's callback that `payment_hash` was paid. A duplicate callback
@@ -133,6 +172,10 @@ pub fn reconcile(
 ) -> Result<Reconciled> {
     let mut out = Reconciled::default();
     for purchase in ledger.open_top_ups()? {
+        if ledger.shared_pool(&purchase.top_up.account)? {
+            // The canonical controller alone authenticates inbound custodian evidence.
+            continue;
+        }
         let hash = &purchase.top_up.payment_hash;
         let Ok(bytes) = parse_hash32(hash) else {
             out.unreachable += 1;

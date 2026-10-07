@@ -336,6 +336,28 @@ pub fn settle(ledger: &mut Ledger, hold: &Hold, usage: Option<Usage>, receipt: &
     let Some(usage) = usage else {
         return unknown(ledger, hold);
     };
+    if ledger.shared_mode(&hold.workspace).is_some() {
+        let operation = Operation::Settle {
+            attempt: hold.attempt.clone(),
+            usage,
+            receipt: receipt.into(),
+            provider_cost: None,
+            hosting_cost: None,
+        };
+        return if crate::shared_spend::project(
+            ledger,
+            hold,
+            operation,
+            &format!("gateway:{}:settle", hold.attempt),
+            receipt,
+        )
+        .is_ok()
+        {
+            Settlement::Settled
+        } else {
+            unknown(ledger, hold)
+        };
+    }
     match ledger.apply(Mutation {
         workspace: hold.workspace.clone(),
         source: format!("gateway:{}:settle", hold.attempt),
@@ -356,6 +378,19 @@ pub fn settle(ledger: &mut Ledger, hold: &Hold, usage: Option<Usage>, receipt: &
 /// Mark the hold's completion unknown — the whole reservation stays
 /// outstanding as a liability until an operator reconciles it.
 pub fn unknown(ledger: &mut Ledger, hold: &Hold) -> Settlement {
+    if ledger.shared_mode(&hold.workspace).is_some() {
+        crate::shared_spend::project(
+            ledger,
+            hold,
+            Operation::Unknown {
+                attempt: hold.attempt.clone(),
+            },
+            &format!("gateway:{}:unknown", hold.attempt),
+            &hold.attempt,
+        )
+        .ok();
+        return Settlement::Outstanding;
+    }
     ledger
         .apply(Mutation {
             workspace: hold.workspace.clone(),
@@ -382,6 +417,23 @@ pub fn release(ledger: &mut Ledger, hold: &Hold) -> Settlement {
             Phase::Unknown => return Settlement::Outstanding,
             Phase::Held => {}
         }
+    }
+    if ledger.shared_mode(&hold.workspace).is_some() {
+        return if crate::shared_spend::project(
+            ledger,
+            hold,
+            Operation::Release {
+                attempt: hold.attempt.clone(),
+            },
+            &format!("gateway:{}:release", hold.attempt),
+            &hold.attempt,
+        )
+        .is_ok()
+        {
+            Settlement::Released
+        } else {
+            unknown(ledger, hold)
+        };
     }
     let result = ledger.apply(Mutation {
         workspace: hold.workspace.clone(),

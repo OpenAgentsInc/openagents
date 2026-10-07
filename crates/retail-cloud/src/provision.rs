@@ -229,6 +229,7 @@ pub fn advance(
     if hold.state != HoldState::Held || hold.request.execution != funded.execution {
         return Err(Error::Invalid("the funded request's hold is not live"));
     }
+    ledger.shared_retail_handoff(&funded.request)?;
     let mut record = match journal.provisioning(&funded.execution)? {
         Some(found) => found,
         None => journal.record_intent(funded, now)?,

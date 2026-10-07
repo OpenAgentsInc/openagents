@@ -160,6 +160,10 @@ async fn run(args: &[String]) -> Result<(), String> {
                 Some(config) => s.with_commercial(config),
                 None => Ok(s),
             })
+            .and_then(|s| match host.shared_spend.clone() {
+                Some(config) => s.with_shared_spend(config),
+                None => Ok(s),
+            })
             .and_then(|s| s.with_operations(host, &path, provider_source_digest))
             .map(Arc::new)
             .map_err(|_| "retail runtime configuration or custody is unavailable".to_owned())

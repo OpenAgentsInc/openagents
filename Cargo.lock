@@ -3437,6 +3437,27 @@ dependencies = [
 ]
 
 [[package]]
+name = "commercial-spend"
+version = "0.1.0"
+dependencies = [
+ "coder",
+ "commercial-accounts",
+ "hex",
+ "libc",
+ "nostr",
+ "openagents-wallet",
+ "openagents-x402",
+ "pay-ledger",
+ "receipts",
+ "serde",
+ "serde_json",
+ "sha2 0.10.9",
+ "tempfile",
+ "tenancy",
+ "thiserror 2.0.20",
+]
+
+[[package]]
 name = "compact_str"
 version = "0.9.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -5624,10 +5645,12 @@ dependencies = [
  "atif",
  "axum 0.8.9",
  "commercial-accounts",
+ "commercial-spend",
  "discovery",
  "fs2",
  "futures-util",
  "gym",
+ "hex",
  "hmac 0.12.1",
  "jev",
  "libc",
@@ -9958,12 +9981,14 @@ dependencies = [
  "coder-ssh",
  "coder-vt",
  "commercial-accounts",
+ "commercial-spend",
  "discovery",
  "ext-eval",
  "futures-util",
  "glam",
  "gym",
  "gym-bridge",
+ "hex",
  "jev",
  "jev-hosted",
  "jsonschema",
@@ -10146,7 +10171,9 @@ name = "openagents-wallet"
 version = "0.1.0"
 dependencies = [
  "hex",
+ "hmac 0.12.1",
  "ldk-node",
+ "libc",
  "nostr",
  "rusqlite",
  "serde",
@@ -10444,6 +10471,7 @@ dependencies = [
  "libc",
  "nostr",
  "proptest",
+ "receipts",
  "rusqlite",
  "serde",
  "serde_json",
@@ -12151,6 +12179,7 @@ version = "0.1.0"
 dependencies = [
  "boat",
  "hex",
+ "nostr",
  "openagents-wallet",
  "pay-ledger",
  "route-contract",
@@ -12189,7 +12218,9 @@ dependencies = [
  "axum 0.8.9",
  "boat",
  "commercial-accounts",
+ "commercial-spend",
  "fs2",
+ "hex",
  "libc",
  "nostr",
  "openagents-wallet",
@@ -12202,6 +12233,7 @@ dependencies = [
  "rusqlite",
  "serde",
  "serde_json",
+ "sha2 0.10.9",
  "supervise",
  "tempfile",
  "tenancy",
@@ -13861,6 +13893,7 @@ dependencies = [
  "getrandom 0.4.3",
  "gym",
  "libc",
+ "pay-ledger",
  "receipts",
  "serde",
  "serde_json",

@@ -190,6 +190,9 @@ pub struct ExecutionReceipt {
     /// This records attribution and establishes no purchase approval or grant.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub commercial: Option<crate::purchase::CommercialRef>,
+    /// The original canonical intent and reviewed source units for this attempt.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub shared_spend: Option<crate::shared_spend::Reference>,
     /// The registry revision the call was admitted under — digest and
     /// sequence, so which binding authorized the call is a lookup.
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -329,6 +332,7 @@ impl ExecutionReceipt {
             workspace: None,
             member: None,
             commercial: None,
+            shared_spend: None,
             registry: None,
             requested: Served::default(),
             served: Served::default(),

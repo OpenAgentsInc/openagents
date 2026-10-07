@@ -170,7 +170,10 @@ pub fn settle(
         receipt.released_msat = settled.request.amount_msat - amount;
         receipt.held_msat = 0;
         receipt.settled_at = settled.settled_at;
-        receipt.source = (amount > 0).then(|| format!("debit:{}", funded.request));
+        let original_source = ledger
+            .shared_retail_outcome(&funded.request)?
+            .map_or_else(|| funded.request.clone(), |o| o.intent.id);
+        receipt.source = (amount > 0).then(|| format!("debit:{original_source}"));
         // The ledger commits debit, obligations, and hold release atomically.
         // A crash here reuses that transaction before sealing this receipt.
         journal.check_custody()?;

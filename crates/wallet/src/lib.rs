@@ -12,6 +12,7 @@
 
 pub mod backup;
 pub mod config;
+pub mod custody;
 #[cfg(feature = "ldk")]
 pub mod ldk;
 pub mod model;

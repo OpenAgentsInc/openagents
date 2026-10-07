@@ -205,7 +205,8 @@ impl ServeState {
             .money
             .as_ref()
             .map(|money| {
-                let ledger = tenancy::money::Ledger::open(&money.ledger)?;
+                let mut ledger = tenancy::money::Ledger::open(&money.ledger)?;
+                crate::shared_spend::configure(&config.registry, &mut ledger)?;
                 for priced in money.doors.values() {
                     if let Some(offer) = &priced.offer {
                         offer.check_history(priced, &ledger)?;
@@ -967,17 +968,10 @@ pub(crate) fn authenticate(
                 ),
             })?;
         original_member = Some(member_snapshot(&member));
-        if state
-            .config
-            .money
-            .as_ref()
-            .is_some_and(|m| m.hierarchical_budgets)
-        {
-            budget_credential = Some(crate::budgets::Credential {
-                token: token.into(),
-                person: member.account,
-            });
-        }
+        budget_credential = Some(crate::budgets::Credential {
+            token: token.into(),
+            person: member.account,
+        });
         workspace = Some(named.to_string());
     }
     Ok((
@@ -1145,15 +1139,10 @@ fn authenticate_session(
             Ok((
                 registry,
                 Caller {
-                    budget_credential: state
-                        .config
-                        .money
-                        .as_ref()
-                        .is_some_and(|m| m.hierarchical_budgets)
-                        .then(|| crate::budgets::Credential {
-                            token: token.into(),
-                            person: session.user.as_str().into(),
-                        }),
+                    budget_credential: Some(crate::budgets::Credential {
+                        token: token.into(),
+                        person: session.user.as_str().into(),
+                    }),
                     tenant: Some(record.tenant),
                     key: format!("session:{}", &session.id.as_str()[..16]),
                     workspace: Some(workspace.to_string()),
@@ -1198,6 +1187,7 @@ pub(crate) struct ReceiptContext {
     /// The original native mapping admitted for this attempt, with or without approval.
     pub(crate) commercial: Option<receipts::purchase::CommercialRef>,
     pub(crate) team_policy: Option<receipts::team_policy::Snapshot>,
+    pub(crate) shared_spend: Option<receipts::shared_spend::Reference>,
 }
 
 /// What the admission path produced.
@@ -1773,6 +1763,11 @@ async fn money_hold(
     ctx: &Context,
 ) -> Result<Option<money::Hold>, Verdict> {
     let Some(config) = &state.config.money else {
+        if caller.workspace.as_ref().is_some_and(|workspace| {
+            tenancy::money::shared::required(&state.dir, workspace).map_or(true, |m| m.is_some())
+        }) {
+            return Err(Verdict::Refused { status:StatusCode::SERVICE_UNAVAILABLE,code:"shared_custody_required",message:"Original shared monetary admission is required; standalone spending is disabled.".into(),outcome:Outcome::Refused,ctx:ctx.clone() });
+        }
         return Ok(None);
     };
     let Some(workspace) = caller.workspace.clone() else {
@@ -1800,6 +1795,7 @@ async fn money_hold(
     let ledger = state.money.as_ref().expect("money config opens a ledger");
     let mut ledger = ledger.lock().await;
     let original_exists = ledger.has_attempt(&format!("{}#{}", naming.request, naming.attempt));
+    let mut canonical_uncertain = false;
     let reservation = (|| {
         crate::card_funding::controller::check_money_profile(state, &ledger, &workspace)
             .map_err(money::Refusal::Authorization)?;
@@ -1819,6 +1815,65 @@ async fn money_hold(
             &admission.binding.artifact.model[..],
             lane_name(admission.binding.lane),
         );
+        if ledger.shared_mode(&workspace).is_some() {
+            let credential = caller.budget_credential.as_ref().ok_or_else(|| {
+                money::Refusal::Authorization(
+                    "Current native member spending authority is required.".into(),
+                )
+            })?;
+            let (person, revision, epoch, budget) = crate::budgets::with_current_shared(
+                state,
+                credential,
+                &workspace,
+                door,
+                |actor, _| {
+                    let mode = ledger
+                        .shared_mode(&workspace)
+                        .ok_or("Original shared mode is required.")?;
+                    if actor.person != mode.source.account {
+                        return Err("Shared native source cannot move to another member.".into());
+                    }
+                    let budget = if config.hierarchical_budgets {
+                        Some(ledger.budget_admission(
+                            &workspace,
+                            &actor.person,
+                            &actor.revision,
+                            actor.epoch,
+                        )?)
+                    } else {
+                        None
+                    };
+                    Ok((
+                        actor.person.clone(),
+                        actor.revision.clone(),
+                        actor.epoch,
+                        budget,
+                    ))
+                },
+            )
+            .map_err(money::Refusal::Authorization)?;
+            let (hold, prepared) = crate::shared_spend::prepare_reserve(
+                &mut ledger,
+                &workspace,
+                naming.request,
+                naming.attempt,
+                naming.request_digest,
+                priced,
+                binding,
+                budget,
+                pay_ledger::shared::GatewayActor {
+                    credential: credential.token.clone(),
+                    door: door.into(),
+                },
+                &mut canonical_uncertain,
+            )?;
+            crate::budgets::with_current_shared(state,credential,&workspace,door,|actor,_|{
+                if (actor.person.as_str(),actor.revision.as_str(),actor.epoch)!=(person.as_str(),revision.as_str(),epoch) {return Err("Native authority changed after canonical reservation; retain original liability.".into());}
+                ledger.commit_shared(prepared)?;
+                Ok(())
+            }).map_err(money::Refusal::Authorization)?;
+            return Ok(hold);
+        }
         if config.hierarchical_budgets {
             let credential = caller.budget_credential.as_ref().ok_or_else(|| {
                 money::Refusal::Authorization(
@@ -1871,7 +1926,10 @@ async fn money_hold(
             drop(ledger);
             // Any existing attempt belongs to its original execution. Preserve
             // its quota; only a fresh refused reservation can be released.
-            if !original_exists && !matches!(refusal, money::Refusal::Duplicate) {
+            if !original_exists
+                && !canonical_uncertain
+                && !matches!(refusal, money::Refusal::Duplicate)
+            {
                 state.release(naming.request, naming.attempt).await;
             }
             let (status, code) = match &refusal {
@@ -1982,13 +2040,14 @@ async fn forward_cancellable(
     cancellation: &Cancellation,
     policy_guard: Option<tenancy::accounts::team_policies::Guard>,
     progress: Option<&crate::team_reports::ProgressGuard<'_>>,
+    shared: Option<crate::shared_spend::Effect>,
 ) -> Forwarded {
     tokio::select! {
         biased;
         _ = cancellation.wait() => Forwarded::Unavailable {
             message: "The connection closed after the request was sent to the model, so the result is unknown.".into(),
         },
-        result = forward_guarded(state, endpoint, body, policy_guard, progress) => result,
+        result = forward_guarded(state, endpoint, body, policy_guard, progress, shared) => result,
     }
 }
 
@@ -2154,6 +2213,12 @@ async fn admitted(
         Err(verdict) => return verdict,
     };
     let progress = crate::team_reports::begin(state, &caller, naming, &ctx, &hold);
+    if let (Some(ledger), Some(hold)) = (&state.money, &hold) {
+        let ledger = ledger.lock().await;
+        ctx.shared_spend = ledger
+            .hold(&hold.workspace, &hold.attempt)
+            .and_then(|h| h.shared.clone());
+    }
     if let Err(verdict) = verified_cancellable(
         state,
         &backend,
@@ -2201,6 +2266,35 @@ async fn admitted(
             ctx,
         };
     }
+    // No Accounts lock is held during canonical IPC. The native policy handoff
+    // already sealed its original bytes; the controller seals monetary authority.
+    let shared = if let (Some(ledger), Some(hold)) = (&state.money, &hold) {
+        let ledger = ledger.lock().await;
+        caller.budget_credential.as_ref().and_then(|credential| {
+            crate::shared_spend::effect(
+                &ledger,
+                hold,
+                pay_ledger::shared::GatewayActor {
+                    credential: credential.token.clone(),
+                    door: door.into(),
+                },
+            )
+        })
+    } else {
+        None
+    };
+    if ctx.shared_spend.is_some() && shared.is_none() {
+        ctx.settlement = money_settle(state, &hold, naming, None).await;
+        return Verdict::Refused {
+            status: StatusCode::SERVICE_UNAVAILABLE,
+            code: "shared_custody_unavailable",
+            message:
+                "The original shared effect and liability are unavailable; no dispatch is allowed."
+                    .into(),
+            outcome: Outcome::Unknown,
+            ctx,
+        };
+    }
     let policy_guard = match crate::team_policy::admit(
         state,
         headers,
@@ -2240,6 +2334,7 @@ async fn admitted(
         cancellation,
         policy_guard,
         progress.as_ref(),
+        shared,
     )
     .await
     {
@@ -2301,6 +2396,9 @@ async fn classify_admitted(
         Ok(parts) => parts,
         Err(verdict) => return verdict,
     };
+    if crate::shared_spend::unsupported(state, &caller) {
+        return Verdict::Refused {status:StatusCode::SERVICE_UNAVAILABLE,code:"shared_route_disabled",message:"Shared custody supports the qualified synchronous native decision lane; classification is disabled.".into(),outcome:Outcome::Refused,ctx};
+    }
     let request = match parse_classify(body, ctx.clone()) {
         Ok(request) => request,
         Err(verdict) => return verdict,
@@ -2461,6 +2559,15 @@ pub(crate) async fn classify_run(
     phase_auth: &PhaseAuth<'_>,
     sink: Option<tokio::sync::mpsc::UnboundedSender<ItemResult>>,
 ) -> Verdict {
+    if crate::shared_spend::unsupported(state, caller) {
+        return Verdict::Refused {
+            status: StatusCode::SERVICE_UNAVAILABLE,
+            code: "shared_route_disabled",
+            message: "Shared custody does not admit resumed classification jobs.".into(),
+            outcome: Outcome::Refused,
+            ctx,
+        };
+    }
     if crate::team_policy::required(state, caller.workspace.as_deref()).unwrap_or(true) {
         return Verdict::Refused {
             status: StatusCode::FORBIDDEN,
@@ -3347,6 +3454,11 @@ async fn dispatch_admitted(
     naming: &Naming<'_>,
     ctx: &mut Context,
 ) -> Result<Forwarded, Fail> {
+    if crate::shared_spend::unsupported(state, caller) {
+        return Err(Fail::unattempted(
+            "Unreviewed fallback routes are disabled under shared custody.",
+        ));
+    }
     // Authorize the named door — a reviewer or fallback the caller's
     // bindings do not name is refused here, never dispatched.
     let (admission, backend) = authorized(state, registry, caller, &sub.door, ctx).map_err(fail)?;
@@ -3453,6 +3565,7 @@ async fn dispatch_admitted(
             &backend.endpoint,
             &sub.body,
             &sub.cancellation,
+            None,
             None,
             None,
         ),
@@ -5165,7 +5278,7 @@ async fn backend_response_bytes(
 /// Forward the request body to the backend's `systemone`, bounded by the
 /// configured timeout and response cap.
 async fn forward(state: &ServeState, endpoint: &str, body: &Bytes) -> Forwarded {
-    forward_guarded(state, endpoint, body, None, None).await
+    forward_guarded(state, endpoint, body, None, None, None).await
 }
 async fn forward_guarded(
     state: &ServeState,
@@ -5173,6 +5286,7 @@ async fn forward_guarded(
     body: &Bytes,
     policy_guard: Option<tenancy::accounts::team_policies::Guard>,
     progress: Option<&crate::team_reports::ProgressGuard<'_>>,
+    shared: Option<crate::shared_spend::Effect>,
 ) -> Forwarded {
     if state.config.team_policy.is_some() && policy_guard.is_none() {
         return Forwarded::Refused {
@@ -5212,6 +5326,22 @@ async fn forward_guarded(
     // The native once-only handoff already sealed these exact bytes and recipient.
     // Later revocation blocks new handoffs and retains this in-flight admission.
     drop(policy_guard);
+    if let Some(effect) = shared {
+        if effect
+            .client
+            .call(pay_ledger::shared::Operation::Handoff {
+                id: effect.reference.intent.clone(),
+                actor: effect.actor,
+            })
+            .is_err()
+        {
+            return Forwarded::Refused {
+                status: StatusCode::FORBIDDEN,
+                body: Bytes::from_static(b"{\"error\":{\"code\":\"shared_authority_changed\"}}"),
+                cause: "shared_authority_changed".into(),
+            };
+        }
+    }
     if let Some(progress) = progress {
         progress.running();
     }
@@ -5279,6 +5409,7 @@ pub(crate) async fn write_receipt(
     receipt.workspace = ctx.workspace.clone();
     receipt.member = ctx.member.clone();
     receipt.commercial = ctx.commercial.clone();
+    receipt.shared_spend = ctx.shared_spend.clone();
     receipt.registry = ctx.registry.clone();
     receipt.requested = ctx.requested.clone();
     receipt.served = ctx.served.clone();

@@ -49,6 +49,8 @@ pub struct Offer {
     pub recovery_authorization: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub commercial: Option<receipts::purchase::CommercialRef>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub shared: Option<receipts::shared_spend::Reference>,
 }
 impl Offer {
     pub fn body(&self, request: &str) -> Vec<u8> {
@@ -76,6 +78,16 @@ impl Offer {
             .try_fold(0u64, |n, p| n.checked_add(p.msat));
         let fee = self.quote.fee_msat.ok_or("Missing signed author fee.")?;
         if url.origin().ascii_serialization() != selected.origin
+            || self.shared.as_ref().is_some_and(|s| {
+                self.commercial.as_ref() != Some(&s.mode.commercial)
+                    || s.mode.source.product != receipts::purchase::CommercialProduct::Plugin
+                    || s.mode.source.account != selected.context.account
+                    || s.mode.source.workspace.as_deref() != Some(&selected.context.workspace)
+                    || s.mode.node != self.payer.node
+                    || s.digest.len() != 64
+                    || !s.intent.starts_with("shared:")
+                    || s.intent.len() != 71
+            })
             || self.commercial.as_ref().is_some_and(|r| {
                 r.validate().is_err()
                     || !r.matches_native(
@@ -157,6 +169,84 @@ impl Offer {
             return Err("Plugin invoice changes amount, network, or expiry.".into());
         }
         Ok(())
+    }
+}
+/// A protected native approval permits only its original payment attempt.
+#[derive(Clone)]
+pub struct SharedApproval {
+    pub purchase: String,
+    pub offer: Offer,
+    pub selection: Selection,
+    pub approval_digest: String,
+}
+impl Store {
+    /// Read an already committed approval without taking the buyer's writer lock.
+    /// This never changes an uncertain purchase or issues invocation authority.
+    #[cfg(unix)]
+    pub fn shared_plugin_approval(root: &Path, id: &str, now: u64) -> Result<SharedApproval> {
+        use std::os::unix::fs::{MetadataExt, OpenOptionsExt};
+        if !root.is_absolute() || !alias(id) {
+            return Err("An exact private buyer directory and purchase are required.".into());
+        }
+        let dir = std::fs::OpenOptions::new()
+            .read(true)
+            .custom_flags(libc::O_NOFOLLOW | libc::O_DIRECTORY)
+            .open(root)
+            .map_err(|_| "Private buyer directory is unavailable.")?;
+        let original = dir
+            .metadata()
+            .map_err(|_| "Private buyer directory is unavailable.")?;
+        if !original.is_dir()
+            || original.mode() & 0o077 != 0
+            || original.uid() != unsafe { libc::geteuid() }
+        {
+            return Err("Private buyer directory is required.".into());
+        }
+        let path = root.join("state.json");
+        let file = task::private_open(&path, false, false)
+            .map_err(|_| "Private buyer approval is unavailable.")?;
+        let meta = file
+            .metadata()
+            .map_err(|_| "Private buyer approval is unavailable.")?;
+        if meta.uid() != unsafe { libc::geteuid() } {
+            return Err("Private buyer approval is unavailable.".into());
+        }
+        let mut bytes = Vec::new();
+        (&file)
+            .take(MAX_STATE as u64 + 1)
+            .read_to_end(&mut bytes)
+            .map_err(|_| "Private buyer approval is unavailable.")?;
+        if bytes.len() > MAX_STATE {
+            return Err("Private buyer state exceeds its bound.".into());
+        }
+        let book: Book =
+            serde_json::from_slice(&bytes).map_err(|_| "Invalid private buyer state.")?;
+        super::check(&book)?;
+        let p = book
+            .plugin_purchases
+            .get(id)
+            .ok_or("Original plugin purchase is absent.")?;
+        if p.phase != Phase::Paying || p.offer.shared.is_none() || p.charge.is_some() {
+            return Err("Original paying approval is required for shared handoff.".into());
+        }
+        let approval = p
+            .approval
+            .as_ref()
+            .ok_or("Original plugin approval is absent.")?;
+        validate_approval(approval, &p.offer, &p.selection, now)?;
+        p.offer.validate(&p.request, &p.selection, now)?;
+        task::verify_same_file(&path, &file)
+            .map_err(|_| "Buyer approval changed during admission.")?;
+        let current = std::fs::symlink_metadata(root).map_err(|_| "Buyer directory changed.")?;
+        if !current.is_dir() || current.dev() != original.dev() || current.ino() != original.ino() {
+            return Err("Buyer directory changed during admission.".into());
+        }
+        Ok(SharedApproval {
+            purchase: id.into(),
+            offer: p.offer.clone(),
+            selection: p.selection.clone(),
+            approval_digest: approval.digest(),
+        })
     }
 }
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]

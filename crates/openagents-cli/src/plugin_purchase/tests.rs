@@ -382,6 +382,7 @@ impl Harness {
             recovery_authorization: recoverable
                 .then(|| openagents_x402::outcome::commitment(&"e5".repeat(32))),
             commercial: None,
+            shared: None,
         };
         offer.packet = resolved(source.as_ref(), &offer, request).unwrap();
         let body = offer.body(request);
@@ -1092,7 +1093,7 @@ fn installed_cli_quotes_approves_pays_returns_and_preserves_unknown_delivery() {
     let Some(binary) = std::env::var_os("OPENAGENTS_PLUGIN_CLI") else {
         return;
     };
-    installed_purchase(binary, false);
+    installed_purchase(binary, false, false);
 }
 
 #[test]
@@ -1100,10 +1101,72 @@ fn installed_cli_pins_plugin_projection_without_gateway_invocation_rights() {
     let Some(binary) = std::env::var_os("OPENAGENTS_PLUGIN_CLI") else {
         return;
     };
-    installed_purchase(binary, true);
+    installed_purchase(binary, true, false);
 }
 
-fn installed_purchase(binary: std::ffi::OsString, mapped: bool) {
+#[path = "../../../commercial-spend/tests/support/mod.rs"]
+mod shared_fixture;
+#[test]
+fn installed_cli_shared_custodian_pays_useful_plugin_once_and_preserves_original_recovery() {
+    let Some(binary) = std::env::var_os("OPENAGENTS_PLUGIN_CLI") else {
+        return;
+    };
+    installed_purchase(binary, true, true);
+}
+
+// The installed controller has an independent process and immutable executable.
+struct ControllerProcess(std::process::Child);
+impl ControllerProcess {
+    fn start(binary: &std::ffi::OsStr, fixture: &shared_fixture::Fixture) -> Self {
+        let child = std::process::Command::new(binary)
+            .arg(&fixture.config)
+            .env_clear()
+            .env("PATH", "/usr/bin:/bin")
+            .env("HOME", fixture.root.path())
+            .stdin(std::process::Stdio::null())
+            .stdout(std::process::Stdio::null())
+            .stderr(std::process::Stdio::null())
+            .spawn()
+            .unwrap();
+        let mut process = Self(child);
+        let deadline = std::time::Instant::now() + Duration::from_secs(5);
+        while fixture
+            .plugin
+            .call(pay_ledger::shared::Operation::Identity {})
+            .is_err()
+        {
+            assert!(
+                process.0.try_wait().unwrap().is_none(),
+                "Isolated controller exited before admission"
+            );
+            assert!(
+                std::time::Instant::now() < deadline,
+                "Isolated controller did not start"
+            );
+            std::thread::sleep(Duration::from_millis(10));
+        }
+        process
+    }
+    fn kill(&mut self) {
+        self.0.kill().unwrap();
+        self.0.wait().unwrap();
+    }
+}
+impl Drop for ControllerProcess {
+    fn drop(&mut self) {
+        let _ = self.0.kill();
+        let _ = self.0.wait();
+    }
+}
+
+fn installed_purchase(binary: std::ffi::OsString, mapped: bool, shared: bool) {
+    if shared {
+        installed_purchase_case(binary.clone(), mapped, true, true);
+    }
+    installed_purchase_case(binary, mapped, shared, false);
+}
+
+fn installed_purchase_case(binary: std::ffi::OsString, mapped: bool, shared: bool, restart: bool) {
     use openagents_x402::{
         Facilitator,
         front::{Config, Route},
@@ -1111,6 +1174,26 @@ fn installed_purchase(binary: std::ffi::OsString, mapped: bool) {
     };
     use std::{net::TcpListener, os::unix::fs::PermissionsExt};
     let root = tempfile::tempdir().unwrap();
+    let mut shared_fixture = shared.then(|| shared_fixture::Fixture::new(None));
+    let controller_binary = shared.then(|| {
+        std::env::var_os("OPENAGENTS_SHARED_CONTROLLER")
+            .expect("Enabled shared acceptance needs the immutable controller binary")
+    });
+    let mut process = if let Some(f) = shared_fixture.as_mut() {
+        f.stop_controller();
+        Some(ControllerProcess::start(
+            controller_binary.as_ref().unwrap(),
+            f,
+        ))
+    } else {
+        None
+    };
+    if let Some(f) = &shared_fixture {
+        assert_eq!(
+            f.fund("installed-pool", if restart { 26 } else { 20 })["state"],
+            "paid"
+        );
+    }
     let (source, id, events, blobs) =
         crate::pay_plugin::tests::useful_release::served_source(root.path());
     let stop = Arc::new(AtomicBool::new(false));
@@ -1131,6 +1214,12 @@ fn installed_purchase(binary: std::ffi::OsString, mapped: bool) {
         unknown_fee: AtomicBool::new(false),
         receiver_identity: AtomicBool::new(false),
     });
+    if let Some(f) = &shared_fixture {
+        let original = wallet.clone();
+        f.fake.set_payment_hook(Arc::new(move |invoice, fee| {
+            original.pay(invoice, fee, Duration::from_secs(1))
+        }));
+    }
     let invoke = pay_plugin::Invoke::new(5000, source);
     let executions = Arc::new(AtomicU64::new(0));
     let counted = executions.clone();
@@ -1174,6 +1263,28 @@ fn installed_purchase(binary: std::ffi::OsString, mapped: bool) {
     .with_outcomes(openagents_x402::outcome::Store::open(&root.path().join("outcomes")).unwrap());
     let mut selected = current();
     selected.origin = origin.clone();
+    let native_token = shared_fixture.as_ref().map_or_else(
+        || "oak_fixture.buyer".to_string(),
+        |f| f.native.token.clone(),
+    );
+    if let Some(f) = &shared_fixture {
+        let registry = tenancy::Registry::open(&f.native.directory).unwrap();
+        let key =
+            tenancy::keys::authenticate(&f.native.directory, registry.manifest(), &f.native.token)
+                .unwrap();
+        let member = tenancy::Accounts::open(&f.native.directory)
+            .unwrap()
+            .authenticate_key(registry.manifest(), &f.native.workspace, &f.native.token)
+            .unwrap();
+        selected.context.account = member.account;
+        selected.context.workspace = member.workspace.clone();
+        selected.context.payer_workspace = member.workspace;
+        selected.context.tenant = key.tenant;
+        selected.context.credential_reference = format!("key:{}", key.key_id);
+        selected.context.membership_epoch = member.epoch;
+        selected.context.workspace_members_epoch = member.members_epoch;
+        selected.context.role = member.role.to_string();
+    }
     if mapped {
         selected.context.can_invoke = false;
     }
@@ -1192,6 +1303,9 @@ fn installed_purchase(binary: std::ffi::OsString, mapped: bool) {
             },
         }
     })));
+    if let Some(f) = &shared_fixture {
+        *commercial.lock().unwrap() = Some(f.plugin_binding.commercial.clone());
+    }
     let projection = commercial.clone();
     let native_reader = mapped.then(|| receipts::purchase::PluginReadIdentity {
         source: commercial.lock().unwrap().as_ref().unwrap().source.clone(),
@@ -1213,12 +1327,47 @@ fn installed_purchase(binary: std::ffi::OsString, mapped: bool) {
     let changed = Arc::new(AtomicBool::new(false));
     let changing = changed.clone();
     let http_stop = stop.clone();
+    let native_directory = shared_fixture.as_ref().map(|f| f.native.directory.clone());
+    let selected_workspace = selected.context.workspace.clone();
+    let expected_authorization = format!("Bearer {native_token}");
     let http = std::thread::spawn(move || {
         serve_with(listener, http_stop, move |request| {
-            if request.target == "/v1/workspaces/buyer-workspace/purchase-context/decision-a" {
+            let native_route = request
+                .target
+                .starts_with(&format!("/v1/workspaces/{selected_workspace}/"));
+            if native_route {
                 assert_eq!(
                     request.header("authorization"),
-                    Some("Bearer oak_fixture.buyer")
+                    Some(expected_authorization.as_str())
+                );
+                if let Some(directory) = &native_directory {
+                    let authorized =
+                        tenancy::Registry::open(directory)
+                            .ok()
+                            .is_some_and(|registry| {
+                                tenancy::Accounts::open(directory)
+                                    .ok()
+                                    .is_some_and(|accounts| {
+                                        accounts
+                                            .authenticate_key(
+                                                registry.manifest(),
+                                                &selected_workspace,
+                                                &native_token,
+                                            )
+                                            .is_ok()
+                                    })
+                            });
+                    if !authorized {
+                        return Response::json(403, &json!({"error":"native read revoked"}));
+                    }
+                }
+            }
+            if request.target
+                == format!("/v1/workspaces/{selected_workspace}/purchase-context/decision-a")
+            {
+                assert_eq!(
+                    request.header("authorization"),
+                    Some(expected_authorization.as_str())
                 );
                 if canonical_denial.load(Ordering::SeqCst) {
                     return Response::json(409, &json!({"error":"canonical linkage revoked"}));
@@ -1227,20 +1376,20 @@ fn installed_purchase(binary: std::ffi::OsString, mapped: bool) {
                 c["can_invoke"] = json!(!mapped && !denial.load(Ordering::SeqCst));
                 return Response::json(200, &c);
             }
-            if request.target == "/v1/workspaces/buyer-workspace/commercial/plugin" {
+            if request.target == format!("/v1/workspaces/{selected_workspace}/commercial/plugin") {
                 assert_eq!(
                     request.header("authorization"),
-                    Some("Bearer oak_fixture.buyer")
+                    Some(expected_authorization.as_str())
                 );
                 if canonical_denial.load(Ordering::SeqCst) {
                     return Response::json(409, &json!({"error":"canonical linkage revoked"}));
                 }
                 return Response::json(200, &json!(*projection.lock().unwrap()));
             }
-            if request.target == "/v1/workspaces/buyer-workspace/plugin-reader" {
+            if request.target == format!("/v1/workspaces/{selected_workspace}/plugin-reader") {
                 assert_eq!(
                     request.header("authorization"),
-                    Some("Bearer oak_fixture.buyer")
+                    Some(expected_authorization.as_str())
                 );
                 if native_denial.load(Ordering::SeqCst) {
                     return Response::json(403, &json!({"error":"native read revoked"}));
@@ -1276,21 +1425,33 @@ fn installed_purchase(binary: std::ffi::OsString, mapped: bool) {
         })
         .unwrap()
     });
-    let customer = root.path().join("customer");
+    let customer = shared_fixture
+        .as_ref()
+        .map_or_else(|| root.path().join("customer"), |f| f.buyer_root.clone());
     {
         let mut store = Store::open(&customer).unwrap();
         store
-            .import_credential("buyer", &jev::ApiKey::new("oak_fixture.buyer"))
+            .import_credential(
+                "buyer",
+                &jev::ApiKey::new(
+                    shared_fixture
+                        .as_ref()
+                        .map_or("oak_fixture.buyer", |f| f.native.token.as_str()),
+                ),
+            )
             .unwrap();
         store.bind(selected).unwrap();
     }
     // Native socket paths need a short private parent on Darwin.
     let socket_root = tempfile::Builder::new()
         .prefix("oa-rev12-")
-        .tempdir_in("/tmp")
+        .tempdir_in(std::path::Path::new("/tmp").canonicalize().unwrap())
         .unwrap();
-    let wallet_home = socket_root.path().join("wallet");
-    std::fs::create_dir(&wallet_home).unwrap();
+    let wallet_home = shared_fixture.as_ref().map_or_else(
+        || socket_root.path().join("wallet"),
+        |f| f.wallet_home.clone(),
+    );
+    std::fs::create_dir_all(&wallet_home).unwrap();
     std::fs::set_permissions(&wallet_home, std::fs::Permissions::from_mode(0o700)).unwrap();
     let config =
         openagents_wallet::WalletConfig::new(openagents_wallet::config::Network::Bitcoin, None)
@@ -1305,10 +1466,31 @@ fn installed_purchase(binary: std::ffi::OsString, mapped: bool) {
         std::fs::Permissions::from_mode(0o600),
     )
     .unwrap();
-    let resident = openagents_wallet::resident::Server::bind(&wallet_home).unwrap();
-    let resident_stop = resident.stop_flag();
-    let paying = wallet.clone();
-    let wallet_thread = std::thread::spawn(move || resident.run(paying));
+    let (resident_stop, wallet_thread) = if shared_fixture.is_none() {
+        let resident = openagents_wallet::resident::Server::bind(&wallet_home).unwrap();
+        let resident_stop = resident.stop_flag();
+        let paying = wallet.clone();
+        (
+            resident_stop,
+            Some(std::thread::spawn(move || resident.run(paying))),
+        )
+    } else {
+        (Arc::new(AtomicBool::new(false)), None)
+    };
+    let deadline = std::time::Instant::now() + Duration::from_secs(5);
+    loop {
+        if openagents_wallet::resident::RemoteWallet::probe(&wallet_home.canonicalize().unwrap())
+            .is_some()
+        {
+            break;
+        }
+        assert!(
+            std::time::Instant::now() < deadline,
+            "Original isolated resident did not answer at {}",
+            wallet_home.display()
+        );
+        std::thread::sleep(Duration::from_millis(10));
+    }
     let notes = root.path().join("notes.txt");
     std::fs::write(
         &notes,
@@ -1430,6 +1612,14 @@ fn installed_purchase(binary: std::ffi::OsString, mapped: bool) {
     assert_eq!(v["phase"], "completed");
     assert_eq!(v["charge"]["amount_msat"], 6000);
     assert_eq!(v["result"]["value"]["items"].as_array().unwrap().len(), 3);
+    let cited = &v["result"]["value"]["items"];
+    assert_eq!(cited[0]["source"]["line"], 2);
+    assert_eq!(cited[0]["owner"], "Ana");
+    assert_eq!(cited[0]["task"], "send the budget");
+    assert_eq!(cited[0]["due"], "Friday");
+    assert_eq!(cited[1]["source"]["line"], 3);
+    assert_eq!(cited[1]["owner"], "Ben");
+    assert!(cited[2]["owner"].is_null());
     assert_eq!(v["result"]["verification"], "not_run");
     assert_eq!(v["settlement"]["transaction"], v["charge"]["payment_hash"]);
     assert!(!run(&["invoke", "--purchase", "one"]).0.status.success());
@@ -1477,7 +1667,14 @@ fn installed_purchase(binary: std::ffi::OsString, mapped: bool) {
     let (o, v) = run(&["invoke", "--purchase", "lost"]);
     assert!(!o.status.success());
     assert_eq!(v["phase"], "unknown");
-    assert_eq!(v["charge"]["amount_msat"], 6000);
+    let original_shared = shared_fixture.as_ref().map(|f| {
+        let id = pay_ledger::shared::Intent::stable_id(&f.plugin_binding, "plugin-purchase:lost");
+        (
+            f.fake.outgoing.load(Ordering::SeqCst),
+            f.plugin.call(pay_ledger::shared::Operation::Observe { id }),
+        )
+    });
+    assert_eq!(v["charge"]["amount_msat"], 6000, "{original_shared:?}");
     assert!(!run(&["invoke", "--purchase", "lost"]).0.status.success());
     assert_eq!(wallet.payments.load(Ordering::SeqCst), 2);
     assert_eq!(executions.load(Ordering::SeqCst), 2);
@@ -1538,11 +1735,402 @@ fn installed_purchase(binary: std::ffi::OsString, mapped: bool) {
         assert_eq!(wallet.payments.load(Ordering::SeqCst), 2);
         assert_eq!(executions.load(Ordering::SeqCst), 2);
     }
+    if let Some(f) = &shared_fixture {
+        let book = pay_ledger::Ledger::open_read_only(&f.ledger).unwrap();
+        let balance = book.compute_balance("retail").unwrap();
+        assert_eq!(
+            (
+                balance.credited_msat,
+                balance.available_msat,
+                balance.settled_msat
+            ),
+            if restart {
+                (26_000, 14_000, 12_000)
+            } else {
+                (20_000, 8_000, 12_000)
+            }
+        );
+        assert_eq!(f.fake.outgoing.load(Ordering::SeqCst), 2);
+        assert_eq!(f.fake.incoming.load(Ordering::SeqCst), 1);
+        drop(book);
+        *commercial.lock().unwrap() = Some(f.plugin_binding.commercial.clone());
+        canonical_denied.store(false, Ordering::SeqCst);
+        native_denied.store(false, Ordering::SeqCst);
+        let won = if !restart {
+            let q = quote("last-funds-race");
+            assert!(
+                run(&[
+                    "approve",
+                    "--purchase",
+                    "last-funds-race",
+                    "--digest",
+                    q["approval_digest"].as_str().unwrap()
+                ])
+                .0
+                .status
+                .success()
+            );
+            let barrier = std::sync::Barrier::new(4);
+            let won = std::thread::scope(|scope| {
+                let gateway = scope.spawn(|| {
+                    barrier.wait();
+                    let binding = f.gateway_binding.clone();
+                    let intent = pay_ledger::shared::Intent {
+                        id: pay_ledger::shared::Intent::stable_id(
+                            &binding,
+                            "all-adapters-last-funds#0",
+                        ),
+                        binding,
+                        native_attempt: "all-adapters-last-funds#0".into(),
+                        quote: "original-native-price".into(),
+                        execution: "race-gateway".into(),
+                        terms: "original-gateway-terms".into(),
+                        maximum_units: 7000,
+                        fee_cap_msat: 0,
+                        invoice: None,
+                        liability: pay_ledger::shared::Liability::NativeService {
+                            resource: "openagents.gateway.systemone.v1".into(),
+                        },
+                        admitted_at: commercial_spend::now(),
+                    };
+                    f.gateway
+                        .call(pay_ledger::shared::Operation::Reserve {
+                            intent,
+                            projection_head: 0,
+                            actor: pay_ledger::shared::GatewayActor {
+                                credential: f.native.token.clone(),
+                                door: "decision-a".into(),
+                            },
+                        })
+                        .is_ok()
+                });
+                let retail = scope.spawn(|| {
+                    barrier.wait();
+                    f.retail
+                        .call(pay_ledger::shared::Operation::RetailReserve {
+                            request: pay_ledger::compute::HoldRequest {
+                                id: "race-compute".into(),
+                                account: "retail".into(),
+                                quote: "original-compute-quote".into(),
+                                execution: "race-compute-execution".into(),
+                                terms: "original-compute-terms".into(),
+                                amount_msat: 7000,
+                                at: commercial_spend::now() as i64,
+                            },
+                        })
+                        .is_ok()
+                });
+                let plugin = scope.spawn(|| {
+                    barrier.wait();
+                    run(&["invoke", "--purchase", "last-funds-race"])
+                        .0
+                        .status
+                        .success()
+                });
+                barrier.wait();
+                [
+                    gateway.join().unwrap(),
+                    retail.join().unwrap(),
+                    plugin.join().unwrap(),
+                ]
+            });
+            assert_eq!(won.into_iter().filter(|w| *w).count(), 1);
+            let book = pay_ledger::Ledger::open_read_only(&f.ledger).unwrap();
+            let balance = book.compute_balance("retail").unwrap();
+            assert!(balance.available_msat >= 0);
+            assert_eq!(
+                balance.available_msat + balance.held_msat + balance.settled_msat,
+                20000
+            );
+            assert_eq!(
+                f.fake.outgoing.load(Ordering::SeqCst),
+                if won[2] { 3 } else { 2 }
+            );
+            drop(book);
+            won
+        } else {
+            [false; 3]
+        };
+        if restart {
+            let before_kill_payments = 2;
+            let q = quote("killed-handoff");
+            assert!(
+                run(&[
+                    "approve",
+                    "--purchase",
+                    "killed-handoff",
+                    "--digest",
+                    q["approval_digest"].as_str().unwrap()
+                ])
+                .0
+                .status
+                .success()
+            );
+            f.fake.pause.store(true, Ordering::SeqCst);
+            f.fake.release.store(false, Ordering::SeqCst);
+            std::thread::scope(|scope| {
+                let invoke = scope.spawn(|| run(&["invoke", "--purchase", "killed-handoff"]));
+                let deadline = std::time::Instant::now() + Duration::from_secs(10);
+                while f.fake.outgoing.load(Ordering::SeqCst) != before_kill_payments + 1
+                    || f.fake
+                        .records
+                        .lock()
+                        .unwrap()
+                        .values()
+                        .filter(|record| {
+                            record.direction == openagents_wallet::PaymentDirection::Outbound
+                                && record.status == openagents_wallet::PaymentStatus::Succeeded
+                        })
+                        .count()
+                        != (before_kill_payments + 1) as usize
+                {
+                    assert!(
+                        std::time::Instant::now() < deadline,
+                        "Original resident did not consume and complete the admitted payment"
+                    );
+                    std::thread::sleep(Duration::from_millis(5));
+                }
+                process.as_mut().unwrap().kill();
+                assert!(!invoke.join().unwrap().0.status.success());
+            });
+            f.fake.release.store(true, Ordering::SeqCst);
+            f.fake.pause.store(false, Ordering::SeqCst);
+            process = Some(ControllerProcess::start(
+                controller_binary.as_ref().unwrap(),
+                f,
+            ));
+            let (_, recovered) = run(&["recover", "--purchase", "killed-handoff"]);
+            assert_eq!(recovered["phase"], "unknown");
+            assert_eq!(
+                f.fake.outgoing.load(Ordering::SeqCst),
+                before_kill_payments + 1
+            );
+            assert_eq!(
+                executions.load(Ordering::SeqCst),
+                if won[2] { 3 } else { 2 }
+            );
+            let balance = pay_ledger::Ledger::open_read_only(&f.ledger)
+                .unwrap()
+                .compute_balance("retail")
+                .unwrap();
+            assert_eq!(
+                (
+                    balance.available_msat,
+                    balance.settled_msat,
+                    balance.held_msat
+                ),
+                (8000, 18000, 0)
+            );
+        }
+        let payments = if restart || won[2] { 3 } else { 2 };
+        assert_eq!(f.fake.outgoing.load(Ordering::SeqCst), payments);
+        let book = pay_ledger::Ledger::open_read_only(&f.ledger).unwrap();
+        let original = book
+            .shared_outcome(&pay_ledger::shared::Intent::stable_id(
+                &f.plugin_binding,
+                "plugin-purchase:one",
+            ))
+            .unwrap()
+            .unwrap();
+        assert_eq!(original.state, "settled");
+        let source = book
+            .shared_source_settlement(&original.intent.id)
+            .unwrap()
+            .unwrap();
+        let before_returns = book.compute_balance("retail").unwrap();
+        drop(book);
+        process.as_mut().unwrap().kill();
+        let mut review: commercial_spend::Config =
+            serde_json::from_slice(&std::fs::read(&f.config).unwrap()).unwrap();
+        let review_for = |id: &str, units| pay_ledger::shared::RefundReview {
+            id: id.into(),
+            intent: original.intent.id.clone(),
+            intent_digest: original.intent.digest(),
+            units,
+            evidence: format!("protected-original:{id}"),
+            reviewed_at: commercial_spend::now(),
+            valid_until: commercial_spend::now() + 3600,
+        };
+        let first_review = review_for("lost-original-return", 2000);
+        let second = review_for("confirmed-second-return", 2000);
+        let over = review_for("over-original-return", 3000);
+        review.refunds = vec![first_review.clone(), second.clone(), over.clone()];
+        shared_fixture::write(&f.config, &serde_json::to_vec(&review).unwrap());
+        let writer = std::fs::read_to_string(&review.writer_file).unwrap();
+        let plan = {
+            let mut ledger = pay_ledger::Ledger::open(&f.ledger).unwrap();
+            ledger.admit_shared_writer(&writer).unwrap();
+            ledger
+                .shared_prepare_return(&first_review, commercial_spend::now())
+                .unwrap()
+        };
+        process = Some(ControllerProcess::start(
+            controller_binary.as_ref().unwrap(),
+            f,
+        ));
+        assert!(
+            f.retail
+                .call(pay_ledger::shared::Operation::Refund {
+                    review: first_review.id.clone()
+                })
+                .is_err()
+        );
+        let permit = openagents_wallet::custody::Permit::sign(
+            &review.origin,
+            &plan.binding.custodian_node,
+            &plan.digest(),
+            openagents_wallet::custody::Terms::Receive {
+                amount_msat: plan.returned_msat as u64,
+                request_hash: plan.request_hash.clone(),
+                expiry_secs: plan
+                    .due
+                    .checked_sub(commercial_spend::now() + 61)
+                    .unwrap()
+                    .try_into()
+                    .unwrap(),
+            },
+            &writer,
+        )
+        .unwrap();
+        {
+            use std::io::Write;
+            let mut stream =
+                std::os::unix::net::UnixStream::connect(f.wallet_home.join("control.sock"))
+                    .unwrap();
+            writeln!(
+                stream,
+                "{}",
+                serde_json::to_string(&openagents_wallet::resident::Request::CustodialReceive {
+                    permit,
+                    writer: writer.clone()
+                })
+                .unwrap()
+            )
+            .unwrap();
+            stream.shutdown(std::net::Shutdown::Both).unwrap();
+        }
+        let native = openagents_wallet::resident::RemoteWallet::probe(&f.wallet_home).unwrap();
+        let deadline = std::time::Instant::now() + Duration::from_secs(5);
+        let first_invoice = loop {
+            if let Some(value) = native
+                .custodial_result(&plan.binding.custodian_node, &plan.digest(), &writer)
+                .unwrap()
+            {
+                break value["result"].clone();
+            }
+            assert!(
+                std::time::Instant::now() < deadline,
+                "Original resident return result missing"
+            );
+            std::thread::sleep(Duration::from_millis(5));
+        };
+        let book = pay_ledger::Ledger::open_read_only(&f.ledger).unwrap();
+        assert!(
+            book.shared_return_invoice(&first_review.id)
+                .unwrap()
+                .is_none()
+        );
+        assert!(book.shared_refund(&first_review.id).unwrap().is_none());
+        assert_eq!(f.fake.incoming.load(Ordering::SeqCst), 2);
+        let returned = f
+            .plugin
+            .call(pay_ledger::shared::Operation::Refund {
+                review: second.id.clone(),
+            })
+            .unwrap();
+        assert_eq!(returned["state"], "returned");
+        assert_eq!(returned["receipt"]["returned_msat"], 2000);
+        assert!(book.shared_refund(&first_review.id).unwrap().is_none());
+        assert_eq!(f.fake.incoming.load(Ordering::SeqCst), 3);
+        process.as_mut().unwrap().kill();
+        process = Some(ControllerProcess::start(
+            controller_binary.as_ref().unwrap(),
+            f,
+        ));
+        let recovered = f
+            .plugin
+            .call(pay_ledger::shared::Operation::RefundStatus {
+                review: first_review.id.clone(),
+            })
+            .unwrap();
+        assert_eq!(recovered["state"], "returned");
+        assert_eq!(recovered["receipt"]["returned_msat"], 2000);
+        assert_eq!(
+            book.shared_return_invoice(&first_review.id)
+                .unwrap()
+                .unwrap(),
+            first_invoice
+        );
+        assert_eq!(
+            f.plugin
+                .call(pay_ledger::shared::Operation::RefundStatus {
+                    review: first_review.id.clone()
+                })
+                .unwrap(),
+            recovered
+        );
+        assert!(
+            f.plugin
+                .call(pay_ledger::shared::Operation::Refund { review: over.id })
+                .is_err()
+        );
+        assert_eq!(f.fake.incoming.load(Ordering::SeqCst), 3);
+        assert_eq!(f.fake.outgoing.load(Ordering::SeqCst), payments);
+        assert_eq!(
+            book.shared_source_settlement(&original.intent.id)
+                .unwrap()
+                .unwrap(),
+            source
+        );
+        let after_returns = book.compute_balance("retail").unwrap();
+        assert_eq!(
+            after_returns.refunded_msat - before_returns.refunded_msat,
+            4000
+        );
+        assert_eq!(
+            after_returns.available_msat - before_returns.available_msat,
+            4000
+        );
+        assert_eq!(after_returns.settled_msat, before_returns.settled_msat);
+        assert_eq!(after_returns.held_msat, before_returns.held_msat);
+        let accounts = tenancy::Accounts::open(&f.canonical).unwrap();
+        let reference = &f.plugin_binding.commercial;
+        accounts
+            .retire_commercial(&reference.binding, &reference.customer, &reference.digest)
+            .unwrap();
+        native_denied.store(false, Ordering::SeqCst);
+        let (result, retained) = run(&["recover", "--purchase", "lost"]);
+        assert!(
+            result.status.success(),
+            "{} {retained}",
+            String::from_utf8_lossy(&result.stderr)
+        );
+        assert_eq!(retained["offer"], first["offer"]);
+        assert_eq!(retained["result"], first["result"]);
+        let registry = tenancy::Registry::open(&f.native.directory).unwrap();
+        let key =
+            tenancy::keys::authenticate(&f.native.directory, registry.manifest(), &f.native.token)
+                .unwrap();
+        tenancy::keys::revoke(&f.native.directory, &key.key_id).unwrap();
+        shared_fixture::write(
+            &f.native.directory.join("keys.json"),
+            &std::fs::read(f.native.directory.join("keys.json")).unwrap(),
+        );
+        assert!(!run(&["recover", "--purchase", "lost"]).0.status.success());
+        assert_eq!(f.fake.outgoing.load(Ordering::SeqCst), payments);
+        assert_eq!(
+            executions.load(Ordering::SeqCst),
+            if won[2] { 3 } else { 2 }
+        );
+        assert_eq!(book.compute_balance("retail").unwrap(), after_returns);
+    }
     assert!(!run(&["invoke", "--purchase", "lost"]).0.status.success());
     stop.store(true, Ordering::SeqCst);
     resident_stop.store(true, Ordering::SeqCst);
     http.join().unwrap();
-    wallet_thread.join().unwrap();
+    if let Some(thread) = wallet_thread {
+        thread.join().unwrap();
+    }
     relay_thread.join().unwrap();
 }
 

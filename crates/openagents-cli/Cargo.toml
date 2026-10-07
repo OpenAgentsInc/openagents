@@ -79,6 +79,7 @@ openagents-x402 = { path = "../x402" }
 # `openagents pay serve`: paid plugin invocations run a release's guest
 # (`/v1/plugins/{id}/invoke`), and settlements go to the ledger.
 pay-ledger = { path = "../pay-ledger" }
+commercial-spend = { path = "../commercial-spend" }
 plugin = { path = "../plugin" }
 # The playtest triage inbox: reports, drafts, and the triage log.
 playtest = { path = "../playtest" }
@@ -114,6 +115,8 @@ coder-labor = { path = "../coder-labor" }
 coder-ssh = { path = "../coder-ssh" }
 
 [dev-dependencies]
+commercial-accounts = { path = "../commercial-accounts" }
+hex = "0.4"
 receipts = { path = "../receipts" }
 # `tests/chat.rs` runs a local NIP-42 relay with a scripted chat worker.
 futures-util = "0.3"

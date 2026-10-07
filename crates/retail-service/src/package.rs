@@ -44,6 +44,8 @@ pub enum Mode {
 #[serde(deny_unknown_fields)]
 pub struct Host {
     #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub shared_spend: Option<pay_ledger::shared::ClientConfig>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub commercial: Option<crate::commercial::Config>,
     #[serde(default)]
     pub schema: String,

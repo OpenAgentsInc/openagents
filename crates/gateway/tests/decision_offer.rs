@@ -5,6 +5,8 @@
 mod budgets;
 #[path = "decision_offer_reports.rs"]
 mod reports;
+#[path = "decision_offer_shared.rs"]
+mod shared;
 
 use axum::{
     Json,
