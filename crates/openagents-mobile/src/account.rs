@@ -36,6 +36,34 @@ pub struct Item {
 pub const CHANGELOG: &[Release] = &[
     Release {
         version: "1.0.0",
+        build: "52",
+        title: "Everglade's day, water, and townsfolk",
+        what_to_test: "Walk through the EVERGLADE arch. Watch the sky change as the town clock runs: a town day lasts one real hour, with dusk and lamp-lit night. Find Mira, Tobin, and Wren going about their day around the Market Hall. Walk into Lantern Pond and swim, then dive and look up at the surface from below. If it rains, check the ripples on the ponds and the wet ground. Visit the Civic Hall and the Agora. Check that all text uses the new monospace font. Leave through THE GRID arch.",
+        items: &[
+            Item {
+                title: "Town clock",
+                detail: "Everglade runs a day and night cycle, mostly daylight, with lamps at night and readable darkness.",
+            },
+            Item {
+                title: "Townsfolk",
+                detail: "Mira the baker, Tobin the smith, and Wren the bell-ringer keep daily routines and pass a rumor at midday.",
+            },
+            Item {
+                title: "Water",
+                detail: "Swimmable ponds and stream with breath, waves, reflections, an underwater view with caustics, and rain that ripples the water and wets the ground.",
+            },
+            Item {
+                title: "Buildings",
+                detail: "The Greco-futurist Civic Hall, belvedere, and Agora join the town.",
+            },
+            Item {
+                title: "Paper Mono",
+                detail: "Every screen now uses the Paper Mono font.",
+            },
+        ],
+    },
+    Release {
+        version: "1.0.0",
         build: "51",
         title: "Everglade's light, sky, and spells",
         what_to_test: "Walk through the EVERGLADE arch. Check the blue sky with clouds and a sun, distant hills fading into haze, shadows reaching across the glade, and the workshop interior shaded rather than flat. Use the icon hotbar above the sticks: Levitate, then hold Up or Down to climb, and try Feather Fall, Wall of Stone, Wind Wall, and Reverse Gravity. Walk sideways and backward to see the strafe and backpedal. Leave through THE GRID arch.",

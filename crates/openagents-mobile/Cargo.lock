@@ -1663,6 +1663,7 @@ dependencies = [
  "coder-history",
  "nostr",
  "nostr-transport",
+ "paper-mono",
  "private-fs",
  "qrcodegen",
  "secp256k1 0.31.1",
@@ -4142,6 +4143,7 @@ dependencies = [
  "httpdate",
  "indexmap 2.14.2",
  "rand 0.9.5",
+ "receipts",
  "reqwest 0.12.28",
  "serde",
  "serde_json",
@@ -4668,6 +4670,10 @@ dependencies = [
 ]
 
 [[package]]
+name = "memory-stream"
+version = "0.1.0"
+
+[[package]]
 name = "mime"
 version = "0.3.17"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -4710,6 +4716,7 @@ version = "0.1.0"
 dependencies = [
  "getrandom 0.3.4",
  "jev",
+ "paper-mono",
  "serde",
  "serde_json",
  "sha2 0.11.0",
@@ -5520,6 +5527,10 @@ dependencies = [
  "equivalent",
  "seize",
 ]
+
+[[package]]
+name = "paper-mono"
+version = "0.1.0"
 
 [[package]]
 name = "parity-scale-codec"
@@ -6357,6 +6368,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "receipts"
+version = "0.1.0"
+dependencies = [
+ "serde",
+ "serde_json",
+ "sha2 0.10.9",
+]
+
+[[package]]
 name = "redox_syscall"
 version = "0.5.18"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -6664,6 +6684,7 @@ name = "rust-native"
 version = "0.1.0"
 dependencies = [
  "code-highlight",
+ "paper-mono",
  "pulldown-cmark",
  "serde",
  "serde_json",
@@ -8378,6 +8399,18 @@ name = "town-clock"
 version = "0.1.0"
 
 [[package]]
+name = "townsfolk"
+version = "0.1.0"
+dependencies = [
+ "memory-stream",
+ "serde",
+ "serde_json",
+ "sha2 0.10.9",
+ "town-clock",
+ "world-tree",
+]
+
+[[package]]
 name = "tracing"
 version = "0.1.44"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -9126,6 +9159,7 @@ dependencies = [
  "tokio-tungstenite 0.30.0",
  "toml",
  "town-clock",
+ "townsfolk",
  "verse-content",
  "verse-core",
  "verse-engine",
@@ -9156,6 +9190,7 @@ dependencies = [
  "glam",
  "gltf",
  "libm",
+ "paper-mono",
  "physics",
  "png",
  "resvg",
@@ -9206,6 +9241,7 @@ dependencies = [
  "bytemuck",
  "coder-ui",
  "glam",
+ "paper-mono",
  "serde_json",
  "swash",
  "verse-engine",
@@ -9286,6 +9322,7 @@ dependencies = [
  "web-sys",
  "web-time",
  "webpki-roots 1.0.9",
+ "world-tree",
  "xp-ledger",
 ]
 
@@ -9297,11 +9334,14 @@ dependencies = [
  "coder-ui",
  "glam",
  "gltf",
+ "half",
+ "physics",
  "png",
  "pollster",
  "serde",
  "serde_json",
  "sha2 0.10.9",
+ "toml",
  "verse-engine",
  "verse-gfx",
  "web-time",
@@ -9376,6 +9416,7 @@ dependencies = [
  "serde_json",
  "sha2 0.10.9",
  "town-clock",
+ "townsfolk",
  "verse-content",
  "verse-core",
  "verse-engine",
@@ -9384,6 +9425,7 @@ dependencies = [
  "verse-private",
  "verse-world",
  "web-time",
+ "world-tree",
 ]
 
 [[package]]
@@ -10160,6 +10202,15 @@ version = "0.1.0"
 dependencies = [
  "serde",
  "serde_json",
+]
+
+[[package]]
+name = "world-tree"
+version = "0.1.0"
+dependencies = [
+ "serde",
+ "serde_json",
+ "sha2 0.10.9",
 ]
 
 [[package]]
