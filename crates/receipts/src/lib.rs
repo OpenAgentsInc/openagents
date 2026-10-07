@@ -26,6 +26,7 @@
 //! and evaluation-commitment types that later issues define are their own
 //! schemas, not fields grafted onto this one.
 
+pub mod brainstorm_pilot;
 pub mod execution;
 pub mod export;
 pub mod feedback;

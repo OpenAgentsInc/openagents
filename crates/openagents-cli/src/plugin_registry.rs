@@ -1491,6 +1491,109 @@ mod tests {
         let refused = pack(work.path(), signer("11").pubkey()).unwrap_err();
         assert!(refused.contains("--as PROFILE"), "{refused}");
     }
+
+    #[test]
+    fn brainstorm_guidance_pins_only_inert_files_and_installs_without_native_enablement() {
+        let source = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../plugins/brainstorm");
+        let alice = signer("11");
+        let packed = pack(&source, alice.pubkey()).unwrap();
+        let manifest: Value = serde_json::from_slice(&packed.manifest).unwrap();
+        assert_eq!(manifest["components"].as_array().unwrap().len(), 1);
+        assert_eq!(manifest["components"][0]["kind"], "guidance");
+        assert_eq!(manifest["components"][0]["slug"], "brainstorm");
+        let record = Package::load(&source.join("package.json")).unwrap();
+        assert!(record.program.is_none());
+        assert!(record.background.is_empty());
+        assert!(record.capabilities.is_empty());
+        assert!(record.compatibility.is_empty());
+        let required: Value = serde_json::from_slice(
+            &packed
+                .files
+                .iter()
+                .find(|f| f.path == "native-host-requirement.json")
+                .unwrap()
+                .bytes,
+        )
+        .unwrap();
+        assert_eq!(required["host"], "coder-new");
+        assert_eq!(required["version"], "1.0.0-rc.4");
+        assert_eq!(
+            required["source_revision"],
+            "d2d546b9836779e3ca463fd77b4610210fbedf7f"
+        );
+        assert_eq!(required["descriptive_only"], true);
+        assert_eq!(
+            required["operations"],
+            json!(["brainstorm_search_people", "brainstorm_rank"])
+        );
+        assert!(packed.files.iter().all(|f| f.path.ends_with(".md")
+            || f.path.ends_with(".json")
+            || f.path.ends_with(".txt")));
+        for file in &packed.files {
+            let pin = manifest["files"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .find(|f| f["path"] == file.path)
+                .unwrap();
+            assert_eq!(pin["digest"], nostr::contracts::digest_bytes(&file.bytes));
+            assert_eq!(pin["size"], file.bytes.len());
+        }
+
+        let mut relay = FakeRelay::default();
+        let blobs = FakeBlobs::default();
+        let published = publish(&packed, &alice, &mut relay, &blobs, None, 1000).unwrap();
+        let body = nostr::ext::parse_record(&published.release).unwrap();
+        assert!(body.get("fee_msat").is_none());
+        let listing = find(&mut relay, &packed.package).unwrap();
+        let work = tempfile::tempdir().unwrap();
+        let layout = background::Layout::new(work.path(), None).unwrap();
+        let installed = install_listing(&layout, &mut relay, &listing, &[&blobs]).unwrap();
+        assert_eq!(installed["plugin"]["enabled"], false);
+        assert_eq!(
+            installed["manifest"],
+            nostr::contracts::digest_bytes(&packed.manifest)
+        );
+        let into = Path::new(installed["plugin"]["dir"].as_str().unwrap());
+        for file in &packed.files {
+            assert_eq!(std::fs::read(into.join(&file.path)).unwrap(), file.bytes);
+        }
+        assert!(
+            !work
+                .path()
+                .join(".openagents/coder-new/bundled-plugins.json")
+                .exists()
+        );
+        assert!(crate::plugin_local::enable_exact_in(&layout, &packed.package, true, None).is_ok());
+        assert!(
+            !work
+                .path()
+                .join(".openagents/coder-new/bundled-plugins.json")
+                .exists()
+        );
+        assert!(
+            relay.events.iter().all(|e| e.kind != 0),
+            "guidance operations publish no profile"
+        );
+
+        let readme = packed.files.iter().find(|f| f.path == "README.md").unwrap();
+        blobs.blobs.borrow_mut().insert(
+            nostr::contracts::digest_bytes(&readme.bytes),
+            b"changed".to_vec(),
+        );
+        assert!(
+            install_listing(&layout, &mut relay, &listing, &[&blobs])
+                .unwrap_err()
+                .contains("does not check")
+        );
+        let mut changed = packed.clone();
+        changed.manifest.push(b' ');
+        assert!(
+            publish(&changed, &alice, &mut relay, &blobs, None, 1001)
+                .unwrap_err()
+                .contains("raise the version")
+        );
+    }
 }
 
 #[cfg(test)]

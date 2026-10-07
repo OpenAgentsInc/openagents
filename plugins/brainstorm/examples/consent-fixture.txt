@@ -1,0 +1,1 @@
+Synthetic consent fixture. This is not a human grant or permission to operate.

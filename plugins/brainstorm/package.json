@@ -1,0 +1,9 @@
+{
+  "v": 1,
+  "slug": "brainstorm-guidance",
+  "name": "Brainstorm guidance",
+  "summary": "Guidance for Coder's separately enabled native public Brainstorm reads and private exact-key pilot evidence.",
+  "version": "0.1.0",
+  "publisher": "",
+  "provenance": "local source; native-host-requirement.json describes the required host"
+}

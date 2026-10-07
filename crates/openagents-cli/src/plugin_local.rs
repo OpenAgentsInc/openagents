@@ -28,6 +28,7 @@ pub fn run(output: &Output, words: &[String]) -> Option<u8> {
     let name = format!("plugin {command}");
     let first = rest.iter().find(|word| !word.starts_with('-'));
     let result = match command.as_str() {
+        "brainstorm-pilot" => crate::brainstorm_pilot::check(rest),
         "install" => first
             .ok_or_else(|| "install needs the plugin's directory".to_owned())
             .and_then(|dir| install(Path::new(dir))),

@@ -20,7 +20,7 @@ with a live Jev key (about 60 labeled activities over
 `crates/world-tree/data/everglade.json`) and record the numbers there. It
 spends a little Jev money.
 
-## Brainstorm public-read release qualification (#10841, #10842, #10843)
+## Brainstorm public-read release qualification (#10841, #10842, #10843, #10844)
 
 On release day, authorize a short public read-only smoke against the configured
 Brainstorm HTTPS origin using scratch state and no persisted owner chat. Record
@@ -37,6 +37,15 @@ only its returned keys to rank. These checks use explicitly public inputs.
 Deployed availability and packaged interaction still need qualification.
 This check does not authorize profile publication,
 authentication signing, or private query disclosure.
+
+For the optional REV-37 pilot, separately approve the publisher, immutable
+guidance release, exact public profile and capability/release links, and private
+recording consent and retention. Follow `plugins/brainstorm/PILOT.md`; record
+real search visibility, exact-key coverage, consented referral/install, accepted
+tasks, actual settlement, and same-buyer repeat evidence separately. The local
+checker validates source pins and operator claims; it does not publish, verify
+indexing or paid conversion independently, or activate another capability.
+REV-05/REV-26 commercial joins apply only when their authorized lanes are used.
 
 ## Insight support calibration and a live reflection (#10789)
 

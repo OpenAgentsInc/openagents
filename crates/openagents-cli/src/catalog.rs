@@ -85,6 +85,9 @@ pub(crate) const EXT_USAGE: &str = "usage: openagents plugin COMMAND [OPTIONS]
         release. It starts off.
   installed
         The plugins installed on this computer, on or off.
+  brainstorm-pilot check --input FILE --sources DIR
+        Check selected private exact-key observations and consented funnel
+        claims. Reads no service; grants no publication or payment authority.
   enable PLUGIN
         Turn an installed plugin on on this computer. A plugin that runs
         in the background runs only while it is on.

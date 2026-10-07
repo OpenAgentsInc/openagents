@@ -22,6 +22,8 @@ mod artifact;
 #[cfg(unix)]
 mod background;
 mod boat_run;
+#[cfg(unix)]
+mod brainstorm_pilot;
 mod browser;
 mod capacity;
 mod catalog;

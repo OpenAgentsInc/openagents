@@ -1,0 +1,120 @@
+{
+  "schema": "openagents.brainstorm.pilot.v1",
+  "id": "synthetic-pilot",
+  "basis": "fixture",
+  "target_pubkey": "79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798",
+  "consent": {
+    "evidence": {
+      "path": "consent-fixture.txt",
+      "sha256": "722e16f28b2b7bb53fb3b304530a021c2a0fd65b5e029ea581e5853d87dbbc54"
+    },
+    "approved_at_ms": 1,
+    "retain_until_ms": 2524608000000
+  },
+  "profile_approval": null,
+  "profile_event": null,
+  "approved_public_links": [],
+  "lookups": [
+    {
+      "id": "search-absent",
+      "recorded_at_ms": 20,
+      "observation": {
+        "path": "search-absent.json",
+        "sha256": "b8e6b87667af09aaa422f5791e10c4fd37d4d816a2255e8ca571fce4e8ef14ff"
+      },
+      "operation": "search_people",
+      "origin": "https://brainstorm.example",
+      "configuration_digest": "9ba6289f8ca1d40e6cba903465cbae45ca6f48e8a5a7e0768b6eabd0ebca5ccf",
+      "input_digest": "4c99244bcecff429d9d1ef41d540a37a44061b78d0a470aebc3490445d9b033c",
+      "house_pubkey": "c6047f9441ed7d6d3045406e95c07cd85c778e4b8cef3ca7abac09b95c709ee5",
+      "house_discovered_at_ms": 10,
+      "expires_at_ms": 300010,
+      "partial": false,
+      "relevance": null,
+      "influence": null,
+      "coverage": "absent",
+      "responses": [
+        {
+          "endpoint": "/.well-known/open-ranking.json",
+          "status": 200,
+          "algorithm": null,
+          "fetched_at_ms": 10,
+          "expires_at_ms": 300010,
+          "input_digest": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+          "output_digest": "325b879b672a72bcd58014142971bc1b54e228e519b9f8d6e6647cb6ef6d6de3"
+        },
+        {
+          "endpoint": "/.well-known/nostr.json?name=_",
+          "status": 200,
+          "algorithm": null,
+          "fetched_at_ms": 10,
+          "expires_at_ms": 300010,
+          "input_digest": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+          "output_digest": "4e340ce9c84897094744f0a778675427889549c512f37419a1882a039ad3e218"
+        },
+        {
+          "endpoint": "/search/pubkeys",
+          "status": 200,
+          "algorithm": "relevance",
+          "fetched_at_ms": 10,
+          "expires_at_ms": 300010,
+          "input_digest": "4c99244bcecff429d9d1ef41d540a37a44061b78d0a470aebc3490445d9b033c",
+          "output_digest": "fdf640d74774a080f671a750d3902d1bdc0b133cf9277d223e24da25c6107c1e"
+        }
+      ]
+    },
+    {
+      "id": "rank-zero",
+      "recorded_at_ms": 20,
+      "observation": {
+        "path": "rank-zero.json",
+        "sha256": "a6c1c093ec2fe39d8eb0845d5aafc9fb4c3e91d6d09ad2066e19db45a6717dce"
+      },
+      "operation": "rank",
+      "origin": "https://brainstorm.example",
+      "configuration_digest": "9ba6289f8ca1d40e6cba903465cbae45ca6f48e8a5a7e0768b6eabd0ebca5ccf",
+      "input_digest": "db3573a4935a20c59c8e4a8f6f811003a354a38a45ab64ab9f48658b2c594e95",
+      "house_pubkey": "c6047f9441ed7d6d3045406e95c07cd85c778e4b8cef3ca7abac09b95c709ee5",
+      "house_discovered_at_ms": 10,
+      "expires_at_ms": 300010,
+      "partial": false,
+      "relevance": null,
+      "influence": 0.0,
+      "coverage": "unknown",
+      "responses": [
+        {
+          "endpoint": "/.well-known/open-ranking.json",
+          "status": 200,
+          "algorithm": null,
+          "fetched_at_ms": 10,
+          "expires_at_ms": 300010,
+          "input_digest": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+          "output_digest": "325b879b672a72bcd58014142971bc1b54e228e519b9f8d6e6647cb6ef6d6de3"
+        },
+        {
+          "endpoint": "/.well-known/nostr.json?name=_",
+          "status": 200,
+          "algorithm": null,
+          "fetched_at_ms": 10,
+          "expires_at_ms": 300010,
+          "input_digest": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+          "output_digest": "4e340ce9c84897094744f0a778675427889549c512f37419a1882a039ad3e218"
+        },
+        {
+          "endpoint": "/rank/pubkeys",
+          "status": 200,
+          "algorithm": "graperank",
+          "fetched_at_ms": 10,
+          "expires_at_ms": 300010,
+          "input_digest": "db3573a4935a20c59c8e4a8f6f811003a354a38a45ab64ab9f48658b2c594e95",
+          "output_digest": "efea7c644b4ecc67bc3c90be307d88c80f03ceb3a6877e5021d503094598e7a5"
+        }
+      ]
+    }
+  ],
+  "funnel": [],
+  "joins": {
+    "pipeline_lead_id": null,
+    "referral_attribution_id": null
+  }
+}

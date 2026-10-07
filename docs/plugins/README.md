@@ -14,6 +14,13 @@ The [Brainstorm integration proposal](brainstorm-v1-integration.md) describes
 an opt-in Coder V1 plugin for public Nostr account discovery and reputation,
 with delivery scope for October 7, 2026.
 
+The [Brainstorm guidance companion](../../plugins/brainstorm/README.md) is a
+self-contained skills-only package for the separately enabled native Coder
+binding. Its exact host/source requirement is descriptive. Installation leaves
+guidance off, installs no native code, and performs no lookup or publication.
+Its optional private pilot checker preserves exact-key coverage and distinguishes
+operator-recorded funnel stages from qualified paid conversion.
+
 ## What a plugin contains
 
 A plugin can contain any of these parts:

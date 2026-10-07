@@ -1,0 +1,9 @@
+{
+  "schema": "openagents.brainstorm.native-host-requirement.v1",
+  "host": "coder-new",
+  "version": "1.0.0-rc.4",
+  "source_revision": "d2d546b9836779e3ca463fd77b4610210fbedf7f",
+  "operations": ["brainstorm_search_people", "brainstorm_rank"],
+  "descriptive_only": true,
+  "release_qualification": "pending owner packaged-host and public-read checks"
+}
