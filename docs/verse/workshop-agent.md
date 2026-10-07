@@ -431,6 +431,10 @@ Rules:
   another of your devices can read it. Relays see only that an agent with an
   owner uses memory.
 
+[Generative agents](generative-agents.md) proposes the next steps for her
+memory: retrieval scored by recency, importance, and relevance, and a
+nightly reflection whose insights cite the journal rows behind them.
+
 ### Privacy and disclosure
 
 Prompts, terminal content, file paths, and command lines never appear in a
