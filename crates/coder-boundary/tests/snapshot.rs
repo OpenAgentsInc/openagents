@@ -26,6 +26,21 @@ fn changes(verdict: &Verdict) -> &[Change] {
     }
 }
 
+/// This repository's tracked files passed four gibibytes, and a task's
+/// workspace is a checkout of it: the default bound covers such a tree.
+/// The file is sparse, so it takes no disk, only the time to hash it.
+#[cfg(unix)]
+#[test]
+fn the_default_bound_covers_a_checkout_past_four_gibibytes() {
+    let dir = TempDir::new().unwrap();
+    let big = std::fs::File::create(dir.path().join("evidence.bin")).unwrap();
+    big.set_len(4 * 1024 * 1024 * 1024 + 1024 * 1024).unwrap();
+    drop(big);
+    let snapshot = Snapshot::observe(dir.path());
+    assert!(snapshot.is_complete(), "{:?}", snapshot.faults());
+    assert!(Limits::default().bytes >= coder_boundary::snapshot::DEFAULT_BYTES);
+}
+
 #[cfg(any(unix, windows))]
 #[test]
 fn an_unchanged_tree_observes_clean() {

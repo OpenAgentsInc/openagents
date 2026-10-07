@@ -226,7 +226,7 @@ The whole repository directory is observed, including Git metadata and build
 products. Use a dedicated checkout, keep trace and build output outside it,
 and prepare host-owned directories before measuring a read-only run. The
 observer cannot attribute concurrent changes to a particular process. Its
-bounds are 200,000 entries and 4 GiB of file contents per snapshot; an incomplete
+bounds are 200,000 entries and 16 GiB of file contents per snapshot; an incomplete
 or unreadable snapshot makes write evidence unverifiable. No ignore rule can
 make an unobserved path count as clean.
 

@@ -60,11 +60,18 @@ impl Limits {
     }
 }
 
+/// The default bound on file content a snapshot covers: sixteen gibibytes.
+/// This repository's own tracked files passed four gibibytes on
+/// 2026-10-07 (its committed benchmark evidence), and a task's workspace
+/// is a checkout of it, so the earlier four-gibibyte bound refused every
+/// studio task on it. Content a cached digest covers counts too.
+pub const DEFAULT_BYTES: u64 = 16 * 1024 * 1024 * 1024;
+
 impl Default for Limits {
-    /// A checkout-sized tree: two hundred thousand entries and four
-    /// gibibytes of hashed content.
+    /// A checkout-sized tree: two hundred thousand entries and
+    /// [`DEFAULT_BYTES`] of hashed content.
     fn default() -> Self {
-        Limits::bounded(200_000, 4 * 1024 * 1024 * 1024)
+        Limits::bounded(200_000, DEFAULT_BYTES)
     }
 }
 
