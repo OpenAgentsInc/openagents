@@ -19,6 +19,8 @@ pub struct Binding {
     pub merchant: String,
     pub live: bool,
     pub deployment: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub api_version: Option<String>,
     pub return_origin: String,
     pub customer_reference: String,
 }
@@ -337,7 +339,23 @@ fn opaque(value: &str) -> Result<(), String> {
 }
 
 impl Binding {
+    /// Old journal records remain readable, but cannot replay a provider call
+    /// without the API version admitted before their original create.
+    pub fn provider_version(&self) -> Result<&str, String> {
+        self.api_version
+            .as_deref()
+            .ok_or_else(|| "The original provider API version is unavailable.".into())
+    }
     pub fn validate(&self) -> Result<(), String> {
+        if self.api_version.as_deref().is_some_and(|v| {
+            v.is_empty()
+                || v.len() > 64
+                || !v
+                    .bytes()
+                    .all(|b| b.is_ascii_alphanumeric() || b == b'-' || b == b'.')
+        }) {
+            return Err("Invalid original provider API version.".into());
+        }
         self.context.validate().map_err(str::to_string)?;
         opaque(&self.quote.id)?;
         opaque(&self.customer_reference)?;
@@ -485,9 +503,37 @@ mod tests {
             merchant: "acct_fixture".into(),
             live: false,
             deployment: hash(),
+            api_version: Some("fixture.v1".into()),
             return_origin: "https://fixture.invalid".into(),
             customer_reference: "opaque_customer_fixture_001".into(),
         }
+    }
+    #[test]
+    fn original_provider_version_survives_restart_and_legacy_records_cannot_replay() {
+        let original = binding(100);
+        let mut book = Book::default();
+        book.admit(original.clone()).unwrap();
+        let restarted: Book = serde_json::from_slice(&serde_json::to_vec(&book).unwrap()).unwrap();
+        restarted.validate().unwrap();
+        assert_eq!(
+            restarted.checkouts[&original.quote.id]
+                .binding
+                .provider_version()
+                .unwrap(),
+            "fixture.v1"
+        );
+        let mut successor = original.clone();
+        successor.api_version = Some("fixture.v2".into());
+        assert!(book.admit(successor).is_err());
+        let mut legacy = original;
+        legacy.api_version = None;
+        legacy.validate().unwrap();
+        assert!(legacy.provider_version().is_err());
+        let value = serde_json::to_value(&legacy).unwrap();
+        assert!(value.get("api_version").is_none());
+        let read: Binding = serde_json::from_value(value).unwrap();
+        assert_eq!(read, legacy);
+        assert!(read.provider_version().is_err());
     }
     fn ready(record: &mut Checkout, now: u64) {
         record

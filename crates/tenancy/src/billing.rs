@@ -1621,6 +1621,7 @@ impl Store {
 #[derive(Clone, Debug)]
 pub struct Billing {
     dir: PathBuf,
+    directory: std::sync::Arc<std::fs::File>,
 }
 
 impl Billing {
@@ -1653,20 +1654,41 @@ impl Billing {
         save(dir, &store)?;
         Ok(Self {
             dir: dir.to_path_buf(),
+            directory: std::sync::Arc::new(billing_directory(dir)?),
         })
     }
 
     /// Open the store in a directory, validating it end to end.
     pub fn open(dir: &Path) -> Result<Self, Trouble> {
+        let directory = std::sync::Arc::new(billing_directory(dir)?);
         load(dir)?;
         Ok(Self {
             dir: dir.to_path_buf(),
+            directory,
         })
     }
 
     /// Read the current store — the fresh read every query makes.
     pub fn store(&self) -> Result<Store, Trouble> {
-        load(&self.dir)
+        self.check_source()?;
+        let store = load(&self.dir)?;
+        self.check_source()?;
+        Ok(store)
+    }
+
+    /// Reject directory replacement or disclosure before reading or writing.
+    pub fn check_source(&self) -> Result<(), Trouble> {
+        let held = self.directory.metadata()?;
+        let current = std::fs::symlink_metadata(&self.dir)?;
+        if !current.is_dir()
+            || current.dev() != held.dev()
+            || current.ino() != held.ino()
+            || current.uid() != unsafe { libc::geteuid() }
+            || current.permissions().mode() & 0o022 != 0
+        {
+            return Err(Trouble::Invalid("billing directory custody changed".into()));
+        }
+        Ok(())
     }
 
     /// One mutation: lock, re-read inside the lock, run the expiry
@@ -1675,7 +1697,11 @@ impl Billing {
         &self,
         f: impl FnOnce(&mut BillingBook, &mut Vec<Access>, u64) -> Result<T, Refusal>,
     ) -> Result<T, Refusal> {
+        self.check_source()
+            .map_err(|t| Refusal::Store(t.to_string()))?;
         let _lock = BillingLock::acquire(&self.dir).map_err(|t| Refusal::Store(t.to_string()))?;
+        self.check_source()
+            .map_err(|t| Refusal::Store(t.to_string()))?;
         let mut store = load(&self.dir).map_err(|t| Refusal::Store(t.to_string()))?;
         let now = unix_now();
         store.book.expire(now);
@@ -1687,7 +1713,11 @@ impl Billing {
         store
             .validate(&self.dir.join(BILLING).display().to_string())
             .map_err(Refusal::Store)?;
+        self.check_source()
+            .map_err(|t| Refusal::Store(t.to_string()))?;
         save(&self.dir, &store).map_err(|t| Refusal::Store(t.to_string()))?;
+        self.check_source()
+            .map_err(|t| Refusal::Store(t.to_string()))?;
         Ok(out)
     }
 
@@ -1785,13 +1815,57 @@ fn unix_now() -> u64 {
 
 fn read_billing(path: &Path) -> Result<String, Trouble> {
     let mut text = String::new();
-    std::fs::File::open(path)?
-        .take(STORE_BYTES + 1)
-        .read_to_string(&mut text)?;
+    let file = std::fs::OpenOptions::new()
+        .read(true)
+        .custom_flags(libc::O_NOFOLLOW | libc::O_NONBLOCK | libc::O_CLOEXEC)
+        .open(path)?;
+    let held = file.metadata()?;
+    if !held.is_file()
+        || held.nlink() != 1
+        || held.uid() != unsafe { libc::geteuid() }
+        || held.permissions().mode() & 0o077 != 0
+    {
+        return Err(Trouble::Invalid(
+            "billing records require owned private regular files".into(),
+        ));
+    }
+    file.take(STORE_BYTES + 1).read_to_string(&mut text)?;
     if text.len() as u64 > STORE_BYTES {
         return Err(Trouble::Invalid("billing store exceeds 16 MiB".into()));
     }
+    let current = std::fs::symlink_metadata(path)?;
+    if current.dev() != held.dev()
+        || current.ino() != held.ino()
+        || !current.is_file()
+        || current.nlink() != 1
+        || current.uid() != held.uid()
+        || current.permissions().mode() & 0o077 != 0
+    {
+        return Err(Trouble::Invalid(
+            "billing record custody changed during read".into(),
+        ));
+    }
     Ok(text)
+}
+
+fn billing_directory(path: &Path) -> Result<std::fs::File, Trouble> {
+    let file = std::fs::OpenOptions::new()
+        .read(true)
+        .custom_flags(libc::O_NOFOLLOW | libc::O_DIRECTORY | libc::O_CLOEXEC)
+        .open(path)?;
+    let held = file.metadata()?;
+    let current = std::fs::symlink_metadata(path)?;
+    if !current.is_dir()
+        || current.dev() != held.dev()
+        || current.ino() != held.ino()
+        || held.uid() != unsafe { libc::geteuid() }
+        || held.permissions().mode() & 0o022 != 0
+    {
+        return Err(Trouble::Invalid(
+            "billing needs an owned directory without shared write access".into(),
+        ));
+    }
+    Ok(file)
 }
 
 fn write_synced(path: &Path, text: &str) -> Result<(), Trouble> {
@@ -1809,7 +1883,11 @@ fn write_synced(path: &Path, text: &str) -> Result<(), Trouble> {
 /// `billing.json` in one rename.
 fn save(dir: &Path, store: &Store) -> Result<(), Trouble> {
     let history = dir.join(HISTORY_DIR);
-    std::fs::create_dir_all(&history)?;
+    if !history.exists() {
+        use std::os::unix::fs::DirBuilderExt;
+        std::fs::DirBuilder::new().mode(0o700).create(&history)?;
+    }
+    let history_directory = billing_directory(&history)?;
     let text =
         serde_json::to_string_pretty(store).map_err(|error| Trouble::Invalid(error.to_string()))?;
     let archived = history.join(format!("{}.json", store.digest));
@@ -1817,13 +1895,17 @@ fn save(dir: &Path, store: &Store) -> Result<(), Trouble> {
         return Err(Trouble::Invalid("billing store exceeds 16 MiB".into()));
     }
     if !archived.exists() {
-        write_synced(&archived, &format!("{text}\n"))?;
+        // Publish only a synced complete archive. A process crash can leave an
+        // unreferenced staging file, but cannot poison the final digest path.
+        let staged = history.join(format!(".{}.tmp", fresh_id()?));
+        write_synced(&staged, &format!("{text}\n"))?;
+        std::fs::rename(&staged, &archived)?;
     } else if read_billing(&archived)? != format!("{text}\n") {
         return Err(Trouble::Invalid(
             "archived revision content mismatch".into(),
         ));
     }
-    std::fs::File::open(&history)?.sync_all()?;
+    history_directory.sync_all()?;
     let staged = dir.join(format!(".{BILLING}.{}.tmp", fresh_id()?));
     write_synced(&staged, &format!("{text}\n"))?;
     std::fs::rename(&staged, dir.join(BILLING))?;
@@ -1885,6 +1967,59 @@ pub fn fresh_ref() -> Result<String, Refusal> {
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn native_billing_refuses_disclosed_linked_or_replaced_sources() {
+        use std::os::unix::fs::{PermissionsExt, symlink};
+        let root = tempfile::tempdir().unwrap();
+        let dir = root.path().join("registry");
+        let billing = super::Billing::install(&dir).unwrap();
+        let path = dir.join(super::BILLING);
+        let original = std::fs::read(&path).unwrap();
+        std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o644)).unwrap();
+        assert!(billing.store().is_err());
+        assert!(billing.record("fixture", "refused", None, None).is_err());
+        std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o600)).unwrap();
+        let linked = dir.join("linked.json");
+        std::fs::hard_link(&path, &linked).unwrap();
+        assert!(billing.store().is_err());
+        std::fs::remove_file(&linked).unwrap();
+        std::fs::rename(&path, &linked).unwrap();
+        symlink(&linked, &path).unwrap();
+        assert!(billing.store().is_err());
+        assert_eq!(std::fs::read(&linked).unwrap(), original);
+        std::fs::remove_file(&path).unwrap();
+        std::fs::rename(&linked, &path).unwrap();
+        billing.store().unwrap();
+        let moved = root.path().join("retired");
+        std::fs::rename(&dir, &moved).unwrap();
+        super::Billing::install(&dir).unwrap();
+        assert!(billing.store().is_err());
+        assert!(billing.record("fixture", "refused", None, None).is_err());
+        assert_eq!(std::fs::read(moved.join(super::BILLING)).unwrap(), original);
+    }
+    #[test]
+    fn abandoned_archive_stage_does_not_poison_restart_or_next_revision() {
+        let root = tempfile::tempdir().unwrap();
+        let billing = super::Billing::install(root.path()).unwrap();
+        let abandoned = root
+            .path()
+            .join(super::HISTORY_DIR)
+            .join(".interrupted.tmp");
+        super::write_synced(&abandoned, "partial private staging fixture").unwrap();
+        drop(billing);
+        let restarted = super::Billing::open(root.path()).unwrap();
+        restarted.record("fixture", "recover", None, None).unwrap();
+        let store = restarted.store().unwrap();
+        assert_eq!(store.sequence, 1);
+        let archived = root
+            .path()
+            .join(super::HISTORY_DIR)
+            .join(format!("{}.json", store.digest));
+        assert_eq!(
+            super::read_billing(&archived).unwrap(),
+            super::read_billing(&root.path().join(super::BILLING)).unwrap()
+        );
+    }
     use super::*;
 
     fn plan(id: &str, amount: u64) -> Plan {

@@ -10,6 +10,8 @@ const MAX_BODY: usize = 512 * 1024;
 const MAX_HEADER: usize = 4096;
 const API_ORIGIN: &str = "https://api.stripe.com";
 
+mod config;
+pub use config::Config;
 mod checkout;
 pub use checkout::CheckoutRequest;
 mod adjustments;
