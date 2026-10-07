@@ -745,7 +745,7 @@ current status:
 - [`docs/breez/history.md`](../breez/history.md) and
   [`docs/bitcoin/2026-09-28-bitcoin-node-history.md`](../bitcoin/2026-09-28-bitcoin-node-history.md):
   the payment rails Pylon used, from Spark to LDK.
-- [`docs/history/2026-09-25-transcript-roadmap.md`](2026-09-25-transcript-roadmap.md):
+- [`docs/history/2026-09-25-transcript-roadmap.md`](../history/2026-09-25-transcript-roadmap.md):
   maps the compute episodes 201-238.
 - [`docs/protocol/official-nip-ledger.md`](../protocol/official-nip-ledger.md):
   NIP-90 job kinds as configured and proven.

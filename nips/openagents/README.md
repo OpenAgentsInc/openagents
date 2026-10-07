@@ -42,6 +42,13 @@ SA; it allocates no kinds and implements no custody, wallet, or autonomous
 host. The [source and migration map](NIP-SOV.md#provenance-and-migration)
 retain the original draft and explain the changes.
 
+[NIP-PYLON](NIP-PYLON.md) is a **Designed** draft for compute providers in
+public: a provider's opt-in beacon for one machine, buyer-signed receipts for
+the jobs it served, and pool aggregates any reader can recompute. Verse draws
+its Pylon Field and Wellspring only from these records, as the
+[Verse compute plan](../../docs/compute/verse-compute.md) describes. It
+allocates `30200`, `30201`, and `3201` and implements no publisher yet.
+
 [NIP-ATIF](NIP-ATIF.md) is a **Designed** draft for carrying agent trajectories
 in the Agent Trajectory Interchange Format that Coder already records. Trajectories
 stay owner-encrypted by default; a public copy is a separate, usually redacted,
@@ -269,6 +276,7 @@ conformance requires validation and enforcement for each advertised role.
 | [NIP-SOV](NIP-SOV.md) | Designed successor to historical SA: durable agent identity, admitted custody, bounded lifecycle, guardians, treasury policy, market participation, and retained recovery evidence. | Shared `3188`; existing AUTO/CAP/CJ/COORD/RUN contracts; no new kinds. |
 | [NIP-ATIF](NIP-ATIF.md) | Designed carriage of ATIF agent trajectories: exact-byte and ATIF-rule step digests, owner-encrypted private carriage, public declarations with ordered chunks, and links to Coder tasks, RUN runs, delegated sub-agents, and continued segments. Maps Block AO/AM/AE onto ATIF steps. | `3198`, `3199`; private manifests and chunks on shared `3188`. |
 | [NIP-MV](NIP-MV.md) | Shared 3D worlds: ephemeral pose frames and gestures, durable entity state, world definitions, and cell-scoped subscriptions. Its optional runtime-loaded scene manifest and rules profile are Designed; Verse's curated local zones are not general world discovery. Standalone: it depends on no other contract here. | `23300`, `23301`, `23302`, `33300`, `33301`. |
+| [NIP-PYLON](NIP-PYLON.md) | Designed compute pylons and pools: a provider's opt-in public beacon with coarse class and free slots, buyer-signed service receipts with digests and payment preimages, recomputable pool aggregates, NIP-32 check verdicts, and the rules a world follows to draw them. | `30200`, `30201`, `3201`; NIP-32 `1985` labels. |
 
 Discovery heads are mutable. Exact signed records and artifact digests pin
 execution. Publication, installation, enablement, selection, grants, admission,
@@ -319,6 +327,7 @@ NIP-32 `1985` labels or Block `24200` frames, aren't claims.
 | `3197` | [NIP-XP](NIP-XP.md) | Content-free playtest report |
 | `3198` | [NIP-ATIF](NIP-ATIF.md) | Public trajectory declaration |
 | `3199` | [NIP-ATIF](NIP-ATIF.md) | Public trajectory chunk |
+| `3201` | [NIP-PYLON](NIP-PYLON.md) | Service receipt |
 | `13193` | [NIP-XP](NIP-XP.md) | Trainer profile |
 | `13195` | [NIP-XP](NIP-XP.md) | Key link |
 | `23300` | [NIP-MV](NIP-MV.md) | Pose frame |
@@ -344,6 +353,8 @@ NIP-32 `1985` labels or Block `24200` frames, aren't claims.
 | `30192` | [NIP-MKT](NIP-MKT.md) | Current offering head |
 | `30193` | [NIP-XP](NIP-XP.md) | Frozen quest version |
 | `30194` | [NIP-XP](NIP-XP.md) | Trainer card |
+| `30200` | [NIP-PYLON](NIP-PYLON.md) | Pylon beacon |
+| `30201` | [NIP-PYLON](NIP-PYLON.md) | Pool aggregate |
 | `33300` | [NIP-MV](NIP-MV.md) | World definition |
 | `33301` | [NIP-MV](NIP-MV.md) | Entity state |
 

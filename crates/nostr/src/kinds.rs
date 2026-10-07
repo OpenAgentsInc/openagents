@@ -95,6 +95,12 @@ pub const XP_PLAYTEST_REPORT: u16 = 3_197;
 pub const ATIF_DECLARATION: u16 = 3_198;
 /// NIP-ATIF public trajectory chunk.
 pub const ATIF_CHUNK: u16 = 3_199;
+/// NIP-PYLON service receipt.
+pub const PYLON_RECEIPT: u16 = 3_201;
+/// NIP-PYLON pylon beacon.
+pub const PYLON_BEACON: u16 = 30_200;
+/// NIP-PYLON pool aggregate.
+pub const PYLON_POOL: u16 = 30_201;
 /// NIP-XP frozen quest version.
 pub const XP_QUEST: u16 = 30_193;
 /// NIP-XP trainer profile.
@@ -140,6 +146,7 @@ pub const REGISTRY: &[Claim] = &[
         "Public trajectory declaration",
     ),
     claim(ATIF_CHUNK, "NIP-ATIF", "Public trajectory chunk"),
+    claim(PYLON_RECEIPT, "NIP-PYLON", "Service receipt"),
     claim(XP_PROFILE, "NIP-XP", "Trainer profile"),
     claim(XP_LINK, "NIP-XP", "Key link"),
     claim(MV_FRAME, "NIP-MV", "Pose frame"),
@@ -189,6 +196,8 @@ pub const REGISTRY: &[Claim] = &[
     claim(MKT_HEAD, "NIP-MKT", "Current offering head"),
     claim(XP_QUEST, "NIP-XP", "Frozen quest version"),
     claim(XP_CARD, "NIP-XP", "Trainer card"),
+    claim(PYLON_BEACON, "NIP-PYLON", "Pylon beacon"),
+    claim(PYLON_POOL, "NIP-PYLON", "Pool aggregate"),
     claim(MV_WORLD, "NIP-MV", "World definition"),
     claim(MV_STATE, "NIP-MV", "Entity state"),
 ];

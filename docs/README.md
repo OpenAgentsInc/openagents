@@ -42,7 +42,8 @@ the [document catalog](catalog.md) to find a specific reference.
 | Explore world interfaces | [Voyager](voyager/README.md), [Minecraft](minecraft/README.md), [Verse](verse/README.md), [Gym building](verse/gym.md), [Unreal source study](research/unreal/README.md) |
 | Verify a change | [Targeted development and release verification](verification.md) |
 | Understand earlier decisions | [Historical surveys](history/README.md), [audits](audits/README.md), [transcript archive](transcripts/README.md) |
-| Trace the history of selling spare compute for bitcoin: GPUtopia, Pylon, and the compute market | [Compute for bitcoin history](history/compute-for-bitcoin.md) |
+| Trace the history of selling spare compute for bitcoin: GPUtopia, Pylon, and the compute market | [Compute](compute/README.md), [compute for bitcoin history](compute/compute-for-bitcoin.md) |
+| Plan compute in the Verse: the Pylon Field, the Wellspring, paid jobs, and the agent market in Everglade | [Verse compute vision and spec](compute/verse-compute.md), [NIP-PYLON](../nips/openagents/NIP-PYLON.md) |
 
 ## Read claims at their stated scope
 
