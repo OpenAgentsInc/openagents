@@ -382,6 +382,17 @@ admin reporting, and genuine colleague qualification remain separate gates.
 Record that qualification under [O8](../../NEEDS_OWNER.md#team-adoption-o8-rev-38-10845)
 before treating a synthetic team fixture as an adopted business account.
 
+Reviewed commercial bindings now join the selected Gateway and Plugin native
+sources to a canonical Accounts customer and workspace. The installed CLI reads
+each product reference independently; quotes, funding records, and execution
+receipts retain their original revision through rotation and team conversion.
+A changed mapping requires new purchase approval, and revocation blocks new
+effects. Native payers, balances, membership, and payout rights remain separate.
+Original Plugin outcomes remain recoverable under current native read access
+after canonical retirement or revocation; recovery never pays or executes again.
+Qualify the intended mapping under [O1](../../NEEDS_OWNER.md#commercial-mapping-activation-o1-rev-19-10826)
+before treating these isolated fixtures as a funded business account.
+
 ## Hands-on onboarding
 
 Most businesses want someone to fit the tools to their work. We offer

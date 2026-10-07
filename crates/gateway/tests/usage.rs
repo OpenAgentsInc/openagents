@@ -153,6 +153,7 @@ async fn deploy() -> Deployment {
         billing: Some(billing_config()),
         funding: None,
         earnings: None,
+        commercial: None,
         skills: None,
         money: Some(money_config(&ledger)),
         max_body_bytes: 1_048_576,

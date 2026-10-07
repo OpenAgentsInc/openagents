@@ -6,6 +6,8 @@
 //! Every test stands up its own directory and listeners; nothing
 //! shares state but the shape of the claims being checked.
 
+#[path = "accounts_commercial/mod.rs"]
+mod commercial;
 mod common;
 #[path = "common/funding_receiver.rs"]
 mod funding_receiver;
@@ -110,6 +112,7 @@ async fn deploy(accounts: Option<config::Accounts>, require_membership: bool) ->
         billing: None,
         funding: None,
         earnings: None,
+        commercial: None,
         skills: None,
     };
     let state = ServeState::open(config.clone()).unwrap();
@@ -1858,6 +1861,7 @@ async fn stores_install_under_accounts_config_and_validate() {
         billing: None,
         funding: None,
         earnings: None,
+        commercial: None,
         skills: None,
     };
     assert!(config.check(&path).is_err());

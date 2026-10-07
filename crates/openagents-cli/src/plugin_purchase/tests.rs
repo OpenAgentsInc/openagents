@@ -210,8 +210,10 @@ impl openagents_wallet::resident::Served for Wallet {
         unreachable!()
     }
 }
+fn hash(c: char) -> String {
+    format!("sha256:{}", c.to_string().repeat(64))
+}
 fn current() -> Selection {
-    let hash = |c: char| format!("sha256:{}", c.to_string().repeat(64));
     Selection {
         origin: "https://api.example.com".into(),
         credential_alias: "buyer".into(),
@@ -237,6 +239,7 @@ fn current() -> Selection {
                 maximum_charge: 100,
             },
             can_invoke: true,
+            commercial: None,
         },
     }
 }
@@ -329,6 +332,7 @@ impl Harness {
             expires_at_ms: (NOW + 300) * 1000,
             recovery_authorization: recoverable
                 .then(|| openagents_x402::outcome::commitment(&"e5".repeat(32))),
+            commercial: None,
         };
         offer.packet = resolved(source.as_ref(), &offer, request).unwrap();
         let body = offer.body(request);
@@ -454,6 +458,241 @@ fn changed_customer_payer_packet_expiry_and_cancellation_never_dispatch_payment(
         assert_eq!(h.wallet.payments.load(Ordering::SeqCst), 0);
         assert_eq!(h.ledger.entries().unwrap().len(), 0);
     }
+}
+#[test]
+fn exact_plugin_commercial_join_is_approved_and_rechecked_before_actual_payment() {
+    use receipts::purchase::{CommercialProduct, CommercialRef, CommercialSource};
+    let mut h = Harness::with_recovery(true);
+    h.store.cancel_plugin("one").unwrap();
+    let reference = CommercialRef {
+        binding: "commercial-buyer".into(),
+        revision: 1,
+        digest: hash('e'),
+        customer: "canonical-buyer".into(),
+        workspace: "canonical-team".into(),
+        source: CommercialSource {
+            product: CommercialProduct::Plugin,
+            issuer: "native-product".into(),
+            account: h.current.context.account.clone(),
+            workspace: Some(h.current.context.workspace.clone()),
+        },
+    };
+    h.current.context.commercial = None;
+    h.current.context.can_invoke = false;
+    h.store.bind(h.current.clone()).unwrap();
+    let request = include_str!("../../../../plugins/meeting-action-items/examples/meeting.md");
+    let mut unjoined = h.offer.clone();
+    unjoined.commercial = None;
+    assert!(
+        h.store
+            .quote_plugin_with_recovery(
+                "unjoined",
+                unjoined,
+                request.into(),
+                h.current.clone(),
+                NOW * 1000,
+                Some("e5".repeat(32)),
+            )
+            .is_err()
+    );
+    h.offer.commercial = Some(reference.clone());
+    let view = h
+        .store
+        .quote_plugin_with_recovery(
+            "joined",
+            h.offer.clone(),
+            request.into(),
+            h.current.clone(),
+            NOW * 1000,
+            Some("e5".repeat(32)),
+        )
+        .unwrap();
+    assert!(
+        h.store
+            .approve_plugin(
+                "joined",
+                &view.approval_digest,
+                &h.current,
+                &h.offer.payer,
+                NOW * 1000 + 1
+            )
+            .is_err()
+    );
+    h.store
+        .approve_plugin_reviewed(
+            "joined",
+            &view.approval_digest,
+            &h.current,
+            &h.offer.payer,
+            Some(&reference),
+            NOW * 1000 + 1,
+        )
+        .unwrap();
+    let frozen = serde_json::to_value(h.store.plugin_view("joined").unwrap()).unwrap();
+    for mode in ["revision", "issuer", "absent", "account"] {
+        let mut changed = reference.clone();
+        match mode {
+            "revision" => changed.revision += 1,
+            "issuer" => changed.source.issuer = "replacement-product".into(),
+            "account" => changed.source.account = "other-buyer".into(),
+            _ => {}
+        }
+        let current = (mode != "absent").then_some(&changed);
+        assert!(
+            buy_reviewed(
+                &mut h.store,
+                "joined",
+                &h.current,
+                &h.offer.payer,
+                &h.offer.packet,
+                current,
+                &h.wallet,
+                &h.wire,
+                None,
+                0,
+                &h.ledger,
+                1,
+                NOW * 1000 + 2
+            )
+            .is_err(),
+            "{mode}"
+        );
+        assert_eq!(h.wallet.payments.load(Ordering::SeqCst), 0);
+        assert_eq!(h.ledger.entries().unwrap().len(), 0);
+        assert_eq!(
+            serde_json::to_value(h.store.plugin_view("joined").unwrap()).unwrap(),
+            frozen
+        );
+    }
+    let result = buy_reviewed(
+        &mut h.store,
+        "joined",
+        &h.current,
+        &h.offer.payer,
+        &h.offer.packet,
+        Some(&reference),
+        &h.wallet,
+        &h.wire,
+        None,
+        0,
+        &h.ledger,
+        1,
+        NOW * 1000 + 2,
+    )
+    .unwrap();
+    assert_eq!(result.phase, Phase::Completed);
+    assert_eq!(result.offer.commercial, Some(reference.clone()));
+    assert_eq!(result.charge.unwrap().amount_msat, 6000);
+    assert_eq!(
+        result.result.unwrap()["value"]["items"]
+            .as_array()
+            .unwrap()
+            .len(),
+        3
+    );
+    assert_eq!(h.wallet.payments.load(Ordering::SeqCst), 1);
+    let frozen = serde_json::to_value(h.store.plugin_view("joined").unwrap()).unwrap();
+    let mut advanced = reference.clone();
+    advanced.revision += 1;
+    advanced.digest = hash('f');
+    advanced.workspace = "reviewed-canonical-team".into();
+    for mode in ["absent", "foreign"] {
+        let mut foreign = advanced.clone();
+        foreign.source.account = "other-buyer".into();
+        let reference = (mode != "absent").then_some(&foreign);
+        assert!(
+            recover_reviewed(
+                &mut h.store,
+                "joined",
+                &h.current,
+                &h.offer.payer,
+                reference,
+                &h.wallet,
+                &h.wire,
+                &h.ledger,
+                (NOW + 10_000) * 1000,
+            )
+            .is_err()
+        );
+        assert_eq!(h.wallet.payments.load(Ordering::SeqCst), 1);
+    }
+    let mut rotated = h.current.clone();
+    rotated.credential_alias = "rotated-buyer".into();
+    rotated.context.credential_reference = "key:rotated-buyer-key".into();
+    h.store
+        .import_credential("rotated-buyer", &jev::ApiKey::new("oak_fixture.rotated"))
+        .unwrap();
+    h.store.bind(rotated.clone()).unwrap();
+    let reader = coder::customer::plugins::NativeReader {
+        origin: rotated.origin.clone(),
+        credential_alias: rotated.credential_alias.clone(),
+        identity: receipts::purchase::PluginReadIdentity {
+            source: reference.source.clone(),
+            tenant: rotated.context.tenant.clone(),
+            credential_reference: rotated.context.credential_reference.clone(),
+            membership_epoch: rotated.context.membership_epoch,
+            workspace_members_epoch: rotated.context.workspace_members_epoch,
+            role: rotated.context.role.clone(),
+        },
+    };
+    for mode in ["source", "tenant", "origin", "alias", "payer"] {
+        let mut foreign = reader.clone();
+        let mut payer = h.offer.payer.clone();
+        match mode {
+            "source" => foreign.identity.source.issuer = "other-service".into(),
+            "tenant" => foreign.identity.tenant = "other-tenant".into(),
+            "origin" => foreign.origin = "https://other.example".into(),
+            "alias" => foreign.credential_alias = "foreign".into(),
+            _ => payer.node = format!("03{}", "b".repeat(64)),
+        }
+        assert!(
+            recover_native(
+                &mut h.store,
+                "joined",
+                &foreign,
+                &payer,
+                &h.wallet,
+                &h.wire,
+                &h.ledger,
+                (NOW + 10_000) * 1000
+            )
+            .is_err()
+        );
+        assert_eq!(h.wallet.payments.load(Ordering::SeqCst), 1);
+    }
+    // No current canonical reference or invocation grant is used for this original read.
+    let historical = recover_native(
+        &mut h.store,
+        "joined",
+        &reader,
+        &h.offer.payer,
+        &h.wallet,
+        &h.wire,
+        &h.ledger,
+        (NOW + 10_000) * 1000,
+    )
+    .unwrap();
+    assert_eq!(historical.offer.commercial, Some(reference));
+    assert_eq!(historical.customer, h.current);
+    let recovered = recover_reviewed(
+        &mut h.store,
+        "joined",
+        &rotated,
+        &h.offer.payer,
+        Some(&advanced),
+        &h.wallet,
+        &h.wire,
+        &h.ledger,
+        (NOW + 10_000) * 1000,
+    )
+    .unwrap();
+    assert_eq!(recovered.phase, Phase::Completed);
+    assert_eq!(recovered.customer, h.current);
+    assert_eq!(
+        serde_json::to_value(recovered.offer).unwrap(),
+        frozen["offer"]
+    );
+    assert_eq!(h.wallet.payments.load(Ordering::SeqCst), 1);
 }
 #[test]
 fn uncertain_payment_and_lost_delivery_keep_original_identity_after_restart() {
@@ -802,6 +1041,18 @@ fn installed_cli_quotes_approves_pays_returns_and_preserves_unknown_delivery() {
     let Some(binary) = std::env::var_os("OPENAGENTS_PLUGIN_CLI") else {
         return;
     };
+    installed_purchase(binary, false);
+}
+
+#[test]
+fn installed_cli_pins_plugin_projection_without_gateway_invocation_rights() {
+    let Some(binary) = std::env::var_os("OPENAGENTS_PLUGIN_CLI") else {
+        return;
+    };
+    installed_purchase(binary, true);
+}
+
+fn installed_purchase(binary: std::ffi::OsString, mapped: bool) {
     use openagents_x402::{
         Facilitator,
         front::{Config, Route},
@@ -872,6 +1123,37 @@ fn installed_cli_quotes_approves_pays_returns_and_preserves_unknown_delivery() {
     .with_outcomes(openagents_x402::outcome::Store::open(&root.path().join("outcomes")).unwrap());
     let mut selected = current();
     selected.origin = origin.clone();
+    if mapped {
+        selected.context.can_invoke = false;
+    }
+    let commercial = Arc::new(Mutex::new(mapped.then(|| {
+        receipts::purchase::CommercialRef {
+            binding: "reviewed-plugin-customer".into(),
+            revision: 1,
+            digest: hash('e'),
+            customer: "canonical-buyer".into(),
+            workspace: "canonical-team".into(),
+            source: receipts::purchase::CommercialSource {
+                product: receipts::purchase::CommercialProduct::Plugin,
+                issuer: "independent-plugin".into(),
+                account: selected.context.account.clone(),
+                workspace: Some(selected.context.workspace.clone()),
+            },
+        }
+    })));
+    let projection = commercial.clone();
+    let native_reader = mapped.then(|| receipts::purchase::PluginReadIdentity {
+        source: commercial.lock().unwrap().as_ref().unwrap().source.clone(),
+        tenant: selected.context.tenant.clone(),
+        credential_reference: selected.context.credential_reference.clone(),
+        membership_epoch: selected.context.membership_epoch,
+        workspace_members_epoch: selected.context.workspace_members_epoch,
+        role: selected.context.role.clone(),
+    });
+    let native_denied = Arc::new(AtomicBool::new(false));
+    let native_denial = native_denied.clone();
+    let canonical_denied = Arc::new(AtomicBool::new(false));
+    let canonical_denial = canonical_denied.clone();
     let context = serde_json::to_value(&selected.context).unwrap();
     let loss = Arc::new(AtomicBool::new(false));
     let dropping = loss.clone();
@@ -887,9 +1169,32 @@ fn installed_cli_quotes_approves_pays_returns_and_preserves_unknown_delivery() {
                     request.header("authorization"),
                     Some("Bearer oak_fixture.buyer")
                 );
+                if canonical_denial.load(Ordering::SeqCst) {
+                    return Response::json(409, &json!({"error":"canonical linkage revoked"}));
+                }
                 let mut c = context.clone();
-                c["can_invoke"] = json!(!denial.load(Ordering::SeqCst));
+                c["can_invoke"] = json!(!mapped && !denial.load(Ordering::SeqCst));
                 return Response::json(200, &c);
+            }
+            if request.target == "/v1/workspaces/buyer-workspace/commercial/plugin" {
+                assert_eq!(
+                    request.header("authorization"),
+                    Some("Bearer oak_fixture.buyer")
+                );
+                if canonical_denial.load(Ordering::SeqCst) {
+                    return Response::json(409, &json!({"error":"canonical linkage revoked"}));
+                }
+                return Response::json(200, &json!(*projection.lock().unwrap()));
+            }
+            if request.target == "/v1/workspaces/buyer-workspace/plugin-reader" {
+                assert_eq!(
+                    request.header("authorization"),
+                    Some("Bearer oak_fixture.buyer")
+                );
+                if native_denial.load(Ordering::SeqCst) {
+                    return Response::json(403, &json!({"error":"native read revoked"}));
+                }
+                return Response::json(200, &json!(native_reader));
             }
             if request.method == "GET" {
                 let digest = format!("sha256:{}", request.target.trim_start_matches('/'));
@@ -1009,6 +1314,11 @@ fn installed_cli_quotes_approves_pays_returns_and_preserves_unknown_delivery() {
     };
     let q = quote("one");
     assert_eq!(q["offer"]["quote"]["price_msat"], 6000);
+    if mapped {
+        assert_eq!(q["customer"]["context"]["can_invoke"], false);
+        assert!(q["customer"]["context"].get("commercial").is_none());
+        assert_eq!(q["offer"]["commercial"]["source"]["product"], "plugin");
+    }
     assert_eq!(wallet.payments.load(Ordering::SeqCst), 0);
     assert!(
         run(&["approve", "--purchase", "one", "--digest", "edited"])
@@ -1044,10 +1354,21 @@ fn installed_cli_quotes_approves_pays_returns_and_preserves_unknown_delivery() {
         .status
         .success()
     );
-    denied.store(true, Ordering::SeqCst);
+    if mapped {
+        commercial.lock().unwrap().as_mut().unwrap().revision += 1;
+    } else {
+        denied.store(true, Ordering::SeqCst);
+    }
     assert!(!run(&["invoke", "--purchase", "one"]).0.status.success());
     assert_eq!(wallet.payments.load(Ordering::SeqCst), 0);
-    denied.store(false, Ordering::SeqCst);
+    if mapped {
+        commercial.lock().unwrap().as_mut().unwrap().revision -= 1;
+        let (o, frozen) = run(&["show", "--purchase", "one"]);
+        assert!(o.status.success());
+        assert_eq!(frozen["offer"], q["offer"]);
+    } else {
+        denied.store(false, Ordering::SeqCst);
+    }
     let (o, v) = run(&["invoke", "--purchase", "one"]);
     assert!(
         o.status.success(),
@@ -1113,10 +1434,25 @@ fn installed_cli_quotes_approves_pays_returns_and_preserves_unknown_delivery() {
     assert!(!o.status.success());
     assert_eq!(v["phase"], "unknown");
     assert_eq!(v["unresolved_maximum_msat"], 6000);
-    denied.store(true, Ordering::SeqCst);
+    let revoked_projection = if mapped {
+        canonical_denied.store(true, Ordering::SeqCst);
+        native_denied.store(true, Ordering::SeqCst);
+        commercial.lock().unwrap().take()
+    } else {
+        denied.store(true, Ordering::SeqCst);
+        None
+    };
     assert!(!run(&["recover", "--purchase", "lost"]).0.status.success());
     assert_eq!(wallet.payments.load(Ordering::SeqCst), 2);
-    denied.store(false, Ordering::SeqCst);
+    if let Some(mut reference) = revoked_projection {
+        reference.revision += 1;
+        reference.digest = hash('f');
+        reference.workspace = "reviewed-canonical-team".into();
+        *commercial.lock().unwrap() = Some(reference);
+        native_denied.store(false, Ordering::SeqCst);
+    } else {
+        denied.store(false, Ordering::SeqCst);
+    }
     loss.store(false, Ordering::SeqCst);
     let (o, first) = run(&["recover", "--purchase", "lost"]);
     assert!(
@@ -1139,6 +1475,18 @@ fn installed_cli_quotes_approves_pays_returns_and_preserves_unknown_delivery() {
     assert_eq!(first["result"], again["result"]);
     assert_eq!(wallet.payments.load(Ordering::SeqCst), 2);
     assert_eq!(executions.load(Ordering::SeqCst), 2);
+    if mapped {
+        // Retirement removes the current join; historical recovery still uses native reads.
+        commercial.lock().unwrap().take();
+        let (o, retained) = run(&["recover", "--purchase", "lost"]);
+        assert!(o.status.success());
+        assert_eq!(retained["offer"], first["offer"]);
+        assert_eq!(retained["result"], first["result"]);
+        native_denied.store(true, Ordering::SeqCst);
+        assert!(!run(&["recover", "--purchase", "lost"]).0.status.success());
+        assert_eq!(wallet.payments.load(Ordering::SeqCst), 2);
+        assert_eq!(executions.load(Ordering::SeqCst), 2);
+    }
     assert!(!run(&["invoke", "--purchase", "lost"]).0.status.success());
     stop.store(true, Ordering::SeqCst);
     resident_stop.store(true, Ordering::SeqCst);

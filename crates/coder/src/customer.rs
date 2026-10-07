@@ -858,6 +858,47 @@ impl Store {
         }
         Ok(current)
     }
+    /// Read current mapping without importing linked accounts or spending rights.
+    pub async fn commercial_selection(
+        &self,
+        product: receipts::purchase::CommercialProduct,
+    ) -> Result<Option<receipts::purchase::CommercialRef>> {
+        let selected = self.current_selection().await?;
+        let response = self
+            .client(&selected.origin, &selected.credential_alias)?
+            .account()
+            .commercial_selection(
+                &selected.context.account,
+                &selected.context.workspace,
+                product,
+            )
+            .await;
+        let reference = match response {
+            Ok(reference) => reference,
+            // Legacy servers declare no commercial mapping. A missing route
+            // cannot discard an already declared or frozen commercial join.
+            Err(jev::Error::Api(error)) if error.status == 404 && selected.context.commercial.is_none() => None,
+            Err(_) => return Err("Current commercial attribution is unavailable; native identity and liabilities are unchanged.".into()),
+        };
+        if product == receipts::purchase::CommercialProduct::Gateway
+            && reference != selected.context.commercial
+        {
+            return Err(
+                "Commercial attribution changed while reading the selected account.".into(),
+            );
+        }
+        if let (Some(gateway), Some(reference)) = (&selected.context.commercial, &reference) {
+            if gateway.binding != reference.binding
+                || gateway.revision != reference.revision
+                || gateway.digest != reference.digest
+                || gateway.customer != reference.customer
+                || gateway.workspace != reference.workspace
+            {
+                return Err("The selected product has another commercial binding revision.".into());
+            }
+        }
+        Ok(reference)
+    }
     async fn current_context(&self) -> Result<Context> {
         let selected = self
             .book

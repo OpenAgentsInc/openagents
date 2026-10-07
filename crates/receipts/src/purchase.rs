@@ -79,6 +79,48 @@ impl CommercialRef {
     }
 }
 
+/// Fresh native read authentication for an original Plugin outcome.
+/// This carries no canonical mapping, price, execution, or spending grant.
+#[derive(Clone, Debug, PartialEq, Eq, Deserialize, Serialize)]
+#[serde(deny_unknown_fields)]
+pub struct PluginReadIdentity {
+    pub source: CommercialSource,
+    pub tenant: String,
+    pub credential_reference: String,
+    pub membership_epoch: u64,
+    pub workspace_members_epoch: u64,
+    pub role: String,
+}
+impl PluginReadIdentity {
+    pub fn validate(&self) -> Result<(), &'static str> {
+        if self.source.product != CommercialProduct::Plugin
+            || self.source.issuer.is_empty()
+            || self.source.issuer.len() > 256
+            || !self
+                .source
+                .issuer
+                .bytes()
+                .all(|b| b.is_ascii_alphanumeric() || b"-_.:/".contains(&b))
+            || [
+                &self.source.account,
+                &self.tenant,
+                &self.credential_reference,
+            ]
+            .into_iter()
+            .any(|v| !identity(v))
+            || self
+                .source
+                .workspace
+                .as_deref()
+                .is_none_or(|v| !identity(v))
+            || !matches!(self.role.as_str(), "owner" | "admin" | "member")
+        {
+            return Err("Invalid native Plugin reader identity.");
+        }
+        Ok(())
+    }
+}
+
 /// References to the existing gateway price and its bounded reservation.
 #[derive(Clone, Debug, PartialEq, Eq, Deserialize, Serialize)]
 #[serde(deny_unknown_fields)]
@@ -109,6 +151,8 @@ pub struct Context {
     pub artifact_digest: String,
     pub price: PriceReference,
     pub can_invoke: bool,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub commercial: Option<CommercialRef>,
 }
 
 fn identity(value: &str) -> bool {
@@ -156,6 +200,14 @@ impl Context {
             ]
             .into_iter()
             .any(|v| !hash(v))
+            || self.commercial.as_ref().is_some_and(|r| {
+                r.validate().is_err()
+                    || !r.matches_native(
+                        CommercialProduct::Gateway,
+                        &self.account,
+                        Some(&self.workspace),
+                    )
+            })
         {
             return Err("Invalid customer purchase context.");
         }
@@ -254,6 +306,7 @@ mod tests {
                 maximum_charge: 100,
             },
             can_invoke: true,
+            commercial: None,
         };
         Approval {
             quote: Quote {
@@ -317,5 +370,40 @@ mod tests {
         let mut a = a;
         a.quote.expires_at_ms = a.quote.created_at_ms + MAX_QUOTE_MS + 1;
         assert!(a.quote.validate().is_err());
+    }
+    #[test]
+    fn legacy_digests_and_exact_native_commercial_attribution_are_preserved() {
+        let mut approved = approval();
+        let legacy = serde_json::to_value(&approved.quote.context).unwrap();
+        assert!(legacy.get("commercial").is_none());
+        let decoded: Context = serde_json::from_value(legacy.clone()).unwrap();
+        assert_eq!(decoded.digest(), digest_request(&legacy));
+        approved.quote.context.commercial = Some(CommercialRef {
+            binding: "commercial-one".into(),
+            revision: 1,
+            digest: format!("sha256:{}", "a".repeat(64)),
+            customer: "canonical-customer".into(),
+            workspace: "canonical-team".into(),
+            source: CommercialSource {
+                product: CommercialProduct::Gateway,
+                issuer: "native-gateway".into(),
+                account: "buyer-a".into(),
+                workspace: Some("workspace-a".into()),
+            },
+        });
+        approved.quote.context.validate().unwrap();
+        let frozen = approved.quote.context.clone();
+        let mut current = frozen.clone();
+        current.commercial.as_mut().unwrap().revision += 1;
+        assert!(
+            approved
+                .validate_current(&current, &approved.quote.request_digest, 120)
+                .is_err()
+        );
+        current = frozen;
+        current.commercial.as_mut().unwrap().source.account = "buyer-b".into();
+        assert!(current.validate().is_err());
+        assert_eq!(approved.quote.context.account, "buyer-a");
+        assert_eq!(approved.quote.context.payer_workspace, "workspace-a");
     }
 }

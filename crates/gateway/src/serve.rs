@@ -126,6 +126,7 @@ pub struct ServeState {
     /// The registry directory — manifests, keys, ledger, receipts.
     pub(crate) dir: PathBuf,
     pub(crate) config: Config,
+    pub(crate) commercial: Option<commercial_accounts::NativeSources>,
     pub(crate) client: reqwest::Client,
     ledger: Mutex<quota::Ledger>,
     /// The workspace spending ledger — present only when the operator
@@ -159,7 +160,8 @@ impl ServeState {
     /// on one ledger would race reservations, and refusing is cheaper
     /// than reconciling them.
     pub fn open(config: Config) -> Result<Arc<Self>, Trouble> {
-        if config.funding.is_some()
+        if config.commercial.is_some()
+            || config.funding.is_some()
             || config.earnings.is_some()
             || config
                 .money
@@ -254,6 +256,12 @@ impl ServeState {
         // queued work waits for `router` to re-spawn it inside the
         // runtime.
         jobs::recover(&config.registry, config.job_retention_ms);
+        let commercial = config
+            .commercial
+            .as_ref()
+            .map(|c| commercial_accounts::NativeSources::open(&c.canonical_directory, &c.native))
+            .transpose()
+            .map_err(Trouble::Money)?;
         let funding = config
             .funding
             .as_ref()
@@ -268,6 +276,7 @@ impl ServeState {
             tenant_classify_inputs: Mutex::new(HashMap::new()),
             tenant_classify_in_flight: Mutex::new(HashMap::new()),
             config,
+            commercial,
             client,
             ledger: Mutex::new(ledger),
             money,
@@ -1083,6 +1092,8 @@ pub(crate) struct ReceiptContext {
     pub(crate) settlement: Option<&'static str>,
     /// Digest of the explicit approval rechecked before reservation.
     pub(crate) purchase_approval: Option<String>,
+    /// The original native mapping admitted for this attempt, with or without approval.
+    pub(crate) commercial: Option<receipts::purchase::CommercialRef>,
 }
 
 /// What the admission path produced.
@@ -1929,7 +1940,10 @@ async fn admitted(
         naming.request_digest,
         naming.attempt,
     ) {
-        Ok(digest) => ctx.purchase_approval = digest,
+        Ok(checked) => {
+            ctx.purchase_approval = checked.approval;
+            ctx.commercial = checked.commercial;
+        }
         Err(message) => {
             return Verdict::Refused {
                 status: StatusCode::CONFLICT,
@@ -1968,7 +1982,7 @@ async fn admitted(
     }
     // Capacity waits and model verification can outlive a membership or quote.
     // Recheck before dispatch; a changed approval releases the undispatched hold.
-    if let Err(message) = crate::purchase::check(
+    let rechecked = crate::purchase::check(
         state,
         headers,
         door,
@@ -1976,7 +1990,14 @@ async fn admitted(
         naming.request,
         naming.request_digest,
         naming.attempt,
-    ) {
+    )
+    .and_then(|checked| {
+        if checked.commercial != ctx.commercial || checked.approval != ctx.purchase_approval {
+            return Err("The originally admitted commercial mapping or approval changed.");
+        }
+        Ok(())
+    });
+    if let Err(message) = rechecked {
         ctx.purchase_approval = None;
         ctx.settlement = money_release(state, &hold).await;
         state.release(naming.request, naming.attempt).await;
@@ -4974,6 +4995,7 @@ pub(crate) async fn write_receipt(
     receipt.attempt_id = naming.attempt_id.clone();
     receipt.tenant = ctx.tenant_ref.clone();
     receipt.workspace = ctx.workspace.clone();
+    receipt.commercial = ctx.commercial.clone();
     receipt.registry = ctx.registry.clone();
     receipt.requested = ctx.requested.clone();
     receipt.served = ctx.served.clone();

@@ -97,6 +97,31 @@ and `anonymous` funds a bounded public lane — `bound` units on
 which must all be positive or the config refuses.
 [workspace-membership](workspace-membership.md) is the full contract.
 
+Optional `commercial` attribution requires `accounts` and enforced workspace
+membership. Configure an absolute `canonical_directory`, explicit `issuer`, and
+`native` adapter configuration with a private `policy` file and `stores`.
+The selected `tenancy` store's `issuer` and `directory` must bind this gateway's
+registry. Keep source files at mode `0600` and their directories at `0700`.
+`GET /v1/workspaces/{workspace}/commercial/{product}` supports `gateway` and
+`plugin` after native authentication. It returns only an exact reviewed binding
+reference or `null`; current policy or source failures refuse. Purchase contexts
+retain the Gateway reference. Attribution supplies no membership, balance,
+spending, execution, or payout grant. Reopen the gateway after replacing a held
+policy or source file, and review changed mappings before new purchases.
+When configured, new decision calls require a current Gateway mapping, including
+calls without a purchase envelope. Plugin purchases separately require their
+reviewed Plugin source; Gateway invocation availability grants no Plugin right.
+Every admitted decision attempt freezes its original mapping, rechecks that exact
+reference before forwarding, and records it in the sealed execution receipt.
+Headerless inference establishes no explicit buyer approval. Decision-funding
+records retain the original quote's mapping when a later canonical revision changes.
+`GET /v1/workspaces/{workspace}/plugin-reader` separately authenticates the native
+account, membership, tenant, and configured Plugin issuer for original outcome
+recovery. Canonical retirement or revocation blocks new effects but preserves
+this native read. Native credential or membership revocation still refuses.
+Recovery retains the original private authorization, source, payer, offer, and
+commercial reference; it cannot approve, repay, or start execution.
+
 `reservation_ttl_secs` must cover `forward_timeout_ms` — a reservation
 that expired while its forward still ran would orphan live work, and
 the config check refuses the pairing.

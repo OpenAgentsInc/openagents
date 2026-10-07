@@ -54,6 +54,14 @@ pub fn routes() -> Vec<(&'static str, MethodRouter<Arc<ServeState>>)> {
         ("/v1/session", get(session_status).delete(logout)),
         ("/v1/accounts", post(sign_up)),
         ("/v1/account", get(account_view)),
+        (
+            "/v1/workspaces/{workspace}/commercial/{product}",
+            get(crate::commercial::read),
+        ),
+        (
+            "/v1/workspaces/{workspace}/plugin-reader",
+            get(crate::commercial::reader),
+        ),
         ("/v1/account/access", get(own_access)),
         ("/v1/invitations/accept", post(invitation_accept)),
         (

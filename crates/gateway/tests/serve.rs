@@ -260,6 +260,7 @@ async fn deploy_tuned(
         billing: None,
         funding: None,
         earnings: None,
+        commercial: None,
         skills: None,
         money: None,
         max_body_bytes: 1_048_576,
@@ -2484,6 +2485,7 @@ async fn deploy_money(
         billing: None,
         funding: None,
         earnings: None,
+        commercial: None,
         skills: None,
         money: Some(Money {
             ledger: ledger.clone(),

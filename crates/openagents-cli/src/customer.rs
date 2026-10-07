@@ -53,6 +53,8 @@ pub const USAGE: &str = "usage: openagents customer COMMAND --root DIR [OPTIONS]
         Bind the explicitly named commercial customer, payer, and resource.
   current
         Read stored selection and current server rights, or explicit unavailable state.
+  commercial --product gateway|plugin
+        Read the selected product's current native commercial attribution.
   history
         Read only the selected customer's historical purchase references.
   show --purchase ID
@@ -104,6 +106,7 @@ pub(crate) const EFFECTS: &[Declared] = &[
     Declared::computer("account", Effect::ReadOnly),
     Declared::computer("select", Effect::LocalWrite),
     Declared::computer("current", Effect::ReadOnly),
+    Declared::computer("commercial", Effect::ReadOnly),
     Declared::computer("history", Effect::ReadOnly),
     Declared::computer("show", Effect::ReadOnly),
     Declared::computer("quote", Effect::LocalWrite),
@@ -136,6 +139,7 @@ fn parse(words: &[String]) -> Result<Args, String> {
         "account" => &["root", "origin", "alias"],
         "select" => &["root", "origin", "alias", "account", "workspace", "door"],
         "current" | "history" | "credentials" | "funding-history" => &["root"],
+        "commercial" => &["root", "product"],
         "show" | "invoke" => &["root", "purchase"],
         "quote" => &["root", "purchase", "input"],
         "approve" => &["root", "purchase", "digest"],
@@ -199,6 +203,14 @@ async fn execute(args: &Args) -> Result<(Value, bool), String> {
     let mut store = Store::open(Path::new(required(args, "root")?))?;
     let command = args.positional()[0].as_str();
     let value = match command {
+        "commercial" => {
+            let product = match required(args, "product")? {
+                "gateway" => receipts::purchase::CommercialProduct::Gateway,
+                "plugin" => receipts::purchase::CommercialProduct::Plugin,
+                _ => return Err("Select a supported native commercial product.".into()),
+            };
+            json!({"commercial":store.commercial_selection(product).await?})
+        }
         "import" => {
             store
                 .import_credential(required(args, "alias")?, &secret(required(args, "input")?)?)?;

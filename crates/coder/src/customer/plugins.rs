@@ -22,6 +22,13 @@ pub struct Packet {
     pub profile: String,
     pub limits: Value,
 }
+/// A fresh native read identity from the selected credential and service.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct NativeReader {
+    pub origin: String,
+    pub credential_alias: String,
+    pub identity: receipts::purchase::PluginReadIdentity,
+}
 /// The front quote, exact invoice, and selected wallet are approved together.
 #[derive(Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -40,6 +47,8 @@ pub struct Offer {
     /// Commitment to the original private purchase authorization, never a payer identity.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub recovery_authorization: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub commercial: Option<receipts::purchase::CommercialRef>,
 }
 impl Offer {
     pub fn body(&self, request: &str) -> Vec<u8> {
@@ -67,6 +76,23 @@ impl Offer {
             .try_fold(0u64, |n, p| n.checked_add(p.msat));
         let fee = self.quote.fee_msat.ok_or("Missing signed author fee.")?;
         if url.origin().ascii_serialization() != selected.origin
+            || self.commercial.as_ref().is_some_and(|r| {
+                r.validate().is_err()
+                    || !r.matches_native(
+                        receipts::purchase::CommercialProduct::Plugin,
+                        &selected.context.account,
+                        Some(&selected.context.workspace),
+                    )
+            })
+            || selected.context.commercial.as_ref().is_some_and(|gateway| {
+                self.commercial.as_ref().is_none_or(|r| {
+                    gateway.binding != r.binding
+                        || gateway.revision != r.revision
+                        || gateway.digest != r.digest
+                        || gateway.customer != r.customer
+                        || gateway.workspace != r.workspace
+                })
+            })
             || !url.username().is_empty()
             || url.password().is_some()
             || url.query().is_some()
@@ -206,6 +232,36 @@ fn quote(id: &str, p: &Purchase) -> Quote {
         created_at_ms: p.created_at_ms,
         expires_at_ms: p.offer.expires_at_ms,
     }
+}
+fn validate_approval(
+    approval: &Approval,
+    offer: &Offer,
+    current: &Selection,
+    now: u64,
+) -> Result<()> {
+    if offer.commercial.is_none() {
+        return approval
+            .validate_current(&current.context, &offer.digest(), now)
+            .map_err(str::to_owned);
+    }
+    // A mapped plugin's native membership and signed wallet offer are its
+    // admission. Decision availability remains an independent, honest field.
+    current.context.validate().map_err(str::to_owned)?;
+    let quote = &approval.quote;
+    if quote.context != current.context
+        || quote.request_digest != offer.digest()
+        || quote.expires_at_ms <= quote.created_at_ms
+        || quote.expires_at_ms - quote.created_at_ms > MAX_QUOTE_MS
+        || approval.approved_at_ms < quote.created_at_ms
+        || approval.approved_at_ms > now
+        || now >= quote.expires_at_ms
+    {
+        return Err(
+            "Plugin approval is expired or changes its native customer, mapping, or signed offer."
+                .into(),
+        );
+    }
+    Ok(())
 }
 pub(super) fn check(book: &Book) -> Result<()> {
     if book.plugin_purchases.len() > MAX_PURCHASES {
@@ -424,7 +480,7 @@ impl Store {
             || self.plugin_liability()
             || self.plugin_wallet_liability(&offer.payer)
             || selected != &current
-            || !current.context.can_invoke
+            || !current.context.can_invoke && offer.commercial.is_none()
             || self.book.purchases.values().any(|p| {
                 same_payer(selected, &p.selection)
                     && matches!(p.status, Status::Running | Status::Unknown)
@@ -464,9 +520,21 @@ impl Store {
         payer: &Payer,
         now: u64,
     ) -> Result<View> {
+        self.approve_plugin_reviewed(id, digest, current, payer, None, now)
+    }
+    pub fn approve_plugin_reviewed(
+        &mut self,
+        id: &str,
+        digest: &str,
+        current: &Selection,
+        payer: &Payer,
+        commercial: Option<&receipts::purchase::CommercialRef>,
+        now: u64,
+    ) -> Result<View> {
         let p = self.plugin(id)?;
         let q = quote(id, p);
         if p.phase != Phase::Quoted
+            || p.offer.commercial.as_ref() != commercial
             || q.digest() != digest
             || current != &p.selection
             || payer != &p.offer.payer
@@ -479,8 +547,7 @@ impl Store {
             quote: q,
             approved_at_ms: now,
         };
-        a.validate_current(&current.context, &p.offer.digest(), now)
-            .map_err(str::to_owned)?;
+        validate_approval(&a, &p.offer, current, now)?;
         let mut next = self.book.clone();
         let p = next.plugin_purchases.get_mut(id).unwrap();
         p.approval = Some(a);
@@ -508,8 +575,20 @@ impl Store {
         packet: &Packet,
         now: u64,
     ) -> Result<(Offer, Vec<u8>)> {
+        self.begin_plugin_reviewed(id, current, payer, packet, None, now)
+    }
+    pub fn begin_plugin_reviewed(
+        &mut self,
+        id: &str,
+        current: &Selection,
+        payer: &Payer,
+        packet: &Packet,
+        commercial: Option<&receipts::purchase::CommercialRef>,
+        now: u64,
+    ) -> Result<(Offer, Vec<u8>)> {
         let p = self.plugin(id)?;
         if p.phase != Phase::Approved
+            || p.offer.commercial.as_ref() != commercial
             || current != &p.selection
             || payer != &p.offer.payer
             || packet != &p.offer.packet
@@ -524,11 +603,12 @@ impl Store {
             return Err("Plugin purchase is unapproved, changed, or already attempted; it cannot pay again.".into());
         }
         p.offer.validate(&p.request, current, now)?;
-        p.approval
-            .as_ref()
-            .ok_or("Missing plugin approval.")?
-            .validate_current(&current.context, &p.offer.digest(), now)
-            .map_err(str::to_owned)?;
+        validate_approval(
+            p.approval.as_ref().ok_or("Missing plugin approval.")?,
+            &p.offer,
+            current,
+            now,
+        )?;
         let result = (p.offer.clone(), p.offer.body(&p.request));
         let mut next = self.book.clone();
         next.plugin_purchases.get_mut(id).unwrap().phase = Phase::Paying;
@@ -544,11 +624,20 @@ impl Store {
         id: &str,
         current: &Selection,
     ) -> Result<Option<String>> {
+        self.plugin_invocation_authorization_reviewed(id, current, None)
+    }
+    pub fn plugin_invocation_authorization_reviewed(
+        &self,
+        id: &str,
+        current: &Selection,
+        commercial: Option<&receipts::purchase::CommercialRef>,
+    ) -> Result<Option<String>> {
         let p = self.plugin(id)?;
         if p.phase != Phase::Approved
             || &p.selection != current
             || self.book.selected.as_ref() != Some(current)
-            || !current.context.can_invoke
+            || p.offer.commercial.as_ref() != commercial
+            || !current.context.can_invoke && p.offer.commercial.is_none()
         {
             return Err("Original current customer approval is required before exposing invocation authority.".into());
         }
@@ -665,20 +754,97 @@ impl Store {
         current: &Selection,
         payer: &Payer,
     ) -> Result<(Offer, Vec<u8>, String)> {
+        self.plugin_recovery_reviewed(id, current, payer, None)
+    }
+    pub fn plugin_recovery_reviewed(
+        &self,
+        id: &str,
+        current: &Selection,
+        payer: &Payer,
+        commercial: Option<&receipts::purchase::CommercialRef>,
+    ) -> Result<(Offer, Vec<u8>, String)> {
         let p = self.plugin(id)?;
+        let mapped = p.offer.commercial.is_some();
+        let current_source = match (&p.offer.commercial, commercial) {
+            (None, None) => current.context.can_invoke,
+            (Some(original), Some(current)) => {
+                current.validate().is_ok() && original.source == current.source
+            }
+            _ => false,
+        };
         if !matches!(
             p.phase,
             Phase::Unknown | Phase::Paid | Phase::Completed | Phase::Failed
         ) || !same_customer(current, &p.selection)
-            || !same_identity(&current.context, &p.selection.context)
-            || current.credential_alias != p.selection.credential_alias
-            || !current.context.can_invoke
+            || mapped && current.context.validate().is_err()
+            || !mapped
+                && (!same_identity(&current.context, &p.selection.context)
+                    || current.credential_alias != p.selection.credential_alias)
+            || !current_source
             || self.book.selected.as_ref().is_none_or(|s| {
                 !same_customer(s, current) || s.credential_alias != current.credential_alias
             })
             || payer != &p.offer.payer
         {
             return Err("Recovery needs the original authenticated customer, current rights, and exact resident binding.".into());
+        }
+        // A reviewed rotation may read the original result. It cannot change
+        // the historical principal, alias, offer, or once-only payment fence.
+        Ok((p.offer.clone(), p.offer.body(&p.request), p.recovery_secret.clone().ok_or("This older purchase has no private recovery authorization; retain its receipt for support.")?))
+    }
+    /// Authenticate native reads even after canonical linkage is retired or revoked.
+    pub async fn plugin_native_reader(&self, id: &str) -> Result<NativeReader> {
+        let p = self.plugin(id)?;
+        let source = &p
+            .offer
+            .commercial
+            .as_ref()
+            .ok_or("Legacy recovery needs its original customer rights.")?
+            .source;
+        let selected = self
+            .book
+            .selected
+            .as_ref()
+            .ok_or("Select the original native customer first.")?;
+        let identity = self.client(&selected.origin, &selected.credential_alias)?.account()
+            .plugin_reader(source).await
+            .map_err(|_| "Native Plugin read authentication is unavailable; retain the original liability.")?;
+        Ok(NativeReader {
+            origin: selected.origin.clone(),
+            credential_alias: selected.credential_alias.clone(),
+            identity,
+        })
+    }
+    /// Expose only the original outcome authorization; this cannot approve or pay.
+    pub fn plugin_recovery_native(
+        &self,
+        id: &str,
+        reader: &NativeReader,
+        payer: &Payer,
+    ) -> Result<(Offer, Vec<u8>, String)> {
+        let p = self.plugin(id)?;
+        let original = p
+            .offer
+            .commercial
+            .as_ref()
+            .ok_or("Legacy recovery needs its original customer rights.")?;
+        let selected = self
+            .book
+            .selected
+            .as_ref()
+            .ok_or("Select the original native customer first.")?;
+        if !matches!(
+            p.phase,
+            Phase::Unknown | Phase::Paid | Phase::Completed | Phase::Failed
+        ) || reader.identity.validate().is_err()
+            || reader.identity.source != original.source
+            || reader.identity.tenant != p.selection.context.tenant
+            || reader.origin != p.selection.origin
+            || reader.credential_alias != selected.credential_alias
+            || !same_customer(selected, &p.selection)
+            || payer != &p.offer.payer
+        {
+            return Err("Recovery needs current native read authentication, the original source, and exact resident binding.".into());
         }
         Ok((p.offer.clone(), p.offer.body(&p.request), p.recovery_secret.clone().ok_or("This older purchase has no private recovery authorization; retain its receipt for support.")?))
     }

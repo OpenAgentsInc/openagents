@@ -104,6 +104,14 @@ NAME`, then use `select --origin URL --alias NAME --account ID --workspace ID
 --door NAME`. `current` reads fresh rights or reports an unavailable connection;
 `history` and `show --purchase ID` retain the selected customer's original records.
 
+`commercial --product gateway|plugin` reads the operator-reviewed binding for
+the selected native account and workspace. The returned canonical customer can
+differ from the native payer. It imports no other product records, balances, or
+spending rights. Quotes retain the original binding revision; a changed mapping
+requires renewed selection and approval. Plugin purchases separately pin their
+Plugin source before approval and payment. An absent mapping establishes no
+cross-product identity.
+
 `quote --purchase ID --input FILE` freezes the exact private decision request,
 payer, price, and charge ceiling. Review the emitted quote, approve its exact
 `quote_digest` with `approve --purchase ID --digest DIGEST`, then use `invoke

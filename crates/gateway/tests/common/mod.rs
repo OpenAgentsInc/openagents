@@ -505,6 +505,7 @@ pub async fn deploy(manifest: Manifest, endpoint: &str) -> Deployment {
         billing: None,
         funding: None,
         earnings: None,
+        commercial: None,
         skills: None,
         money: None,
         max_body_bytes: 1_048_576,

@@ -94,6 +94,7 @@ fn context(account: &str, workspace: &str, key: &str) -> Value {
             maximum_charge: 100,
         },
         can_invoke: true,
+        commercial: None,
     })
     .unwrap()
 }

@@ -161,6 +161,10 @@ pub struct ExecutionReceipt {
     /// upgrades a missing workspace into a guessed one.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub workspace: Option<String>,
+    /// The original operator-reviewed native mapping admitted for this attempt.
+    /// This records attribution and establishes no purchase approval or grant.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub commercial: Option<crate::purchase::CommercialRef>,
     /// The registry revision the call was admitted under — digest and
     /// sequence, so which binding authorized the call is a lookup.
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -295,6 +299,7 @@ impl ExecutionReceipt {
             transport: transport.into(),
             tenant: None,
             workspace: None,
+            commercial: None,
             registry: None,
             requested: Served::default(),
             served: Served::default(),
@@ -372,6 +377,15 @@ impl ExecutionReceipt {
         if self.attempt_id.is_empty() {
             return Err(ReceiptError::Missing("attempt identity"));
         }
+        if self.commercial.as_ref().is_some_and(|reference| {
+            reference.validate().is_err()
+                || reference.source.workspace.is_some()
+                    && reference.source.workspace != self.workspace
+        }) {
+            return Err(ReceiptError::Malformed(
+                "Invalid native commercial attribution.".into(),
+            ));
+        }
         Ok(())
     }
 }
@@ -432,6 +446,39 @@ mod tests {
 
     fn digest_of(byte: char) -> String {
         format!("sha256:{}", byte.to_string().repeat(64))
+    }
+
+    #[test]
+    fn commercial_attribution_is_optional_native_bound_and_sealed() {
+        use crate::purchase::{CommercialProduct, CommercialRef, CommercialSource};
+        let mut receipt = answered();
+        let legacy = receipt.to_json();
+        assert!(!legacy.contains("commercial"));
+        assert_eq!(
+            ExecutionReceipt::parse(&legacy).unwrap().digest,
+            receipt.digest
+        );
+        receipt.workspace = Some("native-workspace".into());
+        receipt.commercial = Some(CommercialRef {
+            binding: "reviewed-customer".into(),
+            revision: 1,
+            digest: digest_of('e'),
+            customer: "canonical-customer".into(),
+            workspace: "canonical-workspace".into(),
+            source: CommercialSource {
+                product: CommercialProduct::Gateway,
+                issuer: "native-issuer".into(),
+                account: "native-customer".into(),
+                workspace: Some("native-workspace".into()),
+            },
+        });
+        receipt.seal();
+        ExecutionReceipt::parse(&receipt.to_json()).unwrap();
+        receipt.commercial.as_mut().unwrap().revision += 1;
+        assert!(matches!(receipt.verify(), Err(ReceiptError::Tampered)));
+        receipt.commercial.as_mut().unwrap().source.workspace = Some("foreign-workspace".into());
+        receipt.seal();
+        assert!(matches!(receipt.verify(), Err(ReceiptError::Malformed(_))));
     }
 
     /// A receipt the way an HTTP gateway writes one for an answered call.

@@ -35,6 +35,7 @@ fn context(account: &str, workspace: &str, key: &str) -> Context {
             maximum_charge: 100,
         },
         can_invoke: true,
+        commercial: None,
     }
 }
 fn hash(c: char) -> String {

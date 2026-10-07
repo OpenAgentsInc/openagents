@@ -175,6 +175,9 @@ pub struct Config {
     /// token is not a credential the service knows.
     #[serde(default)]
     pub accounts: Option<Accounts>,
+    /// Explicit canonical attribution and current native source authorization.
+    #[serde(default)]
+    pub commercial: Option<Commercial>,
     /// Plans, checkout, subscriptions, and provider events — the
     /// billing surface. Absent means the gateway mounts no billing
     /// routes and no plan gates a door: workspaces call exactly as
@@ -193,6 +196,56 @@ pub struct Config {
     /// existing settlement ledger. Requires accounts; absent mounts no routes.
     #[serde(default)]
     pub earnings: Option<Earnings>,
+}
+
+#[derive(Clone, Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct Commercial {
+    pub canonical_directory: PathBuf,
+    pub issuer: String,
+    pub native: commercial_accounts::Config,
+}
+impl Commercial {
+    fn check(&self, registry: &Path) -> Result<(), String> {
+        use std::os::unix::fs::MetadataExt;
+        if !self.canonical_directory.is_absolute()
+            || !self.native.policy.is_absolute()
+            || self.issuer.is_empty()
+            || self.issuer.len() > 128
+            || !self
+                .issuer
+                .bytes()
+                .all(|b| b.is_ascii_alphanumeric() || b"-_.:/".contains(&b))
+        {
+            return Err(
+                "Commercial attribution requires explicit operator paths and issuer.".into(),
+            );
+        }
+        let selected = self
+            .native
+            .stores
+            .iter()
+            .find_map(|store| match store {
+                commercial_accounts::NativeStore::Tenancy { issuer, directory }
+                    if issuer == &self.issuer =>
+                {
+                    Some(directory)
+                }
+                _ => None,
+            })
+            .ok_or("Commercial issuer requires this gateway's native tenancy store.")?;
+        let expected =
+            std::fs::metadata(registry).map_err(|_| "Native gateway registry unavailable.")?;
+        let actual =
+            std::fs::metadata(selected).map_err(|_| "Commercial native registry unavailable.")?;
+        if !selected.is_absolute()
+            || expected.dev() != actual.dev()
+            || expected.ino() != actual.ino()
+        {
+            return Err("Commercial issuer does not bind this gateway's native registry.".into());
+        }
+        Ok(())
+    }
 }
 
 /// Operator-declared access to an existing payee. Public flow visibility and
@@ -470,6 +523,14 @@ impl Config {
 
     /// The checks [`Config::load`] runs.
     pub fn check(&self, name: &Path) -> Result<(), String> {
+        if let Some(commercial) = &self.commercial {
+            if self.accounts.is_none() || !self.require_workspace_membership {
+                return Err(
+                    "Commercial attribution requires account and workspace admission.".into(),
+                );
+            }
+            commercial.check(&self.registry)?;
+        }
         if self.v != SCHEMA {
             return Err(format!(
                 "{}: schema `{}` is not `{SCHEMA}`",

@@ -44,6 +44,18 @@ purchase needs separate authorization; these isolated checks authorize no
 payment, refund, deployment, or public offer. The remaining commercial gates
 must pass before launch.
 
+## Commercial mapping activation O1 (REV-19, #10826)
+
+Review the explicit native product sources, canonical customer and workspace,
+protected operator policy, and independent current owner and member approvals.
+Qualify the selected installed customer's Gateway and Plugin references on the
+intended deployment. Check rotation, team conversion, revocation, and recovery
+against the original quote, payment, execution receipt, and native payer.
+Keep credentials and qualification evidence private. Mapping grants no access,
+shared balance, spending, or payout right; activate each product's funding and
+offer separately. Isolated fixtures establish no customer consent or funded
+commercial use.
+
 ## Swimming in Everglade on a phone (#10775)
 
 Everglade's ponds and Glade Run (`docs/verse/water.md`, W3) were tested in

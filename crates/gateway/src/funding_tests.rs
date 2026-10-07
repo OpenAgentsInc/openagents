@@ -147,6 +147,79 @@ fn fixture() -> (tempfile::TempDir, Config, Ledger, Store, Wallet) {
     (root, config, ledger, store, Wallet::new(now))
 }
 #[test]
+fn mapped_funding_retains_original_reference_after_canonical_conversion() {
+    use receipts::purchase::{CommercialProduct, CommercialRef, CommercialSource};
+    let (_root, cfg, mut ledger, mut store, wallet) = fixture();
+    let mut original = context();
+    original.commercial = Some(CommercialRef {
+        binding: "reviewed-customer".into(),
+        revision: 1,
+        digest: format!("sha256:{}", "e".repeat(64)),
+        customer: "canonical-customer".into(),
+        workspace: "canonical-personal".into(),
+        source: CommercialSource {
+            product: CommercialProduct::Gateway,
+            issuer: "native-gateway".into(),
+            account: original.account.clone(),
+            workspace: Some(original.workspace.clone()),
+        },
+    });
+    let quoted = store
+        .quote(&cfg, &ledger, &original, "mapped", 200_000, wallet.now)
+        .unwrap();
+    let mut converted = original.clone();
+    let reference = converted.commercial.as_mut().unwrap();
+    reference.revision = 2;
+    reference.digest = format!("sha256:{}", "f".repeat(64));
+    reference.workspace = "canonical-team".into();
+    assert_eq!(store.read("mapped", &converted).unwrap(), quoted);
+    assert!(
+        store
+            .issue(
+                &mut ledger,
+                &wallet,
+                &converted,
+                "mapped",
+                &quoted.quote.digest(),
+                wallet.now
+            )
+            .is_err()
+    );
+    assert_eq!(wallet.calls.get(), 0);
+    store
+        .issue(
+            &mut ledger,
+            &wallet,
+            &original,
+            "mapped",
+            &quoted.quote.digest(),
+            wallet.now,
+        )
+        .unwrap();
+    {
+        let mut observations = wallet.payments.borrow_mut();
+        let observation = observations.as_mut().unwrap();
+        observation.status = PaymentStatus::Succeeded;
+        observation.bolt11 = None;
+    }
+    let funded = store
+        .reconcile(&mut ledger, &wallet, &converted, "mapped", wallet.now)
+        .unwrap();
+    assert_eq!(funded.phase, Phase::Funded);
+    assert_eq!(funded.quote, quoted.quote);
+    assert_eq!(funded.quote.context.commercial, original.commercial);
+    assert_eq!(ledger.balance("workspace").unwrap().credited, 2);
+    drop(store);
+    let mut store = Store::open(&cfg.state).unwrap();
+    assert_eq!(store.read("mapped", &converted).unwrap(), funded);
+    store
+        .reconcile(&mut ledger, &wallet, &converted, "mapped", wallet.now)
+        .unwrap();
+    assert_eq!(ledger.balance("workspace").unwrap().credited, 2);
+    assert_eq!(wallet.calls.get(), 1);
+}
+
+#[test]
 fn short_confirmed_collection_cannot_credit_the_invoice_amount() {
     let (_root, cfg, mut ledger, mut store, wallet) = fixture();
     let context = context();

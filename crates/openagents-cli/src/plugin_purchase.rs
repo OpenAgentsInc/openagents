@@ -300,9 +300,11 @@ fn execute(a: &Args) -> Result<View, String> {
     if command == "cancel" {
         return store.cancel_plugin(id);
     }
-    let current = crate::runtime().block_on(store.current_selection())?;
     let transport = Http::new()?;
     if command == "quote" {
+        let current = crate::runtime().block_on(store.current_selection())?;
+        let commercial = crate::runtime()
+            .block_on(store.commercial_selection(receipts::purchase::CommercialProduct::Plugin))?;
         let plugin = required(a, "plugin")?;
         let request = String::from_utf8(Store::private_input(
             Path::new(required(a, "input")?),
@@ -351,6 +353,7 @@ fn execute(a: &Args) -> Result<View, String> {
             request_hash: String::new(),
             expires_at_ms: 0,
             recovery_authorization: None,
+            commercial,
         };
         use std::io::Read;
         let mut random = [0u8; 32];
@@ -426,12 +429,28 @@ fn execute(a: &Args) -> Result<View, String> {
     }
     let (wallet, payer) = resident(&view.offer.payer.home)?;
     if command == "recover" {
+        if view.offer.commercial.is_some() {
+            let reader = crate::runtime().block_on(store.plugin_native_reader(id))?;
+            return recover_native(
+                &mut store,
+                id,
+                &reader,
+                &payer,
+                &wallet,
+                &transport,
+                &crate::x402::open_ledger(),
+                now(),
+            );
+        }
         let current = crate::runtime().block_on(store.current_selection())?;
-        return recover(
+        let commercial = crate::runtime()
+            .block_on(store.commercial_selection(receipts::purchase::CommercialProduct::Plugin))?;
+        return recover_reviewed(
             &mut store,
             id,
             &current,
             &payer,
+            commercial.as_ref(),
             &wallet,
             &transport,
             &crate::x402::open_ledger(),
@@ -449,19 +468,29 @@ fn execute(a: &Args) -> Result<View, String> {
     // Registry and quote reads can take time; recheck account rights after
     // those reads and before approving or starting the wallet dispatch.
     let current = crate::runtime().block_on(store.current_selection())?;
+    let commercial = crate::runtime()
+        .block_on(store.commercial_selection(receipts::purchase::CommercialProduct::Plugin))?;
     if command == "approve" {
-        return store.approve_plugin(id, required(a, "digest")?, &current, &payer, now());
+        return store.approve_plugin_reviewed(
+            id,
+            required(a, "digest")?,
+            &current,
+            &payer,
+            commercial.as_ref(),
+            now(),
+        );
     }
     let policy = crate::x402::load_policy()?;
     let spent = crate::x402::open_ledger()
         .spent_since(openagents_x402::unix_now().saturating_sub(openagents_x402::policy::DAY_SECS))
         .map_err(|e| e.to_string())?;
-    buy(
+    buy_reviewed(
         &mut store,
         id,
         &current,
         &payer,
         &packet,
+        commercial.as_ref(),
         &wallet,
         &transport,
         policy.as_ref(),
@@ -471,7 +500,7 @@ fn execute(a: &Args) -> Result<View, String> {
         now(),
     )
 }
-
+#[cfg(test)]
 fn recover(
     store: &mut Store,
     id: &str,
@@ -482,8 +511,48 @@ fn recover(
     ledger: &Ledger,
     at: u64,
 ) -> Result<View, String> {
+    recover_reviewed(
+        store, id, current, payer, None, wallet, transport, ledger, at,
+    )
+}
+fn recover_reviewed(
+    store: &mut Store,
+    id: &str,
+    current: &Selection,
+    payer: &Payer,
+    commercial: Option<&receipts::purchase::CommercialRef>,
+    wallet: &dyn LightningWallet,
+    transport: &dyn Transport,
+    ledger: &Ledger,
+    at: u64,
+) -> Result<View, String> {
+    let original = store.plugin_recovery_reviewed(id, current, payer, commercial)?;
+    recover_original(store, id, payer, wallet, transport, ledger, at, original)
+}
+fn recover_native(
+    store: &mut Store,
+    id: &str,
+    reader: &coder::customer::plugins::NativeReader,
+    payer: &Payer,
+    wallet: &dyn LightningWallet,
+    transport: &dyn Transport,
+    ledger: &Ledger,
+    at: u64,
+) -> Result<View, String> {
+    let original = store.plugin_recovery_native(id, reader, payer)?;
+    recover_original(store, id, payer, wallet, transport, ledger, at, original)
+}
+fn recover_original(
+    store: &mut Store,
+    id: &str,
+    payer: &Payer,
+    wallet: &dyn LightningWallet,
+    transport: &dyn Transport,
+    ledger: &Ledger,
+    at: u64,
+    (offer, body, secret): (Offer, Vec<u8>, String),
+) -> Result<View, String> {
     use openagents_wallet::{PaymentDirection, PaymentStatus};
-    let (offer, body, secret) = store.plugin_recovery(id, current, payer)?;
     let invoice =
         nostr::x402::decode_invoice(offer.invoice()).map_err(|_| "Retained invoice is invalid.")?;
     let hash = invoice
@@ -557,12 +626,32 @@ fn recover(
     )?;
     Ok(view)
 }
+#[cfg(test)]
 fn buy(
     store: &mut Store,
     id: &str,
     current: &Selection,
     payer: &Payer,
     packet: &Packet,
+    wallet: &dyn LightningWallet,
+    transport: &dyn Transport,
+    policy: Option<&Policy>,
+    spent: u64,
+    ledger: &Ledger,
+    wait: u64,
+    at: u64,
+) -> Result<View, String> {
+    buy_reviewed(
+        store, id, current, payer, packet, None, wallet, transport, policy, spent, ledger, wait, at,
+    )
+}
+fn buy_reviewed(
+    store: &mut Store,
+    id: &str,
+    current: &Selection,
+    payer: &Payer,
+    packet: &Packet,
+    commercial: Option<&receipts::purchase::CommercialRef>,
     wallet: &dyn LightningWallet,
     transport: &dyn Transport,
     policy: Option<&Policy>,
@@ -594,8 +683,8 @@ fn buy(
     if wallet.node_id() != payer.node {
         return Err("The approved payer node changed; no payment was dispatched.".into());
     }
-    let authorization = store.plugin_invocation_authorization(id, current)?;
-    let (offer, body) = store.begin_plugin(id, current, payer, packet, at)?;
+    let authorization = store.plugin_invocation_authorization_reviewed(id, current, commercial)?;
+    let (offer, body) = store.begin_plugin_reviewed(id, current, payer, packet, commercial, at)?;
     let proof = match wallet.pay_from_node(
         &payer.node,
         offer.invoice(),

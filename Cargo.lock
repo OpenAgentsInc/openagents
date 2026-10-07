@@ -5595,6 +5595,7 @@ name = "gateway"
 version = "0.1.0"
 dependencies = [
  "axum 0.8.9",
+ "commercial-accounts",
  "discovery",
  "fs2",
  "futures-util",

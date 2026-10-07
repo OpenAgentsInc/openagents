@@ -181,6 +181,86 @@ impl Account<'_> {
         Ok(context)
     }
 
+    /// Authenticate an original native Plugin source for read-only recovery.
+    pub async fn plugin_reader(
+        &self,
+        source: &receipts::purchase::CommercialSource,
+    ) -> Result<receipts::purchase::PluginReadIdentity> {
+        use receipts::purchase::CommercialProduct;
+        if source.product != CommercialProduct::Plugin {
+            return Err(Error::Config(
+                "Plugin recovery requires its original native source.".into(),
+            ));
+        }
+        identifier(&source.account)?;
+        let workspace = source.workspace.as_deref().ok_or_else(|| {
+            Error::Config("Plugin recovery requires its native workspace.".into())
+        })?;
+        identifier(workspace)?;
+        let raw = self
+            .client
+            .request_private(
+                Method::GET,
+                &format!("/v1/workspaces/{workspace}/plugin-reader"),
+                None,
+            )
+            .await?;
+        if raw.bytes.len() > 8192 {
+            return Err(Error::Config(
+                "Native Plugin reader document is too large.".into(),
+            ));
+        }
+        let reader: receipts::purchase::PluginReadIdentity = decode(&raw)?;
+        if reader.validate().is_err() || &reader.source != source {
+            return Err(Error::Config(
+                "Native Plugin recovery source changed.".into(),
+            ));
+        }
+        Ok(reader)
+    }
+
+    /// Read only the operator-reviewed mapping for this exact native selection.
+    pub async fn commercial_selection(
+        &self,
+        account: &str,
+        workspace: &str,
+        product: receipts::purchase::CommercialProduct,
+    ) -> Result<Option<receipts::purchase::CommercialRef>> {
+        identifier(account)?;
+        identifier(workspace)?;
+        let name = match product {
+            receipts::purchase::CommercialProduct::Gateway => "gateway",
+            receipts::purchase::CommercialProduct::Plugin => "plugin",
+            receipts::purchase::CommercialProduct::Retail => {
+                return Err(Error::Config(
+                    "Retail attribution requires its native product adapter.".into(),
+                ));
+            }
+        };
+        let raw = self
+            .client
+            .request_private(
+                Method::GET,
+                &format!("/v1/workspaces/{workspace}/commercial/{name}"),
+                None,
+            )
+            .await?;
+        if raw.bytes.len() > 8192 {
+            return Err(Error::Config(
+                "Commercial projection exceeds its bound.".into(),
+            ));
+        }
+        let reference: Option<receipts::purchase::CommercialRef> = decode(&raw)?;
+        if reference.as_ref().is_some_and(|r| {
+            r.validate().is_err() || !r.matches_native(product, account, Some(workspace))
+        }) {
+            return Err(Error::Config(
+                "Commercial projection changes the selected native identity.".into(),
+            ));
+        }
+        Ok(reference)
+    }
+
     /// Read at most ten activity references under fresh workspace membership.
     pub async fn purchase_activity(
         &self,

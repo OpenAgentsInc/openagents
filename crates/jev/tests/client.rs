@@ -120,6 +120,132 @@ async fn team_calls_pin_account_workspace_and_do_not_retry_or_echo_tokens() -> O
 }
 
 #[tokio::test]
+async fn commercial_projection_pins_native_identity_and_refuses_private_or_foreign_records()
+-> Outcome {
+    use receipts::purchase::CommercialProduct;
+    let reference = json!({"binding":"commercial-a","revision":1,"digest":format!("sha256:{}","a".repeat(64)),
+        "customer":"canonical-a","workspace":"canonical-team","source":{"product":"plugin","issuer":"operator-native","account":"buyer-a","workspace":"native-workspace"}});
+    let mut foreign = reference.clone();
+    foreign["source"]["account"] = json!("buyer-b");
+    let mut private = reference.clone();
+    private["credential_file"] = json!("fixture-private-reference");
+    let (base, seen) = serve(vec![
+        Reply::new(200, &reference.to_string()),
+        Reply::new(200, &foreign.to_string()),
+        Reply::new(200, &private.to_string()),
+        Reply::new(503, r#"{"error":{"message":"fixture-private-reference"}}"#),
+        Reply::new(200, "null"),
+    ])
+    .await?;
+    let sdk = Client::new(
+        Config::new()
+            .base_url(base)
+            .api_key("fixture-key")
+            .retry(eager(3)),
+    )?;
+    let mapped = sdk
+        .account()
+        .commercial_selection("buyer-a", "native-workspace", CommercialProduct::Plugin)
+        .await?
+        .unwrap();
+    assert_eq!(mapped.customer, "canonical-a");
+    assert_eq!(mapped.source.account, "buyer-a");
+    assert!(
+        sdk.account()
+            .commercial_selection("buyer-a", "native-workspace", CommercialProduct::Plugin)
+            .await
+            .is_err()
+    );
+    assert!(
+        sdk.account()
+            .commercial_selection("buyer-a", "native-workspace", CommercialProduct::Plugin)
+            .await
+            .is_err()
+    );
+    let error = sdk
+        .account()
+        .commercial_selection("buyer-a", "native-workspace", CommercialProduct::Plugin)
+        .await
+        .unwrap_err();
+    assert!(!format!("{error:?}").contains("fixture-private-reference"));
+    assert_eq!(seen.lock().await.len(), 4);
+    assert!(
+        sdk.account()
+            .commercial_selection("buyer-a", "native-workspace", CommercialProduct::Retail)
+            .await
+            .is_err()
+    );
+    assert!(
+        sdk.account()
+            .commercial_selection("buyer-a", "../elsewhere", CommercialProduct::Plugin)
+            .await
+            .is_err()
+    );
+    assert_eq!(seen.lock().await.len(), 4);
+    assert!(
+        sdk.account()
+            .commercial_selection("buyer-a", "native-workspace", CommercialProduct::Plugin)
+            .await?
+            .is_none()
+    );
+    assert_eq!(seen.lock().await.len(), 5);
+    Ok(())
+}
+
+#[tokio::test]
+async fn native_plugin_reader_pins_source_and_keeps_private_refusals_out_of_errors() -> Outcome {
+    use receipts::purchase::{CommercialProduct, CommercialSource};
+    let source = CommercialSource {
+        product: CommercialProduct::Plugin,
+        issuer: "native-plugin".into(),
+        account: "buyer-a".into(),
+        workspace: Some("workspace-a".into()),
+    };
+    let reader = json!({"source":source,"tenant":"acme","credential_reference":"key:current","membership_epoch":2,"workspace_members_epoch":3,"role":"member"});
+    let mut foreign = reader.clone();
+    foreign["source"]["issuer"] = json!("other-service");
+    let mut private = reader.clone();
+    private["credential_file"] = json!("private-reader-fixture");
+    let (base, seen) = serve(vec![
+        Reply::new(200, &reader.to_string()),
+        Reply::new(200, &foreign.to_string()),
+        Reply::new(200, &private.to_string()),
+        Reply::new(503, r#"{"error":{"message":"private-reader-fixture"}}"#),
+    ])
+    .await?;
+    let sdk = Client::new(
+        Config::new()
+            .base_url(base)
+            .api_key("fixture-only-key")
+            .retry(eager(3)),
+    )?;
+    assert_eq!(sdk.account().plugin_reader(&source).await?.source, source);
+    assert!(sdk.account().plugin_reader(&source).await.is_err());
+    assert!(sdk.account().plugin_reader(&source).await.is_err());
+    let error = sdk.account().plugin_reader(&source).await.unwrap_err();
+    assert!(!format!("{error:?}").contains("private-reader-fixture"));
+    assert_eq!(seen.lock().await.len(), 4);
+    assert!(
+        seen.lock()
+            .await
+            .iter()
+            .all(|r| r.target == "/v1/workspaces/workspace-a/plugin-reader")
+    );
+    let foreign = CommercialSource {
+        workspace: Some("../elsewhere".into()),
+        ..source.clone()
+    };
+    assert!(sdk.account().plugin_reader(&foreign).await.is_err());
+    let foreign = CommercialSource {
+        product: CommercialProduct::Gateway,
+        ..source
+    };
+    assert!(sdk.account().plugin_reader(&foreign).await.is_err());
+    assert_eq!(seen.lock().await.len(), 4);
+    Ok(())
+}
+
+#[tokio::test]
 async fn decision_funding_never_retries_invoice_creation_or_echoes_private_refusal() -> Outcome {
     let secret = "fixture-private-invoice-only";
     let body = json!({"error":{"code":"funding_unavailable","message":secret}}).to_string();
@@ -2042,6 +2168,7 @@ async fn approved_purchase_preserves_exact_identity_and_never_retries() -> Outco
             maximum_charge: 100,
         },
         can_invoke: true,
+        commercial: None,
     };
     let request = asking().model("decision-a");
     let approval = Approval {

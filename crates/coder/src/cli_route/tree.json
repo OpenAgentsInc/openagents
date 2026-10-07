@@ -7055,6 +7055,40 @@
           }
         },
         {
+          "name": "commercial",
+          "leaf": {
+            "path": [
+              "customer",
+              "commercial"
+            ],
+            "usage": [
+              "commercial --product gateway|plugin"
+            ],
+            "forms": [
+              {
+                "tokens": [
+                  {
+                    "kind": "literal",
+                    "word": "commercial"
+                  },
+                  {
+                    "kind": "option",
+                    "name": "product",
+                    "value": "gateway|plugin",
+                    "choices": [
+                      "gateway",
+                      "plugin"
+                    ]
+                  }
+                ]
+              }
+            ],
+            "summary": "Read the selected product's current native commercial attribution.",
+            "effect": "read_only",
+            "runs_on": "connected_computer"
+          }
+        },
+        {
           "name": "history",
           "leaf": {
             "path": [
@@ -8165,6 +8199,17 @@
           "name": "door",
           "value": "NAME",
           "open": true,
+          "optional": true,
+          "repeated": true
+        },
+        {
+          "kind": "option",
+          "name": "product",
+          "value": "gateway|plugin",
+          "choices": [
+            "gateway",
+            "plugin"
+          ],
           "optional": true,
           "repeated": true
         },

@@ -94,10 +94,17 @@ pub(crate) fn current(
             "The selected reservation price is invalid.",
         )
     })?;
-    let can_invoke = caller
-        .scopes
-        .as_ref()
-        .is_none_or(|scope| scope.permits_model(door) && scope.permits_action("inference"))
+    let commercial = crate::commercial::reference(
+        state,
+        receipts::purchase::CommercialProduct::Gateway,
+        account,
+        workspace,
+    )?;
+    let can_invoke = (state.commercial.is_none() || commercial.is_some())
+        && caller
+            .scopes
+            .as_ref()
+            .is_none_or(|scope| scope.permits_model(door) && scope.permits_action("inference"))
         && state.config.doors.contains_key(door)
         && crate::billing::entitled(state, Some(workspace), door).is_ok();
     let context =
@@ -144,6 +151,7 @@ pub(crate) fn current(
                 maximum_charge,
             },
             can_invoke,
+            commercial,
         };
     context.validate().map_err(|_| {
         refuse(
@@ -177,6 +185,11 @@ pub(crate) async fn read(
     }
 }
 
+#[derive(PartialEq, Eq)]
+pub(crate) struct Checked {
+    pub(crate) approval: Option<String>,
+    pub(crate) commercial: Option<receipts::purchase::CommercialRef>,
+}
 pub(crate) fn check(
     state: &ServeState,
     headers: &HeaderMap,
@@ -185,11 +198,16 @@ pub(crate) fn check(
     request: &str,
     request_digest: &str,
     attempt: u32,
-) -> Result<Option<String>, &'static str> {
+) -> Result<Checked, &'static str> {
+    // Configured canonical admission applies even without a buyer envelope.
+    let commercial = crate::commercial::admit(state, headers)?;
     let values = headers.get_all(HEADER);
     let mut values = values.iter();
     let Some(value) = values.next() else {
-        return Ok(None);
+        return Ok(Checked {
+            approval: None,
+            commercial,
+        });
     };
     if values.next().is_some() || value.as_bytes().len() > 8192 {
         return Err("Invalid purchase approval header.");
@@ -201,7 +219,8 @@ pub(crate) fn check(
     }
     let context = current(state, headers, door)
         .map_err(|_| "Customer purchase rights are unavailable or changed.")?;
-    if context.registry_digest != admission.registry_digest
+    if context.commercial != commercial
+        || context.registry_digest != admission.registry_digest
         || context.artifact_digest
             != digest_request(
                 &serde_json::to_value(&admission.binding.artifact)
@@ -211,5 +230,8 @@ pub(crate) fn check(
         return Err("The admitted purchase resource changed.");
     }
     approval.validate_current(&context, request_digest, now_ms())?;
-    Ok(Some(approval.digest()))
+    Ok(Checked {
+        approval: Some(approval.digest()),
+        commercial,
+    })
 }
