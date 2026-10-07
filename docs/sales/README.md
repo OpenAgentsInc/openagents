@@ -496,6 +496,45 @@ These records grant no outbound, model/provider, or customer-data disclosure
 authority. O1 confirms real humans, consent, and retention privately; O6
 separately authorizes any real outreach, as recorded in `NEEDS_OWNER.md`.
 
+## Assisted pilot kit
+
+The [scope and review templates](pilot-kit.json) package the manual service
+lane for REV-06. Copy them into a private, mode-0700 pilot directory with
+mode-0600 files; replace required nulls before agreement or review. The proposed
+USD 250 fee, zero subsidy, seven-day review window, and three-hour operator
+cap come from offer v1 and still require O1 approval. Record the exact dates,
+buyer provider budget, existing integrations, named humans, input rights,
+checks, recipients, retention, and separately selected external payment route.
+
+Create or inspect a qualified private lead first, and put its stable ID and
+current revision into the agreement. Freeze each completed agreement's bytes
+and SHA-256, then privately retain owner and buyer acceptance of that exact
+version in a separate acceptance record; the frozen agreement does not contain
+its own digest. An input, recipient, price, scope, or cap change creates a new agreement and new acceptance. Preserve the
+old version under its retention policy. A proposed handoff does not replace
+the pipeline's accepted responsible human. This is a manual service procedure;
+the template does not grant execution, disclosure, or spending authority.
+
+Link the private agreement from the pipeline's `workflow` field and its frozen
+baseline manifest from `baseline_reference`. Use `stage: pilot` and a `next`
+action with the agreed review date. Refer to artifacts by private relative
+path and exact digest rather than copying customer material into field text.
+Build the [REV-03 comparison](evidence.md) from every baseline, failed, repair,
+and retry attempt, including setup, checks, support, actual charges, estimates,
+subscription capacity, and unknown costs. Bind the review to that report digest,
+the exact candidate, independently checked outcomes, and the delivered runbook.
+
+Record one explicit `accept`, `extend`, or `stop` decision with the named buyer's
+reference and date. Retain the completed review privately; use its digest in
+pipeline `customer_decision.reference`, and update with the current revision
+and a fresh stable command ID. Close the finished engagement with no next action.
+An extension requires its own accepted agreement, scope/cap, consent and dated
+review before returning to pilot stage; silence never extends work. Acceptance
+can create a separately invoiced service obligation, but an agreement, product
+funding, invoice, confirmed collection, and earned product usage stay separate.
+Retain stop/partial and uncertain-effect references, and record shared-content
+deletion when due. O1 customer activation remains in `NEEDS_OWNER.md`.
+
 ## Measures
 
 - Weekly active developers, and how many of them pay for anything.

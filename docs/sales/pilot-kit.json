@@ -1,0 +1,249 @@
+{
+  "schema": "openagents.sales.pilot-kit.v1",
+  "mode": "manual_private_service_records",
+  "offer": "openagents.sales.coder-pilot.v1",
+  "instruction": "Copy agreement, separate acceptance, and review privately; fill every required field and explain unavailable optional artifacts. This template grants no permission and runs no workflow.",
+  "agreement": {
+    "schema": "openagents.sales.pilot-agreement.v1",
+    "id": null,
+    "version": null,
+    "supersedes": null,
+    "pipeline_lead": null,
+    "pipeline_revision": null,
+    "customer": {
+      "account": null,
+      "workflow_owner": null,
+      "acceptance_decision_maker": null
+    },
+    "responsibility": {
+      "accepted_delivery_human": null,
+      "ownership_acceptance_reference": null,
+      "support_contact": null,
+      "business_hours": null
+    },
+    "scope": {
+      "task_digest": null,
+      "repository_https": null,
+      "source_commit": null,
+      "input_rights_reference": null,
+      "independent_checker": null,
+      "frozen_check_refs": [],
+      "result_deliverables": [],
+      "existing_integration_refs": [],
+      "baseline_inventory_reference": null,
+      "baseline_manifest_reference": null
+    },
+    "time": {
+      "agreed_at": null,
+      "start_at": null,
+      "review_at": null,
+      "end_at": null,
+      "operator_minutes_cap": 180,
+      "attempt_minutes_cap": 30,
+      "check_minutes_cap": 15,
+      "repair_attempts_cap": 1,
+      "duration_calendar_days_cap": 7
+    },
+    "commercial": {
+      "kind": "service_invoice_after_acceptance",
+      "currency": "USD",
+      "service_fee_minor_units": 25000,
+      "owner_price_approval_reference": null,
+      "invoice_due_calendar_days": 7,
+      "external_payment_route_reference": null,
+      "provider_payer": "buyer",
+      "provider_budget_reference": null,
+      "promotional_credits": 0,
+      "provider_subsidy_minor_units": 0,
+      "product_funding": [],
+      "free_discovery_minutes_cap": 30,
+      "engagement_kind": "capped_assisted_service",
+      "currency_scale": 100
+    },
+    "data": {
+      "jurisdiction": null,
+      "consent_reference": null,
+      "consent_expires_at": null,
+      "recipients": [],
+      "permitted_use": null,
+      "shared_task_delete_at": null,
+      "invoice_consent_retention_reference": null,
+      "local_copy_controller": "buyer",
+      "reuse_permission": "none"
+    },
+    "termination": {
+      "stop_conditions": [
+        "missing supported provider",
+        "revoked disclosure",
+        "unsafe input",
+        "unconfirmed stop",
+        "failed checks after one repair",
+        "any agreed cap reached"
+      ],
+      "extension": "New exact agreement, cap, scope, consent and review date accepted by both parties; no silent rollover."
+    },
+    "unavailable_reasons": {},
+    "offer_version": "openagents.sales.coder-pilot.v1",
+    "client": {
+      "platform": "macos_arm64",
+      "source_commit": null,
+      "installer_reference": "scripts/install-coder.sh",
+      "installed_binaries": [
+        "coder",
+        "openagents"
+      ],
+      "install_qualification_reference": null,
+      "supported_provider_reference": null,
+      "provider_recipients": [],
+      "cloud_fallback": "off"
+    }
+  },
+  "review": {
+    "schema": "openagents.sales.pilot-review.v1",
+    "id": null,
+    "agreement_reference": null,
+    "agreement_sha256": null,
+    "pipeline_lead": null,
+    "expected_pipeline_revision": null,
+    "reviewed_at": null,
+    "evidence": {
+      "task_inventory_reference": null,
+      "sales_evidence_manifest_reference": null,
+      "sales_evidence_report_reference": null,
+      "report_sha256": null,
+      "candidate_sha256": null,
+      "independent_check_review_reference": null,
+      "runbook_reference": null,
+      "all_failed_repair_retry_attempts_included": null,
+      "setup_delivery_support_minutes": null,
+      "cost_unknowns": []
+    },
+    "customer_decision": {
+      "decision": null,
+      "decision_maker": null,
+      "reference": null,
+      "at": null,
+      "accepted_candidate_sha256": null,
+      "accepted_deliverables_reference": null,
+      "extension_new_agreement_reference": null,
+      "extension_new_agreement_sha256": null
+    },
+    "money": {
+      "service_invoice_reference": null,
+      "invoice_amount_minor_units": null,
+      "confirmed_payment_reference": null,
+      "collected_minor_units": null,
+      "accepted_service_fee_minor_units": null,
+      "product_funding_reference": null,
+      "earned_product_usage_reference": null,
+      "refund_agreement_reference": null
+    },
+    "cleanup": {
+      "stop_or_partial_result_reference": null,
+      "uncertain_effects_reference": null,
+      "shared_content_deletion_due_at": null,
+      "deletion_evidence_reference": null,
+      "next_action": null,
+      "next_action_due_at": null
+    },
+    "unavailable_reasons": {}
+  },
+  "manual_rules": [
+    "Null means missing or explicitly unavailable, never zero. Record an explicit unavailable reason for optional artifacts. Do not start with missing human, input rights, consent, cap, budget, agreed scope or dated review.",
+    "The defaults are proposed offer v1, not owner approval or customer acceptance. Other products require a separate admitted quote, payer, authority and receipt.",
+    "Freeze the exact agreement bytes, then record buyer and owner acceptance of that digest in a separate acceptance record before work. The agreement never contains its own digest. Any input, recipient, price, scope or cap change requires a new agreement version and new acceptance, even within the earlier cap.",
+    "Keep immutable prior agreements and reviews under agreed retention. Use root-relative paths plus SHA-256 for evidence. Never overwrite an accepted version or claim a digest proves the human decision.",
+    "A review decision is exactly accept, extend or stop. Accept requires the independent checks and buyer acceptance of the exact candidate and runbook. Extend requires a newly accepted agreement and budget, and does not accept or invoice the old result.",
+    "Agreement, funding, invoice, confirmed payment, service acceptance and earned product usage are distinct records. Null unknown amounts do not become free work or collected revenue.",
+    "Record uncertain effects before any new attempt. Stop and retain partial results when permission, cap or safety fails; do not replay uncertain writes.",
+    "These are manual service templates, not an enforced agent or billing state machine. Pipeline permissions and conditional revisions still apply.",
+    "Times are UTC Unix seconds; cash uses integer minor units and the declared currency scale. Source commit is 40 hexadecimal characters. Freeze 1\u20138 bounded checks, at most 16 KiB of task text, one repository/change and the supported client/provider from offer v1.",
+    "A free-discovery record has no service invoice or earned fee. An assisted service earns no fee until exact-result acceptance. Any product purchase/funding uses its own admitted contract and evidence; this kit does not activate it."
+  ],
+  "agreement_acceptance": {
+    "schema": "openagents.sales.pilot-agreement-acceptance.v1",
+    "agreement_reference": null,
+    "exact_agreement_sha256": null,
+    "owner_reference": null,
+    "buyer_reference": null,
+    "accepted_at": null
+  },
+  "required_before_start": [
+    "agreement.id",
+    "agreement.version",
+    "agreement.offer_version",
+    "agreement.pipeline_lead",
+    "agreement.pipeline_revision",
+    "agreement.customer.account",
+    "agreement.customer.workflow_owner",
+    "agreement.customer.acceptance_decision_maker",
+    "agreement.responsibility.accepted_delivery_human",
+    "agreement.responsibility.ownership_acceptance_reference",
+    "agreement.responsibility.support_contact",
+    "agreement.responsibility.business_hours",
+    "agreement.scope.task_digest",
+    "agreement.scope.repository_https",
+    "agreement.scope.source_commit",
+    "agreement.scope.input_rights_reference",
+    "agreement.scope.independent_checker",
+    "agreement.scope.frozen_check_refs",
+    "agreement.scope.result_deliverables",
+    "agreement.scope.existing_integration_refs",
+    "agreement.scope.baseline_inventory_reference",
+    "agreement.scope.baseline_manifest_reference",
+    "agreement.time.agreed_at",
+    "agreement.time.start_at",
+    "agreement.time.review_at",
+    "agreement.time.end_at",
+    "agreement.commercial.owner_price_approval_reference",
+    "agreement.commercial.external_payment_route_reference",
+    "agreement.commercial.provider_budget_reference",
+    "agreement.data.jurisdiction",
+    "agreement.data.consent_reference",
+    "agreement.data.consent_expires_at",
+    "agreement.data.recipients",
+    "agreement.data.permitted_use",
+    "agreement.data.shared_task_delete_at",
+    "agreement.data.invoice_consent_retention_reference",
+    "agreement.client.source_commit",
+    "agreement.client.install_qualification_reference",
+    "agreement.client.supported_provider_reference",
+    "agreement.client.provider_recipients",
+    "agreement_acceptance.agreement_reference",
+    "agreement_acceptance.exact_agreement_sha256",
+    "agreement_acceptance.owner_reference",
+    "agreement_acceptance.buyer_reference",
+    "agreement_acceptance.accepted_at"
+  ],
+  "review_decision_requirements": {
+    "all": [
+      "agreement_reference",
+      "agreement_sha256",
+      "pipeline_lead",
+      "expected_pipeline_revision",
+      "reviewed_at",
+      "customer_decision.decision",
+      "customer_decision.decision_maker",
+      "customer_decision.reference",
+      "customer_decision.at"
+    ],
+    "accept": [
+      "evidence.report_sha256",
+      "evidence.candidate_sha256",
+      "evidence.independent_check_review_reference",
+      "evidence.runbook_reference",
+      "evidence.all_failed_repair_retry_attempts_included",
+      "customer_decision.accepted_candidate_sha256",
+      "customer_decision.accepted_deliverables_reference"
+    ],
+    "extend": [
+      "customer_decision.extension_new_agreement_reference",
+      "customer_decision.extension_new_agreement_sha256",
+      "Separately retained buyer and owner acceptance of new exact agreement, caps, consent and review date before work."
+    ],
+    "stop": [
+      "cleanup.stop_or_partial_result_reference",
+      "Explicit uncertain-effect state, including none; no automatic replay."
+    ]
+  }
+}

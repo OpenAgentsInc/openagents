@@ -92,6 +92,18 @@ ownership. Scratch fixtures establish persistence and authorization, not
 customer permission. The CLI does not activate messaging; O6 still separately
 authorizes real outbound. Keep customer content and credentials out of git.
 
+## Assisted pilot agreement O1 (REV-06, #10813)
+
+Before using the [pilot kit](docs/sales/README.md#assisted-pilot-kit), approve
+its exact offer version, client/install qualification, named buyer and delivery
+humans, input/disclosure rights, independent checks, price and provider budget,
+external payment route, review date, and retention privately. Freeze the
+agreement and retain separate buyer/owner acceptance of its digest. Confirm
+actual results and acceptance before invoicing; qualify each extension with a
+new accepted agreement. Record shared-content deletion when due. Synthetic
+private-record walkthroughs establish field mapping, not customer consent,
+real delivery, payment, install qualification, or automatic cap enforcement.
+
 ## Pilot evidence O1/O8 (REV-03, #10810)
 
 Before using [pilot comparison evidence](docs/sales/evidence.md) in a sales
