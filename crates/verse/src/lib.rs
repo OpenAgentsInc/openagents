@@ -37,6 +37,7 @@ pub use verse_gfx::gpu_lifecycle;
 pub mod grid_engine;
 pub mod grid_frame;
 pub mod grid_pack;
+pub mod grid_robot;
 #[cfg(not(target_arch = "wasm32"))]
 pub use verse_gym::gym;
 #[cfg(not(target_arch = "wasm32"))]

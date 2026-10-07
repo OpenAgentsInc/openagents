@@ -128,6 +128,8 @@ pub struct WorldRuntime {
     /// A published trace's ghost in the Grid's Gym, where the results
     /// panel's replay puts it; drawn only in the bare world.
     pub trace_ghost: Option<Vec3>,
+    /// Seconds the Grid robot has patrolled ([`crate::grid_robot::pose`]).
+    robot_clock: f64,
 }
 
 impl Default for WorldRuntime {
@@ -161,6 +163,7 @@ impl WorldRuntime {
             ball: None,
             avatars: Vec::new(),
             trace_ghost: None,
+            robot_clock: 0.0,
         }
     }
 
@@ -236,7 +239,15 @@ impl WorldRuntime {
         {
             ball.advance_unoccupied(dt);
         }
+        self.robot_clock += f64::from(dt);
         dt
+    }
+
+    /// The Grid robot's pose on its patrol in the bare world's plaza; none
+    /// elsewhere.
+    #[must_use]
+    pub fn robot(&self) -> Option<crate::grid_robot::Pose> {
+        (self.bare && self.is_plaza()).then(|| crate::grid_robot::pose(self.robot_clock))
     }
 
     /// The bare world's ball; other worlds have none.
@@ -436,6 +447,12 @@ impl WorldRuntime {
         if self.is_plaza() && !self.avatars.is_empty() {
             self.player
                 .separate(&self.avatars, &self.world.blockers, self.zone_half());
+        }
+        self.robot_clock += f64::from(dt);
+        // Nobody walks through the Grid robot.
+        if let Some(robot) = self.robot() {
+            self.player
+                .separate(&[robot.pos], &self.world.blockers, self.zone_half());
         }
         // The ball waits on the Grid while the player visits a zone.
         if self.is_plaza()

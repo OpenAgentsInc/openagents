@@ -1,5 +1,5 @@
 //! The Grid as an engine content pack: the ground lattice, the Gym, the
-//! portal arches, and the line-figure avatar, compiled once from the same
+//! portal arches, the line-figure avatar, and the Grid robot, compiled once from the same
 //! generators the legacy line pass draws from and pinned under
 //! `assets/verse/grid/`. The engine renderer draws the pack through
 //! [`verse_engine::render_world::RenderWorld`]; nothing here reaches
@@ -189,6 +189,15 @@ pub fn compile(dir: &Path) -> Result<Pack, String> {
     spade.neutralize();
     pack.models
         .insert(SPADE.into(), mesh_model(SPADE, &spade, white, 2.0));
+    for (name, variant) in [
+        (crate::grid_robot::ROBOT, "lod0"),
+        (crate::grid_robot::ROBOT_FAR, "lod1"),
+    ] {
+        pack.models.insert(
+            name.into(),
+            crate::grid_robot::model(dir, white, variant, name)?,
+        );
+    }
     for model in [FLOOR, GYM, BOARDS] {
         pack.placements.push(Placement {
             model: model.into(),
@@ -302,6 +311,7 @@ fn admit(pack: &mut Pack, dir: &Path) -> Result<(), String> {
     let project = inventory::id("verse:source:project")?;
     let (revision, bytes) = inventory::bundle(&[
         include_bytes!("grid_pack.rs"),
+        include_bytes!("grid_robot.rs"),
         include_bytes!("world.rs"),
         include_bytes!("../../verse-core/src/world.rs"),
         include_bytes!("../../verse-core/src/avatar.rs"),
@@ -322,6 +332,17 @@ fn admit(pack: &mut Pack, dir: &Path) -> Result<(), String> {
         revision.clone(),
         bytes,
     )?];
+    // The Grid robot's admitted glTF sources and the clips it plays.
+    let robot = inventory::id("verse:source:grid-robot")?;
+    let (digest, size) = crate::grid_robot::sources()?;
+    assets.push(inventory::source(
+        robot.as_str(),
+        "OpenAgents; rig and clips by Quaternius",
+        License::Cc0,
+        "gltf",
+        digest,
+        size,
+    )?);
     let mut texture_ids = BTreeMap::new();
     for (slot, texture) in pack.textures.iter().enumerate() {
         let id = inventory::id(&format!("verse:texture:grid/{slot}"))?;
@@ -338,6 +359,9 @@ fn admit(pack: &mut Pack, dir: &Path) -> Result<(), String> {
     }
     for (name, model) in &pack.models {
         let mut dependencies = vec![project.clone()];
+        if name.starts_with("grid/robot") {
+            dependencies.push(robot.clone());
+        }
         for slot in model.surfaces.iter().flat_map(|s| s.texture_slots()) {
             if !dependencies.contains(&texture_ids[&slot]) {
                 dependencies.push(texture_ids[&slot].clone());
@@ -687,6 +711,8 @@ mod tests {
             FIGURE,
             BOARDS,
             SPADE,
+            crate::grid_robot::ROBOT,
+            crate::grid_robot::ROBOT_FAR,
         ] {
             assert!(pack.models.contains_key(name), "{name}");
         }

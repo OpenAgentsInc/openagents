@@ -1,0 +1,44 @@
+{
+  "schema": "openagents.verse.character-sources.v1",
+  "creator": "OpenAgents",
+  "license": "CC0-1.0",
+  "package": "The Grid robot (original), on the Universal rig",
+  "files": {
+    "PROVENANCE.md": "6a88681f3052249ef3343679c5811ec2f51a966b28935f1182cd516ae07113f0",
+    "grid-robot.lod0.bin": "652d86056bbfd53872bb5aca4d5a0149ba3a11b4fbe3d1641fd9ae3ba90a6264",
+    "grid-robot.lod0.gltf": "fbc9a9fb6f67e56d85f0574d8d7a69318f4647152417f0365bf8693ba030d1e9",
+    "grid-robot.lod1.bin": "34120ed7a259b6bb6285a0787035e2aba75c3c7c1aeaeaa3a2fea8aa023a81ef",
+    "grid-robot.lod1.gltf": "385a81bf4fa60b3d86ed1c90e6456d6cb6d6341563d83eac45337cfb560f9b28",
+    "license.txt": "cbc2c4d12a25b78ddc1060d21a592f8c67ce0bdd60bf2b64144d7883c5573619"
+  },
+  "variants": [
+    {
+      "variant": "lod0",
+      "triangles": 3120,
+      "budget": 7000,
+      "materials": [
+        "Armor",
+        "Trim",
+        "EmitWhite",
+        "EmitPale"
+      ],
+      "joint_drift_m": 5.490869570135004e-07,
+      "source": "build/grid-robot.lod0.glb",
+      "source_sha256": "343616f4526af87beb8b9300a806485521f862000afd926b38080d9b16cf7fb3"
+    },
+    {
+      "variant": "lod1",
+      "triangles": 1300,
+      "budget": 1500,
+      "materials": [
+        "Armor",
+        "Trim",
+        "EmitWhite",
+        "EmitPale"
+      ],
+      "joint_drift_m": 5.490869570135004e-07,
+      "source": "build/grid-robot.lod1.glb",
+      "source_sha256": "4698b39b33003d781ab3bbbb6864a8b943adc40e3d64f2ec250f7f2cfffc9208"
+    }
+  ]
+}

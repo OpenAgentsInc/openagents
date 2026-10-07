@@ -112,7 +112,7 @@ pub struct Standing {
 /// The Grid's dynamic instances this frame: the arches the runtime stands,
 /// the local player unless the camera is in first person or nobody plays
 /// here, every peer the crowd shows (avatars as figures, agents as spades),
-/// and standing visitors.
+/// standing visitors, and the Grid robot on its patrol.
 #[must_use]
 pub fn dynamic(runtime: &WorldRuntime, crowd: &[Figure], visitors: &[Standing]) -> Vec<Instance> {
     let mut out = grid_pack::gates(runtime);
@@ -142,6 +142,9 @@ pub fn dynamic(runtime: &WorldRuntime, crowd: &[Figure], visitors: &[Standing]) 
             &Gait::default(),
             0.0,
         ));
+    }
+    if let Some(robot) = runtime.robot() {
+        out.push(crate::grid_robot::instance(&robot, runtime.framing().eye));
     }
     out
 }
@@ -267,7 +270,10 @@ mod tests {
             }],
         );
         let figures = &dynamic[arches..];
-        assert_eq!(figures.len(), 4);
+        // The player, the avatar, the agent's spade, the visitor, and the
+        // Grid robot on its patrol.
+        assert_eq!(figures.len(), 5);
+        assert_eq!(figures[4].model.as_str(), crate::grid_robot::ROBOT);
         assert_eq!(figures[0].animation, Selection::Named(State::Idle));
         assert_eq!(figures[1].animation, Selection::Named(State::Walk));
         assert!((figures[1].time - gait.cycle()).abs() < 1e-6);
@@ -275,7 +281,8 @@ mod tests {
         let spectator = WorldRuntime::unoccupied();
         assert_eq!(
             self::dynamic(&spectator, &[], &[]).len(),
-            grid_pack::gates(&spectator).len()
+            grid_pack::gates(&spectator).len() + 1,
+            "a spectator sees the arches and the robot"
         );
     }
 
