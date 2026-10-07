@@ -13,6 +13,7 @@ const LIMITS: Limits = Limits {
     build: 2,
     memory_gib: 8,
     disk_floor_gb: 10,
+    build_disk_gb: 0,
 };
 
 fn broker(root: &Path) -> Broker {

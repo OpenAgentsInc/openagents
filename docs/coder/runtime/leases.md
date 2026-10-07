@@ -90,16 +90,68 @@ openagents lease build -- cargo test -p coder-lease
   (`OPENAGENTS_SLOT_CAP_GB`, `coder.slot_cap_gb`) when its build ends, and
   the pool is trimmed to 64 GiB. When every slot of the repository is in use,
   the build waits for one.
-- **The floor.** Below the free-space floor (10 GB, `OPENAGENTS_SLOT_FREE_GB`,
-  `coder.slot_free_gb`), the build first reclaims idle caches in the slots.
-  If that isn't enough, it refuses, giving the free space and the floor and
-  naming the reclaim command, `openagents background run disk`.
+- **Disk at admission.** A `build` lease is admitted only when the free
+  space on the lease root's volume is at least the floor (10 GB,
+  `OPENAGENTS_SLOT_FREE_GB`, `coder.slot_free_gb`) plus a disk budget for
+  this build and for each build and `disk` lease already held (10 GB a
+  build, `OPENAGENTS_BUILD_DISK_GB`). Short of that, `lease build` first
+  runs class 1 of the disk cleanup on its own, which deletes the slots of
+  ended sessions ([Slots of ended sessions](#slots-of-ended-sessions)) and
+  the build caches of ended tasks with every check the cleanup makes, and
+  looks again. If that isn't enough, it refuses, giving the free space,
+  the space a build needs, and the floor, and naming the reclaim command,
+  `openagents background run disk`.
+- **The slot's floor.** Below the floor, taking a slot also reclaims idle
+  caches in the slots first, and refuses the same way when that isn't
+  enough.
 - **`--keep-target-dir`** keeps a `CARGO_TARGET_DIR` the caller already set
   and takes no slot, for an agent that keeps its own long-lived target
   directory. Without it, the slot replaces the caller's directory.
 - Outside a Git repository, the build takes the lease and no slot. A build
   inside another `build` lease takes neither and keeps the outer lease's
   target directory.
+
+### Slots of ended sessions
+
+When a `build` lease that took a slot ends, `lease build` measures the slot
+and the holder's linked worktree (a checkout whose `.git` is a file; a main
+checkout is shared, so it isn't counted) as allocated blocks, with each
+hard link and each APFS clone family counted once across both. The bytes go
+in the receipt ([Receipts](#receipts)). Then it writes `<slot>.lease.json`
+beside the slot (schema `openagents.lease.slot-use.v1`): the slot, the
+lease root, the lease, the holder's session, the agent process the session
+runs in when one is among the holder's ancestors, and when the lease
+ended.
+
+The disk cleanup (`crates/background`, class 1) reads that record. A slot
+whose session has ended is a class 1 candidate at once, with no idle time
+to wait out. A session has ended when no lease in its table names it and
+neither the process its identity names (`codex:4242`, `process:77`) nor its
+recorded agent process still runs. A slot stays out of class 1 while:
+
+- Its session still lives. The slot is then class 2's, which waits for the
+  idle rule.
+- Anything used the slot after the lease ended. Every slot lease writes the
+  slot's lock when it starts, so a lock newer than the record means a
+  later build, such as a Coder task run.
+- A build holds it now. Its lock is held, and the cleanup's in-use checks
+  keep it, as they keep every candidate.
+
+The cleanup checks all of this while it plans and again right before it
+deletes.
+
+## Disk use per session
+
+```sh
+openagents lease du [--json]
+```
+
+`lease du` reads the receipts and reports, for each session, its agent,
+whether it still runs, how many builds it ran, how long it held leases, and
+the disk its builds' folders hold, largest first. A slot or worktree that
+several receipts measured counts once, at its latest measurement, for the
+session that built in it last, so the totals add up to what the folders
+hold. `--json` prints each session with the folders behind its total.
 
 ### Coder's own builds
 
@@ -174,7 +226,7 @@ reads it.
 
 | Resource | Shape | Capacity | Notes |
 | --- | --- | --- | --- |
-| `build` | Counted, slots | `max(1, cores / 8)`: 2 on an 18-core Mac | A lease takes one slot unless `--amount` says more. |
+| `build` | Counted, slots | `max(1, cores / 8)`: 2 on an 18-core Mac | A lease takes one slot unless `--amount` says more, and reserves a disk budget for each. |
 | `memory` | Counted, GiB | 75 percent of physical memory | A lease must declare `--amount`. |
 | `disk` | Counted, GB | The free space above the floor | A lease must declare `--amount`. |
 | `quiet` | Exclusive | One holder | Waits for builds; holds new builds. |
@@ -184,8 +236,10 @@ reads it.
 
 A counted lease is admitted while the amounts held plus its own fit the
 capacity. A `disk` lease is admitted when the free space on the lease
-root's volume is at least the floor, plus the budgets other disk leases
-hold, plus its own budget. Held budgets count in full, even when part of
+root's volume is at least the floor, plus the budgets other disk and build
+leases hold, plus its own budget. A `build` lease also needs its own disk
+budget on top of the floor and the budgets held; the broker calls its
+reclaim hook once before it refuses one for want of disk. Held budgets count in full, even when part of
 them is already written, so the check errs toward waiting.
 
 An amount larger than the capacity is refused at once, because it could
@@ -198,6 +252,7 @@ never be admitted.
 | Build slots | `OPENAGENTS_BUILD_LEASES` | `coder.build_leases` | `max(1, cores / 8)` |
 | Memory budget, GiB | `OPENAGENTS_MEMORY_LEASE_GIB` | None | 75 percent of physical memory |
 | Disk floor, GB | `OPENAGENTS_SLOT_FREE_GB` | `coder.slot_free_gb` | 10 |
+| Disk budget of a build, GB | `OPENAGENTS_BUILD_DISK_GB` | None | 10 |
 | Lease root | `OPENAGENTS_LEASE_ROOT` | None | `~/.openagents/leases` |
 | Default priority | `OPENAGENTS_LEASE_PRIORITY` | None | `normal` |
 | Aging step, minutes | `OPENAGENTS_LEASE_AGING_MINUTES` | None | 20; `0` turns aging off |
@@ -294,6 +349,7 @@ root (schema `openagents.lease.receipt.v1`):
 | `held_whole_run` | Whether the table and the holder lock still named this lease when it ended, so the resource stayed held for the whole run. |
 | `nested` | Whether it passed through an outer lease of the same resource. A nested lease writes no file under `receipts/`. |
 | `exit` | The command's exit code, when it had one. |
+| `disk` | For a `build` lease from `lease build`: `slot` and `slot_bytes`, `worktree` and `worktree_bytes`, and `allocated_bytes`, the two together in allocated blocks with each hard link and APFS clone family counted once. |
 
 `--receipt PATH` writes a copy to PATH.
 
@@ -316,17 +372,23 @@ A table that can't be read is an error, never a reset.
 ## Tests
 
 `cargo test -p coder-lease` covers exclusive and counted admission, the
-disk floor, first-in-first-out waiters, priority order with first in, first
+disk floor, a build that reclaims before it refuses for want of disk,
+receipts' disk use and the per-session totals, slot records and session
+liveness, first-in-first-out waiters, priority order with first in, first
 out within a priority, aging, a queued `quiet` lease that holds builds at
 every priority, a waiter that times out, the quiet rule with a real process
 that is never signaled, the screen grant, receipts, and nesting. `tests/dead_holder.rs` kills a holder and a waiter with
 `SIGKILL` and shows the lease is free on the next request.
 `tests/shim.rs` runs the `cargo` shim with stand-in programs.
 `cargo test -p openagents-cli --test lease` runs the command end to end,
-including `lease build` in a slot, a second build that waits under a count
+including `lease build` in a slot, a build's receipt with its slot and
+linked worktree's bytes and `lease du` over it, a second build that waits under a count
 of one, waiters lined up by `--priority` and `OPENAGENTS_LEASE_PRIORITY`
 in `lease list`, the refusal below the floor, and the shim over the real
-command. In `crates/coder`, the `targets` tests map a task run to `owner`
+command. In `crates/background`, a test shows a slot whose lease ended with its
+session is class 1 at once while a live session's, a reused one, and one
+with no record are not, and that admission's reclaim deletes only that
+slot. In `crates/coder`, the `targets` tests map a task run to `owner`
 and the issue flow's checks to `push`, the issue flow's slot test checks
 the checks' lease, and an adapter test runs `cargo` through the shim inside
 a toolchains boundary.

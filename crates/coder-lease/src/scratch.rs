@@ -332,6 +332,7 @@ mod tests {
                 build: 1,
                 memory_gib: 1,
                 disk_floor_gb: 1,
+                build_disk_gb: 0,
             },
         );
         let mut holder = crate::Holder::detect("cargo");

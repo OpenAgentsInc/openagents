@@ -9,7 +9,7 @@ use std::time::{Duration, Instant};
 use serde::{Deserialize, Serialize};
 
 use crate::table::{Entry, Guard, Priority, State, held_lock, prepare, private_file, write_atomic};
-use crate::{Error, Grant, Holder, Limits, Resource, Shape};
+use crate::{DiskUse, Error, Grant, Holder, Limits, Resource, Shape};
 
 /// The variable a wrapped command reads its lease's identifier from.
 pub const LEASE_ID_VAR: &str = "OPENAGENTS_LEASE_ID";
@@ -18,6 +18,8 @@ pub const LEASE_ID_VAR: &str = "OPENAGENTS_LEASE_ID";
 pub const LEASES_VAR: &str = "OPENAGENTS_LEASES";
 /// The receipt file's schema.
 pub const RECEIPT_SCHEMA: &str = "openagents.lease.receipt.v1";
+/// One gigabyte, as the floor and the disk budgets count it.
+const GB: u64 = 1_000_000_000;
 /// How often a waiting request looks at the table again.
 pub const POLL: Duration = Duration::from_millis(250);
 
@@ -119,6 +121,7 @@ impl Request {
 }
 
 type FreeDisk = Arc<dyn Fn(&Path) -> std::io::Result<u64> + Send + Sync>;
+type Reclaim = Arc<dyn Fn(u64) + Send + Sync>;
 
 /// The broker over one lease root.
 #[derive(Clone)]
@@ -129,6 +132,7 @@ pub struct Broker {
     poll: Duration,
     aging: Option<Duration>,
     free_disk: FreeDisk,
+    reclaim: Option<Reclaim>,
 }
 
 impl std::fmt::Debug for Broker {
@@ -157,6 +161,12 @@ enum Decision {
     Admit,
     Wait(Blocked),
     Refuse(Error),
+    /// A `build` lease that would otherwise be admitted, short of disk:
+    /// `free` bytes are free and it needs `need_gb`.
+    Short {
+        free: u64,
+        need_gb: u64,
+    },
 }
 
 impl Broker {
@@ -191,6 +201,7 @@ impl Broker {
             poll: POLL,
             aging: Some(crate::DEFAULT_AGING),
             free_disk: Arc::new(crate::limits::free_disk),
+            reclaim: None,
         }
     }
 
@@ -222,6 +233,15 @@ impl Broker {
         free_disk: impl Fn(&Path) -> std::io::Result<u64> + Send + Sync + 'static,
     ) -> Broker {
         self.free_disk = Arc::new(free_disk);
+        self
+    }
+
+    /// Calls `reclaim` with the bytes a `build` lease is short of, once,
+    /// before refusing it for want of disk: the caller deletes what it can,
+    /// such as the slots of ended sessions, and the broker looks again.
+    #[must_use]
+    pub fn with_reclaim(mut self, reclaim: impl Fn(u64) + Send + Sync + 'static) -> Broker {
+        self.reclaim = Some(Arc::new(reclaim));
         self
     }
 
@@ -382,6 +402,7 @@ impl Broker {
         };
         let mut told: Option<String> = None;
         let mut first = true;
+        let mut reclaimed = false;
         loop {
             let mut guard = Guard::open(&self.root)?;
             guard.prune();
@@ -413,6 +434,26 @@ impl Broker {
                     drop(guard);
                     lease.discard();
                     return Err(error);
+                }
+                Decision::Short { free, need_gb } => {
+                    // Reclaim once, outside the table lock and keeping this
+                    // request's place, then look again.
+                    if let Some(reclaim) = self.reclaim.as_ref().filter(|_| !reclaimed) {
+                        reclaimed = true;
+                        guard.save()?;
+                        drop(guard);
+                        reclaim(need_gb.saturating_mul(GB).saturating_sub(free));
+                        continue;
+                    }
+                    guard.remove(&id);
+                    guard.save()?;
+                    drop(guard);
+                    lease.discard();
+                    return Err(Error::DiskLow {
+                        free,
+                        need_gb,
+                        floor_gb: self.limits.disk_floor_gb,
+                    });
                 }
                 Decision::Wait(blocked) => {
                     let out_of_time = match request.wait {
@@ -558,6 +599,9 @@ impl Broker {
                 }
                 let used: u64 = held.iter().map(|entry| entry.amount).sum();
                 let unit = resource.unit();
+                // The disk budgets held: every disk lease's amount, and
+                // each build's budget.
+                let reserved = self.reserved_gb(leases, &me.id);
                 if let Some(capacity) = self.limits.capacity(resource) {
                     if used + me.amount > capacity {
                         return wait(
@@ -568,6 +612,20 @@ impl Broker {
                             held,
                         );
                     }
+                    if *resource == Resource::Build {
+                        // A build reserves its own disk budget above the
+                        // floor and the budgets already held.
+                        let free = match (self.free_disk)(&self.root) {
+                            Ok(free) => free,
+                            Err(error) => return Decision::Refuse(error.into()),
+                        };
+                        let need_gb = self.limits.disk_floor_gb
+                            + reserved
+                            + me.amount.saturating_mul(self.limits.build_disk_gb);
+                        if free < need_gb.saturating_mul(GB) {
+                            return Decision::Short { free, need_gb };
+                        }
+                    }
                     return Decision::Admit;
                 }
                 // Disk: the floor, the budgets already held, and this one
@@ -576,12 +634,12 @@ impl Broker {
                     Ok(free) => free,
                     Err(error) => return Decision::Refuse(error.into()),
                 };
-                let need_gb = self.limits.disk_floor_gb + used + me.amount;
-                if free < need_gb.saturating_mul(1_000_000_000) {
+                let need_gb = self.limits.disk_floor_gb + reserved + me.amount;
+                if free < need_gb.saturating_mul(GB) {
                     return wait(
                         format!(
-                            "{} GB is free; this needs {need_gb} GB: the {} GB floor, {used} GB held, and {} GB asked",
-                            free / 1_000_000_000,
+                            "{} GB is free; this needs {need_gb} GB: the {} GB floor, {reserved} GB held, and {} GB asked",
+                            free / GB,
                             self.limits.disk_floor_gb,
                             me.amount
                         ),
@@ -591,6 +649,20 @@ impl Broker {
                 Decision::Admit
             }
         }
+    }
+
+    /// The disk budgets, in GB, the held leases other than `me` reserve:
+    /// each `disk` lease's amount and each `build` lease's budget.
+    fn reserved_gb(&self, leases: &[Entry], me: &str) -> u64 {
+        leases
+            .iter()
+            .filter(|entry| entry.state == State::Held && entry.id != me)
+            .map(|entry| match entry.resource.as_str() {
+                "disk" => entry.amount,
+                "build" => entry.amount.saturating_mul(self.limits.build_disk_gb),
+                _ => 0,
+            })
+            .sum()
     }
 
     /// Grants a resource, replacing any earlier grant of it.
@@ -778,11 +850,24 @@ impl Lease {
     /// # Errors
     /// The table or the receipt can't be written. The lease is released
     /// either way once this process exits.
-    pub fn release(mut self, exit: Option<i32>) -> Result<Receipt, Error> {
-        self.finish(exit)
+    pub fn release(self, exit: Option<i32>) -> Result<Receipt, Error> {
+        self.release_with(exit, None)
     }
 
-    fn finish(&mut self, exit: Option<i32>) -> Result<Receipt, Error> {
+    /// [`Lease::release`], recording in the receipt `disk`, what the
+    /// lease's slot and worktree hold on disk.
+    ///
+    /// # Errors
+    /// As [`Lease::release`].
+    pub fn release_with(
+        mut self,
+        exit: Option<i32>,
+        disk: Option<DiskUse>,
+    ) -> Result<Receipt, Error> {
+        self.finish(exit, disk)
+    }
+
+    fn finish(&mut self, exit: Option<i32>, disk: Option<DiskUse>) -> Result<Receipt, Error> {
         self.released = true;
         let released_at_ms = crate::now_ms();
         let acquired_at_ms = self.entry.acquired_at_ms.unwrap_or(released_at_ms);
@@ -819,6 +904,7 @@ impl Lease {
             held_ms: released_at_ms.saturating_sub(acquired_at_ms),
             held_whole_run: whole,
             exit,
+            disk,
         };
         if !nested {
             receipt.write(
@@ -844,7 +930,7 @@ impl Lease {
 impl Drop for Lease {
     fn drop(&mut self) {
         if !self.released {
-            let _ = self.finish(None);
+            let _ = self.finish(None, None);
         }
     }
 }
@@ -900,6 +986,10 @@ pub struct Receipt {
     /// The wrapped command's exit code, when it had one.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub exit: Option<i32>,
+    /// What the lease's slot and worktree held on disk when it ended:
+    /// recorded for a `build` lease by `openagents lease build`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub disk: Option<DiskUse>,
 }
 
 impl Receipt {

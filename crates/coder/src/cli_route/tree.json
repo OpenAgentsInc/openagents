@@ -5647,6 +5647,31 @@
           }
         },
         {
+          "name": "du",
+          "leaf": {
+            "path": [
+              "lease",
+              "du"
+            ],
+            "usage": [
+              "du"
+            ],
+            "forms": [
+              {
+                "tokens": [
+                  {
+                    "kind": "literal",
+                    "word": "du"
+                  }
+                ]
+              }
+            ],
+            "summary": "Disk use per session, from the build receipts: each session's target slots and worktree as allocated bytes, APFS clones counted once, with its builds and whether it still runs.",
+            "effect": "read_only",
+            "runs_on": "connected_computer"
+          }
+        },
+        {
           "name": "grant",
           "children": [
             {

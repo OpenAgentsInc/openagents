@@ -1442,6 +1442,7 @@ fn ended_sessions_scratch_goes_after_seven_days_and_live_sessions_stay() {
             build: 1,
             memory_gib: 1,
             disk_floor_gb: 1,
+            build_disk_gb: 0,
         },
     );
     let mut holder = coder_lease::Holder::detect("sh");
@@ -1508,4 +1509,104 @@ fn ended_sessions_scratch_goes_after_seven_days_and_live_sessions_stay() {
     drop(lease);
     let found = plan(&env, &rule, true);
     assert!(found.items().any(|item| item.path == leased));
+}
+
+#[test]
+fn a_slot_whose_lease_ended_with_its_session_is_class_one_at_once() {
+    let home = Home::new();
+    let targets = home.layout.targets();
+    let leases = home.layout.leases();
+    let gone = {
+        let mut child = Command::new("true").spawn().unwrap();
+        let pid = child.id();
+        child.wait().unwrap();
+        pid
+    };
+    // A slot that a `build` lease of `session` took and released just now.
+    let slot = |n: usize, session: Option<&str>, agent_pid: Option<u32>| {
+        let path = targets.join(format!("p-0123456789ab-slot-{n}"));
+        target(&path, 4096);
+        let mut lock = path.as_os_str().to_owned();
+        lock.push(".lock");
+        std::fs::write(PathBuf::from(lock), "[]").unwrap();
+        if let Some(session) = session {
+            coder_lease::SlotUse {
+                schema: coder_lease::SLOT_USE_SCHEMA.into(),
+                slot: path.clone(),
+                lease_root: leases.clone(),
+                lease: format!("lease-{n}"),
+                session: session.into(),
+                agent_pid,
+                released_at_ms: coder_lease::now_ms() + 1,
+            }
+            .write()
+            .unwrap();
+        }
+        path
+    };
+    let ended = slot(0, Some("claude-code:ended"), Some(gone));
+    let live = slot(1, Some("claude-code:live"), Some(std::process::id()));
+    let unrecorded = slot(2, None, None);
+    let reused = slot(3, Some(&format!("codex:{gone}")), None);
+    // Another build took the reused slot after its lease ended.
+    std::thread::sleep(Duration::from_millis(20));
+    let mut lock = reused.as_os_str().to_owned();
+    lock.push(".lock");
+    std::fs::write(PathBuf::from(lock), "[1]").unwrap();
+
+    let facts = home.facts();
+    let volumes = low();
+    let env = env(&home, &facts, &volumes, &Idle);
+    let rule = disk();
+    let found = plan(&env, &rule, true);
+    let class_one: Vec<&crate::plan::Item> = found
+        .items()
+        .filter(|item| item.class == crate::rule::Class::EndedTargets)
+        .collect();
+    assert_eq!(class_one.len(), 1, "{:?}", found.kept);
+    assert_eq!(class_one[0].path, ended);
+    assert!(
+        class_one[0].why.contains("session claude-code:ended ended"),
+        "{}",
+        class_one[0].why
+    );
+    let kept = |path: &Path| {
+        found
+            .kept
+            .iter()
+            .filter(|kept| kept.path == path)
+            .map(|kept| kept.why.clone())
+            .collect::<Vec<_>>()
+    };
+    assert!(
+        kept(&live)
+            .iter()
+            .any(|why| why.ends_with("is still running")),
+        "{:?}",
+        kept(&live)
+    );
+    assert!(
+        kept(&reused).iter().any(|why| why.contains("used again")),
+        "{:?}",
+        kept(&reused)
+    );
+    // Fresh slots without an ended session wait for class 2's idle rule.
+    for path in [&live, &unrecorded, &reused] {
+        assert!(found.items().all(|item| item.path != *path));
+    }
+
+    // Admission's reclaim runs class 1 alone and deletes only that slot.
+    let report = crate::lease_slots::reclaim(&env, GB).unwrap();
+    assert!(!ended.exists());
+    for path in [&live, &unrecorded, &reused] {
+        assert!(path.exists(), "{}", path.display());
+    }
+    let record = report.record.unwrap();
+    assert!(
+        record
+            .actions
+            .iter()
+            .all(|action| action.class == crate::rule::Class::EndedTargets
+                && action.outcome == Outcome::Deleted)
+    );
 }

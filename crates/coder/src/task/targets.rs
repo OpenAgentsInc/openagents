@@ -779,6 +779,7 @@ mod tests {
                 build: 1,
                 memory_gib: 1,
                 disk_floor_gb: 0,
+                build_disk_gb: 0,
             },
         )
         .with_poll(std::time::Duration::from_millis(10));

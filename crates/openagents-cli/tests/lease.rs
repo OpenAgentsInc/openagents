@@ -383,3 +383,89 @@ fn the_cargo_shim_leases_cargo_test_and_passes_cargo_fmt_through() {
         .count();
     assert_eq!(receipts, 1);
 }
+
+/// A build's receipt records what its slot and linked worktree hold, the
+/// slot records its last session, and `lease du` sums use per session.
+#[test]
+fn a_build_receipt_carries_allocated_bytes_and_du_sums_them_per_session() {
+    let dir = tempfile::tempdir().unwrap();
+    let home = dir.path().canonicalize().unwrap();
+    let git = |cwd: &Path, args: &[&str]| {
+        let status = Command::new("git")
+            .args(["-c", "user.name=t", "-c", "user.email=t@example.com"])
+            .args(args)
+            .current_dir(cwd)
+            .env("HOME", &home)
+            .stdout(Stdio::null())
+            .stderr(Stdio::null())
+            .status()
+            .unwrap();
+        assert!(status.success(), "git {args:?}");
+    };
+    let main = home.join("repo");
+    std::fs::create_dir_all(&main).unwrap();
+    git(&main, &["init", "-q"]);
+    std::fs::write(main.join("README"), "hello\n").unwrap();
+    git(&main, &["add", "README"]);
+    git(&main, &["commit", "-q", "-m", "init"]);
+    let linked = home.join("linked");
+    git(&main, &["worktree", "add", "-q", linked.to_str().unwrap()]);
+    std::fs::write(linked.join("notes.txt"), vec![b'x'; 64 * 1024]).unwrap();
+
+    let run = |args: &[&str]| {
+        Command::new(env!("CARGO_BIN_EXE_openagents"))
+            .args(args)
+            .current_dir(&linked)
+            .env_clear()
+            .env("PATH", std::env::var_os("PATH").unwrap_or_default())
+            .env("HOME", &home)
+            .env("OPENAGENTS_LEASE_ROOT", home.join("leases"))
+            .env("OPENAGENTS_SESSION", "du-test")
+            .env("OPENAGENTS_SLOT_FREE_GB", "0")
+            .env("OPENAGENTS_BUILD_DISK_GB", "0")
+            .stdin(Stdio::null())
+            .output()
+            .unwrap()
+    };
+    let output = run(&[
+        "lease",
+        "build",
+        "--json",
+        "--",
+        "sh",
+        "-c",
+        "head -c 200000 /dev/zero > \"$CARGO_TARGET_DIR/out.bin\"",
+    ]);
+    assert!(output.status.success(), "{output:?}");
+    let receipt: Value = serde_json::from_slice(&output.stdout).unwrap();
+    let disk = &receipt["disk"];
+    let slot = disk["slot"].as_str().unwrap();
+    assert!(slot.contains("-slot-0"), "{disk}");
+    assert_eq!(disk["worktree"], linked.display().to_string());
+    assert!(disk["slot_bytes"].as_u64().unwrap() >= 200_000, "{disk}");
+    assert!(
+        disk["worktree_bytes"].as_u64().unwrap() >= 64 * 1024,
+        "{disk}"
+    );
+    assert_eq!(
+        disk["allocated_bytes"].as_u64().unwrap(),
+        disk["slot_bytes"].as_u64().unwrap() + disk["worktree_bytes"].as_u64().unwrap()
+    );
+    let record: Value =
+        serde_json::from_slice(&std::fs::read(format!("{slot}.lease.json")).unwrap()).unwrap();
+    assert_eq!(record["session"], "du-test");
+    assert_eq!(record["lease"], receipt["id"]);
+
+    let output = run(&["lease", "du", "--json"]);
+    assert!(output.status.success(), "{output:?}");
+    let du: Value = serde_json::from_slice(&output.stdout).unwrap();
+    let session = &du["sessions"][0];
+    assert_eq!(session["session"], "du-test");
+    assert_eq!(session["builds"], 1);
+    assert_eq!(session["live"], false);
+    assert_eq!(session["allocated_bytes"], disk["allocated_bytes"]);
+    assert_eq!(du["allocated_bytes"], disk["allocated_bytes"]);
+    let output = run(&["lease", "du"]);
+    let text = String::from_utf8_lossy(&output.stdout);
+    assert!(text.contains("du-test") && text.contains("ended"), "{text}");
+}

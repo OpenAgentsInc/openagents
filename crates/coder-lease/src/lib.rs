@@ -11,14 +11,18 @@
 //!   locked for the whole run. A lease whose holder lock another process can
 //!   take is dead, and the next reader drops it. The kernel releases the lock
 //!   when the holder exits or crashes, so a dead holder never keeps a lease.
-//! - `receipts/<id>.json` records each released lease.
+//! - `receipts/<id>.json` records each released lease, with the disk a
+//!   `build` lease's slot and worktree hold ([`DiskUse`]); [`usage`] sums
+//!   them per session.
 //! - `grants/screen.json` is the owner's grant of the real screen.
 //!
 //! Exclusive resources ([`Shape::Exclusive`]) admit one holder. Counted
 //! ones ([`Shape::Counted`]) admit holders while their amounts fit:
 //! `build` slots (default `max(1, cores / 8)`), a `memory` budget (75
 //! percent of physical memory, in GiB), and `disk` budgets above the
-//! free-space floor. A request that can't be admitted waits in its
+//! free-space floor. A `build` lease also reserves a disk budget above the
+//! floor; when the space isn't there, the broker runs its reclaim hook
+//! ([`Broker::with_reclaim`]) once before it refuses. A request that can't be admitted waits in its
 //! resource's priority queue ([`Priority`]: `owner`, `push`, `normal`, then
 //! `background`, first in, first out within a priority, and one level more
 //! urgent for each aging step it waits), or fails at once under
@@ -47,6 +51,7 @@ mod root;
 pub mod scratch;
 pub mod shim;
 mod table;
+mod usage;
 
 pub use broker::{
     Blocked, Broker, LEASE_ID_VAR, LEASES_VAR, Lease, POLL, Queued, RECEIPT_SCHEMA, Receipt,
@@ -58,12 +63,15 @@ pub use holder::{
     command_name, grant_refusal,
 };
 pub use limits::{
-    AGING_VAR, BUILD_LEASES_VAR, DEFAULT_AGING, DEFAULT_FLOOR_GB, Limits, MEMORY_GIB_VAR, Machine,
-    SLOT_FREE_VAR, aging_from, free_disk,
+    AGING_VAR, BUILD_DISK_VAR, BUILD_LEASES_VAR, DEFAULT_AGING, DEFAULT_BUILD_DISK_GB,
+    DEFAULT_FLOOR_GB, Limits, MEMORY_GIB_VAR, Machine, SLOT_FREE_VAR, aging_from, free_disk,
 };
 pub use resource::{NAMED, Resource, Shape};
 pub use root::{ROOT_VAR, refuse_real_home, root_from, root_from_env};
 pub use table::{Entry, PRIORITY_VAR, Priority, State, TABLE_SCHEMA};
+pub use usage::{
+    DiskUse, PathUse, SLOT_USE_SCHEMA, SessionUsage, SlotUse, process_running, session_live, usage,
+};
 
 use std::fmt;
 
@@ -84,6 +92,16 @@ pub enum Error {
     NoGrant(String),
     /// The request's own entry left the table while it waited.
     Lost(String),
+    /// A `build` lease would leave less free space than the floor plus the
+    /// disk budgets held and its own, even after reclaiming.
+    DiskLow {
+        /// Free bytes on the lease root's volume after reclaiming.
+        free: u64,
+        /// The free space it needs, in GB.
+        need_gb: u64,
+        /// The floor, in GB.
+        floor_gb: u64,
+    },
 }
 
 impl fmt::Display for Error {
@@ -95,6 +113,15 @@ impl fmt::Display for Error {
             Error::Busy(blocked) => write!(f, "not admitted: {}", blocked.reason),
             Error::TimedOut(blocked) => write!(f, "still waiting: {}", blocked.reason),
             Error::Lost(id) => write!(f, "lease {id} left the table while it waited"),
+            Error::DiskLow {
+                free,
+                need_gb,
+                floor_gb,
+            } => write!(
+                f,
+                "{} GB is free after reclaiming; a build needs {need_gb} GB: the {floor_gb} GB floor and the disk budgets of this build and those held",
+                free / 1_000_000_000
+            ),
         }
     }
 }
@@ -119,3 +146,5 @@ pub fn now_ms() -> u64 {
 
 #[cfg(test)]
 mod tests;
+#[cfg(test)]
+mod usage_tests;

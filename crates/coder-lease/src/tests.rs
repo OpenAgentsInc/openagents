@@ -17,6 +17,7 @@ const LIMITS: Limits = Limits {
     build: 2,
     memory_gib: 96,
     disk_floor_gb: 10,
+    build_disk_gb: 0,
 };
 
 fn broker(dir: &tempfile::TempDir) -> Broker {

@@ -24,6 +24,10 @@ pub(crate) const USAGE: &str =
                  the queue, priority, holder session, agent, process, command
                  name, and how long it has waited or been held, with the build
                  count, memory budget, disk floor, and aging step.
+  du             Disk use per session, from the build receipts: each
+                 session's target slots and worktree as allocated bytes,
+                 APFS clones counted once, with its builds and whether it
+                 still runs.
   grant screen [--for DURATION] [--to SESSION]
                  Let agents take the real screen for DURATION (default 1h),
                  or only the session SESSION. Asks you to confirm on this
@@ -49,8 +53,10 @@ with --json it is printed after CMD's output.
 build also takes one of Coder's target slots for the current repository
 (~/.openagents/targets, shared with Coder tasks and capped at 25 GB) and
 sets CARGO_TARGET_DIR to it; --keep-target-dir keeps a CARGO_TARGET_DIR
-already set. Below the free-space floor (10 GB, OPENAGENTS_SLOT_FREE_GB) it
-refuses and names the reclaim command.";
+already set. A build needs the free-space floor (10 GB,
+OPENAGENTS_SLOT_FREE_GB) plus a disk budget for itself and each build held
+(10 GB, OPENAGENTS_BUILD_DISK_GB); short of that, it first deletes the slots
+of sessions that ended, then refuses and names the reclaim command.";
 
 /// What each command does, for the chat router's command tree
 /// (`coder::cli_route::tree`).
@@ -58,6 +64,7 @@ refuses and names the reclaim command.";
 pub(crate) const EFFECTS: &[Declared] = &[
     Declared::computer("", Effect::LongRunning),
     Declared::computer("list", Effect::ReadOnly),
+    Declared::computer("du", Effect::ReadOnly),
     Declared::computer("grant screen", Effect::Grants),
     Declared::computer("revoke screen", Effect::Grants),
 ];
@@ -72,6 +79,7 @@ pub fn run(output: &Output, words: &[String]) -> u8 {
             0
         }
         "list" => list(output, &words[1..]),
+        "du" => du(output, &words[1..]),
         "grant" => grant(output, &words[1..]),
         "revoke" => revoke(output, &words[1..]),
         _ => hold(output, words),
@@ -111,6 +119,57 @@ fn list(output: &Output, words: &[String]) -> u8 {
     });
     output.emit(&value, |_| render_list(&broker, &leases, &value, now));
     0
+}
+
+fn du(output: &Output, words: &[String]) -> u8 {
+    if let Some(word) = words.first() {
+        return output.usage("lease", &format!("unexpected argument `{word}`"), USAGE);
+    }
+    let broker = match broker(output) {
+        Ok(broker) => broker,
+        Err(code) => return code,
+    };
+    let sessions = match coder_lease::usage(broker.root()) {
+        Ok(sessions) => sessions,
+        Err(error) => return output.fail("lease", &error.to_string()),
+    };
+    let total: u64 = sessions.iter().map(|session| session.allocated_bytes).sum();
+    let value = json!({
+        "root": broker.root().display().to_string(),
+        "allocated_bytes": total,
+        "sessions": sessions,
+    });
+    output.emit(&value, |_| render_du(&sessions, total));
+    0
+}
+
+fn render_du(sessions: &[coder_lease::SessionUsage], total: u64) -> String {
+    if sessions.is_empty() {
+        return "No lease has ended yet, so there is no use to report.".to_owned();
+    }
+    let mut rows = vec![
+        [
+            "SESSION", "AGENT", "STATE", "BUILDS", "HELD", "DISK", "FOLDERS",
+        ]
+        .map(str::to_owned)
+        .to_vec(),
+    ];
+    for session in sessions {
+        rows.push(vec![
+            session.session.clone(),
+            session.agent.clone(),
+            if session.live { "live" } else { "ended" }.to_owned(),
+            session.builds.to_string(),
+            span(session.held_ms),
+            background::paths::bytes(session.allocated_bytes),
+            session.paths.len().to_string(),
+        ]);
+    }
+    format!(
+        "{}\n{} in all, each folder counted for the session that built in it last.",
+        crate::out::table(&rows),
+        background::paths::bytes(total)
+    )
 }
 
 fn render_list(broker: &Broker, leases: &[Queued], value: &Value, now: u64) -> String {
@@ -395,6 +454,12 @@ fn hold(output: &Output, words: &[String]) -> u8 {
             Err(message) => return output.usage("lease", &message, USAGE),
         },
     };
+    // A build short of disk first reclaims the slots of ended sessions.
+    let broker = if hold.resource == Resource::Build {
+        broker.with_reclaim(reclaim_slots)
+    } else {
+        broker
+    };
     let holder = Holder::detect(&hold.command[0]);
     let mut request = Request::new(hold.resource.clone(), holder)
         .priority(priority)
@@ -436,6 +501,13 @@ fn hold(output: &Output, words: &[String]) -> u8 {
             let (exit, failure) = run_command(&hold.command, &[]);
             return finish_unleased(exit, failure);
         }
+        Err(Error::DiskLow {
+            free,
+            need_gb,
+            floor_gb,
+        }) => {
+            return output.fail("lease", &build_disk_low(free, need_gb, floor_gb));
+        }
         Err(error) => return output.fail("lease", &error.to_string()),
     };
     let mut env = lease.env();
@@ -464,11 +536,19 @@ fn hold(output: &Output, words: &[String]) -> u8 {
         ));
     }
     let (exit, failure) = run_command(&hold.command, &env);
+    // Measure while the slot is still this build's.
+    let slot_path = slot.as_ref().map(|slot| slot.path.clone());
+    let disk = (hold.resource == Resource::Build && !lease.nested())
+        .then(|| measure_build(slot_path.as_deref()))
+        .flatten();
     drop(slot);
-    let receipt = match lease.release(exit) {
+    let receipt = match lease.release_with(exit, disk) {
         Ok(receipt) => receipt,
         Err(error) => return output.fail("lease", &error.to_string()),
     };
+    if let Some(slot) = slot_path {
+        record_slot(&broker, &receipt, slot);
+    }
     if let Some(path) = &hold.receipt
         && let Err(error) = receipt.write(path)
     {
@@ -537,6 +617,121 @@ fn target_slot(shim: bool) -> Result<Option<coder::task::targets::Lease>, String
         }
         Err(error) => Err(format!("no target slot: {error}")),
     }
+}
+
+/// What the build's slot and the holder's linked worktree hold, measured
+/// together so APFS clones and hard links count once. `None` with neither,
+/// or when they can't be measured.
+fn measure_build(slot: Option<&std::path::Path>) -> Option<coder_lease::DiskUse> {
+    let worktree = linked_worktree();
+    let home = PathBuf::from(std::env::var_os("HOME")?);
+    let mut paths: Vec<&std::path::Path> = Vec::new();
+    paths.extend(slot);
+    paths.extend(worktree.as_deref());
+    if paths.is_empty() {
+        return None;
+    }
+    let measured = background::paths::measure_all(&paths, &home).ok()?;
+    let mut sizes = measured.iter().map(|measure| measure.bytes);
+    let slot_bytes = slot.and_then(|_| sizes.next());
+    let worktree_bytes = worktree.as_ref().and_then(|_| sizes.next());
+    Some(coder_lease::DiskUse {
+        slot: slot.map(std::path::Path::to_path_buf),
+        slot_bytes,
+        worktree,
+        worktree_bytes,
+        allocated_bytes: measured.iter().map(|measure| measure.bytes).sum(),
+    })
+}
+
+/// The linked worktree the working directory is in: a checkout whose
+/// `.git` is a file. A main checkout is shared, not one session's, so it
+/// isn't counted.
+fn linked_worktree() -> Option<PathBuf> {
+    let found = Command::new("git")
+        .args(["rev-parse", "--show-toplevel"])
+        .stdin(std::process::Stdio::null())
+        .stderr(std::process::Stdio::null())
+        .output()
+        .ok()?;
+    if !found.status.success() {
+        return None;
+    }
+    let top = PathBuf::from(String::from_utf8_lossy(&found.stdout).trim());
+    std::fs::symlink_metadata(top.join(".git"))
+        .is_ok_and(|meta| meta.is_file())
+        .then_some(top)
+}
+
+/// Records beside the slot which session's lease used it last, with the
+/// agent process the session runs in, so the disk cleanup can reclaim
+/// the slot once that session ends.
+fn record_slot(broker: &Broker, receipt: &coder_lease::Receipt, slot: PathBuf) {
+    if receipt.nested {
+        return;
+    }
+    let record = coder_lease::SlotUse {
+        schema: coder_lease::SLOT_USE_SCHEMA.to_owned(),
+        slot,
+        lease_root: broker.root().to_owned(),
+        lease: receipt.id.clone(),
+        session: receipt.holder.session.clone(),
+        agent_pid: coder_lease::agent_ancestor(&coder_lease::ancestors()).map(|(pid, _)| pid),
+        released_at_ms: receipt.released_at_ms,
+    };
+    if let Err(error) = record.write() {
+        eprintln!("openagents lease: the slot's last use was not recorded: {error}");
+    }
+}
+
+/// The broker's reclaim hook for a build short of disk: class 1 of the
+/// disk cleanup alone, which deletes the slots of sessions that ended and
+/// the build caches of ended tasks, with every check the cleanup makes.
+fn reclaim_slots(shortfall: u64) {
+    eprintln!(
+        "openagents lease: a build needs {} more free space; reclaiming the slots of ended sessions",
+        background::paths::bytes(shortfall)
+    );
+    let Some(home) = std::env::var_os("HOME").map(PathBuf::from) else {
+        return;
+    };
+    let store = coder::task::local::default_store();
+    let Ok(layout) = background::Layout::new(&home, Some(store)) else {
+        return;
+    };
+    let store_dir = layout.store.clone();
+    let facts = move || coder::task::background_facts(&store_dir);
+    let env = background::Env {
+        layout: &layout,
+        facts: Some(&facts),
+        volumes: &background::volume::Statvfs,
+        processes: &background::inuse::System,
+        now: background::paths::now(),
+        kache: None,
+    };
+    match background::lease_slots::reclaim(&env, shortfall) {
+        Ok(report) => {
+            let freed = report.record.map_or(0, |record| record.freed_sum);
+            eprintln!(
+                "openagents lease: reclaimed {}",
+                background::paths::bytes(freed)
+            );
+        }
+        Err(error) => eprintln!("openagents lease: nothing reclaimed: {error}"),
+    }
+}
+
+/// The refusal of a build short of disk after reclaiming, in decimal
+/// gigabytes.
+fn build_disk_low(free: u64, need_gb: u64, floor_gb: u64) -> String {
+    #[allow(clippy::cast_precision_loss)]
+    let gb = free as f64 / 1e9;
+    format!(
+        "builds are refused below the free-space floor plus the builds' disk budgets: {gb:.1} GB free, \
+         and a build needs {need_gb} GB, where the floor is {floor_gb} GB. Reclaim space with \
+         `openagents background run disk`, or lower the floor with OPENAGENTS_SLOT_FREE_GB or the \
+         budget with OPENAGENTS_BUILD_DISK_GB."
+    )
 }
 
 /// The refusal below the free-space floor, in decimal gigabytes.
@@ -716,6 +911,18 @@ mod tests {
     fn the_disk_refusal_names_free_space_the_floor_and_the_reclaim_command() {
         let message = disk_low(6_200_000_000, 10_000_000_000);
         assert!(message.contains("6.2 GB free"), "{message}");
+        assert!(message.contains("the floor is 10 GB"), "{message}");
+        assert!(
+            message.contains("openagents background run disk"),
+            "{message}"
+        );
+    }
+
+    #[test]
+    fn the_build_disk_refusal_names_the_need_the_floor_and_the_reclaim_command() {
+        let message = build_disk_low(18_400_000_000, 30, 10);
+        assert!(message.contains("18.4 GB free"), "{message}");
+        assert!(message.contains("needs 30 GB"), "{message}");
         assert!(message.contains("the floor is 10 GB"), "{message}");
         assert!(
             message.contains("openagents background run disk"),

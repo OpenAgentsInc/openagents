@@ -14,6 +14,11 @@ pub const MEMORY_GIB_VAR: &str = "OPENAGENTS_MEMORY_LEASE_GIB";
 pub const SLOT_FREE_VAR: &str = "OPENAGENTS_SLOT_FREE_GB";
 /// The free-space floor when nothing sets it, in GB.
 pub const DEFAULT_FLOOR_GB: u64 = 10;
+/// Overrides the disk budget, in GB, each `build` lease reserves above the
+/// floor.
+pub const BUILD_DISK_VAR: &str = "OPENAGENTS_BUILD_DISK_GB";
+/// The disk budget of one `build` lease when nothing sets it, in GB.
+pub const DEFAULT_BUILD_DISK_GB: u64 = 10;
 /// Overrides the aging step, in minutes: a waiter grows one priority level
 /// more urgent for each step it waits. `0` turns aging off.
 pub const AGING_VAR: &str = "OPENAGENTS_LEASE_AGING_MINUTES";
@@ -31,6 +36,8 @@ pub struct Limits {
     pub memory_gib: u64,
     /// The free space, in GB, that disk leases never go below.
     pub disk_floor_gb: u64,
+    /// The disk budget, in GB, each `build` lease reserves above the floor.
+    pub build_disk_gb: u64,
 }
 
 impl Limits {
@@ -95,10 +102,12 @@ impl Limits {
         };
         let disk_floor_gb =
             number(SLOT_FREE_VAR, Some("slot_free_gb"))?.unwrap_or(DEFAULT_FLOOR_GB);
+        let build_disk_gb = number(BUILD_DISK_VAR, None)?.unwrap_or(DEFAULT_BUILD_DISK_GB);
         Ok(Limits {
             build,
             memory_gib,
             disk_floor_gb,
+            build_disk_gb,
         })
     }
 
@@ -220,6 +229,9 @@ mod tests {
         assert_eq!(limits.build, 2);
         assert_eq!(limits.memory_gib, 96);
         assert_eq!(limits.disk_floor_gb, 10);
+        assert_eq!(limits.build_disk_gb, 10);
+        let env = |name: &str| (name == BUILD_DISK_VAR).then(|| "40".to_owned());
+        assert_eq!(Limits::read(&env, None, MAC).unwrap().build_disk_gb, 40);
         let small = Machine {
             cores: 4,
             memory_bytes: 8 << 30,

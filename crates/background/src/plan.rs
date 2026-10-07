@@ -227,6 +227,12 @@ pub(crate) fn check(
     {
         return Err(why);
     }
+    if class == Class::EndedTargets
+        && slot_number(path).is_some_and(|slot| slot < SLOTS)
+        && let Err(why) = crate::lease_slots::ended(path)
+    {
+        return Err(why);
+    }
     let undo = if matches!(class, Class::Worktrees | Class::ClaudeWorktrees) {
         Some(git::removable(path)?)
     } else {
@@ -446,6 +452,20 @@ fn candidates(
                         );
                         candidate.locks = inuse::locks_of(&path);
                         found.push(candidate);
+                        continue;
+                    }
+                    // A slot whose build lease ended with its session goes
+                    // at once; any other slot is class 2's to judge.
+                    match crate::lease_slots::ended(&path) {
+                        Ok(why) => {
+                            let mut candidate = Candidate::new(class, path.clone(), touched, why);
+                            candidate.locks = inuse::locks_of(&path);
+                            found.push(candidate);
+                        }
+                        Err(why) if coder_lease::SlotUse::read(&path).is_some() => {
+                            keep(&path, &why, &mut kept);
+                        }
+                        Err(_) => {}
                     }
                     continue;
                 }

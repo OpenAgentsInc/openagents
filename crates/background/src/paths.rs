@@ -431,7 +431,42 @@ pub fn measure_report(path: &Path, home: &Path) -> std::io::Result<Measure> {
     })
 }
 
+/// [`measure`] over several folders at once, such as a build slot and a
+/// worktree, each hard-linked file and each APFS clone family counted once
+/// across all of them: a file or clone family two folders share counts
+/// for the first that holds it. One result per folder, in order.
+///
+/// # Errors
+/// As [`measure`], for any of them.
+pub fn measure_all(paths: &[&Path], home: &Path) -> std::io::Result<Vec<Measure>> {
+    let skip = |inside: &Path| coder_boundary::privacy::is_protected(inside, home);
+    let mut seen = Seen::default();
+    paths
+        .iter()
+        .map(|path| walk_seen(path, &skip, &mut seen))
+        .collect()
+}
+
+/// What a walk has counted: hard-linked files and APFS clone families.
+#[derive(Default)]
+struct Seen {
+    // Cargo hard-links outputs (`debug/foo` and `debug/deps/foo-…`):
+    // count each linked file once, as deleting the folder frees it once.
+    linked: std::collections::HashSet<(u64, u64)>,
+    // APFS clones (kache restores outputs as clones) share blocks under
+    // different inodes: count a clone family's shared blocks once.
+    clones: std::collections::HashSet<(u64, u64)>,
+}
+
 fn walk(path: &Path, skip: &dyn Fn(&Path) -> bool) -> std::io::Result<Measure> {
+    walk_seen(path, skip, &mut Seen::default())
+}
+
+fn walk_seen(
+    path: &Path,
+    skip: &dyn Fn(&Path) -> bool,
+    seen: &mut Seen,
+) -> std::io::Result<Measure> {
     if skip(path) {
         return Err(std::io::Error::new(
             std::io::ErrorKind::PermissionDenied,
@@ -447,12 +482,7 @@ fn walk(path: &Path, skip: &dyn Fn(&Path) -> bool) -> std::io::Result<Measure> {
     if !top.is_dir() {
         return Ok(out);
     }
-    // Cargo hard-links outputs (`debug/foo` and `debug/deps/foo-…`):
-    // count each linked file once, as deleting the folder frees it once.
-    let mut linked = std::collections::HashSet::new();
-    // APFS clones (kache restores outputs as clones) share blocks under
-    // different inodes: count a clone family's shared blocks once.
-    let mut clones = std::collections::HashSet::new();
+    let Seen { linked, clones } = seen;
     let mut stack = vec![path.to_owned()];
     while let Some(dir) = stack.pop() {
         let Ok(entries) = std::fs::read_dir(&dir) else {
