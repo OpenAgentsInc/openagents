@@ -108,7 +108,8 @@ fn main() -> Result<(), String> {
         "installed in {:.0} ms",
         started.elapsed().as_secs_f64() * 1e3
     );
-    let atlas = verse::ui::Atlas::new(16.0);
+    let mut atlas = verse::ui::Atlas::new(16.0);
+    water::hotbar::add_sprites(&mut atlas)?;
     let mut renderer = Offscreen::new(
         a.width,
         a.height,
@@ -313,6 +314,34 @@ fn main() -> Result<(), String> {
             1.1,
         )?;
         runtime.water_press(4, false)?;
+    }
+
+    if wanted("hud") {
+        // The spell bar with each slot's hover card, as the app draws them.
+        place(&mut runtime, 4.0, 12.0, PI);
+        run(&mut runtime, 0.3);
+        let size = [a.width as f32, a.height as f32];
+        let v = view(
+            Vec3::new(10.0, 4.0, 20.0),
+            Vec3::new(-2.0, 0.0, -20.0),
+            0.9,
+            aspect,
+        );
+        for index in 0..water::hotbar::COUNT {
+            let mut hud = verse::ui::UiBatch::default();
+            let slots: Vec<_> = runtime
+                .water_bar()
+                .ok_or("no Water Lab bar")?
+                .into_iter()
+                .map(|(_, slot)| slot)
+                .collect();
+            water::hotbar::draw(&mut hud, &atlas, size, 14.0, &slots);
+            water::hotbar::draw_tip(&mut hud, &atlas, size, 14.0, index);
+            let pixels = renderer.render(v, &runtime.dynamic_mesh(), &hud)?;
+            let path = a.out.join(format!("hud-tip-{}.png", index + 1));
+            write_png(&path, a.width, a.height, &pixels)?;
+            eprintln!("wrote {}", path.display());
+        }
     }
 
     if a.spells {

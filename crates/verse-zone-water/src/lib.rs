@@ -19,6 +19,7 @@
 //! `verse` re-exports this crate as `zones::water`.
 
 pub mod floats;
+pub mod hotbar;
 pub mod sea;
 pub mod spells;
 pub mod terrain;

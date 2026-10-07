@@ -2899,6 +2899,18 @@ impl App {
             && self.runtime.zone_load_state() == zones::LoadState::Idle
     }
 
+    /// The Water Lab, loaded, which shows its own spell bar.
+    fn in_water_lab(&self) -> bool {
+        self.runtime.zone == zones::ZoneId::WaterLab
+            && self.runtime.zone_load_state() == zones::LoadState::Idle
+    }
+
+    /// The Water Lab's bar slot under `at`, in logical units.
+    fn water_hotbar_at(&self, at: [f32; 2]) -> Option<usize> {
+        let (size, _) = self.viewport()?;
+        zones::water::hotbar::slot_under(at, size.map(|v| v / self.scale), HOTBAR_BOTTOM)
+    }
+
     /// How the Grove's bar lays out on a screen of `size` logical points.
     fn grove_layout(&self, size: [f32; 2]) -> zones::grove::hotbar::Layout {
         zones::grove::hotbar::Layout::for_screen(size, self.grove_row)
@@ -2927,6 +2939,8 @@ impl App {
             zones::everglade::hotbar::slot_under(at, size, HOTBAR_BOTTOM, slots.len())
         } else if self.in_bare_grove() && self.runtime.grove_bar().is_some() {
             zones::grove::hotbar::slot_under(at, size, HOTBAR_BOTTOM, self.grove_layout(size))
+        } else if self.in_water_lab() {
+            zones::water::hotbar::slot_under(at, size, HOTBAR_BOTTOM)
         } else {
             None
         };
@@ -3638,6 +3652,21 @@ impl App {
         if self.map.captured(1) {
             return;
         }
+        // The Water Lab's bar: a click casts the slot's spell, and never
+        // reaches the zone panel behind the tray.
+        if button == MouseButton::Left
+            && self.in_water_lab()
+            && let Some(index) = self.water_hotbar_at(self.cursor.map(|v| v / self.scale))
+        {
+            if pressed
+                && !self.keys.left_button
+                && !self.keys.right_button
+                && let Err(error) = self.runtime.water_press(index, self.keys.shift)
+            {
+                eprintln!("verse: {error}");
+            }
+            return;
+        }
         if button == MouseButton::Left
             && pressed
             && !self.keys.left_button
@@ -4320,6 +4349,11 @@ impl App {
                         bottom_clearance
                     } else if self.runtime.zone == zones::ZoneId::Crypt {
                         crypt_clearance()
+                    } else if self.in_water_lab() {
+                        // The Water Lab's panel stands above its spell bar.
+                        let logical = size.map(|v| v / self.scale);
+                        let tray = zones::water::hotbar::frame(logical, HOTBAR_BOTTOM);
+                        (logical[1] - tray[1] + 8.0).clamp(12.0, 2048.0)
                     } else {
                         12.0
                     });
@@ -4430,21 +4464,18 @@ impl App {
                     && let (Some(atlas), Some(bar)) = (&self.map_atlas, self.runtime.water_bar())
                 {
                     let mut batch = crate::ui::UiBatch::default();
-                    let keys = ["1", "2", "3", "4", "5", "B"];
-                    let sprites: Vec<(&str, &str)> = bar
-                        .iter()
-                        .zip(keys)
-                        .map(|((icon, _), key)| (*icon, key))
-                        .collect();
+                    let logical = size.map(|v| v / self.scale);
                     let slots: Vec<_> = bar.iter().map(|(_, slot)| *slot).collect();
-                    zones::everglade::hotbar::draw_of(
-                        &mut batch,
-                        atlas,
-                        size.map(|v| v / self.scale),
-                        HOTBAR_BOTTOM,
-                        &sprites,
-                        &slots,
-                    );
+                    zones::water::hotbar::draw(&mut batch, atlas, logical, HOTBAR_BOTTOM, &slots);
+                    if let Some(index) = tip {
+                        zones::water::hotbar::draw_tip(
+                            &mut batch,
+                            atlas,
+                            logical,
+                            HOTBAR_BOTTOM,
+                            index,
+                        );
+                    }
                     for vertex in &mut batch.vertices {
                         vertex.pos = vertex.pos.map(|v| v * self.scale);
                     }
@@ -5653,6 +5684,9 @@ fn ui_atlas(scale: f32) -> Atlas {
     }
     if let Err(error) = zones::grove::hotbar::add_sprites(&mut atlas) {
         eprintln!("verse: the Grove's hotbar has no icons: {error}");
+    }
+    if let Err(error) = zones::water::hotbar::add_sprites(&mut atlas) {
+        eprintln!("verse: the Water Lab's hotbar has no icons: {error}");
     }
     if let Err(error) = zones::everglade::demolition::hotbar::add_sprites(&mut atlas) {
         eprintln!("verse: the demolition yard's hotbar has no icons: {error}");

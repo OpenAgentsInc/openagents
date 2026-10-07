@@ -9,7 +9,9 @@ description = "Verse's Water Lab zone: a cove with a sea, a river, a waterfall, 
 [dependencies]
 glam = "0.30.10"
 physics = { path = "../physics" }
+verse-content = { path = "../verse-content", features = ["compiler"] }
 verse-core = { path = "../verse-core" }
+verse-gfx = { path = "../verse-gfx" }
 verse-pbr = { path = "../verse-pbr" }
 verse-world = { path = "../verse-world" }
 verse-zone-everglade = { path = "../verse-zone-everglade" }

@@ -42,6 +42,8 @@ mod studio_tests;
 mod tests;
 #[cfg(test)]
 mod town_tests;
+#[cfg(test)]
+mod water_tests;
 
 pub(crate) use everglade::Everglade;
 pub use gate::Gate;
