@@ -80,7 +80,11 @@ outside the store's `sales` directory. Use `init`, `issue`, `revoke`, `apply`,
 syntax. The [sales pipeline guide](../sales/README.md#private-sales-pipeline)
 explains conditional revisions, exact-byte retries, recipient boundaries,
 accepted handoffs, retention, and suppression. The command contacts no
-prospect and starts no agent.
+prospect and starts no agent. `sales claims source`, `review`, `read`, `draft`,
+`validate`, `withdraw`, and `history` expose the same private store's
+[reviewed claims register](../sales/evidence.md#reviewed-claims-and-prices).
+Draft reads recheck current source, price, playbook, and comparative evidence;
+proposed prices remain unavailable without separately recorded activation.
 
 ## Coder (`openagents coder`)
 

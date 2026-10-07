@@ -193,6 +193,17 @@ owner reviews the exact private report and customer rights before exporting
 or publishing an aggregate or margin claim. Future commission enrichment
 remains unavailable until its authoritative obligation owner is integrated.
 
+## Claims and price publication O1/O6 (REV-08, #10815)
+
+Review the factual wording, full evidence inventory, scope, disclosure rights,
+limits, payer, and current authoritative price source before using the claims
+register with real buyers. Ordinary review does not activate proposed prices
+or qualify a launch. Record a separate exact-source commercial or funded
+qualification and its expiry before an available price/launch claim; the
+synthetic fixtures establish no owner approval, customer agreement, payment,
+or product availability. O6 still governs real outreach. Founder CLI use needs
+no host deployment; Paul/outbox integration remains separate REV-55/REV-62 work.
+
 ## Pilot evidence O1/O8 (REV-03, #10810)
 
 Before using [pilot comparison evidence](docs/sales/evidence.md) in a sales

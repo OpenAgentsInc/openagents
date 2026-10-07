@@ -80,6 +80,45 @@ subscription units, overflow, reviewed projection, and private output. Real
 baseline permission, billed evidence, acceptance, and publication review remain
 owner/customer steps under O1/O8 in [NEEDS_OWNER.md](../../NEEDS_OWNER.md).
 
+## Reviewed claims and prices
+
+`openagents sales claims` uses the canonical private pipeline's credentials and
+store. Its [typed records](../../crates/coder/src/task/sales/claims.rs) pin
+claim/source IDs and immutable revisions, exact release and offer scope, owner
+review artifacts, limits, expiry within 90 days, and the current playbook.
+The owner reviews `source` and `review` inputs. `read` accepts 1–8 pins and an
+exact `--release`; `draft` composes those exact reviewed clauses with their
+limits and structured evidence, and `validate` rechecks the retained draft.
+Each command needs `--root DIR --credential FILE`; `--input FILE` reads bounded
+JSON. `withdraw` is irreversible for that revision. `history` retains rejected
+reviews and draft invalidation reasons; a changed record needs a new revision.
+
+Source references are relative to the explicitly recorded current root. Reads
+recheck exact bytes, bounds, and symlink restrictions; removed or changed
+contracts, price books, review artifacts, or playbooks refuse old drafts.
+A new source head also invalidates claims tied to its old revision. Reusing a
+book/offer version with different price terms refuses; a factual capability
+clause cannot bypass the price adapter. Comparisons
+rebuild REV-03 from the full manifest and nested evidence, then verify the
+reviewed report digest and disclosure review. Generated output includes failed
+and repair attempts, separate full timing/cost bases and unknowns, independent
+customer acceptance, and scope limits. It supplies no cash-savings or deployed
+availability claim. Customer identities, traces, paths, and provider names stay
+out of that projection.
+
+Prices come from `route_contract::price_book` or the existing versioned
+[pilot template](pilot-kit.json), with resource payers, integer units, limits,
+and availability intact. A quoted ceiling is not observed spend. The proposed
+first-offer price stays unavailable for a customer draft after ordinary review.
+Publication requires a separate `openagents.sales.claim-activation.v1` artifact
+binding exact scope/source bytes, the reviewing owner, payer, expiry, and retained
+commercial or funded qualification. Synthetic activation fixtures establish
+code behavior only. Human review remains responsible for factual wording,
+evidence completeness, disclosure rights, and genuine qualification; these are
+attributable records, not remote attestations. O1/O6 still govern commercial
+activation and real outreach. These commands contact nobody and create no
+price book, benchmark store, purchase, or outbound grant.
+
 ## Operating revenue and full delivery cost
 
 `gym sales-finance --root DIR --manifest FILE --output FILE` rebuilds the

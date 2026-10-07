@@ -6158,6 +6158,295 @@
             "effect": "read_only",
             "runs_on": "connected_computer"
           }
+        },
+        {
+          "name": "claims",
+          "children": [
+            {
+              "name": "source",
+              "leaf": {
+                "path": [
+                  "sales",
+                  "claims",
+                  "source"
+                ],
+                "usage": [
+                  "claims source --input FILE"
+                ],
+                "forms": [
+                  {
+                    "tokens": [
+                      {
+                        "kind": "literal",
+                        "word": "claims"
+                      },
+                      {
+                        "kind": "literal",
+                        "word": "source"
+                      },
+                      {
+                        "kind": "option",
+                        "name": "input",
+                        "value": "FILE",
+                        "open": true
+                      }
+                    ]
+                  }
+                ],
+                "summary": "Review an immutable source over its explicit current source root.",
+                "effect": "grants",
+                "runs_on": "connected_computer"
+              }
+            },
+            {
+              "name": "review",
+              "leaf": {
+                "path": [
+                  "sales",
+                  "claims",
+                  "review"
+                ],
+                "usage": [
+                  "claims review --input FILE"
+                ],
+                "forms": [
+                  {
+                    "tokens": [
+                      {
+                        "kind": "literal",
+                        "word": "claims"
+                      },
+                      {
+                        "kind": "literal",
+                        "word": "review"
+                      },
+                      {
+                        "kind": "option",
+                        "name": "input",
+                        "value": "FILE",
+                        "open": true
+                      }
+                    ]
+                  }
+                ],
+                "summary": "Review one versioned claim; retain unavailable or rejected decisions.",
+                "effect": "grants",
+                "runs_on": "connected_computer"
+              }
+            },
+            {
+              "name": "read",
+              "leaf": {
+                "path": [
+                  "sales",
+                  "claims",
+                  "read"
+                ],
+                "usage": [
+                  "claims read --input FILE --release COMMIT"
+                ],
+                "forms": [
+                  {
+                    "tokens": [
+                      {
+                        "kind": "literal",
+                        "word": "claims"
+                      },
+                      {
+                        "kind": "literal",
+                        "word": "read"
+                      },
+                      {
+                        "kind": "option",
+                        "name": "input",
+                        "value": "FILE",
+                        "open": true
+                      },
+                      {
+                        "kind": "option",
+                        "name": "release",
+                        "value": "COMMIT",
+                        "open": true
+                      }
+                    ]
+                  }
+                ],
+                "summary": "Validate 1 to 8 claim pins against current evidence, prices, and release.",
+                "effect": "local_write",
+                "runs_on": "connected_computer"
+              }
+            },
+            {
+              "name": "draft",
+              "leaf": {
+                "path": [
+                  "sales",
+                  "claims",
+                  "draft"
+                ],
+                "usage": [
+                  "claims draft --input FILE --draft ID --release COMMIT"
+                ],
+                "forms": [
+                  {
+                    "tokens": [
+                      {
+                        "kind": "literal",
+                        "word": "claims"
+                      },
+                      {
+                        "kind": "literal",
+                        "word": "draft"
+                      },
+                      {
+                        "kind": "option",
+                        "name": "input",
+                        "value": "FILE",
+                        "open": true
+                      },
+                      {
+                        "kind": "option",
+                        "name": "draft",
+                        "value": "ID",
+                        "open": true
+                      },
+                      {
+                        "kind": "option",
+                        "name": "release",
+                        "value": "COMMIT",
+                        "open": true
+                      }
+                    ]
+                  }
+                ],
+                "summary": "Compose only reviewed clauses, limits, and structured price/evidence.",
+                "effect": "local_write",
+                "runs_on": "connected_computer"
+              }
+            },
+            {
+              "name": "validate",
+              "leaf": {
+                "path": [
+                  "sales",
+                  "claims",
+                  "validate"
+                ],
+                "usage": [
+                  "claims validate --draft ID --release COMMIT"
+                ],
+                "forms": [
+                  {
+                    "tokens": [
+                      {
+                        "kind": "literal",
+                        "word": "claims"
+                      },
+                      {
+                        "kind": "literal",
+                        "word": "validate"
+                      },
+                      {
+                        "kind": "option",
+                        "name": "draft",
+                        "value": "ID",
+                        "open": true
+                      },
+                      {
+                        "kind": "option",
+                        "name": "release",
+                        "value": "COMMIT",
+                        "open": true
+                      }
+                    ]
+                  }
+                ],
+                "summary": "Revalidate an immutable draft; changed or withdrawn sources refuse.",
+                "effect": "local_write",
+                "runs_on": "connected_computer"
+              }
+            },
+            {
+              "name": "withdraw",
+              "leaf": {
+                "path": [
+                  "sales",
+                  "claims",
+                  "withdraw"
+                ],
+                "usage": [
+                  "claims withdraw --input FILE"
+                ],
+                "forms": [
+                  {
+                    "tokens": [
+                      {
+                        "kind": "literal",
+                        "word": "claims"
+                      },
+                      {
+                        "kind": "literal",
+                        "word": "withdraw"
+                      },
+                      {
+                        "kind": "option",
+                        "name": "input",
+                        "value": "FILE",
+                        "open": true
+                      }
+                    ]
+                  }
+                ],
+                "summary": "Withdraw a source or claim revision with a retained reason reference.",
+                "effect": "grants",
+                "runs_on": "connected_computer"
+              }
+            },
+            {
+              "name": "history",
+              "leaf": {
+                "path": [
+                  "sales",
+                  "claims",
+                  "history"
+                ],
+                "usage": [
+                  "claims history [--after N] [--limit N]"
+                ],
+                "forms": [
+                  {
+                    "tokens": [
+                      {
+                        "kind": "literal",
+                        "word": "claims"
+                      },
+                      {
+                        "kind": "literal",
+                        "word": "history"
+                      },
+                      {
+                        "kind": "option",
+                        "name": "after",
+                        "value": "N",
+                        "open": true,
+                        "optional": true
+                      },
+                      {
+                        "kind": "option",
+                        "name": "limit",
+                        "value": "N",
+                        "open": true,
+                        "optional": true
+                      }
+                    ]
+                  }
+                ],
+                "summary": "Read the owner's bounded claim decision history.",
+                "effect": "read_only",
+                "runs_on": "connected_computer"
+              }
+            }
+          ]
         }
       ],
       "options": [
@@ -6248,6 +6537,22 @@
           "kind": "option",
           "name": "contact",
           "value": "CHANNEL:ADDRESS",
+          "open": true,
+          "optional": true,
+          "repeated": true
+        },
+        {
+          "kind": "option",
+          "name": "release",
+          "value": "COMMIT",
+          "open": true,
+          "optional": true,
+          "repeated": true
+        },
+        {
+          "kind": "option",
+          "name": "draft",
+          "value": "ID",
           "open": true,
           "optional": true,
           "repeated": true

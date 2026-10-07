@@ -9,6 +9,7 @@ use std::io::{Read, Write};
 use std::path::{Path, PathBuf};
 use std::time::{Duration, SystemTime};
 
+pub mod claims;
 pub mod intake;
 
 pub const SCHEMA: &str = "openagents.sales.pipeline.v1";
@@ -239,6 +240,8 @@ struct State {
     intakes: BTreeMap<String, intake::Grant>,
     #[serde(default)]
     intake_submissions: BTreeMap<String, intake::RecordedSubmission>,
+    #[serde(default)]
+    claims: claims::State,
 }
 impl Default for State {
     fn default() -> Self {
@@ -254,6 +257,7 @@ impl Default for State {
             audit: vec![],
             intakes: BTreeMap::new(),
             intake_submissions: BTreeMap::new(),
+            claims: claims::State::default(),
         }
     }
 }
@@ -438,6 +442,7 @@ impl Store {
             return Err("unsupported or oversized sales state".into());
         }
         token(&state.salt)?;
+        state.claims.check()?;
         if state.leads.values().any(|lead| lead.schema != LEAD_SCHEMA)
             || state
                 .receipts

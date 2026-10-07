@@ -6,6 +6,8 @@ use coder::task::sales::{Role, Store};
 use serde_json::{Value, json};
 use std::io::Read;
 use std::path::Path;
+#[path = "sales_claims.rs"]
+mod claims;
 pub const USAGE: &str = "usage: openagents sales COMMAND --root DIR [--credential FILE] [--json]
   init --owner HUMAN --credential FILE
         Initialize the private pipeline and write its owner's credential.
@@ -25,6 +27,20 @@ pub const USAGE: &str = "usage: openagents sales COMMAND --root DIR [--credentia
         Read the owner's bounded digest-only audit references.
   suppressed --contact CHANNEL:ADDRESS
         Inspect minimum suppression before an authorized future contact.
+  claims source --input FILE
+        Review an immutable source over its explicit current source root.
+  claims review --input FILE
+        Review one versioned claim; retain unavailable or rejected decisions.
+  claims read --input FILE --release COMMIT
+        Validate 1 to 8 claim pins against current evidence, prices, and release.
+  claims draft --input FILE --draft ID --release COMMIT
+        Compose only reviewed clauses, limits, and structured price/evidence.
+  claims validate --draft ID --release COMMIT
+        Revalidate an immutable draft; changed or withdrawn sources refuse.
+  claims withdraw --input FILE
+        Withdraw a source or claim revision with a retained reason reference.
+  claims history [--after N] [--limit N]
+        Read the owner's bounded claim decision history.
 
 All commands require an explicit private host root. Except init, read the
 current human's credential from FILE; do not put its secret on the command
@@ -46,8 +62,18 @@ pub(crate) const EFFECTS: &[Declared] = &[
     Declared::computer("export", Effect::LocalWrite),
     Declared::computer("audit", Effect::ReadOnly),
     Declared::computer("suppressed", Effect::ReadOnly),
+    Declared::computer("claims source", Effect::Grants),
+    Declared::computer("claims review", Effect::Grants),
+    Declared::computer("claims read", Effect::LocalWrite),
+    Declared::computer("claims draft", Effect::LocalWrite),
+    Declared::computer("claims validate", Effect::LocalWrite),
+    Declared::computer("claims withdraw", Effect::Grants),
+    Declared::computer("claims history", Effect::ReadOnly),
 ];
 pub fn run(output: &Output, words: &[String]) -> u8 {
+    if words.first().is_some_and(|w| w == "claims") {
+        return claims::run(output, &words[1..]);
+    }
     if words
         .first()
         .is_some_and(|w| matches!(w.as_str(), "--help" | "help" | "-h"))
