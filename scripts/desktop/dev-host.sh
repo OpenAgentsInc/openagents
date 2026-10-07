@@ -7,7 +7,8 @@
 #   scripts/desktop/dev-host.sh status
 #   scripts/desktop/dev-host.sh uninstall
 #
-# install builds `coder` and `microcoder` (release profile) from this
+# install builds `coder`, `microcoder`, `openagents`, and `coder-new`
+# (release profile) from this
 # checkout, copies them to ~/.openagents/dev-host/COMMIT/, and signs them
 # with the keychain's Developer ID Application identity under the
 # installed host's identifier (com.openagents.desktop.coder) and
@@ -124,7 +125,7 @@ case "$command" in
     installed="$(basename "$(readlink "$base/current" 2>/dev/null || echo none)")"
     note "building $target (installed: $installed)"
     if ! (cd "$root" && nice -n 10 cargo build -q --release \
-        -p coder --bin coder -p microcoder --bin microcoder) >> "$follow_log" 2>&1; then
+        -p coder --bin coder -p microcoder --bin microcoder -p openagents-cli --bin openagents -p coder-new --bin coder-new) >> "$follow_log" 2>&1; then
       echo "$target" > "$base/follow.failed"
       note "build of $target failed; staying on $installed"
       exit 1
@@ -205,18 +206,22 @@ PLIST
       sed -n 's/.*[0-9A-F]\{40\} "\(Developer ID Application: [^"]*\)".*/\1/p' | head -1)}"
     [ -n "$identity" ] || { echo "no Developer ID Application identity in the keychain" >&2; exit 1; }
     if [ "$build" = 1 ]; then
-      (cd "$root" && cargo build --release -p coder --bin coder -p microcoder --bin microcoder)
+      (cd "$root" && cargo build --release -p coder --bin coder -p microcoder --bin microcoder -p openagents-cli --bin openagents -p coder-new --bin coder-new)
     fi
     commit="$(git -C "$root" rev-parse --short=10 HEAD)"
     dir="$base/$commit"
     mkdir -p "$dir"
-    cp "$CARGO_TARGET_DIR/release/coder" "$CARGO_TARGET_DIR/release/microcoder" "$dir/"
-    for name in coder microcoder; do
+    # The host runs agents' Coder V1 turns through the `openagents` beside it
+    # and draws their panes with `coder-new`, so both ship with the host;
+    # an older `openagents` on PATH may not speak the turn's options.
+    cp "$CARGO_TARGET_DIR/release/coder" "$CARGO_TARGET_DIR/release/microcoder" \
+      "$CARGO_TARGET_DIR/release/openagents" "$CARGO_TARGET_DIR/release/coder-new" "$dir/"
+    for name in coder microcoder openagents coder-new; do
       codesign --force --options runtime --timestamp --sign "$identity" \
         --entitlements "$root/bins/openagents-desktop-macos/host.entitlements" \
         --identifier "com.openagents.desktop.$name" "$dir/$name"
     done
-    codesign --verify --strict "$dir/coder" "$dir/microcoder"
+    codesign --verify --strict "$dir/coder" "$dir/microcoder" "$dir/openagents" "$dir/coder-new"
     ln -sfn "$dir" "$base/current"
     if [ -f "$bin/microcoder" ] && [ ! -f "$bin/microcoder.before-dev-host" ]; then
       cp -p "$bin/microcoder" "$bin/microcoder.before-dev-host"
