@@ -121,8 +121,7 @@ fn the_retained_baseline_receipt_verifies() {
     let dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
         .join("../../bench/verse/2026-10-07/alice-interview-v2");
     let rows = gym::store::read_rows(&dir.join("rows.jsonl")).expect("the rows read");
-    let gym::store::ChainVerdict::Ok { rows: count, head } = gym::store::verify_chain(&rows)
-    else {
+    let gym::store::ChainVerdict::Ok { rows: count, head } = gym::store::verify_chain(&rows) else {
         panic!("the retained chain doesn't verify");
     };
     let suite = interview::alice_v2_suite().unwrap();
