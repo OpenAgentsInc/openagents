@@ -93,6 +93,17 @@ browser/network qualification remains unverified.
 
 # Owner checks
 
+## Delivery, cleanup, and support O1/O8 (REV-07, #10814)
+
+Privately complete the [handoff kit](docs/sales/delivery-kit.json) with the real
+customer's exact accepted result/runbook, dependencies, limits, retained
+artifacts, and separately accepted support human/boundary. Verify only the
+agreed credential/device/resource/data cleanup; retain pending or unknown
+owner checks and their next actions. Approve exact reuse rights and privacy
+review before transferring generic material, and authorize publication
+separately. The synthetic review proves the manual package, not real removal,
+customer acceptance, support responsibility, or permission to reuse their work.
+
 ## Private pipeline O1/O6 (REV-04, #10811)
 
 Before entering real leads, initialize the [private pipeline](docs/sales/README.md#private-sales-pipeline)

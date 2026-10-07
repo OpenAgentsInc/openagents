@@ -1,0 +1,148 @@
+{
+  "schema": "openagents.sales.delivery-kit.v1",
+  "mode": "manual_private_handoff",
+  "instruction": "Copy the handoff, separate customer/support acceptances, cleanup report, and optional reuse review into the private pilot directory. Replace required nulls and freeze each accepted document separately. This kit performs no cleanup, publication, payment, or authority change.",
+  "handoff": {
+    "schema": "openagents.sales.delivery-handoff.v1",
+    "id": null,
+    "version": null,
+    "pipeline_lead": null,
+    "expected_pipeline_revision": null,
+    "offer_version": null,
+    "customer_account": null,
+    "agreement": {"path": null, "sha256": null},
+    "agreement_acceptance": {"path": null, "sha256": null},
+    "pilot_review": {"path": null, "sha256": null},
+    "sales_evidence_manifest": {"path": null, "sha256": null},
+    "sales_evidence_report": {"path": null, "sha256": null},
+    "candidate_sha256": null,
+    "delivered_at": null,
+    "deliverables": [],
+    "runbook": {"path": null, "sha256": null},
+    "dependencies": [],
+    "accepted_checks": [],
+    "known_limits": [],
+    "retained_artifacts": [],
+    "support": {
+      "responsible_human": null,
+      "contact_reference": null,
+      "business_hours": null,
+      "response_boundary": null,
+      "included_work": null,
+      "out_of_scope_route": null,
+      "ends_at": null
+    },
+    "cleanup_plan": [
+      {"id": "temporary-credentials", "class": "credentials", "target_reference": null, "responsible_human": null, "due_at": null, "operation_reference": null},
+      {"id": "host-device-grants", "class": "host_device_grants", "target_reference": null, "responsible_human": null, "due_at": null, "operation_reference": null},
+      {"id": "test-data", "class": "test_data", "target_reference": null, "responsible_human": null, "due_at": null, "operation_reference": null},
+      {"id": "sandbox-resources", "class": "sandbox_resources", "target_reference": null, "responsible_human": null, "due_at": null, "operation_reference": null},
+      {"id": "local-copies", "class": "local_copies", "target_reference": null, "responsible_human": null, "due_at": null, "operation_reference": null},
+      {"id": "customer-access", "class": "customer_access", "target_reference": null, "responsible_human": null, "due_at": null, "operation_reference": null}
+    ],
+    "reuse_default": "customer_private_no_reuse",
+    "unavailable_reasons": {}
+  },
+  "customer_acceptance": {
+    "schema": "openagents.sales.delivery-acceptance.v1",
+    "handoff": {"path": null, "sha256": null},
+    "decision": "pending",
+    "decision_maker": null,
+    "decision_evidence": {"path": null, "sha256": null},
+    "at": null,
+    "accepted_candidate_sha256": null,
+    "accepted_runbook": {"path": null, "sha256": null},
+    "accepted_deliverable_ids": [],
+    "unresolved_defects": []
+  },
+  "support_acceptance": {
+    "schema": "openagents.sales.support-acceptance.v1",
+    "handoff": {"path": null, "sha256": null},
+    "responsible_human": null,
+    "acceptance_evidence": {"path": null, "sha256": null},
+    "accepted_at": null,
+    "next_action": null,
+    "next_action_due_at": null
+  },
+  "cleanup_report": {
+    "schema": "openagents.sales.cleanup-report.v1",
+    "handoff": {"path": null, "sha256": null},
+    "id": null,
+    "supersedes": null,
+    "reviewed_by": null,
+    "reviewed_at": null,
+    "items": []
+  },
+  "reuse_review": {
+    "schema": "openagents.sales.reuse-review.v1",
+    "handoff": {"path": null, "sha256": null},
+    "material": {"path": null, "sha256": null},
+    "material_kind": null,
+    "rights_evidence": {"path": null, "sha256": null},
+    "permitted_recipients_and_use": null,
+    "privacy_review_evidence": {"path": null, "sha256": null},
+    "reviewer": null,
+    "decision": "not_requested",
+    "reviewed_at": null,
+    "publication_authority_reference": null
+  },
+  "item_shapes": {
+    "deliverable": {"id": null, "kind": null, "version": null, "artifact": {"path": null, "sha256": null}, "source_commit": null, "plugin_release_id": null, "unavailable_reasons": {}},
+    "dependency": {"id": null, "version_or_digest": null, "scope": null, "operating_instructions": {"path": null, "sha256": null}, "readiness": null, "unavailable_reason": null},
+    "retained_artifact": {"id": null, "artifact": {"path": null, "sha256": null}, "controller": null, "permitted_readers": [], "retain_until": null, "purpose": null},
+    "defect": {"id": null, "affected_deliverable": null, "evidence": {"path": null, "sha256": null}, "responsible_human": null, "next_action": null, "due_at": null},
+    "cleanup_item": {"plan_item_id": null, "state": "pending", "attempt_evidence": null, "verification_evidence": null, "verified_by": null, "verified_at": null, "not_required_reason": null, "next_action": null, "next_action_due_at": null}
+  },
+  "required_before_customer_acceptance": [
+    "handoff.id", "handoff.version", "handoff.pipeline_lead", "handoff.expected_pipeline_revision", "handoff.offer_version", "handoff.customer_account",
+    "handoff.agreement", "handoff.agreement_acceptance", "handoff.pilot_review", "handoff.sales_evidence_manifest", "handoff.sales_evidence_report", "handoff.candidate_sha256",
+    "handoff.delivered_at", "handoff.deliverables", "handoff.runbook", "handoff.dependencies", "handoff.accepted_checks", "handoff.known_limits", "handoff.retained_artifacts", "handoff.support", "handoff.cleanup_plan",
+    "customer_acceptance.handoff", "customer_acceptance.decision_maker", "customer_acceptance.decision_evidence", "customer_acceptance.at"
+  ],
+  "customer_decision_requirements": {
+    "accept": ["Exact candidate, runbook, and all final deliverable IDs match the handoff and REV-06 accept review; no unresolved defects; separate support acceptance names the exact handoff and its responsible human."],
+    "unresolved": ["Every defect names an affected deliverable, evidence, responsible human, next action, and due date; pending or unknown cleanup stays open. No service acceptance or automatic extension."],
+    "pending": ["Missing customer acknowledgment does not accept delivery; retain the responsible human and dated follow-up in the private pipeline."]
+  },
+  "cleanup_state_requirements": {
+    "removed": ["Exact plan item; acknowledged removal/cancellation result or observed absence through the authoritative owner; retained verification evidence, verifier, and date."],
+    "pending": ["Named responsible human through the plan, next action, and due date; a requested removal is not completed removal."],
+    "unknown": ["Retained attempted-effect reference, next action, and due date; no blind replay of an uncertain effect."],
+    "not_required": ["Explicit reason and reviewer acknowledgment; omitted items or missing replies never mean not required."]
+  },
+  "runbook_sections": [
+    "Exact deliverable/release and retained checks; installation or location of the accepted result.",
+    "Required client/provider/plugin versions, existing integrations, payer, permissions, and data boundary; explain unavailable optional dependencies.",
+    "How the customer starts the agreed workflow and verifies its accepted result without receiving temporary owner credentials.",
+    "Known limits, stop conditions, recovery from failed or unknown work, and separately authorized updates.",
+    "Accepted support owner/contact, business hours, response boundary, included work, end date, and route for work outside the agreement.",
+    "Customer-owned retained artifacts, local copies, and remaining cleanup responsibility."
+  ],
+  "bounds": {
+    "document_bytes": 65536,
+    "deliverables": 16,
+    "dependencies": 16,
+    "accepted_checks": 8,
+    "known_limits": 16,
+    "retained_artifacts": 32,
+    "cleanup_plan_items": 32,
+    "defects": 16,
+    "reference_path_bytes": 512,
+    "identifier_bytes": 256,
+    "instruction": "Use root-relative regular-file references with 64 hexadecimal SHA-256 characters, no symlinks, and no credentials in references. These are manual bounds; this template is not a parser or admission service."
+  },
+  "manual_rules": [
+    "Keep completed records mode-0600 under the mode-0700 pilot root. Freeze exact bytes and use separate acceptance/review records; a document does not contain its own digest.",
+    "Preserve the exact REV-06 accepted agreement, offer, customer/account, protected check review, candidate, runbook, and invoice-retention permission. Changes create a new handoff version and new acceptance; they never relabel the prior result.",
+    "A delivered artifact or passing executor exit is not independent or customer acceptance. Retain every failed, repair, and retry attempt through REV-03.",
+    "The customer and support owner acknowledge the exact handoff separately. A suggested contact, proposed pipeline handoff, or missing reply is not accepted support responsibility.",
+    "Populate all six cleanup classes. Use not_required with an explicit reviewed reason only when the pilot created no effect in that class. Preserve customer-owned access and copies that the agreement keeps.",
+    "Reuse existing owner-scoped revoke/remove/cancel operations for the exact pilot objects. A request acknowledgment proves only what its owning contract says; uncertain task termination or a lost sandbox stop reply stays unknown. This kit invokes no operations.",
+    "Record cleanup separately from accepted delivery. A legitimate pending owner/device removal can remain an owner action; it never becomes proof of completed cleanup or proof of payment.",
+    "Only the untouched public kit is reusable by default. Filled handoffs, runbooks, artifacts, identities, customer documents, private configuration, and credentials remain private. Customer-private material is never automatically copied into a generic example or plugin.",
+    "Prepare optional reusable material separately. Explicit rights must name its exact digest, recipients, and use. A separate privacy review checks that it contains no first-customer identity, documents, credentials, or private configuration. Reuse approval does not grant publication authority.",
+    "A plugin release remains subject to its existing freeze/test/review/publish contract. Record the exact release or an explicit not-applicable reason; pilot acceptance never creates or publishes a marketplace release.",
+    "Retain defect/support responsibility and dated next action in the authenticated private pipeline. These manual records grant no outbound, execution, spending, disclosure, or credential authority.",
+    "Service invoicing/payment uses REV-18's separate record. This handoff creates no product balance, entitlement, quota, plugin accrual, or paid-product activation."
+  ]
+}

@@ -28,6 +28,9 @@ customer records, compensation agreements, and negotiations stay private.
 - [What exists today](#what-exists-today)
 - [What we need to build](#what-we-need-to-build)
 - [Roadmap](#roadmap)
+- [Private sales pipeline](#private-sales-pipeline)
+- [Assisted pilot kit](#assisted-pilot-kit)
+- [Delivery, offboarding, and support](#delivery-offboarding-and-support)
 - [Measures](#measures)
 - [Considerations and risks](#considerations-and-risks)
 - [Open questions](#open-questions)
@@ -534,6 +537,47 @@ can create a separately invoiced service obligation, but an agreement, product
 funding, invoice, confirmed collection, and earned product usage stay separate.
 Retain stop/partial and uncertain-effect references, and record shared-content
 deletion when due. O1 customer activation remains in `NEEDS_OWNER.md`.
+
+## Delivery, offboarding, and support
+
+The [delivery and offboarding kit](delivery-kit.json) packages REV-07's manual
+handoff. Copy it into the private pilot root beside the exact REV-06 agreement
+and review. Its handoff pins the customer/account, offer, protected comparison,
+candidate, final deliverables, runbook, dependencies, accepted checks, known
+limits, retained artifacts, and support boundary. Record a source commit or
+exact plugin release where applicable; explain unavailable optional dependencies.
+The runbook shows the customer how to start, verify, stop, and recover the agreed
+workflow and how to reach its support owner. This kit grants no new authority.
+
+Freeze the handoff bytes before recording separate customer and support-owner
+acknowledgments of that digest. Customer acceptance must match the exact
+candidate, runbook, and deliverables in the REV-06 accept review. A defect remains
+unresolved with an affected result, evidence, responsible human, next action,
+and date. A proposed support contact or missing reply does not establish an
+accepted support owner. Keep the customer decision and outstanding action in
+the [private pipeline](#private-sales-pipeline).
+
+Populate each cleanup class: temporary credentials, host/device grants, test
+data, sandbox resources, local copies, and customer access. Keep customer-owned
+items that the agreement retains. Record `removed`, `pending`, `unknown`, or
+reviewed `not_required` separately for every plan item. `removed` requires the
+authoritative owner's removal result or observed absence, a verifier, date,
+and retained evidence. A sent request, lost reply, or unavailable owner check
+leaves a next action; it never proves that access or a resource disappeared.
+Use existing [device removal](../coder/guides/link-devices.md#inspect-and-undo),
+[host revocation](../coder/runtime/host-serve.md),
+[task cancellation](../coder/runtime/task-owner.md), and the selected resource's
+retention/cleanup contract for the exact pilot objects. The template runs none
+of these operations and does not retry uncertain effects.
+
+The public blank kit is reusable. Filled customer records and outputs remain
+private by default. Prepare any generic example/template separately; retain
+explicit rights to its exact digest, permitted recipients/use, and a privacy
+review that excludes the first customer's identity, documents, credentials,
+and private configuration. Publication requires its own authority and any
+applicable [plugin release review](../plugins/README.md). Delivery acceptance,
+cleanup evidence, support acceptance, and service payment remain separate.
+Real O1/O8 customer and support qualification is tracked in `NEEDS_OWNER.md`.
 
 ## Measures
 
