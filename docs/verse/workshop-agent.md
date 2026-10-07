@@ -435,6 +435,8 @@ Rules:
   another of your devices can read it. Relays see only that an agent with an
   owner uses memory.
 
+[Agent identity and engrams](agent-identity-and-engrams.md) makes her
+memory NIP-AE engrams and gives her a loop of her own that steers Coder.
 [Generative agents](generative-agents.md) proposes the next steps for her
 memory: retrieval scored by recency, importance, and relevance, and a
 nightly reflection whose insights cite the journal rows behind them.
