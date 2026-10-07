@@ -9930,6 +9930,7 @@ dependencies = [
  "brainstorm-client",
  "coder",
  "coder-access",
+ "coder-cloud",
  "coder-computers",
  "coder-connect",
  "coder-delegate",

@@ -109,7 +109,12 @@ fn run(
                     emit(json!({"event":"delegation","id":id,"name":name,"task":task,"update":event}));
                 }).await
             },
-            Placement::Gce=>Err("The GCE adapter is not installed in this build.".into())
+            Placement::Gce=>{
+                let backend=coder_cloud::gce_backend::Gce::from_env(&record.spec.credential_names)?;
+                drive(&backend,lease,record,flag,Duration::from_secs(2),&mut |event| {
+                    emit(json!({"event":"delegation","id":id,"name":name,"task":task,"update":event}));
+                }).await
+            }
         }
     })
     };

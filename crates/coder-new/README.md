@@ -271,3 +271,14 @@ Use `remote follow` after a disconnect. Selected `--credential-env` values trave
 to that run and stay redacted from retained output. Each sandbox starts without
 inherited account credentials. Completed jobs stop their sandbox and confirm its
 meter is no longer running. `remote status` reports unresolved cleanup.
+
+The same runtime can run in a granted Google Compute Engine pool:
+
+```sh
+openagents cloud up --hosts 1 --max-hosts 2
+openagents coder delegate codex --on gce --task "Review the checkout" --credential-env OPENAI_API_KEY
+```
+
+Jobs retain the pool grant and epoch, own a process slot, and reconnect to their
+original host. Confirmed host loss ends the job without replaying it. GCE usage
+is a labeled estimate of the job's share of the host list price.

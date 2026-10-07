@@ -11,6 +11,8 @@ use std::{
 };
 
 pub mod boat_backend;
+pub mod gce_backend;
+pub mod pool;
 pub mod runtime;
 
 pub type Result<T> = std::result::Result<T, String>;

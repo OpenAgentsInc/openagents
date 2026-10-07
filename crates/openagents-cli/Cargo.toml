@@ -13,6 +13,7 @@ name = "openagents"
 path = "src/main.rs"
 
 [dependencies]
+coder-cloud = { path = "../coder-cloud" }
 coder-new = { path = "../coder-new" }
 brainstorm-client = { path = "../brainstorm-client" }
 receipts = { path = "../receipts" }
