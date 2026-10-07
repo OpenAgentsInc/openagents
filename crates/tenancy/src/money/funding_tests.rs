@@ -2,6 +2,7 @@ use super::funding::{
     self, Conversion, FeePayer, Finality, Funding, Policy, Promotion, Rounding, Unit,
 };
 use super::*;
+use std::os::unix::fs::OpenOptionsExt;
 
 fn policy() -> Policy {
     let unit = Unit::CurrencyMillionths {

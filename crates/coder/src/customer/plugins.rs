@@ -1120,7 +1120,6 @@ impl CommissionSource<'_> {
         &self.token
     }
     pub fn current(&self) -> Result<()> {
-        use std::os::unix::fs::MetadataExt;
         crate::task::verify_same_file(&self.owner.dir.join("customer.lock"), &self.owner.lock)
             .map_err(|_| "Customer custody lock changed.")?;
         let held = self
@@ -1129,11 +1128,7 @@ impl CommissionSource<'_> {
             .map_err(|_| "Customer custody unavailable.")?;
         let visible =
             std::fs::symlink_metadata(&self.owner.dir).map_err(|_| "Customer custody replaced.")?;
-        if held.dev() != visible.dev()
-            || held.ino() != visible.ino()
-            || !visible.is_dir()
-            || visible.mode() & 0o077 != 0
-        {
+        if !same_private_directory(&held, &visible) {
             return Err("Customer custody replaced or disclosed.".into());
         }
         crate::task::verify_same_file(&self.owner.dir.join("state.json"), &self.state)
@@ -1173,6 +1168,46 @@ impl CommissionSource<'_> {
         Ok(())
     }
 }
+/// Whether the held customer directory is still the visible one and no
+/// group or other user can reach it. Outside Unix there are no modes or
+/// inode numbers to compare, so custody never holds there.
+fn same_private_directory(held: &std::fs::Metadata, visible: &std::fs::Metadata) -> bool {
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::MetadataExt;
+        held.dev() == visible.dev()
+            && held.ino() == visible.ino()
+            && visible.is_dir()
+            && visible.mode() & 0o077 == 0
+    }
+    #[cfg(not(unix))]
+    {
+        let _ = (held, visible);
+        false
+    }
+}
+
+/// Open the customer directory itself, refusing a symlink. Commission
+/// custody needs Unix, so other platforms refuse.
+fn open_custody_directory(path: &std::path::Path) -> std::io::Result<std::fs::File> {
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::OpenOptionsExt;
+        std::fs::OpenOptions::new()
+            .read(true)
+            .custom_flags(libc::O_DIRECTORY | libc::O_NOFOLLOW | libc::O_CLOEXEC)
+            .open(path)
+    }
+    #[cfg(not(unix))]
+    {
+        let _ = path;
+        Err(std::io::Error::new(
+            std::io::ErrorKind::Unsupported,
+            "plugin commission custody needs Unix permissions",
+        ))
+    }
+}
+
 impl Store {
     /// Admission is permitted only before the approved original payment.
     /// Reads after payment retain the same offer and recovery authorization.
@@ -1181,7 +1216,6 @@ impl Store {
         id: &str,
         admission: bool,
     ) -> Result<CommissionSource<'_>> {
-        use std::os::unix::fs::OpenOptionsExt;
         let p = self.plugin(id)?;
         if self.poisoned
             || admission && p.phase != Phase::Approved
@@ -1208,11 +1242,8 @@ impl Store {
         }
         let state = crate::task::private_open(&self.dir.join("state.json"), false, false)
             .map_err(|_| "Customer record unavailable.")?;
-        let directory = std::fs::OpenOptions::new()
-            .read(true)
-            .custom_flags(libc::O_DIRECTORY | libc::O_NOFOLLOW | libc::O_CLOEXEC)
-            .open(&self.dir)
-            .map_err(|_| "Customer directory unavailable.")?;
+        let directory =
+            open_custody_directory(&self.dir).map_err(|_| "Customer directory unavailable.")?;
         let current_selection = self.book.selected.as_ref().unwrap().clone();
         let credential = crate::task::private_open(
             &self

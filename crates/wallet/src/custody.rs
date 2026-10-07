@@ -1,4 +1,6 @@
 //! Persistent shared custody and exact once-only controller handoffs.
+// Outside Unix only the refusing stand-ins remain, so some imports go unused.
+#![cfg_attr(not(unix), allow(unused_imports))]
 use crate::WalletError;
 use hmac::{Hmac, Mac};
 use rusqlite::{Connection, TransactionBehavior, params};
@@ -7,10 +9,12 @@ use sha2::{Digest, Sha256};
 use std::{
     fs::{File, OpenOptions},
     io::{Read, Write},
-    os::unix::fs::{MetadataExt, OpenOptionsExt},
     path::{Path, PathBuf},
     sync::atomic::{AtomicBool, Ordering},
 };
+
+#[cfg(unix)]
+use std::os::unix::fs::{MetadataExt, OpenOptionsExt};
 
 pub const FILE: &str = "shared-custody.json";
 pub const REQUIRED_FILE: &str = "shared-custody.required";
@@ -84,6 +88,7 @@ fn problem() -> WalletError {
             .into(),
     )
 }
+#[cfg(unix)]
 fn private(path: &Path, directory: bool) -> Result<std::fs::Metadata, WalletError> {
     let m = std::fs::symlink_metadata(path).map_err(|_| problem())?;
     if m.uid() != unsafe { libc::geteuid() }
@@ -98,6 +103,7 @@ fn private(path: &Path, directory: bool) -> Result<std::fs::Metadata, WalletErro
     }
     Ok(m)
 }
+#[cfg(unix)]
 pub fn read(home: &Path) -> Result<Option<Manifest>, WalletError> {
     match std::fs::symlink_metadata(home.join(FILE)) {
         Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
@@ -185,6 +191,7 @@ pub fn refuse_raw(home: &Path) -> Result<(), WalletError> {
     }
 }
 /// The owner calls this only after proving the resident has no funds or open payments.
+#[cfg(unix)]
 pub fn install(home: &Path, manifest: &Manifest) -> Result<(), WalletError> {
     private(home, true)?;
     if let Some(old) = read(home)? {
@@ -232,6 +239,7 @@ pub struct Admitted {
     store: (u64, u64),
     manifest: Manifest,
 }
+#[cfg(unix)]
 impl Admitted {
     pub(crate) fn seal_result(&self, result: &serde_json::Value) -> Result<(), WalletError> {
         let root = private(&self.home, true)?;
@@ -269,6 +277,7 @@ impl Admitted {
         Ok(&self.permit)
     }
 }
+#[cfg(unix)]
 pub(crate) fn admit(
     home: &Path,
     node: &str,
@@ -389,6 +398,7 @@ pub(crate) fn admit(
 }
 
 /// Read a sealed original result without authorizing another financial effect.
+#[cfg(unix)]
 pub(crate) fn result(
     home: &Path,
     node: &str,
@@ -429,4 +439,47 @@ pub(crate) fn result(
         )),
         _ => Ok(None),
     }
+}
+
+// Shared custody rests on Unix modes, ownership, inode identity, and the
+// controller's Unix socket. Elsewhere a standalone wallet keeps working, and
+// any sign of shared custody refuses every financial operation.
+
+/// Outside Unix: no custody when none of its files exist, else refuse.
+#[cfg(not(unix))]
+pub fn read(home: &Path) -> Result<Option<Manifest>, WalletError> {
+    for name in [FILE, REQUIRED_FILE, "shared-handoffs.sqlite"] {
+        if !matches!(std::fs::symlink_metadata(home.join(name)), Err(e) if e.kind() == std::io::ErrorKind::NotFound)
+        {
+            return Err(problem());
+        }
+    }
+    Ok(None)
+}
+/// Outside Unix shared custody can't be installed.
+#[cfg(not(unix))]
+pub fn install(_: &Path, _: &Manifest) -> Result<(), WalletError> {
+    Err(problem())
+}
+#[cfg(not(unix))]
+impl Admitted {
+    pub(crate) fn seal_result(&self, _: &serde_json::Value) -> Result<(), WalletError> {
+        Err(problem())
+    }
+    pub fn take(&self) -> Result<&Permit, WalletError> {
+        Err(problem())
+    }
+}
+#[cfg(not(unix))]
+pub(crate) fn admit(_: &Path, _: &str, _: Permit, _: &str) -> Result<Admitted, WalletError> {
+    Err(problem())
+}
+#[cfg(not(unix))]
+pub(crate) fn result(
+    _: &Path,
+    _: &str,
+    _: &str,
+    _: &str,
+) -> Result<Option<serde_json::Value>, WalletError> {
+    Err(problem())
 }

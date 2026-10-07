@@ -14,7 +14,16 @@ pub(crate) fn place(class: Class, explicit: Option<&Place>) -> Result<Decision, 
     let policy = Policy::from_env()?;
     decide(class, &policy, explicit, &mut |computer| {
         eprintln!("openagents lease: asking whether {computer} answers over SSH");
-        coder_ssh::reachable(computer, None)
+        #[cfg(unix)]
+        {
+            coder_ssh::reachable(computer, None)
+        }
+        // `coder-ssh` is Unix-only, so no computer answers from Windows.
+        #[cfg(not(unix))]
+        {
+            let _ = computer;
+            false
+        }
     })
 }
 
@@ -73,6 +82,24 @@ pub(crate) fn run_remote(
     let Target::Remote(computer) = &decision.target else {
         return Err("the job was not placed on another computer".to_owned());
     };
+    #[cfg(not(unix))]
+    {
+        let _ = (command, fetch);
+        Err(format!(
+            "running on {computer} needs the system ssh, which Windows builds don't use"
+        ))
+    }
+    #[cfg(unix)]
+    run_over_ssh(decision, computer, command, fetch)
+}
+
+#[cfg(unix)]
+fn run_over_ssh(
+    decision: &Decision,
+    computer: &str,
+    command: &[String],
+    fetch: &[String],
+) -> Result<(Receipt, Option<String>), String> {
     let pushed = pushed_commit()?;
     let job = coder_ssh::Job::new(
         computer,
@@ -122,7 +149,7 @@ pub(crate) fn run_remote(
             class: decision.class,
             asked: decision.asked.clone(),
             place: "remote".to_owned(),
-            computer: Some(computer.clone()),
+            computer: Some(computer.to_owned()),
             reason: decision.reason.clone(),
             commit: Some(pushed.commit),
             remote_dir: Some(job.remote_dir()),
@@ -157,6 +184,7 @@ pub(crate) fn record(root: &Path, receipt: &Receipt, copy: Option<&Path>) -> Res
     Ok(())
 }
 
+#[cfg(unix)]
 struct Pushed {
     repository: String,
     commit: String,
@@ -164,6 +192,7 @@ struct Pushed {
 
 /// This checkout's commit, once it's clean and pushed, with the URL of
 /// `origin`, which the other computer clones.
+#[cfg(unix)]
 fn pushed_commit() -> Result<Pushed, String> {
     let commit = git(&["rev-parse", "HEAD"])
         .ok_or("a remote run needs a Git checkout; run it here with --place local")?;

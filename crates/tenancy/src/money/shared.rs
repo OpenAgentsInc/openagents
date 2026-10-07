@@ -6,25 +6,24 @@ use sha2::{Digest, Sha256};
 use std::{
     fs::{File, OpenOptions},
     io::{Read, Write},
-    os::unix::fs::{MetadataExt, OpenOptionsExt, PermissionsExt},
     path::{Path, PathBuf},
 };
+
+use crate::private_fs::{self, O_CLOEXEC, O_DIRECTORY, O_NOFOLLOW, O_NONBLOCK};
 fn directory_file(path: &Path) -> Result<File, String> {
-    OpenOptions::new()
-        .read(true)
-        .custom_flags(libc::O_NOFOLLOW | libc::O_DIRECTORY | libc::O_CLOEXEC)
-        .open(path)
-        .map_err(|_| "Retained custody directory unavailable.".into())
+    private_fs::flags(
+        OpenOptions::new().read(true),
+        O_NOFOLLOW | O_DIRECTORY | O_CLOEXEC,
+    )
+    .and_then(|options| options.open(path))
+    .map_err(|_| "Retained custody directory unavailable.".into())
 }
 fn check_directory(file: &File, path: &Path) -> Result<(), String> {
     let held = file
         .metadata()
         .map_err(|_| "Custody directory metadata unavailable.")?;
     let current = std::fs::symlink_metadata(path).map_err(|_| "Custody directory changed.")?;
-    if !current.is_dir()
-        || current.dev() != held.dev()
-        || current.ino() != held.ino()
-        || current.uid() != unsafe { libc::geteuid() }
+    if !current.is_dir() || !private_fs::same_file(&current, &held) || !private_fs::owned(&current)
     {
         return Err("Original custody directory changed.".into());
     }
@@ -50,10 +49,8 @@ pub fn required(directory: &Path, workspace: &str) -> Result<Option<Mode>, Strin
         Err(_) => return Err("Shared custody marker unavailable.".into()),
         Ok(_) => {}
     }
-    let f = OpenOptions::new()
-        .read(true)
-        .custom_flags(libc::O_NOFOLLOW | libc::O_NONBLOCK)
-        .open(&path)
+    let f = private_fs::flags(OpenOptions::new().read(true), O_NOFOLLOW | O_NONBLOCK)
+        .and_then(|options| options.open(&path))
         .map_err(|_| "Shared custody marker unavailable.")?;
     let m = f
         .metadata()
@@ -61,13 +58,13 @@ pub fn required(directory: &Path, workspace: &str) -> Result<Option<Mode>, Strin
     let parent = std::fs::symlink_metadata(path.parent().unwrap())
         .map_err(|_| "Shared custody directory unavailable.")?;
     if !m.is_file()
-        || m.nlink() != 1
-        || m.uid() != unsafe { libc::geteuid() }
-        || m.mode() & 0o077 != 0
+        || private_fs::nlink(&m) != 1
+        || !private_fs::owned(&m)
+        || !private_fs::mode_clear(&m, 0o077)
         || m.len() > 64 * 1024
         || !parent.is_dir()
-        || parent.mode() & 0o077 != 0
-        || parent.uid() != unsafe { libc::geteuid() }
+        || !private_fs::mode_clear(&parent, 0o077)
+        || !private_fs::owned(&parent)
     {
         return Err("Shared custody marker is not private.".into());
     }
@@ -77,8 +74,7 @@ pub fn required(directory: &Path, workspace: &str) -> Result<Option<Mode>, Strin
         .read_to_end(&mut bytes)
         .map_err(|_| "Shared custody read failed.")?;
     let visible = std::fs::symlink_metadata(&path).map_err(|_| "Custody marker changed.")?;
-    if visible.dev() != m.dev()
-        || visible.ino() != m.ino()
+    if !private_fs::same_file(&visible, &m)
         || visible.len() != m.len()
         || bytes.len() as u64 != m.len()
     {
@@ -108,23 +104,19 @@ pub fn install_marker(directory: &Path, mode: &Mode) -> Result<(), String> {
     }
     let path = marker(directory, workspace);
     let parent = path.parent().unwrap();
-    match std::fs::create_dir(parent) {
-        Ok(()) => std::fs::set_permissions(parent, std::fs::Permissions::from_mode(0o700))
-            .map_err(|_| "Private marker directory failed.")?,
+    match private_fs::create_private_dir(parent) {
+        Ok(()) => {}
         Err(e) if e.kind() == std::io::ErrorKind::AlreadyExists => {}
         Err(_) => return Err("Private marker directory failed.".into()),
     }
     let m =
         std::fs::symlink_metadata(parent).map_err(|_| "Private marker directory unavailable.")?;
-    if !m.is_dir() || m.mode() & 0o077 != 0 || m.uid() != unsafe { libc::geteuid() } {
+    if !m.is_dir() || !private_fs::mode_clear(&m, 0o077) || !private_fs::owned(&m) {
         return Err("Private marker directory required.".into());
     }
-    let mut file = OpenOptions::new()
-        .write(true)
-        .create_new(true)
-        .mode(0o600)
-        .custom_flags(libc::O_NOFOLLOW)
-        .open(&path)
+    let mut file = private_fs::mode(OpenOptions::new().write(true).create_new(true), 0o600)
+        .and_then(|options| private_fs::flags(options, O_NOFOLLOW))
+        .and_then(|options| options.open(&path))
         .map_err(|_| "Shared custody marker already exists.")?;
     file.write_all(&serde_json::to_vec(mode).map_err(|_| "Invalid shared marker.")?)
         .and_then(|_| file.sync_all())
@@ -155,12 +147,9 @@ pub fn migrate_marker(directory: &Path, old: &Mode, new: &Mode) -> Result<(), St
     let parent = path.parent().unwrap();
     let parent_file = directory_file(parent)?;
     let temporary = parent.join(format!(".{}.tmp", new.binding_digest));
-    let mut file = OpenOptions::new()
-        .write(true)
-        .create_new(true)
-        .mode(0o600)
-        .custom_flags(libc::O_NOFOLLOW)
-        .open(&temporary)
+    let mut file = private_fs::mode(OpenOptions::new().write(true).create_new(true), 0o600)
+        .and_then(|options| private_fs::flags(options, O_NOFOLLOW))
+        .and_then(|options| options.open(&temporary))
         .map_err(|_| "Private migration intent already exists; inspect before retrying.")?;
     file.write_all(&serde_json::to_vec(new).map_err(|_| "Invalid custody migration.")?)
         .and_then(|_| file.sync_all())

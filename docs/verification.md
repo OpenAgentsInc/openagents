@@ -51,6 +51,8 @@ standard full run took 1003.7 seconds (about 17 minutes); actual time depends on
 cache warmth, changed dependencies, and machine load. Targeted checks avoid
 paying that cost for every issue.
 
+Before a Coder release, run `./scripts/check-windows.sh` under the build lease. It cross-builds the Windows release binaries, so it catches Unix-only code that a Windows build reaches.
+
 The cancellation fixtures require a current Python runtime. On macOS,
 Apple's system Python 3.9 fails their known-good runner; Python 3.13 passes
 the same check. Put the installed Homebrew runtime first for the gate:

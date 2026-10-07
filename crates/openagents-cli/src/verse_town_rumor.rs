@@ -221,8 +221,8 @@ fn propose(output: &Output, dir: &Dir, args: &Args, id: &str) -> Result<u8, Stri
     let scorer: &mut dyn Scorer = if args.switch("prior") {
         &mut prior
     } else {
-        let judge = crate::background::JevJudge::from_env()
-            .ok_or_else(|| format!("{} Or pass --prior.", crate::background::NO_JEV))?;
+        let judge = crate::jev_judge::JevJudge::from_env()
+            .ok_or_else(|| format!("{} Or pass --prior.", crate::jev_judge::NO_JEV))?;
         jev = JevScorer {
             client: judge.client(),
         };

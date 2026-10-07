@@ -14,7 +14,6 @@ path = "src/main.rs"
 
 [dependencies]
 coder-cloud = { path = "../coder-cloud" }
-commercial-accounts = { path = "../commercial-accounts", features = ["merchant-commissions"] }
 coder-new = { path = "../coder-new" }
 brainstorm-client = { path = "../brainstorm-client" }
 receipts = { path = "../receipts" }
@@ -79,7 +78,6 @@ openagents-x402 = { path = "../x402" }
 # `openagents pay serve`: paid plugin invocations run a release's guest
 # (`/v1/plugins/{id}/invoke`), and settlements go to the ledger.
 pay-ledger = { path = "../pay-ledger" }
-commercial-spend = { path = "../commercial-spend" }
 plugin = { path = "../plugin" }
 # The playtest triage inbox: reports, drafts, and the triage log.
 playtest = { path = "../playtest" }
@@ -108,11 +106,17 @@ town-clock = { path = "../town-clock" }
 world-tree = { path = "../world-tree" }
 
 # `openagents ssh` runs the system ssh through Unix process groups, and
-# `openagents labor`'s store rests on Unix file modes; Windows builds
-# without both.
+# `openagents labor`'s, `openagents pay commission`'s, and plugin purchases'
+# stores rest on Unix file modes; Windows builds without them.
 [target.'cfg(unix)'.dependencies]
+commercial-accounts = { path = "../commercial-accounts", features = ["merchant-commissions"] }
+commercial-spend = { path = "../commercial-spend" }
 coder-labor = { path = "../coder-labor" }
 coder-ssh = { path = "../coder-ssh" }
+
+# Owner-only sales inputs on Windows, where there are no modes.
+[target.'cfg(windows)'.dependencies]
+private-fs = { path = "../private-fs" }
 
 [dev-dependencies]
 commercial-accounts = { path = "../commercial-accounts" }

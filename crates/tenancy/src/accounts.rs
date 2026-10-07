@@ -40,13 +40,14 @@ pub mod team_reports;
 
 use std::collections::BTreeMap;
 use std::io::{Read, Write};
-use std::os::unix::fs::OpenOptionsExt;
 use std::path::{Path, PathBuf};
 use std::time::Duration;
 
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use sha2::{Digest, Sha256};
+
+use crate::private_fs;
 
 pub mod referrals;
 
@@ -714,10 +715,11 @@ struct Lock {
 
 impl Lock {
     fn acquire(dir: &Path) -> Result<Self, Trouble> {
-        let directory = std::fs::OpenOptions::new()
-            .read(true)
-            .custom_flags(libc::O_DIRECTORY | libc::O_NOFOLLOW)
-            .open(dir)?;
+        let directory = private_fs::flags(
+            std::fs::OpenOptions::new().read(true),
+            private_fs::O_DIRECTORY | private_fs::O_NOFOLLOW,
+        )?
+        .open(dir)?;
         let path = dir.join(LOCKFILE);
         for _ in 0..LOCK_RETRIES {
             match std::fs::OpenOptions::new()
@@ -744,13 +746,10 @@ impl Lock {
 
     /// Refuse an old writer after its lock or account directory was replaced.
     fn check(&self) -> Result<(), Trouble> {
-        use std::os::unix::fs::MetadataExt;
         let matches = |file: &std::fs::File, path: &Path| -> Result<bool, Trouble> {
             let held = file.metadata()?;
             let current = std::fs::symlink_metadata(path)?;
-            Ok(!current.file_type().is_symlink()
-                && held.dev() == current.dev()
-                && held.ino() == current.ino())
+            Ok(!current.file_type().is_symlink() && private_fs::same_file(&held, &current))
         };
         if !matches(&self.file, &self.path)?
             || !matches(
@@ -820,11 +819,11 @@ fn read_store(path: &Path) -> Result<String, Trouble> {
 }
 
 fn write_synced(path: &Path, text: &str) -> Result<(), Trouble> {
-    let mut file = std::fs::OpenOptions::new()
-        .create_new(true)
-        .write(true)
-        .mode(0o600)
-        .open(path)?;
+    let mut file = crate::private_fs::mode(
+        std::fs::OpenOptions::new().create_new(true).write(true),
+        0o600,
+    )?
+    .open(path)?;
     file.write_all(text.as_bytes())?;
     file.sync_all()?;
     Ok(())

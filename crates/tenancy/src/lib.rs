@@ -65,6 +65,7 @@ pub mod billing;
 pub mod keys;
 mod manifest;
 pub mod money;
+mod private_fs;
 pub mod quota;
 mod registry;
 pub mod sessions;

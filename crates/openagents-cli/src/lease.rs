@@ -159,6 +159,19 @@ fn du(output: &Output, words: &[String]) -> u8 {
     0
 }
 
+/// Bytes as a person reads them, in the disk monitor's format where it
+/// builds.
+fn bytes(n: u64) -> String {
+    #[cfg(unix)]
+    {
+        background::paths::bytes(n)
+    }
+    #[cfg(not(unix))]
+    {
+        format!("{n} bytes")
+    }
+}
+
 fn render_du(sessions: &[coder_lease::SessionUsage], total: u64) -> String {
     if sessions.is_empty() {
         return "No lease has ended yet, so there is no use to report.".to_owned();
@@ -177,14 +190,14 @@ fn render_du(sessions: &[coder_lease::SessionUsage], total: u64) -> String {
             if session.live { "live" } else { "ended" }.to_owned(),
             session.builds.to_string(),
             span(session.held_ms),
-            background::paths::bytes(session.allocated_bytes),
+            bytes(session.allocated_bytes),
             session.paths.len().to_string(),
         ]);
     }
     format!(
         "{}\n{} in all, each folder counted for the session that built in it last.",
         crate::out::table(&rows),
-        background::paths::bytes(total)
+        bytes(total)
     )
 }
 
@@ -763,6 +776,12 @@ fn target_slot(shim: bool) -> Result<Option<coder::task::targets::Lease>, String
 /// What the build's slot and the holder's linked worktree hold, measured
 /// together so APFS clones and hard links count once. `None` with neither,
 /// or when they can't be measured.
+#[cfg(not(unix))]
+fn measure_build(_slot: Option<&std::path::Path>) -> Option<coder_lease::DiskUse> {
+    None
+}
+
+#[cfg(unix)]
 fn measure_build(slot: Option<&std::path::Path>) -> Option<coder_lease::DiskUse> {
     let worktree = linked_worktree();
     let home = PathBuf::from(std::env::var_os("HOME")?);
@@ -788,6 +807,7 @@ fn measure_build(slot: Option<&std::path::Path>) -> Option<coder_lease::DiskUse>
 /// The linked worktree the working directory is in: a checkout whose
 /// `.git` is a file. A main checkout is shared, not one session's, so it
 /// isn't counted.
+#[cfg(unix)]
 fn linked_worktree() -> Option<PathBuf> {
     let found = Command::new("git")
         .args(["rev-parse", "--show-toplevel"])
@@ -828,10 +848,14 @@ fn record_slot(broker: &Broker, receipt: &coder_lease::Receipt, slot: PathBuf) {
 /// The broker's reclaim hook for a build short of disk: class 1 of the
 /// disk cleanup alone, which deletes the slots of sessions that ended and
 /// the build caches of ended tasks, with every check the cleanup makes.
+#[cfg(not(unix))]
+fn reclaim_slots(_shortfall: u64) {}
+
+#[cfg(unix)]
 fn reclaim_slots(shortfall: u64) {
     eprintln!(
         "openagents lease: a build needs {} more free space; reclaiming the slots of ended sessions",
-        background::paths::bytes(shortfall)
+        bytes(shortfall)
     );
     let Some(home) = std::env::var_os("HOME").map(PathBuf::from) else {
         return;
@@ -853,10 +877,7 @@ fn reclaim_slots(shortfall: u64) {
     match background::lease_slots::reclaim(&env, shortfall) {
         Ok(report) => {
             let freed = report.record.map_or(0, |record| record.freed_sum);
-            eprintln!(
-                "openagents lease: reclaimed {}",
-                background::paths::bytes(freed)
-            );
+            eprintln!("openagents lease: reclaimed {}", bytes(freed));
         }
         Err(error) => eprintln!("openagents lease: nothing reclaimed: {error}"),
     }

@@ -10008,6 +10008,7 @@ dependencies = [
  "pay-ledger",
  "playtest",
  "plugin",
+ "private-fs",
  "pylon",
  "rcgen",
  "receipts",

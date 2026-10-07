@@ -8,12 +8,28 @@ use receipts::service_sale::{
 use std::collections::BTreeMap;
 use std::fs;
 use std::io::Read;
-use std::os::unix::fs::{OpenOptionsExt, PermissionsExt};
+#[cfg(unix)]
+use std::os::unix::fs::OpenOptionsExt;
 use std::path::{Component, Path};
 
 pub const MAX_SALES: usize = 16;
 const MAX_FILE: usize = 8 * 1024 * 1024;
 const MAX_TOTAL: usize = 64 * 1024 * 1024;
+
+/// Whether `meta` is a real directory no group or other user can reach.
+/// Outside Unix there are no mode bits, so no directory is private.
+fn private_dir(meta: &fs::Metadata) -> bool {
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        meta.is_dir() && !meta.file_type().is_symlink() && meta.permissions().mode() & 0o077 == 0
+    }
+    #[cfg(not(unix))]
+    {
+        let _ = meta;
+        false
+    }
+}
 
 pub(super) struct Reader<'a> {
     root: &'a Path,
@@ -25,8 +41,7 @@ impl<'a> Reader<'a> {
         let root = root.ok_or("service recording needs an explicit private evidence root")?;
         let meta =
             fs::symlink_metadata(root).map_err(|_| "service evidence root is unavailable")?;
-        if !meta.is_dir() || meta.file_type().is_symlink() || meta.permissions().mode() & 0o077 != 0
-        {
+        if !private_dir(&meta) {
             return Err("service evidence root must be a private directory".into());
         }
         Ok(Self {
@@ -57,9 +72,12 @@ impl<'a> Reader<'a> {
                 return Err("symlink service evidence is refused".into());
             }
         }
-        let file = fs::OpenOptions::new()
-            .read(true)
-            .custom_flags(libc::O_NOFOLLOW | libc::O_NONBLOCK)
+        let mut options = fs::OpenOptions::new();
+        options.read(true);
+        // Outside Unix no root is private, so `new` refused before this.
+        #[cfg(unix)]
+        options.custom_flags(libc::O_NOFOLLOW | libc::O_NONBLOCK);
+        let file = options
             .open(&path)
             .map_err(|_| "service evidence read refused")?;
         if !file

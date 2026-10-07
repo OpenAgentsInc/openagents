@@ -38,7 +38,6 @@
 
 use std::collections::BTreeMap;
 use std::io::{Read, Write};
-use std::os::unix::fs::OpenOptionsExt;
 use std::path::{Path, PathBuf};
 
 use serde::{Deserialize, Serialize};
@@ -1312,11 +1311,11 @@ fn read_skills(path: &Path) -> Result<String, Trouble> {
 }
 
 fn write_skills_synced(path: &Path, text: &str) -> Result<(), Trouble> {
-    let mut file = std::fs::OpenOptions::new()
-        .create_new(true)
-        .write(true)
-        .mode(0o600)
-        .open(path)?;
+    let mut file = crate::private_fs::mode(
+        std::fs::OpenOptions::new().create_new(true).write(true),
+        0o600,
+    )?
+    .open(path)?;
     file.write_all(text.as_bytes())?;
     file.sync_all()?;
     Ok(())

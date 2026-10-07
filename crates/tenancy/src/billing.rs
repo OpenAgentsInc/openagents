@@ -30,13 +30,13 @@
 
 use std::collections::BTreeMap;
 use std::io::{Read, Write};
-use std::os::unix::fs::{MetadataExt, OpenOptionsExt, PermissionsExt};
 use std::path::{Path, PathBuf};
 
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 
 use crate::accounts::Trouble;
+use crate::private_fs;
 use crate::sessions::{Access, push_access};
 
 /// The store's schema tag.
@@ -1681,10 +1681,9 @@ impl Billing {
         let held = self.directory.metadata()?;
         let current = std::fs::symlink_metadata(&self.dir)?;
         if !current.is_dir()
-            || current.dev() != held.dev()
-            || current.ino() != held.ino()
-            || current.uid() != unsafe { libc::geteuid() }
-            || current.permissions().mode() & 0o022 != 0
+            || !private_fs::same_file(&current, &held)
+            || !private_fs::owned(&current)
+            || !private_fs::mode_clear(&current, 0o022)
         {
             return Err(Trouble::Invalid("billing directory custody changed".into()));
         }
@@ -1761,19 +1760,16 @@ struct BillingLock {
 impl BillingLock {
     fn acquire(dir: &Path) -> Result<Self, Trouble> {
         let path = dir.join(LOCK);
-        let file = std::fs::OpenOptions::new()
-            .create(true)
-            .truncate(false)
-            .read(true)
-            .write(true)
-            .mode(0o600)
-            .custom_flags(libc::O_NOFOLLOW | libc::O_CLOEXEC)
+        let mut options = std::fs::OpenOptions::new();
+        options.create(true).truncate(false).read(true).write(true);
+        private_fs::mode(&mut options, 0o600)?;
+        let file = private_fs::flags(&mut options, private_fs::O_NOFOLLOW | private_fs::O_CLOEXEC)?
             .open(&path)?;
         let held = file.metadata()?;
         if !held.is_file()
-            || held.nlink() != 1
-            || held.uid() != unsafe { libc::geteuid() }
-            || held.permissions().mode() & 0o077 != 0
+            || private_fs::nlink(&held) != 1
+            || !private_fs::owned(&held)
+            || !private_fs::mode_clear(&held, 0o077)
         {
             return Err(Trouble::Invalid(
                 "billing lock requires an owned private regular file".into(),
@@ -1784,11 +1780,10 @@ impl BillingLock {
                 Ok(()) => {
                     let current = std::fs::symlink_metadata(&path)?;
                     if !current.is_file()
-                        || current.dev() != held.dev()
-                        || current.ino() != held.ino()
-                        || current.nlink() != 1
-                        || current.uid() != held.uid()
-                        || current.permissions().mode() & 0o077 != 0
+                        || !private_fs::same_file(&current, &held)
+                        || private_fs::nlink(&current) != 1
+                        || !private_fs::owned(&current)
+                        || !private_fs::mode_clear(&current, 0o077)
                     {
                         return Err(Trouble::Invalid(
                             "billing lock changed while acquiring it".into(),
@@ -1815,15 +1810,16 @@ fn unix_now() -> u64 {
 
 fn read_billing(path: &Path) -> Result<String, Trouble> {
     let mut text = String::new();
-    let file = std::fs::OpenOptions::new()
-        .read(true)
-        .custom_flags(libc::O_NOFOLLOW | libc::O_NONBLOCK | libc::O_CLOEXEC)
-        .open(path)?;
+    let file = private_fs::flags(
+        std::fs::OpenOptions::new().read(true),
+        private_fs::O_NOFOLLOW | private_fs::O_NONBLOCK | private_fs::O_CLOEXEC,
+    )?
+    .open(path)?;
     let held = file.metadata()?;
     if !held.is_file()
-        || held.nlink() != 1
-        || held.uid() != unsafe { libc::geteuid() }
-        || held.permissions().mode() & 0o077 != 0
+        || private_fs::nlink(&held) != 1
+        || !private_fs::owned(&held)
+        || !private_fs::mode_clear(&held, 0o077)
     {
         return Err(Trouble::Invalid(
             "billing records require owned private regular files".into(),
@@ -1834,12 +1830,11 @@ fn read_billing(path: &Path) -> Result<String, Trouble> {
         return Err(Trouble::Invalid("billing store exceeds 16 MiB".into()));
     }
     let current = std::fs::symlink_metadata(path)?;
-    if current.dev() != held.dev()
-        || current.ino() != held.ino()
+    if !private_fs::same_file(&current, &held)
         || !current.is_file()
-        || current.nlink() != 1
-        || current.uid() != held.uid()
-        || current.permissions().mode() & 0o077 != 0
+        || private_fs::nlink(&current) != 1
+        || !private_fs::owned(&current)
+        || !private_fs::mode_clear(&current, 0o077)
     {
         return Err(Trouble::Invalid(
             "billing record custody changed during read".into(),
@@ -1849,17 +1844,17 @@ fn read_billing(path: &Path) -> Result<String, Trouble> {
 }
 
 fn billing_directory(path: &Path) -> Result<std::fs::File, Trouble> {
-    let file = std::fs::OpenOptions::new()
-        .read(true)
-        .custom_flags(libc::O_NOFOLLOW | libc::O_DIRECTORY | libc::O_CLOEXEC)
-        .open(path)?;
+    let file = private_fs::flags(
+        std::fs::OpenOptions::new().read(true),
+        private_fs::O_NOFOLLOW | private_fs::O_DIRECTORY | private_fs::O_CLOEXEC,
+    )?
+    .open(path)?;
     let held = file.metadata()?;
     let current = std::fs::symlink_metadata(path)?;
     if !current.is_dir()
-        || current.dev() != held.dev()
-        || current.ino() != held.ino()
-        || held.uid() != unsafe { libc::geteuid() }
-        || held.permissions().mode() & 0o022 != 0
+        || !private_fs::same_file(&current, &held)
+        || !private_fs::owned(&held)
+        || !private_fs::mode_clear(&held, 0o022)
     {
         return Err(Trouble::Invalid(
             "billing needs an owned directory without shared write access".into(),
@@ -1869,11 +1864,11 @@ fn billing_directory(path: &Path) -> Result<std::fs::File, Trouble> {
 }
 
 fn write_synced(path: &Path, text: &str) -> Result<(), Trouble> {
-    let mut file = std::fs::OpenOptions::new()
-        .create_new(true)
-        .write(true)
-        .mode(0o600)
-        .open(path)?;
+    let mut file = crate::private_fs::mode(
+        std::fs::OpenOptions::new().create_new(true).write(true),
+        0o600,
+    )?
+    .open(path)?;
     file.write_all(text.as_bytes())?;
     file.sync_all()?;
     Ok(())
@@ -1884,8 +1879,7 @@ fn write_synced(path: &Path, text: &str) -> Result<(), Trouble> {
 fn save(dir: &Path, store: &Store) -> Result<(), Trouble> {
     let history = dir.join(HISTORY_DIR);
     if !history.exists() {
-        use std::os::unix::fs::DirBuilderExt;
-        std::fs::DirBuilder::new().mode(0o700).create(&history)?;
+        private_fs::create_private_dir(&history)?;
     }
     let history_directory = billing_directory(&history)?;
     let text =
@@ -2021,6 +2015,7 @@ mod tests {
         );
     }
     use super::*;
+    use std::os::unix::fs::{MetadataExt, PermissionsExt};
 
     fn plan(id: &str, amount: u64) -> Plan {
         Plan {

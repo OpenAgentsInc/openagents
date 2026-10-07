@@ -45,6 +45,7 @@ mod ext_run;
 mod gym;
 mod hosts;
 mod issue;
+mod jev_judge;
 mod kb;
 mod key;
 #[cfg(unix)]
@@ -57,6 +58,7 @@ mod out;
 mod pay;
 #[cfg(unix)]
 mod pay_commission;
+#[cfg(unix)]
 mod pay_hosted;
 #[cfg(unix)]
 mod pay_payout;

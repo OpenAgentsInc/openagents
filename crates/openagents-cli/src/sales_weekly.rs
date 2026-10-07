@@ -5,19 +5,32 @@ use gym::sales_weekly as weekly;
 use serde_json::{Value, json};
 use std::fs;
 use std::io::Read;
-use std::os::unix::fs::{OpenOptionsExt, PermissionsExt};
 use std::path::Path;
 
 fn private_input(path: &Path, maximum: usize) -> Result<Vec<u8>, String> {
-    let file = fs::OpenOptions::new()
-        .read(true)
-        .custom_flags(libc::O_NOFOLLOW | libc::O_NONBLOCK)
+    let mut options = fs::OpenOptions::new();
+    options.read(true);
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::OpenOptionsExt;
+        options.custom_flags(libc::O_NOFOLLOW | libc::O_NONBLOCK);
+    }
+    #[cfg(windows)]
+    private_fs::nofollow(&mut options);
+    let file = options
         .open(path)
         .map_err(|_| "private review input is unavailable")?;
     let meta = file
         .metadata()
         .map_err(|_| "private review input metadata is unavailable")?;
-    if !meta.is_file() || meta.permissions().mode() & 0o077 != 0 {
+    #[cfg(unix)]
+    let private = {
+        use std::os::unix::fs::PermissionsExt;
+        meta.permissions().mode() & 0o077 == 0
+    };
+    #[cfg(windows)]
+    let private = private_fs::is_private(&file).unwrap_or(false);
+    if !meta.is_file() || !private {
         return Err("review input must be a private regular file".into());
     }
     let mut bytes = Vec::new();

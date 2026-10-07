@@ -7,7 +7,6 @@
 use std::collections::BTreeMap;
 use std::fs::{File, OpenOptions};
 use std::io::{Read, Write};
-use std::os::unix::fs::{OpenOptionsExt, PermissionsExt};
 use std::path::Path;
 use std::time::{SystemTime, UNIX_EPOCH};
 
@@ -931,15 +930,14 @@ impl Ledger {
         if std::fs::symlink_metadata(path).is_ok_and(|m| m.file_type().is_symlink()) {
             return Err("money ledger must not be a symlink".into());
         }
-        let mut file = OpenOptions::new()
-            .read(true)
-            .append(true)
-            .create(true)
-            .mode(0o600)
-            .open(path)
-            .map_err(|e| e.to_string())?;
+        let mut file = crate::private_fs::mode(
+            OpenOptions::new().read(true).append(true).create(true),
+            0o600,
+        )
+        .and_then(|options| options.open(path))
+        .map_err(|e| e.to_string())?;
         let metadata = file.metadata().map_err(|e| e.to_string())?;
-        if !metadata.is_file() || metadata.permissions().mode() & 0o077 != 0 {
+        if !metadata.is_file() || !crate::private_fs::mode_clear(&metadata, 0o077) {
             return Err("money ledger requires a private regular file".into());
         }
         file.try_lock()
@@ -1069,7 +1067,7 @@ impl Ledger {
     /// Verify the held native journal without adopting a replacement pathname.
     /// This read changes no balance, reservation, source, clock, or statement.
     pub fn check_source(&self, path: &Path) -> Result<(), String> {
-        use std::os::unix::fs::{MetadataExt, OpenOptionsExt};
+        use crate::private_fs::{self, same_file};
         if self.poisoned {
             return Err("Money source requires recovery.".into());
         }
@@ -1078,24 +1076,22 @@ impl Ledger {
             std::fs::symlink_metadata(path).map_err(|_| "Money source is unavailable.")?;
         let valid = |m: &std::fs::Metadata| {
             m.is_file()
-                && m.nlink() == 1
-                && m.mode() & 0o077 == 0
-                && m.uid() == unsafe { libc::geteuid() }
+                && private_fs::nlink(m) == 1
+                && private_fs::mode_clear(m, 0o077)
+                && private_fs::owned(m)
                 && m.len() == self.bytes
         };
-        if !valid(&held)
-            || !valid(&visible)
-            || (held.dev(), held.ino()) != (visible.dev(), visible.ino())
-        {
+        if !valid(&held) || !valid(&visible) || !same_file(&held, &visible) {
             return Err("Held money source custody changed.".into());
         }
-        let reader = OpenOptions::new()
-            .read(true)
-            .custom_flags(libc::O_NOFOLLOW | libc::O_NONBLOCK)
-            .open(path)
-            .map_err(|_| "Money source is unavailable.")?;
+        let reader = private_fs::flags(
+            OpenOptions::new().read(true),
+            private_fs::O_NOFOLLOW | private_fs::O_NONBLOCK,
+        )
+        .and_then(|options| options.open(path))
+        .map_err(|_| "Money source is unavailable.")?;
         let opened = reader.metadata().map_err(|e| e.to_string())?;
-        if !valid(&opened) || (held.dev(), held.ino()) != (opened.dev(), opened.ino()) {
+        if !valid(&opened) || !same_file(&held, &opened) {
             return Err("Held money source changed before reading.".into());
         }
         let mut bytes = Vec::new();
@@ -1119,10 +1115,7 @@ impl Ledger {
             head = entry.digest;
         }
         let after = std::fs::symlink_metadata(path).map_err(|_| "Money source disappeared.")?;
-        if head != self.head
-            || !valid(&after)
-            || (held.dev(), held.ino()) != (after.dev(), after.ino())
-        {
+        if head != self.head || !valid(&after) || !same_file(&held, &after) {
             return Err("Held money source head or custody changed.".into());
         }
         Ok(())
@@ -1727,6 +1720,7 @@ mod tests {
 #[cfg(test)]
 mod source_tests {
     use super::*;
+    use std::os::unix::fs::PermissionsExt;
     #[test]
     fn held_source_replacement_shared_file_append_and_modified_chain_are_refused() {
         let dir = tempfile::tempdir().unwrap();

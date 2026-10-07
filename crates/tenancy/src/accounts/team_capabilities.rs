@@ -2,12 +2,12 @@
 //! Evaluation references describe a release; they never authorize execution.
 
 use super::{Accounts, Lock, MemberRef, Role, Store, save, unix_now};
+use crate::private_fs;
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 use std::collections::BTreeMap;
 use std::fs::File;
 use std::io::Read;
-use std::os::unix::fs::{MetadataExt, OpenOptionsExt};
 
 pub const SCHEMA: &str = "openagents.team-capability.v1";
 pub const READ: &str = "team-capabilities.read";
@@ -384,13 +384,14 @@ impl Accounts {
             .map_err(|e| e.to_string())
     }
     pub(super) fn team_state(&self) -> Result<(Store, File), String> {
-        let mut file = std::fs::OpenOptions::new()
-            .read(true)
-            .custom_flags(libc::O_NOFOLLOW | libc::O_NONBLOCK)
-            .open(self.dir.join(super::ACCOUNTS))
-            .map_err(|_| "Native team account state is unavailable or contains a symlink.")?;
+        let mut file = private_fs::flags(
+            std::fs::OpenOptions::new().read(true),
+            private_fs::O_NOFOLLOW | private_fs::O_NONBLOCK,
+        )
+        .and_then(|options| options.open(self.dir.join(super::ACCOUNTS)))
+        .map_err(|_| "Native team account state is unavailable or contains a symlink.")?;
         let meta = file.metadata().map_err(|e| e.to_string())?;
-        if !meta.is_file() || meta.nlink() != 1 || meta.len() > 16 * 1024 * 1024 {
+        if !meta.is_file() || private_fs::nlink(&meta) != 1 || meta.len() > 16 * 1024 * 1024 {
             return Err("Native team account state is unsafe or exceeds 16 MiB.".into());
         }
         let mut text = String::new();
@@ -408,10 +409,7 @@ impl Accounts {
         let (current, file) = self.team_state()?;
         let original = held.metadata().map_err(|e| e.to_string())?;
         let observed = file.metadata().map_err(|e| e.to_string())?;
-        if original.dev() != observed.dev()
-            || original.ino() != observed.ino()
-            || current.digest != digest
-        {
+        if !private_fs::same_file(&original, &observed) || current.digest != digest {
             return Err("Account state custody changed outside its held writer.".into());
         }
         Ok(())

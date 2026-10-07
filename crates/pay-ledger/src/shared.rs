@@ -1,5 +1,7 @@
 //! One authoritative pool for admitted product reservations and known debits.
 //! Native products keep their original grants, units, and economic evidence.
+// Outside Unix only the refusing stand-ins remain, so some imports go unused.
+#![cfg_attr(not(unix), allow(unused_imports))]
 pub(crate) mod accounting;
 use crate::compute::{ComputeBalance, Hold, HoldRequest};
 use crate::{Error, Ledger, Rail, Result, SettlementInput, Split, record_settlement_in};
@@ -12,10 +14,12 @@ use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use std::{
     io::{BufRead, BufReader, Write},
-    os::unix::net::UnixStream,
     path::PathBuf,
     time::Duration,
 };
+
+#[cfg(unix)]
+use std::os::unix::net::UnixStream;
 
 pub const SCHEMA: &str = "openagents.shared-spend.v1";
 pub const BODY_MAX: usize = 128 * 1024;
@@ -397,6 +401,15 @@ pub enum Operation {
     },
 }
 impl Client {
+    /// Outside Unix there is no private controller socket, so every call refuses.
+    #[cfg(not(unix))]
+    pub fn call(&self, operation: Operation) -> Result<Value> {
+        let _ = operation;
+        Err(Error::Denied(
+            "shared controller unavailable outside Unix; no native fallback",
+        ))
+    }
+    #[cfg(unix)]
     pub fn call(&self, operation: Operation) -> Result<Value> {
         use std::os::unix::fs::{FileTypeExt, MetadataExt, OpenOptionsExt};
         let secret = std::fs::OpenOptions::new()
