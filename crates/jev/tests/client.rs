@@ -329,6 +329,7 @@ async fn decision_funding_preserves_uncovered_holds_and_refuses_rebound_quotes()
         .await?;
     assert_eq!(view.balance.position.reserved, 2);
     assert_eq!(view.balance.uncovered_holds, 2);
+    assert_eq!(view.balance.processor_expense_units, 0);
     assert_eq!(view.balance.purchased_funding, 2);
     assert!(!view.earned_usage);
     for _ in 0..3 {

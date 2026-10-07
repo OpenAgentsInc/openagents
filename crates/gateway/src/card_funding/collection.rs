@@ -30,8 +30,9 @@ pub struct Collection {
     pub disputes: Vec<String>,
     pub transactions: Vec<String>,
     pub snapshot: Snapshot,
-    /// Signed native adjustment fees; a fee refund is negative. These facts
-    /// issue no customer credit and do not claim a complete merchant margin.
+    /// Applicable signed native adjustment expense. A pending negative fee
+    /// return remains withheld. These facts issue no customer credit and do
+    /// not claim a complete merchant margin.
     pub adjustment_fee_units: i64,
     /// Native removed principal exceeding this purchase's convertible backing.
     pub excess_removed_units: u64,
@@ -54,6 +55,16 @@ struct Transaction {
     amount: i64,
     fee: i64,
     available: bool,
+}
+impl Transaction {
+    fn expense(&self) -> i64 {
+        // A native fee return cannot release exposure before it is available.
+        if self.fee < 0 && !self.available {
+            0
+        } else {
+            self.fee
+        }
+    }
 }
 impl Stripe {
     async fn transaction(
@@ -265,7 +276,9 @@ impl Stripe {
             {
                 return Err(refusal());
             }
-            adjustment_fees = adjustment_fees.checked_add(tx.fee).ok_or_else(refusal)?;
+            adjustment_fees = adjustment_fees
+                .checked_add(tx.expense())
+                .ok_or_else(refusal)?;
             if matches!(status, "failed" | "canceled") {
                 let return_id = reference(&value, "failure_balance_transaction", "txn_")?;
                 let returned = self
@@ -277,7 +290,7 @@ impl Stripe {
                     return Err(refusal());
                 }
                 adjustment_fees = adjustment_fees
-                    .checked_add(returned.fee)
+                    .checked_add(returned.expense())
                     .ok_or_else(refusal)?;
                 if returned.available {
                     let proof = format!(
@@ -341,7 +354,9 @@ impl Stripe {
                 } else if tx.available {
                     sum(&mut restored, amount)?;
                 }
-                adjustment_fees = adjustment_fees.checked_add(tx.fee).ok_or_else(refusal)?;
+                adjustment_fees = adjustment_fees
+                    .checked_add(tx.expense())
+                    .ok_or_else(refusal)?;
             }
             if removed > amount || restored > removed {
                 return Err(refusal());
@@ -440,6 +455,7 @@ impl Stripe {
                 refund_recovery_proofs: recovery_proofs,
                 disputed_source_units: dispute_units,
                 reconciliation_pending: pending,
+                processor_expense_units: adjustment_fees.checked_mul(10_000).ok_or_else(refusal)?,
             },
             adjustment_fee_units: adjustment_fees.checked_mul(10_000).ok_or_else(refusal)?,
             excess_removed_units: removed.saturating_sub(converted.convertible_units),

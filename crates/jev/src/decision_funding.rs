@@ -51,6 +51,9 @@ pub struct DecisionFundingBalance {
     pub restricted_credit: u64,
     pub operator_loss: u64,
     pub uncovered_holds: u64,
+    /// Verified processor expense in ledger units, separate from customer credit.
+    #[serde(default)]
+    pub processor_expense_units: i64,
 }
 impl Account<'_> {
     /// Request, approve, inspect, or reconcile one funding identity without retries.

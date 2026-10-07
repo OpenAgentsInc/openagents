@@ -353,6 +353,7 @@ pub(super) struct Summary {
     pub available: u64,
     pub operator_loss: u64,
     pub uncovered_holds: u64,
+    pub processor_expense_units: i64,
 }
 
 #[derive(Clone, Debug, Default)]
@@ -639,6 +640,33 @@ impl Book {
             && price.is_none_or(|p| terms.price_policies.contains(&p.policy))
     }
 
+    /// Existing obligations survive a reversal. With no approved operator risk
+    /// allowance, an uncovered obligation restricts every lot in the workspace.
+    fn exposure_unapproved(&self, used: &BTreeMap<String, Used>) -> Result<bool, String> {
+        if self
+            .snapshots
+            .values()
+            .any(|snapshot| snapshot.processor_expense_units > 0)
+        {
+            return Ok(true);
+        }
+        for lot in self.lots.values() {
+            let used = used.get(&lot.id).copied().unwrap_or_default();
+            let committed = used
+                .held
+                .checked_add(used.spent)
+                .ok_or("credit allocation overflow")?;
+            let nominal = lot
+                .amount
+                .checked_sub(lot.reversed)
+                .ok_or("invalid reversed credit")?;
+            if committed > nominal {
+                return Ok(true);
+            }
+        }
+        Ok(false)
+    }
+
     pub fn allocate(
         &mut self,
         amount: u64,
@@ -646,6 +674,9 @@ impl Book {
         used: &BTreeMap<String, Used>,
         at: u64,
     ) -> Result<Vec<Allocation>, String> {
+        if self.exposure_unapproved(used)? {
+            return Err("workspace funding has unapproved uncovered obligations".into());
+        }
         let mut order: Vec<_> = self.lots.keys().cloned().collect();
         order.sort_by_key(|id| {
             let lot = &self.lots[id];
@@ -705,6 +736,13 @@ impl Book {
         price: Option<&Price>,
     ) -> Result<Summary, String> {
         let mut result = Summary::default();
+        let exposure_unapproved = self.exposure_unapproved(used)?;
+        for snapshot in self.snapshots.values() {
+            result.processor_expense_units = result
+                .processor_expense_units
+                .checked_add(snapshot.processor_expense_units)
+                .ok_or("processor expense overflow")?;
+        }
         for lot in self.lots.values() {
             match lot.kind {
                 Kind::Purchased => add(&mut result.purchased, lot.amount)?,
@@ -731,7 +769,7 @@ impl Book {
             )?;
             if lot.expires_at.is_some_and(|expiry| at >= expiry) {
                 add(&mut result.expired, free)?;
-            } else if !self.eligible(lot, at, price) {
+            } else if exposure_unapproved || !self.eligible(lot, at, price) {
                 add(&mut result.restricted, free)?;
             } else {
                 add(&mut result.available, free)?;

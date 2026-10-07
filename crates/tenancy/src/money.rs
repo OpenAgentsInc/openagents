@@ -257,6 +257,8 @@ pub struct Balance {
     pub restricted_credit: u64,
     pub operator_loss: u64,
     pub uncovered_holds: u64,
+    /// Native processor adjustment expense, separate from customer credit.
+    pub processor_expense_units: i64,
 }
 
 #[derive(Clone, Debug)]
@@ -370,6 +372,7 @@ impl Account {
             restricted_credit: summary.restricted,
             operator_loss: summary.operator_loss,
             uncovered_holds: summary.uncovered_holds,
+            processor_expense_units: summary.processor_expense_units,
         })
     }
 }
@@ -1046,6 +1049,22 @@ impl Ledger {
     /// Funding, promotion, usage, hold releases, and refunds from this ledger.
     /// Wallet liquidity is unobserved; accounting credit is not a wallet read.
     /// The active funding terms, distinct from archived policy versions.
+    /// Read one original native funding admission without projecting the whole
+    /// statement. This returns evidence, not customer execution authority.
+    pub fn admitted_funding_quote(
+        &self,
+        workspace: &str,
+        id: &str,
+    ) -> Option<&funding::AdmittedQuote> {
+        self.state
+            .accounts
+            .get(workspace)?
+            .funding
+            .as_ref()?
+            .quotes
+            .get(id)
+    }
+
     pub fn funding_policy(&self, workspace: &str) -> Option<&funding::Policy> {
         let book = self.state.accounts.get(workspace)?.funding.as_ref()?;
         book.policies.get(&book.active)

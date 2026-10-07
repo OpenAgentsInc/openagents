@@ -380,6 +380,7 @@ impl Checkout {
             || snapshot.paid_at >= quote.expires_at
             || snapshot.revision == 0
             || !digest(&snapshot.evidence)
+            || snapshot.processor_expense_units != observation.adjustment_fee_units
             || self.customer.as_ref().and_then(|c| c.native.as_deref())
                 != Some(observation.customer.as_str())
             || self.checkout.as_ref().and_then(|c| c.native.as_deref())
@@ -537,6 +538,7 @@ mod tests {
                 refund_recovery_proofs: Default::default(),
                 disputed_source_units: 0,
                 reconciliation_pending: false,
+                processor_expense_units: 0,
             },
             adjustment_fee_units: 0,
             excess_removed_units: 0,

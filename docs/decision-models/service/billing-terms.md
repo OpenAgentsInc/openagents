@@ -53,6 +53,15 @@ owner's `GET /v1/workspaces/{id}/billing` view — subscription,
 invoices, checkouts, and balance — and the operator's
 `POST .../billing/reconcile` sweep for lost or replayed deliveries.
 
+The native prepaid ledger being integrated in
+[REV-22](https://github.com/OpenAgentsInc/openagents/issues/10829) separately
+records processor adjustment expense in ledger units. Under its initial
+zero-risk policy, known positive expense or uncovered spent/held obligations
+restricts new reservations across all workspace lots; existing holds survive.
+A pending fee return cannot release that restriction, and an available fee
+return creates no customer credit. The native card controller and HTTP routes
+remain unfinished; this accounting support does not enable live checkout.
+
 ## Cancellation and expiry
 
 `POST .../billing/cancel` ends renewal: the paid period's entitlement

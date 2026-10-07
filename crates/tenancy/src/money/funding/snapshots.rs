@@ -30,6 +30,16 @@ pub struct Snapshot {
     /// Restrict uncommitted credit while native provider lookup is incomplete.
     /// This records uncertainty, not a refund, a loss, or released liability.
     pub reconciliation_pending: bool,
+    /// Verified net adjustment expense in the original ledger's target units.
+    /// This belongs to the operator, separately from reversed customer credit.
+    /// Positive expense restricts new exposure under the initial zero-risk lane.
+    /// A negative native fee return grants no customer credit.
+    #[serde(default, skip_serializing_if = "zero_expense")]
+    pub processor_expense_units: i64,
+}
+
+fn zero_expense(value: &i64) -> bool {
+    *value == 0
 }
 
 impl Book {

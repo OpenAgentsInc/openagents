@@ -154,6 +154,7 @@ fn processor_snapshot() -> funding::Snapshot {
         refund_recovery_proofs: Default::default(),
         disputed_source_units: 0,
         reconciliation_pending: false,
+        processor_expense_units: 0,
     }
 }
 
@@ -1899,4 +1900,176 @@ fn legacy_chain_reads_without_revaluation_and_v2_clock_cannot_roll_back() {
             .funding_policy
             .is_none()
     );
+}
+
+#[test]
+fn a_second_lot_cannot_bypass_original_spent_loss_or_unknown_holds() {
+    let (root, mut ledger) = account();
+    fund(&mut ledger, "a-original", 100);
+    apply(
+        &mut ledger,
+        13,
+        "begin-second",
+        Operation::BeginFunding {
+            funding: funding("b-second", 50),
+        },
+    )
+    .unwrap();
+    apply(
+        &mut ledger,
+        14,
+        "final-second",
+        Operation::FundingFinality {
+            funding: "b-second".into(),
+            finality: Finality::Final,
+            evidence: "verified:b-second".into(),
+        },
+    )
+    .unwrap();
+    apply(&mut ledger, 20, "spent-hold", reserve("spent", 30)).unwrap();
+    apply(&mut ledger, 21, "spent", settle("spent", 30)).unwrap();
+    apply(&mut ledger, 22, "unknown-hold", reserve("unknown", 40)).unwrap();
+    apply(
+        &mut ledger,
+        23,
+        "dispute",
+        Operation::ReverseFunding {
+            funding: "a-original".into(),
+            source_units: 80,
+            reason: funding::Reversal::Dispute,
+        },
+    )
+    .unwrap();
+    let b = ledger.balance_at("buyer", 23).unwrap();
+    assert_eq!(
+        (
+            b.available,
+            b.restricted_credit,
+            b.operator_loss,
+            b.uncovered_holds
+        ),
+        (0, 50, 10, 40)
+    );
+    equity(&b);
+    assert!(apply(&mut ledger, 24, "bypass", reserve("blocked", 1)).is_err());
+    drop(ledger);
+    let mut ledger = Ledger::open(&root.path().join("money.jsonl")).unwrap();
+    assert_eq!(
+        ledger.hold("buyer", "unknown").unwrap().phase,
+        Phase::Unknown
+    );
+    assert_eq!(
+        ledger.balance_at("buyer", 24).unwrap().restricted_credit,
+        50
+    );
+    apply(
+        &mut ledger,
+        25,
+        "refund-spent",
+        Operation::Refund {
+            attempt: "spent".into(),
+            amount: 30,
+        },
+    )
+    .unwrap();
+    let b = ledger.balance_at("buyer", 25).unwrap();
+    assert_eq!(
+        (b.operator_loss, b.uncovered_holds, b.available),
+        (0, 20, 0)
+    );
+    equity(&b);
+    assert!(apply(&mut ledger, 26, "still-held", reserve("blocked", 1)).is_err());
+    apply(&mut ledger, 27, "late-settle", settle("unknown", 5)).unwrap();
+    let b = ledger.balance_at("buyer", 27).unwrap();
+    assert_eq!(
+        (
+            b.operator_loss,
+            b.uncovered_holds,
+            b.available,
+            b.restricted_credit
+        ),
+        (0, 0, 65, 0)
+    );
+    equity(&b);
+    apply(&mut ledger, 28, "qualified", reserve("qualified", 1)).unwrap();
+}
+
+#[test]
+fn known_processor_expense_is_separate_from_credit_and_uncertainty() {
+    let (root, mut ledger) = quoted_account();
+    let mut snapshot = processor_snapshot();
+    apply(
+        &mut ledger,
+        20,
+        "native-initial",
+        Operation::ReconcileQuotedFunding {
+            snapshot: snapshot.clone(),
+        },
+    )
+    .unwrap();
+    apply(&mut ledger, 21, "original-held", reserve("original", 20)).unwrap();
+    snapshot.revision = 2;
+    snapshot.evidence = "fixture:verified-native-adjustment-fee".into();
+    snapshot.processor_expense_units = 150;
+    assert!(!snapshot.reconciliation_pending);
+    apply(
+        &mut ledger,
+        22,
+        "native-expense",
+        Operation::ReconcileQuotedFunding {
+            snapshot: snapshot.clone(),
+        },
+    )
+    .unwrap();
+    let b = ledger.balance_at("buyer", 22).unwrap();
+    assert_eq!(
+        (
+            b.credited,
+            b.reversed_credit,
+            b.operator_loss,
+            b.processor_expense_units
+        ),
+        (97, 0, 0, 150)
+    );
+    assert_eq!((b.reserved, b.restricted_credit, b.available), (20, 77, 0));
+    equity(&b);
+    assert!(apply(&mut ledger, 23, "new-exposure", reserve("blocked", 1)).is_err());
+    drop(ledger);
+    let mut ledger = Ledger::open(&root.path().join("money.jsonl")).unwrap();
+    assert_eq!(
+        ledger.hold("buyer", "original").unwrap().phase,
+        Phase::Unknown
+    );
+    assert_eq!(
+        ledger
+            .balance_at("buyer", 23)
+            .unwrap()
+            .processor_expense_units,
+        150
+    );
+    apply(&mut ledger, 23, "settle-original", settle("original", 5)).unwrap();
+    assert_eq!(ledger.balance_at("buyer", 23).unwrap().available, 0);
+    // The trusted native adapter verifies this original fee return. It removes
+    // the expense restriction, without minting another unit of customer credit.
+    snapshot.revision = 3;
+    snapshot.evidence = "fixture:verified-native-fee-return".into();
+    snapshot.processor_expense_units = -3;
+    apply(
+        &mut ledger,
+        24,
+        "native-return",
+        Operation::ReconcileQuotedFunding { snapshot },
+    )
+    .unwrap();
+    let b = ledger.balance_at("buyer", 24).unwrap();
+    assert_eq!(
+        (
+            b.credited,
+            b.reversed_credit,
+            b.available,
+            b.processor_expense_units
+        ),
+        (97, 0, 92, -3)
+    );
+    equity(&b);
 }

@@ -221,7 +221,42 @@ async fn native_collection_and_failed_refund_returns_join_original_money_without
             "type":"adjustment","currency":"usd","amount":-5000,"fee":1500,"net":-6500,"status":"available","created":at,"available_on":at}));
         *records.lock().unwrap() = r;
     }
-    let withdrawn = client.collect(&original, None, at).await.unwrap().unwrap();
+    let withdrawn = client
+        .collect(&original, Some(&first), at)
+        .await
+        .unwrap()
+        .unwrap();
+    // Fork the isolated sealed fixture journal, preserving original quote time.
+    // This branch tests dispute expense; the main branch below tests refunds.
+    let expense_path = root.path().join("expense-money.jsonl");
+    std::fs::copy(&ledger_path, &expense_path).unwrap();
+    let mut expense_ledger = Ledger::open(&expense_path).unwrap();
+    apply(
+        &mut expense_ledger,
+        "native-dispute-expense",
+        Operation::ReconcileQuotedFunding {
+            snapshot: withdrawn.snapshot.clone(),
+        },
+    )
+    .unwrap();
+    let expense_balance = expense_ledger.balance("native-buyer").unwrap();
+    assert_eq!(
+        (
+            expense_balance.credited,
+            expense_balance.reversed_credit,
+            expense_balance.processor_expense_units
+        ),
+        (97_000_000, 70_000_000, 15_000_000)
+    );
+    assert_eq!(
+        (
+            expense_balance.available,
+            expense_balance.restricted_credit,
+            expense_balance.operator_loss
+        ),
+        (0, 27_000_000, 0)
+    );
+
     assert_eq!(
         (
             withdrawn.snapshot.disputed_source_units,
@@ -244,6 +279,26 @@ async fn native_collection_and_failed_refund_returns_join_original_money_without
         .unwrap()
         .unwrap();
     assert_eq!(waiting.snapshot.disputed_source_units, 50_000_000);
+    assert_eq!(waiting.snapshot.processor_expense_units, 15_000_000);
+    apply(
+        &mut expense_ledger,
+        "native-pending-fee-return",
+        Operation::ReconcileQuotedFunding {
+            snapshot: waiting.snapshot.clone(),
+        },
+    )
+    .unwrap();
+    assert_eq!(expense_ledger.balance("native-buyer").unwrap().available, 0);
+    drop(expense_ledger);
+    let mut expense_ledger = Ledger::open(&expense_path).unwrap();
+    assert_eq!(
+        expense_ledger
+            .balance("native-buyer")
+            .unwrap()
+            .processor_expense_units,
+        15_000_000
+    );
+
     records
         .lock()
         .unwrap()
@@ -255,6 +310,36 @@ async fn native_collection_and_failed_refund_returns_join_original_money_without
         .unwrap()
         .unwrap();
     assert_eq!(won.snapshot.disputed_source_units, 0);
+    assert_eq!(won.snapshot.processor_expense_units, 0);
+    let expense_return = Operation::ReconcileQuotedFunding {
+        snapshot: won.snapshot.clone(),
+    };
+    apply(
+        &mut expense_ledger,
+        "native-available-fee-return",
+        expense_return.clone(),
+    )
+    .unwrap();
+    assert!(
+        !apply(
+            &mut expense_ledger,
+            "native-available-fee-return",
+            expense_return
+        )
+        .unwrap()
+    );
+    let expense_balance = expense_ledger.balance("native-buyer").unwrap();
+    assert_eq!(
+        (
+            expense_balance.credited,
+            expense_balance.reversed_credit,
+            expense_balance.available,
+            expense_balance.processor_expense_units
+        ),
+        (97_000_000, 20_000_000, 77_000_000, 0)
+    );
+    drop(expense_ledger);
+
     records
         .lock()
         .unwrap()
