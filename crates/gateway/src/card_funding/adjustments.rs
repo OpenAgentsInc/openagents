@@ -12,9 +12,10 @@ pub struct Adjustments {
     pub disputes: Vec<String>,
 }
 
-fn head(charge: &Value) -> Vec<Value> {
+pub(super) fn head(charge: &Value) -> Vec<Value> {
     [
         "id",
+        "created",
         "livemode",
         "amount",
         "amount_captured",

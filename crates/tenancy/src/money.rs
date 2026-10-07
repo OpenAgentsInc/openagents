@@ -433,6 +433,21 @@ impl State {
         {
             return Err("payment already funds its original workspace and quote".into());
         }
+        if let Operation::ReconcileQuotedFunding { snapshot } = &mutation.operation
+            && self.accounts.iter().any(|(workspace, account)| {
+                account.funding.as_ref().is_some_and(|book| {
+                    book.snapshots.iter().any(|(id, prior)| {
+                        (workspace != &mutation.workspace || id != &snapshot.funding.id)
+                            && snapshot
+                                .refund_recovery_proofs
+                                .keys()
+                                .any(|proof| prior.refund_recovery_proofs.contains_key(proof))
+                    })
+                })
+            })
+        {
+            return Err("native refund return already belongs to its original purchase".into());
+        }
         if let Operation::Create {
             currency: code,
             spend_limit,

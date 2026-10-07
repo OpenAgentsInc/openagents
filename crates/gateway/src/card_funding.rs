@@ -14,6 +14,8 @@ mod checkout;
 pub use checkout::CheckoutRequest;
 mod adjustments;
 pub use adjustments::Adjustments;
+mod collection;
+pub use collection::{Collection, Original};
 
 /// A bounded, scrubbed webhook identity. No card or customer payload is retained.
 #[derive(Clone, Debug, PartialEq, Eq)]

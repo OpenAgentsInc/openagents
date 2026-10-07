@@ -13,6 +13,373 @@ fn secret() -> Vec<u8> {
 }
 
 #[tokio::test]
+async fn native_collection_and_failed_refund_returns_join_original_money_without_second_credit() {
+    use axum::{
+        extract::State,
+        http::{HeaderMap, StatusCode, Uri},
+        response::IntoResponse,
+    };
+    use std::{collections::BTreeMap, sync::Mutex};
+    use tenancy::money::{Ledger, Mutation, Operation, funding::*};
+    type Records = Arc<Mutex<BTreeMap<String, Value>>>;
+    async fn provider(
+        State(records): State<Records>,
+        uri: Uri,
+        headers: HeaderMap,
+    ) -> axum::response::Response {
+        assert_eq!(headers["stripe-version"], "fixture.v1");
+        assert!(
+            headers["authorization"]
+                .to_str()
+                .unwrap()
+                .starts_with("Bearer rk_test_")
+        );
+        let records = records.lock().unwrap();
+        match records.get(uri.path()) {
+            Some(value) => axum::Json(value.clone()).into_response(),
+            None => StatusCode::NOT_FOUND.into_response(),
+        }
+    }
+    let root = tempfile::tempdir().unwrap();
+    let ledger_path = root.path().join("money.jsonl");
+    let mut ledger = Ledger::open(&ledger_path).unwrap();
+    let apply = |ledger: &mut Ledger, source: &str, operation: Operation| {
+        ledger.apply(Mutation {
+            workspace: "native-buyer".into(),
+            source: source.into(),
+            audit: "isolated native card fixture".into(),
+            operation,
+        })
+    };
+    apply(
+        &mut ledger,
+        "create",
+        Operation::Create {
+            currency: "USD".into(),
+            spend_limit: 1_000_000_000,
+            topups_allowed: true,
+        },
+    )
+    .unwrap();
+    let unit = Unit::CurrencyMillionths {
+        currency: "USD".into(),
+    };
+    let policy = Policy {
+        schema: POLICY_SCHEMA.into(),
+        version: "card-fixture-v1".into(),
+        unit: unit.clone(),
+        conversions: vec![Conversion {
+            version: "card-usd-fixture-v1".into(),
+            source: unit.clone(),
+            target: unit,
+            numerator: 1,
+            denominator: 1,
+            source_ref: "fixture:no-real-processor-or-money".into(),
+            valid_from: 0,
+            valid_until: u64::MAX,
+            rounding: Rounding::Exact,
+            fee_payer: FeePayer::Customer,
+            max_fee_units: 5_000_000,
+        }],
+        purchases: PurchaseTerms {
+            required_finality: Finality::Final,
+            refunds_allowed: true,
+            disputes_allowed: true,
+            spent_credit_loss: SpentCreditLoss::Operator,
+        },
+        promotions: PromotionTerms {
+            total_cap: 1,
+            grant_cap: 1,
+            max_lifetime_seconds: 1,
+            max_admissions: 1,
+            price_policies: ["fixture-use-v1".into()].into(),
+            reversible: true,
+        },
+    };
+    apply(&mut ledger, "policy", Operation::FundingPolicy { policy }).unwrap();
+    let now = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap()
+        .as_secs();
+    apply(
+        &mut ledger,
+        "quote",
+        Operation::QuoteFunding {
+            quote: Quote {
+                id: "original_checkout_quote".into(),
+                origin: "stripe:acct_fixture:original-customer".into(),
+                policy: "card-fixture-v1".into(),
+                conversion: "card-usd-fixture-v1".into(),
+                gross_units: 100_000_000,
+                maximum_fee_units: 5_000_000,
+                expires_at: now + 3600,
+            },
+        },
+    )
+    .unwrap();
+    let statement = ledger.statement("native-buyer").unwrap();
+    let quoted = &statement.funding_quotes[0];
+    let at = quoted.quoted_at;
+    let mut records = BTreeMap::from([
+        (
+            "/v1/account".into(),
+            json!({"object":"account","id":"acct_fixture"}),
+        ),
+        (
+            "/v1/customers/cus_original".into(),
+            json!({"object":"customer","id":"cus_original","livemode":false,
+            "metadata":{"oa_customer":"original_customer_reference"},"name":"seeded-private-card-customer"}),
+        ),
+        (
+            "/v1/checkout/sessions/cs_test_original".into(),
+            json!({"object":"checkout.session","id":"cs_test_original","livemode":false,
+            "mode":"payment","customer":"cus_original","currency":"usd","amount_total":10000,"metadata":{"oa_quote":quoted.quote.id},
+            "client_reference_id":quoted.quote.id,"expires_at":quoted.quote.expires_at,"status":"complete","payment_status":"paid","payment_intent":"pi_original"}),
+        ),
+        (
+            "/v1/payment_intents/pi_original".into(),
+            json!({"object":"payment_intent","id":"pi_original","livemode":false,
+            "status":"succeeded","capture_method":"automatic","customer":"cus_original","currency":"usd",
+            "amount":10000,"amount_received":10000,"amount_capturable":0,"metadata":{"oa_quote":quoted.quote.id},"latest_charge":"ch_original"}),
+        ),
+        (
+            "/v1/charges/ch_original".into(),
+            json!({"object":"charge","id":"ch_original","livemode":false,
+            "payment_intent":"pi_original","customer":"cus_original","currency":"usd","status":"succeeded","paid":true,"captured":true,
+            "payment_method_details":{"type":"card","card":{"last4":"seeded-private-card"}},"amount":10000,"amount_captured":10000,
+            "created":at,"balance_transaction":"txn_pay","amount_refunded":2000,"refunded":false,"disputed":false}),
+        ),
+        (
+            "/v1/balance_transactions/txn_pay".into(),
+            json!({"object":"balance_transaction","id":"txn_pay","source":"ch_original",
+            "type":"charge","currency":"usd","amount":10000,"fee":300,"net":9700,"status":"available","created":at,"available_on":at}),
+        ),
+        (
+            "/v1/refunds".into(),
+            json!({"object":"list","url":"/v1/refunds","has_more":false,"data":[{"object":"refund","id":"re_original","charge":"ch_original"}]}),
+        ),
+        (
+            "/v1/disputes".into(),
+            json!({"object":"list","url":"/v1/disputes","has_more":false,"data":[]}),
+        ),
+        (
+            "/v1/refunds/re_original".into(),
+            json!({"object":"refund","id":"re_original","charge":"ch_original","payment_intent":"pi_original",
+            "currency":"usd","status":"succeeded","amount":2000,"balance_transaction":"txn_refund"}),
+        ),
+        (
+            "/v1/balance_transactions/txn_refund".into(),
+            json!({"object":"balance_transaction","id":"txn_refund","source":"re_original",
+            "type":"refund","currency":"usd","amount":-2000,"fee":0,"net":-2000,"status":"available","created":at,"available_on":at}),
+        ),
+    ]);
+    let baseline = records.clone();
+    let records = Arc::new(Mutex::new(std::mem::take(&mut records)));
+    let (origin, task) = server(Router::new().fallback(provider).with_state(records.clone())).await;
+    let material = secret()
+        .iter()
+        .map(|b| format!("{b:02x}"))
+        .collect::<String>();
+    let mut client =
+        Stripe::new_for_mode(format!("rk_test_{material}"), "fixture.v1".into(), false).unwrap();
+    client.origin = origin;
+    client.bind_account("acct_fixture").await.unwrap();
+    let original = Original {
+        checkout: "cs_test_original",
+        customer: "cus_original",
+        customer_reference: "original_customer_reference",
+        quote: quoted,
+    };
+    let first = client.collect(&original, None, at).await.unwrap().unwrap();
+    assert_eq!(
+        (
+            first.snapshot.funding.gross_units,
+            first.snapshot.funding.fee_units,
+            first.snapshot.refunded_source_units
+        ),
+        (100_000_000, 3_000_000, 20_000_000)
+    );
+    let json = serde_json::to_string(&first).unwrap();
+    assert!(!json.contains("seeded-private"));
+    apply(
+        &mut ledger,
+        "state-1",
+        Operation::ReconcileQuotedFunding {
+            snapshot: first.snapshot.clone(),
+        },
+    )
+    .unwrap();
+    let b = ledger.balance("native-buyer").unwrap();
+    assert_eq!((b.credited, b.available), (97_000_000, 77_000_000));
+    {
+        let mut r = baseline.clone();
+        r.get_mut("/v1/charges/ch_original").unwrap()["disputed"] = json!(true);
+        r.get_mut("/v1/disputes").unwrap()["data"] = json!([{"object":"dispute","id":"du_original","charge":"ch_original","livemode":false}]);
+        r.insert("/v1/disputes/du_original".into(),json!({"object":"dispute","id":"du_original","charge":"ch_original","payment_intent":"pi_original",
+            "livemode":false,"currency":"usd","amount":5000,"status":"lost","balance_transactions":[{"id":"txn_dispute_out"}]}));
+        r.insert("/v1/balance_transactions/txn_dispute_out".into(),json!({"object":"balance_transaction","id":"txn_dispute_out","source":"du_original",
+            "type":"adjustment","currency":"usd","amount":-5000,"fee":1500,"net":-6500,"status":"available","created":at,"available_on":at}));
+        *records.lock().unwrap() = r;
+    }
+    let withdrawn = client.collect(&original, None, at).await.unwrap().unwrap();
+    assert_eq!(
+        (
+            withdrawn.snapshot.disputed_source_units,
+            withdrawn.adjustment_fee_units
+        ),
+        (50_000_000, 15_000_000)
+    );
+    {
+        let mut r = records.lock().unwrap();
+        let dispute = r.get_mut("/v1/disputes/du_original").unwrap();
+        dispute["status"] = json!("won");
+        dispute["balance_transactions"] =
+            json!([{"id":"txn_dispute_out"},{"id":"txn_dispute_return"}]);
+        r.insert("/v1/balance_transactions/txn_dispute_return".into(),json!({"object":"balance_transaction","id":"txn_dispute_return","source":"du_original",
+            "type":"adjustment","currency":"usd","amount":5000,"fee":-1500,"net":6500,"status":"pending","created":at,"available_on":at}));
+    }
+    let waiting = client
+        .collect(&original, Some(&withdrawn), at)
+        .await
+        .unwrap()
+        .unwrap();
+    assert_eq!(waiting.snapshot.disputed_source_units, 50_000_000);
+    records
+        .lock()
+        .unwrap()
+        .get_mut("/v1/balance_transactions/txn_dispute_return")
+        .unwrap()["status"] = json!("available");
+    let won = client
+        .collect(&original, Some(&waiting), at)
+        .await
+        .unwrap()
+        .unwrap();
+    assert_eq!(won.snapshot.disputed_source_units, 0);
+    records
+        .lock()
+        .unwrap()
+        .get_mut("/v1/balance_transactions/txn_dispute_return")
+        .unwrap()["source"] = json!("du_other");
+    assert!(client.collect(&original, Some(&waiting), at).await.is_err());
+    *records.lock().unwrap() = baseline.clone();
+    {
+        let mut r = records.lock().unwrap();
+        r.get_mut("/v1/charges/ch_original").unwrap()["amount_refunded"] = json!(0);
+        let refund = r.get_mut("/v1/refunds/re_original").unwrap();
+        refund["status"] = json!("failed");
+        refund["failure_balance_transaction"] = json!("txn_return");
+        r.insert("/v1/balance_transactions/txn_return".into(),json!({"object":"balance_transaction","id":"txn_return","source":"re_original",
+            "type":"refund_failure","currency":"usd","amount":2000,"fee":0,"net":2000,"status":"pending","created":at,"available_on":at}));
+    }
+    let pending = client
+        .collect(&original, Some(&first), at)
+        .await
+        .unwrap()
+        .unwrap();
+    assert!(pending.snapshot.reconciliation_pending);
+    assert_eq!(pending.snapshot.refunded_source_units, 20_000_000);
+    apply(
+        &mut ledger,
+        "state-2",
+        Operation::ReconcileQuotedFunding {
+            snapshot: pending.snapshot.clone(),
+        },
+    )
+    .unwrap();
+    assert_eq!(ledger.balance("native-buyer").unwrap().available, 0);
+    records
+        .lock()
+        .unwrap()
+        .get_mut("/v1/balance_transactions/txn_return")
+        .unwrap()["status"] = json!("available");
+    let returned = client
+        .collect(&original, Some(&pending), at)
+        .await
+        .unwrap()
+        .unwrap();
+    assert_eq!(returned.snapshot.refunded_source_units, 0);
+    assert_eq!(
+        returned.snapshot.refund_recovery_proofs["stripe:acct_fixture:txn_return"],
+        20_000_000
+    );
+    let operation = Operation::ReconcileQuotedFunding {
+        snapshot: returned.snapshot.clone(),
+    };
+    apply(&mut ledger, "state-3", operation.clone()).unwrap();
+    assert!(!apply(&mut ledger, "state-3", operation.clone()).unwrap());
+    let b = ledger.balance("native-buyer").unwrap();
+    assert_eq!((b.credited, b.available), (97_000_000, 97_000_000));
+    drop(ledger);
+    let mut ledger = Ledger::open(&ledger_path).unwrap();
+    assert!(!apply(&mut ledger, "state-3", operation).unwrap());
+    assert_eq!(ledger.balance("native-buyer").unwrap().credited, 97_000_000);
+    for (path, field, value) in [
+        (
+            "/v1/payment_intents/pi_original",
+            "amount_received",
+            json!(9999),
+        ),
+        (
+            "/v1/payment_intents/pi_original",
+            "capture_method",
+            json!("manual"),
+        ),
+        (
+            "/v1/charges/ch_original",
+            "created",
+            json!(quoted.quote.expires_at),
+        ),
+        (
+            "/v1/balance_transactions/txn_pay",
+            "source",
+            json!("ch_other"),
+        ),
+        ("/v1/balance_transactions/txn_pay", "net", json!(10000)),
+        ("/v1/balance_transactions/txn_pay", "currency", json!("eur")),
+        (
+            "/v1/customers/cus_original",
+            "metadata",
+            json!({"oa_customer":"foreign_reference"}),
+        ),
+        (
+            "/v1/refunds/re_original",
+            "payment_intent",
+            json!("pi_other"),
+        ),
+        ("/v1/charges/ch_original", "livemode", json!(true)),
+        ("/v1/refunds", "has_more", json!(true)),
+    ] {
+        let mut changed = baseline.clone();
+        changed.get_mut(path).unwrap()[field] = value;
+        *records.lock().unwrap() = changed;
+        assert!(
+            client.collect(&original, None, at).await.is_err(),
+            "{path}/{field}"
+        );
+        assert_eq!(ledger.balance("native-buyer").unwrap().credited, 97_000_000);
+    }
+    *records.lock().unwrap() = baseline;
+    records
+        .lock()
+        .unwrap()
+        .get_mut("/v1/checkout/sessions/cs_test_original")
+        .unwrap()["status"] = json!("open");
+    records
+        .lock()
+        .unwrap()
+        .get_mut("/v1/checkout/sessions/cs_test_original")
+        .unwrap()["payment_status"] = json!("unpaid");
+    assert!(client.collect(&original, None, at).await.unwrap().is_none());
+    assert!(
+        client
+            .collect(&original, Some(&returned), at)
+            .await
+            .is_err()
+    );
+    task.abort();
+}
+
+#[tokio::test]
 async fn native_adjustment_lookup_is_charge_scoped_complete_mode_bound_and_stable() {
     use axum::extract::{Path, Query, State};
     use std::{collections::BTreeMap, sync::Mutex};

@@ -151,6 +151,7 @@ fn processor_snapshot() -> funding::Snapshot {
         evidence: "fixture:verified-native-state-1".into(),
         revision: 1,
         refunded_source_units: 0,
+        refund_recovery_proofs: Default::default(),
         disputed_source_units: 0,
         reconciliation_pending: false,
     }
@@ -199,6 +200,224 @@ fn processor_confirmation_and_already_refunded_backing_are_one_restart_safe_row(
     assert_eq!(head, ledger.head);
     assert_eq!(ledger.balance_at("buyer", 50).unwrap().available, 0);
     assert!(apply(&mut ledger, 50, "new-exposure", reserve("blocked", 1)).is_err());
+}
+
+#[test]
+fn native_refund_returns_restore_only_original_backing_and_preserve_unknown_holds() {
+    let (root, mut ledger) = quoted_account();
+    let mut snapshot = processor_snapshot();
+    apply(
+        &mut ledger,
+        20,
+        "paid",
+        Operation::ReconcileQuotedFunding {
+            snapshot: snapshot.clone(),
+        },
+    )
+    .unwrap();
+    let bytes = std::fs::read_to_string(root.path().join("money.jsonl")).unwrap();
+    assert!(!bytes.contains("refund_recovery_proofs"));
+    apply(&mut ledger, 21, "held", reserve("held", 40)).unwrap();
+    apply(&mut ledger, 21, "spent-hold", reserve("spent", 30)).unwrap();
+    apply(&mut ledger, 22, "spent", settle("spent", 30)).unwrap();
+    snapshot.revision = 2;
+    snapshot.refunded_source_units = 80;
+    apply(
+        &mut ledger,
+        23,
+        "refund",
+        Operation::ReconcileQuotedFunding {
+            snapshot: snapshot.clone(),
+        },
+    )
+    .unwrap();
+    let b = ledger.balance_at("buyer", 23).unwrap();
+    assert_eq!(
+        (b.credited, b.available, b.operator_loss, b.uncovered_holds),
+        (97, 0, 13, 40)
+    );
+    drop(ledger);
+    let mut ledger = Ledger::open(&root.path().join("money.jsonl")).unwrap();
+    assert_eq!(ledger.holds("buyer")[0].1.phase, Phase::Unknown);
+    snapshot.revision = 3;
+    snapshot.refunded_source_units = 40;
+    snapshot
+        .refund_recovery_proofs
+        .insert("native:return-1".into(), 40);
+    let restored = Operation::ReconcileQuotedFunding {
+        snapshot: snapshot.clone(),
+    };
+    apply(&mut ledger, 24, "return-1", restored.clone()).unwrap();
+    assert!(!apply(&mut ledger, 24, "return-1", restored).unwrap());
+    let b = ledger.balance_at("buyer", 24).unwrap();
+    assert_eq!(
+        (b.credited, b.available, b.operator_loss, b.uncovered_holds),
+        (97, 0, 0, 13)
+    );
+    assert_eq!(ledger.holds("buyer")[0].1.phase, Phase::Unknown);
+    let head = ledger.head.clone();
+    snapshot.revision = 4;
+    snapshot.refunded_source_units = 0;
+    assert!(
+        apply(
+            &mut ledger,
+            25,
+            "reuse-proof",
+            Operation::ReconcileQuotedFunding {
+                snapshot: snapshot.clone()
+            }
+        )
+        .is_err()
+    );
+    assert_eq!(ledger.head, head);
+    snapshot
+        .refund_recovery_proofs
+        .insert("native:return-2".into(), 40);
+    let restored = Operation::ReconcileQuotedFunding {
+        snapshot: snapshot.clone(),
+    };
+    apply(&mut ledger, 26, "return-2", restored.clone()).unwrap();
+    let b = ledger.balance_at("buyer", 26).unwrap();
+    assert_eq!(
+        (
+            b.credited,
+            b.reversed_credit,
+            b.reserved,
+            b.settled,
+            b.available
+        ),
+        (97, 0, 40, 30, 27)
+    );
+    equity(&b);
+    drop(ledger);
+    let mut ledger = Ledger::open(&root.path().join("money.jsonl")).unwrap();
+    assert!(!apply(&mut ledger, 27, "return-2", restored).unwrap());
+    assert_eq!(ledger.balance_at("buyer", 27).unwrap().available, 27);
+    assert_eq!(ledger.holds("buyer")[0].1.phase, Phase::Unknown);
+}
+
+#[test]
+fn native_refund_return_proofs_are_immutable_bounded_and_cannot_move_to_another_payer() {
+    let (_root, mut ledger) = quoted_account();
+    let mut snapshot = processor_snapshot();
+    snapshot
+        .refund_recovery_proofs
+        .insert("native:return-1".into(), 40);
+    apply(
+        &mut ledger,
+        20,
+        "original",
+        Operation::ReconcileQuotedFunding {
+            snapshot: snapshot.clone(),
+        },
+    )
+    .unwrap();
+    for fault in 0..4 {
+        let mut changed = snapshot.clone();
+        changed.revision = 2;
+        match fault {
+            0 => {
+                changed.refund_recovery_proofs.clear();
+            }
+            1 => {
+                changed
+                    .refund_recovery_proofs
+                    .insert("native:return-1".into(), 39);
+            }
+            2 => {
+                changed
+                    .refund_recovery_proofs
+                    .insert("native:zero".into(), 0);
+            }
+            3 => {
+                changed
+                    .refund_recovery_proofs
+                    .insert("native:excess".into(), 101);
+            }
+            _ => unreachable!(),
+        }
+        let head = ledger.head.clone();
+        assert!(
+            apply(
+                &mut ledger,
+                21,
+                &format!("fault-{fault}"),
+                Operation::ReconcileQuotedFunding { snapshot: changed }
+            )
+            .is_err()
+        );
+        assert_eq!(head, ledger.head);
+    }
+    let mut changed = snapshot.clone();
+    changed.revision = 2;
+    for n in 0..128 {
+        changed
+            .refund_recovery_proofs
+            .insert(format!("native:many-{n}"), 1);
+    }
+    let head = ledger.head.clone();
+    assert!(
+        apply(
+            &mut ledger,
+            21,
+            "overflow-proof-book",
+            Operation::ReconcileQuotedFunding { snapshot: changed }
+        )
+        .is_err()
+    );
+    assert_eq!(head, ledger.head);
+    for (source, operation) in [
+        (
+            "other-create",
+            Operation::Create {
+                currency: "USD".into(),
+                spend_limit: 1000,
+                topups_allowed: true,
+            },
+        ),
+        (
+            "other-policy",
+            Operation::FundingPolicy { policy: policy() },
+        ),
+        (
+            "other-quote",
+            Operation::QuoteFunding {
+                quote: checkout_quote("other-quote"),
+            },
+        ),
+    ] {
+        ledger
+            .apply_at(
+                Mutation {
+                    workspace: "other".into(),
+                    source: source.into(),
+                    audit: "native fixture".into(),
+                    operation,
+                },
+                22,
+            )
+            .unwrap();
+    }
+    snapshot.quote = "other-quote".into();
+    snapshot.funding.id = "other-quote".into();
+    snapshot.funding.payment = "native-other-payment".into();
+    snapshot.paid_at = 23;
+    let head = ledger.head.clone();
+    assert!(
+        ledger
+            .apply_at(
+                Mutation {
+                    workspace: "other".into(),
+                    source: "stolen-return".into(),
+                    audit: "native fixture".into(),
+                    operation: Operation::ReconcileQuotedFunding { snapshot }
+                },
+                24
+            )
+            .is_err()
+    );
+    assert_eq!(head, ledger.head);
+    assert_eq!(ledger.balance_at("other", 24).unwrap().credited, 0);
 }
 
 #[test]
