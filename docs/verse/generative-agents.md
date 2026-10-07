@@ -246,8 +246,9 @@ scored stream:
   to word overlap.
 - The level mapping is provisional until a live calibration:
   [measurement](../decision-models/measurements/2026-10-06-memory-importance.md).
-- `coder interview --arm no-reflection` runs the stream offline (priors
-  and BM25); phase B2 renamed it from `scored`. Scripted answerer on the
+- `coder interview --arm no-reflection-or-plan` runs the stream offline
+  (priors and BM25); phase B2 renamed it from `scored`, and phase B3 from
+  `no-reflection`, which now adds the day plan. Scripted answerer on the
   open partitions: the stream carried the answer's evidence for 9 of 14
   items against 4 for word overlap, but the scripted answerer, which picks
   the line sharing the most words, got 4 right against 5. A live answerer
@@ -738,8 +739,8 @@ reflections ("what have you learned about how the owner wants commits?").
   partitions `gym::suite` requires; the locked partition is read once.
 - **Arms.** The paper's ablations, plus today's code as the baseline: the
   full architecture; no reflection; no reflection or plan; no memory (an
-  empty briefing); and today's word-overlap briefing. The `full` and
-  `no-reflection` arms exist since phase B2; `full` has no plan yet.
+  empty briefing); and today's word-overlap briefing. All five exist
+  since phase B3.
 - **Scoring.** The paper used 100 human evaluators and TrueSkill. Here,
   memory and plan items have answers code can check against the fixture.
   The other items are scored by Jev `noul` questions: the answer is
@@ -785,7 +786,7 @@ no-memory and word-overlap arms:
   record the records the briefing carried and which of the item's sources
   were among them.
 
-Run it with `coder interview`. It interviews both arms on the development
+Run it with `coder interview`. It interviews every arm on the development
 partition with the scripted answerer and appends rows to
 `~/.openagents/gym/interviews.jsonl`. Pass `--arm word-overlap`,
 `--answerer live`, `--store PATH`, or `--trial N` (a repeat run is refused
@@ -793,6 +794,59 @@ as a duplicate trial unless the trial differs). `--partition locked` needs
 `--ledger PATH` and `--reason TEXT`, and the read is recorded once. With the
 scripted answerer, the development partition scores 0 of 7 for no memory and
 2 of 7 for word overlap.
+
+**Implemented (phase B3).** The other four categories, all five arms, the
+judge, the gate, and the marking path:
+
+- [`alice-interview-v2.json`](../../crates/gym/suites/alice-interview-v2.json)
+  asks the five kinds of question against the phase A fixture: version 1's
+  22 memory items, and 6 each of self-knowledge, plans, reactions, and
+  reflections, 2 per partition. `build_alice_interview_v2.py` regenerates it.
+  Plan items carry a check; the others carry the records that hold the
+  answer and a reference answer.
+- The arms are `full` (the stream, the stored insights, and the day plan),
+  `no-reflection` (the stream and the plan), `no-reflection-or-plan` (the
+  stream alone), `no-memory`, and `word-overlap`. Until phase D lands, the
+  day plan is `StandingJobs`, which reads the standing jobs that are on, each
+  in its slot with what it runs, and the tasks waiting at the Merge station,
+  from the journal with no model. Phase D's plan plugs in as another
+  `Planner`.
+- Code grades memory and plan answers. A `Judge` reads the rest: Jev asks
+  [`interview-answer.json`](../../questions/interview-answer.json) (the
+  cited records support the answer; the answer states something neither the
+  records nor the briefing hold), and `ScriptedJudge` is the no-model
+  stand-in, labeled `scripted` in every row it reads.
+- `coder interview round` runs every arm on disjoint seed blocks. The
+  code-checked categories run first as a `gym::ab` round of word overlap
+  against `full`; then every arm answers the rest. The digested gate,
+  [`interview-v1`](../../crates/gym/gates/interview-v1.json), reads the
+  rows: `full` recalls at least one memory item in 22 more than word
+  overlap, and once the owner's marks show the judge agrees with them on at
+  least 0.9 of readings, `full` embellishes at most 1.3% of judged answers.
+- The owner's marks calibrate the judge: `coder interview sample` lists
+  judged answers, `coder interview mark` records one mark in a
+  receipt-chained marks store, and `coder interview agreement` reports how
+  often the judge read them the owner's way. `--answerer live` stops at
+  `--max-usd` of reported cost.
+
+The retained baseline,
+[`bench/verse/2026-10-07/alice-interview-v2/`](../../bench/verse/2026-10-07/alice-interview-v2),
+is one scripted round over the development partition (225 rows on blocks 0
+to 2):
+
+```sh
+coder interview round --partition development --blocks 3 --seed-base 0 \
+  --store bench/verse/2026-10-07/alice-interview-v2/rows.jsonl \
+  --marks SCRATCH/marks.jsonl \
+  --out bench/verse/2026-10-07/alice-interview-v2/report.json
+```
+
+With the scripted answerer, `full` recalls 3 of 21 memory answers against
+6 for word overlap, so the gate fails on recall; `gym::ab` is undecided
+because nobody has measured how recall moves between blocks; and the
+embellishment criterion isn't judged, because nobody has marked the
+judge. The live round and the marks are the owner's step in
+`NEEDS_OWNER.md`.
 
 ## What to skip
 
@@ -838,7 +892,7 @@ fixtures and a small demo.
 | A. Measure first | The fixture, the suite's memory category, and the baseline arm from item 7 (implemented) | [#10785](https://github.com/OpenAgentsInc/openagents/issues/10785) | None |
 | B1. Memory | 1 (implemented) | [#10787](https://github.com/OpenAgentsInc/openagents/issues/10787) | A |
 | B2. Reflection | 2 (implemented) | [#10789](https://github.com/OpenAgentsInc/openagents/issues/10789) | B1 |
-| B3. Interviews | The rest of item 7 | [#10794](https://github.com/OpenAgentsInc/openagents/issues/10794) | B2, D |
+| B3. Interviews | The rest of item 7 (implemented) | [#10794](https://github.com/OpenAgentsInc/openagents/issues/10794) | B2, D |
 | C1. Clock and districts | The town clock, time of day, and district data (implemented) | [#10786](https://github.com/OpenAgentsInc/openagents/issues/10786) | None; runs beside A and B |
 | C2. World | 3 | [#10788](https://github.com/OpenAgentsInc/openagents/issues/10788) | C1 |
 | D. Days | 4 | [#10790](https://github.com/OpenAgentsInc/openagents/issues/10790) | C2, B2 |

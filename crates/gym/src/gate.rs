@@ -1152,6 +1152,83 @@ pub struct RouterComparison {
     pub baseline: Option<RouterScores>,
 }
 
+/// The rule that decides whether an agent's memory architecture holds up
+/// in a Gym interview (`interview-v1`, openagents#10794): the full arm
+/// recalls more than today's word-overlap briefing, and its answers
+/// embellish no more often than the paper's 1.3%.
+///
+/// It reads an [`InterviewComparison`] built from interview rows
+/// (`crate::interview`). Recall is the code-checked memory category; the
+/// embellishment rate is the judge's, over the items code doesn't check,
+/// and counts only once the owner's marks show the judge agrees with them.
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct InterviewRule {
+    /// Fewest code-checked memory rows per arm in each block.
+    pub min_items: Bound,
+    /// Fewest disjoint seed blocks behind each arm.
+    pub min_blocks: Bound,
+    /// How much more of the memory items the subject arm has to recall
+    /// before the gain is a win rather than one answer's luck.
+    pub recall_margin: Bound,
+    /// Fewest judged answers behind an embellishment rate.
+    pub min_judged: Bound,
+    /// The highest share of judged answers the subject arm may embellish.
+    pub max_embellishment: Bound,
+    /// The least agreement between the judge and the owner's marks before
+    /// the judge's embellishment rate counts.
+    pub min_judge_agreement: Bound,
+    /// The measurement that would complete this rule, when one is missing.
+    #[serde(default, deserialize_with = "pending_field")]
+    pub pending_measurement: Option<Pending>,
+}
+
+/// One arm's interview measures, as the `interview` rule reads them.
+#[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
+pub struct InterviewScores {
+    /// The arm.
+    pub arm: String,
+    /// The fewest code-checked memory rows the arm has in any block.
+    pub recall_items: usize,
+    /// The share of code-checked memory rows it got right, over every
+    /// block. Absent when it has none.
+    pub recall: Option<f64>,
+    /// Answers a judge read.
+    pub judged: usize,
+    /// Of those, the answers the judge read as embellished.
+    pub embellished: usize,
+}
+
+impl InterviewScores {
+    /// The share of judged answers that embellish, when any were judged.
+    #[must_use]
+    #[allow(clippy::cast_precision_loss)]
+    pub fn embellishment_rate(&self) -> Option<f64> {
+        (self.judged > 0).then(|| self.embellished as f64 / self.judged as f64)
+    }
+}
+
+/// Two interview arms over the same items and blocks, as the `interview`
+/// rule reads them.
+#[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
+pub struct InterviewComparison {
+    /// What was judged: the suite and partition.
+    pub group: String,
+    /// The disjoint seed blocks both arms ran on.
+    pub blocks: usize,
+    /// The baseline: today's word-overlap briefing.
+    pub baseline: InterviewScores,
+    /// The arm under judgment: the full architecture.
+    pub subject: InterviewScores,
+    /// The judge that read the subject's answers, as rows name it.
+    pub judge: String,
+    /// The judge's agreement with the owner's marks, when the owner has
+    /// marked a sample.
+    pub judge_agreement: Option<f64>,
+    /// How many marked answers that agreement rests on.
+    pub marked: usize,
+}
+
 /// Which product question a gate answers.
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(tag = "decides", rename_all = "snake_case")]
@@ -1170,6 +1247,10 @@ pub enum Rule {
     /// its held-out measures against the serving router's
     /// (`crates/coder/src/router_eval.rs`).
     Router(RouterRule),
+    /// Whether an agent's memory architecture holds up in a Gym interview:
+    /// the full arm against today's word-overlap briefing
+    /// (`crate::interview`).
+    Interview(InterviewRule),
 }
 
 impl Rule {
@@ -1182,6 +1263,7 @@ impl Rule {
             Self::Deployment(rule) => rule.pending_measurement.as_ref(),
             Self::ExtEval(rule) => rule.pending_measurement.as_ref(),
             Self::Router(rule) => rule.pending_measurement.as_ref(),
+            Self::Interview(rule) => rule.pending_measurement.as_ref(),
         }
     }
 
@@ -1229,6 +1311,15 @@ impl Rule {
                 dispatch_precision_floor: rule.dispatch_precision_floor.identity(),
                 non_inferiority: &rule.non_inferiority,
                 max_decrease: rule.max_decrease.identity(),
+                pending_measurement: rule.pending_measurement.as_ref().map(Pending::identity),
+            }),
+            Self::Interview(rule) => RuleIdentity::Interview(InterviewRuleIdentity {
+                min_items: rule.min_items.identity(),
+                min_blocks: rule.min_blocks.identity(),
+                recall_margin: rule.recall_margin.identity(),
+                min_judged: rule.min_judged.identity(),
+                max_embellishment: rule.max_embellishment.identity(),
+                min_judge_agreement: rule.min_judge_agreement.identity(),
                 pending_measurement: rule.pending_measurement.as_ref().map(Pending::identity),
             }),
         }
@@ -1472,6 +1563,16 @@ impl Gate {
                     bound.validate(&self.id, "max_increase")?;
                 }
             }
+            Rule::Interview(rule) => {
+                rule.min_items.validate(&self.id, "min_items")?;
+                rule.min_blocks.validate(&self.id, "min_blocks")?;
+                rule.recall_margin.validate(&self.id, "recall_margin")?;
+                rule.min_judged.validate(&self.id, "min_judged")?;
+                rule.max_embellishment
+                    .validate(&self.id, "max_embellishment")?;
+                rule.min_judge_agreement
+                    .validate(&self.id, "min_judge_agreement")?;
+            }
             Rule::Router(rule) => {
                 rule.min_items.validate(&self.id, "min_items")?;
                 rule.canned_precision_floor
@@ -1606,6 +1707,11 @@ impl Gate {
                     baseline: Some(RouterScores::of_scores(&comparison.baseline)),
                 },
             ),
+            Rule::Interview(_) => vec![wrong_measurement(
+                &self.id,
+                "an interview: recall and embellishment per arm",
+                "a comparison of door scores carries neither",
+            )],
         };
         self.outcome(comparison.group.clone(), criteria)
     }
@@ -1618,7 +1724,11 @@ impl Gate {
     pub fn judge_deployment(&self, deployment: &Deployment) -> Outcome {
         let criteria = match &self.rule {
             Rule::Deployment(rule) => judge_deployment(rule, deployment),
-            Rule::Decision(_) | Rule::Probability(_) | Rule::ExtEval(_) | Rule::Router(_) => {
+            Rule::Decision(_)
+            | Rule::Probability(_)
+            | Rule::ExtEval(_)
+            | Rule::Router(_)
+            | Rule::Interview(_) => {
                 vec![wrong_measurement(
                     &self.id,
                     "a comparison of scores",
@@ -1638,7 +1748,11 @@ impl Gate {
     pub fn judge_ext_eval(&self, comparison: &ExtEvalComparison) -> Outcome {
         let criteria = match &self.rule {
             Rule::ExtEval(rule) => judge_ext_eval(rule, comparison),
-            Rule::Decision(_) | Rule::Probability(_) | Rule::Deployment(_) | Rule::Router(_) => {
+            Rule::Decision(_)
+            | Rule::Probability(_)
+            | Rule::Deployment(_)
+            | Rule::Router(_)
+            | Rule::Interview(_) => {
                 vec![wrong_measurement(
                     &self.id,
                     "door scores, a deployment profile, or a router's held-out measures",
@@ -1658,13 +1772,39 @@ impl Gate {
     pub fn judge_router(&self, comparison: &RouterComparison) -> Outcome {
         let criteria = match &self.rule {
             Rule::Router(rule) => judge_router(rule, comparison),
-            Rule::Decision(_) | Rule::Probability(_) | Rule::Deployment(_) | Rule::ExtEval(_) => {
+            Rule::Decision(_)
+            | Rule::Probability(_)
+            | Rule::Deployment(_)
+            | Rule::ExtEval(_)
+            | Rule::Interview(_) => {
                 vec![wrong_measurement(
                     &self.id,
                     "door scores, a deployment profile, or an extension evaluation",
                     "a router's held-out measures carry none of them",
                 )]
             }
+        };
+        self.outcome(comparison.group.clone(), criteria)
+    }
+
+    /// Judges a Gym interview: the full arm against the word-overlap arm.
+    /// Pure.
+    ///
+    /// A gate that judges anything else judges nothing here, and says so
+    /// rather than passing a comparison it never read.
+    #[must_use]
+    pub fn judge_interview(&self, comparison: &InterviewComparison) -> Outcome {
+        let criteria = match &self.rule {
+            Rule::Interview(rule) => judge_interview(rule, comparison),
+            Rule::Decision(_)
+            | Rule::Probability(_)
+            | Rule::Deployment(_)
+            | Rule::ExtEval(_)
+            | Rule::Router(_) => vec![wrong_measurement(
+                &self.id,
+                "door scores, a deployment profile, an extension evaluation, or a router",
+                "an interview carries none of them",
+            )],
         };
         self.outcome(comparison.group.clone(), criteria)
     }
@@ -1956,6 +2096,20 @@ enum RuleIdentity<'a> {
     ExtEval(ExtEvalRuleIdentity<'a>),
     /// The rule that decides whether a chat router may serve.
     Router(RouterRuleIdentity<'a>),
+    /// The rule that decides whether an interview's full arm holds up.
+    Interview(InterviewRuleIdentity<'a>),
+}
+
+/// An interview rule's identity.
+#[derive(Serialize)]
+struct InterviewRuleIdentity<'a> {
+    min_items: BoundIdentity<'a>,
+    min_blocks: BoundIdentity<'a>,
+    recall_margin: BoundIdentity<'a>,
+    min_judged: BoundIdentity<'a>,
+    max_embellishment: BoundIdentity<'a>,
+    min_judge_agreement: BoundIdentity<'a>,
+    pending_measurement: Option<PendingIdentity<'a>>,
 }
 
 /// A router rule's identity.
@@ -3128,6 +3282,155 @@ fn judge_router(rule: &RouterRule, comparison: &RouterComparison) -> Vec<Criteri
     criteria
 }
 
+fn judge_interview(rule: &InterviewRule, comparison: &InterviewComparison) -> Vec<Criterion> {
+    let mut criteria = Vec::new();
+    let fewest = comparison
+        .baseline
+        .recall_items
+        .min(comparison.subject.recall_items);
+    let (floor, blocked) = items_floor("memory_rows_per_block", 1, &rule.min_items, fewest);
+    criteria.push(floor);
+    let (blocks, blocks_blocked) =
+        items_floor("seed_blocks", 1, &rule.min_blocks, comparison.blocks);
+    criteria.push(blocks);
+    let blocked = blocked.or(blocks_blocked);
+    let name = "full_recalls_more_than_word_overlap";
+    criteria.push(
+        match (
+            blocked,
+            rule.recall_margin.value(),
+            comparison.baseline.recall,
+            comparison.subject.recall,
+        ) {
+            (Some(reason), ..) => not_judged(name.into(), 1, &reason),
+            (None, None, ..) => Criterion {
+                name: name.into(),
+                rank: 1,
+                verdict: Verdict::Unverifiable,
+                detail: format!("no recall margin has been set ({})", rule.recall_margin.why),
+            },
+            (None, Some(_), None, _) | (None, Some(_), _, None) => Criterion {
+                name: name.into(),
+                rank: 1,
+                verdict: Verdict::Unverifiable,
+                detail: "an arm answered no code-checked memory item".into(),
+            },
+            (None, Some(margin), Some(baseline), Some(subject)) => {
+                let gain = subject - baseline;
+                let detail = format!(
+                    "{} recalled {subject:.3} and {} {baseline:.3}: a gain of {gain:+.3} against a \
+                 margin of {margin:.3}",
+                    comparison.subject.arm, comparison.baseline.arm
+                );
+                Criterion {
+                    name: name.into(),
+                    rank: 1,
+                    verdict: if gain >= margin {
+                        Verdict::Passed
+                    } else if gain <= 0.0 {
+                        Verdict::Failed
+                    } else {
+                        Verdict::Unverifiable
+                    },
+                    detail,
+                }
+            }
+        },
+    );
+    let (judged, blocked) = items_floor(
+        "judged_answers",
+        2,
+        &rule.min_judged,
+        comparison.subject.judged,
+    );
+    criteria.push(judged);
+    let name = "judge_agrees_with_the_owners_marks";
+    let calibration = match (rule.min_judge_agreement.value(), comparison.judge_agreement) {
+        (None, _) => Criterion {
+            name: name.into(),
+            rank: 2,
+            verdict: Verdict::Unverifiable,
+            detail: format!(
+                "no agreement floor has been set ({})",
+                rule.min_judge_agreement.why
+            ),
+        },
+        (Some(_), None) => Criterion {
+            name: name.into(),
+            rank: 2,
+            verdict: Verdict::Unverifiable,
+            detail: format!(
+                "the owner hasn't marked a sample of {}'s readings, so its embellishment rate is \
+                 uncalibrated",
+                comparison.judge
+            ),
+        },
+        (Some(floor), Some(agreement)) => Criterion {
+            name: name.into(),
+            rank: 2,
+            verdict: if agreement >= floor {
+                Verdict::Passed
+            } else {
+                Verdict::Failed
+            },
+            detail: format!(
+                "{} agreed with the owner's marks at a rate of {agreement:.3} over {} marked \
+                 answers, against a floor of {floor:.3}",
+                comparison.judge, comparison.marked
+            ),
+        },
+    };
+    let uncalibrated = (calibration.verdict != Verdict::Passed).then(|| {
+        format!(
+            "the judge's readings don't count until it agrees with the owner's marks ({})",
+            calibration.detail
+        )
+    });
+    criteria.push(calibration);
+    let blocked = blocked.or(uncalibrated);
+    let name = "embellishment_at_or_below_ceiling";
+    criteria.push(match (
+        blocked,
+        rule.max_embellishment.value(),
+        comparison.subject.embellishment_rate(),
+    ) {
+        (Some(reason), ..) => not_judged(name.into(), 2, &reason),
+        (None, None, _) => Criterion {
+            name: name.into(),
+            rank: 2,
+            verdict: Verdict::Unverifiable,
+            detail: format!(
+                "no embellishment ceiling has been set ({})",
+                rule.max_embellishment.why
+            ),
+        },
+        (None, Some(_), None) => Criterion {
+            name: name.into(),
+            rank: 2,
+            verdict: Verdict::Unverifiable,
+            detail: "no answer was judged".into(),
+        },
+        (None, Some(ceiling), Some(rate)) => Criterion {
+            name: name.into(),
+            rank: 2,
+            verdict: if rate <= ceiling {
+                Verdict::Passed
+            } else {
+                Verdict::Failed
+            },
+            detail: format!(
+                "{} embellished {} of {} judged answers ({rate:.4}) by {}, against a ceiling of \
+                 {ceiling:.4}",
+                comparison.subject.arm,
+                comparison.subject.embellished,
+                comparison.subject.judged,
+                comparison.judge
+            ),
+        },
+    });
+    criteria
+}
+
 fn wrong_measurement(gate: &str, judges: &str, and: &str) -> Criterion {
     Criterion {
         name: "measurement_matches_the_rule".to_string(),
@@ -4147,6 +4450,7 @@ mod tests {
                 "ext-eval-cost-v1",
                 "ext-eval-v1",
                 "ext-eval-v2",
+                "interview-v1",
                 "probability-v1",
                 "probability-v2",
                 "router-v1"
@@ -4667,6 +4971,14 @@ mod tests {
                     &rule.canned_precision_floor,
                     &rule.dispatch_precision_floor,
                     &rule.max_decrease,
+                ],
+                Rule::Interview(rule) => vec![
+                    &rule.min_items,
+                    &rule.min_blocks,
+                    &rule.recall_margin,
+                    &rule.min_judged,
+                    &rule.max_embellishment,
+                    &rule.min_judge_agreement,
                 ],
             };
             for bound in bounds {

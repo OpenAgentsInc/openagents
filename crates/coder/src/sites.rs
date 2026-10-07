@@ -702,6 +702,7 @@ mod tests {
                 "openagents.independence.v1",
                 "openagents.independence.v2",
                 "openagents.insight-support.v1",
+                "openagents.interview-answer.v1",
                 "openagents.memory-importance.v1",
                 "openagents.method-conformance.v1",
                 "openagents.program.v1",
@@ -723,8 +724,8 @@ mod tests {
         // as is the method-conformance set by `verify.method_conformance`,
         // the memory-importance set by the workshop agent's briefing,
         // the insight-support set by her reflection, the world-place
-        // set by her plans' place choice, and the agent-steer set by her
-        // steering loop.
+        // set by her plans' place choice, the agent-steer set by her
+        // steering loop, and the interview-answer set by `coder interview`.
         // The inventory says so rather than letting a run find out at
         // admission.
         let unbound = |set: &str| Problem::UnboundSet {
@@ -740,6 +741,7 @@ mod tests {
                 unbound("openagents.expectation-support.v1"),
                 unbound("openagents.independence.v1"),
                 unbound("openagents.insight-support.v1"),
+                unbound("openagents.interview-answer.v1"),
                 unbound("openagents.memory-importance.v1"),
                 unbound("openagents.method-conformance.v1"),
                 unbound("openagents.world-place.v1"),

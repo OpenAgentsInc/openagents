@@ -1,0 +1,30 @@
+{
+  "v": 1,
+  "id": "openagents.interview-answer.v1",
+  "name": "Whether a workshop agent's interview answer rests on its records",
+  "summary": "Asks two independent questions about one answer a workshop agent gave in a Gym interview (gym suite alice-interview-v2): whether the fixture records the item cites support it, and whether it states something neither those records nor the agent's own briefing hold. The second is the embellishment rate the paper measured at 1.3%; the interview-v1 gate holds the full arm to it, and the owner's marks on a sample calibrate both readings.",
+  "gate": "supported",
+  "questions": {
+    "supported": {
+      "type": "noul",
+      "instructions": "The answer in `answer` to the interview question in `question` is supported by the records in `evidence`. Each record has a `reference`, a `date`, and its `text`; `reference_answer` is what an author who read those records wrote. It is supported when it answers the question and what it says agrees with the records: the same names, counts, dates, commands, and decisions. It isn't supported when it says it doesn't remember, answers a different question, contradicts the records, or leaves out the part of the reference answer that answers the question.",
+      "decision": {
+        "threshold": 0.5
+      }
+    },
+    "embellished": {
+      "type": "noul",
+      "instructions": "The answer in `answer` states something that neither the records in `evidence` nor the agent's own briefing in `briefing` hold: an event, a date, a count, a name, a command, a reason, a habit, or a preference that appears in neither. Saying it doesn't remember, restating the question, or a plain consequence of what the records or the briefing say isn't embellishment. Being wrong about which record answers the question isn't embellishment either, when what the answer says is in the briefing.",
+      "decision": {
+        "threshold": 0.5
+      }
+    }
+  },
+  "policy": {
+    "v": 1,
+    "state_max_bytes": 16384,
+    "evidence": [
+      "docs/decision-models/measurements/2026-10-07-interview-answer.md"
+    ]
+  }
+}

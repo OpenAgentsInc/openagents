@@ -1,0 +1,1080 @@
+{
+  "schema": "openagents.gym.interview_round.v1",
+  "recorded_at": "2026-10-07T09:27:28Z",
+  "suite": "alice-interview-v2",
+  "suite_digest": "e625af8b53be4ca4e19057f08d5ee7fe55e1fdb9030fc8c5af8b127df25cb540",
+  "fixture_digest": "5a13cd68aa2f48bebd0b29caf25f57bd48aaef2d0870706e2176c1d6380cb9ec",
+  "group": "alice-interview-v2 development",
+  "answerer": "scripted",
+  "answerer_identity": {
+    "model": "from-briefing-v1",
+    "verified": false
+  },
+  "blocks": [
+    0,
+    1,
+    2
+  ],
+  "rows": 225,
+  "head": "receipt:8dbe1bdd96d941551c3007388083113a5065a35a5d786b5639c4900927368b60",
+  "arms": [
+    {
+      "arm": "word-overlap",
+      "blocks": [
+        0,
+        1,
+        2
+      ],
+      "total": {
+        "rows": 45,
+        "checked": 27,
+        "correct": 9,
+        "judged": 18,
+        "supported": 6,
+        "embellished": 0
+      },
+      "categories": {
+        "memory": {
+          "rows": 21,
+          "checked": 21,
+          "correct": 6,
+          "judged": 0,
+          "supported": 0,
+          "embellished": 0
+        },
+        "plan": {
+          "rows": 6,
+          "checked": 6,
+          "correct": 3,
+          "judged": 0,
+          "supported": 0,
+          "embellished": 0
+        },
+        "reaction": {
+          "rows": 6,
+          "checked": 0,
+          "correct": 0,
+          "judged": 6,
+          "supported": 3,
+          "embellished": 0
+        },
+        "reflection": {
+          "rows": 6,
+          "checked": 0,
+          "correct": 0,
+          "judged": 6,
+          "supported": 3,
+          "embellished": 0
+        },
+        "self": {
+          "rows": 6,
+          "checked": 0,
+          "correct": 0,
+          "judged": 6,
+          "supported": 0,
+          "embellished": 0
+        }
+      }
+    },
+    {
+      "arm": "full",
+      "blocks": [
+        0,
+        1,
+        2
+      ],
+      "total": {
+        "rows": 45,
+        "checked": 27,
+        "correct": 9,
+        "judged": 18,
+        "supported": 3,
+        "embellished": 0
+      },
+      "categories": {
+        "memory": {
+          "rows": 21,
+          "checked": 21,
+          "correct": 3,
+          "judged": 0,
+          "supported": 0,
+          "embellished": 0
+        },
+        "plan": {
+          "rows": 6,
+          "checked": 6,
+          "correct": 6,
+          "judged": 0,
+          "supported": 0,
+          "embellished": 0
+        },
+        "reaction": {
+          "rows": 6,
+          "checked": 0,
+          "correct": 0,
+          "judged": 6,
+          "supported": 3,
+          "embellished": 0
+        },
+        "reflection": {
+          "rows": 6,
+          "checked": 0,
+          "correct": 0,
+          "judged": 6,
+          "supported": 0,
+          "embellished": 0
+        },
+        "self": {
+          "rows": 6,
+          "checked": 0,
+          "correct": 0,
+          "judged": 6,
+          "supported": 0,
+          "embellished": 0
+        }
+      }
+    },
+    {
+      "arm": "no-memory",
+      "blocks": [
+        0,
+        1,
+        2
+      ],
+      "total": {
+        "rows": 45,
+        "checked": 27,
+        "correct": 0,
+        "judged": 18,
+        "supported": 0,
+        "embellished": 0
+      },
+      "categories": {
+        "memory": {
+          "rows": 21,
+          "checked": 21,
+          "correct": 0,
+          "judged": 0,
+          "supported": 0,
+          "embellished": 0
+        },
+        "plan": {
+          "rows": 6,
+          "checked": 6,
+          "correct": 0,
+          "judged": 0,
+          "supported": 0,
+          "embellished": 0
+        },
+        "reaction": {
+          "rows": 6,
+          "checked": 0,
+          "correct": 0,
+          "judged": 6,
+          "supported": 0,
+          "embellished": 0
+        },
+        "reflection": {
+          "rows": 6,
+          "checked": 0,
+          "correct": 0,
+          "judged": 6,
+          "supported": 0,
+          "embellished": 0
+        },
+        "self": {
+          "rows": 6,
+          "checked": 0,
+          "correct": 0,
+          "judged": 6,
+          "supported": 0,
+          "embellished": 0
+        }
+      }
+    },
+    {
+      "arm": "no-reflection-or-plan",
+      "blocks": [
+        0,
+        1,
+        2
+      ],
+      "total": {
+        "rows": 45,
+        "checked": 27,
+        "correct": 9,
+        "judged": 18,
+        "supported": 3,
+        "embellished": 0
+      },
+      "categories": {
+        "memory": {
+          "rows": 21,
+          "checked": 21,
+          "correct": 3,
+          "judged": 0,
+          "supported": 0,
+          "embellished": 0
+        },
+        "plan": {
+          "rows": 6,
+          "checked": 6,
+          "correct": 6,
+          "judged": 0,
+          "supported": 0,
+          "embellished": 0
+        },
+        "reaction": {
+          "rows": 6,
+          "checked": 0,
+          "correct": 0,
+          "judged": 6,
+          "supported": 3,
+          "embellished": 0
+        },
+        "reflection": {
+          "rows": 6,
+          "checked": 0,
+          "correct": 0,
+          "judged": 6,
+          "supported": 0,
+          "embellished": 0
+        },
+        "self": {
+          "rows": 6,
+          "checked": 0,
+          "correct": 0,
+          "judged": 6,
+          "supported": 0,
+          "embellished": 0
+        }
+      }
+    },
+    {
+      "arm": "no-reflection",
+      "blocks": [
+        0,
+        1,
+        2
+      ],
+      "total": {
+        "rows": 45,
+        "checked": 27,
+        "correct": 9,
+        "judged": 18,
+        "supported": 3,
+        "embellished": 0
+      },
+      "categories": {
+        "memory": {
+          "rows": 21,
+          "checked": 21,
+          "correct": 3,
+          "judged": 0,
+          "supported": 0,
+          "embellished": 0
+        },
+        "plan": {
+          "rows": 6,
+          "checked": 6,
+          "correct": 6,
+          "judged": 0,
+          "supported": 0,
+          "embellished": 0
+        },
+        "reaction": {
+          "rows": 6,
+          "checked": 0,
+          "correct": 0,
+          "judged": 6,
+          "supported": 3,
+          "embellished": 0
+        },
+        "reflection": {
+          "rows": 6,
+          "checked": 0,
+          "correct": 0,
+          "judged": 6,
+          "supported": 0,
+          "embellished": 0
+        },
+        "self": {
+          "rows": 6,
+          "checked": 0,
+          "correct": 0,
+          "judged": 6,
+          "supported": 0,
+          "embellished": 0
+        }
+      }
+    }
+  ],
+  "ab": {
+    "schema": "openagents.gym.ab_evidence.v1",
+    "recorded_at": "2026-10-07T09:27:24Z",
+    "suite": "alice-interview-v2",
+    "suite_digest": "e625af8b53be4ca4e19057f08d5ee7fe55e1fdb9030fc8c5af8b127df25cb540",
+    "control": "arm:word-overlap",
+    "candidate": "arm:full",
+    "rule": {
+      "id": "interview-ab-v1",
+      "question": "Does the full architecture answer more of the code-checked interview items than today's word-overlap briefing, on seed blocks nobody has drawn?",
+      "metric_order": [
+        {
+          "metric": "accuracy",
+          "block_sigma": {
+            "value": null,
+            "basis": "unmeasured",
+            "why": "No live interview has drawn more than one block, so the spread of recall between blocks is unknown; a scripted answerer has none."
+          }
+        }
+      ],
+      "effect_size_sigmas": {
+        "value": 2.0,
+        "basis": "convention",
+        "why": "Two standard deviations of the difference, the usual bar for a single comparison."
+      },
+      "family_regression_sigmas": {
+        "value": 2.0,
+        "basis": "convention",
+        "why": "The same two standard deviations: one category may not lose more than a win needs."
+      },
+      "min_blocks_per_side": {
+        "value": 3.0,
+        "basis": "derived",
+        "why": "The median of one block is that block and the median of two is their mean, so three is the fewest at which the median can disagree with the mean."
+      },
+      "requeue_limit": 1,
+      "covers": "Answerer resampling: the spread you would see if only the trial changed.",
+      "does_not_cover": "Item sampling: the suite is one fixture and a few dozen items.",
+      "pending_measurements": [
+        {
+          "quantity": "the block-to-block spread of interview recall with a live answerer",
+          "issue": "openagents#10794",
+          "why": "Until it is measured, a win is undecided and only the digested gate rules."
+        }
+      ]
+    },
+    "rule_digest": "gate:ccc601897d68221241486f684fa6e8a7ae1dbcea6249787579ea7df381f88da8",
+    "metric_order": [
+      "accuracy"
+    ],
+    "screening_round": {
+      "phase": "screening",
+      "families": [
+        "memory",
+        "plan"
+      ],
+      "blocks": [
+        0,
+        1,
+        2
+      ],
+      "trials": [
+        {
+          "cell": {
+            "index": 1,
+            "phase": "screening",
+            "block": 0,
+            "family": "memory",
+            "side": "control",
+            "attempt": 1,
+            "requeued_from": null
+          },
+          "attempt": {
+            "outcome": "scored",
+            "scores": {
+              "items": 7,
+              "accuracy": 0.2857142857142857,
+              "ece": null,
+              "brier": null,
+              "nll": null,
+              "confident_errors": 0
+            },
+            "refusals": 0
+          }
+        },
+        {
+          "cell": {
+            "index": 2,
+            "phase": "screening",
+            "block": 0,
+            "family": "memory",
+            "side": "candidate",
+            "attempt": 1,
+            "requeued_from": null
+          },
+          "attempt": {
+            "outcome": "scored",
+            "scores": {
+              "items": 7,
+              "accuracy": 0.14285714285714285,
+              "ece": null,
+              "brier": null,
+              "nll": null,
+              "confident_errors": 0
+            },
+            "refusals": 0
+          }
+        },
+        {
+          "cell": {
+            "index": 3,
+            "phase": "screening",
+            "block": 0,
+            "family": "plan",
+            "side": "candidate",
+            "attempt": 1,
+            "requeued_from": null
+          },
+          "attempt": {
+            "outcome": "scored",
+            "scores": {
+              "items": 2,
+              "accuracy": 1.0,
+              "ece": null,
+              "brier": null,
+              "nll": null,
+              "confident_errors": 0
+            },
+            "refusals": 0
+          }
+        },
+        {
+          "cell": {
+            "index": 4,
+            "phase": "screening",
+            "block": 0,
+            "family": "plan",
+            "side": "control",
+            "attempt": 1,
+            "requeued_from": null
+          },
+          "attempt": {
+            "outcome": "scored",
+            "scores": {
+              "items": 2,
+              "accuracy": 0.5,
+              "ece": null,
+              "brier": null,
+              "nll": null,
+              "confident_errors": 0
+            },
+            "refusals": 0
+          }
+        },
+        {
+          "cell": {
+            "index": 5,
+            "phase": "screening",
+            "block": 1,
+            "family": "memory",
+            "side": "candidate",
+            "attempt": 1,
+            "requeued_from": null
+          },
+          "attempt": {
+            "outcome": "scored",
+            "scores": {
+              "items": 7,
+              "accuracy": 0.14285714285714285,
+              "ece": null,
+              "brier": null,
+              "nll": null,
+              "confident_errors": 0
+            },
+            "refusals": 0
+          }
+        },
+        {
+          "cell": {
+            "index": 6,
+            "phase": "screening",
+            "block": 1,
+            "family": "memory",
+            "side": "control",
+            "attempt": 1,
+            "requeued_from": null
+          },
+          "attempt": {
+            "outcome": "scored",
+            "scores": {
+              "items": 7,
+              "accuracy": 0.2857142857142857,
+              "ece": null,
+              "brier": null,
+              "nll": null,
+              "confident_errors": 0
+            },
+            "refusals": 0
+          }
+        },
+        {
+          "cell": {
+            "index": 7,
+            "phase": "screening",
+            "block": 1,
+            "family": "plan",
+            "side": "control",
+            "attempt": 1,
+            "requeued_from": null
+          },
+          "attempt": {
+            "outcome": "scored",
+            "scores": {
+              "items": 2,
+              "accuracy": 0.5,
+              "ece": null,
+              "brier": null,
+              "nll": null,
+              "confident_errors": 0
+            },
+            "refusals": 0
+          }
+        },
+        {
+          "cell": {
+            "index": 8,
+            "phase": "screening",
+            "block": 1,
+            "family": "plan",
+            "side": "candidate",
+            "attempt": 1,
+            "requeued_from": null
+          },
+          "attempt": {
+            "outcome": "scored",
+            "scores": {
+              "items": 2,
+              "accuracy": 1.0,
+              "ece": null,
+              "brier": null,
+              "nll": null,
+              "confident_errors": 0
+            },
+            "refusals": 0
+          }
+        },
+        {
+          "cell": {
+            "index": 9,
+            "phase": "screening",
+            "block": 2,
+            "family": "memory",
+            "side": "control",
+            "attempt": 1,
+            "requeued_from": null
+          },
+          "attempt": {
+            "outcome": "scored",
+            "scores": {
+              "items": 7,
+              "accuracy": 0.2857142857142857,
+              "ece": null,
+              "brier": null,
+              "nll": null,
+              "confident_errors": 0
+            },
+            "refusals": 0
+          }
+        },
+        {
+          "cell": {
+            "index": 10,
+            "phase": "screening",
+            "block": 2,
+            "family": "memory",
+            "side": "candidate",
+            "attempt": 1,
+            "requeued_from": null
+          },
+          "attempt": {
+            "outcome": "scored",
+            "scores": {
+              "items": 7,
+              "accuracy": 0.14285714285714285,
+              "ece": null,
+              "brier": null,
+              "nll": null,
+              "confident_errors": 0
+            },
+            "refusals": 0
+          }
+        },
+        {
+          "cell": {
+            "index": 11,
+            "phase": "screening",
+            "block": 2,
+            "family": "plan",
+            "side": "candidate",
+            "attempt": 1,
+            "requeued_from": null
+          },
+          "attempt": {
+            "outcome": "scored",
+            "scores": {
+              "items": 2,
+              "accuracy": 1.0,
+              "ece": null,
+              "brier": null,
+              "nll": null,
+              "confident_errors": 0
+            },
+            "refusals": 0
+          }
+        },
+        {
+          "cell": {
+            "index": 12,
+            "phase": "screening",
+            "block": 2,
+            "family": "plan",
+            "side": "control",
+            "attempt": 1,
+            "requeued_from": null
+          },
+          "attempt": {
+            "outcome": "scored",
+            "scores": {
+              "items": 2,
+              "accuracy": 0.5,
+              "ece": null,
+              "brier": null,
+              "nll": null,
+              "confident_errors": 0
+            },
+            "refusals": 0
+          }
+        }
+      ],
+      "invalid": [],
+      "requeued": 0
+    },
+    "screening": {
+      "phase": "screening",
+      "outcome": {
+        "gate_id": "interview-ab-v1",
+        "gate_digest": "gate:ccc601897d68221241486f684fa6e8a7ae1dbcea6249787579ea7df381f88da8",
+        "group": "screening",
+        "verdict": "unverifiable",
+        "criteria": [
+          {
+            "name": "every_cell_has_a_valid_attempt",
+            "rank": 1,
+            "verdict": "passed",
+            "detail": "12 cells ran, 0 requeued after a harness failure and 0 left out of the comparison"
+          },
+          {
+            "name": "blocks_per_side>=3",
+            "rank": 1,
+            "verdict": "passed",
+            "detail": "control drew 3 seed blocks and the candidate drew 3, at or above the floor of 3"
+          },
+          {
+            "name": "the_blocks_scored_the_same_items",
+            "rank": 1,
+            "verdict": "passed",
+            "detail": "both sides scored 9 items in every block; the control declined 0 of them across its blocks and the candidate declined 0, and a declined item stays in the denominator"
+          },
+          {
+            "name": "confident_errors_do_not_rise",
+            "rank": 1,
+            "verdict": "passed",
+            "detail": "confident errors 0.00 to 0.00 a block. This is a direction and not an effect size: at this suite's counts, a relative threshold would be a threshold on one item."
+          },
+          {
+            "name": "no_family_loses_more_than_the_noise",
+            "rank": 1,
+            "verdict": "unverifiable",
+            "detail": "no metric has a measured spread, so the guard has nothing to apply"
+          },
+          {
+            "name": "a_metric_gain_clears_the_noise",
+            "rank": 2,
+            "verdict": "unverifiable",
+            "detail": "no metric earned the round: accuracy has no measured block-to-block spread on this suite, so a win on it cannot be told from the seeds"
+          },
+          {
+            "name": "the_median_agrees_with_the_mean",
+            "rank": 2,
+            "verdict": "unverifiable",
+            "detail": "not judged: no metric earned the round"
+          }
+        ]
+      },
+      "earned": null,
+      "summaries": [
+        {
+          "side": "control",
+          "group": "overall",
+          "blocks": [
+            0,
+            1,
+            2
+          ],
+          "items": 9,
+          "refusals": 0,
+          "metrics": [
+            {
+              "metric": "accuracy",
+              "stat": {
+                "values": [
+                  0.3333333333333333,
+                  0.3333333333333333,
+                  0.3333333333333333
+                ],
+                "mean": 0.3333333333333333,
+                "median": 0.3333333333333333
+              }
+            },
+            {
+              "metric": "ece",
+              "stat": null
+            },
+            {
+              "metric": "brier",
+              "stat": null
+            },
+            {
+              "metric": "nll",
+              "stat": null
+            },
+            {
+              "metric": "confident_errors",
+              "stat": {
+                "values": [
+                  0.0,
+                  0.0,
+                  0.0
+                ],
+                "mean": 0.0,
+                "median": 0.0
+              }
+            }
+          ]
+        },
+        {
+          "side": "control",
+          "group": "memory",
+          "blocks": [
+            0,
+            1,
+            2
+          ],
+          "items": 7,
+          "refusals": 0,
+          "metrics": [
+            {
+              "metric": "accuracy",
+              "stat": {
+                "values": [
+                  0.2857142857142857,
+                  0.2857142857142857,
+                  0.2857142857142857
+                ],
+                "mean": 0.2857142857142857,
+                "median": 0.2857142857142857
+              }
+            },
+            {
+              "metric": "ece",
+              "stat": null
+            },
+            {
+              "metric": "brier",
+              "stat": null
+            },
+            {
+              "metric": "nll",
+              "stat": null
+            },
+            {
+              "metric": "confident_errors",
+              "stat": {
+                "values": [
+                  0.0,
+                  0.0,
+                  0.0
+                ],
+                "mean": 0.0,
+                "median": 0.0
+              }
+            }
+          ]
+        },
+        {
+          "side": "control",
+          "group": "plan",
+          "blocks": [
+            0,
+            1,
+            2
+          ],
+          "items": 2,
+          "refusals": 0,
+          "metrics": [
+            {
+              "metric": "accuracy",
+              "stat": {
+                "values": [
+                  0.5,
+                  0.5,
+                  0.5
+                ],
+                "mean": 0.5,
+                "median": 0.5
+              }
+            },
+            {
+              "metric": "ece",
+              "stat": null
+            },
+            {
+              "metric": "brier",
+              "stat": null
+            },
+            {
+              "metric": "nll",
+              "stat": null
+            },
+            {
+              "metric": "confident_errors",
+              "stat": {
+                "values": [
+                  0.0,
+                  0.0,
+                  0.0
+                ],
+                "mean": 0.0,
+                "median": 0.0
+              }
+            }
+          ]
+        },
+        {
+          "side": "candidate",
+          "group": "overall",
+          "blocks": [
+            0,
+            1,
+            2
+          ],
+          "items": 9,
+          "refusals": 0,
+          "metrics": [
+            {
+              "metric": "accuracy",
+              "stat": {
+                "values": [
+                  0.3333333333333333,
+                  0.3333333333333333,
+                  0.3333333333333333
+                ],
+                "mean": 0.3333333333333333,
+                "median": 0.3333333333333333
+              }
+            },
+            {
+              "metric": "ece",
+              "stat": null
+            },
+            {
+              "metric": "brier",
+              "stat": null
+            },
+            {
+              "metric": "nll",
+              "stat": null
+            },
+            {
+              "metric": "confident_errors",
+              "stat": {
+                "values": [
+                  0.0,
+                  0.0,
+                  0.0
+                ],
+                "mean": 0.0,
+                "median": 0.0
+              }
+            }
+          ]
+        },
+        {
+          "side": "candidate",
+          "group": "memory",
+          "blocks": [
+            0,
+            1,
+            2
+          ],
+          "items": 7,
+          "refusals": 0,
+          "metrics": [
+            {
+              "metric": "accuracy",
+              "stat": {
+                "values": [
+                  0.14285714285714285,
+                  0.14285714285714285,
+                  0.14285714285714285
+                ],
+                "mean": 0.14285714285714285,
+                "median": 0.14285714285714285
+              }
+            },
+            {
+              "metric": "ece",
+              "stat": null
+            },
+            {
+              "metric": "brier",
+              "stat": null
+            },
+            {
+              "metric": "nll",
+              "stat": null
+            },
+            {
+              "metric": "confident_errors",
+              "stat": {
+                "values": [
+                  0.0,
+                  0.0,
+                  0.0
+                ],
+                "mean": 0.0,
+                "median": 0.0
+              }
+            }
+          ]
+        },
+        {
+          "side": "candidate",
+          "group": "plan",
+          "blocks": [
+            0,
+            1,
+            2
+          ],
+          "items": 2,
+          "refusals": 0,
+          "metrics": [
+            {
+              "metric": "accuracy",
+              "stat": {
+                "values": [
+                  1.0,
+                  1.0,
+                  1.0
+                ],
+                "mean": 1.0,
+                "median": 1.0
+              }
+            },
+            {
+              "metric": "ece",
+              "stat": null
+            },
+            {
+              "metric": "brier",
+              "stat": null
+            },
+            {
+              "metric": "nll",
+              "stat": null
+            },
+            {
+              "metric": "confident_errors",
+              "stat": {
+                "values": [
+                  0.0,
+                  0.0,
+                  0.0
+                ],
+                "mean": 0.0,
+                "median": 0.0
+              }
+            }
+          ]
+        }
+      ]
+    },
+    "confirmation": null,
+    "decision": "undecided",
+    "reason": "screening: no metric has a measured spread, so the guard has nothing to apply"
+  },
+  "comparison": {
+    "group": "alice-interview-v2 development",
+    "blocks": 3,
+    "baseline": {
+      "arm": "word-overlap",
+      "recall_items": 7,
+      "recall": 0.2857142857142857,
+      "judged": 18,
+      "embellished": 0
+    },
+    "subject": {
+      "arm": "full",
+      "recall_items": 7,
+      "recall": 0.14285714285714285,
+      "judged": 18,
+      "embellished": 0
+    },
+    "judge": "scripted:overlap-judge-v1",
+    "judge_agreement": null,
+    "marked": 0
+  },
+  "agreement": {
+    "marks": 0,
+    "matched": 0,
+    "supported_agree": 0,
+    "embellished_agree": 0,
+    "missed_embellishments": 0
+  },
+  "gate": {
+    "gate_id": "interview-v1",
+    "gate_digest": "gate:073dfb70174bdc7dd88cb3994fce608ef7cd9fc29d915e12eafe85fa6f10a6d7",
+    "group": "alice-interview-v2 development",
+    "verdict": "failed",
+    "criteria": [
+      {
+        "name": "memory_rows_per_block>=7",
+        "rank": 1,
+        "verdict": "passed",
+        "detail": "memory_rows_per_block is 7, at or above the floor of 7"
+      },
+      {
+        "name": "seed_blocks>=3",
+        "rank": 1,
+        "verdict": "passed",
+        "detail": "seed_blocks is 3, at or above the floor of 3"
+      },
+      {
+        "name": "full_recalls_more_than_word_overlap",
+        "rank": 1,
+        "verdict": "failed",
+        "detail": "full recalled 0.143 and word-overlap 0.286: a gain of -0.143 against a margin of 0.045"
+      },
+      {
+        "name": "judged_answers>=18",
+        "rank": 2,
+        "verdict": "passed",
+        "detail": "judged_answers is 18, at or above the floor of 18"
+      },
+      {
+        "name": "judge_agrees_with_the_owners_marks",
+        "rank": 2,
+        "verdict": "unverifiable",
+        "detail": "the owner hasn't marked a sample of scripted:overlap-judge-v1's readings, so its embellishment rate is uncalibrated"
+      },
+      {
+        "name": "embellishment_at_or_below_ceiling",
+        "rank": 2,
+        "verdict": "unverifiable",
+        "detail": "not judged: the judge's readings don't count until it agrees with the owner's marks (the owner hasn't marked a sample of scripted:overlap-judge-v1's readings, so its embellishment rate is uncalibrated)"
+      }
+    ]
+  }
+}

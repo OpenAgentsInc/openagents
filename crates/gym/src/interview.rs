@@ -376,6 +376,10 @@ pub struct Row {
     pub correct: Option<bool>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub grade: Option<Grade>,
+    /// The judge's reading, for an item code doesn't check. Absent on rows
+    /// written before judging existed, and on a judged item nobody judged.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub judgment: Option<Judgment>,
 }
 
 /// The longest answer a row keeps, bytes.
@@ -441,8 +445,477 @@ impl Row {
             answer: kept,
             correct: grade.as_ref().map(|g| g.correct),
             grade,
+            judgment: None,
         })
     }
+
+    /// This row with `judgment` recorded.
+    #[must_use]
+    pub fn judged(mut self, judgment: Judgment) -> Self {
+        self.judgment = Some(judgment);
+        self
+    }
+}
+
+/// The `kind` of an item a judge scores.
+pub const KIND_JUDGED: &str = "judged";
+
+/// The schema an owner's mark on one interview answer carries.
+pub const MARK_SCHEMA: &str = "openagents.gym.interview_mark.v1";
+
+/// The five-category Alice suite, as committed. It asks against the same
+/// fixture as version 1.
+pub const ALICE_V2_SUITE: &str = include_str!("../suites/alice-interview-v2.json");
+
+/// The id of the gate a run of the five-category suite is judged by.
+pub const GATE: &str = "interview-v1";
+
+/// The gate's committed file, compiled in so a run needs no checkout.
+pub const GATE_JSON: &str = include_str!("../gates/interview-v1.json");
+
+/// The committed `interview-v1` gate.
+///
+/// # Errors
+/// When the committed file doesn't validate.
+pub fn gate() -> Result<crate::gate::Gate, crate::gate::GateError> {
+    crate::gate::Gate::from_json(
+        GATE_JSON,
+        std::path::Path::new("crates/gym/gates/interview-v1.json"),
+    )
+}
+
+/// The arm the gate judges.
+pub const SUBJECT_ARM: &str = "full";
+/// The arm it is judged against: today's briefing.
+pub const BASELINE_ARM: &str = "word-overlap";
+
+/// The committed five-category Alice suite.
+///
+/// # Errors
+/// When the suite doesn't load.
+pub fn alice_v2_suite() -> Result<Suite, SuiteError> {
+    Suite::load(ALICE_V2_SUITE)
+}
+
+/// What a judge read in one answer to an item code doesn't check.
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+pub struct Judgment {
+    /// The kind of judge: `jev`, or `scripted` for the deterministic
+    /// stand-in a run with no model uses.
+    pub judge: String,
+    /// The model that judged, as the judge reports it.
+    pub identity: DoorIdentity,
+    /// The question set it asked, by id.
+    pub set: String,
+    /// The probability the cited records support the answer.
+    pub supported: f64,
+    /// The probability the answer states something neither the cited
+    /// records nor the briefing hold.
+    pub embellished: f64,
+    /// The thresholds at which each reads as yes.
+    pub supported_at: f64,
+    pub embellished_at: f64,
+}
+
+impl Judgment {
+    /// Whether the answer reads as supported.
+    #[must_use]
+    pub fn is_supported(&self) -> bool {
+        self.supported >= self.supported_at
+    }
+
+    /// Whether the answer reads as embellished.
+    #[must_use]
+    pub fn is_embellished(&self) -> bool {
+        self.embellished >= self.embellished_at
+    }
+
+    /// The judge as a comparison names it: `KIND:MODEL`.
+    #[must_use]
+    pub fn name(&self) -> String {
+        format!("{}:{}", self.judge, self.identity.model)
+    }
+}
+
+/// The interview rows among `rows`, read back as rows. Anything else in a
+/// store is skipped.
+#[must_use]
+pub fn rows_of(rows: &[Value]) -> Vec<Row> {
+    rows.iter()
+        .filter(|row| row["schema"] == ROW_SCHEMA)
+        .filter_map(|row| serde_json::from_value(row.clone()).ok())
+        .collect()
+}
+
+/// One arm's counts over a set of rows.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub struct Tally {
+    pub rows: usize,
+    /// Rows code graded, and how many were right.
+    pub checked: usize,
+    pub correct: usize,
+    /// Rows a judge read, how many it found supported, and how many
+    /// embellished.
+    pub judged: usize,
+    pub supported: usize,
+    pub embellished: usize,
+}
+
+impl Tally {
+    /// Adds one row.
+    pub fn add(&mut self, row: &Row) {
+        self.rows += 1;
+        if let Some(correct) = row.correct {
+            self.checked += 1;
+            self.correct += usize::from(correct);
+        }
+        if let Some(judgment) = &row.judgment {
+            self.judged += 1;
+            self.supported += usize::from(judgment.is_supported());
+            self.embellished += usize::from(judgment.is_embellished());
+        }
+    }
+
+    /// The tally of `rows`.
+    #[must_use]
+    pub fn of<'a>(rows: impl IntoIterator<Item = &'a Row>) -> Self {
+        let mut tally = Self::default();
+        for row in rows {
+            tally.add(row);
+        }
+        tally
+    }
+
+    /// The share of checked rows that were right.
+    #[must_use]
+    #[allow(clippy::cast_precision_loss)]
+    pub fn accuracy(&self) -> Option<f64> {
+        (self.checked > 0).then(|| self.correct as f64 / self.checked as f64)
+    }
+
+    /// These counts as the scores a `gym::ab` cell reports: accuracy over
+    /// the code-checked rows. An answer reports no probability, so the
+    /// calibration measures are absent, and no answer is wrong at a
+    /// reported 0.9 or above: confident errors are zero by definition,
+    /// not by omission.
+    #[must_use]
+    pub fn scores(&self) -> crate::gate::Scores {
+        crate::gate::Scores {
+            items: self.checked,
+            accuracy: self.accuracy(),
+            confident_errors: Some(0),
+            ..crate::gate::Scores::default()
+        }
+    }
+}
+
+/// One arm's results over a run: the whole run and each category.
+#[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
+pub struct ArmSummary {
+    pub arm: String,
+    pub blocks: Vec<u64>,
+    pub total: Tally,
+    /// Keyed by category family.
+    pub categories: std::collections::BTreeMap<String, Tally>,
+}
+
+/// Every arm's results over `rows`, in arm order of first appearance.
+#[must_use]
+pub fn summarize(rows: &[Row]) -> Vec<ArmSummary> {
+    let mut out: Vec<ArmSummary> = Vec::new();
+    for row in rows {
+        let index = if let Some(index) = out.iter().position(|s| s.arm == row.arm) {
+            index
+        } else {
+            out.push(ArmSummary {
+                arm: row.arm.clone(),
+                ..ArmSummary::default()
+            });
+            out.len() - 1
+        };
+        let summary = &mut out[index];
+        summary.total.add(row);
+        summary
+            .categories
+            .entry(row.family.clone())
+            .or_default()
+            .add(row);
+        if let Some(block) = row.seed_base
+            && !summary.blocks.contains(&block)
+        {
+            summary.blocks.push(block);
+        }
+    }
+    for summary in &mut out {
+        summary.blocks.sort_unstable();
+    }
+    out
+}
+
+/// One arm's measures as the gate reads them.
+#[must_use]
+pub fn arm_scores(rows: &[Row], arm: &str) -> crate::gate::InterviewScores {
+    let mine: Vec<&Row> = rows.iter().filter(|r| r.arm == arm).collect();
+    let memory = |block: Option<u64>| {
+        Tally::of(
+            mine.iter()
+                .copied()
+                .filter(|r| r.family == Category::Memory.as_str())
+                .filter(|r| block.is_none() || r.seed_base == block),
+        )
+    };
+    let blocks: std::collections::BTreeSet<Option<u64>> =
+        mine.iter().map(|r| r.seed_base).collect();
+    let all = Tally::of(mine.iter().copied());
+    crate::gate::InterviewScores {
+        arm: arm.into(),
+        recall_items: blocks
+            .iter()
+            .map(|block| memory(*block).checked)
+            .min()
+            .unwrap_or(0),
+        recall: memory(None).accuracy(),
+        judged: all.judged,
+        embellished: all.embellished,
+    }
+}
+
+/// The comparison the gate reads: [`SUBJECT_ARM`] against
+/// [`BASELINE_ARM`] over `rows`, with the judge's agreement with the
+/// owner's marks when there is one.
+#[must_use]
+pub fn comparison(
+    group: &str,
+    rows: &[Row],
+    agreement: Option<&Agreement>,
+) -> crate::gate::InterviewComparison {
+    let blocks = |arm: &str| -> std::collections::BTreeSet<Option<u64>> {
+        rows.iter()
+            .filter(|r| r.arm == arm)
+            .map(|r| r.seed_base)
+            .collect()
+    };
+    let shared = blocks(SUBJECT_ARM)
+        .intersection(&blocks(BASELINE_ARM))
+        .count();
+    let judges: std::collections::BTreeSet<String> = rows
+        .iter()
+        .filter(|r| r.arm == SUBJECT_ARM)
+        .filter_map(|r| r.judgment.as_ref().map(Judgment::name))
+        .collect();
+    crate::gate::InterviewComparison {
+        group: group.into(),
+        blocks: shared,
+        baseline: arm_scores(rows, BASELINE_ARM),
+        subject: arm_scores(rows, SUBJECT_ARM),
+        judge: if judges.is_empty() {
+            "no judge".into()
+        } else {
+            judges.into_iter().collect::<Vec<_>>().join(", ")
+        },
+        judge_agreement: agreement.and_then(Agreement::rate),
+        marked: agreement.map_or(0, |a| a.matched),
+    }
+}
+
+/// The `gym::ab` rule an interview round runs under: accuracy on the
+/// code-checked categories, on disjoint seed blocks.
+///
+/// Nobody has measured how recall moves between blocks with a live
+/// answerer, so the accuracy floor is unmeasured and a win reads as
+/// undecided rather than kept. The digested gate, `interview-v1`, is what
+/// decides; this round is the comparison it rests on.
+#[must_use]
+pub fn ab_rule() -> crate::ab::Rule {
+    use crate::ab::{MetricFloor, Pending as AbPending, Rule};
+    use crate::gate::{Basis, Bound};
+    let bound = |value: Option<f64>, basis: Basis, why: &str| Bound {
+        value,
+        basis,
+        evidence: Vec::new(),
+        why: why.into(),
+    };
+    Rule {
+        id: "interview-ab-v1".into(),
+        question: "Does the full architecture answer more of the code-checked interview items \
+                   than today's word-overlap briefing, on seed blocks nobody has drawn?"
+            .into(),
+        metric_order: vec![MetricFloor {
+            metric: crate::ab::Metric::Accuracy,
+            block_sigma: bound(
+                None,
+                Basis::Unmeasured,
+                "No live interview has drawn more than one block, so the spread of recall \
+                 between blocks is unknown; a scripted answerer has none.",
+            ),
+        }],
+        effect_size_sigmas: bound(
+            Some(2.0),
+            Basis::Convention,
+            "Two standard deviations of the difference, the usual bar for a single comparison.",
+        ),
+        family_regression_sigmas: bound(
+            Some(2.0),
+            Basis::Convention,
+            "The same two standard deviations: one category may not lose more than a win needs.",
+        ),
+        min_blocks_per_side: bound(
+            Some(3.0),
+            Basis::Derived,
+            "The median of one block is that block and the median of two is their mean, so \
+             three is the fewest at which the median can disagree with the mean.",
+        ),
+        requeue_limit: 1,
+        covers: "Answerer resampling: the spread you would see if only the trial changed.".into(),
+        does_not_cover: "Item sampling: the suite is one fixture and a few dozen items.".into(),
+        pending_measurements: vec![AbPending {
+            quantity: "the block-to-block spread of interview recall with a live answerer".into(),
+            issue: "openagents#10794".into(),
+            why: "Until it is measured, a win is undecided and only the digested gate rules."
+                .into(),
+        }],
+    }
+}
+
+/// An owner's mark on one interview answer (`openagents.gym.interview_mark.v1`):
+/// whether the cited records support it and whether it embellishes.
+///
+/// A mark names its row by the row's perturbation fields, so marking the
+/// same answer twice is refused by the store as a repeat, and by the digest
+/// of the answer it read, so a mark never moves to a different answer.
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+pub struct Mark {
+    pub schema: String,
+    /// RFC 3339, UTC.
+    pub recorded_at: String,
+    pub suite: String,
+    pub suite_digest: String,
+    pub item_id: String,
+    pub arm: String,
+    /// `mark:ARM`, so a mark's perturbation key differs from its row's.
+    pub estimator: String,
+    /// The answerer of the row it marks.
+    pub door_identity: DoorIdentity,
+    /// The trial of the row it marks.
+    pub seed_base: Option<u64>,
+    /// SHA-256 of the answer it marks.
+    pub answer_sha256: String,
+    pub supported: bool,
+    pub embellished: bool,
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub note: String,
+}
+
+impl Mark {
+    /// The owner's mark on `row`.
+    #[must_use]
+    pub fn on(row: &Row, supported: bool, embellished: bool, note: &str, at: String) -> Self {
+        Self {
+            schema: MARK_SCHEMA.into(),
+            recorded_at: at,
+            suite: row.suite.clone(),
+            suite_digest: row.suite_digest.clone(),
+            item_id: row.item_id.clone(),
+            arm: row.arm.clone(),
+            estimator: format!("mark:{}", row.arm),
+            door_identity: row.door_identity.clone(),
+            seed_base: row.seed_base,
+            answer_sha256: sha256(row.answer.as_bytes()),
+            supported,
+            embellished,
+            note: note.into(),
+        }
+    }
+
+    /// Whether this mark reads `row`.
+    #[must_use]
+    pub fn marks(&self, row: &Row) -> bool {
+        self.suite_digest == row.suite_digest
+            && self.item_id == row.item_id
+            && self.arm == row.arm
+            && self.seed_base == row.seed_base
+            && self.door_identity == row.door_identity
+            && self.answer_sha256 == sha256(row.answer.as_bytes())
+    }
+}
+
+/// The marks among `rows`, read back as marks.
+#[must_use]
+pub fn marks_of(rows: &[Value]) -> Vec<Mark> {
+    rows.iter()
+        .filter(|row| row["schema"] == MARK_SCHEMA)
+        .filter_map(|row| serde_json::from_value(row.clone()).ok())
+        .collect()
+}
+
+/// How the judge's readings agree with the owner's marks.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub struct Agreement {
+    /// Marks read.
+    pub marks: usize,
+    /// Marks whose row is in the store with a judgment.
+    pub matched: usize,
+    /// Of those, how many the judge read the same way on each question.
+    pub supported_agree: usize,
+    pub embellished_agree: usize,
+    /// Answers the owner marked embellished and the judge didn't: the
+    /// misses that would understate the embellishment rate.
+    pub missed_embellishments: usize,
+}
+
+impl Agreement {
+    /// The share of marked readings, over both questions, the judge got
+    /// the owner's way.
+    #[must_use]
+    #[allow(clippy::cast_precision_loss)]
+    pub fn rate(&self) -> Option<f64> {
+        (self.matched > 0).then(|| {
+            (self.supported_agree + self.embellished_agree) as f64 / (2 * self.matched) as f64
+        })
+    }
+}
+
+/// The judge's agreement with `marks` over the judged rows they mark.
+#[must_use]
+pub fn agreement(rows: &[Row], marks: &[Mark]) -> Agreement {
+    let mut out = Agreement {
+        marks: marks.len(),
+        ..Agreement::default()
+    };
+    for mark in marks {
+        let Some(judgment) = rows
+            .iter()
+            .find(|row| mark.marks(row))
+            .and_then(|row| row.judgment.as_ref())
+        else {
+            continue;
+        };
+        out.matched += 1;
+        out.supported_agree += usize::from(judgment.is_supported() == mark.supported);
+        out.embellished_agree += usize::from(judgment.is_embellished() == mark.embellished);
+        out.missed_embellishments += usize::from(mark.embellished && !judgment.is_embellished());
+    }
+    out
+}
+
+/// A deterministic sample of `n` judged rows to mark, spread across items
+/// and arms by the digest of each row's identity rather than taken from
+/// the top of the store.
+#[must_use]
+pub fn sample(rows: &[Row], n: usize) -> Vec<&Row> {
+    let mut judged: Vec<(String, &Row)> = rows
+        .iter()
+        .filter(|row| row.judgment.is_some())
+        .map(|row| {
+            let key = format!(
+                "{}\n{}\n{}\n{:?}",
+                row.suite_digest, row.item_id, row.arm, row.seed_base
+            );
+            (sha256(key.as_bytes()), row)
+        })
+        .collect();
+    judged.sort_by(|a, b| a.0.cmp(&b.0));
+    judged.into_iter().take(n).map(|(_, row)| row).collect()
 }
 
 #[cfg(test)]
@@ -489,5 +962,163 @@ mod tests {
         }
         assert!(Category::Memory.code_checked());
         assert!(!Category::Reflection.code_checked());
+    }
+
+    fn row(
+        arm: &str,
+        family: &str,
+        block: u64,
+        correct: Option<bool>,
+        embellished: Option<bool>,
+    ) -> Row {
+        Row {
+            schema: ROW_SCHEMA.into(),
+            recorded_at: "2026-10-07T00:00:00Z".into(),
+            suite: "s".into(),
+            suite_digest: "d".into(),
+            question_digest: None,
+            fixture_digest: "f".into(),
+            split: Partition::Development,
+            family: family.into(),
+            item_id: format!("{family}/{block}"),
+            arm: arm.into(),
+            estimator: format!("arm:{arm}"),
+            door: "scripted".into(),
+            door_identity: DoorIdentity::hosted("from-briefing-v1"),
+            seed_base: Some(block),
+            permutation: None,
+            briefing_bytes: 0,
+            carried: Vec::new(),
+            evidence_carried: Vec::new(),
+            answer: format!("an answer by {arm}"),
+            correct,
+            grade: None,
+            judgment: embellished.map(|e| Judgment {
+                judge: "jev".into(),
+                identity: DoorIdentity::hosted("jev-test"),
+                set: "openagents.interview-answer.v1".into(),
+                supported: 0.9,
+                embellished: if e { 0.9 } else { 0.1 },
+                supported_at: 0.5,
+                embellished_at: 0.5,
+            }),
+        }
+    }
+
+    /// `memory` code-checked rows per block per arm, with `right` of them
+    /// correct, and `judged` judged rows of which `embellished` embellish.
+    fn rows(arm: &str, memory: usize, right: usize, judged: usize, embellished: usize) -> Vec<Row> {
+        let mut out = Vec::new();
+        for block in 0..3 {
+            for i in 0..memory {
+                let mut r = row(arm, "memory", block, Some(i < right), None);
+                r.item_id = format!("memory/{i}");
+                out.push(r);
+            }
+            for i in 0..judged {
+                let mut r = row(
+                    arm,
+                    "reflection",
+                    block,
+                    None,
+                    Some(block == 0 && i < embellished),
+                );
+                r.item_id = format!("reflection/{i}");
+                out.push(r);
+            }
+        }
+        out
+    }
+
+    fn verdict(rows: &[Row], agreement: Option<&Agreement>) -> crate::gate::Outcome {
+        gate()
+            .expect("the gate loads")
+            .judge_interview(&comparison("test", rows, agreement))
+    }
+
+    fn agreeing(matched: usize) -> Agreement {
+        Agreement {
+            marks: matched,
+            matched,
+            supported_agree: matched,
+            embellished_agree: matched,
+            missed_embellishments: 0,
+        }
+    }
+
+    #[test]
+    fn the_gate_passes_a_better_full_arm_only_with_a_calibrated_judge() {
+        use crate::gate::Verdict;
+        let mut all = rows(BASELINE_ARM, 7, 3, 10, 0);
+        all.extend(rows(SUBJECT_ARM, 7, 5, 10, 0));
+        let scores = comparison("test", &all, None);
+        assert_eq!(scores.blocks, 3);
+        assert_eq!(scores.subject.recall_items, 7);
+        assert_eq!(scores.subject.judged, 30);
+        assert_eq!(scores.judge, "jev:jev-test");
+        let uncalibrated = verdict(&all, None);
+        assert_eq!(
+            uncalibrated.verdict,
+            Verdict::Unverifiable,
+            "{uncalibrated:?}"
+        );
+        let calibrated = verdict(&all, Some(&agreeing(20)));
+        assert_eq!(calibrated.verdict, Verdict::Passed, "{calibrated:?}");
+
+        // A full arm that recalls no more than word overlap fails.
+        let mut worse = rows(BASELINE_ARM, 7, 5, 10, 0);
+        worse.extend(rows(SUBJECT_ARM, 7, 5, 10, 0));
+        assert_eq!(
+            verdict(&worse, Some(&agreeing(20))).verdict,
+            Verdict::Failed
+        );
+
+        // One embellished answer in 30 is over 1.3%.
+        let mut loose = rows(BASELINE_ARM, 7, 3, 10, 0);
+        loose.extend(rows(SUBJECT_ARM, 7, 5, 10, 1));
+        let outcome = verdict(&loose, Some(&agreeing(20)));
+        assert_eq!(outcome.verdict, Verdict::Failed);
+        assert!(
+            outcome
+                .breaches()
+                .any(|c| c.name == "embellishment_at_or_below_ceiling")
+        );
+
+        // One block can't be told from luck.
+        let one: Vec<Row> = all
+            .iter()
+            .filter(|r| r.seed_base == Some(0))
+            .cloned()
+            .collect();
+        assert_eq!(
+            verdict(&one, Some(&agreeing(20))).verdict,
+            Verdict::Unverifiable
+        );
+    }
+
+    #[test]
+    fn marks_measure_the_judge_on_the_answers_they_read() {
+        let all = rows(SUBJECT_ARM, 1, 1, 2, 1);
+        let judged: Vec<&Row> = all.iter().filter(|r| r.judgment.is_some()).collect();
+        let marks = vec![
+            // Agrees on both.
+            Mark::on(judged[0], true, true, "", "t".into()),
+            // The judge missed an embellishment.
+            Mark::on(judged[1], true, true, "", "t".into()),
+        ];
+        let measured = agreement(&all, &marks);
+        assert_eq!(measured.matched, 2);
+        assert_eq!(measured.supported_agree, 2);
+        assert_eq!(measured.embellished_agree, 1);
+        assert_eq!(measured.missed_embellishments, 1);
+        assert_eq!(measured.rate(), Some(0.75));
+        // A mark never moves to a different answer.
+        let mut changed = all.clone();
+        for r in &mut changed {
+            r.answer.push_str(" (edited)");
+        }
+        assert_eq!(agreement(&changed, &marks).matched, 0);
+        assert_eq!(sample(&all, 3).len(), 3);
+        assert_eq!(sample(&all, 100).len(), judged.len());
     }
 }

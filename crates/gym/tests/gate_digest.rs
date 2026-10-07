@@ -21,13 +21,14 @@ const PROBABILITY_V1_LEGACY: &str =
     "gate:368cefd18f308119008db3099c8415af380c9d096d4cbcb6997196bfc6d82013";
 
 /// The gates committed to `crates/gym/gates/`.
-const SHIPPED: [&str; 9] = [
+const SHIPPED: [&str; 10] = [
     "decision-v1",
     "deployment-v1",
     "deployment-v2",
     "ext-eval-cost-v1",
     "ext-eval-v1",
     "ext-eval-v2",
+    "interview-v1",
     "probability-v1",
     "probability-v2",
     "router-v1",
@@ -58,6 +59,14 @@ fn bounds_mut(rule: &mut Rule) -> Vec<&mut Bound> {
             &mut rule.dispatch_precision_floor,
             &mut rule.max_decrease,
         ],
+        Rule::Interview(rule) => vec![
+            &mut rule.min_items,
+            &mut rule.min_blocks,
+            &mut rule.recall_margin,
+            &mut rule.min_judged,
+            &mut rule.max_embellishment,
+            &mut rule.min_judge_agreement,
+        ],
     }
 }
 
@@ -69,6 +78,7 @@ fn pending_mut(rule: &mut Rule) -> Option<&mut Pending> {
         Rule::Deployment(rule) => rule.pending_measurement.as_mut(),
         Rule::ExtEval(rule) => rule.pending_measurement.as_mut(),
         Rule::Router(rule) => rule.pending_measurement.as_mut(),
+        Rule::Interview(rule) => rule.pending_measurement.as_mut(),
     }
 }
 

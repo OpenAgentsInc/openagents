@@ -1,0 +1,67 @@
+{
+  "$comment": [
+    "Answers one question: does an agent's full memory architecture hold up in a Gym interview? The suite is alice-interview-v2 (crates/gym/suites/alice-interview-v2.json): the paper's five kinds of question (Park et al. 2023, arXiv:2304.03442) asked against a frozen synthetic fixture of Alice's journal and memory, under five arms. This rule compares two of them, run through gym::ab on disjoint seed blocks: the full arm (the scored memory stream, the insights a checked reflection stored, and the day plan) against today's word-overlap briefing (openagents#10794).",
+    "Recall is the code-checked memory category. The full arm has to recall more of it than the word-overlap arm by at least the margin; a gain at or below zero is a measured loss, and a gain inside the margin is no clear change.",
+    "Embellishment is the share of judged answers (self-knowledge, reactions, and reflections) the judge reads as stating something neither the cited records nor the agent's briefing hold. The paper measured 6 of 453 answers, 1.3%, and that is the ceiling. The judge is Jev with questions/interview-answer.json; its rate counts only once the owner's marks on a sample show it agrees with them, which is the decision the owner made for interview judging.",
+    "This gate carries no previously binding: nothing was recorded under it before this file."
+  ],
+  "schema": "openagents.gym.gate.v2",
+  "id": "interview-v1",
+  "question": "Does the full memory architecture recall more than today's word-overlap briefing in a Gym interview, while embellishing no more often than the paper's 1.3%?",
+  "rule": {
+    "decides": "interview",
+    "min_items": {
+      "value": 7,
+      "basis": "convention",
+      "evidence": [
+        { "kind": "issue", "id": "openagents#10785" }
+      ],
+      "why": "The fewest memory items an open partition of the Alice suite holds: 7 in calibration and 7 in development. A run over one partition has that many rows per arm per block, and fewer means a partition was cut short."
+    },
+    "min_blocks": {
+      "value": 3,
+      "basis": "derived",
+      "evidence": [
+        { "kind": "code", "id": "gym::ab::Rule::v2" }
+      ],
+      "why": "The same floor gym::ab's rule carries: the median of one block is that block and the median of two is their mean, so three is the fewest blocks at which a mean carried by one lucky block can show."
+    },
+    "recall_margin": {
+      "value": 0.045,
+      "basis": "convention",
+      "evidence": [
+        { "kind": "issue", "id": "openagents#10794" }
+      ],
+      "why": "One answer in the suite's 22 memory items: a gain smaller than one more right answer across the whole category isn't a difference the suite can resolve. No live run has measured the block-to-block spread of recall yet; the pending measurement below records that."
+    },
+    "min_judged": {
+      "value": 18,
+      "basis": "derived",
+      "evidence": [
+        { "kind": "issue", "id": "openagents#10794" }
+      ],
+      "why": "An open partition of alice-interview-v2 holds 6 judged items, and min_blocks asks for 3 blocks, so a complete round over one partition judges 18 answers; fewer means the round was cut short. At 18 one embellished answer is 5.6%, so the ceiling reads as none embellished until a round judges more than 77."
+    },
+    "max_embellishment": {
+      "value": 0.013,
+      "basis": "convention",
+      "evidence": [
+        { "kind": "measurement", "id": "arXiv:2304.03442" }
+      ],
+      "why": "The embellishment rate Park et al. measured for their full architecture: 6 of 453 interview answers stated something the agent's memory didn't hold. The plan names it as the bar to beat."
+    },
+    "min_judge_agreement": {
+      "value": 0.9,
+      "basis": "convention",
+      "evidence": [
+        { "kind": "issue", "id": "openagents#10794" }
+      ],
+      "why": "The judge's readings count only when they agree with the owner's marks on at least nine in ten marked questions; the owner decided that marks on a sample calibrate the judge. It is a convention until a marked sample measures what agreement Jev reaches."
+    },
+    "pending_measurement": {
+      "quantity": "the block-to-block spread of recall with a live answerer, and the judge's agreement with the owner's marks",
+      "issue": "openagents#10794",
+      "why": "The scripted run has no spread across blocks and no marks, so the recall margin is one item rather than a measured noise floor, and the embellishment criterion stays unverifiable until the owner marks a sample. Both directions are safe: nothing passes on an uncalibrated judge."
+    }
+  }
+}

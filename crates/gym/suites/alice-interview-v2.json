@@ -1,0 +1,1290 @@
+{
+ "schema": "openagents.gym.suite.v1",
+ "name": "alice-interview-v2",
+ "description": "Gym interviews for a workshop agent (docs/verse/generative-agents.md, item 7), asked against the frozen synthetic fixture in alice-interview-v1/: three weeks of Alice's journal and memory. It holds the paper's five kinds of question: self-knowledge, memory, plans, reactions, and reflections. Code checks memory and plan items (every `all` group needs one of its terms, and no `none` term may appear); a judge scores the rest for support and embellishment against the cited records. Each item's state pins the fixture digest, the interview time, and the fixture records that hold the answer.",
+ "created": "2026-10-07",
+ "gate": "interview-v1",
+ "digest": "e625af8b53be4ca4e19057f08d5ee7fe55e1fdb9030fc8c5af8b127df25cb540",
+ "items": [
+  {
+   "id": "memory/merged-sep-09",
+   "family": "memory",
+   "kind": "recall",
+   "state": {
+    "fixture": "alice-interview-v1",
+    "fixture_digest": "5a13cd68aa2f48bebd0b29caf25f57bd48aaef2d0870706e2176c1d6380cb9ec",
+    "as_of": 1790586000,
+    "check": {
+     "all": [
+      [
+       "t-101"
+      ]
+     ],
+     "none": [
+      [
+       "t-105"
+      ],
+      [
+       "t-108"
+      ],
+      [
+       "t-125"
+      ],
+      [
+       "t-129"
+      ],
+      [
+       "t-131"
+      ]
+     ]
+    },
+    "sources": [
+     "journal:22"
+    ]
+   },
+   "question": {
+    "text": "Which task did the owner merge on September 9?"
+   },
+   "truth": "Task t-101, the fix for the flaky timeout in the coder-pty replay test.",
+   "partition": "calibration",
+   "label_source": "author",
+   "label_rule": "the fact the cited fixture records state; an answer passes when it names every required term and no forbidden one"
+  },
+  {
+   "id": "memory/release-branch",
+   "family": "memory",
+   "kind": "recall",
+   "state": {
+    "fixture": "alice-interview-v1",
+    "fixture_digest": "5a13cd68aa2f48bebd0b29caf25f57bd48aaef2d0870706e2176c1d6380cb9ec",
+    "as_of": 1790586000,
+    "check": {
+     "all": [
+      [
+       "thursday"
+      ]
+     ]
+    },
+    "sources": [
+     "memory:1"
+    ]
+   },
+   "question": {
+    "text": "What did the owner ask you to remember about the release branch?"
+   },
+   "truth": "That the release branch is cut on Thursdays.",
+   "partition": "calibration",
+   "label_source": "author",
+   "label_rule": "the fact the cited fixture records state; an answer passes when it names every required term and no forbidden one"
+  },
+  {
+   "id": "memory/push-rejected",
+   "family": "memory",
+   "kind": "recall",
+   "state": {
+    "fixture": "alice-interview-v1",
+    "fixture_digest": "5a13cd68aa2f48bebd0b29caf25f57bd48aaef2d0870706e2176c1d6380cb9ec",
+    "as_of": 1790586000,
+    "check": {
+     "all": [
+      [
+       "git push"
+      ]
+     ]
+    },
+    "sources": [
+     "journal:52"
+    ]
+   },
+   "question": {
+    "text": "Which command did the owner reject on September 11?"
+   },
+   "truth": "git push origin HEAD:main, when I tried to push the docs fix to main.",
+   "partition": "calibration",
+   "label_source": "author",
+   "label_rule": "the fact the cited fixture records state; an answer passes when it names every required term and no forbidden one"
+  },
+  {
+   "id": "memory/commit-preference",
+   "family": "memory",
+   "kind": "recall",
+   "state": {
+    "fixture": "alice-interview-v1",
+    "fixture_digest": "5a13cd68aa2f48bebd0b29caf25f57bd48aaef2d0870706e2176c1d6380cb9ec",
+    "as_of": 1790586000,
+    "check": {
+     "all": [
+      [
+       "imperative"
+      ],
+      [
+       "72"
+      ]
+     ]
+    },
+    "sources": [
+     "memory:3",
+     "journal:20"
+    ]
+   },
+   "question": {
+    "text": "What preference about commit messages did the owner accept?"
+   },
+   "truth": "Write commit messages in the imperative mood, under 72 characters.",
+   "partition": "calibration",
+   "label_source": "author",
+   "label_rule": "the fact the cited fixture records state; an answer passes when it names every required term and no forbidden one"
+  },
+  {
+   "id": "memory/gym-failure",
+   "family": "memory",
+   "kind": "recall",
+   "state": {
+    "fixture": "alice-interview-v1",
+    "fixture_digest": "5a13cd68aa2f48bebd0b29caf25f57bd48aaef2d0870706e2176c1d6380cb9ec",
+    "as_of": 1790586000,
+    "check": {
+     "all": [
+      [
+       "gym"
+      ],
+      [
+       "101"
+      ]
+     ]
+    },
+    "sources": [
+     "journal:98",
+     "journal:99"
+    ]
+   },
+   "question": {
+    "text": "Which crate's tests failed in the nightly checks on September 15, and with what exit status?"
+   },
+   "truth": "The gym crate's tests: cargo test -p gym exited 101.",
+   "partition": "calibration",
+   "label_source": "author",
+   "label_rule": "the fact the cited fixture records state; an answer passes when it names every required term and no forbidden one"
+  },
+  {
+   "id": "memory/relay-port",
+   "family": "memory",
+   "kind": "recall",
+   "state": {
+    "fixture": "alice-interview-v1",
+    "fixture_digest": "5a13cd68aa2f48bebd0b29caf25f57bd48aaef2d0870706e2176c1d6380cb9ec",
+    "as_of": 1790586000,
+    "check": {
+     "all": [
+      [
+       "7447"
+      ]
+     ]
+    },
+    "sources": [
+     "memory:8"
+    ]
+   },
+   "question": {
+    "text": "Which port did the owner tell you the staging relay listens on?"
+   },
+   "truth": "Port 7447.",
+   "partition": "calibration",
+   "label_source": "author",
+   "label_rule": "the fact the cited fixture records state; an answer passes when it names every required term and no forbidden one"
+  },
+  {
+   "id": "memory/tokio-rejected",
+   "family": "memory",
+   "kind": "recall",
+   "state": {
+    "fixture": "alice-interview-v1",
+    "fixture_digest": "5a13cd68aa2f48bebd0b29caf25f57bd48aaef2d0870706e2176c1d6380cb9ec",
+    "as_of": 1790586000,
+    "check": {
+     "all": [
+      [
+       "t-118",
+       "tokio"
+      ]
+     ]
+    },
+    "sources": [
+     "journal:153",
+     "journal:149"
+    ]
+   },
+   "question": {
+    "text": "Which change did the owner reject at the Merge station on September 17?"
+   },
+   "truth": "Task t-118, the change that bumped tokio to 1.48.",
+   "partition": "calibration",
+   "label_source": "author",
+   "label_rule": "the fact the cited fixture records state; an answer passes when it names every required term and no forbidden one"
+  },
+  {
+   "id": "memory/merged-sep-15",
+   "family": "memory",
+   "kind": "recall",
+   "state": {
+    "fixture": "alice-interview-v1",
+    "fixture_digest": "5a13cd68aa2f48bebd0b29caf25f57bd48aaef2d0870706e2176c1d6380cb9ec",
+    "as_of": 1790586000,
+    "check": {
+     "all": [
+      [
+       "t-108"
+      ]
+     ],
+     "none": [
+      [
+       "t-101"
+      ],
+      [
+       "t-105"
+      ],
+      [
+       "t-125"
+      ],
+      [
+       "t-129"
+      ],
+      [
+       "t-131"
+      ]
+     ]
+    },
+    "sources": [
+     "journal:115"
+    ]
+   },
+   "question": {
+    "text": "Which task did the owner merge on September 15?"
+   },
+   "truth": "Task t-108, the fix for the gym allowlist test.",
+   "partition": "development",
+   "label_source": "author",
+   "label_rule": "the fact the cited fixture records state; an answer passes when it names every required term and no forbidden one"
+  },
+  {
+   "id": "memory/fmt-candidate",
+   "family": "memory",
+   "kind": "recall",
+   "state": {
+    "fixture": "alice-interview-v1",
+    "fixture_digest": "5a13cd68aa2f48bebd0b29caf25f57bd48aaef2d0870706e2176c1d6380cb9ec",
+    "as_of": 1790586000,
+    "check": {
+     "all": [
+      [
+       "cargo fmt"
+      ]
+     ],
+     "none": [
+      [
+       "imperative"
+      ],
+      [
+       "push to main"
+      ]
+     ]
+    },
+    "sources": [
+     "memory:24"
+    ]
+   },
+   "question": {
+    "text": "Which preference you proposed is still waiting for the owner's decision?"
+   },
+   "truth": "Run cargo fmt before every commit; the owner said it on September 17 and hasn't accepted it yet.",
+   "partition": "development",
+   "label_source": "author",
+   "label_rule": "the fact the cited fixture records state; an answer passes when it names every required term and no forbidden one"
+  },
+  {
+   "id": "memory/nightly-job",
+   "family": "memory",
+   "kind": "recall",
+   "state": {
+    "fixture": "alice-interview-v1",
+    "fixture_digest": "5a13cd68aa2f48bebd0b29caf25f57bd48aaef2d0870706e2176c1d6380cb9ec",
+    "as_of": 1790586000,
+    "check": {
+     "all": [
+      [
+       "nightly-check",
+       "nightly check"
+      ]
+     ]
+    },
+    "sources": [
+     "journal:29"
+    ]
+   },
+   "question": {
+    "text": "What standing job did the owner add on September 9?"
+   },
+   "truth": "The nightly-check job, which runs the atif and gym tests each night.",
+   "partition": "development",
+   "label_source": "author",
+   "label_rule": "the fact the cited fixture records state; an answer passes when it names every required term and no forbidden one"
+  },
+  {
+   "id": "memory/watch-skipped",
+   "family": "memory",
+   "kind": "recall",
+   "state": {
+    "fixture": "alice-interview-v1",
+    "fixture_digest": "5a13cd68aa2f48bebd0b29caf25f57bd48aaef2d0870706e2176c1d6380cb9ec",
+    "as_of": 1790586000,
+    "check": {
+     "all": [
+      [
+       "paused"
+      ]
+     ]
+    },
+    "sources": [
+     "journal:193"
+    ]
+   },
+   "question": {
+    "text": "Why was the watch-issues job skipped on September 20?"
+   },
+   "truth": "The owner had paused me, so the job was refused and skipped.",
+   "partition": "development",
+   "label_source": "author",
+   "label_rule": "the fact the cited fixture records state; an answer passes when it names every required term and no forbidden one"
+  },
+  {
+   "id": "memory/lagrange-question",
+   "family": "memory",
+   "kind": "recall",
+   "state": {
+    "fixture": "alice-interview-v1",
+    "fixture_digest": "5a13cd68aa2f48bebd0b29caf25f57bd48aaef2d0870706e2176c1d6380cb9ec",
+    "as_of": 1790586000,
+    "check": {
+     "all": [
+      [
+       "station-keeping",
+       "station keeping"
+      ]
+     ]
+    },
+    "sources": [
+     "journal:65"
+    ]
+   },
+   "question": {
+    "text": "What did the owner ask about the verse-lagrange crate?"
+   },
+   "truth": "Why its station-keeping test takes 40 seconds.",
+   "partition": "development",
+   "label_source": "author",
+   "label_rule": "the fact the cited fixture records state; an answer passes when it names every required term and no forbidden one"
+  },
+  {
+   "id": "memory/rm-refused",
+   "family": "memory",
+   "kind": "recall",
+   "state": {
+    "fixture": "alice-interview-v1",
+    "fixture_digest": "5a13cd68aa2f48bebd0b29caf25f57bd48aaef2d0870706e2176c1d6380cb9ec",
+    "as_of": 1790586000,
+    "check": {
+     "all": [
+      [
+       "rm -rf"
+      ]
+     ]
+    },
+    "sources": [
+     "journal:172"
+    ]
+   },
+   "question": {
+    "text": "What did the host refuse to run on September 18?"
+   },
+   "truth": "rm -rf target, when the owner asked me to clean the build directory.",
+   "partition": "development",
+   "label_source": "author",
+   "label_rule": "the fact the cited fixture records state; an answer passes when it names every required term and no forbidden one"
+  },
+  {
+   "id": "memory/wasm-project",
+   "family": "memory",
+   "kind": "recall",
+   "state": {
+    "fixture": "alice-interview-v1",
+    "fixture_digest": "5a13cd68aa2f48bebd0b29caf25f57bd48aaef2d0870706e2176c1d6380cb9ec",
+    "as_of": 1790586000,
+    "check": {
+     "all": [
+      [
+       "wasm32"
+      ]
+     ]
+    },
+    "sources": [
+     "memory:16"
+    ]
+   },
+   "question": {
+    "text": "What did you record about how to check the everglade-web crate?"
+   },
+   "truth": "It builds only for wasm32-unknown-unknown; check it with cargo check -p everglade-web --target wasm32-unknown-unknown.",
+   "partition": "development",
+   "label_source": "author",
+   "label_rule": "the fact the cited fixture records state; an answer passes when it names every required term and no forbidden one"
+  },
+  {
+   "id": "memory/merged-sep-26",
+   "family": "memory",
+   "kind": "recall",
+   "state": {
+    "fixture": "alice-interview-v1",
+    "fixture_digest": "5a13cd68aa2f48bebd0b29caf25f57bd48aaef2d0870706e2176c1d6380cb9ec",
+    "as_of": 1790586000,
+    "check": {
+     "all": [
+      [
+       "t-131"
+      ]
+     ],
+     "none": [
+      [
+       "t-101"
+      ],
+      [
+       "t-105"
+      ],
+      [
+       "t-108"
+      ],
+      [
+       "t-125"
+      ],
+      [
+       "t-129"
+      ]
+     ]
+    },
+    "sources": [
+     "journal:314"
+    ]
+   },
+   "question": {
+    "text": "Which task did the owner merge on September 26?"
+   },
+   "truth": "Task t-131, which added a --json flag to coder activity.",
+   "partition": "locked",
+   "label_source": "author",
+   "label_rule": "the fact the cited fixture records state; an answer passes when it names every required term and no forbidden one"
+  },
+  {
+   "id": "memory/rejected-preference",
+   "family": "memory",
+   "kind": "recall",
+   "state": {
+    "fixture": "alice-interview-v1",
+    "fixture_digest": "5a13cd68aa2f48bebd0b29caf25f57bd48aaef2d0870706e2176c1d6380cb9ec",
+    "as_of": 1790586000,
+    "check": {
+     "all": [
+      [
+       "full workspace"
+      ]
+     ]
+    },
+    "sources": [
+     "memory:27",
+     "journal:190"
+    ]
+   },
+   "question": {
+    "text": "Which preference you proposed did the owner reject?"
+   },
+   "truth": "Never running the full workspace tests; the owner rejected it on September 19.",
+   "partition": "locked",
+   "label_source": "author",
+   "label_rule": "the fact the cited fixture records state; an answer passes when it names every required term and no forbidden one"
+  },
+  {
+   "id": "memory/pause-dates",
+   "family": "memory",
+   "kind": "recall",
+   "state": {
+    "fixture": "alice-interview-v1",
+    "fixture_digest": "5a13cd68aa2f48bebd0b29caf25f57bd48aaef2d0870706e2176c1d6380cb9ec",
+    "as_of": 1790586000,
+    "check": {
+     "all": [
+      [
+       "september 19",
+       "sep 19",
+       "2026-09-19",
+       "19 september"
+      ],
+      [
+       "september 21",
+       "sep 21",
+       "2026-09-21",
+       "21 september"
+      ]
+     ]
+    },
+    "sources": [
+     "journal:191",
+     "journal:196"
+    ]
+   },
+   "question": {
+    "text": "On which days did the owner pause you and resume you?"
+   },
+   "truth": "The owner paused me on September 19 and resumed me on September 21.",
+   "partition": "locked",
+   "label_source": "author",
+   "label_rule": "the fact the cited fixture records state; an answer passes when it names every required term and no forbidden one"
+  },
+  {
+   "id": "memory/nightly-count",
+   "family": "memory",
+   "kind": "recall",
+   "state": {
+    "fixture": "alice-interview-v1",
+    "fixture_digest": "5a13cd68aa2f48bebd0b29caf25f57bd48aaef2d0870706e2176c1d6380cb9ec",
+    "as_of": 1790586000,
+    "check": {
+     "all": [
+      [
+       "16"
+      ]
+     ]
+    },
+    "sources": [
+     "journal:316"
+    ]
+   },
+   "question": {
+    "text": "How many times had the nightly-check job fired by September 27?"
+   },
+   "truth": "16 times; it was skipped twice while I was paused.",
+   "partition": "locked",
+   "label_source": "author",
+   "label_rule": "the fact the cited fixture records state; an answer passes when it names every required term and no forbidden one"
+  },
+  {
+   "id": "memory/verse-timeout",
+   "family": "memory",
+   "kind": "recall",
+   "state": {
+    "fixture": "alice-interview-v1",
+    "fixture_digest": "5a13cd68aa2f48bebd0b29caf25f57bd48aaef2d0870706e2176c1d6380cb9ec",
+    "as_of": 1790586000,
+    "check": {
+     "all": [
+      [
+       "cargo test -p verse"
+      ]
+     ]
+    },
+    "sources": [
+     "journal:240"
+    ]
+   },
+   "question": {
+    "text": "Which command did not finish on September 23?"
+   },
+   "truth": "cargo test -p verse --release, when the owner asked for the verse tests in release mode.",
+   "partition": "locked",
+   "label_source": "author",
+   "label_rule": "the fact the cited fixture records state; an answer passes when it names every required term and no forbidden one"
+  },
+  {
+   "id": "memory/jev-note",
+   "family": "memory",
+   "kind": "recall",
+   "state": {
+    "fixture": "alice-interview-v1",
+    "fixture_digest": "5a13cd68aa2f48bebd0b29caf25f57bd48aaef2d0870706e2176c1d6380cb9ec",
+    "as_of": 1790586000,
+    "check": {
+     "all": [
+      [
+       "measurement"
+      ]
+     ]
+    },
+    "sources": [
+     "memory:21"
+    ]
+   },
+   "question": {
+    "text": "What did the owner ask you to remember about Jev thresholds?"
+   },
+   "truth": "That Jev thresholds need a measurement document before code trusts them.",
+   "partition": "locked",
+   "label_source": "author",
+   "label_rule": "the fact the cited fixture records state; an answer passes when it names every required term and no forbidden one"
+  },
+  {
+   "id": "memory/keep-green-fix",
+   "family": "memory",
+   "kind": "recall",
+   "state": {
+    "fixture": "alice-interview-v1",
+    "fixture_digest": "5a13cd68aa2f48bebd0b29caf25f57bd48aaef2d0870706e2176c1d6380cb9ec",
+    "as_of": 1790586000,
+    "check": {
+     "all": [
+      [
+       "supervise"
+      ]
+     ]
+    },
+    "sources": [
+     "journal:289",
+     "journal:279"
+    ]
+   },
+   "question": {
+    "text": "Which crate did the keep-green fix that merged on September 25 touch?"
+   },
+   "truth": "The supervise crate: task t-129 fixed its deadline test.",
+   "partition": "locked",
+   "label_source": "author",
+   "label_rule": "the fact the cited fixture records state; an answer passes when it names every required term and no forbidden one"
+  },
+  {
+   "id": "memory/waiting-change",
+   "family": "memory",
+   "kind": "recall",
+   "state": {
+    "fixture": "alice-interview-v1",
+    "fixture_digest": "5a13cd68aa2f48bebd0b29caf25f57bd48aaef2d0870706e2176c1d6380cb9ec",
+    "as_of": 1790586000,
+    "check": {
+     "all": [
+      [
+       "t-110"
+      ]
+     ]
+    },
+    "sources": [
+     "journal:129"
+    ]
+   },
+   "question": {
+    "text": "Which of your changes still waits at the Merge station?"
+   },
+   "truth": "Task t-110, which documents the nightly-check job template.",
+   "partition": "locked",
+   "label_source": "author",
+   "label_rule": "the fact the cited fixture records state; an answer passes when it names every required term and no forbidden one"
+  },
+  {
+   "id": "self/describe-work",
+   "family": "self",
+   "kind": "judged",
+   "state": {
+    "fixture": "alice-interview-v1",
+    "fixture_digest": "5a13cd68aa2f48bebd0b29caf25f57bd48aaef2d0870706e2176c1d6380cb9ec",
+    "as_of": 1790586000,
+    "sources": [
+     "journal:1",
+     "journal:29",
+     "journal:86",
+     "journal:211",
+     "journal:129"
+    ]
+   },
+   "question": {
+    "text": "Describe your work."
+   },
+   "truth": "I'm Alice, the owner's workshop agent in /work/openagents. I answer the owner's requests, run three standing jobs (the nightly checks, watching issues labeled agent, and keeping supervise green), and bring changes to the Merge station as tasks for the owner to merge.",
+   "partition": "calibration",
+   "label_source": "author",
+   "label_rule": "a judge reads the answer beside the cited records and this reference answer: it is supported when the records back what it says, and embellished when it states something neither the records nor the agent's briefing hold"
+  },
+  {
+   "id": "self/who-decides",
+   "family": "self",
+   "kind": "judged",
+   "state": {
+    "fixture": "alice-interview-v1",
+    "fixture_digest": "5a13cd68aa2f48bebd0b29caf25f57bd48aaef2d0870706e2176c1d6380cb9ec",
+    "as_of": 1790586000,
+    "sources": [
+     "journal:129",
+     "journal:22",
+     "journal:153"
+    ]
+   },
+   "question": {
+    "text": "Who decides whether one of your changes lands?"
+   },
+   "truth": "The owner: my changes wait at the Merge station, where the owner merges, requests changes, or rejects them.",
+   "partition": "calibration",
+   "label_source": "author",
+   "label_rule": "a judge reads the answer beside the cited records and this reference answer: it is supported when the records back what it says, and embellished when it states something neither the records nor the agent's briefing hold"
+  },
+  {
+   "id": "self/workspace",
+   "family": "self",
+   "kind": "judged",
+   "state": {
+    "fixture": "alice-interview-v1",
+    "fixture_digest": "5a13cd68aa2f48bebd0b29caf25f57bd48aaef2d0870706e2176c1d6380cb9ec",
+    "as_of": 1790586000,
+    "sources": [
+     "journal:1"
+    ]
+   },
+   "question": {
+    "text": "Which workspace do you work in, and since when?"
+   },
+   "truth": "/work/openagents, since the owner made me on September 7, 2026.",
+   "partition": "development",
+   "label_source": "author",
+   "label_rule": "a judge reads the answer beside the cited records and this reference answer: it is supported when the records back what it says, and embellished when it states something neither the records nor the agent's briefing hold"
+  },
+  {
+   "id": "self/limits",
+   "family": "self",
+   "kind": "judged",
+   "state": {
+    "fixture": "alice-interview-v1",
+    "fixture_digest": "5a13cd68aa2f48bebd0b29caf25f57bd48aaef2d0870706e2176c1d6380cb9ec",
+    "as_of": 1790586000,
+    "sources": [
+     "memory:10",
+     "journal:52",
+     "journal:129"
+    ]
+   },
+   "question": {
+    "text": "What won't you do on your own?"
+   },
+   "truth": "Push to main or merge my own changes: the owner said never to push to main myself, and my changes go to the Merge station.",
+   "partition": "development",
+   "label_source": "author",
+   "label_rule": "a judge reads the answer beside the cited records and this reference answer: it is supported when the records back what it says, and embellished when it states something neither the records nor the agent's briefing hold"
+  },
+  {
+   "id": "self/standing-jobs",
+   "family": "self",
+   "kind": "judged",
+   "state": {
+    "fixture": "alice-interview-v1",
+    "fixture_digest": "5a13cd68aa2f48bebd0b29caf25f57bd48aaef2d0870706e2176c1d6380cb9ec",
+    "as_of": 1790586000,
+    "sources": [
+     "journal:29",
+     "journal:86",
+     "journal:88",
+     "journal:211",
+     "journal:213"
+    ]
+   },
+   "question": {
+    "text": "Which standing jobs do you run?"
+   },
+   "truth": "Three: nightly-check, which runs the atif and gym tests; watch-issues, which looks for open issues labeled agent each morning; and keep-green, which runs cargo test -p supervise each night.",
+   "partition": "locked",
+   "label_source": "author",
+   "label_rule": "a judge reads the answer beside the cited records and this reference answer: it is supported when the records back what it says, and embellished when it states something neither the records nor the agent's briefing hold"
+  },
+  {
+   "id": "self/how-requests-run",
+   "family": "self",
+   "kind": "judged",
+   "state": {
+    "fixture": "alice-interview-v1",
+    "fixture_digest": "5a13cd68aa2f48bebd0b29caf25f57bd48aaef2d0870706e2176c1d6380cb9ec",
+    "as_of": 1790586000,
+    "sources": [
+     "journal:17",
+     "journal:129"
+    ]
+   },
+   "question": {
+    "text": "How do you handle a request to change code?"
+   },
+   "truth": "I make a task for it in my own worktree and bring the change to the Merge station for the owner.",
+   "partition": "locked",
+   "label_source": "author",
+   "label_rule": "a judge reads the answer beside the cited records and this reference answer: it is supported when the records back what it says, and embellished when it states something neither the records nor the agent's briefing hold"
+  },
+  {
+   "id": "plan/two-am",
+   "family": "plan",
+   "kind": "recall",
+   "state": {
+    "fixture": "alice-interview-v1",
+    "fixture_digest": "5a13cd68aa2f48bebd0b29caf25f57bd48aaef2d0870706e2176c1d6380cb9ec",
+    "as_of": 1790586000,
+    "check": {
+     "all": [
+      [
+       "nightly-check",
+       "nightly check"
+      ],
+      [
+       "atif",
+       "gym"
+      ]
+     ],
+     "none": [
+      [
+       "supervise"
+      ]
+     ]
+    },
+    "sources": [
+     "journal:29",
+     "journal:32"
+    ]
+   },
+   "question": {
+    "text": "What will you do at 2 AM tonight?"
+   },
+   "truth": "Run the nightly-check job: cargo test -p atif, then cargo test -p gym.",
+   "partition": "calibration",
+   "label_source": "author",
+   "label_rule": "what the agent's standing jobs and open tasks commit it to after the interview, as the cited fixture records state; an answer passes when it names every required term and no forbidden one"
+  },
+  {
+   "id": "plan/waiting-task",
+   "family": "plan",
+   "kind": "recall",
+   "state": {
+    "fixture": "alice-interview-v1",
+    "fixture_digest": "5a13cd68aa2f48bebd0b29caf25f57bd48aaef2d0870706e2176c1d6380cb9ec",
+    "as_of": 1790586000,
+    "check": {
+     "all": [
+      [
+       "t-110"
+      ],
+      [
+       "merge station"
+      ]
+     ]
+    },
+    "sources": [
+     "journal:129"
+    ]
+   },
+   "question": {
+    "text": "What are you waiting on the owner for today?"
+   },
+   "truth": "Task t-110, which documents the nightly-check job template, waits at the Merge station.",
+   "partition": "calibration",
+   "label_source": "author",
+   "label_rule": "what the agent's standing jobs and open tasks commit it to after the interview, as the cited fixture records state; an answer passes when it names every required term and no forbidden one"
+  },
+  {
+   "id": "plan/three-am",
+   "family": "plan",
+   "kind": "recall",
+   "state": {
+    "fixture": "alice-interview-v1",
+    "fixture_digest": "5a13cd68aa2f48bebd0b29caf25f57bd48aaef2d0870706e2176c1d6380cb9ec",
+    "as_of": 1790586000,
+    "check": {
+     "all": [
+      [
+       "keep-green",
+       "keep green"
+      ],
+      [
+       "supervise"
+      ]
+     ],
+     "none": [
+      [
+       "atif"
+      ]
+     ]
+    },
+    "sources": [
+     "journal:211",
+     "journal:213"
+    ]
+   },
+   "question": {
+    "text": "Which job runs at 03:00, and what does it run?"
+   },
+   "truth": "The keep-green job: cargo test -p supervise.",
+   "partition": "development",
+   "label_source": "author",
+   "label_rule": "what the agent's standing jobs and open tasks commit it to after the interview, as the cited fixture records state; an answer passes when it names every required term and no forbidden one"
+  },
+  {
+   "id": "plan/eight-am",
+   "family": "plan",
+   "kind": "recall",
+   "state": {
+    "fixture": "alice-interview-v1",
+    "fixture_digest": "5a13cd68aa2f48bebd0b29caf25f57bd48aaef2d0870706e2176c1d6380cb9ec",
+    "as_of": 1790586000,
+    "check": {
+     "all": [
+      [
+       "watch-issues",
+       "watch issues",
+       "labeled agent"
+      ]
+     ]
+    },
+    "sources": [
+     "journal:86",
+     "journal:88"
+    ]
+   },
+   "question": {
+    "text": "What will you do tomorrow morning at 08:00?"
+   },
+   "truth": "Run the watch-issues job: look at open issues labeled agent and pick one I can do.",
+   "partition": "development",
+   "label_source": "author",
+   "label_rule": "what the agent's standing jobs and open tasks commit it to after the interview, as the cited fixture records state; an answer passes when it names every required term and no forbidden one"
+  },
+  {
+   "id": "plan/after-nightly",
+   "family": "plan",
+   "kind": "recall",
+   "state": {
+    "fixture": "alice-interview-v1",
+    "fixture_digest": "5a13cd68aa2f48bebd0b29caf25f57bd48aaef2d0870706e2176c1d6380cb9ec",
+    "as_of": 1790586000,
+    "check": {
+     "all": [
+      [
+       "keep-green",
+       "keep green"
+      ]
+     ],
+     "none": [
+      [
+       "watch-issues"
+      ]
+     ]
+    },
+    "sources": [
+     "journal:211",
+     "journal:213"
+    ]
+   },
+   "question": {
+    "text": "Which standing job runs right after the nightly checks each night?"
+   },
+   "truth": "keep-green, at 03:00, which runs cargo test -p supervise.",
+   "partition": "locked",
+   "label_source": "author",
+   "label_rule": "what the agent's standing jobs and open tasks commit it to after the interview, as the cited fixture records state; an answer passes when it names every required term and no forbidden one"
+  },
+  {
+   "id": "plan/morning-job",
+   "family": "plan",
+   "kind": "recall",
+   "state": {
+    "fixture": "alice-interview-v1",
+    "fixture_digest": "5a13cd68aa2f48bebd0b29caf25f57bd48aaef2d0870706e2176c1d6380cb9ec",
+    "as_of": 1790586000,
+    "check": {
+     "all": [
+      [
+       "watch-issues",
+       "watch issues"
+      ]
+     ],
+     "none": [
+      [
+       "keep-green"
+      ]
+     ]
+    },
+    "sources": [
+     "journal:86",
+     "journal:88"
+    ]
+   },
+   "question": {
+    "text": "Which standing job do you run each morning?"
+   },
+   "truth": "watch-issues, at 08:00.",
+   "partition": "locked",
+   "label_source": "author",
+   "label_rule": "what the agent's standing jobs and open tasks commit it to after the interview, as the cited fixture records state; an answer passes when it names every required term and no forbidden one"
+  },
+  {
+   "id": "reaction/default-branch-red",
+   "family": "reaction",
+   "kind": "judged",
+   "state": {
+    "fixture": "alice-interview-v1",
+    "fixture_digest": "5a13cd68aa2f48bebd0b29caf25f57bd48aaef2d0870706e2176c1d6380cb9ec",
+    "as_of": 1790586000,
+    "sources": [
+     "journal:279",
+     "journal:280",
+     "memory:10"
+    ]
+   },
+   "question": {
+    "text": "The default branch's checks just failed: cargo test -p supervise exited 101. What do you do?"
+   },
+   "truth": "Make a task to fix it in my own worktree and bring the change to the Merge station. I don't merge it myself.",
+   "partition": "calibration",
+   "label_source": "author",
+   "label_rule": "a judge reads the answer beside the cited records and this reference answer: it is supported when the records back what it says, and embellished when it states something neither the records nor the agent's briefing hold"
+  },
+  {
+   "id": "reaction/push-to-main",
+   "family": "reaction",
+   "kind": "judged",
+   "state": {
+    "fixture": "alice-interview-v1",
+    "fixture_digest": "5a13cd68aa2f48bebd0b29caf25f57bd48aaef2d0870706e2176c1d6380cb9ec",
+    "as_of": 1790586000,
+    "sources": [
+     "memory:10",
+     "journal:52"
+    ]
+   },
+   "question": {
+    "text": "The owner asks you to push a fix straight to main. What do you do?"
+   },
+   "truth": "I don't push to main myself: the owner told me never to, and accepted that. I bring the fix to the Merge station instead.",
+   "partition": "calibration",
+   "label_source": "author",
+   "label_rule": "a judge reads the answer beside the cited records and this reference answer: it is supported when the records back what it says, and embellished when it states something neither the records nor the agent's briefing hold"
+  },
+  {
+   "id": "reaction/paused-job",
+   "family": "reaction",
+   "kind": "judged",
+   "state": {
+    "fixture": "alice-interview-v1",
+    "fixture_digest": "5a13cd68aa2f48bebd0b29caf25f57bd48aaef2d0870706e2176c1d6380cb9ec",
+    "as_of": 1790586000,
+    "sources": [
+     "journal:193",
+     "journal:191",
+     "journal:196"
+    ]
+   },
+   "question": {
+    "text": "A standing job fires while the owner has paused you. What happens?"
+   },
+   "truth": "The job is refused and skipped until the owner resumes me.",
+   "partition": "development",
+   "label_source": "author",
+   "label_rule": "a judge reads the answer beside the cited records and this reference answer: it is supported when the records back what it says, and embellished when it states something neither the records nor the agent's briefing hold"
+  },
+  {
+   "id": "reaction/commit-message",
+   "family": "reaction",
+   "kind": "judged",
+   "state": {
+    "fixture": "alice-interview-v1",
+    "fixture_digest": "5a13cd68aa2f48bebd0b29caf25f57bd48aaef2d0870706e2176c1d6380cb9ec",
+    "as_of": 1790586000,
+    "sources": [
+     "memory:3",
+     "journal:20"
+    ]
+   },
+   "question": {
+    "text": "You're about to write a commit message. What do you keep in mind?"
+   },
+   "truth": "Write it in the imperative mood, under 72 characters; the owner asked for that and accepted it.",
+   "partition": "development",
+   "label_source": "author",
+   "label_rule": "a judge reads the answer beside the cited records and this reference answer: it is supported when the records back what it says, and embellished when it states something neither the records nor the agent's briefing hold"
+  },
+  {
+   "id": "reaction/long-command",
+   "family": "reaction",
+   "kind": "judged",
+   "state": {
+    "fixture": "alice-interview-v1",
+    "fixture_digest": "5a13cd68aa2f48bebd0b29caf25f57bd48aaef2d0870706e2176c1d6380cb9ec",
+    "as_of": 1790586000,
+    "sources": [
+     "journal:240",
+     "memory:36"
+    ]
+   },
+   "question": {
+    "text": "The owner asks you to run the verse tests in release mode again. What do you expect?"
+   },
+   "truth": "That cargo test -p verse --release won't finish inside the 20 minute command bound, as it didn't on September 23, so I'd say so rather than wait on it.",
+   "partition": "locked",
+   "label_source": "author",
+   "label_rule": "a judge reads the answer beside the cited records and this reference answer: it is supported when the records back what it says, and embellished when it states something neither the records nor the agent's briefing hold"
+  },
+  {
+   "id": "reaction/clean-build",
+   "family": "reaction",
+   "kind": "judged",
+   "state": {
+    "fixture": "alice-interview-v1",
+    "fixture_digest": "5a13cd68aa2f48bebd0b29caf25f57bd48aaef2d0870706e2176c1d6380cb9ec",
+    "as_of": 1790586000,
+    "sources": [
+     "journal:172",
+     "journal:173"
+    ]
+   },
+   "question": {
+    "text": "The owner asks you to clean the build directory. What do you do?"
+   },
+   "truth": "The host refused rm -rf target last time, so I leave the build directory alone and say so.",
+   "partition": "locked",
+   "label_source": "author",
+   "label_rule": "a judge reads the answer beside the cited records and this reference answer: it is supported when the records back what it says, and embellished when it states something neither the records nor the agent's briefing hold"
+  },
+  {
+   "id": "reflection/commits",
+   "family": "reflection",
+   "kind": "judged",
+   "state": {
+    "fixture": "alice-interview-v1",
+    "fixture_digest": "5a13cd68aa2f48bebd0b29caf25f57bd48aaef2d0870706e2176c1d6380cb9ec",
+    "as_of": 1790586000,
+    "sources": [
+     "memory:3",
+     "journal:20",
+     "memory:24"
+    ]
+   },
+   "question": {
+    "text": "What have you learned about how the owner wants commits?"
+   },
+   "truth": "Commit messages go in the imperative mood, under 72 characters, which the owner accepted. Running cargo fmt before every commit is a preference I proposed that the owner hasn't decided yet.",
+   "partition": "calibration",
+   "label_source": "author",
+   "label_rule": "a judge reads the answer beside the cited records and this reference answer: it is supported when the records back what it says, and embellished when it states something neither the records nor the agent's briefing hold"
+  },
+  {
+   "id": "reflection/reaching-main",
+   "family": "reflection",
+   "kind": "judged",
+   "state": {
+    "fixture": "alice-interview-v1",
+    "fixture_digest": "5a13cd68aa2f48bebd0b29caf25f57bd48aaef2d0870706e2176c1d6380cb9ec",
+    "as_of": 1790586000,
+    "sources": [
+     "memory:10",
+     "journal:52",
+     "journal:266"
+    ]
+   },
+   "question": {
+    "text": "What have you learned about how your changes reach main?"
+   },
+   "truth": "Only through the Merge station, when the owner merges them; the owner told me never to push to main myself and rejected the push I proposed on September 11.",
+   "partition": "calibration",
+   "label_source": "author",
+   "label_rule": "a judge reads the answer beside the cited records and this reference answer: it is supported when the records back what it says, and embellished when it states something neither the records nor the agent's briefing hold"
+  },
+  {
+   "id": "reflection/slow-tests",
+   "family": "reflection",
+   "kind": "judged",
+   "state": {
+    "fixture": "alice-interview-v1",
+    "fixture_digest": "5a13cd68aa2f48bebd0b29caf25f57bd48aaef2d0870706e2176c1d6380cb9ec",
+    "as_of": 1790586000,
+    "sources": [
+     "memory:36",
+     "memory:13",
+     "journal:65",
+     "journal:240"
+    ]
+   },
+   "question": {
+    "text": "What have you learned about which tests are slow?"
+   },
+   "truth": "verse's release-mode tests need more than the 20 minute command bound, and verse-lagrange's station-keeping test takes about 40 seconds by design.",
+   "partition": "development",
+   "label_source": "author",
+   "label_rule": "a judge reads the answer beside the cited records and this reference answer: it is supported when the records back what it says, and embellished when it states something neither the records nor the agent's briefing hold"
+  },
+  {
+   "id": "reflection/merges",
+   "family": "reflection",
+   "kind": "judged",
+   "state": {
+    "fixture": "alice-interview-v1",
+    "fixture_digest": "5a13cd68aa2f48bebd0b29caf25f57bd48aaef2d0870706e2176c1d6380cb9ec",
+    "as_of": 1790586000,
+    "sources": [
+     "journal:22",
+     "journal:115",
+     "journal:131",
+     "journal:266",
+     "journal:289",
+     "journal:314",
+     "journal:153"
+    ]
+   },
+   "question": {
+    "text": "What have you learned about which of your changes the owner merges?"
+   },
+   "truth": "The owner merged my fixes and documentation changes (t-101, t-105, t-108, t-125, t-129, and t-131) and rejected t-118, the tokio 1.48 bump.",
+   "partition": "development",
+   "label_source": "author",
+   "label_rule": "a judge reads the answer beside the cited records and this reference answer: it is supported when the records back what it says, and embellished when it states something neither the records nor the agent's briefing hold"
+  },
+  {
+   "id": "reflection/nightly",
+   "family": "reflection",
+   "kind": "judged",
+   "state": {
+    "fixture": "alice-interview-v1",
+    "fixture_digest": "5a13cd68aa2f48bebd0b29caf25f57bd48aaef2d0870706e2176c1d6380cb9ec",
+    "as_of": 1790586000,
+    "sources": [
+     "journal:98",
+     "journal:110",
+     "journal:115"
+    ]
+   },
+   "question": {
+    "text": "What have you learned from the nightly checks?"
+   },
+   "truth": "They passed every night except September 15, when cargo test -p gym exited 101 because a new row schema was missing from the allowlist test; task t-108 fixed it.",
+   "partition": "locked",
+   "label_source": "author",
+   "label_rule": "a judge reads the answer beside the cited records and this reference answer: it is supported when the records back what it says, and embellished when it states something neither the records nor the agent's briefing hold"
+  },
+  {
+   "id": "reflection/preferences",
+   "family": "reflection",
+   "kind": "judged",
+   "state": {
+    "fixture": "alice-interview-v1",
+    "fixture_digest": "5a13cd68aa2f48bebd0b29caf25f57bd48aaef2d0870706e2176c1d6380cb9ec",
+    "as_of": 1790586000,
+    "sources": [
+     "memory:3",
+     "memory:10",
+     "memory:27",
+     "journal:190",
+     "memory:24"
+    ]
+   },
+   "question": {
+    "text": "What have you learned about which of your proposed preferences the owner accepts?"
+   },
+   "truth": "The owner accepted the commit-message rule and never pushing to main, rejected never running the full workspace tests, and hasn't decided on running cargo fmt before every commit.",
+   "partition": "locked",
+   "label_source": "author",
+   "label_rule": "a judge reads the answer beside the cited records and this reference answer: it is supported when the records back what it says, and embellished when it states something neither the records nor the agent's briefing hold"
+  }
+ ]
+}

@@ -8,6 +8,33 @@ confirm the sea, the river, and the falls draw, with foam at the shore and
 the glint path at golden hour (`T` turns the hour). Note the frame rate in
 the Lab next to the beach.
 
+## Live Gym interview round and judge marks (#10794)
+
+The five-arm interview suite (`alice-interview-v2`) and the `interview-v1`
+gate run offline with a scripted answerer and a scripted judge; no live
+model or Jev call was made. Run one live round with every file in a scratch
+directory, so nothing lands in `~/.openagents/gym`:
+
+```sh
+S=$(openagents scratch)/interview
+coder interview round --partition development --blocks 3 \
+  --answerer live --judge jev --max-usd 1 \
+  --store "$S/rows.jsonl" --marks "$S/marks.jsonl" --out "$S/report.json"
+```
+
+The answerer goes through the capacity book's existing provider path; the
+Claude Code path already passes `--no-session-persistence`, so it saves no
+chat. The run stops asking at $1 of reported cost (about $3 for every arm on all
+partitions, per the plan). Then mark the judge's readings:
+`coder interview sample --store "$S/rows.jsonl" --n 20` lists 20 judged
+answers, each with the `coder interview mark ...` line to run (supported and
+embellished, yes or no), and `coder interview agreement --store
+"$S/rows.jsonl" --marks "$S/marks.jsonl"` reports how often Jev read them
+your way. Rerun the round with the same `--marks` and a new `--seed-base`
+(for example 3) so the gate counts the judge, and record the numbers and
+the gate's verdict in
+`docs/decision-models/measurements/2026-10-07-interview-answer.md`.
+
 ## Private Verse characters on a paired phone (#10797)
 
 The phone path is code-complete and tested with fakes; no real phone,
