@@ -322,6 +322,9 @@ pub(crate) struct State {
     water: Option<Box<water::WaterLab>>,
     /// Open Everglade as the demolition yard (`verse --demolition`).
     demolition: bool,
+    /// The town clock Everglade's sky follows (`verse --town-hour`,
+    /// `--town-clock`).
+    town_clock: town_clock::Clock,
     /// Meteor Swarm and the sledgehammer on Everglade's hotbar, a local test
     /// of destruction (`verse --dev-destruction`). Only a `dev-destruction`
     /// build can set it ([`crate::runtime::WorldRuntime::set_dev_destruction`]).
@@ -371,6 +374,7 @@ impl Default for State {
             crypt: None,
             water: None,
             demolition: false,
+            town_clock: town_clock::Clock::DEFAULT,
             dev_destruction: false,
             studio: everglade::studio::Studio::default(),
             studio_notice: None,

@@ -1,0 +1,12 @@
+[package]
+name = "town-clock"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+description = "Everglade's town clock: a deterministic compressed town day from Unix time, with a wall-clock mode, phases of the day, and an hour pin. No dependencies; builds for wasm32."
+publish.workspace = true
+
+[dependencies]
+
+[lints]
+workspace = true

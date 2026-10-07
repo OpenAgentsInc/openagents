@@ -1720,6 +1720,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "coder-lease"
+version = "0.1.0"
+dependencies = [
+ "libc",
+ "serde",
+ "serde_json",
+]
+
+[[package]]
 name = "coder-link"
 version = "0.1.0"
 
@@ -8364,6 +8373,10 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "8df9b6e13f2d32c91b9bd719c00d1958837bc7dec474d94952798cc8e69eeec3"
 
 [[package]]
+name = "town-clock"
+version = "0.1.0"
+
+[[package]]
 name = "tracing"
 version = "0.1.44"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -9082,6 +9095,7 @@ dependencies = [
  "atif",
  "bytemuck",
  "coder-access",
+ "coder-lease",
  "coder-ui",
  "futures-util",
  "getrandom 0.3.4",
@@ -9110,6 +9124,7 @@ dependencies = [
  "tokio",
  "tokio-tungstenite 0.30.0",
  "toml",
+ "town-clock",
  "verse-content",
  "verse-core",
  "verse-engine",
@@ -9126,6 +9141,7 @@ dependencies = [
  "verse-zone-grove",
  "verse-zone-lab",
  "verse-zone-lagrange",
+ "verse-zone-water",
  "web-time",
  "webpki-roots 1.0.9",
  "wgpu",
@@ -9358,6 +9374,7 @@ dependencies = [
  "serde",
  "serde_json",
  "sha2 0.10.9",
+ "town-clock",
  "verse-content",
  "verse-core",
  "verse-engine",
@@ -9365,6 +9382,7 @@ dependencies = [
  "verse-pbr",
  "verse-private",
  "verse-world",
+ "web-time",
 ]
 
 [[package]]
@@ -9406,6 +9424,18 @@ dependencies = [
  "verse-lagrange",
  "verse-pbr",
  "verse-world",
+]
+
+[[package]]
+name = "verse-zone-water"
+version = "0.1.0"
+dependencies = [
+ "glam",
+ "physics",
+ "verse-core",
+ "verse-pbr",
+ "verse-world",
+ "verse-zone-everglade",
 ]
 
 [[package]]

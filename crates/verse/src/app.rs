@@ -127,6 +127,10 @@ pub struct Options {
     /// the workshop agent at her workstation, once Everglade loads
     /// (`--owners-house`).
     pub owners_house: bool,
+    /// The town clock Everglade's sky follows: compressed by default, the
+    /// wall clock, or with its hour pinned (`--town-clock`, `--town-hour`,
+    /// `VERSE_TOWN_CLOCK`, `VERSE_TOWN_HOUR`).
+    pub town_clock: town_clock::Clock,
     /// The pinned chamber the Grid's RITUAL arch joins
     /// ([`crate::ritual::Config`]); `None` draws no arch.
     pub ritual: Option<std::path::PathBuf>,
@@ -174,6 +178,7 @@ impl Default for Options {
             workshop_ask: None,
             place: None,
             owners_house: false,
+            town_clock: town_clock::Clock::DEFAULT,
             ritual: crate::ritual::default_config(),
             #[cfg(feature = "remote-chamber")]
             chamber: None,
@@ -1100,6 +1105,7 @@ impl App {
             None => None,
         };
         runtime.set_demolition(options.demolition);
+        runtime.set_town_clock(options.town_clock);
         runtime.set_dev_destruction(options.dev_destruction)?;
         let zone_operators = zone_operators_for(session.as_ref());
         Ok(Self {

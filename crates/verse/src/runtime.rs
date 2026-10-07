@@ -300,6 +300,10 @@ impl WorldRuntime {
     #[must_use]
     pub fn atmosphere(&self) -> crate::zones::Atmosphere {
         let mut atmosphere = crate::zones::atmosphere(self.zone);
+        // Everglade's air follows its town clock.
+        if let Some(air) = self.everglade_atmosphere() {
+            atmosphere = air;
+        }
         if self.bare {
             atmosphere.color = crate::palette::neutral(atmosphere.color);
         }

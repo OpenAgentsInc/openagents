@@ -216,6 +216,7 @@ impl WorldRuntime {
                 return;
             }
         };
+        everglade.set_clock(self.zone_state.town_clock);
         if self.zone_state.demolition
             && let Err(error) = everglade.start_demolition(pack)
         {
@@ -2047,6 +2048,35 @@ impl WorldRuntime {
     /// layout and the studio. Takes effect at the next entry.
     pub fn set_demolition(&mut self, on: bool) {
         self.zone_state.demolition = on;
+    }
+
+    /// Sets the town clock Everglade's sky follows, such as one with its
+    /// hour pinned for a capture. It applies to Everglade now and to every
+    /// later entry.
+    pub fn set_town_clock(&mut self, clock: town_clock::Clock) {
+        self.zone_state.town_clock = clock;
+        if let Some(everglade) = self.zone_state.everglade.as_mut() {
+            everglade.set_clock(clock);
+        }
+    }
+
+    /// Everglade's air under its town clock, while the player is in
+    /// Everglade itself rather than a zone built on it.
+    pub(crate) fn everglade_atmosphere(&self) -> Option<crate::zones::Atmosphere> {
+        (self.zone == ZoneId::Everglade)
+            .then_some(self.zone_state.everglade.as_ref())
+            .flatten()
+            .map(Everglade::atmosphere)
+    }
+
+    /// Everglade's town time at its last tick, while the player is in
+    /// Everglade.
+    #[must_use]
+    pub fn town_time(&self) -> Option<town_clock::TownTime> {
+        (self.zone == ZoneId::Everglade)
+            .then_some(self.zone_state.everglade.as_ref())
+            .flatten()
+            .map(Everglade::town_time)
     }
 
     /// Whether the player is in the demolition yard.

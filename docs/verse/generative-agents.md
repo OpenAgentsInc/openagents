@@ -378,6 +378,32 @@ choice at about 1,000 tokens costs $0.00004.
 
 **Estimate.** 8 agent-hours.
 
+**Implemented (phase C1): the town clock, time of day, and districts.**
+
+- [`town-clock`](../../crates/town-clock/src/lib.rs) is the town clock, with
+  no dependencies, and builds for `wasm32`. `Clock::at(unix_seconds)` gives
+  a `TownTime` (day, hour, minute, and `Phase`: dawn from 05:00, morning,
+  noon, afternoon, dusk from 17:00, and night from 20:00). The default
+  compresses a town day into `DAY_REAL_SECONDS` (one real hour) from
+  `EPOCH_UNIX` (2026-10-01T00:00Z); `Mode::WallClock` follows real hours.
+  `Clock::pinned` fixes the hour and keeps the day count.
+- [`time_of_day.rs`](../../crates/verse-zone-everglade/src/zones/everglade/time_of_day.rs)
+  turns town time into Everglade's sky, haze, key light, and exposure, from
+  keyframes. The Sun rises at 06:00 and sets at 18:00, and stands where the
+  old fixed Sun stood at 10:30. At night a dim Moon and an opened exposure
+  keep the town playable, and the lamps near the player stand out. The light
+  changes in four-town-minute steps, because each change rebuilds the sky's
+  light on the CPU. `Light::lamps_lit` is the lamp state the world tree
+  reads; the street lamps in the pack have no point lights yet.
+- `verse --town-hour 18:30` and `VERSE_TOWN_HOUR` pin the hour;
+  `--town-clock wall` and `VERSE_TOWN_CLOCK` set the mode. The
+  `everglade_capture` example pins 10:30 unless `VERSE_TOWN_HOUR` is set.
+- [`layout/districts.rs`](../../crates/verse-zone-everglade/src/zones/everglade/layout/districts.rs)
+  holds the `District` enum with display names, `Building::district`, and
+  `of_instance` for the generated instances, the Civic Hall (Main Street),
+  and the owner's house (Knowledge District). Tests fail when a building or
+  instance has no district.
+
 ## 4. Visible day plans from real work
 
 **Design.** Alice and the studio seats get a day plan you can see, and their
@@ -625,7 +651,7 @@ fixtures and a small demo.
 | B1. Memory | 1 (implemented) | [#10787](https://github.com/OpenAgentsInc/openagents/issues/10787) | A |
 | B2. Reflection | 2 | [#10789](https://github.com/OpenAgentsInc/openagents/issues/10789) | B1 |
 | B3. Interviews | The rest of item 7 | [#10794](https://github.com/OpenAgentsInc/openagents/issues/10794) | B2, D |
-| C1. Clock and districts | The town clock, time of day, and district data | [#10786](https://github.com/OpenAgentsInc/openagents/issues/10786) | None; runs beside A and B |
+| C1. Clock and districts | The town clock, time of day, and district data (implemented) | [#10786](https://github.com/OpenAgentsInc/openagents/issues/10786) | None; runs beside A and B |
 | C2. World | 3 | [#10788](https://github.com/OpenAgentsInc/openagents/issues/10788) | C1 |
 | D. Days | 4 | [#10790](https://github.com/OpenAgentsInc/openagents/issues/10790) | C2, B2 |
 | E1. Townsfolk | 5: routines, definitions, and spawn mechanics | [#10791](https://github.com/OpenAgentsInc/openagents/issues/10791) | C2 |

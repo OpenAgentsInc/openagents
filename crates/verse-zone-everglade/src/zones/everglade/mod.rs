@@ -33,6 +33,7 @@ pub mod spells;
 pub mod studio;
 #[cfg(test)]
 mod tests;
+pub mod time_of_day;
 pub mod unstick;
 pub mod wildlife;
 
@@ -65,7 +66,8 @@ use verse_world::social::everglade::{SPAWN, SPAWN_YAW};
 /// ground, and it brightens toward the Sun. The Grove stands under
 /// Everglade's sky, haze, and light. The city is about 270 m across: the fog
 /// closes past its far districts, so the tree ring shows as haze from the
-/// center, and the renderer skips every cell beyond it.
+/// center, and the renderer skips every cell beyond it. The time of day
+/// recolors it and its glow ([`Everglade::atmosphere`]).
 pub const ATMOSPHERE: super::Atmosphere = super::Atmosphere {
     color: [0.72, 0.66, 0.50],
     fog_start: 40.0,
@@ -158,6 +160,11 @@ pub struct Everglade {
     /// its stage at a time, whose key also lights the bake. Everglade's
     /// own afternoon without it.
     look: Option<fn(f32) -> Neon>,
+    /// The town clock the sky follows ([`time_of_day`]).
+    clock: town_clock::Clock,
+    /// Town time at the last tick, and the light it gives.
+    now: town_clock::TownTime,
+    light: time_of_day::Light,
 }
 
 impl Everglade {
@@ -245,7 +252,7 @@ impl Everglade {
             solids,
             spells: spells::Spells::default(),
             rendered: Mesh {
-                neon: Some(Self::glade_stage(0.0)),
+                neon: Some(Self::glade_stage(0.0, &time_of_day::Light::at_hours(10.5))),
                 ..Mesh::default()
             },
             cast: player::Cast::new(pack, at)?,
@@ -259,6 +266,9 @@ impl Everglade {
             look: None,
             wildlife: None,
             guests: Vec::new(),
+            clock: town_clock::Clock::DEFAULT,
+            now: town_clock::TownTime::at_hour(0, 10.5),
+            light: time_of_day::Light::at_hours(10.5),
         })
     }
 
@@ -589,23 +599,25 @@ impl Everglade {
         self.probes = None;
     }
 
-    /// The physical stage: a late-morning daylight sky whose horizon haze is
-    /// the zone's air and fog, a warm sun from behind the approach that
-    /// casts shadows over the clearing and stands in the sky where the
-    /// shadows say it is, and the sky's own light as fill, with low height
-    /// fog. Textured meshes draw only on a lit stage.
+    /// The physical stage: the time of day's sky ([`time_of_day`]), whose
+    /// horizon haze is the zone's air and fog, a Sun or Moon that casts
+    /// shadows over the clearing and stands in the sky where the shadows
+    /// say it is, and the sky's own light as fill, with low height fog.
+    /// Textured meshes draw only on a lit stage.
     fn stage(&self, time: f32) -> Mesh {
         Mesh {
             neon: Some(
                 self.look
-                    .map_or_else(|| Self::glade_stage(time), |look| look(time)),
+                    .map_or_else(|| Self::glade_stage(time, &self.light), |look| look(time)),
             ),
             ..Mesh::default()
         }
     }
 
-    fn glade_stage(time: f32) -> Neon {
-        let air = ATMOSPHERE;
+    /// The glade's stage under `light`: the late-morning stage's shape with
+    /// the time of day's sky, haze, and key.
+    fn glade_stage(time: f32, light: &time_of_day::Light) -> Neon {
+        let air = Self::air(light);
         Neon {
             field: air.color,
             fog_start: air.fog_start,
@@ -615,8 +627,8 @@ impl Everglade {
             bloom: 0.04,
             vignette: 0.15,
             time,
-            key: Some(Self::afternoon()),
-            daylight: Some(Daylight {
+            key: Some(light.key(Self::afternoon())),
+            daylight: Some(light.daylight(Daylight {
                 zenith: [0.10, 0.30, 0.73],
                 horizon: air.color,
                 sun: [1.0, 0.8, 0.54],
@@ -626,10 +638,63 @@ impl Everglade {
                 // gave surfaces facing down.
                 ground: [0.10, 0.11, 0.07],
                 glow: 0.0,
-            }),
+            })),
             height_fog: air.height_fog,
+            key_color: light.key_color,
+            rim_color: light.rim_color,
             ..Neon::plaza(time)
         }
+    }
+
+    /// The zone's air under `light`: the late-morning haze in the time of
+    /// day's horizon color, glowing toward the key as strongly as the
+    /// light says.
+    fn air(light: &time_of_day::Light) -> super::Atmosphere {
+        let mut air = ATMOSPHERE;
+        air.color = light.horizon;
+        if let Some(fog) = air.height_fog.as_mut() {
+            fog.sun_strength = light.haze_glow;
+        }
+        air
+    }
+
+    /// The zone's air now, which follows the town clock.
+    #[must_use]
+    pub fn atmosphere(&self) -> super::Atmosphere {
+        Self::air(&self.light)
+    }
+
+    /// Sets the town clock the sky follows, such as one with its hour
+    /// pinned for a capture, and applies it at once.
+    pub fn set_clock(&mut self, clock: town_clock::Clock) {
+        self.clock = clock;
+        self.advance_clock();
+        self.rendered = self.stage(self.elapsed);
+    }
+
+    /// The town clock the sky follows.
+    #[must_use]
+    pub fn clock(&self) -> town_clock::Clock {
+        self.clock
+    }
+
+    /// Town time at the last tick.
+    #[must_use]
+    pub fn town_time(&self) -> town_clock::TownTime {
+        self.now
+    }
+
+    /// The time of day's light at the last tick, whose
+    /// [`time_of_day::Light::lamps_lit`] says whether the lamps burn.
+    #[must_use]
+    pub fn light(&self) -> &time_of_day::Light {
+        &self.light
+    }
+
+    /// Reads the real time into the town clock and its light.
+    fn advance_clock(&mut self) {
+        self.now = self.clock.at(unix_now());
+        self.light = time_of_day::Light::at(self.now);
     }
 
     pub fn spawn() -> Vec3 {
@@ -979,6 +1044,7 @@ impl Everglade {
     /// `at`, and poses each of the studio's `seats`.
     pub fn tick(&mut self, dt: f32, at: &PlayerController, seats: &[studio::SeatFigure]) {
         self.elapsed = (self.elapsed + dt) % 1000.0;
+        self.advance_clock();
         self.rendered = self.stage(self.elapsed);
         if self.look.is_none() {
             // The owner's house's and the Civic Hall's candles and lanterns
@@ -1255,4 +1321,12 @@ pub fn keep_eye_inside(focus: Vec3, eye: Vec3) -> Vec3 {
         return eye;
     }
     focus + delta * t.max(0.0)
+}
+
+/// The real time, Unix seconds, which the town clock reads. A clock before
+/// 1970 reads as the epoch of Unix time.
+fn unix_now() -> f64 {
+    web_time::SystemTime::now()
+        .duration_since(web_time::UNIX_EPOCH)
+        .map_or(0.0, |d| d.as_secs_f64())
 }

@@ -112,7 +112,8 @@ const fn building(
 use Side::{East as E, North as N, South as S, West as W};
 use Style::{Plaster, Stone, Timber};
 
-/// Every building of the city, by district.
+/// Every building of the city, grouped by district; each one's district
+/// is data in [`super::districts`].
 pub const BUILDINGS: [Building; 77] = [
     // Main Street's far blocks, on its north side.
     building("corner shop", [-88.0, 55.0], 8.0, S, 46.0, 2, Plaster),

@@ -199,6 +199,16 @@ fn parse(mut args: impl Iterator<Item = String>) -> Result<(Option<Shot>, Option
     if let Ok(relay) = std::env::var("VERSE_XP_RELAY") {
         options.xp_relay = Some(relay);
     }
+    if let Ok(mode) = std::env::var("VERSE_TOWN_CLOCK") {
+        options.town_clock = options
+            .town_clock
+            .with_mode(town_clock::Mode::parse(&mode)?);
+    }
+    if let Ok(hour) = std::env::var("VERSE_TOWN_HOUR") {
+        options.town_clock = options
+            .town_clock
+            .pinned(Some(town_clock::parse_hour(&hour)?));
+    }
     // A build without the dev-destruction feature ignores the variable.
     if verse::zones::everglade::hotbar::DEV_DESTRUCTION
         && std::env::var("VERSE_DEV_DESTRUCTION").is_ok_and(|v| v == "1")
@@ -329,6 +339,14 @@ fn parse(mut args: impl Iterator<Item = String>) -> Result<(Option<Shot>, Option
                     _ => return Err(format!("--place takes X,Z[,YAW], got {v}")),
                 };
             }
+            "--town-hour" => {
+                let hour = town_clock::parse_hour(&value()?)?;
+                options.town_clock = options.town_clock.pinned(Some(hour));
+            }
+            "--town-clock" => {
+                let mode = town_clock::Mode::parse(&value()?)?;
+                options.town_clock = options.town_clock.with_mode(mode);
+            }
             "--owners-house" => {
                 options.everglade = true;
                 options.owners_house = true;
@@ -359,6 +377,24 @@ fn parse(mut args: impl Iterator<Item = String>) -> Result<(Option<Shot>, Option
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn town_clock_flags_pin_the_hour_and_set_the_mode() {
+        let (_, options) = parse(
+            ["--town-hour", "18:30", "--town-clock", "wall:-300"]
+                .map(str::to_owned)
+                .into_iter(),
+        )
+        .unwrap();
+        assert_eq!(options.town_clock.pinned_hour(), Some(18.5));
+        assert_eq!(
+            options.town_clock.mode,
+            town_clock::Mode::WallClock {
+                utc_offset_minutes: -300
+            }
+        );
+        assert!(parse(["--town-hour", "dusk"].map(str::to_owned).into_iter()).is_err());
+    }
+
     #[test]
     fn a_gym_connection_path_is_inert_until_world_entry() {
         let (shot, options) = parse(

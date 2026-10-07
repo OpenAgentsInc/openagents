@@ -1,5 +1,5 @@
 //! Offline visual acceptance of Everglade with the shared renderer.
-//! Usage: everglade_capture OUTPUT.png [approach|winds|stone|stone-crumble|stone-settled|sky|yard|hall|lane-east|lane-west|reverse|reverse-top|overhead|town-north|town-west|tooltip|city-market|city-stoop|city-lantern|city-brownstone|city-observatory|city-foundry|studio-yard|studio-hall|studio-atrium|eyes|hall-eyes|at:X,Z,YAW,TILT|air:EX,EY,EZ,TX,TZ|look:EX,EY,EZ,TX,TY,TZ] [FRAME]
+//! Usage: [VERSE_TOWN_HOUR=H] everglade_capture OUTPUT.png [approach|winds|stone|stone-crumble|stone-settled|sky|yard|hall|lane-east|lane-west|reverse|reverse-top|overhead|town-north|town-west|tooltip|city-market|city-stoop|city-lantern|city-brownstone|city-observatory|city-foundry|studio-yard|studio-hall|studio-atrium|eyes|hall-eyes|at:X,Z,YAW,TILT|air:EX,EY,EZ,TX,TZ|look:EX,EY,EZ,TX,TY,TZ] [FRAME]
 //!
 //! Installs Everglade from the committed, pinned pack, as a portal entry
 //! does after the download, and renders one of these views with the zone
@@ -94,6 +94,16 @@ fn main() -> Result<(), String> {
     if let Some(home) = &private {
         runtime.configure_private_assets(home.clone());
     }
+    // The town clock: late morning, as Everglade looked before it had one,
+    // unless VERSE_TOWN_HOUR pins another hour (`18`, `6:30`) or
+    // VERSE_TOWN_CLOCK=live follows the real clock.
+    let clock = town_clock::Clock::DEFAULT;
+    let hour = match std::env::var("VERSE_TOWN_HOUR") {
+        Ok(hour) => Some(town_clock::parse_hour(&hour)?),
+        Err(_) if std::env::var("VERSE_TOWN_CLOCK").is_ok_and(|v| v == "live") => None,
+        Err(_) => Some(10.5),
+    };
+    runtime.set_town_clock(clock.pinned(hour));
     runtime.install_everglade(&pack);
     if runtime.zone != zones::ZoneId::Everglade {
         return Err("Everglade did not install from the pinned pack".into());

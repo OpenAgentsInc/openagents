@@ -25,6 +25,7 @@ pub mod belvedere;
 pub mod city;
 pub mod civic;
 pub mod details;
+pub mod districts;
 pub mod estate;
 pub mod foliage;
 pub mod furnish;
