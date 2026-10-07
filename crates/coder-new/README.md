@@ -251,9 +251,14 @@ Snapshots default to demo and never dispatch network work, including with `--liv
 The [research index](../../docs/coder-new/README.md) contains the history and
 architecture inputs for the future specification.
 
-Remote delegation runs through the shared Rust `coder-cloud` executor:
+Remote delegation runs through the shared Rust `coder-cloud` executor. Enable
+Boat Cloud or GCE Cloud in `/plugins`. Each cloud settings screen saves its
+execution mode, Boat size and template, admitted credential variable names, and
+workspace paths. The CLI configures the same settings; credentials themselves
+stay in environment variables. For example:
 
 ```sh
+printf '%s\n' '{"enabled":true,"credential_names":["OPENAI_API_KEY"]}' | openagents coder plugins configure boat-cloud --stdin
 openagents --json coder delegate codex --task "Review this workspace" --on boat --mode integrated --credential-env OPENAI_API_KEY
 openagents --json coder delegate microcoder --task "Review this workspace" --on boat --mode coder --template YOUR_CODER_TEMPLATE
 openagents coder remote list
@@ -276,8 +281,16 @@ The same runtime can run in a granted Google Compute Engine pool:
 
 ```sh
 openagents cloud up --hosts 1 --max-hosts 2
+openagents coder plugins enable gce-cloud
 openagents coder delegate codex --on gce --task "Review the checkout" --credential-env OPENAI_API_KEY
 ```
+
+Live model tools use placement-qualified agents such as `codex@boat` or
+`microcoder@gce`, and preserve an explicitly requested agent. The terminal
+shows remote model, tool, usage, and failure events in that agent’s child chat.
+Submitting in a completed remote child continues its retained job and workspace.
+Turning a plugin off prevents new delegation; the CLI can still inspect or
+cancel its retained jobs.
 
 Jobs retain the pool grant and epoch, own a process slot, and reconnect to their
 original host. Confirmed host loss ends the job without replaying it. GCE usage

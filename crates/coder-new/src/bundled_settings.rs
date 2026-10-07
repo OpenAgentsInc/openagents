@@ -34,6 +34,10 @@ struct Preferences {
     acp_agents: Vec<AcpAgent>,
     #[serde(default)]
     brainstorm: crate::brainstorm::Preferences,
+    #[serde(default)]
+    boat: crate::cloud_settings::Configuration,
+    #[serde(default = "crate::cloud_settings::Configuration::gce")]
+    gce: crate::cloud_settings::Configuration,
 }
 
 impl Default for Preferences {
@@ -49,6 +53,8 @@ impl Default for Preferences {
             jev_key: None,
             acp_agents: Vec::new(),
             brainstorm: crate::brainstorm::Preferences::default(),
+            boat: Default::default(),
+            gce: crate::cloud_settings::Configuration::gce(),
         }
     }
 }
@@ -141,11 +147,16 @@ impl Preferences {
                 .is_none_or(|key| valid_key(key.expose()))
             && valid_agents(&self.acp_agents).is_ok()
             && self.brainstorm.valid()
+            && self.boat.valid(coder_cloud::Placement::Boat)
+            && self.gce.valid(coder_cloud::Placement::Gce)
     }
 }
 
 pub struct BundledSettings {
     pub brainstorm: crate::brainstorm::Settings,
+    pub boat: crate::cloud_settings::Configuration,
+    pub gce: crate::cloud_settings::Configuration,
+    pub cloud_editor: Option<crate::cloud_settings::Editor>,
     pub microcoder: bool,
     pub cli: bool,
     pub acp: bool,
@@ -180,6 +191,9 @@ impl Default for BundledSettings {
         let defaults = Preferences::default();
         Self {
             brainstorm: crate::brainstorm::Settings::default(),
+            boat: Default::default(),
+            gce: crate::cloud_settings::Configuration::gce(),
+            cloud_editor: None,
             microcoder: true,
             cli: true,
             acp: true,
@@ -224,10 +238,14 @@ impl BundledSettings {
             jev_key: self.jev_key.clone(),
             acp_agents: self.acp_agents.clone(),
             brainstorm: self.brainstorm.preferences.clone(),
+            boat: self.boat.clone(),
+            gce: self.gce.clone(),
         }
     }
 
     fn apply(&mut self, value: Preferences) {
+        self.boat = value.boat;
+        self.gce = value.gce;
         self.brainstorm.configure(value.brainstorm, self.live);
         self.microcoder = value.microcoder;
         self.cli = value.cli;
@@ -341,6 +359,8 @@ impl BundledSettings {
 
     pub fn enabled(&self, id: &str) -> bool {
         match id {
+            "boat-cloud" => self.boat.enabled,
+            "gce-cloud" => self.gce.enabled,
             "microcoder" => self.microcoder,
             "openagents-cli" => self.cli,
             "acp-subagents" => self.acp,
@@ -353,6 +373,8 @@ impl BundledSettings {
     pub fn toggle(&mut self, id: &str) -> bool {
         let mut value = self.preferences();
         let flag = match id {
+            "boat-cloud" => &mut value.boat.enabled,
+            "gce-cloud" => &mut value.gce.enabled,
             "microcoder" => &mut value.microcoder,
             "openagents-cli" => &mut value.cli,
             "acp-subagents" => &mut value.acp,
@@ -442,6 +464,67 @@ impl BundledSettings {
         true
     }
 
+    pub fn cloud_root(&self) -> std::path::PathBuf {
+        self.store
+            .as_ref()
+            .map(|s| s.root().to_path_buf())
+            .unwrap_or_else(|| std::path::PathBuf::from(".coder-state"))
+    }
+    pub fn cloud(&self, p: coder_cloud::Placement) -> &crate::cloud_settings::Configuration {
+        match p {
+            coder_cloud::Placement::Boat => &self.boat,
+            coder_cloud::Placement::Gce => &self.gce,
+        }
+    }
+    pub fn configure_cloud(
+        &mut self,
+        p: coder_cloud::Placement,
+        input: serde_json::Value,
+    ) -> Result<(), String> {
+        let config = self.cloud(p).update(input, p)?;
+        let mut value = self.preferences();
+        match p {
+            coder_cloud::Placement::Boat => value.boat = config,
+            coder_cloud::Placement::Gce => value.gce = config,
+        };
+        if !self.persist(&value) {
+            return Err(self
+                .storage_error
+                .clone()
+                .unwrap_or_else(|| "Cannot save cloud settings.".into()));
+        }
+        self.apply(value);
+        Ok(())
+    }
+    pub fn begin_cloud(&mut self, p: coder_cloud::Placement) {
+        self.cloud_editor = Some(crate::cloud_settings::Editor::new(p, self.cloud(p).clone()));
+    }
+    pub fn cloud_key(&mut self, key: KeyEvent) -> bool {
+        let Some(editor) = &mut self.cloud_editor else {
+            return true;
+        };
+        if key.code == KeyCode::Enter && editor.focus == 5 {
+            let p = editor.placement;
+            let result = editor.value();
+            match result.and_then(|c| self.configure_cloud(p, serde_json::to_value(c).unwrap())) {
+                Ok(()) => {
+                    self.cloud_editor = None;
+                    return true;
+                }
+                Err(e) => {
+                    if let Some(editor) = &mut self.cloud_editor {
+                        editor.error = Some(e);
+                    }
+                    return false;
+                }
+            }
+        }
+        let closed = editor.key(key);
+        if closed {
+            self.cloud_editor = None;
+        }
+        closed
+    }
     pub fn begin_settings(&mut self) {
         self.discard();
         self.saved_connection = Some(self.connection.clone());

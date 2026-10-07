@@ -205,7 +205,7 @@ fn run(
     })
     };
     emit(json!({"event":"delegation","id":id,"name":name,"task":task,
-        "update":{"event":"tool","name":"remote_delegate","input":null,"output":{"state":record.state,"cleanup_complete":record.cleanup_complete,"error":result.as_ref().err()},"running":false}}));
+        "update":{"event":"tool","name":"remote_delegate","input":null,"output":{"job":id,"state":record.state,"cleanup_complete":record.cleanup_complete,"error":result.as_ref().err().cloned().or(record.error.clone()).or(record.artifact_error.clone()),"reply":record.result.as_ref().and_then(|v|v["reply"].as_str()),"model":record.result.as_ref().and_then(|v|v["model"].as_str()),"tokens":record.result.as_ref().and_then(|v|v["tokens"].as_u64()),"usage":record.usage},"running":false}}));
     if let Err(error) = result {
         emit(
             json!({"event":"remote_job","job":id,"state":record.state,"error":error,"resource":record.resource}),
@@ -236,6 +236,35 @@ fn run(
         ));
     }
     Ok(out)
+}
+pub fn credential_name(name: &str) -> Result<(), String> {
+    if matches!(
+        name,
+        "BOAT_API_KEY"
+            | "GOOGLE_APPLICATION_CREDENTIALS"
+            | "CLOUDSDK_AUTH_ACCESS_TOKEN"
+            | "GOOGLE_OAUTH_ACCESS_TOKEN"
+            | "HOME"
+            | "PATH"
+            | "SHELL"
+    ) {
+        return Err(
+            "Cloud control and process configuration variables cannot be sent to an agent.".into(),
+        );
+    }
+    if name.is_empty()
+        || name.len() > 128
+        || !name
+            .bytes()
+            .next()
+            .is_some_and(|c| c.is_ascii_uppercase() || c == b'_')
+        || !name
+            .bytes()
+            .all(|c| c.is_ascii_uppercase() || c.is_ascii_digit() || c == b'_')
+    {
+        return Err("Use an uppercase credential environment variable name.".into());
+    }
+    Ok(())
 }
 fn take(args: &mut Vec<String>, name: &str) -> Result<Option<String>, String> {
     if let Some(i) = args.iter().position(|s| s == name) {
@@ -285,18 +314,7 @@ fn parse(args: &[String], context: &Context) -> Result<(String, Spec), String> {
     }
     let mut credential_names = vec![];
     while let Some(name) = take(&mut args, "--credential-env")? {
-        if matches!(
-            name.as_str(),
-            "BOAT_API_KEY"
-                | "GOOGLE_APPLICATION_CREDENTIALS"
-                | "CLOUDSDK_AUTH_ACCESS_TOKEN"
-                | "GOOGLE_OAUTH_ACCESS_TOKEN"
-                | "HOME"
-                | "PATH"
-                | "SHELL"
-        ) {
-            return Err("Cloud control credentials cannot be sent to an agent.".into());
-        }
+        credential_name(&name)?;
         credential_names.push(name);
     }
     if args.len() != 1 {

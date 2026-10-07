@@ -1120,6 +1120,10 @@ mod tests {
 
     fn jev_settings(endpoint: String, key: Option<model_access::ApiKey>) -> ExecutionSettings {
         ExecutionSettings {
+            boat: Default::default(),
+            gce: crate::cloud_settings::Configuration::gce(),
+            cloud_root: "fixture-state".into(),
+            remote_targets: Default::default(),
             microcoder: false,
             cli: false,
             acp: false,

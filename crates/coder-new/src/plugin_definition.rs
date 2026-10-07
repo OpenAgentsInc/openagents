@@ -29,6 +29,10 @@ pub enum ToolBinding {
     AcpSubagent,
     BrainstormSearch,
     BrainstormRank,
+    BoatDelegate,
+    BoatJob,
+    GceDelegate,
+    GceJob,
 }
 
 /// A registration is scoped by its plugin ID and its own ID.
@@ -111,6 +115,24 @@ pub const DEFINITIONS: &[PluginDefinition] = &[
         description: "Explicit public profile and reputation lookups through the Brainstorm house perspective.",
         default_enabled: false,
         tools: &[ToolBinding::BrainstormSearch, ToolBinding::BrainstormRank],
+        model_provider: None,
+        composer_rails: &[],
+    },
+    PluginDefinition {
+        id: "boat-cloud",
+        name: "Boat Cloud",
+        description: "Delegate through Boat integrated agents or headless Coder, with retained workspaces and usage.",
+        default_enabled: false,
+        tools: &[ToolBinding::BoatDelegate, ToolBinding::BoatJob],
+        model_provider: None,
+        composer_rails: &[],
+    },
+    PluginDefinition {
+        id: "gce-cloud",
+        name: "GCE Cloud",
+        description: "Run headless Coder in the granted GCE pool, with reconnectable jobs and estimated usage.",
+        default_enabled: false,
+        tools: &[ToolBinding::GceDelegate, ToolBinding::GceJob],
         model_provider: None,
         composer_rails: &[],
     },

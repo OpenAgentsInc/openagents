@@ -376,7 +376,10 @@ fn settings_migrate_private_atomic_storage_and_keep_demo_separate() {
 fn opening_enabling_saving_and_disabling_never_dispatch_a_read() {
     let (mut app, fixture) = fixture_app();
     app.open_plugins();
-    app.plugins.selected = crate::plugin_definition::DEFINITIONS.len() - 1;
+    app.plugins.selected = crate::plugin_definition::DEFINITIONS
+        .iter()
+        .position(|p| p.id == super::PLUGIN)
+        .unwrap();
     app.open_plugin_settings();
     assert_eq!(app.plugins.selected_definition().id, PLUGIN);
     let rendered = text(&mut app);
@@ -803,7 +806,10 @@ fn deliberate_connection_testing_and_escape_use_their_own_completion() {
     assert!(matches!(app.plugins.connection, Connection::Unchecked));
     fixture.delay.store(100, Ordering::SeqCst);
     app.open_plugin_settings();
-    app.plugins.selected = crate::plugin_definition::DEFINITIONS.len() - 1;
+    app.plugins.selected = crate::plugin_definition::DEFINITIONS
+        .iter()
+        .position(|p| p.id == super::PLUGIN)
+        .unwrap();
     app.open_plugin_settings();
     app.check_brainstorm_connection();
     background.sync(&mut app);

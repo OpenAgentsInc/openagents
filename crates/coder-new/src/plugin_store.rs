@@ -154,6 +154,10 @@ impl Store {
     }
 
     #[must_use]
+    pub fn root(&self) -> &Path {
+        &self.root
+    }
+
     pub fn under(root: impl Into<PathBuf>) -> Self {
         Self { root: root.into() }
     }

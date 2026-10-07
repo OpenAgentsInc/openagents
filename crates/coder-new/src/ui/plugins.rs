@@ -1,5 +1,7 @@
 //! Bundled plugin management and local configuration screens.
 
+use unicode_width::UnicodeWidthStr;
+
 use ratatui::{
     Frame,
     layout::Rect,
@@ -59,6 +61,7 @@ pub(super) fn render(frame: &mut Frame, area: Rect, app: &App) {
         match app.plugins.selected_definition().id {
             OPENROUTER_PLUGIN => router_settings(frame, body, app),
             "jev" => jev_settings(frame, body, app),
+            "boat-cloud" | "gce-cloud" => cloud_settings(frame, body, app),
             "acp-subagents" => acp_settings(frame, body, app),
             crate::brainstorm::PLUGIN => brainstorm_settings(frame, body, app),
             _ => plugin_info(frame, body, app),
@@ -1089,6 +1092,77 @@ mod tests {
             assert!(canvas.rows[0].contains(app.plugins.selected_definition().name));
             assert!(canvas.rows.join("\n").contains(tool));
             assert!(!canvas.cursor_visible);
+        }
+    }
+}
+
+fn cloud_settings(frame: &mut Frame, area: Rect, app: &App) {
+    let Some(e) = &app.plugins.bundled.cloud_editor else {
+        return;
+    };
+    let mode = if e.config.mode == coder_cloud::Mode::Coder {
+        "Coder runtime"
+    } else {
+        "Integrated agent"
+    };
+    let size = if e.placement == coder_cloud::Placement::Gce {
+        "Granted pool shape"
+    } else {
+        &e.config.size
+    };
+    let mut rows = vec![
+        Line::from(span(
+            "Credentials are selected by variable name. Values stay private.",
+            t::GRAY,
+        )),
+        Line::from(""),
+    ];
+    let fields = [
+        ("Mode", mode),
+        ("Machine size", size),
+        ("Template", e.template.text.as_str()),
+        ("Credential variables", e.credentials.text.as_str()),
+        ("Workspace paths", e.paths.text.as_str()),
+        ("Save", ""),
+        ("Cancel", ""),
+    ];
+    for (i, (name, value)) in fields.iter().enumerate() {
+        rows.push(Line::from(span(
+            format!("{} {name}: {value}", if e.focus == i { "❯" } else { " " }),
+            if e.focus == i {
+                t::TEXT_PRIMARY
+            } else {
+                t::TEXT_SECONDARY
+            },
+        )));
+    }
+    rows.push(Line::from(""));
+    rows.push(Line::from(span(
+        "Enter/Space: change choice · Tab: next · comma-separated names and paths",
+        t::GRAY,
+    )));
+    if let Some(error) = &e.error {
+        rows.push(Line::from(span(error, t::TEXT_PRIMARY)));
+    }
+    let at = if e.focus + 2 >= area.height as usize {
+        (e.focus + 3).saturating_sub(area.height as usize)
+    } else {
+        0
+    };
+    frame.render_widget(Paragraph::new(rows).scroll((at as u16, 0)), area);
+    let draft = match e.focus {
+        2 => Some(&e.template),
+        3 => Some(&e.credentials),
+        4 => Some(&e.paths),
+        _ => None,
+    };
+    if let Some(d) = draft {
+        let label = fields[e.focus].0;
+        let x = (4 + label.chars().count() + d.text[..d.cursor].width())
+            .min(area.width.saturating_sub(1) as usize) as u16;
+        let y = (e.focus + 2).saturating_sub(at) as u16;
+        if y < area.height {
+            frame.set_cursor_position((area.x + x, area.y + y));
         }
     }
 }

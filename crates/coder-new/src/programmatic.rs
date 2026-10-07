@@ -43,9 +43,10 @@ macro_rules! command_usage {
   plugins list                        List registered plugins and their status.
   plugins enable ID                   Turn a registered plugin on.
   plugins disable ID                  Turn a registered plugin off.
-  plugins configure ID --stdin        Configure OpenRouter or Jev with a JSON object:
+  plugins configure ID --stdin        Configure a plugin with a JSON object:
                                       api_key, model, endpoint, enabled.
                                       An api_key of null removes the saved key.
+                                      Cloud: mode, size, template, credential_names, workspace_paths.
   plugins check ID                    Check the configured API connection.
   models list                         Read the curated model catalog.
   models set SLUG [--reasoning EFFORT] [--max-tokens N]
@@ -389,7 +390,88 @@ fn execute_with_demo_policy(
         return import(rest, context);
     }
     if command == "remote" || command == "delegate" && rest.iter().any(|v| v == "--on") {
-        return crate::cloud::execute(command, rest, context, emit).map_err(Error::from);
+        let app = bootstrap(context)?;
+        let mut args = rest.to_vec();
+        let placement = if command == "delegate" {
+            args.iter()
+                .position(|a| a == "--on")
+                .and_then(|i| args.get(i + 1))
+                .and_then(|p| match p.as_str() {
+                    "boat" => Some(coder_cloud::Placement::Boat),
+                    "gce" | "cloud" => Some(coder_cloud::Placement::Gce),
+                    _ => None,
+                })
+        } else if args
+            .first()
+            .is_some_and(|op| matches!(op.as_str(), "follow" | "continue" | "steer"))
+        {
+            let r = coder_cloud::Store::under(context.root.join("remote"))
+                .read(args.get(1).ok_or("Supply a remote job ID.")?)?;
+            if r.state.terminal() && r.cleanup_complete && args[0] == "follow" {
+                None
+            } else {
+                Some(r.spec.placement)
+            }
+        } else {
+            None
+        };
+        if let Some(p) = placement {
+            let config = app.plugins.bundled.cloud(p);
+            if !config.enabled {
+                return Err(Error::from(if p == coder_cloud::Placement::Boat {
+                    "Enable boat-cloud with plugins enable boat-cloud before dispatch."
+                } else {
+                    "Enable gce-cloud with plugins enable gce-cloud before dispatch."
+                }));
+            }
+            if command == "delegate" {
+                for (flag, value) in [
+                    (
+                        "--mode",
+                        Some(if config.mode == coder_cloud::Mode::Coder {
+                            "coder".into()
+                        } else {
+                            "integrated".into()
+                        }),
+                    ),
+                    ("--size", Some(config.size.clone())),
+                    ("--template", config.template.clone()),
+                ] {
+                    if !args.iter().any(|a| a == flag) {
+                        if let Some(value) = value {
+                            args.extend([flag.into(), value]);
+                        }
+                    }
+                }
+                if !args.iter().any(|a| a == "--credential-env") {
+                    for n in &config.credential_names {
+                        args.extend(["--credential-env".into(), n.clone()]);
+                    }
+                }
+                if context
+                    .environment
+                    .get(MODEL_INPUT_ENV)
+                    .is_some_and(|s| s == "model")
+                {
+                    for pair in args.windows(2).filter(|pair| pair[0] == "--credential-env") {
+                        if !config.credential_names.contains(&pair[1]) {
+                            return Err(Error::from(
+                                "This credential variable is not admitted in cloud settings.",
+                            ));
+                        }
+                    }
+                }
+                if !args
+                    .iter()
+                    .any(|a| a == "--workspace-path" || a == "--no-workspace")
+                {
+                    for p in &config.workspace_paths {
+                        args.extend(["--workspace-path".into(), p.clone()]);
+                    }
+                }
+            }
+        }
+        return crate::cloud::execute(command, &args, context, emit).map_err(Error::from);
     }
     let mut app = bootstrap(context)?;
     match command.as_str() {
@@ -491,6 +573,17 @@ fn plugins(app: &mut App, args: &[String], context: &Context) -> Result<Value, E
             }
         }
         "configure" if args.len() == 3 && args[2] == "--stdin" => {
+            if let Some(p) = crate::cloud_settings::placement(definition.id) {
+                let input: Value = serde_json::from_str(
+                    context
+                        .input
+                        .as_deref()
+                        .ok_or("Supply cloud configuration on stdin.")?,
+                )
+                .map_err(|_| "Invalid cloud configuration JSON.")?;
+                app.plugins.bundled.configure_cloud(p, input)?;
+                return Ok(json!({"id":definition.id,"settings":app.plugins.bundled.cloud(p)}));
+            }
             if !matches!(definition.id, "openrouter-byok" | "jev") {
                 return Err(usage(
                     "This plugin has no editable connection. Use agents to change ACP choices.",

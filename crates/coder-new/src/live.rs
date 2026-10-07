@@ -431,10 +431,12 @@ fn run_with_provider(
                     if !request.key.expose().is_empty() {
                         execution.redaction_keys.push(model_access::ApiKey::new(request.key.expose()));
                     }
-                    let task = arguments["task"].as_str().unwrap_or_default().to_owned();
-                    let mut events = |event| event_callback(RuntimeEvent::Delegation {
-                        id: delegation.clone(), name: name.clone(), task: task.clone(), event: Box::new(event),
-                    });
+                    let task = arguments["task"].as_str().or(arguments["message"].as_str()).unwrap_or_default().to_owned();
+                    let cloud_job=if matches!(tool.as_str(),"boat_job"|"gce_job"){arguments["job"].as_str().map(str::to_owned)}else{None};
+                    let mut events = |event| {
+                        let event=match event{RuntimeEvent::Delegation{id,event,..} if cloud_job.as_deref()==Some(id.as_str())=>*event,event=>event};
+                        event_callback(RuntimeEvent::Delegation {id:delegation.clone(),name:name.clone(),task:task.clone(),event:Box::new(event)});
+                    };
                     events(RuntimeEvent::Tool { name: tool.clone(), input: arguments.clone(), output: serde_json::Value::Null, running: true });
                     let provider = if request.key.expose().is_empty() { None } else {
                         openrouter::Client::new(openrouter::Config::new(openrouter::ApiKey::new(request.key.expose()))).ok().map(|client| crate::plugin_tools::GenerationProvider { client, model, effort: options.reasoning })

@@ -222,7 +222,7 @@ impl Publisher {
     }
 }
 
-fn decode(value: &Value, depth: usize) -> Option<RuntimeEvent> {
+pub(crate) fn decode(value: &Value, depth: usize) -> Option<RuntimeEvent> {
     if depth > 16 {
         return None;
     }

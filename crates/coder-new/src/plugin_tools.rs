@@ -18,6 +18,10 @@ use crate::{
 
 #[derive(Clone)]
 pub struct ExecutionSettings {
+    pub boat: crate::cloud_settings::Configuration,
+    pub gce: crate::cloud_settings::Configuration,
+    pub cloud_root: PathBuf,
+    pub remote_targets: std::collections::BTreeSet<String>,
     pub microcoder: bool,
     pub cli: bool,
     pub acp: bool,
@@ -76,6 +80,38 @@ impl ExecutionSettings {
     pub fn for_request(&self, request: &str) -> Self {
         let targets = requested_agents(request, &self.agents);
         let mut scoped = self.clone();
+        let remote: Vec<AcpAgent> = [
+            "codex",
+            "claude-code",
+            "claude",
+            "microcoder",
+            "opencode",
+            "pi",
+            "prime-agent",
+            "prime",
+            "kimi",
+            "kimi-code",
+            "mistral",
+            "grok-build",
+            "devin-cli",
+            "goose",
+            "amp",
+            "hermes",
+            "cursor",
+            "oh-my-pi",
+        ]
+        .iter()
+        .map(|id| AcpAgent {
+            id: (*id).into(),
+            name: (*id).into(),
+            program: "remote".into(),
+            transport: Default::default(),
+            arguments: vec![],
+            mode: None,
+            enabled: true,
+        })
+        .collect();
+        scoped.remote_targets = requested_agents(request, &remote);
         if !targets.is_empty() {
             scoped.microcoder &= targets.contains("microcoder");
             scoped.agents.retain(|agent| targets.contains(&agent.id));
@@ -88,6 +124,8 @@ impl ExecutionSettings {
             return false;
         }
         match binding {
+            ToolBinding::BoatDelegate | ToolBinding::BoatJob => self.boat.enabled,
+            ToolBinding::GceDelegate | ToolBinding::GceJob => self.gce.enabled,
             ToolBinding::Microcoder => self.microcoder,
             ToolBinding::OpenAgentsCli => self.cli,
             ToolBinding::AcpSubagent => self.acp,
@@ -122,6 +160,22 @@ impl ExecutionSettings {
                 .filter(|binding| self.enabled_for(*binding))
             {
                 let tool = match binding {
+                    ToolBinding::BoatDelegate => Some(crate::cloud_tools::definition(
+                        coder_cloud::Placement::Boat,
+                        false,
+                    )),
+                    ToolBinding::BoatJob => Some(crate::cloud_tools::definition(
+                        coder_cloud::Placement::Boat,
+                        true,
+                    )),
+                    ToolBinding::GceDelegate => Some(crate::cloud_tools::definition(
+                        coder_cloud::Placement::Gce,
+                        false,
+                    )),
+                    ToolBinding::GceJob => Some(crate::cloud_tools::definition(
+                        coder_cloud::Placement::Gce,
+                        true,
+                    )),
                     ToolBinding::Microcoder => Some(bundled_runtime::microcoder_tool_definition()),
                     ToolBinding::OpenAgentsCli => Some(bundled_runtime::cli_tool_definition()),
                     ToolBinding::AcpSubagent => bundled_runtime::acp_tool_definition(&self.agents),
@@ -164,6 +218,9 @@ impl ExecutionSettings {
             } else {
                 guidance.push_str("No local subagent is enabled for this request. If the user requested a named agent, explain that it is unavailable or turned off; do not substitute another agent or Microcoder.\n");
             }
+        }
+        if self.boat.enabled || self.gce.enabled {
+            guidance.push_str("Cloud plugins use exact IDs such as codex@boat and microcoder@gce. Delegate only user-requested cloud work. Never substitute another agent or backend. Boat modes are integrated or coder; GCE is coder. Credential values are never arguments: only variables admitted in plugin settings may be selected. Use workspace paths to admit the task's repository files and explicit include for untracked files. Use the backend's job tool to reconnect or cancel; applying a result patch requires the caller's explicit remote apply command.\n");
         }
         if self.registered(ToolBinding::Jev) {
             guidance.push_str(jev_plugin::instructions());
@@ -246,6 +303,34 @@ impl ExecutionSettings {
                     .collect();
                 bundled_runtime::run_command(&args.command, &self.cwd, &keys, cancel, &mut emit)
                     .await
+            }
+            "boat_delegate" | "boat_job" if self.registered(ToolBinding::BoatDelegate) => {
+                crate::cloud_tools::execute(
+                    coder_cloud::Placement::Boat,
+                    name == "boat_job",
+                    self.boat.clone(),
+                    self.cloud_root.clone(),
+                    self.cwd.clone(),
+                    arguments,
+                    &self.remote_targets,
+                    cancel.clone(),
+                    &mut emit,
+                )
+                .await
+            }
+            "gce_delegate" | "gce_job" if self.registered(ToolBinding::GceDelegate) => {
+                crate::cloud_tools::execute(
+                    coder_cloud::Placement::Gce,
+                    name == "gce_job",
+                    self.gce.clone(),
+                    self.cloud_root.clone(),
+                    self.cwd.clone(),
+                    arguments,
+                    &self.remote_targets,
+                    cancel.clone(),
+                    &mut emit,
+                )
+                .await
             }
             "openagents_cli" if self.registered(ToolBinding::OpenAgentsCli) => {
                 let args: CliArguments = serde_json::from_value(arguments).map_err(
@@ -554,6 +639,10 @@ mod tests {
     }
     fn settings() -> ExecutionSettings {
         ExecutionSettings {
+            boat: Default::default(),
+            gce: crate::cloud_settings::Configuration::gce(),
+            cloud_root: "fixture-state".into(),
+            remote_targets: Default::default(),
             microcoder: false,
             cli: false,
             acp: false,

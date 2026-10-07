@@ -341,6 +341,16 @@ impl Plugins {
         cwd: std::path::PathBuf,
     ) -> crate::plugin_tools::ExecutionSettings {
         crate::plugin_tools::ExecutionSettings {
+            boat: crate::cloud_settings::Configuration {
+                enabled: self.live && self.bundled.boat.enabled,
+                ..self.bundled.boat.clone()
+            },
+            gce: crate::cloud_settings::Configuration {
+                enabled: self.live && self.bundled.gce.enabled,
+                ..self.bundled.gce.clone()
+            },
+            cloud_root: self.bundled.cloud_root(),
+            remote_targets: Default::default(),
             microcoder: self.bundled.microcoder,
             cli: self.bundled.cli,
             acp: self.bundled.acp,

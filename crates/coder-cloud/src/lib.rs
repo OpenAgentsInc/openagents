@@ -59,6 +59,9 @@ impl Spec {
         if self.placement == Placement::Gce && self.mode == Mode::Integrated {
             return Err("GCE runs the Coder runtime; integrated agents require Boat.".into());
         }
+        if self.placement == Placement::Gce && (self.template.is_some() || self.size != "default") {
+            return Err("GCE uses its granted pool shape and image. Configure the pool with cloud up; size and template options select Boat resources.".into());
+        }
         for name in &self.credential_names {
             if name.is_empty()
                 || !name

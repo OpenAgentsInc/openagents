@@ -7,6 +7,8 @@ pub mod brainstorm;
 pub mod bundled_runtime;
 pub mod bundled_settings;
 pub mod cloud;
+pub mod cloud_settings;
+pub mod cloud_tools;
 pub mod credentials;
 mod delegation_events;
 pub mod jev_plugin;
@@ -218,7 +220,7 @@ impl App {
                 input,
                 output,
                 running,
-            } if tool == "microcoder" || tool == "acp_subagent" => {
+            } if tool == "microcoder" || tool == "acp_subagent" || tool == "remote_delegate" => {
                 child.running = running;
                 child.chat.busy = running;
                 if !running {
@@ -925,7 +927,39 @@ impl App {
             .execution_settings(self.cwd.clone().unwrap_or_else(|| {
                 std::env::current_dir().unwrap_or_else(|_| std::path::PathBuf::from("."))
             }));
-        let (tool, arguments) = if name == "microcoder" {
+        let remote = if name.ends_with("@boat") || name.ends_with("@gce") {
+            self.live.entries.iter().find_map(|entry| match entry {
+                live::Entry::Delegation {
+                    id: entry_id,
+                    output,
+                    ..
+                } if entry_id == &id => output["job"].as_str().map(str::to_owned),
+                _ => None,
+            })
+        } else {
+            None
+        };
+        let (tool, arguments) = if let Some(job) = remote {
+            let boat = name.ends_with("@boat");
+            if !(if boat {
+                execution.boat.enabled
+            } else {
+                execution.gce.enabled
+            }) {
+                self.draft.text = text;
+                self.live.notice =
+                    Some("Enable this cloud plugin in /plugins before continuing its job.".into());
+                return;
+            }
+            (
+                if boat {
+                    "boat_job".to_owned()
+                } else {
+                    "gce_job".to_owned()
+                },
+                serde_json::json!({"operation":"continue","job":job,"message":task}),
+            )
+        } else if name == "microcoder" {
             ("microcoder".to_owned(), serde_json::json!({"task":task}))
         } else if let Some(agent) = execution
             .agents
@@ -1005,6 +1039,14 @@ impl App {
         match self.plugins.selected_definition().id {
             "openrouter-byok" => self.plugins.begin_settings(),
             "jev" => self.plugins.bundled.begin_settings(),
+            "boat-cloud" => self
+                .plugins
+                .bundled
+                .begin_cloud(coder_cloud::Placement::Boat),
+            "gce-cloud" => self
+                .plugins
+                .bundled
+                .begin_cloud(coder_cloud::Placement::Gce),
             "acp-subagents" => self.plugins.bundled.begin_acp(),
             brainstorm::PLUGIN => self.plugins.bundled.brainstorm.begin(),
             _ => {}
@@ -1166,6 +1208,12 @@ impl App {
                     picker.paste(&text);
                 } else if self.screen == Screen::PluginSettings {
                     match self.plugins.selected_definition().id {
+                        "boat-cloud" | "gce-cloud" => {
+                            if let Some(editor) = &mut self.plugins.bundled.cloud_editor {
+                                editor.paste(&text);
+                            }
+                            return true;
+                        }
                         brainstorm::PLUGIN => {
                             if self.brainstorm_job.is_some() {
                                 self.cancel_request();
@@ -1247,6 +1295,12 @@ impl App {
                 }
                 if self.screen == Screen::PluginSettings {
                     match self.plugins.selected_definition().id {
+                        "boat-cloud" | "gce-cloud" => {
+                            if self.plugins.bundled.cloud_key(key) {
+                                self.screen = Screen::Plugins;
+                            }
+                            return true;
+                        }
                         brainstorm::PLUGIN => {
                             if self.brainstorm_job.is_some()
                                 && (key.code == KeyCode::Esc

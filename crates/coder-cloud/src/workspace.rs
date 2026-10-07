@@ -45,7 +45,7 @@ fn git(root: &Path, args: &[&str]) -> Result<Vec<u8>> {
     }
     Ok(output.stdout)
 }
-fn path(name: &str) -> Result<()> {
+pub fn validate_path(name: &str) -> Result<()> {
     if name.is_empty()
         || name.contains('\0')
         || !Path::new(name)
@@ -69,7 +69,7 @@ fn path(name: &str) -> Result<()> {
 fn included(root: &Path, names: &[String]) -> Result<Vec<Value>> {
     let mut files = vec![];
     for name in names {
-        path(name)?;
+        validate_path(name)?;
         let mut current = root.to_path_buf();
         for part in Path::new(name).components() {
             current.push(part);
@@ -127,7 +127,7 @@ pub fn capture(
     names: Vec<String>,
 ) -> Result<Snapshot> {
     for p in paths.iter().chain(&names) {
-        path(p)?;
+        validate_path(p)?;
     }
     let root = String::from_utf8(git(cwd, &["rev-parse", "--show-toplevel"])?)
         .map_err(|_| "Invalid repository path.")?;
@@ -160,7 +160,7 @@ pub fn capture(
     for row in listing.split(|b| *b == 0).filter(|r| !r.is_empty()) {
         let row = std::str::from_utf8(row).map_err(|_| "Workspace paths must be UTF-8.")?;
         let (meta, name) = row.split_once('\t').ok_or("Invalid Git tree listing.")?;
-        path(name)?;
+        validate_path(name)?;
         let fields: Vec<_> = meta.split_whitespace().collect();
         if fields.get(1) != Some(&"blob") {
             return Err("Admit submodule contents separately before cloud transfer.".into());

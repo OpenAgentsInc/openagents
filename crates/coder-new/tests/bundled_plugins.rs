@@ -101,7 +101,7 @@ fn acp_ids(app: &App) -> Vec<&str> {
 #[test]
 fn bundled_plugins_are_selectable_and_default_on_with_router_off() {
     let mut app = App::default();
-    assert_eq!(DEFINITIONS.len(), 6);
+    assert_eq!(DEFINITIONS.len(), 8);
     app.open_plugins();
     for definition in DEFINITIONS {
         assert_eq!(app.plugins.selected_definition().id, definition.id);
