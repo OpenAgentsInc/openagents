@@ -240,6 +240,7 @@ fn current() -> Selection {
             },
             can_invoke: true,
             commercial: None,
+            team_policy: None,
         },
     }
 }
@@ -1568,4 +1569,57 @@ fn relay_fixture(
             })
     });
     (rx.recv().unwrap(), thread)
+}
+
+#[test]
+fn team_policy_denies_new_plugin_effects_and_preserves_original_private_recovery() {
+    let reference = receipts::team_policy::Reference {
+        workspace: current().context.workspace,
+        version: 1,
+        digest: plugin::digest(b"owner policy"),
+        expires_unix: NOW + 3600,
+        owner: "buyer".into(),
+        reviewer: "buyer".into(),
+    };
+    let mut pending = Harness::new();
+    let quoted = pending.store.plugin_view("one").unwrap();
+    pending.current.context.team_policy = Some(reference.clone());
+    pending.store.bind(pending.current.clone()).unwrap();
+    assert!(
+        pending
+            .store
+            .approve_plugin(
+                "one",
+                &quoted.approval_digest,
+                &pending.current,
+                &pending.offer.payer,
+                NOW * 1000
+            )
+            .is_err()
+    );
+    assert!(
+        pending
+            .store
+            .quote_plugin(
+                "unsupported",
+                pending.offer.clone(),
+                "notes".into(),
+                pending.current.clone(),
+                NOW * 1000
+            )
+            .is_err()
+    );
+    assert_eq!(pending.wallet.payments.load(Ordering::SeqCst), 0);
+    let mut historical = Harness::with_recovery(true);
+    historical.approve();
+    assert_eq!(historical.buy().unwrap().phase, Phase::Completed);
+    historical.current.context.team_policy = Some(reference);
+    historical.store.bind(historical.current.clone()).unwrap();
+    let original = historical
+        .store
+        .plugin_recovery("one", &historical.current, &historical.offer.payer)
+        .unwrap();
+    assert!(original.0 == historical.offer);
+    assert!(historical.buy().is_err());
+    assert_eq!(historical.wallet.payments.load(Ordering::SeqCst), 1);
 }

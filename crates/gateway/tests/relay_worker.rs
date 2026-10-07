@@ -423,6 +423,7 @@ async fn deploy(manifest: Manifest, endpoint: &str) -> Deployment {
         listen: "127.0.0.1:0".to_string(),
         registry: dir.path().to_path_buf(),
         require_workspace_membership: false,
+        team_policy: None,
         accounts: None,
         billing: None,
         funding: None,

@@ -112,6 +112,10 @@ pub fn routes() -> Vec<(&'static str, MethodRouter<Arc<ServeState>>)> {
         ),
         ("/v1/workspaces/{workspace}/keys/{key}", delete(key_revoke)),
     ];
+    routes.push((
+        "/v1/workspaces/{workspace}/team-policy",
+        get(crate::team_policy::read).put(crate::team_policy::change),
+    ));
     routes.extend(crate::referrals::routes());
     routes
 }

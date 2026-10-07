@@ -42,6 +42,8 @@ pub(crate) fn tree_effects() -> &'static [Declared] {
         all
     })
 }
+#[path = "customer_policy.rs"]
+mod policy;
 #[path = "customer_team.rs"]
 mod team;
 pub const USAGE: &str = "usage: openagents customer COMMAND --root DIR [OPTIONS]
@@ -83,6 +85,10 @@ pub const USAGE: &str = "usage: openagents customer COMMAND --root DIR [OPTIONS]
   referral COMMAND [OPTIONS]
         Create a private referrer, rotate its public source link, or capture
         an explicitly consented introduction. Run referral --help for forms.
+  policy read
+        Read the selected native team policy reference.
+  policy review --input FILE
+        Review exact versioned data and execution limits from private input.
   team change --input FILE [--invitation FILE]
         Apply a reviewed team intent with private invitation custody.
   team members --workspace ID
@@ -118,6 +124,8 @@ pub(crate) const EFFECTS: &[Declared] = &[
     Declared::computer("funding-history", Effect::ReadOnly),
     Declared::computer("credentials", Effect::ReadOnly),
     Declared::computer("inspect", Effect::Secret),
+    Declared::computer("policy read", Effect::ReadOnly),
+    Declared::computer("policy review", Effect::Grants),
     Declared::computer("team change", Effect::Secret),
     Declared::computer("team members", Effect::ReadOnly),
     Declared::computer("team switch", Effect::LocalWrite),
@@ -174,6 +182,9 @@ fn secret(path: &str) -> Result<jev::ApiKey, String> {
     Ok(jev::ApiKey::new(text))
 }
 pub fn run(output: &Output, words: &[String]) -> u8 {
+    if words.first().is_some_and(|word| word == "policy") {
+        return policy::run(output, &words[1..]);
+    }
     if words.first().is_some_and(|word| word == "referral") {
         return referrals::run(output, &words[1..]);
     }

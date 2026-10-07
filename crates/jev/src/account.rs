@@ -29,8 +29,11 @@ const WORKSPACES_PATH: &str = "/v1/workspaces";
 
 #[path = "account_management.rs"]
 mod management;
+#[path = "account_policy.rs"]
+mod policy;
 #[path = "account_referrals.rs"]
 mod referrals;
+pub use policy::TeamPolicyView;
 #[path = "account_team.rs"]
 mod team;
 pub use management::{

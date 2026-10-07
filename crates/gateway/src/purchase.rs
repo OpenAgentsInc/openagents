@@ -152,6 +152,19 @@ pub(crate) fn current(
             },
             can_invoke,
             commercial,
+            team_policy: {
+                tenancy::Accounts::open(&state.dir)
+                    .and_then(|a| a.store())
+                    .map_err(|_| {
+                        refuse(
+                            "team_policy_unavailable",
+                            "The current team policy cannot be read.",
+                        )
+                    })?
+                    .team_policies
+                    .current(workspace)
+                    .map(|p| p.reference())
+            },
         };
     context.validate().map_err(|_| {
         refuse(

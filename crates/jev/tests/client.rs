@@ -2169,6 +2169,7 @@ async fn approved_purchase_preserves_exact_identity_and_never_retries() -> Outco
         },
         can_invoke: true,
         commercial: None,
+        team_policy: None,
     };
     let request = asking().model("decision-a");
     let approval = Approval {

@@ -178,6 +178,9 @@ pub struct Config {
     /// Explicit canonical attribution and current native source authorization.
     #[serde(default)]
     pub commercial: Option<Commercial>,
+    /// Exact native team policy lane; unavailable routes refuse before dispatch.
+    #[serde(default)]
+    pub team_policy: Option<crate::team_policy::Config>,
     /// Plans, checkout, subscriptions, and provider events — the
     /// billing surface. Absent means the gateway mounts no billing
     /// routes and no plan gates a door: workspaces call exactly as
@@ -530,6 +533,9 @@ impl Config {
                 );
             }
             commercial.check(&self.registry)?;
+        }
+        if let Some(policy) = &self.team_policy {
+            policy.check(self)?;
         }
         if self.v != SCHEMA {
             return Err(format!(

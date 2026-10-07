@@ -36,6 +36,7 @@ fn context(account: &str, workspace: &str, key: &str) -> Context {
         },
         can_invoke: true,
         commercial: None,
+        team_policy: None,
     }
 }
 fn hash(c: char) -> String {

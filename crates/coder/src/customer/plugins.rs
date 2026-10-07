@@ -459,6 +459,9 @@ impl Store {
         now: u64,
         secret: Option<String>,
     ) -> Result<View> {
+        if current.context.team_policy.is_some() {
+            return Err("This workspace has an active team policy; paid plugin execution is not a qualified route. Original financial recovery remains available.".into());
+        }
         if offer.recovery_authorization
             != secret
                 .as_ref()
@@ -531,6 +534,11 @@ impl Store {
         commercial: Option<&receipts::purchase::CommercialRef>,
         now: u64,
     ) -> Result<View> {
+        if current.context.team_policy.is_some() {
+            return Err(
+                "Paid plugin approval is unavailable under this workspace team policy.".into(),
+            );
+        }
         let p = self.plugin(id)?;
         let q = quote(id, p);
         if p.phase != Phase::Quoted
@@ -586,6 +594,11 @@ impl Store {
         commercial: Option<&receipts::purchase::CommercialRef>,
         now: u64,
     ) -> Result<(Offer, Vec<u8>)> {
+        if current.context.team_policy.is_some() {
+            return Err(
+                "Paid plugin dispatch is unavailable under this workspace team policy.".into(),
+            );
+        }
         let p = self.plugin(id)?;
         if p.phase != Phase::Approved
             || p.offer.commercial.as_ref() != commercial

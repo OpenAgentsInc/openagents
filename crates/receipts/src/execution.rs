@@ -225,6 +225,9 @@ pub struct ExecutionReceipt {
     /// The evaluation context, when the call carried one.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub evaluation: Option<Evaluation>,
+    /// The exact original team disclosure policy, independent of current rules.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub team_policy: Option<crate::team_policy::Snapshot>,
     /// The digest over every field above.
     pub digest: String,
 }
@@ -315,6 +318,7 @@ impl ExecutionReceipt {
             job_item: None,
             policy: None,
             evaluation: None,
+            team_policy: None,
             digest: String::new(),
         }
     }
@@ -367,6 +371,14 @@ impl ExecutionReceipt {
         }
         if self.digest != self.compute_digest() {
             return Err(ReceiptError::Tampered);
+        }
+        if let Some(policy) = &self.team_policy {
+            policy
+                .validate()
+                .map_err(|e| ReceiptError::Malformed(e.into()))?;
+            if policy.rule.effect.source.request != self.request_digest {
+                return Err(ReceiptError::Tampered);
+            }
         }
         if self.request.is_empty() {
             return Err(ReceiptError::Missing("request identity"));

@@ -286,9 +286,10 @@ pub use account::{
     KeyIdentity, Position, PurchaseActivity, PurchaseActivityItem, PurchaseCost, PurchaseReceipt,
     ReferralCapture, ReferralEvidence, ReferralIdentity, ReferralIntroduction, ReferralKind,
     ReferralLink, ReferralRecord, ReferralSource, ReferralSuccessor, SessionBudget, SessionGrant,
-    SessionInfo, SessionView, Team, TeamInvitation, TeamInvitationSummary, TeamMember, TeamRole,
-    TeamWorkspace, TeamWorkspaceIdentity, UsageCost, UsageQuery, UsageTotals, UsageUnits,
-    UsageView, WorkspaceAttribution, WorkspaceIdentity, WorkspaceRef, WorkspaceView,
+    SessionInfo, SessionView, Team, TeamInvitation, TeamInvitationSummary, TeamMember,
+    TeamPolicyView, TeamRole, TeamWorkspace, TeamWorkspaceIdentity, UsageCost, UsageQuery,
+    UsageTotals, UsageUnits, UsageView, WorkspaceAttribution, WorkspaceIdentity, WorkspaceRef,
+    WorkspaceView,
 };
 pub use answers::{
     Answer, ChoiceAnswer, MASS_TOLERANCE, NoulAnswer, RawResponse, ScoreAnswer, SystemOneResponse,

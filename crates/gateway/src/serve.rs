@@ -161,6 +161,7 @@ impl ServeState {
     /// than reconciling them.
     pub fn open(config: Config) -> Result<Arc<Self>, Trouble> {
         if config.commercial.is_some()
+            || config.team_policy.is_some()
             || config.funding.is_some()
             || config.earnings.is_some()
             || config.money.as_ref().is_some_and(|m| {
@@ -181,9 +182,15 @@ impl ServeState {
             .open(config.registry.join(RECEIPTS))?;
         let client = reqwest::Client::builder()
             .redirect(reqwest::redirect::Policy::none())
-            .timeout(Duration::from_millis(config.forward_timeout_ms))
-            .build()
-            .map_err(|error| Trouble::Io(std::io::Error::other(error.to_string())))?;
+            .timeout(Duration::from_millis(config.forward_timeout_ms));
+        // Reviewed local recipients cannot be replaced by ambient proxy settings.
+        let client = if config.team_policy.is_some() {
+            client.no_proxy()
+        } else {
+            client
+        }
+        .build()
+        .map_err(|error| Trouble::Io(std::io::Error::other(error.to_string())))?;
         // Monetary admission opens its ledger at startup — a spending
         // store that cannot open fails the process, not the first call.
         let money = config
@@ -1128,6 +1135,7 @@ pub(crate) struct ReceiptContext {
     pub(crate) purchase_approval: Option<String>,
     /// The original native mapping admitted for this attempt, with or without approval.
     pub(crate) commercial: Option<receipts::purchase::CommercialRef>,
+    pub(crate) team_policy: Option<receipts::team_policy::Snapshot>,
 }
 
 /// What the admission path produced.
@@ -1907,13 +1915,14 @@ async fn forward_cancellable(
     endpoint: &str,
     body: &Bytes,
     cancellation: &Cancellation,
+    policy_guard: Option<tenancy::accounts::team_policies::Guard>,
 ) -> Forwarded {
     tokio::select! {
         biased;
         _ = cancellation.wait() => Forwarded::Unavailable {
             message: "The connection closed after the request was sent to the model, so the result is unknown.".into(),
         },
-        result = forward(state, endpoint, body) => result,
+        result = forward_guarded(state, endpoint, body, policy_guard) => result,
     }
 }
 
@@ -2048,6 +2057,27 @@ async fn admitted(
             };
         }
     }
+    match crate::team_policy::admit(
+        state,
+        headers,
+        door,
+        naming.request,
+        envelope,
+        naming.attempt,
+        None,
+        false,
+    ) {
+        Ok(guard) => ctx.team_policy = guard.map(|g| g.snapshot.clone()),
+        Err(message) => {
+            return Verdict::Refused {
+                status: StatusCode::FORBIDDEN,
+                code: "team_policy_denied",
+                message,
+                outcome: Outcome::Refused,
+                ctx,
+            };
+        }
+    }
     let units = units_of(envelope, body.len());
     if let Err(verdict) = reserved(state, &registry, &caller, naming, &units, &mut ctx).await {
         return verdict;
@@ -2103,19 +2133,43 @@ async fn admitted(
             ctx,
         };
     }
+    let policy_guard = match crate::team_policy::admit(
+        state,
+        headers,
+        door,
+        naming.request,
+        envelope,
+        naming.attempt,
+        ctx.team_policy.as_ref(),
+        true,
+    ) {
+        Ok(guard) => guard,
+        Err(message) => {
+            ctx.settlement = money_release(state, &hold).await;
+            state.release(naming.request, naming.attempt).await;
+            return Verdict::Refused {
+                status: StatusCode::FORBIDDEN,
+                code: "team_policy_denied",
+                message,
+                outcome: Outcome::Refused,
+                ctx,
+            };
+        }
+    };
     // A selected offer names the native artifact rather than requiring the
     // backend to accept the customer's registry door as an implicit alias.
     // The original envelope digest and admission still identify the purchase.
-    let native_body = hold.as_ref().filter(|h| h.offer.is_some()).map(|h| {
-        let mut native = envelope.clone();
-        native["model"] = json!(h.price.model);
-        Bytes::from(serde_json::to_vec(&native).unwrap_or_default())
-    });
+    let native_body = (hold.as_ref().is_some_and(|h| h.offer.is_some()) || policy_guard.is_some())
+        .then(|| {
+            let native = crate::team_policy::wire_input(&state.config, &admission, door, envelope);
+            Bytes::from(serde_json::to_vec(&native).unwrap_or_default())
+        });
     let (status, outcome, body_out, cause) = match forward_cancellable(
         state,
         &endpoint,
         native_body.as_ref().unwrap_or(body),
         cancellation,
+        policy_guard,
     )
     .await
     {
@@ -2239,6 +2293,9 @@ pub(crate) fn validate_classify(
     request: &ClassifyRequest,
     ctx: &mut Context,
 ) -> Result<Validated, Verdict> {
+    if crate::team_policy::required(state, caller.workspace.as_deref()).unwrap_or(true) {
+        return Err(Verdict::Refused { status:StatusCode::FORBIDDEN, code:"team_policy_unavailable", message:"Classification, jobs, plugin, and fallback routes are not qualified under this team policy.".into(), outcome:Outcome::Refused, ctx:ctx.clone() });
+    }
     // 2. Authorize the named door. The capacity the caller names is
     // the binding's lane — anything else is an unsupported
     // combination, not an option with no effect.
@@ -2333,6 +2390,15 @@ pub(crate) async fn classify_run(
     phase_auth: &PhaseAuth<'_>,
     sink: Option<tokio::sync::mpsc::UnboundedSender<ItemResult>>,
 ) -> Verdict {
+    if crate::team_policy::required(state, caller.workspace.as_deref()).unwrap_or(true) {
+        return Verdict::Refused {
+            status: StatusCode::FORBIDDEN,
+            code: "team_policy_unavailable",
+            message: "Resumed classification jobs are not qualified under this team policy.".into(),
+            outcome: Outcome::Refused,
+            ctx,
+        };
+    }
     let Validated {
         admission,
         backend,
@@ -3310,7 +3376,7 @@ async fn dispatch_admitted(
     }
     let forwarded = tokio::time::timeout_at(
         cutoff,
-        forward_cancellable(state, &backend.endpoint, &sub.body, &sub.cancellation),
+        forward_cancellable(state, &backend.endpoint, &sub.body, &sub.cancellation, None),
     )
     .await
     .unwrap_or_else(|_| Forwarded::Unavailable {
@@ -5020,14 +5086,46 @@ async fn backend_response_bytes(
 /// Forward the request body to the backend's `systemone`, bounded by the
 /// configured timeout and response cap.
 async fn forward(state: &ServeState, endpoint: &str, body: &Bytes) -> Forwarded {
-    let response = match state
+    forward_guarded(state, endpoint, body, None).await
+}
+async fn forward_guarded(
+    state: &ServeState,
+    endpoint: &str,
+    body: &Bytes,
+    policy_guard: Option<tenancy::accounts::team_policies::Guard>,
+) -> Forwarded {
+    if state.config.team_policy.is_some() && policy_guard.is_none() {
+        return Forwarded::Refused {
+            status: StatusCode::FORBIDDEN,
+            body: Bytes::from_static(b"{\"error\":{\"code\":\"team_policy_unavailable\"}}"),
+            cause: "team_policy_unavailable".into(),
+        };
+    }
+    if let Some(guard) = &policy_guard {
+        let actual = serde_json::from_slice::<Value>(body)
+            .ok()
+            .map(|v| digest_request(&v));
+        let recipient =
+            digest_request(&json!({"endpoint":endpoint,"operation":"POST /v1/systemone"}));
+        if actual.as_deref() != Some(guard.snapshot.rule.effect.source.material.as_str())
+            || guard.snapshot.rule.effect.recipients != vec![recipient]
+        {
+            return Forwarded::Refused {
+                status: StatusCode::FORBIDDEN,
+                body: Bytes::from_static(b"{\"error\":{\"code\":\"team_policy_changed\"}}"),
+                cause: "team_policy_changed".into(),
+            };
+        }
+    }
+    let bound_request = state
         .client
         .post(format!("{endpoint}/v1/systemone"))
         .header("content-type", "application/json")
-        .body(body.to_vec())
-        .send()
-        .await
-    {
+        .body(body.to_vec());
+    // The native once-only handoff already sealed these exact bytes and recipient.
+    // Later revocation blocks new handoffs and retains this in-flight admission.
+    drop(policy_guard);
+    let response = match bound_request.send().await {
         Ok(response) => response,
         Err(error) => {
             return Forwarded::Unavailable {
@@ -5102,6 +5200,7 @@ pub(crate) async fn write_receipt(
     };
     receipt.result_digest = ctx.result_digest.clone();
     receipt.usage = ctx.usage.clone();
+    receipt.team_policy = ctx.team_policy.clone();
     receipt.seal();
     let line = serde_json::to_string(&receipt).ok()?;
     let mut file = state.receipts.lock().await;

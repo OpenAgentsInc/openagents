@@ -1422,3 +1422,13 @@ remote:coderos-4080 -- ./scripts/verify-rust.sh --release`, and check that it
 checks out the pushed commit under `~/.openagents/remote-runs/openagents/`
 there and that its receipt lands in `~/.openagents/leases/placements/` here.
 Tests used only a stand-in `ssh`; no real computer was reached.
+
+## Team policy activation (REV-41, #10848)
+
+Choose actual team data classifications, exact input provenance, permitted models
+and releases, recipients, local placements, and expiry before activating
+`team_policy` on an owner deployment. Qualify native backend identity and
+disclosure rights separately. Only the isolated local Gateway SystemOne lane is
+code-qualified; cloud, customer-host, plugin, and fallback execution remain
+unavailable under this policy. No fixture uses owner hosts or funds, and policy
+review does not create spending or source grants.

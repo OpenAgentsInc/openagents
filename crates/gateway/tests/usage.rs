@@ -150,6 +150,7 @@ async fn deploy() -> Deployment {
         listen: "127.0.0.1:0".to_string(),
         registry: dir.path().to_path_buf(),
         require_workspace_membership: true,
+        team_policy: None,
         accounts: Some(account_config()),
         billing: Some(billing_config()),
         funding: None,

@@ -7438,6 +7438,77 @@
           }
         },
         {
+          "name": "policy",
+          "children": [
+            {
+              "name": "read",
+              "leaf": {
+                "path": [
+                  "customer",
+                  "policy",
+                  "read"
+                ],
+                "usage": [
+                  "policy read"
+                ],
+                "forms": [
+                  {
+                    "tokens": [
+                      {
+                        "kind": "literal",
+                        "word": "policy"
+                      },
+                      {
+                        "kind": "literal",
+                        "word": "read"
+                      }
+                    ]
+                  }
+                ],
+                "summary": "Read the selected native team policy reference.",
+                "effect": "read_only",
+                "runs_on": "connected_computer"
+              }
+            },
+            {
+              "name": "review",
+              "leaf": {
+                "path": [
+                  "customer",
+                  "policy",
+                  "review"
+                ],
+                "usage": [
+                  "policy review --input FILE"
+                ],
+                "forms": [
+                  {
+                    "tokens": [
+                      {
+                        "kind": "literal",
+                        "word": "policy"
+                      },
+                      {
+                        "kind": "literal",
+                        "word": "review"
+                      },
+                      {
+                        "kind": "option",
+                        "name": "input",
+                        "value": "FILE",
+                        "open": true
+                      }
+                    ]
+                  }
+                ],
+                "summary": "Review exact versioned data and execution limits from private input.",
+                "effect": "grants",
+                "runs_on": "connected_computer"
+              }
+            }
+          ]
+        },
+        {
           "name": "team",
           "children": [
             {

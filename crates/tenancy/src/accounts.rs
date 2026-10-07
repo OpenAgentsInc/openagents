@@ -32,6 +32,7 @@
 //! `docs/decision-models/service/workspace-membership.md`, not implemented here.
 
 pub mod commercial;
+pub mod team_policies;
 
 use std::collections::BTreeMap;
 use std::io::{Read, Write};
@@ -261,6 +262,9 @@ pub struct Store {
     /// Explicit commercial attribution; empty books preserve old digests.
     #[serde(default, skip_serializing_if = "commercial::Book::is_empty")]
     pub commercial: commercial::Book,
+    /// Current team disclosure limits; empty books preserve legacy digests.
+    #[serde(default, skip_serializing_if = "team_policies::Book::is_empty")]
+    pub team_policies: team_policies::Book,
     /// The digest over every field above.
     pub digest: String,
 }
@@ -419,6 +423,7 @@ impl Store {
             }
         }
         self.commercial.validate(self)?;
+        self.team_policies.validate(self)?;
         Ok(())
     }
 }
@@ -891,6 +896,7 @@ impl Accounts {
             invitations: BTreeMap::new(),
             referrals: referrals::Book::default(),
             commercial: commercial::Book::default(),
+            team_policies: team_policies::Book::default(),
             digest: String::new(),
         };
         store.seal();
@@ -2422,6 +2428,7 @@ mod tests {
             invitations: BTreeMap::new(),
             referrals: referrals::Book::default(),
             commercial: commercial::Book::default(),
+            team_policies: team_policies::Book::default(),
             digest: String::new(),
         };
         store.seal();

@@ -15,6 +15,8 @@ mod funding_receiver;
 mod referrals;
 #[path = "accounts_team/mod.rs"]
 mod team;
+#[path = "accounts_team_policy/mod.rs"]
+mod team_policy;
 
 use std::collections::BTreeMap;
 use std::sync::Arc;
@@ -91,6 +93,7 @@ async fn deploy(accounts: Option<config::Accounts>, require_membership: bool) ->
         listen: "127.0.0.1:0".to_string(),
         registry: dir.path().to_path_buf(),
         require_workspace_membership: require_membership,
+        team_policy: None,
         accounts,
         money: None,
         max_body_bytes: 1_048_576,
@@ -1831,6 +1834,7 @@ async fn stores_install_under_accounts_config_and_validate() {
         listen: "127.0.0.1:0".to_string(),
         registry: deployment.dir.path().to_path_buf(),
         require_workspace_membership: false,
+        team_policy: None,
         accounts: Some(config::Accounts {
             signup_tenant: Some("acme".to_string()),
             session_ttl_secs: 28_800,

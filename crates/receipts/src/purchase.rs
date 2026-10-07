@@ -153,6 +153,8 @@ pub struct Context {
     pub can_invoke: bool,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub commercial: Option<CommercialRef>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub team_policy: Option<crate::team_policy::Reference>,
 }
 
 fn identity(value: &str) -> bool {
@@ -176,6 +178,11 @@ fn digest<T: Serialize>(value: &T) -> String {
 }
 impl Context {
     pub fn validate(&self) -> Result<(), &'static str> {
+        if self.team_policy.as_ref().is_some_and(|p| {
+            p.workspace != self.workspace || p.version == 0 || !crate::team_policy::hash(&p.digest)
+        }) {
+            return Err("Invalid native team policy reference.");
+        }
         if self.schema != SCHEMA
             || [
                 &self.account,
@@ -307,6 +314,7 @@ mod tests {
             },
             can_invoke: true,
             commercial: None,
+            team_policy: None,
         };
         Approval {
             quote: Quote {

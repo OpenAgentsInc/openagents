@@ -423,3 +423,29 @@ review and fallback calls validate their own envelopes against classification
 bounds when their doors declare them, before reservation.
 Oversized envelopes receive `context_limit` without truncation. Token capacity
 remains unknown unless a backend-specific mechanism establishes it.
+
+
+## Exact team data policy
+
+The optional `team_policy` configuration qualifies literal-loopback SystemOne
+backends by their exact native forwarding URL and placement. An owner reviews
+versioned scopes in the existing Accounts book through the authenticated
+workspace `team-policy` route. Each scope pins the complete canonical request
+and transmitted material digests, owner-chosen data classes, native model and
+artifact release, recipients, placement, and expiry. Administrators can only
+remove existing scopes or shorten expiry. Caller classification labels do not
+establish data rights.
+
+The native workspace policy remains binding if route configuration disappears.
+Unqualified cloud, customer-host, plugin, classification, jobs, and fallback
+routes refuse before new effects. Paid-plugin quote, approval, and dispatch
+also refuse in the selected customer; original private financial recovery
+keeps its existing native authentication requirements. A policy grants no key,
+wallet, host, private-source, or publication authority.
+
+SystemOne seals its original policy and member snapshot before reservation,
+rechecks current authority before its once-only handoff, and forwards only the
+reviewed canonical bytes. A changed scope releases newly admitted undispatched
+work. Prepared and handed-off request identities cannot be blindly retried,
+including after restart or a lost reply. Receipts retain the original snapshot;
+current policy changes do not relabel earlier results or remove read rights.

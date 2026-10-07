@@ -300,6 +300,12 @@ fn execute(a: &Args) -> Result<View, String> {
     if command == "cancel" {
         return store.cancel_plugin(id);
     }
+    if command != "recover" {
+        let current = crate::runtime().block_on(store.current_selection())?;
+        if current.context.team_policy.is_some() {
+            return Err("Paid plugin quote, approval, and dispatch are unavailable under this team policy; use original read-only recovery for existing payments.".into());
+        }
+    }
     let transport = Http::new()?;
     if command == "quote" {
         let current = crate::runtime().block_on(store.current_selection())?;
@@ -470,6 +476,9 @@ fn execute(a: &Args) -> Result<View, String> {
     let current = crate::runtime().block_on(store.current_selection())?;
     let commercial = crate::runtime()
         .block_on(store.commercial_selection(receipts::purchase::CommercialProduct::Plugin))?;
+    if current.context.team_policy.is_some() {
+        return Err("Paid plugin dispatch is unavailable under the current team policy.".into());
+    }
     if command == "approve" {
         return store.approve_plugin_reviewed(
             id,

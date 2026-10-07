@@ -7,6 +7,7 @@ description = "The tenant-to-artifact registry: a versioned binding from tenant 
 publish.workspace = true
 
 [dependencies]
+receipts = { path = "../receipts" }
 gym = { path = "../gym" }
 getrandom = "0.4"
 libc = "0.2"
