@@ -1,0 +1,24 @@
+[package]
+name = "pylon"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+publish.workspace = true
+description = "A NIP-PYLON compute provider and client: beacons, free NIP-CJ text jobs on a Psionic model server, receipts, and pool aggregates."
+
+[dependencies]
+nostr = { path = "../nostr" }
+nostr-transport = { path = "../nostr-transport" }
+reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls"] }
+secp256k1 = { version = "0.31.1", features = ["rand"] }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+tokio = { version = "1", features = ["macros", "net", "rt-multi-thread", "signal", "sync", "time"] }
+
+[dev-dependencies]
+futures-util = "0.3"
+tempfile = "3"
+tokio-tungstenite = "0.30.0"
+
+[lints]
+workspace = true

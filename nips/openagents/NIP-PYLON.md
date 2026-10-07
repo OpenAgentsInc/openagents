@@ -1,7 +1,7 @@
 # NIP-PYLON — Compute Pylons and Pools
 
-`draft` `optional` — v1, 2026-10-07. **Designed**: no publisher, reader, or
-aggregator is implemented. The [shared contracts](contracts.md) are
+`draft` `optional` — v1, 2026-10-07. **Partly implemented** for free work:
+see [Implementation status](#implementation-status). The [shared contracts](contracts.md) are
 normative. The [Verse compute vision and spec](../../docs/compute/verse-compute.md)
 is the design this profile serves.
 
@@ -333,9 +333,20 @@ A reader refuses:
 
 ## Implementation status
 
-None. The [Verse compute plan](../../docs/compute/verse-compute.md#phased-plan)
-orders the work: a local projection with no events first, then beacons,
-receipts, and aggregates on a test network, then paid work.
+Phase P1 of the [Verse compute plan](../../docs/compute/verse-compute.md#phased-plan),
+for free work (2026-10-07):
+
+- `crates/nostr` (`nostr::pylon`) builds and verifies beacons, receipts,
+  and aggregates; judges freshness and generation; recomputes aggregates
+  under a policy document; and projects the `pylon` world state.
+- `crates/pylon` publishes beacons, serves `cj-conversation` jobs, buys
+  and publishes receipts, and publishes aggregates (`openagents pylon`).
+
+Not implemented: check labels (the aggregate's `checks` set is always
+empty), NIP-OA `auth` tags (a beacon that carries one is refused, not
+verified), paid receipts in practice, the `wellspring` projection, and the
+`nip-pylon-v1` relay extension. A service's `capability` is a qualified ID
+(`<pylon key>:pylon/text-generation`) rather than a full DefinitionRef.
 
 ## Conformance
 

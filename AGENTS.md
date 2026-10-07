@@ -775,6 +775,18 @@ uses, and marks which are implemented and which are only specified.
   station-keeping, the L1 tidal field, and the EVA construction sandbox built
   on `crates/physics`. No renderer or I/O. Keep named constants and the approximations listed in
   `docs/verse/lagrange-1.md` accurate; convert physics regressions into tests.
+- `crates/pylon` — the NIP-PYLON compute provider and its client: beacons
+  (`30200`), free NIP-CJ conversation jobs run on a local Psionic model
+  server, buyer receipts (`3201`), pool aggregates (`30201`), and
+  `RelayField`, the Pylon Field's relay source. The records themselves are
+  `nostr::pylon`. `openagents pylon` is its command;
+  `scripts/pylon-psionic.sh` runs a pylon. Read `docs/compute/pylon.md`
+  before changing admission or what a beacon carries.
+- `crates/psionic` — Psionic's serving path (30 crates), imported from
+  OpenAgentsInc/psionic, as its own Cargo workspace excluded from the
+  root. Build it with `--manifest-path crates/psionic/Cargo.toml`, and
+  CUDA builds only on a machine with the toolkit. Read
+  `docs/psionic/README.md`.
 - `crates/eval-runner` — the hosted eval runner: a NIP-CJ execution
   worker (`nostr::eval_ext::hosted`) that runs extension test sets for the
   phone's chat on our computers through `crates/ext-eval`, for catalog

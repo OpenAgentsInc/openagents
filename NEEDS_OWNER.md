@@ -1,3 +1,25 @@
+## The RTX 4080 pylon is running (#10921)
+
+`coderos-4080` serves Qwen3.5 0.8B through Psionic on CUDA as the pylon
+`npub1jk782ggcuyvls5khxaq7tay58r84a8wwfucc2kgszn9m0sc3aveq3acdyu`, on
+`relay.openagents.com`, admitting only this Mac's buyer key
+(`npub109epejnmy639a6evhwqzmmkz9mtcakm0ayh8vjtwsrmh9wk5hl0sug9pvd`). Two
+transient user units run it, `pylon-psionic` and `pylon-provider`, from a
+scratch checkout in `~/work/pylon-p1` on the box; no unit file is
+installed, so a reboot also stops it. Try it with `openagents pylon ask
+"..."`. To stop it:
+
+```sh
+ssh coderos-4080 'PYLON_DIR=~/work/pylon-p1/run PYLON_TARGET=~/work/pylon-p1/target ~/work/pylon-p1/openagents/scripts/pylon-psionic.sh stop'
+```
+
+To run your own from a checkout on the box, use `scripts/pylon-psionic.sh
+setup` and `start --allow <your npub>` (`docs/compute/pylon.md`); delete
+`~/work/pylon-p1` afterward (about 20 GB with build output). Still yours to
+decide: whether test traffic belongs on the production relay, and the P1
+captures (`pylon-field-two-machines.png`, `wellspring-live.png`), which wait
+for P0's field in Everglade.
+
 ## Cloud BYOK credentials (#10917)
 
 To delegate with an OpenAI API key, fund or replace the configured credential;

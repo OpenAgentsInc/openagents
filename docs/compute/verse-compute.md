@@ -132,7 +132,9 @@ tied spare gaming hardware to "one inference mesh" (line 58).
 | Everglade, the town clock, townsfolk, and rumors | Implemented | `crates/verse-zone-everglade`, `crates/town-clock`, `crates/townsfolk` |
 | The Agora building and its bell hook | Built; agents and boards planned | `layout/agora.rs`, [sales floor](../sales/agent-sales-floor.md) |
 | A decorative pylon in the Grid's plaza | Implemented, decoration only | `crates/verse/src/world.rs` (`fn pylon`) |
-| A pylon, a pool, or a provider market | Not implemented | This page |
+| Pylon beacons, free jobs, receipts, and pool aggregates (P1) | Implemented; free only | `crates/pylon`, `nostr::pylon`, [Pylon guide](pylon.md) |
+| Psionic, the model runtime | Imported into the monorepo | `crates/psionic`, [Psionic](../psionic/README.md) |
+| A paid provider market | Not implemented | This page |
 
 ## The vision: compute you can see
 
@@ -612,6 +614,32 @@ another client's field within 60 seconds; a free job from Alice produces a
 receipt that the next aggregate counts; a tampered receipt or aggregate is
 refused in a test; captures `pylon-field-two-machines.png` and
 `wellspring-live.png`.
+
+**Built (2026-10-07).** [Run a Pylon, and use one](pylon.md) is the guide.
+
+- `nostr::pylon` builds and verifies all three kinds, judges beacon
+  freshness and generation rollback, computes and recomputes pool
+  aggregates under a policy document, and projects a beacon into a `pylon`
+  world state. Tests refuse tampered beacons, receipts, and aggregates.
+- `crates/pylon` holds the provider, the buyer client, the aggregator, and
+  `RelayField`, the relay source for the Pylon Field. `openagents pylon
+  serve|ask|status|pool|whoami` exposes them, as does a small `pylon`
+  binary for provider machines.
+- The model runtime is Psionic, which now lives in this monorepo
+  ([`crates/psionic`](../psionic/README.md)). The provider calls a local
+  `psionic-openai-server` over loopback. On the RTX 4080 box it serves
+  Qwen3.5 0.8B on CUDA.
+- Jobs travel on the CJ conversation lane (`25900`/`26900`/`27000`,
+  NIP-44). The provider admits an allowlist, rate-limits each buyer, bounds
+  slots, input, output, and time, and logs no content.
+- `scripts/pylon-psionic.sh` sets up and runs a pylon as transient user
+  units; `scripts/pylon-demo.sh` runs the cross-machine demo against
+  `relay.openagents.com`.
+
+Not yet: `coder host share` (the provider is a separate command, not part of
+the Coder host), the `background` lease, Alice's routing to the pool, Verse
+drawing `RelayField` (P0's field is still in progress), NIP-OA owner tags,
+and the two captures.
 
 ### P2: checks and reputation
 

@@ -68,6 +68,8 @@ microcoder = { path = "../microcoder" }
 # keychain or 0600 files.
 model-access = { path = "../model-access", features = ["http", "keychain"] }
 nostr = { path = "../nostr" }
+# `openagents pylon`: NIP-PYLON beacons, free jobs, receipts, and pools.
+pylon = { path = "../pylon" }
 openagents-wallet = { path = "../wallet" }
 # Idempotency keys for wallet payments.
 uuid = { version = "1", features = ["v4"] }

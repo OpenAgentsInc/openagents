@@ -206,6 +206,7 @@ Keys, relays, and money:
   pay          Sell many priced routes from one wallet: x402 and the HTTP Payment scheme.
   kb           Search, publish, and sync knowledge entries (NIP-KB).
   relay        Query, publish to, and follow a relay.
+  pylon        Share this computer's model as a NIP-PYLON pylon, or use one.
 
 Playtesting:
   playtest     Triage inbox: read reports, draft and file issues, keep the triage log.
@@ -388,6 +389,7 @@ fn main() -> ExitCode {
         "reach" => reach::run(&output, &rest),
         "playtest" => playtest::run(&output, &rest),
         "relay" => relay::run(&output, &rest),
+        "pylon" => pylon::cli::run(output.json(), &rest),
         #[cfg(unix)]
         "service" => service::run(&output, &rest),
         #[cfg(unix)]

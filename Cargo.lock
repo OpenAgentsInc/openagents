@@ -9983,6 +9983,7 @@ dependencies = [
  "pay-ledger",
  "playtest",
  "plugin",
+ "pylon",
  "rcgen",
  "receipts",
  "reqwest 0.12.28",
@@ -11457,6 +11458,22 @@ name = "pxfm"
 version = "0.1.30"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "d55d956fa96f5ec02be2e13af0e20391a5aa83d6a074e3ad368959d0fab299ea"
+
+[[package]]
+name = "pylon"
+version = "0.1.0"
+dependencies = [
+ "futures-util",
+ "nostr",
+ "nostr-transport",
+ "reqwest 0.12.28",
+ "secp256k1 0.31.1",
+ "serde",
+ "serde_json",
+ "tempfile",
+ "tokio",
+ "tokio-tungstenite 0.30.0",
+]
 
 [[package]]
 name = "qrcodegen"
