@@ -24,6 +24,7 @@ use verse_pbr::water::{
     Body, Kind, Preset, Source, Water, WaterPatch, WaterSurface, WaterVertex,
     bake::{self, Bake},
     ripple::Wet,
+    under::EyeSurface,
 };
 use verse_world::social::everglade_water::{self as ew, PONDS, RUN};
 use verse_world::water::{
@@ -229,16 +230,40 @@ pub enum WaterEvent {
     Drip { at: Vec3 },
 }
 
-/// Marks the body `eye` is in, so its surface shades from below.
+/// Marks the body `eye` is in, so its surface shades from below, and
+/// gives the frame the surface over the eye (the first body under it,
+/// ripples included), where the renderer splits the view at the
+/// waterline (`verse_pbr::water::under`).
 pub fn see_from(water: &mut Water, eye: Vec3) {
     let p = DVec2::new(f64::from(eye.x), f64::from(eye.z));
+    water.eye = None;
     for (k, body) in ew::water().bodies().iter().enumerate().take(water.count) {
-        let inside = body
-            .surface()
-            .sample(p.x, p.y, 0)
-            .is_some_and(|s| f64::from(eye.y) < s.height);
+        let sample = body.surface().sample(p.x, p.y, 0);
+        let inside = sample.is_some_and(|s| f64::from(eye.y) < s.height);
         water.bodies[k].eye_inside = inside;
+        if let (Some(s), None) = (sample, water.eye) {
+            let n = s.normal;
+            water.eye = Some(EyeSurface {
+                body: k,
+                height: s.height as f32 + water.ripple_height(Vec2::new(eye.x, eye.z)),
+                slope: [(-n.x / n.y) as f32, (-n.z / n.y) as f32],
+            });
+        }
     }
+}
+
+/// Motes in the water around `eye` when it is under the surface `water`
+/// gives for it ([`see_from`]), fading in over the first few centimeters.
+#[must_use]
+pub fn motes(water: &Water, eye: Vec3) -> Vec<crate::fx::Sprite> {
+    let mut out = Vec::new();
+    if let Some(s) = water.eye {
+        let amount = ((s.height - eye.y) / 0.15).clamp(0.0, 1.0);
+        let tint = water.bodies[s.body].scatter;
+        let count = crate::fx::motes::ZONE_COUNT;
+        crate::fx::motes::underwater(eye, s.height, water.time, count, amount, tint, &mut out);
+    }
+    out
 }
 
 /// The player's breath for the HUD.

@@ -122,6 +122,23 @@ struct Frame {
     // The planar mirror: x 1 when drawn this frame, y its plane's level
     // (m), z the body it mirrors, w unused.
     water_mirror: vec4<f32>,
+    // Under the water (`water::under`, phase W7). The waterline: the
+    // near-plane point behind normalized device coordinates (x, y) stands
+    // x + y·ndc.x + z·ndc.y m over the surface; w 1 when the view has one.
+    water_line: vec4<f32>,
+    // x bodies in the list, y caustic waves, z their layers, w the sun
+    // shafts' samples (0 for none).
+    water_under: vec4<f32>,
+    // x the eye's body (−1 for none), y distortion, z 1 for the meniscus,
+    // w the eye body's level (m).
+    water_eye: vec4<f32>,
+    // Per caustic wave: direction (x, z), wavenumber, and amplitude; then
+    // ω, phase, and two zeros.
+    water_caustic: array<vec4<f32>, 16>,
+    // Per body in the list: its bounds (min x, min z, max x, max z); its
+    // level plane (height, slope along x, along z) and residual (−1 for the
+    // sea); its extinction and the caustics' strength.
+    water_list: array<vec4<f32>, 24>,
 };
 
 @group(0) @binding(0) var<uniform> f: Frame;
@@ -234,7 +251,7 @@ fn expose(luminance: vec3<f32>) -> vec3<f32> {
 fn neon_fog(color: vec3<f32>, world: vec3<f32>, weight: f32) -> vec3<f32> {
     // Under water the water's own fog (`water_view`) stands in for the
     // air's.
-    if f.neon.w < 0.5 || f.water.z > 0.5 {
+    if f.neon.w < 0.5 || water_through(world) {
         return color;
     }
     let d = distance(world.xz, f.eye.xz);
@@ -411,8 +428,8 @@ fn fs_daylight(i: SkyOut) -> @location(0) vec4<f32> {
     c += f.sky_sun.rgb * disc * 6.0 * (1.0 - 0.8 * density);
     // Under water, only Snell's window above shows the sky; below the
     // horizon the eye looks into the water's own color.
-    if f.water.z > 0.5 && d.y < 0.05 {
-        c = water_fog();
+    if water_under_pixel(i.clip.xy) && d.y < 0.05 {
+        c = water_fog() + water_shafts(d, WATER_SHAFT_REACH);
     }
     // Dither below one 8-bit step against banding in the gradient.
     c += (noise_ign(i.clip.xy) - 0.5) / 255.0;
@@ -841,6 +858,9 @@ fn shade(i: Shading) -> vec3<f32> {
     // browser's WebGPU enforces, so take the footprint before branching on
     // the per-fragment material code.
     let footprint = length(fwidth(i.local));
+    // The pixel's footprint in the world, m, which fades caustics finer
+    // than it.
+    let world_footprint = length(fwidth(i.world));
 
     // Aluminized Kapton: tilted facets a few centimeters across.
     if code == 2 {
@@ -908,7 +928,7 @@ fn shade(i: Shading) -> vec3<f32> {
         if k == 0 {
             l = f.sun.xyz;
             // Under the sea the sun arrives dimmed and gathered into caustics.
-            e = vec3<f32>(f.sun.w) * select(vec3<f32>(1.0), f.key_tint.rgb, f.key_tint.w > 0.5) * water_sun(i.world);
+            e = vec3<f32>(f.sun.w) * select(vec3<f32>(1.0), f.key_tint.rgb, f.key_tint.w > 0.5) * water_sun(i.world, world_footprint);
             angular = f.sun_disc.x;
         } else {
             l = f.earth.xyz;

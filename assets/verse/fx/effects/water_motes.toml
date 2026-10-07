@@ -1,0 +1,25 @@
+# Silt and plankton suspended in the water around an eye under the
+# surface (`docs/verse/water.md`, phase W7). `fx::motes` places and moves
+# the specks itself and draws them through `fx::Style`, so only the first
+# emitter's sheet, curves, and blend apply; its color is multiplied by the
+# water's own. The rate and life make it previewable on its own.
+description = "Specks of silt drifting in the water under the surface."
+
+[[emitter]]
+name = "speck"
+sheet = "sparks"
+frames = [1, 1]
+animate = "random"
+blend = "alpha"
+light = "lit"
+rate = 20.0
+life = [6.0, 9.0]
+shape = "sphere"
+radius = 2.0
+speed = [0.0, 0.02]
+drag = 0.6
+wander = 0.03
+size = [0.008, 0.016]
+color = [1.4, 1.5, 1.4]
+alpha = [[0.0, 0.0], [0.2, 0.8], [0.8, 0.8], [1.0, 0.0]]
+priority = 1

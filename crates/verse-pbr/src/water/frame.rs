@@ -277,6 +277,10 @@ pub struct Water {
     /// [`Self::hull_count`] apply.
     pub hulls: [Hull; MAX_HULLS],
     pub hull_count: usize,
+    /// The surface over the eye when it stands in or near a body, from the
+    /// zone's surface query: the physical renderer splits the view at it
+    /// ([`super::under`]). It finds the sea's itself.
+    pub eye: Option<super::under::EyeSurface>,
 }
 
 impl Default for Water {
@@ -305,6 +309,7 @@ impl Water {
             wet: None,
             hulls: [Hull::default(); MAX_HULLS],
             hull_count: 0,
+            eye: None,
         };
         water.set_detail(0.3, 0.12, 2.4, 0.016);
         water
@@ -572,6 +577,7 @@ impl Water {
                     && finite(w.phase)
             })
             && (0.0..=1.0).contains(&self.caustics)
+            && self.eye.is_none_or(|e| e.valid(self.count))
             && self.controls.valid()
             && self.source_count <= MAX_SOURCES
             && self.hull_count <= MAX_HULLS

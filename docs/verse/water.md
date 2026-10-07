@@ -1033,6 +1033,41 @@ field budget. Captures and 1080p water timings of the bay and the Lab per
 tier are in `bench/verse/2026-10-07/water-w10/`
 (`cargo run --release -p verse-zone-water --example coast_capture`).
 
+**Status (W7, 2026-10-07).** `verse_pbr::water::under` holds what the
+physical renderer needs under the water. The zone's surface query
+(`Water::eye`, set by Everglade's `see_from`; the renderer finds the sea's
+itself) gives the surface over the eye as a tangent plane, and
+`under::line` turns it into the near-plane point's height over the water,
+which is affine across the screen, so three numbers in the frame split
+every pixel into air and water where the near plane straddles the surface,
+on every tier and with no pass. Pixels under the line take per-channel
+Beer–Lambert fog from the eye's body, the sky below Snell's window turns
+to the water's color, and the surface shades from below (Snell's window
+and total internal reflection, now bent through the copy on Medium and
+High). Medium and High also waver the view and draw the meniscus inside
+the existing output pass, and march 8 or 16 samples of the caustic field
+along the view for sun shafts. Caustics light every lit surface under any
+body in a list of 4, 8, or 8 (each body's wet bounds and a plane through
+its rest levels, so a stream's banks stay dry): the refracted light
+field's area ratio from 4, 6, or 8 (two layers) of the frame's own detail
+waves [Wallace16], normalized to keep the mean light, faded with depth
+and pixel footprint, extinguished along the refracted sun's path, and
+blocked by the sun's shadow map [Guardado04]. Low uses those four waves in
+closed form rather than a baked flipbook, because the scene layout that
+the sprite pipeline shares has no free sampled-texture slot under WebGL2's
+16; it adds no pass, target, or texture. Motes are stateless sprites in
+the `water_motes` look (`verse_core::fx::motes`) wrapped around the eye.
+`verse_engine::audio::Underwater` closes the mix to a 450 Hz two-pole
+low-pass with a low ambience (`Mixer::underwater`,
+`audio_native::Output::underwater`); no zone drives native audio yet. At
+1080p on an Apple M5 Max under the quiet lease, the water in the W7 views
+cost at most 0.64, 1.57, and 3.78 ms on Low, Medium, and High (budgets
+1.5, 2.5, and 4 ms). Captures (a synthetic pond with posts, Everglade's
+Lantern Pond, and the Lab's bed, every tier) are in
+`bench/verse/2026-10-07/water-w7/`; the pond pictures on every tier
+changed, since beds now take caustics. The imported renderer's
+`scene.wgsl` has no caustics yet: no zone draws water through it.
+
 ### Coupling with `crates/physics`
 
 New module `physics::water`:

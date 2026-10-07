@@ -361,5 +361,9 @@ pub(super) fn mirror_frame(
     ];
     frame.water_screen = [0.0; 4];
     frame.water_mirror = [0.0; 4];
+    // The mirror looks from above the plane alone: nothing of its view lies
+    // under the water.
+    frame.water_line = [0.0; 4];
+    frame.water_eye[0] = -1.0;
     frame
 }

@@ -1557,3 +1557,12 @@ service-level target or publishing aggregates. The isolated fixtures establish
 native report and browser/export behavior with fake provider responses and
 synthetic balances; they establish no actual funding, external adoption,
 production performance, independent remote attestation, or earned cash revenue.
+## Underwater on a phone and in the browser (#10779)
+
+Diving, the split waterline, caustics, sun shafts, and motes were checked
+in offscreen desktop captures only (`bench/verse/2026-10-07/water-w7/`). On
+a phone (Medium), dive into Lantern Pond and check that the view turns
+blue-green, the waterline splits the screen while surfacing, caustics move
+on the bed and on your character, and the frame rate holds; do the same in
+`everglade-web` under WebGL2 (Low). Native underwater sound is wired in
+the mixer but no zone drives it yet.

@@ -1076,6 +1076,23 @@ impl WaterLab {
         }
         mesh.extend(&painter.mesh);
         self.fx.draw(&mut mesh.sprites);
+        // Motes in the sea around an eye under its surface, which the
+        // renderer finds from the sea's own swell (`water::under`).
+        if let Some(water) = mesh.neon.as_ref().and_then(|n| n.water.as_ref())
+            && water.sea
+        {
+            let surface = verse_pbr::water::under::EyeSurface::of_sea(water, eye);
+            let amount = ((surface.height - eye.y) / 0.15).clamp(0.0, 1.0);
+            verse_core::fx::motes::underwater(
+                eye,
+                surface.height,
+                water.time,
+                verse_core::fx::motes::ZONE_COUNT,
+                amount,
+                water.sea_body().scatter,
+                &mut mesh.sprites,
+            );
+        }
         mesh
     }
 

@@ -29,6 +29,12 @@ struct Post {
     // the grade table's coordinates: its floor, one over its span in stops,
     // and its edge length.
     output: vec4<f32>,
+    // Under the water (`water::under`, Medium and High): the waterline,
+    // whose near-plane point behind normalized device coordinates (x, y)
+    // stands x + y·ndc.x + z·ndc.y m over the surface (w 1 when present);
+    // then the distortion under it (screen fractions), 1 for the meniscus,
+    // and two zeros.
+    water: array<vec4<f32>, 2>,
 };
 
 @group(0) @binding(0) var<uniform> p: Post;
@@ -201,10 +207,53 @@ fn hash(q: vec2<f32>) -> f32 {
     return fract(r.x * r.y);
 }
 
+// The waterline at `uv`: how far the pixel's near-plane point stands over
+// the water, in pixels across the line (negative under it), and the
+// line's unit normal on the screen toward the air. Far above when the
+// view has no waterline.
+fn waterline(uv: vec2<f32>, size: vec2<f32>) -> vec3<f32> {
+    let l = p.water[0];
+    if l.w < 0.5 {
+        return vec3<f32>(1e6, 0.0, -1.0);
+    }
+    let ndc = vec2<f32>(uv.x * 2.0 - 1.0, 1.0 - uv.y * 2.0);
+    let over = l.x + l.y * ndc.x + l.z * ndc.y;
+    // Meters per pixel along each axis, uv's y running down.
+    let grad = vec2<f32>(l.y * 2.0 / size.x, -l.z * 2.0 / size.y);
+    let g = max(length(grad), 1e-9);
+    return vec3<f32>(over / g, grad / g);
+}
+
+// Where to read the scene under the water: the view wavers a little, as
+// through moving water in front of the lens; and inside the meniscus, the
+// band of water clinging to the lens where the surface crosses it, the
+// view is pulled across the line as through a thin lens of water.
+fn water_uv(uv: vec2<f32>, size: vec2<f32>) -> vec2<f32> {
+    let line = waterline(uv, size);
+    var out = uv;
+    let t = p.lens.z;
+    let amount = p.water[1].x;
+    if line.x < 0.0 && amount > 0.0 {
+        // Fade in over the first pixels under the line so it keeps a clean
+        // edge.
+        let edge = smoothstep(0.0, 12.0, -line.x);
+        let wave = vec2<f32>(
+            sin(uv.y * 31.0 + t * 1.7) + 0.5 * sin(uv.y * 57.0 - uv.x * 13.0 + t * 2.9),
+            cos(uv.x * 27.0 - t * 1.3) + 0.5 * sin(uv.x * 49.0 + uv.y * 17.0 + t * 2.3)
+        );
+        out += wave * amount * edge;
+    }
+    if p.water[1].y > 0.5 {
+        let band = 1.0 - smoothstep(0.0, 9.0, abs(line.x));
+        out -= line.yz * band * 5.0 / size;
+    }
+    return out;
+}
+
 @fragment
 fn fs_output(i: Out) -> @location(0) vec4<f32> {
-    let uv = i.uv;
     let size = vec2<f32>(textureDimensions(source));
+    let uv = water_uv(i.uv, size);
     // Lateral chromatic aberration grows toward the corners.
     let from_center = uv - 0.5;
     let shift = from_center * p.lens.x * 2.0 / size;
@@ -229,6 +278,14 @@ fn fs_output(i: Out) -> @location(0) vec4<f32> {
             let fade = smoothstep(0.0, 0.15, edge) * (1.0 - smoothstep(0.3, 0.5, length(g - 0.5)));
             c += textureSampleLevel(bloom, clamp_linear, g, ghost_level).rgb * tints[k] * fade * p.lens.y * 2.0e-5;
         }
+    }
+    // The meniscus: a dark line where the surface meets the lens, the
+    // water's edge catching the light just above it.
+    if p.water[1].y > 0.5 {
+        let line = waterline(i.uv, size);
+        let dark = exp(-(line.x * line.x) / 2.2);
+        let bright = exp(-((line.x - 2.6) * (line.x - 2.6)) / 1.6);
+        c = c * (1.0 - 0.55 * dark) + vec3<f32>(luma(c) * 0.6 + 0.02) * bright * 0.6;
     }
     // Exposure adaptation, clamped to the camera's range.
     if p.lens.w > 0.5 {

@@ -5,8 +5,13 @@
 // this renderer draws so far: the Water Lab's spells on the sea, falling
 // sheets, free orbs of water, and the light under the sea on every lit
 // surface (Beer–Lambert extinction and in-scatter along the view and sun
-// paths, and analytic caustics from the refracted light field's area
-// ratio, after Evan Wallace's "WebGL Water", 2011).
+// paths), and, since W7 (`water::under`), the view from under any body:
+// the per-pixel split at the waterline, underwater fog, sun shafts, and
+// caustics on every lit surface under a listed body, from the refracted
+// light field's area ratio (Wallace, "Rendering Realtime Caustics in
+// WebGL", 2016), attenuated by depth and blocked by the sun's shadow map
+// (Guardado and Sánchez-Crespo, "Rendering Water Caustics", GPU Gems,
+// chapter 2, 2004).
 
 @group(2) @binding(3) var<uniform> water: WaterUniform;
 @group(2) @binding(4) var water_tile: texture_2d<f32>;
@@ -152,9 +157,10 @@ fn water_wetness(p: vec2<f32>) -> f32 {
     return f.water_wet.w * (1.0 - smoothstep(f.water_wet.z - 1.0, f.water_wet.z + 0.5, r));
 }
 
-// ---- Light under the sea (read by every lit fragment through `shade`).
+// ---- Light under the water (read by every lit fragment through `shade`,
+// and by the sky; `water::under`, phase W7).
 
-// Light scattered back toward the eye from inside the sea: the frame's
+// Light scattered back toward the eye from inside the water: the frame's
 // in-scatter color times the sun's and the sky's light falling on it.
 fn water_sea_inscatter() -> vec3<f32> {
     let sun = f.sun.w * max(f.sun.y, 0.0) * water_key_tint();
@@ -165,43 +171,44 @@ fn water_sea_inscatter() -> vec3<f32> {
     return f.water_scatter.rgb * (sun + sky) / PI;
 }
 
-// The analytic caustics' focusing at a point `depth` under the sea: one
-// where the light arrives evenly, more where the surface's curvature
-// gathers it into lines, less between them.
-const CAUSTIC_WAVES: array<vec4<f32>, 5> = array<vec4<f32>, 5>(
-    vec4<f32>(0.80, 0.60, 4.6, 0.020),
-    vec4<f32>(-0.45, 0.89, 5.9, 0.016),
-    vec4<f32>(0.10, -0.99, 3.7, 0.022),
-    vec4<f32>(-0.93, -0.36, 7.3, 0.011),
-    vec4<f32>(0.62, -0.78, 9.1, 0.008)
-);
-fn water_caustics(world: vec3<f32>, depth: f32) -> f32 {
-    let strength = f.water.w;
-    if strength <= 0.0 {
+// How far the near-plane point behind normalized device coordinates
+// `ndc` stands over the water's surface, m (`water::under::line`): the
+// pixel looks out from under the water where it is negative. Positive
+// everywhere when the view has no waterline.
+fn water_line_at(ndc: vec2<f32>) -> f32 {
+    if f.water_line.w < 0.5 {
         return 1.0;
     }
-    let t = f.water_scatter.w;
-    // Where the light reaching this point crossed the surface.
-    let p = world.xz - f.sun.xz / max(f.sun.y, 0.25) * depth;
-    // Refraction's lever: (1 - 1/n) of the depth, held short so deep water
-    // doesn't fold into noise.
-    let lever = 0.25 * min(depth, 2.8);
-    var hxx = 0.0;
-    var hzz = 0.0;
-    var hxz = 0.0;
-    for (var i = 0; i < 5; i++) {
-        let w = CAUSTIC_WAVES[i];
-        let k = w.z;
-        let theta = k * dot(w.xy, p) - sqrt(9.81 * k) * t + f32(i) * 1.7;
-        let m = -w.w * k * k * sin(theta);
-        hxx += m * w.x * w.x;
-        hzz += m * w.y * w.y;
-        hxz += m * w.x * w.y;
+    return f.water_line.x + f.water_line.y * ndc.x + f.water_line.z * ndc.y;
+}
+
+// Whether the pixel at framebuffer position `pixel` looks out from under
+// the water: the per-pixel split where the near plane straddles the
+// surface.
+fn water_under_pixel(pixel: vec2<f32>) -> bool {
+    let uv = pixel * f.viewport.zw;
+    return water_line_at(vec2<f32>(uv.x * 2.0 - 1.0, 1.0 - uv.y * 2.0)) < 0.0;
+}
+
+// Whether the eye sees `world` from under the water: through the pixel it
+// projects to.
+fn water_under_world(world: vec3<f32>) -> bool {
+    if f.water_line.w < 0.5 {
+        return false;
     }
-    let det = (1.0 + lever * hxx) * (1.0 + lever * hzz) - lever * lever * hxz * hxz;
-    let focus = clamp(0.75 / max(abs(det), 0.1), 0.0, 5.0);
-    let fade = smoothstep(0.0, 0.35, depth) * exp(-depth * 0.12);
-    return mix(1.0, focus, strength * fade);
+    let c = f.view_proj * vec4<f32>(world, 1.0);
+    return water_line_at(c.xy / max(c.w, 1e-5)) < 0.0;
+}
+
+// How far above the eye body's level a point seen from under the water
+// still counts as in it: a crest's height. Above that the surface, seen
+// from below, carries the water up to it.
+const WATER_THROUGH_MARGIN: f32 = 0.3;
+
+// Whether the eye sees `world` through water alone: from under the
+// surface, at a point under it.
+fn water_through(world: vec3<f32>) -> bool {
+    return water_under_world(world) && world.y < f.water_eye.w + WATER_THROUGH_MARGIN;
 }
 
 // The sea's depth over a lit point, m: zero in Part Water's trench and
@@ -215,43 +222,227 @@ fn water_depth(world: vec3<f32>) -> f32 {
     return depth * open - water_drop(world.xz, depth) * (1.0 - open);
 }
 
-// The sunlight reaching a point under the sea, as a factor: extinction
-// along the sun's path down from the surface, times the caustics.
-fn water_sun(world: vec3<f32>) -> vec3<f32> {
-    if f.water.y < 0.5 {
-        return vec3<f32>(1.0);
+// What lies over a lit point: the first body in the list (`water::under`)
+// whose bounds hold it and whose plane stands over it by more than its
+// residual.
+struct WaterBed {
+    found: bool,
+    depth: f32,
+    residual: f32,
+    extinction: vec3<f32>,
+    strength: f32,
+};
+
+fn water_bed(world: vec3<f32>) -> WaterBed {
+    var o: WaterBed;
+    o.found = false;
+    o.depth = 0.0;
+    o.residual = 0.0;
+    o.extinction = vec3<f32>(0.0);
+    o.strength = 0.0;
+    let n = i32(f.water_under.x);
+    for (var i = 0; i < 8; i++) {
+        if i >= n {
+            break;
+        }
+        let b = f.water_list[i * 3];
+        if world.x < b.x || world.z < b.y || world.x > b.z || world.z > b.w {
+            continue;
+        }
+        let plane = f.water_list[i * 3 + 1];
+        var depth = plane.x + plane.y * world.x + plane.z * world.z - world.y;
+        var residual = plane.w;
+        if plane.w < -0.5 {
+            // The sea, with its spells.
+            depth = water_depth(world);
+            residual = 0.0;
+        }
+        if depth <= residual {
+            continue;
+        }
+        let optics = f.water_list[i * 3 + 2];
+        o.found = true;
+        o.depth = depth;
+        o.residual = residual;
+        o.extinction = optics.rgb;
+        o.strength = optics.w;
+        return o;
     }
-    let depth = water_depth(world);
-    if depth <= 0.0 {
-        return vec3<f32>(1.0);
-    }
-    let mu = max(f.sun.y, 0.2);
-    return exp(-f.water_extinction.rgb * depth / mu) * water_caustics(world, depth);
+    return o;
 }
 
-// The sky's light reaching a point under the sea, as a factor.
+// The sun's light under a level surface, travelling down: refracted into
+// the water by Snell's law.
+fn water_sun_below() -> vec3<f32> {
+    let d = refract(-f.sun.xyz, vec3<f32>(0.0, 1.0, 0.0), 1.0 / WATER_IOR);
+    if dot(d, d) < 1e-6 || d.y > -0.05 {
+        return vec3<f32>(0.0, -1.0, 0.0);
+    }
+    return normalize(d);
+}
+
+// Refraction's lever over water `depth` deep: a slope g at the surface
+// moves the light landing below by about (1 − 1/n)·depth·g, capped at
+// `water::under::LEVER_DEPTH`.
+fn water_lever(depth: f32) -> f32 {
+    return (1.0 - 1.0 / WATER_IOR) * min(depth, 3.5);
+}
+
+// The refracted light field's focusing for one layer of the caustic waves
+// (every `layers`th wave from `layer`), entering at `p` with lever
+// `lever`: the area the light left over the area it lands on, the
+// Jacobian of the landing point from the waves' curvature (Wallace 2016,
+// in closed form). `water::under::focus` is its CPU mirror.
+fn water_focus(p: vec2<f32>, lever: f32, layer: i32, layers: i32, most: i32) -> f32 {
+    let n = min(i32(f.water_under.y), most);
+    let t = f.water_scatter.w;
+    var hxx = 0.0;
+    var hzz = 0.0;
+    var hxz = 0.0;
+    var variance = 0.0;
+    for (var i = 0; i < 8; i++) {
+        if i >= n {
+            break;
+        }
+        if i % layers != layer {
+            continue;
+        }
+        let a = f.water_caustic[i * 2];
+        let w = f.water_caustic[i * 2 + 1];
+        let k = a.z;
+        let theta = k * dot(a.xy, p) - w.x * t + w.y;
+        let curvature = a.w * k * k;
+        let m = -curvature * sin(theta);
+        hxx += m * a.x * a.x;
+        hzz += m * a.y * a.y;
+        hxz += m * a.x * a.y;
+        variance += 0.5 * curvature * curvature;
+    }
+    let det = (1.0 + lever * hxx) * (1.0 + lever * hzz) - lever * lever * hxz * hxz;
+    // Read at the light's source, the ratio averages 1 + lever²·E[tr H²];
+    // dividing that out keeps the bed's mean light.
+    return min(1.0 / max(abs(det), 0.12), 6.0) / (1.0 + lever * lever * variance);
+}
+
+// The caustics on a point `depth` m under the surface, past `residual`:
+// one where the light arrives evenly, more where the surface's curvature
+// gathers it into lines, less between them. On High a second layer of
+// waves multiplies in. They fade where the water thins at the edge and,
+// slowly, with depth, where the light field folds too often to show.
+fn water_caustic(world: vec3<f32>, depth: f32, residual: f32, strength: f32, footprint: f32) -> f32 {
+    if strength <= 0.0 || f.sun.w <= 0.0 || f.water_under.y < 0.5 {
+        return 1.0;
+    }
+    let d = water_sun_below();
+    let p = world.xz - d.xz * (depth / max(-d.y, 0.2));
+    let lever = water_lever(depth);
+    let layers = max(i32(f.water_under.z), 1);
+    var focus = water_focus(p, lever, 0, layers, 8);
+    if layers > 1 {
+        focus = min(focus * water_focus(p, lever, 1, layers, 8), 8.0);
+    }
+    // A pixel wider than a fraction of the shortest caustic wave would
+    // alias the lines into moiré; they fade to their mean instead.
+    let resolved = 1.0 - smoothstep(0.03, 0.12, footprint);
+    let fade = smoothstep(residual, residual + 0.3, depth) * exp(-depth * 0.12) * resolved;
+    return mix(1.0, focus, clamp(strength, 0.0, 1.0) * fade);
+}
+
+// The sunlight reaching a lit point under any listed body, as a factor:
+// extinction along the refracted sun's path down from the surface, times
+// the caustics. The sun's shadow map then blocks it as it does in air.
+// `footprint` is the pixel's width on the surface, m.
+fn water_sun(world: vec3<f32>, footprint: f32) -> vec3<f32> {
+    let bed = water_bed(world);
+    if !bed.found {
+        return vec3<f32>(1.0);
+    }
+    let mu = max(-water_sun_below().y, 0.2);
+    return exp(-bed.extinction * bed.depth / mu) * water_caustic(world, bed.depth, bed.residual, bed.strength, footprint);
+}
+
+// The sky's light reaching a point under any listed body, as a factor.
 fn water_ambient(world: vec3<f32>) -> vec3<f32> {
-    if f.water.y < 0.5 {
+    let bed = water_bed(world);
+    if !bed.found {
         return vec3<f32>(1.0);
     }
-    let depth = water_depth(world);
-    if depth <= 0.0 {
-        return vec3<f32>(1.0);
-    }
-    return exp(-f.water_extinction.rgb * depth * 1.4);
+    return exp(-bed.extinction * bed.depth * 1.4);
 }
 
-// A lit point's radiance as the eye sees it through the sea: extinction
-// along the view path inside the water, and the water's own in-scatter.
-// From above the surface the path runs from the point up to the surface
-// along the refracted ray; from under it, from the point to the eye.
+// Henyey–Greenstein's phase function for cosine `c` and asymmetry `g`,
+// over the isotropic phase, so one is isotropic.
+fn water_phase(c: f32, g: f32) -> f32 {
+    let g2 = g * g;
+    return (1.0 - g2) / pow(max(1.0 + g2 - 2.0 * g * c, 1e-3), 1.5);
+}
+
+// How far the shafts march along a view under the water, m.
+const WATER_SHAFT_REACH: f32 = 24.0;
+// The shafts' strength over the single-scattered light they stand for:
+// the eye adapts to the dim water, so their contrast reads stronger than
+// the bare in-scatter suggests.
+const WATER_SHAFT_GAIN: f32 = 16.0;
+// The longest caustic waves the shafts take: they make broad beams, and
+// the shorter ones only add noise a sample's step apart.
+const WATER_SHAFT_WAVES: i32 = 3;
+
+// Sun shafts under the water along the view `dir` (unit, from the eye)
+// over `reach` m: the light the water scatters toward the eye at a few
+// jittered samples, each lit by the refracted sun through the water over
+// it and focused or thinned by the caustics there. Focusing grows with
+// depth along each refracted ray, so the light lies in streaks along the
+// sun's direction. Only the caustics' departure from even light is
+// added: the fog already holds the mean. The samples sit at fixed
+// fractions of the path: a per-pixel jitter would show as a fine
+// crosshatch at so few samples.
+fn water_shafts(dir: vec3<f32>, reach: f32) -> vec3<f32> {
+    let n = i32(f.water_under.w);
+    if n <= 0 || f.sun.w <= 0.0 || f.water_under.y < 0.5 {
+        return vec3<f32>(0.0);
+    }
+    let level = f.water_eye.w;
+    let d = water_sun_below();
+    let mu = max(-d.y, 0.2);
+    let ext = f.water_extinction.rgb;
+    let span = min(reach, WATER_SHAFT_REACH);
+    let step = span / f32(n);
+    var sum = vec3<f32>(0.0);
+    for (var i = 0; i < 16; i++) {
+        if i >= n {
+            break;
+        }
+        let s = (f32(i) + 0.5) * step;
+        let x = f.eye.xyz + dir * s;
+        let depth = level - x.y;
+        if depth <= 0.05 {
+            continue;
+        }
+        let p = x.xz - d.xz * (depth / mu);
+        let focus = water_focus(p, water_lever(depth), 0, 1, WATER_SHAFT_WAVES);
+        sum += (focus - 1.0) * exp(-ext * (s + depth / mu)) * step;
+    }
+    let sun = f.sun.w * max(f.sun.y, 0.0) * water_key_tint() / PI;
+    let phase = min(water_phase(dot(d, -dir), 0.55), 6.0);
+    return f.water_scatter.rgb * sun * ext * sum * phase * WATER_SHAFT_GAIN;
+}
+
+// A lit point's radiance as the eye sees it through the water. From under
+// the surface: extinction and in-scatter along the view to the point, and
+// the sun's shafts; a point above the surface is left to the surface seen
+// from below, which carries the water up to it. From above the sea: along
+// the refracted ray from the point up to the surface; other bodies' own
+// surfaces carry their water from above.
 fn water_view(world: vec3<f32>, radiance: vec3<f32>) -> vec3<f32> {
-    if f.water.z > 0.5 {
-        // The eye is under water, the sea's or the body the zone says it
-        // is in: everything it sees lies through water, whatever stands
-        // above the surface through the surface too.
-        let t = exp(-f.water_extinction.rgb * distance(world, f.eye.xyz));
-        return radiance * t + water_fog() * (1.0 - t);
+    if water_under_world(world) {
+        if world.y >= f.water_eye.w + WATER_THROUGH_MARGIN && f.eye.y < f.water_eye.w {
+            return radiance;
+        }
+        let ray = world - f.eye.xyz;
+        let dist = length(ray);
+        let t = exp(-f.water_extinction.rgb * dist);
+        let shafts = water_shafts(ray / max(dist, 1e-4), dist);
+        return radiance * t + water_fog() * (1.0 - t) + shafts;
     }
     if f.water.y < 0.5 {
         return radiance;
@@ -496,14 +687,31 @@ fn water_fragment(i: WaterOut) -> WaterShade {
     water_shading_normal = wn.n;
     water_roughness = wn.roughness;
 
-    // The eye under this body's surface: the sea knows from the frame,
-    // other bodies from their own flag. A body the eye is beside rather
-    // than in is too thin to hide anything from below.
-    let below = f.eye.y < world.y;
-    let inside = select(water.bodies[b].params.w > 0.5, f.water.z > 0.5, sea);
+    // The eye under this body's surface. The body the eye is in or at
+    // splits the view per pixel where the near plane straddles it
+    // (`water::under`); another body is seen from below only when the
+    // eye is lower than the fragment and the zone marks it inside. A body
+    // the eye is beside rather than in is too thin to hide anything from
+    // below.
+    let own = f.water_line.w > 0.5 && i32(f.water_eye.x) == i32(b);
+    let below = select(f.eye.y < world.y, water_under_pixel(pixel), own);
+    let inside = own || water.bodies[b].params.w > 0.5;
     if below {
         if inside {
-            return water_below(b, wn.n, v, distance(f.eye.xyz, world), wn.slope);
+            let path = distance(f.eye.xyz, world);
+            var o = water_below(b, wn.n, v, path, wn.slope);
+            o.emit += water_shafts(-v, path);
+            if water_screen_on {
+                // Medium and High bend the copy through the waves as the
+                // view leaves the water (W5 left it straight).
+                let shift = water_refract_up(world, v, wn.n, WATER_REFRACT_REACH);
+                let uv = clamp(uv0 + shift, vec2<f32>(0.0), vec2<f32>(1.0));
+                water_refraction.uv_r = uv;
+                water_refraction.uv_g = uv;
+                water_refraction.uv_b = uv;
+                water_refraction.found = 1.0;
+            }
+            return o;
         }
         var none: WaterShade;
         none.emit = vec3<f32>(0.0);
@@ -535,6 +743,18 @@ fn water_fragment(i: WaterOut) -> WaterShade {
         o.reflect *= 1.0 - ice;
     }
     return o;
+}
+
+// How far the view leaving the water upward through normal `n` (the
+// surface's, facing up) moves on the screen from the view through a level
+// surface, each carried `reach` m into the air: the waves' bending of
+// what Snell's window shows. Through total internal reflection the ray
+// turns back down, and the shift follows it.
+fn water_refract_up(world: vec3<f32>, v: vec3<f32>, n: vec3<f32>, reach: f32) -> vec2<f32> {
+    let into_air = 1.0 / WATER_IOR;
+    let bent = water_project(world + water_refracted(v, -n, into_air) * reach).xy;
+    let level = water_project(world + water_refracted(v, vec3<f32>(0.0, -1.0, 0.0), into_air) * reach).xy;
+    return bent - level;
 }
 
 // The emitted half of the pass, added over the scene after

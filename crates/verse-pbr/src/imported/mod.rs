@@ -2560,6 +2560,7 @@ impl Renderer {
                         gain_max: 1.0,
                         grade: verse_engine::lighting::Grade::CHAMBER,
                         time: lighting.time,
+                        water: [[0.0; 4]; 2],
                     };
                     self.output.encode(
                         &self.queue,

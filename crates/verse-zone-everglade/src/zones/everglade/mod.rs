@@ -1113,6 +1113,8 @@ impl Everglade {
             && self.swim.is_some()
         {
             water::see_from(water, eye);
+            let motes = water::motes(water, eye);
+            mesh.sprites.extend(motes);
         }
     }
 

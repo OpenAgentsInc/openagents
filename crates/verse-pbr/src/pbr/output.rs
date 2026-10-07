@@ -32,6 +32,8 @@ struct Post {
     /// x the output ceiling; y the grade table's floor; z one over its span
     /// in stops; w its edge length.
     output: [f32; 4],
+    /// The view under the water ([`Look::water`]).
+    water: [[f32; 4]; 2],
 }
 
 impl Post {
@@ -49,6 +51,7 @@ impl Post {
             balance: [1.0, 1.0, 1.0, 0.0],
             adapt: [0.0; 4],
             output: table_output(1.0),
+            water: [[0.0; 4]; 2],
         }
     }
 }
@@ -84,6 +87,12 @@ pub struct Look {
     pub grade: Grade,
     /// Seconds, for adaptation speed and grain.
     pub time: f32,
+    /// The view under the water (`crate::water::under`, Medium and High):
+    /// the waterline across the screen ([`crate::water::under::line`]),
+    /// then how far the view under it wavers (screen fractions), 1 for
+    /// the meniscus where the line crosses, and two zeros. All zero for a
+    /// view with no water.
+    pub water: [[f32; 4]; 2],
 }
 
 /// Pipelines and the grade table for one device and pair of formats.
@@ -486,6 +495,7 @@ impl Output {
                 f32::from(u8::from(grade.curve == Curve::HueShoulder)),
             ],
             output: table_output(grade.ceiling),
+            water: look.water,
         };
         queue.write_buffer(&targets.frame_post, 0, bytemuck::bytes_of(&uniform));
         let pass = |encoder: &mut wgpu::CommandEncoder,

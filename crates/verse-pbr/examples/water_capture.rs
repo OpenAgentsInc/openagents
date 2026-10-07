@@ -3,6 +3,13 @@
 //!
 //! Usage: water_capture OUTPUT_DIRECTORY [--baseline DIRECTORY]...
 //!
+//! Phase W7 adds `waterline` (the eye at the pond's surface, the view
+//! split per pixel), `snell` (the surface from below: Snell's window), and
+//! `posts-under` (caustics on the posts and the bed, from under the
+//! water), and `shafts` (the sun's shafts, looking toward it from under
+//! the water); its captures change every pond picture, whose beds now take
+//! caustics on every tier.
+//!
 //! The physical renderer draws each view three ways: without water (into
 //! `dry/`), with the water every tier drew before W5 (its two halves over
 //! the scene, into `w2/`, Medium and High only), and with this tier's
@@ -50,6 +57,7 @@ use verse_pbr::{
         Body, Kind, Preset, Sky, Swell, Water, WaterSurface,
         bake::{self, Bake},
         frame::wind_sea,
+        under::EyeSurface,
     },
 };
 use wgpu::util::DeviceExt;
@@ -95,12 +103,15 @@ struct ViewSpec {
     posts: bool,
     /// The water has no swell, so the mirror takes it.
     still: bool,
+    /// The eye and its target are heights over the surface at the eye
+    /// (W7): the near plane straddles the surface, splitting the view.
+    waterline: bool,
 }
 
 /// The views, or those `WATER_CAPTURE_VIEWS` (a comma-separated list) names.
 fn views() -> Vec<ViewSpec> {
     let only = std::env::var("WATER_CAPTURE_VIEWS").ok();
-    let mut all = all_views();
+    let mut all: Vec<ViewSpec> = all_views().into_iter().map(placed).collect();
     if let Some(only) = only {
         all.retain(|v| only.split(',').any(|name| name == v.name));
     }
@@ -119,6 +130,7 @@ fn all_views() -> Vec<ViewSpec> {
             under: false,
             posts: false,
             still: false,
+            waterline: false,
         },
         ViewSpec {
             name: "pond-dusk",
@@ -130,6 +142,7 @@ fn all_views() -> Vec<ViewSpec> {
             under: false,
             posts: false,
             still: false,
+            waterline: false,
         },
         ViewSpec {
             name: "river",
@@ -141,6 +154,7 @@ fn all_views() -> Vec<ViewSpec> {
             under: false,
             posts: false,
             still: false,
+            waterline: false,
         },
         ViewSpec {
             name: "sea",
@@ -152,6 +166,7 @@ fn all_views() -> Vec<ViewSpec> {
             under: false,
             posts: false,
             still: false,
+            waterline: false,
         },
         ViewSpec {
             name: "sea-calm",
@@ -163,6 +178,7 @@ fn all_views() -> Vec<ViewSpec> {
             under: false,
             posts: false,
             still: false,
+            waterline: false,
         },
         ViewSpec {
             name: "sea-moderate",
@@ -174,6 +190,7 @@ fn all_views() -> Vec<ViewSpec> {
             under: false,
             posts: false,
             still: false,
+            waterline: false,
         },
         ViewSpec {
             name: "sea-storm",
@@ -185,6 +202,7 @@ fn all_views() -> Vec<ViewSpec> {
             under: false,
             posts: false,
             still: false,
+            waterline: false,
         },
         ViewSpec {
             name: "sea-storm-surf",
@@ -196,6 +214,7 @@ fn all_views() -> Vec<ViewSpec> {
             under: false,
             posts: false,
             still: false,
+            waterline: false,
         },
         ViewSpec {
             name: "under",
@@ -207,6 +226,7 @@ fn all_views() -> Vec<ViewSpec> {
             under: true,
             posts: false,
             still: false,
+            waterline: false,
         },
         ViewSpec {
             name: "pond-posts",
@@ -218,8 +238,77 @@ fn all_views() -> Vec<ViewSpec> {
             under: false,
             posts: true,
             still: true,
+            waterline: false,
+        },
+        // W7: the eye at the surface, the view split at the waterline; the
+        // surface from below in Snell's window; and the posts and the bed
+        // under the water with their caustics.
+        ViewSpec {
+            name: "waterline",
+            eye: Vec3::new(-5.0, 0.0, 5.5),
+            target: Vec3::new(2.0, -0.02, -1.5),
+            ground: Ground::Pond,
+            sun: Vec3::new(0.35, 0.86, -0.38).normalize(),
+            dusk: false,
+            under: false,
+            posts: true,
+            still: false,
+            waterline: true,
+        },
+        ViewSpec {
+            name: "snell",
+            eye: Vec3::new(0.5, -1.7, 2.0),
+            target: Vec3::new(0.2, 2.6, -1.2),
+            ground: Ground::Pond,
+            sun: Vec3::new(0.35, 0.86, -0.38).normalize(),
+            dusk: false,
+            under: true,
+            posts: true,
+            still: false,
+            waterline: false,
+        },
+        ViewSpec {
+            name: "shafts",
+            eye: Vec3::new(-2.5, -1.0, 4.5),
+            target: Vec3::new(-0.6, 1.2, -1.0),
+            ground: Ground::Pond,
+            sun: Vec3::new(0.35, 0.86, -0.38).normalize(),
+            dusk: false,
+            under: true,
+            posts: true,
+            still: false,
+            waterline: false,
+        },
+        ViewSpec {
+            name: "posts-under",
+            eye: Vec3::new(5.0, -1.1, -4.0),
+            target: Vec3::new(1.5, -1.5, -1.0),
+            ground: Ground::Pond,
+            sun: Vec3::new(0.35, 0.86, -0.38).normalize(),
+            dusk: false,
+            under: true,
+            posts: true,
+            still: false,
+            waterline: false,
         },
     ]
+}
+
+/// `spec` with a waterline view's eye and target raised by the surface's
+/// height over the eye, so the eye stands exactly at the surface.
+fn placed(mut spec: ViewSpec) -> ViewSpec {
+    if spec.waterline {
+        let world = world(spec.ground);
+        let water = water(&world, &spec);
+        let h = water.bodies[0].level
+            + water.bodies[0]
+                .displacement(Vec2::new(spec.eye.x, spec.eye.z), 10.0, water.time)
+                .y;
+        spec.eye.y += h;
+        spec.target.y += h;
+        spec.waterline = false;
+    }
+    spec
 }
 
 fn tier_name(tier: Tier) -> &'static str {
@@ -414,6 +503,22 @@ fn water(world: &World, spec: &ViewSpec) -> Water {
         water.bodies[0].swell = Swell::default();
     }
     water.time = TIME;
+    // The surface over the eye, as a zone's surface query gives it (W7):
+    // the swell's height there and its slope, by central differences.
+    let at = |x: f32, z: f32| {
+        water.bodies[0].level + water.bodies[0].displacement(Vec2::new(x, z), 10.0, TIME).y
+    };
+    let (x, z, e) = (spec.eye.x, spec.eye.z, 0.25);
+    if x.hypot(z) < 9.0 && world.preset == "pond" {
+        water.eye = Some(EyeSurface {
+            body: 0,
+            height: at(x, z),
+            slope: [
+                (at(x + e, z) - at(x - e, z)) / (2.0 * e),
+                (at(x, z + e) - at(x, z - e)) / (2.0 * e),
+            ],
+        });
+    }
     let (zenith, horizon, color) = palette(spec.dusk);
     water.sky = Some(Sky {
         zenith: zenith.map(|c| c * 0.9),

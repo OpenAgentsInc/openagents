@@ -26,6 +26,9 @@
 //! - [`clipmap`]: the ocean's geometry clipmap around the eye (W10).
 //! - [`field`]: a zone's baked depth, shore distance, and current, whose
 //!   pages stream into an atlas under `verse_engine::streaming` (W10).
+//! - [`under`]: the view from under the water and the light under it (W7):
+//!   the split waterline, the caustic and underwater list, and the
+//!   caustics' waves.
 //!
 //! On Low each pass draws a surface in two halves inside the scene pass,
 //! with no extra pass or render target: `fs_water_transmit` multiplies
@@ -50,6 +53,7 @@ pub mod screen;
 pub mod seas;
 pub mod terms;
 pub mod tile;
+pub mod under;
 
 pub use frame::{
     Body, Controls, Kind, Ocean, Sky, Water, WaterPatch, WaterSurface, WaterUniform, WaterVertex,
@@ -181,6 +185,9 @@ pub struct SurfaceGpu {
     /// Where each body's surface lies at rest (seas, ponds, and streams;
     /// not falls or orbs), for choosing the body a planar mirror reflects.
     pub bounds: [Option<screen::Bounds>; MAX_BODIES],
+    /// Where each body's water stands, for the caustic and underwater list
+    /// ([`under::extents`]).
+    pub extents: [Option<under::Extent>; MAX_BODIES],
     /// The ocean's clipmap, after the patches in both buffers.
     pub ocean: Option<OceanMesh>,
 }
@@ -242,6 +249,7 @@ impl SurfaceGpu {
         let mut vertices = surface.vertices();
         let (mut indices, ranges) = surface.ranges(stride);
         let bounds = body_bounds(&vertices);
+        let extents = under::extents(&vertices);
         let ocean = surface.ocean.as_ref().map(|ocean| {
             let spec = clipmap::Spec::of(tier);
             let mut mesh = clipmap::mesh(&spec, ocean.body);
@@ -290,6 +298,7 @@ impl SurfaceGpu {
             ),
             ranges,
             bounds,
+            extents,
             ocean,
         }
     }

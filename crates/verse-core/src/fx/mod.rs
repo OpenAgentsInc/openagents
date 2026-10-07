@@ -19,6 +19,7 @@
 
 pub mod def;
 pub mod library;
+pub mod motes;
 pub use verse_pbr::fx::{sheet, sprite};
 pub mod system;
 

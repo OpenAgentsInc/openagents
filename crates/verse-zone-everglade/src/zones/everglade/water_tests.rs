@@ -301,6 +301,29 @@ fn the_water_bakes_over_the_carved_beds_and_draws_from_below_when_the_eye_is_in_
 }
 
 #[test]
+fn the_frame_carries_the_surface_over_the_eye_and_motes_under_it() {
+    let mut water = frame(3.0);
+    let ([cx, cz], _) = PONDS[1];
+    // Over the pond the frame has the surface the renderer splits the view
+    // at, level here, and motes only once the eye is under it.
+    see_from(&mut water, Vec3::new(cx, pond_level(1) + 0.5, cz));
+    let eye = water.eye.expect("the surface over the eye");
+    assert_eq!(eye.body, 1);
+    assert!((eye.height - pond_level(1)).abs() < 0.01, "{eye:?}");
+    assert!(eye.slope.iter().all(|s| s.abs() < 0.05));
+    assert!(water.valid());
+    assert!(motes(&water, Vec3::new(cx, pond_level(1) + 0.5, cz)).is_empty());
+    let under = Vec3::new(cx, pond_level(1) - 1.0, cz);
+    see_from(&mut water, under);
+    let specks = motes(&water, under);
+    assert!(!specks.is_empty());
+    assert!(specks.iter().all(|m| m.at.y < pond_level(1)));
+    // On dry land there is none.
+    see_from(&mut water, Vec3::new(cx + 60.0, 5.0, cz + 60.0));
+    assert!(water.eye.is_none());
+}
+
+#[test]
 fn a_swimmer_writes_its_wake_into_the_ripple_field_and_splashes_in_and_drips_out() {
     let solids = Solids::over(height);
     let ([cx, cz], _) = PONDS[0];

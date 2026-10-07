@@ -38,6 +38,7 @@ struct Controls {
     suspended: AtomicBool,
     master: AtomicU64,
     buses: [AtomicU64; 4],
+    underwater: AtomicU64,
 }
 impl Default for Controls {
     fn default() -> Self {
@@ -45,6 +46,7 @@ impl Default for Controls {
             suspended: AtomicBool::new(false),
             master: AtomicU64::new(1f32.to_bits().into()),
             buses: std::array::from_fn(|_| AtomicU64::new(1f32.to_bits().into())),
+            underwater: AtomicU64::new(0f32.to_bits().into()),
         }
     }
 }
@@ -270,6 +272,18 @@ impl Output {
     pub fn suspend(&self, suspended: bool) {
         self.controls.suspended.store(suspended, Ordering::Release);
     }
+    /// How far under the water the listener is, 0 to 1
+    /// (`verse_engine::audio::Underwater`).
+    pub fn underwater(&self, amount: f32) {
+        let amount = if amount.is_finite() {
+            amount.clamp(0.0, 1.0)
+        } else {
+            0.0
+        };
+        self.controls
+            .underwater
+            .store(amount.to_bits().into(), Ordering::Release);
+    }
     pub fn volume(&self, master: f32, buses: [f32; 4]) -> Result<(), String> {
         if std::iter::once(master)
             .chain(buses)
@@ -312,6 +326,9 @@ impl Callback {
         self.reclaim();
         self.mixer
             .suspend(self.controls.suspended.load(Ordering::Acquire));
+        self.mixer.underwater(f32::from_bits(
+            self.controls.underwater.load(Ordering::Acquire) as u32,
+        ));
         let _ = self.mixer.master(f32::from_bits(
             self.controls.master.load(Ordering::Acquire) as u32
         ));

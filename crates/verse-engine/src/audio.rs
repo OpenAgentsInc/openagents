@@ -263,8 +263,110 @@ pub struct Mixer {
     volumes: [f32; 4],
     master: f32,
     suspended: bool,
+    underwater: Underwater,
     pub stats: MixStats,
 }
+
+/// The mix as heard from under the water (`docs/verse/water.md`, phase
+/// W7): a low-pass that closes from the open air's 18 kHz to 450 Hz as the
+/// listener goes under, two one-pole stages (12 dB an octave), and a
+/// quiet ambience of low, slowly swelling noise. The amount eases over
+/// about a tenth of a second so going under never clicks. It allocates
+/// nothing, so the audio callback can run it.
+#[derive(Clone, Copy, Debug)]
+pub struct Underwater {
+    target: f32,
+    amount: f32,
+    low: [[f32; 2]; 2],
+    rumble: f32,
+    hum: f32,
+    swell: f32,
+    seed: u32,
+}
+
+impl Default for Underwater {
+    fn default() -> Self {
+        Self {
+            target: 0.0,
+            amount: 0.0,
+            low: [[0.0; 2]; 2],
+            rumble: 0.0,
+            hum: 0.0,
+            swell: 0.0,
+            seed: 0x2545_F491,
+        }
+    }
+}
+
+impl Underwater {
+    /// The cutoff in open air and fully under, Hz.
+    pub const OPEN: f32 = 18_000.0;
+    pub const UNDER: f32 = 450.0;
+    /// The ambience's peak level, full scale.
+    pub const AMBIENCE: f32 = 0.05;
+    /// How fast the amount follows its target, s.
+    pub const EASE: f32 = 0.1;
+
+    /// How far under the listener is, 0 (in air) to 1, eased toward.
+    pub fn set(&mut self, amount: f32) {
+        self.target = if amount.is_finite() {
+            amount.clamp(0.0, 1.0)
+        } else {
+            0.0
+        };
+    }
+
+    /// The amount now, after easing.
+    #[must_use]
+    pub fn amount(&self) -> f32 {
+        self.amount
+    }
+
+    /// The low-pass's cutoff for `amount`, Hz: geometric between
+    /// [`Self::OPEN`] and [`Self::UNDER`].
+    #[must_use]
+    pub fn cutoff(amount: f32) -> f32 {
+        let a = amount.clamp(0.0, 1.0);
+        (Self::OPEN.ln() * (1.0 - a) + Self::UNDER.ln() * a).exp()
+    }
+
+    /// Filters interleaved stereo `pcm` at `rate` Hz in place and adds the
+    /// ambience at `gain`.
+    pub fn process(&mut self, pcm: &mut [f32], rate: u32, gain: f32) {
+        if self.amount <= 1e-4 && self.target <= 0.0 {
+            self.amount = 0.0;
+            self.low = [[0.0; 2]; 2];
+            return;
+        }
+        let rate = rate.max(1) as f32;
+        let ease = 1.0 - (-1.0 / (Self::EASE * rate)).exp();
+        let tau = std::f32::consts::TAU;
+        for frame in pcm.chunks_exact_mut(2) {
+            self.amount += (self.target - self.amount) * ease;
+            let alpha = 1.0 - (-tau * Self::cutoff(self.amount) / rate).exp();
+            // White noise, integrated twice through leaky stages into a
+            // rumble under 100 Hz, swelling on a slow sine.
+            self.seed ^= self.seed << 13;
+            self.seed ^= self.seed >> 17;
+            self.seed ^= self.seed << 5;
+            let white = self.seed as f32 / u32::MAX as f32 * 2.0 - 1.0;
+            let k = 1.0 - (-tau * 90.0 / rate).exp();
+            self.rumble += (white - self.rumble) * k;
+            self.hum += (self.rumble - self.hum) * k;
+            self.swell = (self.swell + 0.13 / rate) % 1.0;
+            let level = 0.6 + 0.4 * (self.swell * tau).sin();
+            let ambience = self.hum * 6.0 * level * Self::AMBIENCE * gain * self.amount;
+            for (c, sample) in frame.iter_mut().enumerate() {
+                let a = self.low[0][c] + (*sample - self.low[0][c]) * alpha;
+                let b = self.low[1][c] + (a - self.low[1][c]) * alpha;
+                self.low[0][c] = a;
+                self.low[1][c] = b;
+                *sample = b + ambience;
+            }
+        }
+    }
+}
+
 impl Mixer {
     pub fn new(rate: u32) -> Result<Self, String> {
         if !(8000..=192000).contains(&rate) {
@@ -280,6 +382,7 @@ impl Mixer {
             volumes: [1.0; 4],
             master: 1.0,
             suspended: false,
+            underwater: Underwater::default(),
             stats: Default::default(),
         })
     }
@@ -312,6 +415,16 @@ impl Mixer {
     }
     pub fn suspend(&mut self, suspended: bool) {
         self.suspended = suspended;
+    }
+    /// How far under the water the listener is, 0 to 1 ([`Underwater`]):
+    /// the mix closes to a low-pass and a quiet ambience rises.
+    pub fn underwater(&mut self, amount: f32) {
+        self.underwater.set(amount);
+    }
+    /// The underwater amount now, after easing.
+    #[must_use]
+    pub fn underwater_amount(&self) -> f32 {
+        self.underwater.amount()
     }
     pub fn retirement_slots(&self) -> usize {
         MAX_VOICES - self.retired.len()
@@ -670,6 +783,7 @@ impl Mixer {
                 i += 1;
             }
         }
+        self.underwater.process(output, self.rate, self.master);
         for sample in output {
             *sample = sample.clamp(-1.0, 1.0);
         }
@@ -693,6 +807,54 @@ mod tests {
             looping: false,
         }
     }
+    /// The RMS of a stereo 4 kHz tone at 48 kHz after `amount` of the
+    /// underwater filter has settled, with the ambience left out.
+    fn tone_through(amount: f32) -> f32 {
+        let mut under = Underwater::default();
+        under.set(amount);
+        under.amount = amount;
+        let mut pcm: Vec<f32> = (0..9600)
+            .flat_map(|i| {
+                let s = (i as f32 * std::f32::consts::TAU * 4000.0 / 48000.0).sin();
+                [s, s]
+            })
+            .collect();
+        under.process(&mut pcm, 48000, 0.0);
+        let tail = &pcm[4800..];
+        (tail.iter().map(|s| s * s).sum::<f32>() / tail.len() as f32).sqrt()
+    }
+
+    #[test]
+    fn under_water_the_mix_closes_to_a_low_pass_and_an_ambience_rises() {
+        let open = std::f32::consts::FRAC_1_SQRT_2;
+        assert!((tone_through(0.0) - open).abs() < 1e-3, "air is untouched");
+        let under = tone_through(1.0);
+        // Two poles at 450 Hz take a 4 kHz tone down by about 19 dB.
+        assert!(under < open * 0.15, "{under}");
+        assert!(tone_through(0.5) > under && tone_through(0.5) < open);
+        assert!((Underwater::cutoff(0.0) - Underwater::OPEN).abs() < 1.0);
+        assert!((Underwater::cutoff(1.0) - Underwater::UNDER).abs() < 0.1);
+        // Silence under water carries the ambience, quietly.
+        let mut mixer = Mixer::new(48000).unwrap();
+        mixer.underwater(1.0);
+        let mut out = vec![0.0; 16384];
+        for _ in 0..8 {
+            mixer.render(&mut out).unwrap();
+        }
+        assert!(mixer.underwater_amount() > 0.9);
+        let peak = out.iter().fold(0.0_f32, |p, s| p.max(s.abs()));
+        assert!(peak > 1e-4 && peak <= Underwater::AMBIENCE * 2.0, "{peak}");
+        // Back in the air it fades out and the mix is silent again.
+        mixer.underwater(0.0);
+        for _ in 0..16 {
+            mixer.render(&mut out).unwrap();
+        }
+        assert!(mixer.underwater_amount() < 1e-3);
+        mixer.underwater(f32::NAN);
+        mixer.render(&mut out).unwrap();
+        assert!(out.iter().all(|s| s.abs() < 1e-3));
+    }
+
     #[test]
     fn resamples_spatializes_and_retires_finished_pcm() {
         let clip = Clip::new(vec![0.5; 800], 8000).unwrap();

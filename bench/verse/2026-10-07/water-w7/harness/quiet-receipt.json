@@ -1,0 +1,21 @@
+{
+  "schema": "openagents.lease.receipt.v1",
+  "id": "1791397470378-13970-0",
+  "resource": "quiet",
+  "amount": 1,
+  "holder": {
+    "session": "claude-code:d187dc74-0ea6-4000-9d57-3fe96d6cca18",
+    "agent": "claude-code",
+    "pid": 13970,
+    "command": "water_capture"
+  },
+  "priority": "normal",
+  "nested": false,
+  "requested_at_ms": 1791397470378,
+  "acquired_at_ms": 1791397529427,
+  "released_at_ms": 1791397561310,
+  "wait_ms": 59049,
+  "held_ms": 31883,
+  "held_whole_run": true,
+  "exit": 0
+}

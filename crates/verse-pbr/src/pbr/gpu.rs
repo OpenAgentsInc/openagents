@@ -128,6 +128,16 @@ struct Frame {
     water_screen: [f32; 4],
     /// The planar mirror: 1 when drawn, its plane's level, and its body.
     water_mirror: [f32; 4],
+    /// Under the water ([`crate::water::under`]): the waterline across
+    /// the screen ([`crate::water::under::line`]); the list's bodies, the
+    /// caustic waves and layers, and the shafts' samples; the eye's body
+    /// (−1 for none), distortion, 1 for the meniscus, and the eye body's
+    /// level; the caustic waves; and the list.
+    water_line: [f32; 4],
+    water_under: [f32; 4],
+    water_eye: [f32; 4],
+    water_caustic: [[f32; 4]; crate::water::under::WAVE_ROWS],
+    water_list: [[f32; 4]; crate::water::under::LIST_ROWS],
 }
 
 impl Frame {
@@ -2704,6 +2714,7 @@ impl Photo {
                     ..Grade::NEUTRAL
                 },
                 time: sky.time,
+                water: [[0.0; 4]; 2],
             },
         );
     }
@@ -3091,26 +3102,43 @@ impl Photo {
         let water = neon.water.filter(|water| lit.is_some() && water.valid());
         if let Some(water) = &water {
             let eye = view.eye;
-            // Only a sea lights and tints the lit surfaces under it; other
-            // bodies absorb over their own baked depth.
-            let under = water.sea && eye.y < water.surface_height(eye.x, eye.z, f32::INFINITY);
-            // A pond or a stream the zone says the eye is in fogs the view
-            // with its own water, as the sea does from under it. A stage
-            // with a sea keeps the sea's terms, which light its bed.
-            let inside = (!water.sea)
-                .then(|| water.bodies[..water.count].iter().find(|b| b.eye_inside))
-                .flatten();
-            let sea = inside.unwrap_or(water.sea_body());
+            let (eye_body, line) = eye_water(water, view.view_proj, eye);
+            // The body the eye is in or at fogs the view from under it with
+            // its own water; the sea's spells and bed light keep the sea's
+            // level.
+            let seen = eye_body.map_or(water.sea_body(), |k| &water.bodies[k]);
+            let sea = water.sea_body();
             uniform.water = [
-                sea.level,
+                if water.sea { sea.level } else { seen.level },
                 if water.sea { 1.0 } else { 0.0 },
-                if under || inside.is_some() { 1.0 } else { 0.0 },
+                line[3],
                 water.caustics,
             ];
-            let e = sea.absorption;
+            let e = seen.absorption;
             uniform.water_extinction = [e[0], e[1], e[2], 0.0];
-            let c = sea.scatter;
+            let c = seen.scatter;
             uniform.water_scatter = [c[0], c[1], c[2], water.time];
+            // The caustic and underwater list, and the caustics' waves.
+            let settings = crate::water::under::settings(self.capability.quality.tier);
+            let none = [None; crate::water::MAX_BODIES];
+            let extents = world.water.map_or(&none, |gpu| &gpu.0.extents);
+            let (list, count) = crate::water::under::list_rows(water, extents, &settings, eye);
+            let (waves, wave_count) = crate::water::under::wave_rows(water, &settings);
+            uniform.water_line = line;
+            uniform.water_under = [
+                count as f32,
+                wave_count as f32,
+                settings.layers as f32,
+                settings.shafts as f32,
+            ];
+            uniform.water_eye = [
+                eye_body.map_or(-1.0, |k| k as f32),
+                settings.distortion,
+                if settings.meniscus { 1.0 } else { 0.0 },
+                seen.level,
+            ];
+            uniform.water_caustic = waves;
+            uniform.water_list = list;
             uniform.water_controls = water.control_terms();
             let mut packed = water.uniform();
             packed.look[1] = crate::water::pixel_angle(view.view_proj, view.eye, height);
@@ -3332,6 +3360,12 @@ impl Photo {
                 // The plaza keeps its standard-range look on HDR displays.
                 grade: neon.grade,
                 time: neon.time,
+                // The view under the water wavers, and the waterline draws
+                // its meniscus, on the tiers that allow them.
+                water: [
+                    uniform.water_line,
+                    [uniform.water_eye[1], uniform.water_eye[2], 0.0, 0.0],
+                ],
             },
         );
     }
@@ -3629,6 +3663,37 @@ pub fn reversed_depth() -> Mat4 {
         glam::Vec4::new(0.0, 0.0, -1.0, 0.0),
         glam::Vec4::new(0.0, 0.0, 1.0, 1.0),
     )
+}
+
+/// The body the eye stands in or at, and the waterline across the
+/// screen ([`crate::water::under::line`]): from the zone's surface over
+/// the eye, or the sea's own, split while the eye is within
+/// [`crate::water::under::SPLIT_REACH`] of it and wholly under below
+/// that; a body the zone marks the eye inside but gives no surface for
+/// puts the whole view under. `view_proj` is not reversed.
+fn eye_water(water: &crate::water::Water, view_proj: Mat4, eye: Vec3) -> (Option<usize>, [f32; 4]) {
+    use crate::water::under::{self, EyeSurface, SPLIT_REACH};
+    let under = [-1.0, 0.0, 0.0, 1.0];
+    let surface = water
+        .eye
+        .filter(|s| s.valid(water.count))
+        .or_else(|| water.sea.then(|| EyeSurface::of_sea(water, eye)));
+    if let Some(s) = surface {
+        let over = eye.y - s.height;
+        if over.abs() < SPLIT_REACH {
+            return (Some(s.body), under::line(view_proj, eye, &s));
+        }
+        if over < 0.0 {
+            return (Some(s.body), under);
+        }
+    }
+    match water.bodies[..water.count]
+        .iter()
+        .position(|b| b.eye_inside)
+    {
+        Some(k) => (Some(k), under),
+        None => (None, [0.0; 4]),
+    }
 }
 
 /// The retained geometry a physical frame draws.
@@ -4235,6 +4300,8 @@ mod tests {
             assert_eq!(layouter[frame].size as usize, std::mem::size_of::<Frame>());
         }
         assert_eq!(std::mem::size_of::<Frame>() % 16, 0);
+        // WebGL2 and OpenGL ES 3.0 promise uniform blocks of 16 KiB.
+        assert!(std::mem::size_of::<Frame>() <= 16 * 1024);
     }
 
     /// The fixed region's single map keeps the old fit: a cube's width of
