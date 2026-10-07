@@ -3154,6 +3154,7 @@ dependencies = [
  "coder-ui",
  "codex-transport",
  "crossterm",
+ "getrandom 0.3.4",
  "jev",
  "microcoder-loop",
  "model-access",

@@ -68,6 +68,32 @@ pub const USAGE: &str = if crate::DEMO_AVAILABLE {
     command_usage!("")
 };
 
+/// Set by the host when a model-owned tool launches the companion CLI. It
+/// narrows the nested frontend's authority; tool arguments cannot clear it.
+pub(crate) const MODEL_INPUT_ENV: &str = "OPENAGENTS_CODER_MODEL_INPUT";
+
+pub(crate) fn command_environment(
+    mut get: impl FnMut(&str) -> Option<String>,
+) -> BTreeMap<String, String> {
+    [
+        "OPENROUTER_API_KEY",
+        "TYPESAFE_API_KEY",
+        "TYPESAFE_BASE_URL",
+        "AI_GATEWAY_API_KEY",
+        "TYPESAFE_DEFAULT_MODEL",
+        "PATH",
+        "HOME",
+        "USERPROFILE",
+        "GROK_BIN",
+        "DEVIN_BIN",
+        "OPENCODE_BIN",
+        MODEL_INPUT_ENV,
+    ]
+    .into_iter()
+    .filter_map(|name| get(name).map(|value| (name.into(), value)))
+    .collect()
+}
+
 /// Explicit roots and environment make command execution usable from other hosts.
 pub struct Context {
     pub root: PathBuf,
@@ -208,22 +234,7 @@ pub fn run(arguments: &[String], json_mode: bool) -> u8 {
     } else {
         None
     };
-    let mut environment: BTreeMap<String, String> = [
-        "OPENROUTER_API_KEY",
-        "TYPESAFE_API_KEY",
-        "TYPESAFE_BASE_URL",
-        "AI_GATEWAY_API_KEY",
-        "TYPESAFE_DEFAULT_MODEL",
-        "PATH",
-        "HOME",
-        "USERPROFILE",
-        "GROK_BIN",
-        "DEVIN_BIN",
-        "OPENCODE_BIN",
-    ]
-    .into_iter()
-    .filter_map(|name| std::env::var(name).ok().map(|value| (name.into(), value)))
-    .collect();
+    let mut environment = command_environment(|name| std::env::var(name).ok());
     if args
         .first()
         .is_some_and(|arg| matches!(arg.as_str(), "chat" | "run" | "delegate" | "status"))
@@ -778,6 +789,7 @@ pub(crate) fn chat(
     context: &Context,
     emit: &mut dyn FnMut(Value),
 ) -> Result<Value, Error> {
+    app.model_owned_input = context.environment.contains_key(MODEL_INPUT_ENV);
     let mut args = args.to_vec();
     let session = take_option(&mut args, "--session")?.unwrap_or_else(new_id);
     let delegation = take_option(&mut args, "--delegation")?;
@@ -1020,7 +1032,7 @@ pub(crate) fn chat(
                     output,
                     running: false,
                     ..
-                } if name.starts_with("brainstorm.") => crate::brainstorm::context(output),
+                } if crate::brainstorm::is_tool(name) => crate::brainstorm::context(output),
                 _ => None,
             })
             .ok_or("The Brainstorm lookup completed without a bounded observation.")?

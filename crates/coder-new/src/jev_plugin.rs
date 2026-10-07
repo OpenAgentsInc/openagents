@@ -711,6 +711,8 @@ mod tests {
                 cwd: std::path::PathBuf::from("/unused"),
                 instructions: None,
                 shell: false,
+                brainstorm: None,
+                disclosure_desk: None,
             };
             let result = if chat_tool {
                 settings

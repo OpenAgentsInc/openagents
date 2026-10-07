@@ -79,6 +79,12 @@ pub struct App {
     pub checking_jev: bool,
     pub(crate) brainstorm_job: Option<brainstorm::Job>,
     brainstorm_conversation: Option<brainstorm::Conversation>,
+    pub interactive_disclosures: bool,
+    pub(crate) model_owned_input: bool,
+    disclosure_desk: Option<std::sync::Arc<approval::Desk>>,
+    pub(crate) disclosure_event: Option<serde_json::Value>,
+    pub(crate) disclosure_scroll: u16,
+    pub(crate) disclosure_seen: bool,
     pub slash_selected: usize,
     pub slash_hidden: bool,
     pub notice: Option<String>,
@@ -103,6 +109,48 @@ struct Chat {
 }
 
 impl App {
+    fn clear_disclosure(&mut self) {
+        if let Some(desk) = self.disclosure_desk.take() {
+            desk.close();
+        }
+        self.disclosure_event = None;
+        self.disclosure_scroll = 0;
+        self.disclosure_seen = false;
+    }
+
+    pub(crate) fn poll_disclosure(&mut self) {
+        if !self.live.busy {
+            self.clear_disclosure();
+            return;
+        }
+        if let Some(desk) = &self.disclosure_desk {
+            for event in desk.drain() {
+                if event["event"] == "approval" && event["kind"] == "disclosure" {
+                    self.disclosure_event = Some(event);
+                    self.disclosure_scroll = 0;
+                    self.disclosure_seen = false;
+                } else if event["event"] == "approval_answered"
+                    && self
+                        .disclosure_event
+                        .as_ref()
+                        .is_some_and(|pending| pending["id"] == event["id"])
+                {
+                    self.disclosure_event = None;
+                }
+            }
+        }
+    }
+
+    fn answer_disclosure(&mut self, confirm: bool) {
+        if let (Some(desk), Some(event)) = (&self.disclosure_desk, self.disclosure_event.take()) {
+            let _ = desk.answer(&format!(
+                "{} {}",
+                if confirm { "confirm" } else { "reject" },
+                event["id"]
+            ));
+        }
+    }
+
     fn scroll_main_to_end(&mut self) {
         if self.selected_agent.is_none() {
             self.scroll = u16::MAX;
@@ -263,6 +311,7 @@ impl App {
     }
 
     pub fn cancel_request(&mut self) {
+        self.clear_disclosure();
         let brainstorm = self.brainstorm_job.take();
         self.brainstorm_conversation = None;
         if let Some(job) = &brainstorm {
@@ -413,11 +462,14 @@ impl App {
                     return;
                 };
                 self.finish_brainstorm_conversation(&conversation);
-                let output = match result {
+                let mut output = match result {
                     Ok(outcome) => brainstorm::output(outcome),
                     Err(error) => serde_json::json!({ "error": error.to_string(), "state": error,
                         "recipient": job.origin, "operation": job.command.name(), "completed_at_ms": atif::now_ms() }),
                 };
+                if let Some(reference) = job.input_reference() {
+                    output["input_ref"] = serde_json::json!(reference);
+                }
                 let Some(chat) = conversation.chat_mut(self) else {
                     self.live.notice =
                         Some("The Brainstorm lookup conversation is unavailable.".into());
@@ -638,6 +690,10 @@ impl App {
     }
 
     fn start_brainstorm(&mut self, command: brainstorm::Command) {
+        if self.model_owned_input && !matches!(command, brainstorm::Command::Test) {
+            self.live.notice = Some("A model-owned CLI prompt cannot admit a Brainstorm disclosure. Use the native Brainstorm tool and its exact input and recipient confirmation.".into());
+            return;
+        }
         if self.live.busy || self.checking_key || self.checking_jev || self.brainstorm_job.is_some()
         {
             self.live.notice = Some("Wait for the current work or press Esc to stop it.".into());
@@ -804,6 +860,15 @@ impl App {
             }));
         execution.instructions = self.live.instructions.clone();
         execution.shell = crate::approval::gated();
+        if key.is_some()
+            && execution.brainstorm.is_some()
+            && execution.disclosure_desk.is_none()
+            && self.interactive_disclosures
+        {
+            let desk = approval::Desk::new();
+            execution.disclosure_desk = Some(desk.clone());
+            self.disclosure_desk = Some(desk);
+        }
         let kind = if key.is_some() {
             live::Work::Chat {
                 model: self.plugins.model.clone(),
@@ -1015,6 +1080,37 @@ impl App {
 
     /// Returns false when the preview should close.
     pub fn handle(&mut self, event: Event) -> bool {
+        if self.disclosure_event.is_some() {
+            if let Event::Key(key) = event {
+                if key.kind == crossterm::event::KeyEventKind::Release {
+                    return true;
+                }
+                if key.code == KeyCode::Char('c') && key.modifiers.contains(KeyModifiers::CONTROL) {
+                    self.cancel_request();
+                    return false;
+                }
+                match key.code {
+                    KeyCode::Char('y' | 'Y') if self.disclosure_seen => {
+                        self.answer_disclosure(true)
+                    }
+                    KeyCode::Char('n' | 'N') => self.answer_disclosure(false),
+                    KeyCode::Esc => {
+                        self.answer_disclosure(false);
+                        self.cancel_request();
+                    }
+                    KeyCode::Down | KeyCode::PageDown => {
+                        self.disclosure_scroll = self.disclosure_scroll.saturating_add(5)
+                    }
+                    KeyCode::Up | KeyCode::PageUp => {
+                        self.disclosure_scroll = self.disclosure_scroll.saturating_sub(5)
+                    }
+                    KeyCode::End => self.disclosure_scroll = u16::MAX,
+                    KeyCode::Home => self.disclosure_scroll = 0,
+                    _ => {}
+                }
+            }
+            return true;
+        }
         if self.following() {
             return match event {
                 Event::Key(key) => self.follow_key(key),

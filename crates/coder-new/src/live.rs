@@ -110,7 +110,7 @@ impl Chat {
 
     pub fn messages(&self) -> Vec<Message> {
         let newest_brainstorm = self.entries.iter().rposition(|entry| matches!(entry,
-            Entry::Tool { name, output, running: false, .. } if name.starts_with("brainstorm.") && (output.get("observation").is_some() || output.get("error").is_some())));
+            Entry::Tool { name, output, running: false, .. } if crate::brainstorm::is_tool(name) && (output.get("observation").is_some() || output.get("error").is_some())));
         self.entries
             .iter()
             .enumerate()
@@ -122,7 +122,7 @@ impl Chat {
                     ..
                 } = entry
                 {
-                    if name.starts_with("brainstorm.") {
+                    if crate::brainstorm::is_tool(name) {
                         if newest_brainstorm != Some(index) {
                             return None;
                         }
@@ -345,6 +345,7 @@ impl Background {
         if finished {
             self.active = None;
         }
+        app.poll_disclosure();
     }
 
     fn cancel(&mut self) {

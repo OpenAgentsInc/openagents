@@ -376,6 +376,8 @@ impl Plugins {
             cwd,
             instructions: None,
             shell: false,
+            brainstorm: self.bundled.brainstorm.native(),
+            disclosure_desk: crate::approval::desk(),
         }
     }
 

@@ -28,6 +28,8 @@ pub enum ToolBinding {
     Jev,
     OpenAgentsCli,
     AcpSubagent,
+    BrainstormSearch,
+    BrainstormRank,
 }
 
 /// A registration is scoped by its plugin ID and its own ID.
@@ -118,7 +120,7 @@ pub const DEFINITIONS: &[PluginDefinition] = &[
         name: "Brainstorm",
         description: "Explicit public profile and reputation lookups through the Brainstorm house perspective.",
         default_enabled: false,
-        tools: &[],
+        tools: &[ToolBinding::BrainstormSearch, ToolBinding::BrainstormRank],
         model_provider: None,
         composer_rails: &[],
     },

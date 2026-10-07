@@ -23,11 +23,13 @@ const OTHER: &str = "7e7e9c42a91bfef19fa929e5fda1b72e0ebc1a4c1141673e2794234d86a
 const ORIGIN: &str = "https://brainstorm-fixture.invalid";
 
 #[derive(Default)]
-struct Fixture {
-    calls: Mutex<Vec<Command>>,
+pub(super) struct Fixture {
+    pub(super) calls: Mutex<Vec<Command>>,
     enabled: AtomicBool,
     delay: AtomicU64,
     error: Mutex<Option<Error>>,
+    pub(super) fresh: AtomicBool,
+    pub(super) injection: Mutex<Option<String>>,
 }
 
 impl Lookup for Fixture {
@@ -54,7 +56,14 @@ impl Lookup for Fixture {
             Ok(if matches!(command, Command::Test) {
                 Outcome::Discovery(discovery())
             } else {
-                Outcome::Observation(observation(command))
+                let mut observation = observation(command);
+                if self.fresh.load(Ordering::Relaxed) {
+                    observation.expires_at_ms = atif::now_ms() + 60_000;
+                }
+                if let Some(text) = self.injection.lock().unwrap().clone() {
+                    observation.subjects[0].profile_url = text;
+                }
+                Outcome::Observation(observation)
             })
         })
     }
@@ -152,7 +161,7 @@ fn key(app: &mut App, code: KeyCode) {
     assert!(app.handle(Event::Key(KeyEvent::new(code, KeyModifiers::NONE))));
 }
 
-fn fixture_app() -> (App, Arc<Fixture>) {
+pub(super) fn fixture_app() -> (App, Arc<Fixture>) {
     let mut app = App::default();
     app.set_mode(Mode::Live);
     let fixture = Arc::new(Fixture::default());

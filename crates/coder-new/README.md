@@ -75,6 +75,21 @@ history store. Lookups stay in the selected live conversation, including a
 delegation, and following turns use that conversation's observation. Observation
 recovery across chat reopening and automatic local-model lookup remain separate work.
 
+OpenRouter receives `brainstorm_search_people` and `brainstorm_rank` only for an
+enabled native binding. A model-proposed input waits for confirmation of the
+exact outbound query or keys and HTTPS recipient. In the terminal, review the
+complete disclosure with PgUp/PgDn, then press Y to confirm or N to reject;
+Esc cancels. Headless callers use the existing `--approvals stdin` desk and its
+structured `approval` event. Without a desk, the call refuses before a read.
+The host keeps opaque `input_ref` values in a bounded, in-memory admission book;
+references expire after at most five minutes. Identical queries and separately admitted key lists
+can reuse it; a fresh admitted search permits ranking only its returned keys.
+Changed settings, expiry, disablement, or cancellation refuse stale dispatch.
+References grant no other effects, and response strings remain observations.
+Model-owned companion CLI prompts retain their provenance; a nested slash
+lookup cannot grant itself direct-input admission. Use the native tools for
+model-proposed Brainstorm reads.
+
 Enabled plugins register their tools and usage instructions for OpenRouter
 chat. Tool calls run on the background worker, appear in the transcript, and
 return their results to the model. Each turn allows at most eight model rounds

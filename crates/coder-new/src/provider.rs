@@ -532,7 +532,7 @@ impl Provider {
                 execution.redact(&mut output);
                 redact_value(&mut output, self.key.expose());
                 emit(RuntimeEvent::Tool {
-                    name: safe_name,
+                    name: safe_name.clone(),
                     input: safe_input,
                     output: output.clone(),
                     running: false,
@@ -540,8 +540,13 @@ impl Provider {
                 if cancel.load(Ordering::Relaxed) {
                     return Err("The reply was canceled after its plugin call; completed effects were not replayed.".into());
                 }
+                let content = if crate::brainstorm::is_tool(&safe_name) {
+                    crate::brainstorm::context(&output).unwrap_or_else(|| json!({"error":"The Brainstorm observation could not fit the bounded model context."}).to_string())
+                } else {
+                    output.to_string()
+                };
                 let mut observation =
-                    json!({"role":"tool","tool_call_id":call.id,"content":output.to_string()});
+                    json!({"role":"tool","tool_call_id":call.id,"content":content});
                 execution.redact(&mut observation);
                 redact_value(&mut observation, self.key.expose());
                 history.push(observation);
@@ -1127,6 +1132,8 @@ mod tests {
             cwd: std::path::PathBuf::from("/unused"),
             instructions: None,
             shell: false,
+            brainstorm: None,
+            disclosure_desk: None,
         }
     }
 

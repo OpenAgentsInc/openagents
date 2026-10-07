@@ -88,6 +88,7 @@ fn main() -> io::Result<()> {
         }
         return io::stdout().write_all(snapshot::svg(&mut app, 110, 36).as_bytes());
     }
+    app.interactive_disclosures = true;
     let openagents_root = model_access::store::openagents_dir();
     if let Some(store) = state
         .clone()

@@ -6,6 +6,10 @@ use serde::{Deserialize, Serialize};
 use std::{collections::HashSet, future::Future, pin::Pin, sync::Arc};
 use tokio::sync::watch;
 
+mod native;
+pub use native::Native;
+pub(crate) use native::tool_definition;
+
 pub const PLUGIN: &str = "brainstorm";
 pub const USAGE: &str =
     "/brainstorm search <public query> · /brainstorm rank <hex-or-npub> [more keys]";
@@ -228,6 +232,9 @@ impl Lookup for Client {
 struct Binding {
     lookup: Arc<dyn Lookup>,
     enabled: watch::Sender<bool>,
+    origin: String,
+    generation: u64,
+    admissions: std::sync::Mutex<std::collections::VecDeque<native::Admission>>,
 }
 
 /// A host snapshot of an explicitly admitted command and recipient.
@@ -238,21 +245,42 @@ pub struct Job {
     pub origin: String,
     pub cancellation: Cancellation,
     binding: Arc<Binding>,
+    input_ref: Option<String>,
 }
 
 impl Job {
+    pub(crate) fn input_reference(&self) -> Option<&str> {
+        self.input_ref.as_deref()
+    }
     pub async fn run(&self) -> Result<Outcome, Error> {
+        if self.generation != self.binding.generation || self.origin != self.binding.origin {
+            return Err(Error::InvalidInput {
+                field: "configuration".into(),
+            });
+        }
         if !*self.binding.enabled.borrow() {
             return Err(Error::Disabled);
         }
         if self.cancellation.is_cancelled() {
             return Err(Error::Cancelled);
         }
+        if let Some(reference) = &self.input_ref {
+            native::check(&self.binding, reference, &self.command).map_err(|_| {
+                Error::InvalidInput {
+                    field: "admission".into(),
+                }
+            })?;
+        }
         let mut enabled = self.binding.enabled.subscribe();
         tokio::select! {
             biased;
             _ = enabled.wait_for(|enabled| !*enabled) => Err(Error::Disabled),
-            result = self.binding.lookup.read(&self.command, &self.cancellation) => result,
+            result = self.binding.lookup.read(&self.command, &self.cancellation) => {
+                if let (Some(reference), Ok(Outcome::Observation(observation))) = (&self.input_ref, &result) {
+                    native::retain_subjects(&self.binding, reference, observation);
+                }
+                result
+            },
         }
     }
 }
@@ -335,6 +363,9 @@ impl Settings {
                 self.binding = Some(Arc::new(Binding {
                     lookup,
                     enabled: watch::channel(self.preferences.enabled).0,
+                    origin: self.preferences.origin.clone(),
+                    generation: self.generation,
+                    admissions: Default::default(),
                 }));
             }
         }
@@ -444,14 +475,39 @@ impl Settings {
         let Some(binding) = self.binding.clone() else {
             return Err("Brainstorm is unavailable on this host.".into());
         };
+        let command = native::validate(command)?;
+        let input_ref = if matches!(command, Command::Test) {
+            None
+        } else {
+            Some(native::admit(&binding, command.clone())?)
+        };
         Ok(Job {
             generation: self.generation,
             command,
             origin: self.preferences.origin.clone(),
             cancellation: Cancellation::default(),
             binding,
+            input_ref,
         })
     }
+
+    pub fn native(&self) -> Option<Native> {
+        self.preferences
+            .enabled
+            .then(|| self.binding.clone())
+            .flatten()
+            .filter(|binding| *binding.enabled.borrow())
+            .map(|binding| Native {
+                generation: self.generation,
+                origin: self.preferences.origin.clone(),
+                binding,
+            })
+    }
+}
+
+pub(crate) fn is_tool(name: &str) -> bool {
+    name.starts_with("brainstorm.")
+        || matches!(name, "brainstorm_search_people" | "brainstorm_rank")
 }
 
 pub fn output(outcome: Outcome) -> serde_json::Value {
@@ -464,11 +520,22 @@ pub fn output(outcome: Outcome) -> serde_json::Value {
 pub fn context(output: &serde_json::Value) -> Option<String> {
     if let Some(value) = output.get("observation") {
         let observation: Observation = serde_json::from_value(value.clone()).ok()?;
-        let mut projected: serde_json::Value =
-            serde_json::from_str(&observation.model_context().ok()?).ok()?;
+        let text = match observation.model_context() {
+            Ok(text) => text,
+            Err(error) => return Some(serde_json::json!({"error":error.to_string(),"state":error,
+                "recipient":observation.configuration.origin,"configuration_digest":observation.configuration_digest}).to_string()),
+        };
+        let mut projected: serde_json::Value = serde_json::from_str(&text).ok()?;
         let now = atif::now_ms();
         projected["projected_at_ms"] = serde_json::json!(now);
         projected["observation_is_fresh"] = serde_json::json!(observation.is_fresh_at(now));
+        if let Some(reference) = output
+            .get("input_ref")
+            .and_then(serde_json::Value::as_str)
+            .filter(|value| value.len() <= 80)
+        {
+            projected["input_ref"] = serde_json::json!(reference);
+        }
         loop {
             let text = serde_json::to_string(&projected).ok()?;
             if text.len() <= 8 * 1024 {

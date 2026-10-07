@@ -20,7 +20,7 @@ with a live Jev key (about 60 labeled activities over
 `crates/world-tree/data/everglade.json`) and record the numbers there. It
 spends a little Jev money.
 
-## Brainstorm public-read release qualification (#10841, #10842)
+## Brainstorm public-read release qualification (#10841, #10842, #10843)
 
 On release day, authorize a short public read-only smoke against the configured
 Brainstorm HTTPS origin using scratch state and no persisted owner chat. Record
@@ -30,6 +30,10 @@ TTL, and separate identity attribution. Local HTTP fixtures verify the Rust
 client contract. On the selected packaged Coder host, confirm private settings
 survive restart, explicit search/rank and Escape work, and a following turn with
 authorized local or OpenRouter model access sees the retained observation.
+With authorized OpenRouter access, confirm the packaged terminal and headless
+approval desk display the exact lookup input and recipient before a native
+function reads, rejection prevents the read, and an admitted search can supply
+only its returned keys to rank. These checks use explicitly public inputs.
 Deployed availability and packaged interaction still need qualification.
 This check does not authorize profile publication,
 authentication signing, or private query disclosure.

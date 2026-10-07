@@ -39,7 +39,7 @@ pub enum Verdict {
 pub struct Desk {
     next: AtomicU64,
     events: Mutex<VecDeque<Value>>,
-    answers: Mutex<BTreeMap<u64, bool>>,
+    answers: Mutex<BTreeMap<u64, Option<bool>>>,
     closed: AtomicBool,
 }
 
@@ -80,10 +80,18 @@ impl Desk {
             }
         };
         let (id, confirm) = parsed.ok_or("Answer with `confirm ID` or `reject ID`.".to_string())?;
-        self.answers
+        let mut answers = self
+            .answers
             .lock()
-            .unwrap_or_else(std::sync::PoisonError::into_inner)
-            .insert(id, confirm);
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        let pending = answers
+            .get_mut(&id)
+            .filter(|answer| answer.is_none())
+            .ok_or("That approval is not pending.".to_string())?;
+        if self.closed.load(Ordering::SeqCst) {
+            return Err("The approval desk is closed.".into());
+        }
+        *pending = Some(confirm);
         Ok(())
     }
 
@@ -108,18 +116,74 @@ impl Desk {
             .push_back(event);
     }
 
+    fn begin(&self, mut event: Value) -> u64 {
+        let id = self.next.fetch_add(1, Ordering::SeqCst) + 1;
+        self.answers
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .insert(id, None);
+        event["event"] = json!("approval");
+        event["id"] = json!(id);
+        self.push(event);
+        id
+    }
+
+    fn answered(&self, id: u64) -> Option<bool> {
+        self.answers
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .get(&id)
+            .copied()
+            .flatten()
+    }
+
+    fn finish(&self, id: u64, confirm: bool) {
+        self.answers
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .remove(&id);
+        self.push(json!({"event":"approval_answered","id":id,
+            "decision":if confirm {"confirm"} else {"reject"}}));
+    }
+
+    /// Waits for the owner's exact outbound disclosure decision. This never
+    /// uses a command's read-only classification or grants other effects.
+    pub(crate) async fn disclose(
+        &self,
+        recipient: &str,
+        input: Value,
+        cancel: &AtomicBool,
+        still_valid: impl Fn() -> bool,
+    ) -> bool {
+        if self.closed.load(Ordering::SeqCst) || cancel.load(Ordering::Relaxed) || !still_valid() {
+            return false;
+        }
+        let id = self.begin(json!({"kind":"disclosure","recipient":recipient,"input":input,
+            "why":"Send exactly this lookup input to Brainstorm? No files or conversation are added."}));
+        let deadline = tokio::time::Instant::now() + Duration::from_secs(300);
+        let confirm = loop {
+            if self.closed.load(Ordering::SeqCst)
+                || cancel.load(Ordering::Relaxed)
+                || !still_valid()
+                || tokio::time::Instant::now() >= deadline
+            {
+                break false;
+            }
+            if let Some(confirm) = self.answered(id) {
+                break confirm;
+            }
+            tokio::time::sleep(POLL).await;
+        };
+        self.finish(id, confirm);
+        confirm
+    }
+
     /// Asks about `command`, which needs approval for `why`, and waits for
     /// the answer. `cancel` ends the wait as a rejection.
     pub fn ask(&self, command: &str, why: &str, cancel: &AtomicBool) -> bool {
-        let id = self.next.fetch_add(1, Ordering::SeqCst) + 1;
-        self.push(json!({"event":"approval","id":id,"command":command,"why":why}));
+        let id = self.begin(json!({"command":command,"why":why}));
         let confirm = loop {
-            if let Some(confirm) = self
-                .answers
-                .lock()
-                .unwrap_or_else(std::sync::PoisonError::into_inner)
-                .remove(&id)
-            {
+            if let Some(confirm) = self.answered(id) {
                 break confirm;
             }
             if self.closed.load(Ordering::SeqCst) || cancel.load(Ordering::Relaxed) {
@@ -127,8 +191,7 @@ impl Desk {
             }
             std::thread::sleep(POLL);
         };
-        self.push(json!({"event":"approval_answered","id":id,
-            "decision":if confirm {"confirm"} else {"reject"}}));
+        self.finish(id, confirm);
         confirm
     }
 }
@@ -157,6 +220,10 @@ fn current() -> Option<Gate> {
         .lock()
         .unwrap_or_else(std::sync::PoisonError::into_inner)
         .clone()
+}
+
+pub(crate) fn desk() -> Option<Arc<Desk>> {
+    current().map(|gate| gate.desk)
 }
 
 /// Whether a gated chat runs in this process.
@@ -241,13 +308,29 @@ mod tests {
         assert_eq!(answered[0]["event"], "approval_answered");
         assert_eq!(answered[0]["decision"], "confirm");
 
-        gate.desk
-            .answer(r#"{"approval":2,"decision":"reject"}"#)
-            .unwrap();
+        let desk = gate.desk.clone();
+        let answering = std::thread::spawn(move || {
+            loop {
+                if let Some(event) = desk
+                    .drain()
+                    .into_iter()
+                    .find(|event| event["event"] == "approval")
+                {
+                    desk.answer(&format!(
+                        r#"{{"approval":{},"decision":"reject"}}"#,
+                        event["id"]
+                    ))
+                    .unwrap();
+                    break;
+                }
+                std::thread::sleep(Duration::from_millis(5));
+            }
+        });
         assert!(matches!(
             verdict(&gate, "rm notes.txt"),
             Verdict::Refused(why) if why.contains("rejected")
         ));
+        answering.join().unwrap();
     }
 
     #[test]

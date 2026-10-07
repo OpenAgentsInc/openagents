@@ -270,7 +270,7 @@ pub async fn cli(
     cli_at(&program, arguments, cwd, cancel).await
 }
 
-async fn cli_at(
+pub(crate) async fn cli_at(
     program: &Path,
     arguments: &[String],
     cwd: &Path,
@@ -289,7 +289,7 @@ async fn cli_at(
     }
     let mut command = std::process::Command::new(program);
     command.arg("--json").args(arguments).current_dir(cwd);
-    scrub_plugin_credentials(&mut command);
+    prepare_cli_child(&mut command);
     let job = supervise::Job::from_command(command)
         .bounded(supervise::Limits::within(Duration::from_secs(300)).keeping(TEXT_MAX));
     let stopped = wait_job(job, cancel).await?;
@@ -321,7 +321,8 @@ fn scrub_credentials(command: &mut std::process::Command) {
     }
 }
 
-fn scrub_plugin_credentials(command: &mut std::process::Command) {
+fn prepare_cli_child(command: &mut std::process::Command) {
+    command.env(crate::programmatic::MODEL_INPUT_ENV, "model");
     for name in ["OPENROUTER_API_KEY", "TYPESAFE_API_KEY"] {
         command.env_remove(name);
     }
@@ -1355,8 +1356,12 @@ printf '%s\n' '{"type":"turn.completed","usage":{"input_tokens":11,"output_token
         for name in ["GH_TOKEN", "OPENAGENTS_API_KEY", "OA_TOKEN"] {
             command.env(name, "fixture-value");
         }
-        scrub_plugin_credentials(&mut command);
+        prepare_cli_child(&mut command);
         let environment: BTreeMap<_, _> = command.get_envs().collect();
+        assert_eq!(
+            environment.get(std::ffi::OsStr::new(crate::programmatic::MODEL_INPUT_ENV)),
+            Some(&Some(std::ffi::OsStr::new("model")))
+        );
         for name in ["GH_TOKEN", "OPENAGENTS_API_KEY", "OA_TOKEN"] {
             assert_eq!(
                 environment.get(std::ffi::OsStr::new(name)),

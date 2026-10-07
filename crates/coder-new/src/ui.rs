@@ -50,6 +50,23 @@ pub fn render(frame: &mut Frame, app: &mut App) {
         width: area.width.saturating_sub(4),
         height: area.height.saturating_sub(2),
     };
+    if let Some(event) = &app.disclosure_event {
+        let input = serde_json::to_string_pretty(&event["input"]).unwrap_or_default();
+        let text = format!(
+            "Send this exact lookup to Brainstorm?\n\nRecipient: {}\n\n{}\n\nNo files or conversation are added. This approves this lookup input only.\n\nY: confirm · N: reject · Esc: cancel · PgUp/PgDn: review",
+            event["recipient"].as_str().unwrap_or_default(),
+            input
+        );
+        let paragraph = Paragraph::new(text).wrap(Wrap { trim: false });
+        let lines = paragraph.line_count(area.width);
+        let max_scroll = lines
+            .saturating_sub(usize::from(area.height))
+            .min(usize::from(u16::MAX)) as u16;
+        app.disclosure_scroll = app.disclosure_scroll.min(max_scroll);
+        app.disclosure_seen |= app.disclosure_scroll == max_scroll;
+        frame.render_widget(paragraph.scroll((app.disclosure_scroll, 0)), area);
+        return;
+    }
     if app.resume_picker.is_some() {
         resume::render(frame, area, app);
         return;
@@ -562,7 +579,7 @@ fn entry_lines(entry: &crate::live::Entry, width: u16, phase: u8) -> Vec<Line<'s
                     span("Running", t::GRAY_BRIGHT),
                 ]));
             } else {
-                if name.starts_with("brainstorm.") {
+                if crate::brainstorm::is_tool(name) {
                     lines.extend(message_body(&crate::brainstorm::summary(output), width));
                 } else {
                     lines.extend(crate::tools::parameter_lines(output, width));
