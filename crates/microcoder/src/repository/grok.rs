@@ -33,9 +33,10 @@
 
 use std::path::PathBuf;
 
-use acp_client::{Opening, StopReason};
+use acp_client::{ClientError, Opening, StopReason};
 use atif::{Source, Step};
 use coder::task::adapter::{Access, Host, Route as GrantRoute};
+use coder::task::capacity::Provider;
 use serde_json::{Value, json};
 
 use super::devin::{Answering, CANCEL_GRACE, Ended, Recorder, SILENCE, STOP_GRACE, Turn};
@@ -432,20 +433,33 @@ pub(crate) async fn turn(
     if !group_clear {
         host.fail("the Grok Build process group did not stop");
     }
-    match &result {
+    let refusal = match &result {
         Ok(reply) => {
             ended.stop = Some(reply.stop_reason);
             if let Some(usage) = reply.usage {
                 ended.input_tokens = usage.input_tokens.unwrap_or_default();
                 ended.output_tokens = usage.output_tokens.unwrap_or_default();
             }
+            None
+        }
+        // A limit before any work fails over to the next route (#10765).
+        Err(ClientError::Refused { error, .. })
+            if ended.tool_calls == 0 && ended.reply.is_empty() && error.limited() =>
+        {
+            coder::task::capacity::acp_refusal(
+                Provider::Grok,
+                error,
+                coder::task::autostart::unix_now(),
+            )
         }
         Err(error) => {
             ended.error = Some(error.to_string());
+            super::devin::book_limit(host, Provider::Grok, error);
+            None
         }
-    }
+    };
     let observation = json!({"stop_reason": ended.stop.map(StopReason::as_str),
-        "error": ended.error, "group_clear": group_clear,
+        "error": ended.error, "refusal": refusal, "group_clear": group_clear,
         "input_tokens": ended.input_tokens, "output_tokens": ended.output_tokens,
         "tool_calls": ended.tool_calls, "cost_usd": ended.cost_usd,
         "stderr_tail": if ended.error.is_some() { json!(stderr) } else { Value::Null },
@@ -455,7 +469,10 @@ pub(crate) async fn turn(
     }
     // The boundary's profile and scratch outlive the process group.
     drop(contained);
-    Turn::Ended(ended)
+    match refusal {
+        Some(refusal) => Turn::Refused(refusal),
+        None => Turn::Ended(ended),
+    }
 }
 
 #[cfg(all(test, unix))]

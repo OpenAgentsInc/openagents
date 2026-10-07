@@ -74,6 +74,30 @@ impl RpcError {
             .and_then(|data| data.retryable)
             == Some(true)
     }
+
+    /// Whether the refusal says a usage or rate limit stopped the agent:
+    /// the agent's error code is 429, or its message names a usage, session,
+    /// or weekly limit, a rate limit, or HTTP 429 (#10765). ACP has no typed
+    /// limit error, so an ACP agent that reaches Claude, Codex, or another
+    /// metered model puts the provider's words in the message. The caller
+    /// reads the reset from the message, when it states one.
+    #[must_use]
+    pub fn limited(&self) -> bool {
+        const PHRASES: &[&str] = &[
+            "usage limit",
+            "session limit",
+            "weekly limit",
+            "hit your limit",
+            "rate limit",
+            "rate_limit",
+            "usage_limit",
+            "too many requests",
+            "status: 429",
+            "status 429",
+        ];
+        let message = self.message.to_lowercase();
+        self.code == 429 || PHRASES.iter().any(|phrase| message.contains(phrase))
+    }
 }
 
 impl std::fmt::Display for RpcError {
@@ -788,6 +812,20 @@ mod tests {
         assert_eq!(classify("   "), None);
         assert_eq!(classify("[1,2]"), None);
         assert_eq!(classify("{not json"), None);
+    }
+
+    #[test]
+    fn a_limit_refusal_is_read_from_its_code_or_words() {
+        assert!(!RpcError::new(-32603, "internal error").limited());
+        assert!(RpcError::new(429, "slow down").limited());
+        for said in [
+            "You've hit your limit · resets 3pm (UTC)",
+            "Claude AI usage limit reached|1790164200",
+            "exceeded retry limit, last status: 429 Too Many Requests",
+            "Rate limit reached for requests",
+        ] {
+            assert!(RpcError::new(-32603, said).limited(), "{said}");
+        }
     }
 
     #[test]

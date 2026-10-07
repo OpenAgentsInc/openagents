@@ -192,7 +192,8 @@ const MONTHS: [&str; 12] = [
 /// The reset time a limit message states, read against `now` (seconds
 /// since the epoch).
 ///
-/// Claude Code says `resets 11:50am (UTC)` or `resets Sep 24, 5pm (UTC)`;
+/// Older Claude Code builds print `Claude AI usage limit reached|<epoch>`,
+/// the reset as Unix seconds after the bar. Claude Code also says `resets 11:50am (UTC)` or `resets Sep 24, 5pm (UTC)`;
 /// Codex says `Try again at 3:04 PM` or `try again at Sep 24th, 2026 3:04
 /// PM`. A time without a date is the next such time after `now`. A time
 /// in a named zone other than UTC is not read, since this crate carries
@@ -201,6 +202,13 @@ const MONTHS: [&str; 12] = [
 #[must_use]
 pub fn reset_from_message(message: &str, now: u64) -> Option<u64> {
     let lower = message.to_lowercase();
+    if let Some(at) = lower.find("limit reached|") {
+        let digits: String = lower[at + "limit reached|".len()..]
+            .chars()
+            .take_while(char::is_ascii_digit)
+            .collect();
+        return digits.parse().ok().filter(|reset: &u64| *reset > 0);
+    }
     let start = ["resets at ", "resets ", "try again at "]
         .iter()
         .find_map(|marker| lower.find(marker).map(|at| at + marker.len()))?;
@@ -349,6 +357,17 @@ mod tests {
         let zoned = "You've hit your limit · resets 5pm (America/New_York)";
         assert!(says_limited(zoned));
         assert_eq!(reset_from_message(zoned, NOW), None);
+    }
+
+    #[test]
+    fn reads_the_epoch_after_claude_codes_bar() {
+        let said = "Claude AI usage limit reached|1790164200";
+        assert!(says_limited(said));
+        assert_eq!(reset_from_message(said, NOW), Some(RESET));
+        assert_eq!(
+            reset_from_message("Claude AI usage limit reached|", NOW),
+            None
+        );
     }
 
     #[test]

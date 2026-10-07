@@ -199,7 +199,10 @@ cannot succeed. It appends a `no_capacity` entry with the earliest reset,
 then ends the task with a cancellation whose reason names that time. The
 device's activity summary reads, for example, `No model capacity until
 2026-10-03 18:07 UTC`, and the phone shows it under the task's `Stopped`
-phase.
+phase. The host also records a resume point, and once an admitted route has
+capacity again it continues the task with a resume turn under the same
+bounds. A run a limit stopped partway gets a resume point the same way; see
+[Resume after a limit](capacity.md#resume-after-a-limit).
 
 During a run, the engine fails over. When a provider refuses a generation for
 a usage or rate limit, the engine records the refusal, appends a System step

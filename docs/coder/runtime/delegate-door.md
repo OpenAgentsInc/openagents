@@ -105,6 +105,12 @@ with: the Codex login is out of its usage limit until 2026-10-03 18:07 UTC
 and the Claude Code login can't be used (Claude Code is not signed in)."
 The error's cause is `no_capacity`.
 
+A Claude Code, Codex, or OpenCode turn that ends on a usage or rate limit
+records it in the same book, with the reset the stream or the CLI's limit
+sentence reports, so the next turn and every other agent pass over that
+login. [The usage-limit book](capacity.md) covers the detector, resume
+after a limit, and `openagents capacity`.
+
 ## A Claude Code or Codex turn
 
 ```text

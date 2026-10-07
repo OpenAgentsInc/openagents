@@ -385,6 +385,16 @@ pub(crate) async fn turn(
                 };
                 return Turn::Refused(Refusal::new(lean.provider, kind, now, limit.resets_at));
             }
+            // A limit after work ends the turn with what it did; the book
+            // keeps other work off the login and lets the auto-start
+            // policy resume the task after the reset (#10765).
+            if let Some(limit) = &summary.limit {
+                let now = coder::task::autostart::unix_now();
+                let refusal = coder::task::capacity::from_limit(lean.provider, limit, now);
+                if let Err(why) = coder::task::capacity::record(host.store(), refusal) {
+                    eprintln!("microcoder: the capacity book was not updated: {why}");
+                }
+            }
             ended.error = Some(status.to_string());
         }
     }

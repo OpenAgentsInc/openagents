@@ -58,6 +58,7 @@ pub mod owner;
 pub mod publish;
 pub mod recent;
 pub mod remote;
+pub mod resume;
 pub mod retire;
 pub mod review;
 pub mod run_artifacts;

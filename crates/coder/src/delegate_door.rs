@@ -986,6 +986,7 @@ impl DelegateDoor {
                     )));
                 }
                 FromThread::Done(answer) => {
+                    self.book_limit(&answer);
                     if let Ok(mut session) = self.session.lock()
                         && answer.session_id.is_some()
                         && answer.agent.is_cli()
@@ -999,6 +1000,39 @@ impl DelegateDoor {
         Err(GenerateError::Stream(
             "the delegation thread ended without an answer".to_string(),
         ))
+    }
+}
+
+/// The capacity-book refusal a delegated CLI turn ended on, if its stream
+/// or what it printed reports a usage or rate limit (#10765): Claude Code
+/// spends the Claude login, Codex CLI the Codex login, and OpenCode its own.
+#[must_use]
+pub fn delegated_refusal(
+    agent: Cli,
+    report: &coder_delegate::delegate::Report,
+    now: u64,
+) -> Option<Refusal> {
+    let provider = match agent {
+        Cli::ClaudeCode => Provider::Claude,
+        Cli::Codex => Provider::Codex,
+        Cli::OpenCode => Provider::OpenCode,
+        _ => return None,
+    };
+    let limit = report.limit(agent.word())?;
+    Some(capacity::from_limit(provider, &limit, now))
+}
+
+impl DelegateDoor {
+    /// Record in the capacity book the usage or rate limit a delegated CLI
+    /// turn ended on, so the next turn, the auto-start policy, and
+    /// `openagents capacity check` pass over that login until its reset.
+    fn book_limit(&self, answer: &terminal::Answer) {
+        let Some(refusal) = delegated_refusal(answer.agent, &answer.report, (self.now)()) else {
+            return;
+        };
+        if let Err(why) = capacity::record(&self.book, refusal) {
+            eprintln!("coder: the capacity book was not updated: {why}");
+        }
     }
 }
 
@@ -2444,5 +2478,56 @@ echo "{\"type\":\"result\",\"subtype\":\"success\",\"is_error\":false,\"num_turn
             "User: what is gym?\nAssistant: The measurement plane."
         );
         assert_eq!(earlier(&transcript[..1]), "");
+    }
+
+    /// A recorded Claude Code session the five-hour limit throttled, and
+    /// what Codex CLI prints at its limit, each become an entry in the
+    /// capacity book with the reset they report (#10765).
+    #[test]
+    fn a_delegated_cli_limit_is_booked_with_its_reset() {
+        use coder_delegate::delegate::{Report, Summary, testing::THROTTLED};
+        let dir = tempfile::tempdir().unwrap();
+        let now = 1_790_163_058;
+        let throttled = Report {
+            status: DelegateStatus::Refused(coder_delegate::delegate::USAGE_LIMIT.to_string()),
+            summary: Summary::parse(THROTTLED),
+            milliseconds: 0,
+            stderr: String::new(),
+            stream: None,
+        };
+        let refusal = delegated_refusal(Cli::ClaudeCode, &throttled, now).unwrap();
+        assert_eq!(refusal.provider, Provider::Claude);
+        assert_eq!(refusal.kind, capacity::Kind::UsageLimit);
+        assert_eq!(refusal.resets_at, Some(1_790_164_200));
+        assert_eq!(refusal.window_minutes, Some(300));
+        capacity::record_with(dir.path(), refusal, |_| None).unwrap();
+        let codex = Report {
+            status: DelegateStatus::Refused(coder_delegate::delegate::USAGE_LIMIT.to_string()),
+            summary: Summary::default(),
+            milliseconds: 0,
+            stderr: "ERROR: You've hit your usage limit. Try again at Sep 25th, 2026 9:15 AM."
+                .to_string(),
+            stream: None,
+        };
+        let refusal = delegated_refusal(Cli::Codex, &codex, now).unwrap();
+        capacity::record_with(dir.path(), refusal, |_| None).unwrap();
+        let book = capacity::Book::load_with(dir.path(), |_| None);
+        assert_eq!(
+            book.blocking(Provider::Claude, now).unwrap().until,
+            1_790_164_200
+        );
+        assert_eq!(
+            book.blocking(Provider::Codex, now).unwrap().until,
+            coder_delegate::limit::parse_iso("2026-09-25T09:15:00Z").unwrap()
+        );
+        // An answered turn books nothing.
+        let answered = Report {
+            status: DelegateStatus::Answered,
+            summary: Summary::default(),
+            milliseconds: 0,
+            stderr: String::new(),
+            stream: None,
+        };
+        assert_eq!(delegated_refusal(Cli::ClaudeCode, &answered, now), None);
     }
 }

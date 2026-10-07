@@ -23,6 +23,7 @@ Usage:
   openagents task artifact TASK_ID --path RELATIVE_PATH [--store DIRECTORY]
   openagents task archive TASK_ID --reason TEXT [--store DIRECTORY]
   openagents task restore TASK_ID [--store DIRECTORY]
+  openagents task resume TASK_ID [--store DIRECTORY]
 
 Submit and cancel read the exact versioned command bytes from a file (or -
 for stdin). Keep the same command ID and file bytes when retrying. Cancellation
@@ -35,7 +36,9 @@ or execute (foreground host). Cancellation acknowledges a request; inspect the
 execution result for confirmed stop. Recover records owner loss as unknown and
 never reruns an effect. Model adapters are not admitted by this path.
 Archive takes a finished or cancelled task off every device's task and chat
-lists and deletes nothing; restore shows it again.
+lists and deletes nothing; restore shows it again. Resume continues a task a
+usage limit stopped from its resume point now, without waiting for the reset;
+the auto-start policy otherwise resumes it once a provider has capacity.
 See docs/coder/guides/tasks.md for command fixtures and recovery behavior.
 
 Exit codes: 0 success, 1 store/command refusal, 64 invalid CLI usage.";
@@ -55,6 +58,7 @@ enum Operation {
     Artifact(String, PathBuf),
     Archive(String, String),
     Restore(String),
+    Resume(String),
 }
 
 #[derive(Debug, PartialEq, Eq)]
@@ -126,7 +130,8 @@ fn parse(arguments: &[String]) -> Result<Options, String> {
                 || verb == "view"
                 || verb == "artifact"
                 || verb == "archive"
-                || verb == "restore")
+                || verb == "restore"
+                || verb == "resume")
                 && !argument.starts_with('-')
                 && id.is_none() =>
             {
@@ -157,6 +162,7 @@ fn parse(arguments: &[String]) -> Result<Options, String> {
             reason.take().ok_or("archive needs --reason")?,
         ),
         "restore" if file.is_none() => Operation::Restore(id.ok_or("restore needs a task ID")?),
+        "resume" if file.is_none() => Operation::Resume(id.ok_or("resume needs a task ID")?),
         "submit" => Operation::Submit(file.ok_or("submit needs --file")?),
         "cancel" => Operation::Cancel(file.ok_or("cancel needs --file")?),
         "correct" => Operation::Correct(file.ok_or("correct needs --file")?),
@@ -263,6 +269,7 @@ pub async fn run_with_json(arguments: &[String], json: bool) -> u8 {
         | Operation::Artifact(..)
         | Operation::Archive(..)
         | Operation::Restore(_)
+        | Operation::Resume(_)
         | Operation::Check(_) => None,
     };
     let directory = match options.store {
@@ -316,6 +323,14 @@ pub async fn run_with_json(arguments: &[String], json: bool) -> u8 {
             ) {
                 Ok(archived) => output(&json!({"task": id, "archived": archived})),
                 Err(error) => failure(error.code(), error),
+            };
+        }
+        Operation::Resume(id) => {
+            return match task::resume::resume_now(&directory, id, task::autostart::unix_now()) {
+                Ok((point, turn)) => {
+                    output(&json!({"task": id, "turn": turn, "resume_point": point}))
+                }
+                Err(message) => failure("no_resume", message),
             };
         }
         Operation::Restore(id) => {

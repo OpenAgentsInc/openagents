@@ -5213,6 +5213,42 @@
             "effect": "local_write",
             "runs_on": "connected_computer"
           }
+        },
+        {
+          "name": "resume",
+          "leaf": {
+            "path": [
+              "task",
+              "resume"
+            ],
+            "usage": [
+              "resume TASK_ID [--store DIRECTORY]"
+            ],
+            "forms": [
+              {
+                "tokens": [
+                  {
+                    "kind": "literal",
+                    "word": "resume"
+                  },
+                  {
+                    "kind": "positional",
+                    "name": "TASK_ID"
+                  },
+                  {
+                    "kind": "option",
+                    "name": "store",
+                    "value": "DIRECTORY",
+                    "open": true,
+                    "optional": true
+                  }
+                ]
+              }
+            ],
+            "summary": "",
+            "effect": "local_write",
+            "runs_on": "connected_computer"
+          }
         }
       ],
       "options": [
@@ -5872,6 +5908,152 @@
         {
           "kind": "option",
           "name": "json",
+          "optional": true,
+          "repeated": true
+        }
+      ]
+    },
+    {
+      "name": "capacity",
+      "summary": "The shared usage-limit book: which providers have capacity, check one before starting an agent, and record a limit an agent hit.",
+      "children": [
+        {
+          "name": "list",
+          "leaf": {
+            "path": [
+              "capacity",
+              "list"
+            ],
+            "usage": [
+              "list [--store DIR]"
+            ],
+            "forms": [
+              {
+                "tokens": [
+                  {
+                    "kind": "literal",
+                    "word": "list"
+                  },
+                  {
+                    "kind": "option",
+                    "name": "store",
+                    "value": "DIR",
+                    "open": true,
+                    "optional": true
+                  }
+                ]
+              }
+            ],
+            "summary": "Each provider, whether it has capacity now, and when a recorded limit resets. Bare `openagents capacity` is list.",
+            "effect": "read_only",
+            "runs_on": "connected_computer"
+          }
+        },
+        {
+          "name": "check",
+          "leaf": {
+            "path": [
+              "capacity",
+              "check"
+            ],
+            "usage": [
+              "check PROVIDER [--store DIR]"
+            ],
+            "forms": [
+              {
+                "tokens": [
+                  {
+                    "kind": "literal",
+                    "word": "check"
+                  },
+                  {
+                    "kind": "positional",
+                    "name": "PROVIDER"
+                  },
+                  {
+                    "kind": "option",
+                    "name": "store",
+                    "value": "DIR",
+                    "open": true,
+                    "optional": true
+                  }
+                ]
+              }
+            ],
+            "summary": "Exit 0 when PROVIDER has capacity now, 1 when a recorded limit holds; says until when.",
+            "effect": "read_only",
+            "runs_on": "connected_computer"
+          }
+        },
+        {
+          "name": "record",
+          "leaf": {
+            "path": [
+              "capacity",
+              "record"
+            ],
+            "usage": [
+              "record PROVIDER [--reset TIME] [--rate] [--store DIR]"
+            ],
+            "forms": [
+              {
+                "tokens": [
+                  {
+                    "kind": "literal",
+                    "word": "record"
+                  },
+                  {
+                    "kind": "positional",
+                    "name": "PROVIDER"
+                  },
+                  {
+                    "kind": "option",
+                    "name": "reset",
+                    "value": "TIME",
+                    "open": true,
+                    "optional": true
+                  },
+                  {
+                    "kind": "option",
+                    "name": "rate",
+                    "optional": true
+                  },
+                  {
+                    "kind": "option",
+                    "name": "store",
+                    "value": "DIR",
+                    "open": true,
+                    "optional": true
+                  }
+                ]
+              }
+            ],
+            "summary": "Record that PROVIDER refused work for a usage limit (a rate limit with --rate) until TIME. TIME is Unix seconds, an ISO 8601 UTC time, a duration from now (90m, 5h, 2d), or a clock time as the CLI printed it (3pm, \"resets 11:50am (UTC)\"), read as UTC. Without --reset the limit holds for 30 minutes.",
+            "effect": "local_write",
+            "runs_on": "connected_computer"
+          }
+        }
+      ],
+      "options": [
+        {
+          "kind": "option",
+          "name": "store",
+          "value": "DIR",
+          "open": true,
+          "optional": true,
+          "repeated": true
+        },
+        {
+          "kind": "option",
+          "name": "reset",
+          "value": "TIME",
+          "open": true,
+          "optional": true,
+          "repeated": true
+        },
+        {
+          "kind": "option",
+          "name": "rate",
           "optional": true,
           "repeated": true
         }

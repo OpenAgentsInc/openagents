@@ -22,6 +22,7 @@ mod argv;
 mod background;
 mod boat_run;
 mod browser;
+mod capacity;
 mod catalog;
 mod chamber;
 mod chat;
@@ -140,6 +141,8 @@ Coder:
                ~/.openagents/scratch, for files that must outlive a reboot.
   browser      Run a command beside a Chrome of its own: a fresh profile and
                debugging port, removed when the command ends.
+  capacity     The shared usage-limit book: which providers have capacity, check
+               one before starting an agent, and record a limit an agent hit.
   settings     What Coder may use on this computer: providers, ask first, and more.
   service      Install, update, and roll back the resident host service.
   background   The host's background rules, built in and from plugins turned on here.
@@ -323,6 +326,7 @@ fn main() -> ExitCode {
         "lease" | "leases" => lease::run(&output, &rest),
         "scratch" => scratch::run(&output, &rest),
         "browser" => browser::run(&output, &rest),
+        "capacity" => capacity::run(&output, &rest),
         "chat" => chat::run(&output, &rest),
         "terminal" => screen::run(&output, &rest),
         "computer" | "computers" => computer::run(&output, &rest),

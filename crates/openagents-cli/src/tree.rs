@@ -41,6 +41,7 @@ const TASK: &[Declared] = &[
     Declared::computer("artifact", Effect::ReadOnly),
     Declared::computer("archive", Effect::LocalWrite),
     Declared::computer("restore", Effect::LocalWrite),
+    Declared::computer("resume", Effect::LocalWrite),
 ];
 
 const CODER: &[Declared] = &[
@@ -174,6 +175,11 @@ pub fn help() -> Vec<GroupHelp<'static>> {
             "browser",
             Some(crate::browser::USAGE),
             crate::browser::EFFECTS,
+        ),
+        group(
+            "capacity",
+            Some(crate::capacity::USAGE),
+            crate::capacity::EFFECTS,
         ),
         group(
             "settings",

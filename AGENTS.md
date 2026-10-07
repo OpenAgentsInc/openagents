@@ -91,6 +91,11 @@ claim N` / `release N` (comment marker, you as assignee, project Status), the
 same record Coder's flows and `coder-project` write and honour; leave an issue
 another claim holds (`openagents issue status N`) alone.
 
+Before you launch subagents, run `openagents capacity check claude` (exit 1
+means the login is out of its limit; don't launch), and when an agent stops on
+a usage limit, run `openagents capacity record PROVIDER --reset TIME` with the
+reset it printed (`docs/coder/runtime/capacity.md`).
+
 Close an issue as soon as its work is code-complete: merged to `main`, with its
 own checks passing and any host deploy it needs done. Never hold an issue open
 waiting on the owner — a real-money payment, a device run, a key only the owner

@@ -27,6 +27,12 @@
 //!   never overrides a recorded refusal, and any probe failure leaves the
 //!   refusal-only choice above.
 //!
+//! - **Resume after a limit** (#10765): a task the policy started that a
+//!   usage or rate limit stopped, and a task it ended as `no_capacity`, gets
+//!   a resume point ([`super::resume`]). Once an admitted provider has
+//!   capacity again, the sweep continues the task with a resume turn and
+//!   starts it like any other turn, under the same bounds.
+//!
 //! Every decision is appended to `autostart.jsonl` beside the policy:
 //! eligible, started (with the grant digest and owner process), skipped, and
 //! refused, plus each policy change. Turning the policy off stops new starts
@@ -47,8 +53,8 @@ use openagents_connect::control::{
 
 use super::account;
 use super::capacity::{self, Connection, Provider};
-use super::usage;
 use super::{Action, COMMAND_SCHEMA, Command, Status, Store, adapter, owner};
+use super::{resume, usage};
 
 pub use coder_host::StartCause;
 
@@ -850,8 +856,9 @@ pub struct Entry {
     /// `usage` (the probed windows a start was routed with),
     /// `unadmitted` (an owner process never admitted a started turn),
     /// `retry` (the host starts that turn again), `not_started` (the host
-    /// ended it, with the cause's name as the detail), `policy_on`, or
-    /// `policy_off`.
+    /// ended it, with the cause's name as the detail), `resume_point` (a
+    /// limit stopped the turn; it resumes after the reset), `resumed` (the
+    /// host continued it with a resume turn), `policy_on`, or `policy_off`.
     pub event: String,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub task: Option<String>,
@@ -1386,6 +1393,93 @@ impl Autostart {
         }
     }
 
+    /// Continue every task whose resume point is due (#10765): an admitted
+    /// provider has capacity again. Each resume turn is made eligible in the
+    /// task's workspace, so this sweep starts it under the policy's bounds.
+    /// A busy store leaves the points to the next sweep. Returns the entries
+    /// it wrote.
+    fn resume_due(&self, policy: &Policy, now: u64) -> Vec<Entry> {
+        let points: Vec<resume::Point> = resume::load(&self.store)
+            .into_iter()
+            .filter(|point| point.resumed.is_none())
+            .collect();
+        if points.is_empty() {
+            return Vec::new();
+        }
+        let book = capacity::Book::load_with(&self.store, self.identify);
+        let providers: Vec<Provider> = policy.routes().iter().map(|route| route.provider).collect();
+        let due: Vec<resume::Point> = points
+            .into_iter()
+            .filter(|point| resume::due(point, &book, &providers, now))
+            .collect();
+        if due.is_empty() {
+            return Vec::new();
+        }
+        let Ok(mut store) = Store::open_waiting(&self.store, self.store_wait) else {
+            return Vec::new();
+        };
+        let mut written = Vec::new();
+        for point in due {
+            let refuse = |why: &str| resume::Resumed {
+                at: now,
+                turn: None,
+                refused: Some(why.to_owned()),
+            };
+            let Some(workspace) = point
+                .workspace
+                .clone()
+                .filter(|label| policy.admits(label) && self.workspaces.contains_key(label))
+            else {
+                let _ = resume::resolve(
+                    &self.store,
+                    &point.task,
+                    point.turn,
+                    refuse("the policy no longer admits the workspace"),
+                );
+                continue;
+            };
+            let resumed = match resume::continue_task(&mut store, &point) {
+                Ok(turn) => resume::Resumed {
+                    at: now,
+                    turn: Some(turn),
+                    refused: None,
+                },
+                Err(super::Error::Busy) => continue,
+                Err(error) => refuse(&error.to_string()),
+            };
+            if let Err(error) =
+                resume::resolve(&self.store, &point.task, point.turn, resumed.clone())
+            {
+                eprintln!("openagents host: auto-start: {error}");
+            }
+            let Some(turn) = resumed.turn else {
+                continue;
+            };
+            let device = point.device.clone().unwrap_or_else(|| "host".to_owned());
+            if let Err(error) = note_eligible(
+                &self.root,
+                now,
+                &point.task,
+                &device,
+                &workspace,
+                turn,
+                None,
+            ) {
+                eprintln!("openagents host: auto-start: {error}");
+            }
+            let mut entry = Entry::new(now, "resumed")
+                .task(&point.task)
+                .at_turn(turn)
+                .detail("an admitted provider has capacity again; the task resumes from its resume point");
+            entry.workspace = Some(workspace);
+            if let Err(error) = record(&self.root, &entry) {
+                eprintln!("openagents host: auto-start: {error}");
+            }
+            written.push(entry);
+        }
+        written
+    }
+
     /// Start every eligible task the policy and its bounds allow now.
     /// Returns the entries it wrote.
     pub fn sweep(&self) -> Vec<Entry> {
@@ -1396,6 +1490,7 @@ impl Autostart {
             return Vec::new();
         };
         let now = (self.now)();
+        let mut written = self.resume_due(&policy, now);
         let history = journal(&self.root);
         let mut waiting: Vec<Entry> = Vec::new();
         let mut decided: BTreeSet<(String, u64)> = BTreeSet::new();
@@ -1408,10 +1503,18 @@ impl Autostart {
         // The provider each task's person asked for, from its first
         // eligible entry; every later turn asks for it again (#10076).
         let mut requested: BTreeMap<String, Provider> = BTreeMap::new();
+        // Where each turn was made eligible: its workspace and device, which
+        // a resume point keeps.
+        let mut places: BTreeMap<(String, u64), (Option<String>, Option<String>)> = BTreeMap::new();
         for entry in history {
             let Some(task) = entry.subject() else {
                 continue;
             };
+            if entry.event == "eligible" {
+                places
+                    .entry(task.clone())
+                    .or_insert_with(|| (entry.workspace.clone(), entry.device.clone()));
+            }
             if entry.event == "eligible"
                 && let Some(provider) = entry.requested.as_deref().and_then(Provider::from_config)
             {
@@ -1446,7 +1549,7 @@ impl Autostart {
         }
         waiting.retain(|entry| entry.subject().is_some_and(|t| !decided.contains(&t)));
         if waiting.is_empty() && started.keys().all(|task| settled.contains(task)) {
-            return Vec::new();
+            return written;
         }
         // Probe usage before opening the task store, so no request runs
         // under its lock. Cached, so a sweep every few seconds asks each
@@ -1474,7 +1577,6 @@ impl Autostart {
         } else {
             usage::Book::default()
         };
-        let mut written = Vec::new();
         let mut write = |entry: Entry| {
             if let Err(error) = record(&self.root, &entry) {
                 eprintln!("openagents host: auto-start: {error}");
@@ -1517,6 +1619,7 @@ impl Autostart {
             // exited, or the deadline passes, the host says why and either
             // starts it again or ends it, so it never waits forever.
             let mut active = 0;
+            let mut limits: Option<capacity::Book> = None;
             for (subject, &(at, owner_process)) in &started {
                 if settled.contains(subject) {
                     continue;
@@ -1534,6 +1637,28 @@ impl Autostart {
                         continue;
                     }
                     Status::Queued if task.run.is_none() => {}
+                    Status::Finished if now.saturating_sub(at) <= RESUME_WINDOW => {
+                        let book = limits.get_or_insert_with(|| {
+                            capacity::Book::load_with(&self.store, self.identify)
+                        });
+                        if let Some((provider, resets_at)) =
+                            resume::stopped_by_limit(&task, at, book, now)
+                        {
+                            let mut point =
+                                resume::point_for(&self.store, &task, provider, resets_at, now);
+                            (point.workspace, point.device) =
+                                places.get(subject).cloned().unwrap_or_default();
+                            if let Ok(true) = resume::record(&self.store, point) {
+                                let mut entry = Entry::new(now, "resume_point")
+                                    .task(id)
+                                    .at_turn(*turn)
+                                    .detail("a usage or rate limit stopped the turn; it resumes once an admitted provider has capacity");
+                                entry.resets_at = resets_at;
+                                write(entry);
+                            }
+                        }
+                        continue;
+                    }
                     _ => continue,
                 }
                 let waited = now.saturating_sub(at);
@@ -1649,6 +1774,22 @@ impl Autostart {
                         entry.resets_at = until;
                         write(entry);
                         end_without_capacity(&mut store, &id, turn, task.revision, until);
+                        // It resumes once an admitted provider has capacity.
+                        let blocked = policy
+                            .routes()
+                            .iter()
+                            .map(|route| route.provider)
+                            .find(|provider| !book.has_capacity(*provider, now));
+                        let mut point = resume::point_for(&self.store, &task, blocked, until, now);
+                        point.workspace = Some(workspace.clone());
+                        point
+                            .device
+                            .clone_from(&entry_device(entry_of(&waiting, &id, turn)));
+                        if let Err(error) = resume::record(&self.store, point) {
+                            eprintln!(
+                                "openagents host: auto-start cannot record a resume point: {error}"
+                            );
+                        }
                         continue;
                     }
                     Choice::Unconnected { why } => {
@@ -1774,6 +1915,22 @@ impl Autostart {
             self.launcher.as_ref(),
         )
     }
+}
+
+/// How far back a finished run can start and still get a resume point: a
+/// week, so a host upgraded to resume points does not resume old tasks.
+const RESUME_WINDOW: u64 = 7 * 24 * 60 * 60;
+
+/// The eligible entry for `task`'s turn `turn` among `waiting`.
+fn entry_of<'a>(waiting: &'a [Entry], task: &str, turn: u64) -> Option<&'a Entry> {
+    waiting
+        .iter()
+        .find(|entry| entry.subject() == Some((task.to_owned(), turn)))
+}
+
+/// The device an entry names.
+fn entry_device(entry: Option<&Entry>) -> Option<String> {
+    entry.and_then(|entry| entry.device.clone())
 }
 
 /// End a queued task that no admitted provider can serve: the host cancels
@@ -4350,6 +4507,52 @@ mod tests {
         );
         // Nothing is decided twice.
         assert!(s.autostart.sweep().is_empty());
+    }
+
+    /// A task a usage limit stopped resumes after the reset from its resume
+    /// point, once, under the policy's bounds (#10765).
+    #[test]
+    fn a_task_a_limit_stopped_resumes_after_the_reset_from_its_resume_point() {
+        let s = setup();
+        policy(1).save(&s.root).unwrap();
+        exhaust_codex(&s.store);
+        let task = "7".repeat(64);
+        s.inbox.create(&task, "phone", &create("allowed")).unwrap();
+        assert!(s.launched.lock().unwrap().is_empty());
+        let point = resume::open(&s.store, &task).unwrap();
+        assert_eq!(point.provider, Some(Provider::Codex));
+        assert_eq!(point.resets_at, Some(500_000));
+        assert_eq!(point.workspace.as_deref(), Some("allowed"));
+        assert_eq!(point.device.as_deref(), Some("phone"));
+        // Before the reset nothing resumes.
+        advance(10_000);
+        assert!(s.autostart.sweep().is_empty());
+        assert!(s.launched.lock().unwrap().is_empty());
+        // After it, the task continues from its resume point and starts.
+        CLOCK.with(|clock| clock.set(500_001));
+        let entries = s.autostart.sweep();
+        let names: Vec<&str> = entries.iter().map(|e| e.event.as_str()).collect();
+        assert!(
+            names.contains(&"resumed") && names.contains(&"started"),
+            "{names:?}"
+        );
+        assert_eq!(s.launched.lock().unwrap().len(), 1);
+        let stored = Store::open(&s.store).unwrap().show(&task).unwrap();
+        assert_eq!(stored.status, Status::Queued);
+        assert_eq!(stored.follow_ups.len(), 1);
+        let prompt = stored.effective_prompt();
+        assert!(
+            prompt.contains("A usage limit stopped this task (codex)"),
+            "{prompt}"
+        );
+        assert!(prompt.ends_with("Find why it fails."), "{prompt}");
+        assert_eq!(resume::open(&s.store, &task), None);
+        let resolved = resume::load(&s.store).pop().unwrap().resumed.unwrap();
+        assert_eq!(resolved.turn, Some(stored.turn_started()));
+        // It resumes once.
+        let again = s.autostart.sweep();
+        assert!(!again.iter().any(|e| e.event == "resumed"), "{again:?}");
+        assert_eq!(s.launched.lock().unwrap().len(), 1);
     }
 
     #[test]

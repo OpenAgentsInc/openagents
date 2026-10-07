@@ -37,7 +37,7 @@ use acp_client::wire::Update;
 use acp_client::{ClientError, Handler, Opening, PermissionAnswer, PermissionRequest, StopReason};
 use atif::{Call, Outcome as CallOutcome, Source, Step};
 use coder::task::adapter::{Access, Host, Route as GrantRoute};
-use coder::task::capacity::{Kind, Provider, Refusal};
+use coder::task::capacity::{Provider, Refusal};
 use serde_json::{Value, json};
 
 /// The step extension that names the Devin session a turn used, which the
@@ -762,17 +762,19 @@ pub(crate) async fn turn(
             None
         }
         Err(ClientError::Refused { error, .. })
-            if error.retryable() && ended.tool_calls == 0 && ended.reply.is_empty() =>
+            if ended.tool_calls == 0
+                && ended.reply.is_empty()
+                && (error.retryable() || error.limited()) =>
         {
-            Some(Refusal::new(
+            coder::task::capacity::acp_refusal(
                 Provider::Devin,
-                Kind::RateLimit,
+                error,
                 coder::task::autostart::unix_now(),
-                None,
-            ))
+            )
         }
         Err(error) => {
             ended.error = Some(error.to_string());
+            book_limit(host, Provider::Devin, error);
             None
         }
     };
@@ -788,6 +790,25 @@ pub(crate) async fn turn(
     match refusal {
         Some(refusal) => Turn::Refused(refusal),
         None => Turn::Ended(ended),
+    }
+}
+
+/// Record in the capacity book a usage or rate limit an ACP agent hit
+/// after it started work (#10765). The turn still ends with what it did;
+/// the book keeps the next turn, the auto-start policy, and other agents
+/// off that login until its reset, and lets the policy resume the task.
+pub(crate) fn book_limit(host: &Host, provider: Provider, error: &ClientError) {
+    let ClientError::Refused { error, .. } = error else {
+        return;
+    };
+    if !error.limited() {
+        return;
+    }
+    let now = coder::task::autostart::unix_now();
+    if let Some(refusal) = coder::task::capacity::acp_refusal(provider, error, now)
+        && let Err(why) = coder::task::capacity::record(host.store(), refusal)
+    {
+        eprintln!("microcoder: the capacity book was not updated: {why}");
     }
 }
 
