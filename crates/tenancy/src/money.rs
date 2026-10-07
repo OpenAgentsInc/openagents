@@ -109,6 +109,18 @@ pub enum Operation {
     BeginFunding {
         funding: funding::Funding,
     },
+    /// Admit accepted terms with the writer's current time. This grants no
+    /// credit and does not prove that a processor collected a payment.
+    QuoteFunding {
+        quote: funding::Quote,
+    },
+    /// The trusted provider adapter verifies the original payment time and
+    /// source. Only a retained native quote can preserve superseded terms.
+    BeginQuotedFunding {
+        quote: String,
+        funding: funding::Funding,
+        paid_at: u64,
+    },
     FundingFinality {
         funding: String,
         finality: funding::Finality,
@@ -389,7 +401,8 @@ impl State {
         {
             return Err("attempt already reserved under its original native payer".into());
         }
-        if let Operation::BeginFunding { funding } = &mutation.operation
+        if let Operation::BeginFunding { funding } | Operation::BeginQuotedFunding { funding, .. } =
+            &mutation.operation
             && self
                 .accounts
                 .values()
@@ -476,6 +489,22 @@ impl State {
                         return Err("purchased funding is not authorized for this account".into());
                     }
                     funding_book(account)?.begin(funding, at)?;
+                }
+                Operation::QuoteFunding { quote } => {
+                    if !account.topups_allowed {
+                        return Err("purchased funding is not authorized for this account".into());
+                    }
+                    funding_book(account)?.admit_quote(quote, at)?;
+                }
+                Operation::BeginQuotedFunding {
+                    quote,
+                    funding,
+                    paid_at,
+                } => {
+                    if !account.topups_allowed {
+                        return Err("purchased funding is not authorized for this account".into());
+                    }
+                    funding_book(account)?.begin_quoted(quote, funding, *paid_at, at)?;
                 }
                 Operation::FundingFinality {
                     funding,
@@ -944,6 +973,11 @@ impl Ledger {
                 .as_ref()
                 .map(|book| book.funding.values().cloned().collect())
                 .unwrap_or_default(),
+            funding_quotes: account
+                .funding
+                .as_ref()
+                .map(|book| book.quotes.values().cloned().collect())
+                .unwrap_or_default(),
             grants: account
                 .funding
                 .as_ref()
@@ -1088,6 +1122,7 @@ pub struct Statement {
     pub balance: Balance,
     pub policies: Vec<funding::Policy>,
     pub funding: Vec<funding::FundingRecord>,
+    pub funding_quotes: Vec<funding::AdmittedQuote>,
     pub grants: Vec<funding::GrantPosition>,
     pub holds: BTreeMap<String, Hold>,
     /// Sorted by source identity; recorded times remain explicit.

@@ -10,6 +10,9 @@ use sha2::{Digest, Sha256};
 
 use super::{Price, currency, identity};
 
+mod quotes;
+pub use quotes::{AdmittedQuote, Quote};
+
 pub const POLICY_SCHEMA: &str = "openagents.money.funding-policy.v1";
 
 /// Exact monetary denominations. XP and promotional points are not money units.
@@ -356,6 +359,7 @@ pub(super) struct Book {
     pub policies: BTreeMap<String, Policy>,
     pub funding: BTreeMap<String, FundingRecord>,
     pub lots: BTreeMap<String, Lot>,
+    pub quotes: BTreeMap<String, AdmittedQuote>,
 }
 
 fn add(total: &mut u64, amount: u64) -> Result<(), String> {
@@ -388,6 +392,16 @@ impl Book {
     }
 
     pub fn begin(&mut self, funding: &Funding, at: u64) -> Result<(), String> {
+        if self.quotes.contains_key(&funding.id) {
+            return Err("accepted funding quote requires its original native admission".into());
+        }
+        if funding.policy != self.active {
+            return Err("new funding must pin the active policy".into());
+        }
+        self.begin_admitted(funding, at)
+    }
+
+    fn begin_admitted(&mut self, funding: &Funding, quoted_at: u64) -> Result<(), String> {
         for value in [&funding.id, &funding.origin, &funding.payment] {
             identity(value)?;
         }
@@ -402,16 +416,16 @@ impl Book {
                 "funding identity or payment already exists; retry its original source".into(),
             );
         }
-        if funding.policy != self.active {
-            return Err("new funding must pin the active policy".into());
-        }
-        let policy = &self.policies[&self.active];
+        let policy = self
+            .policies
+            .get(&funding.policy)
+            .ok_or("funding policy is missing")?;
         let conversion = policy
             .conversions
             .iter()
             .find(|c| c.version == funding.conversion)
             .ok_or("conversion is unsupported or unknown; no credit is available")?;
-        let quote = conversion.quote(funding.gross_units, funding.fee_units, at)?;
+        let quote = conversion.quote(funding.gross_units, funding.fee_units, quoted_at)?;
         self.funding.insert(
             funding.id.clone(),
             FundingRecord {
@@ -420,7 +434,7 @@ impl Book {
                 conversion: conversion.clone(),
                 remaining_remainder: quote.remainder,
                 quote,
-                quoted_at: at,
+                quoted_at,
                 finality: Finality::Pending,
                 finality_evidence: None,
                 credited: false,
@@ -469,6 +483,7 @@ impl Book {
         if grant.policy != self.active
             || self.lots.contains_key(&grant.id)
             || self.funding.contains_key(&grant.id)
+            || self.quotes.contains_key(&grant.id)
         {
             return Err("promotion policy or identity conflicts; retry its original source".into());
         }

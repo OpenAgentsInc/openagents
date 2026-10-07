@@ -128,6 +128,235 @@ fn fund(ledger: &mut Ledger, id: &str, amount: u64) {
     .unwrap();
 }
 
+fn checkout_quote(id: &str) -> funding::Quote {
+    funding::Quote {
+        id: id.into(),
+        origin: "fixture-provider".into(),
+        policy: policy().version,
+        conversion: "synthetic-usd-v1".into(),
+        gross_units: 100,
+        maximum_fee_units: 5,
+        expires_at: 30,
+    }
+}
+
+#[test]
+fn admitted_checkout_survives_policy_rollover_and_delayed_verified_payment_without_repricing() {
+    let (root, mut ledger) = account();
+    let mut original = policy();
+    original.conversions[0].valid_until = 40;
+    apply(
+        &mut ledger,
+        10,
+        "bounded-policy",
+        Operation::FundingPolicy {
+            policy: {
+                original.version = "bounded-v1".into();
+                original.clone()
+            },
+        },
+    )
+    .unwrap();
+    let mut quote = checkout_quote("checkout");
+    quote.policy = original.version.clone();
+    let admitted = Operation::QuoteFunding {
+        quote: quote.clone(),
+    };
+    apply(&mut ledger, 11, "admit", admitted.clone()).unwrap();
+    assert_eq!(ledger.balance_at("buyer", 11).unwrap().credited, 0);
+    let mut next = policy();
+    next.version = "new-v2".into();
+    next.conversions[0].max_fee_units = 1;
+    apply(
+        &mut ledger,
+        12,
+        "rollover",
+        Operation::FundingPolicy { policy: next },
+    )
+    .unwrap();
+    drop(ledger);
+    let mut ledger = Ledger::open(&root.path().join("money.jsonl")).unwrap();
+    assert!(!apply(&mut ledger, 100, "admit", admitted).unwrap());
+    let mut paid = funding("checkout", 100);
+    paid.policy = original.version;
+    paid.fee_units = 3;
+    assert!(
+        apply(
+            &mut ledger,
+            100,
+            "unquoted",
+            Operation::BeginFunding {
+                funding: paid.clone()
+            }
+        )
+        .is_err()
+    );
+    let begin = Operation::BeginQuotedFunding {
+        quote: quote.id,
+        funding: paid,
+        paid_at: 20,
+    };
+    apply(&mut ledger, 100, "verified", begin.clone()).unwrap();
+    assert_eq!(ledger.balance_at("buyer", 100).unwrap().credited, 0);
+    let confirmed = Operation::FundingFinality {
+        funding: "checkout".into(),
+        finality: Finality::Final,
+        evidence: "fixture:verified-native-payment".into(),
+    };
+    apply(&mut ledger, 101, "confirm", confirmed.clone()).unwrap();
+    drop(ledger);
+    let mut ledger = Ledger::open(&root.path().join("money.jsonl")).unwrap();
+    assert!(!apply(&mut ledger, 102, "verified", begin).unwrap());
+    assert!(!apply(&mut ledger, 102, "confirm", confirmed).unwrap());
+    let statement = ledger.statement_at("buyer", 102).unwrap();
+    assert_eq!(statement.balance.credited, 97);
+    assert_eq!(statement.funding[0].quoted_at, 11);
+    assert_eq!(statement.funding[0].conversion.max_fee_units, 5);
+    assert_eq!(
+        statement.funding_quotes[0].funding.as_deref(),
+        Some("checkout")
+    );
+    equity(&statement.balance);
+}
+
+#[test]
+fn quoted_payment_requires_exact_origin_amount_policy_fee_and_native_payment_window() {
+    for failure in [
+        "origin",
+        "amount",
+        "policy",
+        "conversion",
+        "fee",
+        "before",
+        "expired",
+        "future",
+        "id",
+    ] {
+        let (_root, mut ledger) = account();
+        apply(
+            &mut ledger,
+            11,
+            "quote",
+            Operation::QuoteFunding {
+                quote: checkout_quote("checkout"),
+            },
+        )
+        .unwrap();
+        let mut paid = funding("checkout", 100);
+        let paid_at = match failure {
+            "before" => 10,
+            "expired" => 30,
+            "future" => 25,
+            _ => 15,
+        };
+        match failure {
+            "origin" => paid.origin = "another-customer".into(),
+            "amount" => paid.gross_units = 101,
+            "policy" => paid.policy = "other-v1".into(),
+            "conversion" => paid.conversion = "synthetic-sat-v1".into(),
+            "fee" => paid.fee_units = 6,
+            "id" => paid.id = "another-checkout".into(),
+            _ => {}
+        }
+        let head = ledger.head.clone();
+        assert!(
+            apply(
+                &mut ledger,
+                20,
+                "bad",
+                Operation::BeginQuotedFunding {
+                    quote: "checkout".into(),
+                    funding: paid,
+                    paid_at,
+                }
+            )
+            .is_err(),
+            "{failure}"
+        );
+        assert_eq!(head, ledger.head);
+        let statement = ledger.statement_at("buyer", 20).unwrap();
+        assert_eq!(statement.balance.credited, 0);
+        assert!(statement.funding.is_empty());
+        assert!(statement.funding_quotes[0].funding.is_none());
+    }
+}
+
+#[test]
+fn accepted_quote_identity_cannot_be_reused_for_promotion_or_a_second_workspace_payment() {
+    let (_root, mut ledger) = account();
+    apply(
+        &mut ledger,
+        11,
+        "quote",
+        Operation::QuoteFunding {
+            quote: checkout_quote("checkout"),
+        },
+    )
+    .unwrap();
+    assert!(promote(&mut ledger, "checkout", 10, 40).is_err());
+    let mut bad = checkout_quote("checkout");
+    bad.gross_units = 90;
+    assert!(
+        apply(
+            &mut ledger,
+            20,
+            "rewrite",
+            Operation::QuoteFunding { quote: bad }
+        )
+        .is_err()
+    );
+    apply(
+        &mut ledger,
+        21,
+        "paid",
+        Operation::BeginQuotedFunding {
+            quote: "checkout".into(),
+            funding: funding("checkout", 100),
+            paid_at: 20,
+        },
+    )
+    .unwrap();
+    let mut other = mutation(
+        "other-account",
+        Operation::Create {
+            currency: "USD".into(),
+            spend_limit: 1000,
+            topups_allowed: true,
+        },
+    );
+    other.workspace = "other".into();
+    ledger.apply_at(other, 22).unwrap();
+    for (source, operation) in [
+        (
+            "other-policy",
+            Operation::FundingPolicy { policy: policy() },
+        ),
+        (
+            "other-quote",
+            Operation::QuoteFunding {
+                quote: checkout_quote("other-checkout"),
+            },
+        ),
+    ] {
+        let mut other = mutation(source, operation);
+        other.workspace = "other".into();
+        ledger.apply_at(other, 22).unwrap();
+    }
+    let mut recycled = funding("other-checkout", 100);
+    recycled.payment = "payment:checkout".into();
+    let mut attempt = mutation(
+        "recycled",
+        Operation::BeginQuotedFunding {
+            quote: "other-checkout".into(),
+            funding: recycled,
+            paid_at: 23,
+        },
+    );
+    attempt.workspace = "other".into();
+    assert!(ledger.apply_at(attempt, 24).is_err());
+    assert_eq!(ledger.balance_at("other", 24).unwrap().credited, 0);
+}
+
 fn promote(ledger: &mut Ledger, id: &str, amount: u64, expires_at: u64) -> Result<bool, String> {
     apply(
         ledger,
