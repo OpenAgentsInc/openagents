@@ -154,9 +154,16 @@ classifies purchased-funded net usage only; delivery, funding reversals,
 and a separate commission rule still determine an actual award.
 
 `ReverseFunding` records a verified external refund or dispute under the
-purchase's original policy and rate. It converts cumulative source reversals
-so splitting an event cannot change rounding; customer-paid fees are outside
-the reversible convertible amount. `ReversePromotion` requires the grant's
+purchase's original policy and rate. Remaining credit is the rounded-down
+value of the original convertible source minus cumulative reversed source;
+the ledger removes the difference from the original quoted credit. Flooring
+only the refunded value could leave credit above its remaining backing.
+Splitting an event cannot change the result. The original quote's remainder,
+the nominal cumulative refund's `reversal_remainder`, and the remaining
+backing's `remaining_remainder` stay separate and are never spendable.
+Exact-precision terms refuse partial reversals with fractional refunded or
+remaining value. Customer-paid fees are outside the reversible convertible
+amount. `ReversePromotion` requires the grant's
 pinned permission. Reversal removes that lot's remaining credit without
 discarding existing holds or charging another customer. Already spent losses
 belong to the operator; uncovered holds remain explicit operator risk until

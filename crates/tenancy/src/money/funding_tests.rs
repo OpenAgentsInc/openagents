@@ -193,6 +193,211 @@ fn equity(balance: &Balance) {
     );
 }
 
+fn fractional_account(source: u64, rounding: Rounding) -> (tempfile::TempDir, Ledger) {
+    let (root, mut ledger) = account();
+    let mut terms = policy();
+    terms.version = "fractional-boundary-v1".into();
+    terms.conversions[1].numerator = 1;
+    terms.conversions[1].denominator = 2;
+    terms.conversions[1].rounding = rounding;
+    apply(
+        &mut ledger,
+        10,
+        "fractional-policy",
+        Operation::FundingPolicy {
+            policy: terms.clone(),
+        },
+    )
+    .unwrap();
+    let mut purchase = funding("fractional", source);
+    purchase.policy = terms.version;
+    purchase.conversion = terms.conversions[1].version.clone();
+    apply(
+        &mut ledger,
+        11,
+        "begin",
+        Operation::BeginFunding { funding: purchase },
+    )
+    .unwrap();
+    apply(
+        &mut ledger,
+        12,
+        "final",
+        Operation::FundingFinality {
+            funding: "fractional".into(),
+            finality: Finality::Final,
+            evidence: "fixture:verified-final".into(),
+        },
+    )
+    .unwrap();
+    (root, ledger)
+}
+
+fn fractional_reversal(units: u64) -> Operation {
+    Operation::ReverseFunding {
+        funding: "fractional".into(),
+        source_units: units,
+        reason: funding::Reversal::Refund,
+    }
+}
+
+#[test]
+fn partial_reversal_never_leaves_credit_above_remaining_fractional_backing() {
+    for disposition in ["released", "spent", "held"] {
+        let (root, mut ledger) = fractional_account(2, Rounding::Down);
+        apply(&mut ledger, 20, "reserve", reserve("one", 1)).unwrap();
+        match disposition {
+            "released" => {
+                apply(
+                    &mut ledger,
+                    21,
+                    "release",
+                    Operation::Release {
+                        attempt: "one".into(),
+                    },
+                )
+                .unwrap();
+            }
+            "spent" => {
+                apply(&mut ledger, 21, "settle", settle("one", 1)).unwrap();
+            }
+            "held" => {}
+            _ => unreachable!(),
+        }
+        let reverse = mutation("partial", fractional_reversal(1));
+        ledger.apply_at(reverse.clone(), 22).unwrap();
+        assert!(!ledger.apply_at(reverse, 23).unwrap());
+        let balance = ledger.balance_at("buyer", 23).unwrap();
+        assert_eq!(
+            (balance.credited, balance.reversed_credit, balance.available),
+            (1, 1, 0)
+        );
+        assert_eq!(balance.operator_loss, u64::from(disposition == "spent"));
+        assert_eq!(balance.uncovered_holds, u64::from(disposition == "held"));
+        equity(&balance);
+        assert!(apply(&mut ledger, 23, "unsupported-credit", reserve("two", 1)).is_err());
+        let record = &ledger.statement_at("buyer", 23).unwrap().funding[0];
+        assert_eq!(
+            (
+                record.quote.remainder,
+                record.reversed_source_units,
+                record.reversal_remainder,
+                record.remaining_remainder
+            ),
+            (0, 1, 1, 1)
+        );
+        drop(ledger);
+        let mut ledger = Ledger::open(&root.path().join("money.jsonl")).unwrap();
+        let replayed = ledger.balance_at("buyer", 23).unwrap();
+        assert_eq!(
+            (
+                replayed.reversed_credit,
+                replayed.available,
+                replayed.operator_loss,
+                replayed.uncovered_holds
+            ),
+            (1, 0, balance.operator_loss, balance.uncovered_holds)
+        );
+        equity(&replayed);
+        if disposition == "held" {
+            assert_eq!(ledger.hold("buyer", "one").unwrap().phase, Phase::Unknown);
+            apply(&mut ledger, 24, "late-settle", settle("one", 1)).unwrap();
+        }
+        if disposition != "released" {
+            apply(
+                &mut ledger,
+                25,
+                "usage-refund",
+                Operation::Refund {
+                    attempt: "one".into(),
+                    amount: 1,
+                },
+            )
+            .unwrap();
+            let refunded = ledger.balance_at("buyer", 25).unwrap();
+            assert_eq!((refunded.operator_loss, refunded.available), (0, 0));
+            equity(&refunded);
+        }
+    }
+}
+
+#[test]
+fn original_dust_and_remaining_dust_stay_distinct_through_split_reversals() {
+    let (_root, mut ledger) = fractional_account(3, Rounding::Down);
+    apply(&mut ledger, 20, "first", fractional_reversal(1)).unwrap();
+    let balance = ledger.balance_at("buyer", 20).unwrap();
+    assert_eq!(
+        (balance.credited, balance.reversed_credit, balance.available),
+        (1, 0, 1)
+    );
+    equity(&balance);
+    let first = &ledger.statement_at("buyer", 20).unwrap().funding[0];
+    assert_eq!(
+        (
+            first.quote.remainder,
+            first.reversal_remainder,
+            first.remaining_remainder
+        ),
+        (1, 1, 0)
+    );
+    apply(&mut ledger, 21, "second", fractional_reversal(1)).unwrap();
+    let second = &ledger.statement_at("buyer", 21).unwrap().funding[0];
+    assert_eq!(
+        (
+            second.reversed_credit,
+            second.reversal_remainder,
+            second.remaining_remainder
+        ),
+        (1, 0, 1)
+    );
+    assert_eq!(ledger.balance_at("buyer", 21).unwrap().available, 0);
+    apply(&mut ledger, 22, "last", fractional_reversal(1)).unwrap();
+    let last = &ledger.statement_at("buyer", 22).unwrap().funding[0];
+    assert_eq!(
+        (
+            last.reversed_source_units,
+            last.reversed_credit,
+            last.quote.remainder,
+            last.reversal_remainder,
+            last.remaining_remainder
+        ),
+        (3, 1, 1, 1, 0)
+    );
+    equity(&ledger.balance_at("buyer", 22).unwrap());
+}
+
+#[test]
+fn exact_precision_refuses_partial_dust_without_changing_funding() {
+    let (_root, mut ledger) = fractional_account(4, Rounding::Exact);
+    assert!(apply(&mut ledger, 20, "first-dust", fractional_reversal(1)).is_err());
+    let before = &ledger.statement_at("buyer", 20).unwrap().funding[0];
+    assert_eq!(
+        (
+            before.reversed_source_units,
+            before.reversed_credit,
+            before.reversal_remainder,
+            before.remaining_remainder
+        ),
+        (0, 0, 0, 0)
+    );
+    assert_eq!(ledger.balance_at("buyer", 20).unwrap().available, 2);
+    apply(&mut ledger, 20, "first-exact", fractional_reversal(2)).unwrap();
+    assert!(apply(&mut ledger, 21, "remaining-dust", fractional_reversal(1)).is_err());
+    let partial = &ledger.statement_at("buyer", 21).unwrap().funding[0];
+    assert_eq!(
+        (
+            partial.reversed_source_units,
+            partial.reversed_credit,
+            partial.remaining_remainder
+        ),
+        (2, 1, 0)
+    );
+    assert_eq!(ledger.balance_at("buyer", 21).unwrap().available, 1);
+    apply(&mut ledger, 22, "last-exact", fractional_reversal(2)).unwrap();
+    assert_eq!(ledger.balance_at("buyer", 22).unwrap().available, 0);
+    equity(&ledger.balance_at("buyer", 22).unwrap());
+}
+
 #[test]
 fn monetary_scales_rounding_fees_dust_and_overflow_are_exact() {
     let mut rate = policy().conversions.remove(1);
@@ -771,26 +976,81 @@ fn conversion_and_purchase_terms_survive_policy_changes_and_split_reversals() {
 
 #[test]
 fn fractional_conversion_partitioning_never_creates_or_loses_integer_credit() {
-    for denominator in 1..=11_u64 {
-        for source in 1..=25_u64 {
-            let mut rate = policy().conversions.remove(1);
-            rate.numerator = 17;
-            rate.denominator = denominator;
-            let quote = rate.quote(source, 0, 10).unwrap();
-            assert_eq!(
-                u128::from(quote.credited_units) * u128::from(denominator)
-                    + u128::from(quote.remainder),
-                u128::from(source) * 17
-            );
-            let mut previous = 0;
-            let mut total = 0;
-            for cumulative in 1..=source {
-                let amount =
-                    u64::try_from(u128::from(cumulative) * 17 / u128::from(denominator)).unwrap();
-                total += amount - previous;
-                previous = amount;
+    for numerator in 1..=9_u64 {
+        for denominator in 1..=11_u64 {
+            for source in 1..=25_u64 {
+                let mut terms = policy();
+                terms.conversions[1].numerator = numerator;
+                terms.conversions[1].denominator = denominator;
+                let Ok(quote) = terms.conversions[1].quote(source, 0, 10) else {
+                    // A quote smaller than one integer credit is refused.
+                    continue;
+                };
+                assert_eq!(
+                    u128::from(quote.credited_units) * u128::from(denominator)
+                        + u128::from(quote.remainder),
+                    u128::from(source) * u128::from(numerator)
+                );
+                let mut original = funding::Book::default();
+                original.install(&terms, "USD").unwrap();
+                let mut purchase = funding("property", source);
+                purchase.conversion = terms.conversions[1].version.clone();
+                original.begin(&purchase, 10).unwrap();
+                original
+                    .confirm("property", Finality::Final, "fixture:final")
+                    .unwrap();
+                let mut split = original.clone();
+                for cumulative in 1..=source {
+                    split
+                        .reverse_funding("property", 1, funding::Reversal::Refund)
+                        .unwrap();
+                    let mut batched = original.clone();
+                    batched
+                        .reverse_funding("property", cumulative, funding::Reversal::Refund)
+                        .unwrap();
+                    let remaining_value = u128::from(source - cumulative) * u128::from(numerator);
+                    let expected_credit =
+                        u64::try_from(remaining_value / u128::from(denominator)).unwrap();
+                    let expected_dust =
+                        u64::try_from(remaining_value % u128::from(denominator)).unwrap();
+                    let record = &split.funding["property"];
+                    let batch = &batched.funding["property"];
+                    assert_eq!(
+                        record.reversed_credit,
+                        quote.credited_units - expected_credit
+                    );
+                    assert_eq!(record.remaining_remainder, expected_dust);
+                    assert_eq!(
+                        (
+                            record.reversed_credit,
+                            record.reversal_remainder,
+                            record.remaining_remainder
+                        ),
+                        (
+                            batch.reversed_credit,
+                            batch.reversal_remainder,
+                            batch.remaining_remainder
+                        )
+                    );
+                    assert_eq!(
+                        split.summary(&BTreeMap::new(), 10, None).unwrap().available,
+                        expected_credit
+                    );
+                    // Original credit and dust reconcile with refunded source
+                    // and the uncredited dust that still backs the remainder.
+                    assert_eq!(
+                        u128::from(record.reversed_credit) * u128::from(denominator)
+                            + u128::from(quote.remainder),
+                        u128::from(cumulative) * u128::from(numerator)
+                            + u128::from(record.remaining_remainder)
+                    );
+                    assert_eq!(
+                        u128::from(expected_credit) * u128::from(denominator)
+                            + u128::from(record.remaining_remainder),
+                        remaining_value
+                    );
+                }
             }
-            assert_eq!(total, quote.credited_units);
         }
     }
 }

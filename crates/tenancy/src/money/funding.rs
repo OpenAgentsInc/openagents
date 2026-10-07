@@ -284,7 +284,11 @@ pub struct FundingRecord {
     pub credited: bool,
     pub reversed_source_units: u64,
     pub reversed_credit: u64,
+    /// Fraction in the nominal conversion of cumulative reversed source.
+    /// This is not the fraction of credit removed from the original quote.
     pub reversal_remainder: u64,
+    /// Uncredited fraction in the remaining quoted source backing.
+    pub remaining_remainder: u64,
 }
 
 #[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize)]
@@ -414,6 +418,7 @@ impl Book {
                 funding: funding.clone(),
                 policy_digest: policy.digest()?,
                 conversion: conversion.clone(),
+                remaining_remainder: quote.remainder,
                 quote,
                 quoted_at: at,
                 finality: Finality::Pending,
@@ -531,16 +536,25 @@ impl Book {
                     .into(),
             );
         }
-        // Convert the cumulative reversal, not each event, so splitting a refund
-        // cannot change rounding or mint spendable dust.
-        let (credit, remainder) = record.conversion.amount(cumulative)?;
+        // Credit must fit the remaining backing after every partial reversal.
+        // Flooring the refunded value alone could leave one unsupported unit.
+        // Compute from the original quote so splitting cannot change rounding.
+        let remaining_source = record.quote.convertible_units - cumulative;
+        let (remaining_credit, remaining_remainder) = record.conversion.amount(remaining_source)?;
+        let credit = record
+            .quote
+            .credited_units
+            .checked_sub(remaining_credit)
+            .ok_or("funding reversal exceeds its original credit")?;
+        let (_, reversal_remainder) = record.conversion.amount(cumulative)?;
         self.lots
             .get_mut(id)
             .ok_or("funding credit is missing")?
             .reversed = credit;
         record.reversed_source_units = cumulative;
         record.reversed_credit = credit;
-        record.reversal_remainder = remainder;
+        record.reversal_remainder = reversal_remainder;
+        record.remaining_remainder = remaining_remainder;
         Ok(())
     }
 
