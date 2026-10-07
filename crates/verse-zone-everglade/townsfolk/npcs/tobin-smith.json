@@ -5,7 +5,7 @@
   "card": {
     "character": true,
     "role": "smith",
-    "about": "The smith on Foundry Road. He breakfasts at the cafe, buys iron at the Market Hall at noon, and drinks at the Hearth after work."
+    "about": "The smith on Foundry Road. He breakfasts at the cafe, fetches nails from the hardware store, buys iron at the Market Hall at noon, cools off by the fountain in the afternoon, and drinks at the Hearth after work."
   },
   "look": {
     "tint": [0.32, 0.36, 0.42]
@@ -16,8 +16,12 @@
     { "at": "00:00", "node": "everglade/stoop-lane/home-2", "activity": "sleep" },
     { "at": "06:00", "node": "everglade/main-street/cafe", "activity": "eat" },
     { "at": "07:00", "node": "everglade/foundry/smithy", "activity": "smith" },
+    { "at": "09:30", "node": "everglade/main-street/hardware-store", "activity": "shop" },
+    { "at": "10:00", "node": "everglade/foundry/smithy", "activity": "smith" },
     { "at": "11:00", "node": "everglade/fountain-plaza/market-hall", "activity": "shop" },
     { "at": "13:00", "node": "everglade/foundry/smithy", "activity": "smith" },
+    { "at": "15:00", "node": "everglade/fountain-plaza/fountain", "activity": "rest" },
+    { "at": "15:45", "node": "everglade/foundry/smithy", "activity": "smith" },
     { "at": "18:00", "node": "everglade/lantern-quarter/the-hearth", "activity": "drink" },
     { "at": "21:00", "node": "everglade/stoop-lane/home-2", "activity": "sleep" }
   ],

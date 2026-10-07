@@ -1,21 +1,23 @@
 {
   "schema": "openagents.verse-town-proposal.v1",
   "id": "mira-baker",
-  "digest": "sha256:acad9eaf530f761a6f2fb7edbd332430663c6ef7d76c22e4236ea4efa1659123",
-  "proposed_at": 1791363955,
+  "digest": "sha256:45842a80d46d761bfc4a5b158d3e66a9eaecfdccbc6ee7cca24a5cbe29c4d439",
+  "proposed_at": 1791378575,
   "routes_checked": true,
   "valid": true,
   "problems": [],
   "day": [
     "Mira (baker, a character): mira-baker",
     "  00:00 sleeping         home 1",
-    "  04:30 baking           bakery, a 27 min walk",
-    "  11:30 selling          market hall, a 17 min walk",
-    "  13:00 baking           bakery, a 17 min walk",
+    "  04:30 baking           bakery, a 110 min walk",
+    "  08:00 selling          grocer, a 12 min walk",
+    "  08:45 baking           bakery, a 12 min walk",
+    "  11:30 selling          market hall, a 10 min walk",
+    "  13:00 baking           bakery, a 10 min walk",
+    "  14:45 eating           cafe, a 4 min walk",
+    "  15:30 baking           bakery, a 4 min walk",
     "  17:00 eating           tea house, a 7 min walk",
-    "  19:00 chatting         the lantern, a 37 min walk",
-    "  21:30 sleeping         home 1, a 31 min walk",
-    "  meets wren-bellringer at market hall, 11:55-12:00",
-    "  meets tobin-smith, wren-bellringer at market hall, 12:00-13:05"
+    "  19:00 chatting         the lantern, a 39 min walk",
+    "  21:30 sleeping         home 1, a 68 min walk"
   ]
 }

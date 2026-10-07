@@ -678,7 +678,10 @@ spawning (E1); rumors, villager memory of the player, and dialogue (E2).
   them. A walk takes the real time `WALK_SPEED` gives at the clock's pace
   when it starts.
 - The demo town is Mira the baker, Tobin the smith, and Wren the
-  bell-ringer, who all stand at the Market Hall from about 12:00 to 13:00.
+  bell-ringer, who all stand at the Market Hall from about 12:00 to 12:30.
+  Their daytime rows are close enough that, on the running clock, some
+  villager walks in every five real minutes from 05:00 to 21:00, which a
+  test checks.
 - Rumors (E2): `townsfolk::rumor` holds `openagents.verse-rumor.v1` and
   its checks, `townsfolk::quest::STEPS` the Apprentice's Road steps a rumor
   may point at, and `townsfolk::diffusion::diffusion(villagers, seed,

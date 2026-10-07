@@ -5,7 +5,7 @@
   "card": {
     "character": true,
     "role": "baker",
-    "about": "Everglade's baker. She lights the ovens before dawn, sells at the Market Hall at noon, and ends the day at the Lantern."
+    "about": "Everglade's baker. She lights the ovens before dawn, carries loaves to the grocer in the morning, takes a late lunch at the cafe, sells at the Market Hall at noon, and ends the day at the Lantern."
   },
   "look": {
     "tint": [0.85, 0.62, 0.38]
@@ -15,8 +15,12 @@
   "routine": [
     { "at": "00:00", "node": "everglade/stoop-lane/home-1", "activity": "sleep" },
     { "at": "04:30", "node": "everglade/main-street/bakery", "activity": "bake" },
+    { "at": "08:00", "node": "everglade/main-street/grocer", "activity": "sell" },
+    { "at": "08:45", "node": "everglade/main-street/bakery", "activity": "bake" },
     { "at": "11:30", "node": "everglade/fountain-plaza/market-hall", "activity": "sell" },
     { "at": "13:00", "node": "everglade/main-street/bakery", "activity": "bake" },
+    { "at": "14:45", "node": "everglade/main-street/cafe", "activity": "eat" },
+    { "at": "15:30", "node": "everglade/main-street/bakery", "activity": "bake" },
     { "at": "17:00", "node": "everglade/main-street/tea-house", "activity": "eat" },
     { "at": "19:00", "node": "everglade/lantern-quarter/the-lantern", "activity": "gather" },
     { "at": "21:30", "node": "everglade/stoop-lane/home-1", "activity": "sleep" }

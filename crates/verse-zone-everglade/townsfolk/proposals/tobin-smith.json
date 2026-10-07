@@ -1,20 +1,23 @@
 {
   "schema": "openagents.verse-town-proposal.v1",
   "id": "tobin-smith",
-  "digest": "sha256:3b5770cae3ef58de5e657317bfd263c0b736a3732b7cf7414eac051bf668e92f",
-  "proposed_at": 1791363955,
+  "digest": "sha256:53b37678b897a08a23e25b09293467e91ed0290d9f4bbf4fcd1f9089b2750184",
+  "proposed_at": 1791378567,
   "routes_checked": true,
   "valid": true,
   "problems": [],
   "day": [
     "Tobin (smith, a character): tobin-smith",
     "  00:00 sleeping         home 2",
-    "  06:00 eating           cafe, a 23 min walk",
-    "  07:00 at the forge     smithy, a 46 min walk",
-    "  11:00 shopping         market hall, a 52 min walk",
-    "  13:00 at the forge     smithy, a 52 min walk",
-    "  18:00 drinking         the hearth, a 81 min walk",
-    "  21:00 sleeping         home 2, a 31 min walk",
-    "  meets mira-baker, wren-bellringer at market hall, 12:00-13:05"
+    "  06:00 eating           cafe, a 38 min walk",
+    "  07:00 at the forge     smithy, a 27 min walk",
+    "  09:30 shopping         hardware store, a 13 min walk",
+    "  10:00 at the forge     smithy, a 13 min walk",
+    "  11:00 shopping         market hall, a 31 min walk",
+    "  13:00 at the forge     smithy, a 31 min walk",
+    "  15:00 resting          fountain, a 31 min walk",
+    "  15:45 at the forge     smithy, a 31 min walk",
+    "  18:00 drinking         the hearth, a 87 min walk",
+    "  21:00 sleeping         home 2, a 68 min walk"
   ]
 }

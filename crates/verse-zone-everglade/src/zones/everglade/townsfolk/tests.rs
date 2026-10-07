@@ -223,6 +223,35 @@ fn running(day: i64, real: f64) -> TownTime {
 }
 
 #[test]
+fn someone_walks_in_every_five_minutes_of_the_waking_day() {
+    // On the running clock, from the dawn bell to the last walk home, any
+    // five real minutes in town show at least one villager walking.
+    let (roster, _) = roster();
+    let seed = roster.town.seed;
+    let day_real = f64::from(town_clock::DAY_REAL_SECONDS);
+    let from = town_clock::real_fraction(5.0 / 24.0) * day_real;
+    let to = town_clock::real_fraction(21.0 / 24.0) * day_real;
+    let mut quiet = Vec::new();
+    for day in [2, 3, 9] {
+        let mut start = from;
+        while start + 300.0 <= to {
+            let walks = (0..=60).any(|i| {
+                let t = running(day, start + f64::from(i) * 5.0);
+                roster
+                    .villagers
+                    .iter()
+                    .any(|v| matches!(v.at(seed, t), Placement::Walking { .. }))
+            });
+            if !walks {
+                quiet.push(format!("day {day} from {}", running(day, start)));
+            }
+            start += 30.0;
+        }
+    }
+    assert!(quiet.is_empty(), "five quiet minutes: {quiet:#?}");
+}
+
+#[test]
 fn an_idle_running_day_says_nothing_and_asks_no_model() {
     // A whole town day ticked as the running clock passes it, with nobody
     // talking: the villagers walk, and none of them says a word. Words

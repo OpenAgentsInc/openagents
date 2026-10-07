@@ -5,7 +5,7 @@
   "card": {
     "character": true,
     "role": "bell-ringer",
-    "about": "Rings the chapel bell at dawn and at dusk. Between the bells she reads at the Reading Room and shops at the Market Hall."
+    "about": "Rings the chapel bell at dawn and at dusk. Between the bells she browses the bookshop, reads at the Reading Room, shops at the Market Hall and the grocer, and rests by the fountain."
   },
   "look": {
     "tint": [0.45, 0.6, 0.38]
@@ -16,9 +16,12 @@
     { "at": "00:00", "node": "everglade/stoop-lane/home-3", "activity": "sleep" },
     { "at": "05:00", "node": "everglade/wilds/chapel", "activity": "ring-bell" },
     { "at": "06:30", "node": "everglade/wilds/chapel", "activity": "pray" },
+    { "at": "08:15", "node": "everglade/main-street/bookshop", "activity": "shop" },
     { "at": "09:00", "node": "everglade/knowledge-district/reading-room", "activity": "read" },
     { "at": "11:15", "node": "everglade/fountain-plaza/market-hall", "activity": "shop" },
-    { "at": "13:00", "node": "everglade/fountain-plaza/fountain", "activity": "rest" },
+    { "at": "12:30", "node": "everglade/fountain-plaza/fountain", "activity": "rest" },
+    { "at": "14:00", "node": "everglade/knowledge-district/reading-room", "activity": "read" },
+    { "at": "15:30", "node": "everglade/main-street/grocer", "activity": "shop" },
     { "at": "17:00", "node": "everglade/wilds/chapel", "activity": "ring-bell" },
     { "at": "18:30", "node": "everglade/main-street/tea-house", "activity": "eat" },
     { "at": "21:00", "node": "everglade/stoop-lane/home-3", "activity": "sleep" }
