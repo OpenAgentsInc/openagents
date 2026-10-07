@@ -43,6 +43,9 @@ pub const BOUNDS_TOLERANCE: f32 = 0.1;
 /// Environment variable naming a local kit pack for offline tools
 /// ([`super::ZonePack::load_local`]).
 pub const LOCAL_ENV: &str = "VERSE_KIT_PACK";
+/// Environment variable that lets an offline tool load a kit pack other
+/// than the pinned one ([`load_local`]).
+pub const UNPINNED_ENV: &str = "VERSE_KIT_UNPINNED";
 
 /// The reviewed kit pack and its source.
 #[must_use]
@@ -628,7 +631,8 @@ pub fn decode_pinned(bytes: &[u8]) -> Result<ZonePack, String> {
 }
 
 /// A kit pack from a local file, for offline tools: the pinned pack, or,
-/// while none is pinned, any kit pack that decodes.
+/// while none is pinned or with [`UNPINNED_ENV`] set, any kit pack that
+/// decodes, such as an earlier build to compare a grade against.
 ///
 /// # Errors
 ///
@@ -636,7 +640,7 @@ pub fn decode_pinned(bytes: &[u8]) -> Result<ZonePack, String> {
 /// fails to decode.
 pub fn load_local(path: &Path) -> Result<ZonePack, String> {
     let bytes = std::fs::read(path).map_err(|e| format!("{}: {e}", path.display()))?;
-    if KIT_BYTES == 0 {
+    if KIT_BYTES == 0 || std::env::var_os(UNPINNED_ENV).is_some() {
         return compiled::decode(&bytes);
     }
     decode_pinned(&bytes)

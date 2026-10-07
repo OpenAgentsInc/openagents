@@ -1,10 +1,12 @@
 //! Offline visual acceptance of Everglade's destructible town.
-//! Usage: town_capture OUTPUT_DIR [civic [mega]]
+//! Usage: town_capture OUTPUT_DIR [civic [mega] | stoop]
 //!
 //! Installs Everglade from the committed, pinned pack, settles its light,
 //! and calls Meteor Swarm down on Main Street's café, seen from the street,
 //! or with `civic` on the Civic Hall's front, seen from its plaza (with
-//! `mega`, a Mega Thunderbolt there instead),
+//! `mega`, a Mega Thunderbolt there instead), or with `stoop` on the front
+//! of Stoop Lane's first medieval kit house, seen from the lane (with the
+//! licensed kit when `VERSE_KIT_PACK` names it),
 //! rendering with Everglade's hotbar into `OUTPUT_DIR`. The Civic Hall's
 //! run stops after `aftermath.png` and then writes `restored.png`.
 //!
@@ -47,6 +49,7 @@ fn main() -> Result<(), String> {
         ));
     let civic = std::env::args().nth(2).as_deref() == Some("civic");
     let mega = civic && std::env::args().nth(3).as_deref() == Some("mega");
+    let stoop = std::env::args().nth(2).as_deref() == Some("stoop");
     let pack = everglade_pack::ZonePack::load_local(&pack)?;
     let mut runtime = WorldRuntime::new();
     runtime.install_everglade(&pack);
@@ -69,7 +72,15 @@ fn main() -> Result<(), String> {
     };
     // On Main Street, south-west of the café, looking at its front.
     let ([cx, cz], [_, hz]) = zones::everglade::layout::SHOPS[1];
-    let (front, stand) = if civic {
+    let (front, stand) = if stoop {
+        let (_, house) = zones::everglade::layout::city::kit_houses()
+            .into_iter()
+            .find(|(b, _)| b.name == "townhouse 1")
+            .ok_or("Stoop Lane has no kit house")?;
+        let [x, z] = house.world([0.0, house.depth / 2.0 + 0.4]);
+        let [sx, sz] = house.world([-9.0, house.depth / 2.0 + 12.0]);
+        (glam::Vec3::new(x, 0.0, z), glam::Vec3::new(sx, 0.0, sz))
+    } else if civic {
         // The Civic Hall's west front, from the plaza before it.
         let [x, z] = zones::everglade::layout::civic::CIVIC.at;
         (
@@ -132,7 +143,7 @@ fn main() -> Result<(), String> {
         .figure
         .map_or(0, |f| f.vertices.len());
     eprintln!("Figure vertices after the strike: {figure}");
-    if civic {
+    if civic || stoop {
         runtime.zone_intent(zones::Intent::Rebuild)?;
         tick(&mut runtime, 0.2);
         return shot(&runtime, &atlas, &dir.join("restored.png"));
