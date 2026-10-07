@@ -144,6 +144,16 @@ impl Layout {
     pub fn gate(&self) -> PathBuf {
         self.openagents.join("gate")
     }
+    /// Agent scratch, one directory a session (`coder_lease::scratch`).
+    #[must_use]
+    pub fn scratch(&self) -> PathBuf {
+        self.openagents.join("scratch")
+    }
+    /// The machine's lease table (`coder_lease`).
+    #[must_use]
+    pub fn leases(&self) -> PathBuf {
+        self.openagents.join("leases")
+    }
 
     /// `~/work/NAME`, made: an agent target directory in tests.
     #[cfg(test)]

@@ -126,6 +126,14 @@ the command's status. With `--json` it prints the receipt after the
 command's output. `lease list` shows holders and waiters, and `lease grant
 screen` asks the owner to confirm on an interactive terminal.
 
+## Durable scratch (`openagents scratch`)
+
+`openagents scratch` creates the calling session's private scratch directory
+under `~/.openagents/scratch/` and prints its path, so an agent keeps
+captures and scripts somewhere a reboot doesn't clear. `--session SESSION`
+names another session, and `--json` prints the path, session, and root.
+[Durable scratch](../coder/guides/scratch.md) covers the rules.
+
 ## Local capability settings (`openagents settings`)
 
 `openagents settings show|get|set|unset` edits `~/.openagents/settings.json`,

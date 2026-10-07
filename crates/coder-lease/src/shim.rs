@@ -202,23 +202,30 @@ pub fn path_with(dir: &Path, path: Option<&OsStr>) -> OsString {
 /// leases: `PATH` as `path` with the shims first, `OPENAGENTS_LEASE_BIN`
 /// when this process knows the binary, and this process's
 /// `OPENAGENTS_LEASE_PRIORITY` when set, so the delegate's builds wait at
-/// the delegation's priority. Empty until [`enable`].
+/// the delegation's priority, until [`enable`] none of these; and
+/// `OPENAGENTS_SCRATCH`, the delegates' durable scratch directory, once
+/// [`crate::scratch::enable`] chose one.
 #[must_use]
 pub fn delegate_vars(path: Option<&OsStr>) -> Vec<(OsString, OsString)> {
-    let Ok(enabled) = ENABLED.read() else {
-        return Vec::new();
-    };
-    let Some(enabled) = enabled.as_ref() else {
-        return Vec::new();
-    };
-    let mut vars = vec![(OsString::from("PATH"), path_with(&enabled.dir, path))];
-    if let Some(bin) = &enabled.bin {
-        vars.push((OsString::from(BIN_VAR), bin.clone().into_os_string()));
+    let mut vars = Vec::new();
+    if let Ok(enabled) = ENABLED.read()
+        && let Some(enabled) = enabled.as_ref()
+    {
+        vars.push((OsString::from("PATH"), path_with(&enabled.dir, path)));
+        if let Some(bin) = &enabled.bin {
+            vars.push((OsString::from(BIN_VAR), bin.clone().into_os_string()));
+        }
+        if let Ok(Some(priority)) = crate::Priority::from_env() {
+            vars.push((
+                OsString::from(crate::PRIORITY_VAR),
+                OsString::from(priority.as_str()),
+            ));
+        }
     }
-    if let Ok(Some(priority)) = crate::Priority::from_env() {
+    if let Some(dir) = crate::scratch::delegate_dir() {
         vars.push((
-            OsString::from(crate::PRIORITY_VAR),
-            OsString::from(priority.as_str()),
+            OsString::from(crate::scratch::SCRATCH_VAR),
+            dir.into_os_string(),
         ));
     }
     vars

@@ -280,6 +280,9 @@ pub enum Class {
     /// 9: the kache compile cache, reclaimed only through kache's own
     /// collector; no file under its store is ever deleted here.
     Kache,
+    /// 10: agent scratch (`~/.openagents/scratch/*`) of sessions that
+    /// ended, unchanged for `scratch_days` ([`crate::scratch`]).
+    Scratch,
 }
 
 impl Class {
@@ -293,8 +296,9 @@ impl Class {
     ];
 
     /// Every class a rule may delete from: [`Class::ALL`] (the classes
-    /// conversation names) with Claude Code worktrees and the kache store.
-    pub const DELETABLE: [Class; 8] = [
+    /// conversation names) with Claude Code worktrees, the kache store, and
+    /// agent scratch.
+    pub const DELETABLE: [Class; 9] = [
         Class::EndedTargets,
         Class::StaleTargets,
         Class::Worktrees,
@@ -303,6 +307,7 @@ impl Class {
         Class::Trash,
         Class::ClaudeWorktrees,
         Class::Kache,
+        Class::Scratch,
     ];
 
     /// The class's number in the spec.
@@ -318,6 +323,7 @@ impl Class {
             Class::Judged => 7,
             Class::ClaudeWorktrees => 8,
             Class::Kache => 9,
+            Class::Scratch => 10,
         }
     }
 
@@ -343,6 +349,8 @@ impl Class {
             Class::ClaudeWorktrees if one => "finished Claude Code worktree",
             Class::ClaudeWorktrees => "finished Claude Code worktrees",
             Class::Kache => "kache collection",
+            Class::Scratch if one => "scratch of an ended session",
+            Class::Scratch => "scratch of ended sessions",
         }
     }
 }
@@ -477,6 +485,19 @@ pub struct Classes {
     /// [`CLAUDE_WORKTREE_HOURS`].
     #[serde(default = "claude_worktree_hours")]
     pub claude_worktree_hours: u64,
+    /// An ended session's scratch unchanged this many days is a class 10
+    /// candidate. A rule file without it gets the default,
+    /// [`SCRATCH_DAYS`].
+    #[serde(default = "scratch_days")]
+    pub scratch_days: u64,
+}
+
+/// The default age, in days, of an ended session's scratch before it is a
+/// candidate.
+pub const SCRATCH_DAYS: u64 = 7;
+
+fn scratch_days() -> u64 {
+    SCRATCH_DAYS
 }
 
 /// The default staleness of an agent target directory, in hours.
@@ -554,6 +575,9 @@ pub fn disk() -> Rule {
                 classes: vec![Class::ClaudeWorktrees],
             },
             Action::DeleteCaches {
+                classes: vec![Class::Scratch],
+            },
+            Action::DeleteCaches {
                 classes: vec![Class::GatePools, Class::Kache],
             },
             Action::CargoCleanPartial,
@@ -573,6 +597,7 @@ pub fn disk() -> Rule {
             judged: Vec::new(),
             claude_checkouts: vec!["~/code/*".into(), "~/work/*".into()],
             claude_worktree_hours: CLAUDE_WORKTREE_HOURS,
+            scratch_days: SCRATCH_DAYS,
         },
         safety: Safety {
             allow: vec![
@@ -581,6 +606,7 @@ pub fn disk() -> Rule {
                 "~/.openagents/worktrees".into(),
                 "~/.openagents/gate".into(),
                 "~/.openagents/background/trash".into(),
+                "~/.openagents/scratch".into(),
                 "~/work".into(),
                 "~/code".into(),
             ],
@@ -734,6 +760,9 @@ impl Rule {
         }
         if self.classes.agent_idle_hours == 0 {
             return Err("an agent build is stale after at least an hour".into());
+        }
+        if self.classes.scratch_days == 0 {
+            return Err("an ended session's scratch stays at least a day".into());
         }
         for root in &self.safety.allow {
             if !(root.starts_with("~/") || root.starts_with('/')) || root.contains("..") {

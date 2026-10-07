@@ -124,6 +124,7 @@ type FreeDisk = Arc<dyn Fn(&Path) -> std::io::Result<u64> + Send + Sync>;
 #[derive(Clone)]
 pub struct Broker {
     root: PathBuf,
+    scratch: PathBuf,
     limits: Limits,
     poll: Duration,
     aging: Option<Duration>,
@@ -134,6 +135,7 @@ impl std::fmt::Debug for Broker {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("Broker")
             .field("root", &self.root)
+            .field("scratch", &self.scratch)
             .field("limits", &self.limits)
             .field("aging", &self.aging)
             .finish_non_exhaustive()
@@ -173,12 +175,18 @@ impl Broker {
         Ok(Broker::new(root, limits).with_aging(aging))
     }
 
-    /// The broker at `root` with `limits`.
+    /// The broker at `root` with `limits`. Its leases' scratch root is
+    /// `$OPENAGENTS_SCRATCH_ROOT`, else `scratch` beside `root`
+    /// ([`crate::scratch`]).
     #[must_use]
     pub fn new(root: PathBuf, limits: Limits) -> Broker {
         crate::root::refuse_real_home(&root);
+        let scratch = std::env::var_os(crate::scratch::SCRATCH_ROOT_VAR)
+            .filter(|root| !root.is_empty())
+            .map_or_else(|| crate::scratch::beside(&root), PathBuf::from);
         Broker {
             root,
+            scratch,
             limits,
             poll: POLL,
             aging: Some(crate::DEFAULT_AGING),
@@ -221,6 +229,19 @@ impl Broker {
     #[must_use]
     pub fn root(&self) -> &Path {
         &self.root
+    }
+
+    /// Gives the leases' sessions their scratch directories under `root`.
+    #[must_use]
+    pub fn with_scratch_root(mut self, root: PathBuf) -> Broker {
+        self.scratch = root;
+        self
+    }
+
+    /// The root the leases' scratch directories are under.
+    #[must_use]
+    pub fn scratch_root(&self) -> &Path {
+        &self.scratch
     }
 
     /// The limits counted leases share.
@@ -299,6 +320,7 @@ impl Broker {
                 let id = request.outer_id.clone().unwrap_or_else(|| outer.id.clone());
                 return Ok(Lease {
                     root: self.root.clone(),
+                    scratch: self.scratch.clone(),
                     entry: Entry {
                         id,
                         resource: name,
@@ -337,6 +359,7 @@ impl Broker {
         std::fs::rename(&staging, &lock_path)?;
         let mut lease = Lease {
             root: self.root.clone(),
+            scratch: self.scratch.clone(),
             entry: Entry {
                 id: id.clone(),
                 resource: name,
@@ -692,6 +715,7 @@ fn no_grant(holder: &Holder) -> String {
 #[derive(Debug)]
 pub struct Lease {
     root: PathBuf,
+    scratch: PathBuf,
     entry: Entry,
     inherited: Vec<String>,
     pub(crate) lock: Option<File>,
@@ -719,21 +743,31 @@ impl Lease {
     }
 
     /// The variables a command run under this lease gets:
-    /// `OPENAGENTS_LEASE_ID`, `OPENAGENTS_LEASES`, and `OPENAGENTS_SESSION`.
+    /// `OPENAGENTS_LEASE_ID`, `OPENAGENTS_LEASES`, `OPENAGENTS_SESSION`,
+    /// and `OPENAGENTS_SCRATCH`, the session's scratch directory, which
+    /// this creates when missing. A scratch directory that can't be
+    /// created is left out.
     #[must_use]
     pub fn env(&self) -> Vec<(String, String)> {
         let mut leases = self.inherited.clone();
         if !leases.contains(&self.entry.resource) {
             leases.push(self.entry.resource.clone());
         }
-        vec![
+        let mut env = vec![
             (LEASE_ID_VAR.to_owned(), self.entry.id.clone()),
             (LEASES_VAR.to_owned(), leases.join(",")),
             (
                 crate::SESSION_VAR.to_owned(),
                 self.entry.holder.session.clone(),
             ),
-        ]
+        ];
+        if let Ok(dir) = crate::scratch::ensure(&self.scratch, &self.entry.holder.session) {
+            env.push((
+                crate::scratch::SCRATCH_VAR.to_owned(),
+                dir.display().to_string(),
+            ));
+        }
+        env
     }
 
     /// Releases the lease and writes its receipt to `receipts/<id>.json`,

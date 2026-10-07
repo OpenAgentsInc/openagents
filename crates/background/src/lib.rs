@@ -49,6 +49,8 @@ pub mod plan;
 pub mod plugins;
 pub mod pool;
 pub mod records;
+#[cfg(unix)]
+pub mod scratch;
 pub mod task_paths;
 
 #[cfg(not(unix))]

@@ -59,6 +59,12 @@
     {
       "kind": "delete_caches",
       "classes": [
+        "scratch"
+      ]
+    },
+    {
+      "kind": "delete_caches",
+      "classes": [
         "gate_pools",
         "kache"
       ]
@@ -87,7 +93,8 @@
       "~/code/*",
       "~/work/*"
     ],
-    "claude_worktree_hours": 2
+    "claude_worktree_hours": 2,
+    "scratch_days": 7
   },
   "safety": {
     "allow": [
@@ -96,6 +103,7 @@
       "~/.openagents/worktrees",
       "~/.openagents/gate",
       "~/.openagents/background/trash",
+      "~/.openagents/scratch",
       "~/work",
       "~/code"
     ],
@@ -116,7 +124,8 @@
       "incremental",
       "trash",
       "claude_worktrees",
-      "kache"
+      "kache",
+      "scratch"
     ],
     "tasks": true,
     "notify": true

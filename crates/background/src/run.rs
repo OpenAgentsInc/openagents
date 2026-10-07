@@ -363,6 +363,7 @@ fn act(env: &Env<'_>, rule: &Rule, item: &Item, run: &str) -> Action {
     let touched = match item.class {
         Class::Worktrees | Class::Trash => paths::touched_worktree(&item.path),
         Class::ClaudeWorktrees => paths::touched_linked(&item.path),
+        Class::Scratch => crate::scratch::touched(&item.path, env.now),
         Class::Judged => plan::newest(&item.path),
         _ => paths::touched(&item.path),
     };

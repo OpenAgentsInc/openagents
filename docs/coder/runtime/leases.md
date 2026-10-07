@@ -273,6 +273,7 @@ grant.
 | `OPENAGENTS_LEASE_ID` | The lease's identifier. |
 | `OPENAGENTS_LEASES` | The resources the command runs under, comma-separated, such as `quiet` or `build,gpu`. |
 | `OPENAGENTS_SESSION` | The holder's session, so the command's own leases name the same session. |
+| `OPENAGENTS_SCRATCH` | The session's durable scratch directory, created when missing: `~/.openagents/scratch/<session>/`, or `scratch` beside a moved lease root. [Durable scratch](../guides/scratch.md) covers it. |
 | `CARGO_TARGET_DIR` | Under `lease build`, the target slot, unless `--keep-target-dir` kept the caller's. |
 
 A command that already runs under a live lease on a resource passes through

@@ -329,8 +329,10 @@ pub fn apply_run_leases(
 /// Code, Codex, OpenCode, the ACP agents, and Microcoder's commands. The
 /// shim runs the `openagents` beside this program, or this program when it
 /// is `openagents`, else the one on the delegate's `PATH`. A process that
-/// can't write the shims delegates without them. Call it once, from a
-/// program's `main`, never from a library's tests.
+/// can't write the shims delegates without them. It also gives those
+/// delegates a durable scratch directory in `OPENAGENTS_SCRATCH`
+/// (`coder_lease::scratch`). Call it once, from a program's `main`, never
+/// from a library's tests.
 pub fn enable_lease_shims() {
     let bin = std::env::current_exe().ok().and_then(|exe| {
         let name = format!("openagents{}", std::env::consts::EXE_SUFFIX);
@@ -343,6 +345,7 @@ pub fn enable_lease_shims() {
         }
     });
     let _ = coder_lease::shim::enable_from_env(bin);
+    let _ = coder_lease::scratch::enable_from_env();
 }
 
 /// The lease table a task store's runs share: `leases` beside the store,

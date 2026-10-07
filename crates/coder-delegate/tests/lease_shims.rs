@@ -67,3 +67,53 @@ fn a_delegation_gets_the_cargo_shim_first_on_path() {
     }
     coder_lease::shim::disable();
 }
+
+#[test]
+fn a_delegation_gets_durable_scratch_and_its_briefing_names_it() {
+    use coder_delegate::delegate::{BRIEFING_CAP, Briefing, BriefingInputs, DURABLE_SCRATCH};
+    let dir = tempfile::tempdir().unwrap();
+    let inputs = BriefingInputs {
+        instruction: "Fix the parser.".to_string(),
+        requirements: Vec::new(),
+        files: Vec::new(),
+        spans: Vec::new(),
+        commands: Vec::new(),
+        last_output: None,
+        conclusion: "Nothing explored.".to_string(),
+        directions: "Work here.".to_string(),
+    };
+    let launch = Launch {
+        session: SessionArg::New(None),
+        steerable: false,
+    };
+    let binary = dir.path().join("agent");
+    let scratch_of = |command: &std::process::Command| {
+        command
+            .get_envs()
+            .find(|(name, _)| *name == coder_lease::scratch::SCRATCH_VAR)
+            .and_then(|(_, value)| value.map(PathBuf::from))
+    };
+    coder_lease::scratch::disable();
+    let claude = cli(Agent::ClaudeCode, dir.path());
+    assert_eq!(scratch_of(&claude.live_command(&binary, &launch)), None);
+    assert!(
+        !Briefing::build(&inputs, BRIEFING_CAP)
+            .text
+            .contains("OPENAGENTS_SCRATCH")
+    );
+
+    let made = coder_lease::scratch::enable(&dir.path().join("scratch")).unwrap();
+    assert!(made.is_dir());
+    assert!(made.starts_with(dir.path().join("scratch")));
+    for agent in [Agent::ClaudeCode, Agent::Codex, Agent::OpenCode] {
+        let cli = cli(agent, dir.path());
+        assert_eq!(
+            scratch_of(&cli.live_command(&binary, &launch)),
+            Some(made.clone()),
+            "{agent:?}"
+        );
+    }
+    let text = Briefing::build(&inputs, BRIEFING_CAP).text;
+    assert!(text.contains(DURABLE_SCRATCH.trim()), "{text}");
+    coder_lease::scratch::disable();
+}

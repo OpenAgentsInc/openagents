@@ -32,6 +32,10 @@
 //! [`shim`] writes the `cargo` shim Coder puts first on a delegate's
 //! `PATH`, so a delegate's heavy builds take `build` leases.
 //!
+//! [`scratch`] gives each session a durable scratch directory under
+//! `~/.openagents/scratch/<session>/`, which a lease's command and Coder's
+//! delegates get in `OPENAGENTS_SCRATCH`.
+//!
 //! `docs/coder/runtime/leases.md` is the operator's page.
 
 mod broker;
@@ -40,6 +44,7 @@ mod holder;
 mod limits;
 mod resource;
 mod root;
+pub mod scratch;
 pub mod shim;
 mod table;
 

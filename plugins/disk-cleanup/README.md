@@ -48,7 +48,8 @@ with `openagents background pause disk` to avoid two cleanup policies.
 The host permits only ended tasks' build folders, stale build folders,
 clean and pushed linked worktrees of ended tasks or worktrees with no task
 record that have been unused for at least 7 days, clean, pushed, and unlocked
-Claude Code worktrees idle for 2 hours, idle gate builds, a kache collection
+Claude Code worktrees idle for 2 hours, the scratch of agent sessions that
+ended and left it unchanged for 7 days, idle gate builds, a kache collection
 (through kache's own collector), incremental caches, and background trash in
 an emergency. Plugin worktrees without an ended task record follow the
 built-in monitor’s 7-day policy. Agent target directories are stale after 6
@@ -62,6 +63,10 @@ staleness applies to it without changes. To move it to 0.2.0, install the
 plugin again from the repository root, remove that file, preview with
 `openagents background run disk-cleanup --dry-run`, and run
 `openagents background resume disk-cleanup`.
+
+Version 0.3.0 added agent scratch under `~/.openagents/scratch`
+(`openagents scratch`). A saved rule from an earlier version leaves scratch
+alone until you move it to 0.3.0 the same way.
 
 The host checks task activity, locks, open files, working directories, Git
 status, remote commit coverage, symlinks, volume boundaries, and its protected

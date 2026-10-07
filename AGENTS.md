@@ -63,6 +63,10 @@ installed `openagents` has no `lease` command, build it once with `cargo build
 -p openagents-cli --bin openagents` and run it from your target directory.
 Read `docs/coder/runtime/leases.md`.
 
+Keep scratch files (captures, scripts, notes) in the directory `openagents
+scratch` prints (`$OPENAGENTS_SCRATCH` under a lease or a Coder delegation),
+not in `/tmp`, which a reboot clears; `docs/coder/guides/scratch.md`.
+
 When a test fails only because a checked-in generated file is stale, run its
 regenerate command and commit the result; don't investigate further.
 

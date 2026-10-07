@@ -1358,6 +1358,7 @@ fn rule_files_without_the_new_settings_get_the_defaults() {
     classes.remove("agent_idle_hours");
     classes.remove("claude_worktree_hours");
     classes.remove("claude_checkouts");
+    classes.remove("scratch_days");
     value["goal"]
         .as_object_mut()
         .unwrap()
@@ -1367,6 +1368,7 @@ fn rule_files_without_the_new_settings_get_the_defaults() {
     assert_eq!(rule.classes.agent_idle_hours, 6);
     assert_eq!(rule.classes.claude_worktree_hours, 2);
     assert!(rule.classes.claude_checkouts.is_empty());
+    assert_eq!(rule.classes.scratch_days, crate::rule::SCRATCH_DAYS);
     assert_eq!(rule.goal.pressure_secs, None);
     rule.validate().unwrap();
     // The built-in rule: 200 GB or 15% to start, a minute under pressure.
@@ -1410,4 +1412,100 @@ fn checks_come_every_minute_under_pressure_and_every_five_otherwise() {
     let state = crate::store::State::load(&home.layout);
     let seen = &state.rules["disk"];
     assert_eq!(seen.next_check, Some(env.now + 60));
+}
+
+#[test]
+fn ended_sessions_scratch_goes_after_seven_days_and_live_sessions_stay() {
+    let home = Home::new();
+    let root = home.layout.scratch();
+    let gone = {
+        let mut child = Command::new("true").spawn().unwrap();
+        let pid = child.id();
+        child.wait().unwrap();
+        pid
+    };
+    let make = |session: &str, days: u64| {
+        let dir = coder_lease::scratch::ensure(&root, session).unwrap();
+        std::fs::create_dir_all(dir.join("captures")).unwrap();
+        std::fs::write(dir.join("captures/spawn.png"), vec![7u8; 4096]).unwrap();
+        age(&dir, days);
+        dir
+    };
+    let ended = make(&format!("codex:{gone}"), 8);
+    let quiet = make("claude-code:finished", 8);
+    let recent = make("claude-code:recent", 3);
+    let running = make(&format!("process:{}", std::process::id()), 8);
+    let leased = make("claude-code:leased", 8);
+    let broker = coder_lease::Broker::new(
+        home.layout.leases(),
+        coder_lease::Limits {
+            build: 1,
+            memory_gib: 1,
+            disk_floor_gb: 1,
+        },
+    );
+    let mut holder = coder_lease::Holder::detect("sh");
+    holder.session = "claude-code:leased".into();
+    let lease = broker
+        .acquire(coder_lease::Request::new(
+            coder_lease::Resource::Gpu,
+            holder,
+        ))
+        .unwrap();
+
+    let facts = home.facts();
+    let volumes = low();
+    let env = env(&home, &facts, &volumes, &Idle);
+    let rule = disk();
+    assert_eq!(rule.classes.scratch_days, 7);
+    let found = plan(&env, &rule, true);
+    let mut scratch: Vec<PathBuf> = found
+        .items()
+        .filter(|item| item.class == crate::rule::Class::Scratch)
+        .map(|item| item.path.clone())
+        .collect();
+    scratch.sort();
+    let mut expected = vec![ended.clone(), quiet.clone()];
+    expected.sort();
+    assert_eq!(scratch, expected, "{:?}", found.kept);
+    let why = |path: &Path| {
+        found
+            .kept
+            .iter()
+            .find(|kept| kept.path == path)
+            .map(|kept| kept.why.clone())
+            .unwrap_or_default()
+    };
+    assert!(
+        why(&recent).contains("changed 3 days ago"),
+        "{}",
+        why(&recent)
+    );
+    assert!(
+        why(&running).ends_with("is still running"),
+        "{}",
+        why(&running)
+    );
+    assert!(why(&leased).ends_with("holds a lease"), "{}", why(&leased));
+
+    let report = run::run(&env, &rule, Cause::Manual, false, true).unwrap();
+    assert!(!ended.exists());
+    assert!(!quiet.exists());
+    for dir in [&recent, &running, &leased] {
+        assert!(dir.exists(), "{}", dir.display());
+    }
+    let record = report.record.unwrap();
+    assert_eq!(
+        record
+            .actions
+            .iter()
+            .filter(|action| action.class == crate::rule::Class::Scratch
+                && action.outcome == Outcome::Deleted)
+            .count(),
+        2
+    );
+    // Once its lease ends, a quiet session's scratch goes too.
+    drop(lease);
+    let found = plan(&env, &rule, true);
+    assert!(found.items().any(|item| item.path == leased));
 }

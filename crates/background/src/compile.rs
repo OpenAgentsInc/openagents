@@ -197,6 +197,10 @@ pub fn class_option(class: Class) -> (&'static str, &'static str) {
             "kache",
             "The kache compile cache, through kache's own collector.",
         ),
+        Class::Scratch => (
+            "scratch",
+            "Agent scratch of sessions that ended a week ago.",
+        ),
     }
 }
 

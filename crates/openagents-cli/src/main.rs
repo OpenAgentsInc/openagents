@@ -71,6 +71,7 @@ mod provider_key;
 mod quest;
 mod reach;
 mod relay;
+mod scratch;
 mod screen;
 #[cfg(unix)]
 mod service;
@@ -134,6 +135,8 @@ Coder:
                every agent and Coder share.
   lease        Run a command under a lease on a shared resource (build slots,
                quiet, the screen, the GPU), and list holders and waiters.
+  scratch      Make and print this session's durable scratch directory, under
+               ~/.openagents/scratch, for files that must outlive a reboot.
   settings     What Coder may use on this computer: providers, ask first, and more.
   service      Install, update, and roll back the resident host service.
   background   The host's background rules, built in and from plugins turned on here.
@@ -315,6 +318,7 @@ fn main() -> ExitCode {
         "task" => runtime().block_on(coder::task::cli::run_with_json(&rest, json)),
         "issue" => issue::run(&output, &rest),
         "lease" | "leases" => lease::run(&output, &rest),
+        "scratch" => scratch::run(&output, &rest),
         "chat" => chat::run(&output, &rest),
         "terminal" => screen::run(&output, &rest),
         "computer" | "computers" => computer::run(&output, &rest),

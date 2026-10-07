@@ -40,11 +40,12 @@ the default for a session. A waiter rises one level for each 20 minutes it
 waits (OPENAGENTS_LEASE_AGING_MINUTES; 0 turns aging off). --no-wait fails at
 once instead. quiet waits for running builds to finish, and new builds wait
 at every priority while quiet is held or queued. CMD gets
-OPENAGENTS_LEASE_ID, OPENAGENTS_LEASES, and OPENAGENTS_SESSION; a command
-already under a lease on RESOURCE runs without taking another. On release,
-a receipt lands in ~/.openagents/leases/receipts/ (OPENAGENTS_LEASE_ROOT
-moves the root), and --receipt PATH writes a copy; with --json it is
-printed after CMD's output.
+OPENAGENTS_LEASE_ID, OPENAGENTS_LEASES, OPENAGENTS_SESSION, and
+OPENAGENTS_SCRATCH, the session's durable scratch directory (openagents
+scratch); a command already under a lease on RESOURCE runs without taking
+another. On release, a receipt lands in ~/.openagents/leases/receipts/
+(OPENAGENTS_LEASE_ROOT moves the root), and --receipt PATH writes a copy;
+with --json it is printed after CMD's output.
 build also takes one of Coder's target slots for the current repository
 (~/.openagents/targets, shared with Coder tasks and capped at 25 GB) and
 sets CARGO_TARGET_DIR to it; --keep-target-dir keeps a CARGO_TARGET_DIR

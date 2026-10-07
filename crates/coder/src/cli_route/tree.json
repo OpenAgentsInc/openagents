@@ -3909,7 +3909,7 @@
               "chat"
             ],
             "usage": [
-              "chat [-p TEXT | --prompt-file FILE | --stdin] [--session ID] [--delegation ID] [--demo]"
+              "chat [-p TEXT | --prompt-file FILE | --stdin] [--session ID] [--delegation ID] [--instructions TEXT | --instructions-file FILE] [--demo]"
             ],
             "forms": [
               {
@@ -3951,6 +3951,20 @@
                     "kind": "option",
                     "name": "delegation",
                     "value": "ID",
+                    "open": true,
+                    "optional": true
+                  },
+                  {
+                    "kind": "option",
+                    "name": "instructions",
+                    "value": "TEXT",
+                    "open": true,
+                    "optional": true
+                  },
+                  {
+                    "kind": "option",
+                    "name": "instructions-file",
+                    "value": "FILE",
                     "open": true,
                     "optional": true
                   },
@@ -4603,6 +4617,22 @@
           "kind": "option",
           "name": "delegation",
           "value": "ID",
+          "open": true,
+          "optional": true,
+          "repeated": true
+        },
+        {
+          "kind": "option",
+          "name": "instructions",
+          "value": "TEXT",
+          "open": true,
+          "optional": true,
+          "repeated": true
+        },
+        {
+          "kind": "option",
+          "name": "instructions-file",
+          "value": "FILE",
           "open": true,
           "optional": true,
           "repeated": true
@@ -5721,6 +5751,44 @@
         {
           "kind": "option",
           "name": "json",
+          "optional": true,
+          "repeated": true
+        }
+      ]
+    },
+    {
+      "name": "scratch",
+      "summary": "Make and print this session's durable scratch directory, under ~/.openagents/scratch, for files that must outlive a reboot.",
+      "leaf": {
+        "path": [
+          "scratch"
+        ],
+        "usage": [
+          "openagents scratch [--session SESSION]"
+        ],
+        "forms": [
+          {
+            "tokens": [
+              {
+                "kind": "option",
+                "name": "session",
+                "value": "SESSION",
+                "open": true,
+                "optional": true
+              }
+            ]
+          }
+        ],
+        "summary": "Make and print this session's durable scratch directory, under ~/.openagents/scratch, for files that must outlive a reboot.",
+        "effect": "local_write",
+        "runs_on": "connected_computer"
+      },
+      "options": [
+        {
+          "kind": "option",
+          "name": "session",
+          "value": "SESSION",
+          "open": true,
           "optional": true,
           "repeated": true
         }

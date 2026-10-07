@@ -753,6 +753,9 @@ impl Briefing {
         if coder_lease::shim::enabled().is_some() {
             directions.push_str(LEASED_BUILDS);
         }
+        if coder_lease::scratch::delegate_dir().is_some() {
+            directions.push_str(DURABLE_SCRATCH);
+        }
         let fixed = head.chars().count() + directions.chars().count() + 32;
         let room = cap.saturating_sub(fixed);
         let mut included = Vec::new();
@@ -1791,6 +1794,12 @@ pub fn codex_auth_file(env: impl Fn(&str) -> Option<String>) -> Option<PathBuf> 
 pub const LEASED_BUILDS: &str = "\nHeavy `cargo` commands (build, test, check, clippy, run) take a build \
 lease on this machine and may wait their turn; let them wait, and don't change \
 `CARGO_TARGET_DIR`.\n";
+
+/// What a briefing tells the delegate when it has a durable scratch
+/// directory (`coder_lease::scratch`).
+pub const DURABLE_SCRATCH: &str = "\nKeep scratch files (captures, scripts, notes) in \
+`$OPENAGENTS_SCRATCH`, which survives a reboot, rather than in `/tmp`; evidence a check \
+needs belongs in the repository.\n";
 
 /// The `claude` binary: `CODER_ONE_CLAUDE_BIN`, else the first `claude` on
 /// `PATH`, else `~/.local/bin/claude`, where the native installer puts it.

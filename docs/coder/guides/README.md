@@ -29,6 +29,7 @@ plans or analysis, not alternative operating instructions.
 | [microcoder](microcoder.md) | Run the Microcoder loop on a Terminal-Bench task with explicit provider, cost, and retrieval settings |
 | [program-authority](program-authority.md) | Program authority |
 | [project-supervision](project-supervision.md) | Capacity-aware project supervision |
+| [scratch](scratch.md) | Keep agent scratch in a durable per-session directory with `openagents scratch` |
 | [tasks](tasks.md) | Submit, cancel, inspect, and verify explicitly admitted durable local tasks |
 | [tracker-intake](tracker-intake.md) | Scoped tracker intake |
 | [worker-executor](worker-executor.md) | Running `coder-worker` on a local executor |

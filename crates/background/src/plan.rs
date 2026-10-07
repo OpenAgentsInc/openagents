@@ -222,6 +222,11 @@ pub(crate) fn check(
     if class == Class::Judged && path.join(".git").exists() {
         return Err("a Git checkout".into());
     }
+    if class == Class::Scratch
+        && let Some(why) = crate::scratch::live(layout, path)
+    {
+        return Err(why);
+    }
     let undo = if matches!(class, Class::Worktrees | Class::ClaudeWorktrees) {
         Some(git::removable(path)?)
     } else {
@@ -604,6 +609,41 @@ fn candidates(
         }
         // Planned apart, in `plan`: it is a collection, not a folder.
         Class::Kache => {}
+        Class::Scratch => {
+            let idle = rule.classes.scratch_days * 86_400;
+            for path in entries(&layout.scratch()) {
+                if path
+                    .file_name()
+                    .is_some_and(|name| name.to_string_lossy().starts_with('.'))
+                {
+                    continue;
+                }
+                let session = coder_lease::scratch::session_of(&path);
+                if let Some(why) = crate::scratch::live(layout, &path) {
+                    keep(&path, &why, &mut kept);
+                    continue;
+                }
+                let touched = crate::scratch::touched(&path, now);
+                let age = now.saturating_sub(touched);
+                if age < idle {
+                    keep(
+                        &path,
+                        &format!("scratch of {session}, changed {} ago", span(age)),
+                        &mut kept,
+                    );
+                    continue;
+                }
+                found.push(Candidate::new(
+                    class,
+                    path.clone(),
+                    touched,
+                    format!(
+                        "scratch of ended session {session}, unchanged {}",
+                        span(age)
+                    ),
+                ));
+            }
+        }
         Class::GatePools => {
             for path in gate_builds(layout) {
                 let touched = paths::touched(&path);

@@ -31,7 +31,7 @@ fn plugin(dir: &Path, change: impl FnOnce(&mut Value)) {
     rule["needs"] = json!({
         "delete": [
             "ended_targets", "stale_targets", "worktrees", "gate_pools", "incremental", "trash",
-            "claude_worktrees", "kache",
+            "claude_worktrees", "kache", "scratch",
         ],
         "tasks": true,
         "notify": true,

@@ -248,16 +248,18 @@ a class, it takes the least recently used candidate first.
 | 6 | Background trash (emergency only) | `~/.openagents/background/trash/*` | Oldest first. | Never. |
 | 8 | Claude Code worktrees | `<checkout>/.claude/worktrees/*` in each checkout `classes.claude_checkouts` names (`~/code/*`, `~/work/*`) | Class 3's Git checks (clean, no ignored file outside a disposable cache, every commit on some remote, no stash made on it), it is not locked (Claude Code runs `git worktree lock` for a running agent), and its Git state (`HEAD`, index, and `HEAD` log) has not changed for 2 hours (`classes.claude_worktree_hours`). `git worktree remove` removes it; `undo` recreates it on its branch. | A process has a working directory or open file inside, or a task names it. |
 | 9 | The kache store | kache's store (`kache stats --json` names it) | The store is over its cap. The planned size is the overage times the share of the store no target directory also holds. The run calls `background::kache::Kache::reclaim`, which runs `kache gc`; nothing under the store is deleted here. | kache's collector holds `gc.lock`. |
+| 10 | Agent scratch | `~/.openagents/scratch/*`, one directory a session (`openagents scratch`, [Durable scratch](../coder/guides/scratch.md)) | The session ended: no lease in `~/.openagents/leases` names it, and for a session that names a process (`codex:4242`), that process is gone. Nothing in the directory changed for 7 days (`classes.scratch_days`). | A process has a working directory or open file inside, or the lease table can't be read. |
 
-The default rule runs the classes in this order: 1 and 2, 3, 8, 4 and 9,
-5, then 6. Classes 8 and 9 came from the low-disk episodes of 2026-10-04 and
+The default rule runs the classes in this order: 1 and 2, 3, 8, 10, 4 and
+9, 5, then 6. Classes 8 and 9 came from the low-disk episodes of 2026-10-04 and
 2026-10-05 (#10759): the runner was live through both, but with only class 5
 eligible it freed less each run, down to nothing, while Claude Code
 worktrees, kache, and agent target directories younger than three days held
 the space. A rule file saved before these settings existed gets the 6-hour
 and 2-hour defaults; it gains classes 8 and 9, the new levels, and the
 one-minute check only by naming them, as the Disk cleanup plugin's 0.2.0
-rule does.
+rule does. Class 10 (#10766) arrived with durable agent scratch; a saved rule
+gains it the same way, as the plugin's 0.3.0 rule does.
 
 [#10148](https://github.com/OpenAgentsInc/openagents/issues/10148) and this
 monitor work together. Slot reuse stops the per-task growth at its source,
