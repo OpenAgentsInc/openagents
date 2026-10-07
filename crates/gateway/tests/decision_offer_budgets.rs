@@ -662,3 +662,216 @@ async fn killed_native_gateway_keeps_dispatch_liability_and_cannot_retry_or_over
     assert_eq!(hold.reserved, HOLD);
     assert_eq!(ledger.budget_policy(&host.workspace).unwrap(), &p);
 }
+
+#[tokio::test]
+async fn exact_team_policy_and_budget_share_native_admission_without_releasing_old_liability() {
+    use receipts::team_policy::{Change, PlacementKind, Rule, Terms};
+    let (mut host, owner, member) = team_host().await;
+    host.stop().await;
+    host.config.team_policy = Some(gateway::team_policy::Config {
+        doors: [DOOR, SECOND]
+            .into_iter()
+            .map(|door| {
+                (
+                    door.into(),
+                    gateway::team_policy::Backend {
+                        endpoint: host.config.doors[door].endpoint.clone(),
+                        placement: PlacementKind::LocalGateway,
+                    },
+                )
+            })
+            .collect(),
+    });
+    start(&mut host).await;
+    let budget = policy(&owner, &member.account, 5_000, 4_000, 3_000);
+    assert_eq!(
+        publish(&host, &host.token, "combined-budget", None, &budget)
+            .await
+            .status(),
+        StatusCode::OK
+    );
+    let registry = Registry::open(host.dir.path()).unwrap();
+    let rules = [DOOR, SECOND]
+        .into_iter()
+        .map(|door| {
+            let mut body = request();
+            body["model"] = json!(door);
+            let admission = registry.authorize(Some("buyer"), door).unwrap();
+            Rule {
+                effect: gateway::team_policy::effect(&host.config, &admission, door, &body)
+                    .unwrap(),
+                data_classes: vec!["isolated-owner-reviewed-input".into()],
+            }
+        })
+        .collect();
+    let review = |change: Change| {
+        reqwest::Client::new()
+            .put(format!(
+                "{}/v1/workspaces/{}/team-policy",
+                host.address, host.workspace
+            ))
+            .bearer_auth(&host.token)
+            .json(&change)
+            .send()
+    };
+    let first = review(Change {
+        expected_digest: None,
+        terms: Terms {
+            version: 1,
+            expires_unix: std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap()
+                .as_secs()
+                + 60,
+            rules,
+        },
+    })
+    .await
+    .unwrap();
+    assert_eq!(first.status(), StatusCode::OK);
+    let original_policy: Value = first.json().await.unwrap();
+    let response = host.call("combined-once").await;
+    assert_eq!(response.status(), StatusCode::OK);
+    let _: Value = response.json().await.unwrap();
+    assert_eq!(host.backend.forwards.load(Ordering::SeqCst), 1);
+    assert_eq!(
+        host.backend.requests.lock().unwrap()[0]["model"],
+        "kev-0.6b"
+    );
+    let original = host
+        .receipts()
+        .into_iter()
+        .find(|r| r.request == "combined-once")
+        .unwrap();
+    assert_eq!(original.team_policy.as_ref().unwrap().policy.version, 1);
+    host.backend
+        .reply
+        .lock()
+        .unwrap()
+        .as_object_mut()
+        .unwrap()
+        .remove("usage");
+    assert_eq!(host.call("combined-unknown").await.status(), StatusCode::OK);
+    assert_eq!(host.backend.forwards.load(Ordering::SeqCst), 2);
+    host.backend.reply.lock().unwrap()["usage"] = json!({"input_tokens":3,"output_tokens":99});
+    let before: Value = read(&host, &host.token, 0).await.json().await.unwrap();
+    assert_eq!(before["budget"]["workspace"]["unknown"], HOLD);
+    assert_eq!(before["budget"]["workspace"]["settled_net"], 11);
+    let used = before["budget"]["workspace"]["used"].clone();
+    host.backend.card_block.store(true, Ordering::SeqCst);
+    let address = host.address.clone();
+    let token = member.token.clone();
+    let workspace = host.workspace.clone();
+    let waiting = tokio::spawn(async move {
+        send_door(
+            &address,
+            &token,
+            &workspace,
+            "combined-undispatched",
+            SECOND,
+        )
+        .await
+    });
+    tokio::time::timeout(
+        std::time::Duration::from_secs(5),
+        host.backend.card_entered.notified(),
+    )
+    .await
+    .unwrap();
+    let during: Value = read(&host, &host.token, 0).await.json().await.unwrap();
+    assert_eq!(during["budget"]["workspace"]["reserved"], HOLD);
+    let revoked = tokio::time::timeout(
+        std::time::Duration::from_secs(2),
+        review(Change {
+            expected_digest: Some(
+                original_policy["reference"]["digest"]
+                    .as_str()
+                    .unwrap()
+                    .into(),
+            ),
+            terms: Terms {
+                version: 2,
+                expires_unix: std::time::SystemTime::now()
+                    .duration_since(std::time::UNIX_EPOCH)
+                    .unwrap()
+                    .as_secs()
+                    + 60,
+                rules: vec![],
+            },
+        }),
+    )
+    .await
+    .unwrap()
+    .unwrap();
+    assert_eq!(
+        revoked.status(),
+        StatusCode::OK,
+        "Policy review must not wait on Money or backend response."
+    );
+    tenancy::Accounts::open(host.dir.path())
+        .unwrap()
+        .remove_member(&owner, &host.workspace, &member.account)
+        .unwrap();
+    host.backend.card_block.store(false, Ordering::SeqCst);
+    host.backend.card_resume.notify_one();
+    let denied = waiting.await.unwrap();
+    assert_eq!(denied.status(), StatusCode::FORBIDDEN);
+    assert_eq!(
+        denied.json::<Value>().await.unwrap()["error"]["code"],
+        "team_policy_denied"
+    );
+    assert_eq!(host.backend.forwards.load(Ordering::SeqCst), 2);
+    let after: Value = read(&host, &host.token, 0).await.json().await.unwrap();
+    assert_eq!(after["budget"]["workspace"]["used"], used);
+    assert_eq!(after["budget"]["workspace"]["reserved"], 0);
+    assert_eq!(after["budget"]["workspace"]["unknown"], HOLD);
+    assert_eq!(after["budget"]["workspace"]["settled_net"], 11);
+    let head = after["ledger_head"].clone();
+    for id in ["combined-once", "combined-unknown"] {
+        assert_eq!(host.call(id).await.status(), StatusCode::FORBIDDEN);
+    }
+    assert_eq!(host.backend.forwards.load(Ordering::SeqCst), 2);
+    let retry: Value = read(&host, &host.token, 0).await.json().await.unwrap();
+    assert_eq!(retry["ledger_head"], head);
+    assert_eq!(
+        host.receipts()
+            .into_iter()
+            .find(|r| r.digest == original.digest)
+            .unwrap()
+            .team_policy,
+        original.team_policy
+    );
+    host.stop().await;
+    let ledger = Ledger::open(&host.config.money.as_ref().unwrap().ledger).unwrap();
+    assert_eq!(
+        ledger
+            .hold(&host.workspace, "combined-once#1")
+            .unwrap()
+            .phase,
+        tenancy::money::Phase::Settled
+    );
+    assert_eq!(
+        ledger
+            .hold(&host.workspace, "combined-unknown#1")
+            .unwrap()
+            .phase,
+        tenancy::money::Phase::Unknown
+    );
+    assert_eq!(
+        ledger
+            .hold(&host.workspace, "combined-undispatched#1")
+            .unwrap()
+            .phase,
+        tenancy::money::Phase::Released
+    );
+    assert_eq!(
+        ledger
+            .hold(&host.workspace, "combined-unknown#1")
+            .unwrap()
+            .budget
+            .as_ref()
+            .unwrap()
+            .policy,
+        budget.digest().unwrap()
+    );
+}

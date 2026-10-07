@@ -251,3 +251,31 @@ fn expired_policy_and_changed_owner_refuse_new_effects_without_erasing_history()
             .is_err()
     );
 }
+
+#[test]
+fn policy_disclosure_guard_refuses_replaced_native_state_after_sealed_admission() {
+    let f = fixture();
+    review(&f);
+    let member = actor(&f, &f.member);
+    let guard = f
+        .accounts
+        .team_policy_guard(&effect(), None, Some("custody-original"), |_| {
+            Ok((member.clone(), "key:fixture".into()))
+        })
+        .unwrap();
+    guard.before_effect().unwrap();
+    let current = f._dir.path().join("accounts.json");
+    let original = f._dir.path().join("held-original.json");
+    std::fs::rename(&current, &original).unwrap();
+    std::fs::copy(&original, &current).unwrap();
+    assert!(guard.before_effect().unwrap_err().contains("custody"));
+    drop(guard);
+    assert!(
+        f.accounts
+            .store()
+            .unwrap()
+            .team_policies
+            .dispatches
+            .contains_key("custody-original")
+    );
+}

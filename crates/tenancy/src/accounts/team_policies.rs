@@ -1,7 +1,5 @@
 //! Owner-reviewed restrictions beside current native account authority.
-use super::{
-    Accounts, Lock, MemberRef, MemberStatus, Role, Store, active_member, load, save, unix_now,
-};
+use super::{Accounts, Lock, MemberRef, MemberStatus, Role, Store, active_member, unix_now};
 use receipts::team_policy::{Change, Effect, Reference, Revision, SCHEMA, Snapshot, identifier};
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
@@ -70,6 +68,20 @@ impl Book {
 pub struct Guard {
     pub snapshot: Snapshot,
     _lock: Lock,
+    accounts: Accounts,
+    state: std::fs::File,
+    digest: String,
+}
+impl Guard {
+    /// Check native custody and expiry at the exact disclosure handoff.
+    pub fn before_effect(&self) -> Result<(), String> {
+        self._lock.check().map_err(|e| e.to_string())?;
+        self.accounts.team_check_state(&self.state, &self.digest)?;
+        if unix_now() >= self.snapshot.policy.expires_unix {
+            return Err("The reviewed team policy expired before disclosure.".into());
+        }
+        Ok(())
+    }
 }
 fn member(store: &Store, supplied: &MemberRef) -> Result<(), String> {
     let ws = store
@@ -114,8 +126,9 @@ impl Accounts {
         authenticate: impl FnOnce(&Store) -> Result<MemberRef, String>,
     ) -> Result<Revision, String> {
         change.terms.validate()?;
-        let _lock = Lock::acquire(&self.dir).map_err(|e| e.to_string())?;
-        let mut store = load(&self.dir).map_err(|e| e.to_string())?;
+        let lock = Lock::acquire(&self.dir).map_err(|e| e.to_string())?;
+        lock.check().map_err(|e| e.to_string())?;
+        let (mut store, mut held) = self.team_state()?;
         let actor = authenticate(&store)?;
         member(&store, &actor)?;
         if actor.workspace != workspace || actor.role < Role::Admin {
@@ -165,7 +178,7 @@ impl Accounts {
             .entry(workspace.into())
             .or_default()
             .push(revision.clone());
-        policy_save(&self.dir, &mut store)?;
+        self.team_commit(&lock, &mut held, &mut store)?;
         Ok(revision)
     }
     /// Read a reference under fresh native membership. Rules are administrator-only.
@@ -173,10 +186,13 @@ impl Accounts {
         &self,
         authenticate: impl FnOnce(&Store) -> Result<MemberRef, String>,
     ) -> Result<(Reference, Option<Revision>), String> {
-        let _lock = Lock::acquire(&self.dir).map_err(|e| e.to_string())?;
-        let store = load(&self.dir).map_err(|e| e.to_string())?;
+        let lock = Lock::acquire(&self.dir).map_err(|e| e.to_string())?;
+        lock.check().map_err(|e| e.to_string())?;
+        let (store, held) = self.team_state()?;
         let actor = authenticate(&store)?;
         member(&store, &actor)?;
+        lock.check().map_err(|e| e.to_string())?;
+        self.team_check_state(&held, &store.digest)?;
         let r = store
             .team_policies
             .current(&actor.workspace)
@@ -216,7 +232,8 @@ impl Accounts {
     ) -> Result<Guard, String> {
         effect.validate()?;
         let lock = Lock::acquire(&self.dir).map_err(|e| e.to_string())?;
-        let mut store = load(&self.dir).map_err(|e| e.to_string())?;
+        lock.check().map_err(|e| e.to_string())?;
+        let (mut store, mut held) = self.team_state()?;
         let (actor, credential) = authenticate(&store)?;
         member(&store, &actor)?;
         let r = store
@@ -257,31 +274,24 @@ impl Accounts {
                     handed_off: !prepare,
                 },
             );
-            policy_save(&self.dir, &mut store)?;
+            self.team_commit(&lock, &mut held, &mut store)?;
         }
         Ok(Guard {
             snapshot,
             _lock: lock,
+            accounts: self.clone(),
+            state: held,
+            digest: store.digest,
         })
     }
     pub fn team_policy_handed_off(&self, request: &str) -> Result<bool, String> {
-        Ok(load(&self.dir)
-            .map_err(|e| e.to_string())?
+        Ok(self
+            .team_state()?
+            .0
             .team_policies
             .dispatches
             .contains_key(request))
     }
-}
-fn policy_save(dir: &std::path::Path, store: &mut Store) -> Result<(), String> {
-    let previous = store.digest.clone();
-    store.sequence = store
-        .sequence
-        .checked_add(1)
-        .ok_or("Account revision overflow.")?;
-    store.supersedes = Some(previous);
-    store.seal();
-    store.validate("accounts")?;
-    save(dir, store).map_err(|e| e.to_string())
 }
 #[cfg(test)]
 mod tests;

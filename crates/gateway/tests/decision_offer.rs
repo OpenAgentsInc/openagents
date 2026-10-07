@@ -87,10 +87,17 @@ struct Backend {
     requests: Mutex<Vec<Value>>,
     forwards: AtomicUsize,
     block: AtomicBool,
+    card_block: AtomicBool,
+    card_entered: Notify,
+    card_resume: Notify,
     entered: Notify,
     resume: Notify,
 }
 async fn models(State(b): State<Arc<Backend>>) -> Json<Value> {
+    if b.card_block.load(Ordering::SeqCst) {
+        b.card_entered.notify_one();
+        b.card_resume.notified().await;
+    }
     Json(json!({"models":[b.card.lock().unwrap().clone()]}))
 }
 async fn evaluate(State(b): State<Arc<Backend>>, Json(request): Json<Value>) -> Json<Value> {
@@ -136,6 +143,9 @@ impl Host {
             requests: Mutex::new(vec![]),
             forwards: AtomicUsize::new(0),
             block: AtomicBool::new(false),
+            card_block: AtomicBool::new(false),
+            card_entered: Notify::new(),
+            card_resume: Notify::new(),
             entered: Notify::new(),
             resume: Notify::new(),
         });

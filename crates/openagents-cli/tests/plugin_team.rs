@@ -497,3 +497,64 @@ fn changed_installed_bytes_source_scope_and_withdrawn_signed_head_refuse_new_use
     );
     c.refuse_use("revoked-grant", "withdrawn");
 }
+
+#[test]
+fn active_native_policy_denies_installed_team_effects_but_keeps_original_receipt_and_inspection() {
+    let c = Case::new();
+    c.grant();
+    c.install_enable();
+    let words = c.use_args();
+    let refs = words.iter().map(String::as_str).collect::<Vec<_>>();
+    let original = c.run("use", "member.key", &refs);
+    c.accounts
+        .review_team_policy(
+            &c.workspace,
+            receipts::team_policy::Change {
+                expected_digest: None,
+                terms: receipts::team_policy::Terms {
+                    version: 1,
+                    expires_unix: now() + 60,
+                    rules: vec![],
+                },
+            },
+            |_| {
+                c.accounts
+                    .authorize(&c.workspace, &c.owner)
+                    .map_err(|e| e.to_string())
+            },
+        )
+        .unwrap();
+    let sequence = c.accounts.store().unwrap().sequence;
+    c.refuse_use("new-policy-use", "team policy");
+    for action in ["install", "enable"] {
+        let out = c.command(
+            action,
+            "member.key",
+            &[
+                "--grant",
+                "colleague-v1",
+                "--operation-id",
+                "new-policy-effect",
+            ],
+        );
+        assert!(!out.status.success());
+        assert!(String::from_utf8_lossy(&out.stdout).contains("team policy"));
+    }
+    assert_eq!(c.accounts.store().unwrap().sequence, sequence);
+    let inspected = c.run("inspect", "reader.key", &[]);
+    assert_eq!(inspected["authorization"]["execution_authorized"], false);
+    assert_eq!(inspected["authorization"]["state"], "policy_blocked");
+    assert_eq!(
+        inspected["authorization"]["permissions"]["policy_blocks_new_effects"],
+        true
+    );
+    assert_eq!(inspected["selected"]["state"], "policy_blocked");
+    assert_eq!(inspected["selected"]["source_state"], "qualified_source");
+    assert_eq!(inspected["grants"][0]["state"], "policy_blocked");
+    assert_eq!(inspected["grants"][0]["id"], "colleague-v1");
+    let replay = c.run("use", "member.key", &refs);
+    assert_eq!(replay["replayed"], true);
+    assert_eq!(replay["effect"], original["effect"]);
+    assert_eq!(replay["output"], Value::Null);
+    assert_eq!(c.accounts.store().unwrap().sequence, sequence);
+}

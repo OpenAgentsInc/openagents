@@ -835,3 +835,85 @@ fn oversized_combined_history_refuses_before_replacing_readable_native_state() {
             < 16 * 1024 * 1024
     );
 }
+
+#[test]
+fn active_native_policy_denies_new_local_plugin_effects_and_keeps_original_inspection() {
+    let f = Fixture::new();
+    f.grant();
+    let calls = Cell::new(0);
+    let original = f
+        .use_with("original-before-policy", &mut f.source(), &calls)
+        .unwrap();
+    assert_eq!(calls.get(), 1);
+    f.accounts
+        .review_team_policy(
+            &f.workspace,
+            receipts::team_policy::Change {
+                expected_digest: None,
+                terms: receipts::team_policy::Terms {
+                    version: 1,
+                    expires_unix: super::unix_now() + 60,
+                    rules: vec![],
+                },
+            },
+            |_| {
+                f.accounts
+                    .authorize(&f.workspace, &f.owner)
+                    .map_err(|e| e.to_string())
+            },
+        )
+        .unwrap();
+    let sequence = f.accounts.store().unwrap().sequence;
+    for action in [Action::Install, Action::Enable, Action::Use] {
+        let id = format!("unsupported-{action:?}").to_lowercase();
+        let input = matches!(action, Action::Use)
+            .then_some((b"private input".as_slice(), bytes_digest(b"private input")));
+        let denied = f.accounts.team_apply(
+            &f.workspace,
+            &f.member_token,
+            "grant-1",
+            &id,
+            action,
+            input
+                .as_ref()
+                .map(|(bytes, digest)| (*bytes, digest.as_str())),
+            &mut f.source(),
+            |_, fence| {
+                fence.before_effect()?;
+                calls.set(calls.get() + 1);
+                Ok(Completed {
+                    receipt: json!({"unexpected":true}),
+                    output: None,
+                })
+            },
+        );
+        assert!(denied.unwrap_err().contains("team policy"));
+        assert_eq!(calls.get(), 1);
+        assert_eq!(f.accounts.store().unwrap().sequence, sequence);
+    }
+    let mut new = f.request();
+    new.id = "new-under-policy".into();
+    assert!(
+        f.accounts
+            .team_grant(&f.owner_token, new.clone(), &new.digest(), &mut f.source())
+            .unwrap_err()
+            .contains("team policy")
+    );
+    assert_eq!(f.accounts.store().unwrap().sequence, sequence);
+    assert_eq!(
+        f.accounts
+            .team_list(&f.workspace, &f.reader_token)
+            .unwrap()
+            .len(),
+        1
+    );
+    let replay = f
+        .use_with("original-before-policy", &mut f.source(), &calls)
+        .unwrap();
+    assert!(replay.replayed);
+    assert_eq!(
+        serde_json::to_value(replay.effect).unwrap(),
+        serde_json::to_value(original.effect).unwrap()
+    );
+    assert_eq!(calls.get(), 1);
+}

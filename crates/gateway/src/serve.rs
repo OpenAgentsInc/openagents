@@ -5102,6 +5102,13 @@ async fn forward_guarded(
         };
     }
     if let Some(guard) = &policy_guard {
+        if guard.before_effect().is_err() {
+            return Forwarded::Refused {
+                status: StatusCode::FORBIDDEN,
+                body: Bytes::from_static(b"{\"error\":{\"code\":\"team_policy_changed\"}}"),
+                cause: "team_policy_changed".into(),
+            };
+        }
         let actual = serde_json::from_slice::<Value>(body)
             .ok()
             .map(|v| digest_request(&v));

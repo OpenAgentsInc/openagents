@@ -292,6 +292,8 @@ pub struct Permissions {
     pub review: bool,
     pub enable: bool,
     pub use_capability: bool,
+    /// Native action scopes remain separate from current effect admission.
+    pub policy_blocks_new_effects: bool,
 }
 /// Native custody and fresh authority checks around the actual effect.
 /// Completion checks custody only: expiry cannot relabel admitted work.
@@ -381,7 +383,7 @@ impl Accounts {
         Self::principal_in_store(store, workspace, &format!("key:{}", key.key_id))
             .map_err(|e| e.to_string())
     }
-    fn team_state(&self) -> Result<(Store, File), String> {
+    pub(super) fn team_state(&self) -> Result<(Store, File), String> {
         let mut file = std::fs::OpenOptions::new()
             .read(true)
             .custom_flags(libc::O_NOFOLLOW | libc::O_NONBLOCK)
@@ -402,7 +404,7 @@ impl Accounts {
         let store = Store::parse(&text, "team account state")?;
         Ok((store, file))
     }
-    fn team_check_state(&self, held: &File, digest: &str) -> Result<(), String> {
+    pub(super) fn team_check_state(&self, held: &File, digest: &str) -> Result<(), String> {
         let (current, file) = self.team_state()?;
         let original = held.metadata().map_err(|e| e.to_string())?;
         let observed = file.metadata().map_err(|e| e.to_string())?;
@@ -414,7 +416,12 @@ impl Accounts {
         }
         Ok(())
     }
-    fn team_commit(&self, lock: &Lock, held: &mut File, store: &mut Store) -> Result<(), String> {
+    pub(super) fn team_commit(
+        &self,
+        lock: &Lock,
+        held: &mut File,
+        store: &mut Store,
+    ) -> Result<(), String> {
         lock.check().map_err(|e| e.to_string())?;
         self.team_check_state(held, &store.digest)?;
         store.supersedes = Some(store.digest.clone());
@@ -530,6 +537,7 @@ impl Accounts {
             review: actor.role >= Role::Admin && permits(REVIEW),
             enable: permits(ENABLE),
             use_capability: permits(USE),
+            policy_blocks_new_effects: store.team_policies.current(workspace).is_some(),
         };
         lock.check().map_err(|e| e.to_string())?;
         self.team_check_state(&held, &store.digest)?;
@@ -552,7 +560,7 @@ impl Accounts {
                 "release":r.request.release.release,"manifest":r.request.release.manifest,
                 "version":r.request.release.version,"component":r.request.release.component,
                 "operation":r.request.release.operation,"evaluations":r.request.release.evaluations,
-                "state":if !r.active {"withdrawn"}else if r.request.expires_at<=unix_now(){"expired"}else{"reviewed_release"},
+                "state":if !r.active {"withdrawn"}else if r.request.expires_at<=unix_now(){"expired"}else if store.team_policies.current(workspace).is_some(){"policy_blocked"}else{"reviewed_release"},
                 "own_input_grant":r.request.member==actor.account,
                 "execution_authorized":false
             })).collect())
@@ -623,6 +631,9 @@ impl Accounts {
                 return Ok(old.clone());
             }
             return Err("A team grant ID is immutable; review a new ID for changed scope.".into());
+        }
+        if store.team_policies.current(&request.workspace).is_some() {
+            return Err("New local team plugin approvals are not qualified under this workspace team policy; inspect the original grants instead.".into());
         }
         let knowledge = knowledge_key(&request.workspace, &request.release.package);
         let verified = match sources.current(
@@ -776,6 +787,9 @@ impl Accounts {
                 output: None,
                 replayed: true,
             });
+        }
+        if store.team_policies.current(workspace).is_some() {
+            return Err("Local team plugin install, enable, and use are not qualified under this workspace team policy; inspect original receipts without another effect.".into());
         }
         let knowledge = knowledge_key(workspace, &revision.request.release.package);
         let verified = match sources.current(

@@ -32,10 +32,10 @@
 //! `docs/decision-models/service/workspace-membership.md`, not implemented here.
 
 pub mod commercial;
-pub mod team_policies;
 pub mod team_capabilities;
 #[cfg(test)]
 mod team_capabilities_tests;
+pub mod team_policies;
 
 use std::collections::BTreeMap;
 use std::io::{Read, Write};
@@ -971,8 +971,12 @@ impl Accounts {
         &self,
         read: impl FnOnce(&Store) -> Result<T, E>,
     ) -> Result<T, E> {
-        let _lock = Lock::acquire(&self.dir)?;
-        let store = load(&self.dir)?;
+        let lock = Lock::acquire(&self.dir)?;
+        lock.check()?;
+        let (store, held) = self.team_state().map_err(Trouble::Invalid)?;
+        lock.check()?;
+        self.team_check_state(&held, &store.digest)
+            .map_err(Trouble::Invalid)?;
         read(&store)
     }
 
