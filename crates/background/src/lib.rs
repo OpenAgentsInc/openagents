@@ -40,6 +40,8 @@ pub mod inuse;
 #[cfg(unix)]
 pub mod judged;
 #[cfg(unix)]
+pub mod kache;
+#[cfg(unix)]
 pub mod paths;
 #[cfg(unix)]
 pub mod plan;

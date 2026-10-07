@@ -6987,6 +6987,36 @@
             "effect": "local_write",
             "runs_on": "connected_computer"
           }
+        },
+        {
+          "name": "kache",
+          "leaf": {
+            "path": [
+              "background",
+              "kache"
+            ],
+            "usage": [
+              "kache [--status]"
+            ],
+            "forms": [
+              {
+                "tokens": [
+                  {
+                    "kind": "literal",
+                    "word": "kache"
+                  },
+                  {
+                    "kind": "option",
+                    "name": "status",
+                    "optional": true
+                  }
+                ]
+              }
+            ],
+            "summary": "Run kache's own collector on the compile cache, after any collection already running, and report what it freed (docs/background/kache.md); --status only reports the store and who holds its collection lock.",
+            "effect": "local_write",
+            "runs_on": "connected_computer"
+          }
         }
       ],
       "options": [
@@ -7069,6 +7099,12 @@
           "name": "out",
           "value": "DIR",
           "open": true,
+          "optional": true,
+          "repeated": true
+        },
+        {
+          "kind": "option",
+          "name": "status",
           "optional": true,
           "repeated": true
         },

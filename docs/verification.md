@@ -115,7 +115,8 @@ than inside `cargo test` (see the measurements below).
 Reuse your slot's target directory. The rustc wrapper, kache, restores a
 compiled crate into any target directory when the crate's sources, features,
 and flags match an earlier build, so a new directory mostly fills from the
-cache. Three things still rebuild:
+cache. The store's 30 GiB cap holds only with `gc_evict_shared = true`; see
+[the kache compile cache](background/kache.md). Three things still rebuild:
 
 - **The test binary.** kache doesn't cache executables
   (`cache_executables = false`, its default), and Verse's test unit compiles

@@ -50,6 +50,11 @@ pub(crate) const USAGE: &str = "usage: openagents background COMMAND [OPTIONS]
                   Nothing is deleted.
   publish ID [--out DIR]
                   Package the rule as a plugin folder to publish.
+  kache [--status]
+                  Run kache's own collector on the compile cache, after
+                  any collection already running, and report what it freed
+                  (docs/background/kache.md); --status only reports the
+                  store and who holds its collection lock.
 Every command takes --tasks DIR (the Coder task store, default
 ~/.openagents/tasks). Rules run in the host on their own: the built-in
 disk rule, each rule a plugin brings while the plugin is on here
@@ -83,6 +88,8 @@ pub(crate) const EFFECTS: &[Declared] = &[
     // Asks Jev and keeps its proposals; deletes nothing.
     Declared::computer("judge", Effect::LocalWrite),
     Declared::computer("publish", Effect::LocalWrite),
+    // Runs kache's collector, which drops cache entries; never a rule.
+    Declared::computer("kache", Effect::LocalWrite),
 ];
 
 pub fn run(output: &Output, words: &[String]) -> u8 {
@@ -99,7 +106,7 @@ pub fn run(output: &Output, words: &[String]) -> u8 {
             return 0;
         }
     }
-    let args = match Args::parse(rest, &["dry-run", "stats", "yes"]) {
+    let args = match Args::parse(rest, &["dry-run", "stats", "status", "yes"]) {
         Ok(args) => args,
         Err(message) => return output.usage("background", &message, USAGE),
     };
@@ -133,6 +140,7 @@ pub fn run(output: &Output, words: &[String]) -> u8 {
         "decline" => need_id().and_then(|path| confirm(output, &layout, &path, false)),
         "judge" => judge_now(output, &layout),
         "publish" => need_id().and_then(|id| publish(output, &layout, &id, &args)),
+        "kache" => kache(output, args.switch("status")),
         other => {
             return output.usage("background", &format!("unknown command `{other}`"), USAGE);
         }
@@ -1027,6 +1035,69 @@ fn judge_now(output: &Output, layout: &Layout) -> Result<(), Failure> {
             })
             .collect::<Vec<_>>()
             .join("\n")
+    });
+    Ok(())
+}
+
+/// Reclaim the kache store through kache's own collector (#10758).
+fn kache(output: &Output, status_only: bool) -> Result<(), Failure> {
+    use background::kache::{Kache, Lock};
+    let bytes = background::paths::bytes;
+    let lock_line = |lock: &Lock| match lock {
+        Lock::Absent => "no collection has run yet".to_string(),
+        Lock::Free {
+            last_pid: Some(pid),
+            last_alive: false,
+        } => format!("no collection running (last collector {pid} has exited)"),
+        Lock::Free { .. } => "no collection running".to_string(),
+        Lock::Held { pid, .. } => format!(
+            "collection running in process {}",
+            pid.map_or_else(|| "unknown".into(), |pid| pid.to_string())
+        ),
+    };
+    let disk_line = |disk: &background::kache::Disk| {
+        format!(
+            "{} of {} cap ({} private, {} shared with target directories)",
+            bytes(disk.store_bytes),
+            bytes(disk.store_limit_bytes),
+            bytes(disk.disk_private_bytes),
+            bytes(disk.cloned_into_targets_bytes),
+        )
+    };
+    let kache = Kache::default();
+    if status_only {
+        let (store_dir, disk, lock) = kache.status().map_err(Failure::Refused)?;
+        output.emit(
+            &json!({ "store_dir": store_dir, "disk": disk, "lock": lock }),
+            |_| format!("kache store: {}\n{}", disk_line(&disk), lock_line(&lock)),
+        );
+        return Ok(());
+    }
+    let report = kache.reclaim().map_err(Failure::Refused)?;
+    output.emit(&json!(report), |_| {
+        let mut lines = vec![
+            format!("Before: {}", disk_line(&report.before)),
+            format!("After:  {}", disk_line(&report.after)),
+        ];
+        if report.collected {
+            lines.push(format!(
+                "Dropped {} entries; {} of store, {} of disk returned.",
+                report.entries_dropped,
+                bytes(report.store_bytes_removed),
+                bytes(report.disk_bytes_reclaimed),
+            ));
+        } else {
+            lines.push(format!(
+                "Another collection held the lock through {} tries; it is doing this work.",
+                report.skipped
+            ));
+        }
+        if !report.after.under_cap() {
+            lines.push(
+                "Still over the cap: target directories hold the rest (kache targets).".into(),
+            );
+        }
+        lines.join("\n")
     });
     Ok(())
 }

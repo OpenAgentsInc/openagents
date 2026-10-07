@@ -9,3 +9,4 @@ for bounded judgments.
 | --- | --- |
 | [Background processes spec](2026-10-02-background-processes.md) | The rule model, safety, surfaces, the disk cleanup monitor as the first built-in, other useful processes, and the phased plan. |
 | [Disk cleanup as a plugin](2026-10-02-disk-cleanup-plugin.md) | Background plugins: what a plugin may ask for, what the host enforces, off until turned on per computer, and how the disk cleanup plugin was made. |
+| [The kache compile cache](kache.md) | Why kache's cap needs `gc_evict_shared`, what "Another GC is already running" means, and `openagents background kache`. |
