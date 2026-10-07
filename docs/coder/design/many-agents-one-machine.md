@@ -1,7 +1,7 @@
 # Many agents on one machine
 
-Status: reflection and proposal, 2026-10-06. Nothing here is built unless it
-cites a path. The evidence comes from the owner's Mac (18-core Apple silicon,
+Status: reflection, owner decisions, and design, 2026-10-06. Nothing here is
+built unless it cites a path; the build order names the tracking issues. The evidence comes from the owner's Mac (18-core Apple silicon,
 128 GB of memory, a 1.8 TiB disk) on 2026-10-04 and 2026-10-05, while 8 to 14
 Claude Code subagents and one Codex agent worked on this repository at once.
 
@@ -371,18 +371,139 @@ The cheapest fixes, each under about two agent-hours:
    three days to a few hours on this Mac, and raise its start level, through
    the rule's own settings.
 
-## Open questions for the owner
+## Decisions
 
-1. Should Claude Code subagents run as Coder tasks, so they inherit every
-   lease, or should the broker serve both kinds of agent?
-2. Which jobs must always leave the Mac: soaks, release gates, Terminal-Bench?
-3. How many concurrent heavy builds do you want on this Mac? The proposal
-   suggests 3 on 18 cores.
-4. May the broker pause running builds (`SIGSTOP`) for a `quiet` lease, or
-   only delay new ones?
-5. Should the real screen be off limits to agents unless you grant the
-   `screen` lease, with offscreen capture the default?
-6. Is a separate agent identity per session acceptable for issue claims, or
-   should claims stay under the one account with a session field?
-7. Is a resource broker something to offer other people, or only
-   infrastructure for this repository?
+The owner answered four of the seven open questions on 2026-10-06 and left
+the rest to the infrastructure lead. Each decision has its reason.
+
+1. **Scope: the broker serves Coder and everything Coder delegates to.**
+   That covers Microcoder, the ACP agents (Devin, OpenCode, Grok), Claude
+   Code and Codex delegations, studio seats, the workshop agent, and
+   subagents launched from Coder (owner). Delegates don't have to become
+   Coder tasks: the broker is a library and a command that any process can
+   use, and Coder puts lease shims on a delegate's `PATH`, so a delegate's
+   `cargo` takes a lease without the delegate knowing about leases.
+2. **No pausing.** The broker never stops, signals, or lowers the priority
+   of a running build. A `quiet` lease waits until no build lease is held,
+   and new build leases wait while a quiet lease is held or queued (owner).
+   A queued quiet lease drains builds, so a soak can't starve behind a
+   steady stream of short builds.
+3. **The real screen is off limits to agents unless the owner grants it**
+   (owner). Offscreen capture is the default. The `screen` lease needs a
+   grant that the owner confirms on an interactive terminal. On one Unix
+   account this stops accidents, not a process set on forging a grant; a
+   stronger guarantee needs a separate account or a VM.
+4. **Infrastructure for this repository now, treated as a product surface**
+   (owner). Commands live under `openagents lease`, `openagents browser`,
+   `openagents scratch`, `openagents capacity`, and `openagents artifact`,
+   with `--json` output, documented defaults, and pages under `docs/coder/`.
+5. **Two concurrent heavy builds on this Mac.** The default build count is
+   `max(1, cores / 8)`, which is 2 on 18 cores, overridable with
+   `OPENAGENTS_BUILD_LEASES` or the `coder.build_leases` setting. Reason: one
+   Cargo build already uses every core during compilation, and the shared
+   slot measurement (581 s against 280 s at load 35 to 80) shows that
+   oversubscription slows everyone. A second build fills the serial phases
+   (linking, build scripts, test runs) that leave cores idle. The proposal's
+   3 is a setting away if two proves too few.
+6. **Release gates and Terminal-Bench leave the Mac by default; soaks stay.**
+   Release gates (`./scripts/verify-rust.sh --release`,
+   `scripts/release/acceptance.sh`) and Terminal-Bench runs are long,
+   heavy, and not interactive, so their placement is `auto`: remote on
+   `coderos-4080` (then Boat or GCE) when a configured computer is reachable,
+   else local under the `quiet` lease. Soaks such as the #10559 battle soak
+   measure the Mac's own client, so they stay local under `quiet`; a soak
+   that is headless and machine-independent can opt into remote placement.
+   Builds stay local because the warm target directories and cache are here.
+7. **One GitHub account, with a session field on each claim.** Each agent
+   session gets an identity in the broker (`OPENAGENTS_SESSION`, else the
+   agent's own session variable, else its ancestor process), and a claim is
+   an `issue/<n>` lease held by that session. The claim comment carries the
+   session. Separate GitHub accounts per session would need account
+   management and would break `gh` authentication for every agent, and the
+   broker already knows which session is alive.
+8. **The broker is a file-backed table, not a daemon.** A crate,
+   `crates/coder-lease`, keeps the table under `~/.openagents/leases/` and
+   detects dead holders through `flock` locks that the kernel releases when
+   a process exits. Reason: it works when the host isn't running, from any
+   language through the command, and in tests under a scratch root. The host
+   reads the same table to show it over NIP-HOST later.
+9. **Fix the cache before adding policy.** kache's collector and cap are
+   investigated first. A workaround in this repository is acceptable, and a
+   report goes upstream only with the owner's approval.
+
+## Design
+
+### The lease table
+
+`crates/coder-lease` owns one table per machine. A lease has a resource, an
+amount, a holder session, an agent kind, a pid, the command's name (never its
+arguments), a priority, and a start time. The holder keeps a lock file
+locked for the whole run. A lease whose lock another process can take is
+dead and is dropped the next time anyone reads the table.
+
+| Resource | Shape | Default | Notes |
+| --- | --- | --- | --- |
+| `build` | Counted | 2 on this Mac | Also takes a target slot from `targets.rs`. |
+| `memory` | Counted, GiB | 75 percent of memory | A lease declares its amount. |
+| `disk` | Counted, GB | Free space minus the floor | Reclaims before it refuses. |
+| `quiet` | Exclusive | None | Waits for builds; holds new builds. |
+| `screen` | Exclusive | Owner grant only | Offscreen is the default. |
+| `browser`, `gpu`, `unreal`, `blender` | Exclusive | None | Headless Chrome needs no lease. |
+| `artifact/<name>`, `issue/<n>` | Exclusive | None | The merge queue and claims. |
+
+A request that can't be admitted waits in a priority queue: `owner`, `push`,
+`normal`, then `background`, first in, first out within a priority, with
+aging so nothing starves. On release, a receipt records the wait, the bytes
+the holder's slot used, and whether the lease held for the whole run. The
+wrapped command sees `OPENAGENTS_LEASES`, so a soak's receipt can say it ran
+under `quiet`.
+
+### Commands
+
+- `openagents lease RESOURCE -- CMD` runs a command under a lease.
+- `openagents lease build -- CMD` adds a target slot and `CARGO_TARGET_DIR`.
+- `openagents lease list`, `lease du`, `lease grant screen`, and
+  `lease revoke screen` show and manage the table.
+- `openagents browser run -- CMD` starts Chrome with its own profile and port.
+- `openagents scratch` prints the session's durable scratch directory.
+- `openagents capacity` reads and writes the shared usage-limit book.
+- `openagents artifact submit NAME` queues a change to a single-digest
+  artifact.
+
+### How delegates take leases
+
+Coder writes shims for `cargo` and `screencapture` into
+`~/.openagents/bin/lease-shims/` and puts that directory first on a
+delegate's `PATH`. The `cargo` shim leases `build`, `test`, `check`,
+`clippy`, and `run`, and passes other subcommands through. A command already
+under a lease passes through, so nesting can't deadlock. Agents outside
+Coder, such as the conversation agents that write this repository, follow
+`AGENTS.md` and call `openagents lease build` themselves.
+
+### Disk
+
+The cleanup monitor gains classes for `.claude/worktrees/*` and the kache
+store, a six-hour staleness rule for agent target directories, and an earlier
+start level. The broker adds accounting by session and reclaims a slot as
+soon as its lease ends and its session is gone.
+
+## Build order
+
+Issue #10768 tracks the whole set. The order follows the blockers:
+
+1. #10755 Host resource broker with exclusive and counted leases.
+2. #10756 Build-slot leases for Coder and its delegates
+   (`openagents lease build`).
+3. #10758 kache garbage collection and cap enforcement, and #10759 disk
+   cleanup for worktrees and kache. Independent of the broker.
+4. #10757 Priority queue for build leases.
+5. #10766 Durable scratch, #10761 ephemeral Chrome profiles, and #10765 the
+   shared usage-limit book. Independent of the broker.
+6. #10760 Disk accounting and reclaim when a lease ends.
+7. #10762 Offscreen captures and the screen lease.
+8. #10764 Host-enforced issue claims per session.
+9. #10763 The merge queue for single-digest artifacts.
+10. #10767 Remote placement for soaks, release gates, and benchmarks.
+
+Once #10755 and #10756 land, `AGENTS.md` tells agents to run heavy builds
+through `openagents lease build` and soaks through the `quiet` lease.
