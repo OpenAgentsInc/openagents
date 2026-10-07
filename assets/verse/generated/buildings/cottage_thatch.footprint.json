@@ -1,7 +1,7 @@
 {
   "model": "cottage_thatch.glb",
   "frame": "glTF: 1 unit = 1 m, +Y up, +Z out of the front door, origin on the ground at the center of the front wall",
-  "triangles": 3645,
+  "triangles": 3635,
   "boxes": [
     {
       "name": "house",

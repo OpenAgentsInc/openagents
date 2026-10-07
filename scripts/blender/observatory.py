@@ -44,7 +44,9 @@ def at(a, r, z):
 
 
 # The drum, its plinth, and its cornice.
-wall = kit.cyl("Wall", R, H, (0, 0, H / 2), brick, verts=seg)
+# The wall starts inside the plinth, so its bottom doesn't share the
+# ground plane with the plinth's.
+wall = kit.cyl("Wall", R, H - 0.33, (0, 0, (H + 0.33) / 2), brick, verts=seg)
 kit.cyl_uv(wall, tile=1.6)
 kit.cyl("Plinth", R + 0.12, 0.35, (0, 0, 0.175), stone, verts=seg)
 kit.cyl("Band", R + 0.04, 0.12, (0, 0, 2.6), stone, verts=seg)
@@ -162,3 +164,5 @@ body = kit.join("Observatory")
 kit.ground(body)
 kit.flat()
 kit.export(out)
+kit.flickers(out)
+kit.fail_on_flickers()

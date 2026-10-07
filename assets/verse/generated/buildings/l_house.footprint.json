@@ -1,7 +1,7 @@
 {
   "model": "l_house.glb",
   "frame": "glTF: 1 unit = 1 m, +Y up, +Z out of the front door, origin on the ground at the center of the front wall",
-  "triangles": 13660,
+  "triangles": 13646,
   "boxes": [
     {
       "name": "wing",
@@ -42,5 +42,8 @@
         6.0
       ]
     }
-  ]
+  ],
+  "roofs": [],
+  "front": null,
+  "inside": null
 }

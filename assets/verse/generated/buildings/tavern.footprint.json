@@ -1,7 +1,7 @@
 {
   "model": "tavern.glb",
   "frame": "glTF: 1 unit = 1 m, +Y up, +Z out of the front door, origin on the ground at the center of the front wall",
-  "triangles": 16074,
+  "triangles": 16058,
   "boxes": [
     {
       "name": "ground",
@@ -42,5 +42,8 @@
         5.3
       ]
     }
-  ]
+  ],
+  "roofs": [],
+  "front": null,
+  "inside": null
 }

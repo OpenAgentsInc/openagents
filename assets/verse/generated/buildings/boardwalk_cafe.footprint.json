@@ -1,7 +1,7 @@
 {
   "model": "boardwalk_cafe.glb",
   "frame": "glTF: 1 unit = 1 m, +Y up, +Z out of the front door, origin on the ground at the center of the front wall",
-  "triangles": 7281,
+  "triangles": 7279,
   "boxes": [
     {
       "name": "cafe",

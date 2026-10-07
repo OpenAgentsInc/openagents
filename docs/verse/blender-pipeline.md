@@ -409,7 +409,11 @@ levels.
    modifiers, and the kit's textures, at Verse's scale (1 unit = 1 m, +Y up
    after export).
 2. Run it headless and render a preview with `preview.py`; look at the
-   preview and iterate.
+   preview and iterate. Have the script run `coplanar.py` on each model it
+   saves and fail on an overlap (`kit.flickers` and `kit.fail_on_flickers`),
+   as every generating script does: two faces of different materials in
+   one plane z-fight, so the surface flickers as the camera moves. Set
+   `COPLANAR_PARTS=1` to name the parts that overlap.
 3. Admit the glTF into the zone's sources, run the pack tests, and capture the
    model in the zone with that zone's capture example.
 4. Commit the script, the glTF, the provenance, and the repinned pack.

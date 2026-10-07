@@ -74,6 +74,7 @@ from mathutils import Matrix, Vector
 
 sys.path.insert(0, os.path.dirname(__file__))
 import buildings as bl  # noqa: E402
+import coplanar  # noqa: E402
 
 DARK = bl.DARK_WOOD
 LIGHT = bl.LIGHT_WOOD
@@ -226,9 +227,11 @@ def slab_walls(b, w, d, z0, z1, mat="plaster", front=True, y0=0.0, thick=0.3):
 
 
 def corner_posts(b, w, d, z0, z1, y0=0.0):
+    # Each post stops 1 cm inside the storey, so its ends don't share the
+    # walls' top and bottom planes.
     for x in (-w / 2, w / 2):
         for y in (y0, d):
-            b.beam((x - 0.11, y - 0.11, z0), (x + 0.11, y + 0.11, z1), band=DARK, name="Post")
+            b.beam((x - 0.11, y - 0.11, z0 + 0.01), (x + 0.11, y + 0.11, z1 - 0.01), band=DARK, name="Post")
 
 
 def jetty_joists(b, w, z, out, y=0.0):
@@ -236,7 +239,9 @@ def jetty_joists(b, w, z, out, y=0.0):
     n = max(3, int(round(w / 0.9)))
     for i in range(0 if FAR else n + 1):
         x = -w / 2 + 0.15 + (w - 0.3) * i / n
-        b.beam((x - 0.08, y - out, z - 0.18), (x + 0.08, y + 0.05, z), band=DARK, name="Joist")
+        # A joist ends at the wall's face, so its top doesn't share the
+        # wall's top plane.
+        b.beam((x - 0.08, y - out, z - 0.18), (x + 0.08, y, z), band=DARK, name="Joist")
     b.beam((-w / 2 - 0.05, y - out - 0.05, z - 0.05), (w / 2 + 0.05, y - out + 0.15, z + 0.1), band=DARK,
            name="Bressumer")
 
@@ -251,9 +256,107 @@ def dormer(b, x, y, z, w=1.5, h=1.4, depth=1.8, glass="glass"):
                  thick=0.12)
 
 
+SIDES = {"-x": (0, -1), "+x": (0, 1), "-y": (1, -1), "+y": (1, 1), "-z": (2, -1), "+z": (2, 1)}
+
+
+def trim(obj, sides):
+    """Delete the faces of `obj` that face along `sides` ("-z +x" and so
+    on): the sides another solid or the ground covers. Two faces of
+    different materials in one plane z-fight, so the one a neighbor hides
+    goes. Returns `obj`."""
+    keep = [SIDES[s] for s in sides.split()]
+    bm = bmesh.new()
+    bm.from_mesh(obj.data)
+    bm.normal_update()
+    gone = [f for f in bm.faces if any(f.normal[axis] * sign > 0.99 for axis, sign in keep)]
+    bmesh.ops.delete(bm, geom=gone, context="FACES")
+    bm.to_mesh(obj.data)
+    bm.free()
+    return obj
+
+
+def _inside(points, poly, tol=1e-4):
+    """Whether every 2D point lies in the convex polygon `poly`, which
+    winds counterclockwise."""
+    n = len(poly)
+    for i in range(n):
+        (ax, ay), (bx, by) = poly[i], poly[(i + 1) % n]
+        for px, py in points:
+            if (bx - ax) * (py - ay) - (by - ay) * (px - ax) < -tol * math.hypot(bx - ax, by - ay):
+                return False
+    return True
+
+
+def _convex_ccw(poly):
+    """`poly` counterclockwise, or None when it isn't convex."""
+    area = sum(poly[i][0] * poly[(i + 1) % len(poly)][1] - poly[(i + 1) % len(poly)][0] * poly[i][1]
+               for i in range(len(poly)))
+    if area < 0:
+        poly = poly[::-1]
+    n = len(poly)
+    for i in range(n):
+        (ax, ay), (bx, by), (cx, cy) = poly[i], poly[(i + 1) % n], poly[(i + 2) % n]
+        if (bx - ax) * (cy - by) - (by - ay) * (cx - bx) < -1e-9:
+            return None
+    return poly
+
+
+def bury(objs, eps=0.0015):
+    """Delete each face nobody sees because it is pressed against another
+    part: a face lying inside an opposite-facing face of another object, in
+    its plane, and a face facing down at ground level. Two such faces of
+    different materials in one plane, such as the bottoms of a wall and the
+    door in it both resting on a plinth, would z-fight."""
+    meshes, faces = [], []
+    for k, o in enumerate(objs):
+        bm = bmesh.new()
+        bm.from_mesh(o.data)
+        bm.transform(o.matrix_world)
+        bm.normal_update()
+        bm.faces.ensure_lookup_table()
+        meshes.append(bm)
+        for f in bm.faces:
+            n = f.normal
+            axis = max(range(3), key=lambda i: abs(n[i]))
+            if abs(n[axis]) < 0.999:
+                continue
+            u, v = [i for i in range(3) if i != axis]
+            poly = [(p.co[u], p.co[v]) for p in f.verts]
+            faces.append((k, f.index, axis, 1 if n[axis] > 0 else -1, f.verts[0].co[axis], poly))
+    planes = {}
+    for entry in faces:
+        planes.setdefault((entry[2], round(entry[4] / eps)), []).append(entry)
+    gone = [set() for _ in objs]
+    for k, i, axis, sign, d, poly in faces:
+        if axis == 2 and sign < 0 and abs(d) < eps:
+            gone[k].add(i)
+            continue
+        key = round(d / eps)
+        for near in (key - 1, key, key + 1):
+            for k2, _, _, sign2, d2, poly2 in planes.get((axis, near), ()):
+                if k2 == k or sign2 == sign or abs(d2 - d) > eps:
+                    continue
+                cover = _convex_ccw(poly2)
+                if cover is not None and _inside(poly, cover):
+                    gone[k].add(i)
+                    break
+            else:
+                continue
+            break
+    for o, bm, dead in zip(objs, meshes, gone):
+        if dead:
+            bmesh.ops.delete(bm, geom=[bm.faces[i] for i in dead], context="FACES")
+            bm.transform(o.matrix_world.inverted())
+            bm.to_mesh(o.data)
+        bm.free()
+
+
 def save(b, out):
     # One object, so the glTF has one node: the pack bounds a model's nodes.
     objs = [o for o in b.col.objects if o.type == "MESH"]
+    bury(objs)
+    if coplanar.parts_wanted():
+        coplanar.report_parts(b.name, objs)
     bpy.ops.object.select_all(action="DESELECT")
     for o in objs:
         o.select_set(True)
@@ -271,6 +374,9 @@ def save(b, out):
 def save_far(b, out):
     """The far level: one object, glb only."""
     objs = [o for o in b.col.objects if o.type == "MESH"]
+    bury(objs)
+    if coplanar.parts_wanted():
+        coplanar.report_parts(b.name + " far", objs)
     bpy.ops.object.select_all(action="DESELECT")
     for o in objs:
         o.select_set(True)
@@ -283,6 +389,7 @@ def save_far(b, out):
                               export_jpeg_quality=88, export_tangents=False, export_cameras=False,
                               export_lights=False, export_extras=False)
     print(f"FAR {b.name} triangles={b.triangles()}")
+    bl.flickers(os.path.join(out, b.name + ".glb"))
 
 
 def house(name, scheme, **extra):
@@ -321,8 +428,10 @@ def shop_house_body(name, scheme, shop, shutter, awning_cloth):
         front.box((u0, 0.3, 0.0), (u1, 1.0, 0.65), "wood", name="Stage", band=LIGHT)
         front.box((u0, 0.3, 2.55), (u1, 1.0, 2.62), "wood", name="AlcoveTop", band=DARK)
         front.box((u0, 0.95, 0.65), (u1, 1.05, 2.55), "wood", name="AlcoveBack", band=DARK)
+        # The sides stop at the back board, so their ends don't share its
+        # top and bottom planes.
         for uu in (u0, u1):
-            front.box((uu - 0.05, 0.3, 0.65), (uu + 0.05, 1.0, 2.55), "shop", name="AlcoveSide")
+            front.box((uu - 0.05, 0.3, 0.65), (uu + 0.05, 0.95, 2.55), "shop", name="AlcoveSide")
         for z in (1.25, 1.85):
             front.box((u0 + 0.05, 0.55, z - 0.04), (u1 - 0.05, 0.95, z), "wood", name="Shelf", band=LIGHT)
         goods = ("goods_a", "goods_b", "goods_c", "cloth4", "goods_a", "cloth3")
@@ -341,8 +450,9 @@ def shop_house_body(name, scheme, shop, shutter, awning_cloth):
     front.box((-3.0, -0.12, 2.68), (3.0, 0.0, 3.08), "fascia", name="Fascia")
     front.box((-2.2, -0.15, 2.82), (2.2, -0.11, 2.94), "gilt", name="Lettering")
     front.door(0.0, 1.1, 2.3, glazed=True)
-    # Side and back walls of the shop floor, and the upper floor.
-    slab_walls(b, w, d, 0.0, g, front=False)
+    # Side and back walls of the shop floor, behind the painted front,
+    # and the upper floor.
+    slab_walls(b, w, d, 0.0, g, front=False, y0=0.3)
     b.block((-hw - 0.05, d - 0.35, 0.0), (hw + 0.05, d + 0.05, 0.5), "stone", name="Plinth", scale=1.5)
     jetty_joists(b, w, g, jet)
     slab_walls(b, w, d, g, g + up, y0=-jet)
@@ -419,10 +529,11 @@ def gambrel_house():
     back = Face(b, 180, (0, d, 0))
     for u in (-2.0, 2.0):
         back.window(u, 1.5, 1.0, 1.3)
-    corner_posts(b, w, d, 0.6, wall)
+    # White corner boards, stopping 2 cm under the walls' tops so their tops
+    # don't share that plane.
     for x in (-hw, hw):
         for y in (0.0, d):
-            b.block((x - 0.13, y - 0.13, 0.6), (x + 0.13, y + 0.13, wall), "white_paint", name="CornerBoard")
+            b.block((x - 0.13, y - 0.13, 0.6), (x + 0.13, y + 0.13, wall - 0.02), "white_paint", name="CornerBoard")
     # The gambrel: steep below the knees, shallow above.
     eave, knee, ridge = (hw, wall), (hw - 1.5, wall + 2.4), wall + 3.6
     for side in (-1, 1):
@@ -471,7 +582,9 @@ def stone_cottage():
     w, d, wall = 8.0, 7.0, 3.1
     hw = w / 2
     slab_walls(b, w, d, 0.0, wall, mat="stone")
-    b.block((-hw - 0.1, -0.1, 0.0), (hw + 0.1, d + 0.1, 0.35), "rock", name="Plinth", scale=1.5)
+    # The plinth stands 8 cm proud, 2 cm less than the door's frame, so
+    # their faces don't share a plane.
+    b.block((-hw - 0.08, -0.08, 0.0), (hw + 0.08, d + 0.08, 0.35), "rock", name="Plinth", scale=1.5)
     front = Face(b, 0, (0, 0, 0))
     front.door(-0.4, 1.0, 2.2, glazed=False)
     front.box((-1.1, -0.12, 2.36), (0.3, 0.0, 2.6), "rock", name="Lintel", tile=1.0)
@@ -565,15 +678,19 @@ def brownstone():
         u = -hw + 0.4 + (w - 0.8) * i / 6
         front.box((u - 0.09, -0.45, top - 0.5), (u + 0.09, 0.0, top), "fascia", name="Bracket")
     front.box((-hw - 0.15, -0.6, top), (hw + 0.15, 0.0, top + 0.22), "fascia", name="Cornice")
-    b.block((-hw, 0.0, top), (hw, d, top + 0.12), "rock", name="RoofDeck", scale=2.0)
+    # The deck lies between the parapets and the chimneys stand on it, so
+    # no two of them share a face's plane.
+    b.block((-hw + 0.2, 0.0, top), (hw - 0.2, d - 0.2, top + 0.12), "rock", name="RoofDeck", scale=2.0)
     for x in (-hw + 0.1, hw - 0.1):
         b.block((x - 0.1, 0.0, top), (x + 0.1, d, top + 0.7), "stone", name="Parapet")
-    b.block((-hw, d - 0.2, top), (hw, d, top + 0.7), "stone", name="Parapet")
-    chimney(b, -hw + 0.45, d * 0.55, top, top + 1.4, w=0.6)
-    chimney(b, hw - 0.45, d * 0.7, top, top + 1.2, w=0.6)
+    b.block((-hw + 0.2, d - 0.2, top), (hw - 0.2, d, top + 0.7), "stone", name="Parapet")
+    chimney(b, -hw + 0.55, d * 0.55, top + 0.12, top + 1.4, w=0.6)
+    chimney(b, hw - 0.55, d * 0.7, top + 0.12, top + 1.2, w=0.6)
     back = Face(b, 180, (0, d, 0))
+    # The back windows sit high enough that the lowest middle one's frame
+    # clears the door's lintel.
     for floor in range(3):
-        z = base + floor * storey + 0.8
+        z = base + floor * storey + 1.1
         for u in (-2.4, 0.0, 2.4):
             back.window(u, z, 0.9, 1.6, shutters=False)
     back.door(0.0, 1.0, 2.2, z=0.0)
@@ -610,8 +727,10 @@ def timber_house():
     upper.window(-2.5, g + 0.85, 1.0, 1.3)
     upper.window(-0.4, g + 0.85, 0.8, 1.3, shutters=False)
     upper.door(2.4, 1.0, 2.15, z=g + 0.05, glazed=True)
-    upper.framing(g, top, -hw, hw, (-hw + 0.1, -1.5, 0.7, 1.6, hw - 0.1), rails=(g + 0.62,),
-                  braces=((-hw + 0.2, g + 0.16, -3.2, g + 0.6), (-1.5, g + 0.16, -1.05, g + 0.6),
+    # The post at -1.4 stands past the shutter's edge at -1.41, so their
+    # sides don't share a plane.
+    upper.framing(g, top, -hw, hw, (-hw + 0.1, -1.4, 0.7, 1.6, hw - 0.1), rails=(g + 0.62,),
+                  braces=((-hw + 0.2, g + 0.16, -3.2, g + 0.6), (-1.4, g + 0.16, -1.05, g + 0.6),
                           (0.7, g + 0.16, 0.3, g + 0.6), (hw - 0.2, top - 0.2, 3.2, top - 0.75)))
     # St Andrew's crosses under the upper windows.
     for u in (-2.5, -0.4):
@@ -877,8 +996,10 @@ def tall_house():
     for turn in (0, 180):
         xf = (Matrix.Translation(Vector((0, -2 * jet - 0.5, ridge))) @ Matrix.Rotation(math.radians(turn), 4, "Z")
               @ Matrix.Rotation(ang, 4, "Y"))
-        b.solid("Barge", bl.box_mesh("Barge", (0.0, -0.07, -0.36), (run, 0.07, -0.02), b.mats["wood"], band=DARK,
-                                     xf=xf))
+        # The board stops 3 cm short of the ridge and runs 2 cm past the
+        # eave, so its ends don't share the slab's end planes.
+        b.solid("Barge", bl.box_mesh("Barge", (0.03, -0.07, -0.36), (run + 0.02, 0.07, -0.02), b.mats["wood"],
+                                     band=DARK, xf=xf))
     chimney(b, -1.5, d - 2.0, top, ridge + 0.2)
     b.collide("ground", (-hw - 0.1, -0.1, 0), (hw + 0.1, d + 0.1, st))
     b.collide("upper", (-hw - 0.1, -2 * jet - 0.1, st), (hw + 0.1, d + 0.1, top))
@@ -971,7 +1092,9 @@ def dormer_house():
         arched_window(upper, u, g + 0.85, 0.6, 1.1)
     for u in (-1.0, 1.0):
         upper.window(u, g + 0.8, 0.8, 1.3, shutters=False)
-    upper.framing(g, top, -hw, hw, (-hw + 0.1, -2.1, -0.05, 2.1, hw - 0.1), rails=(g + 0.6,),
+    # The middle post stands centered, narrower than the door hood's ridge
+    # under it, so their sides don't share a plane.
+    upper.framing(g, top, -hw, hw, (-hw + 0.1, -2.1, 0.0, 2.1, hw - 0.1), rails=(g + 0.6,),
                   braces=((-hw + 0.2, top - 0.2, -3.6, g + 0.62), (hw - 0.2, top - 0.2, 3.6, g + 0.62)))
     # The balcony on long joists across the middle bays, with crossed rails.
     by0, by1 = -jet - 1.05, -jet
@@ -1122,6 +1245,7 @@ def main():
         save(HOUSES[name](), out)
         FAR = True
         save_far(HOUSES[name](), os.path.join(out, "far"))
+    bl.fail_on_flickers()
 
 
 main()

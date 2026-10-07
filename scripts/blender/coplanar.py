@@ -10,15 +10,25 @@ Run from the repository root with Python 3 and NumPy:
 
     python3 scripts/blender/coplanar.py MODEL.glb|MODEL.gltf ...
 
-It prints each overlapping plane and exits 1 when it finds one. It
+It prints each overlapping plane and exits 1 when it finds one; with
+`--names`, it also names the glTF nodes that hold each plane's faces. It
 counts two faces of different materials: two faces of one material shade
 alike, so they don't show a flicker, and count only with `--same`. Faces
 in one plane that face opposite ways count only with `--opposite`: an
-opaque material culls back faces, so they don't fight. `greco_futurism.py` runs
-the check on every model and kit piece it saves, and `greco_admit.py`
-refuses a model that fails it.
+opaque material culls back faces, so they don't fight. `ALLOW` exempts a
+few tiny contacts, each with its reason.
+
+Every generating script runs the check on the models it saves and fails
+when one has an overlap: `greco_futurism.py`, `buildings.py`,
+`town_houses.py`, `town_props.py`, `street_props.py`, `grove_props.py`,
+`observatory.py`, `bandshell.py`, and `fountain.py`. `greco_admit.py`
+refuses a model that fails it. To name the parts that overlap before a
+script joins them into one object, set `COPLANAR_PARTS=1`: `kit.join`,
+`buildings.py`, and `town_houses.py` then print each overlapping plane's
+objects (`report_parts`).
 """
 
+import fnmatch
 import json
 import os
 import struct
@@ -30,6 +40,15 @@ import numpy as np
 EPS = 0.0015
 # The smallest shared area that counts as an overlap, m^2.
 MIN_AREA = 1e-4
+# Overlaps the check exempts: two material-name patterns (`fnmatch`), the
+# most area one plane of them may share, m^2, and why. Only window glass
+# against the frame round it is exempt, below 0.02 m^2 a plane.
+ALLOW = [
+    ("*Glass*", "*", 0.02,
+     "a pane's edge face meets the end of a frame, mullion, or sill inside "
+     "the frame, where the frame's own faces hide both: no camera sees the "
+     "sliver they share"),
+]
 
 COMPONENTS = {5120: np.int8, 5121: np.uint8, 5122: np.int16, 5123: np.uint16, 5125: np.uint32, 5126: np.float32}
 WIDTH = {"SCALAR": 1, "VEC2": 2, "VEC3": 3, "VEC4": 4, "MAT4": 16}
@@ -81,8 +100,14 @@ def node_matrix(node):
 def triangles(path):
     """Every triangle of the model's scene in model space: corners, and
     each one's material name."""
+    tris, mats, _ = labeled(path)
+    return tris, mats
+
+
+def labeled(path):
+    """`triangles`, and the name of the node that holds each one."""
     doc, blob = load(path)
-    tris, mats = [], []
+    tris, mats, parts = [], [], []
 
     def visit(i, parent):
         node = doc["nodes"][i]
@@ -98,13 +123,14 @@ def triangles(path):
                 tris.append(p[idx.reshape(-1, 3)])
                 name = doc["materials"][prim["material"]].get("name", "?") if "material" in prim else "-"
                 mats.extend([name] * (len(idx) // 3))
+                parts.extend([node.get("name", str(i))] * (len(idx) // 3))
         for c in node.get("children", []):
             visit(c, m)
 
     scene = doc["scenes"][doc.get("scene", 0)]
     for i in scene["nodes"]:
         visit(i, np.eye(4))
-    return (np.concatenate(tris) if tris else np.zeros((0, 3, 3))), mats
+    return (np.concatenate(tris) if tris else np.zeros((0, 3, 3))), mats, parts
 
 
 def clip(poly, a, b):
@@ -138,17 +164,25 @@ def shared(t, u):
     return area(poly)
 
 
+
 def overlaps(path, eps=EPS, opposite=False):
     """Pairs of faces in one plane that share area: each pair's plane
-    normal, its height along it, the shared area, and both materials."""
+    normal, its height along it, the shared area, both materials, and both
+    triangles' indices."""
     tris, mats = triangles(path)
+    return find(tris, mats, eps, opposite)
+
+
+def find(tris, mats, eps=EPS, opposite=False):
+    """`overlaps` of triangles already loaded: an (n, 3, 3) array of
+    corners and each one's material name. The indices are into `tris`."""
     if not len(tris):
         return []
     n = np.cross(tris[:, 1] - tris[:, 0], tris[:, 2] - tris[:, 0])
     twice = np.linalg.norm(n, axis=1)
-    keep = twice > 2 * MIN_AREA
-    tris, n, twice = tris[keep], n[keep], twice[keep]
-    mats = [m for m, k in zip(mats, keep) if k]
+    index = np.nonzero(twice > 2 * MIN_AREA)[0]
+    tris, n, twice = tris[index], n[index], twice[index]
+    mats = [mats[k] for k in index]
     n = n / twice[:, None]
     d = np.einsum("ij,ij->i", n, tris[:, 0])
     # Planes keyed by the normal (up to sign with `opposite`) and the
@@ -189,36 +223,108 @@ def overlaps(path, eps=EPS, opposite=False):
                     continue
                 s = shared(flat[i], flat[j])
                 if s > MIN_AREA:
-                    found.append((tuple(n[i]), float(d[i]), float(d[j]), s, mats[i], mats[j], i, j))
+                    found.append((tuple(n[i]), float(d[i]), float(d[j]), s, mats[i], mats[j],
+                                  int(index[i]), int(index[j])))
     return found
 
 
-def report(path, eps=EPS, opposite=False, same=False, limit=200):
-    """Print the overlaps of the model at `path`, one line a plane and
-    pair of materials; True when it has none. Two faces of one material
-    shade alike, so they count only with `same`."""
-    found = [f for f in overlaps(path, eps, opposite) if same or f[4] != f[5]]
-    if not found:
-        return True
-    planes = {}
-    for normal, d0, _, s, m0, m1, _, _ in found:
+def allowed(mats, s):
+    """The reason `ALLOW` gives for a plane whose faces of materials
+    `mats` share `s` m^2, or None."""
+    for a, b, most, why in ALLOW:
+        m0, m1 = mats
+        pair = (fnmatch.fnmatchcase(m0, a) and fnmatch.fnmatchcase(m1, b)) or (
+            fnmatch.fnmatchcase(m1, a) and fnmatch.fnmatchcase(m0, b))
+        if pair and s <= most:
+            return why
+    return None
+
+
+def planes(found, parts=None):
+    """`found` grouped one entry a plane and pair of materials: the key,
+    the area, and the pairs of part names when `parts` names each
+    triangle."""
+    out = {}
+    for normal, d0, _, s, m0, m1, i, j in found:
         key = (tuple(float(round(c, 3)) + 0.0 for c in normal), float(round(d0, 2)) + 0.0, tuple(sorted((m0, m1))))
-        planes[key] = planes.get(key, 0.0) + s
-    total = sum(planes.values())
-    print(f"COPLANAR {path}: {len(planes)} overlapping planes, {total:.2f} m^2")
-    for (normal, d, mats), s in sorted(planes.items(), key=lambda kv: -kv[1])[:limit]:
+        area_, names = out.get(key, (0.0, set()))
+        if parts is not None:
+            names.add(tuple(sorted((parts[i], parts[j]))))
+        out[key] = (area_ + s, names)
+    return out
+
+
+def print_planes(path, found, parts=None, limit=200):
+    """Print the planes in `found` that `ALLOW` doesn't exempt; True when
+    there are none."""
+    flagged = {k: v for k, v in planes(found, parts).items() if not allowed(k[2], v[0])}
+    if not flagged:
+        return True
+    total = sum(s for s, _ in flagged.values())
+    print(f"COPLANAR {path}: {len(flagged)} overlapping planes, {total:.2f} m^2")
+    for (normal, d, mats), (s, names) in sorted(flagged.items(), key=lambda kv: -kv[1][0])[:limit]:
         print(f"  normal {normal} at {d:.2f}: {s:.3f} m^2, {mats[0]} and {mats[1]}")
+        for a, b in sorted(names)[:6]:
+            print(f"    {a} / {b}")
     return False
+
+
+def report(path, eps=EPS, opposite=False, same=False, limit=200, names=False):
+    """Print the overlaps of the model at `path` that `ALLOW` doesn't
+    exempt, one line a plane and pair of materials; True when it has
+    none. Two faces of one material shade alike, so they count only with
+    `same`. With `names`, each plane also lists its nodes."""
+    tris, mats, parts = labeled(path)
+    found = [f for f in find(tris, mats, eps, opposite) if same or f[4] != f[5]]
+    return print_planes(path, found, parts if names else None, limit)
+
+
+def blender_triangles(objs):
+    """The triangles of Blender mesh objects, in the glTF frame the
+    exporter writes (+Y up): corners, materials, and object names."""
+    import bpy
+
+    dg = bpy.context.evaluated_depsgraph_get()
+    tris, mats, parts = [], [], []
+    for o in objs:
+        e = o.evaluated_get(dg)
+        me = e.to_mesh()
+        me.calc_loop_triangles()
+        m = np.array(e.matrix_world, dtype=np.float64)
+        co = np.array([v.co for v in me.vertices], dtype=np.float64).reshape(-1, 3)
+        co = co @ m[:3, :3].T + m[:3, 3]
+        co = np.stack([co[:, 0], co[:, 2], -co[:, 1]], axis=1)
+        for t in me.loop_triangles:
+            tris.append(co[list(t.vertices)])
+            slot = me.materials[t.material_index] if t.material_index < len(me.materials) else None
+            mats.append(slot.name if slot else "-")
+            parts.append(o.name)
+        e.to_mesh_clear()
+    return (np.array(tris) if tris else np.zeros((0, 3, 3))), mats, parts
+
+
+def report_parts(name, objs):
+    """Inside Blender, print the planes where faces of `objs` of two
+    materials overlap, with the objects that hold them; True when none
+    do. Scripts call it before they join their parts when
+    `COPLANAR_PARTS` is set."""
+    tris, mats, parts = blender_triangles(objs)
+    found = [f for f in find(tris, mats) if f[4] != f[5]]
+    return print_planes(f"{name} (parts)", found, parts)
+
+
+def parts_wanted():
+    return bool(os.environ.get("COPLANAR_PARTS"))
 
 
 def main():
     args = sys.argv[1:]
-    opposite, same = "--opposite" in args, "--same" in args
+    opposite, same, names = "--opposite" in args, "--same" in args, "--names" in args
     paths = [a for a in args if not a.startswith("--")]
     if not paths:
         print(__doc__)
         return 2
-    ok = all([report(p, opposite=opposite, same=same) for p in paths])
+    ok = all([report(p, opposite=opposite, same=same, names=names) for p in paths])
     return 0 if ok else 1
 
 

@@ -1,7 +1,7 @@
 {
   "model": "library.glb",
   "frame": "glTF: 1 unit = 1 m, +Y up, +Z out of the front door, origin on the ground at the center of the front wall",
-  "triangles": 17826,
+  "triangles": 17808,
   "boxes": [
     {
       "name": "turret",
@@ -94,5 +94,8 @@
         6.2
       ]
     }
-  ]
+  ],
+  "roofs": [],
+  "front": null,
+  "inside": null
 }

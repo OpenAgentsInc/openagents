@@ -29,6 +29,9 @@ import bpy
 import numpy as np
 from mathutils import Matrix, Vector
 
+sys.path.insert(0, os.path.dirname(__file__))
+import coplanar  # noqa: E402
+
 KIT = os.path.expanduser("~/Downloads/Medieval Village MegaKit[Standard]")
 STOREY = 3.0  # Floor-to-floor height of the kit's walls.
 WALL_TOP = 0.12  # The wall's top beam rises this far above the next floor.
@@ -57,6 +60,10 @@ ROOF = {
     "plum": (0.47, 0.29, 0.33),
 }
 TIMBER = {"light": 1.0, "mid": 0.75, "dark": 0.52}
+
+# The saved models whose faces of two materials overlap in one plane
+# (`coplanar.py`); `main` fails when any do.
+FLICKERS = []
 
 KIT_MATERIALS = {
     "MI_WoodTrim": "wood",
@@ -299,6 +306,19 @@ def lighter(mesh, ratio):
     return out
 
 
+# How far a storey's wall runs stop short of its corners, m.
+INSET = 0.01
+
+
+def inset(tokens):
+    """Wall bay `tokens` narrowed by the same share to span `INSET` less at
+    each end."""
+    items = [t if isinstance(t, tuple) else (t, 2.0) for t in tokens]
+    total = sum(width for _, width in items)
+    k = (total - 2 * INSET) / total
+    return [(t, width * k) for t, width in items]
+
+
 class Building:
     """One building under construction, plus its collision boxes."""
 
@@ -400,20 +420,22 @@ class Building:
         y0 = -jetty
         depth = d + jetty
         n_side = max(1, round(depth / 2.0))
-        side_bay = depth / n_side
+        # Each run stops `INSET` short of the corners, so its end faces sit
+        # inside the walls it meets instead of in their outer faces.
+        side_bay = (depth - 2 * INSET) / n_side
         sides = sides or "P" * n_side
         left, right = (sides, sides) if isinstance(sides, str) else sides
         # Pad or trim each side to its bay count.
         left, right = [list(s) + ["P"] * n_side for s in (left, right)]
         back = back or "P" * int(w / 2)
         if "front" not in skip:
-            self.run(fronts, (x0, y0, z), 0, z, height=height, stone=stone)
+            self.run(inset(fronts), (x0 + INSET, y0, z), 0, z, height=height, stone=stone)
         if "back" not in skip:
-            self.run(back, (x0 + w, d, z), 180, z, height=height, stone=stone)
+            self.run(inset(back), (x0 + w - INSET, d, z), 180, z, height=height, stone=stone)
         if "left" not in skip:
-            self.run(left[:n_side], (x0, d, z), -90, z, bay=side_bay, height=height, stone=stone)
+            self.run(left[:n_side], (x0, d - INSET, z), -90, z, bay=side_bay, height=height, stone=stone)
         if "right" not in skip:
-            self.run(right[:n_side], (x0 + w, y0, z), 90, z, bay=side_bay, height=height, stone=stone)
+            self.run(right[:n_side], (x0 + w, y0 + INSET, z), 90, z, bay=side_bay, height=height, stone=stone)
         pts = [(x0, y0), (x0 + w, y0), (x0, d), (x0 + w, d)]
         self.corners(pts, z, height, corner)
 
@@ -422,7 +444,9 @@ class Building:
         x0 = -w / 2 if x0 is None else x0
         n = max(2, int(round(w / 1.7)))
         for i in range(n + 1):
-            x = x0 + 0.1 + (w - 0.2) * i / n
+            # The end joists stand 3 cm in from the side walls, so their
+            # sides don't share the walls' planes.
+            x = x0 + 0.13 + (w - 0.26) * i / n
             self.put("Roof_Support2", (x, -0.09 + y, z + 0.02), 0, (1, out / 0.69, 1))
         # Soffit boards between the wall and the jettied floor.
         for i in range(int(w / 2)):
@@ -432,12 +456,12 @@ class Building:
 
     # -- generated solids -------------------------------------------------
 
-    def beam(self, lo, hi, band=LIGHT_WOOD, mat="wood", name="Beam"):
-        mesh = box_mesh(name, lo, hi, self.mats[mat], band=band)
+    def beam(self, lo, hi, band=LIGHT_WOOD, mat="wood", name="Beam", skip=""):
+        mesh = box_mesh(name, lo, hi, self.mats[mat], band=band, skip=skip)
         return self.solid(name, mesh)
 
-    def block(self, lo, hi, mat, name="Block", scale=2.0):
-        mesh = box_mesh(name, lo, hi, self.mats[mat], tile=scale)
+    def block(self, lo, hi, mat, name="Block", scale=2.0, skip=""):
+        mesh = box_mesh(name, lo, hi, self.mats[mat], tile=scale, skip=skip)
         return self.solid(name, mesh)
 
     # -- roofs -----------------------------------------------------------
@@ -505,6 +529,11 @@ class Building:
     def save(self, out_dir):
         os.makedirs(out_dir, exist_ok=True)
         path = os.path.join(out_dir, self.name + ".glb")
+        parts = [o for o in self.col.objects if o.type == "MESH"]
+        drop_ground_faces(parts)
+        # A model joined into one object (`town_houses.py`) has no parts to name.
+        if coplanar.parts_wanted() and len(parts) > 1:
+            coplanar.report_parts(self.name, parts)
         bpy.ops.export_scene.gltf(
             filepath=path,
             export_format="GLB",
@@ -552,6 +581,45 @@ class Building:
         top = sorted(tally.items(), key=lambda kv: -kv[1])[:8]
         print("  heaviest:", ", ".join(f"{k} {v}" for k, v in top))
         print(f"BUILT {self.name} triangles={footprint['triangles']} boxes={len(boxes)} -> {path}")
+        flickers(path)
+
+
+def flickers(path):
+    """Check a saved model for faces of two materials in one plane, which
+    z-fight: the renderer can't tell which is in front, so the surface
+    flickers as the camera moves."""
+    if not coplanar.report(path):
+        FLICKERS.append(path)
+
+
+def fail_on_flickers():
+    if FLICKERS:
+        print(f"COPLANAR faces in {len(FLICKERS)} models; offset or remove one face of each pair")
+        sys.exit(1)
+
+
+def drop_ground_faces(objs, height=0.002):
+    """Delete the faces of `objs` that face down on the ground plane. The
+    ground hides them, and where two parts stand side by side, their
+    bottoms share the plane and would z-fight from below."""
+    for o in objs:
+        m = o.matrix_world
+        rot = m.to_3x3()
+        down = [p.index for p in o.data.polygons
+                if (rot @ p.normal).normalized().z < -0.99
+                and all((m @ o.data.vertices[v].co).z < height for v in p.vertices)]
+        if not down:
+            continue
+        # Kit pieces share their mesh; give this one its own copy.
+        if o.data.users > 1:
+            o.data = o.data.copy()
+        bm = bmesh.new()
+        bm.from_mesh(o.data)
+        bm.faces.ensure_lookup_table()
+        bmesh.ops.delete(bm, geom=[bm.faces[i] for i in down], context="FACES")
+        bm.to_mesh(o.data)
+        bm.free()
+        o.data.update()
 
 
 ROOF_LENGTHS = {4: [4, 6, 8], 6: [4, 6, 8, 10, 12, 14], 8: [8, 10, 12, 14]}
@@ -593,10 +661,13 @@ STONE = {
 # Generated meshes
 
 
-def box_mesh(name, lo, hi, mat, band=None, tile=2.0, xf=None):
+def box_mesh(name, lo, hi, mat, band=None, tile=2.0, xf=None, skip=""):
     """A box with UVs: along a wood band, or tiled at `tile` metres.
 
     `xf` moves the finished box, for boxes built in a wall's local frame.
+    `skip` names the sides to leave out, such as "-z +x", in the box's own
+    axes: a side that rests on another solid is hidden, and its face would
+    share a plane with that solid's.
     """
     lo, hi = Vector(lo), Vector(hi)
     size = hi - lo
@@ -607,7 +678,10 @@ def box_mesh(name, lo, hi, mat, band=None, tile=2.0, xf=None):
     verts = [bm.verts.new(c) for c in corners]
     faces = [(0, 1, 3, 2), (4, 6, 7, 5), (0, 4, 5, 1), (2, 3, 7, 6), (0, 2, 6, 4), (1, 5, 7, 3)]
     normals = [0, 0, 1, 1, 2, 2]
-    for f, axis in zip(faces, normals):
+    sides = ["-x", "+x", "-y", "+y", "-z", "+z"]
+    for f, axis, side in zip(faces, normals, sides):
+        if side in skip.split():
+            continue
         face = bm.faces.new([verts[i] for i in f])
         # The face's two in-plane axes.
         plane = [i for i in range(3) if i != axis]
@@ -799,7 +873,8 @@ def awning(b, x0, x1, y, z, rot=0, depth=1.3, drop=0.55):
 def clock_turret(b, cx, cy, z0, half, height):
     """A timber-framed clock and bell turret with a tiled spire roof."""
     lo, hi = (cx - half, cy - half, z0), (cx + half, cy + half, z0 + height)
-    b.block(lo, hi, "plaster", name="TurretBody")
+    # The body has no bottom: the posts' bottoms are the only faces there.
+    b.block(lo, hi, "plaster", name="TurretBody", skip="-z")
     for sx in (-1, 1):
         for sy in (-1, 1):
             px, py = cx + sx * half, cy + sy * half
@@ -968,7 +1043,9 @@ def library():
     b.collide("turret", (-1.2, d / 2 - 1.2, top + 6.0), (1.2, d / 2 + 1.2, top + 7.7))
     # Reading-room bay on the east wall: lattice windows under a lean-to.
     bx = w / 2
-    b.run([("G", 2), ("G", 2)], (bx + 1.2, 2.0, base), 90, base)
+    # The lattice run stops short of the end walls, so its end faces sit
+    # inside them.
+    b.run(inset([("G", 2), ("G", 2)]), (bx + 1.2, 2.0 + INSET, base), 90, base)
     b.run([("P", 1.2)], (bx, 2.0, base), 0, base)
     b.run([("P", 1.2)], (bx + 1.2, 6.0, base), 180, base)
     b.run(["P", "P"], (bx, 2.0, base + STOREY), 90, base + STOREY, height=1.0, stone=True)
@@ -1032,7 +1109,8 @@ def market_hall():
         for j in range(int(d / 2)):
             at = (-w / 2 + 1 + 2 * i, 1 + 2 * j)
             b.put("Floor_UnevenBrick", (*at, 0.02))
-    b.beam((-w / 2, 0.0, STOREY - 0.06), (w / 2, d, STOREY - 0.04), band=DARK_WOOD)
+    # The ceiling stops inside the back wall, short of its outer face.
+    b.beam((-w / 2, 0.0, STOREY - 0.06), (w / 2, d - 0.05, STOREY - 0.04), band=DARK_WOOD)
     b.put("Prop_Crate", (4.2, 5.8, 0.02), 20)
     b.put("Prop_Crate", (3.1, 6.6, 0.02), -10, (0.8, 0.8, 0.8))
     b.jetty(w, STOREY, 0.6)
@@ -1083,7 +1161,8 @@ def l_house():
         (STOREY, "TT", "fW", "PTPFP", "fP", "PFP", "PFFP"),
     ):
         b.run(wing, (-4, 0, z), 0, z)
-        b.run(front, (0, 4, z), 0, z)
+        # The front stops short of the corner, inside the east wall.
+        b.run(inset(front), (INSET, 4, z), 0, z)
         b.run(left, (-4, 10, z), -90, z)
         b.run(inner, (0, 0, z), 90, z)
         b.run(right, (4, 4, z), 90, z)
@@ -1230,7 +1309,10 @@ def slab_roof(b, span, length, z, rise, center=(0.0, 0.0), along_x=False, mat="t
                                      b.mats[mat], tile=tile, xf=xf))
         for t in courses:
             x = run * t
-            b.solid("Course", box_mesh("Course", (x - 0.14, -length / 2 - over, -0.04), (x + 0.14, length / 2 + over, 0.07),
+            # Each course runs 2 cm past the slab's ends, so their end faces
+            # don't share a plane.
+            b.solid("Course", box_mesh("Course", (x - 0.14, -length / 2 - over - 0.02, -0.04),
+                                       (x + 0.14, length / 2 + over + 0.02, 0.07),
                                        b.mats[ridge_mat or mat], xf=xf))
     if gable:
         tris = []
@@ -1472,7 +1554,8 @@ def bakery():
                                   tile=(1.2, 1.2), rot=math.pi / 12))
     b.block((ox + 1.0, oy - 0.45, 0.4), (ox + 1.55, oy + 0.45, 1.2), "iron", name="OvenDoor", scale=1.0)
     b.block((ox + 1.02, oy - 0.3, 0.5), (ox + 1.57, oy + 0.3, 1.0), "coals", name="OvenGlow", scale=1.0)
-    b.block((ox - 0.2, oy + 0.6, 0.0), (ox + 0.8, oy + 1.6, ridge + 1.6), "brick", name="Stack", scale=1.2)
+    # The stack's inner face sits inside the wall, clear of its inner face.
+    b.block((ox - 0.15, oy + 0.6, 0.0), (ox + 0.8, oy + 1.6, ridge + 1.6), "brick", name="Stack", scale=1.2)
     b.block((ox - 0.3, oy + 0.5, ridge + 1.6), (ox + 0.9, oy + 1.7, ridge + 1.8), "rock", name="StackCap",
             scale=1.0)
     awning(b, -3.0, -1.0, -0.12, 2.75)
@@ -1503,7 +1586,8 @@ def smithy():
     for y in (0.4, 4.0, 7.6):
         b.beam((fx + 3.2, y - 0.12, 0), (fx + 3.44, y + 0.12, 2.5), band=DARK_WOOD)
     b.beam((fx + 3.15, 0.2, 2.35), (fx + 3.5, 7.8, 2.55), band=DARK_WOOD)
-    lean_to(b, fx, fx + 3.8, 0.0, 8.0, 3.1, 2.4)
+    # The lean-to's ends stop 2 cm inside the front and back walls' faces.
+    lean_to(b, fx, fx + 3.8, 0.02, 7.98, 3.1, 2.4)
     b.block((fx + 0.1, 2.5, 0), (fx + 1.6, 5.5, 0.85), "brick", name="Hearth", scale=1.2)
     b.block((fx + 0.3, 2.8, 0.85), (fx + 1.4, 5.2, 0.92), "coals", name="Coals", scale=1.0)
     b.solid("Hood", cone_mesh("Hood", (fx + 0.85, 4.0), 1.2, 1.9, 2.8, 4, b.mats["brick"], rings=1,
@@ -1652,7 +1736,10 @@ def clock_tower():
         for sy in (-1, 1):
             px, py = sx * (s - 0.35), cz + sy * (s - 0.35)
             b.block((px - 0.35, py - 0.35, z0), (px + 0.35, py + 0.35, z0 + 2.6), "stone", name="Pier", scale=2.6)
-    b.block((-s + 0.4, cz - s + 0.4, z0), (s - 0.4, cz + s - 0.4, z0 + 0.15), "wood", name="BelfryFloor")
+    # The floor rests on the cornice course, so it has no bottom face to
+    # share the piers' plane.
+    b.block((-s + 0.4, cz - s + 0.4, z0), (s - 0.4, cz + s - 0.4, z0 + 0.15), "wood", name="BelfryFloor",
+            skip="-z")
     b.solid("Bell", cone_mesh("Bell", (0, cz), 0.65, z0 + 0.7, z0 + 1.9, 10, b.mats["metal"], rings=1, flare=0.1))
     for k in range(4):
         zz = z0 + 0.9 + k * 0.4
@@ -1670,7 +1757,9 @@ def clock_tower():
         b.solid("Pinnacle", cone_mesh("Pinnacle", (sx * s, 2 * s), 0.25, top, top + 1.4, 4, b.mats["rock"], rings=1,
                                       rot=math.pi / 4))
     # The hall behind: stone walls, tall windows, a steep tiled roof.
-    hw, y0, y1, tall = 3.0, 2 * s, 2 * s + 8.0, 4.0
+    # The hall stands 2 cm behind the tower, so its front wall's faces
+    # don't share the planes of the tower's and the plinth's backs.
+    hw, y0, y1, tall = 3.0, 2 * s + 0.02, 2 * s + 8.02, 4.0
     b.run("tTtT", (-hw, y1, 0), -90, 0, height=tall, stone=True)
     b.run("TtTt", (hw, y0, 0), 90, 0, height=tall, stone=True)
     b.run("BTB", (hw, y1, 0), 180, 0, height=tall, stone=True)
@@ -1781,7 +1870,8 @@ def log_cabin():
     b.block((-1.72, -0.32, 0.0), (-1.6, -0.1, 2.2), "wood", name="Jamb", scale=1.0)
     b.block((-0.6, -0.32, 0.0), (-0.48, -0.1, 2.2), "wood", name="Jamb", scale=1.0)
     b.block((-1.72, -0.32, 2.1), (-0.48, -0.1, 2.25), "wood", name="Lintel", scale=1.0)
-    for x, y, rot in ((1.4, -0.2, 0), (-w / 2 - 0.2, 2.5, -90), (w / 2 + 0.2, 2.5, 90), (0.0, d + 0.2, 180)):
+    # No window on the west wall: the chimney stands over it.
+    for x, y, rot in ((1.4, -0.2, 0), (w / 2 + 0.2, 2.5, 90), (0.0, d + 0.2, 180)):
         m = frame(rot, (x, y, 1.5))
         b.solid("Window", box_mesh("Window", (-0.5, -0.08, -0.4), (0.5, 0.02, 0.4), b.mats["glass"], xf=m))
         for lo, hi in (((-0.6, -0.12, -0.5), (0.6, 0.0, -0.4)), ((-0.6, -0.12, 0.4), (0.6, 0.0, 0.5)),
@@ -1963,7 +2053,9 @@ def gambrel_barn():
     # The doors: two board leaves with white frames and cross braces.
     for sx in (-1, 1):
         x0, x1 = sorted((0.0, sx * 1.6))
-        b.block((x0, -0.16, 0.3), (x1, -0.06, 3.05), "barn", name="Door")
+        # The leaf starts behind its frame, so their edges don't share
+        # planes.
+        b.block((x0, -0.14, 0.3), (x1, -0.06, 3.05), "barn", name="Door")
         for lo, hi in (((x0, -0.2, 0.3), (x1, -0.14, 0.42)), ((x0, -0.2, 2.93), (x1, -0.14, 3.05)),
                        ((x0, -0.2, 0.3), (x0 + 0.12, -0.14, 3.05)), ((x1 - 0.12, -0.2, 0.3), (x1, -0.14, 3.05))):
             b.block(lo, hi, "white_paint", name="DoorFrame")
@@ -2017,6 +2109,7 @@ def main():
     for name in names:
         b = BUILDINGS[name]()
         b.save(out)
+    fail_on_flickers()
 
 
 if __name__ == "__main__":

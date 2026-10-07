@@ -279,7 +279,7 @@ pub const GREENHOUSE: Model = Model {
 pub const CLOCK_TOWER: Model = Model {
     name: "generated/clock_tower",
     blocks: &[[-2.4, 2.4, -4.6, 0.2, 15.1], [-3.1, 3.1, -12.5, -4.4, 4.16]],
-    roofs: &[gable([0.0, -8.7], false, [3.6, 4.3], 4.16, 8.99)],
+    roofs: &[gable([0.0, -8.72], false, [3.6, 4.3], 4.16, 8.99)],
     front: [0.0, 1.6],
     inside: None,
 };

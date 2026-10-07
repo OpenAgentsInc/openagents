@@ -46,7 +46,8 @@ kit.apply_modifiers(stage)
 bpy.data.objects.remove(cut)
 kit.cyl_uv(stage, tile=1.6)
 # Boards on the deck and a stone lip around it.
-deck = kit.cyl("Deck", R - 0.1, 0.06, (0, 0, SH + 0.03), wood, verts=32)
+# The deck's underside sits 1 cm into the stage, below the lip's.
+deck = kit.cyl("Deck", R - 0.1, 0.07, (0, 0, SH + 0.025), wood, verts=32)
 cut = kit.box("Cut2", (2 * R + 1, R, 1), (0, -R / 2 - 0.9, SH))
 mod = deck.modifiers.new("Trim", "BOOLEAN")
 mod.operation = "DIFFERENCE"
@@ -85,3 +86,5 @@ body = kit.join("Bandshell")
 kit.ground(body)
 kit.flat()
 kit.export(out)
+kit.flickers(out)
+kit.fail_on_flickers()

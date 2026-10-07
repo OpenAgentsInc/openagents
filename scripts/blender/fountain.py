@@ -80,7 +80,9 @@ kit.cyl("PoolHigh", 0.55, 0.02, (0, 0, 2.46), water, verts=seg)
 streams("SpillHigh", 0.65, 2.5, 1.65, 6, 0.14)
 
 # Finial: a little urn, and the spout rising from it and falling back.
-kit.lathe("Finial", [(0, 2.45), (0.1, 2.45), (0.13, 2.6), (0.07, 2.72), (0.09, 2.78), (0, 2.8)], material=trim, segs=10)
+# The urn's foot sits 1 cm into the upper pool, below the water's
+# underside.
+kit.lathe("Finial", [(0, 2.44), (0.1, 2.44), (0.13, 2.6), (0.07, 2.72), (0.09, 2.78), (0, 2.8)], material=trim, segs=10)
 kit.cyl("Spout", 0.035, 0.22, (0, 0, 2.9), spill, verts=8, r2=0.015)
 kit.lathe("SpoutCrown", [(0, 2.98), (0.12, 2.96), (0.2, 2.86), (0.15, 2.88), (0, 3.04)], material=spill, segs=10)
 
@@ -96,3 +98,5 @@ body = kit.join("Fountain")
 kit.ground(body)
 kit.flat()
 kit.export(out)
+kit.flickers(out)
+kit.fail_on_flickers()

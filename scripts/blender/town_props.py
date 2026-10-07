@@ -130,6 +130,7 @@ def finish(name, out):
     kit.ground(body)
     kit.flat()
     kit.export(os.path.join(out, name + ".glb"))
+    kit.flickers(os.path.join(out, name + ".glb"))
 
 
 def rock_mesh(name, r, loc, material, seed, squash=0.7, subdiv=1):
@@ -223,7 +224,8 @@ def garden_arch(m):
     """A timber arch, 2.6 m tall and 1.6 m wide, under climbing roses."""
     for sx in (-1, 1):
         for sy in (-1, 1):
-            kit.box("Post", (0.1, 0.1, 2.3), (sx * 0.8, sy * 0.3, 1.15), m["paint_white"])
+            # 11 cm deep, so no rose's facet lies in a post's face.
+            kit.box("Post", (0.1, 0.11, 2.3), (sx * 0.8, sy * 0.3, 1.15), m["paint_white"])
         for z in (0.6, 1.3, 2.0):
             kit.box("Lattice", (0.04, 0.6, 0.04), (sx * 0.8, 0, z), m["paint_white"])
     # The curved top: a half ring of slats.
@@ -403,7 +405,9 @@ def dock(m):
     for sx in (-1, 1):
         kit.box("Stringer", (0.12, length, 0.16), (sx * (width / 2 - 0.15), 0, 0.44), m["oak_dark"])
         for y in (-length / 2 + 0.2, -0.6, length / 2 - 0.4):
-            kit.box("Pile", (0.16, 0.16, 1.4), (sx * (width / 2 - 0.08), y, 0.1), m["oak_dark"])
+            # The piles stand 1 cm in from the planks' ends, so their outer
+            # faces don't share the ends' plane.
+            kit.box("Pile", (0.16, 0.16, 1.4), (sx * (width / 2 - 0.09), y, 0.1), m["oak_dark"])
     kit.cyl("Bollard", 0.1, 0.6, (width / 2 - 0.15, -length / 2 + 0.35, 0.88), m["oak_dark"], verts=6)
     kit.ring("Rope", 0.12, 0.025, (width / 2 - 0.15, -length / 2 + 0.35, 0.95), m["sack"], segs=8, minor_segs=3)
     kit.box("LampPost", (0.08, 0.08, 1.5), (-width / 2 + 0.15, -length / 2 + 0.35, 1.33), m["oak_dark"])
@@ -489,7 +493,9 @@ def stump(m):
 def cafe_table(m):
     """A round café table with two chairs under a striped parasol."""
     kit.cyl("Top", 0.42, 0.04, (0, 0, 0.74), m["paint_white"], verts=10)
-    kit.cyl("Leg", 0.035, 0.72, (0, 0, 0.36), m["iron"], verts=5)
+    # The leg stands on the foot, and the parasol's pole starts inside the
+    # leg, so the three don't share the ground plane.
+    kit.cyl("Leg", 0.035, 0.69, (0, 0, 0.375), m["iron"], verts=5)
     kit.cyl("Foot", 0.22, 0.03, (0, 0, 0.015), m["iron"], verts=6)
     for sx in (-1, 1):
         x = sx * 0.62
@@ -498,7 +504,7 @@ def cafe_table(m):
         for lx in (-0.17, 0.17):
             for ly in (-0.17, 0.17):
                 kit.box("ChairLeg", (0.03, 0.03, 0.45), (x + lx, ly, 0.225), m["iron"])
-    kit.cyl("Pole", 0.025, 2.2, (0, 0, 1.1), m["oak_dark"], verts=5)
+    kit.cyl("Pole", 0.025, 2.16, (0, 0, 1.12), m["oak_dark"], verts=5)
     # The parasol: eight panels in two colors.
     for i in range(8):
         a0, a1 = 2 * math.pi * i / 8, 2 * math.pi * (i + 1) / 8
@@ -671,8 +677,10 @@ def fruit_tree_bloom(m):
     for i in range(7):
         a = rng.uniform(0, 2 * math.pi)
         r = rng.uniform(0.7, 1.15)
+        # The white puffs turn a little, so their facets don't lie in the
+        # pink puffs' planes.
         kit.ball("Puff%d" % i, rng.uniform(0.38, 0.55), (r * math.cos(a), r * math.sin(a), rng.uniform(2.45, 3.2)),
-                 m["blossom_white" if i % 3 == 0 else "blossom"], segs=6, rings=4)
+                 m["blossom_white" if i % 3 == 0 else "blossom"], segs=6, rings=4, rot=(0, 0, 0.3 if i % 3 == 0 else 0))
 
 
 def cafe_umbrella(m):
@@ -734,8 +742,10 @@ def produce_stall(m):
             kit.box("Crate", (0.6, 0.42, 0.18), (x, y, z - 0.04), m["oak"], rot=(0.18 if j == 0 else 0.0, 0, 0))
             kit.box("Produce", (0.52, 0.34, 0.1), (x, y, z + 0.08), m[produce[(i + 3 * j) % 6]],
                     rot=(0.18 if j == 0 else 0.0, 0, 0))
-    kit.box("Sack", (0.4, 0.35, 0.5), (1.0, 0.65, 0.25), m["sack"], bevel=0.06)
-    kit.box("CrateLow", (0.55, 0.45, 0.4), (-0.95, 0.7, 0.2), m["oak"])
+    # The sack and the low crate stand clear of the back poles, so the
+    # poles' bottoms don't share the ground plane with theirs.
+    kit.box("Sack", (0.4, 0.35, 0.5), (0.88, 0.65, 0.25), m["sack"], bevel=0.06)
+    kit.box("CrateLow", (0.55, 0.45, 0.4), (-0.8, 0.7, 0.2), m["oak"])
 
 
 def crate_stack(m):
@@ -743,8 +753,11 @@ def crate_stack(m):
     kit.box("Crate", (0.8, 0.7, 0.6), (0, 0, 0.3), m["oak"], bevel=0.03)
     kit.box("Crate", (0.7, 0.65, 0.55), (0.82, 0.05, 0.275), m["oak_dark"], bevel=0.03)
     kit.box("Crate", (0.62, 0.6, 0.5), (0.1, 0.02, 0.85), m["oak"], rot=(0, 0, 0.25), bevel=0.03)
-    for x in (-0.38, 0.38):
-        kit.box("Slat", (0.04, 0.72, 0.6), (x, 0, 0.3), m["oak_dark"])
+    # The slats stand 2 cm proud of the crate's sides and stop 2 cm short
+    # of its top and bottom, so no face of a slat shares a plane with one
+    # of the crate's.
+    for x in (-0.4, 0.4):
+        kit.box("Slat", (0.04, 0.72, 0.56), (x, 0, 0.3), m["oak_dark"])
     kit.box("Sack", (0.45, 0.4, 0.55), (-0.65, -0.1, 0.27), m["sack"], bevel=0.08)
     kit.cyl("Keg", 0.24, 0.55, (0.75, -0.6, 0.275), m["oak"], verts=8)
     for z in (0.08, 0.47):
@@ -775,7 +788,8 @@ def water_pump(m):
 
 def flower_cart(m):
     """A two-wheeled hand cart heaped with potted flowers, its shafts down."""
-    kit.box("Bed", (1.5, 0.95, 0.08), (0, 0, 0.62), m["oak"])
+    # The bed's edges stop inside the painted sides and ends.
+    kit.box("Bed", (1.46, 0.91, 0.08), (0, 0, 0.62), m["oak"])
     for y in (-0.47, 0.47):
         kit.box("Side", (1.5, 0.05, 0.3), (0, y, 0.78), m["paint_blue"])
     for x in (-0.75, 0.75):
@@ -795,8 +809,10 @@ def flower_cart(m):
             kit.ball("Leaves", 0.2, (x, y, 0.98), m["leaf"], segs=6, rings=3, scale=(1, 1, 0.7))
             for k in range(2):
                 a = rng.uniform(0, math.tau)
+                # Each pot's second bloom turns, so two blooms never share
+                # a facet's plane.
                 kit.ball("Bloom", 0.08, (x + 0.1 * math.cos(a), y + 0.1 * math.sin(a), 1.08 + 0.03 * k),
-                         m[colors[(i * 2 + j + k) % 6]], segs=5, rings=3)
+                         m[colors[(i * 2 + j + k) % 6]], segs=5, rings=3, rot=(0, 0, 0.5 * k))
 
 
 def fountain_small(m):
@@ -898,11 +914,15 @@ def boardwalk(m):
         kit.box("Post", (0.1, 0.1, 0.95), (x, 1.42, 0.55), m["oak_dark"])
     kit.box("Rail", (6.0, 0.08, 0.08), (0, 1.42, 1.0), m["oak"])
     kit.box("Rail", (6.0, 0.05, 0.05), (0, 1.42, 0.55), m["oak"])
-    for x in (-2.95, 2.95):
+    # The end posts stand 1 cm in from the deck's ends, and the end rails
+    # stop inside the front posts, so no post shares a face's plane with
+    # the deck or a rail.
+    for x in (-2.94, 2.94):
         for y in (-1.4, 0.0):
             kit.box("Post", (0.1, 0.1, 0.95), (x, y, 0.55), m["oak_dark"])
-        kit.box("Rail", (0.08, 2.9, 0.08), (x, 0.0, 1.0), m["oak"])
-    kit.cyl("Lantern", 0.05, 0.6, (2.9, 1.42, 1.3), m["iron"], verts=5)
+        kit.box("Rail", (0.08, 2.8, 0.08), (x, 0.0, 1.0), m["oak"])
+    # The lantern's pole stands on the rail rather than in it.
+    kit.cyl("Lantern", 0.05, 0.56, (2.9, 1.42, 1.32), m["iron"], verts=5)
     kit.box("LanternGlass", (0.2, 0.2, 0.26), (2.9, 1.42, 1.72), m["glow"])
 
 
@@ -964,6 +984,7 @@ def main():
         kit.reset()
         PROPS[name](materials())
         finish(name, out)
+    kit.fail_on_flickers()
 
 
 main()

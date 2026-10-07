@@ -141,9 +141,11 @@ def strut(name, r0, r1, start, end, material, verts=5):
 
 
 def flame(name, r, h, loc, m, rot=0.0):
-    """A licking flame: an outer orange cone over a smaller ember core."""
+    """A licking flame: an outer orange cone over a smaller ember core.
+    The core's base stands a little above the cone's, so the two bases
+    don't share a plane."""
     kit.cyl(name, r, h, (loc[0], loc[1], loc[2] + h / 2), m["flame"], verts=5, r2=0.0, rot=(0, 0, rot))
-    kit.cyl(name + "Core", r * 0.55, h * 0.5, (loc[0], loc[1], loc[2] + h * 0.25), m["ember"], verts=4, r2=0.0)
+    kit.cyl(name + "Core", r * 0.55, h * 0.5, (loc[0], loc[1], loc[2] + h * 0.33), m["ember"], verts=4, r2=0.0)
 
 
 # --- Stones ------------------------------------------------------------------
@@ -195,7 +197,9 @@ def grove_rune_stone(m):
 def grove_altar(m):
     """A druid's stone altar: a slab on two uprights, with offerings."""
     for sx in (-1, 1):
-        slab(f"Upright{sx}", 0.38, 0.62, 0.8, (sx * 0.62, 0, 0.4), m["stone"], 30 + sx, taper=0.9, jitter=0.03)
+        # The uprights stand 2 cm into the step, so their bottoms don't
+        # share the ground plane with the step's.
+        slab(f"Upright{sx}", 0.38, 0.62, 0.78, (sx * 0.62, 0, 0.41), m["stone"], 30 + sx, taper=0.9, jitter=0.03)
     slab("Top", 1.9, 0.95, 0.2, (0, 0, 0.9), m["stone"], 33, taper=0.95, jitter=0.03)
     kit.box("Step", (2.3, 1.4, 0.12), (0, 0, 0.06), m["stone_dark"], bevel=0.04)
     # Moss over the top's back edge and down one upright.
@@ -322,7 +326,9 @@ def grove_brazier(m):
 
 def grove_torch(m):
     """A tall post with an iron cage at its head and a flame in it."""
-    kit.cyl("Post", 0.06, 1.95, (0, 0, 0.975), m["oak_dark"], verts=6, r2=0.05)
+    # The post stands 2 cm into the base, so their bottoms don't share
+    # the ground plane.
+    kit.cyl("Post", 0.06, 1.93, (0, 0, 0.985), m["oak_dark"], verts=6, r2=0.05)
     kit.cyl("Base", 0.12, 0.12, (0, 0, 0.06), m["stone_dark"], verts=6, r2=0.1)
     for i in range(4):
         a = i / 4 * 2 * math.pi + math.pi / 4
@@ -473,6 +479,7 @@ def finish(name, out):
     kit.ground(body, recenter=False)
     kit.flat()
     info = kit.export(os.path.join(out, name + ".glb"))
+    kit.flickers(os.path.join(out, name + ".glb"))
     boxes = []
     if name == "grove_training_ring":
         # Blender (x, y) maps to glTF (x, -z).
@@ -498,6 +505,7 @@ def main():
         kit.reset()
         PROPS[name](materials())
         finish(name, out)
+    kit.fail_on_flickers()
 
 
 main()

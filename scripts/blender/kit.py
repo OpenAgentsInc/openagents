@@ -15,6 +15,8 @@ import bmesh
 import bpy
 from mathutils import Matrix, Vector
 
+import coplanar  # Every script that imports kit has this directory on its path.
+
 REPO = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
 VILLAGE = os.path.join(REPO, "assets", "verse", "everglade", "village")
 
@@ -293,6 +295,8 @@ def join(name, objs=None):
     objs = objs or meshes()
     for o in objs:
         bake(o)
+    if coplanar.parts_wanted():
+        coplanar.report_parts(name, objs)
     bpy.ops.object.select_all(action="DESELECT")
     for o in objs:
         o.select_set(True)
@@ -364,6 +368,26 @@ def export(out, animations=False, extra=None):
         info.update(extra)
     print("MODEL", json.dumps(info))
     return info
+
+
+# The saved models whose faces of two materials overlap in one plane.
+FLICKERS = []
+
+
+def flickers(path):
+    """Check a saved model for faces of two materials in one plane
+    (`coplanar.py`), which z-fight: the renderer can't tell which is in
+    front, so the surface flickers as the camera moves.
+    `fail_on_flickers` then fails the script."""
+    if not coplanar.report(path):
+        FLICKERS.append(path)
+
+
+def fail_on_flickers():
+    """Exit 1 when `flickers` found an overlap in any saved model."""
+    if FLICKERS:
+        print(f"COPLANAR faces in {len(FLICKERS)} models; offset or remove one face of each pair")
+        sys.exit(1)
 
 
 # --- Rigs -------------------------------------------------------------------

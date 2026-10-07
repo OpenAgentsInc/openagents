@@ -71,6 +71,7 @@ def finish(name, out):
     kit.ground(body)
     kit.flat()
     kit.export(os.path.join(out, name + ".glb"))
+    kit.flickers(os.path.join(out, name + ".glb"))
 
 
 def lamp_post(m):
@@ -97,7 +98,9 @@ def barrel(m):
 
 def flower_box(m):
     kit.box("Planter", (1.2, 0.4, 0.32), (0, 0, 0.16), m["oak"], bevel=0.02)
-    kit.box("Soil", (1.12, 0.32, 0.02), (0, 0, 0.31), m["oak_dark"])
+    # The soil heaps 1.5 cm over the planter's rim, so its top doesn't
+    # share the rim's plane.
+    kit.box("Soil", (1.12, 0.32, 0.02), (0, 0, 0.325), m["oak_dark"])
     rng = random.Random(7)
     colors = ["red", "yellow", "violet", "red", "white"]
     for i in range(9):
@@ -196,14 +199,17 @@ def footbridge(m):
             t = i / 4
             y = -span / 2 + span * t
             z = 0.2 + rise * math.sin(math.pi * t)
-            kit.box("Post", (0.1, 0.1, 1.0), (sx * (width / 2 - 0.05), y, z + 0.5), m["oak_dark"])
+            # The posts and rails stand 1 cm proud of the planks' ends,
+            # so the posts' outer faces and the planks' ends don't share
+            # a plane.
+            kit.box("Post", (0.1, 0.1, 1.0), (sx * (width / 2 - 0.04), y, z + 0.5), m["oak_dark"])
         for i in range(4):
             t0, t1 = i / 4, (i + 1) / 4
             y0, y1 = -span / 2 + span * t0, -span / 2 + span * t1
             z0 = 0.2 + rise * math.sin(math.pi * t0) + 0.95
             z1 = 0.2 + rise * math.sin(math.pi * t1) + 0.95
             length = math.hypot(y1 - y0, z1 - z0)
-            kit.box("Rail", (0.08, length, 0.08), (sx * (width / 2 - 0.05), (y0 + y1) / 2, (z0 + z1) / 2),
+            kit.box("Rail", (0.08, length, 0.08), (sx * (width / 2 - 0.04), (y0 + y1) / 2, (z0 + z1) / 2),
                     m["oak"], rot=(math.atan2(z1 - z0, y1 - y0), 0, 0))
         kit.box("Beam", (0.15, span, 0.2), (sx * (width / 2 - 0.1), 0, 0.1), m["oak_dark"])
 
@@ -290,6 +296,7 @@ def main():
         kit.reset()
         PROPS[name](materials())
         finish(name, out)
+    kit.fail_on_flickers()
 
 
 main()

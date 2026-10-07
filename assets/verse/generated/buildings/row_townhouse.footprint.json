@@ -1,7 +1,7 @@
 {
   "model": "row_townhouse.glb",
   "frame": "glTF: 1 unit = 1 m, +Y up, +Z out of the front door, origin on the ground at the center of the front wall",
-  "triangles": 10447,
+  "triangles": 10435,
   "boxes": [
     {
       "name": "ground",
@@ -55,5 +55,8 @@
         4.3
       ]
     }
-  ]
+  ],
+  "roofs": [],
+  "front": null,
+  "inside": null
 }

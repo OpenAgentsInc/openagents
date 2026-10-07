@@ -1,7 +1,7 @@
 {
   "model": "guild_hall.glb",
   "frame": "glTF: 1 unit = 1 m, +Y up, +Z out of the front door, origin on the ground at the center of the front wall",
-  "triangles": 19224,
+  "triangles": 19214,
   "boxes": [
     {
       "name": "tower",
