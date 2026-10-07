@@ -16,7 +16,7 @@ until the pieces NIP-SOV requires exist.
 
 ## Conventions
 
-- `--json` anywhere on the command line switches every command to one JSON
+- `--json` anywhere on the command line before `--` switches every command to one JSON
   document (or one document per line for streaming commands) on stdout.
   Without it, output is a short table or sentence.
 - Exit codes: `0` success, `1` refused or failed, `64` invalid usage.
@@ -103,6 +103,28 @@ Retained chats are ATIF-v1.8 documents under the store's `sessions` directory.
 Import and export run no tools. The terminal's `/export [path]` writes the selected
 chat, including child trajectories when exporting the main chat, to a private
 local file. Without a path, it writes under `~/.openagents/exports`.
+
+## Leases (`openagents lease`)
+
+`openagents lease` runs a command while it holds a lease from the host
+resource broker, so agents on one machine share build slots, memory, disk,
+the quiet machine, the screen, the GPU, and licensed tools instead of
+fighting over them. [Leases](../coder/runtime/leases.md) covers the
+resources, defaults, overrides, and receipts.
+
+```sh
+openagents lease build -- cargo test -p coder-lease
+openagents lease quiet --receipt soak-lease.json -- scripts/grid-soak.sh
+openagents lease memory --amount 24 --no-wait -- ./train.sh
+openagents lease list --json
+openagents lease grant screen --for 30m
+openagents lease revoke screen
+```
+
+`lease RESOURCE` waits its turn unless `--no-wait` is given, and exits with
+the command's status. With `--json` it prints the receipt after the
+command's output. `lease list` shows holders and waiters, and `lease grant
+screen` asks the owner to confirm on an interactive terminal.
 
 ## Local capability settings (`openagents settings`)
 

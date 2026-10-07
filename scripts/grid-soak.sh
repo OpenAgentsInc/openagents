@@ -117,6 +117,7 @@ cat >"$out/meta.json" <<EOF
   "walkers": $walkers,
   "clients": $(if [[ "$world" == verse-bare ]]; then echo '["phone (simulated)", "desktop (simulated)", "browser (simulated)"]'; else echo '[]'; fi),
   "seconds": $seconds,
+  "leases": "${OPENAGENTS_LEASES:-}",
   "host": "$(uname -sm), $(sysctl -n machdep.cpu.brand_string 2>/dev/null || uname -p)",
   "started": "$(date -u +%FT%TZ)"
 }

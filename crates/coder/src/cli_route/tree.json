@@ -4653,6 +4653,12 @@
         },
         {
           "kind": "option",
+          "name": "approvals",
+          "optional": true,
+          "repeated": true
+        },
+        {
+          "kind": "option",
           "name": "in",
           "value": "DIR",
           "open": true,
@@ -5462,6 +5468,232 @@
           "name": "label",
           "value": "LABEL",
           "open": true,
+          "optional": true,
+          "repeated": true
+        }
+      ]
+    },
+    {
+      "name": "lease",
+      "summary": "Run a command under a lease on a shared resource (build slots, quiet, the screen, the GPU), and list holders and waiters.",
+      "leaf": {
+        "path": [
+          "lease"
+        ],
+        "usage": [
+          "openagents lease RESOURCE [--amount N] [--no-wait] [--receipt PATH] -- CMD [ARGS...]"
+        ],
+        "forms": [
+          {
+            "tokens": [
+              {
+                "kind": "positional",
+                "name": "RESOURCE"
+              },
+              {
+                "kind": "option",
+                "name": "amount",
+                "value": "N",
+                "open": true,
+                "optional": true
+              },
+              {
+                "kind": "option",
+                "name": "no-wait",
+                "optional": true
+              },
+              {
+                "kind": "option",
+                "name": "receipt",
+                "value": "PATH",
+                "open": true,
+                "optional": true
+              },
+              {
+                "kind": "rest"
+              },
+              {
+                "kind": "option",
+                "name": "for",
+                "value": "DURATION",
+                "open": true,
+                "optional": true,
+                "repeated": true
+              },
+              {
+                "kind": "option",
+                "name": "to",
+                "value": "SESSION",
+                "open": true,
+                "optional": true,
+                "repeated": true
+              },
+              {
+                "kind": "option",
+                "name": "json",
+                "optional": true,
+                "repeated": true
+              }
+            ]
+          }
+        ],
+        "summary": "Run a command under a lease on a shared resource (build slots, quiet, the screen, the GPU), and list holders and waiters.",
+        "effect": "long_running",
+        "runs_on": "connected_computer"
+      },
+      "children": [
+        {
+          "name": "list",
+          "leaf": {
+            "path": [
+              "lease",
+              "list"
+            ],
+            "usage": [
+              "list"
+            ],
+            "forms": [
+              {
+                "tokens": [
+                  {
+                    "kind": "literal",
+                    "word": "list"
+                  }
+                ]
+              }
+            ],
+            "summary": "Every lease held and waiting: resource, holder session, agent, process, command name, and how long, with the build count, memory budget, and disk floor the counted leases share.",
+            "effect": "read_only",
+            "runs_on": "connected_computer"
+          }
+        },
+        {
+          "name": "grant",
+          "children": [
+            {
+              "name": "screen",
+              "leaf": {
+                "path": [
+                  "lease",
+                  "grant",
+                  "screen"
+                ],
+                "usage": [
+                  "grant screen [--for DURATION] [--to SESSION]"
+                ],
+                "forms": [
+                  {
+                    "tokens": [
+                      {
+                        "kind": "literal",
+                        "word": "grant"
+                      },
+                      {
+                        "kind": "literal",
+                        "word": "screen"
+                      },
+                      {
+                        "kind": "option",
+                        "name": "for",
+                        "value": "DURATION",
+                        "open": true,
+                        "optional": true
+                      },
+                      {
+                        "kind": "option",
+                        "name": "to",
+                        "value": "SESSION",
+                        "open": true,
+                        "optional": true
+                      }
+                    ]
+                  }
+                ],
+                "summary": "Let agents take the real screen for DURATION (default 1h), or only the session SESSION. Asks you to confirm on this terminal, and refuses when standard input is not a terminal or an agent runs the command.",
+                "effect": "grants",
+                "runs_on": "connected_computer"
+              }
+            }
+          ]
+        },
+        {
+          "name": "revoke",
+          "children": [
+            {
+              "name": "screen",
+              "leaf": {
+                "path": [
+                  "lease",
+                  "revoke",
+                  "screen"
+                ],
+                "usage": [
+                  "revoke screen"
+                ],
+                "forms": [
+                  {
+                    "tokens": [
+                      {
+                        "kind": "literal",
+                        "word": "revoke"
+                      },
+                      {
+                        "kind": "literal",
+                        "word": "screen"
+                      }
+                    ]
+                  }
+                ],
+                "summary": "End the screen grant; new screen leases are refused.",
+                "effect": "grants",
+                "runs_on": "connected_computer"
+              }
+            }
+          ]
+        }
+      ],
+      "options": [
+        {
+          "kind": "option",
+          "name": "for",
+          "value": "DURATION",
+          "open": true,
+          "optional": true,
+          "repeated": true
+        },
+        {
+          "kind": "option",
+          "name": "to",
+          "value": "SESSION",
+          "open": true,
+          "optional": true,
+          "repeated": true
+        },
+        {
+          "kind": "option",
+          "name": "amount",
+          "value": "A",
+          "open": true,
+          "optional": true,
+          "repeated": true
+        },
+        {
+          "kind": "option",
+          "name": "no-wait",
+          "optional": true,
+          "repeated": true
+        },
+        {
+          "kind": "option",
+          "name": "receipt",
+          "value": "PATH",
+          "open": true,
+          "optional": true,
+          "repeated": true
+        },
+        {
+          "kind": "option",
+          "name": "json",
           "optional": true,
           "repeated": true
         }

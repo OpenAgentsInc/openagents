@@ -43,6 +43,8 @@ openagents-chat-app = { path = "../openagents-chat-app" }
 atif = { path = "../atif" }
 coder-host = { path = "../coder-host" }
 coder-link = { path = "../coder-link" }
+# `openagents lease`: the host resource broker's leases.
+coder-lease = { path = "../coder-lease" }
 coder-reach = { path = "../coder-reach" }
 coder-service = { path = "../coder-service" }
 discovery = { path = "../discovery" }

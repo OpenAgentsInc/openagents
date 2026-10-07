@@ -14,6 +14,7 @@ and unfinished suite acceptance, use the [migration tracker](../migration-status
 | [repository-evidence](repository-evidence.md) | Repository source references |
 | [shell-loop](shell-loop.md) | The shell loop |
 | [subprocesses](subprocesses.md) | Subprocess supervision |
+| [Leases](leases.md) | The host resource broker: exclusive and counted leases, the quiet machine, the screen grant, and receipts |
 | [Privacy prompts](privacy-prompts.md) | Why nothing OpenAgents runs makes macOS ask for music, photos, or documents |
 | [terminal](terminal.md) | The terminal's lifecycle, lanes, and scrollback |
 | [traces](traces.md) | Traces |

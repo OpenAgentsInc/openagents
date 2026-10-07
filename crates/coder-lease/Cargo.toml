@@ -1,0 +1,21 @@
+[package]
+name = "coder-lease"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+publish.workspace = true
+description = "The host resource broker: a file-backed table of exclusive and counted leases that every agent on a machine shares."
+
+[dependencies]
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+
+# Unix: free disk space, physical memory, and the real home for the test guard.
+[target.'cfg(unix)'.dependencies]
+libc = "0.2"
+
+[dev-dependencies]
+tempfile = "3"
+
+[lints]
+workspace = true

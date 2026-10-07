@@ -43,6 +43,7 @@ mod kb;
 mod key;
 #[cfg(unix)]
 mod labor;
+mod lease;
 mod mcp;
 mod out;
 #[cfg(unix)]
@@ -131,6 +132,8 @@ Coder:
   task         Durable local task requests and explicit execution.
   issue        Claim, release, and pick up GitHub issues: the claim record
                every agent and Coder share.
+  lease        Run a command under a lease on a shared resource (build slots,
+               quiet, the screen, the GPU), and list holders and waiters.
   settings     What Coder may use on this computer: providers, ask first, and more.
   service      Install, update, and roll back the resident host service.
   background   The host's background rules, built in and from plugins turned on here.
@@ -240,8 +243,16 @@ fn main() -> ExitCode {
     #[cfg(windows)]
     home_from_profile();
     let mut arguments: Vec<String> = std::env::args().skip(1).collect();
-    let json = arguments.iter().any(|argument| argument == "--json");
+    // `--json` is this program's switch only before `--`; after it, the
+    // words belong to the command a group runs (`lease`, `boat run`).
+    let end = arguments
+        .iter()
+        .position(|argument| argument == "--")
+        .unwrap_or(arguments.len());
+    let json = arguments[..end].iter().any(|argument| argument == "--json");
+    let tail = arguments.split_off(end);
     arguments.retain(|argument| argument != "--json");
+    arguments.extend(tail);
     // `--openrouter-key`, `--vercel-key`, `--typesafe-key`, and the
     // `OPENAGENTS_*_KEY` variables: the person's own keys for this one
     // command, never stored (BYOK). An ambient `OPENROUTER_API_KEY` never
@@ -294,6 +305,7 @@ fn main() -> ExitCode {
         "pair" => runtime().block_on(pair(&rest)),
         "task" => runtime().block_on(coder::task::cli::run_with_json(&rest, json)),
         "issue" => issue::run(&output, &rest),
+        "lease" | "leases" => lease::run(&output, &rest),
         "chat" => chat::run(&output, &rest),
         "terminal" => screen::run(&output, &rest),
         "computer" | "computers" => computer::run(&output, &rest),

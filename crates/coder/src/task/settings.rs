@@ -397,6 +397,10 @@ pub struct Coder {
     /// new slot starts (#10384). `None` uses the default, 10 GB.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub slot_free_gb: Option<u64>,
+    /// How many build leases run at once (#10755); `OPENAGENTS_BUILD_LEASES`
+    /// overrides it. `None` uses the default, a slot for every 8 cores.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub build_leases: Option<u64>,
 }
 
 impl Default for Coder {
@@ -414,6 +418,7 @@ impl Default for Coder {
             codex: CodexRuns::default(),
             slot_cap_gb: None,
             slot_free_gb: None,
+            build_leases: None,
         }
     }
 }
@@ -626,7 +631,7 @@ impl Default for Settings {
 
 /// The flat keys [`Settings::get`] and [`Settings::set`] take.
 #[must_use]
-pub const fn keys() -> [&'static str; 13] {
+pub const fn keys() -> [&'static str; 14] {
     [
         "coder.providers",
         "coder.disabled",
@@ -640,6 +645,7 @@ pub const fn keys() -> [&'static str; 13] {
         "coder.codex",
         "coder.slot_cap_gb",
         "coder.slot_free_gb",
+        "coder.build_leases",
         "models.payer",
     ]
 }
@@ -741,6 +747,7 @@ impl Settings {
             "coder.codex" => json!(coder.codex.as_str()),
             "coder.slot_cap_gb" => json!(coder.slot_cap_gb),
             "coder.slot_free_gb" => json!(coder.slot_free_gb),
+            "coder.build_leases" => json!(coder.build_leases),
             "models.payer" => json!(self.models.payer.as_str()),
             _ => return Err(unknown(key)),
         })
@@ -865,6 +872,22 @@ impl Settings {
                     coder.slot_free_gb = gb;
                 }
             }
+            "coder.build_leases" => {
+                coder.build_leases = match value.trim() {
+                    "default" | "null" | "none" => None,
+                    number => Some(
+                        number
+                            .parse::<u64>()
+                            .ok()
+                            .filter(|count| *count >= 1)
+                            .ok_or_else(|| {
+                                format!(
+                                    "`{number}` is not a whole number of at least 1, or default"
+                                )
+                            })?,
+                    ),
+                };
+            }
             _ => return Err(unknown(key)),
         }
         coder.validate()?;
@@ -913,6 +936,7 @@ impl Settings {
             "coder.codex" => coder.codex = default.codex,
             "coder.slot_cap_gb" => coder.slot_cap_gb = default.slot_cap_gb,
             "coder.slot_free_gb" => coder.slot_free_gb = default.slot_free_gb,
+            "coder.build_leases" => coder.build_leases = default.build_leases,
             "models.payer" => self.models.payer = model_access::Mode::Ours,
             _ => return Err(unknown(key)),
         }
@@ -1440,6 +1464,13 @@ mod tests {
             .set("coder.slot_cap_gb", "default", dir.path())
             .unwrap();
         assert_eq!(settings.coder.slot_cap_gb, None);
+        settings.set("coder.build_leases", "3", dir.path()).unwrap();
+        assert_eq!(settings.get("coder.build_leases").unwrap(), json!(3));
+        assert!(settings.set("coder.build_leases", "0", dir.path()).is_err());
+        settings
+            .set("coder.build_leases", "default", dir.path())
+            .unwrap();
+        assert_eq!(settings.coder.build_leases, None);
     }
 
     /// The shadow baseline is off unless the person turns it on (#10209),
