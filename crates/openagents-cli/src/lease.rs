@@ -10,18 +10,20 @@ use std::time::Duration;
 #[cfg(test)]
 use coder::cli_route::tree::{Declared, Effect};
 use coder_lease::{
-    Blocked, Broker, Entry, Error, Grant, Holder, Request, Resource, State, Wait, grant_refusal,
+    Blocked, Broker, Error, Grant, Holder, Priority, Queued, Request, Resource, State, Wait,
+    grant_refusal,
 };
 use serde_json::{Value, json};
 
 use crate::Output;
 
 pub(crate) const USAGE: &str =
-    "usage: openagents lease RESOURCE [--amount N] [--no-wait] [--receipt PATH] -- CMD [ARGS...]
-       openagents lease build [--keep-target-dir] [--no-wait] [--receipt PATH] -- CMD [ARGS...]
-  list           Every lease held and waiting: resource, holder session, agent,
-                 process, command name, and how long, with the build count,
-                 memory budget, and disk floor the counted leases share.
+    "usage: openagents lease RESOURCE [--amount N] [--priority P] [--no-wait] [--receipt PATH] -- CMD [ARGS...]
+       openagents lease build [--keep-target-dir] [--priority P] [--no-wait] [--receipt PATH] -- CMD [ARGS...]
+  list           Every lease held and waiting: resource, each waiter's place in
+                 the queue, priority, holder session, agent, process, command
+                 name, and how long it has waited or been held, with the build
+                 count, memory budget, disk floor, and aging step.
   grant screen [--for DURATION] [--to SESSION]
                  Let agents take the real screen for DURATION (default 1h),
                  or only the session SESSION. Asks you to confirm on this
@@ -31,9 +33,13 @@ pub(crate) const USAGE: &str =
 Run CMD while holding a lease on RESOURCE, and exit with CMD's status.
 RESOURCE is build, memory, disk, quiet, screen, browser, gpu, unreal,
 blender, artifact/NAME, or issue/N. memory (GiB) and disk (GB) need
---amount. A request that can't be admitted waits its turn, first in, first
-out; --no-wait fails at once instead. quiet waits for running builds to
-finish, and new builds wait while quiet is held or queued. CMD gets
+--amount. A request that can't be admitted waits its turn in a priority
+queue: owner, push, normal (the default), then background, first in, first
+out within a priority. --priority P sets it; OPENAGENTS_LEASE_PRIORITY sets
+the default for a session. A waiter rises one level for each 20 minutes it
+waits (OPENAGENTS_LEASE_AGING_MINUTES; 0 turns aging off). --no-wait fails at
+once instead. quiet waits for running builds to finish, and new builds wait
+at every priority while quiet is held or queued. CMD gets
 OPENAGENTS_LEASE_ID, OPENAGENTS_LEASES, and OPENAGENTS_SESSION; a command
 already under a lease on RESOURCE runs without taking another. On release,
 a receipt lands in ~/.openagents/leases/receipts/ (OPENAGENTS_LEASE_ROOT
@@ -83,7 +89,7 @@ fn list(output: &Output, words: &[String]) -> u8 {
         Ok(broker) => broker,
         Err(code) => return code,
     };
-    let leases = match broker.list() {
+    let leases = match broker.queue() {
         Ok(leases) => leases,
         Err(error) => return output.fail("lease", &error.to_string()),
     };
@@ -95,6 +101,7 @@ fn list(output: &Output, words: &[String]) -> u8 {
     let value = json!({
         "root": broker.root().display().to_string(),
         "limits": broker.limits(),
+        "aging_minutes": broker.aging().map_or(0, |aging| aging.as_secs() / 60),
         "leases": leases,
         "screen_grant": grant.map(|grant| {
             let active = now < grant.expires_at_ms;
@@ -105,10 +112,19 @@ fn list(output: &Output, words: &[String]) -> u8 {
     0
 }
 
-fn render_list(broker: &Broker, leases: &[Entry], value: &Value, now: u64) -> String {
+fn render_list(broker: &Broker, leases: &[Queued], value: &Value, now: u64) -> String {
     let limits = broker.limits();
+    let aging = broker.aging().map_or_else(
+        || "waiters don't age".to_owned(),
+        |aging| {
+            format!(
+                "a waiter rises one priority level every {}",
+                span(u64::try_from(aging.as_millis()).unwrap_or(u64::MAX))
+            )
+        },
+    );
     let mut lines = vec![format!(
-        "Limits: {} build slots, {} GiB of memory, a {} GB disk floor.",
+        "Limits: {} build slots, {} GiB of memory, a {} GB disk floor; {aging}.",
         limits.build, limits.memory_gib, limits.disk_floor_gb
     )];
     let grant = &value["screen_grant"];
@@ -129,25 +145,36 @@ fn render_list(broker: &Broker, leases: &[Entry], value: &Value, now: u64) -> St
     }
     let mut rows = vec![
         [
-            "RESOURCE", "STATE", "AMOUNT", "SESSION", "AGENT", "PID", "COMMAND", "FOR",
+            "RESOURCE", "STATE", "PRIORITY", "AMOUNT", "SESSION", "AGENT", "PID", "COMMAND",
+            "WAITED", "HELD",
         ]
         .map(str::to_owned)
         .to_vec(),
     ];
-    for entry in leases {
-        let since = entry.acquired_at_ms.unwrap_or(entry.requested_at_ms);
+    for queued in leases {
+        let entry = &queued.entry;
+        let priority = if queued.effective_priority == entry.priority {
+            entry.priority.to_string()
+        } else {
+            format!("{} (aged to {})", entry.priority, queued.effective_priority)
+        };
         rows.push(vec![
             entry.resource.clone(),
-            match entry.state {
-                State::Held => "held".to_owned(),
-                State::Waiting => "waiting".to_owned(),
+            match (entry.state, queued.position) {
+                (State::Held, _) => "held".to_owned(),
+                (State::Waiting, Some(position)) => format!("waiting #{position}"),
+                (State::Waiting, None) => "waiting".to_owned(),
             },
+            priority,
             entry.amount.to_string(),
             entry.holder.session.clone(),
             entry.holder.agent.clone(),
             entry.holder.pid.to_string(),
             entry.holder.command.clone(),
-            span(now.saturating_sub(since)),
+            span(queued.wait_ms),
+            entry
+                .acquired_at_ms
+                .map_or_else(|| "-".to_owned(), |at| span(now.saturating_sub(at))),
         ]);
     }
     lines.push(crate::out::table(&rows));
@@ -274,6 +301,7 @@ fn revoke(output: &Output, words: &[String]) -> u8 {
 struct Hold {
     resource: Resource,
     amount: Option<u64>,
+    priority: Option<Priority>,
     no_wait: bool,
     receipt: Option<PathBuf>,
     keep_target_dir: bool,
@@ -292,7 +320,7 @@ fn parse_hold(words: &[String]) -> Result<Hold, String> {
     let args = crate::argv::parse_command(
         options,
         "lease",
-        &["amount", "receipt"],
+        &["amount", "receipt", "priority"],
         &["no-wait", "keep-target-dir"],
         1,
         1,
@@ -311,9 +339,11 @@ fn parse_hold(words: &[String]) -> Result<Hold, String> {
                 .ok_or_else(|| format!("--amount is `{text}`, not a whole number above 0"))?,
         ),
     };
+    let priority = args.option("priority").map(Priority::parse).transpose()?;
     Ok(Hold {
         resource,
         amount,
+        priority,
         no_wait: args.switch("no-wait"),
         receipt: args.option("receipt").map(PathBuf::from),
         keep_target_dir,
@@ -356,8 +386,17 @@ fn hold(output: &Output, words: &[String]) -> u8 {
         Ok(broker) => broker,
         Err(code) => return code,
     };
+    // --priority, else the session's OPENAGENTS_LEASE_PRIORITY, else normal.
+    let priority = match hold.priority {
+        Some(priority) => priority,
+        None => match Priority::from_env() {
+            Ok(priority) => priority.unwrap_or_default(),
+            Err(message) => return output.usage("lease", &message, USAGE),
+        },
+    };
     let holder = Holder::detect(&hold.command[0]);
     let mut request = Request::new(hold.resource.clone(), holder)
+        .priority(priority)
         .wait(if hold.no_wait {
             Wait::No
         } else {
@@ -633,6 +672,7 @@ mod tests {
             Hold {
                 resource: Resource::Disk,
                 amount: Some(40),
+                priority: None,
                 no_wait: true,
                 receipt: Some(PathBuf::from("out/r.json")),
                 keep_target_dir: false,
@@ -650,6 +690,15 @@ mod tests {
                 .resource,
             Resource::Issue(10755)
         );
+    }
+
+    #[test]
+    fn lease_takes_a_priority_by_name() {
+        let hold = parse_hold(&words(&["build", "--priority", "push", "--", "cargo"])).unwrap();
+        assert_eq!(hold.priority, Some(Priority::Push));
+        let hold = parse_hold(&words(&["gpu", "--", "true"])).unwrap();
+        assert_eq!(hold.priority, None);
+        assert!(parse_hold(&words(&["build", "--priority", "urgent", "--", "cargo"])).is_err());
     }
 
     #[test]

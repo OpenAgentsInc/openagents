@@ -74,6 +74,13 @@ impl Request {
         self
     }
 
+    /// Sets how urgent it is.
+    #[must_use]
+    pub fn priority(mut self, priority: Priority) -> Request {
+        self.priority = priority;
+        self
+    }
+
     /// Sets whether it waits.
     #[must_use]
     pub fn wait(mut self, wait: Wait) -> Request {
@@ -119,6 +126,7 @@ pub struct Broker {
     root: PathBuf,
     limits: Limits,
     poll: Duration,
+    aging: Option<Duration>,
     free_disk: FreeDisk,
 }
 
@@ -127,6 +135,7 @@ impl std::fmt::Debug for Broker {
         f.debug_struct("Broker")
             .field("root", &self.root)
             .field("limits", &self.limits)
+            .field("aging", &self.aging)
             .finish_non_exhaustive()
     }
 }
@@ -150,14 +159,18 @@ enum Decision {
 
 impl Broker {
     /// The broker at the root `$OPENAGENTS_LEASE_ROOT`, else
-    /// `~/.openagents/leases`, with this machine's limits.
+    /// `~/.openagents/leases`, with this machine's limits and the aging
+    /// step `OPENAGENTS_LEASE_AGING_MINUTES` chooses.
     ///
     /// # Errors
-    /// A sentence when the root or a limit can't be determined.
+    /// A sentence when the root, a limit, or the aging step can't be
+    /// determined.
     pub fn from_env() -> Result<Broker, Error> {
         let root = crate::root_from_env().map_err(Error::Invalid)?;
         let limits = Limits::from_env().map_err(Error::Invalid)?;
-        Ok(Broker::new(root, limits))
+        let aging =
+            crate::limits::aging_from(&|name| std::env::var(name).ok()).map_err(Error::Invalid)?;
+        Ok(Broker::new(root, limits).with_aging(aging))
     }
 
     /// The broker at `root` with `limits`.
@@ -168,6 +181,7 @@ impl Broker {
             root,
             limits,
             poll: POLL,
+            aging: Some(crate::DEFAULT_AGING),
             free_disk: Arc::new(crate::limits::free_disk),
         }
     }
@@ -177,6 +191,20 @@ impl Broker {
     pub fn with_poll(mut self, poll: Duration) -> Broker {
         self.poll = poll;
         self
+    }
+
+    /// Raises a waiter one priority level for each `aging` step it waits;
+    /// `None` turns aging off.
+    #[must_use]
+    pub fn with_aging(mut self, aging: Option<Duration>) -> Broker {
+        self.aging = aging;
+        self
+    }
+
+    /// The aging step, or `None` when aging is off.
+    #[must_use]
+    pub fn aging(&self) -> Option<Duration> {
+        self.aging
     }
 
     /// Reads free space through `free_disk` instead of the volume.
@@ -214,6 +242,18 @@ impl Broker {
         let mut leases = guard.table.leases.clone();
         leases.sort_by_key(|entry| entry.seq);
         Ok(leases)
+    }
+
+    /// Every live lease in queue order: by resource, the held leases first
+    /// in arrival order, then the waiters in the order they will be
+    /// admitted, each with its effective priority, its place in the queue,
+    /// and how long it has waited.
+    ///
+    /// # Errors
+    /// The table can't be read or written.
+    pub fn queue(&self) -> Result<Vec<Queued>, Error> {
+        let now = crate::now_ms();
+        Ok(queue_of(self.list()?, now, self.aging))
     }
 
     /// Takes a lease, waiting in the queue as the request says.
@@ -423,10 +463,16 @@ impl Broker {
             .filter(|entry| entry.state == State::Held)
             .cloned()
             .collect();
+        // The waiters ahead of this one: more urgent, counting aging, or
+        // as urgent and earlier.
+        let now = crate::now_ms();
+        let mine = me.queue_key(now, self.aging);
         let earlier: Vec<Entry> = leases
             .iter()
             .filter(same)
-            .filter(|entry| entry.state == State::Waiting && entry.seq < me.seq)
+            .filter(|entry| {
+                entry.state == State::Waiting && entry.queue_key(now, self.aging) < mine
+            })
             .cloned()
             .collect();
         let wait = |reason: String, by: Vec<Entry>| Decision::Wait(Blocked { reason, by });
@@ -443,7 +489,10 @@ impl Broker {
                     return wait(format!("{resource} is held"), held);
                 }
                 if !earlier.is_empty() {
-                    return wait(format!("earlier requests for {resource} go first"), earlier);
+                    return wait(
+                        format!("more urgent or earlier requests for {resource} go first"),
+                        earlier,
+                    );
                 }
                 if *resource == Resource::Quiet {
                     let builds: Vec<Entry> = leases
@@ -479,7 +528,10 @@ impl Broker {
                     }
                 }
                 if !earlier.is_empty() {
-                    return wait(format!("earlier requests for {resource} go first"), earlier);
+                    return wait(
+                        format!("more urgent or earlier requests for {resource} go first"),
+                        earlier,
+                    );
                 }
                 let used: u64 = held.iter().map(|entry| entry.amount).sum();
                 let unit = resource.unit();
@@ -569,6 +621,63 @@ impl Broker {
             .join("grants")
             .join(format!("{}.json", resource.replace('/', "_")))
     }
+}
+
+/// A lease as `openagents lease list` shows it: the table entry, the
+/// priority it competes at now, its place in its resource's queue, and how
+/// long it has waited.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize)]
+pub struct Queued {
+    /// The lease.
+    #[serde(flatten)]
+    pub entry: Entry,
+    /// The priority it competes at now: its own, raised by aging.
+    pub effective_priority: Priority,
+    /// Its place among its resource's waiters, from 1; `None` when held.
+    pub position: Option<usize>,
+    /// How long it waited, or has waited so far, in milliseconds.
+    pub wait_ms: u64,
+}
+
+/// `leases` in queue order at `now_ms`; see [`Broker::queue`].
+#[must_use]
+pub fn queue_of(mut leases: Vec<Entry>, now_ms: u64, aging: Option<Duration>) -> Vec<Queued> {
+    let rank = |entry: &Entry| match entry.state {
+        State::Held => (0, Priority::Owner, entry.seq),
+        State::Waiting => {
+            let (priority, seq) = entry.queue_key(now_ms, aging);
+            (1, priority, seq)
+        }
+    };
+    leases.sort_by(|a, b| (a.resource.as_str(), rank(a)).cmp(&(b.resource.as_str(), rank(b))));
+    let mut position = 0;
+    let mut resource = String::new();
+    leases
+        .into_iter()
+        .map(|entry| {
+            if entry.resource != resource {
+                resource.clone_from(&entry.resource);
+                position = 0;
+            }
+            let place = (entry.state == State::Waiting).then(|| {
+                position += 1;
+                position
+            });
+            let wait_ms = entry
+                .acquired_at_ms
+                .unwrap_or(now_ms)
+                .saturating_sub(entry.requested_at_ms);
+            Queued {
+                effective_priority: match entry.state {
+                    State::Held => entry.priority,
+                    State::Waiting => entry.effective_priority(now_ms, aging),
+                },
+                position: place,
+                wait_ms,
+                entry,
+            }
+        })
+        .collect()
 }
 
 fn no_grant(holder: &Holder) -> String {

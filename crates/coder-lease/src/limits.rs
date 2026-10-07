@@ -1,6 +1,7 @@
 //! The capacities counted leases share, and where each default comes from.
 
 use std::path::{Path, PathBuf};
+use std::time::Duration;
 
 use serde::Serialize;
 
@@ -13,6 +14,11 @@ pub const MEMORY_GIB_VAR: &str = "OPENAGENTS_MEMORY_LEASE_GIB";
 pub const SLOT_FREE_VAR: &str = "OPENAGENTS_SLOT_FREE_GB";
 /// The free-space floor when nothing sets it, in GB.
 pub const DEFAULT_FLOOR_GB: u64 = 10;
+/// Overrides the aging step, in minutes: a waiter grows one priority level
+/// more urgent for each step it waits. `0` turns aging off.
+pub const AGING_VAR: &str = "OPENAGENTS_LEASE_AGING_MINUTES";
+/// The aging step when nothing sets it.
+pub const DEFAULT_AGING: Duration = Duration::from_secs(20 * 60);
 /// Names another settings file than `~/.openagents/settings.json`.
 const SETTINGS_VAR: &str = "OPENAGENTS_SETTINGS";
 
@@ -105,6 +111,24 @@ impl Limits {
             crate::Resource::Memory => Some(self.memory_gib),
             _ => None,
         }
+    }
+}
+
+/// The aging step [`AGING_VAR`] chooses in `env`: [`DEFAULT_AGING`] when
+/// it's unset, and `None`, no aging, when it's `0`.
+///
+/// # Errors
+/// A sentence when the variable isn't a whole number of minutes.
+pub fn aging_from(env: &dyn Fn(&str) -> Option<String>) -> Result<Option<Duration>, String> {
+    match env(AGING_VAR).filter(|value| !value.trim().is_empty()) {
+        None => Ok(Some(DEFAULT_AGING)),
+        Some(value) => match value.trim().parse::<u64>() {
+            Ok(0) => Ok(None),
+            Ok(minutes) => Ok(Some(Duration::from_secs(minutes.saturating_mul(60)))),
+            Err(_) => Err(format!(
+                "{AGING_VAR} is `{value}`, not a whole number of minutes"
+            )),
+        },
     }
 }
 
@@ -226,6 +250,19 @@ mod tests {
                 .build,
             2
         );
+    }
+
+    #[test]
+    fn aging_defaults_to_twenty_minutes_and_zero_turns_it_off() {
+        assert_eq!(aging_from(&|_| None).unwrap(), Some(DEFAULT_AGING));
+        let env =
+            |value: &'static str| move |name: &str| (name == AGING_VAR).then(|| value.to_owned());
+        assert_eq!(
+            aging_from(&env("5")).unwrap(),
+            Some(Duration::from_secs(300))
+        );
+        assert_eq!(aging_from(&env("0")).unwrap(), None);
+        assert!(aging_from(&env("soon")).is_err());
     }
 
     #[test]

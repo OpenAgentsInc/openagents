@@ -16,7 +16,7 @@ The design and its reasons are in
 ## Run a command under a lease
 
 ```sh
-openagents lease RESOURCE [--amount N] [--no-wait] [--receipt PATH] -- CMD [ARGS...]
+openagents lease RESOURCE [--amount N] [--priority P] [--no-wait] [--receipt PATH] -- CMD [ARGS...]
 ```
 
 The command runs under `crates/supervise` in a process group of its own,
@@ -30,16 +30,47 @@ openagents lease memory --amount 24 -- ./train.sh
 openagents lease gpu --no-wait -- verse --capture spawn.png
 ```
 
-A request that can't be admitted waits, first in, first out per resource,
-and prints why it waits and who holds the resource. `--no-wait` fails at
-once with exit code `1` instead. Under `--json`, the receipt is printed as
+A request that can't be admitted waits in its resource's priority queue
+([Priorities](#priorities)) and prints why it waits and who holds the
+resource or goes first. `--no-wait` fails at once with exit code `1`
+instead. Under `--json`, the receipt is printed as
 one JSON document after the command's own output. `--json` after `--`
 belongs to the command.
+
+## Priorities
+
+A waiting request has one of four priorities, most urgent first:
+
+| Priority | For |
+| --- | --- |
+| `owner` | Work that blocks an owner request, such as a Coder task's builds. |
+| `push` | A check before a push, such as the GitHub issue flow's checks. |
+| `normal` | Everything else. It's the default. |
+| `background` | Speculative work that can wait. |
+
+- **Order.** Waiters are admitted most urgent first, then first in, first
+  out within a priority. A held lease is never taken back: priority decides
+  only who goes next.
+- **Choosing one.** `--priority P` sets it for one command.
+  `OPENAGENTS_LEASE_PRIORITY` sets the default for a session, and the
+  flag wins over it. Commands that `openagents lease` wraps inherit the
+  variable, and so do the `cargo` shim and the agents Coder delegates to.
+- **Aging.** A waiter rises one level for each 20 minutes it waits, so a
+  `background` request is `owner` after an hour and nothing starves behind
+  a stream of urgent builds. `OPENAGENTS_LEASE_AGING_MINUTES` sets the step;
+  `0` turns aging off. Within a level, the earlier arrival still goes first.
+- **The quiet machine.** A held or queued `quiet` lease stops new `build`
+  leases at every priority, `owner` included.
+- **The list.** `openagents lease list` shows each waiter's place in its
+  resource's queue (`waiting #1` goes next), its priority (with the level
+  aging raised it to, as in `background (aged to push)`), and how long it
+  has waited. `--json` adds `position`, `effective_priority`, and `wait_ms`
+  to each lease, and `aging_minutes` to the table.
 
 ## Leased builds
 
 ```sh
-openagents lease build [--keep-target-dir] [--no-wait] [--receipt PATH] -- CMD [ARGS...]
+openagents lease build [--keep-target-dir] [--priority P] [--no-wait] [--receipt PATH] -- CMD [ARGS...]
 ```
 
 `lease build` takes one counted `build` lease and one of Coder's target
@@ -73,24 +104,51 @@ openagents lease build -- cargo test -p coder-lease
 ### Coder's own builds
 
 A Coder task run that builds (full access or this computer's toolchains)
-holds a target slot for the whole run and, beside it, one counted `build`
-lease, so Coder's builds and every other agent's share one build count. The
-run waits up to 10 minutes in the broker's queue; a run not admitted in time
-runs without the lease and says so, as a run with no free slot builds
-outside the slots. The run's processes inherit the lease's variables, so a
-nested `openagents lease build` or `cargo` shim passes through. The checks
-of the GitHub issue flow do the same. The table is `leases` beside the task
-store, which for the default store is `~/.openagents/leases`;
-`OPENAGENTS_LEASE_ROOT` overrides it.
+holds a target slot for the whole run, as before, but no `build` lease of
+its own. Instead, its commands get the `cargo` shim first on `PATH`, so
+each heavy `cargo` command takes a counted `build` lease while it compiles
+and gives it back when it ends. A run spends most of its time waiting on a
+model, reading, and editing; a lease held for the whole run kept other
+agents' builds waiting through all of that, so the lease now covers only
+the compiling.
+
+- The run's commands, and the coding agent it runs, get the shim's
+  variables: `PATH` with the shims first, `OPENAGENTS_LEASE_BIN`,
+  `OPENAGENTS_LEASE_ROOT`, `OPENAGENTS_BUILD_LEASES`, and
+  `OPENAGENTS_LEASE_PRIORITY`. `CARGO_TARGET_DIR` stays the run's slot,
+  because the shim keeps it (`--keep-target-dir`). A run that found every
+  slot taken builds where the shim's `lease build` puts it: in a free slot
+  when it can take one, else in its own target directory.
+- Under this computer's toolchains, the run's boundary also lets it read the
+  shim directory and the `openagents` binary and write the lease root, and
+  nothing more. When the lease root lies inside the workspace, the task
+  store, or the Git directory, the run gets no shim and builds unleased.
+- Every task in the inbox answers a request from the owner or a device the
+  owner enrolled, so its builds wait at `owner`, unless the process that
+  runs the task sets `OPENAGENTS_LEASE_PRIORITY`.
+- The GitHub issue flow's checks run before it pushes, so they hold one
+  counted `build` lease at `push` (or `owner` when the flow runs at
+  `owner`) while they build, beside their target slot. They wait up to 10
+  minutes; checks not admitted in time run without the lease and say so.
+- The shims are on only in a process that turned them on: `coder`,
+  `microcoder`, the desktop app, and the `openagents` commands that run
+  Coder. Elsewhere, such as in a library's tests, a run's builds are
+  unleased.
+
+The table is `leases` beside the task store, which for the default store is
+`~/.openagents/leases`; `OPENAGENTS_LEASE_ROOT` overrides it.
 
 ### The cargo shim
 
 Coder puts a `cargo` shim first on the `PATH` of every agent it delegates
 to: Claude Code, Codex, and OpenCode delegations, the ACP agents (Devin,
 OpenCode, and Grok Build), and Microcoder's local commands. Studio seats and
-the workshop agent run as Coder tasks, so they get the task's build lease.
-The delegate takes leases without knowing about them, and its briefing says
-that heavy `cargo` commands may wait their turn.
+the workshop agent run as Coder tasks, so their commands get the shim the
+same way. The delegate takes leases without knowing about them, and its
+briefing says that heavy `cargo` commands may wait their turn. The
+delegate's builds wait at the delegation's priority: Coder passes its own
+`OPENAGENTS_LEASE_PRIORITY` on, and the shim's `openagents lease build`
+reads it.
 
 - The shim is a POSIX `sh` script that `coder_lease::shim` writes into
   `~/.openagents/bin/lease-shims/cargo` (`OPENAGENTS_LEASE_SHIMS` moves the
@@ -141,6 +199,8 @@ never be admitted.
 | Memory budget, GiB | `OPENAGENTS_MEMORY_LEASE_GIB` | None | 75 percent of physical memory |
 | Disk floor, GB | `OPENAGENTS_SLOT_FREE_GB` | `coder.slot_free_gb` | 10 |
 | Lease root | `OPENAGENTS_LEASE_ROOT` | None | `~/.openagents/leases` |
+| Default priority | `OPENAGENTS_LEASE_PRIORITY` | None | `normal` |
+| Aging step, minutes | `OPENAGENTS_LEASE_AGING_MINUTES` | None | 20; `0` turns aging off |
 
 A variable wins over the setting, and the setting wins over the default.
 Set a key with `openagents settings set coder.build_leases 3`. The disk
@@ -197,12 +257,14 @@ Each lease records its holder:
 - **Process:** the process that holds the lease.
 - **Command:** the file name of the command's first word. Arguments are
   never recorded, because they can carry secrets.
-- **Priority and times:** the priority (`normal` today; the priority queue
-  orders by it later), when the lease was requested, and when it was
-  admitted.
+- **Priority and times:** the priority it asked for, when the lease was
+  requested, and when it was admitted.
 
 `openagents lease list` shows every lease held and waiting with these
-fields, and `--json` prints the table, the limits, and the screen grant.
+fields, by resource, the held leases first and then the waiters in the
+order they'll be admitted, with each waiter's place, priority, and wait.
+`--json` prints the table, the limits, the aging step, and the screen
+grant.
 
 ## The wrapped command's environment
 
@@ -253,14 +315,20 @@ A table that can't be read is an error, never a reset.
 ## Tests
 
 `cargo test -p coder-lease` covers exclusive and counted admission, the
-disk floor, first-in-first-out waiters, a waiter that times out, the quiet
-rule with a real process that is never signaled, the screen grant, receipts,
-and nesting. `tests/dead_holder.rs` kills a holder and a waiter with
+disk floor, first-in-first-out waiters, priority order with first in, first
+out within a priority, aging, a queued `quiet` lease that holds builds at
+every priority, a waiter that times out, the quiet rule with a real process
+that is never signaled, the screen grant, receipts, and nesting. `tests/dead_holder.rs` kills a holder and a waiter with
 `SIGKILL` and shows the lease is free on the next request.
 `tests/shim.rs` runs the `cargo` shim with stand-in programs.
 `cargo test -p openagents-cli --test lease` runs the command end to end,
 including `lease build` in a slot, a second build that waits under a count
-of one, the refusal below the floor, and the shim over the real command.
+of one, waiters lined up by `--priority` and `OPENAGENTS_LEASE_PRIORITY`
+in `lease list`, the refusal below the floor, and the shim over the real
+command. In `crates/coder`, the `targets` tests map a task run to `owner`
+and the issue flow's checks to `push`, the issue flow's slot test checks
+the checks' lease, and an adapter test runs `cargo` through the shim inside
+a toolchains boundary.
 `cargo test -p coder-delegate --test lease_shims` shows a delegation gets
 the shim first on its `PATH`.
 Every test uses a temporary lease root; under `cfg(test)` the crate panics

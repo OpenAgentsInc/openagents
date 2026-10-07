@@ -203,6 +203,117 @@ fn a_second_build_waits_for_the_first_under_a_count_of_one() {
     );
 }
 
+/// Waiters line up by priority: `--priority` and the session's
+/// `OPENAGENTS_LEASE_PRIORITY`, and `lease list` shows each one's place,
+/// priority, and wait.
+#[test]
+fn waiters_line_up_by_priority_and_list_shows_their_places() {
+    let dir = tempfile::tempdir().unwrap();
+    let me = env!("CARGO_BIN_EXE_openagents");
+    let gate = dir.path().join("gate");
+    let spawn = |priority: Option<&str>, variable: Option<&str>, script: String| {
+        let mut command = Command::new(me);
+        command.args(["lease", "gpu"]);
+        if let Some(priority) = priority {
+            command.args(["--priority", priority]);
+        }
+        command
+            .args(["--", "sh", "-c", &script])
+            .env_clear()
+            .env("PATH", std::env::var_os("PATH").unwrap_or_default())
+            .env("HOME", dir.path())
+            .env("OPENAGENTS_LEASE_ROOT", dir.path().join("leases"))
+            .env(
+                "OPENAGENTS_SESSION",
+                priority.or(variable).unwrap_or("holder"),
+            )
+            .stdin(Stdio::null())
+            .stdout(Stdio::null())
+            .stderr(Stdio::null());
+        if let Some(variable) = variable {
+            command.env("OPENAGENTS_LEASE_PRIORITY", variable);
+        }
+        command.spawn().unwrap()
+    };
+    let list = || {
+        let listed = openagents(dir.path(), &["lease", "list", "--json"]);
+        assert!(listed.status.success(), "{listed:?}");
+        serde_json::from_slice::<Value>(&listed.stdout).unwrap()
+    };
+    let waiting = |count: usize| {
+        let started = std::time::Instant::now();
+        loop {
+            let value = list();
+            let leases = value["leases"].as_array().unwrap().clone();
+            if leases
+                .iter()
+                .filter(|lease| lease["state"] == "waiting")
+                .count()
+                >= count
+            {
+                return value;
+            }
+            assert!(started.elapsed().as_secs() < 30, "{value}");
+            std::thread::sleep(std::time::Duration::from_millis(50));
+        }
+    };
+    // The holder runs until the gate file appears.
+    let mut holder = spawn(
+        None,
+        None,
+        format!("while [ ! -e {} ]; do sleep 0.05; done", gate.display()),
+    );
+    let started = std::time::Instant::now();
+    while list()["leases"].as_array().unwrap().is_empty() {
+        assert!(started.elapsed().as_secs() < 30);
+        std::thread::sleep(std::time::Duration::from_millis(50));
+    }
+    let mut background = spawn(Some("background"), None, "true".to_owned());
+    waiting(1);
+    let mut push = spawn(None, Some("push"), "true".to_owned());
+    let value = waiting(2);
+    assert_eq!(value["aging_minutes"], 20);
+    let rows: Vec<(String, String, Value)> = value["leases"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|lease| {
+            (
+                lease["holder"]["session"].as_str().unwrap().to_owned(),
+                lease["priority"].as_str().unwrap().to_owned(),
+                lease["position"].clone(),
+            )
+        })
+        .collect();
+    assert_eq!(
+        rows,
+        [
+            ("holder".to_owned(), "normal".to_owned(), Value::Null),
+            ("push".to_owned(), "push".to_owned(), Value::from(1)),
+            (
+                "background".to_owned(),
+                "background".to_owned(),
+                Value::from(2)
+            ),
+        ]
+    );
+    assert!(value["leases"][2]["wait_ms"].as_u64().is_some());
+    // The table shows the same.
+    let text = openagents(dir.path(), &["lease", "list"]);
+    let text = String::from_utf8_lossy(&text.stdout);
+    assert!(text.contains("waiting #1"), "{text}");
+    assert!(text.contains("PRIORITY"), "{text}");
+    std::fs::write(&gate, b"").unwrap();
+    for child in [&mut holder, &mut background, &mut push] {
+        assert!(child.wait().unwrap().success());
+    }
+    let refused = openagents(
+        dir.path(),
+        &["lease", "gpu", "--priority", "urgent", "--", "true"],
+    );
+    assert_eq!(refused.status.code(), Some(64), "{refused:?}");
+}
+
 #[test]
 fn lease_build_refuses_below_the_floor_and_names_the_reclaim_command() {
     let dir = tempfile::tempdir().unwrap();

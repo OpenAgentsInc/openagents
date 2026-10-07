@@ -545,11 +545,6 @@ fn builds(access: Access) -> bool {
     matches!(access, Access::Full | Access::Toolchains)
 }
 
-/// How long a run with a slot waits in the broker's queue for its counted
-/// `build` lease before it runs without one, as a run with no free slot
-/// builds outside the slots.
-const BUILD_LEASE_WAIT: Duration = Duration::from_secs(600);
-
 /// What a run's command boundary is built from at admission.
 #[derive(Clone, Debug)]
 struct CommandPolicy {
@@ -562,6 +557,13 @@ struct CommandPolicy {
     /// The run's leased build slot, which a run under this computer's
     /// toolchains may write (#10293).
     target: Option<PathBuf>,
+    /// Where the run's leased builds reach (#10757): a run under this
+    /// computer's toolchains may read the `cargo` shim and the binary it
+    /// runs, and write the lease table. `None` for a run that doesn't
+    /// build or while the shims are off.
+    leases: Option<super::targets::RunLeases>,
+    /// The priority the run's builds wait at.
+    lease_priority: coder_lease::Priority,
 }
 
 impl CommandPolicy {
@@ -597,6 +599,12 @@ impl CommandPolicy {
         if let Some(target) = &self.target {
             spec = spec.writable(target);
         }
+        if let Some(leases) = self.lease_grants() {
+            spec = spec.readable(&leases.shims).writable(&leases.root);
+            if let Some(bin) = &leases.bin {
+                spec = spec.readable(bin);
+            }
+        }
         for read in reads {
             spec = spec.readable(read);
         }
@@ -604,6 +612,41 @@ impl CommandPolicy {
             spec = spec.offline();
         }
         spec
+    }
+}
+
+impl CommandPolicy {
+    /// The leases a run under this computer's toolchains may reach: only
+    /// when the lease root lies apart from the workspace, the task store,
+    /// and the Git directory, which the boundary writes or seals.
+    fn lease_grants(&self) -> Option<&super::targets::RunLeases> {
+        let leases = self.leases.as_ref()?;
+        if self.access != Access::Toolchains {
+            return None;
+        }
+        let root = leases.root.canonicalize().ok()?;
+        let apart = [&self.workspace, &self.store, &self.git_directory]
+            .into_iter()
+            .filter_map(|path| path.canonicalize().ok())
+            .all(|path| !root.starts_with(&path) && !path.starts_with(&root));
+        apart.then_some(leases)
+    }
+
+    /// The variables that send the run's heavy `cargo` commands through
+    /// the lease shim, over `path`; empty when the run's builds aren't
+    /// leased.
+    fn lease_environment(
+        &self,
+        path: Option<&std::ffi::OsStr>,
+    ) -> Vec<(std::ffi::OsString, std::ffi::OsString)> {
+        let leases = match self.access {
+            Access::Full => self.leases.as_ref(),
+            Access::Toolchains => self.lease_grants(),
+            Access::Boundary => None,
+        };
+        leases
+            .map(|leases| leases.environment(path, self.lease_priority))
+            .unwrap_or_default()
     }
 }
 
@@ -832,20 +875,16 @@ impl Host {
             }
             _ => None,
         };
-        // A run with a slot also holds one counted `build` lease from the
-        // host broker, so Coder's builds and every other agent's share one
-        // build count (#10756). Its processes inherit the lease, so a
-        // nested `openagents lease build` or `cargo` shim passes through.
-        let target = match target {
-            Some(mut lease) => Some(
-                tokio::task::spawn_blocking(move || {
-                    lease.hold_build("coder", BUILD_LEASE_WAIT);
-                    lease
-                })
-                .await
-                .map_err(|_| Error::InvalidCommand("the build lease request stopped"))?,
-            ),
-            None => None,
+        // The run's heavy `cargo` commands each take a counted `build`
+        // lease from the host broker through the shim first on its `PATH`,
+        // so Coder's builds and every other agent's share one build count
+        // (#10756). The run itself holds none: a long run that isn't
+        // compiling keeps no other agent's build waiting (#10757).
+        let leases = if builds(configuration.access) {
+            super::targets::RunLeases::for_store(&owner.dir)
+                .filter(|leases| std::fs::create_dir_all(&leases.root).is_ok())
+        } else {
+            None
         };
         // The owner's login environment, for a full-access run, is read in
         // the background: nothing before the first command needs it, and
@@ -902,6 +941,8 @@ impl Host {
             target: (configuration.access == Access::Toolchains)
                 .then(|| target.as_ref().map(|lease| lease.path.clone()))
                 .flatten(),
+            leases,
+            lease_priority: super::targets::task_priority(),
         };
         let boundary =
             if configuration.access != Access::Full || cfg!(unix) {
@@ -1313,12 +1354,16 @@ impl Host {
                         "CARGO_TARGET_DIR".into(),
                         target.path.as_os_str().to_owned(),
                     ));
-                    let leases = target.lease_environment();
-                    environment
-                        .variables
-                        .retain(|(key, _)| !leases.iter().any(|(name, _)| name == key));
-                    environment.variables.extend(leases);
                 }
+                let path = environment
+                    .variables
+                    .iter()
+                    .find(|(key, _)| key == "PATH")
+                    .map(|(_, value)| value.clone());
+                super::targets::apply_run_leases(
+                    &mut environment.variables,
+                    self.policy.lease_environment(path.as_deref()),
+                );
                 // Installs go to this run's own prefix (#10336).
                 if let Some(prefix) = &self.installs {
                     prefix.apply(&mut environment.variables);
@@ -1594,6 +1639,7 @@ impl Host {
             Some(toolchains) => command_path(boundary, toolchains),
             None => owner::SYSTEM_PATH.into(),
         };
+        let leases = self.policy.lease_environment(Some(&path));
         variables.push(("PATH".into(), path));
         for name in ["HOME", "TMPDIR", "TMP", "TEMP"] {
             variables.push((name.into(), scratch.into()));
@@ -1617,9 +1663,7 @@ impl Host {
         if let Some(target) = &self.policy.target {
             variables.push(("CARGO_TARGET_DIR".into(), target.as_os_str().to_owned()));
         }
-        if let Some(target) = &self.target {
-            variables.extend(target.lease_environment());
-        }
+        super::targets::apply_run_leases(&mut variables, leases);
         // A relative local remote resolves against the main checkout, not
         // this worktree (#10333).
         variables.extend(super::local::remote_override_environment(
@@ -2014,6 +2058,91 @@ mod slot_tests {
         assert!(!builds(Access::Boundary));
     }
 
+    /// A run under this computer's toolchains runs `cargo` through the
+    /// lease shim, which may run `openagents` and write the lease table,
+    /// at the run's priority (#10757). A stand-in `openagents` records the
+    /// lease it was asked for.
+    #[cfg(unix)]
+    #[test]
+    fn a_toolchains_run_leases_each_cargo_build_through_the_shim() {
+        use std::os::unix::fs::PermissionsExt as _;
+        let dir = tempfile::tempdir().unwrap();
+        let dir_path = dir.path().canonicalize().unwrap();
+        let workspace = dir_path.join("workspace");
+        let store = dir_path.join("tasks");
+        let git = dir_path.join("git");
+        let tools = dir_path.join("tools");
+        let root = dir_path.join("leases");
+        let shims = dir_path.join("bin/lease-shims");
+        for path in [&workspace, &store, &git, &tools, &root] {
+            std::fs::create_dir_all(path).unwrap();
+        }
+        coder_lease::shim::install(&shims).unwrap();
+        let script = |path: &Path, body: &str| {
+            std::fs::write(path, format!("#!/bin/sh\n{body}\n")).unwrap();
+            std::fs::set_permissions(path, std::fs::Permissions::from_mode(0o755)).unwrap();
+        };
+        script(&tools.join("cargo"), "echo \"real cargo $*\"");
+        let bin = dir_path.join("bin/openagents");
+        script(
+            &bin,
+            "echo \"$OPENAGENTS_LEASE_PRIORITY $1 $2 $3\" > \"$OPENAGENTS_LEASE_ROOT/asked\"; shift 4; OPENAGENTS_LEASES=build exec \"$@\"",
+        );
+        let policy = CommandPolicy {
+            workspace: workspace.clone(),
+            write_workspace: true,
+            program: PathBuf::from("/bin/sh"),
+            store,
+            git_directory: git,
+            access: Access::Toolchains,
+            target: None,
+            leases: Some(super::super::targets::RunLeases {
+                shims: shims.clone(),
+                bin: Some(bin),
+                root: root.clone(),
+            }),
+            lease_priority: coder_lease::Priority::Owner,
+        };
+        // Where the boundary cannot be built here, there is nothing to run;
+        // macOS always has `sandbox-exec`.
+        let boundary = match policy.spec(None, std::slice::from_ref(&tools)).build() {
+            Ok(boundary) => boundary,
+            Err(error) if cfg!(target_os = "macos") => panic!("{error:?}"),
+            Err(_) => return,
+        };
+        assert!(
+            boundary.writable().contains(&root),
+            "{:?}",
+            boundary.writable()
+        );
+        let path = std::ffi::OsString::from(format!("{}:/usr/bin:/bin", tools.display()));
+        let environment = policy.lease_environment(Some(&path));
+        let output = boundary
+            .command("/bin/sh", ["-c", "cargo test -p x; cargo fmt"])
+            .unwrap()
+            .env_clear()
+            .envs(environment)
+            .env("HOME", &workspace)
+            .current_dir(&workspace)
+            .output()
+            .unwrap();
+        assert!(output.status.success(), "{output:?}");
+        let stdout = String::from_utf8_lossy(&output.stdout);
+        assert!(stdout.contains("real cargo test -p x"), "{stdout}");
+        assert!(stdout.contains("real cargo fmt"), "{stdout}");
+        assert_eq!(
+            std::fs::read_to_string(root.join("asked")).unwrap().trim(),
+            "owner lease build --keep-target-dir"
+        );
+        // A full-access run gets the same variables without the boundary;
+        // a run under the bare boundary builds nothing and gets none.
+        let bare = CommandPolicy {
+            access: Access::Boundary,
+            ..policy
+        };
+        assert!(bare.lease_environment(Some(&path)).is_empty());
+    }
+
     #[test]
     fn a_toolchains_run_may_write_its_build_slot() {
         let dir = tempfile::tempdir().unwrap();
@@ -2032,6 +2161,8 @@ mod slot_tests {
             git_directory: git,
             access: Access::Toolchains,
             target: Some(slot.clone()),
+            leases: None,
+            lease_priority: coder_lease::Priority::Owner,
         };
         // Where the boundary cannot be built here, there is nothing to read.
         let Ok(boundary) = policy.spec(None, &[]).build() else {

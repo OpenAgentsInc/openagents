@@ -418,3 +418,190 @@ fn a_corrupt_table_is_an_error_not_a_reset() {
         Err(Error::Corrupt(_))
     ));
 }
+
+#[test]
+fn waiters_are_admitted_by_priority_then_first_in_first_out() {
+    let dir = tempfile::tempdir().unwrap();
+    // No aging, so the order is the priorities' alone.
+    let broker = broker(&dir).with_aging(None);
+    let held = broker.acquire(request(Resource::Gpu)).unwrap();
+    let (tx, rx) = mpsc::channel();
+    let mut threads = Vec::new();
+    let arrivals = [
+        ("background", Priority::Background),
+        ("normal-1", Priority::Normal),
+        ("push", Priority::Push),
+        ("owner", Priority::Owner),
+        ("normal-2", Priority::Normal),
+    ];
+    for (index, (name, priority)) in arrivals.into_iter().enumerate() {
+        let shared = broker.clone();
+        let tx = tx.clone();
+        threads.push(std::thread::spawn(move || {
+            let lease = shared
+                .acquire(Request::new(Resource::Gpu, holder(name)).priority(priority))
+                .unwrap();
+            tx.send(name).unwrap();
+            std::thread::sleep(Duration::from_millis(30));
+            lease.release(None).unwrap();
+        }));
+        waiting_for(&broker, "gpu", index + 1);
+    }
+    let queue: Vec<(String, Option<usize>)> = broker
+        .queue()
+        .unwrap()
+        .into_iter()
+        .map(|queued| (queued.entry.holder.session, queued.position))
+        .collect();
+    assert_eq!(
+        queue,
+        [
+            ("test:1".to_owned(), None),
+            ("owner".to_owned(), Some(1)),
+            ("push".to_owned(), Some(2)),
+            ("normal-1".to_owned(), Some(3)),
+            ("normal-2".to_owned(), Some(4)),
+            ("background".to_owned(), Some(5)),
+        ]
+    );
+    drop(held);
+    let order: Vec<&str> = (0..5).map(|_| rx.recv().unwrap()).collect();
+    assert_eq!(
+        order,
+        ["owner", "push", "normal-1", "normal-2", "background"]
+    );
+    for thread in threads {
+        thread.join().unwrap();
+    }
+}
+
+#[test]
+fn a_waiter_ages_one_level_per_step_until_it_goes_first() {
+    let entry = |priority, requested_at_ms| Entry {
+        id: "x".to_owned(),
+        resource: "build".to_owned(),
+        amount: 1,
+        state: State::Waiting,
+        holder: holder("x"),
+        priority,
+        seq: 1,
+        requested_at_ms,
+        acquired_at_ms: None,
+    };
+    let step = Some(Duration::from_secs(20 * 60));
+    let minutes = |m: u64| m * 60_000;
+    let waiter = entry(Priority::Background, 0);
+    assert_eq!(
+        waiter.effective_priority(minutes(19), step),
+        Priority::Background
+    );
+    assert_eq!(
+        waiter.effective_priority(minutes(20), step),
+        Priority::Normal
+    );
+    assert_eq!(waiter.effective_priority(minutes(40), step), Priority::Push);
+    assert_eq!(
+        waiter.effective_priority(minutes(60), step),
+        Priority::Owner
+    );
+    assert_eq!(
+        waiter.effective_priority(minutes(600), step),
+        Priority::Owner
+    );
+    assert_eq!(
+        waiter.effective_priority(minutes(600), None),
+        Priority::Background
+    );
+
+    // In the broker: a background waiter that has waited three steps goes
+    // ahead of an owner request that arrives after it.
+    let dir = tempfile::tempdir().unwrap();
+    let broker = broker(&dir).with_aging(Some(Duration::from_millis(150)));
+    let first = broker.acquire(request(Resource::Build)).unwrap();
+    let second = broker.acquire(request(Resource::Build)).unwrap();
+    let shared = broker.clone();
+    let background = std::thread::spawn(move || {
+        shared
+            .acquire(
+                Request::new(Resource::Build, holder("background")).priority(Priority::Background),
+            )
+            .unwrap()
+            .release(None)
+            .unwrap()
+    });
+    waiting_for(&broker, "build", 1);
+    let owner = || {
+        broker.acquire(
+            Request::new(Resource::Build, holder("owner"))
+                .priority(Priority::Owner)
+                .wait(Wait::No),
+        )
+    };
+    // Fresh, the background waiter is behind the owner request, which
+    // waits only for capacity.
+    let Err(Error::Busy(blocked)) = owner() else {
+        panic!("an owner build was admitted past the capacity");
+    };
+    assert!(blocked.reason.contains("are held"), "{}", blocked.reason);
+    std::thread::sleep(Duration::from_millis(600));
+    let Err(Error::Busy(blocked)) = owner() else {
+        panic!("an owner build was admitted past the capacity");
+    };
+    assert!(blocked.reason.contains("go first"), "{}", blocked.reason);
+    assert_eq!(blocked.by[0].holder.session, "background");
+    let queued = broker.queue().unwrap();
+    let waiter = queued.iter().find(|q| q.position == Some(1)).unwrap();
+    assert_eq!(waiter.entry.priority, Priority::Background);
+    assert_eq!(waiter.effective_priority, Priority::Owner);
+    assert!(waiter.wait_ms >= 600, "{}", waiter.wait_ms);
+    drop(first);
+    let receipt = background.join().unwrap();
+    assert_eq!(receipt.priority, Priority::Background);
+    drop(second);
+}
+
+#[test]
+fn a_queued_quiet_lease_holds_builds_at_every_priority() {
+    let dir = tempfile::tempdir().unwrap();
+    let broker = broker(&dir);
+    let build = broker.acquire(request(Resource::Build)).unwrap();
+    let shared = broker.clone();
+    let soak = std::thread::spawn(move || {
+        shared
+            .acquire(Request::new(Resource::Quiet, holder("soak")).priority(Priority::Background))
+            .unwrap()
+            .release(None)
+            .unwrap()
+    });
+    waiting_for(&broker, "quiet", 1);
+    for priority in Priority::ALL {
+        let Err(Error::Busy(blocked)) = broker.acquire(request(Resource::Build).priority(priority))
+        else {
+            panic!("a {priority} build was admitted while quiet was queued");
+        };
+        assert!(blocked.reason.contains("quiet"), "{}", blocked.reason);
+    }
+    drop(build);
+    soak.join().unwrap();
+    broker
+        .acquire(request(Resource::Build).priority(Priority::Background))
+        .unwrap();
+}
+
+#[test]
+fn priorities_parse_and_the_variable_names_one() {
+    for priority in Priority::ALL {
+        assert_eq!(Priority::parse(priority.as_str()).unwrap(), priority);
+    }
+    assert!(Priority::parse("urgent").is_err());
+    assert_eq!(Priority::from_var(None).unwrap(), None);
+    assert_eq!(Priority::from_var(Some(" ")).unwrap(), None);
+    assert_eq!(
+        Priority::from_var(Some("push")).unwrap(),
+        Some(Priority::Push)
+    );
+    assert!(Priority::from_var(Some("soon")).is_err());
+    assert_eq!(Priority::Push.most_urgent(Priority::Owner), Priority::Owner);
+    assert_eq!(Priority::Push.most_urgent(Priority::Normal), Priority::Push);
+    assert_eq!(Priority::Normal.raised(1), Priority::Push);
+}

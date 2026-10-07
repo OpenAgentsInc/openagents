@@ -5481,7 +5481,7 @@
           "lease"
         ],
         "usage": [
-          "openagents lease RESOURCE [--amount N] [--no-wait] [--receipt PATH] -- CMD [ARGS...]"
+          "openagents lease RESOURCE [--amount N] [--priority P] [--no-wait] [--receipt PATH] -- CMD [ARGS...]"
         ],
         "forms": [
           {
@@ -5494,6 +5494,13 @@
                 "kind": "option",
                 "name": "amount",
                 "value": "N",
+                "open": true,
+                "optional": true
+              },
+              {
+                "kind": "option",
+                "name": "priority",
+                "value": "P",
                 "open": true,
                 "optional": true
               },
@@ -5568,7 +5575,7 @@
                 ]
               }
             ],
-            "summary": "Every lease held and waiting: resource, holder session, agent, process, command name, and how long, with the build count, memory budget, and disk floor the counted leases share.",
+            "summary": "Every lease held and waiting: resource, each waiter's place in the queue, priority, holder session, agent, process, command name, and how long it has waited or been held, with the build count, memory budget, disk floor, and aging step.",
             "effect": "read_only",
             "runs_on": "connected_computer"
           }
@@ -5662,6 +5669,14 @@
         {
           "kind": "option",
           "name": "keep-target-dir",
+          "optional": true,
+          "repeated": true
+        },
+        {
+          "kind": "option",
+          "name": "priority",
+          "value": "P",
+          "open": true,
           "optional": true,
           "repeated": true
         },

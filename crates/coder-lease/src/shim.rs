@@ -199,8 +199,10 @@ pub fn path_with(dir: &Path, path: Option<&OsStr>) -> OsString {
 }
 
 /// The variables a delegate's environment sets so its `cargo` takes build
-/// leases: `PATH` as `path` with the shims first, and `OPENAGENTS_LEASE_BIN`
-/// when this process knows the binary. Empty until [`enable`].
+/// leases: `PATH` as `path` with the shims first, `OPENAGENTS_LEASE_BIN`
+/// when this process knows the binary, and this process's
+/// `OPENAGENTS_LEASE_PRIORITY` when set, so the delegate's builds wait at
+/// the delegation's priority. Empty until [`enable`].
 #[must_use]
 pub fn delegate_vars(path: Option<&OsStr>) -> Vec<(OsString, OsString)> {
     let Ok(enabled) = ENABLED.read() else {
@@ -213,7 +215,23 @@ pub fn delegate_vars(path: Option<&OsStr>) -> Vec<(OsString, OsString)> {
     if let Some(bin) = &enabled.bin {
         vars.push((OsString::from(BIN_VAR), bin.clone().into_os_string()));
     }
+    if let Ok(Some(priority)) = crate::Priority::from_env() {
+        vars.push((
+            OsString::from(crate::PRIORITY_VAR),
+            OsString::from(priority.as_str()),
+        ));
+    }
     vars
+}
+
+/// The `openagents` binary the shims run, when [`enable`] was given one
+/// that exists.
+#[must_use]
+pub fn enabled_bin() -> Option<PathBuf> {
+    ENABLED
+        .read()
+        .ok()
+        .and_then(|enabled| enabled.as_ref().and_then(|enabled| enabled.bin.clone()))
 }
 
 /// [`delegate_vars`] over this process's own `PATH`.

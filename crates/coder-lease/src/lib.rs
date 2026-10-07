@@ -18,8 +18,11 @@
 //! ones ([`Shape::Counted`]) admit holders while their amounts fit:
 //! `build` slots (default `max(1, cores / 8)`), a `memory` budget (75
 //! percent of physical memory, in GiB), and `disk` budgets above the
-//! free-space floor. A request that can't be admitted waits first in,
-//! first out per resource, or fails at once under [`Wait::No`].
+//! free-space floor. A request that can't be admitted waits in its
+//! resource's priority queue ([`Priority`]: `owner`, `push`, `normal`, then
+//! `background`, first in, first out within a priority, and one level more
+//! urgent for each aging step it waits), or fails at once under
+//! [`Wait::No`].
 //!
 //! The `quiet` lease is admitted only when no `build` lease is held, and
 //! while it is held or queued no new `build` lease is admitted. Running
@@ -41,7 +44,8 @@ pub mod shim;
 mod table;
 
 pub use broker::{
-    Blocked, Broker, LEASE_ID_VAR, LEASES_VAR, Lease, POLL, RECEIPT_SCHEMA, Receipt, Request, Wait,
+    Blocked, Broker, LEASE_ID_VAR, LEASES_VAR, Lease, POLL, Queued, RECEIPT_SCHEMA, Receipt,
+    Request, Wait, queue_of,
 };
 pub use grant::{DEFAULT_GRANT, GRANT_SCHEMA, Grant, parse_duration};
 pub use holder::{
@@ -49,11 +53,12 @@ pub use holder::{
     command_name, grant_refusal,
 };
 pub use limits::{
-    BUILD_LEASES_VAR, DEFAULT_FLOOR_GB, Limits, MEMORY_GIB_VAR, Machine, SLOT_FREE_VAR, free_disk,
+    AGING_VAR, BUILD_LEASES_VAR, DEFAULT_AGING, DEFAULT_FLOOR_GB, Limits, MEMORY_GIB_VAR, Machine,
+    SLOT_FREE_VAR, aging_from, free_disk,
 };
 pub use resource::{NAMED, Resource, Shape};
 pub use root::{ROOT_VAR, refuse_real_home, root_from, root_from_env};
-pub use table::{Entry, Priority, State, TABLE_SCHEMA};
+pub use table::{Entry, PRIORITY_VAR, Priority, State, TABLE_SCHEMA};
 
 use std::fmt;
 

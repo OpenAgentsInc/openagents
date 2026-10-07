@@ -174,12 +174,19 @@ impl Lease {
         }
     }
 
-    /// Takes one counted `build` lease from the host broker for this slot's
-    /// run, waiting up to `wait` in the broker's queue. A run that isn't
-    /// admitted in time, or whose broker can't be used, builds without it
-    /// and says so on standard error, as a run with no free slot builds
-    /// outside the slots.
-    pub fn hold_build(&mut self, command: &str, wait: std::time::Duration) {
+    /// Takes one counted `build` lease from the host broker at `priority`
+    /// for the work this slot holds, waiting up to `wait` in the broker's
+    /// queue. A build that isn't admitted in time, or whose broker can't be
+    /// used, runs without it and says so on standard error, as a build with
+    /// no free slot builds outside the slots. Hold it only around builds: a
+    /// task run doesn't, so a run that isn't compiling keeps no build lease
+    /// ([`run_lease_environment`]).
+    pub fn hold_build(
+        &mut self,
+        command: &str,
+        wait: std::time::Duration,
+        priority: coder_lease::Priority,
+    ) {
         if self.build.is_some() {
             return;
         }
@@ -189,7 +196,7 @@ impl Lease {
         match coder_lease::Limits::from_env() {
             Ok(limits) => {
                 let broker = coder_lease::Broker::new(root, limits);
-                self.build = build_lease(&broker, command, wait);
+                self.build = build_lease(&broker, command, wait, priority);
             }
             Err(error) => eprintln!("coder: building without a build lease: {error}"),
         }
@@ -218,6 +225,103 @@ impl Lease {
     pub fn holds_build(&self) -> bool {
         self.build.is_some()
     }
+
+    /// The priority of the build lease this slot holds.
+    #[must_use]
+    pub fn build_priority(&self) -> Option<coder_lease::Priority> {
+        self.build.as_ref().map(|lease| lease.entry().priority)
+    }
+}
+
+/// The priority a task run's builds wait at: `OPENAGENTS_LEASE_PRIORITY`
+/// of the process that runs it, else `owner`, because every task in the
+/// inbox answers a request from the owner or a device the owner enrolled.
+#[must_use]
+pub fn task_priority() -> coder_lease::Priority {
+    task_priority_from(coder_lease::Priority::from_env().ok().flatten())
+}
+
+/// [`task_priority`] given the process's `OPENAGENTS_LEASE_PRIORITY`.
+#[must_use]
+pub fn task_priority_from(inherited: Option<coder_lease::Priority>) -> coder_lease::Priority {
+    inherited.unwrap_or(coder_lease::Priority::Owner)
+}
+
+/// The priority the issue flow's checks before a push wait at: `push`,
+/// or the priority the flow already runs at when that is more urgent,
+/// such as `owner` for a flow that answers an owner request.
+#[must_use]
+pub fn check_priority(inherited: Option<coder_lease::Priority>) -> coder_lease::Priority {
+    inherited.map_or(coder_lease::Priority::Push, |priority| {
+        priority.most_urgent(coder_lease::Priority::Push)
+    })
+}
+
+/// Where a task run's leased builds reach: the `cargo` shim directory, the
+/// `openagents` binary the shim runs, and the lease root. A run under a
+/// boundary must be able to read the first two and write the third.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct RunLeases {
+    pub shims: PathBuf,
+    pub bin: Option<PathBuf>,
+    pub root: PathBuf,
+}
+
+impl RunLeases {
+    /// The shims this process turned on ([`enable_lease_shims`]) and the
+    /// lease root for `store`'s runs; `None` while the shims are off.
+    #[must_use]
+    pub fn for_store(store: &Path) -> Option<RunLeases> {
+        let shims = coder_lease::shim::enabled()?;
+        let root = std::env::var_os(coder_lease::ROOT_VAR)
+            .filter(|root| !root.is_empty())
+            .map_or_else(|| lease_root(store), PathBuf::from);
+        Some(RunLeases {
+            shims,
+            bin: coder_lease::shim::enabled_bin(),
+            root,
+        })
+    }
+
+    /// The variables a task run's processes get so their heavy `cargo`
+    /// commands each take a counted `build` lease while they compile, and
+    /// only then: `PATH` as `path` with the shims first, the binary the
+    /// shim runs, the lease root, the build count this process uses, and
+    /// `priority`.
+    #[must_use]
+    pub fn environment(
+        &self,
+        path: Option<&std::ffi::OsStr>,
+        priority: coder_lease::Priority,
+    ) -> Vec<(std::ffi::OsString, std::ffi::OsString)> {
+        let mut variables = vec![(
+            "PATH".into(),
+            coder_lease::shim::path_with(&self.shims, path),
+        )];
+        if let Some(bin) = &self.bin {
+            variables.push((coder_lease::shim::BIN_VAR.into(), bin.clone().into()));
+        }
+        variables.push((coder_lease::ROOT_VAR.into(), self.root.clone().into()));
+        // A run under the boundary has a scratch `HOME`, so the settings
+        // file isn't there to read; carry the count this process uses.
+        if let Ok(limits) = coder_lease::Limits::from_env() {
+            variables.push((
+                coder_lease::BUILD_LEASES_VAR.into(),
+                limits.build.to_string().into(),
+            ));
+        }
+        variables.push((coder_lease::PRIORITY_VAR.into(), priority.as_str().into()));
+        variables
+    }
+}
+
+/// Replaces `variables`' entries with `leases`' and adds the rest.
+pub fn apply_run_leases(
+    variables: &mut Vec<(std::ffi::OsString, std::ffi::OsString)>,
+    leases: Vec<(std::ffi::OsString, std::ffi::OsString)>,
+) {
+    variables.retain(|(key, _)| !leases.iter().any(|(name, _)| name == key));
+    variables.extend(leases);
 }
 
 /// Writes the lease shims (`coder_lease::shim`) and puts them first on the
@@ -250,8 +354,8 @@ pub fn lease_root(store: &Path) -> PathBuf {
     store.parent().unwrap_or(store).join("leases")
 }
 
-/// One counted `build` lease from `broker` for `command`, under the
-/// leases this process already runs under, waiting up to `wait`. `None`,
+/// One counted `build` lease from `broker` for `command` at `priority`,
+/// under the leases this process already runs under, waiting up to `wait`. `None`,
 /// said on standard error, when it isn't admitted in time or the broker
 /// fails.
 #[cfg(unix)]
@@ -259,11 +363,13 @@ pub fn build_lease(
     broker: &coder_lease::Broker,
     command: &str,
     wait: std::time::Duration,
+    priority: coder_lease::Priority,
 ) -> Option<coder_lease::Lease> {
     let request = coder_lease::Request::new(
         coder_lease::Resource::Build,
         coder_lease::Holder::detect(command),
     )
+    .priority(priority)
     .wait(coder_lease::Wait::Up(wait))
     .inherit_env();
     match broker.acquire(request) {
@@ -302,7 +408,13 @@ impl Lease {
     }
 
     /// No build lease is taken on this platform.
-    pub fn hold_build(&mut self, _command: &str, _wait: std::time::Duration) {}
+    pub fn hold_build(
+        &mut self,
+        _command: &str,
+        _wait: std::time::Duration,
+        _priority: coder_lease::Priority,
+    ) {
+    }
 
     /// Empty: no build lease is taken on this platform.
     #[must_use]
@@ -314,6 +426,12 @@ impl Lease {
     #[must_use]
     pub fn holds_build(&self) -> bool {
         false
+    }
+
+    /// None, on this platform.
+    #[must_use]
+    pub fn build_priority(&self) -> Option<coder_lease::Priority> {
+        None
     }
 }
 
@@ -668,15 +786,82 @@ mod tests {
         };
         let mut slot = Lease::acquire_with(&store, &common, policy, &Free(100)).unwrap();
         assert!(slot.lease_environment().is_empty());
-        slot.build = build_lease(&broker, "coder", std::time::Duration::from_secs(5));
+        slot.build = build_lease(
+            &broker,
+            "coder",
+            std::time::Duration::from_secs(5),
+            coder_lease::Priority::Push,
+        );
         assert!(slot.holds_build());
+        assert_eq!(slot.build_priority(), Some(coder_lease::Priority::Push));
         let env = slot.lease_environment();
         assert!(env.contains(&("OPENAGENTS_LEASES".into(), "build".into())));
+        let normal = coder_lease::Priority::Normal;
         // The one build lease is held, so a second request isn't admitted.
-        assert!(build_lease(&broker, "cargo", std::time::Duration::from_millis(50)).is_none());
+        // The request is built without this process's own leases, so the
+        // test holds when it runs under `openagents lease build`.
+        let second = broker.acquire(
+            coder_lease::Request::new(
+                coder_lease::Resource::Build,
+                coder_lease::Holder::detect("cargo"),
+            )
+            .wait(coder_lease::Wait::No),
+        );
+        assert!(matches!(second, Err(coder_lease::Error::Busy(_))));
         drop(slot);
         assert!(broker.list().unwrap().is_empty());
-        assert!(build_lease(&broker, "cargo", std::time::Duration::from_millis(50)).is_some());
+        assert!(
+            build_lease(
+                &broker,
+                "cargo",
+                std::time::Duration::from_millis(50),
+                normal
+            )
+            .is_some()
+        );
+    }
+
+    #[test]
+    fn task_runs_wait_as_owner_and_pre_push_checks_as_push() {
+        use coder_lease::Priority;
+        assert_eq!(task_priority_from(None), Priority::Owner);
+        assert_eq!(
+            task_priority_from(Some(Priority::Background)),
+            Priority::Background
+        );
+        assert_eq!(check_priority(None), Priority::Push);
+        assert_eq!(check_priority(Some(Priority::Normal)), Priority::Push);
+        assert_eq!(check_priority(Some(Priority::Background)), Priority::Push);
+        assert_eq!(check_priority(Some(Priority::Owner)), Priority::Owner);
+    }
+
+    #[test]
+    fn a_task_runs_cargo_through_the_shims_at_its_priority() {
+        let leases = RunLeases {
+            shims: PathBuf::from("/s/lease-shims"),
+            bin: Some(PathBuf::from("/s/openagents")),
+            root: PathBuf::from("/s/leases"),
+        };
+        let env = leases.environment(
+            Some(std::ffi::OsStr::new("/usr/bin:/bin")),
+            coder_lease::Priority::Owner,
+        );
+        let get = |name: &str| {
+            env.iter()
+                .find(|(key, _)| key == name)
+                .map(|(_, value)| value.to_string_lossy().into_owned())
+        };
+        assert_eq!(get("PATH").unwrap(), "/s/lease-shims:/usr/bin:/bin");
+        assert_eq!(get(coder_lease::shim::BIN_VAR).unwrap(), "/s/openagents");
+        assert_eq!(get(coder_lease::ROOT_VAR).unwrap(), "/s/leases");
+        assert_eq!(get(coder_lease::PRIORITY_VAR).unwrap(), "owner");
+        // No run-long lease: nothing names `build` as already held, so each
+        // heavy `cargo` takes its own.
+        assert!(get("OPENAGENTS_LEASES").is_none());
+        let mut variables = vec![("PATH".into(), "/old".into()), ("HOME".into(), "/h".into())];
+        apply_run_leases(&mut variables, env);
+        assert_eq!(variables.iter().filter(|(key, _)| key == "PATH").count(), 1);
+        assert!(variables.iter().any(|(key, _)| key == "HOME"));
     }
 
     #[cfg(unix)]

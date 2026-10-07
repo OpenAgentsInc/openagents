@@ -614,7 +614,7 @@ uses, and marks which are implemented and which are only specified.
   table under `~/.openagents/leases/` (`OPENAGENTS_LEASE_ROOT`) with
   exclusive (`quiet`, `screen`, `gpu`, ...) and counted (`build`, `memory`,
   `disk`) leases, `flock` holder locks that free a dead holder's lease, a
-  first-in-first-out queue, receipts, and the screen grant. No dependency on
+  priority queue with aging, receipts, and the screen grant. No dependency on
   `crates/coder`; `openagents lease` is its command. Read
   `docs/coder/runtime/leases.md` before changing admission or the quiet rule.
 - `crates/supervise` — the one subprocess supervisor `coder` and
