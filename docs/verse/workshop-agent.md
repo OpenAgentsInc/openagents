@@ -394,6 +394,7 @@ of Coder events, for an offline demo or capture.
 | Key | Host keychain or key store | The host only | Restarts; removed when you retire the agent |
 | Seat, tasks, decisions, reviews | Studio state and the task owner store | As today | Restarts; a running turn is recovered or marked failed by the task owner |
 | Memory | Host, `agents/NAME/memory.jsonl` | You and the agent's briefings | Restarts |
+| Engrams | Host, `agents/NAME/engrams/`: one NIP-AE `30174` event per head, signed by her key and encrypted to the owner key her attestation names, mirroring her memory, scores, `core`, and persona | The agent, and you with `openagents agent memory NAME engrams --owner-key FILE` | Restarts; reconciled with `memory.jsonl` and `scores.jsonl` when the host first opens her |
 | Journal | Host, `agents/NAME/journal.jsonl`, append-only | You | Restarts; never rewritten |
 | Standing jobs | Host, `agents/NAME/jobs.json` | You | Restarts; a job whose time passed while the host was down fires once, not once per missed slot |
 | Trajectories | `~/.openagents/traces/`, linked by task ID from the journal | You | Restarts |

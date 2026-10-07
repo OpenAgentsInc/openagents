@@ -10193,7 +10193,7 @@
                     ]
                   }
                 ],
-                "summary": "Her memory: projects, preferences, outcomes, and notes.",
+                "summary": "Her memory: projects, preferences, outcomes, notes, and insights.",
                 "effect": "read_only",
                 "runs_on": "connected_computer"
               }
@@ -10350,6 +10350,47 @@
                 "effect": "publishes",
                 "runs_on": "connected_computer"
               }
+            },
+            {
+              "name": "engrams",
+              "leaf": {
+                "path": [
+                  "agent",
+                  "memory",
+                  "engrams"
+                ],
+                "usage": [
+                  "memory NAME engrams [--owner-key FILE]"
+                ],
+                "forms": [
+                  {
+                    "tokens": [
+                      {
+                        "kind": "literal",
+                        "word": "memory"
+                      },
+                      {
+                        "kind": "positional",
+                        "name": "NAME"
+                      },
+                      {
+                        "kind": "literal",
+                        "word": "engrams"
+                      },
+                      {
+                        "kind": "option",
+                        "name": "owner-key",
+                        "value": "FILE",
+                        "open": true,
+                        "optional": true
+                      }
+                    ]
+                  }
+                ],
+                "summary": "Her engram heads: slug, time, and event ID. With the owner key in FILE, decrypt each one and print it too.",
+                "effect": "read_only",
+                "runs_on": "connected_computer"
+              }
             }
           ]
         },
@@ -10437,7 +10478,7 @@
                     ]
                   }
                 ],
-                "summary": "Add nightly-check, watch-issues, or keep-green, off.",
+                "summary": "Add nightly-check, watch-issues, keep-green, or reflect, off.",
                 "effect": "local_write",
                 "runs_on": "connected_computer"
               }

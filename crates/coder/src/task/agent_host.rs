@@ -241,6 +241,8 @@ pub struct Agents {
     reflector: super::agent_reflect::ServicesFactory,
     /// The agents reflecting now; a second occurrence waits for the first.
     reflecting: Arc<Mutex<BTreeSet<String>>>,
+    /// The agents whose engram stores this host has reconciled.
+    reconciled: Arc<Mutex<BTreeSet<String>>>,
 }
 
 impl std::fmt::Debug for Agents {
@@ -304,6 +306,7 @@ impl Agents {
             briefing: super::agent_recall::Briefing::default_scored(),
             reflector: super::agent_reflect::default_factory(),
             reflecting: Arc::new(Mutex::new(BTreeSet::new())),
+            reconciled: Arc::default(),
         }
     }
 
@@ -377,12 +380,38 @@ impl Agents {
         let now = (self.clock)();
         let _ = store.migrate(now);
         match store.load() {
-            Ok(Some(record)) => Ok((store, record)),
+            Ok(Some(record)) => {
+                self.reconcile_once(&store, now);
+                Ok((store, record))
+            }
             Ok(None) => Err(coder_host::tasks::refuse(
                 Code::Forbidden,
                 format!("{name} isn't set up on this computer yet."),
             )),
             Err(why) => Err(coder_host::tasks::refuse(Code::Unavailable, why)),
+        }
+    }
+
+    /// Reconciles `store`'s engram store with its working memory the
+    /// first time this host opens the agent (`agent_engrams::reconcile`).
+    /// A store that is off or unreadable is journaled once there and tried
+    /// again on the next open, so a key attested later is picked up.
+    fn reconcile_once(&self, store: &Store, now: u64) {
+        let done = |s: &Self| {
+            s.reconciled
+                .lock()
+                .unwrap_or_else(std::sync::PoisonError::into_inner)
+                .contains(store.name())
+        };
+        if done(self) {
+            return;
+        }
+        let memory = Memory::new(store.clone(), self.screen.clone());
+        if super::agent_engrams::reconcile(&memory, now).is_ok() {
+            self.reconciled
+                .lock()
+                .unwrap_or_else(std::sync::PoisonError::into_inner)
+                .insert(store.name().to_string());
         }
     }
 
@@ -558,6 +587,7 @@ impl Agents {
                 "the owner set her up at her workstation",
             ));
         }
+        self.reconcile_once(&store, now);
         let attested_until = match (&record.pubkey, &record.attestation) {
             (Some(pubkey), Some(attestation)) => {
                 agent::verify_attestation(pubkey, attestation, now).ok()

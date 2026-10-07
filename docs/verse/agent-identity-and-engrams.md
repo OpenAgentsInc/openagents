@@ -201,7 +201,9 @@ forgot, never what.
 plus `index.json` mapping `d` to slug, `created_at`, and event id. The index
 is a cache: rebuilding it from the events is always possible with her key.
 The files are ciphertext, so a copy of the directory reveals nothing without
-her key or the owner's.
+her key or the owner's. The owner key is the `owner` of the NIP-OA
+attestation in her record; an agent without a key or an attestation keeps no
+engrams, and the host journals that once.
 
 **Layering with the memory stream.** `memory.jsonl` and `scores.jsonl` stay
 the working files that `agent_memory` and `agent_recall` read, so the

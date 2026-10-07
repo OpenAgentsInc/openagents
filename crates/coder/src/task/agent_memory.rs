@@ -130,6 +130,22 @@ impl Memory {
         &self.store
     }
 
+    /// The secret screen every write passes.
+    #[must_use]
+    pub fn screen(&self) -> &secret_screen::Screen {
+        &self.screen
+    }
+
+    /// Replaces the working file with `entries`, without the engram
+    /// write-through: `agent_engrams::reconcile` uses it to take engram
+    /// heads that are newer than their rows.
+    ///
+    /// # Errors
+    /// When the memory cannot be written.
+    pub fn replace_entries(&self, entries: &[MemoryEntry]) -> Result<(), String> {
+        self.write(entries)
+    }
+
     /// Every entry, oldest first. A line that does not read is skipped.
     ///
     /// # Errors
@@ -205,6 +221,7 @@ impl Memory {
         {
             return Ok(same.id);
         }
+        let before = entries.clone();
         let id = entries.iter().map(|e| e.id).max().unwrap_or(0) + 1;
         let state = if kind == MemoryKind::Preference && author != Author::Owner {
             MemoryState::Candidate
@@ -231,6 +248,7 @@ impl Memory {
             entries.remove(oldest);
         }
         self.write(&entries)?;
+        super::agent_engrams::write_through(self, &before, &entries, now);
         self.store.append(&Entry::new(
             now,
             Kind::Memory,
@@ -254,6 +272,7 @@ impl Memory {
     /// No such candidate, or the memory cannot be written.
     pub fn decide(&self, id: u64, accept: bool, now: u64) -> Result<(), String> {
         let mut entries = self.entries()?;
+        let before = entries.clone();
         let entry = entries
             .iter_mut()
             .find(|e| e.id == id)
@@ -267,6 +286,7 @@ impl Memory {
             MemoryState::Rejected
         };
         self.write(&entries)?;
+        super::agent_engrams::write_through(self, &before, &entries, now);
         self.store.append(&Entry::new(
             now,
             Kind::Memory,
@@ -283,12 +303,13 @@ impl Memory {
     /// No such entry, or the memory cannot be written.
     pub fn forget(&self, id: u64, now: u64) -> Result<(), String> {
         let mut entries = self.entries()?;
-        let before = entries.len();
+        let before = entries.clone();
         entries.retain(|e| e.id != id);
-        if entries.len() == before {
+        if entries.len() == before.len() {
             return Err(format!("no memory entry {id}"));
         }
         self.write(&entries)?;
+        super::agent_engrams::write_through(self, &before, &entries, now);
         self.store.append(&Entry::new(
             now,
             Kind::Memory,

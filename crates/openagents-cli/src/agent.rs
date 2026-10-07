@@ -59,6 +59,9 @@ pub const USAGE: &str = "usage: openagents agent COMMAND [--root DIR] [--control
                Accept a preference she proposed, so her briefings carry it.
   memory NAME reject ID
                Reject a preference she proposed.
+  memory NAME engrams [--owner-key FILE]
+               Her engram heads: slug, time, and event ID. With the owner
+               key in FILE, decrypt each one and print it too.
   jobs NAME list
                Her standing jobs, all off until you turn one on.
   jobs NAME add TEMPLATE [--repository OWNER/REPO] [--label L]
@@ -100,6 +103,7 @@ pub(crate) const EFFECTS: &[Declared] = &[
     Declared::computer("memory forget", Effect::Publishes),
     Declared::computer("memory accept", Effect::Publishes),
     Declared::computer("memory reject", Effect::Publishes),
+    Declared::computer("memory engrams", Effect::ReadOnly),
     Declared::computer("jobs list", Effect::ReadOnly),
     Declared::computer("jobs add", Effect::LocalWrite),
     Declared::computer("jobs on", Effect::LocalWrite),
@@ -654,6 +658,7 @@ fn memory(
 ) -> Result<(), Fail> {
     let edit = match rest {
         [] | ["list"] => None,
+        ["engrams"] => return engrams(output, root, name, args),
         ["note", text @ ..] if !text.is_empty() => Some(wire::MemoryEdit::Note {
             text: text.join(" "),
         }),
@@ -711,6 +716,88 @@ fn memory(
             .map(|m| format!("{:>4} {:<10} {:<9} {}", m.id, m.kind, m.state, m.text))
             .collect::<Vec<_>>()
             .join("\n")
+    });
+    Ok(())
+}
+
+/// One engram head as the command prints it.
+fn head_json(engram: &nostr::engram::Engram, with_body: bool) -> Value {
+    let mut head = json!({
+        "slug": engram.slug().as_str(),
+        "created_at": engram.created_at,
+        "id": engram.id,
+    });
+    if with_body {
+        head["body"] = serde_json::from_str::<Value>(&engram.body.to_json()).unwrap_or(Value::Null);
+    }
+    head
+}
+
+/// Her engram heads, read with her key on this computer, or decrypted
+/// with the owner key when `--owner-key FILE` names it.
+fn engrams(output: &Output, root: &Path, name: &str, args: &Args) -> Result<(), Fail> {
+    use coder::task::agent_engrams::{self, EngramStore, Opened};
+    let (store, _) = store(root, name)?;
+    let (heads, problems, decrypted) = if let Some(owner) = owner_key(args)? {
+        let view = agent_engrams::owner_read(&store, &owner).map_err(Fail::Failed)?;
+        let heads: Vec<Value> = view.heads.iter().map(|h| head_json(h, true)).collect();
+        (heads, view.problems, true)
+    } else {
+        match EngramStore::read(&store, &secret_screen_shapes()) {
+            Opened::Ready(engrams) => (
+                engrams
+                    .heads()
+                    .into_iter()
+                    .filter(|h| !h.is_tombstone())
+                    .map(|h| head_json(h, false))
+                    .collect(),
+                Vec::new(),
+                false,
+            ),
+            Opened::Skipped(why) => {
+                let said = format!("{name} keeps no engrams: {why}.");
+                output.emit(&json!({"heads": [], "skipped": why}), |_| said.clone());
+                return Ok(());
+            }
+            Opened::Unreadable(why) => {
+                return Err(Fail::Failed(format!(
+                    "{name}'s engram store cannot be read, so nothing from it is carried: {why}"
+                )));
+            }
+        }
+    };
+    let value = json!({"heads": heads, "problems": problems, "decrypted": decrypted});
+    output.emit(&value, |_| {
+        let mut lines: Vec<String> = heads
+            .iter()
+            .map(|h| {
+                let mut line = format!(
+                    "{:<28} {:>10} {}",
+                    h["slug"].as_str().unwrap_or(""),
+                    h["created_at"],
+                    h["id"].as_str().unwrap_or("")
+                );
+                if let Some(body) = h.get("body") {
+                    let text = body
+                        .get("profile")
+                        .or_else(|| body.get("value"))
+                        .and_then(Value::as_str)
+                        .unwrap_or("(forgotten)");
+                    line.push_str(&format!(
+                        "\n    {}",
+                        agent::ascii(text).replace('\n', "\n    ")
+                    ));
+                }
+                line
+            })
+            .collect();
+        if lines.is_empty() {
+            lines.push(format!("{name} has no engrams yet."));
+        }
+        for problem in &problems {
+            lines.push(format!("not read: {problem}"));
+        }
+        lines.join("\n")
     });
     Ok(())
 }
@@ -877,6 +964,47 @@ mod tests {
                 .iter()
                 .any(|e| e.text.starts_with("retired"))
         );
+    }
+
+    #[test]
+    fn engrams_list_with_her_key_and_decrypt_with_the_owner_key() {
+        let dir = tempfile::tempdir().unwrap();
+        let root = dir.path().join("host");
+        let owner = dir.path().join("owner.key");
+        std::fs::write(&owner, "07".repeat(32)).unwrap();
+        let output = Output::new(true);
+        let now = 1_791_158_400;
+        let made = args(&[
+            "new",
+            "alice",
+            "--owner-key",
+            owner.to_str().unwrap(),
+            "--workspace",
+            dir.path().to_str().unwrap(),
+        ]);
+        assert!(new(&output, &root, "alice", &made, now).is_ok());
+        let (store, _) = store(&root, "alice").ok().unwrap();
+        let memory = coder::task::agent_memory::Memory::new(store.clone(), secret_screen_shapes());
+        memory
+            .add(
+                coder::task::agent_memory::MemoryKind::Note,
+                coder::task::agent_memory::Author::Owner,
+                "the owner reads this",
+                vec![],
+                now,
+            )
+            .unwrap();
+        assert!(engrams(&output, &root, "alice", &args(&[])).is_ok());
+        let view = coder::task::agent_engrams::owner_read(
+            &store,
+            &agent::parse_secret(&"07".repeat(32)).unwrap(),
+        )
+        .unwrap();
+        assert_eq!(view.heads.len(), 3, "core, persona, and the note");
+        let with_owner = args(&["--owner-key", owner.to_str().unwrap()]);
+        assert!(engrams(&output, &root, "alice", &with_owner).is_ok());
+        let missing = args(&["--owner-key", dir.path().join("none").to_str().unwrap()]);
+        assert!(engrams(&output, &root, "alice", &missing).is_err());
     }
 
     #[test]

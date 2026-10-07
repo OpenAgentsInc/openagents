@@ -619,7 +619,7 @@ impl Store {
     }
 }
 
-fn private_dir(dir: &Path) -> Result<(), String> {
+pub(crate) fn private_dir(dir: &Path) -> Result<(), String> {
     let mut builder = std::fs::DirBuilder::new();
     builder.recursive(true);
     #[cfg(unix)]
@@ -632,7 +632,7 @@ fn private_dir(dir: &Path) -> Result<(), String> {
         .map_err(|e| format!("cannot create {}: {e}", dir.display()))
 }
 
-fn write_private(path: &Path, body: &[u8]) -> Result<(), String> {
+pub(crate) fn write_private(path: &Path, body: &[u8]) -> Result<(), String> {
     let mut options = std::fs::OpenOptions::new();
     options.create(true).write(true).truncate(true);
     #[cfg(unix)]

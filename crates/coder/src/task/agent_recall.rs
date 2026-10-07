@@ -859,6 +859,7 @@ impl Memory {
         );
         // A briefing still goes out when the sidecar can't be written.
         let _ = sidecar.append(&recall.scored);
+        super::agent_engrams::write_through_scores(self, &recall.scored, now);
         Ok(recall)
     }
 }
