@@ -11369,7 +11369,7 @@
               "show"
             ],
             "usage": [
-              "show NAME"
+              "show NAME [--owner-key FILE]"
             ],
             "forms": [
               {
@@ -11381,11 +11381,18 @@
                   {
                     "kind": "positional",
                     "name": "NAME"
+                  },
+                  {
+                    "kind": "option",
+                    "name": "owner-key",
+                    "value": "FILE",
+                    "open": true,
+                    "optional": true
                   }
                 ]
               }
             ],
-            "summary": "One agent in full: key, attestation, transcript, jobs.",
+            "summary": "One agent in full: key, attestation, transcript, jobs, and spend today and in all against her budget, from her NIP-AM records, decrypted with the owner key in FILE when given.",
             "effect": "read_only",
             "runs_on": "connected_computer"
           }

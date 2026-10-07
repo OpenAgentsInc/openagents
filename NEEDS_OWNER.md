@@ -22,6 +22,17 @@ past about 30 degrees while moving forward to dive, and check that the
 breath bar shows over the hotbar under water and that you float back up when
 you let go. Note the frame rate with the pond in view.
 
+## Alice's spend records on a live request (#10805)
+
+Spend records, budgets, owner reads, and relay publishing are tested with
+scratch homes, file keys, recorded Coder turns, and a fake relay; no live
+model call or relay write was made. On a scratch host with a funded model
+provider (model spend only; she never pays anyone), ask Alice one terminal
+request, then run `openagents agent show alice --owner-key FILE` and check
+that `spend today` counts her plan, Coder's turn, and her report. With
+relay sync on, check that `relay.openagents.com` serves her `kind:44200`
+events only to the owner's key. Archive the Coder task the request makes.
+
 ## Water on a phone (#10774)
 
 The shared water shader (`docs/verse/water.md`, W2) validates and translates

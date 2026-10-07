@@ -35,7 +35,10 @@ pub const USAGE: &str = "usage: openagents agent COMMAND [--root DIR] [--control
                Renew the owner's attestation of her key before it expires,
                and sign her profile again.
   list        Every agent: state, activity, last report, service record.
-  show NAME    One agent in full: key, attestation, transcript, jobs.
+  show NAME [--owner-key FILE]
+               One agent in full: key, attestation, transcript, jobs, and
+               spend today and in all against her budget, from her NIP-AM
+               records, decrypted with the owner key in FILE when given.
   ask NAME TEXT... [--mode MODE] [--workspace LABEL] [--from DIR] [--wait]
                Hand her a request; MODE is auto, task, or terminal, DIR is
                where you asked from, and --wait follows it to her report.
@@ -519,10 +522,12 @@ fn show(output: &Output, root: &Path, name: &str, args: &Args, now: u64) -> Resu
     let (agents, live) = agents(root, args)?;
     let view = agents.agents.into_iter().find(|a| a.name == name);
     let jobs = Jobs::new(store.clone()).rows().unwrap_or_default();
+    let spend = spend_json(&store, &record, args, now)?;
     let value = json!({
         "record": record_json(&record, now),
         "view": view,
         "jobs": jobs,
+        "spend": spend,
         "host": live,
     });
     output.emit(&value, |v| {
@@ -572,9 +577,69 @@ fn show(output: &Output, root: &Path, name: &str, args: &Args, now: u64) -> Resu
                 job.last.as_deref().unwrap_or("")
             ));
         }
+        text.extend(spend_lines(&v["spend"]));
         text.join("\n")
     });
     Ok(())
+}
+
+/// Her spend from her NIP-AM records: decrypted with the owner key when
+/// `--owner-key` names one, else with her own key here.
+fn spend_json(store: &Store, record: &Record, args: &Args, now: u64) -> Result<Value, Fail> {
+    use coder::task::agent_spend::{self, Tally};
+    let tally = |t: Tally| {
+        json!({"records": t.records, "usd": t.usd, "unpriced": t.unpriced, "tokens": t.tokens,
+               "words": t.words()})
+    };
+    let budget = match agent_spend::Budget::load(store) {
+        Ok(budget) => json!(budget),
+        Err(why) => json!({"error": why}),
+    };
+    let (read, by) = match owner_key(args)? {
+        Some(owner) => (agent_spend::owner_read(store, &owner), "owner key"),
+        None => (agent_spend::agent_read(store, record), "her key"),
+    };
+    Ok(match read {
+        Ok(view) => json!({
+            "read_with": by,
+            "today": tally(view.tally(agent_spend::day_of(now))),
+            "total": tally(view.tally(0)),
+            "problems": view.problems,
+            "budget": budget,
+        }),
+        Err(why) => json!({"error": why, "budget": budget}),
+    })
+}
+
+fn spend_lines(spend: &Value) -> Vec<String> {
+    let budget = &spend["budget"];
+    let mut lines = vec![match budget["error"].as_str() {
+        Some(why) => format!("budget: unreadable, so she starts nothing ({why})"),
+        None => format!(
+            "budget: ${:.2} and {} tokens a day, ${:.2} and {} tokens a request",
+            budget["daily_usd"].as_f64().unwrap_or_default(),
+            budget["daily_tokens"],
+            budget["request_usd"].as_f64().unwrap_or_default(),
+            budget["request_tokens"],
+        ),
+    }];
+    if let Some(why) = spend["error"].as_str() {
+        lines.push(format!("spend: not read ({why})"));
+        return lines;
+    }
+    for (label, key) in [("today", "today"), ("in all", "total")] {
+        lines.push(format!(
+            "spend {label}: {}",
+            spend[key]["words"].as_str().unwrap_or_default()
+        ));
+    }
+    for problem in spend["problems"].as_array().into_iter().flatten() {
+        lines.push(format!(
+            "spend record not read: {}",
+            problem.as_str().unwrap_or_default()
+        ));
+    }
+    lines
 }
 
 fn ask(output: &Output, name: &str, text: &str, args: &Args) -> Result<(), Fail> {
@@ -1702,6 +1767,54 @@ mod tests {
         assert!(engrams(&output, &root, "alice", &with_owner).is_ok());
         let missing = args(&["--owner-key", dir.path().join("none").to_str().unwrap()]);
         assert!(engrams(&output, &root, "alice", &missing).is_err());
+    }
+
+    #[test]
+    fn show_reads_her_spend_with_her_key_or_the_owner_key() {
+        use coder::task::agent_spend::{self, Call, Counters, Meter};
+        let dir = tempfile::tempdir().unwrap();
+        let root = dir.path().join("host");
+        let owner = dir.path().join("owner.key");
+        std::fs::write(&owner, "07".repeat(32)).unwrap();
+        let output = Output::new(true);
+        let now = 1_791_158_400;
+        let made = args(&[
+            "new",
+            "alice",
+            "--owner-key",
+            owner.to_str().unwrap(),
+            "--workspace",
+            dir.path().to_str().unwrap(),
+        ]);
+        assert!(new(&output, &root, "alice", &made, now).is_ok());
+        let (store, record) = store(&root, "alice").ok().unwrap();
+        let mut meter = Meter::open(&store, &record, now).unwrap();
+        let call = Call {
+            harness: agent_spend::HARNESS,
+            turn_id: "plan".into(),
+            model: None,
+            usage: Counters {
+                input_tokens: Some(90),
+                output_tokens: Some(10),
+                total_tokens: None,
+                cost_usd: Some(0.25),
+            },
+            stop: "end_turn",
+        };
+        meter.record(&call, now).unwrap();
+        let with_owner = args(&["--owner-key", owner.to_str().unwrap()]);
+        for given in [args(&[]), with_owner] {
+            let spend = spend_json(&store, &record, &given, now).ok().unwrap();
+            assert_eq!(spend["today"]["records"], 1, "{spend}");
+            assert_eq!(spend["total"]["tokens"], 100);
+            let lines = spend_lines(&spend).join("\n");
+            assert!(lines.contains("spend today: $0.2500 and 100 tokens over 1 records"));
+            assert!(lines.contains("budget: $5.00 and 10000000 tokens a day"));
+        }
+        let spend = spend_json(&store, &record, &args(&[]), now + 86_400)
+            .ok()
+            .unwrap();
+        assert_eq!(spend["today"]["records"], 0);
     }
 
     #[test]

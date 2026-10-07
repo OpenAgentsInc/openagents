@@ -720,8 +720,9 @@ pub async fn answer(turn: Turn, on: Rc<dyn Fn(Update)>) -> Delegated {
 /// such as the workshop agent (`crate::task::agent`): the loop's step on the
 /// first connected provider in `providers` with capacity, failing over to
 /// the next when one refuses for a usage or rate limit, with the refusal
-/// recorded in the capacity book in `book`. Returns the action and the
-/// model that answered.
+/// recorded in the capacity book in `book`. Returns the action, the model
+/// that answered, its cost in dollars when known, and its prompt and
+/// completion tokens, each `None` when the provider reported none.
 ///
 /// # Errors
 /// When no provider is left, or the one that answered gave no usable action.
@@ -731,7 +732,7 @@ pub async fn next_action(
     providers: &[ProviderState],
     book: &std::path::Path,
     now: fn() -> u64,
-) -> Result<(NextAction, String, Option<f64>), String> {
+) -> Result<(NextAction, String, Option<f64>, Tokens), String> {
     let session = format!("coder-agent-{}-{}", std::process::id(), atif::now_ms());
     let lanes: Vec<(Route, Provided)> = providers
         .iter()
@@ -756,8 +757,15 @@ pub async fn next_action(
     let generated = generator.generate(system, prompt).await;
     let model = generated.model.clone();
     let usd = generated.usd;
-    generated.action.map(|action| (action, model, usd))
+    let tokens = (
+        Some(generated.prompt_tokens).filter(|n| *n > 0),
+        Some(generated.completion_tokens).filter(|n| *n > 0),
+    );
+    generated.action.map(|action| (action, model, usd, tokens))
 }
+
+/// A call's prompt and completion tokens, each `None` when unreported.
+pub type Tokens = (Option<u64>, Option<u64>);
 
 /// The providers as they stand after a turn: the book read again, and the
 /// turn's own refusals in case the book could not be written.

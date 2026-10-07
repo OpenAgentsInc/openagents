@@ -116,7 +116,7 @@ the phase that delivers what is missing.
 | AE | Configured relays from her NIP-65 `10002` write list | None | Her relay list event | 5 |
 | AE | Reachability from `core` through `[[slug]]`; never delete orphans automatically | None | Orphan view; consolidation never deletes | 6 |
 | AP | Persona `30175` plaintext; no secrets; `mem/persona` snapshot | `nostr::agent_persona` envelope | A private definition record; optional public persona without a prompt | 4 |
-| AM | `44200` per turn, NIP-44 to the owner, `p` and `agent` tags | Relay gate and envelope check | Her turn metrics | 8 |
+| AM | `44200` per turn, NIP-44 to the owner, `p` and `agent` tags | Relay gate and envelope check; her turn metrics in `coder::task::agent_spend` (phase 8) | None | 8 |
 | IA | `9035` archive with owner `auth`, `replaced-by` on rotation | Relay command path | Retire and rotate publish it | 7 |
 | GS | Commits signed with her key and an embedded OA triple | `nostr::git_sign` | Wiring to her worktree commits | 7 |
 | PMA | `30179` rejected | Relay rejects it | Nothing; we never use it | None |
@@ -279,9 +279,22 @@ writing the task text and judging the result the same way.
    Her journal records the plan, each prompt (screened), each judgment, and
    the report.
 
-**Budget.** Each request has a model budget from her record; a step that
-would pass it stops and reports. Her calls and Coder's are recorded per
-turn (NIP-AM in phase 8).
+**Budget.** Each request has a model budget of calls; a step that would
+pass it stops and reports. Her plan and report calls and each Coder turn
+that reported usage leave one NIP-AM `44200` record
+(`coder::task::agent_spend`): signed with her key, NIP-44 to the owner,
+one `sessionId` per request with `turnSeq` from 1, usage numbers and
+identifiers only. Jev reports no usage, so a judgment leaves none. The
+records live in `agents/NAME/spend.jsonl` and go to her relays on each
+sync pass while sync is on. The owner's `agents/NAME/budget.json`
+(`openagents.agent-budget.v1`) sets dollars and tokens per request and per
+UTC day (defaults $1 and 2,000,000 tokens a request, $5 and 10,000,000 a
+day). Before a request she reads today's records with her key and refuses
+to start once the day's budget is used; after each record she stops before
+the next call once the request's or the day's budget is used. An
+unreadable budget or ledger refuses the request. `openagents agent show
+NAME [--owner-key FILE]` prints her spend. These records account for model
+usage; paying anyone stays on her never list.
 
 **Failure.** No model, no Coder, a held session, or an unreadable store each
 produce one plain sentence and a journal row with the cause, as today.

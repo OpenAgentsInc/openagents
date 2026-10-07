@@ -548,3 +548,56 @@ fn the_sweeper_runs_one_pass_when_due() {
     assert!(Status::load(memory.store()).unwrap().is_some());
     assert!(sweeper.sweep(memory.store(), &screen(), NOW + 1).is_none());
 }
+
+#[test]
+fn a_pass_publishes_each_spend_record_once() {
+    use crate::task::agent_spend::{self, Call, Counters, Meter};
+    let dir = tempfile::tempdir().unwrap();
+    let memory = alice(&dir.path().join("host"));
+    let store = memory.store();
+    let record = store.load().unwrap().unwrap();
+    let call = |tokens: u64| Call {
+        harness: agent_spend::CODER_HARNESS,
+        turn_id: "coder-1".into(),
+        model: None,
+        usage: Counters {
+            total_tokens: Some(tokens),
+            ..Counters::default()
+        },
+        stop: "end_turn",
+    };
+    let mut meter = Meter::open(store, &record, NOW).unwrap();
+    meter.record(&call(10), NOW).unwrap();
+    meter.record(&call(20), NOW + 1).unwrap();
+    // Off: nothing leaves the computer.
+    let fake = Fake::default();
+    assert!(sync(store, &screen(), &fake, NOW + 2).error.is_some());
+    assert!(fake.held().published.is_empty());
+
+    sync_on(&memory);
+    let status = sync(store, &screen(), &fake, NOW + 3);
+    assert_eq!(status.error, None, "{status:?}");
+    assert_eq!(status.relays[0].spend_records, 2);
+    let metrics = |fake: &Fake| -> Vec<Event> {
+        fake.held()
+            .events
+            .iter()
+            .filter(|e| e.kind == nostr::domain::AGENT_TURN_METRIC_KIND)
+            .cloned()
+            .collect()
+    };
+    for event in metrics(&fake) {
+        assert_eq!(
+            nostr::domain::agent_turn_metric_owner(&event).unwrap(),
+            agent::public_hex(&owner())
+        );
+        agent_spend::open_as_owner(&event, &owner()).unwrap();
+    }
+    // The next pass sends only what is new.
+    let again = sync(store, &screen(), &fake, NOW + 4);
+    assert_eq!(again.relays[0].spend_records, 0);
+    meter.record(&call(30), NOW + 5).unwrap();
+    let third = sync(store, &screen(), &fake, NOW + 6);
+    assert_eq!(third.relays[0].spend_records, 1);
+    assert_eq!(metrics(&fake).len(), 3);
+}

@@ -33,6 +33,7 @@ use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 
 use super::agent::{self, Kind, Outcome, Record, Report, Store};
+use super::agent_spend::{self, Call, Counters};
 use super::coder_v1::Event as CoderEvent;
 use crate::questions::{Fill, Set};
 
@@ -249,6 +250,28 @@ pub struct Spent {
     pub usd: Option<f64>,
     /// Model calls made: 1 for a live call, 0 for a recorded one.
     pub calls: u32,
+    /// Prompt tokens, or `None` when none were reported.
+    pub input_tokens: Option<u64>,
+    /// Completion tokens, or `None` when none were reported.
+    pub output_tokens: Option<u64>,
+}
+
+impl Spent {
+    /// This call as a spend record's call (`agent_spend`).
+    fn call(&self, turn_id: &str) -> Call {
+        Call {
+            harness: agent_spend::HARNESS,
+            turn_id: turn_id.into(),
+            model: Some(self.model.clone()).filter(|m| !m.is_empty()),
+            usage: Counters {
+                input_tokens: self.input_tokens,
+                output_tokens: self.output_tokens,
+                total_tokens: None,
+                cost_usd: self.usd,
+            },
+            stop: "end_turn",
+        }
+    }
 }
 
 /// One call to her own model: her system prompt, the prompt, and the
@@ -306,6 +329,8 @@ impl LivePlanner {
                 model: self.model.model.clone().unwrap_or_default(),
                 usd: self.model.usd,
                 calls: 1,
+                input_tokens: self.model.tokens.0,
+                output_tokens: self.model.tokens.1,
             },
         ))
     }
@@ -358,6 +383,7 @@ impl Planner for ScriptedPlanner {
                 model: "recorded".into(),
                 usd: None,
                 calls: 1,
+                ..Spent::default()
             },
         ))
     }
@@ -373,6 +399,7 @@ impl Planner for ScriptedPlanner {
                     model: "recorded".into(),
                     usd: None,
                     calls: 1,
+                    ..Spent::default()
                 },
             )
         }))
@@ -1021,6 +1048,11 @@ pub struct Turned {
     pub rejected: Vec<String>,
     /// Commands her policy refused because she never does them.
     pub never: Vec<String>,
+    /// The model Coder said answered, when it said.
+    pub model: Option<String>,
+    /// The tokens Coder reported for the turn, `None` when it reported
+    /// none.
+    pub tokens: Option<u64>,
 }
 
 impl Turned {
@@ -1033,6 +1065,28 @@ impl Turned {
             refused: Vec::new(),
             rejected: Vec::new(),
             never: Vec::new(),
+            model: None,
+            tokens: None,
+        }
+    }
+
+    /// This turn as a spend record's call (`agent_spend`): the `n`th
+    /// Coder turn of the request.
+    #[must_use]
+    pub fn call(&self, n: u32) -> Call {
+        Call {
+            harness: agent_spend::CODER_HARNESS,
+            turn_id: format!("coder-{n}"),
+            model: self.model.clone(),
+            usage: Counters {
+                total_tokens: self.tokens,
+                ..Counters::default()
+            },
+            stop: match self.end {
+                TurnEnd::Finished(_) => "end_turn",
+                TurnEnd::Stopped | TurnEnd::TakenOver => "cancelled",
+                _ => "error",
+            },
         }
     }
 }
@@ -1046,6 +1100,11 @@ pub trait Hands {
     /// Runs one Coder turn on `prompt` in her Coder session, answering its
     /// approvals with her policy and the owner.
     fn coder(&mut self, prompt: &str) -> Turned;
+    /// Records what one call spent (`agent_spend`), and says which budget
+    /// is now used, if one is. The default records nothing.
+    fn spent(&mut self, _call: &Call) -> Option<String> {
+        None
+    }
 }
 
 /// What she thinks with: her planner, and Jev when it is set up.
@@ -1466,9 +1525,11 @@ pub fn run(hands: &mut dyn Hands, mind: &mut Mind, input: &Input) -> Steered {
         prompt: plan_prompt(input),
         request: input.request.to_string(),
     };
+    let mut budget_used: Option<String>;
     let plan = match mind.planner.plan(&ask) {
         Ok((plan, spent)) => {
             spend(&spent, &mut calls);
+            budget_used = hands.spent(&spent.call("plan"));
             let by = if spent.model.is_empty() {
                 "relayed".to_string()
             } else {
@@ -1530,6 +1591,19 @@ pub fn run(hands: &mut dyn Hands, mind: &mut Mind, input: &Input) -> Steered {
         if *checking && facts.prompted == 0 {
             break;
         }
+        if let Some(used) = &budget_used {
+            facts.over_budget = true;
+            hands.journal(
+                Kind::Control,
+                &format!("stopped: my spend records reach the {used}"),
+                None,
+            );
+            hands.say(&format!(
+                "{name}: I've used my {}, so I'm stopping here.",
+                used.split(" of ").next().unwrap_or("budget")
+            ));
+            break;
+        }
         if let Some(what) = never_prompt(&step.prompt) {
             hands.journal(
                 Kind::Refused,
@@ -1571,6 +1645,7 @@ pub fn run(hands: &mut dyn Hands, mind: &mut Mind, input: &Input) -> Steered {
             calls += 1;
             facts.prompted += 1;
             let turned = hands.coder(&prompt);
+            budget_used = budget_used.or_else(|| hands.spent(&turned.call(facts.prompted)));
             facts.ran.extend(turned.ran.iter().cloned());
             facts.never.extend(turned.never.iter().cloned());
             match &turned.end {
@@ -1627,6 +1702,10 @@ pub fn run(hands: &mut dyn Hands, mind: &mut Mind, input: &Input) -> Steered {
                     "{name}: you rejected that, so I won't work around it."
                 ));
                 break 'steps;
+            }
+            if budget_used.is_some() {
+                // A used budget buys no more turns; the next step says so.
+                continue 'steps;
             }
             let state = judge_state(input.request, step, &turned, attempt);
             let judgment = match mind.judge.as_mut().map(|judge| judge.judge(&state)) {
@@ -1739,6 +1818,16 @@ pub fn run(hands: &mut dyn Hands, mind: &mut Mind, input: &Input) -> Steered {
     };
     let reply = if facts.prompted == 0 && !facts.refused_steps.is_empty() {
         fallback()
+    } else if let Some(used) = &budget_used {
+        // A used budget buys no report call: Coder's words stand.
+        if !facts.over_budget {
+            hands.journal(
+                Kind::Control,
+                &format!("my spend records reach the {used}, so I make no report call"),
+                None,
+            );
+        }
+        fallback()
     } else if calls < MODEL_BUDGET {
         let ran: Vec<Value> = facts
             .ran
@@ -1776,6 +1865,7 @@ pub fn run(hands: &mut dyn Hands, mind: &mut Mind, input: &Input) -> Steered {
         match mind.planner.report(&ask) {
             Ok(Some((text, spent))) => {
                 spend(&spent, &mut calls);
+                let _ = hands.spent(&spent.call("report"));
                 match agent::plain(&sentences(&text, REPORT_SENTENCES)) {
                     reply if reply.is_empty() => fallback(),
                     reply => reply,

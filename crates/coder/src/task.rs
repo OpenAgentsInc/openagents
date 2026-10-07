@@ -42,6 +42,7 @@ pub mod agent_profile;
 pub mod agent_recall;
 pub mod agent_reflect;
 pub mod agent_share;
+pub mod agent_spend;
 pub mod agent_steer;
 pub mod agent_sync;
 pub mod archive;

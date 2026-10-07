@@ -25,6 +25,9 @@
 //!    version of. After the relay's `OK`, she reads the head again; when it
 //!    isn't the event she sent, the pass journals a conflict and never
 //!    retries it.
+//! 4. Publishes each NIP-AM spend record (`agent_spend`) the relay hasn't
+//!    taken yet, in ledger order, stopping at the first refusal so the
+//!    next pass retries it.
 //!
 //! The pass writes what it found to `agents/NAME/sync-status.json`
 //! (`openagents.agent-sync-status.v1`), including each relay that answered
@@ -489,6 +492,9 @@ pub struct RelayStatus {
     pub profile: bool,
     /// Her relay list went to it in this pass.
     pub relay_list: bool,
+    /// Her spend records it took in this pass.
+    #[serde(default)]
+    pub spend_records: usize,
 }
 
 /// `sync-status.json`: the last pass.
@@ -795,6 +801,18 @@ fn pass(
         }
     };
 
+    // Her spend records, sent after her heads.
+    let records = super::agent_spend::publishable(store, &key, engrams.pair().owner())
+        .unwrap_or_else(|why| {
+            note(
+                store,
+                now,
+                &format!("her spend records can't be read: {why}"),
+            );
+            Vec::new()
+        });
+    let mut sent = super::agent_spend::Sent::load(store);
+
     // Publish her identity and every head a relay lacks, and verify each.
     for link in &mut links {
         let index = status
@@ -816,8 +834,43 @@ fn pass(
         if let Err(why) = result {
             status.relays[index].error = Some(why);
         }
+        let taken = sent.sent.entry(link.url.clone()).or_default();
+        if let Err(why) = publish_records(link, &records, taken, &mut status.relays[index]) {
+            status.relays[index].error.get_or_insert(why);
+        }
         status.pushed += status.relays[index].published;
         status.conflicts.extend(conflicts);
+    }
+    if records.iter().any(Option::is_some)
+        && let Err(why) = sent.save(store)
+    {
+        note(store, now, &format!("can't keep what relays took: {why}"));
+    }
+    Ok(())
+}
+
+/// Sends `link` her spend records past `taken`, the ledger lines it took
+/// before, and moves `taken` past each one it accepts. A relay keeps each
+/// record once, so sending one again after a lost count is harmless.
+fn publish_records(
+    link: &mut Link,
+    records: &[Option<Event>],
+    taken: &mut usize,
+    relay_status: &mut RelayStatus,
+) -> Result<(), String> {
+    *taken = (*taken).min(records.len());
+    while let Some(record) = records.get(*taken) {
+        if let Some(event) = record {
+            match link.relay.publish(event)? {
+                (true, _) => relay_status.spend_records += 1,
+                (false, why) if why.starts_with("duplicate:") => {}
+                (false, why) => {
+                    relay_status.refused.push(format!("spend record: {why}"));
+                    return Ok(());
+                }
+            }
+        }
+        *taken += 1;
     }
     Ok(())
 }

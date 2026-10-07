@@ -14,6 +14,7 @@
 //! [`agent_steer`]: super::super::agent_steer
 
 use super::*;
+use crate::task::agent_spend::{self, Meter};
 use crate::task::agent_steer::{self, Answer, Hands, Places, Policy, TurnEnd, Turned};
 
 /// How long she waits for a turn running in her session before she gives
@@ -60,6 +61,8 @@ struct HostHands<'a> {
     watcher: Option<std::thread::JoinHandle<()>>,
     /// The pane's step, once her pane follows the session.
     step: Option<u64>,
+    /// Her spend records and budgets for this request.
+    meter: Meter,
 }
 
 impl HostHands<'_> {
@@ -168,6 +171,21 @@ impl Hands for HostHands<'_> {
         }
     }
 
+    fn spent(&mut self, call: &agent_spend::Call) -> Option<String> {
+        match self.meter.record(call, (self.agents.clock)()) {
+            Ok(used) => used,
+            Err(why) => {
+                // The call still counts against her budgets.
+                let _ = self.write(
+                    Kind::Control,
+                    &format!("my spend record wasn't kept ({})", agent::plain(&why)),
+                    None,
+                );
+                self.meter.stop()
+            }
+        }
+    }
+
     fn coder(&mut self, prompt: &str) -> Turned {
         if self.stop.load(Ordering::SeqCst) || self.cancel.load(Ordering::SeqCst) {
             return Turned::ended(self.stopped());
@@ -225,6 +243,7 @@ impl Hands for HostHands<'_> {
                 match event {
                     CoderEvent::Model { model } if !model.is_empty() => {
                         agents.with_live(&name, |live| live.model = format!("Coder V1 ({model})"));
+                        turned.model = Some(model.clone());
                         None
                     }
                     CoderEvent::Tool { .. } if previous.as_ref() == Some(event) => None,
@@ -370,7 +389,11 @@ impl Hands for HostHands<'_> {
         };
         self.engine = Some(engine);
         turned.end = match ended {
-            Ended::Finished { reply, .. } => TurnEnd::Finished(reply),
+            Ended::Finished { reply, tokens } => {
+                // Zero is what Coder says when it counted nothing.
+                turned.tokens = Some(tokens).filter(|t| *t > 0);
+                TurnEnd::Finished(reply)
+            }
             Ended::Cancelled => self.stopped(),
             Ended::Failed(why) if held(&why) => TurnEnd::Busy(why),
             Ended::Failed(why) => TurnEnd::Failed(why),
@@ -467,6 +490,28 @@ impl Agents {
             );
             Policy::escalate_all()
         });
+        // Her budget is the owner's grant, checked against her records
+        // before she spends anything.
+        let meter = match Meter::open(store, record, clock()) {
+            Ok(meter) => meter,
+            Err(why) => {
+                return fail(
+                    "I couldn't read my budget or my spend records, so I didn't start.".into(),
+                    &why,
+                    "no budget",
+                );
+            }
+        };
+        if let Some(why) = &meter.unsealed {
+            let _ = journal(Kind::Control, &format!("spend: {why}"), None);
+        }
+        if let Err(why) = meter.admit() {
+            return fail(
+                "I've used today's budget, so I didn't start.".into(),
+                &why,
+                "over budget",
+            );
+        }
         let mut mind = match (self.mind)(record) {
             Ok(mind) => mind,
             Err(why) => {
@@ -507,6 +552,7 @@ impl Agents {
             done: Arc::new(AtomicBool::new(false)),
             watcher: None,
             step: None,
+            meter,
         };
         let input = agent_steer::Input {
             record,
@@ -518,6 +564,18 @@ impl Agents {
             note,
         };
         let steered = agent_steer::run(&mut hands, &mut mind, &input);
+        let (request, today) = (hands.meter.request(), hands.meter.today());
+        if request.records > 0 {
+            let _ = journal(
+                Kind::Control,
+                &format!(
+                    "spend: this request {}; today {}",
+                    request.words(),
+                    today.words()
+                ),
+                None,
+            );
+        }
         hands.close();
         steered.report
     }

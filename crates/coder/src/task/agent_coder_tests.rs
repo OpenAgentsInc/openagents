@@ -552,3 +552,72 @@ fn the_coder_command_she_runs_has_no_instructions() {
     assert!(!words.contains(&"--instructions"), "{words:?}");
     assert!(!argv.contains("You are"));
 }
+
+#[test]
+fn each_coder_turn_leaves_a_spend_record_and_the_days_budget_refuses_the_next_request() {
+    use crate::task::agent_spend::{self, Budget};
+    let dir = tempfile::tempdir().unwrap();
+    let used = |reply: &str| coder_v1::Scripted {
+        events: vec![CoderEvent::Model {
+            model: "coder-model".into(),
+        }],
+        ended: Some(Ended::Finished {
+            reply: reply.into(),
+            tokens: 700,
+        }),
+        ..coder_v1::Scripted::default()
+    };
+    let (agents, seen) = host(
+        &dir,
+        steps(&[("Say hello.", "Coder answered")], None),
+        vec![used("Hello."), used("Hello again.")],
+        vec![judged(0.9, 0.0, Move::Continue); 2],
+        None,
+    );
+    // Her key on a scratch root, attested by a test owner key.
+    let owner = secp256k1::SecretKey::from_byte_array([7; 32]).unwrap();
+    let store = Store::new(&dir.path().join("host"), "alice").unwrap();
+    let record = store.load().unwrap().unwrap();
+    let record = store.ensure_key(record, clock()).unwrap();
+    store
+        .attest(record, &owner, clock() + 30 * 86_400, clock())
+        .unwrap();
+    Budget {
+        daily_tokens: 1_000,
+        ..Budget::default()
+    }
+    .save(&store)
+    .unwrap();
+
+    ask(&agents, "k1", "say hello");
+    assert_eq!(finished(&agents).headline, "answered");
+    let view = agent_spend::owner_read(&store, &owner).unwrap();
+    assert!(view.problems.is_empty(), "{:?}", view.problems);
+    assert_eq!(view.records.len(), 1);
+    let metric = &view.records[0].metric;
+    assert_eq!(metric.harness, agent_spend::CODER_HARNESS);
+    assert_eq!(metric.model.as_deref(), Some("coder-model"));
+    assert_eq!(metric.turn.total_tokens, Some(700));
+    assert_eq!(metric.turn_seq, Some(1));
+
+    // 700 of today's 1000 tokens are used: one more turn passes them.
+    ask(&agents, "k2", "say hello again");
+    finished(&agents);
+    let view = agent_spend::owner_read(&store, &owner).unwrap();
+    assert_eq!(view.records.len(), 2);
+    ask(&agents, "k3", "and once more");
+    let view = until(&agents, |v| !v.busy && v.headline == "over budget");
+    assert!(
+        view.lines
+            .iter()
+            .any(|l| l.contains("I've used today's budget, so I didn't start.")),
+        "{:?}",
+        view.lines
+    );
+    assert_eq!(prompts(&seen).len(), 2, "no turn ran past the budget");
+    assert!(
+        journal(&dir)
+            .iter()
+            .any(|e| e.text.contains("daily budget of 1000 tokens"))
+    );
+}

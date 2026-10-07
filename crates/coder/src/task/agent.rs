@@ -1560,6 +1560,9 @@ pub struct LiveModel {
     /// What the last call cost, in dollars, or `None` when no cost was
     /// reported.
     pub usd: Option<f64>,
+    /// The last call's prompt and completion tokens, each `None` when the
+    /// provider reported none.
+    pub tokens: crate::delegate_door::microcoder::Tokens,
 }
 
 impl LiveModel {
@@ -1578,6 +1581,7 @@ impl LiveModel {
             book,
             model: None,
             usd: None,
+            tokens: (None, None),
         })
     }
 
@@ -1612,7 +1616,7 @@ impl Model for LiveModel {
     fn next(&mut self, system: &str, prompt: &str) -> Result<NextAction, String> {
         use crate::delegate_door::microcoder;
         let providers = self.providers();
-        let (action, model, usd) = self.runtime.block_on(microcoder::next_action(
+        let (action, model, usd, tokens) = self.runtime.block_on(microcoder::next_action(
             system,
             prompt,
             &providers,
@@ -1621,6 +1625,7 @@ impl Model for LiveModel {
         ))?;
         self.model = Some(model);
         self.usd = usd;
+        self.tokens = tokens;
         Ok(action)
     }
 }
