@@ -718,3 +718,16 @@ fn the_workshop_agent_works_and_walks_in_the_owners_house() {
     let p = studio.seat_position(WORKSHOP_AGENT).unwrap();
     assert!((p.x - lectern[0]).hypot(p.z - lectern[1]) < 0.1, "{p}");
 }
+
+#[test]
+fn a_long_route_drops_its_prefix_on_the_plate_instead_of_its_last_letters() {
+    assert_eq!(
+        super::plate_route("Coder V1, coding on Codex"),
+        "Coding on Codex"
+    );
+    assert_eq!(
+        super::plate_route("Coder V1 (openai/gpt-6-luna), coding on Codex"),
+        "Coding on Codex"
+    );
+    assert_eq!(super::plate_route("Coder V1"), "Coder V1");
+}

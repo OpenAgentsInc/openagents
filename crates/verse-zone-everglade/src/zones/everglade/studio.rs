@@ -320,7 +320,27 @@ pub fn nameplate(seat: &wire::Seat) -> [String; 3] {
         wire::Role::Lead => format!("{} lead", seat.seat),
         wire::Role::Worker => seat.seat.clone(),
     };
-    [name, word(seat.activity).into(), seat.route.clone()]
+    [name, word(seat.activity).into(), plate_route(&seat.route)]
+}
+
+/// A route short enough for a nameplate line: whole as it is when it fits
+/// in [`PLATE_CHARS`], else without its leading `Coder V1` and model, so
+/// `Coder V1, coding on Codex` reads `Coding on Codex` rather than losing
+/// its last letter.
+fn plate_route(route: &str) -> String {
+    if route.chars().count() <= PLATE_CHARS {
+        return route.to_owned();
+    }
+    match route.rsplit_once(", ") {
+        Some((_, tail)) if tail.chars().count() <= PLATE_CHARS => {
+            let mut chars = tail.chars();
+            chars
+                .next()
+                .map(|first| first.to_uppercase().chain(chars).collect())
+                .unwrap_or_default()
+        }
+        _ => route.to_owned(),
+    }
 }
 
 /// `text` in the in-world lettering's alphabet (A–Z, 0–9, `/`, `.`, and
