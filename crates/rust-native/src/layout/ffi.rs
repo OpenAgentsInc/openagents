@@ -235,8 +235,8 @@ pub extern "C" fn rust_native_layout_create_shaped() -> *mut RustNativeLayout {
 #[repr(C)]
 #[derive(Clone, Copy, Debug, Default)]
 pub struct RustNativeFontSpec {
-    /// Which face `rust_native_font_data` returns: 0 Inter, 1 Inter Italic,
-    /// 2 JetBrains Mono, 3 JetBrains Mono Italic.
+    /// Which face `rust_native_font_data` returns: always 0, Paper Mono's
+    /// variable font.
     pub face: u32,
     /// The `wght` axis value.
     pub weight: f32,

@@ -660,25 +660,17 @@ mod tests {
 
     #[test]
     fn each_trailing_space_moves_the_caret_and_remains_selectable() {
-        use rust_native::layout::display::FontFamily;
-        for family in [FontFamily::Inter, FontFamily::Geist] {
-            check_trailing_spaces(family);
-        }
-    }
-    fn check_trailing_spaces(family: rust_native::layout::display::FontFamily) {
         let mut field = field();
-        field.set_font_family(family);
-        if family == rust_native::layout::display::FontFamily::Geist {
-            field
-                .set_metrics(Metrics {
-                    font_size: 14.0,
-                    line_height: 22.75,
-                    padding: [12.0, 16.0, 12.0, 16.0],
-                    min_height: 49.0,
-                    max_height: 260.0,
-                })
-                .unwrap();
-        }
+        field.set_font_family(rust_native::layout::display::FontFamily::PaperMono);
+        field
+            .set_metrics(Metrics {
+                font_size: 14.0,
+                line_height: 22.75,
+                padding: [12.0, 16.0, 12.0, 16.0],
+                min_height: 49.0,
+                max_height: 260.0,
+            })
+            .unwrap();
         let mut fonts = Fonts::new();
         let mut frame = Frame::transparent(400, 100);
         let rect = PxRect {

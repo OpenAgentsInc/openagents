@@ -20,7 +20,7 @@ slide content, where each part sits, and the navigation:
   [`rust_native_desktop::rich`](../rust-native-desktop/src/rich.rs): the
   row layout the desktop and mobile chat transcripts use
   (`rust_native::layout`), painted by the desktop's transcript painter with
-  the theme's bundled font pair (Geist and Geist Mono, as in the desktop
+  the theme's bundled font (Paper Mono, as in the desktop
   chat). A part can be painted larger (a title at 1.5 times, the opening
   title and numbers up to 3 times) without a second type ladder.
 - **Colors.** [`Theme::openagents`](../rust-native-desktop/src/theme.rs),

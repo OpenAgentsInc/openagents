@@ -1,7 +1,7 @@
 // CoreText's line breaks for the shaping corpus, with the bundled fonts.
 //
 //   swift crates/rust-native/tools/coretext-lines.swift CORPUS.json \
-//       crates/rust-native/fonts crates/rust-native/fixtures/coretext-lines.json
+//       crates/paper-mono/fonts crates/rust-native/fixtures/coretext-lines.json
 //
 // CORPUS.json comes from the rust-native test `shape::tests::write_corpus`.
 // Each case is a paragraph, its runs as [face, size, wght, opsz, calt,
@@ -20,8 +20,7 @@ guard arguments.count == 4 else {
 }
 let corpusData = try Data(contentsOf: URL(fileURLWithPath: arguments[1]))
 let fontsDir = URL(fileURLWithPath: arguments[2])
-let faceFiles = ["InterVariable.ttf", "InterVariable-Italic.ttf", "JetBrainsMono-Variable.ttf",
-                 "JetBrainsMono-Italic-Variable.ttf"]
+let faceFiles = ["PaperMono-Variable.ttf"]
 let faces: [CTFontDescriptor] = try faceFiles.map { name in
     let data = try Data(contentsOf: fontsDir.appendingPathComponent(name))
     guard let descriptors = CTFontManagerCreateFontDescriptorsFromData(data as CFData) as? [CTFontDescriptor],

@@ -223,7 +223,7 @@ mod tests {
             },
         };
         let mut layout = TranscriptLayout::new();
-        layout.set_font_family(FontFamily::Geist);
+        layout.set_font_family(FontFamily::PaperMono);
         layout.set_metrics(TRANSCRIPT).unwrap();
         layout
             .update(
@@ -282,7 +282,7 @@ mod tests {
             },
         };
         let mut layout = TranscriptLayout::new();
-        layout.set_font_family(FontFamily::Geist);
+        layout.set_font_family(FontFamily::PaperMono);
         layout.set_metrics(TRANSCRIPT).unwrap();
         let update = || Update {
             width: 768.0,
@@ -307,7 +307,7 @@ mod tests {
         assert!(
             row.styles
                 .iter()
-                .all(|style| style.font.size == 14.0 && style.font.family == FontFamily::Geist)
+                .all(|style| style.font.size == 14.0 && style.font.family == FontFamily::PaperMono)
         );
         assert_eq!(layout.update(update(), &mut measurer).unwrap().relaid, 0);
         let mut invalid = TRANSCRIPT;

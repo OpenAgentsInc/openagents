@@ -1704,39 +1704,11 @@ impl Engine<'_> {
             let mut font = self.text_font(TextRole::Code, &Style::default());
             font.size = 10.0;
             font.weight = Weight::Regular;
-            // Geist lacks the Command symbol. Use a bundled fallback for that
-            // symbol and preserve Geist Mono for the shortcut's remaining text.
-            let mut parts = Vec::new();
-            let mut start = 0;
-            for (at, ch) in value.char_indices() {
-                if ch != '⌘' || font.family != rust_native::layout::display::FontFamily::Geist {
-                    continue;
-                }
-                if start < at {
-                    parts.push(self.fonts.paragraph_with_line_height(
-                        &value[start..at],
-                        font,
-                        None,
-                        Some(14.0),
-                    ));
-                }
-                let mut fallback = font;
-                fallback.family = rust_native::layout::display::FontFamily::Inter;
-                parts.push(
-                    self.fonts
-                        .paragraph_with_line_height("⌘", fallback, None, Some(14.0)),
-                );
-                start = at + ch.len_utf8();
-            }
-            if start < value.len() {
-                parts.push(self.fonts.paragraph_with_line_height(
-                    &value[start..],
-                    font,
-                    None,
-                    Some(14.0),
-                ));
-            }
-            parts
+            // Paper Mono has the Command symbol, so the shortcut is one run.
+            vec![
+                self.fonts
+                    .paragraph_with_line_height(value, font, None, Some(14.0)),
+            ]
         })
     }
 

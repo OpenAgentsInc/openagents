@@ -5,11 +5,13 @@
 //! the iOS transcript is checked against, and [`Fonts::draw`] shapes and
 //! rasterizes each line with the face and variations
 //! [`FontSpec`](rust_native::layout::shape::FontSpec) names, so the adapter
-//! paints exactly the outlines it measured.
+//! paints exactly the outlines it measured. A character Paper Mono lacks is
+//! painted from one of this computer's fonts ([`crate::fallback`]), centered
+//! in the width the shaper measured for it.
 
 use crate::canvas::Frame;
 use rust_native::layout::display::{Font, Weight};
-use rust_native::layout::shape::{FACES, FontSpec, ShapingMeasurer};
+use rust_native::layout::shape::{FACES, FontSpec, ShapingMeasurer, fallback_em};
 use rust_native::layout::{MeasureRun, Measurer};
 use rust_native::style::{Color, TextAlign};
 use std::collections::HashMap;
@@ -70,7 +72,7 @@ pub struct Fonts {
     measurer: ShapingMeasurer,
     shape: ShapeContext,
     scale: ScaleContext,
-    faces: [FontRef<'static>; 20],
+    faces: [FontRef<'static>; FACES.len()],
     paragraphs: HashMap<(String, u64, u32, u32), Rc<Paragraph>>,
     paragraph_bytes: usize,
     advances: HashMap<(String, u64), f32>,
@@ -463,16 +465,40 @@ impl Fonts {
                             alpha,
                         }
                     });
+                if cluster.glyphs.iter().any(|glyph| glyph.id == 0) {
+                    // Paper Mono lacks this character: the shaper measured
+                    // it at an estimate, so center a fallback glyph there.
+                    let start = line.start + cluster.source.start as usize;
+                    let ch = paragraph.text[start..].chars().next().unwrap_or('?');
+                    let width = fallback_em(ch) as f32 * size;
+                    if let Some((index, fallback)) = crate::fallback::face_for(ch) {
+                        let id = fallback.charmap().map(ch);
+                        let advance = fallback.glyph_metrics(&[]).scale(size).advance_width(id);
+                        let gx = pen + ((width - advance) / 2.0).max(0.0);
+                        placed.push((Some(index), id, gx, 0.0, color));
+                    } else if let Some(glyph) = cluster.glyphs.first() {
+                        placed.push((None, glyph.id, pen + glyph.x, glyph.y, color));
+                    }
+                    pen += width;
+                    return;
+                }
                 for glyph in cluster.glyphs {
-                    placed.push((glyph.id, pen + glyph.x, glyph.y, color));
+                    placed.push((None, glyph.id, pen + glyph.x, glyph.y, color));
                     pen += glyph.advance;
                 }
             });
-            for (id, gx, gy, color) in placed {
+            for (fallback, id, gx, gy, color) in placed {
                 let whole = gx.floor();
                 let quarter = ((gx - whole) * 4.0).round() as u8 % 4;
+                let (key_face, face) = match fallback {
+                    Some(index) => (
+                        FACES.len() + index,
+                        crate::fallback::face_for_index(index).unwrap_or(face),
+                    ),
+                    None => (spec.face, face),
+                };
                 let key = (
-                    spec.face,
+                    key_face,
                     spec.weight.to_bits(),
                     size.to_bits(),
                     id,
@@ -484,7 +510,11 @@ impl Fonts {
                         .builder(face)
                         .size(size)
                         .hint(false)
-                        .variations(variations.clone())
+                        .variations(if fallback.is_some() {
+                            Vec::new()
+                        } else {
+                            variations.clone()
+                        })
                         .build();
                     let image = Render::new(&[Source::Outline])
                         .format(Format::Alpha)
@@ -511,14 +541,10 @@ impl Fonts {
                     for col in 0..glyph.width {
                         let coverage = glyph.coverage[row * glyph.width + col];
                         if coverage > 0 {
+                            // Paper Mono has no italic, so italic text
+                            // is drawn upright.
                             frame.blend(
-                                left + col as i64
-                                    + if paragraph.font.italic {
-                                        ((baseline - (top + row as i64) as f32) * 0.18).round()
-                                            as i64
-                                    } else {
-                                        0
-                                    },
+                                left + col as i64,
                                 top + row as i64,
                                 color,
                                 f32::from(coverage) / 255.0,
@@ -595,8 +621,38 @@ mod coverage {
     #[test]
     fn the_body_face_has_the_marks_screens_use() {
         let face = swash::FontRef::from_index(rust_native::layout::shape::FACES[0], 0).unwrap();
-        for ch in ['✓', '·', '…', '—', '’'] {
-            assert_ne!(face.charmap().map(ch), 0, "Inter lacks {ch}");
+        for ch in ['·', '…', '—', '’', '●', '○', '→', '⌘'] {
+            assert_ne!(face.charmap().map(ch), 0, "Paper Mono lacks {ch}");
+        }
+    }
+
+    #[test]
+    fn a_mark_paper_mono_lacks_paints_from_a_fallback_in_its_measured_width() {
+        let mut fonts = super::Fonts::new();
+        let font = super::font(14.0, rust_native::layout::display::Weight::Regular, false);
+        let paragraph = fonts.paragraph("✓ ₿ ok", font, None);
+        // The missing marks are measured at the shaper's estimates, the
+        // check mark as a symbol 1 em wide and the bitcoin sign at 0.6 em,
+        // beside Paper Mono's 0.606 em.
+        assert!((paragraph.width - (4.0 * 0.606 + 1.0 + 0.6) * 14.0).abs() < 0.1);
+        let mut frame = crate::canvas::Frame::transparent(120, 40);
+        fonts.draw(
+            &mut frame,
+            &paragraph,
+            0.0,
+            0.0,
+            120.0,
+            rust_native::style::TextAlign::Start,
+            1.0,
+            rust_native::style::Color::rgb(255, 255, 255),
+        );
+        if cfg!(target_os = "macos") {
+            // The check mark's cell is painted from a system face.
+            let lit = (0..40)
+                .flat_map(|y| (0..8).map(move |x| (x, y)))
+                .filter(|(x, y)| frame.pixel(*x, *y) != [0, 0, 0])
+                .count();
+            assert!(lit > 5, "{lit} pixels");
         }
     }
 }

@@ -7,8 +7,7 @@
 //! - [`layout`] places the view's nodes in points: stacks, lists, text,
 //!   buttons (including checkboxes), and locally registered drawing
 //!   surfaces. Text is broken into lines by `rust_native`'s own shaper with
-//!   the bundled Inter and JetBrains Mono, so what is measured is what is
-//!   painted.
+//!   the bundled Paper Mono, so what is measured is what is painted.
 //! - [`paint`] draws the laid-out scene into an RGBA [`Frame`] in software:
 //!   antialiased rounded rectangles and glyphs rasterized with `swash`.
 //! - [`backdrop`] (with `window`) draws an application's live picture with
@@ -35,6 +34,7 @@ pub mod access;
 pub mod backdrop;
 pub mod canvas;
 pub mod composer;
+mod fallback;
 mod icons;
 pub use icons::paint as paint_icon;
 pub mod image;

@@ -13,27 +13,30 @@ use serde::Serialize;
 pub struct Font {
     pub size: f32,
     pub weight: Weight,
-    /// The bundled sans and monospace pair.
+    /// The bundled family, which is always Paper Mono.
     #[serde(skip_serializing_if = "FontFamily::is_default")]
     pub family: FontFamily,
+    /// Italic text. Paper Mono has no italic, so it is drawn upright.
     #[serde(skip_serializing_if = "std::ops::Not::not")]
     pub italic: bool,
-    /// A fixed-pitch face.
+    /// Code text. Paper Mono is fixed-pitch throughout; this only turns off
+    /// contextual alternates.
     #[serde(skip_serializing_if = "std::ops::Not::not")]
     pub mono: bool,
 }
 
-/// A bundled family pair. The default keeps existing adapter typography.
+/// The bundled family. Every surface draws Paper Mono (#10904), so this has
+/// one variant; it stays a type so a family remains part of a font's
+/// identity in measurement and glyph caches.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Hash, Serialize)]
 #[serde(rename_all = "snake_case")]
 pub enum FontFamily {
     #[default]
-    Inter,
-    Geist,
+    PaperMono,
 }
 impl FontFamily {
     fn is_default(&self) -> bool {
-        *self == Self::Inter
+        *self == Self::PaperMono
     }
 }
 

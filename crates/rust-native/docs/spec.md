@@ -233,21 +233,22 @@ adapter presents them, not a separate wire contract.
   text, fonts, and width, so a row laid out again at the same width, or a
   display list for a laid-out row, does not measure again.
 - **Shaping in Rust.** With the `shaping` feature, `layout::shape` measures
-  without a platform callback. It shapes with four bundled variable faces
-  under the SIL Open Font License (`fonts/`): Inter and Inter Italic, and
-  JetBrains Mono and JetBrains Mono Italic. `FontSpec` names the face and
-  variations for each display-list font (`wght` 400–700, Inter's `opsz`
-  following the size between 14 and 32, and `calt` off for code), and the
-  adapter paints with exactly those. Lines break greedily at UAX #14
+  without a platform callback. It shapes with one bundled variable face
+  under the SIL Open Font License: Paper Mono (`crates/paper-mono`), the
+  typeface every surface uses. `FontSpec` names the face and variations for
+  each display-list font (`wght` 400–700, and `calt` off for code), and the
+  adapter paints with exactly those. Paper Mono has no italic, so italic
+  text is drawn upright. Lines break greedily at UAX #14
   opportunities with CoreText's tailoring, trailing spaces hang, and a word
   wider than the line breaks between grapheme clusters. Tabs advance to
   28-point stops. A character the faces lack is measured as a platform
   fallback roughly draws it (1 em for wide characters and emoji, else
   0.6 em), so such text can wrap differently from the platform. A
   ground-truth test compares the breaks with CoreText's for the same fonts
-  over about 3,300 paragraphs (`fixtures/coretext-lines.json`, made by
-  `tools/coretext-lines.swift`): it requires no line-count differences and
-  at least 99.9% exact line starts. The C interface adds
+  over about 3,400 paragraphs (`fixtures/coretext-lines.json`, made by
+  `tools/coretext-lines.swift`): it allows at most one line-count difference
+  among paragraphs Paper Mono covers and requires at least 99.7% exact line
+  starts. The C interface adds
   `rust_native_layout_create_shaped`, `rust_native_font_spec`, and
   `rust_native_font_data`.
 - **Frame.** Every row has a key, a content version, an exact height, and a
@@ -336,13 +337,12 @@ surface does not make its pixels, geometry, or custom text accessible by itself.
 
 ## Bundled font selection
 
-A display-list `Font` defaults to the Inter and JetBrains Mono family pair.
-A scoped `FontFamily::Geist` uses bundled Geist and Geist Mono static faces for
-regular, medium, semibold, and bold text, including italic variants. Every face
-is available under the retained SIL Open Font License. `FontSpec` selects the
-same exact face for shaping and painting. Family participates in measurement
-and glyph cache identity. `TranscriptLayout::set_font_family` invalidates
-measured rows on the next update; it does not mutate a published frame.
+A display-list `Font` has one family, `FontFamily::PaperMono`, the default.
+Every weight maps to the matching `wght` value of Paper Mono's variable face,
+and italic and monospace styles use the same face. The family stays a type so
+that it participates in measurement and glyph cache identity, and
+`TranscriptLayout::set_font_family` still invalidates measured rows on the
+next update without mutating a published frame.
 The existing font-spec C ABI continues to select the default pair.
 
 `Style.radius` selects 0–128 point rounded corners. `Style.border` adds a

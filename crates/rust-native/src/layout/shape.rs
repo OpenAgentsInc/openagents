@@ -1,12 +1,12 @@
 //! Text shaping in Rust with bundled fonts, so a platform needs no text
 //! engine callback to lay out a transcript.
 //!
-//! Inter and JetBrains Mono remain the default variable-font pair. A scoped
-//! Geist family uses Zeron's exact static Geist and Geist Mono faces for each
-//! weight and italic combination. All bundled fonts use the SIL Open Font
-//! License. [`FontSpec`] binds measured and painted outlines to the same face.
-//! Variable faces receive `wght` and `opsz` values; static faces select the
-//! authored weight. Code disables contextual alternates (`calt`).
+//! The one bundled face is Paper Mono's variable font (`crates/paper-mono`,
+//! SIL Open Font License 1.1), the typeface every surface uses. [`FontSpec`]
+//! binds measured and painted outlines to the same face and `wght` value.
+//! Paper Mono has no italic, so italic text is drawn upright, and it is
+//! fixed-pitch throughout, so code differs from prose only in turning off
+//! contextual alternates (`calt`).
 //!
 //! Lines break at Unicode line-break opportunities (UAX #14, with CoreText's
 //! break between a word's closing slash and a digit), greedily, as CoreText's
@@ -24,29 +24,8 @@ use swash::shape::ShapeContext;
 use swash::text::cluster::Boundary;
 use swash::{FontRef, Metrics};
 
-/// The bundled faces, by [`FontSpec::face`].
-pub const FACES: [&[u8]; 20] = [
-    include_bytes!("../../fonts/InterVariable.ttf"),
-    include_bytes!("../../fonts/InterVariable-Italic.ttf"),
-    include_bytes!("../../fonts/JetBrainsMono-Variable.ttf"),
-    include_bytes!("../../fonts/JetBrainsMono-Italic-Variable.ttf"),
-    include_bytes!("../../fonts/Geist.ttf"),
-    include_bytes!("../../fonts/Geist-Medium.ttf"),
-    include_bytes!("../../fonts/Geist-SemiBold.ttf"),
-    include_bytes!("../../fonts/Geist-Bold.ttf"),
-    include_bytes!("../../fonts/Geist-Italic.ttf"),
-    include_bytes!("../../fonts/Geist-MediumItalic.ttf"),
-    include_bytes!("../../fonts/Geist-SemiBoldItalic.ttf"),
-    include_bytes!("../../fonts/Geist-BoldItalic.ttf"),
-    include_bytes!("../../fonts/GeistMono.ttf"),
-    include_bytes!("../../fonts/GeistMono-Medium.ttf"),
-    include_bytes!("../../fonts/GeistMono-SemiBold.ttf"),
-    include_bytes!("../../fonts/GeistMono-Bold.ttf"),
-    include_bytes!("../../fonts/GeistMono-Italic.ttf"),
-    include_bytes!("../../fonts/GeistMono-MediumItalic.ttf"),
-    include_bytes!("../../fonts/GeistMono-SemiBoldItalic.ttf"),
-    include_bytes!("../../fonts/GeistMono-BoldItalic.ttf"),
-];
+/// The bundled faces, by [`FontSpec::face`]: Paper Mono's variable font.
+pub const FACES: [&[u8]; 1] = [paper_mono::VARIABLE];
 
 /// Distance between default tab stops, in points.
 pub const TAB_INTERVAL: f64 = 28.0;
@@ -54,13 +33,12 @@ pub const TAB_INTERVAL: f64 = 28.0;
 /// How to draw a display-list font with the bundled faces.
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct FontSpec {
-    /// Index into [`FACES`]. The first four are the default variable faces;
-    /// the remaining sixteen are Geist's sans/mono, upright/italic weights.
+    /// Index into [`FACES`]; always 0, Paper Mono.
     pub face: usize,
     pub size: f32,
     /// The `wght` axis value.
     pub weight: f32,
-    /// The `opsz` axis value; zero for faces without the axis.
+    /// The `opsz` axis value; zero, because Paper Mono has no such axis.
     pub optical: f32,
     /// Whether contextual alternates (`calt`) are on.
     pub calt: bool,
@@ -75,20 +53,13 @@ impl FontSpec {
             Weight::Bold => 700.0,
         };
         let face = match font.family {
-            FontFamily::Inter => usize::from(font.mono) * 2 + usize::from(font.italic),
-            FontFamily::Geist => {
-                4 + usize::from(font.mono) * 8 + usize::from(font.italic) * 4 + font.weight as usize
-            }
+            FontFamily::PaperMono => 0,
         };
         Self {
             face,
             size: font.size,
             weight,
-            optical: if font.mono || font.family == FontFamily::Geist {
-                0.0
-            } else {
-                font.size.clamp(14.0, 32.0)
-            },
+            optical: 0.0,
             calt: !font.mono,
         }
     }
@@ -97,7 +68,7 @@ impl FontSpec {
 /// A [`Measurer`] that shapes with the bundled faces. Keep one per thread.
 pub struct ShapingMeasurer {
     context: ShapeContext,
-    fonts: [FontRef<'static>; 20],
+    fonts: [FontRef<'static>; FACES.len()],
 }
 
 impl Default for ShapingMeasurer {
@@ -173,7 +144,10 @@ impl ShapingMeasurer {
         let mut clusters: Vec<(usize, f64, bool)> = Vec::new();
         shaper.shape_with(|cluster| {
             let advance: f64 = cluster.glyphs.iter().map(|g| f64::from(g.advance)).sum();
-            let missing = !cluster.glyphs.is_empty() && cluster.glyphs.iter().all(|g| g.id == 0);
+            // A cluster with any glyph the face lacks is drawn by a fallback
+            // face, as a whole: a precomposed letter the face lacks may
+            // shape as a missing base and a combining mark the face has.
+            let missing = cluster.glyphs.iter().any(|g| g.id == 0);
             clusters.push((cluster.source.start as usize, advance * scale, missing));
         });
         for (byte, advance, missing) in clusters {
@@ -193,7 +167,8 @@ impl ShapingMeasurer {
 
 /// The width, in ems, a platform fallback face roughly gives a character
 /// the bundled faces lack.
-fn fallback_em(ch: char) -> f64 {
+#[must_use]
+pub fn fallback_em(ch: char) -> f64 {
     let wide = matches!(u32::from(ch),
         0x1100..=0x115F | 0x2E80..=0xA4CF | 0xAC00..=0xD7A3 | 0xF900..=0xFAFF
         | 0xFE30..=0xFE4F | 0xFF00..=0xFF60 | 0xFFE0..=0xFFE6
@@ -235,6 +210,17 @@ impl Measurer for ShapingMeasurer {
                 && chars[index].ch.is_ascii_digit()
                 && chars[index - 1].ch == '/'
                 && chars[index - 2].ch.is_alphabetic()
+            {
+                chars[index].boundary = Boundary::Line;
+            }
+        }
+        // CoreText also breaks before a slash that stands alone between
+        // spaces, which UAX #14 (LB13) forbids, as in "probes / Jev".
+        for index in 1..chars.len().saturating_sub(1) {
+            if matches!(chars[index].boundary, Boundary::None | Boundary::Word)
+                && chars[index].ch == '/'
+                && chars[index - 1].ch == ' '
+                && chars[index + 1].ch == ' '
             {
                 chars[index].boundary = Boundary::Line;
             }

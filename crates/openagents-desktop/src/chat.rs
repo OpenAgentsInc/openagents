@@ -4246,7 +4246,7 @@ impl Panel {
         let font = rust_native::layout::display::Font {
             size: 13.0,
             weight: rust_native::layout::display::Weight::Regular,
-            family: rust_native::layout::display::FontFamily::Geist,
+            family: rust_native::layout::display::FontFamily::PaperMono,
             italic: false,
             mono: true,
         };
@@ -4320,7 +4320,7 @@ pub fn open_link(destination: &str) {
 
 fn chat_transcript() -> Transcript {
     let mut transcript = Transcript::default();
-    transcript.set_font_family(rust_native::layout::display::FontFamily::Geist);
+    transcript.set_font_family(rust_native::layout::display::FontFamily::PaperMono);
     transcript
         .set_metrics(openagents_chat_app::visual::TRANSCRIPT)
         .expect("valid chat metrics");
@@ -4360,7 +4360,7 @@ fn search_field() -> Field {
 
 fn chat_field(placeholder: &str) -> Field {
     let mut field = Field::with_placeholder(placeholder);
-    field.set_font_family(rust_native::layout::display::FontFamily::Geist);
+    field.set_font_family(rust_native::layout::display::FontFamily::PaperMono);
     field
         .set_metrics(composer_metrics(true))
         .expect("valid composer metrics");

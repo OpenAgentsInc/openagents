@@ -471,7 +471,7 @@ impl Theme {
     /// gradations of white; the same values as the transcript palette.
     pub fn openagents() -> Theme {
         Theme {
-            font_family: rust_native::layout::display::FontFamily::Geist,
+            font_family: rust_native::layout::display::FontFamily::PaperMono,
             background: Color::rgb(9, 11, 14),
             text: Color::rgb(230, 232, 235),
             muted: Color::rgb(150, 155, 163),

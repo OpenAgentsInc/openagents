@@ -2916,6 +2916,7 @@ dependencies = [
  "nostr",
  "nostr-transport",
  "notify",
+ "paper-mono",
  "private-fs",
  "qrcodegen",
  "secp256k1 0.31.1",
@@ -3157,6 +3158,7 @@ dependencies = [
  "jni 0.22.4",
  "objc2 0.5.2",
  "objc2-foundation 0.2.2",
+ "paper-mono",
  "serde_json",
 ]
 
@@ -4507,6 +4509,7 @@ name = "discovery"
 version = "0.1.0"
 dependencies = [
  "nostr",
+ "paper-mono",
  "pulldown-cmark",
  "serde",
  "serde_json",
@@ -5050,6 +5053,7 @@ dependencies = [
  "jev-hosted",
  "libc",
  "nostr",
+ "paper-mono",
  "plugin",
  "private-fs",
  "regex",
@@ -5629,6 +5633,7 @@ dependencies = [
  "libc",
  "nostr",
  "openagents-wallet",
+ "paper-mono",
  "pay-ledger",
  "receipts",
  "reqwest 0.12.28",
@@ -8616,6 +8621,7 @@ version = "0.1.0"
 dependencies = [
  "getrandom 0.3.4",
  "jev",
+ "paper-mono",
  "reqwest 0.12.28",
  "security-framework",
  "serde",
@@ -10161,6 +10167,7 @@ dependencies = [
  "hyper",
  "hyper-util",
  "openagents-chat",
+ "paper-mono",
  "pulldown-cmark",
  "secp256k1 0.31.1",
  "serde",
@@ -10333,6 +10340,10 @@ dependencies = [
  "equivalent",
  "seize",
 ]
+
+[[package]]
+name = "paper-mono"
+version = "0.1.0"
 
 [[package]]
 name = "parity-scale-codec"
@@ -12349,6 +12360,7 @@ name = "rust-native"
 version = "0.1.0"
 dependencies = [
  "code-highlight",
+ "paper-mono",
  "pulldown-cmark",
  "serde",
  "serde_json",
@@ -15507,6 +15519,7 @@ dependencies = [
  "glam",
  "gltf",
  "libm",
+ "paper-mono",
  "physics",
  "png",
  "resvg",
@@ -15559,6 +15572,7 @@ dependencies = [
  "bytemuck",
  "coder-ui",
  "glam",
+ "paper-mono",
  "serde_json",
  "swash",
  "verse-engine",

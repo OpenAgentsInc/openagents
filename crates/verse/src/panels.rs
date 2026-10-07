@@ -185,7 +185,7 @@ impl Panel {
     #[must_use]
     pub fn new(title: &str) -> Self {
         let mut transcript = Transcript::default();
-        transcript.set_font_family(FontFamily::Geist);
+        transcript.set_font_family(FontFamily::PaperMono);
         // The desktop app's own metrics are valid by construction.
         let _ = transcript.set_metrics(visual::TRANSCRIPT);
         transcript.set_palette(&visual::COLORS);
@@ -688,7 +688,7 @@ impl Panel {
         let font = Font {
             size: 13.0,
             weight: Weight::Regular,
-            family: FontFamily::Geist,
+            family: FontFamily::PaperMono,
             italic: false,
             mono: false,
         };
@@ -903,7 +903,7 @@ fn placeholder() -> ValidatedView<Intent> {
 fn theme(width: f32) -> Theme {
     Theme {
         icons: rust_native_desktop::theme::IconSet::Solar,
-        font_family: FontFamily::Geist,
+        font_family: FontFamily::PaperMono,
         background: visual::CANVAS,
         text: visual::TEXT,
         muted: visual::MUTED,
@@ -925,7 +925,7 @@ fn mono(size: f32) -> Font {
     Font {
         size,
         weight: Weight::Regular,
-        family: FontFamily::Geist,
+        family: FontFamily::PaperMono,
         italic: false,
         mono: true,
     }

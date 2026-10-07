@@ -13,8 +13,9 @@ dependency the workspace did not already have; the accessibility adapter
   order.
 - **Text** ([`src/text.rs`](src/text.rs)) breaks lines with
   `rust_native::layout::shape::ShapingMeasurer`, the breaker the iOS
-  transcript is checked against, and paints the same bundled Inter and
-  JetBrains Mono outlines with `swash`.
+  transcript is checked against, and paints the same bundled Paper Mono
+  outlines with `swash`. A character Paper Mono lacks is painted from one of
+  this computer's fonts, centered in the width the shaper measured.
 - **Paint** ([`src/paint.rs`](src/paint.rs), [`src/canvas.rs`](src/canvas.rs))
   draws antialiased rounded rectangles, check marks, and glyphs into an
   RGBA frame. The window retains this frame and compares drawing operations
@@ -70,7 +71,7 @@ dependency the workspace did not already have; the accessibility adapter
 | `Stack` horizontal | Buttons and surfaces keep their width; text, stacks, and lists share the rest; children centered on the row. |
 | `Stack` wrap | Flows onto as many rows as needed. |
 | `List` | A vertical stack with a rule between rows. The label is not drawn. |
-| `Text` | `heading`, `body`, `status` (secondary color), `code` and `terminal` (JetBrains Mono; terminal never wraps), `markdown` as plain text. `align` and `weight` apply. |
+| `Text` | `heading`, `body`, `status` (secondary color), `code` and `terminal` (Paper Mono, as all text is; terminal never wraps), `markdown` as plain text. `align` and `weight` apply. |
 | `Button` | A filled rounded rectangle; a capsule with `pill`; a link with a transparent `style.background`; a checkbox with the `unchecked` or `checked` glyph. The closed glyph set is drawn with vector strokes. A `circular` icon button draws only its glyph and keeps its label as its semantic name. Explicit `align: start` fills the available width and aligns the label to the start. |
 | `Surface` | The application's `surface_size` and `paint_surface`; an unregistered resource shows its label. |
 | `style.background` on a stack | A card with rounded corners. |

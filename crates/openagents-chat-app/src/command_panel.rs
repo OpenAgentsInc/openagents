@@ -182,27 +182,18 @@ pub fn is_surface(resource: &str) -> bool {
     )
 }
 
-/// The palette badge's text runs: Cmd+K on macOS in Inter's command sign
-/// and Geist Mono's letter, Ctrl+K elsewhere.
+/// The palette badge's text runs: Cmd+K on macOS, Ctrl+K elsewhere, in
+/// Paper Mono, which has the Command sign.
 pub fn shortcut_parts(macos: bool) -> Vec<(&'static str, Font)> {
     let font = Font {
         size: 10.0,
         weight: Weight::Regular,
-        family: FontFamily::Geist,
+        family: FontFamily::PaperMono,
         mono: true,
         italic: false,
     };
     if macos {
-        vec![
-            (
-                "⌘",
-                Font {
-                    family: FontFamily::Inter,
-                    ..font
-                },
-            ),
-            ("K", font),
-        ]
+        vec![("⌘K", font)]
     } else {
         vec![("Ctrl+K", font)]
     }
