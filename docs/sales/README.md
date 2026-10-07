@@ -356,8 +356,11 @@ dependencies, and acceptance, including the sales floor. At filing, 74 remain
 open and the two Agora survey/art items are complete. It links completed
 foundations and existing open world issues, identifies the smallest revenue
 path for each offer, and separates owner activation from code completion.
-All filed work is on the required project board with mandatory native blockers;
-conditional integrations and alternative lanes stay explicit in issue scope.
+The [Revenue and Sales project](https://github.com/orgs/OpenAgentsInc/projects/21)
+organizes all filed work and shared prerequisites by delivery, workstream,
+status, and readiness, with native dependencies and current blocker mirrors.
+All issues also remain on the required OpenAgents project. Conditional
+integrations and alternative lanes stay explicit in issue scope.
 Its [shared-agent phase map](revenue-roadmap.md#shared-agent-foundation-10807)
 reuses #10807: Alice steering Coder first, then generic crew machinery for
 Paul. Sales adds current-record adapters, narrowing charters, aggregate

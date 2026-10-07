@@ -11,6 +11,12 @@ records the complete backlog, delivery milestones, and native blockers.
 Project 20 separates **Today MVP** from every follow-up and conditional
 research issue; it does not replace project 19.
 
+[OpenAgents Revenue and Sales](https://github.com/orgs/OpenAgentsInc/projects/21)
+tracks the unified [revenue roadmap](sales/revenue-roadmap.md#build-issue-list):
+all 76 REV issues and 19 shared prerequisite issues. Its saved views separate
+first revenue, ready work, blockers, the sales floor, conditional work, and
+scope decisions. Those issues retain their existing project memberships.
+
 ## Fields
 
 | Field | Values | Meaning |
@@ -107,3 +113,53 @@ Read current field and option IDs with
 Claim the implementation issue before starting it and release its claim when
 stopping. Closing code-complete work does not claim an owner-only device,
 payment, or store step has passed; record that step in `NEEDS_OWNER.md`.
+
+## Revenue project updates
+
+Project 21 is public and linked to this repository. Its ID is
+`PVT_kwDOBubymc4BmBaj`. Keep **Status** and **Readiness** current when you
+claim, block, review, or close an issue. Preserve an existing assignee or
+claim; adding an issue to the project doesn't assign implementation.
+The existing status and sync scripts target project 19; update project 21
+separately, just as you update project 20 for its issues.
+
+| Field | Meaning |
+| --- | --- |
+| Delivery | R0–R5, parallel sales floor, conditional extensions, or shared foundations |
+| Workstream | Owning responsibility area, such as payments, clients, outreach, or Verse |
+| Scope | Revenue delivery, sales floor, conditional proposal, shared foundation, or existing epic |
+| Readiness | Ready, Blocked, Needs scope, Deferred, or Complete |
+| Dependencies | All native prerequisites, including completed foundations |
+| Blocked by | Open native completion blockers; empty for completed issues |
+| Blocking | Open dependent issues while this prerequisite remains open |
+| Scope conditions | Selected-lane, enabled-feature, evidence, or activation conditions retained from the issue |
+
+**Ready** means the next scoped implementation can begin; it doesn't establish
+commercial activation or funded qualification. **Needs scope** identifies a
+required offer or client-lane selection. Keep conditional proposals
+**Deferred** until their evidence and scope conditions are met. Completed
+implementation stays **Done**/**Complete** while owner-only activation remains
+in `NEEDS_OWNER.md`.
+
+Select one product lane before adding its unfinished implementation blocker.
+Add conditional integration blockers only when enabling that branch; don't
+make every payment rail, client, world feature, or later enrichment a universal
+dependency. Native issue links remain authoritative. When one changes or
+closes, refresh the dependency fields and readiness on affected items.
+
+The Status field is `PVTSSF_lADOBubymc4BmBajzhksAXI`:
+
+| Status | Option ID |
+| --- | --- |
+| Todo | `f75ad846` |
+| In progress | `47fc9ee4` |
+| Blocked | `5e321764` |
+| In review | `0ba60a41` |
+| Done | `98236657` |
+
+Use `gh project item-add 21 --owner OpenAgentsInc --url ISSUE_URL --format json`
+to get an item's ID, `gh project field-list 21 --owner OpenAgentsInc --format json`
+for current field/option IDs, and `gh project item-edit` as in the commands
+above. The Blocked by field is `PVTF_lADOBubymc4BmBajzhksBQ4`; use `--text`
+with open issue numbers or `--clear` when none remain. No GitHub workflow or
+scheduled automation maintains this project.

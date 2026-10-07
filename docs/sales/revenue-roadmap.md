@@ -178,12 +178,21 @@ or broader market does not gate R1.
 This is the filed build inventory for G1–G11, R0–R5, and the agent sales
 floor. Each of the 76 stable IDs, `REV-01` through `REV-76`, links to its
 detailed GitHub issue with scope, owning code/contracts, acceptance, focused
-verification, and activation limits. All are on the required
+verification, and activation limits. The dedicated
+[Revenue and Sales project](https://github.com/orgs/OpenAgentsInc/projects/21)
+contains all 76 issues plus 19 shared foundations and their native dependency
+closure. Its views cover [first revenue](https://github.com/orgs/OpenAgentsInc/projects/21/views/2),
+[ready work](https://github.com/orgs/OpenAgentsInc/projects/21/views/3),
+[blockers](https://github.com/orgs/OpenAgentsInc/projects/21/views/4),
+the sales floor, conditional work, and unresolved scope decisions.
+All issues also remain on the required
 [OpenAgents project](https://github.com/orgs/OpenAgentsInc/projects/19);
 client/world follow-ups also appear on the existing
 [terminal and workbench project](https://github.com/orgs/OpenAgentsInc/projects/20).
 Responsibility areas don't assign a person or claim work. The repository's
 issue claims and native blockers remain authoritative.
+Keep the dedicated project's status, readiness, and dependency mirrors current
+using the [project update instructions](../project-board.md#revenue-project-updates).
 
 Native dependencies represent mandatory completion blockers. Conditional
 features and alternative product lanes stay explicit in the issue body;
