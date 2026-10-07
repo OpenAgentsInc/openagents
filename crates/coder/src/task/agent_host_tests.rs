@@ -1,5 +1,8 @@
 use super::*;
+use serde_json::json;
 use std::time::Instant;
+
+use super::coder_v1::Scripted as Recorded;
 
 fn clock() -> u64 {
     1_791_158_400
@@ -13,27 +16,61 @@ fn owner() -> Principal {
     }
 }
 
-/// A host whose agent `alice` plans from `script`, one list of actions
-/// per request.
-fn host(dir: &tempfile::TempDir, script: Vec<Vec<agent::NextAction>>) -> Agents {
+/// Coder running `command` to `exit`, as its events report it.
+fn run(command: &str, exit: i32, output: &str) -> Vec<CoderEvent> {
+    vec![
+        CoderEvent::Tool {
+            name: "Run".into(),
+            input: json!(command),
+            output: serde_json::Value::Null,
+            running: true,
+            delegation: None,
+        },
+        CoderEvent::Tool {
+            name: "Run".into(),
+            input: json!(command),
+            output: json!({"command": command, "exit": exit, "output": output}),
+            running: false,
+            delegation: None,
+        },
+    ]
+}
+
+/// A recorded Coder turn: `events`, then `reply`.
+fn turn(events: Vec<CoderEvent>, reply: &str) -> Recorded {
+    Recorded {
+        events,
+        ended: Some(Ended::Finished {
+            reply: reply.into(),
+            tokens: 0,
+        }),
+        ..Recorded::default()
+    }
+}
+
+/// An engine that plays one recorded turn per request.
+fn engine(script: Vec<Recorded>) -> EngineFactory {
+    let script = Arc::new(Mutex::new(VecDeque::from(script)));
+    Arc::new(move |_record: &Record| {
+        let turn = script.lock().unwrap().pop_front().unwrap_or_default();
+        Ok((
+            Box::new(turn) as Box<dyn coder_v1::Engine>,
+            "Coder V1 (recorded)".to_string(),
+        ))
+    })
+}
+
+/// A host whose agent `alice` runs `script` in place of Coder V1, one
+/// recorded turn per request.
+fn host(dir: &tempfile::TempDir, script: Vec<Recorded>) -> Agents {
     let root = dir.path().join("host");
     let workspace = dir.path().join("work");
     std::fs::create_dir_all(&workspace).unwrap();
     let store = Store::new(&root, "alice").unwrap();
     store.open(&workspace, clock()).unwrap();
-    let script = Arc::new(Mutex::new(VecDeque::from(script)));
-    let model: ModelFactory = Arc::new(move |_record: &Record| {
-        let actions = script.lock().unwrap().pop_front().unwrap_or_default();
-        Ok((
-            Box::new(agent::Scripted {
-                actions: actions.into(),
-                prompts: Vec::new(),
-            }) as Box<dyn Model + Send>,
-            "scripted".to_string(),
-        ))
-    });
     Agents::new(&root, dir.path().join("tasks"), BTreeMap::new())
-        .with_model(model)
+        .with_engine(engine(script))
+        .with_coder_state(dir.path().join("coder"))
         .with_clock(clock)
 }
 
@@ -70,14 +107,14 @@ fn until(agents: &Agents, done: impl Fn(&wire::AgentView) -> bool) -> wire::Agen
 }
 
 #[test]
-fn the_host_runs_a_read_only_command_itself_and_reports_three_ways() {
+fn coder_runs_a_read_only_request_and_she_reports_three_ways() {
     let dir = tempfile::tempdir().unwrap();
     let agents = host(
         &dir,
-        vec![vec![
-            agent::action(&["echo atif: 31 passed"], ""),
-            agent::action(&[], "atif: 31 passed."),
-        ]],
+        vec![turn(
+            run("echo atif: 31 passed", 0, "atif: 31 passed"),
+            "atif: 31 passed.",
+        )],
     );
     ask(&agents, "k1", "run the atif tests", false).unwrap();
     // A retry of the same request asks once.
@@ -127,73 +164,96 @@ fn the_host_runs_a_read_only_command_itself_and_reports_three_ways() {
 }
 
 #[test]
-fn a_typist_pane_types_and_only_the_issued_step_is_accepted() {
+fn her_pane_follows_her_coder_session_and_a_key_takes_it_over() {
     let dir = tempfile::tempdir().unwrap();
-    let agents = host(
-        &dir,
-        vec![vec![
-            agent::action(&["cargo test -p atif"], ""),
-            agent::action(&[], "atif: 31 passed."),
-        ]],
-    );
+    let mut working = turn(run("cargo test -p atif", 0, "ok"), "");
+    working.hold = true;
+    let agents = host(&dir, vec![working]);
     ask(&agents, "k1", "run the atif tests", true).unwrap();
     let seen = until(&agents, |v| v.run.is_some());
     let step = seen.run.unwrap();
     assert!(step.typist);
-    assert_eq!(step.command, "cargo test -p atif");
-    assert_eq!(seen.activity, Activity::Testing);
-    let ran = |step: u64| Operation::AgentRan {
+    let pane = step.coder.expect("a Coder pane");
+    assert_eq!(pane.session, "agent-alice");
+    assert!(step.command.starts_with("Coder V1 session"));
+    let took = |step: u64| Operation::AgentRan {
         agent: "alice".into(),
         step,
         ran: wire::Ran {
-            status: Some(0),
-            output: "test result: ok. 31 passed".into(),
+            taken_back: true,
             ..wire::Ran::default()
         },
     };
     assert_eq!(
-        agents.answer("r0", &owner(), &ran(step.step + 7)),
+        agents.answer("r0", &owner(), &took(step.step + 7)),
         Err(Code::Conflict)
     );
-    agents.answer("r1", &owner(), &ran(step.step)).unwrap();
-    until(&agents, |v| !v.busy && v.headline == "ok exit 0");
+    agents.answer("r1", &owner(), &took(step.step)).unwrap();
+    let ended = until(&agents, |v| !v.busy && v.headline == "taken over");
+    assert!(ended.run.is_none());
+    let journal = Store::new(&dir.path().join("host"), "alice")
+        .unwrap()
+        .journal(100)
+        .unwrap();
+    assert!(journal.iter().any(|e| e.kind == Kind::Takeback));
 }
 
 #[test]
-fn anything_else_waits_for_confirm_or_reject() {
+fn coders_approvals_wait_for_confirm_or_reject() {
     let dir = tempfile::tempdir().unwrap();
-    let agents = host(
-        &dir,
-        vec![vec![
-            agent::action(&["touch notes.txt"], ""),
-            agent::action(&[], "I left it alone."),
-        ]],
-    );
+    let asks = |reply: &str| {
+        let mut events = vec![CoderEvent::Approval {
+            id: 1,
+            command: "touch notes.txt".into(),
+            why: "it writes a file".into(),
+        }];
+        events.extend(run("touch notes.txt", 0, ""));
+        turn(events, reply)
+    };
+    let agents = host(&dir, vec![asks("I left it alone."), asks("Made it.")]);
     ask(&agents, "k1", "make a notes file", false).unwrap();
     let seen = until(&agents, |v| v.pending.is_some());
     assert_eq!(seen.activity, Activity::Waiting);
     let proposal = seen.pending.unwrap();
     assert_eq!(proposal.command, "touch notes.txt");
-    let answer = |step: u64| Operation::AnswerAgent {
+    let answer = |step: u64, confirm: bool| Operation::AnswerAgent {
         agent: "alice".into(),
         step,
-        confirm: false,
+        confirm,
     };
     assert_eq!(
-        agents.answer("a0", &owner(), &answer(99)),
+        agents.answer("a0", &owner(), &answer(99, false)),
         Err(Code::Conflict)
     );
     agents
-        .answer("a1", &owner(), &answer(proposal.step))
+        .answer("a1", &owner(), &answer(proposal.step, false))
         .unwrap();
     until(&agents, |v| !v.busy && v.headline == "rejected");
-    assert!(!dir.path().join("work/notes.txt").exists());
+
+    ask(&agents, "k2", "make a notes file after all", false).unwrap();
+    let proposal = until(&agents, |v| v.pending.is_some()).pending.unwrap();
+    agents
+        .answer("a2", &owner(), &answer(proposal.step, true))
+        .unwrap();
+    until(&agents, |v| !v.busy && v.headline == "ok exit 0");
+    let kinds: Vec<Kind> = Store::new(&dir.path().join("host"), "alice")
+        .unwrap()
+        .journal(100)
+        .unwrap()
+        .into_iter()
+        .map(|e| e.kind)
+        .collect();
+    for kind in [Kind::Proposed, Kind::Rejected, Kind::Confirmed, Kind::Ran] {
+        assert!(kinds.contains(&kind), "{kind:?} in {kinds:?}");
+    }
 }
 
 #[test]
 fn stop_runs_the_sequence_and_pause_starts_nothing_new() {
     let dir = tempfile::tempdir().unwrap();
-    let agents = host(&dir, vec![vec![agent::action(&["cargo test -p atif"], "")]]);
+    let mut working = turn(run("cargo test -p atif", 0, "ok"), "");
+    working.hold = true;
+    let agents = host(&dir, vec![working]);
     let store = Store::new(&dir.path().join("host"), "alice").unwrap();
     let jobs = Jobs::new(store.clone());
     jobs.add(
@@ -250,7 +310,7 @@ fn stop_runs_the_sequence_and_pause_starts_nothing_new() {
 #[test]
 fn memory_takes_notes_and_waits_for_accepted_preferences() {
     let dir = tempfile::tempdir().unwrap();
-    let agents = host(&dir, vec![vec![agent::action(&[], "Understood.")]]);
+    let agents = host(&dir, vec![turn(vec![], "Understood.")]);
     ask(
         &agents,
         "k1",
@@ -364,23 +424,13 @@ fn the_owner_sets_her_up_and_she_takes_a_request() {
     std::fs::create_dir_all(app.join("src")).unwrap();
     let plain = dir.path().join("plain");
     std::fs::create_dir_all(&plain).unwrap();
-    let script = Arc::new(Mutex::new(VecDeque::from(vec![vec![
-        agent::action(&["echo atif: 31 passed"], ""),
-        agent::action(&[], "atif: 31 passed."),
-    ]])));
-    let model: ModelFactory = Arc::new(move |_record: &Record| {
-        let actions = script.lock().unwrap().pop_front().unwrap_or_default();
-        Ok((
-            Box::new(agent::Scripted {
-                actions: actions.into(),
-                prompts: Vec::new(),
-            }) as Box<dyn Model + Send>,
-            "scripted".to_string(),
-        ))
-    });
     let workspaces = BTreeMap::from([("app".to_string(), app.clone())]);
     let agents = Agents::new(&root, dir.path().join("tasks"), workspaces)
-        .with_model(model)
+        .with_engine(engine(vec![turn(
+            run("echo atif: 31 passed", 0, "atif: 31 passed"),
+            "atif: 31 passed.",
+        )]))
+        .with_coder_state(dir.path().join("coder"))
         .with_clock(clock);
     assert!(agents.list().agents.is_empty(), "no agent yet");
     assert_eq!(

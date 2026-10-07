@@ -34,6 +34,7 @@ pub mod agent_memory;
 pub mod archive;
 pub mod artifact;
 pub mod autostart;
+pub mod coder_v1;
 /// Which login each engine is signed in as, as a salted fingerprint
 /// (#10105): `microcoder_loop::account`, so readings and holds follow the
 /// login they were about.

@@ -390,8 +390,14 @@ impl Application {
     /// drives, and shows it as panes without taking focus from the world.
     /// Returns the pane, or `None` when the shell did not start.
     pub fn open_typist(&mut self, typist: &str) -> Option<PaneId> {
+        self.open_typist_running(typist, &Program::Shell)
+    }
+
+    /// Opens a new tab whose one pane runs `program`, driven by `typist`,
+    /// such as an agent's Coder session in Coder's own terminal (#10753).
+    pub fn open_typist_running(&mut self, typist: &str, program: &Program) -> Option<PaneId> {
         let (rows, cols) = self.grid_size(self.area);
-        let id = self.spawn(&Program::Shell, rows, cols)?;
+        let id = self.spawn(program, rows, cols)?;
         if let Some(pane) = self.panes.get_mut(&id) {
             pane.typist = Some(typist.to_string());
         }

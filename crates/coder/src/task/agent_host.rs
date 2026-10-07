@@ -4,16 +4,19 @@
 //!
 //! [`Agents`] answers the `studio.agent.*` NIP-HOST operations
 //! (`coder_access::agent`). A request becomes a run on a worker thread of
-//! the host's own: the host plans it with the model, gives each command its
-//! effect class before anything types it, journals every step, and asks
-//! the owner's CONFIRM or REJECT for anything that is not read-only. Where
-//! a command runs is the request's choice: with a typist, the asking
-//! device's terminal pane types it, titled `driven by NAME`, and reports
-//! what it printed (`studio.agent.ran`), which the host accepts only for
-//! the step it issued; without one, the host runs it itself under the
-//! subprocess supervisor. Task mode hands the request to the studio as a
-//! one-task goal for the agent's seat, in her own worktree, and follows
-//! it to the Merge station.
+//! the host's own, and the run is a turn of Coder V1 (#10753,
+//! [`super::coder_v1`]): `openagents coder chat --json --approvals stdin`
+//! in her own durable session, `agent-NAME`. Coder plans and runs the
+//! work; the gate gives each command its effect class before it runs, and
+//! anything that is not read-only waits for the owner's CONFIRM or REJECT,
+//! which the host writes back to Coder. The host journals every command,
+//! proposal, answer, and the report from Coder's events. With a typist,
+//! the asking device's pane runs Coder's own terminal following her
+//! session (`studio.agent.list`'s run step names it), and a key the owner
+//! presses there takes it over: the host stops her turn
+//! (`studio.agent.ran`), and the session is the owner's. Task mode hands
+//! the request to the studio as a one-task goal for the agent's seat, in
+//! her own worktree, and follows it to the Merge station.
 //!
 //! **Stop** runs the kill switch's sequence and journals each step: her
 //! standing jobs go off, every pane she drives is released with `Ctrl+C`
@@ -41,14 +44,11 @@ use coder_host::access::studio::Activity;
 use coder_host::{AgentReport, Code, Principal};
 use nostr::activity_summary::{Attention, Phase};
 
-use super::agent::{
-    self, Asked, Decision, Doing, Entry, Kind, Model, Outcome, Record, Report, State, Store,
-};
+use super::agent::{self, Decision, Doing, Entry, Kind, Outcome, Record, Report, State, Store};
 use super::agent_jobs::{self, Facts, Jobs};
 use super::agent_memory::{self, Author, Memory, MemoryKind};
+use super::coder_v1::{self, Ended, Event as CoderEvent};
 
-/// How long one command may run.
-pub const COMMAND_LIMIT: Duration = Duration::from_secs(30 * 60);
 /// How long a waiting proposal waits for the owner.
 pub const DECISION_LIMIT: Duration = Duration::from_secs(60 * 60);
 /// The most requests waiting behind the one under way.
@@ -61,14 +61,14 @@ const ASKED_MAX: usize = 512;
 const PLACES_MAX: usize = 8;
 /// How often a task-mode run looks at its change.
 const TASK_POLL: Duration = Duration::from_secs(2);
-/// The scripted plan in place of a model, for an offline demo or a
-/// capture: a JSON list of next actions, which each request plays from the
-/// start.
+/// A recorded Coder turn in place of Coder V1, for an offline demo or a
+/// capture: a JSON list of Coder events ([`coder_v1::Event`]), which each
+/// request plays from the start.
 pub const SCRIPT_VAR: &str = "OPENAGENTS_AGENT_SCRIPT";
 
-/// Makes the model a request plans with, and says which it is.
-pub type ModelFactory =
-    Arc<dyn Fn(&Record) -> Result<(Box<dyn Model + Send>, String), String> + Send + Sync>;
+/// Makes the engine a request runs on, and says which it is.
+pub type EngineFactory =
+    Arc<dyn Fn(&Record) -> Result<(Box<dyn coder_v1::Engine>, String), String> + Send + Sync>;
 
 /// A request waiting for its turn.
 #[derive(Clone, Debug)]
@@ -227,7 +227,9 @@ pub struct Agents {
     tasks: PathBuf,
     workspaces: BTreeMap<String, PathBuf>,
     shared: Arc<Mutex<Shared>>,
-    model: ModelFactory,
+    engine: EngineFactory,
+    /// The Coder store; [`coder_v1::default_state`] when unset.
+    coder_state: Option<PathBuf>,
     facts: Arc<dyn Facts + Send + Sync>,
     sweep: Option<Arc<dyn Fn() + Send + Sync>>,
     screen: secret_screen::Screen,
@@ -248,25 +250,27 @@ fn unix_now() -> u64 {
     super::autostart::unix_now()
 }
 
-/// The model the host plans with: the scripted plan [`SCRIPT_VAR`] names,
-/// or Microcoder's step on the first provider with capacity.
+/// The engine the host runs requests on: the recorded turn [`SCRIPT_VAR`]
+/// names, or Coder V1.
 #[must_use]
-pub fn default_model() -> ModelFactory {
+pub fn default_engine() -> EngineFactory {
     Arc::new(|_record: &Record| {
         if let Some(path) = std::env::var_os(SCRIPT_VAR).filter(|p| !p.is_empty()) {
             let text = std::fs::read_to_string(&path)
                 .map_err(|e| format!("cannot read {}: {e}", Path::new(&path).display()))?;
-            let actions: Vec<agent::NextAction> =
+            let events: Vec<CoderEvent> =
                 serde_json::from_str(&text).map_err(|e| format!("{SCRIPT_VAR}: {e}"))?;
-            let model: Box<dyn Model + Send> = Box::new(agent::Scripted {
-                actions: actions.into(),
-                prompts: Vec::new(),
+            let engine: Box<dyn coder_v1::Engine> = Box::new(coder_v1::Scripted {
+                events,
+                ..coder_v1::Scripted::default()
             });
-            return Ok((model, "scripted".into()));
+            return Ok((engine, "Coder V1 (recorded)".into()));
         }
-        let live = agent::LiveModel::new()?;
-        let standing = live.standing();
-        Ok((Box::new(live) as Box<dyn Model + Send>, standing))
+        let cli = coder_v1::Cli::found()?;
+        Ok((
+            Box::new(cli) as Box<dyn coder_v1::Engine>,
+            "Coder V1".into(),
+        ))
     })
 }
 
@@ -284,7 +288,8 @@ impl Agents {
             tasks: tasks.into(),
             workspaces,
             shared: Arc::new(Mutex::new(Shared::default())),
-            model: default_model(),
+            engine: default_engine(),
+            coder_state: None,
             facts: Arc::new(HostFacts),
             sweep: None,
             screen: secret_screen::Screen::host(),
@@ -293,10 +298,18 @@ impl Agents {
         }
     }
 
-    /// Plan with `model` instead, as a test does.
+    /// Run requests on `engine` instead, as a test does.
     #[must_use]
-    pub fn with_model(mut self, model: ModelFactory) -> Self {
-        self.model = model;
+    pub fn with_engine(mut self, engine: EngineFactory) -> Self {
+        self.engine = engine;
+        self
+    }
+
+    /// Keep the agents' Coder sessions in `state` instead of the default
+    /// Coder store.
+    #[must_use]
+    pub fn with_coder_state(mut self, state: impl Into<PathBuf>) -> Self {
+        self.coder_state = Some(state.into());
         self
     }
 
@@ -836,8 +849,6 @@ impl Agents {
                 || record.workspace.clone(),
                 |(_, path)| path.display().to_string(),
             );
-        let mut record_here = record.clone();
-        record_here.workspace = cwd.clone();
         let (briefing, carried) = memory.briefing(&queued.text, &cwd).unwrap_or_default();
         let text = if queued.context.trim().is_empty() {
             queued.text.clone()
@@ -847,48 +858,7 @@ impl Agents {
                 queued.text, queued.context
             )
         };
-        let (mut model, standing) = match (self.model)(&record) {
-            Ok(model) => model,
-            Err(why) => {
-                let _ = store.append(&request_entry(now, &queued));
-                let report = Report {
-                    outcome: Outcome::Failed,
-                    reply: format!("I have no model to plan with: {}", agent::plain(&why)),
-                    headline: "no model".into(),
-                };
-                let _ = store.append(&Entry::new(now, Kind::Failed, &report.reply));
-                self.finish(&store, &record, &queued, &report, None);
-                return;
-            }
-        };
-        self.with_live(name, |live| live.model = standing);
-        let mut terminal = HostTerminal {
-            agents: self.clone(),
-            name: name.to_string(),
-            typist: queued.typist,
-            cwd: cwd.clone(),
-            cancel: cancel.clone(),
-        };
-        let mut watch = HostWatch {
-            agents: self.clone(),
-            name: name.to_string(),
-            cancel: cancel.clone(),
-        };
-        let from = queued.from.clone();
-        let report = agent::handle_with(
-            &store,
-            &record_here,
-            &Asked {
-                text: &text,
-                from: Some(&from),
-                briefing: &briefing,
-                carried: &carried,
-            },
-            &mut ModelRef(model.as_mut()),
-            &mut terminal,
-            &mut watch,
-            self.clock,
-        );
+        let report = self.coder_turn(&store, &record, &queued, &cwd, &text, &briefing, &carried);
         let report = if cancel.load(Ordering::SeqCst) {
             Report {
                 outcome: Outcome::Stopped,
@@ -1805,78 +1775,6 @@ fn transcript(store: &Store) -> Vec<String> {
     lines.into_iter().skip(skip).collect()
 }
 
-/// The model behind a box, as `handle` takes it.
-struct ModelRef<'a>(&'a mut (dyn Model + Send));
-
-impl Model for ModelRef<'_> {
-    fn next(&mut self, system: &str, prompt: &str) -> Result<agent::NextAction, String> {
-        self.0.next(system, prompt)
-    }
-}
-
-/// The terminal a request types into: a device's pane, or the host's own
-/// supervised shell.
-struct HostTerminal {
-    agents: Agents,
-    name: String,
-    typist: bool,
-    cwd: String,
-    cancel: Arc<AtomicBool>,
-}
-
-impl agent::Terminal for HostTerminal {
-    fn run(&mut self, command: &str) -> agent::Ran {
-        if self.cancel.load(Ordering::SeqCst) {
-            return agent::Ran::Lost("stopped by the owner".into());
-        }
-        let (reply, answer) = mpsc::channel();
-        let step = self.agents.with_live(&self.name, |live| {
-            live.step += 1;
-            let step = wire::Step {
-                step: live.step,
-                command: command.to_string(),
-                typist: self.typist,
-                cwd: self.cwd.clone(),
-            };
-            live.run = Some((step, reply.clone()));
-            live.step
-        });
-        if !self.typist {
-            let ran = headless(command, Path::new(&self.cwd), &self.cancel);
-            self.agents.with_live(&self.name, |live| {
-                if live.run.as_ref().is_some_and(|(s, _)| s.step == step) {
-                    live.run = None;
-                }
-            });
-            return ran;
-        }
-        let ran = wait(&answer, &self.cancel, COMMAND_LIMIT);
-        self.agents.with_live(&self.name, |live| {
-            if live.run.as_ref().is_some_and(|(s, _)| s.step == step) {
-                live.run = None;
-            }
-        });
-        match ran {
-            Some(ran) if ran.taken_back => agent::Ran::TakenBack,
-            Some(wire::Ran {
-                status: Some(status),
-                output,
-                ..
-            }) => agent::Ran::Exited { status, output },
-            Some(ran) => {
-                agent::Ran::Lost(ran.lost.unwrap_or_else(|| "the pane did not report".into()))
-            }
-            None if self.cancel.load(Ordering::SeqCst) => {
-                agent::Ran::Lost("stopped by the owner; Ctrl+C sent".into())
-            }
-            None => agent::Ran::Lost(format!(
-                "no completion mark in {} minutes",
-                COMMAND_LIMIT.as_secs() / 60
-            )),
-        }
-    }
-}
-
 fn wait<T>(answer: &Receiver<T>, cancel: &AtomicBool, limit: Duration) -> Option<T> {
     let start = std::time::Instant::now();
     loop {
@@ -1892,98 +1790,8 @@ fn wait<T>(answer: &Receiver<T>, cancel: &AtomicBool, limit: Duration) -> Option
     }
 }
 
-/// Runs `command` in `cwd` under the subprocess supervisor, which owns its
-/// process group: a stop or the deadline ends the whole tree.
-fn headless(command: &str, cwd: &Path, cancel: &Arc<AtomicBool>) -> agent::Ran {
-    let Ok(runtime) = tokio::runtime::Builder::new_current_thread()
-        .enable_all()
-        .build()
-    else {
-        return agent::Ran::Lost("the host could not start a runtime".into());
-    };
-    let mut process = std::process::Command::new("/bin/sh");
-    process
-        .arg("-c")
-        .arg(command)
-        .env("PAGER", "cat")
-        .env("GIT_PAGER", "cat")
-        .env("TERM", "dumb");
-    let job = supervise::Job::from_command(process)
-        .in_directory(cwd)
-        .bounded(supervise::Limits::within(COMMAND_LIMIT).keeping(wire::MAX_OUTPUT));
-    let cancel = cancel.clone();
-    let ended = runtime.block_on(async move {
-        tokio::select! {
-            ended = job.run() => Some(ended),
-            () = async {
-                while !cancel.load(Ordering::SeqCst) {
-                    tokio::time::sleep(Duration::from_millis(200)).await;
-                }
-            } => None,
-        }
-    });
-    match ended {
-        None => agent::Ran::Lost("stopped by the owner; the command's process group ended".into()),
-        Some(ended) => match ended.ending {
-            supervise::Ending::Exited(code) => {
-                let mut output = ended.stdout.text;
-                if !ended.stderr.text.is_empty() {
-                    output.push_str(&ended.stderr.text);
-                }
-                agent::Ran::Exited {
-                    status: code.unwrap_or(-1),
-                    output,
-                }
-            }
-            supervise::Ending::TimedOut => agent::Ran::Lost(format!(
-                "it ran past {} minutes",
-                COMMAND_LIMIT.as_secs() / 60
-            )),
-            supervise::Ending::Failed(why) => agent::Ran::Lost(why),
-        },
-    }
-}
-
-/// The watch a request reports to: her live state, and the owner's
-/// answers through `studio.agent.answer`.
-struct HostWatch {
-    agents: Agents,
-    name: String,
-    cancel: Arc<AtomicBool>,
-}
-
-impl agent::Watch for HostWatch {
-    fn doing(&mut self, doing: Doing) {
-        self.agents.set_doing(&self.name, doing);
-    }
-
-    fn line(&mut self, line: &str) {
-        let name = self.name.clone();
-        self.agents.say(&name, &format!("{name}: {line}"));
-    }
-
-    fn decide(&mut self, command: &str, why: &str) -> Decision {
-        if self.cancel.load(Ordering::SeqCst) {
-            return Decision::Reject;
-        }
-        let (answer, decision) = mpsc::channel();
-        self.agents.with_live(&self.name, |live| {
-            live.step += 1;
-            live.pending = Some((
-                wire::Proposal {
-                    step: live.step,
-                    command: command.to_string(),
-                    why: why.to_string(),
-                },
-                answer,
-            ));
-        });
-        let decided = wait(&decision, &self.cancel, DECISION_LIMIT);
-        self.agents
-            .with_live(&self.name, |live| live.pending = None);
-        decided.unwrap_or(Decision::Reject)
-    }
-}
+#[path = "agent_coder.rs"]
+mod coder_turn;
 
 #[cfg(test)]
 #[path = "agent_host_tests.rs"]

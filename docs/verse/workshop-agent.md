@@ -23,10 +23,14 @@ Her record, key, journal, memory, and standing jobs are in
 `~/.openagents/host/agents/alice/`
 ([`coder::task::agent`](../../crates/coder/src/task/agent.rs)); a record the
 phase 1 demo left under `agents/ada/` moves there, with its journal, the
-first time a host or Verse opens her. She plans with Microcoder's step on the
-first provider with capacity, types read-only commands into a terminal pane
-titled `driven by alice`, asks CONFIRM or REJECT for anything else, and does
-code changes in her own worktree for you to merge at the Merge station.
+first time a host or Verse opens her. She does her work in Coder V1
+([`crates/coder-new`](../../crates/coder-new), `openagents coder`): each
+request is a turn of her own durable Coder session, `agent-alice`, and her
+pane runs Coder's own terminal following that session, titled `driven by
+alice`. Coder asks before any command that is not read-only, and that
+question is her CONFIRM or REJECT at the lectern. Code changes run in her own
+worktree, also on Coder V1, for you to merge at the Merge station. See
+[Coder V1 as her engine](#coder-v1-as-her-engine).
 
 ## Contents
 
@@ -51,7 +55,7 @@ The workshop agent is one named agent with its own Nostr key, attested by
 your key. It works at a desk in Everglade: Alice's is in the owner's house. You give it work by
 walking up and typing, from the smart terminal, from your phone, or from the
 Task Wall. It does the work on your computers through the resident Coder
-host. It opens terminals and types in them as a visible typist, runs Coder
+host. It works in Coder V1 sessions you can watch and take over, runs Coder
 tasks in their own worktrees, and runs tests. It asks before risky steps and
 reports back. It remembers your projects and preferences, keeps an audit
 log, and can run a small number of standing jobs, such as a nightly check.
@@ -112,16 +116,21 @@ To go through the whole flow:
    she says so.
 1. Type a request, or keep her suggestion, and press Enter.
    - A read-only request, such as `run the atif tests and tell me if they
-     pass`, opens a terminal pane titled `driven by alice`. She types the
-     command there and stands at the console by the east wall while it
-     runs, then returns to her desk and reports.
-   - A command that changes something, such as `run touch FILE`, waits at
-     the lectern: Enter confirms it and Esc rejects it.
+     pass`, runs as a turn of her Coder session and opens a pane titled
+     `driven by alice` with Coder's own terminal following it, so you watch
+     Coder plan and run each command. She stands at the console by the east
+     wall while a command runs, then returns to her desk and reports
+     Coder's answer.
+   - When Coder wants a command that changes something, such as `touch
+     FILE`, she waits at the lectern with it: Enter confirms it and Esc
+     rejects it, and Coder continues either way.
    - A code change, such as `fix the typo in README.md`, runs in her own
      worktree and waits at the Merge station. Review it with
      `openagents studio review TASK --diff` and merge it with
      `openagents studio merge TASK --head TREE`.
-1. To take her pane back, press Ctrl+` and any key; she stops and says so.
+1. To take over, press Ctrl+` and any key in her pane: her turn stops, and
+   her Coder session is yours to type in, in the same pane. A new request
+   to her continues the session once you quit Coder there.
 1. F2 shows her memory (type to add a note), F4 her journal, F7 stops her
    (Enter confirms; four journaled steps), and F8 pauses or resumes her.
    `openagents agent show|stop|pause|resume alice` do the same from a
@@ -302,34 +311,33 @@ choose **Merge**, **Request changes**, or **Reject**. Merging lands locally;
 pushing and opening a pull request are separate steps you approve at the
 podium, and the push runs from your identity, never the agent's.
 
-### Terminal mode: commands in a terminal it drives
+### Terminal mode: a turn of her Coder session
 
-Some work is a terminal session: run the tests and say what fails, start a
-dev server and check that it answers, check disk space on the Linux box. The
-agent opens a NIP-TERM terminal with `terminal.open` on the target host, in
-a workspace root or its own worktree, and becomes that terminal's typist.
+Some work is a terminal session: run the tests and say what fails, read the
+log, check disk space. The host runs the request as one turn of Coder V1 in
+her own session (`openagents coder chat --json --approvals stdin --session
+agent-alice`), in her workspace or the host workspace the request names.
 
-- **Typist rules.** These follow the [smart terminal](../terminal/smart-terminal.md#agents-attached-to-panes).
-  The agent types only into terminals it opened, or into one you hand to
-  it. The pane's title shows `driven by alice`. Any key you press takes the
-  typist role back at once, and the agent stops. Every key it sends is
-  journaled.
-- **One command at a time.** The Microcoder loop proposes commands; a
-  terminal executor types each one, waits for its completion mark (the smart
-  terminal's OSC 133 marks, or a sentinel until the shell hook exists), and
-  reads only that command's output block.
-- **Effect class first.** Each command gets an effect class before it is
-  typed. `read_only` commands run when the charter allows them. Anything
-  else becomes a podium decision unless a standing rule covers that exact
-  command and directory. Destructive commands always need a decision and
-  your second key, and the deny list in
+- **Coder does the work.** Coder V1 chooses its provider (the Codex login,
+  then Claude Code's, then the OpenAgents Gateway), plans, and runs commands
+  through its Microcoder plugin, which writes only the working directory and
+  its own scratch.
+- **Effect class first.** With `--approvals stdin`, Coder classifies each
+  command with the workshop agent's effect classes before it runs
+  ([`coder::task::agent::effect`](../../crates/coder/src/task/agent.rs)).
+  Read-only commands run; the deny list in
   [`crates/coder/src/shell.rs`](../../crates/coder/src/shell.rs) refuses
-  the ones that end a machine.
-- **Output is untrusted.** Terminal output, issue text, and file contents are
+  the ones that end a machine; anything else is an `approval` event, which
+  the host holds as her proposal for your CONFIRM or REJECT and answers on
+  Coder's standard input.
+- **Her pane is Coder's terminal.** With a typist, the asking device's pane
+  runs `coder --follow agent-alice`, which shows the session as Coder saves
+  it while it works. Any key you press there takes it over: Verse tells the
+  host, the host interrupts her turn, Coder saves the session, and the
+  terminal in her pane takes the session's lease, so you type into the same
+  conversation. The plain terminal stays a pane you open yourself.
+- **Output is untrusted.** Command output, issue text, and file contents are
   data. Instructions in them are never followed as instructions.
-- **Visible.** The terminal appears as a pane in your terminal and on the
-  agent's desk monitor. You can attach from any device under your
-  `terminal` right.
 
 ### Reporting back
 
@@ -345,6 +353,35 @@ places:
 - On the phone: a NIP-WS activity summary whose headline comes from host
   state ("alice: failed exit 101"), never from engine text, with a
   Block PL wake.
+
+### Coder V1 as her engine
+
+Every coding agent in Verse runs its work through Coder V1 (#10752, #10753,
+#10754): Alice's terminal-mode requests as turns of her session, and her task
+mode and every Agent Studio seat as turns of a per-task session
+(`task-ID`), through the route engine `coder`
+([Agent Studio](agent-studio.md#engine-neutrality)). The host's side is
+[`coder::task::coder_v1`](../../crates/coder/src/task/coder_v1.rs):
+
+| Coder event | What it drives |
+| --- | --- |
+| `entry` with a running `Run` tool | Her nameplate: running, or testing for a test command; her walk to the console. |
+| `entry` with a finished `Run` tool | A `ran` journal row with the exit status; `refused` when the deny list refused it. |
+| `approval` | Her proposal at the lectern; `proposed`, then `confirmed` or `rejected` in her journal. |
+| The result line | Her report: Coder's reply as plain ASCII, with a headline from what ran. |
+
+Her sessions live in the Coder store, `~/.openagents/coder-new/sessions/`,
+so your own Coder lists them under `/resume`, and `coder --follow
+agent-alice` watches her from any terminal on the host. `openagents coder
+sessions read agent-alice` and `openagents coder export agent-alice` read
+and export the ATIF transcript. Her journal, memory, and reports stay the
+host's, fed from Coder's events.
+
+The host finds `openagents` beside its own program or on `PATH`
+(`OPENAGENTS_CODER_CLI` overrides it), and Coder's terminal as `coder-new`
+or an installed `coder` that has `--follow` (`OPENAGENTS_CODER_TUI`
+overrides it). `OPENAGENTS_AGENT_SCRIPT` names a recorded turn, a JSON list
+of Coder events, for an offline demo or capture.
 
 ## Persistence
 
@@ -458,8 +495,8 @@ grants for automatic small payments stay off for the agent.
 each:
 
 1. Disables its standing jobs.
-2. Releases the typist role on every terminal it drives and sends `Ctrl+C`
-   to each command it started.
+2. Releases the typist role on every pane it drives and interrupts its
+   Coder turn, which saves the session.
 3. Cancels its running and queued tasks through `task.cancel`.
 4. Revokes its grants on your other computers, advancing its epoch there.
 
@@ -630,8 +667,7 @@ commits between October 3 and 5, 2026. The state is as of October 6, 2026.
 | Walk-up composer | Done | The desk panel, anchored to the bottom of the window: status row, transcript with a scroll bar, `PROPOSED:` line, input line, key strip; F2 memory, F4 journal, F7 stop, F8 pause or resume, each of the last two after CONFIRM | None | 0 |
 | Request routing | Partial | `auto`, `task`, and `terminal` modes; a word list chooses for `auto` | The typed task-or-terminal question and its threshold | 1 |
 | Typist | Done | The pane badge `driven by alice`, take-back on any key | NIP-TERM typist record with `kind: "agent"` | 0.5 |
-| Agents as typists | Done | The host hands each checked command to the window that asked with a typist, which types it and reports the block (`studio.agent.ran`); a request without a typist runs under the host's subprocess supervisor | Typing into a host-owned NIP-TERM terminal that every device can attach to | 2 |
-| Terminal executor | Done | Typing a few characters a frame, the smart terminal's command blocks as completion marks, the output block back to the host | As above | 0 |
+| Agents in Coder V1 | Done | Each request is a turn of her Coder V1 session (`coder::task::coder_v1`): Coder's approval gate holds each command that is not read-only for CONFIRM or REJECT; the window that asked shows her pane running `coder --follow agent-alice`, and a key there takes the session over (`studio.agent.ran`); task mode and studio seats run on the `coder` route engine (#10752, #10753, #10754) | Following her session from a phone; a host-owned NIP-TERM pane every device can attach to | 2 |
 | Effect classes and decisions | Partial | The closed read-only list and the deny list on the host; CONFIRM or REJECT bound to the step, answered once, journaled with the answering device | The second key for destructive commands; standing rules for her; a typed effect-class question | 1.5 |
 | Reporting | Done | Her transcript and nameplate; her own chat thread on the host, which syncs to the desktop app and the phone; a NIP-WS summary whose headline is host state | Walking to you in the world when she reports (she goes to the Podium only to ask) | 0.5 |
 | Journal and kill switch | Done | Stop's four steps, each journaled; pause; resume; retire deletes her key and keeps her journal | Revoking grants on other computers, once she has any | 0 |

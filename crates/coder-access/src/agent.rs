@@ -119,6 +119,23 @@ pub struct Step {
     pub typist: bool,
     /// The directory it runs in.
     pub cwd: String,
+    /// A Coder V1 turn rather than a command (#10753): the pane runs
+    /// Coder's own terminal following the agent's session, and types
+    /// nothing. `command` is then a short description.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub coder: Option<CoderPane>,
+}
+
+/// What an agent's pane runs while Coder V1 works for it.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct CoderPane {
+    /// The agent's Coder session.
+    pub session: String,
+    /// The program and arguments: Coder's terminal in follow mode on
+    /// `session`. Empty when this computer has no Coder terminal, and the
+    /// pane shows nothing new.
+    pub argv: Vec<String>,
 }
 
 /// A task-mode change and where it stands.

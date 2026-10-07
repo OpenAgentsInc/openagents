@@ -20,13 +20,14 @@
 //! her memory, F4 her journal, F7 stops her, and F8 pauses or resumes her,
 //! each of the last two only after CONFIRM.
 //!
-//! A request from this window asks for a typist: the host hands each
-//! command it checked to this window, which types it into a terminal pane
-//! titled `driven by alice` a few characters a frame, waits for the shell's
-//! completion mark, and reports the command's status and output block
-//! (`studio.agent.ran`). A key you press in her pane takes it back, and she
-//! stops. When the host stops her, this window releases her pane and sends
-//! `Ctrl+C` to the command she started.
+//! She does her work in Coder V1 (#10753): the host runs each request as a
+//! turn of her own Coder session, and Coder's approvals are her proposals.
+//! A request from this window asks for a typist: while the turn runs, this
+//! window shows her pane, titled `driven by alice`, running Coder's own
+//! terminal following her session, so you watch Coder work. A key you
+//! press in her pane takes it over: this window tells the host
+//! (`studio.agent.ran`), which stops her turn, and the session is yours to
+//! type in. When the host stops her, this window releases her pane.
 //!
 //! When the host has no Alice yet, her panel sets her up in the world
 //! ([`Setup`]): she introduces herself, asks which Git checkout she works
@@ -65,10 +66,6 @@ pub const REACH: f32 = crate::zones::everglade::studio::TALK_REACH;
 /// How far in front of her, across her workstation, `--workshop-ask` and
 /// the captures stand the player, m: within [`REACH`], clear of the desk.
 pub const WALK_UP: f32 = 2.2;
-/// The time between two characters she types.
-const TYPE_EVERY: Duration = Duration::from_millis(35);
-/// How long she waits for a new pane's prompt before typing anyway.
-const READY_WAIT: Duration = Duration::from_secs(5);
 /// How often the worker asks the host for her.
 const POLL: Duration = Duration::from_millis(400);
 /// The most transcript lines her panel keeps of its own.
@@ -145,28 +142,9 @@ enum Asking {
     Resume,
 }
 
-/// Where typing one command into her pane stands.
-enum Phase {
-    /// The pane is new: wait for its prompt.
-    Ready {
-        since: Instant,
-    },
-    Typing {
-        chars: Vec<char>,
-        at: usize,
-        next: Instant,
-        seen: Option<u64>,
-    },
-    Waiting {
-        seen: Option<u64>,
-    },
-}
-
-/// One command the host asked this window to type, after any setup lines.
+/// The Coder turn her pane follows.
 struct Job {
     step: u64,
-    lines: VecDeque<String>,
-    phase: Phase,
 }
 
 /// The connection to the host.
@@ -199,8 +177,6 @@ pub struct Workshop {
     asking: Option<Asking>,
     job: Option<Job>,
     pane: Option<PaneId>,
-    /// The directory her pane is in.
-    pane_cwd: Option<String>,
     /// The host's stop counter this window has acted on.
     released: u64,
     /// The steps this window typed, so a step is typed once.
@@ -242,7 +218,6 @@ impl Default for Workshop {
             asking: None,
             job: None,
             pane: None,
-            pane_cwd: None,
             released: 0,
             typed: VecDeque::new(),
             answered: None,
@@ -350,11 +325,6 @@ fn start_host(socket: &Path) -> Result<String, String> {
                 .trim_start_matches("error: ")
         ))
     }
-}
-
-/// `path` quoted for a POSIX shell.
-fn quoted(path: &str) -> String {
-    format!("'{}'", path.replace('\'', "'\\''"))
 }
 
 /// A fresh 64-hex request identity.
@@ -1014,17 +984,17 @@ impl Workshop {
     }
 
     /// Acts on what the host asks of this window: a stop releases her
-    /// pane, and a step for a typist is typed once.
+    /// pane, and a Coder turn for a typist shows her pane once.
     fn follow(&mut self, terminal: &mut terminal_gfx::Overlay) {
         let Some(view) = self.view.clone() else {
             return;
         };
         if view.release > self.released {
             self.released = view.release;
+            // The host stops her Coder turn itself; her pane keeps
+            // Coder's terminal for you.
+            self.job = None;
             if let Some(id) = self.pane {
-                if self.job.take().is_some() {
-                    terminal.send_to(id, &[0x03]);
-                }
                 if let Some(pane) = terminal.panes.get_mut(&id) {
                     pane.typist = None;
                     pane.render_revision += 1;
@@ -1033,6 +1003,13 @@ impl Workshop {
             self.note(&format!("{NAME} was stopped: her pane is yours again."));
         }
         let Some(step) = view.run.filter(|s| s.typist) else {
+            // Her turn ended: the pane stays, and is yours.
+            if self.job.take().is_some()
+                && let Some(pane) = self.pane.and_then(|id| terminal.panes.get_mut(&id))
+            {
+                pane.typist = None;
+                pane.render_revision += 1;
+            }
             return;
         };
         if self.typed.contains(&step.step) || self.job.is_some() {
@@ -1045,53 +1022,54 @@ impl Workshop {
         self.start_job(terminal, step);
     }
 
+    /// Shows her pane following her Coder session for `step`: the pane
+    /// she has when Coder's terminal still runs in it, else a new one.
     fn start_job(&mut self, terminal: &mut terminal_gfx::Overlay, step: wire::Step) {
-        let mut lines = VecDeque::new();
+        let Some(coder) = step.coder.clone() else {
+            // A host from before Coder V1 types commands; this window no
+            // longer does.
+            self.report(
+                step.step,
+                wire::Ran {
+                    lost: Some("this window shows Coder sessions only".into()),
+                    ..wire::Ran::default()
+                },
+            );
+            return;
+        };
         let usable = self
             .pane
             .and_then(|id| terminal.panes.get(&id))
             .is_some_and(|pane| !pane.ended && pane.session.exited.is_none());
         if !usable {
-            self.pane = terminal.open_typist(NAME);
-            self.pane_cwd = None;
+            let Some((program, args)) = coder.argv.split_first() else {
+                self.note("Coder's terminal isn't installed here; her work shows in this panel.");
+                return;
+            };
+            let program = terminal_gfx::pty::Program::Command {
+                program: PathBuf::from(program),
+                args: args.to_vec(),
+                label: format!("coder: {NAME}"),
+            };
+            self.pane = terminal.open_typist_running(NAME, &program);
             if self.pane.is_none() {
                 let why = terminal
                     .notice
                     .clone()
-                    .unwrap_or_else(|| "the terminal did not start".into());
-                self.report(
-                    step.step,
-                    wire::Ran {
-                        lost: Some(why),
-                        ..wire::Ran::default()
-                    },
-                );
+                    .unwrap_or_else(|| "her Coder terminal did not start".into());
+                self.note(&why);
                 return;
             }
-        }
-        if self.pane_cwd.as_deref() != Some(step.cwd.as_str()) {
-            lines.push_back(format!(
-                "cd {} && export PAGER=cat GIT_PAGER=cat",
-                quoted(&step.cwd)
-            ));
-            self.pane_cwd = Some(step.cwd.clone());
         }
         let Some(id) = self.pane else { return };
         terminal.show_pane(id);
         if let Some(pane) = terminal.panes.get_mut(&id) {
-            // Her own pane: she takes it up again for a new command.
+            // Her own pane: she takes it up again for a new turn.
             pane.typist = Some(NAME.into());
             pane.taken_back = false;
             pane.render_revision += 1;
         }
-        lines.push_back(step.command);
-        self.job = Some(Job {
-            step: step.step,
-            lines,
-            phase: Phase::Ready {
-                since: Instant::now(),
-            },
-        });
+        self.job = Some(Job { step: step.step });
     }
 
     fn report(&mut self, step: u64, ran: wire::Ran) {
@@ -1102,22 +1080,14 @@ impl Workshop {
         });
     }
 
-    /// Types, waits, and reads for the job under way.
-    fn drive(&mut self, terminal: &mut terminal_gfx::Overlay, now: Instant) {
-        let Some(job) = &mut self.job else { return };
+    /// Watches her pane while Coder works: a key you pressed there takes
+    /// her session over.
+    fn drive(&mut self, terminal: &mut terminal_gfx::Overlay, _now: Instant) {
+        let Some(job) = &self.job else { return };
         let step = job.step;
-        let lost = |why: &str| wire::Ran {
-            lost: Some(why.into()),
-            ..wire::Ran::default()
-        };
-        let Some(id) = self.pane else {
+        let Some(pane) = self.pane.and_then(|id| terminal.panes.get_mut(&id)) else {
+            // You closed her pane; Coder keeps working.
             self.job = None;
-            self.report(step, lost("she has no pane"));
-            return;
-        };
-        let Some(pane) = terminal.panes.get_mut(&id) else {
-            self.job = None;
-            self.report(step, lost("you closed her terminal"));
             return;
         };
         if pane.taken_back {
@@ -1130,88 +1100,9 @@ impl Workshop {
                     ..wire::Ran::default()
                 },
             );
-            return;
-        }
-        if pane.ended || pane.session.exited.is_some() {
+            self.note("You took over her Coder session; it is yours in her pane.");
+        } else if pane.ended || pane.session.exited.is_some() {
             self.job = None;
-            self.report(step, lost("her terminal ended"));
-            return;
-        }
-        let blocks = &pane.session.blocks;
-        let newest = blocks.records.back().map(|b| b.id);
-        let mut send: Vec<u8> = Vec::new();
-        let mut done: Option<wire::Ran> = None;
-        match &mut job.phase {
-            Phase::Ready { since } => {
-                if blocks.at_prompt || since.elapsed() > READY_WAIT {
-                    match job.lines.front() {
-                        Some(line) => {
-                            job.phase = Phase::Typing {
-                                chars: line.chars().collect(),
-                                at: 0,
-                                next: now,
-                                seen: newest,
-                            };
-                        }
-                        None => done = Some(lost("nothing to type")),
-                    }
-                }
-            }
-            Phase::Typing {
-                chars,
-                at,
-                next,
-                seen,
-            } => {
-                while *at < chars.len() && *next <= now {
-                    let mut buffer = [0u8; 4];
-                    send.extend_from_slice(chars[*at].encode_utf8(&mut buffer).as_bytes());
-                    *at += 1;
-                    *next += TYPE_EVERY;
-                }
-                if *at == chars.len() {
-                    send.push(b'\r');
-                    job.phase = Phase::Waiting { seen: *seen };
-                }
-            }
-            Phase::Waiting { seen } => {
-                let finished = blocks
-                    .records
-                    .iter()
-                    .filter(|b| seen.is_none_or(|seen| b.id > seen))
-                    .find(|b| b.status.is_some());
-                if let Some(block) = finished {
-                    let status = block.status.unwrap_or(-1);
-                    // A block keeps the head of a long output; the summary
-                    // a test run ends with is on the screen.
-                    let output = if block.truncated {
-                        format!(
-                            "{}\n[the output is cut here; the screen at its end:]\n{}",
-                            block.output,
-                            pane.session.vt.text()
-                        )
-                    } else {
-                        block.output.clone()
-                    };
-                    job.lines.pop_front();
-                    if job.lines.is_empty() {
-                        done = Some(wire::Ran {
-                            status: Some(status),
-                            output: tail(&output, wire::MAX_OUTPUT),
-                            ..wire::Ran::default()
-                        });
-                    } else {
-                        job.phase = Phase::Ready { since: now };
-                    }
-                }
-            }
-        }
-        if !send.is_empty() {
-            terminal.send_to(id, &send);
-        }
-        if let Some(ran) = done {
-            self.job = None;
-            self.report(step, ran);
         }
     }
 
@@ -1608,17 +1499,6 @@ impl Workshop {
         }
         true
     }
-}
-
-fn tail(text: &str, max: usize) -> String {
-    if text.len() <= max {
-        return text.to_string();
-    }
-    let mut start = text.len() - max;
-    while !text.is_char_boundary(start) {
-        start += 1;
-    }
-    text[start..].to_string()
 }
 
 /// A key her panel reads.
