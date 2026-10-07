@@ -162,6 +162,63 @@ struct Head {
     carried: Vec<usize>,
 }
 
+/// An arm a spell's cast swings: its shoulder joint and bind position,
+/// its hand joint and bind position, and every joint the shoulder carries,
+/// itself included.
+struct Arm {
+    shoulder: usize,
+    shoulder_bind: Vec3,
+    hand: usize,
+    hand_bind: Vec3,
+    carried: Vec<usize>,
+}
+
+/// How a spell's cast poses the arms, layered over whatever clip plays:
+/// `weight` from 0 (the clip alone) to 1 (the cast's pose alone), and
+/// `throw` from 0 (the casting hand drawn back and up, the other hand
+/// raised to aim) to 1 (the casting arm thrust out ahead).
+#[derive(Clone, Copy, Debug, Default, PartialEq)]
+pub struct SpellPose {
+    pub weight: f32,
+    pub throw: f32,
+}
+
+impl SpellPose {
+    /// The pose `t` seconds into a spell whose cast takes `cast` seconds:
+    /// the hand draws back over the first quarter second, holds while the
+    /// ember gathers, and throws as the cast ends; [`RELEASE`] seconds
+    /// later the arms are the clip's again. `None` once it is over.
+    #[must_use]
+    pub fn at(t: f32, cast: f32) -> Option<Self> {
+        let ease = |x: f32| {
+            let x = x.clamp(0.0, 1.0);
+            x * x * (3.0 - 2.0 * x)
+        };
+        if !t.is_finite() || t < 0.0 {
+            return None;
+        }
+        if t < cast {
+            return Some(Self {
+                weight: ease(t / 0.25_f32.min(cast)),
+                throw: 0.0,
+            });
+        }
+        let u = (t - cast) / RELEASE;
+        (u < 1.0).then(|| Self {
+            weight: if u < 0.5 {
+                1.0
+            } else {
+                1.0 - ease((u - 0.5) * 2.0)
+            },
+            throw: ease(u * 4.0),
+        })
+    }
+}
+
+/// How long a spell's throw takes, from the cast's end until the arms are
+/// the clip's again, s.
+pub const RELEASE: f32 = 0.45;
+
 /// The pack's character, ready to pose any number of times.
 pub struct Rig {
     model: Model,
@@ -178,6 +235,8 @@ pub struct Rig {
     /// which a seat's tint colors.
     outfit: Range<usize>,
     head: Option<Head>,
+    /// The left arm, then the right, for a spell's cast.
+    arms: Option<[Arm; 2]>,
     /// The demolition yard's swing, when the pack has it.
     swing: Option<Loop>,
     hands: Option<Hands>,
@@ -565,6 +624,29 @@ impl Rig {
                 }
             }
         }
+        let arms = skeleton.map(|skeleton| {
+            let bind = |j: usize| {
+                Mat4::from_cols_array(&character.joints[j].inverse_bind)
+                    .inverse()
+                    .w_axis
+                    .truncate()
+            };
+            skeleton.arms.map(|limb| {
+                let mut carried = vec![limb.upper];
+                for (i, j) in character.joints.iter().enumerate().skip(limb.upper + 1) {
+                    if usize::try_from(j.parent).is_ok_and(|p| carried.contains(&p)) {
+                        carried.push(i);
+                    }
+                }
+                Arm {
+                    shoulder: limb.upper,
+                    shoulder_bind: bind(limb.upper),
+                    hand: limb.end,
+                    hand_bind: bind(limb.end),
+                    carried,
+                }
+            })
+        });
         let head = skeleton.map(|skeleton| {
             let joint = skeleton.head;
             let bind = Mat4::from_cols_array(&character.joints[joint].inverse_bind)
@@ -685,6 +767,7 @@ impl Rig {
             bound,
             outfit,
             head,
+            arms,
             swing,
             hands,
             named,
@@ -733,6 +816,55 @@ impl Rig {
         joints
             .get(head.joint)
             .map(|m| m.transform_point3(head.bind))
+    }
+
+    /// Swings the arms under `joints` into a spell's `pose`: each arm turns
+    /// about its shoulder so the hand points where the pose wants it, the
+    /// right arm drawn back and up or thrust ahead, the left raised to aim.
+    fn cast_arms(&self, joints: &mut [Mat4], pose: SpellPose) {
+        let Some(arms) = &self.arms else {
+            return;
+        };
+        if pose.weight <= 1e-3 {
+            return;
+        }
+        // The model faces +Z, so the character's right is -X.
+        let drawn = Vec3::new(-0.45, 0.7, -0.55).normalize();
+        let thrust = Vec3::new(-0.08, 0.18, 1.0).normalize();
+        let aim = Vec3::new(0.3, 0.3, 0.9).normalize();
+        let lowered = Vec3::new(0.35, -0.6, 0.45).normalize();
+        let wants = [
+            (aim.lerp(lowered, pose.throw).normalize(), 0.8),
+            (drawn.lerp(thrust, pose.throw).normalize(), 1.0),
+        ];
+        for (arm, (want, share)) in arms.iter().zip(wants) {
+            let (Some(s), Some(h)) = (joints.get(arm.shoulder), joints.get(arm.hand)) else {
+                continue;
+            };
+            let shoulder = s.transform_point3(arm.shoulder_bind);
+            let hand = h.transform_point3(arm.hand_bind);
+            let Some(now) = (hand - shoulder).try_normalize() else {
+                continue;
+            };
+            let turn =
+                Quat::IDENTITY.slerp(Quat::from_rotation_arc(now, want), pose.weight * share);
+            let m = Mat4::from_translation(shoulder)
+                * Mat4::from_quat(turn)
+                * Mat4::from_translation(-shoulder);
+            for &joint in &arm.carried {
+                if let Some(j) = joints.get_mut(joint) {
+                    *j = m * *j;
+                }
+            }
+        }
+    }
+
+    /// The right hand's position under `joints`, in the model.
+    fn right_hand(&self, joints: &[Mat4]) -> Option<Vec3> {
+        let arm = &self.arms.as_ref()?[1];
+        joints
+            .get(arm.hand)
+            .map(|m| m.transform_point3(arm.hand_bind))
     }
 
     /// Turns the head under `joints` by `yaw` about the model's up axis and
@@ -937,6 +1069,10 @@ pub struct Cast {
     swing: Option<f32>,
     /// How the player holds the sledgehammer this frame, in the world.
     hold: Option<Hold>,
+    /// A spell's cast pose over the player's clip, while one plays.
+    spell: Option<SpellPose>,
+    /// The player's right hand this frame, in the world.
+    hand: Option<Vec3>,
 }
 
 impl Cast {
@@ -981,6 +1117,8 @@ impl Cast {
             drawn_forms: Vec::new(),
             swing: None,
             hold: None,
+            spell: None,
+            hand: None,
         };
         cast.advance(at, &[], 0.0);
         Ok(Some(cast))
@@ -1002,12 +1140,16 @@ impl Cast {
         let mut vertices = Vec::with_capacity(rig.template.len() * (1 + seats.len()));
         let motion = Motion::of_player(at);
         let swing = self.swing.zip(rig.swing);
-        let joints = match swing {
+        let mut joints = match swing {
             Some((t, clip)) => self.player.hold_at(rig, clip, t, dt),
             None => self.player.advance(rig, Play::Motion(motion), at.speed, dt),
         }
         .unwrap_or_default();
+        if let Some(pose) = self.spell.filter(|_| swing.is_none()) {
+            rig.cast_arms(&mut joints, pose);
+        }
         let root = Mat4::from_rotation_translation(Quat::from_rotation_y(at.yaw), at.pos);
+        self.hand = rig.right_hand(&joints).map(|h| root.transform_point3(h));
         self.hold = rig
             .hands
             .as_ref()
@@ -1086,6 +1228,18 @@ impl Cast {
     /// or, with `None`, the player's movement again.
     pub fn set_swing(&mut self, t: Option<f32>) {
         self.swing = t;
+    }
+
+    /// Poses the player's arms for a spell's cast from the next advance, or,
+    /// with `None`, leaves them to the clip.
+    pub fn set_spell(&mut self, pose: Option<SpellPose>) {
+        self.spell = pose;
+    }
+
+    /// The player's right hand, in the world, as last posed.
+    #[must_use]
+    pub fn hand(&self) -> Option<Vec3> {
+        self.hand
     }
 
     /// How the player holds the sledgehammer, in the world, as last posed:
@@ -1419,6 +1573,34 @@ mod tests {
         // The body's heading counts: facing +x, a target on +x is ahead.
         let [yaw, _] = aim(head, std::f32::consts::FRAC_PI_2, Vec3::new(3.0, 1.6, 0.0));
         assert!(yaw.abs() < 1e-4, "{yaw}");
+    }
+
+    #[test]
+    fn a_spell_s_cast_draws_the_hand_back_and_up_then_throws_it_ahead() {
+        // The pose: drawn back through the cast, thrown after, then gone.
+        assert_eq!(SpellPose::at(0.6, 0.8).unwrap().throw, 0.0);
+        assert!((SpellPose::at(0.6, 0.8).unwrap().weight - 1.0).abs() < 1e-6);
+        assert!(SpellPose::at(0.8 + RELEASE * 0.4, 0.8).unwrap().throw > 0.9);
+        assert!(SpellPose::at(0.8 + RELEASE + 0.01, 0.8).is_none());
+        // On the character, facing +Z: drawn back, the right hand is high
+        // and behind the shoulders; thrown, it is far out ahead.
+        let pack = super::super::tests::pack();
+        let at = PlayerController::new(Vec3::ZERO, 0.0);
+        let mut cast = Cast::new(pack, &at).unwrap().expect("the pack's character");
+        cast.advance(&at, &[], 1.0 / 60.0);
+        let rest = cast.hand().expect("the right hand");
+        cast.set_spell(SpellPose::at(0.6, 0.8));
+        cast.advance(&at, &[], 1.0 / 60.0);
+        let drawn = cast.hand().unwrap();
+        assert!(drawn.y > rest.y + 0.5, "{drawn} against {rest}");
+        assert!(drawn.z < rest.z, "{drawn} against {rest}");
+        cast.set_spell(Some(SpellPose {
+            weight: 1.0,
+            throw: 1.0,
+        }));
+        cast.advance(&at, &[], 1.0 / 60.0);
+        let thrown = cast.hand().unwrap();
+        assert!(thrown.z > rest.z + 0.3, "{thrown} against {rest}");
     }
 
     #[test]

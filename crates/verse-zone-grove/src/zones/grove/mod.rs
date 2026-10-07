@@ -29,6 +29,7 @@
 
 pub mod aura;
 mod cast;
+pub use cast::FIREBALL_CAST;
 pub mod dragon;
 pub mod draw;
 pub mod dummies;

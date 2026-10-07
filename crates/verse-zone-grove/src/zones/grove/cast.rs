@@ -19,6 +19,8 @@ const WEB_ROOT: f32 = 12.0;
 /// Bolt speeds, m/s.
 const BOLT_SPEED: f32 = 32.0;
 const FIREBALL_SPEED: f32 = 24.0;
+/// Fireball's cast, s: the druid draws back as the fire gathers.
+pub const FIREBALL_CAST: f32 = 0.7;
 /// Gust of Wind's push, m.
 const GUST_PUSH: f32 = 15.0 * 0.3048;
 /// Wind Wall's lift on a dummy that fails its save, m/s.
@@ -163,6 +165,14 @@ impl Grove {
         );
         if spell.beast() {
             self.attack();
+        } else if self.form().is_none() {
+            // The druid's hands cast: a Fireball draws back over its cast
+            // while the fire gathers in the hand; every other spell throws.
+            glade.begin_spell(if spell == Spell::Fireball {
+                FIREBALL_CAST
+            } else {
+                0.0
+            });
         }
         match spell {
             Spell::FireBolt | Spell::Fireball => {
@@ -173,10 +183,17 @@ impl Grove {
                 } else {
                     BOLT_SPEED
                 };
+                // A Fireball leaves the hand when its cast ends; until
+                // then it burns in the hand.
+                let windup = if spell == Spell::Fireball && self.form().is_none() {
+                    FIREBALL_CAST
+                } else {
+                    0.0
+                };
                 self.add(draw::Effect::Bolt {
                     from: hand,
                     target: i,
-                    start: now,
+                    start: now + windup,
                     flight: distance / speed,
                     spell,
                     trail: None,

@@ -61,7 +61,7 @@ use verse_zone_everglade::zones::everglade_pack::ZonePack;
 use verse_zone_grove::zones::grove::draw::{Model, Painter};
 
 pub use floats::{Floats, Kind as FloatKind};
-pub use rules::Demo;
+pub use rules::{Demo, FIREBALL_CAST};
 pub use sea::Hour;
 pub use spells::{Mode, Slot, Spells};
 pub use terrain::{LEVEL, ground};
@@ -348,6 +348,9 @@ pub struct WaterLab {
     casts: u64,
     /// Spells still acting each step ([`rules::Running`]).
     running: Vec<rules::Running>,
+    /// Where the character's casting hand is, when the runtime knows: a
+    /// Fireball's ember gathers there.
+    pub hand: Option<Vec3>,
     /// The Sleet Storm's cast while it lasts.
     sleet_cast: Option<u64>,
     /// The cove's weather: the coastal schedule, its pin, and the spells'
@@ -432,6 +435,7 @@ impl WaterLab {
             rules: verse_world::spells::water::WaterSpells::default(),
             casts: 0,
             running: Vec::new(),
+            hand: None,
             sleet_cast: None,
             sky: everglade::weather::Sky::new(
                 physics::water::weather::Climate::COASTAL,

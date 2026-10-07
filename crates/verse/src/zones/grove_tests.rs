@@ -237,7 +237,8 @@ fn fireball_burns_the_target_and_the_warded_dummy_resists_fire() {
         .force_save(STRAW as u64, 1)
         .unwrap();
     runtime.zone_intent(Intent::Fireball).unwrap();
-    idle(&mut runtime, 1.0);
+    // The cast draws back, then the fire flies.
+    idle(&mut runtime, 1.0 + crate::zones::grove::FIREBALL_CAST);
     let dummy = &grove(&runtime).dummies[STRAW];
     // 8d6 is at least 8 on a failed save.
     assert!(dummy.hp <= dummy.kind.max_hp() - 8.0, "{}", dummy.hp);

@@ -147,6 +147,9 @@ struct Hold {
 pub struct Everglade {
     elapsed: f32,
     pub levitating: bool,
+    /// A spell's cast playing on the player's character: seconds in, and
+    /// the cast's length ([`Self::begin_spell`]).
+    spell: Option<(f32, f32)>,
     pub sprinting: bool,
     pub altitude: f32,
     /// How many times levitation's climb rate and ceiling the flier has:
@@ -321,6 +324,7 @@ impl Everglade {
         Ok(Self {
             elapsed: 0.0,
             levitating: false,
+            spell: None,
             sprinting: false,
             altitude: 0.0,
             lift: 1.0,
@@ -1185,6 +1189,26 @@ impl Everglade {
 
     /// Lets go of Levitate: the player holds the altitude reached, or, after
     /// a tap that did not start the levitation, stops levitating and falls.
+    /// Plays a spell's cast on the player's character: the hand draws back
+    /// over `cast` seconds while an ember gathers, then throws
+    /// ([`player::SpellPose`]). A `cast` of zero plays the throw alone.
+    pub fn begin_spell(&mut self, cast: f32) {
+        self.spell = Some((0.0, cast.max(0.0)));
+    }
+
+    /// Whether a spell's cast or throw is playing.
+    #[must_use]
+    pub fn casting_spell(&self) -> bool {
+        self.spell.is_some()
+    }
+
+    /// The player's right hand, in the world, as last posed: where a cast's
+    /// ember gathers.
+    #[must_use]
+    pub fn hand(&self) -> Option<Vec3> {
+        self.cast.as_ref()?.hand()
+    }
+
     pub fn release_levitate(&mut self, player: &PlayerController) {
         if let Some(hold) = self.hold.take()
             && !hold.began
@@ -1262,6 +1286,14 @@ impl Everglade {
         if self.spells.tick(dt) {
             self.refresh_blocks();
         }
+        // A spell's cast plays over the clip until its throw ends.
+        let pose = self
+            .spell
+            .and_then(|(t, cast)| player::SpellPose::at(t, cast));
+        self.spell = self
+            .spell
+            .filter(|_| pose.is_some())
+            .map(|(t, cast)| (t + dt, cast));
         if let Some(cast) = &mut self.cast {
             let chop = match (&self.demolition, &self.town) {
                 (Some(yard), _) => yard.chop(),
@@ -1269,6 +1301,7 @@ impl Everglade {
                 _ => None,
             };
             cast.set_swing(chop);
+            cast.set_spell(pose);
             cast.advance(at, seats, dt);
         }
         // The characters' scene, joined to the creatures' once they draw.

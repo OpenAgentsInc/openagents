@@ -531,9 +531,10 @@ fn spells(
     if let Some(lab) = runtime.water_lab_mut() {
         lab.set_sea(0);
     }
+    let wanted = std::env::var("VERSE_SPELL_VIDEO").ok();
     for spell in water::Demo::ALL {
         let name = spell.name().to_lowercase().replace(' ', "-");
-        if name == "sleet-storm" {
+        if name == "sleet-storm" || wanted.as_ref().is_some_and(|w| *w != name) {
             continue;
         }
         let (x, z) = (2.0, 3.0);
@@ -563,24 +564,46 @@ fn spells(
             }
         }
         // `VERSE_SPELL_VIDEO=NAME` records that spell's cast as frames at 30
-        // a second into `OUT_DIR/spells/NAME-video/` instead of one still.
-        let video = std::env::var("VERSE_SPELL_VIDEO").is_ok_and(|v| v == name);
-        let line = runtime
-            .water_lab_mut()
-            .map(|lab| lab.cast_demo(spell, caster, Vec3::NEG_Z))
-            .unwrap_or_default();
+        // a second into `OUT_DIR/spells/NAME-video/` instead of one still:
+        // a second of the caster facing the bay, the cast, the flight, the
+        // landing, and the aftermath, the camera easing from over the
+        // caster's shoulder out to a view of both caster and target.
+        let video = wanted.as_ref().is_some_and(|w| *w == name);
+        let mut frame = 0;
+        let lead = 30;
+        let target_at = Vec3::new(x, water::LEVEL, z) + Vec3::NEG_Z * spell.reach();
+        let near = (
+            caster + Vec3::new(3.2, 2.1, 3.4),
+            caster + Vec3::new(-0.4, 1.3, -2.0),
+        );
+        let wide = (
+            Vec3::new(x + 15.0, 6.5, z + 1.0),
+            caster.lerp(target_at, 0.55) + Vec3::Y * 0.8,
+        );
+        let mut film = |runtime: &mut WorldRuntime, frame: usize| -> Result<(), String> {
+            let k = ((frame as f32 - lead as f32) / 60.0).clamp(0.0, 1.0);
+            let k = k * k * (3.0 - 2.0 * k);
+            let (eye, look) = (near.0.lerp(wide.0, k), near.1.lerp(wide.1, k));
+            shoot(runtime, &format!("{name}-video/{frame:04}"), eye, look)
+        };
+        if video {
+            std::fs::create_dir_all(dir.join(format!("{name}-video")))
+                .map_err(|e| e.to_string())?;
+            while frame < lead {
+                run(runtime, 1.0 / 30.0);
+                film(runtime, frame)?;
+                frame += 1;
+            }
+        }
+        let line = runtime.water_cast_demo(spell, caster, Vec3::NEG_Z);
         eprintln!("{line}");
         if video {
-            let frames = dir.join(format!("{name}-video"));
-            std::fs::create_dir_all(&frames).map_err(|e| e.to_string())?;
-            let (eye, target) = (Vec3::new(17.0, 9.0, 9.0), Vec3::new(2.0, 0.0, -10.0));
-            for i in 0..150 {
-                for _ in 0..2 {
-                    runtime.tick(&idle, 1.0 / 60.0);
-                }
-                shoot(runtime, &format!("{name}-video/{i:04}"), eye, target)?;
+            while frame < lead + 150 {
+                run(runtime, 1.0 / 30.0);
+                film(runtime, frame)?;
+                frame += 1;
             }
-            eprintln!("wrote {}", frames.display());
+            eprintln!("wrote {}", dir.join(format!("{name}-video")).display());
             continue;
         }
         wait = match spell {

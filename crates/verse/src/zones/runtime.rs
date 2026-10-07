@@ -518,6 +518,29 @@ impl WorldRuntime {
         self.zone_state.water.as_deref_mut()
     }
 
+    /// Casts the Water Lab's demonstration of `spell` from `caster` toward
+    /// `forward`, as the capture does, the character playing the cast: a
+    /// Fireball draws back for its cast, then throws.
+    pub fn water_cast_demo(
+        &mut self,
+        spell: super::water::Demo,
+        caster: Vec3,
+        forward: Vec3,
+    ) -> String {
+        let state = &mut self.zone_state;
+        let (Some(glade), Some(lab)) = (state.everglade.as_mut(), state.water.as_deref_mut())
+        else {
+            return String::new();
+        };
+        let cast = match spell {
+            super::water::Demo::Fireball => super::water::FIREBALL_CAST,
+            _ => 0.0,
+        };
+        glade.begin_spell(cast);
+        lab.hand = glade.hand();
+        lab.cast_demo(spell, caster, forward)
+    }
+
     /// Presses the Water Lab's hotbar slot `index` (0-based); `alternate`
     /// (Shift) ends Control Water or casts Destroy Water.
     ///
@@ -2506,6 +2529,8 @@ impl WorldRuntime {
         let state = &mut self.zone_state;
         if let (Some(glade), Some(lab)) = (&mut state.everglade, &mut state.water) {
             glade.tick(dt, &self.player, &[]);
+            // A Fireball's ember gathers in the character's hand.
+            lab.hand = glade.hand();
             // The lab says what the character stands on: water under Water
             // Walk, the swimming level, or ice; and how fast it goes.
             let feet = lab.tick(dt, self.player.pos, self.player.forward());

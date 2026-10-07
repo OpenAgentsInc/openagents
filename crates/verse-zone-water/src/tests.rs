@@ -534,8 +534,12 @@ fn the_lab_casts_spells_on_the_shared_rules() {
         Vec3::NEG_Z,
     );
     assert!(stand.floor.is_some_and(|f| f > LEVEL - 0.1), "{stand:?}");
-    // Fire melts it.
+    // Fire melts it, once the cast ends and the bolt lands.
     lab.cast_demo(Demo::Fireball, at, Vec3::NEG_Z);
+    assert!(state(&lab).is_some(), "the fire is still in the hand");
+    for _ in 0..60 {
+        lab.tick(1.0 / 30.0, at, Vec3::NEG_Z);
+    }
     assert_eq!(state(&lab), None);
 
     let mut lab = quiet_lab();

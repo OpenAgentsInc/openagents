@@ -139,9 +139,24 @@ impl Demo {
     }
 }
 
+/// Fireball's cast, s: the caster draws back a mote of fire before it
+/// throws it.
+pub const FIREBALL_CAST: f32 = 0.8;
+/// How fast a thrown Fireball flies, m/s, as the Grove's does.
+pub const FIREBALL_SPEED: f32 = 24.0;
+
 /// A spell that keeps acting each step.
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub enum Running {
+    /// A Fireball: an ember gathering in the caster's hand until `launch`,
+    /// then a bolt of fire flying from `from` to `to`, where it bursts.
+    Fireball {
+        from: Vec3,
+        to: Vec3,
+        launch: f32,
+        ember: Option<verse_core::fx::Handle>,
+        trail: Option<verse_core::fx::Handle>,
+    },
     Gust {
         origin: DVec3,
         dir: DVec2,
@@ -292,17 +307,20 @@ impl WaterLab {
                 )
             }
             Demo::Fireball => {
-                let c = Vec3::new(center.x, LEVEL, center.y);
-                let steam = self.rules.fire(&basin, c.as_dvec3(), 20.0 * 0.3048, tick);
-                self.fx
-                    .start("grove_flame_hit", Spawn::at(c + Vec3::Y).scaled(2.0));
-                for p in &steam.at {
-                    self.fx.start("water_steam", Spawn::at(p.as_vec3()));
-                }
-                format!(
-                    "Fireball: steam where it meets the water; {} ice melted",
-                    steam.melted
-                )
+                let to = Vec3::new(center.x, LEVEL, center.y);
+                let from = self
+                    .hand
+                    .unwrap_or(at + Vec3::Y * 1.45 + Vec3::new(flat.x, 0.0, flat.y) * 0.3);
+                let ember = self.fx.start("cast_embers", Spawn::at(from).scaled(0.5));
+                self.running.push(Running::Fireball {
+                    from,
+                    to,
+                    launch: now + FIREBALL_CAST,
+                    ember,
+                    trail: None,
+                });
+                let _ = (basin, tick);
+                "Fireball: the caster draws back a mote of fire".into()
             }
             Demo::MeteorSwarm => {
                 let c = Vec3::new(center.x, LEVEL, center.y);
@@ -355,8 +373,10 @@ impl WaterLab {
         let basin = self.basin();
         self.rules.tick(tick);
         let now = self.time;
+        self.tick_fireballs();
         self.running.retain(|r| match r {
             Running::Gust { until, .. } | Running::Lift { until, .. } => *until > now,
+            Running::Fireball { .. } => true,
         });
         for r in self.running.clone() {
             match r {
@@ -380,6 +400,7 @@ impl WaterLab {
                     }
                     let _ = driven;
                 }
+                Running::Fireball { .. } => {}
                 Running::Lift { center, .. } => {
                     // The floats step several times a frame and forces
                     // last one step, so the reversed fall goes in as the
@@ -408,7 +429,7 @@ impl WaterLab {
             .iter()
             .filter_map(|r| match r {
                 Running::Gust { origin, dir, .. } => Some((origin.as_vec3(), dir.as_vec2())),
-                Running::Lift { .. } => None,
+                Running::Lift { .. } | Running::Fireball { .. } => None,
             })
             .collect();
         let speed = (effects::GUST_PUSH / f64::from(verse_world::spells::ROUND)) as f32;
@@ -483,5 +504,94 @@ impl WaterLab {
         self.rules
             .ice
             .pins(&self.basin(), p.as_dvec2(), self.rules_tick())
+    }
+}
+
+impl WaterLab {
+    /// Advances each Fireball: its ember follows the caster's hand through
+    /// the cast, then the bolt flies and bursts on the water.
+    fn tick_fireballs(&mut self) {
+        let now = self.time;
+        let mut kept = Vec::with_capacity(self.running.len());
+        for r in std::mem::take(&mut self.running) {
+            let Running::Fireball {
+                mut from,
+                to,
+                launch,
+                ember,
+                mut trail,
+            } = r
+            else {
+                kept.push(r);
+                continue;
+            };
+            if now < launch {
+                from = self.hand.unwrap_or(from);
+                if let Some(ember) = ember {
+                    self.fx.place(ember, from, Vec3::ZERO);
+                }
+                kept.push(Running::Fireball {
+                    from,
+                    to,
+                    launch,
+                    ember,
+                    trail,
+                });
+                continue;
+            }
+            let flight = (from.distance(to) / FIREBALL_SPEED).max(0.05);
+            if trail.is_none() {
+                if let Some(ember) = ember {
+                    self.fx.stop(ember);
+                }
+                trail = self
+                    .fx
+                    .start("grove_flame_bolt", Spawn::at(from).scaled(1.6));
+            }
+            let k = (now - launch) / flight;
+            if k < 1.0 {
+                if let Some(trail) = trail {
+                    self.fx.place(trail, from.lerp(to, k), (to - from) / flight);
+                }
+                kept.push(Running::Fireball {
+                    from,
+                    to,
+                    launch,
+                    ember: None,
+                    trail,
+                });
+                continue;
+            }
+            if let Some(trail) = trail {
+                self.fx.stop(trail);
+            }
+            self.fireball_bursts(to);
+        }
+        kept.extend(std::mem::take(&mut self.running));
+        self.running = kept;
+    }
+
+    /// A Fireball bursts at `at` on the water: flame, a splash and a
+    /// ring of ripples, and steam where the fire meets the water.
+    fn fireball_bursts(&mut self, at: Vec3) {
+        let tick = self.rules_tick();
+        let basin = self.basin();
+        let steam = self.rules.fire(&basin, at.as_dvec3(), 20.0 * 0.3048, tick);
+        self.fx
+            .start("grove_flame_hit", Spawn::at(at + Vec3::Y).scaled(2.0));
+        let c = Vec2::new(at.x, at.z);
+        if self.surface_at(c).is_some() {
+            self.fx.start("water_splash", Spawn::at(at).scaled(1.4));
+            self.water.add_ripple(c, 0.12);
+            self.sources.push(Source::impact(c, 3.0, 0.08));
+        }
+        for p in &steam.at {
+            self.fx.start("water_steam", Spawn::at(p.as_vec3()));
+        }
+        let line = format!(
+            "Fireball: steam where it meets the water; {} ice melted",
+            steam.melted
+        );
+        self.say(line);
     }
 }
