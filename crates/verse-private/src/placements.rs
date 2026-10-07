@@ -25,6 +25,10 @@ const MAX_REACH: f32 = 400.0;
 /// The zones a placement may name.
 pub const ZONES: [&str; 1] = ["everglade"];
 
+/// The seats a placement may name: places in a zone, such as the owner's
+/// house's reception chair, where a character drawn seated sits.
+pub const SEATS: [&str; 1] = ["reception"];
+
 /// The whole file.
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -49,12 +53,19 @@ pub struct Placement {
     pub bytes: u64,
     /// The zone, such as `everglade`.
     pub zone: String,
-    /// Where it stands, x and z, m.
+    /// Where it stands, x and z, m. Unused with a seat.
+    #[serde(default)]
     pub at: [f32; 2],
-    /// Its facing, as the controller's yaw, radians.
+    /// Its facing, as the controller's yaw, radians. Unused with a seat.
+    #[serde(default)]
     pub yaw: f32,
     /// Times its compiled size.
     pub scale: f32,
+    /// A seat it sits in ([`SEATS`]) instead of standing at `at`: the
+    /// zone gives the place and the facing, and the pack's pose, converted
+    /// with `--pose seated`, sits it there.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub seat: Option<String>,
 }
 
 impl Placements {
@@ -128,6 +139,18 @@ impl Placements {
             if !finite {
                 return Err(format!("{FILE}: {} has an invalid place", p.asset));
             }
+            if p.seat.as_deref().is_some_and(|seat| !SEATS.contains(&seat)) {
+                return Err(format!("{FILE}: {} names an unknown seat", p.asset));
+            }
+        }
+        if let Some(p) = self.placements.iter().enumerate().find_map(|(i, p)| {
+            let seat = p.seat.as_deref()?;
+            self.placements[..i]
+                .iter()
+                .any(|q| q.zone == p.zone && q.seat.as_deref() == Some(seat))
+                .then_some(p)
+        }) {
+            return Err(format!("{FILE}: {} takes a seat already taken", p.asset));
         }
         Ok(())
     }
@@ -231,7 +254,49 @@ mod tests {
             at: [105.5, -31.2],
             yaw: -1.571,
             scale: 1.0,
+            seat: None,
         }
+    }
+
+    #[test]
+    fn a_seated_placement_names_a_known_seat_once_and_needs_no_place() {
+        let seated = br#"{
+            "schema": "openagents.verse.private-placements.v1",
+            "broker": "https://broker.example",
+            "profile": "default",
+            "placements": [{
+                "asset": "sample-guest",
+                "sha256": "cdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcd",
+                "bytes": 1234,
+                "zone": "everglade",
+                "scale": 1.0,
+                "seat": "reception"
+            }]
+        }"#;
+        let file = Placements::parse(seated).unwrap();
+        assert_eq!(file.placements[0].seat.as_deref(), Some("reception"));
+        assert_eq!(file.placements[0].at, [0.0, 0.0]);
+        // Saved and read back, the seat stays; a standing one names none.
+        let bytes = file.to_bytes().unwrap();
+        assert_eq!(Placements::parse(&bytes).unwrap(), file);
+        let mut standing = Placements::new("https://broker.example", "default");
+        standing.place(placement());
+        assert!(
+            !String::from_utf8(standing.to_bytes().unwrap())
+                .unwrap()
+                .contains("seat")
+        );
+
+        let mut file = Placements::new("https://broker.example", "default");
+        let mut first = placement();
+        first.seat = Some("throne".into());
+        file.place(first.clone());
+        assert!(file.check().is_err(), "an unknown seat");
+        first.seat = Some("reception".into());
+        let mut second = first.clone();
+        second.asset = "other-guest".into();
+        file.placements = vec![first, second];
+        assert!(file.check().is_err(), "two in one seat");
     }
 
     #[test]

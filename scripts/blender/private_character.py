@@ -3,6 +3,7 @@
 Run headless (`verse-private add` runs it for you):
     Blender -b --factory-startup --python scripts/blender/private_character.py -- \
         IN OUT_DIR [--height M] [--near N] [--far N] [--edge PX] [--up AXIS] [--turn DEG]
+        [--pose standing|seated]
 
 IN is a `.glb`, `.gltf`, `.fbx`, or `.blend`. OUT_DIR receives
 `guest.gltf` and `guest.bin` (the near level), `guest_far.gltf` and
@@ -30,6 +31,14 @@ Steps:
   head), weights each vertex by its height with a smooth blend between
   joints, and keys `idle`: a four-second breath, a weight shift, and a slow
   head turn. The legs stay planted. There is no walk.
+- With `--pose seated`, it first bends the standing body into a sitting
+  one (`seat`): the legs fold forward at the hips and down at the knees, so
+  the thighs lie level and the shins hang, and the hands, which hang beside
+  the thighs, come to rest on the lap. The rig's joints follow the seated
+  body, and `idle` is an eight-second seated idle: two breaths, the head
+  bowed a little toward the desk, and once a cycle a glance up and a little
+  aside toward whoever arrives. The report gives `seat_m`, the height of the
+  seat under the body, which a chair must match.
 """
 
 import json
@@ -50,24 +59,29 @@ TAU = 2 * math.pi
 JOINTS = [("root", None, 0.0), ("hips", "root", 0.50), ("spine", "hips", 0.60),
           ("chest", "spine", 0.70), ("head", "chest", 0.85)]
 BLEND = 0.03
+# The seated pose's bends: the hip and knee pivots as fractions of the
+# standing height, and each bend's blend half width, also a fraction.
+HIP, KNEE, BEND = 0.49, 0.285, 0.035
 
 
 def options():
     a = kit.args()
     if len(a) < 2:
         sys.exit("usage: private_character.py IN OUT_DIR [--height M] [--near N] [--far N] "
-                 "[--edge PX] [--up AXIS] [--turn DEG]")
+                 "[--edge PX] [--up AXIS] [--turn DEG] [--pose standing|seated]")
     o = {"in": a[0], "out": a[1], "height": 1.62, "near": 20000, "far": 5000, "edge": 1024,
-         "up": "auto", "turn": 0.0}
+         "up": "auto", "turn": 0.0, "pose": "standing"}
     rest = a[2:]
     while rest:
         key, value = rest[0], rest[1] if len(rest) > 1 else None
         if not key.startswith("--") or value is None or key[2:] not in o:
             sys.exit(f"unknown or incomplete option: {key}")
         k = key[2:]
-        o[k] = value if k == "up" else float(value)
+        o[k] = value if k in ("up", "pose") else float(value)
         rest = rest[2:]
     o["near"], o["far"], o["edge"] = int(o["near"]), int(o["far"]), int(o["edge"])
+    if o["pose"] not in ("standing", "seated"):
+        sys.exit("--pose is standing or seated")
     return o
 
 
@@ -206,33 +220,106 @@ def level(high, name, target, edge):
     return low, triangles
 
 
-def weigh(body, height):
+def smoothstep(t):
+    t = min(max(t, 0.0), 1.0)
+    return t * t * (3.0 - 2.0 * t)
+
+
+def seat(body, height):
+    """Bends the standing `body`, feet at the origin and front toward -Y,
+    into a sitting one: the shins swing back at the knees, then the legs
+    swing forward at the hips, so the thighs lie level toward the front and
+    the shins hang. Each vertex turns about a joint's pivot by an angle
+    that eases in across the joint, so the bends stay smooth. The torso
+    stays over the origin, lowered so the feet are on the ground. Returns
+    how far it was lowered and the seat's height under it, m."""
+    verts = body.data.vertices
+    original = [v.co.copy() for v in verts]
+
+    def middle(z):
+        ys = [p.y for p in original if abs(p.z - z) < 0.01 * height]
+        return (min(ys) + max(ys)) / 2 if ys else 0.0
+
+    b = BEND * height
+    for joint, angle in ((KNEE, math.pi / 2), (HIP, -math.pi / 2)):
+        z0 = joint * height
+        y0 = middle(z0)
+        for v, p in zip(verts, original):
+            a = angle * smoothstep((z0 + b - p.z) / (2 * b))
+            if a == 0.0:
+                continue
+            c, s = math.cos(a), math.sin(a)
+            y, z = v.co.y - y0, v.co.z - z0
+            v.co.y = y0 + y * c - z * s
+            v.co.z = z0 + y * s + z * c
+    low = min(v.co.z for v in verts)
+    for v in verts:
+        v.co.z -= low
+    body.data.update()
+    # The seat: the lowest point of the buttocks, behind the hip's pivot,
+    # among the vertices that stood near the hip.
+    hip = HIP * height
+    y_hip = middle(hip)
+    under = [v.co.z for v, p in zip(verts, original) if abs(p.z - hip) < 0.08 * height and p.y > y_hip]
+    return low, min(under) if under else hip + low
+
+
+def weigh(body, pivots, height):
     """Weights each vertex of `body` by its height: fully to the joint whose
-    segment holds it, blended with the neighbor within BLEND of a pivot."""
+    segment holds it, blended with the neighbor within BLEND of a pivot.
+    `pivots` are the joints' heights, m, on a body `height` m tall standing."""
     body.vertex_groups.clear()
     groups = [body.vertex_groups.new(name=name) for name, _, _ in JOINTS]
-    pivots = [f for _, _, f in JOINTS]
+    blend = BLEND * height
     for v in body.data.vertices:
-        t = v.co.z / height
+        t = v.co.z
         k = max(i for i, f in enumerate(pivots) if t >= f or i == 0)
         weights = {k: 1.0}
-        if k + 1 < len(pivots) and t > pivots[k + 1] - BLEND:
-            w = (t - (pivots[k + 1] - BLEND)) / (2 * BLEND)
+        if k + 1 < len(pivots) and t > pivots[k + 1] - blend:
+            w = (t - (pivots[k + 1] - blend)) / (2 * blend)
             weights = {k: 1.0 - w, k + 1: w}
-        elif k > 0 and t < pivots[k] + BLEND:
-            w = (t - (pivots[k] - BLEND)) / (2 * BLEND)
+        elif k > 0 and t < pivots[k] + blend:
+            w = (t - (pivots[k] - blend)) / (2 * blend)
             weights = {k - 1: 1.0 - w, k: w}
         for j, w in weights.items():
             if w > 1e-3:
                 groups[j].add([v.index], w, "REPLACE")
 
 
-def rig(body, height):
-    bones = [(name, parent, (0.0, 0.0, f * height), (0.0, 0.0, f * height + 0.05))
-             for name, parent, f in JOINTS]
+def pivots(height, drop):
+    """Each joint's height, m: as the body stands, or, seated, lowered by
+    `drop` above the root, so the hips' joint is at the seat."""
+    return [0.0 if f == 0.0 else f * height - drop for _, _, f in JOINTS]
+
+
+def rig(body, heights, height, seated):
+    bones = [(name, parent, (0.0, 0.0, z), (0.0, 0.0, z + 0.05))
+             for (name, parent, _), z in zip(JOINTS, heights)]
     arm = kit.armature("guest_rig", bones)
-    weigh(body, height)
+    weigh(body, heights, height)
     kit.skin(arm, body)
+
+    if seated:
+        def bump(t, at, width):
+            """1 at `at`, easing to 0 `width` either side, round the cycle."""
+            d = min(abs(t - at), 1.0 - abs(t - at))
+            return smoothstep(1.0 - d / width)
+
+        def sitting(t):
+            # Two breaths a cycle, and the head bowed a little toward the
+            # desk, lifting and turning a little aside once a cycle. No
+            # weight shift: she sits.
+            s, c = math.sin(2 * TAU * t), math.cos(2 * TAU * t)
+            look = bump(t, 0.65, 0.18)
+            return {
+                "spine": (0.005 * c, 0.0, 0.0),
+                "chest": (-0.016 * s, 0.0, -0.004 * s),
+                "head": (0.12 * (1.0 - look) - 0.03 * look, 0.16 * look + 0.02 * math.sin(TAU * t), 0.0),
+            }
+
+        # Twenty-four keys eight frames apart: eight seconds at 24 fps.
+        kit.action(arm, "idle", 24, sitting, cyclic=True, step=8)
+        return arm
 
     def idle(t):
         s, c = math.sin(TAU * t), math.cos(TAU * t)
@@ -293,13 +380,16 @@ def main():
     body = load(o["in"])
     source_triangles = kit.triangles([body])
     up, scale = stand(body, o["up"], o["turn"], o["height"])
+    seated = o["pose"] == "seated"
+    drop, seat_m = seat(body, o["height"]) if seated else (0.0, 0.0)
     near_body, near = level(body, "guest", o["near"], o["edge"])
     far_body, far = level(body, "guest_far", o["far"], o["edge"] // 2)
     bpy.data.objects.remove(body, do_unlink=True)
     body = near_body
-    arm = rig(body, o["height"])
+    heights = pivots(o["height"], drop)
+    arm = rig(body, heights, o["height"], seated)
     # The far level takes the same weights by the same rule, on the same rig.
-    weigh(far_body, o["height"])
+    weigh(far_body, heights, o["height"])
     kit.skin(arm, far_body)
     # Each level exports alone with the shared rig.
     far_body.hide_set(True)
@@ -325,6 +415,8 @@ def main():
         "textures": {"guest": o["edge"], "guest_far": o["edge"] // 2},
         "rig": "generated spine: " + ", ".join(n for n, _, _ in JOINTS),
         "clips": ["idle"],
+        "pose": o["pose"],
+        "seat_m": round(seat_m, 3),
         "previews": [os.path.basename(p) for p in previews],
     }
     with open(os.path.join(o["out"], "report.json"), "w") as f:

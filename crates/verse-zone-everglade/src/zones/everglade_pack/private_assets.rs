@@ -215,6 +215,7 @@ mod tests {
             at: [105.5, -31.2],
             yaw: -1.571,
             scale: 1.0,
+            seat: None,
         });
         file
     }

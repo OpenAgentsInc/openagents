@@ -107,7 +107,8 @@ It runs these steps:
 
 `verse-private list`, `show NAME`, `grant NAME KEY`, `revoke NAME KEY`, and
 `remove NAME` manage the registry. `place NAME --at X,Z --yaw RADIANS`
-writes the owner-local placement.
+writes the owner-local placement, and `place NAME --seat SEAT` seats it
+instead (see [Seats](#seats)).
 
 ### Rigs
 
@@ -123,6 +124,17 @@ slowly. Arms ride the chest. The result is an idle standing NPC; it can't
 walk or gesture. A source that already has a rig, such as the Fab library's
 rigged and animated fantasy female, is applied in its rest pose and gets the
 same spine; keeping a source's own skeleton and clips is follow-up work.
+
+`add --pose seated` converts a character sitting down. Before the levels are
+made, the script bends the standing body: the shins swing back at the knees
+and the legs swing forward at the hips, each vertex turned by an angle that
+eases in across the joint, so the thighs lie level, the shins hang, and the
+hands that hung beside the thighs rest on the lap. The spine's joints move
+down with the body, and `idle` becomes an eight-second seated idle: two
+breaths, the head bowed a little toward a desk, and once a cycle a glance up
+and a little aside. The report records `seat_m`, the height of the seat
+under the body (0.395 m for a 1.62 m body), which the chair it sits on
+matches.
 
 ## Access
 
@@ -205,16 +217,39 @@ draws the near level within 18 m and the far level to 60 m, and not at all
 beyond. When the file is missing, the key is not a reader, or the network
 is down, nothing is drawn and the zone is unchanged; Verse logs one line.
 
-The first asset stands on the grass beside the walk to the owner's house,
-at `(106.0, -31.2)`, facing west toward an arriving player. To see her, run
-desktop Verse and walk from Everglade's spawn east along Library Way to the
-house. For an offline look, the capture example loads the placements the
+The first asset sits at the reception in the owner's house, converted
+seated. To see her, run desktop Verse, walk from Everglade's spawn east
+along Library Way to the house, and go in through the bronze doors; she sits
+to the left of the entry walk, facing the door. For an offline look, the capture example loads the placements the
 same way:
 
 ```sh
 VERSE_CAPTURE_PRIVATE=~/.openagents/verse \
   cargo run -p verse --features capture --example everglade_capture -- \
   out.png at:104.2,-33.4,0.15,-8
+```
+
+### Seats
+
+A placement may name a seat instead of a place: `"seat": "reception"`,
+with no `at` or `yaw`. The zone gives the seat's place, floor, and facing,
+so a placement inside a building needs no coordinates. Everglade has one
+seat today, the reception chair in the owner's house: west of the entry
+walk a few strides in from the door, turned toward the doorway, with a
+walnut reception desk before it (`layout::estate::RECEPTION`). The pack
+must be converted with `--pose seated`. A seated character adds no block of
+its own, since the chair and the desk block, and each seat takes one
+character.
+
+```json
+{
+  "asset": "NAME",
+  "sha256": "<pack digest>",
+  "bytes": 1234567,
+  "zone": "everglade",
+  "scale": 1.0,
+  "seat": "reception"
+}
 ```
 
 ### Phones

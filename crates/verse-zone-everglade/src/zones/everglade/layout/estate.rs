@@ -67,6 +67,9 @@ pub const GRECO_HOUSE: Model = Model {
         [-6.1, -3.1, -23.1, -22.1, 2.38],
         [8.85, 9.55, -22.3, -20.9, 2.6],
         [4.75, 5.25, -15.25, -14.75, 2.66],
+        // The reception's chair and its desk, turned toward the door.
+        [-3.56, -2.84, -16.56, -15.84, 2.52],
+        [-3.74, -1.82, -16.6, -14.8, 2.52],
         [-9.25, -8.25, -20.8, -16.4, 2.44],
     ],
     roofs: &[GableRoof {
@@ -94,6 +97,35 @@ pub const WALK: ([f32; 2], [f32; 2], f32) = ([104.0, -29.0], [108.0, -29.0], 1.4
 /// house's frame, x and z, m. The left sconce and the tall candle stand
 /// light it.
 pub const WORKSTATION: [f32; 2] = [-4.6, -22.6];
+
+/// The reception chair in the great room, west of the entry walk a few
+/// strides in from the door, in the house's frame, x and z, m, and the
+/// point it faces: the doorway's middle, so whoever sits there greets
+/// arrivals. Its desk stands before it. The owner's private placements
+/// may seat a character here (`guests::seat`).
+pub const RECEPTION: ([f32; 2], [f32; 2]) = ([-3.2, -16.2], [0.0, -12.4]);
+
+/// The reception chair's seat: where a seated character's feet rest, x,
+/// height, and z in the world, and its heading as the controller's yaw.
+/// The pose sits the body on the seat; the feet are on the floor.
+#[must_use]
+pub fn reception() -> (Vec3, f32) {
+    let (at, toward) = RECEPTION;
+    let [x, z] = OWNERS_HOUSE.world(at);
+    let [tx, tz] = OWNERS_HOUSE.world(toward);
+    (
+        Vec3::new(
+            x,
+            super::height(OWNERS_HOUSE.at[0], OWNERS_HOUSE.at[1]) + PODIUM,
+            z,
+        ),
+        (tx - x).atan2(tz - z),
+    )
+}
+
+/// The podium's top over the house's ground, m: the great room's marble
+/// floor, where nothing lies on it.
+pub const PODIUM: f32 = 1.6;
 
 /// What gives a light in the house.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -433,6 +465,33 @@ mod tests {
                 [x0, x1, z0, z1]
             );
         }
+    }
+
+    #[test]
+    fn the_reception_greets_arrivals_from_off_the_entry_walk() {
+        let ([x, z], [tx, tz]) = RECEPTION;
+        // Inside the great room, near the door, and west of the walk: the
+        // chair and the desk keep a 2.5 m walk clear from the door.
+        assert!(x.abs() < 9.55 - 0.4 && z < -12.0 - 0.4 && z > -18.0);
+        let furniture: Vec<_> = GRECO_HOUSE
+            .blocks
+            .iter()
+            .filter(|&&[x0, x1, z0, z1, _]| x0 <= x && x <= x1 + 1.5 && z0 <= z + 0.5 && z <= z1)
+            .collect();
+        assert_eq!(furniture.len(), 2, "the chair and the desk: {furniture:?}");
+        for &&[_, x1, _, _, top] in &furniture {
+            assert!(x1 < -1.25, "the reception crowds the entry walk");
+            assert!(top < FLOOR + 1.0, "the room sees her over her desk");
+        }
+        // She faces the doorway: the door lies ahead of her, a little to
+        // her left, never behind.
+        let (feet, yaw) = reception();
+        let [dx, dz] = OWNERS_HOUSE.world([tx, tz]);
+        let ahead = Vec3::new(yaw.sin(), 0.0, yaw.cos());
+        let to_door = Vec3::new(dx - feet.x, 0.0, dz - feet.z).normalize();
+        assert!(ahead.dot(to_door) > 0.99);
+        assert!((feet.y - (floor() - FLOOR + PODIUM)).abs() < 1e-4);
+        assert!(in_room(feet + Vec3::Y * 0.5));
     }
 
     #[test]

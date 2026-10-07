@@ -11,7 +11,7 @@
 
 use std::path::PathBuf;
 
-use super::everglade::guests::Stand;
+use super::everglade::guests::{self, Stand};
 use super::everglade_pack::private_assets::{PrivateEvent, PrivateLoader};
 use crate::runtime::WorldRuntime;
 
@@ -67,10 +67,24 @@ impl WorldRuntime {
                     let Some(everglade) = &mut self.zone_state.everglade else {
                         continue;
                     };
-                    let stand = Stand {
-                        at: placement.at,
-                        yaw: placement.yaw,
-                        scale: placement.scale,
+                    // A seat gives the place, the floor, and the facing.
+                    let stand = match placement.seat.as_deref() {
+                        Some(name) => match guests::seat(name, placement.scale) {
+                            Some(stand) => stand,
+                            None => {
+                                eprintln!(
+                                    "verse: {} names a seat Everglade doesn't have",
+                                    placement.asset
+                                );
+                                continue;
+                            }
+                        },
+                        None => Stand {
+                            at: placement.at,
+                            yaw: placement.yaw,
+                            scale: placement.scale,
+                            floor: None,
+                        },
                     };
                     match everglade.add_guest(&pack, stand) {
                         Ok(()) => eprintln!("verse: {} stands in Everglade", placement.asset),

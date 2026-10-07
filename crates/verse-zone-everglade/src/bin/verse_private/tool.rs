@@ -4,8 +4,9 @@
 //! ```text
 //! verse-private add SOURCE --name NAME --license ID [--reader HEX]... [--title TEXT]
 //!     [--height M] [--near N] [--far N] [--edge PX] [--up AXIS] [--turn DEG]
-//!     [--build DIR] [--dry-run]
-//! verse-private place NAME --at X,Z [--yaw RADIANS] [--scale S] [--broker URL] [--profile P]
+//!     [--pose standing|seated] [--build DIR] [--dry-run]
+//! verse-private place NAME (--at X,Z [--yaw RADIANS] | --seat SEAT) [--scale S]
+//!     [--broker URL] [--profile P]
 //! verse-private unplace NAME
 //! verse-private list
 //! verse-private show NAME
@@ -320,7 +321,7 @@ fn repository() -> PathBuf {
 fn add(args: &Args) -> Result<(), String> {
     args.only(&[
         "name", "license", "reader", "title", "height", "near", "far", "edge", "up", "turn",
-        "build",
+        "pose", "build",
     ])?;
     let source = PathBuf::from(
         args.positional
@@ -383,6 +384,7 @@ fn add(args: &Args) -> Result<(), String> {
         ("edge", "1024"),
         ("up", "auto"),
         ("turn", "0"),
+        ("pose", "standing"),
     ] {
         let value = args.one(flag).unwrap_or(default).to_owned();
         blender_args.extend([format!("--{flag}"), value.clone()]);
@@ -566,7 +568,7 @@ fn coordinates(value: &str) -> Result<[f32; 2], String> {
 }
 
 fn place(args: &Args) -> Result<(), String> {
-    args.only(&["at", "yaw", "scale", "broker", "profile", "zone"])?;
+    args.only(&["at", "seat", "yaw", "scale", "broker", "profile", "zone"])?;
     let name = name_arg(args)?;
     let manifest = fetch_manifest(&name)?;
     let home = verse_home()?;
@@ -584,14 +586,20 @@ fn place(args: &Args) -> Result<(), String> {
     if let Some(profile) = args.one("profile") {
         file.profile = profile.into();
     }
+    let seat = args.one("seat");
     file.place(Placement {
         asset: name.clone(),
         sha256: manifest.pack.sha256,
         bytes: manifest.pack.bytes,
         zone: args.one("zone").unwrap_or("everglade").into(),
-        at: coordinates(args.one("at").ok_or("place needs --at X,Z")?)?,
+        at: match (args.one("at"), seat) {
+            (Some(at), _) => coordinates(at)?,
+            (None, Some(_)) => [0.0, 0.0],
+            (None, None) => return Err("place needs --at X,Z or --seat NAME".into()),
+        },
         yaw: args.number("yaw", 0.0)?,
         scale: args.number("scale", 1.0)?,
+        seat: seat.map(str::to_owned),
     });
     placements::save(&home, &file)?;
     println!("{name}: placed in {}", placements::path(&home).display());

@@ -269,9 +269,17 @@ impl Everglade {
             return Err("The demolition yard takes no guests".into());
         }
         self.guests.push(guests::guest(pack, stand)?);
-        self.extra_blocks.push(guests::block(stand));
-        self.refresh_blocks();
+        if let Some(block) = guests::block(stand) {
+            self.extra_blocks.push(block);
+            self.refresh_blocks();
+        }
         Ok(())
+    }
+
+    /// The private characters, for tests and captures.
+    #[must_use]
+    pub fn guests(&self) -> &[wildlife::Wildlife] {
+        &self.guests
     }
 
     /// How many private characters stand in the zone.

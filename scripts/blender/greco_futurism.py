@@ -40,7 +40,8 @@ Models:
   walls, the bronze circuit door (open, its leaves swung in), lattice
   screen walls, and an enterable great room: a coffered ceiling, marble
   pilasters, a dark walnut wall with an engraved double door and
-  bookshelves, a desk, a long sofa, rugs, a lamp, and a planter, lit by
+  bookshelves, a desk, a reception desk and chair by the door, a long
+  sofa, rugs, a lamp, and a planter, lit by
   candles, sconces, a brazier, lamps, and lanterns whose lights and flames
   its footprint records. It also writes `far/greco_house.glb`, the far
   level of detail.
@@ -65,7 +66,7 @@ Models:
   `pier`, `entablature_bay`, `stair_flight`, `planter_wall`,
   `circuit_door`, `lattice_screen`, `coffer_bay`, `pilaster`, `chimney`,
   `circuit_panel`, `bench_long`, `planter`, `lamp`, `rug`, `desk`, `sofa`,
-  `bookshelf`, and the Civic Hall's `bronze_column`, `dentil_cornice_bay`,
+  `bookshelf`, `reception_desk`, `reception_chair`, and the Civic Hall's `bronze_column`, `dentil_cornice_bay`,
   `attic`, `circuit_portal`, `paired_window`, `bowl_planter`, and
   `council_ring`; and the belvedere's `inlaid_pier`, `lintel_band`,
   `louver`, `relief_panel`, `cushioned_bench`, `urn_tree`, `threshold`,
@@ -601,6 +602,82 @@ def lectern(b, x, y, z0, rot=0.0):
     box(b, (-0.14, -0.222, 0.86), (0.14, -0.22, 0.9), "amber", skip=only("-y"), xf=xf, name="EmitSlit")
 
 
+def collide_turned(b, name, xf, lo, hi):
+    """Records the axis-aligned box round a box from `lo` to `hi` in the
+    frame `xf`, which may be turned, rounded out to the centimeter."""
+    corners = [xf @ Vector((x, y, z)) for x in (lo[0], hi[0]) for y in (lo[1], hi[1]) for z in (lo[2], hi[2])]
+    low = Vector([math.floor(min(c[i] for c in corners) * 100) / 100 for i in range(3)])
+    high = Vector([math.ceil(max(c[i] for c in corners) * 100) / 100 for i in range(3)])
+    b.collide(name, low, high)
+
+
+# The reception chair's seat height, m: the seated private character's
+# `seat_m` (`private_character.py --pose seated`) for a 1.62 m body, 0.395 m.
+RECEPTION_SEAT = 0.40
+# The reception chair in the great room, x and y, and its turn, degrees,
+# toward the door's middle at (0, 12.4) (`layout::estate::RECEPTION`).
+RECEPTION = (-3.2, 16.2)
+RECEPTION_TURN = 40.0
+
+
+def reception_desk(b, x, y, z0, rot=0.0):
+    """The reception desk: a walnut writing top at desk height over walnut
+    ends, and toward the visitor a tall walnut front inlaid with circuit
+    lines over a copper foot band, under a bronze ledge. An amber slate
+    glows on the top. The receptionist sits behind it, at +y, facing -y."""
+    xf = local((x, y, z0), rot)
+    w, d, h, front = 1.8, 0.75, 0.76, 0.88
+    box(b, (-w / 2 + 0.06, -d / 2 + 0.1, h - 0.05), (w / 2 - 0.06, d / 2, h), "walnut", xf=xf, name="DeskTop")
+    for s in (-1, 1):
+        u0, u1 = sorted((s * w / 2, s * (w / 2 - 0.06)))
+        box(b, (u0, -d / 2, 0.0), (u1, d / 2, h), "walnut", skip="-z", xf=xf, name="DeskEnd")
+    box(b, (-w / 2, -d / 2, 0.08), (w / 2, -d / 2 + 0.1, front), "walnut", skip="-z", xf=xf, name="DeskFront")
+    box(b, (-w / 2 - 0.01, -d / 2 - 0.01, 0.0), (w / 2 + 0.01, -d / 2 + 0.1, 0.08), "copper", skip="-z", xf=xf,
+        name="DeskFoot")
+    box(b, (-w / 2 - 0.03, -d / 2 - 0.07, front), (w / 2 + 0.03, -d / 2 + 0.22, front + 0.04), "bronze", xf=xf,
+        name="Ledge")
+    collide_turned(b, "reception desk", xf, (-w / 2, -d / 2 - 0.07, 0.0), (w / 2, d / 2, front + 0.04))
+    if FAR:
+        return
+    circuit_lines(b, xf @ Matrix.Translation(Vector((0.0, -d / 2, 0.0))), w - 0.3, 0.14, front - 0.32)
+    box(b, (-0.24, 0.02, h), (0.24, 0.3, h + 0.016), "bronze", skip="-z", xf=xf, name="Slate")
+    box(b, (-0.21, 0.05, h + 0.016), (0.21, 0.27, h + 0.017), "amber", skip=only("+z"), xf=xf, name="EmitSlate")
+
+
+def reception_chair(b, x, y, z0, rot=0.0, seat=RECEPTION_SEAT):
+    """The receptionist's chair: a walnut seat and back with red-brown
+    cushions on four bronze legs, a copper circuit trace on the back's
+    outer face. She sits on it facing -y."""
+    xf = local((x, y, z0), rot)
+    w, d, back = 0.52, 0.5, 0.52
+    box(b, (-w / 2, -d / 2, seat - 0.08), (w / 2, d / 2, seat - 0.03), "walnut", xf=xf, name="ChairSeat")
+    box(b, (-w / 2 + 0.03, -d / 2 + 0.03, seat - 0.03), (w / 2 - 0.03, d / 2 - 0.08, seat), "redbrown",
+        skip="-z", xf=xf, name="Cushion")
+    box(b, (-w / 2, d / 2 - 0.05, seat - 0.03), (w / 2, d / 2, seat + back), "walnut", xf=xf, name="ChairBack")
+    box(b, (-w / 2 + 0.05, d / 2 - 0.08, seat + 0.08), (w / 2 - 0.05, d / 2 - 0.05, seat + back - 0.06),
+        "redbrown", skip="+y", xf=xf, name="Cushion")
+    for sx in (-1, 1):
+        for sy in (-1, 1):
+            cx, cy = sx * (w / 2 - 0.05), sy * (d / 2 - 0.05)
+            box(b, (cx - 0.02, cy - 0.02, 0.0), (cx + 0.02, cy + 0.02, seat - 0.08), "bronze", skip="-z +z",
+                xf=xf, name="ChairLeg")
+    collide_turned(b, "reception chair", xf, (-w / 2, -d / 2, 0.0), (w / 2, d / 2, seat + back))
+    if FAR:
+        return
+    rear = xf @ Matrix.Translation(Vector((0.0, d / 2, 0.0))) @ Matrix.Rotation(math.pi, 4, "Z")
+    circuit_lines(b, rear, w - 0.12, seat + 0.04, back - 0.1)
+
+
+def reception(b, x, y, z0, rot=0.0):
+    """The reception: the chair at (x, y), facing along `rot` as a kit
+    piece faces, and the desk before it, far enough ahead that her knees
+    fit under its top."""
+    reception_chair(b, x, y, z0, rot)
+    a = math.radians(rot)
+    ahead = 0.62
+    reception_desk(b, x + ahead * math.sin(a), y - ahead * math.cos(a), z0, rot)
+
+
 def sofa(b, x, y, z0, rot=0.0, w=4.4):
     """A long low linen sofa on a dark bronze plinth, with red-brown
     cushions, as in the references' great room."""
@@ -1062,6 +1139,10 @@ def great_room(b):
     console(b, east)
     b.collide("console", Vector((hw - t - 0.75, 20.9, FLOOR)), Vector((hw - t, 22.3, FLOOR + 1.0)))
     lectern(b, 5.0, 15.0, FLOOR)
+    # The reception, west of the entry walk a few strides in from the
+    # door: a chair turned toward the door, so whoever sits there greets
+    # arrivals, with its desk before it, both clear of the walk.
+    reception(b, *RECEPTION, FLOOR, RECEPTION_TURN)
     # Candlelight: a candelabrum on the desk, sconces flanking the engraved
     # door, a tall candle stand lighting the workstation spot west of the
     # desk (kept clear for a seat facing into the room), a brazier across
@@ -2247,6 +2328,20 @@ def rug_piece():
 def workstation_piece():
     b = new("workstation")
     workstation(b, 0, 0, 0)
+    return b
+
+
+@piece
+def reception_desk_piece():
+    b = new("reception_desk")
+    reception_desk(b, 0, 0, 0)
+    return b
+
+
+@piece
+def reception_chair_piece():
+    b = new("reception_chair")
+    reception_chair(b, 0, 0, 0)
     return b
 
 

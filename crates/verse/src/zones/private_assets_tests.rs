@@ -27,6 +27,11 @@ fn at_portal() -> WorldRuntime {
 /// A placements file in `home` for a pack of `bytes` with `sha256`, asking a
 /// broker that isn't there.
 fn place(home: &Path, sha256: &str, bytes: u64) {
+    place_in(home, sha256, bytes, None);
+}
+
+/// As [`place`], in the seat named `seat` when there is one.
+fn place_in(home: &Path, sha256: &str, bytes: u64, seat: Option<&str>) {
     let mut file = Placements::new("https://127.0.0.1:9", "private-test");
     file.place(Placement {
         asset: "sample-guest".into(),
@@ -36,8 +41,39 @@ fn place(home: &Path, sha256: &str, bytes: u64) {
         at: [6.0, -14.0],
         yaw: 0.0,
         scale: 1.0,
+        seat: seat.map(str::to_owned),
     });
     placements::save(home, &file).unwrap();
+}
+
+/// A home with the sample private pack placed and already cached.
+fn cached(seat: Option<&str>) -> tempfile::TempDir {
+    let home = tempfile::tempdir().unwrap();
+    let bytes = private::sample();
+    let sha256 = verse_private::sha256_hex(&bytes);
+    place_in(home.path(), &sha256, bytes.len() as u64, seat);
+    let cache = home.path().join(placements::CACHE);
+    std::fs::create_dir_all(&cache).unwrap();
+    std::fs::write(cache.join(format!("{sha256}.vtp")), &bytes).unwrap();
+    home
+}
+
+#[test]
+fn a_seated_private_placement_sits_at_the_reception() {
+    let home = cached(Some("reception"));
+    let mut runtime = at_portal();
+    runtime.configure_private_assets(home.path().to_owned());
+    runtime.install_everglade(pack());
+    assert!(
+        tick_until(&mut runtime, |r| r.private_guests() == 1),
+        "the cached private pack never sat its character"
+    );
+    let everglade = runtime.zone_state.everglade.as_ref().unwrap();
+    let (feet, yaw) = super::everglade::layout::estate::reception();
+    assert_eq!(
+        everglade.guests()[0].creatures()[0].route,
+        super::everglade::wildlife::Route::Sit { at: feet, yaw },
+    );
 }
 
 /// Ticks until `done` or a few seconds pass.

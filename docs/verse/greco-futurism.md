@@ -110,6 +110,8 @@ The props share the vocabulary:
 | Bronze floor lamp with an amber shade | `lamp` | 40 |
 | Rug with a classical border | `rug` | 50 |
 | Walnut desk with a chair | `desk` | 166 |
+| Reception desk with an inlaid front and an amber slate | `reception_desk` | 112 |
+| Reception chair, walnut and red-brown on bronze legs | `reception_chair` | 112 |
 | Long linen sofa and low table | `sofa`, `low_table` | 132 |
 | Walnut bookcase with books | `bookshelf` | 176 |
 
@@ -330,6 +332,13 @@ house.
   amber screen by the east wall, and while she waits for an approval,
   behind a limestone lectern with an amber slit, east of the entry walk.
   All three collide, and her walks stay in the great room.
+- **Reception.** West of the entry walk, a few strides in from the door
+  (`estate::RECEPTION`), a reception chair turned toward the doorway with a
+  walnut reception desk before it: a writing top, a front inlaid with
+  circuit lines over a copper foot band under a bronze ledge low enough that
+  the room sees whoever sits there, and an amber slate on the top. Both
+  collide and stay clear of the 2.5 m walk. The owner's private placements
+  can seat a character here ([Private assets](private-assets.md#seats)).
 - **Light.** A candelabrum on the desk, bronze sconces flanking the engraved
   door and the front door, tall candle stands by the workstation and
   in the front corners, a brazier across from
