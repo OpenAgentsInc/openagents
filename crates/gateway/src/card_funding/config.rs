@@ -118,13 +118,13 @@ impl Config {
 }
 
 #[cfg(test)]
-mod tests {
+pub(super) mod tests {
     use super::*;
     use tenancy::money::funding::{
         Conversion, POLICY_SCHEMA, PromotionTerms, PurchaseTerms, SpentCreditLoss,
     };
 
-    fn config() -> Config {
+    pub(crate) fn config() -> Config {
         let usd = Unit::CurrencyMillionths {
             currency: "USD".into(),
         };

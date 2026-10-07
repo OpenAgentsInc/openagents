@@ -11,6 +11,7 @@ const MAX_HEADER: usize = 4096;
 const API_ORIGIN: &str = "https://api.stripe.com";
 
 mod config;
+pub(crate) mod controller;
 pub use config::Config;
 mod checkout;
 pub use checkout::CheckoutRequest;

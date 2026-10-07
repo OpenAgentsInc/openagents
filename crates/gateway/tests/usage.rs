@@ -63,6 +63,7 @@ fn free_plan() -> Plan {
 /// The billing block the free plan sits in.
 fn billing_config() -> config::Billing {
     config::Billing {
+        prepaid: None,
         plans: vec![free_plan()],
         provider: "sandbox".to_string(),
         webhook_secret_env: SECRET_ENV.to_string(),

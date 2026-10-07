@@ -1317,6 +1317,9 @@ pub(crate) fn entitled(
     let Some(config) = &state.config.billing else {
         return Ok(());
     };
+    if config.prepaid.is_some() {
+        return Ok(());
+    }
     let workspace = workspace.ok_or((
         StatusCode::PAYMENT_REQUIRED,
         "no_subscription",

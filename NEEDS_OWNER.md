@@ -565,6 +565,19 @@ real finality, or wallet liquidity. Existing fixed-unit Lightning products
 keep their own contracts; Coder pilot v1 remains a separate service invoice
 with zero product credits.
 
+## Native prepaid card activation O5 (REV-22, #10829)
+
+Before enabling `billing.prepaid`, select and qualify the processor and merchant,
+accept the exact USD funding policy, fee payer and cap, purchase and spend
+limits, refund and dispute responsibility, and loss treatment. Supply restricted
+native credentials and webhook secret references outside the repository;
+configure the pinned API version, live mode, HTTPS return origin, and public
+webhook. Retain a genuine final collection, duplicate and restart reconciliation,
+and refund or dispute evidence privately before commercial activation. The
+optional Stripe adapter and isolated native HTTP fixtures establish code
+behavior; they establish no live merchant, card sale, production fee, or wallet
+liquidity. Common funding and BTC conversion remain unavailable in this profile.
+
 ## Native decision offer O5 (REV-16, #10823)
 
 Before activating the [selected native `kev-0.6b` offer](docs/decision-models/service/monetary-accounting.md#selected-native-decision-offer),

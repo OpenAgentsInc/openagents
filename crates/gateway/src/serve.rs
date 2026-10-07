@@ -136,6 +136,11 @@ pub struct ServeState {
     pub(crate) earnings: Option<Mutex<pay_ledger::Ledger>>,
     pub(crate) funding: Option<std::sync::Mutex<crate::funding::Store>>,
     pub(crate) funding_slots: Arc<Semaphore>,
+    pub(crate) card_billing: Option<tenancy::billing::Billing>,
+    pub(crate) card_lock: Mutex<()>,
+    #[cfg(test)]
+    pub(crate) card_test_origin: std::sync::Mutex<Option<String>>,
+    pub(crate) card_cursor: std::sync::atomic::AtomicUsize,
     pub(crate) team_progress: crate::team_reports::Monitor,
     receipts: Mutex<std::fs::File>,
     /// The process-wide forward bound.
@@ -166,6 +171,7 @@ impl ServeState {
             || config.team_reports.is_some()
             || config.funding.is_some()
             || config.earnings.is_some()
+            || config.billing.as_ref().is_some_and(|b| b.prepaid.is_some())
             || config.money.as_ref().is_some_and(|m| {
                 m.hierarchical_budgets || m.doors.values().any(|p| p.offer.is_some())
             })
@@ -277,6 +283,11 @@ impl ServeState {
             .transpose()
             .map_err(Trouble::Money)?
             .map(std::sync::Mutex::new);
+        let card_billing = if config.billing.as_ref().is_some_and(|b| b.prepaid.is_some()) {
+            Some(tenancy::billing::Billing::open(&config.registry).map_err(Trouble::Accounts)?)
+        } else {
+            None
+        };
         let state = Arc::new(Self {
             dir: config.registry.clone(),
             in_flight: Arc::new(Semaphore::new(config.max_in_flight)),
@@ -290,6 +301,11 @@ impl ServeState {
             money,
             earnings,
             funding,
+            card_billing,
+            card_lock: Mutex::new(()),
+            #[cfg(test)]
+            card_test_origin: std::sync::Mutex::new(None),
+            card_cursor: std::sync::atomic::AtomicUsize::new(0),
             funding_slots: Arc::new(Semaphore::new(4)),
             team_progress: crate::team_reports::Monitor::default(),
             receipts: Mutex::new(receipts),
@@ -379,6 +395,7 @@ pub fn router(state: Arc<ServeState>) -> axum::Router {
     // runtime — `ServeState::open` is synchronous and cannot spawn them.
     jobs::resume(&state);
     crate::funding::resume(&state);
+    crate::card_funding::controller::resume(&state);
     router
         .layer(DefaultBodyLimit::max(body_max))
         .layer(middleware::from_fn(purchase_route))
@@ -541,8 +558,12 @@ fn api_routes(state: &ServeState) -> Vec<(&'static str, MethodRouter<Arc<ServeSt
     if state.config.team_reports.is_some() {
         routes.extend(crate::team_reports::routes());
     }
-    if state.config.billing.is_some() {
-        routes.extend(crate::billing::routes());
+    if let Some(billing) = &state.config.billing {
+        if billing.prepaid.is_some() {
+            routes.extend(crate::card_funding::controller::routes());
+        } else {
+            routes.extend(crate::billing::routes());
+        }
     }
     if state.config.skills.is_some() {
         routes.extend(crate::skills::routes());
@@ -1770,6 +1791,8 @@ async fn money_hold(
     let mut ledger = ledger.lock().await;
     let original_exists = ledger.has_attempt(&format!("{}#{}", naming.request, naming.attempt));
     let reservation = (|| {
+        crate::card_funding::controller::check_money_profile(state, &ledger, &workspace)
+            .map_err(money::Refusal::Authorization)?;
         if ledger
             .hold(
                 &workspace,

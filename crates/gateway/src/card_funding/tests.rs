@@ -191,6 +191,109 @@ async fn native_collection_and_failed_refund_returns_join_original_money_without
         quote: quoted,
     };
     let first = client.collect(&original, None, at).await.unwrap().unwrap();
+    // Exercise the production journal application over independently fetched
+    // native facts, with a real interrupted Money append before billing seal.
+    let controller_path = root.path().join("controller-money.jsonl");
+    std::fs::copy(&ledger_path, &controller_path).unwrap();
+    let mut controller_money = Ledger::open(&controller_path).unwrap();
+    let billing = tenancy::billing::Billing::install(&root.path().join("controller")).unwrap();
+    let context: receipts::purchase::Context = serde_json::from_value(json!({
+        "schema":receipts::purchase::SCHEMA,"account":"fixture-buyer","workspace":"native-buyer",
+        "payer_workspace":"native-buyer","tenant":"fixture","credential_reference":"fixture-key",
+        "membership_epoch":1,"workspace_members_epoch":1,"role":"owner","door":"fixture",
+        "registry_digest":format!("sha256:{}","a".repeat(64)),"artifact_digest":format!("sha256:{}","b".repeat(64)),
+        "price":{"version":"fixture-price","currency":"USD","policy":"observed-usage-v1",
+            "terms_digest":format!("sha256:{}","c".repeat(64)),"maximum_usage_digest":format!("sha256:{}","d".repeat(64)),"maximum_charge":1},
+        "can_invoke":true
+    })).unwrap();
+    let binding = tenancy::billing::prepaid::Binding {
+        context,
+        quote: quoted.quote.clone(),
+        quoted_at: quoted.quoted_at,
+        policy_digest: quoted.policy_digest.clone(),
+        merchant: "acct_fixture".into(),
+        live: false,
+        deployment: format!("sha256:{}", "e".repeat(64)),
+        api_version: Some("fixture.v1".into()),
+        return_origin: "https://fixture.invalid".into(),
+        customer_reference: original.customer_reference.into(),
+    };
+    billing
+        .mutate(|book, _, _| {
+            book.prepaid.admit(binding).unwrap();
+            let r = book.prepaid.checkouts.get_mut(&quoted.quote.id).unwrap();
+            r.start_customer("fixture_customer_create_001".into(), at)
+                .unwrap();
+            r.customer
+                .as_mut()
+                .unwrap()
+                .retain(&first.customer)
+                .unwrap();
+            r.start_checkout("fixture_checkout_create_001".into(), at)
+                .unwrap();
+            r.checkout
+                .as_mut()
+                .unwrap()
+                .retain(&first.checkout)
+                .unwrap();
+            r.stage(tenancy::billing::prepaid::Observation {
+                checkout: first.checkout.clone(),
+                customer: first.customer.clone(),
+                intent: first.intent.clone(),
+                charge: first.charge.clone(),
+                refunds: first.refunds.clone(),
+                disputes: first.disputes.clone(),
+                transactions: first.transactions.clone(),
+                snapshot: first.snapshot.clone(),
+                adjustment_fee_units: first.adjustment_fee_units,
+                excess_removed_units: first.excess_removed_units,
+            })
+            .unwrap();
+            Ok(())
+        })
+        .unwrap();
+    controller_money
+        .apply(Mutation {
+            workspace: "native-buyer".into(),
+            source: format!("card:{}:state:1", quoted.quote.id),
+            audit: "native card collection".into(),
+            operation: Operation::ReconcileQuotedFunding {
+                snapshot: first.snapshot.clone(),
+            },
+        })
+        .unwrap();
+    drop(controller_money);
+    drop(billing);
+    let billing = tenancy::billing::Billing::open(&root.path().join("controller")).unwrap();
+    let mut controller_money = Ledger::open(&controller_path).unwrap();
+    assert!(
+        !super::controller::apply_pending_with(
+            &billing,
+            &mut controller_money,
+            &controller_path,
+            &quoted.quote.id
+        )
+        .unwrap()
+    );
+    assert_eq!(
+        controller_money.balance("native-buyer").unwrap().credited,
+        97_000_000
+    );
+    assert!(
+        billing.store().unwrap().book.prepaid.checkouts[&quoted.quote.id]
+            .applying
+            .is_none()
+    );
+    assert!(
+        !super::controller::apply_pending_with(
+            &billing,
+            &mut controller_money,
+            &controller_path,
+            &quoted.quote.id
+        )
+        .unwrap()
+    );
+
     assert_eq!(
         (
             first.snapshot.funding.gross_units,

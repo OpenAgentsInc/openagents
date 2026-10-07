@@ -4,12 +4,11 @@ This document publishes what buying a plan on an OpenAgents deployment
 means today. It exists because
 [#9492](https://github.com/OpenAgentsInc/openagents/issues/9492)
 requires published terms before checkout is enabled, and it is honest
-about the line that remains: the only provider this build serves is
-`sandbox`, which moves no real money. These terms govern the billing
-surface as implemented; the commercial decisions — launch prices,
-processor, jurisdiction — stay open in
-[#9498](https://github.com/OpenAgentsInc/openagents/issues/9498) and
-block any live checkout.
+about commercial activation. The sandbox plan provider moves no real money;
+the optional native Stripe prepaid profile requires explicit deployment terms,
+restricted credentials, and owner qualification. These terms describe both
+code paths. Launch prices, processor selection, and jurisdiction still require
+owner decisions in `NEEDS_OWNER.md` before enabling live checkout.
 
 ## Price configuration
 
@@ -53,14 +52,22 @@ owner's `GET /v1/workspaces/{id}/billing` view — subscription,
 invoices, checkouts, and balance — and the operator's
 `POST .../billing/reconcile` sweep for lost or replayed deliveries.
 
-The native prepaid ledger being integrated in
+The separate native prepaid ledger implemented in
 [REV-22](https://github.com/OpenAgentsInc/openagents/issues/10829) separately
 records processor adjustment expense in ledger units. Under its initial
 zero-risk policy, known positive expense or uncovered spent/held obligations
 restricts new reservations across all workspace lots; existing holds survive.
 A pending fee return cannot release that restriction, and an available fee
-return creates no customer credit. The native card controller and HTTP routes
-remain unfinished; this accounting support does not enable live checkout.
+return creates no customer credit. Its native controller and routes remain off
+unless explicitly configured. Owners and admins with current account,
+workspace, and resource authority may quote, approve checkout, read status, or
+request native reconciliation. The quote pins USD terms and customer-paid
+verified fees; only independently verified final collection makes purchased
+credit available. Missing native evidence or merchant access quarantines
+uncommitted credit while preserving holds and unknown obligations. A browser
+return never funds an account. Old sandbox balances cannot fund dispatch in
+this profile, and card credit does not establish outbound wallet liquidity.
+See [native prepaid configuration](billing.md#native-prepaid-profile).
 
 ## Cancellation and expiry
 
@@ -72,7 +79,7 @@ not refund the current period — that is a refund event's job.
 
 ## Authorization
 
-Billing management is owner-only: `Permission::ManageBilling` sits on
+Sandbox subscription management is owner-only: `Permission::ManageBilling` sits on
 the owner role, and every mutation route — subscribe, checkout, plan
 change, cancel, reconcile — requires it. A paid change or a top-up is
 always an explicit owner act; nothing in the surface moves money on a

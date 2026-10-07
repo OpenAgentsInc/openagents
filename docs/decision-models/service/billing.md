@@ -69,7 +69,8 @@ published catalog means.
 - `provider` names whose events the webhook accepts. `sandbox` is the
   built-in provider: an operator-driven journal of provider-side
   events in `billing-provider.jsonl` beside the registry, emitted by
-  the `billing-sandbox` binary. Any other value is refused at load.
+  the `billing-sandbox` binary. The separate native prepaid profile uses
+  `stripe` with a `prepaid` document; other providers are refused at load.
 - `webhook_secret_env` names the environment variable holding the
   webhook HMAC secret — a name, never the secret itself. The secret
   never enters the repository, a log line, or a response.
@@ -81,6 +82,47 @@ published catalog means.
 A `billing` document without `accounts` or `money` refuses at load:
 billing cannot bind a subscription without workspaces, and it cannot
 grant an allowance without the ledger.
+
+## Native prepaid profile
+
+Set `billing.provider` to `stripe` and supply `billing.prepaid` to enable the
+native card adapter. This profile requires accounts, current workspace
+membership, and USD-priced doors. It excludes the sandbox plan catalog,
+Lightning funding, and common funding configuration. The sandbox routes below
+are absent in this profile. Card credits do not establish wallet liquidity.
+
+The prepaid document names the merchant, live or test mode, pinned API version,
+restricted credential environment variable, one or two webhook secret
+environment variables, funding policy, conversion version, maximum purchase,
+workspace spend limit, checkout lifetime, and HTTPS return origin. It contains
+secret references, never secrets. Initial terms require exact USD conversion,
+customer-paid verified fees, and final native collection. Production activation
+still requires the owner qualification in `NEEDS_OWNER.md`.
+
+`POST /v1/workspaces/{workspace}/card-funding/{door}` accepts a tagged `quote`,
+`checkout`, `read`, or `reconcile` request. Owners and admins must have current
+account, workspace, and resource authority. Checkout approval pins the quote's
+`approval_digest`; the original account, workspace, merchant, API version,
+price, policy, and conversion remain bound to that purchase. A retained
+provider creation intent retries with its original idempotency key and
+parameters for at most 23 hours. An uncertain creation outside that interval
+requires operator reconciliation. Stripe can prune an idempotency key after
+24 hours, and reuse after pruning can create another request; the shorter
+retry window follows its [idempotency contract](https://docs.stripe.com/api/idempotent_requests).
+
+`POST /v1/billing/prepaid/webhook` verifies the native signature, timestamp,
+API version, and mode. Its scrubbed event is a wake hint. Credit comes from
+independent native checkout, payment, charge, refund, dispute, and balance
+transaction reads, including finality and verified fees. Browser returns and
+provider payload credit fields cannot fund an account. Read requests report
+retained state without creating checkout or moving credit.
+
+Reconciliation journals the observation before its stable money mutation and
+acknowledges it afterward. A restart replays that mutation without a second
+credit. Missing native evidence quarantines uncommitted credit and preserves
+held or unknown obligations. Processor expenses and uncovered spent reversals
+remain separate from customer principal. A bounded background sweep checks two
+retained purchases per pass; signed duplicate deliveries also trigger recovery.
 
 ## The catalog and checkout
 

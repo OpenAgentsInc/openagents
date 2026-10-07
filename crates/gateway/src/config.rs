@@ -347,8 +347,12 @@ fn default_review_timeout() -> u64 {
 #[derive(Clone, Debug, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct Billing {
+    /// Native one-time prepaid cards. Absent retains sandbox subscriptions.
+    #[serde(default)]
+    pub prepaid: Option<crate::card_funding::Config>,
     /// The versioned plan catalog — the price configuration checkout
     /// sells and `GET /v1/plans` publishes.
+    #[serde(default)]
     pub plans: Vec<tenancy::billing::Plan>,
     /// The provider id whose events the webhook accepts. `sandbox`
     /// is the built-in provider — a journal of operator-emitted events
@@ -728,14 +732,30 @@ impl Config {
                     name.display()
                 ));
             }
-            if billing.provider != "sandbox" {
+            if let Some(prepaid) = &billing.prepaid {
+                prepaid.check()?;
+                if billing.provider != "stripe"
+                    || !billing.plans.is_empty()
+                    || self.funding.is_some()
+                    || self.commercial.is_some()
+                    || !self.require_workspace_membership
+                {
+                    return Err("Native prepaid cards require one Stripe USD lane with workspace admission, no subscription plans, and no unqualified shared or BTC funding adapter.".into());
+                }
+                let prices = &self.money.as_ref().expect("billing requires money").doors;
+                if prices.is_empty() || prices.values().any(|p| p.price.currency != "USD") {
+                    return Err(
+                        "Native prepaid cards require explicitly priced USD resources.".into(),
+                    );
+                }
+            } else if billing.provider != "sandbox" {
                 return Err(format!(
                     "{}: billing provider `{}` is not one this build knows (`sandbox`)",
                     name.display(),
                     billing.provider
                 ));
             }
-            if billing.plans.is_empty() {
+            if billing.prepaid.is_none() && billing.plans.is_empty() {
                 return Err(format!(
                     "{}: `billing` needs at least one plan — checkout cannot sell a \
                      catalog it does not have",
