@@ -4,7 +4,7 @@ use crate::task::{agent, agent_key};
 use std::fs::{File, OpenOptions};
 use std::io::Read;
 
-pub(super) struct Native {
+pub(in crate::task::sales) struct Native {
     pub anchor: Anchor,
     paths: Vec<(PathBuf, File, Option<String>)>,
     store: agent::Store,

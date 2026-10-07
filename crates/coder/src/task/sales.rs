@@ -11,6 +11,7 @@ use std::time::{Duration, SystemTime};
 
 pub mod agents;
 pub mod claims;
+pub mod email;
 pub mod intake;
 pub mod partners;
 pub mod privacy;
@@ -288,6 +289,8 @@ struct State {
     agents: agents::Book,
     #[serde(default)]
     privacy: privacy::Book,
+    #[serde(default)]
+    email: email::Book,
 }
 impl Default for State {
     fn default() -> Self {
@@ -306,6 +309,7 @@ impl Default for State {
             claims: claims::State::default(),
             agents: agents::Book::default(),
             privacy: privacy::Book::default(),
+            email: email::Book::default(),
         }
     }
 }
@@ -498,6 +502,7 @@ impl Store {
         state.claims.check()?;
         state.agents.check(&state.leads)?;
         state.privacy.check()?;
+        state.email.check()?;
         privacy::remember_retained(&mut state)?;
         if state.leads.values().any(|lead| lead.schema != LEAD_SCHEMA)
             || state

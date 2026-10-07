@@ -180,6 +180,8 @@ pub(super) struct Book {
     retired_obligations: BTreeMap<String, Obligation>,
     #[serde(default)]
     credential_digests: BTreeSet<String>,
+    #[serde(default)]
+    credential_fingerprints: BTreeMap<String, Fingerprint>,
     commands: BTreeMap<String, (String, u64)>,
     agent_names: BTreeSet<String>,
     #[serde(default)]
@@ -202,6 +204,7 @@ impl Default for Book {
             deleted: BTreeMap::new(),
             retired_obligations: BTreeMap::new(),
             credential_digests: BTreeSet::new(),
+            credential_fingerprints: BTreeMap::new(),
             commands: BTreeMap::new(),
             agent_names: BTreeSet::new(),
             agent_cleanup: BTreeMap::new(),
@@ -219,6 +222,7 @@ impl Book {
             || self.deleted.len() > MAX_RECEIPTS
             || self.retired_obligations.len() > MAX_RECEIPTS
             || self.credential_digests.len() > MAX_RECEIPTS
+            || self.credential_fingerprints.len() > MAX_RECEIPTS
             || self.commands.len() > MAX_RECEIPTS
             || self.policy_history.len() > MAX_RECEIPTS
             || self.agent_names.len() > 64
@@ -230,6 +234,12 @@ impl Book {
             token(&value.sha256)?;
             if !(4..=MAX_IDENTIFIER).contains(&value.length) {
                 return Err("invalid customer identifier fingerprint".into());
+            }
+        }
+        for value in self.credential_fingerprints.values() {
+            token(&value.sha256)?;
+            if !(1..=MAX_IDENTIFIER).contains(&value.length) {
+                return Err("invalid mailbox credential fingerprint".into());
             }
         }
         Ok(())
@@ -476,6 +486,25 @@ pub(super) fn retain_credentials(state: &mut State) -> Result<()> {
     );
     state.privacy.check()
 }
+pub(super) fn remember_credential(state: &mut State, sha256: &str) -> Result<()> {
+    token(sha256)?;
+    state.privacy.credential_digests.insert(sha256.into());
+    state.privacy.check()
+}
+pub(super) fn remember_mailbox_credential(state: &mut State, secret: &str) -> Result<()> {
+    if secret.is_empty() || secret.len() > MAX_IDENTIFIER {
+        return Err("mailbox credential fingerprint exceeds its bound".into());
+    }
+    let key = salted(state, "identifier", &secret.to_ascii_lowercase());
+    state.privacy.credential_fingerprints.insert(
+        key.clone(),
+        Fingerprint {
+            length: secret.len(),
+            sha256: key,
+        },
+    );
+    state.privacy.check()
+}
 pub(super) fn check_credentials(state: &State, text: &str) -> Result<()> {
     secret_screen::Screen::shapes()
         .check(text)
@@ -489,6 +518,13 @@ pub(super) fn check_credentials(state: &State, text: &str) -> Result<()> {
         if state.privacy.credential_digests.contains(&sha)
             || state.principals.values().any(|p| p.token_digest == sha)
         {
+            return Err("sales text refuses credential material".into());
+        }
+    }
+    if !state.privacy.credential_fingerprints.is_empty() {
+        let mut restricted = state.clone();
+        restricted.privacy.identifiers = state.privacy.credential_fingerprints.clone();
+        if contains_customer(&restricted, text)? {
             return Err("sales text refuses credential material".into());
         }
     }
@@ -1275,6 +1311,7 @@ fn contains_customer(state: &State, text: &str) -> Result<bool> {
         .privacy
         .identifiers
         .values()
+        .chain(state.privacy.credential_fingerprints.values())
         .map(|f| f.length)
         .collect::<BTreeSet<_>>();
     let mut checks = CHECKS;
@@ -1297,11 +1334,10 @@ fn contains_customer(state: &State, text: &str) -> Result<bool> {
                 *checks = checks
                     .checked_sub(1)
                     .ok_or("customer copy screening work is unavailable")?;
-                if state.privacy.identifiers.contains_key(&salted(
-                    state,
-                    "identifier",
-                    &lower[start..start + length],
-                )) {
+                let key = salted(state, "identifier", &lower[start..start + length]);
+                if state.privacy.identifiers.contains_key(&key)
+                    || state.privacy.credential_fingerprints.contains_key(&key)
+                {
                     return Ok(true);
                 }
             }

@@ -46,7 +46,11 @@ impl Fixture {
             )
             .unwrap();
         let anchor = store.sales_agent_anchor(&owner, "paul").unwrap();
-        let recipients = vec!["human:operator".into(), format!("agent:{}", anchor.pubkey)];
+        let recipients = vec![
+            "human:operator".into(),
+            format!("agent:{}", anchor.pubkey),
+            "provider:email:fixture".into(),
+        ];
         let bytes = serde_json::to_vec(&Command {
             schema: COMMAND_SCHEMA.into(),
             id: "native-private-lead".into(),
@@ -1182,4 +1186,488 @@ fn native_crew_barrier_and_resume_epoch_cannot_revive_a_retained_sales_grant() {
         .unwrap();
     assert!(f.store.read_sales_agent(&renewed).is_ok());
     assert!(f.store.read_sales_agent(&access).is_err());
+}
+
+fn email_fixture(
+    f: &mut Fixture,
+) -> (
+    String,
+    super::super::email::FileAccount,
+    super::super::email::Message,
+) {
+    use super::super::email::*;
+    let encoded = String::from("synthetic-oauth-credential-with-arbitrary-length");
+    let path = f.dir.path().join("mailbox-fixture-key");
+    agent::write_private(&path, encoded.as_bytes()).unwrap();
+    let config = Config {
+        schema: CONFIG_SCHEMA.into(),
+        id: "fixture".into(),
+        version: 1,
+        provider: Provider::Fixture,
+        sender: "operator@fixture.invalid".into(),
+        reply_to: "operator@fixture.invalid".into(),
+        company: "Synthetic Company".into(),
+        human_responsible: "operator".into(),
+        postal_address: "1 Synthetic Road, Fixture City, US".into(),
+        identity_reference_sha256: "a".repeat(64),
+        commercial_label: "Commercial advertisement".into(),
+        unsubscribe_url: "https://fixture.invalid/unsubscribe".into(),
+        unsubscribe_reference_sha256: "b".repeat(64),
+        unsubscribe_available_until: now() + 31 * 86400,
+        credential_account: "sales-mailbox:fixture".into(),
+        credential_sha256: digest(encoded.as_bytes()),
+        policy_sha256: f.policy.sha256().unwrap(),
+        templates: [("email-v1".into(), "c".repeat(64))].into(),
+        expires_at: now() + 500,
+        domain_evidence: DomainEvidence {
+            domain: "fixture.invalid".into(),
+            spf: Validation::Passed,
+            dkim: Validation::Passed,
+            dmarc: Validation::Passed,
+            tls: Validation::Passed,
+            authentication: Validation::Passed,
+            reference_sha256: "d".repeat(64),
+            expires_at: now() + 500,
+        },
+    };
+    let cmd = Command {
+        schema: COMMAND_SCHEMA.into(),
+        id: "configure-email".into(),
+        expected_revision: 0,
+        operation: Operation::Configure { config },
+    };
+    f.store
+        .apply_email(&f.owner, &serde_json::to_vec(&cmd).unwrap())
+        .unwrap();
+    let sha = f.store.state.email.current.clone().unwrap();
+    let keys = FileAccount::new("sales-mailbox:fixture", &path).unwrap();
+    let message = Message {
+        schema: MESSAGE_SCHEMA.into(),
+        lead: f.lead.clone(),
+        expected_lead_revision: f.store.state.leads[&f.lead].revision,
+        config_sha256: sha.clone(),
+        policy_sha256: f.policy.sha256().unwrap(),
+        template: Artifact {
+            reference: "email-v1".into(),
+            sha256: "c".repeat(64),
+        },
+        sender: Sender::Human {
+            principal: "operator".into(),
+        },
+        recipient: "private-buyer@fixture.invalid".into(),
+        subject: "Requested pilot scope".into(),
+        body: "Here is the requested private pilot scope.".into(),
+        subject_review_sha256: "e".repeat(64),
+        expires_at: now() + 400,
+    };
+    (sha, keys, message)
+}
+#[test]
+fn email_adapter_uses_host_keys_without_copying_the_credential_into_messages_or_memory() {
+    let mut f = Fixture::new();
+    let (_, keys, message) = email_fixture(&mut f);
+    let prepared = f.store.prepare_email(&f.owner, message, &keys).unwrap();
+    let encoded = String::from("synthetic-oauth-credential-with-arbitrary-length");
+    assert!(!prepared.rendered.contains(&encoded));
+    assert!(!format!("{prepared:?}").contains(&encoded));
+    assert!(!prepared.view().to_string().contains(&encoded));
+    assert!(
+        prepared
+            .rendered
+            .contains("Human sender: operator, Synthetic Company")
+    );
+    assert!(prepared.rendered.contains("Commercial advertisement"));
+    assert!(
+        prepared
+            .rendered
+            .contains("Stop all marketing email: https://fixture.invalid/unsubscribe")
+    );
+    let native = agent::Store::with_keys(
+        &f.dir.path().join("host"),
+        "ordinary",
+        std::sync::Arc::new(FileKeys),
+    )
+    .unwrap();
+    assert!(super::super::privacy::check_memory_projection(&native, &encoded).is_err());
+    assert!(
+        !std::fs::read_to_string(f.dir.path().join("host/sales/state.json"))
+            .unwrap()
+            .contains(&encoded)
+    );
+}
+#[test]
+fn email_invalid_header_template_sender_scope_and_missing_keys_refuse_before_observation() {
+    use super::super::email::*;
+    let mut f = Fixture::new();
+    let (_, keys, message) = email_fixture(&mut f);
+    let mut bad = message.clone();
+    bad.subject = "deceptive\r\nBcc: other@fixture.invalid".into();
+    assert!(f.store.prepare_email(&f.owner, bad, &keys).is_err());
+    let mut bad = message.clone();
+    bad.template.sha256 = "f".repeat(64);
+    assert!(f.store.prepare_email(&f.owner, bad, &keys).is_err());
+    let mut bad = message.clone();
+    bad.recipient = "other@fixture.invalid".into();
+    assert!(f.store.prepare_email(&f.owner, bad, &keys).is_err());
+    let mut bad = message.clone();
+    bad.sender = Sender::Human {
+        principal: "other".into(),
+    };
+    assert!(f.store.prepare_email(&f.owner, bad, &keys).is_err());
+    let mut bad = message.clone();
+    bad.body = "synthetic-oauth-credential-with-arbitrary-length".into();
+    assert!(f.store.prepare_email(&f.owner, bad, &keys).is_err());
+    let missing = FileAccount::new("sales-mailbox:fixture", &f.dir.path().join("absent")).unwrap();
+    assert_eq!(
+        f.store
+            .prepare_email(&f.owner, message, &missing)
+            .err()
+            .unwrap(),
+        "host mailbox credential is unavailable"
+    );
+}
+#[test]
+fn email_rechecks_revocation_suppression_and_rotated_credentials_before_fixture_handoff() {
+    use super::super::email::*;
+    for mode in ["revoke", "suppress", "rotate"] {
+        let mut f = Fixture::new();
+        let (sha, keys, message) = email_fixture(&mut f);
+        let prepared = f.store.prepare_email(&f.owner, message, &keys).unwrap();
+        if mode == "revoke" {
+            let command = Command {
+                schema: COMMAND_SCHEMA.into(),
+                id: "revoke-email".into(),
+                expected_revision: 1,
+                operation: Operation::Revoke {
+                    config_sha256: sha,
+                    reference_sha256: "f".repeat(64),
+                },
+            };
+            f.store
+                .apply_email(&f.owner, &serde_json::to_vec(&command).unwrap())
+                .unwrap();
+        } else if mode == "suppress" {
+            let cmd = super::super::privacy::Command {
+                schema: super::super::privacy::COMMAND_SCHEMA.into(),
+                id: "stop-email".into(),
+                expected_revision: f.store.state.privacy.revision,
+                operation: super::super::privacy::Operation::OptOut {
+                    contact: "email:private-buyer@fixture.invalid".into(),
+                    customer: None,
+                    reference: "synthetic stop".into(),
+                    ambiguous: true,
+                },
+            };
+            f.store
+                .apply_sales_privacy(&f.owner, &serde_json::to_vec(&cmd).unwrap())
+                .unwrap();
+        } else {
+            agent::write_private(
+                &f.dir.path().join("mailbox-fixture-key"),
+                b"rotated-provider-password-of-different-length",
+            )
+            .unwrap();
+        }
+        let mut transport = FakeTransport {
+            result: vec![],
+            calls: 0,
+        };
+        assert!(
+            f.store
+                .observe_email_fixture(
+                    &f.owner,
+                    prepared,
+                    &keys,
+                    &mut transport,
+                    &std::sync::atomic::AtomicBool::new(false)
+                )
+                .is_err()
+        );
+        assert_eq!(transport.calls, 0);
+    }
+}
+#[test]
+fn email_provider_acceptance_delivery_bounce_authentication_and_unknown_remain_distinct() {
+    use super::super::email::*;
+    let mut f = Fixture::new();
+    let (_, keys, message) = email_fixture(&mut f);
+    for delivery in [
+        Delivery::Accepted,
+        Delivery::Delivered,
+        Delivery::Failed,
+        Delivery::HardBounce,
+        Delivery::AuthenticationFailed,
+        Delivery::Unknown,
+    ] {
+        let prepared = f
+            .store
+            .prepare_email(&f.owner, message.clone(), &keys)
+            .unwrap();
+        let result = serde_json::to_vec(&ProviderEvidence {
+            message_sha256: prepared.sha256.clone(),
+            provider_id: "fixture-attempt-1".into(),
+            reference_sha256: "f".repeat(64),
+            delivery,
+            tls: Validation::Passed,
+            authentication: Validation::Passed,
+        })
+        .unwrap();
+        let mut transport = FakeTransport { result, calls: 0 };
+        let seen = f
+            .store
+            .observe_email_fixture(
+                &f.owner,
+                prepared,
+                &keys,
+                &mut transport,
+                &std::sync::atomic::AtomicBool::new(false),
+            )
+            .unwrap();
+        assert_eq!(seen.delivery, delivery);
+        assert_eq!(transport.calls, 1);
+    }
+    let prepared = f.store.prepare_email(&f.owner, message, &keys).unwrap();
+    let mut transport = FakeTransport {
+        result: vec![],
+        calls: 0,
+    };
+    let seen = f
+        .store
+        .observe_email_fixture(
+            &f.owner,
+            prepared,
+            &keys,
+            &mut transport,
+            &std::sync::atomic::AtomicBool::new(true),
+        )
+        .unwrap();
+    assert_eq!(seen.delivery, Delivery::Cancelled);
+    assert_eq!(transport.calls, 0);
+    let canary = serde_json::json!({"message_sha256":"a".repeat(64),"provider_id":"synthetic-oauth-credential-with-arbitrary-length","reference_sha256":"b".repeat(64),"delivery":"unknown","tls":"unknown","authentication":"unknown"});
+    assert!(
+        f.store
+            .email_provider_evidence(
+                &f.owner,
+                &serde_json::to_vec(&canary).unwrap(),
+                &"a".repeat(64)
+            )
+            .is_err()
+    );
+}
+#[test]
+fn email_configuration_rejects_non_owner_bad_footer_and_unqualified_domain() {
+    use super::super::email::*;
+    let mut f = Fixture::new();
+    let (sha, _, _) = email_fixture(&mut f);
+    let original = f.store.state.email.configs[&sha].config.clone();
+    let path = f.dir.path().join("reader-key");
+    f.store
+        .issue(&f.owner, "reader", Role::Reader, &path)
+        .unwrap();
+    let reader = f
+        .store
+        .authenticate(&Store::read_credential(&path).unwrap())
+        .unwrap();
+    assert!(f.store.email_view(&reader).is_err());
+    for (index, mode) in ["footer", "optout", "domain", "unknown"]
+        .into_iter()
+        .enumerate()
+    {
+        let mut config = original.clone();
+        config.version = 2;
+        match mode {
+            "footer" => config.postal_address.clear(),
+            "optout" => config.unsubscribe_url = "http://fixture.invalid/unsubscribe".into(),
+            "domain" => config.sender = "operator@other.invalid".into(),
+            _ => config.domain_evidence.dmarc = Validation::Unknown,
+        }
+        let command = Command {
+            schema: COMMAND_SCHEMA.into(),
+            id: format!("bad-email-{index}"),
+            expected_revision: 1,
+            operation: Operation::Configure { config },
+        };
+        let bytes = serde_json::to_vec(&command).unwrap();
+        assert!(f.store.apply_email(&reader, &bytes).is_err());
+        assert!(f.store.apply_email(&f.owner, &bytes).is_err());
+    }
+}
+
+struct MailboxAuthority;
+impl coder_host::serve::keys::AccountKeys for MailboxAuthority {
+    fn load_account(
+        &self,
+        account: &str,
+    ) -> openagents_connect::Result<Option<coder_host::serve::keys::Secret>> {
+        Ok((account == "sales-mailbox:fixture")
+            .then(|| coder_host::serve::keys::Secret::from_bytes([9; 32])))
+    }
+    fn store_account(
+        &self,
+        _: &str,
+        _: &coder_host::serve::keys::Secret,
+    ) -> openagents_connect::Result<()> {
+        panic!("mailbox adapter tried to write the owner's keychain");
+    }
+    fn delete_account(&self, _: &str) -> openagents_connect::Result<()> {
+        panic!("mailbox adapter tried to delete from the owner's keychain");
+    }
+}
+#[test]
+fn email_sealed_provider_credentials_keep_arbitrary_format_separate_from_host_authority_keys() {
+    use super::super::email::*;
+    let mut f = Fixture::new();
+    let (_, _, message) = email_fixture(&mut f);
+    let vault = f.dir.path().join("mailbox-vault");
+    std::fs::create_dir(&vault).unwrap();
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        std::fs::set_permissions(&vault, std::fs::Permissions::from_mode(0o700)).unwrap();
+    }
+    let path = vault.join("sealed-mailbox-credential");
+    let secret =
+        MailboxSecret::new(b"synthetic-oauth-credential-with-arbitrary-length".to_vec()).unwrap();
+    assert!(!format!("{secret:?}").contains("synthetic-oauth"));
+    f.store
+        .seal_email_credential(
+            &f.owner,
+            &MailboxAuthority,
+            "sales-mailbox:fixture",
+            &secret,
+            &path,
+        )
+        .unwrap();
+    assert!(
+        !std::fs::read_to_string(&path)
+            .unwrap()
+            .contains("synthetic-oauth")
+    );
+    let sealed = SealedAccount::new(
+        "sales-mailbox:fixture",
+        &path,
+        std::sync::Arc::new(MailboxAuthority),
+    )
+    .unwrap();
+    let prepared = f
+        .store
+        .prepare_email(&f.owner, message.clone(), &sealed)
+        .unwrap();
+    assert_eq!(prepared.message.body, message.body);
+    let mut transport = FakeTransport {
+        result: vec![],
+        calls: 0,
+    };
+    assert_eq!(
+        f.store
+            .observe_email_fixture(
+                &f.owner,
+                prepared,
+                &sealed,
+                &mut transport,
+                &std::sync::atomic::AtomicBool::new(false)
+            )
+            .unwrap()
+            .delivery,
+        Delivery::Unknown
+    );
+    assert_eq!(transport.calls, 1);
+    agent::write_private(&path, b"changed unrelated ciphertext").unwrap();
+    assert!(f.store.prepare_email(&f.owner, message, &sealed).is_err());
+    for bytes in [vec![], vec![b'x'; 2049], b"password\nheader".to_vec()] {
+        assert!(MailboxSecret::new(bytes).is_err());
+    }
+}
+
+thread_local! {
+    static EMAIL_TIME: std::cell::Cell<u64> = const { std::cell::Cell::new(1_791_158_400) };
+}
+fn email_time() -> u64 {
+    EMAIL_TIME.with(std::cell::Cell::get)
+}
+struct EmailBlockingSource {
+    remove: Option<PathBuf>,
+    advance_clock: bool,
+}
+impl super::super::email::MailboxCredentials for EmailBlockingSource {
+    fn load(&self, _: &str) -> Result<super::super::email::MailboxSecret> {
+        if self.advance_clock {
+            EMAIL_TIME.with(|v| v.set(now() + 401));
+        }
+        if let Some(path) = &self.remove {
+            if path.exists() {
+                std::fs::remove_file(path).unwrap();
+            }
+        }
+        super::super::email::MailboxSecret::new(
+            b"synthetic-oauth-credential-with-arbitrary-length".to_vec(),
+        )
+    }
+}
+#[test]
+fn email_blocking_credential_source_cannot_cross_message_deadline_or_native_key_revocation() {
+    use super::super::email::*;
+    let mut f = Fixture::new();
+    let (_, _, message) = email_fixture(&mut f);
+    EMAIL_TIME.with(|v| v.set(now()));
+    f.store.clock = email_time;
+    let source = EmailBlockingSource {
+        remove: None,
+        advance_clock: true,
+    };
+    assert_eq!(
+        f.store
+            .prepare_email(&f.owner, message, &source)
+            .unwrap_err(),
+        "email message expired before preparation completed"
+    );
+    EMAIL_TIME.with(|v| v.set(now()));
+    let mut f = Fixture::new();
+    let (_, _, mut message) = email_fixture(&mut f);
+    let assignment = f.store.state.leads[&f.lead]
+        .agent_records
+        .assignments
+        .keys()
+        .next()
+        .unwrap()
+        .clone();
+    message.sender = Sender::Agent {
+        anchor: f.anchor.clone(),
+        assignment,
+    };
+    let source = EmailBlockingSource {
+        remove: Some(f.dir.path().join("host/agents/paul/key")),
+        advance_clock: false,
+    };
+    assert!(f.store.prepare_email(&f.owner, message, &source).is_err());
+}
+
+struct ReplacedEmailFile {
+    inner: super::super::email::FileAccount,
+    path: PathBuf,
+}
+impl super::super::email::MailboxCredentials for ReplacedEmailFile {
+    fn load(&self, account: &str) -> Result<super::super::email::MailboxSecret> {
+        let loaded = self.inner.load(account)?;
+        agent::write_private(&self.path, b"rotated-synthetic-provider-credential").unwrap();
+        Ok(loaded)
+    }
+    fn recheck(&self, account: &str, expected_sha256: &str) -> Result<()> {
+        self.inner.recheck(account, expected_sha256)
+    }
+}
+#[test]
+fn email_replaced_credential_file_cannot_reuse_preparation_bytes() {
+    let mut f = Fixture::new();
+    let (_, inner, message) = email_fixture(&mut f);
+    let source = ReplacedEmailFile {
+        inner,
+        path: f.dir.path().join("mailbox-fixture-key"),
+    };
+    assert_eq!(
+        f.store
+            .prepare_email(&f.owner, message, &source)
+            .unwrap_err(),
+        "host mailbox credential is revoked or changed"
+    );
 }

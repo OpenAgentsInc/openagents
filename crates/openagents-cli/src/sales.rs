@@ -10,6 +10,8 @@ use std::path::Path;
 mod agents;
 #[path = "sales_claims.rs"]
 mod claims;
+#[path = "sales_email.rs"]
+mod email;
 #[path = "sales_privacy.rs"]
 mod privacy;
 pub const USAGE: &str = "usage: openagents sales COMMAND --root DIR [--credential FILE] [--json]
@@ -40,6 +42,14 @@ pub const USAGE: &str = "usage: openagents sales COMMAND --root DIR [--credentia
         Check current contact admission; grants no outbound authority.
   privacy prune
         Apply due native retention and registered copy cleanup.
+  email view
+        Read owner-declared mailbox configuration and evidence.
+  email apply --input FILE
+        Configure or revoke a restricted host mailbox handle.
+  email check --input FILE --mailbox-key FILE
+        Prepare a private message; grants no dispatch authority.
+  email evidence --input FILE --message-sha256 SHA
+        Map provider acceptance, delivery, bounce, failure, or uncertainty.
   agents anchor --agent NAME
         Read the owner's exact native agent key and charter pins.
   agents owner
@@ -107,6 +117,10 @@ pub(crate) const EFFECTS: &[Declared] = &[
     Declared::computer("privacy apply", Effect::Grants),
     Declared::computer("privacy check", Effect::ReadOnly),
     Declared::computer("privacy prune", Effect::LocalWrite),
+    Declared::computer("email view", Effect::ReadOnly),
+    Declared::computer("email apply", Effect::Grants),
+    Declared::computer("email check", Effect::LocalWrite),
+    Declared::computer("email evidence", Effect::ReadOnly),
     Declared::computer("agents anchor", Effect::ReadOnly),
     Declared::computer("agents owner", Effect::ReadOnly),
     Declared::computer("agents owner-apply", Effect::Grants),
@@ -125,6 +139,9 @@ pub(crate) const EFFECTS: &[Declared] = &[
     Declared::computer("review", Effect::LocalWrite),
 ];
 pub fn run(output: &Output, words: &[String]) -> u8 {
+    if words.first().is_some_and(|w| w == "email") {
+        return email::run(output, &words[1..]);
+    }
     if words.first().is_some_and(|w| w == "privacy") {
         return privacy::run(output, &words[1..]);
     }

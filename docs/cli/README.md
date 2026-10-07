@@ -93,6 +93,24 @@ rechecks current custody and writes owner-approved delayed counts with no
 publication. The [weekly evidence guide](../sales/evidence.md#consented-weekly-operating-review)
 defines the manifests, review, privacy boundaries, and qualification limits.
 
+The owner configures a versioned mailbox with `sales email apply --input FILE`
+and reads its evidence with `email view`. `email check --input FILE
+--mailbox-key FILE` prepares an exact, permissioned US business email; it returns
+only digests and expiry and sends nothing. The private provider credential keeps
+its actual SMTP, OAuth, or API format: 1 to 2,048 UTF-8 bytes without a newline or
+NUL. A host can instead inject a sealed credential source, encrypted with an
+existing host account authority key. Neither path creates a keychain item or
+gives an agent the credential. Preparation checks current suppression, lead and
+policy revisions, provider recipients, template, sender identity, footer,
+unsubscribe evidence, and credential custody again after a blocking lookup.
+
+`email evidence --input FILE --message-sha256 SHA` maps bounded provider evidence
+without treating acceptance as delivery. A missing observation remains unknown.
+Domain, sender, TLS, authentication, and unsubscribe evidence is owner-declared;
+fixture checks advertise no live sender. The durable outbox separately owns any
+dispatch authority. Complete the [outreach owner checks](../../NEEDS_OWNER.md#sales-outreach-launch)
+before real use.
+
 ## Commercial customer (`openagents customer`)
 
 `openagents customer` binds the installed client to the existing gateway account,

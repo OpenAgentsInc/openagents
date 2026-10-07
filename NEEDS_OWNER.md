@@ -673,6 +673,21 @@ no sending; a future adapter needs separate recipient and legal qualification.
 These activation and repair steps do not block the native privacy implementation
 or human-led first revenue.
 
+REV-61 qualifies the native mailbox adapter with isolated provider fixtures,
+private file credentials, and an injected sealed source over an existing host
+account authority key. It accepts actual bounded SMTP/OAuth/API credential bytes,
+not a fabricated 32-byte provider token. Configure the dedicated sender and
+monitored reply mailbox, current SPF/DKIM/DMARC alignment and authenticated TLS
+evidence, exact permitted provider recipients, approved templates, accurate
+sender and postal identity, and a working all-marketing unsubscribe mechanism
+available for at least thirty days after a possible send. These records are
+owner declarations, not independent DNS or legal verification. No mailbox was
+contacted, no owner keychain item was created, and preparation grants no sending
+authority. The [FTC business guide](https://www.ftc.gov/business-guidance/resources/can-spam-act-compliance-guide-business)
+describes the commercial email requirements, including business recipients.
+Actual provider qualification, O6 grant, and reply-injection acceptance remain
+required before live sending; they do not block code completion.
+
 The [sales-floor decisions](docs/sales/agent-sales-floor.md#initial-operating-decisions)
 start with permissioned US business email and individual approvals. Before
 live outreach, configure the dedicated domain and monitored mailbox; verify

@@ -6986,6 +6986,161 @@
           ]
         },
         {
+          "name": "email",
+          "children": [
+            {
+              "name": "view",
+              "leaf": {
+                "path": [
+                  "sales",
+                  "email",
+                  "view"
+                ],
+                "usage": [
+                  "email view"
+                ],
+                "forms": [
+                  {
+                    "tokens": [
+                      {
+                        "kind": "literal",
+                        "word": "email"
+                      },
+                      {
+                        "kind": "literal",
+                        "word": "view"
+                      }
+                    ]
+                  }
+                ],
+                "summary": "Read owner-declared mailbox configuration and evidence.",
+                "effect": "read_only",
+                "runs_on": "connected_computer"
+              }
+            },
+            {
+              "name": "apply",
+              "leaf": {
+                "path": [
+                  "sales",
+                  "email",
+                  "apply"
+                ],
+                "usage": [
+                  "email apply --input FILE"
+                ],
+                "forms": [
+                  {
+                    "tokens": [
+                      {
+                        "kind": "literal",
+                        "word": "email"
+                      },
+                      {
+                        "kind": "literal",
+                        "word": "apply"
+                      },
+                      {
+                        "kind": "option",
+                        "name": "input",
+                        "value": "FILE",
+                        "open": true
+                      }
+                    ]
+                  }
+                ],
+                "summary": "Configure or revoke a restricted host mailbox handle.",
+                "effect": "grants",
+                "runs_on": "connected_computer"
+              }
+            },
+            {
+              "name": "check",
+              "leaf": {
+                "path": [
+                  "sales",
+                  "email",
+                  "check"
+                ],
+                "usage": [
+                  "email check --input FILE --mailbox-key FILE"
+                ],
+                "forms": [
+                  {
+                    "tokens": [
+                      {
+                        "kind": "literal",
+                        "word": "email"
+                      },
+                      {
+                        "kind": "literal",
+                        "word": "check"
+                      },
+                      {
+                        "kind": "option",
+                        "name": "input",
+                        "value": "FILE",
+                        "open": true
+                      },
+                      {
+                        "kind": "option",
+                        "name": "mailbox-key",
+                        "value": "FILE",
+                        "open": true
+                      }
+                    ]
+                  }
+                ],
+                "summary": "Prepare a private message; grants no dispatch authority.",
+                "effect": "local_write",
+                "runs_on": "connected_computer"
+              }
+            },
+            {
+              "name": "evidence",
+              "leaf": {
+                "path": [
+                  "sales",
+                  "email",
+                  "evidence"
+                ],
+                "usage": [
+                  "email evidence --input FILE --message-sha256 SHA"
+                ],
+                "forms": [
+                  {
+                    "tokens": [
+                      {
+                        "kind": "literal",
+                        "word": "email"
+                      },
+                      {
+                        "kind": "literal",
+                        "word": "evidence"
+                      },
+                      {
+                        "kind": "option",
+                        "name": "input",
+                        "value": "FILE",
+                        "open": true
+                      },
+                      {
+                        "kind": "option",
+                        "name": "message-sha256",
+                        "value": "SHA",
+                        "open": true
+                      }
+                    ]
+                  }
+                ],
+                "summary": "Map provider acceptance, delivery, bounce, failure, or uncertainty.",
+                "effect": "read_only",
+                "runs_on": "connected_computer"
+              }
+            }
+          ]
+        },
+        {
           "name": "agents",
           "children": [
             {
@@ -7754,6 +7909,22 @@
         {
           "kind": "option",
           "name": "channel",
+          "optional": true,
+          "repeated": true
+        },
+        {
+          "kind": "option",
+          "name": "mailbox-key",
+          "value": "FILE",
+          "open": true,
+          "optional": true,
+          "repeated": true
+        },
+        {
+          "kind": "option",
+          "name": "message-sha256",
+          "value": "SHA",
+          "open": true,
           "optional": true,
           "repeated": true
         },
