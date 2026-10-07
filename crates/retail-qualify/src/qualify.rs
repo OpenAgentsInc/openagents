@@ -146,6 +146,20 @@ pub enum Mode {
     Simulated,
 }
 
+/// Actual native bindings used by a funded run. This is attributable runner
+/// evidence; deployment additionally verifies its retained ledger and receiver.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct DeploymentBinding {
+    pub receiver: String,
+    pub boat_api_base: String,
+    pub boat_org: Option<String>,
+    pub boat_key_digest: String,
+    pub template: String,
+    pub model_provider: String,
+    pub price_book: route_contract::Digest,
+}
+
 /// What the qualification retained.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct QualificationReceipt {
@@ -178,6 +192,8 @@ pub struct QualificationReceipt {
     /// What the run was bound to, in plain words.
     #[serde(default)]
     pub bindings: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub deployment: Option<DeploymentBinding>,
     /// What the simulated backends observed; only on a simulated run.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub simulation: Option<SimulationReport>,
@@ -208,6 +224,7 @@ impl QualificationReceipt {
             ledger_conserved: false,
             preimage_verified: false,
             bindings: None,
+            deployment: None,
             simulation: None,
         }
     }
@@ -403,6 +420,9 @@ pub fn run_funded(
             refusal: BindingRefusal::WalletUnreachable,
         },
     )?;
+    bound::prepare_state_dir(&bindings.state_dir).map_err(|_| FundedRefusal::BoatUnavailable)?;
+    bound::prepare_state_dir(&bindings.state_dir.join("boat"))
+        .map_err(|_| FundedRefusal::BoatUnavailable)?;
     let boat = BoatAdapter::new(
         secrets.boat_key,
         &BoatConfig {
@@ -429,6 +449,15 @@ pub fn run_funded(
         Mode::Funded,
         FUNDED_LABEL,
     );
+    receipt.deployment = Some(DeploymentBinding {
+        receiver: openagents_wallet::LightningWallet::node_id(&wallet),
+        boat_api_base: bindings.boat_api_base.clone(),
+        boat_org: bindings.boat_org.clone(),
+        boat_key_digest: secrets.boat_key_digest,
+        template: bindings.template.clone(),
+        model_provider: bindings.model_provider.clone(),
+        price_book: route_contract::digest_of(&retail_cloud::contract::price_book()),
+    });
     receipt.bindings = Some(format!(
         "openagents-wallet resident receiver at its control socket; Boat {}{}",
         bindings.boat_api_base,
@@ -473,8 +502,18 @@ pub fn run_simulated(plan: &Plan) -> QualificationReceipt {
     let Ok(dir) = tempfile::tempdir() else {
         return fail(receipt, "temporary directory".into());
     };
+    let root = match dir.path().canonicalize() {
+        Ok(root) => root,
+        Err(_) => return fail(receipt, "temporary directory unavailable".into()),
+    };
+    {
+        use std::os::unix::fs::PermissionsExt;
+        if std::fs::set_permissions(&root, std::fs::Permissions::from_mode(0o700)).is_err() {
+            return fail(receipt, "private simulation directory unavailable".into());
+        }
+    }
     let network = sim::SimNetwork::new();
-    let wallet_home = dir.path().join("wallet");
+    let wallet_home = root.join("wallet");
     let resident = match sim::Resident::serve(&wallet_home, network.receiver()) {
         Ok(resident) => resident,
         Err(error) => return fail(receipt, error.to_string()),
@@ -492,7 +531,7 @@ pub fn run_simulated(plan: &Plan) -> QualificationReceipt {
         boat_api_base: fake.base().to_owned(),
         boat_org: None,
         template: retail_cloud::provision::template("20261006"),
-        state_dir: dir.path().join("state"),
+        state_dir: root.join("state"),
         model_provider: "openai".into(),
         payment_wait_seconds: 30,
         poll_millis: 10,
@@ -509,6 +548,12 @@ pub fn run_simulated(plan: &Plan) -> QualificationReceipt {
     let Some(wallet) = openagents_wallet::resident::RemoteWallet::probe(&wallet_home) else {
         return fail(receipt, "the resident wallet did not answer".into());
     };
+    if let Err(error) = bound::prepare_state_dir(&bindings.state_dir) {
+        return fail(receipt, error.to_string());
+    }
+    if let Err(error) = bound::prepare_state_dir(&bindings.state_dir.join("boat")) {
+        return fail(receipt, error.to_string());
+    }
     let boat = match BoatAdapter::new(
         secrets.boat_key,
         &BoatConfig {

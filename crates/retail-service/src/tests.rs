@@ -173,6 +173,11 @@ impl Fixture {
     fn new() -> Self {
         let temp = tempfile::tempdir().unwrap();
         let root = temp.path().canonicalize().unwrap();
+        std::fs::set_permissions(&root, {
+            use std::os::unix::fs::PermissionsExt;
+            std::fs::Permissions::from_mode(0o700)
+        })
+        .unwrap();
         // This owner-record fixture opens the production gate structurally.
         // It is not a real funded qualification or deployment claim.
         let plan = retail_qualify::qualify::fixture();
@@ -1446,4 +1451,267 @@ fn replacement_after_dispatch_cannot_write_unknown_hold_or_recovery_history() {
     );
     replacement.tick(NOW + 31).unwrap();
     assert_eq!(f.runtime.owner.started(), 1);
+}
+
+fn operating_host(f: &Fixture, mode: package::Mode) -> (package::Host, std::path::PathBuf) {
+    use std::os::unix::fs::PermissionsExt;
+    let root = f._temp.path().canonicalize().unwrap();
+    let key = root.join("boat.key");
+    std::fs::write(&key, "synthetic-package-boat-key").unwrap();
+    std::fs::set_permissions(&key, std::fs::Permissions::from_mode(0o600)).unwrap();
+    let operator = root.join("operator.key");
+    std::fs::write(&operator, "synthetic-operator-private-key").unwrap();
+    std::fs::set_permissions(&operator, std::fs::Permissions::from_mode(0o600)).unwrap();
+    let mut customer = f.config.clone();
+    customer.template = "oa-coder-main-20261007".into();
+    let ingress = root.join("Caddyfile");
+    std::fs::write(
+        &ingress,
+        "retail.example { handle /v1/retail { reverse_proxy 127.0.0.1:9042 } }\n",
+    )
+    .unwrap();
+    std::fs::set_permissions(&ingress, std::fs::Permissions::from_mode(0o600)).unwrap();
+    let host = package::Host {
+        schema: package::HOST_SCHEMA.into(),
+        customer,
+        listen: "127.0.0.1:9042".parse().unwrap(),
+        boat_api_base: retail_qualify::bindings::BOAT_API.into(),
+        boat_org: Some("separate-synthetic-retail-org".into()),
+        boat_key_file: key,
+        wallet_home: root.join("separate-wallet"),
+        poll_seconds: 1,
+        mode,
+        operations: Some(package::Operations {
+            schema: package::OPERATIONS_SCHEMA.into(),
+            public_origin: "https://retail.example".into(),
+            ingress_file: ingress,
+            operator_key_file: operator,
+            approved_identity: route_contract::Digest::of_bytes(b"unapproved"),
+            plan_file: root.join("plan.json"),
+            qualification_file: root.join("funded.json"),
+            qualification_digest: route_contract::Digest::of_bytes(b"absent"),
+            qualification_state: root.join("qualification"),
+            qualification_ledger: root.join("qualification/ledger.sqlite"),
+        }),
+    };
+    let config = root.join("host.json");
+    std::fs::write(&config, serde_json::to_vec(&host).unwrap()).unwrap();
+    std::fs::set_permissions(&config, std::fs::Permissions::from_mode(0o600)).unwrap();
+    (host, config)
+}
+#[test]
+fn production_runtime_refuses_synthetic_receipt_and_unapproved_running_identity() {
+    let f = Fixture::new();
+    let (host, path) = operating_host(&f, package::Mode::Production);
+    host.check().unwrap();
+    let s = Service::open(host.customer.clone(), f.runtime.clone(), f.wallet.clone())
+        .unwrap()
+        .with_operations(
+            host,
+            &path,
+            route_contract::Digest::of_bytes(b"synthetic-package-boat-key"),
+        )
+        .unwrap();
+    assert!(matches!(
+        call(
+            &s,
+            "alice",
+            json!({"op":"offer","idempotency":"closed","task":request()})
+        ),
+        Err(Error::Unavailable(_))
+    ));
+    assert!(s.operator_status("alice", NOW).is_err());
+    let status = s
+        .operator_status("synthetic-operator-private-key", NOW)
+        .unwrap();
+    assert_eq!(status["paid"]["paid_capacity"], Value::Null);
+    assert_eq!(status["deployment_closed"], "running_identity_unapproved");
+    assert_eq!(status["identity"]["commit"], package::COMMIT);
+    assert_eq!(
+        status["identity"]["configuration"],
+        serde_json::to_value(&s.operations.as_ref().unwrap().identity.configuration).unwrap()
+    );
+    assert!(!status.to_string().contains("synthetic-package-boat-key"));
+    let mut changed = package::load(&path).unwrap();
+    changed.customer.plan_starts_left = Some(999);
+    std::fs::write(&path, serde_json::to_vec(&changed).unwrap()).unwrap();
+    assert_eq!(
+        s.operator_status("synthetic-operator-private-key", NOW)
+            .unwrap()["deployment_closed"],
+        "configuration_changed"
+    );
+}
+#[test]
+fn packaged_health_closes_new_work_without_discarding_existing_holds() {
+    let f = Fixture::new();
+    let (host, path) = operating_host(&f, package::Mode::Development);
+    let s = Service::open(host.customer.clone(), f.runtime.clone(), f.wallet.clone())
+        .unwrap()
+        .with_operations(
+            host,
+            &path,
+            route_contract::Digest::of_bytes(b"synthetic-package-boat-key"),
+        )
+        .unwrap();
+    let execution = accepted(&s, "alice", "stuck");
+    let hold = s
+        .lock()
+        .unwrap()
+        .ledger
+        .hold_for_execution(&execution)
+        .unwrap()
+        .unwrap();
+    let status = s
+        .operator_status(
+            "synthetic-operator-private-key",
+            http::now() + launch::STUCK_SECONDS + 3000,
+        )
+        .unwrap();
+    assert!(
+        status["alerts"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .any(|a| a["alert"] == "stuck_reservation")
+    );
+    // Monitoring reports liabilities; it grants no recovery mutation.
+    assert_eq!(
+        s.lock()
+            .unwrap()
+            .ledger
+            .hold(&hold.request.id)
+            .unwrap()
+            .unwrap(),
+        hold
+    );
+    let mut unsafe_host = package::load(&path).unwrap();
+    unsafe_host.mode = package::Mode::Production;
+    unsafe_host.boat_api_base = "http://127.0.0.1:80".into();
+    assert!(unsafe_host.check().is_err());
+    unsafe_host.boat_api_base = retail_qualify::bindings::BOAT_API.into();
+    unsafe_host.customer.plan_starts_left = None;
+    assert!(unsafe_host.check().is_err());
+}
+#[test]
+fn offline_checkpoint_preserves_unknown_holds_and_refuses_existing_restore_or_live_owner() {
+    let f = Fixture::new();
+    let (host, _) = operating_host(&f, package::Mode::Development);
+    let s = Service::open(host.customer.clone(), f.runtime.clone(), f.wallet.clone()).unwrap();
+    let execution = accepted(&s, "alice", "pending");
+    dispatch(&s, &execution);
+    f.runtime.provider.set_usage_unreadable(true);
+    let hold = s
+        .lock()
+        .unwrap()
+        .ledger
+        .hold_for_execution(&execution)
+        .unwrap()
+        .unwrap();
+    let root = f._temp.path().canonicalize().unwrap();
+    let destination = root.join("checkpoint");
+    assert!(backup::inspect(&destination, NOW).is_err());
+    assert!(!destination.exists());
+    let (identity, _) = host
+        .identity(
+            &f.wallet.node_id(),
+            &std::env::current_exe().unwrap(),
+            package::COMMIT,
+            package::TREE,
+        )
+        .unwrap();
+    assert!(backup::snapshot(&host, identity.clone(), &destination, NOW).is_err());
+    // Customer credentials cannot enter a checkpoint whose retention exceeds
+    // their transient custody. Cleanup keeps the financial unknown hold.
+    call(&s, "alice", json!({"op":"cancel","execution":execution})).unwrap();
+    for n in 1..5 {
+        s.tick(NOW + n).unwrap();
+    }
+    let original = s
+        .lock()
+        .unwrap()
+        .ledger
+        .hold(&hold.request.id)
+        .unwrap()
+        .unwrap();
+    assert_eq!(original.state, pay_ledger::compute::HoldState::Unknown);
+    drop(s);
+    backup::snapshot(&host, identity, &destination, NOW + 10).unwrap();
+    let restored_state = root.join("restored");
+    let restored_ledger = root.join("restored-ledger.sqlite");
+    backup::restore(&destination, &restored_state, &restored_ledger, NOW + 11).unwrap();
+    let ledger = Ledger::open_read_only(&restored_ledger).unwrap();
+    assert_eq!(ledger.hold(&hold.request.id).unwrap().unwrap(), original);
+    assert!(backup::restore(&destination, &restored_state, &restored_ledger, NOW + 11).is_err());
+    let before = std::fs::read(&restored_ledger).unwrap();
+    assert!(
+        backup::restore(
+            &destination,
+            &root.join("another"),
+            &restored_ledger,
+            NOW + 11
+        )
+        .is_err()
+    );
+    assert_eq!(std::fs::read(&restored_ledger).unwrap(), before);
+    assert!(backup::inspect(&destination, NOW + 31 * 86400).is_err());
+    let checkpoint_file = destination.join("checkpoint.json");
+    let saved = std::fs::read(&checkpoint_file).unwrap();
+    let mut malformed: serde_json::Value = serde_json::from_slice(&saved).unwrap();
+    malformed["created_at"] = json!(i64::MIN);
+    malformed["expires_at"] = json!(i64::MAX);
+    std::fs::write(&checkpoint_file, serde_json::to_vec(&malformed).unwrap()).unwrap();
+    assert!(backup::inspect(&destination, NOW + 11).is_err());
+    std::fs::write(checkpoint_file, saved).unwrap();
+    let file = destination.join("ledger.sqlite");
+    std::fs::write(file, "changed").unwrap();
+    assert!(backup::inspect(&destination, NOW + 12).is_err());
+}
+#[test]
+fn packaged_example_is_closed_and_worker_readiness_is_bounded() {
+    let mut example: package::Host =
+        serde_json::from_slice(include_bytes!("../../../deploy/retail/host.example.json")).unwrap();
+    let fixture = tempfile::tempdir().unwrap();
+    let root = fixture.path().canonicalize().unwrap();
+    example.customer.state = root.join("state");
+    example.customer.ledger = root.join("ledger.sqlite");
+    example.wallet_home = root.join("receiver");
+    example.check().unwrap();
+    assert_eq!(example.mode, package::Mode::Closed);
+    assert!(!example.customer.contract_confirmed);
+    assert!(example.customer.grants.is_empty());
+    let f = Fixture::new();
+    let (host, path) = operating_host(&f, package::Mode::Production);
+    let ops = package::Operating::new(
+        host,
+        &path,
+        &f.wallet.node_id(),
+        route_contract::Digest::of_bytes(b"synthetic-package-boat-key"),
+    )
+    .unwrap();
+    assert!(!ops.worker_healthy(NOW));
+    *ops.last_worker.lock().unwrap() = Some((NOW, true));
+    assert!(ops.worker_healthy(NOW));
+    assert!(!ops.worker_healthy(NOW + 100));
+    *ops.last_worker.lock().unwrap() = Some((NOW, false));
+    assert!(!ops.worker_healthy(NOW));
+}
+
+#[test]
+fn runtime_binds_loaded_provider_bytes_and_original_configuration() {
+    let f = Fixture::new();
+    let (host, path) = operating_host(&f, package::Mode::Production);
+    let original = route_contract::Digest::of_bytes(b"synthetic-package-boat-key");
+    std::fs::write(&host.boat_key_file, "synthetic-package-boat-key\n").unwrap();
+    let current = route_contract::Digest::of_bytes(b"synthetic-package-boat-key\n");
+    assert!(package::Operating::new(host.clone(), &path, &f.wallet.node_id(), original).is_err());
+    let ops =
+        package::Operating::new(host.clone(), &path, &f.wallet.node_id(), current.clone()).unwrap();
+    assert_eq!(
+        ops.binding.boat_key_digest,
+        retail_cloud::sha256_hex(b"synthetic-package-boat-key")
+    );
+    let mut changed = host.clone();
+    changed.customer.plan_starts_left = Some(987);
+    std::fs::write(&path, serde_json::to_vec(&changed).unwrap()).unwrap();
+    assert!(package::Operating::new(host, &path, &f.wallet.node_id(), current).is_err());
 }

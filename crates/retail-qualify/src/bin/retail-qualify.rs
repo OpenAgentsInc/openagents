@@ -1,11 +1,29 @@
 //! `retail-qualify`: the retail cloud's acceptance run, funded-qualification
 //! plan, and launch gate. See `docs/cloud/retail-qualification.md`.
 
+use std::io::Write;
+use std::os::unix::fs::{MetadataExt, OpenOptionsExt};
+fn funded_output(path: &std::path::Path) -> bool {
+    path.is_absolute()
+        && !path.exists()
+        && !path
+            .components()
+            .any(|c| matches!(c, std::path::Component::ParentDir))
+        && path
+            .ancestors()
+            .skip(1)
+            .all(|p| std::fs::symlink_metadata(p).is_ok_and(|m| !m.file_type().is_symlink()))
+        && path.parent().is_some_and(|p| {
+            std::fs::symlink_metadata(p).is_ok_and(|m| {
+                m.is_dir() && m.uid() == unsafe { libc::geteuid() } && m.mode() & 0o077 == 0
+            })
+        })
+}
 use std::process::ExitCode;
 
 fn usage() -> ExitCode {
     eprintln!(
-        "usage: retail-qualify accept [--out PATH]\n       retail-qualify plan [--plan PATH]\n       retail-qualify qualify --fake [--plan PATH] [--out PATH]\n       retail-qualify qualify --simulated [--plan PATH] [--out PATH]\n       retail-qualify qualify --funded --confirm PLAN_DIGEST [--bindings PATH] [--plan PATH] [--out PATH]\n       retail-qualify advertise [--contract-confirmed] [--receipt PATH] [--plan PATH]\n       retail-qualify health --journal PATH --ledger PATH"
+        "usage: retail-qualify accept [--out PATH]\n       retail-qualify plan [--plan PATH]\n       retail-qualify qualify --fake [--plan PATH] [--out PATH]\n       retail-qualify qualify --simulated [--plan PATH] [--out PATH]\n       retail-qualify qualify --funded --confirm PLAN_DIGEST [--bindings PATH] [--plan PATH] --out PATH\n       retail-qualify advertise [--contract-confirmed] [--receipt PATH] [--plan PATH]\n       retail-qualify health --journal PATH --ledger PATH"
     );
     ExitCode::from(2)
 }
@@ -64,6 +82,12 @@ fn main() -> ExitCode {
                 Err(code) => return code,
             };
             if args.iter().any(|a| a == "--funded") {
+                if out.is_none_or(|path| !funded_output(std::path::Path::new(path))) {
+                    eprintln!(
+                        "funded qualification requires --out with a new absolute private receipt path"
+                    );
+                    return ExitCode::from(3);
+                }
                 let confirm = args
                     .iter()
                     .position(|a| a == "--confirm")
@@ -182,7 +206,33 @@ fn receipt_out(
     let Ok(json) = serde_json::to_string_pretty(receipt) else {
         return ExitCode::FAILURE;
     };
-    let code = write(&json, out);
+    let code = if receipt.mode == retail_qualify::qualify::Mode::Funded {
+        let Some(path) = out else {
+            return ExitCode::FAILURE;
+        };
+        if !funded_output(std::path::Path::new(path)) {
+            return ExitCode::FAILURE;
+        }
+        let result = std::fs::OpenOptions::new()
+            .write(true)
+            .create_new(true)
+            .mode(0o600)
+            .custom_flags(libc::O_NOFOLLOW)
+            .open(path)
+            .and_then(|mut f| {
+                f.write_all(format!("{json}\n").as_bytes())?;
+                f.sync_all()?;
+                std::fs::File::open(std::path::Path::new(path).parent().unwrap())?.sync_all()
+            });
+        if result.is_ok() {
+            ExitCode::SUCCESS
+        } else {
+            eprintln!("cannot create the fresh private funded receipt");
+            ExitCode::FAILURE
+        }
+    } else {
+        write(&json, out)
+    };
     if receipt.qualified {
         code
     } else {
@@ -212,4 +262,42 @@ fn flag<'a>(args: &'a [String], name: &str) -> Option<&'a String> {
     args.iter()
         .position(|a| a == name)
         .and_then(|i| args.get(i + 1))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::os::unix::fs::{PermissionsExt, symlink};
+
+    #[test]
+    fn funded_receipts_require_fresh_private_output_without_changing_existing_files() {
+        let temp = tempfile::tempdir().unwrap();
+        let root = temp.path().canonicalize().unwrap();
+        std::fs::set_permissions(&root, std::fs::Permissions::from_mode(0o700)).unwrap();
+        let path = root.join("funded.json");
+        assert!(funded_output(&path));
+        let mut receipt = retail_qualify::qualify::run_fake(&retail_qualify::qualify::fixture());
+        receipt.mode = retail_qualify::qualify::Mode::Funded;
+        receipt.label = "Synthetic output fixture; not funded qualification.".into();
+        assert_eq!(
+            receipt_out(&receipt, Some(&path.display().to_string())),
+            ExitCode::SUCCESS
+        );
+        assert_eq!(std::fs::metadata(&path).unwrap().mode() & 0o777, 0o600);
+        let saved = std::fs::read(&path).unwrap();
+        assert!(!funded_output(&path));
+        assert_eq!(
+            receipt_out(&receipt, Some(&path.display().to_string())),
+            ExitCode::FAILURE
+        );
+        assert_eq!(std::fs::read(&path).unwrap(), saved);
+        let linked = root.join("linked");
+        symlink(&root, &linked).unwrap();
+        assert!(!funded_output(&linked.join("another.json")));
+        let shared = root.join("shared");
+        std::fs::create_dir(&shared).unwrap();
+        std::fs::set_permissions(&shared, std::fs::Permissions::from_mode(0o755)).unwrap();
+        assert!(!funded_output(&shared.join("another.json")));
+        assert_eq!(std::fs::metadata(shared).unwrap().mode() & 0o777, 0o755);
+    }
 }

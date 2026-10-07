@@ -74,6 +74,7 @@ pub enum BindingRefusal {
 /// The secrets a run uses, resolved from the environment.
 pub struct Secrets {
     pub boat_key: boat::ApiKey,
+    pub boat_key_digest: String,
     pub model_key: String,
 }
 
@@ -114,6 +115,7 @@ impl Bindings {
         if env(OPERATOR_BOAT_KEY_ENV).is_some_and(|operator| operator.trim() == key.trim()) {
             return Err(BindingRefusal::OperatorCredential);
         }
+        let boat_key_digest = retail_cloud::sha256_hex(key.trim().as_bytes());
         let boat_key = boat::ApiKey::new(key).map_err(|_| BindingRefusal::BoatKeyMissing)?;
         let model_key = env(MODEL_KEY_ENV)
             .filter(|k| !k.trim().is_empty())
@@ -123,6 +125,7 @@ impl Bindings {
         }
         Ok(Secrets {
             boat_key,
+            boat_key_digest,
             model_key: model_key.trim().to_owned(),
         })
     }

@@ -67,7 +67,7 @@ plan is [`fixtures/qualification-plan-v1.json`](../../crates/retail-qualify/fixt
 ```sh
 cargo run -p retail-qualify -- plan                 # check the plan; print its digest
 cargo run -p retail-qualify -- qualify --fake --out docs/cloud/evidence/2026-10-06-retail-fake-qualification.json
-cargo run -p retail-qualify -- qualify --funded --confirm PLAN_DIGEST
+cargo run -p retail-qualify -- qualify --funded --confirm PLAN_DIGEST --out /absolute/new/funded.json
 ```
 
 - `qualify --fake` runs the plan end to end on fakes and writes a receipt
@@ -81,11 +81,17 @@ cargo run -p retail-qualify -- qualify --funded --confirm PLAN_DIGEST
   [`evidence/2026-10-06-retail-fake-qualification.json`](evidence/2026-10-06-retail-fake-qualification.json):
   104 sats charged and 20 sats released for 90 metered seconds.
 - `qualify --funded` checks the plan, requires `--confirm` to name the
-  plan's exact digest, and requires the fake run to pass. Without
+  plan's exact digest, a new absolute `--out` receipt path, and the fake
+  run to pass. It creates the receipt with mode `0600` and never overwrites
+  an existing file. Without
   `--bindings` it then refuses (`no_live_binding`, exit status 3). With
   them, it runs the plan on the live bindings below and writes a receipt
   labeled `FUNDED QUALIFICATION`. It never pays anything itself: it prints
-  the top-up invoice and waits for the owner to pay it.
+  the top-up invoice and waits for the owner to pay it. The receipt retains
+  the exact receiver, Boat organization/key digest, daily template, model
+  provider, and price book bindings. The production service rechecks the
+  retained native ledger/journal and authenticated receiver evidence; the
+  standalone `advertise` command only previews its supplied record.
 - `qualify --simulated` runs the same live adapters against simulated
   backends and writes a receipt labeled `SIMULATION`. The launch gate never
   accepts it.

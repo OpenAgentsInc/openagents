@@ -1197,15 +1197,15 @@ Boat account with its own key (`OPENAGENTS_RETAIL_BOAT_API_KEY`, never
 `BOAT_API_KEY`), give the test customer its own OpenAI key
 (`OPENAGENTS_RETAIL_CUSTOMER_MODEL_KEY`), write a bindings file, review the
 plan digest (`retail-qualify plan`), and run `retail-qualify qualify
---funded --confirm DIGEST --bindings PATH` once, paying its printed top-up
-of at most 1,000 sats. Keep the receipt, the state directory's ledger and
+--funded --confirm DIGEST --bindings PATH --out /absolute/new/funded.json`
+once, paying its printed top-up of at most 1,000 sats. Keep the receipt, the state directory's ledger and
 journal, Boat usage, and artifacts; check the sandbox is deleted and
 nothing stays held. Real readiness, latency, Boat billing, Lightning
 top-ups, and the owner program (`owner-v1.sh`) on a real daily template
 (its `git`, `setsid`, and `codex login --with-api-key`) are unverified. A
 failed run opens a defect issue.
 
-## Launch the retail cloud service (#10724, REV-13 #10820)
+## Launch the retail cloud service O3/O4/O8 (#10724, REV-13/REV-14/REV-15 #10820/#10821/#10822)
 
 The launch gate, monitoring, and operator runbook are on main
 ([`docs/cloud/retail-operations.md`](docs/cloud/retail-operations.md));
@@ -1213,14 +1213,15 @@ The launch gate, monitoring, and operator runbook are on main
 paid computer. To launch, in order: complete "Review the first retail cloud
 contract" and "Funded retail cloud qualification" (including #10748's live
 bindings); deploy the service from current main under a separate retail
-Boat account and receiver wallet; pass `--contract-confirmed` and the
-funded receipt to the gate; check `retail-qualify health` is clean; and
+Boat account and receiver wallet; configure the confirmed contract and native
+funded evidence in the reviewed production host configuration; check
+`retail-qualify health` is clean; and
 publish the contract and prices to customers. REV-13 adds the authenticated
 loopback transport and resident worker with synthetic HTTP, fault, and actual
 process-restart checks. Its private credential-custody addendum also needs
 commercial/data-policy approval. O3/O4 still require the dedicated retail
 Boat key, resident receiver, exact template and plan/start allowance, real
-funded qualification, and REV-15's supervised TLS deployment from current
+funded qualification, and the supervised TLS deployment from current
 main. No owner host deployment or live credential/fund check was performed
 for REV-13. Use the [service configuration](docs/cloud/retail-operations.md#service-configuration)
 and qualify REV-14's native `retail-client` with an explicitly selected HTTPS
@@ -1230,6 +1231,19 @@ fake funds/providers only. O3/O4/O8 still require installation and a real funded
 quote/confirmation, changed-right refusal, cancel/reconnect/retained receipt,
 measured billing, credential removal, and live incident handling. No live host
 deployment, buyer credentials, or funds were used for REV-14.
+REV-15 supplies the closed configuration/build package, bounded units and
+ingress, exact running-identity approval, native qualification reconstruction,
+private operator status, and stopped checkpoint/restore/rollback commands.
+Its actual binary restart/recovery and signed receiver tests use isolated
+synthetic providers and funds. No owner deployment, Caddy/systemd host
+activation, public TLS qualification, real provider expense, or historical
+binary compatibility is claimed. Complete the [deployment procedure](docs/cloud/retail-operations.md#deploying),
+review the exact ingress and running identity, check actual resource limits,
+backup deletion at its original artifact deadline, provider usage and costs,
+then qualify the selected client at the real HTTPS origin. A production
+approval cannot replace the native payment, checked delivery, or cleanup
+proof; changing private source bytes closes paid admission. These owner
+activation steps do not block code completion.
 
 ## Curated discovery (O9, REV-46 #10853)
 

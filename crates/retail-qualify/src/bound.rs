@@ -8,6 +8,7 @@
 //! only as far as the payer pays the plan's one invoice, and it never pays
 //! anything itself.
 
+use std::os::unix::fs::{DirBuilderExt, MetadataExt, OpenOptionsExt};
 use std::path::Path;
 use std::time::{Duration, Instant};
 
@@ -85,6 +86,37 @@ fn preimage_matches(preimage: &str, payment_hash: &str) -> bool {
     hex::decode(preimage).is_ok_and(|bytes| bytes.len() == 32 && sha256_hex(&bytes) == payment_hash)
 }
 
+/// Create only fresh private qualification state before an adapter writes it.
+pub fn prepare_state_dir(path: &Path) -> Result<()> {
+    if !path.is_absolute()
+        || path
+            .components()
+            .any(|c| matches!(c, std::path::Component::ParentDir))
+    {
+        return Err(Error::Invalid("qualification state must be absolute"));
+    }
+    for parent in path.ancestors() {
+        if std::fs::symlink_metadata(parent).is_ok_and(|m| m.file_type().is_symlink()) {
+            return Err(Error::Invalid("qualification state cannot follow a link"));
+        }
+    }
+    if !path.exists() {
+        std::fs::DirBuilder::new()
+            .recursive(true)
+            .mode(0o700)
+            .create(path)
+            .map_err(|_| Error::Invalid("cannot create private qualification state"))?;
+    }
+    let m = std::fs::symlink_metadata(path)
+        .map_err(|_| Error::Invalid("cannot inspect qualification state"))?;
+    if !m.is_dir() || m.uid() != unsafe { libc::geteuid() } || m.mode() & 0o077 != 0 {
+        return Err(Error::Invalid(
+            "qualification state must be private and owned",
+        ));
+    }
+    Ok(())
+}
+
 /// Run the plan on bound adapters and build its receipt.
 pub fn run<W, B>(run: &Run<'_, W, B>, mode: Mode, label: &str) -> QualificationReceipt
 where
@@ -97,14 +129,30 @@ where
         receipt.failure = Some(format!("plan refused: {refusal:?}"));
         return receipt;
     }
-    let opened = std::fs::create_dir_all(run.state_dir)
-        .map_err(|_| Error::Invalid("cannot create the state directory"))
-        .and_then(|()| {
-            Ok((
-                Ledger::open(run.state_dir.join("ledger.sqlite"))?,
-                Journal::open(run.state_dir.join("journal.sqlite"))?,
-            ))
-        });
+    let opened = (|| {
+        prepare_state_dir(run.state_dir)?;
+        for name in ["ledger.sqlite", "journal.sqlite"] {
+            let path = run.state_dir.join(name);
+            let f = std::fs::OpenOptions::new()
+                .read(true)
+                .write(true)
+                .create_new(true)
+                .mode(0o600)
+                .open(&path)
+                .map_err(|_| Error::Invalid("qualification ledger must be fresh and private"))?;
+            if f.metadata()
+                .map_err(|_| Error::Invalid("cannot inspect qualification ledger"))?
+                .nlink()
+                != 1
+            {
+                return Err(Error::Invalid("qualification state is shared"));
+            }
+        }
+        Ok((
+            Ledger::open(run.state_dir.join("ledger.sqlite"))?,
+            Journal::open(run.state_dir.join("journal.sqlite"))?,
+        ))
+    })();
     let (mut ledger, mut journal) = match opened {
         Ok(opened) => opened,
         Err(error) => {

@@ -92,6 +92,17 @@ impl Journal {
         })
     }
 
+    /// Inspect an existing journal without creating tables or changing state.
+    pub fn open_read_only(path: impl AsRef<Path>) -> Result<Self> {
+        let connection =
+            Connection::open_with_flags(path, rusqlite::OpenFlags::SQLITE_OPEN_READ_ONLY)?;
+        connection.busy_timeout(std::time::Duration::from_secs(5))?;
+        Ok(Self {
+            connection,
+            custody_check: None,
+        })
+    }
+
     /// Install the exclusive service's pathname/descriptor fence. The service
     /// cannot replace or remove it while this journal owns accepted records.
     pub fn install_custody_check(

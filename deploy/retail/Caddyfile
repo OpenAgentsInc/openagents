@@ -1,0 +1,20 @@
+# Replace this example origin, then validate with caddy validate. The Rust
+# service rechecks the bearer/principal; TLS grants no spending authority.
+retail.example.com {
+    header {
+        Strict-Transport-Security "max-age=31536000"
+        X-Content-Type-Options "nosniff"
+        Referrer-Policy "no-referrer"
+        Cache-Control "no-store"
+    }
+    handle /v1/retail {
+        request_body {
+            max_size 32KB
+        }
+        reverse_proxy 127.0.0.1:9042
+    }
+    # Operator metadata and health stay on the private loopback listener.
+    handle {
+        respond "Not found" 404
+    }
+}

@@ -48,6 +48,8 @@ pub enum Closed {
     /// The receipt is fake, failed, or for another configuration.
     QualificationNotValid,
     NoCapacity,
+    /// Runtime health requires reconciliation before new paid work.
+    OperationalIncident,
 }
 
 /// What the service publishes.

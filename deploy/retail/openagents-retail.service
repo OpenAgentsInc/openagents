@@ -1,0 +1,46 @@
+[Unit]
+Description=OpenAgents retail customer service and recovery worker
+After=network-online.target openagents-retail-receiver.service
+Wants=network-online.target
+Requires=openagents-retail-receiver.service
+StartLimitIntervalSec=300
+StartLimitBurst=5
+
+[Service]
+Type=simple
+User=openagents-retail
+Group=openagents-retail
+UMask=0077
+WorkingDirectory=/var/lib/openagents-retail
+StateDirectory=openagents-retail
+StateDirectoryMode=0700
+ExecStartPre=/usr/bin/test -x /opt/openagents-retail/current/retail-service
+ExecStart=/opt/openagents-retail/current/retail-service --config /etc/openagents-retail/host.json
+Restart=on-failure
+RestartSec=5
+KillSignal=SIGTERM
+TimeoutStopSec=60
+LimitNOFILE=4096
+MemoryMax=1G
+TasksMax=128
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=openagents-retail
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=true
+PrivateTmp=true
+PrivateDevices=true
+ReadWritePaths=/var/lib/openagents-retail
+RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectKernelLogs=true
+ProtectControlGroups=true
+RestrictNamespaces=true
+RestrictSUIDSGID=true
+CapabilityBoundingSet=
+AmbientCapabilities=
+
+[Install]
+WantedBy=multi-user.target

@@ -420,7 +420,13 @@ impl<B: Backend, W: LightningWallet + Send + Sync + 'static> Service<B, W> {
         let period = period.clamp(Duration::from_secs(1), Duration::from_secs(30));
         let thread = std::thread::spawn(move || {
             while !signal.load(std::sync::atomic::Ordering::Relaxed) {
-                let _ = service.tick(crate::http::now());
+                let now = crate::http::now();
+                let result = service.tick(now);
+                if let Some(ops) = &service.operations
+                    && let Ok(mut status) = ops.last_worker.lock()
+                {
+                    *status = Some((now, result.as_ref().is_ok_and(|r| r.failed.is_empty())));
+                }
                 // Short waits let shutdown preserve and release state promptly.
                 let deadline = std::time::Instant::now() + period;
                 while std::time::Instant::now() < deadline

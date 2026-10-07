@@ -1,0 +1,33 @@
+{
+  "schema": "openagents.cloud.retail-host.v1",
+  "mode": "closed",
+  "customer": {
+    "schema": "openagents.cloud.retail-customer.v1",
+    "state": "/var/lib/openagents-retail/state",
+    "ledger": "/var/lib/openagents-retail/ledger.sqlite",
+    "template": "oa-coder-main-20261007",
+    "grants": [],
+    "contract_confirmed": false,
+    "qualification": null,
+    "supported_plan": "UNREVIEWED",
+    "plan_starts_left": 0
+  },
+  "listen": "127.0.0.1:9042",
+  "boat_api_base": "https://boat.dev/api/v1",
+  "boat_org": null,
+  "boat_key_file": "/etc/openagents-retail/boat.key",
+  "wallet_home": "/var/lib/openagents-retail-receiver",
+  "poll_seconds": 5,
+  "operations": {
+    "schema": "openagents.cloud.retail-operations.v1",
+    "public_origin": "https://retail.example.com",
+    "ingress_file": "/etc/caddy/Caddyfile",
+    "operator_key_file": "/etc/openagents-retail/operator.key",
+    "approved_identity": "sha256:0000000000000000000000000000000000000000000000000000000000000000",
+    "plan_file": "/etc/openagents-retail/plan.json",
+    "qualification_file": "/etc/openagents-retail/funded.json",
+    "qualification_digest": "sha256:0000000000000000000000000000000000000000000000000000000000000000",
+    "qualification_state": "/var/lib/openagents-retail/qualification",
+    "qualification_ledger": "/var/lib/openagents-retail/qualification/ledger.sqlite"
+  }
+}

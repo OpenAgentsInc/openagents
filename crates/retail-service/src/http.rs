@@ -33,12 +33,31 @@ pub fn router<B: Backend, W: LightningWallet + Send + Sync + 'static>(
             get(|| async { Json(json!({"service":SCHEMA,"alive":true})) }),
         )
         .route("/v1/retail", post(call::<B, W>))
+        .route("/operator/status", get(operator::<B, W>))
         .route_layer(middleware::from_fn_with_state(
             Arc::new(tokio::sync::Semaphore::new(32)),
             bounded,
         ))
         .layer(DefaultBodyLimit::max(BODY_MAX))
         .with_state(service)
+}
+async fn operator<B: Backend, W: LightningWallet + Send + Sync + 'static>(
+    State(service): State<Arc<Service<B, W>>>,
+    headers: HeaderMap,
+) -> impl IntoResponse {
+    if headers.contains_key("origin") {
+        return response(Err(Error::Denied));
+    }
+    let secret = headers
+        .get("authorization")
+        .and_then(|h| h.to_str().ok())
+        .and_then(|h| h.strip_prefix("Bearer "))
+        .unwrap_or("")
+        .to_owned();
+    let result = tokio::task::spawn_blocking(move || service.operator_status(&secret, now()))
+        .await
+        .unwrap_or(Err(Error::Unavailable("operator status unavailable")));
+    response(result)
 }
 async fn bounded(
     State(slots): State<Arc<tokio::sync::Semaphore>>,

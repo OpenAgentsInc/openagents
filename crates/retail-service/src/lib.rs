@@ -2,8 +2,10 @@
 //! Money, execution identities, counters, cleanup, and settlement remain in
 //! the existing pay-ledger and retail-cloud records.
 
+pub mod backup;
 mod custody;
 pub mod http;
+pub mod package;
 mod store;
 pub mod types;
 mod worker;
@@ -82,6 +84,7 @@ impl<
 
 pub struct Service<B: Backend, W: LightningWallet + Send + Sync + 'static> {
     pub(crate) config: Config,
+    pub(crate) operations: Option<Arc<package::Operating>>,
     pub(crate) store: Mutex<Store>,
     pub(crate) backend: Arc<custody::GuardBackend<B>>,
     pub(crate) wallet: Arc<custody::GuardWallet<W>>,
@@ -104,17 +107,22 @@ impl<B: Backend, W: LightningWallet + Send + Sync + 'static> Service<B, W> {
             .ok_or(Error::Invalid(
                 "only the supported daily Coder template is admitted",
             ))?;
-        if date.len() != 10
-            || date.as_bytes().get(4) != Some(&b'-')
-            || date.as_bytes().get(7) != Some(&b'-')
-            || date
-                .bytes()
-                .enumerate()
-                .any(|(i, b)| i != 4 && i != 7 && !b.is_ascii_digit())
-            || date[5..7]
+        // Native Boat daily templates use YYYYMMDD. Preserve earlier dated
+        // fixture names without changing an already admitted execution.
+        let compact = if date.len() == 10
+            && date.as_bytes().get(4) == Some(&b'-')
+            && date.as_bytes().get(7) == Some(&b'-')
+        {
+            date.replace('-', "")
+        } else {
+            date.to_owned()
+        };
+        if compact.len() != 8
+            || !compact.bytes().all(|b| b.is_ascii_digit())
+            || compact[4..6]
                 .parse::<u8>()
                 .map_or(true, |n| !(1..=12).contains(&n))
-            || date[8..10]
+            || compact[6..8]
                 .parse::<u8>()
                 .map_or(true, |n| !(1..=31).contains(&n))
         {
@@ -153,6 +161,7 @@ impl<B: Backend, W: LightningWallet + Send + Sync + 'static> Service<B, W> {
         });
         Ok(Self {
             config,
+            operations: None,
             store: Mutex::new(store),
             backend,
             wallet,
@@ -234,12 +243,27 @@ impl<B: Backend, W: LightningWallet + Send + Sync + 'static> Service<B, W> {
         })
     }
     fn advertisement(&self, store: &Store, exclude: Option<&str>) -> Result<launch::Advertisement> {
-        Ok(launch::advertise(&Gate {
+        let qualification = match &self.operations {
+            Some(ops) => ops.gate(&*self.wallet).ok().flatten(),
+            None => self.config.qualification.clone(),
+        };
+        let healthy = self.operations.is_none()
+            || (launch::health(&store.journal, &store.ledger, http::now())?.is_empty()
+                && self
+                    .operations
+                    .as_ref()
+                    .is_some_and(|o| o.worker_healthy(http::now())));
+        let mut advertisement = launch::advertise(&Gate {
             contract_confirmed: self.config.contract_confirmed,
-            qualification: self.config.qualification.clone(),
+            qualification,
             supported_plan: self.config.supported_plan.clone(),
             capacity: self.capacity(store, exclude)?,
-        }))
+        });
+        if !healthy {
+            advertisement.paid_capacity = None;
+            advertisement.closed = Some(launch::Closed::OperationalIncident);
+        }
+        Ok(advertisement)
     }
     fn require_open(&self, store: &Store, exclude: Option<&str>) -> Result<()> {
         if self.advertisement(store, exclude)?.paid_capacity.is_none() {

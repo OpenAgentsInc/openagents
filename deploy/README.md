@@ -17,6 +17,7 @@ install them from a checkout and edit the installed environment files only.
 | `systemd/push-gateway.service` | The NIP-PL push gateway's hardened unit. Its runbook is `docs/deployment/push-gateway.md`. |
 | `push-gateway.env.example` | The push gateway's environment template. It names credential files and holds no credential. |
 | `systemd/openagents-pay.service`, `openagents-pay.env.example`, `pay/`, `backup/openagents-pay-*` | The central receiver: `openagents wallet serve` on mainnet with MoneyDevKit LSPS4, its seed loader, health check, and encrypted hourly backups. Its runbook is `docs/deployment/pay-host.md`. |
+| `retail/` | The selected retail service, dedicated receiver, closed configuration, and TLS ingress package. Its runbook is `docs/cloud/retail-operations.md`. |
 | `gateway/` | The decision-API gateway's per-lane configs, hardened unit, and install-verification backend stub. Its runbook is `docs/decision-models/service/deployment.md`. |
 
 The relay's runbook is

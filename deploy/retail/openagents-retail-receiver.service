@@ -1,0 +1,31 @@
+[Unit]
+Description=Dedicated retail Lightning receiver
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=openagents-retail
+Group=openagents-retail
+UMask=0077
+StateDirectory=openagents-retail-receiver
+StateDirectoryMode=0700
+Environment=OPENAGENTS_WALLET_HOME=/var/lib/openagents-retail-receiver
+ExecStart=/opt/openagents-retail/current/openagents --json x402 node serve
+Restart=on-failure
+RestartSec=5
+KillSignal=SIGTERM
+TimeoutStopSec=60
+LimitNOFILE=65536
+MemoryMax=1G
+TasksMax=128
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=true
+PrivateTmp=true
+PrivateDevices=true
+ReadWritePaths=/var/lib/openagents-retail-receiver
+RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6
+
+[Install]
+WantedBy=multi-user.target
