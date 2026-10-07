@@ -105,6 +105,8 @@ pub struct Quote {
     /// The parts that sum to `price_msat`; the `402` names each one.
     pub parts: Vec<PricePart>,
     pub plugin: Option<String>,
+    /// An immutable release. Calls must carry the approved quote digest in
+    /// their JSON body before the front offers an invoice for this release.
     pub release: Option<String>,
     /// The author party the fee is owed to.
     pub author: Option<String>,
@@ -613,6 +615,25 @@ impl<S: ReplayStore> Front<S> {
                 );
             }
         };
+        if quote.release.is_some() {
+            let approved = serde_json::from_slice::<Value>(&request.body)
+                .ok()
+                .and_then(|body| body["quote_digest"].as_str().map(str::to_owned));
+            let digest = crate::execution::quote_digest(&quote);
+            if approved.as_deref() != Some(digest.as_str()) {
+                return done(
+                    event,
+                    Response::json(
+                        409,
+                        &json!({
+                            "error":{"type":"quote_conflict","message":"Approve this exact quote and include its quote_digest in the request body before payment."},
+                            "quote":quote,"quote_digest":digest,
+                        }),
+                    ),
+                    "unpriced",
+                );
+            }
+        }
         if let Some(usage) = usage.as_mut() {
             if quote.plugin.is_some() {
                 usage.plugin.clone_from(&quote.plugin);

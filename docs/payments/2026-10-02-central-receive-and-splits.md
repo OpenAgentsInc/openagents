@@ -370,7 +370,9 @@ on the pay host as `openagents-pay-payouts.service`. What it does:
   splits the fee to the author, and every call that reaches a route is a
   `call` record in the ledger. Only a program of one guest step that
   requires nothing is sold; a `snapshot-read` guest runs with an empty
-  snapshot.
+  snapshot. A release-bearing quote requires its approved `quote_digest` in
+  the bound request body before an invoice; changed release or fee terms
+  require new approval. Captured-workspace packets are refused before payment.
 - **Author-hosted resources:** an author who has an HTTP service registers
   it (`openagents x402 serve --central` or `openagents x402 publish`), and
   we serve it at `https://api.openagents.com/x/{resource}`: our `402`, our

@@ -9,6 +9,7 @@ Plugins that do useful work and that you can copy to make your own
 | [Release notes](release-notes.md) | Groups the commits between two releases into user-facing release notes (breaking changes, features, fixes), each line citing its commit. | [`crates/plugin-release-notes`](../../../crates/plugin-release-notes/) |
 | Action items | Reads meeting notes and lists who does what, and by when, each citing the line it came from. The workbench's noncoding example ([receipt](../../verse/verification/2026-10-06-noncoding-action-items/README.md)). | [`crates/plugin-action-items`](../../../crates/plugin-action-items/) |
 | [Meeting follow-up](../../../plugins/meeting-followup/README.md) | Reuses the action-items guest with exact customer-task input/permission snapshots and separate protected checks; drafts a local human review list. | [`plugins/meeting-followup`](../../../plugins/meeting-followup/) |
+| [Meeting action items](../../../plugins/meeting-action-items/README.md) | Extracts cited action items from notes supplied in the request, with signed release and synthetic paid-route acceptance evidence. | [`plugins/meeting-action-items`](../../../plugins/meeting-action-items/) |
 | [Dependency check](dependency-check.md) | Reads manifests and lockfiles offline and flags duplicate versions, loose or unpinned version ranges, and licenses your declared policy doesn't allow. | [`crates/plugin-dependency-check`](../../../crates/plugin-dependency-check/) |
 
 Each one is a piece of Wasm, the workflow that runs it, and a test set.

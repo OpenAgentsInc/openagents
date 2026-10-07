@@ -27,6 +27,12 @@ local runner binds exact input/release and current recipient/permission
 snapshots; independent protected checks stay outside the guest's read scope.
 Synthetic comparisons establish bounded extraction, not customer ROI.
 
+The [meeting action-items release](../../plugins/meeting-action-items/README.md)
+uses the same guest on notes supplied in the request, within the current paid
+route's single-step, empty-snapshot contract. Its signed publication and payment
+fixture pins the exact release and full author fee. Real publication, independent
+buyer acceptance, funded settlement, and payout still need owner qualification.
+
 ## What a plugin contains
 
 A plugin can contain any of these parts:

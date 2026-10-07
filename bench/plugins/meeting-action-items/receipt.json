@@ -1,0 +1,142 @@
+{
+  "schema": "openagents.paid-plugin-acceptance.v1",
+  "synthetic": true,
+  "deployed_available": false,
+  "customer_qualified": false,
+  "funded_payment_qualified": false,
+  "author_payout_qualified": false,
+  "publisher_buyer_independence_qualified": false,
+  "publisher": "531fe6068134503d2723133227c867ac8fa6c83c537e9a44c3c5bdbdcb1fe337",
+  "package": "531fe6068134503d2723133227c867ac8fa6c83c537e9a44c3c5bdbdcb1fe337:meeting-action-items",
+  "version": "0.1.0",
+  "package_record_digest": "sha256:8d8def8e89e8917dd84ad26a386411a25e6d3f63f73e58cc64920da8dd5b5775",
+  "manifest_digest": "sha256:7dbdc586659219bc27a07946a7288de15639a13482201a8c121190f147610841",
+  "program_digest": "sha256:249283e30178fe7a23ba349dea75ca32ee5a6bb739d50b52f9c8384da9b798f8",
+  "wasm_digest": "sha256:72e70d8909eaf55ae31674d3b315189d7494fbc4e1f679fb8a4b4cb6de82f0a5",
+  "release": {
+    "id": "1826e7173ef3151fa6d9ea8db4f716e9908bb2bd9069b74c9c789c4a5e1ba393",
+    "pubkey": "531fe6068134503d2723133227c867ac8fa6c83c537e9a44c3c5bdbdcb1fe337",
+    "created_at": 1792022460,
+    "kind": 3184,
+    "tags": [
+      [
+        "t",
+        "oa:ext:release:v1"
+      ]
+    ],
+    "content": "{\"v\":1,\"requires\":[],\"type\":\"release\",\"package\":\"531fe6068134503d2723133227c867ac8fa6c83c537e9a44c3c5bdbdcb1fe337:meeting-action-items\",\"version\":\"0.1.0\",\"manifest\":{\"digest\":\"sha256:7dbdc586659219bc27a07946a7288de15639a13482201a8c121190f147610841\",\"size\":2037,\"media_type\":\"application/json\",\"schema\":\"openagents.package.v1\"},\"fee_msat\":1000,\"payout\":\"034f355bdcb7cc0af728ef3cceb9615d90684bb5b2ca5f859ab0f0b704075871aa\"}",
+    "sig": "6534bc8f985981f3d4bbdabfb23b571c7ce22cc8909d22e9d69d231fff15abd531a670b3ec55ec37fb3911c20eb5d7b27a0e4e1597435f8a51ae420f39ca9a88"
+  },
+  "listing": {
+    "id": "63899d459363e34b847181ed8c7fcf492705941547596e7c4a28c9a030ba629f",
+    "pubkey": "531fe6068134503d2723133227c867ac8fa6c83c537e9a44c3c5bdbdcb1fe337",
+    "created_at": 1792022460,
+    "kind": 30184,
+    "tags": [
+      [
+        "d",
+        "meeting-action-items"
+      ],
+      [
+        "t",
+        "oa:ext:listing:v1"
+      ]
+    ],
+    "content": "{\"v\":1,\"requires\":[],\"type\":\"listing\",\"package\":\"531fe6068134503d2723133227c867ac8fa6c83c537e9a44c3c5bdbdcb1fe337:meeting-action-items\",\"state\":\"published\",\"release\":{\"id\":\"1826e7173ef3151fa6d9ea8db4f716e9908bb2bd9069b74c9c789c4a5e1ba393\",\"pubkey\":\"531fe6068134503d2723133227c867ac8fa6c83c537e9a44c3c5bdbdcb1fe337\",\"kind\":3184},\"title\":\"Meeting action items\",\"description\":\"Extract cited action items from meeting notes supplied in the request for human review.\",\"meta\":{\"blobs\":[\"https://blobs.example.invalid\"]}}",
+    "sig": "1d338508bb45248f1f9d9c3409325d0ebe5d1cf6c7d734ba5a37c78a3254804068b5d223fe982452fe2921b3b977aecf56a768c314ebd839acd8f6a538b8a3a9"
+  },
+  "declared_author_fee_msat": 1000,
+  "supported_payout": "034f355bdcb7cc0af728ef3cceb9615d90684bb5b2ca5f859ab0f0b704075871aa",
+  "endpoint_charge_msat": 5000,
+  "total_quote_msat": 6000,
+  "author_share_msat": 1000,
+  "checks": {
+    "signed_publication": true,
+    "all_blob_digests": true,
+    "exact_release_execution": true,
+    "independent_expected_rows": true,
+    "empty_snapshot": true,
+    "duplicate_settlement": true,
+    "tampered_cache_refused": true,
+    "forged_release_refused": true,
+    "signed_payout_resolution": true,
+    "quote_approval_bound": true,
+    "same_price_head_requires_new_approval": true,
+    "revocation_refused": true,
+    "withdrawal_refused": true
+  },
+  "output": {
+    "plugin": "531fe6068134503d2723133227c867ac8fa6c83c537e9a44c3c5bdbdcb1fe337:meeting-action-items",
+    "release": "1826e7173ef3151fa6d9ea8db4f716e9908bb2bd9069b74c9c789c4a5e1ba393",
+    "status": "ok",
+    "value": {
+      "done_left_out": 1,
+      "found": true,
+      "items": [
+        {
+          "due": "Friday",
+          "owner": "Ana",
+          "source": {
+            "from": "request",
+            "line": 2
+          },
+          "task": "send the budget",
+          "text": "ACTION: Ana will send the budget by Friday."
+        },
+        {
+          "due": "Tuesday",
+          "owner": "Ben",
+          "source": {
+            "from": "request",
+            "line": 3
+          },
+          "task": "review the launch checklist",
+          "text": "- [ ] @Ben review the launch checklist due Tuesday"
+        },
+        {
+          "due": null,
+          "owner": null,
+          "source": {
+            "from": "request",
+            "line": 4
+          },
+          "task": "prepare the migration notes",
+          "text": "TODO: prepare the migration notes"
+        }
+      ],
+      "kind": "action-items",
+      "markdown": "Action items (3)\n\n1. Ana: send the budget, by Friday (request line 2)\n2. Ben: review the launch checklist, by Tuesday (request line 3)\n3. Unassigned: prepare the migration notes (request line 4)\n\n1 without an owner; 1 already done and left out.",
+      "read": [],
+      "truncated": false,
+      "unassigned": 1,
+      "unread": []
+    },
+    "verification": "not_run",
+    "receipt": {
+      "schema": "openagents.plugin-invocation-receipt.v1",
+      "module": "sha256:72e70d8909eaf55ae31674d3b315189d7494fbc4e1f679fb8a4b4cb6de82f0a5",
+      "profile": "snapshot-read",
+      "operation": "items",
+      "invocation": "e0ec4df0a1907ef8400e8feb40fae713467183c6586eb0d040eeb898db97f7c3",
+      "input": "sha256:4f6d40c0d8ba676c7dd9f413cc6e211a465c52ed1bc7c9171f59ab8ab03477a2",
+      "snapshot": "sha256:2974f053e1916aa8e28ef8e10d221c532e845fe498651e2479383b9f9b8ff09b",
+      "limits": {
+        "fuel": 1000000,
+        "memory_bytes": 8388608,
+        "output_bytes": 65536,
+        "read_bytes": 65536,
+        "module_bytes": 131072
+      },
+      "required": true,
+      "engine": "wasmtime/48.0.5+consume_fuel+epoch_interruption",
+      "outcome": {
+        "type": "value",
+        "status": "ok",
+        "output": "sha256:f48daf7de0e4e4fd57bfafc5b88b49741116d9d2ed299ca2fcf2097fb860d9ac"
+      },
+      "fuel_consumed": 380283
+    }
+  },
+  "comparative_performance": "not claimed",
+  "costs": "fake fee decomposition; host CPU, storage, and energy unmetered"
+}

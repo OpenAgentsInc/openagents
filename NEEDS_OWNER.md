@@ -1,3 +1,18 @@
+## First paid workflow O2/O8 (REV-10, #10817)
+
+Review the [meeting action-items package](plugins/meeting-action-items/README.md),
+choose a real publisher, immutable version, per-call author fee, and supported
+payout destination, and publish it through `openagents plugin publish`. On the
+selected installed receiver, record its actual release/program/Wasm digests and
+quote's separate endpoint and full author fee. Have a separately established
+buyer supply consented notes, check the returned task text and source lines,
+and accept the bounded result. Participant labels establish no independence.
+Authorize one funded payment and record the settlement, exact author share,
+payout wallet reference, reconciliation, and consented repeat-use result
+separately. Keep the offer unavailable until this execution and payment path
+is qualified. The retained fixture uses throwaway keys and fake settlement;
+it establishes no deployed availability, independent adoption, ROI, or payout.
+
 ## Water on a phone (#10774)
 
 The shared water shader (`docs/verse/water.md`, W2) validates and translates

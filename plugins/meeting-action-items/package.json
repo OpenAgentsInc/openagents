@@ -1,0 +1,13 @@
+{
+  "v": 1,
+  "slug": "meeting-action-items",
+  "name": "Meeting action items",
+  "summary": "Extract cited action items from meeting notes supplied in the request for human review.",
+  "version": "0.1.0",
+  "publisher": "",
+  "provenance": "OpenAgents plugin-action-items Rust/Wasm guest; bounded supplied-note extraction; synthetic acceptance; no customer ROI or deployed availability claim.",
+  "program": {
+    "name": "meeting-action-items",
+    "digest": "7e25df987e00ef9d4e86c7d28eeead141367428b3d8d612db221ea0f83f96e2a"
+  }
+}

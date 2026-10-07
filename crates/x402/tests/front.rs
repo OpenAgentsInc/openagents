@@ -853,3 +853,6 @@ fn a_callers_own_provider_key_pays_a_model_cost_route_with_no_402() {
 
 #[path = "front/funded.rs"]
 mod funded;
+
+#[path = "front/quoted_release.rs"]
+mod quoted_release;

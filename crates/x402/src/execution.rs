@@ -102,8 +102,8 @@ struct Record {
 fn digest(value: &Value) -> String {
     hex::encode(Sha256::digest(payment_scheme::jcs(value).as_bytes()))
 }
-/// The identity a caller approves before submitting a funded request. Put
-/// this digest in the body so the invoice binds the exact server quote.
+/// The identity a caller approves before submitting a funded or immutable
+/// release request. Put this digest in the body to bind the exact server quote.
 pub fn quote_digest(quote: &Quote) -> String {
     digest(&json!({"schema":"openagents.route.funded-http-quote.v1","quote":quote}))
 }

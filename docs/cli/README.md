@@ -1320,6 +1320,14 @@ stays good for a retry. The challenge HMAC key is
 that settles for this wallet shares it, the replay store, and the log. A
 signet or regtest wallet is refused, as for `x402 serve`.
 
+A `registry` plugin route first returns `409` with its current signed release's
+`quote` and `quote_digest`. After reviewing the release and separate endpoint
+and author fees, submit `{"quote_digest":"<approved digest>","request":"<text>"}`
+to obtain an invoice. Retry the same body bytes with proof. Changed terms
+require new approval before another invoice; the earlier proof cannot buy
+a newer release. The [meeting action-items example](../../plugins/meeting-action-items/README.md)
+includes retained publication and paid invocation checks.
+
 ### Discovery (`x402 advertise`, `fetch --cap`)
 
 `openagents x402 advertise` publishes the kind `30180` NIP-CAP head that

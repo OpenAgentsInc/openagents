@@ -8,6 +8,8 @@
 //! front writes before anything runs carries the plugin id, the release
 //! id, the author (the release's signer), and the fee, so the ledger
 //! splits the fee to the author (`pay_ledger::Split::Plugin`).
+//! The caller approves the quote digest in the JSON body beside `request`;
+//! a changed head cannot relabel the request or its payment proof.
 //!
 //! The executor runs the pinned release's packet once through
 //! `plugin::invoke_with_receipt`: no workspace, no network, no host
@@ -22,7 +24,6 @@ use std::collections::{BTreeMap, HashMap};
 use std::path::{Path, PathBuf};
 use std::sync::atomic::AtomicBool;
 use std::sync::{Arc, Mutex};
-use std::time::{Duration, Instant};
 
 use coder::package::Package;
 use openagents_x402::front::{
@@ -35,10 +36,6 @@ use crate::plugin_registry::{self, Blobs, BlossomStore};
 /// The role the ledger splits a plugin invocation by.
 pub(crate) const ROLE: &str = "plugin_call";
 
-/// How long a resolved listing is reused before the registry is asked
-/// again, so a challenge and its paid retry see the same release.
-const LISTING_TTL: Duration = Duration::from_secs(300);
-
 /// One guest invocation's fixed parts: what the release pins.
 pub(crate) struct Packet {
     pub wasm: Vec<u8>,
@@ -47,6 +44,7 @@ pub(crate) struct Packet {
     /// The binding's fixed input; the request goes into `request_key`.
     pub input: Value,
     pub request_key: Option<String>,
+    pub limits: plugin::Limits,
 }
 
 /// A published plugin, resolved and pinned to one release.
@@ -92,14 +90,16 @@ pub(crate) fn packet(dir: &Path) -> Result<Packet, Unpriced> {
     let program: Value =
         serde_json::from_slice(&bytes).map_err(|e| not_invocable(format!("its program: {e}")))?;
     let definition = &program["definition"];
-    if definition["requires"]
+    let required = definition["requires"]
         .as_array()
-        .is_some_and(|required| !required.is_empty())
-    {
+        .ok_or_else(|| not_invocable("the program must declare its required capabilities"))?;
+    if !required.is_empty() {
         return Err(not_invocable(
             "the plugin requires capabilities; only pure guests are sold here",
         ));
     }
+    nostr::prg::parse_definition(definition)
+        .map_err(|why| not_invocable(format!("its program definition: {why}")))?;
     let steps = definition["steps"].as_array().cloned().unwrap_or_default();
     let [step] = steps.as_slice() else {
         return Err(not_invocable(
@@ -113,7 +113,17 @@ pub(crate) fn packet(dir: &Path) -> Result<Packet, Unpriced> {
         )));
     }
     let name = step["name"].as_str().unwrap_or_default();
-    let module = &program["binding"]["steps"][name]["module"];
+    let binding = &program["binding"]["steps"][name];
+    let module = &binding["module"];
+    if binding["bounds"]["captured_input"] == true
+        || module["read"]
+            .as_array()
+            .is_some_and(|paths| !paths.is_empty())
+    {
+        return Err(not_invocable(
+            "the guest requires a captured workspace; this route supplies only the request and an empty snapshot",
+        ));
+    }
     let wasm = module["bytes_base64"]
         .as_str()
         .ok_or_else(|| not_invocable("the plugin's step names no guest bytes"))
@@ -121,6 +131,16 @@ pub(crate) fn packet(dir: &Path) -> Result<Packet, Unpriced> {
             plugin::decode_base64(encoded)
                 .map_err(|_| not_invocable("the plugin's guest bytes are not base64"))
         })?;
+    let artifact = nostr::contracts::parse_artifact(&step["target"]["artifact"])
+        .map_err(|_| not_invocable("the guest target has no exact artifact"))?;
+    nostr::contracts::check_artifact_bytes(&artifact, &wasm).map_err(|_| {
+        not_invocable("the inline guest differs from its declared Wasm digest or size")
+    })?;
+    if artifact.media_type != "application/wasm" {
+        return Err(not_invocable(
+            "the guest target must declare application/wasm",
+        ));
+    }
     let profile = match module["profile"].as_str().unwrap_or("pure") {
         "pure" => plugin::Profile::Pure,
         "snapshot-read" => plugin::Profile::SnapshotRead,
@@ -135,12 +155,74 @@ pub(crate) fn packet(dir: &Path) -> Result<Packet, Unpriced> {
         Value::String(key) if !key.is_empty() => Some(key.clone()),
         _ => return Err(not_invocable("the guest's request binding is malformed")),
     };
+    let input = module.get("input").cloned().unwrap_or(Value::Null);
+    if request_key.is_some() && !input.is_null() && !input.is_object() {
+        return Err(not_invocable(
+            "a guest that receives the request needs an object input",
+        ));
+    }
+    let operation = module["operation"]
+        .as_str()
+        .filter(|s| !s.is_empty())
+        .ok_or_else(|| not_invocable("the guest must declare its operation"))?;
+    let mut limits = plugin::Limits::default();
+    for bounds in [&definition["bounds"], &step["bounds"], &binding["bounds"]] {
+        if bounds.is_null() {
+            continue;
+        }
+        for (key, value) in bounds
+            .as_object()
+            .ok_or_else(|| not_invocable("guest bounds must be an object"))?
+        {
+            if key == "captured_input" && value == false {
+                continue;
+            }
+            let ceiling = value
+                .as_u64()
+                .filter(|n| *n > 0)
+                .ok_or_else(|| not_invocable("guest ceilings must be positive integers"))?;
+            match key.as_str() {
+                "fuel" => limits.fuel = limits.fuel.min(ceiling),
+                "memory_bytes" => {
+                    limits.memory_bytes = limits
+                        .memory_bytes
+                        .min(usize::try_from(ceiling).unwrap_or(usize::MAX))
+                }
+                "output_bytes" => {
+                    limits.output_bytes = limits
+                        .output_bytes
+                        .min(usize::try_from(ceiling).unwrap_or(usize::MAX))
+                }
+                "read_bytes" => {
+                    limits.read_bytes = limits
+                        .read_bytes
+                        .min(usize::try_from(ceiling).unwrap_or(usize::MAX))
+                }
+                "module_bytes" => {
+                    limits.module_bytes = limits
+                        .module_bytes
+                        .min(usize::try_from(ceiling).unwrap_or(usize::MAX))
+                }
+                _ => {
+                    return Err(not_invocable(
+                        "this route cannot enforce the declared guest bound",
+                    ));
+                }
+            }
+        }
+    }
+    if wasm.len() > limits.module_bytes {
+        return Err(not_invocable(
+            "the declared module ceiling excludes this guest",
+        ));
+    }
     Ok(Packet {
         wasm,
         profile,
-        operation: module["operation"].as_str().unwrap_or("echo").to_owned(),
-        input: module.get("input").cloned().unwrap_or(Value::Null),
+        operation: operation.to_owned(),
+        input,
         request_key,
+        limits,
     })
 }
 
@@ -173,6 +255,16 @@ impl Invoke {
             .param("id")
             .ok_or_else(|| refused(404, "plugin_not_found", "the path names no plugin"))?;
         let resolved = self.source.resolve(id)?;
+        if let Ok(body) = serde_json::from_slice::<Value>(&call.request.body)
+            && body.get("quote_digest").is_some()
+            && !body["request"].is_string()
+        {
+            return Err(refused(
+                400,
+                "plugin_input_invalid",
+                "the approved plugin request must contain its supplied text in request",
+            ));
+        }
         let price = self
             .endpoint_msat
             .checked_add(resolved.fee_msat)
@@ -216,8 +308,11 @@ impl RouteExecutor for Invoke {
             .get(release)
             .cloned()
             .ok_or_else(|| format!("the release {release} is not pinned here"))?;
-        let request = std::str::from_utf8(&call.request.body)
-            .map_err(|_| "the request body is not UTF-8".to_string())?;
+        let body: Value = serde_json::from_slice(&call.request.body)
+            .map_err(|_| "the approved request body is not JSON".to_string())?;
+        let request = body["request"]
+            .as_str()
+            .ok_or("the approved request contains no supplied text")?;
         let ran = run(&resolved, request, call.payment_hash.unwrap_or("unpaid"))?;
         Ok(Served {
             body: ran.to_string().into_bytes(),
@@ -242,7 +337,7 @@ pub(crate) fn run(resolved: &Resolved, request: &str, invocation: &str) -> Resul
         input: &input,
         snapshot: &plugin::Snapshot::default(),
         handles: &BTreeMap::new(),
-        limits: plugin::Limits::default(),
+        limits: packet.limits,
         cancelled: Arc::new(AtomicBool::new(false)),
         required: true,
     });
@@ -263,7 +358,6 @@ pub(crate) struct RegistrySource {
     relay: String,
     blossom: Option<String>,
     cache: PathBuf,
-    listings: Mutex<HashMap<String, (Instant, Arc<Resolved>)>>,
 }
 
 impl RegistrySource {
@@ -272,7 +366,6 @@ impl RegistrySource {
             relay,
             blossom,
             cache,
-            listings: Mutex::new(HashMap::new()),
         }
     }
 
@@ -292,8 +385,8 @@ impl RegistrySource {
     }
 }
 
-/// Resolve `id` on `registry` and fetch its release into `cache/<release>`
-/// unless a checked copy is already there.
+/// Resolve current signed registry state. Content-addressed blobs are cached;
+/// a cached release never bypasses withdrawal, revocation, or byte checks.
 pub(crate) fn fetch_into(
     registry: &mut dyn plugin_registry::Registry,
     id: &str,
@@ -304,83 +397,83 @@ pub(crate) fn fetch_into(
     let unavailable = |why: String| refused(503, "plugin_unavailable", why);
     let listing =
         plugin_registry::find(registry, id).map_err(|why| refused(404, "plugin_not_found", why))?;
-    let release = listing.release["id"]
-        .as_str()
-        .ok_or_else(|| not_invocable("the listing names no release"))?
-        .to_owned();
-    if release.is_empty() || !release.bytes().all(|b| b.is_ascii_hexdigit()) {
-        return Err(not_invocable("the listing's release id is malformed"));
+    let mut owned: Vec<Box<dyn Blobs>> = Vec::new();
+    for base in blossom
+        .into_iter()
+        .map(str::to_owned)
+        .chain(listing.blobs.clone())
+    {
+        let store = ext_eval::blob::Blossom::new(&base).map_err(unavailable)?;
+        owned.push(Box::new(BlossomStore::new(store, None)));
     }
-    let dir = cache.join(&release);
-    let pin_path = dir.join(".openagents-pin.json");
-    let pin: Value = match std::fs::read(&pin_path) {
-        Ok(bytes) => serde_json::from_slice(&bytes).map_err(|e| unavailable(e.to_string()))?,
-        Err(_) => {
-            let mut owned: Vec<Box<dyn Blobs>> = Vec::new();
-            for base in blossom
-                .into_iter()
-                .map(str::to_owned)
-                .chain(listing.blobs.clone())
-            {
-                let store = ext_eval::blob::Blossom::new(&base).map_err(unavailable)?;
-                owned.push(Box::new(BlossomStore::new(store, None)));
-            }
-            if let Ok(store) = ext_eval::blob::Blossom::for_relay(relay) {
-                owned.push(Box::new(BlossomStore::new(store, None)));
-            }
-            let stores: Vec<&dyn Blobs> = owned.iter().map(AsRef::as_ref).collect();
-            let staging = cache.join(format!(".fetching-{release}-{}", std::process::id()));
-            let _ = std::fs::remove_dir_all(&staging);
-            std::fs::create_dir_all(&staging).map_err(|e| unavailable(e.to_string()))?;
-            let fetched = plugin_registry::download(registry, &listing, &stores, &staging)
-                .map_err(not_invocable)?;
-            let record = Package::load(&staging.join("package.json")).map_err(not_invocable)?;
-            if record.publisher != listing.publisher {
-                let _ = std::fs::remove_dir_all(&staging);
-                return Err(not_invocable(
-                    "its package.json names another publisher than the key that signed it",
-                ));
-            }
-            let pin = json!({
-                "id": listing.package,
-                "release": release,
-                "author": listing.publisher,
-                "fee_msat": fetched.fee.as_ref().map_or(0, |fee| fee.msat),
-            });
-            std::fs::write(staging.join(".openagents-pin.json"), pin.to_string())
-                .map_err(|e| unavailable(e.to_string()))?;
-            if std::fs::rename(&staging, &dir).is_err() {
-                // Another call fetched it first; use theirs.
-                let _ = std::fs::remove_dir_all(&staging);
-            }
-            pin
+    if let Ok(store) = ext_eval::blob::Blossom::for_relay(relay) {
+        owned.push(Box::new(BlossomStore::new(store, None)));
+    }
+    let stores: Vec<&dyn Blobs> = owned.iter().map(AsRef::as_ref).collect();
+    resolve_listing(registry, &listing, &stores, cache)
+}
+
+struct CachedBlobs<'a> {
+    cache: plugin_registry::DirStore,
+    sources: &'a [&'a dyn Blobs],
+}
+impl Blobs for CachedBlobs<'_> {
+    fn put(&self, bytes: &[u8], media: &str) -> Result<(), String> {
+        self.cache.put(bytes, media)
+    }
+    fn get(&self, digest: &str) -> Result<Vec<u8>, String> {
+        if let Ok(bytes) = self.cache.get(digest) {
+            return Ok(bytes);
         }
+        for source in self.sources {
+            if let Ok(bytes) = source.get(digest) {
+                self.cache.put(&bytes, "application/octet-stream")?;
+                return Ok(bytes);
+            }
+        }
+        Err(format!("the verified blob {digest} is unavailable"))
+    }
+    fn locator(&self) -> Option<String> {
+        None
+    }
+}
+
+pub(crate) fn resolve_listing(
+    registry: &mut dyn plugin_registry::Registry,
+    listing: &plugin_registry::Listing,
+    stores: &[&dyn Blobs],
+    cache: &Path,
+) -> Result<Resolved, Unpriced> {
+    let unavailable = |why: String| refused(503, "plugin_unavailable", why);
+    std::fs::create_dir_all(cache).map_err(|e| unavailable(e.to_string()))?;
+    let staging = tempfile::Builder::new()
+        .prefix(".fetching-")
+        .tempdir_in(cache)
+        .map_err(|e| unavailable(e.to_string()))?;
+    let cached = CachedBlobs {
+        cache: plugin_registry::DirStore::new(cache.join("blobs"), None),
+        sources: stores,
     };
+    let fetched = plugin_registry::download(registry, listing, &[&cached], staging.path())
+        .map_err(not_invocable)?;
+    let record = Package::load(&staging.path().join("package.json")).map_err(not_invocable)?;
+    if record.publisher != listing.publisher {
+        return Err(not_invocable(
+            "its package.json names another publisher than the key that signed it",
+        ));
+    }
     Ok(Resolved {
-        id: pin["id"].as_str().unwrap_or(&listing.package).to_owned(),
-        release,
-        author: pin["author"]
-            .as_str()
-            .unwrap_or(&listing.publisher)
-            .to_owned(),
-        fee_msat: pin["fee_msat"].as_u64().unwrap_or(0),
-        packet: packet(&dir)?,
+        id: listing.package.clone(),
+        release: fetched.release.id,
+        author: listing.publisher.clone(),
+        fee_msat: fetched.fee.as_ref().map_or(0, |fee| fee.msat),
+        packet: packet(staging.path())?,
     })
 }
 
 impl PluginSource for RegistrySource {
     fn resolve(&self, id: &str) -> Result<Arc<Resolved>, Unpriced> {
-        if let Ok(listings) = self.listings.lock()
-            && let Some((at, resolved)) = listings.get(id)
-            && at.elapsed() < LISTING_TTL
-        {
-            return Ok(Arc::clone(resolved));
-        }
-        let resolved = Arc::new(self.fetch(id)?);
-        if let Ok(mut listings) = self.listings.lock() {
-            listings.insert(id.to_owned(), (Instant::now(), Arc::clone(&resolved)));
-        }
-        Ok(resolved)
+        Ok(Arc::new(self.fetch(id)?))
     }
 }
 
@@ -602,14 +695,26 @@ mod tests {
         receiver: Arc<FakeReceiver>,
         sink: Arc<LedgerSink>,
     ) -> Front<FileReplayStore> {
+        front_with(
+            dir,
+            receiver,
+            sink,
+            Arc::new(OnePlugin(explain_error(1_000))),
+        )
+    }
+
+    fn front_with(
+        dir: &Path,
+        receiver: Arc<FakeReceiver>,
+        sink: Arc<LedgerSink>,
+        source: Arc<dyn PluginSource>,
+    ) -> Front<FileReplayStore> {
         let spec: crate::pay::RouteFile = crate::pay::RouteFile::parse(
             "public_url = \"https://api.example.com\"\n[[route]]\nid = \"invoke\"\npath = \"/v1/plugins/{id}/invoke\"\nprice_sats = 5\nregistry = \"wss://relay.example\"\n",
             dir,
         )
         .unwrap();
-        let route: Route = spec.routes[0]
-            .route_with(|_| Arc::new(OnePlugin(explain_error(1_000))))
-            .unwrap();
+        let route: Route = spec.routes[0].route_with(|_| source).unwrap();
         assert_eq!(route.role, ROLE);
         Front::new(
             Config {
@@ -648,6 +753,15 @@ mod tests {
         serde_json::from_slice(&response.body).unwrap()
     }
 
+    fn approved(front: &Front<FileReplayStore>, target: &str, text: &str) -> String {
+        let (preview, event) = front.handle(&post(target, text, vec![]), NOW);
+        assert_eq!(preview.status, 409);
+        assert_eq!(event.outcome, "unpriced");
+        assert!(header(&preview, PAYMENT_REQUIRED).is_none());
+        let quote = json_body(&preview);
+        json!({"quote_digest":quote["quote_digest"],"request":text}).to_string()
+    }
+
     #[test]
     fn a_paid_invocation_runs_the_pinned_release_and_the_author_gets_the_fee() {
         let dir = tempfile::tempdir().unwrap();
@@ -658,9 +772,10 @@ mod tests {
         let sink = Arc::new(LedgerSink::in_memory());
         let front = front(dir.path(), receiver.clone(), sink.clone());
         let target = format!("/v1/plugins/{ID}/invoke");
+        let input = approved(&front, &target, ERROR);
 
         // No proof: a 402 for the endpoint price plus the author's fee.
-        let (challenge, event) = front.handle(&post(&target, ERROR, vec![]), NOW);
+        let (challenge, event) = front.handle(&post(&target, &input, vec![]), NOW);
         assert_eq!(
             challenge.status,
             402,
@@ -702,7 +817,7 @@ mod tests {
         })
         .unwrap();
         let (paid, event) = front.handle(
-            &post(&target, ERROR, vec![(PAYMENT_SIGNATURE.into(), signature)]),
+            &post(&target, &input, vec![(PAYMENT_SIGNATURE.into(), signature)]),
             NOW,
         );
         assert_eq!(paid.status, 200, "{}", String::from_utf8_lossy(&paid.body));
@@ -737,12 +852,14 @@ mod tests {
             assert_eq!(settled[0].release_id.as_deref(), Some(RELEASE));
             assert_eq!(settled[0].price_msat, 6_000);
             let calls = ledger.calls_since(0).unwrap();
-            assert_eq!(calls.len(), 2);
-            assert_eq!(calls[0].1.outcome, "challenged");
+            assert_eq!(calls.len(), 3);
+            assert_eq!(calls[0].1.outcome, "unpriced");
             assert!(!calls[0].1.paid);
-            assert_eq!(calls[1].1.outcome, "executed");
-            assert!(calls[1].1.paid);
-            assert_eq!(calls[1].1.release_id.as_deref(), Some(RELEASE));
+            assert_eq!(calls[1].1.outcome, "challenged");
+            assert!(!calls[1].1.paid);
+            assert_eq!(calls[2].1.outcome, "executed");
+            assert!(calls[2].1.paid);
+            assert_eq!(calls[2].1.release_id.as_deref(), Some(RELEASE));
         });
     }
 
@@ -769,7 +886,9 @@ mod tests {
 
     fn package_with(program: &Value) -> tempfile::TempDir {
         let dir = tempfile::tempdir().unwrap();
-        let text = serde_json::to_string_pretty(program).unwrap();
+        let mut program = program.clone();
+        program["definition"]["id"] = json!(format!("{AUTHOR}:openagents/demo"));
+        let text = serde_json::to_string_pretty(&program).unwrap();
         std::fs::create_dir_all(dir.path().join("programs")).unwrap();
         std::fs::write(dir.path().join("programs/demo.json"), &text).unwrap();
         let package = json!({
@@ -792,6 +911,43 @@ mod tests {
         assert_eq!(loaded.profile, plugin::Profile::SnapshotRead);
         assert_eq!(loaded.request_key.as_deref(), Some("text"));
 
+        let mut multistep = explain.clone();
+        let second = multistep["definition"]["steps"][0].clone();
+        multistep["definition"]["steps"]
+            .as_array_mut()
+            .unwrap()
+            .push(second);
+        assert_eq!(
+            packet(package_with(&multistep).path()).err().unwrap().kind,
+            "plugin_not_invocable"
+        );
+
+        let captured = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../plugins/meeting-followup");
+        assert!(
+            packet(&captured)
+                .err()
+                .unwrap()
+                .message
+                .contains("captured workspace")
+        );
+
+        let mut substituted = explain.clone();
+        substituted["definition"]["steps"][0]["target"]["artifact"]["digest"] =
+            json!(format!("sha256:{}", "1".repeat(64)));
+        let mismatch = packet(package_with(&substituted).path()).err().unwrap();
+        assert!(
+            mismatch.message.contains("Wasm digest"),
+            "{}",
+            mismatch.message
+        );
+
+        let mut bounded = explain.clone();
+        bounded["binding"]["steps"]["explain_error"]["bounds"] = json!({"fuel":1});
+        assert_eq!(
+            packet(package_with(&bounded).path()).unwrap().limits.fuel,
+            1
+        );
+
         let mut effectful = explain.clone();
         effectful["definition"]["steps"][0]["kind"] = json!("tool");
         let refusal = packet(package_with(&effectful).path()).err().unwrap();
@@ -809,6 +965,8 @@ mod tests {
             "plugin_not_invocable"
         );
     }
+
+    mod useful_release;
 
     #[test]
     fn a_registry_route_needs_an_id_segment_and_no_other_executor() {
