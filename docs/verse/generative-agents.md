@@ -1,8 +1,10 @@
 # Generative agents in Verse
 
-Status: proposed, October 6, 2026. Nothing on this page is implemented yet;
-[What we already have](#what-we-already-have) lists the code each proposal
-builds on.
+Status: in progress, October 6, 2026. The owner approved the plan, and
+[#10795](https://github.com/OpenAgentsInc/openagents/issues/10795) tracks it,
+one issue per phase. [Decisions](#decisions) records the answers to the open
+questions. [What we already have](#what-we-already-have) lists the code each
+proposal builds on.
 
 This page adapts *Generative Agents: Interactive Simulacra of Human
 Behavior* (Park, O'Brien, Cai, Morris, Liang, and Bernstein, 2023,
@@ -29,7 +31,7 @@ the measures for each step.
 - [What to skip](#what-to-skip)
 - [Ethics](#ethics)
 - [Phases and dependencies](#phases-and-dependencies)
-- [Open questions for the owner](#open-questions-for-the-owner)
+- [Decisions](#decisions)
 
 ## Summary
 
@@ -166,8 +168,9 @@ and her memory entries.
 
 - *Recency*: `0.99^hours` since the record was last carried in a briefing,
   in wall-clock hours, so a record's weight halves in about 69 hours. The
-  paper's 0.995 halves in about 138 hours; the factor is a constant the Gym
-  interviews tune (see [item 7](#7-gym-interviews)). Last access needs no
+  paper's 0.995 halves in about 138 hours. The owner chose 0.99; the factor
+  is a constant the Gym interviews can revisit (see
+  [item 7](#7-gym-interviews)). Last access needs no
   new mutable state: the journal already records which entries each
   briefing carried, and the latest such receipt is the access time.
 - *Importance*: scored once, when the record is written. Code scores the
@@ -205,8 +208,10 @@ to parse rather than a typed answer. Jev makes importance about 100 times
 cheaper.
 
 **Disclosure.** Jev and the embedding provider see screened journal text.
-That's new: today the journal leaves the host only in prompts to Alice's
-own model. See the [open questions](#open-questions-for-the-owner).
+That's new: before this, the journal left the host only in prompts to
+Alice's own model. The owner approved it on October 6, 2026, and Alice's
+[privacy and disclosure](workshop-agent.md#privacy-and-disclosure) section
+states it.
 
 **Tests and measures.**
 
@@ -367,8 +372,7 @@ Walking follows the plan. Today `AliceSpot::of` maps a studio station to one
 of three spots in the great room: the workstation, the console, and the
 lectern. The plan adds the nodes item 3 provides, such as the workshop's Merge
 station when a change waits for you, or its Library while she reads an issue.
-Whether she ever leaves the house is an [open question](#open-questions-for-the-owner):
-today her walks stay inside the great room.
+Her walks stay inside the house by default (see [Decisions](#decisions)).
 
 When something happens, she decides whether to react or continue. Code
 decides the known cases: your request always interrupts, and a standing job
@@ -543,36 +547,43 @@ Alice:
 
 ## Phases and dependencies
 
-| Phase | Items | Depends on | Agent-hours |
+The owner's scope: build the mechanics and the tools, not the populated town.
+A later workshop-style agent (working name Bob, like Alice) populates
+Everglade through the townsfolk definition format, validation, budgets, and
+owner admission that phase E1 builds. Example villagers exist only as test
+fixtures and a small demo.
+
+| Phase | Items | Issue | Depends on |
 | --- | --- | --- | --- |
-| A. Measure first | The fixture, the suite's memory category, and the baseline arm from item 7 | None | 3 |
-| B. Memory | 1, then 2, then the rest of item 7 | A | 15 |
-| C. World | The town clock and district data, then 3 | None; runs beside B | 9 |
-| D. Days | 4 | C; 2 for insights in plans | 7 |
-| E. Town | 5 | C | 12 |
-| F. Sharing | 6 | 2 | 4 |
+| A. Measure first | The fixture, the suite's memory category, and the baseline arm from item 7 | [#10785](https://github.com/OpenAgentsInc/openagents/issues/10785) | None |
+| B1. Memory | 1 | [#10787](https://github.com/OpenAgentsInc/openagents/issues/10787) | A |
+| B2. Reflection | 2 | [#10789](https://github.com/OpenAgentsInc/openagents/issues/10789) | B1 |
+| B3. Interviews | The rest of item 7 | [#10794](https://github.com/OpenAgentsInc/openagents/issues/10794) | B2, D |
+| C1. Clock and districts | The town clock, time of day, and district data | [#10786](https://github.com/OpenAgentsInc/openagents/issues/10786) | None; runs beside A and B |
+| C2. World | 3 | [#10788](https://github.com/OpenAgentsInc/openagents/issues/10788) | C1 |
+| D. Days | 4 | [#10790](https://github.com/OpenAgentsInc/openagents/issues/10790) | C2, B2 |
+| E1. Townsfolk | 5: routines, definitions, and spawn mechanics | [#10791](https://github.com/OpenAgentsInc/openagents/issues/10791) | C2 |
+| E2. Town talk | 5: rumors, memory of the player, and dialogue | [#10792](https://github.com/OpenAgentsInc/openagents/issues/10792) | E1, B1 |
+| F. Sharing | 6 | [#10793](https://github.com/OpenAgentsInc/openagents/issues/10793) | B2 |
 
-About 49 agent-hours in all, at the pace
+[#10795](https://github.com/OpenAgentsInc/openagents/issues/10795) is the
+umbrella. About 49 agent-hours in all, at the pace
 [Workshop agent](workshop-agent.md#what-exists-and-what-is-missing) states.
-Phases B and C can run in parallel. Owner checks on real computers go in
-`NEEDS_OWNER.md`.
+Owner checks on real computers go in `NEEDS_OWNER.md`.
 
-## Open questions for the owner
+## Decisions
 
-1. **Recency.** Should a record's weight halve in about three days (0.99 per
-   hour) or about six (the paper's 0.995)?
-1. **Disclosure.** Item 1 sends screened journal text to Jev and to an
-   embedding provider. Is that acceptable, or should embeddings run
-   locally?
-1. **Reflection cadence.** Nightly only, or also when a busy day passes the
-   importance threshold?
-1. **Alice outside the house.** Should her plan ever walk her into town, for
-   example to the Library, or should her walks stay inside the great room?
-1. **The town clock.** Should Everglade follow your local time, or run a
-   compressed day so routines show in a short visit?
-1. **Townsfolk talk.** Model replies with a daily cap, or fixed lines only?
-   Who pays for a stranger's conversation on the web build?
-1. **Knowledge entries.** Should Alice only draft entries for you to
-   publish, as proposed, or never draft them?
-1. **Interview judging.** Are your marks on a sample enough to calibrate the
-   judge, or do you want a panel of human raters, as the paper had?
+The owner answered the first two questions on October 6, 2026, and closed
+the rest with the defaults below. Each default is a named constant or a
+setting, so changing it later is a small edit.
+
+| Question | Decision |
+| --- | --- |
+| Recency | 0.99 per hour; a record's weight halves in about 69 hours. (Owner.) |
+| Disclosure | Jev and the embedding provider may see screened journal text. Alice's [privacy and disclosure](workshop-agent.md#privacy-and-disclosure) section states it. (Owner.) |
+| Reflection cadence | Both: nightly, and early when summed importance since the last reflection passes the threshold. |
+| Alice outside the house | Her plan may name any node she knows, but her walks stay inside the house unless an owner setting widens the bound. |
+| The town clock | A compressed town day anchored to a fixed epoch, so every device agrees and routines show in a short visit, with a wall-clock mode as a setting. |
+| Townsfolk talk | Fixed lines first. A model reply only for a player with a configured provider, under a per-player daily cap, so the owner never pays for a stranger on the web build. |
+| Knowledge entries | Alice only drafts; you publish. |
+| Interview judging | Your marks on a sample calibrate the judge. |

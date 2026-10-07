@@ -442,6 +442,13 @@ public event, an activity summary, a nameplate, or a log line, as NIP-TERM
 and NIP-WS already require. A viewer of the world sees the agent's name,
 station, and activity word ("testing"), never what it tests.
 
+Her journal and memory leave the host in two places: prompts to her own
+model, and, for [scored retrieval and reflection](generative-agents.md),
+Jev and the embedding provider, which see screened journal and memory text
+to rate importance, check insights, and compute relevance. The owner
+approved that second use on October 6, 2026. Both see text only after the
+secret screen has run.
+
 ## Authority and safety
 
 ### Charter
