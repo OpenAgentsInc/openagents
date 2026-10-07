@@ -121,6 +121,11 @@ pub enum Operation {
         funding: funding::Funding,
         paid_at: u64,
     },
+    /// Confirm and reconcile original provider backing in one durable row.
+    /// Native verification belongs to the privileged funding adapter.
+    ReconcileQuotedFunding {
+        snapshot: funding::Snapshot,
+    },
     FundingFinality {
         funding: String,
         finality: funding::Finality,
@@ -415,6 +420,19 @@ impl State {
         {
             return Err("payment already funds a workspace; retry its original source".into());
         }
+        if let Operation::ReconcileQuotedFunding { snapshot } = &mutation.operation
+            && self.accounts.iter().any(|(workspace, account)| {
+                account.funding.as_ref().is_some_and(|book| {
+                    book.funding.values().any(|record| {
+                        record.funding.payment == snapshot.funding.payment
+                            && (workspace != &mutation.workspace
+                                || record.funding.id != snapshot.funding.id)
+                    })
+                })
+            })
+        {
+            return Err("payment already funds its original workspace and quote".into());
+        }
         if let Operation::Create {
             currency: code,
             spend_limit,
@@ -512,6 +530,16 @@ impl State {
                     evidence,
                 } => {
                     let amount = funding_book(account)?.confirm(funding, *finality, evidence)?;
+                    account.credited = account
+                        .credited
+                        .checked_add(amount)
+                        .ok_or("credit overflow")?;
+                }
+                Operation::ReconcileQuotedFunding { snapshot } => {
+                    if !account.topups_allowed {
+                        return Err("purchased funding is not authorized for this account".into());
+                    }
+                    let amount = funding_book(account)?.reconcile(snapshot, at)?;
                     account.credited = account
                         .credited
                         .checked_add(amount)
@@ -978,6 +1006,11 @@ impl Ledger {
                 .as_ref()
                 .map(|book| book.quotes.values().cloned().collect())
                 .unwrap_or_default(),
+            funding_snapshots: account
+                .funding
+                .as_ref()
+                .map(|book| book.snapshots.values().cloned().collect())
+                .unwrap_or_default(),
             grants: account
                 .funding
                 .as_ref()
@@ -1123,6 +1156,7 @@ pub struct Statement {
     pub policies: Vec<funding::Policy>,
     pub funding: Vec<funding::FundingRecord>,
     pub funding_quotes: Vec<funding::AdmittedQuote>,
+    pub funding_snapshots: Vec<funding::Snapshot>,
     pub grants: Vec<funding::GrantPosition>,
     pub holds: BTreeMap<String, Hold>,
     /// Sorted by source identity; recorded times remain explicit.

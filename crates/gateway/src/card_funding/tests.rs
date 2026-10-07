@@ -122,6 +122,52 @@ async fn server(router: Router) -> (String, tokio::task::JoinHandle<()>) {
     });
     (origin, task)
 }
+
+#[test]
+fn native_dispute_references_accept_current_family_and_refuse_other_objects_and_paths() {
+    let key = secret();
+    for id in ["du_fixture", "dp_fixture"] {
+        let mut value: Value = serde_json::from_slice(&body()).unwrap();
+        value["type"] = json!("charge.dispute.funds_reinstated");
+        value["data"]["object"] = json!({"object":"dispute", "id":id});
+        let bytes = serde_json::to_vec(&value).unwrap();
+        let event = verify_webhook(
+            &bytes,
+            &sign(&bytes, &key, "100"),
+            &key,
+            100,
+            300,
+            "fixture.v1",
+            false,
+        )
+        .unwrap();
+        assert_eq!(event.object, id);
+        value["data"]["object"]["object"] = json!("charge");
+        let bytes = serde_json::to_vec(&value).unwrap();
+        assert!(
+            verify_webhook(
+                &bytes,
+                &sign(&bytes, &key, "100"),
+                &key,
+                100,
+                300,
+                "fixture.v1",
+                false,
+            )
+            .is_err()
+        );
+    }
+    for id in [
+        "du_",
+        "du_a/../other",
+        "du_a?token",
+        "du_a\n",
+        "du_é",
+        "ch_other",
+    ] {
+        assert!(identifier(id, "dp_").is_err());
+    }
+}
 #[tokio::test]
 async fn actual_native_api_checks_account_identity_bounds_and_never_follows_redirects() {
     let count = Arc::new(AtomicUsize::new(0));
@@ -157,6 +203,14 @@ async fn actual_native_api_checks_account_identity_bounds_and_never_follows_redi
         .route(
             "/v1/charges/ch_large",
             get(|| async { vec![b' '; MAX_BODY + 1] }),
+        )
+        .route(
+            "/v1/disputes/du_fixture",
+            get(|| async { axum::Json(json!({"object":"dispute", "id":"du_fixture"})) }),
+        )
+        .route(
+            "/v1/disputes/du_wrong",
+            get(|| async { axum::Json(json!({"object":"dispute", "id":"du_other"})) }),
         );
     let (origin, task) = server(router).await;
     let key = secret()
@@ -170,6 +224,8 @@ async fn actual_native_api_checks_account_identity_bounds_and_never_follows_redi
     assert!(client.get("charges", "ch_wrong").await.is_err());
     assert!(client.get("charges", "ch_redirect").await.is_err());
     assert!(client.get("charges", "ch_large").await.is_err());
+    assert!(client.get("disputes", "du_fixture").await.is_ok());
+    assert!(client.get("disputes", "du_wrong").await.is_err());
     assert!(client.get("../other", "ch_wrong").await.is_err());
     assert_eq!(count.load(Ordering::SeqCst), 0);
     task.abort();

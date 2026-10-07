@@ -25,6 +25,13 @@ fn refusal() -> String {
 }
 
 fn identifier(value: &str, prefix: &str) -> Result<String, String> {
+    // Current native dispute objects use du_; retain the earlier dp_ family.
+    // Both still require the exact authenticated dispute object and reference.
+    let prefix = if prefix == "dp_" && value.starts_with("du_") {
+        "du_"
+    } else {
+        prefix
+    };
     let suffix = value.strip_prefix(prefix).ok_or_else(refusal)?;
     if suffix.is_empty()
         || value.len() > 128
