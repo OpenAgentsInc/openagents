@@ -314,31 +314,70 @@ choose **Merge**, **Request changes**, or **Reject**. Merging lands locally;
 pushing and opening a pull request are separate steps you approve at the
 podium, and the push runs from your identity, never the agent's.
 
-### Terminal mode: a turn of her Coder session
+### Terminal mode: she steers Coder
 
 Some work is a terminal session: run the tests and say what fails, read the
-log, check disk space. The host runs the request as one turn of Coder V1 in
-her own session (`openagents coder chat --json --approvals stdin --session
-agent-alice`), in her workspace or the host workspace the request names.
+log, check disk space. The request is hers, and Coder is her tool
+([`coder::task::agent_steer`](../../crates/coder/src/task/agent_steer.rs),
+#10800). She works in her workspace or the host workspace the request names:
 
-- **Coder does the work.** Coder V1 chooses its provider (the Codex login,
-  then Claude Code's, then the OpenAgents Gateway), plans, and runs commands
-  through its Microcoder plugin, which writes only the working directory and
-  its own scratch.
+1. **Recall.** Her `core` engram and the scored briefing, with a receipt in
+   her journal. When her engram store can't be read, she carries nothing,
+   writes nothing, and says so in her report.
+2. **Plan.** One structured call to her own model, on the first provider
+   with capacity, from her definition (name and charter), the request, what
+   she recalled, the working directory, and her policy: what she
+   understands, whether she can answer directly, up to six steps (a prompt
+   for Coder and what shows it is done), and one check. A question she can
+   answer from memory never reaches Coder.
+3. **Prompt Coder.** Each step is a plain prompt to Coder V1 in her Coder
+   session (`openagents coder chat --json --approvals stdin --session
+   alice-coder`), with no instructions, so nothing there says who she is.
+   A step that asks to push, publish, pay, install software, or read
+   credentials is refused before Coder sees it.
+4. **Judge.** After each Coder turn, Jev answers
+   [`questions/agent-steer.json`](../../questions/agent-steer.json) over the
+   step, the commands Coder ran with their exit statuses, and its reply:
+   whether the step is done, whether the reply claims what the commands
+   don't show, and her next move. The thresholds are provisional named
+   constants until a measurement calibrates them. Without Jev, a rule over
+   exit statuses and the reply judges, and her journal says so.
+5. **Follow up.** She corrects a failure, asks Coder to keep going, or asks
+   it to show its evidence, at most three times a step and eight times a
+   request, then runs the plan's check. A rejected command ends the
+   request; she never works around it.
+6. **Report.** One more call writes her reply in at most three sentences
+   from the plan, the judgments, and what ran. The headline comes from
+   host state. A request makes at most 16 model calls.
+
+- **Coder does the commands.** Coder V1 chooses its provider and runs
+  commands through its Microcoder plugin, which writes only the working
+  directory and its own scratch.
 - **Effect class first.** With `--approvals stdin`, Coder classifies each
   command with the workshop agent's effect classes before it runs
   ([`coder::task::agent::effect`](../../crates/coder/src/task/agent.rs)).
   Read-only commands run; the deny list in
   [`crates/coder/src/shell.rs`](../../crates/coder/src/shell.rs) refuses
-  the ones that end a machine; anything else is an `approval` event, which
-  the host holds as her proposal for your CONFIRM or REJECT and answers on
-  Coder's standard input.
+  the ones that end a machine; anything else is an `approval` event.
+- **Her policy answers routine approvals.** Her policy, in
+  `agents/NAME/policy.json` (`openagents.agent-policy.v1`), lists rules of
+  a tool, a command prefix, and a directory: `workspace`, `worktree`,
+  `scratch`, or an absolute path. Without the file, the defaults confirm
+  any command that stays in the studio worktrees or in the system's
+  temporary directory, and `cargo fmt` in her working directory. She
+  answers no to push, publish, pay, install, and credential reads. Every
+  other approval is her proposal for your CONFIRM or REJECT at the
+  lectern. You edit the file; she never does.
+- **Her panel is your conversation.** It shows your request, her status
+  lines ("asking Coder to run the atif tests"), her judgments in plain
+  words, her escalations, and her report. Her journal keeps the plan, each
+  prompt, each judgment, and the report.
 - **Her pane is Coder's terminal.** With a typist, the asking device's pane
-  runs `coder --follow agent-alice`, which shows the session as Coder saves
-  it while it works. Any key you press there takes it over: Verse tells the
-  host, the host interrupts her turn, Coder saves the session, and the
-  terminal in her pane takes the session's lease, so you type into the same
-  conversation. The plain terminal stays a pane you open yourself.
+  runs `coder --follow alice-coder`, where her prompts are the user turns.
+  Any key you press there takes it over: Verse tells the host, the host
+  interrupts her turn, Coder saves the session, and the terminal in her
+  pane takes the session's lease, so you type into the same conversation.
+  She takes it back before her next prompt.
 - **Output is untrusted.** Command output, issue text, and file contents are
   data. Instructions in them are never followed as instructions.
 
@@ -360,7 +399,7 @@ places:
 ### Coder V1 as her engine
 
 Every coding agent in Verse runs its work through Coder V1 (#10752, #10753,
-#10754): Alice's terminal-mode requests as turns of her session, and her task
+#10754): Alice's terminal-mode prompts as turns of her Coder session, and her task
 mode and every Agent Studio seat as turns of a per-task session
 (`task-ID`), through the route engine `coder`
 ([Agent Studio](agent-studio.md#engine-neutrality)). The host's side is
@@ -371,20 +410,23 @@ mode and every Agent Studio seat as turns of a per-task session
 | `entry` with a running `Run` tool | Her nameplate: running, or testing for a test command; her walk to the console. |
 | `entry` with a finished `Run` tool | A `ran` journal row with the exit status; `refused` when the deny list refused it. |
 | `approval` | Her proposal at the lectern; `proposed`, then `confirmed` or `rejected` in her journal. |
-| The result line | Her report: Coder's reply as plain ASCII, with a headline from what ran. |
+| The result line | Coder's reply, which she judges; her report comes from her own call. |
 
 Her sessions live in the Coder store, `~/.openagents/coder-new/sessions/`,
 so your own Coder lists them under `/resume`, and `coder --follow
-agent-alice` watches her from any terminal on the host. `openagents coder
-sessions read agent-alice` and `openagents coder export agent-alice` read
-and export the ATIF transcript. Her journal, memory, and reports stay the
+alice-coder` watches her from any terminal on the host. `openagents coder
+sessions read alice-coder` and `openagents coder export alice-coder` read
+and export the ATIF transcript. Her earlier session, `agent-alice`, keeps
+its saved instructions and stays readable; no new turn goes there. Her journal, memory, and reports stay the
 host's, fed from Coder's events.
 
 The host finds `openagents` beside its own program or on `PATH`
 (`OPENAGENTS_CODER_CLI` overrides it), and Coder's terminal as `coder-new`
 or an installed `coder` that has `--follow` (`OPENAGENTS_CODER_TUI`
-overrides it). `OPENAGENTS_AGENT_SCRIPT` names a recorded turn, a JSON list
-of Coder events, for an offline demo or capture.
+overrides it). `OPENAGENTS_AGENT_SCRIPT` names a recording for an offline
+demo or capture: a JSON list of Coder events every prompt plays, with the
+request relayed as one step, or a whole request (`plan`, one Coder turn per
+prompt in `turns`, `judgments`, and `report`).
 
 ## Persistence
 

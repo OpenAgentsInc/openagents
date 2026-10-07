@@ -172,6 +172,11 @@ pub enum Kind {
     Memory,
     /// A standing job's occurrence, or its refusal.
     Job,
+    /// A prompt she gave Coder, screened.
+    Prompt,
+    /// Her judgment of a Coder turn: Jev's answers, or the rule's when
+    /// Jev isn't set up, and the move she chose.
+    Judgment,
 }
 
 /// One journal line (`openagents.agent-journal-entry.v1`).

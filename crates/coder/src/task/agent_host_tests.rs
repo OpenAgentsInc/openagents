@@ -174,7 +174,7 @@ fn her_pane_follows_her_coder_session_and_a_key_takes_it_over() {
     let step = seen.run.unwrap();
     assert!(step.typist);
     let pane = step.coder.expect("a Coder pane");
-    assert_eq!(pane.session, "agent-alice");
+    assert_eq!(pane.session, "alice-coder");
     assert!(step.command.starts_with("Coder V1 session"));
     let took = |step: u64| Operation::AgentRan {
         agent: "alice".into(),
@@ -563,9 +563,9 @@ fn a_terminal_briefing_carries_scored_journal_rows_and_records_them() {
 fn pane_holding(dir: &tempfile::TempDir, busy: Option<Duration>) -> std::thread::JoinHandle<()> {
     let state = dir.path().join("coder");
     std::fs::create_dir_all(state.join("sessions")).unwrap();
-    let lock = std::fs::File::create(coder_v1::lock_path(&state, "agent-alice")).unwrap();
+    let lock = std::fs::File::create(coder_v1::lock_path(&state, "alice-coder")).unwrap();
     lock.try_lock().unwrap();
-    let marker = coder_v1::reclaim_path(&state, "agent-alice");
+    let marker = coder_v1::reclaim_path(&state, "alice-coder");
     std::thread::spawn(move || {
         let start = Instant::now();
         while !marker.exists() {
@@ -601,7 +601,7 @@ fn she_takes_her_session_back_from_her_pane_and_answers() {
             .iter()
             .any(|l| l.contains("I'm reading the repository."))
     );
-    let marker = coder_v1::reclaim_path(&dir.path().join("coder"), "agent-alice");
+    let marker = coder_v1::reclaim_path(&dir.path().join("coder"), "alice-coder");
     assert!(!marker.exists());
     for line in spoken(&seen) {
         assert_eq!(agent::instructs(line), None, "{line}");

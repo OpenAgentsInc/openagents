@@ -36,6 +36,7 @@ pub mod agent_memory;
 pub mod agent_place;
 pub mod agent_recall;
 pub mod agent_reflect;
+pub mod agent_steer;
 pub mod archive;
 pub mod artifact;
 pub mod autostart;

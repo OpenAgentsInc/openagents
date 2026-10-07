@@ -38,10 +38,8 @@ const CANCEL_GRACE: Duration = Duration::from_secs(10);
 /// The most bytes of a failed turn's standard error the host keeps.
 const STDERR_TAIL: usize = 4096;
 
-/// The session an agent's turns share: `agent-NAME`.
-#[must_use]
-pub fn session_for(agent: &str) -> String {
-    let name: String = agent
+fn session_name(agent: &str) -> String {
+    agent
         .chars()
         .map(|c| {
             if c.is_ascii_alphanumeric() || c == '-' || c == '_' {
@@ -51,8 +49,23 @@ pub fn session_for(agent: &str) -> String {
             }
         })
         .take(100)
-        .collect();
-    format!("agent-{name}")
+        .collect()
+}
+
+/// The session an agent's turns shared before she steered Coder:
+/// `agent-NAME`, whose saved instructions carry her persona. It stays
+/// readable, and `/resume` still lists it; no new turn goes there.
+#[must_use]
+pub fn session_for(agent: &str) -> String {
+    format!("agent-{}", session_name(agent))
+}
+
+/// The plain Coder session an agent steers: `NAME-coder`. Her prompts are
+/// its user turns, and it carries no instructions, so nothing in it says
+/// who she is.
+#[must_use]
+pub fn coder_session_for(agent: &str) -> String {
+    format!("{}-coder", session_name(agent))
 }
 
 /// The Coder store the host's turns use: `~/.openagents/coder-new`, the
@@ -717,6 +730,40 @@ impl Engine for Scripted {
     }
 }
 
+/// A stand-in that plays one recorded turn per prompt, in order, and
+/// keeps every turn it was given where a test can read them. After the
+/// last recorded turn it answers `Done.` with nothing run.
+#[derive(Clone, Debug, Default)]
+pub struct Sequence {
+    pub turns: std::collections::VecDeque<Scripted>,
+    pub given: std::sync::Arc<std::sync::Mutex<Vec<Turn>>>,
+}
+
+impl Sequence {
+    #[must_use]
+    pub fn new(turns: Vec<Scripted>) -> Self {
+        Self {
+            turns: turns.into(),
+            given: std::sync::Arc::default(),
+        }
+    }
+}
+
+impl Engine for Sequence {
+    fn turn(
+        &mut self,
+        turn: &Turn,
+        cancel: &AtomicBool,
+        hear: &mut dyn FnMut(&Event) -> Option<bool>,
+    ) -> Ended {
+        if let Ok(mut given) = self.given.lock() {
+            given.push(turn.clone());
+        }
+        let mut next = self.turns.pop_front().unwrap_or_default();
+        next.turn(turn, cancel, hear)
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -756,6 +803,8 @@ mod tests {
     fn an_agents_session_is_a_valid_coder_session_id() {
         assert_eq!(session_for("alice"), "agent-alice");
         assert_eq!(session_for("a b/c"), "agent-a-b-c");
+        assert_eq!(coder_session_for("alice"), "alice-coder");
+        assert_eq!(coder_session_for("a b/c"), "a-b-c-coder");
     }
 
     #[cfg(unix)]

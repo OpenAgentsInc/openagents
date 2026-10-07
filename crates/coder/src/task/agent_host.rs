@@ -4,12 +4,13 @@
 //!
 //! [`Agents`] answers the `studio.agent.*` NIP-HOST operations
 //! (`coder_access::agent`). A request becomes a run on a worker thread of
-//! the host's own, and the run is a turn of Coder V1 (#10753,
-//! [`super::coder_v1`]): `openagents coder chat --json --approvals stdin`
-//! in her own durable session, `agent-NAME`. Coder plans and runs the
-//! work; the gate gives each command its effect class before it runs, and
-//! anything that is not read-only waits for the owner's CONFIRM or REJECT,
-//! which the host writes back to Coder. The host journals every command,
+//! the host's own. In terminal mode she steers Coder V1 (#10800,
+//! [`super::agent_steer`]): she plans, prompts plain Coder (`openagents
+//! coder chat --json --approvals stdin`) in her Coder session,
+//! `NAME-coder`, judges each turn, follows up, and reports. The gate gives
+//! each command its effect class before it runs; her policy confirms
+//! routine approvals, and the rest wait for the owner's CONFIRM or
+//! REJECT, which the host writes back to Coder. The host journals every command,
 //! proposal, answer, and the report from Coder's events. With a typist,
 //! the asking device's pane runs Coder's own terminal following her
 //! session (`studio.agent.list`'s run step names it), and a key the owner
@@ -243,6 +244,8 @@ pub struct Agents {
     reflecting: Arc<Mutex<BTreeSet<String>>>,
     /// The agents whose engram stores this host has reconciled.
     reconciled: Arc<Mutex<BTreeSet<String>>>,
+    /// What she plans, judges, and reports with in terminal mode.
+    mind: super::agent_steer::MindFactory,
 }
 
 impl std::fmt::Debug for Agents {
@@ -264,14 +267,20 @@ fn unix_now() -> u64 {
 pub fn default_engine() -> EngineFactory {
     Arc::new(|_record: &Record| {
         if let Some(path) = std::env::var_os(SCRIPT_VAR).filter(|p| !p.is_empty()) {
-            let text = std::fs::read_to_string(&path)
-                .map_err(|e| format!("cannot read {}: {e}", Path::new(&path).display()))?;
-            let events: Vec<CoderEvent> =
-                serde_json::from_str(&text).map_err(|e| format!("{SCRIPT_VAR}: {e}"))?;
-            let engine: Box<dyn coder_v1::Engine> = Box::new(coder_v1::Scripted {
-                events,
-                ..coder_v1::Scripted::default()
-            });
+            let engine: Box<dyn coder_v1::Engine> =
+                match super::agent_steer::read_script(Path::new(&path))
+                    .map_err(|e| format!("{SCRIPT_VAR}: {e}"))?
+                {
+                    super::agent_steer::Script::Events(events) => Box::new(coder_v1::Scripted {
+                        events,
+                        ..coder_v1::Scripted::default()
+                    }),
+                    super::agent_steer::Script::Recording(recording) => {
+                        Box::new(coder_v1::Sequence::new(
+                            recording.turns.iter().map(|t| t.scripted()).collect(),
+                        ))
+                    }
+                };
             return Ok((engine, "Coder V1 (recorded)".into()));
         }
         let cli = coder_v1::Cli::found()?;
@@ -307,7 +316,16 @@ impl Agents {
             reflector: super::agent_reflect::default_factory(),
             reflecting: Arc::new(Mutex::new(BTreeSet::new())),
             reconciled: Arc::default(),
+            mind: super::agent_steer::default_mind(),
         }
+    }
+
+    /// Plan, judge, and report with the minds `mind` makes instead of her
+    /// live model and Jev, as a test does.
+    #[must_use]
+    pub fn with_mind(mut self, mind: super::agent_steer::MindFactory) -> Self {
+        self.mind = mind;
+        self
     }
 
     /// Reflect with the services `reflector` makes instead of the live

@@ -889,6 +889,7 @@ mod tests {
         assert_eq!(
             registry.ids(),
             [
+                "openagents.agent-steer.v1",
                 "openagents.completion.v1",
                 "openagents.departure-docstring.v1",
                 "openagents.departure-rationale.v1",

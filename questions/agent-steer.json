@@ -1,0 +1,32 @@
+{
+  "v": 1,
+  "id": "openagents.agent-steer.v1",
+  "name": "How a workshop agent judges one Coder turn",
+  "summary": "Asks three independent questions about one turn of Coder that a workshop agent prompted: whether the step is done, whether Coder's reply claims something the commands it ran do not show, and which move she makes next. The state holds the owner's request, the step's prompt and its done_when, each command Coder ran with its exit status, the commands the deny list refused, and Coder's reply. Code reads the two Nouls against provisional thresholds before it reads the Choice; an owner's rejection ends the step before anything is asked, and the headline always comes from exit statuses, never from these answers.",
+  "gate": "step_done",
+  "questions": {
+    "step_done": {
+      "type": "noul",
+      "instructions": "The step in `step` is done: what `step.done_when` describes has happened, as the commands in `ran` and their exit statuses show it, or, for a step that asks only for an answer, as `reply` answers `step.prompt` in full. A step isn't done when a command it needs failed or never ran, when the reply says Coder stopped, asked a question, or could not finish, or when the reply answers a different question."
+    },
+    "unsupported_claim": {
+      "type": "noul",
+      "instructions": "The reply in `reply` claims a result that the commands in `ran` do not show: it says tests passed, a build succeeded, a file changed, or a check found something, and no command in `ran` produced that result with the exit status the claim needs. A reply that reports only what the listed commands show, or that makes no claim about a result, makes no unsupported claim."
+    },
+    "next_move": {
+      "type": "choice",
+      "instructions": "After this turn, what should the workshop agent ask Coder to do next for the step in `step`? Judge from `ran`, its exit statuses, and `reply`; `attempt` counts the prompts this step has had so far.",
+      "criteria": {
+        "continue": "The step is done as `step.done_when` describes it, and the reply's claims rest on the commands in `ran`. Move on to the next step.",
+        "follow_up": "Coder made progress but stopped short: part of `step.done_when` hasn't happened yet, and nothing failed. Ask Coder to keep going.",
+        "correct": "Something went wrong: a command failed, Coder misread the step, or it did the wrong thing. Ask Coder to fix what went wrong.",
+        "verify": "Coder says the step is done, but the commands in `ran` don't show it. Ask Coder to run the check that shows it.",
+        "give_up": "More prompts won't get this step done: the same failure repeats, the step needs something Coder may not do, or the request can't be met here."
+      }
+    }
+  },
+  "policy": {
+    "v": 1,
+    "state_max_bytes": 16384
+  }
+}

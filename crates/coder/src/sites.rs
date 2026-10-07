@@ -692,6 +692,7 @@ mod tests {
                 .map(|set| set.id.as_str())
                 .collect::<Vec<_>>(),
             [
+                "openagents.agent-steer.v1",
                 "openagents.completion.v1",
                 "openagents.departure-docstring.v1",
                 "openagents.departure-rationale.v1",
@@ -721,8 +722,9 @@ mod tests {
         // `evidence.departures` and `accept.grade`, which compile them in,
         // as is the method-conformance set by `verify.method_conformance`,
         // the memory-importance set by the workshop agent's briefing,
-        // the insight-support set by her reflection, and the world-place
-        // set by her plans' place choice.
+        // the insight-support set by her reflection, the world-place
+        // set by her plans' place choice, and the agent-steer set by her
+        // steering loop.
         // The inventory says so rather than letting a run find out at
         // admission.
         let unbound = |set: &str| Problem::UnboundSet {
@@ -731,6 +733,7 @@ mod tests {
         assert_eq!(
             inventory.problems(),
             [
+                unbound("openagents.agent-steer.v1"),
                 unbound("openagents.departure-docstring.v1"),
                 unbound("openagents.departure-rationale.v1"),
                 unbound("openagents.departure-standard-method.v1"),
