@@ -100,6 +100,9 @@
         # The camera daemon that owns the camera node and publishes hand
         # landmarks for the compositor.
         coderos-camera = pkgs.callPackage ./pkgs/coderos-camera.nix { };
+        # Paper Mono, the typeface the desktop installs and fontconfig's
+        # default for every generic family.
+        paper-mono = pkgs.callPackage ./pkgs/paper-mono.nix { };
       };
 
       # A host with only the base module, and a host with every capability

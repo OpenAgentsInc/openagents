@@ -36,6 +36,10 @@ let
   # and the desktop theme use. It replaced the amber ladder on 2026-09-30.
   # The copies here are copies because a Nix file cannot read a Rust
   # constant, and they match the console palette `default.nix` sets.
+  # Paper Mono, the one typeface every OpenAgents surface uses, from the
+  # files committed under `assets/fonts/paper-mono/`.
+  paperMono = pkgs.callPackage ../../pkgs/paper-mono.nix { };
+
   white = "ffffff";
   white25 = "4a4a4a";
   white50 = "8a8a8a";
@@ -96,7 +100,7 @@ let
     border-color=#${white}
     border-size=1
     border-radius=0
-    font=Cascadia Mono 12
+    font=Paper Mono 12
   '';
 
   # What the session opens at every login: the host's `start` list, then
@@ -221,17 +225,16 @@ let
   };
 
   # What `coder-pane` reads: the palette, the font, and the size. The font
-  # covers the braille block, U+2800 to U+28FF, or Coder's spinner draws as
-  # replacement glyphs; of the eleven packages measured on the pinned
-  # nixpkgs, Cascadia Mono, Iosevka Fixed, and Terminus cover it as
-  # monospace, and Cascadia Mono is the one `fonts.packages` below installs.
-  # A host that wants another face or size writes its own file and names it
+  # is Paper Mono, the one `fonts.packages` below installs. Paper Mono has
+  # no braille block, U+2800 to U+28FF, which Coder's spinner draws in;
+  # foot draws that block itself rather than from the font, as it does box
+  # drawing. A host that wants another size writes its own file and names it
   # in `CODER_PANE_TERMINAL_CONFIG`.
   footConf = ''
     # The terminal coder-pane opens on a CoderOS host.
     # os/modules/coderos/desktop.nix writes this file.
 
-    font=Cascadia Mono:size=14
+    font=Paper Mono:size=14
     pad=8x8
 
     # Coder draws one palette on one background, so foot's two themes are
@@ -1010,13 +1013,15 @@ in
       ++ lib.optionals (runsCoderCompositor && cfg.compositorSessionPackage != null) [ cfg.compositorSessionPackage ]
       ++ lib.optionals (runsCoderCompositor && cfg.compositorBinary == null && cfg.compositorPackage != null) [ cfg.compositorPackage ];
 
-    # Coder draws its spinner in the braille block, U+2800 to U+28FF, and
-    # most monospace families do not cover it. Of the eleven packages
-    # measured on the pinned nixpkgs, Cascadia Mono, Iosevka Fixed, and
-    # Terminus are the three that do as monospace. Run
-    # `fc-list ':charset=2800-28ff:spacing=100' family` to list the ones a
-    # machine has.
-    fonts.packages = [ pkgs.cascadia-code ];
+    # Paper Mono is the one typeface CoderOS draws: the only font package
+    # the desktop installs, and fontconfig's default for every generic
+    # family, so a program that asks for sans or serif gets it too.
+    fonts.packages = [ paperMono ];
+    fonts.fontconfig.defaultFonts = {
+      monospace = [ "Paper Mono" ];
+      sansSerif = [ "Paper Mono" ];
+      serif = [ "Paper Mono" ];
+    };
 
     # What `os/bin/coder-pane` reads. The client is a command name rather
     # than a package for the reason `coderos.desktop.command` is.

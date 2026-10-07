@@ -64,7 +64,7 @@ done
 # host has `/etc/coderos/foot.ini`, so every run names one or the other
 # rather than reading the host's.
 palette="$scratch/foot.ini"
-printf 'font=Cascadia Mono:size=14\n' > "$palette"
+printf 'font=Paper Mono:size=14\n' > "$palette"
 no_palette="$scratch/absent/foot.ini"
 
 # One run of the script on a host that wrote no palette file.
