@@ -562,11 +562,27 @@ fn spells(
                 run(runtime, 2.0);
             }
         }
+        // `VERSE_SPELL_VIDEO=NAME` records that spell's cast as frames at 30
+        // a second into `OUT_DIR/spells/NAME-video/` instead of one still.
+        let video = std::env::var("VERSE_SPELL_VIDEO").is_ok_and(|v| v == name);
         let line = runtime
             .water_lab_mut()
             .map(|lab| lab.cast_demo(spell, caster, Vec3::NEG_Z))
             .unwrap_or_default();
         eprintln!("{line}");
+        if video {
+            let frames = dir.join(format!("{name}-video"));
+            std::fs::create_dir_all(&frames).map_err(|e| e.to_string())?;
+            let (eye, target) = (Vec3::new(17.0, 9.0, 9.0), Vec3::new(2.0, 0.0, -10.0));
+            for i in 0..150 {
+                for _ in 0..2 {
+                    runtime.tick(&idle, 1.0 / 60.0);
+                }
+                shoot(runtime, &format!("{name}-video/{i:04}"), eye, target)?;
+            }
+            eprintln!("wrote {}", frames.display());
+            continue;
+        }
         wait = match spell {
             water::Demo::Freeze(_) if name == "storm-of-vengeance" => 26.0,
             water::Demo::GustOfWind => 4.0,
