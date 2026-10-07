@@ -6841,6 +6841,151 @@
           }
         },
         {
+          "name": "privacy",
+          "children": [
+            {
+              "name": "view",
+              "leaf": {
+                "path": [
+                  "sales",
+                  "privacy",
+                  "view"
+                ],
+                "usage": [
+                  "privacy view"
+                ],
+                "forms": [
+                  {
+                    "tokens": [
+                      {
+                        "kind": "literal",
+                        "word": "privacy"
+                      },
+                      {
+                        "kind": "literal",
+                        "word": "view"
+                      }
+                    ]
+                  }
+                ],
+                "summary": "Read owner-only policy, opaque suppression, and native copy cleanup.",
+                "effect": "read_only",
+                "runs_on": "connected_computer"
+              }
+            },
+            {
+              "name": "apply",
+              "leaf": {
+                "path": [
+                  "sales",
+                  "privacy",
+                  "apply"
+                ],
+                "usage": [
+                  "privacy apply --input FILE"
+                ],
+                "forms": [
+                  {
+                    "tokens": [
+                      {
+                        "kind": "literal",
+                        "word": "privacy"
+                      },
+                      {
+                        "kind": "literal",
+                        "word": "apply"
+                      },
+                      {
+                        "kind": "option",
+                        "name": "input",
+                        "value": "FILE",
+                        "open": true
+                      }
+                    ]
+                  }
+                ],
+                "summary": "Record owner business admission or immediate human opt-out.",
+                "effect": "grants",
+                "runs_on": "connected_computer"
+              }
+            },
+            {
+              "name": "check",
+              "leaf": {
+                "path": [
+                  "sales",
+                  "privacy",
+                  "check"
+                ],
+                "usage": [
+                  "privacy check --lead LEAD --channel email"
+                ],
+                "forms": [
+                  {
+                    "tokens": [
+                      {
+                        "kind": "literal",
+                        "word": "privacy"
+                      },
+                      {
+                        "kind": "literal",
+                        "word": "check"
+                      },
+                      {
+                        "kind": "option",
+                        "name": "lead",
+                        "value": "LEAD",
+                        "open": true
+                      },
+                      {
+                        "kind": "option",
+                        "name": "channel",
+                        "value": "email",
+                        "choices": [
+                          "email"
+                        ]
+                      }
+                    ]
+                  }
+                ],
+                "summary": "Check current contact admission; grants no outbound authority.",
+                "effect": "read_only",
+                "runs_on": "connected_computer"
+              }
+            },
+            {
+              "name": "prune",
+              "leaf": {
+                "path": [
+                  "sales",
+                  "privacy",
+                  "prune"
+                ],
+                "usage": [
+                  "privacy prune"
+                ],
+                "forms": [
+                  {
+                    "tokens": [
+                      {
+                        "kind": "literal",
+                        "word": "privacy"
+                      },
+                      {
+                        "kind": "literal",
+                        "word": "prune"
+                      }
+                    ]
+                  }
+                ],
+                "summary": "Apply due native retention and registered copy cleanup.",
+                "effect": "local_write",
+                "runs_on": "connected_computer"
+              }
+            }
+          ]
+        },
+        {
           "name": "agents",
           "children": [
             {
@@ -7603,6 +7748,12 @@
           "name": "contact",
           "value": "CHANNEL:ADDRESS",
           "open": true,
+          "optional": true,
+          "repeated": true
+        },
+        {
+          "kind": "option",
+          "name": "channel",
           "optional": true,
           "repeated": true
         },
