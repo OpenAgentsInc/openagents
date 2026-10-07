@@ -12,6 +12,8 @@ use super::{Price, currency, identity};
 
 mod quotes;
 pub use quotes::{AdmittedQuote, Quote};
+mod snapshots;
+pub use snapshots::Snapshot;
 
 pub const POLICY_SCHEMA: &str = "openagents.money.funding-policy.v1";
 
@@ -360,6 +362,7 @@ pub(super) struct Book {
     pub funding: BTreeMap<String, FundingRecord>,
     pub lots: BTreeMap<String, Lot>,
     pub quotes: BTreeMap<String, AdmittedQuote>,
+    pub snapshots: BTreeMap<String, Snapshot>,
 }
 
 fn add(total: &mut u64, amount: u64) -> Result<(), String> {
@@ -447,6 +450,18 @@ impl Book {
     }
 
     pub fn confirm(&mut self, id: &str, finality: Finality, evidence: &str) -> Result<u64, String> {
+        if self.snapshots.contains_key(id) {
+            return Err("provider funding must use its original snapshot reconciliation".into());
+        }
+        self.confirm_admitted(id, finality, evidence)
+    }
+
+    fn confirm_admitted(
+        &mut self,
+        id: &str,
+        finality: Finality,
+        evidence: &str,
+    ) -> Result<u64, String> {
         identity(evidence)?;
         let record = self.funding.get_mut(id).ok_or("funding is missing")?;
         if finality < record.finality {
@@ -532,6 +547,9 @@ impl Book {
         units: u64,
         reason: Reversal,
     ) -> Result<(), String> {
+        if self.snapshots.contains_key(id) {
+            return Err("provider funding must use its original snapshot reconciliation".into());
+        }
         let record = self.funding.get_mut(id).ok_or("funding is missing")?;
         let terms = &self.policies[&record.funding.policy].purchases;
         let allowed = match reason {
@@ -551,6 +569,11 @@ impl Book {
                     .into(),
             );
         }
+        self.set_reversed_source(id, cumulative)
+    }
+
+    fn set_reversed_source(&mut self, id: &str, cumulative: u64) -> Result<(), String> {
+        let record = self.funding.get_mut(id).ok_or("funding is missing")?;
         // Credit must fit the remaining backing after every partial reversal.
         // Flooring the refunded value alone could leave one unsupported unit.
         // Compute from the original quote so splitting cannot change rounding.
@@ -562,10 +585,12 @@ impl Book {
             .checked_sub(remaining_credit)
             .ok_or("funding reversal exceeds its original credit")?;
         let (_, reversal_remainder) = record.conversion.amount(cumulative)?;
-        self.lots
-            .get_mut(id)
-            .ok_or("funding credit is missing")?
-            .reversed = credit;
+        if record.credited {
+            self.lots
+                .get_mut(id)
+                .ok_or("funding credit is missing")?
+                .reversed = credit;
+        }
         record.reversed_source_units = cumulative;
         record.reversed_credit = credit;
         record.reversal_remainder = reversal_remainder;
@@ -596,6 +621,13 @@ impl Book {
     }
 
     fn eligible(&self, lot: &Lot, at: u64, price: Option<&Price>) -> bool {
+        if self
+            .snapshots
+            .get(&lot.id)
+            .is_some_and(|snapshot| snapshot.reconciliation_pending)
+        {
+            return false;
+        }
         if lot.expires_at.is_some_and(|expiry| at >= expiry) {
             return false;
         }
