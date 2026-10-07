@@ -4,8 +4,9 @@ This document records OpenAgents' public history with one idea: anyone can
 sell a computer's spare capacity for bitcoin, and buyers, including agents,
 pay the providers over Lightning. It covers GPUtopia, the OpenAgents compute
 network, Pylon, the compute market, and the revenue splits built around them.
-Every claim links to a post on X, a retained transcript, or a file in this
-repository.
+Every claim links to a post on X, a retained transcript, a file in this
+repository, or a commit in an OpenAgentsInc repository. [The code](#the-code)
+is the commit index.
 
 ## Summary
 
@@ -57,6 +58,7 @@ repository.
 - [Posts from @OpenAgentsInc](#posts-from-openagentsinc)
 - [Posts from the founder's account](#posts-from-the-founders-account)
 - [Episodes in the transcript archive](#episodes-in-the-transcript-archive)
+- [The code](#the-code)
 - [Where it lives today](#where-it-lives-today)
 - [Sources and method](#sources-and-method)
 - [Appendix: every GPUtopia-handle post](#appendix-every-gputopia-handle-post)
@@ -570,10 +572,155 @@ Earliest mentions in the archive:
 - **"Sell your spare compute for Bitcoin" as the stated product:**
   [174](../transcripts/174.md), line 17.
 
+## The code
+
+The posts name programs. This section links the commits that implemented
+them. Early remotes lived under ArcadeLabsInc (`gputopia.ai`, `ai-worker`,
+`ai-spider`). Those histories now sit in the OpenAgentsInc repositories
+below, and the commit hashes did not change. A private repository is marked
+private. Hashes were checked against GitHub on 2026-10-07.
+
+### Repositories
+
+| Repository | Access | What it holds | Default branch |
+| --- | --- | --- | --- |
+| [`gputopia-laravel`](https://github.com/OpenAgentsInc/gputopia-laravel) | private | The Laravel app the September 2023 betas ran, created as `gpuhub` | 2023-08-12 to 2023-09-18, 643 commits |
+| [`gpuhub-intro`](https://github.com/OpenAgentsInc/gpuhub-intro) | private | A three-commit webview shell from before the beta | 2023-08-21 |
+| [`meshcontroller`](https://github.com/OpenAgentsInc/meshcontroller) | private | A four-commit Rust sketch of a task queue. It does not ship. | 2023-08-27 |
+| [`gputopia`](https://github.com/OpenAgentsInc/gputopia) | public | The Next.js site: seller UI, buyer UI, API docs, and bounties | 2023-09-16 to 2023-11-15, 211 commits |
+| [`workerbee`](https://github.com/OpenAgentsInc/workerbee) | public | The provider process. The remote was `ai-worker`. | 2023-09-06 to 2023-11-12, 179 commits |
+| [`queenbee`](https://github.com/OpenAgentsInc/queenbee) | public | The job coordinator. The remote was `ai-spider`. | 2023-09-11 to 2023-11-20, 177 commits |
+| [`databee`](https://github.com/OpenAgentsInc/databee) | public | An ingestion daemon, 24 commits | 2023-11-01 |
+| [`openagents`](https://github.com/OpenAgentsInc/openagents) | public | This repository, from the day the video series starts | 2023-11-07 onward |
+| [`pylon-previous`](https://github.com/OpenAgentsInc/pylon-previous) | public | The first Tauri desktop node: MCP, Ollama, and a Llama chat | 2024-12-12 to 2024-12-15 |
+| [`onyx`](https://github.com/OpenAgentsInc/onyx) | public | The mobile app: a NIP-90 demo, then chat through Pylon and Ollama | 2024-11-27 to 2025-02-14 |
+| [`commander`](https://github.com/OpenAgentsInc/commander) | public | The May 2025 desktop app: wallet, NIP-90, and a paid swarm chat | 2025-05-14 to 2025-10-27 |
+| [`psionic`](https://github.com/OpenAgentsInc/psionic) | public | The Rust ML stack. Pylon's job envelopes and manifests live here. | Pylon boundary from 2026-05-20 |
+| [`pylon`](https://github.com/OpenAgentsInc/pylon) | public | The Effect and OpenTUI earning node | 2026-06-08 to 2026-06-09 |
+
+The private [`nexus`](https://github.com/OpenAgentsInc/nexus) repository,
+last changed on 2025-06-16, is an earlier SDK rebuild. The Nexus named with
+Pylon v0.1.0 in January 2026 is the bundle cut in this repository. A
+four-commit public sketch, [`ai-web-worker`](https://github.com/OpenAgentsInc/ai-web-worker),
+sits beside the September 2023 worker and does not become the provider.
+
+### 2023-08 to 2023-12: GPUtopia, workerbee, and queenbee
+
+The Laravel app is already assigning jobs and paying Alby invoices before
+the first public post. The Next.js repository replaces it in the second
+half of September. `queenbee` was called spider until 2023-09-22.
+
+| Date | Commit | What landed |
+| --- | --- | --- |
+| 2023-08-12 | [`gputopia-laravel` `0b1ffb9555`](https://github.com/OpenAgentsInc/gputopia-laravel/commit/0b1ffb9555963730d03fcb1ab1aa884184d33c8a) | `composer create-project` for `gpuhub`. Private. |
+| 2023-08-12 | [`gputopia-laravel` `d067042277`](https://github.com/OpenAgentsInc/gputopia-laravel/commit/d067042277d4b1b0c9dcba3f95693be3b003d7d2) | First WebGPU test. Private. |
+| 2023-08-14 | [`gputopia-laravel` `9d171711fc`](https://github.com/OpenAgentsInc/gputopia-laravel/commit/9d171711fc988251c79c64da822246ecebdec008) | A buyer submits a job from the dashboard. Private. |
+| 2023-08-17 | [`gputopia-laravel` `e2e6959e01`](https://github.com/OpenAgentsInc/gputopia-laravel/commit/e2e6959e018dde923e549391221433675c842883) | A seller completes an inference job for a buyer. Private. |
+| 2023-08-21 | [`gpuhub-intro` `838d9a3e4a`](https://github.com/OpenAgentsInc/gpuhub-intro/commit/838d9a3e4a4a55feb2383a9032f3c9665d03f604) | Webview shell. Private. |
+| 2023-08-27 | [`meshcontroller` `1b75556f0b`](https://github.com/OpenAgentsInc/meshcontroller/commit/1b75556f0b03399870932b1137b4263bccfe29ed) | `cargo new meshcontroller`. The README specifies a task queue. Private. |
+| 2023-09-02 | [`gputopia-laravel` `065cd57650`](https://github.com/OpenAgentsInc/gputopia-laravel/commit/065cd5765082885451ef4e84526db9b0814041ec) | Adds the Alby SDK. Private. |
+| 2023-09-08 | [`workerbee` `1696db6064`](https://github.com/OpenAgentsInc/workerbee/commit/1696db606432987d96fa94e4120246cf03f4946d) | First working worker bee. |
+| 2023-09-09 | [`gputopia-laravel` `1d2ae873c1`](https://github.com/OpenAgentsInc/gputopia-laravel/commit/1d2ae873c1d0011b94671b24e3393eeeb4bb5e8e) | A completed inference pays an Alby invoice. Private. |
+| 2023-09-11 | [`queenbee` `24478a1b43`](https://github.com/OpenAgentsInc/queenbee/commit/24478a1b43d71b4fa64f23b6ab24360ee761d876) | First queenbee commit. |
+| 2023-09-12 | [`gputopia-laravel` `95ced168a5`](https://github.com/OpenAgentsInc/gputopia-laravel/commit/95ced168a5c193f9480673b41a728bce019a6d5e) | Caps a user at one payout every five seconds, on the beta v1 launch day. The next day's post says per-job payments were straining one LNbits instance. Private. |
+| 2023-09-14 | [`queenbee` `6924b7de20`](https://github.com/OpenAgentsInc/queenbee/commit/6924b7de2053ad8d350cf7f5ddb965ff10eedb88) | Working coordinator, still named spider. |
+| 2023-09-16 | [`gputopia` `3bfaed46df`](https://github.com/OpenAgentsInc/gputopia/commit/3bfaed46df23fc44c2c8d6fa03024040b382362c) | Next.js app, initial commit. |
+| 2023-09-16 | [`gputopia` `38bad734fe`](https://github.com/OpenAgentsInc/gputopia/commit/38bad734feb656f5fcadb9864afab0629cb7fa3e) | Replaces WebLN with Alby OAuth. |
+| 2023-09-18 | [`gputopia` `8910c8853d`](https://github.com/OpenAgentsInc/gputopia/commit/8910c8853d4b91ea6b8f424909371e5591d7da74) | Withdrawal to Alby works. The Laravel tree stops this day. |
+| 2023-09-20 | [`queenbee` `7bbd209652`](https://github.com/OpenAgentsInc/queenbee/commit/7bbd2096522157489a298d28a7400b5ab60f0e90) | The coordinator talks to the worker. |
+| 2023-09-22 | [`workerbee` `047dbe7b5f`](https://github.com/OpenAgentsInc/workerbee/commit/047dbe7b5fa0348d52c2e49e572f656109bb3a0c) | Renames spider to queen. |
+| 2023-09-22 | [`workerbee` `2a0cfddc59`](https://github.com/OpenAgentsInc/workerbee/commit/2a0cfddc59feb1e683d028d99ca0e57f0e556e95) | Instructions for running the worker, the day the CLI is announced. |
+| 2023-09-22 | [`gputopia` `207b3495a1`](https://github.com/OpenAgentsInc/gputopia/commit/207b3495a11db4182c4a67cc9c454b1d9e94b53c) | Swaps in the v3 site. |
+| 2023-09-25 | [`gputopia` `b700844cb3`](https://github.com/OpenAgentsInc/gputopia/commit/b700844cb31e6ce9fe38940d2224bf61c1ad5d8c) | Launches the v3 buy and sell UI, the day of the first buyer price. |
+| 2023-09-28 | [`workerbee` `98436a6ee9`](https://github.com/OpenAgentsInc/workerbee/commit/98436a6ee9846333c2855d98c375667e4af4e60a) | Updates llama.cpp. |
+| 2023-10-02 | [`gputopia` `20b5ca3585`](https://github.com/OpenAgentsInc/gputopia/commit/20b5ca3585d01ce79325961ba848a412e0cb3b6a) | Site v4. |
+| 2023-10-02 | [`gputopia` `815b92cdb1`](https://github.com/OpenAgentsInc/gputopia/commit/815b92cdb12189270131c75953daa671dfe0fc61) | Working API and docs. |
+| 2023-10-03 | [`gputopia` `b1133fd0c8`](https://github.com/OpenAgentsInc/gputopia/commit/b1133fd0c8660ace56467a4a40acb09559ac121d) | Bounty docs, on the day the open-source post goes out. |
+| 2023-10-20 | [`queenbee` `f752fb274c`](https://github.com/OpenAgentsInc/queenbee/commit/f752fb274ceb9e7a70daf4ea45318de6759abe08) | Fine-tune jobs, the day before the Mistral swarm fine-tune post. |
+| 2023-10-23 | [`gputopia` `c50f008492`](https://github.com/OpenAgentsInc/gputopia/commit/c50f0084927595a199ebafa65aee21eac9c54123) | Fine-tuning UI connected to queenbee. |
+| 2023-10-27 | [`workerbee` `08be919103`](https://github.com/OpenAgentsInc/workerbee/commit/08be91910372357aa943c714195cef928109c875) | Fine tuning on the worker. |
+| 2023-11-01 | [`queenbee` `21a1174323`](https://github.com/OpenAgentsInc/queenbee/commit/21a117432346121e207bc2e79909f4c316c291e3) | Embeddings. |
+| 2023-11-01 | [`queenbee` `4fb27f1aa0`](https://github.com/OpenAgentsInc/queenbee/commit/4fb27f1aa0c591ed397d3b864dfeb89f75297ed3) | Pays for an embedding. |
+| 2023-11-01 | [`workerbee` `087034e150`](https://github.com/OpenAgentsInc/workerbee/commit/087034e150bc067824906b2c45c65cd92262a5b2) | Embedding API on the worker. |
+| 2023-11-01 | [`databee` `8de1bbc637`](https://github.com/OpenAgentsInc/databee/commit/8de1bbc6376b47141273f6221ef118e44491e9f7) | Ingests a file through LangChain. |
+| 2023-11-07 | [`openagents` `0aa2d953dd`](https://github.com/OpenAgentsInc/openagents/commit/0aa2d953dd48f0d402ea7c826bad90b2548524c2) | This repository's initial commit, the day the video series starts. |
+| 2023-11-09 | [`queenbee` `ff215c82af`](https://github.com/OpenAgentsInc/queenbee/commit/ff215c82af9dd514e68c6a1422fc8eee84f1fda0) | Image generation on the coordinator. |
+| 2023-11-10 | [`workerbee` `73e7297f16`](https://github.com/OpenAgentsInc/workerbee/commit/73e7297f16e7f628b2ac04dc8dfcdc9685816526) | SDXL image generation on the worker. |
+| 2023-11-14 | [`openagents` `0e9f48d0c4`](https://github.com/OpenAgentsInc/openagents/commit/0e9f48d0c4fb48788cd250b82982256bc6e6daa7) | Embeddings work in this app, on the queenbee test group. |
+| 2023-12-12 | [`openagents` `73b56a742e`](https://github.com/OpenAgentsInc/openagents/commit/73b56a742eb1fbdc64d625951e422bd06650b3be) | Updates GPUtopia links to OpenAgents, the rename day. |
+
+The 2023-11-09 L402 bounty post has no matching commit in these trees. This
+repository adds an L402 agent step in January 2024 and points it at an L402
+endpoint in February, in the next table.
+The 2023-10-05 swarm-inference demo (one prompt, eight sellers) also has no
+commit whose message names it. The coordinator that fans work out is
+`7bbd209652`.
+
+### 2023-12 to 2024-06: L402, Prism, and the Agent Store
+
+| Date | Commit | What landed |
+| --- | --- | --- |
+| 2024-01-28 | [`openagents` `93f15a371c`](https://github.com/OpenAgentsInc/openagents/commit/93f15a371c673c73f026542527a0e5d9d5495f59) | Adds an L402 agent step type. |
+| 2024-02-02 | [`openagents` `12f824053c`](https://github.com/OpenAgentsInc/openagents/commit/12f824053c7962a001671281096181dd4720c3ac) | The agent step works against the L402 endpoint. |
+| 2024-04-22 | [`openagents` `e55575b4d6`](https://github.com/OpenAgentsInc/openagents/commit/e55575b4d695cb03443cad61147a8a10db4f99ff) | The dashboard sends Prism payments (`PrismMultiPayment`), the same day as the 9-way Lightning split test. |
+| 2024-05-14 | [`openagents` `b8dde805bc`](https://github.com/OpenAgentsInc/openagents/commit/b8dde805bced1e2580f12d3cd499b8e1520c7c85) | Agent Store beta. |
+| 2024-05-27 | [`openagents` `90a9646371`](https://github.com/OpenAgentsInc/openagents/commit/90a96463712da6d9b1d12693fb510414e1acfbf9) | User and agent payments and balances, with withdrawal by BOLT11 invoice. |
+| 2024-05-30 | [`openagents` `5261f2ebb7`](https://github.com/OpenAgentsInc/openagents/commit/5261f2ebb7a31850c70d6f9399504850687403fd) | Sweeps agent balances to users every minute. |
+
+### 2024-12 to 2025-05: the first Pylon, Onyx, and Commander
+
+| Date | Commit | What landed |
+| --- | --- | --- |
+| 2024-12-11 | [`onyx` `04f51d2eb1`](https://github.com/OpenAgentsInc/onyx/commit/04f51d2eb1d9f4179fe5b976ef42d8ce965b430d) | NIP-90 demo, the day of the data-vending-machine episode. |
+| 2024-12-12 | [`pylon-previous` `4db930262c`](https://github.com/OpenAgentsInc/pylon-previous/commit/4db930262cfc7166b737d11c3a18d63e87f19665) | `yarn create tauri-app`, the first Pylon desktop shell. |
+| 2024-12-13 | [`pylon-previous` `9ea5eefd12`](https://github.com/OpenAgentsInc/pylon-previous/commit/9ea5eefd121ea016ab6e7355ef7bfed89ec05b04) | MCP server. The Pylon introduction episode is this day. |
+| 2024-12-13 | [`pylon-previous` `679629e387`](https://github.com/OpenAgentsInc/pylon-previous/commit/679629e38773179c86b98cf6428c7463b1dbaecb) | Ollama support. |
+| 2024-12-14 | [`onyx` `5a42909fbf`](https://github.com/OpenAgentsInc/onyx/commit/5a42909fbf2f176674d623984fdfe6e48928fcd7) | Chat with Llama 3.2 through Pylon and Ollama. |
+| 2025-05-14 | [`commander` `174ed7b65e`](https://github.com/OpenAgentsInc/commander/commit/174ed7b65e45ece3ef30b4e068865b449f14cf61) | Commander, initial commit, the day of the GPUtopia 2.0 episode. |
+| 2025-05-18 | [`commander` `52fff2a983`](https://github.com/OpenAgentsInc/commander/commit/52fff2a9835557c28b84625527900deab232978c) | Initial NIP-90 feed. |
+| 2025-05-18 | [`commander` `1509334224`](https://github.com/OpenAgentsInc/commander/commit/150933422414527f1a5279eec9523b56c081735b) | NIP-90 provider and purchaser handshake. |
+| 2025-05-20 | [`commander` `361ebc209f`](https://github.com/OpenAgentsInc/commander/commit/361ebc209fc67c6a367694614f02e4a1482b69a4) | Spark wallet service. |
+| 2025-05-20 | [`commander` `98fb412d19`](https://github.com/OpenAgentsInc/commander/commit/98fb412d197350026b5056beae99b210bca972f1) | NIP-90 data vending machine service. |
+| 2025-05-21 | [`commander` `8e85efae3e`](https://github.com/OpenAgentsInc/commander/commit/8e85efae3eb81b43e4ee8a31746076238df8debc) | UI pass labeled for a compute-market launch. This is the May 2025 reboot, not the March 2026 launch. |
+| 2025-05-23 | [`commander` `3628f11569`](https://github.com/OpenAgentsInc/commander/commit/3628f115691b73f709dfe92f17b3ed3a0f6d21a3) | NIP-90 payment flow. Spark moves from regtest to mainnet the same day. |
+| 2025-05-24 | [`commander` `a00158a798`](https://github.com/OpenAgentsInc/commander/commit/a00158a79856a96d7c379162e783f67d36c33bb2) | Hardens the NIP-90 path, the day of the Swarm Inference episode. |
+
+### 2025-12 to 2026-07: Pylon on current main, Psionic, and the earning node
+
+The March 2026 compute-market post and the May 2026 "v0.2 moves to LDK" post
+do not have a commit that week whose message names them. The provider those
+posts shipped is the December 2025 and January 2026 work below.
+
+`b11a99cfae` is the macOS signing commit dated 2026-01-07, the day before
+the Pylon and Nexus v0.1.0 episode. This checkout has an annotated tag
+`pylon-v0.1.0` (and `nexus-v0.1.0`) on that commit. The tags are not on
+`origin`. The commit is on GitHub and is not an ancestor of current `main`;
+it remains on the local branch `backup/local-main-pre-reset-20260924`.
+Current `main` still contains the December provider.
+
+| Date | Commit | What landed |
+| --- | --- | --- |
+| 2025-12-15 | [`openagents` `c6d259814a`](https://github.com/OpenAgentsInc/openagents/commit/c6d259814a05b8fe1b7847590febf71a0c5b4433) | A NIP-90 desktop app for selling compute. |
+| 2025-12-21 | [`openagents` `c68af8430e`](https://github.com/OpenAgentsInc/openagents/commit/c68af8430ef71538a13fed043c6f66492ba9e2ac) | NIP-90 event types for the compute marketplace. |
+| 2025-12-27 | [`openagents` `9385f8e18f`](https://github.com/OpenAgentsInc/openagents/commit/9385f8e18f133ec8ef4e3e59cebcf3978548eead) | Pylon compute provider with Spark payments. On current `main`. |
+| 2025-12-28 | [`openagents` `ddc214ba28`](https://github.com/OpenAgentsInc/openagents/commit/ddc214ba28251607498b2dcd6fcea838e8d7a4e1) | Pylon MVP: daemon, SQLite, and host mode. On current `main`. |
+| 2026-01-07 | [`openagents` `b11a99cfae`](https://github.com/OpenAgentsInc/openagents/commit/b11a99cfae4e575998b79e936e700007fcc57c7b) | macOS signing, DMG, and notarization for the v0.1.0 bundle. Not on current `main`. |
+| 2026-04-12 | [`openagents` `0515fb5bdf`](https://github.com/OpenAgentsInc/openagents/commit/0515fb5bdf657801a5890832b27da59990c9dded) | Launches retained Pylon training assignments, during the week of the Pylon launch episode. |
+| 2026-04-21 | [`openagents` `8582681f9b`](https://github.com/OpenAgentsInc/openagents/commit/8582681f9b844fab82d11fa8d09ee6430286a158) | Release Pylon v0.1.2. On current `main`. |
+| 2026-05-20 | [`psionic` `266717dfb7`](https://github.com/OpenAgentsInc/psionic/commit/266717dfb78b44dc0bc2feda923ec30af88a38c5) | Pylon legal-training job protocol: signed envelopes and worker receipts. |
+| 2026-05-22 | [`psionic` `21e5e647cb`](https://github.com/OpenAgentsInc/psionic/commit/21e5e647cb57328e168ac2642b2e78760e5e9a9a) | Prepares the Psionic v0.2 Pylon release boundary. |
+| 2026-06-08 | [`pylon` `6b4491a111`](https://github.com/OpenAgentsInc/pylon/commit/6b4491a111ab03c1ccfb9a60c6d1978ad56e61b6) | Initial commit of the Effect and OpenTUI earning node. |
+| 2026-06-09 | [`pylon` `3c35c02d71`](https://github.com/OpenAgentsInc/pylon/commit/3c35c02d719b68a7da078c9ad2175c329250e0d3) | Assignment lease with a no-spend flow. |
+| 2026-06-09 | [`psionic` `e7c841c07e`](https://github.com/OpenAgentsInc/psionic/commit/e7c841c07eed5ede713e67eda7f5f3ce3621817e) | Publishes the Pylon release manifests. |
+| 2026-06-22 | [`openagents` `eba893fd13`](https://github.com/OpenAgentsInc/openagents/commit/eba893fd13ba7505033bdb21fb887e3e1be7a82b) | Pays a test Pylon in bitcoin for verified work (Khala M3). |
+| 2026-07-08 | [`openagents` `e4d87fa395`](https://github.com/OpenAgentsInc/openagents/commit/e4d87fa395db6812b14ae07d92985652e5266f53) | Accepts the plan to fold Pylon into Khala Code. The public post that Pylon had been folded into the IDE is 2026-07-31. |
+| 2026-09-22 | [`openagents` `7496608907`](https://github.com/OpenAgentsInc/openagents/commit/7496608907a2527a6fb351103db79e84956cd619) | Proves NIP-90 data vending machines in the current `nostr` crate. |
+
 ## Where it lives today
 
-This repository does not contain Pylon, Nexus, or Psionic. These documents
-record the idea's current status:
+[The code](#the-code) links the commits. This repository does not contain
+the Pylon, Nexus, or Psionic products. These documents record the idea's
+current status:
 
 - [`docs/roadmap.md`](../roadmap.md), line 303: GPUtopia, Pylon, Psionic,
   distributed inference, and broader compute markets are optional research
@@ -637,6 +784,12 @@ Related crates: `crates/wallet` (Lightning receiver and payer on LDK),
   for GPUtopia, Pylon, NIP-90, data vending machines, providers, sats,
   Lightning, and selling compute, and each match was read in context.
   Transcripts are machine-generated; check the media before quoting.
+- **Commits.** On 2026-10-07 the default-branch histories of the
+  repositories in [The code](#the-code) were read from the GitHub API, and
+  `git log` was read in this repository, `~/work/psionic`, and `~/work/pylon`.
+  A row is included when the commit date and message match a milestone
+  above. The annotated tags `pylon-v0.1.0` and `nexus-v0.1.0` exist in this
+  checkout and are not on `origin`.
 - **Exclusions.** One September 2023 post naming a tester by email address is
   left out of the index. Reposts of other accounts are counted but not
   listed.
