@@ -345,10 +345,18 @@ pilots and acquisition preparation run alongside engineering from the start.
 Existing terminal, router, cloud, and payment backlogs keep their technical
 ownership; this roadmap orders their contribution to revenue.
 
+Its [build issue list](revenue-roadmap.md#build-issue-list) is the consolidated
+inventory: 76 proposed work items with stable IDs, responsibility areas,
+dependencies, and acceptance, including the sales floor. It links completed
+foundations and existing open world issues, identifies the smallest revenue
+path for each offer, and separates owner activation from code completion.
+
 The agent sales floor runs alongside from R0: Paul and a verified claims
 register first, then certified hires sending under per-message approval, then
 batched approvals, referrals, and partners as R3 terms land. Its phases and
-dependencies are in its [build order](agent-sales-floor.md#build-order).
+dependencies are in the unified inventory; its
+[build order](agent-sales-floor.md#build-order) retains the detailed S0–S6
+scope and rough effort.
 
 ## Measures
 

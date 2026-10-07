@@ -1,14 +1,31 @@
 # Unified revenue roadmap
 
-Status: proposal, October 6, 2026. This is the delivery plan for the
+Status: proposed delivery plan and build issue inventory, October 7, 2026.
+This is the single commercial delivery roadmap for the
 [sales strategy](README.md). It joins acquisition, customer delivery, payments,
 and product integration in one order. Existing product backlogs retain their
-technical contracts and issue ownership. Milestones below are proposed exit
-criteria, not claims of completed launches or commitments to dates.
+technical contracts and issue ownership. The [build issue list](#build-issue-list)
+joins the product gaps and agent-sales-floor work in this document.
+Milestones below are proposed exit criteria, not claims of completed launches
+or commitments to dates.
 
 The review uses episodes 275–289, the earlier revenue episodes, the October 6
 operator conversation, maintained documentation, and targeted source reads.
 No live service, customer, or funded payment was tested for this review.
+
+## Contents
+
+- [Strategic decision](#strategic-decision)
+- [What the background changes](#what-the-background-changes)
+- [First offers and their limits](#first-offers-and-their-limits)
+- [Missing pieces and existing owners](#missing-pieces-and-existing-owners)
+- [Delivery order](#delivery-order)
+- [Build issue list](#build-issue-list)
+- [Owner qualification and activation gates](#owner-qualification-and-activation-gates)
+- [Sales and pilot operations](#sales-and-pilot-operations)
+- [Economics, referrals, and partners](#economics-referrals-and-partners)
+- [Evidence and operating review](#evidence-and-operating-review)
+- [Next actions and unresolved decisions](#next-actions-and-unresolved-decisions)
 
 ## Strategic decision
 
@@ -74,6 +91,12 @@ sell hosted inference, private-repository access, an interactive rented shell,
 or GCE retail. Operator Boat/GCE placement and sponsored inference are separate
 capabilities.
 
+The current [paid-plugin service](../payments/2026-10-02-central-receive-and-splits.md#6-paid-endpoints-on-the-central-receiver)
+admits one guest step requiring no capabilities; snapshot reads receive an
+empty snapshot. The first paid plugin must fit that envelope. A richer
+department or connector workflow needs a separately admitted executor and
+payment contract, or can start as a scoped onboarding service.
+
 For onboarding, start with either a recurring coding workflow or a bounded
 document-to-action workflow with a human review step. Examples include meeting
 actions drafted into tickets or a department procedure turned into a tested
@@ -104,8 +127,8 @@ The October 3 [plugin receipt](../payments/2026-10-03-end-to-end-demo.md)
 proves release lookup, pricing, the payment challenge, and a ceiling refusal.
 It explicitly leaves real settlement and payout unverified. Obtain a newer
 funded receipt or perform the remaining qualification before claiming that
-path. Its first-payment pointer no longer has a matching section in
-`NEEDS_OWNER.md`; reconcile that tracking before scheduling the owner action.
+path. The [owner gate list](#owner-qualification-and-activation-gates) keeps
+this action visible; reconcile its `NEEDS_OWNER.md` entry before scheduling it.
 
 Retail acceptance and live adapters have fake/simulated evidence. The
 [owner runbook](../cloud/retail-qualification.md#owner-runbook) and
@@ -147,6 +170,245 @@ the [workbench issue directory](../terminal/issue-roadmap.md),
 [execution router](../api/2026-10-02-agentic-execution-router.md), and cloud and
 payment contracts for implementation. A new pane, world decoration, leaderboard,
 or broader market does not gate R1.
+
+## Build issue list
+
+This is the complete proposed build inventory for G1–G11, R0–R5, and the
+agent sales floor. `REV-01` through `REV-76` are stable planning IDs, not filed
+GitHub issue numbers. Every row needs a scoped implementation issue or a
+link to an existing issue before work starts. Responsibility areas below
+don't assign a person or claim work. Keep the repository's issue board,
+claims, and native blockers authoritative when issues are filed.
+
+The acceptance column describes the remaining customer outcome, not a claim
+that every underlying primitive is missing. Reuse completed owners and APIs.
+Don't recreate an account service, money ledger, gateway dashboard, task
+runtime, approval engine, or CRM to satisfy a row. In particular, the private
+pipeline in REV-04 becomes the agent pipeline in REV-53; it is one record set.
+Exercise code acceptance with isolated adapters/fixtures and the issue's
+targeted checks. Real funds, external-user evidence, owner credentials, and
+commercial activation belong to O1–O8 below; they don't hold code-complete
+implementation issues open.
+
+### Existing work to reuse
+
+GitHub states below were checked on October 7. Closure establishes the scoped
+issue result; it doesn't establish funded qualification, physical-device
+acceptance, or a deployed customer offer.
+
+| Foundation | Existing issues and contracts | Remaining boundary |
+| --- | --- | --- |
+| Client packaging and shared panes | Closed [#10644](https://github.com/OpenAgentsInc/openagents/issues/10644), [#10683](https://github.com/OpenAgentsInc/openagents/issues/10683), [#10685](https://github.com/OpenAgentsInc/openagents/issues/10685), [#10686](https://github.com/OpenAgentsInc/openagents/issues/10686); [terminal issue directory](../terminal/issue-roadmap.md) | Choose and qualify one installed commercial flow; reuse other clients when demand needs them |
+| Component creation, checks, and reuse | Closed [#10665](https://github.com/OpenAgentsInc/openagents/issues/10665), [#10672](https://github.com/OpenAgentsInc/openagents/issues/10672); [plugin contracts](../plugins/README.md) | One useful, supported, priced release and installed customer purchase path |
+| Plugin receiver, splits, and payouts | Closed [#10200](https://github.com/OpenAgentsInc/openagents/issues/10200), covering #10185–#10199; [payment contract](../payments/README.md) | Customer integration, authenticated earnings access, and actual funded delivery/payout evidence |
+| Retail lifecycle and adapters | Closed #10704–#10719, #10722–#10724 and [#10748](https://github.com/OpenAgentsInc/openagents/issues/10748); [retail service](../cloud/retail-service.md), [qualification](../cloud/retail-qualification.md) | Production customer transport/worker and client spending controls; [#10719](https://github.com/OpenAgentsInc/openagents/issues/10719) is a read projection |
+| Gateway, account, money, and usage APIs | Closed [#9468](https://github.com/OpenAgentsInc/openagents/issues/9468), [#9490](https://github.com/OpenAgentsInc/openagents/issues/9490), [#9491](https://github.com/OpenAgentsInc/openagents/issues/9491), [#9492](https://github.com/OpenAgentsInc/openagents/issues/9492), [#9493](https://github.com/OpenAgentsInc/openagents/issues/9493); [gateway](../decision-models/service/gateway.md) | Supported funded door, live card provider, client connection, and cross-product financial mapping |
+| Agent records and memory | Existing keyed agents, owner decisions, journals, finite jobs, stop/pause/retire; closed [#10785](https://github.com/OpenAgentsInc/openagents/issues/10785), [#10787](https://github.com/OpenAgentsInc/openagents/issues/10787); [crew machinery](../verse/crew.md#shared-machinery) | Roles, sales records, grants, training, and coordinated sales operation |
+| World prerequisites | Open [#10786](https://github.com/OpenAgentsInc/openagents/issues/10786), [#10788](https://github.com/OpenAgentsInc/openagents/issues/10788), [#10789](https://github.com/OpenAgentsInc/openagents/issues/10789), [#10790](https://github.com/OpenAgentsInc/openagents/issues/10790), [#10791](https://github.com/OpenAgentsInc/openagents/issues/10791); [generative agents](../verse/generative-agents.md#phases-and-dependencies) | Finish these existing issues for the Agora's world tree, day plans, and roster; don't file duplicate foundations |
+| Artifact pack delivery | Closed [#10763](https://github.com/OpenAgentsInc/openagents/issues/10763), landed while this inventory was being prepared; [artifact queue](../coder/runtime/artifact-queue.md) | Submit Agora pack changes through the existing serialized queue; no new merge-queue implementation or direct pack repin push |
+| Later paid-market profiles | Closed [#10725](https://github.com/OpenAgentsInc/openagents/issues/10725)–[#10729](https://github.com/OpenAgentsInc/openagents/issues/10729); [later-market contracts](../payments/later-markets.md) | Customer/provider integration and funded availability; reviewed profiles and fake tooling aren't a live paid labor pool |
+
+### R0: supported offer, evidence, and pilot operations
+
+Owners: product, client/release, sales, and onboarding. These rows cover G1,
+G2, and the manual portion of G7. Founder-led pilots can proceed while the
+agent floor is being built.
+
+| ID | Issue scope and owner | Depends on | Acceptance |
+| --- | --- | --- | --- |
+| REV-01 | Product/sales: freeze the first workflow offer and commercial defaults | Customer discovery; existing supported contracts | Versioned buyer problem, supported client/resource, price or quote basis, trial/onboarding caps, data boundary, acceptance, payment route, and support owner; unsupported promises are excluded |
+| REV-02 | Client/release: qualify the selected customer install and first-task path | REV-01; existing install/provider paths | Fresh external-user install finds a usable provider, completes a checked task, and exposes honest unavailable states and recovery/support instructions |
+| REV-03 | Evidence: join baseline, accepted results, timing, and full task cost | REV-01; existing traces and Gym | Comparison retains failed attempts, repairs, checks, setup/queue time, versioned prices, and independent/customer acceptance; actual spend, estimates, and subscription capacity stay distinct |
+| REV-04 | Sales: implement the private lead/account pipeline and accepted human handoff | REV-01 | One durable record set holds permission/source/jurisdiction, stage, responsible human, next action/date, workflow, baseline, data boundary, and customer decision; access and retention are enforced |
+| REV-05 | Sales/product: publish the offer page and connect permissioned intake | REV-01, REV-04 | Supported result example and install/pilot action reach the correct private pipeline; source/referrer and contact permission survive intake without public customer data |
+| REV-06 | Onboarding: deliver the bounded pilot kit and review workflow | REV-01, REV-03, REV-04 | Scope, customer owner, inputs, duration, cap/payment, protected comparison, data recipients, review date, and accept/extend/stop decision are recorded privately |
+| REV-07 | Onboarding/support: package setup, delivery, offboarding, and support handoff | REV-06 | A pilot leaves a usable workflow/runbook, customer acceptance, credential/data cleanup, retained result, support route, and reusable material whose rights permit reuse |
+| REV-08 | Evidence/sales: build the versioned claims and price register | REV-01; REV-03 for comparative claims | Each allowed claim cites current capability/evidence and limits; unknown readiness stays unknown; expired prices and unsupported comparisons cannot enter a sales draft |
+
+### R1: installed customer purchase and delivery
+
+Owners: client, payments, cloud, gateway, and onboarding. These rows cover
+G1/G3/G4/G6 and the separately invoiced service lane. Choose one lane for
+first revenue; the others proceed independently.
+
+| ID | Issue scope and owner | Depends on | Acceptance |
+| --- | --- | --- | --- |
+| REV-09 | Client/accounts: bind the launch client to its customer, workspace, and payer | REV-02; existing account/session and product-account contracts | Sign-in/recovery and account selection preserve identity; every quote/approval names the correct payer and rights; wallet possession never substitutes for spending authority |
+| REV-10 | Plugins: deliver and publish the first useful paid workflow release | REV-01, REV-08; existing publishing/evaluation | Installed publisher signs the exact tested release with fee/destination metadata; the packet fits the current one-guest/no-capability envelope and produces an accepted useful result |
+| REV-11 | Client/payments: connect the paid-plugin purchase flow | REV-09, REV-10 | Exact release and total endpoint-plus-author price precede approval and invocation; unsupported packets refuse before payment; customer receives result and receipt; changed terms need new consent |
+| REV-12 | Payments/client: expose durable paid-plugin failure and recovery states | REV-11; existing replay and settlement owners | Lost acknowledgment and restart cause no blind repayment or repeated execution; payment, settlement, result, failed delivery, and unknown liability remain separate and supportable |
+| REV-13 | Cloud: mount a durable customer retail transport and service worker | REV-01; existing retail lifecycle/adapters | Authenticated customers are isolated; provisioning, dispatch, metering, cancellation, cleanup, and settlement survive client loss/restart without duplicate resources or discarded unknown costs |
+| REV-14 | Client/cloud: add retail funding, quote, execution, and cancel controls | REV-09, REV-13 | The actual client completes fake-funded top-up → quote → disclosure/approval → run → checked result → cancel/reconnect → receipt; read access grants no spend/control |
+| REV-15 | Cloud/operations: package the production service and paid-availability gate | REV-13; existing operations/qualification tooling | Exact deployed revision/configuration, secret custody, health, recovery, rollback, capacity, and cleanup are observable; paid availability remains closed without matching funded qualification |
+| REV-16 | Gateway: configure the first supported funded decision offer | REV-01; existing gateway/backend/money owners | Bound backend identity, capacity, versioned rates, and resource counters produce honest results and charges; unavailable/unknown usage refuses or retains liability; decision access isn't advertised as hosted generation |
+| REV-17 | Client/gateway: connect funding, credentials, admitted decision calls, and receipts | REV-09, REV-16 | Each dispatched attempt settles verified observed usage once against the correct account under its pinned price; duplicate request/attempt pairs never redispatch; unknown attempts retain holds and reconcile before a new attempt |
+| REV-18 | Onboarding/accounts: retain invoiced service payment and accepted delivery | REV-06, REV-07 | Agreed invoice, payment reference, deliverable, customer acceptance, and support owner reconcile; service revenue never creates product credit through sandbox billing |
+
+### R2: shared funding, repeat use, and sustainable economics
+
+Owners: accounts, payments, product analytics, and support. These rows cover
+G5/G11 and repeatable operation. A proven single-product Lightning lane can
+repeat before the common balance or live cards are available.
+
+| ID | Issue scope and owner | Depends on | Acceptance |
+| --- | --- | --- | --- |
+| REV-19 | Accounts: implement canonical cross-product customer/workspace identity mapping | REV-09; existing tenancy and product accounts | Host/device/Nostr identities map to one commercial account; recovery, rotation, team conversion, and revocation preserve attribution without widening rights |
+| REV-20 | Payments: connect product ledgers to one authoritative spend/funding path | REV-19, REV-21; existing reservation/ledger contracts | Plugin, compute, and gateway adapters reserve/settle against the admitted account; concurrent purchases cannot overspend; credits, retries, refunds, and unknown holds reconcile once |
+| REV-21 | Payments/product: implement versioned denomination, conversion, and trial-credit rules | REV-01; agreed commercial units | Funding and quotes pin units, conversion, rounding, fees, finality, and reversal terms; purchased balance, promotional credit, wallet sats, and XP stay distinct |
+| REV-22 | Payments: implement a live card processor and durable verified event adapter | REV-19, REV-21; provider/terms decision | Confirmed processor events credit prepaid usage once; browser return credits nothing; duplicates, delay, refund, dispute, and already-spent credit follow explicit reconciliation/loss rules |
+| REV-23 | Client/accounts: expose live checkout, balance funding, and billing recovery | REV-09, REV-20, REV-22 | Customer sees pinned funding terms and actual confirmation/state; interrupted checkout recovers correctly; a cash/card event doesn't imply Lightning wallet liquidity |
+| REV-24 | Accounts/payments: join cross-product statements and authenticated exports | REV-20; existing gateway usage/dashboard reads | Funding, available balance, holds, earned charges, author/resource liabilities, releases, reversals, and payout references reconcile; member/payee reads reveal only permitted records |
+| REV-25 | Product/operations: join revenue, delivery cost, margins, and support cases | REV-03; REV-12 or REV-13 or REV-17 or REV-18; REV-24 for shared statements | Earned OpenAgents revenue, gross collections, unused funding, third-party shares, model/compute/payment expense, promotions, commissions, and support labor remain separate; unknown expense isn't zero |
+| REV-26 | Product/sales: instrument activation, repeat purchase, and weekly operating review | REV-04; one qualified R1 lane; REV-25 | Consented source → install → accepted task → settled purchase → repeat is recorded separately from assisted-pilot stages; failed conversion has an owner/next action; approved aggregates can be published |
+
+### R3: referrals, partners, and discovery
+
+Owners: growth, payments, sales, and plugins. These rows cover G8/G10. Warm
+partner conversations and discovery preparation can start early; commission
+promises and payouts require their actual contract and qualified accounting.
+
+| ID | Issue scope and owner | Depends on | Acceptance |
+| --- | --- | --- | --- |
+| REV-27 | Growth/accounts: add stable referrer identity and shareable referral links | REV-09 and acquisition-source capture; REV-04 for assisted-pipeline integration; REV-19 for cross-product attribution | Person, agent, author, or partner identity binds to a consented acquisition source; own sales-agent links identify the source without earning circular commission |
+| REV-28 | Growth/accounts: persist permanent attribution and migration rules | REV-27; agreed attribution policy | Competing introductions, existing accounts, early agreed referrals, personal-to-team conversion, and workspace ownership changes resolve without silently rewriting attribution |
+| REV-29 | Growth/payments: version and publish the commission contract | REV-25, REV-28; commercial share decision | Eligible revenue/products/services, base/share/unit, holds, minimum, destination, reversals, and permanence are explicit; author signed fees remain intact and unused/free credit earns nothing |
+| REV-30 | Payments: implement commission accrual, reversal, and reconciliation | REV-29; selected product's settlement adapter | Attributed eligible settled usage creates one liability; retry doesn't multiply it; refund/dispute adjusts it; self-funded/recycled or promotional amounts don't earn commission |
+| REV-31 | Accounts/payments: add creator/referrer earnings access and qualified payout management | Existing author-payee records; REV-30 for commissions | Authorized payees see exact fees, attributed eligible use, holds, destination, accrual, and sent/failed/unknown payout state; statement and actual rail evidence match |
+| REV-32 | Growth/security: implement referral abuse checks and scratch qualification | REV-28, REV-30 | Self-referral, fake identities, recycled credits, and destination abuse trigger bounded holds/review; model or reputation signals cannot grant payout authority |
+| REV-33 | Sales/onboarding: integrate discovery and fulfillment partner assignments | REV-04; REV-06/REV-18 for charged fulfillment; REV-29 when commissions apply | Partner accepts the relevant private introduction or deliverable, price, owner, acceptance, support handoff, and payment trigger; discovery and paid fulfillment remain separate responsibilities |
+| REV-34 | Plugins: implement the bounded Brainstorm discovery/search/rank client | [V1 adapter contract](../plugins/brainstorm-v1-integration.md#adapter-contract) | Rust client normalizes public observations with limits, cancellation, provenance, relevance/rank distinction, unknown coverage, and equivalent failure fixtures |
+| REV-35 | Client/plugins: add disabled Brainstorm settings and explicit commands | REV-34 | Enabling/installing makes no lookup; explicit commands work without a model/provider; settings and bounded observations preserve source/limits through the supported live conversation |
+| REV-36 | Client/plugins: bind Brainstorm to admitted provider dispatch | REV-34, REV-35 | Shared client/configuration supports OpenRouter and explicit local commands; model-proposed queries require exact outbound text/recipient admission through a host-held reference; disabling blocks dispatch and external content grants no authority |
+| REV-37 | Growth/plugins: distribute guidance and add exact-key discoverability qualification | REV-35, REV-36; REV-05/REV-26 for commercial funnel integration | Guidance pack/install checks pass and metadata accurately states native-host requirements; bounded exact-key discovery/provenance and conversion capture work; owner publication and real buyer conversion remain O7 operating evidence |
+
+### R4: team adoption and proven client expansion
+
+Owners: accounts, client, policy/admission, and onboarding. These rows cover
+G9 and shared G10 workflows. First assisted pilots use bounded existing
+grants before a complete admin UI is available.
+
+| ID | Issue scope and owner | Depends on | Acceptance |
+| --- | --- | --- | --- |
+| REV-38 | Client/accounts: integrate invitations, membership, and workspace switching | REV-09; existing tenancy roles/invitations; REV-19 for cross-product identity | Champion invites a colleague; both use the correct account; current membership/revocation and recovery are checked without quota or billing rebinding |
+| REV-39 | Plugins/accounts: share admitted team capabilities and exact releases | REV-38; existing create/evaluate/publish owners | Members discover and enable only granted versions; narrowing, revocation, publisher identity, and source/data rights survive reuse |
+| REV-40 | Accounts/policy: enforce per-workspace, team, and person budgets and alerts | REV-38; selected-product reservation owner; REV-20 for cross-product budgets | Concurrent reservations and unknown liabilities count against limits on every enabled route; unavailable routes stay disabled; alerts explain an enforced bound rather than replace it |
+| REV-41 | Policy/host: enforce data, model, plugin, and placement rules across clients | REV-38; existing admission/disclosure contracts; REV-39 for shared capabilities | Enabled local/cloud/customer-host routes obey exact allowed recipients/capabilities; policy change or revocation blocks new effects without relabeling work in flight; unqualified routes remain disabled |
+| REV-42 | Accounts/product: project team work, cost, waiting time, outcomes, and reports | REV-03, REV-38; selected-lane statements; REV-24 for cross-product reports | Admin/member views attribute real tasks, failures, accepted results, models/plugins, costs, and service-level waits to the correct account under current read rights |
+| REV-43 | Accounts/security: qualify joined access, recovery, and scoped audit export | REV-38–REV-42 for the enabled scope | Invite/recovery/revocation, narrower grants, concurrent limits, and export redaction pass acceptance for supported clients/routes; unavailable paths stay disabled and read-only clients cannot approve or spend |
+| REV-44 | Client/release: carry the proven commercial flow to requested phone/browser/desktop clients | Qualified selected-client R1 path; existing thin-client transports/panes | Same payer, quote, disclosure, exact approval, cancellation, result, and receipt survive cross-client reconnect; qualify only the demanded surfaces |
+
+### R5: reusable workflows and broader paid supply
+
+Owners: ecosystem, onboarding, payments, and enterprise accounts. Choose these
+from paying demand; they don't gate the first offer, sale, or repeat purchase.
+
+| ID | Issue scope and owner | Depends on | Acceptance |
+| --- | --- | --- | --- |
+| REV-45 | Onboarding/plugins: package reusable department workflow templates | REV-07; protected tests and data rights; REV-39/REV-41 for team sharing/policies | Authorized documents/rules/operations pass on new customer work; release/runbook explains limits; reuse avoids customer-data leakage and can start before team distribution |
+| REV-46 | Ecosystem: integrate curated publisher/service listings and qualified discovery | REV-10; existing publication/registry/discovery contracts; REV-37 only for Brainstorm integration | Exact identity/release, supported capability, current price, evaluation evidence, provenance, and withdrawal are inspectable; listings qualify independently of a third-party index and reputation grants no execution rights |
+| REV-47 | Plugins/payments: extend the paid executor beyond the one-guest envelope | Demonstrated customer need; REV-11, REV-12, relevant policy | Separately versioned richer packet/operation contract admits bounded data/effects before payment; partial failure, delivery, retries, and fees reconcile without broadening old grants |
+| REV-48 | Labor/onboarding: integrate a customer-facing paid fulfillment path | REV-33; existing worker/bid/dispute profiles and qualification tooling | Independently admitted provider, price, funds, acceptance/rework/dispute, support owner, actual payment, and delivery evidence align; free-host support isn't sold as qualified paid labor |
+| REV-49 | Ecosystem/payments: connect accepted training, evaluation, and contributor work to payment | REV-25; existing later-market/contribution profiles | Protected checks establish attributable accepted work; separately authorized payment/payout reconciles once; participation, XP, and self-reported success never mint money |
+| REV-50 | Enterprise/accounts: add customer-required SSO and audit integration | A paying requirement; REV-38, REV-41, REV-43 | One agreed identity/audit integration preserves owner/admin/member rights, revocation, data boundaries, and export retention; verify the customer's required flow |
+
+### Parallel sales-floor build
+
+Owners: crew/host, sales, policy/security, Gym, Verse/art, and payments. These
+rows are the implementation inventory for the [sales-floor design](agent-sales-floor.md),
+whose S0–S6 phases describe scope and rough effort. This roadmap owns ordering.
+R0/R1 can proceed through humans while any of these rows is incomplete.
+
+| ID | Issue scope and owner | Depends on | Acceptance |
+| --- | --- | --- | --- |
+| REV-51 | Crew/host: add role fields, narrowing charters, and typed evidence verdicts | Existing keyed agent/journal/owner machinery | Role-aware creation loads old records, preserves keys/attestation, and grants no new rights; helper verdicts retain author/evidence and remain data |
+| REV-52 | Crew/host: implement crew-wide owner stop/pause and dispatch revocation | REV-51 | Owner stops selected members and pending dispatch together; restart never silently resumes stopped work; existing individual stop/retire semantics remain authoritative |
+| REV-53 | Host/sales: extend the private pipeline with policy, draft, assignment, and certification records | REV-04, REV-51 | One durable private record set survives restart; agents see assigned leads only; jurisdiction/permission/version/expiry and grant scope are explicit |
+| REV-54 | Sales/host: instantiate Paul and expose pipeline/lead/draft/suppression/certification controls | REV-53, REV-58; REV-55/REV-57 for real-prospect drafts | Paul plans from actual queues under owner-admitted assignments and budget; every lead has an accepted owner/next action/date; recommendations never approve effects and empty work stays idle |
+| REV-55 | Sales/evidence: connect the reviewed playbook, claims, price, and answer helpers | REV-08, REV-53, REV-58; existing evidence/document readers | Minimum host adapters feed exact reviewed evidence, price, and answer references into versioned drafts; proposed Peggy/Victor/Judy/Olivia/Ivan roles may wrap them later; full named crew is optional |
+| REV-56 | Gym/sales: add synthetic Carole personas and written role-play harness | REV-55 | Objections, misleading answers, uncertainty, and opt-outs are covered; fixtures describe no real buyers and practice never enters real-contact queues |
+| REV-57 | Gym/sales: implement claims/compliance/tone suites and certification | REV-55, REV-56; existing Gym | Calibrate on owner-labeled development data and evaluate frozen checks on locked data; serious failures block certification; required practice/samples, playbook changes, complaints, and two failed weekly checks enforce certification or suspension |
+| REV-58 | Host/payments: enforce sales model reservations and wall-clock policy | REV-53 | Plans, research, drafts, training, checks, day plans, and retries fit the $5 ceiling; unknown cost holds capacity; real `America/Chicago` days, weekly sending ramp, and caps don't follow town time |
+| REV-59 | Sales/host: add meeting-slot proposals and accepted qualified human assignments | REV-04, REV-54, REV-55 | Owner-published slots and full private brief reach an accepting human; agents don't read calendars, accept prices/terms, or inherit mailbox/payment access |
+| REV-60 | Host/privacy: implement suppression, contact admission, retention, and deletion | REV-53; sales jurisdiction/channel policy | Opt-outs suppress across hires/channels; ambiguous opt-outs block contact; inactive leads expire while minimal suppression identity survives; scratch log/snapshot/export tests retain no unauthorized lead disclosure |
+| REV-61 | Host/security: add one email adapter with broker-owned credentials and compliance checks | REV-58, REV-60; owner domain/mailbox setup | Minimum host credential/authority/compliance/privacy adapters implement the proposed Faythe/Walter/Grace/Eve responsibilities; agent context receives no credentials; identity, footer, unsubscribe, recipient admission, and delivery authentication are verified |
+| REV-62 | Host/client: implement durable level-0 approval and outbox dispatch | REV-52, REV-57, REV-58, REV-60, REV-61 | Viewers show exact recipient/content/attachments/versions; one-use approval sends once; edits/revocation block it; unknown delivery reconciles; complaints, suppressed sends, false claims, or authentication failure pause/reset trust and require corrected owner-approved restart |
+| REV-63 | Host/sales: ingest replies and schedule bounded follow-ups | REV-60, REV-62; REV-59 for booking/handoff branches | Opt-out precedes model classification; Mallory scratch-inbox injection tests pass before real sending and after handler changes; replies/links/attachments grant no effects; hard bounces suppress/pause the channel; two follow-ups use real weeks/current permission |
+| REV-64 | Crew/host: add confirmed hiring, retirement, and lead reassignment | REV-51–REV-54, REV-57, REV-58 | Start Paul alone; queues justify Erin, Frank, then Pat; exact proposals create/attest once within Paul-plus-three initial cap and budget; new hires train before real drafting; retirement stops work and reassigns leads with journals retained |
+| REV-65 | Sales/operations: project the private floor report and Wendy escalation | REV-54, REV-58; REV-62/REV-63 for outbound metrics; REV-25/REV-26 for financial enrichment | Pipeline and immediate complaint/pause escalation work before revenue; real counts and known/unknown costs remain distinct; Paul drafts a weekly aggregate update for owner review/publication |
+| REV-66 | Host/client: add qualified reviewed-batch grants | Measured REV-62/REV-63 operation; REV-57 | Frozen five-item batches bind exact recipients/content/versions/expiry/caps and consume sends once; edits/revocation block remaining sends; interested replies, prices, first partner messages, public posts, and new channels stay level 0; thresholds never auto-grant authority |
+| REV-67 | Verse/art: survey and admit an Agora parcel | Existing Everglade layout/style contracts | Complete hall/wing/steps/roof, foliage, terrain, access, and 3 m clearance pass; select west-of-Lantern or surveyed off-trail market fallback from retained evidence |
+| REV-68 | Verse/art: add Agora kit generation, review, and artifact admission | REV-67; existing original-art/pack tools and completed artifact queue #10763 | Scripts recognize Agora and retain original provenance plus near/far budgets; reviewed pack changes land through `openagents artifact submit everglade-pack`, with one checked repin on current main |
+| REV-69 | Verse: add the Agora layout, reachable stations, and private boards | REV-53, REV-68; world tree [#10788](https://github.com/OpenAgentsInc/openagents/issues/10788) | Every desk/booth/lectern is reachable; record-backed views show no prospect identity/message; licensed hire art remains optional |
+| REV-70 | Crew/Verse: add the minimal Bob wrapper and connect sales bodies/day plans | REV-64, REV-69; crew phase 1; [#10790](https://github.com/OpenAgentsInc/openagents/issues/10790), [#10791](https://github.com/OpenAgentsInc/openagents/issues/10791) | Bob validates/captures placement tables and places Paul plus admitted hires; activities cite actual work and idle stays honest; town routines never reset operational limits or authorize effects |
+| REV-71 | Verse/payments: implement the earned-sale bell and reviewed shared projection | REV-65, REV-69; attributed settlement and delivery evidence | Earned-sale bell fires once and reversals adjust totals; scratch boards/ticker/capture/animation tests hide raw leads, live amounts, and deal timing from shared viewers; owner can capture/publish only reviewed delayed aggregates or labeled demos |
+| REV-72 | Sales/growth: instantiate Arthur/Vanna against qualified partner/referral operations | REV-59, REV-62, REV-64; REV-33 for partner assignments; REV-29–REV-32 for commission activity | Arthur can prepare partner research before commission infrastructure; paid assignments/earnings claims wait for their contracts and qualification; Vanna preserves attribution; own-agent links earn nothing; Sybil scratch referral-abuse checks pass |
+
+### Conditional extensions after launch
+
+Each row needs evidence that its benefit warrants implementation. These are
+explicitly outside the initial written US email scope and first-revenue gate.
+
+| ID | Issue scope and owner | Depends on | Acceptance |
+| --- | --- | --- | --- |
+| REV-73 | Host/sales: qualify standing follow-up policies | Measured REV-66 operation and a separate owner grant | Only explicitly invited threads use exact templates, expiry, revocation, and bounds; no calendar-based automatic promotion or expansion of contact permission |
+| REV-74 | Host/plugins: qualify one additional automated public-reply channel | REV-60, REV-62, REV-63; recipient/community/platform permission | Labeled account, threading, suppression, approval, delivery reconciliation, and platform-specific rules work; X bot approval or any other external permission is obtained before activation |
+| REV-75 | Sales/host: add consented, booked, human-supervised voice participation | Proven written workflow; separate voice authority and legal review | Recipient requests the meeting; AI identity, recording/transcription/retention, human control, and call rules are explicit; no AI cold calling |
+| REV-76 | Sales/policy: add one reviewed international outbound jurisdiction | REV-60–REV-63; separate jurisdiction review | Supported recipient category/channel, consent evidence, footer, retention, suppression, and current local rules are enforced; unknown scope blocks contact |
+
+### Dependency and filing rules
+
+- IDs are stable. Add new rows rather than renumbering referenced work.
+- Dependencies name finished contracts/outcomes, not whole future milestones.
+  `A or B` selects the relevant product lane; a range includes its named rows.
+  Existing open issues retain their own native blockers.
+- File a missing row only after reconciling current code and issues. Its body
+  includes the owning crate/surface, exact scope, acceptance, targeted checks,
+  blocker issue numbers, and links to the authoritative product contract.
+- Claim the filed issue and update the required board before implementation.
+  Close it after its scoped code, checks, merge, and required host deploy are
+  complete. Track owner-only gates separately; failures open focused defects.
+- Product implementation stays in Rust with the existing thin native adapters.
+  Docs-only work needs link/path/artifact checks, not Rust tests. Ordinary code
+  work uses the repository's targeted checks; no full release gate or GitHub
+  workflow is introduced by this inventory.
+
+### Smallest revenue paths
+
+| Lane | Minimum build slice | Separate launch evidence |
+| --- | --- | --- |
+| Paid plugin | REV-01, REV-02, REV-08–REV-12 | Supported external user, real result/payment/split/author payout, and retained reconciliation |
+| Retail cloud | REV-01, REV-02, REV-09, REV-13–REV-15 | Confirmed retail contract/price, bounded funded qualification, admitted production configuration, and external client acceptance |
+| Funded decision | REV-01, REV-02, REV-09, REV-16, REV-17 | Supported door/backend, real funding/result/charge/receipt, and external client acceptance |
+| Invoiced onboarding | REV-01, REV-03, REV-04, REV-06, REV-07, REV-18 | Privately agreed service scope/price, paid invoice, customer acceptance, and support handoff |
+
+Build the common account/card lane, pipeline/intake, and Paul preparation in
+parallel when their contracts are ready. REV-27 onward expands a proven
+business; REV-51 onward automates and visualizes sales. Neither set is a
+blanket R1 dependency. An offer page helps acquisition but an existing warm
+buyer can accept a private scoped offer before it launches.
+
+For early invoiced onboarding, existing private pilot, baseline, invoice,
+acceptance, and support records can satisfy that path manually. REV-03,
+REV-04, REV-06, REV-07, and REV-18 automate and standardize it; new CRM or
+reporting software doesn't delay an otherwise deliverable human service.
+
+## Owner qualification and activation gates
+
+These are activation conditions, not unfinished implementations to attach to
+closed issues. Keep their concrete run/decision in
+[`NEEDS_OWNER.md`](../../NEEDS_OWNER.md), with private credentials and
+commercial records off-repository. Each lane uses only its applicable gates.
+
+| Gate | Required action and evidence | Applies to |
+| --- | --- | --- |
+| O1. Offer and service agreement | Confirm workflow, buyer acceptance, price/trial caps, data recipients, support, and any collaborator/partner's privately accepted role; paid service retains invoice/payment and acceptance | Every chosen offer; REV-01/REV-06/REV-18/REV-33 |
+| O2. Funded plugin | Use the [existing demo/runbook](../payments/2026-10-03-end-to-end-demo.md) for real payment, useful execution, split, author payout, and reconciliation; qualify the installed customer, not only the challenge endpoint | REV-10–REV-12 and R1 plugin availability |
+| O3. Funded retail | Confirm the [retail contract](../cloud/retail-contract.md) and price, then retain the bounded [funded qualification](../cloud/retail-qualification.md#owner-runbook) with supported wallet/Boat bindings | REV-13–REV-15 and R1 retail availability |
+| O4. Production retail activation | Follow [retail operations](../cloud/retail-operations.md) against the qualifying receipt and exact deployed revision/configuration; verify gates, recovery, cleanup, and customer route | Retail offer activation after O3 |
+| O5. Funded gateway/card | Select door/provider and commercial units, supply restricted production credentials, and retain genuine funding/usage/reversal evidence for the configured path | REV-16/REV-17 or REV-22/REV-23; sandbox billing is excluded |
+| O6. Outreach and broader grants | Complete [sales outreach launch](../../NEEDS_OWNER.md#sales-outreach-launch), certification marks, mailbox/domain/footer/jurisdiction checks, exact campaign cap, and REV-63 scratch reply-injection qualification; later batches/voice/channels need their own grants | REV-57/REV-61–REV-63, then REV-66/REV-73–REV-76 |
+| O7. Paid distribution and supply | Accept referral/partner terms and payout destinations, qualify actual commission/creator/worker rails, and authorize any public profile publication and required external platform permission | REV-29–REV-37/REV-48/REV-49/REV-74 |
+| O8. Supported-client acceptance | A new customer uses the installed chosen client; retain actual outcome and limitations. Device/store/release steps follow their existing runbooks | REV-02 and each selected paid lane; later REV-44 |
 
 ## Sales and pilot operations
 
@@ -282,26 +544,22 @@ qualification and deployed configuration separately from issue status.
 
 ## Next actions and unresolved decisions
 
-Start with these proposed assignments, without creating a competing issue
-backlog:
+Use the build IDs above to select the first scoped issues:
 
-1. Product and sales choose the first recurring workflow, supported launch
-   client, paid addition, and customer review criteria. Prepare the offer page
-   and private pilot record.
-2. Client and payments turn G1/G3 into the smallest installed-customer purchase
-   slice. Reconcile the funded-plugin evidence and owner-action record.
-3. Cloud closes the G4 service and client integration gaps against the existing
-   backlog while the owner completes the retained contract and qualification
-   runbook. Keep the retail gate authoritative.
-4. Accounts and payments specify G5/G11 account mapping and live-card funding,
-   using existing ledgers and retry/recovery contracts. Start implementation
-   beside the first Lightning slice.
-5. Sales scopes the first assisted pilots, agrees the collaborator's role, and
-   measures acceptance and conversion. Build the reusable onboarding kit from
-   these engagements.
-6. Growth prepares attribution and partner terms; launch paid commissions after
-   their economics and settlement qualify. Test Brainstorm as one discovery
-   source, then use customer demand to choose the next capability.
+1. Product/sales start REV-01; client/evidence prepare REV-02/REV-03. Sales
+   prepares REV-04/REV-06 and can operate a bounded manual pilot immediately.
+2. Client/payments select REV-09–REV-12 for the first installed paid-plugin
+   slice and prepare O2/O8. Cloud REV-13–REV-15 and gateway REV-16/REV-17 can
+   run independently when their supported contracts are ready.
+3. Accounts/payments start REV-19/REV-21, then the relevant common-funding and
+   live-card adapters REV-20/REV-22. Preserve first-lane availability while
+   cross-product and card funding are being built.
+4. Crew/host start REV-51/REV-53/REV-58, then budgeted Paul, reviewed playbook,
+   and training. Automated sending waits for REV-60–REV-63 and O6; Agora art
+   and the existing world issues can proceed separately.
+5. Growth prepares REV-27–REV-33; Brainstorm REV-34–REV-37 is one independently
+   qualified discovery experiment. Team and wider-supply rows follow buyer
+   evidence, not completion of every preceding product lane.
 
 Decisions still open: the first paid workflow, credit and onboarding caps,
 service pricing, live card provider and unit conversion, commission base/share,

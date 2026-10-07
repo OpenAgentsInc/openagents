@@ -746,6 +746,12 @@ Sending services and the sending domain are separate owner costs.
 
 ## Build order
 
+The [unified build issue list](revenue-roadmap.md#parallel-sales-floor-build)
+owns the implementation inventory and ordering across sales, product,
+payments, clients, and the world. REV-51–REV-72 map this floor's core work;
+REV-73–REV-76 cover conditional expansion. The S0–S6 phases below retain
+scope and rough estimates rather than a separate issue backlog.
+
 Estimates are agent-hours at the pace the
 [workshop agent](../verse/workshop-agent.md#what-exists-and-what-is-missing)
 states, sales-floor work only. Visual looks for agents are separate.
