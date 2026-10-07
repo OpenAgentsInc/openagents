@@ -40,6 +40,7 @@ pub mod advertise;
 #[allow(clippy::result_large_err)]
 pub mod billing;
 mod budgets;
+pub mod card_funding;
 pub mod classify;
 pub mod config;
 #[allow(clippy::result_large_err)]
