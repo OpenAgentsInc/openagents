@@ -21,6 +21,7 @@ use glam::{Mat4, Quat, Vec3};
 use std::f32::consts::{FRAC_PI_2, PI, TAU};
 use verse_world::social::everglade::DESK_SEATS;
 
+pub mod agora;
 pub mod belvedere;
 pub mod city;
 pub mod civic;
@@ -378,13 +379,14 @@ pub const PAVED: [([f32; 2], [f32; 2], f32); 6] = [
 ];
 /// The cobbled squares: center and half extents, m. The Fountain Plaza and
 /// the market hall's forecourt, the little square before the clock
-/// tower on Library Way, Well Square, and the Civic Hall's plaza at Main
-/// Street's east end.
-pub const PAVED_SQUARES: [([f32; 2], [f32; 2]); 4] = [
+/// tower on Library Way, Well Square, the Civic Hall's plaza at Main
+/// Street's east end, and the Agora's forecourt north of the market hall.
+pub const PAVED_SQUARES: [([f32; 2], [f32; 2]); 5] = [
     ([0.0, 74.5], [11.0, 10.5]),
     ([24.0, -29.0], [6.5, 3.0]),
     WELL_SQUARE,
     civic::PLAZA,
+    agora::SQUARE,
 ];
 /// Well Square, the city's second plaza, with its well: south of Hearth
 /// Road, between the Lantern Quarter and Stoop Lane, center and half
@@ -2008,7 +2010,7 @@ fn glade(out: &mut Vec<Placement>) {
         ("nature/Rock_Medium_3", [26.0, -58.0]),
         ("nature/Rock_Medium_2", [-6.0, -50.0]),
         ("nature/Rock_Medium_1", [30.0, -112.0]),
-        ("nature/Rock_Medium_3", [-40.0, 104.0]),
+        ("nature/Rock_Medium_3", [-48.0, 106.0]),
     ]
     .into_iter()
     .enumerate()

@@ -520,9 +520,10 @@ const fn brownstone(building: &'static str) -> StandIn {
 /// the gazebo on the commons' east lawn; the wayside chapel on the
 /// north trail; the owner's house at Library Way's east end
 /// (`super::estate`); the Civic Hall at Main Street's east end
-/// (`super::civic`); and the belvedere on the west trail's climb
-/// (`super::belvedere`).
-pub const GROUNDS: [Instance; 7] = [
+/// (`super::civic`); the belvedere on the west trail's climb
+/// (`super::belvedere`); and the Agora north of the market hall
+/// (`super::agora`).
+pub const GROUNDS: [Instance; 8] = [
     Instance {
         scale: 0.8,
         ..Instance::new("boathouse", &BOATHOUSE, [4.5, 34.2], PI)
@@ -535,6 +536,7 @@ pub const GROUNDS: [Instance; 7] = [
     super::estate::OWNERS_HOUSE,
     super::civic::CIVIC,
     super::belvedere::BELVEDERE_AT,
+    super::agora::AGORA,
 ];
 
 /// The Fountain Plaza's fountain, on the plaza's west half clear of
@@ -687,11 +689,12 @@ pub const GARDEN: ([f32; 2], [f32; 2]) = ([-66.0, -54.0], [6.0, 5.0]);
 pub const ORCHARD: ([f32; 2], [f32; 2]) = ([-100.0, 76.0], [12.0, 9.0]);
 
 /// The footprints the city reserves: its buildings, the models on open
-/// ground, the ground kept clear round the Civic Hall, the plaza, the
-/// garden, and the orchard.
+/// ground, the ground kept clear round the Civic Hall and the Agora, the
+/// plaza, the garden, and the orchard.
 pub fn reserved() -> impl Iterator<Item = ([f32; 2], [f32; 2])> {
     all().map(|b| b.rect).chain(grounds_rects()).chain([
         super::civic::CLEAR,
+        super::agora::CLEAR,
         PLAZA,
         GARDEN,
         ORCHARD,
@@ -744,6 +747,7 @@ pub fn doors() -> Vec<(&'static str, [f32; 2], [f32; 2])> {
 pub fn roads() -> Vec<([f32; 2], [f32; 2], f32)> {
     let mut out = STREETS.to_vec();
     out.push(super::estate::WALK);
+    out.extend(super::agora::WALKS);
     // Each stand-in's walk from its building's street to its front step.
     for s in &STAND_INS {
         let b = named(s.building);

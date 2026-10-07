@@ -1,8 +1,8 @@
 # Greco-futurism
 
-Status: defined October 6, 2026. The first kit and three buildings in
-Everglade, the owner's house, the Civic Hall, and the belvedere, are
-implemented.
+Status: defined October 6, 2026. The first kit and four buildings in
+Everglade, the owner's house, the Civic Hall, the belvedere, and the Agora,
+are implemented.
 
 Greco-futurism is an architectural style for Verse: a classical temple front
 reduced to its essentials, with the future carried in its surfaces and doors
@@ -100,6 +100,14 @@ and a kit piece in `assets/verse/generated/greco/kit/`.
 | Stepped surround | `stepped_surround` | Nested bronze line frames stepping outward round a door, a filled outer band, and wing brackets in the lower corners ending in circles | 110 |
 | Meander floor | `meander_floor` | A bronze half ring and a Greek key inlaid in a pale floor before a door | 94 |
 | Terracotta pot | `terracotta_pot` | A terracotta pot with a clipped shrub or a small tree | 144 (two) |
+| Standing trading desk | `trading_desk`, `desk_phone`, `headset` | A bank of walnut-and-bronze standing desks with no chairs, a copper edge, and a foot rail; each station has two slim screens glowing amber toward its agent, a bronze desk phone with an amber keypad, and a headset on a copper hook | 368 (three stations) |
+| Leaderboard wall | `leaderboard_wall`, `board` | Dark walnut paneling inscribed with circuit lines between two marble pilasters, carrying a large dark board in a bronze frame with an amber header rule and faint row rules; Verse draws the rows | 158 |
+| Ticker band | `ticker` | A bronze band under the cornice carrying a running line of amber dashes, where Verse draws the floor's events | 28 (6 m) |
+| Bell and stele | `bell_stand`, `bell_body` | A limestone stele with an amber pane and copper traces, and a bronze yoke on two posts; the bell hangs from it | 158 |
+| Glass office wall | `glass_partition` | Slim bronze posts between a sill and a head, with a transom bar; clear below it and dark glass above, with a doorway | 66 (5.2 m) |
+| Whiteboard | `whiteboard` | A long white marble face in a slim bronze frame over a copper tray | 50 |
+| Role-play booth | `booth`, `screen` | Two standing limestone lecterns facing each other, each with a headset, beside a screen of a walnut panel under a fine lattice | 306 |
+| Pendant lamp | `pendant` | A bronze pendant on a rod from the ceiling with a glowing amber drum shade | 38 |
 
 The props share the vocabulary:
 
@@ -222,7 +230,8 @@ material:
   within 34 m), those on the player's side of the walls first, then the
   nearest. The owner's house has 20 fixtures, 12 of them inside; the Civic
   Hall has 19, 13 of them inside; the belvedere, a sunlit loggia, has
-  only 6, lanterns and uplights outside and two sconces, for the evening.
+  only 6, lanterns and uplights outside and two sconces, for the evening;
+  and the Agora has 18, 12 of them inside, its six pendant lamps first.
   Each building fills only the stage's free slots, so they never pass the
   limit together.
 - **Grade.** While the player is in the great room, the stage takes a
@@ -475,6 +484,75 @@ python3 scripts/blender/greco_admit.py belvedere
 Review renders come from
 `scripts/blender/greco_views.py -- belvedere IN.glb OUT_DIR`.
 
+## The Agora
+
+`generated/agora` is the agent sales floor's trading hall
+([The agent sales floor](../sales/agent-sales-floor.md#the-agora-the-sales-floor-in-everglade)):
+commerce in the same style as the town's seat of government, with the
+boiler-room energy inside and a quiet front outside.
+
+- **Where.** North of the market hall, west of where the north trail
+  leaves the Fountain Plaza: the foot of its stair at (-24, 99), facing
+  south toward the plaza, with a cobbled forecourt and a walk from the
+  plaza's north-west corner
+  ([`layout/agora.rs`](../../crates/verse-zone-everglade/src/zones/everglade/layout/agora.rs)).
+  This is the sales plan's fallback site. Main Street's west end doesn't
+  fit: the snug's lot on Lantern Road comes within 6 m of the street's
+  axis, the orchard closes it from the north, and past x = -110 the ground
+  rises out of the flat clearing.
+- **Front.** Ten shallow steps of 0.16 by 0.4 m between hedged planter
+  walls rise to a 1.6 m podium, with lantern posts at the stair's foot.
+  Four smooth columns stand before the facade under a full entablature
+  whose frieze carries small amber panes, with a low attic over it. The
+  tall bronze doors, under a glyph transom, stand open; uplights wash
+  them, and marble pilasters divide the facade. A lower wing on each side,
+  set back 2.4 m, carries pilasters and a wall lantern.
+- **Trading floor.** One tall storey, 16 m by 19.6 m and 7 m high under a
+  coffered ceiling with the cove's warm line. Three rows of standing
+  desks, two banks of three stations a row either side of a 3.2 m center
+  aisle, face the leaderboard wall across the floor's head; six pendant
+  lamps hang over the banks. The amber ticker band runs round the hall
+  under the cove. The bell's stele stands on the entry axis before the
+  board, so the doors frame the board and the bell. Clerestory windows of
+  dark glass light the hall over the wings' roofs.
+- **Paul's corner office.** In the -x wing, behind a glass wall with its
+  doorway at the floor's front: his standing desk faces the floor through
+  the glass, the pipeline board hangs on the back wall, the owner's lectern
+  stands by it, and a dark walnut wall inscribed with circuit lines stands
+  behind him.
+- **Training room.** In the +x wing: a long whiteboard on its front wall
+  over the lesson's floor, and four role-play booths behind it, each two
+  standing lecterns facing each other, between screens open at their ends.
+- **The bell.** The model carries the stele and the yoke; the zone draws
+  the bell and swings it when `Everglade::ring_agora_bell` is called
+  (`layout::agora::Bell`). The sales floor calls it when the payment
+  ledger records a settled deal; nothing calls it yet.
+- **Stations.** Nobody works here yet. The places agents will stand are
+  data in `layout::agora`: 18 desks (`DESKS`), Paul's desk (`PAUL`), his
+  stand-up spot by the bell (`STANDUP`), the owner's lectern (`OWNER`), the
+  whiteboard (`TEACHER`), and the booths (`BOOTHS`). A test walks a
+  walker's body from the forecourt to each.
+- **Light.** Six pendant lamps over the desks and two sconces flanking
+  the leaderboard; a candelabrum on Paul's desk and a lamp in the office;
+  a lamp and a sconce in the training room; outside, lantern posts,
+  uplights, and the wings' wall lanterns. The screens, the ticker, and
+  the frieze's panes glow through `EmitAmber`. Inside, the stage takes the
+  great room's darker grade.
+- **Budget.** 7,618 triangles near and 700 far, with its furniture, a
+  little under the Civic Hall.
+
+Rebuild it and admit it:
+
+```sh
+B=/Applications/Blender.app/Contents/MacOS/Blender
+$B -b --factory-startup --python scripts/blender/greco_futurism.py -- \
+    assets/verse/generated/greco agora
+python3 scripts/blender/greco_admit.py agora
+```
+
+Review renders come from
+`scripts/blender/greco_views.py -- agora IN.glb OUT_DIR`.
+
 ## Planned assets
 
 | Asset | What it is |
@@ -490,4 +568,3 @@ Review renders come from
 | Reading chair and side table | Walnut and linen furniture for the great room |
 | Second-floor interior | The upper rooms, once a staircase fits the budget |
 | Dusk lighting | Lamplight in the great room and the transom, when Everglade has a dusk |
-| The Agora | The sales floor's trading hall at Main Street's west end, facing the Civic Hall, with standing desks, a leaderboard wall, a bell, an office, and a training room ([The agent sales floor](../sales/agent-sales-floor.md#the-agora-the-sales-floor-in-everglade)) |

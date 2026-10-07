@@ -113,6 +113,8 @@ pub fn of_instance(name: &str) -> Option<District> {
         "civic hall" => District::MainStreet,
         // Over the Lantern Quarter, at Hearth Road's end.
         "belvedere" => District::LanternQuarter,
+        // North of the market hall, facing the plaza.
+        "agora" => District::FountainPlaza,
         _ => return None,
     })
 }

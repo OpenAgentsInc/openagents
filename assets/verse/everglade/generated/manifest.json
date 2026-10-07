@@ -5,6 +5,8 @@
   "package": "Verse generated models (scripts/blender), built with the Medieval Village MegaKit Standard",
   "files": {
     "T_Concrete_BaseColor.png": "115f078ea42a61dc436ab4af24ab4fdf40cb489f5e87f19039edf866dcb3294b",
+    "agora.bin": "2f1b22e426fed7bd351477b3bde31076d95a22423478da105b429e0f22f31817",
+    "agora.gltf": "5e0a04eb54f5653500939ef2395f27cd43e4ff5e267368aacaf1be32ef3476cc",
     "bakery.bin": "874e16dadff8662c7b05d821db8f6dd4e859c4a588d133ff3763b486f28131f9",
     "bakery.gltf": "e2b3dc2ccab8b29e9f1a2bf92c5e66184a6617632dc9e06032b7bc4b2375d30c",
     "bandshell.bin": "80fa54d4d08da539faf80537dbb49843f35d363164c310b64ec1befc6ad97f93",
@@ -239,6 +241,8 @@
   },
   "originals": {
     "T_Concrete_BaseColor.png": "ab433b66168a52c18417710d861408b1d54ddca84650f867b1d58328981ac56b",
+    "agora.bin": "284886f8f7ea9c8a1a341f04533238e46ad07fcbbcfab15471550914fea61932",
+    "agora.gltf": "284886f8f7ea9c8a1a341f04533238e46ad07fcbbcfab15471550914fea61932",
     "bakery.bin": "42205b986062f7ea7cb09c9ee2360c6c03dd18842f4b679d903ba577b1e51537",
     "bakery.gltf": "42205b986062f7ea7cb09c9ee2360c6c03dd18842f4b679d903ba577b1e51537",
     "bandshell.bin": "cdd525761ca0cd428edced921e079f02c30389e82c63221fbd539c6aa3bcbb95",
@@ -473,6 +477,8 @@
   },
   "transforms": {
     "T_Concrete_BaseColor.png": "recompressed losslessly by scripts/blender/everglade_compact.py with oxipng -o max --zopfli --nx --strip all",
+    "agora.bin": "converted from assets/verse/generated/greco/agora.glb by scripts/blender/greco_admit.py with everglade_admit.py's conversion: separate buffer, embedded images replaced by the village set's admitted images with base-color factors; then compacted by scripts/blender/everglade_compact.py: only the attributes the pack compiler reads, tightly packed",
+    "agora.gltf": "converted from assets/verse/generated/greco/agora.glb by scripts/blender/greco_admit.py with everglade_admit.py's conversion: separate buffer, embedded images replaced by the village set's admitted images with base-color factors; then compacted by scripts/blender/everglade_compact.py: only the attributes the pack compiler reads, tightly packed",
     "bakery.bin": "converted from assets/verse/generated/buildings/bakery.glb by scripts/blender/everglade_admit.py: separate buffer, embedded images replaced by the village set's admitted images with base-color factors; then compacted by scripts/blender/everglade_compact.py: only the attributes the pack compiler reads, tightly packed",
     "bakery.gltf": "converted from assets/verse/generated/buildings/bakery.glb by scripts/blender/everglade_admit.py: separate buffer, embedded images replaced by the village set's admitted images with base-color factors; then compacted by scripts/blender/everglade_compact.py: only the attributes the pack compiler reads, tightly packed",
     "bandshell.bin": "converted from assets/verse/generated/bandshell.glb by scripts/blender/everglade_admit.py: separate buffer, embedded images replaced by the village set's admitted images with base-color factors; then compacted by scripts/blender/everglade_compact.py: only the attributes the pack compiler reads, tightly packed",

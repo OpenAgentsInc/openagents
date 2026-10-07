@@ -1409,6 +1409,16 @@ impl WorldRuntime {
             .is_some_and(|glade| glade.levitating)
     }
 
+    /// Rings the Agora's bell in Everglade (`layout::agora::Bell`): the
+    /// hook the sales floor calls when the payment ledger records a
+    /// settled deal. Returns whether the zone has the bell.
+    pub fn everglade_ring_agora_bell(&mut self) -> bool {
+        self.zone_state
+            .everglade
+            .as_mut()
+            .is_some_and(|glade| glade.ring_agora_bell())
+    }
+
     pub fn zone_snapshot(&self, aspect: f32) -> Snapshot {
         let portal = self.zone_portal(aspect);
         let mut controls = Vec::new();

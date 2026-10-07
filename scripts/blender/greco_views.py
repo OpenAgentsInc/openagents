@@ -8,6 +8,8 @@ Run headless:
     Blender -b --factory-startup --python scripts/blender/greco_views.py -- \
         belvedere IN.glb OUT_DIR
     Blender -b --factory-startup --python scripts/blender/greco_views.py -- \
+        agora IN.glb OUT_DIR
+    Blender -b --factory-startup --python scripts/blender/greco_views.py -- \
         kit KIT_DIR OUT.png
 
 `house` writes `house_<view>.png` for the street front, a three-quarter
@@ -161,6 +163,54 @@ def belvedere(src, out):
         render(os.path.join(out, f"belvedere_{name}.png"))
 
 
+def lamps(src):
+    """Point lights at the lights `src`'s footprint records, so the
+    interiors' review views are lit as the zone lights them."""
+    path = src[:-4] + ".footprint.json"
+    if not os.path.exists(path):
+        return
+    import json
+
+    for i, light in enumerate(json.load(open(path)).get("lights", [])):
+        x, y, z = light["at"]
+        data = bpy.data.lights.new(f"lamp{i}", "POINT")
+        data.energy = 220.0 if light["kind"] in ("lamp", "brazier") else 120.0
+        data.color = (1.0, 0.72, 0.42)
+        data.shadow_soft_size = 0.2
+        obj = bpy.data.objects.new(f"lamp{i}", data)
+        # glTF (x, y, z) is Blender (x, -z, y).
+        obj.location = (x, -z, y)
+        bpy.context.scene.collection.objects.link(obj)
+
+
+def agora(src, out):
+    """The Agora: the front from the forecourt, a three-quarter view, the
+    door, the aerial, the trading floor from the door, the leaderboard
+    and the bell, Paul's office, and the training room."""
+    bpy.ops.wm.read_factory_settings(use_empty=True)
+    scene(1600, 1000)
+    bpy.ops.import_scene.gltf(filepath=src)
+    lamps(src)
+    for x, y, h, r in ((-22, 2, 14, 5.5), (22, 3, 15, 5.5), (-24, 26, 15, 5.0), (24, 26, 14, 5.0)):
+        tree(x, y, h, r)
+    os.makedirs(out, exist_ok=True)
+    views = {
+        "front": ((0, -24, 2.2), (0, 10, 6.0), 26),
+        "three_quarter": ((-28, -20, 8.0), (0, 12, 5.0), 30),
+        "door": ((-2.5, 3.0, 2.6), (0.3, 10, 3.6), 26),
+        "aerial": ((38, -30, 36), (0, 14, 2.0), 30),
+        "floor": ((0, 8.6, 3.6), (0, 27, 3.2), 18),
+        "leaderboard": ((-3.0, 17.6, 3.4), (0, 27.6, 4.4), 22),
+        "bell": ((1.6, 21.2, 2.9), (0, 24, 3.6), 26),
+        "office": ((-8.9, 10.9, 3.4), (-13.0, 18.0, 2.2), 16),
+        "training": ((14.3, 12.2, 3.3), (10.0, 19.0, 1.4), 16),
+        "whiteboard": ((10.6, 16.0, 2.9), (12.0, 10.4, 2.6), 20),
+    }
+    for name, (loc, target, lens) in views.items():
+        camera(loc, target, lens)
+        render(os.path.join(out, f"agora_{name}.png"))
+
+
 def kit(src_dir, out):
     bpy.ops.wm.read_factory_settings(use_empty=True)
     names = sorted(f for f in os.listdir(src_dir) if f.endswith(".glb"))
@@ -214,6 +264,8 @@ def main():
         civic(args[1], args[2])
     elif mode == "belvedere":
         belvedere(args[1], args[2])
+    elif mode == "agora":
+        agora(args[1], args[2])
     elif mode == "kit":
         kit(args[1], args[2])
     else:

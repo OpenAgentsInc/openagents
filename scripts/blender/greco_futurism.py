@@ -62,6 +62,14 @@ Models:
   a walnut side door; and behind it an entry court whose colonnade frames
   a mahogany double door in a stepped bronze surround over a meander
   floor, with terracotta pots. It also writes `far/belvedere.glb`.
+- `agora`: the Agora, the sales floor's trading hall
+  (`docs/sales/agent-sales-floor.md`): ten steps to a podium, four smooth
+  columns under an entablature whose frieze carries amber panes, and the
+  bronze doors standing open on one tall trading floor: three rows of
+  standing desks with screens, phones, and headsets, the leaderboard wall,
+  the ticker band, and the bell's stele. A lower wing on each side holds
+  Paul's glass-walled office and the training room, with its whiteboard and
+  four role-play booths. It also writes `far/agora.glb`.
 - Kit pieces under `kit/`, for review and later buildings: `column`,
   `pier`, `entablature_bay`, `stair_flight`, `planter_wall`,
   `circuit_door`, `lattice_screen`, `coffer_bay`, `pilaster`, `chimney`,
@@ -71,7 +79,9 @@ Models:
   `council_ring`; and the belvedere's `inlaid_pier`, `lintel_band`,
   `louver`, `relief_panel`, `cushioned_bench`, `urn_tree`, `threshold`,
   `mahogany_door`, `stepped_surround`, `meander_floor`, and
-  `terracotta_pot`.
+  `terracotta_pot`; and the Agora's `trading_desk`, `desk_phone`,
+  `headset`, `leaderboard_wall`, `ticker_band`, `bell`, `glass_partition`,
+  `whiteboard`, `roleplay_booth`, and `pendant`.
 """
 
 import json
@@ -342,10 +352,11 @@ def pier(b, x, y, z0, z1, d=COLUMN_D):
     b.collide("pier", (x - r - 0.1, y - r - 0.1, z0), (x + r + 0.1, y + r + 0.1, z1))
 
 
-def entablature(b, x0, x1, y0, y1, z, panels=("-y", "-x", "+x", "+y"), spacing=1.6):
+def entablature(b, x0, x1, y0, y1, z, panels=("-y", "-x", "+x", "+y"), spacing=1.6, panel="redbrown"):
     """The deep flat entablature over a plan from (x0, y0) to (x1, y1):
-    a plain architrave, a frieze of small inset red-brown square panels,
-    and a cornice of three stepped bands, each projecting further."""
+    a plain architrave, a frieze of small inset red-brown square panels
+    (or amber panes, with `panel`), and a cornice of three stepped bands,
+    each projecting further."""
     a, f = z + 0.6, z + 1.2
     box(b, (x0, y0, z), (x1, y1, a), "lime", skip="+z", name="Architrave")
     box(b, (x0 + 0.04, y0 + 0.04, a), (x1 - 0.04, y1 - 0.04, f), "lime", skip="-z +z", name="Frieze")
@@ -372,7 +383,7 @@ def entablature(b, x0, x1, y0, y1, z, panels=("-y", "-x", "+x", "+y"), spacing=1
         for i in range(n):
             u = lo + step * (i + 1)
             p, q = at(u)
-            box(b, p, q, "redbrown", skip=only(OUTWARD[back]), name="FriezePanel")
+            box(b, p, q, panel, skip=only(OUTWARD[back]), name="FriezePanel")
 
 
 def stair(b, x0, x1, y0, z0, steps, rise, run, mat="shade"):
@@ -2166,6 +2177,503 @@ def belvedere_loggia(b):
         sconce(b, local((0, y1, 0), 0.0), s * 2.4, hall + 2.4)
 
 
+# --------------------------------------------------------------------------
+# The Agora's kit: the sales floor's trading hall
+# (`docs/sales/agent-sales-floor.md`). Standing desks with screens, phones,
+# and headsets; the leaderboard wall and the ticker band, whose words Verse
+# draws; the bell on its stele; the glass office wall; the whiteboard; and
+# the role-play booths. Nothing has a chair: agents always stand.
+
+
+def desk_phone(b, xf, u, v, top):
+    """A low bronze desk phone at (u, v) on a desk top at `top` in frame
+    `xf`, with a copper handset and an amber keypad."""
+    box(b, (u - 0.11, v - 0.09, top), (u + 0.11, v + 0.09, top + 0.06), "bronze", skip="-z", xf=xf, name="Phone")
+    if FAR:
+        return
+    box(b, (u - 0.07, v - 0.07, top + 0.06), (u + 0.04, v + 0.03, top + 0.061), "amber", skip=only("+z"), xf=xf,
+        name="EmitKeys")
+    box(b, (u + 0.05, v - 0.085, top + 0.06), (u + 0.1, v + 0.085, top + 0.1), "copper", skip="-z", xf=xf,
+        name="Handset")
+
+
+def headset(b, xf, u, v, top):
+    """A headset hung on a slim copper hook at (u, v) on a desk top at
+    `top`: a bronze band over two ear cups. A prop: nobody calls anyone."""
+    box(b, (u - 0.015, v - 0.015, top), (u + 0.015, v + 0.015, top + 0.34), "copper", skip="-z", xf=xf,
+        name="HeadsetHook")
+    if FAR:
+        return
+    box(b, (u - 0.09, v - 0.025, top + 0.3), (u + 0.09, v + 0.025, top + 0.33), "bronze", skip="-z", xf=xf,
+        name="Headset")
+    for s in (-1, 1):
+        box(b, (u + s * 0.09 - 0.025, v - 0.045, top + 0.16), (u + s * 0.09 + 0.025, v + 0.045, top + 0.3), "bronze",
+            xf=xf, name="Headset")
+
+
+def trading_desk(b, xf, w, stations=3, h=1.06, d=0.8, phones=True):
+    """A bank of walnut-and-bronze standing desks `w` long along the local
+    x axis, with no chairs: each agent stands on its -y side facing +y.
+    Each station has two slim screens glowing amber toward its agent, a
+    desk phone, and a headset on a hook; a walnut modesty panel faces
+    away, and a bronze foot rail runs under it."""
+    box(b, (-w / 2, -d / 2, h - 0.05), (w / 2, d / 2, h), "walnut", xf=xf, name="DeskTop")
+    box(b, (-w / 2 - 0.02, -d / 2 - 0.02, h - 0.08), (w / 2 + 0.02, d / 2 + 0.02, h - 0.05), "copper", skip="+z",
+        xf=xf, name="DeskEdge")
+    for u in (-w / 2, w / 2 - 0.06):
+        box(b, (u, -d / 2 + 0.04, 0.0), (u + 0.06, d / 2 - 0.04, h - 0.08), "walnut", skip="-z +z", xf=xf,
+            name="DeskEnd")
+    box(b, (-w / 2 + 0.06, d / 2 - 0.1, 0.22), (w / 2 - 0.06, d / 2 - 0.05, h - 0.08), "walnut", skip="-x +x -z +z",
+        xf=xf, name="DeskPanel")
+    lo, hi = xf @ Vector((-w / 2, -d / 2, 0.0)), xf @ Vector((w / 2, d / 2, h))
+    b.collide("desk", Vector((min(lo.x, hi.x), min(lo.y, hi.y), lo.z)), Vector((max(lo.x, hi.x), max(lo.y, hi.y), hi.z)))
+    if FAR:
+        return
+    box(b, (-w / 2 + 0.06, -0.03, 0.12), (w / 2 - 0.06, 0.03, 0.16), "bronze", skip="-x +x", xf=xf, name="FootRail")
+    span = w / stations
+    for k in range(stations):
+        u = -w / 2 + span * (k + 0.5)
+        for side, turn in ((-1, 10.0), (1, -10.0)):
+            sx = xf @ Matrix.Translation(Vector((u + side * 0.3, 0.14, h))) @ Matrix.Rotation(math.radians(turn), 4,
+                                                                                                "Z")
+            box(b, (-0.28, 0.0, 0.1), (0.28, 0.03, 0.44), "bronze", skip="-z", xf=sx, name="ScreenFrame")
+            box(b, (-0.26, -0.004, 0.12), (0.26, 0.0, 0.42), "amber", skip=only("-y"), xf=sx, name="EmitScreen")
+            box(b, (-0.02, 0.03, 0.0), (0.02, 0.06, 0.1), "copper", skip="-z +z", xf=sx, name="ScreenStand")
+        if phones:
+            desk_phone(b, xf, u - span / 2 + 0.24, -0.16, h)
+            headset(b, xf, u + span / 2 - 0.16, -0.26, h)
+
+
+def board(b, xf, w, h, z0, rows=8, frame=0.14):
+    """A large dark board in a bronze frame on a wall's face (the local
+    plane y = 0, facing -y): an amber header rule and faint row rules on
+    dark glass. Verse draws the rows on it, never baked into a texture."""
+    box(b, (-w / 2, -0.08, z0), (w / 2, -0.04, z0 + h), "glass", skip="+y", xf=xf, name="Board")
+    for lo, hi in (((-w / 2 - frame, -0.12, z0 - frame), (-w / 2, 0.0, z0 + h + frame)),
+                   ((w / 2, -0.12, z0 - frame), (w / 2 + frame, 0.0, z0 + h + frame)),
+                   ((-w / 2, -0.12, z0 - frame), (w / 2, 0.0, z0)),
+                   ((-w / 2, -0.12, z0 + h), (w / 2, 0.0, z0 + h + frame))):
+        box(b, lo, hi, "bronze", skip="+y", xf=xf, name="BoardFrame")
+    if FAR:
+        return
+    top = z0 + h - 0.32
+    box(b, (-w / 2 + 0.2, -0.084, top), (w / 2 - 0.2, -0.08, top + 0.06), "amber", skip=only("-y"), xf=xf,
+        name="EmitHeader")
+    for k in range(1, rows):
+        z = z0 + 0.1 + (top - z0 - 0.2) * k / rows
+        box(b, (-w / 2 + 0.2, -0.084, z), (w / 2 - 0.2, -0.08, z + 0.02), "inlay", skip=only("-y"), xf=xf,
+            name="BoardRule")
+    for s in (-0.22, 0.12):
+        u = s * w
+        box(b, (u - 0.01, -0.084, z0 + 0.1), (u + 0.01, -0.08, top - 0.06), "inlay", skip=only("-y"), xf=xf,
+            name="BoardRule")
+
+
+def leaderboard_wall(b, xf, z0, w=13.2, h=5.6, board_w=9.6, board_h=3.4, at=2.0):
+    """The leaderboard wall across the floor's head: dark walnut paneling
+    inscribed with faint circuit lines, carrying the large board, with a
+    marble pilaster at each edge. Its face is the local plane y = 0."""
+    box(b, (-w / 2, -0.06, z0), (w / 2, 0.0, z0 + h), "walnut", skip="+y -z", xf=xf, name="DarkWall")
+    face = xf @ Matrix.Translation(Vector((0.0, -0.06, 0.0)))
+    if not FAR:
+        circuit_lines(b, face, w, z0, h)
+    board(b, face, board_w, board_h, z0 + at, rows=8)
+    for u in (-w / 2 - 0.35, w / 2 + 0.35):
+        pilaster(b, xf, u, z0, z0 + h)
+
+
+def ticker(b, xf, u0, u1, z, h=0.36):
+    """The amber ticker band on a wall's face (the local plane y = 0,
+    facing -y) from u0 to u1: a bronze band carrying a running line of
+    amber dashes where Verse will draw the floor's events as words."""
+    box(b, (u0, -0.06, z), (u1, 0.0, z + h), "bronze", skip="+y -x +x", xf=xf, name="TickerBand")
+    if FAR:
+        return
+    u, k = u0 + 0.2, 0
+    while u < u1 - 0.4:
+        n = 0.16 + 0.42 * ((k * 7) % 11) / 10
+        e = min(u + n, u1 - 0.2)
+        box(b, (u, -0.064, z + h * 0.34), (e, -0.06, z + h * 0.66), "amber", skip=only("-y"), xf=xf,
+            name="EmitTicker")
+        u = e + 0.1 + (0.3 if k % 4 == 3 else 0.0)
+        k += 1
+
+
+def bell_body(b, x, y, top, h=0.62, r=0.36, sides=10):
+    """A bronze bell hanging from `top`: a crown, a waisted shoulder, a
+    flared mouth, and a lip ring. The zone draws the Agora's own, which
+    swings (`layout::agora::Bell`); this is the kit piece's."""
+    b.solid("Bell", bl.frustum_mesh("Bell", (x, y), 0.07, 0.07, top - 0.1, top, 6, b.mats["bronze"]))
+    b.solid("Bell", bl.frustum_mesh("Bell", (x, y), r * 0.72, r * 0.5, top - h * 0.55, top - 0.1, sides,
+                                    b.mats["bronze"]))
+    b.solid("Bell", bl.frustum_mesh("Bell", (x, y), r, r * 0.72, top - h, top - h * 0.55, sides, b.mats["bronze"],
+                                    cap=False))
+    b.solid("Bell", bl.frustum_mesh("Bell", (x, y), r * 1.04, r, top - h - 0.04, top - h, sides, b.mats["copper"],
+                                    cap=False))
+
+
+# The bell's pivot over its stele's base, m: `layout::agora::BELL_PIVOT`.
+BELL_PIVOT = 2.6
+
+
+def bell_stand(b, x, y, z0, bell=True):
+    """The bell's limestone stele at the head of the floor, with a small
+    amber pane and copper traces on its face, and a bronze yoke on two
+    posts. With `bell`, the bell hangs from the yoke; in the Agora the
+    zone draws it instead, so it can swing and ring."""
+    box(b, (x - 0.7, y - 0.42, z0), (x + 0.7, y + 0.42, z0 + 0.12), "shade", skip="-z", name="SteleBase")
+    box(b, (x - 0.62, y - 0.34, z0 + 0.12), (x + 0.62, y + 0.34, z0 + 1.1), "lime", skip="-z +z", name="Stele")
+    box(b, (x - 0.68, y - 0.4, z0 + 1.1), (x + 0.68, y + 0.4, z0 + 1.18), "shade", skip="-z", name="SteleCap")
+    for s in (-1, 1):
+        box(b, (x + s * 0.55 - 0.05, y - 0.05, z0 + 1.18), (x + s * 0.55 + 0.05, y + 0.05, z0 + BELL_PIVOT + 0.02),
+            "bronze", skip="-z +z", name="BellPost")
+    box(b, (x - 0.66, y - 0.07, z0 + BELL_PIVOT + 0.02), (x + 0.66, y + 0.07, z0 + BELL_PIVOT + 0.16), "bronze",
+        name="BellYoke")
+    b.collide("bell", (x - 0.7, y - 0.42, z0), (x + 0.7, y + 0.42, z0 + BELL_PIVOT + 0.16))
+    if FAR:
+        return
+    face = local((x, y - 0.34, z0), 0.0)
+    box(b, (-0.09, -0.004, 0.72), (0.09, 0.0, 0.9), "amber", skip=only("-y"), xf=face, name="EmitPane")
+    polyline(b, face, [(0.4, 0.3), (0.4, 0.62), (0.18, 0.62), (0.18, 0.81), (0.09, 0.81)], mat="copper", width=0.035,
+             proud=0.006)
+    if bell:
+        bell_body(b, x, y, z0 + BELL_PIVOT)
+
+
+def glass_partition(b, x, y0, y1, z0, h=3.6, door=None, post=1.3):
+    """A glass office wall along y at x, between a bronze sill and head,
+    with slim bronze posts and a transom bar. Its glass is clear below the
+    transom, so the office sees the floor and the floor sees the office,
+    and dark above it; `door` is a (y0, y1) doorway."""
+    spans = [(y0, y1)] if door is None else [(y0, door[0]), (door[1], y1)]
+    box(b, (x - 0.06, y0, z0 + h - 0.14), (x + 0.06, y1, z0 + h), "bronze", skip="-y +y", name="PartitionHead")
+    for ya, yb in spans:
+        b.collide("partition", (x - 0.1, ya, z0), (x + 0.1, yb, z0 + h))
+        box(b, (x - 0.06, ya, z0), (x + 0.06, yb, z0 + 0.14), "bronze", skip="-z -y +y", name="PartitionSill")
+        if FAR:
+            box(b, (x - 0.02, ya, z0 + 0.14), (x + 0.02, yb, z0 + h - 0.14), "glass", skip="-y +y -z +z",
+                name="Glass")
+            continue
+        n = max(1, round((yb - ya) / post))
+        for k in range(n + 1):
+            y = ya + (yb - ya) * k / n
+            y = min(max(y, ya + 0.04), yb - 0.04)
+            box(b, (x - 0.045, y - 0.04, z0 + 0.14), (x + 0.045, y + 0.04, z0 + h - 0.14), "bronze", skip="-z +z",
+                name="PartitionPost")
+        box(b, (x - 0.04, ya, z0 + 2.6), (x + 0.04, yb, z0 + 2.68), "bronze", skip="-y +y", name="PartitionTransom")
+        box(b, (x - 0.01, ya, z0 + 2.68), (x + 0.01, yb, z0 + h - 0.14), "glass", skip="-y +y -z +z", name="Glass")
+
+
+def whiteboard(b, xf, w, h, z0):
+    """A long whiteboard on a wall's face: a white marble face in a slim
+    bronze frame over a copper tray. Verse draws the day's lesson on it."""
+    box(b, (-w / 2, -0.05, z0), (w / 2, 0.0, z0 + h), "marble", skip="+y", xf=xf, name="Whiteboard")
+    for lo, hi in (((-w / 2 - 0.06, -0.07, z0), (-w / 2, 0.0, z0 + h)),
+                   ((w / 2, -0.07, z0), (w / 2 + 0.06, 0.0, z0 + h)),
+                   ((-w / 2 - 0.06, -0.07, z0 + h), (w / 2 + 0.06, 0.0, z0 + h + 0.06))):
+        box(b, lo, hi, "bronze", skip="+y", xf=xf, name="WhiteboardFrame")
+    box(b, (-w / 2, -0.16, z0 - 0.06), (w / 2, 0.0, z0), "copper", skip="+y", xf=xf, name="WhiteboardTray")
+
+
+def booth(b, x, y0, y1, z0, open_front=True):
+    """A role-play booth from y0 to y1: two standing lecterns facing each
+    other across it along y, each with a headset; the screens round it
+    are separate (`screen`). Its agents stand behind the lecterns, with
+    room for a body between each lectern and the booth's closed ends."""
+    for y, rot in ((y0 + (1.0 if open_front else 1.25), 180.0), (y1 - 1.25, 0.0)):
+        lectern(b, x, y, z0, rot=rot)
+        if not FAR:
+            headset(b, local((x, y, z0), rot), 0.16, 0.05, 1.06)
+
+
+def screen(b, x0, x1, y0, y1, z0, h=1.8, panel=0.95):
+    """A booth's screen along x or along y: a walnut panel to `panel` m,
+    and a fine walnut lattice over it to `h`, in a slim bronze frame, so
+    a booth is private without being shut in."""
+    if abs(x1 - x0) >= abs(y1 - y0):
+        xf = local((0.0, (y0 + y1) / 2, z0), 0.0)
+        u0, u1 = x0, x1
+    else:
+        xf = local(((x0 + x1) / 2, 0.0, z0), 90.0)
+        u0, u1 = y0, y1
+    box(b, (u0, -0.04, 0.0), (u1, 0.04, panel), "walnut", skip="-z", xf=xf, name="ScreenPanel")
+    if FAR:
+        box(b, (u0, -0.01, panel), (u1, 0.01, h), "walnut", skip="-z", xf=xf, name="Screen")
+    else:
+        nx, nz = max(2, round((u1 - u0) / 0.25)), max(2, round((h - panel) / 0.25))
+        for i in range(1, nx):
+            u = u0 + (u1 - u0) * i / nx
+            t = 0.025 if i % 4 else 0.05
+            box(b, (u - t / 2, -0.02, panel), (u + t / 2, 0.02, h), "walnut", skip="-z +z", xf=xf, name="LatticeBar")
+        for k in range(1, nz):
+            z = panel + (h - panel) * k / nz
+            box(b, (u0, -0.022, z - 0.0125), (u1, 0.022, z + 0.0125), "walnut", skip="-x +x", xf=xf,
+                name="LatticeBar")
+        for lo, hi in (((u0, -0.05, 0.0), (u0 + 0.06, 0.05, h)), ((u1 - 0.06, -0.05, 0.0), (u1, 0.05, h)),
+                       ((u0, -0.05, h - 0.06), (u1, 0.05, h)), ((u0, -0.05, panel - 0.03), (u1, 0.05, panel + 0.03))):
+            box(b, lo, hi, "bronze", skip="-z", xf=xf, name="LatticeFrame")
+    b.collide("screen", (min(x0, x1) - 0.05 * (x0 == x1), min(y0, y1) - 0.05 * (y0 == y1), z0),
+              (max(x0, x1) + 0.05 * (x0 == x1), max(y0, y1) + 0.05 * (y0 == y1), z0 + h))
+
+
+def pendant(b, x, y, top, drop=2.6):
+    """A bronze pendant lamp on a rod from the ceiling at `top`, with a
+    glowing amber drum shade, over a desk bank."""
+    z = top - drop
+    box(b, (x - 0.02, y - 0.02, z + 0.34), (x + 0.02, y + 0.02, top), "bronze", skip="-z +z", name="PendantRod")
+    box(b, (x - 0.33, y - 0.33, z + 0.3), (x + 0.33, y + 0.33, z + 0.34), "bronze", name="PendantCap")
+    prism(b, (x, y), 0.3, z, z + 0.3, 8, "amber", name="EmitShade", cap=False)
+    box(b, (x - 0.2, y - 0.2, z), (x + 0.2, y + 0.2, z + 0.004), "amber", skip=only("-z"), name="EmitShade")
+    light(b, "lamp", (x, y, z - 0.1))
+
+
+# The Agora: heights above the ground, m. One tall storey for the floor,
+# with the office and the training room in a lower wing on each side.
+A_FLOOR = 1.6  # The podium: ten steps of 0.16 m.
+A_CEIL = A_FLOOR + 7.0  # The floor's ceiling.
+A_WALL = A_FLOOR + 7.8  # The walls' and the columns' tops.
+A_WING_CEIL = A_FLOOR + 4.2  # The wings' ceilings.
+A_WING_TOP = A_FLOOR + 4.8  # The wings' walls' tops.
+# Plan, m (Blender y grows away from the street).
+A_HW = 8.4  # The hall's outer half width.
+A_IN = 8.0  # The floor's inner half width.
+A_FRONT = 7.6  # The facade's outer face.
+A_BACK = 27.6  # The back wall's inner face: the leaderboard's.
+A_COL_Y = 5.4  # The portico's columns.
+A_WING_X = 15.2  # The wings' outer faces.
+A_WING_Y = (10.0, 21.0)  # The wings' front and back faces.
+A_SIDE_DOOR = (10.8, 12.2)  # The doorways from the floor into each wing.
+A_ROWS = (13.2, 16.8, 20.4)  # The desk rows' centers.
+A_BANK = (1.6, 6.4)  # Each desk bank's extent from the center aisle.
+A_BELL = (0.0, 24.0)  # The bell's stele.
+A_MIDDLE = (0.0, 18.0)  # The floor's middle, on the entry axis.
+
+
+def agora_body(b):
+    """The Agora's outside: ten steps between hedged planter walls to a
+    podium, four smooth columns before the facade under a full
+    entablature whose frieze carries small amber panes, the tall bronze
+    doors standing open, the hall's clerestory, and a lower wing on each
+    side for Paul's office and the training room."""
+    f, hw, t = A_FLOOR, A_HW, 0.4
+    fy, by = A_FRONT, A_BACK
+    wy0, wy1 = A_WING_Y
+    # -- The approach: ten shallow steps between hedged planter walls.
+    y_top, _ = stair(b, -4.6, 4.6, 0.0, 0.0, 10, f / 10, 0.4)
+    for s in (-1, 1):
+        x0, x1 = sorted((s * 4.6, s * 8.8))
+        planter_wall(b, x0, x1, 0.0, y_top, 0.0, 0.9, hedge=0.6)
+    # -- The podium under the portico and the hall, and under each wing,
+    # with a darker base course.
+    box(b, (-hw - 0.4, y_top, 0.0), (hw + 0.4, by + t + 0.4, f), "lime", skip="-z", name="Podium")
+    box(b, (-hw - 0.48, y_top - 0.08, 0.0), (hw + 0.48, by + t + 0.48, 0.3), "shade", skip="-z", name="BaseCourse")
+    for s in (-1, 1):
+        x0, x1 = sorted((s * (hw + 0.4), s * (A_WING_X + 0.4)))
+        box(b, (x0, wy0 - 0.4, 0.0), (x1, wy1 + 0.4, f), "lime", skip="-z " + ("-x" if s > 0 else "+x"),
+            name="Podium")
+        x0, x1 = sorted((s * (hw + 0.48), s * (A_WING_X + 0.48)))
+        box(b, (x0, wy0 - 0.48, 0.0), (x1, wy1 + 0.48, 0.3), "shade", skip="-z " + ("-x" if s > 0 else "+x"),
+            name="BaseCourse")
+    # -- The portico: four smooth columns before the facade.
+    for x in (-6.6, -2.4, 2.4, 6.6):
+        column(b, x, A_COL_Y, f, A_WALL, d=0.85)
+    if not FAR:
+        for x in (-6.6, -2.4, 2.4, 6.6):
+            box(b, (x - 0.18, A_COL_Y, A_WALL - 0.3), (x + 0.18, fy, A_WALL), "lime", skip="+z -y +y",
+                name="PorticoBeam")
+    # -- The facade round the door, the door's bronze surround, its glyph
+    # transom, and its two leaves swung in against the reveals.
+    door_hw, door_top, transom = 1.4, f + 4.6, f + 5.3
+    for s in (-1, 1):
+        x0, x1 = sorted((s * door_hw, s * hw))
+        box(b, (x0, fy, f), (x1, fy + t, A_WALL), "lime", skip="-z +z", name="Wall")
+        b.collide("facade", (x0 + 0.1 * s if s > 0 else x0, fy, f), (x1 if s > 0 else x1 - 0.1, fy + t, A_WALL))
+    box(b, (-door_hw, fy, transom), (door_hw, fy + t, A_WALL), "lime", skip="+z -x +x", name="Wall")
+    box(b, (-door_hw - 0.22, fy - 0.08, f), (-door_hw, fy + t, door_top), "bronze", skip="-z +y", name="DoorFrame")
+    box(b, (door_hw, fy - 0.08, f), (door_hw + 0.22, fy + t, door_top), "bronze", skip="-z +y", name="DoorFrame")
+    box(b, (-door_hw - 0.22, fy - 0.08, door_top), (door_hw + 0.22, fy + t, transom), "bronze", skip="+y +z",
+        name="Transom")
+    glyph(b, local((0, fy - 0.08, door_top), 0.0), 2 * door_hw, transom - door_top, tall=False, leaf=False)
+    leaf_w = door_hw - 0.02
+    for s in (-1, 1):
+        hinge = Vector((s * door_hw, fy + t, f))
+        xf = (Matrix.Translation(hinge) @ Matrix.Rotation(math.radians(-90 * s), 4, "Z")
+              @ Matrix.Translation(Vector((-s * leaf_w / 2, -0.06, 0.0))))
+        glyph(b, xf, leaf_w, door_top - f - 0.02)
+    # Marble pilasters on the facade, between the columns' bays.
+    if not FAR:
+        front = local((0, fy, 0), 0.0)
+        for u in (-4.5, 4.5, -8.0, 8.0):
+            pilaster(b, front, u, f, A_WALL - 0.4, w=0.6)
+    # -- The hall's side walls: whole in front of and behind the wings;
+    # beside them a header over the partitions, Paul's glass office wall
+    # on the -x side and the training room's wall on the +x side, each
+    # with a doorway at the floor's front.
+    d0, d1 = A_SIDE_DOOR
+    part = f + 3.6
+    for s in (-1, 1):
+        x0, x1 = sorted((s * A_IN, s * hw))
+        out = "+x" if s > 0 else "-x"
+        box(b, (x0, fy + t, f), (x1, wy0, A_WALL), "lime", skip="-z +z -y +y", name="Wall")
+        box(b, (x0, wy1, f), (x1, by + t, A_WALL), "lime", skip="-z +z -y", name="Wall")
+        box(b, (x0, wy0, part), (x1, wy1, A_WALL), "lime", skip="+z -y +y", name="Wall")
+        b.collide("wall", (x0, fy + t, f), (x1, d0, A_WALL))
+        b.collide("wall", (x0, d1, f), (x1, by + t, A_WALL))
+        if s < 0:
+            box(b, (x0, wy0, f), (x1, wy0 + t, part), "lime", skip="-z +z -y " + out, name="Wall")
+            box(b, (x0, wy1 - t, f), (x1, wy1, part), "lime", skip="-z +z +y " + out, name="Wall")
+            glass_partition(b, s * (A_IN + 0.2), wy0 + t, wy1 - t, f, h=part - f, door=A_SIDE_DOOR)
+        else:
+            box(b, (x0, wy0, f), (x1, d0, part), "lime", skip="-z +z -y " + out, name="Wall")
+            box(b, (x0, d1, f), (x1, wy1, part), "lime", skip="-z +z +y " + out, name="Wall")
+        # The clerestory over the wing's roof: dark glass in bronze frames.
+        side = side_frame(out, s * hw)
+        for y in (12.3, 15.5, 18.7):
+            tall_window(b, side, y * s, f + 5.6, w=1.2, h=1.7)
+    box(b, (-A_IN, by, f), (A_IN, by + t, A_WALL), "lime", skip="-z +z -x +x", name="Wall")
+    b.collide("back", (-hw, by, f), (hw, by + t, A_WALL))
+    # -- The wings: low blocks on the podium, their walls, and a cornice
+    # slab over each, a roof to land on.
+    for s in (-1, 1):
+        x0, x1 = sorted((s * hw, s * A_WING_X))
+        ox0, ox1 = sorted((s * (A_WING_X - t), s * A_WING_X))
+        inner = "-x" if s > 0 else "+x"
+        box(b, (x0, wy0, f), (x1, wy0 + t, A_WING_TOP), "lime", skip="-z +z " + inner, name="Wall")
+        box(b, (x0, wy1 - t, f), (x1, wy1, A_WING_TOP), "lime", skip="-z +z " + inner, name="Wall")
+        box(b, (ox0, wy0 + t, f), (ox1, wy1 - t, A_WING_TOP), "lime", skip="-z +z -y +y", name="Wall")
+        b.collide("wing", (x0, wy0, f), (x1, wy0 + t, A_WING_TOP))
+        b.collide("wing", (x0, wy1 - t, f), (x1, wy1, A_WING_TOP))
+        b.collide("wing", (ox0, wy0 + t, f), (ox1, wy1 - t, A_WING_TOP))
+        cx0, cx1 = sorted((s * hw, s * (A_WING_X + 0.35)))
+        top = A_WING_TOP + 0.35
+        box(b, (cx0, wy0 - 0.35, A_WING_TOP), (cx1, wy1 + 0.35, top), "lime", skip=inner, name="WingCornice")
+        b.roofs.append(((s * (hw + A_WING_X) / 2, (wy0 + wy1) / 2), True, ((wy1 - wy0) / 2, (A_WING_X - hw) / 2),
+                        top, top + 0.01))
+        if not FAR:
+            box(b, (cx0, wy0 - 0.43, A_WING_TOP - 0.25), (cx1, wy0, A_WING_TOP), "shade", skip="+z " + inner,
+                name="Band")
+            wing_front = local((0, wy0, 0), 0.0)
+            for u in (s * 9.2, s * 14.4):
+                pilaster(b, wing_front, u, f, A_WING_TOP - 0.25, w=0.6)
+        wall_lantern(b, s * 11.8, wy0, f + 2.7)
+    # -- The crown: the entablature with its amber panes round the hall,
+    # a low attic, and the flat roof.
+    entablature(b, -hw, hw, A_COL_Y - 0.55, by + t, A_WALL, panel="amber")
+    crown = A_WALL + 1.8
+    box(b, (-hw + 0.5, A_COL_Y, crown), (hw - 0.5, by - 0.1, crown + 0.7), "lime", skip="-z", name="Attic")
+    box(b, (-hw + 0.42, A_COL_Y - 0.08, crown + 0.54), (hw - 0.42, by - 0.02, crown + 0.7), "shade", skip="-z",
+        name="AtticCap")
+    roof = crown + 0.7
+    b.roofs.append(((0.0, (A_COL_Y + by - 0.1) / 2), True, ((by - 0.1 - A_COL_Y) / 2, hw - 0.5), roof, roof + 0.01))
+    # -- Light: lanterns on posts at the stair's foot, uplights washing
+    # the doors, and the wings' wall lanterns (above). Planters flank the
+    # door.
+    for s in (-1, 1):
+        lantern_post(b, s * 5.4, -0.6, 0.0)
+        uplight(b, s * 2.0, fy - 0.35, f, toward=(0.0, -1.0))
+        planter(b, s * 4.4, fy - 0.9, f, size=0.9, ball=1.0)
+    b.front = (0.0, -1.0)
+
+
+def agora_floor(b):
+    """The trading floor: three rows of standing desks facing the
+    leaderboard wall at the floor's head, the bell on its stele before it,
+    the ticker band round the hall under a coffered ceiling, and pendant
+    lamps over the desks."""
+    b.inside = A_MIDDLE
+    if FAR:
+        return
+    f = A_FLOOR
+    x0, x1, y0, y1 = -A_IN, A_IN, A_FRONT + 0.4, A_BACK
+    slab(b, x0, x1, y0, y1, f + 0.02, "marble", name="Floor")
+    slab(b, x0, x1, y0, y1, A_CEIL, "shade", down=True, name="Ceiling")
+    coffers(b, x0, x1, y0, y1, A_CEIL, xs=(-5.4, -2.7, 0.0, 2.7, 5.4), ys=[y0 + (y1 - y0) * (k + 1) / 6 for k in range(5)])
+    cove_light(b, x0, x1, y0, y1, A_CEIL - 0.285)
+    # The leaderboard wall, and sconces flanking it.
+    back = local((0, y1, 0), 0.0)
+    leaderboard_wall(b, back, f)
+    for u in (-7.62, 7.62):
+        sconce(b, back, u, f + 2.8)
+    # The ticker band round the hall, under the cove.
+    z = A_CEIL - 1.3
+    ticker(b, back, x0, x1, z)
+    ticker(b, local((0, y0, 0), 180.0), -x1, -x0, z)
+    for s in (-1, 1):
+        side = local((s * A_IN, 0, 0), -90 * s)
+        u0, u1 = sorted((-y0 * s, -y1 * s))
+        ticker(b, side, u0, u1, z)
+    # Three rows of desk banks either side of the center aisle, three
+    # stations a bank, and a pendant over each bank.
+    w = A_BANK[1] - A_BANK[0]
+    for row in A_ROWS:
+        for s in (-1, 1):
+            cx = s * (A_BANK[0] + A_BANK[1]) / 2
+            trading_desk(b, local((cx, row, f + 0.02), 0.0), w, stations=3)
+            pendant(b, cx, row, A_CEIL)
+    # The bell on its stele at the head of the floor.
+    bell_stand(b, A_BELL[0], A_BELL[1], f + 0.02, bell=False)
+    # Planters in the floor's back corners.
+    for s in (-1, 1):
+        planter(b, s * 7.3, 26.8, f, size=0.8, ball=1.1)
+
+
+def agora_office(b):
+    """Paul's corner office in the -x wing, behind the glass wall: his
+    standing desk facing the floor through the glass, the pipeline board
+    on the back wall, and the lectern where the owner approves sends and
+    hires."""
+    if FAR:
+        return
+    f = A_FLOOR
+    x0, x1, y0, y1 = -A_WING_X + 0.4, -A_HW, A_WING_Y[0] + 0.4, A_WING_Y[1] - 0.4
+    slab(b, x0, x1, y0, y1, f + 0.02, "marble", name="Floor")
+    slab(b, x0, x1, y0, y1, A_WING_CEIL, "shade", down=True, name="Ceiling")
+    cove_light(b, x0, x1, y0, y1, A_WING_CEIL - 0.02, inset=0.2)
+    rug(b, -14.0, -10.2, 13.2, 18.0, f + 0.02)
+    # Paul's standing desk, one station with three screens' worth of
+    # glow: he stands on its -x side, facing the floor.
+    trading_desk(b, local((-12.2, 15.6, f + 0.04), -90.0), 2.2, stations=1)
+    candelabra(b, -12.1, 16.5, f + 0.04 + 1.06, arms=0.13, stem=0.2)
+    board(b, local((-11.6, y1, 0), 0.0), 4.4, 1.8, f + 1.1, rows=5)
+    lectern(b, -10.2, 18.6, f + 0.02)
+    lamp(b, -14.2, 11.0, f + 0.02)
+    planter(b, -14.1, 19.9, f, size=0.7, ball=1.0)
+    # The dark walnut wall behind him, inscribed with faint circuit lines.
+    side = local((x0, 0, 0), 90.0)
+    box(b, (12.0, -0.05, f), (19.0, 0.0, f + 3.6), "walnut", skip="+y -z", xf=side, name="DarkWall")
+    circuit_lines(b, side @ Matrix.Translation(Vector((15.5, -0.05, 0.0))), 7.0, f + 0.3, 3.2)
+
+
+def agora_training(b):
+    """The training room in the +x wing: a long whiteboard on its front
+    wall over the lesson's floor, and four role-play booths behind it,
+    each two standing lecterns facing each other, between lattice
+    screens."""
+    if FAR:
+        return
+    f = A_FLOOR
+    x0, x1, y0, y1 = A_HW, A_WING_X - 0.4, A_WING_Y[0] + 0.4, A_WING_Y[1] - 0.4
+    slab(b, x0, x1, y0, y1, f + 0.02, "marble", name="Floor")
+    slab(b, x0, x1, y0, y1, A_WING_CEIL, "shade", down=True, name="Ceiling")
+    cove_light(b, x0, x1, y0, y1, A_WING_CEIL - 0.02, inset=0.2)
+    whiteboard(b, local((12.0, y0, 0), 180.0), 4.4, 1.5, f + 0.95)
+    for (cx, ya, yb, open_front) in A_BOOTHS:
+        booth(b, cx, ya, yb, f + 0.02, open_front=open_front)
+    # The screens: one down the middle, and one across between the rows,
+    # open at its ends so the back booths are reached.
+    screen(b, 11.6, 11.6, 13.4, y1, f + 0.02)
+    screen(b, 9.6, 11.5, 17.0, 17.0, f + 0.02)
+    screen(b, 11.7, 13.6, 17.0, 17.0, f + 0.02)
+    lamp(b, 14.3, 11.0, f + 0.02)
+    sconce(b, local((x1, 0, 0), -90.0), -18.6, f + 2.4)
+
+
+# The role-play booths: each its x center, its y range, and whether its
+# front is open to the lesson's floor; its lecterns face each other.
+A_BOOTHS = ((10.1, 13.4, 16.95, True), (13.1, 13.4, 16.95, True), (10.1, 17.05, 20.6, False),
+            (13.1, 17.05, 20.6, False))
+
+
 def new(name):
     b = bl.Building(name, {"plaster": "cream", "roof": "red", "timber": "dark"})
     b.chimneys = []
@@ -2204,6 +2712,16 @@ def belvedere():
     b = new("belvedere")
     belvedere_body(b)
     belvedere_loggia(b)
+    return b
+
+
+@model
+def agora():
+    b = new("agora")
+    agora_body(b)
+    agora_floor(b)
+    agora_office(b)
+    agora_training(b)
     return b
 
 
@@ -2506,6 +3024,80 @@ def terracotta_pot_piece():
     b = new("terracotta_pot")
     terracotta_pot(b, -0.5, 0.0, 0.0, r=0.32, shrub=1.0, tree=True)
     terracotta_pot(b, 0.5, 0.0, 0.0, r=0.24, shrub=0.6)
+    return b
+
+
+# The Agora's pieces.
+
+
+@piece
+def trading_desk_row():
+    b = new("trading_desk")
+    trading_desk(b, local((0, 0, 0)), 4.8, stations=3)
+    return b
+
+
+@piece
+def desk_phone_piece():
+    b = new("desk_phone")
+    desk_phone(b, local((0, 0, 0)), 0.0, 0.0, 0.0)
+    return b
+
+
+@piece
+def headset_piece():
+    b = new("headset")
+    headset(b, local((0, 0, 0)), 0.0, 0.0, 0.0)
+    return b
+
+
+@piece
+def leaderboard_piece():
+    b = new("leaderboard_wall")
+    leaderboard_wall(b, local((0, 0, 0)), 0.0)
+    return b
+
+
+@piece
+def ticker_piece():
+    b = new("ticker_band")
+    ticker(b, local((0, 0, 0)), -3.0, 3.0, 0.0)
+    return b
+
+
+@piece
+def bell_piece():
+    b = new("bell")
+    bell_stand(b, 0.0, 0.0, 0.0, bell=True)
+    return b
+
+
+@piece
+def glass_partition_piece():
+    b = new("glass_partition")
+    glass_partition(b, 0.0, -2.6, 2.6, 0.0)
+    return b
+
+
+@piece
+def whiteboard_piece():
+    b = new("whiteboard")
+    whiteboard(b, local((0, 0, 0)), 4.4, 1.5, 0.95)
+    return b
+
+
+@piece
+def roleplay_booth():
+    b = new("roleplay_booth")
+    booth(b, 0.0, -1.75, 1.75, 0.0)
+    screen(b, 1.5, 1.5, -1.75, 1.75, 0.0)
+    return b
+
+
+@piece
+def pendant_piece():
+    b = new("pendant")
+    pendant(b, 0.0, 0.0, 3.0)
     return b
 
 

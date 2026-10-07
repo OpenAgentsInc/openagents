@@ -1172,6 +1172,11 @@ fn a_frame_draws_a_fraction_of_the_city() {
             Vec3::new(84.0, 2.6, 46.0),
             Vec3::new(1.0, -0.05, 0.0),
         ),
+        (
+            "agora",
+            Vec3::new(-24.0, 2.6, 86.0),
+            Vec3::new(0.0, -0.05, 1.0),
+        ),
     ];
     for (name, eye, toward) in views {
         let (frustum, near, drawn) = drawn_triangles(eye, toward);
@@ -1357,6 +1362,67 @@ fn a_walker_climbs_the_west_trail_up_the_belvederes_stair_into_the_loggia() {
     assert!((end.z - middle[1]).abs() < 0.3, "kept to the walk: {end}");
     let floor = height(ax, az) + FLOOR;
     assert!((end.y - floor).abs() < 0.3, "on the loggia's floor: {end}");
+}
+
+#[test]
+fn a_walker_climbs_the_agoras_stair_from_the_forecourt_to_the_trading_floor() {
+    // From the forecourt, up the stair between the inner columns, through
+    // the open bronze doors, and down the center aisle between the desk
+    // banks to the middle of the trading floor.
+    use crate::zones::everglade::layout::agora::{AGORA, MIDDLE};
+    let forecourt = AGORA.world([0.0, 3.0]);
+    let middle = AGORA.world(MIDDLE);
+    let (end, rose) = walk_across(forecourt, middle, 12.0);
+    assert!(
+        end.z > middle[1] - 0.5,
+        "stopped at {end}, short of {middle:?}"
+    );
+    assert!(
+        (end.x - middle[0]).abs() < 0.3,
+        "kept to the entry axis: {end}"
+    );
+    assert!(
+        rose > 1.4,
+        "on the podium's floor, not under it: {rose} m up"
+    );
+}
+
+#[test]
+fn the_agora_is_lit_and_graded_inside_and_its_bell_rings() {
+    use crate::zones::everglade::layout::agora::{AGORA, MIDDLE};
+    let mut runtime = entered();
+    let idle = InputState::default();
+    let lit = |runtime: &WorldRuntime| {
+        let neon = runtime.dynamic_mesh().neon.expect("a lit stage");
+        let lamps = neon.lamps.iter().filter(|lamp| lamp.lit()).count();
+        (lamps, neon.grade.exposure)
+    };
+    runtime.tick(&idle, 0.05);
+    let (_, outside) = lit(&runtime);
+    // On the trading floor: its pendants, sconces, and lamps, and a
+    // darker grade.
+    let [x, z] = AGORA.world(MIDDLE);
+    runtime.set_spawn(Vec3::new(x, 0.0, z), 0.0).unwrap();
+    for _ in 0..10 {
+        runtime.tick(&idle, 0.05);
+    }
+    let (lamps, exposure) = lit(&runtime);
+    assert!(lamps >= 8, "{lamps}");
+    assert!(exposure < outside, "{exposure}");
+    // The bell hangs before the leaderboard, and the hook rings it.
+    let still = runtime.dynamic_mesh().faces.len();
+    assert!(still > 0);
+    assert!(runtime.everglade_ring_agora_bell());
+    for _ in 0..8 {
+        runtime.tick(&idle, 0.05);
+    }
+    let glade = runtime.zone_state.everglade.as_ref().unwrap();
+    let bell = glade.agora_bell().expect("the town's bell");
+    assert!(
+        bell.ringing() && bell.angle().abs() > 0.2,
+        "{}",
+        bell.angle()
+    );
 }
 
 #[test]

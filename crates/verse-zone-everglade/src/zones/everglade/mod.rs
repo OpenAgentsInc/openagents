@@ -165,6 +165,9 @@ pub struct Everglade {
     /// Town time at the last tick, and the light it gives.
     now: town_clock::TownTime,
     light: time_of_day::Light,
+    /// The Agora's bell (`layout::agora`), in the town only: the zone
+    /// draws it hanging from its yoke and swings it when it rings.
+    agora_bell: Option<layout::agora::Bell>,
 }
 
 impl Everglade {
@@ -181,6 +184,7 @@ impl Everglade {
         let mut creatures = wildlife::creatures(pack, &placements);
         creatures.extend(npcs::creatures());
         zone.wildlife = Some(Box::new(wildlife::Wildlife::new(pack, creatures)?));
+        zone.agora_bell = Some(layout::agora::Bell::default());
         Ok(zone)
     }
 
@@ -200,12 +204,13 @@ impl Everglade {
                 crate::fx::Spawn::at(Vec3::new(x, height(x, z) + 0.5, z)),
             );
         }
-        // Halos at the owner's house's, the Civic Hall's, and the
-        // belvedere's flames.
+        // Halos at the owner's house's, the Civic Hall's, the
+        // belvedere's, and the Agora's flames.
         for at in layout::estate::flames()
             .into_iter()
             .chain(layout::civic::flames())
             .chain(layout::belvedere::flames())
+            .chain(layout::agora::flames())
         {
             smoke.start("greco_candle_glow", crate::fx::Spawn::at(at));
         }
@@ -269,6 +274,7 @@ impl Everglade {
             clock: town_clock::Clock::DEFAULT,
             now: town_clock::TownTime::at_hour(0, 10.5),
             light: time_of_day::Light::at_hours(10.5),
+            agora_bell: None,
         })
     }
 
@@ -962,8 +968,29 @@ impl Everglade {
         }
         if let Some(yard) = &self.demolition {
             mesh.extend(&yard.mesh(player, eye, hold));
+        } else if let Some(bell) = &self.agora_bell {
+            // The Agora's bell under its yoke, in the town.
+            mesh.extend(&bell.mesh(eye));
         }
         mesh
+    }
+
+    /// Rings the Agora's bell: it swings and its clapper strikes for a
+    /// few seconds (`layout::agora::Bell`). The sales floor rings it when
+    /// the payment ledger records a settled deal; nothing calls this yet.
+    /// Returns whether the zone has the bell: the town does, and a zone
+    /// built from other placements, such as the Grove, doesn't.
+    pub fn ring_agora_bell(&mut self) -> bool {
+        self.agora_bell
+            .as_mut()
+            .map(layout::agora::Bell::ring)
+            .is_some()
+    }
+
+    /// The Agora's bell, in the town.
+    #[must_use]
+    pub fn agora_bell(&self) -> Option<&layout::agora::Bell> {
+        self.agora_bell.as_ref()
     }
 
     /// What a character runs into and stands on here, which the camera
@@ -1047,14 +1074,19 @@ impl Everglade {
         self.advance_clock();
         self.rendered = self.stage(self.elapsed);
         if self.look.is_none() {
-            // The owner's house's and the Civic Hall's candles and lanterns
-            // near the player (`layout::estate`, `layout::civic`); nothing
-            // changes elsewhere.
+            // The owner's house's, the Civic Hall's, the belvedere's, and
+            // the Agora's candles and lamps near the player
+            // (`layout::estate`, `layout::civic`, `layout::belvedere`,
+            // `layout::agora`); nothing changes elsewhere.
             if let Some(neon) = self.rendered.neon.as_mut() {
                 layout::estate::light(neon, at.pos, self.elapsed);
                 layout::civic::light(neon, at.pos, self.elapsed);
                 layout::belvedere::light(neon, at.pos, self.elapsed);
+                layout::agora::light(neon, at.pos, self.elapsed);
             }
+        }
+        if let Some(bell) = &mut self.agora_bell {
+            bell.tick(dt);
         }
         if let Some(smoke) = &mut self.smoke {
             smoke.tick(dt, height);

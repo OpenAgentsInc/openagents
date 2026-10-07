@@ -36,6 +36,8 @@ points them at the village set's admitted `T_Plaster_Luma.png` and
 | `far/civic_hall.glb` | 1,038 | Its far level of detail |
 | `belvedere.glb` | 3,990 | The belvedere, from a sixth and a seventh reference image, with `belvedere.footprint.json` |
 | `far/belvedere.glb` | 960 | Its far level of detail |
+| `agora.glb` | 7,618 | The Agora, the sales floor's trading hall, with `agora.footprint.json` |
+| `far/agora.glb` | 700 | Its far level of detail |
 | `kit/column.glb` | 114 | Smooth column with a square capital |
 | `kit/pier.glb` | 28 | Square pier |
 | `kit/entablature_bay.glb` | 56 | 4 m of entablature with its panel frieze |
@@ -72,3 +74,13 @@ points them at the village set's admitted `T_Plaster_Luma.png` and
 | `kit/stepped_surround.glb` | 110 | Stepped bronze inlay surround with wing brackets |
 | `kit/meander_floor.glb` | 94 | Meander and arc inlaid in a floor |
 | `kit/terracotta_pot.glb` | 144 | Terracotta pots with a tree and a shrub |
+| `kit/trading_desk.glb` | 368 | Standing desk bank of three stations with screens, phones, and headsets |
+| `kit/desk_phone.glb` | 22 | Bronze desk phone |
+| `kit/headset.glb` | 44 | Headset on a hook |
+| `kit/leaderboard_wall.glb` | 158 | Walnut leaderboard wall with its board |
+| `kit/ticker_band.glb` | 28 | 6 m of the amber ticker band |
+| `kit/bell.glb` | 158 | Bell on its stele and yoke |
+| `kit/glass_partition.glb` | 66 | Glass office wall |
+| `kit/whiteboard.glb` | 50 | Whiteboard |
+| `kit/roleplay_booth.glb` | 306 | Role-play booth's lecterns and screen |
+| `kit/pendant.glb` | 38 | Pendant lamp |

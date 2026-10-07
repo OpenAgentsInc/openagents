@@ -1,5 +1,5 @@
-//! A walker sweeps the owner's house and the Civic Hall on their real
-//! collision: their stairs, podiums, porticos, doorways, and rooms have no
+//! A walker sweeps the owner's house, the Civic Hall, and the Agora on
+//! their real collision: their stairs, podiums, porticos, doorways, and rooms have no
 //! pit below the visual floor, and every square a walker reaches leads
 //! back to the foot of the stair. A trapped player is moved out.
 
@@ -136,9 +136,18 @@ fn the_house_and_the_civic_hall_have_no_pits_and_every_floor_leads_back_out() {
         [-19.0, 19.0, -31.0, 2.0],
         &[([-8.6, 8.6, -8.4, -4.9], 1.92)],
     );
+    // The Agora: the portico, the trading floor, and the wings' rooms.
+    let agora = sweep(
+        "generated/agora",
+        [-16.0, 16.0, -28.6, 2.0],
+        &[
+            ([-8.4, 8.4, -7.6, -4.2], 1.6),
+            ([-7.9, 7.9, -27.5, -8.1], 1.6),
+        ],
+    );
     assert!(
-        house.is_empty() && hall.is_empty(),
-        "house: {house:#?}\nhall: {hall:#?}"
+        house.is_empty() && hall.is_empty() && agora.is_empty(),
+        "house: {house:#?}\nhall: {hall:#?}\nagora: {agora:#?}"
     );
 }
 

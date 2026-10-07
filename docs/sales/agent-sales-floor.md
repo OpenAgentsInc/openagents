@@ -1,8 +1,9 @@
 # The agent sales floor
 
-Status: proposal with provisional decisions, October 7, 2026. Nothing on this
-page is implemented. It plans a sales organization of OpenAgents' own agents,
-run and visible inside
+Status: proposal with provisional decisions, October 7, 2026. The Agora's
+building (phase S4's building, kit pieces, and bell hook) is built; nothing
+else on this page is implemented. It plans a sales organization of
+OpenAgents' own agents, run and visible inside
 [Everglade](../verse/everglade.md), that carries out the
 [sales strategy](README.md) under the owner's authority. The
 [unified revenue roadmap](revenue-roadmap.md) still owns the delivery order;
@@ -255,30 +256,29 @@ The Agora, after the Greek market square, is a
 [Greco-futurism](../verse/greco-futurism.md) hall: commerce in the same style
 as the town's seat of government.
 
-- **Where.** Proposed at the west end of Main Street, its stair facing east
-  down the street toward the [Civic Hall](../verse/greco-futurism.md#the-civic-hall),
-  so government closes one end of the town's longest street and commerce the
-  other. Main Street's far blocks end at x = −100, where Lantern Road
-  crosses (`STREETS` in
-  [`layout/city.rs`](../../crates/verse-zone-everglade/src/zones/everglade/layout/city.rs)),
-  with the Lantern Quarter to the south and the orchard to the north. This
-  is a preferred candidate, not an admitted placement. A hall centered at
-  the junction would overlap the snug and other reserved ground. Bob
-  surveys a parcel farther west of Lantern Road, checking the complete hall,
-  north wing, steps, generated roofs, foliage, roads, trails, and terrain
-  against `city::reserved()` and the style's rule of at least 3 m of open
-  ground on every side
-  ([Beside the half-timbered town](../verse/greco-futurism.md#beside-the-half-timbered-town)).
-  If it doesn't fit, Bob surveys an off-trail parcel north of the market
-  hall. That fallback must also preserve the north trail and the chapel's
-  reserved ground; it isn't assumed clear.
+- **Where.** Built on the fallback site: open ground north of the market
+  hall, west of where the north trail leaves the Fountain Plaza, its stair's
+  foot at (−24, 99) facing south toward the plaza, with a cobbled forecourt
+  and a walk from the plaza's north-west corner
+  ([`layout/agora.rs`](../../crates/verse-zone-everglade/src/zones/everglade/layout/agora.rs)).
+  It keeps off the north trail and at least 3 m from the chapel's and the
+  market hall's reserved ground. The preferred site, Main Street's west end
+  facing the [Civic Hall](../verse/greco-futurism.md#the-civic-hall), failed
+  the check against `city::reserved()` and the style's rule of at least 3 m
+  of open ground on every side
+  ([Beside the half-timbered town](../verse/greco-futurism.md#beside-the-half-timbered-town)):
+  the snug's lot on Lantern Road comes within 6 m of Main Street's axis, the
+  orchard closes the site from the north, and west of Lantern Road the
+  ground rises out of the flat clearing past x = −110.
 - **Front.** A podium and a shallow stair, four smooth columns, a plain
   entablature, and tall bronze doors that stand open. The frieze carries a
   band of small amber panes. Outside, the building stays quiet, as the style
   requires: nothing on the facade moves or advertises.
-- **Size.** About 30 m by 22 m: one tall storey for the floor, with the
-  office and the training room in a lower wing on its north side. Budget about 8,000 triangles near and
-  1,100 far with its furniture, close to the Civic Hall's 7,817 and 1,038.
+- **Size.** About 30 m by 28 m with its stair: one tall storey for the
+  floor, with Paul's office in a lower wing on one side and the training
+  room in one on the other, so the front stays symmetric. It came to 7,618
+  triangles near and 700 far with its furniture, against a budget of about
+  8,000 and 1,100.
 
 ### Inside
 
@@ -350,15 +350,21 @@ floor, and each one shows real work:
 | Standing desk with screens, phone, and headset | Kit piece, instanced per desk | The same script, in the house workstation's materials |
 | Leaderboard wall | Kit piece with a board surface | The same script; Verse draws the board |
 | Bell and stele | Kit piece | The same script |
-| Office desk, lectern, and lattice partition | Kit pieces | Reuse the owner's house lectern and lattice where possible |
+| Office desk, lectern, and glass partition | Kit pieces | The house's lectern, a standing desk, and a new glass office wall |
 | Whiteboard and role-play booth | Kit pieces | The same script |
 | Agents' looks | Original characters | The [Blender pipeline](../verse/blender-pipeline.md) and the [asset runbook](../verse/asset-runbook.md), as Alice's look was made |
 | Licensed character art, if the owner wants it | Private assets | Only through the [private asset pipeline](../verse/private-assets.md), with placements on the owner's computer and Grace's license check; never committed |
 
-The layout goes in a new `layout/agora.rs` beside
-[`layout/civic.rs`](../../crates/verse-zone-everglade/src/zones/everglade/layout/civic.rs),
-with the same tests: every placement names an admitted model, every desk and
-booth has a reachable standing point, and no blocker covers a path.
+The layout is
+[`layout/agora.rs`](../../crates/verse-zone-everglade/src/zones/everglade/layout/agora.rs),
+beside `layout/civic.rs`, with the same tests: every placement names an
+admitted model, every desk and booth has a reachable standing point, and no
+blocker covers a path. Its stations are data for the agents to come:
+`DESKS`, `PAUL`, `STANDUP`, `OWNER`, `TEACHER`, and `BOOTHS`. The model
+carries the bell's stele and yoke, and the zone draws the bell itself, so
+`Everglade::ring_agora_bell` swings and rings it; the payment ledger's
+wiring comes with phase S5. The [Greco-futurism guide](../verse/greco-futurism.md#the-agora)
+describes the building as built.
 
 ## Training
 

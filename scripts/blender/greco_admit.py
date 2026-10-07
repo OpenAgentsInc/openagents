@@ -5,7 +5,8 @@ Run from the repository root with Python 3, NumPy, and Pillow:
     python3 scripts/blender/greco_admit.py [NAME ...]
 
 NAME is `greco_house` (the owner's house), `civic_hall` (the Civic
-Hall), or `belvedere` (the belvedere); with none, all three.
+Hall), `belvedere` (the belvedere), or `agora` (the Agora, the sales
+floor's trading hall); with none, all four.
 `scripts/blender/greco_futurism.py` writes each to
 `assets/verse/generated/greco/NAME.glb` and its far level of detail to
 `far/NAME.glb`. This script converts them with
@@ -29,7 +30,7 @@ import sys
 sys.path.insert(0, os.path.dirname(__file__))
 from everglade_admit import LOD, OUT, VILLAGE, convert, mean_linear, sha, write_manifest  # noqa: E402
 
-NAMES = ["greco_house", "civic_hall", "belvedere"]
+NAMES = ["greco_house", "civic_hall", "belvedere", "agora"]
 VILLAGE_FILES = [
     "T_Plaster_Luma.png",
     "T_RoundTiles_Luma.png",
