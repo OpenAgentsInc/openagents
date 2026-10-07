@@ -1,3 +1,17 @@
+## Admit the villagers' fuller days (town clock)
+
+The town clock now runs by default. On it, a daylight town hour is 4.25
+real minutes, and the demo villagers stood still from 13:00 to 17:00: 17
+real minutes with nobody moving. Branch `town-clock-routines` gives Mira,
+Tobin, and Wren one or two short errands a half day, so some villager
+walks in every five real minutes from 05:00 to 21:00, and stages their
+proposals. Only you admit villagers. Check out the branch, run
+`openagents verse town admit mira-baker --owner`, then `tobin-smith` and
+`wren-bellringer`, run `cargo test -p verse-zone-everglade --lib
+townsfolk`, commit `town.json` with the branch, and push to `main`. Until
+then the roster leaves the changed definitions out, so don't merge the
+branch without the admission.
+
 ## First paid workflow O2/O8 (REV-10/11/12, #10817/#10818/#10819)
 
 Review the [meeting action-items package](plugins/meeting-action-items/README.md),
