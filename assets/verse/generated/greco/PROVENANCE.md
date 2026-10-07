@@ -5,8 +5,8 @@ prisms, spheres, and flat strips by
 [`scripts/blender/greco_futurism.py`](../../../../scripts/blender/greco_futurism.py),
 with Blender 5.2.2 LTS. The style is defined in
 [Greco-futurism](../../../../docs/verse/greco-futurism.md), from four
-reference images the owner chose, and the Civic Hall from a fifth;
-nothing from them ships.
+reference images the owner chose, the Civic Hall from a fifth, and the
+belvedere from a sixth and a seventh; nothing from them ships.
 
 Rebuild every model:
 
@@ -34,6 +34,8 @@ points them at the village set's admitted `T_Plaster_Luma.png` and
 | `far/greco_house.glb` | 1,016 | Its far level of detail |
 | `civic_hall.glb` | 7,817 | The Civic Hall, from a fifth reference image, with `civic_hall.footprint.json` |
 | `far/civic_hall.glb` | 1,038 | Its far level of detail |
+| `belvedere.glb` | 3,990 | The belvedere, from a sixth and a seventh reference image, with `belvedere.footprint.json` |
+| `far/belvedere.glb` | 960 | Its far level of detail |
 | `kit/column.glb` | 114 | Smooth column with a square capital |
 | `kit/pier.glb` | 28 | Square pier |
 | `kit/entablature_bay.glb` | 56 | 4 m of entablature with its panel frieze |
@@ -59,3 +61,14 @@ points them at the village set's admitted `T_Plaster_Luma.png` and
 | `kit/paired_window.glb` | 128 | Paired tall windows |
 | `kit/bowl_planter.glb` | 106 | Walnut planter wall with a bronze bowl |
 | `kit/council_ring.glb` | 560 | Tiered council benches in a ring |
+| `kit/inlaid_pier.glb` | 48 | Marble pier inlaid with bronze lines, under a copper corbel |
+| `kit/lintel_band.glb` | 148 | Red-brown lintel band with copper inlay |
+| `kit/louver.glb` | 96 | Walnut slat louver |
+| `kit/relief_panel.glb` | 166 | Copper relief of abstract figures |
+| `kit/cushioned_bench.glb` | 60 | Marble bench with red cushions |
+| `kit/urn_tree.glb` | 184 | Stone urn with an olive tree |
+| `kit/threshold.glb` | 12 | Two-step marble threshold |
+| `kit/mahogany_door.glb` | 176 | Mahogany double door with brass grids and medallions |
+| `kit/stepped_surround.glb` | 110 | Stepped bronze inlay surround with wing brackets |
+| `kit/meander_floor.glb` | 94 | Meander and arc inlaid in a floor |
+| `kit/terracotta_pot.glb` | 144 | Terracotta pots with a tree and a shrub |

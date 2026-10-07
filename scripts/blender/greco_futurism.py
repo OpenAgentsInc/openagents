@@ -53,13 +53,24 @@ Models:
   the council chamber: a ring of tiered benches round a well with the seal
   inlaid in its floor, the speaker's dais, and candlelight. It also writes
   `far/civic_hall.glb`.
+- `belvedere`: from a sixth and a seventh reference image: a loggia on a
+  terrace up twenty steps, opening through marble piers inlaid with
+  bronze lines under copper corbels, a red-brown lintel band inlaid in
+  copper, a coffered marble ceiling with copper lines, walnut louvers, a
+  copper relief of abstract figures over a cushioned bench, urn trees, and
+  a walnut side door; and behind it an entry court whose colonnade frames
+  a mahogany double door in a stepped bronze surround over a meander
+  floor, with terracotta pots. It also writes `far/belvedere.glb`.
 - Kit pieces under `kit/`, for review and later buildings: `column`,
   `pier`, `entablature_bay`, `stair_flight`, `planter_wall`,
   `circuit_door`, `lattice_screen`, `coffer_bay`, `pilaster`, `chimney`,
   `circuit_panel`, `bench_long`, `planter`, `lamp`, `rug`, `desk`, `sofa`,
   `bookshelf`, and the Civic Hall's `bronze_column`, `dentil_cornice_bay`,
   `attic`, `circuit_portal`, `paired_window`, `bowl_planter`, and
-  `council_ring`.
+  `council_ring`; and the belvedere's `inlaid_pier`, `lintel_band`,
+  `louver`, `relief_panel`, `cushioned_bench`, `urn_tree`, `threshold`,
+  `mahogany_door`, `stepped_surround`, `meander_floor`, and
+  `terracotta_pot`.
 """
 
 import json
@@ -1644,6 +1655,434 @@ def civic_chamber(b):
             floor_candelabrum(b, x, y, f + 0.02)
 
 
+# --------------------------------------------------------------------------
+# The belvedere's kit, from the sixth and seventh reference images: a
+# loggia that opens through inlaid marble piers onto a terrace with a
+# view, under a dark red-brown lintel band inlaid with copper; and an entry
+# court whose colonnade frames a mahogany double door in a stepped bronze
+# surround, over a floor inlaid with a meander.
+
+
+def disc(b, xf, u, z, r, mat="copper", proud=0.03, sides=16, name="Disc"):
+    """A flat round plate on a face (the local plane y = 0, facing -y),
+    centered at (u, z): a medallion or an inlaid disc."""
+    mesh = bl.frustum_mesh(name, (0.0, 0.0), r, r, 0.0, proud, sides, b.mats[mat])
+    mesh.transform(xf @ Matrix.Translation(Vector((u, 0.0, z))) @ Matrix.Rotation(math.radians(90.0), 4, "X"))
+    for p in mesh.polygons:
+        p.use_smooth = False
+    return b.solid(name, mesh)
+
+
+def inlaid_pier(b, x, y0, y1, z0, z1, w=1.0, stripes=True):
+    """A square white marble pier on a low base, its front and back faces
+    inlaid with three thin bronze lines under a short bar, capped by a
+    copper corbel block."""
+    box(b, (x - w / 2 - 0.06, y0 - 0.06, z0), (x + w / 2 + 0.06, y1 + 0.06, z0 + 0.3), "marble", skip="-z",
+        name="PierBase")
+    box(b, (x - w / 2, y0, z0 + 0.3), (x + w / 2, y1, z1 - 0.38), "marble", skip="-z +z", name="Pier")
+    box(b, (x - w / 2 - 0.1, y0 - 0.1, z1 - 0.38), (x + w / 2 + 0.1, y1 + 0.1, z1), "copper", skip="+z",
+        name="Corbel")
+    b.collide("pier", (x - w / 2 - 0.1, y0 - 0.1, z0), (x + w / 2 + 0.1, y1 + 0.1, z1))
+    if FAR or not stripes:
+        return
+    for face in (local((x, y0, 0), 0.0), local((x, y1, 0), 180.0)):
+        kw = {"mat": "bronze", "width": 0.05, "proud": 0.012}
+        za, zb = z0 + 0.75, z1 - 0.85
+        for u in (-0.2, 0.0, 0.2):
+            trace(b, face, (u, za), (u, zb), **kw)
+        trace(b, face, (-0.28, zb + 0.12), (0.28, zb + 0.12), **kw)
+        trace(b, face, (-0.28, za - 0.12), (0.28, za - 0.12), **kw)
+
+
+def lintel_band(b, xf, w, z0, h=1.1):
+    """A deep dark red-brown band on a face (the local plane y = 0, facing -y)
+    from u = -w/2 to w/2: copper line work of a disc with a line through
+    it, groups of vertical bars either side, and frames at the ends."""
+    box(b, (-w / 2, -0.05, z0), (w / 2, 0.0, z0 + h), "redbrown", skip="+y", xf=xf, name="LintelBand")
+    if FAR:
+        return
+    face = xf @ Matrix.Translation(Vector((0.0, -0.05, 0.0)))
+    kw = {"mat": "copper", "width": 0.04, "proud": 0.012}
+    zc, e = z0 + h / 2, w / 2 - 0.1
+    polyline(b, face, [(0.0, z0 + 0.1), (e, z0 + 0.1), (e, z0 + h - 0.1), (0.0, z0 + h - 0.1)], **kw)
+    r = h * 0.3
+    disc(b, face, 0.0, zc, r, proud=0.02)
+    arc(b, face, (0.0, zc), r + 0.1, 0.0, 2 * math.pi, 20, **kw)
+    # The line through the disc, from bar group to bar group.
+    bars = w * 0.18
+    polyline(b, face, [(r + 0.1, zc), (bars - 0.2, zc)], **kw)
+    for s in (-1, 1):
+        for k in range(5):
+            u = s * (bars + 0.13 * k)
+            trace(b, face, (u, z0 + 0.1), (u, z0 + h - 0.1), **kw)
+        # The end frames.
+        a, c = s * (w / 2 - 0.35), s * (w / 2 - 0.35 - w * 0.12)
+        polyline(b, face, [(a, z0 + 0.24), (a, z0 + h - 0.24), (c, z0 + h - 0.24), (c, z0 + 0.24), (a, z0 + 0.24)],
+                 mirror=False, **kw)
+
+
+def louver(b, xf, u0, u1, z0, z1, slats=9):
+    """A dark walnut slat screen high on a wall: horizontal slats in a
+    frame before a dark bronze backing."""
+    box(b, (u0, -0.02, z0), (u1, 0.0, z1), "bronze", skip=only("-y"), xf=xf, name="LouverBack")
+    for lo, hi in (((u0 - 0.08, -0.14, z0 - 0.08), (u0, 0.0, z1 + 0.08)), ((u1, -0.14, z0 - 0.08), (u1 + 0.08, 0.0, z1 + 0.08)),
+                   ((u0, -0.14, z0 - 0.08), (u1, 0.0, z0)), ((u0, -0.14, z1), (u1, 0.0, z1 + 0.08))):
+        box(b, lo, hi, "walnut", skip="+y", xf=xf, name="LouverFrame")
+    if FAR:
+        return
+    for k in range(slats):
+        z = z0 + (z1 - z0) * (k + 0.5) / slats
+        box(b, (u0, -0.12, z - 0.04), (u1, -0.03, z + 0.04), "walnut", skip="+y -x +x", xf=xf, name="Slat")
+
+
+def relief_panel(b, xf, u, z0, w=3.6, h=2.4, figures=4):
+    """A copper relief in a walnut frame on a wall: a row of abstract
+    standing figures in dark line work, each a round head over a stepped,
+    tapering body, on a ground line. Geometric figures of our own, never a
+    likeness."""
+    box(b, (u - w / 2 - 0.12, -0.06, z0 - 0.12), (u + w / 2 + 0.12, 0.0, z0 + h + 0.12), "walnut", skip="+y", xf=xf,
+        name="ReliefFrame")
+    box(b, (u - w / 2, -0.1, z0), (u + w / 2, -0.06, z0 + h), "copper", skip="+y", xf=xf, name="Relief")
+    if FAR:
+        return
+    face = xf @ Matrix.Translation(Vector((0.0, -0.1, 0.0)))
+    kw = {"mat": "bronze", "width": 0.03, "proud": 0.01}
+    trace(b, face, (u - w / 2 + 0.15, z0 + 0.25), (u + w / 2 - 0.15, z0 + 0.25), **kw)
+    step = w / figures
+    for k in range(figures):
+        cx = u - w / 2 + step * (k + 0.5)
+        lean = 0.06 * (k % 2 * 2 - 1)
+        top = z0 + h * (0.78 + 0.06 * (k % 2))
+        arc(b, face, (cx + lean, top + 0.14), 0.12, 0.0, 2 * math.pi, 10, **kw)
+        pts = [(cx - 0.32, z0 + 0.25), (cx - 0.22, top - 0.6), (cx - 0.12, top - 0.6), (cx - 0.12, top),
+               (cx + 0.12, top), (cx + 0.12, top - 0.6), (cx + 0.22, top - 0.6), (cx + 0.32, z0 + 0.25)]
+        polyline(b, face, [(p[0] + lean * (p[1] - z0) / h, p[1]) for p in pts], mirror=False, **kw)
+        # An arm, raised on every other figure.
+        arm = (cx + 0.12 + lean, top - 0.15), (cx + 0.42 + lean, top - (0.0 if k % 2 else 0.5))
+        trace(b, face, *arm, **kw)
+
+
+def cushioned_bench(b, x0, x1, y0, y1, z0, back="+x"):
+    """A low built-in marble bench with dark red cushions on its seat and
+    against the wall behind it (`back`, the wall's side)."""
+    box(b, (x0, y0, z0), (x1, y1, z0 + 0.32), "marble", skip="-z", name="BenchBase")
+    box(b, (x0 + 0.04, y0 + 0.04, z0 + 0.32), (x1 - 0.04, y1 - 0.04, z0 + 0.46), "redbrown", skip="-z",
+        name="Cushion")
+    b.collide("bench", (x0, y0, z0), (x1, y1, z0 + 0.9))
+    if FAR:
+        return
+    n = max(1, round((y1 - y0) / 0.9) if back in ("+x", "-x") else round((x1 - x0) / 0.9))
+    for k in range(n):
+        if back in ("+x", "-x"):
+            ya, yb = y0 + (y1 - y0) * k / n + 0.04, y0 + (y1 - y0) * (k + 1) / n - 0.04
+            xa, xb = (x1 - 0.2, x1) if back == "+x" else (x0, x0 + 0.2)
+        else:
+            xa, xb = x0 + (x1 - x0) * k / n + 0.04, x0 + (x1 - x0) * (k + 1) / n - 0.04
+            ya, yb = (y1 - 0.2, y1) if back == "+y" else (y0, y0 + 0.2)
+        box(b, (xa, ya, z0 + 0.46), (xb, yb, z0 + 0.9), "redbrown", skip="-z", name="BackCushion")
+
+
+def urn_tree(b, x, y, z0, h=2.4, r=0.42):
+    """A white stone urn with a small olive tree: a slender trunk under a
+    loose crown of three clumps."""
+    n = 6 if FAR else 10
+    b.solid("Urn", bl.frustum_mesh("Urn", (x, y), r * 0.55, r * 0.5, z0, z0 + 0.15, n, b.mats["marble"],
+                                   cap=False))
+    b.solid("Urn", bl.frustum_mesh("Urn", (x, y), r * 0.6, r, z0 + 0.15, z0 + 0.7, n, b.mats["marble"]))
+    b.collide("urn", (x - r, y - r, z0), (x + r, y + r, z0 + h))
+    if FAR:
+        box(b, (x - 0.5, y - 0.5, z0 + h * 0.55), (x + 0.5, y + 0.5, z0 + h), "hedge", name="Crown")
+        return
+    prism(b, (x, y), 0.05, z0 + 0.7, z0 + h * 0.75, 5, "walnut", name="Trunk")
+    for dx, dy, dz, rr in ((0.0, 0.0, 0.85, 0.5), (0.28, 0.1, 0.68, 0.36), (-0.25, -0.12, 0.72, 0.34)):
+        sphere(b, (x + dx, y + dy, z0 + h * dz), rr, "hedge", segments=7, rings=4, squash=0.75, name="Crown")
+
+
+def terracotta_pot(b, x, y, z0, r=0.3, shrub=0.7, tree=False):
+    """A terracotta pot with a clipped shrub or a small tree."""
+    n = 6 if FAR else 9
+    b.solid("Pot", bl.frustum_mesh("Pot", (x, y), r * 0.7, r, z0, z0 + r * 1.5, n, b.mats["copper"]))
+    if FAR:
+        return
+    top = z0 + r * 1.5
+    if tree:
+        prism(b, (x, y), 0.035, top, top + shrub * 0.6, 5, "walnut", name="Trunk")
+        sphere(b, (x, y, top + shrub * 0.85), shrub * 0.45, "hedge", segments=7, rings=4, squash=0.85,
+               name="Shrub")
+    else:
+        sphere(b, (x, y, top + shrub * 0.3), shrub * 0.5, "hedge", segments=7, rings=4, squash=0.7, name="Shrub")
+
+
+def threshold(b, x0, x1, y0, z0, steps=2, rise=0.17, run=0.4):
+    """A stepped marble threshold with a fine walnut line along each
+    tread's edge."""
+    y, z = stair(b, x0, x1, y0, z0, steps, rise, run, mat="marble")
+    if not FAR:
+        for i in range(steps):
+            box(b, (x0, y0 + i * run + 0.05, z0 + rise * (i + 1)), (x1, y0 + i * run + 0.09,
+                                                                     z0 + rise * (i + 1) + 0.003),
+                "walnut", skip=only("+z"), name="TreadLine")
+    return y, z
+
+
+def side_door(b, xf, u, z0, w=1.3, h=2.8):
+    """A heavy walnut door on a wall's face in a marble surround, with a
+    curved bronze handle; closed."""
+    box(b, (u - w / 2 - 0.18, -0.08, z0), (u + w / 2 + 0.18, 0.0, z0 + h + 0.18), "marble", skip="+y -z", xf=xf,
+        name="DoorSurround")
+    box(b, (u - w / 2, -0.12, z0), (u + w / 2, -0.08, z0 + h), "walnut", skip="+y -z", xf=xf, name="DoorLeaf")
+    if FAR:
+        return
+    face = xf @ Matrix.Translation(Vector((0.0, -0.12, 0.0)))
+    hx = u + w / 2 - 0.22
+    arc(b, face, (hx, z0 + 1.05), 0.16, -math.pi / 2, math.pi / 2, 5, mat="bronze", width=0.035, proud=0.06)
+    for k in (-1, 1):
+        box(b, (hx - 0.04, -0.06, z0 + 1.05 + 0.16 * k - 0.03), (hx + 0.01, 0.0, z0 + 1.05 + 0.16 * k + 0.03),
+            "bronze", skip="+y", xf=face, name="Handle")
+
+
+def mahogany_leaf(b, xf, w, h, pull_left=True):
+    """A dark mahogany door leaf on a face (the local plane y = 0, facing
+    -y, u from -w/2): fine brass grids near its top and foot, two long
+    rails between them, and a round brass medallion pull."""
+    box(b, (-w / 2, 0.0, 0.0), (w / 2, 0.08, h), "redbrown", skip="+y -z", xf=xf, name="Mahogany")
+    if FAR:
+        return
+    kw = {"mat": "copper", "width": 0.025, "proud": 0.008}
+    a, c = -w / 2 + 0.18, w / 2 - 0.18
+    for z0, z1 in ((h - 0.95, h - 0.2), (0.25, 0.85)):
+        polyline(b, xf, [(a, z0), (c, z0), (c, z1), (a, z1), (a, z0)], mirror=False, **kw)
+        for k in (1, 2, 3):
+            u = a + (c - a) * k / 4
+            trace(b, xf, (u, z0), (u, z1), **kw)
+        for k in (1, 2):
+            z = z0 + (z1 - z0) * k / 3
+            trace(b, xf, (a, z), (c, z), **kw)
+    for u in (a + 0.12, c - 0.12):
+        trace(b, xf, (u, 0.85), (u, h - 0.95), **kw)
+    pull = (a + 0.18) if pull_left else (c - 0.18)
+    disc(b, xf, pull, h * 0.5, 0.15, proud=0.04, sides=14, name="Medallion")
+
+
+def stepped_surround(b, xf, dw, dh, mat="copper"):
+    """The stepped bronze line inlay round a door on a face (the local
+    plane y = 0, facing -y, the door's foot at z = 0): nested frames that
+    step outward and upward, a filled band in the outer step, and wing
+    brackets in the lower corners ending in circles."""
+    if FAR:
+        return
+    kw = {"mat": mat, "width": 0.05, "proud": 0.01}
+    frames = [(dw / 2 + 0.25, dh + 0.25), (dw / 2 + 0.7, dh + 0.8), (dw / 2 + 1.2, dh + 1.35), (dw / 2 + 1.75,
+                                                                                              dh + 1.95)]
+    for k, (e, top) in enumerate(frames):
+        foot = 0.0 if k < 2 else dh * 0.62
+        polyline(b, xf, [(e, foot), (e, top), (0.0, top)], **kw)
+    # The outer step's band, filled, across the top and down the sides.
+    (e2, t2), (e3, t3) = frames[2], frames[3]
+    band = {"mat": mat, "width": (t3 - t2) * 0.6, "proud": 0.006}
+    trace(b, xf, (-(e2 + 0.1), (t2 + t3) / 2), (e2 + 0.1, (t2 + t3) / 2), **band)
+    for s in (-1, 1):
+        trace(b, xf, (s * (e2 + e3) / 2, dh * 0.68), (s * (e2 + e3) / 2, t3 - 0.3),
+              mat=mat, width=(e3 - e2) * 0.6, proud=0.006)
+        # The wing: a bar out from the second frame, two diagonals falling
+        # outward from it, and a circle at their foot.
+        e1 = frames[1][0]
+        zb = dh * 0.62
+        polyline(b, xf, [(s * e1, zb), (s * e3, zb)], mirror=False, **kw)
+        for d in (0.0, 0.32):
+            trace(b, xf, (s * (e1 + 0.1 + d), zb), (s * (e3 - 0.05 + d * 0.4), zb - 1.15 + d * 0.3), **kw)
+        arc(b, xf, (s * (e3 + 0.05), zb - 1.42), 0.22, 0.0, 2 * math.pi, 12, **kw)
+        # A short return under the frames' feet.
+        trace(b, xf, (s * (e2 - 0.1), zb + 0.4), (s * (e3 + 0.1), zb + 0.4), **kw)
+
+
+def meander_floor(b, xf, cx, cy, r=3.0, out=-1.0):
+    """A bronze meander and arc inlaid in a floor (`xf` lays the inlay
+    flat), before a door at (cx, cy) whose front faces y's `out` sign: a
+    half ring round the door's foot and a Greek key across it."""
+    if FAR:
+        return
+    kw = {"mat": "copper", "width": 0.07, "proud": 0.006}
+    a = math.pi if out < 0 else 0.0
+    arc(b, xf, (cx, cy), r, a, a + math.pi, 16, **kw)
+    arc(b, xf, (cx, cy), r - 0.35, a + math.pi * 0.08, a + math.pi * 0.4, 6, **kw)
+    arc(b, xf, (cx, cy), r - 0.35, a + math.pi * 0.6, a + math.pi * 0.92, 6, **kw)
+    # The key: a run of hooks between two rails.
+    y0, y1 = sorted((cy + out * r * 0.55, cy + out * r * 0.3))
+    trace(b, xf, (cx - r * 0.8, y0), (cx + r * 0.8, y0), **kw)
+    trace(b, xf, (cx - r * 0.8, y1), (cx + r * 0.8, y1), **kw)
+    n = 4
+    step = r * 1.6 / n
+    for k in range(n):
+        a = cx - r * 0.8 + step * k + step * 0.2
+        h = (y1 - y0)
+        polyline(b, xf, [(a, y0), (a, y0 + h * 0.75), (a + step * 0.55, y0 + h * 0.75), (a + step * 0.55,
+                                                                                       y0 + h * 0.35),
+                         (a + step * 0.3, y0 + h * 0.35)], mirror=False, **kw)
+
+
+# The belvedere: heights above its origin's ground, m. It stands on rising
+# ground, so its back is higher than its front.
+V_FLOOR = 3.3  # The terrace: twenty steps of 0.165 m.
+V_HALL = V_FLOOR + 0.34  # The loggia and the court, over the threshold.
+V_PIER = 4.4  # The piers' height over the loggia's floor.
+V_CEIL = 6.0  # The loggia's ceiling over its floor.
+# Plan, m (Blender y grows away from the view).
+V_TERRACE = 8.0  # The terrace's front edge, at the stair's head.
+V_SILL = 16.0  # The threshold's foot.
+V_PIERS = (16.8, 17.8)  # The pier line's front and back.
+V_BACK = 25.4  # The loggia's back wall, inside.
+V_COURT = 26.0  # The portal wall's face, on the court.
+V_COLS = 32.6  # The court's colonnade.
+V_END = 33.4  # The court's back edge.
+V_HW = 7.6  # The loggia's half width outside.
+V_TW = 9.5  # The terrace's and the side walks' half width.
+
+
+def belvedere_body(b):
+    """The belvedere's outside: the stair up from the trail, the terrace
+    with its parapets, benches, and urn trees, the threshold, the loggia's
+    piers, walls, and roof, the side walks, and the entry court with its
+    colonnade, the portal, and the meander."""
+    f, hall, tw, hw = V_FLOOR, V_HALL, V_TW, V_HW
+    # -- The stair from the trail, and the terrace on its retaining wall.
+    y_top, _ = stair(b, -2.6, 2.6, 0.0, 0.0, 20, f / 20, 0.4, mat="marble")
+    box(b, (-tw, y_top, -3.0), (tw, V_SILL + 0.8, f), "lime", skip="-z", name="Podium")
+    box(b, (-tw, V_SILL + 0.8, -3.0), (tw, V_END, hall), "lime", skip="-z", name="Podium")
+    for s in (-1, 1):
+        x0, x1 = sorted((s * 2.6, s * 3.0))
+        for k in range(4):
+            ya, yb = y_top * k / 4, y_top * (k + 1) / 4
+            box(b, (x0, ya, -3.0), (x1, yb, f * (k + 1) / 4 + 0.5), "marble", skip="-z", name="Cheek")
+        b.collide("cheek", (x0, 0.0, 0.0), (x1, y_top, f + 0.5))
+        # The parapets along the terrace's front and sides.
+        x0, x1 = sorted((s * 3.0, s * tw))
+        box(b, (x0, y_top, f), (x1, y_top + 0.4, f + 0.95), "marble", skip="-z", name="Parapet")
+        b.collide("parapet", (x0, y_top, f), (x1, y_top + 0.4, f + 0.95))
+        x0, x1 = sorted((s * (tw - 0.4), s * tw))
+        box(b, (x0, y_top + 0.4, f), (x1, V_SILL, f + 0.95), "marble", skip="-z", name="Parapet")
+        box(b, (x0, V_SILL, hall), (x1, V_END - 0.6, hall + 0.95), "marble", skip="-z", name="Parapet")
+        b.collide("parapet", (x0, y_top + 0.4, f), (x1, V_END - 0.6, hall + 0.95))
+        # Benches facing the view, and urn trees at the corners.
+        x0, x1 = sorted((s * 5.7, s * 8.9))
+        cushioned_bench(b, x0, x1, y_top + 1.4, y_top + 2.1, f, back="+y")
+        urn_tree(b, s * 8.6, y_top + 0.85, f)
+        urn_tree(b, s * 3.6, V_SILL - 0.8, f, h=2.2)
+        lantern_post(b, s * 3.5, y_top + 0.75, f, height=1.6)
+    # -- The threshold, two steps across the terrace's whole width.
+    threshold(b, -tw, tw, V_SILL, f)
+    # -- The loggia: plain piers at its corners, inlaid piers either side of
+    # the middle bay, the beam over them, the side walls with the side
+    # door's opening, and the back wall.
+    y0, y1 = V_PIERS
+    for x in (-(hw - 0.5), hw - 0.5):
+        inlaid_pier(b, x, y0, y1, hall, hall + V_PIER, stripes=False)
+    for x in (-2.4, 2.4):
+        inlaid_pier(b, x, y0, y1, hall, hall + V_PIER)
+    top = hall + V_CEIL + 0.4
+    box(b, (-hw, y0, hall + V_PIER), (hw, y1, top), "marble", skip="+z", name="Beam")
+    for s in (-1, 1):
+        x0, x1 = sorted((s * (hw - 0.5), s * hw))
+        box(b, (x0, y1, hall), (x1, V_COURT, top), "marble", skip="-z +z -y", name="Wall")
+        b.collide("wall", (x0, y1, hall), (x1, V_COURT, top))
+    box(b, (-hw + 0.5, V_BACK, hall), (hw - 0.5, V_COURT, top), "marble", skip="-z +z -x +x", name="Wall")
+    b.collide("back", (-hw, V_BACK, hall), (hw, V_COURT, top))
+    # The roof: a flat slab with a thin fascia, over the loggia.
+    box(b, (-hw - 0.35, y0 - 0.35, top), (hw + 0.35, V_COURT + 0.35, top + 0.35), "lime", name="Roof")
+    if not FAR:
+        box(b, (-hw - 0.4, y0 - 0.4, top + 0.35), (hw + 0.4, V_COURT + 0.4, top + 0.45), "shade", skip="-z",
+            name="Fascia")
+    b.roofs.append(((0.0, (y0 + V_COURT) / 2), True, ((V_COURT - y0) / 2 + 0.4, hw + 0.4), top + 0.45, top + 0.46))
+    # -- The entry court: the colonnade on its far edge under a beam and a
+    # roof, the portal wall with the mahogany door in its stepped inlay,
+    # the meander in the floor, and terracotta pots.
+    for x in (-6.8, -2.4, 2.4, 6.8):
+        column(b, x, V_COLS, hall, hall + 5.4, d=0.62)
+    box(b, (-7.4, V_COLS - 0.45, hall + 5.4), (7.4, V_COLS + 0.45, hall + 6.0), "lime", skip="+z", name="Beam")
+    box(b, (-8.0, V_COURT, hall + 6.0), (8.0, V_COLS + 0.6, hall + 6.4), "lime", name="CourtRoof")
+    b.roofs.append(((0.0, (V_COURT + V_COLS) / 2), True, ((V_COLS - V_COURT) / 2 + 0.6, 8.0), hall + 6.4,
+                    hall + 6.41))
+    portal_face = local((0, V_COURT, 0), 180.0)
+    dw, dh = 2.6, 3.6
+    for lo, hi in (((-dw / 2 - 0.15, V_COURT, hall), (-dw / 2, V_COURT + 0.14, hall + dh)),
+                   ((dw / 2, V_COURT, hall), (dw / 2 + 0.15, V_COURT + 0.14, hall + dh)),
+                   ((-dw / 2 - 0.15, V_COURT, hall + dh), (dw / 2 + 0.15, V_COURT + 0.14, hall + dh + 0.15))):
+        box(b, lo, hi, "bronze", skip="-y -z", name="DoorFrame")
+    for s in (-1, 1):
+        leaf = portal_face @ Matrix.Translation(Vector((s * dw / 4, 0.02, hall)))
+        mahogany_leaf(b, leaf @ Matrix.Translation(Vector((0.0, -0.1, 0.0))), dw / 2 - 0.02, dh, pull_left=s > 0)
+    stepped_surround(b, portal_face @ Matrix.Translation(Vector((0.0, 0.0, hall))), dw, dh)
+    if not FAR:
+        flat = Matrix.Translation(Vector((0.0, 0.0, hall + 0.01))) @ FLAT
+        slab(b, -hw, hw, V_COURT, V_END, hall + 0.01, "marble", name="CourtFloor")
+        meander_floor(b, flat, 0.0, V_COURT, r=3.0, out=1.0)
+    for s in (-1, 1):
+        terracotta_pot(b, s * 3.4, V_COURT + 0.5, hall, r=0.32, shrub=1.0, tree=True)
+        terracotta_pot(b, s * 4.1, V_COURT + 0.45, hall, r=0.24, shrub=0.6)
+        terracotta_pot(b, s * 9.3, V_COLS - 1.2, hall + 0.95, r=0.18, shrub=0.5)
+        b.collide("pot", (s * 3.4 - 0.45, V_COURT, hall), (s * 3.4 + 0.45, V_COURT + 0.9, hall + 1.6))
+        # Uplights washing the portal.
+        uplight(b, s * 2.7, V_COURT + 0.6, hall, toward=(0.0, -1.0))
+    # Two steps down at the court's back, to the trail.
+    if not FAR:
+        for i, (ya, z) in enumerate(((V_END, hall - 0.17), (V_END + 0.4, hall - 0.34))):
+            box(b, (-tw, ya, -3.0), (tw, ya + 0.4, z), "marble", skip="-z -y", name="Step")
+    b.front = (0.0, -1.0)
+
+
+def belvedere_loggia(b):
+    """The loggia's inside: a pale floor with dark border lines, the
+    lintel band over the piers, a coffered marble ceiling with copper lines,
+    louvers high on the side walls, the copper relief over a cushioned
+    bench, urn trees, the side door, and sconces."""
+    hall = V_HALL
+    y0, y1 = V_PIERS[1], V_BACK
+    x0, x1 = -(V_HW - 0.5), V_HW - 0.5
+    b.inside = (0.0, (y0 + y1) / 2)
+    if FAR:
+        return
+    slab(b, x0, x1, V_PIERS[0], y1, hall + 0.01, "marble", name="Floor")
+    flat = Matrix.Translation(Vector((0.0, 0.0, hall + 0.01))) @ FLAT
+    kw = {"mat": "walnut", "width": 0.05, "proud": 0.004}
+    for inset in (0.35, 0.55):
+        polyline(b, flat, [(0.0, y0 + inset), (x1 - inset, y0 + inset), (x1 - inset, y1 - inset), (0.0, y1 - inset)],
+                 **kw)
+    # The lintel band, on the beam's inner face over the piers.
+    inner = local((0, y0, 0), 180.0)
+    lintel_band(b, inner, 2 * x1 - 0.3, hall + V_PIER + 0.15, h=1.1)
+    # The ceiling: a marble cove round a flat field with copper lines.
+    ceil = hall + V_CEIL
+    slab(b, x0, x1, V_PIERS[0], y1, ceil, "marble", down=True, name="Ceiling")
+    for lo, hi in (((x0, y0, ceil - 0.28), (x1, y0 + 0.5, ceil)), ((x0, y1 - 0.5, ceil - 0.28), (x1, y1, ceil)),
+                   ((x0, y0, ceil - 0.28), (x0 + 0.5, y1, ceil)), ((x1 - 0.5, y0, ceil - 0.28), (x1, y1, ceil))):
+        box(b, lo, hi, "marble", skip="+z", name="Cove")
+    down = Matrix.Translation(Vector((0.0, 0.0, ceil - 0.002))) @ Matrix.Rotation(math.radians(90.0), 4, "X")
+    kc = {"mat": "copper", "width": 0.035, "proud": 0.004}
+    cy = (y0 + y1) / 2
+    polyline(b, down, [(0.0, -(y0 + 0.8)), (x1 - 0.8, -(y0 + 0.8)), (x1 - 0.8, -(y1 - 0.8)), (0.0, -(y1 - 0.8))], **kc)
+    r = (y1 - y0) / 2 - 1.4
+    for s in (-1, 1):
+        arc(b, down, (s * (x1 - 1.4 - r), -cy), r, -math.pi / 2, math.pi / 2, 8, **kc) if s > 0 else \
+            arc(b, down, (s * (x1 - 1.4 - r), -cy), r, math.pi / 2, 3 * math.pi / 2, 8, **kc)
+    polyline(b, down, [(x1 - 1.4 - r, -(cy - r)), (0.0, -(cy - r))], **kc)
+    polyline(b, down, [(x1 - 1.4 - r, -(cy + r)), (0.0, -(cy + r))], **kc)
+    # Louvers high on both side walls.
+    for s in (-1, 1):
+        side = local((s * x1, 0, 0), -90 * s)
+        u0, u1 = sorted((-18.6 * s, -24.6 * s))
+        louver(b, side, u0, u1, hall + 3.9, hall + 5.6)
+    # The relief over the bench on the +x wall, left of the view, and
+    # the side door on the -x wall, right of it.
+    east = local((x1, 0, 0), -90.0)
+    relief_panel(b, east, -21.4, hall + 1.3)
+    cushioned_bench(b, x1 - 0.7, x1, 19.4, 23.4, hall, back="+x")
+    west = local((x0, 0, 0), 90.0)
+    side_door(b, west, 22.6, hall)
+    for s in (-1, 1):
+        urn_tree(b, s * 5.9, y0 + 0.9, hall, h=2.6)
+        sconce(b, local((0, y1, 0), 0.0), s * 2.4, hall + 2.4)
+
+
 def new(name):
     b = bl.Building(name, {"plaster": "cream", "roof": "red", "timber": "dark"})
     b.chimneys = []
@@ -1674,6 +2113,14 @@ def civic_hall():
     b = new("civic_hall")
     civic_body(b)
     civic_chamber(b)
+    return b
+
+
+@model
+def belvedere():
+    b = new("belvedere")
+    belvedere_body(b)
+    belvedere_loggia(b)
     return b
 
 
@@ -1878,6 +2325,90 @@ def bowl_planter():
 def council_ring_piece():
     b = new("council_ring")
     council_ring(b, (0.0, 0.0), 0.0)
+    return b
+
+
+# The belvedere's pieces.
+
+
+@piece
+def inlaid_pier_piece():
+    b = new("inlaid_pier")
+    inlaid_pier(b, 0.0, 0.0, 1.0, 0.0, 4.4)
+    return b
+
+
+@piece
+def lintel_band_piece():
+    b = new("lintel_band")
+    lintel_band(b, local((0, 0, 0)), 10.0, 0.0)
+    return b
+
+
+@piece
+def louver_piece():
+    b = new("louver")
+    louver(b, local((0, 0, 0)), -1.5, 1.5, 0.0, 1.7)
+    return b
+
+
+@piece
+def relief_panel_piece():
+    b = new("relief_panel")
+    relief_panel(b, local((0, 0, 0)), 0.0, 0.0)
+    return b
+
+
+@piece
+def cushioned_bench_piece():
+    b = new("cushioned_bench")
+    cushioned_bench(b, -1.6, 1.6, 0.0, 0.7, 0.0, back="+y")
+    return b
+
+
+@piece
+def urn_tree_piece():
+    b = new("urn_tree")
+    urn_tree(b, 0.0, 0.0, 0.0)
+    return b
+
+
+@piece
+def threshold_piece():
+    b = new("threshold")
+    threshold(b, -2.0, 2.0, 0.0, 0.0)
+    return b
+
+
+@piece
+def mahogany_door():
+    b = new("mahogany_door")
+    for s in (-1, 1):
+        mahogany_leaf(b, local((s * 0.65, 0, 0)), 1.28, 3.6, pull_left=s > 0)
+    return b
+
+
+@piece
+def stepped_surround_piece():
+    b = new("stepped_surround")
+    box(b, (-3.6, 0.0, 0.0), (3.6, 0.2, 6.0), "lime", skip="-z +y", name="Wall")
+    stepped_surround(b, local((0, 0, 0)), 2.6, 3.6)
+    return b
+
+
+@piece
+def meander_floor_piece():
+    b = new("meander_floor")
+    slab(b, -3.4, 3.4, -3.4, 0.0, 0.0, "marble", name="Floor")
+    meander_floor(b, FLAT, 0.0, 0.0, r=3.0)
+    return b
+
+
+@piece
+def terracotta_pot_piece():
+    b = new("terracotta_pot")
+    terracotta_pot(b, -0.5, 0.0, 0.0, r=0.32, shrub=1.0, tree=True)
+    terracotta_pot(b, 0.5, 0.0, 0.0, r=0.24, shrub=0.6)
     return b
 
 

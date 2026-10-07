@@ -518,9 +518,10 @@ const fn brownstone(building: &'static str) -> StandIn {
 /// water; the glasshouse in the community garden behind Brownstone Row;
 /// the gazebo on the commons' east lawn; the wayside chapel on the
 /// north trail; the owner's house at Library Way's east end
-/// (`super::estate`); and the Civic Hall at Main Street's east end
-/// (`super::civic`).
-pub const GROUNDS: [Instance; 6] = [
+/// (`super::estate`); the Civic Hall at Main Street's east end
+/// (`super::civic`); and the belvedere on the west trail's climb
+/// (`super::belvedere`).
+pub const GROUNDS: [Instance; 7] = [
     Instance {
         scale: 0.8,
         ..Instance::new("boathouse", &BOATHOUSE, [4.5, 34.2], PI)
@@ -532,6 +533,7 @@ pub const GROUNDS: [Instance; 6] = [
     Instance::new("chapel", &CHAPEL, [3.5, 124.0], FRAC_PI_2),
     super::estate::OWNERS_HOUSE,
     super::civic::CIVIC,
+    super::belvedere::BELVEDERE_AT,
 ];
 
 /// The Fountain Plaza's fountain, on the plaza's west half clear of

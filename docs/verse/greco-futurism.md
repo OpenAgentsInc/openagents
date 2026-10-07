@@ -1,7 +1,8 @@
 # Greco-futurism
 
-Status: defined October 6, 2026. The first kit and two buildings in
-Everglade, the owner's house and the Civic Hall, are implemented.
+Status: defined October 6, 2026. The first kit and three buildings in
+Everglade, the owner's house, the Civic Hall, and the belvedere, are
+implemented.
 
 Greco-futurism is an architectural style for Verse: a classical temple front
 reduced to its essentials, with the future carried in its surfaces and doors
@@ -15,7 +16,10 @@ entrance with a bronze door behind two smooth columns, the same house seen
 from its lawn between large trees, a study with a coffered ceiling and an
 engraved copper door, and a great room with a long sofa before a dark,
 engraved double door. A fifth, a broad limestone civic building behind
-four bronze-banded columns, gave the Civic Hall and its kit pieces.
+four bronze-banded columns, gave the Civic Hall and its kit pieces. A
+sixth and a seventh gave the belvedere: a sunlit loggia opening through
+inlaid marble piers onto a terrace with a view, and a colonnade framing a
+mahogany double door in a stepped bronze surround at dusk.
 
 ## Principles
 
@@ -84,6 +88,18 @@ and a kit piece in `assets/verse/generated/greco/kit/`.
 | Paired windows | `paired_windows`, `tall_window` | Two tall narrow dark windows in bronze frames with a mullion and two transoms, over sills and under plain heads | 128 |
 | Bowl planter | `bowl_wall`, `bowl` | A low dark walnut planter wall under a bronze coping, with a shallow bronze bowl planted with a low shrub | 106 |
 | Council ring | `council_ring`, `sector` | Tiered stone benches in a ring, a walnut bench on each tier and a walnut wall behind the last, open in two aisles | 560 |
+| Inlaid pier | `inlaid_pier` | A square white marble pier on a low base, its faces inlaid with three thin bronze lines under a short bar, capped by a copper corbel block | 48 |
+| Lintel band | `lintel_band`, `disc` | A deep dark red-brown band over an opening, inlaid in copper: a disc with a line through it, groups of vertical bars, and frames at the ends | 148 (10 m) |
+| Slat louver | `louver` | Dark walnut slats in a frame before a dark bronze backing, high on a wall | 96 |
+| Copper relief | `relief_panel` | A copper panel in a walnut frame with a row of abstract standing figures in line work: round heads over stepped bodies, never a likeness | 166 |
+| Cushioned bench | `cushioned_bench` | A low built-in marble bench with dark red seat and back cushions | 60 |
+| Urn tree | `urn_tree` | A white stone urn with a small olive tree | 184 |
+| Stepped threshold | `threshold` | Marble steps with a fine walnut line along each tread's edge | 12 (two steps) |
+| Side door | `side_door` | A heavy walnut door in a marble surround with a curved bronze handle | about 40 |
+| Mahogany door | `mahogany_leaf` | A dark mahogany double door with fine brass grids near its top and foot and round brass medallion pulls | 176 |
+| Stepped surround | `stepped_surround` | Nested bronze line frames stepping outward round a door, a filled outer band, and wing brackets in the lower corners ending in circles | 110 |
+| Meander floor | `meander_floor` | A bronze half ring and a Greek key inlaid in a pale floor before a door | 94 |
+| Terracotta pot | `terracotta_pot` | A terracotta pot with a clipped shrub or a small tree | 144 (two) |
 
 The props share the vocabulary:
 
@@ -203,8 +219,10 @@ material:
   while the player is near it (the outside's within 70 m, the inside's
   within 34 m), those on the player's side of the walls first, then the
   nearest. The owner's house has 20 fixtures, 12 of them inside; the Civic
-  Hall has 19, 13 of them inside. Each building fills only the stage's
-  free slots, so the two never pass the limit together.
+  Hall has 19, 13 of them inside; the belvedere, a sunlit loggia, has
+  only 6, lanterns and uplights outside and two sconces, for the evening.
+  Each building fills only the stage's free slots, so they never pass the
+  limit together.
 - **Grade.** While the player is in the great room, the stage takes a
   darker, warmer, and more contrasty grade (one stop down, cool shadows
   against warm highlights, and a vignette), so the candles read as pools
@@ -391,6 +409,60 @@ python3 scripts/blender/greco_admit.py civic_hall
 
 Review renders come from
 `scripts/blender/greco_views.py -- civic IN.glb OUT_DIR`.
+
+## The belvedere
+
+`generated/belvedere` brings the sixth and seventh reference images
+together in one building: a loggia with a view on its front and an entry
+court with a ceremonial door on its back.
+
+- **Where.** On the rising ground at Everglade's west edge, where the
+  west trail climbs out of the town from Hearth Road's end: the foot of
+  its stair at (-164, -8), on the trail, facing east back down it
+  ([`layout/belvedere.rs`](../../crates/verse-zone-everglade/src/zones/everglade/layout/belvedere.rs)).
+  The loggia's floor is about 7.6 m over Hearth Road's end, so it looks
+  down the road over the Lantern Quarter's roofs; no tree grows in that
+  view (`belvedere::VIEW`). The trail climbs its stair, crosses the
+  terrace, passes the loggia on its side walks, crosses the court, and
+  goes down the court's back steps on into the woods.
+- **Terrace.** Twenty shallow steps of 0.165 m between stepped marble
+  cheeks rise to a terrace on a 3.3 m retaining wall, with marble
+  parapets, two cushioned benches facing the view, urn trees at its
+  corners, and lanterns at the stair's head.
+- **Loggia.** Over a two-step marble threshold, four marble piers on
+  low bases open the loggia, 14.2 m by 7.6 m, onto the terrace: plain
+  piers at the corners and, either side of the 3.8 m middle bay, piers
+  inlaid with three bronze lines, all under copper corbel blocks. Over
+  them, on the inside, runs the dark red-brown lintel band with its copper
+  disc, bars, and frames. A marble cove frames a ceiling inlaid with
+  copper lines, and walnut louvers sit high on both side walls. On the
+  left wall, looking out, the copper relief of abstract figures hangs
+  over a cushioned bench; on the right, a heavy walnut door; urn trees
+  stand in the front corners, and the pale floor carries two dark border
+  lines.
+- **Entry court.** Behind the loggia, under a roof on four round
+  columns, the portal wall carries the mahogany double door in its
+  bronze frame, within the stepped surround and its wing brackets, over
+  the meander in the court's floor, between terracotta pots of small
+  trees and shrubs. Uplights wash the portal for the evening. The door
+  stays closed: the loggia opens to the view, and the side walks join
+  the two.
+- **Light.** Lanterns at the stair's head, uplights on the portal, and
+  two sconces in the loggia, given only near it; its look stays the
+  afternoon's.
+- **Budget.** 3,990 triangles near and 960 far.
+
+Rebuild it and admit it:
+
+```sh
+B=/Applications/Blender.app/Contents/MacOS/Blender
+$B -b --factory-startup --python scripts/blender/greco_futurism.py -- \
+    assets/verse/generated/greco belvedere
+python3 scripts/blender/greco_admit.py belvedere
+```
+
+Review renders come from
+`scripts/blender/greco_views.py -- belvedere IN.glb OUT_DIR`.
 
 ## Planned assets
 

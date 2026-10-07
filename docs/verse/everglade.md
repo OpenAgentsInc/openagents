@@ -504,6 +504,15 @@ lit by sconces, candle stands, and braziers. It blocks by its own boxes
 and breaks like the other generated buildings; the town's foliage keeps
 off the ground round it, and Studio Road ends short of its planters.
 
+The belvedere (`layout::belvedere`), a third Greco-futurism building,
+stands on the rising ground at the west edge, where the west trail climbs
+out of the town from Hearth Road's end. Its loggia opens east through
+inlaid marble piers onto a terrace with benches, and looks back down
+Hearth Road over the Lantern Quarter, a view kept clear of trees; behind
+it, an entry court's colonnade frames a mahogany door in a stepped bronze
+surround. The trail runs up its stair, past the loggia, through the
+court, and on into the woods.
+
 The town has ambient wildlife
 ([`wildlife`](../../crates/verse-zone-everglade/src/zones/everglade/wildlife.rs)): pairs of
 songbirds circling over the commons, Main Street, Walden Woods, and

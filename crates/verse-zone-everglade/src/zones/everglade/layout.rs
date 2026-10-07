@@ -21,6 +21,7 @@ use glam::{Mat4, Quat, Vec3};
 use std::f32::consts::{FRAC_PI_2, PI, TAU};
 use verse_world::social::everglade::DESK_SEATS;
 
+pub mod belvedere;
 pub mod city;
 pub mod civic;
 pub mod details;
@@ -790,6 +791,7 @@ pub fn placements() -> Vec<Placement> {
     paths(&mut out);
     glade(&mut out);
     trails::clear(&mut out);
+    belvedere::clear(&mut out);
     out.push(Placement::new(
         "generated/concrete_tower",
         TOWER,

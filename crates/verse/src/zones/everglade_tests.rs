@@ -1032,7 +1032,13 @@ fn the_city_is_sixteen_times_the_glade_and_every_door_opens_from_the_spawn() {
             crate::nav::segment_clear(outside, inside, blockers, HALF_EXTENT),
             "{name}'s doorway is blocked"
         );
-        assert!(outside[0].hypot(outside[1]) < CLEARING_RADIUS, "{name}");
+        // Inside the clearing, or, like the belvedere on the rising
+        // ground, at the head of a trail out of it.
+        let trail = layout::trails::distance(outside[0], outside[1]) < layout::trails::HALF;
+        assert!(
+            outside[0].hypot(outside[1]) < CLEARING_RADIUS || trail,
+            "{name}"
+        );
     }
     // The ponds stop the player at their banks, and their water draws.
     for ([x, z], _) in layout::PONDS {
@@ -1332,6 +1338,25 @@ fn a_walker_climbs_the_civic_halls_stair_from_main_street_to_the_chamber() {
         rose > 1.8,
         "on the podium's floor, not under it: {rose} m up"
     );
+}
+
+#[test]
+fn a_walker_climbs_the_west_trail_up_the_belvederes_stair_into_the_loggia() {
+    // From the west trail below, up the rising ground and the belvedere's
+    // twenty steps, across the terrace and over the threshold, between the
+    // inlaid piers to the loggia's middle.
+    use crate::zones::everglade::layout::belvedere::{BELVEDERE_AT, FLOOR, INSIDE};
+    let [ax, az] = BELVEDERE_AT.at;
+    let trail = [ax + 12.0, az];
+    let middle = BELVEDERE_AT.world(INSIDE);
+    let (end, _) = walk_across(trail, middle, 14.0);
+    assert!(
+        end.x < middle[0] + 0.5,
+        "stopped at {end}, short of {middle:?}"
+    );
+    assert!((end.z - middle[1]).abs() < 0.3, "kept to the walk: {end}");
+    let floor = height(ax, az) + FLOOR;
+    assert!((end.y - floor).abs() < 0.3, "on the loggia's floor: {end}");
 }
 
 #[test]

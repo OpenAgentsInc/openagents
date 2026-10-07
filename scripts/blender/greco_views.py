@@ -6,6 +6,8 @@ Run headless:
     Blender -b --factory-startup --python scripts/blender/greco_views.py -- \
         civic IN.glb OUT_DIR
     Blender -b --factory-startup --python scripts/blender/greco_views.py -- \
+        belvedere IN.glb OUT_DIR
+    Blender -b --factory-startup --python scripts/blender/greco_views.py -- \
         kit KIT_DIR OUT.png
 
 `house` writes `house_<view>.png` for the street front, a three-quarter
@@ -136,6 +138,29 @@ def civic(src, out):
         render(os.path.join(out, f"civic_{name}.png"))
 
 
+def belvedere(src, out):
+    """The belvedere: the loggia looking out through its piers, the entry
+    court's portal through the colonnade, the lintel band and the piers
+    close up, the approach up the stair, and the aerial."""
+    bpy.ops.wm.read_factory_settings(use_empty=True)
+    scene(1600, 1000)
+    bpy.ops.import_scene.gltf(filepath=src)
+    for x, y, h, r in ((-16, 10, 13, 5.0), (16, 12, 14, 5.0), (-15, 34, 13, 5.0), (15, 36, 12, 4.5)):
+        tree(x, y, h, r)
+    os.makedirs(out, exist_ok=True)
+    views = {
+        "loggia": ((0.6, 24.8, 5.3), (0.0, 8.0, 4.4), 20),
+        "portal": ((0.0, 35.4, 5.2), (0.0, 26.0, 6.1), 22),
+        "lintel": ((0.0, 21.5, 5.4), (0.0, 17.8, 8.7), 28),
+        "piers": ((-1.2, 12.0, 4.6), (2.4, 16.8, 6.2), 30),
+        "approach": ((-9, -22, 2.2), (0, 16, 4.0), 30),
+        "aerial": ((32, -24, 30), (0, 18, 3.0), 30),
+    }
+    for name, (loc, target, lens) in views.items():
+        camera(loc, target, lens)
+        render(os.path.join(out, f"belvedere_{name}.png"))
+
+
 def kit(src_dir, out):
     bpy.ops.wm.read_factory_settings(use_empty=True)
     names = sorted(f for f in os.listdir(src_dir) if f.endswith(".glb"))
@@ -187,6 +212,8 @@ def main():
         house(args[1], args[2])
     elif mode == "civic":
         civic(args[1], args[2])
+    elif mode == "belvedere":
+        belvedere(args[1], args[2])
     elif mode == "kit":
         kit(args[1], args[2])
     else:

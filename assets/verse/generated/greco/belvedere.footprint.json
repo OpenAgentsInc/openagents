@@ -1,0 +1,495 @@
+{
+  "model": "belvedere.glb",
+  "frame": "glTF: 1 unit = 1 m, +Y up, +Z out of the front door, origin on the ground at the center of the front wall",
+  "triangles": 3990,
+  "boxes": [
+    {
+      "name": "cheek",
+      "center": [
+        -2.8,
+        1.9,
+        -4.0
+      ],
+      "half_extents": [
+        0.2,
+        1.9,
+        4.0
+      ]
+    },
+    {
+      "name": "parapet",
+      "center": [
+        -6.25,
+        3.775,
+        -8.2
+      ],
+      "half_extents": [
+        3.25,
+        0.475,
+        0.2
+      ]
+    },
+    {
+      "name": "parapet",
+      "center": [
+        -9.3,
+        3.945,
+        -20.6
+      ],
+      "half_extents": [
+        0.2,
+        0.645,
+        12.2
+      ]
+    },
+    {
+      "name": "bench",
+      "center": [
+        -7.3,
+        3.75,
+        -9.75
+      ],
+      "half_extents": [
+        1.6,
+        0.45,
+        0.35
+      ]
+    },
+    {
+      "name": "urn",
+      "center": [
+        -8.6,
+        4.5,
+        -8.85
+      ],
+      "half_extents": [
+        0.42,
+        1.2,
+        0.42
+      ]
+    },
+    {
+      "name": "urn",
+      "center": [
+        -3.6,
+        4.4,
+        -15.2
+      ],
+      "half_extents": [
+        0.42,
+        1.1,
+        0.42
+      ]
+    },
+    {
+      "name": "lantern post",
+      "center": [
+        -3.5,
+        4.35,
+        -8.75
+      ],
+      "half_extents": [
+        0.12,
+        1.05,
+        0.12
+      ]
+    },
+    {
+      "name": "cheek",
+      "center": [
+        2.8,
+        1.9,
+        -4.0
+      ],
+      "half_extents": [
+        0.2,
+        1.9,
+        4.0
+      ]
+    },
+    {
+      "name": "parapet",
+      "center": [
+        6.25,
+        3.775,
+        -8.2
+      ],
+      "half_extents": [
+        3.25,
+        0.475,
+        0.2
+      ]
+    },
+    {
+      "name": "parapet",
+      "center": [
+        9.3,
+        3.945,
+        -20.6
+      ],
+      "half_extents": [
+        0.2,
+        0.645,
+        12.2
+      ]
+    },
+    {
+      "name": "bench",
+      "center": [
+        7.3,
+        3.75,
+        -9.75
+      ],
+      "half_extents": [
+        1.6,
+        0.45,
+        0.35
+      ]
+    },
+    {
+      "name": "urn",
+      "center": [
+        8.6,
+        4.5,
+        -8.85
+      ],
+      "half_extents": [
+        0.42,
+        1.2,
+        0.42
+      ]
+    },
+    {
+      "name": "urn",
+      "center": [
+        3.6,
+        4.4,
+        -15.2
+      ],
+      "half_extents": [
+        0.42,
+        1.1,
+        0.42
+      ]
+    },
+    {
+      "name": "lantern post",
+      "center": [
+        3.5,
+        4.35,
+        -8.75
+      ],
+      "half_extents": [
+        0.12,
+        1.05,
+        0.12
+      ]
+    },
+    {
+      "name": "pier",
+      "center": [
+        -7.1,
+        5.84,
+        -17.3
+      ],
+      "half_extents": [
+        0.6,
+        2.2,
+        0.6
+      ]
+    },
+    {
+      "name": "pier",
+      "center": [
+        7.1,
+        5.84,
+        -17.3
+      ],
+      "half_extents": [
+        0.6,
+        2.2,
+        0.6
+      ]
+    },
+    {
+      "name": "pier",
+      "center": [
+        -2.4,
+        5.84,
+        -17.3
+      ],
+      "half_extents": [
+        0.6,
+        2.2,
+        0.6
+      ]
+    },
+    {
+      "name": "pier",
+      "center": [
+        2.4,
+        5.84,
+        -17.3
+      ],
+      "half_extents": [
+        0.6,
+        2.2,
+        0.6
+      ]
+    },
+    {
+      "name": "wall",
+      "center": [
+        -7.35,
+        6.84,
+        -21.9
+      ],
+      "half_extents": [
+        0.25,
+        3.2,
+        4.1
+      ]
+    },
+    {
+      "name": "wall",
+      "center": [
+        7.35,
+        6.84,
+        -21.9
+      ],
+      "half_extents": [
+        0.25,
+        3.2,
+        4.1
+      ]
+    },
+    {
+      "name": "back",
+      "center": [
+        0.0,
+        6.84,
+        -25.7
+      ],
+      "half_extents": [
+        7.6,
+        3.2,
+        0.3
+      ]
+    },
+    {
+      "name": "column",
+      "center": [
+        -6.8,
+        6.34,
+        -32.6
+      ],
+      "half_extents": [
+        0.43,
+        2.7,
+        0.43
+      ]
+    },
+    {
+      "name": "column",
+      "center": [
+        -2.4,
+        6.34,
+        -32.6
+      ],
+      "half_extents": [
+        0.43,
+        2.7,
+        0.43
+      ]
+    },
+    {
+      "name": "column",
+      "center": [
+        2.4,
+        6.34,
+        -32.6
+      ],
+      "half_extents": [
+        0.43,
+        2.7,
+        0.43
+      ]
+    },
+    {
+      "name": "column",
+      "center": [
+        6.8,
+        6.34,
+        -32.6
+      ],
+      "half_extents": [
+        0.43,
+        2.7,
+        0.43
+      ]
+    },
+    {
+      "name": "pot",
+      "center": [
+        -3.4,
+        4.44,
+        -26.45
+      ],
+      "half_extents": [
+        0.45,
+        0.8,
+        0.45
+      ]
+    },
+    {
+      "name": "pot",
+      "center": [
+        3.4,
+        4.44,
+        -26.45
+      ],
+      "half_extents": [
+        0.45,
+        0.8,
+        0.45
+      ]
+    },
+    {
+      "name": "bench",
+      "center": [
+        6.75,
+        4.09,
+        -21.4
+      ],
+      "half_extents": [
+        0.35,
+        0.45,
+        2.0
+      ]
+    },
+    {
+      "name": "urn",
+      "center": [
+        -5.9,
+        4.94,
+        -18.7
+      ],
+      "half_extents": [
+        0.42,
+        1.3,
+        0.42
+      ]
+    },
+    {
+      "name": "urn",
+      "center": [
+        5.9,
+        4.94,
+        -18.7
+      ],
+      "half_extents": [
+        0.42,
+        1.3,
+        0.42
+      ]
+    }
+  ],
+  "roofs": [
+    {
+      "center": [
+        0.0,
+        -21.4
+      ],
+      "slopes_z": true,
+      "half": [
+        5.0,
+        8.0
+      ],
+      "eave": 10.49,
+      "ridge": 10.5
+    },
+    {
+      "center": [
+        0.0,
+        -29.3
+      ],
+      "slopes_z": true,
+      "half": [
+        3.9,
+        8.0
+      ],
+      "eave": 10.04,
+      "ridge": 10.05
+    }
+  ],
+  "front": [
+    0.0,
+    1.0
+  ],
+  "inside": [
+    0.0,
+    -21.6
+  ],
+  "lights": [
+    {
+      "kind": "lantern",
+      "at": [
+        -3.5,
+        5.12,
+        -8.75
+      ]
+    },
+    {
+      "kind": "lantern",
+      "at": [
+        3.5,
+        5.12,
+        -8.75
+      ]
+    },
+    {
+      "kind": "uplight",
+      "at": [
+        -2.7,
+        4.54,
+        -26.3
+      ]
+    },
+    {
+      "kind": "uplight",
+      "at": [
+        2.7,
+        4.54,
+        -26.3
+      ]
+    },
+    {
+      "kind": "sconce",
+      "at": [
+        -2.4,
+        6.31,
+        -25.14
+      ]
+    },
+    {
+      "kind": "sconce",
+      "at": [
+        2.4,
+        6.31,
+        -25.14
+      ]
+    }
+  ],
+  "flames": [
+    [
+      -2.4,
+      6.296,
+      -25.14
+    ],
+    [
+      2.4,
+      6.296,
+      -25.14
+    ]
+  ]
+}
