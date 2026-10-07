@@ -151,6 +151,7 @@ async fn deploy() -> Deployment {
         registry: dir.path().to_path_buf(),
         require_workspace_membership: true,
         team_policy: None,
+        team_reports: None,
         accounts: Some(account_config()),
         billing: Some(billing_config()),
         funding: None,

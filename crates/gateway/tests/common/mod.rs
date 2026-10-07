@@ -502,6 +502,7 @@ pub async fn deploy(manifest: Manifest, endpoint: &str) -> Deployment {
         registry: dir.path().to_path_buf(),
         require_workspace_membership: false,
         team_policy: None,
+        team_reports: None,
         accounts: None,
         billing: None,
         funding: None,

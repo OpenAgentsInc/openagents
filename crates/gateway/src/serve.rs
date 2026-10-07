@@ -136,6 +136,7 @@ pub struct ServeState {
     pub(crate) earnings: Option<Mutex<pay_ledger::Ledger>>,
     pub(crate) funding: Option<std::sync::Mutex<crate::funding::Store>>,
     pub(crate) funding_slots: Arc<Semaphore>,
+    pub(crate) team_progress: crate::team_reports::Monitor,
     receipts: Mutex<std::fs::File>,
     /// The process-wide forward bound.
     in_flight: Arc<Semaphore>,
@@ -162,6 +163,7 @@ impl ServeState {
     pub fn open(config: Config) -> Result<Arc<Self>, Trouble> {
         if config.commercial.is_some()
             || config.team_policy.is_some()
+            || config.team_reports.is_some()
             || config.funding.is_some()
             || config.earnings.is_some()
             || config.money.as_ref().is_some_and(|m| {
@@ -289,6 +291,7 @@ impl ServeState {
             earnings,
             funding,
             funding_slots: Arc::new(Semaphore::new(4)),
+            team_progress: crate::team_reports::Monitor::default(),
             receipts: Mutex::new(receipts),
             doors: Mutex::new(HashMap::new()),
             attempt_ids: AtomicU64::new(0),
@@ -309,6 +312,14 @@ impl ServeState {
                 &quota::Units::none(),
             )
             .ok();
+    }
+
+    pub(crate) async fn receipt_source(&self) -> Result<std::fs::File, String> {
+        self.receipts
+            .lock()
+            .await
+            .try_clone()
+            .map_err(|_| "Held native receipt source is unavailable.".into())
     }
 
     /// Mint an attempt id within this process.
@@ -526,6 +537,9 @@ fn api_routes(state: &ServeState) -> Vec<(&'static str, MethodRouter<Arc<ServeSt
         routes.extend(crate::usage::routes());
         routes.extend(crate::dashboard::routes());
         routes.extend(crate::playground::routes());
+    }
+    if state.config.team_reports.is_some() {
+        routes.extend(crate::team_reports::routes());
     }
     if state.config.billing.is_some() {
         routes.extend(crate::billing::routes());
@@ -796,10 +810,20 @@ pub(crate) struct Caller {
     /// `require_workspace_membership` ran, and the account monetary
     /// admission charges.
     pub(crate) workspace: Option<String>,
+    pub(crate) member: Option<receipts::execution::Member>,
     /// The key's declared narrowing — the doors and actions it was
     /// scoped to at issue. `None` is an unscoped key, a session, or an
     /// anonymous caller: the tenant's binding bounds it alone.
     pub(crate) scopes: Option<keys::Scopes>,
+}
+
+fn member_snapshot(member: &tenancy::MemberRef) -> receipts::execution::Member {
+    receipts::execution::Member {
+        account: member.account.clone(),
+        workspace: member.workspace.clone(),
+        membership_epoch: member.epoch,
+        workspace_members_epoch: member.members_epoch,
+    }
 }
 
 /// Resolve the `Authorization` header and reopen the registry for this
@@ -831,6 +855,7 @@ pub(crate) fn authenticate(
                 tenant: None,
                 key: "anonymous".to_string(),
                 workspace: None,
+                member: None,
                 scopes: None,
             },
         ));
@@ -862,6 +887,7 @@ pub(crate) fn authenticate(
         })?;
     let mut workspace = None;
     let mut budget_credential = None;
+    let mut original_member = None;
     if state.config.require_workspace_membership {
         let mut values = headers.get_all("x-workspace-id").iter();
         let named = values
@@ -909,6 +935,7 @@ pub(crate) fn authenticate(
                     "Your API key doesn't belong to an active member of this workspace.".into(),
                 ),
             })?;
+        original_member = Some(member_snapshot(&member));
         if state
             .config
             .money
@@ -929,6 +956,7 @@ pub(crate) fn authenticate(
             tenant: Some(authenticated.tenant),
             key: authenticated.key_id,
             workspace,
+            member: original_member,
             scopes: authenticated.scopes,
         },
     ))
@@ -1022,6 +1050,7 @@ fn authenticate_session(
                     tenant: None,
                     key: "anonymous".to_string(),
                     workspace: None,
+                    member: None,
                     scopes: None,
                 },
             ))
@@ -1070,7 +1099,7 @@ fn authenticate_session(
                         format!("Workspace `{workspace}` doesn't exist."),
                     )
                 })?;
-            accounts
+            let member = accounts
                 .authorize(workspace, session.user.as_str())
                 .map_err(|refusal| {
                     (
@@ -1097,6 +1126,7 @@ fn authenticate_session(
                     tenant: Some(record.tenant),
                     key: format!("session:{}", &session.id.as_str()[..16]),
                     workspace: Some(workspace.to_string()),
+                    member: Some(member_snapshot(&member)),
                     scopes: None,
                 },
             ))
@@ -1115,6 +1145,7 @@ pub(crate) struct ReceiptContext {
     pub(crate) tenant_ref: Option<String>,
     /// The workspace the membership check admitted, when one did.
     pub(crate) workspace: Option<String>,
+    pub(crate) member: Option<receipts::execution::Member>,
     /// The registry revision the call was admitted under.
     pub(crate) registry: Option<ReceiptRegistry>,
     /// The identity the caller asked for — the bound expectation.
@@ -1379,6 +1410,7 @@ fn authenticated(
     let ctx = Box::new(ReceiptContext {
         tenant_ref: caller.tenant.as_ref().map(|_| caller.key.clone()),
         workspace: caller.workspace.clone(),
+        member: caller.member.clone(),
         ..ReceiptContext::default()
     });
     Ok((registry, caller, ctx))
@@ -1916,13 +1948,14 @@ async fn forward_cancellable(
     body: &Bytes,
     cancellation: &Cancellation,
     policy_guard: Option<tenancy::accounts::team_policies::Guard>,
+    progress: Option<&crate::team_reports::ProgressGuard<'_>>,
 ) -> Forwarded {
     tokio::select! {
         biased;
         _ = cancellation.wait() => Forwarded::Unavailable {
             message: "The connection closed after the request was sent to the model, so the result is unknown.".into(),
         },
-        result = forward_guarded(state, endpoint, body, policy_guard) => result,
+        result = forward_guarded(state, endpoint, body, policy_guard, progress) => result,
     }
 }
 
@@ -2087,6 +2120,7 @@ async fn admitted(
         Ok(hold) => hold,
         Err(verdict) => return verdict,
     };
+    let progress = crate::team_reports::begin(state, &caller, naming, &ctx, &hold);
     if let Err(verdict) = verified_cancellable(
         state,
         &backend,
@@ -2172,6 +2206,7 @@ async fn admitted(
         native_body.as_ref().unwrap_or(body),
         cancellation,
         policy_guard,
+        progress.as_ref(),
     )
     .await
     {
@@ -2193,6 +2228,7 @@ async fn admitted(
             Some("unavailable".to_string()),
         ),
     };
+    ctx.queued_ms = progress.as_ref().and_then(|p| p.wait_ms());
     ctx.result_digest = Some(digest_bytes(&body_out));
     settled(state, naming, outcome, &units).await;
     if hold.is_some() {
@@ -3203,6 +3239,7 @@ async fn dispatch(
                 *ctx = ReceiptContext {
                     tenant_ref: caller.tenant.as_ref().map(|_| caller.key.clone()),
                     workspace: caller.workspace.clone(),
+                    member: caller.member.clone(),
                     ..ReceiptContext::default()
                 };
                 dispatch_admitted(state, &registry, caller, sub, &naming, &mut ctx).await
@@ -3378,7 +3415,14 @@ async fn dispatch_admitted(
     }
     let forwarded = tokio::time::timeout_at(
         cutoff,
-        forward_cancellable(state, &backend.endpoint, &sub.body, &sub.cancellation, None),
+        forward_cancellable(
+            state,
+            &backend.endpoint,
+            &sub.body,
+            &sub.cancellation,
+            None,
+            None,
+        ),
     )
     .await
     .unwrap_or_else(|_| Forwarded::Unavailable {
@@ -5088,13 +5132,14 @@ async fn backend_response_bytes(
 /// Forward the request body to the backend's `systemone`, bounded by the
 /// configured timeout and response cap.
 async fn forward(state: &ServeState, endpoint: &str, body: &Bytes) -> Forwarded {
-    forward_guarded(state, endpoint, body, None).await
+    forward_guarded(state, endpoint, body, None, None).await
 }
 async fn forward_guarded(
     state: &ServeState,
     endpoint: &str,
     body: &Bytes,
     policy_guard: Option<tenancy::accounts::team_policies::Guard>,
+    progress: Option<&crate::team_reports::ProgressGuard<'_>>,
 ) -> Forwarded {
     if state.config.team_policy.is_some() && policy_guard.is_none() {
         return Forwarded::Refused {
@@ -5134,6 +5179,9 @@ async fn forward_guarded(
     // The native once-only handoff already sealed these exact bytes and recipient.
     // Later revocation blocks new handoffs and retains this in-flight admission.
     drop(policy_guard);
+    if let Some(progress) = progress {
+        progress.running();
+    }
     let response = match bound_request.send().await {
         Ok(response) => response,
         Err(error) => {
@@ -5196,6 +5244,7 @@ pub(crate) async fn write_receipt(
     receipt.attempt_id = naming.attempt_id.clone();
     receipt.tenant = ctx.tenant_ref.clone();
     receipt.workspace = ctx.workspace.clone();
+    receipt.member = ctx.member.clone();
     receipt.commercial = ctx.commercial.clone();
     receipt.registry = ctx.registry.clone();
     receipt.requested = ctx.requested.clone();

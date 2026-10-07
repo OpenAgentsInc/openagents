@@ -129,6 +129,28 @@ pub struct Evaluation {
     pub partition: Option<String>,
 }
 
+/// Original native account membership captured by service authentication.
+/// This is attribution, not a current read, execution, or payment grant.
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(deny_unknown_fields)]
+pub struct Member {
+    pub account: String,
+    pub workspace: String,
+    pub membership_epoch: u64,
+    pub workspace_members_epoch: u64,
+}
+impl Member {
+    pub fn validate(&self) -> Result<(), &'static str> {
+        if [&self.account, &self.workspace]
+            .iter()
+            .any(|id| id.is_empty() || id.len() > 256 || id.chars().any(char::is_control))
+        {
+            return Err("Invalid original native membership attribution.");
+        }
+        Ok(())
+    }
+}
+
 /// The receipt itself: one attempt at one call.
 ///
 /// `digest` covers every field but itself, canonicalized key-sorted JSON
@@ -161,6 +183,9 @@ pub struct ExecutionReceipt {
     /// upgrades a missing workspace into a guessed one.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub workspace: Option<String>,
+    /// The original admitted native account; legacy absence stays unknown.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub member: Option<Member>,
     /// The original operator-reviewed native mapping admitted for this attempt.
     /// This records attribution and establishes no purchase approval or grant.
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -302,6 +327,7 @@ impl ExecutionReceipt {
             transport: transport.into(),
             tenant: None,
             workspace: None,
+            member: None,
             commercial: None,
             registry: None,
             requested: Served::default(),
@@ -371,6 +397,21 @@ impl ExecutionReceipt {
         }
         if self.digest != self.compute_digest() {
             return Err(ReceiptError::Tampered);
+        }
+        if let Some(member) = &self.member {
+            member
+                .validate()
+                .map_err(|e| ReceiptError::Malformed(e.into()))?;
+            if self.workspace.as_deref() != Some(member.workspace.as_str())
+                || self
+                    .team_policy
+                    .as_ref()
+                    .is_some_and(|policy| policy.member != member.account)
+            {
+                return Err(ReceiptError::Malformed(
+                    "Conflicting native member attribution.".into(),
+                ));
+            }
         }
         if let Some(policy) = &self.team_policy {
             policy
@@ -458,6 +499,30 @@ mod tests {
 
     fn digest_of(byte: char) -> String {
         format!("sha256:{}", byte.to_string().repeat(64))
+    }
+
+    #[test]
+    fn original_member_is_digest_bound_and_legacy_absence_stays_absent() {
+        let mut receipt = answered();
+        let legacy = serde_json::to_string(&receipt).unwrap();
+        assert!(ExecutionReceipt::parse(&legacy).unwrap().member.is_none());
+        receipt.workspace = Some("workspace-original".into());
+        receipt.member = Some(Member {
+            account: "account-original".into(),
+            workspace: "workspace-original".into(),
+            membership_epoch: 2,
+            workspace_members_epoch: 3,
+        });
+        receipt.seal();
+        let encoded = serde_json::to_string(&receipt).unwrap();
+        let parsed = ExecutionReceipt::parse(&encoded).unwrap();
+        assert_eq!(parsed.member, receipt.member);
+        assert!(
+            ExecutionReceipt::parse(&encoded.replace("account-original", "account-other")).is_err()
+        );
+        receipt.member.as_mut().unwrap().workspace = "workspace-other".into();
+        receipt.seal();
+        assert!(ExecutionReceipt::parse(&serde_json::to_string(&receipt).unwrap()).is_err());
     }
 
     #[test]

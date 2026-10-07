@@ -199,6 +199,9 @@ pub struct Config {
     /// existing settlement ledger. Requires accounts; absent mounts no routes.
     #[serde(default)]
     pub earnings: Option<Earnings>,
+    /// Private task evidence and current native team reports. Absent disables these routes.
+    #[serde(default)]
+    pub team_reports: Option<crate::team_reports::Config>,
 }
 
 #[derive(Clone, Debug, Deserialize)]
@@ -536,6 +539,9 @@ impl Config {
         }
         if let Some(policy) = &self.team_policy {
             policy.check(self)?;
+        }
+        if let Some(reports) = &self.team_reports {
+            reports.check(self)?;
         }
         if self.v != SCHEMA {
             return Err(format!(

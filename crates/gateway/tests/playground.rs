@@ -66,6 +66,7 @@ async fn deploy() -> Deployment {
         registry: dir.path().to_path_buf(),
         require_workspace_membership: false,
         team_policy: None,
+        team_reports: None,
         accounts: Some(config::Accounts {
             signup_tenant: Some("acme".to_string()),
             session_ttl_secs: 28_800,

@@ -29,6 +29,7 @@ use receipts::execution::{ExecutionReceipt, Outcome};
 use serde::Deserialize;
 use serde_json::{Value, json};
 use tenancy::money::Phase;
+use tenancy::{Accounts, MemberRef, Role};
 
 use crate::accounts::{self, refused, unix_now};
 use crate::serve::ServeState;
@@ -75,6 +76,9 @@ fn answered(status: StatusCode, fields: Value) -> Response {
 /// own receipts; nothing reaches another workspace's data.
 #[derive(Default, Deserialize)]
 pub(crate) struct Filter {
+    /// Current native authority; clients cannot supply an original-task scope.
+    #[serde(skip)]
+    pub(crate) admission: Option<MemberRef>,
     /// RFC3339 lower bound on `resolved_at` — lexical compare, so a
     /// day prefix like `2026-09-22` works.
     pub(crate) from: Option<String>,
@@ -118,6 +122,8 @@ pub(crate) struct Scan {
     pub(crate) unverifiable: usize,
     /// The scan hit `SCAN_MAX` — older receipts exist beyond it.
     pub(crate) truncated: bool,
+    /// Excluded history counters are private in the original-task scope.
+    own: bool,
 }
 
 /// Read the receipt log once and keep the workspace's rows that pass
@@ -141,6 +147,7 @@ pub(crate) fn scan(
                 other_workspace: 0,
                 unverifiable: 0,
                 truncated: false,
+                own: own_scope(filter).is_some(),
             });
         }
         Err(error) => {
@@ -151,6 +158,7 @@ pub(crate) fn scan(
             ));
         }
     };
+    let own = own_scope(filter);
     let mut scan = Scan {
         receipts: Vec::new(),
         lines: Vec::new(),
@@ -158,9 +166,17 @@ pub(crate) fn scan(
         other_workspace: 0,
         unverifiable: 0,
         truncated: false,
+        own: own.is_some(),
     };
     for (index, line) in BufReader::new(file).lines().enumerate() {
         if index >= SCAN_MAX {
+            if own.is_some() {
+                return Err(crate::team_reports::private_response(refused(
+                    StatusCode::SERVICE_UNAVAILABLE,
+                    "usage_unavailable",
+                    "Scoped usage exceeds the bounded scan. Read the bounded team report instead.",
+                )));
+            }
             scan.truncated = true;
             break;
         }
@@ -171,20 +187,28 @@ pub(crate) fn scan(
         let receipt = match ExecutionReceipt::parse(&line) {
             Ok(receipt) => receipt,
             Err(_) => {
-                scan.unverifiable += 1;
+                scan.unverifiable += usize::from(own.is_none());
                 continue;
             }
         };
         match receipt.workspace.as_deref() {
             None => {
-                scan.unattributed += 1;
+                scan.unattributed += usize::from(own.is_none());
                 continue;
             }
             Some(owner) if owner != workspace => {
-                scan.other_workspace += 1;
+                scan.other_workspace += usize::from(own.is_none());
                 continue;
             }
             _ => {}
+        }
+        if let Some(account) = own
+            && receipt
+                .member
+                .as_ref()
+                .is_none_or(|m| m.account != account || m.workspace != workspace)
+        {
+            continue;
         }
         if !matches_filter(&receipt, filter) {
             continue;
@@ -288,9 +312,10 @@ fn disclosure(scan: &Scan) -> Value {
         "timezone": "Times are UTC. `resolved_at` uses RFC 3339, and each day starts at 00:00 UTC.",
         "lag": "A receipt appears when a call finishes. A call whose result is unknown is charged later, and its cost shows separately as outstanding instead of being estimated.",
         "retention": "Usage records are never edited or deleted, and an export includes all of them.",
-        "unattributed": scan.unattributed,
-        "other_workspace": scan.other_workspace,
-        "unverifiable": scan.unverifiable,
+        "scope": if scan.own { "own_original_tasks" } else { "workspace" },
+        "unattributed": if scan.own { Value::Null } else { json!(scan.unattributed) },
+        "other_workspace": if scan.own { Value::Null } else { json!(scan.other_workspace) },
+        "unverifiable": if scan.own { Value::Null } else { json!(scan.unverifiable) },
         "scan_truncated": scan.truncated,
     })
 }
@@ -307,6 +332,76 @@ fn member_of(
     let account = accounts::member_account(&principal)?;
     accounts::member(state, account, workspace)?;
     Ok(principal)
+}
+
+/// When team reports are enabled, seal the same current native role and epoch
+/// for legacy reads. Missing historical member attribution never becomes owned.
+pub(crate) fn scope(
+    state: &ServeState,
+    headers: &HeaderMap,
+    workspace: &str,
+    filter: &mut Filter,
+) -> Result<(), Response> {
+    if state.config.team_reports.is_none() {
+        return Ok(());
+    }
+    let read = || -> Result<MemberRef, String> {
+        let accounts = Accounts::open(&state.dir).map_err(|e| e.to_string())?;
+        accounts.report_read(
+            |store| crate::team_reports::actor(state, headers, workspace, store),
+            |_, member| Ok(member.clone()),
+        )
+    };
+    filter.admission = Some(read().map_err(scope_denied)?);
+    Ok(())
+}
+
+pub(crate) fn own_scope(filter: &Filter) -> Option<&str> {
+    filter
+        .admission
+        .as_ref()
+        .filter(|m| m.role == Role::Member)
+        .map(|m| m.account.as_str())
+}
+
+fn scope_denied(reason: String) -> Response {
+    crate::team_reports::private_response(refused(
+        StatusCode::FORBIDDEN,
+        "team_usage_unavailable",
+        reason,
+    ))
+}
+
+/// Recheck current credentials and the exact admitted role after asynchronous
+/// reads. A removed member, changed epoch, or expired token cannot finish a read.
+pub(crate) fn finish(
+    state: &ServeState,
+    headers: &HeaderMap,
+    workspace: &str,
+    filter: &Filter,
+    response: Response,
+) -> Response {
+    let Some(admission) = &filter.admission else {
+        return response;
+    };
+    let check = || -> Result<(), String> {
+        let accounts = Accounts::open(&state.dir).map_err(|e| e.to_string())?;
+        accounts.report_read(
+            |store| crate::team_reports::actor(state, headers, workspace, store),
+            |_, member| {
+                if member != admission {
+                    return Err(
+                        "Native reporting authority changed before the usage read finished.".into(),
+                    );
+                }
+                Ok(())
+            },
+        )
+    };
+    match check() {
+        Ok(()) => crate::team_reports::private_response(response),
+        Err(reason) => scope_denied(reason),
+    }
 }
 
 /// The money ledger's holds for the workspace, keyed `{request}#{attempt}` —
@@ -395,12 +490,15 @@ async fn summary(
     State(state): State<Arc<ServeState>>,
     Path(workspace): Path<String>,
     headers: HeaderMap,
-    Query(filter): Query<Filter>,
+    Query(mut filter): Query<Filter>,
 ) -> Response {
     let principal = match member_of(&state, &headers, &workspace) {
         Ok(principal) => principal,
         Err(response) => return response,
     };
+    if let Err(response) = scope(&state, &headers, &workspace, &mut filter) {
+        return response;
+    }
     let holds = holds(&state, &workspace).await;
     let scan = match scan(&state, &workspace, &filter, &holds) {
         Ok(scan) => scan,
@@ -463,7 +561,11 @@ async fn summary(
     }
     let outstanding: Vec<Value> = holds
         .iter()
-        .filter(|(_, hold)| matches!(hold.phase, Phase::Held | Phase::Unknown))
+        .filter(|(key, hold)| {
+            matches!(hold.phase, Phase::Held | Phase::Unknown)
+                && (own_scope(&filter).is_none()
+                    || scan.receipts.iter().any(|r| hold_key(r) == **key))
+        })
         .map(|(attempt, hold)| {
             json!({
                 "hold": attempt,
@@ -515,6 +617,7 @@ async fn summary(
     // what the subscription entitles, read from the same book the
     // admission check consults.
     let entitlement = match &state.config.billing {
+        Some(_) if own_scope(&filter).is_some() => Value::Null,
         Some(billing_config) => {
             match tenancy::billing::Billing::open(&state.dir).and_then(|billing| billing.store()) {
                 Ok(store) => {
@@ -543,11 +646,11 @@ async fn summary(
     };
 
     accounts::record(&state, &principal, "usage-summary", Some(&workspace), None);
-    answered(
+    let response = answered(
         StatusCode::OK,
         json!({
-            "workspace": workspace,
-            "window": {"from": filter.from, "to": filter.to},
+            "workspace": &workspace,
+            "window": {"from": &filter.from, "to": &filter.to},
             "totals": totals,
             "units": {
                 "questions": questions,
@@ -574,7 +677,8 @@ async fn summary(
             "entitlement": entitlement,
             "disclosure": disclosure(&scan),
         }),
-    )
+    );
+    finish(&state, &headers, &workspace, &filter, response)
 }
 
 /// Decode a keyset cursor — `resolved_at|digest`, the position the
@@ -592,12 +696,15 @@ async fn activity(
     State(state): State<Arc<ServeState>>,
     Path(workspace): Path<String>,
     headers: HeaderMap,
-    Query(filter): Query<Filter>,
+    Query(mut filter): Query<Filter>,
 ) -> Response {
     let principal = match member_of(&state, &headers, &workspace) {
         Ok(principal) => principal,
         Err(response) => return response,
     };
+    if let Err(response) = scope(&state, &headers, &workspace, &mut filter) {
+        return response;
+    }
     let holds = holds(&state, &workspace).await;
     let mut scan = match scan(&state, &workspace, &filter, &holds) {
         Ok(scan) => scan,
@@ -640,7 +747,7 @@ async fn activity(
         return answered(
             StatusCode::OK,
             json!({
-                "workspace": workspace,
+                "workspace": &workspace,
                 "items": [],
                 "cursor": Value::Null,
                 "disclosure": disclosure(&scan),
@@ -672,15 +779,16 @@ async fn activity(
         })
         .collect();
     accounts::record(&state, &principal, "usage-activity", Some(&workspace), None);
-    answered(
+    let response = answered(
         StatusCode::OK,
         json!({
-            "workspace": workspace,
+            "workspace": &workspace,
             "items": items,
             "cursor": next.unwrap_or(Value::Null),
             "disclosure": disclosure(&scan),
         }),
-    )
+    );
+    finish(&state, &headers, &workspace, &filter, response)
 }
 
 /// `GET /v1/workspaces/{id}/usage/timeseries` — the same records folded
@@ -692,12 +800,15 @@ async fn timeseries(
     State(state): State<Arc<ServeState>>,
     Path(workspace): Path<String>,
     headers: HeaderMap,
-    Query(filter): Query<Filter>,
+    Query(mut filter): Query<Filter>,
 ) -> Response {
     let principal = match member_of(&state, &headers, &workspace) {
         Ok(principal) => principal,
         Err(response) => return response,
     };
+    if let Err(response) = scope(&state, &headers, &workspace, &mut filter) {
+        return response;
+    }
     let holds = holds(&state, &workspace).await;
     let scan = match scan(&state, &workspace, &filter, &holds) {
         Ok(scan) => scan,
@@ -753,10 +864,10 @@ async fn timeseries(
         Some(&workspace),
         None,
     );
-    answered(
+    let response = answered(
         StatusCode::OK,
         json!({
-            "workspace": workspace,
+            "workspace": &workspace,
             "days": days.iter().map(|(day, bucket)| json!({
                 "day": day,
                 "calls": bucket.calls,
@@ -771,7 +882,8 @@ async fn timeseries(
             "undated": undated,
             "disclosure": disclosure(&scan),
         }),
-    )
+    );
+    finish(&state, &headers, &workspace, &filter, response)
 }
 
 /// `GET /v1/workspaces/{id}/usage/receipts/{digest}` — one receipt by
@@ -786,8 +898,12 @@ async fn receipt(
         Ok(principal) => principal,
         Err(response) => return response,
     };
+    let mut filter = Filter::default();
+    if let Err(response) = scope(&state, &headers, &workspace, &mut filter) {
+        return response;
+    }
     let holds = holds(&state, &workspace).await;
-    let scan = match scan(&state, &workspace, &Filter::default(), &holds) {
+    let scan = match scan(&state, &workspace, &filter, &holds) {
         Ok(scan) => scan,
         Err(response) => return response,
     };
@@ -814,7 +930,7 @@ async fn receipt(
         Some(&workspace),
         Some(digest),
     );
-    answered(
+    let response = answered(
         StatusCode::OK,
         json!({
             "receipt": receipt,
@@ -826,7 +942,8 @@ async fn receipt(
             "cost": cost_of(hold),
             "disclosure": disclosure(&scan),
         }),
-    )
+    );
+    finish(&state, &headers, &workspace, &filter, response)
 }
 
 /// `GET /v1/workspaces/{id}/usage/export` — the filtered receipts as
@@ -837,12 +954,15 @@ async fn export(
     State(state): State<Arc<ServeState>>,
     Path(workspace): Path<String>,
     headers: HeaderMap,
-    Query(filter): Query<Filter>,
+    Query(mut filter): Query<Filter>,
 ) -> Response {
     let principal = match member_of(&state, &headers, &workspace) {
         Ok(principal) => principal,
         Err(response) => return response,
     };
+    if let Err(response) = scope(&state, &headers, &workspace, &mut filter) {
+        return response;
+    }
     let holds = holds(&state, &workspace).await;
     let scan = match scan(&state, &workspace, &filter, &holds) {
         Ok(scan) => scan,
@@ -864,7 +984,7 @@ async fn export(
         Some(&workspace),
         Some(scan.lines.len().min(limit).to_string()),
     );
-    Response::builder()
+    let response = Response::builder()
         .status(StatusCode::OK)
         .header("content-type", "application/x-ndjson")
         .header(
@@ -875,5 +995,6 @@ async fn export(
             ),
         )
         .body(Body::from(body))
-        .unwrap_or_else(|_| StatusCode::INTERNAL_SERVER_ERROR.into_response())
+        .unwrap_or_else(|_| StatusCode::INTERNAL_SERVER_ERROR.into_response());
+    finish(&state, &headers, &workspace, &filter, response)
 }

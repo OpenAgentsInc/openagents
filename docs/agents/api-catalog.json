@@ -3609,6 +3609,121 @@
      "payout_rail_unavailable"
     ]
    }
+  },
+  {
+   "method": "GET",
+   "path": "/v1/workspaces/{workspace}/reports",
+   "status": "implemented",
+   "condition": "Mounted only with team_reports, accounts, enforced workspace membership, and a selected native decision offer.",
+   "summary": "Current native team tasks, exact statement joins, and pinned private task evidence; members see only their original tasks.",
+   "request": {
+    "headers": [
+     "Authorization: Bearer <current oak_ key with account actions or user sess_ token>"
+    ],
+    "body": null
+   },
+   "responses": {
+    "200": {
+     "shape": "openagents.team-report.v1; no new authority or money mutation."
+    }
+   },
+   "refusal_statuses": {
+    "403": [
+     "team_report_unavailable"
+    ]
+   }
+  },
+  {
+   "method": "GET",
+   "path": "/v1/workspaces/{workspace}/reports/export",
+   "status": "implemented",
+   "condition": "Mounted only with team_reports, accounts, enforced workspace membership, and a selected native decision offer.",
+   "summary": "Bounded current authorized JSON report: up to 200 rows and 2 MiB; unknown cost and missing phases remain explicit.",
+   "request": {
+    "headers": [
+     "Authorization: Bearer <current oak_ key with account actions or user sess_ token>"
+    ],
+    "body": null
+   },
+   "responses": {
+    "200": {
+     "shape": "openagents.team-report.v1; no new authority or money mutation."
+    }
+   },
+   "refusal_statuses": {
+    "403": [
+     "team_report_unavailable"
+    ]
+   }
+  },
+  {
+   "method": "POST",
+   "path": "/v1/workspaces/{workspace}/reports/evidence",
+   "status": "implemented",
+   "condition": "Mounted only with team_reports, accounts, enforced workspace membership, and a selected native decision offer.",
+   "summary": "Current owner/admin attaches immutable private evidence references after the actual receipt, native statement, and complete REV-03 comparison rebuild agree.",
+   "request": {
+    "headers": [
+     "Authorization: Bearer <current oak_ key with account actions or user sess_ token>"
+    ],
+    "body": "openagents.team-task-evidence.v1: receipt, manifest {path, sha256}, task, candidate"
+   },
+   "responses": {
+    "200": {
+     "shape": "Opaque openagents.team-evidence-attachment.v1 references; no new authority or money mutation."
+    }
+   },
+   "refusal_statuses": {
+    "403": [
+     "team_report_unavailable"
+    ]
+   }
+  },
+  {
+   "method": "GET",
+   "path": "/dashboard/w/{workspace}/reports",
+   "status": "implemented",
+   "condition": "Mounted only with team_reports, accounts, enforced workspace membership, and a selected native decision offer.",
+   "summary": "Current cookie-authenticated Rust team report, with opaque task identifiers and no protected source labels.",
+   "request": {
+    "headers": [
+     "Cookie: oa_session=<current user sess_ token>"
+    ],
+    "body": null
+   },
+   "responses": {
+    "200": {
+     "shape": "HTML current authorized team report with an export link."
+    }
+   },
+   "refusal_statuses": {
+    "403": [
+     "team_report_unavailable"
+    ]
+   }
+  },
+  {
+   "method": "GET",
+   "path": "/dashboard/w/{workspace}/reports/export",
+   "status": "implemented",
+   "condition": "Mounted only with team_reports, accounts, enforced workspace membership, and a selected native decision offer.",
+   "summary": "Current cookie-authenticated bounded JSON export under the same native member scope.",
+   "request": {
+    "headers": [
+     "Cookie: oa_session=<current user sess_ token>"
+    ],
+    "body": null
+   },
+   "responses": {
+    "200": {
+     "shape": "openagents.team-report.v1; current cookie authority rechecked."
+    }
+   },
+   "refusal_statuses": {
+    "403": [
+     "team_report_unavailable"
+    ]
+   }
   }
  ],
  "refusal_codes": {

@@ -1544,3 +1544,16 @@ bay and swim into the slush (it holds no one), cast Control Water through
 its modes out past 50 m (nearer the beach the whirlpool refuses), and
 strike the sea beside a dummy with the Thunderbolt; check that the frame
 rate holds while the ice, trench, and whirlpool draw.
+
+## Team report qualification O5/O8 (REV-42, #10849)
+
+Qualify the selected native decision gateway's private team reports with a real
+champion and colleague. Protect the canonical evidence root outside executor
+write custody, retain the original member, task, ATIF, checker, acceptance, and
+statement references, and verify useful owner/admin and member views under current
+rights. Review source removal, expired credentials, revocation, restart, refunds,
+unknown expense, and measured reservation-to-dispatch waits before agreeing to a
+service-level target or publishing aggregates. The isolated fixtures establish
+native report and browser/export behavior with fake provider responses and
+synthetic balances; they establish no actual funding, external adoption,
+production performance, independent remote attestation, or earned cash revenue.

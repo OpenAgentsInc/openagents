@@ -449,3 +449,50 @@ reviewed canonical bytes. A changed scope releases newly admitted undispatched
 work. Prepared and handed-off request identities cannot be blindly retried,
 including after restart or a lost reply. Receipts retain the original snapshot;
 current policy changes do not relabel earlier results or remove read rights.
+
+## Private team reports
+
+Optional `team_reports: {"evidence_root": "/absolute/canonical/private/evidence"}`
+requires accounts, workspace admission, and one configured native decision offer.
+Keep the root at `0700`, files at `0600`, and all sources outside executor write
+custody. The initial qualifier is the selected Kev SystemOne lane; other products,
+plugin releases, and cross-product margins require their owning integrations.
+
+Current members read `/v1/workspaces/{workspace}/reports` and `/reports/export`.
+Owners and admins see workspace records; members see only tasks that their original
+native membership produced. Legacy attribution remains unavailable. The Rust
+`/dashboard/w/{workspace}/reports` page and its export use the current session cookie.
+With this profile enabled, legacy usage, activity, receipt, and export reads also
+restrict members to original native attribution; their overview shows the own-task
+report instead of workspace funding. Owner and admin views retain workspace scope.
+Responses use `no-store`, opaque task references, and exact scoped source pins.
+Exports contain at most 200 rows and 2 MiB; totals describe those rows and `more`
+marks truncation. REV-03 artifact and task-evidence validation reads and complete
+Gym rebuild reservations share a 256 MiB request budget. Evidence files are bounded
+at 8 MiB (manifests at 1 MiB); each Gym rebuild allows 64 MiB of verified sources.
+Reservations also cover its final rejected file read. Failed reads remain metered,
+and insufficient rebuild budget returns `read_budget_unavailable` instead of
+partial acceptance. Native source readers have separate bounds: 64 MiB and
+100,000 lines for the single receipt scan, and 16 MiB for the account and Money
+sources. Rows do not repeat whole receipt or Money scans.
+
+Owners and admins POST `openagents.team-task-evidence.v1` to `/reports/evidence`,
+with the sealed `receipt`, a pinned relative `manifest: {path, sha256}`, and exact
+`task` and `candidate` identities. The service rebuilds the complete REV-03
+comparison and joins ATIF to the original native request, attempt, envelope,
+receipt, and response artifact. The decision call's extra fields retain
+`request_id`, `native_attempt`, and `native_receipt`. Exact retries add no task,
+charge, or account revision. Removed or changed sources invalidate accepted
+projections automatically. Reviews are attributable retained records, not remote
+attestation or proof that a real customer accepted work.
+
+`submitted` means a live native reservation is waiting for verification; `running`
+starts at the actual backend POST handoff. Restart loses live phase observations;
+a held balance alone never establishes running work. Native `wait_ms` measures
+reservation-to-dispatch time, including backend identity checks. It excludes
+client transit, pre-reservation work, and unmeasured execution assumptions.
+`total_service_ms` is the receipt's complete service latency. Failed checks,
+service delivery, and pinned acceptance remain separate. Charges, accounting
+refunds, provider costs, hosting costs, and task comparison costs retain their
+original sources and denominations; an absent expense is unknown. The report
+moves no funds and makes no cash-revenue, wallet-liquidity, or production-SLA claim.

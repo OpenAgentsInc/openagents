@@ -207,6 +207,22 @@ fn member_of(state: &ServeState, headers: &HeaderMap, workspace: &str) -> Result
     Ok(account)
 }
 
+/// Cookie pages retain the same native role and original-task scope as API reads.
+fn report_scope(
+    state: &ServeState,
+    headers: &HeaderMap,
+    workspace: &str,
+    filter: &mut Filter,
+) -> Result<HeaderMap, Response> {
+    if state.config.team_reports.is_none() {
+        return Ok(HeaderMap::new());
+    }
+    let forwarded = crate::team_reports::browser_headers(headers)
+        .map_err(|reason| page_error(StatusCode::UNAUTHORIZED, "Sign-in required", &reason))?;
+    usage::scope(state, &forwarded, workspace, filter)?;
+    Ok(forwarded)
+}
+
 /// `GET /dashboard` — the workspace picker under a session, or the
 /// sign-in form without one.
 async fn home(State(state): State<Arc<ServeState>>, headers: HeaderMap) -> Response {
@@ -351,6 +367,14 @@ async fn overview(
         Ok(account) => account,
         Err(response) => return response,
     };
+    let mut report_filter = Filter::default();
+    let report_headers = match report_scope(&state, &headers, &workspace, &mut report_filter) {
+        Ok(headers) => headers,
+        Err(response) => return response,
+    };
+    if usage::own_scope(&report_filter).is_some() {
+        return crate::team_reports::page(State(state), Path(workspace), headers).await;
+    }
     let accounts = match accounts::accounts_store(&state) {
         Ok(accounts) => accounts,
         Err(response) => return response,
@@ -472,13 +496,21 @@ async fn overview(
         .map(|scan| scan.receipts.len())
         .unwrap_or(0);
 
-    page(
+    let reports_link = if state.config.team_reports.is_some() {
+        format!(
+            "<p><a href=\"/dashboard/w/{}/reports\">Team work report</a></p>",
+            esc(&workspace)
+        )
+    } else {
+        String::new()
+    };
+    let response = page(
         &format!("{} · Overview", ws.name),
         Some(&workspace),
         &format!(
             r#"<h1>{} <span class="dim">{}</span></h1>
             <p class="dim">Signed in as <code>{}</code> · Role: {} · Calls today (<code>{}</code>, UTC): {}</p>
-            {balance_html}"#,
+            {balance_html}{reports_link}"#,
             esc(&ws.name),
             esc(&workspace),
             esc(&account),
@@ -487,7 +519,14 @@ async fn overview(
             today_calls,
         ),
     )
-    .into_response()
+    .into_response();
+    usage::finish(
+        &state,
+        &report_headers,
+        &workspace,
+        &report_filter,
+        response,
+    )
 }
 
 /// `GET /dashboard/w/{ws}/usage` — the summary's numbers plus a
@@ -497,11 +536,15 @@ async fn usage_page(
     State(state): State<Arc<ServeState>>,
     Path(workspace): Path<String>,
     headers: HeaderMap,
-    Query(filter): Query<Filter>,
+    Query(mut filter): Query<Filter>,
 ) -> Response {
     if let Err(response) = member_of(&state, &headers, &workspace) {
         return response;
     }
+    let report_headers = match report_scope(&state, &headers, &workspace, &mut filter) {
+        Ok(headers) => headers,
+        Err(response) => return response,
+    };
     let holds = usage_holds(&state, &workspace).await;
     let scan = match usage::scan(&state, &workspace, &filter, &holds) {
         Ok(scan) => scan,
@@ -593,7 +636,7 @@ async fn usage_page(
         esc(&workspace),
     );
 
-    page(
+    let response = page(
         "Usage",
         Some(&workspace),
         &format!(
@@ -606,19 +649,21 @@ async fn usage_page(
             <div class="card"><div class="n">{}</div><div class="l">Amount charged</div></div></div>
             <h2>Calls per day <span class="dim">UTC</span></h2>
             <div class="bar">{bars}</div><div>{day_labels}</div>
-            <p class="dim">Exact totals from {} call receipts. Receipts skipped: {} with no workspace, {} from other workspaces, and {} that failed their integrity check.</p>"#,
+            <p class="dim">{}</p>"#,
             scan.receipts.len(),
             answered,
             questions,
             input_bytes,
             amount(retail),
-            scan.receipts.len(),
-            scan.unattributed,
-            scan.other_workspace,
-            scan.unverifiable,
+            if usage::own_scope(&filter).is_some() {
+                format!("Exact totals from {} own original call receipts. Counts for excluded history are not disclosed.", scan.receipts.len())
+            } else {
+                format!("Exact totals from {} call receipts. Receipts skipped: {} with no workspace, {} from other workspaces, and {} that failed their integrity check.", scan.receipts.len(), scan.unattributed, scan.other_workspace, scan.unverifiable)
+            },
         ),
     )
-    .into_response()
+    .into_response();
+    usage::finish(&state, &report_headers, &workspace, &filter, response)
 }
 
 /// The workspace's holds as an owned map — the dashboard joins the
@@ -643,11 +688,15 @@ async fn activity_page(
     State(state): State<Arc<ServeState>>,
     Path(workspace): Path<String>,
     headers: HeaderMap,
-    Query(filter): Query<Filter>,
+    Query(mut filter): Query<Filter>,
 ) -> Response {
     if let Err(response) = member_of(&state, &headers, &workspace) {
         return response;
     }
+    let report_headers = match report_scope(&state, &headers, &workspace, &mut filter) {
+        Ok(headers) => headers,
+        Err(response) => return response,
+    };
     let activity_holds = usage_holds(&state, &workspace).await;
     let mut scan = match usage::scan(&state, &workspace, &filter, &activity_holds) {
         Ok(scan) => scan,
@@ -702,7 +751,7 @@ async fn activity_page(
     } else {
         String::new()
     };
-    page(
+    let response = page(
         "Activity",
         Some(&workspace),
         &format!(
@@ -717,7 +766,8 @@ async fn activity_page(
             esc(&workspace),
         ),
     )
-    .into_response()
+    .into_response();
+    usage::finish(&state, &report_headers, &workspace, &filter, response)
 }
 
 /// `GET /dashboard/w/{ws}/receipts/{digest}` — one receipt's fields,
@@ -731,8 +781,13 @@ async fn receipt_page(
     if let Err(response) = member_of(&state, &headers, &workspace) {
         return response;
     }
+    let mut filter = Filter::default();
+    let report_headers = match report_scope(&state, &headers, &workspace, &mut filter) {
+        Ok(headers) => headers,
+        Err(response) => return response,
+    };
     let receipt_holds = usage_holds(&state, &workspace).await;
-    let scan = match usage::scan(&state, &workspace, &Filter::default(), &receipt_holds) {
+    let scan = match usage::scan(&state, &workspace, &filter, &receipt_holds) {
         Ok(scan) => scan,
         Err(response) => return response,
     };
@@ -781,7 +836,7 @@ async fn receipt_page(
         receipts::execution::Outcome::Unattempted => "unattempted",
         receipts::execution::Outcome::Unknown => "unknown",
     };
-    page(
+    let response = page(
         "Receipt",
         Some(&workspace),
         &format!(
@@ -833,7 +888,8 @@ async fn receipt_page(
             esc(&receipt.digest),
         ),
     )
-    .into_response()
+    .into_response();
+    usage::finish(&state, &report_headers, &workspace, &filter, response)
 }
 
 /// `GET /dashboard/w/{ws}/members` — the roster and the live

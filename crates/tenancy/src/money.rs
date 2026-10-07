@@ -940,6 +940,68 @@ impl Ledger {
         Ok(true)
     }
 
+    /// Verify the held native journal without adopting a replacement pathname.
+    /// This read changes no balance, reservation, source, clock, or statement.
+    pub fn check_source(&self, path: &Path) -> Result<(), String> {
+        use std::os::unix::fs::{MetadataExt, OpenOptionsExt};
+        if self.poisoned {
+            return Err("Money source requires recovery.".into());
+        }
+        let held = self.file.metadata().map_err(|e| e.to_string())?;
+        let visible =
+            std::fs::symlink_metadata(path).map_err(|_| "Money source is unavailable.")?;
+        let valid = |m: &std::fs::Metadata| {
+            m.is_file()
+                && m.nlink() == 1
+                && m.mode() & 0o077 == 0
+                && m.uid() == unsafe { libc::geteuid() }
+                && m.len() == self.bytes
+        };
+        if !valid(&held)
+            || !valid(&visible)
+            || (held.dev(), held.ino()) != (visible.dev(), visible.ino())
+        {
+            return Err("Held money source custody changed.".into());
+        }
+        let reader = OpenOptions::new()
+            .read(true)
+            .custom_flags(libc::O_NOFOLLOW | libc::O_NONBLOCK)
+            .open(path)
+            .map_err(|_| "Money source is unavailable.")?;
+        let opened = reader.metadata().map_err(|e| e.to_string())?;
+        if !valid(&opened) || (held.dev(), held.ino()) != (opened.dev(), opened.ino()) {
+            return Err("Held money source changed before reading.".into());
+        }
+        let mut bytes = Vec::new();
+        reader
+            .take(MAX_LOG + 1)
+            .read_to_end(&mut bytes)
+            .map_err(|e| e.to_string())?;
+        if bytes.len() as u64 != self.bytes || (!bytes.is_empty() && bytes.last() != Some(&b'\n')) {
+            return Err("Money source length or complete tail changed.".into());
+        }
+        let mut head = String::new();
+        for line in bytes.split(|b| *b == b'\n').filter(|line| !line.is_empty()) {
+            let entry: Entry =
+                serde_json::from_slice(line).map_err(|_| "Money source entry is invalid.")?;
+            if !matches!(entry.schema.as_str(), SCHEMA | LEGACY_SCHEMA)
+                || entry.previous != head
+                || entry.computed()? != entry.digest
+            {
+                return Err("Money source chain changed.".into());
+            }
+            head = entry.digest;
+        }
+        let after = std::fs::symlink_metadata(path).map_err(|_| "Money source disappeared.")?;
+        if head != self.head
+            || !valid(&after)
+            || (held.dev(), held.ino()) != (after.dev(), after.ino())
+        {
+            return Err("Held money source head or custody changed.".into());
+        }
+        Ok(())
+    }
+
     pub fn balance(&self, workspace: &str) -> Result<Balance, String> {
         self.balance_at(workspace, now()?)
     }
@@ -1517,5 +1579,59 @@ mod tests {
             ["one", "two"]
         );
         assert!(ledger.holds("workspace-none").is_empty());
+    }
+}
+
+#[cfg(test)]
+mod source_tests {
+    use super::*;
+    #[test]
+    fn held_source_replacement_shared_file_append_and_modified_chain_are_refused() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("money.jsonl");
+        let mut ledger = Ledger::open(&path).unwrap();
+        ledger
+            .apply(Mutation {
+                workspace: "workspace".into(),
+                source: "create".into(),
+                audit: "fixture native source".into(),
+                operation: Operation::Create {
+                    currency: "USD".into(),
+                    spend_limit: 100,
+                    topups_allowed: false,
+                },
+            })
+            .unwrap();
+        ledger.check_source(&path).unwrap();
+        let bytes = std::fs::read(&path).unwrap();
+        let old = dir.path().join("held-original");
+        std::fs::rename(&path, &old).unwrap();
+        std::fs::write(&path, &bytes).unwrap();
+        std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o600)).unwrap();
+        assert!(ledger.check_source(&path).is_err());
+        std::fs::remove_file(&path).unwrap();
+        std::fs::rename(&old, &path).unwrap();
+        let alias = dir.path().join("alias");
+        std::fs::hard_link(&path, &alias).unwrap();
+        assert!(ledger.check_source(&path).is_err());
+        std::fs::remove_file(alias).unwrap();
+        std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o640)).unwrap();
+        assert!(ledger.check_source(&path).is_err());
+        std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o600)).unwrap();
+        let changed = String::from_utf8(bytes.clone())
+            .unwrap()
+            .replace("fixture native source", "fixture edited source");
+        assert_eq!(changed.len(), bytes.len());
+        std::fs::write(&path, changed).unwrap();
+        assert!(ledger.check_source(&path).is_err());
+        std::fs::write(&path, &bytes).unwrap();
+        ledger.check_source(&path).unwrap();
+        OpenOptions::new()
+            .append(true)
+            .open(&path)
+            .unwrap()
+            .write_all(b"\n")
+            .unwrap();
+        assert!(ledger.check_source(&path).is_err());
     }
 }

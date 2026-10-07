@@ -3,6 +3,8 @@
 
 #[path = "decision_offer_budgets.rs"]
 mod budgets;
+#[path = "decision_offer_reports.rs"]
+mod reports;
 
 use axum::{
     Json,

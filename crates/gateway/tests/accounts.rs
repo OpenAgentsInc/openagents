@@ -94,6 +94,7 @@ async fn deploy(accounts: Option<config::Accounts>, require_membership: bool) ->
         registry: dir.path().to_path_buf(),
         require_workspace_membership: require_membership,
         team_policy: None,
+        team_reports: None,
         accounts,
         money: None,
         max_body_bytes: 1_048_576,
@@ -1835,6 +1836,7 @@ async fn stores_install_under_accounts_config_and_validate() {
         registry: deployment.dir.path().to_path_buf(),
         require_workspace_membership: false,
         team_policy: None,
+        team_reports: None,
         accounts: Some(config::Accounts {
             signup_tenant: Some("acme".to_string()),
             session_ttl_secs: 28_800,

@@ -10,9 +10,11 @@ use std::os::unix::fs::OpenOptionsExt;
 use std::path::{Component, Path};
 
 pub const SCHEMA: &str = "openagents.gym.sales-evidence.v1";
-const MAX_FILE: u64 = 8 * 1024 * 1024;
+/// Maximum bytes in one retained source file.
+pub const MAX_FILE: u64 = 8 * 1024 * 1024;
 const MAX_STUDY: usize = 1024 * 1024;
-const MAX_SOURCES: u64 = 64 * 1024 * 1024;
+/// Maximum verified unique source bytes in one complete rebuild.
+pub const MAX_SOURCES: u64 = 64 * 1024 * 1024;
 
 /// A retained snapshot, relative to an explicitly supplied private source root.
 #[derive(Clone, Debug, Serialize, Deserialize)]

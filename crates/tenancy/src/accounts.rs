@@ -36,6 +36,7 @@ pub mod team_capabilities;
 #[cfg(test)]
 mod team_capabilities_tests;
 pub mod team_policies;
+pub mod team_reports;
 
 use std::collections::BTreeMap;
 use std::io::{Read, Write};
@@ -271,6 +272,9 @@ pub struct Store {
     /// Exact team release and data grants; empty books preserve old digests.
     #[serde(default, skip_serializing_if = "team_capabilities::Book::is_empty")]
     pub team_capabilities: team_capabilities::Book,
+    /// Private checked task evidence references; empty books preserve old digests.
+    #[serde(default, skip_serializing_if = "team_reports::Book::is_empty")]
+    pub team_reports: team_reports::Book,
     /// The digest over every field above.
     pub digest: String,
 }
@@ -431,6 +435,7 @@ impl Store {
         self.commercial.validate(self)?;
         self.team_policies.validate(self)?;
         self.team_capabilities.validate(self)?;
+        self.team_reports.validate(self)?;
         Ok(())
     }
 }
@@ -938,6 +943,7 @@ impl Accounts {
             commercial: commercial::Book::default(),
             team_policies: team_policies::Book::default(),
             team_capabilities: team_capabilities::Book::default(),
+            team_reports: team_reports::Book::default(),
             digest: String::new(),
         };
         store.seal();
@@ -2475,6 +2481,7 @@ mod tests {
             commercial: commercial::Book::default(),
             team_policies: team_policies::Book::default(),
             team_capabilities: team_capabilities::Book::default(),
+            team_reports: team_reports::Book::default(),
             digest: String::new(),
         };
         store.seal();

@@ -95,6 +95,7 @@ async fn deploy(answer_status: StatusCode, review_body: Value) -> Deployment {
         registry: dir.path().to_path_buf(),
         require_workspace_membership: false,
         team_policy: None,
+        team_reports: None,
         accounts: Some(account_config()),
         billing: None,
         funding: None,

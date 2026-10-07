@@ -489,6 +489,7 @@ async fn run(state: Arc<ServeState>, id: String) {
     let _ = write_status(&state.dir, &id, &status);
 
     let caller = Caller {
+        member: None,
         budget_credential: None,
         tenant: manifest["tenant"].as_str().map(str::to_string),
         key: manifest["key"].as_str().unwrap_or_default().to_string(),
