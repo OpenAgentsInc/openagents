@@ -246,9 +246,18 @@ fn paid_cli_delegation_retains_patches_continues_and_cancels() -> Result<(), Str
     if result.is_err() {
         let _ = call(&c, &["remote", "cancel", &id], &mut events);
     }
+    let mut evidence = json!(events);
+    let credentials = coder_cloud::runtime::Credentials::from_names(
+        &credential_names
+            .iter()
+            .map(|s| s.to_string())
+            .collect::<Vec<_>>(),
+        |name| std::env::var(name).ok(),
+    )?;
+    credentials.redact(&mut evidence);
     std::fs::write(
         root.join("events.json"),
-        serde_json::to_vec_pretty(&events).unwrap(),
+        serde_json::to_vec_pretty(&evidence).unwrap(),
     )
     .unwrap();
     println!("Live evidence: {}", root.display());
