@@ -14,6 +14,7 @@ use std::time::{Duration, Instant};
 use coder::argv::Args;
 use coder::task::agent::{self, Record, State, Store};
 use coder::task::agent_jobs::{self, Edit, Jobs};
+use coder::task::agent_lifecycle as lifecycle;
 use coder_access::Operation;
 use coder_access::agent::{self as wire, Mode};
 use coder_access::protocol::Outcome;
@@ -48,7 +49,33 @@ pub const USAGE: &str = "usage: openagents agent COMMAND [--root DIR] [--control
                nothing until resumed. Each step is journaled.
   pause NAME   She keeps everything and starts nothing new.
   resume NAME  She takes work again.
-  retire NAME  Stop her, delete her key, and keep her journal.
+  retire NAME [--owner-key FILE]
+               Stop her, delete her key from the host's key store, and keep
+               her journal and engrams, which the owner key still reads.
+               With relay sync on and the owner key, ask her relays to
+               archive her key (NIP-IA).
+  rotate NAME [--owner-key FILE] [--reason TEXT] [--days N]
+               Give her a new key: every engram is encrypted again under
+               it, the owner signs a lineage record and a new attestation,
+               and with relay sync on the owner asks her relays to archive
+               the old key (NIP-IA). The running host rotates her with the
+               owner key it holds; else her key must be in a file here.
+               Grants to her old key don't carry over.
+  move NAME --to HOSTKEY
+               Mark her moved to the owner's computer whose host key is
+               HOSTKEY, after you copied her directory there. This computer
+               runs nothing of hers again.
+  export NAME --out FILE [--memory none|core|all] [--owner-key FILE]
+               A snapshot without her key: her definition, and with core
+               her core profile, or with all every memory as plaintext.
+               The owner key reads her core when her key isn't here.
+  import FILE --name NAME [--workspace DIR] [--owner-key FILE] [--days N]
+               Make a new agent from a snapshot, with a new key of her own;
+               with the owner key, her memory is encrypted under it.
+  signing NAME on|off
+               Sign the tip of her merged worktree changes with her key
+               (NIP-GS), with the owner's attestation embedded. Off by
+               default.
   log NAME [--after N]
                Her journal, newest last.
   memory NAME list
@@ -116,7 +143,13 @@ pub(crate) const EFFECTS: &[Declared] = &[
     Declared::computer("stop", Effect::Publishes),
     Declared::computer("pause", Effect::Publishes),
     Declared::computer("resume", Effect::Publishes),
-    Declared::computer("retire", Effect::LocalWrite),
+    Declared::computer("retire", Effect::Publishes),
+    Declared::computer("rotate", Effect::Publishes),
+    Declared::computer("move", Effect::LocalWrite),
+    Declared::computer("export", Effect::LocalWrite),
+    Declared::computer("import", Effect::LocalWrite),
+    Declared::computer("signing on", Effect::LocalWrite),
+    Declared::computer("signing off", Effect::LocalWrite),
     Declared::computer("log", Effect::ReadOnly),
     Declared::computer("memory list", Effect::ReadOnly),
     Declared::computer("memory note", Effect::Publishes),
@@ -196,6 +229,13 @@ pub fn run(output: &Output, words: &[String]) -> u8 {
             &format!("Resumed {name}."),
         ),
         ["retire", name] => retire(output, &root, name, &args, now),
+        ["rotate", name] => rotate(output, &root, name, &args, now),
+        ["move", name] => move_to(output, &root, name, &args, now),
+        ["export", name] => export(output, &root, name, &args, now),
+        ["import", file] => import(output, &root, file, &args, now),
+        ["signing", name, word @ ("on" | "off")] => {
+            signing(output, &root, name, *word == "on", now)
+        }
         ["log", name] => log(output, &root, name, &args),
         ["memory", name, rest @ ..] => memory(output, &root, name, rest, &args),
         ["jobs", name, rest @ ..] => jobs(output, &root, name, rest, &args, now),
@@ -635,42 +675,305 @@ fn answer(output: &Output, name: &str, confirm: bool, args: &Args) -> Result<(),
     Ok(())
 }
 
+/// The running host, when one answers on its control socket.
+fn live_host(args: &Args) -> Option<Host> {
+    host(args).ok().filter(Host::answers)
+}
+
+/// Sends the owner's NIP-IA archive request to her relays, as the owner.
+fn send_archive(
+    store: &Store,
+    owner: &secp256k1::SecretKey,
+    request: &nostr::domain::Event,
+    relays: &[String],
+    now: u64,
+) -> Vec<lifecycle::Sent> {
+    lifecycle::send_archive(
+        store,
+        owner,
+        request,
+        relays,
+        &coder::task::agent_sync::Live,
+        now,
+    )
+}
+
+fn archive_line(sent: &[lifecycle::Sent]) -> String {
+    if sent.is_empty() {
+        return String::new();
+    }
+    let took = sent.iter().filter(|s| s.accepted).count();
+    format!(
+        " {took} of {} relays took the owner's request to archive the key.",
+        sent.len()
+    )
+}
+
+/// `retire`: through the running host, which deletes her key from its key
+/// store (the keychain when it runs with one); else from her files here.
 fn retire(output: &Output, root: &Path, name: &str, args: &Args, now: u64) -> Result<(), Fail> {
-    let (store, mut record) = store(root, name)?;
-    // Stop her through the host first, when one answers.
-    let stopped = call(
+    let owner = owner_key(args)?;
+    let (store, _) = store(root, name)?;
+    if let Some(mut host) = live_host(args) {
+        match host.call(&Operation::RetireAgent { agent: name.into() }) {
+            Ok(Outcome::Agent { agent: value }) => {
+                // The host asks her relays itself when it holds the owner
+                // key; otherwise this command does, with the owner key.
+                let mut sent = Vec::new();
+                if value["archive_request"].is_null()
+                    && let Some(owner) = &owner
+                    && let Some((request, relays)) =
+                        lifecycle::retired_archive(&store, owner, now).map_err(Fail::Failed)?
+                {
+                    sent = send_archive(&store, owner, &request, &relays, now);
+                }
+                let deleted = value["key_deleted"] == true;
+                let value =
+                    json!({"retired": name, "key_deleted": deleted, "host": true, "archive": sent});
+                output.emit(&value, |_| {
+                    format!(
+                        "Retired {name} at the host: her key is deleted, and her journal and \
+                         engrams stay for the owner key.{}",
+                        archive_line(&sent)
+                    )
+                });
+                return Ok(());
+            }
+            Ok(_) => return Err(Fail::Failed("the host answered another operation".into())),
+            // A host from before `studio.agent.retire`: stop her there and
+            // retire her from her files.
+            Err(refusal) if refusal.code == "unsupported" || refusal.code == "malformed" => {
+                let _ = call(
+                    args,
+                    &Operation::StopAgent {
+                        agent: name.into(),
+                        reason: "retired".into(),
+                    },
+                );
+            }
+            Err(refusal) => return Err(Fail::Refused(refusal)),
+        }
+    }
+    let retired = lifecycle::retire(&store, owner.as_ref(), now).map_err(Fail::Failed)?;
+    let sent = match (&retired.archive, &owner) {
+        (Some(request), Some(owner)) => send_archive(&store, owner, request, &retired.relays, now),
+        _ => Vec::new(),
+    };
+    let value = json!({"retired": name, "key_deleted": retired.key_deleted, "host": false, "archive": sent});
+    output.emit(&value, |_| {
+        format!(
+            "Retired {name}: {}, and her journal and engrams stay for the owner key.{}",
+            if retired.key_deleted {
+                "her key is deleted"
+            } else {
+                "she had no key here"
+            },
+            archive_line(&sent)
+        )
+    });
+    Ok(())
+}
+
+/// `rotate`: through the running host, with the owner key it holds; else
+/// here, with her key in a file and the owner key in FILE.
+fn rotate(output: &Output, root: &Path, name: &str, args: &Args, now: u64) -> Result<(), Fail> {
+    let reason = args.option("reason").unwrap_or_default().to_string();
+    let owner = owner_key(args)?;
+    let (store, _) = store(root, name)?;
+    let here = store.key().ok().flatten().is_some();
+    if let Some(mut host) = live_host(args) {
+        match host.call(&Operation::RotateAgent {
+            agent: name.into(),
+            reason: reason.clone(),
+        }) {
+            Ok(Outcome::Agent { agent: value }) => {
+                output.emit(&value, |v| {
+                    format!(
+                        "Rotated {name} at the host: her key is {}, and {} engrams are \
+                         encrypted under it. Grants to her old key don't carry over; delegate \
+                         again any she needs.",
+                        v["new"].as_str().unwrap_or("new"),
+                        v["engrams"]
+                    )
+                });
+                return Ok(());
+            }
+            Ok(_) => return Err(Fail::Failed("the host answered another operation".into())),
+            Err(_) if owner.is_some() && here => {}
+            Err(refusal) => return Err(Fail::Refused(refusal)),
+        }
+    }
+    let owner = owner.ok_or_else(|| {
+        Fail::Failed("no host answered, so rotate needs the owner key: --owner-key FILE".into())
+    })?;
+    let screen = secret_screen_shapes();
+    let rotated = lifecycle::rotate(&store, &screen, &owner, &reason, expiry(args, now)?, now)
+        .map_err(Fail::Failed)?;
+    let sent = match &rotated.archive {
+        Some(request) => send_archive(&store, &owner, request, &rotated.relays, now),
+        None => Vec::new(),
+    };
+    // Her heads, profile, and relay list go out under the new key now.
+    let status = (!rotated.relays.is_empty()).then(|| {
+        coder::task::agent_sync::sync(&store, &screen, &coder::task::agent_sync::Live, now)
+    });
+    let value = json!({
+        "agent": name,
+        "old": rotated.old,
+        "new": rotated.new,
+        "engrams": rotated.engrams,
+        "lineage": rotated.lineage,
+        "archive": sent,
+        "sync": status,
+    });
+    output.emit(&value, |_| {
+        format!(
+            "Rotated {name}: her key {} is now {}, and {} engrams are encrypted under it. The \
+             owner signed the lineage record. Grants to her old key don't carry over; delegate \
+             again any she needs.{}",
+            rotated.old,
+            rotated.new,
+            rotated.engrams,
+            archive_line(&sent)
+        )
+    });
+    Ok(())
+}
+
+/// `move`: marks her moved to the owner's other computer.
+fn move_to(output: &Output, root: &Path, name: &str, args: &Args, now: u64) -> Result<(), Fail> {
+    let to = args.option("to").ok_or_else(|| {
+        Fail::Failed("move needs --to HOSTKEY, the other computer's host key".into())
+    })?;
+    let (store, _) = store(root, name)?;
+    let _ = call(
         args,
         &Operation::StopAgent {
             agent: name.into(),
-            reason: "retired".into(),
+            reason: "moved to another computer".into(),
         },
-    )
-    .is_ok();
-    if !stopped {
-        let _ = Jobs::new(store.clone()).disable_all();
-    }
-    let deleted = store.delete_key().map_err(Fail::Failed)?;
-    record.state = State::Retired;
-    record.attestation = None;
-    store.save(&record).map_err(Fail::Failed)?;
-    store
-        .append(&agent::Entry::new(
-            now,
-            agent::Kind::Control,
-            &format!(
-                "retired by the owner; {}; her journal stays",
-                if deleted {
-                    "her key is deleted"
-                } else {
-                    "she had no key"
-                }
-            ),
-        ))
-        .map_err(Fail::Failed)?;
-    output.emit(&json!({"retired": name, "key_deleted": deleted}), |_| {
+    );
+    lifecycle::mark_moved(&store, to, now).map_err(Fail::Failed)?;
+    output.emit(&json!({"moved": name, "to": to}), |_| {
         format!(
-            "Retired {name}: her key is deleted and her journal stays. She never published, so \
-             there is no key to archive with NIP-IA."
+            "Moved {name}: the computer {to} runs her now, and this one runs nothing of hers. \
+             That computer's host must hold her key and grant it what she needs there."
+        )
+    });
+    Ok(())
+}
+
+/// `export`: a snapshot without her key, mode 0600, never over a file.
+fn export(output: &Output, root: &Path, name: &str, args: &Args, now: u64) -> Result<(), Fail> {
+    use std::io::Write;
+    let out = args
+        .option("out")
+        .ok_or_else(|| Fail::Failed("export needs --out FILE".into()))?;
+    let choice = lifecycle::MemoryChoice::parse(args.option("memory").unwrap_or("none"))
+        .map_err(Fail::Failed)?;
+    let (store, _) = store(root, name)?;
+    let snapshot = lifecycle::export(
+        &store,
+        &secret_screen_shapes(),
+        choice,
+        owner_key(args)?.as_ref(),
+        now,
+    )
+    .map_err(Fail::Failed)?;
+    let body = serde_json::to_vec_pretty(&snapshot).map_err(|e| Fail::Failed(e.to_string()))?;
+    let mut options = std::fs::OpenOptions::new();
+    options.write(true).create_new(true);
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::OpenOptionsExt;
+        options.mode(0o600);
+    }
+    options
+        .open(out)
+        .and_then(|mut file| file.write_all(&body).and_then(|()| file.sync_all()))
+        .map_err(|e| Fail::Failed(format!("cannot write {out}: {e}")))?;
+    let value = json!({
+        "exported": name,
+        "out": out,
+        "memory": choice,
+        "core": snapshot.core.is_some(),
+        "entries": snapshot.entries.len(),
+    });
+    output.emit(&value, |_| {
+        format!(
+            "Exported {name} to {out} without her key: her definition{}{}.",
+            if snapshot.core.is_some() {
+                ", her core"
+            } else {
+                ""
+            },
+            if snapshot.entries.is_empty() {
+                String::new()
+            } else {
+                format!(
+                    ", and {} memory entries as plaintext",
+                    snapshot.entries.len()
+                )
+            }
+        )
+    });
+    Ok(())
+}
+
+/// `signing NAME on|off`: NIP-GS signatures on her merged changes.
+fn signing(output: &Output, root: &Path, name: &str, on: bool, now: u64) -> Result<(), Fail> {
+    let (store, _) = store(root, name)?;
+    let settings = coder::task::agent_git_sign::set(&store, on, now).map_err(Fail::Failed)?;
+    output.emit(&json!({"agent": name, "signing": settings}), |_| {
+        if on {
+            format!(
+                "The tip of each change of {name}'s you merge is now signed with her key, with \
+                 your attestation embedded (NIP-GS)."
+            )
+        } else {
+            format!("{name}'s merged changes are no longer signed.")
+        }
+    });
+    Ok(())
+}
+
+/// `import`: a new agent from a snapshot, with a new key.
+fn import(output: &Output, root: &Path, file: &str, args: &Args, now: u64) -> Result<(), Fail> {
+    let name = args
+        .option("name")
+        .ok_or_else(|| Fail::Failed("import needs --name NAME for the new agent".into()))?;
+    let text = std::fs::read_to_string(file)
+        .map_err(|e| Fail::Failed(format!("cannot read {file}: {e}")))?;
+    let snapshot: lifecycle::Snapshot = serde_json::from_str(&text)
+        .map_err(|e| Fail::Failed(format!("{file} is not an agent snapshot: {e}")))?;
+    let store = Store::new(root, name).map_err(Fail::Failed)?;
+    let workspace = args
+        .option("workspace")
+        .map(PathBuf::from)
+        .or_else(|| std::env::current_dir().ok())
+        .unwrap_or_else(|| PathBuf::from("/"));
+    let owner = owner_key(args)?;
+    let record = lifecycle::import(
+        &store,
+        &secret_screen_shapes(),
+        &snapshot,
+        &workspace,
+        owner.as_ref(),
+        expiry(args, now)?,
+        now,
+    )
+    .map_err(Fail::Failed)?;
+    let value = record_json(&record, now);
+    output.emit(&value, |_| {
+        format!(
+            "Made {name} from a snapshot of {} with a new key, {}.{}",
+            snapshot.name,
+            record.pubkey.as_deref().unwrap_or("missing"),
+            if record.attestation.is_some() {
+                ""
+            } else {
+                " Attest it to encrypt her memory: openagents agent attest NAME --owner-key FILE"
+            }
         )
     });
     Ok(())
@@ -1281,6 +1584,83 @@ mod tests {
                 .iter()
                 .any(|e| e.text.starts_with("retired"))
         );
+    }
+
+    #[test]
+    fn rotate_export_import_and_move_without_a_host() {
+        let dir = tempfile::tempdir().unwrap();
+        let root = dir.path().join("host");
+        let owner = dir.path().join("owner.key");
+        std::fs::write(&owner, "07".repeat(32)).unwrap();
+        let owner = owner.to_str().unwrap();
+        let socket = dir.path().join("none.sock");
+        let socket = socket.to_str().unwrap();
+        let output = Output::new(true);
+        let now = 1_791_158_400;
+        let workspace = dir.path().to_str().unwrap();
+        let made = args(&[
+            "new",
+            "alice",
+            "--owner-key",
+            owner,
+            "--workspace",
+            workspace,
+        ]);
+        assert!(new(&output, &root, "alice", &made, now).is_ok());
+        let (_, before) = store(&root, "alice").ok().unwrap();
+
+        // Rotation needs the owner key, then gives her a new attested key.
+        let bare = args(&["rotate", "alice", "--control-socket", socket]);
+        assert!(rotate(&output, &root, "alice", &bare, now + 1).is_err());
+        let rotated = args(&[
+            "rotate",
+            "alice",
+            "--owner-key",
+            owner,
+            "--reason",
+            "routine",
+            "--control-socket",
+            socket,
+        ]);
+        assert!(rotate(&output, &root, "alice", &rotated, now + 2).is_ok());
+        let (store_after, after) = store(&root, "alice").ok().unwrap();
+        assert_ne!(after.pubkey, before.pubkey);
+        assert!(after.attestation.is_some());
+        assert_eq!(lifecycle::lineage(&store_after).unwrap().len(), 1);
+
+        // Export never writes over a file, and import makes a new key.
+        let out = dir.path().join("alice.json");
+        let exported = args(&[
+            "export",
+            "alice",
+            "--out",
+            out.to_str().unwrap(),
+            "--memory",
+            "core",
+        ]);
+        assert!(export(&output, &root, "alice", &exported, now + 3).is_ok());
+        assert!(export(&output, &root, "alice", &exported, now + 3).is_err());
+        let imported = args(&[
+            "import",
+            out.to_str().unwrap(),
+            "--name",
+            "bob",
+            "--owner-key",
+            owner,
+            "--workspace",
+            workspace,
+        ]);
+        assert!(import(&output, &root, out.to_str().unwrap(), &imported, now + 4).is_ok());
+        let (_, bob) = store(&root, "bob").ok().unwrap();
+        assert!(bob.pubkey.is_some() && bob.pubkey != after.pubkey);
+
+        // Moving marks her moved and names the other computer.
+        let other = "ab".repeat(32);
+        let moved = args(&["move", "alice", "--to", &other, "--control-socket", socket]);
+        assert!(move_to(&output, &root, "alice", &moved, now + 5).is_ok());
+        let (_, record) = store(&root, "alice").ok().unwrap();
+        assert_eq!(record.state, State::Moved);
+        assert_eq!(record.roles.unwrap().controller, other);
     }
 
     #[test]

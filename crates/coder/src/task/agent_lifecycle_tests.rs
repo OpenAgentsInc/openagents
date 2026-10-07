@@ -405,3 +405,108 @@ fn a_snapshot_never_holds_her_key_and_an_import_gets_a_new_one() {
         .is_err()
     );
 }
+
+fn clock() -> u64 {
+    NOW
+}
+
+fn ask(
+    agents: &crate::task::agent_host::Agents,
+    name: &str,
+) -> Result<serde_json::Value, coder_host::Code> {
+    agents.answer(
+        "k1",
+        &coder_host::Principal {
+            device: "owner".into(),
+            grant: None,
+            epoch: None,
+        },
+        &coder_host::access::protocol::Operation::AskAgent {
+            agent: name.into(),
+            text: "run the tests".into(),
+            workspace: None,
+            context: String::new(),
+            mode: coder_host::access::agent::Mode::Terminal,
+            typist: false,
+        },
+    )
+}
+
+#[test]
+fn the_host_rotates_and_retires_her_with_the_owner_key_it_holds() {
+    let dir = tempfile::tempdir().unwrap();
+    let root = dir.path().join("host");
+    let app = dir.path().join("app");
+    std::fs::create_dir_all(app.join(".git")).unwrap();
+    let fake = Fake::default();
+    let agents =
+        crate::task::agent_host::Agents::new(&root, dir.path().join("tasks"), BTreeMap::new())
+            .with_clock(clock)
+            .with_relay_connector(Arc::new(fake.clone()));
+    agents.create("alice", &app, Some(&owner())).unwrap();
+    let store = Store::new(&root, "alice").unwrap();
+    Memory::new(store.clone(), screen())
+        .add(
+            MemoryKind::Note,
+            Author::Owner,
+            "the build runs on the 4080",
+            Vec::new(),
+            NOW,
+        )
+        .unwrap();
+    agent_sync::set_relays(&store, &[RELAY.to_string()], NOW).unwrap();
+    let before = owner_bodies(&store);
+    let wait_for = |count: usize| {
+        let start = std::time::Instant::now();
+        while fake
+            .held()
+            .events
+            .iter()
+            .filter(|e| e.kind == 9_035)
+            .count()
+            < count
+        {
+            assert!(start.elapsed() < std::time::Duration::from_secs(10));
+            std::thread::sleep(std::time::Duration::from_millis(10));
+        }
+    };
+
+    // Without the owner key the host refuses to rotate her.
+    assert_eq!(
+        agents.rotate("alice", "", None, "owner"),
+        Err(coder_host::Code::Unavailable)
+    );
+    let answer = agents
+        .rotate("alice", "routine", Some(&owner()), "owner")
+        .unwrap();
+    let new = answer["new"].as_str().unwrap().to_string();
+    assert_ne!(answer["old"], answer["new"]);
+    assert_eq!(
+        agents.list().agents[0].pubkey.as_deref(),
+        Some(new.as_str())
+    );
+    assert_eq!(owner_bodies(&store), before);
+    wait_for(1);
+
+    // Retiring through the host deletes her key and keeps her memory.
+    let answer = agents.retire("alice", Some(&owner()), "owner").unwrap();
+    assert_eq!(answer["key_deleted"], true);
+    assert!(store.key().unwrap().is_none());
+    assert_eq!(agents.list().agents[0].state, "retired");
+    assert_eq!(owner_bodies(&store), before);
+    assert_eq!(ask(&agents, "alice"), Err(coder_host::Code::Forbidden));
+    wait_for(2);
+    let archived = fake
+        .held()
+        .events
+        .iter()
+        .filter(|e| e.kind == 9_035)
+        .any(|e| e.tags.iter().any(|t| t.0 == ["p", new.as_str()]));
+    assert!(archived, "the owner asked to archive her rotated key");
+
+    // A moved agent is refused here too.
+    agents.create("bob", &app, Some(&owner())).unwrap();
+    let bob = Store::new(&root, "bob").unwrap();
+    mark_moved(&bob, &"cd".repeat(32), NOW).unwrap();
+    assert_eq!(ask(&agents, "bob"), Err(coder_host::Code::Forbidden));
+}

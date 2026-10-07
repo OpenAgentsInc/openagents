@@ -1161,3 +1161,25 @@ has each step. A scratch-host run verified each step with keystrokes into
 Verse, but not your host, the desktop app's keychain-held owner key
 attesting her, your Codex login's limits, or another person's device being
 refused.
+
+## Rotate, retire, and move a workshop agent (#10804)
+
+Scratch-host tests cover rotation, retirement, moves, snapshots, and NIP-GS
+signing with file keys, a fake keychain, and a fake relay. On your own
+computers:
+
+1. With the desktop app running, rotate Alice: `openagents agent rotate
+   alice --reason "first rotation"`. The host uses the owner key it holds.
+   Check `openagents agent memory alice engrams --owner-key FILE` still
+   decrypts every engram, and that `agents/alice/lineage.jsonl` holds one
+   row. With relay sync on, check that the relay took the `kind:9035`
+   archive request for the old key.
+1. To move Alice to another of your computers, copy `agents/alice/` there
+   (with her key: `key`, or the `agent:alice` keychain item), then run
+   `openagents agent move alice --to HOSTKEY` on the old one. Enrolling her
+   key on the new host as a device with a delegated NIP-HOST grant of at
+   most `operate` and `terminal` is not built yet; grant it yourself when a
+   flow needs it.
+1. To sign her merged worktree commits, run `openagents agent signing alice
+   on`, merge one of her changes at the Merge station, and check the tip
+   with a NIP-GS verifier.

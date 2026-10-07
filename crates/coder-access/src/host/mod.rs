@@ -1201,7 +1201,9 @@ impl Host {
             | Operation::EditAgentJobs { .. }
             | Operation::AgentLog { .. }
             | Operation::ListAgentWorkspaces {}
-            | Operation::NewAgent { .. }) => {
+            | Operation::NewAgent { .. }
+            | Operation::RetireAgent { .. }
+            | Operation::RotateAgent { .. }) => {
                 let grant = p.grant.as_deref().zip(request.epoch);
                 match dispatch.agent(&request.request, &p.key, grant, op) {
                     Ok(value) => {

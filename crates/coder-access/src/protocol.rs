@@ -879,6 +879,18 @@ pub enum Operation {
     /// the owner's own key may send it; a granted device may not.
     #[serde(rename = "studio.agent.new")]
     NewAgent { agent: String, workspace: String },
+    /// Retire the agent: stop her, delete her key from the host's key
+    /// store, and keep her journal and engrams, which the owner key still
+    /// reads. With relay sync on and the owner key at the host, the owner
+    /// asks her relays to archive her key (NIP-IA). Only the owner's own
+    /// key may send it.
+    #[serde(rename = "studio.agent.retire")]
+    RetireAgent { agent: String },
+    /// Rotate the agent's key with the owner key the host holds: a new
+    /// key, every engram encrypted again under it, and the owner's
+    /// lineage record. Only the owner's own key may send it.
+    #[serde(rename = "studio.agent.rotate")]
+    RotateAgent { agent: String, reason: String },
 }
 impl Operation {
     /// A read with no effect, whose reply the host does not retain: an
@@ -921,6 +933,18 @@ impl Operation {
                 | Self::AgentLog { .. }
                 | Self::ListAgentWorkspaces {}
                 | Self::NewAgent { .. }
+                | Self::RetireAgent { .. }
+                | Self::RotateAgent { .. }
+        )
+    }
+
+    /// A `studio.agent.*` operation only the owner's own key sends, never
+    /// a granted device: making, retiring, or rotating an agent.
+    #[must_use]
+    pub fn owner_agent(&self) -> bool {
+        matches!(
+            self,
+            Self::NewAgent { .. } | Self::RetireAgent { .. } | Self::RotateAgent { .. }
         )
     }
 
@@ -1055,6 +1079,8 @@ impl Operation {
             Self::AgentLog { .. } => "studio.agent.log",
             Self::ListAgentWorkspaces {} => "studio.agent.workspaces",
             Self::NewAgent { .. } => "studio.agent.new",
+            Self::RetireAgent { .. } => "studio.agent.retire",
+            Self::RotateAgent { .. } => "studio.agent.rotate",
         }
     }
     /// The right this operation requires. Redemption uses the invitation's
@@ -1119,7 +1145,9 @@ impl Operation {
             | Self::StopAgent { .. }
             | Self::EditAgentMemory { .. }
             | Self::EditAgentJobs { .. }
-            | Self::NewAgent { .. } => Some(Right::Operate),
+            | Self::NewAgent { .. }
+            | Self::RetireAgent { .. }
+            | Self::RotateAgent { .. } => Some(Right::Operate),
             Self::OpenTerminal { .. } | Self::OpenTaskTerminal { .. } => Some(Right::Terminal),
             Self::DecideMerge { .. } => Some(Right::Review),
         }
@@ -1331,6 +1359,11 @@ impl Operation {
             Self::NewAgent { agent, workspace } => {
                 crate::agent::name(agent)?;
                 crate::agent::workspace_path(workspace)?;
+            }
+            Self::RetireAgent { agent } => crate::agent::name(agent)?,
+            Self::RotateAgent { agent, reason } => {
+                crate::agent::name(agent)?;
+                text(reason, 256)?;
             }
             Self::AskAgent {
                 agent,

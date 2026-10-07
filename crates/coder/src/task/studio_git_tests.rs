@@ -500,6 +500,15 @@ fn a_direct_request_works_in_its_own_worktree_and_merges_locally() {
     assert_eq!(refused.state, PublishState::Refused);
     assert!(!s.repo.join("notes.txt").exists());
     std::fs::write(worktree.join("notes.txt"), "alice\n").unwrap();
+    // Her change's tip is signed as her when it merges.
+    let key = secp256k1::SecretKey::from_byte_array([5; 32]).unwrap();
+    set_seat_signer(
+        &s.store,
+        Arc::new(move |seat: &str, repo: &Path, commit: &str| {
+            (seat == "alice")
+                .then(|| super::super::super::agent_git_sign::sign_commit(repo, commit, &key, None))
+        }),
+    );
     let merged = inbox
         .publish(
             &principal,
@@ -513,5 +522,8 @@ fn a_direct_request_works_in_its_own_worktree_and_merges_locally() {
         .unwrap();
     assert_eq!(merged.state, PublishState::Published, "{}", merged.note);
     assert!(s.repo.join("notes.txt").is_file());
+    let tip = git(&s.repo, &["rev-parse", "HEAD^2"]);
+    let signed = super::super::super::agent_git_sign::verify_commit(&s.repo, &tip).unwrap();
+    assert_eq!(signed.pubkey, crate::task::agent::public_hex(&key));
     assert_eq!(git(&s.origin, &["rev-parse", "refs/heads/main"]), first);
 }

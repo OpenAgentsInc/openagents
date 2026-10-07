@@ -474,6 +474,11 @@ fn agent_operations() -> Vec<Operation> {
             agent: agent(),
             workspace: "/Users/me/code/app".into(),
         },
+        Operation::RetireAgent { agent: agent() },
+        Operation::RotateAgent {
+            agent: agent(),
+            reason: "a routine rotation".into(),
+        },
     ]
 }
 

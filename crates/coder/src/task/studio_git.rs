@@ -33,10 +33,16 @@
 //!   repository's and the user's, so neither turns pushing back on. It is
 //!   not a sandbox: a process that unsets the variables on purpose can
 //!   still reach a remote the filesystem boundary lets it reach.
+//! - **Seat signatures.** A host may register a [`SeatSigner`] for its
+//!   task store ([`set_seat_signer`]); a merge then hands it the tip
+//!   commit of the seat's change, and a workshop agent who signs her
+//!   commits (`super::super::agent_git_sign`) returns it signed with her
+//!   key under NIP-GS. A signer that fails refuses the merge.
 
+use std::collections::BTreeMap;
 use std::ffi::OsString;
 use std::path::{Path, PathBuf};
-use std::sync::Mutex;
+use std::sync::{Arc, Mutex};
 
 use coder_host::access::review::{Landing, MAX_NOTE, Publication, PublishState};
 
@@ -457,6 +463,7 @@ pub fn merge(store: &Path, task: &str, reviewed: &Reviewed) -> Result<Publicatio
         return Ok(publication);
     }
     let mut conflict = None;
+    let signer = seat_signer(store);
     match land(
         &checkout,
         &worktree,
@@ -464,6 +471,7 @@ pub fn merge(store: &Path, task: &str, reviewed: &Reviewed) -> Result<Publicatio
         &seat,
         &record.base,
         reviewed,
+        signer.as_ref(),
         &mut conflict,
     ) {
         Ok(landed) => {
@@ -503,6 +511,31 @@ pub fn merge(store: &Path, task: &str, reviewed: &Reviewed) -> Result<Publicatio
     Ok(publication)
 }
 
+/// Signs a seat's commit: `(seat, worktree, commit)` to the signed
+/// commit's ID, or `None` when the seat doesn't sign its commits.
+pub type SeatSigner =
+    Arc<dyn Fn(&str, &Path, &str) -> Option<Result<String, String>> + Send + Sync>;
+
+/// Each task store's seat signer.
+static SIGNERS: Mutex<BTreeMap<PathBuf, SeatSigner>> = Mutex::new(BTreeMap::new());
+
+/// Makes `signer` sign the seats' commits that merges from task store
+/// `store` land.
+pub fn set_seat_signer(store: &Path, signer: SeatSigner) {
+    SIGNERS
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner)
+        .insert(store.to_path_buf(), signer);
+}
+
+fn seat_signer(store: &Path) -> Option<SeatSigner> {
+    SIGNERS
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner)
+        .get(store)
+        .cloned()
+}
+
 /// Where a merge landed.
 struct Landed {
     branch: String,
@@ -513,7 +546,9 @@ struct Landed {
 
 /// Build the merge off-tree and fast-forward the checkout's branch to it.
 /// The reason is a sentence the person reads; a merge that would conflict
-/// also fills `conflict`.
+/// also fills `conflict`. With `signer`, the tip of the seat's change is
+/// signed as the seat before it is merged.
+#[allow(clippy::too_many_arguments)]
 fn land(
     checkout: &Path,
     worktree: &Path,
@@ -521,6 +556,7 @@ fn land(
     seat: &str,
     base: &str,
     reviewed: &Reviewed,
+    signer: Option<&SeatSigner>,
     conflict: &mut Option<super::flow::Conflict>,
 ) -> Result<Landed, String> {
     let now = review::head(worktree)?;
@@ -571,6 +607,15 @@ fn land(
             ));
         }
         String::from_utf8_lossy(&output.stdout).trim().to_owned()
+    };
+    let change = match signer.and_then(|sign| sign(seat, worktree, &change)) {
+        None => change,
+        Some(Ok(signed)) => signed,
+        Some(Err(why)) => {
+            return Err(format!(
+                "{seat}'s change can't be signed with her key, so nothing merged: {why}"
+            ));
+        }
     };
     let dirty =
         out(checkout, &["status", "--porcelain", "--untracked-files=no"]).map_err(|why| {

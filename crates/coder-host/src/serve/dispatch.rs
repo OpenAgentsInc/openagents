@@ -326,13 +326,14 @@ impl Dispatch for Dispatcher {
         }
         let principal = principal(device, grant);
         let _ = crate::tasks::take_reason(Code::Unavailable);
-        if let coder_access::protocol::Operation::NewAgent { .. } = op {
-            // Making her is the owner's own act: her key is attested with
-            // the owner key, so a granted device may not ask for it.
+        if op.owner_agent() {
+            // Making, retiring, and rotating her are the owner's own acts:
+            // her key is attested with the owner key, so a granted device
+            // may not ask for them.
             if !agent_setup_admits(&self.shared.owner, device, grant) {
                 return self.noted(Err(Refusal::because(
                     Code::Forbidden,
-                    "Only her owner sets up the workshop agent.",
+                    "Only her owner sets up, retires, or rotates the workshop agent.",
                 )));
             }
             // Load only: an existing host never mints another owner.

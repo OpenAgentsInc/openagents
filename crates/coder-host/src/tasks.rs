@@ -499,11 +499,12 @@ pub trait Tasks: Send + Sync {
         Err(Code::Unsupported)
     }
 
-    /// Make a workshop agent for `studio.agent.new`, which only the
+    /// Make, retire, or rotate a workshop agent for `studio.agent.new`,
+    /// `studio.agent.retire`, or `studio.agent.rotate`, which only the
     /// owner's own key sends. `owner` is the owner key this host holds,
     /// which attests her key; `None` when the key lives elsewhere. The
-    /// answer is `coder_access::agent::Made` as JSON. The default refuses
-    /// as `unsupported`.
+    /// answer to `studio.agent.new` is `coder_access::agent::Made` as
+    /// JSON. The default refuses as `unsupported`.
     ///
     /// # Errors
     /// Returns the NIP-HOST refusal code the device receives.

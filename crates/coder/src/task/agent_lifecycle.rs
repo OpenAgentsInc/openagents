@@ -613,6 +613,41 @@ pub fn retire(store: &Store, owner: Option<&SecretKey>, now: u64) -> Result<Reti
     })
 }
 
+/// The owner's NIP-IA archive request for a retired agent's key and her
+/// relays, when relay sync is on, for a host that retired her without
+/// the owner key. `None` when sync is off or she never had a key.
+///
+/// # Errors
+/// When she isn't retired or `owner` is not the owner her roles name.
+pub fn retired_archive(
+    store: &Store,
+    owner: &SecretKey,
+    now: u64,
+) -> Result<Option<(Event, Vec<String>)>, String> {
+    let record = store
+        .load()?
+        .ok_or_else(|| format!("there is no agent named {}", store.name()))?;
+    if record.state != State::Retired {
+        return Err("she isn't retired".into());
+    }
+    let authority = record
+        .roles
+        .as_ref()
+        .map(|roles| roles.authority.clone())
+        .unwrap_or_default();
+    if !authority.is_empty() && authority != agent::public_hex(owner) {
+        return Err("that owner key isn't the one that attested her".into());
+    }
+    let relays = relays(store);
+    match &record.pubkey {
+        Some(pubkey) if !relays.is_empty() => Ok(Some((
+            archive_request(owner, pubkey, "retired", None, now)?,
+            relays,
+        ))),
+        _ => Ok(None),
+    }
+}
+
 /// Marks `store`'s agent moved to the owner's computer whose host key is
 /// `to` (64 lowercase hex characters): it becomes her controller and
 /// custodian, her jobs go off, and this computer refuses her requests and

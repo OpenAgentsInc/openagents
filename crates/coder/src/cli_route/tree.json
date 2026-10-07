@@ -11625,7 +11625,7 @@
               "retire"
             ],
             "usage": [
-              "retire NAME"
+              "retire NAME [--owner-key FILE]"
             ],
             "forms": [
               {
@@ -11637,14 +11637,288 @@
                   {
                     "kind": "positional",
                     "name": "NAME"
+                  },
+                  {
+                    "kind": "option",
+                    "name": "owner-key",
+                    "value": "FILE",
+                    "open": true,
+                    "optional": true
                   }
                 ]
               }
             ],
-            "summary": "Stop her, delete her key, and keep her journal.",
+            "summary": "Stop her, delete her key from the host's key store, and keep her journal and engrams, which the owner key still reads. With relay sync on and the owner key, ask her relays to archive her key (NIP-IA).",
+            "effect": "publishes",
+            "runs_on": "connected_computer"
+          }
+        },
+        {
+          "name": "rotate",
+          "leaf": {
+            "path": [
+              "agent",
+              "rotate"
+            ],
+            "usage": [
+              "rotate NAME [--owner-key FILE] [--reason TEXT] [--days N]"
+            ],
+            "forms": [
+              {
+                "tokens": [
+                  {
+                    "kind": "literal",
+                    "word": "rotate"
+                  },
+                  {
+                    "kind": "positional",
+                    "name": "NAME"
+                  },
+                  {
+                    "kind": "option",
+                    "name": "owner-key",
+                    "value": "FILE",
+                    "open": true,
+                    "optional": true
+                  },
+                  {
+                    "kind": "option",
+                    "name": "reason",
+                    "value": "TEXT",
+                    "open": true,
+                    "optional": true
+                  },
+                  {
+                    "kind": "option",
+                    "name": "days",
+                    "value": "N",
+                    "open": true,
+                    "optional": true
+                  }
+                ]
+              }
+            ],
+            "summary": "Give her a new key: every engram is encrypted again under it, the owner signs a lineage record and a new attestation, and with relay sync on the owner asks her relays to archive the old key (NIP-IA). The running host rotates her with the owner key it holds; else her key must be in a file here. Grants to her old key don't carry over.",
+            "effect": "publishes",
+            "runs_on": "connected_computer"
+          }
+        },
+        {
+          "name": "move",
+          "leaf": {
+            "path": [
+              "agent",
+              "move"
+            ],
+            "usage": [
+              "move NAME --to HOSTKEY"
+            ],
+            "forms": [
+              {
+                "tokens": [
+                  {
+                    "kind": "literal",
+                    "word": "move"
+                  },
+                  {
+                    "kind": "positional",
+                    "name": "NAME"
+                  },
+                  {
+                    "kind": "option",
+                    "name": "to",
+                    "value": "HOSTKEY",
+                    "open": true
+                  }
+                ]
+              }
+            ],
+            "summary": "Mark her moved to the owner's computer whose host key is HOSTKEY, after you copied her directory there. This computer runs nothing of hers again.",
             "effect": "local_write",
             "runs_on": "connected_computer"
           }
+        },
+        {
+          "name": "export",
+          "leaf": {
+            "path": [
+              "agent",
+              "export"
+            ],
+            "usage": [
+              "export NAME --out FILE [--memory none|core|all] [--owner-key FILE]"
+            ],
+            "forms": [
+              {
+                "tokens": [
+                  {
+                    "kind": "literal",
+                    "word": "export"
+                  },
+                  {
+                    "kind": "positional",
+                    "name": "NAME"
+                  },
+                  {
+                    "kind": "option",
+                    "name": "out",
+                    "value": "FILE",
+                    "open": true
+                  },
+                  {
+                    "kind": "option",
+                    "name": "memory",
+                    "value": "none|core|all",
+                    "choices": [
+                      "none",
+                      "core",
+                      "all"
+                    ],
+                    "optional": true
+                  },
+                  {
+                    "kind": "option",
+                    "name": "owner-key",
+                    "value": "FILE",
+                    "open": true,
+                    "optional": true
+                  }
+                ]
+              }
+            ],
+            "summary": "A snapshot without her key: her definition, and with core her core profile, or with all every memory as plaintext. The owner key reads her core when her key isn't here.",
+            "effect": "local_write",
+            "runs_on": "connected_computer"
+          }
+        },
+        {
+          "name": "import",
+          "leaf": {
+            "path": [
+              "agent",
+              "import"
+            ],
+            "usage": [
+              "import FILE --name NAME [--workspace DIR] [--owner-key FILE] [--days N]"
+            ],
+            "forms": [
+              {
+                "tokens": [
+                  {
+                    "kind": "literal",
+                    "word": "import"
+                  },
+                  {
+                    "kind": "positional",
+                    "name": "FILE"
+                  },
+                  {
+                    "kind": "option",
+                    "name": "name",
+                    "value": "NAME",
+                    "open": true
+                  },
+                  {
+                    "kind": "option",
+                    "name": "workspace",
+                    "value": "DIR",
+                    "open": true,
+                    "optional": true
+                  },
+                  {
+                    "kind": "option",
+                    "name": "owner-key",
+                    "value": "FILE",
+                    "open": true,
+                    "optional": true
+                  },
+                  {
+                    "kind": "option",
+                    "name": "days",
+                    "value": "N",
+                    "open": true,
+                    "optional": true
+                  }
+                ]
+              }
+            ],
+            "summary": "Make a new agent from a snapshot, with a new key of her own; with the owner key, her memory is encrypted under it.",
+            "effect": "local_write",
+            "runs_on": "connected_computer"
+          }
+        },
+        {
+          "name": "signing",
+          "children": [
+            {
+              "name": "on",
+              "leaf": {
+                "path": [
+                  "agent",
+                  "signing",
+                  "on"
+                ],
+                "usage": [
+                  "signing NAME on|off"
+                ],
+                "forms": [
+                  {
+                    "tokens": [
+                      {
+                        "kind": "literal",
+                        "word": "signing"
+                      },
+                      {
+                        "kind": "positional",
+                        "name": "NAME"
+                      },
+                      {
+                        "kind": "literal",
+                        "word": "on"
+                      }
+                    ]
+                  }
+                ],
+                "summary": "Sign the tip of her merged worktree changes with her key (NIP-GS), with the owner's attestation embedded. Off by default.",
+                "effect": "local_write",
+                "runs_on": "connected_computer"
+              }
+            },
+            {
+              "name": "off",
+              "leaf": {
+                "path": [
+                  "agent",
+                  "signing",
+                  "off"
+                ],
+                "usage": [
+                  "signing NAME on|off"
+                ],
+                "forms": [
+                  {
+                    "tokens": [
+                      {
+                        "kind": "literal",
+                        "word": "signing"
+                      },
+                      {
+                        "kind": "positional",
+                        "name": "NAME"
+                      },
+                      {
+                        "kind": "literal",
+                        "word": "off"
+                      }
+                    ]
+                  }
+                ],
+                "summary": "Sign the tip of her merged worktree changes with her key (NIP-GS), with the owner's attestation embedded. Off by default.",
+                "effect": "local_write",
+                "runs_on": "connected_computer"
+              }
+            }
+          ]
         },
         {
           "name": "log",
@@ -11714,7 +11988,7 @@
                     ]
                   }
                 ],
-                "summary": "Her memory: projects, preferences, outcomes, notes, and insights.",
+                "summary": "Her memory: projects, preferences, outcomes, notes, and insights, then the knowledge entries she drafted, each with the command that publishes it. Only you publish a draft.",
                 "effect": "read_only",
                 "runs_on": "connected_computer"
               }
@@ -12407,6 +12681,42 @@
           "kind": "option",
           "name": "reason",
           "value": "TEXT",
+          "open": true,
+          "optional": true,
+          "repeated": true
+        },
+        {
+          "kind": "option",
+          "name": "to",
+          "value": "HOSTKEY",
+          "open": true,
+          "optional": true,
+          "repeated": true
+        },
+        {
+          "kind": "option",
+          "name": "out",
+          "value": "FILE",
+          "open": true,
+          "optional": true,
+          "repeated": true
+        },
+        {
+          "kind": "option",
+          "name": "memory",
+          "value": "none|core|all",
+          "choices": [
+            "none",
+            "core",
+            "all"
+          ],
+          "optional": true,
+          "repeated": true
+        },
+        {
+          "kind": "option",
+          "name": "name",
+          "value": "NAME",
           "open": true,
           "optional": true,
           "repeated": true

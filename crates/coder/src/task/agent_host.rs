@@ -255,6 +255,8 @@ pub struct Agents {
     mind: super::agent_steer::MindFactory,
     /// Runs each agent's engram relay sync while the owner has it on.
     relay_sync: Arc<super::agent_sync::Sweeper>,
+    /// Where the owner's NIP-IA archive requests go.
+    relays: Arc<dyn super::agent_sync::Connector>,
 }
 
 impl std::fmt::Debug for Agents {
@@ -330,6 +332,7 @@ impl Agents {
             reconciled: Arc::default(),
             mind: super::agent_steer::default_mind(),
             relay_sync: super::agent_sync::Sweeper::new(Arc::new(super::agent_sync::Live)),
+            relays: Arc::new(super::agent_sync::Live),
         }
     }
 
@@ -340,7 +343,8 @@ impl Agents {
         mut self,
         connector: Arc<dyn super::agent_sync::Connector>,
     ) -> Self {
-        self.relay_sync = super::agent_sync::Sweeper::new(connector);
+        self.relay_sync = super::agent_sync::Sweeper::new(connector.clone());
+        self.relays = connector;
         self
     }
 
@@ -685,6 +689,126 @@ impl Agents {
         }))
     }
 
+    /// Retires agent `name` (`studio.agent.retire`, the owner's own key
+    /// only): the kill switch's four steps, then her key deleted from the
+    /// host's key store, her record retired, and her journal and engrams
+    /// kept. With relay sync on and `owner`, the owner key this host
+    /// holds, the owner's NIP-IA archive request goes to her relays on a
+    /// thread of its own, which journals each answer.
+    ///
+    /// # Errors
+    /// No such agent, or her key store or record refuses.
+    pub fn retire(
+        &self,
+        name: &str,
+        owner: Option<&secp256k1::SecretKey>,
+        from: &str,
+    ) -> Result<serde_json::Value, Code> {
+        self.stop(name, "retired", from)?;
+        let (store, _) = self.store(name)?;
+        let now = (self.clock)();
+        let retired = super::agent_lifecycle::retire(&store, owner, now)
+            .map_err(|why| coder_host::tasks::refuse(Code::Unavailable, why))?;
+        let request = retired.archive.as_ref().map(|event| event.id.clone());
+        if let (Some(event), Some(owner)) = (retired.archive, owner) {
+            self.archive(&store, owner, event, retired.relays, now);
+        }
+        Ok(serde_json::json!({
+            "retired": name,
+            "key_deleted": retired.key_deleted,
+            "archive_request": request,
+        }))
+    }
+
+    /// Rotates agent `name`'s key with `owner`, the owner key this host
+    /// holds (`studio.agent.rotate`, the owner's own key only): see
+    /// [`super::agent_lifecycle::rotate`]. The new attestation lasts a
+    /// year; with relay sync on, the owner's NIP-IA archive request for
+    /// the old key goes to her relays on a thread of its own, and the
+    /// next sweep publishes under the new key.
+    ///
+    /// # Errors
+    /// `unavailable` without the owner key or when a step fails, and
+    /// `conflict` while she works.
+    pub fn rotate(
+        &self,
+        name: &str,
+        reason: &str,
+        owner: Option<&secp256k1::SecretKey>,
+        from: &str,
+    ) -> Result<serde_json::Value, Code> {
+        let refuse = coder_host::tasks::refuse;
+        let owner = owner.ok_or_else(|| {
+            refuse(
+                Code::Unavailable,
+                format!(
+                    "This host holds no owner key to rotate her with. Rotate her where her key \
+                     and the owner key are: openagents agent rotate {name} --owner-key FILE"
+                ),
+            )
+        })?;
+        let (store, _) = self.store(name)?;
+        if self.lock().live.get(name).is_some_and(|live| live.busy) {
+            return Err(refuse(
+                Code::Conflict,
+                format!("{name} is working; stop her before rotating her key."),
+            ));
+        }
+        let now = (self.clock)();
+        let mut entry = Entry::new(
+            now,
+            Kind::Control,
+            &format!("key rotation asked by {}", short(from)),
+        );
+        entry.from = Some(from.to_string());
+        let _ = store.append(&entry);
+        let rotated = super::agent_lifecycle::rotate(
+            &store,
+            &self.screen,
+            owner,
+            reason,
+            now + 365 * 86_400,
+            now,
+        )
+        .map_err(|why| refuse(Code::Unavailable, why))?;
+        let request = rotated.archive.as_ref().map(|event| event.id.clone());
+        if let Some(event) = rotated.archive {
+            self.archive(&store, owner, event, rotated.relays, now);
+        }
+        Ok(serde_json::json!({
+            "agent": name,
+            "old": rotated.old,
+            "new": rotated.new,
+            "engrams": rotated.engrams,
+            "archive_request": request,
+        }))
+    }
+
+    /// Sends the owner's NIP-IA archive request to `relays` on a thread of
+    /// its own, as the owner.
+    fn archive(
+        &self,
+        store: &Store,
+        owner: &secp256k1::SecretKey,
+        request: nostr::domain::Event,
+        relays: Vec<String>,
+        now: u64,
+    ) {
+        let store = store.clone();
+        let owner = *owner;
+        let relays_to = self.relays.clone();
+        std::thread::spawn(move || {
+            super::agent_lifecycle::send_archive(
+                &store,
+                &owner,
+                &request,
+                &relays,
+                relays_to.as_ref(),
+                now,
+            );
+        });
+    }
+
     /// The checkouts a new agent may work in, most likely first: the
     /// studio's repository, the host's workspaces, the checkouts its
     /// recent tasks ran in, and other agents' workspaces. Each is a Git
@@ -779,7 +903,7 @@ impl Agents {
         let live = shared.live.get(&record.name);
         let doing = live.map_or(Doing::Idle, |l| l.doing);
         let activity = match (record.state, doing) {
-            (State::Paused | State::Stopped | State::Retired, d)
+            (State::Paused | State::Stopped | State::Retired | State::Moved, d)
                 if !matches!(d, Doing::Running | Doing::Testing | Doing::Thinking) =>
             {
                 Activity::Paused
@@ -847,6 +971,12 @@ impl Agents {
                 return Err(coder_host::tasks::refuse(
                     Code::Forbidden,
                     format!("{name} is retired."),
+                ));
+            }
+            State::Moved => {
+                return Err(coder_host::tasks::refuse(
+                    Code::Forbidden,
+                    format!("{name} moved to another computer, which runs her now."),
                 ));
             }
             state => {
@@ -1519,7 +1649,7 @@ impl Agents {
         note(&format!("stop 3 of 4: {cancelled}"));
         // 4. Her grants on other computers.
         note("stop 4 of 4: she holds no grants on other computers to revoke");
-        if record.state != State::Retired {
+        if !record.state.is_gone() {
             record.state = State::Stopped;
             store
                 .save(&record)
@@ -1558,10 +1688,10 @@ impl Agents {
     /// No such agent, a retired one, or her record cannot be written.
     pub fn pause(&self, name: &str, pause: bool, from: &str) -> Result<(), Code> {
         let (store, mut record) = self.store(name)?;
-        if record.state == State::Retired {
+        if record.state.is_gone() {
             return Err(coder_host::tasks::refuse(
                 Code::Forbidden,
-                format!("{name} is retired."),
+                format!("{name} is {}.", record.state.word()),
             ));
         }
         record.state = if pause { State::Paused } else { State::Active };

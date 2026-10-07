@@ -168,7 +168,7 @@ pub struct AgentView {
     pub look: String,
     /// The route it plans with, or the model that answered last.
     pub route: String,
-    /// `active`, `paused`, `stopped`, or `retired`.
+    /// `active`, `paused`, `stopped`, `retired`, or `moved`.
     pub state: String,
     /// What it is doing now, as a studio seat's activity.
     pub activity: crate::studio::Activity,

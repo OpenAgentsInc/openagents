@@ -332,6 +332,14 @@ instructions file. `agent_coder::instructions` is deleted.
 | Migrate to another host | The owner's other host receives her key through the owner's own key transfer (never a relay), her engrams from the relay or a copied directory, and a delegated grant; the old host marks her `moved`. One host runs her at a time; the record names the controller. |
 | Export | A snapshot without her key: definition, `core`, and optionally all memory as plaintext, only on the owner's explicit choice. |
 
+Phase 7 implements rotate, retire, export, import, the `moved` state, and
+NIP-GS signatures on her merged worktree changes in
+`coder::task::agent_lifecycle` and `coder::task::agent_git_sign`, with
+`openagents agent rotate`, `retire`, `move`, `export`, `import`, and
+`signing`, and the owner-only host operations `studio.agent.rotate` and
+`studio.agent.retire`. Enrolling her key on the other host with a delegated
+grant is still the owner's step (`NEEDS_OWNER.md`).
+
 ### In Verse
 
 | Surface | Shows |

@@ -73,6 +73,11 @@ impl Inbox {
     /// host root, and run their standing jobs on each sweep.
     #[must_use]
     pub fn with_agents(mut self, agents: super::agent_host::Agents) -> Self {
+        // A workshop agent who signs her commits signs her merged change.
+        super::studio::git::set_seat_signer(
+            &self.store,
+            super::agent_git_sign::seat_signer(agents.root()),
+        );
         let agents = match &self.autostart {
             Some(autostart) => {
                 let autostart = autostart.clone();
@@ -414,17 +419,26 @@ impl Tasks for Inbox {
     fn new_agent(
         &self,
         _key: &str,
-        _principal: &Principal,
+        principal: &Principal,
         op: &Operation,
         owner: Option<&secp256k1::SecretKey>,
     ) -> Result<serde_json::Value, Code> {
-        let (Some(agents), Operation::NewAgent { agent, workspace }) = (&self.agents, op) else {
+        let Some(agents) = &self.agents else {
             return Err(coder_host::tasks::refuse(
                 Code::Unsupported,
                 "This host keeps no workshop agents.",
             ));
         };
-        agents.create(agent, std::path::Path::new(workspace), owner)
+        match op {
+            Operation::NewAgent { agent, workspace } => {
+                agents.create(agent, std::path::Path::new(workspace), owner)
+            }
+            Operation::RetireAgent { agent } => agents.retire(agent, owner, &principal.device),
+            Operation::RotateAgent { agent, reason } => {
+                agents.rotate(agent, reason, owner, &principal.device)
+            }
+            _ => Err(Code::Unsupported),
+        }
     }
 
     fn agent_reports(&self) -> Vec<coder_host::AgentReport> {
