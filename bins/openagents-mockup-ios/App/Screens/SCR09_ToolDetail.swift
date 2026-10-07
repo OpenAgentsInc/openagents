@@ -12,7 +12,7 @@ struct SCR09ToolDetail: View {
         ScreenScaffold {
             TopBar(back: BackControl(label: "Tools") { app.back() }, title: tool.name)
         } content: {
-            Image(systemName: tool.icon).font(.system(size: 44, weight: .semibold))
+            Image(systemName: tool.icon).font(.paper(44, weight: .semibold))
                 .frame(maxWidth: .infinity).padding(.vertical, Theme.Space.s)
             // E01
             Text(tool.line).font(Theme.Fonts.title).fixedSize(horizontal: false, vertical: true)

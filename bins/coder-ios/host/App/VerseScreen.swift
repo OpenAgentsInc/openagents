@@ -182,11 +182,11 @@ struct VerseScreen: View {
             }
             VStack(alignment: .leading, spacing: 8) {
                 if let error = bridge.nativeError ?? bridge.packet?.error {
-                    Text(error).font(.callout).textSelection(.enabled).accessibilityIdentifier("verse-error")
+                    Text(error).font(.paper(.callout)).textSelection(.enabled).accessibilityIdentifier("verse-error")
                     Button("Retry world renderer") { bridge.retry() }
                 }
                 if let error = bridge.doorStorageError ?? bridge.packet?.doors.error {
-                    Text(error).font(.callout).textSelection(.enabled).accessibilityIdentifier("door-storage-error")
+                    Text(error).font(.paper(.callout)).textSelection(.enabled).accessibilityIdentifier("door-storage-error")
                     if bridge.canRetryDoorSave {
                         Button("Retry saving choices") { bridge.retryDoorPreferences() }
                             .accessibilityIdentifier("door-save-retry")
@@ -218,7 +218,7 @@ struct VerseScreen: View {
                         .disabled(!active).accessibilityIdentifier("verse-motion-recenter")
                     }
                     if let error = bridge.motionError {
-                        Text(error).font(.caption).accessibilityIdentifier("verse-motion-error")
+                        Text(error).font(.paper(.caption)).accessibilityIdentifier("verse-motion-error")
                     }
                 }
             }

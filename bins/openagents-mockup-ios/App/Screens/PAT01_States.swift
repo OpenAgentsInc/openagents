@@ -31,7 +31,7 @@ struct PAT01States: View {
         let c = content
         VStack(alignment: .leading, spacing: Theme.Space.s) {
             Spacer()
-            Image(systemName: c.icon).font(.system(size: 44, weight: .light))
+            Image(systemName: c.icon).font(.paper(44, weight: .light))
                 .padding(.bottom, Theme.Space.s)
             // E01, E02, E03
             Text(c.what).font(Theme.Fonts.title)
@@ -86,7 +86,7 @@ struct PAT01Inline: View {
     var body: some View {
         ChatCardFrame {
             HStack(alignment: .top, spacing: Theme.Space.s) {
-                Image(systemName: icon).font(.system(size: 22, weight: .regular)).frame(width: 28)
+                Image(systemName: icon).font(.paper(22)).frame(width: 28)
                 VStack(alignment: .leading, spacing: 4) {
                     // E01, E02, E03
                     Text(what).font(Theme.Fonts.bodyBold)

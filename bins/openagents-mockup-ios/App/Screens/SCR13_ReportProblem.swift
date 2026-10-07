@@ -23,7 +23,7 @@ struct SCR13ReportProblem: View {
                 Text("Report a problem").condensedTitle(Theme.Fonts.screenTitle, tracking: 1.2)
                 Spacer()
                 Button { dismiss() } label: {
-                    Image(systemName: "xmark").font(.system(size: 17, weight: .bold))
+                    Image(systemName: "xmark").font(.paper(17, weight: .bold))
                         .frame(width: 44, height: 44)
                 }
             }
@@ -32,7 +32,7 @@ struct SCR13ReportProblem: View {
             case .sent, .offlineSaved:
                 Spacer()
                 Image(systemName: shown == .sent ? "checkmark.circle" : "tray.and.arrow.down")
-                    .font(.system(size: 48, weight: .light))
+                    .font(.paper(48, weight: .light))
                     .frame(maxWidth: .infinity)
                 Text(shown == .sent ? "Thanks. We got it. Code: \(MockData.reportCode)."
                                     : "Saved. We'll send it when you're back online.")

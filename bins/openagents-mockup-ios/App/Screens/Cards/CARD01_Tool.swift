@@ -31,7 +31,7 @@ struct CARD01Tool: View {
                 ChatCardFrame(highlighted: state == .ready) {
                     // E01, E02
                     HStack(spacing: 10) {
-                        Image(systemName: tool.icon).font(.system(size: 20, weight: .semibold))
+                        Image(systemName: tool.icon).font(.paper(20, weight: .semibold))
                         Text(tool.name).condensedTitle(Theme.Fonts.cardTitle)
                     }
                     CardNote(text: tool.line)

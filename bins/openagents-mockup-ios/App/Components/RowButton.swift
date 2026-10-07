@@ -19,7 +19,7 @@ struct RowButton: View {
         Button(action: action) {
             HStack(spacing: Theme.Space.s) {
                 Image(systemName: icon)
-                    .font(.system(size: Theme.Size.rowIcon * 0.8, weight: .bold))
+                    .font(.paper(Theme.Size.rowIcon * 0.8, weight: .bold))
                     .frame(width: Theme.Size.rowIconBox, height: Theme.Size.rowIconBox)
                     .foregroundStyle(fg)
                 VStack(alignment: .leading, spacing: 2) {
@@ -38,7 +38,7 @@ struct RowButton: View {
                 }
                 .frame(maxWidth: .infinity, alignment: .leading)
                 Image(systemName: "chevron.right")
-                    .font(.system(size: 17, weight: .bold))
+                    .font(.paper(17, weight: .bold))
                     .foregroundStyle(sub)
             }
             .padding(.horizontal, Theme.Space.s)
@@ -73,7 +73,7 @@ struct ListRow: View {
             HStack(spacing: Theme.Space.s) {
                 if let icon {
                     Image(systemName: icon)
-                        .font(.system(size: 18, weight: .semibold))
+                        .font(.paper(18, weight: .semibold))
                         .frame(width: 28)
                         .foregroundStyle(Theme.Colors.textPrimary)
                 }
@@ -89,7 +89,7 @@ struct ListRow: View {
                     Text(trailing).font(Theme.Fonts.caption).foregroundStyle(Theme.Colors.textSecondary)
                 }
                 if chevron && action != nil {
-                    Image(systemName: "chevron.right").font(.system(size: 14, weight: .bold))
+                    Image(systemName: "chevron.right").font(.paper(14, weight: .bold))
                         .foregroundStyle(Theme.Colors.textTertiary)
                 }
             }

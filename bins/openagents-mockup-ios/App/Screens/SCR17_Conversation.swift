@@ -95,7 +95,7 @@ struct SCR17Conversation: View {
         if isFirstRun {
             // SCR-15.E12: the step, no < Menu, no ☰ (the path can't be left half-done).
             ZStack {
-                Text("OpenAgents").font(.system(size: 19, weight: .bold))
+                Text("OpenAgents").font(.paper(19, weight: .bold))
                 HStack {
                     Text("STEP \(step) OF 3")
                         .condensedTitle(Theme.Fonts.sectionLabel, tracking: Theme.Tracking.sectionLabel)
@@ -114,7 +114,7 @@ struct SCR17Conversation: View {
                        onMenu: { app.go(.previousChats(.normal)) },
                        title: "OpenAgents") {
                 Button { app.go(.newChat(.returning)) } label: {
-                    Image(systemName: "square.and.pencil").font(.system(size: 19, weight: .semibold))
+                    Image(systemName: "square.and.pencil").font(.paper(19, weight: .semibold))
                         .frame(width: 44, height: 44)
                 }
             }

@@ -124,9 +124,10 @@ Drag a PNG into the 2x/3x wells in Xcode. When a slot is filled the app
 uses it; when it's empty it draws the placeholder in code. The app icon is
 `AppIcon.appiconset/AppIcon-1024.png` (1024×1024, no transparency).
 
-To use a custom font, add the `.ttf`/`.otf` to `App/`, register it under
-`UIAppFonts` in the app's Info.plist settings, and change `Theme.Fonts` to
-`Font.custom("Name", size: …)`.
+Every font is Paper Mono. `project.yml` bundles the four static faces from
+`crates/paper-mono/fonts` and registers them under `UIAppFonts`, and
+`App/PaperMono.swift` holds `Font.paper`, which `Theme.Fonts` and every
+screen use. Paper Mono has no italic, and weights above Bold draw as Bold.
 
 ## Screens and spec IDs
 

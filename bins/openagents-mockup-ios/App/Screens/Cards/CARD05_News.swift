@@ -37,7 +37,7 @@ struct CARD05News: View {
                                 }
                                 Spacer(minLength: 0)
                                 if item.opens != nil {
-                                    Image(systemName: "chevron.right").font(.system(size: 13, weight: .bold))
+                                    Image(systemName: "chevron.right").font(.paper(13, weight: .bold))
                                         .foregroundStyle(Theme.Colors.textTertiary).padding(.top, 5)
                                 }
                             }

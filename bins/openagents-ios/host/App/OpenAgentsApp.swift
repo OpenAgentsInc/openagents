@@ -10,9 +10,12 @@ struct OpenAgentsApp: App {
     @StateObject private var bridge = MobileBridge()
     @Environment(\.scenePhase) private var scenePhase
 
+    init() { PaperMono.installAppearance() }
+
     var body: some Scene {
         WindowGroup {
             HomeScreen(bridge: bridge)
+                .font(.paper(.body))
                 .dismissesKeyboardOnOutsideTap()
                 .onChange(of: scenePhase, initial: true) { _, phase in
                     if phase != .inactive { bridge.lifecycle(phase == .active) }
@@ -80,10 +83,10 @@ struct ComputersTab: View {
     var body: some View {
         VStack(spacing: 0) {
             ForEach(bridge.packet?.notices ?? [], id: \.self) { notice in
-                Text(notice).font(.caption).foregroundStyle(.secondary).padding(.horizontal)
+                Text(notice).font(.paper(.caption)).foregroundStyle(.secondary).padding(.horizontal)
             }
             if let failure = bridge.failure {
-                Text(failure).font(.caption).padding(.horizontal)
+                Text(failure).font(.paper(.caption)).padding(.horizontal)
             }
             if let home {
                 ComputersList(home: home, bridge: bridge)
@@ -182,10 +185,10 @@ private struct ComputersList: View {
                 Section {
                     VStack(spacing: 12) {
                         Image(systemName: "desktopcomputer")
-                            .font(.system(size: 40, weight: .light))
+                            .font(.paper(40, weight: .light))
                             .foregroundStyle(.secondary)
                         Text(empty)
-                            .font(.subheadline)
+                            .font(.paper(.subheadline))
                             .foregroundStyle(.secondary)
                             .multilineTextAlignment(.center)
                         Button(home.connect) { bridge.connectOpen() }
@@ -267,17 +270,17 @@ private struct ComputerRow: View {
                 .accessibilityHidden(true)
             VStack(alignment: .leading, spacing: 2) {
                 Text(row.name).foregroundStyle(.white)
-                Text(row.status).font(.subheadline).foregroundStyle(.secondary)
+                Text(row.status).font(.paper(.subheadline)).foregroundStyle(.secondary)
                 if let watchers = row.watchers {
-                    Text(watchers).font(.footnote).foregroundStyle(.secondary)
+                    Text(watchers).font(.paper(.footnote)).foregroundStyle(.secondary)
                 }
                 if let background = row.background {
-                    Text(background).font(.footnote).foregroundStyle(.secondary)
+                    Text(background).font(.paper(.footnote)).foregroundStyle(.secondary)
                 }
             }
             Spacer(minLength: 8)
             Image(systemName: "chevron.right")
-                .font(.footnote.weight(.semibold))
+                .font(.paper(.footnote, weight: .semibold))
                 .foregroundStyle(.tertiary)
         }
         .padding(.vertical, 2)
@@ -589,9 +592,9 @@ struct InputBar: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
-            Text(input.label).font(.headline)
-            Text(input.prompt).font(.caption)
-            if let error { Text(error).font(.caption) }
+            Text(input.label).font(.paper(.headline))
+            Text(input.prompt).font(.paper(.caption))
+            if let error { Text(error).font(.paper(.caption)) }
             if scanning {
                 InlineQRScanner { send($0) }
                 Button("Type instead") { scanning = false }

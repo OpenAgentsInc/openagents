@@ -161,19 +161,19 @@ enum GymStyle {
     static let strokeStrong = Color(white: 1, opacity: 0.55)
     static let secondary = Color(white: 0.64)
     static let tertiary = Color(white: 0.44)
-    static let rowTitle = Font.system(size: 22, weight: .heavy).width(.condensed)
-    static let cardTitle = Font.system(size: 20, weight: .heavy).width(.condensed)
-    static let cardHeadline = Font.system(size: 26, weight: .black).width(.condensed)
-    static let cardNumber = Font.system(size: 30, weight: .black).width(.condensed)
-    static let headline = Font.system(size: 34, weight: .black).width(.condensed)
-    static let hugeNumber = Font.system(size: 44, weight: .black).width(.condensed)
-    static let levelNumber = Font.system(size: 120, weight: .black).width(.condensed)
-    static let button = Font.system(size: 20, weight: .heavy).width(.condensed)
-    static let section = Font.system(size: 14, weight: .bold).width(.condensed)
-    static let body = Font.system(size: 17)
-    static let bodyBold = Font.system(size: 17, weight: .semibold)
-    static let caption = Font.system(size: 13, weight: .medium)
-    static let wordmark = Font.system(size: 20, weight: .black).width(.expanded)
+    static let rowTitle = Font.paper(22, weight: .heavy)
+    static let cardTitle = Font.paper(20, weight: .heavy)
+    static let cardHeadline = Font.paper(26, weight: .black)
+    static let cardNumber = Font.paper(30, weight: .black)
+    static let headline = Font.paper(34, weight: .black)
+    static let hugeNumber = Font.paper(44, weight: .black)
+    static let levelNumber = Font.paper(120, weight: .black)
+    static let button = Font.paper(20, weight: .heavy)
+    static let section = Font.paper(14, weight: .bold)
+    static let body = Font.paper(17)
+    static let bodyBold = Font.paper(17, weight: .semibold)
+    static let caption = Font.paper(13, weight: .medium)
+    static let wordmark = Font.paper(20, weight: .black)
 
     /// The SF Symbol for a glyph Rust names.
     static func symbol(_ glyph: String?) -> String? {
@@ -226,7 +226,7 @@ struct GymPrimary: View {
             HStack(spacing: 10) {
                 if busy { ProgressView().tint(.black) }
                 if let symbol = GymStyle.symbol(button.glyph) {
-                    Image(systemName: symbol).font(.system(size: 18, weight: .bold))
+                    Image(systemName: symbol).font(.paper(18, weight: .bold))
                 }
                 Text(button.label).gymTitle(GymStyle.button)
             }
@@ -251,9 +251,9 @@ struct GymOutlined: View {
         Button { tap(button.id) } label: {
             HStack(spacing: 8) {
                 if let symbol = GymStyle.symbol(button.glyph) {
-                    Image(systemName: symbol).font(.system(size: 15, weight: .semibold))
+                    Image(systemName: symbol).font(.paper(15, weight: .semibold))
                 }
-                Text(button.label).font(.system(size: 16, weight: .semibold)).lineLimit(1)
+                Text(button.label).font(.paper(16, weight: .semibold)).lineLimit(1)
                     .minimumScaleFactor(0.8)
             }
             .foregroundStyle(.white)
@@ -277,9 +277,9 @@ struct GymChip: View {
         Button { tap(button.id) } label: {
             HStack(spacing: 6) {
                 if let symbol = GymStyle.symbol(button.glyph) {
-                    Image(systemName: symbol).font(.system(size: 14, weight: .semibold))
+                    Image(systemName: symbol).font(.paper(14, weight: .semibold))
                 }
-                Text(button.label).font(.system(size: 15, weight: .medium)).lineLimit(2)
+                Text(button.label).font(.paper(15, weight: .medium)).lineLimit(2)
                     .multilineTextAlignment(.leading)
             }
             .foregroundStyle(.white)
@@ -315,11 +315,11 @@ struct GymMark: View {
             case "check": Image(systemName: "checkmark").foregroundStyle(.white)
             case "cross": Image(systemName: "xmark").foregroundStyle(Color(white: 0.40))
             case "wait": Image(systemName: "ellipsis").foregroundStyle(GymStyle.secondary)
-            case "dot": Image(systemName: "circle.fill").font(.system(size: 6)).foregroundStyle(.white)
+            case "dot": Image(systemName: "circle.fill").font(.paper(6)).foregroundStyle(.white)
             default: Image(systemName: "minus").foregroundStyle(GymStyle.tertiary)
             }
         }
-        .font(.system(size: 14, weight: .heavy))
+        .font(.paper(14, weight: .heavy))
         .frame(width: 22)
     }
 }
@@ -334,7 +334,7 @@ struct GymItemRow: View {
                 Text(item.text).font(GymStyle.body).foregroundStyle(.white)
                     .fixedSize(horizontal: false, vertical: true)
                 if let detail = item.detail {
-                    Text(detail).font(.system(size: 15)).foregroundStyle(GymStyle.secondary)
+                    Text(detail).font(.paper(15)).foregroundStyle(GymStyle.secondary)
                         .fixedSize(horizontal: false, vertical: true)
                 }
             }
@@ -359,7 +359,7 @@ struct GymCompareView: View {
                     Text(without).font(big ? GymStyle.hugeNumber : GymStyle.cardNumber)
                         .foregroundStyle(GymStyle.secondary)
                 }
-                Image(systemName: "arrow.right").font(.system(size: 20, weight: .bold))
+                Image(systemName: "arrow.right").font(.paper(20, weight: .bold))
                     .foregroundStyle(GymStyle.secondary).padding(.bottom, 8)
             }
             VStack(alignment: .leading, spacing: 2) {
@@ -475,7 +475,7 @@ struct GymCardView: View {
     @ViewBuilder private var header: some View {
         HStack(spacing: 10) {
             if let symbol = GymStyle.symbol(card.icon) {
-                Image(systemName: symbol).font(.system(size: 20, weight: .bold))
+                Image(systemName: symbol).font(.paper(20, weight: .bold))
             }
             Text(card.title)
                 .gymTitle(card.kind == "result" ? GymStyle.cardHeadline : GymStyle.cardTitle)
@@ -548,7 +548,7 @@ struct GymSheetView: View {
                 Spacer()
                 if let close = sheet.close {
                     Button { tap(close.id) } label: {
-                        Image(systemName: "xmark").font(.system(size: 18, weight: .bold))
+                        Image(systemName: "xmark").font(.paper(18, weight: .bold))
                             .foregroundStyle(.white).frame(width: 44, height: 44)
                     }
                     .accessibilityLabel(close.label)
@@ -708,7 +708,7 @@ struct GymHero: View {
                     }
                 }
                 .stroke(Color.white.opacity(0.75), lineWidth: 1.2)
-                Text("GYM").font(.system(size: 9, weight: .black).width(.expanded)).tracking(2)
+                Text("GYM").font(.paper(9, weight: .black)).tracking(2)
                     .foregroundStyle(.white).position(x: w * 0.66, y: h * 0.26)
                 Rectangle().fill(LinearGradient(colors: [.white, .white.opacity(0.3)], startPoint: .top, endPoint: .bottom))
                     .frame(width: w * 0.06, height: h * 0.12).position(x: w * 0.66, y: h * 0.42)
@@ -764,13 +764,13 @@ struct GymMenuView: View {
                     .accessibilityIdentifier("menu-next")
                 Button { tap(menu.primary.id) } label: {
                     HStack(spacing: 12) {
-                        Image(systemName: "bubble.left.fill").font(.system(size: 22, weight: .bold)).frame(width: 40)
+                        Image(systemName: "bubble.left.fill").font(.paper(22, weight: .bold)).frame(width: 40)
                         VStack(alignment: .leading, spacing: 2) {
                             Text(menu.primary.label).gymTitle().lineLimit(1).minimumScaleFactor(0.8)
-                            Text(menu.primary_subtitle).font(.system(size: 16)).opacity(0.62)
+                            Text(menu.primary_subtitle).font(.paper(16)).opacity(0.62)
                         }
                         .frame(maxWidth: .infinity, alignment: .leading)
-                        Image(systemName: "chevron.right").font(.system(size: 17, weight: .bold)).opacity(0.62)
+                        Image(systemName: "chevron.right").font(.paper(17, weight: .bold)).opacity(0.62)
                     }
                     .foregroundStyle(.black)
                     .padding(12)
@@ -785,13 +785,13 @@ struct GymMenuView: View {
                     Button { tap(row.button.id) } label: {
                         HStack(spacing: 12) {
                             Image(systemName: GymStyle.symbol(row.glyph) ?? "circle")
-                                .font(.system(size: 22, weight: .bold)).frame(width: 40)
+                                .font(.paper(22, weight: .bold)).frame(width: 40)
                             VStack(alignment: .leading, spacing: 2) {
                                 Text(row.button.label).gymTitle().lineLimit(1).minimumScaleFactor(0.8)
-                                Text(row.subtitle).font(.system(size: 16)).foregroundStyle(GymStyle.secondary)
+                                Text(row.subtitle).font(.paper(16)).foregroundStyle(GymStyle.secondary)
                             }
                             .frame(maxWidth: .infinity, alignment: .leading)
-                            Image(systemName: "chevron.right").font(.system(size: 17, weight: .bold))
+                            Image(systemName: "chevron.right").font(.paper(17, weight: .bold))
                                 .foregroundStyle(GymStyle.secondary)
                         }
                         .foregroundStyle(.white)
@@ -872,7 +872,7 @@ struct GymFirstRunView: View {
                 }
             }
             Spacer(minLength: 0)
-            Text(first.title).font(.system(size: 26, weight: .bold)).foregroundStyle(.white)
+            Text(first.title).font(.paper(26, weight: .bold)).foregroundStyle(.white)
             ForEach(first.lines, id: \.self) { line in
                 Text(line).font(GymStyle.body).foregroundStyle(GymStyle.secondary)
             }
@@ -889,7 +889,7 @@ struct GymFirstRunView: View {
                         Text(agent[1]).font(GymStyle.body).foregroundStyle(GymStyle.secondary)
                     }
                     Spacer()
-                    Image(systemName: "checkmark.circle.fill").font(.system(size: 24)).foregroundStyle(.white)
+                    Image(systemName: "checkmark.circle.fill").font(.paper(24)).foregroundStyle(.white)
                 }
                 .padding(16)
                 .background(RoundedRectangle(cornerRadius: 16).fill(GymStyle.card))

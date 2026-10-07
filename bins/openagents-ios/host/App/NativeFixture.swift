@@ -52,7 +52,7 @@ private struct NativeFixtureScreen: View {
                                })
                     .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
             } else if let failure {
-                Text(failure).font(.caption).foregroundStyle(.white).padding()
+                Text(failure).font(.paper(.caption)).foregroundStyle(.white).padding()
             }
         }
         .preferredColorScheme(.dark)

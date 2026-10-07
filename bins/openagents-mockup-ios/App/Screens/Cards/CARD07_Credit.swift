@@ -34,7 +34,7 @@ struct CARD07Credit: View {
                         ForEach(group.rows) { row in
                             HStack(spacing: 8) {
                                 Image(systemName: row.done ? "checkmark" : "ellipsis")
-                                    .font(.system(size: 13, weight: .heavy))
+                                    .font(.paper(13, weight: .heavy))
                                     .foregroundStyle(row.done ? Theme.Colors.markPass : Theme.Colors.markFail)
                                     .frame(width: 18)
                                 Text(row.text).font(Theme.Fonts.body)

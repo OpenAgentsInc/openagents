@@ -56,7 +56,7 @@ struct SCR11Profile: View {
                                 Text("\(o.withoutCount) → \(o.withCount) of \(o.total)").font(Theme.Fonts.body)
                                 Text(r.verdict).font(Theme.Fonts.body).foregroundStyle(Theme.Colors.textSecondary)
                                     .frame(width: 84, alignment: .leading)
-                                Image(systemName: "chevron.right").font(.system(size: 13, weight: .bold))
+                                Image(systemName: "chevron.right").font(.paper(13, weight: .bold))
                                     .foregroundStyle(Theme.Colors.textTertiary)
                             }
                             .foregroundStyle(Theme.Colors.textPrimary)

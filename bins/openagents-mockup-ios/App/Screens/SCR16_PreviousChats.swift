@@ -15,7 +15,7 @@ struct SCR16PreviousChats: View {
             // E01, E02, E03
             ChatHeader(back: BackControl(label: "OpenAgents") { app.back() }, onMenu: nil, title: "Chats") {
                 Button { app.go(.newChat(.returning)) } label: {
-                    Image(systemName: "square.and.pencil").font(.system(size: 19, weight: .semibold))
+                    Image(systemName: "square.and.pencil").font(.paper(19, weight: .semibold))
                         .frame(width: 44, height: 44)
                 }
             }

@@ -488,7 +488,7 @@ struct VerseTab: View {
                 // errors.
                 if let error = world.error, !boardOpen, !world.studioOpen {
                     VStack(spacing: 8) {
-                        Text(error).font(.callout).textSelection(.enabled)
+                        Text(error).font(.paper(.callout)).textSelection(.enabled)
                             .accessibilityIdentifier("verse-error")
                         Button("Retry world renderer") { world.retry() }
                     }
@@ -505,7 +505,7 @@ struct VerseTab: View {
                 // Everglade's hotbar, while a station is in reach.
                 if let label = world.interactLabel, !boardOpen, !world.studioOpen {
                     Button { world.interact() } label: {
-                        Text(label).font(.callout.weight(.semibold))
+                        Text(label).font(.paper(.callout, weight: .semibold))
                             .padding(.horizontal, 14).padding(.vertical, 10)
                     }
                     .buttonStyle(.borderedProminent)
@@ -585,12 +585,12 @@ struct VerseTab: View {
     /// failed connect.
     private func studioStatus(_ status: String) -> some View {
         HStack(spacing: 10) {
-            Text(status).font(.caption).foregroundStyle(.white.opacity(0.8))
+            Text(status).font(.paper(.caption)).foregroundStyle(.white.opacity(0.8))
                 .multilineTextAlignment(.center)
                 .accessibilityIdentifier("verse-studio-status")
             if world.studioFailed {
                 Button("Try again") { world.retryStudio(studioComputer, connect: connectStudio) }
-                    .font(.caption.weight(.semibold))
+                    .font(.paper(.caption, weight: .semibold))
                     .accessibilityIdentifier("verse-studio-retry")
             }
         }
@@ -625,7 +625,7 @@ struct VerseTab: View {
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
             if let error = world.error {
-                Text(error).font(.caption).foregroundStyle(.white.opacity(0.8))
+                Text(error).font(.paper(.caption)).foregroundStyle(.white.opacity(0.8))
                     .frame(maxWidth: .infinity, alignment: .leading)
                     .padding(.horizontal, 12).padding(.top, 6)
                     .accessibilityIdentifier("verse-studio-error")
@@ -686,7 +686,7 @@ struct VerseTab: View {
         VStack(alignment: .center, spacing: 4) {
             if let error = world.motionError {
                 // Narrow enough to stay between the two sticks.
-                Text(error).font(.caption).multilineTextAlignment(.center)
+                Text(error).font(.paper(.caption)).multilineTextAlignment(.center)
                     .frame(maxWidth: 180)
                     .accessibilityIdentifier("verse-motion-error")
             }

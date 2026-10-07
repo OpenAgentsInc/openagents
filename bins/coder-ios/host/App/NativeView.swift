@@ -175,7 +175,7 @@ private struct NativeIconButton: View {
         Button { activate(key) } label: {
             if icon.circular {
                 Image(systemName: icon.symbol ?? "circle")
-                    .font(.system(size: 17, weight: .medium))
+                    .font(.paper(17, weight: .medium))
                     .frame(width: 44, height: 44)
                     .background(Circle().fill(Color(uiColor: NativeChatPalette.raised)))
                     .overlay(Circle().strokeBorder(Color(uiColor: NativeChatPalette.border), lineWidth: 0.5))
@@ -184,8 +184,8 @@ private struct NativeIconButton: View {
                 // A chip: the glyph and one line of label in a capsule, as
                 // tall as the round buttons' touch target allows.
                 HStack(spacing: 6) {
-                    Image(systemName: icon.symbol ?? "circle").font(.system(size: 13, weight: .semibold))
-                    Text(label).font(.subheadline).lineLimit(1).truncationMode(.middle)
+                    Image(systemName: icon.symbol ?? "circle").font(.paper(13, weight: .semibold))
+                    Text(label).font(.paper(.subheadline)).lineLimit(1).truncationMode(.middle)
                 }
                 .padding(.horizontal, 14)
                 .frame(minHeight: 36)
@@ -196,7 +196,7 @@ private struct NativeIconButton: View {
                 // Top-aligned rows keep the label level with text beside it;
                 // the padding widens the tap target without moving it.
                 HStack(spacing: 4) {
-                    Image(systemName: icon.symbol ?? "circle").font(.system(size: 17, weight: .semibold))
+                    Image(systemName: icon.symbol ?? "circle").font(.paper(17, weight: .semibold))
                     Text(label)
                 }
                 .padding(.vertical, 10)
@@ -222,7 +222,7 @@ struct NativeView: Decodable {
 /// The cell font for Rust Native's terminal text role. The terminal screen
 /// sizes its grid from these metrics.
 enum TerminalMetrics {
-    static let font = UIFont.monospacedSystemFont(ofSize: 12, weight: .regular)
+    static let font = UIFont.paper(12)
     static var cell: CGSize {
         let width = ("M" as NSString).size(withAttributes: [.font: font]).width
         return CGSize(width: ceil(width * 100) / 100, height: ceil(font.lineHeight))
@@ -367,8 +367,8 @@ private struct NativeText: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 4) {
             text
-                .font(role == "code" ? .system(.body, design: .monospaced) :
-                      role == "heading" ? .headline : role == "status" ? .caption : .body)
+                .font(role == "code" ? .paper(.body) :
+                      role == "heading" ? .paper(.headline) : role == "status" ? .paper(.caption) : .paper(.body))
                 .textSelection(.enabled)
                 .fixedSize(horizontal: false, vertical: true)
                 .accessibilityAddTraits(role == "heading" ? .isHeader : [])

@@ -71,48 +71,48 @@ enum Theme {
 
     // MARK: Fonts
     //
-    // "Condensed" titles use the system font's condensed width, which is
-    // the closest built-in match to the reference's condensed uppercase
-    // look. To use a custom font, add the .ttf/.otf to App/, list it under
-    // UIAppFonts in project.yml, and change these to Font.custom(...).
+    // Every font is Paper Mono, bundled from crates/paper-mono/fonts and
+    // listed under UIAppFonts in project.yml; `Font.paper` in
+    // PaperMono.swift picks the face. Uppercase titles keep their weight
+    // and tracking; Paper Mono has no condensed width.
 
     enum Fonts {
         /// Row titles: CHAT WITH OPENAGENTS, PROFILE.
-        static let rowTitle = Font.system(size: 22, weight: .heavy).width(.condensed)
+        static let rowTitle = Font.paper(22, weight: .heavy)
         /// Screen titles in the top bar: YOUR RESULT, PROFILE.
-        static let screenTitle = Font.system(size: 19, weight: .heavy).width(.condensed)
+        static let screenTitle = Font.paper(19, weight: .heavy)
         /// Big headlines: CODER GOT BETTER, LEVEL UP.
-        static let headline = Font.system(size: 34, weight: .black).width(.condensed)
+        static let headline = Font.paper(34, weight: .black)
         /// The huge numbers: 5 of 8 --> 7 of 8, the level number.
-        static let hugeNumber = Font.system(size: 44, weight: .black).width(.condensed)
-        static let levelNumber = Font.system(size: 120, weight: .black).width(.condensed)
+        static let hugeNumber = Font.paper(44, weight: .black)
+        static let levelNumber = Font.paper(120, weight: .black)
         /// Chat cards: the card's title (PROJECT MAP), its verdict
         /// (CODER GOT BETTER), and its big numbers (5 of 8 → 7 of 8).
-        static let cardTitle = Font.system(size: 20, weight: .heavy).width(.condensed)
-        static let cardHeadline = Font.system(size: 26, weight: .black).width(.condensed)
-        static let cardNumber = Font.system(size: 30, weight: .black).width(.condensed)
+        static let cardTitle = Font.paper(20, weight: .heavy)
+        static let cardHeadline = Font.paper(26, weight: .black)
+        static let cardNumber = Font.paper(30, weight: .black)
         /// Primary button label.
-        static let button = Font.system(size: 20, weight: .heavy).width(.condensed)
+        static let button = Font.paper(20, weight: .heavy)
         /// Section labels: TESTS, YOUR RESULTS.
-        static let sectionLabel = Font.system(size: 14, weight: .bold).width(.condensed)
+        static let sectionLabel = Font.paper(14, weight: .bold)
         /// Screen intro lines ("Choose your agent").
-        static let title = Font.system(size: 26, weight: .bold)
+        static let title = Font.paper(26, weight: .bold)
         /// Body text and subtitles (spec: at least 17 pt).
-        static let body = Font.system(size: 17)
-        static let bodyBold = Font.system(size: 17, weight: .semibold)
-        static let subtitle = Font.system(size: 17)
+        static let body = Font.paper(17)
+        static let bodyBold = Font.paper(17, weight: .semibold)
+        static let subtitle = Font.paper(17)
         /// Menu row subtitles. 16 keeps "Test a tool, see what's new, earn XP"
         /// on one line; the spec asks for at least 17 pt, so this is a
         /// deliberate designer call to revisit.
-        static let rowSubtitle = Font.system(size: 16)
+        static let rowSubtitle = Font.paper(16)
         /// Small gray notes (codes, footer, "Prepared answer").
-        static let caption = Font.system(size: 13, weight: .medium)
-        static let captionMono = Font.system(size: 13, weight: .medium, design: .monospaced)
-        static let mono = Font.system(size: 15, design: .monospaced)
+        static let caption = Font.paper(13, weight: .medium)
+        static let captionMono = Font.paper(13, weight: .medium)
+        static let mono = Font.paper(15)
         /// The OPENAGENTS wordmark.
-        static let wordmark = Font.system(size: 20, weight: .black).width(.expanded)
+        static let wordmark = Font.paper(20, weight: .black)
         /// Cinematic subtitles (spec: large, white on a dark band).
-        static let subtitleBand = Font.system(size: 22, weight: .semibold)
+        static let subtitleBand = Font.paper(22, weight: .semibold)
     }
 
     /// Letter spacing for uppercase condensed titles.

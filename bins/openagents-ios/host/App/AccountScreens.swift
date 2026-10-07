@@ -38,7 +38,7 @@ private struct KeyText: View {
 
     var body: some View {
         Text(verbatim: lines)
-            .font(.system(.footnote, design: .monospaced))
+            .font(.paper(.footnote))
             .foregroundStyle(value == nil ? .secondary : .primary)
             .fixedSize(horizontal: false, vertical: true)
             .accessibilityLabel(value ?? "Not available yet.")
@@ -117,7 +117,7 @@ struct IdentityKeysScreen: View {
                     Button("Hide nsec", systemImage: "eye.slash") { self.nsec = nil }
                 } else {
                     Text(String(repeating: "•", count: 24))
-                        .font(.system(.footnote, design: .monospaced))
+                        .font(.paper(.footnote))
                         .foregroundStyle(.secondary)
                         .accessibilityLabel("Hidden")
                     Button("Reveal nsec", systemImage: "eye") { warning = true }
@@ -210,23 +210,23 @@ struct ChangelogScreen: View {
             ForEach(releases, id: \.self) { release in
                 Section {
                     VStack(alignment: .leading, spacing: 2) {
-                        Text("What to test").font(.subheadline.weight(.semibold))
-                        Text(release.what_to_test).font(.subheadline)
+                        Text("What to test").font(.paper(.subheadline, weight: .semibold))
+                        Text(release.what_to_test).font(.paper(.subheadline))
                             .fixedSize(horizontal: false, vertical: true)
                     }
                     .padding(.vertical, 2)
                     .accessibilityIdentifier("changelog-what-to-test")
                     ForEach(release.items, id: \.self) { item in
                         VStack(alignment: .leading, spacing: 2) {
-                            Text(item.title).font(.body.weight(.semibold))
-                            Text(item.detail).font(.subheadline).foregroundStyle(.secondary)
+                            Text(item.title).font(.paper(.body, weight: .semibold))
+                            Text(item.detail).font(.paper(.subheadline)).foregroundStyle(.secondary)
                                 .fixedSize(horizontal: false, vertical: true)
                         }
                         .padding(.vertical, 2)
                     }
                 } header: {
                     HStack(alignment: .firstTextBaseline) {
-                        Text("\(release.version) (\(release.build))").font(.headline).foregroundStyle(.white)
+                        Text("\(release.version) (\(release.build))").font(.paper(.headline)).foregroundStyle(.white)
                         Text(release.title)
                         Spacer()
                     }
@@ -282,7 +282,7 @@ struct TrainerScreen: View {
                 Section {
                     Label("Preview: a labeled fixture of six tutorial reproductions, not real awards.",
                           systemImage: "flask")
-                        .font(.footnote)
+                        .font(.paper(.footnote))
                         .foregroundStyle(.yellow)
                 }
             }
@@ -290,18 +290,18 @@ struct TrainerScreen: View {
                 if let card {
                     VStack(alignment: .leading, spacing: 8) {
                         HStack(alignment: .firstTextBaseline) {
-                            Text("Level \(card.level)").font(.largeTitle.bold())
+                            Text("Level \(card.level)").font(.paper(.largeTitle, weight: .bold))
                             Spacer()
-                            Text("\(card.xp) XP").font(.title3.monospacedDigit())
+                            Text("\(card.xp) XP").font(.paper(.title3))
                         }
                         ProgressView(value: progress)
                             .tint(.white)
                             .accessibilityIdentifier("trainer-progress")
                         Text("\(card.to_next) XP to level \(card.level + 1) · \(card.curve)")
-                            .font(.footnote)
+                            .font(.paper(.footnote))
                             .foregroundStyle(.secondary)
                         Text("Over your head in the Grid: \(card.tag)\(card.xp > 0 && card.profile == "shown" ? " · lv \(card.level)" : "")")
-                            .font(.footnote.monospaced())
+                            .font(.paper(.footnote))
                             .foregroundStyle(.secondary)
                     }
                     .padding(.vertical, 4)
@@ -334,7 +334,7 @@ struct TrainerScreen: View {
                         HStack { ProgressView(); Text("Publishing…").foregroundStyle(.secondary) }
                     }
                     if let error = card.profile_error {
-                        Text(error).font(.footnote).foregroundStyle(.red)
+                        Text(error).font(.paper(.footnote)).foregroundStyle(.red)
                     }
                 } header: {
                     Text("Level over your head")
@@ -346,16 +346,16 @@ struct TrainerScreen: View {
                 Section {
                     if let trainer = card.linked_to {
                         Text("This key is linked to the trainer \(String(trainer.prefix(16)))…, so its XP counts there.")
-                            .font(.footnote)
+                            .font(.paper(.footnote))
                             .foregroundStyle(.secondary)
                     }
                     ForEach(card.linked_keys, id: \.self) { key in
                         HStack {
                             VStack(alignment: .leading, spacing: 2) {
-                                Text(String(key.npub.prefix(20)) + "…").font(.body.monospaced())
+                                Text(String(key.npub.prefix(20)) + "…").font(.paper(.body))
                                 Text(key.status == "linked" ? "Linked both ways: its XP counts here"
                                                             : "Waiting for this key to link back")
-                                    .font(.caption)
+                                    .font(.paper(.caption))
                                     .foregroundStyle(key.status == "linked" ? .green : .secondary)
                             }
                             Spacer()
@@ -382,11 +382,11 @@ struct TrainerScreen: View {
                         .accessibilityIdentifier("trainer-export")
                     if let export {
                         if let error = export.error {
-                            Text(error).font(.footnote).foregroundStyle(.red)
+                            Text(error).font(.paper(.footnote)).foregroundStyle(.red)
                         }
                         if let link = export.link, let url = URL(string: link) {
                             ShareLink(item: url) { Label("Share link", systemImage: "link") }
-                            Text(link).font(.caption.monospaced()).foregroundStyle(.secondary)
+                            Text(link).font(.paper(.caption)).foregroundStyle(.secondary)
                                 .textSelection(.enabled)
                         }
                         if let json = export.json, let name = export.file_name {
@@ -398,7 +398,7 @@ struct TrainerScreen: View {
                              : card.card_status == "published" ? "Published to \(card.relay)."
                              : card.card_status == "failed" ? "The relay didn't take the card. Export again."
                              : "Publishing…")
-                            .font(.footnote)
+                            .font(.paper(.footnote))
                             .foregroundStyle(card.card_status == "failed" ? .red : .secondary)
                     }
                 } header: {
@@ -416,7 +416,7 @@ struct TrainerScreen: View {
                 Section {
                     if card.awards.isEmpty {
                         Text("No awards yet. Reproduce a published pass from its recipe to earn your first; a tutorial quest is worth 50 XP.")
-                            .font(.subheadline)
+                            .font(.paper(.subheadline))
                             .foregroundStyle(.secondary)
                     }
                     ForEach(card.awards, id: \.self) { award in
@@ -424,12 +424,12 @@ struct TrainerScreen: View {
                             Link(destination: url) {
                                 VStack(alignment: .leading, spacing: 2) {
                                     HStack(alignment: .firstTextBaseline) {
-                                        Text(award.title).font(.body.weight(.semibold))
+                                        Text(award.title).font(.paper(.body, weight: .semibold))
                                         Spacer()
-                                        Text("+\(award.xp) XP").font(.subheadline.monospacedDigit())
+                                        Text("+\(award.xp) XP").font(.paper(.subheadline))
                                     }
                                     Text("\(award.quest) · \(award.role) · \(award.season)")
-                                        .font(.caption.monospaced())
+                                        .font(.paper(.caption))
                                         .foregroundStyle(.secondary)
                                 }
                             }
@@ -555,7 +555,7 @@ struct YourKeysScreen: View {
                             }
                         }
                         if let line = row.line {
-                            Text(line).font(.footnote).foregroundStyle(.secondary)
+                            Text(line).font(.paper(.footnote)).foregroundStyle(.secondary)
                         }
                         Button(row.last_four == nil ? "Add key" : "Replace key", systemImage: "key") { adding = row }
                             .accessibilityIdentifier("keys-\(row.provider)-add")
@@ -567,14 +567,14 @@ struct YourKeysScreen: View {
                                 .accessibilityIdentifier("keys-\(row.provider)-remove")
                         }
                         if let url = URL(string: row.page) {
-                            Link("Make a key at \(row.name)", destination: url).font(.footnote)
+                            Link("Make a key at \(row.name)", destination: url).font(.paper(.footnote))
                         }
                     } header: {
                         Text(row.name)
                     }
                 }
                 if let notice = bridge.providerKeyError ?? state.notice {
-                    Section { Text(notice).font(.footnote).accessibilityIdentifier("keys-notice") }
+                    Section { Text(notice).font(.paper(.footnote)).accessibilityIdentifier("keys-notice") }
                 }
             } else {
                 Text("Your keys load in a moment.").foregroundStyle(.secondary)

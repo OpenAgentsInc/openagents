@@ -69,7 +69,7 @@ struct ConnectView: View {
                 .id(screen.notice ?? "")
             }
             if let notice = screen.notice {
-                Text(notice).font(.callout).foregroundStyle(.secondary)
+                Text(notice).font(.paper(.callout)).foregroundStyle(.secondary)
                     .accessibilityIdentifier("connect-notice")
             }
             if let paste = screen.paste {
@@ -101,7 +101,7 @@ struct ConnectView: View {
                 }
             }
             if let getApp = screen.get_app {
-                Text(getApp).font(.footnote).foregroundStyle(.secondary)
+                Text(getApp).font(.paper(.footnote)).foregroundStyle(.secondary)
             }
         }
     }
@@ -111,7 +111,7 @@ struct ConnectView: View {
     /// match.
     private func nearbyList(_ nearby: ConnectScreen.Nearby) -> some View {
         VStack(alignment: .leading, spacing: 8) {
-            Text(nearby.title).font(.headline)
+            Text(nearby.title).font(.paper(.headline))
             ForEach(nearby.computers, id: \.self) { row in
                 Button {
                     bridge.connectNearby(row.id)
@@ -125,7 +125,7 @@ struct ConnectView: View {
                 .accessibilityIdentifier("connect-nearby-\(row.label)")
             }
             if let empty = nearby.empty {
-                Text(empty).font(.footnote).foregroundStyle(.secondary)
+                Text(empty).font(.paper(.footnote)).foregroundStyle(.secondary)
             }
         }
         .accessibilityIdentifier("connect-nearby")
@@ -135,13 +135,13 @@ struct ConnectView: View {
         VStack(alignment: .leading, spacing: 12) {
             if let code = screen.code {
                 Text(code)
-                    .font(.system(size: 44, weight: .bold, design: .monospaced))
+                    .font(.paper(44, weight: .bold))
                     .frame(maxWidth: .infinity)
                     .accessibilityIdentifier("connect-code")
             } else {
                 ProgressView()
             }
-            if let notice = screen.notice { Text(notice).font(.headline) }
+            if let notice = screen.notice { Text(notice).font(.paper(.headline)) }
         }
         .accessibilityIdentifier("connect-connecting")
     }
@@ -149,14 +149,14 @@ struct ConnectView: View {
     private var connected: some View {
         VStack(spacing: 16) {
             Image(systemName: "checkmark.circle.fill")
-                .font(.system(size: 56))
+                .font(.paper(56))
                 .foregroundStyle(.green)
                 .accessibilityHidden(true)
             if let computer = screen.computer {
-                Text(computer).font(.title2.bold()).accessibilityIdentifier("connect-computer")
+                Text(computer).font(.paper(.title2, weight: .bold)).accessibilityIdentifier("connect-computer")
             }
             if let notice = screen.notice {
-                Text(notice).font(.callout).foregroundStyle(.secondary).multilineTextAlignment(.center)
+                Text(notice).font(.paper(.callout)).foregroundStyle(.secondary).multilineTextAlignment(.center)
             }
             if let done = screen.done {
                 // The app tints white, so the label is black to show on it.

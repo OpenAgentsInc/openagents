@@ -61,7 +61,7 @@ struct SCR05Result: View {
                 // E03
                 HStack(alignment: .top, spacing: Theme.Space.s) {
                     score(o.withoutCount, caption: "without the tool")
-                    Image(systemName: "arrow.right").font(.system(size: 26, weight: .bold)).padding(.top, 10)
+                    Image(systemName: "arrow.right").font(.paper(26, weight: .bold)).padding(.top, 10)
                     score(shownWith, caption: "with \(o.toolName)")
                 }
                 .frame(maxWidth: .infinity)

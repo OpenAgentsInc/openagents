@@ -173,10 +173,10 @@ struct InlineQRScanner: View {
         VStack(alignment: .leading, spacing: 8) {
             if scanner.running {
                 CameraPreview(session: scanner.session).frame(height: 190).clipShape(RoundedRectangle(cornerRadius: 12))
-                Text(prompt).font(.caption)
+                Text(prompt).font(.paper(.caption))
             }
             if let message = scanner.message {
-                Text(message).font(.callout).accessibilityIdentifier("camera-status")
+                Text(message).font(.paper(.callout)).accessibilityIdentifier("camera-status")
                 if scanner.denied {
                     Button("Open camera settings") {
                         if let url = URL(string: UIApplication.openSettingsURLString) { openURL(url) }

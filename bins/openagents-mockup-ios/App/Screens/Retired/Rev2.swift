@@ -25,10 +25,10 @@ struct ToolCard: View {
         Button(action: action) {
             HStack(alignment: .top, spacing: Theme.Space.s) {
                 Image(systemName: selected ? "largecircle.fill.circle" : "circle")
-                    .font(.system(size: 22))
+                    .font(.paper(22))
                     .foregroundStyle(selected ? Theme.Colors.textPrimary : Theme.Colors.textTertiary)
                 Image(systemName: tool.icon)
-                    .font(.system(size: 20, weight: .semibold))
+                    .font(.paper(20, weight: .semibold))
                     .frame(width: 26)
                 VStack(alignment: .leading, spacing: 4) {
                     Text(tool.name).condensedTitle(Theme.Fonts.rowTitle)
@@ -66,8 +66,8 @@ struct CheckCard: View {
     var body: some View {
         Card(highlighted: true) {
             HStack(alignment: .top, spacing: Theme.Space.s) {
-                Image(systemName: "largecircle.fill.circle").font(.system(size: 22))
-                Image(systemName: "checkmark.seal").font(.system(size: 20, weight: .semibold)).frame(width: 26)
+                Image(systemName: "largecircle.fill.circle").font(.paper(22))
+                Image(systemName: "checkmark.seal").font(.paper(20, weight: .semibold)).frame(width: 26)
                 VStack(alignment: .leading, spacing: 4) {
                     HStack {
                         Text("Check a result").condensedTitle()

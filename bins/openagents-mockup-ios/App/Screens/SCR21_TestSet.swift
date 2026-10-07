@@ -21,7 +21,7 @@ struct SCR21TestSet: View {
                     .lineLimit(1).minimumScaleFactor(0.8)
                 Spacer()
                 Button { app.sheet = nil } label: {
-                    Image(systemName: "xmark").font(.system(size: 16, weight: .bold)).frame(width: 44, height: 44)
+                    Image(systemName: "xmark").font(.paper(16, weight: .bold)).frame(width: 44, height: 44)
                 }
                 .accessibilityLabel("Close")
             }

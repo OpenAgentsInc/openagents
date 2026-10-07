@@ -10,9 +10,9 @@ struct Chip: View {
     var body: some View {
         Button(action: action) {
             HStack(spacing: 6) {
-                if let icon { Image(systemName: icon).font(.system(size: 14, weight: .semibold)) }
+                if let icon { Image(systemName: icon).font(.paper(14, weight: .semibold)) }
                 // Long chips (an interview answer) wrap to a second line.
-                Text(text).font(.system(size: 15, weight: .medium)).lineLimit(2)
+                Text(text).font(.paper(15, weight: .medium)).lineLimit(2)
                     .multilineTextAlignment(.leading)
                     .fixedSize(horizontal: false, vertical: true)
             }

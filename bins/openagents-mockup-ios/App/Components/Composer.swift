@@ -19,7 +19,7 @@ struct Composer: View {
                 .padding(.leading, 16)
             Button(action: send) {
                 Image(systemName: "arrow.up")
-                    .font(.system(size: 17, weight: .heavy))
+                    .font(.paper(17, weight: .heavy))
                     .foregroundStyle(canSend ? Theme.Colors.primaryLabel : Theme.Colors.primaryDisabledLabel)
                     .frame(width: 36, height: 36)
                     .background(Circle().fill(canSend ? Theme.Colors.primaryFill : Theme.Colors.primaryDisabledFill))

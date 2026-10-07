@@ -143,7 +143,7 @@ struct TestMark: View {
 
     var body: some View {
         Image(systemName: passed ? "checkmark" : "xmark")
-            .font(.system(size: 14, weight: .heavy))
+            .font(.paper(14, weight: .heavy))
             .foregroundStyle(passed ? Theme.Colors.markPass : Theme.Colors.markFail)
             .frame(width: 22)
             .accessibilityLabel(passed ? "passed" : "not passed")

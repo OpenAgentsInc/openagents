@@ -12,7 +12,7 @@ struct PrimaryButton: View {
         Button(action: action) {
             VStack(spacing: 2) {
                 HStack(spacing: 10) {
-                    if let icon { Image(systemName: icon).font(.system(size: 18, weight: .bold)) }
+                    if let icon { Image(systemName: icon).font(.paper(18, weight: .bold)) }
                     Text(title).condensedTitle(Theme.Fonts.button)
                 }
                 if let detail {
@@ -40,7 +40,7 @@ struct PrimaryShareLink: View {
     var body: some View {
         ShareLink(item: item) {
             HStack(spacing: 10) {
-                Image(systemName: "square.and.arrow.up").font(.system(size: 18, weight: .bold))
+                Image(systemName: "square.and.arrow.up").font(.paper(18, weight: .bold))
                 Text(title).condensedTitle(Theme.Fonts.button)
             }
             .foregroundStyle(Theme.Colors.primaryLabel)
@@ -61,7 +61,7 @@ struct OutlinedButton: View {
     var body: some View {
         Button(action: action) {
             HStack(spacing: 10) {
-                if let icon { Image(systemName: icon).font(.system(size: 16, weight: .semibold)) }
+                if let icon { Image(systemName: icon).font(.paper(16, weight: .semibold)) }
                 Text(title).font(Theme.Fonts.bodyBold)
             }
             .foregroundStyle(Theme.Colors.textPrimary)

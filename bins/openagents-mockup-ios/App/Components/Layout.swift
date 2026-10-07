@@ -39,7 +39,7 @@ struct TopBar<Trailing: View>: View {
                 if let back {
                     Button(action: back.action) {
                         HStack(spacing: 4) {
-                            Image(systemName: "chevron.left").font(.system(size: 16, weight: .bold))
+                            Image(systemName: "chevron.left").font(.paper(16, weight: .bold))
                             Text(back.label).font(Theme.Fonts.bodyBold)
                         }
                         .foregroundStyle(Theme.Colors.textPrimary)
@@ -136,7 +136,7 @@ struct StubScreen: View {
             TopBar(back: BackControl(label: "Back") { app.back() }, title: name)
         } content: {
             VStack(spacing: Theme.Space.m) {
-                Image(systemName: "square.dashed").font(.system(size: 54, weight: .light))
+                Image(systemName: "square.dashed").font(.paper(54, weight: .light))
                     .foregroundStyle(Theme.Colors.textTertiary)
                 Text(name).font(Theme.Fonts.title)
                 Text("This screen exists in the real app but isn't part of the wireframe spec, so it's blank here.")

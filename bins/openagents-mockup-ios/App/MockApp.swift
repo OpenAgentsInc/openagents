@@ -251,9 +251,12 @@ final class MockApp {
 struct OpenAgentsMockupApp: App {
     @State private var app = MockApp()
 
+    init() { PaperMono.installAppearance() }
+
     var body: some Scene {
         WindowGroup {
             RootView()
+                .font(.paper(.body))
                 .environment(app)
                 .preferredColorScheme(.dark)
                 .onAppear { if !LaunchArguments.apply(to: app) { app.resume() } }

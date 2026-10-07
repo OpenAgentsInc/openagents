@@ -8,11 +8,14 @@ struct CoderApp: App {
         synthetic: ProcessInfo.processInfo.arguments.contains("--synthetic"),
         loopbackTest: ProcessInfo.processInfo.arguments.contains("--loopback-test"))
 
+    init() { PaperMono.installAppearance() }
+
     var body: some Scene {
         WindowGroup {
             VerseScreen(reader: reader,
                         synthetic: ProcessInfo.processInfo.arguments.contains("--synthetic"))
                 .tint(Color(red: 1, green: 176.0 / 255.0, blue: 0))
+                .font(.paper(.body))
                 .task {
                     // Does nothing unless this build is configured for push.
                     let arguments = ProcessInfo.processInfo.arguments

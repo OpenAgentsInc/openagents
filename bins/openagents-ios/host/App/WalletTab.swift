@@ -238,10 +238,10 @@ struct WalletTab: View {
         ScrollView {
             VStack(alignment: .leading, spacing: 24) {
                 HStack(alignment: .firstTextBaseline) {
-                    Text("Wallet").font(.largeTitle.bold()).foregroundStyle(.white)
+                    Text("Wallet").font(.paper(.largeTitle, weight: .bold)).foregroundStyle(.white)
                     Spacer()
                     Button { showTrust = true } label: {
-                        Image(systemName: "info.circle").font(.title2).foregroundStyle(.white)
+                        Image(systemName: "info.circle").font(.paper(.title2)).foregroundStyle(.white)
                     }
                     .accessibilityLabel("About this wallet")
                     .accessibilityIdentifier("wallet-info")
@@ -375,7 +375,7 @@ struct WalletTab: View {
     @ViewBuilder private func ready(_ wallet: WalletState) -> some View {
         balance(wallet)
         if let warning = wallet.warning {
-            Text(warning).font(.footnote).foregroundStyle(.white)
+            Text(warning).font(.paper(.footnote)).foregroundStyle(.white)
                 .padding(12).background(Color(white: 0.12), in: RoundedRectangle(cornerRadius: 12))
         }
         if let card = wallet.backup_card { backupCard(card) }
@@ -401,7 +401,7 @@ struct WalletTab: View {
         VStack(alignment: .leading, spacing: 6) {
             let unknown = wallet.balance_unknown == true
             Text(unknown ? "₿000,000" : wallet.balance ?? "")
-                .font(.system(size: 52, weight: .semibold, design: .rounded))
+                .font(.paper(52, weight: .semibold))
                 .foregroundStyle(.white)
                 .minimumScaleFactor(0.5).lineLimit(1)
                 .redacted(reason: unknown ? .placeholder : [])
@@ -410,23 +410,23 @@ struct WalletTab: View {
             // Quiet: only while starting, or when the balance is old or failed to update.
             if let status = wallet.status {
                 HStack(spacing: 8) { ProgressView(); Text(status) }
-                    .font(.footnote).foregroundStyle(.gray)
+                    .font(.paper(.footnote)).foregroundStyle(.gray)
             } else if let error = wallet.error {
-                Text(error).font(.footnote).foregroundStyle(.gray)
+                Text(error).font(.paper(.footnote)).foregroundStyle(.gray)
             } else if wallet.stale == true, wallet.refreshing != true {
-                Text(updated(wallet.synced_at)).font(.footnote).foregroundStyle(.gray)
+                Text(updated(wallet.synced_at)).font(.paper(.footnote)).foregroundStyle(.gray)
             }
             if wallet.empty == true {
                 Text("No bitcoin yet. Tap Receive to get some.")
-                    .font(.callout).foregroundStyle(.gray)
+                    .font(.paper(.callout)).foregroundStyle(.gray)
             }
         }
     }
 
     private func backupCard(_ card: WalletState.BackupCard) -> some View {
         VStack(alignment: .leading, spacing: 8) {
-            Text(card.title).font(.headline).foregroundStyle(.white)
-            Text(card.detail).font(.footnote).foregroundStyle(.gray)
+            Text(card.title).font(.paper(.headline)).foregroundStyle(.white)
+            Text(card.detail).font(.paper(.footnote)).foregroundStyle(.gray)
             Button(card.action) { confirmWords = true }
                 .buttonStyle(.bordered).tint(.white)
                 .disabled(wallet?.can_show_words != true)
@@ -458,7 +458,7 @@ struct WalletTab: View {
         let dimmed = !on && activeMode(wallet ?? WalletState.opening) != .home
         return Button(action: action) {
             Label(title, systemImage: systemImage)
-                .font(.headline)
+                .font(.paper(.headline))
                 .frame(maxWidth: .infinity, minHeight: 52)
                 .foregroundStyle(dimmed ? .white : .black)
                 .background(dimmed ? Color(white: 0.2) : Color.white, in: RoundedRectangle(cornerRadius: 14))
@@ -475,7 +475,7 @@ struct WalletTab: View {
             if let code = receive?.lightning { codeView(code) } else if receive?.lightning_busy == true || wallet.status != nil {
                 placeholderCode()
             }
-            if let error = receive?.lightning_error { Text(error).font(.footnote).foregroundStyle(.white) }
+            if let error = receive?.lightning_error { Text(error).font(.paper(.footnote)).foregroundStyle(.white) }
             HStack {
                 TextField("Amount in \(amounts.unit) (optional)", text: $invoiceAmount)
                     .keyboardType(amountKeyboard)
@@ -488,7 +488,7 @@ struct WalletTab: View {
                 .disabled(receive?.lightning_busy == true || wallet.status != nil)
                 .accessibilityIdentifier("wallet-new-invoice")
             }
-            Text("Other ways to receive are under Advanced.").font(.footnote).foregroundStyle(.gray)
+            Text("Other ways to receive are under Advanced.").font(.paper(.footnote)).foregroundStyle(.gray)
         }
         // One request for any amount, ready to scan, once the wallet runs.
         .task(id: wallet.status == nil) {
@@ -506,10 +506,10 @@ struct WalletTab: View {
                     .frame(maxWidth: .infinity)
                     .accessibilityLabel("QR code")
             }
-            Text(code.caption).font(.footnote).foregroundStyle(.gray)
+            Text(code.caption).font(.paper(.footnote)).foregroundStyle(.gray)
                 .frame(maxWidth: .infinity)
             Text(code.text)
-                .font(.system(.footnote, design: .monospaced))
+                .font(.paper(.footnote))
                 .foregroundStyle(.white)
                 .lineLimit(2).truncationMode(.middle)
                 .textSelection(.enabled)
@@ -547,16 +547,16 @@ struct WalletTab: View {
                 if let quote = send?.quote { confirm(quote, paying: send?.state == "paying", message: send?.message) }
             case "sent":
                 VStack(alignment: .leading, spacing: 8) {
-                    Text(send?.message ?? "Sent.").font(.headline).foregroundStyle(.white)
+                    Text(send?.message ?? "Sent.").font(.paper(.headline)).foregroundStyle(.white)
                     if let result = send?.result { paymentRow(result, method: false) }
                     if let said = send?.recipient_message {
-                        Text(said).font(.footnote).foregroundStyle(.white)
+                        Text(said).font(.paper(.footnote)).foregroundStyle(.white)
                             .textSelection(.enabled)
                             .accessibilityIdentifier("wallet-recipient-message")
                     }
                     if let address = send?.save_suggestion {
                         VStack(alignment: .leading, spacing: 6) {
-                            Text("Save \(address) for next time?").font(.footnote).foregroundStyle(.gray)
+                            Text("Save \(address) for next time?").font(.paper(.footnote)).foregroundStyle(.gray)
                             HStack {
                                 TextField("Name", text: $contactName)
                                     .textFieldStyle(.roundedBorder)
@@ -602,9 +602,9 @@ struct WalletTab: View {
                     let needsAmount = send?.state == "needs_amount"
                     if needsAmount, let recipient = send?.recipient {
                         VStack(alignment: .leading, spacing: 2) {
-                            Text(recipient).font(.system(.callout, design: .monospaced)).foregroundStyle(.white)
+                            Text(recipient).font(.paper(.callout)).foregroundStyle(.white)
                             if let description = send?.description {
-                                Text(description).font(.footnote).foregroundStyle(.gray)
+                                Text(description).font(.paper(.footnote)).foregroundStyle(.gray)
                             }
                         }
                         .accessibilityIdentifier("wallet-recipient")
@@ -621,7 +621,7 @@ struct WalletTab: View {
                             .accessibilityIdentifier("wallet-send-comment")
                     }
                     if let message = send?.message, send?.state != "idle" {
-                        Text(message).font(.footnote).foregroundStyle(.white)
+                        Text(message).font(.paper(.footnote)).foregroundStyle(.white)
                     }
                     Button(send?.state == "quoting" ? "Preparing…" : "Continue") { review() }
                         .buttonStyle(.borderedProminent).tint(.white).foregroundStyle(.black)
@@ -640,19 +640,19 @@ struct WalletTab: View {
 
     private func confirm(_ quote: WalletState.Quote, paying: Bool, message: String?) -> some View {
         VStack(alignment: .leading, spacing: 10) {
-            Text("Send \(quote.amount)?").font(.title3.weight(.semibold)).foregroundStyle(.white)
+            Text("Send \(quote.amount)?").font(.paper(.title3, weight: .semibold)).foregroundStyle(.white)
             if let person = wallet?.send?.person {
                 row("To", person)
             }
-            row(wallet?.send?.person == nil ? "To" : (quote.to ?? quote.kind), quote.destination, mono: true)
+            row(wallet?.send?.person == nil ? "To" : (quote.to ?? quote.kind), quote.destination)
             if let source = wallet?.send?.person_source {
-                Text(source).font(.caption).foregroundStyle(.gray)
+                Text(source).font(.paper(.caption)).foregroundStyle(.gray)
             }
             if let note = quote.note { row("For", note) }
             if let comment = quote.comment { row("Note", comment) }
             if let speeds = quote.speeds, !speeds.isEmpty {
                 VStack(alignment: .leading, spacing: 6) {
-                    Text("How fast").foregroundStyle(.gray).font(.callout)
+                    Text("How fast").foregroundStyle(.gray).font(.paper(.callout))
                     ForEach(speeds) { speed in
                         speedButton(speed, disabled: paying) {
                             bridge.wallet("wallet_speed", ["quote": quote.id, "speed": speed.id])
@@ -664,9 +664,9 @@ struct WalletTab: View {
             row("Amount", quote.amount)
             row("Fee", quote.fee)
             Divider().overlay(Color.white.opacity(0.3))
-            row("Total", quote.total).fontWeight(.semibold)
-            if let message { Text(message).font(.footnote).foregroundStyle(.gray) }
-            Text("Payments can't be undone.").font(.footnote).foregroundStyle(.gray)
+            row("Total", quote.total, weight: .semibold)
+            if let message { Text(message).font(.paper(.footnote)).foregroundStyle(.gray) }
+            Text("Payments can't be undone.").font(.paper(.footnote)).foregroundStyle(.gray)
             HStack {
                 Button(paying ? "Sending…" : "Send \(quote.total)") {
                     bridge.wallet("wallet_pay", ["quote": quote.id])
@@ -688,9 +688,9 @@ struct WalletTab: View {
                 Image(systemName: speed.chosen ? "largecircle.fill.circle" : "circle")
                 Text(speed.label).multilineTextAlignment(.leading)
                 Spacer()
-                Text(speed.fee).monospacedDigit()
+                Text(speed.fee)
             }
-            .font(.footnote)
+            .font(.paper(.footnote))
             .foregroundStyle(.white)
             .contentShape(Rectangle())
         }
@@ -699,14 +699,15 @@ struct WalletTab: View {
         .accessibilityAddTraits(speed.chosen ? .isSelected : [])
     }
 
-    private func row(_ label: String, _ value: String, mono: Bool = false) -> some View {
+    private func row(_ label: String, _ value: String,
+                     weight: Font.Weight = .regular) -> some View {
         HStack(alignment: .firstTextBaseline) {
             Text(label).foregroundStyle(.gray)
             Spacer()
             Text(value).foregroundStyle(.white).multilineTextAlignment(.trailing)
-                .font(.system(.callout, design: mono ? .monospaced : .default))
+                .font(.paper(.callout, weight: weight))
         }
-        .font(.callout)
+        .font(.paper(.callout, weight: weight))
     }
 
     // MARK: Recent activity
@@ -714,7 +715,7 @@ struct WalletTab: View {
     private func recent(_ wallet: WalletState) -> some View {
         VStack(alignment: .leading, spacing: 10) {
             HStack {
-                Text("Recent activity").font(.headline).foregroundStyle(.white)
+                Text("Recent activity").font(.paper(.headline)).foregroundStyle(.white)
                 Spacer()
                 if wallet.more_payments == true {
                     Button("See all") { showHistory = true }.tint(.white)
@@ -723,7 +724,7 @@ struct WalletTab: View {
             }
             let recent = wallet.recent ?? []
             if recent.isEmpty {
-                Text("Payments you send and receive appear here.").font(.footnote).foregroundStyle(.gray)
+                Text("Payments you send and receive appear here.").font(.paper(.footnote)).foregroundStyle(.gray)
             }
             ForEach(recent) { paymentRow($0, method: false) }
         }
@@ -743,9 +744,9 @@ struct WalletTab: View {
             } label: {
                 HStack {
                     VStack(alignment: .leading, spacing: 2) {
-                        Text("Advanced").font(.headline)
+                        Text("Advanced").font(.paper(.headline))
                         if !advancedOpen, let note = wallet.advanced?.note {
-                            Text(note).font(.footnote).foregroundStyle(.gray)
+                            Text(note).font(.paper(.footnote)).foregroundStyle(.gray)
                         }
                     }
                     Spacer()
@@ -780,15 +781,15 @@ struct WalletTab: View {
     /// The balance in the other unit, the network, and when it was read.
     private func details(_ wallet: WalletState) -> some View {
         VStack(alignment: .leading, spacing: 8) {
-            Text("Balance").font(.headline).foregroundStyle(.white)
-            if let alternate = wallet.balance_alternate, !alternate.isEmpty { row("Also", alternate, mono: true) }
+            Text("Balance").font(.paper(.headline)).foregroundStyle(.white)
+            if let alternate = wallet.balance_alternate, !alternate.isEmpty { row("Also", alternate) }
             row("Network", wallet.network ?? "Bitcoin · Spark")
             HStack {
                 Text(wallet.refreshing == true ? "Refreshing…" : updated(wallet.synced_at))
-                    .font(.footnote).foregroundStyle(.gray)
+                    .font(.paper(.footnote)).foregroundStyle(.gray)
                 Spacer()
                 Button("Refresh", systemImage: "arrow.clockwise") { bridge.refreshWallet() }
-                    .font(.footnote).tint(.white)
+                    .font(.paper(.footnote)).tint(.white)
                     .disabled(wallet.refreshing == true)
                     .accessibilityIdentifier("wallet-refresh")
             }
@@ -799,7 +800,7 @@ struct WalletTab: View {
 
     @ViewBuilder private func otherWays(_ wallet: WalletState) -> some View {
         VStack(alignment: .leading, spacing: 12) {
-            Text("Other ways to receive").font(.headline).foregroundStyle(.white)
+            Text("Other ways to receive").font(.paper(.headline)).foregroundStyle(.white)
             Picker("Method", selection: $method) {
                 ForEach(Method.allCases, id: \.self) { Text($0.rawValue).tag($0) }
             }
@@ -809,7 +810,7 @@ struct WalletTab: View {
             switch method {
             case .lightning:
                 if let code = receive?.lightning { codeView(code, size: 200) } else {
-                    Text("Tap Receive above to make a Lightning request.").font(.footnote).foregroundStyle(.gray)
+                    Text("Tap Receive above to make a Lightning request.").font(.paper(.footnote)).foregroundStyle(.gray)
                 }
             case .spark:
                 if let code = receive?.spark { codeView(code, size: 200) } else { placeholderCode() }
@@ -825,9 +826,9 @@ struct WalletTab: View {
                         .tint(.white)
                         .disabled(publish.busy || wallet.status != nil)
                         .accessibilityIdentifier("wallet-publish")
-                        Text(publish.detail).font(.footnote).foregroundStyle(.gray)
+                        Text(publish.detail).font(.paper(.footnote)).foregroundStyle(.gray)
                         if publish.busy { ProgressView() }
-                        if let message = publish.message { Text(message).font(.footnote).foregroundStyle(.white) }
+                        if let message = publish.message { Text(message).font(.paper(.footnote)).foregroundStyle(.white) }
                     }
                 }
             }
@@ -838,9 +839,9 @@ struct WalletTab: View {
 
     @ViewBuilder private func buy(_ wallet: WalletState) -> some View {
         VStack(alignment: .leading, spacing: 12) {
-            Text("Buy bitcoin").font(.headline).foregroundStyle(.white)
+            Text("Buy bitcoin").font(.paper(.headline)).foregroundStyle(.white)
             Text("Pay with dollars. The provider's page opens in your browser.")
-                .font(.footnote).foregroundStyle(.gray)
+                .font(.paper(.footnote)).foregroundStyle(.gray)
             TextField("Amount in \(amounts.unit)", text: $buyAmount)
                 .keyboardType(amountKeyboard)
                 .textFieldStyle(.roundedBorder)
@@ -850,8 +851,8 @@ struct WalletTab: View {
                     bridge.wallet("wallet_buy", ["provider": provider.id, "amount": buyAmount])
                 } label: {
                     VStack(alignment: .leading, spacing: 4) {
-                        Text(provider.label).font(.headline)
-                        Text(provider.detail).font(.footnote).foregroundStyle(.gray)
+                        Text(provider.label).font(.paper(.headline))
+                        Text(provider.detail).font(.paper(.footnote)).foregroundStyle(.gray)
                     }
                     .multilineTextAlignment(.leading)
                     .frame(maxWidth: .infinity, alignment: .leading)
@@ -862,7 +863,7 @@ struct WalletTab: View {
                 .disabled(wallet.buy?.busy == true || wallet.status != nil)
             }
             if wallet.buy?.busy == true { HStack { ProgressView(); Text("Opening…").foregroundStyle(.gray) } }
-            if let error = wallet.buy?.error { Text(error).font(.footnote).foregroundStyle(.white) }
+            if let error = wallet.buy?.error { Text(error).font(.paper(.footnote)).foregroundStyle(.white) }
         }
     }
 
@@ -871,7 +872,7 @@ struct WalletTab: View {
     @ViewBuilder private func people(_ wallet: WalletState) -> some View {
         if let people = wallet.people, !people.isEmpty {
             VStack(alignment: .leading, spacing: 8) {
-                Text("People").font(.headline).foregroundStyle(.white)
+                Text("People").font(.paper(.headline)).foregroundStyle(.white)
                 ForEach(people) { person in
                     Button {
                         payInput = person.input
@@ -880,11 +881,11 @@ struct WalletTab: View {
                     } label: {
                         HStack {
                             VStack(alignment: .leading, spacing: 2) {
-                                Text(person.name).font(.callout).foregroundStyle(.white)
-                                Text(person.detail).font(.caption2).foregroundStyle(.gray).lineLimit(1)
+                                Text(person.name).font(.paper(.callout)).foregroundStyle(.white)
+                                Text(person.detail).font(.paper(.caption2)).foregroundStyle(.gray).lineLimit(1)
                             }
                             Spacer()
-                            Text("Pay").font(.footnote).foregroundStyle(.white)
+                            Text("Pay").font(.paper(.footnote)).foregroundStyle(.white)
                         }
                         .padding(.horizontal, 12).padding(.vertical, 8)
                         .background(Color(white: 0.1), in: RoundedRectangle(cornerRadius: 10))
@@ -900,7 +901,7 @@ struct WalletTab: View {
 
     private func amountSetting() -> some View {
         VStack(alignment: .leading, spacing: 10) {
-            Text("Show amounts as").font(.headline).foregroundStyle(.white)
+            Text("Show amounts as").font(.paper(.headline)).foregroundStyle(.white)
             Picker("Show amounts as", selection: Binding(
                 get: { amounts.format },
                 set: { chosen in
@@ -913,7 +914,7 @@ struct WalletTab: View {
             .pickerStyle(.segmented)
             .accessibilityIdentifier("amount-format")
             Text("Applies everywhere in the app. Stored amounts don't change.")
-                .font(.footnote).foregroundStyle(.gray)
+                .font(.paper(.footnote)).foregroundStyle(.gray)
         }
     }
 
@@ -921,7 +922,7 @@ struct WalletTab: View {
 
     private func depositsView(_ deposits: [WalletState.Deposit], claim: WalletState.Claim?, refund: WalletState.Refund?) -> some View {
         VStack(alignment: .leading, spacing: 10) {
-            Text("Bitcoin deposits").font(.headline).foregroundStyle(.white)
+            Text("Bitcoin deposits").font(.paper(.headline)).foregroundStyle(.white)
                 .id("wallet-deposits")
             ForEach(deposits) { deposit in
                 VStack(alignment: .leading, spacing: 6) {
@@ -944,11 +945,11 @@ struct WalletTab: View {
                             .accessibilityIdentifier("wallet-refund")
                         }
                     }
-                    Text(deposit.status).font(.footnote).foregroundStyle(.gray)
+                    Text(deposit.status).font(.paper(.footnote)).foregroundStyle(.gray)
                     if let claim, claim.txid == deposit.txid, claim.vout == deposit.vout {
                         if claim.busy { ProgressView() }
                         if let quote = claim.quote {
-                            Text(quote).font(.footnote).foregroundStyle(.white)
+                            Text(quote).font(.paper(.footnote)).foregroundStyle(.white)
                             HStack {
                                 Button("Claim at this fee") {
                                     bridge.wallet("wallet_claim", ["txid": claim.txid, "vout": claim.vout])
@@ -958,7 +959,7 @@ struct WalletTab: View {
                             }
                         }
                         if let message = claim.message {
-                            Text(message).font(.footnote).foregroundStyle(.white)
+                            Text(message).font(.paper(.footnote)).foregroundStyle(.white)
                         }
                     }
                     if let refund, refund.txid == deposit.txid, refund.vout == deposit.vout {
@@ -973,7 +974,7 @@ struct WalletTab: View {
 
     @ViewBuilder private func refundView(_ refund: WalletState.Refund) -> some View {
         VStack(alignment: .leading, spacing: 8) {
-            Text("Refund on-chain").font(.subheadline.weight(.semibold)).foregroundStyle(.white)
+            Text("Refund on-chain").font(.paper(.subheadline, weight: .semibold)).foregroundStyle(.white)
             if refund.busy { ProgressView() }
             if !refund.speeds.isEmpty && refund.review == nil {
                 TextField("Bitcoin address to refund to", text: $refundAddress)
@@ -995,7 +996,7 @@ struct WalletTab: View {
                 }
             }
             if let review = refund.review {
-                Text(review).font(.footnote).foregroundStyle(.white)
+                Text(review).font(.paper(.footnote)).foregroundStyle(.white)
                 HStack {
                     Button("Refund") {
                         bridge.wallet("wallet_refund", ["txid": refund.txid, "vout": refund.vout])
@@ -1007,7 +1008,7 @@ struct WalletTab: View {
                 }
             }
             if let message = refund.message {
-                Text(message).font(.footnote).foregroundStyle(.white)
+                Text(message).font(.paper(.footnote)).foregroundStyle(.white)
                 if refund.review == nil && refund.speeds.isEmpty && !refund.busy {
                     Button("Close") { bridge.wallet("wallet_refund_reset") }.tint(.white)
                 }
@@ -1018,11 +1019,11 @@ struct WalletTab: View {
 
     private func backupView(_ backup: WalletState.Backup) -> some View {
         VStack(alignment: .leading, spacing: 10) {
-            Text(backup.title).font(.headline).foregroundStyle(.white)
-            Text(backup.detail).font(.footnote).foregroundStyle(.gray)
+            Text(backup.title).font(.paper(.headline)).foregroundStyle(.white)
+            Text(backup.detail).font(.paper(.footnote)).foregroundStyle(.gray)
             Text(backup.saved_at.map { "Saved on this phone " + Date(timeIntervalSince1970: TimeInterval($0)).formatted(.relative(presentation: .named)) } ?? "Not saved yet. It saves after the wallet syncs.")
-                .font(.footnote).foregroundStyle(.white)
-            if let error = backup.error ?? exportError { Text(error).font(.footnote).foregroundStyle(.white) }
+                .font(.paper(.footnote)).foregroundStyle(.white)
+            if let error = backup.error ?? exportError { Text(error).font(.paper(.footnote)).foregroundStyle(.white) }
             Button("Export to Files", systemImage: "square.and.arrow.down") {
                 exportError = nil
                 bridge.walletExitExport { result in
@@ -1047,9 +1048,9 @@ struct WalletTab: View {
 
     private func recovery(_ wallet: WalletState) -> some View {
         VStack(alignment: .leading, spacing: 10) {
-            Text("Recovery").font(.headline).foregroundStyle(.white)
+            Text("Recovery").font(.paper(.headline)).foregroundStyle(.white)
             Text("Your recovery words restore this wallet on another phone or a computer. Write them down and keep them offline.")
-                .font(.footnote).foregroundStyle(.gray)
+                .font(.paper(.footnote)).foregroundStyle(.gray)
             HStack(spacing: 12) {
                 Button("Show recovery words") { confirmWords = true }
                     .disabled(wallet.can_show_words != true)
@@ -1079,12 +1080,12 @@ private struct WalletPaymentRow: View {
                 Text([method ? payment.method : nil, payment.status == "completed" ? nil : payment.status.capitalized,
                       Date(timeIntervalSince1970: TimeInterval(payment.at)).formatted(.relative(presentation: .named))]
                     .compactMap { $0 }.joined(separator: " · "))
-                    .font(.caption).foregroundStyle(.gray)
+                    .font(.paper(.caption)).foregroundStyle(.gray)
             }
             Spacer()
             VStack(alignment: .trailing, spacing: 2) {
-                Text(payment.amount).font(.callout.monospacedDigit()).foregroundStyle(.white)
-                if let fee = payment.fee { Text(fee).font(.caption).foregroundStyle(.gray) }
+                Text(payment.amount).font(.paper(.callout)).foregroundStyle(.white)
+                if let fee = payment.fee { Text(fee).font(.paper(.caption)).foregroundStyle(.gray) }
             }
         }
         .accessibilityElement(children: .combine)
@@ -1124,10 +1125,10 @@ private struct TrustSheet: View {
             ScrollView {
                 VStack(alignment: .leading, spacing: 12) {
                     if let summary = trust.summary {
-                        Text(summary).font(.body).foregroundStyle(.white)
-                        Text("Details").font(.headline).foregroundStyle(.white).padding(.top, 8)
+                        Text(summary).font(.paper(.body)).foregroundStyle(.white)
+                        Text("Details").font(.paper(.headline)).foregroundStyle(.white).padding(.top, 8)
                     }
-                    ForEach(trust.lines, id: \.self) { Text($0).font(.footnote).foregroundStyle(.gray) }
+                    ForEach(trust.lines, id: \.self) { Text($0).font(.paper(.footnote)).foregroundStyle(.gray) }
                 }
                 .padding(20)
             }
@@ -1153,14 +1154,14 @@ private struct WordsSheet: View {
             ScrollView {
                 VStack(alignment: .leading, spacing: 16) {
                     Text("Write these \(words.count) words down in order and keep them somewhere safe and offline. Anyone with them can take your bitcoin.")
-                        .font(.callout).foregroundStyle(.white)
+                        .font(.paper(.callout)).foregroundStyle(.white)
                     LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible())], alignment: .leading, spacing: 12) {
                         ForEach(Array(words.enumerated()), id: \.offset) { index, word in
                             HStack(spacing: 8) {
-                                Text("\(index + 1).").foregroundStyle(.gray).monospacedDigit()
+                                Text("\(index + 1).").foregroundStyle(.gray)
                                 Text(word).foregroundStyle(.white)
                             }
-                            .font(.system(.body, design: .monospaced))
+                            .font(.paper(.body))
                         }
                     }
                     .privacySensitive()
@@ -1175,7 +1176,7 @@ private struct WordsSheet: View {
                     .buttonStyle(.bordered).tint(.white)
                     .accessibilityIdentifier("wallet-copy-words")
                     Text("The copy stays on this phone and is cleared after a minute. Paste it somewhere offline, not into a message or a notes app that syncs.")
-                        .font(.footnote).foregroundStyle(.gray)
+                        .font(.paper(.footnote)).foregroundStyle(.gray)
                     Button("I wrote them down", action: saved)
                         .buttonStyle(.borderedProminent).tint(.white).foregroundStyle(.black)
                         .frame(maxWidth: .infinity)
@@ -1207,10 +1208,10 @@ private struct RestoreSheet: View {
         NavigationStack {
             VStack(alignment: .leading, spacing: 16) {
                 Text("Enter your 12 or 24 recovery words, separated by spaces. This replaces the wallet on this phone.")
-                    .font(.callout).foregroundStyle(.white)
+                    .font(.paper(.callout)).foregroundStyle(.white)
                 if hasBalance {
                     Text("This wallet holds bitcoin. Write down its recovery words before you replace it, or you lose that bitcoin.")
-                        .font(.footnote).foregroundStyle(.white)
+                        .font(.paper(.footnote)).foregroundStyle(.white)
                         .padding(10).background(Color(white: 0.12), in: RoundedRectangle(cornerRadius: 10))
                 }
                 TextField("Recovery words", text: $words, axis: .vertical)
@@ -1219,7 +1220,7 @@ private struct RestoreSheet: View {
                     .privacySensitive()
                     .textFieldStyle(.roundedBorder)
                     .accessibilityIdentifier("wallet-restore-words")
-                if let error { Text(error).font(.footnote).foregroundStyle(.white) }
+                if let error { Text(error).font(.paper(.footnote)).foregroundStyle(.white) }
                 Button("Restore wallet") {
                     if hasBalance { confirmReplace = true } else { restore() }
                 }

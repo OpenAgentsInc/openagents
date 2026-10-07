@@ -32,10 +32,10 @@ struct WalletLinkSheet: View {
                 Section {
                     VStack(spacing: 6) {
                         Text(sheet.code)
-                            .font(.system(size: 40, weight: .semibold, design: .monospaced))
+                            .font(.paper(40, weight: .semibold))
                             .accessibilityIdentifier("wallet-link-code")
                         Text("Shown on \(sheet.computer)")
-                            .font(.subheadline)
+                            .font(.paper(.subheadline))
                             .foregroundStyle(.secondary)
                     }
                     .frame(maxWidth: .infinity)
@@ -52,7 +52,7 @@ struct WalletLinkSheet: View {
                     } label: {
                         HStack {
                             Spacer()
-                            if busy { ProgressView() } else { Text("Approve").bold() }
+                            if busy { ProgressView() } else { Text("Approve").font(.paper(.body, weight: .bold)) }
                             Spacer()
                         }
                     }

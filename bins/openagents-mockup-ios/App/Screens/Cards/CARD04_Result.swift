@@ -37,7 +37,7 @@ struct CARD04Result: View {
             // E02
             HStack(alignment: .firstTextBaseline, spacing: 10) {
                 side("without", o.withoutCount)
-                Image(systemName: "arrow.right").font(.system(size: 20, weight: .heavy))
+                Image(systemName: "arrow.right").font(.paper(20, weight: .heavy))
                 side("with", o.withCount)
             }
             CardNote(text: "tests · \(o.toolName)\(o.isFirstTry ? " · one run" : "")")

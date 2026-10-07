@@ -87,7 +87,7 @@ struct GymBuilding: View {
                     .position(x: w / 2, y: h * 0.79)
                     .themeShadow(Theme.Shadow(color: .white.opacity(0.9), radius: 14, y: 0))
                 Text("GYM")
-                    .font(.system(size: max(8, h * 0.11), weight: .black).width(.expanded))
+                    .font(.paper(max(8, h * 0.11), weight: .black))
                     .tracking(2)
                     .foregroundStyle(Theme.Colors.textPrimary)
                     .position(x: w / 2, y: h * 0.22)

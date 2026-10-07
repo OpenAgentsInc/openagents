@@ -26,7 +26,7 @@ struct SCR20AddToGym: View {
                 Text("Add to the Gym").condensedTitle(Theme.Fonts.screenTitle, tracking: 1.2)
                 Spacer()
                 Button { app.sheet = nil } label: {
-                    Image(systemName: "xmark").font(.system(size: 16, weight: .bold)).frame(width: 44, height: 44)
+                    Image(systemName: "xmark").font(.paper(16, weight: .bold)).frame(width: 44, height: 44)
                 }
                 .accessibilityLabel("Close")
             }

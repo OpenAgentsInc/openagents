@@ -13,10 +13,11 @@ import UIKit
 
 // MARK: - Measurement
 
-/// System fonts by Rust's font description, shared by measuring and painting
+/// Fonts by Rust's font description, shared by measuring and painting
 /// so both use the same face. With `bundled`, Rust shapes the text itself
 /// (`layout::shape`), and these are the bundled faces with the variations
-/// Rust measured, so painting draws exactly what Rust laid out.
+/// Rust measured, so painting draws exactly what Rust laid out. Without it,
+/// they are Paper Mono faces from `UIFont.paper`.
 enum NativeTextFonts {
     /// Draw with the fonts Rust bundles and shapes. `--rust-native-shaped`
     /// turns it on for a launch.
@@ -43,13 +44,8 @@ enum NativeTextFonts {
         }
         let weights: [UIFont.Weight] = [.regular, .medium, .semibold, .bold]
         let uiWeight = weights[min(Int(weight), weights.count - 1)]
-        let points = CGFloat(max(1, min(size, 400)))
-        var font = mono ? UIFont.monospacedSystemFont(ofSize: points, weight: uiWeight)
-                        : UIFont.systemFont(ofSize: points, weight: uiWeight)
-        if italic, let descriptor = font.fontDescriptor.withSymbolicTraits(
-            font.fontDescriptor.symbolicTraits.union(.traitItalic)) {
-            font = UIFont(descriptor: descriptor, size: points)
-        }
+        // Paper Mono has no italic face, so italic runs draw upright.
+        let font = UIFont.paper(CGFloat(max(1, min(size, 400))), weight: uiWeight)
         fonts[key] = font
         return font
     }
@@ -1296,7 +1292,7 @@ private final class NativeCopyButton: UIButton {
         configuration.contentInsets = NSDirectionalEdgeInsets(top: 0, leading: 4, bottom: 0, trailing: 4)
         configuration.titleTextAttributesTransformer = UIConfigurationTextAttributesTransformer { attributes in
             var attributes = attributes
-            attributes.font = UIFont.preferredFont(forTextStyle: .caption1)
+            attributes.font = UIFont.paper(.caption1)
             return attributes
         }
         self.configuration = configuration

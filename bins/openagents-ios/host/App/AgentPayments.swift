@@ -83,10 +83,10 @@ struct SpendApprovalSheet: View {
                 Section {
                     VStack(spacing: 6) {
                         Text(sheet.amount)
-                            .font(.system(size: 40, weight: .semibold, design: .rounded))
+                            .font(.paper(40, weight: .semibold))
                             .accessibilityIdentifier("spend-amount")
                         Text("Fee \(sheet.fee)")
-                            .font(.subheadline)
+                            .font(.paper(.subheadline))
                             .foregroundStyle(.secondary)
                     }
                     .frame(maxWidth: .infinity)
@@ -103,7 +103,7 @@ struct SpendApprovalSheet: View {
                     row("Payee", sheet.payee)
                     if sheet.payee_new {
                         Text("You haven't paid this payee from this computer before.")
-                            .font(.footnote)
+                            .font(.paper(.footnote))
                             .foregroundStyle(.orange)
                     }
                     if let description = sheet.description { row("Invoice says", description) }
@@ -128,7 +128,7 @@ struct SpendApprovalSheet: View {
                     } label: {
                         HStack {
                             Spacer()
-                            if busy { ProgressView() } else { Text("Approve and pay \(sheet.amount)").bold() }
+                            if busy { ProgressView() } else { Text("Approve and pay \(sheet.amount)").font(.paper(.body, weight: .bold)) }
                             Spacer()
                         }
                     }
@@ -239,47 +239,47 @@ struct AgentPaymentsSection: View {
     var body: some View {
         if !spend.computers.isEmpty || !spend.history.isEmpty {
             VStack(alignment: .leading, spacing: 10) {
-                Text("Agent payments").font(.headline)
+                Text("Agent payments").font(.paper(.headline))
                 if let wakes = bridge.pushStatus {
-                    Text(wakes).font(.caption).foregroundStyle(.secondary)
+                    Text(wakes).font(.paper(.caption)).foregroundStyle(.secondary)
                         .accessibilityIdentifier("spend-wakes")
                 }
                 if let notice = spend.notice {
                     HStack {
-                        Text(notice).font(.footnote)
+                        Text(notice).font(.paper(.footnote))
                         Spacer()
-                        Button("OK") { bridge.spend("spend_dismiss") }.font(.footnote)
+                        Button("OK") { bridge.spend("spend_dismiss") }.font(.paper(.footnote))
                     }
                 }
                 ForEach(spend.computers) { computer in
                     VStack(alignment: .leading, spacing: 4) {
                         HStack {
                             VStack(alignment: .leading) {
-                                Text(computer.computer).font(.subheadline)
-                                Text(computer.remaining).font(.caption).foregroundStyle(.secondary)
+                                Text(computer.computer).font(.paper(.subheadline))
+                                Text(computer.remaining).font(.paper(.caption)).foregroundStyle(.secondary)
                             }
                             Spacer()
                             if computer.blocked {
                                 Button("Allow") { bridge.spend("spend_allow", ["host": computer.host]) }
-                                    .font(.footnote)
+                                    .font(.paper(.footnote))
                             }
                         }
                         if let automatic = computer.automatic {
-                            Text(automatic).font(.caption).foregroundStyle(.secondary)
+                            Text(automatic).font(.paper(.caption)).foregroundStyle(.secondary)
                             ForEach(computer.trusted) { payee in
                                 HStack {
-                                    Text("\(payee.label) · \(payee.limit)").font(.caption.monospaced())
+                                    Text("\(payee.label) · \(payee.limit)").font(.paper(.caption))
                                     Spacer()
                                     Button("Remove") {
                                         bridge.spend("spend_untrust", ["host": computer.host, "payee": payee.payee])
                                     }
-                                    .font(.caption)
+                                    .font(.paper(.caption))
                                 }
                             }
                             Button("Ask me for every payment") {
                                 bridge.spend("spend_manual", ["host": computer.host])
                             }
-                            .font(.caption)
+                            .font(.paper(.caption))
                             .accessibilityIdentifier("spend-manual")
                         }
                     }
@@ -287,16 +287,16 @@ struct AgentPaymentsSection: View {
                 ForEach(spend.history) { entry in
                     HStack(alignment: .firstTextBaseline) {
                         VStack(alignment: .leading, spacing: 2) {
-                            Text(entry.title ?? entry.purpose).font(.subheadline)
+                            Text(entry.title ?? entry.purpose).font(.paper(.subheadline))
                             Text(entry.detail ?? "\(entry.computer) · \(entry.purpose)")
-                                .font(.caption)
+                                .font(.paper(.caption))
                                 .foregroundStyle(.secondary)
                         }
                         Spacer()
                         VStack(alignment: .trailing, spacing: 2) {
-                            Text(entry.amount).font(.subheadline.monospacedDigit())
+                            Text(entry.amount).font(.paper(.subheadline))
                             Text(entry.auto && entry.state == "paid" ? "Paid automatically" : entry.state.capitalized)
-                                .font(.caption)
+                                .font(.paper(.caption))
                                 .foregroundStyle(entry.state == "paid" ? .green : .secondary)
                         }
                     }

@@ -44,7 +44,7 @@ struct CountBadge: View {
 
     var body: some View {
         Text("\(count)")
-            .font(.system(size: 11, weight: .heavy))
+            .font(.paper(11, weight: .heavy))
             .foregroundStyle(Theme.Colors.primaryLabel)
             .frame(minWidth: 17, minHeight: 17)
             .background(Circle().fill(Theme.Colors.primaryFill))
@@ -59,7 +59,7 @@ struct BellButton: View {
     var body: some View {
         Button(action: action) {
             Image(systemName: "bell")
-                .font(.system(size: 20, weight: .semibold))
+                .font(.paper(20, weight: .semibold))
                 .foregroundStyle(Theme.Colors.textPrimary)
                 .frame(width: 44, height: 44)
                 .overlay(alignment: .topTrailing) {

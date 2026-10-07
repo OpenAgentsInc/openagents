@@ -73,7 +73,7 @@ struct VerseEvalsPanel: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
             HStack {
-                Label("Results", systemImage: "checklist").font(.headline)
+                Label("Results", systemImage: "checklist").font(.paper(.headline))
                 Spacer()
                 Button("Back to world", systemImage: "xmark", action: close)
                     .labelStyle(.iconOnly).frame(width: 44, height: 44)
@@ -100,47 +100,47 @@ struct VerseEvalsPanel: View {
             Divider().overlay(.white.opacity(0.3))
             notes(view)
             Divider().overlay(.white.opacity(0.3))
-            Text("Published results").font(.headline)
+            Text("Published results").font(.paper(.headline))
             if view.state != "ready" {
                 ProgressView(view.state == "connecting" ? "Connecting to \(view.relay)…" : "Reading \(view.relay)…")
-                    .font(.caption)
+                    .font(.paper(.caption))
                     .accessibilityIdentifier("evals-state")
             }
             if view.board.groups.isEmpty, view.state == "ready" {
-                Text(view.empty).font(.callout).accessibilityIdentifier("evals-empty")
+                Text(view.empty).font(.paper(.callout)).accessibilityIdentifier("evals-empty")
             }
             ForEach(view.board.groups) { group in
                 VStack(alignment: .leading, spacing: 8) {
-                    Text(group.test_set).font(.headline)
-                    Text("Test set by \(group.author_tag)").font(.caption).foregroundStyle(.secondary)
+                    Text(group.test_set).font(.paper(.headline))
+                    Text("Test set by \(group.author_tag)").font(.paper(.caption)).foregroundStyle(.secondary)
                     ForEach(group.rows) { row in rowView(row) }
                     if group.more > 0 {
-                        Text("\(group.more) older results not shown").font(.caption).foregroundStyle(.secondary)
+                        Text("\(group.more) older results not shown").font(.paper(.caption)).foregroundStyle(.secondary)
                     }
                 }
                 .accessibilityIdentifier("evals-group-\(group.release.prefix(8))")
                 Divider().overlay(.white.opacity(0.3))
             }
-            Text(view.note).font(.caption).foregroundStyle(.secondary)
+            Text(view.note).font(.paper(.caption)).foregroundStyle(.secondary)
         }.frame(maxWidth: .infinity, alignment: .leading)
     }
 
     private func rowView(_ row: EvalsView.Row) -> some View {
         VStack(alignment: .leading, spacing: 3) {
             HStack(alignment: .firstTextBaseline) {
-                Text(row.tool).font(.body.weight(.semibold))
+                Text(row.tool).font(.paper(.body, weight: .semibold))
                 Spacer()
-                Text(row.verdict_words).font(.caption.weight(.semibold))
+                Text(row.verdict_words).font(.paper(.caption, weight: .semibold))
                     .padding(.horizontal, 8).padding(.vertical, 3)
                     .overlay(Capsule().stroke(.white.opacity(row.verdict == "pass" ? 0.9 : 0.4), lineWidth: 1))
             }
-            Text(row.headline).font(.callout)
+            Text(row.headline).font(.paper(.callout))
             HStack(spacing: 6) {
-                Text(row.mine ? "You (\(row.trainer_tag))" : row.trainer_tag).font(.caption.monospaced())
-                if row.hosted { Text("· run on our computers").font(.caption) }
-                if row.credit_xp > 0 { Text("· \(row.credit_xp) XP credit").font(.caption) }
+                Text(row.mine ? "You (\(row.trainer_tag))" : row.trainer_tag).font(.paper(.caption))
+                if row.hosted { Text("· run on our computers").font(.paper(.caption)) }
+                if row.credit_xp > 0 { Text("· \(row.credit_xp) XP credit").font(.paper(.caption)) }
             }.foregroundStyle(.secondary)
-            if !row.checks.isEmpty { Text(row.checks).font(.caption) }
+            if !row.checks.isEmpty { Text(row.checks).font(.paper(.caption)) }
         }
         .padding(.vertical, 4)
         .accessibilityElement(children: .combine)
@@ -152,19 +152,19 @@ struct VerseEvalsPanel: View {
             Toggle(isOn: Binding(get: { view.notes_on },
                                  set: { on in world.evals(["do": "notes", "on": on]) })) {
                 VStack(alignment: .leading, spacing: 2) {
-                    Text("Compare notes").font(.headline)
-                    Text("Agents in the Gym").font(.caption).foregroundStyle(.secondary)
+                    Text("Compare notes").font(.paper(.headline))
+                    Text("Agents in the Gym").font(.paper(.caption)).foregroundStyle(.secondary)
                 }
             }
             .accessibilityIdentifier("evals-notes-toggle")
-            Text(view.notes_note).font(.caption).foregroundStyle(.secondary)
+            Text(view.notes_note).font(.paper(.caption)).foregroundStyle(.secondary)
             if view.notes.isEmpty {
-                Text(view.notes_empty).font(.callout).accessibilityIdentifier("evals-notes-empty")
+                Text(view.notes_empty).font(.paper(.callout)).accessibilityIdentifier("evals-notes-empty")
             }
             ForEach(view.notes) { note in
                 VStack(alignment: .leading, spacing: 2) {
-                    Text(noteHeading(note)).font(.caption.monospaced()).foregroundStyle(.secondary)
-                    Text(note.text).font(.callout).multilineTextAlignment(.leading)
+                    Text(noteHeading(note)).font(.paper(.caption)).foregroundStyle(.secondary)
+                    Text(note.text).font(.paper(.callout)).multilineTextAlignment(.leading)
                 }
                 .padding(10)
                 .frame(maxWidth: .infinity, alignment: .leading)

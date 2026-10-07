@@ -363,7 +363,7 @@ private struct NativeMessage: View {
                 VStack(alignment: .center, spacing: 4) { rendered }
                 if let note { Text("·"); Text(note) }
             }
-            .font(.footnote)
+            .font(.paper(.footnote))
             .environment(\.nativeTone, .secondary)
             .foregroundStyle(.secondary)
             .frame(maxWidth: .infinity, alignment: .center)
@@ -378,7 +378,7 @@ private struct NativeMessage: View {
 
     @ViewBuilder private var noteView: some View {
         if let note {
-            Text(note).font(.caption).foregroundStyle(.secondary)
+            Text(note).font(.paper(.caption)).foregroundStyle(.secondary)
         }
     }
 }
@@ -465,15 +465,15 @@ private struct NativeMarkdownList: View {
     @ViewBuilder private func marker(_ item: NativeMarkdownItem, number: UInt64) -> some View {
         if let checked = item.checked {
             Image(systemName: checked ? "checkmark.square.fill" : "square")
-                .font(.system(size: 15))
+                .font(.paper(15))
                 .foregroundStyle(checked ? Color.green : ink.color.opacity(0.7))
                 .frame(height: 20)
                 .accessibilityLabel(checked ? "Completed" : "Not completed")
         } else if ordered {
-            Text("\(number).").font(.system(size: 16).monospacedDigit())
+            Text("\(number).").font(.paper(16))
                 .foregroundStyle(ink.color.opacity(0.7))
         } else {
-            Text("•").font(.system(size: 16, weight: .bold))
+            Text("•").font(.paper(16, weight: .bold))
                 .foregroundStyle(ink.color.opacity(0.7))
                 .accessibilityHidden(true)
         }
@@ -494,7 +494,7 @@ private struct NativeCodeBlock: View {
         VStack(alignment: .leading, spacing: 0) {
             HStack(spacing: 8) {
                 Text(language.flatMap { $0.isEmpty ? nil : $0 } ?? "code")
-                    .font(.caption.weight(.semibold))
+                    .font(.paper(.caption, weight: .semibold))
                     .foregroundStyle(.secondary)
                 Spacer(minLength: 8)
                 Button {
@@ -502,7 +502,7 @@ private struct NativeCodeBlock: View {
                     copied = true
                 } label: {
                     Label(copied ? "Copied" : "Copy", systemImage: copied ? "checkmark" : "doc.on.doc")
-                        .font(.caption)
+                        .font(.paper(.caption))
                         .frame(minHeight: 32)
                         .contentShape(Rectangle())
                 }
@@ -514,7 +514,7 @@ private struct NativeCodeBlock: View {
             Rectangle().fill(Color(uiColor: NativeChatPalette.border)).frame(height: 1)
             ScrollView(.horizontal) {
                 Text(verbatim: code)
-                    .font(.system(size: 13, design: .monospaced))
+                    .font(.paper(13))
                     .foregroundStyle(ink.color)
                     .lineSpacing(3)
                     .fixedSize(horizontal: true, vertical: true)
@@ -654,13 +654,10 @@ final class NativeMarkdownCache {
         case .cell: (15, .regular, .subheadline)
         case .headerCell: (15, .semibold, .subheadline)
         }
-        var font = span.code
-            ? UIFont.monospacedSystemFont(ofSize: size * 0.9, weight: span.bold ? .semibold : weight)
-            : UIFont.systemFont(ofSize: size, weight: span.bold ? .bold : weight)
-        if span.italic, let italic = font.fontDescriptor.withSymbolicTraits(
-            font.fontDescriptor.symbolicTraits.union(.traitItalic)) {
-            font = UIFont(descriptor: italic, size: 0)
-        }
+        // Paper Mono has no italic face, so italic spans draw upright.
+        let font = span.code
+            ? UIFont.paper(size * 0.9, weight: span.bold ? .semibold : weight)
+            : UIFont.paper(size, weight: span.bold ? .bold : weight)
         return UIFontMetrics(forTextStyle: textStyle).scaledFont(for: font, compatibleWith: traits)
     }
 }
@@ -780,16 +777,16 @@ private struct NativeTool: View {
             } label: {
                 HStack(spacing: 8) {
                     icon.frame(width: 18, height: 18)
-                    Text(name).fontWeight(.semibold)
+                    Text(name).font(.paper(.body, weight: .semibold))
                     Text(detail).foregroundStyle(.secondary).lineLimit(1).truncationMode(.tail)
                     Spacer(minLength: 4)
                     if !children.isEmpty {
                         Image(systemName: expanded ? "chevron.down" : "chevron.right")
-                            .font(.caption.weight(.semibold))
+                            .font(.paper(.caption, weight: .semibold))
                             .foregroundStyle(.tertiary)
                     }
                 }
-                .font(.subheadline)
+                .font(.paper(.subheadline))
                 .frame(minHeight: 36)
                 .contentShape(Rectangle())
             }
@@ -804,7 +801,7 @@ private struct NativeTool: View {
                     NativeChat.children(children, revision: revision, surface: surface, submit: submit,
                                         activate: activate)
                 }
-                .font(.footnote)
+                .font(.paper(.footnote))
                 // Tool output is secondary; draw a code child's body font a
                 // step smaller than the conversation's.
                 .dynamicTypeSize(.xSmall)
@@ -855,7 +852,7 @@ private struct NativeWorking: View {
                                    value: pulsing)
                 }
             }
-            Text(label).font(.subheadline)
+            Text(label).font(.paper(.subheadline))
         }
         .foregroundStyle(.secondary)
         .frame(maxWidth: .infinity, alignment: .leading)
@@ -893,7 +890,7 @@ private struct NativeComposer: View {
                 .overlay(alignment: .topLeading) {
                     if text.isEmpty {
                         Text(props.placeholder)
-                            .font(.system(size: 16))
+                            .font(.paper(16))
                             .foregroundStyle(.tertiary)
                             .lineLimit(1)
                             .allowsHitTesting(false)
@@ -925,7 +922,7 @@ private struct NativeComposer: View {
 
     private var controlImage: some View {
         Image(systemName: stops ? "stop.fill" : "arrow.up")
-            .font(.system(size: stops ? 11 : 15, weight: .bold))
+            .font(.paper(stops ? 11 : 15, weight: .bold))
             .foregroundStyle(controlEnabled ? Color(uiColor: .systemBackground)
                                             : Color(uiColor: .tertiaryLabel))
             .frame(width: 34, height: 34)
@@ -1109,7 +1106,7 @@ private struct NativeComposerField: UIViewRepresentable {
     let focusToken: String?
     let send: () -> Void
 
-    private static let font = UIFontMetrics(forTextStyle: .body).scaledFont(for: .systemFont(ofSize: 16))
+    private static let font = UIFontMetrics(forTextStyle: .body).scaledFont(for: .paper(16))
     private static let maxLines: CGFloat = 6
 
     func makeCoordinator() -> Coordinator { Coordinator(self) }

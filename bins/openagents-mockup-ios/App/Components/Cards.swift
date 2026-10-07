@@ -28,7 +28,7 @@ struct AnnouncementCard: View {
         Button { action?() } label: {
             HStack(spacing: Theme.Space.s) {
                 Image(systemName: "flag.checkered")
-                    .font(.system(size: 22, weight: .bold))
+                    .font(.paper(22, weight: .bold))
                     .frame(width: 40)
                 VStack(alignment: .leading, spacing: 4) {
                     Text(title).condensedTitle(Theme.Fonts.sectionLabel, tracking: Theme.Tracking.sectionLabel)

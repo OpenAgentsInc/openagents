@@ -27,7 +27,7 @@ struct SCR19CoderOnComputer: View {
                        onMenu: { app.go(.previousChats(.normal)) },
                        title: "\(phase) · \(MockData.computerName)") {
                 Button { app.go(.newChat(.returning)) } label: {
-                    Image(systemName: "square.and.pencil").font(.system(size: 19, weight: .semibold))
+                    Image(systemName: "square.and.pencil").font(.paper(19, weight: .semibold))
                         .frame(width: 44, height: 44)
                 }
             }
@@ -43,7 +43,7 @@ struct SCR19CoderOnComputer: View {
                         HStack {
                             Text(MockData.coderCommand).font(Theme.Fonts.mono)
                             Spacer()
-                            Image(systemName: "checkmark").font(.system(size: 15, weight: .bold))
+                            Image(systemName: "checkmark").font(.paper(15, weight: .bold))
                         }
                         .padding(12)
                         .background(RoundedRectangle(cornerRadius: 10).fill(Theme.Colors.surface))

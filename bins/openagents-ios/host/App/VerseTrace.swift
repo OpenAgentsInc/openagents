@@ -106,19 +106,19 @@ struct VerseTraceViewer: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
             if watching {
-                Text("\(page.header.task) · \(page.header.result) · \(page.header.beat)").font(.subheadline.bold())
+                Text("\(page.header.task) · \(page.header.result) · \(page.header.beat)").font(.paper(.subheadline, weight: .bold))
             } else {
                 ResultsHeaderView(header: page.header)
             }
             timeline
             HStack {
-                if let replay { Text(replay).font(.caption).accessibilityIdentifier("trace-replay") }
+                if let replay { Text(replay).font(.paper(.caption)).accessibilityIdentifier("trace-replay") }
                 Spacer()
                 Button(watching ? "Show the trace" : "Watch in the Gym",
                        systemImage: watching ? "rectangle.expand.vertical" : "figure.walk") {
                     watching.toggle()
                 }
-                .font(.caption)
+                .font(.paper(.caption))
                 .accessibilityIdentifier("trace-watch")
             }
             if !watching { tabs }
@@ -136,7 +136,7 @@ struct VerseTraceViewer: View {
             .accessibilityIdentifier("trace-tabs")
             if let agent = page.agent {
                 // The running token counter at the playhead stays in view.
-                Text(agent.tokens).font(.caption.monospacedDigit()).accessibilityIdentifier("trace-tokens")
+                Text(agent.tokens).font(.paper(.caption)).accessibilityIdentifier("trace-tokens")
             }
             ScrollViewReader { reader in
                 ScrollView {
@@ -193,49 +193,48 @@ struct VerseTraceViewer: View {
                     .labelStyle(.iconOnly)
                 Spacer()
                 Text("\(page.clock.text) · step \(page.clock.step + 1) of \(page.clock.steps)")
-                    .font(.caption.monospacedDigit())
+                    .font(.paper(.caption))
             }
         }
     }
 
     @ViewBuilder private var jev: some View {
         if let jev = page.jev {
-            Text(jev.summary).font(.caption)
-            Text("Candidates").font(.subheadline.bold())
+            Text(jev.summary).font(.paper(.caption))
+            Text("Candidates").font(.paper(.subheadline, weight: .bold))
             ForEach(jev.candidates) { candidate in
                 VStack(alignment: .leading, spacing: 3) {
                     HStack {
-                        Text("\(candidate.rank). \(candidate.title ?? candidate.key)").font(.caption)
-                            .fontWeight(candidate.kept ? .bold : .regular)
+                        Text("\(candidate.rank). \(candidate.title ?? candidate.key)").font(.paper(.caption, weight: candidate.kept ? .bold : .regular))
                         Spacer()
-                        if candidate.own { Text("own").font(.caption2).padding(.horizontal, 5).overlay(Capsule().stroke(.white.opacity(0.8))) }
-                        Text(candidate.kept ? "kept" : candidate.fate).font(.caption2).foregroundStyle(.secondary)
+                        if candidate.own { Text("own").font(.paper(.caption2)).padding(.horizontal, 5).overlay(Capsule().stroke(.white.opacity(0.8))) }
+                        Text(candidate.kept ? "kept" : candidate.fate).font(.paper(.caption2)).foregroundStyle(.secondary)
                     }
                     ProbabilityBar(p: candidate.p, threshold: jev.keep_threshold, strong: candidate.kept)
                 }
                 .accessibilityElement(children: .ignore)
                 .accessibilityLabel(candidate.accessibility)
             }
-            Text("Requirements").font(.subheadline.bold()).padding(.top, 6)
+            Text("Requirements").font(.paper(.subheadline, weight: .bold)).padding(.top, 6)
             ForEach(jev.requirements, id: \.self) { requirement in
                 VStack(alignment: .leading, spacing: 3) {
-                    Text(requirement.text).font(.caption).fontWeight(requirement.flagged ? .bold : .regular)
+                    Text(requirement.text).font(.paper(.caption, weight: requirement.flagged ? .bold : .regular))
                     ProbabilityBar(p: requirement.p, threshold: jev.flag_threshold, strong: requirement.flagged)
                 }
                 .accessibilityElement(children: .ignore)
                 .accessibilityLabel(requirement.accessibility)
             }
         } else {
-            Text("No Jev decision in this trace.").font(.caption)
+            Text("No Jev decision in this trace.").font(.paper(.caption))
         }
     }
 
     @ViewBuilder private var briefing: some View {
         if let briefing = page.briefing {
-            if let cut = briefing.cut { Text(cut).font(.caption2).foregroundStyle(.secondary) }
-            Text(briefing.text).font(.caption.monospaced()).textSelection(.enabled)
+            if let cut = briefing.cut { Text(cut).font(.paper(.caption2)).foregroundStyle(.secondary) }
+            Text(briefing.text).font(.paper(.caption)).textSelection(.enabled)
         } else {
-            Text("No briefing in this trace.").font(.caption)
+            Text("No briefing in this trace.").font(.paper(.caption))
         }
     }
 
@@ -245,24 +244,24 @@ struct VerseTraceViewer: View {
                 HStack {
                     Button("Earlier") { world.results(["do": "page", "page": agent.page - 1]) }.disabled(agent.page == 0)
                     Spacer()
-                    Text("Page \(agent.page + 1) of \(agent.pages)").font(.caption)
+                    Text("Page \(agent.page + 1) of \(agent.pages)").font(.paper(.caption))
                     Spacer()
                     Button("Later") { world.results(["do": "page", "page": agent.page + 1]) }.disabled(agent.page + 1 >= agent.pages)
-                }.font(.caption)
+                }.font(.paper(.caption))
             }
             ForEach(agent.rows) { step in
                 VStack(alignment: .leading, spacing: 3) {
                     HStack(alignment: .firstTextBaseline, spacing: 6) {
-                        Text(step.at).font(.caption2.monospacedDigit()).foregroundStyle(.secondary)
-                        Text(step.kind.replacingOccurrences(of: "_", with: " ")).font(.caption2.bold())
-                        if let code = step.exit_code { Text("exit \(code)").font(.caption2.monospaced()) }
+                        Text(step.at).font(.paper(.caption2)).foregroundStyle(.secondary)
+                        Text(step.kind.replacingOccurrences(of: "_", with: " ")).font(.paper(.caption2, weight: .bold))
+                        if let code = step.exit_code { Text("exit \(code)").font(.paper(.caption2)) }
                         Spacer()
                     }
-                    Text(step.text).font(step.kind == "command" ? .caption.monospaced() : .caption)
+                    Text(step.text).font(step.kind == "command" ? .paper(.caption) : .paper(.caption))
                         .lineLimit(step.kind == "say" ? 6 : 4)
-                    if let cut = step.cut { Text(cut).font(.caption2).foregroundStyle(.secondary) }
+                    if let cut = step.cut { Text(cut).font(.paper(.caption2)).foregroundStyle(.secondary) }
                     if let output = step.output {
-                        Text(output.text).font(.caption2.monospaced()).textSelection(.enabled)
+                        Text(output.text).font(.paper(.caption2)).textSelection(.enabled)
                             .padding(6).background(Color(white: 0.1), in: RoundedRectangle(cornerRadius: 6))
                     }
                 }
@@ -286,21 +285,21 @@ struct VerseTraceViewer: View {
 
     @ViewBuilder private var verifier: some View {
         if let verifier = page.verifier {
-            Text(verifier.summary).font(.callout.bold())
+            Text(verifier.summary).font(.paper(.callout, weight: .bold))
             ForEach(verifier.tests, id: \.self) { test in
                 HStack {
-                    Image(systemName: test.passed ? "checkmark" : "xmark").font(.caption)
-                    Text(test.name).font(.caption.monospaced())
+                    Image(systemName: test.passed ? "checkmark" : "xmark").font(.paper(.caption))
+                    Text(test.name).font(.paper(.caption))
                     Spacer()
-                    Text(test.status).font(.caption2).foregroundStyle(.secondary)
+                    Text(test.status).font(.paper(.caption2)).foregroundStyle(.secondary)
                 }
                 .accessibilityElement(children: .combine)
             }
-            Text("Output tail").font(.subheadline.bold()).padding(.top, 6)
-            if let cut = verifier.output_tail.cut { Text(cut).font(.caption2).foregroundStyle(.secondary) }
-            Text(verifier.output_tail.text).font(.caption2.monospaced()).textSelection(.enabled)
+            Text("Output tail").font(.paper(.subheadline, weight: .bold)).padding(.top, 6)
+            if let cut = verifier.output_tail.cut { Text(cut).font(.paper(.caption2)).foregroundStyle(.secondary) }
+            Text(verifier.output_tail.text).font(.paper(.caption2)).textSelection(.enabled)
         } else {
-            Text("No verifier result in this trace.").font(.caption)
+            Text("No verifier result in this trace.").font(.paper(.caption))
         }
     }
 }
@@ -323,7 +322,7 @@ private struct ProbabilityBar: View {
         }
         .frame(height: 6)
         .overlay(alignment: .trailing) {
-            Text(String(format: "%.2f", p)).font(.caption2.monospacedDigit()).offset(y: -10)
+            Text(String(format: "%.2f", p)).font(.paper(.caption2)).offset(y: -10)
         }
     }
 }

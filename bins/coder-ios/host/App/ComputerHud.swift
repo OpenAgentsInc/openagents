@@ -141,10 +141,10 @@ struct ComputerInputBar: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
-            Text(input.label).font(.headline)
-            Text(input.prompt).font(.caption)
+            Text(input.label).font(.paper(.headline))
+            Text(input.prompt).font(.paper(.caption))
             if let inputError {
-                Text(inputError).font(.caption).accessibilityIdentifier("computers-input-error")
+                Text(inputError).font(.paper(.caption)).accessibilityIdentifier("computers-input-error")
             }
             if scanning {
                 InlineQRScanner { scanned in send(scanned) }

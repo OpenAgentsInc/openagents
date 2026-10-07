@@ -16,7 +16,7 @@ struct DismissesKeyboard: ViewModifier {
                     HStack {
                         Spacer()
                         Button("Done") { OutsideTap.dismiss() }
-                            .fontWeight(.semibold).tint(.white)
+                            .font(.paper(.body, weight: .semibold)).tint(.white)
                             .accessibilityIdentifier("keyboard-done")
                     }
                     .padding(.horizontal, 20).padding(.vertical, 10)

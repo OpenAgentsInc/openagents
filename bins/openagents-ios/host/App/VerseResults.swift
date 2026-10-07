@@ -148,7 +148,7 @@ struct VerseResultsPanel: View {
                         .labelStyle(.iconOnly).frame(width: 44, height: 44)
                         .accessibilityIdentifier("results-back")
                 }
-                Label("Results", systemImage: "list.number").font(.headline)
+                Label("Results", systemImage: "list.number").font(.paper(.headline))
                 Spacer()
                 Button("Back to world", systemImage: "xmark", action: close)
                     .labelStyle(.iconOnly).frame(width: 44, height: 44)
@@ -156,7 +156,7 @@ struct VerseResultsPanel: View {
             }
             if let view {
                 if let error = view.error {
-                    Text(error).font(.callout).textSelection(.enabled)
+                    Text(error).font(.paper(.callout)).textSelection(.enabled)
                         .accessibilityIdentifier("results-error")
                 }
                 switch view.page {
@@ -168,7 +168,7 @@ struct VerseResultsPanel: View {
                 case nil:
                     if view.loading { ProgressView(view.status).accessibilityIdentifier("results-loading") }
                     else {
-                        Text(view.status).font(.callout)
+                        Text(view.status).font(.paper(.callout))
                         if view.active { Button("Try again") { world.results(["do": "retry"]) } }
                     }
                 }
@@ -189,8 +189,8 @@ struct VerseResultsPanel: View {
             if let summary = page.summary {
                 Button { world.results(["do": "board", "id": summary.board]) } label: {
                     VStack(alignment: .leading, spacing: 4) {
-                        Text(summary.text).font(.body.weight(.semibold)).multilineTextAlignment(.leading)
-                        Text(summary.source).font(.caption).foregroundStyle(.secondary)
+                        Text(summary.text).font(.paper(.body, weight: .semibold)).multilineTextAlignment(.leading)
+                        Text(summary.source).font(.paper(.caption)).foregroundStyle(.secondary)
                             .multilineTextAlignment(.leading)
                     }.frame(maxWidth: .infinity, alignment: .leading)
                 }
@@ -200,14 +200,14 @@ struct VerseResultsPanel: View {
                 .accessibilityIdentifier("results-summary")
                 Divider().overlay(.white.opacity(0.3))
             }
-            Text("Published Terminal-Bench results").font(.headline)
+            Text("Published Terminal-Bench results").font(.paper(.headline))
             ForEach(page.rows) { row in
                 Button { world.results(["do": "board", "id": row.id]) } label: {
                     VStack(alignment: .leading, spacing: 6) {
-                        Text(row.title).font(.headline).multilineTextAlignment(.leading)
-                        Text(row.benchmark).font(.caption).foregroundStyle(.secondary)
-                        Text(row.headline).font(.callout).multilineTextAlignment(.leading)
-                        if let note = row.headline_note { Text(note).font(.caption).foregroundStyle(.secondary) }
+                        Text(row.title).font(.paper(.headline)).multilineTextAlignment(.leading)
+                        Text(row.benchmark).font(.paper(.caption)).foregroundStyle(.secondary)
+                        Text(row.headline).font(.paper(.callout)).multilineTextAlignment(.leading)
+                        if let note = row.headline_note { Text(note).font(.paper(.caption)).foregroundStyle(.secondary) }
                         ResultsChips(chips: row.labels)
                     }.frame(maxWidth: .infinity, alignment: .leading)
                 }
@@ -218,32 +218,32 @@ struct VerseResultsPanel: View {
                 Divider().overlay(.white.opacity(0.3))
             }
             if let footer = page.footer {
-                Text(footer).font(.caption2.monospaced()).foregroundStyle(.secondary)
+                Text(footer).font(.paper(.caption2)).foregroundStyle(.secondary)
                     .accessibilityIdentifier("results-footer")
             }
             Text("Boards are separate studies, in publication order. No number is summed or ranked across them.")
-                .font(.caption).foregroundStyle(.secondary)
+                .font(.paper(.caption)).foregroundStyle(.secondary)
         }.frame(maxWidth: .infinity, alignment: .leading)
     }
 
     // Screen 2: one board.
     private func board(_ page: ResultsBoardPage) -> some View {
         VStack(alignment: .leading, spacing: 12) {
-            Text(page.summary).font(.body.weight(.semibold))
+            Text(page.summary).font(.paper(.body, weight: .semibold))
                 .accessibilityIdentifier("results-board-summary")
-            Text(page.title).font(.headline)
-            Text(page.benchmark).font(.caption).foregroundStyle(.secondary)
-            Text(page.headline).font(.callout).accessibilityIdentifier("results-headline")
-            if let note = page.headline_note { Text(note).font(.caption).foregroundStyle(.secondary) }
+            Text(page.title).font(.paper(.headline))
+            Text(page.benchmark).font(.paper(.caption)).foregroundStyle(.secondary)
+            Text(page.headline).font(.paper(.callout)).accessibilityIdentifier("results-headline")
+            if let note = page.headline_note { Text(note).font(.paper(.caption)).foregroundStyle(.secondary) }
             ResultsChips(chips: page.labels)
             caveats(page)
             VStack(alignment: .leading, spacing: 4) {
                 ForEach(page.tallies, id: \.self) { tally in
-                    Text(tally.text).font(.caption)
+                    Text(tally.text).font(.paper(.caption))
                 }
             }
             VStack(alignment: .leading, spacing: 2) {
-                ForEach(page.spend, id: \.self) { Text($0).font(.caption) }
+                ForEach(page.spend, id: \.self) { Text($0).font(.paper(.caption)) }
             }
             reference(page.reference)
             ScrollView(.horizontal, showsIndicators: false) {
@@ -252,7 +252,7 @@ struct VerseResultsPanel: View {
                         Button("\(filter.text) (\(filter.count))") {
                             world.results(["do": "filter", "filter": filter.filter])
                         }
-                        .font(.caption)
+                        .font(.paper(.caption))
                         .padding(.horizontal, 10).padding(.vertical, 6)
                         .background(filter.selected ? Color.white.opacity(0.22) : Color.clear, in: Capsule())
                         .overlay(Capsule().stroke(.white.opacity(0.5), lineWidth: 1))
@@ -264,26 +264,26 @@ struct VerseResultsPanel: View {
             ForEach(page.tasks) { task in
                 VStack(alignment: .leading, spacing: 6) {
                     HStack(alignment: .firstTextBaseline) {
-                        Text(task.task).font(.subheadline.bold())
+                        Text(task.task).font(.paper(.subheadline, weight: .bold))
                         Spacer()
-                        Text(task.status).font(.caption).foregroundStyle(.secondary)
+                        Text(task.status).font(.paper(.caption)).foregroundStyle(.secondary)
                     }
                     .accessibilityElement(children: .ignore)
                     .accessibilityLabel(task.accessibility)
-                    Text(task.bar).font(.caption2).foregroundStyle(.secondary)
-                    Text(task.knowledge).font(.caption2).foregroundStyle(.secondary)
+                    Text(task.bar).font(.paper(.caption2)).foregroundStyle(.secondary)
+                    Text(task.knowledge).font(.paper(.caption2)).foregroundStyle(.secondary)
                     ForEach(task.attempts) { cell in
                         Button { world.results(["do": "attempt", "id": cell.id]) } label: {
                             VStack(alignment: .leading, spacing: 3) {
                                 HStack(spacing: 6) {
                                     Image(systemName: cell.beat ? "star.fill" : (cell.passed ? "checkmark" : "xmark"))
-                                        .font(.caption)
-                                    Text("\(cell.series): \(cell.text)").font(.caption)
+                                        .font(.paper(.caption))
+                                    Text("\(cell.series): \(cell.text)").font(.paper(.caption))
                                         .multilineTextAlignment(.leading)
                                 }
                                 ResultsChips(chips: cell.labels, small: true)
                                 ForEach(cell.caveats, id: \.self) { caveat in
-                                    Text(caveat.text).font(.caption2).foregroundStyle(.secondary)
+                                    Text(caveat.text).font(.paper(.caption2)).foregroundStyle(.secondary)
                                         .multilineTextAlignment(.leading)
                                 }
                             }
@@ -304,15 +304,15 @@ struct VerseResultsPanel: View {
 
     private func caveats(_ page: ResultsBoardPage) -> some View {
         VStack(alignment: .leading, spacing: 6) {
-            Text("Caveats (\(page.caveat_count))").font(.subheadline.bold())
+            Text("Caveats (\(page.caveat_count))").font(.paper(.subheadline, weight: .bold))
             ForEach(page.caveats, id: \.self) { caveat in
-                Text(caveat.text).font(.caption).textSelection(.enabled)
+                Text(caveat.text).font(.paper(.caption)).textSelection(.enabled)
             }
             if page.caveat_count > 1 {
                 Button(page.caveats_open ? "Show the first caveat only" : "Show all \(page.caveat_count) caveats") {
                     world.results(["do": "caveats", "open": !page.caveats_open])
                 }
-                .font(.caption)
+                .font(.paper(.caption))
                 .accessibilityIdentifier("results-caveats")
             }
         }
@@ -322,12 +322,12 @@ struct VerseResultsPanel: View {
 
     private func reference(_ reference: ResultsReference) -> some View {
         VStack(alignment: .leading, spacing: 4) {
-            Text("Bar: \(reference.name)").font(.caption.bold())
-            Text(reference.rule).font(.caption2).foregroundStyle(.secondary)
+            Text("Bar: \(reference.name)").font(.paper(.caption, weight: .bold))
+            Text(reference.rule).font(.paper(.caption2)).foregroundStyle(.secondary)
             DisclosureGroup("Reference conditions") {
-                Text(reference.conditions).font(.caption2).textSelection(.enabled)
+                Text(reference.conditions).font(.paper(.caption2)).textSelection(.enabled)
             }
-            .font(.caption)
+            .font(.paper(.caption))
             .accessibilityIdentifier("results-conditions")
         }
     }
@@ -336,24 +336,24 @@ struct VerseResultsPanel: View {
     private func attempt(_ page: ResultsAttemptPage) -> some View {
         VStack(alignment: .leading, spacing: 10) {
             ResultsHeaderView(header: page.header)
-            Text("\(page.board_title) · \(page.series)").font(.caption).foregroundStyle(.secondary)
+            Text("\(page.board_title) · \(page.series)").font(.paper(.caption)).foregroundStyle(.secondary)
             VStack(alignment: .leading, spacing: 4) {
-                ForEach(page.numbers, id: \.self) { Text($0).font(.callout) }
+                ForEach(page.numbers, id: \.self) { Text($0).font(.paper(.callout)) }
             }
-            Text(page.misses).font(.callout.bold()).accessibilityIdentifier("results-misses")
+            Text(page.misses).font(.paper(.callout, weight: .bold)).accessibilityIdentifier("results-misses")
             ForEach(page.caveats, id: \.self) { caveat in
-                Text(caveat.text).font(.caption).foregroundStyle(.secondary)
+                Text(caveat.text).font(.paper(.caption)).foregroundStyle(.secondary)
             }
             reference(page.reference)
             if !page.phases.isEmpty {
-                Text("Phases").font(.subheadline.bold())
-                ForEach(page.phases, id: \.self) { Text($0).font(.caption) }
+                Text("Phases").font(.paper(.subheadline, weight: .bold))
+                ForEach(page.phases, id: \.self) { Text($0).font(.paper(.caption)) }
             }
-            if let ended = page.how_it_ended { Text(ended).font(.caption) }
-            if let jev = page.jev { Text(jev).font(.caption) }
-            if let verifier = page.verifier { Text("Verifier: \(verifier)").font(.caption) }
-            ForEach(page.failed_tests, id: \.self) { Text("Failed: \($0)").font(.caption2.monospaced()) }
-            Text(page.trial).font(.caption2.monospaced()).foregroundStyle(.secondary).textSelection(.enabled)
+            if let ended = page.how_it_ended { Text(ended).font(.paper(.caption)) }
+            if let jev = page.jev { Text(jev).font(.paper(.caption)) }
+            if let verifier = page.verifier { Text("Verifier: \(verifier)").font(.paper(.caption)) }
+            ForEach(page.failed_tests, id: \.self) { Text("Failed: \($0)").font(.paper(.caption2)) }
+            Text(page.trial).font(.paper(.caption2)).foregroundStyle(.secondary).textSelection(.enabled)
             if let trace = page.trace {
                 Button(trace, systemImage: "play.rectangle") { world.results(["do": "trace"]) }
                     .buttonStyle(.bordered)
@@ -371,10 +371,10 @@ struct ResultsHeaderView: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 4) {
-            Text(header.task).font(.headline)
-            Text("\(header.result) · \(header.beat)").font(.callout.bold())
-            Text("Cost \(header.cost)").font(.caption)
-            Text("Time \(header.time)").font(.caption)
+            Text(header.task).font(.paper(.headline))
+            Text("\(header.result) · \(header.beat)").font(.paper(.callout, weight: .bold))
+            Text("Cost \(header.cost)").font(.paper(.caption))
+            Text("Time \(header.time)").font(.paper(.caption))
             ResultsChips(chips: header.labels)
         }
         .accessibilityElement(children: .ignore)
@@ -392,7 +392,7 @@ struct ResultsChips: View {
         ResultsFlow(spacing: 4) {
             ForEach(chips, id: \.self) { chip in
                 Text(chip.text)
-                    .font(small ? .caption2 : .caption)
+                    .font(small ? .paper(.caption2) : .paper(.caption))
                     .padding(.horizontal, small ? 5 : 7).padding(.vertical, 2)
                     .overlay(Capsule().stroke(.white.opacity(chip.code == "thin_margin" || chip.code == "in_sample" ? 0.9 : 0.4)))
             }

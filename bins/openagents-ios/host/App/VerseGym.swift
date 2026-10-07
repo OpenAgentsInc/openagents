@@ -62,18 +62,18 @@ struct VerseGymPanel: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
             HStack {
-                Label("Gym", systemImage: "chart.xyaxis.line").font(.headline)
+                Label("Gym", systemImage: "chart.xyaxis.line").font(.paper(.headline))
                 Spacer()
                 Button("Back to world", systemImage: "xmark", action: close)
                     .labelStyle(.iconOnly).frame(width: 44, height: 44)
                     .accessibilityIdentifier("gym-close")
             }
             if let board {
-                Text(board.status).font(.caption).foregroundStyle(.secondary)
+                Text(board.status).font(.paper(.caption)).foregroundStyle(.secondary)
                     .accessibilityIdentifier("gym-status")
-                if board.stale { Text("Snapshot is stale. New starts are unavailable.").font(.caption) }
+                if board.stale { Text("Snapshot is stale. New starts are unavailable.").font(.paper(.caption)) }
                 if let error = board.error ?? world.error ?? world.gymStorageError {
-                    Text(error).font(.callout).textSelection(.enabled).accessibilityIdentifier("gym-error")
+                    Text(error).font(.paper(.callout)).textSelection(.enabled).accessibilityIdentifier("gym-error")
                 }
                 ScrollView {
                     VStack(alignment: .leading, spacing: 14) {
@@ -94,7 +94,7 @@ struct VerseGymPanel: View {
                         }
                         if let launch = board.launch { launchStatus(launch, active: board.active) }
                         ForEach(Array(board.notices.enumerated()), id: \.offset) { _, notice in
-                            Text(notice).font(.caption).textSelection(.enabled)
+                            Text(notice).font(.paper(.caption)).textSelection(.enabled)
                         }
                     }.frame(maxWidth: .infinity, alignment: .leading)
                 }.scrollDismissesKeyboard(.interactively)
@@ -111,9 +111,9 @@ struct VerseGymPanel: View {
 
     private func connection(_ board: GymBoardView) -> some View {
         VStack(alignment: .leading, spacing: 12) {
-            Text("Connect a Gym host").font(.headline)
+            Text("Connect a Gym host").font(.paper(.headline))
             Text("Create a Gym connection grant on your host for this world key, then paste its gym-connect: code.")
-            Text(board.public_key).font(.system(.caption2, design: .monospaced)).textSelection(.enabled)
+            Text(board.public_key).font(.paper(.caption2)).textSelection(.enabled)
                 .accessibilityIdentifier("gym-public-key")
             Button("Copy public key", systemImage: "doc.on.doc") { UIPasteboard.general.string = board.public_key }
             TextEditor(text: $code).frame(minHeight: 85, maxHeight: 130)
@@ -124,24 +124,24 @@ struct VerseGymPanel: View {
                 if world.configureGym(code) { code = ""; configuring = false }
             }.disabled(code.isEmpty).accessibilityIdentifier("gym-connect")
             Text("This grant is separate from your computers' access. Only the host's listed recipes can start, after you confirm.")
-                .font(.caption).foregroundStyle(.secondary)
+                .font(.paper(.caption)).foregroundStyle(.secondary)
             if board.configured { Button("Back to board") { configuring = false } }
         }
     }
 
     private func runList(_ board: GymBoardView) -> some View {
         VStack(alignment: .leading, spacing: 14) {
-            Text("Microcoder and Terminal-Bench runs").font(.headline)
+            Text("Microcoder and Terminal-Bench runs").font(.paper(.headline))
             if board.runs.isEmpty { Text("No runs are available in this snapshot.") }
             ForEach(board.runs.sorted { rank($0.category) < rank($1.category) }) { run in
                 Button {
                     world.send(["action": "gym_select_run", "id": run.id])
                 } label: {
                     VStack(alignment: .leading, spacing: 4) {
-                        Text(run.title).font(.headline)
-                        Text("\(run.category) · \(run.status)").font(.caption).foregroundStyle(.secondary)
+                        Text(run.title).font(.paper(.headline))
+                        Text("\(run.category) · \(run.status)").font(.paper(.caption)).foregroundStyle(.secondary)
                         progress(run)
-                        Text(summary(run)).font(.caption)
+                        Text(summary(run)).font(.paper(.caption))
                     }.frame(maxWidth: .infinity, alignment: .leading)
                 }.accessibilityIdentifier("gym-run-\(run.id)")
                 Divider().overlay(.white.opacity(0.3))
@@ -151,7 +151,7 @@ struct VerseGymPanel: View {
 
     private func recipeList(_ board: GymBoardView) -> some View {
         VStack(alignment: .leading, spacing: 10) {
-            Text("Supported new runs").font(.headline)
+            Text("Supported new runs").font(.paper(.headline))
             if board.recipes.isEmpty { Text("This connection has no supported start recipes.") }
             ForEach(board.recipes) { recipe in
                 Button(recipe.title) { world.send(["action": "gym_select_recipe", "id": recipe.id]) }
@@ -163,13 +163,13 @@ struct VerseGymPanel: View {
 
     private func runDetails(_ run: GymRun) -> some View {
         VStack(alignment: .leading, spacing: 12) {
-            Text(run.title).font(.headline).accessibilityIdentifier("gym-run-title")
+            Text(run.title).font(.paper(.headline)).accessibilityIdentifier("gym-run-title")
             Text("\(run.category) · \(run.status)")
             progress(run)
-            Text(summary(run)).font(.callout)
+            Text(summary(run)).font(.paper(.callout))
             ForEach(Array(run.metrics.enumerated()), id: \.offset) { _, metric in
                 VStack(alignment: .leading, spacing: 6) {
-                    Text("\(metric.name) (\(metric.unit))").font(.headline)
+                    Text("\(metric.name) (\(metric.unit))").font(.paper(.headline))
                     if metric.points.isEmpty { Text("No recorded points.") }
                     else {
                         Chart(Array(metric.points.enumerated()), id: \.offset) { _, point in
@@ -184,26 +184,26 @@ struct VerseGymPanel: View {
                         DisclosureGroup("Recorded values") {
                             ForEach(Array(metric.points.enumerated()), id: \.offset) { _, point in
                                 Text("Step \(point.step): \(point.value.formatted()) \(metric.unit)")
-                                    .font(.caption).textSelection(.enabled)
+                                    .font(.paper(.caption)).textSelection(.enabled)
                             }
                         }
                     }
                 }
             }
-            Text("Source: \(run.source)").font(.caption).textSelection(.enabled)
-            Text(run.provenance).font(.caption).foregroundStyle(.secondary).textSelection(.enabled)
+            Text("Source: \(run.source)").font(.paper(.caption)).textSelection(.enabled)
+            Text(run.provenance).font(.paper(.caption)).foregroundStyle(.secondary).textSelection(.enabled)
             Text("Completed describes the recorded process; it does not by itself establish benchmark success.")
-                .font(.caption).foregroundStyle(.secondary)
+                .font(.paper(.caption)).foregroundStyle(.secondary)
         }
     }
 
     private func recipeDetails(_ recipe: GymRecipe, board: GymBoardView) -> some View {
         VStack(alignment: .leading, spacing: 12) {
-            Text(recipe.title).font(.headline)
+            Text(recipe.title).font(.paper(.headline))
             Text(recipe.detail).textSelection(.enabled)
             Text("Time limit: \(recipe.budget.wall_ms / 1000) seconds · Maximum starts: \(recipe.budget.max_starts)")
             Text(recipe.budget.spend_enforced ? "The host enforces this recipe's spending limit." : "No dollar limit is enforced for this recipe.")
-            Text("Recipe revision: \(recipe.revision)").font(.caption2.monospaced()).textSelection(.enabled)
+            Text("Recipe revision: \(recipe.revision)").font(.paper(.caption2)).textSelection(.enabled)
             Text("Starting submits this exact recipe to the host. Leaving the Gym does not cancel the run.")
             Button("Start this run") { world.send(["action": "gym_launch"]) }
                 .disabled(!board.active || board.stale || ["sending", "unknown"].contains(board.launch?.phase ?? ""))
@@ -213,15 +213,15 @@ struct VerseGymPanel: View {
 
     private func launchStatus(_ launch: GymLaunch, active: Bool) -> some View {
         VStack(alignment: .leading, spacing: 6) {
-            Text("Request: \(launch.phase)").font(.headline).accessibilityIdentifier("gym-launch-status")
-            Text(launch.request_id).font(.caption2.monospaced()).textSelection(.enabled)
+            Text("Request: \(launch.phase)").font(.paper(.headline)).accessibilityIdentifier("gym-launch-status")
+            Text(launch.request_id).font(.paper(.caption2)).textSelection(.enabled)
             if let receipt = launch.receipt {
-                Text("Host receipt: \(receipt.status) · Run \(receipt.run_id)").font(.caption)
+                Text("Host receipt: \(receipt.status) · Run \(receipt.run_id)").font(.paper(.caption))
             }
-            if let error = launch.error { Text(error).font(.caption) }
+            if let error = launch.error { Text(error).font(.paper(.caption)) }
             if launch.phase == "sending" { ProgressView("Waiting for the host receipt…") }
             if launch.phase == "unknown" {
-                Text("The host may already have accepted this request. Retry uses the same request identity.").font(.caption)
+                Text("The host may already have accepted this request. Retry uses the same request identity.").font(.paper(.caption))
                 Button("Retry the same request") { world.send(["action": "gym_retry"]) }
                     .disabled(!active).accessibilityIdentifier("gym-retry")
             }
@@ -230,9 +230,9 @@ struct VerseGymPanel: View {
 
     @ViewBuilder private func progress(_ run: GymRun) -> some View {
         if let completed = run.completed, let total = run.total {
-            Text("\(completed) / \(total) recorded").font(.caption)
+            Text("\(completed) / \(total) recorded").font(.paper(.caption))
             if total > 0 { ProgressView(value: Double(completed), total: Double(total)) }
-        } else { Text("Progress unavailable").font(.caption) }
+        } else { Text("Progress unavailable").font(.paper(.caption)) }
     }
 
     private func rank(_ category: String) -> Int {

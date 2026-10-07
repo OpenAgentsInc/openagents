@@ -32,7 +32,7 @@ struct ComputerPanel: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
             HStack {
-                Text(settings ? "Settings" : "Chats").font(.headline)
+                Text(settings ? "Settings" : "Chats").font(.paper(.headline))
                 Spacer()
                 if !settings && paired && !pairing { refreshButton }
                 Button("Computers", systemImage: "desktopcomputer") { computers() }
@@ -54,10 +54,10 @@ struct ComputerPanel: View {
                     .labelStyle(.iconOnly).accessibilityIdentifier("computer-close")
             }
             if let error = inputError ?? reader.nativeError ?? reader.packet?.error {
-                Text(error).font(.caption).textSelection(.enabled).accessibilityIdentifier("reader-error")
+                Text(error).font(.paper(.caption)).textSelection(.enabled).accessibilityIdentifier("reader-error")
             }
             if reader.busy {
-                HStack { ProgressView(); Text("Loading…").font(.caption) }
+                HStack { ProgressView(); Text("Loading…").font(.paper(.caption)) }
                     .accessibilityIdentifier("computer-busy")
             }
             if settings {
@@ -71,7 +71,7 @@ struct ComputerPanel: View {
                     reader.activate(view: view, node: node)
                 }
             } else {
-                Text("Loading chats…").font(.caption)
+                Text("Loading chats…").font(.paper(.caption))
             }
         }
         .padding(12)
@@ -103,11 +103,11 @@ struct ComputerPanel: View {
                 }.accessibilityIdentifier("computer-pair")
                 Divider()
                 VStack(alignment: .leading, spacing: 8) {
-                    Text("World connection").font(.headline)
+                    Text("World connection").font(.paper(.headline))
                     Text(worldConnection?.label ?? "Offline")
-                        .font(.caption).accessibilityIdentifier("world-connection-status")
+                        .font(.paper(.caption)).accessibilityIdentifier("world-connection-status")
                     if let error = worldStorageError ?? worldConnection?.error {
-                        Text(error).font(.caption).textSelection(.enabled)
+                        Text(error).font(.paper(.caption)).textSelection(.enabled)
                             .accessibilityIdentifier("world-connection-error")
                     }
                     TextField("Relay URL", text: $relay)
@@ -124,12 +124,12 @@ struct ComputerPanel: View {
                                 .accessibilityIdentifier("world-leave")
                         }
                     }
-                    Text("Shares your avatar and movement.").font(.caption2).foregroundStyle(.secondary)
+                    Text("Shares your avatar and movement.").font(.paper(.caption2)).foregroundStyle(.secondary)
                 }
                 Divider()
                 DisclosureGroup(isExpanded: $aboutVerse) {
                     Text(worldCredits ?? "Loading notices…")
-                        .font(.caption2).textSelection(.enabled)
+                        .font(.paper(.caption2)).textSelection(.enabled)
                         .accessibilityIdentifier("verse-credits")
                 } label: {
                     Text("About Verse").accessibilityIdentifier("verse-about")
@@ -141,17 +141,17 @@ struct ComputerPanel: View {
                 DisclosureGroup("Device details") {
                     VStack(alignment: .leading, spacing: 8) {
                         Text(reader.packet?.public_key ?? "Unavailable")
-                            .font(.system(.caption2, design: .monospaced)).textSelection(.enabled)
+                            .font(.paper(.caption2)).textSelection(.enabled)
                             .accessibilityIdentifier("reader-public-key")
                         Text(reader.packet?.status ?? "Opening…")
-                            .font(.caption2).accessibilityIdentifier("reader-status")
+                            .font(.paper(.caption2)).accessibilityIdentifier("reader-status")
                         if let wakes = reader.pushStatus {
-                            Text(wakes).font(.caption2).foregroundStyle(.secondary)
+                            Text(wakes).font(.paper(.caption2)).foregroundStyle(.secondary)
                                 .accessibilityIdentifier("push-status")
                         }
                         if paired {
                             if disconnecting {
-                                Text("Erase cached chats on this phone?").font(.caption)
+                                Text("Erase cached chats on this phone?").font(.paper(.caption))
                                 HStack {
                                     Button("Disconnect and erase", role: .destructive) {
                                         reader.disconnect(); disconnecting = false; settings = false
@@ -163,7 +163,7 @@ struct ComputerPanel: View {
                             }
                         }
                     }
-                }.font(.caption)
+                }.font(.paper(.caption))
             }.frame(maxWidth: .infinity, alignment: .leading)
         }
         .scrollDismissesKeyboard(.interactively)
@@ -178,13 +178,13 @@ struct ComputerPanel: View {
         ScrollView {
             VStack(alignment: .leading, spacing: 12) {
                 Text("In a terminal on the computer:")
-                Text(command).font(.system(.caption, design: .monospaced)).textSelection(.enabled)
+                Text(command).font(.paper(.caption)).textSelection(.enabled)
                     .accessibilityIdentifier("computer-command")
                 Button(copied ? "Copied" : "Copy command", systemImage: "doc.on.doc") {
                     UIPasteboard.general.string = command
                     copied = true
                 }
-                Text("Then scan the QR code.").font(.caption)
+                Text("Then scan the QR code.").font(.paper(.caption))
                 if scanning {
                     InlineQRScanner { value in
                         scanning = false
@@ -212,11 +212,11 @@ struct ComputerPanel: View {
                         .accessibilityIdentifier("computer-connect")
                 }
                 Text("Read-only chat access.")
-                    .font(.caption).foregroundStyle(.secondary)
+                    .font(.paper(.caption)).foregroundStyle(.secondary)
                 DisclosureGroup("Setup help") {
                     Text("Install the openagents command on the computer first. Keep the command running while you read chats.")
-                        .font(.caption).textSelection(.enabled)
-                }.font(.caption)
+                        .font(.paper(.caption)).textSelection(.enabled)
+                }.font(.paper(.caption))
                 if paired {
                     Button("Back to chats") { pairing = false; scanning = false; pasting = false }
                         .accessibilityIdentifier("computer-chats")

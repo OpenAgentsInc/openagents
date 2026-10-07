@@ -155,7 +155,7 @@ struct ReportSheet: View {
                 }
                 .pickerStyle(.segmented)
                 .accessibilityIdentifier("report-kind")
-                Text(hint).font(.footnote).foregroundStyle(.secondary)
+                Text(hint).font(.paper(.footnote)).foregroundStyle(.secondary)
             }
             Section("What happened") {
                 TextEditor(text: $happened).frame(minHeight: 80)
@@ -171,7 +171,7 @@ struct ReportSheet: View {
                 Section {
                     Toggle("Attach this chat's task ID", isOn: $includeTask)
                 } footer: {
-                    Text(task).font(.caption.monospaced())
+                    Text(task).font(.paper(.caption))
                 }
             }
             screenshotSection
@@ -181,7 +181,7 @@ struct ReportSheet: View {
                         .accessibilityIdentifier("report-share-chat")
                     DisclosureGroup("Show the whole chat") {
                         ForEach(Array(lines.enumerated()), id: \.offset) { _, line in
-                            Text(line).font(.caption)
+                            Text(line).font(.paper(.caption))
                         }
                     }
                 } footer: {
@@ -193,7 +193,7 @@ struct ReportSheet: View {
                     Toggle("Attach the playtest log (\(draft.log_lines.count) events)", isOn: $includeLog)
                     DisclosureGroup("Show the whole log") {
                         ForEach(Array(draft.log_lines.enumerated()), id: \.offset) { _, line in
-                            Text(line).font(.caption.monospaced())
+                            Text(line).font(.paper(.caption))
                         }
                     }
                 } footer: {
@@ -207,13 +207,13 @@ struct ReportSheet: View {
             }
             Section("Sent with the report") {
                 Text("\(ReportDevice.version) (\(ReportDevice.build)) · \(draft.tab)/\(draft.route) · \(ReportDevice.model) · iOS \(ReportDevice.os)")
-                    .font(.footnote.monospaced())
+                    .font(.paper(.footnote))
                     .foregroundStyle(.secondary)
             }
             if !draft.triage_ready {
                 Section {
                     Text("This build can't send reports yet. Yours is saved on this phone and is sent by a later build. To report now, use the GitHub form.")
-                        .font(.footnote)
+                        .font(.paper(.footnote))
                     if let url = URL(string: draft.fallback) {
                         Link("Open the Playtest report form", destination: url)
                     }
@@ -242,7 +242,7 @@ struct ReportSheet: View {
         if !draft.screenshot_allowed {
             Section {
                 Text("No screenshot from the Wallet or a key screen. Describe it in words.")
-                    .font(.footnote).foregroundStyle(.secondary)
+                    .font(.paper(.footnote)).foregroundStyle(.secondary)
             }
         } else if session.image != nil {
             Section {
@@ -267,15 +267,15 @@ struct ReportSheet: View {
             Section {
                 VStack(alignment: .leading, spacing: 8) {
                     Text(row.status == "waiting" ? "Saved on this phone" : "Report filed")
-                        .font(.title2.bold())
+                        .font(.paper(.title2, weight: .bold))
                     if let code = row.code {
-                        Text(code).font(.title3.monospaced()).textSelection(.enabled)
+                        Text(code).font(.paper(.title3)).textSelection(.enabled)
                             .accessibilityIdentifier("report-code")
                     }
                     Text(row.status == "waiting"
                          ? "It's sent by a later build that knows the triage key. You'll find it in Account, My reports."
                          : "Quote this code if you talk to us about it. You'll find it in Account, My reports.")
-                        .font(.subheadline).foregroundStyle(.secondary)
+                        .font(.paper(.subheadline)).foregroundStyle(.secondary)
                 }
                 .padding(.vertical, 4)
             }
@@ -347,7 +347,7 @@ struct FeedbackSheet: View {
             Form {
                 Section {
                     Text(request.text)
-                        .font(.callout)
+                        .font(.paper(.callout))
                         .foregroundStyle(.secondary)
                         .lineLimit(8)
                 }
@@ -423,22 +423,22 @@ struct MyReportsScreen: View {
             if let packet, packet.reports.isEmpty {
                 Section {
                     Text("No reports yet. Long-press the tab bar on any screen, or use Report a problem in Account.")
-                        .font(.subheadline).foregroundStyle(.secondary)
+                        .font(.paper(.subheadline)).foregroundStyle(.secondary)
                 }
             }
             ForEach(packet?.reports ?? [], id: \.self) { row in
                 VStack(alignment: .leading, spacing: 3) {
                     HStack(alignment: .firstTextBaseline) {
-                        Text(row.code ?? "No code yet").font(.body.monospaced().weight(.semibold))
+                        Text(row.code ?? "No code yet").font(.paper(.body, weight: .semibold))
                         Spacer()
-                        Text(row.status_label).font(.caption)
+                        Text(row.status_label).font(.paper(.caption))
                             .foregroundStyle(row.status == "sent" ? .secondary : Color.yellow)
                     }
-                    Text(row.summary).font(.subheadline).lineLimit(2)
+                    Text(row.summary).font(.paper(.subheadline)).lineLimit(2)
                     Text("\(row.kind_label) · \(row.place) · \(row.build)\(row.screenshot ? " · screenshot" : "")\(row.log ? " · playtest log" : "")\(row.published == true ? " · public record" : "")")
-                        .font(.caption).foregroundStyle(.secondary)
+                        .font(.paper(.caption)).foregroundStyle(.secondary)
                     if let error = row.error {
-                        Text(error).font(.caption).foregroundStyle(.red)
+                        Text(error).font(.paper(.caption)).foregroundStyle(.red)
                     }
                 }
                 .padding(.vertical, 2)
@@ -493,7 +493,7 @@ struct PlaytestScreen: View {
                     if log.events > 0 {
                         DisclosureGroup(log.events == 1 ? "1 event" : "\(log.events) events") {
                             ForEach(Array(log.lines.enumerated()), id: \.offset) { _, line in
-                                Text(line).font(.caption.monospaced())
+                                Text(line).font(.paper(.caption))
                             }
                         }
                         Button("Delete the log", role: .destructive) { confirmClear = true }
@@ -554,15 +554,15 @@ struct PlaytestCardSection: View {
             VStack(alignment: .leading, spacing: 10) {
                 if card?.playtest.state == "preview" {
                     Label("Preview: a labeled fixture, not real awards.", systemImage: "flask")
-                        .font(.footnote).foregroundStyle(.yellow)
+                        .font(.paper(.footnote)).foregroundStyle(.yellow)
                 }
                 HStack(alignment: .firstTextBaseline) {
-                    Text("\(card?.playtest.xp ?? 0) playtest XP").font(.title2.bold().monospacedDigit())
+                    Text("\(card?.playtest.xp ?? 0) playtest XP").font(.paper(.title2, weight: .bold))
                         .accessibilityIdentifier("playtest-xp")
                     Spacer()
                     if let card {
                         Text("Trainer: \(card.xp) XP · lv \(card.level)")
-                            .font(.footnote.monospacedDigit()).foregroundStyle(.secondary)
+                            .font(.paper(.footnote)).foregroundStyle(.secondary)
                     }
                 }
                 HStack(spacing: 0) {
@@ -572,9 +572,9 @@ struct PlaytestCardSection: View {
                 }
                 if let titles = card?.playtest.titles, !titles.isEmpty {
                     Text(titles.map { $0.uppercased() }.joined(separator: " · "))
-                        .font(.footnote.monospaced().weight(.semibold))
+                        .font(.paper(.footnote, weight: .semibold))
                 }
-                Text(status).font(.footnote).foregroundStyle(.secondary)
+                Text(status).font(.paper(.footnote)).foregroundStyle(.secondary)
                     .fixedSize(horizontal: false, vertical: true)
             }
             .padding(.vertical, 4)
@@ -583,9 +583,9 @@ struct PlaytestCardSection: View {
                 if let url = URL(string: award.link) {
                     Link(destination: url) {
                         HStack(alignment: .firstTextBaseline) {
-                            Text(award.title).font(.subheadline)
+                            Text(award.title).font(.paper(.subheadline))
                             Spacer()
-                            Text("+\(award.xp) XP").font(.subheadline.monospacedDigit())
+                            Text("+\(award.xp) XP").font(.paper(.subheadline))
                         }
                     }
                     .foregroundStyle(.white)
@@ -611,8 +611,8 @@ struct PlaytestCardSection: View {
 
     private func stat(_ value: Int, _ label: String) -> some View {
         VStack(alignment: .leading, spacing: 0) {
-            Text("\(value)").font(.title3.monospacedDigit())
-            Text(label).font(.caption).foregroundStyle(.secondary)
+            Text("\(value)").font(.paper(.title3))
+            Text(label).font(.paper(.caption)).foregroundStyle(.secondary)
         }
         .frame(maxWidth: .infinity, alignment: .leading)
     }

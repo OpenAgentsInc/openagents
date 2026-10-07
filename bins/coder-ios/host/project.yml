@@ -12,6 +12,19 @@ targets:
     platform: iOS
     sources:
       - path: App
+      # Paper Mono, the app's one typeface, from the shared copy.
+      - path: ../../../crates/paper-mono/fonts/PaperMono-Regular.ttf
+        group: App/Fonts
+        buildPhase: resources
+      - path: ../../../crates/paper-mono/fonts/PaperMono-Medium.ttf
+        group: App/Fonts
+        buildPhase: resources
+      - path: ../../../crates/paper-mono/fonts/PaperMono-SemiBold.ttf
+        group: App/Fonts
+        buildPhase: resources
+      - path: ../../../crates/paper-mono/fonts/PaperMono-Bold.ttf
+        group: App/Fonts
+        buildPhase: resources
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.openagents.coder

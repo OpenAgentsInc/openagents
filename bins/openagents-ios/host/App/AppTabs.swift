@@ -304,7 +304,7 @@ private struct ExternalLink: View {
                 HStack {
                     Label(title, systemImage: symbol)
                     Spacer()
-                    Image(systemName: "arrow.up.right").font(.footnote).foregroundStyle(.secondary)
+                    Image(systemName: "arrow.up.right").font(.paper(.footnote)).foregroundStyle(.secondary)
                 }
             }
             .foregroundStyle(.white)

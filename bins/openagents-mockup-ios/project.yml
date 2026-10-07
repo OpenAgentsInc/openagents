@@ -14,6 +14,29 @@ targets:
     platform: iOS
     sources:
       - path: App
+      # Paper Mono, the app's one typeface, from the shared copy.
+      - path: ../../crates/paper-mono/fonts/PaperMono-Regular.ttf
+        group: App/Fonts
+        buildPhase: resources
+      - path: ../../crates/paper-mono/fonts/PaperMono-Medium.ttf
+        group: App/Fonts
+        buildPhase: resources
+      - path: ../../crates/paper-mono/fonts/PaperMono-SemiBold.ttf
+        group: App/Fonts
+        buildPhase: resources
+      - path: ../../crates/paper-mono/fonts/PaperMono-Bold.ttf
+        group: App/Fonts
+        buildPhase: resources
+    # Generated keys come from INFOPLIST_KEY_* below; this file adds only
+    # UIAppFonts, which has no build setting.
+    info:
+      path: App/Info.plist
+      properties:
+        UIAppFonts:
+          - PaperMono-Regular.ttf
+          - PaperMono-Medium.ttf
+          - PaperMono-SemiBold.ttf
+          - PaperMono-Bold.ttf
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.openagents.mockup

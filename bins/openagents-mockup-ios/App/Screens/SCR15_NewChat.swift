@@ -21,7 +21,7 @@ struct ChatHeader<Trailing: View>: View {
             if let back {
                 Button(action: back.action) {
                     HStack(spacing: 2) {
-                        Image(systemName: "chevron.left").font(.system(size: 17, weight: .bold))
+                        Image(systemName: "chevron.left").font(.paper(17, weight: .bold))
                         if !back.label.isEmpty { Text(back.label).font(Theme.Fonts.bodyBold) }
                     }
                     .frame(minWidth: 36, minHeight: 44)
@@ -29,11 +29,11 @@ struct ChatHeader<Trailing: View>: View {
             }
             if let onMenu {
                 Button(action: onMenu) {
-                    Image(systemName: "line.3.horizontal").font(.system(size: 18, weight: .semibold))
+                    Image(systemName: "line.3.horizontal").font(.paper(18, weight: .semibold))
                         .frame(width: 40, height: 44)
                 }
             }
-            Text(title).font(.system(size: 19, weight: .bold)).lineLimit(1).padding(.leading, 4)
+            Text(title).font(.paper(19, weight: .bold)).lineLimit(1).padding(.leading, 4)
             Spacer()
             trailing
         }
@@ -64,7 +64,7 @@ struct SCR15NewChat: View {
                     HStack(spacing: 4) {
                         Text(target.map { "\($0) · \(MockData.workspaceName)" } ?? "Cloud")
                             .font(Theme.Fonts.caption).lineLimit(1)
-                        Image(systemName: "chevron.down").font(.system(size: 11, weight: .bold))
+                        Image(systemName: "chevron.down").font(.paper(11, weight: .bold))
                     }
                     .padding(.horizontal, 12).frame(height: 32)
                     .background(Capsule().fill(Theme.Colors.surfaceRaised))
