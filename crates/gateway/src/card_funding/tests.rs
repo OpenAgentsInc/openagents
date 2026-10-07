@@ -11,6 +11,116 @@ fn secret() -> Vec<u8> {
         .secret_bytes()
         .to_vec()
 }
+
+#[tokio::test]
+async fn native_adjustment_lookup_is_charge_scoped_complete_mode_bound_and_stable() {
+    use axum::extract::{Path, Query, State};
+    use std::{collections::BTreeMap, sync::Mutex};
+    #[derive(Clone)]
+    struct Fixture {
+        fault: Arc<AtomicUsize>,
+        charge_reads: Arc<AtomicUsize>,
+        requests: Arc<Mutex<Vec<String>>>,
+    }
+    async fn account(State(f): State<Fixture>) -> axum::Json<Value> {
+        axum::Json(
+            json!({"object":"account", "id":if f.fault.load(Ordering::SeqCst)==8 {"acct_other"} else {"acct_fixture"}}),
+        )
+    }
+    async fn charge(State(f): State<Fixture>) -> axum::Json<Value> {
+        let count = f.charge_reads.fetch_add(1, Ordering::SeqCst);
+        axum::Json(
+            json!({"object":"charge", "id":"ch_original", "livemode":false,
+            "amount":10000, "amount_captured":10000, "currency":"usd", "customer":"cus_original",
+            "payment_intent":"pi_original", "balance_transaction":"txn_original",
+            "paid":true, "captured":true, "status":"succeeded", "refunded":false, "disputed":true,
+            "amount_refunded":if f.fault.load(Ordering::SeqCst)==5 && count%2==1 {2000} else {1000},
+            "billing_details":{"name":"seeded-protected-customer-name"}}),
+        )
+    }
+    async fn related(
+        State(f): State<Fixture>,
+        Path(resource): Path<String>,
+        Query(query): Query<BTreeMap<String, String>>,
+        headers: axum::http::HeaderMap,
+    ) -> axum::Json<Value> {
+        assert_eq!(headers["stripe-version"], "fixture.v1");
+        assert!(
+            headers["authorization"]
+                .to_str()
+                .unwrap()
+                .starts_with("Bearer rk_test_")
+        );
+        assert_eq!(query.len(), 2);
+        assert_eq!(query["charge"], "ch_original");
+        assert_eq!(query["limit"], "100");
+        f.requests.lock().unwrap().push(resource.clone());
+        let fault = f.fault.load(Ordering::SeqCst);
+        let mut rows = if resource == "refunds" {
+            vec![
+                json!({"object":"refund", "id":"re_original", "charge":if fault==1 {"ch_foreign"} else {"ch_original"},
+                "amount":1000, "currency":"usd", "status":"succeeded", "description":"seeded-private-refund-message"}),
+            ]
+        } else {
+            vec![
+                json!({"object":"dispute", "id":"du_original", "charge":"ch_original", "livemode":fault==2,
+                "amount":1000, "currency":"usd", "status":"needs_response",
+                "evidence":{"customer_email_address":"seeded-private-contact@example.invalid"}}),
+            ]
+        };
+        if fault == 4 && resource == "refunds" {
+            rows.push(rows[0].clone());
+        }
+        axum::Json(json!({"object":if fault==7 {"customer"} else {"list"},
+            "url":if fault==6 {"/v1/unrelated".to_string()} else {format!("/v1/{resource}")},
+            "has_more":fault==3, "data":rows}))
+    }
+    let f = Fixture {
+        fault: Arc::new(AtomicUsize::new(0)),
+        charge_reads: Arc::new(AtomicUsize::new(0)),
+        requests: Arc::new(Mutex::new(Vec::new())),
+    };
+    let router = Router::new()
+        .route("/v1/account", get(account))
+        .route("/v1/charges/ch_original", get(charge))
+        .route("/v1/{resource}", get(related))
+        .with_state(f.clone());
+    let (origin, task) = server(router).await;
+    let material = secret()
+        .iter()
+        .map(|b| format!("{b:02x}"))
+        .collect::<String>();
+    let mut client =
+        Stripe::new_for_mode(format!("rk_test_{material}"), "fixture.v1".into(), false).unwrap();
+    client.origin = origin;
+    assert!(client.adjustments("ch_original").await.is_err());
+    assert!(f.requests.lock().unwrap().is_empty());
+    client.bind_account("acct_fixture").await.unwrap();
+    let refs = client.adjustments("ch_original").await.unwrap();
+    assert_eq!(refs.refunds, vec!["re_original"]);
+    assert_eq!(refs.disputes, vec!["du_original"]);
+    assert_eq!(*f.requests.lock().unwrap(), vec!["refunds", "disputes"]);
+    assert_eq!(f.charge_reads.load(Ordering::SeqCst), 2);
+    for fault in 1..=8 {
+        f.fault.store(fault, Ordering::SeqCst);
+        f.charge_reads.store(0, Ordering::SeqCst);
+        assert!(
+            client.adjustments("ch_original").await.is_err(),
+            "fault {fault}"
+        );
+    }
+    f.fault.store(0, Ordering::SeqCst);
+    let requests = f.requests.lock().unwrap().len();
+    for id in [
+        "pi_original",
+        "ch_original/../foreign",
+        "ch_original?customer=other",
+    ] {
+        assert!(client.adjustments(id).await.is_err());
+    }
+    assert_eq!(f.requests.lock().unwrap().len(), requests);
+    task.abort();
+}
 fn body() -> Vec<u8> {
     serde_json::to_vec(&json!({
         "id":"evt_fixture", "object":"event", "api_version":"fixture.v1",

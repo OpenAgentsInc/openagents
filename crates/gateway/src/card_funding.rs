@@ -12,6 +12,8 @@ const API_ORIGIN: &str = "https://api.stripe.com";
 
 mod checkout;
 pub use checkout::CheckoutRequest;
+mod adjustments;
+pub use adjustments::Adjustments;
 
 /// A bounded, scrubbed webhook identity. No card or customer payload is retained.
 #[derive(Clone, Debug, PartialEq, Eq)]
