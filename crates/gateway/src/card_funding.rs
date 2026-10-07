@@ -10,6 +10,9 @@ const MAX_BODY: usize = 512 * 1024;
 const MAX_HEADER: usize = 4096;
 const API_ORIGIN: &str = "https://api.stripe.com";
 
+mod checkout;
+pub use checkout::CheckoutRequest;
+
 /// A bounded, scrubbed webhook identity. No card or customer payload is retained.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Event {
@@ -154,6 +157,8 @@ pub struct Stripe {
     key: String,
     version: String,
     origin: String,
+    mode: Option<bool>,
+    verified_account: Option<String>,
 }
 
 impl Stripe {
@@ -181,7 +186,57 @@ impl Stripe {
             key,
             version,
             origin: API_ORIGIN.into(),
+            mode: None,
+            verified_account: None,
         })
+    }
+
+    /// Bind the deployment's restricted credential to its admitted native mode.
+    /// A test credential cannot normalize live evidence or fund a live lane.
+    pub fn new_for_mode(key: String, version: String, live: bool) -> Result<Self, String> {
+        let prefix = if live { "rk_live_" } else { "rk_test_" };
+        let suffix = key.strip_prefix(prefix).ok_or_else(refusal)?;
+        if suffix.len() < 16
+            || !suffix
+                .bytes()
+                .all(|b| b.is_ascii_alphanumeric() || b == b'_')
+        {
+            return Err(refusal());
+        }
+        let mut client = Self::new(key, version)?;
+        client.mode = Some(live);
+        Ok(client)
+    }
+
+    fn check_mode(&self, value: &Value) -> Result<(), String> {
+        if self
+            .mode
+            .is_some_and(|live| value["livemode"].as_bool() != Some(live))
+        {
+            return Err(refusal());
+        }
+        Ok(())
+    }
+
+    /// Bind one immutable native merchant identity before creating anything.
+    /// Creation rechecks that account through the same restricted credential.
+    pub async fn bind_account(&mut self, expected: &str) -> Result<(), String> {
+        if self.mode.is_none()
+            || self
+                .verified_account
+                .as_ref()
+                .is_some_and(|prior| prior != expected)
+        {
+            return Err(refusal());
+        }
+        self.account(expected).await?;
+        self.verified_account = Some(expected.into());
+        Ok(())
+    }
+
+    async fn admitted_account(&self) -> Result<(), String> {
+        let expected = self.verified_account.as_ref().ok_or_else(refusal)?;
+        self.account(expected).await
     }
 
     /// Retrieve only known native resources. The billing journal supplies the
@@ -214,6 +269,17 @@ impl Stripe {
         if value["object"] != object || value["id"] != id {
             return Err(refusal());
         }
+        if matches!(
+            resource,
+            "events"
+                | "checkout/sessions"
+                | "payment_intents"
+                | "charges"
+                | "disputes"
+                | "customers"
+        ) {
+            self.check_mode(&value)?;
+        }
         Ok(value)
     }
 
@@ -228,9 +294,12 @@ impl Stripe {
     }
 
     async fn read(&self, path: &str) -> Result<Value, String> {
-        let mut response = self
-            .client
-            .get(format!("{}{path}", self.origin))
+        self.exchange(self.client.get(format!("{}{path}", self.origin)))
+            .await
+    }
+
+    async fn exchange(&self, request: reqwest::RequestBuilder) -> Result<Value, String> {
+        let mut response = request
             .bearer_auth(&self.key)
             .header("Stripe-Version", &self.version)
             .send()

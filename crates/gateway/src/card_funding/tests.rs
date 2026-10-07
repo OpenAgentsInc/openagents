@@ -231,3 +231,150 @@ async fn actual_native_api_checks_account_identity_bounds_and_never_follows_redi
     task.abort();
     other_task.abort();
 }
+
+#[tokio::test]
+async fn actual_checkout_creation_is_native_account_bound_one_time_exact_and_retry_identical() {
+    use axum::{
+        extract::State,
+        http::{HeaderMap, Uri},
+        routing::post,
+    };
+    use std::{collections::BTreeMap, sync::Mutex};
+    #[derive(Clone)]
+    struct Fixture {
+        requests: Arc<Mutex<Vec<(String, BTreeMap<String, String>, String)>>>,
+        fault: Arc<AtomicUsize>,
+    }
+    async fn create(
+        State(f): State<Fixture>,
+        uri: Uri,
+        headers: HeaderMap,
+        bytes: axum::body::Bytes,
+    ) -> axum::Json<Value> {
+        assert_eq!(headers["stripe-version"], "fixture.v1");
+        assert!(
+            headers["authorization"]
+                .to_str()
+                .unwrap()
+                .starts_with("Bearer rk_test_")
+        );
+        let encoded = std::str::from_utf8(&bytes).unwrap();
+        let fields = reqwest::Url::parse(&format!("https://fixture.invalid/?{encoded}"))
+            .unwrap()
+            .query_pairs()
+            .into_owned()
+            .collect::<BTreeMap<_, _>>();
+        let idempotency = headers["idempotency-key"].to_str().unwrap().to_string();
+        f.requests
+            .lock()
+            .unwrap()
+            .push((uri.path().into(), fields.clone(), idempotency));
+        if uri.path() == "/v1/customers" {
+            assert_eq!(fields.len(), 1);
+            return axum::Json(
+                json!({"object":"customer", "id":"cus_fixture", "livemode":false,
+                "metadata":{"oa_customer":fields["metadata[oa_customer]"]}}),
+            );
+        }
+        assert_eq!(fields.len(), 14);
+        assert_eq!(fields["mode"], "payment");
+        assert_eq!(fields["payment_method_types[0]"], "card");
+        assert_eq!(fields["payment_intent_data[capture_method]"], "automatic");
+        assert_eq!(
+            fields["payment_intent_data[metadata][oa_quote]"],
+            fields["metadata[oa_quote]"]
+        );
+        assert_eq!(fields["line_items[0][price_data][currency]"], "usd");
+        assert_eq!(fields["line_items[0][quantity]"], "1");
+        let fault = f.fault.load(Ordering::SeqCst);
+        let amount = fields["line_items[0][price_data][unit_amount]"]
+            .parse::<u64>()
+            .unwrap();
+        axum::Json(
+            json!({"object":"checkout.session", "id":"cs_test_fixture", "livemode":fault==2,
+            "mode":"payment", "customer":fields["customer"], "currency":"usd",
+            "amount_total":if fault==1 {amount+1} else {amount},
+            "client_reference_id":fields["client_reference_id"],
+            "metadata":{"oa_quote":fields["metadata[oa_quote]"]},
+            "expires_at":fields["expires_at"].parse::<u64>().unwrap(),
+            "subscription":null, "setup_intent":null,
+            "url":if fault==3 {"https://unrelated.invalid/checkout"} else if fault==4 {"https://checkout.stripe.com/c/pay/cs_test_other"} else {"https://checkout.stripe.com/c/pay/cs_test_fixture#native-fragment"}}),
+        )
+    }
+    let fixture = Fixture {
+        requests: Arc::new(Mutex::new(Vec::new())),
+        fault: Arc::new(AtomicUsize::new(0)),
+    };
+    let router = Router::new()
+        .route(
+            "/v1/account",
+            get(|| async { axum::Json(json!({"object":"account","id":"acct_fixture"})) }),
+        )
+        .route("/v1/customers", post(create))
+        .route("/v1/checkout/sessions", post(create))
+        .with_state(fixture.clone());
+    let (origin, task) = server(router).await;
+    let material = secret()
+        .iter()
+        .map(|b| format!("{b:02x}"))
+        .collect::<String>();
+    let mut client =
+        Stripe::new_for_mode(format!("rk_test_{material}"), "fixture.v1".into(), false).unwrap();
+    client.origin = origin;
+    let customer = "customer_original_fixture";
+    assert!(
+        client
+            .create_customer(customer, "customer_request_fixture")
+            .await
+            .is_err()
+    );
+    assert!(fixture.requests.lock().unwrap().is_empty());
+    assert!(client.bind_account("acct_other").await.is_err());
+    client.bind_account("acct_fixture").await.unwrap();
+    assert!(client.bind_account("acct_other").await.is_err());
+    let value = client
+        .create_customer(customer, "customer_request_fixture")
+        .await
+        .unwrap();
+    assert_eq!(value["id"], "cus_fixture");
+    let mut request = CheckoutRequest {
+        customer: "cus_fixture".into(),
+        quote: "checkout_quote_fixture".into(),
+        amount_cents: 100,
+        expires_at: 4000,
+        return_origin: "https://fixture.invalid".into(),
+        idempotency: "checkout_request_fixture".into(),
+    };
+    let first = client.create_checkout(&request, 100).await.unwrap();
+    let repeated = client.create_checkout(&request, 100).await.unwrap();
+    assert_eq!(first, repeated);
+    let captured = fixture.requests.lock().unwrap().clone();
+    assert_eq!(captured[1], captured[2]);
+    assert_eq!(captured[1].2, "checkout_request_fixture");
+    assert_eq!(
+        captured[1].1["success_url"],
+        "https://fixture.invalid/dashboard?funding=checkout_quote_fixture"
+    );
+    request.amount_cents = 49;
+    assert!(client.create_checkout(&request, 100).await.is_err());
+    request.amount_cents = 100;
+    request.expires_at = 101;
+    assert!(client.create_checkout(&request, 100).await.is_err());
+    request.expires_at = 4000;
+    request.return_origin = "https://other.invalid/?target=private".into();
+    assert!(client.create_checkout(&request, 100).await.is_err());
+    assert_eq!(fixture.requests.lock().unwrap().len(), captured.len());
+    request.return_origin = "https://fixture.invalid".into();
+    for fault in [1, 2, 3, 4] {
+        fixture.fault.store(fault, Ordering::SeqCst);
+        assert!(client.create_checkout(&request, 100).await.is_err());
+    }
+    assert!(
+        Stripe::new_for_mode(format!("rk_test_{material}"), "fixture.v1".into(), true).is_err()
+    );
+    assert!(
+        Stripe::new_for_mode(format!("rk_live_{material}"), "fixture.v1".into(), false).is_err()
+    );
+    assert!(Stripe::new_for_mode(material, "fixture.v1".into(), false).is_err());
+    task.abort();
+}
