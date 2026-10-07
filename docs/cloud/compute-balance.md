@@ -106,3 +106,10 @@ the spend right first).
 For every account, credited = available + held + settled, and available is
 never negative. Paid-call funding (x402), task dispatch, and provider bills
 keep their own journals, and decision-gateway quota is never money here.
+
+Cross-product conversions use the separate
+[pinned funding policy](../decision-models/service/monetary-ledger.md#pinned-funding-and-promotional-credit)
+when their adapter is admitted. The existing retail account stays in exact
+millisatoshis; no currency conversion, promotion, XP, or separate service
+invoice implicitly funds it. The gateway policy does not change retail's
+no-redemption contract or claim a unified balance is deployed.

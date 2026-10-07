@@ -133,6 +133,20 @@ resolve the same reference. Isolated fake-rail and authenticated dashboard
 tests do not establish real-money qualification. Keep commissions and
 reversals unavailable until their authoritative obligation owners are wired.
 
+## Product funding policy O1/O5 (REV-21, #10827)
+
+Before enabling converted or promotional product funding, accept the exact
+`openagents.money.funding-policy.v1` document: monetary units, configured
+rate source/version/validity, rounding and uncredited dust, verified fee payer
+and cap, required payment finality, external refund/dispute terms, operator
+loss liability for reversed spent credit, and promotion origin/caps/expiry/use
+and reversal rules. Supply the actual payment adapter's restricted credentials
+and retain funded qualification and reconciliation privately. Synthetic policy
+tests establish accounting behavior, not launch prices, FX, processor fees,
+real finality, or wallet liquidity. Existing fixed-unit Lightning products
+keep their own contracts; Coder pilot v1 remains a separate service invoice
+with zero product credits.
+
 ## Sales outreach launch
 
 The [sales-floor decisions](docs/sales/agent-sales-floor.md#initial-operating-decisions)

@@ -1,4 +1,4 @@
-//! `tenant-money` — the operator's view of the monetary ledger.
+//! `tenant-money` — the operator's view and audited mutation path.
 //!
 //! Reads a `tenancy::money` ledger and prints each workspace account's
 //! position: what was credited, what is still reserved, what settled,
@@ -17,17 +17,22 @@
 //! the same open any writer performs, so a corrupt tail or a held lock
 //! fails the read rather than printing numbers the file cannot vouch
 //! for.
+//! `--apply` records one privileged local mutation; `--json` reads funding,
+//! policy, credit provenance, and an explicit accounting snapshot time.
 //!
 //! ```text
-//! tenant-money --ledger PATH [--workspace NAME]
+//! tenant-money --ledger PATH [--workspace NAME] [--json] [--apply MUTATION.json]
 //! ```
 
+use std::io::Read;
 use std::path::Path;
 
-use tenancy::money::{Ledger, Phase};
+use tenancy::money::{Ledger, Mutation, Phase};
 
 fn usage() -> ! {
-    eprintln!("Usage:\n  tenant-money --ledger PATH [--workspace NAME]");
+    eprintln!(
+        "Usage:\n  tenant-money --ledger PATH [--workspace NAME] [--json] [--apply MUTATION.json]"
+    );
     std::process::exit(2);
 }
 
@@ -39,21 +44,56 @@ fn main() {
     let mut args = std::env::args().skip(1);
     let mut ledger_path = None;
     let mut workspace = None;
+    let mut apply_path = None;
+    let mut json = false;
     while let Some(flag) = args.next() {
         match flag.as_str() {
             "--ledger" => ledger_path = args.next(),
-            "--workspace" => workspace = args.next(),
+            "--workspace" => workspace = Some(args.next().unwrap_or_else(|| usage())),
+            "--apply" => apply_path = Some(args.next().unwrap_or_else(|| usage())),
+            "--json" => json = true,
             _ => usage(),
         }
     }
     let Some(path) = ledger_path else { usage() };
-    let ledger = match Ledger::open(Path::new(&path)) {
+    let mut ledger = match Ledger::open(Path::new(&path)) {
         Ok(ledger) => ledger,
         Err(trouble) => {
             eprintln!("{trouble}");
             std::process::exit(1);
         }
     };
+
+    // This is a privileged local operator action against the protected ledger,
+    // never a route an inference caller or executor can invoke.
+    if let Some(path) = apply_path {
+        let applied = (|| -> Result<bool, String> {
+            let mut bytes = Vec::new();
+            std::fs::File::open(path)
+                .map_err(|e| e.to_string())?
+                .take(1024 * 1024 + 1)
+                .read_to_end(&mut bytes)
+                .map_err(|e| e.to_string())?;
+            if bytes.len() > 1024 * 1024 {
+                return Err("money mutation exceeds 1 MiB".into());
+            }
+            let mutation: Mutation = serde_json::from_slice(&bytes).map_err(|e| e.to_string())?;
+            if workspace
+                .as_ref()
+                .is_some_and(|name| name != &mutation.workspace)
+            {
+                return Err("mutation workspace differs from the selected workspace".into());
+            }
+            ledger.apply(mutation)
+        })();
+        match applied {
+            Ok(changed) => eprintln!("mutation applied: {changed}"),
+            Err(trouble) => {
+                eprintln!("{trouble}");
+                std::process::exit(1);
+            }
+        }
+    }
 
     let names: Vec<String> = match workspace.as_deref() {
         Some(name) => vec![name.to_string()],
@@ -64,6 +104,19 @@ fn main() {
             .collect(),
     };
     for name in names {
+        if json {
+            match ledger
+                .statement(&name)
+                .and_then(|statement| serde_json::to_string(&statement).map_err(|e| e.to_string()))
+            {
+                Ok(statement) => println!("{statement}"),
+                Err(trouble) => {
+                    eprintln!("{name}: {trouble}");
+                    std::process::exit(1);
+                }
+            }
+            continue;
+        }
         let balance = match ledger.balance(&name) {
             Ok(balance) => balance,
             Err(trouble) => {
@@ -82,6 +135,19 @@ fn main() {
             balance.spend_remaining,
             balance.price_versions.join(",")
         );
+        if !balance.funding_policy_versions.is_empty() {
+            println!(
+                "  funding\tpurchased {}\tpromotional {}\treversed {}\texpired {}\trestricted {}\toperator-loss {}\tuncovered-holds {}\twallet-liquidity unknown\tpolicies {}",
+                balance.purchased_funding,
+                balance.promotional_credit,
+                balance.reversed_credit,
+                balance.expired_credit,
+                balance.restricted_credit,
+                balance.operator_loss,
+                balance.uncovered_holds,
+                balance.funding_policy_versions.join(",")
+            );
+        }
         for (attempt, hold) in ledger.holds(&name) {
             let phase = match hold.phase {
                 Phase::Held => "held",

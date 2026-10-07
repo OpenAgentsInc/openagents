@@ -410,13 +410,38 @@ async fn overview(
                 })
                 .collect::<Vec<_>>()
                 .join("");
+            let funding_html = if balance.funding_policy_versions.is_empty() {
+                String::new()
+            } else {
+                format!(
+                    r#"<h2>Funding and unavailable credit</h2>
+                    <table><tr><th>Position</th><th>Amount</th></tr>
+                    <tr><td>Purchased credit added</td><td>{}</td></tr>
+                    <tr><td>Promotional credit added</td><td>{}</td></tr>
+                    <tr><td>Reversed credit</td><td>{}</td></tr>
+                    <tr><td>Expired credit remaining</td><td>{}</td></tr>
+                    <tr><td>Credit restricted by trial terms</td><td>{}</td></tr>
+                    <tr><td>Operator loss from reversed spent credit</td><td>{}</td></tr>
+                    <tr><td>Held credit awaiting funding reconciliation</td><td>{}</td></tr></table>
+                    <p class="dim">Promotional credit can fund only its permitted products.
+                    Each call checks eligibility before it runs. These amounts are service
+                    credit; wallet liquidity is not observed here.</p>"#,
+                    amount(balance.purchased_funding),
+                    amount(balance.promotional_credit),
+                    amount(balance.reversed_credit),
+                    amount(balance.expired_credit),
+                    amount(balance.restricted_credit),
+                    amount(balance.operator_loss),
+                    amount(balance.uncovered_holds),
+                )
+            };
             format!(
                 r#"<div class="cards">
                 <div class="card"><div class="n">{}</div><div class="l">Credit added ({})</div></div>
                 <div class="card"><div class="n">{}</div><div class="l">Held for calls in progress</div></div>
                 <div class="card"><div class="n">{}</div><div class="l">Spent</div></div>
                 <div class="card"><div class="n">{}</div><div class="l">Available</div></div></div>
-                <h2>Calls not yet charged</h2>{}"#,
+                {funding_html}<h2>Calls not yet charged</h2>{}"#,
                 amount(balance.credited),
                 esc(&balance.currency),
                 amount(balance.reserved),

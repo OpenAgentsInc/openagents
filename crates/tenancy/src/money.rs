@@ -9,11 +9,15 @@ use std::fs::{File, OpenOptions};
 use std::io::{Read, Write};
 use std::os::unix::fs::{OpenOptionsExt, PermissionsExt};
 use std::path::Path;
+use std::time::{SystemTime, UNIX_EPOCH};
 
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 
-pub const SCHEMA: &str = "openagents.money.v1";
+pub mod funding;
+
+pub const SCHEMA: &str = "openagents.money.v2";
+const LEGACY_SCHEMA: &str = "openagents.money.v1";
 const MAX_LOG: u64 = 16 * 1024 * 1024;
 
 /// Explicit billable units. Input excludes cached input; output excludes
@@ -96,6 +100,34 @@ pub enum Operation {
         amount: u64,
         credit_kind: CreditKind,
     },
+    /// Install on an empty account, or archive a new policy version. Once
+    /// installed, unscoped Credit and Debit operations are refused.
+    FundingPolicy {
+        policy: funding::Policy,
+    },
+    BeginFunding {
+        funding: funding::Funding,
+    },
+    FundingFinality {
+        funding: String,
+        finality: funding::Finality,
+        evidence: String,
+    },
+    Promotion {
+        grant: funding::Promotion,
+    },
+    /// Source-denominated reversal of externally refunded or disputed funding.
+    /// This records a verified event; it neither sends a refund nor redeems a
+    /// balance. Customer-paid fees are excluded from the convertible amount.
+    ReverseFunding {
+        funding: String,
+        source_units: u64,
+        reason: funding::Reversal,
+    },
+    ReversePromotion {
+        grant: String,
+        amount: u64,
+    },
     Reserve {
         attempt: String,
         request_digest: String,
@@ -163,6 +195,12 @@ pub struct Hold {
     pub provider_cost: Option<u64>,
     pub hosting_cost: Option<u64>,
     pub receipt: Option<String>,
+    pub funding_policy: Option<String>,
+    pub allocations: Vec<funding::Allocation>,
+    /// Purchased-funded net usage only. Commission integrations must still
+    /// apply delivery and funding-reversal eligibility; this is not an award.
+    /// Top-ups and promotional usage are not commission revenue.
+    pub commissionable_charge: Option<u64>,
 }
 
 #[derive(Clone, Debug, Serialize)]
@@ -180,6 +218,14 @@ pub struct Balance {
     /// can name the terms a charge was quoted under rather than inferring
     /// them from a current price list.
     pub price_versions: Vec<String>,
+    pub funding_policy_versions: Vec<String>,
+    pub purchased_funding: u64,
+    pub promotional_credit: u64,
+    pub reversed_credit: u64,
+    pub expired_credit: u64,
+    pub restricted_credit: u64,
+    pub operator_loss: u64,
+    pub uncovered_holds: u64,
 }
 
 #[derive(Clone, Debug)]
@@ -190,10 +236,35 @@ struct Account {
     credited: u64,
     holds: BTreeMap<String, Hold>,
     prices: BTreeMap<String, Price>,
+    funding: Option<funding::Book>,
 }
 
 impl Account {
-    fn balance(&self) -> Result<Balance, String> {
+    fn allocation_usage(&self) -> Result<BTreeMap<String, funding::Used>, String> {
+        let mut usage = BTreeMap::<String, funding::Used>::new();
+        for hold in self.holds.values() {
+            for allocation in &hold.allocations {
+                let position = usage.entry(allocation.lot.clone()).or_default();
+                if matches!(hold.phase, Phase::Held | Phase::Unknown) {
+                    position.held = position
+                        .held
+                        .checked_add(allocation.reserved)
+                        .ok_or("credit allocation overflow")?;
+                }
+                position.spent = position
+                    .spent
+                    .checked_add(allocation.charged - allocation.refunded)
+                    .ok_or("credit allocation overflow")?;
+            }
+        }
+        Ok(usage)
+    }
+
+    fn balance(&self, at: u64) -> Result<Balance, String> {
+        self.balance_for_price(at, None)
+    }
+
+    fn balance_for_price(&self, at: u64, price: Option<&Price>) -> Result<Balance, String> {
         let (mut reserved, mut settled, mut refunded) = (0_u64, 0_u64, 0_u64);
         for hold in self.holds.values() {
             if matches!(hold.phase, Phase::Held | Phase::Unknown) {
@@ -212,21 +283,61 @@ impl Account {
             .checked_sub(refunded)
             .and_then(|n| n.checked_add(reserved))
             .ok_or("invalid balance")?;
+        let summary = self
+            .funding
+            .as_ref()
+            .map(|book| book.summary(&self.allocation_usage()?, at, price))
+            .transpose()?;
+        let available = if let Some(summary) = &summary {
+            // Every unit remains attributed even when a chargeback exceeds the
+            // credit left in its lot. Existing holds survive as operator risk.
+            let assets = self
+                .credited
+                .checked_add(summary.operator_loss)
+                .and_then(|n| n.checked_add(summary.uncovered_holds))
+                .ok_or("balance overflow")?;
+            let positions = used
+                .checked_add(summary.reversed)
+                .and_then(|n| n.checked_add(summary.expired))
+                .and_then(|n| n.checked_add(summary.restricted))
+                .and_then(|n| n.checked_add(summary.available))
+                .ok_or("balance overflow")?;
+            if assets != positions
+                || summary.purchased.checked_add(summary.promotional) != Some(self.credited)
+            {
+                return Err("credit provenance does not reconcile with balance".into());
+            }
+            summary.available
+        } else {
+            self.credited
+                .checked_sub(used)
+                .ok_or("insufficient credit")?
+        };
+        let summary = summary.unwrap_or_default();
         Ok(Balance {
             currency: self.currency.clone(),
             credited: self.credited,
             reserved,
             settled,
             refunded,
-            available: self
-                .credited
-                .checked_sub(used)
-                .ok_or("insufficient credit")?,
+            available,
             spend_remaining: self
                 .spend_limit
                 .checked_sub(used)
                 .ok_or("workspace spend limit exceeded")?,
             price_versions: self.prices.keys().cloned().collect(),
+            funding_policy_versions: self
+                .funding
+                .as_ref()
+                .map(|book| book.policies.keys().cloned().collect())
+                .unwrap_or_default(),
+            purchased_funding: summary.purchased,
+            promotional_credit: summary.promotional,
+            reversed_credit: summary.reversed,
+            expired_credit: summary.expired,
+            restricted_credit: summary.restricted,
+            operator_loss: summary.operator_loss,
+            uncovered_holds: summary.uncovered_holds,
         })
     }
 }
@@ -235,10 +346,12 @@ impl Account {
 struct State {
     accounts: BTreeMap<String, Account>,
     sources: BTreeMap<(String, String), Mutation>,
+    times: BTreeMap<(String, String), Option<u64>>,
+    latest_at: u64,
 }
 
 impl State {
-    fn apply(&mut self, mutation: &Mutation) -> Result<bool, String> {
+    fn apply(&mut self, mutation: &Mutation, at: u64) -> Result<bool, String> {
         identity(&mutation.workspace)?;
         identity(&mutation.source)?;
         identity(&mutation.audit)?;
@@ -249,6 +362,22 @@ impl State {
             } else {
                 Err("idempotency conflict".into())
             };
+        }
+        if at < self.latest_at {
+            return Err("accounting clock moved backward; no admission is allowed".into());
+        }
+        if let Operation::BeginFunding { funding } = &mutation.operation
+            && self
+                .accounts
+                .values()
+                .filter_map(|account| account.funding.as_ref())
+                .any(|book| {
+                    book.funding
+                        .values()
+                        .any(|record| record.funding.payment == funding.payment)
+                })
+        {
+            return Err("payment already funds a workspace; retry its original source".into());
         }
         if let Operation::Create {
             currency: code,
@@ -269,6 +398,7 @@ impl State {
                     credited: 0,
                     holds: BTreeMap::new(),
                     prices: BTreeMap::new(),
+                    funding: None,
                 },
             );
         } else {
@@ -281,6 +411,9 @@ impl State {
                     amount,
                     credit_kind,
                 } => {
+                    if account.funding.is_some() {
+                        return Err("unscoped credit bypasses the installed funding policy".into());
+                    }
                     if *amount == 0
                         || (*credit_kind == CreditKind::TopUp && !account.topups_allowed)
                     {
@@ -292,6 +425,9 @@ impl State {
                         .ok_or("credit overflow")?;
                 }
                 Operation::Debit { amount } => {
+                    if account.funding.is_some() {
+                        return Err("unscoped debit bypasses the installed funding policy".into());
+                    }
                     if *amount == 0 {
                         return Err("debit must be positive".into());
                     }
@@ -299,6 +435,51 @@ impl State {
                         .credited
                         .checked_sub(*amount)
                         .ok_or("debit exceeds credits")?;
+                }
+                Operation::FundingPolicy { policy } => {
+                    if account.funding.is_none()
+                        && (account.credited != 0 || !account.holds.is_empty())
+                    {
+                        return Err("funding policy installation requires an empty account; legacy credits retain their original terms".into());
+                    }
+                    account
+                        .funding
+                        .get_or_insert_with(funding::Book::default)
+                        .install(policy, &account.currency)?;
+                }
+                Operation::BeginFunding { funding } => {
+                    if !account.topups_allowed {
+                        return Err("purchased funding is not authorized for this account".into());
+                    }
+                    funding_book(account)?.begin(funding, at)?;
+                }
+                Operation::FundingFinality {
+                    funding,
+                    finality,
+                    evidence,
+                } => {
+                    let amount = funding_book(account)?.confirm(funding, *finality, evidence)?;
+                    account.credited = account
+                        .credited
+                        .checked_add(amount)
+                        .ok_or("credit overflow")?;
+                }
+                Operation::Promotion { grant } => {
+                    let amount = funding_book(account)?.promote(grant, at)?;
+                    account.credited = account
+                        .credited
+                        .checked_add(amount)
+                        .ok_or("credit overflow")?;
+                }
+                Operation::ReverseFunding {
+                    funding,
+                    source_units,
+                    reason,
+                } => {
+                    funding_book(account)?.reverse_funding(funding, *source_units, *reason)?;
+                }
+                Operation::ReversePromotion { grant, amount } => {
+                    funding_book(account)?.reverse_promotion(grant, *amount)?;
                 }
                 Operation::Reserve {
                     attempt,
@@ -324,6 +505,15 @@ impl State {
                         return Err("price version was reused for changed terms".into());
                     }
                     let reserved = price.quote(maximum_usage)?;
+                    let used = account.allocation_usage()?;
+                    let (funding_policy, allocations) = if let Some(book) = &mut account.funding {
+                        (
+                            Some(book.policies[&book.active].digest()?),
+                            book.allocate(reserved, price, &used, at)?,
+                        )
+                    } else {
+                        (None, Vec::new())
+                    };
                     account.prices.insert(price.version.clone(), price.clone());
                     account.holds.insert(
                         attempt.clone(),
@@ -338,6 +528,9 @@ impl State {
                             provider_cost: None,
                             hosting_cost: None,
                             receipt: None,
+                            commissionable_charge: funding_policy.as_ref().map(|_| 0),
+                            funding_policy,
+                            allocations,
                         },
                     );
                 }
@@ -361,6 +554,11 @@ impl State {
                     if charge > hold.reserved {
                         return Err("charge exceeds reservation".into());
                     }
+                    if hold.funding_policy.is_some() {
+                        funding::settle(&mut hold.allocations, charge)?;
+                        hold.commissionable_charge =
+                            Some(funding::commissionable(&hold.allocations)?);
+                    }
                     hold.phase = Phase::Settled;
                     hold.retail_charge = Some(charge);
                     hold.provider_cost = *provider_cost;
@@ -383,6 +581,11 @@ impl State {
                     {
                         return Err("refund exceeds a settled retail charge".into());
                     }
+                    if hold.funding_policy.is_some() {
+                        funding::refund(&mut hold.allocations, *amount, false)?;
+                        hold.commissionable_charge =
+                            Some(funding::commissionable(&hold.allocations)?);
+                    }
                     hold.refunded = refunded;
                 }
                 Operation::ReverseRefund { attempt, amount } => {
@@ -394,14 +597,35 @@ impl State {
                         .refunded
                         .checked_sub(*amount)
                         .ok_or("reversal exceeds refund")?;
+                    if hold.funding_policy.is_some() {
+                        funding::refund(&mut hold.allocations, *amount, true)?;
+                        hold.commissionable_charge =
+                            Some(funding::commissionable(&hold.allocations)?);
+                    }
                 }
                 Operation::Create { .. } => unreachable!(),
             }
-            account.balance()?;
+            account.balance(at)?;
         }
+        self.times.insert(source.clone(), Some(at));
+        self.latest_at = at;
         self.sources.insert(source, mutation.clone());
         Ok(true)
     }
+}
+
+fn funding_book(account: &mut Account) -> Result<&mut funding::Book, String> {
+    account
+        .funding
+        .as_mut()
+        .ok_or_else(|| "account funding policy is missing".into())
+}
+
+fn now() -> Result<u64, String> {
+    SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map(|d| d.as_secs())
+        .map_err(|e| e.to_string())
 }
 
 fn pending<'a>(account: &'a mut Account, attempt: &str) -> Result<&'a mut Hold, String> {
@@ -433,12 +657,27 @@ struct Entry {
     previous: String,
     mutation: Mutation,
     digest: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    recorded_at: Option<u64>,
 }
 
 impl Entry {
     fn computed(&self) -> Result<String, String> {
-        let bytes = serde_json::to_vec(&(&self.schema, &self.previous, &self.mutation))
-            .map_err(|e| e.to_string())?;
+        let bytes = if self.schema == LEGACY_SCHEMA {
+            if self.recorded_at.is_some() {
+                return Err("legacy entry cannot add a recorded time".into());
+            }
+            serde_json::to_vec(&(&self.schema, &self.previous, &self.mutation))
+        } else {
+            serde_json::to_vec(&(
+                &self.schema,
+                &self.previous,
+                &self.mutation,
+                self.recorded_at
+                    .ok_or("money v2 entry is missing its recorded time")?,
+            ))
+        }
+        .map_err(|e| e.to_string())?;
         Ok(format!("sha256:{:x}", Sha256::digest(bytes)))
     }
 }
@@ -490,15 +729,41 @@ impl Ledger {
         };
         for line in bytes.split(|b| *b == b'\n').filter(|line| !line.is_empty()) {
             let entry: Entry = serde_json::from_slice(line).map_err(|e| e.to_string())?;
-            if entry.schema != SCHEMA
+            if !matches!(entry.schema.as_str(), SCHEMA | LEGACY_SCHEMA)
                 || entry.previous != ledger.head
                 || entry.computed()? != entry.digest
             {
                 return Err("money ledger chain or schema is invalid".into());
             }
-            if !ledger.state.apply(&entry.mutation)? {
+            if entry.schema == LEGACY_SCHEMA
+                && !matches!(
+                    entry.mutation.operation,
+                    Operation::Create { .. }
+                        | Operation::Credit { .. }
+                        | Operation::Debit { .. }
+                        | Operation::Reserve { .. }
+                        | Operation::Settle { .. }
+                        | Operation::Unknown { .. }
+                        | Operation::Release { .. }
+                        | Operation::Refund { .. }
+                        | Operation::ReverseRefund { .. }
+                )
+            {
+                return Err("funding policy operations require the money v2 journal".into());
+            }
+            if !ledger
+                .state
+                .apply(&entry.mutation, entry.recorded_at.unwrap_or(0))?
+            {
                 return Err("duplicate mutation in money ledger".into());
             }
+            ledger.state.times.insert(
+                (
+                    entry.mutation.workspace.clone(),
+                    entry.mutation.source.clone(),
+                ),
+                entry.recorded_at,
+            );
             ledger.head = entry.digest;
         }
         // Any pending attempt after a writer restart may have been dispatched.
@@ -522,11 +787,15 @@ impl Ledger {
     /// Returns false for an exact idempotent replay. A failed write poisons this
     /// instance so no caller can keep spending against uncertain durable state.
     pub fn apply(&mut self, mutation: Mutation) -> Result<bool, String> {
+        self.apply_at(mutation, now()?)
+    }
+
+    fn apply_at(&mut self, mutation: Mutation, at: u64) -> Result<bool, String> {
         if self.poisoned {
             return Err("money ledger requires recovery after a write failure".into());
         }
         let mut next = self.state.clone();
-        if !next.apply(&mutation)? {
+        if !next.apply(&mutation, at)? {
             return Ok(false);
         }
         let mut entry = Entry {
@@ -534,6 +803,7 @@ impl Ledger {
             previous: self.head.clone(),
             mutation,
             digest: String::new(),
+            recorded_at: Some(at),
         };
         entry.digest = entry.computed()?;
         let mut bytes = serde_json::to_vec(&entry).map_err(|e| e.to_string())?;
@@ -560,11 +830,79 @@ impl Ledger {
     }
 
     pub fn balance(&self, workspace: &str) -> Result<Balance, String> {
+        self.balance_at(workspace, now()?)
+    }
+
+    fn balance_at(&self, workspace: &str, at: u64) -> Result<Balance, String> {
         self.state
             .accounts
             .get(workspace)
             .ok_or("workspace account is missing")?
-            .balance()
+            .balance(at.max(self.state.latest_at))
+    }
+
+    /// Spendable credit for this exact price policy, excluding expired,
+    /// exhausted, or differently scoped promotional lots before dispatch.
+    pub fn balance_for_price(&self, workspace: &str, price: &Price) -> Result<Balance, String> {
+        let account = self
+            .state
+            .accounts
+            .get(workspace)
+            .ok_or("workspace account is missing")?;
+        if price.currency != account.currency {
+            return Err("price currency differs from workspace currency".into());
+        }
+        account.balance_for_price(now()?.max(self.state.latest_at), Some(price))
+    }
+
+    /// Funding, promotion, usage, hold releases, and refunds from this ledger.
+    /// Wallet liquidity is unobserved; accounting credit is not a wallet read.
+    pub fn statement(&self, workspace: &str) -> Result<Statement, String> {
+        self.statement_at(workspace, now()?.max(self.state.latest_at))
+    }
+
+    fn statement_at(&self, workspace: &str, at: u64) -> Result<Statement, String> {
+        let account = self
+            .state
+            .accounts
+            .get(workspace)
+            .ok_or("workspace account is missing")?;
+        Ok(Statement {
+            workspace: workspace.into(),
+            as_of: at,
+            unit: funding::Unit::CurrencyMillionths {
+                currency: account.currency.clone(),
+            },
+            balance: account.balance(at)?,
+            policies: account
+                .funding
+                .as_ref()
+                .map(|book| book.policies.values().cloned().collect())
+                .unwrap_or_default(),
+            funding: account
+                .funding
+                .as_ref()
+                .map(|book| book.funding.values().cloned().collect())
+                .unwrap_or_default(),
+            grants: account
+                .funding
+                .as_ref()
+                .map(|book| book.positions(&account.allocation_usage()?, at))
+                .transpose()?
+                .unwrap_or_default(),
+            holds: account.holds.clone(),
+            events: self
+                .state
+                .sources
+                .iter()
+                .filter(|((owner, _), _)| owner == workspace)
+                .map(|(key, mutation)| StatementEvent {
+                    recorded_at: self.state.times[key],
+                    mutation: mutation.clone(),
+                })
+                .collect(),
+            wallet_liquidity: None,
+        })
     }
 
     #[must_use]
@@ -598,6 +936,31 @@ impl Ledger {
             .unwrap_or_default()
     }
 }
+
+#[derive(Clone, Debug, Serialize)]
+pub struct StatementEvent {
+    /// Legacy entries did not record a time.
+    pub recorded_at: Option<u64>,
+    pub mutation: Mutation,
+}
+
+#[derive(Clone, Debug, Serialize)]
+pub struct Statement {
+    pub workspace: String,
+    pub as_of: u64,
+    pub unit: funding::Unit,
+    pub balance: Balance,
+    pub policies: Vec<funding::Policy>,
+    pub funding: Vec<funding::FundingRecord>,
+    pub grants: Vec<funding::GrantPosition>,
+    pub holds: BTreeMap<String, Hold>,
+    /// Sorted by source identity; recorded times remain explicit.
+    pub events: Vec<StatementEvent>,
+    pub wallet_liquidity: Option<u64>,
+}
+
+#[cfg(test)]
+mod funding_tests;
 
 #[cfg(test)]
 mod tests {

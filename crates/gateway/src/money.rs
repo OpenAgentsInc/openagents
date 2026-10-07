@@ -160,11 +160,14 @@ pub fn reserve(
         )));
     }
     let worst = price.quote(&priced.maximum_usage).map_err(Refusal::Price)?;
-    let balance = ledger.balance(workspace).map_err(|_| {
-        Refusal::Funds(format!(
-            "Workspace `{workspace}` has no billing balance. Add credit before you make paid calls."
-        ))
-    })?;
+    let balance = ledger
+        .balance_for_price(workspace, price)
+        .map_err(|cause| match classify(cause) {
+            Refusal::Funds(_) => Refusal::Funds(format!(
+                "Workspace `{workspace}` has no billing balance. Add credit before you make paid calls."
+            )),
+            other => other,
+        })?;
     if worst > balance.available.min(balance.spend_remaining) {
         return Err(Refusal::Funds(format!(
             "Workspace `{workspace}` doesn't have enough credit for this call. Each call \
@@ -389,6 +392,164 @@ mod tests {
             price: priced().price,
         };
         assert_eq!(release(&mut ledger, &hold), Settlement::Outstanding);
+    }
+
+    #[test]
+    fn reserve_excludes_other_product_trials_and_release_does_not_restart_them() {
+        use tenancy::money::funding::{
+            self, Finality, Policy, Promotion, PromotionTerms, PurchaseTerms, SpentCreditLoss, Unit,
+        };
+
+        let root = tempfile::tempdir().unwrap();
+        let mut ledger = Ledger::open(&root.path().join("money.jsonl")).unwrap();
+        let mut apply = |source: &str, operation| {
+            ledger
+                .apply(Mutation {
+                    workspace: "buyer".into(),
+                    source: source.into(),
+                    audit: format!("fixture:{source}"),
+                    operation,
+                })
+                .unwrap();
+        };
+        apply(
+            "create",
+            Operation::Create {
+                currency: "USD".into(),
+                spend_limit: 100_000,
+                topups_allowed: false,
+            },
+        );
+        let mut policy = Policy {
+            schema: funding::POLICY_SCHEMA.into(),
+            version: "other-product-trial-v1".into(),
+            unit: Unit::CurrencyMillionths {
+                currency: "USD".into(),
+            },
+            conversions: Vec::new(),
+            purchases: PurchaseTerms {
+                required_finality: Finality::Final,
+                refunds_allowed: false,
+                disputes_allowed: false,
+                spent_credit_loss: SpentCreditLoss::Operator,
+            },
+            promotions: PromotionTerms {
+                total_cap: 28_000,
+                grant_cap: 14_000,
+                max_lifetime_seconds: 600,
+                max_admissions: 1,
+                price_policies: ["other-product-v1".into()].into(),
+                reversible: true,
+            },
+        };
+        apply(
+            "policy",
+            Operation::FundingPolicy {
+                policy: policy.clone(),
+            },
+        );
+        let expires_at = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_secs()
+            + 600;
+        apply(
+            "other-trial",
+            Operation::Promotion {
+                grant: Promotion {
+                    id: "other-trial".into(),
+                    origin: "synthetic-other-campaign".into(),
+                    policy: policy.version.clone(),
+                    amount: 14_000,
+                    expires_at,
+                },
+            },
+        );
+        // The aggregate balance has credit for another admitted product, but
+        // the gateway cannot spend it under observed-usage-v1.
+        assert_eq!(ledger.balance("buyer").unwrap().available, 14_000);
+        let mut wrong_currency = priced();
+        wrong_currency.price.currency = "EUR".into();
+        assert!(matches!(
+            reserve(
+                &mut ledger,
+                "buyer",
+                "wrong-currency",
+                1,
+                "digest",
+                &wrong_currency,
+                ("kev-0.6b", "dedicated"),
+            ),
+            Err(Refusal::Price(_))
+        ));
+        assert!(ledger.hold("buyer", "wrong-currency#1").is_none());
+        let result = reserve(
+            &mut ledger,
+            "buyer",
+            "denied",
+            1,
+            "digest",
+            &priced(),
+            ("kev-0.6b", "dedicated"),
+        );
+        assert!(matches!(result, Err(Refusal::Funds(_))));
+        assert!(ledger.hold("buyer", "denied#1").is_none());
+        policy.version = "gateway-trial-v1".into();
+        policy.promotions.price_policies = [POLICY.into()].into();
+        ledger
+            .apply(Mutation {
+                workspace: "buyer".into(),
+                source: "gateway-policy".into(),
+                audit: "fixture:gateway-policy".into(),
+                operation: Operation::FundingPolicy {
+                    policy: policy.clone(),
+                },
+            })
+            .unwrap();
+        ledger
+            .apply(Mutation {
+                workspace: "buyer".into(),
+                source: "gateway-trial".into(),
+                audit: "fixture:gateway-trial".into(),
+                operation: Operation::Promotion {
+                    grant: Promotion {
+                        id: "gateway-trial".into(),
+                        origin: "synthetic-gateway-campaign".into(),
+                        policy: policy.version,
+                        amount: 14_000,
+                        expires_at,
+                    },
+                },
+            })
+            .unwrap();
+        let hold = reserve(
+            &mut ledger,
+            "buyer",
+            "accepted",
+            1,
+            "digest",
+            &priced(),
+            ("kev-0.6b", "dedicated"),
+        )
+        .unwrap();
+        assert_eq!(
+            ledger.hold("buyer", "accepted#1").unwrap().allocations[0].lot,
+            "gateway-trial"
+        );
+        assert_eq!(release(&mut ledger, &hold), Settlement::Released);
+        assert!(matches!(
+            reserve(
+                &mut ledger,
+                "buyer",
+                "released-trial",
+                1,
+                "digest",
+                &priced(),
+                ("kev-0.6b", "dedicated")
+            ),
+            Err(Refusal::Funds(_))
+        ));
+        assert!(ledger.hold("buyer", "released-trial#1").is_none());
     }
 
     #[test]
