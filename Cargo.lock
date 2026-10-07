@@ -6144,6 +6144,8 @@ dependencies = [
  "jev",
  "jev-hosted",
  "knowledge",
+ "libc",
+ "pay-ledger",
  "ratatui",
  "serde",
  "serde_json",

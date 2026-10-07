@@ -74,6 +74,50 @@ fn destination_cas_preserves_payouts_and_signed_priority() {
 }
 
 #[test]
+fn settlement_reads_keep_unknown_liabilities_and_only_sent_claims_are_consumed() {
+    let mut ledger = Ledger::in_memory().unwrap();
+    settle(&mut ledger, "scope", "alice", 10_555);
+    settle(&mut ledger, "other", "bob", 700_000);
+    let original = ledger.settlement("scope").unwrap().unwrap();
+    assert_eq!(original.key, "scope");
+    assert!(ledger.settlement("missing").unwrap().is_none());
+    assert!(ledger.settlement("").is_err());
+    ledger
+        .change_account_payout("alice", 0, "alice@example.com", AT)
+        .unwrap();
+    let shares = ledger.available_shares("alice").unwrap();
+    ledger
+        .reserve_payout("attempt", "alice", &shares, AT)
+        .unwrap();
+    ledger
+        .set_payout_state(
+            "attempt",
+            PayoutState::Unknown,
+            Some("stable-reference"),
+            AT + 1,
+        )
+        .unwrap();
+    let owed = ledger.settlement_liabilities("scope").unwrap();
+    assert!(
+        owed.iter()
+            .any(|s| s.role == "author" && s.amount_msat == 10_555)
+    );
+    assert!(owed.iter().all(|s| s.settlement == "scope"));
+    ledger
+        .set_payout_state("attempt", PayoutState::Sent, None, AT + 2)
+        .unwrap();
+    assert!(
+        !ledger
+            .settlement_liabilities("scope")
+            .unwrap()
+            .iter()
+            .any(|s| s.party == "alice")
+    );
+    assert_eq!(ledger.settlement("scope").unwrap().unwrap(), original);
+    assert!(!ledger.settlement_liabilities("other").unwrap().is_empty());
+}
+
+#[test]
 fn statement_conserves_exact_claims_and_redacts_payer_data() {
     let mut ledger = Ledger::in_memory().unwrap();
     settle(&mut ledger, "private-hash", "alice", 10_555);

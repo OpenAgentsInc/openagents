@@ -242,13 +242,13 @@ fn add(value: &mut u64, amount: u64) -> Result<(), String> {
     Ok(())
 }
 
-struct Reader<'a> {
-    root: &'a Path,
-    bytes: u64,
-    snapshots: BTreeMap<String, (String, Vec<u8>)>,
+pub(crate) struct Reader<'a> {
+    pub(crate) root: &'a Path,
+    pub(crate) bytes: u64,
+    pub(crate) snapshots: BTreeMap<String, (String, Vec<u8>)>,
 }
 impl Reader<'_> {
-    fn read(&mut self, r: &Reference) -> Result<Vec<u8>, String> {
+    pub(crate) fn read(&mut self, r: &Reference) -> Result<Vec<u8>, String> {
         hash(&r.sha256, 64)?;
         if r.path.is_empty() || r.path.len() > 512 {
             return Err("invalid evidence path".into());
@@ -274,7 +274,11 @@ impl Reader<'_> {
                 return Err("symlink evidence is refused".into());
             }
         }
-        let mut file = fs::File::open(&path).map_err(|_| "cannot open retained evidence")?;
+        let mut file = OpenOptions::new()
+            .read(true)
+            .custom_flags(libc::O_NOFOLLOW | libc::O_NONBLOCK)
+            .open(&path)
+            .map_err(|_| "cannot open retained evidence")?;
         if !file.metadata().map_err(|e| e.to_string())?.is_file() {
             return Err("evidence must be a regular file".into());
         }
@@ -715,7 +719,7 @@ pub fn command(args: &[String]) -> Result<(), String> {
 }
 
 #[cfg(test)]
-mod tests {
+pub(crate) mod tests {
     use super::*;
     use tempfile::TempDir;
     fn retained(root: &Path, path: &str, bytes: &[u8]) -> Reference {
@@ -772,7 +776,7 @@ mod tests {
             acceptance: None,
         }
     }
-    fn fixture() -> (TempDir, Manifest) {
+    pub(crate) fn fixture() -> (TempDir, Manifest) {
         let dir = TempDir::new().unwrap();
         let root = dir.path();
         let baseline = attempt(root, "baseline", Status::Passed);

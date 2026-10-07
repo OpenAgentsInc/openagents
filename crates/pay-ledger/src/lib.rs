@@ -440,6 +440,37 @@ impl Ledger {
             })
             .collect()
     }
+    /// Read one immutable settlement by its authoritative payment/debit key.
+    /// Reporting adapters must still authorize their source and customer scope.
+    pub fn settlement(&self, key: &str) -> Result<Option<Recorded>> {
+        if key.is_empty() || key.len() > 512 || key.chars().any(char::is_control) {
+            return Err(Error::Invalid("settlement identity"));
+        }
+        read_record(&self.connection, key)
+    }
+    /// Outstanding claims for one settlement. Reserved/unknown claims remain
+    /// book liabilities; only a sent payout consumes them. A sent label is not
+    /// wallet attestation. This performs no payment.
+    pub fn settlement_liabilities(&self, key: &str) -> Result<Vec<Share>> {
+        if key.is_empty() || key.len() > 512 || key.chars().any(char::is_control) {
+            return Err(Error::Invalid("settlement identity"));
+        }
+        let mut stmt=self.connection.prepare("SELECT s.settlement,s.party,s.role,s.amount_msat FROM payable_share s WHERE s.settlement=? AND s.amount_msat>0 AND NOT EXISTS (SELECT 1 FROM payout_item i JOIN payout p ON p.id=i.payout WHERE i.settlement=s.settlement AND i.party=s.party AND i.role=s.role AND p.state='sent') AND NOT EXISTS (SELECT 1 FROM bonus_payout_item i JOIN payout p ON p.id=i.payout WHERE i.settlement=s.settlement AND i.party=s.party AND i.role=s.role AND p.state='sent') ORDER BY s.party,s.role LIMIT 33")?;
+        let rows = stmt
+            .query_map([key], |r| {
+                Ok(Share {
+                    settlement: r.get(0)?,
+                    party: r.get(1)?,
+                    role: r.get(2)?,
+                    amount_msat: r.get(3)?,
+                })
+            })?
+            .collect::<std::result::Result<Vec<_>, _>>()?;
+        if rows.len() > 32 {
+            return Err(Error::Invalid("settlement liabilities exceed bound"));
+        }
+        Ok(rows)
+    }
     pub fn register_payee(&mut self, payee: Payee) -> Result<()> {
         register_payee_in(&self.connection, payee)
     }

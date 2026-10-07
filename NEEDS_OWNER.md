@@ -117,6 +117,18 @@ new accepted agreement. Record shared-content deletion when due. Synthetic
 private-record walkthroughs establish field mapping, not customer consent,
 real delivery, payment, install qualification, or automatic cap enforcement.
 
+## Operating cost and revenue reports (#10832)
+
+Retain genuine customer/account attribution, contract terms, payment and
+invoice evidence, independently accepted delivery, actual bills, refunds,
+support cases, and complete source inventories privately. Check each declared
+bill allocation, payer, excluded baseline cost, and no-cost assumption before
+using `gym sales-finance`. Qualify real selected-lane inputs; synthetic ledger
+and task evidence proves the projection, not actual revenue or delivery. The
+owner reviews the exact private report and customer rights before exporting
+or publishing an aggregate or margin claim. Future commission enrichment
+remains unavailable until its authoritative obligation owner is integrated.
+
 ## Pilot evidence O1/O8 (REV-03, #10810)
 
 Before using [pilot comparison evidence](docs/sales/evidence.md) in a sales

@@ -188,6 +188,10 @@ fn main() {
         run(gym::sales_evidence::command(&args.collect::<Vec<_>>()));
         return;
     }
+    if command == "sales-finance" {
+        run(gym::sales_finance::command(&args.collect::<Vec<_>>()));
+        return;
+    }
     if command == "--version" {
         println!("gym {}", env!("CARGO_PKG_VERSION"));
         return;
@@ -251,6 +255,8 @@ const USAGE: &str = "\
 gym eval     ask doors every item in a suite, score the answers, fit maps,
              and record the rows
 gym compare  compare doors using rows already recorded
+gym sales-finance  join private earned charges, delivery, bills, and support;
+                   export aggregates only after exact owner review
 gym fit      fit and judge maps from recorded rows without asking a door
 gym merge    copy one store's rows into another and rebuild its receipt chain
 gym spread   measure how much each metric varies between seed blocks
