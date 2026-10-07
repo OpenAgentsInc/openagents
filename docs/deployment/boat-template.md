@@ -170,3 +170,25 @@ build fails with "too few are ours to drop", remove a stale name with
 ## Measurements
 
 See [the plan, §7](../cloud/2026-10-02-boat-sdk-plan.md#7-b5-the-template-measured).
+
+## Interactive Coder runtime
+
+`boat-template build --runtime-binary PATH --runtime-revision COMMIT` installs
+a portable `coder-cloud-runtime` in a separate `oa-coder-runtime-YYYYMMDD`
+namespace. It retains a revision manifest and checks the executable, Git, Python,
+and process locks before snapshotting. It excludes build caches and the repository
+from this template. The existing `oa-coder-main-*` issue runner keeps its warm
+build cache. Interactive builds never prune issue-runner templates.
+
+Build the artifact from a clean main commit with
+`scripts/cloud/build-coder-runtime.sh`. Boat Coder delegation chooses the newest
+ready interactive template, or uses an explicit `--template NAME`. GCE pool
+preparation builds this same runtime alongside the issue-runner CLI and records
+its manifest under `~/.oa-pool/bin/runtime.json`.
+
+The opt-in `coder-new` test `cloud_live` exercises CLI dispatch, continuation,
+patch application, and cancellation. Run it once for each
+`OA_CODER_CLOUD_LIVE_KIND=boat-integrated|boat-coder|gce`, with
+`OA_CODER_CLOUD_LIVE=I_ACCEPT_CLOUD_COST`, `OPENAGENTS_SCRATCH`, and an admitted
+`OPENAI_API_KEY`. It retains private evidence in scratch; stop or delete any
+GCE pool you created for the check when it finishes.

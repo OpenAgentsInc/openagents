@@ -58,7 +58,7 @@ SCCACHE_VERSION="v0.18.0"
 NODE_MAJOR="24"
 # The packages the warm target covers. Every Coder run builds and tests some
 # of these; the rest of the workspace builds on top of their dependencies.
-WARM_PACKAGES=(openagents-cli microcoder coder)
+WARM_PACKAGES=(openagents-cli microcoder coder coder-new)
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
@@ -123,7 +123,7 @@ fi
 as_root apt-get update -q
 as_root env DEBIAN_FRONTEND=noninteractive apt-get install -y -q --no-install-recommends \
   build-essential pkg-config clang cmake protobuf-compiler libprotobuf-dev libssl-dev \
-  ca-certificates curl git gh ripgrep jq xz-utils unzip zstd procps time bubblewrap \
+  ca-certificates curl git gh ripgrep jq xz-utils unzip zstd procps time bubblewrap python3 util-linux \
   >/dev/null
 log packages end
 
@@ -263,19 +263,28 @@ if [[ "$warm" == "true" ]]; then
   # `--tests` builds each package's test targets (its dev-dependencies
   # included); --keep-going keeps one test target that does not compile on
   # main from leaving the rest cold.
+  # Bootstrap the lease owner once if this image has no installed CLI.
+  as_user sh -c "cd '$repo_dir' && CARGO_TARGET_DIR='$slot' cargo build --locked -p openagents-cli --bin openagents"
+  as_user install -d -m 0755 "$home/.local/bin"
+  lease_bin="$home/.local/bin/oa-build-lease"
+  as_user install -m 0755 "$slot/debug/openagents" "$lease_bin"
+  as_user strip "$lease_bin"
   partial=""
   for p in "${WARM_PACKAGES[@]}"; do
     log warm-build begin "package=$p"
-    as_user sh -c "cd '$repo_dir' && CARGO_TARGET_DIR='$slot' cargo build --locked -p $p"
+    as_user sh -c "cd '$repo_dir' && CARGO_TARGET_DIR='$slot' '$lease_bin' lease build --keep-target-dir -- cargo build --locked -p $p"
     log warm-build end "package=$p"
     log warm-tests begin "package=$p"
-    if as_user sh -c "cd '$repo_dir' && CARGO_TARGET_DIR='$slot' cargo build --locked --keep-going --tests -p $p"; then
+    if as_user sh -c "cd '$repo_dir' && CARGO_TARGET_DIR='$slot' '$lease_bin' lease build --keep-target-dir -- cargo build --locked --keep-going --tests -p $p"; then
       log warm-tests end "package=$p"
     else
       partial="$partial $p"
       log warm-tests end "package=$p partial=true"
     fi
   done
+  as_user install -d -m 0755 "$home/.local/bin"
+  as_user install -m 0755 "$slot/debug/coder-cloud-runtime" "$home/.local/bin/coder-cloud-runtime"
+  as_user "$home/.local/bin/coder-cloud-runtime" --runtime-manifest | as_user tee "$home/.openagents/cloud-runtime.json" >/dev/null
   if [[ "$prune" == "true" ]]; then
     # A Coder run builds in its own worktree, at a path unlike this clone's,
     # so the workspace's own outputs (test executables, binaries,
@@ -293,11 +302,12 @@ if [[ "$warm" == "true" ]]; then
   if [[ "$release_binary" == "true" ]]; then
     log release begin
     rel="$home/.cache/oa-release-target"
-    as_user sh -c "cd '$repo_dir' && CARGO_TARGET_DIR='$rel' cargo build --locked --release -p openagents-cli --bin openagents"
+    as_user sh -c "cd '$repo_dir' && CARGO_TARGET_DIR='$rel' '$lease_bin' lease build --keep-target-dir -- cargo build --locked --release -p openagents-cli --bin openagents"
     as_root install -m 0755 "$rel/release/openagents" /usr/local/bin/openagents
     as_user rm -rf "$rel"
     log release end
   fi
+  as_user rm -f "$lease_bin"
   as_user sccache --show-stats >/dev/null 2>&1 || true
   as_user sccache --stop-server >/dev/null 2>&1 || true
 fi
@@ -322,10 +332,11 @@ jq -n \
   --arg claude "$(version_of claude --version)" \
   --arg grok "$(version_of grok --version)" \
   --arg openagents "$(version_of openagents --version)" \
+  --arg coder_runtime "$(version_of "$home/.local/bin/coder-cloud-runtime" --version)" \
   '{schema:"openagents.coder_host.v1", built_at:$built_at, rev:$rev, repo_dir:$repo_dir,
     warm_target:{slot:$slot, warm:($warm=="true"), packages:($packages|split(" ")),
                  tests_not_compiling:($partial|split(" ")|map(select(length>0)))},
     tools:{rustc:$rustc, sccache:$sccache, sccache_bucket:$sccache_bucket, node:$node, gh:$gh,
-           codex:$codex, claude:$claude, grok:$grok, openagents:$openagents},
+           codex:$codex, claude:$claude, grok:$grok, openagents:$openagents, coder_runtime:$coder_runtime},
     logins:"none"}' | as_user tee "$manifest" >/dev/null
 log finished "manifest=$manifest"

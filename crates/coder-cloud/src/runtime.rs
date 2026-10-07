@@ -126,13 +126,14 @@ if [ -n "${{OPENAI_API_KEY:-}}" ] && command -v codex >/dev/null 2>&1; then prin
             r#"
 p="${{OA_CODER_CLOUD_BINARY:-}}"
 if [ -z "$p" ]; then
- for b in "$HOME/.oa-pool/bin/openagents" "$HOME/.openagents/bin/openagents" "$HOME/.local/bin/openagents"; do [ ! -x "$b" ] || {{ p="$b"; break; }}; done
+ for b in "$HOME/.oa-pool/bin/coder-cloud-runtime" "$HOME/.local/bin/coder-cloud-runtime" "$HOME/.openagents/bin/coder-cloud-runtime" "$HOME/.oa-pool/bin/openagents" "$HOME/.openagents/bin/openagents" "$HOME/.local/bin/openagents"; do [ ! -x "$b" ] || {{ p="$b"; break; }}; done
 fi
-if [ -z "$p" ]; then p=$(command -v openagents || true); fi
+if [ -z "$p" ]; then p=$(command -v coder-cloud-runtime || command -v openagents || true); fi
 if [ -z "$p" ]; then p=$(find "$HOME/.openagents/targets" -path '*/debug/openagents' -type f 2>/dev/null | head -n 1 || true); fi
 [ -n "$p" ] && [ -x "$p" ] || {{ echo 'The image lacks the headless Coder runtime.' >&2; exit 1; }}
 "$p" coder --help | grep -q 'delegate AGENT' || {{ echo 'The image has an incompatible Coder runtime.' >&2; exit 1; }}
 printf '%s' "$p" > "$d/binary"
+"$p" --version > "$d/runtime-version"
 if [ -n "${{OPENROUTER_API_KEY:-}}" ]; then "$p" coder --state "/tmp/oa-coder-{job}/state" plugins enable openrouter-byok >/dev/null; fi
 {model_config}
 "#,
@@ -167,6 +168,7 @@ exec 9>"$d/owner.lock"
 flock -n 9 || exit 75
 [ ! -f "$d/started" ] || exit 0
 printf '%s' "$$" > "$d/pid"
+awk '{{print $22}}' "/proc/$$/stat" > "$d/pid-start"
 touch "$d/started"
 p=$(cat "$d/binary")
 export PATH="$HOME/.local/bin:$HOME/.cargo/bin:/usr/local/bin:$PATH"
@@ -207,7 +209,9 @@ if (p/'out').exists():
 code=int((p/'exit').read_text()) if (p/'exit').exists() else None
 alive=False
 if (p/'pid').exists():
- try:os.kill(int((p/'pid').read_text()),0);alive=True
+ try:
+  pid=int((p/'pid').read_text());stat=pathlib.Path(f'/proc/{{pid}}/stat').read_text().rsplit(')',1)[1].split()
+  alive=stat[0]!='Z' and ((not (p/'pid-start').exists()) or stat[19]==(p/'pid-start').read_text().strip())
  except (OSError,ValueError):pass
 print(json.dumps({{'data':base64.b64encode(data).decode(),'offset':offset,'exit':code,'alive':alive,'started':(p/'started').exists(),'more':(p/'out').exists() and (p/'out').stat().st_size>offset+len(data)}}))
 PY"#,
@@ -298,4 +302,46 @@ mod tests {
         assert!(output.status.success());
         assert_eq!(output.stdout, b"secret'value");
     }
+}
+
+/// Stop the identified wrapper and its descendants, including separate child groups.
+pub fn cancel_script(dir: &str) -> String {
+    format!(
+        r#"python3 - {} <<'PY'
+import pathlib,os,signal,time,subprocess,sys
+p=pathlib.Path(sys.argv[1])
+def identity(pid):
+ try:
+  stat=pathlib.Path(f'/proc/{{pid}}/stat').read_text().rsplit(')',1)[1].split()
+  return None if stat[0]=='Z' else stat[19]
+ except (OSError,ValueError):return None
+if (p/'pid').exists():
+ root=int((p/'pid').read_text());start=identity(root)
+ if start is not None:
+  if not (p/'pid-start').exists() or (p/'pid-start').read_text().strip()!=start:raise SystemExit('Remote process identity cannot be verified')
+  owned={{root:start}}
+  def discover():
+   table=[list(map(int,line.split())) for line in subprocess.run(['ps','-eo','pid=,ppid=,pgid='],capture_output=True,text=True,check=True).stdout.splitlines()]
+   for _ in range(len(table)):
+    added=False
+    for pid,parent,group in table:
+     if pid not in owned and (parent in owned or group==root):
+      stamp=identity(pid)
+      if stamp is not None:owned[pid]=stamp;added=True
+    if not added:break
+  def live():return [pid for pid,stamp in owned.items() if identity(pid)==stamp]
+  discover()
+  for sig in [signal.SIGTERM,signal.SIGKILL]:
+   discover()
+   for pid in reversed(live()):
+    try:os.kill(pid,sig)
+    except ProcessLookupError:pass
+   for _ in range(30):
+    if not live():break
+    time.sleep(.1)
+  if live():raise SystemExit('Remote process descendants remain alive')
+print('stopped')
+PY"#,
+        boat::shell_quote(dir)
+    )
 }

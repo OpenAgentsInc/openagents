@@ -1,5 +1,6 @@
 [package]
 name = "coder-new"
+default-run = "coder-new"
 version = "1.0.0-rc.5"
 edition.workspace = true
 rust-version.workspace = true

@@ -188,7 +188,14 @@ fn cancellation_confirms_the_remote_process_group_is_gone() {
     use std::process::Command;
     let dir = tempfile::tempdir().unwrap();
     let mut child = Command::new("setsid")
-        .args(["sh", "-c", "sleep 60 & wait"])
+        .args([
+            "sh",
+            "-c",
+            &format!(
+                "setsid sh -c 'echo $$ > {}/escaped-pid; exec sleep 60' & wait",
+                dir.path().display()
+            ),
+        ])
         .spawn()
         .unwrap();
     // Wait until setsid has created the group before requesting cancellation.
@@ -202,7 +209,23 @@ fn cancellation_confirms_the_remote_process_group_is_gone() {
         }
         std::thread::sleep(Duration::from_millis(10));
     }
+    for _ in 0..100 {
+        if dir.path().join("escaped-pid").exists() {
+            break;
+        }
+        std::thread::sleep(Duration::from_millis(10));
+    }
+    let escaped = std::fs::read_to_string(dir.path().join("escaped-pid")).unwrap();
     std::fs::write(dir.path().join("pid"), child.id().to_string()).unwrap();
+    let stat = std::fs::read_to_string(format!("/proc/{}/stat", child.id())).unwrap();
+    let start = stat
+        .rsplit_once(')')
+        .unwrap()
+        .1
+        .split_whitespace()
+        .nth(19)
+        .unwrap();
+    std::fs::write(dir.path().join("pid-start"), start).unwrap();
     let output = Command::new("sh")
         .args([
             "-c",
@@ -216,4 +239,13 @@ fn cancellation_confirms_the_remote_process_group_is_gone() {
         String::from_utf8_lossy(&output.stderr)
     );
     assert!(!child.wait().unwrap().success());
+    let status = Command::new("ps")
+        .args(["-o", "stat=", "-p", escaped.trim()])
+        .output()
+        .unwrap();
+    let status = String::from_utf8_lossy(&status.stdout);
+    assert!(
+        status.trim().is_empty() || status.trim().starts_with('Z'),
+        "Separate engine group survived cancellation: {status}"
+    );
 }

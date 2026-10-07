@@ -405,6 +405,10 @@ pub trait Backend {
     /// Provisioning must use the retained job ID as its idempotency identity.
     async fn provision(&self, record: &mut Record) -> Result<String>;
     /// Restore files and prepare the workspace before committing a dispatch intent.
+    /// Resolve image defaults before persisting the provisioning intent.
+    async fn resolve(&self, _record: &mut Record) -> Result<()> {
+        Ok(())
+    }
     async fn prepare(&self, _record: &Record) -> Result<()> {
         Ok(())
     }
@@ -449,6 +453,10 @@ pub async fn drive<B: Backend>(
             record.state = State::Ready;
         }
         lease.save(record)?;
+    }
+    if record.state == State::Created {
+        backend.resolve(record).await?;
+        record.spec.validate()?;
     }
     if record.state == State::Created || record.state == State::Provisioning {
         record.state = State::Provisioning;

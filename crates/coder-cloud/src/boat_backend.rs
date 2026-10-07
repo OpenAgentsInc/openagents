@@ -166,13 +166,31 @@ impl Boat {
     }
 }
 impl Backend for Boat {
+    async fn resolve(&self, r: &mut Record) -> Result<()> {
+        if r.spec.mode == Mode::Coder && r.spec.template.is_none() {
+            let snapshots = self
+                .client
+                .list_named_snapshots()
+                .await
+                .map_err(|e| e.to_string())?
+                .snapshots;
+            let template = runtime_template(&snapshots).ok_or("No ready interactive Coder template exists. Build one with boat-template build --runtime-binary PATH, or select --template NAME.")?;
+            r.binding = json!({"origin":self.client.origin(), "template":template});
+        }
+        Ok(())
+    }
     async fn provision(&self, r: &mut Record) -> Result<String> {
         if let Some(origin) = r.binding.get("origin").and_then(Value::as_str) {
             if origin != self.client.origin() {
                 return Err("The configured Boat origin differs from the retained job.".into());
             }
         }
-        r.binding = json!({"origin":self.client.origin()});
+        let template = r
+            .spec
+            .template
+            .clone()
+            .or_else(|| r.binding["template"].as_str().map(str::to_owned));
+        r.binding = json!({"origin":self.client.origin(), "template":template});
         let reply = self
             .client
             .create(&CreateParams {
@@ -182,7 +200,7 @@ impl Backend for Boat {
                     ttl_seconds: Nullable::Value(r.spec.timeout_seconds as i64),
                     no_env: Some(true),
                     env: Some(self.credentials.environment()),
-                    from_: r.spec.template.clone(),
+                    from_: template,
                     setup_script: Some(format!(
                         "mkdir -p {}",
                         boat::shell_quote(&(runtime::workdir(r, &runtime::directory(r))))
@@ -205,7 +223,7 @@ impl Backend for Boat {
             .wait_until_ready(id, &opts)
             .await
             .map_err(|e| e.to_string())?;
-        if r.spec.template.is_some() {
+        if r.spec.template.is_some() || r.binding["template"].is_string() {
             self.client
                 .wait_until_hydrated(id, &opts)
                 .await
@@ -411,7 +429,7 @@ impl Backend for Boat {
                 .map_err(|e| e.to_string())?;
         } else {
             let dir = runtime::directory(r);
-            self.command(r,format!("d={}; if [ -f \"$d/pid\" ]; then kill -TERM -- -\"$(cat \"$d/pid\")\" 2>/dev/null || true; fi",boat::shell_quote(&dir))).await?;
+            self.command(r, runtime::cancel_script(&dir)).await?;
         }
         Ok(())
     }
@@ -601,5 +619,44 @@ mod tests {
         let out = normalize(&r, &[event]);
         assert_eq!(out[0]["text"], " world");
         assert_eq!(out[1]["running"], false);
+    }
+}
+
+/// Interactive images have their own namespace; issue-runner caches stay separate.
+fn runtime_template(snapshots: &[NamedSnapshot]) -> Option<String> {
+    snapshots
+        .iter()
+        .filter(|s| s.status == "ready" && s.name.starts_with("oa-coder-runtime-"))
+        .max_by(|a, b| a.name.cmp(&b.name))
+        .map(|s| s.name.clone())
+}
+
+#[cfg(test)]
+mod image_tests {
+    use super::*;
+    #[test]
+    fn runtime_images_choose_only_ready_images_in_the_interactive_namespace() {
+        let snapshots = [
+            NamedSnapshot {
+                name: "oa-coder-main-99999999".into(),
+                status: "ready".into(),
+                ..Default::default()
+            },
+            NamedSnapshot {
+                name: "oa-coder-runtime-20261007".into(),
+                status: "pending".into(),
+                ..Default::default()
+            },
+            NamedSnapshot {
+                name: "oa-coder-runtime-20261006".into(),
+                status: "ready".into(),
+                ..Default::default()
+            },
+        ];
+        assert_eq!(
+            runtime_template(&snapshots).as_deref(),
+            Some("oa-coder-runtime-20261006")
+        );
+        assert!(runtime_template(&snapshots[..1]).is_none());
     }
 }

@@ -473,18 +473,24 @@ oa_build() {
   cd "$HOME/openagents" || { echo "pool: no clone at ~/openagents" >&2; return 2; }
   git fetch -q origin main || { echo "pool: git fetch failed" >&2; return 2; }
   local rev; rev=$(git rev-parse origin/main)
-  if [ "$(cat "$HOME/.oa-pool/bin/rev" 2>/dev/null)" = "$rev" ] && [ -x "$HOME/.oa-pool/bin/microcoder" ]; then
+  if [ "$(cat "$HOME/.oa-pool/bin/rev" 2>/dev/null)" = "$rev" ] && [ -x "$HOME/.oa-pool/bin/microcoder" ] && [ -x "$HOME/.oa-pool/bin/coder-cloud-runtime" ]; then
     flock -u 8; exec 8>&-; return 0
   fi
   git checkout -q --detach "$rev" || return 2
   local warm; warm=$(jq -r .warm_target.slot "$HOME/.openagents/coder-host.json" 2>/dev/null)
-  [ -n "$warm" ] && [ "$warm" != null ] || warm=$HOME/openagents/target
-  echo "pool: building openagents and microcoder at ${rev:0:10} on the warm target" >&2
-  for p in "openagents-cli --bin openagents" "microcoder --bin microcoder"; do
-    CARGO_TARGET_DIR="$warm" cargo build -q -p $p >/tmp/oa-pool-build.log 2>&1 \
+  [ -n "$warm" ] && [ "$warm" != null ] || warm=$HOME/.openagents/targets/pool-runtime
+  echo "pool: building openagents, microcoder, and Coder runtime at ${rev:0:10} on the warm target" >&2
+  local lease; lease=$(command -v openagents || true)
+  if [ -z "$lease" ] || ! "$lease" lease --help >/dev/null 2>&1; then
+    CARGO_TARGET_DIR="$warm" cargo build --locked -q -p openagents-cli --bin openagents >/tmp/oa-pool-build.log 2>&1 || return 3
+    lease=$warm/debug/openagents
+  fi
+  for p in "openagents-cli --bin openagents" "microcoder --bin microcoder" "coder-new --bin coder-cloud-runtime"; do
+    CARGO_TARGET_DIR="$warm" "$lease" lease build --keep-target-dir -- cargo build --locked -q -p $p >/tmp/oa-pool-build.log 2>&1 \
       || { tail -n 40 /tmp/oa-pool-build.log >&2; flock -u 8; exec 8>&-; return 3; }
   done
-  cp "$warm/debug/openagents" "$warm/debug/microcoder" "$HOME/.oa-pool/bin/" && echo "$rev" >"$HOME/.oa-pool/bin/rev"
+  cp "$warm/debug/openagents" "$warm/debug/microcoder" "$warm/debug/coder-cloud-runtime" "$HOME/.oa-pool/bin/" && echo "$rev" >"$HOME/.oa-pool/bin/rev"
+  "$HOME/.oa-pool/bin/coder-cloud-runtime" --runtime-manifest > "$HOME/.oa-pool/bin/runtime.json"
   flock -u 8; exec 8>&-
 }
 "#;

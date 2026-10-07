@@ -22,10 +22,12 @@ use boat::{Client, Error, Nullable, WaitOptions, models::*};
 use serde_json::{Value, json};
 
 const PREFIX: &str = "oa-coder-main-";
+const RUNTIME_PREFIX: &str = "oa-coder-runtime-";
 /// Boat keeps at most this many named snapshots per account.
 const NAMED_LIMIT: usize = 10;
 const USAGE: &str = "usage:
   boat-template build [--keep N] [--type large] [--name NAME] [--setup-file PATH] [--keep-sandbox]
+       [--runtime-binary PATH] [--runtime-revision COMMIT]
   boat-template probe NAME [--package openagents-cli] [--mode wait|now]
   boat-template list
   boat-template prune [--keep N]";
@@ -69,6 +71,8 @@ struct Flags {
     name: Option<String>,
     setup_file: Option<String>,
     keep_sandbox: bool,
+    runtime_binary: Option<String>,
+    runtime_revision: Option<String>,
     package: String,
     mode: String,
     positional: Vec<String>,
@@ -82,6 +86,8 @@ impl Flags {
             name: None,
             setup_file: None,
             keep_sandbox: false,
+            runtime_binary: None,
+            runtime_revision: None,
             package: "openagents-cli".into(),
             mode: "wait".into(),
             positional: Vec::new(),
@@ -97,6 +103,8 @@ impl Flags {
                 "--package" => flags.package = value()?,
                 "--mode" => flags.mode = value()?,
                 "--keep-sandbox" => flags.keep_sandbox = true,
+                "--runtime-binary" => flags.runtime_binary = Some(value()?),
+                "--runtime-revision" => flags.runtime_revision = Some(value()?),
                 other if other.starts_with('-') => {
                     return Err(format!("unknown flag {other}\n{USAGE}").into());
                 }
@@ -224,11 +232,21 @@ async fn stop_and_wait(client: &Client, id: &str) -> Fallible<()> {
     if matches!(state_of(client, id).await?.as_str(), "stopped" | "archived") {
         return Ok(());
     }
-    client
+    let stopped = client
         .stop(&StopParams {
             sandbox_id: id.into(),
             ..Default::default()
         })
+        .await?;
+    let operation = match stopped.sandbox {
+        Nullable::Value(sandbox) => match sandbox.stop {
+            Nullable::Value(stop) => stop,
+            _ => return Err("Boat did not return a stop operation.".into()),
+        },
+        _ => return Err("Boat did not return a stopped sandbox.".into()),
+    };
+    client
+        .wait_for_stop(id, &operation.id, &wait(1800, 5))
         .await?;
     let deadline = Instant::now() + Duration::from_secs(1_800);
     loop {
@@ -383,7 +401,7 @@ fi
 printf '.cache/sccache/\n' > ~/.boxignore
 log=~/.oa-coder-host-setup.log
 # `chat work --on boat` runs the template's openagents and microcoder in place.
-bash /tmp/coder-host-setup.sh --warm --keep-binaries "openagents microcoder" >"$log" 2>&1
+bash /tmp/coder-host-setup.sh --warm --keep-binaries "openagents microcoder coder-cloud-runtime" >"$log" 2>&1
 rc=$?
 grep '^OA_CODER_HOST_SETUP' "$log"
 if [ "$rc" != 0 ]; then tail -n 60 "$log"; exit "$rc"; fi
@@ -460,10 +478,17 @@ fn fields(output: &str) -> serde_json::Map<String, Value> {
 }
 
 async fn build(client: &Client, flags: &Flags) -> Fallible<Value> {
-    let name = flags
-        .name
-        .clone()
-        .unwrap_or_else(|| format!("{PREFIX}{}", today()));
+    let name = flags.name.clone().unwrap_or_else(|| {
+        format!(
+            "{}{}",
+            if flags.runtime_binary.is_some() {
+                RUNTIME_PREFIX
+            } else {
+                PREFIX
+            },
+            today()
+        )
+    });
     let started = Instant::now();
     let stamp = SystemTime::now().duration_since(UNIX_EPOCH)?.as_secs();
     let id = create(
@@ -510,16 +535,22 @@ async fn build_on(
             .await?;
     }
     let setup_at = Instant::now();
-    client
-        .write_text(id, "/tmp/oa-template-build.sh", BUILD_SCRIPT)
+    let (code, stdout, stderr) = if let Some(path) = &flags.runtime_binary {
+        install_runtime(client, id, path, flags.runtime_revision.as_deref()).await?;
+        (0, "runtime=installed\n".to_owned(), String::new())
+    } else {
+        client
+            .write_text(id, "/tmp/oa-template-build.sh", BUILD_SCRIPT)
+            .await?;
+        let (code, stdout, stderr) = exec(
+            client,
+            id,
+            "bash /tmp/oa-template-build.sh".into(),
+            4 * 3600,
+        )
         .await?;
-    let (code, stdout, stderr) = exec(
-        client,
-        id,
-        "bash /tmp/oa-template-build.sh".into(),
-        4 * 3600,
-    )
-    .await?;
+        (code, stdout, stderr)
+    };
     let setup_seconds = secs(setup_at);
     eprint!("{stdout}");
     if code != 0 {
@@ -535,7 +566,14 @@ async fn build_on(
     stop_and_wait(client, id).await?;
     let stop_seconds = secs(stop_at);
 
-    make_room(client, name, flags.keep).await?;
+    if flags.runtime_binary.is_some() {
+        let snapshots = client.list_named_snapshots().await?.snapshots;
+        if snapshots.len() >= NAMED_LIMIT && !snapshots.iter().any(|s| s.name == name) {
+            return Err("The named snapshot limit is reached. Remove an obsolete interactive runtime template before rebuilding.".into());
+        }
+    } else {
+        make_room(client, name, flags.keep).await?;
+    }
     let save_at = Instant::now();
     let save = client
         .save_named_snapshot(&SaveNamedSnapshotParams {
@@ -584,7 +622,11 @@ async fn build_on(
         "saved {name}: {} bytes in {save_seconds}s",
         snapshot.size_bytes.unwrap_or(0)
     ));
-    let deleted = prune(client, flags.keep, Some(name)).await?;
+    let deleted = if flags.runtime_binary.is_some() {
+        Vec::new()
+    } else {
+        prune(client, flags.keep, Some(name)).await?
+    };
     Ok(json!({
         "template": name,
         "buildSandbox": id,
@@ -776,4 +818,60 @@ mod tests {
         assert_eq!(f.positional, ["probe-name"]);
         assert!(Flags::parse(&["--keep".into(), "0".into()]).is_err());
     }
+}
+
+/// Install a portable artifact without a clone, compiler, or Cargo cache.
+async fn install_runtime(
+    client: &Client,
+    id: &str,
+    path: &str,
+    revision: Option<&str>,
+) -> Fallible<()> {
+    let bytes = std::fs::read(path)?;
+    if bytes.is_empty() || bytes.len() > 128 * 1024 * 1024 {
+        return Err("The runtime artifact must be 1 to 128 MiB.".into());
+    }
+    let (code, _, _) = exec(
+        client,
+        id,
+        "mkdir -p ~/.local/bin /tmp/oa-runtime-upload".into(),
+        60,
+    )
+    .await?;
+    if code != 0 {
+        return Err("Cannot create the runtime directory.".into());
+    }
+    for (i, chunk) in bytes.chunks(1024 * 1024).enumerate() {
+        client
+            .write_bytes(id, &format!("/tmp/oa-runtime-upload/{i:04}.part"), chunk)
+            .await?;
+    }
+    let (code, stdout, _) = exec(client,id,r#"set -eu
+cat /tmp/oa-runtime-upload/*.part > ~/.local/bin/coder-cloud-runtime
+chmod 755 ~/.local/bin/coder-cloud-runtime
+~/.local/bin/coder-cloud-runtime coder --help | grep -q 'delegate AGENT'
+~/.local/bin/coder-cloud-runtime --runtime-manifest > ~/.local/bin/cloud-runtime.json
+python3 --version >/dev/null
+git --version >/dev/null
+flock --version >/dev/null
+for auth in ~/.codex/auth.json ~/.claude/.credentials.json; do [ ! -f "$auth" ] || { echo 'The image contains an engine login.' >&2; exit 1; }; done
+printf '.cache/\n.cargo/\n.rustup/\nopenagents/\n' >> ~/.boxignore
+rm -rf /tmp/oa-runtime-upload
+cat ~/.local/bin/cloud-runtime.json
+"#.into(),120).await?;
+    if code != 0 {
+        return Err(
+            "The portable runtime or required image tools failed their ready check.".into(),
+        );
+    }
+    let manifest: Value = serde_json::from_str(&stdout)?;
+    if manifest["schema"] != "openagents.coder.cloud-runtime.v1" || manifest["tree"] != "clean" {
+        return Err("Build the runtime from a clean commit.".into());
+    }
+    if let Some(revision) = revision {
+        if manifest["revision"] != revision {
+            return Err("The runtime revision differs from the requested commit.".into());
+        }
+    }
+    Ok(())
 }

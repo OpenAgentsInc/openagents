@@ -13,6 +13,9 @@ pub trait Transport {
     fn granted(&self) -> Result<Pool>;
     fn hosts(&self, pool: &Pool) -> Result<Vec<Host>>;
     fn start(&self, pool: &Pool) -> Result<Host>;
+    async fn prepare_runtime(&self, _pool: &Pool, _host: &Host) -> Result<()> {
+        Ok(())
+    }
     async fn execute(
         &self,
         pool: &Pool,
@@ -31,6 +34,19 @@ impl Transport for System {
     }
     fn start(&self, p: &Pool) -> Result<Host> {
         pool::grow_host(p)
+    }
+    async fn prepare_runtime(&self, p: &Pool, h: &Host) -> Result<()> {
+        self.execute(
+            p,
+            h,
+            &format!(
+                "bash -c {}",
+                boat::shell_quote(&(pool::BUILD.to_owned() + "oa_build"))
+            ),
+            None,
+        )
+        .await?;
+        Ok(())
     }
     async fn execute(
         &self,
@@ -165,6 +181,8 @@ impl<T: Transport> Backend for Gce<T> {
         Ok(h.name)
     }
     async fn prepare(&self, r: &Record) -> Result<()> {
+        let (p, h) = self.admitted(r)?;
+        self.transport.prepare_runtime(&p, &h).await?;
         let dir = directory(r);
         self.command(r, &runtime::claim_script(r, &dir), None)
             .await?;
@@ -344,28 +362,5 @@ touch "$HOME/.oa-pool/busy"
     }
 }
 pub fn cancel_script(dir: &str) -> String {
-    format!(
-        r#"python3 - {} <<'PY'
-import pathlib,os,signal,time,subprocess
-p=pathlib.Path(__import__('sys').argv[1])
-if (p/'pid').exists():
- pid=int((p/'pid').read_text())
- def live():
-  result=subprocess.run(['ps','-eo','pgid=,stat='],capture_output=True,text=True,check=True)
-  return any(int(x[0])==pid and not x[1].startswith('Z') for line in result.stdout.splitlines() if len(x:=line.split())>=2)
- if live():
-  try:os.killpg(pid,signal.SIGTERM)
-  except ProcessLookupError:pass
-  for _ in range(30):
-   if not live():break
-   time.sleep(.1)
-  if live():
-   try:os.killpg(pid,signal.SIGKILL)
-   except ProcessLookupError:pass
-   time.sleep(.2)
-  if live():raise SystemExit('Remote process group remains alive')
-print('stopped')
-PY"#,
-        boat::shell_quote(dir)
-    )
+    runtime::cancel_script(dir)
 }
