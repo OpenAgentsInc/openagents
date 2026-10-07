@@ -606,6 +606,15 @@ pub trait DomainProfile {
         terms: &Terms,
         capability: &DefinitionRef,
     ) -> Result<(), ContractError>;
+    /// Opt in to one exact payment profile after the host admits its adapter.
+    /// Negotiation remains inert and never authorizes a wallet operation.
+    fn validate_payment_profile(&self, terms: &Terms) -> Result<(), ContractError> {
+        if terms.payment_profile == FREE_PROFILE {
+            Ok(())
+        } else {
+            Err(unsupported("payment profile is not admitted by this host"))
+        }
+    }
 }
 
 /// Progress in the retained pure negotiation. None of these values dispatches work.
@@ -902,9 +911,7 @@ impl Negotiation {
                 {
                     return Err(unsupported("offered payment profile/network"));
                 }
-                if parsed.payment_profile != FREE_PROFILE {
-                    return Err(unsupported("paid negotiation not implemented"));
-                }
+                profile.validate_payment_profile(&parsed)?;
                 if parsed.quote_expires_at <= record.issued_at {
                     return Err(stale("quote issuance expiry"));
                 }

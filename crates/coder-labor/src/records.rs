@@ -392,7 +392,7 @@ impl Records {
                 if opened.signer() != contracts.market.buyer
                     || body["basis"] != "buyer_acceptance"
                     || body["outcome"] != "accepted"
-                    || body["amount_due_msat"] != 0
+                    || body["amount_due_msat"] != contracts.market.price_msat
                     || !body["resolution"].is_null()
                     || body["supersedes"] != json!([])
                     || Some(&body["submission"]) != self.submission.as_ref()
@@ -401,7 +401,7 @@ impl Records {
                     || self.resolve(&body["review"])?["decision"] != "accept"
                     || !self.acceptable(contracts)?
                 {
-                    return Err("invalid free buyer acceptance".into());
+                    return Err("invalid exact buyer acceptance".into());
                 }
                 references(&body["evidence"], contracts.blobs, true)?;
                 if !body["evidence"]
@@ -421,7 +421,7 @@ impl Records {
                 }
                 self.acceptance = Some(r);
             }
-            _ => return Err("this free labor host does not support this LAB transition".into()),
+            _ => return Err("this labor host does not support this LAB transition".into()),
         }
         self.values.insert(digest, body);
         Ok("applied")

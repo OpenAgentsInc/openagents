@@ -1,4 +1,4 @@
-//! Recoverable, free-only agent labor with separate host execution authority.
+//! Recoverable, explicitly admitted agent labor with separate host execution authority.
 //!
 //! Encrypted Nostr declarations establish attribution. An agreement does not
 //! authorize a command, execution does not accept a delivery, and acceptance
@@ -13,6 +13,7 @@ use std::collections::BTreeMap;
 pub mod admission;
 pub mod book;
 pub mod execution;
+pub mod paid;
 pub mod records;
 pub mod store;
 pub mod transport;

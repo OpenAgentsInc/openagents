@@ -275,6 +275,28 @@ ownership. Scratch fixtures establish persistence and authorization, not
 customer permission. The CLI does not activate messaging; O6 still separately
 authorizes real outbound. Keep customer content and credentials out of git.
 
+## Paid bounded fulfillment activation O7 (REV-48, #10855)
+
+Before a real order, privately qualify independently operated buyer/provider
+identities, customer consent, accepted canonical partner assignment, exact
+source/disclosure rights, current signed policy issuer and epoch, capacity,
+protected checker custody, destinations, fixed BTC millisatoshi amount, routing
+fee ceiling, ordered deadlines, support owner, and exact zero executable
+revision/rework terms. Keep current policy, canonical credentials, journals,
+checker, wallet, and ledger outside provider writes. Authorize a new accepted
+order for additional work. Cancellation must retain delivered work, failed
+attempts, support causes, costs, and any already accepted obligation.
+
+The fixed postacceptance lane leaves credit risk with the worker and provides no
+escrow. Separately authorize the actual buyer payment through the existing wallet;
+check its fee ceiling and receipt. Compare exact authenticated central inbound
+funding with the signed accepted closure and one worker payable share. Qualify
+current destinations and actual central payout/unknown-outcome reconciliation
+under the existing payout owner. Retain full coordination, execution, protected
+checking, failed-attempt, and rail costs, leaving unmetered items unknown. BTC
+obligations do not imply USD cost or FX. Synthetic process/relay and fake funding
+fixtures do not establish real independent supply, demand, collection, or payout.
+
 ## Partner assignment activation O1/O7 (REV-33, #10840)
 
 Before entering a real assignment, privately verify the partner's identity,

@@ -184,6 +184,15 @@ pub fn usd_millionths(currency: &str, scale: u64, minor: u64) -> Result<u64, Str
         .checked_mul(10_000)
         .ok_or_else(|| "service amount overflow".into())
 }
+
+/// Validate an explicitly denominated fulfillment charge without converting
+/// Bitcoin to the service invoice's USD reporting unit.
+pub fn validate_fulfillment_amount(currency: &str, scale: u64, minor: u64) -> Result<(), String> {
+    if currency == "BTC" && scale == 100_000_000_000 && minor > 0 && minor <= i64::MAX as u64 {
+        return Ok(());
+    }
+    usd_millionths(currency, scale, minor).map(|_| ())
+}
 impl Admission {
     pub fn validate(&self) -> Result<(), String> {
         for s in [
@@ -218,7 +227,7 @@ impl Admission {
             for s in [&f.id, &f.responsible_human] {
                 identifier(s)?;
             }
-            usd_millionths(&f.currency, f.currency_scale, f.amount_minor)?;
+            validate_fulfillment_amount(&f.currency, f.currency_scale, f.amount_minor)?;
             if f.amount_minor == 0 {
                 return Err("fulfillment needs its own agreed positive price".into());
             }
@@ -473,5 +482,19 @@ mod tests {
             .validate()
             .is_err()
         );
+    }
+    #[test]
+    fn btc_fulfillment_is_exact_without_changing_usd_invoice_conversion() {
+        assert!(validate_fulfillment_amount("BTC", 100_000_000_000, 10_000).is_ok());
+        for (currency, scale, amount) in [
+            ("BTC", 100_000_000, 10_000),
+            ("BTC", 100_000_000_000, 0),
+            ("BTC", 100_000_000_000, u64::MAX),
+            ("EUR", 100, 10_000),
+        ] {
+            assert!(validate_fulfillment_amount(currency, scale, amount).is_err());
+        }
+        assert!(usd_millionths("BTC", 100_000_000_000, 10_000).is_err());
+        assert_eq!(usd_millionths("USD", 100, 101).unwrap(), 1_010_000);
     }
 }

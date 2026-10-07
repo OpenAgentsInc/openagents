@@ -16956,8 +16956,208 @@
                 ]
               }
             ],
-            "summary": "Dispatch the bound CJ request under the operator's local execution grant, or reconcile the dispatch that already exists.",
+            "summary": "Dispatch the bound CJ request under the operator's local execution grant, or reconcile the dispatch that already exists. Paid orders also require --pipeline DIR --credential FILE --authority-evidence FILE.",
             "effect": "publishes",
+            "runs_on": "connected_computer"
+          }
+        },
+        {
+          "name": "verify",
+          "leaf": {
+            "path": [
+              "labor",
+              "verify"
+            ],
+            "usage": [
+              "verify NAME --pipeline DIR --credential FILE --authority-evidence FILE"
+            ],
+            "forms": [
+              {
+                "tokens": [
+                  {
+                    "kind": "literal",
+                    "word": "verify"
+                  },
+                  {
+                    "kind": "positional",
+                    "name": "NAME"
+                  },
+                  {
+                    "kind": "option",
+                    "name": "pipeline",
+                    "value": "DIR",
+                    "open": true
+                  },
+                  {
+                    "kind": "option",
+                    "name": "credential",
+                    "value": "FILE",
+                    "open": true
+                  },
+                  {
+                    "kind": "option",
+                    "name": "authority-evidence",
+                    "value": "FILE",
+                    "open": true
+                  }
+                ]
+              }
+            ],
+            "summary": "Run the separately admitted protected buyer checker once.",
+            "effect": "local_write",
+            "runs_on": "connected_computer"
+          }
+        },
+        {
+          "name": "support",
+          "leaf": {
+            "path": [
+              "labor",
+              "support"
+            ],
+            "usage": [
+              "support NAME EVENT [--attach FILE]..."
+            ],
+            "forms": [
+              {
+                "tokens": [
+                  {
+                    "kind": "literal",
+                    "word": "support"
+                  },
+                  {
+                    "kind": "positional",
+                    "name": "NAME"
+                  },
+                  {
+                    "kind": "positional",
+                    "name": "EVENT"
+                  },
+                  {
+                    "kind": "option",
+                    "name": "attach",
+                    "value": "FILE",
+                    "open": true,
+                    "optional": true,
+                    "repeated": true
+                  }
+                ]
+              }
+            ],
+            "summary": "Retain a signed support, cost, zero-revision rework, or cancellation notice. During execution, queue it for the existing runner.",
+            "effect": "local_write",
+            "runs_on": "connected_computer"
+          }
+        },
+        {
+          "name": "invoice",
+          "leaf": {
+            "path": [
+              "labor",
+              "invoice"
+            ],
+            "usage": [
+              "invoice NAME --pipeline DIR --credential FILE --authority-evidence FILE --wallet-home DIR"
+            ],
+            "forms": [
+              {
+                "tokens": [
+                  {
+                    "kind": "literal",
+                    "word": "invoice"
+                  },
+                  {
+                    "kind": "positional",
+                    "name": "NAME"
+                  },
+                  {
+                    "kind": "option",
+                    "name": "pipeline",
+                    "value": "DIR",
+                    "open": true
+                  },
+                  {
+                    "kind": "option",
+                    "name": "credential",
+                    "value": "FILE",
+                    "open": true
+                  },
+                  {
+                    "kind": "option",
+                    "name": "authority-evidence",
+                    "value": "FILE",
+                    "open": true
+                  },
+                  {
+                    "kind": "option",
+                    "name": "wallet-home",
+                    "value": "DIR",
+                    "open": true
+                  }
+                ]
+              }
+            ],
+            "summary": "Prepare one exact postacceptance invoice on the admitted resident node.",
+            "effect": "local_write",
+            "runs_on": "connected_computer"
+          }
+        },
+        {
+          "name": "fund",
+          "leaf": {
+            "path": [
+              "labor",
+              "fund"
+            ],
+            "usage": [
+              "fund NAME --pipeline DIR --credential FILE --authority-evidence FILE --wallet-home DIR --ledger FILE"
+            ],
+            "forms": [
+              {
+                "tokens": [
+                  {
+                    "kind": "literal",
+                    "word": "fund"
+                  },
+                  {
+                    "kind": "positional",
+                    "name": "NAME"
+                  },
+                  {
+                    "kind": "option",
+                    "name": "pipeline",
+                    "value": "DIR",
+                    "open": true
+                  },
+                  {
+                    "kind": "option",
+                    "name": "credential",
+                    "value": "FILE",
+                    "open": true
+                  },
+                  {
+                    "kind": "option",
+                    "name": "authority-evidence",
+                    "value": "FILE",
+                    "open": true
+                  },
+                  {
+                    "kind": "option",
+                    "name": "wallet-home",
+                    "value": "DIR",
+                    "open": true
+                  },
+                  {
+                    "kind": "option",
+                    "name": "ledger",
+                    "value": "FILE",
+                    "open": true
+                  }
+                ]
+              }
+            ],
+            "summary": "Reconcile authenticated inbound funding into the existing ledger.",
+            "effect": "local_write",
             "runs_on": "connected_computer"
           }
         },
@@ -17066,6 +17266,46 @@
           "kind": "option",
           "name": "tasks",
           "value": "DIR",
+          "open": true,
+          "optional": true,
+          "repeated": true
+        },
+        {
+          "kind": "option",
+          "name": "pipeline",
+          "value": "DIR",
+          "open": true,
+          "optional": true,
+          "repeated": true
+        },
+        {
+          "kind": "option",
+          "name": "credential",
+          "value": "FILE",
+          "open": true,
+          "optional": true,
+          "repeated": true
+        },
+        {
+          "kind": "option",
+          "name": "authority-evidence",
+          "value": "FILE",
+          "open": true,
+          "optional": true,
+          "repeated": true
+        },
+        {
+          "kind": "option",
+          "name": "wallet-home",
+          "value": "DIR",
+          "open": true,
+          "optional": true,
+          "repeated": true
+        },
+        {
+          "kind": "option",
+          "name": "ledger",
+          "value": "FILE",
           "open": true,
           "optional": true,
           "repeated": true

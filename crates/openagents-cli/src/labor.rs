@@ -1,4 +1,4 @@
-//! NIP-MKT and NIP-LAB free labor orders through `coder-labor`. A *book* is
+//! NIP-MKT and NIP-LAB admitted labor orders through `coder-labor`. A *book* is
 //! one operator-admitted setup (market, offering, encrypted terms, and the
 //! pinned closure) with a private journal under `~/.openagents/labor/NAME/`.
 //! Every command hands signed declarations to the crate and reports what it
@@ -16,6 +16,8 @@ use nostr::domain::Event;
 use serde_json::{Value, json};
 
 use crate::{Args, EXIT_FAILURE, Output};
+#[path = "labor_paid.rs"]
+mod paid;
 #[cfg(test)]
 use coder::cli_route::tree::{Declared, Effect};
 
@@ -34,6 +36,19 @@ pub(crate) const USAGE: &str = "usage: openagents labor COMMAND [OPTIONS]
   execute NAME EXECUTE_EVENT --grant FILE [--tasks DIR]
         Dispatch the bound CJ request under the operator's local execution
         grant, or reconcile the dispatch that already exists.
+        Paid orders also require --pipeline DIR --credential FILE
+        --authority-evidence FILE.
+  verify NAME --pipeline DIR --credential FILE --authority-evidence FILE
+        Run the separately admitted protected buyer checker once.
+  support NAME EVENT [--attach FILE]...
+        Retain a signed support, cost, zero-revision rework, or cancellation
+        notice. During execution, queue it for the existing runner.
+  invoice NAME --pipeline DIR --credential FILE --authority-evidence FILE
+        --wallet-home DIR
+        Prepare one exact postacceptance invoice on the admitted resident node.
+  fund NAME --pipeline DIR --credential FILE --authority-evidence FILE
+        --wallet-home DIR --ledger FILE
+        Reconcile authenticated inbound funding into the existing ledger.
   check NAME [--reconcile]
         Report the order, retained records, observations, and dispatch state.
         --reconcile recovers the dispatched task's state first.
@@ -53,6 +68,10 @@ pub(crate) const EFFECTS: &[Declared] = &[
     Declared::computer("deliver", Effect::Publishes),
     Declared::computer("accept", Effect::Publishes),
     Declared::computer("execute", Effect::Publishes),
+    Declared::computer("verify", Effect::LocalWrite),
+    Declared::computer("support", Effect::LocalWrite),
+    Declared::computer("invoice", Effect::LocalWrite),
+    Declared::computer("fund", Effect::LocalWrite),
     Declared::computer("check", Effect::ReadOnly),
     Declared::computer("list", Effect::ReadOnly),
 ];
@@ -175,7 +194,11 @@ pub fn run(output: &Output, words: &[String]) -> u8 {
                 source,
                 grant,
                 args.option("tasks"),
+                &args,
             )
+        }
+        "verify" | "support" | "invoice" | "fund" => {
+            paid::run(output, command, &args, &identity.secret)
         }
         "check" => {
             let Some(name) = args.positional().first() else {
@@ -515,6 +538,7 @@ fn execute(
     source: &str,
     grant: &str,
     tasks: Option<&str>,
+    args: &Args,
 ) -> u8 {
     let dir = match book_dir(name) {
         Ok(dir) => dir,
@@ -546,11 +570,23 @@ fn execute(
         Ok(store) => store,
         Err(message) => return refuse(output, "execute", Reason::Store, &message),
     };
-    let dispatch =
-        match crate::runtime().block_on(store.dispatch(event, &grant_bytes, &tasks, now())) {
-            Ok(dispatch) => dispatch,
-            Err(message) => return refuse(output, "execute", Reason::Execution, &message),
-        };
+    let result = if store.book.paid().is_some() {
+        paid::with_authority(args, |authority| {
+            crate::runtime().block_on(store.dispatch_paid(
+                authority,
+                event,
+                &grant_bytes,
+                &tasks,
+                now(),
+            ))
+        })
+    } else {
+        crate::runtime().block_on(store.dispatch(event, &grant_bytes, &tasks, now()))
+    };
+    let dispatch = match result {
+        Ok(dispatch) => dispatch,
+        Err(message) => return refuse(output, "execute", Reason::Execution, &message),
+    };
     let finished = dispatch.state == "finished";
     let mut report = status(name, &market, &store, Some(&dispatch));
     if !finished {
@@ -742,6 +778,7 @@ fn status(name: &str, market_id: &str, store: &Store, dispatch: Option<&Dispatch
             "conflict": records.conflict,
         },
         "observation_count": store.observations().len(),
+        "paid": store.book.paid().map(|_| store.paid_report()).transpose().ok().flatten(),
         "dispatch": dispatch.map(|dispatch| json!({
             "execute": dispatch.execute.id,
             "task_id": dispatch.task_id,

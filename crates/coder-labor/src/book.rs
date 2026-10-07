@@ -1,4 +1,4 @@
-//! Reconstruct one bilateral free order from original encrypted declarations.
+//! Reconstruct one bilateral admitted order from original encrypted declarations.
 use crate::admission::Admission;
 use crate::records::{Contracts, Records};
 use crate::*;
@@ -15,6 +15,8 @@ pub struct Setup {
     pub offering: Event,
     pub terms: Event,
     pub admission: Admission,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub paid: Option<crate::paid::Setup>,
 }
 
 pub struct Book {
@@ -26,6 +28,7 @@ pub struct Book {
     policy: AcceptancePolicy,
     pub records: Records,
     pub blobs: Blobs,
+    pub paid_notices: Vec<Value>,
 }
 
 impl Book {
@@ -34,12 +37,13 @@ impl Book {
         mkt::parse_terms_document(&terms, None).map_err(|e| e.to_string())?;
         let market = mkt::parse_terms(terms.inline_bytes().ok_or("market terms bytes missing")?)
             .map_err(|e| e.to_string())?;
-        if market.payment_profile != mkt::FREE_PROFILE
-            || market.price_msat != 0
-            || market.fee_limit_msat != 0
-            || market.worker != market.provider
-        {
-            return Err("this host admits only free orders with the provider as worker".into());
+        if market.worker != market.provider {
+            return Err("this host requires the provider to be the worker".into());
+        }
+        if let Some(paid) = &setup.paid {
+            paid.check_market(&market)?;
+        } else if market.payment_profile != mkt::FREE_PROFILE {
+            return Err("paid orders require an explicitly admitted fulfillment setup".into());
         }
         let parties = Parties {
             buyer: market.buyer.clone(),
@@ -58,7 +62,10 @@ impl Book {
                 .map_err(|e| e.to_string())?,
         )
         .map_err(|e| e.to_string())?;
-        let profile = LaborProfile::new(parties, &setup.admission).map_err(|e| e.to_string())?;
+        let profile = crate::paid::Profile {
+            labor: LaborProfile::new(parties, &setup.admission).map_err(|e| e.to_string())?,
+            paid: setup.paid.as_ref(),
+        };
         let offering = mkt::parse_offering(&setup.offering).map_err(|e| e.to_string())?;
         mkt::DomainProfile::validate_terms(&profile, &market, offering.capability())
             .map_err(|e| e.to_string())?;
@@ -74,6 +81,7 @@ impl Book {
             policy,
             records: Records::default(),
             blobs,
+            paid_notices: vec![],
         })
     }
     pub fn order(&self) -> Option<&OrderRef> {
@@ -87,6 +95,15 @@ impl Book {
     }
     pub fn policy(&self) -> &AcceptancePolicy {
         &self.policy
+    }
+    pub fn paid(&self) -> Option<&crate::paid::Setup> {
+        self.setup.paid.as_ref()
+    }
+    pub fn local_party(&self) -> String {
+        self.secret
+            .x_only_public_key(&secp256k1::Secp256k1::new())
+            .0
+            .to_string()
     }
 
     /// Verify and apply a declaration. The durable store retains the original
@@ -122,20 +139,28 @@ impl Book {
         {
             return Err("labor evidence closure exceeds its bound".into());
         }
-        let result = if body["v"] == mkt::RECORD_SCHEMA {
+        let result = if body["v"] == crate::paid::NOTICE_SCHEMA {
+            crate::paid::notice(self, &opened, &proposed, now)?
+        } else if body["v"] == mkt::RECORD_SCHEMA {
             let record = mkt::parse_record(&opened, None).map_err(|e| e.to_string())?;
             let terms = private_artifact::open(&self.setup.terms, &self.secret)
                 .map_err(|e| e.to_string())?;
             let document = mkt::parse_terms_document(&terms, None).map_err(|e| e.to_string())?;
-            let profile = LaborProfile::new(
-                Parties {
-                    buyer: self.market.buyer.clone(),
-                    provider: self.market.provider.clone(),
-                    worker: self.market.worker.clone(),
-                },
-                &self.setup.admission,
-            )
-            .map_err(|e| e.to_string())?;
+            let profile = crate::paid::Profile {
+                labor: LaborProfile::new(
+                    Parties {
+                        buyer: self.market.buyer.clone(),
+                        provider: self.market.provider.clone(),
+                        worker: self.market.worker.clone(),
+                    },
+                    &self.setup.admission,
+                )
+                .map_err(|e| e.to_string())?,
+                paid: self.setup.paid.as_ref(),
+            };
+            if let Some(paid) = &self.setup.paid {
+                paid.check_record(&record)?;
+            }
             match self
                 .negotiation
                 .ingest(record, Some(&document), &profile, now, 0)
@@ -167,7 +192,7 @@ impl Book {
     /// Validate the original signed CJ event against the retained buyer linkage.
     /// This does not create a task or accept the operator's execution grant.
     pub fn check_execute(&self, event: &Event, now: u64) -> Result<nostr::execution::Execute> {
-        if self.negotiation.conflicted() || self.records.conflict {
+        if self.negotiation.conflicted() || self.records.conflict || self.paid_halted() {
             return Err("conflicted labor order".into());
         }
         let link = self.records.resolve(
@@ -233,5 +258,10 @@ impl Book {
             }
         }
         Ok(*execute)
+    }
+    pub fn paid_halted(&self) -> bool {
+        self.paid_notices
+            .iter()
+            .any(|notice| matches!(notice["kind"].as_str(), Some("cancel" | "request_rework")))
     }
 }

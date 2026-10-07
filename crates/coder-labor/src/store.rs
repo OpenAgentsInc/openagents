@@ -19,11 +19,13 @@ pub struct Observation {
 }
 #[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
-struct Document {
-    schema: String,
-    setup: Setup,
-    observations: Vec<Observation>,
-    dispatch: Option<Dispatch>,
+pub(crate) struct Document {
+    pub(crate) schema: String,
+    pub(crate) setup: Setup,
+    pub(crate) observations: Vec<Observation>,
+    pub(crate) dispatch: Option<Dispatch>,
+    #[serde(default)]
+    pub(crate) paid: crate::paid::State,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -38,9 +40,9 @@ pub struct Dispatch {
 }
 
 pub struct Store {
-    dir: PathBuf,
+    pub(crate) dir: PathBuf,
     lock: File,
-    document: Document,
+    pub(crate) document: Document,
     poisoned: bool,
     pub book: Book,
 }
@@ -103,6 +105,7 @@ impl Store {
                 setup: setup.clone(),
                 observations: vec![],
                 dispatch: None,
+                paid: crate::paid::State::default(),
             }
         };
         let mut book = Book::new(setup, secret)?;
@@ -161,6 +164,22 @@ impl Store {
         task_directory: &Path,
         now: u64,
     ) -> Result<Dispatch> {
+        if self.book.paid().is_some() {
+            return Err(
+                "paid dispatch requires current independent provider and partner admission".into(),
+            );
+        }
+        self.dispatch_admitted(event, grant_bytes, task_directory, now, None)
+            .await
+    }
+    pub(crate) async fn dispatch_admitted(
+        &mut self,
+        event: Event,
+        grant_bytes: &[u8],
+        task_directory: &Path,
+        now: u64,
+        mut paid_authority: Option<&mut dyn crate::paid::Authority>,
+    ) -> Result<Dispatch> {
         if self.poisoned {
             return Err("labor store requires reopening after an uncertain write".into());
         }
@@ -192,7 +211,58 @@ impl Store {
                 .apply(&serde_json::to_vec(&command).map_err(|e| e.to_string())?)
                 .map_err(|e| e.to_string())?;
         }
-        match coder::task::owner::execute(&task_directory, grant_bytes).await {
+        let execution = coder::task::owner::execute(&task_directory, grant_bytes);
+        tokio::pin!(execution);
+        let mut interval = tokio::time::interval(std::time::Duration::from_millis(100));
+        let began = std::time::Instant::now();
+        let result = loop {
+            tokio::select! {
+                result = &mut execution => break result,
+                _ = interval.tick(), if paid_authority.is_some() => {
+                    let observed = now.saturating_add(began.elapsed().as_secs());
+                    let setup = self.book.paid().unwrap().clone();
+                    if let Err(reason) = paid_authority.as_mut().unwrap().check(&setup, &self.book, observed, false) {
+                        self.document.paid.interruption = Some(format!("current_admission_refused:{}", nostr::contracts::digest_bytes(reason.as_bytes())));
+                        self.save()?;
+                    }
+                    let pending = self.dir.join("paid-notice.json");
+                    if pending.exists() {
+                        let notice = crate::paid::private_document(&pending, 8 * 1024 * 1024)
+                            .and_then(|bytes| serde_json::from_slice::<crate::paid::QueuedNotice>(&bytes).map_err(|_| "malformed queued paid notice".into()));
+                        match notice {
+                            Ok(notice) => { self.receive(notice.event, observed, notice.attachments)?; },
+                            Err(reason) => {
+                                self.document.paid.interruption = Some(format!("queued_notice_unavailable:{}", nostr::contracts::digest_bytes(reason.as_bytes())));
+                                self.save()?;
+                            }
+                        }
+                        // An unreadable narrowing request stops execution. It
+                        // remains on disk for explicit manual reconciliation.
+                        if self.document.paid.interruption.is_none() {
+                            std::fs::remove_file(&pending).map_err(|e| e.to_string())?;
+                            File::open(&self.dir).and_then(|f| f.sync_all()).map_err(|e| e.to_string())?;
+                        }
+                    }
+                    if self.book.paid_halted() || self.document.paid.interruption.is_some() {
+                        let mut tasks = coder::task::Store::open(&task_directory).map_err(|e| e.to_string())?;
+                        let task = tasks.show(&command.task_id).map_err(|e| e.to_string())?;
+                        if matches!(task.status, coder::task::Status::Queued | coder::task::Status::Running) {
+                            let cancel = coder::task::Command {
+                                schema: coder::task::COMMAND_SCHEMA.into(),
+                                command_id: format!("paid-cancel-{}", command.task_id),
+                                task_id: command.task_id.clone(), expected_revision: Some(task.revision),
+                                action: coder::task::Action::Cancel { reason: "paid order cancelled or current permission withdrawn".into() },
+                            };
+                            match tasks.apply(&serde_json::to_vec(&cancel).map_err(|e| e.to_string())?) {
+                                Ok(_) | Err(coder::task::Error::RevisionMismatch) => {},
+                                Err(e) => return Err(e.to_string()),
+                            }
+                        }
+                    }
+                }
+            }
+        };
+        match result {
             Ok(task) => {
                 let dispatch = self
                     .document
@@ -260,14 +330,10 @@ impl Store {
     pub fn observations(&self) -> &[Observation] {
         &self.document.observations
     }
-    fn save(&mut self) -> Result<()> {
-        let result = self.save_atomic();
-        if result.is_err() {
-            self.poisoned = true;
+    pub(crate) fn check_open(&self) -> Result<()> {
+        if self.poisoned {
+            return Err("labor store requires reopening after an uncertain write".into());
         }
-        result
-    }
-    fn save_atomic(&self) -> Result<()> {
         let path_metadata =
             std::fs::symlink_metadata(self.dir.join("labor.lock")).map_err(|e| e.to_string())?;
         let held_metadata = self.lock.metadata().map_err(|e| e.to_string())?;
@@ -279,6 +345,17 @@ impl Store {
         {
             return Err("labor store lock identity changed".into());
         }
+        Ok(())
+    }
+    pub(crate) fn save(&mut self) -> Result<()> {
+        let result = self.save_atomic();
+        if result.is_err() {
+            self.poisoned = true;
+        }
+        result
+    }
+    fn save_atomic(&self) -> Result<()> {
+        self.check_open()?;
 
         let bytes = serde_json::to_vec(&self.document).map_err(|e| e.to_string())?;
         if bytes.len() > 16 * 1024 * 1024 {
@@ -326,7 +403,7 @@ fn private_open(path: &Path, create: bool) -> Result<File> {
     }
     Ok(file)
 }
-fn outcome(result: Result<&'static str>) -> String {
+pub(crate) fn outcome(result: Result<&'static str>) -> String {
     match result {
         Ok(s) => s.into(),
         Err(e) => format!("refused: {e}"),

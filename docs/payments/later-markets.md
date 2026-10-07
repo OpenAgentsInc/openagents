@@ -36,6 +36,17 @@ leaves credit risk with the worker and provides no custody guarantee. Fee
 limits require an enforcing wallet adapter. Missing acceptance history,
 conflicting final records, or unknown payment outcomes suspend settlement.
 
+The explicitly admitted `coder_labor::paid` adapter now joins canonical partner
+custody, fresh signed provider policy, real bounded provider and protected buyer
+checker results, signed acceptance, and exact authenticated resident-wallet
+funding. It reuses `record_worker_earned` with zero added platform fee and no
+escrow. Its scope has zero executable revisions, retains support/cancellation
+and unknown cost outcomes, and preserves accepted obligations after cancellation.
+Use [`openagents labor`](../coder/runtime/free-labor.md#explicit-paid-fulfillment)
+with explicit private pipeline, authority evidence, resident wallet home, and
+central ledger sources. The Rust scratch fixture covers actual process and relay
+recovery with fake funds; it does not qualify independent commercial operation.
+
 Run `scripts/qualification/later-worker.sh NEW_OUTPUT_DIRECTORY` with the
 pinned toolchain and the reused `CARGO_TARGET_DIR`. It retains the existing
 scratch buyer/provider order, duplicate execution, reconstruction after relay

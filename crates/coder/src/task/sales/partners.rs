@@ -251,7 +251,7 @@ fn validate(p: &Proposal, proposed_at: u64, retain_until: u64) -> Result<()> {
             {
                 return Err("Partner fulfillment must pin one accepted, unbilled obligation and its exact human.".into());
             }
-            service::usd_millionths(
+            receipts::service_sale::validate_fulfillment_amount(
                 &obligation.currency,
                 obligation.currency_scale,
                 obligation.amount_minor,

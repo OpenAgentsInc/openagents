@@ -51,6 +51,9 @@ fn fixture() -> Fixture {
     fixture_with(None)
 }
 fn fixture_with(custom: Option<(Value, Value)>) -> Fixture {
+    fixture_with_paid(custom, false)
+}
+fn fixture_with_paid(custom: Option<(Value, Value)>, paid: bool) -> Fixture {
     let buyer = key(1);
     let provider = key(2);
     let resolver = key(3);
@@ -150,14 +153,32 @@ fn fixture_with(custom: Option<(Value, Value)>) -> Fixture {
         json!({"v":labor::ACCEPTANCE_POLICY_SCHEMA,"requires":[],"checker":checker,"lock":checker_lock,"criteria":["result"],"rule":"all-pass-v1"}),
         labor::ACCEPTANCE_POLICY_SCHEMA,
     );
+    let buyer_operator = if paid {
+        "synthetic-buyer-operator"
+    } else {
+        "single-fixture-operator"
+    };
+    let provider_operator = if paid {
+        "synthetic-provider-operator"
+    } else {
+        "single-fixture-operator"
+    };
     let terms = put(
         &mut blobs,
-        json!({"v":labor::LABOR_TERMS_SCHEMA,"requires":[],"task_frame":frame,"execution":{"target":target,"lock":target_lock,"input":input,"context":context,"requirements":requirements,"bounds":[]},"deliverables":[{"id":"patch","schema":schema,"max_bytes":4096}],"reviewer":b,"acceptance_policy":policy,"resolver":r,"resolver_policy":"labor-evidence-v1","max_reworks":0,"rework_due_at":null,"dispute_due_at":now+450,"resolution_due_at":now+500,"cancellation":"evaluate-delivered-work-v1","partial_delivery":"no-partial-payment-v1","buyer_unavailable":"resolver-required-v1","rights":rights,"role_relationships":[{"pubkey":b,"operator":"single-fixture-operator"},{"pubkey":p,"operator":"single-fixture-operator"},{"pubkey":r,"operator":"single-fixture-operator"}]}),
+        json!({"v":labor::LABOR_TERMS_SCHEMA,"requires":[],"task_frame":frame,"execution":{"target":target,"lock":target_lock,"input":input,"context":context,"requirements":requirements,"bounds":[]},"deliverables":[{"id":"patch","schema":schema,"max_bytes":4096}],"reviewer":b,"acceptance_policy":policy,"resolver":r,"resolver_policy":"labor-evidence-v1","max_reworks":0,"rework_due_at":null,"dispute_due_at":now+450,"resolution_due_at":now+500,"cancellation":"evaluate-delivered-work-v1","partial_delivery":"no-partial-payment-v1","buyer_unavailable":"resolver-required-v1","rights":rights,"role_relationships":[{"pubkey":b,"operator":buyer_operator},{"pubkey":p,"operator":provider_operator},{"pubkey":r,"operator":buyer_operator}]}),
         labor::LABOR_TERMS_SCHEMA,
     );
-    let market = json!({"v":mkt::TERMS_SCHEMA,"requires":[],"profile":labor::PROFILE,"profile_terms":terms,"buyer":b,"provider":p,"worker":p,"price_msat":0,"fee_limit_msat":0,"payment_profile":mkt::FREE_PROFILE,"network":null,"quote_expires_at":now+100,"order_confirm_by":now+120,"delivery_due_at":now+300,"review_due_at":now+400,"payment_due_at":now+600,"retain_until":now+900});
+    let price = if paid { 10_000 } else { 0 };
+    let fee = if paid { 1_000 } else { 0 };
+    let profile = if paid {
+        mkt::LIGHTNING_PROFILE
+    } else {
+        mkt::FREE_PROFILE
+    };
+    let network = if paid { json!("bitcoin") } else { Value::Null };
+    let market = json!({"v":mkt::TERMS_SCHEMA,"requires":[],"profile":labor::PROFILE,"profile_terms":terms,"buyer":b,"provider":p,"worker":p,"price_msat":price,"fee_limit_msat":fee,"payment_profile":profile,"network":network,"quote_expires_at":now+100,"order_confirm_by":now+120,"delivery_due_at":now+300,"review_due_at":now+400,"payment_due_at":now+600,"retain_until":now+900});
     let terms_event = sealed(&market, mkt::TERMS_SCHEMA, &provider, &buyer, now);
-    let offering_body = json!({"v":mkt::OFFERING_SCHEMA,"requires":[],"provider":p,"offer":"fixture","capability":target,"profiles":[labor::PROFILE],"payment_profiles":[mkt::FREE_PROFILE],"networks":[],"summary":"Synthetic free labor fixture","price_hint_msat":0,"capacity_hint":1,"valid_until":now+100});
+    let offering_body = json!({"v":mkt::OFFERING_SCHEMA,"requires":[],"provider":p,"offer":"fixture","capability":target,"profiles":[labor::PROFILE],"payment_profiles":[profile],"networks":if paid {json!(["bitcoin"])} else {json!([])},"summary":"Synthetic admitted labor fixture","price_hint_msat":price,"capacity_hint":1,"valid_until":now+100});
     let content = String::from_utf8(jcs(&offering_body).unwrap()).unwrap();
     let digest = nostr::contracts::digest_bytes(content.as_bytes());
     let offering = sign(&provider).sign(
@@ -176,7 +197,7 @@ fn fixture_with(custom: Option<(Value, Value)>) -> Fixture {
         &b,
         0,
         Value::Null,
-        json!({"offering":{"id":offering.id,"pubkey":p,"kind":mkt::OFFERING_KIND},"profile":labor::PROFILE,"request":terms,"price_limit_msat":0,"response_due_at":now+90,"retain_until":now+900}),
+        json!({"offering":{"id":offering.id,"pubkey":p,"kind":mkt::OFFERING_KIND},"profile":labor::PROFILE,"request":terms,"price_limit_msat":price,"response_due_at":now+90,"retain_until":now+900}),
     );
     let rfq_ref = reference(&rfq, mkt::RECORD_SCHEMA).unwrap();
     let quote = rec(
@@ -225,6 +246,7 @@ fn fixture_with(custom: Option<(Value, Value)>) -> Fixture {
             offering,
             terms: terms_event,
             admission,
+            paid: None,
         },
         events,
         blobs,
@@ -603,6 +625,7 @@ fn replaced_lock_refuses_mutation_and_overflow_keeps_original_blobs() {
     assert_eq!(blobs.0, before);
 }
 
+mod paid_pipeline;
 mod roundtrip;
 
 #[test]

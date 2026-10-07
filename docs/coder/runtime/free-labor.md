@@ -1,10 +1,13 @@
-# Recoverable free coding orders
+# Recoverable coding orders
 
-`crates/coder-labor` implements one bounded, free buyer/provider order over
+`crates/coder-labor` implements one bounded buyer/provider coding order over
 [NIP-MKT](../../../nips/openagents/NIP-MKT.md) and
 [NIP-LAB](../../../nips/openagents/NIP-LAB.md). It is a Rust library host with a
-reproducible local acceptance fixture. It is not a public marketplace, paid
-settlement service, or a general implementation of every LAB role.
+reproducible local acceptance fixture. The default remains free. An explicitly
+admitted fixed postacceptance Lightning profile additionally joins current
+canonical partner custody, protected execution and checking, signed acceptance,
+and authenticated inbound funding to the existing central ledger. Independent
+commercial operation remains unqualified.
 
 The [retained acceptance evidence](../verification/2026-09-26-free-labor/README.md)
 contains the original signed and encrypted events, both role journals, both
@@ -58,7 +61,7 @@ pinned artifacts and the following supported subset:
 | Component | Supported behavior |
 | --- | --- |
 | Parties | One buyer and one provider that is also the worker; all-in-one ownership is disclosed in the fixture. |
-| Price | Free profile only; both price and fee limit are zero. |
+| Price | Free by default. The optional paid setup pins exact positive BTC millisatoshis, zero added platform fee, one buyer-approved selection, and a fee ceiling. It provides no escrow. |
 | Definitions | Exact target and checker CAP definitions with complete single-component locks. |
 | Source | One retained repository source in an original buyer-owned task frame; an exact commit and workspace snapshot bind the task input. |
 | Instructions | A pinned empty instruction set under `coder.free-labor.empty-instructions.v1`; arbitrary instruction resolution refuses. |
@@ -118,32 +121,86 @@ signature, and private recipient access. Reconnect fetches the retained event;
 missing evidence is unavailable. Each operation has a ten-second deadline,
 a message bound, and a 1 MiB message limit. Relay selection and endpoint-key
 admission remain the calling host's responsibility. There is no discovery
-service, background subscription daemon, CLI command, or deployment in this
+service, background subscription daemon, or deployment in this
 slice.
+
+## Explicit paid fulfillment
+
+`book::Setup.paid` selects the fixed postacceptance Lightning lane. It pins the
+canonical accepted partner assignment and its separately priced BTC obligation
+triggered by accepted delivery,
+source and disclosure closure, trusted policy issuer and current epoch, provider
+and central receive destinations, and independent buyer checker. Its exact
+scope allows one bounded UTF-8 patch file and zero executable revisions or reworks.
+A request for additional work retains its signed cause and support action; a new
+accepted order is required to execute it.
+
+`dispatch_paid` reads the current signed policy and authenticated canonical
+pipeline before dispatch and while the existing task owner runs. Canonical
+custody locks are released between checks so permission can be revoked. A signed
+cancellation, rework request, or unavailable current admission stops unaccepted
+execution. The existing task identity and failed or unknown result remain
+retained. Policy, credentials, labor journals, checker custody, wallet state,
+and the central ledger must stay outside provider workspace writes.
+
+`verify_paid_delivery` runs the separately admitted `/usr/bin/cmp` checker under
+the same bounded task owner. Before earning can accrue, the host joins the exact
+provider patch to retained task artifacts and RUN dispatch evidence, and joins
+the signed LAB verification to the actual protected checker result. Passing a
+checker does not supply buyer acceptance. Later cancellation does not erase an
+already accepted obligation.
+
+`openagents labor execute` requires `--pipeline`, `--credential`, and
+`--authority-evidence` for a paid book. `labor verify` uses those same explicit
+private sources. `labor support` receives one signed private support, cost,
+rework, or cancellation event; it queues narrowing notices for a running book.
+`labor invoice` additionally requires an explicit resident `--wallet-home` and
+prepares one exact invoice after acceptance. The buyer separately authorizes
+payment through `openagents x402 node pay BOLT11 --max-fee-msat N`, where `N`
+is the exact accepted fee ceiling. The payer must check the retained invoice,
+amount, central destination, and payment deadline before authorizing it.
+`labor fund --ledger FILE` verifies the resident node's exact inbound lookup
+before calling `record_worker_earned`. It opens no replacement node and performs
+no outgoing payment or payout. It verifies the retained signed invoice separately
+from optional lookup invoice metadata and leaves absent fee evidence unknown.
+Invoice creation and funding lookup carry the admitted node identity to the
+resident, which refuses a replaced node before either operation.
+It rechecks the admitted payout destination after the lookup before accrual.
+
+Interrupted invoice preparation remains unknown and cannot silently issue a
+replacement. Unknown funding creates no liability; failed or conflicting
+funding refuses credit. Exact retries, restarts, and relay replacement preserve
+the obligation and payment identities. The existing central ledger retains the
+worker payable share and owns later payout reservation and reconciliation.
+
+The private paid report retains attributable support and signed cost evidence
+for coordination, execution, checking, failed attempts, and payment fees. Missing
+categories stay unknown, and no complete all-in cost or commercial qualification
+is inferred. BTC fulfillment remains explicitly denominated; USD service
+contribution remains unknown until separately compatible cost evidence exists.
+Real independence, source rights, customer demand, wallet funding, and payout
+qualification remain in [`NEEDS_OWNER.md`](../../../NEEDS_OWNER.md).
 
 ## Reproduce the acceptance fixture
 
 Use the repository's pinned toolchain and a worktree-specific target directory.
 The fixture invokes local `/usr/bin/git`, `/bin/sh`, and `/usr/bin/cmp` through
 the task owner, so it requires a supported macOS or Linux execution boundary.
-It uses no model account, paid API, wallet, public relay, or private repository.
+It uses no model account, paid API, real wallet, public relay, or private
+repository. The paid test uses a signed fake BOLT11 and authenticated fake receive
+lookup; it exercises actual local execution and central liability with synthetic
+source and operators.
 
-```sh
-CARGO_TARGET_DIR=../target cargo test --locked -p coder-labor --lib
-CARGO_TARGET_DIR=../target cargo clippy --locked -p coder-labor --all-targets -- -D warnings
-CARGO_TARGET_DIR=../target cargo test --locked -p nostr \
-  labor_requires_explicit_decoder_and_keeps_signed_fingerprint
-```
+Run `cargo test --locked -p coder-labor --lib` through the build lease with your
+existing `CARGO_TARGET_DIR`. To include the paid CLI process fixture, first build
+`openagents-cli --bin openagents` through the same lease, then set
+`CODER_LABOR_CLI` to that binary's absolute path for the library test.
 
 To retain a fresh successful process and relay fixture rather than deleting its
 temporary working directories:
 
-```sh
-CODER_LABOR_ACCEPTANCE_DIR=/tmp/coder-labor-acceptance \
-CARGO_TARGET_DIR=../target cargo test --locked -p coder-labor \
-  bounded_coding_order_runs_separate_buyer_check_and_accepts_over_relay \
-  -- --nocapture
-```
+Set `CODER_LABOR_ACCEPTANCE_DIR` to a directory below `openagents scratch`, then
+run the same leased library test. It prints the retained fixture directories.
 
 The test generates a synthetic Rust file returning `41`, freezes expected
 bytes returning `42` before dispatch, and grants one exact shell edit. The
@@ -153,11 +210,18 @@ retrieves signed private agreement, linkage, submission, availability,
 verification, review, and acceptance records over fresh authenticated
 connections. Both role journals reconstruct acceptance after relay shutdown.
 
-The retained run observed 47 ms for the provider process and 60 ms for the
+One retained free-order run observed 47 ms for the provider process and 60 ms for the
 buyer checker. Those are single process observations, not a speed benchmark or
 full transaction latency. There were zero inference calls. The commercial
 price is zero; total CPU, storage, energy, and operator costs are unmetered, so
 `all_in_cost_usd` is null.
+
+The paid fixture negotiates a synthetic 10,000 msat price. Its optional CLI
+process check reopens already verified journals, reconciles authenticated fake
+funding twice, refuses unauthorized or canceled execution, and checks the
+retained funding state. Fresh provider and protected checker execution run
+through the owning Rust API in the same fixture. These checks do not establish
+an independently operated paid service or real collection.
 
 The suite also tests missing closure, changed pins and bytes, unauthorized
 readers, invalid signatures, wrong publishers, duplicates, restart, late
@@ -169,12 +233,11 @@ not a claimed operating-system crash experiment.
 
 ## Remaining product work
 
-This completes the narrow recoverable free-order experiment from
-[issue #9679](https://github.com/OpenAgentsInc/openagents/issues/9679), subject
-to the retained checks and landing review. It does not demonstrate model
-coding quality, independent operators, a public relay deployment, general
-checker execution, arbitrary instruction policies, nonzero rework, resolver
-adjudication, cancellation economics, or paid settlement. Generalize those
-roles only with their own host admission and acceptance evidence. Paid orders
-also need reservations, wallet authority, settlement identity, duplicate
-prevention, and uncertain-payment recovery before they can execute.
+The free-order experiment from
+[issue #9679](https://github.com/OpenAgentsInc/openagents/issues/9679) and the
+explicit paid lane have scoped local acceptance checks. Their fixtures do not
+demonstrate model coding quality, independent operators, a public relay
+deployment, general checker execution, arbitrary instruction policies,
+nonzero rework, resolver adjudication, or real commercial settlement. Generalize
+those roles only with their own host admission and acceptance evidence. Real
+funding, payout, and complete costs remain owner qualification steps.

@@ -1037,6 +1037,27 @@ admits), `transition` (a record was refused or the evidence conflicts),
 `store`, `relay`, or `execution`. Nothing in the group authors a record, widens
 a grant, or retries an execution.
 
+Paid books additionally pin canonical partner custody and a separately signed
+current provider policy. `execute` and `verify` require explicit `--pipeline DIR`,
+`--credential FILE`, and `--authority-evidence FILE` (a private `Blobs` document).
+`verify NAME` runs the protected buyer checker; passing still requires separate
+signed review and acceptance. `support NAME EVENT` retains a signed cancellation,
+zero-revision rework refusal, support action, or known/unknown cost report, and
+queues narrowing notices while the existing runner holds the journal.
+
+`invoice NAME` uses the same authority options plus `--wallet-home DIR` to issue
+one exact postacceptance invoice on the admitted resident node. The buyer
+separately authorizes that invoice through `openagents x402 node pay BOLT11
+--max-fee-msat N` using the accepted ceiling. `fund NAME --ledger FILE` additionally
+uses authenticated inbound lookup and the existing private central ledger to
+accrue one accepted worker share. It sends no payout and opens no replacement
+wallet. Unknown outcomes remain unknown, and later cancellation preserves
+already accepted obligations. `check` includes the private paid state, support
+outcomes, and incomplete all-in costs. The selected scope has zero executable
+revisions or reworks, no escrow, and no inferred FX or added platform fee. See
+[explicit paid fulfillment](../coder/runtime/free-labor.md#explicit-paid-fulfillment)
+for the bounded contract and owner qualification.
+
 ## Your wallet (`openagents wallet`)
 
 `openagents wallet` is the person's Spark wallet on this computer: the same

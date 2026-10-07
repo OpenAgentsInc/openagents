@@ -563,6 +563,51 @@ fn service_fulfillment_obligation_is_separately_priced_billed_and_paid_without_a
     );
 }
 #[test]
+fn btc_fulfillment_keeps_usd_contribution_unknown_without_inferred_fx() {
+    use serde_json::{Value, json};
+    let (dir, mut m, mut export) = service_fixture();
+    let mut fulfillment = service_sources::fulfillment(dir.path(), AT, &export.sale.admission);
+    let mut agreement: Value =
+        serde_json::from_slice(&fs::read(dir.path().join(&fulfillment.agreement.path)).unwrap())
+            .unwrap();
+    agreement["currency"] = json!("BTC");
+    agreement["currency_scale"] = json!(100_000_000_000u64);
+    agreement["amount_minor"] = json!(10_000);
+    let agreement = reference(dir.path(), "btc-fulfillment-agreement.json", &agreement);
+    let mut accepted: Value =
+        serde_json::from_slice(&fs::read(dir.path().join(&fulfillment.acceptance.path)).unwrap())
+            .unwrap();
+    accepted["agreement_sha256"] = json!(agreement.sha256);
+    let accepted = reference(dir.path(), "btc-fulfillment-acceptance.json", &accepted);
+    fulfillment.currency = "BTC".into();
+    fulfillment.currency_scale = 100_000_000_000;
+    fulfillment.amount_minor = 10_000;
+    fulfillment.agreement = receipts::service_sale::Reference {
+        path: agreement.path,
+        sha256: agreement.sha256,
+    };
+    fulfillment.acceptance = receipts::service_sale::Reference {
+        path: accepted.path,
+        sha256: accepted.sha256,
+    };
+    export.sale.admission.fulfillment = Some(fulfillment);
+    service_snapshot(&dir, &mut m, &export);
+    let view = &build(&dir, &m).offers[0];
+    assert_eq!(view.profitable, None);
+    assert!(
+        view.costs
+            .iter()
+            .any(|c| c.class == ExpenseClass::Fulfillment
+                && c.unit == "USD_millionths"
+                && c.unknown_items == 1
+                && c.known_subtotal == 0)
+    );
+    assert_eq!(
+        view.contribution_known_subtotal["USD_millionths"],
+        249_999_968
+    );
+}
+#[test]
 fn service_invoice_scope_cannot_substitute_different_frozen_checks() {
     let (dir, mut m, mut export) = service_fixture();
     let f = &export.sale.facts;

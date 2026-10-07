@@ -877,20 +877,21 @@ pub fn rebuild(root: &Path, bytes: &[u8]) -> Result<Report, String> {
                                 &f.currency,
                                 f.currency_scale,
                                 f.amount_minor,
-                            )?;
+                            )
+                            .ok();
                             if f.payment.is_none() {
-                                r.fulfillment_liability = value;
+                                r.fulfillment_liability = value.unwrap_or(0);
                             }
                             let e = Expense {
                                 id: format!("service-fulfillment:{}", f.id),
                                 class: ExpenseClass::Fulfillment,
-                                basis: if f.bill.is_some() {
+                                basis: if f.bill.is_some() && value.is_some() {
                                     Basis::Billed
                                 } else {
                                     Basis::Unknown
                                 },
                                 unit: "USD_millionths".into(),
-                                amount: f.bill.as_ref().map(|_| value),
+                                amount: f.bill.as_ref().and(value),
                                 payer: Payer::OpenAgents,
                                 evidence: f.bill.as_ref().map(|r| Reference {
                                     path: r.path.clone(),
