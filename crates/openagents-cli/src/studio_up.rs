@@ -946,17 +946,135 @@ fn ensure_host(
         .path(openagents_connect::keys::KeyName::Host)
         .exists();
     if book.exists() && !own_keys {
-        return Err(format!(
-            "a host is set up in {} but no host answers {}; open the OpenAgents app, or start `coder host serve`, and run `openagents studio up` again",
-            paths.state.display(),
-            paths.socket.display()
-        ));
+        // That host keeps its keys in the system's key store, as the
+        // desktop app sets it up: bring it up with those keys rather than
+        // asking the person to.
+        return start_keychain_host(paths, record);
     }
     let program = find_program("coder", args.option("coder"))?;
     let pid = start_host(&program, paths, &serve_args(paths), None)?;
     record.host_pid = Some(pid);
     Ok(Host::Started { pid })
 }
+
+/// What a keychain host's start says when nothing brought it up. Verse
+/// shows it to the person as it is, so it names no command or path.
+pub(crate) const KEYCHAIN_HOST_FAILED: &str = "this computer's host didn't start";
+
+/// Brings up this computer's own host, whose keys the system's key store
+/// holds: its login service when one is installed, else `host serve
+/// --keychain --iroh --control` as the desktop app runs it, from the
+/// development host's signed `coder` and then from this program. macOS may
+/// ask the person to let the program use the keys.
+fn start_keychain_host(paths: &Paths, record: &mut Record) -> Result<Host, String> {
+    // Tests never touch the person's real services or key store.
+    if cfg!(test) || !cfg!(target_os = "macos") {
+        return Err(KEYCHAIN_HOST_FAILED.into());
+    }
+    let home = std::env::var_os("HOME").map(PathBuf::from);
+    for label in HOST_SERVICES {
+        if start_service(label, home.as_deref()) && wait_for_socket(&paths.socket, SERVICE_WAIT) {
+            return Ok(Host::Running);
+        }
+    }
+    let mut programs: Vec<PathBuf> = home
+        .iter()
+        .map(|home| home.join(".openagents/dev-host/current/coder"))
+        .filter(|path| path.is_file())
+        .collect();
+    programs.extend(std::env::current_exe().ok());
+    let args: Vec<String> = ["host", "serve", "--keychain", "--iroh", "--control"]
+        .map(String::from)
+        .to_vec();
+    for program in programs {
+        // A program that exits before its socket answers, such as an
+        // older build, gives way to the next.
+        if let Ok(pid) = start_host_within(&program, paths, &args, None, KEYCHAIN_HOST_WAIT) {
+            record.host_pid = Some(pid);
+            return Ok(Host::Started { pid });
+        }
+    }
+    Err(KEYCHAIN_HOST_FAILED.into())
+}
+
+/// The login services that run this computer's own host: the development
+/// host (`scripts/desktop/dev-host.sh`), then the desktop app's agent.
+const HOST_SERVICES: [&str; 2] = ["com.openagents.dev.host", "com.openagents.desktop.host"];
+
+/// Starts the login service `label` when it is installed and not
+/// disabled: restarts it when launchd has it, else loads its property list
+/// from `~/Library/LaunchAgents`. Reports whether launchd took the ask.
+fn start_service(label: &str, home: Option<&Path>) -> bool {
+    let launchctl = |args: &[&str]| {
+        std::process::Command::new("/bin/launchctl")
+            .args(args)
+            .stdin(std::process::Stdio::null())
+            .stdout(std::process::Stdio::null())
+            .stderr(std::process::Stdio::null())
+            .status()
+            .is_ok_and(|status| status.success())
+    };
+    #[cfg(unix)]
+    // SAFETY: getuid has no preconditions and cannot fail.
+    let uid = unsafe { libc::getuid() };
+    #[cfg(not(unix))]
+    let uid = 0;
+    let domain = format!("gui/{uid}");
+    let service = format!("{domain}/{label}");
+    if launchctl(&["print", &service]) {
+        return launchctl(&["kickstart", "-k", &service]);
+    }
+    let Some(plist) = home.map(|home| home.join(format!("Library/LaunchAgents/{label}.plist")))
+    else {
+        return false;
+    };
+    if !plist.is_file() || service_disabled(&domain, label) {
+        return false;
+    }
+    launchctl(&["bootstrap", &domain, &plist.display().to_string()])
+}
+
+/// Whether launchd has `label` disabled in `domain`.
+fn service_disabled(domain: &str, label: &str) -> bool {
+    let Ok(output) = std::process::Command::new("/bin/launchctl")
+        .args(["print-disabled", domain])
+        .stdin(std::process::Stdio::null())
+        .output()
+    else {
+        return false;
+    };
+    disabled_in(&String::from_utf8_lossy(&output.stdout), label)
+}
+
+/// Whether `launchctl print-disabled` output lists `label` as disabled.
+fn disabled_in(listing: &str, label: &str) -> bool {
+    let quoted = format!("\"{label}\"");
+    listing.lines().any(|line| {
+        let line = line.trim();
+        line.starts_with(&quoted) && (line.ends_with("disabled") || line.ends_with("true"))
+    })
+}
+
+/// Whether a host answers `socket` within `wait`.
+fn wait_for_socket(socket: &Path, wait: Duration) -> bool {
+    let until = Instant::now() + wait;
+    loop {
+        if crate::host_answers_at(socket) {
+            return true;
+        }
+        if Instant::now() >= until {
+            return false;
+        }
+        std::thread::sleep(Duration::from_millis(250));
+    }
+}
+
+/// How long a login service gets to bring the host up.
+const SERVICE_WAIT: Duration = Duration::from_secs(30);
+
+/// How long a keychain host started here gets: long enough for the person
+/// to answer macOS's question about the key store.
+const KEYCHAIN_HOST_WAIT: Duration = Duration::from_secs(180);
 
 /// The `coder host serve` arguments for a host at `paths`.
 pub(crate) fn serve_args(paths: &Paths) -> Vec<String> {
@@ -987,10 +1105,22 @@ fn start_host(
     args: &[String],
     home: Option<&Path>,
 ) -> Result<u32, String> {
+    start_host_within(program, paths, args, home, HOST_WAIT)
+}
+
+/// [`start_host`], waiting at most `wait` for the control socket.
+#[cfg(unix)]
+fn start_host_within(
+    program: &Path,
+    paths: &Paths,
+    args: &[String],
+    home: Option<&Path>,
+    wait: Duration,
+) -> Result<u32, String> {
     let log = paths.root.join("studio-host.log");
     let mut child = spawn_detached(program, args, &log, home)?;
     let pid = child.id();
-    let until = Instant::now() + HOST_WAIT;
+    let until = Instant::now() + wait;
     loop {
         if crate::host_answers_at(&paths.socket) {
             return Ok(pid);
@@ -1005,7 +1135,7 @@ fn start_host(
         if Instant::now() >= until {
             return Err(format!(
                 "the host did not open its control socket within {} s; see {}",
-                HOST_WAIT.as_secs(),
+                wait.as_secs(),
                 log.display()
             ));
         }
@@ -1019,6 +1149,17 @@ fn start_host(
     _paths: &Paths,
     _args: &[String],
     _home: Option<&Path>,
+) -> Result<u32, String> {
+    Err("the studio starts a host only on macOS and Linux".into())
+}
+
+#[cfg(not(unix))]
+fn start_host_within(
+    _program: &Path,
+    _paths: &Paths,
+    _args: &[String],
+    _home: Option<&Path>,
+    _wait: Duration,
 ) -> Result<u32, String> {
     Err("the studio starts a host only on macOS and Linux".into())
 }
@@ -1639,6 +1780,35 @@ mod tests {
             libc::kill(libc::pid_t::try_from(started).unwrap(), libc::SIGKILL);
         }
         listener.join().unwrap();
+    }
+
+    #[test]
+    fn a_keychain_host_that_cannot_start_says_so_in_plain_words() {
+        // A scratch host book with no key files, as the desktop app leaves
+        // one: tests never reach the real services or key store, and the
+        // refusal names no command or path.
+        let scratch = scratch();
+        let paths = &scratch.paths;
+        let book = coder_host::access::host::Host::new(
+            &paths.state,
+            coder_host::access::RelayPolicy::Production,
+        )
+        .state_path();
+        std::fs::create_dir_all(book.parent().unwrap()).unwrap();
+        std::fs::write(&book, b"{}").unwrap();
+        let args = Args::parse(&["host".to_string()], SWITCHES).unwrap();
+        let error = host_up_inner(&args, paths).unwrap_err();
+        assert_eq!(error, KEYCHAIN_HOST_FAILED);
+        assert!(!error.contains('`') && !error.contains('/'), "{error}");
+    }
+
+    #[test]
+    fn a_disabled_service_is_read_from_launchctl() {
+        let listing = "disabled services = {\n\t\t\"com.openagents.desktop.host\" => disabled\n\t\t\"com.openagents.dev.host\" => enabled\n\t\t\"old.style\" => true\n\t}\n";
+        assert!(disabled_in(listing, "com.openagents.desktop.host"));
+        assert!(!disabled_in(listing, "com.openagents.dev.host"));
+        assert!(disabled_in(listing, "old.style"));
+        assert!(!disabled_in(listing, "com.openagents.desktop"));
     }
 
     #[test]

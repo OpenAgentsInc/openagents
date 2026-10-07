@@ -163,6 +163,8 @@ pub struct Running {
     /// The control socket's accept loop, stopped first when the host
     /// stops or starts again.
     control: Option<JoinHandle<()>>,
+    /// Why the configured WebSocket listener is off, when it could not bind.
+    websocket_off: Option<String>,
 }
 
 impl std::fmt::Debug for Running {
@@ -238,8 +240,21 @@ pub async fn start(config: Config, tasks: Arc<dyn Tasks>) -> Result<Running> {
     let listen = listener
         .local_addr()
         .map_err(|_| Error::Config("the listener has no local address".into()))?;
+    // The WebSocket listener is an optional route, often on a tailnet
+    // address that exists only while Tailscale is up: a host whose address
+    // is gone serves every other route rather than refusing to start.
+    let mut websocket_off = None;
     let websocket = match config.listen_websocket {
-        Some(address) => Some(websocket::bind(address).await?),
+        Some(address) => match websocket::bind(address).await {
+            Ok(bound) => Some(bound),
+            Err(error) => {
+                websocket_off = Some(match error {
+                    Error::Config(why) => why,
+                    other => other.to_string(),
+                });
+                None
+            }
+        },
         None => None,
     };
     let listen_websocket = websocket.as_ref().map(|(_, address)| *address);
@@ -344,6 +359,7 @@ pub async fn start(config: Config, tasks: Arc<dyn Tasks>) -> Result<Running> {
         shared,
         tasks,
         control: control_task,
+        websocket_off,
     })
 }
 
@@ -358,6 +374,14 @@ impl Running {
     #[must_use]
     pub fn websocket_addr(&self) -> Option<SocketAddr> {
         self.shared.listen_websocket
+    }
+
+    /// Why the configured WebSocket listener is off, when its address
+    /// could not be bound, such as a tailnet address while Tailscale is
+    /// stopped. The host serves its other routes.
+    #[must_use]
+    pub fn websocket_off(&self) -> Option<&str> {
+        self.websocket_off.as_deref()
     }
 
     /// The WebSocket listener's own hint URL: `ws://ADDR/`, or

@@ -945,6 +945,9 @@ async fn serve(common: &Common, options: &mut Options, open_tasks: Box<OpenTasks
     if let (Some(address), Some(url)) = (running.websocket_addr(), running.websocket_url()) {
         eprintln!("openagents host: WebSocket direct channels on {address} as {url}");
     }
+    if let Some(why) = running.websocket_off() {
+        eprintln!("openagents host: WebSocket direct channels are off: {why}");
+    }
     if let Some(admission) = admission {
         let chats = admission.chats.is_some();
         match crate::tailnet::start(admission, running.host_key()).await {

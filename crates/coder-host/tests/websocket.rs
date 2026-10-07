@@ -265,3 +265,27 @@ async fn enroll_connect_over_websocket_run_a_command_and_revoke() {
 
     running.shutdown().await;
 }
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn a_websocket_address_that_cannot_bind_leaves_the_host_serving() {
+    // A tailnet address disappears while Tailscale is stopped; the host
+    // must still start and serve its other routes.
+    let temp = tempfile::tempdir().unwrap();
+    let (relay, _relay_task, _events) = relay::start().await;
+    let access_dir = temp.path().join("access");
+    coder_host::access::host::Host::new(&access_dir, POLICY)
+        .init(&pubkey(&key()))
+        .unwrap();
+    let taken = TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let mut config = Config::new(access_dir, vec![relay], GENERATION);
+    config.policy = POLICY;
+    config.listen_websocket = Some(taken.local_addr().unwrap());
+    let running = coder_host::start(config, Arc::new(NoTasks)).await.unwrap();
+    assert_eq!(running.websocket_addr(), None);
+    assert_eq!(
+        running.websocket_off(),
+        Some("the WebSocket listener cannot bind")
+    );
+    assert!(running.local_addr().ip().is_loopback());
+    running.shutdown().await;
+}

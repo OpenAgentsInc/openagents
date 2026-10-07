@@ -529,6 +529,16 @@ fn any_other_agent_serving_a_host_is_stopped_and_removed_and_others_stay() {
         APP_AGENT,
         &["/opt/OpenAgents/coder", "host", "serve", "--keychain"],
     );
+    let dev = write_agent(
+        &old.paths,
+        DEV_AGENT,
+        &[
+            "/home/me/.openagents/dev-host/current/coder",
+            "host",
+            "serve",
+            "--keychain",
+        ],
+    );
     let detection = detect(&old.paths, now()).unwrap().unwrap();
     let names: Vec<&str> = detection
         .strays
@@ -550,6 +560,7 @@ fn any_other_agent_serving_a_host_is_stopped_and_removed_and_others_stay() {
     assert!(!stray.exists() && !launcher.exists());
     assert!(earn.exists(), "coder earn is not a host");
     assert!(own.exists(), "the desktop app's own agent stays");
+    assert!(dev.exists(), "the development host's agent stays");
     assert!(!detect(&old.paths, now()).unwrap().unwrap().pending());
 }
 

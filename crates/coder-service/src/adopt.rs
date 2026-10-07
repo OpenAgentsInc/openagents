@@ -65,6 +65,10 @@ pub struct UninstallReport {}
 
 /// The desktop app's own login agent label; never a stray.
 pub const APP_AGENT: &str = "com.openagents.desktop.host";
+/// The development host's login agent (`scripts/desktop/dev-host.sh`),
+/// which serves the same keychain identity in the app agent's place on
+/// purpose; never a stray.
+pub const DEV_AGENT: &str = "com.openagents.dev.host";
 /// Where a retired agent's record goes, beside the host root's
 /// `service.json`.
 pub const RETIRED_RECORD: &str = "service.adopted.json";
@@ -590,6 +594,7 @@ fn strays(paths: &Paths, agent: Option<&OldAgent>) -> Vec<Stray> {
         };
         if name.starts_with('.')
             || name == APP_AGENT
+            || name == DEV_AGENT
             || agent.is_some_and(|agent| agent.label == name)
         {
             continue;

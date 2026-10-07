@@ -318,14 +318,15 @@ fn start_host(socket: &Path) -> Result<String, String> {
     if output.status.success() {
         Ok(said(&output.stdout))
     } else {
-        Err(format!(
-            "Your host did not start: {}",
-            said(&output.stderr)
-                .trim_start_matches("openagents studio host: ")
-                .trim_start_matches("error: ")
-        ))
+        // What the program said is for a terminal; her panel never shows
+        // a command line or a path.
+        Err(DID_NOT_START.into())
     }
 }
+
+/// What her panel says when the host did not start.
+const DID_NOT_START: &str =
+    "Your host didn't start. CONFIRM to try again, or REJECT to leave it off.";
 
 /// A fresh 64-hex request identity.
 fn mint() -> String {
@@ -665,7 +666,13 @@ impl Workshop {
                      it off."
                 ),
             ],
-            Setup::Starting => vec![format!("{me} Starting your host...")],
+            Setup::Starting => vec![
+                format!("{me} Starting your host... This can take a minute."),
+                format!(
+                    "{me} If macOS asks whether OpenAgents may use your keychain, enter your \
+                     password and choose Always Allow."
+                ),
+            ],
             Setup::Pick { selected } => {
                 let mut lines = vec![format!(
                     "{me} Which workspace do I work in? My terminal opens there."
@@ -770,8 +777,7 @@ impl Workshop {
         self.loaded = true;
         let Some(transport) = self.connect.take().and_then(|connect| connect()) else {
             self.note(&format!(
-                "No host to ask for {NAME}. Start one with `openagents studio up` or \
-                 `coder host serve --control`."
+                "{NAME} works on her owner's computer; this window has no host to ask."
             ));
             return;
         };
@@ -2003,14 +2009,39 @@ mod tests {
     #[test]
     fn a_failed_start_says_why_and_offers_again() {
         let host = Setting::new(false, true, Vec::new());
-        let mut workshop = Workshop::with_transport(Box::new(host))
-            .with_starter(Arc::new(|| Err("Your host did not start: no coder".into())));
+        let starts = Arc::new(Mutex::new(0));
+        let counted = starts.clone();
+        let mut workshop =
+            Workshop::with_transport(Box::new(host)).with_starter(Arc::new(move || {
+                *counted.lock().unwrap() += 1;
+                Err(DID_NOT_START.into())
+            }));
         workshop.load();
         pump(&mut workshop, |w| w.trouble.is_some());
         workshop.open_panel();
         workshop.key(PanelKey::Enter);
+        assert!(shows(&workshop, "Always Allow"));
         pump(&mut workshop, |w| *w.setup() == Setup::NoHost);
-        assert!(shows(&workshop, "Your host did not start: no coder"));
+        assert!(shows(
+            &workshop,
+            "Your host didn't start. CONFIRM to try again"
+        ));
+        // CONFIRM tries again from the panel.
+        workshop.key(PanelKey::Enter);
+        pump(&mut workshop, |w| *w.setup() == Setup::NoHost);
+        assert_eq!(*starts.lock().unwrap(), 2);
+    }
+
+    #[test]
+    fn her_panel_never_shows_a_command_line_or_a_path() {
+        for line in [DID_NOT_START] {
+            assert!(!line.contains('`') && !line.contains('/'), "{line}");
+        }
+        let mut alone = Workshop::control(None);
+        alone.load();
+        for line in alone.notes.iter() {
+            assert!(!line.contains('`') && !line.contains('/'), "{line}");
+        }
     }
 
     #[test]
