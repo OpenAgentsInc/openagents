@@ -3418,8 +3418,14 @@ dependencies = [
 name = "commercial-accounts"
 version = "0.1.0"
 dependencies = [
+ "coder",
  "libc",
+ "nostr",
+ "openagents-wallet",
+ "openagents-x402",
  "pay-ledger",
+ "plugin",
+ "receipts",
  "rusqlite",
  "serde",
  "serde_json",
@@ -9945,6 +9951,7 @@ dependencies = [
  "coder-service",
  "coder-ssh",
  "coder-vt",
+ "commercial-accounts",
  "discovery",
  "ext-eval",
  "futures-util",

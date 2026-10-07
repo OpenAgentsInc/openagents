@@ -268,6 +268,9 @@ pub struct EarningsGrant {
 #[derive(Clone, Debug, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct Earnings {
+    /// Enable native plugin-merchant commission statements after qualification.
+    #[serde(default)]
+    pub commissions: bool,
     /// The pay receiver and payout worker's existing SQLite ledger.
     pub ledger: PathBuf,
     #[serde(default)]
@@ -695,11 +698,14 @@ impl Config {
             }
             let mut grants = std::collections::BTreeSet::new();
             for grant in &earnings.grants {
-                if grant.party.is_empty()
+                let party_id = grant
+                    .party
+                    .strip_prefix("referrer:")
+                    .unwrap_or(&grant.party);
+                if party_id.is_empty()
                     || grant.party == pay_ledger::OPENAGENTS
                     || grant.party.len() > 128
-                    || !grant
-                        .party
+                    || !party_id
                         .bytes()
                         .all(|b| b.is_ascii_alphanumeric() || b == b'_' || b == b'-')
                     || grant.account.is_empty()

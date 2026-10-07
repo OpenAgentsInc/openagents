@@ -219,7 +219,17 @@ impl ServeState {
         let earnings = config
             .earnings
             .as_ref()
-            .map(|earnings| pay_ledger::Ledger::open(&earnings.ledger))
+            .map(|earnings| {
+                if earnings.commissions {
+                    #[cfg(unix)]
+                    return pay_ledger::Ledger::open_native(&earnings.ledger);
+                    #[cfg(not(unix))]
+                    return Err(pay_ledger::Error::Denied(
+                        "native commission custody unsupported",
+                    ));
+                }
+                pay_ledger::Ledger::open(&earnings.ledger)
+            })
             .transpose()
             .map_err(|e| Trouble::Io(std::io::Error::other(e.to_string())))?
             .map(Mutex::new);

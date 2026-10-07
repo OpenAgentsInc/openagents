@@ -80,6 +80,18 @@ pub(crate) const USAGE: &str = "usage: openagents pay COMMAND [OPTIONS]
                           there; --resolve settles an unknown payout whose
                           wallet record proves it sent or failed. Nothing is
                           ever sent. A drift is also an error line on stderr.
+  commission admit --config FILE --ledger FILE --customer-root DIR --purchase ID --cost-policy FILE --receiver-home DIR
+                          Freeze the original native agreement before payment.
+  commission cost-qualify --config FILE --ledger FILE --customer-root DIR --purchase ID --admission ID --cost-policy FILE
+                          Pin previously unknown costs without changing history.
+  commission reconcile --config FILE --ledger FILE --customer-root DIR --purchase ID --admission ID --receiver-home DIR
+                          Verify original collection and execution once.
+  commission refund-prepare --config FILE --ledger FILE --customer-root DIR --purchase ID --admission ID --request ID --amount-msat N --buyer-home DIR --expiry SECS
+                          Retain a native refund preparation and exact invoice.
+  commission refund-reconcile --config FILE --ledger FILE --customer-root DIR --purchase ID --refund ID --receiver-home DIR
+                          Verify the original merchant's outbound refund once.
+  commission report --config FILE --ledger FILE --customer-root DIR --purchase ID --admission ID
+                          Read this original purchase's private reconciliation.
   payout-spark-init [--spark-home DIR]
                           Make a fresh seed for the payout Spark wallet in DIR
                           and print its Spark address (never the seed).
@@ -133,6 +145,12 @@ settles for this wallet must share all three.";
 
 #[cfg(test)]
 pub(crate) const EFFECTS: &[Declared] = &[
+    Declared::screen("commission admit", Effect::LocalWrite, "wallet"),
+    Declared::screen("commission cost-qualify", Effect::LocalWrite, "wallet"),
+    Declared::screen("commission reconcile", Effect::LocalWrite, "wallet"),
+    Declared::screen("commission refund-prepare", Effect::LocalWrite, "wallet"),
+    Declared::screen("commission refund-reconcile", Effect::LocalWrite, "wallet"),
+    Declared::screen("commission report", Effect::ReadOnly, "wallet"),
     Declared::screen("serve", Effect::LongRunning, "wallet"),
     Declared::screen("payouts", Effect::Spends, "wallet"),
     Declared::screen("payout-list", Effect::ReadOnly, "wallet"),
@@ -149,6 +167,7 @@ pub fn run(output: &Output, words: &[String]) -> u8 {
             println!("{USAGE}");
             0
         }
+        "commission" => crate::pay_commission::run(output, rest),
         "serve" => serve(output, rest),
         "payouts" => crate::pay_payout::payouts(output, rest, USAGE),
         "payout-list" => crate::pay_payout::list(output, rest, USAGE),

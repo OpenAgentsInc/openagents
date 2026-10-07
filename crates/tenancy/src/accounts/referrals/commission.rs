@@ -615,6 +615,36 @@ impl Accounts {
             ))
         })
     }
+    /// Run a native settlement adapter under the account writer. Historical
+    /// agreements remain inspectable after attribution or terms change.
+    pub fn with_commission_agreement<R>(
+        &self,
+        actor: &str,
+        customer: &str,
+        selected: Option<&str>,
+        current: impl FnOnce() -> bool,
+        use_agreement: impl FnOnce(&View) -> Result<R, Error>,
+    ) -> Result<R, Error> {
+        bounded(customer, 128)?;
+        if selected.is_some_and(|v| !digest_ok(v)) {
+            return Err(Error::Invalid);
+        }
+        self.referral_write(|store, _| {
+            if !current() || !store.accounts.contains_key(actor) {
+                return Err(Error::Unauthorized);
+            }
+            let state = &store.referrals.commissions;
+            let id = selected
+                .or_else(|| state.active.get(customer).map(String::as_str))
+                .ok_or(Error::Unavailable)?;
+            let agreement = state.agreements.get(id).ok_or(Error::Unavailable)?;
+            if agreement.customer != customer {
+                return Err(Error::Unauthorized);
+            }
+            authorized(&store.referrals, actor, &agreement.binding)?;
+            Ok((use_agreement(&view(&store.referrals, agreement)?)?, false))
+        })
+    }
     pub fn accept_commission_terms_guarded(
         &self,
         actor: &str,

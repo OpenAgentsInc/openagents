@@ -11,6 +11,7 @@ use std::sync::{
 };
 
 struct Wire {
+    now: u64,
     front: Front<FileReplayStore>,
     lost: AtomicBool,
     upgraded_verification: AtomicBool,
@@ -40,7 +41,7 @@ impl Transport for Wire {
                 ],
                 body: body.to_vec(),
             },
-            NOW + 10_000,
+            self.now + 10_000,
         );
         Ok(Reply {
             status: response.status,
@@ -86,7 +87,7 @@ impl Wire {
             headers,
             body: body.to_vec(),
         };
-        let (response, _) = self.front.handle(&request, NOW);
+        let (response, _) = self.front.handle(&request, self.now);
         if signature.is_some() && self.lost.load(Ordering::SeqCst) {
             return Err("Synthetic lost delivery acknowledgment.".into());
         }
@@ -244,7 +245,11 @@ fn current() -> Selection {
         },
     }
 }
+#[path = "commission_tests.rs"]
+mod commission_tests;
 struct Harness {
+    now: u64,
+    commission: Option<commission_tests::NativeFixture>,
     root: tempfile::TempDir,
     store: Store,
     current: Selection,
@@ -258,18 +263,41 @@ impl Harness {
         Self::with_recovery(false)
     }
     fn with_recovery(recoverable: bool) -> Self {
+        Self::with_profile(recoverable, false)
+    }
+    fn with_native_commission() -> Self {
+        Self::with_profile(true, true)
+    }
+    fn with_profile(recoverable: bool, commissions: bool) -> Self {
+        let now = if commissions {
+            openagents_x402::unix_now()
+        } else {
+            NOW
+        };
         let root = tempfile::tempdir().unwrap();
         let (source, id) = signed_source(root.path());
         let receiver = Arc::new(FakeReceiver {
             counter: AtomicU64::new(0),
             preimages: Mutex::new(Default::default()),
         });
-        let sink = Arc::new(pay_plugin::LedgerSink::in_memory());
+        let mut current = current();
+        let commission =
+            commissions.then(|| commission_tests::NativeFixture::new(root.path(), &mut current));
+        let sink = Arc::new(if commissions {
+            let path = root.path().join("merchant.sqlite");
+            let sink = pay_plugin::LedgerSink::open(&path).unwrap();
+            use std::os::unix::fs::PermissionsExt;
+            std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o600)).unwrap();
+            sink
+        } else {
+            pay_plugin::LedgerSink::in_memory()
+        });
         let received = Arc::new(Mutex::new(Default::default()));
         let wire = Wire {
+            now,
             front: front_with(
                 root.path(),
-                Arc::new(LiveReceiver(receiver.clone(), received.clone(), Some(NOW))),
+                Arc::new(LiveReceiver(receiver.clone(), received.clone(), Some(now))),
                 sink,
                 source.clone(),
             )
@@ -289,10 +317,16 @@ impl Harness {
             unknown_fee: AtomicBool::new(false),
             receiver_identity: AtomicBool::new(false),
         };
-        let current = current();
         let mut store = Store::open(&root.path().join("customer")).unwrap();
         store
-            .import_credential("buyer", &jev::ApiKey::new("oak_fixture.buyer"))
+            .import_credential(
+                "buyer",
+                &jev::ApiKey::new(
+                    commission
+                        .as_ref()
+                        .map_or("oak_fixture.buyer", |c| c.token.as_str()),
+                ),
+            )
             .unwrap();
         store.bind(current.clone()).unwrap();
         let url = format!("{}/v1/plugins/{id}/invoke", current.origin);
@@ -330,7 +364,7 @@ impl Harness {
             max_msat: 6000,
             max_fee_msat: 0,
             request_hash: String::new(),
-            expires_at_ms: (NOW + 300) * 1000,
+            expires_at_ms: (now + 300) * 1000,
             recovery_authorization: recoverable
                 .then(|| openagents_x402::outcome::commitment(&"e5".repeat(32))),
             commercial: None,
@@ -348,12 +382,14 @@ impl Harness {
                 offer.clone(),
                 request.into(),
                 current.clone(),
-                NOW * 1000,
+                now * 1000,
                 recoverable.then(|| "e5".repeat(32)),
             )
             .unwrap();
         let ledger = Ledger::open(&root.path().join("buyer.ndjson"));
         Self {
+            now,
+            commission,
             root,
             store,
             current,
@@ -371,7 +407,7 @@ impl Harness {
                 &digest,
                 &self.current,
                 &self.offer.payer,
-                NOW * 1000 + 1,
+                self.now * 1000 + 1,
             )
             .unwrap();
     }
@@ -388,7 +424,7 @@ impl Harness {
             0,
             &self.ledger,
             1,
-            NOW * 1000 + 2,
+            self.now * 1000 + 2,
         )
     }
 }

@@ -10,6 +10,8 @@ fn admission(l: &Ledger) -> Admission {
         authorization: "d".repeat(64),
         buyer_account: "buyer".into(),
         buyer_workspace: "ws".into(),
+        operator_account: "operator".into(),
+        operator_workspace: "merchant-workspace".into(),
         customer: "buyer".into(),
         referrer: "source".into(),
         party: "referrer:source".into(),
@@ -392,4 +394,38 @@ fn reserve_enforces_original_minimum_and_destination_even_without_worker() {
     let claims = l.available_shares(&a.party).unwrap();
     assert!(l.reserve_payout("too-small", &a.party, &claims, 1).is_err());
     assert!(l.payout("too-small").unwrap().is_none());
+}
+
+#[test]
+fn pending_original_collection_holds_new_payouts_before_observation_across_restart() {
+    let dir = tempfile::tempdir().unwrap();
+    let path = dir.path().join("ledger.sqlite");
+    let mut l = Ledger::open(&path).unwrap();
+    let a = admission(&l);
+    l.admit_commission(&a).unwrap();
+    assert!(!l.commission_payouts_held().unwrap());
+    settled(&mut l, &a);
+    assert!(l.commission_payouts_held().unwrap());
+    l.register_payee(Payee {
+        party: "openagents".into(),
+        destination_kind: "spark".into(),
+        destination_value: "synthetic".into(),
+        source: "fixture".into(),
+        verified_at: 1,
+    })
+    .unwrap();
+    let original = l.settlement(&a.payment_hash).unwrap().unwrap();
+    let items = l.available_shares("openagents").unwrap();
+    assert!(
+        l.reserve_payout("raced", "openagents", &items, 1_900_000_001)
+            .is_err()
+    );
+    drop(l);
+    let mut l = Ledger::open(&path).unwrap();
+    assert!(l.commission_payouts_held().unwrap());
+    l.observe_commission(&a.id, &"e".repeat(64), Some(true), 1_900_001_000)
+        .unwrap();
+    assert!(!l.commission_payouts_held().unwrap());
+    assert_eq!(l.settlement(&a.payment_hash).unwrap().unwrap(), original);
+    assert_eq!(l.totals().unwrap().settlements, 1);
 }

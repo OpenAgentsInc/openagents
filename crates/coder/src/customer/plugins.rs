@@ -1001,3 +1001,160 @@ fn check_recovery(p: &Purchase, r: &openagents_x402::outcome::View) -> Result<()
     }
     Ok(())
 }
+
+/// An original private buyer record held under the existing customer lock.
+/// No deserializer or caller-supplied labels can construct this authority.
+pub struct CommissionSource<'a> {
+    owner: &'a Store,
+    state: std::fs::File,
+    directory: std::fs::File,
+    credential: std::fs::File,
+    state_digest: String,
+    token: jev::ApiKey,
+    current_selection: Selection,
+    view: View,
+    secret: String,
+}
+impl CommissionSource<'_> {
+    pub fn view(&self) -> &View {
+        &self.view
+    }
+    pub fn current_selection(&self) -> &Selection {
+        &self.current_selection
+    }
+    pub fn authorization(&self) -> &str {
+        &self.secret
+    }
+    /// Native authentication consumes this privately; callers must not log it.
+    pub fn credential(&self) -> &jev::ApiKey {
+        &self.token
+    }
+    pub fn current(&self) -> Result<()> {
+        use std::os::unix::fs::MetadataExt;
+        crate::task::verify_same_file(&self.owner.dir.join("customer.lock"), &self.owner.lock)
+            .map_err(|_| "Customer custody lock changed.")?;
+        let held = self
+            .directory
+            .metadata()
+            .map_err(|_| "Customer custody unavailable.")?;
+        let visible =
+            std::fs::symlink_metadata(&self.owner.dir).map_err(|_| "Customer custody replaced.")?;
+        if held.dev() != visible.dev()
+            || held.ino() != visible.ino()
+            || !visible.is_dir()
+            || visible.mode() & 0o077 != 0
+        {
+            return Err("Customer custody replaced or disclosed.".into());
+        }
+        crate::task::verify_same_file(&self.owner.dir.join("state.json"), &self.state)
+            .map_err(|_| "Original customer record changed.")?;
+        crate::task::verify_same_file(
+            &self
+                .owner
+                .dir
+                .join("credentials")
+                .join(&self.current_selection.credential_alias),
+            &self.credential,
+        )
+        .map_err(|_| "Customer credential custody changed.")?;
+        let mut bytes = Vec::new();
+        use sha2::Digest;
+        use std::io::{Read, Seek};
+        let mut file = &self.state;
+        file.rewind()
+            .and_then(|_| {
+                file.take(super::MAX_STATE as u64 + 1)
+                    .read_to_end(&mut bytes)
+            })
+            .map_err(|_| "Original customer record unavailable.")?;
+        if bytes.len() > super::MAX_STATE
+            || format!("{:x}", sha2::Sha256::digest(&bytes)) != self.state_digest
+        {
+            return Err("Original customer record changed.".into());
+        }
+        if self
+            .owner
+            .credential(&self.current_selection.credential_alias)?
+            .expose()
+            != self.token.expose()
+        {
+            return Err("Customer credential changed.".into());
+        }
+        Ok(())
+    }
+}
+impl Store {
+    /// Admission is permitted only before the approved original payment.
+    /// Reads after payment retain the same offer and recovery authorization.
+    pub fn plugin_commission_source(
+        &self,
+        id: &str,
+        admission: bool,
+    ) -> Result<CommissionSource<'_>> {
+        use std::os::unix::fs::OpenOptionsExt;
+        let p = self.plugin(id)?;
+        if self.poisoned
+            || admission && p.phase != Phase::Approved
+            || !admission
+                && !matches!(
+                    p.phase,
+                    Phase::Approved
+                        | Phase::Unknown
+                        | Phase::Paid
+                        | Phase::Completed
+                        | Phase::Failed
+                )
+        {
+            return Err("Original approved plugin purchase is required.".into());
+        }
+        if self
+            .book
+            .selected
+            .as_ref()
+            .is_none_or(|s| !same_customer(s, &p.selection) || admission && s != &p.selection)
+            || p.approval.is_none()
+        {
+            return Err("Original selected buyer and approval are required.".into());
+        }
+        let state = crate::task::private_open(&self.dir.join("state.json"), false, false)
+            .map_err(|_| "Customer record unavailable.")?;
+        let directory = std::fs::OpenOptions::new()
+            .read(true)
+            .custom_flags(libc::O_DIRECTORY | libc::O_NOFOLLOW | libc::O_CLOEXEC)
+            .open(&self.dir)
+            .map_err(|_| "Customer directory unavailable.")?;
+        let current_selection = self.book.selected.as_ref().unwrap().clone();
+        let credential = crate::task::private_open(
+            &self
+                .dir
+                .join("credentials")
+                .join(&current_selection.credential_alias),
+            false,
+            false,
+        )
+        .map_err(|_| "Private buyer credential unavailable.")?;
+        let mut bytes = Vec::new();
+        let file = &state;
+        use sha2::Digest;
+        use std::io::Read;
+        file.take(super::MAX_STATE as u64 + 1)
+            .read_to_end(&mut bytes)
+            .map_err(|_| "Customer record unavailable.")?;
+        let result = CommissionSource {
+            owner: self,
+            state,
+            directory,
+            credential,
+            state_digest: format!("{:x}", sha2::Sha256::digest(&bytes)),
+            token: self.credential(&current_selection.credential_alias)?,
+            current_selection,
+            view: self.plugin_view(id)?,
+            secret: p
+                .recovery_secret
+                .clone()
+                .ok_or("Original private recovery authorization is required.")?,
+        };
+        result.current()?;
+        Ok(result)
+    }
+}

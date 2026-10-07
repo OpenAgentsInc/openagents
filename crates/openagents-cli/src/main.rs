@@ -56,6 +56,7 @@ mod out;
 #[cfg(unix)]
 mod pay;
 #[cfg(unix)]
+mod pay_commission;
 mod pay_hosted;
 #[cfg(unix)]
 mod pay_payout;

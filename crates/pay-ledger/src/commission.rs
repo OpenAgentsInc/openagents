@@ -36,6 +36,11 @@ pub struct Admission {
     pub authorization: String,
     pub buyer_account: String,
     pub buyer_workspace: String,
+    /// Missing pins are retained legacy history, unavailable to native effects.
+    #[serde(default)]
+    pub operator_account: String,
+    #[serde(default)]
+    pub operator_workspace: String,
     pub customer: String,
     pub referrer: String,
     pub party: String,
@@ -94,6 +99,8 @@ impl Admission {
             || self.contract.len() > 32_768
             || self.invoice.len() > 16_384
             || self.customer.is_empty()
+            || self.operator_account.is_empty()
+            || self.operator_workspace.is_empty()
             || self.referrer.is_empty()
             || self.party != format!("referrer:{}", self.referrer)
             || self.denominator == 0
@@ -141,6 +148,8 @@ pub struct Report {
     pub schema: &'static str,
     pub admission: Admission,
     pub state: String,
+    /// New payout planning stays closed while native custody is unresolved.
+    pub payouts_held: bool,
     pub evidence: Option<String>,
     pub held_msat: i64,
     pub earned_msat: i64,
@@ -452,6 +461,7 @@ impl Ledger {
             schema: SCHEMA,
             admission: a,
             state,
+            payouts_held: self.commission_payouts_held()?,
             evidence,
             held_msat: held,
             earned_msat: earned,
@@ -557,6 +567,12 @@ impl Ledger {
     /// The native adapter posts preparation before asking the original buyer
     /// resident for an invoice. Unknown creation never remints automatically.
     pub fn begin_commission_refund(&mut self, r: &Refund) -> Result<Refund> {
+        self.begin_commission_refund_once(r)
+            .map(|(record, _)| record)
+    }
+    /// Only the writer that created a preparation may issue its first invoice.
+    /// A concurrent or restarted writer retains the original unknown issuance.
+    pub fn begin_commission_refund_once(&mut self, r: &Refund) -> Result<(Refund, bool)> {
         if r.schema != "openagents.commission-refund.v1"
             || !hex(&r.id)
             || !hex(&r.admission)
@@ -578,7 +594,7 @@ impl Ledger {
             if expected != *r {
                 return Err(Error::Conflict("refund preparation identity"));
             }
-            return Ok(old);
+            return Ok((old, false));
         }
         let count: i64 =
             tx.query_row("SELECT COUNT(*) FROM commission_refund", [], |v| v.get(0))?;
@@ -588,6 +604,7 @@ impl Ledger {
         let a = read(&tx, &r.admission)?.ok_or(Error::Invalid("commission admission absent"))?;
         let prior:i64=tx.query_row("SELECT COALESCE(SUM(json_extract(json,'$.amount_msat')),0) FROM commission_refund WHERE admission=? AND state!='failed'",[&r.admission],|v|v.get(0))?;
         if r.buyer != a.buyer_account
+            || r.operator != a.operator_account
             || r.beneficiary_node != a.payer
             || r.merchant_node != a.receiver
             || prior
@@ -603,7 +620,7 @@ impl Ledger {
             params![r.id, r.admission, encode(r)?, r.state],
         )?;
         tx.commit()?;
-        Ok(r.clone())
+        Ok((r.clone(), true))
     }
     pub fn commission_refund(&self, id: &str) -> Result<Option<Refund>> {
         read_refund(&self.connection, id)
@@ -662,10 +679,11 @@ fn read_refund(c: &Connection, id: &str) -> Result<Option<Refund>> {
 }
 
 pub(crate) fn payouts_held_in(c: &Connection) -> Result<bool> {
-    Ok(c.query_row("SELECT EXISTS(SELECT 1 FROM payable_adjustment WHERE loss_msat>0) OR EXISTS(SELECT 1 FROM commission_balance WHERE funding_loss>0 OR payee_loss>0) OR EXISTS(SELECT 1 FROM commission_refund WHERE state IN ('preparing','issued-held','unknown'))",[],|r|r.get(0))?)
+    Ok(c.query_row("SELECT EXISTS(SELECT 1 FROM payable_adjustment WHERE loss_msat>0) OR EXISTS(SELECT 1 FROM commission_balance WHERE funding_loss>0 OR payee_loss>0) OR EXISTS(SELECT 1 FROM commission_refund WHERE state IN ('preparing','issued-held','unknown')) OR EXISTS(SELECT 1 FROM commission_admission a JOIN settlement s ON s.payment_hash=a.payment_hash WHERE NOT EXISTS(SELECT 1 FROM commission_obligation o WHERE o.id=a.id))",[],|r|r.get(0))?)
 }
 impl Ledger {
-    /// Losses and unresolved native refund dispatch hold new payout planning.
+    /// Unobserved admitted collections, losses, and unresolved native refund
+    /// dispatch hold new payout planning.
     /// Existing sending attempts are still resolved by their original reference.
     pub fn commission_payouts_held(&self) -> Result<bool> {
         payouts_held_in(&self.connection)

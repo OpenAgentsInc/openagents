@@ -1615,3 +1615,23 @@ assets/verse/everglade/<PACK_SHA256>.vtp --backend gpu --compare --threads
 the full kit town from P4 and P5 lands, bake it the same way. For
 comparison, Everglade's current scene (4.3 million vertices, 2.4 million
 triangles) baked on this Mac's CPU backend with four workers in 851 s.
+## Native plugin commission activation (REV-30, #10837)
+
+Use the existing authoritative private merchant ledger, protected original
+customer purchase, native Registry/Accounts grants, and original REV-29 bilateral
+BTC terms. Qualify the explicit private `pay commission` configuration, receiver
+node, all six cost classes, accepted payout destination and minimum, and actual
+resident collection, payout, and refund evidence before enabling the profile.
+Synthetic ratios, costs, invoices, and fake-rail checks establish no commercial
+rate, paid customer, or real-money qualification. Missing costs retain a hold;
+declared costs remain declarations. Cross-registry shared-wallet commission
+activation is refused until an adapter binds the original native buyer and
+merchant grants to canonical bilateral terms. Wallet possession supplies no
+account authority. Keep shared-wallet refunds disabled until the separately
+authorized REV-20 expense-refund adapter is available. USD,
+conversion, and other product commission sources require their own native
+adapters. Unknown invoice creation and payout outcomes keep their original
+references; qualify recovery and any funding loss without reminting an invoice,
+reexecuting a purchase, or rewriting author shares. Gateway referrer statements
+require explicit commission activation, current native referrer management,
+current workspace membership, and qualified rail evidence.

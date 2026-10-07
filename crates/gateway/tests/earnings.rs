@@ -21,11 +21,14 @@ struct Deployment {
     workspace: String,
     key: String,
     key_id: String,
-    _state: Arc<ServeState>,
+    _state: Option<Arc<ServeState>>,
+    server: tokio::task::JoinHandle<Result<(), std::io::Error>>,
 }
 
 async fn deploy(qualified: bool) -> Deployment {
     let dir = tempfile::tempdir().unwrap();
+    use std::os::unix::fs::PermissionsExt;
+    std::fs::set_permissions(dir.path(), std::fs::Permissions::from_mode(0o700)).unwrap();
     let registry =
         Registry::install(dir.path(), common::manifest(&common::artifact('b'), None)).unwrap();
     let accounts = Accounts::install(dir.path()).unwrap();
@@ -117,7 +120,7 @@ async fn deploy(qualified: bool) -> Deployment {
     let state = ServeState::open(config).unwrap();
     let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
     let address = format!("http://{}", listener.local_addr().unwrap());
-    tokio::spawn(axum::serve(listener, serve::router(state.clone())).into_future());
+    let server = tokio::spawn(axum::serve(listener, serve::router(state.clone())).into_future());
     Deployment {
         dir,
         address,
@@ -128,7 +131,8 @@ async fn deploy(qualified: bool) -> Deployment {
         workspace: workspace.id,
         key: key.token,
         key_id: key.key.id,
-        _state: state,
+        _state: Some(state),
+        server,
     }
 }
 
@@ -220,7 +224,7 @@ async fn private_statement_export_and_reconciliation_are_payee_scoped() {
         .json()
         .await
         .unwrap();
-    for path in serve::mounted_paths(&d._state) {
+    for path in serve::mounted_paths(d._state.as_deref().unwrap()) {
         assert!(
             catalog["routes"]
                 .as_array()
@@ -418,4 +422,193 @@ async fn oversized_private_exports_refuse_with_a_bounded_response() {
             .status(),
         StatusCode::OK
     );
+}
+
+#[tokio::test]
+async fn native_referrer_statement_is_current_private_and_disabled_without_activation() {
+    for enabled in [false, true] {
+        let mut d = deploy(true).await;
+        d.server.abort();
+        let _ = (&mut d.server).await;
+        drop(d._state.take());
+        let accounts = Accounts::open(d.dir.path()).unwrap();
+        let source = accounts
+            .create_referrer(
+                &d.alice_account,
+                tenancy::accounts::referrals::Kind::Person,
+                "Synthetic commission recipient",
+            )
+            .unwrap();
+        let party = format!("referrer:{}", source.id);
+        let path = d.dir.path().join("pay.sqlite");
+        let mut ledger = Ledger::open(&path).unwrap();
+        // This fixture exercises the HTTP permission boundary over a trusted
+        // journal. Separate native plugin fixtures verify its original source.
+        let a = pay_ledger::commission::Admission {
+            schema: pay_ledger::commission::SCHEMA.into(),
+            id: "d".repeat(64),
+            ledger_origin: ledger.origin().unwrap(),
+            payment_hash: "e".repeat(64),
+            request_hash: "f".repeat(64),
+            authorization: "1".repeat(64),
+            buyer_account: "private-buyer".into(),
+            buyer_workspace: "private-buyer-workspace".into(),
+            operator_account: "private-merchant".into(),
+            operator_workspace: "private-merchant-workspace".into(),
+            customer: "private-customer".into(),
+            referrer: source.id.clone(),
+            party: party.clone(),
+            agreement: "private-accepted-agreement".into(),
+            terms: "private-terms".into(),
+            contract: "private-bilateral-contract".into(),
+            offer_digest: "private-offer".into(),
+            invoice: "private-invoice".into(),
+            receiver: "private-receiver".into(),
+            payer: "private-payer".into(),
+            plugin: "synthetic-plugin".into(),
+            release: "synthetic-release".into(),
+            author: "synthetic-author".into(),
+            author_fee_msat: 1000,
+            price_msat: 10000,
+            numerator: 1,
+            denominator: 2,
+            exact_rounding: false,
+            hold_secs: 0,
+            minimum_msat: 1000,
+            destinations: vec!["spark".into()],
+            costs: [
+                "model", "compute", "payment", "delivery", "support", "other",
+            ]
+            .into_iter()
+            .map(|category| pay_ledger::commission::Cost {
+                category: category.into(),
+                amount_msat: Some(0),
+                provenance: "operator-declared".into(),
+                evidence: "private-cost-policy".into(),
+            })
+            .collect(),
+            cost_policy: "private-policy".into(),
+            admitted_at: 1_900_000_000,
+        };
+        ledger.admit_commission(&a).unwrap();
+        ledger
+            .record_settlement(SettlementInput {
+                key: a.payment_hash.clone(),
+                resource: "/v1/plugins/synthetic-plugin/invoke?buyer=private".into(),
+                plugin_id: Some(a.plugin.clone()),
+                release_id: Some(a.release.clone()),
+                price_msat: 10000,
+                received_msat: 10000,
+                rail: Rail::Lightning,
+                payer_alias: Some("private-payer-alias".into()),
+                settled_at: 1_900_000_000,
+                split: Split::Plugin {
+                    author: a.author.clone(),
+                    fee_msat: 1000,
+                },
+            })
+            .unwrap();
+        ledger
+            .observe_commission(&a.id, &"a".repeat(64), Some(true), 1_900_000_001)
+            .unwrap();
+        ledger
+            .reverse_commission(&a.id, &"b".repeat(64), &"c".repeat(64), 2000, 1_900_000_002)
+            .unwrap();
+        drop(ledger);
+        use std::os::unix::fs::PermissionsExt;
+        std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o600)).unwrap();
+        let config:Config=serde_json::from_value(json!({"v":SCHEMA,"listen":"127.0.0.1:0","registry":d.dir.path(),"accounts":{},"earnings":{"commissions":enabled,"ledger":path,"grants":[{"party":party,"account":d.alice_account,"workspace":d.workspace}],"rails":{"lightning":"synthetic-qualified-rail","spark":"synthetic-qualified-rail"}}})).unwrap();
+        let state = ServeState::open(config).unwrap();
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let origin = format!("http://{}", listener.local_addr().unwrap());
+        tokio::spawn(axum::serve(listener, serve::router(state.clone())).into_future());
+        let get = |path: String, token: &str| {
+            reqwest::Client::new()
+                .get(format!("{origin}{path}"))
+                .bearer_auth(token)
+                .send()
+        };
+        let index: Value = get("/v1/earnings".into(), &d.alice)
+            .await
+            .unwrap()
+            .json()
+            .await
+            .unwrap();
+        assert_eq!(
+            index["payees"].as_array().unwrap().len(),
+            usize::from(enabled)
+        );
+        let url = format!("/v1/earnings/{party}/export");
+        let reply = get(url.clone(), &d.alice).await.unwrap();
+        if !enabled {
+            assert_eq!(reply.status(), StatusCode::FORBIDDEN);
+            continue;
+        }
+        assert_eq!(reply.status(), StatusCode::OK);
+        assert_eq!(reply.headers()["cache-control"], "no-store");
+        let text = reply.text().await.unwrap();
+        for value in [
+            "private-buyer",
+            "private-customer",
+            "private-invoice",
+            "private-payer",
+            "private-cost-policy",
+            "private-policy",
+            "private-accepted-agreement",
+            "buyer=private",
+        ] {
+            assert!(!text.contains(value), "{value}");
+        }
+        let body: Value = serde_json::from_str(&text).unwrap();
+        assert_eq!(
+            body["capabilities"]["commissions"],
+            "native_plugin_merchant"
+        );
+        assert_eq!(body["commission"]["original_earned_msat"], 4500);
+        assert_eq!(body["commission"]["reversed_msat"], 900);
+        assert_eq!(
+            get(url.clone(), &d.bob).await.unwrap().status(),
+            StatusCode::FORBIDDEN
+        );
+        let refused = reqwest::Client::new()
+            .put(format!("{origin}/v1/earnings/{party}/destination"))
+            .bearer_auth(&d.key)
+            .json(&json!({"expected_version":0,"value":"recipient@example.com"}))
+            .send()
+            .await
+            .unwrap();
+        assert_eq!(refused.status(), StatusCode::BAD_REQUEST);
+        assert!(
+            Ledger::open(&path)
+                .unwrap()
+                .account_payout(&party)
+                .unwrap()
+                .is_none()
+        );
+        accounts
+            .offer_referrer_migration(&d.alice_account, &source.id, &d.owner)
+            .unwrap();
+        accounts
+            .accept_referrer_migration(&d.owner, &source.id)
+            .unwrap();
+        let migrated = reqwest::Client::new()
+            .put(format!("{origin}/v1/earnings/{party}/destination"))
+            .bearer_auth(&d.key)
+            .json(&json!({"expected_version":0,"value":"recipient@example.com"}))
+            .send()
+            .await
+            .unwrap();
+        assert_eq!(migrated.status(), StatusCode::FORBIDDEN);
+        assert_eq!(
+            get(url, &d.alice).await.unwrap().status(),
+            StatusCode::FORBIDDEN
+        );
+        let index: Value = get("/v1/earnings".into(), &d.alice)
+            .await
+            .unwrap()
+            .json()
+            .await
+            .unwrap();
+        assert_eq!(index["payees"], json!([]));
+    }
 }

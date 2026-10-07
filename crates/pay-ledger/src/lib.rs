@@ -554,7 +554,7 @@ impl Ledger {
             .transaction_with_behavior(TransactionBehavior::Immediate)?;
         if commission::payouts_held_in(&tx)? {
             return Err(Error::Denied(
-                "native refund or reversal funding remains unresolved",
+                "native commission collection, refund, or reversal funding remains unresolved",
             ));
         }
         let destination: String = tx.query_row(

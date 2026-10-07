@@ -566,6 +566,34 @@ mod custody {
             Ok(tx)
         }
     }
+    /// Holds both original purchase locks and sealed record custody. This is
+    /// a read-only inspection; it cannot settle, invoke, or refund a purchase.
+    pub struct Inspection(Transaction);
+    impl Inspection {
+        pub fn current(&self) -> Result<(), String> {
+            self.0.current()
+        }
+        pub fn merchant_settlement(&self) -> Result<crate::front::Settlement, String> {
+            self.current()?;
+            Ok(self.0.record.settlement.clone())
+        }
+        pub fn view(&self) -> Result<View, String> {
+            self.current()?;
+            Ok(self.0.record.view())
+        }
+    }
+    impl Store {
+        pub fn inspect(
+            &self,
+            network: &str,
+            hash: &str,
+            request_hash: &str,
+            secret: &str,
+        ) -> Result<Inspection, String> {
+            self.recover(network, hash, request_hash, secret)
+                .map(Inspection)
+        }
+    }
     pub(crate) struct Transaction {
         store: Store,
         name: String,

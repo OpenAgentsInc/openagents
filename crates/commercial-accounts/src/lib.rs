@@ -20,6 +20,9 @@ use tenancy::{
     accounts::commercial::{Product, Source, SourceAuthority, Sources},
 };
 
+#[cfg(feature = "merchant-commissions")]
+pub mod commission;
+
 pub const SCHEMA: &str = "openagents.commercial-policy.v1";
 #[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]

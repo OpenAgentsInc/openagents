@@ -170,6 +170,24 @@ fn authorize(state: &ServeState, principal: &Principal, party: &str) -> Result<(
             )
         })?;
     accounts::member(state, account, &grant.workspace)?;
+    if let Some(referrer) = party.strip_prefix("referrer:") {
+        if !state
+            .config
+            .earnings
+            .as_ref()
+            .is_some_and(|c| c.commissions)
+            || tenancy::Accounts::open(&state.dir)
+                .ok()
+                .and_then(|a| a.referrer(account, referrer).ok())
+                .is_none()
+        {
+            return Err(accounts::refused(
+                StatusCode::FORBIDDEN,
+                "commission_payee_forbidden",
+                "Current native referrer management and enabled commission statements are required.",
+            ));
+        }
+    }
     Ok(())
 }
 
@@ -182,7 +200,7 @@ fn parties(state: &ServeState, principal: &Principal) -> Result<Vec<String>, Res
         .unwrap()
         .grants
         .iter()
-        .filter(|g| g.account == account && accounts::member(state, account, &g.workspace).is_ok())
+        .filter(|g| g.account == account && authorize(state, principal, &g.party).is_ok())
         .map(|g| g.party.clone())
         .collect())
 }
@@ -211,6 +229,23 @@ fn destination_body(
     )
 }
 
+fn native_custody(state: &ServeState, ledger: &pay_ledger::Ledger) -> Result<(), Response> {
+    if state
+        .config
+        .earnings
+        .as_ref()
+        .is_some_and(|c| c.commissions)
+    {
+        #[cfg(unix)]
+        ledger.require_native_custody().map_err(failure)?;
+        #[cfg(not(unix))]
+        return Err(failure(pay_ledger::Error::Denied(
+            "native commission custody unsupported",
+        )));
+    }
+    Ok(())
+}
+
 async fn statement_body(
     state: &ServeState,
     credential: &Credential<'_>,
@@ -218,6 +253,7 @@ async fn statement_body(
     page: &Page,
 ) -> Result<Value, Response> {
     let mut ledger = state.earnings.as_ref().unwrap().lock().await;
+    native_custody(state, &ledger)?;
     // Recheck after waiting for the ledger, before reading private state.
     let principal = credential.principal(state)?;
     authorize(state, &principal, party)?;
@@ -225,6 +261,20 @@ async fn statement_body(
         .earnings_statement(party, page.after_earning, page.after_payout, page.limit)
         .map_err(failure)?;
     let mut body = json!({"v":SCHEMA,"party":party,"unit":"msat","statement":statement,"destination":destination_body(state,&ledger,party)?,"capabilities":{"commissions":"unavailable","reversals":"unavailable"},"terms":"Author fees and resource shares come from the recorded release and split rule. Bonuses are separate obligations; no referral commission is inferred."});
+    if party.starts_with("referrer:")
+        && state
+            .config
+            .earnings
+            .as_ref()
+            .is_some_and(|c| c.commissions)
+    {
+        body["commission"] = json!(ledger.commission_payee_figures(party).map_err(failure)?);
+        body["capabilities"] =
+            json!({"commissions":"native_plugin_merchant","reversals":"verified_native_refund"});
+        body["terms"] = json!(
+            "Each obligation retains its original accepted attribution and bilateral terms. Unknown costs, refunds, and payouts stay held. Sub-satoshi remainders remain liabilities. Author fees and bonuses stay unchanged."
+        );
+    }
     for payout in body["statement"]["payouts"].as_array_mut().unwrap() {
         let id = payout["id"].as_str().unwrap().to_owned();
         payout["reconciliation"] = json!(format!("/v1/earnings/{party}/payouts/{id}"));
@@ -239,6 +289,7 @@ async fn update(
     change: Change,
 ) -> Result<Value, Response> {
     let mut ledger = state.earnings.as_ref().unwrap().lock().await;
+    native_custody(state, &ledger)?;
     let principal = credential.principal(state)?;
     authorize(state, &principal, party)?;
     let (kind, _) = pay_ledger::payee::classify(&change.value)
@@ -264,14 +315,45 @@ async fn update(
             "The owner has not qualified this payout rail. Your existing destination and reservations stay unchanged.",
         ));
     }
-    ledger
-        .change_account_payout(
-            party,
-            change.expected_version,
-            &change.value,
-            accounts::unix_now() as i64,
-        )
-        .map_err(failure)?;
+    if party.starts_with("referrer:")
+        && !ledger
+            .commission_destination_qualified(party, kind.as_str())
+            .map_err(failure)?
+    {
+        return Err(failure(pay_ledger::Error::Invalid(
+            "accepted commission destination",
+        )));
+    }
+    // Keep current native membership and referrer management locked through
+    // the short destination append. An ownership transfer cannot win between
+    // authorization and this mutation.
+    let accounts = tenancy::Accounts::open(&state.dir)
+        .map_err(|_| failure(pay_ledger::Error::Denied("native accounts unavailable")))?;
+    let mut changed = None;
+    accounts
+        .read_locked::<_, tenancy::accounts::Trouble>(|_| {
+            changed = Some((|| {
+                let current = credential.principal(state)?;
+                authorize(state, &current, party)?;
+                native_custody(state, &ledger)?;
+                ledger
+                    .change_account_payout(
+                        party,
+                        change.expected_version,
+                        &change.value,
+                        accounts::unix_now() as i64,
+                    )
+                    .map_err(failure)?;
+                Ok(())
+            })());
+            Ok(())
+        })
+        .map_err(|_| failure(pay_ledger::Error::Denied("native accounts unavailable")))?;
+    changed.ok_or_else(|| {
+        failure(pay_ledger::Error::Denied(
+            "native destination admission absent",
+        ))
+    })??;
     accounts::record(
         state,
         &principal,
@@ -321,6 +403,9 @@ async fn destination(
     headers: HeaderMap,
 ) -> Response {
     let ledger = state.earnings.as_ref().unwrap().lock().await;
+    if let Err(r) = native_custody(&state, &ledger) {
+        return private(r);
+    }
     let p = match accounts::principal(&state, &headers) {
         Ok(p) => p,
         Err(r) => return private(r),
@@ -363,6 +448,7 @@ async fn payout_body(
     id: &str,
 ) -> Result<Value, Response> {
     let ledger = state.earnings.as_ref().unwrap().lock().await;
+    native_custody(state, &ledger)?;
     let principal = credential.principal(state)?;
     authorize(state, &principal, party)?;
     let p = ledger
@@ -519,11 +605,19 @@ async fn statement_page(
     let html = format!(
         r#"<h1>Earnings for {party}</h1><p><a href="/dashboard/earnings">Payees</a> · <a href="/dashboard/earnings/{party}/export?after_earning={after_earning}&amp;after_payout={after_payout}&amp;limit={limit}">Export this page</a></p>
 <p>All amounts are exact msat. Earned: {earned}; available: {accrued}; reserved: {reserved}; claims consumed: {consumed}; sent on the rail: {sent}; rounding: {rounding}; sent claims without an exact rail amount: {unverified}.</p>
-<p>Unknown payouts stay reserved until the payout worker resolves the same wallet reference. This page never sends or retries payments. Commissions and reversals are unavailable in this deployment.</p>
+<p>Unknown payouts stay reserved until the payout worker resolves the same wallet reference. This page never sends or retries payments. {commission_notice}</p>
 <h2>Eligible obligations</h2><table><tr><th>Sequence</th><th>Resource</th><th>Release</th><th>Role</th><th>msat</th><th>State</th></tr>{rows}</table>
 <h2>Payouts</h2><table><tr><th>Attempt</th><th>State</th><th>Reserved msat</th><th>Rail msat</th><th>Wallet reference</th></tr>{payouts}</table>{more}
 <h2>Destination</h2><pre>{destination}</pre><p>Source validation checks mainnet format. The qualification reference is the owner's rail evidence; a saved setting is not proof of payment. Signed releases and profiles retain priority. Changes affect future reservations.</p>
 <form method="post" action="/dashboard/earnings/{party}/destination"><input type="hidden" name="expected_version" value="{version}"><input type="hidden" name="csrf" value="{csrf}"><label>Mainnet Spark or Lightning address <input name="value" required maxlength="256"></label><button type="submit">Save destination</button></form>"#,
+        commission_notice = if body.get("commission").is_some() {
+            format!(
+                "Native commission and reversal figures: {}",
+                esc(&body["commission"].to_string())
+            )
+        } else {
+            "Commissions and reversals are unavailable in this deployment.".into()
+        },
         party = esc(&party),
         after_earning = page.after_earning,
         after_payout = page.after_payout,
@@ -621,8 +715,17 @@ mod tests {
 
     #[tokio::test]
     async fn a_key_revoked_paused_or_unlinked_while_waiting_cannot_change_a_destination() {
-        for action in ["revoke", "pause", "unlink"] {
+        for action in [
+            "revoke",
+            "pause",
+            "unlink",
+            "migrate-referrer",
+            "replace-ledger",
+            "disclose-ledger",
+        ] {
             let dir = tempfile::tempdir().unwrap();
+            use std::os::unix::fs::PermissionsExt;
+            std::fs::set_permissions(dir.path(), std::fs::Permissions::from_mode(0o700)).unwrap();
             let registry = Registry::install(
                 dir.path(),
                 Manifest {
@@ -652,7 +755,28 @@ mod tests {
             let workspace = accounts
                 .create_workspace(&account.id, "Author", WorkspaceKind::Personal, "acme", None)
                 .unwrap();
-            let config:crate::config::Config=serde_json::from_value(json!({"v":crate::config::SCHEMA,"listen":"127.0.0.1:0","registry":dir.path(),"accounts":{},"earnings":{"ledger":dir.path().join("pay.sqlite"),"grants":[{"party":"author","account":account.id,"workspace":workspace.id}],"rails":{"lightning":"synthetic-qualification"}}})).unwrap();
+            let migration = if action == "migrate-referrer" {
+                let referrer = accounts
+                    .create_referrer(
+                        &account.id,
+                        tenancy::accounts::referrals::Kind::Person,
+                        "Synthetic source",
+                    )
+                    .unwrap();
+                let next = accounts.create_account("Synthetic successor", &[]).unwrap();
+                Some((referrer.id, next.id))
+            } else {
+                None
+            };
+            let party = migration
+                .as_ref()
+                .map_or_else(|| "author".to_owned(), |(id, _)| format!("referrer:{id}"));
+            let config:crate::config::Config=serde_json::from_value(json!({"v":crate::config::SCHEMA,"listen":"127.0.0.1:0","registry":dir.path(),"accounts":{},"earnings":{"commissions":true,"ledger":dir.path().join("pay.sqlite"),"grants":[{"party":party,"account":account.id,"workspace":workspace.id}],"rails":{"lightning":"synthetic-qualification"}}})).unwrap();
+            let path = dir.path().join("pay.sqlite");
+            drop(pay_ledger::Ledger::open(&path).unwrap());
+            std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o644)).unwrap();
+            assert!(ServeState::open(config.clone()).is_err());
+            std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o600)).unwrap();
             let state = ServeState::open(config).unwrap();
             let mut headers = HeaderMap::new();
             headers.insert(
@@ -668,7 +792,7 @@ mod tests {
             let mut pending = Box::pin(update(
                 &state,
                 &credential,
-                "author",
+                &party,
                 Change {
                     expected_version: 0,
                     value: "author@example.com".into(),
@@ -683,19 +807,42 @@ mod tests {
             match action {
                 "revoke" => keys::revoke(dir.path(), &key.key.id).unwrap(),
                 "pause" => keys::pause(dir.path(), &key.key.id).unwrap(),
+                "replace-ledger" => {
+                    std::fs::rename(&path, dir.path().join("retired.sqlite")).unwrap();
+                    std::fs::copy(dir.path().join("retired.sqlite"), &path).unwrap();
+                }
+                "disclose-ledger" => {
+                    std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o644))
+                        .unwrap();
+                }
+                "migrate-referrer" => {
+                    let (id, next) = migration.as_ref().unwrap();
+                    accounts
+                        .offer_referrer_migration(&account.id, id, next)
+                        .unwrap();
+                    accounts.accept_referrer_migration(next, id).unwrap();
+                }
                 _ => {
                     accounts.update_principals(&account.id, &[]).unwrap();
                 }
             }
             drop(held);
             let refused = pending.await.unwrap_err();
-            assert!(
-                matches!(
+            if matches!(action, "replace-ledger" | "disclose-ledger") {
+                assert_eq!(
                     refused.status(),
-                    StatusCode::UNAUTHORIZED | StatusCode::FORBIDDEN
-                ),
-                "{action}"
-            );
+                    StatusCode::SERVICE_UNAVAILABLE,
+                    "{action}"
+                );
+            } else {
+                assert!(
+                    matches!(
+                        refused.status(),
+                        StatusCode::UNAUTHORIZED | StatusCode::FORBIDDEN
+                    ),
+                    "{action}"
+                );
+            }
             assert!(
                 state
                     .earnings
@@ -703,7 +850,7 @@ mod tests {
                     .unwrap()
                     .lock()
                     .await
-                    .account_payout("author")
+                    .account_payout(&party)
                     .unwrap()
                     .is_none()
             );
@@ -711,7 +858,7 @@ mod tests {
                 statement_body(
                     &state,
                     &credential,
-                    "author",
+                    &party,
                     &Page {
                         limit: 1,
                         ..Default::default()
