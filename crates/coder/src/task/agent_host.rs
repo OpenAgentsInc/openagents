@@ -366,9 +366,7 @@ impl Agents {
             Ok(Some(record)) => Ok((store, record)),
             Ok(None) => Err(coder_host::tasks::refuse(
                 Code::Forbidden,
-                format!(
-                    "This host has no agent named {name}. Set her up in Verse: walk up to her workstation in your house and press F."
-                ),
+                format!("{name} isn't set up on this computer yet."),
             )),
             Err(why) => Err(coder_host::tasks::refuse(Code::Unavailable, why)),
         }
@@ -408,6 +406,14 @@ impl Agents {
                 mode,
                 typist,
             } => {
+                // The owner asking her is the owner wanting her to work: a
+                // paused agent resumes for it. The kill switch's stop holds
+                // until the owner resumes her.
+                if let Ok((_, record)) = self.store(agent)
+                    && record.state == State::Paused
+                {
+                    self.pause(agent, false, &principal.device)?;
+                }
                 self.ask(
                     key,
                     agent,
@@ -715,10 +721,7 @@ impl Agents {
             state => {
                 return Err(coder_host::tasks::refuse(
                     Code::Conflict,
-                    format!(
-                        "{name} is {}; resume her with `openagents agent resume {name}`.",
-                        state.word()
-                    ),
+                    format!("{name} is {}, so she starts nothing new.", state.word()),
                 ));
             }
         }
@@ -727,7 +730,7 @@ impl Agents {
         {
             return Err(coder_host::tasks::refuse(
                 Code::Forbidden,
-                format!("This host admits no workspace labeled `{workspace}`."),
+                format!("This computer has no workspace named {workspace}."),
             ));
         }
         let mut shared = self.lock();
@@ -1228,7 +1231,6 @@ impl Agents {
                 text.push('\n');
             }
         }
-        text.push_str(&format!("\nHer journal: openagents agent log {name}"));
         let report = AgentReport {
             agent: name.clone(),
             subject: subject(&self.host_key, name),
@@ -1349,7 +1351,7 @@ impl Agents {
             live.queue.clear();
             let typing = live.run.take().map(|(step, reply)| {
                 let _ = reply.send(wire::Ran {
-                    lost: Some("stopped by the owner; Ctrl+C sent".into()),
+                    lost: Some("stopped by the owner; her command was interrupted".into()),
                     ..wire::Ran::default()
                 });
                 step
@@ -1364,7 +1366,7 @@ impl Agents {
         });
         note(&match typing {
             Some(step) => format!(
-                "stop 2 of 4: released her panes and sent Ctrl+C to step {}; its effect is unknown",
+                "stop 2 of 4: released her panes and interrupted step {}; its effect is unknown",
                 step.step
             ),
             None => "stop 2 of 4: released her panes; no command was running".into(),

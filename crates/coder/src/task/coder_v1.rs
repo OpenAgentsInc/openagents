@@ -175,6 +175,174 @@ pub fn follow_command(tui: &Path, session: &str, state: &Path, cwd: &str) -> Vec
     ]
 }
 
+/// Where Coder keeps `session`'s lock in `state`; Coder V1 holds it with
+/// an exclusive file lock while a process uses the session.
+#[must_use]
+pub fn lock_path(state: &Path, session: &str) -> PathBuf {
+    state.join("sessions").join(format!("{session}.atif.lock"))
+}
+
+/// Where an agent asks the process holding her session to hand it back.
+/// Coder V1's terminal reads it while it holds the session: idle, it saves,
+/// lets go, and follows again; mid-turn, it writes [`RECLAIM_BUSY`] and
+/// lets go when its turn ends.
+#[must_use]
+pub fn reclaim_path(state: &Path, session: &str) -> PathBuf {
+    state
+        .join("sessions")
+        .join(format!("{session}.atif.reclaim"))
+}
+
+/// What a holder mid-turn writes into [`reclaim_path`].
+pub const RECLAIM_BUSY: &str = "busy";
+
+/// Whether another process holds `session`'s lock right now. A process
+/// that crashed or quit holds nothing: the system drops its lock.
+#[must_use]
+pub fn session_held(state: &Path, session: &str) -> bool {
+    let Ok(file) = std::fs::OpenOptions::new()
+        .read(true)
+        .write(true)
+        .open(lock_path(state, session))
+    else {
+        return false;
+    };
+    matches!(file.try_lock(), Err(std::fs::TryLockError::WouldBlock))
+}
+
+/// Why an agent could not take her session back.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Unreclaimed {
+    /// The kill switch or the owner stopped her while she waited.
+    Stopped,
+    /// The holder kept it past the limit.
+    Busy,
+}
+
+/// How long a holder has to answer a reclaim before the agent treats it
+/// as a pane from before the reclaim protocol.
+const RECLAIM_ANSWER: Duration = Duration::from_secs(3);
+
+/// Takes `session` back from whatever holds it: Coder V1's terminal in the
+/// agent's pane hands it back when idle, or when its turn ends; a pane
+/// from before this protocol that sits idle is ended. `queued` runs once
+/// when the holder is mid-turn, so the agent waits for that turn.
+///
+/// # Errors
+/// `stop` was set, or the holder kept the session past `limit`.
+pub fn reclaim(
+    state: &Path,
+    session: &str,
+    stop: &AtomicBool,
+    limit: Duration,
+    mut queued: impl FnMut(),
+) -> Result<(), Unreclaimed> {
+    if !session_held(state, session) {
+        return Ok(());
+    }
+    let marker = reclaim_path(state, session);
+    // Whole or absent, so a holder's answer never interleaves with it.
+    let staged = marker.with_extension("reclaim.tmp");
+    if std::fs::write(&staged, "reclaim\n").is_ok() {
+        let _ = std::fs::rename(&staged, &marker);
+    }
+    let started = Instant::now();
+    let mut told = false;
+    let mut ended_pane = false;
+    let mut tried: Option<Instant> = None;
+    let result = loop {
+        if !session_held(state, session) {
+            if ended_pane {
+                // Let the window see the old pane exit before her new turn.
+                std::thread::sleep(Duration::from_millis(500));
+            }
+            break Ok(());
+        }
+        if stop.load(Ordering::SeqCst) {
+            break Err(Unreclaimed::Stopped);
+        }
+        if started.elapsed() > limit {
+            break Err(Unreclaimed::Busy);
+        }
+        let busy = std::fs::read_to_string(&marker).is_ok_and(|text| text.trim() == RECLAIM_BUSY);
+        if busy && !told {
+            told = true;
+            queued();
+        }
+        // A holder that never answers is a pane from before this protocol:
+        // end it once its session has gone quiet.
+        if !busy
+            && !ended_pane
+            && started.elapsed() > RECLAIM_ANSWER
+            && tried.is_none_or(|at: Instant| at.elapsed() > Duration::from_secs(2))
+        {
+            tried = Some(Instant::now());
+            ended_pane = end_idle_pane(state, session);
+            if !ended_pane && !told {
+                told = true;
+                queued();
+            }
+        }
+        std::thread::sleep(Duration::from_millis(100));
+    };
+    let _ = std::fs::remove_file(&marker);
+    result
+}
+
+/// Ends a pane that follows `session` and holds it without answering a
+/// reclaim, a terminal from before the protocol, when the session has
+/// been quiet long enough that no turn is running in it.
+#[cfg(unix)]
+fn end_idle_pane(state: &Path, session: &str) -> bool {
+    let document = state.join("sessions").join(format!("{session}.atif.json"));
+    let quiet = std::fs::metadata(&document)
+        .and_then(|m| m.modified())
+        .ok()
+        .and_then(|at| at.elapsed().ok())
+        .is_none_or(|age| age > Duration::from_secs(10));
+    if !quiet {
+        return false;
+    }
+    let lock = lock_path(state, session);
+    let Ok(out) = Command::new("lsof").arg("-t").arg("--").arg(&lock).output() else {
+        return false;
+    };
+    let mut ended = false;
+    for pid in String::from_utf8_lossy(&out.stdout).split_whitespace() {
+        let Ok(pid) = pid.parse::<u32>() else {
+            continue;
+        };
+        if pid == std::process::id() {
+            continue;
+        }
+        let Ok(ps) = Command::new("ps")
+            .args(["-o", "command=", "-p", &pid.to_string()])
+            .output()
+        else {
+            continue;
+        };
+        let command = String::from_utf8_lossy(&ps.stdout);
+        let words: Vec<&str> = command.split_whitespace().collect();
+        let follows = words
+            .windows(2)
+            .any(|pair| pair[0] == "--follow" && pair[1] == session);
+        if follows
+            && Command::new("kill")
+                .args(["-TERM", &pid.to_string()])
+                .status()
+                .is_ok_and(|s| s.success())
+        {
+            ended = true;
+        }
+    }
+    ended
+}
+
+#[cfg(not(unix))]
+fn end_idle_pane(_state: &Path, _session: &str) -> bool {
+    false
+}
+
 /// One thing a Coder turn reported. A recorded turn ([`Scripted`]) is a
 /// JSON list of these, each tagged by `event`.
 #[derive(Clone, Debug, PartialEq, serde::Serialize, serde::Deserialize)]

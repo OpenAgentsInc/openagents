@@ -474,3 +474,39 @@ fn following_reloads_the_held_session_and_a_key_takes_it_over() {
     key(&mut app, KeyCode::Char('o'));
     assert_eq!(app.draft.text, "o");
 }
+
+/// The owner asked the agent for something while their pane held her
+/// session: the pane hands it back, keeps the unsent draft, and follows
+/// her new turn. Mid-reply, it says it is busy and keeps the session.
+#[test]
+fn a_held_session_goes_back_to_its_agent_when_she_asks() {
+    let dir = tempfile::tempdir().unwrap();
+    let store = Store::under(dir.path().join("state"));
+    let mut chat = Chat::default();
+    chat.entries = vec![Entry::User("what are you doing".into())];
+    let document = trajectory::document(&chat, "agent-alice", "openai/example:low", dir.path());
+    store.lease("agent-alice").unwrap().save(&document).unwrap();
+
+    let mut app = new_app(&store, dir.path());
+    assert!(app.follow("agent-alice"));
+    key(&mut app, KeyCode::Char('x'));
+    app.follow_tick();
+    assert_eq!(app.session_id(), Some("agent-alice"));
+    paste(&mut app, "half a thought");
+    assert!(store.lease("agent-alice").is_err(), "the pane holds it");
+
+    let marker = dir.path().join("state/sessions/agent-alice.atif.reclaim");
+    fs::write(&marker, "reclaim\n").unwrap();
+    app.live.busy = true;
+    app.follow_tick();
+    assert_eq!(fs::read_to_string(&marker).unwrap().trim(), "busy");
+    assert_eq!(app.session_id(), Some("agent-alice"));
+
+    app.live.busy = false;
+    app.follow_tick();
+    assert!(app.following());
+    assert!(app.session_id().is_none());
+    assert!(!marker.exists());
+    assert_eq!(app.draft.text, "half a thought");
+    assert!(store.lease("agent-alice").is_ok(), "the agent can take it");
+}

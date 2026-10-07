@@ -235,7 +235,8 @@ impl Default for Workshop {
 }
 
 /// `text` as a workspace for her: an absolute folder in a Git checkout,
-/// canonical, with a leading `~/` read as the home folder. The host
+/// canonical, with a leading `~/` or a relative path read from the home
+/// folder. The host
 /// checks the same again before it makes her.
 ///
 /// # Errors
@@ -247,10 +248,14 @@ pub fn checkout(text: &str) -> Result<String, String> {
             .map(|home| PathBuf::from(home).join(rest))
             .unwrap_or_else(|| PathBuf::from(text)),
         None if text == "~" => std::env::var_os("HOME").map_or_else(|| text.into(), PathBuf::from),
-        None => PathBuf::from(text),
+        None if Path::new(text).is_absolute() => PathBuf::from(text),
+        None => std::env::var_os("HOME").map_or_else(
+            || PathBuf::from(text),
+            |home| PathBuf::from(home).join(text),
+        ),
     };
     if !path.is_absolute() {
-        return Err(format!("{text} is not a full path; start it with / or ~/."));
+        return Err(format!("I can't find {text}."));
     }
     let Ok(canonical) = path.canonicalize() else {
         return Err(format!("{text} does not exist."));
@@ -615,8 +620,7 @@ impl Workshop {
                     .and_then(|p| p.iter().position(|p| p.path == workspace))
                     .unwrap_or(0);
                 self.setup = Setup::Pick { selected };
-                self.setup_note =
-                    Some("Nothing was made. Pick again, or press ESC to close.".into());
+                self.setup_note = Some("Nothing was made. Pick again whenever you like.".into());
             }
             (_, PanelKey::Escape) => self.open = false,
             _ => {}
@@ -680,7 +684,7 @@ impl Workshop {
                 match &self.places {
                     None => lines.push("  reading the host's checkouts...".into()),
                     Some(places) if places.is_empty() => lines.push(format!(
-                        "{me} The host knows no checkouts yet. Type a path, then press ENTER."
+                        "{me} The host knows no checkouts yet. Type the folder I should work in."
                     )),
                     Some(places) => {
                         for (i, place) in places.iter().enumerate() {
@@ -693,8 +697,7 @@ impl Workshop {
                             ));
                         }
                         lines.push(format!(
-                            "{me} Choose with UP and DOWN, or type a number or a path, then \
-                             press ENTER."
+                            "{me} Choose one, or type the number or the folder I should work in."
                         ));
                     }
                 }
@@ -1463,7 +1466,7 @@ impl Workshop {
                     if self.input.trim().is_empty() {
                         self.decide(true);
                     } else {
-                        self.note("Answer the proposal first: ENTER confirms, ESC rejects.");
+                        self.note("Answer my proposal first, CONFIRM or REJECT.");
                     }
                 } else {
                     let text = std::mem::take(&mut self.input);
@@ -1825,6 +1828,48 @@ mod tests {
         }
     }
 
+    /// Fails when what she says in her panel, its transcript, notes, or
+    /// setup, tells the owner to press a key, quit a program, run a
+    /// command, or follow a session. `known` are the owner's own folders,
+    /// which she may name.
+    fn no_hoops(workshop: &Workshop, known: &[&str]) {
+        // Her sentences, not the checkouts she lists to choose from.
+        let mut said: Vec<String> = workshop
+            .setup_lines()
+            .into_iter()
+            .filter(|line| line.starts_with(&format!("{NAME}:")))
+            .collect();
+        said.extend(workshop.notes.iter().cloned());
+        for line in said {
+            let mut line = line.clone();
+            for folder in known {
+                line = line.replace(folder, "the folder");
+            }
+            for step in [
+                "`",
+                "Ctrl",
+                "CTRL",
+                "--",
+                "~/",
+                "press ",
+                "Press ",
+                "quit ",
+                "ESC",
+                "ENTER",
+                "follow along",
+                "openagents ",
+                "scripts/",
+                "agent log",
+            ] {
+                assert!(!line.contains(step), "{step}: {line}");
+            }
+            assert!(
+                !line.split_whitespace().any(|w| w.starts_with('/')),
+                "{line}"
+            );
+        }
+    }
+
     fn shows(workshop: &Workshop, text: &str) -> bool {
         workshop
             .rows(160, 14)
@@ -1869,9 +1914,10 @@ mod tests {
         typed(workshop, &format!("{plain}/missing"));
         workshop.key(PanelKey::Enter);
         assert!(shows(workshop, "does not exist."));
-        typed(workshop, "relative/path");
+        typed(workshop, "relative/path/that/is/not/there");
         workshop.key(PanelKey::Enter);
-        assert!(shows(workshop, "is not a full path"));
+        assert!(shows(workshop, "does not exist."));
+        no_hoops(workshop, &[app, plain]);
         assert!(matches!(workshop.setup(), Setup::Pick { .. }));
         // The offered checkout, by number; REJECT at the summary makes
         // nothing.
@@ -1889,6 +1935,7 @@ mod tests {
         assert!(workshop.open, "REJECT keeps the panel");
         assert_eq!(workshop.setup(), &Setup::Pick { selected: 0 });
         assert!(shows(workshop, "Nothing was made."));
+        no_hoops(workshop, &[app, plain]);
         assert!(
             !host
                 .sent()
@@ -2085,7 +2132,7 @@ mod tests {
                 .unwrap_err()
                 .ends_with("does not exist.")
         );
-        assert!(checkout("code/app").is_err());
+        assert!(checkout("no-such-folder-for-alice/app").is_err());
     }
 
     #[test]

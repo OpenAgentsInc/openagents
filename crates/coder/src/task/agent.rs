@@ -845,6 +845,37 @@ fn bounded(text: &str, max: usize) -> String {
     text[..end].to_string()
 }
 
+/// What in `text`, a line the agent says to the owner, would tell them to
+/// do a machine step: a key to press, a program to quit or run, a flag, a
+/// path, or a session to follow. The owner asks; she handles the rest.
+#[must_use]
+pub fn instructs(text: &str) -> Option<String> {
+    const STEPS: [&str; 16] = [
+        "`",
+        "Ctrl",
+        "CTRL",
+        "--",
+        "~/",
+        "press ",
+        "Press ",
+        "quit ",
+        "Quit ",
+        "ESC",
+        "ENTER",
+        "follow along",
+        "openagents ",
+        "agent log",
+        "scripts/",
+        "ask again",
+    ];
+    if let Some(step) = STEPS.iter().find(|step| text.contains(**step)) {
+        return Some((*step).to_string());
+    }
+    text.split_whitespace()
+        .find(|word| word.starts_with('/') || word.starts_with("./") || word.ends_with(".sh"))
+        .map(str::to_string)
+}
+
 /// A report the way the agent's panel shows it: plain ASCII without
 /// Markdown markers, on at most a few lines, at most [`REPLY_MAX`]
 /// characters.

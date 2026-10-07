@@ -302,9 +302,11 @@ fn stop_runs_the_sequence_and_pause_starts_nothing_new() {
     agents.answer("p2", &owner(), &pause).unwrap();
     assert_eq!(view(&agents).state, "paused");
     assert_eq!(view(&agents).activity, Activity::Paused);
-    assert_eq!(ask(&agents, "k3", "run it", false), Err(Code::Conflict));
     // The state is her record's, so a new host reads it.
     assert_eq!(store.load().unwrap().unwrap().state, State::Paused);
+    // The owner asking her resumes her for the request.
+    ask(&agents, "k3", "run it", false).unwrap();
+    assert_eq!(view(&agents).state, "active");
 }
 
 #[test]
@@ -553,4 +555,138 @@ fn a_terminal_briefing_carries_scored_journal_rows_and_records_them() {
     );
     let scores = std::fs::read_to_string(store.dir().join("scores.jsonl")).unwrap();
     assert!(scores.contains(crate::task::agent_recall::SCORE_SCHEMA));
+}
+
+/// Holds her Coder session as her pane does after the owner typed in it,
+/// and hands it back when she asks: at once, or after `busy` of a turn of
+/// its own.
+fn pane_holding(dir: &tempfile::TempDir, busy: Option<Duration>) -> std::thread::JoinHandle<()> {
+    let state = dir.path().join("coder");
+    std::fs::create_dir_all(state.join("sessions")).unwrap();
+    let lock = std::fs::File::create(coder_v1::lock_path(&state, "agent-alice")).unwrap();
+    lock.try_lock().unwrap();
+    let marker = coder_v1::reclaim_path(&state, "agent-alice");
+    std::thread::spawn(move || {
+        let start = Instant::now();
+        while !marker.exists() {
+            assert!(start.elapsed() < Duration::from_secs(20), "she never asked");
+            std::thread::sleep(Duration::from_millis(10));
+        }
+        if let Some(busy) = busy {
+            std::fs::write(&marker, "busy\n").unwrap();
+            std::thread::sleep(busy);
+        }
+        drop(lock);
+    })
+}
+
+/// Lines she says to the owner, without the commands she echoes.
+fn spoken(view: &wire::AgentView) -> Vec<&String> {
+    view.lines
+        .iter()
+        .filter(|l| !l.contains(": $ ") && !l.starts_with("you: "))
+        .collect()
+}
+
+#[test]
+fn she_takes_her_session_back_from_her_pane_and_answers() {
+    let dir = tempfile::tempdir().unwrap();
+    let agents = host(&dir, vec![turn(vec![], "I'm reading the repository.")]);
+    let pane = pane_holding(&dir, None);
+    ask(&agents, "k1", "what are you doing now", true).unwrap();
+    let seen = until(&agents, |v| !v.busy && v.headline == "answered");
+    pane.join().unwrap();
+    assert!(
+        seen.lines
+            .iter()
+            .any(|l| l.contains("I'm reading the repository."))
+    );
+    let marker = coder_v1::reclaim_path(&dir.path().join("coder"), "agent-alice");
+    assert!(!marker.exists());
+    for line in spoken(&seen) {
+        assert_eq!(agent::instructs(line), None, "{line}");
+    }
+}
+
+#[test]
+fn she_waits_for_a_turn_running_in_her_session_and_says_so_once() {
+    let dir = tempfile::tempdir().unwrap();
+    let agents = host(&dir, vec![turn(vec![], "Done waiting.")]);
+    let pane = pane_holding(&dir, Some(Duration::from_millis(600)));
+    ask(&agents, "k1", "what are you doing now", true).unwrap();
+    let seen = until(&agents, |v| !v.busy && v.headline == "answered");
+    pane.join().unwrap();
+    let waits = seen
+        .lines
+        .iter()
+        .filter(|l| l.contains("as soon as the turn in my session finishes"))
+        .count();
+    assert_eq!(waits, 1, "{:?}", seen.lines);
+    assert!(seen.lines.iter().any(|l| l.contains("Done waiting.")));
+}
+
+/// Nothing she tells the owner asks them to press a key, quit a program,
+/// run a command, or follow a session, whatever went wrong.
+#[test]
+fn her_replies_never_send_the_owner_through_hoops() {
+    let failed = |why: &str| Recorded {
+        ended: Some(Ended::Failed(why.into())),
+        ..Recorded::default()
+    };
+    let dir = tempfile::tempdir().unwrap();
+    let agents = host(
+        &dir,
+        vec![
+            failed("Another process is using this chat session."),
+            failed("Coder V1 exited (1): run `openagents coder status --json` in ~/x"),
+        ],
+    );
+    ask(&agents, "k1", "what are you doing now", true).unwrap();
+    until(&agents, |v| !v.busy && v.headline == "session busy");
+    ask(&agents, "k2", "and now", true).unwrap();
+    let seen = until(&agents, |v| !v.busy && v.headline == "coder failed");
+    for line in spoken(&seen) {
+        assert_eq!(agent::instructs(line), None, "{line}");
+    }
+    for report in agents.reports() {
+        assert_eq!(agent::instructs(&report.text), None, "{}", report.text);
+    }
+
+    // No Coder at all.
+    let dir = tempfile::tempdir().unwrap();
+    let agents = host(&dir, vec![]).with_engine(Arc::new(|_: &Record| {
+        Err("Coder V1 is not installed: install Coder with scripts/install-coder.sh".into())
+    }));
+    ask(&agents, "k1", "hello", false).unwrap();
+    let seen = until(&agents, |v| !v.busy && v.headline == "no coder");
+    for line in spoken(&seen) {
+        assert_eq!(agent::instructs(line), None, "{line}");
+    }
+
+    // Paused: the owner's request resumes her.
+    let dir = tempfile::tempdir().unwrap();
+    let agents = host(&dir, vec![turn(vec![], "Back at it.")]);
+    agents.pause("alice", true, "owner").unwrap();
+    ask(&agents, "k1", "hello", false).unwrap();
+    let seen = until(&agents, |v| !v.busy && v.headline == "answered");
+    assert_eq!(seen.state, "active");
+
+    // A missing agent or workspace is one plain sentence.
+    for (agent, workspace) in [("bob", None), ("alice", Some("nowhere".to_string()))] {
+        let refused = agents.answer(
+            "k3",
+            &owner(),
+            &Operation::AskAgent {
+                agent: agent.into(),
+                text: "hi".into(),
+                workspace,
+                context: String::new(),
+                mode: Mode::Terminal,
+                typist: false,
+            },
+        );
+        let code = refused.expect_err("refused");
+        let why = coder_host::tasks::take_reason(code).unwrap();
+        assert_eq!(agent::instructs(&why), None, "{why}");
+    }
 }

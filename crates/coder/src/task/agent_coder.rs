@@ -53,6 +53,15 @@ fn instructions(record: &Record, briefing: &str) -> String {
     prompt
 }
 
+/// How long she waits for a turn running in her session before she gives
+/// up on a request.
+const RECLAIM_LIMIT: Duration = Duration::from_secs(15 * 60);
+
+/// Whether Coder refused a turn because another process holds the session.
+fn held(why: &str) -> bool {
+    why.contains("Another process is using this chat session")
+}
+
 fn command_text(input: &serde_json::Value) -> String {
     input
         .as_str()
@@ -90,8 +99,14 @@ impl Agents {
             }
             store.append(&entry)
         };
-        let fail = |reply: String, headline: &str| {
-            let _ = journal(Kind::Failed, &reply, None);
+        // Her reply is one plain sentence; the cause goes to her journal.
+        let fail = |reply: String, why: &str, headline: &str| {
+            let line = if why.is_empty() {
+                reply.clone()
+            } else {
+                format!("{reply} ({})", agent::plain(why))
+            };
+            let _ = journal(Kind::Failed, &line, None);
             self.set_doing(&name, Doing::Failed);
             Report {
                 outcome: Outcome::Failed,
@@ -101,10 +116,14 @@ impl Agents {
         };
         let request = text.trim();
         if request.is_empty() {
-            return fail("I need a request to work on.".into(), "no request");
+            return fail("I need a request to work on.".into(), "", "no request");
         }
         if let Err(why) = journal(Kind::Request, request, None) {
-            return fail(format!("I can't keep my journal: {why}"), "no journal");
+            return fail(
+                "I couldn't write my journal, so I didn't start.".into(),
+                &why.to_string(),
+                "no journal",
+            );
         }
         if let Some(receipt) = crate::task::agent_recall::receipt(carried) {
             let _ = journal(Kind::Memory, &receipt, None);
@@ -113,7 +132,8 @@ impl Agents {
             Ok(engine) => engine,
             Err(why) => {
                 return fail(
-                    format!("I have no Coder to work in: {}", agent::plain(&why)),
+                    "Coder isn't installed on this computer, so I couldn't start.".into(),
+                    &why,
                     "no coder",
                 );
             }
@@ -139,6 +159,11 @@ impl Agents {
             .get(&name)
             .map(|l| l.cancel.clone())
             .unwrap_or_default();
+        // The owner asked her, so she takes her session back from her
+        // pane, or waits for a turn running in it, before she works.
+        if let Err(why) = self.take_back(&name, &state, &session, &cancel, &journal) {
+            return why;
+        }
         // Her turn stops on the kill switch or the owner's takeover.
         let stop = Arc::new(AtomicBool::new(false));
         let took = Arc::new(AtomicBool::new(false));
@@ -290,7 +315,15 @@ impl Agents {
                     _ => None,
                 }
             };
-            engine.turn(&turn, &stop, &mut hear)
+            let mut ended = engine.turn(&turn, &stop, &mut hear);
+            // Something took the session between her reclaim and her
+            // turn: take it back once more.
+            if matches!(&ended, Ended::Failed(why) if held(why))
+                && coder_v1::reclaim(&state, &session, &stop, RECLAIM_LIMIT, || {}).is_ok()
+            {
+                ended = engine.turn(&turn, &stop, &mut hear);
+            }
+            ended
         };
         done.store(true, Ordering::SeqCst);
         let _ = watcher.join();
@@ -305,8 +338,7 @@ impl Agents {
                 let _ = journal(Kind::Takeback, &format!("Coder session {session}"), None);
                 Report {
                     outcome: Outcome::Stopped,
-                    reply: "You took over my Coder session, so I stopped. It's yours in my pane."
-                        .into(),
+                    reply: "You took over my Coder session, so I stopped.".into(),
                     headline: "taken over".into(),
                 }
             }
@@ -315,19 +347,17 @@ impl Agents {
                 reply: "You stopped me, so I stopped.".into(),
                 headline: "stopped".into(),
             },
-            // The owner took the session over and still has it open.
-            Ended::Failed(why) if why.contains("Another process is using this chat session") => {
+            Ended::Failed(why) if held(&why) => {
                 return fail(
-                    format!(
-                        "You have my Coder session open; quit Coder in my pane (Ctrl+C) to hand \
-                         it back, then ask again. Or follow along with `coder --follow {session}`."
-                    ),
-                    "session held",
+                    "My Coder session stayed busy, so I couldn't run this.".into(),
+                    &why,
+                    "session busy",
                 );
             }
             Ended::Failed(why) => {
                 return fail(
-                    format!("Coder stopped: {}", agent::plain(&why)),
+                    "Coder stopped before it finished, so I couldn't answer.".into(),
+                    &why,
                     "coder failed",
                 );
             }
@@ -353,6 +383,53 @@ impl Agents {
         entry.status = ran.last;
         let _ = store.append(&entry);
         report
+    }
+
+    /// Takes her Coder session back from whatever holds it: her pane after
+    /// the owner typed in it, or a process that quit. When a turn runs
+    /// there, she says so once and runs this request after it.
+    fn take_back(
+        &self,
+        name: &str,
+        state: &Path,
+        session: &str,
+        cancel: &AtomicBool,
+        journal: &dyn Fn(Kind, &str, Option<i32>) -> Result<(), String>,
+    ) -> Result<(), Report> {
+        if !coder_v1::session_held(state, session) {
+            return Ok(());
+        }
+        let _ = journal(
+            Kind::Control,
+            &format!("took Coder session {session} back from its holder for this request"),
+            None,
+        );
+        let queued = || {
+            self.set_doing(name, Doing::Thinking);
+            self.say(
+                name,
+                &format!("{name}: I'll run this as soon as the turn in my session finishes."),
+            );
+        };
+        match coder_v1::reclaim(state, session, cancel, RECLAIM_LIMIT, queued) {
+            Ok(()) => Ok(()),
+            Err(why) => {
+                let (reply, headline) = match why {
+                    coder_v1::Unreclaimed::Stopped => ("You stopped me, so I stopped.", "stopped"),
+                    coder_v1::Unreclaimed::Busy => (
+                        "My Coder session stayed busy, so I couldn't run this.",
+                        "session busy",
+                    ),
+                };
+                let _ = journal(Kind::Failed, reply, None);
+                self.set_doing(name, Doing::Idle);
+                Err(Report {
+                    outcome: Outcome::Stopped,
+                    reply: reply.into(),
+                    headline: headline.into(),
+                })
+            }
+        }
     }
 
     /// Holds `command` for the owner's CONFIRM or REJECT at her lectern,

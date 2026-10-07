@@ -309,6 +309,7 @@ impl App {
     /// the person asked and its holder has let go.
     pub fn follow_tick(&mut self) {
         if self.history.following.is_none() {
+            self.answer_reclaim();
             return;
         }
         let Some(store) = self.history.store.clone() else {
@@ -350,6 +351,39 @@ impl App {
                 following.seen = modified;
             }
         }
+    }
+
+    /// An agent asked for the session this terminal holds, because the
+    /// owner asked her for something (#10752). Idle, this terminal saves
+    /// the conversation, lets go, and follows her new turn; the unsent
+    /// draft stays in the composer. Mid-reply, it says so in the request
+    /// and lets go when the reply ends.
+    fn answer_reclaim(&mut self) {
+        let Some(lease) = &self.history.active else {
+            return;
+        };
+        let marker = lease.path().with_extension("reclaim");
+        let Ok(asked) = std::fs::read_to_string(&marker) else {
+            return;
+        };
+        let id = lease.id().to_owned();
+        if self.live.busy {
+            if asked.trim() != "busy" {
+                let _ = std::fs::write(&marker, "busy\n");
+            }
+            return;
+        }
+        self.persist_session(true);
+        self.history.active = None;
+        let _ = std::fs::remove_file(&marker);
+        self.history.following = Some(Following {
+            id,
+            seen: None,
+            takeover: false,
+            stick: true,
+        });
+        self.notice = Some("Your agent took the conversation back to answer you.".into());
+        self.follow_tick();
     }
 
     fn load_followed(&mut self, document: &serde_json::Value) {
