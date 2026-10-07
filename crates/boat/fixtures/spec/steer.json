@@ -6,7 +6,7 @@
     "sdk_commit": "10bedbc3ee616a77db0ab2929418c7ad6de91958",
     "spec_path": "crates/boat/schema/boat-v1.yaml",
     "spec_version": "Boat Public API v1, info.version 1.0.0",
-    "spec_sha256": "9f5d55d6f722ada70109d32f804424c7514d896f7a876333890e058091a4656c",
+    "spec_sha256": "84fe785eeb24d4bb0ff3b7cb2d3d36dd24c98483fcb55b38e880a1314b4b55bc",
     "operation_inventory": "crates/boat/schema/operations.json",
     "generator": "crates/boat/schema/fixtures.py",
     "note": "Derived from the pinned specification. No value here is a vendor response."
@@ -14,7 +14,7 @@
   "sdk_method": "steer",
   "sdk_response_type": "SteerResponse",
   "summary": "Steer a running turn",
-  "description": "Send a new message to a turn that is already running, without losing what the agent is doing. This is what typing into a coding agent while it works does: the instruction is taken into account and the work continues.\n\nWhere the harness has a native mid-turn primitive (Claude Code, Codex, pi, Prime Agent) nothing is interrupted and the response has `native: true`. Where it does not (OpenCode), Boat interrupts that turn and immediately continues the SAME conversation with the instruction, keeping the session and its memory, and the response has `native: false`.\n\nRefused with **409 `no_running_turn`** when the conversation has nothing in flight; queue work with `POST /prompt` instead. The steer shows up in `GET /events` as a `steer` event. See [Integrated agents](/integrated-agents).",
+  "description": "Send a new message to a turn that is already running, without losing what the agent is doing. This is what typing into a coding agent while it works does: the instruction is taken into account and the work continues.\n\nWhere the harness has a native mid-turn primitive (Claude Code, Codex, pi, Prime Agent) nothing is interrupted and the response has `native: true`. Where it does not (OpenCode), Boat interrupts that turn and immediately continues the SAME conversation with the instruction, keeping the session and its memory, and the response has `native: false`.\n\nRefused with **409 `no_running_turn`** when the conversation has nothing in flight; queue work with `POST /prompt` instead. `error.details.reason` says why: `turn_ended` (with `error.details.lastTurn.status` and `.error` of the newest turn), `turn_not_started` (the turn is starting; retry in a moment), `no_turn`, `not_running` (the sandbox is not running) or `delivery_failed` (the sandbox did not accept the steer; check the turn before sending more work). The steer shows up in `GET /events` as a `steer` event. See [Integrated agents](/integrated-agents).",
   "parameters": [
     {
       "name": "sandboxId",

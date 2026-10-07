@@ -8,6 +8,8 @@ pub struct NamedSnapshotListResponse {
     pub type_: String,
     #[serde(rename = "snapshots")]
     pub snapshots: Vec<NamedSnapshot>,
+    #[serde(rename = "allowance", default, skip_serializing_if = "Option::is_none")]
+    pub allowance: Option<NamedSnapshotAllowance>,
     #[serde(flatten)]
     pub extra: std::collections::BTreeMap<String, serde_json::Value>,
 }

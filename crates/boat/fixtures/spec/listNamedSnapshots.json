@@ -6,7 +6,7 @@
     "sdk_commit": "10bedbc3ee616a77db0ab2929418c7ad6de91958",
     "spec_path": "crates/boat/schema/boat-v1.yaml",
     "spec_version": "Boat Public API v1, info.version 1.0.0",
-    "spec_sha256": "9f5d55d6f722ada70109d32f804424c7514d896f7a876333890e058091a4656c",
+    "spec_sha256": "84fe785eeb24d4bb0ff3b7cb2d3d36dd24c98483fcb55b38e880a1314b4b55bc",
     "operation_inventory": "crates/boat/schema/operations.json",
     "generator": "crates/boat/schema/fixtures.py",
     "note": "Derived from the pinned specification. No value here is a vendor response."
@@ -32,7 +32,8 @@
     "schema_sample": {
       "ok": true,
       "type": "snapshot.named.list",
-      "snapshots": []
+      "snapshots": [],
+      "allowance": {}
     },
     "variant_samples": [],
     "schema_sample_note": "Derived from the pinned schema with every field present. Not a vendor response."

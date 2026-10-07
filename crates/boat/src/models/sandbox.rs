@@ -28,6 +28,14 @@ pub struct Sandbox {
         skip_serializing_if = "crate::Nullable::is_unset"
     )]
     pub degraded_since: crate::Nullable<String>,
+    #[serde(rename = "hydrated", default, skip_serializing_if = "Option::is_none")]
+    pub hydrated: Option<bool>,
+    #[serde(
+        rename = "hydratedAt",
+        default,
+        skip_serializing_if = "crate::Nullable::is_unset"
+    )]
+    pub hydrated_at: crate::Nullable<String>,
     #[serde(rename = "type", default, skip_serializing_if = "Option::is_none")]
     pub type_: Option<String>,
     #[serde(rename = "vcpu", default, skip_serializing_if = "Option::is_none")]
@@ -180,6 +188,12 @@ pub struct Sandbox {
         skip_serializing_if = "crate::Nullable::is_unset"
     )]
     pub environment_version: crate::Nullable<i64>,
+    #[serde(
+        rename = "stop",
+        default,
+        skip_serializing_if = "crate::Nullable::is_unset"
+    )]
+    pub stop: crate::Nullable<StopOperation>,
     #[serde(flatten)]
     pub extra: std::collections::BTreeMap<String, serde_json::Value>,
 }

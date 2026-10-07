@@ -118,6 +118,11 @@ signals, or for stdin, so `follow.rs` builds them from the public operations:
   on the server; `WaitOptions` bounds polling, following and `run_streaming`
   on the caller's side, and ending those never stops the remote command.
 
+`wait_until_hydrated` waits for restored files to reach disk before a warm build.
+`wait_for_stop` follows one stop ID until completion and returns the operation
+record if it fails or is superseded. Both helpers obey polling deadlines and
+cancellation; neither starts or stops work.
+
 ## Wire values
 
 `Nullable<T>` keeps the three states of optional nullable fields: `Unset`

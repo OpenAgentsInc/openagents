@@ -10,7 +10,7 @@ ROOT = Path(__file__).resolve().parent.parent
 SPEC = yaml.safe_load((ROOT / "schema/boat-v1.yaml").read_text())
 SCHEMAS = SPEC["components"]["schemas"]
 TYPES = {}
-KEYWORDS = {"type", "box", "from", "ref", "self", "match", "in", "loop", "use", "mod", "pub"}
+KEYWORDS = {"type", "box", "from", "ref", "self", "match", "in", "loop", "use", "mod", "pub", "extra"}
 
 
 def snake(name):

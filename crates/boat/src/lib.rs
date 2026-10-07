@@ -34,4 +34,4 @@ pub const LEGACY_BASE_URL: &str = "https://boat.dev/api/box/v1";
 pub const OPERATIONS: &str = include_str!("../schema/operations.json");
 /// SHA-256 of `schema/boat-v1.yaml`, fetched from
 /// `https://docs.boat.dev/openapi/boat-v1.yaml` on 2026-10-02.
-pub const SPEC_SHA256: &str = "9f5d55d6f722ada70109d32f804424c7514d896f7a876333890e058091a4656c";
+pub const SPEC_SHA256: &str = "84fe785eeb24d4bb0ff3b7cb2d3d36dd24c98483fcb55b38e880a1314b4b55bc";

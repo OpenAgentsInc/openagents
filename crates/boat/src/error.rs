@@ -53,6 +53,7 @@ pub enum Error {
     Deadline,
     TerminalState,
     DeletionBlocked(std::boxed::Box<crate::models::DeletionOperation>),
+    StopIncomplete(std::boxed::Box<crate::models::StopOperation>),
     InvalidCursor,
     StreamLineTooLong,
     Io,
@@ -86,6 +87,9 @@ impl fmt::Display for Error {
             Self::TerminalState => f.write_str("The Boat resource entered a terminal state."),
             Self::DeletionBlocked(_) => {
                 f.write_str("The Boat deletion is blocked. Inspect the operation record.")
+            }
+            Self::StopIncomplete(_) => {
+                f.write_str("The Boat stop failed or was superseded. Inspect the operation record.")
             }
             Self::InvalidCursor => f.write_str("The Boat event cursor did not advance."),
             Self::StreamLineTooLong => {

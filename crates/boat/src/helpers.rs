@@ -102,6 +102,74 @@ impl Client {
             .await
     }
 
+    /// Wait until every restored file is on disk, before building in a warm target.
+    pub async fn wait_until_hydrated(
+        &self,
+        sandbox_id: &str,
+        options: &WaitOptions,
+    ) -> Result<Sandbox> {
+        options
+            .cancellation
+            .run(options.deadline()?, async {
+                loop {
+                    let sandbox = self
+                        .get(&GetParams {
+                            sandbox_id: sandbox_id.into(),
+                            ..Default::default()
+                        })
+                        .await?
+                        .sandbox;
+                    if matches!(
+                        sandbox.state.as_str(),
+                        "archived" | "archiving" | "stopped" | "error" | "cancelled"
+                    ) {
+                        return Err(Error::TerminalState);
+                    }
+                    if sandbox.hydrated == Some(true) {
+                        return Ok(sandbox);
+                    }
+                    options.pause().await;
+                }
+            })
+            .await
+    }
+
+    /// Observe the exact stop operation; never issue another stop or force data loss.
+    pub async fn wait_for_stop(
+        &self,
+        sandbox_id: &str,
+        stop_id: &str,
+        options: &WaitOptions,
+    ) -> Result<StopOperation> {
+        options
+            .cancellation
+            .run(options.deadline()?, async {
+                loop {
+                    let sandbox = self
+                        .get(&GetParams {
+                            sandbox_id: sandbox_id.into(),
+                            ..Default::default()
+                        })
+                        .await?
+                        .sandbox;
+                    let crate::Nullable::Value(operation) = sandbox.stop else {
+                        return Err(Error::TerminalState);
+                    };
+                    if operation.id != stop_id {
+                        return Err(Error::TerminalState);
+                    }
+                    match operation.status.as_str() {
+                        "completed" => return Ok(operation),
+                        "failing" | "superseded" => {
+                            return Err(Error::StopIncomplete(Box::new(operation)));
+                        }
+                        _ => options.pause().await,
+                    }
+                }
+            })
+            .await
+    }
+
     pub async fn wait_for_prompt(
         &self,
         sandbox_id: &str,

@@ -171,3 +171,60 @@ async fn blocked_deletion_returns_the_record_without_waiting_for_a_timeout() {
     );
     job.await.expect("request");
 }
+
+fn lifecycle_body(hydrated: bool, stop: serde_json::Value) -> Vec<u8> {
+    serde_json::to_vec(&serde_json::json!({"ok":true,"type":"sandbox.info",
+        "sandbox":{"id":"bx_test","name":"test","state":"ready",
+        "desktopAvailable":false,"snapshotAvailable":false,"hydrated":hydrated,"stop":stop}}))
+    .unwrap()
+}
+
+#[tokio::test]
+async fn hydration_waits_for_disk_instead_of_only_ready() {
+    let options = WaitOptions {
+        interval: Duration::from_millis(1),
+        ..Default::default()
+    };
+    let (client, job) = support::serve_sequence(
+        vec![
+            support::Reply::new(200, &[], &lifecycle_body(false, serde_json::Value::Null)),
+            support::Reply::new(200, &[], &lifecycle_body(true, serde_json::Value::Null)),
+        ],
+        |b| b,
+    )
+    .await;
+    assert_eq!(
+        client
+            .wait_until_hydrated("bx_test", &options)
+            .await
+            .unwrap()
+            .hydrated,
+        Some(true)
+    );
+    assert_eq!(job.await.unwrap().len(), 2);
+}
+
+#[tokio::test]
+async fn stop_observes_identity_completion_and_failures_without_writes() {
+    for (id, status, success) in [
+        ("stop_1", "completed", true),
+        ("stop_1", "failing", false),
+        ("stop_1", "superseded", false),
+        ("stop_other", "completed", false),
+    ] {
+        let body = lifecycle_body(
+            true,
+            serde_json::json!({"id":id,"status":status,
+            "requestedAt":null,"lastAttemptAt":null,"error":null,"endedAt":null}),
+        );
+        let (client, job) = support::serve(200, &[], &body).await;
+        let result = client
+            .wait_for_stop("bx_test", "stop_1", &WaitOptions::default())
+            .await;
+        assert_eq!(result.is_ok(), success);
+        if id == "stop_1" && !success {
+            assert!(matches!(result,Err(Error::StopIncomplete(record)) if record.status==status));
+        }
+        assert_eq!(job.await.unwrap().method, "GET");
+    }
+}

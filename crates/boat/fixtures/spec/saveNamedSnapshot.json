@@ -6,7 +6,7 @@
     "sdk_commit": "10bedbc3ee616a77db0ab2929418c7ad6de91958",
     "spec_path": "crates/boat/schema/boat-v1.yaml",
     "spec_version": "Boat Public API v1, info.version 1.0.0",
-    "spec_sha256": "9f5d55d6f722ada70109d32f804424c7514d896f7a876333890e058091a4656c",
+    "spec_sha256": "84fe785eeb24d4bb0ff3b7cb2d3d36dd24c98483fcb55b38e880a1314b4b55bc",
     "operation_inventory": "crates/boat/schema/operations.json",
     "generator": "crates/boat/schema/fixtures.py",
     "note": "Derived from the pinned specification. No value here is a vendor response."
@@ -107,8 +107,14 @@
       "published_examples": {},
       "shared_response": "NotFound"
     },
+    "402": {
+      "description": "`credit_required`: the wallet already keeps 10 or more named snapshots and has no credit left. Each named snapshot above the free 10 costs $1.70 a month, charged daily. Add credit or remove one.",
+      "schema": "ErrorEnvelope",
+      "binary": false,
+      "published_examples": {}
+    },
     "409": {
-      "description": "`named_snapshot_limit` when you already keep the maximum of 10 named snapshots; remove one first. `save_in_progress` when a save under this name is already running; wait for it to settle rather than retrying immediately.",
+      "description": "`save_in_progress` when a save under this name is already running; wait for it to settle rather than retrying immediately.",
       "schema": "ErrorEnvelope",
       "binary": false,
       "published_examples": {}
@@ -173,9 +179,28 @@
       "body_source": "ErrorEnvelope sample"
     },
     {
+      "status": "402",
+      "shared_response": null,
+      "description": "`credit_required`: the wallet already keeps 10 or more named snapshots and has no credit left. Each named snapshot above the free 10 costs $1.70 a month, charged daily. Add credit or remove one.",
+      "body": {
+        "ok": false,
+        "type": "sandbox.error",
+        "status": 402,
+        "code": "sample_error",
+        "message": "sample",
+        "requestId": "req_sample",
+        "error": {
+          "code": "sample_error",
+          "message": "sample",
+          "status": 402
+        }
+      },
+      "body_source": "ErrorEnvelope sample"
+    },
+    {
       "status": "409",
       "shared_response": null,
-      "description": "`named_snapshot_limit` when you already keep the maximum of 10 named snapshots; remove one first. `save_in_progress` when a save under this name is already running; wait for it to settle rather than retrying immediately.",
+      "description": "`save_in_progress` when a save under this name is already running; wait for it to settle rather than retrying immediately.",
       "body": {
         "ok": false,
         "type": "sandbox.error",

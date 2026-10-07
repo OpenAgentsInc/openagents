@@ -6,7 +6,7 @@
     "sdk_commit": "10bedbc3ee616a77db0ab2929418c7ad6de91958",
     "spec_path": "crates/boat/schema/boat-v1.yaml",
     "spec_version": "Boat Public API v1, info.version 1.0.0",
-    "spec_sha256": "9f5d55d6f722ada70109d32f804424c7514d896f7a876333890e058091a4656c",
+    "spec_sha256": "84fe785eeb24d4bb0ff3b7cb2d3d36dd24c98483fcb55b38e880a1314b4b55bc",
     "operation_inventory": "crates/boat/schema/operations.json",
     "generator": "crates/boat/schema/fixtures.py",
     "note": "Derived from the pinned specification. No value here is a vendor response."
@@ -14,7 +14,7 @@
   "sdk_method": "stop",
   "sdk_response_type": "SandboxActionResponse",
   "summary": "Stop and archive sandbox",
-  "description": "Stop active work and archive/snapshot the sandbox for later resume or fork.\n\nA stop always saves the sandbox's disk first. If that save is failing, the stop is\nrefused and the sandbox keeps running so your work is not discarded, we retry\nautomatically and email you. You are not billed for time spent in that state.\n\nSet `force: true` to stop anyway, accepting the loss of everything written since\nthe last successful snapshot. This is irreversible; only reach for it after a\nstop has already failed.\n",
+  "description": "Stop active work and archive/snapshot the sandbox for later resume or fork.\n\nA stop always saves the sandbox's disk first. If that save is failing, the stop is\nrefused and the sandbox keeps running so your work is not discarded, we retry\nautomatically and email you. You are not billed for time spent in that state.\n\nThe stop is an operation: the response and the sandbox carry it as `stop`, with an\n`id` and a `status`. Poll `GET /sandboxes/{sandboxId}` until `stop.status` is\n`completed`. A failed attempt shows `failing` with its `error` and is retried\nuntil the sandbox archives; commands and prompts you send meanwhile do not cancel\nit. Only a resume ends it early (`superseded`). Calling stop again while one is\npending returns the same `id`.\n\nSet `force: true` to stop anyway, accepting the loss of everything written since\nthe last successful snapshot. This is irreversible; only reach for it after a\nstop has already failed.\n",
   "parameters": [
     {
       "name": "sandboxId",

@@ -224,6 +224,20 @@ components:
           type: [string, 'null']
           format: date-time
           description: When the sandbox became degraded, or null.
+        hydrated:
+          type: boolean
+          description: >-
+            True once every file of the sandbox's snapshot is on its disk. A resumed or
+            forked sandbox is usable before that: its files keep copying in the
+            background, and its docker volumes move onto the real disk near the end. Its
+            docker containers start earlier; at that point their volume mounts move onto
+            the real disk in place, without a restart. The `sandbox.hydrated` webhook
+            fires at the same moment this turns true. A sandbox that restored nothing is
+            hydrated from the start.
+        hydratedAt:
+          type: [string, 'null']
+          format: date-time
+          description: When the last resume or fork finished copying files in, or null.
         type:
           type: string
           enum: [small, default, large]
@@ -357,6 +371,42 @@ components:
             below the latest is still running the older configuration until someone calls
             `POST /environments/{environmentId}/upgrade`.
           examples: [3]
+        stop:
+          description: The last stop you requested (`POST /sandboxes/{sandboxId}/stop`), or null if you never stopped this sandbox.
+          oneOf:
+            - $ref: '#/components/schemas/StopOperation'
+            - type: 'null'
+    StopOperation:
+      type: object
+      required: [id, status, requestedAt, lastAttemptAt, error, endedAt]
+      properties:
+        id:
+          type: string
+          description: Stable id of this stop. Calling stop again while it is pending returns the same id.
+          examples: [stop_3f9a1c2e7b4d5a60]
+        status:
+          type: string
+          enum: [pending, failing, completed, superseded]
+          description: >-
+            `pending`: accepted, the sandbox is archiving. `failing`: the last attempt failed
+            (see `error`); it is retried automatically until the sandbox archives. Running
+            commands or prompts does not cancel it. `completed`: the sandbox is archived.
+            `superseded`: a resume ended it before it completed.
+        requestedAt:
+          type: [string, 'null']
+          format: date-time
+          description: When the stop was accepted. Null once it has ended.
+        lastAttemptAt:
+          type: [string, 'null']
+          format: date-time
+          description: When the last archival attempt ended.
+        error:
+          type: [string, 'null']
+          description: Why the last attempt failed, while `status` is `failing`. Otherwise null.
+        endedAt:
+          type: [string, 'null']
+          format: date-time
+          description: When the stop completed or was superseded.
     ApiKey:
       type: object
       required: [id, name, credentialLane, keyPrefix, keyLastFour, sandboxId, createdAt, lastUsedAt, usage, resources]
@@ -1046,7 +1096,7 @@ components:
       description: |
         Work item to queue inside an existing sandbox. Provider credentials must already be configured in the Boat dashboard.
 
-        **Providers (harnesses):** `codex`, `claude-code` (alias `claude`), `pi`, `opencode`, `prime-agent` (alias `prime`), `kimi` (Kimi Code CLI, alias `kimi-code`). Omit `provider` to use the harness the user selected on the Agents dashboard.
+        **Providers (harnesses):** `codex`, `claude-code` (alias `claude`), `pi`, `opencode`, `prime-agent` (alias `prime`), `kimi` (Kimi Code CLI, alias `kimi-code`), `mistral` (Mistral Vibe). Omit `provider` to use the harness the user selected on the Agents dashboard.
 
         **Models & reasoning effort** are harness- and model-specific and change over time. Fetch the live catalog (every provider's models and which reasoning-effort levels each accepts) from `GET /provider-models`. Some models accept no reasoning control. `pi`, `opencode` and `prime-agent` also expose models routed through OpenRouter and llmgateway (ids like `openrouter:anthropic/claude-sonnet-4.5`).
 
@@ -1055,7 +1105,7 @@ components:
       properties:
         provider:
           type: string
-          enum: [codex, claude-code, claude, pi, opencode, prime-agent, prime, kimi, kimi-code]
+          enum: [codex, claude-code, claude, pi, opencode, prime-agent, prime, kimi, kimi-code, mistral]
         model:
           type: [string, 'null']
           description: Optional provider model id from `GET /provider-models`. Omit to use the model selected for that harness on the Agents dashboard. Unknown explicit ids are currently forwarded rather than rejected by request validation.
@@ -2026,7 +2076,7 @@ components:
           description: '`true` while a turn is queued or running in this conversation.'
         lastHarness:
           type: [string, 'null']
-          description: Harness the most recent prompt ran on (`claude`, `codex`, `pi`, `opencode`, `prime-agent`, `kimi`).
+          description: Harness the most recent prompt ran on (`claude`, `codex`, `pi`, `opencode`, `prime-agent`, `kimi`, `mistral`).
         lastModel:
           type: [string, 'null']
           description: Model id of the most recent prompt that chose one, or `null` when every prompt used the harness default.
@@ -2410,6 +2460,22 @@ components:
               type: array
               items:
                 $ref: '#/components/schemas/NamedSnapshot'
+            allowance: { $ref: '#/components/schemas/NamedSnapshotAllowance' }
+    NamedSnapshotAllowance:
+      type: object
+      description: >-
+        What the request's wallet (your active organization, `?org=`, or personal) pays for
+        named snapshots. 10 are free per wallet; each one above costs $1.70 a month, charged daily
+        from usage. An organization's count includes every member's names billed to it.
+      properties:
+        org: { type: [string, 'null'], description: Organization the numbers are for. null = personal. }
+        orgName: { type: [string, 'null'], description: That organization's name. }
+        free: { type: integer, description: Named snapshots kept for free. }
+        used: { type: integer, description: Named snapshots this wallet keeps. }
+        extra: { type: integer, description: Named snapshots above the free ones. }
+        extraMonthlyDollars: { type: number, description: What the extra ones cost per month. }
+        extraDailyDollars: { type: number, description: 'Boat time the extra ones take per day, in dollars (the daily charge).' }
+        pricePerExtraMonthlyDollars: { type: number, description: Monthly price of one extra named snapshot. }
     NamedSnapshotInfoResponse:
       allOf:
         - $ref: '#/components/schemas/SuccessBase'
@@ -3898,6 +3964,13 @@ paths:
         refused and the sandbox keeps running so your work is not discarded, we retry
         automatically and email you. You are not billed for time spent in that state.
 
+        The stop is an operation: the response and the sandbox carry it as `stop`, with an
+        `id` and a `status`. Poll `GET /sandboxes/{sandboxId}` until `stop.status` is
+        `completed`. A failed attempt shows `failing` with its `error` and is retried
+        until the sandbox archives; commands and prompts you send meanwhile do not cancel
+        it. Only a resume ends it early (`superseded`). Calling stop again while one is
+        pending returns the same `id`.
+
         Set `force: true` to stop anyway, accepting the loss of everything written since
         the last successful snapshot. This is irreversible; only reach for it after a
         stop has already failed.
@@ -4399,7 +4472,7 @@ paths:
         Where the harness has a native mid-turn primitive (Claude Code, Codex, pi, Prime Agent) nothing is interrupted and the response has `native: true`. Where it does not (OpenCode), Boat interrupts that turn and immediately continues the SAME conversation with the instruction, keeping the session and its memory, and the response has `native: false`.
 
 
-        Refused with **409 `no_running_turn`** when the conversation has nothing in flight; queue work with `POST /prompt` instead. The steer shows up in `GET /events` as a `steer` event. See [Integrated agents](/integrated-agents).
+        Refused with **409 `no_running_turn`** when the conversation has nothing in flight; queue work with `POST /prompt` instead. `error.details.reason` says why: `turn_ended` (with `error.details.lastTurn.status` and `.error` of the newest turn), `turn_not_started` (the turn is starting; retry in a moment), `no_turn`, `not_running` (the sandbox is not running) or `delivery_failed` (the sandbox did not accept the steer; check the turn before sending more work). The steer shows up in `GET /events` as a `steer` event. See [Integrated agents](/integrated-agents).
       operationId: steer
       parameters:
         - $ref: '#/components/parameters/SandboxId'
@@ -4631,10 +4704,18 @@ paths:
         '400': { $ref: '#/components/responses/BadRequest' }
         '401': { $ref: '#/components/responses/Unauthorized' }
         '404': { $ref: '#/components/responses/NotFound' }
+        '402':
+          description: >-
+            `credit_required`: the wallet already keeps 10 or more named snapshots and has no
+            credit left. Each named snapshot above the free 10 costs $1.70 a month, charged daily.
+            Add credit or remove one.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
         '409':
           description: >-
-            `named_snapshot_limit` when you already keep the maximum of 10 named snapshots;
-            remove one first. `save_in_progress` when a save under this name is already
+            `save_in_progress` when a save under this name is already
             running; wait for it to settle rather than retrying immediately.
           content:
             application/json:
