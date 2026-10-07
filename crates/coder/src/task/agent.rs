@@ -9,7 +9,8 @@
 //! with `--keychain`, else `key` beside the record, mode `0600`), and the
 //! owner's NIP-OA attestation of that key ([`Attestation`]); it also holds
 //! her definition ([`Definition`]), her roles ([`Roles`]), and her state:
-//! active, paused, stopped, or retired ([`State`]).
+//! active, paused, stopped, retired, or moved ([`State`]). Rotation,
+//! retirement, moves, and snapshots are in [`super::agent_lifecycle`].
 //!
 //! A terminal-mode request runs as a turn of Coder V1 in the agent's own
 //! session (`super::agent_host`, `super::coder_v1`): each command Coder
@@ -244,12 +245,21 @@ pub enum State {
     Stopped,
     /// Retired: its key is gone and its journal stays.
     Retired,
+    /// Moved to another of the owner's computers, which runs her now:
+    /// this one refuses her requests and runs none of her jobs.
+    Moved,
 }
 
 impl State {
     #[must_use]
     pub fn is_active(&self) -> bool {
         *self == Self::Active
+    }
+
+    /// Whether this computer no longer runs her: retired or moved.
+    #[must_use]
+    pub fn is_gone(self) -> bool {
+        matches!(self, Self::Retired | Self::Moved)
     }
 
     #[must_use]
@@ -259,6 +269,7 @@ impl State {
             Self::Paused => "paused",
             Self::Stopped => "stopped",
             Self::Retired => "retired",
+            Self::Moved => "moved",
         }
     }
 }
@@ -639,7 +650,7 @@ impl Store {
         let Some(pubkey) = &record.pubkey else {
             return Ok(());
         };
-        if record.state == State::Retired {
+        if record.state.is_gone() {
             return Ok(());
         }
         match self.key() {
@@ -750,6 +761,59 @@ impl Store {
         // the host signs it when it next opens her.
         let _ = super::agent_profile::refresh(self, &record, now);
         Ok(record)
+    }
+
+    /// Keeps `key` as her next key during a rotation, in a slot of its
+    /// own (`agent:NAME.next`, or `agents/NAME/next/key`), and reads it
+    /// back.
+    ///
+    /// # Errors
+    /// When her key store can't be written or doesn't keep the key.
+    pub(crate) fn store_next_key(&self, key: &secp256k1::SecretKey) -> Result<(), String> {
+        let (name, dir) = self.next_slot();
+        let slot = Slot {
+            name: &name,
+            dir: &dir,
+        };
+        self.keys.store(slot, key)?;
+        match self.keys.load(slot)? {
+            Some(back) if back == *key => Ok(()),
+            _ => Err(format!(
+                "the {} didn't keep her next key",
+                self.custody_kind()
+            )),
+        }
+    }
+
+    /// Deletes her next key and its directory, after a rotation or one
+    /// that failed.
+    pub(crate) fn delete_next_key(&self) {
+        let (name, dir) = self.next_slot();
+        let _ = self.keys.delete(Slot {
+            name: &name,
+            dir: &dir,
+        });
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    fn next_slot(&self) -> (String, PathBuf) {
+        (format!("{}.next", self.name), self.dir.join("next"))
+    }
+
+    /// Keeps `key` as her key in place of the one there, and reads it
+    /// back. The key it replaces is gone.
+    ///
+    /// # Errors
+    /// When her key store can't be written or doesn't keep the key.
+    pub(crate) fn replace_key(&self, key: &secp256k1::SecretKey) -> Result<(), String> {
+        self.keys.store(self.slot(), key)?;
+        match self.keys.load(self.slot())? {
+            Some(back) if back == *key => Ok(()),
+            _ => Err(format!(
+                "the {} didn't keep her new key",
+                self.custody_kind()
+            )),
+        }
     }
 
     /// Deletes the agent's key, keeping its record and journal.
@@ -877,7 +941,7 @@ pub(crate) fn write_private(path: &Path, body: &[u8]) -> Result<(), String> {
         .map_err(|e| format!("cannot write {}: {e}", path.display()))
 }
 
-fn decode_hex32(text: &str) -> Option<[u8; 32]> {
+pub(crate) fn decode_hex32(text: &str) -> Option<[u8; 32]> {
     if text.len() != 64 || !text.bytes().all(|b| b.is_ascii_hexdigit()) {
         return None;
     }

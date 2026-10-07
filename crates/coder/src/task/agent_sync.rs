@@ -674,8 +674,10 @@ fn pass(
     let record = store
         .load()?
         .ok_or_else(|| format!("there is no agent named {}", store.name()))?;
-    if record.state == State::Retired {
-        return Err("she is retired".into());
+    match record.state {
+        State::Retired => return Err("she is retired".into()),
+        State::Moved => return Err("she moved to another computer, which syncs her".into()),
+        _ => {}
     }
     if record.pubkey.is_none() {
         return Err("she has no key".into());
@@ -1077,4 +1079,4 @@ pub fn owner_read(
 
 #[cfg(test)]
 #[path = "agent_sync_tests.rs"]
-mod tests;
+pub(crate) mod tests;

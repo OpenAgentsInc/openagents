@@ -67,14 +67,14 @@ fn journal(memory: &Memory) -> Vec<String> {
 /// A relay in memory with NIP-01 replacement: the newest event per
 /// address, ties to the lowest ID.
 #[derive(Default)]
-struct Held {
-    events: Vec<Event>,
+pub(crate) struct Held {
+    pub(crate) events: Vec<Event>,
     /// Each AUTH: the key and the NIP-AA tag it presented.
-    auths: Vec<(String, Option<Tag>)>,
+    pub(crate) auths: Vec<(String, Option<Tag>)>,
     /// Each event published, by ID.
-    published: Vec<String>,
+    pub(crate) published: Vec<String>,
     /// Connections to these URLs fail.
-    down: BTreeSet<String>,
+    pub(crate) down: BTreeSet<String>,
     /// Stored just before the next engram publish lands: another writer.
     race: Option<Event>,
 }
@@ -153,12 +153,12 @@ impl Held {
 }
 
 #[derive(Clone, Default)]
-struct Fake(Arc<Mutex<Held>>);
+pub(crate) struct Fake(Arc<Mutex<Held>>);
 
 struct FakeRelay(Arc<Mutex<Held>>);
 
 impl Fake {
-    fn held(&self) -> std::sync::MutexGuard<'_, Held> {
+    pub(crate) fn held(&self) -> std::sync::MutexGuard<'_, Held> {
         self.0.lock().unwrap()
     }
 }

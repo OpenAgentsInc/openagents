@@ -33,6 +33,7 @@ pub mod agent_host;
 pub mod agent_interview;
 pub mod agent_jobs;
 pub mod agent_key;
+pub mod agent_lifecycle;
 pub mod agent_memory;
 pub mod agent_place;
 pub mod agent_plan;
