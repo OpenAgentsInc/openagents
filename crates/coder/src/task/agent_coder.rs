@@ -17,16 +17,19 @@ struct Ran {
     /// The last finished command's exit status.
     last: Option<i32>,
     rejected: bool,
+    /// The commands the owner rejected this turn.
+    refused: Vec<String>,
     /// The last tool event, so a repeated one is heard once.
     previous: Option<CoderEvent>,
 }
 
-/// What Coder is told before the owner's request.
+/// What Coder is told: the owner's request first, as her pane shows it,
+/// then how she works.
 fn prompt(record: &Record, text: &str, briefing: &str) -> String {
     let mut prompt = format!(
-        "You are {name}, the owner's workshop agent, and you work in Coder on their computer \
-         while they watch. Your charter: {charter}\n\nCommands that only read, build, or test \
-         run at once. Anything that changes files, the repository, or this computer waits for \
+        "{text}\n\n---\nHow you work, as {name}, the owner's workshop agent, in Coder on their \
+         computer while they watch. Your charter: {charter} Commands that only read, build, or \
+         test run at once. Anything that changes files, the repository, or this computer waits for \
          the owner's CONFIRM or REJECT, so propose such a command only when the request needs \
          it, and never ask for approval in words. A rejected command stays rejected: do not \
          work around it. Never push, publish, pay, install, or read credentials, and never \
@@ -42,7 +45,6 @@ fn prompt(record: &Record, text: &str, briefing: &str) -> String {
              {briefing}\n"
         ));
     }
-    prompt.push_str(&format!("\nThe owner's request:\n{text}\n"));
     prompt
 }
 
@@ -219,6 +221,10 @@ impl Agents {
                             return None;
                         }
                         let command = agent::plain(&command_text(input));
+                        if *running && ran.refused.contains(&command) {
+                            // The owner rejected it; it does not run.
+                            return None;
+                        }
                         if *running {
                             self.set_doing(
                                 &name,
@@ -273,6 +279,7 @@ impl Agents {
                             self.set_doing(&name, Doing::Running);
                         } else {
                             ran.rejected = true;
+                            ran.refused.push(command.clone());
                             let _ = journal(Kind::Rejected, &command, None);
                             self.say(&name, &format!("{name}: rejected: {command}"));
                             self.set_doing(&name, Doing::Thinking);
@@ -307,6 +314,16 @@ impl Agents {
                 reply: "You stopped me, so I stopped.".into(),
                 headline: "stopped".into(),
             },
+            // The owner took the session over and still has it open.
+            Ended::Failed(why) if why.contains("Another process is using this chat session") => {
+                return fail(
+                    format!(
+                        "You have my Coder session open; quit Coder in my pane (Ctrl+C) to hand \
+                         it back, then ask again. Or follow along with `coder --follow {session}`."
+                    ),
+                    "session held",
+                );
+            }
             Ended::Failed(why) => {
                 return fail(
                     format!("Coder stopped: {}", agent::plain(&why)),
