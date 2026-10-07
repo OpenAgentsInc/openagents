@@ -7,9 +7,11 @@ publish.workspace = true
 description = "Durable remote Coder jobs and explicitly selected cloud execution."
 
 [dependencies]
+boat = { path = "../boat" }
+base64 = "0.22"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
-tokio = { version = "1", features = ["time", "macros", "rt"] }
+tokio = { version = "1", features = ["time", "macros", "rt", "process", "io-util"] }
 
 [dev-dependencies]
 tempfile = "3"

@@ -10,6 +10,9 @@ use std::{
     time::{Duration, SystemTime, UNIX_EPOCH},
 };
 
+pub mod boat_backend;
+pub mod runtime;
+
 pub type Result<T> = std::result::Result<T, String>;
 pub const MAX_RECORD_BYTES: usize = 32 * 1024 * 1024;
 pub const MAX_EVENT_BYTES: usize = 1024 * 1024;
@@ -352,6 +355,13 @@ pub async fn drive<B: Backend>(
     if interval.is_zero() {
         return Err("The remote polling interval must be positive.".into());
     }
+    if record.state == State::Created && (cancel.load(Ordering::Relaxed) || lease.cancelled()) {
+        record.cancel_requested = true;
+        record.state = State::Cancelled;
+        record.cleanup_complete = true;
+        lease.save(record)?;
+        return Ok(());
+    }
     if record.state == State::Created || record.state == State::Provisioning {
         record.state = State::Provisioning;
         lease.save(record)?;
@@ -361,12 +371,34 @@ pub async fn drive<B: Backend>(
         lease.save(record)?;
     }
     if record.state == State::Ready {
-        if cancel.load(Ordering::Relaxed) || lease.cancelled() {
+        if record.cancel_requested || cancel.load(Ordering::Relaxed) || lease.cancelled() {
             record.cancel_requested = true;
             record.state = State::Cancelled;
             lease.save(record)?;
         } else {
-            backend.prepare(record).await?;
+            if let Err(error) = backend.prepare(record).await {
+                record.state = State::Failed;
+                record.error = Some(error.clone());
+                lease.save(record)?;
+                match backend.cleanup(record).await {
+                    Ok(usage) => {
+                        record.usage = usage;
+                        record.cleanup_complete = true;
+                    }
+                    Err(cleanup) => record.cleanup_error = Some(cleanup),
+                }
+                lease.save(record)?;
+                return Err(error);
+            }
+            if cancel.load(Ordering::Relaxed) || lease.cancelled() {
+                record.cancel_requested = true;
+                record.state = State::Cancelled;
+                lease.save(record)?;
+                record.usage = backend.cleanup(record).await?;
+                record.cleanup_complete = true;
+                lease.save(record)?;
+                return Ok(());
+            }
             record.state = State::Dispatching;
             lease.save(record)?;
             match backend.dispatch(record).await {
@@ -382,6 +414,14 @@ pub async fn drive<B: Backend>(
                 }
             }
         }
+    } else if record.state == State::Dispatching
+        && (record.cancel_requested || cancel.load(Ordering::Relaxed) || lease.cancelled())
+    {
+        record.cancel_requested = true;
+        lease.save(record)?;
+        backend.cancel(record).await?;
+        record.state = State::Cancelled;
+        lease.save(record)?;
     } else if record.state == State::Dispatching {
         let task=backend.recover(record).await?.ok_or("Remote dispatch is unresolved. Follow this job again; another task will not be submitted.")?;
         record.remote_task = Some(task);

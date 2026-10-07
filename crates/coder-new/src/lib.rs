@@ -6,6 +6,7 @@ pub mod approval;
 pub mod brainstorm;
 pub mod bundled_runtime;
 pub mod bundled_settings;
+pub mod cloud;
 pub mod credentials;
 mod delegation_events;
 pub mod jev_plugin;

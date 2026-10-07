@@ -250,3 +250,24 @@ Snapshots default to demo and never dispatch network work, including with `--liv
 
 The [research index](../../docs/coder-new/README.md) contains the history and
 architecture inputs for the future specification.
+
+Remote delegation runs through the shared Rust `coder-cloud` executor:
+
+```sh
+openagents --json coder delegate codex --task "Review this workspace" --on boat --mode integrated --credential-env OPENAI_API_KEY
+openagents --json coder delegate microcoder --task "Review this workspace" --on boat --mode coder --template YOUR_CODER_TEMPLATE
+openagents coder remote list
+openagents coder remote status JOB_ID
+openagents --json coder remote follow JOB_ID
+openagents coder remote cancel JOB_ID
+openagents coder remote steer JOB_ID --message "Focus on the tests"
+```
+
+Boat integrated mode uses Boat's agent API; Coder mode runs the same headless
+runtime as the terminal. Remote jobs retain their resource, task, events, cursor,
+result, and usage under the Coder store's `remote` directory. Choose a stable
+`--job ID` to identify a dispatch; repeating it with different arguments refuses.
+Use `remote follow` after a disconnect. Selected `--credential-env` values travel
+to that run and stay redacted from retained output. Each sandbox starts without
+inherited account credentials. Completed jobs stop their sandbox and confirm its
+meter is no longer running. `remote status` reports unresolved cleanup.

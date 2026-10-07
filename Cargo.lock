@@ -2848,6 +2848,8 @@ dependencies = [
 name = "coder-cloud"
 version = "0.1.0"
 dependencies = [
+ "base64 0.22.1",
+ "boat",
  "serde",
  "serde_json",
  "tempfile",
@@ -3166,6 +3168,7 @@ dependencies = [
  "code-highlight",
  "coder",
  "coder-boundary",
+ "coder-cloud",
  "coder-delegate",
  "coder-terminal",
  "coder-ui",

@@ -32,6 +32,11 @@ macro_rules! command_usage {
             "
                                       Run the same chat and tools as the terminal.
   delegate AGENT --task TEXT [--session ID]
+       [--on boat|gce] [--mode integrated|coder] [--model ID] [--reasoning EFFORT]
+       [--job ID] [--size small|default|large|xlarge] [--template NAME]
+       [--credential-env NAME] [--timeout SECONDS]
+  remote list|status ID|follow ID|cancel ID|steer ID --message TEXT
+                                      Retain, observe, or control a remote job.
                                       Run Microcoder or an enabled ACP subagent.
   plugins list                        List registered plugins and their status.
   plugins enable ID                   Turn a registered plugin on.
@@ -271,7 +276,7 @@ pub fn run(arguments: &[String], json_mode: bool) -> u8 {
     }
     let canceled = if args
         .first()
-        .is_some_and(|arg| matches!(arg.as_str(), "chat" | "run" | "delegate"))
+        .is_some_and(|arg| matches!(arg.as_str(), "chat" | "run" | "delegate" | "remote"))
         && !args.iter().any(|arg| arg == "--demo")
     {
         let flag = Arc::new(AtomicBool::new(false));
@@ -380,6 +385,9 @@ fn execute_with_demo_policy(
     }
     if command == "import" {
         return import(rest, context);
+    }
+    if command == "remote" || command == "delegate" && rest.iter().any(|v| v == "--on") {
+        return crate::cloud::execute(command, rest, context, emit).map_err(Error::from);
     }
     let mut app = bootstrap(context)?;
     match command.as_str() {

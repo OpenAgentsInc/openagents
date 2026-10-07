@@ -384,8 +384,14 @@ pub(crate) async fn cli_at(
     let sink = RefCell::new(emit);
     let mut bridge = crate::delegation_events::Bridge::new()?;
     bridge.prepare(&mut command);
+    let cloud_job = arguments.first().is_some_and(|word| word == "coder")
+        && (arguments.iter().any(|word| word == "--on")
+            || arguments
+                .windows(2)
+                .any(|words| words == ["remote", "follow"]));
+    let seconds = if cloud_job { 12 * 3600 + 1200 } else { 300 };
     let job = supervise::Job::from_command(command)
-        .bounded(supervise::Limits::within(Duration::from_secs(300)).keeping(TEXT_MAX));
+        .bounded(supervise::Limits::within(Duration::from_secs(seconds)).keeping(TEXT_MAX));
     let stopped = wait_job(job, cancel, Some((&mut bridge, &sink)), &[]).await?;
     Ok(
         json!({"exit":stopped.ending.code(),"stdout":String::from_utf8_lossy(&stopped.rest.bytes),"stderr":stopped.stderr.marked(),"timed_out":matches!(stopped.ending,supervise::Ending::TimedOut),"canceled":stopped.requested,"group_clear":stopped.group_clear,"truncated":!stopped.rest.gaps.is_empty()}),
@@ -479,9 +485,13 @@ pub async fn acp(
         let sandbox = codex_sandbox()?;
         return codex_cli(&program, task, cwd, sandbox, cancel, emit).await;
     }
+    let admitted = std::env::var("OA_CODER_CLOUD_CREDENTIAL_NAMES").unwrap_or_default();
     let environment = std::env::vars()
         .filter(|(name, _)| {
-            !(name.ends_with("_API_KEY") || name.ends_with("_TOKEN") || name.ends_with("_SECRET"))
+            admitted.split(',').any(|allowed| allowed == name)
+                || !(name.ends_with("_API_KEY")
+                    || name.ends_with("_TOKEN")
+                    || name.ends_with("_SECRET"))
         })
         .collect();
     let opening = Opening {
@@ -536,6 +546,23 @@ async fn codex_cli(
     }
     let mut command = std::process::Command::new(program);
     command.args(["exec", "--json", "--skip-git-repo-check"]);
+    if let Ok(model) = std::env::var("CODER_CODEX_MODEL") {
+        if !model.is_empty() {
+            command.args(["--model", &model]);
+        }
+    }
+    if let Ok(effort) = std::env::var("CODER_CODEX_REASONING") {
+        if !effort.is_empty() {
+            command.args([
+                "-c",
+                &format!(
+                    "model_reasoning_effort={}",
+                    serde_json::to_string(&effort)
+                        .map_err(|_| "Cannot encode Codex reasoning settings.")?
+                ),
+            ]);
+        }
+    }
     if sandbox == CodexSandbox::FullAccess {
         command.arg("--dangerously-bypass-approvals-and-sandbox");
     } else {
@@ -882,8 +909,13 @@ pub fn local_generator() -> Result<LocalGenerator, String> {
         if let Ok(transport) = CodexTransport::new(path, &session) {
             providers.push(LocalProvider::Codex(Box::new(CodexGenerator {
                 transport,
-                model: microcoder_loop::MODEL.into(),
-                effort: None,
+                model: std::env::var("CODER_CODEX_MODEL")
+                    .ok()
+                    .filter(|v| !v.is_empty())
+                    .unwrap_or_else(|| microcoder_loop::MODEL.into()),
+                effort: std::env::var("CODER_CODEX_REASONING")
+                    .ok()
+                    .filter(|v| !v.is_empty()),
                 cache_key: session,
                 images: vec![],
             })));

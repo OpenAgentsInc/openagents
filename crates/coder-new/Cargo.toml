@@ -7,6 +7,7 @@ publish.workspace = true
 description = "The Coder terminal with model, tool, and subagent plugins."
 
 [dependencies]
+coder-cloud = { path = "../coder-cloud" }
 atif = { path = "../atif" }
 brainstorm-client = { path = "../brainstorm-client" }
 getrandom = "0.3"
