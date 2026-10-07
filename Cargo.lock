@@ -5533,6 +5533,7 @@ dependencies = [
  "hmac 0.12.1",
  "jev",
  "nostr",
+ "pay-ledger",
  "receipts",
  "reqwest 0.12.28",
  "secp256k1 0.31.1",

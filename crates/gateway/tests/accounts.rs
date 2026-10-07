@@ -100,6 +100,7 @@ async fn deploy(accounts: Option<config::Accounts>, require_membership: bool) ->
         job_cursor_ttl_ms: 3_600_000,
         public_origin: None,
         billing: None,
+        earnings: None,
         skills: None,
     })
     .unwrap();
@@ -1387,6 +1388,7 @@ async fn stores_install_under_accounts_config_and_validate() {
         job_cursor_ttl_ms: 3_600_000,
         public_origin: None,
         billing: None,
+        earnings: None,
         skills: None,
     };
     assert!(config.check(&path).is_err());

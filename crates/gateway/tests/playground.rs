@@ -72,6 +72,7 @@ async fn deploy() -> Deployment {
             anonymous: None,
         }),
         billing: None,
+        earnings: None,
         skills: None,
         money: None,
         max_body_bytes: 1_048_576,

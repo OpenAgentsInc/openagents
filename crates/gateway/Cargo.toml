@@ -13,6 +13,7 @@ axum = { version = "0.8", features = ["multipart"] }
 futures-util = { version = "0.3", default-features = false, features = ["sink"] }
 hmac = "0.12.1"
 nostr = { path = "../nostr" }
+pay-ledger = { path = "../pay-ledger" }
 receipts = { path = "../receipts" }
 reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls"] }
 secp256k1 = { version = "0.31", features = ["rand"] }

@@ -19,7 +19,7 @@
 
 use nostr::domain::Event;
 use nostr::payto;
-use rusqlite::{OptionalExtension, params};
+use rusqlite::{OptionalExtension, TransactionBehavior, params};
 
 use crate::{Ledger, Payee, Result};
 
@@ -196,19 +196,38 @@ impl Ledger {
         if checked.is_some_and(|at| now - at < RECHECK_SECS && at <= now) {
             return self.payee(party);
         }
-        if let Some(found) = resolve(&sources()) {
-            self.register_payee(Payee {
-                party: party.to_owned(),
-                destination_kind: found.kind.as_str().into(),
-                destination_value: found.value,
-                source: found.source.as_str().into(),
-                verified_at: now,
-            })?;
+        let mut sources = sources();
+        // Relay reads happen before the write lock. Select the canonical
+        // account fallback and cache the result in one transaction, so a
+        // concurrent destination update cannot be overwritten by stale data.
+        let tx = self
+            .connection
+            .transaction_with_behavior(TransactionBehavior::Immediate)?;
+        let setting: Option<String> = tx
+            .query_row(
+                "SELECT value FROM account_payout WHERE party=?",
+                [party],
+                |r| r.get(0),
+            )
+            .optional()?;
+        sources.account_payout = setting.or(sources.account_payout);
+        if let Some(found) = resolve(&sources) {
+            crate::register_payee_in(
+                &tx,
+                Payee {
+                    party: party.to_owned(),
+                    destination_kind: found.kind.as_str().into(),
+                    destination_value: found.value,
+                    source: found.source.as_str().into(),
+                    verified_at: now,
+                },
+            )?;
         }
-        self.connection.execute(
+        tx.execute(
             "INSERT INTO payee_check(party,checked_at) VALUES(?,?) ON CONFLICT(party) DO UPDATE SET checked_at=excluded.checked_at",
             params![party, now],
         )?;
+        tx.commit()?;
         self.payee(party)
     }
 }

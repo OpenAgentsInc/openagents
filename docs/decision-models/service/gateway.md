@@ -185,6 +185,16 @@ disclosure contract, and the dashboard's pages;
 [playground](playground.md) has the forms, bounds, simulated lane, and
 chat-demo contract.
 
+Under the optional `earnings` document, which requires `accounts`, the
+gateway mounts private `/v1/earnings/{party}` statements, bounded exports,
+destination reads and versioned changes, and payout reconciliation details.
+Operator-declared account/payee/workspace grants and current membership scope
+every request. `/dashboard/earnings` renders the same reads and a
+session-bound destination form. The existing settlement ledger and payout
+worker remain authoritative. See [private earnings and payout
+management](../../payments/README.md#private-earnings-and-payout-management)
+for configuration, exact units, bounds, and owner rail qualification.
+
 Under the `billing` document — which requires `accounts` and `money`,
 because a subscription binds a workspace and its grants ride the money
 ledger — the gateway mounts the billing family:

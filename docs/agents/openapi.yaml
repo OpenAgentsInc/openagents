@@ -2584,8 +2584,357 @@ paths:
         '503':
           $ref: '#/components/responses/TypedError'
 
+  /v1/earnings:
+    get:
+      summary: List payees granted to the current account with active workspace membership.
+      x-conditional: Requires earnings and accounts configuration.
+      description: Earnings configuration and current account/payee/workspace authorization are required. Responses are private and never send payments.
+      responses:
+        '200':
+          description: Authorized private earnings view.
+        '400':
+          $ref: '#/components/responses/TypedError'
+        '401':
+          $ref: '#/components/responses/TypedError'
+        '403':
+          $ref: '#/components/responses/TypedError'
+        '409':
+          $ref: '#/components/responses/TypedError'
+        '413':
+          $ref: '#/components/responses/TypedError'
+        '503':
+          $ref: '#/components/responses/TypedError'
+
+  /v1/earnings/{party}:
+    parameters:
+    - name: party
+      in: path
+      required: true
+      schema: {type: string}
+    get:
+      summary: Read exact private earnings, obligations, destinations, and payout states; limit 1–200, after_earning and after_payout exclusive cursors.
+      x-conditional: Requires earnings and accounts configuration.
+      description: Earnings configuration and current account/payee/workspace authorization are required. Responses are private and never send payments.
+      parameters:
+      - name: limit
+        in: query
+        schema: {type: integer, minimum: 1, maximum: 200, default: 100}
+      - name: after_earning
+        in: query
+        schema: {type: integer, minimum: 0, default: 0}
+      - name: after_payout
+        in: query
+        schema: {type: integer, minimum: 0, default: 0}
+      responses:
+        '200':
+          description: Authorized private earnings view.
+        '400':
+          $ref: '#/components/responses/TypedError'
+        '401':
+          $ref: '#/components/responses/TypedError'
+        '403':
+          $ref: '#/components/responses/TypedError'
+        '409':
+          $ref: '#/components/responses/TypedError'
+        '413':
+          $ref: '#/components/responses/TypedError'
+        '503':
+          $ref: '#/components/responses/TypedError'
+
+  /v1/earnings/{party}/export:
+    parameters:
+    - name: party
+      in: path
+      required: true
+      schema: {type: string}
+    get:
+      summary: Download one bounded private JSON statement page; no payer aliases, invoices, payment hashes, raw wallet errors, or resource queries.
+      x-conditional: Requires earnings and accounts configuration.
+      description: Earnings configuration and current account/payee/workspace authorization are required. Responses are private and never send payments.
+      parameters:
+      - name: limit
+        in: query
+        schema: {type: integer, minimum: 1, maximum: 200, default: 100}
+      - name: after_earning
+        in: query
+        schema: {type: integer, minimum: 0, default: 0}
+      - name: after_payout
+        in: query
+        schema: {type: integer, minimum: 0, default: 0}
+      responses:
+        '200':
+          description: Authorized private earnings view.
+        '400':
+          $ref: '#/components/responses/TypedError'
+        '401':
+          $ref: '#/components/responses/TypedError'
+        '403':
+          $ref: '#/components/responses/TypedError'
+        '409':
+          $ref: '#/components/responses/TypedError'
+        '413':
+          $ref: '#/components/responses/TypedError'
+        '503':
+          $ref: '#/components/responses/TypedError'
+
+  /v1/earnings/{party}/destination:
+    parameters:
+    - name: party
+      in: path
+      required: true
+      schema: {type: string}
+    get:
+      summary: Read the account setting, effective source, and owner rail qualification reference.
+      x-conditional: Requires earnings and accounts configuration.
+      description: Earnings configuration and current account/payee/workspace authorization are required. Responses are private and never send payments.
+      responses:
+        '200':
+          description: Authorized private earnings view.
+        '400':
+          $ref: '#/components/responses/TypedError'
+        '401':
+          $ref: '#/components/responses/TypedError'
+        '403':
+          $ref: '#/components/responses/TypedError'
+        '409':
+          $ref: '#/components/responses/TypedError'
+        '413':
+          $ref: '#/components/responses/TypedError'
+        '503':
+          $ref: '#/components/responses/TypedError'
+
+    put:
+      summary: Compare and replace a mainnet account fallback with expected_version and value. Signed sources and reserved attempts stay pinned.
+      x-conditional: Requires earnings and accounts configuration.
+      description: Earnings configuration and current account/payee/workspace authorization are required. Responses are private and never send payments.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [expected_version, value]
+              properties:
+                expected_version: {type: integer, minimum: 0}
+                value: {type: string, maxLength: 256}
+      responses:
+        '200':
+          description: Authorized private earnings view.
+        '400':
+          $ref: '#/components/responses/TypedError'
+        '401':
+          $ref: '#/components/responses/TypedError'
+        '403':
+          $ref: '#/components/responses/TypedError'
+        '409':
+          $ref: '#/components/responses/TypedError'
+        '413':
+          $ref: '#/components/responses/TypedError'
+        '503':
+          $ref: '#/components/responses/TypedError'
+
+  /v1/earnings/{party}/payouts/{payout}:
+    parameters:
+    - name: party
+      in: path
+      required: true
+      schema: {type: string}
+    - name: payout
+      in: path
+      required: true
+      schema: {type: string}
+    get:
+      summary: Read this payee’s journaled attempt and same-reference reconciliation link; no send or retry.
+      x-conditional: Requires earnings and accounts configuration.
+      description: Earnings configuration and current account/payee/workspace authorization are required. Responses are private and never send payments.
+      responses:
+        '200':
+          description: Authorized private earnings view.
+        '400':
+          $ref: '#/components/responses/TypedError'
+        '401':
+          $ref: '#/components/responses/TypedError'
+        '403':
+          $ref: '#/components/responses/TypedError'
+        '404':
+          $ref: '#/components/responses/TypedError'
+        '409':
+          $ref: '#/components/responses/TypedError'
+        '413':
+          $ref: '#/components/responses/TypedError'
+        '503':
+          $ref: '#/components/responses/TypedError'
+
+  /dashboard/earnings:
+    get:
+      security:
+      - sessionCookie: []
+      summary: Show currently authorized payees.
+      x-conditional: Requires earnings and accounts configuration.
+      description: Earnings configuration and current account/payee/workspace authorization are required. Responses are private and never send payments.
+      responses:
+        '200':
+          description: Authorized private earnings view.
+        '400':
+          $ref: '#/components/responses/TypedError'
+        '401':
+          $ref: '#/components/responses/TypedError'
+        '403':
+          $ref: '#/components/responses/TypedError'
+        '409':
+          $ref: '#/components/responses/TypedError'
+        '503':
+          $ref: '#/components/responses/TypedError'
+
+  /dashboard/earnings/{party}:
+    parameters:
+    - name: party
+      in: path
+      required: true
+      schema: {type: string}
+    get:
+      security:
+      - sessionCookie: []
+      summary: Show exact private statement and destination management form.
+      x-conditional: Requires earnings and accounts configuration.
+      description: Earnings configuration and current account/payee/workspace authorization are required. Responses are private and never send payments.
+      parameters:
+      - name: limit
+        in: query
+        schema: {type: integer, minimum: 1, maximum: 200, default: 100}
+      - name: after_earning
+        in: query
+        schema: {type: integer, minimum: 0, default: 0}
+      - name: after_payout
+        in: query
+        schema: {type: integer, minimum: 0, default: 0}
+      responses:
+        '200':
+          description: Authorized private earnings view.
+        '400':
+          $ref: '#/components/responses/TypedError'
+        '401':
+          $ref: '#/components/responses/TypedError'
+        '403':
+          $ref: '#/components/responses/TypedError'
+        '409':
+          $ref: '#/components/responses/TypedError'
+        '503':
+          $ref: '#/components/responses/TypedError'
+
+  /dashboard/earnings/{party}/export:
+    parameters:
+    - name: party
+      in: path
+      required: true
+      schema: {type: string}
+    get:
+      security:
+      - sessionCookie: []
+      summary: Download one bounded private statement under current session and payee authorization.
+      x-conditional: Requires earnings and accounts configuration.
+      description: Earnings configuration and current account/payee/workspace authorization are required. Responses are private and never send payments.
+      parameters:
+      - name: limit
+        in: query
+        schema: {type: integer, minimum: 1, maximum: 200, default: 100}
+      - name: after_earning
+        in: query
+        schema: {type: integer, minimum: 0, default: 0}
+      - name: after_payout
+        in: query
+        schema: {type: integer, minimum: 0, default: 0}
+      responses:
+        '200':
+          description: Authorized private earnings view.
+        '400':
+          $ref: '#/components/responses/TypedError'
+        '401':
+          $ref: '#/components/responses/TypedError'
+        '403':
+          $ref: '#/components/responses/TypedError'
+        '409':
+          $ref: '#/components/responses/TypedError'
+        '413':
+          $ref: '#/components/responses/TypedError'
+        '503':
+          $ref: '#/components/responses/TypedError'
+
+  /dashboard/earnings/{party}/destination:
+    parameters:
+    - name: party
+      in: path
+      required: true
+      schema: {type: string}
+    post:
+      security:
+      - sessionCookie: []
+      summary: Change the account fallback under current authorization, expected_version, and a session-bound forgery token.
+      x-conditional: Requires earnings and accounts configuration.
+      description: Earnings configuration and current account/payee/workspace authorization are required. Responses are private and never send payments.
+      requestBody:
+        required: true
+        content:
+          application/x-www-form-urlencoded:
+            schema:
+              type: object
+              required: [expected_version, value, csrf]
+              properties:
+                expected_version: {type: integer, minimum: 0}
+                value: {type: string, maxLength: 256}
+                csrf: {type: string}
+      responses:
+        '303':
+          description: Authorized private dashboard redirect.
+        '400':
+          $ref: '#/components/responses/TypedError'
+        '401':
+          $ref: '#/components/responses/TypedError'
+        '403':
+          $ref: '#/components/responses/TypedError'
+        '409':
+          $ref: '#/components/responses/TypedError'
+        '503':
+          $ref: '#/components/responses/TypedError'
+
+  /dashboard/earnings/{party}/payouts/{payout}:
+    parameters:
+    - name: party
+      in: path
+      required: true
+      schema: {type: string}
+    - name: payout
+      in: path
+      required: true
+      schema: {type: string}
+    get:
+      security:
+      - sessionCookie: []
+      summary: Show private attempt and reconciliation details.
+      x-conditional: Requires earnings and accounts configuration.
+      description: Earnings configuration and current account/payee/workspace authorization are required. Responses are private and never send payments.
+      responses:
+        '200':
+          description: Authorized private earnings view.
+        '400':
+          $ref: '#/components/responses/TypedError'
+        '401':
+          $ref: '#/components/responses/TypedError'
+        '403':
+          $ref: '#/components/responses/TypedError'
+        '404':
+          $ref: '#/components/responses/TypedError'
+        '409':
+          $ref: '#/components/responses/TypedError'
+        '503':
+          $ref: '#/components/responses/TypedError'
+
 components:
   securitySchemes:
+    sessionCookie:
+      type: apiKey
+      in: cookie
+      name: oa_session
     bearer:
       type: http
       scheme: bearer

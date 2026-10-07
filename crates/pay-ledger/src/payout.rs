@@ -157,10 +157,7 @@ fn read(r: &rusqlite::Row<'_>) -> rusqlite::Result<Payout> {
 
 impl Ledger {
     pub fn payout(&self, id: &str) -> Result<Option<Payout>> {
-        Ok(self
-            .connection
-            .query_row(&format!("{SELECT} WHERE id=?"), [id], read)
-            .optional()?)
+        read_one(&self.connection, id)
     }
 
     /// Payouts by state, oldest first; `None` lists every payout.
@@ -252,6 +249,12 @@ impl Ledger {
         )?;
         Ok(())
     }
+}
+
+pub(crate) fn read_one(connection: &Connection, id: &str) -> Result<Option<Payout>> {
+    Ok(connection
+        .query_row(&format!("{SELECT} WHERE id=?"), [id], read)
+        .optional()?)
 }
 
 /// When payouts go out and what they may cost.
@@ -493,9 +496,9 @@ pub fn tick(
             });
             continue;
         };
-        let (spark, threshold) = match payee.destination_kind.as_str() {
-            "spark" => (true, policy.spark_threshold_msat),
-            "lud16" => (false, policy.lightning_threshold_msat),
+        let threshold = match payee.destination_kind.as_str() {
+            "spark" => policy.spark_threshold_msat,
+            "lud16" => policy.lightning_threshold_msat,
             other => {
                 steps.push(Step::Unpayable {
                     party,
@@ -513,12 +516,16 @@ pub fn tick(
             continue;
         }
         let id = new_id();
-        ledger.reserve_payout(&id, &party, &shares, now)?;
+        match ledger.reserve_payout_at_destination(&id, &party, &shares, now, &payee) {
+            Ok(_) => {}
+            Err(Error::Conflict(_)) => continue,
+            Err(error) => return Err(error),
+        }
         let p = ledger
             .payout(&id)?
             .ok_or(Error::Invalid("reserved payout vanished"))?;
         steps.push(step(&p, PayoutState::Planned, None));
-        send(ledger, rails, policy, &p, sats, spark, now, &mut steps)?;
+        send(ledger, rails, policy, &p, sats, now, &mut steps)?;
     }
     Ok(steps)
 }
@@ -530,10 +537,10 @@ fn send(
     policy: &Policy,
     p: &Payout,
     sats: i64,
-    spark: bool,
     now: i64,
     steps: &mut Vec<Step>,
 ) -> Result<()> {
+    let spark = p.rail == "spark";
     let address = destination_value(&p.destination).to_owned();
     let sent_msat = sats * 1000;
     let fail = |ledger: &mut Ledger, steps: &mut Vec<Step>, why: String| -> Result<()> {

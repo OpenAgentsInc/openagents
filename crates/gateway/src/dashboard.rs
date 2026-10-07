@@ -275,6 +275,11 @@ async fn home(State(state): State<Arc<ServeState>>, headers: HeaderMap) -> Respo
             r#"<h1>Workspaces</h1><table><tr><th>ID</th><th>Name</th><th>Type</th><th>Your role</th></tr>{rows}</table>"#
         )
     };
+    let body = if state.config.earnings.is_some() {
+        format!("{body}<p><a href=\"/dashboard/earnings\">Earnings and payout destinations</a></p>")
+    } else {
+        body
+    };
     page("Workspaces", None, &body).into_response()
 }
 

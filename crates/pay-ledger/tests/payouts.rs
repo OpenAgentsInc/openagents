@@ -537,3 +537,95 @@ fn an_old_ledger_moves_to_the_payout_states() {
         .unwrap();
     assert!(sql.contains("REFERENCES payout(id)"));
 }
+
+#[test]
+fn private_statement_tracks_fake_rail_lookup_across_destination_change_and_restart() {
+    let dir = tempfile::tempdir().unwrap();
+    let path = dir.path().join("earnings.sqlite");
+    let mut ledger = Ledger::open(&path).unwrap();
+    settle(&mut ledger, "earnings", "alice", 1_000_555, START);
+    ledger
+        .change_account_payout("alice", 0, LUD16, START)
+        .unwrap();
+    let wallet = FakeWallet::default();
+    let mut run = Run::new();
+    wallet.fault(Fault::Hang);
+    run.tick(&mut ledger, &wallet, START + 10);
+    let statement = ledger.earnings_statement("alice", 0, 0, 200).unwrap();
+    let earned = statement.figures.earned_msat;
+    let attempt = statement.payouts[0].clone();
+    assert_eq!(attempt.state, PayoutState::Unknown);
+    assert_eq!(statement.figures.reserved_msat, earned);
+    ledger
+        .change_account_payout("alice", 1, "changed@example.com", START + 11)
+        .unwrap();
+    drop(ledger);
+    let mut ledger = Ledger::open(&path).unwrap();
+    wallet.fault(Fault::None);
+    run.tick(&mut ledger, &wallet, START + 12);
+    assert_eq!(wallet.paid(), 1);
+    assert_eq!(
+        ledger
+            .earnings_statement("alice", 0, 0, 200)
+            .unwrap()
+            .figures
+            .reserved_msat,
+        earned
+    );
+    wallet.state().records.insert(
+        attempt.wallet_reference.clone().unwrap(),
+        Lookup::Sent { fee_msat: 7 },
+    );
+    run.tick(&mut ledger, &wallet, START + 13);
+    let statement = ledger.earnings_statement("alice", 0, 0, 200).unwrap();
+    assert_eq!(statement.payouts[0].state, PayoutState::Sent);
+    assert_eq!(statement.payouts[0].destination, format!("lud16:{LUD16}"));
+    assert_eq!(statement.figures.sent_msat, wallet.state().paid[0].1);
+    assert_eq!(
+        statement.figures.rounding_msat,
+        earned - wallet.state().paid[0].1
+    );
+    assert_eq!(statement.figures.reserved_msat, 0);
+    assert_eq!(wallet.paid(), 1);
+}
+
+#[test]
+fn a_rail_change_between_resolution_and_reservation_defers_without_sending() {
+    let dir = tempfile::tempdir().unwrap();
+    let path = dir.path().join("rail-change.sqlite");
+    let mut ledger = Ledger::open(&path).unwrap();
+    settle(&mut ledger, "rail-change", "alice", 1_100_555, START);
+    ledger
+        .change_account_payout("alice", 0, SPARK, START)
+        .unwrap();
+    let wallet = FakeWallet::default();
+    let mut resolve = |l: &mut Ledger, party: &str, _: i64| l.payee(party);
+    let mut change_before_reservation = || {
+        Ledger::open(&path)
+            .unwrap()
+            .change_account_payout("alice", 1, LUD16, START + 1)
+            .unwrap();
+        "00000000-0000-4000-8000-000000000001".to_owned()
+    };
+    tick(
+        &mut ledger,
+        &wallet,
+        &Policy::default(),
+        START + 2,
+        &mut resolve,
+        &mut change_before_reservation,
+    )
+    .unwrap();
+    assert_eq!(wallet.paid(), 0);
+    assert!(ledger.payouts(None).unwrap().is_empty());
+    assert!(ledger.accrued("alice").unwrap() > 0);
+    Run::new().tick(&mut ledger, &wallet, START + 3);
+    assert_eq!(wallet.paid(), 1);
+    let payout = ledger.payouts(None).unwrap().remove(0);
+    assert_eq!(payout.rail, "lightning");
+    assert_eq!(payout.destination, format!("lud16:{LUD16}"));
+    assert_eq!(
+        payout.wallet_reference.as_deref(),
+        Some(wallet.state().paid[0].2.as_str())
+    );
+}

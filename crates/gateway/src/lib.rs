@@ -45,6 +45,8 @@ pub mod config;
 pub mod dashboard;
 pub mod decision_usage;
 pub mod discovery;
+#[allow(clippy::result_large_err)]
+pub mod earnings;
 pub mod feedback;
 pub mod jobs;
 pub mod money;

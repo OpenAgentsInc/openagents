@@ -132,6 +132,7 @@ pub struct ServeState {
     /// opted in to monetary admission, and locked for the process's
     /// lifetime when it is.
     money: Option<Mutex<tenancy::money::Ledger>>,
+    pub(crate) earnings: Option<Mutex<pay_ledger::Ledger>>,
     receipts: Mutex<std::fs::File>,
     /// The process-wide forward bound.
     in_flight: Arc<Semaphore>,
@@ -156,6 +157,11 @@ impl ServeState {
     /// on one ledger would race reservations, and refusing is cheaper
     /// than reconciling them.
     pub fn open(config: Config) -> Result<Arc<Self>, Trouble> {
+        if config.earnings.is_some() {
+            config
+                .check(std::path::Path::new("gateway.json"))
+                .map_err(|e| Trouble::Io(std::io::Error::other(e)))?;
+        }
         // Open the registry once at startup so a broken install fails
         // the process, not the first request.
         Registry::open(&config.registry)?;
@@ -177,6 +183,13 @@ impl ServeState {
             .map(|money| tenancy::money::Ledger::open(&money.ledger))
             .transpose()
             .map_err(Trouble::Money)?
+            .map(Mutex::new);
+        let earnings = config
+            .earnings
+            .as_ref()
+            .map(|earnings| pay_ledger::Ledger::open(&earnings.ledger))
+            .transpose()
+            .map_err(|e| Trouble::Io(std::io::Error::other(e.to_string())))?
             .map(Mutex::new);
         // The account surface keeps its two stores beside the registry:
         // `accounts.json` for membership and `sessions.json` for the
@@ -235,6 +248,7 @@ impl ServeState {
             client,
             ledger: Mutex::new(ledger),
             money,
+            earnings,
             receipts: Mutex::new(receipts),
             doors: Mutex::new(HashMap::new()),
             attempt_ids: AtomicU64::new(0),
@@ -324,6 +338,7 @@ const CREDENTIALED_GET: &[&str] = &[
     "/v1/billing",
     "/v1/submissions",
     "/v1/updates",
+    "/v1/earnings",
     "/dashboard",
     "/playground",
 ];
@@ -447,6 +462,9 @@ fn api_routes(state: &ServeState) -> Vec<(&'static str, MethodRouter<Arc<ServeSt
     }
     if state.config.skills.is_some() {
         routes.extend(crate::skills::routes());
+    }
+    if state.config.earnings.is_some() {
+        routes.extend(crate::earnings::routes());
     }
     routes
 }

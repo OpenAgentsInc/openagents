@@ -14,6 +14,7 @@ use std::{collections::BTreeMap, path::Path};
 
 pub mod compute;
 pub mod contribution;
+pub mod earnings;
 pub mod markets;
 pub mod payee;
 pub mod payout;
@@ -224,7 +225,8 @@ pub struct Payee {
     pub source: String,
     pub verified_at: i64,
 }
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize)]
+#[serde(rename_all = "lowercase")]
 /// A payout's state. `planned` reserves the shares; `sending` means the
 /// wallet reference (payment hash or Spark transfer id) is on disk and the
 /// send may have started; `unknown` is a send whose outcome only a wallet
@@ -283,6 +285,7 @@ impl Ledger {
         connection.execute_batch(include_str!("schema.sql"))?;
         payout::create_table(&mut connection)?;
         connection.execute_batch(include_str!("compute.sql"))?;
+        connection.execute_batch(earnings::TABLES)?;
         // Existing ledgers predate plugin release attribution. Serialize the
         // check and alteration so concurrent receiver opens migrate once.
         let tx = connection.transaction_with_behavior(TransactionBehavior::Immediate)?;
@@ -438,24 +441,44 @@ impl Ledger {
             .collect()
     }
     pub fn register_payee(&mut self, payee: Payee) -> Result<()> {
-        if payee.party.is_empty()
-            || payee.destination_value.is_empty()
-            || payee.destination_kind.is_empty()
-            || payee.source.is_empty()
-        {
-            return Err(Error::Invalid("payee destination"));
-        }
-        self.connection.execute("INSERT INTO payee VALUES(?,?,?,?,?) ON CONFLICT(party) DO UPDATE SET destination_kind=excluded.destination_kind,destination_value=excluded.destination_value,source=excluded.source,verified_at=excluded.verified_at", params![payee.party,payee.destination_kind,payee.destination_value,payee.source,payee.verified_at])?;
-        Ok(())
+        register_payee_in(&self.connection, payee)
     }
     /// Reserve whole shares atomically. Failed attempts release their shares;
-    /// pending and unknown attempts do not. This method performs no payment.
+    /// planned, sending, and unknown attempts do not. This method performs no payment.
     pub fn reserve_payout(
         &mut self,
         id: &str,
         party: &str,
         items: &[Share],
         at: i64,
+    ) -> Result<i64> {
+        self.reserve_payout_expected(id, party, items, at, None)
+    }
+
+    /// Reserve only if the destination still matches the resolved planning
+    /// terms. A concurrent destination change leaves all shares unreserved.
+    pub fn reserve_payout_at_destination(
+        &mut self,
+        id: &str,
+        party: &str,
+        items: &[Share],
+        at: i64,
+        payee: &Payee,
+    ) -> Result<i64> {
+        if payee.party != party {
+            return Err(Error::Invalid("payout payee mismatch"));
+        }
+        let expected = format!("{}:{}", payee.destination_kind, payee.destination_value);
+        self.reserve_payout_expected(id, party, items, at, Some(&expected))
+    }
+
+    fn reserve_payout_expected(
+        &mut self,
+        id: &str,
+        party: &str,
+        items: &[Share],
+        at: i64,
+        expected: Option<&str>,
     ) -> Result<i64> {
         if id.is_empty() || items.is_empty() {
             return Err(Error::Invalid("empty payout"));
@@ -468,6 +491,9 @@ impl Ledger {
             [party],
             |r| r.get(0),
         )?;
+        if expected.is_some_and(|value| value != destination) {
+            return Err(Error::Conflict("payout destination changed"));
+        }
         let mut amount = 0i64;
         for item in items {
             if item.party != party {
@@ -551,6 +577,18 @@ impl Ledger {
         Ok(())
     }
 }
+pub(crate) fn register_payee_in(connection: &Connection, payee: Payee) -> Result<()> {
+    if payee.party.is_empty()
+        || payee.destination_value.is_empty()
+        || payee.destination_kind.is_empty()
+        || payee.source.is_empty()
+    {
+        return Err(Error::Invalid("payee destination"));
+    }
+    connection.execute("INSERT INTO payee VALUES(?,?,?,?,?) ON CONFLICT(party) DO UPDATE SET destination_kind=excluded.destination_kind,destination_value=excluded.destination_value,source=excluded.source,verified_at=excluded.verified_at", params![payee.party,payee.destination_kind,payee.destination_value,payee.source,payee.verified_at])?;
+    Ok(())
+}
+
 pub(crate) const AVAILABLE: &str = "NOT EXISTS (SELECT 1 FROM payout_item i JOIN payout p ON p.id=i.payout WHERE i.settlement=s.settlement AND i.party=s.party AND i.role=s.role AND p.state!='failed') AND NOT EXISTS (SELECT 1 FROM bonus_payout_item i JOIN payout p ON p.id=i.payout WHERE i.settlement=s.settlement AND i.party=s.party AND i.role=s.role AND p.state!='failed')";
 fn available_shares(connection: &Connection, party: &str) -> Result<Vec<Share>> {
     let mut stmt = connection.prepare(&format!("SELECT s.settlement,s.party,s.role,s.amount_msat FROM payable_share s JOIN settlement t ON t.payment_hash=s.settlement WHERE s.party=? AND s.amount_msat>0 AND {AVAILABLE} ORDER BY t.seq,s.role"))?;

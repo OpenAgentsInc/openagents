@@ -3131,6 +3131,483 @@
      "skills_unavailable"
     ]
    }
+  },
+  {
+   "method": "GET",
+   "path": "/v1/earnings",
+   "status": "implemented",
+   "condition": "Mounted only when gateway.json configures earnings, which requires accounts.",
+   "summary": "List payees granted to the current account with active workspace membership.",
+   "request": {
+    "headers": [
+     "Authorization: Bearer <oak_ key or sess_ token>"
+    ]
+   },
+   "responses": {
+    "200": {
+     "shape": {
+      "v": "openagents.earnings.v1",
+      "content_type": "application/json"
+     }
+    }
+   },
+   "refusal_statuses": {
+    "401": [
+     "unauthenticated",
+     "session_closed"
+    ],
+    "403": [
+     "payee_forbidden",
+     "membership_revoked",
+     "out_of_scope"
+    ],
+    "400": [
+     "earnings_invalid"
+    ],
+    "409": [
+     "destination_conflict"
+    ],
+    "413": [
+     "earnings_export_too_large"
+    ],
+    "503": [
+     "earnings_unavailable",
+     "payout_rail_unavailable"
+    ]
+   }
+  },
+  {
+   "method": "GET",
+   "path": "/v1/earnings/{party}",
+   "status": "implemented",
+   "condition": "Mounted only when gateway.json configures earnings, which requires accounts.",
+   "summary": "Read exact private earnings, obligations, destinations, and payout states; limit 1–200, after_earning and after_payout exclusive cursors.",
+   "request": {
+    "headers": [
+     "Authorization: Bearer <oak_ key or sess_ token>"
+    ]
+   },
+   "responses": {
+    "200": {
+     "shape": {
+      "v": "openagents.earnings.v1",
+      "content_type": "application/json"
+     }
+    }
+   },
+   "refusal_statuses": {
+    "401": [
+     "unauthenticated",
+     "session_closed"
+    ],
+    "403": [
+     "payee_forbidden",
+     "membership_revoked",
+     "out_of_scope"
+    ],
+    "400": [
+     "earnings_invalid"
+    ],
+    "409": [
+     "destination_conflict"
+    ],
+    "413": [
+     "earnings_export_too_large"
+    ],
+    "503": [
+     "earnings_unavailable",
+     "payout_rail_unavailable"
+    ]
+   }
+  },
+  {
+   "method": "GET",
+   "path": "/v1/earnings/{party}/export",
+   "status": "implemented",
+   "condition": "Mounted only when gateway.json configures earnings, which requires accounts.",
+   "summary": "Download one bounded private JSON statement page; no payer aliases, invoices, payment hashes, raw wallet errors, or resource queries.",
+   "request": {
+    "headers": [
+     "Authorization: Bearer <oak_ key or sess_ token>"
+    ]
+   },
+   "responses": {
+    "200": {
+     "shape": {
+      "v": "openagents.earnings.v1",
+      "content_type": "application/json"
+     }
+    }
+   },
+   "refusal_statuses": {
+    "401": [
+     "unauthenticated",
+     "session_closed"
+    ],
+    "403": [
+     "payee_forbidden",
+     "membership_revoked",
+     "out_of_scope"
+    ],
+    "400": [
+     "earnings_invalid"
+    ],
+    "409": [
+     "destination_conflict"
+    ],
+    "413": [
+     "earnings_export_too_large"
+    ],
+    "503": [
+     "earnings_unavailable",
+     "payout_rail_unavailable"
+    ]
+   }
+  },
+  {
+   "method": "GET",
+   "path": "/v1/earnings/{party}/destination",
+   "status": "implemented",
+   "condition": "Mounted only when gateway.json configures earnings, which requires accounts.",
+   "summary": "Read the account setting, effective source, and owner rail qualification reference.",
+   "request": {
+    "headers": [
+     "Authorization: Bearer <oak_ key or sess_ token>"
+    ]
+   },
+   "responses": {
+    "200": {
+     "shape": {
+      "v": "openagents.earnings.v1",
+      "content_type": "application/json"
+     }
+    }
+   },
+   "refusal_statuses": {
+    "401": [
+     "unauthenticated",
+     "session_closed"
+    ],
+    "403": [
+     "payee_forbidden",
+     "membership_revoked",
+     "out_of_scope"
+    ],
+    "400": [
+     "earnings_invalid"
+    ],
+    "409": [
+     "destination_conflict"
+    ],
+    "413": [
+     "earnings_export_too_large"
+    ],
+    "503": [
+     "earnings_unavailable",
+     "payout_rail_unavailable"
+    ]
+   }
+  },
+  {
+   "method": "PUT",
+   "path": "/v1/earnings/{party}/destination",
+   "status": "implemented",
+   "condition": "Mounted only when gateway.json configures earnings, which requires accounts.",
+   "summary": "Compare and replace a mainnet account fallback with expected_version and value. Signed sources and reserved attempts stay pinned.",
+   "request": {
+    "headers": [
+     "Authorization: Bearer <oak_ key or sess_ token>"
+    ]
+   },
+   "responses": {
+    "200": {
+     "shape": {
+      "v": "openagents.earnings.v1",
+      "content_type": "application/json"
+     }
+    }
+   },
+   "refusal_statuses": {
+    "401": [
+     "unauthenticated",
+     "session_closed"
+    ],
+    "403": [
+     "payee_forbidden",
+     "membership_revoked",
+     "out_of_scope"
+    ],
+    "400": [
+     "earnings_invalid"
+    ],
+    "409": [
+     "destination_conflict"
+    ],
+    "413": [
+     "earnings_export_too_large"
+    ],
+    "503": [
+     "earnings_unavailable",
+     "payout_rail_unavailable"
+    ]
+   }
+  },
+  {
+   "method": "GET",
+   "path": "/v1/earnings/{party}/payouts/{payout}",
+   "status": "implemented",
+   "condition": "Mounted only when gateway.json configures earnings, which requires accounts.",
+   "summary": "Read this payee’s journaled attempt and same-reference reconciliation link; no send or retry.",
+   "request": {
+    "headers": [
+     "Authorization: Bearer <oak_ key or sess_ token>"
+    ]
+   },
+   "responses": {
+    "200": {
+     "shape": {
+      "v": "openagents.earnings.v1",
+      "content_type": "application/json"
+     }
+    }
+   },
+   "refusal_statuses": {
+    "401": [
+     "unauthenticated",
+     "session_closed"
+    ],
+    "403": [
+     "payee_forbidden",
+     "membership_revoked",
+     "out_of_scope"
+    ],
+    "400": [
+     "earnings_invalid"
+    ],
+    "404": [
+     "payout_not_found"
+    ],
+    "409": [
+     "destination_conflict"
+    ],
+    "413": [
+     "earnings_export_too_large"
+    ],
+    "503": [
+     "earnings_unavailable",
+     "payout_rail_unavailable"
+    ]
+   }
+  },
+  {
+   "method": "GET",
+   "path": "/dashboard/earnings",
+   "status": "implemented",
+   "condition": "Mounted only when gateway.json configures earnings, which requires accounts.",
+   "summary": "Show currently authorized payees.",
+   "request": {
+    "headers": [
+     "Cookie: oa_session=<sess_ token>"
+    ]
+   },
+   "responses": {
+    "200": {
+     "shape": {
+      "v": "openagents.earnings.v1",
+      "content_type": "text/html"
+     }
+    }
+   },
+   "refusal_statuses": {
+    "401": [
+     "unauthenticated",
+     "session_closed"
+    ],
+    "403": [
+     "payee_forbidden",
+     "membership_revoked",
+     "out_of_scope"
+    ],
+    "400": [
+     "earnings_invalid"
+    ],
+    "409": [
+     "destination_conflict"
+    ],
+    "503": [
+     "earnings_unavailable",
+     "payout_rail_unavailable"
+    ]
+   }
+  },
+  {
+   "method": "GET",
+   "path": "/dashboard/earnings/{party}",
+   "status": "implemented",
+   "condition": "Mounted only when gateway.json configures earnings, which requires accounts.",
+   "summary": "Show exact private statement and destination management form.",
+   "request": {
+    "headers": [
+     "Cookie: oa_session=<sess_ token>"
+    ]
+   },
+   "responses": {
+    "200": {
+     "shape": {
+      "v": "openagents.earnings.v1",
+      "content_type": "text/html"
+     }
+    }
+   },
+   "refusal_statuses": {
+    "401": [
+     "unauthenticated",
+     "session_closed"
+    ],
+    "403": [
+     "payee_forbidden",
+     "membership_revoked",
+     "out_of_scope"
+    ],
+    "400": [
+     "earnings_invalid"
+    ],
+    "409": [
+     "destination_conflict"
+    ],
+    "503": [
+     "earnings_unavailable",
+     "payout_rail_unavailable"
+    ]
+   }
+  },
+  {
+   "method": "GET",
+   "path": "/dashboard/earnings/{party}/export",
+   "status": "implemented",
+   "condition": "Mounted only when gateway.json configures earnings, which requires accounts.",
+   "summary": "Download one bounded private statement under current session and payee authorization.",
+   "request": {
+    "headers": [
+     "Cookie: oa_session=<sess_ token>"
+    ]
+   },
+   "responses": {
+    "200": {
+     "shape": {
+      "v": "openagents.earnings.v1",
+      "content_type": "application/json"
+     }
+    }
+   },
+   "refusal_statuses": {
+    "401": [
+     "unauthenticated",
+     "session_closed"
+    ],
+    "403": [
+     "payee_forbidden",
+     "membership_revoked",
+     "out_of_scope"
+    ],
+    "400": [
+     "earnings_invalid"
+    ],
+    "409": [
+     "destination_conflict"
+    ],
+    "413": [
+     "earnings_export_too_large"
+    ],
+    "503": [
+     "earnings_unavailable",
+     "payout_rail_unavailable"
+    ]
+   }
+  },
+  {
+   "method": "POST",
+   "path": "/dashboard/earnings/{party}/destination",
+   "status": "implemented",
+   "condition": "Mounted only when gateway.json configures earnings, which requires accounts.",
+   "summary": "Change the account fallback under current authorization, expected_version, and a session-bound forgery token.",
+   "request": {
+    "headers": [
+     "Cookie: oa_session=<sess_ token>"
+    ]
+   },
+   "responses": {
+    "303": {
+     "shape": {
+      "location": "/dashboard/earnings/{party}"
+     }
+    }
+   },
+   "refusal_statuses": {
+    "401": [
+     "unauthenticated",
+     "session_closed"
+    ],
+    "403": [
+     "payee_forbidden",
+     "membership_revoked",
+     "out_of_scope"
+    ],
+    "400": [
+     "earnings_invalid"
+    ],
+    "409": [
+     "destination_conflict"
+    ],
+    "503": [
+     "earnings_unavailable",
+     "payout_rail_unavailable"
+    ]
+   }
+  },
+  {
+   "method": "GET",
+   "path": "/dashboard/earnings/{party}/payouts/{payout}",
+   "status": "implemented",
+   "condition": "Mounted only when gateway.json configures earnings, which requires accounts.",
+   "summary": "Show private attempt and reconciliation details.",
+   "request": {
+    "headers": [
+     "Cookie: oa_session=<sess_ token>"
+    ]
+   },
+   "responses": {
+    "200": {
+     "shape": {
+      "v": "openagents.earnings.v1",
+      "content_type": "text/html"
+     }
+    }
+   },
+   "refusal_statuses": {
+    "401": [
+     "unauthenticated",
+     "session_closed"
+    ],
+    "403": [
+     "payee_forbidden",
+     "membership_revoked",
+     "out_of_scope"
+    ],
+    "400": [
+     "earnings_invalid"
+    ],
+    "404": [
+     "payout_not_found"
+    ],
+    "409": [
+     "destination_conflict"
+    ],
+    "503": [
+     "earnings_unavailable",
+     "payout_rail_unavailable"
+    ]
+   }
   }
  ],
  "refusal_codes": {

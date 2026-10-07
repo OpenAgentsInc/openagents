@@ -96,6 +96,7 @@ async fn deploy(answer_status: StatusCode, review_body: Value) -> Deployment {
         require_workspace_membership: false,
         accounts: Some(account_config()),
         billing: None,
+        earnings: None,
         skills: Some(skills_config(&review_endpoint)),
         money: None,
         max_body_bytes: 1_048_576,

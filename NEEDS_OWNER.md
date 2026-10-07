@@ -105,6 +105,19 @@ the repository. Qualify the selected install before work; retain private
 buyer acceptance and confirmed invoice payment before claiming service revenue.
 This service does not activate retail compute, paid plugins, or product credit.
 
+## Private earnings and payouts (#10838)
+
+After deploying the earnings-enabled gateway beside the existing receiver
+ledger, verify each `earnings.grants` account/payee/workspace binding. Declare
+only supported payout rails with qualification evidence in `earnings.rails`.
+Qualify a destination and one small funded payout through the existing
+worker; compare the private statement's wallet reference, exact rail amount,
+routing fee, and rounding with the real wallet. Check a destination change
+while an attempt is reserved: it must keep the original destination and
+resolve the same reference. Isolated fake-rail and authenticated dashboard
+tests do not establish real-money qualification. Keep commissions and
+reversals unavailable until their authoritative obligation owners are wired.
+
 ## Sales outreach launch
 
 The [sales-floor decisions](docs/sales/agent-sales-floor.md#initial-operating-decisions)

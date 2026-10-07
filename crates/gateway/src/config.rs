@@ -186,6 +186,35 @@ pub struct Config {
     /// account that sent it.
     #[serde(default)]
     pub skills: Option<Skills>,
+    /// Private payee statements and destination settings over the receiver's
+    /// existing settlement ledger. Requires accounts; absent mounts no routes.
+    #[serde(default)]
+    pub earnings: Option<Earnings>,
+}
+
+/// Operator-declared access to an existing payee. Public flow visibility and
+/// workspace membership alone grant no earnings authority.
+#[derive(Clone, Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct EarningsGrant {
+    pub party: String,
+    pub account: String,
+    /// Current active membership in this workspace is also required.
+    pub workspace: String,
+}
+
+#[derive(Clone, Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct Earnings {
+    /// The pay receiver and payout worker's existing SQLite ledger.
+    pub ledger: PathBuf,
+    #[serde(default)]
+    pub grants: Vec<EarningsGrant>,
+    /// Supported payout rails and owner qualification evidence references.
+    /// Empty means no destination can activate through this surface. This
+    /// declaration never attests that a particular payout succeeded.
+    #[serde(default)]
+    pub rails: BTreeMap<String, String>,
 }
 
 /// The skill directory's deployment options: the submission bounds the
@@ -553,6 +582,44 @@ impl Config {
                      be spent or can never run out is not a bound",
                     name.display()
                 ));
+            }
+        }
+        if let Some(earnings) = &self.earnings {
+            if self.accounts.is_none() || earnings.ledger.as_os_str().is_empty() {
+                return Err(format!(
+                    "{}: earnings requires accounts and a ledger path",
+                    name.display()
+                ));
+            }
+            let mut grants = std::collections::BTreeSet::new();
+            for grant in &earnings.grants {
+                if grant.party.is_empty()
+                    || grant.party == pay_ledger::OPENAGENTS
+                    || grant.party.len() > 128
+                    || !grant
+                        .party
+                        .bytes()
+                        .all(|b| b.is_ascii_alphanumeric() || b == b'_' || b == b'-')
+                    || grant.account.is_empty()
+                    || grant.workspace.is_empty()
+                    || !grants.insert((&grant.party, &grant.account))
+                {
+                    return Err(format!(
+                        "{}: earnings grants must name unique account/payee pairs and a workspace",
+                        name.display()
+                    ));
+                }
+            }
+            for (rail, evidence) in &earnings.rails {
+                if !matches!(rail.as_str(), "spark" | "lightning")
+                    || evidence.is_empty()
+                    || evidence.len() > 256
+                {
+                    return Err(format!(
+                        "{}: earnings rails must name supported rails with qualification evidence",
+                        name.display()
+                    ));
+                }
             }
         }
         if let Some(billing) = &self.billing {
