@@ -82,6 +82,9 @@ pub(crate) const USAGE: &str = "usage: openagents pay COMMAND [OPTIONS]
                           ever sent. A drift is also an error line on stderr.
   commission admit --config FILE --ledger FILE --customer-root DIR --purchase ID --cost-policy FILE --receiver-home DIR
                           Freeze the original native agreement before payment.
+  commission abuse-review --config FILE --ledger FILE --customer-root DIR --purchase ID --admission ID --input FILE --approve DIGEST
+                          Review only this original commission under private
+                          approved rules and current native merchant-owner grants.
   commission cost-qualify --config FILE --ledger FILE --customer-root DIR --purchase ID --admission ID --cost-policy FILE
                           Pin previously unknown costs without changing history.
   commission reconcile --config FILE --ledger FILE --customer-root DIR --purchase ID --admission ID --receiver-home DIR
@@ -146,6 +149,7 @@ settles for this wallet must share all three.";
 #[cfg(test)]
 pub(crate) const EFFECTS: &[Declared] = &[
     Declared::screen("commission admit", Effect::LocalWrite, "wallet"),
+    Declared::screen("commission abuse-review", Effect::LocalWrite, "wallet"),
     Declared::screen("commission cost-qualify", Effect::LocalWrite, "wallet"),
     Declared::screen("commission reconcile", Effect::LocalWrite, "wallet"),
     Declared::screen("commission refund-prepare", Effect::LocalWrite, "wallet"),

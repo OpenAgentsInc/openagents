@@ -330,6 +330,9 @@ impl Agreement {
 #[derive(Clone, Debug, Deserialize, Serialize, Eq, PartialEq)]
 #[serde(deny_unknown_fields)]
 pub struct View {
+    /// Current stable owner; no credential or reputation grants commission rights.
+    #[serde(default)]
+    pub current_referrer_owner: Option<String>,
     pub agreement: Agreement,
     pub terms: Publication,
     pub state: String,
@@ -470,6 +473,10 @@ fn view(book: &Book, agreement: &Agreement) -> Result<View, Error> {
         .current_commission_binding(book, &agreement.customer)
         .is_ok_and(|binding| binding == agreement.binding);
     Ok(View {
+        current_referrer_owner: book
+            .referrers
+            .get(&agreement.binding.referrer.id)
+            .map(|r| r.owner.clone()),
         agreement: agreement.clone(),
         terms: publication,
         state: if !current {

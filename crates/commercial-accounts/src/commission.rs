@@ -99,7 +99,84 @@ pub struct Native {
     operator: crate::Held,
     config_source: Option<(crate::Held, String)>,
 }
+#[derive(Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct AbuseInput {
+    pub rules: pay_ledger::commission_abuse::Rules,
+    pub review: pay_ledger::commission_abuse::Review,
+}
 impl Native {
+    /// Review an original liability under current native buyer and merchant
+    /// grants. The owner's approval names the exact private rules digest.
+    pub fn review_abuse(
+        &self,
+        ledger: &mut Ledger,
+        source: &CommissionSource<'_>,
+        id: &str,
+        input_path: &Path,
+        approved: &str,
+        now: u64,
+    ) -> Result<pay_ledger::commission_abuse::Record, String> {
+        self.buyer(source)?;
+        self.operator()?;
+        ledger.require_native_custody().map_err(|e| e.to_string())?;
+        let a = ledger
+            .commission_admission(id)
+            .map_err(|e| e.to_string())?
+            .ok_or("Original abuse admission absent.")?;
+        self.matches(&a, source, ledger)?;
+        let held = crate::Held::open(input_path)?;
+        let bytes = held.bytes(65536)?;
+        let input: AbuseInput =
+            serde_json::from_slice(&bytes).map_err(|_| "Private reviewed abuse input invalid.")?;
+        let expected = hash(&bytes);
+        let mut result = None;
+        self.accounts
+            .with_commission_agreement(
+                &a.buyer_account,
+                &a.customer,
+                Some(&a.agreement),
+                || self.buyer(source).is_ok() && self.operator().is_ok(),
+                |v| {
+                    let old: contract::View = serde_json::from_str(&a.contract)
+                        .map_err(|_| tenancy::accounts::referrals::Error::Invalid)?;
+                    if old.agreement != v.agreement || old.terms != v.terms {
+                        return Err(tenancy::accounts::referrals::Error::Conflict);
+                    }
+                    result = Some((|| {
+                        if input.review.action == pay_ledger::commission_abuse::Action::Release
+                            && v.current_referrer_owner.as_ref().is_none_or(|owner| {
+                                owner == &a.buyer_account || owner == &a.operator_account
+                            })
+                        {
+                            return Err(
+                                "Current native identity overlap cannot release a commission."
+                                    .into(),
+                            );
+                        }
+                        self.buyer(source)?;
+                        self.operator()?;
+                        ledger.require_native_custody().map_err(|e| e.to_string())?;
+                        if hash(held.bytes(65536)?) != expected {
+                            return Err("Reviewed abuse input changed.".into());
+                        }
+                        ledger
+                            .review_commission_abuse(
+                                id,
+                                &input.rules,
+                                approved,
+                                &self.config.operator_account,
+                                &input.review,
+                                now,
+                            )
+                            .map_err(|e| e.to_string())
+                    })());
+                    Ok(())
+                },
+            )
+            .map_err(|_| "Original abuse review custody or current authority refused.")?;
+        result.ok_or("Original abuse review absent.")?
+    }
     pub fn open_private(path: &Path) -> Result<Self, String> {
         let held = crate::Held::open(path)?;
         let bytes = held.bytes(64 * 1024)?;
@@ -351,7 +428,7 @@ impl Native {
         let mut result = None;
         self.accounts.with_commission_agreement(actor,&customer,None,||self.buyer(source).is_ok()&&self.operator().is_ok(),|v|{
             result=Some((||{
-                if !v.active_for_new_transactions||!v.terms_qualified||!v.terms.terms.products.contains(&contract::Product::PluginCall)||v.agreement.binding.referrer.source_only{return Err("Current accepted attribution and bilateral plugin commission terms required.".into());}
+                if !v.active_for_new_transactions||!v.terms_qualified||!v.terms.terms.products.contains(&contract::Product::PluginCall)||v.agreement.binding.referrer.source_only||v.current_referrer_owner.as_ref().is_none_or(|owner|owner==actor||owner==&self.config.operator_account){return Err("Current independent attribution and bilateral plugin commission terms required.".into());}
                 // The native contract also excludes self referral. Both native
                 // acceptances and original source identity stay frozen here.
                 let t=&v.terms.terms;
@@ -451,6 +528,34 @@ impl Native {
                         self.buyer(source)?;
                         self.operator()?;
                         ledger.require_native_custody().map_err(|e| e.to_string())?;
+                        if v.current_referrer_owner.as_ref().is_none_or(|owner| {
+                            owner == actor || owner == &self.config.operator_account
+                        }) {
+                            let proof = format!(
+                                "sha256:{}",
+                                hash(encode(&(id, &v.current_referrer_owner))?)
+                            );
+                            ledger
+                                .hold_commission_signal(
+                                    id,
+                                    "native-identity-overlap",
+                                    pay_ledger::commission_abuse::Reason::IdentityOverlap,
+                                    &proof,
+                                    now,
+                                )
+                                .map_err(|e| e.to_string())?;
+                            if ledger
+                                .commission_report(id)
+                                .map_err(|e| e.to_string())?
+                                .state
+                                == "earned"
+                            {
+                                return ledger.commission_report(id).map_err(|e| e.to_string());
+                            }
+                            return ledger
+                                .observe_commission(id, &evidence, Some(false), now)
+                                .map_err(|e| e.to_string());
+                        }
                         ledger
                             .observe_commission(id, &evidence, completed, now)
                             .map_err(|e| e.to_string())

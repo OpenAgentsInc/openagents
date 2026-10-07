@@ -1669,3 +1669,18 @@ lease after the 14:50 crash. Build and look at each:
 - CoderOS: rebuild a host with `coderos.desktop.enable` and check that
   `fc-match monospace`, `fc-match sans`, and `fc-match serif` print Paper
   Mono, and that foot draws Coder's braille spinner.
+
+## Referral abuse review activation (REV-32, #10839)
+
+Review the fixed `original-commission-abuse-review-v1` rules, named native
+merchant reviewer, bounded review interval, evidence sources, and appeal
+procedure before enabling live referral payouts. `pay commission abuse-review`
+requires a private input and explicit approval of its rules digest. Unknown,
+model, and reputation evidence retain a scoped hold; expiry requests review and
+never releases funds. Operator review is a declared finding, not independent
+attestation. Qualify recycled-funding and promotional-credit evidence against
+the original funding source before declaring it absent or present. The native
+plugin lane refuses unqualified cross-registry funding. Rejected claims retain
+their original liability and history; an appeal requires a separately reviewed
+remediation, not a new invoice, duplicate commission, or payout retry. Synthetic
+checks establish no real customer identity, fraud finding, or payment authority.

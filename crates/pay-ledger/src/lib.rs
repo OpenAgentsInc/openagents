@@ -14,6 +14,7 @@ use std::{collections::BTreeMap, path::Path};
 
 pub mod adjustment;
 pub mod commission;
+pub mod commission_abuse;
 pub mod compute;
 pub mod contribution;
 pub mod earnings;
@@ -314,6 +315,7 @@ impl Ledger {
         connection.execute_batch(earnings::TABLES)?;
         connection.execute_batch(adjustment::TABLES)?;
         connection.execute_batch(commission::TABLES)?;
+        connection.execute_batch(commission_abuse::TABLES)?;
         connection.execute_batch("BEGIN IMMEDIATE;")?;
         connection.execute_batch(include_str!("payable.sql"))?;
         connection.execute_batch("COMMIT;")?;
@@ -507,7 +509,12 @@ impl Ledger {
         Ok(rows)
     }
     pub fn register_payee(&mut self, payee: Payee) -> Result<()> {
-        register_payee_in(&self.connection, payee)
+        let tx = self
+            .connection
+            .transaction_with_behavior(TransactionBehavior::Immediate)?;
+        register_payee_in(&tx, payee)?;
+        tx.commit()?;
+        Ok(())
     }
     /// Reserve whole shares atomically. Failed attempts release their shares;
     /// planned, sending, and unknown attempts do not. This method performs no payment.
@@ -667,11 +674,33 @@ pub(crate) fn register_payee_in(connection: &Connection, payee: Payee) -> Result
     {
         return Err(Error::Invalid("payee destination"));
     }
+    if payee.party.starts_with("referrer:") {
+        let old: Option<(String, String)> = connection
+            .query_row(
+                "SELECT destination_kind,destination_value FROM payee WHERE party=?",
+                [&payee.party],
+                |r| Ok((r.get(0)?, r.get(1)?)),
+            )
+            .optional()?;
+        if old
+            .as_ref()
+            .is_some_and(|v| v.0 != payee.destination_kind || v.1 != payee.destination_value)
+        {
+            commission_abuse::hold_payee_rebinding_in(
+                connection,
+                &payee.party,
+                &payee.destination_kind,
+                &payee.destination_value,
+                u64::try_from(payee.verified_at)
+                    .map_err(|_| Error::Invalid("native payee clock"))?,
+            )?;
+        }
+    }
     connection.execute("INSERT INTO payee VALUES(?,?,?,?,?) ON CONFLICT(party) DO UPDATE SET destination_kind=excluded.destination_kind,destination_value=excluded.destination_value,source=excluded.source,verified_at=excluded.verified_at", params![payee.party,payee.destination_kind,payee.destination_value,payee.source,payee.verified_at])?;
     Ok(())
 }
 
-pub(crate) const AVAILABLE: &str = "NOT EXISTS (SELECT 1 FROM commission_payout_item i JOIN payout p ON p.id=i.payout WHERE i.settlement=s.settlement AND i.party=s.party AND i.role=s.role AND p.state!='failed') AND NOT EXISTS (SELECT 1 FROM payout_item i JOIN payout p ON p.id=i.payout WHERE i.settlement=s.settlement AND i.party=s.party AND i.role=s.role AND p.state!='failed') AND NOT EXISTS (SELECT 1 FROM bonus_payout_item i JOIN payout p ON p.id=i.payout WHERE i.settlement=s.settlement AND i.party=s.party AND i.role=s.role AND p.state!='failed')";
+pub(crate) const AVAILABLE: &str = "(s.role!='commission' OR NOT EXISTS (SELECT 1 FROM commission_admission a JOIN commission_abuse h ON h.admission=a.id WHERE a.payment_hash=s.settlement AND h.state='held')) AND NOT EXISTS (SELECT 1 FROM commission_payout_item i JOIN payout p ON p.id=i.payout WHERE i.settlement=s.settlement AND i.party=s.party AND i.role=s.role AND p.state!='failed') AND NOT EXISTS (SELECT 1 FROM payout_item i JOIN payout p ON p.id=i.payout WHERE i.settlement=s.settlement AND i.party=s.party AND i.role=s.role AND p.state!='failed') AND NOT EXISTS (SELECT 1 FROM bonus_payout_item i JOIN payout p ON p.id=i.payout WHERE i.settlement=s.settlement AND i.party=s.party AND i.role=s.role AND p.state!='failed')";
 fn available_shares(connection: &Connection, party: &str) -> Result<Vec<Share>> {
     let mut stmt = connection.prepare(&format!("SELECT s.settlement,s.party,s.role,s.amount_msat FROM payable_share s JOIN settlement t ON t.payment_hash=s.settlement WHERE s.party=? AND s.amount_msat>0 AND {AVAILABLE} ORDER BY t.seq,s.role"))?;
     let rows = stmt.query_map([party], |r| {

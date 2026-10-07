@@ -24,6 +24,9 @@ pub(crate) const USAGE:&str="usage: openagents pay commission COMMAND --config F
   report --admission ID
                           Read this original purchase's private liability, payout,
                           reversal, loss, and retained-remainder reconciliation.
+  abuse-review --admission ID --input FILE --approve DIGEST
+                          Hold, release, or reject this original commission under
+                          private reviewed rules and current merchant-owner grants.
 All paths are explicit private native stores. No payment, reexecution, FX, or
 commercial rate is inferred. Existing native wallet commands dispatch owner-
 authorized transfers separately. Add --json before pay for one JSON document.";
@@ -50,7 +53,13 @@ pub(crate) fn run(output: &Output, words: &[String]) -> u8 {
     let command = &words[0];
     if !matches!(
         command.as_str(),
-        "admit" | "cost-qualify" | "reconcile" | "refund-prepare" | "refund-reconcile" | "report"
+        "admit"
+            | "cost-qualify"
+            | "reconcile"
+            | "refund-prepare"
+            | "refund-reconcile"
+            | "report"
+            | "abuse-review"
     ) {
         return output.usage("pay commission", "unknown command", USAGE);
     }
@@ -69,6 +78,7 @@ pub(crate) fn run(output: &Output, words: &[String]) -> u8 {
                     "expiry",
                 ],
                 "refund-reconcile" => vec!["refund", "receiver-home"],
+                "abuse-review" => vec!["admission", "input", "approve"],
                 _ => vec!["admission"],
             },
         ]
@@ -102,6 +112,15 @@ pub(crate) fn run(output: &Output, words: &[String]) -> u8 {
         let id = || admission.ok_or("--admission is required".to_string());
         let receiver = || wallet(Path::new(receiver.ok_or("--receiver-home is required")?));
         match command.as_str() {
+            "abuse-review" => serde_json::to_value(native.review_abuse(
+                &mut ledger,
+                &source,
+                id()?,
+                Path::new(args.option("input").ok_or("--input is required")?),
+                args.option("approve").ok_or("--approve is required")?,
+                now,
+            )?)
+            .map_err(|_| "Abuse review encoding failed.".into()),
             "admit" => serde_json::to_value(native.admit(
                 &mut ledger,
                 &source,

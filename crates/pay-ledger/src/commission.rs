@@ -101,6 +101,8 @@ impl Admission {
             || self.customer.is_empty()
             || self.operator_account.is_empty()
             || self.operator_workspace.is_empty()
+            || self.buyer_account == self.operator_account
+            || self.payer == self.receiver
             || self.referrer.is_empty()
             || self.party != format!("referrer:{}", self.referrer)
             || self.denominator == 0
@@ -150,6 +152,7 @@ pub struct Report {
     pub state: String,
     /// New payout planning stays closed while native custody is unresolved.
     pub payouts_held: bool,
+    pub abuse_review: Option<crate::commission_abuse::Record>,
     pub evidence: Option<String>,
     pub held_msat: i64,
     pub earned_msat: i64,
@@ -455,13 +458,20 @@ impl Ledger {
                     .ok_or(Error::Invalid("commission report overflow"))?;
             }
         }
-        let available = if protected > 0 { 0 } else { net - retained };
-        let held = if state == "held" { encumbered } else { 0 };
+        let mut available = if protected > 0 { 0 } else { net - retained };
+        let mut held = if state == "held" { encumbered } else { 0 };
+        let abuse_review = self.commission_abuse(id)?;
+        let abuse_held = crate::commission_abuse::held(&self.connection, id)?;
+        if abuse_held {
+            held += available;
+            available = 0;
+        }
         Ok(Report {
             schema: SCHEMA,
             admission: a,
             state,
-            payouts_held: self.commission_payouts_held()?,
+            payouts_held: self.commission_payouts_held()? || abuse_held,
+            abuse_review,
             evidence,
             held_msat: held,
             earned_msat: earned,
@@ -691,7 +701,7 @@ impl Ledger {
     /// Liabilities outside whole-satoshi available claims remain backed. A
     /// hold or sub-sat remainder does not disappear from wallet reconciliation.
     pub fn commission_held_liability(&self) -> Result<i64> {
-        Ok(self.connection.query_row("SELECT COALESCE(SUM(CASE WHEN state='held' THEN encumbered ELSE remainder END),0) FROM commission_balance",[],|r|r.get(0))?)
+        Ok(self.connection.query_row("SELECT COALESCE(SUM(CASE WHEN b.state='held' THEN b.encumbered ELSE b.remainder + CASE WHEN h.state='held' AND b.protected=0 THEN b.net-b.remainder ELSE 0 END END),0) FROM commission_balance b LEFT JOIN commission_abuse h ON h.admission=b.id",[],|r|r.get(0))?)
     }
 }
 

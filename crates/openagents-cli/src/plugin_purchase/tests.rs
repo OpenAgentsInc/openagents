@@ -268,7 +268,21 @@ impl Harness {
     fn with_native_commission() -> Self {
         Self::with_profile(true, true)
     }
+    fn with_native_commission_kind(kind: tenancy::accounts::referrals::Kind) -> Self {
+        Self::with_profile_kind(true, true, kind)
+    }
     fn with_profile(recoverable: bool, commissions: bool) -> Self {
+        Self::with_profile_kind(
+            recoverable,
+            commissions,
+            tenancy::accounts::referrals::Kind::Person,
+        )
+    }
+    fn with_profile_kind(
+        recoverable: bool,
+        commissions: bool,
+        kind: tenancy::accounts::referrals::Kind,
+    ) -> Self {
         let now = if commissions {
             openagents_x402::unix_now()
         } else {
@@ -281,8 +295,8 @@ impl Harness {
             preimages: Mutex::new(Default::default()),
         });
         let mut current = current();
-        let commission =
-            commissions.then(|| commission_tests::NativeFixture::new(root.path(), &mut current));
+        let commission = commissions
+            .then(|| commission_tests::NativeFixture::new(root.path(), &mut current, kind));
         let sink = Arc::new(if commissions {
             let path = root.path().join("merchant.sqlite");
             let sink = pay_plugin::LedgerSink::open(&path).unwrap();

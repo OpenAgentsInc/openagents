@@ -19,8 +19,207 @@ fn private(path: &Path, bytes: &[u8]) {
     std::fs::write(path, bytes).unwrap();
     std::fs::set_permissions(path, std::fs::Permissions::from_mode(0o600)).unwrap();
 }
+fn abuse_input(
+    operator: &str,
+    now: u64,
+    request: &str,
+    version: u64,
+    action: pay_ledger::commission_abuse::Action,
+) -> commercial_accounts::commission::AbuseInput {
+    use pay_ledger::commission_abuse::*;
+    commercial_accounts::commission::AbuseInput {
+        rules: Rules {
+            schema: "openagents.commission-abuse-rules.v1".into(),
+            rule: RULE.into(),
+            reviewer: operator.into(),
+            review_secs: 60,
+            valid_until: now + 3600,
+            digest: String::new(),
+        }
+        .seal()
+        .unwrap(),
+        review: Review {
+            request: request.into(),
+            expected_version: version,
+            action,
+            evidence: vec![Evidence {
+                reason: Reason::UnknownFunding,
+                finding: if action == Action::Hold {
+                    Finding::Unknown
+                } else {
+                    Finding::Absent
+                },
+                provenance: if action == Action::Hold {
+                    Provenance::AdvisoryModel
+                } else {
+                    Provenance::OperatorReview
+                },
+                reference: format!("sha256:{}", "8".repeat(64)),
+            }],
+        },
+    }
+}
+#[test]
+fn native_abuse_review_requires_original_merchant_grants_and_preserves_legitimate_owner_transitions()
+ {
+    use pay_ledger::commission_abuse::{Action, Provenance};
+    let mut h = Harness::with_native_commission_kind(Kind::Agent);
+    h.approve();
+    let f = h.commission.as_ref().unwrap();
+    let native = f.native();
+    let mut ledger = f.ledger(h.root.path());
+    let policy = f.costs(h.root.path(), &h.offer, false);
+    let source = h.store.plugin_commission_source("one", true).unwrap();
+    let a = native
+        .admit(&mut ledger, &source, &policy, &Merchant(&h.wallet), h.now)
+        .unwrap();
+    drop(source);
+    let successor = f
+        .accounts
+        .create_account("Synthetic approved successor", &[])
+        .unwrap();
+    f.accounts
+        .offer_referrer_migration(&f.referrer_owner, &a.referrer, &successor.id)
+        .unwrap();
+    f.accounts
+        .accept_referrer_migration(&successor.id, &a.referrer)
+        .unwrap();
+    h.buy().unwrap();
+    let f = h.commission.as_ref().unwrap();
+    let source = h.store.plugin_commission_source("one", false).unwrap();
+    let original = native
+        .reconcile(&mut ledger, &source, &a.id, &Merchant(&h.wallet), h.now + 2)
+        .unwrap();
+    assert!(original.earned_msat > 0);
+    assert_eq!(original.admission.agreement, a.agreement);
+    let path = h.root.path().join("private-abuse-review.json");
+    let mut input = abuse_input(
+        &a.operator_account,
+        h.now,
+        "synthetic-unknown",
+        0,
+        Action::Hold,
+    );
+    private(&path, &serde_json::to_vec(&input).unwrap());
+    assert!(
+        native
+            .review_abuse(&mut ledger, &source, &a.id, &path, "unapproved", h.now + 3)
+            .is_err()
+    );
+    let held = native
+        .review_abuse(
+            &mut ledger,
+            &source,
+            &a.id,
+            &path,
+            &input.rules.digest,
+            h.now + 3,
+        )
+        .unwrap();
+    assert_eq!(held.version, 1);
+    assert!(ledger.available_shares(&a.party).unwrap().is_empty());
+    input.review.request = "synthetic-clear".into();
+    input.review.expected_version = 1;
+    input.review.action = Action::Release;
+    input.review.evidence[0].finding = pay_ledger::commission_abuse::Finding::Absent;
+    private(&path, &serde_json::to_vec(&input).unwrap());
+    assert!(
+        native
+            .review_abuse(
+                &mut ledger,
+                &source,
+                &a.id,
+                &path,
+                &input.rules.digest,
+                h.now + 4
+            )
+            .is_err()
+    );
+    input.review.evidence[0].provenance = Provenance::OperatorReview;
+    private(&path, &serde_json::to_vec(&input).unwrap());
+    let released = native
+        .review_abuse(
+            &mut ledger,
+            &source,
+            &a.id,
+            &path,
+            &input.rules.digest,
+            h.now + 4,
+        )
+        .unwrap();
+    assert_eq!(
+        released,
+        native
+            .review_abuse(
+                &mut ledger,
+                &source,
+                &a.id,
+                &path,
+                &input.rules.digest,
+                h.now + 5
+            )
+            .unwrap()
+    );
+    assert!(!ledger.available_shares(&a.party).unwrap().is_empty());
+    assert_eq!(
+        ledger.commission_report(&a.id).unwrap().earned_msat,
+        original.earned_msat
+    );
+    f.accounts
+        .update_principals(&a.operator_account, &[])
+        .unwrap();
+    assert!(
+        native
+            .review_abuse(
+                &mut ledger,
+                &source,
+                &a.id,
+                &path,
+                &input.rules.digest,
+                h.now + 6
+            )
+            .is_err()
+    );
+    assert_eq!(ledger.commission_abuse(&a.id).unwrap().unwrap().version, 2);
+}
+#[test]
+fn native_direct_and_agent_mediated_self_referral_cannot_admit_or_pay() {
+    for kind in [Kind::Person, Kind::Agent] {
+        for merchant_overlap in [false, true] {
+            let mut h = Harness::with_native_commission_kind(kind);
+            h.approve();
+            let f = h.commission.as_ref().unwrap();
+            let target = if merchant_overlap {
+                f.config.operator_account.clone()
+            } else {
+                h.current.context.account.clone()
+            };
+            f.accounts
+                .offer_referrer_migration(&f.referrer_owner, &f.binding.referrer.id, &target)
+                .unwrap();
+            f.accounts
+                .accept_referrer_migration(&target, &f.binding.referrer.id)
+                .unwrap();
+            let mut ledger = f.ledger(h.root.path());
+            let source = h.store.plugin_commission_source("one", true).unwrap();
+            assert!(
+                f.native()
+                    .admit(
+                        &mut ledger,
+                        &source,
+                        &f.costs(h.root.path(), &h.offer, false),
+                        &Merchant(&h.wallet),
+                        h.now
+                    )
+                    .is_err()
+            );
+            assert!(h.wallet.records.lock().unwrap().is_empty());
+            assert_eq!(ledger.totals().unwrap().settlements, 0);
+        }
+    }
+}
 impl NativeFixture {
-    pub(super) fn new(root: &Path, selected: &mut Selection) -> Self {
+    pub(super) fn new(root: &Path, selected: &mut Selection, kind: Kind) -> Self {
         std::fs::set_permissions(root, std::fs::Permissions::from_mode(0o700)).unwrap();
         let dir = root.canonicalize().unwrap().join("registry");
         let manifest = Manifest {
@@ -105,7 +304,7 @@ impl NativeFixture {
         selected.context.membership_epoch = member.epoch;
         selected.context.workspace_members_epoch = member.members_epoch;
         let referrer = accounts
-            .create_referrer(&source.id, Kind::Person, "Synthetic introduction")
+            .create_referrer(&source.id, kind, "Synthetic introduction")
             .unwrap();
         let policy = attribution::Policy::new(
             "fixture".into(),
@@ -877,6 +1076,67 @@ fn installed_native_commission_and_refund_commands_preserve_original_authority()
     );
     assert_eq!(earned["state"], "earned");
     assert!(earned["earned_msat"].as_i64().unwrap() > 0);
+    let abuse_path = root.join("installed-private-abuse.json");
+    let operator = h
+        .commission
+        .as_ref()
+        .unwrap()
+        .config
+        .operator_account
+        .clone();
+    let mut abuse = abuse_input(
+        &operator,
+        h.now,
+        "installed-unknown-review",
+        0,
+        pay_ledger::commission_abuse::Action::Hold,
+    );
+    private(&abuse_path, &serde_json::to_vec(&abuse).unwrap());
+    let (o, held) = run(&[
+        "abuse-review",
+        "--admission",
+        &id,
+        "--input",
+        abuse_path.to_str().unwrap(),
+        "--approve",
+        &abuse.rules.digest,
+    ]);
+    assert!(o.status.success(), "{held}");
+    assert_eq!(held["version"], 1);
+    let (o, statement) = run(&["report", "--admission", &id]);
+    assert!(o.status.success());
+    assert_eq!(statement["available_msat"], 0);
+    abuse.review = abuse_input(
+        &operator,
+        h.now,
+        "installed-reviewed-clear",
+        1,
+        pay_ledger::commission_abuse::Action::Release,
+    )
+    .review;
+    private(&abuse_path, &serde_json::to_vec(&abuse).unwrap());
+    let (o, released) = run(&[
+        "abuse-review",
+        "--admission",
+        &id,
+        "--input",
+        abuse_path.to_str().unwrap(),
+        "--approve",
+        &abuse.rules.digest,
+    ]);
+    assert!(o.status.success(), "{released}");
+    assert_eq!(released["version"], 2);
+    let (o, replayed) = run(&[
+        "abuse-review",
+        "--admission",
+        &id,
+        "--input",
+        abuse_path.to_str().unwrap(),
+        "--approve",
+        &abuse.rules.digest,
+    ]);
+    assert!(o.status.success());
+    assert_eq!(replayed, released);
     let (o, refund) = run(&[
         "refund-prepare",
         "--admission",

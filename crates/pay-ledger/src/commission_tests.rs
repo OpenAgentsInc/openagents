@@ -1,5 +1,378 @@
 use super::*;
+use crate::commission_abuse::{Action, Evidence, Finding, Provenance, Reason, Review, Rules};
 use crate::{Payee, PayoutState, Rail, SettlementInput, Split};
+fn abuse_rules(a: &Admission) -> Rules {
+    Rules {
+        schema: "openagents.commission-abuse-rules.v1".into(),
+        rule: crate::commission_abuse::RULE.into(),
+        reviewer: a.operator_account.clone(),
+        review_secs: 60,
+        valid_until: 1_900_010_000,
+        digest: String::new(),
+    }
+    .seal()
+    .unwrap()
+}
+fn abuse_review(
+    request: &str,
+    version: u64,
+    action: Action,
+    finding: Finding,
+    provenance: Provenance,
+) -> Review {
+    Review {
+        request: request.into(),
+        expected_version: version,
+        action,
+        evidence: vec![Evidence {
+            reason: Reason::RecycledFunding,
+            finding,
+            provenance,
+            reference: format!("sha256:{}", "9".repeat(64)),
+        }],
+    }
+}
+#[test]
+fn abuse_hold_replay_restart_conservation_and_explicit_review_keep_other_claims_available() {
+    let dir = tempfile::tempdir().unwrap();
+    let path = dir.path().join("synthetic-abuse.sqlite");
+    let mut l = Ledger::open(&path).unwrap();
+    let a = admission(&l);
+    let mut b = a.clone();
+    b.id = "1".repeat(64);
+    b.payment_hash = "2".repeat(64);
+    b.customer = "unrelated".into();
+    b.buyer_account = b.customer.clone();
+    b.referrer = "other-source".into();
+    b.party = "referrer:other-source".into();
+    for original in [&a, &b] {
+        l.admit_commission(original).unwrap();
+        settled(&mut l, original);
+        l.observe_commission(&original.id, &"e".repeat(64), Some(true), 1_900_001_000)
+            .unwrap();
+    }
+    let before = l.available_shares(&a.party).unwrap();
+    let other = l.available_shares(&b.party).unwrap();
+    let authors = l.available_shares(&a.author).unwrap();
+    let owed = l.totals().unwrap().accrued_msat + l.commission_held_liability().unwrap();
+    let rules = abuse_rules(&a);
+    let hold = abuse_review(
+        "unknown-cycle",
+        0,
+        Action::Hold,
+        Finding::Unknown,
+        Provenance::AdvisoryModel,
+    );
+    let original = l
+        .review_commission_abuse(
+            &a.id,
+            &rules,
+            &rules.digest,
+            &a.operator_account,
+            &hold,
+            1_900_001_001,
+        )
+        .unwrap();
+    assert_eq!(
+        original,
+        l.review_commission_abuse(
+            &a.id,
+            &rules,
+            &rules.digest,
+            &a.operator_account,
+            &hold,
+            1_900_001_100
+        )
+        .unwrap()
+    );
+    assert!(l.available_shares(&a.party).unwrap().is_empty());
+    assert_eq!(l.available_shares(&b.party).unwrap(), other);
+    assert_eq!(l.available_shares(&a.author).unwrap(), authors);
+    assert_eq!(
+        l.totals().unwrap().accrued_msat + l.commission_held_liability().unwrap(),
+        owed
+    );
+    l.register_payee(Payee {
+        party: a.party.clone(),
+        destination_kind: "spark".into(),
+        destination_value: "synthetic".into(),
+        source: "fixture".into(),
+        verified_at: 1,
+    })
+    .unwrap();
+    assert!(
+        l.reserve_payout("stale-claims", &a.party, &before, 1_900_001_200)
+            .is_err()
+    );
+    for evidence in [
+        (Finding::Unknown, Provenance::NativeFunding),
+        (Finding::Absent, Provenance::AdvisoryModel),
+        (Finding::Present, Provenance::NativeFunding),
+    ] {
+        let release = abuse_review(
+            "unqualified-release",
+            1,
+            Action::Release,
+            evidence.0,
+            evidence.1,
+        );
+        assert!(
+            l.review_commission_abuse(
+                &a.id,
+                &rules,
+                &rules.digest,
+                &a.operator_account,
+                &release,
+                1_900_001_201
+            )
+            .is_err()
+        );
+    }
+    drop(l);
+    let mut l = Ledger::open(&path).unwrap();
+    assert!(l.available_shares(&a.party).unwrap().is_empty());
+    let release = abuse_review(
+        "reviewed-clear",
+        1,
+        Action::Release,
+        Finding::Absent,
+        Provenance::OperatorReview,
+    );
+    assert!(
+        l.review_commission_abuse(
+            &a.id,
+            &rules,
+            "wrong-approval",
+            &a.operator_account,
+            &release,
+            1_900_001_202
+        )
+        .is_err()
+    );
+    assert!(
+        l.review_commission_abuse(
+            &a.id,
+            &rules,
+            &rules.digest,
+            "foreign-reviewer",
+            &release,
+            1_900_001_202
+        )
+        .is_err()
+    );
+    let released = l
+        .review_commission_abuse(
+            &a.id,
+            &rules,
+            &rules.digest,
+            &a.operator_account,
+            &release,
+            1_900_001_202,
+        )
+        .unwrap();
+    assert_eq!(
+        released,
+        l.review_commission_abuse(
+            &a.id,
+            &rules,
+            &rules.digest,
+            &a.operator_account,
+            &release,
+            1_900_001_203
+        )
+        .unwrap()
+    );
+    assert_eq!(l.available_shares(&a.party).unwrap(), before);
+    assert_eq!(
+        l.totals().unwrap().accrued_msat + l.commission_held_liability().unwrap(),
+        owed
+    );
+    let mut conflicting = release.clone();
+    conflicting.evidence[0].reference = format!("sha256:{}", "8".repeat(64));
+    assert!(
+        l.review_commission_abuse(
+            &a.id,
+            &rules,
+            &rules.digest,
+            &a.operator_account,
+            &conflicting,
+            1_900_001_204
+        )
+        .is_err()
+    );
+    assert_eq!(l.commission_abuse(&a.id).unwrap().unwrap().version, 2);
+}
+#[test]
+fn native_destination_rebinding_holds_only_original_commissions_and_keeps_unknown_payouts_reserved()
+{
+    let mut l = Ledger::in_memory().unwrap();
+    let mut a = admission(&l);
+    a.destinations = vec!["lud16".into()];
+    l.admit_commission(&a).unwrap();
+    settled(&mut l, &a);
+    l.observe_commission(&a.id, &"e".repeat(64), Some(true), 1_900_001_000)
+        .unwrap();
+    let claims = l.available_shares(&a.party).unwrap();
+    let earned = l.commission_report(&a.id).unwrap().earned_msat;
+    l.change_account_payout(&a.party, 0, "source@example.com", 1_900_001_001)
+        .unwrap();
+    assert!(l.commission_abuse(&a.id).unwrap().is_none());
+    l.change_account_payout(&a.party, 1, "source@example.com", 1_900_001_002)
+        .unwrap();
+    assert!(l.commission_abuse(&a.id).unwrap().is_none());
+    assert!(
+        l.change_account_payout(&a.party, 0, "takeover@example.com", 1_900_001_002)
+            .is_err()
+    );
+    assert!(l.commission_abuse(&a.id).unwrap().is_none());
+    l.reserve_payout("unknown-original", &a.party, &claims, 1_900_001_003)
+        .unwrap();
+    l.begin_send(
+        "unknown-original",
+        "original-wallet-reference",
+        Some("synthetic-invoice"),
+        claims[0].amount_msat,
+        1_900_001_004,
+    )
+    .unwrap();
+    l.finish_payout(
+        "unknown-original",
+        PayoutState::Unknown,
+        None,
+        None,
+        1_900_001_005,
+    )
+    .unwrap();
+    l.change_account_payout(&a.party, 2, "new-source@example.com", 1_900_001_006)
+        .unwrap();
+    let held = l.commission_abuse(&a.id).unwrap().unwrap();
+    assert_eq!(held.review.evidence[0].reason, Reason::DestinationRebinding);
+    assert!(l.available_shares(&a.party).unwrap().is_empty());
+    let original = l.payout("unknown-original").unwrap().unwrap();
+    assert_eq!(original.state, PayoutState::Unknown);
+    assert_eq!(
+        original.wallet_reference.as_deref(),
+        Some("original-wallet-reference")
+    );
+    assert_eq!(l.commission_report(&a.id).unwrap().earned_msat, earned);
+    let rules = abuse_rules(&a);
+    let release = abuse_review(
+        "clear-original-binding",
+        held.version,
+        Action::Release,
+        Finding::Absent,
+        Provenance::OperatorReview,
+    );
+    l.review_commission_abuse(
+        &a.id,
+        &rules,
+        &rules.digest,
+        &a.operator_account,
+        &release,
+        1_900_001_007,
+    )
+    .unwrap();
+    assert!(l.available_shares(&a.party).unwrap().is_empty());
+    assert_eq!(
+        l.payout("unknown-original").unwrap().unwrap().state,
+        PayoutState::Unknown
+    );
+}
+#[test]
+fn confirmed_recycled_or_promotional_funding_rejects_original_claim_without_minting_or_releasing_it()
+ {
+    let mut l = Ledger::in_memory().unwrap();
+    let a = admission(&l);
+    l.admit_commission(&a).unwrap();
+    settled(&mut l, &a);
+    let original = l
+        .observe_commission(&a.id, &"e".repeat(64), Some(true), 1_900_001_000)
+        .unwrap();
+    let rules = abuse_rules(&a);
+    let hold = abuse_review(
+        "cycle-evidence",
+        0,
+        Action::Hold,
+        Finding::Present,
+        Provenance::NativeFunding,
+    );
+    l.review_commission_abuse(
+        &a.id,
+        &rules,
+        &rules.digest,
+        &a.operator_account,
+        &hold,
+        1_900_001_001,
+    )
+    .unwrap();
+    let reject = abuse_review(
+        "reject-cycle",
+        1,
+        Action::Reject,
+        Finding::Present,
+        Provenance::NativeFunding,
+    );
+    let rejection = l
+        .review_commission_abuse(
+            &a.id,
+            &rules,
+            &rules.digest,
+            &a.operator_account,
+            &reject,
+            1_900_001_002,
+        )
+        .unwrap();
+    assert_eq!(
+        rejection,
+        l.review_commission_abuse(
+            &a.id,
+            &rules,
+            &rules.digest,
+            &a.operator_account,
+            &reject,
+            1_900_001_003
+        )
+        .unwrap()
+    );
+    let release = abuse_review(
+        "cannot-release-rejection",
+        2,
+        Action::Release,
+        Finding::Absent,
+        Provenance::OperatorReview,
+    );
+    assert!(
+        l.review_commission_abuse(
+            &a.id,
+            &rules,
+            &rules.digest,
+            &a.operator_account,
+            &release,
+            1_900_001_004
+        )
+        .is_err()
+    );
+    assert!(l.available_shares(&a.party).unwrap().is_empty());
+    assert_eq!(
+        l.commission_report(&a.id).unwrap().earned_msat,
+        original.earned_msat
+    );
+    assert_eq!(
+        l.observe_commission(&a.id, &"e".repeat(64), Some(true), 1_900_001_005)
+            .unwrap()
+            .earned_msat,
+        original.earned_msat
+    );
+    let mut duplicate = a.clone();
+    duplicate.id = "f".repeat(64);
+    assert!(l.admit_commission(&duplicate).is_err());
+    let mut self_funded = a.clone();
+    self_funded.operator_account = self_funded.buyer_account.clone();
+    assert!(self_funded.validate().is_err());
+    self_funded = a.clone();
+    self_funded.receiver = self_funded.payer.clone();
+    assert!(self_funded.validate().is_err());
+}
 fn admission(l: &Ledger) -> Admission {
     Admission {
         schema: SCHEMA.into(),

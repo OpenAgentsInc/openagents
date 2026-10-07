@@ -23114,6 +23114,79 @@
               }
             },
             {
+              "name": "abuse-review",
+              "leaf": {
+                "path": [
+                  "pay",
+                  "commission",
+                  "abuse-review"
+                ],
+                "usage": [
+                  "commission abuse-review --config FILE --ledger FILE --customer-root DIR --purchase ID --admission ID --input FILE --approve DIGEST"
+                ],
+                "forms": [
+                  {
+                    "tokens": [
+                      {
+                        "kind": "literal",
+                        "word": "commission"
+                      },
+                      {
+                        "kind": "literal",
+                        "word": "abuse-review"
+                      },
+                      {
+                        "kind": "option",
+                        "name": "config",
+                        "value": "FILE",
+                        "open": true
+                      },
+                      {
+                        "kind": "option",
+                        "name": "ledger",
+                        "value": "FILE",
+                        "open": true
+                      },
+                      {
+                        "kind": "option",
+                        "name": "customer-root",
+                        "value": "DIR",
+                        "open": true
+                      },
+                      {
+                        "kind": "option",
+                        "name": "purchase",
+                        "value": "ID",
+                        "open": true
+                      },
+                      {
+                        "kind": "option",
+                        "name": "admission",
+                        "value": "ID",
+                        "open": true
+                      },
+                      {
+                        "kind": "option",
+                        "name": "input",
+                        "value": "FILE",
+                        "open": true
+                      },
+                      {
+                        "kind": "option",
+                        "name": "approve",
+                        "value": "DIGEST",
+                        "open": true
+                      }
+                    ]
+                  }
+                ],
+                "summary": "Review only this original commission under private approved rules and current native merchant-owner grants.",
+                "effect": "local_write",
+                "runs_on": "screen",
+                "screen": "wallet"
+              }
+            },
+            {
               "name": "cost-qualify",
               "leaf": {
                 "path": [
@@ -23623,6 +23696,22 @@
           "kind": "option",
           "name": "admission",
           "value": "ID",
+          "open": true,
+          "optional": true,
+          "repeated": true
+        },
+        {
+          "kind": "option",
+          "name": "input",
+          "value": "FILE",
+          "open": true,
+          "optional": true,
+          "repeated": true
+        },
+        {
+          "kind": "option",
+          "name": "approve",
+          "value": "DIGEST",
           "open": true,
           "optional": true,
           "repeated": true

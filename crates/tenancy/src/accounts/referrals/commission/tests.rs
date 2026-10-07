@@ -304,6 +304,8 @@ fn consent_pins_native_parties_exact_terms_and_survives_publication_migration_re
     a.offer_referrer_migration(&source.id, &r.id, &other.id)
         .unwrap();
     a.accept_referrer_migration(&other.id, &r.id).unwrap();
+    let mut migrated = original.clone();
+    migrated.current_referrer_owner = Some(other.id.clone());
     let reopened = Accounts::open(dir.path()).unwrap();
     assert_eq!(
         reopened
@@ -314,7 +316,7 @@ fn consent_pins_native_parties_exact_terms_and_survives_publication_migration_re
                 || true
             )
             .unwrap(),
-        Some(original.clone())
+        Some(migrated)
     );
     assert_eq!(
         reopened.commission_agreement_guarded(

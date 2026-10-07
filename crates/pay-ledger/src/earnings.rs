@@ -128,20 +128,28 @@ impl Ledger {
         let tx = self
             .connection
             .transaction_with_behavior(TransactionBehavior::Immediate)?;
-        let previous: Option<u64> = tx
+        let previous: Option<(u64, String)> = tx
             .query_row(
-                "SELECT version FROM account_payout WHERE party=?",
+                "SELECT version,value FROM account_payout WHERE party=?",
                 [party],
-                |r| r.get(0),
+                |r| Ok((r.get(0)?, r.get(1)?)),
             )
             .optional()?;
-        if previous.unwrap_or(0) != expected_version {
+        if previous.as_ref().map_or(0, |v| v.0) != expected_version {
             return Err(Error::Conflict("destination version changed"));
         }
         let version = expected_version
             .checked_add(1)
             .filter(|v| *v <= i64::MAX as u64)
             .ok_or(Error::Invalid("destination version overflow"))?;
+        if previous.as_ref().is_some_and(|v| v.1 != found.value) && party.starts_with("referrer:") {
+            crate::commission_abuse::hold_destination_in(
+                &tx,
+                party,
+                version,
+                u64::try_from(now).map_err(|_| Error::Invalid("destination clock"))?,
+            )?;
+        }
         tx.execute("INSERT INTO account_payout VALUES(?,?,?,?) ON CONFLICT(party) DO UPDATE SET version=excluded.version,value=excluded.value,updated_at=excluded.updated_at", params![party, version, found.value, now])?;
         tx.execute("INSERT INTO payee VALUES(?,?,?,'account',?) ON CONFLICT(party) DO UPDATE SET destination_kind=excluded.destination_kind,destination_value=excluded.destination_value,verified_at=excluded.verified_at WHERE payee.source='account'", params![party, found.kind.as_str(), found.value, now])?;
         tx.commit()?;
