@@ -1,0 +1,62 @@
+{
+  "schema_version": "psion.sampling_policy_comparison.v1",
+  "dataset_identity": "psion_corpus_tokenized@v1",
+  "baseline_policy_id": "psion_pretrain_mix",
+  "baseline_policy_version": "v0",
+  "candidate_policy_id": "psion_pretrain_mix",
+  "candidate_policy_version": "v1",
+  "lm_loss_delta_bps": -70,
+  "token_share_deltas": [
+    {
+      "content_class": "prose",
+      "baseline_token_share_bps": 5200,
+      "candidate_token_share_bps": 5600,
+      "delta_bps": 400
+    },
+    {
+      "content_class": "spec_text",
+      "baseline_token_share_bps": 4800,
+      "candidate_token_share_bps": 4400,
+      "delta_bps": -400
+    },
+    {
+      "content_class": "code",
+      "baseline_token_share_bps": 0,
+      "candidate_token_share_bps": 0,
+      "delta_bps": 0
+    }
+  ],
+  "regression_metrics": [
+    {
+      "regression_kind": "explanation_quality",
+      "baseline_score_bps": 8700,
+      "candidate_score_bps": 8740,
+      "regression_bps": 0
+    },
+    {
+      "regression_kind": "spec_interpretation",
+      "baseline_score_bps": 9050,
+      "candidate_score_bps": 9120,
+      "regression_bps": 0
+    },
+    {
+      "regression_kind": "tradeoff_reasoning",
+      "baseline_score_bps": 8840,
+      "candidate_score_bps": 8920,
+      "regression_bps": 0
+    },
+    {
+      "regression_kind": "invariant_articulation",
+      "baseline_score_bps": 8900,
+      "candidate_score_bps": 8960,
+      "regression_bps": 0
+    },
+    {
+      "regression_kind": "coding_fluency",
+      "baseline_score_bps": 7200,
+      "candidate_score_bps": 7320,
+      "regression_bps": 0
+    }
+  ],
+  "summary": "The v1 mixture shifts modestly toward explanatory prose, preserves the code ceiling at zero code share in the current corpus, improves coding fluency, and keeps explanation and reasoning metrics non-regressing."
+}

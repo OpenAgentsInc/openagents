@@ -1,0 +1,12 @@
+{
+  "schema_version": "psion.actual_pretraining_lane_spec.v1",
+  "lane_id": "psion_actual_pretraining_v1",
+  "stage_program_id": "psion_actual_pretraining_program_v1",
+  "training_run_profile": "broader_pretraining",
+  "run_root_family": "psion_actual_pretraining_runs/<run_id>",
+  "evidence_family": "psion.actual_pretraining.evidence.v1",
+  "bounded_reference_lane_id": "psion_accelerated_reference_pilot",
+  "anchor_run_bundle_ref": "fixtures/psion/trusted_cluster/psion_trusted_cluster_run_bundle_v1.json",
+  "anchor_run_bundle_digest": "b9b2af255fccfd0b18b065cfb65de7dd0eca8542eddc57a01bc42c66b1c2bbac",
+  "summary": "The canonical actual Psion pretraining lane is the broader_pretraining lane anchored to the bounded trusted-cluster run bundle and kept explicitly distinct from the accelerator-backed reference pilot."
+}

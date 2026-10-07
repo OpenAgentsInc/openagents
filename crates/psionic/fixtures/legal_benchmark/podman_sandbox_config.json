@@ -1,0 +1,32 @@
+{
+  "image": "localhost/openagents/legal-benchmark:latest",
+  "container_name": null,
+  "workdir": "/workspace",
+  "mounts": [
+    {
+      "host_path": "/var/lib/openagents/legal-benchmark/inputs",
+      "container_path": "/workspace/inputs",
+      "access": "read_only"
+    },
+    {
+      "host_path": "/var/lib/openagents/legal-benchmark/scratch",
+      "container_path": "/workspace/scratch",
+      "access": "read_write"
+    },
+    {
+      "host_path": "/var/lib/openagents/legal-benchmark/output",
+      "container_path": "/workspace/output",
+      "access": "read_write"
+    }
+  ],
+  "environment": [],
+  "cpu_limit": 2,
+  "memory_limit_mb": 4096,
+  "pid_limit": 256,
+  "timeout_ms": 120000,
+  "network_policy": "disabled",
+  "allowed_host_roots": [
+    "/var/lib/openagents/legal-benchmark"
+  ],
+  "read_only_root_filesystem": true
+}

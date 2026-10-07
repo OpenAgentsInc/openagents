@@ -1,0 +1,72 @@
+{
+  "abi_version": "psionic.apple_adapter_experiment_manifest.v2",
+  "experiment_id": "apple_adapter.psionic_architecture_explainer.reference_overfit_v1",
+  "target_id": "apple_adapter.psionic_architecture_explainer",
+  "dataset": {
+    "dataset_ref": "dataset://openagents/apple_adapter/psionic_architecture_explainer",
+    "version": "2026.03.16.2"
+  },
+  "train_split_digest": "sha256:8a6c9759880350b2a6c0fcfae7bc8d3e9bed0f6b7dfa2f7bde71bc963e766b6d",
+  "held_out_split_digest": "sha256:8a6c9759880350b2a6c0fcfae7bc8d3e9bed0f6b7dfa2f7bde71bc963e766b6d",
+  "benchmark_split_digest": "sha256:8a6c9759880350b2a6c0fcfae7bc8d3e9bed0f6b7dfa2f7bde71bc963e766b6d",
+  "corpus_manifest_digest": "sha256:79c9c418b9bd9335d23a94deae34fcc148b34b1ee2fe3dfa456d4e88987033cb",
+  "base_model_signature": "9799725ff8e851184037110b422d891ad3b92ec1",
+  "tokenizer_digest": "sha256:2e0575bd61810e1dc9c266d5a92799ce920814806dd039e7363482ecbf2485db",
+  "prompt_shaping_digest": "sha256:7d503a14f998038f0ed32d89ee75f9739947d21169feb1ab158089ee10640cdc",
+  "environment_ref": "env.openagents.apple.architecture_explainer.core",
+  "benchmark_ref": "benchmark://openagents/apple_adapter/psionic_architecture_explainer/base_vs_adapter",
+  "fidelity_plan_id": "openagents.apple.token_sequence_reference.v1",
+  "input_width": 2048,
+  "output_width": 2048,
+  "lora_targets": [
+    "layers.segment_0.layer_34.attention.qkv_transform.adapters.base_adapter.lora_0",
+    "layers.segment_0.layer_34.attention.output_transform.adapters.base_adapter",
+    "layers.segment_1.layer_20.attention.q_transform.adapters.base_adapter",
+    "layers.segment_1.layer_20.attention.output_transform.adapters.base_adapter"
+  ],
+  "lora_rank": 32,
+  "max_steps": 96,
+  "training_policy": {
+    "optimizer": {
+      "kind": "adam_w",
+      "learning_rate": 0.01,
+      "weight_decay": 0.0,
+      "gradient_clip_norm": 1.0,
+      "beta1": 0.9,
+      "beta2": 0.99,
+      "epsilon": 1e-8
+    },
+    "optimizer_residency_policy": {
+      "step_residency": "host_resident",
+      "idle_residency": "host_resident"
+    },
+    "precision_policy": "f32_reference",
+    "activation_checkpoint_policy": "disabled",
+    "packing_policy": {
+      "packing_mode": "pack_into_context_window",
+      "max_row_tokens": 304,
+      "max_batch_tokens": 608,
+      "max_rows_per_batch": 2,
+      "pad_to_multiple_of": 8,
+      "overlong_sequence_posture": "refuse"
+    },
+    "gradient_accumulation_steps": 1
+  },
+  "useful_adapter_gate": {
+    "runtime_smoke_required": true,
+    "standard_benchmark_policy": {
+      "minimum_adapter_score_bps": 9000,
+      "minimum_adapter_pass_rate_bps": 9000,
+      "minimum_score_delta_bps": 1500,
+      "minimum_pass_rate_delta_bps": 1500,
+      "minimum_improved_case_count": 4
+    },
+    "overfit_non_zero_policy": {
+      "minimum_adapter_score_bps": 1,
+      "minimum_adapter_pass_rate_bps": 1,
+      "minimum_score_delta_bps": 1,
+      "minimum_pass_rate_delta_bps": 1,
+      "minimum_improved_case_count": 1
+    }
+  }
+}

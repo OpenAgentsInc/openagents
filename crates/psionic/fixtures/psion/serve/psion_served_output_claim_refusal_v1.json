@@ -1,0 +1,45 @@
+{
+  "schema_version": "psion.served_output_claim_posture.v1",
+  "posture_id": "psion-served-output-claim-refusal-v1",
+  "capability_matrix_id": "psion_capability_matrix",
+  "capability_matrix_version": "v1",
+  "evidence_bundle_id": "psion-served-evidence-refusal-v1",
+  "evidence_bundle_digest": "5eda39ef728aeeb7eaa2025104fb5bb432ff997569047f055ffaeb0cd56d2f29",
+  "visible_claims": {
+    "learned_judgment_visible": false,
+    "source_grounding_visible": false,
+    "executor_backing_visible": false,
+    "benchmark_backing_visible": false,
+    "verification_visible": false
+  },
+  "assumptions": [
+    {
+      "assumption_id": "assume_no_published_executor_surface",
+      "kind": "environment_boundary",
+      "required_for_interpretation": true,
+      "detail": "The refusal assumes no published exact executor surface is attached on the current learned-lane endpoint, so the request must stay refused rather than answered speculatively."
+    }
+  ],
+  "behavior_visibility": {
+    "behavior": "refusal",
+    "capability_region_id": "unsupported_exact_execution_without_executor_surface",
+    "refusal_reason": "unsupported_exactness_request",
+    "detail": "The served output keeps the refusal visible and names the unsupported exactness boundary instead of hinting that hidden execution might still be available."
+  },
+  "context_envelope": {
+    "supported_prompt_tokens": 8192,
+    "supported_completion_tokens": 1024,
+    "route_required_above_prompt_tokens": 8193,
+    "hard_refusal_above_prompt_tokens": 12288,
+    "prompt_tokens_observed": 1024,
+    "detail": "The first served envelope is bounded to short-context technical reasoning. Requests above the direct window must route or refuse instead of stretching the learned lane silently."
+  },
+  "latency_envelope": {
+    "p50_first_token_latency_ms": 700,
+    "p95_first_token_latency_ms": 1200,
+    "p95_end_to_end_latency_ms": 4500,
+    "detail": "The first served envelope publishes one bounded latency band for short-context technical reasoning rather than claiming generic assistant responsiveness."
+  },
+  "summary": "Refusal claim posture showing one explicit assumption, visible typed refusal behavior, and zero unsupported source, benchmark, executor, or verification claims.",
+  "posture_digest": "9576169a3566d20e4f2b01244f6bf1ef8aef879f1231600f20bfaaea56e59a58"
+}

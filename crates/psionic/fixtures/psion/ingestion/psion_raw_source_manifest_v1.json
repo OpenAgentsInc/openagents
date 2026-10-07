@@ -1,0 +1,237 @@
+{
+  "schema_version": "psion.raw_source_manifest.v1",
+  "admission_schema_version": "psion.corpus_admission.v1",
+  "lifecycle_schema_version": "psion.source_lifecycle.v1",
+  "normalization_profile": {
+    "preprocessing_version": "psion_raw_source_preprocess_v1",
+    "normalization_steps": [
+      "unicode_nfc",
+      "normalize_line_endings",
+      "strip_running_headers",
+      "strip_boilerplate",
+      "preserve_section_anchors",
+      "preserve_page_anchors",
+      "preserve_record_anchors"
+    ],
+    "preserves_document_boundaries": true,
+    "preserves_section_boundaries": true
+  },
+  "sources": [
+    {
+      "source_id": "arch_textbook_foster_1985",
+      "source_family_id": "computer_architecture_history",
+      "source_kind": "textbook",
+      "current_rights_posture": "internal_training_only",
+      "lifecycle_state": "admitted",
+      "source_raw_digest": "sha256:f49e3e4034a28f93d4627ec2c4eaed4dc6ec9fef1db1d4c3fb3c1d9fd9c7e111",
+      "source_normalized_digest": "sha256:arch_textbook_foster_1985_normalized_source_digest_v1",
+      "documents": [
+        {
+          "document_id": "arch_textbook_foster_1985:chapter_01",
+          "order_index": 1,
+          "import_kind": "pdf_extracted_text",
+          "import_reference": "scan://arch_textbook_foster_1985/chapter-01.pdf",
+          "raw_document_digest": "sha256:arch_textbook_foster_1985_chapter_01_raw_v1",
+          "normalized_document_digest": "sha256:arch_textbook_foster_1985_chapter_01_normalized_v1",
+          "section_boundaries": [
+            {
+              "section_id": "arch_textbook_foster_1985:ch01:s01",
+              "boundary_kind": "chapter_section_anchors",
+              "order_index": 1,
+              "title": "1.1 Accumulators and Registers",
+              "start_anchor": "ch01.s01",
+              "end_anchor": "ch01.s01",
+              "normalized_section_digest": "sha256:arch_textbook_foster_1985_ch01_s01_normalized_v1"
+            },
+            {
+              "section_id": "arch_textbook_foster_1985:ch01:s02",
+              "boundary_kind": "chapter_section_anchors",
+              "order_index": 2,
+              "title": "1.2 Control Flow and Micro-Operations",
+              "start_anchor": "ch01.s02",
+              "end_anchor": "ch01.s02",
+              "normalized_section_digest": "sha256:arch_textbook_foster_1985_ch01_s02_normalized_v1"
+            }
+          ]
+        },
+        {
+          "document_id": "arch_textbook_foster_1985:chapter_02",
+          "order_index": 2,
+          "import_kind": "pdf_extracted_text",
+          "import_reference": "scan://arch_textbook_foster_1985/chapter-02.pdf",
+          "raw_document_digest": "sha256:arch_textbook_foster_1985_chapter_02_raw_v1",
+          "normalized_document_digest": "sha256:arch_textbook_foster_1985_chapter_02_normalized_v1",
+          "section_boundaries": [
+            {
+              "section_id": "arch_textbook_foster_1985:ch02:s01",
+              "boundary_kind": "chapter_section_anchors",
+              "order_index": 1,
+              "title": "2.1 Pipeline Hazards",
+              "start_anchor": "ch02.s01",
+              "end_anchor": "ch02.s01",
+              "normalized_section_digest": "sha256:arch_textbook_foster_1985_ch02_s01_normalized_v1"
+            },
+            {
+              "section_id": "arch_textbook_foster_1985:ch02:s02",
+              "boundary_kind": "chapter_section_anchors",
+              "order_index": 2,
+              "title": "2.2 Memory Hierarchy",
+              "start_anchor": "ch02.s02",
+              "end_anchor": "ch02.s02",
+              "normalized_section_digest": "sha256:arch_textbook_foster_1985_ch02_s02_normalized_v1"
+            }
+          ]
+        }
+      ],
+      "normalization_detail": "PDF-extracted textbook text normalized to NFC with running headers removed while preserving chapter and section anchors for later packing and contamination review."
+    },
+    {
+      "source_id": "spec_quiz_eval_pack_v1",
+      "source_family_id": "evaluation_only_benchmark_material",
+      "source_kind": "expert_discussion",
+      "current_rights_posture": "evaluation_only",
+      "lifecycle_state": "evaluation_only",
+      "source_raw_digest": "sha256:2a5b0862d4a0955ed8cfe2a58a9daf4a0f4be40d58077f35140711b184ee343c",
+      "source_normalized_digest": "sha256:spec_quiz_eval_pack_v1_normalized_source_digest_v1",
+      "documents": [
+        {
+          "document_id": "spec_quiz_eval_pack_v1:batch_01",
+          "order_index": 1,
+          "import_kind": "record_stream_snapshot",
+          "import_reference": "repo://private/eval/spec-reading-review-pack-v1/batch-01.jsonl",
+          "raw_document_digest": "sha256:spec_quiz_eval_pack_v1_batch_01_raw_v1",
+          "normalized_document_digest": "sha256:spec_quiz_eval_pack_v1_batch_01_normalized_v1",
+          "section_boundaries": [
+            {
+              "section_id": "spec_quiz_eval_pack_v1:record_0001",
+              "boundary_kind": "record_anchors",
+              "order_index": 1,
+              "title": "record 0001",
+              "start_anchor": "record-0001",
+              "end_anchor": "record-0001",
+              "normalized_section_digest": "sha256:spec_quiz_eval_pack_v1_record_0001_normalized_v1"
+            },
+            {
+              "section_id": "spec_quiz_eval_pack_v1:record_0002",
+              "boundary_kind": "record_anchors",
+              "order_index": 2,
+              "title": "record 0002",
+              "start_anchor": "record-0002",
+              "end_anchor": "record-0002",
+              "normalized_section_digest": "sha256:spec_quiz_eval_pack_v1_record_0002_normalized_v1"
+            }
+          ]
+        }
+      ],
+      "normalization_detail": "Evaluation-only review records stay as a structured record stream with record anchors preserved for held-out isolation and benchmark invalidation."
+    },
+    {
+      "source_id": "vendor_manual_private_scan_v1",
+      "source_family_id": "historical_vendor_manuals",
+      "source_kind": "manual",
+      "current_rights_posture": "tokenizer_only",
+      "lifecycle_state": "restricted",
+      "source_raw_digest": "sha256:fc7016f8d3f3156f8ea442f04bad5e8951db94ef729477f4db91ba7f14a17a79",
+      "source_normalized_digest": "sha256:vendor_manual_private_scan_v1_normalized_source_digest_v1",
+      "documents": [
+        {
+          "document_id": "vendor_manual_private_scan_v1:pages_001_040",
+          "order_index": 1,
+          "import_kind": "pdf_extracted_text",
+          "import_reference": "scan://vendor_manual_private_scan_v1/pages-001-040.pdf",
+          "raw_document_digest": "sha256:vendor_manual_private_scan_v1_pages_001_040_raw_v1",
+          "normalized_document_digest": "sha256:vendor_manual_private_scan_v1_pages_001_040_normalized_v1",
+          "section_boundaries": [
+            {
+              "section_id": "vendor_manual_private_scan_v1:p001-p008",
+              "boundary_kind": "page_range_anchors",
+              "order_index": 1,
+              "title": "pages 1-8",
+              "start_anchor": "page-001",
+              "end_anchor": "page-008",
+              "normalized_section_digest": "sha256:vendor_manual_private_scan_v1_p001_p008_normalized_v1"
+            },
+            {
+              "section_id": "vendor_manual_private_scan_v1:p009-p016",
+              "boundary_kind": "page_range_anchors",
+              "order_index": 2,
+              "title": "pages 9-16",
+              "start_anchor": "page-009",
+              "end_anchor": "page-016",
+              "normalized_section_digest": "sha256:vendor_manual_private_scan_v1_p009_p016_normalized_v1"
+            }
+          ]
+        }
+      ],
+      "normalization_detail": "Restricted tokenizer-only manual pages are ingested with page anchors preserved so later exclusion and removal analysis can target the exact page ranges."
+    },
+    {
+      "source_id": "wasm_core_spec_release_2",
+      "source_family_id": "normative_specs",
+      "source_kind": "specification",
+      "current_rights_posture": "internal_training_and_internal_serving",
+      "lifecycle_state": "admitted",
+      "source_raw_digest": "sha256:90e5f0b8fd75251e1c95570bc8ca497f69c46f91431d4d74cc095fd606ac7d0c",
+      "source_normalized_digest": "sha256:wasm_core_spec_release_2_normalized_source_digest_v1",
+      "documents": [
+        {
+          "document_id": "wasm_core_spec_release_2:chapter_01",
+          "order_index": 1,
+          "import_kind": "html_snapshot",
+          "import_reference": "https://www.w3.org/TR/wasm-core-2/syntax/index.html",
+          "raw_document_digest": "sha256:wasm_core_spec_release_2_chapter_01_raw_v1",
+          "normalized_document_digest": "sha256:wasm_core_spec_release_2_chapter_01_normalized_v1",
+          "section_boundaries": [
+            {
+              "section_id": "wasm_core_spec_release_2:1.1",
+              "boundary_kind": "chapter_section_anchors",
+              "order_index": 1,
+              "title": "1.1 Values",
+              "start_anchor": "sec-values",
+              "end_anchor": "sec-values",
+              "normalized_section_digest": "sha256:wasm_core_spec_release_2_1_1_normalized_v1"
+            },
+            {
+              "section_id": "wasm_core_spec_release_2:1.2",
+              "boundary_kind": "chapter_section_anchors",
+              "order_index": 2,
+              "title": "1.2 Instructions",
+              "start_anchor": "sec-instructions",
+              "end_anchor": "sec-instructions",
+              "normalized_section_digest": "sha256:wasm_core_spec_release_2_1_2_normalized_v1"
+            }
+          ]
+        },
+        {
+          "document_id": "wasm_core_spec_release_2:chapter_02",
+          "order_index": 2,
+          "import_kind": "html_snapshot",
+          "import_reference": "https://www.w3.org/TR/wasm-core-2/valid/index.html",
+          "raw_document_digest": "sha256:wasm_core_spec_release_2_chapter_02_raw_v1",
+          "normalized_document_digest": "sha256:wasm_core_spec_release_2_chapter_02_normalized_v1",
+          "section_boundaries": [
+            {
+              "section_id": "wasm_core_spec_release_2:2.1",
+              "boundary_kind": "chapter_section_anchors",
+              "order_index": 1,
+              "title": "2.1 Validation Contexts",
+              "start_anchor": "validation-contexts",
+              "end_anchor": "validation-contexts",
+              "normalized_section_digest": "sha256:wasm_core_spec_release_2_2_1_normalized_v1"
+            },
+            {
+              "section_id": "wasm_core_spec_release_2:2.2",
+              "boundary_kind": "chapter_section_anchors",
+              "order_index": 2,
+              "title": "2.2 Instruction Validation",
+              "start_anchor": "instruction-validation",
+              "end_anchor": "instruction-validation",
+              "normalized_section_digest": "sha256:wasm_core_spec_release_2_2_2_normalized_v1"
+            }
+          ]
+        }
+      ],
+      "normalization_detail": "Normative HTML snapshots are normalized with boilerplate removed while preserving stable spec section anchors for later routing, packing, and contamination review."
+    }
+  ]
+}

@@ -1,0 +1,32 @@
+[package]
+name = "psionic-observe"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+publish.workspace = true
+description = "Runtime telemetry and observation helpers for Psionic serving and transport surfaces"
+
+[lints]
+workspace = true
+
+[lib]
+path = "src/lib.rs"
+doctest = false
+
+[features]
+default = []
+tokio-runtime-telemetry = ["dep:dial9-tokio-telemetry"]
+tokio-runtime-telemetry-cpu = [
+  "tokio-runtime-telemetry",
+  "dial9-tokio-telemetry/cpu-profiling",
+]
+
+[dependencies]
+dial9-tokio-telemetry = { version = "0.2.0", optional = true }
+serde = { workspace = true }
+thiserror = { workspace = true }
+tokio = { workspace = true }
+
+[dev-dependencies]
+tempfile = "3"

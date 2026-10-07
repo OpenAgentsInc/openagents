@@ -1,0 +1,45 @@
+{
+  "schema_version": "psion.served_output_claim_posture.v1",
+  "posture_id": "psion-served-output-claim-executor-backed-v1",
+  "capability_matrix_id": "psion_capability_matrix",
+  "capability_matrix_version": "v1",
+  "evidence_bundle_id": "psion-served-evidence-executor-backed-v1",
+  "evidence_bundle_digest": "15555a1a3b5873198a8b0966571cd52fb61c663b69d0d212d08fbfcf08b1bbf8",
+  "visible_claims": {
+    "learned_judgment_visible": false,
+    "source_grounding_visible": false,
+    "executor_backing_visible": true,
+    "benchmark_backing_visible": false,
+    "verification_visible": false
+  },
+  "assumptions": [
+    {
+      "assumption_id": "assume_declared_executor_inputs",
+      "kind": "input_constraint",
+      "required_for_interpretation": true,
+      "detail": "The exact result only covers the declared inputs and the attached executor artifact; it does not widen into benchmark proof or formal verification claims."
+    }
+  ],
+  "behavior_visibility": {
+    "behavior": "route",
+    "route_kind": "exact_executor_handoff",
+    "route_class": "delegate_to_exact_executor",
+    "detail": "The served output makes the exact-executor handoff visible instead of presenting the result as if the learned lane executed it directly."
+  },
+  "context_envelope": {
+    "supported_prompt_tokens": 8192,
+    "supported_completion_tokens": 1024,
+    "route_required_above_prompt_tokens": 8193,
+    "hard_refusal_above_prompt_tokens": 12288,
+    "prompt_tokens_observed": 4096,
+    "detail": "The first served envelope is bounded to short-context technical reasoning. Requests above the direct window must route or refuse instead of stretching the learned lane silently."
+  },
+  "latency_envelope": {
+    "p50_first_token_latency_ms": 700,
+    "p95_first_token_latency_ms": 1200,
+    "p95_end_to_end_latency_ms": 4500,
+    "detail": "The first served envelope publishes one bounded latency band for short-context technical reasoning rather than claiming generic assistant responsiveness."
+  },
+  "summary": "Executor-backed claim posture showing one explicit handoff, one executor-backed claim, and no unsupported verification or benchmark-proof implication.",
+  "posture_digest": "48f37b9ea2bb788b89f74520247f7681fb26a431f09d5d8f8fbd9a58ca340ec4"
+}

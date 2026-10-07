@@ -1,0 +1,109 @@
+{
+  "schema_version": "psion.artifact_lineage.v1",
+  "lifecycle_schema_version": "psion.source_lifecycle.v1",
+  "tokenizer_artifacts": [
+    {
+      "artifact_id": "psion_tokenizer_seed_v1",
+      "artifact_digest": "sha256:2536e3e41c96991d0f7ad27a24df2fb0848b36ae8539ef8e767a53a7a8d868ef",
+      "source_ids": [
+        "arch_textbook_foster_1985",
+        "wasm_core_spec_release_2",
+        "vendor_manual_private_scan_v1"
+      ]
+    }
+  ],
+  "tokenized_corpora": [
+    {
+      "corpus_id": "psion_seed_corpus_v1",
+      "corpus_digest": "sha256:bc4baf13fdb6dd08ca8c5fb00ca6f56b529149f3e59fd61c0a52f03dd725fabc",
+      "tokenizer_artifact_id": "psion_tokenizer_seed_v1",
+      "source_ids": [
+        "arch_textbook_foster_1985",
+        "wasm_core_spec_release_2"
+      ]
+    }
+  ],
+  "sft_artifacts": [
+    {
+      "artifact_id": "psion_reasoning_sft_seed_v1",
+      "artifact_digest": "sha256:4e70445d9956523ed129d4af1e3ecb728ea708134bf3000219de960b0b1d4f54",
+      "tokenized_corpus_ids": [
+        "psion_seed_corpus_v1"
+      ],
+      "source_ids": [
+        "wasm_core_spec_release_2"
+      ]
+    }
+  ],
+  "checkpoints": [
+    {
+      "checkpoint_id": "psion_pilot_checkpoint_v1",
+      "checkpoint_digest": "sha256:ca8ee0f406c3508e75b43405628de4a414f0f6de257c0df6d83f9e1aecdfd602",
+      "tokenized_corpus_ids": [
+        "psion_seed_corpus_v1"
+      ],
+      "sft_artifact_ids": [
+        "psion_reasoning_sft_seed_v1"
+      ],
+      "source_ids": [
+        "arch_textbook_foster_1985",
+        "wasm_core_spec_release_2"
+      ]
+    }
+  ],
+  "benchmark_artifacts": [
+    {
+      "benchmark_id": "psion_spec_reading_benchmark_v1",
+      "benchmark_digest": "sha256:d1314a2590e971180f5f1a69ddf4ea8ba21059f4f5f3591d58ad8f8c8e72b60b",
+      "source_ids": [
+        "spec_quiz_eval_pack_v1",
+        "wasm_core_spec_release_2"
+      ]
+    },
+    {
+      "benchmark_id": "psion_architecture_reasoning_benchmark_v1",
+      "benchmark_digest": "703142f680a8a2702700fcdd18309b24d6e7889e07c4621e287178c9ac6af674",
+      "source_ids": [
+        "spec_quiz_eval_pack_v1"
+      ]
+    },
+    {
+      "benchmark_id": "psion_normative_spec_benchmark_v1",
+      "benchmark_digest": "dd5741c92863fe4525d67eadd513b955b01f97adb9aa0f1cfa22619e8b273b32",
+      "source_ids": [
+        "spec_quiz_eval_pack_v1",
+        "wasm_core_spec_release_2"
+      ]
+    },
+    {
+      "benchmark_id": "psion_engineering_spec_benchmark_v1",
+      "benchmark_digest": "2223c33a7301921ee440a29936d734428ebd6c4a507a12fe4e60c76afad5445a",
+      "source_ids": [
+        "spec_quiz_eval_pack_v1",
+        "wasm_core_spec_release_2"
+      ]
+    },
+    {
+      "benchmark_id": "psion_memorization_reasoning_benchmark_v1",
+      "benchmark_digest": "599e61d8c6bb7f599042672aaef51b53f4401856437be2a1e688276134cb24a3",
+      "source_ids": [
+        "spec_quiz_eval_pack_v1",
+        "wasm_core_spec_release_2"
+      ]
+    },
+    {
+      "benchmark_id": "psion_route_benchmark_v1",
+      "benchmark_digest": "76c517290e29616bf424831b637833006dc16b9a70bd8b0162ca6b5a90efa954",
+      "source_ids": [
+        "spec_quiz_eval_pack_v1"
+      ]
+    },
+    {
+      "benchmark_id": "psion_unsupported_request_refusal_benchmark_v1",
+      "benchmark_digest": "73274857b551ca89edd96a200c60d25992a0aaa62a5cb25a1c369f518e8c42c4",
+      "source_ids": [
+        "spec_quiz_eval_pack_v1"
+      ]
+    }
+  ]
+}

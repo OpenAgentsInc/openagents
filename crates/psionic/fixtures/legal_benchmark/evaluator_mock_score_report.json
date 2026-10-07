@@ -1,0 +1,83 @@
+{
+  "schema_version": 1,
+  "score_report_id": "score.run.eval.mock.judge.legal.v1",
+  "run_id": "run.eval.mock",
+  "task_id": "legal.eval.mock",
+  "task_version": "v1",
+  "run_record_hash": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+  "output_artifact_manifest_hash": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+  "all_pass": true,
+  "criterion_pass_rate_bps": 10000,
+  "criterion_results": [
+    {
+      "criterion_id": "criterion.memo.exists",
+      "passed": true,
+      "verdict": "pass",
+      "reasoning": "mock judge passed the criterion",
+      "evidence_refs": ["memo"],
+      "judge_model": "mock-judge",
+      "judge_prompt_hash": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+      "raw_response_hash": "dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
+      "confidence_bps": 10000,
+      "judge_latency_ms": 1,
+      "judge_cost_micro_usd": 0
+    }
+  ],
+  "metrics": {
+    "model_turns": 1,
+    "tool_call_count": 0,
+    "input_tokens": 10,
+    "output_tokens": 5,
+    "wall_time_ms": 101,
+    "estimated_cost_micro_usd": 12
+  },
+  "document_coverage_bps": 10000,
+  "failure_diagnostics": [],
+  "extraction_receipt_refs": ["extract.1"],
+  "coverage_snapshot": {
+    "schema_version": 1,
+    "mode": "integrity",
+    "hidden_criteria_visible": false,
+    "derived_checklist_items": [],
+    "documents": [
+      {
+        "artifact_id": "source.memo",
+        "relative_path": "case.txt",
+        "discovered": true,
+        "read": true,
+        "used_extracted_text": true
+      }
+    ],
+    "facts": [
+      {
+        "fact_id": "fact.case.0",
+        "source_ref": "case.txt",
+        "text_hash": "eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee",
+        "method": "read"
+      }
+    ],
+    "evidence_refs": [],
+    "deliverable_sections": [
+      {
+        "deliverable_id": "memo",
+        "relative_path": "memo.md",
+        "section_id": "output_manifest.artifact.output.0",
+        "drafted": true
+      }
+    ],
+    "validations": [
+      {
+        "validation_id": "validation.deliverable.memo",
+        "target_ref": "memo",
+        "passed": true,
+        "detail": "deliverable memo.md exists"
+      }
+    ],
+    "self_checks": []
+  },
+  "failure_comparisons": [],
+  "metadata": {
+    "precheck_count": 2,
+    "judge_prompt_template_hash": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc"
+  }
+}

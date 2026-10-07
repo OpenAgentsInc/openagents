@@ -1,0 +1,78 @@
+{
+  "schema_version": 1,
+  "report_id": "parameter_golf.record_export_surface_contract.v1",
+  "challenge_repo_readme_ref": "README.md",
+  "package_version": "2026.03.18.non_record_submission.v2",
+  "submission_id": "2026-03-18_psionic_local_reference_runtime_replay_v2",
+  "record_folder_relpath": "records/track_non_record_16mb/2026-03-18_psionic_local_reference_runtime_replay_v2",
+  "entrypoint_path": "train_gpt.py",
+  "default_execution_mode": "local_reference_validation",
+  "additional_execution_modes": [
+    "single_h100_train",
+    "distributed_8xh100_train"
+  ],
+  "contest_faithful_to_readme_train_gpt_surface": false,
+  "counted_code_lives_only_in_train_gpt_py": false,
+  "ships_additional_executable_payloads": true,
+  "folder_local_self_contained_execution": true,
+  "judgment": "maintainer_equivalence_argument",
+  "judgment_detail": "The current exported folder is not literally README-faithful because executable counted code spans the top-level train_gpt.py launcher plus two shipped Psionic runtime binaries. The difference is now explicit rather than implied: the report binds the exact launcher, replay runtime, real single-H100 trainer, distributed 8xH100 runtime lane, runtime manifest, real execution contract, and immutable input-package descriptor bytes so maintainers can review one concrete equivalence argument instead of inferring it from scattered artifacts.",
+  "relevant_artifacts": [
+    {
+      "relative_path": "train_gpt.py",
+      "role": "entrypoint",
+      "artifact_digest": "9f52fcca32581e8ab38493636cb6f5fa4046ff8ad56683961fc4f41385d1fcd3",
+      "size_bytes": 2252,
+      "counts_toward_artifact_cap": true,
+      "detail": "required top-level entrypoint named by the public README; all later execution modes still flow through this launcher"
+    },
+    {
+      "relative_path": "runtime/parameter_golf_submission_runtime",
+      "role": "runtime_payload",
+      "artifact_digest": "29c8d73fde94af8ea77452b699535394f23ab9a42e422cace66c2954883b3a1d",
+      "size_bytes": 5985264,
+      "counts_toward_artifact_cap": true,
+      "detail": "default exported-folder executable payload for bounded local-reference replay"
+    },
+    {
+      "relative_path": "runtime/parameter_golf_single_h100_train",
+      "role": "real_runtime_payload",
+      "artifact_digest": "0046566d6972c16f30d61bf938a787dcdf481a0da6c33a67c5ff451335cee1e9",
+      "size_bytes": 3535856,
+      "counts_toward_artifact_cap": true,
+      "detail": "additional exported-folder executable payload for explicit single-H100 trainer dispatch"
+    },
+    {
+      "relative_path": "runtime/parameter_golf_submission_runtime.json",
+      "role": "runtime_manifest",
+      "artifact_digest": "2e7f04019874d7c457bf739669164482d30c99d7957a6f7f209187f630f691b7",
+      "size_bytes": 4348,
+      "counts_toward_artifact_cap": false,
+      "detail": "machine-readable manifest that binds train_gpt.py to the shipped default runtime surface"
+    },
+    {
+      "relative_path": "runtime/parameter_golf_real_execution_contract.json",
+      "role": "real_execution_contract",
+      "artifact_digest": "20ee7f626a96fb18d4e950c97054a2b631020358e178fc1c05974b9e9fcb59c8",
+      "size_bytes": 972,
+      "counts_toward_artifact_cap": false,
+      "detail": "machine-readable contract that widens the entrypoint into explicit single-H100 trainer execution"
+    },
+    {
+      "relative_path": "runtime/parameter_golf_google_input_package_descriptor_v1.json",
+      "role": "runtime_input_package_descriptor",
+      "artifact_digest": "87258feec92a022896596511b22e064ba6fa18140af60c53b0b0988caf69b475",
+      "size_bytes": 2412,
+      "counts_toward_artifact_cap": false,
+      "detail": "immutable remote-input descriptor carried forward into the explicit real-execution path"
+    }
+  ],
+  "evidence_refs": [
+    "docs/PARAMETER_GOLF_NON_RECORD_SUBMISSION.md",
+    "docs/PARAMETER_GOLF_EXPORTED_SUBMISSION_EVIDENCE.md",
+    "docs/PARAMETER_GOLF_RECORD_TRACK_CONTRACT.md",
+    "fixtures/parameter_golf/reports/parameter_golf_submission_run_evidence.json"
+  ],
+  "claim_boundary": "This report answers only the exported record-surface question. It makes the current train_gpt.py-versus-shipped-runtime difference explicit for maintainer review, but it does not by itself prove record-track acceptance or close the 8xH100 execution lane.",
+  "report_digest": "d89b16c798bf6a1591fd6604ddef0546c9cf0e0abb7033930cb01008b3b5652f"
+}

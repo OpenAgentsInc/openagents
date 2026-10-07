@@ -1,0 +1,132 @@
+{
+  "schema_version": "psion.a1_minimal_distributed_lm.local_update_report.v1",
+  "lane_id": "a1_minimal_distributed_lm_001",
+  "run_id": "a1_minimal_distributed_lm_001.local_update_fixture",
+  "assignment_id": "a1_minimal_distributed_lm_001.local_update.assignment.fixture",
+  "worker_id": "psionic.local_update.fixture.worker",
+  "tokenizer_digest": "sha256:e32b619b67029aba5de26391f9a5f4a32801220ca690ae2c89d565e61069cf63",
+  "tokenized_dataset_digest": "sha256:f0b92dc6301fc72e05a4ead6d85a4b5706e51267c116ecd72025a90c43a37905",
+  "validation_set_digest": "sha256:6c1c6ca83a2d8eca6cb133f3ec719e822f134452723e72e5201407b28cd3d228",
+  "base_checkpoint_ref": "base://a1_minimal_distributed_lm/step-000000",
+  "backward_path_kind": "analytic_lm_head_cross_entropy_backward_v1",
+  "finite_difference_used": false,
+  "trained_parameter_paths": [
+    "lm_head.weight"
+  ],
+  "local_step_count": 4,
+  "consumed_token_count": 8,
+  "deterministic_cursor_before": 0,
+  "deterministic_cursor_after": 4,
+  "loss_before": 5.613701,
+  "loss_after": 5.565771,
+  "validation_loss_before": 5.6042047,
+  "validation_loss_after": 5.559738,
+  "steps": [
+    {
+      "step_number": 1,
+      "deterministic_cursor_before": 0,
+      "deterministic_cursor_after": 1,
+      "train_batch_start_positions": [
+        0
+      ],
+      "consumed_token_count": 2,
+      "learning_rate": 0.15,
+      "loss_before": 5.613701,
+      "loss_after": 5.0963583,
+      "gradient_clip": {
+        "gradient_norm_l2_before": 0.9873553,
+        "gradient_norm_l2_after": 0.9873553,
+        "clipping_ratio": 1.0
+      },
+      "model_state_digest_before": "5b4be58863fae6ec4a16e83fac0b74d2e57d22d55f3d05d9457e326e43660ad2",
+      "model_state_digest_after": "e5f22a46f144f4a3c28cedf44f29c2e5ee164bf4f901c363be0a9d517406e82e",
+      "optimizer_state_digest_after": "sha256:4e238778568c6499a95ce115625c9754a6c0b86dff8cbf16aa7e08d5c38b0f7a"
+    },
+    {
+      "step_number": 2,
+      "deterministic_cursor_before": 1,
+      "deterministic_cursor_after": 2,
+      "train_batch_start_positions": [
+        1
+      ],
+      "consumed_token_count": 2,
+      "learning_rate": 0.15,
+      "loss_before": 5.296764,
+      "loss_after": 4.8377867,
+      "gradient_clip": {
+        "gradient_norm_l2_before": 0.96091664,
+        "gradient_norm_l2_after": 0.96091664,
+        "clipping_ratio": 1.0
+      },
+      "model_state_digest_before": "e5f22a46f144f4a3c28cedf44f29c2e5ee164bf4f901c363be0a9d517406e82e",
+      "model_state_digest_after": "74a9bc9febed57e854bb29f10504ab0629d635814f9c732ebf01f891310162ff",
+      "optimizer_state_digest_after": "sha256:ed0a1ab20096452b0f60a6a75da9cb695b698eac8f6148f98494371f1b2f4a5f"
+    },
+    {
+      "step_number": 3,
+      "deterministic_cursor_before": 2,
+      "deterministic_cursor_after": 3,
+      "train_batch_start_positions": [
+        2
+      ],
+      "consumed_token_count": 2,
+      "learning_rate": 0.11750001,
+      "loss_before": 5.41555,
+      "loss_after": 5.2481923,
+      "gradient_clip": {
+        "gradient_norm_l2_before": 0.96059674,
+        "gradient_norm_l2_after": 0.96059674,
+        "clipping_ratio": 1.0
+      },
+      "model_state_digest_before": "74a9bc9febed57e854bb29f10504ab0629d635814f9c732ebf01f891310162ff",
+      "model_state_digest_after": "5a956d54c55a27662098b3ff3891d0477232f80ce78df34ddd40d9e9bc618492",
+      "optimizer_state_digest_after": "sha256:b9fabc14952615b1f26ec0ed058441800baf3a2f7a732a25601f6f0b4cbf9aed"
+    },
+    {
+      "step_number": 4,
+      "deterministic_cursor_before": 3,
+      "deterministic_cursor_after": 4,
+      "train_batch_start_positions": [
+        3
+      ],
+      "consumed_token_count": 2,
+      "learning_rate": 0.0525,
+      "loss_before": 5.6068892,
+      "loss_after": 5.565771,
+      "gradient_clip": {
+        "gradient_norm_l2_before": 0.9833733,
+        "gradient_norm_l2_after": 0.9833733,
+        "clipping_ratio": 1.0
+      },
+      "model_state_digest_before": "5a956d54c55a27662098b3ff3891d0477232f80ce78df34ddd40d9e9bc618492",
+      "model_state_digest_after": "7634b5a3972e0651d6fda3279793b97c2e82e2bcb7e2059ff51dbcbf09c41688",
+      "optimizer_state_digest_after": "sha256:646f5ca8e2f5d324dba85e7fde7fe5aa80b3b4ace743573ec1348ae920739059"
+    }
+  ],
+  "checkpoint_step2": {
+    "checkpoint_path": "fixtures/psion/a1_minimal_distributed_lm/local_update_checkpoint_step2_v1.json",
+    "checkpoint_digest": "sha256:12f2f34a319b687f7dfe99b3e2fafe70b7dc33154293ebd9f06bccbfbdb4c64f",
+    "optimizer_step": 2,
+    "deterministic_cursor": 2,
+    "model_state_digest": "74a9bc9febed57e854bb29f10504ab0629d635814f9c732ebf01f891310162ff",
+    "optimizer_state_digest": "sha256:ed0a1ab20096452b0f60a6a75da9cb695b698eac8f6148f98494371f1b2f4a5f",
+    "checkpoint_byte_count": 62393
+  },
+  "checkpoint_step4": {
+    "checkpoint_path": "fixtures/psion/a1_minimal_distributed_lm/local_update_checkpoint_step4_v1.json",
+    "checkpoint_digest": "sha256:51b5dbdf4e5d5b75cf8293fac62f4f2287575b2eedca70e529a56409ee568919",
+    "optimizer_step": 4,
+    "deterministic_cursor": 4,
+    "model_state_digest": "7634b5a3972e0651d6fda3279793b97c2e82e2bcb7e2059ff51dbcbf09c41688",
+    "optimizer_state_digest": "sha256:646f5ca8e2f5d324dba85e7fde7fe5aa80b3b4ace743573ec1348ae920739059",
+    "checkpoint_byte_count": 62727
+  },
+  "resumed_final_model_state_digest": "7634b5a3972e0651d6fda3279793b97c2e82e2bcb7e2059ff51dbcbf09c41688",
+  "uninterrupted_final_model_state_digest": "7634b5a3972e0651d6fda3279793b97c2e82e2bcb7e2059ff51dbcbf09c41688",
+  "resumed_final_optimizer_state_digest": "sha256:646f5ca8e2f5d324dba85e7fde7fe5aa80b3b4ace743573ec1348ae920739059",
+  "uninterrupted_final_optimizer_state_digest": "sha256:646f5ca8e2f5d324dba85e7fde7fe5aa80b3b4ace743573ec1348ae920739059",
+  "resume_matches_uninterrupted": true,
+  "delta_digest": "sha256:2ccbf7ea2a89e8403212e2985c6d0a158568bfafe5141eed8a0214864092d7c1",
+  "report_digest": "sha256:f643547ad6002ea4028b9cf3f0993f02679cf974eb02ac002606e40a8a3ceec8",
+  "claim_boundary": "This is the first production local-update proof for a1_minimal_distributed_lm_001. It uses analytic LM-head-only cross-entropy backward over Transformer forward hidden states, not finite-difference gradients and not full Transformer backward."
+}

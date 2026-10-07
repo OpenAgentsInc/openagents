@@ -1,0 +1,97 @@
+{
+  "schema_version": "psion.sampling_policy.v1",
+  "tokenized_corpus_schema_version": "psion.tokenized_corpus_manifest.v1",
+  "raw_source_schema_version": "psion.raw_source_manifest.v1",
+  "dataset_identity": "psion_corpus_tokenized@v1",
+  "policy_id": "psion_pretrain_mix",
+  "policy_version": "v1",
+  "packing_policy_version": "v1",
+  "maximum_code_token_ratio_bps": 1500,
+  "source_family_weights": [
+    {
+      "source_family_id": "computer_architecture_history",
+      "content_class": "prose",
+      "sampling_weight_bps": 5400,
+      "maximum_family_token_share_bps": 6000,
+      "rationale": "Bias slightly toward explanatory architecture prose so the lane explains systems decisions instead of only restating specs."
+    },
+    {
+      "source_family_id": "normative_specs",
+      "content_class": "spec_text",
+      "sampling_weight_bps": 4600,
+      "maximum_family_token_share_bps": 5000,
+      "rationale": "Keep strong specification coverage without letting normative boilerplate crowd out explanation quality."
+    }
+  ],
+  "source_contribution_caps": [
+    {
+      "source_id": "arch_textbook_foster_1985",
+      "maximum_source_token_share_bps": 6000,
+      "rationale": "The current prose anchor may lead but may not exceed the declared prose ceiling."
+    },
+    {
+      "source_id": "wasm_core_spec_release_2",
+      "maximum_source_token_share_bps": 5000,
+      "rationale": "The primary specification anchor may not exceed the declared spec-text ceiling."
+    }
+  ],
+  "repetitive_region_controls": [
+    {
+      "source_id": "arch_textbook_foster_1985",
+      "document_id": "arch_textbook_foster_1985:chapter_01",
+      "section_id": "arch_textbook_foster_1985:ch01:s02",
+      "downweight_multiplier_bps": 5000,
+      "maximum_region_token_share_bps": 1200,
+      "rationale": "Repeated micro-operation passages stay visible but are down-weighted so they do not flatten prose variety."
+    },
+    {
+      "source_id": "wasm_core_spec_release_2",
+      "document_id": "wasm_core_spec_release_2:chapter_02",
+      "section_id": "wasm_core_spec_release_2:2.1",
+      "downweight_multiplier_bps": 6000,
+      "maximum_region_token_share_bps": 1400,
+      "rationale": "Validation-context boilerplate is retained for grounding while being prevented from dominating the spec slice."
+    }
+  ],
+  "content_class_token_share_report": [
+    {
+      "content_class": "prose",
+      "observed_token_share_bps": 5600
+    },
+    {
+      "content_class": "spec_text",
+      "observed_token_share_bps": 4400
+    },
+    {
+      "content_class": "code",
+      "observed_token_share_bps": 0
+    }
+  ],
+  "regression_thresholds": [
+    {
+      "regression_kind": "explanation_quality",
+      "maximum_regression_bps": 150,
+      "rationale": "Explanatory quality may not regress materially when the mixture changes."
+    },
+    {
+      "regression_kind": "spec_interpretation",
+      "maximum_regression_bps": 100,
+      "rationale": "Specification interpretation is a core Psion bar."
+    },
+    {
+      "regression_kind": "tradeoff_reasoning",
+      "maximum_regression_bps": 100,
+      "rationale": "Tradeoff reasoning must remain stable across mixture updates."
+    },
+    {
+      "regression_kind": "invariant_articulation",
+      "maximum_regression_bps": 100,
+      "rationale": "Invariant articulation must not erode under corpus expansion."
+    },
+    {
+      "regression_kind": "coding_fluency",
+      "maximum_regression_bps": 300,
+      "rationale": "Coding fluency is tracked, but it does not outrank reasoning quality."
+    }
+  ]
+}

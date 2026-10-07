@@ -1,0 +1,78 @@
+{
+  "schema_version": "psion.tokenizer_artifact_bundle.v1",
+  "tokenizer_id": "psion_sentencepiece_seed",
+  "tokenizer_version": "v1",
+  "training_manifest_schema_version": "psion.tokenizer_training_manifest.v1",
+  "raw_source_schema_version": "psion.raw_source_manifest.v1",
+  "exclusion_schema_version": "psion.benchmark_isolation.v1",
+  "preprocessing_version": "psion_raw_source_preprocess_v1",
+  "tokenizer_config_digest": "sha256:psion_sentencepiece_seed_config_digest_v1",
+  "tokenizer": {
+    "family": "sentence_piece",
+    "tokenizer_digest": "sha256:psion_sentencepiece_seed_tokenizer_digest_v1",
+    "vocab_size": 32768,
+    "special_tokens_digest": "sha256:psion_sentencepiece_seed_added_tokens_digest_v1",
+    "template_digest": "sha256:psion_sentencepiece_seed_config_digest_v1"
+  },
+  "vocabulary_artifact": {
+    "artifact_id": "psion_sentencepiece_seed:v1:vocabulary_bundle",
+    "artifact_format": "sentence_piece_model_bundle",
+    "vocabulary_digest": "sha256:psion_sentencepiece_seed_vocabulary_digest_v1",
+    "tokenizer_model_digest": "sha256:psion_sentencepiece_seed_model_digest_v1",
+    "added_tokens_digest": "sha256:psion_sentencepiece_seed_added_tokens_digest_v1"
+  },
+  "admitted_sources": [
+    {
+      "source_id": "arch_textbook_foster_1985",
+      "source_family_id": "computer_architecture_history",
+      "source_normalized_digest": "sha256:arch_textbook_foster_1985_normalized_source_digest_v1"
+    },
+    {
+      "source_id": "vendor_manual_private_scan_v1",
+      "source_family_id": "historical_vendor_manuals",
+      "source_normalized_digest": "sha256:vendor_manual_private_scan_v1_normalized_source_digest_v1"
+    },
+    {
+      "source_id": "wasm_core_spec_release_2",
+      "source_family_id": "normative_specs",
+      "source_normalized_digest": "sha256:wasm_core_spec_release_2_normalized_source_digest_v1"
+    }
+  ],
+  "excluded_sources": [
+    {
+      "source_id": "spec_quiz_eval_pack_v1",
+      "source_family_id": "evaluation_only_benchmark_material",
+      "source_normalized_digest": "sha256:spec_quiz_eval_pack_v1_normalized_source_digest_v1"
+    }
+  ],
+  "exposure_report": [
+    {
+      "source_id": "arch_textbook_foster_1985",
+      "tokenizer_exposed": true,
+      "tokenizer_only_exposure": false,
+      "model_training_exposed": true,
+      "detail": "Admitted historical textbook is visible to both tokenizer and model-training lanes."
+    },
+    {
+      "source_id": "spec_quiz_eval_pack_v1",
+      "tokenizer_exposed": false,
+      "tokenizer_only_exposure": false,
+      "model_training_exposed": false,
+      "detail": "Evaluation-only review pack stays excluded from tokenizer training."
+    },
+    {
+      "source_id": "vendor_manual_private_scan_v1",
+      "tokenizer_exposed": true,
+      "tokenizer_only_exposure": true,
+      "model_training_exposed": false,
+      "detail": "Restricted manual stays tokenizer-visible for vocabulary coverage while remaining excluded from model training."
+    },
+    {
+      "source_id": "wasm_core_spec_release_2",
+      "tokenizer_exposed": true,
+      "tokenizer_only_exposure": false,
+      "model_training_exposed": true,
+      "detail": "Normative spec is visible to tokenizer and model-training lanes under the admitted posture."
+    }
+  ]
+}

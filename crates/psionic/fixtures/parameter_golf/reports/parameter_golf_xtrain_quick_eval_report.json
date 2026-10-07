@@ -1,0 +1,50 @@
+{
+  "schema_version": "psionic.parameter_golf_xtrain_quick_eval_report.v1",
+  "report_id": "parameter-golf-xtrain-quick-eval-window1-retained",
+  "profile_id": "psion_small_decoder_pgolf_core_v0",
+  "xtrain_run_id": "parameter-golf-promoted-general-xtrain-baseline",
+  "prompt_text": "abcd",
+  "prompt_tokens": [
+    1,
+    2,
+    3,
+    4
+  ],
+  "expected_tokens": [
+    5,
+    6,
+    7,
+    8,
+    1,
+    2,
+    3,
+    4
+  ],
+  "proof_validation_mean_loss": 8.60598874092102,
+  "proof_validation_bits_per_byte": 9.93265382277841,
+  "xtrain_validation_mean_loss": 3.641620635986328,
+  "xtrain_validation_bits_per_byte": 4.202998425869111,
+  "xtrain_generated_tokens": [
+    6,
+    8,
+    6,
+    8,
+    6,
+    8,
+    6,
+    8
+  ],
+  "exact_prefix_match_tokens": 0,
+  "exact_cycle_match": false,
+  "bounded_attention_window_tokens": 1,
+  "max_steps": 16,
+  "step_duration_ms": 75,
+  "throughput_repetitions": 2,
+  "generated_tokens_per_runtime_eval": 16,
+  "direct_runtime_tokens_per_second": 100.62399960877389,
+  "served_runtime_tokens_per_second": 100.21725472293544,
+  "direct_served_match": true,
+  "source_audit_ref": "docs/audits/2026-03-27-xtrain-pgolf-fastfd-window1-quick-eval-audit.md",
+  "detail": "The retained bounded XTRAIN quick-eval report records the current PGOLF-shaped train-to-infer lane: a closed-out local-reference BPB, one-token bounded decode posture, direct-versus-served runtime parity, and an explicit non-public promotion hold.",
+  "report_digest": "1580edb8073ff09d3d16f6103ff5e3a86fafc66929da55868d7ef831929bdd0f"
+}

@@ -1,0 +1,68 @@
+{
+  "schema_version": "psion.rvllm_sampling_loop.v1",
+  "packet_id": "psion_rvllm_sampling_loop_v1",
+  "runtime_scope": [
+    "generation_sampler.seeded_replay",
+    "qwen35.native_cuda_decode",
+    "gpt_oss.native_cuda_decode"
+  ],
+  "qwen35_lanes": [
+    {
+      "lane_id": "qwen35.argmax_or_exact_candidate",
+      "selection_surface": "gpu argmax or exact bounded candidates with seeded host replay",
+      "candidate_materialization": "selected token only, or exact top-k candidate set when admitted",
+      "host_device_sync_posture": "avoids dense logits copies on admitted argmax and bounded-candidate lanes",
+      "seeded_replay_preserved": true,
+      "structured_output_preserved": true,
+      "penalty_path": "sparse penalty history encoded once per step into reused device buffers"
+    },
+    {
+      "lane_id": "qwen35.raw_logits_fallback",
+      "selection_surface": "dense host logits fallback",
+      "candidate_materialization": "full logits row",
+      "host_device_sync_posture": "fallback remains explicit when the request leaves the bounded candidate envelope",
+      "seeded_replay_preserved": true,
+      "structured_output_preserved": true,
+      "penalty_path": "host sampler applies the same penalty and structured-output contract"
+    }
+  ],
+  "gpt_oss_lanes": [
+    {
+      "lane_id": "gpt_oss.device_argmax",
+      "selection_surface": "device argmax with seeded host replay",
+      "candidate_materialization": "selected token only",
+      "host_device_sync_posture": "keeps decode hot path on the device while preserving seeded replay semantics",
+      "seeded_replay_preserved": true,
+      "structured_output_preserved": true,
+      "penalty_path": "host sampler timing stays explicit in stage_timings.sampling_ns"
+    },
+    {
+      "lane_id": "gpt_oss.raw_logits_fallback",
+      "selection_surface": "dense host logits fallback",
+      "candidate_materialization": "full logits row",
+      "host_device_sync_posture": "fallback stays explicit for non-admitted sampled requests",
+      "seeded_replay_preserved": true,
+      "structured_output_preserved": true,
+      "penalty_path": "penalties remain distribution-preserving because they reuse the same GenerationSampler contract"
+    }
+  ],
+  "qwen35_scratch_reuse_fields": [
+    "penalty_token_ids_scratch",
+    "penalty_token_counts_scratch",
+    "sparse_logit_indices_scratch",
+    "top_k_indices_buffer",
+    "top_k_values_buffer"
+  ],
+  "seeded_parity_tests": [
+    "seeded_sampling_is_replayable",
+    "bounded_candidate_sampling_matches_dense_sampling_when_candidate_set_is_exact",
+    "bounded_candidate_sampling_matches_dense_sampling_with_penalties_when_candidate_set_is_exact"
+  ],
+  "benchmark_paths": [
+    "crates/psionic-serve/examples/qwen35_cuda_bench.rs",
+    "crates/psionic-serve/src/qwen35.rs",
+    "crates/psionic-serve/src/gpt_oss.rs"
+  ],
+  "optimization_posture": "The sampling loop is already narrowed to admitted device-resident selection lanes, reused scratch buffers, sparse penalty encoding, and seeded replay parity. This packet makes that hot-path truth explicit instead of treating it as lane-local implementation folklore.",
+  "packet_digest": "19d245f31b7cbad7134b4fe2e5cb537d7c741ba9fecabc0feab13248142c6e7d"
+}

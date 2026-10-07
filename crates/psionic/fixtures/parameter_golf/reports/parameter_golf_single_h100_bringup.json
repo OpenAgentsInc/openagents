@@ -1,0 +1,150 @@
+{
+  "schema_version": 1,
+  "scope_window": "parameter_golf_single_h100_bringup_v1",
+  "run_id": "parameter-golf-single-h100-bringup",
+  "dataset_root": "/home/christopherdavid/code/parameter-golf/data/datasets/fineweb10B_sp1024",
+  "tokenizer_path": "/home/christopherdavid/code/parameter-golf/data/tokenizers/fineweb_1024_bpe.model",
+  "dataset_key": {
+    "dataset_ref": "dataset://parameter-golf/fineweb-sp1024",
+    "version": "2026.03.18"
+  },
+  "variant": "sp1024",
+  "tokenizer_digest": {
+    "family": "sentence_piece",
+    "tokenizer_digest": "4f5e8adb109c66b4886963bc75a7befd73bda36d27fd7102df8e9e66503b0e2a",
+    "vocab_size": 1024
+  },
+  "dataset_manifest_digest": "e83387a68b96075c410061b62f7c82bdc86449f8b6d9890bb6fd1a61210396d4",
+  "train_shard_count": 80,
+  "validation_shard_count": 1,
+  "train_token_count": 8000000000,
+  "validation_token_count": 62021846,
+  "train_selection_posture": "prefix of frozen shuffled export",
+  "validation_identity": "fineweb_val_* fixed first-50k-doc validation split",
+  "geometry": {
+    "world_size": 1,
+    "train_batch_tokens": 524288,
+    "validation_batch_tokens": 524288,
+    "train_sequence_length": 1024,
+    "grad_accum_steps": 8
+  },
+  "hyperparameters": {
+    "iterations": 20000,
+    "warmdown_iters": 1200,
+    "max_wallclock_seconds": 600.0,
+    "embed_lr": 0.6,
+    "head_lr": 0.008,
+    "tied_embed_lr": 0.05,
+    "matrix_lr": 0.04,
+    "scalar_lr": 0.04,
+    "muon_momentum": 0.95,
+    "muon_backend_steps": 5,
+    "muon_momentum_warmup_start": 0.85,
+    "muon_momentum_warmup_steps": 500,
+    "beta1": 0.9,
+    "beta2": 0.95,
+    "adam_eps": 1e-8,
+    "grad_clip_norm": 0.0
+  },
+  "machine_thresholds": {
+    "required_backend": "cuda",
+    "required_device_name": "H100",
+    "minimum_matching_device_count": 1,
+    "require_non_mig": true
+  },
+  "observed_cuda_health": {
+    "status": "Ready",
+    "message": "cuda ready on 1 NVIDIA device(s)"
+  },
+  "observed_cuda_devices": [
+    {
+      "backend": "cuda",
+      "device": {
+        "kind": "Cuda",
+        "ordinal": 0,
+        "label": "cuda:0"
+      },
+      "device_name": "NVIDIA GeForce RTX 4080",
+      "supported_dtypes": [
+        "F32"
+      ],
+      "supported_quantization": [],
+      "memory_capacity_bytes": 17171480576,
+      "unified_memory": false,
+      "feature_flags": [
+        "cuda_architecture_surface",
+        "persistence_mode_disabled",
+        "addressing_mode_hmm"
+      ],
+      "nvidia_metadata": {
+        "topology": {
+          "architecture": "ada",
+          "compute_capability": "8.9",
+          "pci_bdf": "00000000:01:00.0",
+          "sm_count": null,
+          "vram_bytes": 17171480576,
+          "mig_profile": null
+        },
+        "risk": {
+          "level": "standard",
+          "display_attached": null,
+          "mig_partitioned": false,
+          "warnings": [
+            "persistence mode disabled; first request after idle may pay driver-load latency"
+          ]
+        },
+        "recovery": {
+          "supports_gpu_reset": true,
+          "expected_actions": [
+            "process_restart",
+            "gpu_reset",
+            "reboot_host"
+          ]
+        }
+      }
+    }
+  ],
+  "matching_h100_device_count": 0,
+  "machine_contract_satisfied": false,
+  "baseline_model_id": "parameter-golf-sp1024-9x512",
+  "baseline_model_revision": "public-2026-03-18",
+  "baseline_model_config": {
+    "vocab_size": 1024,
+    "num_layers": 9,
+    "model_dim": 512,
+    "num_heads": 8,
+    "num_kv_heads": 4,
+    "mlp_mult": 2,
+    "max_context": 1024,
+    "tie_embeddings": true,
+    "tied_embed_init_std": 0.005,
+    "logit_softcap": 30.0,
+    "rope_base": 10000.0,
+    "qk_gain_init": 1.5
+  },
+  "baseline_model_descriptor_digest": "cf6b56b598b50cbd3397bc30d5ed92ce2a0772724556be55c65828cff2cc2228",
+  "optimizer_plan_digest": "554cecb74ff631024d7d20ae49b1e162bda4fd2e64d9aeef1dc2245bc7f741ef",
+  "psionic_entrypoint": "cargo run -q -p psionic-train --bin parameter_golf_single_h100_bringup -- /home/christopherdavid/code/parameter-golf/data/datasets/fineweb10B_sp1024 /home/christopherdavid/code/parameter-golf/data/tokenizers/fineweb_1024_bpe.model",
+  "upstream_reference_entrypoint": "RUN_ID=parameter-golf-single-h100-bringup DATA_PATH=/home/christopherdavid/code/parameter-golf/data/datasets/fineweb10B_sp1024 TOKENIZER_PATH=/home/christopherdavid/code/parameter-golf/data/tokenizers/fineweb_1024_bpe.model VOCAB_SIZE=1024 torchrun --standalone --nproc_per_node=1 train_gpt.py",
+  "cuda_training_capability_report_digest": "c47d04068512084c53437c56e9c1250ef48563fe5edec6aaa71a2798cbf5bddf",
+  "challenge_kernel_blockers": [],
+  "started_at_ms": 1773962822520,
+  "finished_at_ms": 1773962837479,
+  "observed_wallclock_ms": 14958,
+  "execution_posture": "contract_validation_only",
+  "disposition": "refused_machine_contract",
+  "refusal": {
+    "code": "unsupported_backend_capability",
+    "scope": "runtime",
+    "subject": "parameter_golf_single_h100_machine",
+    "detail": "single-H100 bring-up requires at least 1 non-MIG `H100` device(s) on backend `cuda` but found 0 matching device(s) among: NVIDIA GeForce RTX 4080"
+  },
+  "drift_notes": [
+    "Observed CUDA backend health was Ready with 1 discovered CUDA device(s); 0 matched the single-H100 contract.",
+    "The current local machine does not satisfy the single-H100 contract: single-H100 bring-up requires at least 1 non-MIG `H100` device(s) on backend `cuda` but found 0 matching device(s) among: NVIDIA GeForce RTX 4080",
+    "The current single-H100 bring-up command validates dataset, tokenizer, model, optimizer, and blocker truth only; it does not yet execute the real baseline training loop.",
+    "final_val_loss, final_val_bpb, and compressed_model_bytes are absent because no training artifact was produced by this command."
+  ],
+  "claim_boundary": "This report proves the Rust-native single-H100 bring-up command owns the challenge dataset, tokenizer identity, local CUDA machine-admission truth, baseline model contract, observed bring-up wallclock, and explicit CUDA blocker truth. It does not claim successful Psionic training execution or a produced model artifact while the current command remains a validation-and-refusal seam.",
+  "report_digest": "7a0a12c40db8bf9d1e4adbee003809bb0b997ab44d5f37d64bf18fe625143c8b"
+}

@@ -1,0 +1,51 @@
+{
+  "schema_version": "psion.served_output_claim_posture.v1",
+  "posture_id": "psion-served-output-claim-direct-v1",
+  "capability_matrix_id": "psion_capability_matrix",
+  "capability_matrix_version": "v1",
+  "evidence_bundle_id": "psion-served-evidence-direct-grounded-v1",
+  "evidence_bundle_digest": "c644b454c89cee689a6cc99de6bc1501a6659a1efa1e6c5969045c01d48b43fd",
+  "visible_claims": {
+    "learned_judgment_visible": true,
+    "source_grounding_visible": true,
+    "executor_backing_visible": false,
+    "benchmark_backing_visible": true,
+    "verification_visible": false
+  },
+  "assumptions": [
+    {
+      "assumption_id": "assume_no_hidden_run_state",
+      "kind": "environment_boundary",
+      "required_for_interpretation": true,
+      "detail": "The answer assumes no hidden runtime artifact, current tool state, or fresh external fact is needed beyond the attached source and benchmark artifacts."
+    },
+    {
+      "assumption_id": "assume_short_context_envelope",
+      "kind": "input_constraint",
+      "required_for_interpretation": true,
+      "detail": "The answer assumes the request stays inside the published short-context technical reasoning envelope instead of silently stretching into longer hidden context."
+    }
+  ],
+  "behavior_visibility": {
+    "behavior": "route",
+    "route_kind": "direct_model_answer",
+    "route_class": "answer_with_uncertainty",
+    "detail": "The served output stayed in the bounded learned lane and surfaced uncertainty explicitly instead of implying exact execution or hidden proof."
+  },
+  "context_envelope": {
+    "supported_prompt_tokens": 8192,
+    "supported_completion_tokens": 1024,
+    "route_required_above_prompt_tokens": 8193,
+    "hard_refusal_above_prompt_tokens": 12288,
+    "prompt_tokens_observed": 2048,
+    "detail": "The first served envelope is bounded to short-context technical reasoning. Requests above the direct window must route or refuse instead of stretching the learned lane silently."
+  },
+  "latency_envelope": {
+    "p50_first_token_latency_ms": 700,
+    "p95_first_token_latency_ms": 1200,
+    "p95_end_to_end_latency_ms": 4500,
+    "detail": "The first served envelope publishes one bounded latency band for short-context technical reasoning rather than claiming generic assistant responsiveness."
+  },
+  "summary": "Direct-output claim posture showing explicit assumptions, visible direct-route behavior, and only the claims justified by attached source and benchmark evidence.",
+  "posture_digest": "0d6667fbc93e4eb9113bf7957a2506e3679443674c470f20ac03ddd023440f1f"
+}

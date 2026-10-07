@@ -1,0 +1,45 @@
+{
+  "schema_version": "psion.route_class_evaluation_receipt.v1",
+  "receipt_id": "psion-route-class-evaluation-receipt-v1",
+  "package_id": "psion_route_benchmark_v1",
+  "package_digest": "76c517290e29616bf424831b637833006dc16b9a70bd8b0162ca6b5a90efa954",
+  "rows": [
+    {
+      "item_id": "route-case-answer",
+      "route_class": "answer_in_language",
+      "observed_route_accuracy_bps": 9790,
+      "false_positive_delegation_bps": 280,
+      "false_negative_delegation_bps": 0,
+      "detail": "Language-answer route row shows the model can answer directly without spuriously delegating the prompt."
+    },
+    {
+      "item_id": "route-case-uncertainty",
+      "route_class": "answer_with_uncertainty",
+      "observed_route_accuracy_bps": 9650,
+      "false_positive_delegation_bps": 160,
+      "false_negative_delegation_bps": 0,
+      "detail": "Uncertainty row shows the model can stay in language while marking uncertainty instead of escalating too early."
+    },
+    {
+      "item_id": "route-case-structure",
+      "route_class": "request_structured_inputs",
+      "observed_route_accuracy_bps": 9580,
+      "false_positive_delegation_bps": 220,
+      "false_negative_delegation_bps": 0,
+      "detail": "Structured-input row shows the lane asks for the missing fields instead of delegating or hallucinating them."
+    },
+    {
+      "item_id": "route-case-delegate",
+      "route_class": "delegate_to_exact_executor",
+      "observed_route_accuracy_bps": 9880,
+      "false_positive_delegation_bps": 0,
+      "false_negative_delegation_bps": 140,
+      "detail": "Delegation row tracks exact-executor handoff without claiming the learned lane executed the workload itself."
+    }
+  ],
+  "aggregate_route_selection_accuracy_bps": 9725,
+  "aggregate_false_positive_delegation_bps": 220,
+  "aggregate_false_negative_delegation_bps": 140,
+  "summary": "Canonical route-class receipt proving answer, uncertainty, structured-input, and exact-delegation classes stay distinguishable with measurable delegation error rates.",
+  "receipt_digest": "d066f5a8c2220e739bdfbb6494aa52f84af8fc751222618a65498381285ff2d4"
+}

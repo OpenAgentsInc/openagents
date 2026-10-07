@@ -1,0 +1,55 @@
+{
+  "schema_version": "psion.actual_pretraining_topology_storage_bundle.v1",
+  "bundle_id": "psion_actual_pretraining_topology_storage_bundle_v1",
+  "lane_id": "psion_actual_pretraining_v1",
+  "topology_contract": {
+    "path": "fixtures/psion/trusted_cluster/psion_trusted_cluster_topology_contract_v1.json",
+    "sha256": "297757892a48fec0d9422d57b876084ac28237e059011dd0cce6eaef33c033cc"
+  },
+  "supported_topology_label": "homogeneous_four_node_h100_tensor_parallel",
+  "required_backend": "cuda",
+  "required_worker_count": 4,
+  "placement_shape": "tensor_parallel(world_size=4,ranks_per_node=1)",
+  "remote_run_root_template": "${PSION_ACTUAL_PRETRAINING_BUCKET_URL}/psion_actual_pretraining_runs/<run_id>",
+  "remote_checkpoint_root_template": "${PSION_ACTUAL_PRETRAINING_BUCKET_URL}/psion_actual_pretraining_runs/<run_id>/checkpoints",
+  "remote_manifest_root_template": "${PSION_ACTUAL_PRETRAINING_BUCKET_URL}/psion_actual_pretraining_runs/<run_id>/manifests",
+  "remote_log_root_template": "${PSION_ACTUAL_PRETRAINING_BUCKET_URL}/psion_actual_pretraining_runs/<run_id>/logs",
+  "storage_tiers": [
+    {
+      "prefix": "checkpoints/",
+      "durability_class": "durable",
+      "detail": "Actual-lane checkpoints remain durable authority for resume, backup, and closeout."
+    },
+    {
+      "prefix": "manifests/",
+      "durability_class": "durable",
+      "detail": "Launch, evidence, and replay manifests remain durable retained artifacts."
+    },
+    {
+      "prefix": "logs/",
+      "durability_class": "transient",
+      "detail": "Logs remain transient and are retained only as long as the later evidence contract allows."
+    }
+  ],
+  "credential_sources": [
+    {
+      "kind": "environment_variable",
+      "source_name": "PSION_ACTUAL_PRETRAINING_GCP_PROJECT_ID",
+      "purpose": "select the admitted cloud project for remote artifact storage",
+      "retained_redaction": "record only the env-var name and resolved project digest"
+    },
+    {
+      "kind": "environment_variable",
+      "source_name": "PSION_ACTUAL_PRETRAINING_BUCKET_URL",
+      "purpose": "select the admitted remote artifact and checkpoint bucket root",
+      "retained_redaction": "record only the env-var name and selected bucket digest"
+    },
+    {
+      "kind": "secret_file_env",
+      "source_name": "GOOGLE_APPLICATION_CREDENTIALS",
+      "purpose": "authenticate retained storage uploads without embedding raw credentials in manifests",
+      "retained_redaction": "record only the env-var name and credential-file digest"
+    }
+  ],
+  "summary": "The canonical actual-pretraining topology and storage bundle admits one homogeneous four-node H100 tensor-parallel mesh plus env-declared durable storage roots and credential sources without embedding secrets."
+}

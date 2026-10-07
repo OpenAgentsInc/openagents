@@ -1,0 +1,142 @@
+{
+  "schema_version": "psionic.qwen38.artifact_facts.v1",
+  "upstream_repository_id": "Qwen/Qwen3.8-27B",
+  "upstream_revision": "1d4bf0f2ff6012fd82039f2fa52739d0dd7c60c0",
+  "license": "Apache-2.0",
+  "pipeline_tag": "image-text-to-text",
+  "library": "transformers",
+  "weight_format": "bf16_safetensors",
+  "identity": {
+    "product_family": "qwen38",
+    "official_model_id": "Qwen/Qwen3.8-27B",
+    "short_model_id": "Qwen3.8-27B",
+    "served_model_id": "qwen3.8-27b"
+  },
+  "architecture": {
+    "wrapper_architecture": "Qwen3_5ForConditionalGeneration",
+    "root_model_type": "qwen3_5",
+    "decoder_architecture": "qwen3_5_text",
+    "hidden_size": 5120,
+    "intermediate_size": 17408,
+    "layer_count": 64,
+    "vocabulary_size": 248320,
+    "full_attention_interval": 4,
+    "full_attention_head_count": 24,
+    "full_attention_kv_head_count": 4,
+    "full_attention_head_size": 256,
+    "linear_attention_qk_head_count": 16,
+    "linear_attention_value_head_count": 48,
+    "linear_attention_head_size": 128,
+    "linear_convolution_width": 4,
+    "mtp_layer_count": 1
+  },
+  "processors": {
+    "multimodal_processor": "Qwen3VLProcessor",
+    "image_processor": "Qwen2VLImageProcessorFast",
+    "video_processor": "Qwen3VLVideoProcessor",
+    "vision_layer_count": 27,
+    "vision_hidden_size": 1152,
+    "vision_output_size": 5120,
+    "vision_attention_head_count": 16,
+    "vision_intermediate_size": 4304,
+    "spatial_patch_size": 16,
+    "temporal_patch_size": 2,
+    "spatial_merge_size": 2
+  },
+  "context": {
+    "native_context_tokens": 262144,
+    "native_runtime_status": "planned",
+    "extended_context_tokens": 1000000,
+    "extended_context_strategy": "yarn",
+    "extended_context_factor": 4.0,
+    "extended_context_runtime_status": "planned"
+  },
+  "digests": {
+    "readme_sha256": "57e4bdb258ee1a7d2635c5174ebd4e56abe392505cdb5f8bbb356b0dc4293641",
+    "config_sha256": "191e0af232104ed8b65258cf3fb2b842e288008baca7633c11b82a1ac7203aab",
+    "generation_config_sha256": "e70c136c1b78ddc1fb0905bac8e733a4dc448d4f852a5dd75143fffc70be550e",
+    "tokenizer_sha256": "0997f410c57a1f4e53b09e4be8f4a172d90edd9564368fb0847030937229b9f3",
+    "tokenizer_config_sha256": "b11349aafa7cdc6a320767cf7ceb29ed82f7eda5d65e8e0819e76f0ce947bf27",
+    "chat_template_sha256": "c3cf9e34abf4f9e36c2d72165aa9c132d3e2a725b6c2586aaa3a8af9d7a81041",
+    "image_preprocessor_sha256": "27225450ac9c6529872ee1924fcb0962ff5634834f817040f444118116f4e516",
+    "video_preprocessor_sha256": "7768af27c1fafa9cc9011c1dc20067e03f8915e03b63504550e11d5066986d13",
+    "safetensors_index_sha256": "77042094076611b69791a610065f28b7013b8c621795fa86ddccc8bac7d1b9df"
+  },
+  "indexed_tensor_count": 1199,
+  "indexed_tensor_data_bytes": 55562855904,
+  "shard_file_bytes": 55563006776,
+  "shards": [
+    {
+      "filename": "model-00001-of-00018.safetensors",
+      "file_bytes": 3966730552
+    },
+    {
+      "filename": "model-00002-of-00018.safetensors",
+      "file_bytes": 3043080328
+    },
+    {
+      "filename": "model-00003-of-00018.safetensors",
+      "file_bytes": 2542796952
+    },
+    {
+      "filename": "model-00004-of-00018.safetensors",
+      "file_bytes": 3988973152
+    },
+    {
+      "filename": "model-00005-of-00018.safetensors",
+      "file_bytes": 2099339864
+    },
+    {
+      "filename": "model-00006-of-00018.safetensors",
+      "file_bytes": 3979553696
+    },
+    {
+      "filename": "model-00007-of-00018.safetensors",
+      "file_bytes": 2108759344
+    },
+    {
+      "filename": "model-00008-of-00018.safetensors",
+      "file_bytes": 3979553696
+    },
+    {
+      "filename": "model-00009-of-00018.safetensors",
+      "file_bytes": 2108759344
+    },
+    {
+      "filename": "model-00010-of-00018.safetensors",
+      "file_bytes": 3979553696
+    },
+    {
+      "filename": "model-00011-of-00018.safetensors",
+      "file_bytes": 2108759344
+    },
+    {
+      "filename": "model-00012-of-00018.safetensors",
+      "file_bytes": 3979553696
+    },
+    {
+      "filename": "model-00013-of-00018.safetensors",
+      "file_bytes": 2108759344
+    },
+    {
+      "filename": "model-00014-of-00018.safetensors",
+      "file_bytes": 3979553696
+    },
+    {
+      "filename": "model-00015-of-00018.safetensors",
+      "file_bytes": 2108759344
+    },
+    {
+      "filename": "model-00016-of-00018.safetensors",
+      "file_bytes": 3979564040
+    },
+    {
+      "filename": "model-00017-of-00018.safetensors",
+      "file_bytes": 2108759344
+    },
+    {
+      "filename": "model-00018-of-00018.safetensors",
+      "file_bytes": 3392197344
+    }
+  ]
+}

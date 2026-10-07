@@ -1,0 +1,130 @@
+{
+  "schema_version": "psionic.qwen38_27b_bf16_evidence.v1",
+  "model_id": "Qwen/Qwen3.8-27B",
+  "served_model_id": "qwen3.8-27b",
+  "upstream_revision": "1d4bf0f2ff6012fd82039f2fa52739d0dd7c60c0",
+  "backend": "sampled_projection",
+  "runtime": {
+    "engine": "psionic-models",
+    "crate_version": "0.2.0",
+    "operating_system": "linux",
+    "architecture": "x86_64",
+    "execution_device": "cpu_bounded_row_reads"
+  },
+  "command_line": [
+    "target/debug/examples/qwen38_bf16_evidence",
+    "--backend",
+    "sampled-projection",
+    "--json-out",
+    "fixtures/qwen38/reports/qwen38_bf16_sampled_projection_v1.json"
+  ],
+  "config_sha256": "191e0af232104ed8b65258cf3fb2b842e288008baca7633c11b82a1ac7203aab",
+  "tokenizer_sha256": "0997f410c57a1f4e53b09e4be8f4a172d90edd9564368fb0847030937229b9f3",
+  "template_sha256": "c3cf9e34abf4f9e36c2d72165aa9c132d3e2a725b6c2586aaa3a8af9d7a81041",
+  "index_sha256": "77042094076611b69791a610065f28b7013b8c621795fa86ddccc8bac7d1b9df",
+  "prompt_receipt": {
+    "schema_version": "psionic.qwen38.prompt_receipt.v1",
+    "model_id": "Qwen/Qwen3.8-27B",
+    "template_id": "qwen3.8.chat_template.v1",
+    "template_sha256": "c3cf9e34abf4f9e36c2d72165aa9c132d3e2a725b6c2586aaa3a8af9d7a81041",
+    "tokenizer_sha256": "0997f410c57a1f4e53b09e4be8f4a172d90edd9564368fb0847030937229b9f3",
+    "thinking_enabled": true,
+    "reasoning_effort": "xhigh",
+    "preserve_thinking": true,
+    "add_generation_prompt": true,
+    "add_vision_id": false,
+    "tool_count": 0,
+    "rendered_sha256": "6c48ba93e7db6fc175013b9ccf9ce533541af9973309d7fa1cb60475debf52c4",
+    "prompt_cache_identity": "c0f34d64968c3261918d4a50275ea529900a9a6a8a750735f4ddf738e0184c4a"
+  },
+  "prompt_token_ids_sha256": "d9fc21e337c45941a6b1f9d540bea86614d972938dc314b9683183162be9be63",
+  "checkpoint_tensor_admission_sha256": "d7e3d5a7c9c8c460a32a2993c8212f5cdfd136f95b600dc386391a8119957770",
+  "indexed_shard_count": 18,
+  "indexed_tensor_count": 1199,
+  "admitted_decoder_tensor_count": 851,
+  "admitted_mtp_tensor_count": 15,
+  "non_text_tensor_count": 333,
+  "tensor_reads": [
+    {
+      "tensor_name": "model.language_model.embed_tokens.weight",
+      "shard_name": "model-00003-of-00018.safetensors",
+      "row_index": 198,
+      "dtype": "BF16",
+      "shape": [
+        248320,
+        5120
+      ],
+      "row_sha256": "abd3e2dbee4f98d8f9c2de63bdb7931fbf3bb37a2842852dae4da2e1d045c3b9"
+    },
+    {
+      "tensor_name": "lm_head.weight",
+      "shard_name": "model-00018-of-00018.safetensors",
+      "row_index": 0,
+      "dtype": "BF16",
+      "shape": [
+        248320,
+        5120
+      ],
+      "row_sha256": "ec86c0b4d477ac670e076d21dc09e7e01f038d4f0296d1650e05d46fd0a939d3"
+    },
+    {
+      "tensor_name": "lm_head.weight",
+      "shard_name": "model-00018-of-00018.safetensors",
+      "row_index": 1,
+      "dtype": "BF16",
+      "shape": [
+        248320,
+        5120
+      ],
+      "row_sha256": "0b136ba78f68fcb16314217d6b4750e47687681186cd0d1eb1cf8a3d92218f2e"
+    },
+    {
+      "tensor_name": "lm_head.weight",
+      "shard_name": "model-00018-of-00018.safetensors",
+      "row_index": 198,
+      "dtype": "BF16",
+      "shape": [
+        248320,
+        5120
+      ],
+      "row_sha256": "dccc8659c497bad8e2df174ea33f7d50b0b073274c00381960944f540227b176"
+    }
+  ],
+  "tensor_reads_sha256": "8c9f3c9ae06adb8b930b5fd927daa9be0802e93144d3c9ff1956d5f66829d7cb",
+  "sampled_projection": {
+    "input_token_id": 198,
+    "candidate_token_ids": [
+      0,
+      1,
+      198
+    ],
+    "sampled_logits": [
+      {
+        "token_id": 0,
+        "logit": -0.007160238298080657
+      },
+      {
+        "token_id": 1,
+        "logit": -0.011110842333778237
+      },
+      {
+        "token_id": 198,
+        "logit": -0.020804042884321916
+      }
+    ],
+    "sampled_logits_sha256": "78d870d25fb639ae51e074195a51b36872c0ccfd3388bcb9b1efc91115f4ec86"
+  },
+  "layer_traversal": [],
+  "visited_decoder_layer_count": 0,
+  "visited_mtp_layer_count": 0,
+  "output_sha256": "78d870d25fb639ae51e074195a51b36872c0ccfd3388bcb9b1efc91115f4ec86",
+  "capability_claims": {
+    "full_width_attention": false,
+    "full_width_mlp": false,
+    "full_vocabulary_logits": false,
+    "token_generation": false,
+    "training_gradients": false,
+    "media_execution": false
+  },
+  "claim_boundary": "This evidence lane validates headers, reads bounded real BF16 tensor rows, and optionally computes sampled embedding/LM-head dots or an ordered row-digest traversal. It does not execute full-width attention or MLPs, materialize full-vocabulary logits, generate tokens, compute training gradients, or execute image/video inputs."
+}

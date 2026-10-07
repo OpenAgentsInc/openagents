@@ -1,0 +1,71 @@
+{
+  "schema_version": "psion.corpus_admission.v1",
+  "policy_id": "psion.corpus_admission",
+  "policy_version": "v1",
+  "required_metadata_fields": [
+    "source_id",
+    "source_family_id",
+    "source_kind",
+    "title",
+    "author_or_origin",
+    "publication_year_or_revision",
+    "language",
+    "canonical_reference",
+    "content_digest",
+    "rights_posture",
+    "normative_role",
+    "boundary_kind",
+    "review_decision",
+    "reviewer",
+    "decision_summary"
+  ],
+  "supported_source_kinds": [
+    "textbook",
+    "specification",
+    "manual",
+    "paper",
+    "technical_documentation",
+    "code",
+    "postmortem",
+    "expert_discussion",
+    "reference_implementation"
+  ],
+  "supported_rights_postures": [
+    "internal_training_only",
+    "internal_training_and_internal_serving",
+    "redistribution_derived_artifacts_allowed",
+    "evaluation_only",
+    "tokenizer_only",
+    "rejected"
+  ],
+  "review_workflow": [
+    "intake_metadata_review",
+    "provenance_review",
+    "rights_review",
+    "quality_review",
+    "contamination_precheck",
+    "final_decision"
+  ],
+  "exclusion_triggers": [
+    "missing_rights_posture",
+    "unverifiable_provenance",
+    "missing_stable_digest",
+    "missing_stable_boundaries",
+    "benchmark_contamination_risk",
+    "near_duplicate_without_canonical_selection",
+    "low_signal_or_social_noise",
+    "generated_without_lineage",
+    "sensitive_or_personal_data",
+    "out_of_scope_for_psion",
+    "review_incomplete"
+  ],
+  "removal_triggers": [
+    "rights_changed_or_revoked",
+    "provenance_invalidated",
+    "content_digest_mismatch",
+    "benchmark_contamination_discovered",
+    "review_misclassification_discovered",
+    "source_retracted_or_canonically_replaced",
+    "boundary_metadata_insufficient"
+  ]
+}

@@ -1,0 +1,23 @@
+{
+  "schema_version": "psion.actual_pretraining_checkpoint_failure_drill.v1",
+  "lane_id": "psion_actual_pretraining_v1",
+  "run_id": "run-psion-actual-20260402t050000z",
+  "drill_id": "psion_actual_pretraining_checkpoint_failure_drill::16384::stale_pointer",
+  "drill_kind": "stale_pointer",
+  "trigger_surface": "resume",
+  "selected_git_ref": "refs/heads/main",
+  "git_commit_sha": "1111222233334444555566667777888899990000",
+  "dirty_tree_admission": "refuse_by_default",
+  "workspace_status_sha256": null,
+  "outcome": "recovered_without_manual_edit",
+  "evidence_paths": [
+    "checkpoints/auto_resume_receipt.json",
+    "checkpoints/latest_accepted_checkpoint_backup_receipt.json",
+    "checkpoints/backups/latest_accepted_checkpoint_pointer.backup.json",
+    "checkpoints/backups/step-16384/checkpoint_manifest.backup.json"
+  ],
+  "refusal_reason": null,
+  "claim_boundary": "This retained failure drill proves that stale primary resume pointers recover from the actual-lane backup family without manual editing.",
+  "detail": "Fixture stale-pointer drill records recovery from the backup family after the primary pointer drifted from the admitted manifest path.",
+  "receipt_digest": "299ae116982917cdd403aa4b25c9b44d45ea803d775986dc77c476fbd18b7570"
+}

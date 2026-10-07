@@ -1,0 +1,66 @@
+{
+  "schema_version": "psion.rvllm_direct_engine_comparator.v1",
+  "packet_id": "psion_rvllm_direct_engine_comparator_v1",
+  "runtime_scope": [
+    "qwen35.native_cuda_direct_receipt",
+    "openai_compat.native_cuda_http_receipt",
+    "optional_reference.vllm_direct_receipt"
+  ],
+  "admitted_benchmark_classes": [
+    "direct_engine",
+    "http",
+    "optional_reference_direct_engine"
+  ],
+  "prompt_contracts": [
+    "greedy_one_sentence"
+  ],
+  "direct_engine_receipt_fields": [
+    "load_s",
+    "psionic_cuda_startup.warmup_prompt_s",
+    "psionic_cuda_startup.warmup_decode_s",
+    "psionic_cuda_startup.warmup_total_s",
+    "runs[].ttft_s",
+    "runs[].itl_s",
+    "runs[].total_s",
+    "mean_ttft_s",
+    "mean_itl_s",
+    "mean_total_s",
+    "mean_decode_tok_s",
+    "steady_state_concurrency"
+  ],
+  "http_receipt_fields": [
+    "startup_ready_s",
+    "warmup.wallclock_s",
+    "warmup.ttft_s",
+    "warmup.itl_s",
+    "warmup.completion_tok_s",
+    "concurrency_results[].concurrency",
+    "concurrency_results[].aggregate_tok_s",
+    "concurrency_results[].mean_wallclock_s",
+    "concurrency_results[].mean_ttft_s",
+    "concurrency_results[].mean_itl_s",
+    "concurrency_results[].scheduling_classes"
+  ],
+  "concurrency_ladder": [
+    1,
+    2,
+    4
+  ],
+  "operator_paths": [
+    "crates/psionic-serve/examples/qwen35_cuda_bench.rs",
+    "crates/psionic-serve/src/openai_http.rs",
+    "scripts/release/qwen35_direct_vs_http_compare.py"
+  ],
+  "optional_reference_helpers": [
+    "python_import:vllm",
+    "competition/repos/rvllm/deploy/vllm_direct_bench.py"
+  ],
+  "validation_surface": [
+    "builtin_packet_matches_committed_fixture",
+    "cargo build -p psionic-serve --example qwen35_cuda_bench",
+    "cargo build -p psionic-serve --bin psionic-openai-server",
+    "python3 -m py_compile scripts/release/qwen35_direct_vs_http_compare.py"
+  ],
+  "stability_posture": "Psionic now owns one explicit comparator contract that keeps native direct-engine, native OpenAI-compatible HTTP, and optional reference direct-engine receipts separate while pinning them to one prompt contract and one admitted concurrency ladder. It makes runtime-versus-server overhead visible without widening the admitted model lane or publishing mixed benchmark classes as if they were the same number.",
+  "packet_digest": "fc32d554dbfaec0f2b792fb8e67b3e4eeb0a508e1bcabf9ef02e2d771929232c"
+}

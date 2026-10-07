@@ -1,0 +1,97 @@
+{
+  "schema_version": "psion.actual_pretraining_resume_manifest.v1",
+  "surface_id": "psion_actual_pretraining.resume",
+  "lane_id": "psion_actual_pretraining_v1",
+  "recipe_id": "psion_actual_pretraining_recipe_v1",
+  "topology_storage_bundle_id": "psion_actual_pretraining_topology_storage_bundle_v1",
+  "evidence_contract_id": "psion_actual_pretraining_evidence_contract_v1",
+  "run_id": "run-psion-actual-20260402t020000z",
+  "retained_paths": {
+    "launch_manifest_path": "manifests/launch_manifest.json",
+    "resume_manifest_path": "manifests/resume_manifest.json",
+    "current_status_path": "status/current_run_status.json",
+    "retained_summary_path": "status/retained_summary.json",
+    "latest_checkpoint_pointer_path": "checkpoints/latest_accepted_checkpoint_pointer.json",
+    "latest_checkpoint_backup_receipt_path": "checkpoints/latest_accepted_checkpoint_backup_receipt.json",
+    "auto_resume_receipt_path": "checkpoints/auto_resume_receipt.json",
+    "latest_checkpoint_eval_decision_path": "evals/latest_checkpoint_eval_decision.json",
+    "latest_checkpoint_eval_failure_path": "evals/latest_checkpoint_eval_failure.json",
+    "latest_checkpoint_comparison_path": "decisions/latest_checkpoint_comparison.json",
+    "latest_continue_restart_decision_path": "decisions/latest_continue_restart_decision.json",
+    "current_dashboard_path": "dashboard/current_dashboard.json",
+    "hardware_qualification_path": "preflight/hardware_qualification.json",
+    "run_shape_qualification_path": "preflight/run_shape_qualification.json",
+    "continuation_handoff_path": "continuation/accepted_checkpoint_handoff.json",
+    "closeout_bundle_path": "closeout/closeout_bundle.json",
+    "launcher_log_path": "logs/launcher.log",
+    "latest_redacted_alert_path": "alerts/latest_redacted_alert.json",
+    "active_alert_feed_path": "alerts/active_alerts.json"
+  },
+  "launcher_surfaces": {
+    "start_surface_id": "psion_actual_pretraining.start",
+    "dry_run_surface_id": "psion_actual_pretraining.dry_run",
+    "resume_surface_id": "psion_actual_pretraining.resume",
+    "status_surface_id": "psion_actual_pretraining.status"
+  },
+  "run_roots": {
+    "local_run_root": "/tmp/psion_actual_pretraining_runs/run-psion-actual-20260402t020000z",
+    "remote_run_root": "${PSION_ACTUAL_PRETRAINING_BUCKET_URL}/psion_actual_pretraining_runs/run-psion-actual-20260402t020000z",
+    "remote_checkpoint_root": "${PSION_ACTUAL_PRETRAINING_BUCKET_URL}/psion_actual_pretraining_runs/run-psion-actual-20260402t020000z/checkpoints",
+    "remote_manifest_root": "${PSION_ACTUAL_PRETRAINING_BUCKET_URL}/psion_actual_pretraining_runs/run-psion-actual-20260402t020000z/manifests",
+    "remote_log_root": "${PSION_ACTUAL_PRETRAINING_BUCKET_URL}/psion_actual_pretraining_runs/run-psion-actual-20260402t020000z/logs"
+  },
+  "preflight_receipt": {
+    "relative_path": "preflight/hardware_qualification.json",
+    "receipt_digest": "40b3488b5632a8e380068abfcf1613012bd8cfb70d78c36654ab51a8e342f22c",
+    "admission_state": "admitted"
+  },
+  "run_shape_receipt": {
+    "relative_path": "preflight/run_shape_qualification.json",
+    "receipt_digest": "588291b0768bb660dd0ada64c1888bb4e84e75089da053673b16ed160e102ba0",
+    "admission_state": "admitted"
+  },
+  "contract_refs": {
+    "lane_spec": {
+      "path": "fixtures/psion/pretrain/psion_actual_pretraining_lane_spec_v1.json",
+      "sha256": "6640fce7435338dc0f66b28135f024d4b62b428826aa6ba122c22644749c8057"
+    },
+    "recipe_bundle": {
+      "path": "fixtures/psion/pretrain/psion_actual_pretraining_recipe_bundle_v1.json",
+      "sha256": "b7c260834035a60ff3284a55ec44e0c2098dca2b9376c532d2d24017da9bbed2"
+    },
+    "baseline_tools_bundle": {
+      "path": "fixtures/psion/pretrain/psion_actual_pretraining_baseline_tools_bundle_v1.json",
+      "sha256": "e51911c78571f640de9cb7a27b1ba9ed2e1839255e87ff3856bc5ec4397224cd"
+    },
+    "scaling_bundle": {
+      "path": "fixtures/psion/pretrain/psion_actual_pretraining_scaling_bundle_v1.json",
+      "sha256": "96ab2ff226a8b10ed60ad52194db296b963de95da343fd19b8dd89ba0ee23ded"
+    },
+    "data_bundle": {
+      "path": "fixtures/psion/pretrain/psion_actual_pretraining_data_bundle_v1.json",
+      "sha256": "8e0d15306d1cd4c438bb27b4057f05d0923bc1cafd2f3c73452c612b85098319"
+    },
+    "systems_bundle": {
+      "path": "fixtures/psion/pretrain/psion_actual_pretraining_systems_bundle_v1.json",
+      "sha256": "529d4a31e04f8594b032569311c84e591b6d95ae6511111ba36399f9b5ff3268"
+    },
+    "topology_storage_bundle": {
+      "path": "fixtures/psion/pretrain/psion_actual_pretraining_topology_storage_bundle_v1.json",
+      "sha256": "907159c4ef8888150a9af19157355aec8b016090603be79ad1d45d69ffb5a093"
+    },
+    "evidence_contract": {
+      "path": "fixtures/psion/pretrain/psion_actual_pretraining_evidence_contract_v1.json",
+      "sha256": "aa93e7397ed63a98b171be86ac8253e08e10eb43f8f9d5abefe9008061c1aea1"
+    }
+  },
+  "selected_git_ref": "refs/heads/main",
+  "git_commit_sha": "1111222233334444555566667777888899990000",
+  "dirty_tree_admission": "refuse_by_default",
+  "workspace_status_sha256": null,
+  "latest_checkpoint_pointer_path": "checkpoints/latest_accepted_checkpoint_pointer.json",
+  "checkpoint_label": "broader-pretrain-final",
+  "optimizer_step": 16384,
+  "checkpoint_ref": "checkpoint://psion/broad/pretrain/final",
+  "claim_boundary": "The actual-lane resume manifest binds the canonical resume command to the accepted checkpoint pointer inside the frozen evidence family. It does not claim post-resume training success by itself.",
+  "detail": "Resume manifest records the exact accepted checkpoint selection and repeats launcher provenance plus the frozen baseline-tools, scaling, data, and systems bundles for restart decisions."
+}

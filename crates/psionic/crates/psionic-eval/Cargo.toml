@@ -1,0 +1,65 @@
+[package]
+name = "psionic-eval"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+publish.workspace = true
+description = "Rust-native evaluation, rubric, and benchmark runtime contracts for Psionic"
+
+[lints]
+workspace = true
+
+[lib]
+path = "src/lib.rs"
+
+[features]
+default = ["full"]
+full = [
+    "dep:psionic-adapters",
+    "dep:psionic-apple-fm",
+    "dep:psionic-catalog",
+    "dep:psionic-cluster",
+    "dep:psionic-compiler",
+    "dep:psionic-core",
+    "dep:psionic-data",
+    "dep:psionic-datastream",
+    "dep:psionic-environments",
+    "dep:psionic-ir",
+    "dep:psionic-models",
+    "dep:psionic-nn",
+    "dep:psionic-router",
+    "dep:psionic-runtime",
+    "dep:psionic-sandbox",
+    "dep:psionic-transformer",
+]
+
+[dependencies]
+hex = { workspace = true }
+psionic-adapters = { path = "../psionic-adapters", optional = true }
+psionic-apple-fm = { path = "../psionic-apple-fm", optional = true }
+psionic-catalog = { path = "../psionic-catalog", optional = true }
+psionic-cluster = { path = "../psionic-cluster", optional = true }
+psionic-compiler = { path = "../psionic-compiler", optional = true }
+psionic-core = { path = "../psionic-core", optional = true }
+psionic-data = { path = "../psionic-data", optional = true }
+psionic-datastream = { path = "../psionic-datastream", optional = true }
+psionic-environments = { path = "../psionic-environments", optional = true }
+psionic-ir = { path = "../psionic-ir", optional = true }
+psionic-models = { path = "../psionic-models", optional = true }
+psionic-nn = { path = "../psionic-nn", optional = true }
+psionic-optimize = { path = "../psionic-optimize" }
+psionic-router = { path = "../psionic-router", optional = true }
+psionic-runtime = { path = "../psionic-runtime", optional = true }
+psionic-sandbox = { path = "../psionic-sandbox", optional = true }
+psionic-transformer = { path = "../psionic-transformer", optional = true }
+reqwest = { workspace = true, features = ["blocking"] }
+safetensors = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+sha2 = { workspace = true }
+tempfile = "3"
+thiserror = { workspace = true }
+zip = "2.4.2"
+
+[dev-dependencies]

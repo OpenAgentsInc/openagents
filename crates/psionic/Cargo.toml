@@ -1,0 +1,121 @@
+[workspace]
+resolver = "2"
+members = ["crates/psionic-*"]
+
+[workspace.lints.rust]
+missing_docs = "allow"
+unexpected_cfgs = { level = "allow" }
+
+[workspace.lints.clippy]
+pedantic = { level = "warn", priority = -1 }
+missing_errors_doc = "allow"
+missing_panics_doc = "allow"
+must_use_candidate = "allow"
+doc_markdown = "allow"
+similar_names = "allow"
+too_many_lines = "allow"
+module_name_repetitions = "allow"
+struct_excessive_bools = "allow"
+fn_params_excessive_bools = "allow"
+items_after_statements = "allow"
+uninlined_format_args = "allow"
+return_self_not_must_use = "allow"
+cast_possible_truncation = "allow"
+cast_sign_loss = "allow"
+cast_precision_loss = "allow"
+cast_possible_wrap = "allow"
+default_trait_access = "allow"
+match_same_arms = "allow"
+unused_async = "allow"
+manual_let_else = "allow"
+used_underscore_binding = "allow"
+ref_option_ref = "allow"
+ref_option = "allow"
+format_push_string = "allow"
+case_sensitive_file_extension_comparisons = "allow"
+unnecessary_wraps = "allow"
+needless_pass_by_value = "allow"
+trivially_copy_pass_by_ref = "allow"
+no_effect_underscore_binding = "allow"
+redundant_closure_for_method_calls = "allow"
+unwrap_used = "deny"
+expect_used = "deny"
+panic = "deny"
+allow_attributes = "allow"
+result_large_err = "allow"
+dbg_macro = "deny"
+todo = "deny"
+unimplemented = "deny"
+print_stdout = "deny"
+print_stderr = "deny"
+await_holding_lock = "deny"
+exit = "deny"
+mem_forget = "deny"
+large_stack_arrays = "warn"
+panic_in_result_fn = "warn"
+many_single_char_names = "allow"
+float_cmp = "allow"
+manual_midpoint = "allow"
+map_unwrap_or = "allow"
+struct_field_names = "allow"
+unnested_or_patterns = "allow"
+unreadable_literal = "allow"
+wildcard_imports = "allow"
+unused_self = "allow"
+explicit_iter_loop = "allow"
+collapsible_if = "allow"
+collapsible_match = "allow"
+cast_lossless = "allow"
+implicit_clone = "allow"
+elidable_lifetime_names = "allow"
+needless_continue = "allow"
+inline_always = "allow"
+used_underscore_items = "allow"
+match_wildcard_for_single_variants = "allow"
+single_match_else = "allow"
+len_without_is_empty = "allow"
+redundant_else = "allow"
+unchecked_time_subtraction = "allow"
+if_not_else = "allow"
+needless_range_loop = "allow"
+unnecessary_literal_bound = "allow"
+field_reassign_with_default = "allow"
+manual_clamp = "allow"
+while_let_loop = "allow"
+
+[workspace.package]
+version = "0.2.0"
+edition = "2024"
+authors = ["OpenAgents"]
+license = "Apache-2.0"
+publish = false
+
+[workspace.dependencies]
+ed25519-dalek = "2.2.0"
+hex = "0.4.3"
+rand = "0.9"
+rayon = "1"
+regex-syntax = "0.8.10"
+reqwest = { version = "0.12", default-features = false, features = ["json", "stream", "rustls-tls", "cookies"] }
+safetensors = "0.7.0"
+schemars = { version = "1", features = ["derive"] }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+sha2 = "0.10"
+thiserror = "2.0.12"
+tokio = { version = "1", features = ["full"] }
+
+[profile.dev]
+opt-level = 1
+split-debuginfo = "unpacked"
+incremental = true
+codegen-units = 16
+
+[profile.dev.build-override]
+codegen-units = 16
+
+[profile.release]
+opt-level = 3
+debug = "limited"
+lto = "thin"
+codegen-units = 1

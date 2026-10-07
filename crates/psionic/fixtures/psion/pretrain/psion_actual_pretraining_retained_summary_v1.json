@@ -1,0 +1,20 @@
+{
+  "schema_version": "psion.actual_pretraining_retained_summary.v1",
+  "lane_id": "psion_actual_pretraining_v1",
+  "run_id": "run-psion-actual-20260402t000000z",
+  "last_known_phase": "running_pretrain",
+  "selected_git_ref": "refs/heads/main",
+  "git_commit_sha": "8da3940157d70db8a6ea170fe7a5b598d8933c77",
+  "dirty_tree_admission": "refuse_by_default",
+  "current_status_path": "status/current_run_status.json",
+  "latest_checkpoint_pointer_path": "checkpoints/latest_accepted_checkpoint_pointer.json",
+  "continuation_handoff_path": "continuation/accepted_checkpoint_handoff.json",
+  "launcher_surfaces": {
+    "start_surface_id": "psion_actual_pretraining.start",
+    "dry_run_surface_id": "psion_actual_pretraining.dry_run",
+    "resume_surface_id": "psion_actual_pretraining.resume",
+    "status_surface_id": "psion_actual_pretraining.status"
+  },
+  "claim_boundary": "The retained summary records actual-lane start, dry-run, resume, and status surfaces plus the last known operator state. It does not claim that cluster execution, automatic eval, or durable backup are finished.",
+  "detail": "Retained summary freezes the launcher contract names and the minimal last-known operator state the actual launcher writes."
+}

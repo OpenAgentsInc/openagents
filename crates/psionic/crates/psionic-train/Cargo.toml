@@ -1,0 +1,57 @@
+[package]
+name = "psionic-train"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+publish.workspace = true
+description = "Training checkpoint, recovery, and elastic membership substrate for Psionic"
+default-run = "psionic-train"
+
+[lints]
+workspace = true
+
+[lib]
+path = "src/lib.rs"
+
+[[bin]]
+name = "psionic-train"
+path = "src/main.rs"
+
+[features]
+legacy-apple-toolkit-oracle = []
+
+[dependencies]
+ed25519-dalek = { workspace = true }
+flate2 = "1.0"
+half = "2.4.1"
+hex = { workspace = true }
+psionic-adapters = { path = "../psionic-adapters" }
+psionic-array = { path = "../psionic-array" }
+psionic-backend-cuda = { path = "../psionic-backend-cuda" }
+psionic-backend-metal = { path = "../psionic-backend-metal" }
+psionic-cluster = { path = "../psionic-cluster" }
+psionic-collectives = { path = "../psionic-collectives" }
+psionic-compiler = { path = "../psionic-compiler" }
+psionic-core = { path = "../psionic-core" }
+psionic-data = { path = "../psionic-data" }
+psionic-datastream = { path = "../psionic-datastream" }
+psionic-environments = { path = "../psionic-environments" }
+psionic-eval = { path = "../psionic-eval" }
+psionic-ir = { path = "../psionic-ir" }
+psionic-models = { path = "../psionic-models" }
+psionic-nn = { path = "../psionic-nn" }
+psionic-runtime = { path = "../psionic-runtime" }
+psionic-sandbox = { path = "../psionic-sandbox" }
+psionic-transformer = { path = "../psionic-transformer" }
+rayon = "1.10"
+safetensors = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+sha2 = { workspace = true }
+thiserror = { workspace = true }
+reqwest = { workspace = true, features = ["blocking"] }
+zstd = "0.13"
+
+[dev-dependencies]
+tempfile = "3"

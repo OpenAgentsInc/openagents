@@ -1,0 +1,145 @@
+{
+  "schema_version": 1,
+  "suite_id": "autopilot4.product_regression.synthetic.v1",
+  "suite_version": "2026-05-18",
+  "tasks": [
+    {
+      "task_id": "prod.chat.status_synthesis.v1",
+      "surface": "chat",
+      "title": "Chat status synthesis",
+      "instructions": "Summarize the synthetic operator status packet, preserve approvals, and avoid inventing a completed task.",
+      "expected_capabilities": [
+        "grounded_status_summary",
+        "approval_state_preservation",
+        "no_unverified_completion_claim"
+      ],
+      "minimum_score_bps": 9000,
+      "baseline_score_bps": 9500,
+      "max_allowed_drop_bps": 500,
+      "data_policy": {
+        "data_classification": "public_reference",
+        "live_user_data_allowed": false,
+        "harvey_hidden_criteria_allowed": false
+      }
+    },
+    {
+      "task_id": "prod.coder.patch_review.v1",
+      "surface": "coder",
+      "title": "Coder patch review",
+      "instructions": "Review the synthetic patch summary and identify the blocking test and documentation risks without editing unrelated files.",
+      "expected_capabilities": [
+        "code_risk_identification",
+        "test_gap_detection",
+        "scoped_change_discipline"
+      ],
+      "minimum_score_bps": 8800,
+      "baseline_score_bps": 9300,
+      "max_allowed_drop_bps": 700,
+      "data_policy": {
+        "data_classification": "public_reference",
+        "live_user_data_allowed": false,
+        "harvey_hidden_criteria_allowed": false
+      }
+    },
+    {
+      "task_id": "prod.work_order.blocker_triage.v1",
+      "surface": "work_order",
+      "title": "Work Order blocker triage",
+      "instructions": "Convert the synthetic regression note into a blocking Work Order with owner, reproduction path, and acceptance criteria.",
+      "expected_capabilities": [
+        "work_order_creation",
+        "blocking_condition_capture",
+        "acceptance_criteria_extraction"
+      ],
+      "minimum_score_bps": 9000,
+      "baseline_score_bps": 9400,
+      "max_allowed_drop_bps": 500,
+      "data_policy": {
+        "data_classification": "public_reference",
+        "live_user_data_allowed": false,
+        "harvey_hidden_criteria_allowed": false
+      }
+    },
+    {
+      "task_id": "prod.github_provider.issue_update.v1",
+      "surface": "github_provider",
+      "title": "GitHub provider issue update",
+      "instructions": "Prepare a synthetic GitHub issue update that links the run artifact, summarizes the failure, and avoids leaking secrets.",
+      "expected_capabilities": [
+        "github_issue_update",
+        "artifact_linking",
+        "secret_redaction"
+      ],
+      "minimum_score_bps": 9000,
+      "baseline_score_bps": 9400,
+      "max_allowed_drop_bps": 500,
+      "data_policy": {
+        "data_classification": "public_reference",
+        "live_user_data_allowed": false,
+        "harvey_hidden_criteria_allowed": false
+      }
+    },
+    {
+      "task_id": "prod.crm.followup_note.v1",
+      "surface": "crm",
+      "title": "CRM follow-up note",
+      "instructions": "Draft a synthetic CRM follow-up note that preserves contact intent, next action, and do-not-send status.",
+      "expected_capabilities": [
+        "crm_context_preservation",
+        "next_action_selection",
+        "send_policy_respect"
+      ],
+      "minimum_score_bps": 8800,
+      "baseline_score_bps": 9300,
+      "max_allowed_drop_bps": 600,
+      "data_policy": {
+        "data_classification": "public_reference",
+        "live_user_data_allowed": false,
+        "harvey_hidden_criteria_allowed": false
+      }
+    },
+    {
+      "task_id": "prod.memory.preference_recall.v1",
+      "surface": "memory",
+      "title": "Memory preference recall",
+      "instructions": "Use the synthetic memory packet to recall the approved preference and avoid acting on revoked context.",
+      "expected_capabilities": [
+        "approved_memory_recall",
+        "revoked_context_rejection",
+        "memory_source_attribution"
+      ],
+      "minimum_score_bps": 9000,
+      "baseline_score_bps": 9500,
+      "max_allowed_drop_bps": 500,
+      "data_policy": {
+        "data_classification": "public_reference",
+        "live_user_data_allowed": false,
+        "harvey_hidden_criteria_allowed": false
+      }
+    },
+    {
+      "task_id": "prod.provider_tool_routing.cost_guard.v1",
+      "surface": "provider_tool_routing",
+      "title": "Provider and tool routing cost guard",
+      "instructions": "Choose the synthetic route plan that satisfies tool requirements, context budget, and cost ceiling.",
+      "expected_capabilities": [
+        "provider_route_selection",
+        "tool_policy_match",
+        "cost_ceiling_enforcement"
+      ],
+      "minimum_score_bps": 8800,
+      "baseline_score_bps": 9300,
+      "max_allowed_drop_bps": 600,
+      "data_policy": {
+        "data_classification": "public_reference",
+        "live_user_data_allowed": false,
+        "harvey_hidden_criteria_allowed": false
+      }
+    }
+  ],
+  "metadata": {
+    "fixture_family": "synthetic_autopilot4_product_regression",
+    "live_user_data": false,
+    "harvey_hidden_criteria": false
+  }
+}

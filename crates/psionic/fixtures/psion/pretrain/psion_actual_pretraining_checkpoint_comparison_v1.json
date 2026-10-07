@@ -1,0 +1,147 @@
+{
+  "schema_version": "psion.actual_pretraining_checkpoint_comparison.v1",
+  "lane_id": "psion_actual_pretraining_v1",
+  "run_id": "run-psion-actual-20260402t090000z",
+  "trigger_surface_id": "psion_actual_pretraining.decide_continue_restart",
+  "selected_git_ref": "refs/heads/main",
+  "git_commit_sha": "1111222233334444555566667777888899990000",
+  "dirty_tree_admission": "refuse_by_default",
+  "workspace_status_sha256": null,
+  "checkpoint_label": "broader-pretrain-final",
+  "optimizer_step": 16384,
+  "checkpoint_ref": "checkpoint://psion/broad/pretrain/final",
+  "checkpoint_pointer": {
+    "path": "checkpoints/latest_accepted_checkpoint_pointer.json",
+    "sha256": "53ca6440efa778f95ce67627bd55406e73414d8a7eb22bcbf3e57c100fba20fc"
+  },
+  "checkpoint_manifest": {
+    "path": "checkpoints/step-16384/checkpoint_manifest.json",
+    "sha256": "054926dca19cd2e168c7184c9b5b5510611ac9e4f1c9281236554000c887264e"
+  },
+  "checkpoint_backup_receipt": {
+    "path": "checkpoints/latest_accepted_checkpoint_backup_receipt.json",
+    "sha256": "326bf1072d6a21df67009e92b7242c85e3562ea109185453fc8c8b7bc0aad688"
+  },
+  "checkpoint_eval_decision": {
+    "path": "evals/latest_checkpoint_eval_decision.json",
+    "sha256": "f65d0802447015dbf7ade6faaef1b37e73a33382e7de7a864bd0c3d64852c127"
+  },
+  "checkpoint_eval_failure": null,
+  "hardware_qualification": {
+    "path": "preflight/hardware_qualification.json",
+    "sha256": "e073e58f73ea24950b524bb74e48d7eb8ccd8e849e157ebfebb744687a4f3842"
+  },
+  "run_shape_qualification": {
+    "path": "preflight/run_shape_qualification.json",
+    "sha256": "225cbd3e2a29093d4fb3f17378cf8504d9a989ddf210861be03fd53470148988"
+  },
+  "systems_bundle": {
+    "path": "fixtures/psion/pretrain/psion_actual_pretraining_systems_bundle_v1.json",
+    "sha256": "529d4a31e04f8594b032569311c84e591b6d95ae6511111ba36399f9b5ff3268"
+  },
+  "comparison_rows": [
+    {
+      "row_id": "checkpoint_eval_receipt",
+      "signal_kind": "checkpoint_eval_receipt",
+      "comparison_kind": "exact_match",
+      "expected_value": "decision_available",
+      "observed_value": "decision_available",
+      "status": "green",
+      "detail": "Actual-lane continue-restart decisions require one clear retained checkpoint-eval outcome before the operator should trust the latest checkpoint."
+    },
+    {
+      "row_id": "checkpoint_eval_decision_state",
+      "signal_kind": "checkpoint_eval_decision_state",
+      "comparison_kind": "exact_match",
+      "expected_value": "continue",
+      "observed_value": "continue",
+      "status": "green",
+      "detail": "Automatic checkpoint review must stay green for uninterrupted long-run continuation."
+    },
+    {
+      "row_id": "checkpoint_eval_pass_rate_bps",
+      "signal_kind": "checkpoint_eval_pass_rate_bps",
+      "comparison_kind": "min_floor",
+      "expected_value": "10000",
+      "observed_value": "10000",
+      "status": "green",
+      "detail": "The continue threshold requires every frozen checkpoint-eval gate to stay above its admitted floor."
+    },
+    {
+      "row_id": "checkpoint_eval_score_bps",
+      "signal_kind": "checkpoint_eval_score_bps",
+      "comparison_kind": "min_floor",
+      "expected_value": "8000",
+      "observed_value": "8532",
+      "status": "green",
+      "detail": "The restart threshold stays tied to the bounded aggregate score floor already emitted by the checkpoint-eval surface."
+    },
+    {
+      "row_id": "checkpoint_backup_state",
+      "signal_kind": "checkpoint_backup_state",
+      "comparison_kind": "exact_match",
+      "expected_value": "backed_up",
+      "observed_value": "backed_up",
+      "status": "green",
+      "detail": "The operator should not continue or restart from a checkpoint that lacks one durable backup receipt."
+    },
+    {
+      "row_id": "hardware_admission_state",
+      "signal_kind": "hardware_admission_state",
+      "comparison_kind": "exact_match",
+      "expected_value": "admitted",
+      "observed_value": "admitted",
+      "status": "green",
+      "detail": "The long-run decision path reuses the frozen hardware admission receipt rather than assuming the machine stayed healthy."
+    },
+    {
+      "row_id": "run_shape_admission_state",
+      "signal_kind": "run_shape_admission_state",
+      "comparison_kind": "exact_match",
+      "expected_value": "admitted",
+      "observed_value": "admitted",
+      "status": "green",
+      "detail": "The long-run decision path reuses the retained run-shape qualification instead of drifting away from the admitted topology and dataloader contract."
+    },
+    {
+      "row_id": "throughput_anchor_ratio_bps",
+      "signal_kind": "throughput_anchor_ratio_bps",
+      "comparison_kind": "min_floor",
+      "expected_value": "9000",
+      "observed_value": "10176",
+      "status": "green",
+      "detail": "Continue decisions keep throughput within 90% of the trusted-cluster anchor before the operator treats the run as healthy."
+    },
+    {
+      "row_id": "step_latency_anchor_ratio_bps",
+      "signal_kind": "step_latency_anchor_ratio_bps",
+      "comparison_kind": "max_ceiling",
+      "expected_value": "11500",
+      "observed_value": "9696",
+      "status": "green",
+      "detail": "Continue decisions require step latency to stay within 115% of the trusted-cluster anchor."
+    },
+    {
+      "row_id": "checkpoint_write_ratio_bps",
+      "signal_kind": "checkpoint_write_ratio_bps",
+      "comparison_kind": "min_floor",
+      "expected_value": "9000",
+      "observed_value": "10812",
+      "status": "green",
+      "detail": "Continue decisions keep checkpoint write throughput inside the healthy band so backup and resume remain credible."
+    },
+    {
+      "row_id": "dataloader_stall_count",
+      "signal_kind": "dataloader_stall_count",
+      "comparison_kind": "max_ceiling",
+      "expected_value": "1",
+      "observed_value": "0",
+      "status": "green",
+      "detail": "Continue decisions keep dataloader stalls below the bounded investigation ceiling instead of tolerating slow degradation."
+    }
+  ],
+  "checkpoint_readiness_state": "ready_to_continue",
+  "claim_boundary": "This retained checkpoint comparison binds the latest accepted checkpoint to the frozen checkpoint-eval, backup, hardware, run-shape, and systems receipts before the actual lane decides whether to continue, hold, or restart. It does not claim that the operator already performed the chosen action.",
+  "detail": "Checkpoint comparison records the explicit continue threshold against the trusted-cluster throughput anchor and the retained actual-lane checkpoint lineage.",
+  "comparison_digest": "0006b9471ca583fd97d31649046b7717ec7c66e4fdbfec620159bd85ec907624"
+}

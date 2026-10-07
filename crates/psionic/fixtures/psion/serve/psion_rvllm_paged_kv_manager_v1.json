@@ -1,0 +1,63 @@
+{
+  "schema_version": "psion.rvllm_paged_kv_manager.v1",
+  "packet_id": "psion_rvllm_paged_kv_manager_v1",
+  "runtime_scope": [
+    "psionic_runtime.kv_cache_policy",
+    "psionic_serve.inmemory_kv_cache",
+    "gpt_oss.cuda_kv_cache"
+  ],
+  "logical_page_tokens_default": 16,
+  "owner_classes": [
+    "request",
+    "session",
+    "shared_prefix"
+  ],
+  "spill_policies": [
+    "refuse_new_pages",
+    "evict_oldest_pages",
+    "spill_to_host"
+  ],
+  "residency_tiers": [
+    "device",
+    "host",
+    "distributed"
+  ],
+  "residency_movements": [
+    "prefetch",
+    "write_back",
+    "spill",
+    "restore"
+  ],
+  "block_manager_features": [
+    {
+      "feature_id": "logical_page_layout",
+      "current_posture": "KvCachePageLayout and KvCacheState remain the canonical visible geometry surface"
+    },
+    {
+      "feature_id": "request_owned_growth_delta",
+      "current_posture": "KvCacheOwnershipAccounting keeps before/after growth and scheduler binding explicit"
+    },
+    {
+      "feature_id": "owner_bound_eviction_and_reclaim",
+      "current_posture": "owner-bound page eviction and reclaim are explicit instead of hidden inside opaque cache heuristics"
+    },
+    {
+      "feature_id": "host_device_residency_accounting",
+      "current_posture": "host and device residency tiers plus refusal reasons are serialized directly in runtime evidence"
+    }
+  ],
+  "retained_tests": [
+    "paged_kv_cache_tracks_growth_refill_and_refusal",
+    "paged_kv_cache_tracks_owner_bound_page_eviction_and_reclaim",
+    "paged_kv_cache_predicts_device_resident_growth_from_empty_seed",
+    "paged_kv_cache_predicts_device_resident_growth_from_existing_seed",
+    "host_device_kv_residency_reports_prefetch_writeback_and_refusal"
+  ],
+  "benchmark_paths": [
+    "crates/psionic-runtime/src/lib.rs",
+    "crates/psionic-serve/src/lib.rs",
+    "crates/psionic-serve/src/gpt_oss.rs"
+  ],
+  "stability_posture": "Psionic already exposes a real paged-KV manager with visible page geometry, ownership accounting, spill policy, residency movement, and refusal posture. This packet closes the block-manager reporting seam without replacing that explicit evidence model with hidden heuristics.",
+  "packet_digest": "334e915310db56529dab6ccf0a3687caf6d865e9836a103b965a995b223719c5"
+}

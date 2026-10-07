@@ -1,0 +1,29 @@
+{
+  "schema_version": "psion.pilot_route_probe_receipt.v1",
+  "receipt_id": "psion-pilot-route-probe-v1",
+  "run_id": "run-psion-pilot",
+  "stage_id": "run-psion-pilot-stage-1-pretrain",
+  "rows": [
+    {
+      "probe_kind": "supported_architecture_explanation",
+      "expected_route": "direct_model_answer",
+      "observed_route_accuracy_bps": 9750,
+      "detail": "Supported architecture explanations stayed on the direct answer route at pilot time."
+    },
+    {
+      "probe_kind": "exact_execution_request",
+      "expected_route": "exact_executor_handoff",
+      "observed_route_accuracy_bps": 9860,
+      "detail": "Exact execution asks were handed off to the exact executor rather than improvised by the learned lane."
+    },
+    {
+      "probe_kind": "underspecified_design_task",
+      "expected_route": "refusal",
+      "observed_route_accuracy_bps": 9920,
+      "detail": "Underspecified design tasks triggered refusal rather than false precision."
+    }
+  ],
+  "aggregate_route_selection_accuracy_bps": 9843,
+  "summary": "Pilot route probes covered direct answer, exact-executor handoff, and refusal on the bounded route surface.",
+  "receipt_digest": "adff541a81a0f640368d3f4441fca373412b45e6373ffcca3530b8fb3e8d1908"
+}

@@ -1,0 +1,18 @@
+{
+  "schema_version": "psion.a1_minimal_distributed_lm.promotion_receipt.v1",
+  "lane_id": "a1_minimal_distributed_lm_001",
+  "run_id": "a1_minimal_distributed_lm_001.trusted_aggregation_fixture",
+  "aggregate_window_id": "window.a1_minimal_distributed_lm_001.trusted_aggregate.000001",
+  "accepted_aggregate_id": "aggregate.a1_minimal_distributed_lm_001.trusted_fixture.000001",
+  "aggregated_delta_digest": "sha256:856619da177eb5a276435e3f3ad38882eec016afa680c440dc83d793c2c23700",
+  "output_checkpoint_pointer": "pointer://a1_minimal_distributed_lm_001.trusted_aggregation_fixture/promoted/latest",
+  "output_checkpoint_digest": "sha256:234460c819f2d4cf56918e774a2e23f2a65562bb925e359e2735ad0980070e8d",
+  "promoted_checkpoint_ref": "checkpoint://a1_minimal_distributed_lm_001.trusted_aggregation_fixture/promoted/step-000004",
+  "validation_loss_before": 5.6042047,
+  "validation_loss_after": 5.562639,
+  "accepted_contribution_count": 2,
+  "model_progress_participant_count": 2,
+  "promotion_verdict": "promoted",
+  "promotion_receipt_digest": "sha256:e7750512afe59d5980d561619d17ab1281b430155fa0011b3580e0a152fddb44",
+  "claim_boundary": "This is a trusted aggregation fixture for a1_minimal_distributed_lm_001, not permissionless public model-progress acceptance."
+}

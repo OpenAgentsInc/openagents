@@ -1,0 +1,88 @@
+{
+  "schema_version": "psion.actual_pretraining_hardware_observation.v1",
+  "observation_id": "psion_actual_pretraining_hardware_observation_admitted_v1",
+  "lane_id": "psion_actual_pretraining_v1",
+  "observation_kind": "operator_snapshot_fixture",
+  "observed_at_utc": "2026-04-02T14:55:00Z",
+  "backend": "cuda",
+  "workers": [
+    {
+      "worker_label": "h100-node-1",
+      "backend": "cuda",
+      "device_name": "NVIDIA H100 80GB HBM3",
+      "total_memory_bytes": 85899345920,
+      "free_memory_bytes": 73014444032,
+      "temperature_celsius": 54,
+      "ecc_uncorrected_error_count": 0,
+      "throttling_observed": false,
+      "resident_compute_process_count": 0,
+      "mig_partitioned": false,
+      "detail": "Admitted H100 worker snapshot retained for actual-lane launch qualification."
+    },
+    {
+      "worker_label": "h100-node-2",
+      "backend": "cuda",
+      "device_name": "NVIDIA H100 80GB HBM3",
+      "total_memory_bytes": 85899345920,
+      "free_memory_bytes": 72477573120,
+      "temperature_celsius": 55,
+      "ecc_uncorrected_error_count": 0,
+      "throttling_observed": false,
+      "resident_compute_process_count": 0,
+      "mig_partitioned": false,
+      "detail": "Admitted H100 worker snapshot retained for actual-lane launch qualification."
+    },
+    {
+      "worker_label": "h100-node-3",
+      "backend": "cuda",
+      "device_name": "NVIDIA H100 80GB HBM3",
+      "total_memory_bytes": 85899345920,
+      "free_memory_bytes": 71618830336,
+      "temperature_celsius": 56,
+      "ecc_uncorrected_error_count": 0,
+      "throttling_observed": false,
+      "resident_compute_process_count": 0,
+      "mig_partitioned": false,
+      "detail": "Admitted H100 worker snapshot retained for actual-lane launch qualification."
+    },
+    {
+      "worker_label": "h100-node-4",
+      "backend": "cuda",
+      "device_name": "NVIDIA H100 80GB HBM3",
+      "total_memory_bytes": 85899345920,
+      "free_memory_bytes": 70759911424,
+      "temperature_celsius": 57,
+      "ecc_uncorrected_error_count": 0,
+      "throttling_observed": false,
+      "resident_compute_process_count": 0,
+      "mig_partitioned": false,
+      "detail": "Admitted H100 worker snapshot retained for actual-lane launch qualification."
+    }
+  ],
+  "credential_sources": [
+    {
+      "source_name": "PSION_ACTUAL_PRETRAINING_GCP_PROJECT_ID",
+      "kind": "environment_variable",
+      "present": true,
+      "redacted_digest": "f24c486e8737512d7d6e61991aa052c2a223980cbfda9270e4126a1a5df9bb92",
+      "detail": "Credential source is retained only by declared name plus redacted digest."
+    },
+    {
+      "source_name": "PSION_ACTUAL_PRETRAINING_BUCKET_URL",
+      "kind": "environment_variable",
+      "present": true,
+      "redacted_digest": "c4b566959b97ed0b8d2515e53b915cb9c32a0edc1940283042c1fb7d8cc6ea48",
+      "detail": "Credential source is retained only by declared name plus redacted digest."
+    },
+    {
+      "source_name": "GOOGLE_APPLICATION_CREDENTIALS",
+      "kind": "secret_file_env",
+      "present": true,
+      "redacted_digest": "e358344a23c752afb24c037f1a9fbc96180967204f6ba67ce66db86bee74b156",
+      "detail": "Credential source is retained only by declared name plus redacted digest."
+    }
+  ],
+  "checkpoint_restore_ready": true,
+  "summary": "Admitted four-node H100 operator snapshot for the canonical actual-pretraining lane.",
+  "observation_digest": "eee4cab8cf7ae7ff8c66175e12c4fa617c20e7ae146f8d36cacfee95c467603a"
+}

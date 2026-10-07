@@ -1,0 +1,35 @@
+[package]
+name = "psionic-provider"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+publish.workspace = true
+description = "Provider-facing capability and receipt types for Psionic"
+
+[lints]
+workspace = true
+
+[lib]
+path = "src/lib.rs"
+
+[dependencies]
+ed25519-dalek = { workspace = true }
+hex = { workspace = true }
+psionic-ir = { path = "../psionic-ir" }
+psionic-eval = { path = "../psionic-eval" }
+psionic-models = { path = "../psionic-models" }
+psionic-research = { path = "../psionic-research" }
+psionic-router = { path = "../psionic-router" }
+psionic-runtime = { path = "../psionic-runtime" }
+psionic-sandbox = { path = "../psionic-sandbox" }
+psionic-serve = { path = "../psionic-serve" }
+serde = { workspace = true }
+serde_json = { workspace = true }
+sha2 = { workspace = true }
+thiserror = { workspace = true }
+
+[dev-dependencies]
+psionic-cluster = { path = "../psionic-cluster" }
+psionic-core = { path = "../psionic-core" }
+tempfile = "3"

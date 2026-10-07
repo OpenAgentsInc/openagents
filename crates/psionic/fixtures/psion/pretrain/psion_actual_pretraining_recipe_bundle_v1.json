@@ -1,0 +1,64 @@
+{
+  "schema_version": "psion.actual_pretraining_recipe_bundle.v1",
+  "recipe_id": "psion_actual_pretraining_recipe_v1",
+  "lane_id": "psion_actual_pretraining_v1",
+  "lane_spec": {
+    "path": "fixtures/psion/pretrain/psion_actual_pretraining_lane_spec_v1.json",
+    "sha256": "6640fce7435338dc0f66b28135f024d4b62b428826aa6ba122c22644749c8057"
+  },
+  "model_id": "psion-compact-decoder-internal-v1",
+  "model_descriptor": {
+    "path": "fixtures/psion/models/psion_compact_decoder_internal_descriptor_v1.json",
+    "sha256": "ec62d008fda209b143c50cd0c7ceee3e8675bc8b22a40619f0ded814d414c8bf"
+  },
+  "model_descriptor_digest": "c1eaf1c25afb760a686aa5df6a8a81d4c6be6557a18a4f8bf7b68372119f36ab",
+  "tokenizer_id": "psion_sentencepiece_seed",
+  "tokenizer_version": "v1",
+  "tokenizer_digest": "sha256:psion_sentencepiece_seed_tokenizer_digest_v1",
+  "tokenized_corpus_manifest": {
+    "path": "fixtures/psion/tokenized/psion_tokenized_corpus_manifest_v1.json",
+    "sha256": "f8cc49f56a5667af510456b0c990368f6147fa4ad318d49cedc3ec622bde0354"
+  },
+  "dataset_identity": "psion_corpus_tokenized@v1",
+  "sampling_policy_id": "psion_pretrain_mix",
+  "sampling_policy_version": "v1",
+  "sampling_policy_manifest": {
+    "path": "fixtures/psion/sampling/psion_sampling_policy_manifest_v1.json",
+    "sha256": "3aa5802545fd53129d23b9f78d359641625e6b2624e44ce4bf5976ef0d71f1ca"
+  },
+  "stage_schedule": {
+    "base_stage_kinds": [
+      "pretrain"
+    ],
+    "train_token_budget": 1073741824,
+    "validation_token_budget": 33554432,
+    "held_out_token_budget": 8388608,
+    "optimizer_steps": 16384,
+    "max_context_tokens": 8192
+  },
+  "continuation_target": {
+    "stage_path": [
+      "pretrain",
+      "general_sft",
+      "agentic_sft"
+    ],
+    "reasoning_sft_run_bundle": {
+      "path": "fixtures/psion/sft/psion_reasoning_sft_run_bundle_v1.json",
+      "sha256": "4bce9e0eda3284a940103663346071c5fc9806178b2a9b1a49017d1f64e51725"
+    },
+    "plugin_conditioned_stage_manifest": {
+      "path": "fixtures/psion/plugins/training/psion_plugin_conditioned_sft_v1/psion_plugin_conditioned_sft_stage_manifest.json",
+      "sha256": "ece0cc472bfaca70c209de43c1c2fc8b26003ee264317b728bb83fdaa5f37b25"
+    },
+    "plugin_conditioned_run_bundle": {
+      "path": "fixtures/psion/plugins/training/psion_plugin_conditioned_sft_v1/psion_plugin_conditioned_sft_run_bundle.json",
+      "sha256": "bde69724339d47a49b6e1c82d472072cb557834b260fa78064a7cee4a67d4a9d"
+    },
+    "continuation_eval_pack": {
+      "path": "fixtures/psion/pretrain/psion_actual_pretraining_continuation_eval_benchmark_pack_v1.json",
+      "sha256": "eb9d9810d82b4a6b3b545ad3a6e1f012c358c80fc91d143f25d7b6d91b83724e"
+    },
+    "claim_boundary": "The actual pretraining lane declares a bounded continuation path through the existing reasoning `general_sft` bundle into the bounded plugin-conditioned `agentic_sft` lane and carries one continuation-stage eval pack for later review without implying cluster-scale plugin-conditioned training closure."
+  },
+  "summary": "The canonical actual-pretraining recipe binds the broader-pretraining trusted-cluster receipt to one frozen model, tokenizer, tokenized corpus, mixture policy, fixed budget, and bounded continuation path."
+}

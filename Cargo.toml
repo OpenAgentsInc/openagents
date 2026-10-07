@@ -4,6 +4,9 @@ members = [
 exclude = [
     # Its own workspace, for Breez's SQLite; see its Cargo.toml.
     "crates/openagents-mobile",
+    # Psionic, the ML and inference stack, is its own workspace: CUDA and
+    # Metal backends, its own lints and dependency versions. See its README.
+    "crates/psionic",
     # Vendored third-party workspaces, patched in by path; see each one.
     "vendor",
 ]

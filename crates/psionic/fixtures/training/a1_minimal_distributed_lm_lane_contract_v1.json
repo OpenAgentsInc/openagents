@@ -1,0 +1,112 @@
+{
+  "schema_version": "psion.a1_minimal_distributed_lm.lane_contract.v1",
+  "lane_id": "a1_minimal_distributed_lm_001",
+  "release_id": "psionic-train.a1_minimal_distributed_lm.release.v1",
+  "environment_ref": "psionic.environment.a1_minimal_distributed_lm.tiny_lm.operator@v1",
+  "run_id_family": "a1_minimal_distributed_lm_001",
+  "tokenizer_artifact_digest": "sha256:e32b619b67029aba5de26391f9a5f4a32801220ca690ae2c89d565e61069cf63",
+  "tokenized_dataset_digest": "sha256:f0b92dc6301fc72e05a4ead6d85a4b5706e51267c116ecd72025a90c43a37905",
+  "validation_set_digest": "sha256:6c1c6ca83a2d8eca6cb133f3ec719e822f134452723e72e5201407b28cd3d228",
+  "model_config": {
+    "architecture": "tiny_transformer_lm",
+    "vocab_size": 272,
+    "context_length": 2,
+    "d_model": 2,
+    "num_layers": 1,
+    "num_heads": 1,
+    "d_ff": 4,
+    "rope_theta": 10000.0,
+    "rms_norm_eps": 0.00001
+  },
+  "optimizer_config": {
+    "optimizer": "adamw",
+    "adam_beta1": 0.9,
+    "adam_beta2": 0.95,
+    "adam_epsilon": 1e-8,
+    "weight_decay": 0.0,
+    "gradient_clip_norm": 1.0
+  },
+  "scheduler_config": {
+    "scheduler": "linear_warmup_cosine_decay",
+    "max_learning_rate": 0.15,
+    "min_learning_rate": 0.02,
+    "warmup_iters": 1,
+    "cosine_cycle_iters": 4
+  },
+  "checkpoint_family": {
+    "checkpoint_family_id": "psion.a1_minimal_distributed_lm.checkpoints.v1",
+    "base_checkpoint_ref": "base://a1_minimal_distributed_lm/step-000000",
+    "local_update_artifact_schema": "psion.a1_minimal_distributed_lm.local_update_artifact.v1",
+    "aggregate_checkpoint_schema": "psion.a1_minimal_distributed_lm.aggregate_checkpoint.v1",
+    "promoted_checkpoint_pointer_schema": "psion.a1_minimal_distributed_lm.promoted_checkpoint_pointer.v1"
+  },
+  "aggregation_rule": {
+    "rule_id": "trusted_weighted_delta_average_v1",
+    "local_update_window_steps": 4,
+    "accepted_update_input": "accepted local-update artifacts with base-checkpoint and shard digests",
+    "aggregate_output": "one aggregate checkpoint plus validation-loss receipt",
+    "promotion_gate": "promote only if aggregate validates and validation loss is finite and not worse than base"
+  },
+  "aggregation_weight_basis": {
+    "basis_id": "accepted_tokens_processed_v1",
+    "model_progress_weight_basis": "accepted local-update tokens processed against the same base checkpoint",
+    "support_work_weight_basis": "support/verifier work counts for participant truth but has zero aggregation weight",
+    "detail": "Only accepted local-update training artifacts can advance the aggregate checkpoint; validation replay, eval, checkpoint verification, and rematerialization are accepted compute work but not model-progress weight."
+  },
+  "contribution_receipt_schema": {
+    "schema_version": "psion.a1_minimal_distributed_lm.contribution_receipt.v1",
+    "required_fields": [
+      "worker_id",
+      "assignment_id",
+      "run_id",
+      "work_class",
+      "input_shard",
+      "base_checkpoint",
+      "output_artifact",
+      "artifact_digest",
+      "loss_before",
+      "loss_after",
+      "validator_verdict",
+      "closeout_verdict"
+    ],
+    "model_progress_work_classes": [
+      "local_update_training"
+    ],
+    "support_work_classes": [
+      "tokenized_shard_validation",
+      "validation_replay",
+      "checkpoint_verification",
+      "eval_batch",
+      "artifact_rematerialization",
+      "independent_scored_training_window"
+    ]
+  },
+  "validator_acceptance_policy": {
+    "policy_id": "a1_minimal_distributed_lm_validator_acceptance_v1",
+    "required_checks": [
+      "schema_version_matches",
+      "run_id_matches_assignment",
+      "tokenizer_digest_matches_contract",
+      "tokenized_dataset_digest_matches_contract",
+      "base_checkpoint_matches_assignment",
+      "artifact_digest_matches_payload",
+      "loss_values_are_finite",
+      "validator_replay_succeeds"
+    ],
+    "rejection_checks": [
+      "stale_assignment",
+      "digest_mismatch",
+      "missing_artifact",
+      "nonfinite_loss",
+      "base_checkpoint_mismatch"
+    ]
+  },
+  "closeout_and_promotion": {
+    "closeout_authority": "Nexus closeout truth",
+    "participant_counter_source": "training_accepted_contributors",
+    "model_progress_counter_source": "training_model_progress_contributors",
+    "promotion_semantics": "Nexus may count accepted support/verifier work as participants, but only accepted local-update artifacts that enter the promoted aggregate checkpoint count as model-progress participants."
+  },
+  "claim_boundary": "This lane is a fixed tiny LM contract for distributed local-update and verifier/support work. It is not OpenWebText leaderboard parity, not broad pretraining, not a model-size claim, and not the existing bounded four-step CS336 A1 demo lane.",
+  "contract_digest": "sha256:ae920336184dbd9af4703f99d5a767d5807590b855ed4c729ab94862efcf245a"
+}

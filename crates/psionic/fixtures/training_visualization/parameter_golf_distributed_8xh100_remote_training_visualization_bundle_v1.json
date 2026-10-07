@@ -1,0 +1,323 @@
+{
+  "schema_version": "psionic.remote_training_visualization_bundle.v1",
+  "bundle_id": "parameter-golf-runpod-distributed-8xh100-sample-v1",
+  "provider": "run_pod",
+  "profile_id": "runpod_8xh100_parameter_golf",
+  "lane_id": "parameter_golf_distributed_8xh100",
+  "run_id": "parameter-golf-runpod-8xh100-sample",
+  "repo_revision": "main@5e6f5f0f",
+  "result_classification": "active",
+  "refresh_contract": {
+    "target_ui_update_interval_ms": 1000,
+    "emission_mode": "append_only_snapshots",
+    "last_heartbeat_at_ms": 1742846512000,
+    "heartbeat_seq": 3
+  },
+  "series_status": "available",
+  "timeline": [
+    {
+      "observed_at_ms": 1742846509000,
+      "phase": "training",
+      "subphase": "runtime_bootstrap",
+      "detail": "The RunPod 8xH100 runtime started and created its provider-neutral live visualization mirror."
+    },
+    {
+      "observed_at_ms": 1742846510500,
+      "phase": "training",
+      "subphase": "distributed_train_step",
+      "detail": "The distributed runtime advanced from bootstrap into the first optimizer step."
+    },
+    {
+      "observed_at_ms": 1742846512000,
+      "phase": "evaluation",
+      "subphase": "distributed_validation",
+      "detail": "The distributed runtime retained the first measured train-step sample and is now sharding sliding-window validation across all eight ranks."
+    }
+  ],
+  "summary": {
+    "total_steps_completed": 1,
+    "latest_global_step": 1,
+    "latest_train_loss": 8.288431,
+    "latest_validation_loss": 4.971701,
+    "latest_tokens_per_second": 618475,
+    "latest_checkpoint_ref": "parameter-golf-distributed-8xh100-run/benchmark/runtime_model_artifacts/post_step_1_final_model.int8.ptz",
+    "detail": "The RunPod 8xH100 lane is emitting one-second heartbeats while retaining distributed step, validation, GPU, and provenance telemetry in one provider-neutral bundle."
+  },
+  "heartbeat_series": [
+    {
+      "observed_at_ms": 1742846510000,
+      "phase": "training",
+      "subphase": "runtime_bootstrap",
+      "step_in_progress": 1,
+      "active_subsystems": [
+        "runtime_bootstrap",
+        "rank_fanout",
+        "distributed_runtime"
+      ],
+      "stale_after_ms": 2500
+    },
+    {
+      "observed_at_ms": 1742846511000,
+      "phase": "training",
+      "subphase": "distributed_train_step",
+      "step_in_progress": 1,
+      "active_subsystems": [
+        "distributed_train_step",
+        "rank_wait",
+        "cuda_execution"
+      ],
+      "stale_after_ms": 2500
+    },
+    {
+      "observed_at_ms": 1742846512000,
+      "phase": "evaluation",
+      "subphase": "distributed_validation",
+      "step_in_progress": 1,
+      "active_subsystems": [
+        "distributed_validation",
+        "rank_wait",
+        "cuda_evaluation"
+      ],
+      "stale_after_ms": 2500
+    }
+  ],
+  "loss_series": [
+    {
+      "global_step": 1,
+      "elapsed_ms": 2000,
+      "train_loss": 8.288431,
+      "validation_loss": 4.971701
+    }
+  ],
+  "math_series": [
+    {
+      "observed_at_ms": 1742846511750,
+      "global_step": 1,
+      "gradient_norm": 1.8821,
+      "clip_event_count": 1,
+      "non_finite_count": 0,
+      "model_specific_diagnostics": {
+        "gradient_sync_ms": 3612.0,
+        "optimizer_step_ms": 923.0,
+        "validation_sequence_count": 121152.0
+      }
+    }
+  ],
+  "runtime_series": [
+    {
+      "observed_at_ms": 1742846511750,
+      "forward_ms": 98659,
+      "backward_ms": 128153,
+      "optimizer_ms": 923,
+      "evaluation_ms": 1472161,
+      "tokens_per_second": 618475
+    }
+  ],
+  "gpu_series": [
+    {
+      "observed_at_ms": 1742846511500,
+      "device_id": "cuda:0",
+      "device_label": "NVIDIA H100 80GB HBM3",
+      "utilization_bps": 7600,
+      "memory_used_bytes": 13958643712,
+      "memory_total_bytes": 85899345920,
+      "temperature_celsius": 66,
+      "power_watts": 286
+    },
+    {
+      "observed_at_ms": 1742846511525,
+      "device_id": "cuda:1",
+      "device_label": "NVIDIA H100 80GB HBM3",
+      "utilization_bps": 7620,
+      "memory_used_bytes": 15032385536,
+      "memory_total_bytes": 85899345920,
+      "temperature_celsius": 67,
+      "power_watts": 287
+    },
+    {
+      "observed_at_ms": 1742846511550,
+      "device_id": "cuda:2",
+      "device_label": "NVIDIA H100 80GB HBM3",
+      "utilization_bps": 7640,
+      "memory_used_bytes": 16106127360,
+      "memory_total_bytes": 85899345920,
+      "temperature_celsius": 68,
+      "power_watts": 288
+    },
+    {
+      "observed_at_ms": 1742846511575,
+      "device_id": "cuda:3",
+      "device_label": "NVIDIA H100 80GB HBM3",
+      "utilization_bps": 7660,
+      "memory_used_bytes": 17179869184,
+      "memory_total_bytes": 85899345920,
+      "temperature_celsius": 69,
+      "power_watts": 289
+    },
+    {
+      "observed_at_ms": 1742846511600,
+      "device_id": "cuda:4",
+      "device_label": "NVIDIA H100 80GB HBM3",
+      "utilization_bps": 7680,
+      "memory_used_bytes": 18253611008,
+      "memory_total_bytes": 85899345920,
+      "temperature_celsius": 70,
+      "power_watts": 290
+    },
+    {
+      "observed_at_ms": 1742846511625,
+      "device_id": "cuda:5",
+      "device_label": "NVIDIA H100 80GB HBM3",
+      "utilization_bps": 7700,
+      "memory_used_bytes": 19327352832,
+      "memory_total_bytes": 85899345920,
+      "temperature_celsius": 71,
+      "power_watts": 291
+    },
+    {
+      "observed_at_ms": 1742846511650,
+      "device_id": "cuda:6",
+      "device_label": "NVIDIA H100 80GB HBM3",
+      "utilization_bps": 7720,
+      "memory_used_bytes": 20401094656,
+      "memory_total_bytes": 85899345920,
+      "temperature_celsius": 72,
+      "power_watts": 292
+    },
+    {
+      "observed_at_ms": 1742846511675,
+      "device_id": "cuda:7",
+      "device_label": "NVIDIA H100 80GB HBM3",
+      "utilization_bps": 7740,
+      "memory_used_bytes": 21474836480,
+      "memory_total_bytes": 85899345920,
+      "temperature_celsius": 73,
+      "power_watts": 293
+    }
+  ],
+  "distributed_series": [
+    {
+      "observed_at_ms": 1742846511750,
+      "participating_rank_count": 8,
+      "rank_skew_ms": 11742,
+      "slowest_rank_ms": 229019,
+      "collective_ms": 3612,
+      "stalled_rank_count": 0
+    }
+  ],
+  "event_series": [
+    {
+      "observed_at_ms": 1742846509000,
+      "severity": "info",
+      "event_kind": "runtime_started",
+      "detail": "The RunPod distributed runtime created its provider-neutral live visualization bundle."
+    },
+    {
+      "observed_at_ms": 1742846511750,
+      "severity": "info",
+      "event_kind": "train_step_recorded",
+      "detail": "The lane retained its first measured train-step sample and distributed validation aggregation."
+    },
+    {
+      "observed_at_ms": 1742846512000,
+      "severity": "info",
+      "event_kind": "distributed_validation_active",
+      "detail": "Sliding-window validation is active across all eight ranks and the bundle is staying fresh every second."
+    }
+  ],
+  "source_artifacts": [
+    {
+      "artifact_role": "live_bundle",
+      "artifact_uri": "training_visualization/parameter_golf_distributed_8xh100_remote_training_visualization_bundle_v1.json",
+      "source_kind": "local_mirror",
+      "authoritative": true,
+      "source_receipt_ids": [
+        "parameter_golf_distributed_8xh100.remote_training_bundle.v1"
+      ],
+      "detail": "The provider-neutral local mirror is the app-facing source for the RunPod distributed 8xH100 lane."
+    },
+    {
+      "artifact_role": "bringup_report",
+      "artifact_uri": "exported_submission/records/track_non_record_16mb/2026-03-18_psionic_local_reference_runtime_replay_v2/parameter-golf-distributed-8xh100-run/benchmark/parameter_golf_distributed_8xh100_bringup.json",
+      "artifact_digest": "43dfca6d9bf092fb9cc8bd44fd719be8d2f19691f3ba790902b3d73fdb070f74",
+      "source_kind": "runtime_owned",
+      "authoritative": true,
+      "source_receipt_ids": [
+        "parameter_golf_distributed_8xh100_bringup_report"
+      ],
+      "detail": "The bring-up report remains authoritative for exact machine admission on the distributed lane."
+    },
+    {
+      "artifact_role": "gpu_inventory",
+      "artifact_uri": "nvidia_smi_inventory.txt",
+      "artifact_digest": "6f5ea71f3769b8db836099112654587d8b7885bbc26b2f0e63de6155772e55a8",
+      "source_kind": "provider_generated",
+      "authoritative": true,
+      "detail": "The `nvidia-smi` inventory snapshot remains authoritative for the retained per-device GPU state."
+    },
+    {
+      "artifact_role": "gpu_topology",
+      "artifact_uri": "nvidia_smi_topology.txt",
+      "artifact_digest": "f7c7f6c5d41468deeb6f9880b95dd8ed8d57ae00b6ae3a1e8143550bd1ea7a84",
+      "source_kind": "provider_generated",
+      "authoritative": true,
+      "detail": "The `nvidia-smi topo -m` capture remains authoritative for the retained fabric topology snapshot."
+    },
+    {
+      "artifact_role": "runtime_manifest",
+      "artifact_uri": "runtime/runtime_manifest.json",
+      "artifact_digest": "54b0f4e53df5f3923d2256ca1a92cdd78d06f9a92a07b0bc037d698f2790ad5f",
+      "source_kind": "runtime_owned",
+      "authoritative": true,
+      "source_receipt_ids": [
+        "parameter_golf_submission_runtime_manifest"
+      ],
+      "detail": "The shipped runtime manifest remains authoritative for the exported-folder runtime contract."
+    },
+    {
+      "artifact_role": "train_step_receipt",
+      "artifact_uri": "exported_submission/records/track_non_record_16mb/2026-03-18_psionic_local_reference_runtime_replay_v2/parameter-golf-distributed-8xh100-run/benchmark/parameter_golf_distributed_8xh100_train_step.json",
+      "artifact_digest": "365d50fb99f74154d17f5fb5148cb85e353e03b13e6007ab7ecfd46c77d220de",
+      "source_kind": "runtime_owned",
+      "authoritative": true,
+      "source_receipt_ids": [
+        "parameter_golf_distributed_8xh100_train_step_receipt"
+      ],
+      "detail": "The train-step receipt remains authoritative for the retained distributed step, validation, and artifact lineage."
+    },
+    {
+      "artifact_role": "current_model_artifact",
+      "artifact_uri": "exported_submission/records/track_non_record_16mb/2026-03-18_psionic_local_reference_runtime_replay_v2/parameter-golf-distributed-8xh100-run/benchmark/runtime_model_artifacts/post_step_1_final_model.int8.ptz",
+      "artifact_digest": "4657d793ae3e64796670b6768f433c48f788518725ba2854e913db205412b250",
+      "source_kind": "runtime_owned",
+      "authoritative": true,
+      "source_receipt_ids": [
+        "parameter_golf_distributed_8xh100_train_step_receipt"
+      ],
+      "detail": "The retained post-step int8+zlib artifact remains authoritative for the current distributed runtime output."
+    },
+    {
+      "artifact_role": "submission_run_evidence",
+      "artifact_uri": "exported_submission/psionic_parameter_golf_submission_run_evidence.json",
+      "artifact_digest": "f65656fd3747ab65da841b42cfc9aa7433416ee6680b99f000b3ca4ab622f23f",
+      "source_kind": "runtime_owned",
+      "authoritative": true,
+      "source_receipt_ids": [
+        "parameter_golf.submission_run_evidence.v1"
+      ],
+      "detail": "The submission run evidence report remains authoritative for the exported-folder replay posture and embedded distributed challenge receipt."
+    },
+    {
+      "artifact_role": "distributed_receipt",
+      "artifact_uri": "parameter_golf_distributed_8xh100_receipt.json",
+      "artifact_digest": "5e019c3a263a0e3adf0f09d1050c59dfbf4e0ad7c8270af7e664aad7faded21b",
+      "source_kind": "runtime_owned",
+      "authoritative": true,
+      "source_receipt_ids": [
+        "parameter_golf_distributed_throughput_receipt"
+      ],
+      "detail": "The distributed challenge receipt remains authoritative for refusal posture and any retained topology or timing facts."
+    }
+  ],
+  "bundle_digest": "a8f575f6935f36ffa24478cf670a7fe6acadfd1b3424195ea1a13a14f62ee3cc"
+}

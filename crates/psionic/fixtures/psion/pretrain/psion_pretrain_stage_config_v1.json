@@ -1,0 +1,20 @@
+{
+  "schema_version": "psion.pretrain_stage_config.v1",
+  "run_id": "run-psion-pilot",
+  "stage_id": "run-psion-pilot-stage-1-pretrain",
+  "stage_kind": "pretrain",
+  "model_id": "psion-compact-decoder-pilot-v1",
+  "model_descriptor_digest": "04232d1ad07d9b79401e5649c4c42d695bf87e4450e6f4152c8edb08f9be93d0",
+  "tokenizer_binding_digest": "92c451001e4cec3481a3480b29d80ecaa1696f9bffe553139d3a2f65da69e321",
+  "dataset_identity": "psion_corpus_tokenized@v1",
+  "sampling_policy_id": "psion_pretrain_mix",
+  "sampling_policy_version": "v1",
+  "objective_config": {
+    "objective_kind": "next_token_prediction",
+    "loss_normalization": "by_target_token",
+    "label_smoothing_bps": 25,
+    "tokenizer_binding_digest": "92c451001e4cec3481a3480b29d80ecaa1696f9bffe553139d3a2f65da69e321",
+    "dataset_identity": "psion_corpus_tokenized@v1",
+    "max_context_tokens": 4096
+  }
+}

@@ -1,0 +1,74 @@
+{
+  "schema_version": "psion.actual_pretraining_run_shape_qualification.v1",
+  "qualification_id": "psion_actual_pretraining_run_shape_qualification::run-psion-actual-20260402t010000z",
+  "lane_id": "psion_actual_pretraining_v1",
+  "run_id": "run-psion-actual-20260402t010000z",
+  "selected_git_ref": "refs/heads/main",
+  "git_commit_sha": "1111222233334444555566667777888899990000",
+  "dirty_tree_admission": "refuse_by_default",
+  "observation_kind": "operator_snapshot_fixture",
+  "observation_artifact": {
+    "path": "fixtures/psion/pretrain/psion_actual_pretraining_run_shape_observation_admitted_v1.json",
+    "sha256": "f43ea20089e6886b7b107976f5b42b03c62b7ad0bd0842b3d52c3ece0c881d84"
+  },
+  "baseline_tools_bundle": {
+    "path": "fixtures/psion/pretrain/psion_actual_pretraining_baseline_tools_bundle_v1.json",
+    "sha256": "e51911c78571f640de9cb7a27b1ba9ed2e1839255e87ff3856bc5ec4397224cd"
+  },
+  "data_bundle": {
+    "path": "fixtures/psion/pretrain/psion_actual_pretraining_data_bundle_v1.json",
+    "sha256": "8e0d15306d1cd4c438bb27b4057f05d0923bc1cafd2f3c73452c612b85098319"
+  },
+  "systems_bundle": {
+    "path": "fixtures/psion/pretrain/psion_actual_pretraining_systems_bundle_v1.json",
+    "sha256": "529d4a31e04f8594b032569311c84e591b6d95ae6511111ba36399f9b5ff3268"
+  },
+  "evidence_contract": {
+    "path": "fixtures/psion/pretrain/psion_actual_pretraining_evidence_contract_v1.json",
+    "sha256": "93414e8b31f96b564d840a3ad271c602d922a0afafc2fe36aaaf8c09d16a31d1"
+  },
+  "required_dataset_identity": "psion_corpus_tokenized@v1",
+  "required_horizon_steps": 16384,
+  "required_tokens_per_step": 65536,
+  "required_max_sequence_tokens": 8192,
+  "min_healthy_tokens_per_second": 251781,
+  "max_healthy_step_latency_ms": 288,
+  "min_checkpoint_write_throughput_bytes_per_second": 1181116006,
+  "min_storage_available_bytes": 18671632384,
+  "max_dataloader_stall_count": 3,
+  "observed_at_utc": "2026-04-02T14:58:00Z",
+  "observed_run_root": "/srv/psion_actual_pretraining_runs/run-psion-actual-20260402t010000z",
+  "throughput_probe": {
+    "source_receipt_id": "psion-broader-pretrain-observability-v1",
+    "source_receipt_digest": "46d82db942801eddee02fb638bee11654478bc8f4b6be2f472bdb3d31751d142",
+    "observed_tokens_per_second": 301442,
+    "observed_step_latency_ms": 224,
+    "observed_checkpoint_write_throughput_bytes_per_second": 1596375040,
+    "detail": "Admitted run-shape fixture retains measured throughput above the frozen trusted-cluster anchor floor for the canonical actual lane."
+  },
+  "storage_probe": {
+    "storage_path": "/srv/psion_actual_pretraining_runs/run-psion-actual-20260402t010000z",
+    "available_bytes": 19790175879168,
+    "observed_read_bytes_per_second": 3758096384,
+    "observed_write_bytes_per_second": 2426134528,
+    "writable": true,
+    "detail": "Admitted run-shape fixture retains one storage read/write band above the checkpoint and manifest retention floor."
+  },
+  "dataloader_probe": {
+    "dataset_identity": "psion_corpus_tokenized@v1",
+    "max_sequence_tokens": 8192,
+    "planned_optimizer_steps": 16384,
+    "planned_tokens_per_step": 65536,
+    "observed_horizon_steps": 16384,
+    "observed_horizon_tokens": 1073741824,
+    "observed_batches_per_second": 5,
+    "observed_stall_count": 0,
+    "deterministic_replay_observed": true,
+    "detail": "Admitted run-shape fixture retains exact replay and full planned-horizon dataloader coverage for the canonical actual lane."
+  },
+  "admission_state": "admitted",
+  "refusal_reasons": [],
+  "claim_boundary": "This retained run-shape qualification ties throughput, storage, and dataloader admission to the frozen actual-lane systems, data, and baseline-tools bundles. It does not claim that later backup, eval, or alert automation is already finished.",
+  "detail": "Run-shape qualification consumes the frozen actual-lane throughput anchor `psion_actual_pretraining_trusted_cluster_anchor`, replay authority `psion_corpus_tokenized@v1`, and evidence family `psion.actual_pretraining.evidence.v1` before admitting a long run.",
+  "receipt_digest": "861b4bb5179de56295b21b443377096e3cdb5b9c8023d5542236bcdf83dd4eee"
+}

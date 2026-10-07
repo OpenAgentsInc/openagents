@@ -1,0 +1,22 @@
+{
+  "schema_version": "psion.actual_pretraining_checkpoint_failure_drill.v1",
+  "lane_id": "psion_actual_pretraining_v1",
+  "run_id": "run-psion-actual-20260402t060000z",
+  "drill_id": "psion_actual_pretraining_checkpoint_failure_drill::16384::failed_upload",
+  "drill_kind": "failed_upload",
+  "trigger_surface": "backup",
+  "selected_git_ref": "refs/heads/main",
+  "git_commit_sha": "1111222233334444555566667777888899990000",
+  "dirty_tree_admission": "refuse_by_default",
+  "workspace_status_sha256": null,
+  "outcome": "retained_refusal",
+  "evidence_paths": [
+    "checkpoints/latest_accepted_checkpoint_backup_receipt.json",
+    "checkpoints/backups/latest_accepted_checkpoint_pointer.backup.json",
+    "checkpoints/backups/step-16384/checkpoint_manifest.backup.json"
+  ],
+  "refusal_reason": "Injected failed checkpoint upload drill refused durable remote backup confirmation without copying any secret payload into retained evidence.",
+  "claim_boundary": "This retained failure drill proves that checkpoint-upload failures surface as explicit refusal evidence under the actual-lane family rather than silent launcher optimism.",
+  "detail": "Fixture failed-upload drill records refusal evidence while preserving the local backup copies.",
+  "receipt_digest": "4de350a080d89568793afeeafa20b37809435949b010df55745673ecc5292105"
+}

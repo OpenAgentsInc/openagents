@@ -1,0 +1,141 @@
+{
+  "schema_version": 1,
+  "report_id": "parameter_golf.research_harness.v1",
+  "claim_class": "research_only_variant_harness",
+  "benchmark_ref": "benchmark://openagents/psionic/parameter_golf/challenge_review",
+  "baseline_run_id": "parameter-golf-local-reference-run",
+  "comparison_surface": {
+    "training_dataset_digest": "e538ea23d42cef6c883e09c75adab67bc8d9b6a2adc0454da2b8fa1caf349a00",
+    "validation_dataset_digest": "48b0c65039efa19e41d54b4572fdd29fef3e7fbc0991fdd6c6abc3e95ebe143d",
+    "benchmark_ref": "benchmark://openagents/psionic/parameter_golf/challenge_review",
+    "submission_metric_id": "parameter_golf.validation_bits_per_byte",
+    "sequence_length": 4,
+    "artifact_cap_bytes": 16000000,
+    "counted_component_ids": [
+      "entrypoint_code_bytes",
+      "compressed_model_bytes",
+      "shipped_runtime_code_bytes",
+      "shipped_wrapper_code_bytes",
+      "required_build_dependency_bytes"
+    ],
+    "baseline_submission_package_version": "2026.03.18.non_record_submission.v2",
+    "baseline_entrypoint_artifact_digest": "9f52fcca32581e8ab38493636cb6f5fa4046ff8ad56683961fc4f41385d1fcd3",
+    "baseline_model_artifact_digest": "efe272503950104f1557f5c73cad69ce717e60d9b75f05e48d17ffbeb6940af1",
+    "baseline_accounting_receipt_digest": "c98b2390a3ca2eaf26933cadc8939e2139c16894d671f4db22ad8f7948ba933a"
+  },
+  "variants": [
+    {
+      "variant_id": "baseline_control",
+      "family": "baseline_control",
+      "status": "implemented_baseline",
+      "description": "Current Psionic local-reference control bound to the same oracle, benchmark receipt, and non-record submission accounting surface.",
+      "changed_surfaces": [
+        "public_9x512_decoder",
+        "current_muon_plus_adam_optimizer_split",
+        "current_int8_zlib_export"
+      ],
+      "oracle_guardrails": [
+        "reuse fixed training_dataset_digest=e538ea23d42cef6c883e09c75adab67bc8d9b6a2adc0454da2b8fa1caf349a00",
+        "reuse fixed validation_dataset_digest=48b0c65039efa19e41d54b4572fdd29fef3e7fbc0991fdd6c6abc3e95ebe143d",
+        "reuse benchmark_ref=benchmark://openagents/psionic/parameter_golf/challenge_review",
+        "reuse submission_metric_id=parameter_golf.validation_bits_per_byte",
+        "reuse the same exact val_loss and val_bpb oracle and byte-accounting path"
+      ],
+      "accounting_guardrails": [
+        "preserve counted component `entrypoint_code_bytes` with explicit bytes accounting",
+        "preserve counted component `compressed_model_bytes` with explicit bytes accounting",
+        "preserve counted component `shipped_runtime_code_bytes` with explicit bytes accounting",
+        "preserve counted component `shipped_wrapper_code_bytes` with explicit bytes accounting",
+        "preserve counted component `required_build_dependency_bytes` with explicit bytes accounting"
+      ],
+      "boundary_note": "This is the measured local-reference control for research comparison only; it is not a challenge-speed 8xH100 result.",
+      "measured_metrics": {
+        "val_loss": 8.598987817764282,
+        "val_bpb": 9.924573665082512,
+        "bytes_total": 7267658,
+        "bytes_code": 7188700,
+        "bytes_model_int8_zlib": 78958,
+        "logical_training_ms": 100
+      }
+    },
+    {
+      "variant_id": "shared_depth_recurrence_candidate",
+      "family": "shared_depth_recurrence",
+      "status": "planned_research_candidate",
+      "description": "Research-only candidate that reuses one or more decoder blocks across recurrent refinement steps or explicit shared-depth passes.",
+      "changed_surfaces": [
+        "shared_depth_decoder_block",
+        "recurrent_refinement_schedule",
+        "fixed_or_dynamic_refinement_budget"
+      ],
+      "oracle_guardrails": [
+        "reuse fixed training_dataset_digest=e538ea23d42cef6c883e09c75adab67bc8d9b6a2adc0454da2b8fa1caf349a00",
+        "reuse fixed validation_dataset_digest=48b0c65039efa19e41d54b4572fdd29fef3e7fbc0991fdd6c6abc3e95ebe143d",
+        "reuse benchmark_ref=benchmark://openagents/psionic/parameter_golf/challenge_review",
+        "reuse submission_metric_id=parameter_golf.validation_bits_per_byte",
+        "reuse the same exact val_loss and val_bpb oracle and byte-accounting path"
+      ],
+      "accounting_guardrails": [
+        "preserve counted component `entrypoint_code_bytes` with explicit bytes accounting",
+        "preserve counted component `compressed_model_bytes` with explicit bytes accounting",
+        "preserve counted component `shipped_runtime_code_bytes` with explicit bytes accounting",
+        "preserve counted component `shipped_wrapper_code_bytes` with explicit bytes accounting",
+        "preserve counted component `required_build_dependency_bytes` with explicit bytes accounting"
+      ],
+      "boundary_note": "Do not compare any shared-depth or recurrent candidate unless it reuses the same oracle digests and the same counted-byte vocabulary as baseline."
+    },
+    {
+      "variant_id": "stronger_parameter_tying_candidate",
+      "family": "stronger_parameter_tying",
+      "status": "planned_research_candidate",
+      "description": "Research-only candidate that pushes stronger parameter tying across embeddings, blocks, control tensors, or output surfaces while keeping the same scoreboard contract.",
+      "changed_surfaces": [
+        "embedding_and_output_parameter_tying",
+        "cross_block_weight_sharing",
+        "control_tensor_sharing"
+      ],
+      "oracle_guardrails": [
+        "reuse fixed training_dataset_digest=e538ea23d42cef6c883e09c75adab67bc8d9b6a2adc0454da2b8fa1caf349a00",
+        "reuse fixed validation_dataset_digest=48b0c65039efa19e41d54b4572fdd29fef3e7fbc0991fdd6c6abc3e95ebe143d",
+        "reuse benchmark_ref=benchmark://openagents/psionic/parameter_golf/challenge_review",
+        "reuse submission_metric_id=parameter_golf.validation_bits_per_byte",
+        "reuse the same exact val_loss and val_bpb oracle and byte-accounting path"
+      ],
+      "accounting_guardrails": [
+        "preserve counted component `entrypoint_code_bytes` with explicit bytes accounting",
+        "preserve counted component `compressed_model_bytes` with explicit bytes accounting",
+        "preserve counted component `shipped_runtime_code_bytes` with explicit bytes accounting",
+        "preserve counted component `shipped_wrapper_code_bytes` with explicit bytes accounting",
+        "preserve counted component `required_build_dependency_bytes` with explicit bytes accounting"
+      ],
+      "boundary_note": "Parameter-tying experiments are only valid inside this harness when the score still comes from the fixed FineWeb validation oracle and the same package accounting surface."
+    },
+    {
+      "variant_id": "compression_quantization_candidate",
+      "family": "compression_quantization",
+      "status": "planned_research_candidate",
+      "description": "Research-only candidate that widens artifact compression, post-train quantization, or future low-precision export recipes without changing the comparison oracle.",
+      "changed_surfaces": [
+        "post_train_quantization_recipe",
+        "artifact_codec",
+        "compressed_model_layout"
+      ],
+      "oracle_guardrails": [
+        "reuse fixed training_dataset_digest=e538ea23d42cef6c883e09c75adab67bc8d9b6a2adc0454da2b8fa1caf349a00",
+        "reuse fixed validation_dataset_digest=48b0c65039efa19e41d54b4572fdd29fef3e7fbc0991fdd6c6abc3e95ebe143d",
+        "reuse benchmark_ref=benchmark://openagents/psionic/parameter_golf/challenge_review",
+        "reuse submission_metric_id=parameter_golf.validation_bits_per_byte",
+        "reuse the same exact val_loss and val_bpb oracle and byte-accounting path"
+      ],
+      "accounting_guardrails": [
+        "preserve counted component `entrypoint_code_bytes` with explicit bytes accounting",
+        "preserve counted component `compressed_model_bytes` with explicit bytes accounting",
+        "preserve counted component `shipped_runtime_code_bytes` with explicit bytes accounting",
+        "preserve counted component `shipped_wrapper_code_bytes` with explicit bytes accounting",
+        "preserve counted component `required_build_dependency_bytes` with explicit bytes accounting"
+      ],
+      "boundary_note": "Compression or quantization changes only belong in this harness when they still report the same counted components and final roundtrip metric as the baseline lane."
+    }
+  ],
+  "report_digest": "a6979f86b9d7fec14be924b39ebdc1a5232e79f85670f33ddbaf2a052d623b6e"
+}

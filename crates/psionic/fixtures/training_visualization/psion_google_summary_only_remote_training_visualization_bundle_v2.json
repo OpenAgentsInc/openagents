@@ -1,0 +1,147 @@
+{
+  "schema_version": "psionic.remote_training_visualization_bundle.v2",
+  "bundle_id": "psion-google-summary-only-sample-v1",
+  "provider": "google_cloud",
+  "profile_id": "google_a2_ultragpu_1g",
+  "lane_id": "psion.google_single_node.accelerated",
+  "run_id": "psion-google-summary-only-sample",
+  "repo_revision": "main@5e6f5f0f",
+  "track_semantics": {
+    "track_family": "psion",
+    "track_id": "psion.reference_pilot.single_node.v1",
+    "execution_class": "single_node",
+    "comparability_class": "not_comparable",
+    "proof_posture": "summary_only",
+    "public_equivalence_class": "not_applicable",
+    "semantic_summary": "Google single-node Psion keeps provider-neutral run identity and summary truth without inventing a score law or loss curve."
+  },
+  "result_classification": "completed_success",
+  "refresh_contract": {
+    "target_ui_update_interval_ms": 1000,
+    "emission_mode": "post_run_only",
+    "last_heartbeat_at_ms": 1742760920000,
+    "heartbeat_seq": 1
+  },
+  "series_status": "unavailable",
+  "series_unavailable_reason": "no canonical optimizer-step loss or math series was retained for this completed Google lane",
+  "timeline": [
+    {
+      "observed_at_ms": 1742760100000,
+      "phase": "provisioning",
+      "subphase": "boot",
+      "detail": "Google single-node provisioning completed and the output directory was created."
+    },
+    {
+      "observed_at_ms": 1742760400000,
+      "phase": "training",
+      "subphase": "accelerated_run",
+      "detail": "The accelerated single-node Psion run produced observability receipts and GPU samples."
+    },
+    {
+      "observed_at_ms": 1742760920000,
+      "phase": "finalize",
+      "subphase": "upload",
+      "detail": "The finalizer uploaded the summary artifacts and sealed the completed manifest."
+    }
+  ],
+  "summary": {
+    "total_steps_completed": 2048,
+    "latest_global_step": 2048,
+    "latest_tokens_per_second": 52105,
+    "latest_samples_per_second_milli": 12750,
+    "accumulated_cost_microusd": 18950000,
+    "latest_checkpoint_ref": "gcs://psion-runs/google/single-node/pilot/promoted-checkpoint",
+    "detail": "This sample keeps summary, GPU, and provenance truth explicit while refusing to invent a loss curve."
+  },
+  "heartbeat_series": [],
+  "loss_series": [],
+  "math_series": [],
+  "runtime_series": [],
+  "gpu_series": [
+    {
+      "observed_at_ms": 1742760450000,
+      "device_id": "cuda:0",
+      "device_label": "NVIDIA A100 80GB",
+      "utilization_bps": 8820,
+      "memory_used_bytes": 61203283968,
+      "memory_total_bytes": 85899345920,
+      "temperature_celsius": 63,
+      "power_watts": 286
+    },
+    {
+      "observed_at_ms": 1742760600000,
+      "device_id": "cuda:0",
+      "device_label": "NVIDIA A100 80GB",
+      "utilization_bps": 8940,
+      "memory_used_bytes": 62277025792,
+      "memory_total_bytes": 85899345920,
+      "temperature_celsius": 64,
+      "power_watts": 291
+    },
+    {
+      "observed_at_ms": 1742760750000,
+      "device_id": "cuda:0",
+      "device_label": "NVIDIA A100 80GB",
+      "utilization_bps": 8730,
+      "memory_used_bytes": 62813896704,
+      "memory_total_bytes": 85899345920,
+      "temperature_celsius": 64,
+      "power_watts": 289
+    }
+  ],
+  "distributed_series": [],
+  "event_series": [
+    {
+      "observed_at_ms": 1742760430000,
+      "severity": "info",
+      "event_kind": "gpu_samples_uploaded",
+      "detail": "The Google lane retained GPU samples in the output directory."
+    },
+    {
+      "observed_at_ms": 1742760920000,
+      "severity": "warning",
+      "event_kind": "series_unavailable",
+      "detail": "No optimizer-step loss or math series was retained for this completed Google lane."
+    }
+  ],
+  "source_artifacts": [
+    {
+      "artifact_role": "google_final_manifest",
+      "artifact_uri": "gcs://psion-runs/google/single-node/pilot/psion_google_run_final_manifest.json",
+      "artifact_digest": "6763f155f1135f54a90a250b3391edfc73f1be44dbe3cf7a2122a5f06d39fc8f",
+      "source_kind": "finalizer_owned",
+      "authoritative": true,
+      "source_receipt_ids": [
+        "psion.google_run_final_manifest.v1"
+      ],
+      "detail": "The final manifest remains authoritative for completed Google run identity and provenance."
+    },
+    {
+      "artifact_role": "observability_receipt",
+      "artifact_uri": "fixtures/psion/observability/psion_pilot_pretrain_run_observability_receipt_v1.json",
+      "artifact_digest": "e4b3d955a9ce0f47db2f45dfd8d94d05c54c2f1ba1ad1b595f281a0d35f7ab5a",
+      "source_kind": "runtime_owned",
+      "authoritative": true,
+      "source_receipt_ids": [
+        "psion.pretrain_run_observability_receipt.v1"
+      ],
+      "detail": "The observability receipt remains authoritative for cost and throughput summary facts."
+    },
+    {
+      "artifact_role": "gpu_samples",
+      "artifact_uri": "gcs://psion-runs/google/single-node/pilot/psion_google_gpu_samples.csv",
+      "artifact_digest": "88df41e4b67d246d088cc661c7b04588f1c955d02252be97e53d2553fc5980d1",
+      "source_kind": "provider_generated",
+      "authoritative": true,
+      "detail": "GPU samples stay authoritative for device activity even when the lane lacks a loss series."
+    },
+    {
+      "artifact_role": "local_mirror_bundle",
+      "artifact_uri": "local-mirror://psion/google-single-node/remote_training_visualization_bundle.json",
+      "source_kind": "local_mirror",
+      "authoritative": false,
+      "detail": "The app should prefer the normalized local mirror over raw provider objects when one exists."
+    }
+  ],
+  "bundle_digest": "41aacce46ad898cab5fff7fbeb4b6e0a6e14759909e93f730b0d5ca9bd195666"
+}

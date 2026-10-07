@@ -1,0 +1,26 @@
+{
+  "schema_version": "tassadar.default_train_lane_contract.v1",
+  "lane_id": "tassadar_article_transformer_trace_bound_trained_v0",
+  "launcher_path": "./TRAIN_TASSADAR",
+  "launcher_surface_id": "tassadar_train_default_start",
+  "stage_program_id": "tassadar_article_transformer_weight_production_v1",
+  "training_run_profile": "bounded_article_weight_production",
+  "hardware_profile_id": "cpu_reference",
+  "writer_node_id": "psionic.local.cpu_reference",
+  "run_root_family": "fixtures/tassadar/runs/tassadar_article_transformer_weight_production_v1",
+  "evidence_family": "train.tassadar.article_transformer.weight_production",
+  "checker_bundle_id": "tassadar_default_train_lane_checker_bundle_v1",
+  "checker_refs": [
+    "scripts/check-tassadar-default-train-lane.sh",
+    "scripts/check-tassadar-acceptance.sh"
+  ],
+  "restart_posture": "restart_from_trace_bound_base_v0",
+  "promotion_target_model_id": "tassadar-article-transformer-trace-bound-trained-v0",
+  "promotion_target_descriptor_ref": "fixtures/tassadar/models/tassadar_article_transformer_trace_bound_trained_v0_descriptor.json",
+  "promotion_target_artifact_ref": "fixtures/tassadar/models/tassadar_article_transformer_trace_bound_trained_v0.safetensors",
+  "promotion_target_artifact_id": "tassadar://article_transformer/weights/tassadar-article-transformer-trace-bound-trained-v0/99df3f08d8e881989dd1e9b3a96165865facf8374aecc72c59e3b23f0c1a792c",
+  "promotion_target_lineage_ref": "fixtures/tassadar/models/tassadar_article_transformer_trace_bound_trained_v0_lineage_contract.json",
+  "anchor_run_bundle_ref": "fixtures/tassadar/runs/tassadar_article_transformer_weight_production_v1/article_transformer_weight_production_bundle.json",
+  "anchor_run_bundle_digest": "f441f8543aacff9e7f88a97f0cc33764cf1daec3e0364fe914ee7ab74d837d56",
+  "summary": "Canonical Tassadar train default is the bounded trace-bound article-transformer weight-production lane that yields `tassadar-article-transformer-trace-bound-trained-v0`, because that is the retained model family later served, checked, and promoted across the repo. The older 4x4 and 9x9 learned lanes remain bounded benchmark evidence, and the 4080 executor candidate remains a later replacement track above this incumbent instead of the default operator meaning of `train Tassadar`."
+}

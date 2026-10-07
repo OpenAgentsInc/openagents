@@ -1,0 +1,103 @@
+{
+  "schema_version": "psion.rvllm_preflight_bundle.v1",
+  "packet_id": "psion_rvllm_preflight_bundle_v1",
+  "runtime_scope": [
+    "cuda_backend_runtime",
+    "qwen35.native_cuda_decode",
+    "gpt_oss.native_cuda_decode"
+  ],
+  "admitted_serving_paths": [
+    "qwen35.native_cuda_decode",
+    "gpt_oss.native_cuda_decode"
+  ],
+  "referenced_packets": [
+    {
+      "packet_id": "psion_rvllm_cuda_graph_pool_v1",
+      "packet_digest": "47864743915a631327933f5ec2ca3d1d7bed30b426592c7aad9b84f23276e509",
+      "purpose": "graph capture, replay, and refusal posture"
+    },
+    {
+      "packet_id": "psion_rvllm_cublaslt_plan_cache_v1",
+      "packet_digest": "9c1c66447888d4e7c91c3220cbf730ea87ead1b14ad66997d4919db40fce730b",
+      "purpose": "startup autotune, selected-plan receipts, and bounded cublasLt fallback posture"
+    },
+    {
+      "packet_id": "psion_rvllm_cublas_warmup_v1",
+      "packet_digest": "ab8ec999b8e80605744171d3adab152b6ffaecda22877b321ec4c65bb084ea36",
+      "purpose": "startup request, cuBLAS handle reuse, and stream binding"
+    }
+  ],
+  "preflight_steps": [
+    {
+      "step_id": "cuda_runtime_owner_ready",
+      "stage": "device discovery and runtime resources",
+      "success_signal": "runtime_resources present",
+      "cold_start_cost_billed_to_user": false
+    },
+    {
+      "step_id": "allocator_pool_primed",
+      "stage": "allocation reuse posture",
+      "success_signal": "allocator_pool policy exported",
+      "cold_start_cost_billed_to_user": false
+    },
+    {
+      "step_id": "cublaslt_plan_cache_ready",
+      "stage": "bounded startup autotune and GEMM-plan selection",
+      "success_signal": "psionic_cuda_startup.cublas_lt_tuning_status",
+      "cold_start_cost_billed_to_user": false
+    },
+    {
+      "step_id": "cublas_warmup_request",
+      "stage": "explicit admitted startup request",
+      "success_signal": "psionic_cuda_startup.warmup_status",
+      "cold_start_cost_billed_to_user": false
+    },
+    {
+      "step_id": "cuda_graph_capture_or_refusal",
+      "stage": "decode graph bringup",
+      "success_signal": "cuda_graph_replay hit/miss/capture or refusal",
+      "cold_start_cost_billed_to_user": false
+    },
+    {
+      "step_id": "kernel_cache_posture",
+      "stage": "kernel or module load visibility",
+      "success_signal": "runtime_resources.kernel_cache",
+      "cold_start_cost_billed_to_user": false
+    }
+  ],
+  "startup_report_fields": [
+    "cublas_handle_scope",
+    "cublas_stream_binding",
+    "cublas_lt_tuning_status",
+    "cublas_lt_plan_cache_scope",
+    "cublas_lt_selected_plan_count",
+    "cublas_lt_tuned_shape_count",
+    "cublas_lt_fallback_shape_count",
+    "cublas_lt_max_workspace_bytes",
+    "cublas_lt_selected_plans",
+    "warmup_status",
+    "warmup_prompt_s",
+    "warmup_decode_s",
+    "warmup_total_s",
+    "warmup_output_tokens",
+    "request_billed_to_user"
+  ],
+  "allocator_pool": {
+    "policy": "exact_tensor_spec",
+    "max_cached_buffers": 128,
+    "max_cached_bytes": 67108864
+  },
+  "kernel_cache": {
+    "enabled": false,
+    "state": "disabled_but_machine_visible",
+    "claim_boundary": "Kernel-cache posture is exported as runtime evidence even when the active cache remains disabled on the admitted lane."
+  },
+  "cold_vs_warm_posture": "The admitted CUDA serving lane now has one explicit pre-flight bundle: cublasLt plan selection and startup warmup are both logged outside the user-billed request path, cold-start cost stays separate from steady-state timings, graph capture or refusal remains explicit, and allocator-pool / kernel-cache posture is exported through runtime resources instead of being implied by folklore.",
+  "benchmark_paths": [
+    "crates/psionic-serve/examples/qwen35_cuda_bench.rs",
+    "crates/psionic-serve/src/qwen35.rs",
+    "crates/psionic-serve/src/gpt_oss.rs",
+    "crates/psionic-backend-cuda/src/lib.rs"
+  ],
+  "packet_digest": "a17262a58a4a9e84600e424f1ec37556d9fafe2158a34aba9ff2511604044e91"
+}

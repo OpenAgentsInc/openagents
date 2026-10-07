@@ -1,0 +1,117 @@
+{
+  "schema_version": "psion.checkpoint_artifact.v1",
+  "artifact_id": "psion-dense-checkpoint-artifact-v1",
+  "run_id": "run-psion-pilot",
+  "stage_id": "run-psion-pilot-stage-1-pretrain",
+  "model_id": "psion-compact-decoder-pilot-v1",
+  "layout_kind": "dense",
+  "source_promoted_checkpoint_label": "pilot-pretrain-final",
+  "source_checkpoint_object_digest": "object-psion-pretrain-final-v1",
+  "checkpoint_manifest": {
+    "scope": {
+      "kind": "run",
+      "scope_id": "run-psion-pilot"
+    },
+    "checkpoint_family": "train.psion.decoder",
+    "checkpoint": {
+      "checkpoint_family": "train.psion.decoder",
+      "stream_id": "stream-psion-pretrain-final-v1",
+      "manifest_digest": "manifest-psion-pretrain-final-v1",
+      "object_digest": "object-psion-pretrain-final-v1",
+      "writer_node_id": "node-psion-a",
+      "membership_epoch": 1,
+      "cluster_state_digest": "cluster-state-digest-psion-pilot-v1",
+      "topology_digest": "topology-digest-psion-pilot-v1",
+      "started_at_ms": 1742614800000,
+      "checkpoint_ref": "checkpoint://psion/pilot/pretrain/final",
+      "step": 2048,
+      "durable_at_ms": 1742615100000
+    },
+    "shards": [
+      {
+        "shard_id": "dense-shard-0",
+        "manifest": {
+          "stream_id": "stream-psion-pretrain-final-v1",
+          "manifest_digest": "manifest-psion-pretrain-final-v1",
+          "subject": "checkpoint",
+          "object_digest": "object-psion-pretrain-final-v1",
+          "total_bytes": 143654912,
+          "chunk_count": 8,
+          "chunk_bytes": 4194304,
+          "encoding": "safetensors",
+          "checkpoint_binding": {
+            "checkpoint_family": "train.psion.decoder",
+            "checkpoint_ref": "checkpoint://psion/pilot/pretrain/final",
+            "step": 2048
+          }
+        },
+        "writer_node_id": "node-psion-a"
+      }
+    ],
+    "durability": "durable",
+    "created_at_ms": 1742615100000,
+    "manifest_digest": "3e51d7e5098d774a1db30f8fdce78f2cf486115b6fb56c9cab88488a47d30364"
+  },
+  "checkpoint_pointer": {
+    "scope": {
+      "kind": "run",
+      "scope_id": "run-psion-pilot"
+    },
+    "checkpoint_family": "train.psion.decoder",
+    "checkpoint": {
+      "checkpoint_family": "train.psion.decoder",
+      "stream_id": "stream-psion-pretrain-final-v1",
+      "manifest_digest": "manifest-psion-pretrain-final-v1",
+      "object_digest": "object-psion-pretrain-final-v1",
+      "writer_node_id": "node-psion-a",
+      "membership_epoch": 1,
+      "cluster_state_digest": "cluster-state-digest-psion-pilot-v1",
+      "topology_digest": "topology-digest-psion-pilot-v1",
+      "started_at_ms": 1742614800000,
+      "checkpoint_ref": "checkpoint://psion/pilot/pretrain/final",
+      "step": 2048,
+      "durable_at_ms": 1742615100000
+    },
+    "manifest_digest": "3e51d7e5098d774a1db30f8fdce78f2cf486115b6fb56c9cab88488a47d30364",
+    "updated_at_ms": 1742615100500,
+    "pointer_digest": "1597a4c1479383f319b5a2cd0787352368876ca06623eaa0b379e507f9341965"
+  },
+  "checkpoint_context": {
+    "training_run_profile": "pilot",
+    "dataset_identity": "psion_corpus_tokenized@v1",
+    "sampling_policy_id": "psion_pretrain_mix",
+    "sampling_policy_version": "v1",
+    "source_checkpoint_topology_digest": "topology-digest-psion-pilot-v1",
+    "training_hardware_topology_digest": "a92bbdc55fb98b29dee91e7e0f1e73f28b94186994909efc13144670fed13373",
+    "observed_worker_count": 1,
+    "detail": "Checkpoint artifacts preserve the source checkpoint topology and the realized training hardware topology separately."
+  },
+  "optimizer_state_restart": {
+    "optimizer_family": "adamw",
+    "optimizer_checkpoint_family": "train.psion.decoder.optimizer_state",
+    "optimizer_state_step": 2048,
+    "parameter_group_count": 8,
+    "optimizer_state_artifacts": [
+      {
+        "stream_id": "stream-psion-pretrain-final-optimizer-v1",
+        "manifest_digest": "manifest-psion-pretrain-final-optimizer-v1",
+        "subject": "checkpoint",
+        "object_digest": "object-psion-pretrain-final-optimizer-v1",
+        "total_bytes": 71827456,
+        "chunk_count": 8,
+        "chunk_bytes": 4194304,
+        "encoding": "safetensors",
+        "checkpoint_binding": {
+          "checkpoint_family": "train.psion.decoder.optimizer_state",
+          "checkpoint_ref": "checkpoint://psion/pilot/pretrain/final/optimizer_state",
+          "step": 2048
+        }
+      }
+    ],
+    "strict_parameter_group_order_restore": true,
+    "resume_requires_matching_sampling_cursor": true,
+    "summary": "Dense optimizer-state restart keeps exact parameter-group order and sampling cursor binding."
+  },
+  "summary": "Dense checkpoint artifact preserves exact pointer-first restart semantics for the promoted checkpoint.",
+  "artifact_digest": "7988174783e19c362e0d43b4fc832e3ca9d8b1dc84b8a340f345c98fd0b0291f"
+}

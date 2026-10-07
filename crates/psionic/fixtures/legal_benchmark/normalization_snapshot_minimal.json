@@ -1,0 +1,16 @@
+{
+  "schema_version": 1,
+  "task_id": "legal.minimal.contract_review.v1",
+  "task_version": "2026-05-19",
+  "domain": "legal",
+  "practice_area": "commercial_contracts",
+  "workflow": "review",
+  "source_artifact_count": 1,
+  "deliverable_count": 1,
+  "criterion_count": 2,
+  "input_manifest_role": "input",
+  "output_manifest_role": "output",
+  "run_terminal_state": "submitted",
+  "score_all_pass": true,
+  "score_criterion_pass_rate_bps": 10000
+}

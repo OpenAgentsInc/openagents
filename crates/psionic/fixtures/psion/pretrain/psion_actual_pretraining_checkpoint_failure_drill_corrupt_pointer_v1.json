@@ -1,0 +1,23 @@
+{
+  "schema_version": "psion.actual_pretraining_checkpoint_failure_drill.v1",
+  "lane_id": "psion_actual_pretraining_v1",
+  "run_id": "run-psion-actual-20260402t040000z",
+  "drill_id": "psion_actual_pretraining_checkpoint_failure_drill::16384::corrupt_pointer",
+  "drill_kind": "corrupt_pointer",
+  "trigger_surface": "resume",
+  "selected_git_ref": "refs/heads/main",
+  "git_commit_sha": "1111222233334444555566667777888899990000",
+  "dirty_tree_admission": "refuse_by_default",
+  "workspace_status_sha256": null,
+  "outcome": "recovered_without_manual_edit",
+  "evidence_paths": [
+    "checkpoints/auto_resume_receipt.json",
+    "checkpoints/latest_accepted_checkpoint_backup_receipt.json",
+    "checkpoints/backups/latest_accepted_checkpoint_pointer.backup.json",
+    "checkpoints/backups/step-16384/checkpoint_manifest.backup.json"
+  ],
+  "refusal_reason": null,
+  "claim_boundary": "This retained failure drill proves that corrupt primary resume pointers recover from the actual-lane backup family without manual editing.",
+  "detail": "Fixture corrupt-pointer drill records recovery from the backup family after the primary pointer became invalid JSON.",
+  "receipt_digest": "f8f9399cfdf4e35cc6858cd05f266f386d99bda24e1f6786dbef138b8fe1731c"
+}

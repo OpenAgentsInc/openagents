@@ -1,0 +1,60 @@
+{
+  "schema_version": "psion.rvllm_gpu_logits_selection.v1",
+  "packet_id": "psion_rvllm_gpu_logits_selection_v1",
+  "runtime_scope": [
+    "qwen35.native_cuda_decode",
+    "gpt_oss.native_cuda_decode"
+  ],
+  "qwen35_lanes": [
+    {
+      "lane_id": "qwen35.argmax_only",
+      "output_mode": "argmax_only",
+      "host_logits_copy_required": false,
+      "readback_bytes": 8,
+      "raw_logits_materialized": false,
+      "selected_token_materialized": true
+    },
+    {
+      "lane_id": "qwen35.top_k_candidates_40",
+      "output_mode": "top_k_candidates:40",
+      "host_logits_copy_required": false,
+      "readback_bytes": 320,
+      "raw_logits_materialized": false,
+      "selected_token_materialized": true
+    },
+    {
+      "lane_id": "qwen35.raw_logits_fallback",
+      "output_mode": "raw_logits",
+      "host_logits_copy_required": true,
+      "readback_bytes": 604160,
+      "raw_logits_materialized": true,
+      "selected_token_materialized": true
+    }
+  ],
+  "gpt_oss_lanes": [
+    {
+      "lane_id": "gpt_oss.device_argmax",
+      "output_mode": "argmax_only",
+      "host_logits_copy_required": false,
+      "readback_bytes": 8,
+      "raw_logits_materialized": false,
+      "selected_token_materialized": true
+    },
+    {
+      "lane_id": "gpt_oss.raw_logits_fallback",
+      "output_mode": "raw_logits",
+      "host_logits_copy_required": true,
+      "readback_bytes": 645120,
+      "raw_logits_materialized": true,
+      "selected_token_materialized": true
+    }
+  ],
+  "parity_posture": "Admitted argmax-only and bounded candidate paths keep seeded token selection deterministic while avoiding dense host logits copies; fallback to raw logits stays explicit when the request leaves that envelope.",
+  "fallback_posture": "Requests outside the admitted GPU-resident selection lane still materialize raw logits explicitly instead of silently narrowing decode semantics.",
+  "benchmark_paths": [
+    "crates/psionic-serve/examples/qwen35_cuda_bench.rs",
+    "crates/psionic-serve/src/qwen35.rs",
+    "crates/psionic-serve/src/gpt_oss.rs"
+  ],
+  "packet_digest": "25f0eced35a620a2ca5e646c2cfd90908c4c7210d34eaaa9cb7202054bcf4f3e"
+}

@@ -1,0 +1,90 @@
+{
+  "schema_version": "psion.rvllm_cuda_graph_pool.v1",
+  "packet_id": "psion_rvllm_cuda_graph_pool_v1",
+  "runtime_scope": [
+    "qwen35.native_cuda_decode",
+    "gpt_oss.native_cuda_decode"
+  ],
+  "graph_key_fields": [
+    "served_artifact_id",
+    "batch_size",
+    "sequence_length",
+    "decode_mode",
+    "kv_cache_encoding",
+    "cache_allocation_identity"
+  ],
+  "admitted_decode_modes": [
+    {
+      "kind": "argmax_only"
+    },
+    {
+      "kind": "top_k_candidates",
+      "top_k": 40
+    },
+    {
+      "kind": "raw_logits"
+    }
+  ],
+  "qwen35_decode_metrics": {
+    "step_count": 3,
+    "output_modes": [
+      {
+        "kind": "argmax_only"
+      },
+      {
+        "kind": "top_k_candidates",
+        "top_k": 40
+      },
+      {
+        "kind": "raw_logits"
+      }
+    ],
+    "readback_bytes": 8516,
+    "raw_logits_materialized": true,
+    "graph_replay": {
+      "step_count": 3,
+      "replay_hit_count": 1,
+      "replay_miss_count": 2,
+      "capture_count": 2,
+      "shape_drift_count": 1,
+      "refusal_count": 0,
+      "capture_latency_ns": 126000,
+      "output_modes": [
+        {
+          "kind": "argmax_only"
+        },
+        {
+          "kind": "top_k_candidates",
+          "top_k": 40
+        },
+        {
+          "kind": "raw_logits"
+        }
+      ]
+    }
+  },
+  "gpt_oss_cuda_graph_metrics": {
+    "step_count": 3,
+    "replay_hit_count": 1,
+    "replay_miss_count": 1,
+    "capture_count": 1,
+    "shape_drift_count": 0,
+    "refusal_count": 1,
+    "capture_latency_ns": 54000,
+    "output_modes": [
+      {
+        "kind": "argmax_only"
+      },
+      {
+        "kind": "raw_logits"
+      }
+    ]
+  },
+  "benchmark_paths": [
+    "crates/psionic-serve/examples/qwen35_cuda_bench.rs",
+    "scripts/benchmark-gpt-oss-vs-llama.sh"
+  ],
+  "fallback_posture": "Graph replay stays explicit and admitted-path only: capture refusal, shape drift, and uncaptured fallback remain visible instead of silently pretending every decode step is graph-stable.",
+  "detail": "This packet records the first shared RVLLM harvest contract in Psionic. The runtime already had lane-local captured-graph wins, but the retained truth is now one explicit graph-pool contract with stable key fields, admitted decode modes, and machine-readable qwen35 plus GPT-OSS replay evidence without swapping runtimes or widening claim surface.",
+  "packet_digest": "47864743915a631327933f5ec2ca3d1d7bed30b426592c7aad9b84f23276e509"
+}

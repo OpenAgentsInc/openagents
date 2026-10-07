@@ -1,0 +1,52 @@
+[
+  {
+    "schema_version": 1,
+    "receipt_id": "extraction.receipt.sample.txt.example",
+    "source_artifact_id": "sample.txt",
+    "source_artifact_hash": "289200cb8c52565a763298b02ece66cb58727596de6ba2c2bbfb09098dcb1789",
+    "source_artifact_path": "sample.txt",
+    "input_media_type": "text/plain",
+    "input_byte_size": 82,
+    "extractor_name": "psionic.native_text",
+    "extractor_version": "1.0.0",
+    "command_or_crate_version": "std::str+serde_json",
+    "output_format": "plain_text",
+    "output_artifact_id": "sample.txt.extracted",
+    "output_hash": "289200cb8c52565a763298b02ece66cb58727596de6ba2c2bbfb09098dcb1789",
+    "output_byte_size": 82,
+    "coverage": {
+      "input_byte_count": 82,
+      "output_byte_count": 82,
+      "output_char_count": 82
+    },
+    "warnings": [],
+    "elapsed_ms": 1
+  },
+  {
+    "schema_version": 1,
+    "receipt_id": "extraction.receipt.sample.docx.example",
+    "source_artifact_id": "sample.docx",
+    "source_artifact_hash": "ad58ba90a0911058264b6607dac980c8e0f458de7840402042cc0b3e477b325c",
+    "source_artifact_path": "sample.docx",
+    "input_media_type": "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+    "input_byte_size": 55,
+    "extractor_name": "psionic.external.docx",
+    "extractor_version": "1.0.0",
+    "command_or_crate_version": "pandoc@3.x",
+    "output_format": "plain_text",
+    "coverage": {
+      "input_byte_count": 55,
+      "output_byte_count": 0,
+      "output_char_count": 0
+    },
+    "warnings": [
+      {
+        "warning_code": "external_adapter_not_executed",
+        "message": "external extractor requires a live sandbox command executor"
+      }
+    ],
+    "failure_kind": "external_tool_unavailable",
+    "failure_detail": "sandboxed external extractor is declared but no command executor was attached",
+    "elapsed_ms": 1
+  }
+]

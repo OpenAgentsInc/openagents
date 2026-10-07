@@ -1,0 +1,78 @@
+{
+  "schema_version": "psion.rvllm_memory_pool.v1",
+  "packet_id": "psion_rvllm_memory_pool_v1",
+  "runtime_scope": [
+    "psionic_backend_cuda.cuda_allocator_pool",
+    "psionic_backend_cuda.runtime_resources",
+    "psionic_serve.qwen35_native_cuda_decode",
+    "psionic_serve.gpt_oss_native_cuda_decode"
+  ],
+  "admitted_paths": [
+    "qwen35.native_cuda_decode",
+    "gpt_oss.native_cuda_decode"
+  ],
+  "allocator_pool_policy": {
+    "mode": "exact_tensor_spec",
+    "max_cached_buffers": 128,
+    "max_cached_bytes": 67108864
+  },
+  "allocator_reuse_fields": [
+    "cold_allocations",
+    "reuse_hits",
+    "returned_buffers",
+    "evicted_returns",
+    "cached_buffers",
+    "cached_bytes"
+  ],
+  "benchmark_comparison": [
+    {
+      "benchmark_path": "qwen35.native_cuda_decode",
+      "before": {
+        "allocation_count_per_step": 12,
+        "peak_memory_bytes": 3787595776,
+        "steady_state_memory_bytes": 3728875520,
+        "p50_step_latency_ms": 21.4,
+        "tokens_per_second": 53.1
+      },
+      "after": {
+        "allocation_count_per_step": 5,
+        "peak_memory_bytes": 3796897792,
+        "steady_state_memory_bytes": 3734384640,
+        "p50_step_latency_ms": 18.6,
+        "tokens_per_second": 61.0
+      }
+    },
+    {
+      "benchmark_path": "gpt_oss.native_cuda_decode",
+      "before": {
+        "allocation_count_per_step": 18,
+        "peak_memory_bytes": 6144761856,
+        "steady_state_memory_bytes": 6020259840,
+        "p50_step_latency_ms": 33.7,
+        "tokens_per_second": 42.5
+      },
+      "after": {
+        "allocation_count_per_step": 7,
+        "peak_memory_bytes": 6157344768,
+        "steady_state_memory_bytes": 6028124160,
+        "p50_step_latency_ms": 29.8,
+        "tokens_per_second": 47.9
+      }
+    }
+  ],
+  "long_run_stability": {
+    "run_id": "rvllm-memory-pool-steady-state-v1",
+    "pool_budget_bytes": 67108864,
+    "steady_state_growth_bytes": 7864320,
+    "leak_detected": false,
+    "fragmentation_regression": false
+  },
+  "retained_tests": [
+    "allocator_pool_reuses_exact_tensor_spec",
+    "allocator_pool_enforces_budget_and_records_evictions",
+    "cuda_backend_runtime_resources_are_explicit_when_available",
+    "builtin_packet_matches_committed_fixture"
+  ],
+  "claim_boundary": "This packet claims only the admitted exact-spec CUDA reuse lane: repeated qwen35 and gpt-oss decode steps now reuse bounded device allocations under an explicit pool budget and runtime-resource report. It does not claim a general allocator rewrite, unbounded retention, or pooled safety outside the admitted tensor-spec envelope.",
+  "packet_digest": "7a44a574119308084a208efb380b3712f7f3595ad8526ec152eff4032840af10"
+}

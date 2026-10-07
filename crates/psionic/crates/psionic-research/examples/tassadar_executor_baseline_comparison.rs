@@ -1,0 +1,19 @@
+use std::path::PathBuf;
+
+use psionic_research::{
+    TASSADAR_EXECUTOR_BASELINE_COMPARISON_OUTPUT_DIR,
+    run_tassadar_executor_baseline_comparison,
+};
+
+fn main() -> Result<(), Box<dyn std::error::Error>> {
+    let output_dir = PathBuf::from(TASSADAR_EXECUTOR_BASELINE_COMPARISON_OUTPUT_DIR);
+    let report = run_tassadar_executor_baseline_comparison(output_dir.as_path())?;
+    println!(
+        "wrote {} ({})",
+        output_dir
+            .join("architecture_comparison_report.json")
+            .display(),
+        report.report_digest
+    );
+    Ok(())
+}

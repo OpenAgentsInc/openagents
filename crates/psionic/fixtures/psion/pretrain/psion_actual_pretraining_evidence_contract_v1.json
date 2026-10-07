@@ -1,0 +1,291 @@
+{
+  "schema_version": "psion.actual_pretraining_evidence_contract.v1",
+  "contract_id": "psion_actual_pretraining_evidence_contract_v1",
+  "lane_id": "psion_actual_pretraining_v1",
+  "recipe_id": "psion_actual_pretraining_recipe_v1",
+  "topology_storage_bundle_id": "psion_actual_pretraining_topology_storage_bundle_v1",
+  "recipe_bundle": {
+    "path": "fixtures/psion/pretrain/psion_actual_pretraining_recipe_bundle_v1.json",
+    "sha256": "37f3a4580a5bd7ea48bfad63ce996162d4c76d24c3044032eceae233a9406007"
+  },
+  "topology_storage_bundle": {
+    "path": "fixtures/psion/pretrain/psion_actual_pretraining_topology_storage_bundle_v1.json",
+    "sha256": "907159c4ef8888150a9af19157355aec8b016090603be79ad1d45d69ffb5a093"
+  },
+  "evidence_family": "psion.actual_pretraining.evidence.v1",
+  "run_root_family": "psion_actual_pretraining_runs/<run_id>",
+  "example_run_id": "run-psion-actual-20260402t000000z",
+  "artifact_slots": [
+    {
+      "relative_path": "manifests/launch_manifest.json",
+      "artifact_kind": "launch_manifest",
+      "retention_class": "durable",
+      "detail": "Launch-time operator manifest for the actual lane."
+    },
+    {
+      "relative_path": "manifests/resume_manifest.json",
+      "artifact_kind": "resume_manifest",
+      "retention_class": "durable",
+      "detail": "Resume selection and admitted checkpoint manifest for restart decisions."
+    },
+    {
+      "relative_path": "status/current_run_status.json",
+      "artifact_kind": "current_run_status",
+      "retention_class": "durable",
+      "detail": "Last retained machine-readable run status surface."
+    },
+    {
+      "relative_path": "status/retained_summary.json",
+      "artifact_kind": "retained_summary",
+      "retention_class": "durable",
+      "detail": "Operator-facing retained summary for the latest known run state."
+    },
+    {
+      "relative_path": "checkpoints/latest_accepted_checkpoint_pointer.json",
+      "artifact_kind": "checkpoint_pointer",
+      "retention_class": "durable",
+      "detail": "Zero-guess pointer to the latest accepted checkpoint for resume."
+    },
+    {
+      "relative_path": "checkpoints/latest_accepted_checkpoint_backup_receipt.json",
+      "artifact_kind": "checkpoint_backup_receipt",
+      "retention_class": "durable",
+      "detail": "Retained durable-backup receipt for the latest accepted checkpoint."
+    },
+    {
+      "relative_path": "checkpoints/auto_resume_receipt.json",
+      "artifact_kind": "auto_resume_receipt",
+      "retention_class": "durable",
+      "detail": "Retained auto-resume resolution receipt for the latest resume attempt."
+    },
+    {
+      "relative_path": "preflight/hardware_qualification.json",
+      "artifact_kind": "hardware_qualification_receipt",
+      "retention_class": "durable",
+      "detail": "Retained hardware admission receipt consumed by non-dry-run actual-lane launch and resume."
+    },
+    {
+      "relative_path": "preflight/run_shape_qualification.json",
+      "artifact_kind": "run_shape_qualification_receipt",
+      "retention_class": "durable",
+      "detail": "Retained throughput, storage, and dataloader qualification receipt consumed by non-dry-run actual-lane launch and resume."
+    },
+    {
+      "relative_path": "checkpoints/step-<optimizer_step>/checkpoint_manifest.json",
+      "artifact_kind": "checkpoint_manifest",
+      "retention_class": "durable",
+      "detail": "Retained manifest for one concrete checkpoint write."
+    },
+    {
+      "relative_path": "checkpoints/backups/latest_accepted_checkpoint_pointer.backup.json",
+      "artifact_kind": "checkpoint_pointer_backup",
+      "retention_class": "durable",
+      "detail": "Latest accepted checkpoint pointer copied into the retained backup family."
+    },
+    {
+      "relative_path": "checkpoints/backups/step-<optimizer_step>/checkpoint_manifest.backup.json",
+      "artifact_kind": "checkpoint_manifest_backup",
+      "retention_class": "durable",
+      "detail": "Latest accepted checkpoint manifest copied into the retained backup family."
+    },
+    {
+      "relative_path": "checkpoints/failures/<drill_kind>_drill.json",
+      "artifact_kind": "checkpoint_failure_drill",
+      "retention_class": "durable",
+      "detail": "Retained failed-upload, stale-pointer, or corrupt-pointer drill receipt for checkpoint backup and resume."
+    },
+    {
+      "relative_path": "evals/checkpoint_eval_step-<optimizer_step>.json",
+      "artifact_kind": "checkpoint_eval_receipt",
+      "retention_class": "durable",
+      "detail": "Checkpoint evaluation receipt used by continue-vs-restart policy."
+    },
+    {
+      "relative_path": "evals/latest_checkpoint_eval_decision.json",
+      "artifact_kind": "latest_checkpoint_eval_decision",
+      "retention_class": "durable",
+      "detail": "Most recent automatic checkpoint eval decision retained for later continue-vs-restart logic."
+    },
+    {
+      "relative_path": "evals/checkpoint_eval_failure_step-<optimizer_step>.json",
+      "artifact_kind": "checkpoint_eval_failure_receipt",
+      "retention_class": "durable",
+      "detail": "Retained checkpoint eval failure receipt for one accepted checkpoint when automatic review could not run."
+    },
+    {
+      "relative_path": "evals/latest_checkpoint_eval_failure.json",
+      "artifact_kind": "latest_checkpoint_eval_failure",
+      "retention_class": "durable",
+      "detail": "Most recent automatic checkpoint eval failure retained for retry and alert review."
+    },
+    {
+      "relative_path": "decisions/latest_checkpoint_comparison.json",
+      "artifact_kind": "latest_checkpoint_comparison",
+      "retention_class": "durable",
+      "detail": "Most recent retained checkpoint comparison against eval, backup, hardware, and run-shape evidence."
+    },
+    {
+      "relative_path": "decisions/latest_continue_restart_decision.json",
+      "artifact_kind": "latest_continue_restart_decision",
+      "retention_class": "durable",
+      "detail": "Most recent retained continue-restart decision for the latest accepted checkpoint."
+    },
+    {
+      "relative_path": "dashboard/current_dashboard.json",
+      "artifact_kind": "current_dashboard",
+      "retention_class": "durable",
+      "detail": "Canonical retained operator dashboard for the actual lane."
+    },
+    {
+      "relative_path": "alerts/active_alerts.json",
+      "artifact_kind": "active_alert_feed",
+      "retention_class": "durable",
+      "detail": "Canonical retained active-alert feed for the actual lane dashboard."
+    },
+    {
+      "relative_path": "exports/promoted_checkpoint_export_manifest.json",
+      "artifact_kind": "promoted_export_manifest",
+      "retention_class": "durable",
+      "detail": "Promoted checkpoint export manifest for later handoff or publication-bound consumers."
+    },
+    {
+      "relative_path": "logs/launcher.log",
+      "artifact_kind": "launcher_log",
+      "retention_class": "transient",
+      "detail": "Redacted launcher log for operator debugging."
+    },
+    {
+      "relative_path": "alerts/latest_redacted_alert.json",
+      "artifact_kind": "latest_alert",
+      "retention_class": "transient",
+      "detail": "Most recent redacted alert emission for the actual lane."
+    },
+    {
+      "relative_path": "closeout/closeout_bundle.json",
+      "artifact_kind": "closeout_bundle",
+      "retention_class": "durable",
+      "detail": "Final closeout bundle with claim boundary and retained evidence refs."
+    }
+  ],
+  "provenance_fields": [
+    {
+      "field_name": "git_commit_sha",
+      "location": "manifests/launch_manifest.json",
+      "required": true,
+      "detail": "Exact commit SHA used for the admitted run materialization."
+    },
+    {
+      "field_name": "selected_git_ref",
+      "location": "manifests/launch_manifest.json",
+      "required": true,
+      "detail": "Selected ref resolved to the admitted commit SHA."
+    },
+    {
+      "field_name": "dirty_tree_admission",
+      "location": "manifests/launch_manifest.json",
+      "required": true,
+      "detail": "Explicit admission or refusal posture for dirty-tree launches."
+    },
+    {
+      "field_name": "workspace_status_sha256",
+      "location": "manifests/launch_manifest.json",
+      "required": false,
+      "detail": "Optional digest of the materialized workspace status summary when a local checkout is used."
+    },
+    {
+      "field_name": "git_commit_sha",
+      "location": "closeout/closeout_bundle.json",
+      "required": true,
+      "detail": "Closeout bundles repeat the exact commit SHA so the final claim packet is self-contained."
+    },
+    {
+      "field_name": "selected_git_ref",
+      "location": "closeout/closeout_bundle.json",
+      "required": true,
+      "detail": "Closeout bundles repeat the selected ref to keep provenance legible outside the launcher logs."
+    },
+    {
+      "field_name": "dirty_tree_admission",
+      "location": "closeout/closeout_bundle.json",
+      "required": true,
+      "detail": "Closeout bundles repeat dirty-tree posture to keep claim boundaries explicit."
+    }
+  ],
+  "redaction_rules": [
+    {
+      "retained_surface": "manifests",
+      "allowed_value_classes": [
+        "artifact_ref",
+        "digest",
+        "env_var_name",
+        "cluster_label",
+        "topology_digest"
+      ],
+      "forbidden_value_classes": [
+        "credential_payload",
+        "access_token",
+        "service_account_json",
+        "private_key",
+        "tailnet_ip",
+        "ssh_target"
+      ],
+      "detail": "Retained manifests keep refs, digests, and redacted connection metadata only."
+    },
+    {
+      "retained_surface": "preflight",
+      "allowed_value_classes": [
+        "redacted_host_label",
+        "digest",
+        "device_name",
+        "health_signal",
+        "env_var_name"
+      ],
+      "forbidden_value_classes": [
+        "credential_payload",
+        "access_token",
+        "private_key",
+        "service_account_json",
+        "tailnet_ip",
+        "ssh_target",
+        "credential_file_path"
+      ],
+      "detail": "Preflight qualification receipts retain redacted worker labels, device health signals, throughput and storage digests, and credential digests only."
+    },
+    {
+      "retained_surface": "logs",
+      "allowed_value_classes": [
+        "event_label",
+        "step_id",
+        "digest",
+        "redacted_host_label"
+      ],
+      "forbidden_value_classes": [
+        "credential_payload",
+        "access_token",
+        "private_key",
+        "bucket_secret",
+        "credential_file_path"
+      ],
+      "detail": "Launcher logs may retain event labels and digests but not raw secret or credential material."
+    },
+    {
+      "retained_surface": "alerts",
+      "allowed_value_classes": [
+        "event_label",
+        "digest",
+        "redacted_host_label",
+        "artifact_ref"
+      ],
+      "forbidden_value_classes": [
+        "credential_payload",
+        "access_token",
+        "private_key",
+        "tailnet_ip",
+        "ssh_target",
+        "bucket_secret"
+      ],
+      "detail": "Alert payloads keep only redacted host labels and artifact references."
+    }
+  ],
+  "summary": "The canonical actual-lane evidence contract freezes one output family, one provenance field set, and one redaction policy so launch, resume, eval, export, and closeout surfaces all write into the same retained layout."
+}

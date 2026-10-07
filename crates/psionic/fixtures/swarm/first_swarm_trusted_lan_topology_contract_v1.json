@@ -1,0 +1,113 @@
+{
+  "schema_version": "swarm.first_trusted_lan_topology_contract.v1",
+  "contract_id": "swarm.first_trusted_lan_topology_contract.v1",
+  "run_family_id": "swarm.local.mlx_metal_plus_rtx4080.open_adapter.v1",
+  "scope_window": "swarm_local_open_adapter_contract_v1",
+  "swarm_contract_digest": "203e652752f0cfc350b59d3ad9d3c17ae65b6012106c5ebbd9191ba44aaa39f0",
+  "receipt_contract_digest": "f9caea55f9ebdd1580f14b3de578a5831e115121d24d9f26bff015dce78e258c",
+  "live_workflow_plan_digest": "573b6df00266981819b8cb08654ac6e6f727418cb5a46768255e8ea27b2f2821",
+  "live_workflow_membership_receipt_digest": "a2505e7d710da81a6548c42d17b68b31991cceced626fc77ef560754325f1acb",
+  "cluster_namespace": "cluster.swarm.local.trusted_lan",
+  "cluster_admission_posture": "trusted_lan.shared_secret",
+  "admission_token_env_var": "PSIONIC_SWARM_ADMISSION_TOKEN",
+  "trusted_network_posture": "trusted_lan_only.no_internet_discovery.no_cross_subnet_overclaim",
+  "launch_script_path": "scripts/first-swarm-launch-trusted-lan.sh",
+  "check_script_path": "scripts/check-first-swarm-trusted-lan.sh",
+  "coordinator_node_id": "swarm-mac-a",
+  "contributor_node_ids": [
+    "swarm-mac-a",
+    "swarm-linux-4080-a"
+  ],
+  "nodes": [
+    {
+      "node_id": "swarm-mac-a",
+      "role_id": "swarm.mac.mlx.coordinator_validator_contributor",
+      "host_alias": "swarm-mac-a.local",
+      "platform": "macos_apple_silicon",
+      "backend_label": "open_adapter_backend.mlx.metal.gpt_oss_lm_head",
+      "logical_device_label": "metal:0",
+      "cluster_addr": "swarm-mac-a.local:34100",
+      "repo_dir": "~/code/psionic",
+      "run_root_template": "~/swarm-runs/${RUN_ID}/mac",
+      "artifact_stage_root": "${RUN_ROOT}/artifacts",
+      "validator_visible": true,
+      "aggregation_visible": true,
+      "required_bringup_report_fixture_path": "fixtures/swarm/reports/swarm_mac_mlx_bringup_v1.json",
+      "required_bringup_report_digest": "b7f20eca5c4aa228e927d62c9544ac0dcc8a31777d66395c5e26a19bfbd48db5"
+    },
+    {
+      "node_id": "swarm-linux-4080-a",
+      "role_id": "swarm.linux.cuda.rtx4080.contributor",
+      "host_alias": "swarm-linux-4080-a.local",
+      "platform": "linux_nvidia_rtx_4080",
+      "backend_label": "open_adapter_backend.cuda.gpt_oss_lm_head",
+      "logical_device_label": "cuda:0",
+      "cluster_addr": "swarm-linux-4080-a.local:34101",
+      "repo_dir": "~/code/psionic",
+      "run_root_template": "~/swarm-runs/${RUN_ID}/linux",
+      "artifact_stage_root": "${RUN_ROOT}/artifacts",
+      "validator_visible": false,
+      "aggregation_visible": false,
+      "required_bringup_report_fixture_path": "fixtures/swarm/reports/swarm_linux_rtx4080_bringup_v1.json",
+      "required_bringup_report_digest": "4a74e2ca035dc0cf802d0866b89e889ae384f18e8608dbd9b8c7954a6d036dd9"
+    }
+  ],
+  "artifact_staging": {
+    "dataset_ref": "dataset://openagents/swarm/open_adapter_sft",
+    "dataset_stage_root": "${RUN_ROOT}/dataset",
+    "contribution_stage_root": "${RUN_ROOT}/artifacts/contributions",
+    "validator_stage_root": "${RUN_ROOT}/artifacts/validator",
+    "aggregation_stage_root": "${RUN_ROOT}/artifacts/aggregation",
+    "replay_stage_root": "${RUN_ROOT}/artifacts/replay",
+    "local_snapshot_root": "${RUN_ROOT}/local_publish"
+  },
+  "heartbeat_policy": {
+    "heartbeat_interval_ms": 1000,
+    "stale_after_ms": 5000,
+    "contributor_loss_grace_ms": 7500,
+    "max_worker_skew_ms": 15000
+  },
+  "launch_sequence": [
+    {
+      "phase": "materialize_operator_bundle",
+      "actor": "operator",
+      "command": "scripts/first-swarm-launch-trusted-lan.sh --run-id ${RUN_ID} --bundle-dir ${BUNDLE_DIR}",
+      "retained_artifact_path": "${BUNDLE_DIR}/first_swarm_trusted_lan_launch_manifest.json",
+      "detail": "Materialize one operator bundle that freezes the topology contract, failure drills, retained bring-up inputs, and the current first-swarm workflow plan before either host starts contributing."
+    },
+    {
+      "phase": "validate_mac_coordinator",
+      "actor": "mac_coordinator",
+      "command": "scripts/check-swarm-mac-mlx-bringup.sh --report ${MAC_RUN_ROOT}/reports/swarm_mac_mlx_bringup_v1.json",
+      "retained_artifact_path": "${MAC_RUN_ROOT}/reports/swarm_mac_mlx_bringup_v1.json",
+      "detail": "The Mac host must prove the MLX Metal same-node gate and the shared contributor-receipt contract before the cluster lane may proceed."
+    },
+    {
+      "phase": "validate_linux_contributor",
+      "actor": "linux_contributor",
+      "command": "scripts/check-swarm-linux-4080-bringup.sh --report ${LINUX_RUN_ROOT}/reports/swarm_linux_rtx4080_bringup_v1.json",
+      "retained_artifact_path": "${LINUX_RUN_ROOT}/reports/swarm_linux_rtx4080_bringup_v1.json",
+      "detail": "The Linux host must prove the retained RTX 4080 contract plus the same-node CUDA open-adapter parity harness before the cluster lane may proceed."
+    },
+    {
+      "phase": "freeze_workflow_plan",
+      "actor": "mac_coordinator",
+      "command": "cargo run -q -p psionic-mlx-workflows --bin first_swarm_live_workflow_plan -- ${BUNDLE_DIR}/first_swarm_live_workflow_plan_v1.json",
+      "retained_artifact_path": "${BUNDLE_DIR}/first_swarm_live_workflow_plan_v1.json",
+      "detail": "The coordinator freezes contributor selection, dataset slices, expected upload digests, and local snapshot posture against the exact trusted-LAN node set."
+    },
+    {
+      "phase": "freeze_failure_drills",
+      "actor": "mac_coordinator",
+      "command": "cargo run -q -p psionic-train --bin first_swarm_trusted_lan_failure_drills -- ${BUNDLE_DIR}/reports/first_swarm_trusted_lan_failure_drills_v1.json",
+      "retained_artifact_path": "${BUNDLE_DIR}/reports/first_swarm_trusted_lan_failure_drills_v1.json",
+      "detail": "The coordinator freezes stale-worker, upload-disagreement, contributor-loss, and skew handling before any rehearsal or live run claims are made."
+    }
+  ],
+  "claim_boundary": "This contract freezes one trusted-LAN two-node swarm topology for the first mixed-hardware open-adapter lane: one Mac MLX Metal coordinator, validator, and aggregator plus one Linux RTX 4080 CUDA contributor. It proves exact node identity, artifact staging, heartbeat and stale-worker posture, and launch sequencing. It does not claim wider-network discovery, elastic world size, or a finished live two-node trainer by itself.",
+  "drift_notes": [
+    "The topology binds the current retained first-swarm workflow plan instead of inventing a second planner surface for the exact same lane.",
+    "The Linux node still depends on the retained RTX 4080 bring-up report and bounded same-node parity harness rather than a new remote-probe subsystem."
+  ],
+  "contract_digest": "144481e413d4892b375e7b5f2fd8d24b7d98094806506b0e00a34262a2a9aa07"
+}

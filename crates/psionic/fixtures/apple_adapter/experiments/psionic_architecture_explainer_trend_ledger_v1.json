@@ -1,0 +1,56 @@
+{
+  "abi_version": "psionic.apple_adapter_experiment_trend_ledger.v1",
+  "experiment_id": "apple_adapter.psionic_architecture_explainer.first_real_run",
+  "entries": [
+    {
+      "run_id": "run-2026-03-15-001",
+      "manifest_digest": "sha256:architecture-explainer-first-real-run-v1",
+      "selection": {
+        "selected_candidate_id": "checkpoint-final-v1",
+        "selected_checkpoint_ref": "checkpoint://apple_adapter.psionic_architecture_explainer/run-2026-03-15-001/final",
+        "selected_package_digest": "sha256:adapter-package-run-2026-03-15-001",
+        "accepted": true,
+        "rationale": "selected checkpoint-final-v1 with adapted_score_bps=9260 score_delta_bps=1660 improved_case_count=5 accepted=true"
+      },
+      "benchmark": {
+        "benchmark_ref": "benchmark://openagents/apple_adapter/psionic_architecture_explainer/base_vs_adapter",
+        "base_score_bps": 7600,
+        "adapted_score_bps": 9260,
+        "aggregate_score_delta_bps": 1660,
+        "base_pass_rate_bps": 7500,
+        "adapted_pass_rate_bps": 9180,
+        "aggregate_pass_rate_delta_bps": 1680,
+        "improved_case_count": 5,
+        "accepted": true,
+        "reason_codes": []
+      }
+    },
+    {
+      "run_id": "run-2026-03-16-001",
+      "manifest_digest": "sha256:architecture-explainer-first-real-run-v1-revision-2",
+      "selection": {
+        "selected_candidate_id": "checkpoint-final-v2",
+        "selected_checkpoint_ref": "checkpoint://apple_adapter.psionic_architecture_explainer/run-2026-03-16-001/final",
+        "selected_package_digest": "sha256:adapter-package-run-2026-03-16-001",
+        "accepted": false,
+        "rationale": "selected checkpoint-final-v2 with adapted_score_bps=8810 score_delta_bps=1210 improved_case_count=3 accepted=false"
+      },
+      "benchmark": {
+        "benchmark_ref": "benchmark://openagents/apple_adapter/psionic_architecture_explainer/base_vs_adapter",
+        "base_score_bps": 7600,
+        "adapted_score_bps": 8810,
+        "aggregate_score_delta_bps": 1210,
+        "base_pass_rate_bps": 7500,
+        "adapted_pass_rate_bps": 8670,
+        "aggregate_pass_rate_delta_bps": 1170,
+        "improved_case_count": 3,
+        "accepted": false,
+        "reason_codes": [
+          "ScoreDeltaBelowMinimum",
+          "PassRateDeltaBelowMinimum",
+          "ImprovedCaseCountBelowMinimum"
+        ]
+      }
+    }
+  ]
+}

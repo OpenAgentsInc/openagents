@@ -1,0 +1,60 @@
+{
+  "schema_version": 1,
+  "matrix_id": "matrix.mock.smoke",
+  "scope": {
+    "slice": {
+      "name": "smoke",
+      "task_ids": ["task.a", "task.b"]
+    }
+  },
+  "task_ids": [],
+  "providers": [
+    {
+      "provider_id": "gemini3_flash",
+      "provider_family": "google_vertex_gemini",
+      "model": "gemini-3-flash-preview",
+      "route_id": "google.gemini3.flash.primary"
+    },
+    {
+      "provider_id": "local",
+      "provider_family": "psionic_compatible",
+      "model": "local-rust",
+      "route_id": "route.local"
+    }
+  ],
+  "reasoning_efforts": [
+    {
+      "id": "standard"
+    },
+    {
+      "id": "deep"
+    }
+  ],
+  "context_budgets": [
+    {
+      "id": "32k",
+      "max_input_tokens": 32000,
+      "max_output_tokens": 4000
+    }
+  ],
+  "extraction_policies": [
+    {
+      "id": "native-first"
+    }
+  ],
+  "tool_policies": [
+    {
+      "id": "basic"
+    },
+    {
+      "id": "document-tools"
+    }
+  ],
+  "max_parallelism": 2,
+  "budget": {
+    "max_cost_micro_usd": 1000,
+    "max_wall_time_ms": 10000,
+    "max_tokens": 100000,
+    "max_failures": 3
+  }
+}

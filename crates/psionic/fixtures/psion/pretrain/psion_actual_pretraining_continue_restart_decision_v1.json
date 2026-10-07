@@ -1,0 +1,45 @@
+{
+  "schema_version": "psion.actual_pretraining_continue_restart_decision.v1",
+  "lane_id": "psion_actual_pretraining_v1",
+  "run_id": "run-psion-actual-20260402t090000z",
+  "trigger_surface_id": "psion_actual_pretraining.decide_continue_restart",
+  "selected_git_ref": "refs/heads/main",
+  "git_commit_sha": "1111222233334444555566667777888899990000",
+  "dirty_tree_admission": "refuse_by_default",
+  "workspace_status_sha256": null,
+  "checkpoint_label": "broader-pretrain-final",
+  "optimizer_step": 16384,
+  "checkpoint_ref": "checkpoint://psion/broad/pretrain/final",
+  "checkpoint_comparison": {
+    "path": "decisions/checkpoint_comparison_step-16384.json",
+    "sha256": "52e1c48055ae8c86a6fbb15d5ff625982146e4617d0f15d660e2e9ddc3fce1e8"
+  },
+  "checkpoint_eval_decision": {
+    "path": "evals/latest_checkpoint_eval_decision.json",
+    "sha256": "f65d0802447015dbf7ade6faaef1b37e73a33382e7de7a864bd0c3d64852c127"
+  },
+  "checkpoint_eval_failure": null,
+  "checkpoint_backup_receipt": {
+    "path": "checkpoints/latest_accepted_checkpoint_backup_receipt.json",
+    "sha256": "326bf1072d6a21df67009e92b7242c85e3562ea109185453fc8c8b7bc0aad688"
+  },
+  "hardware_qualification": {
+    "path": "preflight/hardware_qualification.json",
+    "sha256": "e073e58f73ea24950b524bb74e48d7eb8ccd8e849e157ebfebb744687a4f3842"
+  },
+  "run_shape_qualification": {
+    "path": "preflight/run_shape_qualification.json",
+    "sha256": "225cbd3e2a29093d4fb3f17378cf8504d9a989ddf210861be03fd53470148988"
+  },
+  "systems_bundle": {
+    "path": "fixtures/psion/pretrain/psion_actual_pretraining_systems_bundle_v1.json",
+    "sha256": "529d4a31e04f8594b032569311c84e591b6d95ae6511111ba36399f9b5ff3268"
+  },
+  "decision_state": "continue",
+  "operator_action": "continue_long_run",
+  "blocking_row_ids": [],
+  "decision_reason": "Automatic checkpoint review stayed green, durable backup is present, and the retained hardware and run-shape receipts remain inside the continue threshold.",
+  "claim_boundary": "This retained continue-restart decision keeps long-run operator posture machine-readable under the actual-lane evidence family. It does not claim that the operator already restarted or continued the cluster run; it only records the bounded next action.",
+  "detail": "Fixture continue-restart decision consumes retained eval, backup, hardware, run-shape, and systems evidence before the operator chooses the next long-run action.",
+  "decision_digest": "e61cc1204c48fbc500df0150c88aa2c71ca79742e88cfcad01164c9bb1482cf7"
+}

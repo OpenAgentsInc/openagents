@@ -1,0 +1,273 @@
+{
+  "schema_version": 1,
+  "scope_window": "first_swarm_live_workflow_plan_v1",
+  "run_family_id": "swarm.local.mlx_metal_plus_rtx4080.open_adapter.v1",
+  "swarm_contract_digest": "203e652752f0cfc350b59d3ad9d3c17ae65b6012106c5ebbd9191ba44aaa39f0",
+  "recipe_plan": {
+    "config_digest": "sha256:24a66bc6d90423280432d91b72f1fd392c8416fb8ec5a60a678dac2dc40fb3b1",
+    "method": "lora",
+    "run_graph": {
+      "run_id": "first-swarm-live-plan",
+      "stage_id": "stage-general_sft",
+      "cluster_id": "d51c2b1d387336a5e625354440a74378f3068e9fff5db840a5449667654d1cd9",
+      "checkpoint_family": "swarm.open_adapter",
+      "environment": {
+        "environment_ref": "env.swarm.local_open_adapter",
+        "version": "2026.03.24"
+      },
+      "status": "initializing",
+      "participants": [],
+      "topology_revisions": [],
+      "contributor_set_revisions": [],
+      "windows": [],
+      "lifecycle_events": []
+    },
+    "stage_sequence": [
+      "general_sft"
+    ],
+    "optimizer": {
+      "kind": "adam_w",
+      "learning_rate": 0.0002,
+      "weight_decay": 0.0,
+      "beta1": 0.9,
+      "beta2": 0.95,
+      "epsilon": 1e-8
+    },
+    "policy_revision": {
+      "policy_family": "mlx.recipe.policy",
+      "revision_id": "first-swarm-live-plan-r1",
+      "revision_number": 1,
+      "policy_digest": "sha256:b09a64cee683e24268b32db3607c326f2d7006648ff42942ac473520ca4f411d",
+      "produced_at_ms": 1000
+    },
+    "adapter_execution": {
+      "admissible_model_family": "gpt_oss_decoder_lm_head_lora",
+      "adapter_family": "gpt_oss.decoder_lm_head_lora",
+      "adapter_format": "safetensors",
+      "target_id": "mlx.adapter.target",
+      "rank": 2,
+      "alpha": "8.0000"
+    },
+    "notes": [
+      "This package is a recipe planner above psionic-train: it compiles MLX-style method choices into the existing run-graph, optimizer, policy, and adapter/rollout primitives instead of adding a second trainer architecture.",
+      "Adapter methods currently target the repo-owned open adapter lane and keep adapter family/format explicit instead of hiding them behind notebook-side defaults."
+    ]
+  },
+  "dataset_report": {
+    "workflow_id": "swarm.workflow.synthetic_sft",
+    "dataset_kind": "sft",
+    "dataset_storage_key": "dataset://openagents/swarm/open_adapter_sft@2026.03.24",
+    "dataset_manifest_digest": "9bdfd4b00d35ed789b102e28723f59a08259854a6f72ee44adb3873a061c02c7",
+    "splits": [
+      {
+        "split_name": "train",
+        "kind": "train",
+        "record_count": 4,
+        "approx_token_count": 87,
+        "datastream_manifest_digest": "4cad81d85cae86b117154ae075d717a8fdfd4e680fa09ca54d30683a60b41d87",
+        "object_digest": "9f581acba559582e4c022acb3ee1803bedfd7357a7087068dcd063111603a949"
+      },
+      {
+        "split_name": "validation",
+        "kind": "validation",
+        "record_count": 2,
+        "approx_token_count": 39,
+        "datastream_manifest_digest": "934c2045262e4725691e35b805cae5f922974788eddd5fa7a0aa1ad56a6df5e7",
+        "object_digest": "f3f48923f3a312be67eaeef5c0ba73fe72d8b08d4e3835c035077e4c5f8e4076"
+      }
+    ],
+    "report_digest": "sha256:3a5145798da6a1f6d0b9a267b5c210f3decc2efb18d99c860fe0ccad6adce2d6"
+  },
+  "publish_config": {
+    "publish_id": "first-swarm-local-snapshot",
+    "target": "hugging_face_snapshot",
+    "repo_id": "openagents/swarm-local-open-adapter"
+  },
+  "capability_policy": {
+    "backend_label": "open_adapter_backend.mlx.metal.gpt_oss_lm_head",
+    "minimum_free_memory_bytes": 12884901888,
+    "require_accelerator": true,
+    "allow_degraded_backend": false,
+    "additional_backend_capabilities": [
+      {
+        "backend_label": "open_adapter_backend.cuda.gpt_oss_lm_head",
+        "minimum_free_memory_bytes": 10737418240,
+        "require_accelerator": true,
+        "allow_degraded_backend": false
+      }
+    ],
+    "allow_flaky_nodes": false
+  },
+  "membership_receipt": {
+    "training_run_id": "first-swarm-live-plan",
+    "stage_id": "stage-general_sft",
+    "topology_revision_id": "first-swarm-live-plan-topology-1",
+    "eligible_node_ids": [
+      "swarm-linux-4080-a",
+      "swarm-mac-a"
+    ],
+    "blocked_node_ids": [],
+    "contributor_statuses": [
+      {
+        "node_id": "swarm-linux-4080-a",
+        "role": "executor_only",
+        "membership_status": "ready",
+        "matched_backend_label": "open_adapter_backend.cuda.gpt_oss_lm_head",
+        "backend_readiness": "ready",
+        "stability": "stable",
+        "free_memory_bytes": 21474836480,
+        "accelerator_count": 1,
+        "eligibility": "eligible",
+        "priority_bps": 4783,
+        "reliability_bps": 9500,
+        "contribution_state": "standby"
+      },
+      {
+        "node_id": "swarm-mac-a",
+        "role": "mixed",
+        "membership_status": "ready",
+        "matched_backend_label": "open_adapter_backend.mlx.metal.gpt_oss_lm_head",
+        "backend_readiness": "ready",
+        "stability": "stable",
+        "free_memory_bytes": 25769803776,
+        "accelerator_count": 1,
+        "eligibility": "eligible",
+        "priority_bps": 5560,
+        "reliability_bps": 9500,
+        "contribution_state": "standby"
+      }
+    ],
+    "observed_at_ms": 1774409200000,
+    "receipt_digest": "a2505e7d710da81a6548c42d17b68b31991cceced626fc77ef560754325f1acb"
+  },
+  "window_plan": {
+    "training_run_id": "first-swarm-live-plan",
+    "stage_id": "stage-general_sft",
+    "window_id": "first-swarm-live-plan-window-1",
+    "topology_revision_id": "first-swarm-live-plan-topology-1",
+    "contributor_set_revision_id": "first-swarm-live-plan-contributors-1",
+    "assignment_seed": 3693590811719468973,
+    "selected_node_ids": [
+      "swarm-mac-a",
+      "swarm-linux-4080-a"
+    ],
+    "standby_node_ids": [],
+    "dataset_slices": [
+      {
+        "dataset_id": "dataset://openagents/swarm/open_adapter_sft@2026.03.24",
+        "split_name": "train",
+        "slice_id": "swarm_mac_mlx_coordinator_validator_contributor-1",
+        "slice_digest": "17cf24a60ef70a91201f6329f91a8b4a7e01c0be67ee84324c6fd41d9bbb8147"
+      },
+      {
+        "dataset_id": "dataset://openagents/swarm/open_adapter_sft@2026.03.24",
+        "split_name": "train",
+        "slice_id": "swarm_linux_cuda_rtx4080_contributor-2",
+        "slice_digest": "ddb820e4c989d15b538b23bdc568e12cc4669fc56f6bc753fc5b4a428e6d492f"
+      }
+    ],
+    "adapter_target": {
+      "adapter_target_id": "mlx.adapter.target",
+      "adapter_family": "gpt_oss.decoder_lm_head_lora",
+      "base_model_ref": "gpt-oss-20b@swarm-local-v1",
+      "adapter_format": "safetensors"
+    },
+    "input_policy_revision": {
+      "policy_family": "mlx.recipe.policy",
+      "revision_id": "first-swarm-live-plan-r1",
+      "revision_number": 1,
+      "policy_digest": "sha256:b09a64cee683e24268b32db3607c326f2d7006648ff42942ac473520ca4f411d",
+      "produced_at_ms": 1000
+    },
+    "input_checkpoint_pointer": {
+      "scope": {
+        "kind": "window",
+        "scope_id": "first-swarm-live-plan-window-1"
+      },
+      "checkpoint_family": "swarm.open_adapter",
+      "checkpoint": {
+        "checkpoint_family": "swarm.open_adapter",
+        "stream_id": "stream://swarm/first-swarm-live-plan/policy",
+        "manifest_digest": "manifest://swarm/first-swarm-live-plan/policy",
+        "object_digest": "object://swarm/first-swarm-live-plan/policy",
+        "writer_node_id": "swarm-mac-a",
+        "membership_epoch": 1,
+        "cluster_state_digest": "ab3c0de68eb223c6e07efed3b164c06e5bc8ece3a6ba06ab66c11ba3ccdd12fe",
+        "topology_digest": "b2f375e87e347a75144269ac2c4ec5ae938f94a9362ecec052e45b578cc85bf6",
+        "started_at_ms": 1774409201000,
+        "checkpoint_ref": "checkpoint://swarm/first-swarm-live-plan/policy",
+        "step": 12
+      },
+      "manifest_digest": "007b3709823cc31f85a79ec775095eb1929da16eee6bd7e82b125cf00dca4337",
+      "updated_at_ms": 1774409201000,
+      "pointer_digest": "dd1aa85c355eb43934a20afe7e4204b3ed82bb85f4fe392dfde45229f4e434f8"
+    },
+    "planned_at_ms": 1774409201000,
+    "receipt_digest": "d8425199bc29c4c0f638a4fb50027fdf9c3bb3e331ff018b892a3163b01b265d"
+  },
+  "contributor_assignments": [
+    {
+      "role_id": "swarm.mac.mlx.coordinator_validator_contributor",
+      "platform": "macos_apple_silicon",
+      "contributor_node_id": "swarm-mac-a",
+      "matched_backend_label": "open_adapter_backend.mlx.metal.gpt_oss_lm_head",
+      "validator_eligible": true,
+      "aggregation_eligible": true,
+      "priority_bps": 5560,
+      "reliability_bps": 9500,
+      "dataset_slice": {
+        "dataset_id": "dataset://openagents/swarm/open_adapter_sft@2026.03.24",
+        "split_name": "train",
+        "slice_id": "swarm_mac_mlx_coordinator_validator_contributor-1",
+        "slice_digest": "17cf24a60ef70a91201f6329f91a8b4a7e01c0be67ee84324c6fd41d9bbb8147"
+      },
+      "source_sample_ids": [
+        "swarm-train-001",
+        "swarm-train-002"
+      ],
+      "source_split_object_digest": "9f581acba559582e4c022acb3ee1803bedfd7357a7087068dcd063111603a949",
+      "contribution_id": "adapter-contribution:first-swarm-live-plan-window-1:swarm-mac-a:0",
+      "expected_upload_reference": "object://swarm/first-swarm-live-plan-window-1/adapter-contribution:first-swarm-live-plan-window-1:swarm-mac-a:0/adapter_delta.safetensors",
+      "expected_upload_manifest_digest": "ea41cc5421eb87178c08d3d1eaab7431a5510a6dbbf972a4122b12c37843a197"
+    },
+    {
+      "role_id": "swarm.linux.cuda.rtx4080.contributor",
+      "platform": "linux_nvidia_rtx_4080",
+      "contributor_node_id": "swarm-linux-4080-a",
+      "matched_backend_label": "open_adapter_backend.cuda.gpt_oss_lm_head",
+      "validator_eligible": false,
+      "aggregation_eligible": false,
+      "priority_bps": 4783,
+      "reliability_bps": 9500,
+      "dataset_slice": {
+        "dataset_id": "dataset://openagents/swarm/open_adapter_sft@2026.03.24",
+        "split_name": "train",
+        "slice_id": "swarm_linux_cuda_rtx4080_contributor-2",
+        "slice_digest": "ddb820e4c989d15b538b23bdc568e12cc4669fc56f6bc753fc5b4a428e6d492f"
+      },
+      "source_sample_ids": [
+        "swarm-train-003",
+        "swarm-train-004"
+      ],
+      "source_split_object_digest": "9f581acba559582e4c022acb3ee1803bedfd7357a7087068dcd063111603a949",
+      "contribution_id": "adapter-contribution:first-swarm-live-plan-window-1:swarm-linux-4080-a:0",
+      "expected_upload_reference": "object://swarm/first-swarm-live-plan-window-1/adapter-contribution:first-swarm-live-plan-window-1:swarm-linux-4080-a:0/adapter_delta.safetensors",
+      "expected_upload_manifest_digest": "6cef06e5424ac08c86e1644eac1e3e6d73a9dc859416f8888af9b6605ada5965"
+    }
+  ],
+  "publish_expectation": {
+    "publisher_role_id": "swarm.mac.mlx.coordinator_validator_contributor",
+    "publish_id": "first-swarm-local-snapshot",
+    "target": "hugging_face_snapshot",
+    "repo_id": "openagents/swarm-local-open-adapter",
+    "expected_local_snapshot_directory": "local_publish/openagents_swarm_local_open_adapter/first-swarm-local-snapshot",
+    "publish_posture": "no_served_promotion"
+  },
+  "claim_boundary": "This plan binds one MLX LoRA recipe, one MLX workflow dataset artifact, and one local snapshot publish config into the existing live adapter-cluster planner for the first swarm lane. It does not claim a second trainer runtime, full-model mixed-backend all-reduce, or automatic publication without validator, replay, and merge truth.",
+  "notes": [
+    "This plan proves the MLX recipe planner now seeds the live adapter-cluster run graph instead of stopping at a notebook-like planning artifact.",
+    "The same plan consumes the workflow dataset report and publish config to produce deterministic dataset slices, contributor assignments, and upload expectations through the existing adapter window substrate.",
+    "The first swarm lane remains one train architecture because contributor selection and window planning still flow through AdapterTrainingClusterCoordinator and the existing contributor-set revision path."
+  ],
+  "plan_digest": "573b6df00266981819b8cb08654ac6e6f727418cb5a46768255e8ea27b2f2821"
+}

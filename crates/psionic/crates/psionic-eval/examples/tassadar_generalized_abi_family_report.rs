@@ -1,0 +1,10 @@
+use psionic_eval::{
+    tassadar_generalized_abi_family_report_path, write_tassadar_generalized_abi_family_report,
+};
+
+fn main() -> Result<(), Box<dyn std::error::Error>> {
+    let report_path = tassadar_generalized_abi_family_report_path();
+    let report = write_tassadar_generalized_abi_family_report(&report_path)?;
+    println!("{}", serde_json::to_string_pretty(&report)?);
+    Ok(())
+}

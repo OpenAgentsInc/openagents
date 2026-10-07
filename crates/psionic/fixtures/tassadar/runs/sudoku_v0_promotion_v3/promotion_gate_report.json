@@ -1,0 +1,14 @@
+{
+  "run_id": "tassadar-executor-attention-sudoku-v0-promotion-v3",
+  "trainable_surface": "executor_attention_candidate.relative_target_output_bias_plus_trace_schema_bias",
+  "checkpoint_id": "tassadar-executor-attention-sudoku-v0-promotion-v3.checkpoint.epoch_0015",
+  "selected_stage_id": "prompt_to_first_32_tokens",
+  "first_target_exactness_bps": 10000,
+  "first_32_token_exactness_bps": 10000,
+  "exact_trace_case_count": 2,
+  "required_first_target_exactness_bps": 10000,
+  "required_first_32_token_exactness_bps_strictly_greater_than": 9000,
+  "required_exact_trace_case_count": 1,
+  "passed": true,
+  "report_digest": "732df3f1bd53b25f74cf0bfeaba17296dbec57a959562bb0a8c24b8ee644af20"
+}

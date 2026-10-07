@@ -1,0 +1,21 @@
+[package]
+name = "psionic-transformer"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+publish.workspace = true
+description = "Reusable transformer architecture primitives for Psionic"
+
+[lints]
+workspace = true
+
+[lib]
+path = "src/lib.rs"
+
+[dependencies]
+psionic-array = { path = "../psionic-array" }
+psionic-core = { path = "../psionic-core" }
+psionic-nn = { path = "../psionic-nn", default-features = false }
+serde = { workspace = true }
+thiserror = { workspace = true }

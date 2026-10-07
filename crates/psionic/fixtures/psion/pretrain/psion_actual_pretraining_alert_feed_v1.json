@@ -1,0 +1,21 @@
+{
+  "schema_version": "psion.actual_pretraining_alert_feed.v1",
+  "lane_id": "psion_actual_pretraining_v1",
+  "run_id": "run-psion-actual-20260402t090100z",
+  "alert_feed_path": "alerts/active_alerts.json",
+  "active_alerts": [
+    {
+      "alert_id": "psion_actual_pretraining_dashboard::checkpoint_eval_retry_required::16384",
+      "alert_kind": "checkpoint_eval_retry_required",
+      "severity": "warning",
+      "state": "active",
+      "response_posture": "retry_checkpoint_eval_after_restoring_the_eval_worker",
+      "source_relative_path": "alerts/latest_redacted_alert.json",
+      "retained_redaction": "declared_source_names_only",
+      "summary": "Checkpoint eval for `run-psion-actual-20260402t090100z` step 16384 needs retry before the operator can rely on a new decision receipt.",
+      "detail": "Fixture checkpoint eval failure records that the automatic checkpoint-review worker was unavailable after the accepted checkpoint entered the retained backup family."
+    }
+  ],
+  "summary": "Retained alert feed keeps the actual-lane operator response surface explicit without copying raw secret payloads into dashboards or alerts.",
+  "alert_feed_digest": "097dbce9553374bdfc284da0567a113729f249151b8aa44b2c97ff455611f94e"
+}

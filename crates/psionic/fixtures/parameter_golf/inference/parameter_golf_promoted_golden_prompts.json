@@ -1,0 +1,27 @@
+[
+  {
+    "prompt_id": "greedy-abcd",
+    "prompt": "abcd",
+    "max_new_tokens": 4,
+    "mode": "greedy",
+    "expected_text": "<reserved_0952><reserved_1005><reserved_0951><reserved_0900>",
+    "detail": "Minimal continuation probe through the promoted PGOLF local runtime path."
+  },
+  {
+    "prompt_id": "greedy-efgh",
+    "prompt": "efg h",
+    "max_new_tokens": 4,
+    "mode": "greedy",
+    "expected_text": "<reserved_0794><reserved_0794><reserved_0794><reserved_0794>",
+    "detail": "Boundary-piece probe covering the emitted SentencePiece-style tokenizer asset."
+  },
+  {
+    "prompt_id": "sample-abcd",
+    "prompt": "abcd",
+    "max_new_tokens": 4,
+    "mode": "sample",
+    "seed": 42,
+    "expected_text": "<reserved_0952><reserved_0422><reserved_0711><reserved_0491>",
+    "detail": "Seeded sampling replay probe for the promoted PGOLF local runtime path."
+  }
+]

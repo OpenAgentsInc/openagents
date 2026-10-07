@@ -1,0 +1,639 @@
+{
+  "schema_version": "psion.acceptance_matrix.v1",
+  "matrix_id": "psion_acceptance_matrix",
+  "matrix_version": "v1",
+  "benchmark_isolation_schema_version": "psion.benchmark_isolation.v1",
+  "phase_gates": [
+    {
+      "phase": "pilot",
+      "benchmark_requirements": [
+        {
+          "family": "architecture_reasoning",
+          "benchmark_artifact_id": "psion_architecture_reasoning_benchmark_v1",
+          "benchmark_artifact_digest": "703142f680a8a2702700fcdd18309b24d6e7889e07c4621e287178c9ac6af674",
+          "threshold_bands": [
+            {
+              "metric_kind": "pass_rate_bps",
+              "minimum_bps": 8200,
+              "allowed_regression_bps": 0,
+              "rationale": "Pilot architecture reasoning must clear a frozen minimum bar before broader scale-up can be justified."
+            }
+          ],
+          "rationale": "Pilot closure requires a direct architecture reasoning signal rather than generic chat success."
+        },
+        {
+          "family": "held_out_technical_reasoning",
+          "threshold_bands": [
+            {
+              "metric_kind": "pass_rate_bps",
+              "minimum_bps": 7500,
+              "allowed_regression_bps": 0,
+              "rationale": "Pilot held-out evaluation must clear a minimum pass-rate floor."
+            },
+            {
+              "metric_kind": "improvement_over_seed_baseline_bps",
+              "minimum_bps": 1200,
+              "allowed_regression_bps": 0,
+              "rationale": "Pilot held-out results must improve over the frozen seed baseline."
+            }
+          ],
+          "rationale": "Pilot success requires measurable held-out improvement, not only one bounded demo."
+        },
+        {
+          "family": "unsupported_request_refusal",
+          "benchmark_artifact_id": "psion_unsupported_request_refusal_benchmark_v1",
+          "benchmark_artifact_digest": "73274857b551ca89edd96a200c60d25992a0aaa62a5cb25a1c369f518e8c42c4",
+          "threshold_bands": [
+            {
+              "metric_kind": "unsupported_request_refusal_bps",
+              "minimum_bps": 9800,
+              "allowed_regression_bps": 0,
+              "rationale": "Pilot refusal on unsupported requests must stay near-complete."
+            },
+            {
+              "metric_kind": "overrefusal_bps",
+              "maximum_bps": 1500,
+              "allowed_regression_bps": 0,
+              "rationale": "Pilot refusal calibration cannot block too much supported work."
+            }
+          ],
+          "rationale": "Pilot closure requires refusal calibration on unsupported asks, not silent hallucination."
+        }
+      ],
+      "replay_requirement": {
+        "minimum_successful_replays": 2,
+        "exact_replay_required": true,
+        "rationale": "Pilot claims need repeated replay receipts before the lane widens."
+      },
+      "checkpoint_requirement": {
+        "restart_recovery_required": true,
+        "minimum_successful_restart_roundtrips": 1,
+        "maximum_resume_regression_bps": 300,
+        "rationale": "Pilot training runs must survive one bounded restart without material regression."
+      },
+      "contamination_review_requirement": {
+        "near_duplicate_review_required": true,
+        "tokenizer_exposure_review_required": true,
+        "clean_review_required_for_promotion": true,
+        "required_violation_consequences": [
+          "invalidate_affected_benchmark",
+          "trigger_capability_matrix_review"
+        ],
+        "rationale": "Pilot promotion is blocked unless the held-out freeze and contamination review stay clean."
+      },
+      "route_calibration_requirement": {
+        "required_supported_routes": [
+          "direct_model_answer",
+          "exact_executor_handoff",
+          "refusal"
+        ],
+        "minimum_route_selection_accuracy_bps": 9500,
+        "maximum_route_regression_bps": 300,
+        "rationale": "Even the pilot must keep route choice explicit between direct answer, executor handoff, and refusal."
+      },
+      "refusal_calibration_requirement": {
+        "minimum_unsupported_request_refusal_bps": 9800,
+        "maximum_overrefusal_bps": 1500,
+        "maximum_refusal_regression_bps": 200,
+        "rationale": "Unsupported-request refusal remains a first-class gate at pilot time."
+      },
+      "phase_summary": "Pilot phase requires architecture reasoning, held-out improvement, replay, one restart proof, and near-complete unsupported-request refusal before any broader scale-up is honest."
+    },
+    {
+      "phase": "broader_pretraining",
+      "benchmark_requirements": [
+        {
+          "family": "architecture_reasoning",
+          "benchmark_artifact_id": "psion_architecture_reasoning_benchmark_v1",
+          "benchmark_artifact_digest": "703142f680a8a2702700fcdd18309b24d6e7889e07c4621e287178c9ac6af674",
+          "threshold_bands": [
+            {
+              "metric_kind": "pass_rate_bps",
+              "minimum_bps": 8400,
+              "allowed_regression_bps": 300,
+              "rationale": "Broader pretraining cannot regress architecture reasoning below the frozen pilot win."
+            }
+          ],
+          "rationale": "Architecture reasoning remains a named benchmark family beyond the pilot."
+        },
+        {
+          "family": "held_out_technical_reasoning",
+          "threshold_bands": [
+            {
+              "metric_kind": "pass_rate_bps",
+              "minimum_bps": 7800,
+              "allowed_regression_bps": 300,
+              "rationale": "Held-out pass rate must improve rather than flatten out during broader pretraining."
+            },
+            {
+              "metric_kind": "improvement_over_seed_baseline_bps",
+              "minimum_bps": 800,
+              "allowed_regression_bps": 200,
+              "rationale": "Broader pretraining still has to preserve a measurable gain over the seed baseline."
+            }
+          ],
+          "rationale": "Held-out improvement remains a tracked gate instead of collapsing to one loss curve."
+        },
+        {
+          "family": "normative_spec_reading",
+          "benchmark_artifact_id": "psion_normative_spec_benchmark_v1",
+          "benchmark_artifact_digest": "dd5741c92863fe4525d67eadd513b955b01f97adb9aa0f1cfa22619e8b273b32",
+          "threshold_bands": [
+            {
+              "metric_kind": "pass_rate_bps",
+              "minimum_bps": 7600,
+              "allowed_regression_bps": 300,
+              "rationale": "Broader pretraining must clear a bounded bar on held-out specs and manuals."
+            }
+          ],
+          "rationale": "The learned lane is supposed to read specs and manuals from first principles, not only architecture notes."
+        },
+        {
+          "family": "engineering_spec_interpretation",
+          "benchmark_artifact_id": "psion_engineering_spec_benchmark_v1",
+          "benchmark_artifact_digest": "2223c33a7301921ee440a29936d734428ebd6c4a507a12fe4e60c76afad5445a",
+          "threshold_bands": [
+            {
+              "metric_kind": "pass_rate_bps",
+              "minimum_bps": 7500,
+              "allowed_regression_bps": 300,
+              "rationale": "Broader pretraining must begin separating implementation consequences from what the normative text literally says."
+            }
+          ],
+          "rationale": "Implementation implications, ambiguity, and unspecified regions become explicit benchmark obligations before the lane broadens."
+        },
+        {
+          "family": "unsupported_request_refusal",
+          "benchmark_artifact_id": "psion_unsupported_request_refusal_benchmark_v1",
+          "benchmark_artifact_digest": "73274857b551ca89edd96a200c60d25992a0aaa62a5cb25a1c369f518e8c42c4",
+          "threshold_bands": [
+            {
+              "metric_kind": "unsupported_request_refusal_bps",
+              "minimum_bps": 9850,
+              "allowed_regression_bps": 100,
+              "rationale": "Unsupported-request refusal must tighten, not loosen, as the model widens."
+            },
+            {
+              "metric_kind": "overrefusal_bps",
+              "maximum_bps": 1200,
+              "allowed_regression_bps": 100,
+              "rationale": "Broader pretraining still cannot hide behind blanket refusal."
+            }
+          ],
+          "rationale": "Unsupported-request refusal remains explicit even after the pilot."
+        }
+      ],
+      "replay_requirement": {
+        "minimum_successful_replays": 3,
+        "exact_replay_required": true,
+        "rationale": "Broader pretraining needs multiple replay receipts before operator trust should increase."
+      },
+      "checkpoint_requirement": {
+        "restart_recovery_required": true,
+        "minimum_successful_restart_roundtrips": 2,
+        "maximum_resume_regression_bps": 250,
+        "rationale": "Broader pretraining must survive repeated restart and resume without hidden quality loss."
+      },
+      "contamination_review_requirement": {
+        "near_duplicate_review_required": true,
+        "tokenizer_exposure_review_required": true,
+        "clean_review_required_for_promotion": true,
+        "required_violation_consequences": [
+          "invalidate_affected_benchmark",
+          "trigger_capability_matrix_review"
+        ],
+        "rationale": "Broader pretraining remains blocked by the held-out contamination freeze."
+      },
+      "route_calibration_requirement": {
+        "required_supported_routes": [
+          "direct_model_answer",
+          "exact_executor_handoff",
+          "refusal"
+        ],
+        "minimum_route_selection_accuracy_bps": 9550,
+        "maximum_route_regression_bps": 250,
+        "rationale": "Route selection must stay calibrated as the lane sees more tasks."
+      },
+      "refusal_calibration_requirement": {
+        "minimum_unsupported_request_refusal_bps": 9850,
+        "maximum_overrefusal_bps": 1200,
+        "maximum_refusal_regression_bps": 150,
+        "rationale": "Refusal remains a tracked gate before any supervised fine-tuning promotion."
+      },
+      "phase_summary": "Broader pretraining requires preserved pilot wins, held-out spec/manual performance, repeated replay and restart receipts, and no contamination drift."
+    },
+    {
+      "phase": "sft_promotion",
+      "benchmark_requirements": [
+        {
+          "family": "held_out_technical_reasoning",
+          "threshold_bands": [
+            {
+              "metric_kind": "pass_rate_bps",
+              "minimum_bps": 8000,
+              "allowed_regression_bps": 250,
+              "rationale": "SFT promotion cannot trade away held-out technical reasoning."
+            },
+            {
+              "metric_kind": "improvement_over_seed_baseline_bps",
+              "minimum_bps": 600,
+              "allowed_regression_bps": 200,
+              "rationale": "Held-out gains must still remain above the frozen seed baseline."
+            }
+          ],
+          "rationale": "The SFT gate still depends on held-out technical reasoning rather than chat polish."
+        },
+        {
+          "family": "normative_spec_reading",
+          "benchmark_artifact_id": "psion_normative_spec_benchmark_v1",
+          "benchmark_artifact_digest": "dd5741c92863fe4525d67eadd513b955b01f97adb9aa0f1cfa22619e8b273b32",
+          "threshold_bands": [
+            {
+              "metric_kind": "pass_rate_bps",
+              "minimum_bps": 8000,
+              "allowed_regression_bps": 250,
+              "rationale": "SFT promotion requires a stronger spec/manual floor than broader pretraining."
+            }
+          ],
+          "rationale": "The lane must preserve first-principles technical reading into the SFT phase."
+        },
+        {
+          "family": "engineering_spec_interpretation",
+          "benchmark_artifact_id": "psion_engineering_spec_benchmark_v1",
+          "benchmark_artifact_digest": "2223c33a7301921ee440a29936d734428ebd6c4a507a12fe4e60c76afad5445a",
+          "threshold_bands": [
+            {
+              "metric_kind": "pass_rate_bps",
+              "minimum_bps": 7900,
+              "allowed_regression_bps": 250,
+              "rationale": "SFT promotion must strengthen engineering interpretation without rewarding unsupported certainty on ambiguous text."
+            }
+          ],
+          "rationale": "The SFT lane keeps implementation inference explicit instead of blending it back into normative reading."
+        },
+        {
+          "family": "memorization_versus_reasoning",
+          "benchmark_artifact_id": "psion_memorization_reasoning_benchmark_v1",
+          "benchmark_artifact_digest": "599e61d8c6bb7f599042672aaef51b53f4401856437be2a1e688276134cb24a3",
+          "threshold_bands": [
+            {
+              "metric_kind": "pass_rate_bps",
+              "minimum_bps": 7800,
+              "allowed_regression_bps": 250,
+              "rationale": "SFT promotion must stay above a frozen recombination floor instead of rewarding fluent recall on familiar passages."
+            }
+          ],
+          "rationale": "The pretraining-to-SFT gate now includes explicit memorization-versus-reasoning probes rather than relying only on generic held-out scores."
+        },
+        {
+          "family": "route_selection",
+          "benchmark_artifact_id": "psion_route_benchmark_v1",
+          "benchmark_artifact_digest": "76c517290e29616bf424831b637833006dc16b9a70bd8b0162ca6b5a90efa954",
+          "threshold_bands": [
+            {
+              "metric_kind": "route_selection_accuracy_bps",
+              "minimum_bps": 9600,
+              "allowed_regression_bps": 200,
+              "rationale": "SFT promotion must preserve route selection rather than degrade it behind instruction tuning."
+            }
+          ],
+          "rationale": "Route selection is benchmarked directly before SFT promotion."
+        },
+        {
+          "family": "unsupported_request_refusal",
+          "benchmark_artifact_id": "psion_unsupported_request_refusal_benchmark_v1",
+          "benchmark_artifact_digest": "73274857b551ca89edd96a200c60d25992a0aaa62a5cb25a1c369f518e8c42c4",
+          "threshold_bands": [
+            {
+              "metric_kind": "unsupported_request_refusal_bps",
+              "minimum_bps": 9860,
+              "allowed_regression_bps": 100,
+              "rationale": "Unsupported-request refusal cannot weaken during SFT promotion."
+            },
+            {
+              "metric_kind": "overrefusal_bps",
+              "maximum_bps": 1000,
+              "allowed_regression_bps": 100,
+              "rationale": "SFT promotion keeps a bounded over-refusal ceiling."
+            }
+          ],
+          "rationale": "SFT promotion keeps refusal explicit instead of assuming chat tuning will fix it."
+        }
+      ],
+      "replay_requirement": {
+        "minimum_successful_replays": 3,
+        "exact_replay_required": true,
+        "rationale": "SFT promotion still requires replay receipts, not only better outputs."
+      },
+      "checkpoint_requirement": {
+        "restart_recovery_required": true,
+        "minimum_successful_restart_roundtrips": 2,
+        "maximum_resume_regression_bps": 200,
+        "rationale": "SFT promotion requires tighter resume stability than the pretraining gate."
+      },
+      "contamination_review_requirement": {
+        "near_duplicate_review_required": true,
+        "tokenizer_exposure_review_required": true,
+        "clean_review_required_for_promotion": true,
+        "required_violation_consequences": [
+          "invalidate_affected_benchmark",
+          "trigger_capability_matrix_review"
+        ],
+        "rationale": "SFT promotion still depends on the same held-out freeze and contamination review discipline."
+      },
+      "route_calibration_requirement": {
+        "required_supported_routes": [
+          "direct_model_answer",
+          "exact_executor_handoff",
+          "refusal"
+        ],
+        "minimum_route_selection_accuracy_bps": 9700,
+        "maximum_route_regression_bps": 200,
+        "rationale": "SFT promotion must prove that tool or executor routing did not blur the lane boundary."
+      },
+      "refusal_calibration_requirement": {
+        "minimum_unsupported_request_refusal_bps": 9860,
+        "maximum_overrefusal_bps": 1000,
+        "maximum_refusal_regression_bps": 150,
+        "rationale": "Refusal stays a phase gate before internal serving."
+      },
+      "phase_summary": "SFT promotion requires held-out technical performance, direct route-selection evidence, replay and resume stability, and preserved refusal behavior."
+    },
+    {
+      "phase": "internal_serving",
+      "benchmark_requirements": [
+        {
+          "family": "held_out_technical_reasoning",
+          "threshold_bands": [
+            {
+              "metric_kind": "pass_rate_bps",
+              "minimum_bps": 8100,
+              "allowed_regression_bps": 200,
+              "rationale": "Internal serving cannot degrade the held-out technical lane."
+            }
+          ],
+          "rationale": "Internal serving still remains subordinate to held-out technical reasoning receipts."
+        },
+        {
+          "family": "engineering_spec_interpretation",
+          "benchmark_artifact_id": "psion_engineering_spec_benchmark_v1",
+          "benchmark_artifact_digest": "2223c33a7301921ee440a29936d734428ebd6c4a507a12fe4e60c76afad5445a",
+          "threshold_bands": [
+            {
+              "metric_kind": "pass_rate_bps",
+              "minimum_bps": 8100,
+              "allowed_regression_bps": 200,
+              "rationale": "Internal serving requires a stronger engineering-interpretation floor before implementation-facing claims are honest."
+            }
+          ],
+          "rationale": "Serving guidance is only bounded when ambiguity, unspecified regions, and portability risk remain explicit."
+        },
+        {
+          "family": "memorization_versus_reasoning",
+          "benchmark_artifact_id": "psion_memorization_reasoning_benchmark_v1",
+          "benchmark_artifact_digest": "599e61d8c6bb7f599042672aaef51b53f4401856437be2a1e688276134cb24a3",
+          "threshold_bands": [
+            {
+              "metric_kind": "pass_rate_bps",
+              "minimum_bps": 7900,
+              "allowed_regression_bps": 200,
+              "rationale": "Internal serving requires stronger evidence that the model still recombines under changed wording and constraints."
+            }
+          ],
+          "rationale": "Serving promotion stays blocked if the lane only sounds competent on familiar benchmark surface forms."
+        },
+        {
+          "family": "route_selection",
+          "benchmark_artifact_id": "psion_route_benchmark_v1",
+          "benchmark_artifact_digest": "76c517290e29616bf424831b637833006dc16b9a70bd8b0162ca6b5a90efa954",
+          "threshold_bands": [
+            {
+              "metric_kind": "route_selection_accuracy_bps",
+              "minimum_bps": 9750,
+              "allowed_regression_bps": 150,
+              "rationale": "Internal serving requires stronger route correctness than the SFT gate."
+            }
+          ],
+          "rationale": "Serving claims are only honest when route behavior is directly benchmarked."
+        },
+        {
+          "family": "unsupported_request_refusal",
+          "benchmark_artifact_id": "psion_unsupported_request_refusal_benchmark_v1",
+          "benchmark_artifact_digest": "73274857b551ca89edd96a200c60d25992a0aaa62a5cb25a1c369f518e8c42c4",
+          "threshold_bands": [
+            {
+              "metric_kind": "unsupported_request_refusal_bps",
+              "minimum_bps": 9900,
+              "allowed_regression_bps": 100,
+              "rationale": "Internal serving requires near-complete refusal on unsupported requests."
+            },
+            {
+              "metric_kind": "overrefusal_bps",
+              "maximum_bps": 800,
+              "allowed_regression_bps": 100,
+              "rationale": "Serving still cannot hide behind blanket refusal."
+            }
+          ],
+          "rationale": "Refusal stays explicit at the internal serving gate."
+        }
+      ],
+      "replay_requirement": {
+        "minimum_successful_replays": 4,
+        "exact_replay_required": true,
+        "rationale": "Internal serving requires repeated replay proof because operator-facing claims get stronger."
+      },
+      "checkpoint_requirement": {
+        "restart_recovery_required": true,
+        "minimum_successful_restart_roundtrips": 3,
+        "maximum_resume_regression_bps": 150,
+        "rationale": "Internal serving requires restart stability stronger than pure offline training."
+      },
+      "contamination_review_requirement": {
+        "near_duplicate_review_required": true,
+        "tokenizer_exposure_review_required": true,
+        "clean_review_required_for_promotion": true,
+        "required_violation_consequences": [
+          "invalidate_affected_benchmark",
+          "trigger_capability_matrix_review"
+        ],
+        "rationale": "Internal serving stays blocked by contamination review because serving claims are harder to retract."
+      },
+      "route_calibration_requirement": {
+        "required_supported_routes": [
+          "direct_model_answer",
+          "exact_executor_handoff",
+          "refusal"
+        ],
+        "minimum_route_selection_accuracy_bps": 9800,
+        "maximum_route_regression_bps": 150,
+        "rationale": "Internal serving must preserve route truth across direct answers, handoffs, and refusal."
+      },
+      "refusal_calibration_requirement": {
+        "minimum_unsupported_request_refusal_bps": 9900,
+        "maximum_overrefusal_bps": 800,
+        "maximum_refusal_regression_bps": 100,
+        "rationale": "Refusal and over-refusal remain serving gates, not optional report fields."
+      },
+      "phase_summary": "Internal serving requires strong route accuracy, near-complete unsupported-request refusal, repeated replay, and restart receipts before any bounded serving claim is honest."
+    },
+    {
+      "phase": "trusted_cluster_scale_up",
+      "benchmark_requirements": [
+        {
+          "family": "architecture_reasoning",
+          "benchmark_artifact_id": "psion_architecture_reasoning_benchmark_v1",
+          "benchmark_artifact_digest": "703142f680a8a2702700fcdd18309b24d6e7889e07c4621e287178c9ac6af674",
+          "threshold_bands": [
+            {
+              "metric_kind": "pass_rate_bps",
+              "minimum_bps": 8400,
+              "allowed_regression_bps": 200,
+              "rationale": "Trusted-cluster scale-up cannot erase the original architecture reasoning win."
+            }
+          ],
+          "rationale": "Cluster scale-up still depends on the core architecture reasoning family."
+        },
+        {
+          "family": "held_out_technical_reasoning",
+          "threshold_bands": [
+            {
+              "metric_kind": "pass_rate_bps",
+              "minimum_bps": 8200,
+              "allowed_regression_bps": 150,
+              "rationale": "Trusted-cluster scale-up must preserve a stronger held-out floor than internal serving."
+            },
+            {
+              "metric_kind": "improvement_over_seed_baseline_bps",
+              "minimum_bps": 500,
+              "allowed_regression_bps": 150,
+              "rationale": "Trusted-cluster scale-up still needs a positive improvement margin over the frozen seed baseline."
+            }
+          ],
+          "rationale": "Held-out technical reasoning remains a named benchmark family at cluster scale."
+        },
+        {
+          "family": "normative_spec_reading",
+          "benchmark_artifact_id": "psion_normative_spec_benchmark_v1",
+          "benchmark_artifact_digest": "dd5741c92863fe4525d67eadd513b955b01f97adb9aa0f1cfa22619e8b273b32",
+          "threshold_bands": [
+            {
+              "metric_kind": "pass_rate_bps",
+              "minimum_bps": 8200,
+              "allowed_regression_bps": 150,
+              "rationale": "Cluster scale-up keeps specs and manuals as an explicit benchmark family."
+            }
+          ],
+          "rationale": "Specs and manuals remain part of the bounded technical reasoning lane even at scale."
+        },
+        {
+          "family": "engineering_spec_interpretation",
+          "benchmark_artifact_id": "psion_engineering_spec_benchmark_v1",
+          "benchmark_artifact_digest": "2223c33a7301921ee440a29936d734428ebd6c4a507a12fe4e60c76afad5445a",
+          "threshold_bands": [
+            {
+              "metric_kind": "pass_rate_bps",
+              "minimum_bps": 8200,
+              "allowed_regression_bps": 150,
+              "rationale": "Trusted-cluster scale-up must preserve explicit engineering boundary reasoning, not only raw spec reading."
+            }
+          ],
+          "rationale": "Cluster scale-up keeps implementation implications and portability risk as a distinct benchmark family."
+        },
+        {
+          "family": "memorization_versus_reasoning",
+          "benchmark_artifact_id": "psion_memorization_reasoning_benchmark_v1",
+          "benchmark_artifact_digest": "599e61d8c6bb7f599042672aaef51b53f4401856437be2a1e688276134cb24a3",
+          "threshold_bands": [
+            {
+              "metric_kind": "pass_rate_bps",
+              "minimum_bps": 8000,
+              "allowed_regression_bps": 150,
+              "rationale": "Trusted-cluster scale-up must preserve recombination strength on altered constraints, paraphrases, and edge cases."
+            }
+          ],
+          "rationale": "Cluster scale-up keeps anti-memorization probes explicit instead of hiding them inside a generic held-out lane."
+        },
+        {
+          "family": "route_selection",
+          "benchmark_artifact_id": "psion_route_benchmark_v1",
+          "benchmark_artifact_digest": "76c517290e29616bf424831b637833006dc16b9a70bd8b0162ca6b5a90efa954",
+          "threshold_bands": [
+            {
+              "metric_kind": "route_selection_accuracy_bps",
+              "minimum_bps": 9800,
+              "allowed_regression_bps": 100,
+              "rationale": "Trusted-cluster scale-up requires route accuracy higher than internal serving."
+            }
+          ],
+          "rationale": "Cluster scale-up only becomes honest with preserved route truth."
+        },
+        {
+          "family": "unsupported_request_refusal",
+          "benchmark_artifact_id": "psion_unsupported_request_refusal_benchmark_v1",
+          "benchmark_artifact_digest": "73274857b551ca89edd96a200c60d25992a0aaa62a5cb25a1c369f518e8c42c4",
+          "threshold_bands": [
+            {
+              "metric_kind": "unsupported_request_refusal_bps",
+              "minimum_bps": 9920,
+              "allowed_regression_bps": 100,
+              "rationale": "Cluster scale-up requires the strongest unsupported-request refusal band in v1."
+            },
+            {
+              "metric_kind": "overrefusal_bps",
+              "maximum_bps": 700,
+              "allowed_regression_bps": 100,
+              "rationale": "Cluster scale-up keeps over-refusal tightly bounded."
+            }
+          ],
+          "rationale": "Cluster scale-up still depends on refusal calibration rather than vibes."
+        }
+      ],
+      "replay_requirement": {
+        "minimum_successful_replays": 5,
+        "exact_replay_required": true,
+        "rationale": "Trusted-cluster scale-up requires repeated replay evidence across a wider execution surface."
+      },
+      "checkpoint_requirement": {
+        "restart_recovery_required": true,
+        "minimum_successful_restart_roundtrips": 4,
+        "maximum_resume_regression_bps": 100,
+        "rationale": "Trusted-cluster scale-up requires the tightest restart and resume regression budget in v1."
+      },
+      "contamination_review_requirement": {
+        "near_duplicate_review_required": true,
+        "tokenizer_exposure_review_required": true,
+        "clean_review_required_for_promotion": true,
+        "required_violation_consequences": [
+          "invalidate_affected_benchmark",
+          "trigger_capability_matrix_review",
+          "trigger_benchmark_rebuild_review"
+        ],
+        "rationale": "Trusted-cluster scale-up binds directly to the isolation contract and requires all contamination consequences when leakage is found."
+      },
+      "route_calibration_requirement": {
+        "required_supported_routes": [
+          "direct_model_answer",
+          "exact_executor_handoff",
+          "refusal"
+        ],
+        "minimum_route_selection_accuracy_bps": 9850,
+        "maximum_route_regression_bps": 100,
+        "rationale": "Trusted-cluster scale-up requires the strongest route calibration band in v1."
+      },
+      "refusal_calibration_requirement": {
+        "minimum_unsupported_request_refusal_bps": 9920,
+        "maximum_overrefusal_bps": 700,
+        "maximum_refusal_regression_bps": 100,
+        "rationale": "Cluster scale-up requires the strictest refusal calibration band in v1."
+      },
+      "phase_summary": "Trusted-cluster scale-up requires preserved core reasoning, repeated replay and restart receipts, clean contamination review, and the strongest route/refusal calibration bands in v1."
+    }
+  ],
+  "pilot_success_criteria": {
+    "minimum_architecture_reasoning_pass_rate_bps": 8200,
+    "minimum_held_out_improvement_bps": 1200,
+    "minimum_unsupported_request_refusal_bps": 9800,
+    "scale_up_blocked_without_clean_contamination_review": true,
+    "rationale": "Pilot success is explicit in v1: architecture reasoning must clear a named pass-rate floor, held-out improvement must beat the seed baseline, unsupported requests must be refused, and later scale-up stays blocked without a clean contamination review."
+  }
+}

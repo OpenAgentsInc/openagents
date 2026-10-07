@@ -1,0 +1,38 @@
+{
+  "schema_version": "psion.served_evidence.v1",
+  "bundle_id": "psion-served-evidence-executor-backed-v1",
+  "capability_matrix_id": "psion_capability_matrix",
+  "capability_matrix_version": "v1",
+  "route_receipt": {
+    "route_kind": "exact_executor_handoff",
+    "route_class": "delegate_to_exact_executor",
+    "capability_region_id": "verified_or_exact_execution_requests",
+    "route_boundary_ref": "capability_matrix.route_required.verified_or_exact_execution_requests",
+    "route_calibration_receipt_id": "psion-pilot-route-calibration-v1",
+    "route_class_evaluation_receipt_id": "psion-route-class-evaluation-receipt-v1",
+    "route_class_evaluation_receipt_digest": "d066f5a8c2220e739bdfbb6494aa52f84af8fc751222618a65498381285ff2d4",
+    "detail": "The request was routed to an explicit exact executor surface instead of letting the learned lane imply execution through prose."
+  },
+  "no_implicit_execution": {
+    "execution_only_via_explicit_surface": true,
+    "executor_surface_invoked": true,
+    "explicit_executor_artifact": {
+      "artifact_id": "tassadar://trace/article-session-direct-memory-heavy/0a0d5afe024f9ae2d2860946dfab539d227d189df6e5cd96affbbc906f7724ef",
+      "artifact_digest": "00fb0de7dc8cf17b9e27f4a426c6c74bc706355076b064b89da2e3bbc5ef3c1c"
+    },
+    "detail": "Execution was only claimed because the request used a published executor surface and attached a concrete executor artifact reference."
+  },
+  "evidence_labels": [
+    {
+      "kind": "executor_backed_result",
+      "executor_surface_product_id": "psionic.executor_trace",
+      "executor_artifact": {
+        "artifact_id": "tassadar://trace/article-session-direct-memory-heavy/0a0d5afe024f9ae2d2860946dfab539d227d189df6e5cd96affbbc906f7724ef",
+        "artifact_digest": "00fb0de7dc8cf17b9e27f4a426c6c74bc706355076b064b89da2e3bbc5ef3c1c"
+      },
+      "detail": "The result is backed by a concrete Tassadar trace artifact rather than by an ungrounded language-only answer."
+    }
+  ],
+  "summary": "Exact-executor example showing explicit route evidence, executor-backed result labeling, and no-implicit-execution enforcement.",
+  "bundle_digest": "15555a1a3b5873198a8b0966571cd52fb61c663b69d0d212d08fbfcf08b1bbf8"
+}

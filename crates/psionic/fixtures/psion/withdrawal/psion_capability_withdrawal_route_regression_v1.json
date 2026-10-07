@@ -1,0 +1,120 @@
+{
+  "schema_version": "psion.capability_withdrawal_receipt.v1",
+  "withdrawal_id": "psion-capability-withdrawal-route-regression-v1",
+  "published_matrix": {
+    "matrix_id": "psion_capability_matrix",
+    "matrix_version": "v1",
+    "matrix_digest": "f411cece498accc8034e9ff5a034a443ef7115e1209c7185db3d42982c310959",
+    "acceptance_phase": "pilot",
+    "promotion_decision_ref": "psion-pilot-promotion-decision-v1"
+  },
+  "checkpoint_plan": {
+    "published_checkpoint_id": "pilot-pretrain-final",
+    "disposition": "rollback_to_prior_checkpoint",
+    "rollback_target_checkpoint_id": "pilot-pretrain-route-stable",
+    "detail": "Route regression rolls serving back to a checkpoint that still held the exactness route inside the accepted band."
+  },
+  "trigger": {
+    "trigger_kind": "route_regression",
+    "baseline_route_calibration_receipt_ref": "psion-pilot-route-calibration-v1",
+    "observed_route_calibration_receipt": {
+      "receipt_id": "psion-route-calibration-regressed-v1",
+      "covered_routes": [
+        "direct_model_answer",
+        "exact_executor_handoff",
+        "refusal"
+      ],
+      "route_selection_accuracy_bps": 9310,
+      "route_regression_bps": 420,
+      "summary": "Observed route calibration drifted below the pilot route-accuracy floor and above the pilot regression ceiling."
+    },
+    "observed_route_calibration_digest": "bc4c97547ec1f0e9c04e3de0b5ea8e243a762e2ad6878ddf68d1ae9afae4b227",
+    "observed_route_class_evaluation_artifact": {
+      "artifact_id": "psion-route-class-evaluation-receipt-v1",
+      "artifact_digest": "d066f5a8c2220e739bdfbb6494aa52f84af8fc751222618a65498381285ff2d4"
+    },
+    "detail": "Exact-executor delegation drifted outside the accepted band, so the route-required exactness region is withdrawn from the current served endpoint."
+  },
+  "matrix_history": [
+    {
+      "change_id": "change.route_regression.v1",
+      "kind": "downgrade_region_posture",
+      "matrix_id": "psion_capability_matrix",
+      "matrix_version": "v1",
+      "matrix_digest": "f411cece498accc8034e9ff5a034a443ef7115e1209c7185db3d42982c310959",
+      "downgraded_regions": [
+        {
+          "region_id": "verified_or_exact_execution_requests",
+          "previous_posture": "route_required",
+          "next_posture": "unsupported",
+          "next_refusal_reasons": [
+            "unsupported_exactness_request"
+          ],
+          "detail": "Exactness requests are no longer publishable as route-required on this endpoint while route regression remains outside the accepted band."
+        }
+      ],
+      "detail": "The current capability matrix explicitly withdraws the exactness route instead of silently leaving the stale row in place."
+    }
+  ],
+  "served_claim_history": [
+    {
+      "surface_id": "psion.exact_executor_surface",
+      "kind": "change_behavior_visibility",
+      "previous_posture": {
+        "posture_id": "psion-served-output-claim-executor-backed-v1",
+        "posture_digest": "48f37b9ea2bb788b89f74520247f7681fb26a431f09d5d8f8fbd9a58ca340ec4",
+        "visible_claims": {
+          "learned_judgment_visible": false,
+          "source_grounding_visible": false,
+          "executor_backing_visible": true,
+          "benchmark_backing_visible": false,
+          "verification_visible": false
+        },
+        "behavior_visibility": {
+          "behavior": "route",
+          "route_kind": "exact_executor_handoff",
+          "route_class": "delegate_to_exact_executor",
+          "detail": "The served output makes the exact-executor handoff visible instead of presenting the result as if the learned lane executed it directly."
+        }
+      },
+      "replacement_posture": {
+        "posture_id": "psion-served-output-claim-refusal-v1",
+        "posture_digest": "9576169a3566d20e4f2b01244f6bf1ef8aef879f1231600f20bfaaea56e59a58",
+        "visible_claims": {
+          "learned_judgment_visible": false,
+          "source_grounding_visible": false,
+          "executor_backing_visible": false,
+          "benchmark_backing_visible": false,
+          "verification_visible": false
+        },
+        "behavior_visibility": {
+          "behavior": "refusal",
+          "capability_region_id": "unsupported_exact_execution_without_executor_surface",
+          "refusal_reason": "unsupported_exactness_request",
+          "detail": "The served output keeps the refusal visible and names the unsupported exactness boundary instead of hinting that hidden execution might still be available."
+        }
+      },
+      "removed_visible_claims": [
+        "executor_backing"
+      ],
+      "detail": "The served exactness surface now shows a typed refusal instead of a stale executor-backed route."
+    }
+  ],
+  "follow_on_analyses": [
+    {
+      "analysis_id": "analysis.route_retraining.v1",
+      "kind": "bounded_retraining_analysis",
+      "triggered_by": {
+        "artifact_id": "psion-route-calibration-regressed-v1",
+        "artifact_digest": "0e36ee3040b5a62c3568ec6b7fd4a80d2c2306a5e2bbe9e4ae012d4d68722965"
+      },
+      "planned_analysis_artifact": {
+        "artifact_id": "psion-route-retraining-analysis-v1",
+        "artifact_digest": "58a4f0032cb7a3e3cf02156dbdc8ef040292047aa0dab932d72ff123f983cbe3"
+      },
+      "detail": "Route regression requires bounded retraining or bounded route recalibration analysis before the exactness route can be republished."
+    }
+  ],
+  "summary": "Route-regression rollback preserves the exactness-route downgrade in the matrix, changes the served surface from executor-backed route to typed refusal, and rolls serving back to a route-stable checkpoint target.",
+  "receipt_digest": "e13f79ce2986251f5dbbd6d6b7c5bd38a7d4a5bda54232efea098d7f3de755ea"
+}

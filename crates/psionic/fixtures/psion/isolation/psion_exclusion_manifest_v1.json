@@ -1,0 +1,95 @@
+{
+  "schema_version": "psion.benchmark_isolation.v1",
+  "lifecycle_schema_version": "psion.source_lifecycle.v1",
+  "held_out_source_ids": [
+    "spec_quiz_eval_pack_v1"
+  ],
+  "training_excluded_source_ids": [
+    "vendor_manual_private_scan_v1",
+    "spec_quiz_eval_pack_v1",
+    "forum_scrape_misc_001"
+  ],
+  "benchmark_excluded_source_ids": [
+    "arch_textbook_foster_1985",
+    "vendor_manual_private_scan_v1",
+    "forum_scrape_misc_001"
+  ],
+  "tokenizer_exposure": [
+    {
+      "source_id": "arch_textbook_foster_1985",
+      "tokenizer_exposed": true,
+      "model_training_exposed": true,
+      "benchmark_exposed": false,
+      "detail": "Admitted source appears in tokenizer training and model training, but benchmark publication requires a disjoint held-out path."
+    },
+    {
+      "source_id": "wasm_core_spec_release_2",
+      "tokenizer_exposed": true,
+      "model_training_exposed": true,
+      "benchmark_exposed": true,
+      "detail": "Normative source remains available to tokenizer and training, with benchmark use allowed only under section-disjointness rules."
+    },
+    {
+      "source_id": "vendor_manual_private_scan_v1",
+      "tokenizer_exposed": true,
+      "model_training_exposed": false,
+      "benchmark_exposed": false,
+      "detail": "Tokenizer-only exposure is recorded explicitly and remains distinct from any model-training exposure."
+    },
+    {
+      "source_id": "spec_quiz_eval_pack_v1",
+      "tokenizer_exposed": false,
+      "model_training_exposed": false,
+      "benchmark_exposed": true,
+      "detail": "Held-out evaluation source remains benchmark-visible but excluded from tokenizer and model-training loaders."
+    },
+    {
+      "source_id": "forum_scrape_misc_001",
+      "tokenizer_exposed": false,
+      "model_training_exposed": false,
+      "benchmark_exposed": false,
+      "detail": "Rejected source remains excluded from every loader surface."
+    }
+  ],
+  "section_range_rules": [
+    {
+      "source_kind": "textbook",
+      "required_boundary_kind": "chapter_section_anchors",
+      "disjointness_mode": "chapter_section_disjoint",
+      "rationale": "Books must split on stable chapter and section anchors so train and benchmark prose never share the same authored section."
+    },
+    {
+      "source_kind": "specification",
+      "required_boundary_kind": "chapter_section_anchors",
+      "disjointness_mode": "chapter_section_disjoint",
+      "rationale": "Specifications may only reuse the same source across train and benchmark when section anchors remain disjoint."
+    },
+    {
+      "source_kind": "manual",
+      "required_boundary_kind": "page_range_anchors",
+      "disjointness_mode": "page_range_disjoint",
+      "rationale": "Manuals require page-range isolation because scans and OCR slices are often page-addressed rather than chapter-addressed."
+    },
+    {
+      "source_kind": "paper",
+      "required_boundary_kind": "page_range_anchors",
+      "disjointness_mode": "page_range_disjoint",
+      "rationale": "Papers must isolate train and benchmark material by page ranges or equivalent stable section anchors."
+    },
+    {
+      "source_kind": "technical_documentation",
+      "required_boundary_kind": "record_anchors",
+      "disjointness_mode": "entire_source_disjoint",
+      "rationale": "Short technical docs stay whole-source disjoint unless a later contract defines more granular stable record anchors."
+    }
+  ],
+  "near_duplicate_review_policy": {
+    "review_required_before_training": true,
+    "review_required_before_benchmark_publication": true
+  },
+  "contamination_violation_consequences": [
+    "invalidate_affected_benchmark",
+    "trigger_capability_matrix_review",
+    "trigger_benchmark_rebuild_review"
+  ]
+}

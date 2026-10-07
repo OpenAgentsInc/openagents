@@ -1,0 +1,22 @@
+{
+  "schema_version": 1,
+  "sweep_id": "sweep.mock.smoke",
+  "scope": {
+    "slice": {
+      "name": "smoke",
+      "task_ids": ["task.a", "task.b"]
+    }
+  },
+  "task_ids": [],
+  "run_config_hashes": [
+    "config.mock.openai",
+    "config.mock.anthropic"
+  ],
+  "max_parallelism": 2,
+  "budget": {
+    "max_cost_micro_usd": 100,
+    "max_wall_time_ms": 1000,
+    "max_tokens": 1000,
+    "max_failures": 2
+  }
+}

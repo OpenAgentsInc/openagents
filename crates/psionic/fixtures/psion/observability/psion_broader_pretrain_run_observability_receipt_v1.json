@@ -1,0 +1,374 @@
+{
+  "schema_version": "psion.pretrain_run_observability_receipt.v1",
+  "receipt_id": "psion-broader-pretrain-observability-v1",
+  "run_profile": "broader_pretraining",
+  "run_id": "run-psion-broad",
+  "stage_id": "run-psion-broad-stage-1-pretrain",
+  "stage_kind": "pretrain",
+  "model_id": "psion-compact-decoder-internal-v1",
+  "model_descriptor_digest": "c1eaf1c25afb760a686aa5df6a8a81d4c6be6557a18a4f8bf7b68372119f36ab",
+  "dataset_identity": "psion_corpus_tokenized@v1",
+  "sampling_policy_id": "psion_pretrain_mix",
+  "sampling_policy_version": "v1",
+  "pretrain_stage_receipt_digest": "633c4eca517b41798f7b183608195ad4c10156ff7f6b595bd3541871bb64d0ab",
+  "cost": {
+    "cost_basis": "metered_usd",
+    "currency_code": "USD",
+    "compute_cost_microusd": 487250000,
+    "storage_cost_microusd": 18600000,
+    "network_cost_microusd": 6400000,
+    "total_cost_microusd": 512250000,
+    "detail": "Broader run cost reflects metered trusted-cluster accelerator time plus checkpoint storage and east-west traffic."
+  },
+  "throughput": {
+    "train_tokens_processed": 1073741824,
+    "validation_tokens_processed": 33554432,
+    "held_out_tokens_scored": 8388608,
+    "optimizer_steps_completed": 16384,
+    "wall_clock_ms": 3780000,
+    "mean_tokens_per_second": 296214,
+    "peak_tokens_per_second": 331442,
+    "mean_sequences_per_second_milli": 72500,
+    "mean_step_latency_ms": 231,
+    "checkpoint_write_throughput_bytes_per_second": 1476395008
+  },
+  "checkpoint_artifact": {
+    "promoted_checkpoint_label": "broader-pretrain-final",
+    "checkpoint_family": "train.psion.decoder",
+    "checkpoint_object_digest": "object-psion-broad-pretrain-final-v1",
+    "checkpoint_size_bytes": 1546182656,
+    "optimizer_state_size_bytes": 773091328,
+    "ancillary_artifact_size_bytes": 14680064,
+    "total_artifact_size_bytes": 2333954048,
+    "shard_count": 8,
+    "detail": "Broader run artifact surface includes sharded weights, optimizer state, and receipt/descriptor sidecars."
+  },
+  "hardware_topology": {
+    "topology_digest": "db340e8890b303f59c2e4cc7140473fca894282ab6493a53a50d7d4efc2daccc",
+    "observed_worker_count": 4,
+    "delivered_execution": {
+      "runtime_backend": "cuda",
+      "execution_topology": {
+        "effective_backend": "cuda",
+        "kind": "tensor_sharded",
+        "assignments": [
+          {
+            "shard_id": 0,
+            "device": {
+              "stable_device_id": "cuda:h100-0",
+              "topology_key": "0000:81:00.0",
+              "placement_index": 0
+            },
+            "partition": {
+              "kind": "tensor_range",
+              "axis": 0,
+              "start": 0,
+              "end": 256
+            }
+          },
+          {
+            "shard_id": 1,
+            "device": {
+              "stable_device_id": "cuda:h100-1",
+              "topology_key": "0000:82:00.0",
+              "placement_index": 1
+            },
+            "partition": {
+              "kind": "tensor_range",
+              "axis": 0,
+              "start": 256,
+              "end": 512
+            }
+          },
+          {
+            "shard_id": 2,
+            "device": {
+              "stable_device_id": "cuda:h100-2",
+              "topology_key": "0000:83:00.0",
+              "placement_index": 2
+            },
+            "partition": {
+              "kind": "tensor_range",
+              "axis": 0,
+              "start": 512,
+              "end": 768
+            }
+          },
+          {
+            "shard_id": 3,
+            "device": {
+              "stable_device_id": "cuda:h100-3",
+              "topology_key": "0000:84:00.0",
+              "placement_index": 3
+            },
+            "partition": {
+              "kind": "tensor_range",
+              "axis": 0,
+              "start": 768,
+              "end": 1024
+            }
+          }
+        ]
+      },
+      "selected_devices": [
+        {
+          "stable_device_id": "cuda:h100-0",
+          "topology_key": "0000:81:00.0",
+          "performance_class": "discrete_accelerator",
+          "memory_class": "dedicated_device",
+          "total_memory_bytes": 85899345920,
+          "free_memory_bytes": 67645734912
+        },
+        {
+          "stable_device_id": "cuda:h100-1",
+          "topology_key": "0000:82:00.0",
+          "performance_class": "discrete_accelerator",
+          "memory_class": "dedicated_device",
+          "total_memory_bytes": 85899345920,
+          "free_memory_bytes": 65498251264
+        },
+        {
+          "stable_device_id": "cuda:h100-2",
+          "topology_key": "0000:83:00.0",
+          "performance_class": "discrete_accelerator",
+          "memory_class": "dedicated_device",
+          "total_memory_bytes": 85899345920,
+          "free_memory_bytes": 64424509440
+        },
+        {
+          "stable_device_id": "cuda:h100-3",
+          "topology_key": "0000:84:00.0",
+          "performance_class": "discrete_accelerator",
+          "memory_class": "dedicated_device",
+          "total_memory_bytes": 85899345920,
+          "free_memory_bytes": 63350767616
+        }
+      ],
+      "cluster_execution": {
+        "cluster_id": "cluster-psion-trusted-a",
+        "cluster_state_digest": "cluster-state-digest-psion-broad-v1",
+        "topology_digest": "topology-digest-psion-broad-v1",
+        "scheduler_node_id": "scheduler-psion-a",
+        "transport": "trusted_lan_stream",
+        "disposition": "sharded",
+        "execution_topology": {
+          "effective_backend": "cuda",
+          "kind": "tensor_sharded",
+          "assignments": [
+            {
+              "shard_id": 0,
+              "device": {
+                "stable_device_id": "cuda:h100-0",
+                "topology_key": "0000:81:00.0",
+                "placement_index": 0
+              },
+              "partition": {
+                "kind": "tensor_range",
+                "axis": 0,
+                "start": 0,
+                "end": 256
+              }
+            },
+            {
+              "shard_id": 1,
+              "device": {
+                "stable_device_id": "cuda:h100-1",
+                "topology_key": "0000:82:00.0",
+                "placement_index": 1
+              },
+              "partition": {
+                "kind": "tensor_range",
+                "axis": 0,
+                "start": 256,
+                "end": 512
+              }
+            },
+            {
+              "shard_id": 2,
+              "device": {
+                "stable_device_id": "cuda:h100-2",
+                "topology_key": "0000:83:00.0",
+                "placement_index": 2
+              },
+              "partition": {
+                "kind": "tensor_range",
+                "axis": 0,
+                "start": 512,
+                "end": 768
+              }
+            },
+            {
+              "shard_id": 3,
+              "device": {
+                "stable_device_id": "cuda:h100-3",
+                "topology_key": "0000:84:00.0",
+                "placement_index": 3
+              },
+              "partition": {
+                "kind": "tensor_range",
+                "axis": 0,
+                "start": 768,
+                "end": 1024
+              }
+            }
+          ]
+        },
+        "selected_nodes": [
+          {
+            "node_id": "worker-a",
+            "runtime_backend": "cuda",
+            "device_inventory": {
+              "stable_device_id": "cuda:h100-0",
+              "topology_key": "0000:81:00.0",
+              "performance_class": "discrete_accelerator",
+              "memory_class": "dedicated_device",
+              "total_memory_bytes": 85899345920,
+              "free_memory_bytes": 67645734912
+            }
+          },
+          {
+            "node_id": "worker-b",
+            "runtime_backend": "cuda",
+            "device_inventory": {
+              "stable_device_id": "cuda:h100-1",
+              "topology_key": "0000:82:00.0",
+              "performance_class": "discrete_accelerator",
+              "memory_class": "dedicated_device",
+              "total_memory_bytes": 85899345920,
+              "free_memory_bytes": 65498251264
+            }
+          },
+          {
+            "node_id": "worker-c",
+            "runtime_backend": "cuda",
+            "device_inventory": {
+              "stable_device_id": "cuda:h100-2",
+              "topology_key": "0000:83:00.0",
+              "performance_class": "discrete_accelerator",
+              "memory_class": "dedicated_device",
+              "total_memory_bytes": 85899345920,
+              "free_memory_bytes": 64424509440
+            }
+          },
+          {
+            "node_id": "worker-d",
+            "runtime_backend": "cuda",
+            "device_inventory": {
+              "stable_device_id": "cuda:h100-3",
+              "topology_key": "0000:84:00.0",
+              "performance_class": "discrete_accelerator",
+              "memory_class": "dedicated_device",
+              "total_memory_bytes": 85899345920,
+              "free_memory_bytes": 63350767616
+            }
+          }
+        ],
+        "training_recovery": {
+          "posture": "elastic_reconfiguration",
+          "checkpoint_availability": "durable",
+          "elastic_membership": {
+            "membership_epoch": 7,
+            "cluster_state_digest": "cluster-state-digest-psion-broad-v1",
+            "topology_digest": "topology-digest-psion-broad-v1",
+            "active_node_ids": [
+              "worker-a",
+              "worker-b",
+              "worker-c",
+              "worker-d"
+            ]
+          },
+          "latest_checkpoint": {
+            "checkpoint_family": "train.psion.decoder",
+            "stream_id": "stream-psion-broad-pretrain-final-v1",
+            "manifest_digest": "manifest-psion-broad-pretrain-final-v1",
+            "object_digest": "object-psion-broad-pretrain-final-v1",
+            "writer_node_id": "node-psion-b",
+            "membership_epoch": 7,
+            "cluster_state_digest": "cluster-state-digest-psion-broad-v1",
+            "topology_digest": "topology-digest-psion-broad-v1",
+            "started_at_ms": 1742620000000,
+            "checkpoint_ref": "checkpoint://psion/broad/pretrain/final",
+            "step": 16384,
+            "durable_at_ms": 1742620900000
+          },
+          "recovering_node_ids": [
+            "worker-d"
+          ],
+          "requested_at_ms": 1742620500000,
+          "detail": "One worker rejoined after a short topology churn event during the broader run."
+        },
+        "training_collective": {
+          "device_mesh": {
+            "mesh_id": "psion-broad-mesh",
+            "mesh_revision": 7,
+            "effective_backend": "cuda",
+            "communication_class": "tensor_collective_mesh",
+            "elastic_membership": {
+              "membership_epoch": 7,
+              "cluster_state_digest": "cluster-state-digest-psion-broad-v1",
+              "topology_digest": "topology-digest-psion-broad-v1",
+              "active_node_ids": [
+                "worker-a",
+                "worker-b",
+                "worker-c",
+                "worker-d"
+              ]
+            },
+            "member_node_ids": [
+              "worker-a",
+              "worker-b",
+              "worker-c",
+              "worker-d"
+            ]
+          },
+          "kind": "all_reduce",
+          "quantization": "int8_symmetric",
+          "payload_bytes": 536870912,
+          "estimated_wire_bytes": 201326592,
+          "worker_count": 4,
+          "benchmark_digest": "psion-broad-collective-benchmark-v1",
+          "benchmark_speedup_bps": 1670,
+          "max_relative_error_bps": 12,
+          "detail": "Tensor-parallel gradient reductions stayed on the justified int8 collective lane."
+        }
+      }
+    },
+    "detail": "Broader pretraining run preserved explicit tensor-sharded cluster topology and recovery facts."
+  },
+  "instability_telemetry": {
+    "entropy_drift_bps": 180,
+    "stale_rollout_drop_rate_bps": 0,
+    "checkpoint_catchup_latency_ms": 2400,
+    "topology_churn_events": 2,
+    "environment_failure_rate_bps": 120,
+    "sandbox_failure_rate_bps": 45
+  },
+  "stability_verdict": {
+    "policy_digest": "3ebc721fa005d8237f6b5053f5c41bd8649e682384c00e88e132a46434453403",
+    "action": "quarantine",
+    "signal_receipts": [
+      {
+        "signal": "entropy_drift_bps",
+        "observed_value": 180.0,
+        "threshold_value": 100.0,
+        "action": "continue"
+      },
+      {
+        "signal": "checkpoint_catchup_latency_ms",
+        "observed_value": 2400.0,
+        "threshold_value": 1500.0,
+        "action": "quarantine"
+      },
+      {
+        "signal": "topology_churn_events",
+        "observed_value": 2.0,
+        "threshold_value": 0.0,
+        "action": "continue"
+      }
+    ],
+    "optimization_receipts": [],
+    "verdict_digest": "34b0eb3d517d25f946890f46cbcbdcfd0570a5cf5f137eedd2f6d6daec039148"
+  },
+  "summary": "Broader pretraining observability receipt records scale-up throughput, metered cost, checkpoint size, cluster topology, and structured instability markers.",
+  "observability_digest": "46d82db942801eddee02fb638bee11654478bc8f4b6be2f472bdb3d31751d142"
+}

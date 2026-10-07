@@ -1,0 +1,500 @@
+{
+  "schema_version": "psion.reasoning_sft_run_bundle.v1",
+  "bundle_id": "psion-reasoning-sft-run-bundle-v1",
+  "run_id": "run-psion-pilot",
+  "model_id": "psion-compact-decoder-pilot-v1",
+  "lifecycle_schema_version": "psion.source_lifecycle.v1",
+  "exclusion_schema_version": "psion.benchmark_isolation.v1",
+  "artifact_lineage_schema_version": "psion.artifact_lineage.v1",
+  "stage_program": {
+    "run_id": "run-psion-pilot",
+    "checkpoint_family": "train.psion.decoder",
+    "stages": [
+      {
+        "stage_id": "run-psion-pilot-stage-1-pretrain",
+        "kind": "pretrain",
+        "environment": {
+          "environment_ref": "env.psion.pretrain",
+          "version": "2026.03.22"
+        },
+        "status": "completed",
+        "pretrain_runs": [
+          {
+            "schema_version": "psion.pretrain_stage_receipt.v1",
+            "run_id": "run-psion-pilot",
+            "stage_id": "run-psion-pilot-stage-1-pretrain",
+            "stage_kind": "pretrain",
+            "model_id": "psion-compact-decoder-pilot-v1",
+            "model_descriptor_digest": "04232d1ad07d9b79401e5649c4c42d695bf87e4450e6f4152c8edb08f9be93d0",
+            "tokenizer_binding_digest": "92c451001e4cec3481a3480b29d80ecaa1696f9bffe553139d3a2f65da69e321",
+            "dataset_identity": "psion_corpus_tokenized@v1",
+            "sampling_policy_id": "psion_pretrain_mix",
+            "sampling_policy_version": "v1",
+            "objective_config": {
+              "objective_kind": "next_token_prediction",
+              "loss_normalization": "by_target_token",
+              "label_smoothing_bps": 25,
+              "tokenizer_binding_digest": "92c451001e4cec3481a3480b29d80ecaa1696f9bffe553139d3a2f65da69e321",
+              "dataset_identity": "psion_corpus_tokenized@v1",
+              "max_context_tokens": 4096
+            },
+            "source_family_reports": [
+              {
+                "split_name": "held_out",
+                "split_kind": "held_out",
+                "source_family_id": "evaluation_only_benchmark_material",
+                "source_ids": [
+                  "spec_quiz_eval_pack_v1"
+                ],
+                "token_share_bps_within_split": 10000,
+                "sequence_share_bps_within_split": 10000,
+                "mean_next_token_loss_milli": 1380,
+                "detail": "Held-out benchmark material stays isolated and is only reported as held-out evidence."
+              },
+              {
+                "split_name": "train",
+                "split_kind": "train",
+                "source_family_id": "computer_architecture_history",
+                "source_ids": [
+                  "arch_textbook_foster_1985"
+                ],
+                "token_share_bps_within_split": 5600,
+                "sequence_share_bps_within_split": 5400,
+                "mean_next_token_loss_milli": 1125,
+                "detail": "Architecture-history prose remains the largest explanatory slice in train."
+              },
+              {
+                "split_name": "train",
+                "split_kind": "train",
+                "source_family_id": "normative_specs",
+                "source_ids": [
+                  "wasm_core_spec_release_2"
+                ],
+                "token_share_bps_within_split": 4400,
+                "sequence_share_bps_within_split": 4600,
+                "mean_next_token_loss_milli": 1190,
+                "detail": "Normative specification text stays large in train without overtaking the prose anchor."
+              },
+              {
+                "split_name": "validation",
+                "split_kind": "validation",
+                "source_family_id": "computer_architecture_history",
+                "source_ids": [
+                  "arch_textbook_foster_1985"
+                ],
+                "token_share_bps_within_split": 5300,
+                "sequence_share_bps_within_split": 5200,
+                "mean_next_token_loss_milli": 1160,
+                "detail": "Validation keeps the explanatory prose family slightly ahead to measure reasoning generalization."
+              },
+              {
+                "split_name": "validation",
+                "split_kind": "validation",
+                "source_family_id": "normative_specs",
+                "source_ids": [
+                  "wasm_core_spec_release_2"
+                ],
+                "token_share_bps_within_split": 4700,
+                "sequence_share_bps_within_split": 4800,
+                "mean_next_token_loss_milli": 1235,
+                "detail": "Validation specification coverage remains explicit so spec-reading drift is visible before promotion."
+              }
+            ],
+            "replay_receipt": {
+              "receipt_id": "psion-pretrain-replay-v1",
+              "stable_dataset_identity": "psion_corpus_tokenized@v1",
+              "iteration_mode": "repeat",
+              "shard_ordering": "deterministic_shuffle",
+              "deterministic_shuffle_seed": 1337,
+              "successful_replays": 2,
+              "exact_replay_observed": true,
+              "replay_digest": "532e70275ad6d01616decae818df0f5b8012bc91316f3329c223c125874d1733",
+              "summary": "Replay checks reproduced the tokenized-corpus order and deterministic shuffle contract on two independent dry runs."
+            },
+            "checkpoint_lineage": {
+              "receipt_id": "psion-pretrain-checkpoint-lineage-v1",
+              "promoted_checkpoint": {
+                "checkpoint_family": "train.psion.decoder",
+                "stream_id": "stream-psion-pretrain-final-v1",
+                "manifest_digest": "manifest-psion-pretrain-final-v1",
+                "object_digest": "object-psion-pretrain-final-v1",
+                "writer_node_id": "node-psion-a",
+                "membership_epoch": 1,
+                "cluster_state_digest": "cluster-state-digest-psion-pilot-v1",
+                "topology_digest": "topology-digest-psion-pilot-v1",
+                "started_at_ms": 1742614800000,
+                "checkpoint_ref": "checkpoint://psion/pilot/pretrain/final",
+                "step": 2048,
+                "durable_at_ms": 1742615100000
+              },
+              "promoted_checkpoint_label": "pilot-pretrain-final",
+              "model_id": "psion-compact-decoder-pilot-v1",
+              "model_descriptor_digest": "04232d1ad07d9b79401e5649c4c42d695bf87e4450e6f4152c8edb08f9be93d0",
+              "checkpoint_lineage_digest": "3e3254008f21c49032c86c5575c7286f64a3ddceb8cadff54277411ab10e3c72"
+            },
+            "summary": "Pilot Psion pretrain stage binds the compact decoder, replay-safe tokenized corpus, and sampling policy into one explicit next-token stage receipt.",
+            "receipt_digest": "0170d57acd38021560eb4ee389daee573dbf65f037b36769c10586faa462ce31"
+          }
+        ]
+      },
+      {
+        "stage_id": "run-psion-pilot-stage-2-general_sft",
+        "kind": "general_sft",
+        "environment": {
+          "environment_ref": "env.psion.reasoning",
+          "version": "2026.03.22"
+        },
+        "status": "completed",
+        "base_checkpoint": {
+          "checkpoint_family": "train.psion.decoder",
+          "stream_id": "stream-psion-pretrain-final-v1",
+          "manifest_digest": "manifest-psion-pretrain-final-v1",
+          "object_digest": "object-psion-pretrain-final-v1",
+          "writer_node_id": "node-psion-a",
+          "membership_epoch": 1,
+          "cluster_state_digest": "cluster-state-digest-psion-pilot-v1",
+          "topology_digest": "topology-digest-psion-pilot-v1",
+          "started_at_ms": 1742614800000,
+          "checkpoint_ref": "checkpoint://psion/pilot/pretrain/final",
+          "step": 2048,
+          "durable_at_ms": 1742615100000
+        },
+        "ingested_traces": [
+          {
+            "run_id": "run-psion-pilot",
+            "stage_id": "run-psion-pilot-stage-2-general_sft",
+            "trace_id": "psion-reasoning-trace-1",
+            "trace_kind": "plain_completion",
+            "lineage_digest": "78cb984dac45e215c85dba45fd817272811c2c756db0c731632565e2b7e70371",
+            "accepted_at_ms": 1774168678822
+          },
+          {
+            "run_id": "run-psion-pilot",
+            "stage_id": "run-psion-pilot-stage-2-general_sft",
+            "trace_id": "psion-reasoning-trace-2",
+            "trace_kind": "long_context",
+            "lineage_digest": "7ba48d69159114b7f5bf97c277aaf9af147d06df953c0bdca182b318495773de",
+            "accepted_at_ms": 1774168678822
+          },
+          {
+            "run_id": "run-psion-pilot",
+            "stage_id": "run-psion-pilot-stage-2-general_sft",
+            "trace_id": "psion-reasoning-trace-3",
+            "trace_kind": "plain_completion",
+            "lineage_digest": "8fc03eff57721a3ad2ffc4afe8050f06049f06bec0a67e6437d6f818e517770a",
+            "accepted_at_ms": 1774168678822
+          },
+          {
+            "run_id": "run-psion-pilot",
+            "stage_id": "run-psion-pilot-stage-2-general_sft",
+            "trace_id": "psion-reasoning-trace-4",
+            "trace_kind": "long_context",
+            "lineage_digest": "cd2ed7ae5d18ac066cf03d224d05728d48c8050f89bc68b9c0d1dbbc71a72aa2",
+            "accepted_at_ms": 1774168678822
+          }
+        ]
+      }
+    ],
+    "completions": [
+      {
+        "run_id": "run-psion-pilot",
+        "stage_id": "run-psion-pilot-stage-1-pretrain",
+        "kind": "pretrain",
+        "ingested_trace_count": 0,
+        "pretrain_run_count": 1,
+        "completed_at_ms": 1774168678822,
+        "completion_digest": "9039e19a86926aa7ef283568f9a2e0f42f65abf64c17372f3c407c28a093d3d3"
+      },
+      {
+        "run_id": "run-psion-pilot",
+        "stage_id": "run-psion-pilot-stage-2-general_sft",
+        "kind": "general_sft",
+        "ingested_trace_count": 4,
+        "pretrain_run_count": 0,
+        "completed_at_ms": 1774168678822,
+        "completion_digest": "754387dc03dbfc03141170a1ee64eec05d52197e889656dcadaa59d20c976dc4"
+      }
+    ],
+    "promotions": [
+      {
+        "run_id": "run-psion-pilot",
+        "from_stage_id": "run-psion-pilot-stage-1-pretrain",
+        "from_stage_kind": "pretrain",
+        "to_stage_kind": "general_sft",
+        "checkpoint": {
+          "checkpoint_family": "train.psion.decoder",
+          "stream_id": "stream-psion-pretrain-final-v1",
+          "manifest_digest": "manifest-psion-pretrain-final-v1",
+          "object_digest": "object-psion-pretrain-final-v1",
+          "writer_node_id": "node-psion-a",
+          "membership_epoch": 1,
+          "cluster_state_digest": "cluster-state-digest-psion-pilot-v1",
+          "topology_digest": "topology-digest-psion-pilot-v1",
+          "started_at_ms": 1742614800000,
+          "checkpoint_ref": "checkpoint://psion/pilot/pretrain/final",
+          "step": 2048,
+          "durable_at_ms": 1742615100000
+        },
+        "promotion_digest": "d208fe855a51d522d794ad931dff8cae978f7d4c105cac25d696ea460ee7d69b"
+      }
+    ],
+    "transitions": [
+      {
+        "run_id": "run-psion-pilot",
+        "next_stage_id": "run-psion-pilot-stage-1-pretrain",
+        "next_stage_kind": "pretrain",
+        "transitioned_at_ms": 1774168678822,
+        "transition_digest": "29ae3ab3675b222ceddfbbb3c0d12ee570312ed3a20d42d0e4f67889e4632c06"
+      },
+      {
+        "run_id": "run-psion-pilot",
+        "previous_stage_id": "run-psion-pilot-stage-1-pretrain",
+        "next_stage_id": "run-psion-pilot-stage-2-general_sft",
+        "next_stage_kind": "general_sft",
+        "base_checkpoint": {
+          "checkpoint_family": "train.psion.decoder",
+          "stream_id": "stream-psion-pretrain-final-v1",
+          "manifest_digest": "manifest-psion-pretrain-final-v1",
+          "object_digest": "object-psion-pretrain-final-v1",
+          "writer_node_id": "node-psion-a",
+          "membership_epoch": 1,
+          "cluster_state_digest": "cluster-state-digest-psion-pilot-v1",
+          "topology_digest": "topology-digest-psion-pilot-v1",
+          "started_at_ms": 1742614800000,
+          "checkpoint_ref": "checkpoint://psion/pilot/pretrain/final",
+          "step": 2048,
+          "durable_at_ms": 1742615100000
+        },
+        "transitioned_at_ms": 1774168678822,
+        "transition_digest": "d36cb3a97ad9b0d27d599a6e4abee594050804ac7ad39c6b7f030bef91c3184c"
+      }
+    ]
+  },
+  "dataset_bundle": {
+    "schema_version": "psion.reasoning_sft_dataset_bundle.v1",
+    "run_id": "run-psion-pilot",
+    "stage_id": "run-psion-pilot-stage-2-general_sft",
+    "model_id": "psion-compact-decoder-pilot-v1",
+    "pretrain_stage_receipt_digest": "0170d57acd38021560eb4ee389daee573dbf65f037b36769c10586faa462ce31",
+    "sft_artifact_lineage": {
+      "artifact_id": "psion_reasoning_sft_seed_v1",
+      "artifact_digest": "sha256:4e70445d9956523ed129d4af1e3ecb728ea708134bf3000219de960b0b1d4f54",
+      "tokenized_corpus_ids": [
+        "psion_seed_corpus_v1"
+      ],
+      "source_ids": [
+        "wasm_core_spec_release_2"
+      ]
+    },
+    "control_surface": {
+      "explicit_assumptions_required": true,
+      "explicit_uncertainty_language_required": true,
+      "normative_vs_inference_separation_required": true,
+      "detail": "Reasoning SFT keeps assumptions, uncertainty, and normative-versus-inference separation explicit instead of deleting them during style shaping."
+    },
+    "style_profiles": [
+      {
+        "style_id": "assumptions_then_mechanism_concrete",
+        "decomposition_strategy": "assumptions_then_mechanism",
+        "explanation_order": "premises_then_conclusion",
+        "abstraction_level": "concrete",
+        "detail": "Surface the bounded assumptions first, then explain the concrete mechanism."
+      },
+      {
+        "style_id": "answer_then_evidence_hybrid",
+        "decomposition_strategy": "answer_then_evidence",
+        "explanation_order": "conclusion_then_premises",
+        "abstraction_level": "hybrid",
+        "detail": "State the bounded answer first, then mix conceptual and concrete support."
+      },
+      {
+        "style_id": "constraints_then_tradeoffs_conceptual",
+        "decomposition_strategy": "constraints_then_tradeoffs",
+        "explanation_order": "top_down_then_concrete",
+        "abstraction_level": "conceptual",
+        "detail": "Frame the constraints first, then discuss tradeoffs from the conceptual level down."
+      }
+    ],
+    "trace_bindings": [
+      {
+        "trace_id": "psion-reasoning-trace-1",
+        "trace_kind": "plain_completion",
+        "trace_lineage_digest": "78cb984dac45e215c85dba45fd817272811c2c756db0c731632565e2b7e70371",
+        "style_profile_id": "assumptions_then_mechanism_concrete",
+        "parent_source_ids": [
+          "wasm_core_spec_release_2"
+        ],
+        "parent_tokenized_corpus_ids": [
+          "psion_seed_corpus_v1"
+        ],
+        "derived_from_parent_sources": true,
+        "held_out_exclusion_checked": true,
+        "explicit_assumptions_present": true,
+        "explicit_uncertainty_language_present": true,
+        "normative_vs_inference_separated": true,
+        "detail": "Concrete reasoning trace keeps assumptions and uncertainty explicit while separating normative source reading from engineering commentary."
+      },
+      {
+        "trace_id": "psion-reasoning-trace-2",
+        "trace_kind": "long_context",
+        "trace_lineage_digest": "7ba48d69159114b7f5bf97c277aaf9af147d06df953c0bdca182b318495773de",
+        "style_profile_id": "answer_then_evidence_hybrid",
+        "parent_source_ids": [
+          "wasm_core_spec_release_2"
+        ],
+        "parent_tokenized_corpus_ids": [
+          "psion_seed_corpus_v1"
+        ],
+        "derived_from_parent_sources": true,
+        "held_out_exclusion_checked": true,
+        "explicit_assumptions_present": true,
+        "explicit_uncertainty_language_present": true,
+        "normative_vs_inference_separated": true,
+        "detail": "Hybrid long-context reasoning trace starts with the bounded answer and then cites supporting spec segments."
+      },
+      {
+        "trace_id": "psion-reasoning-trace-3",
+        "trace_kind": "plain_completion",
+        "trace_lineage_digest": "8fc03eff57721a3ad2ffc4afe8050f06049f06bec0a67e6437d6f818e517770a",
+        "style_profile_id": "constraints_then_tradeoffs_conceptual",
+        "parent_source_ids": [
+          "wasm_core_spec_release_2"
+        ],
+        "parent_tokenized_corpus_ids": [
+          "psion_seed_corpus_v1"
+        ],
+        "derived_from_parent_sources": true,
+        "held_out_exclusion_checked": true,
+        "explicit_assumptions_present": true,
+        "explicit_uncertainty_language_present": true,
+        "normative_vs_inference_separated": true,
+        "detail": "Conceptual reasoning trace stays explicit about constraints and tradeoffs rather than forcing one narration template."
+      },
+      {
+        "trace_id": "psion-reasoning-trace-4",
+        "trace_kind": "long_context",
+        "trace_lineage_digest": "cd2ed7ae5d18ac066cf03d224d05728d48c8050f89bc68b9c0d1dbbc71a72aa2",
+        "style_profile_id": "assumptions_then_mechanism_concrete",
+        "parent_source_ids": [
+          "wasm_core_spec_release_2"
+        ],
+        "parent_tokenized_corpus_ids": [
+          "psion_seed_corpus_v1"
+        ],
+        "derived_from_parent_sources": true,
+        "held_out_exclusion_checked": true,
+        "explicit_assumptions_present": true,
+        "explicit_uncertainty_language_present": true,
+        "normative_vs_inference_separated": true,
+        "detail": "A second concrete trace proves the lane can preserve more than one example without collapsing every answer shape into one exact outline."
+      }
+    ],
+    "summary": "The bounded reasoning-SFT dataset ties derived traces back to the canonical seed SFT lineage row and requires explicit assumptions, uncertainty language, and normative-versus-inference separation across multiple valid reasoning styles.",
+    "bundle_digest": "58bbbfcc6f9c7600d6fe499ba515dc3b274711e4c67ac7ab40e4331f2169cc1b"
+  },
+  "stage_receipt": {
+    "schema_version": "psion.reasoning_sft_stage_receipt.v1",
+    "receipt_id": "psion-reasoning-sft-stage-receipt-v1",
+    "run_id": "run-psion-pilot",
+    "stage_id": "run-psion-pilot-stage-2-general_sft",
+    "model_id": "psion-compact-decoder-pilot-v1",
+    "pretrain_stage_receipt_digest": "0170d57acd38021560eb4ee389daee573dbf65f037b36769c10586faa462ce31",
+    "dataset_bundle_digest": "58bbbfcc6f9c7600d6fe499ba515dc3b274711e4c67ac7ab40e4331f2169cc1b",
+    "general_sft_transition_digest": "d36cb3a97ad9b0d27d599a6e4abee594050804ac7ad39c6b7f030bef91c3184c",
+    "general_sft_completion_digest": "754387dc03dbfc03141170a1ee64eec05d52197e889656dcadaa59d20c976dc4",
+    "control_surface": {
+      "explicit_assumptions_required": true,
+      "explicit_uncertainty_language_required": true,
+      "normative_vs_inference_separation_required": true,
+      "detail": "Reasoning SFT keeps assumptions, uncertainty, and normative-versus-inference separation explicit instead of deleting them during style shaping."
+    },
+    "style_coverage": [
+      {
+        "style_id": "assumptions_then_mechanism_concrete",
+        "trace_count": 2,
+        "share_bps": 5000,
+        "detail": "Style `assumptions_then_mechanism_concrete` preserves one valid assumptions_then_mechanism / premises_then_conclusion / concrete reasoning narration path inside the bounded SFT lane."
+      },
+      {
+        "style_id": "answer_then_evidence_hybrid",
+        "trace_count": 1,
+        "share_bps": 2500,
+        "detail": "Style `answer_then_evidence_hybrid` preserves one valid answer_then_evidence / conclusion_then_premises / hybrid reasoning narration path inside the bounded SFT lane."
+      },
+      {
+        "style_id": "constraints_then_tradeoffs_conceptual",
+        "trace_count": 1,
+        "share_bps": 2500,
+        "detail": "Style `constraints_then_tradeoffs_conceptual` preserves one valid constraints_then_tradeoffs / top_down_then_concrete / conceptual reasoning narration path inside the bounded SFT lane."
+      }
+    ],
+    "sanity_probe_count": 4,
+    "assumption_retained_probe_count": 4,
+    "uncertainty_retained_probe_count": 4,
+    "normative_vs_inference_separated_probe_count": 4,
+    "assumption_retention_bps": 10000,
+    "uncertainty_retention_bps": 10000,
+    "normative_vs_inference_separation_bps": 10000,
+    "summary": "The first bounded reasoning-SFT stage preserves explicit assumptions, uncertainty language, and normative-versus-inference separation while keeping three valid style families live in the accepted trace mix.",
+    "receipt_digest": "7df5de5f49a1f60f3922eae8dc78dda548c10156ddae9d2f4f7896d3c96dada0"
+  },
+  "evaluation_receipt": {
+    "schema_version": "psion.reasoning_sft_evaluation_receipt.v1",
+    "receipt_id": "psion-reasoning-sft-eval-receipt-v1",
+    "run_id": "run-psion-pilot",
+    "stage_receipt_digest": "7df5de5f49a1f60f3922eae8dc78dda548c10156ddae9d2f4f7896d3c96dada0",
+    "evaluation_suite_id": "psion_reasoning_style_plurality_eval_v1",
+    "rows": [
+      {
+        "case_id": "psion-reasoning-eval-case-1",
+        "prompt_digest": "eval-prompt-digest-1",
+        "accepted_style_profile_ids": [
+          "assumptions_then_mechanism_concrete",
+          "answer_then_evidence_hybrid"
+        ],
+        "observed_style_profile_id": "assumptions_then_mechanism_concrete",
+        "output_digest": "eval-output-digest-1",
+        "assumptions_preserved": true,
+        "uncertainty_preserved": true,
+        "normative_vs_inference_separated": true,
+        "detail": "Case 1 accepts either assumptions-first or answer-first reasoning; the observed output kept the assumptions-first path."
+      },
+      {
+        "case_id": "psion-reasoning-eval-case-2",
+        "prompt_digest": "eval-prompt-digest-2",
+        "accepted_style_profile_ids": [
+          "answer_then_evidence_hybrid",
+          "constraints_then_tradeoffs_conceptual"
+        ],
+        "observed_style_profile_id": "answer_then_evidence_hybrid",
+        "output_digest": "eval-output-digest-2",
+        "assumptions_preserved": true,
+        "uncertainty_preserved": true,
+        "normative_vs_inference_separated": true,
+        "detail": "Case 2 accepts both answer-first and constraint-first narration; the observed output kept the answer-first hybrid path."
+      },
+      {
+        "case_id": "psion-reasoning-eval-case-3",
+        "prompt_digest": "eval-prompt-digest-3",
+        "accepted_style_profile_ids": [
+          "constraints_then_tradeoffs_conceptual",
+          "assumptions_then_mechanism_concrete"
+        ],
+        "observed_style_profile_id": "constraints_then_tradeoffs_conceptual",
+        "output_digest": "eval-output-digest-3",
+        "assumptions_preserved": true,
+        "uncertainty_preserved": true,
+        "normative_vs_inference_separated": true,
+        "detail": "Case 3 accepts either conceptual tradeoff framing or concrete assumptions-first framing; the observed output kept the conceptual tradeoff path."
+      }
+    ],
+    "multiple_valid_style_pass_rate_bps": 10000,
+    "assumption_retention_bps": 10000,
+    "uncertainty_retention_bps": 10000,
+    "normative_vs_inference_separation_bps": 10000,
+    "summary": "The bounded reasoning-style evaluation accepts multiple valid style families per case and observes all three declared style profiles across the evaluation set.",
+    "receipt_digest": "0a3440205b56a7daca80f4c03fe1ce89ffd8c3630685490ce9a0b658fc8714a8"
+  },
+  "summary": "The first bounded reasoning-SFT bundle ties the canonical pretrain receipt, general-SFT stage graph, source-lineaged derived traces, truth-control surface, and style-plurality evaluation into one repo-owned receipt bundle.",
+  "bundle_digest": "4631f0a7e679acf26a7271d1f9d65338f33fee0530a6064603689391d6542d7c"
+}

@@ -1,0 +1,212 @@
+{
+  "fixture_id": "parameter_golf_optimizer_v1",
+  "hyperparameters": {
+    "iterations": 20000,
+    "warmdown_iters": 1200,
+    "max_wallclock_seconds": 600.0,
+    "embed_lr": 0.6,
+    "head_lr": 0.008,
+    "tied_embed_lr": 0.05,
+    "matrix_lr": 0.04,
+    "scalar_lr": 0.04,
+    "muon_momentum": 0.95,
+    "muon_backend_steps": 5,
+    "muon_momentum_warmup_start": 0.85,
+    "muon_momentum_warmup_steps": 500,
+    "beta1": 0.9,
+    "beta2": 0.95,
+    "adam_eps": 1e-08,
+    "grad_clip_norm": 0.0
+  },
+  "control_tensor_name_patterns": [
+    "attn_scale",
+    "attn_scales",
+    "mlp_scale",
+    "mlp_scales",
+    "resid_mix",
+    "resid_mixes",
+    "q_gain",
+    "skip_weight",
+    "skip_weights"
+  ],
+  "expected_groups": {
+    "token_embedding": [
+      "tok_emb.weight"
+    ],
+    "matrix": [
+      "blocks.0.attn.c_k.weight",
+      "blocks.0.attn.c_q.weight",
+      "blocks.0.attn.c_v.weight",
+      "blocks.0.attn.proj.weight",
+      "blocks.0.mlp.fc.weight",
+      "blocks.0.mlp.proj.weight",
+      "blocks.1.attn.c_k.weight",
+      "blocks.1.attn.c_q.weight",
+      "blocks.1.attn.c_v.weight",
+      "blocks.1.attn.proj.weight",
+      "blocks.1.mlp.fc.weight",
+      "blocks.1.mlp.proj.weight",
+      "blocks.2.attn.c_k.weight",
+      "blocks.2.attn.c_q.weight",
+      "blocks.2.attn.c_v.weight",
+      "blocks.2.attn.proj.weight",
+      "blocks.2.mlp.fc.weight",
+      "blocks.2.mlp.proj.weight",
+      "blocks.3.attn.c_k.weight",
+      "blocks.3.attn.c_q.weight",
+      "blocks.3.attn.c_v.weight",
+      "blocks.3.attn.proj.weight",
+      "blocks.3.mlp.fc.weight",
+      "blocks.3.mlp.proj.weight",
+      "blocks.4.attn.c_k.weight",
+      "blocks.4.attn.c_q.weight",
+      "blocks.4.attn.c_v.weight",
+      "blocks.4.attn.proj.weight",
+      "blocks.4.mlp.fc.weight",
+      "blocks.4.mlp.proj.weight",
+      "blocks.5.attn.c_k.weight",
+      "blocks.5.attn.c_q.weight",
+      "blocks.5.attn.c_v.weight",
+      "blocks.5.attn.proj.weight",
+      "blocks.5.mlp.fc.weight",
+      "blocks.5.mlp.proj.weight",
+      "blocks.6.attn.c_k.weight",
+      "blocks.6.attn.c_q.weight",
+      "blocks.6.attn.c_v.weight",
+      "blocks.6.attn.proj.weight",
+      "blocks.6.mlp.fc.weight",
+      "blocks.6.mlp.proj.weight",
+      "blocks.7.attn.c_k.weight",
+      "blocks.7.attn.c_q.weight",
+      "blocks.7.attn.c_v.weight",
+      "blocks.7.attn.proj.weight",
+      "blocks.7.mlp.fc.weight",
+      "blocks.7.mlp.proj.weight",
+      "blocks.8.attn.c_k.weight",
+      "blocks.8.attn.c_q.weight",
+      "blocks.8.attn.c_v.weight",
+      "blocks.8.attn.proj.weight",
+      "blocks.8.mlp.fc.weight",
+      "blocks.8.mlp.proj.weight"
+    ],
+    "scalar": [
+      "blocks.0.attn.q_gain",
+      "blocks.0.attn_scale",
+      "blocks.0.mlp_scale",
+      "blocks.0.resid_mix",
+      "blocks.1.attn.q_gain",
+      "blocks.1.attn_scale",
+      "blocks.1.mlp_scale",
+      "blocks.1.resid_mix",
+      "blocks.2.attn.q_gain",
+      "blocks.2.attn_scale",
+      "blocks.2.mlp_scale",
+      "blocks.2.resid_mix",
+      "blocks.3.attn.q_gain",
+      "blocks.3.attn_scale",
+      "blocks.3.mlp_scale",
+      "blocks.3.resid_mix",
+      "blocks.4.attn.q_gain",
+      "blocks.4.attn_scale",
+      "blocks.4.mlp_scale",
+      "blocks.4.resid_mix",
+      "blocks.5.attn.q_gain",
+      "blocks.5.attn_scale",
+      "blocks.5.mlp_scale",
+      "blocks.5.resid_mix",
+      "blocks.6.attn.q_gain",
+      "blocks.6.attn_scale",
+      "blocks.6.mlp_scale",
+      "blocks.6.resid_mix",
+      "blocks.7.attn.q_gain",
+      "blocks.7.attn_scale",
+      "blocks.7.mlp_scale",
+      "blocks.7.resid_mix",
+      "blocks.8.attn.q_gain",
+      "blocks.8.attn_scale",
+      "blocks.8.mlp_scale",
+      "blocks.8.resid_mix",
+      "skip_weights"
+    ],
+    "head": [],
+    "token_learning_rate": 0.05,
+    "matrix_learning_rate": 0.04,
+    "scalar_learning_rate": 0.04,
+    "head_learning_rate": 0.008
+  },
+  "muon_case": {
+    "rows": 3,
+    "cols": 2,
+    "parameter": [
+      0.25,
+      -0.5,
+      0.75,
+      -1.0,
+      1.25,
+      -1.5
+    ],
+    "gradient": [
+      0.6,
+      -0.4,
+      0.2,
+      -0.1,
+      0.05,
+      -0.3
+    ],
+    "learning_rate": 0.04,
+    "momentum": 0.95,
+    "backend_steps": 5,
+    "updated_parameter": [
+      0.2185937464237213,
+      -0.48585936427116394,
+      0.7377343773841858,
+      -0.9991161823272705,
+      1.261328101158142,
+      -1.4670312404632568
+    ],
+    "momentum_buffer": [
+      0.6000000238418579,
+      -0.4000000059604645,
+      0.20000000298023224,
+      -0.10000000149011612,
+      0.05000000074505806,
+      -0.30000001192092896
+    ]
+  },
+  "schedule_cases": {
+    "muon_momentum_cases": [
+      {
+        "step": 0,
+        "expected": 0.85
+      },
+      {
+        "step": 250,
+        "expected": 0.8999999999999999
+      },
+      {
+        "step": 500,
+        "expected": 0.95
+      }
+    ],
+    "lr_multiplier_cases": [
+      {
+        "step": 100,
+        "elapsed_ms": 10000.0,
+        "max_wallclock_seconds_override": 600.0,
+        "expected": 1.0
+      },
+      {
+        "step": 1000,
+        "elapsed_ms": 550000.0,
+        "max_wallclock_seconds_override": 600.0,
+        "expected": 0.07575757575757576
+      },
+      {
+        "step": 19000,
+        "elapsed_ms": 1234.0,
+        "max_wallclock_seconds_override": null,
+        "expected": 0.8333333333333334
+      }
+    ]
+  }
+}

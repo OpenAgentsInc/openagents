@@ -1,0 +1,288 @@
+{
+  "schema_version": "psionic.remote_training_visualization_bundle.v2",
+  "bundle_id": "parameter-golf-runpod-single-h100-live-sample-v1",
+  "provider": "run_pod",
+  "profile_id": "runpod_h100_single_gpu",
+  "lane_id": "parameter_golf.runpod_single_h100",
+  "run_id": "parameter-golf-runpod-single-h100-live-sample",
+  "repo_revision": "main@5e6f5f0f",
+  "track_semantics": {
+    "track_family": "parameter_golf",
+    "track_id": "non-record-unlimited-compute-16mb",
+    "execution_class": "single_node",
+    "comparability_class": "same_track_comparable",
+    "proof_posture": "runtime_measured",
+    "public_equivalence_class": "not_applicable",
+    "score_law_ref": "docs/PARAMETER_GOLF_NON_RECORD_SUBMISSION.md",
+    "artifact_cap_bytes": 16000000,
+    "semantic_summary": "Single-node PGOLF retains live optimizer telemetry under the non-record unlimited-compute 16MB submission track."
+  },
+  "result_classification": "active",
+  "refresh_contract": {
+    "target_ui_update_interval_ms": 1000,
+    "emission_mode": "append_only_snapshots",
+    "last_heartbeat_at_ms": 1742846402000,
+    "heartbeat_seq": 5
+  },
+  "series_status": "available",
+  "timeline": [
+    {
+      "observed_at_ms": 1742846395000,
+      "phase": "provisioning",
+      "subphase": "pod_ready",
+      "detail": "RunPod pod admission completed and the trainer payload was staged locally."
+    },
+    {
+      "observed_at_ms": 1742846397000,
+      "phase": "training",
+      "subphase": "warmup",
+      "detail": "The bounded single-H100 trainer entered warmup and started append-only live snapshots."
+    },
+    {
+      "observed_at_ms": 1742846400000,
+      "phase": "training",
+      "subphase": "optimizer_step",
+      "detail": "The first measured optimizer steps completed under the live snapshot contract."
+    }
+  ],
+  "summary": {
+    "total_steps_completed": 3,
+    "latest_global_step": 3,
+    "latest_train_loss": 3.982,
+    "latest_ema_loss": 4.031,
+    "latest_validation_loss": 4.227,
+    "latest_tokens_per_second": 143360,
+    "latest_samples_per_second_milli": 140,
+    "accumulated_cost_microusd": 3200000,
+    "latest_checkpoint_ref": "checkpoint://parameter-golf/runpod-single-h100/step-3",
+    "detail": "This sample shows the full-series shape expected from the always-live single-H100 lane."
+  },
+  "heartbeat_series": [
+    {
+      "observed_at_ms": 1742846400000,
+      "phase": "training",
+      "subphase": "optimizer_step",
+      "step_in_progress": 1,
+      "microbatch_in_progress": 8,
+      "active_subsystems": [
+        "dataloader",
+        "forward",
+        "optimizer"
+      ],
+      "stale_after_ms": 2500
+    },
+    {
+      "observed_at_ms": 1742846401000,
+      "phase": "training",
+      "subphase": "optimizer_step",
+      "step_in_progress": 2,
+      "microbatch_in_progress": 8,
+      "active_subsystems": [
+        "forward",
+        "backward",
+        "optimizer"
+      ],
+      "stale_after_ms": 2500
+    },
+    {
+      "observed_at_ms": 1742846402000,
+      "phase": "training",
+      "subphase": "validation",
+      "step_in_progress": 3,
+      "microbatch_in_progress": 0,
+      "active_subsystems": [
+        "validation",
+        "checkpoint",
+        "gpu_sampling"
+      ],
+      "stale_after_ms": 2500
+    }
+  ],
+  "loss_series": [
+    {
+      "global_step": 1,
+      "elapsed_ms": 1000,
+      "train_loss": 4.181,
+      "ema_loss": 4.181
+    },
+    {
+      "global_step": 2,
+      "elapsed_ms": 2000,
+      "train_loss": 4.024,
+      "ema_loss": 4.102
+    },
+    {
+      "global_step": 3,
+      "elapsed_ms": 3000,
+      "train_loss": 3.982,
+      "ema_loss": 4.031,
+      "validation_loss": 4.227
+    }
+  ],
+  "math_series": [
+    {
+      "observed_at_ms": 1742846400000,
+      "global_step": 1,
+      "learning_rate": 0.0006,
+      "gradient_norm": 1.41,
+      "parameter_norm": 73.4,
+      "update_norm": 0.84,
+      "clip_fraction": 0.0,
+      "clip_event_count": 0,
+      "loss_scale": 1024.0,
+      "non_finite_count": 0,
+      "model_specific_diagnostics": {
+        "attention_entropy": 2.81,
+        "logit_entropy": 5.42
+      }
+    },
+    {
+      "observed_at_ms": 1742846401000,
+      "global_step": 2,
+      "learning_rate": 0.0006,
+      "gradient_norm": 1.35,
+      "parameter_norm": 73.5,
+      "update_norm": 0.81,
+      "clip_fraction": 0.0,
+      "clip_event_count": 0,
+      "loss_scale": 1024.0,
+      "non_finite_count": 0,
+      "model_specific_diagnostics": {
+        "attention_entropy": 2.77,
+        "logit_entropy": 5.38
+      }
+    },
+    {
+      "observed_at_ms": 1742846402000,
+      "global_step": 3,
+      "learning_rate": 0.0006,
+      "gradient_norm": 1.29,
+      "parameter_norm": 73.6,
+      "update_norm": 0.79,
+      "clip_fraction": 0.0,
+      "clip_event_count": 0,
+      "loss_scale": 1024.0,
+      "non_finite_count": 0,
+      "model_specific_diagnostics": {
+        "attention_entropy": 2.72,
+        "logit_entropy": 5.31
+      }
+    }
+  ],
+  "runtime_series": [
+    {
+      "observed_at_ms": 1742846400000,
+      "data_wait_ms": 41,
+      "forward_ms": 318,
+      "backward_ms": 374,
+      "optimizer_ms": 118,
+      "tokens_per_second": 141824,
+      "samples_per_second_milli": 138
+    },
+    {
+      "observed_at_ms": 1742846401000,
+      "data_wait_ms": 38,
+      "forward_ms": 311,
+      "backward_ms": 365,
+      "optimizer_ms": 116,
+      "tokens_per_second": 142976,
+      "samples_per_second_milli": 139
+    },
+    {
+      "observed_at_ms": 1742846402000,
+      "data_wait_ms": 34,
+      "forward_ms": 307,
+      "backward_ms": 360,
+      "optimizer_ms": 114,
+      "checkpoint_ms": 88,
+      "evaluation_ms": 205,
+      "tokens_per_second": 143360,
+      "samples_per_second_milli": 140
+    }
+  ],
+  "gpu_series": [
+    {
+      "observed_at_ms": 1742846400000,
+      "device_id": "cuda:0",
+      "device_label": "NVIDIA H100 80GB",
+      "utilization_bps": 9620,
+      "memory_used_bytes": 68719476736,
+      "memory_total_bytes": 85899345920,
+      "temperature_celsius": 67,
+      "power_watts": 335
+    },
+    {
+      "observed_at_ms": 1742846401000,
+      "device_id": "cuda:0",
+      "device_label": "NVIDIA H100 80GB",
+      "utilization_bps": 9710,
+      "memory_used_bytes": 68987912192,
+      "memory_total_bytes": 85899345920,
+      "temperature_celsius": 68,
+      "power_watts": 339
+    },
+    {
+      "observed_at_ms": 1742846402000,
+      "device_id": "cuda:0",
+      "device_label": "NVIDIA H100 80GB",
+      "utilization_bps": 9580,
+      "memory_used_bytes": 69256347648,
+      "memory_total_bytes": 85899345920,
+      "temperature_celsius": 68,
+      "power_watts": 341
+    }
+  ],
+  "distributed_series": [],
+  "event_series": [
+    {
+      "observed_at_ms": 1742846397000,
+      "severity": "info",
+      "event_kind": "trainer_ready",
+      "detail": "The single-H100 trainer materialized its append-only live snapshot contract."
+    },
+    {
+      "observed_at_ms": 1742846401000,
+      "severity": "info",
+      "event_kind": "optimizer_step_completed",
+      "detail": "Optimizer step 2 completed without overflow or clipping."
+    },
+    {
+      "observed_at_ms": 1742846402000,
+      "severity": "warning",
+      "event_kind": "validation_started",
+      "detail": "Validation and checkpoint flush started while the run remained active."
+    }
+  ],
+  "source_artifacts": [
+    {
+      "artifact_role": "live_bundle",
+      "artifact_uri": "local-mirror://parameter-golf/runpod-single-h100/remote_training_visualization_bundle.json",
+      "source_kind": "local_mirror",
+      "authoritative": true,
+      "source_receipt_ids": [
+        "parameter_golf.runpod_single_h100.live_snapshot_stream.v1"
+      ],
+      "detail": "The app should read the normalized local mirror instead of provider-shaped logs."
+    },
+    {
+      "artifact_role": "trainer_report",
+      "artifact_uri": "runpod://parameter-golf/runpod-single-h100/parameter_golf_single_h100_training.json",
+      "artifact_digest": "d7c39fb41957551adf0c1ec1bf7aa8241ba0b766e914cf8f4d58f7f5735c28a4",
+      "source_kind": "runtime_owned",
+      "authoritative": true,
+      "source_receipt_ids": [
+        "parameter_golf_single_h100_training_report.v1"
+      ],
+      "detail": "Trainer-owned JSON remains authoritative for loss, math, and runtime telemetry."
+    },
+    {
+      "artifact_role": "gpu_samples",
+      "artifact_uri": "runpod://parameter-golf/runpod-single-h100/nvidia-smi-gpu-samples.csv",
+      "artifact_digest": "f72e7c98f98d1aa627399831d4ab90c3fc42f8aaad719996257053b956f95bbb",
+      "source_kind": "provider_generated",
+      "authoritative": true,
+      "detail": "Provider GPU samples remain the authoritative device source for the lane."
+    }
+  ],
+  "bundle_digest": "b7f4a4b797f7faa383ffc25fb522e244e9f3c7d9cc224b0927aa8a8e962691fc"
+}

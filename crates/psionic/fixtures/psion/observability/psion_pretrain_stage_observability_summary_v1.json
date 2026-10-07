@@ -1,0 +1,38 @@
+{
+  "schema_version": "psion.pretrain_stage_observability_summary.v1",
+  "summary_id": "psion-pretrain-stage-observability-v1",
+  "stage_kind": "pretrain",
+  "dataset_identity": "psion_corpus_tokenized@v1",
+  "rows": [
+    {
+      "run_profile": "pilot",
+      "run_id": "run-psion-pilot",
+      "stage_id": "run-psion-pilot-stage-1-pretrain",
+      "model_id": "psion-compact-decoder-pilot-v1",
+      "observability_receipt_id": "psion-pilot-pretrain-observability-v1",
+      "observability_digest": "3f03ad49a205db1f96986d5e791bdb07b04ded10ca7b1fc904f63f55ae17eb5a",
+      "total_cost_microusd": 18950000,
+      "mean_tokens_per_second": 52105,
+      "checkpoint_artifact_size_bytes": 218628096,
+      "instability_marker_count": 0,
+      "topology_digest": "a92bbdc55fb98b29dee91e7e0f1e73f28b94186994909efc13144670fed13373",
+      "summary": "pilot run `run-psion-pilot` recorded 4194304 train tokens at 52105 tok/s mean throughput with 218628096 total checkpoint bytes."
+    },
+    {
+      "run_profile": "broader_pretraining",
+      "run_id": "run-psion-broad",
+      "stage_id": "run-psion-broad-stage-1-pretrain",
+      "model_id": "psion-compact-decoder-internal-v1",
+      "observability_receipt_id": "psion-broader-pretrain-observability-v1",
+      "observability_digest": "46d82db942801eddee02fb638bee11654478bc8f4b6be2f472bdb3d31751d142",
+      "total_cost_microusd": 512250000,
+      "mean_tokens_per_second": 296214,
+      "checkpoint_artifact_size_bytes": 2333954048,
+      "instability_marker_count": 3,
+      "topology_digest": "db340e8890b303f59c2e4cc7140473fca894282ab6493a53a50d7d4efc2daccc",
+      "summary": "broader_pretraining run `run-psion-broad` recorded 1073741824 train tokens at 296214 tok/s mean throughput with 2333954048 total checkpoint bytes."
+    }
+  ],
+  "summary": "Pilot and broader-pretraining observability receipts now expose the minimum budgeting, checkpoint, topology, and instability surface required for Psion scale-up decisions.",
+  "summary_digest": "f9081e00f473108942598665df5c3b12a98e029091cbac36bf579f69cd935959"
+}

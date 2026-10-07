@@ -1,0 +1,17 @@
+{
+  "description": "Reference AttnRes token cases for differential checks and benchmark receipts",
+  "cases": [
+    {
+      "case_id": "ascending_four",
+      "token_ids": [1, 2, 3, 4]
+    },
+    {
+      "case_id": "descending_four",
+      "token_ids": [4, 3, 2, 1]
+    },
+    {
+      "case_id": "repeat_three",
+      "token_ids": [7, 7, 7]
+    }
+  ]
+}

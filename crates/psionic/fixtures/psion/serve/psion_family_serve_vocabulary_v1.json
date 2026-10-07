@@ -1,0 +1,76 @@
+{
+  "schema_version": "psion.family_serve_vocabulary.v1",
+  "vocabulary_id": "psion-family-serve-vocabulary-v1",
+  "family_name": "Psion",
+  "summary": "Family-level serve and claim vocabulary for generic learned, plugin-conditioned, and executor-capable Psion lanes.",
+  "lanes": [
+    {
+      "lane_id": "generic_compact_decoder",
+      "family_role": "generic_learned_lane",
+      "served_surface_kind": "direct_artifact_backed_generation",
+      "evidence_class": "learned_judgment_only",
+      "claim_posture": "served_evidence_plus_served_output_claim_posture",
+      "execution_posture": "no_hidden_execution_surface",
+      "publication_posture": "bounded_learned_lane_publication",
+      "canonical_authorities": [
+        "docs/PSION_PROGRAM_MAP.md",
+        "docs/PSION_GENERIC_LOAD_AND_GENERATE.md",
+        "docs/PSION_SERVED_EVIDENCE.md",
+        "docs/PSION_SERVED_OUTPUT_CLAIMS.md"
+      ],
+      "detail": "Generic learned Psion may load, generate, and serve with explicit learned-judgment claim posture, but it may not imply executor backing, source grounding, or verification by default."
+    },
+    {
+      "lane_id": "plugin_conditioned",
+      "family_role": "plugin_conditioned_learned_lane",
+      "served_surface_kind": "lane_specific_served_posture_over_shared_claim_contract",
+      "evidence_class": "learned_plugin_reasoning_with_runtime_receipt_gate",
+      "claim_posture": "plugin_capability_matrix_and_served_posture_reusing_shared_claim_contract",
+      "execution_posture": "runtime_owned_plugin_execution_with_receipts",
+      "publication_posture": "bounded_operator_internal_or_lane_specific_publication",
+      "canonical_authorities": [
+        "docs/PSION_PLUGIN_CLAIM_BOUNDARY_AND_CAPABILITY_POSTURE.md",
+        "docs/PSION_PLUGIN_HOST_NATIVE_CAPABILITY_MATRIX_V1.md",
+        "docs/PSION_PLUGIN_MIXED_CAPABILITY_MATRIX_V2.md",
+        "docs/PSION_SERVED_EVIDENCE.md",
+        "docs/PSION_SERVED_OUTPUT_CLAIMS.md"
+      ],
+      "detail": "Plugin-conditioned Psion may reason about admitted plugins and surface lane-specific served posture, but runtime execution remains receipt-gated and the lane may not flatten into generic plugin-platform or arbitrary software claims."
+    },
+    {
+      "lane_id": "executor_capable_tassadar_profile",
+      "family_role": "executor_capable_psion_profile",
+      "served_surface_kind": "bounded_executor_profile_and_fast_route_projection",
+      "evidence_class": "bounded_executor_replacement_and_admitted_fast_route_truth",
+      "claim_posture": "promotion_and_replacement_packets_with_consumer_seam_validation",
+      "execution_posture": "explicit_executor_profile_only",
+      "publication_posture": "bounded_admitted_executor_profile",
+      "canonical_authorities": [
+        "docs/PSION_EXECUTOR_PROGRAM.md",
+        "docs/PSION_EXECUTOR_TRAINED_V1_PROMOTION.md",
+        "docs/PSION_EXECUTOR_TRAINED_V1_REPLACEMENT_REPORT.md",
+        "docs/ROADMAP_TASSADAR.md"
+      ],
+      "detail": "Executor-capable Psion remains the bounded Tassadar profile. Its serve vocabulary is narrower than the family umbrella and must stay tied to admitted-workload replacement truth, explicit executor posture, and the reference_linear versus hull_cache claim boundary."
+    }
+  ],
+  "shared_rules": [
+    {
+      "rule_id": "family_name_does_not_flatten_lane_truth",
+      "rule": "Do not use the umbrella family name Psion to erase lane-specific evidence classes, publication posture, or execution boundaries."
+    },
+    {
+      "rule_id": "shared_claim_contract_reuse",
+      "rule": "All family lanes should reuse the shared served-evidence and served-output-claim posture contract where applicable instead of inventing lane-private claim surfaces without explicit reason."
+    },
+    {
+      "rule_id": "no_hidden_execution",
+      "rule": "No lane may imply hidden execution. Plugin-conditioned and executor-capable lanes may only claim execution through their explicit runtime or executor receipt surfaces."
+    },
+    {
+      "rule_id": "executor_lane_not_generic_default",
+      "rule": "Executor-capable truth belongs to the bounded Tassadar profile and may not be projected onto the generic compact-decoder lane or the plugin-conditioned lane by umbrella shorthand."
+    }
+  ],
+  "packet_digest": "ee70a0b1544c629d3266bdbaea8c5a9c02b939fa186dadd023f6ad804f2b9185"
+}

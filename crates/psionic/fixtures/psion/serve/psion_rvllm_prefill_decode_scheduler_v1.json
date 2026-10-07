@@ -1,0 +1,68 @@
+{
+  "schema_version": "psion.rvllm_prefill_decode_scheduler.v1",
+  "packet_id": "psion_rvllm_prefill_decode_scheduler_v1",
+  "runtime_scope": [
+    "psionic_runtime.generation_scheduler_policy",
+    "psionic_serve.continuous_batch_scheduler",
+    "psionic_serve.openai_http_scheduler_headers"
+  ],
+  "admitted_scheduler_policy": {
+    "max_active_requests": 4,
+    "max_queued_requests": 32,
+    "max_prefill_tokens_per_tick": 4,
+    "max_decode_tokens_per_tick": 8
+  },
+  "realized_scheduling_classes": [
+    "prefill",
+    "decode",
+    "mixed_prefill_decode",
+    "fallback_single_request"
+  ],
+  "admitted_execution_modes": [
+    "disaggregated_colocated"
+  ],
+  "admitted_handoff_transports": [
+    "in_process_kv_state"
+  ],
+  "request_receipt_fields": [
+    "queue_depth_at_admission",
+    "max_batch_size_observed",
+    "scheduling_class",
+    "prefill_tokens",
+    "decode_tokens",
+    "prefill_decode_mode",
+    "prefill_decode_handoff",
+    "time_to_first_token_ns",
+    "inter_token_latency_ns",
+    "fallback_reason"
+  ],
+  "aggregate_metric_fields": [
+    "total_prefill_tokens",
+    "total_decode_tokens",
+    "total_time_to_first_token_ns",
+    "total_inter_token_latency_ns",
+    "peak_kv_pages_in_use",
+    "peak_kv_bytes_in_use",
+    "fallback_counts"
+  ],
+  "response_headers": [
+    "x-psionic-batch-posture",
+    "x-psionic-scheduling-class",
+    "x-psionic-prefill-decode-mode",
+    "x-psionic-ttft-ns",
+    "x-psionic-itl-ns"
+  ],
+  "retained_tests": [
+    "cpu_reference_continuous_batch_scheduler_mixes_prefill_and_decode",
+    "generic_server_grammar_fallback_is_machine_checkable",
+    "generic_server_json_schema_fallback_is_machine_checkable"
+  ],
+  "benchmark_paths": [
+    "crates/psionic-runtime/src/lib.rs",
+    "crates/psionic-serve/src/lib.rs",
+    "crates/psionic-serve/src/openai_http.rs",
+    "crates/psionic-serve/src/gpt_oss.rs"
+  ],
+  "stability_posture": "Psionic already exposes a real prefill-vs-decode scheduler split: the admitted continuous-batch policy budgets prompt-prefill and decode tokens separately, request receipts record realized scheduling class plus TTFT and ITL, and the OpenAI-compatible surface exports those facts as stable headers. This packet closes the scheduler-reporting seam without claiming a second runtime or broader batching capability than the admitted lane actually has.",
+  "packet_digest": "ee4f42da62ec05ee6fe9e82e9355e3845de872cfd1b0c8950e5ef2113a39e3a1"
+}

@@ -1,0 +1,34 @@
+{
+  "schema_version": "psion.rvllm_cublas_warmup.v1",
+  "packet_id": "psion_rvllm_cublas_warmup_v1",
+  "runtime_scope": [
+    "cuda_backend_runtime",
+    "qwen35.native_cuda_decode",
+    "gpt_oss.native_cuda_decode"
+  ],
+  "cublas_handle_scope": "per_device_runtime_owner",
+  "cublas_stream_binding": "bind_stream_per_submission",
+  "warmup_stage": "explicit_admitted_startup_request",
+  "startup_report_fields": [
+    "warmup_status",
+    "prompt_latency_ns",
+    "decode_latency_ns",
+    "total_latency_ns",
+    "output_tokens",
+    "request_billed_to_user"
+  ],
+  "qwen35_startup_report": {
+    "warmup_status": "explicit_warmup_completed",
+    "prompt_latency_ns": 11200000,
+    "decode_latency_ns": 12600000,
+    "total_latency_ns": 23800000,
+    "output_tokens": 8,
+    "request_billed_to_user": false
+  },
+  "steady_state_posture": "Warmup now sits outside the user-request accounting path and keeps cuBLAS handle creation, stream binding, and first GEMM-heavy decode stabilization explicit instead of silently burying them in the first user-visible request.",
+  "benchmark_paths": [
+    "crates/psionic-serve/examples/qwen35_cuda_bench.rs",
+    "crates/psionic-backend-cuda/src/lib.rs"
+  ],
+  "packet_digest": "ab8ec999b8e80605744171d3adab152b6ffaecda22877b321ec4c65bb084ea36"
+}

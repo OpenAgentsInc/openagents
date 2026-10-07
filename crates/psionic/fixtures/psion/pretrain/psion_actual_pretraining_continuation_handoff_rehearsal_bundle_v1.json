@@ -1,0 +1,153 @@
+{
+  "schema_version": "psion.actual_pretraining_continuation_handoff_rehearsal_bundle.v1",
+  "rehearsal_id": "psion_actual_pretraining_continuation_handoff_rehearsal_bundle_v1",
+  "lane_id": "psion_actual_pretraining_v1",
+  "continuation_target_id": "psion_actual_pretraining_general_sft_agentic_sft_v1",
+  "run_id": "run-psion-actual-20260402t160000z",
+  "selected_git_ref": "7fead59c",
+  "git_commit_sha": "7fead59c86d6e80ce6e14b53f1e48c6b1e79252b",
+  "dirty_tree_admission": "refuse_by_default",
+  "workspace_status_sha256": null,
+  "base_lane_closeout_bundle": {
+    "path": "fixtures/psion/pretrain/psion_actual_pretraining_base_lane_rehearsal_example/run-psion-actual-20260402t160000z/closeout/closeout_bundle.json",
+    "sha256": "a5b4d6452a34bd48a3c736b2b71b039b447d7b1d7a0ce6de6c0a1493b2e799a1"
+  },
+  "continuation_handoff": {
+    "path": "continuation/accepted_checkpoint_handoff.json",
+    "sha256": "0f0db6ccb565386948d39109a34e0d45f186fd81899b1a995f9e81efb1f2ffb6"
+  },
+  "continuation_alignment_bundle": {
+    "path": "fixtures/psion/pretrain/psion_actual_pretraining_continuation_handoff_rehearsal_example/run-psion-actual-20260402t160000z/continuation/continuation_alignment_bundle.json",
+    "sha256": "fcea0bf12dc03c53a18edf8f7fa59be1829b38bc07ed56b80da2305ac3eb84f8"
+  },
+  "plugin_conditioned_stage_manifest": {
+    "path": "fixtures/psion/plugins/training/psion_plugin_conditioned_sft_v1/psion_plugin_conditioned_sft_stage_manifest.json",
+    "sha256": "ece0cc472bfaca70c209de43c1c2fc8b26003ee264317b728bb83fdaa5f37b25"
+  },
+  "lineage_proof": {
+    "base_lane_closeout_state": "base_lane_rehearsal_complete",
+    "actual_lane_stage_path": [
+      "pretrain",
+      "general_sft",
+      "agentic_sft"
+    ],
+    "accepted_checkpoint_ref": "checkpoint://psion/actual-pretraining/broader-pretrain-final",
+    "reasoning_stage_receipt_id": "psion-reasoning-sft-stage-receipt-v1",
+    "plugin_stage_manifest_run_id": "run-psion-plugin-conditioned-reference",
+    "plugin_stage_id": "run-psion-plugin-conditioned-reference-stage-2-agentic_sft",
+    "plugin_previous_stage_id": "run-psion-plugin-conditioned-reference-stage-1-general_sft",
+    "plugin_stage_receipt_id": "receipt.psion.plugin_conditioned_sft.reference.v1",
+    "continuation_eval_package_storage_key": "benchmark://psion/actual_pretraining/continuation_stage@2026.04.02",
+    "later_reference_run_id": "weather-agentic-sft-rl-reference",
+    "detail": "Lineage proof ties the exact base-lane closeout, accepted checkpoint, plugin-conditioned stage ids, continuation eval pack, and later reference-program run into one bounded review surface."
+  },
+  "evidence_artifacts": [
+    {
+      "artifact_kind": "base_lane_closeout_bundle",
+      "artifact": {
+        "path": "fixtures/psion/pretrain/psion_actual_pretraining_base_lane_rehearsal_example/run-psion-actual-20260402t160000z/closeout/closeout_bundle.json",
+        "sha256": "a5b4d6452a34bd48a3c736b2b71b039b447d7b1d7a0ce6de6c0a1493b2e799a1"
+      },
+      "detail": "Base-lane closeout proves the accepted pretrain checkpoint came from the retained actual-lane rehearsal."
+    },
+    {
+      "artifact_kind": "continuation_handoff",
+      "artifact": {
+        "path": "continuation/accepted_checkpoint_handoff.json",
+        "sha256": "0f0db6ccb565386948d39109a34e0d45f186fd81899b1a995f9e81efb1f2ffb6"
+      },
+      "detail": "Continuation handoff binds the accepted checkpoint to the frozen `pretrain -> general_sft -> agentic_sft` target."
+    },
+    {
+      "artifact_kind": "continuation_alignment_bundle",
+      "artifact": {
+        "path": "fixtures/psion/pretrain/psion_actual_pretraining_continuation_handoff_rehearsal_example/run-psion-actual-20260402t160000z/continuation/continuation_alignment_bundle.json",
+        "sha256": "fcea0bf12dc03c53a18edf8f7fa59be1829b38bc07ed56b80da2305ac3eb84f8"
+      },
+      "detail": "Continuation alignment for the exact reviewed run keeps the reasoning bridge, plugin-conditioned stage, and later reference surface together."
+    },
+    {
+      "artifact_kind": "reasoning_sft_run_bundle",
+      "artifact": {
+        "path": "fixtures/psion/sft/psion_reasoning_sft_run_bundle_v1.json",
+        "sha256": "4bce9e0eda3284a940103663346071c5fc9806178b2a9b1a49017d1f64e51725"
+      },
+      "detail": "Reasoning-SFT bundle keeps the `general_sft` bridge explicit in the rehearsal evidence family."
+    },
+    {
+      "artifact_kind": "plugin_conditioned_stage_manifest",
+      "artifact": {
+        "path": "fixtures/psion/plugins/training/psion_plugin_conditioned_sft_v1/psion_plugin_conditioned_sft_stage_manifest.json",
+        "sha256": "ece0cc472bfaca70c209de43c1c2fc8b26003ee264317b728bb83fdaa5f37b25"
+      },
+      "detail": "Canonical plugin-conditioned stage manifest keeps the bounded `general_sft -> agentic_sft` lane explicit."
+    },
+    {
+      "artifact_kind": "plugin_conditioned_run_bundle",
+      "artifact": {
+        "path": "fixtures/psion/plugins/training/psion_plugin_conditioned_sft_v1/psion_plugin_conditioned_sft_run_bundle.json",
+        "sha256": "bde69724339d47a49b6e1c82d472072cb557834b260fa78064a7cee4a67d4a9d"
+      },
+      "detail": "Plugin-conditioned run bundle keeps the retained stage receipt and completion digests explicit."
+    },
+    {
+      "artifact_kind": "continuation_eval_pack",
+      "artifact": {
+        "path": "fixtures/psion/pretrain/psion_actual_pretraining_continuation_eval_benchmark_pack_v1.json",
+        "sha256": "eb9d9810d82b4a6b3b545ad3a6e1f012c358c80fc91d143f25d7b6d91b83724e"
+      },
+      "detail": "Continuation eval pack keeps bounded reasoning, plugin interpretation, rollout lineage, and post-training consistency review explicit."
+    }
+  ],
+  "closeout_gates": [
+    {
+      "gate_id": "base_lane_closeout_complete",
+      "satisfied": true,
+      "detail": "Base-lane closeout reached `base_lane_rehearsal_complete` before continuation review consumed the handoff."
+    },
+    {
+      "gate_id": "accepted_checkpoint_lineage_exact",
+      "satisfied": true,
+      "detail": "Accepted checkpoint ref matches across the base-lane closeout, handoff, and continuation alignment bundle."
+    },
+    {
+      "gate_id": "continuation_alignment_exact",
+      "satisfied": true,
+      "detail": "Continuation alignment bundle matches the exact reviewed run id, continuation target id, and accepted checkpoint lineage."
+    },
+    {
+      "gate_id": "plugin_conditioned_stage_exact",
+      "satisfied": true,
+      "detail": "Plugin-conditioned stage manifest matches the frozen handoff target and exact stage ids reviewed by the rehearsal."
+    },
+    {
+      "gate_id": "mismatched_alignment_refusal_retained",
+      "satisfied": true,
+      "detail": "One mismatched alignment candidate produced retained refusal evidence instead of silently widening the continuation claim."
+    }
+  ],
+  "failure_drills": [
+    {
+      "drill_id": "mismatched_handoff_alignment_refusal",
+      "resolution_state": "refused_as_expected",
+      "artifact": {
+        "path": "fixtures/psion/pretrain/psion_actual_pretraining_continuation_handoff_refusal_packet_v1.json",
+        "sha256": "7026865de44b484bc27fb622105d58a21f714d0805170b9eeb212024a091ccba"
+      },
+      "detail": "Rehearsal retained a mismatched accepted-checkpoint alignment candidate and its refusal packet before the bounded continuation proof was marked green."
+    }
+  ],
+  "can_now_claim": [
+    "The actual-lane accepted checkpoint now has one separately retained continuation-handoff rehearsal packet that preserves exact lineage into the frozen plugin-conditioned `general_sft -> agentic_sft` lane.",
+    "The continuation proof now cites one exact base-lane closeout bundle, one exact accepted-checkpoint handoff, and one exact continuation alignment bundle without redefining the base lane.",
+    "A mismatched alignment candidate now produces retained refusal evidence instead of silently passing continuation review."
+  ],
+  "still_out_of_scope": [
+    "cluster-scale plugin-conditioned continuation execution",
+    "plugin-conditioned RL execution on the actual pretraining lane",
+    "promotion beyond the bounded `general_sft -> agentic_sft` continuation target"
+  ],
+  "claim_boundary": "This bundle proves one bounded continuation-handoff rehearsal above the accepted actual pretraining checkpoint. It keeps exact lineage into the frozen plugin-conditioned `general_sft -> agentic_sft` lane plus one retained mismatch refusal packet. It does not claim cluster-scale continuation execution, plugin-conditioned RL execution, or promotion beyond the bounded continuation target.",
+  "detail": "Continuation-handoff rehearsal keeps the base-lane proof gate separate while still proving that the accepted checkpoint maps into the canonical plugin-conditioned continuation lane with retained refusal evidence.",
+  "bundle_digest": "9dad49702b465dbf230721c0cb05e9ab2d1cd7077031c4faf26f4a770d846408"
+}

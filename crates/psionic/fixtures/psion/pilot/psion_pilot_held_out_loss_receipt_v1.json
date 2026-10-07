@@ -1,0 +1,33 @@
+{
+  "schema_version": "psion.pilot_held_out_loss_receipt.v1",
+  "receipt_id": "psion-pilot-held-out-loss-v1",
+  "run_id": "run-psion-pilot",
+  "stage_id": "run-psion-pilot-stage-1-pretrain",
+  "model_id": "psion-compact-decoder-pilot-v1",
+  "pretrain_stage_receipt_digest": "0170d57acd38021560eb4ee389daee573dbf65f037b36769c10586faa462ce31",
+  "rows": [
+    {
+      "family": "textbooks",
+      "seed_baseline_loss_milli": 1410,
+      "pilot_loss_milli": 1120,
+      "improvement_over_seed_baseline_bps": 2060,
+      "detail": "Pilot textbooks slice improved enough to justify keeping the prose-heavy lane in pilot scope."
+    },
+    {
+      "family": "normative_specs",
+      "seed_baseline_loss_milli": 1520,
+      "pilot_loss_milli": 1260,
+      "improvement_over_seed_baseline_bps": 1710,
+      "detail": "Pilot specification slice improved while preserving the spec-heavy held-out boundary."
+    },
+    {
+      "family": "technical_docs",
+      "seed_baseline_loss_milli": 1480,
+      "pilot_loss_milli": 1185,
+      "improvement_over_seed_baseline_bps": 1990,
+      "detail": "Pilot technical-doc slice improved enough to keep the docs lane in the acceptance story."
+    }
+  ],
+  "summary": "Held-out loss improved across textbooks, specs, and technical docs versus the seed baseline.",
+  "receipt_digest": "ecbd4673c6ee0849118b8c0f0e60d2067b1f0a9100ed2a3237e8d09117187844"
+}

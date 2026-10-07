@@ -1,0 +1,177 @@
+{
+  "schema_version": "psion.promotion_decision.v1",
+  "decision_id": "psion-pilot-promotion-decision-v1",
+  "matrix_id": "psion_acceptance_matrix",
+  "matrix_version": "v1",
+  "phase": "pilot",
+  "candidate_artifact_id": "pilot-pretrain-final",
+  "benchmark_receipts": [
+    {
+      "receipt_id": "psion-pilot-architecture-reasoning-receipt-v1",
+      "phase": "pilot",
+      "family": "architecture_reasoning",
+      "benchmark_artifact_id": "psion_architecture_reasoning_benchmark_v1",
+      "benchmark_artifact_digest": "703142f680a8a2702700fcdd18309b24d6e7889e07c4621e287178c9ac6af674",
+      "metrics": [
+        {
+          "metric_kind": "pass_rate_bps",
+          "observed_bps": 8450,
+          "regression_from_baseline_bps": 0
+        }
+      ],
+      "summary": "Pilot candidate cleared the bounded architecture reasoning floor."
+    },
+    {
+      "receipt_id": "psion-pilot-held-out-reasoning-receipt-v1",
+      "phase": "pilot",
+      "family": "held_out_technical_reasoning",
+      "benchmark_artifact_id": "psion_held_out_reasoning_benchmark_v1",
+      "benchmark_artifact_digest": "sha256:psion_held_out_reasoning_benchmark_v1",
+      "metrics": [
+        {
+          "metric_kind": "pass_rate_bps",
+          "observed_bps": 7900,
+          "regression_from_baseline_bps": 0
+        },
+        {
+          "metric_kind": "improvement_over_seed_baseline_bps",
+          "observed_bps": 1710,
+          "regression_from_baseline_bps": 0
+        }
+      ],
+      "summary": "Pilot candidate improved over the seed baseline on the held-out technical reasoning set."
+    },
+    {
+      "receipt_id": "psion-pilot-specification-boundary-receipt-v1",
+      "phase": "pilot",
+      "family": "normative_spec_reading",
+      "benchmark_artifact_id": "psion_normative_spec_benchmark_v1",
+      "benchmark_artifact_digest": "dd5741c92863fe4525d67eadd513b955b01f97adb9aa0f1cfa22619e8b273b32",
+      "metrics": [
+        {
+          "metric_kind": "pass_rate_bps",
+          "observed_bps": 8820,
+          "regression_from_baseline_bps": 0
+        }
+      ],
+      "summary": "Pilot candidate kept normative spec reading separate from implementation commentary."
+    },
+    {
+      "receipt_id": "psion-pilot-unsupported-request-refusal-receipt-v1",
+      "phase": "pilot",
+      "family": "unsupported_request_refusal",
+      "benchmark_artifact_id": "psion_unsupported_request_refusal_benchmark_v1",
+      "benchmark_artifact_digest": "73274857b551ca89edd96a200c60d25992a0aaa62a5cb25a1c369f518e8c42c4",
+      "metrics": [
+        {
+          "metric_kind": "unsupported_request_refusal_bps",
+          "observed_bps": 9920,
+          "regression_from_baseline_bps": 0
+        },
+        {
+          "metric_kind": "overrefusal_bps",
+          "observed_bps": 900,
+          "regression_from_baseline_bps": 0
+        }
+      ],
+      "summary": "Pilot candidate refused unsupported requests while keeping over-refusal within band."
+    }
+  ],
+  "replay_receipt": {
+    "receipt_id": "psion-pilot-replay-evidence-v1",
+    "successful_replays": 2,
+    "exact_replay_observed": true,
+    "summary": "Pilot replay evidence matched the bound pretrain-stage replay receipt exactly."
+  },
+  "checkpoint_receipt": {
+    "receipt_id": "psion-pilot-checkpoint-recovery-v1",
+    "checkpoint_id": "pilot-pretrain-final",
+    "successful_restart_roundtrips": 1,
+    "restart_recovery_observed": true,
+    "resume_regression_bps": 220,
+    "summary": "Pilot checkpoint resumed once within the declared regression budget."
+  },
+  "contamination_review_receipt": {
+    "receipt_id": "psion-pilot-contamination-review-v1",
+    "benchmark_isolation_schema_version": "psion.benchmark_isolation.v1",
+    "exclusion_manifest_digest": "sha256:psion_exclusion_manifest_v1",
+    "near_duplicate_review_completed": true,
+    "tokenizer_exposure_review_completed": true,
+    "disposition": "clean",
+    "summary": "Pilot held-out review stayed clean against the frozen exclusion manifest."
+  },
+  "route_calibration_receipt": {
+    "receipt_id": "psion-pilot-route-calibration-v1",
+    "covered_routes": [
+      "direct_model_answer",
+      "exact_executor_handoff",
+      "refusal"
+    ],
+    "route_selection_accuracy_bps": 9843,
+    "route_regression_bps": 120,
+    "summary": "Pilot route calibration covered direct answer, exact-executor handoff, and refusal."
+  },
+  "refusal_calibration_receipt": {
+    "schema_version": "psion.refusal_calibration_receipt.v1",
+    "receipt_id": "psion-pilot-refusal-calibration-v1",
+    "package_id": "psion_unsupported_request_refusal_benchmark_v1",
+    "package_digest": "73274857b551ca89edd96a200c60d25992a0aaa62a5cb25a1c369f518e8c42c4",
+    "capability_matrix_id": "psion_capability_matrix",
+    "capability_matrix_version": "v1",
+    "rows": [
+      {
+        "item_id": "refusal-case-exactness",
+        "capability_region_id": "unsupported_exact_execution_without_executor_surface",
+        "expected_reason_code": "unsupported_exactness_request",
+        "observed_refusal_accuracy_bps": 9950,
+        "reason_code_match_bps": 10000,
+        "unsupported_region_evidence_ref": "evidence://psion/refusal/exactness-without-executor",
+        "detail": "Exactness refusal row shows the lane refuses exact-execution asks that do not expose a verifier or executor surface."
+      },
+      {
+        "item_id": "refusal-case-freshness",
+        "capability_region_id": "freshness_or_run_artifact_dependent_requests",
+        "expected_reason_code": "currentness_or_run_artifact_dependency",
+        "observed_refusal_accuracy_bps": 9910,
+        "reason_code_match_bps": 9950,
+        "unsupported_region_evidence_ref": "evidence://psion/refusal/currentness-or-hidden-artifact",
+        "detail": "Freshness row shows the lane refuses mutable-state asks instead of claiming hidden run-artifact visibility."
+      },
+      {
+        "item_id": "refusal-case-missing-constraints",
+        "capability_region_id": "underspecified_design_without_required_constraints",
+        "expected_reason_code": "missing_required_constraints",
+        "observed_refusal_accuracy_bps": 9890,
+        "reason_code_match_bps": 9940,
+        "unsupported_region_evidence_ref": "evidence://psion/refusal/missing-required-constraints",
+        "detail": "Missing-constraints row shows the lane refuses underspecified design asks instead of inventing requirements."
+      },
+      {
+        "item_id": "refusal-case-open-ended",
+        "capability_region_id": "open_ended_general_assistant_chat",
+        "expected_reason_code": "open_ended_general_assistant_unsupported",
+        "observed_refusal_accuracy_bps": 9910,
+        "reason_code_match_bps": 9930,
+        "unsupported_region_evidence_ref": "evidence://psion/refusal/open-ended-assistant",
+        "detail": "Open-ended row shows the lane keeps generic assistant chat explicitly unsupported instead of drifting into vague half-service."
+      },
+      {
+        "item_id": "refusal-case-over-context",
+        "capability_region_id": "over_context_envelope_requests",
+        "expected_reason_code": "unsupported_context_length",
+        "observed_refusal_accuracy_bps": 9940,
+        "reason_code_match_bps": 9980,
+        "unsupported_region_evidence_ref": "evidence://psion/refusal/over-context-envelope",
+        "detail": "Over-context row shows prompts beyond the hard context boundary refuse with the declared reason instead of truncating silently."
+      }
+    ],
+    "aggregate_unsupported_request_refusal_bps": 9920,
+    "aggregate_reason_code_match_bps": 9960,
+    "supported_control_overrefusal_bps": 900,
+    "refusal_regression_bps": 60,
+    "summary": "Canonical refusal-calibration receipt proving unsupported exactness, missing constraints, context overflow, freshness, and open-ended assistant asks stay bound to named capability-matrix regions and refusal reasons.",
+    "receipt_digest": "73dedb096d505022a449c46f195205f7d52fc12e01733e0acc01c82dca5e63c3"
+  },
+  "decision": "promoted",
+  "decision_summary": "Pilot candidate cleared the pilot gate on architecture reasoning, held-out improvement, checkpoint recovery, replay, route calibration, refusal calibration, and contamination review."
+}

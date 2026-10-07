@@ -1,0 +1,94 @@
+{
+  "schema_version": "psion.a1_minimal_distributed_lm.local_update_artifact_manifest.v1",
+  "lane_id": "a1_minimal_distributed_lm_001",
+  "run_id": "a1_minimal_distributed_lm_001.local_update_fixture",
+  "window_id": "window.a1_minimal_distributed_lm_001.local_update.fixture",
+  "stage_id": "stage.a1_minimal_distributed_lm_001.local_update",
+  "assignment_id": "a1_minimal_distributed_lm_001.local_update.assignment.fixture",
+  "contribution_id": "contribution.a1_minimal_distributed_lm_001.local_update.fixture",
+  "worker_id": "psionic.local_update.fixture.worker",
+  "node_pubkey": "pylon-node-pubkey.fixture.a1_minimal_distributed_lm",
+  "contributor_node_id": "pylon-node-pubkey.fixture.a1_minimal_distributed_lm",
+  "work_class": "local_update_training",
+  "replica_type": "single_worker_local_update",
+  "tokenizer_digest": "sha256:e32b619b67029aba5de26391f9a5f4a32801220ca690ae2c89d565e61069cf63",
+  "tokenized_dataset_digest": "sha256:f0b92dc6301fc72e05a4ead6d85a4b5706e51267c116ecd72025a90c43a37905",
+  "validation_set_digest": "sha256:6c1c6ca83a2d8eca6cb133f3ec719e822f134452723e72e5201407b28cd3d228",
+  "input_shard": {
+    "shard_id": "train-shard-0000",
+    "split_name": "training",
+    "storage_ref": "embedded://fixtures/psion/tokenized/a1_minimal_distributed_lm_tokenizer_dataset_bundle_v1.json#train-shard-0000",
+    "source_shard_digest": "sha256:4a64294e6b76fd8c0f5356c0139575d3c1c1644960ea0841aa1f639581a92ad1",
+    "tokenized_dataset_digest": "sha256:f0b92dc6301fc72e05a4ead6d85a4b5706e51267c116ecd72025a90c43a37905"
+  },
+  "input_token_range": {
+    "start_token": 0,
+    "end_token_exclusive": 6,
+    "context_length": 2,
+    "window_start_positions": [
+      0,
+      1,
+      2,
+      3
+    ],
+    "covered_token_count": 6,
+    "consumed_token_count": 8
+  },
+  "base_checkpoint_ref": "base://a1_minimal_distributed_lm/step-000000",
+  "base_checkpoint_digest": "sha256:5b4be58863fae6ec4a16e83fac0b74d2e57d22d55f3d05d9457e326e43660ad2",
+  "output_checkpoint_ref": "checkpoint://a1_minimal_distributed_lm_001.local_update_fixture/step-000004",
+  "output_checkpoint_digest": "sha256:51b5dbdf4e5d5b75cf8293fac62f4f2287575b2eedca70e529a56409ee568919",
+  "output_delta_ref": "delta://a1_minimal_distributed_lm_001.local_update_fixture/lm_head.weight",
+  "output_delta_digest": "sha256:2ccbf7ea2a89e8403212e2985c6d0a158568bfafe5141eed8a0214864092d7c1",
+  "local_update_report_digest": "sha256:f643547ad6002ea4028b9cf3f0993f02679cf974eb02ac002606e40a8a3ceec8",
+  "artifact_count": 4,
+  "artifacts": [
+    {
+      "artifact_kind": "local_update_report",
+      "artifact_role": "proof_report",
+      "logical_ref": "artifact://a1_minimal_distributed_lm_001.local_update_fixture/local_update_report_v1",
+      "digest": "sha256:f643547ad6002ea4028b9cf3f0993f02679cf974eb02ac002606e40a8a3ceec8",
+      "byte_count": null
+    },
+    {
+      "artifact_kind": "checkpoint_step2",
+      "artifact_role": "resume_checkpoint",
+      "logical_ref": "checkpoint://a1_minimal_distributed_lm_001.local_update_fixture/step-000002",
+      "digest": "sha256:12f2f34a319b687f7dfe99b3e2fafe70b7dc33154293ebd9f06bccbfbdb4c64f",
+      "byte_count": 62393
+    },
+    {
+      "artifact_kind": "checkpoint_step4",
+      "artifact_role": "output_checkpoint",
+      "logical_ref": "checkpoint://a1_minimal_distributed_lm_001.local_update_fixture/step-000004",
+      "digest": "sha256:51b5dbdf4e5d5b75cf8293fac62f4f2287575b2eedca70e529a56409ee568919",
+      "byte_count": 62727
+    },
+    {
+      "artifact_kind": "lm_head_delta",
+      "artifact_role": "output_delta",
+      "logical_ref": "delta://a1_minimal_distributed_lm_001.local_update_fixture/lm_head.weight",
+      "digest": "sha256:2ccbf7ea2a89e8403212e2985c6d0a158568bfafe5141eed8a0214864092d7c1",
+      "byte_count": null
+    }
+  ],
+  "materialized_paths": [
+    {
+      "artifact_kind": "local_update_report",
+      "path": "fixtures/psion/a1_minimal_distributed_lm/local_update_report_v1.json",
+      "byte_count": null
+    },
+    {
+      "artifact_kind": "checkpoint_step2",
+      "path": "fixtures/psion/a1_minimal_distributed_lm/local_update_checkpoint_step2_v1.json",
+      "byte_count": 62393
+    },
+    {
+      "artifact_kind": "checkpoint_step4",
+      "path": "fixtures/psion/a1_minimal_distributed_lm/local_update_checkpoint_step4_v1.json",
+      "byte_count": 62727
+    }
+  ],
+  "artifact_manifest_digest": "sha256:dedf62d211a2ba66ca45642016350dceb718af4fe655a575b6ba0619b0effba3",
+  "claim_boundary": "This manifest binds logical local-update artifacts for a1_minimal_distributed_lm_001. The materialized paths are excluded from logical digests so the same contribution can be replayed on another machine."
+}

@@ -1,0 +1,201 @@
+{
+  "schema_version": "psionic.remote_training_run_index.v2",
+  "index_id": "remote-training-run-index-sample-v2",
+  "generated_at_ms": 1742846405000,
+  "entries": [
+    {
+      "provider": "google_cloud",
+      "profile_id": "google_a2_ultragpu_1g",
+      "lane_id": "psion.google_single_node.accelerated",
+      "run_id": "psion-google-summary-only-sample",
+      "repo_revision": "main@5e6f5f0f",
+      "track_semantics": {
+        "track_family": "psion",
+        "track_id": "psion.reference_pilot.single_node.v1",
+        "execution_class": "single_node",
+        "comparability_class": "not_comparable",
+        "proof_posture": "summary_only",
+        "public_equivalence_class": "not_applicable",
+        "semantic_summary": "Google single-node Psion keeps provider-neutral run identity and summary truth without inventing a score law or loss curve."
+      },
+      "result_classification": "completed_success",
+      "series_status": "unavailable",
+      "series_unavailable_reason": "no canonical optimizer-step loss or math series was retained for this completed Google lane",
+      "last_heartbeat_at_ms": 1742760920000,
+      "bundle_artifact_uri": "fixtures/training_visualization/psion_google_summary_only_remote_training_visualization_bundle_v2.json",
+      "bundle_digest": "41aacce46ad898cab5fff7fbeb4b6e0a6e14759909e93f730b0d5ca9bd195666",
+      "semantic_summary": "Google single-node Psion keeps provider-neutral run identity and summary truth without inventing a score law or loss curve."
+    },
+    {
+      "provider": "google_cloud",
+      "profile_id": "g2_l4_single_node_accelerated",
+      "lane_id": "psion_accelerated_reference_pilot",
+      "run_id": "psion-google-live-sample",
+      "repo_revision": "main@979af617",
+      "track_semantics": {
+        "track_family": "psion",
+        "track_id": "psion.reference_pilot.accelerated_single_node.v1",
+        "execution_class": "single_node",
+        "comparability_class": "same_track_comparable",
+        "proof_posture": "runtime_measured",
+        "public_equivalence_class": "not_applicable",
+        "semantic_summary": "Accelerated Google Psion retains measured live runtime telemetry every second without claiming PGOLF-style score comparability."
+      },
+      "result_classification": "active",
+      "series_status": "available",
+      "last_heartbeat_at_ms": 1742846404900,
+      "bundle_artifact_uri": "fixtures/training_visualization/psion_google_live_remote_training_visualization_bundle_v2.json",
+      "bundle_digest": "de1cff6baf2fe74480fc4caf910528fa5127391621c04f504dfb6826745a7695",
+      "semantic_summary": "Accelerated Google Psion retains measured live runtime telemetry every second without claiming PGOLF-style score comparability."
+    },
+    {
+      "provider": "run_pod",
+      "profile_id": "runpod_h100_single_gpu",
+      "lane_id": "parameter_golf.runpod_single_h100",
+      "run_id": "parameter-golf-runpod-single-h100-live-sample",
+      "repo_revision": "main@5e6f5f0f",
+      "track_semantics": {
+        "track_family": "parameter_golf",
+        "track_id": "non-record-unlimited-compute-16mb",
+        "execution_class": "single_node",
+        "comparability_class": "same_track_comparable",
+        "proof_posture": "runtime_measured",
+        "public_equivalence_class": "not_applicable",
+        "score_law_ref": "docs/PARAMETER_GOLF_NON_RECORD_SUBMISSION.md",
+        "artifact_cap_bytes": 16000000,
+        "semantic_summary": "Single-node PGOLF retains live optimizer telemetry under the non-record unlimited-compute 16MB submission track."
+      },
+      "result_classification": "active",
+      "series_status": "available",
+      "last_heartbeat_at_ms": 1742846402000,
+      "bundle_artifact_uri": "fixtures/training_visualization/parameter_golf_live_remote_training_visualization_bundle_v2.json",
+      "bundle_digest": "b7f4a4b797f7faa383ffc25fb522e244e9f3c7d9cc224b0927aa8a8e962691fc",
+      "semantic_summary": "Single-node PGOLF retains live optimizer telemetry under the non-record unlimited-compute 16MB submission track."
+    },
+    {
+      "provider": "run_pod",
+      "profile_id": "runpod_8xh100_parameter_golf",
+      "lane_id": "parameter_golf_distributed_8xh100",
+      "run_id": "parameter-golf-runpod-8xh100-sample",
+      "repo_revision": "main@5e6f5f0f",
+      "track_semantics": {
+        "track_family": "parameter_golf",
+        "track_id": "non-record-unlimited-compute-16mb",
+        "execution_class": "dense_distributed",
+        "comparability_class": "same_track_comparable",
+        "proof_posture": "runtime_measured",
+        "public_equivalence_class": "not_applicable",
+        "score_law_ref": "docs/PARAMETER_GOLF_NON_RECORD_SUBMISSION.md",
+        "artifact_cap_bytes": 16000000,
+        "semantic_summary": "Distributed PGOLF retains the same non-record track semantics while widening execution class to dense distributed runtime telemetry."
+      },
+      "result_classification": "active",
+      "series_status": "available",
+      "last_heartbeat_at_ms": 1742846512000,
+      "bundle_artifact_uri": "fixtures/training_visualization/parameter_golf_distributed_8xh100_remote_training_visualization_bundle_v2.json",
+      "bundle_digest": "7569345ac27d8da9627618d2a6d2d9d4ea2e4863890de46f72975c743c0d3d79",
+      "semantic_summary": "Distributed PGOLF retains the same non-record track semantics while widening execution class to dense distributed runtime telemetry."
+    },
+    {
+      "provider": "local_hybrid",
+      "profile_id": "parameter_golf.homegolf_mixed_cluster",
+      "lane_id": "parameter_golf.homegolf_clustered_score_surface",
+      "run_id": "psion-xprovider-pretrain-mixed-backend-20260325+parameter-golf-single-h100-trainer",
+      "repo_revision": "fixtures@parameter_golf_homegolf_clustered_run_surface.v1",
+      "track_semantics": {
+        "track_family": "homegolf",
+        "track_id": "parameter_golf.home_cluster_compatible_10min.v1",
+        "execution_class": "home_cluster_mixed_device",
+        "comparability_class": "public_baseline_comparable",
+        "proof_posture": "score_closeout_measured",
+        "public_equivalence_class": "public_baseline_comparable_only",
+        "score_law_ref": "docs/HOMEGOLF_TRACK.md",
+        "artifact_cap_bytes": 16000000,
+        "wallclock_cap_seconds": 600,
+        "semantic_summary": "HOMEGOLF binds a mixed-device home-cluster score closeout to the strict 10-minute public comparison law while refusing public-leaderboard equivalence."
+      },
+      "primary_score": {
+        "score_metric_id": "parameter_golf.validation_bits_per_byte",
+        "score_direction": "lower_is_better",
+        "score_unit": "bits_per_byte",
+        "score_value": 6.306931747817168,
+        "score_value_observed_at_ms": 1742910000000,
+        "score_summary": "The retained clustered HOMEGOLF surface carries one closed-out contest-style validation score for the mixed-device lane."
+      },
+      "score_surface": {
+        "score_closeout_posture": "score_closed_out",
+        "promotion_gate_posture": "held",
+        "delta_rows": [
+          {
+            "reference_id": "public_naive_baseline",
+            "score_metric_id": "parameter_golf.validation_bits_per_byte",
+            "reference_score_value": 1.2243657,
+            "delta_value": 5.082566047817168,
+            "delta_summary": "The current HOMEGOLF closeout remains above the public naive baseline by the retained delta value."
+          },
+          {
+            "reference_id": "current_public_leaderboard_best",
+            "score_metric_id": "parameter_golf.validation_bits_per_byte",
+            "reference_score_value": 1.1194,
+            "delta_value": 5.187531747817168,
+            "delta_summary": "The current HOMEGOLF closeout remains above the retained public-best row and therefore cannot claim a beat posture."
+          }
+        ],
+        "semantic_summary": "HOMEGOLF now exposes closed-out score state, retained public-comparison deltas, and a held promotion gate in the shared visualization bundle family."
+      },
+      "result_classification": "completed_success",
+      "series_status": "partial",
+      "series_unavailable_reason": "HOMEGOLF retained score-closeout, runtime, and comparison truth but did not retain one canonical optimizer-step loss curve for the mixed-device closeout lane",
+      "bundle_artifact_uri": "fixtures/training_visualization/parameter_golf_homegolf_remote_training_visualization_bundle_v2.json",
+      "bundle_digest": "18dc0f1d7bd939aecbe4a175d109ef3fbe3b662d8c0f2c0338dd8cc9b7237463",
+      "semantic_summary": "HOMEGOLF mixed-device score closeout now appears in the shared track-aware training run index with retained score deltas and held promotion posture."
+    },
+    {
+      "provider": "local_hybrid",
+      "profile_id": "psion_small_decoder_pgolf_core_v0",
+      "lane_id": "parameter_golf.promoted_general_xtrain_quick_eval",
+      "run_id": "parameter-golf-promoted-general-xtrain-baseline",
+      "repo_revision": "fixtures@parameter_golf_xtrain_quick_eval_report.v1",
+      "track_semantics": {
+        "track_family": "xtrain",
+        "track_id": "parameter_golf.promoted_general_xtrain.quick_eval_window1.v1",
+        "execution_class": "bounded_train_to_infer",
+        "comparability_class": "same_track_comparable",
+        "proof_posture": "bounded_train_to_infer",
+        "public_equivalence_class": "not_public_equivalent",
+        "score_law_ref": "docs/PARAMETER_GOLF_XTRAIN_TRACK.md",
+        "semantic_summary": "Bounded XTRAIN records a local-reference train-to-infer score lane for the promoted PGOLF family. It is comparable only inside the same XTRAIN track and does not claim public or HOMEGOLF-equivalent score posture."
+      },
+      "primary_score": {
+        "score_metric_id": "parameter_golf.validation_bits_per_byte",
+        "score_direction": "lower_is_better",
+        "score_unit": "bits_per_byte",
+        "score_value": 4.202998425869111,
+        "score_value_observed_at_ms": 1774607104000,
+        "score_summary": "The retained bounded XTRAIN quick-eval lane closes one local-reference validation BPB for the promoted PGOLF family under the current one-token attention-window posture."
+      },
+      "score_surface": {
+        "score_closeout_posture": "score_closed_out",
+        "promotion_gate_posture": "held",
+        "delta_rows": [
+          {
+            "reference_id": "promoted_proof_baseline",
+            "score_metric_id": "parameter_golf.validation_bits_per_byte",
+            "reference_score_value": 9.93265382277841,
+            "delta_value": -5.7296553969092985,
+            "delta_summary": "The bounded XTRAIN lane improves BPB versus the promoted proof baseline, but the result remains non-public and does not yet upgrade into HOMEGOLF-critical score posture."
+          }
+        ],
+        "semantic_summary": "Bounded XTRAIN closes a private local-reference score, preserves its delta versus the proof baseline, and keeps promotion held because the lane is not public-equivalent and does not yet prove HOMEGOLF score relevance."
+      },
+      "result_classification": "completed_success",
+      "series_status": "partial",
+      "series_unavailable_reason": "The retained bounded XTRAIN lane closes score and runtime parity but does not yet publish one append-only live step series in the shared visualization family.",
+      "bundle_artifact_uri": "fixtures/training_visualization/parameter_golf_xtrain_remote_training_visualization_bundle_v2.json",
+      "bundle_digest": "9e1acb8a3d533310d1dd1e2dcbad010549c8069034837796b26a85458cd02920",
+      "semantic_summary": "Bounded XTRAIN now appears in the shared track-aware run index with explicit proof posture, retained BPB, and a held non-public promotion gate."
+    }
+  ],
+  "detail": "The v2 run index keeps the shipped v1 discovery substrate readable while adding explicit track family, execution class, proof posture, comparability, score-law, HOMEGOLF score-surface semantics, and bounded XTRAIN train-to-infer posture.",
+  "index_digest": "8f4abdd8f6536e9d7110d97c00a306ee7f31a654bb1816d68d169b121b875f9c"
+}

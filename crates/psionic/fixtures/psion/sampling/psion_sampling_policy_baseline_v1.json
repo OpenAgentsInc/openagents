@@ -1,0 +1,97 @@
+{
+  "schema_version": "psion.sampling_policy.v1",
+  "tokenized_corpus_schema_version": "psion.tokenized_corpus_manifest.v1",
+  "raw_source_schema_version": "psion.raw_source_manifest.v1",
+  "dataset_identity": "psion_corpus_tokenized@v1",
+  "policy_id": "psion_pretrain_mix",
+  "policy_version": "v0",
+  "packing_policy_version": "v1",
+  "maximum_code_token_ratio_bps": 1500,
+  "source_family_weights": [
+    {
+      "source_family_id": "computer_architecture_history",
+      "content_class": "prose",
+      "sampling_weight_bps": 5000,
+      "maximum_family_token_share_bps": 5600,
+      "rationale": "Keep architecture-history prose slightly above parity so system explanations stay grounded in historical design context."
+    },
+    {
+      "source_family_id": "normative_specs",
+      "content_class": "spec_text",
+      "sampling_weight_bps": 5000,
+      "maximum_family_token_share_bps": 5000,
+      "rationale": "Keep spec text at parity so the lane does not lose normative reading ability."
+    }
+  ],
+  "source_contribution_caps": [
+    {
+      "source_id": "arch_textbook_foster_1985",
+      "maximum_source_token_share_bps": 5600,
+      "rationale": "One textbook may not dominate the prose share on its own."
+    },
+    {
+      "source_id": "wasm_core_spec_release_2",
+      "maximum_source_token_share_bps": 5000,
+      "rationale": "One normative spec may not dominate the full mixture."
+    }
+  ],
+  "repetitive_region_controls": [
+    {
+      "source_id": "arch_textbook_foster_1985",
+      "document_id": "arch_textbook_foster_1985:chapter_01",
+      "section_id": "arch_textbook_foster_1985:ch01:s02",
+      "downweight_multiplier_bps": 5500,
+      "maximum_region_token_share_bps": 1200,
+      "rationale": "Repeated micro-operation taxonomy passages should not dominate prose exposure."
+    },
+    {
+      "source_id": "wasm_core_spec_release_2",
+      "document_id": "wasm_core_spec_release_2:chapter_02",
+      "section_id": "wasm_core_spec_release_2:2.1",
+      "downweight_multiplier_bps": 6500,
+      "maximum_region_token_share_bps": 1400,
+      "rationale": "Validation-context boilerplate should stay available without overwhelming other specification sections."
+    }
+  ],
+  "content_class_token_share_report": [
+    {
+      "content_class": "prose",
+      "observed_token_share_bps": 5200
+    },
+    {
+      "content_class": "spec_text",
+      "observed_token_share_bps": 4800
+    },
+    {
+      "content_class": "code",
+      "observed_token_share_bps": 0
+    }
+  ],
+  "regression_thresholds": [
+    {
+      "regression_kind": "explanation_quality",
+      "maximum_regression_bps": 150,
+      "rationale": "Explanatory quality may not regress materially when the mixture changes."
+    },
+    {
+      "regression_kind": "spec_interpretation",
+      "maximum_regression_bps": 100,
+      "rationale": "Specification interpretation is a core Psion bar."
+    },
+    {
+      "regression_kind": "tradeoff_reasoning",
+      "maximum_regression_bps": 100,
+      "rationale": "Tradeoff reasoning must remain stable across mixture updates."
+    },
+    {
+      "regression_kind": "invariant_articulation",
+      "maximum_regression_bps": 100,
+      "rationale": "Invariant articulation must not erode under corpus expansion."
+    },
+    {
+      "regression_kind": "coding_fluency",
+      "maximum_regression_bps": 300,
+      "rationale": "Coding fluency is tracked, but it does not outrank reasoning quality."
+    }
+  ]
+}

@@ -1,0 +1,47 @@
+[package]
+name = "psionic-models"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+publish.workspace = true
+description = "Reusable model abstractions and metadata for Psionic"
+
+[lints]
+workspace = true
+
+[lib]
+path = "src/lib.rs"
+
+[features]
+default = []
+csm-cuda = ["candle-transformers/cuda", "moshi/cuda"]
+csm-metal = ["candle-transformers/metal", "moshi/metal"]
+medpsy-cuda = ["candle/cuda", "candle-nn/cuda", "candle-transformers/cuda"]
+qwen38-vision-cuda = ["candle/cuda", "candle-nn/cuda", "candle-transformers/cuda"]
+
+[dependencies]
+candle = { package = "candle-core", version = "0.9.2" }
+candle-nn = "0.9.2"
+candle-transformers = "0.9.2"
+fancy-regex = "0.16.2"
+half = "2.4.1"
+hex = { workspace = true }
+moshi = "0.6.4"
+psionic-catalog = { path = "../psionic-catalog" }
+psionic-core = { path = "../psionic-core" }
+psionic-ir = { path = "../psionic-ir" }
+psionic-nn = { path = "../psionic-nn" }
+psionic-transformer = { path = "../psionic-transformer" }
+openai-harmony = "0.0.8"
+psionic-runtime = { path = "../psionic-runtime" }
+safetensors = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+sha2 = { workspace = true }
+thiserror = { workspace = true }
+tokenizers = { version = "0.23.1", default-features = false, features = ["onig"] }
+unicode-normalization = "0.1.24"
+
+[dev-dependencies]
+tempfile = "3"

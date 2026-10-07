@@ -1,0 +1,136 @@
+{
+  "schema_version": "psion.actual_pretraining_scaling_bundle.v1",
+  "scaling_bundle_id": "psion_actual_pretraining_scaling_bundle_v1",
+  "lane_id": "psion_actual_pretraining_v1",
+  "lane_spec": {
+    "path": "fixtures/psion/pretrain/psion_actual_pretraining_lane_spec_v1.json",
+    "sha256": "6640fce7435338dc0f66b28135f024d4b62b428826aa6ba122c22644749c8057"
+  },
+  "recipe_bundle": {
+    "path": "fixtures/psion/pretrain/psion_actual_pretraining_recipe_bundle_v1.json",
+    "sha256": "37f3a4580a5bd7ea48bfad63ce996162d4c76d24c3044032eceae233a9406007"
+  },
+  "data_bundle": {
+    "path": "fixtures/psion/pretrain/psion_actual_pretraining_data_bundle_v1.json",
+    "sha256": "8e0d15306d1cd4c438bb27b4057f05d0923bc1cafd2f3c73452c612b85098319"
+  },
+  "systems_bundle": {
+    "path": "fixtures/psion/pretrain/psion_actual_pretraining_systems_bundle_v1.json",
+    "sha256": "529d4a31e04f8594b032569311c84e591b6d95ae6511111ba36399f9b5ff3268"
+  },
+  "anchor_run_bundle": {
+    "path": "fixtures/psion/trusted_cluster/psion_trusted_cluster_run_bundle_v1.json",
+    "sha256": "44d0cbf1af2e46255978205942c26c1c50fd7950677c4d695893c37c35bc09a5"
+  },
+  "anchor_stage_receipt": {
+    "path": "fixtures/psion/pretrain/psion_pretrain_stage_receipt_v1.json",
+    "sha256": "4bf0aaace38aa6f4578a046020f8fcc5a4dfdfdb4b8b35c9b4331b58f8429de5"
+  },
+  "anchor_observability_receipt": {
+    "path": "fixtures/psion/observability/psion_broader_pretrain_run_observability_receipt_v1.json",
+    "sha256": "d906936c9a2b5ba8fa18f7a545e15f203a972e4a0968db98e6986f324ab525bf"
+  },
+  "benchmark_receipt_set": {
+    "path": "fixtures/psion/benchmarks/psion_benchmark_receipt_set_v1.json",
+    "sha256": "288684507e93e496d4931aaefa1493818b2c7736b9031049eb3c75192f2eefc7"
+  },
+  "ablation_family_id": "psion_actual_pretraining_scaling_family_v1",
+  "candidates": [
+    {
+      "candidate_id": "psion_actual_pretraining_internal64m_projection",
+      "candidate_kind": "smaller_projection",
+      "model_size_anchor": "internal64m",
+      "estimated_parameter_count": 67108864,
+      "train_token_budget": 536870912,
+      "validation_token_budget": 16777216,
+      "held_out_token_budget": 4194304,
+      "optimizer_steps": 8192,
+      "projected_mean_tokens_per_second": 418910,
+      "projected_wall_clock_ms": 1336432,
+      "projected_total_cost_microusd": 181107749,
+      "projected_validation_loss_milli": 1217,
+      "projected_average_reasoning_pass_rate_bps": 8452,
+      "projected_reasoning_floor_bps": 8000,
+      "evidence_kind": "projected_from_anchor",
+      "projection_basis": "Projection uses the retained 128M broader-pretraining anchor, a fixed eight-tokens-per-parameter rule, and inverse-sqrt throughput scaling on the admitted four-node H100 topology.",
+      "eligible_under_rule": true,
+      "selected_for_recipe": false,
+      "rejection_reason": "smaller_than_selected_candidate",
+      "detail": "Smaller projection remains eligible but is not selected because the frozen rule chooses the largest eligible candidate rather than leaving unused budget on the table."
+    },
+    {
+      "candidate_id": "psion_actual_pretraining_internal128m_anchor",
+      "candidate_kind": "measured_anchor",
+      "model_size_anchor": "internal128m",
+      "estimated_parameter_count": 134217728,
+      "train_token_budget": 1073741824,
+      "validation_token_budget": 33554432,
+      "held_out_token_budget": 8388608,
+      "optimizer_steps": 16384,
+      "projected_mean_tokens_per_second": 296214,
+      "projected_wall_clock_ms": 3780000,
+      "projected_total_cost_microusd": 512250000,
+      "projected_validation_loss_milli": 1195,
+      "projected_average_reasoning_pass_rate_bps": 8532,
+      "projected_reasoning_floor_bps": 8040,
+      "evidence_kind": "measured_anchor",
+      "projection_basis": "Measured anchor comes directly from the retained broader-pretraining observability receipt, pretrain stage receipt, and benchmark receipt set.",
+      "eligible_under_rule": true,
+      "selected_for_recipe": true,
+      "rejection_reason": null,
+      "detail": "The canonical recipe stays on the measured 128M anchor because it is the largest candidate that clears the frozen stage-length, cost, and quality thresholds on the admitted four-node H100 lane."
+    },
+    {
+      "candidate_id": "psion_actual_pretraining_internal256m_projection",
+      "candidate_kind": "larger_projection",
+      "model_size_anchor": "internal256m",
+      "estimated_parameter_count": 268435456,
+      "train_token_budget": 2147483648,
+      "validation_token_budget": 67108864,
+      "held_out_token_budget": 16777216,
+      "optimizer_steps": 32768,
+      "projected_mean_tokens_per_second": 209455,
+      "projected_wall_clock_ms": 10691449,
+      "projected_total_cost_microusd": 1448861045,
+      "projected_validation_loss_milli": 1173,
+      "projected_average_reasoning_pass_rate_bps": 8612,
+      "projected_reasoning_floor_bps": 8080,
+      "evidence_kind": "projected_from_anchor",
+      "projection_basis": "Projection uses the retained 128M broader-pretraining anchor, a fixed eight-tokens-per-parameter rule, and inverse-sqrt throughput scaling on the admitted four-node H100 topology.",
+      "eligible_under_rule": false,
+      "selected_for_recipe": false,
+      "rejection_reason": "exceeds_stage_and_cost_budget",
+      "detail": "Larger projection improves the projected quality surfaces but exceeds the frozen wall-clock and total-cost ceilings on the admitted topology, so it cannot replace the canonical recipe yet."
+    }
+  ],
+  "selection_rule": {
+    "rule_id": "psion_actual_pretraining_scaling_rule_v1",
+    "selection_policy": "largest_eligible_candidate",
+    "admitted_recipe_id": "psion_actual_pretraining_recipe_v1",
+    "chosen_candidate_id": "psion_actual_pretraining_internal128m_anchor",
+    "tokens_per_parameter": 8,
+    "tokens_per_step": 65536,
+    "maximum_stage_length_ms": 4200000,
+    "maximum_total_cost_microusd": 600000000,
+    "maximum_validation_loss_milli": 1220,
+    "minimum_reasoning_floor_bps": 8000,
+    "required_benchmark_package_families": [
+      "architecture_reasoning",
+      "normative_spec_reading",
+      "engineering_spec_interpretation",
+      "memorization_versus_reasoning"
+    ],
+    "detail": "The scaling rule keeps recipe authority honest by choosing the largest candidate that still clears the admitted stage-length, cost, validation-loss, and reasoning-floor thresholds on the real lane."
+  },
+  "support_refs": [
+    "docs/PSION_ACTUAL_PRETRAINING_SCALING_BUNDLE.md",
+    "docs/PSION_ACTUAL_PRETRAINING_RECIPE.md",
+    "docs/TRAIN_SYSTEM.md",
+    "fixtures/psion/observability/psion_broader_pretrain_run_observability_receipt_v1.json",
+    "fixtures/psion/pretrain/psion_pretrain_stage_receipt_v1.json",
+    "fixtures/psion/benchmarks/psion_benchmark_receipt_set_v1.json"
+  ],
+  "claim_boundary": "The actual-lane scaling bundle freezes one bounded 64M -> 128M -> 256M recipe-family comparison anchored to the retained broader-pretraining receipts. It does not claim an open-ended scaling-law service, unbounded sweep infrastructure, or detached research automation outside the frozen actual lane.",
+  "summary": "The canonical actual-pretraining scaling bundle binds one measured 128M anchor, one smaller projection, one larger projection, and one largest-eligible selection rule into actual recipe authority.",
+  "bundle_digest": "6412aed73919b9a4a92bcadfd350d1553342c1e46f715bdb15f5059d1595d849"
+}

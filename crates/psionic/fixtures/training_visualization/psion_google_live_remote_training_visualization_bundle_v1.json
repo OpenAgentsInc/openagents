@@ -1,0 +1,247 @@
+{
+  "schema_version": "psionic.remote_training_visualization_bundle.v1",
+  "bundle_id": "psion-google-live-sample-v1",
+  "provider": "google_cloud",
+  "profile_id": "g2_l4_single_node_accelerated",
+  "lane_id": "psion_accelerated_reference_pilot",
+  "run_id": "psion-google-live-sample",
+  "repo_revision": "main@979af617",
+  "result_classification": "active",
+  "refresh_contract": {
+    "target_ui_update_interval_ms": 1000,
+    "emission_mode": "append_only_snapshots",
+    "last_heartbeat_at_ms": 1742846404900,
+    "heartbeat_seq": 4
+  },
+  "series_status": "available",
+  "timeline": [
+    {
+      "observed_at_ms": 1742846400000,
+      "phase": "dataset_staging",
+      "subphase": "reference_corpus_build",
+      "detail": "The accelerated Google single-node Psion lane materialized the repo-owned reference corpus."
+    },
+    {
+      "observed_at_ms": 1742846401000,
+      "phase": "evaluation",
+      "subphase": "initial_validation",
+      "detail": "The accelerated lane scored its initial validation posture before CUDA optimizer steps."
+    },
+    {
+      "observed_at_ms": 1742846402000,
+      "phase": "training",
+      "subphase": "optimizer_step",
+      "detail": "The accelerated lane entered measured CUDA optimizer steps and began emitting one-second heartbeats."
+    }
+  ],
+  "summary": {
+    "total_steps_completed": 2,
+    "latest_global_step": 2,
+    "latest_train_loss": 2.182,
+    "latest_validation_loss": 2.041,
+    "latest_tokens_per_second": 51200,
+    "latest_samples_per_second_milli": 8000,
+    "latest_checkpoint_ref": "checkpoint://psion/reference_pilot/step-2",
+    "detail": "The accelerated Google single-node Psion lane is active and retaining live loss, math, runtime, and GPU telemetry every second."
+  },
+  "heartbeat_series": [
+    {
+      "observed_at_ms": 1742846401000,
+      "phase": "evaluation",
+      "subphase": "initial_validation",
+      "active_subsystems": [
+        "validation",
+        "held_out_eval"
+      ],
+      "stale_after_ms": 2500
+    },
+    {
+      "observed_at_ms": 1742846402000,
+      "phase": "training",
+      "subphase": "optimizer_step",
+      "step_in_progress": 1,
+      "active_subsystems": [
+        "cuda_graph",
+        "gradient_batch",
+        "optimizer_step"
+      ],
+      "stale_after_ms": 2500
+    },
+    {
+      "observed_at_ms": 1742846403000,
+      "phase": "training",
+      "subphase": "optimizer_step",
+      "step_in_progress": 2,
+      "active_subsystems": [
+        "cuda_graph",
+        "gradient_batch",
+        "optimizer_step"
+      ],
+      "stale_after_ms": 2500
+    },
+    {
+      "observed_at_ms": 1742846404900,
+      "phase": "checkpointing",
+      "subphase": "export_checkpoint",
+      "active_subsystems": [
+        "checkpoint_export",
+        "optimizer_state"
+      ],
+      "stale_after_ms": 2500
+    }
+  ],
+  "loss_series": [
+    {
+      "global_step": 0,
+      "elapsed_ms": 1000,
+      "validation_loss": 2.411
+    },
+    {
+      "global_step": 1,
+      "elapsed_ms": 2000,
+      "train_loss": 2.304
+    },
+    {
+      "global_step": 2,
+      "elapsed_ms": 3000,
+      "train_loss": 2.182,
+      "validation_loss": 2.041
+    }
+  ],
+  "math_series": [
+    {
+      "observed_at_ms": 1742846402000,
+      "global_step": 1,
+      "learning_rate": 0.0005,
+      "gradient_norm": 1.42,
+      "parameter_norm": 9.81,
+      "update_norm": 0.22,
+      "clip_fraction": 0.21,
+      "clip_event_count": 3,
+      "non_finite_count": 0,
+      "model_specific_diagnostics": {
+        "model_materialization_ms": 41.0,
+        "parameter_group_count": 3.0
+      }
+    },
+    {
+      "observed_at_ms": 1742846403000,
+      "global_step": 2,
+      "learning_rate": 0.0005,
+      "gradient_norm": 1.21,
+      "parameter_norm": 9.92,
+      "update_norm": 0.18,
+      "clip_fraction": 0.18,
+      "clip_event_count": 3,
+      "non_finite_count": 0,
+      "model_specific_diagnostics": {
+        "model_materialization_ms": 39.0,
+        "parameter_group_count": 3.0
+      }
+    }
+  ],
+  "runtime_series": [
+    {
+      "observed_at_ms": 1742846402000,
+      "forward_ms": 811,
+      "optimizer_ms": 201,
+      "tokens_per_second": 50200,
+      "samples_per_second_milli": 7800
+    },
+    {
+      "observed_at_ms": 1742846403000,
+      "forward_ms": 789,
+      "optimizer_ms": 198,
+      "tokens_per_second": 51200,
+      "samples_per_second_milli": 8000
+    },
+    {
+      "observed_at_ms": 1742846404900,
+      "checkpoint_ms": 144,
+      "evaluation_ms": 320
+    }
+  ],
+  "gpu_series": [
+    {
+      "observed_at_ms": 1742846402000,
+      "device_id": "cuda:0",
+      "device_label": "NVIDIA L4",
+      "utilization_bps": 8400,
+      "memory_used_bytes": 11811160064,
+      "memory_total_bytes": 25769803776,
+      "temperature_celsius": 58,
+      "power_watts": 152
+    },
+    {
+      "observed_at_ms": 1742846403000,
+      "device_id": "cuda:0",
+      "device_label": "NVIDIA L4",
+      "utilization_bps": 8650,
+      "memory_used_bytes": 12079595520,
+      "memory_total_bytes": 25769803776,
+      "temperature_celsius": 59,
+      "power_watts": 156
+    }
+  ],
+  "distributed_series": [],
+  "event_series": [
+    {
+      "observed_at_ms": 1742846400000,
+      "severity": "info",
+      "event_kind": "trainer_started",
+      "detail": "The accelerated Google single-node lane created its provider-neutral live visualization bundle."
+    },
+    {
+      "observed_at_ms": 1742846404900,
+      "severity": "info",
+      "event_kind": "checkpoint_written",
+      "detail": "The accelerated lane retained its promoted checkpoint ref and checkpoint timing in the live bundle."
+    }
+  ],
+  "source_artifacts": [
+    {
+      "artifact_role": "live_bundle",
+      "artifact_uri": "training_visualization/psion_google_single_node_remote_training_visualization_bundle_v1.json",
+      "source_kind": "local_mirror",
+      "authoritative": true,
+      "source_receipt_ids": [
+        "psion.google_single_node.remote_training_live_bundle.v1"
+      ],
+      "detail": "The provider-neutral local mirror is the app-facing source for the accelerated Google lane."
+    },
+    {
+      "artifact_role": "stage_receipt",
+      "artifact_uri": "psion_accelerated_reference_pilot_stage_receipt.json",
+      "artifact_digest": "14304ef8c38407f9f057f7c2665a02de862c7f3fd1d70b330ebc0f245f88d96e",
+      "source_kind": "runtime_owned",
+      "authoritative": true,
+      "source_receipt_ids": [
+        "receipt.psion.pretrain_stage.v1"
+      ],
+      "detail": "The accelerated stage receipt remains authoritative for delivered execution and accelerator posture."
+    },
+    {
+      "artifact_role": "observability_receipt",
+      "artifact_uri": "psion_accelerated_reference_pilot_observability_receipt.json",
+      "artifact_digest": "d4cc8c23d2676cb7c8f2cda42c574bb99d1da69853672f159f5130cffcb2d9b9",
+      "source_kind": "runtime_owned",
+      "authoritative": true,
+      "source_receipt_ids": [
+        "psion.pretrain_run_observability_receipt.v1"
+      ],
+      "detail": "The observability receipt remains authoritative for throughput and topology summary facts."
+    },
+    {
+      "artifact_role": "checkpoint_manifest",
+      "artifact_uri": "psion_accelerated_reference_pilot_checkpoint_manifest.json",
+      "artifact_digest": "51b4e6e91f5f09662cb4481933d2924f9cdf730b071b607d5bbf39919c7d5dd8",
+      "source_kind": "runtime_owned",
+      "authoritative": true,
+      "source_receipt_ids": [
+        "psion_reference_pilot_checkpoint_manifest.v1"
+      ],
+      "detail": "The checkpoint manifest remains authoritative for the promoted checkpoint identity surfaced in the live viewer."
+    }
+  ],
+  "bundle_digest": "6586dcbd4f8a80355eb729cb7345361a048c24bc959a800efeeb768e2d86e56d"
+}

@@ -1,0 +1,1092 @@
+{
+  "schema_version": "psion.benchmark_catalog.v1",
+  "catalog_id": "psion-benchmark-catalog-v1",
+  "lifecycle_schema_version": "psion.source_lifecycle.v1",
+  "exclusion_schema_version": "psion.benchmark_isolation.v1",
+  "packages": [
+    {
+      "schema_version": "psion.benchmark_package_contract.v1",
+      "package_id": "psion_architecture_reasoning_benchmark_v1",
+      "package_family": "architecture_reasoning",
+      "acceptance_family": "architecture_reasoning",
+      "benchmark_package": {
+        "abi_version": "psionic.benchmark.v1",
+        "key": {
+          "benchmark_ref": "psion_architecture_reasoning_benchmark_v1",
+          "version": "v1"
+        },
+        "display_name": "Display psion_architecture_reasoning_benchmark_v1",
+        "environment": {
+          "environment_ref": "env.psion.benchmark",
+          "version": "2026.03.22"
+        },
+        "repeat_count": 3,
+        "aggregation": "median_score",
+        "verification_policy": {
+          "require_timer_integrity": false,
+          "require_token_accounting": false,
+          "require_final_state_capture": false,
+          "require_execution_strategy": false
+        },
+        "cases": [
+          {
+            "case_id": "arch-case-constraint"
+          },
+          {
+            "case_id": "arch-case-bottleneck"
+          },
+          {
+            "case_id": "arch-case-scheduling"
+          },
+          {
+            "case_id": "arch-case-tradeoff"
+          }
+        ]
+      },
+      "prompt_formats": [
+        {
+          "format_id": "bounded_explanation_v1",
+          "system_instruction_ref": "prompt://psion/benchmark/system/bounded-explanation",
+          "user_template_ref": "prompt://psion/benchmark/user/bounded-explanation",
+          "envelope": "cited_section_prompt",
+          "expected_response_format": "bounded_explanation_json",
+          "preserve_source_boundaries": true,
+          "detail": "Explanation prompts preserve source boundaries and produce bounded explanation JSON."
+        }
+      ],
+      "grader_interfaces": [
+        {
+          "grader_kind": "rubric_score",
+          "grader_id": "rubric_reasoning_v1",
+          "rubric_ref": "rubric://psion/benchmark/reasoning",
+          "minimum_pass_bps": 7800,
+          "dimensions": [
+            {
+              "dimension_id": "correctness",
+              "weight_bps": 6000,
+              "detail": "Checks the substantive answer."
+            },
+            {
+              "dimension_id": "truth_boundary",
+              "weight_bps": 4000,
+              "detail": "Checks explicit assumptions, uncertainty, and normative-versus-inference separation."
+            }
+          ],
+          "detail": "Rubric grader supports bounded reasoning labels without collapsing them into one exact string."
+        }
+      ],
+      "contamination_inputs": {
+        "benchmark_source_ids": [
+          "spec_quiz_eval_pack_v1"
+        ],
+        "held_out_source_ids": [
+          "spec_quiz_eval_pack_v1"
+        ],
+        "training_excluded_source_ids": [
+          "spec_quiz_eval_pack_v1"
+        ],
+        "near_duplicate_review_ref": "review://psion/benchmark/near-duplicate-v1",
+        "detail": "Benchmark package preserves the held-out source ids, training-excluded ids, and near-duplicate review reference required by the isolation contract.",
+        "contamination_input_digest": "57caf81f4cd0d54fea05946aadb7078111414de617e3d277225e1a159d7b20b4"
+      },
+      "items": [
+        {
+          "item_id": "arch-case-constraint",
+          "family": "architecture_reasoning",
+          "prompt_format_id": "bounded_explanation_v1",
+          "grader_id": "rubric_reasoning_v1",
+          "prompt_digest": "arch-prompt-digest-1",
+          "source_ids": [
+            "spec_quiz_eval_pack_v1"
+          ],
+          "task": {
+            "task_kind": "architecture_reasoning",
+            "target_architecture": "bounded_three_stage_pipeline",
+            "workload_ref": "workload://psion/ingest/cache-sensitive",
+            "probe_kind": "dominant_constraint",
+            "dominant_constraint": "memory bandwidth",
+            "explicit_assumptions_required": true,
+            "expected_focus": "dominant resource constraint"
+          },
+          "detail": "Architecture constraint item requires explicit assumptions about the bounded ingest workload before naming the dominant constraint."
+        },
+        {
+          "item_id": "arch-case-bottleneck",
+          "family": "architecture_reasoning",
+          "prompt_format_id": "bounded_explanation_v1",
+          "grader_id": "rubric_reasoning_v1",
+          "prompt_digest": "arch-prompt-digest-2",
+          "source_ids": [
+            "spec_quiz_eval_pack_v1"
+          ],
+          "task": {
+            "task_kind": "architecture_reasoning",
+            "target_architecture": "bounded_three_stage_pipeline",
+            "workload_ref": "workload://psion/ingest/high-fanout",
+            "probe_kind": "bottleneck",
+            "dominant_constraint": "queueing pressure",
+            "explicit_assumptions_required": true,
+            "expected_focus": "steady-state bottleneck"
+          },
+          "detail": "Architecture bottleneck item requires the answer to surface the limiting stage under the stated assumptions instead of generic optimization advice."
+        },
+        {
+          "item_id": "arch-case-scheduling",
+          "family": "architecture_reasoning",
+          "prompt_format_id": "bounded_explanation_v1",
+          "grader_id": "rubric_reasoning_v1",
+          "prompt_digest": "arch-prompt-digest-3",
+          "source_ids": [
+            "spec_quiz_eval_pack_v1"
+          ],
+          "task": {
+            "task_kind": "architecture_reasoning",
+            "target_architecture": "bounded_three_stage_pipeline",
+            "workload_ref": "workload://psion/ingest/bursty-latency",
+            "probe_kind": "scheduling_behavior",
+            "dominant_constraint": "tail-latency budget",
+            "explicit_assumptions_required": true,
+            "expected_focus": "scheduler behavior under burst load"
+          },
+          "detail": "Architecture scheduling item checks whether the answer reasons about bounded scheduling behavior rather than only naming hardware resources."
+        },
+        {
+          "item_id": "arch-case-tradeoff",
+          "family": "architecture_reasoning",
+          "prompt_format_id": "bounded_explanation_v1",
+          "grader_id": "rubric_reasoning_v1",
+          "prompt_digest": "arch-prompt-digest-4",
+          "source_ids": [
+            "spec_quiz_eval_pack_v1"
+          ],
+          "task": {
+            "task_kind": "architecture_reasoning",
+            "target_architecture": "bounded_three_stage_pipeline",
+            "workload_ref": "workload://psion/ingest/cost-capped",
+            "probe_kind": "tradeoff_analysis",
+            "dominant_constraint": "cost ceiling",
+            "explicit_assumptions_required": true,
+            "expected_focus": "throughput versus resilience tradeoff"
+          },
+          "detail": "Architecture tradeoff item checks whether the answer keeps the stated assumptions explicit while reasoning about bounded tradeoffs."
+        }
+      ],
+      "summary": "Architecture reasoning benchmark package uses typed items that explicitly cover dominant constraints, bottlenecks, scheduling behavior, and tradeoff analysis under stated assumptions.",
+      "package_digest": "703142f680a8a2702700fcdd18309b24d6e7889e07c4621e287178c9ac6af674"
+    },
+    {
+      "schema_version": "psion.benchmark_package_contract.v1",
+      "package_id": "psion_normative_spec_benchmark_v1",
+      "package_family": "normative_spec_reading",
+      "acceptance_family": "normative_spec_reading",
+      "benchmark_package": {
+        "abi_version": "psionic.benchmark.v1",
+        "key": {
+          "benchmark_ref": "psion_normative_spec_benchmark_v1",
+          "version": "v1"
+        },
+        "display_name": "Display psion_normative_spec_benchmark_v1",
+        "environment": {
+          "environment_ref": "env.psion.benchmark",
+          "version": "2026.03.22"
+        },
+        "repeat_count": 3,
+        "aggregation": "median_score",
+        "verification_policy": {
+          "require_timer_integrity": false,
+          "require_token_accounting": false,
+          "require_final_state_capture": false,
+          "require_execution_strategy": false
+        },
+        "cases": [
+          {
+            "case_id": "spec-case-definition"
+          },
+          {
+            "case_id": "spec-case-edge-condition"
+          },
+          {
+            "case_id": "spec-case-guarantee"
+          }
+        ]
+      },
+      "prompt_formats": [
+        {
+          "format_id": "bounded_explanation_v1",
+          "system_instruction_ref": "prompt://psion/benchmark/system/bounded-explanation",
+          "user_template_ref": "prompt://psion/benchmark/user/bounded-explanation",
+          "envelope": "cited_section_prompt",
+          "expected_response_format": "bounded_explanation_json",
+          "preserve_source_boundaries": true,
+          "detail": "Explanation prompts preserve source boundaries and produce bounded explanation JSON."
+        }
+      ],
+      "grader_interfaces": [
+        {
+          "grader_kind": "exact_label",
+          "grader_id": "exact_label_v1",
+          "label_namespace": "psion.spec.reading",
+          "accepted_labels": [
+            "pass",
+            "boundary_clear"
+          ],
+          "detail": "Exact-label grader supports deterministic label-based grading."
+        }
+      ],
+      "contamination_inputs": {
+        "benchmark_source_ids": [
+          "spec_quiz_eval_pack_v1",
+          "wasm_core_spec_release_2"
+        ],
+        "held_out_source_ids": [
+          "spec_quiz_eval_pack_v1"
+        ],
+        "training_excluded_source_ids": [
+          "spec_quiz_eval_pack_v1"
+        ],
+        "near_duplicate_review_ref": "review://psion/benchmark/near-duplicate-v1",
+        "detail": "Benchmark package preserves the held-out source ids, training-excluded ids, and near-duplicate review reference required by the isolation contract.",
+        "contamination_input_digest": "52821f8da4180d39b2a81a45d5be7638a0968b40605a674d834d034fa8c90146"
+      },
+      "items": [
+        {
+          "item_id": "spec-case-definition",
+          "family": "normative_spec_reading",
+          "prompt_format_id": "bounded_explanation_v1",
+          "grader_id": "exact_label_v1",
+          "prompt_digest": "spec-prompt-digest-1",
+          "source_ids": [
+            "spec_quiz_eval_pack_v1",
+            "wasm_core_spec_release_2"
+          ],
+          "task": {
+            "task_kind": "normative_spec_reading",
+            "normative_source_ref": "wasm://core/validation",
+            "required_section_anchor": "2.5.1",
+            "probe_kind": "exact_definition",
+            "expected_fact": "definition of validation context",
+            "grounded_reading_required": true,
+            "engineering_inference_forbidden": true
+          },
+          "detail": "Normative definition item checks exact source-grounded reading of the named term without allowing later engineering inference to stand in for the quoted fact."
+        },
+        {
+          "item_id": "spec-case-edge-condition",
+          "family": "normative_spec_reading",
+          "prompt_format_id": "bounded_explanation_v1",
+          "grader_id": "exact_label_v1",
+          "prompt_digest": "spec-prompt-digest-2",
+          "source_ids": [
+            "spec_quiz_eval_pack_v1",
+            "wasm_core_spec_release_2"
+          ],
+          "task": {
+            "task_kind": "normative_spec_reading",
+            "normative_source_ref": "wasm://core/validation",
+            "required_section_anchor": "2.5.4",
+            "probe_kind": "named_edge_condition",
+            "expected_fact": "named malformed-module condition",
+            "grounded_reading_required": true,
+            "engineering_inference_forbidden": true
+          },
+          "detail": "Normative edge-condition item checks whether the answer names the specific edge case stated in the text rather than smoothing it into generic advice."
+        },
+        {
+          "item_id": "spec-case-guarantee",
+          "family": "normative_spec_reading",
+          "prompt_format_id": "bounded_explanation_v1",
+          "grader_id": "exact_label_v1",
+          "prompt_digest": "spec-prompt-digest-3",
+          "source_ids": [
+            "spec_quiz_eval_pack_v1",
+            "wasm_core_spec_release_2"
+          ],
+          "task": {
+            "task_kind": "normative_spec_reading",
+            "normative_source_ref": "wasm://core/execution",
+            "required_section_anchor": "4.2.15",
+            "probe_kind": "named_guarantee",
+            "expected_fact": "named execution guarantee",
+            "grounded_reading_required": true,
+            "engineering_inference_forbidden": true
+          },
+          "detail": "Normative guarantee item checks whether the answer states what the spec actually guarantees without adding portability claims that the text does not name."
+        }
+      ],
+      "summary": "Normative spec package uses typed exact-label items that separate exact definitions and named edge conditions from any later engineering inference.",
+      "package_digest": "dd5741c92863fe4525d67eadd513b955b01f97adb9aa0f1cfa22619e8b273b32"
+    },
+    {
+      "schema_version": "psion.benchmark_package_contract.v1",
+      "package_id": "psion_engineering_spec_benchmark_v1",
+      "package_family": "engineering_spec_interpretation",
+      "acceptance_family": "engineering_spec_interpretation",
+      "benchmark_package": {
+        "abi_version": "psionic.benchmark.v1",
+        "key": {
+          "benchmark_ref": "psion_engineering_spec_benchmark_v1",
+          "version": "v1"
+        },
+        "display_name": "Display psion_engineering_spec_benchmark_v1",
+        "environment": {
+          "environment_ref": "env.psion.benchmark",
+          "version": "2026.03.22"
+        },
+        "repeat_count": 3,
+        "aggregation": "median_score",
+        "verification_policy": {
+          "require_timer_integrity": false,
+          "require_token_accounting": false,
+          "require_final_state_capture": false,
+          "require_execution_strategy": false
+        },
+        "cases": [
+          {
+            "case_id": "eng-case-implication"
+          },
+          {
+            "case_id": "eng-case-ambiguity"
+          },
+          {
+            "case_id": "eng-case-unspecified"
+          },
+          {
+            "case_id": "eng-case-portability"
+          }
+        ]
+      },
+      "prompt_formats": [
+        {
+          "format_id": "bounded_explanation_v1",
+          "system_instruction_ref": "prompt://psion/benchmark/system/bounded-explanation",
+          "user_template_ref": "prompt://psion/benchmark/user/bounded-explanation",
+          "envelope": "cited_section_prompt",
+          "expected_response_format": "bounded_explanation_json",
+          "preserve_source_boundaries": true,
+          "detail": "Explanation prompts preserve source boundaries and produce bounded explanation JSON."
+        }
+      ],
+      "grader_interfaces": [
+        {
+          "grader_kind": "rubric_score",
+          "grader_id": "rubric_reasoning_v1",
+          "rubric_ref": "rubric://psion/benchmark/reasoning",
+          "minimum_pass_bps": 7800,
+          "dimensions": [
+            {
+              "dimension_id": "correctness",
+              "weight_bps": 6000,
+              "detail": "Checks the substantive answer."
+            },
+            {
+              "dimension_id": "truth_boundary",
+              "weight_bps": 4000,
+              "detail": "Checks explicit assumptions, uncertainty, and normative-versus-inference separation."
+            }
+          ],
+          "detail": "Rubric grader supports bounded reasoning labels without collapsing them into one exact string."
+        },
+        {
+          "grader_kind": "exact_label",
+          "grader_id": "exact_label_v1",
+          "label_namespace": "psion.spec.reading",
+          "accepted_labels": [
+            "pass",
+            "boundary_clear"
+          ],
+          "detail": "Exact-label grader supports deterministic label-based grading."
+        }
+      ],
+      "contamination_inputs": {
+        "benchmark_source_ids": [
+          "spec_quiz_eval_pack_v1",
+          "wasm_core_spec_release_2"
+        ],
+        "held_out_source_ids": [
+          "spec_quiz_eval_pack_v1"
+        ],
+        "training_excluded_source_ids": [
+          "spec_quiz_eval_pack_v1"
+        ],
+        "near_duplicate_review_ref": "review://psion/benchmark/near-duplicate-v1",
+        "detail": "Benchmark package preserves the held-out source ids, training-excluded ids, and near-duplicate review reference required by the isolation contract.",
+        "contamination_input_digest": "52821f8da4180d39b2a81a45d5be7638a0968b40605a674d834d034fa8c90146"
+      },
+      "items": [
+        {
+          "item_id": "eng-case-implication",
+          "family": "engineering_spec_interpretation",
+          "prompt_format_id": "bounded_explanation_v1",
+          "grader_id": "rubric_reasoning_v1",
+          "prompt_digest": "eng-prompt-digest-implication",
+          "source_ids": [
+            "spec_quiz_eval_pack_v1",
+            "wasm_core_spec_release_2"
+          ],
+          "task": {
+            "task_kind": "engineering_spec_interpretation",
+            "normative_source_ref": "wasm://core/execution",
+            "required_section_anchor": "4.4.9",
+            "probe_kind": "implementation_implication",
+            "implementation_target": "single-threaded runtime scheduler",
+            "expected_consequence": "trap propagation ordering must remain visible to the runtime",
+            "normative_boundary_required": true,
+            "explicit_uncertainty_required": true,
+            "unsupported_certainty_forbidden": true
+          },
+          "detail": "Engineering implication item checks whether the answer separates what the execution text guarantees from the scheduling implication an embedding should preserve."
+        },
+        {
+          "item_id": "eng-case-ambiguity",
+          "family": "engineering_spec_interpretation",
+          "prompt_format_id": "bounded_explanation_v1",
+          "grader_id": "rubric_reasoning_v1",
+          "prompt_digest": "eng-prompt-digest-ambiguity",
+          "source_ids": [
+            "spec_quiz_eval_pack_v1",
+            "wasm_core_spec_release_2"
+          ],
+          "task": {
+            "task_kind": "engineering_spec_interpretation",
+            "normative_source_ref": "wasm://core/validation",
+            "required_section_anchor": "2.5.7",
+            "probe_kind": "ambiguity_risk",
+            "implementation_target": "module loader import matcher",
+            "expected_consequence": "ambiguous import matching must be surfaced as a compatibility risk",
+            "normative_boundary_required": true,
+            "explicit_uncertainty_required": true,
+            "unsupported_certainty_forbidden": true
+          },
+          "detail": "Engineering ambiguity item checks whether the answer admits where the normative text leaves matching behavior open instead of projecting one implementation as universal."
+        },
+        {
+          "item_id": "eng-case-unspecified",
+          "family": "engineering_spec_interpretation",
+          "prompt_format_id": "bounded_explanation_v1",
+          "grader_id": "exact_label_v1",
+          "prompt_digest": "eng-prompt-digest-unspecified",
+          "source_ids": [
+            "spec_quiz_eval_pack_v1",
+            "wasm_core_spec_release_2"
+          ],
+          "task": {
+            "task_kind": "engineering_spec_interpretation",
+            "normative_source_ref": "wasm://core/memory",
+            "required_section_anchor": "4.3.6",
+            "probe_kind": "unspecified_region",
+            "implementation_target": "embedding memory-growth policy",
+            "expected_consequence": "the answer must name the policy choice as implementation-defined rather than spec-mandated",
+            "normative_boundary_required": true,
+            "explicit_uncertainty_required": true,
+            "unsupported_certainty_forbidden": true
+          },
+          "detail": "Engineering unspecified-region item checks deterministic recognition that the embedding policy remains outside the normative text."
+        },
+        {
+          "item_id": "eng-case-portability",
+          "family": "engineering_spec_interpretation",
+          "prompt_format_id": "bounded_explanation_v1",
+          "grader_id": "rubric_reasoning_v1",
+          "prompt_digest": "eng-prompt-digest-portability",
+          "source_ids": [
+            "spec_quiz_eval_pack_v1",
+            "wasm_core_spec_release_2"
+          ],
+          "task": {
+            "task_kind": "engineering_spec_interpretation",
+            "normative_source_ref": "wasm://core/modules",
+            "required_section_anchor": "2.5.11",
+            "probe_kind": "portability_consequence",
+            "implementation_target": "cross-engine module artifact cache",
+            "expected_consequence": "the answer must identify portability risk when engine-specific assumptions outrun the spec",
+            "normative_boundary_required": true,
+            "explicit_uncertainty_required": true,
+            "unsupported_certainty_forbidden": true
+          },
+          "detail": "Engineering portability item checks whether the answer names cross-engine compatibility risk without claiming the spec guarantees more than it states."
+        }
+      ],
+      "summary": "Engineering spec package uses typed items that keep normative anchors explicit while testing implementation implications, ambiguity risks, unspecified regions, and portability consequences.",
+      "package_digest": "2223c33a7301921ee440a29936d734428ebd6c4a507a12fe4e60c76afad5445a"
+    },
+    {
+      "schema_version": "psion.benchmark_package_contract.v1",
+      "package_id": "psion_memorization_reasoning_benchmark_v1",
+      "package_family": "memorization_versus_reasoning",
+      "acceptance_family": "memorization_versus_reasoning",
+      "benchmark_package": {
+        "abi_version": "psionic.benchmark.v1",
+        "key": {
+          "benchmark_ref": "psion_memorization_reasoning_benchmark_v1",
+          "version": "v1"
+        },
+        "display_name": "Display psion_memorization_reasoning_benchmark_v1",
+        "environment": {
+          "environment_ref": "env.psion.benchmark",
+          "version": "2026.03.22"
+        },
+        "repeat_count": 3,
+        "aggregation": "median_score",
+        "verification_policy": {
+          "require_timer_integrity": false,
+          "require_token_accounting": false,
+          "require_final_state_capture": false,
+          "require_execution_strategy": false
+        },
+        "cases": [
+          {
+            "case_id": "mem-case-altered-constraints"
+          },
+          {
+            "case_id": "mem-case-unfamiliar-synthesis"
+          },
+          {
+            "case_id": "mem-case-historical-transfer"
+          },
+          {
+            "case_id": "mem-case-paraphrase"
+          },
+          {
+            "case_id": "mem-case-spec-edge"
+          }
+        ]
+      },
+      "prompt_formats": [
+        {
+          "format_id": "bounded_explanation_v1",
+          "system_instruction_ref": "prompt://psion/benchmark/system/bounded-explanation",
+          "user_template_ref": "prompt://psion/benchmark/user/bounded-explanation",
+          "envelope": "cited_section_prompt",
+          "expected_response_format": "bounded_explanation_json",
+          "preserve_source_boundaries": true,
+          "detail": "Explanation prompts preserve source boundaries and produce bounded explanation JSON."
+        }
+      ],
+      "grader_interfaces": [
+        {
+          "grader_kind": "exact_label",
+          "grader_id": "exact_label_v1",
+          "label_namespace": "psion.spec.reading",
+          "accepted_labels": [
+            "pass",
+            "boundary_clear"
+          ],
+          "detail": "Exact-label grader supports deterministic label-based grading."
+        }
+      ],
+      "contamination_inputs": {
+        "benchmark_source_ids": [
+          "spec_quiz_eval_pack_v1",
+          "wasm_core_spec_release_2"
+        ],
+        "held_out_source_ids": [
+          "spec_quiz_eval_pack_v1"
+        ],
+        "training_excluded_source_ids": [
+          "spec_quiz_eval_pack_v1"
+        ],
+        "near_duplicate_review_ref": "review://psion/benchmark/near-duplicate-v1",
+        "detail": "Benchmark package preserves the held-out source ids, training-excluded ids, and near-duplicate review reference required by the isolation contract.",
+        "contamination_input_digest": "52821f8da4180d39b2a81a45d5be7638a0968b40605a674d834d034fa8c90146"
+      },
+      "items": [
+        {
+          "item_id": "mem-case-altered-constraints",
+          "family": "memorization_versus_reasoning",
+          "prompt_format_id": "bounded_explanation_v1",
+          "grader_id": "exact_label_v1",
+          "prompt_digest": "mem-prompt-digest-altered",
+          "source_ids": [
+            "spec_quiz_eval_pack_v1"
+          ],
+          "task": {
+            "task_kind": "memorization_versus_reasoning",
+            "seed_fact_ref": "seed://psion/memorization/cache-hierarchy-baseline",
+            "perturbation_ref": "perturbation://psion/memorization/cache-latency-budget-tightened",
+            "probe_kind": "altered_constraint_recombination",
+            "expected_transfer": "adapt the pipeline recommendation under a tightened latency budget instead of replaying the baseline answer",
+            "recombination_required": true,
+            "surface_form_shift_required": true,
+            "verbatim_recall_forbidden": true
+          },
+          "detail": "Altered-constraint probe checks whether the answer recombines the learned architecture ontology after one key resource bound is changed."
+        },
+        {
+          "item_id": "mem-case-unfamiliar-synthesis",
+          "family": "memorization_versus_reasoning",
+          "prompt_format_id": "bounded_explanation_v1",
+          "grader_id": "exact_label_v1",
+          "prompt_digest": "mem-prompt-digest-synthesis",
+          "source_ids": [
+            "spec_quiz_eval_pack_v1"
+          ],
+          "task": {
+            "task_kind": "memorization_versus_reasoning",
+            "seed_fact_ref": "seed://psion/memorization/queueing-and-backpressure",
+            "perturbation_ref": "perturbation://psion/memorization/queueing-plus-capability-routing",
+            "probe_kind": "unfamiliar_design_synthesis",
+            "expected_transfer": "combine queueing and capability-routing ideas for an unfamiliar system composition",
+            "recombination_required": true,
+            "surface_form_shift_required": true,
+            "verbatim_recall_forbidden": true
+          },
+          "detail": "Unfamiliar-synthesis probe checks whether the answer composes known mechanisms in a new configuration rather than reciting one familiar design."
+        },
+        {
+          "item_id": "mem-case-historical-transfer",
+          "family": "memorization_versus_reasoning",
+          "prompt_format_id": "bounded_explanation_v1",
+          "grader_id": "exact_label_v1",
+          "prompt_digest": "mem-prompt-digest-historical",
+          "source_ids": [
+            "spec_quiz_eval_pack_v1"
+          ],
+          "task": {
+            "task_kind": "memorization_versus_reasoning",
+            "seed_fact_ref": "seed://psion/memorization/vector-era-scheduling",
+            "perturbation_ref": "perturbation://psion/memorization/gpu-batch-scheduler-analogy",
+            "probe_kind": "historical_analogy_transfer",
+            "expected_transfer": "transfer a bounded historical scheduling analogy without claiming the old and new systems are identical",
+            "recombination_required": true,
+            "surface_form_shift_required": true,
+            "verbatim_recall_forbidden": true
+          },
+          "detail": "Historical-transfer probe checks whether the answer uses historical systems knowledge as an analogy instead of as a canned template."
+        },
+        {
+          "item_id": "mem-case-paraphrase",
+          "family": "memorization_versus_reasoning",
+          "prompt_format_id": "bounded_explanation_v1",
+          "grader_id": "exact_label_v1",
+          "prompt_digest": "mem-prompt-digest-paraphrase",
+          "source_ids": [
+            "spec_quiz_eval_pack_v1",
+            "wasm_core_spec_release_2"
+          ],
+          "task": {
+            "task_kind": "memorization_versus_reasoning",
+            "seed_fact_ref": "seed://psion/memorization/wasm-validation-definition",
+            "perturbation_ref": "perturbation://psion/memorization/wasm-validation-paraphrase-variant",
+            "probe_kind": "paraphrase_variation",
+            "expected_transfer": "answer the paraphrased specification prompt without depending on the memorized stock wording",
+            "recombination_required": true,
+            "surface_form_shift_required": true,
+            "verbatim_recall_forbidden": true
+          },
+          "detail": "Paraphrase-variation probe checks whether the answer survives surface-form changes around one familiar technical fact."
+        },
+        {
+          "item_id": "mem-case-spec-edge",
+          "family": "memorization_versus_reasoning",
+          "prompt_format_id": "bounded_explanation_v1",
+          "grader_id": "exact_label_v1",
+          "prompt_digest": "mem-prompt-digest-edge",
+          "source_ids": [
+            "spec_quiz_eval_pack_v1",
+            "wasm_core_spec_release_2"
+          ],
+          "task": {
+            "task_kind": "memorization_versus_reasoning",
+            "seed_fact_ref": "seed://psion/memorization/module-linking-baseline",
+            "perturbation_ref": "perturbation://psion/memorization/spec-adjacent-edge-case",
+            "probe_kind": "spec_adjacent_edge_case",
+            "expected_transfer": "apply the learned specification ontology to a nearby edge case that is not quoted verbatim in the seed material",
+            "recombination_required": true,
+            "surface_form_shift_required": true,
+            "verbatim_recall_forbidden": true
+          },
+          "detail": "Spec-adjacent edge-case probe checks whether the answer can reason next to the source text instead of only replaying the exact benchmark passage."
+        }
+      ],
+      "summary": "Memorization-versus-reasoning package uses typed exact-label probes that force altered constraints, unfamiliar synthesis, historical transfer, paraphrase variation, and spec-adjacent edge cases.",
+      "package_digest": "599e61d8c6bb7f599042672aaef51b53f4401856437be2a1e688276134cb24a3"
+    },
+    {
+      "schema_version": "psion.benchmark_package_contract.v1",
+      "package_id": "psion_route_benchmark_v1",
+      "package_family": "route_evaluation",
+      "acceptance_family": "route_selection",
+      "benchmark_package": {
+        "abi_version": "psionic.benchmark.v1",
+        "key": {
+          "benchmark_ref": "psion_route_benchmark_v1",
+          "version": "v1"
+        },
+        "display_name": "Display psion_route_benchmark_v1",
+        "environment": {
+          "environment_ref": "env.psion.benchmark",
+          "version": "2026.03.22"
+        },
+        "repeat_count": 3,
+        "aggregation": "median_score",
+        "verification_policy": {
+          "require_timer_integrity": false,
+          "require_token_accounting": false,
+          "require_final_state_capture": false,
+          "require_execution_strategy": false
+        },
+        "cases": [
+          {
+            "case_id": "route-case-answer"
+          },
+          {
+            "case_id": "route-case-uncertainty"
+          },
+          {
+            "case_id": "route-case-structure"
+          },
+          {
+            "case_id": "route-case-delegate"
+          }
+        ]
+      },
+      "prompt_formats": [
+        {
+          "format_id": "route_decision_v1",
+          "system_instruction_ref": "prompt://psion/benchmark/system/route",
+          "user_template_ref": "prompt://psion/benchmark/user/route",
+          "envelope": "structured_route_decision_json",
+          "expected_response_format": "route_decision_json",
+          "preserve_source_boundaries": true,
+          "detail": "Route prompts require a structured route-decision JSON response."
+        }
+      ],
+      "grader_interfaces": [
+        {
+          "grader_kind": "exact_route",
+          "grader_id": "route_answer_v1",
+          "expected_route": "answer_in_language",
+          "detail": "Route grader requires the declared route exactly."
+        },
+        {
+          "grader_kind": "exact_route",
+          "grader_id": "route_uncertainty_v1",
+          "expected_route": "answer_with_uncertainty",
+          "detail": "Route grader requires the declared route exactly."
+        },
+        {
+          "grader_kind": "exact_route",
+          "grader_id": "route_structure_v1",
+          "expected_route": "request_structured_inputs",
+          "detail": "Route grader requires the declared route exactly."
+        },
+        {
+          "grader_kind": "exact_route",
+          "grader_id": "route_delegate_v1",
+          "expected_route": "delegate_to_exact_executor",
+          "detail": "Route grader requires the declared route exactly."
+        }
+      ],
+      "contamination_inputs": {
+        "benchmark_source_ids": [
+          "spec_quiz_eval_pack_v1"
+        ],
+        "held_out_source_ids": [
+          "spec_quiz_eval_pack_v1"
+        ],
+        "training_excluded_source_ids": [
+          "spec_quiz_eval_pack_v1"
+        ],
+        "near_duplicate_review_ref": "review://psion/benchmark/near-duplicate-v1",
+        "detail": "Benchmark package preserves the held-out source ids, training-excluded ids, and near-duplicate review reference required by the isolation contract.",
+        "contamination_input_digest": "57caf81f4cd0d54fea05946aadb7078111414de617e3d277225e1a159d7b20b4"
+      },
+      "items": [
+        {
+          "item_id": "route-case-answer",
+          "family": "route_evaluation",
+          "prompt_format_id": "route_decision_v1",
+          "grader_id": "route_answer_v1",
+          "prompt_digest": "route-prompt-digest-answer",
+          "source_ids": [
+            "spec_quiz_eval_pack_v1"
+          ],
+          "task": {
+            "task_kind": "route_evaluation",
+            "route_class": "answer_in_language",
+            "route_boundary_ref": "route://psion/language_judgment_boundary",
+            "required_signal": "answer directly in language",
+            "structured_input_schema_ref": null,
+            "uncertainty_required": false
+          },
+          "detail": "Route answer item checks the bounded direct-answer class without forcing delegation or a structured-input ask."
+        },
+        {
+          "item_id": "route-case-uncertainty",
+          "family": "route_evaluation",
+          "prompt_format_id": "route_decision_v1",
+          "grader_id": "route_uncertainty_v1",
+          "prompt_digest": "route-prompt-digest-uncertainty",
+          "source_ids": [
+            "spec_quiz_eval_pack_v1"
+          ],
+          "task": {
+            "task_kind": "route_evaluation",
+            "route_class": "answer_with_uncertainty",
+            "route_boundary_ref": "route://psion/uncertainty_boundary",
+            "required_signal": "answer with explicit uncertainty",
+            "structured_input_schema_ref": null,
+            "uncertainty_required": true
+          },
+          "detail": "Route uncertainty item checks whether the learned lane can stay in-language while making uncertainty explicit."
+        },
+        {
+          "item_id": "route-case-structure",
+          "family": "route_evaluation",
+          "prompt_format_id": "route_decision_v1",
+          "grader_id": "route_structure_v1",
+          "prompt_digest": "route-prompt-digest-structure",
+          "source_ids": [
+            "spec_quiz_eval_pack_v1"
+          ],
+          "task": {
+            "task_kind": "route_evaluation",
+            "route_class": "request_structured_inputs",
+            "route_boundary_ref": "route://psion/structured-input-boundary",
+            "required_signal": "request the missing structured inputs before answering",
+            "structured_input_schema_ref": "schema://psion/route/design_inputs_v1",
+            "uncertainty_required": false
+          },
+          "detail": "Route structure item checks whether the learned lane asks for the named structured fields instead of guessing them."
+        },
+        {
+          "item_id": "route-case-delegate",
+          "family": "route_evaluation",
+          "prompt_format_id": "route_decision_v1",
+          "grader_id": "route_delegate_v1",
+          "prompt_digest": "route-prompt-digest-delegate",
+          "source_ids": [
+            "spec_quiz_eval_pack_v1"
+          ],
+          "task": {
+            "task_kind": "route_evaluation",
+            "route_class": "delegate_to_exact_executor",
+            "route_boundary_ref": "route://psion/exactness_boundary",
+            "required_signal": "delegate to the exact executor instead of improvising",
+            "structured_input_schema_ref": null,
+            "uncertainty_required": false
+          },
+          "detail": "Route delegate item checks the bounded exact-executor handoff class without over-reading delegation as learned execution."
+        }
+      ],
+      "summary": "Route package uses the shared structured route prompt and exact route-class graders across answer, uncertainty, structure-request, and exact-delegation paths.",
+      "package_digest": "76c517290e29616bf424831b637833006dc16b9a70bd8b0162ca6b5a90efa954"
+    },
+    {
+      "schema_version": "psion.benchmark_package_contract.v1",
+      "package_id": "psion_unsupported_request_refusal_benchmark_v1",
+      "package_family": "refusal_evaluation",
+      "acceptance_family": "unsupported_request_refusal",
+      "benchmark_package": {
+        "abi_version": "psionic.benchmark.v1",
+        "key": {
+          "benchmark_ref": "psion_unsupported_request_refusal_benchmark_v1",
+          "version": "v1"
+        },
+        "display_name": "Display psion_unsupported_request_refusal_benchmark_v1",
+        "environment": {
+          "environment_ref": "env.psion.benchmark",
+          "version": "2026.03.22"
+        },
+        "repeat_count": 3,
+        "aggregation": "median_score",
+        "verification_policy": {
+          "require_timer_integrity": false,
+          "require_token_accounting": false,
+          "require_final_state_capture": false,
+          "require_execution_strategy": false
+        },
+        "cases": [
+          {
+            "case_id": "refusal-case-exactness"
+          },
+          {
+            "case_id": "refusal-case-missing-constraints"
+          },
+          {
+            "case_id": "refusal-case-over-context"
+          },
+          {
+            "case_id": "refusal-case-freshness"
+          },
+          {
+            "case_id": "refusal-case-open-ended"
+          }
+        ]
+      },
+      "prompt_formats": [
+        {
+          "format_id": "refusal_decision_v1",
+          "system_instruction_ref": "prompt://psion/benchmark/system/refusal",
+          "user_template_ref": "prompt://psion/benchmark/user/refusal",
+          "envelope": "structured_refusal_decision_json",
+          "expected_response_format": "refusal_decision_json",
+          "preserve_source_boundaries": true,
+          "detail": "Refusal prompts require a structured refusal-decision JSON response."
+        }
+      ],
+      "grader_interfaces": [
+        {
+          "grader_kind": "exact_refusal",
+          "grader_id": "exact_refusal_exactness_v1",
+          "accepted_reason_codes": [
+            "unsupported_exactness_request"
+          ],
+          "detail": "Refusal grader requires one of the admitted refusal codes exactly."
+        },
+        {
+          "grader_kind": "exact_refusal",
+          "grader_id": "exact_refusal_missing_constraints_v1",
+          "accepted_reason_codes": [
+            "missing_required_constraints"
+          ],
+          "detail": "Refusal grader requires one of the admitted refusal codes exactly."
+        },
+        {
+          "grader_kind": "exact_refusal",
+          "grader_id": "exact_refusal_context_v1",
+          "accepted_reason_codes": [
+            "unsupported_context_length"
+          ],
+          "detail": "Refusal grader requires one of the admitted refusal codes exactly."
+        },
+        {
+          "grader_kind": "exact_refusal",
+          "grader_id": "exact_refusal_freshness_v1",
+          "accepted_reason_codes": [
+            "currentness_or_run_artifact_dependency"
+          ],
+          "detail": "Refusal grader requires one of the admitted refusal codes exactly."
+        },
+        {
+          "grader_kind": "exact_refusal",
+          "grader_id": "exact_refusal_open_ended_v1",
+          "accepted_reason_codes": [
+            "open_ended_general_assistant_unsupported"
+          ],
+          "detail": "Refusal grader requires one of the admitted refusal codes exactly."
+        }
+      ],
+      "contamination_inputs": {
+        "benchmark_source_ids": [
+          "spec_quiz_eval_pack_v1"
+        ],
+        "held_out_source_ids": [
+          "spec_quiz_eval_pack_v1"
+        ],
+        "training_excluded_source_ids": [
+          "spec_quiz_eval_pack_v1"
+        ],
+        "near_duplicate_review_ref": "review://psion/benchmark/near-duplicate-v1",
+        "detail": "Benchmark package preserves the held-out source ids, training-excluded ids, and near-duplicate review reference required by the isolation contract.",
+        "contamination_input_digest": "57caf81f4cd0d54fea05946aadb7078111414de617e3d277225e1a159d7b20b4"
+      },
+      "items": [
+        {
+          "item_id": "refusal-case-exactness",
+          "family": "refusal_evaluation",
+          "prompt_format_id": "refusal_decision_v1",
+          "grader_id": "exact_refusal_exactness_v1",
+          "prompt_digest": "refusal-prompt-digest-exactness",
+          "source_ids": [
+            "spec_quiz_eval_pack_v1"
+          ],
+          "task": {
+            "task_kind": "refusal_evaluation",
+            "expected_reason_code": "unsupported_exactness_request",
+            "refusal_boundary_ref": "route://psion/refusal/exactness-without-executor",
+            "probe_kind": "unsupported_exactness_request",
+            "capability_region_id": "unsupported_exact_execution_without_executor_surface",
+            "unsupported_region_evidence_ref": "evidence://psion/refusal/exactness-without-executor",
+            "claim_boundary_required": true
+          },
+          "detail": "Refusal exactness item checks that exact-execution requests without a surfaced executor path refuse instead of improvising an answer."
+        },
+        {
+          "item_id": "refusal-case-missing-constraints",
+          "family": "refusal_evaluation",
+          "prompt_format_id": "refusal_decision_v1",
+          "grader_id": "exact_refusal_missing_constraints_v1",
+          "prompt_digest": "refusal-prompt-digest-missing-constraints",
+          "source_ids": [
+            "spec_quiz_eval_pack_v1"
+          ],
+          "task": {
+            "task_kind": "refusal_evaluation",
+            "expected_reason_code": "missing_required_constraints",
+            "refusal_boundary_ref": "route://psion/refusal/missing-required-constraints",
+            "probe_kind": "missing_constraints",
+            "capability_region_id": "underspecified_design_without_required_constraints",
+            "unsupported_region_evidence_ref": "evidence://psion/refusal/missing-required-constraints",
+            "claim_boundary_required": true
+          },
+          "detail": "Refusal missing-constraints item checks that underspecified design asks refuse instead of fabricating requirements."
+        },
+        {
+          "item_id": "refusal-case-over-context",
+          "family": "refusal_evaluation",
+          "prompt_format_id": "refusal_decision_v1",
+          "grader_id": "exact_refusal_context_v1",
+          "prompt_digest": "refusal-prompt-digest-over-context",
+          "source_ids": [
+            "spec_quiz_eval_pack_v1"
+          ],
+          "task": {
+            "task_kind": "refusal_evaluation",
+            "expected_reason_code": "unsupported_context_length",
+            "refusal_boundary_ref": "route://psion/refusal/hard-context-boundary",
+            "probe_kind": "over_context_envelope",
+            "capability_region_id": "over_context_envelope_requests",
+            "unsupported_region_evidence_ref": "evidence://psion/refusal/over-context-envelope",
+            "claim_boundary_required": true
+          },
+          "detail": "Refusal over-context item checks that prompts beyond the hard context envelope refuse instead of truncating or stretching the lane silently."
+        },
+        {
+          "item_id": "refusal-case-freshness",
+          "family": "refusal_evaluation",
+          "prompt_format_id": "refusal_decision_v1",
+          "grader_id": "exact_refusal_freshness_v1",
+          "prompt_digest": "refusal-prompt-digest-freshness",
+          "source_ids": [
+            "spec_quiz_eval_pack_v1"
+          ],
+          "task": {
+            "task_kind": "refusal_evaluation",
+            "expected_reason_code": "currentness_or_run_artifact_dependency",
+            "refusal_boundary_ref": "route://psion/refusal/currentness-or-hidden-artifact",
+            "probe_kind": "freshness_or_hidden_artifact_dependency",
+            "capability_region_id": "freshness_or_run_artifact_dependent_requests",
+            "unsupported_region_evidence_ref": "evidence://psion/refusal/currentness-or-hidden-artifact",
+            "claim_boundary_required": true
+          },
+          "detail": "Refusal freshness item checks that currentness-sensitive or hidden-artifact asks refuse instead of pretending the lane can inspect mutable state."
+        },
+        {
+          "item_id": "refusal-case-open-ended",
+          "family": "refusal_evaluation",
+          "prompt_format_id": "refusal_decision_v1",
+          "grader_id": "exact_refusal_open_ended_v1",
+          "prompt_digest": "refusal-prompt-digest-open-ended",
+          "source_ids": [
+            "spec_quiz_eval_pack_v1"
+          ],
+          "task": {
+            "task_kind": "refusal_evaluation",
+            "expected_reason_code": "open_ended_general_assistant_unsupported",
+            "refusal_boundary_ref": "route://psion/refusal/open-ended-assistant",
+            "probe_kind": "unsupported_general_assistant_chat",
+            "capability_region_id": "open_ended_general_assistant_chat",
+            "unsupported_region_evidence_ref": "evidence://psion/refusal/open-ended-assistant",
+            "claim_boundary_required": true
+          },
+          "detail": "Refusal open-ended item checks that broad assistant chat stays explicitly unsupported instead of being half-served by vibe."
+        }
+      ],
+      "summary": "Refusal package uses the shared structured refusal prompt with capability-matrix-bound refusal probes for exactness, missing constraints, context overflow, freshness, and open-ended assistant asks.",
+      "package_digest": "73274857b551ca89edd96a200c60d25992a0aaa62a5cb25a1c369f518e8c42c4"
+    }
+  ],
+  "summary": "Canonical catalog proving the main Psion benchmark families can all build on one shared prompt, item, grader, contamination-input, and receipt contract.",
+  "catalog_digest": "448772c9171cbedb4200cbf01254316026ee3bfdc362f16e7abfe3d17b0e96a2"
+}

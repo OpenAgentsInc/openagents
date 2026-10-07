@@ -1,0 +1,75 @@
+{
+  "schema_version": "psion.tokenizer_training_manifest.v1",
+  "tokenizer_id": "psion_sentencepiece_seed",
+  "tokenizer_version": "v1",
+  "raw_source_schema_version": "psion.raw_source_manifest.v1",
+  "exclusion_schema_version": "psion.benchmark_isolation.v1",
+  "preprocessing_version": "psion_raw_source_preprocess_v1",
+  "training_config": {
+    "tokenizer_family": "sentence_piece",
+    "algorithm": "sentence_piece_unigram",
+    "target_vocab_size": 32768,
+    "character_coverage_bps": 9995,
+    "lowercase_ascii": false,
+    "special_tokens": [
+      "<pad>",
+      "<bos>",
+      "<eos>",
+      "<unk>"
+    ]
+  },
+  "admitted_sources": [
+    {
+      "source_id": "arch_textbook_foster_1985",
+      "source_family_id": "computer_architecture_history",
+      "source_normalized_digest": "sha256:arch_textbook_foster_1985_normalized_source_digest_v1"
+    },
+    {
+      "source_id": "vendor_manual_private_scan_v1",
+      "source_family_id": "historical_vendor_manuals",
+      "source_normalized_digest": "sha256:vendor_manual_private_scan_v1_normalized_source_digest_v1"
+    },
+    {
+      "source_id": "wasm_core_spec_release_2",
+      "source_family_id": "normative_specs",
+      "source_normalized_digest": "sha256:wasm_core_spec_release_2_normalized_source_digest_v1"
+    }
+  ],
+  "excluded_sources": [
+    {
+      "source_id": "spec_quiz_eval_pack_v1",
+      "source_family_id": "evaluation_only_benchmark_material",
+      "source_normalized_digest": "sha256:spec_quiz_eval_pack_v1_normalized_source_digest_v1"
+    }
+  ],
+  "exposure_report": [
+    {
+      "source_id": "arch_textbook_foster_1985",
+      "tokenizer_exposed": true,
+      "tokenizer_only_exposure": false,
+      "model_training_exposed": true,
+      "detail": "Admitted historical textbook is visible to both tokenizer and model-training lanes."
+    },
+    {
+      "source_id": "spec_quiz_eval_pack_v1",
+      "tokenizer_exposed": false,
+      "tokenizer_only_exposure": false,
+      "model_training_exposed": false,
+      "detail": "Evaluation-only review pack stays excluded from tokenizer training."
+    },
+    {
+      "source_id": "vendor_manual_private_scan_v1",
+      "tokenizer_exposed": true,
+      "tokenizer_only_exposure": true,
+      "model_training_exposed": false,
+      "detail": "Restricted manual stays tokenizer-visible for vocabulary coverage while remaining excluded from model training."
+    },
+    {
+      "source_id": "wasm_core_spec_release_2",
+      "tokenizer_exposed": true,
+      "tokenizer_only_exposure": false,
+      "model_training_exposed": true,
+      "detail": "Normative spec is visible to tokenizer and model-training lanes under the admitted posture."
+    }
+  ]
+}

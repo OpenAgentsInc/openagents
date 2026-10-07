@@ -1,0 +1,219 @@
+{
+  "schema_version": "psion.checkpoint_artifact.v1",
+  "artifact_id": "psion-sharded-checkpoint-artifact-v1",
+  "run_id": "run-psion-pilot",
+  "stage_id": "run-psion-pilot-stage-1-pretrain",
+  "model_id": "psion-compact-decoder-pilot-v1",
+  "layout_kind": "sharded",
+  "source_promoted_checkpoint_label": "pilot-pretrain-final",
+  "source_checkpoint_object_digest": "object-psion-pretrain-final-v1",
+  "checkpoint_manifest": {
+    "scope": {
+      "kind": "run",
+      "scope_id": "run-psion-pilot"
+    },
+    "checkpoint_family": "train.psion.decoder",
+    "checkpoint": {
+      "checkpoint_family": "train.psion.decoder",
+      "stream_id": "stream-psion-pretrain-final-sharded-v1",
+      "manifest_digest": "manifest-psion-pretrain-final-sharded-v1",
+      "object_digest": "object-psion-pretrain-final-sharded-v1",
+      "writer_node_id": "node-psion-a",
+      "membership_epoch": 1,
+      "cluster_state_digest": "cluster-state-digest-psion-pilot-v1",
+      "topology_digest": "topology-digest-psion-pilot-v1",
+      "started_at_ms": 1742614800000,
+      "checkpoint_ref": "checkpoint://psion/pilot/pretrain/final/sharded",
+      "step": 2048,
+      "durable_at_ms": 1742615100000
+    },
+    "shards": [
+      {
+        "shard_id": "sharded-shard-0",
+        "manifest": {
+          "stream_id": "stream-psion-pretrain-final-shard-0-v1",
+          "manifest_digest": "manifest-psion-pretrain-final-shard-0-v1",
+          "subject": "checkpoint",
+          "object_digest": "object-psion-pretrain-final-shard-0-v1",
+          "total_bytes": 36000000,
+          "chunk_count": 8,
+          "chunk_bytes": 4194304,
+          "encoding": "safetensors",
+          "checkpoint_binding": {
+            "checkpoint_family": "train.psion.decoder",
+            "checkpoint_ref": "checkpoint://psion/pilot/pretrain/final/sharded",
+            "step": 2048
+          }
+        },
+        "writer_node_id": "node-psion-a"
+      },
+      {
+        "shard_id": "sharded-shard-1",
+        "manifest": {
+          "stream_id": "stream-psion-pretrain-final-shard-1-v1",
+          "manifest_digest": "manifest-psion-pretrain-final-shard-1-v1",
+          "subject": "checkpoint",
+          "object_digest": "object-psion-pretrain-final-shard-1-v1",
+          "total_bytes": 36000000,
+          "chunk_count": 8,
+          "chunk_bytes": 4194304,
+          "encoding": "safetensors",
+          "checkpoint_binding": {
+            "checkpoint_family": "train.psion.decoder",
+            "checkpoint_ref": "checkpoint://psion/pilot/pretrain/final/sharded",
+            "step": 2048
+          }
+        },
+        "writer_node_id": "node-psion-b"
+      },
+      {
+        "shard_id": "sharded-shard-2",
+        "manifest": {
+          "stream_id": "stream-psion-pretrain-final-shard-2-v1",
+          "manifest_digest": "manifest-psion-pretrain-final-shard-2-v1",
+          "subject": "checkpoint",
+          "object_digest": "object-psion-pretrain-final-shard-2-v1",
+          "total_bytes": 36000000,
+          "chunk_count": 8,
+          "chunk_bytes": 4194304,
+          "encoding": "safetensors",
+          "checkpoint_binding": {
+            "checkpoint_family": "train.psion.decoder",
+            "checkpoint_ref": "checkpoint://psion/pilot/pretrain/final/sharded",
+            "step": 2048
+          }
+        },
+        "writer_node_id": "node-psion-c"
+      },
+      {
+        "shard_id": "sharded-shard-3",
+        "manifest": {
+          "stream_id": "stream-psion-pretrain-final-shard-3-v1",
+          "manifest_digest": "manifest-psion-pretrain-final-shard-3-v1",
+          "subject": "checkpoint",
+          "object_digest": "object-psion-pretrain-final-shard-3-v1",
+          "total_bytes": 36000000,
+          "chunk_count": 8,
+          "chunk_bytes": 4194304,
+          "encoding": "safetensors",
+          "checkpoint_binding": {
+            "checkpoint_family": "train.psion.decoder",
+            "checkpoint_ref": "checkpoint://psion/pilot/pretrain/final/sharded",
+            "step": 2048
+          }
+        },
+        "writer_node_id": "node-psion-d"
+      }
+    ],
+    "durability": "durable",
+    "created_at_ms": 1742615120000,
+    "manifest_digest": "78514abb5ce012bb36f75ae1de8dd70068805b3cbe85af781acc2eb75d820559"
+  },
+  "checkpoint_pointer": {
+    "scope": {
+      "kind": "run",
+      "scope_id": "run-psion-pilot"
+    },
+    "checkpoint_family": "train.psion.decoder",
+    "checkpoint": {
+      "checkpoint_family": "train.psion.decoder",
+      "stream_id": "stream-psion-pretrain-final-sharded-v1",
+      "manifest_digest": "manifest-psion-pretrain-final-sharded-v1",
+      "object_digest": "object-psion-pretrain-final-sharded-v1",
+      "writer_node_id": "node-psion-a",
+      "membership_epoch": 1,
+      "cluster_state_digest": "cluster-state-digest-psion-pilot-v1",
+      "topology_digest": "topology-digest-psion-pilot-v1",
+      "started_at_ms": 1742614800000,
+      "checkpoint_ref": "checkpoint://psion/pilot/pretrain/final/sharded",
+      "step": 2048,
+      "durable_at_ms": 1742615100000
+    },
+    "manifest_digest": "78514abb5ce012bb36f75ae1de8dd70068805b3cbe85af781acc2eb75d820559",
+    "updated_at_ms": 1742615120500,
+    "pointer_digest": "789c2e5a98e21a511c8e630a31ee5c7622896c21e6d23290a27ca0c09b6e2e25"
+  },
+  "checkpoint_context": {
+    "training_run_profile": "pilot",
+    "dataset_identity": "psion_corpus_tokenized@v1",
+    "sampling_policy_id": "psion_pretrain_mix",
+    "sampling_policy_version": "v1",
+    "source_checkpoint_topology_digest": "topology-digest-psion-pilot-v1",
+    "training_hardware_topology_digest": "a92bbdc55fb98b29dee91e7e0f1e73f28b94186994909efc13144670fed13373",
+    "observed_worker_count": 1,
+    "detail": "Checkpoint artifacts preserve the source checkpoint topology and the realized training hardware topology separately."
+  },
+  "optimizer_state_restart": {
+    "optimizer_family": "adamw",
+    "optimizer_checkpoint_family": "train.psion.decoder.optimizer_state",
+    "optimizer_state_step": 2048,
+    "parameter_group_count": 8,
+    "optimizer_state_artifacts": [
+      {
+        "stream_id": "stream-psion-pretrain-final-optimizer-shard-0-v1",
+        "manifest_digest": "manifest-psion-pretrain-final-optimizer-shard-0-v1",
+        "subject": "checkpoint",
+        "object_digest": "object-psion-pretrain-final-optimizer-shard-0-v1",
+        "total_bytes": 18000000,
+        "chunk_count": 8,
+        "chunk_bytes": 4194304,
+        "encoding": "safetensors",
+        "checkpoint_binding": {
+          "checkpoint_family": "train.psion.decoder.optimizer_state",
+          "checkpoint_ref": "checkpoint://psion/pilot/pretrain/final/optimizer_state/sharded",
+          "step": 2048
+        }
+      },
+      {
+        "stream_id": "stream-psion-pretrain-final-optimizer-shard-1-v1",
+        "manifest_digest": "manifest-psion-pretrain-final-optimizer-shard-1-v1",
+        "subject": "checkpoint",
+        "object_digest": "object-psion-pretrain-final-optimizer-shard-1-v1",
+        "total_bytes": 18000000,
+        "chunk_count": 8,
+        "chunk_bytes": 4194304,
+        "encoding": "safetensors",
+        "checkpoint_binding": {
+          "checkpoint_family": "train.psion.decoder.optimizer_state",
+          "checkpoint_ref": "checkpoint://psion/pilot/pretrain/final/optimizer_state/sharded",
+          "step": 2048
+        }
+      },
+      {
+        "stream_id": "stream-psion-pretrain-final-optimizer-shard-2-v1",
+        "manifest_digest": "manifest-psion-pretrain-final-optimizer-shard-2-v1",
+        "subject": "checkpoint",
+        "object_digest": "object-psion-pretrain-final-optimizer-shard-2-v1",
+        "total_bytes": 18000000,
+        "chunk_count": 8,
+        "chunk_bytes": 4194304,
+        "encoding": "safetensors",
+        "checkpoint_binding": {
+          "checkpoint_family": "train.psion.decoder.optimizer_state",
+          "checkpoint_ref": "checkpoint://psion/pilot/pretrain/final/optimizer_state/sharded",
+          "step": 2048
+        }
+      },
+      {
+        "stream_id": "stream-psion-pretrain-final-optimizer-shard-3-v1",
+        "manifest_digest": "manifest-psion-pretrain-final-optimizer-shard-3-v1",
+        "subject": "checkpoint",
+        "object_digest": "object-psion-pretrain-final-optimizer-shard-3-v1",
+        "total_bytes": 18000000,
+        "chunk_count": 8,
+        "chunk_bytes": 4194304,
+        "encoding": "safetensors",
+        "checkpoint_binding": {
+          "checkpoint_family": "train.psion.decoder.optimizer_state",
+          "checkpoint_ref": "checkpoint://psion/pilot/pretrain/final/optimizer_state/sharded",
+          "step": 2048
+        }
+      }
+    ],
+    "strict_parameter_group_order_restore": true,
+    "resume_requires_matching_sampling_cursor": true,
+    "summary": "Sharded optimizer-state restart preserves group order, step identity, and exact sampling cursor binding across four shards."
+  },
+  "summary": "Sharded checkpoint artifact freezes the distributed restart mirror over the same logical promoted checkpoint.",
+  "artifact_digest": "f985120c7e62ce81edd2ef9ba004d7038d16bc0fe731fb2b6caa708e039c8c39"
+}

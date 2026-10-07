@@ -1,0 +1,222 @@
+{
+  "schema_version": "psion.actual_pretraining_closeout_bundle.v1",
+  "lane_id": "psion_actual_pretraining_v1",
+  "run_id": "run-psion-actual-20260402t160000z",
+  "closeout_state": "base_lane_rehearsal_complete",
+  "retained_paths": {
+    "launch_manifest_path": "manifests/launch_manifest.json",
+    "resume_manifest_path": "manifests/resume_manifest.json",
+    "current_status_path": "status/current_run_status.json",
+    "retained_summary_path": "status/retained_summary.json",
+    "latest_checkpoint_pointer_path": "checkpoints/latest_accepted_checkpoint_pointer.json",
+    "latest_checkpoint_backup_receipt_path": "checkpoints/latest_accepted_checkpoint_backup_receipt.json",
+    "auto_resume_receipt_path": "checkpoints/auto_resume_receipt.json",
+    "latest_checkpoint_eval_decision_path": "evals/latest_checkpoint_eval_decision.json",
+    "latest_checkpoint_eval_failure_path": "evals/latest_checkpoint_eval_failure.json",
+    "latest_checkpoint_comparison_path": "decisions/latest_checkpoint_comparison.json",
+    "latest_continue_restart_decision_path": "decisions/latest_continue_restart_decision.json",
+    "current_dashboard_path": "dashboard/current_dashboard.json",
+    "hardware_qualification_path": "preflight/hardware_qualification.json",
+    "run_shape_qualification_path": "preflight/run_shape_qualification.json",
+    "continuation_handoff_path": "continuation/accepted_checkpoint_handoff.json",
+    "closeout_bundle_path": "closeout/closeout_bundle.json",
+    "launcher_log_path": "logs/launcher.log",
+    "latest_redacted_alert_path": "alerts/latest_redacted_alert.json",
+    "active_alert_feed_path": "alerts/active_alerts.json"
+  },
+  "selected_git_ref": "7fead59c",
+  "git_commit_sha": "7fead59c86d6e80ce6e14b53f1e48c6b1e79252b",
+  "dirty_tree_admission": "refuse_by_default",
+  "workspace_status_sha256": null,
+  "evidence_artifacts": [
+    {
+      "artifact_kind": "launch_manifest",
+      "artifact": {
+        "path": "manifests/launch_manifest.json",
+        "sha256": "e987391cf8da584488f2bd3124a3b78a3eadde51085ce39ef9ceb3c1bb53eecc"
+      },
+      "detail": "Launch manifest proves the actual lane started against the frozen lane, recipe, topology, and evidence contract."
+    },
+    {
+      "artifact_kind": "hardware_qualification",
+      "artifact": {
+        "path": "preflight/hardware_qualification.json",
+        "sha256": "866415d0dae36160a660689e202ff19d278e1c796a5af409fa1169ab870e2607"
+      },
+      "detail": "Hardware qualification proves the admitted machine class and provenance used for the rehearsal."
+    },
+    {
+      "artifact_kind": "run_shape_qualification",
+      "artifact": {
+        "path": "preflight/run_shape_qualification.json",
+        "sha256": "e5c877f83aa977e401eed9216d2af8ba5945e271bebe239929e04fc1cb9c2920"
+      },
+      "detail": "Run-shape qualification proves the admitted throughput, storage, and dataloader shape consumed by the rehearsal."
+    },
+    {
+      "artifact_kind": "checkpoint_pointer",
+      "artifact": {
+        "path": "checkpoints/latest_accepted_checkpoint_pointer.json",
+        "sha256": "269af0b4b9907c99e5e305cbd9dbac9ba79a47b4daf6c68c62a8ad196c5fdaca"
+      },
+      "detail": "Latest accepted checkpoint pointer proves the base lane retained one accepted checkpoint lineage."
+    },
+    {
+      "artifact_kind": "checkpoint_manifest",
+      "artifact": {
+        "path": "checkpoints/step-16384/checkpoint_manifest.json",
+        "sha256": "778d233c487e0a0b6e072e0d67cb4345e06863335fbd12dccc143dff89bfa669"
+      },
+      "detail": "Checkpoint manifest proves the exact accepted checkpoint family selected for backup, eval, resume, and continuation handoff."
+    },
+    {
+      "artifact_kind": "checkpoint_backup_receipt",
+      "artifact": {
+        "path": "checkpoints/latest_accepted_checkpoint_backup_receipt.json",
+        "sha256": "2885e4c7b5629d2eea913d049b15abc1372ebecf925879e500309fdd8ef0d8c1"
+      },
+      "detail": "Backup receipt proves the latest accepted checkpoint ended in a durable retained backup after the drill replay."
+    },
+    {
+      "artifact_kind": "checkpoint_eval_decision",
+      "artifact": {
+        "path": "evals/latest_checkpoint_eval_decision.json",
+        "sha256": "977ef580fa2ab94becfbfd27b5760a36a4d376504a1088dcd78be50847bd3f2e"
+      },
+      "detail": "Checkpoint eval decision proves the accepted checkpoint reached the automatic evaluation family."
+    },
+    {
+      "artifact_kind": "checkpoint_comparison",
+      "artifact": {
+        "path": "decisions/latest_checkpoint_comparison.json",
+        "sha256": "7ed7bb97eaab8f8ddb3fbeff833da15795ddb3a4a49103520e46834850fd43fb"
+      },
+      "detail": "Checkpoint comparison proves the accepted checkpoint was compared against eval, backup, and systems receipts before the long-run decision."
+    },
+    {
+      "artifact_kind": "continue_restart_decision",
+      "artifact": {
+        "path": "decisions/latest_continue_restart_decision.json",
+        "sha256": "22facae83aa2163058328096c141d8e7202c2f0ad356d5b9580b441cc5d5c540"
+      },
+      "detail": "Continue-restart decision proves the base lane retained one machine-readable continue decision over the accepted checkpoint."
+    },
+    {
+      "artifact_kind": "auto_resume_receipt",
+      "artifact": {
+        "path": "checkpoints/auto_resume_receipt.json",
+        "sha256": "14765e2c0023438745c46f3a0ad820058225c382135399548309b2738d67ca8f"
+      },
+      "detail": "Auto-resume receipt proves the canonical resume command reselected the accepted checkpoint from the retained family."
+    },
+    {
+      "artifact_kind": "resume_manifest",
+      "artifact": {
+        "path": "manifests/resume_manifest.json",
+        "sha256": "a2e80d2c69e493cd183f98edc57a93dda78b26dc1d2fefa4f7f31f7d35586201"
+      },
+      "detail": "Resume manifest proves the lane can re-enter the same frozen operator contract from retained checkpoint truth."
+    },
+    {
+      "artifact_kind": "retained_summary",
+      "artifact": {
+        "path": "status/retained_summary.json",
+        "sha256": "d3d5700887f6dcc9f79b446617ee5b8fb90d9cdf26ae1945e471314e8d650019"
+      },
+      "detail": "Retained summary proves the final rehearsal phase and provenance stayed operator-legible."
+    },
+    {
+      "artifact_kind": "current_status",
+      "artifact": {
+        "path": "status/current_run_status.json",
+        "sha256": "c67d7bee41350d7f8088efaa4e762e037794b9fd340370c55dbe9acd23c728ad"
+      },
+      "detail": "Current status proves the final rehearsal phase is retained under the canonical status surface."
+    },
+    {
+      "artifact_kind": "dashboard_packet",
+      "artifact": {
+        "path": "dashboard/current_dashboard.json",
+        "sha256": "11433505514b3fe6e8b9ea09d92e41092b91841679a48360843336869144b8e7"
+      },
+      "detail": "Dashboard packet proves the retained operator dashboard stayed aligned with the final rehearsal summary."
+    },
+    {
+      "artifact_kind": "active_alert_feed",
+      "artifact": {
+        "path": "alerts/active_alerts.json",
+        "sha256": "41ca0fb6c27f35881dcadfc0320ec9fddae0a5efcf2ed3fbaa33511d12152e6c"
+      },
+      "detail": "Active-alert feed proves the drill alert posture returned to a clean retained state after recovery."
+    },
+    {
+      "artifact_kind": "continuation_handoff",
+      "artifact": {
+        "path": "continuation/accepted_checkpoint_handoff.json",
+        "sha256": "0f0db6ccb565386948d39109a34e0d45f186fd81899b1a995f9e81efb1f2ffb6"
+      },
+      "detail": "Continuation handoff proves the base lane ends in one explicit bounded continuation target without claiming continuation execution."
+    }
+  ],
+  "closeout_gates": [
+    {
+      "gate_id": "launch_preflight_admitted",
+      "satisfied": true,
+      "detail": "The rehearsal started through the actual-lane operator command with admitted hardware and run-shape receipts."
+    },
+    {
+      "gate_id": "accepted_checkpoint_retained",
+      "satisfied": true,
+      "detail": "The rehearsal retained one accepted checkpoint pointer plus the matching checkpoint manifest."
+    },
+    {
+      "gate_id": "automatic_checkpoint_eval_retained",
+      "satisfied": true,
+      "detail": "The rehearsal retained one automatic checkpoint eval decision for the accepted checkpoint."
+    },
+    {
+      "gate_id": "checkpoint_backup_success_retained",
+      "satisfied": true,
+      "detail": "The rehearsal ended with a successful backup receipt after replaying the failed-upload drill."
+    },
+    {
+      "gate_id": "continue_decision_retained",
+      "satisfied": true,
+      "detail": "The rehearsal retained a machine-readable `continue` decision over the accepted checkpoint."
+    },
+    {
+      "gate_id": "resume_manifest_retained",
+      "satisfied": true,
+      "detail": "The rehearsal retained a resume manifest plus auto-resume receipt for the accepted checkpoint lineage."
+    },
+    {
+      "gate_id": "failure_drill_retained",
+      "satisfied": true,
+      "detail": "The rehearsal retained one injected failed-upload drill and then recovered to a successful backup state."
+    }
+  ],
+  "failure_drills": [
+    {
+      "drill_id": "failed_upload_drill",
+      "resolution_state": "retained_and_recovered",
+      "artifact": {
+        "path": "checkpoints/failures/failed_upload_drill.json",
+        "sha256": "0f1fd8533892f94276804ce1aaf055b102df02e67ae82c338d25f50d63a7ea46"
+      },
+      "detail": "The base-lane rehearsal injected a failed checkpoint upload, retained the drill packet, and then replayed backup successfully without manual artifact edits."
+    }
+  ],
+  "can_now_claim": [
+    "The actual pretraining lane now has one retained operator proof that launch, accepted checkpoint retention, backup, automatic checkpoint eval, continue-vs-restart decision, and resume all compose into one base-lane path.",
+    "The retained evidence family now carries one injected failed-upload drill plus recovery without manual artifact edits.",
+    "The accepted checkpoint lineage now feeds one explicit continuation handoff target, even though continuation execution remains separately unproved."
+  ],
+  "still_out_of_scope": [
+    "External alert delivery or paging for actual-lane failures.",
+    "Streaming or cluster-connected dashboard publication.",
+    "Completed distributed broader-pretraining execution on the trusted cluster.",
+    "Plugin-conditioned continuation execution beyond the declared handoff artifact."
+  ],
+  "claim_boundary": "This closeout bundle proves one retained base-lane rehearsal for the actual pretraining operator path, including launch, accepted checkpoint retention, backup recovery drill, automatic checkpoint eval, continue-vs-restart decision, and resume. It does not claim external alert delivery, streaming dashboard publication, distributed broader-pretraining execution, or plugin-conditioned continuation execution.",
+  "detail": "Base-lane closeout bundle ties the exact retained rehearsal artifacts, one injected backup failure drill, and one explicit claim boundary into a single operator-readable proof packet."
+}

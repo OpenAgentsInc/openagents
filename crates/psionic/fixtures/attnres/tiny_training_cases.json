@@ -1,0 +1,47 @@
+{
+  "description": "Tiny next-token corpus for the Psionic AttnRes training reference lane",
+  "config": {
+    "d_model": 8,
+    "num_layers": 4,
+    "num_blocks": 2,
+    "num_heads": 2,
+    "d_ff": 16,
+    "vocab_size": 8,
+    "rms_norm_eps": 0.000001,
+    "dropout": 0.0
+  },
+  "training_samples": [
+    {
+      "sample_id": "train-1",
+      "input_tokens": [0, 1, 2],
+      "target_token": 3
+    },
+    {
+      "sample_id": "train-2",
+      "input_tokens": [1, 2, 3],
+      "target_token": 4
+    },
+    {
+      "sample_id": "train-3",
+      "input_tokens": [2, 3, 4],
+      "target_token": 5
+    },
+    {
+      "sample_id": "train-4",
+      "input_tokens": [3, 4, 5],
+      "target_token": 6
+    }
+  ],
+  "held_out_samples": [
+    {
+      "sample_id": "held-1",
+      "input_tokens": [0, 2, 4],
+      "target_token": 5
+    },
+    {
+      "sample_id": "held-2",
+      "input_tokens": [1, 3, 5],
+      "target_token": 6
+    }
+  ]
+}

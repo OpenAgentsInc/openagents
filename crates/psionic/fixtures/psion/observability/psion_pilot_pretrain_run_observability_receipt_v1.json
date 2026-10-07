@@ -1,0 +1,90 @@
+{
+  "schema_version": "psion.pretrain_run_observability_receipt.v1",
+  "receipt_id": "psion-pilot-pretrain-observability-v1",
+  "run_profile": "pilot",
+  "run_id": "run-psion-pilot",
+  "stage_id": "run-psion-pilot-stage-1-pretrain",
+  "stage_kind": "pretrain",
+  "model_id": "psion-compact-decoder-pilot-v1",
+  "model_descriptor_digest": "04232d1ad07d9b79401e5649c4c42d695bf87e4450e6f4152c8edb08f9be93d0",
+  "dataset_identity": "psion_corpus_tokenized@v1",
+  "sampling_policy_id": "psion_pretrain_mix",
+  "sampling_policy_version": "v1",
+  "pretrain_stage_receipt_digest": "0170d57acd38021560eb4ee389daee573dbf65f037b36769c10586faa462ce31",
+  "cost": {
+    "cost_basis": "estimated_usd",
+    "currency_code": "USD",
+    "compute_cost_microusd": 18000000,
+    "storage_cost_microusd": 750000,
+    "network_cost_microusd": 200000,
+    "total_cost_microusd": 18950000,
+    "detail": "Pilot run cost is estimated from one bounded single-device accelerator reservation plus local checkpoint storage."
+  },
+  "throughput": {
+    "train_tokens_processed": 4194304,
+    "validation_tokens_processed": 262144,
+    "held_out_tokens_scored": 65536,
+    "optimizer_steps_completed": 2048,
+    "wall_clock_ms": 86400,
+    "mean_tokens_per_second": 52105,
+    "peak_tokens_per_second": 61440,
+    "mean_sequences_per_second_milli": 12750,
+    "mean_step_latency_ms": 42,
+    "checkpoint_write_throughput_bytes_per_second": 402653184
+  },
+  "checkpoint_artifact": {
+    "promoted_checkpoint_label": "pilot-pretrain-final",
+    "checkpoint_family": "train.psion.decoder",
+    "checkpoint_object_digest": "object-psion-pretrain-final-v1",
+    "checkpoint_size_bytes": 143654912,
+    "optimizer_state_size_bytes": 71827456,
+    "ancillary_artifact_size_bytes": 3145728,
+    "total_artifact_size_bytes": 218628096,
+    "shard_count": 1,
+    "detail": "Pilot artifact surface stays compact enough for single-host checkpoint rehearsal and replay checks."
+  },
+  "hardware_topology": {
+    "topology_digest": "a92bbdc55fb98b29dee91e7e0f1e73f28b94186994909efc13144670fed13373",
+    "observed_worker_count": 1,
+    "delivered_execution": {
+      "runtime_backend": "cuda",
+      "execution_topology": {
+        "effective_backend": "cuda",
+        "kind": "single_device",
+        "assignments": [
+          {
+            "shard_id": 0,
+            "device": {
+              "stable_device_id": "cuda:h100-pilot-0",
+              "topology_key": "0000:81:00.0",
+              "placement_index": 0
+            },
+            "partition": {
+              "kind": "whole_model"
+            }
+          }
+        ]
+      },
+      "selected_devices": [
+        {
+          "stable_device_id": "cuda:h100-pilot-0",
+          "topology_key": "0000:81:00.0",
+          "performance_class": "discrete_accelerator",
+          "memory_class": "dedicated_device",
+          "total_memory_bytes": 85899345920,
+          "free_memory_bytes": 66571993088
+        }
+      ]
+    },
+    "detail": "Pilot run stayed on one discrete-accelerator lane with an explicit single-device topology contract."
+  },
+  "instability_telemetry": {
+    "stale_rollout_drop_rate_bps": 0,
+    "checkpoint_catchup_latency_ms": 180,
+    "topology_churn_events": 0,
+    "environment_failure_rate_bps": 0,
+    "sandbox_failure_rate_bps": 0
+  },
+  "summary": "Pilot pretraining observability receipt records the minimum cost, throughput, checkpoint, and hardware facts for the first bounded run.",
+  "observability_digest": "3f03ad49a205db1f96986d5e791bdb07b04ded10ca7b1fc904f63f55ae17eb5a"
+}

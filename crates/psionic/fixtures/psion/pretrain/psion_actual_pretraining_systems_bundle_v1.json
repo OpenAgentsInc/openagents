@@ -1,0 +1,171 @@
+{
+  "schema_version": "psion.actual_pretraining_systems_bundle.v1",
+  "systems_bundle_id": "psion_actual_pretraining_systems_bundle_v1",
+  "lane_id": "psion_actual_pretraining_v1",
+  "lane_spec": {
+    "path": "fixtures/psion/pretrain/psion_actual_pretraining_lane_spec_v1.json",
+    "sha256": "6640fce7435338dc0f66b28135f024d4b62b428826aa6ba122c22644749c8057"
+  },
+  "recipe_bundle": {
+    "path": "fixtures/psion/pretrain/psion_actual_pretraining_recipe_bundle_v1.json",
+    "sha256": "37f3a4580a5bd7ea48bfad63ce996162d4c76d24c3044032eceae233a9406007"
+  },
+  "topology_storage_bundle": {
+    "path": "fixtures/psion/pretrain/psion_actual_pretraining_topology_storage_bundle_v1.json",
+    "sha256": "907159c4ef8888150a9af19157355aec8b016090603be79ad1d45d69ffb5a093"
+  },
+  "anchor_run_bundle": {
+    "path": "fixtures/psion/trusted_cluster/psion_trusted_cluster_run_bundle_v1.json",
+    "sha256": "44d0cbf1af2e46255978205942c26c1c50fd7950677c4d695893c37c35bc09a5"
+  },
+  "throughput_baselines": [
+    {
+      "baseline_id": "psion_actual_pretraining_trusted_cluster_anchor",
+      "baseline_kind": "trusted_cluster_anchor",
+      "source_profile": "broader_pretraining",
+      "worker_count": 4,
+      "mean_tokens_per_second": 296214,
+      "peak_tokens_per_second": 331442,
+      "mean_step_latency_ms": 231,
+      "checkpoint_write_throughput_bytes_per_second": 1476395008,
+      "source_receipt_id": "psion-broader-pretrain-observability-v1",
+      "source_receipt_digest": "46d82db942801eddee02fb638bee11654478bc8f4b6be2f472bdb3d31751d142",
+      "detail": "The actual lane now binds its systems baseline to the broader-pretraining trusted-cluster observability receipt instead of leaving A2-style profiling as detached prose."
+    }
+  ],
+  "memory_qualification": {
+    "qualification_id": "psion_actual_pretraining_memory_anchor",
+    "required_backend": "cuda",
+    "worker_count": 4,
+    "per_worker_total_memory_bytes": 85899345920,
+    "min_per_worker_free_memory_bytes": 63350767616,
+    "checkpoint_total_bytes": 2333954048,
+    "optimizer_state_bytes": 773091328,
+    "shard_count": 8,
+    "activation_posture": "tensor_parallel_anchor_with_checkpointed_activations",
+    "detail": "Memory qualification freezes the four-worker H100 headroom and checkpoint-size posture that the actual lane is allowed to claim today."
+  },
+  "distributed_qualification": {
+    "qualification_id": "psion_actual_pretraining_distributed_anchor",
+    "topology_storage_bundle_id": "psion_actual_pretraining_topology_storage_bundle_v1",
+    "supported_topology_label": "homogeneous_four_node_h100_tensor_parallel",
+    "placement_shape": "tensor_parallel(world_size=4,ranks_per_node=1)",
+    "runtime_backend": "cuda",
+    "transport": "trusted_lan_stream",
+    "collective_kind": "all_reduce",
+    "collective_benchmark_digest": "psion-broad-collective-benchmark-v1",
+    "replay_receipt_id": "psion-trusted-cluster-replay-v1",
+    "replay_receipt_digest": "a7c14afd3b7975abe2b004d29986754d2deb339a6c76a7678d9e3ded98177b52",
+    "exact_replay_observed": true,
+    "data_feed_contract": "repeat + deterministic_shuffle seed 1337 + trusted-cluster exact replay",
+    "distributed_step_receipt_id": "psion-trusted-cluster-distributed-run-distributed-step-1",
+    "distributed_step_contract_digest": "37a70a550e515b726fb349ef80b779d1c691e522d3e08654155b5542f06c84ba",
+    "detail": "Distributed qualification freezes one admitted four-worker CUDA tensor-parallel lane with explicit collective benchmarking, exact replay, and a real distributed-step contract digest."
+  },
+  "hardware_preflight_items": [
+    {
+      "item_id": "psion_actual_pretraining_backend_family",
+      "category": "backend_family",
+      "required_evidence_ref": "fixtures/psion/pretrain/psion_actual_pretraining_topology_storage_bundle_v1.json#required_backend",
+      "blocking_reason": "the actual lane is admitted only on the frozen CUDA H100 topology",
+      "detail": "Operators must prove the selected workers still satisfy the frozen CUDA backend before launch."
+    },
+    {
+      "item_id": "psion_actual_pretraining_worker_inventory",
+      "category": "worker_inventory",
+      "required_evidence_ref": "fixtures/psion/observability/psion_broader_pretrain_run_observability_receipt_v1.json#hardware_topology",
+      "blocking_reason": "actual-lane launch is blocked if the four-node H100 inventory cannot be reproduced",
+      "detail": "The systems bundle makes the anchor hardware shape explicit instead of leaving it implied by trusted-cluster history."
+    },
+    {
+      "item_id": "psion_actual_pretraining_storage_credentials",
+      "category": "storage_credentials",
+      "required_evidence_ref": "fixtures/psion/pretrain/psion_actual_pretraining_topology_storage_bundle_v1.json#credential_sources",
+      "blocking_reason": "launch is blocked if the admitted storage env vars and credential file posture are missing",
+      "detail": "This keeps A2-style systems prep tied to the actual artifact and checkpoint roots rather than a detached benchmark sandbox."
+    },
+    {
+      "item_id": "psion_actual_pretraining_checkpoint_restore",
+      "category": "checkpoint_restore",
+      "required_evidence_ref": "fixtures/psion/trusted_cluster/psion_trusted_cluster_checkpoint_recovery_bundle_v1.json",
+      "blocking_reason": "resume is blocked if the accepted checkpoint family lacks restart and corruption-drill coverage",
+      "detail": "The actual lane now carries one explicit restore and rollback prerequisite drawn from the trusted-cluster anchor bundle."
+    }
+  ],
+  "benchmark_bindings": [
+    {
+      "benchmark_id": "psion_actual_pretraining_throughput_anchor",
+      "benchmark_family": "throughput_anchor",
+      "source_artifact": {
+        "path": "fixtures/psion/observability/psion_broader_pretrain_run_observability_receipt_v1.json",
+        "sha256": "d906936c9a2b5ba8fa18f7a545e15f203a972e4a0968db98e6986f324ab525bf"
+      },
+      "source_receipt_id": "psion-broader-pretrain-observability-v1",
+      "source_receipt_digest": "46d82db942801eddee02fb638bee11654478bc8f4b6be2f472bdb3d31751d142",
+      "required_for": "actual-lane throughput baseline",
+      "detail": "The actual lane now cites one retained broader-pretraining throughput anchor instead of a detached benchmark note."
+    },
+    {
+      "benchmark_id": "psion_actual_pretraining_collective_sync",
+      "benchmark_family": "collective_sync",
+      "source_artifact": {
+        "path": "fixtures/psion/trusted_cluster/psion_trusted_cluster_run_bundle_v1.json",
+        "sha256": "44d0cbf1af2e46255978205942c26c1c50fd7950677c4d695893c37c35bc09a5"
+      },
+      "source_receipt_id": "psion-trusted-cluster-distributed-run-distributed-step-1",
+      "source_receipt_digest": "7894029c32552ac49a69a57b5d7e00fe7c1d73398c64053f5927b3fa61d1273f",
+      "required_for": "distributed-runtime qualification",
+      "detail": "Collective efficiency work is grounded in the trusted-cluster distributed-step receipt already admitted by the lane anchor."
+    },
+    {
+      "benchmark_id": "psion_actual_pretraining_replay_exactness",
+      "benchmark_family": "replay_exactness",
+      "source_artifact": {
+        "path": "fixtures/psion/trusted_cluster/psion_trusted_cluster_replay_receipt_v1.json",
+        "sha256": "245bddea2953b0ab59889c5b30fd308d5f64e2944ffc30d0225e70a25a855ddf"
+      },
+      "source_receipt_id": "psion-trusted-cluster-replay-v1",
+      "source_receipt_digest": "a7c14afd3b7975abe2b004d29986754d2deb339a6c76a7678d9e3ded98177b52",
+      "required_for": "dataloader and seed-discipline qualification",
+      "detail": "Replay exactness remains a hard systems requirement because the actual lane does not admit distributed data feeds that cannot be replayed exactly."
+    },
+    {
+      "benchmark_id": "psion_actual_pretraining_resume_recovery",
+      "benchmark_family": "resume_recovery",
+      "source_artifact": {
+        "path": "fixtures/psion/trusted_cluster/psion_trusted_cluster_checkpoint_recovery_bundle_v1.json",
+        "sha256": "adf36f6a091b13f03b3a6c85b503ba48894e6acb86f0b0c94f95d657ba70f583"
+      },
+      "source_receipt_id": "psion-trusted-cluster-checkpoint-recovery-bundle-v1",
+      "source_receipt_digest": "4d7c11490f9aaf4cb0a769dbd0bf6682c98425ee5693f8156ae5d7a232bbc6ef",
+      "required_for": "resume-path rehearsal support",
+      "detail": "Resume-path support is bound to the trusted-cluster recovery drills instead of remaining an unfrozen roadmap claim."
+    }
+  ],
+  "resume_rehearsal_support": {
+    "recovery_bundle": {
+      "path": "fixtures/psion/trusted_cluster/psion_trusted_cluster_checkpoint_recovery_bundle_v1.json",
+      "sha256": "adf36f6a091b13f03b3a6c85b503ba48894e6acb86f0b0c94f95d657ba70f583"
+    },
+    "recovery_bundle_digest": "4d7c11490f9aaf4cb0a769dbd0bf6682c98425ee5693f8156ae5d7a232bbc6ef",
+    "required_recovery_event_ids": [
+      "psion-trusted-cluster-distributed-restart-v1",
+      "psion-trusted-cluster-corruption-rollback-v1",
+      "psion-trusted-cluster-corruption-invalidation-v1"
+    ],
+    "accepted_pointer_path": "checkpoints/latest_accepted_checkpoint_pointer.json",
+    "continuation_handoff_path": "continuation/accepted_checkpoint_handoff.json",
+    "detail": "The actual lane now binds resume-path support to one retained restart/rollback/invalidation family before later backup automation lands."
+  },
+  "support_refs": [
+    "docs/PSION_ACTUAL_PRETRAINING_SYSTEMS_BUNDLE.md",
+    "docs/PSION_ACTUAL_PRETRAINING_RUNBOOK.md",
+    "docs/PSION_ACTUAL_PRETRAINING_RECIPE.md",
+    "docs/PSION_TRUSTED_CLUSTER_RUN.md",
+    "docs/PSION_CHECKPOINT_RECOVERY.md",
+    "docs/DISTRIBUTED_DATA_FEED_SEMANTICS.md"
+  ],
+  "claim_boundary": "This systems bundle ports CS336 A2 concerns into the actual lane by freezing one throughput, memory, distributed-runtime, hardware-preflight, and resume-support authority surface above the admitted trusted-cluster anchor. It does not claim that later hardware admission gates, durable backup automation, or live dashboards are already complete.",
+  "summary": "The canonical actual-pretraining systems bundle binds the admitted H100 trusted-cluster throughput, memory headroom, distributed runtime, preflight blockers, and resume drills directly into the actual lane.",
+  "bundle_digest": "3e3cc0e71305466bc109e105d4f3dd6dc58e84da88e8027468e8348a583832d9"
+}

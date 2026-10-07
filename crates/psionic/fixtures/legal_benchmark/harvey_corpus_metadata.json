@@ -1,0 +1,10 @@
+{
+  "schema_version": 1,
+  "upstream_suite": "harvey_labs",
+  "upstream_repo": "https://github.com/harveyai/harvey-labs",
+  "audited_commit": "5aa41694",
+  "tasks": 1251,
+  "practice_areas": 24,
+  "criteria": 74990,
+  "source_documents": 9537
+}

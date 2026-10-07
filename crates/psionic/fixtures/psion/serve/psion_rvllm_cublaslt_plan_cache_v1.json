@@ -1,0 +1,68 @@
+{
+  "schema_version": "psion.rvllm_cublaslt_plan_cache.v1",
+  "packet_id": "psion_rvllm_cublaslt_plan_cache_v1",
+  "runtime_scope": [
+    "cuda_backend_runtime",
+    "qwen35.native_cuda_decode",
+    "gpt_oss.native_cuda_decode"
+  ],
+  "admitted_serving_paths": [
+    "qwen35.native_cuda_decode",
+    "gpt_oss.native_cuda_decode"
+  ],
+  "plan_cache_scope": "per_weight_scope_shape_dtype_route",
+  "admitted_backend_route": "cublaslt_f16_to_f32",
+  "admitted_input_dtype": "f16",
+  "admitted_output_dtype": "f32",
+  "admitted_row_ladder": [
+    1,
+    8,
+    32
+  ],
+  "max_admitted_rows": 32,
+  "representative_scopes": [
+    "qwen35.native_cuda_decode/output_logits",
+    "qwen35.native_cuda_decode/ffn_gate_up",
+    "qwen35.native_cuda_decode/ffn_down",
+    "qwen35.native_cuda_decode/hybrid_qkv_gate_alpha_beta",
+    "qwen35.native_cuda_decode/hybrid_ssm_out",
+    "qwen35.native_cuda_decode/attention_qkv",
+    "qwen35.native_cuda_decode/attention_output",
+    "gpt_oss.native_cuda_decode/output_logits",
+    "gpt_oss.native_cuda_decode/attention_qkv",
+    "gpt_oss.native_cuda_decode/attention_output"
+  ],
+  "startup_report_fields": [
+    "cublas_lt_tuning_status",
+    "cublas_lt_plan_cache_scope",
+    "cublas_lt_selected_plan_count",
+    "cublas_lt_tuned_shape_count",
+    "cublas_lt_fallback_shape_count",
+    "cublas_lt_max_workspace_bytes",
+    "cublas_lt_selected_plans"
+  ],
+  "required_evidence_fields": [
+    "psionic_cuda_startup.cublas_lt_tuning_status",
+    "psionic_cuda_startup.cublas_lt_plan_cache_scope",
+    "psionic_cuda_startup.cublas_lt_selected_plan_count",
+    "psionic_cuda_startup.cublas_lt_tuned_shape_count",
+    "psionic_cuda_startup.cublas_lt_fallback_shape_count",
+    "psionic_cuda_startup.cublas_lt_max_workspace_bytes",
+    "psionic_cuda_startup.cublas_lt_selected_plans[].model_family",
+    "psionic_cuda_startup.cublas_lt_selected_plans[].op_kind",
+    "psionic_cuda_startup.cublas_lt_selected_plans[].rows",
+    "psionic_cuda_startup.cublas_lt_selected_plans[].inner",
+    "psionic_cuda_startup.cublas_lt_selected_plans[].cols",
+    "psionic_cuda_startup.cublas_lt_selected_plans[].backend_route",
+    "psionic_cuda_startup.cublas_lt_selected_plans[].workspace_bytes",
+    "psionic_cuda_startup.cublas_lt_selected_plans[].mean_time_us",
+    "psionic_cuda_startup.cublas_lt_selected_plans[].algorithm_fingerprint"
+  ],
+  "validation_surface": [
+    "builtin_packet_matches_committed_fixture",
+    "cargo build -p psionic-serve --example qwen35_cuda_bench",
+    "cargo build -p psionic-serve --bin psionic-openai-server"
+  ],
+  "fallback_posture": "The admitted CUDA serving lane now caches one selected cublasLt plan per representative weight scope and admitted row shape. Startup receipts publish whether tuning completed, how many shapes stayed on the legacy GEMM fallback, which algorithm fingerprints were selected, and how much workspace the runtime reserved instead of silently blending tuned and untuned GEMMs into one opaque throughput number.",
+  "packet_digest": "9c1c66447888d4e7c91c3220cbf730ea87ead1b14ad66997d4919db40fce730b"
+}

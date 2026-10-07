@@ -1,0 +1,60 @@
+{
+  "schema_version": "psion.served_evidence.v1",
+  "bundle_id": "psion-served-evidence-direct-grounded-v1",
+  "capability_matrix_id": "psion_capability_matrix",
+  "capability_matrix_version": "v1",
+  "route_receipt": {
+    "route_kind": "direct_model_answer",
+    "route_class": "answer_with_uncertainty",
+    "capability_region_id": "bounded_technical_reasoning_short_context",
+    "route_boundary_ref": "capability_matrix.supported.bounded_technical_reasoning_short_context",
+    "route_calibration_receipt_id": "psion-pilot-route-calibration-v1",
+    "route_class_evaluation_receipt_id": "psion-route-class-evaluation-receipt-v1",
+    "route_class_evaluation_receipt_digest": "d066f5a8c2220e739bdfbb6494aa52f84af8fc751222618a65498381285ff2d4",
+    "detail": "The served answer stayed in the bounded learned lane with explicit uncertainty rather than silently escalating or implying exact execution."
+  },
+  "no_implicit_execution": {
+    "execution_only_via_explicit_surface": true,
+    "executor_surface_invoked": false,
+    "detail": "No exact executor surface was invoked for this answer, so the output must stay a learned judgment plus source-grounded synthesis only."
+  },
+  "evidence_labels": [
+    {
+      "kind": "learned_judgment",
+      "uncertainty_disclosed": true,
+      "detail": "The answer is a bounded learned synthesis over admitted technical material and explicitly marks uncertainty where the model is reasoning beyond quoted source text."
+    },
+    {
+      "kind": "source_grounded_statement",
+      "sources": [
+        {
+          "source_id": "arch_textbook_foster_1985",
+          "source_digest": "sha256:f49e3e4034a28f93d4627ec2c4eaed4dc6ec9fef1db1d4c3fb3c1d9fd9c7e111",
+          "boundary_ref": "chapter_05.section_02",
+          "detail": "Historical architecture grounding for cache and memory-tradeoff language."
+        },
+        {
+          "source_id": "wasm_core_spec_release_2",
+          "source_digest": "sha256:90e5f0b8fd75251e1c95570bc8ca497f69c46f91431d4d74cc095fd606ac7d0c",
+          "boundary_ref": "section_2.4.7",
+          "detail": "Normative spec anchor for the statement about explicit execution semantics and stated constraints."
+        }
+      ],
+      "detail": "The served statement cites admitted source digests and stable anchors instead of implying generic source-grounding for the whole response."
+    },
+    {
+      "kind": "benchmark_backed_capability_claim",
+      "capability_region_id": "bounded_technical_reasoning_short_context",
+      "claim_boundary_ref": "capability_matrix.supported.bounded_technical_reasoning_short_context",
+      "promotion_decision_id": "psion-pilot-promotion-decision-v1",
+      "benchmark_receipt_id": "psion-pilot-architecture-reasoning-receipt-v1",
+      "benchmark_artifact": {
+        "artifact_id": "psion_architecture_reasoning_benchmark_v1",
+        "artifact_digest": "703142f680a8a2702700fcdd18309b24d6e7889e07c4621e287178c9ac6af674"
+      },
+      "detail": "The capability claim is limited to the published short-context architecture-reasoning region and cites the promoted benchmark artifact plus receipt directly."
+    }
+  ],
+  "summary": "Direct served example showing learned judgment, source grounding, benchmark-backed capability posture, route evidence, and explicit no-implicit-execution status.",
+  "bundle_digest": "c644b454c89cee689a6cc99de6bc1501a6659a1efa1e6c5969045c01d48b43fd"
+}

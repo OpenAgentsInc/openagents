@@ -1,0 +1,40 @@
+{
+  "schema_version": "psion.actual_pretraining_checkpoint_backup_receipt.v1",
+  "lane_id": "psion_actual_pretraining_v1",
+  "run_id": "run-psion-actual-20260402t030000z",
+  "checkpoint_label": "broader-pretrain-final",
+  "optimizer_step": 16384,
+  "checkpoint_ref": "checkpoint://psion/broad/pretrain/final",
+  "selected_git_ref": "refs/heads/main",
+  "git_commit_sha": "1111222233334444555566667777888899990000",
+  "dirty_tree_admission": "refuse_by_default",
+  "workspace_status_sha256": null,
+  "primary_pointer": {
+    "path": "checkpoints/latest_accepted_checkpoint_pointer.json",
+    "sha256": "453b5dd7cc59162a5b78c20b4673be9c7c2bdb1b7c82e1766cb315193697a59a"
+  },
+  "primary_checkpoint_manifest": {
+    "path": "checkpoints/step-16384/checkpoint_manifest.json",
+    "sha256": "ef6e930f92be308e2481cf56e0d1e340cc44de2c13f47bcd82b30052c7a7c416"
+  },
+  "backup_pointer": {
+    "path": "checkpoints/backups/latest_accepted_checkpoint_pointer.backup.json",
+    "sha256": "453b5dd7cc59162a5b78c20b4673be9c7c2bdb1b7c82e1766cb315193697a59a"
+  },
+  "backup_checkpoint_manifest": {
+    "path": "checkpoints/backups/step-16384/checkpoint_manifest.backup.json",
+    "sha256": "ef6e930f92be308e2481cf56e0d1e340cc44de2c13f47bcd82b30052c7a7c416"
+  },
+  "remote_backup_root": "${PSION_ACTUAL_PRETRAINING_BUCKET_URL}/psion_actual_pretraining_runs/run-psion-actual-20260402t030000z/checkpoints/backups",
+  "credential_source_names": [
+    "PSION_ACTUAL_PRETRAINING_BUCKET_URL",
+    "PSION_ACTUAL_PRETRAINING_ACCESS_KEY",
+    "PSION_ACTUAL_PRETRAINING_SECRET_FILE"
+  ],
+  "backup_state": "backed_up",
+  "upload_outcome": "succeeded",
+  "upload_failure_reason": null,
+  "claim_boundary": "This retained backup receipt binds the actual-lane latest accepted checkpoint to one durable backup contract and redacted credential-source posture. It does not claim that training continued or that automatic checkpoint eval already ran.",
+  "detail": "Fixture checkpoint backup receipt preserves the accepted pointer plus checkpoint manifest under one local backup family and one redacted remote-backup root.",
+  "receipt_digest": "d836bf222f4083c25225b9e6ebfed4f738fc8a69ae2413eb73a1b44f3ab03128"
+}

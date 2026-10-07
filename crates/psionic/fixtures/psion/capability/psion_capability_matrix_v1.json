@@ -1,0 +1,129 @@
+{
+  "schema_version": "psion.capability_matrix.v1",
+  "matrix_id": "psion_capability_matrix",
+  "matrix_version": "v1",
+  "product_id": "psionic.psion_learned_lane",
+  "model_id": "psion-1-pilot",
+  "acceptance_basis": {
+    "acceptance_matrix_id": "psion_acceptance_matrix",
+    "acceptance_matrix_version": "v1",
+    "acceptance_phase": "pilot",
+    "promotion_decision_ref": "psion-pilot-promotion-decision-v1",
+    "benchmark_receipt_refs": [
+      "psion-pilot-architecture-reasoning-receipt-v1",
+      "psion-pilot-held-out-reasoning-receipt-v1",
+      "psion-pilot-specification-boundary-receipt-v1",
+      "psion-pilot-unsupported-request-refusal-receipt-v1"
+    ],
+    "replay_receipt_ref": "psion-pilot-replay-evidence-v1",
+    "checkpoint_receipt_ref": "psion-pilot-checkpoint-recovery-v1",
+    "contamination_review_receipt_ref": "psion-pilot-contamination-review-v1",
+    "route_calibration_receipt_ref": "psion-pilot-route-calibration-v1",
+    "refusal_calibration_receipt_ref": "psion-pilot-refusal-calibration-v1"
+  },
+  "context_envelope": {
+    "supported_prompt_tokens": 8192,
+    "supported_completion_tokens": 1024,
+    "route_required_above_prompt_tokens": 8193,
+    "hard_refusal_above_prompt_tokens": 12288,
+    "detail": "The first served envelope is bounded to short-context technical reasoning. Requests above the direct window must route or refuse instead of stretching the learned lane silently."
+  },
+  "latency_envelope": {
+    "p50_first_token_latency_ms": 700,
+    "p95_first_token_latency_ms": 1200,
+    "p95_end_to_end_latency_ms": 4500,
+    "detail": "The first served envelope publishes one bounded latency band for short-context technical reasoning rather than claiming generic assistant responsiveness."
+  },
+  "regions": [
+    {
+      "region_id": "bounded_technical_reasoning_short_context",
+      "posture": "supported",
+      "task_examples": [
+        "bounded architecture tradeoff analysis under the published context window",
+        "short-context systems reasoning over curated technical material"
+      ],
+      "detail": "The learned lane can answer bounded technical reasoning requests directly when they stay within the published context and latency envelope."
+    },
+    {
+      "region_id": "specification_and_manual_synthesis",
+      "posture": "supported",
+      "task_examples": [
+        "compare two protocol or ISA manual excerpts within the published context window",
+        "synthesize a bounded summary across committed spec sections"
+      ],
+      "detail": "The learned lane can directly serve bounded spec and manual synthesis inside the published context envelope."
+    },
+    {
+      "region_id": "verified_or_exact_execution_requests",
+      "posture": "route_required",
+      "required_route": "exact_executor_handoff",
+      "task_examples": [
+        "requests that need exact execution or verifier-backed answers",
+        "requests that need symbolic or compiled confirmation instead of learned approximation"
+      ],
+      "detail": "Exact or verifier-backed requests stay in the served envelope only through explicit executor handoff."
+    },
+    {
+      "region_id": "unsupported_exact_execution_without_executor_surface",
+      "posture": "refusal_required",
+      "refusal_reasons": [
+        "unsupported_exactness_request"
+      ],
+      "task_examples": [
+        "requests that demand exact answers without exposing a verifier-backed or executor-backed route",
+        "requests that try to force the learned lane to impersonate exact execution directly"
+      ],
+      "detail": "Exactness requests without a surfaced exact-executor lane must refuse instead of being treated as ordinary route-required work."
+    },
+    {
+      "region_id": "underspecified_design_without_required_constraints",
+      "posture": "refusal_required",
+      "refusal_reasons": [
+        "missing_required_constraints"
+      ],
+      "task_examples": [
+        "design asks that omit required workload, latency, or resource constraints",
+        "implementation planning requests that ask for one exact answer without the minimum input schema"
+      ],
+      "detail": "Underspecified design tasks must refuse and ask for the missing constraints through a separate route surface instead of hallucinating requirements."
+    },
+    {
+      "region_id": "over_context_envelope_requests",
+      "posture": "refusal_required",
+      "refusal_reasons": [
+        "unsupported_context_length"
+      ],
+      "task_examples": [
+        "requests whose prompt exceeds the published hard refusal threshold",
+        "requests that try to force long-context service outside the declared envelope"
+      ],
+      "detail": "Requests beyond the published hard context boundary must refuse instead of silently truncating or over-claiming long-context support."
+    },
+    {
+      "region_id": "freshness_or_run_artifact_dependent_requests",
+      "posture": "refusal_required",
+      "refusal_reasons": [
+        "currentness_or_run_artifact_dependency",
+        "hidden_tool_or_artifact_dependency"
+      ],
+      "task_examples": [
+        "questions that depend on current events or fresh external state",
+        "questions that depend on hidden run bundles or unpublished artifacts"
+      ],
+      "detail": "Freshness-sensitive or hidden-artifact requests must refuse instead of pretending the served lane has currentness or hidden tool visibility."
+    },
+    {
+      "region_id": "open_ended_general_assistant_chat",
+      "posture": "unsupported",
+      "refusal_reasons": [
+        "open_ended_general_assistant_unsupported"
+      ],
+      "task_examples": [
+        "broad personal assistant conversations",
+        "general-purpose open-ended chat outside bounded technical reasoning"
+      ],
+      "detail": "The first served Psion lane is not a generic assistant and does not publish broad open-ended chat support."
+    }
+  ],
+  "claim_boundary": "This publication covers a bounded served learned lane for short-context technical reasoning, spec/manual synthesis, explicit executor handoff, and explicit refusal on unsupported exactness, missing constraints, over-context, freshness-sensitive, hidden-artifact, and generic-assistant regions. It does not publish a general assistant, currentness-aware, hidden-tool-aware, or exact-execution-direct model."
+}

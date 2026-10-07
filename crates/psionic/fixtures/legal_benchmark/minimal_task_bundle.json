@@ -1,0 +1,293 @@
+{
+  "task_spec": {
+    "schema_version": 1,
+    "task_id": "legal.minimal.contract_review.v1",
+    "task_version": "2026-05-19",
+    "domain": "legal",
+    "practice_area": "commercial_contracts",
+    "workflow": "review",
+    "title": "Minimal contract review fixture",
+    "instructions": "Review the provided service agreement excerpt and produce a concise risk memo.",
+    "work_type": "contract_review",
+    "tags": [
+      "fixture",
+      "minimal",
+      "harvey_compatibility"
+    ],
+    "source_artifacts": [
+      {
+        "artifact_id": "artifact.source.service_agreement",
+        "artifact_kind": "source_document",
+        "relative_path": "documents/service_agreement.txt",
+        "original_filename": "service_agreement.txt",
+        "media_type": "text/plain",
+        "byte_size": 128,
+        "sha256": "9d24625e5f4589f9a07c1f85af36d2d6d7815efea240080d4858addac15a868a",
+        "data_classification": "public_reference",
+        "provenance": "fixture"
+      }
+    ],
+    "deliverables": [
+      {
+        "deliverable_id": "deliverable.risk_memo",
+        "deliverable_kind": "markdown",
+        "required_path": "outputs/risk_memo.md",
+        "description": "Concise risk memo covering termination and payment risk.",
+        "required": true
+      }
+    ],
+    "criteria": [
+      {
+        "criterion_id": "criterion.termination_notice",
+        "criterion_kind": "legal_reasoning",
+        "description": "Identifies that termination requires thirty days notice.",
+        "weight_bps": 5000,
+        "deliverable_ids": [
+          "deliverable.risk_memo"
+        ],
+        "source_artifact_ids": [
+          "artifact.source.service_agreement"
+        ]
+      },
+      {
+        "criterion_id": "criterion.payment_timing",
+        "criterion_kind": "factual_accuracy",
+        "description": "Identifies that invoices are payable within fifteen days.",
+        "weight_bps": 5000,
+        "deliverable_ids": [
+          "deliverable.risk_memo"
+        ],
+        "source_artifact_ids": [
+          "artifact.source.service_agreement"
+        ]
+      }
+    ],
+    "judge_policy": {
+      "mode": "llm",
+      "provider": "openai_compatible",
+      "model": "fixture-judge",
+      "prompt_template_id": "judge.legal_criterion.v1",
+      "prompt_template_hash": "f5e197d48d4d612188bff4486db083e94168b76fbaf3a1b80dc22eb0e5dc1d7a",
+      "all_pass_required": true,
+      "sample_count": 1
+    },
+    "tool_policy": {
+      "allowed_tools": [
+        "read",
+        "write",
+        "grep",
+        "glob",
+        "edit",
+        "shell"
+      ],
+      "network_allowed": false,
+      "source_artifacts_read_only": true,
+      "max_turns": 12,
+      "max_wall_time_seconds": 600
+    },
+    "source_compatibility": {
+      "upstream_suite": "harvey_labs",
+      "upstream_commit": "5aa41694",
+      "upstream_task_path": "tasks/minimal_fixture/task.json"
+    }
+  },
+  "input_manifest": {
+    "schema_version": 1,
+    "manifest_id": "manifest.input.legal.minimal.contract_review.v1",
+    "task_id": "legal.minimal.contract_review.v1",
+    "task_version": "2026-05-19",
+    "manifest_role": "input",
+    "artifacts": [
+      {
+        "artifact_id": "artifact.source.service_agreement",
+        "artifact_kind": "source_document",
+        "relative_path": "documents/service_agreement.txt",
+        "original_filename": "service_agreement.txt",
+        "media_type": "text/plain",
+        "byte_size": 128,
+        "sha256": "9d24625e5f4589f9a07c1f85af36d2d6d7815efea240080d4858addac15a868a",
+        "data_classification": "public_reference",
+        "provenance": "fixture"
+      }
+    ]
+  },
+  "output_manifest": {
+    "schema_version": 1,
+    "manifest_id": "manifest.output.legal.minimal.contract_review.v1.run.fixture",
+    "task_id": "legal.minimal.contract_review.v1",
+    "task_version": "2026-05-19",
+    "manifest_role": "output",
+    "artifacts": [
+      {
+        "artifact_id": "artifact.output.risk_memo",
+        "artifact_kind": "generated_deliverable",
+        "relative_path": "outputs/risk_memo.md",
+        "original_filename": "risk_memo.md",
+        "media_type": "text/markdown",
+        "byte_size": 96,
+        "sha256": "2f85b5b8ef0c3a4d7315fbdd1b9fa437ff4e3424c05777a0c9f8f1e9e729d6fe",
+        "data_classification": "benchmark_confidential",
+        "provenance": "run.fixture"
+      }
+    ]
+  },
+  "run_config": {
+    "schema_version": 1,
+    "run_config_id": "run_config.fixture.openai_compatible.v1",
+    "provider": "openai_compatible",
+    "model": "fixture-agent",
+    "agent_protocol_version": "agent.legal_benchmark.fixture.v1",
+    "tool_policy": {
+      "allowed_tools": [
+        "read",
+        "write",
+        "grep",
+        "glob",
+        "edit",
+        "shell"
+      ],
+      "network_allowed": false,
+      "source_artifacts_read_only": true,
+      "max_turns": 12,
+      "max_wall_time_seconds": 600
+    },
+    "judge_policy": {
+      "mode": "llm",
+      "provider": "openai_compatible",
+      "model": "fixture-judge",
+      "prompt_template_id": "judge.legal_criterion.v1",
+      "prompt_template_hash": "f5e197d48d4d612188bff4486db083e94168b76fbaf3a1b80dc22eb0e5dc1d7a",
+      "all_pass_required": true,
+      "sample_count": 1
+    },
+    "random_seed": 7
+  },
+  "run_record": {
+    "schema_version": 1,
+    "run_id": "run.fixture.legal.minimal.contract_review.v1",
+    "task_id": "legal.minimal.contract_review.v1",
+    "task_version": "2026-05-19",
+    "input_artifact_manifest_hash": "7e5d8f3a86f3375c33c2e034a5228e9a45130df79812bdc67fce254ce4c43c2b",
+    "run_config_hash": "f3a1fedb9bb0639caeea88f3d4fa27c371cccd1d6df24a0fa44d46b51f0a3f78",
+    "output_artifact_manifest_hash": "07b7bf44688a52e900e0bf6e22bf9bd2836e40232200d3ec70c7a28b7bb1782a",
+    "terminal_state": "submitted",
+    "transcript": [
+      {
+        "event_index": 0,
+        "event_kind": "system",
+        "role": "system",
+        "content": "Use the legal benchmark protocol and cite source evidence.",
+        "timestamp_ms": 0
+      },
+      {
+        "event_index": 1,
+        "event_kind": "user",
+        "role": "user",
+        "content": "Review the provided service agreement excerpt and produce a concise risk memo.",
+        "timestamp_ms": 1
+      },
+      {
+        "event_index": 2,
+        "event_kind": "tool_call",
+        "role": "assistant",
+        "payload": {
+          "tool_call_id": "tool.read.1",
+          "tool_name": "read",
+          "path": "documents/service_agreement.txt"
+        },
+        "timestamp_ms": 2
+      },
+      {
+        "event_index": 3,
+        "event_kind": "tool_result",
+        "role": "tool",
+        "payload": {
+          "tool_call_id": "tool.read.1",
+          "ok": true,
+          "bytes": 128
+        },
+        "timestamp_ms": 3
+      }
+    ],
+    "tool_calls": [
+      {
+        "tool_call_id": "tool.read.1",
+        "tool_name": "read",
+        "call_event_index": 2,
+        "result_event_index": 3,
+        "input": {
+          "path": "documents/service_agreement.txt"
+        },
+        "output": {
+          "ok": true,
+          "bytes": 128
+        },
+        "elapsed_ms": 4
+      }
+    ],
+    "metrics": {
+      "model_turns": 2,
+      "tool_call_count": 1,
+      "input_tokens": 1800,
+      "output_tokens": 220,
+      "wall_time_ms": 1200,
+      "estimated_cost_micro_usd": 45
+    }
+  },
+  "score_report": {
+    "schema_version": 1,
+    "score_report_id": "score.fixture.legal.minimal.contract_review.v1",
+    "run_id": "run.fixture.legal.minimal.contract_review.v1",
+    "task_id": "legal.minimal.contract_review.v1",
+    "task_version": "2026-05-19",
+    "run_record_hash": "34c70f0733bbb084e23f80f91db65f824b16e8336a95954dc9d35a29e183f8d4",
+    "output_artifact_manifest_hash": "07b7bf44688a52e900e0bf6e22bf9bd2836e40232200d3ec70c7a28b7bb1782a",
+    "all_pass": true,
+    "criterion_pass_rate_bps": 10000,
+    "criterion_results": [
+      {
+        "criterion_id": "criterion.termination_notice",
+        "passed": true,
+        "verdict": "pass",
+        "reasoning": "The memo identifies the thirty-day termination notice requirement.",
+        "evidence_refs": [
+          "artifact.source.service_agreement"
+        ],
+        "judge_model": "fixture-judge",
+        "judge_prompt_hash": "f5e197d48d4d612188bff4486db083e94168b76fbaf3a1b80dc22eb0e5dc1d7a",
+        "raw_response_hash": "c05d09955bd1a3c350d77035f58ed475cfb3843c5a11ec9f57609588aa4a4210"
+      },
+      {
+        "criterion_id": "criterion.payment_timing",
+        "passed": true,
+        "verdict": "pass",
+        "reasoning": "The memo identifies the fifteen-day invoice payment term.",
+        "evidence_refs": [
+          "artifact.source.service_agreement"
+        ],
+        "judge_model": "fixture-judge",
+        "judge_prompt_hash": "f5e197d48d4d612188bff4486db083e94168b76fbaf3a1b80dc22eb0e5dc1d7a",
+        "raw_response_hash": "1f0c722cc914df515c046aa970f2ef43257016d09e767da358560cca58cd40c9"
+      }
+    ],
+    "metrics": {
+      "model_turns": 2,
+      "tool_call_count": 1,
+      "input_tokens": 1800,
+      "output_tokens": 220,
+      "wall_time_ms": 1200,
+      "estimated_cost_micro_usd": 45
+    }
+  },
+  "comparison_report": {
+    "schema_version": 1,
+    "comparison_report_id": "comparison.fixture.legal.minimal.contract_review.v1",
+    "comparison_scope": "fixture",
+    "baseline_score_report_hash": "d6b81057971ad30dbf97077b802784348c426e249e9d33ddcf2b37fcbce452c2",
+    "candidate_score_report_hash": "d6b81057971ad30dbf97077b802784348c426e249e9d33ddcf2b37fcbce452c2",
+    "all_pass_delta_bps": 0,
+    "criterion_pass_rate_delta_bps": 0,
+    "estimated_cost_delta_micro_usd": 0,
+    "wall_time_delta_ms": 0
+  }
+}

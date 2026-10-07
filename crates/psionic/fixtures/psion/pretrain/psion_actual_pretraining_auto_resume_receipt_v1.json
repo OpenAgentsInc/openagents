@@ -1,0 +1,27 @@
+{
+  "schema_version": "psion.actual_pretraining_auto_resume_receipt.v1",
+  "lane_id": "psion_actual_pretraining_v1",
+  "run_id": "run-psion-actual-20260402t040000z",
+  "selected_git_ref": "refs/heads/main",
+  "git_commit_sha": "1111222233334444555566667777888899990000",
+  "dirty_tree_admission": "refuse_by_default",
+  "workspace_status_sha256": null,
+  "requested_primary_pointer_path": "checkpoints/latest_accepted_checkpoint_pointer.json",
+  "backup_receipt_path": "checkpoints/latest_accepted_checkpoint_backup_receipt.json",
+  "backup_pointer_path": "checkpoints/backups/latest_accepted_checkpoint_pointer.backup.json",
+  "primary_pointer_state": "corrupt",
+  "resolution_state": "recovered_from_backup",
+  "resume_source_kind": "backup_receipt",
+  "restored_primary_pointer": true,
+  "chosen_checkpoint_label": "broader-pretrain-final",
+  "chosen_optimizer_step": 16384,
+  "chosen_checkpoint_ref": "checkpoint://psion/broad/pretrain/final",
+  "chosen_checkpoint_manifest": {
+    "path": "checkpoints/step-16384/checkpoint_manifest.json",
+    "sha256": "ef6e930f92be308e2481cf56e0d1e340cc44de2c13f47bcd82b30052c7a7c416"
+  },
+  "refusal_reason": null,
+  "claim_boundary": "The actual-lane auto-resume receipt records whether resume trusted the primary pointer or had to recover from the retained backup family. It does not claim that preflight admission or post-resume training succeeded.",
+  "detail": "Fixture auto-resume receipt proves corrupt primary pointers can recover from the retained backup family.",
+  "receipt_digest": "7078200c0019ae8dc2c5ee50daf6cddf85ea87bee73849b71b294537e01c4285"
+}

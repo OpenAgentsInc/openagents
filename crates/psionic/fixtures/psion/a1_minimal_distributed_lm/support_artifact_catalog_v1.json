@@ -1,0 +1,738 @@
+{
+  "schema_version": "psion.a1_minimal_distributed_lm.support_artifact_catalog.v1",
+  "lane_id": "a1_minimal_distributed_lm_001",
+  "tokenizer_digest": "sha256:e32b619b67029aba5de26391f9a5f4a32801220ca690ae2c89d565e61069cf63",
+  "tokenized_dataset_digest": "sha256:f0b92dc6301fc72e05a4ead6d85a4b5706e51267c116ecd72025a90c43a37905",
+  "validation_set_digest": "sha256:6c1c6ca83a2d8eca6cb133f3ec719e822f134452723e72e5201407b28cd3d228",
+  "base_checkpoint_ref": "base://a1_minimal_distributed_lm/step-000000",
+  "participant_counter_source": "training_accepted_contributors",
+  "model_progress_counter_source": "training_model_progress_contributors",
+  "support_families": [
+    {
+      "support_artifact_kind": "tokenized_shard_validation",
+      "schema_version": "psion.a1_minimal_distributed_lm.support_artifact.tokenized_shard_validation.v1",
+      "public_work_label": "tokenized shard validation",
+      "existing_psionic_work_class_mapping": "validation_replay",
+      "participant_eligible_on_acceptance": true,
+      "model_progress_participant_by_default": false,
+      "required_inputs": [
+        "raw_shard_digest",
+        "tokenized_shard_digest",
+        "tokenizer_digest",
+        "tokenized_dataset_digest"
+      ],
+      "required_outputs": [
+        "round_trip_report",
+        "token_count_report",
+        "validator_verdict"
+      ],
+      "required_artifact_refs": [
+        "assignment_id",
+        "run_id",
+        "validator_verdict_binding",
+        "closeout_verdict_binding",
+        "tokenizer_digest",
+        "tokenized_dataset_digest"
+      ],
+      "validator_acceptance_checks": [
+        "assignment_binding_matches",
+        "artifact_digest_matches_payload",
+        "validator_verdict_explicit",
+        "closeout_verdict_explicit",
+        "participant_counter_is_training_accepted_contributors",
+        "model_progress_counter_not_incremented"
+      ],
+      "rejection_checks": [
+        "stale_assignment",
+        "digest_mismatch",
+        "missing_artifact",
+        "wrong_run_id",
+        "checkpoint_or_dataset_mismatch"
+      ],
+      "closeout_counter_source": "training_accepted_contributors",
+      "detail": "tokenized shard validation is accepted-work eligible for participant counting after Nexus closeout, but it carries zero model-progress participant weight unless it is later converted into accepted local-update aggregate input."
+    },
+    {
+      "support_artifact_kind": "validation_replay",
+      "schema_version": "psion.a1_minimal_distributed_lm.support_artifact.validation_replay.v1",
+      "public_work_label": "validation replay",
+      "existing_psionic_work_class_mapping": "validation_replay",
+      "participant_eligible_on_acceptance": true,
+      "model_progress_participant_by_default": false,
+      "required_inputs": [
+        "contribution_receipt_digest",
+        "artifact_manifest_digest",
+        "validator_challenge_id",
+        "base_checkpoint_ref"
+      ],
+      "required_outputs": [
+        "validator_score_receipt",
+        "quality_drift_signal",
+        "rollback_signal"
+      ],
+      "required_artifact_refs": [
+        "assignment_id",
+        "run_id",
+        "validator_verdict_binding",
+        "closeout_verdict_binding",
+        "tokenizer_digest",
+        "tokenized_dataset_digest",
+        "base_checkpoint_ref"
+      ],
+      "validator_acceptance_checks": [
+        "assignment_binding_matches",
+        "artifact_digest_matches_payload",
+        "validator_verdict_explicit",
+        "closeout_verdict_explicit",
+        "participant_counter_is_training_accepted_contributors",
+        "model_progress_counter_not_incremented"
+      ],
+      "rejection_checks": [
+        "stale_assignment",
+        "digest_mismatch",
+        "missing_artifact",
+        "wrong_run_id",
+        "checkpoint_or_dataset_mismatch"
+      ],
+      "closeout_counter_source": "training_accepted_contributors",
+      "detail": "validation replay is accepted-work eligible for participant counting after Nexus closeout, but it carries zero model-progress participant weight unless it is later converted into accepted local-update aggregate input."
+    },
+    {
+      "support_artifact_kind": "checkpoint_verification",
+      "schema_version": "psion.a1_minimal_distributed_lm.support_artifact.checkpoint_verification.v1",
+      "public_work_label": "checkpoint verification",
+      "existing_psionic_work_class_mapping": "validation_replay",
+      "participant_eligible_on_acceptance": true,
+      "model_progress_participant_by_default": false,
+      "required_inputs": [
+        "base_checkpoint_ref",
+        "checkpoint_digest",
+        "checkpoint_lineage"
+      ],
+      "required_outputs": [
+        "checkpoint_surface_report",
+        "checkpoint_digest_verdict",
+        "lineage_verdict"
+      ],
+      "required_artifact_refs": [
+        "assignment_id",
+        "run_id",
+        "validator_verdict_binding",
+        "closeout_verdict_binding",
+        "base_checkpoint_ref"
+      ],
+      "validator_acceptance_checks": [
+        "assignment_binding_matches",
+        "artifact_digest_matches_payload",
+        "validator_verdict_explicit",
+        "closeout_verdict_explicit",
+        "participant_counter_is_training_accepted_contributors",
+        "model_progress_counter_not_incremented"
+      ],
+      "rejection_checks": [
+        "stale_assignment",
+        "digest_mismatch",
+        "missing_artifact",
+        "wrong_run_id",
+        "checkpoint_or_dataset_mismatch"
+      ],
+      "closeout_counter_source": "training_accepted_contributors",
+      "detail": "checkpoint verification is accepted-work eligible for participant counting after Nexus closeout, but it carries zero model-progress participant weight unless it is later converted into accepted local-update aggregate input."
+    },
+    {
+      "support_artifact_kind": "eval_batch",
+      "schema_version": "psion.a1_minimal_distributed_lm.support_artifact.eval_batch.v1",
+      "public_work_label": "eval batch",
+      "existing_psionic_work_class_mapping": "evaluation",
+      "participant_eligible_on_acceptance": true,
+      "model_progress_participant_by_default": false,
+      "required_inputs": [
+        "validation_set_digest",
+        "checkpoint_digest",
+        "tokenizer_digest"
+      ],
+      "required_outputs": [
+        "eval_loss",
+        "eval_batch_digest",
+        "metric_receipt"
+      ],
+      "required_artifact_refs": [
+        "assignment_id",
+        "run_id",
+        "validator_verdict_binding",
+        "closeout_verdict_binding",
+        "tokenizer_digest",
+        "validation_set_digest",
+        "base_checkpoint_ref"
+      ],
+      "validator_acceptance_checks": [
+        "assignment_binding_matches",
+        "artifact_digest_matches_payload",
+        "validator_verdict_explicit",
+        "closeout_verdict_explicit",
+        "participant_counter_is_training_accepted_contributors",
+        "model_progress_counter_not_incremented"
+      ],
+      "rejection_checks": [
+        "stale_assignment",
+        "digest_mismatch",
+        "missing_artifact",
+        "wrong_run_id",
+        "checkpoint_or_dataset_mismatch"
+      ],
+      "closeout_counter_source": "training_accepted_contributors",
+      "detail": "eval batch is accepted-work eligible for participant counting after Nexus closeout, but it carries zero model-progress participant weight unless it is later converted into accepted local-update aggregate input."
+    },
+    {
+      "support_artifact_kind": "artifact_rematerialization",
+      "schema_version": "psion.a1_minimal_distributed_lm.support_artifact.artifact_rematerialization.v1",
+      "public_work_label": "artifact rematerialization",
+      "existing_psionic_work_class_mapping": "validation_replay",
+      "participant_eligible_on_acceptance": true,
+      "model_progress_participant_by_default": false,
+      "required_inputs": [
+        "artifact_digest",
+        "materialization_recipe_digest"
+      ],
+      "required_outputs": [
+        "rematerialized_artifact_digest",
+        "byte_equality_verdict"
+      ],
+      "required_artifact_refs": [
+        "assignment_id",
+        "run_id",
+        "validator_verdict_binding",
+        "closeout_verdict_binding"
+      ],
+      "validator_acceptance_checks": [
+        "assignment_binding_matches",
+        "artifact_digest_matches_payload",
+        "validator_verdict_explicit",
+        "closeout_verdict_explicit",
+        "participant_counter_is_training_accepted_contributors",
+        "model_progress_counter_not_incremented"
+      ],
+      "rejection_checks": [
+        "stale_assignment",
+        "digest_mismatch",
+        "missing_artifact",
+        "wrong_run_id",
+        "checkpoint_or_dataset_mismatch"
+      ],
+      "closeout_counter_source": "training_accepted_contributors",
+      "detail": "artifact rematerialization is accepted-work eligible for participant counting after Nexus closeout, but it carries zero model-progress participant weight unless it is later converted into accepted local-update aggregate input."
+    },
+    {
+      "support_artifact_kind": "independent_scored_training_window",
+      "schema_version": "psion.a1_minimal_distributed_lm.support_artifact.independent_scored_training_window.v1",
+      "public_work_label": "independent scored training window",
+      "existing_psionic_work_class_mapping": "small_model_local_training",
+      "participant_eligible_on_acceptance": true,
+      "model_progress_participant_by_default": false,
+      "required_inputs": [
+        "tokenizer_digest",
+        "tokenized_dataset_digest",
+        "base_checkpoint_ref",
+        "training_window_seed"
+      ],
+      "required_outputs": [
+        "loss_before",
+        "loss_after",
+        "score_bps",
+        "training_window_receipt"
+      ],
+      "required_artifact_refs": [
+        "assignment_id",
+        "run_id",
+        "validator_verdict_binding",
+        "closeout_verdict_binding",
+        "tokenizer_digest",
+        "tokenized_dataset_digest",
+        "base_checkpoint_ref"
+      ],
+      "validator_acceptance_checks": [
+        "assignment_binding_matches",
+        "artifact_digest_matches_payload",
+        "validator_verdict_explicit",
+        "closeout_verdict_explicit",
+        "participant_counter_is_training_accepted_contributors",
+        "model_progress_counter_not_incremented"
+      ],
+      "rejection_checks": [
+        "stale_assignment",
+        "digest_mismatch",
+        "missing_artifact",
+        "wrong_run_id",
+        "checkpoint_or_dataset_mismatch"
+      ],
+      "closeout_counter_source": "training_accepted_contributors",
+      "detail": "independent scored training window is accepted-work eligible for participant counting after Nexus closeout, but it carries zero model-progress participant weight unless it is later converted into accepted local-update aggregate input."
+    }
+  ],
+  "retained_example_receipts": [
+    {
+      "schema_version": "psion.a1_minimal_distributed_lm.support_artifact_receipt.v1",
+      "receipt_id": "a1-minimal-support-tokenized_shard_validation-receipt-v1",
+      "lane_id": "a1_minimal_distributed_lm_001",
+      "run_id": "a1_minimal_distributed_lm_001",
+      "window_id": "support-window-001",
+      "assignment_id": "support-assignment-001",
+      "worker_id": "support-worker-001",
+      "pylon_provider_id": "pylon-provider-support-001",
+      "support_artifact_kind": "tokenized_shard_validation",
+      "existing_psionic_work_class": "validation_replay",
+      "tokenizer_digest": "sha256:e32b619b67029aba5de26391f9a5f4a32801220ca690ae2c89d565e61069cf63",
+      "tokenized_dataset_digest": "sha256:f0b92dc6301fc72e05a4ead6d85a4b5706e51267c116ecd72025a90c43a37905",
+      "validation_set_digest": null,
+      "base_checkpoint_ref": null,
+      "input_refs": [
+        {
+          "artifact_role": "raw_shard_digest",
+          "artifact_ref": "fixture://a1_minimal_distributed_lm/support/tokenized_shard_validation/input/raw_shard_digest",
+          "artifact_digest": "sha256:7840d1d483e5abae8de3de861b14a1b2c82a6b3cacdf37f9684b9e0578d354c6",
+          "detail": "Retained input reference `raw_shard_digest` for the tokenized shard validation support artifact family."
+        },
+        {
+          "artifact_role": "tokenized_shard_digest",
+          "artifact_ref": "fixture://a1_minimal_distributed_lm/support/tokenized_shard_validation/input/tokenized_shard_digest",
+          "artifact_digest": "sha256:d3af5223fe834e0a7a4bc6662b4281d5da078172e232d58313c52c3c7f18c094",
+          "detail": "Retained input reference `tokenized_shard_digest` for the tokenized shard validation support artifact family."
+        },
+        {
+          "artifact_role": "tokenizer_digest",
+          "artifact_ref": "fixture://a1_minimal_distributed_lm/support/tokenized_shard_validation/input/tokenizer_digest",
+          "artifact_digest": "sha256:04ac952aa4fce532ac2bd1210f07b6292d8ca375afcb469146db5cb73986fcb3",
+          "detail": "Retained input reference `tokenizer_digest` for the tokenized shard validation support artifact family."
+        },
+        {
+          "artifact_role": "tokenized_dataset_digest",
+          "artifact_ref": "fixture://a1_minimal_distributed_lm/support/tokenized_shard_validation/input/tokenized_dataset_digest",
+          "artifact_digest": "sha256:69d2db29df180c4adac6f3138fd70d6adf7146e010e6cd11f40aca19802de3d5",
+          "detail": "Retained input reference `tokenized_dataset_digest` for the tokenized shard validation support artifact family."
+        }
+      ],
+      "output_refs": [
+        {
+          "artifact_role": "round_trip_report",
+          "artifact_ref": "fixture://a1_minimal_distributed_lm/support/tokenized_shard_validation/output/round_trip_report",
+          "artifact_digest": "sha256:2b0a1c763329a527a3f96f866a47c723bcd20acaac73b2023cad822c5accc226",
+          "detail": "Retained output reference `round_trip_report` for the tokenized shard validation support artifact family."
+        },
+        {
+          "artifact_role": "token_count_report",
+          "artifact_ref": "fixture://a1_minimal_distributed_lm/support/tokenized_shard_validation/output/token_count_report",
+          "artifact_digest": "sha256:742016e021a9324a19829cfc88d7b477e26af683f532945f163005aa27c3905e",
+          "detail": "Retained output reference `token_count_report` for the tokenized shard validation support artifact family."
+        },
+        {
+          "artifact_role": "validator_verdict",
+          "artifact_ref": "fixture://a1_minimal_distributed_lm/support/tokenized_shard_validation/output/validator_verdict",
+          "artifact_digest": "sha256:b8c4bcb615a8ac3629f99c611cef1221b46afa02f3e2901ee6adcbb36a1af8cd",
+          "detail": "Retained output reference `validator_verdict` for the tokenized shard validation support artifact family."
+        }
+      ],
+      "required_validator_checks": [
+        "assignment_binding_matches",
+        "artifact_digest_matches_payload",
+        "validator_verdict_explicit",
+        "closeout_verdict_explicit",
+        "participant_counter_is_training_accepted_contributors",
+        "model_progress_counter_not_incremented"
+      ],
+      "validator_disposition": "accepted",
+      "validator_verdict_binding": "accepted_support_artifact:tokenized_shard_validation",
+      "closeout_verdict_binding": "nexus_closeout_accepted_support:tokenized_shard_validation",
+      "participant_eligible": true,
+      "accepted_participant_work": true,
+      "model_progress_participant": false,
+      "participant_counter_source": "training_accepted_contributors",
+      "model_progress_counter_source": "training_model_progress_contributors",
+      "claim_boundary": "This accepted tokenized shard validation receipt can count as one participant for run a1_minimal_distributed_lm_001. It is not model-progress participant work and must not advance checkpoint lineage or training_model_progress_contributors by itself.",
+      "detail": "Retained schema example for tokenized shard validation support work: explicit inputs, outputs, digests, validator disposition, and Nexus closeout binding are sufficient for acceptance or rejection without reading logs.",
+      "receipt_digest": "sha256:cf0cbd1c2e34df0a275f33bbcd2a711056de6db22fbce5cedd8cc83a4f633066"
+    },
+    {
+      "schema_version": "psion.a1_minimal_distributed_lm.support_artifact_receipt.v1",
+      "receipt_id": "a1-minimal-support-validation_replay-receipt-v1",
+      "lane_id": "a1_minimal_distributed_lm_001",
+      "run_id": "a1_minimal_distributed_lm_001",
+      "window_id": "support-window-002",
+      "assignment_id": "support-assignment-002",
+      "worker_id": "support-worker-002",
+      "pylon_provider_id": "pylon-provider-support-002",
+      "support_artifact_kind": "validation_replay",
+      "existing_psionic_work_class": "validation_replay",
+      "tokenizer_digest": "sha256:e32b619b67029aba5de26391f9a5f4a32801220ca690ae2c89d565e61069cf63",
+      "tokenized_dataset_digest": "sha256:f0b92dc6301fc72e05a4ead6d85a4b5706e51267c116ecd72025a90c43a37905",
+      "validation_set_digest": null,
+      "base_checkpoint_ref": "base://a1_minimal_distributed_lm/step-000000",
+      "input_refs": [
+        {
+          "artifact_role": "contribution_receipt_digest",
+          "artifact_ref": "fixture://a1_minimal_distributed_lm/support/validation_replay/input/contribution_receipt_digest",
+          "artifact_digest": "sha256:aba21b81b0510517b286a8b26b40021c748c223a53e274773f0d134a55361722",
+          "detail": "Retained input reference `contribution_receipt_digest` for the validation replay support artifact family."
+        },
+        {
+          "artifact_role": "artifact_manifest_digest",
+          "artifact_ref": "fixture://a1_minimal_distributed_lm/support/validation_replay/input/artifact_manifest_digest",
+          "artifact_digest": "sha256:79a917ac1c299bfb2e0b8fc382042067109aac074fa5d17c28da8a9f5d480376",
+          "detail": "Retained input reference `artifact_manifest_digest` for the validation replay support artifact family."
+        },
+        {
+          "artifact_role": "validator_challenge_id",
+          "artifact_ref": "fixture://a1_minimal_distributed_lm/support/validation_replay/input/validator_challenge_id",
+          "artifact_digest": "sha256:59b7854b21198684f9219d0b6a869a9356be34590a7eeaaa78dd7c9c7ba27b8c",
+          "detail": "Retained input reference `validator_challenge_id` for the validation replay support artifact family."
+        },
+        {
+          "artifact_role": "base_checkpoint_ref",
+          "artifact_ref": "fixture://a1_minimal_distributed_lm/support/validation_replay/input/base_checkpoint_ref",
+          "artifact_digest": "sha256:495dd938589b36aa8aaba6becea0f7b7097dfe343110e238dcae52cb20bbd573",
+          "detail": "Retained input reference `base_checkpoint_ref` for the validation replay support artifact family."
+        }
+      ],
+      "output_refs": [
+        {
+          "artifact_role": "validator_score_receipt",
+          "artifact_ref": "fixture://a1_minimal_distributed_lm/support/validation_replay/output/validator_score_receipt",
+          "artifact_digest": "sha256:7279db7a616f317202a140573a68298709e5aac94a92cae2c7e6541be5c0c8f4",
+          "detail": "Retained output reference `validator_score_receipt` for the validation replay support artifact family."
+        },
+        {
+          "artifact_role": "quality_drift_signal",
+          "artifact_ref": "fixture://a1_minimal_distributed_lm/support/validation_replay/output/quality_drift_signal",
+          "artifact_digest": "sha256:4ef67c973fa40ee44c489c0c65ab277cfa3d12b4fad2520c83ec89dbfeefaeb2",
+          "detail": "Retained output reference `quality_drift_signal` for the validation replay support artifact family."
+        },
+        {
+          "artifact_role": "rollback_signal",
+          "artifact_ref": "fixture://a1_minimal_distributed_lm/support/validation_replay/output/rollback_signal",
+          "artifact_digest": "sha256:7649dbe2d1d0c215d634b3d0a9960c095b6add2530cfb2ec4d9b96f4ca988169",
+          "detail": "Retained output reference `rollback_signal` for the validation replay support artifact family."
+        }
+      ],
+      "required_validator_checks": [
+        "assignment_binding_matches",
+        "artifact_digest_matches_payload",
+        "validator_verdict_explicit",
+        "closeout_verdict_explicit",
+        "participant_counter_is_training_accepted_contributors",
+        "model_progress_counter_not_incremented"
+      ],
+      "validator_disposition": "accepted",
+      "validator_verdict_binding": "accepted_support_artifact:validation_replay",
+      "closeout_verdict_binding": "nexus_closeout_accepted_support:validation_replay",
+      "participant_eligible": true,
+      "accepted_participant_work": true,
+      "model_progress_participant": false,
+      "participant_counter_source": "training_accepted_contributors",
+      "model_progress_counter_source": "training_model_progress_contributors",
+      "claim_boundary": "This accepted validation replay receipt can count as one participant for run a1_minimal_distributed_lm_001. It is not model-progress participant work and must not advance checkpoint lineage or training_model_progress_contributors by itself.",
+      "detail": "Retained schema example for validation replay support work: explicit inputs, outputs, digests, validator disposition, and Nexus closeout binding are sufficient for acceptance or rejection without reading logs.",
+      "receipt_digest": "sha256:93fb83154b23a8452f383997009835020707595b2c3e8de5a9f146303cb754fd"
+    },
+    {
+      "schema_version": "psion.a1_minimal_distributed_lm.support_artifact_receipt.v1",
+      "receipt_id": "a1-minimal-support-checkpoint_verification-receipt-v1",
+      "lane_id": "a1_minimal_distributed_lm_001",
+      "run_id": "a1_minimal_distributed_lm_001",
+      "window_id": "support-window-003",
+      "assignment_id": "support-assignment-003",
+      "worker_id": "support-worker-003",
+      "pylon_provider_id": "pylon-provider-support-003",
+      "support_artifact_kind": "checkpoint_verification",
+      "existing_psionic_work_class": "validation_replay",
+      "tokenizer_digest": null,
+      "tokenized_dataset_digest": null,
+      "validation_set_digest": null,
+      "base_checkpoint_ref": "base://a1_minimal_distributed_lm/step-000000",
+      "input_refs": [
+        {
+          "artifact_role": "base_checkpoint_ref",
+          "artifact_ref": "fixture://a1_minimal_distributed_lm/support/checkpoint_verification/input/base_checkpoint_ref",
+          "artifact_digest": "sha256:e6de609021c66fdf13abea7a135b5e10df93ffd388291765eeacb32e0463736f",
+          "detail": "Retained input reference `base_checkpoint_ref` for the checkpoint verification support artifact family."
+        },
+        {
+          "artifact_role": "checkpoint_digest",
+          "artifact_ref": "fixture://a1_minimal_distributed_lm/support/checkpoint_verification/input/checkpoint_digest",
+          "artifact_digest": "sha256:ac982491b794a464046c17dc15de4c402a4cc1aada7772dfdf0c18c0e1277e6e",
+          "detail": "Retained input reference `checkpoint_digest` for the checkpoint verification support artifact family."
+        },
+        {
+          "artifact_role": "checkpoint_lineage",
+          "artifact_ref": "fixture://a1_minimal_distributed_lm/support/checkpoint_verification/input/checkpoint_lineage",
+          "artifact_digest": "sha256:4f2daf13be7e399cbf091a112b48463086a243591b15a6aa940da129400e6f17",
+          "detail": "Retained input reference `checkpoint_lineage` for the checkpoint verification support artifact family."
+        }
+      ],
+      "output_refs": [
+        {
+          "artifact_role": "checkpoint_surface_report",
+          "artifact_ref": "fixture://a1_minimal_distributed_lm/support/checkpoint_verification/output/checkpoint_surface_report",
+          "artifact_digest": "sha256:fdd9d72c51e31b5c4337985d9964f46b891038968a083c46b1a90734963c673e",
+          "detail": "Retained output reference `checkpoint_surface_report` for the checkpoint verification support artifact family."
+        },
+        {
+          "artifact_role": "checkpoint_digest_verdict",
+          "artifact_ref": "fixture://a1_minimal_distributed_lm/support/checkpoint_verification/output/checkpoint_digest_verdict",
+          "artifact_digest": "sha256:7e7dd2b016deecc6edde9f7629d5022732f9c5f1d215bc1a866666ca910d9270",
+          "detail": "Retained output reference `checkpoint_digest_verdict` for the checkpoint verification support artifact family."
+        },
+        {
+          "artifact_role": "lineage_verdict",
+          "artifact_ref": "fixture://a1_minimal_distributed_lm/support/checkpoint_verification/output/lineage_verdict",
+          "artifact_digest": "sha256:50f08a7dce49102404876833dd7aeee9bd7083d5c6399fda950d46487996a1fe",
+          "detail": "Retained output reference `lineage_verdict` for the checkpoint verification support artifact family."
+        }
+      ],
+      "required_validator_checks": [
+        "assignment_binding_matches",
+        "artifact_digest_matches_payload",
+        "validator_verdict_explicit",
+        "closeout_verdict_explicit",
+        "participant_counter_is_training_accepted_contributors",
+        "model_progress_counter_not_incremented"
+      ],
+      "validator_disposition": "accepted",
+      "validator_verdict_binding": "accepted_support_artifact:checkpoint_verification",
+      "closeout_verdict_binding": "nexus_closeout_accepted_support:checkpoint_verification",
+      "participant_eligible": true,
+      "accepted_participant_work": true,
+      "model_progress_participant": false,
+      "participant_counter_source": "training_accepted_contributors",
+      "model_progress_counter_source": "training_model_progress_contributors",
+      "claim_boundary": "This accepted checkpoint verification receipt can count as one participant for run a1_minimal_distributed_lm_001. It is not model-progress participant work and must not advance checkpoint lineage or training_model_progress_contributors by itself.",
+      "detail": "Retained schema example for checkpoint verification support work: explicit inputs, outputs, digests, validator disposition, and Nexus closeout binding are sufficient for acceptance or rejection without reading logs.",
+      "receipt_digest": "sha256:5ad49329c9352b7f764f278345843a72c680f8901e1f3e9cc33b304488c6d1f3"
+    },
+    {
+      "schema_version": "psion.a1_minimal_distributed_lm.support_artifact_receipt.v1",
+      "receipt_id": "a1-minimal-support-eval_batch-receipt-v1",
+      "lane_id": "a1_minimal_distributed_lm_001",
+      "run_id": "a1_minimal_distributed_lm_001",
+      "window_id": "support-window-004",
+      "assignment_id": "support-assignment-004",
+      "worker_id": "support-worker-004",
+      "pylon_provider_id": "pylon-provider-support-004",
+      "support_artifact_kind": "eval_batch",
+      "existing_psionic_work_class": "evaluation",
+      "tokenizer_digest": "sha256:e32b619b67029aba5de26391f9a5f4a32801220ca690ae2c89d565e61069cf63",
+      "tokenized_dataset_digest": null,
+      "validation_set_digest": "sha256:6c1c6ca83a2d8eca6cb133f3ec719e822f134452723e72e5201407b28cd3d228",
+      "base_checkpoint_ref": "base://a1_minimal_distributed_lm/step-000000",
+      "input_refs": [
+        {
+          "artifact_role": "validation_set_digest",
+          "artifact_ref": "fixture://a1_minimal_distributed_lm/support/eval_batch/input/validation_set_digest",
+          "artifact_digest": "sha256:e4eb125ac9dba6d0a80ffd3067c8c1ac723131151e619b1823945566bb003a8d",
+          "detail": "Retained input reference `validation_set_digest` for the eval batch support artifact family."
+        },
+        {
+          "artifact_role": "checkpoint_digest",
+          "artifact_ref": "fixture://a1_minimal_distributed_lm/support/eval_batch/input/checkpoint_digest",
+          "artifact_digest": "sha256:5e3b708af6cd4620aa70a145de3effd3e52cb234e13c7d3b97dba65091612487",
+          "detail": "Retained input reference `checkpoint_digest` for the eval batch support artifact family."
+        },
+        {
+          "artifact_role": "tokenizer_digest",
+          "artifact_ref": "fixture://a1_minimal_distributed_lm/support/eval_batch/input/tokenizer_digest",
+          "artifact_digest": "sha256:53fc795e4fd8994aa619762f25f33d6112df4065c406833a747a33ac918e5fdc",
+          "detail": "Retained input reference `tokenizer_digest` for the eval batch support artifact family."
+        }
+      ],
+      "output_refs": [
+        {
+          "artifact_role": "eval_loss",
+          "artifact_ref": "fixture://a1_minimal_distributed_lm/support/eval_batch/output/eval_loss",
+          "artifact_digest": "sha256:38c667e829f22a5cec2b06eaec44a16d2046c722198e11a87b0338b4012849c7",
+          "detail": "Retained output reference `eval_loss` for the eval batch support artifact family."
+        },
+        {
+          "artifact_role": "eval_batch_digest",
+          "artifact_ref": "fixture://a1_minimal_distributed_lm/support/eval_batch/output/eval_batch_digest",
+          "artifact_digest": "sha256:f31b34618f4478f4a5dbab8e0d32c182ba75c27d0bd6258252c1c0052f6aa356",
+          "detail": "Retained output reference `eval_batch_digest` for the eval batch support artifact family."
+        },
+        {
+          "artifact_role": "metric_receipt",
+          "artifact_ref": "fixture://a1_minimal_distributed_lm/support/eval_batch/output/metric_receipt",
+          "artifact_digest": "sha256:182878eaf40fe4fb8eaa6f4a91e2bc48063f5e44a9b28d93d31d569947668df4",
+          "detail": "Retained output reference `metric_receipt` for the eval batch support artifact family."
+        }
+      ],
+      "required_validator_checks": [
+        "assignment_binding_matches",
+        "artifact_digest_matches_payload",
+        "validator_verdict_explicit",
+        "closeout_verdict_explicit",
+        "participant_counter_is_training_accepted_contributors",
+        "model_progress_counter_not_incremented"
+      ],
+      "validator_disposition": "accepted",
+      "validator_verdict_binding": "accepted_support_artifact:eval_batch",
+      "closeout_verdict_binding": "nexus_closeout_accepted_support:eval_batch",
+      "participant_eligible": true,
+      "accepted_participant_work": true,
+      "model_progress_participant": false,
+      "participant_counter_source": "training_accepted_contributors",
+      "model_progress_counter_source": "training_model_progress_contributors",
+      "claim_boundary": "This accepted eval batch receipt can count as one participant for run a1_minimal_distributed_lm_001. It is not model-progress participant work and must not advance checkpoint lineage or training_model_progress_contributors by itself.",
+      "detail": "Retained schema example for eval batch support work: explicit inputs, outputs, digests, validator disposition, and Nexus closeout binding are sufficient for acceptance or rejection without reading logs.",
+      "receipt_digest": "sha256:565a9a4270bf98931d8fd7c9d383d069b1fff6fbfdc4fd073b7865680a0f4299"
+    },
+    {
+      "schema_version": "psion.a1_minimal_distributed_lm.support_artifact_receipt.v1",
+      "receipt_id": "a1-minimal-support-artifact_rematerialization-receipt-v1",
+      "lane_id": "a1_minimal_distributed_lm_001",
+      "run_id": "a1_minimal_distributed_lm_001",
+      "window_id": "support-window-005",
+      "assignment_id": "support-assignment-005",
+      "worker_id": "support-worker-005",
+      "pylon_provider_id": "pylon-provider-support-005",
+      "support_artifact_kind": "artifact_rematerialization",
+      "existing_psionic_work_class": "validation_replay",
+      "tokenizer_digest": null,
+      "tokenized_dataset_digest": null,
+      "validation_set_digest": null,
+      "base_checkpoint_ref": null,
+      "input_refs": [
+        {
+          "artifact_role": "artifact_digest",
+          "artifact_ref": "fixture://a1_minimal_distributed_lm/support/artifact_rematerialization/input/artifact_digest",
+          "artifact_digest": "sha256:efe151095b9496af4ff498ba16ae3c3a7a10005d5939c667c6618b749051cdcc",
+          "detail": "Retained input reference `artifact_digest` for the artifact rematerialization support artifact family."
+        },
+        {
+          "artifact_role": "materialization_recipe_digest",
+          "artifact_ref": "fixture://a1_minimal_distributed_lm/support/artifact_rematerialization/input/materialization_recipe_digest",
+          "artifact_digest": "sha256:e1352424903885bc6b21026cef6abd4d8c0f6fb65d8359157f14023fbfbdbfe5",
+          "detail": "Retained input reference `materialization_recipe_digest` for the artifact rematerialization support artifact family."
+        }
+      ],
+      "output_refs": [
+        {
+          "artifact_role": "rematerialized_artifact_digest",
+          "artifact_ref": "fixture://a1_minimal_distributed_lm/support/artifact_rematerialization/output/rematerialized_artifact_digest",
+          "artifact_digest": "sha256:80fd3640e07a4fc578e48a6087eff2a992a06be9dc0e30b833eb858d07dbadde",
+          "detail": "Retained output reference `rematerialized_artifact_digest` for the artifact rematerialization support artifact family."
+        },
+        {
+          "artifact_role": "byte_equality_verdict",
+          "artifact_ref": "fixture://a1_minimal_distributed_lm/support/artifact_rematerialization/output/byte_equality_verdict",
+          "artifact_digest": "sha256:f43abc037f539aca6e74d05b683737d765bbe773519e6b50e8e5e337c3c28f1e",
+          "detail": "Retained output reference `byte_equality_verdict` for the artifact rematerialization support artifact family."
+        }
+      ],
+      "required_validator_checks": [
+        "assignment_binding_matches",
+        "artifact_digest_matches_payload",
+        "validator_verdict_explicit",
+        "closeout_verdict_explicit",
+        "participant_counter_is_training_accepted_contributors",
+        "model_progress_counter_not_incremented"
+      ],
+      "validator_disposition": "accepted",
+      "validator_verdict_binding": "accepted_support_artifact:artifact_rematerialization",
+      "closeout_verdict_binding": "nexus_closeout_accepted_support:artifact_rematerialization",
+      "participant_eligible": true,
+      "accepted_participant_work": true,
+      "model_progress_participant": false,
+      "participant_counter_source": "training_accepted_contributors",
+      "model_progress_counter_source": "training_model_progress_contributors",
+      "claim_boundary": "This accepted artifact rematerialization receipt can count as one participant for run a1_minimal_distributed_lm_001. It is not model-progress participant work and must not advance checkpoint lineage or training_model_progress_contributors by itself.",
+      "detail": "Retained schema example for artifact rematerialization support work: explicit inputs, outputs, digests, validator disposition, and Nexus closeout binding are sufficient for acceptance or rejection without reading logs.",
+      "receipt_digest": "sha256:532b3a5d4dd05544b69cfbec3e102dc52526929a9445da157f956592f0ce41cf"
+    },
+    {
+      "schema_version": "psion.a1_minimal_distributed_lm.support_artifact_receipt.v1",
+      "receipt_id": "a1-minimal-support-independent_scored_training_window-receipt-v1",
+      "lane_id": "a1_minimal_distributed_lm_001",
+      "run_id": "a1_minimal_distributed_lm_001",
+      "window_id": "support-window-006",
+      "assignment_id": "support-assignment-006",
+      "worker_id": "support-worker-006",
+      "pylon_provider_id": "pylon-provider-support-006",
+      "support_artifact_kind": "independent_scored_training_window",
+      "existing_psionic_work_class": "small_model_local_training",
+      "tokenizer_digest": "sha256:e32b619b67029aba5de26391f9a5f4a32801220ca690ae2c89d565e61069cf63",
+      "tokenized_dataset_digest": "sha256:f0b92dc6301fc72e05a4ead6d85a4b5706e51267c116ecd72025a90c43a37905",
+      "validation_set_digest": null,
+      "base_checkpoint_ref": "base://a1_minimal_distributed_lm/step-000000",
+      "input_refs": [
+        {
+          "artifact_role": "tokenizer_digest",
+          "artifact_ref": "fixture://a1_minimal_distributed_lm/support/independent_scored_training_window/input/tokenizer_digest",
+          "artifact_digest": "sha256:a8cd7df9f75a7a42c237fa3f3d43c8d0471c61acccc195ec6250ed0736879a9b",
+          "detail": "Retained input reference `tokenizer_digest` for the independent scored training window support artifact family."
+        },
+        {
+          "artifact_role": "tokenized_dataset_digest",
+          "artifact_ref": "fixture://a1_minimal_distributed_lm/support/independent_scored_training_window/input/tokenized_dataset_digest",
+          "artifact_digest": "sha256:8b34123ad24b7dcf3e4898a29899ee40cac6bb50627c9d20d1cf84e81750635d",
+          "detail": "Retained input reference `tokenized_dataset_digest` for the independent scored training window support artifact family."
+        },
+        {
+          "artifact_role": "base_checkpoint_ref",
+          "artifact_ref": "fixture://a1_minimal_distributed_lm/support/independent_scored_training_window/input/base_checkpoint_ref",
+          "artifact_digest": "sha256:96150fcfa3fe71d5e0401dda3f924e79d3a25a237c46cdf6546f87a56735de23",
+          "detail": "Retained input reference `base_checkpoint_ref` for the independent scored training window support artifact family."
+        },
+        {
+          "artifact_role": "training_window_seed",
+          "artifact_ref": "fixture://a1_minimal_distributed_lm/support/independent_scored_training_window/input/training_window_seed",
+          "artifact_digest": "sha256:a3f87837f08d5cf0644c8e707ac4a5164a2e68ff6c37cb32412f951e513c3461",
+          "detail": "Retained input reference `training_window_seed` for the independent scored training window support artifact family."
+        }
+      ],
+      "output_refs": [
+        {
+          "artifact_role": "loss_before",
+          "artifact_ref": "fixture://a1_minimal_distributed_lm/support/independent_scored_training_window/output/loss_before",
+          "artifact_digest": "sha256:009c1a877215082b7a13ee58061b4029154dfabb0c3d8bf0fedaa4a4864e20b6",
+          "detail": "Retained output reference `loss_before` for the independent scored training window support artifact family."
+        },
+        {
+          "artifact_role": "loss_after",
+          "artifact_ref": "fixture://a1_minimal_distributed_lm/support/independent_scored_training_window/output/loss_after",
+          "artifact_digest": "sha256:beb120831d414909827b13839ff53d0b5984d0ae63643064c3c3348f342c0377",
+          "detail": "Retained output reference `loss_after` for the independent scored training window support artifact family."
+        },
+        {
+          "artifact_role": "score_bps",
+          "artifact_ref": "fixture://a1_minimal_distributed_lm/support/independent_scored_training_window/output/score_bps",
+          "artifact_digest": "sha256:fd9de62d9707b240c25e19fe45f81a4de41ce2333387e7f68ea167861c713938",
+          "detail": "Retained output reference `score_bps` for the independent scored training window support artifact family."
+        },
+        {
+          "artifact_role": "training_window_receipt",
+          "artifact_ref": "fixture://a1_minimal_distributed_lm/support/independent_scored_training_window/output/training_window_receipt",
+          "artifact_digest": "sha256:800004a5aafca4fa4991b09712add1b7ef694eea609e7fb87610ebdde5bcc5e4",
+          "detail": "Retained output reference `training_window_receipt` for the independent scored training window support artifact family."
+        }
+      ],
+      "required_validator_checks": [
+        "assignment_binding_matches",
+        "artifact_digest_matches_payload",
+        "validator_verdict_explicit",
+        "closeout_verdict_explicit",
+        "participant_counter_is_training_accepted_contributors",
+        "model_progress_counter_not_incremented"
+      ],
+      "validator_disposition": "accepted",
+      "validator_verdict_binding": "accepted_support_artifact:independent_scored_training_window",
+      "closeout_verdict_binding": "nexus_closeout_accepted_support:independent_scored_training_window",
+      "participant_eligible": true,
+      "accepted_participant_work": true,
+      "model_progress_participant": false,
+      "participant_counter_source": "training_accepted_contributors",
+      "model_progress_counter_source": "training_model_progress_contributors",
+      "claim_boundary": "This accepted independent scored training window receipt can count as one participant for run a1_minimal_distributed_lm_001. It is not model-progress participant work and must not advance checkpoint lineage or training_model_progress_contributors by itself.",
+      "detail": "Retained schema example for independent scored training window support work: explicit inputs, outputs, digests, validator disposition, and Nexus closeout binding are sufficient for acceptance or rejection without reading logs.",
+      "receipt_digest": "sha256:e6c470498a81902275fa1f3a67ae9394d4a8f46bd4e16909ca96d246163b21f9"
+    }
+  ],
+  "claim_boundary": "A1 minimal distributed LM support/verifier work can count as participants only after accepted Nexus closeout under one run id. It does not count as model-progress participants unless a later accepted local update directly enters aggregate and checkpoint promotion.",
+  "catalog_digest": "sha256:d258457e3f7a73576ee0ad1f6638850825305312f3543df212875aaae90a8b63"
+}

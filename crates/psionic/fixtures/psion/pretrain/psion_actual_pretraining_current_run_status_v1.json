@@ -1,0 +1,20 @@
+{
+  "schema_version": "psion.actual_pretraining_current_run_status.v1",
+  "lane_id": "psion_actual_pretraining_v1",
+  "run_id": "run-psion-actual-20260402t000000z",
+  "phase": "running_pretrain",
+  "current_status_path": "status/current_run_status.json",
+  "retained_summary_path": "status/retained_summary.json",
+  "latest_checkpoint_pointer_path": "checkpoints/latest_accepted_checkpoint_pointer.json",
+  "continuation_handoff_path": "continuation/accepted_checkpoint_handoff.json",
+  "latest_checkpoint_label": "actual-pretrain-step-4096",
+  "last_completed_step": 4096,
+  "launcher_surfaces": {
+    "start_surface_id": "psion_actual_pretraining.start",
+    "dry_run_surface_id": "psion_actual_pretraining.dry_run",
+    "resume_surface_id": "psion_actual_pretraining.resume",
+    "status_surface_id": "psion_actual_pretraining.status"
+  },
+  "updated_at_utc": "2026-04-02T13:30:00Z",
+  "detail": "Current run status freezes the last known phase, latest accepted checkpoint pointer path, and the reserved launcher surface ids for the actual lane."
+}

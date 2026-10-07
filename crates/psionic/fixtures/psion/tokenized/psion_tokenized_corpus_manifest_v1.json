@@ -1,0 +1,168 @@
+{
+  "schema_version": "psion.tokenized_corpus_manifest.v1",
+  "dataset_id": "psion_corpus_tokenized",
+  "dataset_version": "v1",
+  "tokenizer_bundle_schema_version": "psion.tokenizer_artifact_bundle.v1",
+  "tokenizer_id": "psion_sentencepiece_seed",
+  "tokenizer_version": "v1",
+  "tokenizer": {
+    "family": "sentence_piece",
+    "tokenizer_digest": "sha256:psion_sentencepiece_seed_tokenizer_digest_v1",
+    "vocab_size": 32768,
+    "special_tokens_digest": "sha256:psion_sentencepiece_seed_added_tokens_digest_v1",
+    "template_digest": "sha256:psion_sentencepiece_seed_config_digest_v1"
+  },
+  "raw_source_schema_version": "psion.raw_source_manifest.v1",
+  "preprocessing_version": "psion_raw_source_preprocess_v1",
+  "packing_policy": {
+    "policy_id": "psion_pack_context_window",
+    "policy_version": "v1",
+    "packing_mode": "pack_into_context_window",
+    "max_sequence_tokens": 8192,
+    "overlong_sequence_posture": "refuse"
+  },
+  "replay_contract": {
+    "iteration_mode": "repeat",
+    "shard_ordering": "deterministic_shuffle",
+    "deterministic_shuffle_seed": 1337,
+    "stable_dataset_identity": "psion_corpus_tokenized@v1"
+  },
+  "source_family_bindings": [
+    {
+      "source_family_id": "computer_architecture_history",
+      "source_ids": [
+        "arch_textbook_foster_1985"
+      ]
+    },
+    {
+      "source_family_id": "evaluation_only_benchmark_material",
+      "source_ids": [
+        "spec_quiz_eval_pack_v1"
+      ]
+    },
+    {
+      "source_family_id": "normative_specs",
+      "source_ids": [
+        "wasm_core_spec_release_2"
+      ]
+    }
+  ],
+  "splits": [
+    {
+      "split_name": "held_out",
+      "kind": "held_out",
+      "shard_ids": [
+        "psion_held_out_shard_0001"
+      ],
+      "source_family_ids": [
+        "evaluation_only_benchmark_material"
+      ],
+      "sequence_count": 16,
+      "token_count": 49152
+    },
+    {
+      "split_name": "train",
+      "kind": "train",
+      "shard_ids": [
+        "psion_train_shard_0001"
+      ],
+      "source_family_ids": [
+        "computer_architecture_history",
+        "normative_specs"
+      ],
+      "sequence_count": 64,
+      "token_count": 245760
+    },
+    {
+      "split_name": "validation",
+      "kind": "validation",
+      "shard_ids": [
+        "psion_validation_shard_0001"
+      ],
+      "source_family_ids": [
+        "computer_architecture_history",
+        "normative_specs"
+      ],
+      "sequence_count": 16,
+      "token_count": 65536
+    }
+  ],
+  "shards": [
+    {
+      "shard_id": "psion_held_out_shard_0001",
+      "split_name": "held_out",
+      "split_kind": "held_out",
+      "storage_ref": "datastream://psion/tokenized/v1/held_out/shard-0001",
+      "shard_digest": "sha256:psion_held_out_shard_0001_digest_v1",
+      "sequence_count": 16,
+      "token_count": 49152,
+      "min_sequence_tokens": 1024,
+      "max_sequence_tokens": 4096,
+      "tokenizer_digest": "sha256:psion_sentencepiece_seed_tokenizer_digest_v1",
+      "source_manifest_schema_version": "psion.raw_source_manifest.v1",
+      "preprocessing_version": "psion_raw_source_preprocess_v1",
+      "packing_policy_version": "v1",
+      "source_lineage": [
+        {
+          "source_id": "spec_quiz_eval_pack_v1",
+          "source_family_id": "evaluation_only_benchmark_material",
+          "source_normalized_digest": "sha256:spec_quiz_eval_pack_v1_normalized_source_digest_v1"
+        }
+      ]
+    },
+    {
+      "shard_id": "psion_train_shard_0001",
+      "split_name": "train",
+      "split_kind": "train",
+      "storage_ref": "datastream://psion/tokenized/v1/train/shard-0001",
+      "shard_digest": "sha256:psion_train_shard_0001_digest_v1",
+      "sequence_count": 64,
+      "token_count": 245760,
+      "min_sequence_tokens": 1024,
+      "max_sequence_tokens": 4096,
+      "tokenizer_digest": "sha256:psion_sentencepiece_seed_tokenizer_digest_v1",
+      "source_manifest_schema_version": "psion.raw_source_manifest.v1",
+      "preprocessing_version": "psion_raw_source_preprocess_v1",
+      "packing_policy_version": "v1",
+      "source_lineage": [
+        {
+          "source_id": "arch_textbook_foster_1985",
+          "source_family_id": "computer_architecture_history",
+          "source_normalized_digest": "sha256:arch_textbook_foster_1985_normalized_source_digest_v1"
+        },
+        {
+          "source_id": "wasm_core_spec_release_2",
+          "source_family_id": "normative_specs",
+          "source_normalized_digest": "sha256:wasm_core_spec_release_2_normalized_source_digest_v1"
+        }
+      ]
+    },
+    {
+      "shard_id": "psion_validation_shard_0001",
+      "split_name": "validation",
+      "split_kind": "validation",
+      "storage_ref": "datastream://psion/tokenized/v1/validation/shard-0001",
+      "shard_digest": "sha256:psion_validation_shard_0001_digest_v1",
+      "sequence_count": 16,
+      "token_count": 65536,
+      "min_sequence_tokens": 1024,
+      "max_sequence_tokens": 4096,
+      "tokenizer_digest": "sha256:psion_sentencepiece_seed_tokenizer_digest_v1",
+      "source_manifest_schema_version": "psion.raw_source_manifest.v1",
+      "preprocessing_version": "psion_raw_source_preprocess_v1",
+      "packing_policy_version": "v1",
+      "source_lineage": [
+        {
+          "source_id": "arch_textbook_foster_1985",
+          "source_family_id": "computer_architecture_history",
+          "source_normalized_digest": "sha256:arch_textbook_foster_1985_normalized_source_digest_v1"
+        },
+        {
+          "source_id": "wasm_core_spec_release_2",
+          "source_family_id": "normative_specs",
+          "source_normalized_digest": "sha256:wasm_core_spec_release_2_normalized_source_digest_v1"
+        }
+      ]
+    }
+  ]
+}

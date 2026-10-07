@@ -1,0 +1,755 @@
+{
+  "schema_version": "psion.generic_load_and_generate.v1",
+  "packet_id": "psion_generic_load_and_generate_v1",
+  "runtime_path": "psionic_local_runtime.cpu_model_text_generation_service",
+  "list_models": {
+    "models": [
+      {
+        "name": "wordpiece-decoder-v1",
+        "digest": "7daf98e44b6eee34df8d97f24419709f23b19010cdb49c9b18b771936ced352b",
+        "family": "wordpiece_decoder",
+        "format": "SafeTensors",
+        "quantization": "none",
+        "size_bytes": null,
+        "remote_host": null,
+        "remote_model": null
+      }
+    ],
+    "error": null
+  },
+  "show_model": {
+    "model": "wordpiece-decoder-v1",
+    "format": "SafeTensors",
+    "family": "wordpiece_decoder",
+    "families": [
+      "wordpiece_decoder"
+    ],
+    "quantization": "none",
+    "chat_template_digest": null,
+    "capabilities": [
+      "generate"
+    ],
+    "facts": {
+      "psionic.model_ingress_surface": "direct_artifact_import",
+      "psionic.quantization_mode": "none",
+      "psionic.runtime_surface": "psionic_native",
+      "psionic.serving_surface": "psionic_native",
+      "psionic.weight_bundle_digest": "7daf98e44b6eee34df8d97f24419709f23b19010cdb49c9b18b771936ced352b",
+      "psionic.weight_format": "SafeTensors"
+    },
+    "error": null
+  },
+  "prompt_text": "open agents",
+  "encoded_prompt_tokens": [
+    1,
+    5,
+    6
+  ],
+  "cold_response": {
+    "request_id": "psion-generic-load-generate-cold",
+    "product_id": "psionic.text_generation",
+    "model_id": "wordpiece-decoder-v1",
+    "session_id": null,
+    "output": {
+      "tokens": [],
+      "text": ""
+    },
+    "usage": {
+      "input_tokens": 3,
+      "output_tokens": 0,
+      "cache_tokens": 3
+    },
+    "metrics": {
+      "total_duration_ns": 842167,
+      "load_duration_ns": 488333,
+      "prompt_eval_count": 3,
+      "prompt_eval_duration_ns": 785583,
+      "context_window": {
+        "budget": {
+          "max_context_tokens": 8,
+          "existing_context_tokens": 0,
+          "reserved_output_tokens": 4,
+          "available_prompt_tokens": 4
+        },
+        "input_prompt_tokens": 3,
+        "retained_prompt_tokens": 3,
+        "truncated_prompt_tokens": 0,
+        "preserved_prefix_tokens": 1
+      },
+      "eval_count": 0,
+      "eval_duration_ns": 56584,
+      "kv_cache": {
+        "current": {
+          "tokens": 3,
+          "bytes": 240,
+          "pages": 1
+        },
+        "growth": {
+          "tokens": 3,
+          "bytes": 240,
+          "pages": 1
+        }
+      },
+      "kv_residency": {
+        "device_scope": "same_device_only",
+        "spill_policy": "refuse_new_pages",
+        "tiers": [
+          {
+            "tier": "host",
+            "state": {
+              "tokens": 3,
+              "bytes": 240,
+              "pages": 1
+            },
+            "resident": true,
+            "detail": "paged KV remained resident only in the host-owned cache"
+          }
+        ]
+      },
+      "kv_cache_encoding": {
+        "active": {
+          "family": "dense_f32",
+          "objective": "none",
+          "bits_per_channel": 32,
+          "model_family_bound": "wordpiece_decoder",
+          "context_length_bound": 8,
+          "host_bytes_per_token": 80,
+          "detail": "host-resident dense rows remain the active KV representation"
+        },
+        "downgraded": false
+      },
+      "prefix_tokens_reused": 0
+    },
+    "provenance": {
+      "served_artifact": {
+        "model_id": "wordpiece-decoder-v1",
+        "model_revision": "v1",
+        "weight_bundle_digest": "7daf98e44b6eee34df8d97f24419709f23b19010cdb49c9b18b771936ced352b",
+        "served_artifact_digest": "92620238f04e8846f90fff146948a9a8d973148510528f3fa2f8e80bd72b5218",
+        "model_blob_digest": "d787ab47773830b5e5bbf267539fd7b78c6dcfd901882ae4d8d0adcf6a996dd9",
+        "tokenizer_digest": "5464809cdd952c531b8536eeec1c728a8b6aa9621853f2bf63e569c9d5a9117f",
+        "generation_defaults_digest": "6b25930e91686cee8bb5d4dae8dbed14f63c690c1c97ecb98552d8842e2d9395",
+        "weight_format": "safetensors",
+        "quantization_family": "none",
+        "backend": {
+          "effective_backend": "cpu",
+          "toolchain_version": "cpu@0.1.1",
+          "probe_state": "compiled_only"
+        }
+      },
+      "execution_plan_digest": "d661f0ba2e2941f5111482c29037d09f10efc9ab23e4d47d35da96e6c83ca034",
+      "load_state": "cold",
+      "isolation_policy": {
+        "backend_interface_mode": "in_process",
+        "failure_boundary": "shared_host_process",
+        "request_failure_recovery": "refuse_request",
+        "backend_error_recovery": "reset_runtime_state",
+        "crash_recovery": "restart_host_process",
+        "reset_scopes": [
+          "loaded_models",
+          "sessions",
+          "prefix_cache",
+          "kv_state",
+          "backend_runtime_resources"
+        ]
+      },
+      "memory_plan": {
+        "weights_bytes": 1936,
+        "kv_cache_bytes": 640,
+        "graph_bytes": 0,
+        "resident_host_bytes": 2576,
+        "resident_device_bytes": 0
+      },
+      "residency_policy": {
+        "max_loaded_models": null,
+        "memory_budget": {
+          "resident_host_bytes": null,
+          "resident_device_bytes": null
+        },
+        "pressure_action": "refuse_new_model"
+      },
+      "residency_snapshot": {
+        "loaded_models": 1,
+        "resident_host_bytes": 2576,
+        "resident_device_bytes": 0
+      },
+      "kv_cache_policy": {
+        "device_scope": "same_device_only",
+        "spill_policy": "refuse_new_pages",
+        "page_layout": {
+          "max_context_tokens": 8,
+          "tokens_per_page": 8,
+          "bytes_per_token": 80,
+          "page_bytes": 640,
+          "max_pages": 1
+        }
+      },
+      "kv_cache_encoding_policy": {
+        "family": "dense_f32",
+        "objective": "none",
+        "bits_per_channel": 32,
+        "model_family_bound": "wordpiece_decoder",
+        "context_length_bound": 8,
+        "host_bytes_per_token": 80,
+        "detail": "host-resident dense rows remain the active KV representation"
+      },
+      "kv_ownership": {
+        "owner": {
+          "owner_class": "request",
+          "owner_id": "psion-generic-load-generate-cold",
+          "model_id": "wordpiece-decoder-v1",
+          "scheduler": {
+            "batch_posture": "single_request_only"
+          }
+        },
+        "previous": {
+          "tokens": 0,
+          "bytes": 0,
+          "pages": 0
+        },
+        "current": {
+          "tokens": 3,
+          "bytes": 240,
+          "pages": 1
+        },
+        "growth": {
+          "tokens": 3,
+          "bytes": 240,
+          "pages": 1
+        },
+        "allocated_pages": [
+          {
+            "page_index": 0,
+            "start_token_position": 0,
+            "token_count": 0,
+            "bytes_used": 0
+          }
+        ]
+      },
+      "prefix_cache_control": {
+        "mode": "auto"
+      },
+      "prefix_cache_state": "none",
+      "prefix_cache_policy": {
+        "shared_across_sessions": true,
+        "shared_across_users": false,
+        "shared_across_models": false,
+        "shared_across_backends": false,
+        "shared_across_sampler_settings": false
+      },
+      "prefix_cache_identity": {
+        "served_artifact_digest": "92620238f04e8846f90fff146948a9a8d973148510528f3fa2f8e80bd72b5218",
+        "model_id": "wordpiece-decoder-v1",
+        "model_revision": "v1",
+        "weight_bundle_digest": "7daf98e44b6eee34df8d97f24419709f23b19010cdb49c9b18b771936ced352b",
+        "tokenizer_family": "fixture_wordpiece",
+        "tokenizer_digest": "5464809cdd952c531b8536eeec1c728a8b6aa9621853f2bf63e569c9d5a9117f",
+        "generation_defaults_digest": "6b25930e91686cee8bb5d4dae8dbed14f63c690c1c97ecb98552d8842e2d9395",
+        "sampler_digest": "b9d73c43e5d9c730eb3cff8f8e92956b0f5e307efb2c7d666fdfef049b606279",
+        "backend_compatibility": "cpu",
+        "prefix_digest": "4860ca6f42d820d6a692ba901ec2a1e92f53d17440a9056b0438eac36681361a",
+        "prefix_tokens": 3
+      },
+      "compile_path": {
+        "temperature": "cold_compile",
+        "execution_plan_cache": {
+          "kind": "execution_plan",
+          "action": "rebuild",
+          "detail": "compiled a new cpu execution plan for graph 89bb847cd59051663c355bbdf9950a7d6fa1a1b10ac385fbe2b7e249b189da1b"
+        },
+        "kernel_cache": {
+          "kind": "kernel_cache",
+          "action": "bypass",
+          "detail": "cpu backend does not retain a kernel cache"
+        }
+      },
+      "delivery_proof": {
+        "execution_plan_digest": "d661f0ba2e2941f5111482c29037d09f10efc9ab23e4d47d35da96e6c83ca034",
+        "kernel_count": 45,
+        "bytes_moved": 5856,
+        "plan_cache_hits": 2,
+        "plan_cache_misses": 1,
+        "kv_growth": {
+          "tokens": 3,
+          "bytes": 240,
+          "pages": 1
+        },
+        "prefill_decode_handoff": {
+          "mode": "disaggregated_colocated",
+          "transport": "in_process_kv_state",
+          "kv_pages": 1,
+          "kv_bytes": 240
+        },
+        "kv_residency": {
+          "device_scope": "same_device_only",
+          "spill_policy": "refuse_new_pages",
+          "tiers": [
+            {
+              "tier": "host",
+              "state": {
+                "tokens": 3,
+                "bytes": 240,
+                "pages": 1
+              },
+              "resident": true,
+              "detail": "paged KV remained resident only in the host-owned cache"
+            }
+          ]
+        }
+      },
+      "cache_observations": [
+        {
+          "kind": "execution_plan",
+          "action": "rebuild",
+          "detail": "compiled a new cpu execution plan for graph 89bb847cd59051663c355bbdf9950a7d6fa1a1b10ac385fbe2b7e249b189da1b"
+        },
+        {
+          "kind": "kernel_cache",
+          "action": "bypass",
+          "detail": "cpu backend does not retain a kernel cache"
+        },
+        {
+          "kind": "paged_tensor_storage",
+          "action": "restore",
+          "detail": "artifact-backed tensor storage is reopened from local model bytes instead of trusted by display name"
+        },
+        {
+          "kind": "prefix_cache",
+          "action": "bypass",
+          "detail": "no compatible shared prefix entry existed for this prompt"
+        },
+        {
+          "kind": "kv_state",
+          "action": "bypass",
+          "detail": "request did not target session-bound KV reuse"
+        }
+      ],
+      "psion_served_evidence": {
+        "schema_version": "psion.served_evidence.v1",
+        "bundle_id": "psion-generic-load-and-generate-direct-learned-v1",
+        "capability_matrix_id": "psion_capability_matrix",
+        "capability_matrix_version": "v1",
+        "route_receipt": {
+          "route_kind": "direct_model_answer",
+          "route_class": "answer_with_uncertainty",
+          "capability_region_id": "bounded_technical_reasoning_short_context",
+          "route_boundary_ref": "capability_matrix.supported.bounded_technical_reasoning_short_context",
+          "route_calibration_receipt_id": "psion-pilot-route-calibration-v1",
+          "route_class_evaluation_receipt_id": "psion-route-class-evaluation-receipt-v1",
+          "route_class_evaluation_receipt_digest": "d066f5a8c2220e739bdfbb6494aa52f84af8fc751222618a65498381285ff2d4",
+          "detail": "The generic Psion load-and-generate path stays in the bounded learned lane and makes that route explicit instead of implying exact execution or hidden tools."
+        },
+        "no_implicit_execution": {
+          "execution_only_via_explicit_surface": true,
+          "executor_surface_invoked": false,
+          "detail": "No executor surface was invoked on this runtime path, so the served output must remain a learned judgment only."
+        },
+        "evidence_labels": [
+          {
+            "kind": "learned_judgment",
+            "uncertainty_disclosed": true,
+            "detail": "This example proves train-to-serve closure on the generic learned lane, but it still discloses uncertainty and does not imply exactness, source quotation, or executor-backed truth."
+          }
+        ],
+        "summary": "Direct learned-lane evidence for the first generic Psion load-and-generate runtime packet.",
+        "bundle_digest": "bae27fc7b20a34b38d698aab96822ed6b42aed24e74fc1e3d9b94a393bed298c"
+      },
+      "psion_served_output_claim_posture": {
+        "schema_version": "psion.served_output_claim_posture.v1",
+        "posture_id": "psion-generic-load-and-generate-claim-posture-v1",
+        "capability_matrix_id": "psion_capability_matrix",
+        "capability_matrix_version": "v1",
+        "evidence_bundle_id": "psion-generic-load-and-generate-direct-learned-v1",
+        "evidence_bundle_digest": "bae27fc7b20a34b38d698aab96822ed6b42aed24e74fc1e3d9b94a393bed298c",
+        "visible_claims": {
+          "learned_judgment_visible": true,
+          "source_grounding_visible": false,
+          "executor_backing_visible": false,
+          "benchmark_backing_visible": false,
+          "verification_visible": false
+        },
+        "assumptions": [
+          {
+            "assumption_id": "bounded_generic_decoder_runtime",
+            "kind": "interpretation_boundary",
+            "required_for_interpretation": true,
+            "detail": "This runtime packet proves the generic learned-lane load-and-generate seam on the current artifact-backed decoder substrate; it does not by itself prove full pilot-anchor checkpoint parity or executor replacement truth."
+          },
+          {
+            "assumption_id": "no_hidden_execution_surface",
+            "kind": "environment_boundary",
+            "required_for_interpretation": true,
+            "detail": "The served output assumes no hidden tool, executor, or fresh external state beyond the loaded checkpoint artifact and the attached learned-lane provenance."
+          }
+        ],
+        "behavior_visibility": {
+          "behavior": "route",
+          "route_kind": "direct_model_answer",
+          "route_class": "answer_with_uncertainty",
+          "detail": "The response remains visibly direct-model output inside the bounded learned lane."
+        },
+        "context_envelope": {
+          "supported_prompt_tokens": 8192,
+          "supported_completion_tokens": 1024,
+          "route_required_above_prompt_tokens": 8193,
+          "hard_refusal_above_prompt_tokens": 12288,
+          "prompt_tokens_observed": 3,
+          "detail": "The first served envelope is bounded to short-context technical reasoning. Requests above the direct window must route or refuse instead of stretching the learned lane silently."
+        },
+        "latency_envelope": {
+          "p50_first_token_latency_ms": 700,
+          "p95_first_token_latency_ms": 1200,
+          "p95_end_to_end_latency_ms": 4500,
+          "detail": "The first served envelope publishes one bounded latency band for short-context technical reasoning rather than claiming generic assistant responsiveness."
+        },
+        "summary": "Generic learned-lane claim posture for the first Psion load-and-generate packet.",
+        "posture_digest": "08418ba4e47184f4c4b365cf0f8f8f98ebc39662ab2350dfe4e242302b029ed7"
+      }
+    },
+    "termination": "end_of_sequence"
+  },
+  "warm_response": {
+    "request_id": "psion-generic-load-generate-warm",
+    "product_id": "psionic.text_generation",
+    "model_id": "wordpiece-decoder-v1",
+    "session_id": null,
+    "output": {
+      "tokens": [],
+      "text": ""
+    },
+    "usage": {
+      "input_tokens": 3,
+      "output_tokens": 0,
+      "cache_tokens": 3
+    },
+    "metrics": {
+      "total_duration_ns": 16000,
+      "load_duration_ns": 0,
+      "prompt_eval_count": 3,
+      "prompt_eval_duration_ns": 11792,
+      "context_window": {
+        "budget": {
+          "max_context_tokens": 8,
+          "existing_context_tokens": 0,
+          "reserved_output_tokens": 4,
+          "available_prompt_tokens": 4
+        },
+        "input_prompt_tokens": 3,
+        "retained_prompt_tokens": 3,
+        "truncated_prompt_tokens": 0,
+        "preserved_prefix_tokens": 1
+      },
+      "eval_count": 0,
+      "eval_duration_ns": 4208,
+      "kv_cache": {
+        "current": {
+          "tokens": 3,
+          "bytes": 240,
+          "pages": 1
+        },
+        "growth": {
+          "tokens": 3,
+          "bytes": 240,
+          "pages": 1
+        }
+      },
+      "kv_residency": {
+        "device_scope": "same_device_only",
+        "spill_policy": "refuse_new_pages",
+        "tiers": [
+          {
+            "tier": "host",
+            "state": {
+              "tokens": 3,
+              "bytes": 240,
+              "pages": 1
+            },
+            "resident": true,
+            "detail": "paged KV remained resident only in the host-owned cache"
+          }
+        ]
+      },
+      "kv_cache_encoding": {
+        "active": {
+          "family": "dense_f32",
+          "objective": "none",
+          "bits_per_channel": 32,
+          "model_family_bound": "wordpiece_decoder",
+          "context_length_bound": 8,
+          "host_bytes_per_token": 80,
+          "detail": "host-resident dense rows remain the active KV representation"
+        },
+        "downgraded": false
+      },
+      "prefix_tokens_reused": 3
+    },
+    "provenance": {
+      "served_artifact": {
+        "model_id": "wordpiece-decoder-v1",
+        "model_revision": "v1",
+        "weight_bundle_digest": "7daf98e44b6eee34df8d97f24419709f23b19010cdb49c9b18b771936ced352b",
+        "served_artifact_digest": "92620238f04e8846f90fff146948a9a8d973148510528f3fa2f8e80bd72b5218",
+        "model_blob_digest": "d787ab47773830b5e5bbf267539fd7b78c6dcfd901882ae4d8d0adcf6a996dd9",
+        "tokenizer_digest": "5464809cdd952c531b8536eeec1c728a8b6aa9621853f2bf63e569c9d5a9117f",
+        "generation_defaults_digest": "6b25930e91686cee8bb5d4dae8dbed14f63c690c1c97ecb98552d8842e2d9395",
+        "weight_format": "safetensors",
+        "quantization_family": "none",
+        "backend": {
+          "effective_backend": "cpu",
+          "toolchain_version": "cpu@0.1.1",
+          "probe_state": "compiled_only"
+        }
+      },
+      "execution_plan_digest": "d661f0ba2e2941f5111482c29037d09f10efc9ab23e4d47d35da96e6c83ca034",
+      "load_state": "warm",
+      "isolation_policy": {
+        "backend_interface_mode": "in_process",
+        "failure_boundary": "shared_host_process",
+        "request_failure_recovery": "refuse_request",
+        "backend_error_recovery": "reset_runtime_state",
+        "crash_recovery": "restart_host_process",
+        "reset_scopes": [
+          "loaded_models",
+          "sessions",
+          "prefix_cache",
+          "kv_state",
+          "backend_runtime_resources"
+        ]
+      },
+      "memory_plan": {
+        "weights_bytes": 1936,
+        "kv_cache_bytes": 640,
+        "graph_bytes": 0,
+        "resident_host_bytes": 2576,
+        "resident_device_bytes": 0
+      },
+      "residency_policy": {
+        "max_loaded_models": null,
+        "memory_budget": {
+          "resident_host_bytes": null,
+          "resident_device_bytes": null
+        },
+        "pressure_action": "refuse_new_model"
+      },
+      "residency_snapshot": {
+        "loaded_models": 1,
+        "resident_host_bytes": 2576,
+        "resident_device_bytes": 0
+      },
+      "kv_cache_policy": {
+        "device_scope": "same_device_only",
+        "spill_policy": "refuse_new_pages",
+        "page_layout": {
+          "max_context_tokens": 8,
+          "tokens_per_page": 8,
+          "bytes_per_token": 80,
+          "page_bytes": 640,
+          "max_pages": 1
+        }
+      },
+      "kv_cache_encoding_policy": {
+        "family": "dense_f32",
+        "objective": "none",
+        "bits_per_channel": 32,
+        "model_family_bound": "wordpiece_decoder",
+        "context_length_bound": 8,
+        "host_bytes_per_token": 80,
+        "detail": "host-resident dense rows remain the active KV representation"
+      },
+      "kv_ownership": {
+        "owner": {
+          "owner_class": "request",
+          "owner_id": "psion-generic-load-generate-warm",
+          "model_id": "wordpiece-decoder-v1",
+          "scheduler": {
+            "batch_posture": "single_request_only"
+          }
+        },
+        "previous": {
+          "tokens": 3,
+          "bytes": 240,
+          "pages": 1
+        },
+        "current": {
+          "tokens": 3,
+          "bytes": 240,
+          "pages": 1
+        },
+        "growth": {
+          "tokens": 0,
+          "bytes": 0,
+          "pages": 0
+        }
+      },
+      "prefix_cache_control": {
+        "mode": "auto"
+      },
+      "prefix_cache_state": "hit",
+      "prefix_cache_policy": {
+        "shared_across_sessions": true,
+        "shared_across_users": false,
+        "shared_across_models": false,
+        "shared_across_backends": false,
+        "shared_across_sampler_settings": false
+      },
+      "prefix_cache_identity": {
+        "served_artifact_digest": "92620238f04e8846f90fff146948a9a8d973148510528f3fa2f8e80bd72b5218",
+        "model_id": "wordpiece-decoder-v1",
+        "model_revision": "v1",
+        "weight_bundle_digest": "7daf98e44b6eee34df8d97f24419709f23b19010cdb49c9b18b771936ced352b",
+        "tokenizer_family": "fixture_wordpiece",
+        "tokenizer_digest": "5464809cdd952c531b8536eeec1c728a8b6aa9621853f2bf63e569c9d5a9117f",
+        "generation_defaults_digest": "6b25930e91686cee8bb5d4dae8dbed14f63c690c1c97ecb98552d8842e2d9395",
+        "sampler_digest": "b9d73c43e5d9c730eb3cff8f8e92956b0f5e307efb2c7d666fdfef049b606279",
+        "backend_compatibility": "cpu",
+        "prefix_digest": "4860ca6f42d820d6a692ba901ec2a1e92f53d17440a9056b0438eac36681361a",
+        "prefix_tokens": 3
+      },
+      "delivery_proof": {
+        "execution_plan_digest": "d661f0ba2e2941f5111482c29037d09f10efc9ab23e4d47d35da96e6c83ca034",
+        "kernel_count": 0,
+        "bytes_moved": 0,
+        "plan_cache_hits": 0,
+        "plan_cache_misses": 0,
+        "kv_growth": {
+          "tokens": 3,
+          "bytes": 240,
+          "pages": 1
+        },
+        "prefill_decode_handoff": {
+          "mode": "disaggregated_colocated",
+          "transport": "in_process_kv_state",
+          "kv_pages": 1,
+          "kv_bytes": 240
+        },
+        "kv_residency": {
+          "device_scope": "same_device_only",
+          "spill_policy": "refuse_new_pages",
+          "tiers": [
+            {
+              "tier": "host",
+              "state": {
+                "tokens": 3,
+                "bytes": 240,
+                "pages": 1
+              },
+              "resident": true,
+              "detail": "paged KV remained resident only in the host-owned cache"
+            }
+          ]
+        }
+      },
+      "cache_observations": [
+        {
+          "kind": "execution_plan",
+          "action": "reuse",
+          "detail": "compile-path evidence was unavailable so the request fell back to model-load warm-path truth"
+        },
+        {
+          "kind": "kernel_cache",
+          "action": "bypass",
+          "detail": "request did not surface explicit kernel-cache behavior"
+        },
+        {
+          "kind": "paged_tensor_storage",
+          "action": "restore",
+          "detail": "artifact-backed tensor storage is reopened from local model bytes instead of trusted by display name"
+        },
+        {
+          "kind": "prefix_cache",
+          "action": "reuse",
+          "detail": "compatible shared prefix state was reused"
+        },
+        {
+          "kind": "kv_state",
+          "action": "bypass",
+          "detail": "request did not target session-bound KV reuse"
+        }
+      ],
+      "psion_served_evidence": {
+        "schema_version": "psion.served_evidence.v1",
+        "bundle_id": "psion-generic-load-and-generate-direct-learned-v1",
+        "capability_matrix_id": "psion_capability_matrix",
+        "capability_matrix_version": "v1",
+        "route_receipt": {
+          "route_kind": "direct_model_answer",
+          "route_class": "answer_with_uncertainty",
+          "capability_region_id": "bounded_technical_reasoning_short_context",
+          "route_boundary_ref": "capability_matrix.supported.bounded_technical_reasoning_short_context",
+          "route_calibration_receipt_id": "psion-pilot-route-calibration-v1",
+          "route_class_evaluation_receipt_id": "psion-route-class-evaluation-receipt-v1",
+          "route_class_evaluation_receipt_digest": "d066f5a8c2220e739bdfbb6494aa52f84af8fc751222618a65498381285ff2d4",
+          "detail": "The generic Psion load-and-generate path stays in the bounded learned lane and makes that route explicit instead of implying exact execution or hidden tools."
+        },
+        "no_implicit_execution": {
+          "execution_only_via_explicit_surface": true,
+          "executor_surface_invoked": false,
+          "detail": "No executor surface was invoked on this runtime path, so the served output must remain a learned judgment only."
+        },
+        "evidence_labels": [
+          {
+            "kind": "learned_judgment",
+            "uncertainty_disclosed": true,
+            "detail": "This example proves train-to-serve closure on the generic learned lane, but it still discloses uncertainty and does not imply exactness, source quotation, or executor-backed truth."
+          }
+        ],
+        "summary": "Direct learned-lane evidence for the first generic Psion load-and-generate runtime packet.",
+        "bundle_digest": "bae27fc7b20a34b38d698aab96822ed6b42aed24e74fc1e3d9b94a393bed298c"
+      },
+      "psion_served_output_claim_posture": {
+        "schema_version": "psion.served_output_claim_posture.v1",
+        "posture_id": "psion-generic-load-and-generate-claim-posture-v1",
+        "capability_matrix_id": "psion_capability_matrix",
+        "capability_matrix_version": "v1",
+        "evidence_bundle_id": "psion-generic-load-and-generate-direct-learned-v1",
+        "evidence_bundle_digest": "bae27fc7b20a34b38d698aab96822ed6b42aed24e74fc1e3d9b94a393bed298c",
+        "visible_claims": {
+          "learned_judgment_visible": true,
+          "source_grounding_visible": false,
+          "executor_backing_visible": false,
+          "benchmark_backing_visible": false,
+          "verification_visible": false
+        },
+        "assumptions": [
+          {
+            "assumption_id": "bounded_generic_decoder_runtime",
+            "kind": "interpretation_boundary",
+            "required_for_interpretation": true,
+            "detail": "This runtime packet proves the generic learned-lane load-and-generate seam on the current artifact-backed decoder substrate; it does not by itself prove full pilot-anchor checkpoint parity or executor replacement truth."
+          },
+          {
+            "assumption_id": "no_hidden_execution_surface",
+            "kind": "environment_boundary",
+            "required_for_interpretation": true,
+            "detail": "The served output assumes no hidden tool, executor, or fresh external state beyond the loaded checkpoint artifact and the attached learned-lane provenance."
+          }
+        ],
+        "behavior_visibility": {
+          "behavior": "route",
+          "route_kind": "direct_model_answer",
+          "route_class": "answer_with_uncertainty",
+          "detail": "The response remains visibly direct-model output inside the bounded learned lane."
+        },
+        "context_envelope": {
+          "supported_prompt_tokens": 8192,
+          "supported_completion_tokens": 1024,
+          "route_required_above_prompt_tokens": 8193,
+          "hard_refusal_above_prompt_tokens": 12288,
+          "prompt_tokens_observed": 3,
+          "detail": "The first served envelope is bounded to short-context technical reasoning. Requests above the direct window must route or refuse instead of stretching the learned lane silently."
+        },
+        "latency_envelope": {
+          "p50_first_token_latency_ms": 700,
+          "p95_first_token_latency_ms": 1200,
+          "p95_end_to_end_latency_ms": 4500,
+          "detail": "The first served envelope publishes one bounded latency band for short-context technical reasoning rather than claiming generic assistant responsiveness."
+        },
+        "summary": "Generic learned-lane claim posture for the first Psion load-and-generate packet.",
+        "posture_digest": "08418ba4e47184f4c4b365cf0f8f8f98ebc39662ab2350dfe4e242302b029ed7"
+      }
+    },
+    "termination": "end_of_sequence"
+  },
+  "detail": "The first generic Psion load-and-generate packet closes the operator-facing gap through the existing artifact-backed decoder runtime: one local safetensors checkpoint is loaded, one prompt is encoded, two deterministic generations run through the stable runtime path, and the learned-lane evidence plus claim posture are attached directly to response provenance without widening into executor claims.",
+  "packet_digest": "1091e140ab57b1310f7921db7dce5c3ccc8a28818f2bccd2e540d25a03ea68dd"
+}

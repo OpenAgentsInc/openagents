@@ -1,0 +1,10 @@
+{
+  "description": "Reference block-boundary positions for Attention Residual sublayer partitioning",
+  "test_cases": [
+    {
+      "num_layers": 8,
+      "num_blocks": 2,
+      "expected_boundaries": [2]
+    }
+  ]
+}

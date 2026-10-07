@@ -1,0 +1,42 @@
+{
+  "schema_version": "psion.rvllm_fa3_decode_attention_backend.v1",
+  "packet_id": "psion_rvllm_fa3_decode_attention_backend_v1",
+  "runtime_scope": [
+    "qwen35.native_cuda_decode",
+    "qwen35.cuda_graph_replay",
+    "psionic_backend_cuda.attention_decode_kernels"
+  ],
+  "admitted_lane": "qwen35.greedy_cuda_graph_decode",
+  "requested_backend": "fa3_split_kv_f16_kv_graph",
+  "graph_fallback_backend": "dense_f16_kv_graph_legacy",
+  "non_graph_backend": "dense_f16_kv_legacy",
+  "architecture_gate": [
+    "cuda_compute_capability>=8.0",
+    "head_count%kv_head_count==0",
+    "heads_per_group<=8",
+    "head_dim<=256"
+  ],
+  "split_kv_heuristic": [
+    "ctx<=512 => 1 split",
+    "ctx<=2048 => 2 splits",
+    "ctx<=8192 => 4 splits",
+    "ctx>8192 => 8 splits"
+  ],
+  "required_evidence_fields": [
+    "metrics.qwen35_cuda_decode.attention_backend.layer_invocation_count",
+    "metrics.qwen35_cuda_decode.attention_backend.executions[].requested_backend",
+    "metrics.qwen35_cuda_decode.attention_backend.executions[].executed_backend",
+    "metrics.qwen35_cuda_decode.attention_backend.executions[].fallback_reason",
+    "metrics.qwen35_cuda_decode.attention_backend.executions[].split_count",
+    "metrics.qwen35_cuda_decode.attention_backend.executions[].compute_capability",
+    "bench.runs[].qwen35_attention_backends"
+  ],
+  "validation_surface": [
+    "builtin_packet_matches_committed_fixture",
+    "cuda_submission_fused_attention_graph_fa3_f16_kv_matches_legacy_reference_when_available",
+    "cargo build -p psionic-serve --example qwen35_cuda_bench",
+    "cargo build -p psionic-serve --bin psionic-openai-server"
+  ],
+  "stability_posture": "Psionic now exposes one explicit FA3-class decode-attention lane for native qwen35 CUDA graph decode. Runtime receipts say whether the request asked for the FA3 split-KV graph backend, whether the kernel actually executed, which split heuristic fired, and why the runtime stayed on the legacy graph kernel or the non-graph dense path instead of silently downgrading.",
+  "packet_digest": "394cdb930642bf717c45ba00da3c87169b9cbdb53f3605978ce3fd720e30a4fb"
+}

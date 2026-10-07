@@ -1,0 +1,11 @@
+{
+  "schema_version": "psion.actual_pretraining_checkpoint_pointer.v1",
+  "lane_id": "psion_actual_pretraining_v1",
+  "run_id": "run-psion-actual-20260402t020000z",
+  "pointer_state": "accepted",
+  "checkpoint_label": "broader-pretrain-final",
+  "optimizer_step": 16384,
+  "checkpoint_ref": "checkpoint://psion/broad/pretrain/final",
+  "checkpoint_manifest_relative_path": "checkpoints/step-16384/checkpoint_manifest.json",
+  "detail": "Resume pointer binds the canonical resume path to the latest accepted broader-pretraining checkpoint lineage."
+}

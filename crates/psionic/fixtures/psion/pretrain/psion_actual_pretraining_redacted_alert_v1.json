@@ -1,0 +1,14 @@
+{
+  "schema_version": "psion.actual_pretraining_redacted_alert.v1",
+  "lane_id": "psion_actual_pretraining_v1",
+  "run_id": "run-psion-actual-20260402t080000z",
+  "alert_id": "psion_actual_pretraining_checkpoint_eval_alert::16384",
+  "alert_kind": "checkpoint_eval_retry_required",
+  "severity": "warning",
+  "emitted_from_surface_id": "psion_actual_pretraining.record_checkpoint",
+  "source_receipt_relative_path": "evals/checkpoint_eval_failure_step-16384.json",
+  "retained_redaction": "declared_source_names_only",
+  "summary": "Checkpoint eval needs retry for `run-psion-actual-20260402t080000z` step 16384; retained artifacts keep source names and digests only.",
+  "detail": "Fixture checkpoint eval retry alert keeps the failed trigger explicit under one redacted operator alert surface instead of silently dropping the missing eval.",
+  "alert_digest": "d59517b366dcc77504f545536ec1444123e06b0dc0ddadbac69880c4a01090d9"
+}

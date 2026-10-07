@@ -1,0 +1,980 @@
+{
+  "schema_version": "psion.decentralized_contribution_bundle.v1",
+  "lane_id": "psion-decentralized-contribution-bundle-v1",
+  "contribution_mode": "adapter_delta_window",
+  "trusted_cluster_run_artifact": {
+    "artifact_id": "fixtures/psion/trusted_cluster/psion_trusted_cluster_run_bundle_v1.json",
+    "artifact_digest": "09fd284767e6e912403e3c7a452b86f50fd84d1bcc239a9e4b4ce6e670c12f09"
+  },
+  "reasoning_sft_run_artifact": {
+    "artifact_id": "fixtures/psion/sft/psion_reasoning_sft_run_bundle_v1.json",
+    "artifact_digest": "8d51ca02bf5794d9157867f584a11c31b68e1e8202e9b0e7fb94f46f32d47a02"
+  },
+  "acceptance_binding": {
+    "acceptance_matrix_id": "psion_acceptance_matrix",
+    "acceptance_matrix_version": "v1",
+    "current_promoted_decision_ref": "psion-pilot-promotion-decision-v1",
+    "current_promoted_phase": "pilot",
+    "required_publication_phase": "internal_serving",
+    "detail": "Contributed adapter-window outputs remain bounded local policy revisions until they clear the same Psion acceptance discipline required for internal serving or later publication."
+  },
+  "capability_binding": {
+    "capability_matrix_id": "psion_capability_matrix",
+    "capability_matrix_version": "v1",
+    "rollback_receipt_schema_version": "psion.capability_withdrawal_receipt.v1",
+    "rollback_reference_receipt": {
+      "artifact_id": "fixtures/psion/withdrawal/psion_capability_withdrawal_route_regression_v1.json",
+      "artifact_digest": "d1f9701a31d107568747a3a6fc70092cd7ca741214c7453fc84e2c5e94c21a0d"
+    },
+    "detail": "Any contributed output that reaches service still inherits the same capability-matrix and rollback discipline as the main Psion lane instead of bypassing downgrade history."
+  },
+  "reference_program": {
+    "spec": {
+      "family": "open_gpt_oss_lm_head",
+      "run_id": "adapter-reference.open_gpt_oss_lm_head",
+      "checkpoint_family": "adapter.reference.open",
+      "policy_family": "adapter.reference.open",
+      "environment": {
+        "environment_ref": "oa.open.adapter",
+        "version": "2026.03"
+      },
+      "base_time_ms": 1763100100000
+    },
+    "initial_membership": {
+      "training_run_id": "adapter-reference.open_gpt_oss_lm_head",
+      "stage_id": "adapter-sft",
+      "topology_revision_id": "adapter-reference.open_gpt_oss_lm_head-topology-1",
+      "eligible_node_ids": [
+        "worker-b",
+        "worker-c"
+      ],
+      "blocked_node_ids": [
+        "trainer-a"
+      ],
+      "contributor_statuses": [
+        {
+          "node_id": "trainer-a",
+          "role": "coordinator_only",
+          "membership_status": "ready",
+          "eligibility": "role_not_contributor",
+          "priority_bps": 0,
+          "reliability_bps": 0,
+          "contribution_state": "suspended"
+        },
+        {
+          "node_id": "worker-b",
+          "role": "executor_only",
+          "membership_status": "ready",
+          "backend_readiness": "ready",
+          "stability": "stable",
+          "free_memory_bytes": 23622320128,
+          "accelerator_count": 1,
+          "eligibility": "eligible",
+          "priority_bps": 5082,
+          "reliability_bps": 9500,
+          "contribution_state": "standby"
+        },
+        {
+          "node_id": "worker-c",
+          "role": "executor_only",
+          "membership_status": "ready",
+          "backend_readiness": "ready",
+          "stability": "stable",
+          "free_memory_bytes": 21474836480,
+          "accelerator_count": 1,
+          "eligibility": "eligible",
+          "priority_bps": 4783,
+          "reliability_bps": 9500,
+          "contribution_state": "standby"
+        }
+      ],
+      "observed_at_ms": 1763100100010,
+      "receipt_digest": "0e75b676e1049e2417b6a96cb8f602e14ed8c87375aee0c4fe2f95b06103d306"
+    },
+    "churned_membership": {
+      "training_run_id": "adapter-reference.open_gpt_oss_lm_head",
+      "stage_id": "adapter-sft",
+      "topology_revision_id": "adapter-reference.open_gpt_oss_lm_head-topology-2",
+      "contributor_set_revision_id": "adapter-reference.open_gpt_oss_lm_head-contributors-1",
+      "eligible_node_ids": [
+        "worker-b",
+        "worker-d"
+      ],
+      "blocked_node_ids": [
+        "trainer-a",
+        "worker-c"
+      ],
+      "selected_node_ids": [
+        "worker-b",
+        "worker-c"
+      ],
+      "contributor_statuses": [
+        {
+          "node_id": "trainer-a",
+          "role": "coordinator_only",
+          "membership_status": "ready",
+          "eligibility": "role_not_contributor",
+          "priority_bps": 0,
+          "reliability_bps": 0,
+          "contribution_state": "suspended"
+        },
+        {
+          "node_id": "worker-b",
+          "role": "executor_only",
+          "membership_status": "ready",
+          "backend_readiness": "ready",
+          "stability": "stable",
+          "free_memory_bytes": 23622320128,
+          "accelerator_count": 1,
+          "eligibility": "eligible",
+          "priority_bps": 5082,
+          "reliability_bps": 9500,
+          "contribution_state": "standby"
+        },
+        {
+          "node_id": "worker-c",
+          "eligibility": "missing_from_snapshot",
+          "priority_bps": 0,
+          "reliability_bps": 0,
+          "contribution_state": "suspended"
+        },
+        {
+          "node_id": "worker-d",
+          "role": "executor_only",
+          "membership_status": "ready",
+          "backend_readiness": "ready",
+          "stability": "stable",
+          "free_memory_bytes": 27917287424,
+          "accelerator_count": 1,
+          "eligibility": "eligible",
+          "priority_bps": 5684,
+          "reliability_bps": 9500,
+          "contribution_state": "standby"
+        }
+      ],
+      "observed_at_ms": 1763100100200,
+      "receipt_digest": "53cf7bb15bf675a5a65b80b2097f0d4c7e82eee68394496647d241de5f5c88d6"
+    },
+    "first_window_plan": {
+      "training_run_id": "adapter-reference.open_gpt_oss_lm_head",
+      "stage_id": "adapter-sft",
+      "window_id": "adapter-reference.open_gpt_oss_lm_head-window-1",
+      "topology_revision_id": "adapter-reference.open_gpt_oss_lm_head-topology-1",
+      "contributor_set_revision_id": "adapter-reference.open_gpt_oss_lm_head-contributors-1",
+      "assignment_seed": 11169121169939592162,
+      "selected_node_ids": [
+        "worker-b",
+        "worker-c"
+      ],
+      "standby_node_ids": [],
+      "dataset_slices": [
+        {
+          "dataset_id": "dataset.reference",
+          "split_name": "train",
+          "slice_id": "slice-a",
+          "slice_digest": "slice-digest-a"
+        },
+        {
+          "dataset_id": "dataset.reference",
+          "split_name": "train",
+          "slice_id": "slice-b",
+          "slice_digest": "slice-digest-b"
+        }
+      ],
+      "adapter_target": {
+        "adapter_target_id": "gpt_oss.explainer.lm_head",
+        "adapter_family": "gpt_oss.decoder_lm_head_lora",
+        "base_model_ref": "gpt-oss-20b@2026-03",
+        "adapter_format": "safetensors"
+      },
+      "input_policy_revision": {
+        "policy_family": "adapter.reference.open",
+        "revision_id": "policy-r1",
+        "revision_number": 1,
+        "policy_digest": "policy-digest-r1",
+        "checkpoint": {
+          "checkpoint_family": "adapter.reference.open",
+          "stream_id": "stream://adapter-reference.open_gpt_oss_lm_head/policy-r1",
+          "manifest_digest": "manifest://adapter-reference.open_gpt_oss_lm_head/policy-r1",
+          "object_digest": "object://adapter-reference.open_gpt_oss_lm_head/policy-r1",
+          "writer_node_id": "trainer-a",
+          "membership_epoch": 1,
+          "cluster_state_digest": "cluster-digest:adapter-reference.open_gpt_oss_lm_head",
+          "topology_digest": "topology-digest:adapter-reference.open_gpt_oss_lm_head",
+          "started_at_ms": 1763100100000,
+          "checkpoint_ref": "adapter-reference.open_gpt_oss_lm_head/policy-r1",
+          "step": 1
+        },
+        "produced_at_ms": 1763100100000
+      },
+      "input_checkpoint_pointer": {
+        "scope": {
+          "kind": "window",
+          "scope_id": "window-reference-initial"
+        },
+        "checkpoint_family": "adapter.reference.open",
+        "checkpoint": {
+          "checkpoint_family": "adapter.reference.open",
+          "stream_id": "stream://adapter-reference.open_gpt_oss_lm_head/policy-r1",
+          "manifest_digest": "manifest://adapter-reference.open_gpt_oss_lm_head/policy-r1",
+          "object_digest": "object://adapter-reference.open_gpt_oss_lm_head/policy-r1",
+          "writer_node_id": "trainer-a",
+          "membership_epoch": 1,
+          "cluster_state_digest": "cluster-digest:adapter-reference.open_gpt_oss_lm_head",
+          "topology_digest": "topology-digest:adapter-reference.open_gpt_oss_lm_head",
+          "started_at_ms": 1763100100000,
+          "checkpoint_ref": "adapter-reference.open_gpt_oss_lm_head/policy-r1",
+          "step": 1,
+          "durable_at_ms": 1763100100001
+        },
+        "manifest_digest": "manifest-digest-r1",
+        "updated_at_ms": 1763100100001,
+        "pointer_digest": "e128003b7b3ab8452b443046746caeea449dd02e24af6abbb5b4a38f3cda2e0d"
+      },
+      "planned_at_ms": 1763100100020,
+      "receipt_digest": "8cf0a8514f07b439890b57692f167e12a17ff166ea66365e90ea86563b150d5f"
+    },
+    "second_window_plan": {
+      "training_run_id": "adapter-reference.open_gpt_oss_lm_head",
+      "stage_id": "adapter-sft",
+      "window_id": "adapter-reference.open_gpt_oss_lm_head-window-2",
+      "topology_revision_id": "adapter-reference.open_gpt_oss_lm_head-topology-2",
+      "contributor_set_revision_id": "adapter-reference.open_gpt_oss_lm_head-contributors-2",
+      "assignment_seed": 3287966960708869696,
+      "selected_node_ids": [
+        "worker-d",
+        "worker-b"
+      ],
+      "standby_node_ids": [],
+      "dataset_slices": [
+        {
+          "dataset_id": "dataset.reference",
+          "split_name": "train",
+          "slice_id": "slice-c",
+          "slice_digest": "slice-digest-c"
+        },
+        {
+          "dataset_id": "dataset.reference",
+          "split_name": "train",
+          "slice_id": "slice-d",
+          "slice_digest": "slice-digest-d"
+        }
+      ],
+      "adapter_target": {
+        "adapter_target_id": "gpt_oss.explainer.lm_head",
+        "adapter_family": "gpt_oss.decoder_lm_head_lora",
+        "base_model_ref": "gpt-oss-20b@2026-03",
+        "adapter_format": "safetensors"
+      },
+      "input_policy_revision": {
+        "policy_family": "adapter.reference.open",
+        "revision_id": "policy-r1:aggregate:adapter-reference.open_gpt_oss_lm_head-window-1:r2",
+        "revision_number": 2,
+        "policy_digest": "f4cc1ebc4734d5039727189370fe2319549c7f5d835dbde482d9109b62997114",
+        "parent_revision_id": "policy-r1",
+        "checkpoint": {
+          "checkpoint_family": "adapter.reference.open",
+          "stream_id": "stream://adapter-aggregate/adapter-reference.open_gpt_oss_lm_head-window-1/f4cc1ebc4734d5039727189370fe2319549c7f5d835dbde482d9109b62997114",
+          "manifest_digest": "f4cc1ebc4734d5039727189370fe2319549c7f5d835dbde482d9109b62997114",
+          "object_digest": "f4cc1ebc4734d5039727189370fe2319549c7f5d835dbde482d9109b62997114",
+          "writer_node_id": "adapter-aggregator",
+          "membership_epoch": 1,
+          "cluster_state_digest": "cluster-digest:adapter-reference.open_gpt_oss_lm_head",
+          "topology_digest": "topology-digest:adapter-reference.open_gpt_oss_lm_head",
+          "started_at_ms": 1763100100250,
+          "checkpoint_ref": "adapter-aggregate/adapter-reference.open_gpt_oss_lm_head-window-1/f4cc1ebc4734d5039727189370fe2319549c7f5d835dbde482d9109b62997114",
+          "step": 2,
+          "durable_at_ms": 1763100100250
+        },
+        "produced_at_ms": 1763100100250
+      },
+      "input_checkpoint_pointer": {
+        "scope": {
+          "kind": "window",
+          "scope_id": "adapter-reference.open_gpt_oss_lm_head-window-1"
+        },
+        "checkpoint_family": "adapter.reference.open",
+        "checkpoint": {
+          "checkpoint_family": "adapter.reference.open",
+          "stream_id": "stream://adapter-aggregate/adapter-reference.open_gpt_oss_lm_head-window-1/f4cc1ebc4734d5039727189370fe2319549c7f5d835dbde482d9109b62997114",
+          "manifest_digest": "f4cc1ebc4734d5039727189370fe2319549c7f5d835dbde482d9109b62997114",
+          "object_digest": "f4cc1ebc4734d5039727189370fe2319549c7f5d835dbde482d9109b62997114",
+          "writer_node_id": "adapter-aggregator",
+          "membership_epoch": 1,
+          "cluster_state_digest": "cluster-digest:adapter-reference.open_gpt_oss_lm_head",
+          "topology_digest": "topology-digest:adapter-reference.open_gpt_oss_lm_head",
+          "started_at_ms": 1763100100250,
+          "checkpoint_ref": "adapter-aggregate/adapter-reference.open_gpt_oss_lm_head-window-1/f4cc1ebc4734d5039727189370fe2319549c7f5d835dbde482d9109b62997114",
+          "step": 2,
+          "durable_at_ms": 1763100100250
+        },
+        "manifest_digest": "f4cc1ebc4734d5039727189370fe2319549c7f5d835dbde482d9109b62997114",
+        "updated_at_ms": 1763100100250,
+        "pointer_digest": "4633dd7f00818587579d1ef644b0679784ba2870aef087c49e085959231b5e16"
+      },
+      "planned_at_ms": 1763100100210,
+      "receipt_digest": "ef3487a6f2bad81106e1651e0c3045a2454b69c060e533d563bbf83c671d59fd"
+    },
+    "first_window_summary": {
+      "validator_policy_id": "validator.open_adapter.reference",
+      "window_id": "adapter-reference.open_gpt_oss_lm_head-window-1",
+      "total_contributions": 2,
+      "admitted_contributions": 2,
+      "accepted_contributions": 2,
+      "quarantined_contributions": 0,
+      "rejected_contributions": 0,
+      "replay_required_contributions": 0,
+      "replay_checked_contributions": 2,
+      "held_out_average_score_bps": 9100,
+      "benchmark_pass_rate_bps": 10000,
+      "promotion_ready": true,
+      "scored_at_ms": 1763100100230,
+      "summary_digest": "88486bbcd46185cb5cf5c4f37fe6a8ead18346baee714a2562b1e9c0e5fce710"
+    },
+    "second_window_summary": {
+      "validator_policy_id": "validator.open_adapter.reference",
+      "window_id": "adapter-reference.open_gpt_oss_lm_head-window-2",
+      "total_contributions": 2,
+      "admitted_contributions": 2,
+      "accepted_contributions": 2,
+      "quarantined_contributions": 0,
+      "rejected_contributions": 0,
+      "replay_required_contributions": 0,
+      "replay_checked_contributions": 2,
+      "held_out_average_score_bps": 9100,
+      "benchmark_pass_rate_bps": 10000,
+      "promotion_ready": true,
+      "scored_at_ms": 1763100100330,
+      "summary_digest": "82b4037ae0fe1c965cf114a379ca4336100c8ab1c2ba6edea1ae42212c7a2955"
+    },
+    "first_promotion": {
+      "aggregation_rule": "weighted_manifest_digest_merge_v1",
+      "training_run_id": "adapter-reference.open_gpt_oss_lm_head",
+      "stage_id": "adapter-sft",
+      "window_id": "adapter-reference.open_gpt_oss_lm_head-window-1",
+      "contributor_set_revision_id": "adapter-reference.open_gpt_oss_lm_head-contributors-1",
+      "adapter_target_id": "gpt_oss.explainer.lm_head",
+      "input_policy_revision_id": "policy-r1",
+      "input_checkpoint_pointer_digest": "e128003b7b3ab8452b443046746caeea449dd02e24af6abbb5b4a38f3cda2e0d",
+      "window_summary_digest": "88486bbcd46185cb5cf5c4f37fe6a8ead18346baee714a2562b1e9c0e5fce710",
+      "accepted_contributions": [
+        {
+          "contribution_id": "adapter-contribution:adapter-reference.open_gpt_oss_lm_head-window-1:worker-b:0",
+          "worker_id": "worker-b",
+          "artifact_id": "adapter_contribution:adapter-reference.open_gpt_oss_lm_head-window-1:adapter-contribution:adapter-reference.open_gpt_oss_lm_head-window-1:worker-b:0:90706b9de75a10c0c349b84924ee96c34c975104d47b58cbcb568bc3509ed264",
+          "manifest_digest": "90706b9de75a10c0c349b84924ee96c34c975104d47b58cbcb568bc3509ed264",
+          "object_digest": "629f59ad4ad564dae9cbae82a16ab0b34071017a9e397249a1c0437badcd58e2",
+          "aggregation_weight_bps": 10000,
+          "validator_receipt_digest": "9c0232b7f988131f7b4b1e139479462bcc3d216dda5e3747682fb4a519ede44c",
+          "security_receipt_digest": "86797c1c6fabb5b1ad801d49d03842b5d1ef5c2bc5250533adc483c65c242cb4",
+          "provenance_bundle_digest": "d558646452289e04d4e22971987458a170adc1bf96106a0d37239901ed379cce"
+        },
+        {
+          "contribution_id": "adapter-contribution:adapter-reference.open_gpt_oss_lm_head-window-1:worker-c:0",
+          "worker_id": "worker-c",
+          "artifact_id": "adapter_contribution:adapter-reference.open_gpt_oss_lm_head-window-1:adapter-contribution:adapter-reference.open_gpt_oss_lm_head-window-1:worker-c:0:7617253cad5230816884850a1017f9adc5d310faaffae0572eb387585c91b58c",
+          "manifest_digest": "7617253cad5230816884850a1017f9adc5d310faaffae0572eb387585c91b58c",
+          "object_digest": "45e3a39472278822ab27bbd025d2efcd45f15727961952986da087fa26e4c4b1",
+          "aggregation_weight_bps": 10000,
+          "validator_receipt_digest": "c987c01c2aaa4801132cb6c5d1281254eb197fb2ae65c6e4b71dc55d8736674c",
+          "security_receipt_digest": "41f05c40ba11680200fc253026bd1fa5dafd579dc4b7ae8075e3b01f8bd4ec0c",
+          "provenance_bundle_digest": "15afbebc2085df4abbb3b00ea49ff52c8a1e1d17a89dd11336ac02bfd2e6cca7"
+        }
+      ],
+      "aggregated_delta_digest": "f4cc1ebc4734d5039727189370fe2319549c7f5d835dbde482d9109b62997114",
+      "promotion_disposition": "promoted",
+      "output_policy_revision": {
+        "policy_family": "adapter.reference.open",
+        "revision_id": "policy-r1:aggregate:adapter-reference.open_gpt_oss_lm_head-window-1:r2",
+        "revision_number": 2,
+        "policy_digest": "f4cc1ebc4734d5039727189370fe2319549c7f5d835dbde482d9109b62997114",
+        "parent_revision_id": "policy-r1",
+        "checkpoint": {
+          "checkpoint_family": "adapter.reference.open",
+          "stream_id": "stream://adapter-aggregate/adapter-reference.open_gpt_oss_lm_head-window-1/f4cc1ebc4734d5039727189370fe2319549c7f5d835dbde482d9109b62997114",
+          "manifest_digest": "f4cc1ebc4734d5039727189370fe2319549c7f5d835dbde482d9109b62997114",
+          "object_digest": "f4cc1ebc4734d5039727189370fe2319549c7f5d835dbde482d9109b62997114",
+          "writer_node_id": "adapter-aggregator",
+          "membership_epoch": 1,
+          "cluster_state_digest": "cluster-digest:adapter-reference.open_gpt_oss_lm_head",
+          "topology_digest": "topology-digest:adapter-reference.open_gpt_oss_lm_head",
+          "started_at_ms": 1763100100250,
+          "checkpoint_ref": "adapter-aggregate/adapter-reference.open_gpt_oss_lm_head-window-1/f4cc1ebc4734d5039727189370fe2319549c7f5d835dbde482d9109b62997114",
+          "step": 2,
+          "durable_at_ms": 1763100100250
+        },
+        "produced_at_ms": 1763100100250
+      },
+      "output_checkpoint_pointer": {
+        "scope": {
+          "kind": "window",
+          "scope_id": "adapter-reference.open_gpt_oss_lm_head-window-1"
+        },
+        "checkpoint_family": "adapter.reference.open",
+        "checkpoint": {
+          "checkpoint_family": "adapter.reference.open",
+          "stream_id": "stream://adapter-aggregate/adapter-reference.open_gpt_oss_lm_head-window-1/f4cc1ebc4734d5039727189370fe2319549c7f5d835dbde482d9109b62997114",
+          "manifest_digest": "f4cc1ebc4734d5039727189370fe2319549c7f5d835dbde482d9109b62997114",
+          "object_digest": "f4cc1ebc4734d5039727189370fe2319549c7f5d835dbde482d9109b62997114",
+          "writer_node_id": "adapter-aggregator",
+          "membership_epoch": 1,
+          "cluster_state_digest": "cluster-digest:adapter-reference.open_gpt_oss_lm_head",
+          "topology_digest": "topology-digest:adapter-reference.open_gpt_oss_lm_head",
+          "started_at_ms": 1763100100250,
+          "checkpoint_ref": "adapter-aggregate/adapter-reference.open_gpt_oss_lm_head-window-1/f4cc1ebc4734d5039727189370fe2319549c7f5d835dbde482d9109b62997114",
+          "step": 2,
+          "durable_at_ms": 1763100100250
+        },
+        "manifest_digest": "f4cc1ebc4734d5039727189370fe2319549c7f5d835dbde482d9109b62997114",
+        "updated_at_ms": 1763100100250,
+        "pointer_digest": "4633dd7f00818587579d1ef644b0679784ba2870aef087c49e085959231b5e16"
+      },
+      "aggregated_at_ms": 1763100100250,
+      "receipt_digest": "e12e37f6b3a3fd53fcc26a502dabcac66565122aeee7bbddc6728e684003a9ef"
+    },
+    "second_promotion": {
+      "aggregation_rule": "weighted_manifest_digest_merge_v1",
+      "training_run_id": "adapter-reference.open_gpt_oss_lm_head",
+      "stage_id": "adapter-sft",
+      "window_id": "adapter-reference.open_gpt_oss_lm_head-window-2",
+      "contributor_set_revision_id": "adapter-reference.open_gpt_oss_lm_head-contributors-2",
+      "adapter_target_id": "gpt_oss.explainer.lm_head",
+      "input_policy_revision_id": "policy-r1:aggregate:adapter-reference.open_gpt_oss_lm_head-window-1:r2",
+      "input_checkpoint_pointer_digest": "4633dd7f00818587579d1ef644b0679784ba2870aef087c49e085959231b5e16",
+      "window_summary_digest": "82b4037ae0fe1c965cf114a379ca4336100c8ab1c2ba6edea1ae42212c7a2955",
+      "accepted_contributions": [
+        {
+          "contribution_id": "adapter-contribution:adapter-reference.open_gpt_oss_lm_head-window-2:worker-b:0",
+          "worker_id": "worker-b",
+          "artifact_id": "adapter_contribution:adapter-reference.open_gpt_oss_lm_head-window-2:adapter-contribution:adapter-reference.open_gpt_oss_lm_head-window-2:worker-b:0:c83c08baac811ba4ac4dfac4bc4254ff5c7b1aaff983f76f8f686fc69a312937",
+          "manifest_digest": "c83c08baac811ba4ac4dfac4bc4254ff5c7b1aaff983f76f8f686fc69a312937",
+          "object_digest": "6bdc6013f4365bd315bf6737ab8cab00e819f599a993e6d9f9683f7091779b8d",
+          "aggregation_weight_bps": 10000,
+          "validator_receipt_digest": "7d5d547b2752b72f4dc6c4b63aa1cf45fe2b9247cc87304eb710d73760ec2ec2",
+          "security_receipt_digest": "746e5c1f1f2bf85222bc8426a0d32388dfc56ef2e31e8de8fb3eda5935683043",
+          "provenance_bundle_digest": "743b946013073ca849291c705c8812d6a822f3478ac3b2ad5b269a2877b08914"
+        },
+        {
+          "contribution_id": "adapter-contribution:adapter-reference.open_gpt_oss_lm_head-window-2:worker-d:0",
+          "worker_id": "worker-d",
+          "artifact_id": "adapter_contribution:adapter-reference.open_gpt_oss_lm_head-window-2:adapter-contribution:adapter-reference.open_gpt_oss_lm_head-window-2:worker-d:0:686ebffde7b549dd99c2d4abfba4aa14af33689e96c5182cfd4de79d4453bb01",
+          "manifest_digest": "686ebffde7b549dd99c2d4abfba4aa14af33689e96c5182cfd4de79d4453bb01",
+          "object_digest": "64d78595577aec511bd47e184906212c355405b1c82121b7701c5844747981d7",
+          "aggregation_weight_bps": 10000,
+          "validator_receipt_digest": "8918f9b546a24b63ef1dbcfc2aa1b8673b1e84ef002b43919340241377ebd066",
+          "security_receipt_digest": "d317a49c355d5e9b0d99e8bb5b3e0e58d13271f7f8d285d5662e4d2431185be8",
+          "provenance_bundle_digest": "7b31e126de65184dec5eba02ab058218d6eb84de6653d9d9820a13810d5b43ef"
+        }
+      ],
+      "aggregated_delta_digest": "65b707befdd4803bbb38143e841fe94d9a88f983c8dbe6fd5e00673574fc76fa",
+      "promotion_disposition": "promoted",
+      "output_policy_revision": {
+        "policy_family": "adapter.reference.open",
+        "revision_id": "policy-r1:aggregate:adapter-reference.open_gpt_oss_lm_head-window-1:r2:aggregate:adapter-reference.open_gpt_oss_lm_head-window-2:r3",
+        "revision_number": 3,
+        "policy_digest": "65b707befdd4803bbb38143e841fe94d9a88f983c8dbe6fd5e00673574fc76fa",
+        "parent_revision_id": "policy-r1:aggregate:adapter-reference.open_gpt_oss_lm_head-window-1:r2",
+        "checkpoint": {
+          "checkpoint_family": "adapter.reference.open",
+          "stream_id": "stream://adapter-aggregate/adapter-reference.open_gpt_oss_lm_head-window-2/65b707befdd4803bbb38143e841fe94d9a88f983c8dbe6fd5e00673574fc76fa",
+          "manifest_digest": "65b707befdd4803bbb38143e841fe94d9a88f983c8dbe6fd5e00673574fc76fa",
+          "object_digest": "65b707befdd4803bbb38143e841fe94d9a88f983c8dbe6fd5e00673574fc76fa",
+          "writer_node_id": "adapter-aggregator",
+          "membership_epoch": 1,
+          "cluster_state_digest": "cluster-digest:adapter-reference.open_gpt_oss_lm_head",
+          "topology_digest": "topology-digest:adapter-reference.open_gpt_oss_lm_head",
+          "started_at_ms": 1763100100350,
+          "checkpoint_ref": "adapter-aggregate/adapter-reference.open_gpt_oss_lm_head-window-2/65b707befdd4803bbb38143e841fe94d9a88f983c8dbe6fd5e00673574fc76fa",
+          "step": 3,
+          "durable_at_ms": 1763100100350
+        },
+        "produced_at_ms": 1763100100350
+      },
+      "output_checkpoint_pointer": {
+        "scope": {
+          "kind": "window",
+          "scope_id": "adapter-reference.open_gpt_oss_lm_head-window-2"
+        },
+        "checkpoint_family": "adapter.reference.open",
+        "checkpoint": {
+          "checkpoint_family": "adapter.reference.open",
+          "stream_id": "stream://adapter-aggregate/adapter-reference.open_gpt_oss_lm_head-window-2/65b707befdd4803bbb38143e841fe94d9a88f983c8dbe6fd5e00673574fc76fa",
+          "manifest_digest": "65b707befdd4803bbb38143e841fe94d9a88f983c8dbe6fd5e00673574fc76fa",
+          "object_digest": "65b707befdd4803bbb38143e841fe94d9a88f983c8dbe6fd5e00673574fc76fa",
+          "writer_node_id": "adapter-aggregator",
+          "membership_epoch": 1,
+          "cluster_state_digest": "cluster-digest:adapter-reference.open_gpt_oss_lm_head",
+          "topology_digest": "topology-digest:adapter-reference.open_gpt_oss_lm_head",
+          "started_at_ms": 1763100100350,
+          "checkpoint_ref": "adapter-aggregate/adapter-reference.open_gpt_oss_lm_head-window-2/65b707befdd4803bbb38143e841fe94d9a88f983c8dbe6fd5e00673574fc76fa",
+          "step": 3,
+          "durable_at_ms": 1763100100350
+        },
+        "manifest_digest": "65b707befdd4803bbb38143e841fe94d9a88f983c8dbe6fd5e00673574fc76fa",
+        "updated_at_ms": 1763100100350,
+        "pointer_digest": "9ab558e249dffd1cbf64cd59359a15f8ea998ace80d8bc60a91e439a91e7f3aa"
+      },
+      "aggregated_at_ms": 1763100100350,
+      "receipt_digest": "e7eda2031be2b781f543a1b0cb01345e1868bcefe2a3f17388543f46af2bd54a"
+    },
+    "artifact_receipts": [
+      {
+        "upload_id": "adapter-contribution:adapter-reference.open_gpt_oss_lm_head-window-1:worker-b:0-upload-1",
+        "artifact_id": "adapter_contribution:adapter-reference.open_gpt_oss_lm_head-window-1:adapter-contribution:adapter-reference.open_gpt_oss_lm_head-window-1:worker-b:0:90706b9de75a10c0c349b84924ee96c34c975104d47b58cbcb568bc3509ed264",
+        "window_id": "adapter-reference.open_gpt_oss_lm_head-window-1",
+        "contribution_id": "adapter-contribution:adapter-reference.open_gpt_oss_lm_head-window-1:worker-b:0",
+        "worker_id": "worker-b",
+        "writer_node_id": "worker-b",
+        "adapter_target_id": "gpt_oss.explainer.lm_head",
+        "dataset_slice_id": "slice-a",
+        "source_policy_revision_id": "policy-r1",
+        "source_checkpoint_pointer_digest": "e128003b7b3ab8452b443046746caeea449dd02e24af6abbb5b4a38f3cda2e0d",
+        "manifest": {
+          "stream_id": "adapter-contribution:adapter-reference.open_gpt_oss_lm_head-window-1:adapter-contribution:adapter-reference.open_gpt_oss_lm_head-window-1:worker-b:0",
+          "manifest_digest": "90706b9de75a10c0c349b84924ee96c34c975104d47b58cbcb568bc3509ed264",
+          "subject": "adapter_package",
+          "object_digest": "629f59ad4ad564dae9cbae82a16ab0b34071017a9e397249a1c0437badcd58e2",
+          "total_bytes": 217,
+          "chunk_count": 28,
+          "chunk_bytes": 8,
+          "encoding": "raw_binary",
+          "provenance_digest": "c6248ad1aef5ed2343c90e5f836908e8c37f34d52ea594966f035be92370c164"
+        },
+        "upload": {
+          "upload_reference": "object://adapter-window/adapter-reference.open_gpt_oss_lm_head-window-1/adapter-contribution:adapter-reference.open_gpt_oss_lm_head-window-1:worker-b:0/artifact-1",
+          "upload_manifest_digest": "90706b9de75a10c0c349b84924ee96c34c975104d47b58cbcb568bc3509ed264",
+          "payload_bytes": 217
+        },
+        "disposition": "accepted",
+        "completed_at_ms": 1763100100150,
+        "receipt_digest": "c4e8e4727c125eb4f3b8a1f725f48fbbaaae75918383f597c91bf285f8a2f4f5"
+      },
+      {
+        "upload_id": "adapter-contribution:adapter-reference.open_gpt_oss_lm_head-window-1:worker-c:0-upload-1",
+        "artifact_id": "adapter_contribution:adapter-reference.open_gpt_oss_lm_head-window-1:adapter-contribution:adapter-reference.open_gpt_oss_lm_head-window-1:worker-c:0:7617253cad5230816884850a1017f9adc5d310faaffae0572eb387585c91b58c",
+        "window_id": "adapter-reference.open_gpt_oss_lm_head-window-1",
+        "contribution_id": "adapter-contribution:adapter-reference.open_gpt_oss_lm_head-window-1:worker-c:0",
+        "worker_id": "worker-c",
+        "writer_node_id": "worker-c",
+        "adapter_target_id": "gpt_oss.explainer.lm_head",
+        "dataset_slice_id": "slice-b",
+        "source_policy_revision_id": "policy-r1",
+        "source_checkpoint_pointer_digest": "e128003b7b3ab8452b443046746caeea449dd02e24af6abbb5b4a38f3cda2e0d",
+        "manifest": {
+          "stream_id": "adapter-contribution:adapter-reference.open_gpt_oss_lm_head-window-1:adapter-contribution:adapter-reference.open_gpt_oss_lm_head-window-1:worker-c:0",
+          "manifest_digest": "7617253cad5230816884850a1017f9adc5d310faaffae0572eb387585c91b58c",
+          "subject": "adapter_package",
+          "object_digest": "45e3a39472278822ab27bbd025d2efcd45f15727961952986da087fa26e4c4b1",
+          "total_bytes": 217,
+          "chunk_count": 28,
+          "chunk_bytes": 8,
+          "encoding": "raw_binary",
+          "provenance_digest": "32142445e351808ce9414369c3358c73b89001a5bdbf177db3b3473efc606add"
+        },
+        "upload": {
+          "upload_reference": "object://adapter-window/adapter-reference.open_gpt_oss_lm_head-window-1/adapter-contribution:adapter-reference.open_gpt_oss_lm_head-window-1:worker-c:0/artifact-1",
+          "upload_manifest_digest": "7617253cad5230816884850a1017f9adc5d310faaffae0572eb387585c91b58c",
+          "payload_bytes": 217
+        },
+        "disposition": "accepted",
+        "completed_at_ms": 1763100100151,
+        "receipt_digest": "52d9b4bd68754808b1346ec9892ac0bc419178834e39965cf497ecc13a612c05"
+      },
+      {
+        "upload_id": "adapter-contribution:adapter-reference.open_gpt_oss_lm_head-window-2:worker-d:0-upload-1",
+        "artifact_id": "adapter_contribution:adapter-reference.open_gpt_oss_lm_head-window-2:adapter-contribution:adapter-reference.open_gpt_oss_lm_head-window-2:worker-d:0:686ebffde7b549dd99c2d4abfba4aa14af33689e96c5182cfd4de79d4453bb01",
+        "window_id": "adapter-reference.open_gpt_oss_lm_head-window-2",
+        "contribution_id": "adapter-contribution:adapter-reference.open_gpt_oss_lm_head-window-2:worker-d:0",
+        "worker_id": "worker-d",
+        "writer_node_id": "worker-d",
+        "adapter_target_id": "gpt_oss.explainer.lm_head",
+        "dataset_slice_id": "slice-c",
+        "source_policy_revision_id": "policy-r1:aggregate:adapter-reference.open_gpt_oss_lm_head-window-1:r2",
+        "source_checkpoint_pointer_digest": "4633dd7f00818587579d1ef644b0679784ba2870aef087c49e085959231b5e16",
+        "manifest": {
+          "stream_id": "adapter-contribution:adapter-reference.open_gpt_oss_lm_head-window-2:adapter-contribution:adapter-reference.open_gpt_oss_lm_head-window-2:worker-d:0",
+          "manifest_digest": "686ebffde7b549dd99c2d4abfba4aa14af33689e96c5182cfd4de79d4453bb01",
+          "subject": "adapter_package",
+          "object_digest": "64d78595577aec511bd47e184906212c355405b1c82121b7701c5844747981d7",
+          "total_bytes": 217,
+          "chunk_count": 28,
+          "chunk_bytes": 8,
+          "encoding": "raw_binary",
+          "provenance_digest": "21670eeea52d3b1de9c33acfa1ee05b1dbb6b4a8c5f6d3da25f7e098f93cff6c"
+        },
+        "upload": {
+          "upload_reference": "object://adapter-window/adapter-reference.open_gpt_oss_lm_head-window-2/adapter-contribution:adapter-reference.open_gpt_oss_lm_head-window-2:worker-d:0/artifact-2",
+          "upload_manifest_digest": "686ebffde7b549dd99c2d4abfba4aa14af33689e96c5182cfd4de79d4453bb01",
+          "payload_bytes": 217
+        },
+        "disposition": "accepted",
+        "completed_at_ms": 1763100100250,
+        "receipt_digest": "89edf16b448eedf1f3db26040b4b039e77b45cc7f6252a275aed15bb501a37de"
+      },
+      {
+        "upload_id": "adapter-contribution:adapter-reference.open_gpt_oss_lm_head-window-2:worker-b:0-upload-1",
+        "artifact_id": "adapter_contribution:adapter-reference.open_gpt_oss_lm_head-window-2:adapter-contribution:adapter-reference.open_gpt_oss_lm_head-window-2:worker-b:0:c83c08baac811ba4ac4dfac4bc4254ff5c7b1aaff983f76f8f686fc69a312937",
+        "window_id": "adapter-reference.open_gpt_oss_lm_head-window-2",
+        "contribution_id": "adapter-contribution:adapter-reference.open_gpt_oss_lm_head-window-2:worker-b:0",
+        "worker_id": "worker-b",
+        "writer_node_id": "worker-b",
+        "adapter_target_id": "gpt_oss.explainer.lm_head",
+        "dataset_slice_id": "slice-d",
+        "source_policy_revision_id": "policy-r1:aggregate:adapter-reference.open_gpt_oss_lm_head-window-1:r2",
+        "source_checkpoint_pointer_digest": "4633dd7f00818587579d1ef644b0679784ba2870aef087c49e085959231b5e16",
+        "manifest": {
+          "stream_id": "adapter-contribution:adapter-reference.open_gpt_oss_lm_head-window-2:adapter-contribution:adapter-reference.open_gpt_oss_lm_head-window-2:worker-b:0",
+          "manifest_digest": "c83c08baac811ba4ac4dfac4bc4254ff5c7b1aaff983f76f8f686fc69a312937",
+          "subject": "adapter_package",
+          "object_digest": "6bdc6013f4365bd315bf6737ab8cab00e819f599a993e6d9f9683f7091779b8d",
+          "total_bytes": 217,
+          "chunk_count": 28,
+          "chunk_bytes": 8,
+          "encoding": "raw_binary",
+          "provenance_digest": "5fb7e33f21a110433e55d5ba915fd2764fde5165f5e6bc55b5881a5956bc1674"
+        },
+        "upload": {
+          "upload_reference": "object://adapter-window/adapter-reference.open_gpt_oss_lm_head-window-2/adapter-contribution:adapter-reference.open_gpt_oss_lm_head-window-2:worker-b:0/artifact-2",
+          "upload_manifest_digest": "c83c08baac811ba4ac4dfac4bc4254ff5c7b1aaff983f76f8f686fc69a312937",
+          "payload_bytes": 217
+        },
+        "disposition": "accepted",
+        "completed_at_ms": 1763100100251,
+        "receipt_digest": "1a48262ce97b5b2541b6edd79f55dea11874d8c54011c1a0031d4a3af846bc22"
+      }
+    ],
+    "security_receipts": [
+      {
+        "receipt_id": "adapter-security:adapter_contribution:adapter-reference.open_gpt_oss_lm_head-window-1:adapter-contribution:adapter-reference.open_gpt_oss_lm_head-window-1:worker-b:0:90706b9de75a10c0c349b84924ee96c34c975104d47b58cbcb568bc3509ed264",
+        "artifact_id": "adapter_contribution:adapter-reference.open_gpt_oss_lm_head-window-1:adapter-contribution:adapter-reference.open_gpt_oss_lm_head-window-1:worker-b:0:90706b9de75a10c0c349b84924ee96c34c975104d47b58cbcb568bc3509ed264",
+        "claim_id": "adapter-assignment:adapter-reference.open_gpt_oss_lm_head-window-1:worker-b:0-claim-1",
+        "assignment_id": "adapter-assignment:adapter-reference.open_gpt_oss_lm_head-window-1:worker-b:0",
+        "contribution_id": "adapter-contribution:adapter-reference.open_gpt_oss_lm_head-window-1:worker-b:0",
+        "worker_id": "worker-b",
+        "session_id": "worker-b-session-1",
+        "disposition": "accepted",
+        "signature_verified": true,
+        "bundle_digest": "d558646452289e04d4e22971987458a170adc1bf96106a0d37239901ed379cce",
+        "verified_at_ms": 1763100100152,
+        "receipt_digest": "86797c1c6fabb5b1ad801d49d03842b5d1ef5c2bc5250533adc483c65c242cb4"
+      },
+      {
+        "receipt_id": "adapter-security:adapter_contribution:adapter-reference.open_gpt_oss_lm_head-window-1:adapter-contribution:adapter-reference.open_gpt_oss_lm_head-window-1:worker-c:0:7617253cad5230816884850a1017f9adc5d310faaffae0572eb387585c91b58c",
+        "artifact_id": "adapter_contribution:adapter-reference.open_gpt_oss_lm_head-window-1:adapter-contribution:adapter-reference.open_gpt_oss_lm_head-window-1:worker-c:0:7617253cad5230816884850a1017f9adc5d310faaffae0572eb387585c91b58c",
+        "claim_id": "adapter-assignment:adapter-reference.open_gpt_oss_lm_head-window-1:worker-c:0-claim-1",
+        "assignment_id": "adapter-assignment:adapter-reference.open_gpt_oss_lm_head-window-1:worker-c:0",
+        "contribution_id": "adapter-contribution:adapter-reference.open_gpt_oss_lm_head-window-1:worker-c:0",
+        "worker_id": "worker-c",
+        "session_id": "worker-c-session-1",
+        "disposition": "accepted",
+        "signature_verified": true,
+        "bundle_digest": "15afbebc2085df4abbb3b00ea49ff52c8a1e1d17a89dd11336ac02bfd2e6cca7",
+        "verified_at_ms": 1763100100153,
+        "receipt_digest": "41f05c40ba11680200fc253026bd1fa5dafd579dc4b7ae8075e3b01f8bd4ec0c"
+      },
+      {
+        "receipt_id": "adapter-security:adapter_contribution:adapter-reference.open_gpt_oss_lm_head-window-2:adapter-contribution:adapter-reference.open_gpt_oss_lm_head-window-2:worker-d:0:686ebffde7b549dd99c2d4abfba4aa14af33689e96c5182cfd4de79d4453bb01",
+        "artifact_id": "adapter_contribution:adapter-reference.open_gpt_oss_lm_head-window-2:adapter-contribution:adapter-reference.open_gpt_oss_lm_head-window-2:worker-d:0:686ebffde7b549dd99c2d4abfba4aa14af33689e96c5182cfd4de79d4453bb01",
+        "claim_id": "adapter-assignment:adapter-reference.open_gpt_oss_lm_head-window-2:worker-d:0-claim-1",
+        "assignment_id": "adapter-assignment:adapter-reference.open_gpt_oss_lm_head-window-2:worker-d:0",
+        "contribution_id": "adapter-contribution:adapter-reference.open_gpt_oss_lm_head-window-2:worker-d:0",
+        "worker_id": "worker-d",
+        "session_id": "worker-d-session-2",
+        "disposition": "accepted",
+        "signature_verified": true,
+        "bundle_digest": "7b31e126de65184dec5eba02ab058218d6eb84de6653d9d9820a13810d5b43ef",
+        "verified_at_ms": 1763100100252,
+        "receipt_digest": "d317a49c355d5e9b0d99e8bb5b3e0e58d13271f7f8d285d5662e4d2431185be8"
+      },
+      {
+        "receipt_id": "adapter-security:adapter_contribution:adapter-reference.open_gpt_oss_lm_head-window-2:adapter-contribution:adapter-reference.open_gpt_oss_lm_head-window-2:worker-b:0:c83c08baac811ba4ac4dfac4bc4254ff5c7b1aaff983f76f8f686fc69a312937",
+        "artifact_id": "adapter_contribution:adapter-reference.open_gpt_oss_lm_head-window-2:adapter-contribution:adapter-reference.open_gpt_oss_lm_head-window-2:worker-b:0:c83c08baac811ba4ac4dfac4bc4254ff5c7b1aaff983f76f8f686fc69a312937",
+        "claim_id": "adapter-assignment:adapter-reference.open_gpt_oss_lm_head-window-2:worker-b:0-claim-1",
+        "assignment_id": "adapter-assignment:adapter-reference.open_gpt_oss_lm_head-window-2:worker-b:0",
+        "contribution_id": "adapter-contribution:adapter-reference.open_gpt_oss_lm_head-window-2:worker-b:0",
+        "worker_id": "worker-b",
+        "session_id": "worker-b-session-2",
+        "disposition": "accepted",
+        "signature_verified": true,
+        "bundle_digest": "743b946013073ca849291c705c8812d6a822f3478ac3b2ad5b269a2877b08914",
+        "verified_at_ms": 1763100100253,
+        "receipt_digest": "746e5c1f1f2bf85222bc8426a0d32388dfc56ef2e31e8de8fb3eda5935683043"
+      }
+    ],
+    "window_checkpoint_receipts": [
+      {
+        "artifact_id": "adapter_window_checkpoint:adapter-reference.open_gpt_oss_lm_head-window-1:policy-r1:aggregate:adapter-reference.open_gpt_oss_lm_head-window-1:r2:cc57dfe2ea2f873445591d4c7e9eed003994e2906fcd95cdacd0e465a9f574c3",
+        "window_id": "adapter-reference.open_gpt_oss_lm_head-window-1",
+        "writer_node_id": "validator-a",
+        "policy_revision_id": "policy-r1:aggregate:adapter-reference.open_gpt_oss_lm_head-window-1:r2",
+        "manifest": {
+          "stream_id": "adapter-window-checkpoint:adapter-reference.open_gpt_oss_lm_head-window-1:policy-r1:aggregate:adapter-reference.open_gpt_oss_lm_head-window-1:r2",
+          "manifest_digest": "cc57dfe2ea2f873445591d4c7e9eed003994e2906fcd95cdacd0e465a9f574c3",
+          "subject": "checkpoint",
+          "object_digest": "0c6a6e08ed62101984c7665d57351ae5fb7681cdc830e8b4c7520064b713d49d",
+          "total_bytes": 64,
+          "chunk_count": 8,
+          "chunk_bytes": 8,
+          "encoding": "raw_binary",
+          "provenance_digest": "f4cc1ebc4734d5039727189370fe2319549c7f5d835dbde482d9109b62997114",
+          "checkpoint_binding": {
+            "checkpoint_family": "adapter.reference.open",
+            "checkpoint_ref": "adapter-aggregate/adapter-reference.open_gpt_oss_lm_head-window-1/f4cc1ebc4734d5039727189370fe2319549c7f5d835dbde482d9109b62997114",
+            "step": 2
+          }
+        },
+        "checkpoint_manifest": {
+          "scope": {
+            "kind": "window",
+            "scope_id": "adapter-reference.open_gpt_oss_lm_head-window-1"
+          },
+          "checkpoint_family": "adapter.reference.open",
+          "checkpoint": {
+            "checkpoint_family": "adapter.reference.open",
+            "stream_id": "adapter-window-checkpoint:adapter-reference.open_gpt_oss_lm_head-window-1:policy-r1:aggregate:adapter-reference.open_gpt_oss_lm_head-window-1:r2",
+            "manifest_digest": "cc57dfe2ea2f873445591d4c7e9eed003994e2906fcd95cdacd0e465a9f574c3",
+            "object_digest": "0c6a6e08ed62101984c7665d57351ae5fb7681cdc830e8b4c7520064b713d49d",
+            "writer_node_id": "validator-a",
+            "membership_epoch": 1,
+            "cluster_state_digest": "cluster-digest:adapter-reference.open_gpt_oss_lm_head",
+            "topology_digest": "topology-digest:adapter-reference.open_gpt_oss_lm_head",
+            "started_at_ms": 1763100100250,
+            "checkpoint_ref": "adapter-aggregate/adapter-reference.open_gpt_oss_lm_head-window-1/f4cc1ebc4734d5039727189370fe2319549c7f5d835dbde482d9109b62997114",
+            "step": 2,
+            "durable_at_ms": 1763100100255
+          },
+          "shards": [
+            {
+              "shard_id": "adapter-window-shard-0",
+              "manifest": {
+                "stream_id": "adapter-window-checkpoint:adapter-reference.open_gpt_oss_lm_head-window-1:policy-r1:aggregate:adapter-reference.open_gpt_oss_lm_head-window-1:r2",
+                "manifest_digest": "cc57dfe2ea2f873445591d4c7e9eed003994e2906fcd95cdacd0e465a9f574c3",
+                "subject": "checkpoint",
+                "object_digest": "0c6a6e08ed62101984c7665d57351ae5fb7681cdc830e8b4c7520064b713d49d",
+                "total_bytes": 64,
+                "chunk_count": 8,
+                "chunk_bytes": 8,
+                "encoding": "raw_binary",
+                "provenance_digest": "f4cc1ebc4734d5039727189370fe2319549c7f5d835dbde482d9109b62997114",
+                "checkpoint_binding": {
+                  "checkpoint_family": "adapter.reference.open",
+                  "checkpoint_ref": "adapter-aggregate/adapter-reference.open_gpt_oss_lm_head-window-1/f4cc1ebc4734d5039727189370fe2319549c7f5d835dbde482d9109b62997114",
+                  "step": 2
+                }
+              },
+              "writer_node_id": "validator-a"
+            }
+          ],
+          "durability": "durable",
+          "created_at_ms": 1763100100255,
+          "manifest_digest": "56af5c1218700b2e4fa222900fb51fab3b5b3b8c8fd9a2993a1db9c33ba25905"
+        },
+        "checkpoint_pointer": {
+          "scope": {
+            "kind": "window",
+            "scope_id": "adapter-reference.open_gpt_oss_lm_head-window-1"
+          },
+          "checkpoint_family": "adapter.reference.open",
+          "checkpoint": {
+            "checkpoint_family": "adapter.reference.open",
+            "stream_id": "adapter-window-checkpoint:adapter-reference.open_gpt_oss_lm_head-window-1:policy-r1:aggregate:adapter-reference.open_gpt_oss_lm_head-window-1:r2",
+            "manifest_digest": "cc57dfe2ea2f873445591d4c7e9eed003994e2906fcd95cdacd0e465a9f574c3",
+            "object_digest": "0c6a6e08ed62101984c7665d57351ae5fb7681cdc830e8b4c7520064b713d49d",
+            "writer_node_id": "validator-a",
+            "membership_epoch": 1,
+            "cluster_state_digest": "cluster-digest:adapter-reference.open_gpt_oss_lm_head",
+            "topology_digest": "topology-digest:adapter-reference.open_gpt_oss_lm_head",
+            "started_at_ms": 1763100100250,
+            "checkpoint_ref": "adapter-aggregate/adapter-reference.open_gpt_oss_lm_head-window-1/f4cc1ebc4734d5039727189370fe2319549c7f5d835dbde482d9109b62997114",
+            "step": 2,
+            "durable_at_ms": 1763100100255
+          },
+          "manifest_digest": "56af5c1218700b2e4fa222900fb51fab3b5b3b8c8fd9a2993a1db9c33ba25905",
+          "updated_at_ms": 1763100100255,
+          "pointer_digest": "115c88593a7ddd9e7ac6937bb0e97b9f52e484c568192812e98680316df03058"
+        },
+        "completed_at_ms": 1763100100255,
+        "receipt_digest": "144b06e7007f9d0b3b71d621fc72ca30c560d15dc4fa2b5526482c6c11f5656d"
+      },
+      {
+        "artifact_id": "adapter_window_checkpoint:adapter-reference.open_gpt_oss_lm_head-window-2:policy-r1:aggregate:adapter-reference.open_gpt_oss_lm_head-window-1:r2:aggregate:adapter-reference.open_gpt_oss_lm_head-window-2:r3:1c4f1034989f6acb671f167e12871959142a64383afd083dbbec0a3c02a0849e",
+        "window_id": "adapter-reference.open_gpt_oss_lm_head-window-2",
+        "writer_node_id": "validator-a",
+        "policy_revision_id": "policy-r1:aggregate:adapter-reference.open_gpt_oss_lm_head-window-1:r2:aggregate:adapter-reference.open_gpt_oss_lm_head-window-2:r3",
+        "manifest": {
+          "stream_id": "adapter-window-checkpoint:adapter-reference.open_gpt_oss_lm_head-window-2:policy-r1:aggregate:adapter-reference.open_gpt_oss_lm_head-window-1:r2:aggregate:adapter-reference.open_gpt_oss_lm_head-window-2:r3",
+          "manifest_digest": "1c4f1034989f6acb671f167e12871959142a64383afd083dbbec0a3c02a0849e",
+          "subject": "checkpoint",
+          "object_digest": "11a3fe8b830b8b7b06924a52ad71929cc3d88bc358056a53768cfb417b1b8301",
+          "total_bytes": 64,
+          "chunk_count": 8,
+          "chunk_bytes": 8,
+          "encoding": "raw_binary",
+          "provenance_digest": "65b707befdd4803bbb38143e841fe94d9a88f983c8dbe6fd5e00673574fc76fa",
+          "checkpoint_binding": {
+            "checkpoint_family": "adapter.reference.open",
+            "checkpoint_ref": "adapter-aggregate/adapter-reference.open_gpt_oss_lm_head-window-2/65b707befdd4803bbb38143e841fe94d9a88f983c8dbe6fd5e00673574fc76fa",
+            "step": 3
+          }
+        },
+        "checkpoint_manifest": {
+          "scope": {
+            "kind": "window",
+            "scope_id": "adapter-reference.open_gpt_oss_lm_head-window-2"
+          },
+          "checkpoint_family": "adapter.reference.open",
+          "checkpoint": {
+            "checkpoint_family": "adapter.reference.open",
+            "stream_id": "adapter-window-checkpoint:adapter-reference.open_gpt_oss_lm_head-window-2:policy-r1:aggregate:adapter-reference.open_gpt_oss_lm_head-window-1:r2:aggregate:adapter-reference.open_gpt_oss_lm_head-window-2:r3",
+            "manifest_digest": "1c4f1034989f6acb671f167e12871959142a64383afd083dbbec0a3c02a0849e",
+            "object_digest": "11a3fe8b830b8b7b06924a52ad71929cc3d88bc358056a53768cfb417b1b8301",
+            "writer_node_id": "validator-a",
+            "membership_epoch": 1,
+            "cluster_state_digest": "cluster-digest:adapter-reference.open_gpt_oss_lm_head",
+            "topology_digest": "topology-digest:adapter-reference.open_gpt_oss_lm_head",
+            "started_at_ms": 1763100100350,
+            "checkpoint_ref": "adapter-aggregate/adapter-reference.open_gpt_oss_lm_head-window-2/65b707befdd4803bbb38143e841fe94d9a88f983c8dbe6fd5e00673574fc76fa",
+            "step": 3,
+            "durable_at_ms": 1763100100355
+          },
+          "shards": [
+            {
+              "shard_id": "adapter-window-shard-0",
+              "manifest": {
+                "stream_id": "adapter-window-checkpoint:adapter-reference.open_gpt_oss_lm_head-window-2:policy-r1:aggregate:adapter-reference.open_gpt_oss_lm_head-window-1:r2:aggregate:adapter-reference.open_gpt_oss_lm_head-window-2:r3",
+                "manifest_digest": "1c4f1034989f6acb671f167e12871959142a64383afd083dbbec0a3c02a0849e",
+                "subject": "checkpoint",
+                "object_digest": "11a3fe8b830b8b7b06924a52ad71929cc3d88bc358056a53768cfb417b1b8301",
+                "total_bytes": 64,
+                "chunk_count": 8,
+                "chunk_bytes": 8,
+                "encoding": "raw_binary",
+                "provenance_digest": "65b707befdd4803bbb38143e841fe94d9a88f983c8dbe6fd5e00673574fc76fa",
+                "checkpoint_binding": {
+                  "checkpoint_family": "adapter.reference.open",
+                  "checkpoint_ref": "adapter-aggregate/adapter-reference.open_gpt_oss_lm_head-window-2/65b707befdd4803bbb38143e841fe94d9a88f983c8dbe6fd5e00673574fc76fa",
+                  "step": 3
+                }
+              },
+              "writer_node_id": "validator-a"
+            }
+          ],
+          "durability": "durable",
+          "created_at_ms": 1763100100355,
+          "manifest_digest": "bad243a414269b78499e313e575f7aed639ca4a234e597890841608c39ab69ef"
+        },
+        "checkpoint_pointer": {
+          "scope": {
+            "kind": "window",
+            "scope_id": "adapter-reference.open_gpt_oss_lm_head-window-2"
+          },
+          "checkpoint_family": "adapter.reference.open",
+          "checkpoint": {
+            "checkpoint_family": "adapter.reference.open",
+            "stream_id": "adapter-window-checkpoint:adapter-reference.open_gpt_oss_lm_head-window-2:policy-r1:aggregate:adapter-reference.open_gpt_oss_lm_head-window-1:r2:aggregate:adapter-reference.open_gpt_oss_lm_head-window-2:r3",
+            "manifest_digest": "1c4f1034989f6acb671f167e12871959142a64383afd083dbbec0a3c02a0849e",
+            "object_digest": "11a3fe8b830b8b7b06924a52ad71929cc3d88bc358056a53768cfb417b1b8301",
+            "writer_node_id": "validator-a",
+            "membership_epoch": 1,
+            "cluster_state_digest": "cluster-digest:adapter-reference.open_gpt_oss_lm_head",
+            "topology_digest": "topology-digest:adapter-reference.open_gpt_oss_lm_head",
+            "started_at_ms": 1763100100350,
+            "checkpoint_ref": "adapter-aggregate/adapter-reference.open_gpt_oss_lm_head-window-2/65b707befdd4803bbb38143e841fe94d9a88f983c8dbe6fd5e00673574fc76fa",
+            "step": 3,
+            "durable_at_ms": 1763100100355
+          },
+          "manifest_digest": "bad243a414269b78499e313e575f7aed639ca4a234e597890841608c39ab69ef",
+          "updated_at_ms": 1763100100355,
+          "pointer_digest": "6a589e06068aa9971cb83037c24f91a9907df748da4619ad349e467e3837cbf1"
+        },
+        "completed_at_ms": 1763100100355,
+        "receipt_digest": "0a627b2ba1019d08d7ae0e4cf916e86459d26013a0766480ef1421080ea3ee03"
+      }
+    ],
+    "operator_view": {
+      "family": "open_gpt_oss_lm_head",
+      "first_window_id": "adapter-reference.open_gpt_oss_lm_head-window-1",
+      "second_window_id": "adapter-reference.open_gpt_oss_lm_head-window-2",
+      "first_window_selected_node_ids": [
+        "worker-b",
+        "worker-c"
+      ],
+      "second_window_selected_node_ids": [
+        "worker-d",
+        "worker-b"
+      ],
+      "accepted_contribution_count": 4,
+      "replay_checked_contribution_count": 4,
+      "promoted_policy_revision_ids": [
+        "policy-r1:aggregate:adapter-reference.open_gpt_oss_lm_head-window-1:r2",
+        "policy-r1:aggregate:adapter-reference.open_gpt_oss_lm_head-window-1:r2:aggregate:adapter-reference.open_gpt_oss_lm_head-window-2:r3"
+      ],
+      "latency_envelope": {
+        "seal_latency_ms": 100,
+        "replay_latency_ms": 12,
+        "promotion_latency_ms": 20
+      }
+    }
+  },
+  "contributor_receipts": [
+    {
+      "contribution_id": "adapter-contribution:adapter-reference.open_gpt_oss_lm_head-window-1:worker-b:0",
+      "window_id": "adapter-reference.open_gpt_oss_lm_head-window-1",
+      "worker_id": "worker-b",
+      "artifact_id": "adapter_contribution:adapter-reference.open_gpt_oss_lm_head-window-1:adapter-contribution:adapter-reference.open_gpt_oss_lm_head-window-1:worker-b:0:90706b9de75a10c0c349b84924ee96c34c975104d47b58cbcb568bc3509ed264",
+      "artifact_receipt_digest": "c4e8e4727c125eb4f3b8a1f725f48fbbaaae75918383f597c91bf285f8a2f4f5",
+      "security_receipt_id": "adapter-security:adapter_contribution:adapter-reference.open_gpt_oss_lm_head-window-1:adapter-contribution:adapter-reference.open_gpt_oss_lm_head-window-1:worker-b:0:90706b9de75a10c0c349b84924ee96c34c975104d47b58cbcb568bc3509ed264",
+      "security_receipt_digest": "86797c1c6fabb5b1ad801d49d03842b5d1ef5c2bc5250533adc483c65c242cb4",
+      "artifact_disposition": "accepted",
+      "security_disposition": "accepted",
+      "accepted_for_window_aggregation": true,
+      "window_replay_checked": true,
+      "detail": "Contribution `adapter-contribution:adapter-reference.open_gpt_oss_lm_head-window-1:worker-b:0` remains bounded to adapter-window artifact `adapter_contribution:adapter-reference.open_gpt_oss_lm_head-window-1:adapter-contribution:adapter-reference.open_gpt_oss_lm_head-window-1:worker-b:0:90706b9de75a10c0c349b84924ee96c34c975104d47b58cbcb568bc3509ed264` plus security receipt `adapter-security:adapter_contribution:adapter-reference.open_gpt_oss_lm_head-window-1:adapter-contribution:adapter-reference.open_gpt_oss_lm_head-window-1:worker-b:0:90706b9de75a10c0c349b84924ee96c34c975104d47b58cbcb568bc3509ed264`; no full-model synchronous all-reduce claim is implied."
+    },
+    {
+      "contribution_id": "adapter-contribution:adapter-reference.open_gpt_oss_lm_head-window-1:worker-c:0",
+      "window_id": "adapter-reference.open_gpt_oss_lm_head-window-1",
+      "worker_id": "worker-c",
+      "artifact_id": "adapter_contribution:adapter-reference.open_gpt_oss_lm_head-window-1:adapter-contribution:adapter-reference.open_gpt_oss_lm_head-window-1:worker-c:0:7617253cad5230816884850a1017f9adc5d310faaffae0572eb387585c91b58c",
+      "artifact_receipt_digest": "52d9b4bd68754808b1346ec9892ac0bc419178834e39965cf497ecc13a612c05",
+      "security_receipt_id": "adapter-security:adapter_contribution:adapter-reference.open_gpt_oss_lm_head-window-1:adapter-contribution:adapter-reference.open_gpt_oss_lm_head-window-1:worker-c:0:7617253cad5230816884850a1017f9adc5d310faaffae0572eb387585c91b58c",
+      "security_receipt_digest": "41f05c40ba11680200fc253026bd1fa5dafd579dc4b7ae8075e3b01f8bd4ec0c",
+      "artifact_disposition": "accepted",
+      "security_disposition": "accepted",
+      "accepted_for_window_aggregation": true,
+      "window_replay_checked": true,
+      "detail": "Contribution `adapter-contribution:adapter-reference.open_gpt_oss_lm_head-window-1:worker-c:0` remains bounded to adapter-window artifact `adapter_contribution:adapter-reference.open_gpt_oss_lm_head-window-1:adapter-contribution:adapter-reference.open_gpt_oss_lm_head-window-1:worker-c:0:7617253cad5230816884850a1017f9adc5d310faaffae0572eb387585c91b58c` plus security receipt `adapter-security:adapter_contribution:adapter-reference.open_gpt_oss_lm_head-window-1:adapter-contribution:adapter-reference.open_gpt_oss_lm_head-window-1:worker-c:0:7617253cad5230816884850a1017f9adc5d310faaffae0572eb387585c91b58c`; no full-model synchronous all-reduce claim is implied."
+    },
+    {
+      "contribution_id": "adapter-contribution:adapter-reference.open_gpt_oss_lm_head-window-2:worker-d:0",
+      "window_id": "adapter-reference.open_gpt_oss_lm_head-window-2",
+      "worker_id": "worker-d",
+      "artifact_id": "adapter_contribution:adapter-reference.open_gpt_oss_lm_head-window-2:adapter-contribution:adapter-reference.open_gpt_oss_lm_head-window-2:worker-d:0:686ebffde7b549dd99c2d4abfba4aa14af33689e96c5182cfd4de79d4453bb01",
+      "artifact_receipt_digest": "89edf16b448eedf1f3db26040b4b039e77b45cc7f6252a275aed15bb501a37de",
+      "security_receipt_id": "adapter-security:adapter_contribution:adapter-reference.open_gpt_oss_lm_head-window-2:adapter-contribution:adapter-reference.open_gpt_oss_lm_head-window-2:worker-d:0:686ebffde7b549dd99c2d4abfba4aa14af33689e96c5182cfd4de79d4453bb01",
+      "security_receipt_digest": "d317a49c355d5e9b0d99e8bb5b3e0e58d13271f7f8d285d5662e4d2431185be8",
+      "artifact_disposition": "accepted",
+      "security_disposition": "accepted",
+      "accepted_for_window_aggregation": true,
+      "window_replay_checked": true,
+      "detail": "Contribution `adapter-contribution:adapter-reference.open_gpt_oss_lm_head-window-2:worker-d:0` remains bounded to adapter-window artifact `adapter_contribution:adapter-reference.open_gpt_oss_lm_head-window-2:adapter-contribution:adapter-reference.open_gpt_oss_lm_head-window-2:worker-d:0:686ebffde7b549dd99c2d4abfba4aa14af33689e96c5182cfd4de79d4453bb01` plus security receipt `adapter-security:adapter_contribution:adapter-reference.open_gpt_oss_lm_head-window-2:adapter-contribution:adapter-reference.open_gpt_oss_lm_head-window-2:worker-d:0:686ebffde7b549dd99c2d4abfba4aa14af33689e96c5182cfd4de79d4453bb01`; no full-model synchronous all-reduce claim is implied."
+    },
+    {
+      "contribution_id": "adapter-contribution:adapter-reference.open_gpt_oss_lm_head-window-2:worker-b:0",
+      "window_id": "adapter-reference.open_gpt_oss_lm_head-window-2",
+      "worker_id": "worker-b",
+      "artifact_id": "adapter_contribution:adapter-reference.open_gpt_oss_lm_head-window-2:adapter-contribution:adapter-reference.open_gpt_oss_lm_head-window-2:worker-b:0:c83c08baac811ba4ac4dfac4bc4254ff5c7b1aaff983f76f8f686fc69a312937",
+      "artifact_receipt_digest": "1a48262ce97b5b2541b6edd79f55dea11874d8c54011c1a0031d4a3af846bc22",
+      "security_receipt_id": "adapter-security:adapter_contribution:adapter-reference.open_gpt_oss_lm_head-window-2:adapter-contribution:adapter-reference.open_gpt_oss_lm_head-window-2:worker-b:0:c83c08baac811ba4ac4dfac4bc4254ff5c7b1aaff983f76f8f686fc69a312937",
+      "security_receipt_digest": "746e5c1f1f2bf85222bc8426a0d32388dfc56ef2e31e8de8fb3eda5935683043",
+      "artifact_disposition": "accepted",
+      "security_disposition": "accepted",
+      "accepted_for_window_aggregation": true,
+      "window_replay_checked": true,
+      "detail": "Contribution `adapter-contribution:adapter-reference.open_gpt_oss_lm_head-window-2:worker-b:0` remains bounded to adapter-window artifact `adapter_contribution:adapter-reference.open_gpt_oss_lm_head-window-2:adapter-contribution:adapter-reference.open_gpt_oss_lm_head-window-2:worker-b:0:c83c08baac811ba4ac4dfac4bc4254ff5c7b1aaff983f76f8f686fc69a312937` plus security receipt `adapter-security:adapter_contribution:adapter-reference.open_gpt_oss_lm_head-window-2:adapter-contribution:adapter-reference.open_gpt_oss_lm_head-window-2:worker-b:0:c83c08baac811ba4ac4dfac4bc4254ff5c7b1aaff983f76f8f686fc69a312937`; no full-model synchronous all-reduce claim is implied."
+    }
+  ],
+  "claim_boundary": "This bundle freezes one bounded decentralized adapter-delta contribution lane over the existing cluster-backed window substrate. It keeps contributor receipts, security receipts, replay-checked windows, and local policy promotion explicit. It does not claim arbitrary public full-model all-reduce, arbitrary public synchronous training, or automatic served promotion of contributed outputs.",
+  "summary": "First bounded Psion decentralized contribution bundle tying the adapter-window reference substrate back to trusted-cluster, reasoning-SFT, acceptance, capability, and rollback discipline.",
+  "bundle_digest": "3db5994afbe0eee3571bf2a9163ca3227487db116bd5015e38efb79906cea726"
+}

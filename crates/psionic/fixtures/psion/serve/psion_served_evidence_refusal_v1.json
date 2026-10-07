@@ -1,0 +1,21 @@
+{
+  "schema_version": "psion.served_evidence.v1",
+  "bundle_id": "psion-served-evidence-refusal-v1",
+  "capability_matrix_id": "psion_capability_matrix",
+  "capability_matrix_version": "v1",
+  "refusal_receipt": {
+    "capability_region_id": "unsupported_exact_execution_without_executor_surface",
+    "refusal_reason": "unsupported_exactness_request",
+    "refusal_boundary_ref": "capability_matrix.refusal_required.unsupported_exact_execution_without_executor_surface",
+    "refusal_calibration_receipt_id": "psion-pilot-refusal-calibration-v1",
+    "refusal_calibration_receipt_digest": "73dedb096d505022a449c46f195205f7d52fc12e01733e0acc01c82dca5e63c3",
+    "detail": "The refusal names the unsupported exactness boundary directly instead of implying hidden executor availability."
+  },
+  "no_implicit_execution": {
+    "execution_only_via_explicit_surface": true,
+    "executor_surface_invoked": false,
+    "detail": "No executor surface was invoked, and the refusal makes that explicit instead of implying unavailable exact execution."
+  },
+  "summary": "Refusal example showing typed refusal reason, refusal receipt binding, and explicit no-implicit-execution posture without answer-side evidence labels.",
+  "bundle_digest": "5eda39ef728aeeb7eaa2025104fb5bb432ff997569047f055ffaeb0cd56d2f29"
+}

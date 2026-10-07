@@ -1,0 +1,99 @@
+{
+  "schema_version": 1,
+  "schema_path": "docs/parameter_golf_acceptance_report.schema.json",
+  "runner": "scripts/check-parameter-golf-acceptance.sh",
+  "report_posture": "tracking_only",
+  "claim_vocabulary_version": "2026-03-18",
+  "current_claim_posture": "non_record_submission",
+  "accounting_posture": {
+    "artifact_cap_bytes": 16000000,
+    "artifact_cap_unit": "decimal_bytes",
+    "counted_components": [
+      "entrypoint_code_bytes",
+      "compressed_model_bytes",
+      "shipped_runtime_code_bytes",
+      "shipped_wrapper_code_bytes",
+      "required_build_dependency_bytes"
+    ],
+    "rust_runtime_posture": "must_count_when_shipped",
+    "wrapper_posture": "allowed_only_when_counted_and_challenge_compatible",
+    "build_dependency_posture": "not_exempt_by_default",
+    "offline_evaluation_required": true
+  },
+  "selected_categories": [
+    "challenge-oracle-parity",
+    "single-device-trainer-parity",
+    "distributed-throughput-closure",
+    "packaging-readiness",
+    "record-track-readiness"
+  ],
+  "categories": [
+    {
+      "category_id": "challenge-oracle-parity",
+      "matrix_status": "implemented",
+      "issue_refs": [
+        "PGOLF-101/#163",
+        "PGOLF-102/#164",
+        "PGOLF-103/#165"
+      ],
+      "green_definition": "Psionic reproduces the current FineWeb shard contract, fixed validation split, exact val_loss, and exact val_bpb accounting against frozen challenge fixtures.",
+      "current_repo_truth": "psionic-data now owns the shard ABI, validation token loader, SentencePiece byte-accounting LUT oracle, a committed parity fixture, and a frozen test that matches the current train_gpt.py and train_gpt_mlx.py reference paths for shard loading, validation slicing, val_loss, and val_bpb.",
+      "boundary_note": "Do not claim comparable Parameter Golf scores until this category is green."
+    },
+    {
+      "category_id": "single-device-trainer-parity",
+      "matrix_status": "implemented_early",
+      "issue_refs": [
+        "PGOLF-201/#166",
+        "PGOLF-202/#167",
+        "PGOLF-203/#168"
+      ],
+      "green_definition": "A Psionic-owned baseline decoder can train, validate, export, reload, and re-evaluate on a single device while matching the public baseline architecture and optimizer behavior.",
+      "current_repo_truth": "psionic-models now ships the compact Parameter Golf decoder family with stable tensor naming, baseline parameter accounting, a frozen train_gpt.py parity fixture at the public 9x512 shape, and named-parameter export helpers, while psionic-train plus psionic-eval now ship a bounded local-reference trainer with explicit single-device challenge batch geometry, grad accumulation, checkpoint and restart state, raw safetensors export, int8+zlib roundtrip restore, and validation re-eval under Psionic ownership. This is real single-device lane ownership, but it is still a bounded CPU-reference path rather than measured challenge-scale throughput closure.",
+      "boundary_note": "Treat this as stronger than sketches or one-off runs, but not as 8xH100 closure or leaderboard-ready throughput."
+    },
+    {
+      "category_id": "distributed-throughput-closure",
+      "matrix_status": "partial",
+      "issue_refs": [
+        "PGOLF-301/#169",
+        "PGOLF-302/#170",
+        "PGOLF-303/#171"
+      ],
+      "green_definition": "Psionic has one explicit 8xH100 execution path with topology, timing, memory, and artifact receipts that support the declared challenge bar.",
+      "current_repo_truth": "psionic-train plus psionic-eval now ship an exact 8xH100 DDP-style receipt lane aligned to the current train_gpt.py posture, including explicit CUDA-device admission gates, replicated topology, NCCL-style all-reduce communication stages, measured wallclock receipts, analytic distributed memory planning, and a machine-readable CUDA training coverage report digest plus blocker list carried on the same receipt seam. Full challenge-speed decoder-kernel and runtime widening are still honestly open.",
+      "boundary_note": "Treat this as explicit distributed execution truth with honest refusal posture and explicit CUDA blocker tracking, not as proof that the remaining CUDA kernel gaps are closed."
+    },
+    {
+      "category_id": "packaging-readiness",
+      "matrix_status": "implemented",
+      "issue_refs": [
+        "PGOLF-002/#161",
+        "PGOLF-401/#172",
+        "PGOLF-502/#185"
+      ],
+      "green_definition": "Psionic can emit one self-contained submission folder with explicit artifact-byte accounting, runnable entrypoint shape, record metadata, and preserved receipts.",
+      "current_repo_truth": "psionic-train now ships a typed non-record submission package builder that emits README.md, submission.json, train.log, a root-local train_gpt.py launcher, a shipped Psionic runtime payload plus runtime manifest and fixture, the counted int8+zlib model artifact, preserved benchmark receipts, and a machine-readable counted-byte accounting receipt, plus a writer that materializes the folder contract to disk.",
+      "boundary_note": "This closes the first honest non-record package only; it does not imply record-track runtime closure or 8xH100 record readiness."
+    },
+    {
+      "category_id": "record-track-readiness",
+      "matrix_status": "partial_outside_psionic",
+      "issue_refs": [
+        "PGOLF-002/#161",
+        "PGOLF-302/#170",
+        "PGOLF-401/#172",
+        "PGOLF-403/#174",
+        "PGOLF-502/#185",
+        "PGOLF-603/#190",
+        "PGOLF-701/#191",
+        "PGOLF-702/#192",
+        "PGOLF-703/#193"
+      ],
+      "green_definition": "Psionic can defend a record-track submission under the published challenge rules, including counted code, self-contained evaluation, and reproducible 8xH100 execution.",
+      "current_repo_truth": "Psionic now has a committed blocked record-track contract that binds the acceptance report, non-record package surface, exported-folder evidence and replay verification, typed promotion receipt posture, final PR-bundle generation, local challenge-clone dry run, research harness, and distributed benchmark reference together. The folder-local runtime, shipped runtime-byte accounting, and review surfaces are now explicit, and reproducible challenge-speed 8xH100 execution remains the named blocker.",
+      "boundary_note": "Treat this as stronger blocked truth, not as green record-track readiness."
+    }
+  ],
+  "report_digest": "29ad99bfa7b151e0c9694941c4b78ba72765838eef6326deb8e20de5dade992b"
+}

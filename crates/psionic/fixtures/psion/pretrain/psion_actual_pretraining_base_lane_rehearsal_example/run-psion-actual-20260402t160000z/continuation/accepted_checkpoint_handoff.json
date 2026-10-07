@@ -1,0 +1,158 @@
+{
+  "schema_version": "psion.actual_pretraining_continuation_handoff.v1",
+  "lane_id": "psion_actual_pretraining_v1",
+  "continuation_target_id": "psion_actual_pretraining_general_sft_agentic_sft_v1",
+  "run_id": "run-psion-actual-20260402t160000z",
+  "stage_path": [
+    "pretrain",
+    "general_sft",
+    "agentic_sft"
+  ],
+  "accepted_checkpoint": {
+    "checkpoint_pointer_path": "checkpoints/latest_accepted_checkpoint_pointer.json",
+    "checkpoint_label": "broader-pretrain-final",
+    "optimizer_step": 16384,
+    "checkpoint_ref": "checkpoint://psion/actual-pretraining/broader-pretrain-final",
+    "checkpoint_manifest_relative_path": "checkpoints/step-16384/checkpoint_manifest.json",
+    "detail": "Accepted checkpoint binding freezes the exact broader-pretraining checkpoint that may feed the bounded continuation target."
+  },
+  "reasoning_sft_run_bundle": {
+    "path": "fixtures/psion/sft/psion_reasoning_sft_run_bundle_v1.json",
+    "sha256": "4bce9e0eda3284a940103663346071c5fc9806178b2a9b1a49017d1f64e51725"
+  },
+  "plugin_conditioned_stage_manifest": {
+    "path": "fixtures/psion/plugins/training/psion_plugin_conditioned_sft_v1/psion_plugin_conditioned_sft_stage_manifest.json",
+    "sha256": "ece0cc472bfaca70c209de43c1c2fc8b26003ee264317b728bb83fdaa5f37b25"
+  },
+  "plugin_conditioned_run_bundle": {
+    "path": "fixtures/psion/plugins/training/psion_plugin_conditioned_sft_v1/psion_plugin_conditioned_sft_run_bundle.json",
+    "sha256": "bde69724339d47a49b6e1c82d472072cb557834b260fa78064a7cee4a67d4a9d"
+  },
+  "continuation_eval_pack": {
+    "path": "fixtures/psion/pretrain/psion_actual_pretraining_continuation_eval_benchmark_pack_v1.json",
+    "sha256": "eb9d9810d82b4a6b3b545ad3a6e1f012c358c80fc91d143f25d7b6d91b83724e"
+  },
+  "benchmark_bindings": [
+    {
+      "benchmark_family": "discovery_selection",
+      "bundle_ref": "fixtures/psion/benchmarks/psion_plugin_discovery_selection_benchmark_v1/psion_plugin_discovery_selection_benchmark_bundle.json",
+      "bundle_digest": "86e806909fe9e6671005c8cf712d67830c55d12e70b723035791cdd22350ab09",
+      "package_id": "psion.plugin.discovery_selection.v1",
+      "package_digest": "a8e7acd4c05d439e17f7c53750ffe2b9de37959054b84f20d47050289993ba48",
+      "receipt_digest": "ec41b45f2c91d466b7b72efce41e17a3afc5dd2bc4c076f0ddfe21f5c1945573",
+      "execution_evidence_required": false,
+      "detail": "Discovery benchmark bundle freezes one authored package plus one shared receipt for direct-answer, plugin-delegate, wrong-tool, and unsupported-tool selection decisions."
+    },
+    {
+      "benchmark_family": "argument_construction",
+      "bundle_ref": "fixtures/psion/benchmarks/psion_plugin_argument_construction_benchmark_v1/psion_plugin_argument_construction_benchmark_bundle.json",
+      "bundle_digest": "4336f48b16aa9b60db5464b5a1cf48d6efe3e9c35a78cd5056641adff053f07c",
+      "package_id": "psion.plugin.argument_construction.v1",
+      "package_digest": "b9842d3df669d3b301c5f798c65053b4a5a59a8a8bc2abec51a6bbbc84b4b89d",
+      "receipt_digest": "7a5605cd10ab828546b059055e128a54b8feb318bb9ec591d1f6ba0160f9bd16",
+      "execution_evidence_required": true,
+      "detail": "Argument-construction benchmark bundle freezes benchmark-authored schema-correct and request-for-structure cases plus one held-out execution-backed runtime-refusal case."
+    },
+    {
+      "benchmark_family": "sequencing_multi_call",
+      "bundle_ref": "fixtures/psion/benchmarks/psion_plugin_sequencing_benchmark_v1/psion_plugin_sequencing_benchmark_bundle.json",
+      "bundle_digest": "7f4711a7bc4074c2a01c81428605b9632beae77a346bb7c7e64bec01376ed976",
+      "package_id": "psion.plugin.sequencing.v1",
+      "package_digest": "6b6daa90b61892c012f4622b14ed6a55df92003a3046ad9597191a8f1f9c2d9d",
+      "receipt_digest": "d698784cfec581e40b0fc1487091e6a47bd5e211f62944f06540d487f9acef05",
+      "execution_evidence_required": true,
+      "detail": "Sequencing benchmark bundle freezes benchmark-authored serial and parallelizable plans plus one held-out receipt-backed refusal-stop case."
+    },
+    {
+      "benchmark_family": "refusal_request_structure",
+      "bundle_ref": "fixtures/psion/benchmarks/psion_plugin_refusal_request_structure_benchmark_v1/psion_plugin_refusal_request_structure_benchmark_bundle.json",
+      "bundle_digest": "8c3e8090981b0149989e33c1911e95e1b025ac11ab29081d096f27f75571b0a3",
+      "package_id": "psion.plugin.refusal_request_structure.v1",
+      "package_digest": "05a66176ccf08c4f9e67bfd33e74dd77d754c1cc5daea7af1ffb3071675ea720",
+      "receipt_digest": "cedc95afee7c4aa430abb9bd5bca9a643c2b81da5f932edd0d6b04163d8658bf",
+      "execution_evidence_required": false,
+      "detail": "Refusal/request-structure benchmark bundle freezes benchmark-authored unsupported-capability, missing-input, and overdelegation-negative cases for the bounded host-native plugin lane."
+    },
+    {
+      "benchmark_family": "result_interpretation",
+      "bundle_ref": "fixtures/psion/benchmarks/psion_plugin_result_interpretation_benchmark_v1/psion_plugin_result_interpretation_benchmark_bundle.json",
+      "bundle_digest": "260cc23508b81d8b1206e9725578389be960cbb607cb9f5e4c19723040914ab7",
+      "package_id": "psion.plugin.result_interpretation.v1",
+      "package_digest": "538259f6101b6978acabc1cc497abc976732fd3cc344eadd60df639a3cdfae88",
+      "receipt_digest": "b74f85ff9f4f0a82e6b9e6a99f83759536d825b88274f406e6b52c8da4f49cea",
+      "execution_evidence_required": true,
+      "detail": "Result-interpretation benchmark bundle freezes held-out receipt-backed success and refusal interpretation cases for the bounded host-native plugin lane."
+    }
+  ],
+  "eval_hooks": [
+    {
+      "hook_id": "hook.psion.plugin_conditioned_sft.discoveryselection.post_stage",
+      "hook_kind": "benchmark_sweep",
+      "trigger": "post_stage_completion",
+      "benchmark_family": "discovery_selection",
+      "benchmark_bundle_ref": "fixtures/psion/benchmarks/psion_plugin_discovery_selection_benchmark_v1/psion_plugin_discovery_selection_benchmark_bundle.json",
+      "benchmark_receipt_digest": "ec41b45f2c91d466b7b72efce41e17a3afc5dd2bc4c076f0ddfe21f5c1945573",
+      "execution_evidence_required": false,
+      "detail": "Run the DiscoverySelection held-out benchmark package immediately after stage completion."
+    },
+    {
+      "hook_id": "hook.psion.plugin_conditioned_sft.argumentconstruction.post_stage",
+      "hook_kind": "benchmark_sweep",
+      "trigger": "post_stage_completion",
+      "benchmark_family": "argument_construction",
+      "benchmark_bundle_ref": "fixtures/psion/benchmarks/psion_plugin_argument_construction_benchmark_v1/psion_plugin_argument_construction_benchmark_bundle.json",
+      "benchmark_receipt_digest": "7a5605cd10ab828546b059055e128a54b8feb318bb9ec591d1f6ba0160f9bd16",
+      "execution_evidence_required": true,
+      "detail": "Run the ArgumentConstruction held-out benchmark package immediately after stage completion."
+    },
+    {
+      "hook_id": "hook.psion.plugin_conditioned_sft.sequencingmulticall.post_stage",
+      "hook_kind": "benchmark_sweep",
+      "trigger": "post_stage_completion",
+      "benchmark_family": "sequencing_multi_call",
+      "benchmark_bundle_ref": "fixtures/psion/benchmarks/psion_plugin_sequencing_benchmark_v1/psion_plugin_sequencing_benchmark_bundle.json",
+      "benchmark_receipt_digest": "d698784cfec581e40b0fc1487091e6a47bd5e211f62944f06540d487f9acef05",
+      "execution_evidence_required": true,
+      "detail": "Run the SequencingMultiCall held-out benchmark package immediately after stage completion."
+    },
+    {
+      "hook_id": "hook.psion.plugin_conditioned_sft.refusalrequeststructure.post_stage",
+      "hook_kind": "benchmark_sweep",
+      "trigger": "post_stage_completion",
+      "benchmark_family": "refusal_request_structure",
+      "benchmark_bundle_ref": "fixtures/psion/benchmarks/psion_plugin_refusal_request_structure_benchmark_v1/psion_plugin_refusal_request_structure_benchmark_bundle.json",
+      "benchmark_receipt_digest": "cedc95afee7c4aa430abb9bd5bca9a643c2b81da5f932edd0d6b04163d8658bf",
+      "execution_evidence_required": false,
+      "detail": "Run the RefusalRequestStructure held-out benchmark package immediately after stage completion."
+    },
+    {
+      "hook_id": "hook.psion.plugin_conditioned_sft.resultinterpretation.post_stage",
+      "hook_kind": "benchmark_sweep",
+      "trigger": "post_stage_completion",
+      "benchmark_family": "result_interpretation",
+      "benchmark_bundle_ref": "fixtures/psion/benchmarks/psion_plugin_result_interpretation_benchmark_v1/psion_plugin_result_interpretation_benchmark_bundle.json",
+      "benchmark_receipt_digest": "b74f85ff9f4f0a82e6b9e6a99f83759536d825b88274f406e6b52c8da4f49cea",
+      "execution_evidence_required": true,
+      "detail": "Run the ResultInterpretation held-out benchmark package immediately after stage completion."
+    },
+    {
+      "hook_id": "hook.psion.plugin_conditioned_sft.pre_promotion_suite",
+      "hook_kind": "benchmark_sweep",
+      "trigger": "pre_promotion_audit",
+      "benchmark_family": "discovery_selection",
+      "benchmark_bundle_ref": "fixtures/psion/benchmarks/psion_plugin_discovery_selection_benchmark_v1/psion_plugin_discovery_selection_benchmark_bundle.json",
+      "benchmark_receipt_digest": "ec41b45f2c91d466b7b72efce41e17a3afc5dd2bc4c076f0ddfe21f5c1945573",
+      "execution_evidence_required": false,
+      "detail": "One benchmark family must be rerun before promotion so the stage contract preserves a machine-checkable held-out gate."
+    },
+    {
+      "hook_id": "hook.psion.plugin_conditioned_sft.replay_receipt_review",
+      "hook_kind": "replay_receipt_review",
+      "trigger": "pre_promotion_audit",
+      "execution_evidence_required": true,
+      "detail": "Review replay classes and runtime receipt references before promotion beyond the plugin-conditioned stage."
+    }
+  ],
+  "claim_boundary": "This handoff binds one accepted actual-pretraining checkpoint to the frozen reasoning `general_sft` bridge and bounded plugin-conditioned `agentic_sft` target. It does not claim cluster-scale plugin-conditioned training or continuation-stage execution.",
+  "detail": "Continuation handoff closes the actual lane into one named continuation target and preserves the plugin benchmark-pack bindings already attached to that bounded target."
+}

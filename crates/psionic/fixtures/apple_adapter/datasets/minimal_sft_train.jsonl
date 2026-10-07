@@ -1,0 +1,1 @@
+[{"role":"system","content":"A conversation between a user and a helpful assistant. Answer tersely."},{"role":"user","content":"Summarize the function of a mutex in one sentence."},{"role":"assistant","content":"A mutex allows one thread at a time into a critical section so shared state stays consistent."}]

@@ -1,0 +1,220 @@
+{
+  "schema_version": "psionic.remote_training_visualization_bundle.v2",
+  "bundle_id": "parameter-golf-homegolf-clustered-score-surface-v2",
+  "provider": "local_hybrid",
+  "profile_id": "parameter_golf.homegolf_mixed_cluster",
+  "lane_id": "parameter_golf.homegolf_clustered_score_surface",
+  "run_id": "psion-xprovider-pretrain-mixed-backend-20260325+parameter-golf-single-h100-trainer",
+  "repo_revision": "fixtures@parameter_golf_homegolf_clustered_run_surface.v1",
+  "track_semantics": {
+    "track_family": "homegolf",
+    "track_id": "parameter_golf.home_cluster_compatible_10min.v1",
+    "execution_class": "home_cluster_mixed_device",
+    "comparability_class": "public_baseline_comparable",
+    "proof_posture": "score_closeout_measured",
+    "public_equivalence_class": "public_baseline_comparable_only",
+    "score_law_ref": "docs/HOMEGOLF_TRACK.md",
+    "artifact_cap_bytes": 16000000,
+    "wallclock_cap_seconds": 600,
+    "semantic_summary": "HOMEGOLF binds a mixed-device home-cluster score closeout to the strict 10-minute public comparison law while refusing public-leaderboard equivalence."
+  },
+  "primary_score": {
+    "score_metric_id": "parameter_golf.validation_bits_per_byte",
+    "score_direction": "lower_is_better",
+    "score_unit": "bits_per_byte",
+    "score_value": 6.306931747817168,
+    "score_value_observed_at_ms": 1742910000000,
+    "score_summary": "The retained clustered HOMEGOLF surface carries one closed-out contest-style validation score for the mixed-device lane."
+  },
+  "score_surface": {
+    "score_closeout_posture": "score_closed_out",
+    "promotion_gate_posture": "held",
+    "delta_rows": [
+      {
+        "reference_id": "public_naive_baseline",
+        "score_metric_id": "parameter_golf.validation_bits_per_byte",
+        "reference_score_value": 1.2243657,
+        "delta_value": 5.082566047817168,
+        "delta_summary": "The current HOMEGOLF closeout remains above the public naive baseline by the retained delta value."
+      },
+      {
+        "reference_id": "current_public_leaderboard_best",
+        "score_metric_id": "parameter_golf.validation_bits_per_byte",
+        "reference_score_value": 1.1194,
+        "delta_value": 5.187531747817168,
+        "delta_summary": "The current HOMEGOLF closeout remains above the retained public-best row and therefore cannot claim a beat posture."
+      }
+    ],
+    "semantic_summary": "HOMEGOLF now exposes closed-out score state, retained public-comparison deltas, and a held promotion gate in the shared visualization bundle family."
+  },
+  "result_classification": "completed_success",
+  "refresh_contract": {
+    "target_ui_update_interval_ms": 1000,
+    "emission_mode": "post_run_only",
+    "heartbeat_seq": 0
+  },
+  "series_status": "partial",
+  "series_unavailable_reason": "HOMEGOLF retained score-closeout, runtime, and comparison truth but did not retain one canonical optimizer-step loss curve for the mixed-device closeout lane",
+  "timeline": [
+    {
+      "observed_at_ms": 1742908800000,
+      "phase": "training",
+      "subphase": "mixed_device_dense_surface",
+      "detail": "The retained HOMEGOLF clustered surface bound MLX-plus-CUDA dense execution receipts to one mixed-device closeout lane."
+    },
+    {
+      "observed_at_ms": 1742909400000,
+      "phase": "runtime",
+      "subphase": "score_relevant_dense_runtime",
+      "detail": "The score-relevant runtime report proved resident mixed-device dense execution and projected more than one dataset pass within the 600-second cap."
+    },
+    {
+      "observed_at_ms": 1742910000000,
+      "phase": "score_closeout",
+      "subphase": "mixed_device_validation",
+      "detail": "The retained clustered surface sealed one contest-style HOMEGOLF validation closeout for the mixed-device lane."
+    },
+    {
+      "observed_at_ms": 1742910600000,
+      "phase": "comparison",
+      "subphase": "public_baseline_and_promotion_gate",
+      "detail": "The public-comparison, artifact-accounting, and promotion-hold surfaces were retained in the same machine-legible HOMEGOLF evidence family."
+    }
+  ],
+  "summary": {
+    "total_steps_completed": 4,
+    "latest_global_step": 4,
+    "latest_validation_loss": 10.64899,
+    "latest_tokens_per_second": 653364,
+    "latest_checkpoint_ref": "parameter-golf-single-h100-trainer/step-00001/final_model.int8.ptz",
+    "detail": "HOMEGOLF now retains one post-run mixed-device score closeout with shared track semantics, retained public deltas, held promotion posture, and score-relevant runtime throughput."
+  },
+  "heartbeat_series": [],
+  "loss_series": [],
+  "math_series": [
+    {
+      "observed_at_ms": 1742909400000,
+      "global_step": 4,
+      "non_finite_count": 0,
+      "model_specific_diagnostics": {
+        "mean_cross_backend_bridge_ms": 118.0,
+        "mean_cuda_submesh_step_ms": 612.0,
+        "mean_mlx_rank_step_ms": 700.75,
+        "projected_dataset_passes_within_cap": 3.9201818
+      }
+    }
+  ],
+  "runtime_series": [
+    {
+      "observed_at_ms": 1742909400000,
+      "optimizer_ms": 84,
+      "tokens_per_second": 653364
+    }
+  ],
+  "gpu_series": [],
+  "distributed_series": [
+    {
+      "observed_at_ms": 1742909400000,
+      "participating_rank_count": 2,
+      "rank_skew_ms": 355,
+      "slowest_rank_ms": 2803,
+      "collective_ms": 118,
+      "stalled_rank_count": 0
+    }
+  ],
+  "event_series": [
+    {
+      "observed_at_ms": 1742910000000,
+      "severity": "info",
+      "event_kind": "homegolf_score_closeout_measured",
+      "detail": "HOMEGOLF sealed one mixed-device validation closeout with measured bits-per-byte and counted artifact bytes."
+    },
+    {
+      "observed_at_ms": 1742910600000,
+      "severity": "info",
+      "event_kind": "homegolf_public_delta_retained",
+      "detail": "HOMEGOLF retained deltas of 5.082566 and 5.187532 bits/byte against the public naive baseline and current public-best row."
+    },
+    {
+      "observed_at_ms": 1742910600001,
+      "severity": "warning",
+      "event_kind": "homegolf_promotion_gate_held",
+      "detail": "Promotion remains held because the mixed-device closeout is public-baseline comparable only and still not public-leaderboard equivalent."
+    },
+    {
+      "observed_at_ms": 1742910600002,
+      "severity": "warning",
+      "event_kind": "homegolf_beat_claim_unsupported",
+      "detail": "The retained multi-seed package does not support beat claims against the public naive baseline or current public best."
+    }
+  ],
+  "source_artifacts": [
+    {
+      "artifact_role": "homegolf_track_contract",
+      "artifact_uri": "docs/HOMEGOLF_TRACK.md",
+      "artifact_digest": "bea41e96cbf1b00d3367f95dc5ef3be007a0fd6dc692e8e9fd0f46e17fbd8f2f",
+      "source_kind": "finalizer_owned",
+      "authoritative": true,
+      "detail": "The HOMEGOLF track contract remains authoritative for score law, cap semantics, and public-comparison limits."
+    },
+    {
+      "artifact_role": "clustered_homegolf_score_surface",
+      "artifact_uri": "fixtures/parameter_golf/reports/parameter_golf_homegolf_clustered_run_surface.json",
+      "artifact_digest": "9354d8a43b4273c37bee4051c0b3c539a69d06581870dd8e67847beb0966a8c4",
+      "source_kind": "finalizer_owned",
+      "authoritative": true,
+      "detail": "The clustered HOMEGOLF run surface remains authoritative for mixed-device closeout score, artifact identity, and publish or promotion hold posture."
+    },
+    {
+      "artifact_role": "homegolf_score_runtime",
+      "artifact_uri": "fixtures/parameter_golf/reports/parameter_golf_homegolf_score_relevant_runtime.json",
+      "artifact_digest": "039c45e0fd87d5e2b4ebbc7cb3e8caffef2b4ef8aa24457866ee4d490ab3307d",
+      "source_kind": "finalizer_owned",
+      "authoritative": true,
+      "detail": "The score-relevant runtime report remains authoritative for projected throughput and mixed-device dense runtime residency."
+    },
+    {
+      "artifact_role": "homegolf_public_comparison",
+      "artifact_uri": "fixtures/parameter_golf/reports/parameter_golf_homegolf_public_comparison.json",
+      "artifact_digest": "7b0fe7e6a0e0b793ec9d9f1193634a0992e3eca21965e53b1f8ffc89b32207e2",
+      "source_kind": "finalizer_owned",
+      "authoritative": true,
+      "detail": "The public comparison report remains authoritative for retained deltas versus the public baseline and current public best."
+    },
+    {
+      "artifact_role": "homegolf_artifact_accounting",
+      "artifact_uri": "fixtures/parameter_golf/reports/parameter_golf_homegolf_artifact_accounting.json",
+      "artifact_digest": "2dd84b08feff6f19200d480b1a9c52c62510457fb16119b994843bb8f7a1cd75",
+      "source_kind": "finalizer_owned",
+      "authoritative": true,
+      "detail": "The artifact accounting report remains authoritative for 16MB cap posture and counted-byte deltas."
+    },
+    {
+      "artifact_role": "homegolf_multiseed_package",
+      "artifact_uri": "fixtures/parameter_golf/reports/parameter_golf_homegolf_multiseed_package.json",
+      "artifact_digest": "e862a62fa0a9090fff21031667e95eecb31592c52093d647461faa653ec953de",
+      "source_kind": "finalizer_owned",
+      "authoritative": true,
+      "detail": "The repeated-run package remains authoritative for beat-claim support and reproducibility posture."
+    },
+    {
+      "artifact_role": "homegolf_competitive_ablation",
+      "artifact_uri": "fixtures/parameter_golf/reports/parameter_golf_homegolf_competitive_ablation.json",
+      "artifact_digest": "9dc82dddcb368fa11fb921de6456b9dddb5f0f25d43d5f2d2eb226d6a3c3f55a",
+      "source_kind": "finalizer_owned",
+      "authoritative": false,
+      "detail": "The competitive ablation report remains the retained challenger-lane planning surface for the best-known exact HOMEGOLF variant."
+    },
+    {
+      "artifact_role": "homegolf_dense_bundle_proof",
+      "artifact_uri": "fixtures/parameter_golf/reports/parameter_golf_homegolf_dense_bundle_proof.json",
+      "source_kind": "finalizer_owned",
+      "authoritative": false,
+      "source_receipt_ids": [
+        "psionic.parameter_golf_homegolf_dense_bundle_proof.v1"
+      ],
+      "detail": "The dense bundle proof remains the retained train-to-infer closure surface for the exact HOMEGOLF family."
+    }
+  ],
+  "bundle_digest": "18dc0f1d7bd939aecbe4a175d109ef3fbe3b662d8c0f2c0338dd8cc9b7237463"
+}

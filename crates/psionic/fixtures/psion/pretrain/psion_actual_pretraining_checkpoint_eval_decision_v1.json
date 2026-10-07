@@ -1,0 +1,80 @@
+{
+  "schema_version": "psion.actual_pretraining_checkpoint_eval_decision.v1",
+  "lane_id": "psion_actual_pretraining_v1",
+  "run_id": "run-psion-actual-20260402t070000z",
+  "trigger_surface_id": "psion_actual_pretraining.record_checkpoint",
+  "selected_git_ref": "refs/heads/main",
+  "git_commit_sha": "1111222233334444555566667777888899990000",
+  "dirty_tree_admission": "refuse_by_default",
+  "workspace_status_sha256": null,
+  "checkpoint_label": "broader-pretrain-final",
+  "optimizer_step": 16384,
+  "checkpoint_ref": "checkpoint://psion/broad/pretrain/final",
+  "checkpoint_manifest": {
+    "path": "checkpoints/step-16384/checkpoint_manifest.json",
+    "sha256": "e5cfa64c94bfb2323448e20f83cd58ab541835e744ee791dd511c33d931be22e"
+  },
+  "benchmark_package_fixture": {
+    "path": "fixtures/psion/pretrain/psion_actual_pretraining_checkpoint_eval_benchmark_pack_v1.json",
+    "sha256": "7d132160226636c599b55f8271539a2a6d25c63a5d37df947a961d6f1aaf20a2"
+  },
+  "benchmark_package_storage_key": "benchmark://psion/actual_pretraining/checkpoint_eval@2026.04.02",
+  "evaluation_mode": "operator_simulation",
+  "metric_gates": [
+    {
+      "gate_id": "architecture_reasoning_gate",
+      "package_family": "architecture_reasoning",
+      "acceptance_family": "architecture_reasoning",
+      "benchmark_case_id": "architecture_reasoning_gate",
+      "receipt_id": "psion-architecture-benchmark-receipt-v1",
+      "metric_kind": "pass_rate_bps",
+      "threshold_bps": 8200,
+      "observed_bps": 8420,
+      "status": "passed",
+      "detail": "Checkpoint eval keeps the saved actual-lane checkpoint bound to the frozen `architecture_reasoning` benchmark family before later continue-vs-restart policy consumes the retained decision."
+    },
+    {
+      "gate_id": "engineering_spec_interpretation_gate",
+      "package_family": "engineering_spec_interpretation",
+      "acceptance_family": "engineering_spec_interpretation",
+      "benchmark_case_id": "engineering_spec_interpretation_gate",
+      "receipt_id": "psion-engineering-benchmark-receipt-v1",
+      "metric_kind": "pass_rate_bps",
+      "threshold_bps": 8500,
+      "observed_bps": 8760,
+      "status": "passed",
+      "detail": "Checkpoint eval keeps the saved actual-lane checkpoint bound to the frozen `engineering_spec_interpretation` benchmark family before later continue-vs-restart policy consumes the retained decision."
+    },
+    {
+      "gate_id": "memorization_versus_reasoning_gate",
+      "package_family": "memorization_versus_reasoning",
+      "acceptance_family": "memorization_versus_reasoning",
+      "benchmark_case_id": "memorization_versus_reasoning_gate",
+      "receipt_id": "psion-memorization-benchmark-receipt-v1",
+      "metric_kind": "pass_rate_bps",
+      "threshold_bps": 7900,
+      "observed_bps": 8040,
+      "status": "passed",
+      "detail": "Checkpoint eval keeps the saved actual-lane checkpoint bound to the frozen `memorization_versus_reasoning` benchmark family before later continue-vs-restart policy consumes the retained decision."
+    },
+    {
+      "gate_id": "normative_spec_reading_gate",
+      "package_family": "normative_spec_reading",
+      "acceptance_family": "normative_spec_reading",
+      "benchmark_case_id": "normative_spec_reading_gate",
+      "receipt_id": "psion-normative-benchmark-receipt-v1",
+      "metric_kind": "pass_rate_bps",
+      "threshold_bps": 8600,
+      "observed_bps": 8910,
+      "status": "passed",
+      "detail": "Checkpoint eval keeps the saved actual-lane checkpoint bound to the frozen `normative_spec_reading` benchmark family before later continue-vs-restart policy consumes the retained decision."
+    }
+  ],
+  "aggregate_pass_rate_bps": 10000,
+  "aggregate_score_bps": 8532,
+  "decision_state": "continue",
+  "decision_reason": "All frozen checkpoint-eval gates remained above threshold, so later continue-vs-restart logic may treat this checkpoint as eval-green.",
+  "claim_boundary": "This retained checkpoint-eval decision binds one accepted actual-lane checkpoint to the frozen checkpoint review pack and the frozen benchmark families already attached to the actual-lane data bundle. It is the automatic checkpoint review surface for later continue-vs-restart logic. It does not claim distributed broader-pretraining closure, dashboard fan-out, or final promotion review.",
+  "detail": "Fixture checkpoint eval decision records one automatic retained review over the accepted checkpoint using the canonical actual-lane benchmark pack.",
+  "decision_digest": "a5aaa47b37f63c4951e6e49427e2b90df7953e1c10b663aecb11122df88e7505"
+}

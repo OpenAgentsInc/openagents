@@ -1,0 +1,116 @@
+{
+  "schema_version": "psion.pretrain_stage_receipt.v1",
+  "run_id": "run-psion-pilot",
+  "stage_id": "run-psion-pilot-stage-1-pretrain",
+  "stage_kind": "pretrain",
+  "model_id": "psion-compact-decoder-pilot-v1",
+  "model_descriptor_digest": "04232d1ad07d9b79401e5649c4c42d695bf87e4450e6f4152c8edb08f9be93d0",
+  "tokenizer_binding_digest": "92c451001e4cec3481a3480b29d80ecaa1696f9bffe553139d3a2f65da69e321",
+  "dataset_identity": "psion_corpus_tokenized@v1",
+  "sampling_policy_id": "psion_pretrain_mix",
+  "sampling_policy_version": "v1",
+  "objective_config": {
+    "objective_kind": "next_token_prediction",
+    "loss_normalization": "by_target_token",
+    "label_smoothing_bps": 25,
+    "tokenizer_binding_digest": "92c451001e4cec3481a3480b29d80ecaa1696f9bffe553139d3a2f65da69e321",
+    "dataset_identity": "psion_corpus_tokenized@v1",
+    "max_context_tokens": 4096
+  },
+  "source_family_reports": [
+    {
+      "split_name": "held_out",
+      "split_kind": "held_out",
+      "source_family_id": "evaluation_only_benchmark_material",
+      "source_ids": [
+        "spec_quiz_eval_pack_v1"
+      ],
+      "token_share_bps_within_split": 10000,
+      "sequence_share_bps_within_split": 10000,
+      "mean_next_token_loss_milli": 1380,
+      "detail": "Held-out benchmark material stays isolated and is only reported as held-out evidence."
+    },
+    {
+      "split_name": "train",
+      "split_kind": "train",
+      "source_family_id": "computer_architecture_history",
+      "source_ids": [
+        "arch_textbook_foster_1985"
+      ],
+      "token_share_bps_within_split": 5600,
+      "sequence_share_bps_within_split": 5400,
+      "mean_next_token_loss_milli": 1125,
+      "detail": "Architecture-history prose remains the largest explanatory slice in train."
+    },
+    {
+      "split_name": "train",
+      "split_kind": "train",
+      "source_family_id": "normative_specs",
+      "source_ids": [
+        "wasm_core_spec_release_2"
+      ],
+      "token_share_bps_within_split": 4400,
+      "sequence_share_bps_within_split": 4600,
+      "mean_next_token_loss_milli": 1190,
+      "detail": "Normative specification text stays large in train without overtaking the prose anchor."
+    },
+    {
+      "split_name": "validation",
+      "split_kind": "validation",
+      "source_family_id": "computer_architecture_history",
+      "source_ids": [
+        "arch_textbook_foster_1985"
+      ],
+      "token_share_bps_within_split": 5300,
+      "sequence_share_bps_within_split": 5200,
+      "mean_next_token_loss_milli": 1160,
+      "detail": "Validation keeps the explanatory prose family slightly ahead to measure reasoning generalization."
+    },
+    {
+      "split_name": "validation",
+      "split_kind": "validation",
+      "source_family_id": "normative_specs",
+      "source_ids": [
+        "wasm_core_spec_release_2"
+      ],
+      "token_share_bps_within_split": 4700,
+      "sequence_share_bps_within_split": 4800,
+      "mean_next_token_loss_milli": 1235,
+      "detail": "Validation specification coverage remains explicit so spec-reading drift is visible before promotion."
+    }
+  ],
+  "replay_receipt": {
+    "receipt_id": "psion-pretrain-replay-v1",
+    "stable_dataset_identity": "psion_corpus_tokenized@v1",
+    "iteration_mode": "repeat",
+    "shard_ordering": "deterministic_shuffle",
+    "deterministic_shuffle_seed": 1337,
+    "successful_replays": 2,
+    "exact_replay_observed": true,
+    "replay_digest": "532e70275ad6d01616decae818df0f5b8012bc91316f3329c223c125874d1733",
+    "summary": "Replay checks reproduced the tokenized-corpus order and deterministic shuffle contract on two independent dry runs."
+  },
+  "checkpoint_lineage": {
+    "receipt_id": "psion-pretrain-checkpoint-lineage-v1",
+    "promoted_checkpoint": {
+      "checkpoint_family": "train.psion.decoder",
+      "stream_id": "stream-psion-pretrain-final-v1",
+      "manifest_digest": "manifest-psion-pretrain-final-v1",
+      "object_digest": "object-psion-pretrain-final-v1",
+      "writer_node_id": "node-psion-a",
+      "membership_epoch": 1,
+      "cluster_state_digest": "cluster-state-digest-psion-pilot-v1",
+      "topology_digest": "topology-digest-psion-pilot-v1",
+      "started_at_ms": 1742614800000,
+      "checkpoint_ref": "checkpoint://psion/pilot/pretrain/final",
+      "step": 2048,
+      "durable_at_ms": 1742615100000
+    },
+    "promoted_checkpoint_label": "pilot-pretrain-final",
+    "model_id": "psion-compact-decoder-pilot-v1",
+    "model_descriptor_digest": "04232d1ad07d9b79401e5649c4c42d695bf87e4450e6f4152c8edb08f9be93d0",
+    "checkpoint_lineage_digest": "3e3254008f21c49032c86c5575c7286f64a3ddceb8cadff54277411ab10e3c72"
+  },
+  "summary": "Pilot Psion pretrain stage binds the compact decoder, replay-safe tokenized corpus, and sampling policy into one explicit next-token stage receipt.",
+  "receipt_digest": "0170d57acd38021560eb4ee389daee573dbf65f037b36769c10586faa462ce31"
+}

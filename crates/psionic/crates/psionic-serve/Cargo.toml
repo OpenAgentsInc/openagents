@@ -1,0 +1,71 @@
+[package]
+name = "psionic-serve"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+publish.workspace = true
+description = "Served compute product contracts for Psionic"
+
+[lints]
+workspace = true
+
+[lib]
+path = "src/lib.rs"
+
+[features]
+default = []
+tokio-runtime-telemetry = ["psionic-observe/tokio-runtime-telemetry"]
+tokio-runtime-telemetry-cpu = [
+  "tokio-runtime-telemetry",
+  "psionic-observe/tokio-runtime-telemetry-cpu",
+]
+csm-cuda = ["psionic-models/csm-cuda"]
+csm-metal = ["psionic-models/csm-metal"]
+medpsy-cuda = ["psionic-models/medpsy-cuda"]
+qwen38-vision-cuda = ["psionic-models/qwen38-vision-cuda"]
+
+[dependencies]
+axum = "0.8"
+base64 = "0.22"
+futures-util = "0.3"
+hex = { workspace = true }
+hyper = "1"
+hyper-util = { version = "0.1", features = ["server", "service", "tokio", "http1", "http2"] }
+image = { version = "0.25", default-features = false, features = ["gif", "jpeg", "png", "webp"] }
+psionic-data = { path = "../psionic-data" }
+psionic-adapters = { path = "../psionic-adapters" }
+psionic-backend-cuda = { path = "../psionic-backend-cuda" }
+psionic-backend-cpu = { path = "../psionic-backend-cpu" }
+psionic-backend-metal = { path = "../psionic-backend-metal" }
+psionic-catalog = { path = "../psionic-catalog" }
+psionic-cluster = { path = "../psionic-cluster" }
+psionic-compiler = { path = "../psionic-compiler" }
+psionic-core = { path = "../psionic-core" }
+psionic-eval = { path = "../psionic-eval" }
+psionic-ir = { path = "../psionic-ir" }
+psionic-models = { path = "../psionic-models" }
+psionic-net = { path = "../psionic-net" }
+psionic-observe = { path = "../psionic-observe" }
+psionic-research = { path = "../psionic-research" }
+psionic-router = { path = "../psionic-router" }
+psionic-runtime = { path = "../psionic-runtime" }
+psionic-transformer = { path = "../psionic-transformer" }
+psionic-train = { path = "../psionic-train" }
+rand = { workspace = true }
+reqwest = { workspace = true, features = ["blocking"] }
+rayon = "1.11"
+serde = { workspace = true }
+serde_json = { workspace = true }
+safetensors = { workspace = true }
+sha2 = { workspace = true }
+tempfile = "3"
+thiserror = { workspace = true }
+tokio = { workspace = true }
+tokio-stream = "0.1"
+tower = "0.5"
+tower-service = "0.3"
+
+[dev-dependencies]
+psionic-provider = { path = "../psionic-provider" }
+safetensors = { workspace = true }

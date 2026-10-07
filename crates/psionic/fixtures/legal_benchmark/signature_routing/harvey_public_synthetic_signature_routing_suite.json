@@ -1,0 +1,453 @@
+{
+  "schema_version": 1,
+  "suite_id": "harvey_public_synthetic_signature_routing_v1",
+  "boundary": "Public/synthetic legal signature-routing fixtures for Probe+Codex selection. This is not a private Harvey score and does not expose hidden labels or legal authority.",
+  "public_synthetic_only": true,
+  "fixtures": [
+    {
+      "fixture_id": "harvey.synthetic.missing_deliverable.v1",
+      "envelope": {
+        "dataset_slug": "harvey-public-synthetic",
+        "dataset_version": "2026-06-01",
+        "task_id": "harvey.public.synthetic.missing_deliverable",
+        "failure_family": "missing_deliverable",
+        "visible_instruction_summary": "Read the lease notice excerpt and write the required answer.md memo.",
+        "required_answer_path": "answer.md",
+        "source_document_ids": [
+          "lease_notice"
+        ],
+        "allowed_tools": [
+          "read",
+          "write",
+          "grep"
+        ],
+        "data_classification": "public_reference",
+        "hidden_criteria_visible_to_agent": false
+      },
+      "expected_signature_ids": [
+        "legal.deliverable_file_workflow",
+        "legal.output_path_contract",
+        "legal.answer_integrity_guard"
+      ],
+      "raw_codex": {
+        "agent_slug": "raw_codex",
+        "status": "failed",
+        "selected_signature_ids": [],
+        "score_bps": 0,
+        "evidence_refs": [
+          "transcript.jsonl",
+          "run_record.json",
+          "score_report.json"
+        ],
+        "failure_taxonomy": [
+          "missing_deliverable",
+          "no_submit",
+          "answer_integrity_invalid"
+        ],
+        "notes": "The baseline answered in chat prose but did not create answer.md."
+      },
+      "probe_codex": {
+        "agent_slug": "probe_codex_signatures",
+        "status": "passed",
+        "selected_signature_ids": [
+          "legal.deliverable_file_workflow",
+          "legal.output_path_contract",
+          "legal.answer_integrity_guard"
+        ],
+        "score_bps": 10000,
+        "submitted_answer_path": "answer.md",
+        "answer_sha256": "6d555dceadf1965afef0a8aa69d5e0f685857430f77ad49117bddcc6be975ed8",
+        "evidence_refs": [
+          "answer.md",
+          "source_refs.json",
+          "answer_integrity.json",
+          "score_report.json"
+        ],
+        "failure_taxonomy": [],
+        "notes": "The routed run creates the required deliverable, records the model write, and submits only after checking the path."
+      },
+      "required_evidence": [
+        "answer.md",
+        "source_refs.json",
+        "answer_integrity.json",
+        "score_report.json"
+      ],
+      "metadata": {
+        "fixture_source": "public_synthetic"
+      }
+    },
+    {
+      "fixture_id": "harvey.synthetic.wrong_output_path.v1",
+      "envelope": {
+        "dataset_slug": "harvey-public-synthetic",
+        "dataset_version": "2026-06-01",
+        "task_id": "harvey.public.synthetic.wrong_output_path",
+        "failure_family": "wrong_output_path",
+        "visible_instruction_summary": "Read the purchase agreement excerpt and write the indemnity answer at outputs/memo.md.",
+        "required_answer_path": "outputs/memo.md",
+        "source_document_ids": [
+          "purchase_indemnity"
+        ],
+        "allowed_tools": [
+          "read",
+          "write",
+          "grep"
+        ],
+        "data_classification": "public_reference",
+        "hidden_criteria_visible_to_agent": false
+      },
+      "expected_signature_ids": [
+        "legal.output_path_contract",
+        "legal.deliverable_file_workflow",
+        "legal.answer_integrity_guard"
+      ],
+      "raw_codex": {
+        "agent_slug": "raw_codex",
+        "status": "failed",
+        "selected_signature_ids": [],
+        "score_bps": 0,
+        "submitted_answer_path": "notes.md",
+        "answer_sha256": "272793f668a72493534d097cd0fbec80391b07413a5f6f19b0c20a2d5d3763f1",
+        "evidence_refs": [
+          "notes.md",
+          "transcript.jsonl",
+          "score_report.json"
+        ],
+        "failure_taxonomy": [
+          "wrong_output_path",
+          "missing_required_answer",
+          "answer_integrity_invalid"
+        ],
+        "notes": "The baseline wrote a plausible answer to notes.md while the required outputs/memo.md file was missing."
+      },
+      "probe_codex": {
+        "agent_slug": "probe_codex_signatures",
+        "status": "passed",
+        "selected_signature_ids": [
+          "legal.output_path_contract",
+          "legal.deliverable_file_workflow",
+          "legal.answer_integrity_guard"
+        ],
+        "score_bps": 10000,
+        "submitted_answer_path": "outputs/memo.md",
+        "answer_sha256": "e8051c9cde2c560eed1f499e0f822202ff511099f4867fe23b950ce9c7e35ad7",
+        "evidence_refs": [
+          "outputs/memo.md",
+          "source_refs.json",
+          "answer_integrity.json",
+          "score_report.json"
+        ],
+        "failure_taxonomy": [],
+        "notes": "The routed run treats the required path as a contract and verifies the exact output before submit."
+      },
+      "required_evidence": [
+        "outputs/memo.md",
+        "source_refs.json",
+        "answer_integrity.json",
+        "score_report.json"
+      ],
+      "metadata": {
+        "fixture_source": "public_synthetic"
+      }
+    },
+    {
+      "fixture_id": "harvey.synthetic.source_grounding_missing.v1",
+      "envelope": {
+        "dataset_slug": "harvey-public-synthetic",
+        "dataset_version": "2026-06-01",
+        "task_id": "harvey.public.synthetic.source_grounding_missing",
+        "failure_family": "source_grounding_missing",
+        "visible_instruction_summary": "Classify two privilege-log entries and explain the answer using only the provided source.",
+        "required_answer_path": "answer.md",
+        "source_document_ids": [
+          "privilege_log"
+        ],
+        "allowed_tools": [
+          "read",
+          "write",
+          "grep"
+        ],
+        "data_classification": "public_reference",
+        "hidden_criteria_visible_to_agent": false
+      },
+      "expected_signature_ids": [
+        "legal.source_grounding_trace",
+        "legal.citation_provenance_check",
+        "legal.answer_integrity_guard"
+      ],
+      "raw_codex": {
+        "agent_slug": "raw_codex",
+        "status": "failed",
+        "selected_signature_ids": [],
+        "score_bps": 3333,
+        "submitted_answer_path": "answer.md",
+        "answer_sha256": "2a8eb856a0a5ed50e87575179b384d295f7b7f93745cd10b0671d8c04c2d7bbb",
+        "evidence_refs": [
+          "answer.md",
+          "transcript.jsonl",
+          "score_report.json"
+        ],
+        "failure_taxonomy": [
+          "source_grounding_missing",
+          "unsupported_factual_assertion"
+        ],
+        "notes": "The baseline created answer.md but did not tie its privilege assertions to the source record."
+      },
+      "probe_codex": {
+        "agent_slug": "probe_codex_signatures",
+        "status": "passed",
+        "selected_signature_ids": [
+          "legal.source_grounding_trace",
+          "legal.citation_provenance_check",
+          "legal.answer_integrity_guard"
+        ],
+        "score_bps": 10000,
+        "submitted_answer_path": "answer.md",
+        "answer_sha256": "de05825b817a528acaccd28a478e1aa6f04da22b45f5a2e56f0e9d22ac7f3de1",
+        "evidence_refs": [
+          "answer.md",
+          "source_refs.json",
+          "answer_integrity.json",
+          "score_report.json"
+        ],
+        "failure_taxonomy": [],
+        "notes": "The routed run retains source refs for each material assertion before submission."
+      },
+      "required_evidence": [
+        "answer.md",
+        "source_refs.json",
+        "answer_integrity.json",
+        "score_report.json"
+      ],
+      "metadata": {
+        "fixture_source": "public_synthetic"
+      }
+    },
+    {
+      "fixture_id": "harvey.synthetic.citation_provenance_missing.v1",
+      "envelope": {
+        "dataset_slug": "harvey-public-synthetic",
+        "dataset_version": "2026-06-01",
+        "task_id": "harvey.public.synthetic.citation_provenance_missing",
+        "failure_family": "citation_provenance_missing",
+        "visible_instruction_summary": "Write an arbitration-clause enforceability memo with retained source references.",
+        "required_answer_path": "answer.md",
+        "source_document_ids": [
+          "arbitration_clause"
+        ],
+        "allowed_tools": [
+          "read",
+          "write",
+          "grep"
+        ],
+        "data_classification": "public_reference",
+        "hidden_criteria_visible_to_agent": false
+      },
+      "expected_signature_ids": [
+        "legal.citation_provenance_check",
+        "legal.source_grounding_trace",
+        "legal.answer_integrity_guard"
+      ],
+      "raw_codex": {
+        "agent_slug": "raw_codex",
+        "status": "failed",
+        "selected_signature_ids": [],
+        "score_bps": 5000,
+        "submitted_answer_path": "answer.md",
+        "answer_sha256": "7053c9d22ee3a7bfcaa3065905ff32d3e8d50d23808d65f6d6260d9e51c13cf2",
+        "evidence_refs": [
+          "answer.md",
+          "transcript.jsonl",
+          "score_report.json"
+        ],
+        "failure_taxonomy": [
+          "citation_provenance_missing",
+          "evidence_refs_missing"
+        ],
+        "notes": "The baseline cited legal propositions but did not retain source provenance for the cited facts."
+      },
+      "probe_codex": {
+        "agent_slug": "probe_codex_signatures",
+        "status": "passed",
+        "selected_signature_ids": [
+          "legal.citation_provenance_check",
+          "legal.source_grounding_trace",
+          "legal.answer_integrity_guard"
+        ],
+        "score_bps": 10000,
+        "submitted_answer_path": "answer.md",
+        "answer_sha256": "d206cbdf15292b7d094df26ca0f32f344083df819b5401688c8c1f4a37ff5176",
+        "evidence_refs": [
+          "answer.md",
+          "source_refs.json",
+          "answer_integrity.json",
+          "score_report.json"
+        ],
+        "failure_taxonomy": [],
+        "notes": "The routed run emits a source_refs.json sidecar before score closeout."
+      },
+      "required_evidence": [
+        "answer.md",
+        "source_refs.json",
+        "answer_integrity.json",
+        "score_report.json"
+      ],
+      "metadata": {
+        "fixture_source": "public_synthetic"
+      }
+    },
+    {
+      "fixture_id": "harvey.synthetic.answer_integrity_invalid.v1",
+      "envelope": {
+        "dataset_slug": "harvey-public-synthetic",
+        "dataset_version": "2026-06-01",
+        "task_id": "harvey.public.synthetic.answer_integrity_invalid",
+        "failure_family": "answer_integrity_invalid",
+        "visible_instruction_summary": "Summarize an employment agreement and preserve model-authored answer-file hashes.",
+        "required_answer_path": "answer.md",
+        "source_document_ids": [
+          "employment_noncompete"
+        ],
+        "allowed_tools": [
+          "read",
+          "write",
+          "grep"
+        ],
+        "data_classification": "public_reference",
+        "hidden_criteria_visible_to_agent": false
+      },
+      "expected_signature_ids": [
+        "legal.answer_integrity_guard",
+        "legal.deliverable_file_workflow",
+        "legal.output_path_contract"
+      ],
+      "raw_codex": {
+        "agent_slug": "raw_codex",
+        "status": "failed",
+        "selected_signature_ids": [],
+        "score_bps": 0,
+        "submitted_answer_path": "answer.md",
+        "answer_sha256": "10cb6e3a50b7b6d1ec4b561ac35c3a95f0612a9712f2dc4f3bb81f75905d17d9",
+        "evidence_refs": [
+          "answer.md",
+          "transcript.jsonl",
+          "score_report.json"
+        ],
+        "failure_taxonomy": [
+          "answer_integrity_invalid",
+          "missing_model_write_hash"
+        ],
+        "notes": "The baseline answer exists, but the final bytes are not tied to a model-authored write receipt."
+      },
+      "probe_codex": {
+        "agent_slug": "probe_codex_signatures",
+        "status": "passed",
+        "selected_signature_ids": [
+          "legal.answer_integrity_guard",
+          "legal.deliverable_file_workflow",
+          "legal.output_path_contract"
+        ],
+        "score_bps": 10000,
+        "submitted_answer_path": "answer.md",
+        "answer_sha256": "b7d3a2bf107eb68a88d6b53f96eeb5e71b6a977f76287028fc9e8b345f2bb72c",
+        "evidence_refs": [
+          "answer.md",
+          "source_refs.json",
+          "answer_integrity.json",
+          "score_report.json"
+        ],
+        "failure_taxonomy": [],
+        "notes": "The routed run refuses closeout unless answer_integrity.json binds the final answer hash to the model write call."
+      },
+      "required_evidence": [
+        "answer.md",
+        "source_refs.json",
+        "answer_integrity.json",
+        "score_report.json"
+      ],
+      "metadata": {
+        "fixture_source": "public_synthetic"
+      }
+    },
+    {
+      "fixture_id": "harvey.synthetic.judge_supervisor_needed.v1",
+      "envelope": {
+        "dataset_slug": "harvey-public-synthetic",
+        "dataset_version": "2026-06-01",
+        "task_id": "harvey.public.synthetic.judge_supervisor_needed",
+        "failure_family": "judge_supervisor_needed",
+        "visible_instruction_summary": "Write a privacy breach notice analysis and preserve judge/scorer output for review.",
+        "required_answer_path": "answer.md",
+        "source_document_ids": [
+          "privacy_breach_notice"
+        ],
+        "allowed_tools": [
+          "read",
+          "write",
+          "grep"
+        ],
+        "data_classification": "public_reference",
+        "hidden_criteria_visible_to_agent": false
+      },
+      "expected_signature_ids": [
+        "benchmark.legal_judge_supervisor",
+        "legal.answer_integrity_guard",
+        "legal.source_grounding_trace"
+      ],
+      "raw_codex": {
+        "agent_slug": "raw_codex",
+        "status": "failed",
+        "selected_signature_ids": [],
+        "score_bps": 5000,
+        "submitted_answer_path": "answer.md",
+        "answer_sha256": "c9723a20efea12f5fb0f4494d2d9b4bfe8acfaecb6962764093dfd65bd793b85",
+        "evidence_refs": [
+          "answer.md",
+          "transcript.jsonl"
+        ],
+        "failure_taxonomy": [
+          "judge_supervisor_needed",
+          "score_report_missing",
+          "promotion_gate_evidence_missing"
+        ],
+        "notes": "The baseline produced an answer but did not preserve the score report and judge sidecar needed for review."
+      },
+      "probe_codex": {
+        "agent_slug": "probe_codex_signatures",
+        "status": "passed",
+        "selected_signature_ids": [
+          "benchmark.legal_judge_supervisor",
+          "legal.answer_integrity_guard",
+          "legal.source_grounding_trace"
+        ],
+        "score_bps": 10000,
+        "submitted_answer_path": "answer.md",
+        "answer_sha256": "1525cffbd0900843bd1d8e88fd761c68686d2d45140d7ce56abf951847045c96",
+        "evidence_refs": [
+          "answer.md",
+          "source_refs.json",
+          "answer_integrity.json",
+          "score_report.json",
+          "judge_sidecar.json"
+        ],
+        "failure_taxonomy": [],
+        "notes": "The routed run retains score_report.json and judge_sidecar.json before promotion review."
+      },
+      "required_evidence": [
+        "answer.md",
+        "source_refs.json",
+        "answer_integrity.json",
+        "score_report.json",
+        "judge_sidecar.json"
+      ],
+      "metadata": {
+        "fixture_source": "public_synthetic"
+      }
+    }
+  ],
+  "metadata": {
+    "source": "Psionic local public/synthetic legal workflow fixtures",
+    "hidden_harvey_labels": false,
+    "private_harvey_score_claim": false
+  }
+}

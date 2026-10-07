@@ -1,0 +1,53 @@
+{
+  "schema_version": "psion.source_lifecycle.v1",
+  "policy_id": "psion.corpus_admission",
+  "policy_version": "v1",
+  "admission_schema_version": "psion.corpus_admission.v1",
+  "sources": [
+    {
+      "source_id": "arch_textbook_foster_1985",
+      "lifecycle_state": "admitted",
+      "admission_rights_posture": "internal_training_only",
+      "current_rights_posture": "internal_training_only",
+      "last_transition_event_id": "evt_psion_source_0001",
+      "last_transition_trigger": "review_misclassification_corrected",
+      "rationale": "Canonical admitted historical architecture source for first-principles systems reasoning."
+    },
+    {
+      "source_id": "wasm_core_spec_release_2",
+      "lifecycle_state": "admitted",
+      "admission_rights_posture": "internal_training_and_internal_serving",
+      "current_rights_posture": "internal_training_and_internal_serving",
+      "last_transition_event_id": "evt_psion_source_0002",
+      "last_transition_trigger": "review_misclassification_corrected",
+      "rationale": "Canonical normative source retained for both training and source-grounded serving claims."
+    },
+    {
+      "source_id": "vendor_manual_private_scan_v1",
+      "lifecycle_state": "restricted",
+      "admission_rights_posture": "tokenizer_only",
+      "current_rights_posture": "tokenizer_only",
+      "last_transition_event_id": "evt_psion_source_0003",
+      "last_transition_trigger": "reclassified_to_restricted_use",
+      "rationale": "Rights posture keeps this source tokenizer-only and outside model-training or served evidence."
+    },
+    {
+      "source_id": "spec_quiz_eval_pack_v1",
+      "lifecycle_state": "evaluation_only",
+      "admission_rights_posture": "evaluation_only",
+      "current_rights_posture": "evaluation_only",
+      "last_transition_event_id": "evt_psion_source_0004",
+      "last_transition_trigger": "reclassified_to_evaluation_only",
+      "rationale": "Held-out and benchmark-only source retained for reading and route evaluation but excluded from tokenization and training."
+    },
+    {
+      "source_id": "forum_scrape_misc_001",
+      "lifecycle_state": "rejected",
+      "admission_rights_posture": "rejected",
+      "current_rights_posture": "rejected",
+      "last_transition_event_id": "evt_psion_source_0005",
+      "last_transition_trigger": "review_misclassification_corrected",
+      "rationale": "Rejected source remains outside all Psion artifact families."
+    }
+  ]
+}

@@ -1,0 +1,204 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://openagents.com/schemas/psionic/csm/voice_profiles.v1.json",
+  "title": "Psionic CSM voice-profile governance manifest",
+  "type": "object",
+  "required": [
+    "schema_version",
+    "generated_at",
+    "model_id",
+    "watermark_policy",
+    "profiles"
+  ],
+  "properties": {
+    "schema_version": {
+      "const": "psionic.csm.voice_profiles.v1"
+    },
+    "generated_at": {
+      "type": "string"
+    },
+    "model_id": {
+      "type": "string"
+    },
+    "watermark_policy": {
+      "$ref": "#/$defs/watermark_policy"
+    },
+    "profiles": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "$ref": "#/$defs/profile"
+      }
+    }
+  },
+  "$defs": {
+    "sha256": {
+      "type": "string",
+      "pattern": "^sha256:[0-9a-f]{64}$"
+    },
+    "watermark_policy": {
+      "type": "object",
+      "required": [
+        "status",
+        "refusal_code",
+        "required_phase",
+        "public_demo_key_status",
+        "production_cutover"
+      ],
+      "properties": {
+        "status": {
+          "enum": [
+            "unsupported_fail_closed",
+            "unsupported_operator_accepted_limited_dogfood"
+          ]
+        },
+        "refusal_code": {
+          "type": "string"
+        },
+        "required_phase": {
+          "type": "string"
+        },
+        "public_demo_key_status": {
+          "enum": ["not_a_production_safety_control"]
+        },
+        "production_cutover": {
+          "enum": [
+            "blocked_until_private_watermark_or_equivalent_control",
+            "admitted_for_openagents_operated_autopilot_dogfood_only"
+          ]
+        }
+      }
+    },
+    "profile": {
+      "type": "object",
+      "required": [
+        "profile_id",
+        "display_name",
+        "approval_status",
+        "runtime_admission",
+        "source_prompt_profile_id",
+        "speaker",
+        "prompt_transcript_sha256",
+        "prompt_audio_sha256",
+        "prompt_codebook_tokens_sha256",
+        "csm_config_digest",
+        "csm_model_digest",
+        "llama_tokenizer_digest",
+        "mimi_weight_digest",
+        "compatibility",
+        "source_provenance",
+        "consent_posture",
+        "allowed_product_surfaces",
+        "disallowed_product_surfaces",
+        "retention_policy",
+        "redaction_policy",
+        "watermark_policy"
+      ],
+      "properties": {
+        "profile_id": {
+          "type": "string"
+        },
+        "display_name": {
+          "type": "string"
+        },
+        "approval_status": {
+          "enum": [
+            "approved_internal_placeholder",
+            "approved_openagents_operated_dogfood"
+          ]
+        },
+        "runtime_admission": {
+          "enum": [
+            "admitted_internal_development",
+            "admitted_openagents_operated_autopilot_production_dogfood"
+          ]
+        },
+        "source_prompt_profile_id": {
+          "type": "string"
+        },
+        "speaker": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "prompt_transcript_sha256": {
+          "$ref": "#/$defs/sha256"
+        },
+        "prompt_audio_sha256": {
+          "$ref": "#/$defs/sha256"
+        },
+        "prompt_codebook_tokens_sha256": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/sha256"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "csm_config_digest": {
+          "$ref": "#/$defs/sha256"
+        },
+        "csm_model_digest": {
+          "$ref": "#/$defs/sha256"
+        },
+        "llama_tokenizer_digest": {
+          "$ref": "#/$defs/sha256"
+        },
+        "mimi_weight_digest": {
+          "$ref": "#/$defs/sha256"
+        },
+        "compatibility": {
+          "type": "object",
+          "required": [
+            "csm_model_id",
+            "frame_contract",
+            "mimi",
+            "prompt_codebooks"
+          ],
+          "properties": {
+            "csm_model_id": {
+              "type": "string"
+            },
+            "frame_contract": {
+              "type": "string"
+            },
+            "mimi": {
+              "type": "string"
+            },
+            "prompt_codebooks": {
+              "type": "string"
+            }
+          }
+        },
+        "source_provenance": {
+          "type": "string"
+        },
+        "consent_posture": {
+          "type": "string"
+        },
+        "allowed_product_surfaces": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "disallowed_product_surfaces": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "retention_policy": {
+          "type": "string"
+        },
+        "redaction_policy": {
+          "type": "string"
+        },
+        "watermark_policy": {
+          "$ref": "#/$defs/watermark_policy"
+        }
+      }
+    }
+  }
+}

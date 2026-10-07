@@ -1,0 +1,85 @@
+{
+  "schema_version": 1,
+  "candidate_module_version_id": "module.legal_agent_candidate.regressed.v1",
+  "benchmark_summary": {
+    "benchmark_suite_id": "harvey_labs",
+    "benchmark_target_score_bps": 9500,
+    "benchmark_candidate_score_bps": 9800,
+    "previous_benchmark_score_bps": 9300,
+    "sweep_matrix_export_ref": "fixtures/legal_benchmark/sweep_matrix_smoke_config.json"
+  },
+  "outcomes": [
+    {
+      "task_id": "prod.chat.status_synthesis.v1",
+      "surface": "chat",
+      "passed": true,
+      "score_bps": 9400,
+      "latency_ms": 1200,
+      "cost_micro_usd": 80,
+      "evidence_refs": ["transcript.chat.status_synthesis"]
+    },
+    {
+      "task_id": "prod.coder.patch_review.v1",
+      "surface": "coder",
+      "passed": true,
+      "score_bps": 9100,
+      "latency_ms": 1800,
+      "cost_micro_usd": 120,
+      "evidence_refs": ["transcript.coder.patch_review"]
+    },
+    {
+      "task_id": "prod.work_order.blocker_triage.v1",
+      "surface": "work_order",
+      "passed": true,
+      "score_bps": 9200,
+      "latency_ms": 1300,
+      "cost_micro_usd": 90,
+      "evidence_refs": ["transcript.work_order.blocker_triage"]
+    },
+    {
+      "task_id": "prod.github_provider.issue_update.v1",
+      "surface": "github_provider",
+      "passed": true,
+      "score_bps": 9200,
+      "latency_ms": 1400,
+      "cost_micro_usd": 100,
+      "evidence_refs": ["transcript.github.issue_update"]
+    },
+    {
+      "task_id": "prod.crm.followup_note.v1",
+      "surface": "crm",
+      "passed": true,
+      "score_bps": 9000,
+      "latency_ms": 1100,
+      "cost_micro_usd": 70,
+      "evidence_refs": ["transcript.crm.followup_note"]
+    },
+    {
+      "task_id": "prod.memory.preference_recall.v1",
+      "surface": "memory",
+      "passed": false,
+      "score_bps": 6400,
+      "latency_ms": 1500,
+      "cost_micro_usd": 100,
+      "diagnostics": [
+        "candidate acted on revoked synthetic memory instead of approved preference"
+      ],
+      "evidence_refs": ["transcript.memory.preference_recall"]
+    },
+    {
+      "task_id": "prod.provider_tool_routing.cost_guard.v1",
+      "surface": "provider_tool_routing",
+      "passed": true,
+      "score_bps": 8300,
+      "latency_ms": 1000,
+      "cost_micro_usd": 60,
+      "diagnostics": [
+        "candidate selected a route over the declared synthetic cost ceiling"
+      ],
+      "evidence_refs": ["transcript.routing.cost_guard"]
+    }
+  ],
+  "metadata": {
+    "simulation": "deterministic_mock_regression"
+  }
+}

@@ -1,0 +1,61 @@
+{
+  "schema_version": "psion.refusal_calibration_receipt.v1",
+  "receipt_id": "psion-pilot-refusal-calibration-v1",
+  "package_id": "psion_unsupported_request_refusal_benchmark_v1",
+  "package_digest": "73274857b551ca89edd96a200c60d25992a0aaa62a5cb25a1c369f518e8c42c4",
+  "capability_matrix_id": "psion_capability_matrix",
+  "capability_matrix_version": "v1",
+  "rows": [
+    {
+      "item_id": "refusal-case-exactness",
+      "capability_region_id": "unsupported_exact_execution_without_executor_surface",
+      "expected_reason_code": "unsupported_exactness_request",
+      "observed_refusal_accuracy_bps": 9950,
+      "reason_code_match_bps": 10000,
+      "unsupported_region_evidence_ref": "evidence://psion/refusal/exactness-without-executor",
+      "detail": "Exactness refusal row shows the lane refuses exact-execution asks that do not expose a verifier or executor surface."
+    },
+    {
+      "item_id": "refusal-case-freshness",
+      "capability_region_id": "freshness_or_run_artifact_dependent_requests",
+      "expected_reason_code": "currentness_or_run_artifact_dependency",
+      "observed_refusal_accuracy_bps": 9910,
+      "reason_code_match_bps": 9950,
+      "unsupported_region_evidence_ref": "evidence://psion/refusal/currentness-or-hidden-artifact",
+      "detail": "Freshness row shows the lane refuses mutable-state asks instead of claiming hidden run-artifact visibility."
+    },
+    {
+      "item_id": "refusal-case-missing-constraints",
+      "capability_region_id": "underspecified_design_without_required_constraints",
+      "expected_reason_code": "missing_required_constraints",
+      "observed_refusal_accuracy_bps": 9890,
+      "reason_code_match_bps": 9940,
+      "unsupported_region_evidence_ref": "evidence://psion/refusal/missing-required-constraints",
+      "detail": "Missing-constraints row shows the lane refuses underspecified design asks instead of inventing requirements."
+    },
+    {
+      "item_id": "refusal-case-open-ended",
+      "capability_region_id": "open_ended_general_assistant_chat",
+      "expected_reason_code": "open_ended_general_assistant_unsupported",
+      "observed_refusal_accuracy_bps": 9910,
+      "reason_code_match_bps": 9930,
+      "unsupported_region_evidence_ref": "evidence://psion/refusal/open-ended-assistant",
+      "detail": "Open-ended row shows the lane keeps generic assistant chat explicitly unsupported instead of drifting into vague half-service."
+    },
+    {
+      "item_id": "refusal-case-over-context",
+      "capability_region_id": "over_context_envelope_requests",
+      "expected_reason_code": "unsupported_context_length",
+      "observed_refusal_accuracy_bps": 9940,
+      "reason_code_match_bps": 9980,
+      "unsupported_region_evidence_ref": "evidence://psion/refusal/over-context-envelope",
+      "detail": "Over-context row shows prompts beyond the hard context boundary refuse with the declared reason instead of truncating silently."
+    }
+  ],
+  "aggregate_unsupported_request_refusal_bps": 9920,
+  "aggregate_reason_code_match_bps": 9960,
+  "supported_control_overrefusal_bps": 900,
+  "refusal_regression_bps": 60,
+  "summary": "Canonical refusal-calibration receipt proving unsupported exactness, missing constraints, context overflow, freshness, and open-ended assistant asks stay bound to named capability-matrix regions and refusal reasons.",
+  "receipt_digest": "73dedb096d505022a449c46f195205f7d52fc12e01733e0acc01c82dca5e63c3"
+}

@@ -1,0 +1,37 @@
+{
+  "schema_version": "psion.rvllm_attention_backend.v1",
+  "packet_id": "psion_rvllm_attention_backend_v1",
+  "runtime_scope": [
+    "psionic_serve.gpt_oss_cuda_attention_decode",
+    "psionic_serve.decoder_kv_cache_encoding_policy",
+    "psionic_backend_cuda.attention_decode_kernels"
+  ],
+  "default_backend": "dense_f16_kv",
+  "alternate_backends": [
+    "dense_f16_kv_q8_1_output_fusion",
+    "turboquant_kv"
+  ],
+  "selection_inputs": [
+    "use_turboquant_kv",
+    "use_q8_1_attention_output_fusion",
+    "use_graph_attention"
+  ],
+  "backend_capability_gates": [
+    "cuda_kv_cache_encoding_selection",
+    "q8_1_attention_output_fusion_capability",
+    "graph_replay_admission"
+  ],
+  "retained_tests": [
+    "selector_defaults_to_dense_f16_kv_backend",
+    "selector_uses_q8_1_output_fusion_backend_when_enabled",
+    "selector_prefers_turboquant_backend",
+    "cuda_kv_cache_encoding_selection_activates_turboquant_when_supported"
+  ],
+  "benchmark_paths": [
+    "crates/psionic-serve/src/gpt_oss.rs",
+    "crates/psionic-serve/src/lib.rs",
+    "crates/psionic-backend-cuda/src/lib.rs"
+  ],
+  "stability_posture": "Psionic already shipped multiple real CUDA attention decode backends. This packet and selector make that seam explicit: dense f16 KV remains the default backend, q8_1 output fusion and turboquant KV remain capability-gated alternates, and route logic no longer has to hard-code nested kernel selection branches at each callsite.",
+  "packet_digest": "eca9f77ad8551b44a4175d05f450777accb3d218672f75a766f6298a3d20ac72"
+}

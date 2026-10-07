@@ -1,0 +1,290 @@
+{
+  "schema_version": "psionic.xtrain_explorer_snapshot.v1",
+  "snapshot_id": "snapshot.xtrain_explorer.window1231.v1",
+  "generated_at_ms": 1711112311000,
+  "network_id": "psionic.decentralized_training.testnet.v1",
+  "current_epoch_id": "network_epoch_00000123",
+  "active_window_id": "window1231",
+  "public_run_explorer_contract_digest": "8d332ce3dc97db69990ca20293a1f2681da8419393d6f60997f1e1b9ff9380c5",
+  "public_network_registry_contract_digest": "13c54dbe05c8be670629d69e6c84d8457e8ce507f075fe4b70c4569634899fd2",
+  "public_miner_protocol_contract_digest": "d9ea9a4d06d5de31d77dd3aed9db21720eca5fdc2e3874a8884ab4dfc85aef09",
+  "multi_validator_consensus_contract_digest": "0e12aee06be97a314a5ea22d64e6c177447e81ca5b40406b7ceb7d41646f6c98",
+  "settlement_publication_contract_digest": "4cb9e8a965cff73e25c9dd85df54b91cd4387866b422aa27e2699e686d2f64f9",
+  "participants": [
+    {
+      "participant_id": "google_l4_validator_node.registry",
+      "node_identity_id": "google_l4_validator_node.identity",
+      "node_id": "psionic-google-validator-001",
+      "role_classes": [
+        "public_miner",
+        "public_validator",
+        "checkpoint_authority",
+        "aggregator",
+        "relay"
+      ],
+      "execution_classes": [
+        "validated_contributor_window",
+        "validator",
+        "checkpoint_writer",
+        "eval_worker",
+        "data_builder"
+      ],
+      "availability_status": "online",
+      "participant_state": "active",
+      "current_window_id": "window1231",
+      "active_session_id": "session.public_miner.google.window1231",
+      "payout_microunits": 240000,
+      "detail": "Google is the multi-role participant in the retained explorer view: miner session closed, one validator vote accepted, relay advertised, and payout publication retained."
+    },
+    {
+      "participant_id": "runpod_8xh100_dense_node.registry",
+      "node_identity_id": "runpod_8xh100_dense_node.identity",
+      "node_id": "psionic-runpod-dense-001",
+      "role_classes": [
+        "checkpoint_authority",
+        "aggregator"
+      ],
+      "execution_classes": [
+        "dense_full_model_rank",
+        "checkpoint_writer",
+        "eval_worker",
+        "data_builder"
+      ],
+      "availability_status": "online",
+      "participant_state": "active",
+      "current_window_id": "window1231",
+      "payout_microunits": 50000,
+      "detail": "RunPod remains the retained checkpoint-authority mirror and settlement participant in the explorer view."
+    },
+    {
+      "participant_id": "local_rtx4080_workstation.registry",
+      "node_identity_id": "local_rtx4080_workstation.identity",
+      "node_id": "psionic-local-rtx4080-001",
+      "role_classes": [
+        "public_miner",
+        "aggregator"
+      ],
+      "execution_classes": [
+        "validated_contributor_window",
+        "eval_worker",
+        "data_builder"
+      ],
+      "availability_status": "online",
+      "participant_state": "refused",
+      "current_window_id": "window1231",
+      "detail": "The local RTX 4080 participant stays visible in the graph even though miner entry for the retained window was refused on checkpoint lag."
+    },
+    {
+      "participant_id": "local_mlx_mac_workstation.registry",
+      "node_identity_id": "local_mlx_mac_workstation.identity",
+      "node_id": "psionic-local-mlx-001",
+      "role_classes": [
+        "public_miner",
+        "public_validator",
+        "aggregator"
+      ],
+      "execution_classes": [
+        "dense_full_model_rank",
+        "validated_contributor_window",
+        "validator",
+        "eval_worker",
+        "data_builder"
+      ],
+      "availability_status": "online",
+      "participant_state": "held",
+      "current_window_id": "window1231",
+      "active_session_id": "session.public_miner.local_mlx.window1231",
+      "payout_microunits": 710000,
+      "detail": "Apple MLX remains active as both miner and validator, but the retained validator vote still holds checkpoint promotion."
+    }
+  ],
+  "participant_edges": [
+    {
+      "edge_id": "edge.google_validates_local_mlx.window1231",
+      "source_participant_id": "google_l4_validator_node.registry",
+      "target_participant_id": "local_mlx_mac_workstation.registry",
+      "edge_kind": "validator_score",
+      "reference_ids": [
+        "vote.public_validator.google.local_mlx.window1231",
+        "session.public_miner.local_mlx.window1231"
+      ],
+      "detail": "Google carries one accepted validator vote over the Apple MLX miner session."
+    },
+    {
+      "edge_id": "edge.local_mlx_validates_google.window1231",
+      "source_participant_id": "local_mlx_mac_workstation.registry",
+      "target_participant_id": "google_l4_validator_node.registry",
+      "edge_kind": "validator_score",
+      "reference_ids": [
+        "vote.public_validator.local_mlx.google.window1231",
+        "session.public_miner.google.window1231"
+      ],
+      "detail": "Apple MLX carries the replay-required validator vote over the Google miner session."
+    },
+    {
+      "edge_id": "edge.google_to_runpod_checkpoint_sync.window1231",
+      "source_participant_id": "google_l4_validator_node.registry",
+      "target_participant_id": "runpod_8xh100_dense_node.registry",
+      "edge_kind": "checkpoint_sync",
+      "reference_ids": [
+        "checkpoint_sync.public_miner.google.window1231",
+        "settlement.window1231.signed"
+      ],
+      "detail": "Google remains linked to the RunPod checkpoint-authority mirror through the retained checkpoint-sync and settlement surfaces."
+    },
+    {
+      "edge_id": "edge.local_rtx_refused.window1231",
+      "source_participant_id": "local_rtx4080_workstation.registry",
+      "target_participant_id": "google_l4_validator_node.registry",
+      "edge_kind": "refusal",
+      "reference_ids": [
+        "refusal.public_miner.local_rtx4080.checkpoint_lag"
+      ],
+      "detail": "The local RTX standby path remains visible as a refused edge so the explorer can show checkpoint-lag exclusion instead of hiding the participant."
+    }
+  ],
+  "windows": [
+    {
+      "window_id": "window1231",
+      "dataset_page_ids": [
+        "dataset.page.train.0009_0012",
+        "dataset.page.train.0013_0016"
+      ],
+      "miner_session_ids": [
+        "session.public_miner.google.window1231",
+        "session.public_miner.local_mlx.window1231"
+      ],
+      "validator_vote_ids": [
+        "vote.public_validator.google.local_mlx.window1231",
+        "vote.public_validator.local_mlx.google.window1231"
+      ],
+      "checkpoint_artifact_id": "artifact.checkpoint.step2048.live",
+      "promotion_decision_id": "decision.checkpoint.step2048.round2056",
+      "status": "promotion_held",
+      "settlement_record_id": "settlement.window1231.signed",
+      "detail": "The retained explorer window binds the two public miner sessions, the split validator outcome, the held checkpoint candidate, and the signed settlement publication in one explorer-oriented row."
+    }
+  ],
+  "checkpoints": [
+    {
+      "checkpoint_artifact_id": "artifact.checkpoint.step2048.live",
+      "promotion_decision_id": "decision.checkpoint.step2048.round2056",
+      "outcome": "held_no_promotion",
+      "validator_vote_ids": [
+        "vote.public_validator.google.local_mlx.window1231",
+        "vote.public_validator.local_mlx.google.window1231"
+      ],
+      "disagreement_receipt_ids": [
+        "disagreement.checkpoint.step2048.round2056"
+      ],
+      "settlement_record_id": "settlement.window1231.signed",
+      "detail": "The current retained checkpoint candidate stays held-no-promotion because validator quorum was reached without unanimous acceptance."
+    }
+  ],
+  "run_surface_links": [
+    {
+      "link_id": "bounded_xtrain_reference_lane",
+      "relationship_kind": "bounded_reference_lane",
+      "bundle_artifact_uri": "fixtures/training_visualization/parameter_golf_xtrain_remote_training_visualization_bundle_v2.json",
+      "bundle_digest": "9e1acb8a3d533310d1dd1e2dcbad010549c8069034837796b26a85458cd02920",
+      "detail": "The decentralized explorer links to the bounded XTRAIN run-centric bundle as a sibling surface. The explorer keeps participant and window truth; the run-centric bundle keeps the bounded local-reference score lane."
+    }
+  ],
+  "events": [
+    {
+      "event_id": "event.window1231.sessions_closed",
+      "observed_at_ms": 1711112311000,
+      "severity": "info",
+      "event_kind": "window_sessions_closed",
+      "reference_ids": [
+        "session.public_miner.google.window1231",
+        "session.public_miner.local_mlx.window1231"
+      ],
+      "detail": "Both retained public miner sessions closed sixty-four local steps and published deltas for the explorer window."
+    },
+    {
+      "event_id": "event.window1231.promotion_held",
+      "observed_at_ms": 1711112312000,
+      "severity": "warning",
+      "event_kind": "checkpoint_promotion_held",
+      "reference_ids": [
+        "decision.checkpoint.step2048.round2056",
+        "disagreement.checkpoint.step2048.round2056"
+      ],
+      "detail": "Validator disagreement held the checkpoint candidate instead of silently promoting it."
+    },
+    {
+      "event_id": "event.window1231.settlement_published",
+      "observed_at_ms": 1711112313000,
+      "severity": "info",
+      "event_kind": "settlement_published",
+      "reference_ids": [
+        "settlement.window1231.signed"
+      ],
+      "detail": "The signed-ledger settlement record remained published even though promotion stayed held-no-promotion."
+    },
+    {
+      "event_id": "event.window1231.local_rtx_refused",
+      "observed_at_ms": 1711112314000,
+      "severity": "warning",
+      "event_kind": "participant_refused",
+      "reference_ids": [
+        "refusal.public_miner.local_rtx4080.checkpoint_lag"
+      ],
+      "detail": "The local RTX standby miner remained excluded on checkpoint lag and is kept visible as explicit explorer truth."
+    }
+  ],
+  "source_artifacts": [
+    {
+      "artifact_role": "public_run_explorer_contract",
+      "artifact_uri": "fixtures/training/public_run_explorer_contract_v1.json",
+      "artifact_digest": "8d332ce3dc97db69990ca20293a1f2681da8419393d6f60997f1e1b9ff9380c5",
+      "authoritative": true,
+      "detail": "The prior public explorer contract remains the pane-level explorer foundation."
+    },
+    {
+      "artifact_role": "public_network_registry_contract",
+      "artifact_uri": "fixtures/training/public_network_registry_contract_v1.json",
+      "artifact_digest": "13c54dbe05c8be670629d69e6c84d8457e8ce507f075fe4b70c4569634899fd2",
+      "authoritative": true,
+      "detail": "The registry contract is authoritative for participant identity, roles, and endpoint truth."
+    },
+    {
+      "artifact_role": "public_miner_protocol_contract",
+      "artifact_uri": "fixtures/training/public_miner_protocol_contract_v1.json",
+      "artifact_digest": "d9ea9a4d06d5de31d77dd3aed9db21720eca5fdc2e3874a8884ab4dfc85aef09",
+      "authoritative": true,
+      "detail": "The public miner protocol contract is authoritative for miner sessions, local steps, and checkpoint-sync posture."
+    },
+    {
+      "artifact_role": "multi_validator_consensus_contract",
+      "artifact_uri": "fixtures/training/multi_validator_consensus_contract_v1.json",
+      "artifact_digest": "0e12aee06be97a314a5ea22d64e6c177447e81ca5b40406b7ceb7d41646f6c98",
+      "authoritative": true,
+      "detail": "The multi-validator consensus contract is authoritative for held-no-promotion checkpoint state."
+    },
+    {
+      "artifact_role": "settlement_publication_contract",
+      "artifact_uri": "fixtures/training/settlement_publication_contract_v1.json",
+      "artifact_digest": "4cb9e8a965cff73e25c9dd85df54b91cd4387866b422aa27e2699e686d2f64f9",
+      "authoritative": true,
+      "detail": "The settlement publication contract is authoritative for validator weight, settlement record, and payout export truth."
+    },
+    {
+      "artifact_role": "curated_decentralized_run_contract",
+      "artifact_uri": "fixtures/training/curated_decentralized_run_contract_v1.json",
+      "artifact_digest": "57b19e1a08d22dafdf20525c1acf7a0b478077161edf6a3caae6f9d72403566b",
+      "authoritative": false,
+      "detail": "The curated decentralized run contract keeps the retained evidence-bundle and after-action path explicit."
+    },
+    {
+      "artifact_role": "bounded_xtrain_run_bundle",
+      "artifact_uri": "fixtures/training_visualization/parameter_golf_xtrain_remote_training_visualization_bundle_v2.json",
+      "artifact_digest": "9e1acb8a3d533310d1dd1e2dcbad010549c8069034837796b26a85458cd02920",
+      "authoritative": false,
+      "detail": "The bounded XTRAIN run-centric bundle remains the sibling local-reference score lane linked from the explorer snapshot."
+    }
+  ],
+  "detail": "The first XTRAIN explorer snapshot binds registry participants, current miner sessions, held checkpoint promotion, settlement publication, and the sibling bounded XTRAIN run surface into one explorer-oriented artifact family.",
+  "snapshot_digest": "68134aed8582acc06378e712088831bd8fa6e504f5111c46d37458224fa06f26"
+}

@@ -1,0 +1,323 @@
+{
+  "schema_version": "psion.actual_pretraining_data_bundle.v1",
+  "data_bundle_id": "psion_actual_pretraining_data_bundle_v1",
+  "lane_id": "psion_actual_pretraining_v1",
+  "lane_spec": {
+    "path": "fixtures/psion/pretrain/psion_actual_pretraining_lane_spec_v1.json",
+    "sha256": "6640fce7435338dc0f66b28135f024d4b62b428826aa6ba122c22644749c8057"
+  },
+  "recipe_bundle": {
+    "path": "fixtures/psion/pretrain/psion_actual_pretraining_recipe_bundle_v1.json",
+    "sha256": "37f3a4580a5bd7ea48bfad63ce996162d4c76d24c3044032eceae233a9406007"
+  },
+  "transformation_stages": [
+    {
+      "stage_id": "psion_actual_pretraining_admission_review",
+      "stage_kind": "admission_review",
+      "source_artifact": {
+        "path": "fixtures/psion/corpus_admission/psion_source_admission_manifest_v1.json",
+        "sha256": "cd8af3ae06720337e7f39c1fa70c9f280e30464e22b2eec95ffc284f406b1cec"
+      },
+      "output_identity": "psion_source_admission_manifest_v1",
+      "detail": "Reviewed source-admission truth freezes which sources are admitted, restricted, evaluation-only, or rejected before any actual-lane build step starts."
+    },
+    {
+      "stage_id": "psion_actual_pretraining_benchmark_isolation",
+      "stage_kind": "benchmark_isolation",
+      "source_artifact": {
+        "path": "fixtures/psion/isolation/psion_exclusion_manifest_v1.json",
+        "sha256": "8f7ce3eb5909326280fd0edd6995665ea009fea2d4256003770b66b73267244d"
+      },
+      "output_identity": "psion_exclusion_manifest_v1",
+      "detail": "Benchmark and held-out isolation freezes the exclusion surface that keeps evaluation-only, tokenizer-only, and rejected material out of the train loader."
+    },
+    {
+      "stage_id": "psion_actual_pretraining_raw_source_ingestion",
+      "stage_kind": "raw_source_ingestion",
+      "source_artifact": {
+        "path": "fixtures/psion/ingestion/psion_raw_source_manifest_v1.json",
+        "sha256": "19f96cc641805cbaab0ca77ce33386dd587de73946b66d192b26aa8abee83c81"
+      },
+      "output_identity": "psion_raw_source_preprocess_v1",
+      "detail": "Raw-source ingestion normalizes admitted material into one stable section-anchored source family before tokenizer or tokenized-corpus stages consume it."
+    },
+    {
+      "stage_id": "psion_actual_pretraining_tokenizer_training",
+      "stage_kind": "tokenizer_training",
+      "source_artifact": {
+        "path": "fixtures/psion/tokenizer/psion_tokenizer_training_manifest_v1.json",
+        "sha256": "3b5511e2e69f7b772065e7c2073ef27d35a4eb3b87fd3b1951c4cb292ddab062"
+      },
+      "output_identity": "psion_sentencepiece_seed@v1",
+      "detail": "Tokenizer training freezes the tokenizer-visible source set separately from the model-training-visible source set so restricted and evaluation-only sources cannot drift silently into training."
+    },
+    {
+      "stage_id": "psion_actual_pretraining_tokenized_corpus_build",
+      "stage_kind": "tokenized_corpus_build",
+      "source_artifact": {
+        "path": "fixtures/psion/tokenized/psion_tokenized_corpus_manifest_v1.json",
+        "sha256": "f8cc49f56a5667af510456b0c990368f6147fa4ad318d49cedc3ec622bde0354"
+      },
+      "output_identity": "psion_corpus_tokenized@v1",
+      "detail": "Tokenized-corpus build freezes the replay-safe dataset identity, shard layout, packing policy, and train/validation/held-out split boundaries used by the actual lane."
+    },
+    {
+      "stage_id": "psion_actual_pretraining_sampling_policy_freeze",
+      "stage_kind": "sampling_policy_freeze",
+      "source_artifact": {
+        "path": "fixtures/psion/sampling/psion_sampling_policy_manifest_v1.json",
+        "sha256": "3aa5802545fd53129d23b9f78d359641625e6b2624e44ce4bf5976ef0d71f1ca"
+      },
+      "output_identity": "psion_pretrain_mix@v1",
+      "detail": "Sampling-policy freeze binds one production mixture, repetitive-region controls, and explicit regression thresholds into the actual recipe instead of leaving mixture choice implicit."
+    }
+  ],
+  "filter_authority": {
+    "admission_policy": {
+      "path": "fixtures/psion/corpus_admission/psion_corpus_admission_policy_v1.json",
+      "sha256": "5d2737f6f2244797fc0d7f253a3dd5678431fc2fdabc1d7cc61f5e1dee47c210"
+    },
+    "source_admission_manifest": {
+      "path": "fixtures/psion/corpus_admission/psion_source_admission_manifest_v1.json",
+      "sha256": "cd8af3ae06720337e7f39c1fa70c9f280e30464e22b2eec95ffc284f406b1cec"
+    },
+    "source_lifecycle_manifest": {
+      "path": "fixtures/psion/lifecycle/psion_source_lifecycle_manifest_v1.json",
+      "sha256": "6411725b613df4549bbb3b9710052fbbc5ece4359732162e4800deb45e03f9d6"
+    },
+    "benchmark_isolation_manifest": {
+      "path": "fixtures/psion/isolation/psion_exclusion_manifest_v1.json",
+      "sha256": "8f7ce3eb5909326280fd0edd6995665ea009fea2d4256003770b66b73267244d"
+    },
+    "admitted_training_source_ids": [
+      "arch_textbook_foster_1985",
+      "wasm_core_spec_release_2"
+    ],
+    "tokenizer_only_source_ids": [
+      "vendor_manual_private_scan_v1"
+    ],
+    "held_out_source_ids": [
+      "spec_quiz_eval_pack_v1"
+    ],
+    "rejected_source_ids": [
+      "forum_scrape_misc_001"
+    ],
+    "detail": "Filter authority freezes the exact train-visible, tokenizer-only, held-out, and rejected source ids consumed by the actual recipe."
+  },
+  "dedup_authority": {
+    "near_duplicate_review_required_before_training": true,
+    "near_duplicate_review_required_before_benchmark_publication": true,
+    "near_duplicate_review_ref": "review://psion/benchmark/near-duplicate-v1",
+    "training_excluded_source_ids": [
+      "forum_scrape_misc_001",
+      "spec_quiz_eval_pack_v1",
+      "vendor_manual_private_scan_v1"
+    ],
+    "benchmark_excluded_source_ids": [
+      "arch_textbook_foster_1985",
+      "forum_scrape_misc_001",
+      "vendor_manual_private_scan_v1"
+    ],
+    "repetitive_region_controls": [
+      {
+        "source_id": "arch_textbook_foster_1985",
+        "document_id": "arch_textbook_foster_1985:chapter_01",
+        "section_id": "arch_textbook_foster_1985:ch01:s02",
+        "downweight_multiplier_bps": 5000,
+        "maximum_region_token_share_bps": 1200
+      },
+      {
+        "source_id": "wasm_core_spec_release_2",
+        "document_id": "wasm_core_spec_release_2:chapter_02",
+        "section_id": "wasm_core_spec_release_2:2.1",
+        "downweight_multiplier_bps": 6000,
+        "maximum_region_token_share_bps": 1400
+      }
+    ],
+    "detail": "Dedup authority keeps near-duplicate review mandatory, preserves the mechanically excluded source ids, and freezes repetitive-region downweighting so the actual lane cannot silently train on duplicated boilerplate."
+  },
+  "mixture_authority": {
+    "dataset_identity": "psion_corpus_tokenized@v1",
+    "sampling_policy_id": "psion_pretrain_mix",
+    "sampling_policy_version": "v1",
+    "sampling_policy_manifest": {
+      "path": "fixtures/psion/sampling/psion_sampling_policy_manifest_v1.json",
+      "sha256": "3aa5802545fd53129d23b9f78d359641625e6b2624e44ce4bf5976ef0d71f1ca"
+    },
+    "maximum_code_token_ratio_bps": 1500,
+    "source_family_weights": [
+      {
+        "source_family_id": "computer_architecture_history",
+        "content_class": "prose",
+        "sampling_weight_bps": 5400,
+        "maximum_family_token_share_bps": 6000
+      },
+      {
+        "source_family_id": "normative_specs",
+        "content_class": "spec_text",
+        "sampling_weight_bps": 4600,
+        "maximum_family_token_share_bps": 5000
+      }
+    ],
+    "source_contribution_caps": [
+      {
+        "source_id": "arch_textbook_foster_1985",
+        "maximum_source_token_share_bps": 6000
+      },
+      {
+        "source_id": "wasm_core_spec_release_2",
+        "maximum_source_token_share_bps": 5000
+      }
+    ],
+    "content_class_token_share_report": [
+      {
+        "content_class": "prose",
+        "observed_token_share_bps": 5600
+      },
+      {
+        "content_class": "spec_text",
+        "observed_token_share_bps": 4400
+      },
+      {
+        "content_class": "code",
+        "observed_token_share_bps": 0
+      }
+    ],
+    "comparison_receipt": {
+      "path": "fixtures/psion/sampling/psion_sampling_policy_comparison_receipt_v1.json",
+      "sha256": "123f42bada5eca56911030122c6d31211bed8c219df5adfcf0082da97001fa2e"
+    },
+    "lm_loss_delta_bps": -70,
+    "regression_gates": [
+      {
+        "regression_kind": "explanation_quality",
+        "maximum_regression_bps": 150,
+        "observed_regression_bps": 0
+      },
+      {
+        "regression_kind": "spec_interpretation",
+        "maximum_regression_bps": 100,
+        "observed_regression_bps": 0
+      },
+      {
+        "regression_kind": "tradeoff_reasoning",
+        "maximum_regression_bps": 100,
+        "observed_regression_bps": 0
+      },
+      {
+        "regression_kind": "invariant_articulation",
+        "maximum_regression_bps": 100,
+        "observed_regression_bps": 0
+      },
+      {
+        "regression_kind": "coding_fluency",
+        "maximum_regression_bps": 300,
+        "observed_regression_bps": 0
+      }
+    ],
+    "detail": "Mixture authority freezes one production pretrain mix, one regression budget surface, and one candidate-vs-baseline comparison receipt that recipe changes must clear before promotion."
+  },
+  "replay_authority": {
+    "tokenizer_training_manifest": {
+      "path": "fixtures/psion/tokenizer/psion_tokenizer_training_manifest_v1.json",
+      "sha256": "3b5511e2e69f7b772065e7c2073ef27d35a4eb3b87fd3b1951c4cb292ddab062"
+    },
+    "raw_source_manifest": {
+      "path": "fixtures/psion/ingestion/psion_raw_source_manifest_v1.json",
+      "sha256": "19f96cc641805cbaab0ca77ce33386dd587de73946b66d192b26aa8abee83c81"
+    },
+    "tokenized_corpus_manifest": {
+      "path": "fixtures/psion/tokenized/psion_tokenized_corpus_manifest_v1.json",
+      "sha256": "f8cc49f56a5667af510456b0c990368f6147fa4ad318d49cedc3ec622bde0354"
+    },
+    "dataset_identity": "psion_corpus_tokenized@v1",
+    "replay_iteration_mode": "repeat",
+    "shard_ordering": "deterministic_shuffle",
+    "deterministic_shuffle_seed": 1337,
+    "packing_policy_id": "psion_pack_context_window",
+    "packing_policy_version": "v1",
+    "max_sequence_tokens": 8192,
+    "train_shard_ids": [
+      "psion_train_shard_0001"
+    ],
+    "validation_shard_ids": [
+      "psion_validation_shard_0001"
+    ],
+    "held_out_shard_ids": [
+      "psion_held_out_shard_0001"
+    ],
+    "detail": "Replay authority freezes the exact repeat-plus-deterministic-shuffle corpus contract, the context packing policy, and the split-specific shard identities consumed by the actual pretraining lane."
+  },
+  "recipe_change_eval_package": {
+    "benchmark_catalog": {
+      "path": "fixtures/psion/benchmarks/psion_benchmark_catalog_v1.json",
+      "sha256": "cce95eab1c6a869da7c62a10c70684a9946876effcde1a3281426ad08145ae3e"
+    },
+    "benchmark_receipt_set": {
+      "path": "fixtures/psion/benchmarks/psion_benchmark_receipt_set_v1.json",
+      "sha256": "288684507e93e496d4931aaefa1493818b2c7736b9031049eb3c75192f2eefc7"
+    },
+    "required_package_families": [
+      "architecture_reasoning",
+      "normative_spec_reading",
+      "engineering_spec_interpretation",
+      "memorization_versus_reasoning"
+    ],
+    "required_acceptance_families": [
+      "architecture_reasoning",
+      "normative_spec_reading",
+      "engineering_spec_interpretation",
+      "memorization_versus_reasoning"
+    ],
+    "eval_bindings": [
+      {
+        "package_family": "architecture_reasoning",
+        "acceptance_family": "architecture_reasoning",
+        "receipt_id": "psion-architecture-benchmark-receipt-v1",
+        "contamination_input_digest": "57caf81f4cd0d54fea05946aadb7078111414de617e3d277225e1a159d7b20b4",
+        "metric_kind": "pass_rate_bps",
+        "observed_bps": 8420,
+        "detail": "Bounded recipe-change eval keeps this benchmark family attached to the actual-lane data review surface before mixture changes can be admitted."
+      },
+      {
+        "package_family": "engineering_spec_interpretation",
+        "acceptance_family": "engineering_spec_interpretation",
+        "receipt_id": "psion-engineering-benchmark-receipt-v1",
+        "contamination_input_digest": "52821f8da4180d39b2a81a45d5be7638a0968b40605a674d834d034fa8c90146",
+        "metric_kind": "pass_rate_bps",
+        "observed_bps": 8760,
+        "detail": "Bounded recipe-change eval keeps this benchmark family attached to the actual-lane data review surface before mixture changes can be admitted."
+      },
+      {
+        "package_family": "memorization_versus_reasoning",
+        "acceptance_family": "memorization_versus_reasoning",
+        "receipt_id": "psion-memorization-benchmark-receipt-v1",
+        "contamination_input_digest": "52821f8da4180d39b2a81a45d5be7638a0968b40605a674d834d034fa8c90146",
+        "metric_kind": "pass_rate_bps",
+        "observed_bps": 8040,
+        "detail": "Bounded recipe-change eval keeps this benchmark family attached to the actual-lane data review surface before mixture changes can be admitted."
+      },
+      {
+        "package_family": "normative_spec_reading",
+        "acceptance_family": "normative_spec_reading",
+        "receipt_id": "psion-normative-benchmark-receipt-v1",
+        "contamination_input_digest": "52821f8da4180d39b2a81a45d5be7638a0968b40605a674d834d034fa8c90146",
+        "metric_kind": "pass_rate_bps",
+        "observed_bps": 8910,
+        "detail": "Bounded recipe-change eval keeps this benchmark family attached to the actual-lane data review surface before mixture changes can be admitted."
+      }
+    ],
+    "detail": "Recipe-change eval package keeps the mixture attached to the existing benchmark catalog and retained receipt set so data changes remain measurable on the real lane instead of in a detached data-research loop."
+  },
+  "support_refs": [
+    "docs/PSION_ACTUAL_PRETRAINING_DATA_BUNDLE.md",
+    "docs/PSION_TOKENIZED_CORPUS.md",
+    "docs/TRAIN_SYSTEM.md",
+    "fixtures/psion/tokenized/psion_tokenized_corpus_manifest_v1.json",
+    "fixtures/psion/sampling/psion_sampling_policy_manifest_v1.json",
+    "fixtures/psion/benchmarks/psion_benchmark_receipt_set_v1.json"
+  ],
+  "claim_boundary": "The actual-lane data bundle freezes one admission-filtering path, one benchmark-isolation and near-duplicate review posture, one tokenized replay-safe corpus, one production mixture, and one bounded recipe-change eval package. It does not claim Common Crawl-scale ingestion, open-ended mixture search, or automated data research outside the frozen lane.",
+  "summary": "The canonical actual-pretraining data bundle binds admission, isolation, raw-source ingestion, tokenizer training, tokenized replay truth, mixture authority, and bounded recipe-change eval receipts into one actual-lane data contract.",
+  "bundle_digest": "26ec13cc22657c8960c285d6108611c483150f5cfa4ebcb94c2a1743cec7510c"
+}

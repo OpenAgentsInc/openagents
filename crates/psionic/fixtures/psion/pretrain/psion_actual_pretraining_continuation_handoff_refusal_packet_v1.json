@@ -1,0 +1,22 @@
+{
+  "schema_version": "psion.actual_pretraining_continuation_handoff_refusal_packet.v1",
+  "packet_id": "psion_actual_pretraining_continuation_handoff_refusal_packet_v1",
+  "lane_id": "psion_actual_pretraining_v1",
+  "continuation_target_id": "psion_actual_pretraining_general_sft_agentic_sft_v1",
+  "run_id": "run-psion-actual-20260402t160000z",
+  "refusal_kind": "mismatched_handoff_alignment",
+  "handoff_artifact": {
+    "path": "continuation/accepted_checkpoint_handoff.json",
+    "sha256": "0f0db6ccb565386948d39109a34e0d45f186fd81899b1a995f9e81efb1f2ffb6"
+  },
+  "candidate_alignment_artifact": {
+    "path": "fixtures/psion/pretrain/psion_actual_pretraining_continuation_handoff_rehearsal_example/run-psion-actual-20260402t160000z/continuation/failures/mismatched_alignment_candidate.json",
+    "sha256": "01703b1cb1df8fd99fd0840872a4cb55a8cc6ed20b2475192080b39d1ba48dcb"
+  },
+  "mismatch_field": "accepted_checkpoint_ref",
+  "expected_value": "checkpoint://psion/actual-pretraining/broader-pretrain-final",
+  "observed_value": "checkpoint://psion/actual-pretraining/mismatched-alignment",
+  "claim_boundary": "This refusal packet proves that the continuation-handoff rehearsal rejects a mismatched candidate alignment bundle before any bounded plugin-conditioned continuation claim becomes reviewable.",
+  "detail": "The refused candidate changed the accepted checkpoint ref away from the admitted actual-lane handoff while keeping the same continuation target family.",
+  "packet_digest": "1e15ff73e8fa5b08a1181531db18d1007f1c386e26717c45519f2ed1f2321aa4"
+}

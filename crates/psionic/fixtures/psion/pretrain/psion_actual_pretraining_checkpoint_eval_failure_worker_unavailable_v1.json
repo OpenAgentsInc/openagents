@@ -1,0 +1,29 @@
+{
+  "schema_version": "psion.actual_pretraining_checkpoint_eval_failure.v1",
+  "lane_id": "psion_actual_pretraining_v1",
+  "run_id": "run-psion-actual-20260402t080000z",
+  "trigger_surface_id": "psion_actual_pretraining.record_checkpoint",
+  "selected_git_ref": "refs/heads/main",
+  "git_commit_sha": "1111222233334444555566667777888899990000",
+  "dirty_tree_admission": "refuse_by_default",
+  "workspace_status_sha256": null,
+  "checkpoint_label": "broader-pretrain-final",
+  "optimizer_step": 16384,
+  "checkpoint_ref": "checkpoint://psion/broad/pretrain/final",
+  "checkpoint_manifest": {
+    "path": "checkpoints/step-16384/checkpoint_manifest.json",
+    "sha256": "ff34a1af7f51986e9da54cefc43353cf08498b5e02cc17805bbd5ed8eb858dec"
+  },
+  "benchmark_package_fixture": {
+    "path": "fixtures/psion/pretrain/psion_actual_pretraining_checkpoint_eval_benchmark_pack_v1.json",
+    "sha256": "7d132160226636c599b55f8271539a2a6d25c63a5d37df947a961d6f1aaf20a2"
+  },
+  "benchmark_package_storage_key": "benchmark://psion/actual_pretraining/checkpoint_eval@2026.04.02",
+  "failure_kind": "eval_worker_unavailable",
+  "resolution_state": "retry_required",
+  "retry_after_seconds": 300,
+  "alert_relative_path": "alerts/latest_redacted_alert.json",
+  "claim_boundary": "This retained checkpoint-eval failure proves the actual-lane operator path does not silently skip automatic checkpoint review when the eval worker is unavailable. It retains an explicit retry requirement and a redacted alert instead.",
+  "detail": "Fixture checkpoint eval failure records that the automatic checkpoint-review worker was unavailable after the accepted checkpoint entered the retained backup family.",
+  "failure_digest": "2354d4648e85db1c4d1874a14949cda41363ff92059a36d24d083b145ef408b9"
+}

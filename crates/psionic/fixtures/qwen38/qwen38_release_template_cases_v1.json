@@ -1,0 +1,52 @@
+{
+  "schema_version": "psionic.qwen38.release_template_cases.v1",
+  "source": {
+    "upstream_repository_id": "Qwen/Qwen3.8-27B",
+    "upstream_revision": "1d4bf0f2ff6012fd82039f2fa52739d0dd7c60c0",
+    "template_sha256": "c3cf9e34abf4f9e36c2d72165aa9c132d3e2a725b6c2586aaa3a8af9d7a81041",
+    "comparator_implementation": "ggml-org/llama.cpp",
+    "comparator_revision": "9b05354ec6fb58b4e665e9a39ebc40285c015638",
+    "comparator_endpoint": "/apply-template"
+  },
+  "cases": [
+    {
+      "case_id": "reasoning_low",
+      "messages": [
+        {
+          "role": "user",
+          "content": "Hello"
+        }
+      ],
+      "chat_template_kwargs": {
+        "reasoning_effort": "low"
+      },
+      "expected_rendered_sha256": "64012fe752f5f00303b06929686ce5d4fc8558a42e1d70275d2d4bb920da94a0"
+    },
+    {
+      "case_id": "reasoning_medium",
+      "messages": [
+        {
+          "role": "user",
+          "content": "Hello"
+        }
+      ],
+      "chat_template_kwargs": {
+        "reasoning_effort": "medium"
+      },
+      "expected_rendered_sha256": "bcff7d22d26a515874d02d760f5e74dfd8a8ce843e7ed891465246371b3c7821"
+    },
+    {
+      "case_id": "reasoning_xhigh",
+      "messages": [
+        {
+          "role": "user",
+          "content": "Hello"
+        }
+      ],
+      "chat_template_kwargs": {
+        "reasoning_effort": "xhigh"
+      },
+      "expected_rendered_sha256": "66b3bad518270f743db4ad4efb0bcc03d7f0bc13d8c8ee8f287e433ddc110e30"
+    }
+  ]
+}

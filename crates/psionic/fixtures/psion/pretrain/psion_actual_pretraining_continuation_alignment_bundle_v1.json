@@ -1,0 +1,77 @@
+{
+  "schema_version": "psion.actual_pretraining_continuation_alignment_bundle.v1",
+  "bundle_id": "psion_actual_pretraining_continuation_alignment_bundle_v1",
+  "lane_id": "psion_actual_pretraining_v1",
+  "continuation_target_id": "psion_actual_pretraining_general_sft_agentic_sft_v1",
+  "accepted_checkpoint_run_id": "run-psion-actual-20260402t020000z",
+  "actual_lane_stage_path": [
+    "pretrain",
+    "general_sft",
+    "agentic_sft"
+  ],
+  "post_training_reference_stage_path": [
+    "general_sft",
+    "agentic_sft",
+    "rl"
+  ],
+  "accepted_checkpoint_ref": "checkpoint://psion/broad/pretrain/final",
+  "handoff_contract_path": "continuation/accepted_checkpoint_handoff.json",
+  "reasoning_bridge": {
+    "run_bundle": {
+      "path": "fixtures/psion/sft/psion_reasoning_sft_run_bundle_v1.json",
+      "sha256": "4bce9e0eda3284a940103663346071c5fc9806178b2a9b1a49017d1f64e51725"
+    },
+    "stage_receipt_id": "psion-reasoning-sft-stage-receipt-v1",
+    "stage_receipt_digest": "7df5de5f49a1f60f3922eae8dc78dda548c10156ddae9d2f4f7896d3c96dada0",
+    "evaluation_receipt_id": "psion-reasoning-sft-eval-receipt-v1",
+    "evaluation_receipt_digest": "0a3440205b56a7daca80f4c03fe1ce89ffd8c3630685490ce9a0b658fc8714a8",
+    "multiple_valid_style_pass_rate_bps": 10000,
+    "detail": "Reasoning bridge keeps the accepted pretrain checkpoint tied to the bounded general_sft bundle, its stage receipt, and its style-plurality evaluation receipt."
+  },
+  "agentic_stage": {
+    "run_bundle": {
+      "path": "fixtures/psion/plugins/training/psion_plugin_conditioned_sft_v1/psion_plugin_conditioned_sft_run_bundle.json",
+      "sha256": "bde69724339d47a49b6e1c82d472072cb557834b260fa78064a7cee4a67d4a9d"
+    },
+    "stage_receipt_id": "receipt.psion.plugin_conditioned_sft.reference.v1",
+    "stage_receipt_digest": "31b9d3ad2557968c2ede25dfdf2a27e01d3815f5d4a72bb9817438af6eb0da6d",
+    "general_sft_completion_digest": "e01bcdbf8489e74ba9243add1e60cc2987b8d77f678be3548a03ba1bdf841f7d",
+    "agentic_sft_completion_digest": "31e6a29de66c52e1d54eb8f2c03af993409e8a52fa5ccced89110e7309bcd2e4",
+    "eval_hook_count": 7,
+    "detail": "Agentic-stage binding keeps the handoff target tied to the bounded plugin-conditioned agentic_sft receipt rather than a detached continuation curriculum."
+  },
+  "post_training_reference": {
+    "reference_program_run_id": "weather-agentic-sft-rl-reference",
+    "current_stage_kind": "rl",
+    "general_checkpoint_ref": "checkpoint://general-sft/1",
+    "agentic_checkpoint_ref": "checkpoint://agentic-sft/2",
+    "target_policy_revision_id": "policy-rev-3",
+    "target_policy_checkpoint_ref": "checkpoint://agentic-sft/2",
+    "policy_weight_broadcast_digest": "125b2751b36e084ec7d9023f350ff13005dad69fbcadf9dc9cd05e4887822f5f",
+    "online_eval_run_id": "weather-online-eval-run",
+    "benchmark_eval_run_id": "weather-benchmark-run",
+    "accepted_rollout_count": 2,
+    "validator_accepted_count": 2,
+    "completed_trainer_steps": 1,
+    "detail": "Post-training reference keeps the current repo-owned agentic_sft -> rl surface explicit through checkpoint lineage, policy revision, rollout counts, and retained eval ids."
+  },
+  "continuation_eval_pack": {
+    "eval_pack_artifact": {
+      "path": "fixtures/psion/pretrain/psion_actual_pretraining_continuation_eval_benchmark_pack_v1.json",
+      "sha256": "eb9d9810d82b4a6b3b545ad3a6e1f012c358c80fc91d143f25d7b6d91b83724e"
+    },
+    "benchmark_ref": "benchmark://psion/actual_pretraining/continuation_stage",
+    "benchmark_version": "2026.04.02",
+    "package_storage_key": "benchmark://psion/actual_pretraining/continuation_stage@2026.04.02",
+    "case_ids": [
+      "reasoning_style_plurality_gate",
+      "plugin_result_interpretation_gate",
+      "rollout_policy_lineage_gate",
+      "post_training_benchmark_consistency_gate"
+    ],
+    "detail": "Continuation eval pack keeps reasoning-style, plugin result interpretation, rollout lineage, and post-training consistency review bound to one frozen review package."
+  },
+  "claim_boundary": "This alignment bundle ties the actual-lane accepted checkpoint handoff to the frozen reasoning `general_sft` bridge, the bounded plugin-conditioned `agentic_sft` stage, and the repo-owned `agentic_sft -> rl` reference surface. It does not claim plugin-conditioned RL execution, cluster-scale continuation, or promotion beyond the bounded continuation target.",
+  "detail": "Continuation alignment keeps the actual-lane handoff, bounded continuation artifacts, and current post-training reference receipts in one machine-legible bundle for later continuation rehearsal work.",
+  "bundle_digest": "068daf111245ddd54a87929c5a8ec0d62ab15dc7ea15f7f04784a88a24664b8d"
+}
