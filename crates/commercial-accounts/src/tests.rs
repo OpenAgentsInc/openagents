@@ -64,6 +64,88 @@ fn customer(accounts: &Accounts, label: &str, principal: &str) -> (String, Strin
         .unwrap();
     (account.id, workspace.id)
 }
+
+#[test]
+fn review_expiring_during_an_actual_native_writer_wait_cannot_authorize() {
+    let dir = private_dir();
+    let canonical_dir = dir.path().join("canonical");
+    std::fs::create_dir(&canonical_dir).unwrap();
+    std::fs::set_permissions(&canonical_dir, std::fs::Permissions::from_mode(0o700)).unwrap();
+    let accounts = Accounts::install(&canonical_dir).unwrap();
+    let (alice, workspace) = customer(&accounts, "Alice", "key:aaaaaaaaaaaaaaaa");
+    let ledger_path = dir.path().join("money.db");
+    let mut ledger = Ledger::open(&ledger_path).unwrap();
+    std::fs::set_permissions(&ledger_path, std::fs::Permissions::from_mode(0o600)).unwrap();
+    ledger.create_compute_account("retail-alice", 1).unwrap();
+    ledger
+        .bind_principal(&Binding {
+            principal: "cli:alice".into(),
+            account: "retail-alice".into(),
+            kind: PrincipalKind::Cli,
+            credential: credential_digest("synthetic-alice"),
+            rights: Rights {
+                read: true,
+                spend: false,
+            },
+            at: 1,
+        })
+        .unwrap();
+    let before = ledger.compute_balance("retail-alice").unwrap();
+    let credential = dir.path().join("alice.credential");
+    write(&credential, b"synthetic-alice\n");
+    let policy_path = dir.path().join("policy.json");
+    let source = Source {
+        product: Product::Retail,
+        issuer: "retail-fixture".into(),
+        account: "retail-alice".into(),
+        workspace: None,
+    };
+    let mut mapping = entry(
+        &accounts,
+        &alice,
+        &workspace,
+        source.clone(),
+        "cli:alice",
+        &credential,
+    );
+    mapping.valid_until = now() + 3;
+    let expiry = mapping.valid_until;
+    policy(&policy_path, vec![mapping]);
+    let adapter = NativeSources::open(
+        &canonical_dir,
+        &Config {
+            policy: policy_path,
+            stores: vec![NativeStore::Retail {
+                issuer: source.issuer.clone(),
+                ledger: ledger_path.clone(),
+            }],
+        },
+    )
+    .unwrap();
+    // Hold the real source's writer lock, rather than substituting an authority result.
+    let writer = rusqlite::Connection::open(&ledger_path).unwrap();
+    writer.execute_batch("BEGIN EXCLUSIVE").unwrap();
+    let (started, start) = std::sync::mpsc::channel();
+    let reader = std::thread::spawn(move || {
+        started.send(()).unwrap();
+        let at = std::time::Instant::now();
+        let result = adapter.authorize(&source, &alice, &workspace);
+        (result, at.elapsed())
+    });
+    start.recv().unwrap();
+    while now() <= expiry {
+        std::thread::sleep(std::time::Duration::from_millis(25));
+    }
+    writer.execute_batch("ROLLBACK").unwrap();
+    let (result, elapsed) = reader.join().unwrap();
+    assert!(
+        elapsed >= std::time::Duration::from_millis(500),
+        "native read did not wait"
+    );
+    assert!(result.unwrap_err().contains("expired"));
+    assert_eq!(ledger.compute_balance("retail-alice").unwrap(), before);
+}
+
 #[test]
 fn actual_retail_credentials_operator_mapping_rotation_and_two_customers_preserve_native_money() {
     let dir = private_dir();

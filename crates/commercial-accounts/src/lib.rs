@@ -490,6 +490,15 @@ impl Sources for NativeSources {
             held.check()?;
         }
         self.policy.check()?;
+        // Native reads can wait for a writer. Recheck the exact reviewed policy,
+        // current canonical membership, expiry, and credential after that wait.
+        if self.entry(source, customer, workspace)?.digest() != entry.digest()
+            || credential.bytes(4096)? != bytes
+        {
+            return Err(
+                "Native mapping review or credential changed during authentication.".into(),
+            );
+        }
         Ok(SourceAuthority {
             source: source.clone(),
             native_identity,
