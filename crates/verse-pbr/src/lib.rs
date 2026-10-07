@@ -9,7 +9,8 @@ pub mod fog;
 pub mod fx;
 pub mod mesh;
 pub mod pbr;
-mod shading;
+#[doc(hidden)]
+pub mod shading;
 #[cfg(not(target_arch = "wasm32"))]
 pub mod streaming;
 

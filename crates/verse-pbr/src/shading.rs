@@ -1,5 +1,9 @@
 //! Shared local-light and coverage semantics before backend shader translation.
-pub(crate) fn source(source: &str) -> String {
+
+/// Expands `// VERSE_SHARED_SHADING` into the shared shading and fire
+/// functions, as the renderer does before compiling a shader. Public so the
+/// `verse` GLES translation test expands shaders exactly as the renderer does.
+pub fn source(source: &str) -> String {
     source.replace(
         "// VERSE_SHARED_SHADING",
         &format!(

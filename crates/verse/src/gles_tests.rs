@@ -34,11 +34,9 @@ const SHADERS: [(&str, &str, &[Constant]); 5] = [
 ];
 
 fn parse(name: &str, source: &str) -> (naga::Module, naga::valid::ModuleInfo) {
-    // Expand the same shared contract the renderer inserts before compilation.
-    let expanded = source.replace(
-        "// VERSE_SHARED_SHADING",
-        include_str!("../../verse-pbr/src/shading.wgsl"),
-    );
+    // Expand the shared contract with the renderer's own function, so a new
+    // shared module cannot be left out of this test.
+    let expanded = verse_pbr::shading::source(source);
     let source = expanded.as_str();
     let module = naga::front::wgsl::parse_str(source)
         .unwrap_or_else(|e| panic!("{name}: {}", e.emit_to_string(source)));
