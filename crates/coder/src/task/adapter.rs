@@ -277,6 +277,12 @@ impl Configuration {
                 // session (#10571) is the local `claude` process, like a
                 // whole agent, and runs on the host itself.
                 self.container.is_none()
+            } else if matches!(route.provider.as_str(), "codex" | "claude")
+                && route.generation_endpoint == super::capacity::CODER_V1_ENDPOINT
+            {
+                // A Coder V1 turn (#10754) is the local `openagents coder`
+                // process, like a whole agent, and runs on the host itself.
+                self.container.is_none()
             } else if route.provider == "codex"
                 && route.generation_endpoint == super::capacity::CODEX_SESSION_ENDPOINT
             {
@@ -310,6 +316,7 @@ impl Configuration {
                             && route.generation_endpoint != super::capacity::CLAUDE_SESSION_ENDPOINT
                             && route.generation_endpoint != super::capacity::CLAUDE_SDK_ENDPOINT
                             && route.generation_endpoint != super::capacity::CODEX_SESSION_ENDPOINT
+                            && route.generation_endpoint != super::capacity::CODER_V1_ENDPOINT
                     })
                     .map(|route| &route.generation_endpoint),
             )

@@ -99,6 +99,14 @@ pub const CLAUDE_SDK_ENDPOINT: &str = "local:claude-agent-sdk";
 /// Microcoder.
 pub const CODEX_SESSION_ENDPOINT: &str = "local:codex-session";
 
+/// The endpoint a grant names for a Claude or Codex route that runs as one
+/// turn of Coder V1 (#10754), the studio seats' engine: the local
+/// `openagents coder chat` process, in the task's own Coder session. Coder
+/// chooses its provider itself (the Codex login, Claude Code's, then the
+/// OpenAgents Gateway); it is not a URL, and no request goes to it from
+/// Microcoder.
+pub const CODER_V1_ENDPOINT: &str = "local:coder-v1";
+
 /// A model provider a repository run can generate through.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]

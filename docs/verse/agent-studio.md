@@ -139,6 +139,7 @@ through the existing paths:
 
 | Engine | How the host runs it today | Reference |
 | --- | --- | --- |
+| Coder V1 (`codex/coder:MODEL`, `claude/coder:MODEL`) | The default for a seat that names no engine (#10754): one turn of Coder V1 (`openagents coder chat --json`) in the task's own Coder session, `task-ID`, in its worktree; Coder chooses its provider (the Codex login, Claude Code's, then the OpenAgents Gateway). Full access only; under other access the seat runs Microcoder's loop, the loop Coder runs inside, under the host's boundary | [Workshop agent](workshop-agent.md#coder-v1-as-her-engine) |
 | Codex (`codex:MODEL`) | Microcoder's loop on the Codex login by default (`coder.codex` is `loop`), or a `codex exec` session with `coder.codex session` | [Delegate door](../coder/runtime/delegate-door.md) |
 | Claude Code (`claude:MODEL`) | A Claude Code session on the `claude` CLI login by default (`coder.claude` is `session`), or Microcoder's loop with Claude as the model | [Delegate door](../coder/runtime/delegate-door.md) |
 | Devin | `devin acp` over the Agent Client Protocol | [Devin route](../coder/runtime/devin.md) |
@@ -148,7 +149,11 @@ through the existing paths:
 Microcoder's loop is not a route of its own. It is the loop mode of a `codex`
 or `claude` route ([Microcoder](../coder/guides/microcoder.md)). Host settings
 provide defaults; each seat can select its loop, session, or supported SDK
-engine (#10568, #10571). Session and SDK seats require `full` access. The
+engine (#10568, #10571), or Coder V1 with `coder`, which a seat that names
+no engine runs on (#10754). Session, SDK, and Coder seats require `full`
+access. A seat's Coder session is in the Coder store, so `/resume` in your own
+Coder, `coder --follow task-ID`, and `openagents coder sessions read task-ID`
+show what the seat is doing. The
 `claude/sdk` seat uses the in-repo
 [`claude_agent_sdk`](../../crates/claude_agent_sdk/README.md) port and can
 raise decisions that resume its running turn, as the scratch run above

@@ -668,6 +668,11 @@ enum AgentEngine {
     /// approvals: a Claude route whose endpoint is
     /// [`claude_sdk::CLAUDE_SDK_ENDPOINT`].
     ClaudeSdk,
+    /// One turn of Coder V1 ([`coder_v1`], #10754), the studio seats'
+    /// engine: a Claude or Codex route whose endpoint is
+    /// [`coder_v1::CODER_V1_ENDPOINT`]. It books limits against the
+    /// route's provider.
+    CoderV1(Provider),
 }
 
 impl AgentEngine {
@@ -689,6 +694,11 @@ impl AgentEngine {
             {
                 Some(AgentEngine::CodexSession)
             }
+            provider @ (Provider::Codex | Provider::Claude)
+                if route.generation_endpoint == coder_v1::CODER_V1_ENDPOINT =>
+            {
+                Some(AgentEngine::CoderV1(provider))
+            }
             Provider::Codex | Provider::Claude | Provider::Vertex => None,
         }
     }
@@ -700,6 +710,7 @@ impl AgentEngine {
             AgentEngine::Grok => Provider::Grok,
             AgentEngine::ClaudeSession | AgentEngine::ClaudeSdk => Provider::Claude,
             AgentEngine::CodexSession => Provider::Codex,
+            AgentEngine::CoderV1(provider) => provider,
         }
     }
 
@@ -711,6 +722,7 @@ impl AgentEngine {
             AgentEngine::Grok => "Grok Build",
             AgentEngine::ClaudeSession | AgentEngine::ClaudeSdk => "Claude Code",
             AgentEngine::CodexSession => "Codex",
+            AgentEngine::CoderV1(_) => "Coder",
         }
     }
 
@@ -723,6 +735,7 @@ impl AgentEngine {
             AgentEngine::ClaudeSession => "claude_session",
             AgentEngine::CodexSession => "codex_session",
             AgentEngine::ClaudeSdk => "claude_sdk",
+            AgentEngine::CoderV1(_) => coder_v1::KIND,
         }
     }
 
@@ -737,6 +750,16 @@ impl AgentEngine {
             AgentEngine::CodexSession => {
                 codex_session::binary().map_err(|why| (StartCause::Codex, why))
             }
+            AgentEngine::CoderV1(provider) => coder_v1::binary().map_err(|why| {
+                (
+                    if provider == Provider::Claude {
+                        StartCause::Claude
+                    } else {
+                        StartCause::Codex
+                    },
+                    why,
+                )
+            }),
         }
     }
 
@@ -754,6 +777,7 @@ impl AgentEngine {
             AgentEngine::ClaudeSession => claude_session::turn(host, route, program, recipe).await,
             AgentEngine::CodexSession => codex_session::turn(host, route, program, recipe).await,
             AgentEngine::ClaudeSdk => claude_sdk::turn(host, route, program, recipe).await,
+            AgentEngine::CoderV1(_) => coder_v1::turn(host, route, program, recipe).await,
         }
     }
 }
@@ -1287,6 +1311,7 @@ fn private_spec(host: &Host, spec: acp_client::process::Spec) -> acp_client::pro
 
 pub mod claude_sdk;
 pub mod claude_session;
+mod coder_v1;
 pub mod codex_session;
 mod devin;
 mod grok;

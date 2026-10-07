@@ -64,7 +64,7 @@ use std::time::Duration;
 use nostr::contracts::{digest_bytes, parse_strict_bounded};
 use serde::{Deserialize, Serialize};
 
-use super::autostart::{self, Route};
+use super::autostart::{self, Route, RouteEngine};
 use super::capacity::Provider;
 use super::{
     Action, COMMAND_SCHEMA, Command, Execution, RequestedConfiguration, Status, Store, Task,
@@ -762,9 +762,10 @@ pub fn parse_route(text: &str) -> Result<Route, Error> {
 /// studio seat's route names (#10568) on every route of the seat's
 /// provider. So a `claude/session` seat's grant names the Claude Code
 /// session and a `claude/loop` seat's names the provider, whatever the
-/// owner's `coder.claude` setting; routes of other providers, and every
-/// route of a task no seat holds or whose seat names no engine, are
-/// unchanged. The seat's route is read as the turn starts, without the
+/// owner's `coder.claude` setting. A Claude or Codex seat that names no
+/// engine runs on Coder V1 (#10754), as every coding agent in Verse does.
+/// Routes of other providers, and every route of a task no seat holds,
+/// are unchanged. The seat's route is read as the turn starts, without the
 /// coordinator's lock, as [`git::seat_of`] reads it. A session under any
 /// access but full is then refused at launch with the reason
 /// ([`autostart::Route::refusal`]).
@@ -773,8 +774,10 @@ pub fn with_seat_engine(store: &Path, task: &str, mut order: Vec<Route>) -> Vec<
     let Some(route) = seat_route(store, task) else {
         return order;
     };
-    let Some(engine) = route.engine else {
-        return order;
+    let engine = match route.engine {
+        Some(engine) => engine,
+        None if RouteEngine::Coder.runs_on(route.provider) => RouteEngine::Coder,
+        None => return order,
     };
     for item in order
         .iter_mut()

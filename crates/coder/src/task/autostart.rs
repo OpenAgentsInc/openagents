@@ -345,11 +345,21 @@ pub enum RouteEngine {
     /// permission callback asks the person to approve each tool request
     /// outside the task's worktree. Claude only, and full access only.
     Sdk,
+    /// One turn of Coder V1 (#10754), the studio seats' engine and the
+    /// default for a seat that names none. Full access only; under any
+    /// other access the route runs Microcoder's loop, the loop Coder runs
+    /// inside, under the host's boundary.
+    Coder,
 }
 
 impl RouteEngine {
     /// Every engine, in the order a message lists them.
-    pub const ALL: [RouteEngine; 3] = [RouteEngine::Session, RouteEngine::Loop, RouteEngine::Sdk];
+    pub const ALL: [RouteEngine; 4] = [
+        RouteEngine::Session,
+        RouteEngine::Loop,
+        RouteEngine::Sdk,
+        RouteEngine::Coder,
+    ];
 
     /// The engine's word in a route.
     #[must_use]
@@ -358,6 +368,7 @@ impl RouteEngine {
             RouteEngine::Session => "session",
             RouteEngine::Loop => "loop",
             RouteEngine::Sdk => "sdk",
+            RouteEngine::Coder => "coder",
         }
     }
 
@@ -373,7 +384,7 @@ impl RouteEngine {
     #[must_use]
     pub const fn runs_on(self, provider: Provider) -> bool {
         match self {
-            RouteEngine::Session | RouteEngine::Loop => {
+            RouteEngine::Session | RouteEngine::Loop | RouteEngine::Coder => {
                 matches!(provider, Provider::Claude | Provider::Codex)
             }
             RouteEngine::Sdk => matches!(provider, Provider::Claude),
@@ -741,7 +752,12 @@ impl Policy {
             // A Claude or Codex route runs as one lean session when the
             // route names it, or the owner chose it for the provider, and
             // the run has full access (#10246, #10250, #10568).
-            generation_endpoint: if route.engine == Some(RouteEngine::Sdk)
+            generation_endpoint: if route.engine == Some(RouteEngine::Coder)
+                && engine.access == adapter::Access::Full
+            {
+                // A Coder V1 turn (#10754).
+                super::capacity::CODER_V1_ENDPOINT.into()
+            } else if route.engine == Some(RouteEngine::Sdk)
                 && engine.access == adapter::Access::Full
             {
                 // A Claude Agent SDK session (#10571).
