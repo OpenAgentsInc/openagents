@@ -33,6 +33,7 @@ pub mod spells;
 pub mod studio;
 #[cfg(test)]
 mod tests;
+pub mod unstick;
 pub mod wildlife;
 
 use crate::{
@@ -123,6 +124,8 @@ pub struct Everglade {
     landing: bool,
     /// The held Levitate press, if any.
     hold: Option<Hold>,
+    /// Watches the walking player for a pocket they can't leave.
+    watch: unstick::Watch,
     pub solids: solids::Solids,
     spells: spells::Spells,
     rendered: Mesh,
@@ -238,6 +241,7 @@ impl Everglade {
             jump: false,
             landing: false,
             hold: None,
+            watch: unstick::Watch::default(),
             solids,
             spells: spells::Spells::default(),
             rendered: Mesh {
@@ -736,6 +740,21 @@ impl Everglade {
             self.move_on_solids(player, &input, dt);
             self.spells
                 .after_step(player, feet, speed, &self.solids, dt);
+            // A player held in a pocket they can't walk out of, such as a
+            // gap below a floor, is moved to the nearest place they can.
+            let pressing = input.forward
+                || input.backward
+                || input.strafe_left
+                || input.strafe_right
+                || (input.mouse_look && (input.left || input.right));
+            if let Some(free) =
+                self.watch
+                    .after_step(&self.solids, player.pos, pressing, !player.airborne(), dt)
+            {
+                player.pos = free;
+                player.set_vertical_speed(0.0);
+                player.set_surface_height(free.y);
+            }
         }
     }
 

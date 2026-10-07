@@ -1018,6 +1018,10 @@ def house_body(b):
         xf = (Matrix.Translation(hinge) @ Matrix.Rotation(math.radians(-90 * s), 4, "Z")
               @ Matrix.Translation(Vector((-s * leaf_w / 2, -0.06, 0.0))))
         glyph(b, xf, leaf_w, door_top - FLOOR - 0.02)
+    # The threshold: the podium's top through the doorway, between the
+    # portico and the great room's floor. Everglade's collision also fills
+    # it (`layout::generated::PATCHES`).
+    slab(b, -door_hw, door_hw, fy, fy + t, FLOOR, "marble", name="Threshold")
     # -- The side and back walls: tall open windows below with walnut
     # mullions, dark glass above.
     wins = (15.4, 18.6, 21.8)

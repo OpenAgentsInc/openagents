@@ -26,7 +26,7 @@ use verse_world::social::columns::Columns;
 use super::chunks::{self, ChunkMesh, Triangle};
 use super::kit::Cut;
 use crate::pbr::textured::{TexturedVertex, UNBAKED};
-use crate::zones::everglade::layout::Placement;
+use crate::zones::everglade::layout::{Placement, generated::patches};
 use crate::zones::everglade_pack::ZonePack;
 
 /// A block's width and depth at most, m.
@@ -325,7 +325,7 @@ pub fn columns(pack: &ZonePack, placement: &Placement) -> Result<Option<Arc<Colu
         return Ok(hit.clone());
     }
     let split = split_model(pack, placement.model, placement.scale)?;
-    let triangles: Vec<([Vec3; 3], u32)> = split
+    let mut triangles: Vec<([Vec3; 3], u32)> = split
         .triangles
         .iter()
         .map(|(corners, _, cell)| {
@@ -335,6 +335,43 @@ pub fn columns(pack: &ZonePack, placement: &Placement) -> Result<Option<Arc<Colu
             )
         })
         .collect();
+    // The solid boxes its triangles leave out, cut on the same lattice.
+    for &[x0, x1, z0, z1, y0, y1] in patches(placement.model) {
+        let mut vertices: Vec<TexturedVertex> = (0..8)
+            .map(|k| TexturedVertex {
+                pos: [
+                    if k & 1 == 0 { x0 } else { x1 },
+                    if k & 2 == 0 { y0 } else { y1 },
+                    if k & 4 == 0 { z0 } else { z1 },
+                ],
+                normal: [0.0, 1.0, 0.0],
+                uv: [0.0, 0.0],
+                color: [255; 4],
+                light: UNBAKED,
+            })
+            .collect();
+        // Two triangles a face: bottom, top, and the four sides.
+        let faces: [[u32; 4]; 6] = [
+            [0, 1, 5, 4],
+            [2, 6, 7, 3],
+            [0, 2, 3, 1],
+            [4, 5, 7, 6],
+            [0, 4, 6, 2],
+            [1, 3, 7, 5],
+        ];
+        let indices: Vec<u32> = faces
+            .iter()
+            .flat_map(|&[a, b, c, d]| [a, b, c, a, c, d])
+            .collect();
+        let indices = self::split(&mut vertices, &indices, &split.lattice);
+        for tri in indices.chunks_exact(3) {
+            let corners = [0, 1, 2].map(|k| vertices[tri[k] as usize]);
+            triangles.push((
+                corners.map(|v| transform.transform_point3(Vec3::from(v.pos))),
+                split.lattice.cell_of(&corners),
+            ));
+        }
+    }
     let grid = Columns::rasterize(&triangles, COLUMN).map(Arc::new);
     cache
         .lock()

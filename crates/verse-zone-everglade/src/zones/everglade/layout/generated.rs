@@ -48,6 +48,39 @@ pub struct Model {
     pub inside: Option<[f32; 2]>,
 }
 
+/// Solid boxes a carved model's triangles leave out, added to its
+/// collision columns ([`super::super::demolition::carve::columns`]) and
+/// breaking with the blocks they fall in: each model's boxes in its
+/// frame, min x, max x, min z, max z, bottom, and top, m.
+pub const PATCHES: [(&str, &[[f32; 6]]); 2] = [
+    // The owner's house: the podium's top under the facade, which its
+    // walls cover but its open doorway leaves as a slot a walker falls
+    // into, 0.4 m deep and 1.3 m down from the portico.
+    (
+        "generated/greco_house",
+        &[[-10.0, 10.0, -12.05, -11.55, 0.0, 1.6]],
+    ),
+    // The Civic Hall: the stepped walls beside its stair, solid up past
+    // the podium's top, so no walker steps down onto them into the
+    // pocket between a bowl and the step behind it.
+    (
+        "generated/civic_hall",
+        &[
+            [-9.64, -7.2, -4.84, 0.04, 0.0, 2.4],
+            [7.2, 9.64, -4.84, 0.04, 0.0, 2.4],
+        ],
+    ),
+];
+
+/// [`PATCHES`]' boxes for model `name`.
+#[must_use]
+pub fn patches(name: &str) -> &'static [[f32; 6]] {
+    PATCHES
+        .iter()
+        .find(|(model, _)| *model == name)
+        .map_or(&[], |(_, boxes)| boxes)
+}
+
 const fn gable(
     center: [f32; 2],
     slopes_z: bool,
