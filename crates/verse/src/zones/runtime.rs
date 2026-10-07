@@ -2374,6 +2374,10 @@ impl WorldRuntime {
             mesh.extend(&glade.spell_mesh(&self.player));
             let eye = self.view(1.0).eye;
             mesh.extend(&grove.mesh(eye, &self.player));
+            // The field's fires and fireflies come last and take what the
+            // spells leave of one system's particles, the dust of a
+            // crumbling Wall of Stone included.
+            mesh.sprites.truncate(crate::fx::system::MAX_PARTICLES);
             // The dusk stage, lit by the fires and the spells.
             let lights = grove.lights(glade, &self.player, eye);
             mesh.neon = Some(grove.lit_stage(&lights, glade.elapsed()));

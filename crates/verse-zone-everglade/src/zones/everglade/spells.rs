@@ -11,17 +11,24 @@
 //! its particles, which fall upward and crowd its edge ([`motes`]).
 //!
 //! Everglade's hotbar has no cooldowns and no concentration: every press
-//! casts ([`Spells::cast_ahead`]). Each Wind Wall and Wall of Stone stands
-//! beside the ones before it, up to [`MAX_WALLS`] of each. Pressing Feather
-//! Fall or Reverse Gravity while it holds ends it. The Grove keeps the
-//! chamber's concentration rule through [`Spells::concentrate_ahead`].
+//! casts ([`Spells::cast_ahead`]). Each Wind Wall stands beside the ones
+//! before it, up to [`MAX_WALLS`]. Each Wall of Stone does too, up to
+//! [`MAX_STONE_WALLS`], and crumbles after [`STONE_LIFETIME`] or when a
+//! newer cast passes the cap: its panels break into chunks that tumble,
+//! settle, and shrink away within a few seconds, in the demolition yard's
+//! rigid-body debris ([`super::demolition::site`]) with its dust. A wall
+//! that would cut through a building or its furniture is refused. Pressing
+//! Feather Fall or Reverse Gravity while it holds ends it. The Grove keeps
+//! the chamber's concentration rule through [`Spells::concentrate_ahead`].
 
+use super::demolition::hammer;
+use super::demolition::site::{Cuboid, Link, Matter, PieceSpec, Puff, Role, Site};
 use super::hotbar::Slot;
 use super::solids::Solids;
 use crate::controller::{AVATAR_HEIGHT, Footprint, PlayerController, RADIUS};
 use crate::mesh::{Mesh, Vertex};
 use crate::zones::Intent;
-use glam::{DVec2, DVec3, Vec3};
+use glam::{DVec2, DVec3, Mat4, Vec3};
 use std::collections::VecDeque;
 pub mod motes;
 
@@ -56,9 +63,38 @@ const WIND_LIFT: f32 = 11.0;
 /// Feather Fall's drifting feathers.
 const FEATHERS: usize = 8;
 const FEATHER: [f32; 3] = [0.95, 0.93, 0.86];
-/// The most Wind Walls, and the most Walls of Stone, that stand at once;
-/// another cast takes down the oldest.
+/// The most Wind Walls that stand at once; another cast takes down the
+/// oldest.
 pub const MAX_WALLS: usize = 12;
+/// How long a Wall of Stone stands before it crumbles, s: long enough to
+/// hide behind or climb, short enough that walls don't pile up in town.
+pub const STONE_LIFETIME: f64 = 20.0;
+/// The most Walls of Stone that stand at once; another cast crumbles the
+/// oldest.
+pub const MAX_STONE_WALLS: usize = 4;
+/// How long a crumbled wall's chunks last, s, and up to a fifth longer.
+pub const DEBRIS_LIFETIME: f64 = 4.0;
+/// The end of a chunk's life over which it shrinks to nothing, s.
+const DEBRIS_FADE: f64 = 1.2;
+/// The most crumbling walls whose debris is kept; past it the oldest
+/// debris goes at once.
+const MAX_CRUMBLING: usize = MAX_STONE_WALLS;
+/// How fast a crumbling panel's chunks slump off its face, m/s.
+const SLUMP: f64 = 1.6;
+/// Whether this build runs on a browser or a phone, whose debris budget is
+/// smaller (`docs/verse/destructible-buildings.md`, Performance budgets).
+const SMALL: bool = cfg!(any(
+    target_arch = "wasm32",
+    target_os = "ios",
+    target_os = "android"
+));
+/// The chunks a panel breaks into, along it and up it.
+const CHUNK_GRID: [usize; 2] = if SMALL { [3, 3] } else { [4, 4] };
+/// The most dust puffs the crumbling walls draw in a frame, so they fit
+/// within the frame's particle budget beside a busy field's spells.
+const MAX_DUST: usize = 32;
+/// Seed of the crumbling walls' debris spread.
+const SEED: u64 = 0x570E_C2B1;
 
 /// A spell on the hotbar, after Levitate.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -114,8 +150,120 @@ struct Cast<T> {
     at: f64,
 }
 
+/// A crumbled Wall of Stone: its panels' chunks and dust in the demolition
+/// yard's rules, in a frame whose origin is `origin`, the foot of the wall
+/// on the lowest ground under it.
+#[derive(Clone, Debug)]
+struct Crumble {
+    site: Site,
+    origin: Vec3,
+}
+
+impl Crumble {
+    /// `panels` broken into their chunks at once, slumping off their faces.
+    fn new(panels: &[stone::Placement], seed: u64) -> Self {
+        let count = panels.len().max(1) as f64;
+        let center = panels.iter().map(|p| p.center).sum::<DVec3>() / count;
+        let base = panels
+            .iter()
+            .map(|p| p.center.y - p.half().y)
+            .fold(f64::INFINITY, f64::min);
+        let base = if base.is_finite() { base } else { center.y };
+        let origin = DVec3::new(center.x, base, center.z);
+        let specs = panels
+            .iter()
+            .map(|panel| {
+                let half = panel.half();
+                let [along, up] = CHUNK_GRID;
+                let step = DVec3::new(2.0 * half.x / along as f64, 2.0 * half.y / up as f64, 0.0);
+                let chunks = (0..along)
+                    .flat_map(|i| (0..up).map(move |j| (i, j)))
+                    .map(|(i, j)| {
+                        let min = DVec3::new(
+                            -half.x + step.x * i as f64,
+                            -half.y + step.y * j as f64,
+                            -half.z,
+                        );
+                        let max = DVec3::new(min.x + step.x, min.y + step.y, half.z);
+                        Cuboid::between(min, max)
+                    })
+                    .collect();
+                PieceSpec {
+                    building: 0,
+                    role: Role::Block { level: 0 },
+                    matter: Matter::Plaster,
+                    center: panel.center - origin,
+                    orientation: panel.orientation,
+                    mass: panel.form.mass(),
+                    size: half * 2.0,
+                    hit_points: 1,
+                    colliders: vec![Cuboid::between(-half, half)],
+                    chunks,
+                    blocks: false,
+                    link: Link {
+                        footing: true,
+                        ..Link::default()
+                    },
+                }
+            })
+            .collect();
+        let mut site = Site::new(specs, seed);
+        site.set_debris_lifetime(DEBRIS_LIFETIME);
+        for (index, panel) in panels.iter().enumerate() {
+            site.crumble(index, panel.normal(), SLUMP);
+        }
+        Self {
+            site,
+            origin: origin.as_vec3(),
+        }
+    }
+
+    /// How many chunks are left.
+    fn chunks(&self) -> usize {
+        self.site
+            .pieces()
+            .iter()
+            .flat_map(|p| &p.chunks)
+            .filter(|c| !c.gone)
+            .count()
+    }
+
+    /// The chunks as granite blocks, each shrinking over the end of its
+    /// life.
+    fn draw(&self, mesh: &mut Mesh) {
+        let time = self.site.time();
+        let to_world = Mat4::from_translation(self.origin);
+        for (spec, piece) in self.site.specs().iter().zip(self.site.pieces()) {
+            for (cuboid, chunk) in spec.chunks.iter().zip(&piece.chunks) {
+                if chunk.gone {
+                    continue;
+                }
+                let left = ((chunk.until - time) / DEBRIS_FADE).clamp(0.0, 1.0) as f32;
+                let pose = to_world * self.site.body_pose(chunk.body);
+                let half = cuboid.half.as_vec3() * left;
+                shaded_box(mesh, |i| {
+                    pose.transform_point3(Vec3::new(
+                        if i & 1 == 0 { -half.x } else { half.x },
+                        if i & 2 == 0 { -half.y } else { half.y },
+                        if i & 4 == 0 { -half.z } else { half.z },
+                    ))
+                });
+            }
+        }
+    }
+
+    /// The dust puffs, in the world.
+    fn puffs(&self) -> impl Iterator<Item = Puff> + '_ {
+        self.site.puffs().iter().map(|p| Puff {
+            at: p.at + self.origin,
+            ..*p
+        })
+    }
+}
+
 /// The player's spells: the clock, the Feather Fall ward, the standing
-/// Wind Walls and Walls of Stone, oldest first, and Reverse Gravity.
+/// Wind Walls and Walls of Stone, oldest first, the crumbling walls'
+/// debris, and Reverse Gravity.
 #[derive(Clone, Debug, Default)]
 pub struct Spells {
     time: f64,
@@ -125,6 +273,9 @@ pub struct Spells {
     feather: Option<feather::FeatherFall>,
     winds: VecDeque<Cast<wind::Wall>>,
     stones: VecDeque<Cast<Vec<stone::Placement>>>,
+    crumbles: VecDeque<Crumble>,
+    /// Walls crumbled so far, which seeds each one's debris.
+    crumbled: u64,
     reverse: Option<Cast<reverse::Gravity>>,
 }
 
@@ -157,9 +308,38 @@ impl Spells {
         {
             self.reverse = None;
         }
-        let stones = self.stones.len();
-        self.stones.retain(|c| now < c.at + stone::DURATION);
-        self.stones.len() != stones
+        let mut changed = false;
+        while self
+            .stones
+            .front()
+            .is_some_and(|c| now >= c.at + STONE_LIFETIME)
+        {
+            if let Some(wall) = self.stones.pop_front() {
+                self.crumble(&wall.spell);
+            }
+            changed = true;
+        }
+        for crumble in &mut self.crumbles {
+            crumble.site.tick(dt);
+        }
+        self.crumbles.retain(|c| !c.site.cleared());
+        changed
+    }
+
+    /// Breaks the Wall of Stone of `panels` into tumbling chunks.
+    fn crumble(&mut self, panels: &[stone::Placement]) {
+        self.crumbled += 1;
+        let seed = SEED ^ self.crumbled.wrapping_mul(0x9E37_79B9_7F4A_7C15);
+        self.crumbles.push_back(Crumble::new(panels, seed));
+        while self.crumbles.len() > MAX_CRUMBLING {
+            self.crumbles.pop_front();
+        }
+    }
+
+    /// How many chunks of crumbled walls are left.
+    #[must_use]
+    pub fn debris(&self) -> usize {
+        self.crumbles.iter().map(Crumble::chunks).sum()
     }
 
     /// Whether `spell` is live on the player.
@@ -273,7 +453,9 @@ impl Spells {
 
     fn end_concentration(&mut self) {
         self.winds.clear();
-        self.stones.clear();
+        while let Some(wall) = self.stones.pop_front() {
+            self.crumble(&wall.spell);
+        }
         self.reverse = None;
     }
 
@@ -289,8 +471,10 @@ impl Spells {
             }
             Admitted::Stone(spell) => {
                 self.stones.push_back(Cast { spell, at });
-                while self.stones.len() > MAX_WALLS {
-                    self.stones.pop_front();
+                while self.stones.len() > MAX_STONE_WALLS {
+                    if let Some(wall) = self.stones.pop_front() {
+                        self.crumble(&wall.spell);
+                    }
                 }
             }
             Admitted::Reverse(spell) => self.reverse = Some(Cast { spell, at }),
@@ -358,6 +542,22 @@ impl Spells {
                 );
                 let plan = stone::validate::validate(&panels, &[ground], feet)
                     .map_err(|e| format!("Wall of Stone placement refused: {e:?}"))?;
+                // Nothing built may stand in the wall's way: a building's
+                // walls, floors, or furniture. Walls already raised, and
+                // what another zone's rules add, such as the Grove's
+                // dummies, don't count.
+                let raised: Vec<Footprint> = solids.spell_blocks().map(|(f, _)| f).collect();
+                let blocked = plan.panels.iter().flat_map(posts).any(|p| {
+                    solids
+                        .blocking_near(p.x as f32, p.z as f32, POST_HALF, base as f32)
+                        .iter()
+                        .any(|f| !raised.contains(f))
+                });
+                if blocked {
+                    return Err(
+                        "Wall of Stone needs clear ground: something built is in the way".into(),
+                    );
+                }
                 Ok(Admitted::Stone(plan.panels))
             }
             Spell::WindWall => {
@@ -414,12 +614,8 @@ impl Spells {
     pub fn blocks(&self) -> Vec<(Footprint, f32)> {
         let mut blocks = Vec::new();
         for panel in self.stones.iter().flat_map(|c| &c.spell) {
-            let half = panel.half();
-            let along = panel.orientation * DVec3::X;
-            let top = (panel.center.y + half.y) as f32;
-            let count = (2.0 * half.x / POST_SPACING).ceil() as usize;
-            for i in 0..=count {
-                let p = panel.center + along * (-half.x + 2.0 * half.x * i as f64 / count as f64);
+            let top = (panel.center.y + panel.half().y) as f32;
+            for p in posts(panel) {
                 let (x, z) = (p.x as f32, p.z as f32);
                 let footprint = Footprint {
                     min: [x - POST_HALF, z - POST_HALF],
@@ -552,6 +748,19 @@ impl Spells {
                 slab(&mut mesh, panel, rise);
             }
         }
+        for crumble in &self.crumbles {
+            crumble.draw(&mut mesh);
+        }
+        // The dust, thinned evenly to its sprite budget.
+        let dust: usize = self.crumbles.iter().map(|c| c.site.puffs().len()).sum();
+        let stride = dust.div_ceil(MAX_DUST).max(1);
+        let puffs: Vec<Puff> = self
+            .crumbles
+            .iter()
+            .flat_map(Crumble::puffs)
+            .step_by(stride)
+            .collect();
+        hammer::dust(&mut mesh, &puffs);
         if self.active(Spell::FeatherFall) {
             feathers(&mut mesh, player.pos, time);
         }
@@ -567,10 +776,20 @@ enum Admitted {
     Reverse(reverse::Gravity),
 }
 
+/// Where the posts that stand in for `panel`'s footprint stand, along its
+/// middle line at its center's height.
+fn posts(panel: &stone::Placement) -> impl Iterator<Item = DVec3> + '_ {
+    let half = panel.half();
+    let along = panel.orientation * DVec3::X;
+    let count = (2.0 * half.x / POST_SPACING).ceil() as usize;
+    (0..=count)
+        .map(move |i| panel.center + along * (-half.x + 2.0 * half.x * i as f64 / count as f64))
+}
+
 /// One granite panel risen `rise` of its height, as shaded faces.
 fn slab(mesh: &mut Mesh, panel: &stone::Placement, rise: f64) {
     let half = panel.half();
-    let corner = |i: usize| {
+    shaded_box(mesh, |i| {
         let x = if i & 1 == 0 { -half.x } else { half.x };
         let y = if i & 2 == 0 {
             -half.y
@@ -579,7 +798,12 @@ fn slab(mesh: &mut Mesh, panel: &stone::Placement, rise: f64) {
         };
         let z = if i & 4 == 0 { -half.z } else { half.z };
         panel.to_world(DVec3::new(x, y, z)).as_vec3()
-    };
+    });
+}
+
+/// A granite box as shaded faces, from its eight corners: bit 0 of the
+/// index picks the high x side, bit 1 the high y, and bit 2 the high z.
+fn shaded_box(mesh: &mut Mesh, corner: impl Fn(usize) -> Vec3) {
     let c: [Vec3; 8] = std::array::from_fn(corner);
     for [a, b, cc, d] in [
         [0, 2, 3, 1],
@@ -631,8 +855,20 @@ fn feathers(mesh: &mut Mesh, feet: Vec3, time: f32) {
 mod tests {
     use super::*;
 
+    const FRAME: f32 = 1.0 / 60.0;
+
+    /// Runs `spells` for `seconds` in frames, and returns whether the
+    /// solids they raise changed in any.
+    fn run(spells: &mut Spells, seconds: f64) -> bool {
+        let mut changed = false;
+        for _ in 0..(seconds / f64::from(FRAME)).round() as usize {
+            changed |= spells.tick(FRAME);
+        }
+        changed
+    }
+
     #[test]
-    fn wall_of_stone_stands_for_ten_minutes_then_its_blocks_go() {
+    fn wall_of_stone_crumbles_after_its_lifetime_and_stops_blocking() {
         let mut spells = Spells::default();
         let player = PlayerController::new(Vec3::ZERO, 0.0);
         let solids = Solids::default();
@@ -647,11 +883,135 @@ mod tests {
             let z = (footprint.min[1] + footprint.max[1]) / 2.0;
             assert!((z - 4.0).abs() < 0.1, "{z}");
         }
-        assert!(!spells.tick(stone::DURATION as f32 - 1.0));
+        assert!(!spells.tick(STONE_LIFETIME as f32 - 1.0));
         assert!(spells.active(Spell::WallOfStone));
+        assert_eq!(spells.debris(), 0);
         assert!(spells.tick(1.0));
         assert!(!spells.active(Spell::WallOfStone));
         assert!(spells.blocks().is_empty());
+        // It broke into chunks, which draw.
+        let chunks = 2 * CHUNK_GRID[0] * CHUNK_GRID[1];
+        assert_eq!(spells.debris(), chunks);
+        let mesh = spells.mesh(&player, Vec3::Y);
+        assert!(!mesh.faces.is_empty());
+        // With dust, held to its budget.
+        assert!(
+            (1..=MAX_DUST).contains(&mesh.sprites.len()),
+            "{}",
+            mesh.sprites.len()
+        );
+    }
+
+    #[test]
+    fn crumbled_chunks_fall_and_settle_on_the_ground() {
+        let mut spells = Spells::default();
+        let player = PlayerController::new(Vec3::ZERO, 0.0);
+        spells
+            .cast(Spell::WallOfStone, &player, &Solids::default())
+            .unwrap();
+        spells.tick(STONE_LIFETIME as f32);
+        let ground = super::super::height(0.0, 4.0);
+        let top = ground + stone::Form::Thick.size().y as f32;
+        run(&mut spells, 2.0);
+        let crumble = &spells.crumbles[0];
+        let heights: Vec<f32> = crumble
+            .site
+            .pieces()
+            .iter()
+            .flat_map(|p| &p.chunks)
+            .filter(|c| !c.gone)
+            .map(|c| crumble.origin.y + crumble.site.body_pose(c.body).w_axis.y)
+            .collect();
+        assert!(!heights.is_empty());
+        // Nothing stands as high as the wall did, and nothing sinks far
+        // through the ground.
+        let highest = heights.iter().copied().fold(f32::MIN, f32::max);
+        assert!(highest < top - 1.0, "{highest} against {top}");
+        assert!(heights.iter().all(|&y| y > ground - 0.5), "{heights:?}");
+    }
+
+    #[test]
+    fn no_debris_is_left_after_the_fade() {
+        let mut spells = Spells::default();
+        let player = PlayerController::new(Vec3::ZERO, 0.0);
+        spells
+            .cast(Spell::WallOfStone, &player, &Solids::default())
+            .unwrap();
+        spells.tick(STONE_LIFETIME as f32);
+        assert!(spells.debris() > 0);
+        // Chunks shrink before they go.
+        run(&mut spells, DEBRIS_LIFETIME - 0.5 * DEBRIS_FADE);
+        run(&mut spells, DEBRIS_LIFETIME * 0.2 + 2.0 * DEBRIS_FADE + 3.0);
+        assert_eq!(spells.debris(), 0);
+        assert!(spells.crumbles.is_empty());
+        assert!(spells.mesh(&player, Vec3::Y).faces.is_empty());
+        assert!(spells.mesh(&player, Vec3::Y).sprites.is_empty());
+    }
+
+    #[test]
+    fn the_cap_crumbles_the_oldest_wall() {
+        let mut spells = Spells::default();
+        let solids = Solids::default();
+        let mut player = PlayerController::new(Vec3::ZERO, 0.0);
+        for n in 0..MAX_STONE_WALLS {
+            player.pos = Vec3::X * (n as f32 * 8.0);
+            spells.cast(Spell::WallOfStone, &player, &solids).unwrap();
+            spells.tick(0.5);
+        }
+        assert_eq!(spells.count(Spell::WallOfStone), MAX_STONE_WALLS);
+        assert_eq!(spells.debris(), 0);
+        let oldest = spells.stones[0].spell.clone();
+        let second = spells.stones[1].spell.clone();
+        player.pos = Vec3::X * -8.0;
+        spells.cast(Spell::WallOfStone, &player, &solids).unwrap();
+        assert_eq!(spells.count(Spell::WallOfStone), MAX_STONE_WALLS);
+        // The first wall crumbled; the second is the oldest standing.
+        assert_eq!(
+            format!("{:?}", spells.stones[0].spell),
+            format!("{second:?}")
+        );
+        assert!(
+            spells
+                .stones
+                .iter()
+                .all(|c| format!("{:?}", c.spell) != format!("{oldest:?}"))
+        );
+        assert_eq!(spells.debris(), 2 * CHUNK_GRID[0] * CHUNK_GRID[1]);
+        // Its posts, across x = 0, went with it.
+        assert!(
+            spells
+                .blocks()
+                .iter()
+                .all(|(f, _)| (f.min[0] + f.max[0]).abs() / 2.0 > 3.2)
+        );
+        // The wall cast next to go still lasts its own lifetime.
+        assert!(!run(&mut spells, STONE_LIFETIME - 2.0));
+        assert!(run(&mut spells, 1.0));
+    }
+
+    #[test]
+    fn a_wall_through_something_built_is_refused() {
+        let player = PlayerController::new(Vec3::ZERO, 0.0);
+        let mut solids = Solids::default();
+        // A table across the wall's line, four meters ahead.
+        solids.add_block(
+            Footprint {
+                min: [0.5, 3.6],
+                max: [1.5, 4.4],
+            },
+            super::super::height(1.0, 4.0) + 0.8,
+        );
+        let Err(refusal) = Spells::default().admit(Spell::WallOfStone, &player, &solids) else {
+            panic!("a wall through a table was admitted");
+        };
+        assert!(refusal.contains("in the way"), "{refusal}");
+        // A wall already raised there doesn't count: another stands beside it.
+        let mut spells = Spells::default();
+        let mut solids = Solids::default();
+        spells.cast(Spell::WallOfStone, &player, &solids).unwrap();
+        solids.set_spell_blocks(spells.blocks());
+        spells.cast(Spell::WallOfStone, &player, &solids).unwrap();
+        assert_eq!(spells.count(Spell::WallOfStone), 2);
     }
 
     #[test]

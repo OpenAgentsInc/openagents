@@ -322,6 +322,9 @@ pub struct Puff {
 enum Push {
     /// The chunks nearest `point` take `push`, as from a hammer blow.
     Along { point: DVec3, push: DVec3 },
+    /// Every chunk slumps off its piece's plane along `normal`, one way or
+    /// the other, at up to `speed`, as a crumbling Wall of Stone's do.
+    Slump { normal: DVec3, speed: f64 },
     /// Every chunk flies away from `center` at up to `speed`, falling off
     /// to nothing at `radius`, as from an explosion; out along `face`, a
     /// struck wall's outward normal, when it isn't zero.
@@ -345,6 +348,7 @@ pub struct Blow {
 }
 
 /// The yard: its pieces as built, the physics world, and what is alive.
+#[derive(Clone, Debug)]
 pub struct Site {
     specs: Vec<PieceSpec>,
     world: World,
@@ -356,6 +360,8 @@ pub struct Site {
     tops: BTreeMap<usize, u8>,
     /// Most chunks alive at once ([`MAX_CHUNKS`] unless set).
     max_chunks: usize,
+    /// How long a chunk lasts, s ([`DEBRIS_LIFETIME`] unless set).
+    debris_lifetime: f64,
     /// Half the side of the flat ground slab at height zero, m, and raised
     /// floors over it, each a center and half extents.
     ground_half: f64,
@@ -404,6 +410,7 @@ impl Site {
             members: BTreeMap::new(),
             tops: BTreeMap::new(),
             max_chunks: MAX_CHUNKS,
+            debris_lifetime: DEBRIS_LIFETIME,
             ground_half: 80.0,
             floors: Vec::new(),
             puffs: Vec::new(),
@@ -429,6 +436,40 @@ impl Site {
     pub fn set_max_chunks(&mut self, max: usize) {
         self.max_chunks = max;
         self.cap_chunks();
+    }
+
+    /// Makes the chunks of pieces that break from now on last `seconds`,
+    /// and up to a fifth longer, rather than [`DEBRIS_LIFETIME`].
+    pub fn set_debris_lifetime(&mut self, seconds: f64) {
+        self.debris_lifetime = seconds.max(0.0);
+    }
+
+    /// Breaks `piece` into its chunks at once, each slumping off its plane
+    /// along `normal`, one way or the other, at up to `speed` m/s, with
+    /// the dust of its breaking. Returns whether it broke; a piece already
+    /// broken does not.
+    pub fn crumble(&mut self, piece: usize, normal: DVec3, speed: f64) -> bool {
+        if self
+            .pieces
+            .get(piece)
+            .is_none_or(|p| p.status == Status::Broken)
+        {
+            return false;
+        }
+        self.shatter(piece, Push::Slump { normal, speed });
+        self.support();
+        true
+    }
+
+    /// Whether every chunk has ended and every dust puff has settled, so
+    /// nothing of a broken piece is left to draw.
+    #[must_use]
+    pub fn cleared(&self) -> bool {
+        self.puffs.is_empty()
+            && self
+                .pieces
+                .iter()
+                .all(|p| p.status == Status::Broken && p.chunks.iter().all(|c| c.gone))
     }
 
     /// Retires the chunks `chunks`, each a piece and a chunk index there,
@@ -862,6 +903,7 @@ impl Site {
                     let near = (1.0 - pos.distance(point) / 2.5).clamp(0.0, 1.0);
                     (push * near, 0.0)
                 }
+                Push::Slump { normal, speed } => (normal * speed * self.unit(), 0.0),
                 Push::From {
                     center,
                     speed,
@@ -887,7 +929,7 @@ impl Site {
             // the ones that fly.
             chunks.push(Chunk {
                 body: chunk_id,
-                until: time + DEBRIS_LIFETIME * (1.0 - 0.6 * k) + self.unit().abs() * 4.0,
+                until: time + self.debris_lifetime * (1.0 - 0.6 * k + 0.2 * self.unit().abs()),
                 gone: false,
             });
             puffs.push(pos.as_vec3());

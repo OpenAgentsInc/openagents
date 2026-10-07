@@ -298,6 +298,11 @@ impl Solids {
             .collect();
     }
 
+    /// The spell-raised blocks, each a footprint and its top, m.
+    pub fn spell_blocks(&self) -> impl Iterator<Item = (Footprint, f32)> + '_ {
+        self.spell.iter().map(|block| (block.footprint, block.top))
+    }
+
     /// The lowest roof at `(x, z)` at or above `head`, m: what a character
     /// rising there strikes.
     #[must_use]

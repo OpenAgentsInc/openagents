@@ -1,5 +1,5 @@
 //! Offline visual acceptance of Everglade with the shared renderer.
-//! Usage: everglade_capture OUTPUT.png [approach|winds|sky|yard|hall|lane-east|lane-west|reverse|reverse-top|overhead|town-north|town-west|tooltip|city-market|city-stoop|city-lantern|city-brownstone|city-observatory|city-foundry|studio-yard|studio-hall|studio-atrium|eyes|hall-eyes|at:X,Z,YAW,TILT|air:EX,EY,EZ,TX,TZ|look:EX,EY,EZ,TX,TY,TZ] [FRAME]
+//! Usage: everglade_capture OUTPUT.png [approach|winds|stone|stone-crumble|stone-settled|sky|yard|hall|lane-east|lane-west|reverse|reverse-top|overhead|town-north|town-west|tooltip|city-market|city-stoop|city-lantern|city-brownstone|city-observatory|city-foundry|studio-yard|studio-hall|studio-atrium|eyes|hall-eyes|at:X,Z,YAW,TILT|air:EX,EY,EZ,TX,TZ|look:EX,EY,EZ,TX,TY,TZ] [FRAME]
 //!
 //! Installs Everglade from the committed, pinned pack, as a portal entry
 //! does after the download, and renders one of these views with the zone
@@ -19,6 +19,10 @@
 //!   gallery and the hearth.
 //! - `eyes` and `hall-eyes`: the approach and the hall in first person,
 //!   zoomed all the way in, with the player's character hidden.
+//! - `stone`, `stone-crumble`, and `stone-settled`: two Walls of Stone
+//!   cast on the approach and seen from behind the caster: standing, just
+//!   after their lifetime runs out as they crumble, and with the chunks
+//!   lying on the ground before they shrink away.
 //! - `reverse`: Reverse Gravity cast on the approach, seen from outside
 //!   its cylinder after its particles have climbed and gathered.
 //! - `reverse-top`: the same cylinder from the caster hovering at its top,
@@ -106,7 +110,9 @@ fn main() -> Result<(), String> {
     let (at, yaw, tilt) = match view.as_str() {
         "eyes" => (glam::Vec3::new(0.0, 0.0, -29.0), 0.0, -60.0),
         "hall-eyes" => (glam::Vec3::new(0.0, 0.0, 5.0), 0.0, -40.0),
-        "approach" | "tooltip" | "winds" => (glam::Vec3::new(0.0, 0.0, -29.0), 0.0, 0.0),
+        "approach" | "tooltip" | "winds" | "stone" | "stone-crumble" | "stone-settled" => {
+            (glam::Vec3::new(0.0, 0.0, -29.0), 0.0, 0.0)
+        }
         // From the approach, turned toward the Sun and tilted up at the sky.
         "sky" => (glam::Vec3::new(0.0, 0.0, -29.0), SKY_YAW, SKY_TILT),
         "yard" | "studio-yard" => (glam::Vec3::new(-3.0, 0.0, -15.0), 0.25, 80.0),
@@ -155,7 +161,7 @@ fn main() -> Result<(), String> {
         }
         other => {
             return Err(format!(
-                "unknown view `{other}`; use approach, winds, sky, yard, hall, lane-east, lane-west, reverse, reverse-top, \
+                "unknown view `{other}`; use approach, winds, stone, stone-crumble, stone-settled, sky, yard, hall, lane-east, lane-west, reverse, reverse-top, \
                  overhead, town-north, town-west, tooltip, city-market, city-stoop, city-lantern, \
                  city-brownstone, city-observatory, city-foundry, studio-yard, studio-hall, studio-atrium, eyes, \
                  hall-eyes, at:X,Z,YAW,TILT, or air:EX,EY,EZ,TX,TZ"
@@ -209,6 +215,25 @@ fn main() -> Result<(), String> {
         }
         runtime.set_spawn(glam::Vec3::new(0.0, 0.0, -36.0), 0.0)?;
         runtime.apply(Action::Orbit { dx: 0.0, dy: 60.0 })?;
+    }
+    if view.starts_with("stone") {
+        // Two walls from the approach, turned a little apart.
+        for turn in [-0.35, 0.35] {
+            runtime.set_spawn(glam::Vec3::new(0.0, 0.0, -29.0), turn)?;
+            runtime.zone_intent(zones::Intent::WallOfStone)?;
+        }
+        runtime.set_spawn(glam::Vec3::new(0.0, 0.0, -37.0), 0.0)?;
+        runtime.apply(Action::Orbit { dx: 0.0, dy: 40.0 })?;
+        // The shot itself idles half a second more below.
+        let lifetime = zones::everglade::spells::STONE_LIFETIME as f32;
+        let wait = match view.as_str() {
+            "stone-crumble" => lifetime - 0.2,
+            "stone-settled" => lifetime + 1.6,
+            _ => 0.0,
+        };
+        for _ in 0..(wait / 0.05).round() as usize {
+            runtime.tick(&idle, 0.05);
+        }
     }
     runtime.apply(Action::Orbit { dx: 0.0, dy: tilt })?;
     if first_person {
