@@ -63,6 +63,11 @@ installed `openagents` has no `lease` command, build it once with `cargo build
 -p openagents-cli --bin openagents` and run it from your target directory.
 Read `docs/coder/runtime/leases.md`.
 
+Capture offscreen (`verse --capture FILE.png` and other offscreen paths).
+Don't open a visible window or run `screencapture` without a `screen` lease
+(`openagents lease screen -- CMD`), which needs the owner's grant; an agent
+`verse` refuses to open a window without one.
+
 Keep scratch files (captures, scripts, notes) in the directory `openagents
 scratch` prints (`$OPENAGENTS_SCRATCH` under a lease or a Coder delegation),
 not in `/tmp`, which a reboot clears; `docs/coder/guides/scratch.md`.

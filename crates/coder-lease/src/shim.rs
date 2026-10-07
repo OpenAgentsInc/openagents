@@ -1,5 +1,7 @@
 //! Lease shims: a `cargo` that takes a build lease for heavy subcommands,
-//! put first on the `PATH` of every agent Coder delegates to.
+//! and a `screencapture` that refuses without a `screen` lease
+//! ([`crate::SCREENCAPTURE_SHIM`]), put first on the `PATH` of every agent
+//! Coder delegates to.
 //!
 //! The shim is a POSIX `sh` script written from here into
 //! `~/.openagents/bin/lease-shims/` ([`SHIMS_VAR`] moves it). It runs
@@ -119,18 +121,24 @@ pub fn dir_from(env: &dyn Fn(&str) -> Option<OsString>) -> Result<PathBuf, Strin
 /// The directory or the shim can't be written.
 pub fn install(dir: &Path) -> std::io::Result<()> {
     std::fs::create_dir_all(dir)?;
-    let path = dir.join("cargo");
-    if std::fs::read(&path).is_ok_and(|bytes| bytes == CARGO_SHIM.as_bytes()) {
-        return Ok(());
+    for (name, text) in [
+        ("cargo", CARGO_SHIM),
+        ("screencapture", crate::SCREENCAPTURE_SHIM),
+    ] {
+        let path = dir.join(name);
+        if std::fs::read(&path).is_ok_and(|bytes| bytes == text.as_bytes()) {
+            continue;
+        }
+        let staging = dir.join(format!(".{name}.{}.new", std::process::id()));
+        std::fs::write(&staging, text)?;
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt as _;
+            std::fs::set_permissions(&staging, std::fs::Permissions::from_mode(0o755))?;
+        }
+        std::fs::rename(&staging, &path)?;
     }
-    let staging = dir.join(format!(".cargo.{}.new", std::process::id()));
-    std::fs::write(&staging, CARGO_SHIM)?;
-    #[cfg(unix)]
-    {
-        use std::os::unix::fs::PermissionsExt as _;
-        std::fs::set_permissions(&staging, std::fs::Permissions::from_mode(0o755))?;
-    }
-    std::fs::rename(&staging, &path)
+    Ok(())
 }
 
 /// Writes the shims into `dir` and puts them on every delegate's `PATH`

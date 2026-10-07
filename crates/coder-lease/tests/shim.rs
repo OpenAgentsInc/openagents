@@ -1,6 +1,7 @@
 //! The `cargo` lease shim, run under a scratch shim directory with a
 //! stand-in `cargo` and a stand-in `openagents` that records the lease it
-//! was asked for.
+//! was asked for, and the `screencapture` shim with a stand-in
+//! `screencapture`, so no test captures the real screen.
 #![cfg(unix)]
 
 use std::os::unix::fs::PermissionsExt as _;
@@ -28,6 +29,10 @@ fn scratch() -> Scratch {
     script(
         &tools.join("cargo"),
         "echo \"real cargo $* leases=${OPENAGENTS_LEASES:-none}\"",
+    );
+    script(
+        &tools.join("screencapture"),
+        "echo \"real screencapture $*\"",
     );
     // The stand-in `openagents lease build --keep-target-dir -- CMD...`
     // records its arguments and runs CMD under the build lease.
@@ -110,4 +115,42 @@ fn the_shim_without_openagents_runs_cargo_and_says_so() {
     assert!(output.status.success(), "{output:?}");
     assert!(String::from_utf8_lossy(&output.stdout).starts_with("real cargo check"));
     assert!(String::from_utf8_lossy(&output.stderr).contains("without a build lease"));
+}
+
+fn screencapture(scratch: &Scratch, leases: Option<&str>) -> std::process::Output {
+    let mut command = Command::new(scratch.shims.join("screencapture"));
+    command
+        .args(["-x", "shot.png"])
+        .env_clear()
+        .env("PATH", &scratch.path)
+        .env("HOME", scratch.shims.parent().unwrap())
+        .env("CLAUDECODE", "1");
+    if let Some(leases) = leases {
+        command.env("OPENAGENTS_LEASES", leases);
+    }
+    command.output().unwrap()
+}
+
+#[test]
+fn screencapture_refuses_without_a_screen_lease() {
+    let scratch = scratch();
+    for leases in [None, Some("build,quiet")] {
+        let output = screencapture(&scratch, leases);
+        assert!(!output.status.success(), "{output:?}");
+        assert!(output.stdout.is_empty(), "{output:?}");
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        assert!(stderr.contains("verse --capture FILE.png"), "{stderr}");
+        assert!(stderr.contains("openagents lease screen --"), "{stderr}");
+    }
+}
+
+#[test]
+fn screencapture_runs_the_real_one_under_a_screen_lease() {
+    let scratch = scratch();
+    let output = screencapture(&scratch, Some("build,screen"));
+    assert!(output.status.success(), "{output:?}");
+    assert_eq!(
+        String::from_utf8_lossy(&output.stdout).trim(),
+        "real screencapture -x shot.png"
+    );
 }

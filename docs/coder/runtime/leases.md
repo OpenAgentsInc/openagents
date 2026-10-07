@@ -192,7 +192,8 @@ The table is `leases` beside the task store, which for the default store is
 
 ### The cargo shim
 
-Coder puts a `cargo` shim first on the `PATH` of every agent it delegates
+Coder puts a `cargo` shim, and the `screencapture` shim that
+[The screen](#the-screen) describes, first on the `PATH` of every agent it delegates
 to: Claude Code, Codex, and OpenCode delegations, the ACP agents (Devin,
 OpenCode, and Grok Build), and Microcoder's local commands. Studio seats and
 the workshop agent run as Coder tasks, so their commands get the shim the
@@ -295,6 +296,24 @@ input isn't a terminal, when an agent variable such as `CLAUDECODE`,
 process is an agent such as `claude` or `codex`. `revoke screen` ends the
 grant; a screen lease already held runs until its command ends, and new ones
 are refused.
+
+Agents capture offscreen by default, such as with `verse --capture
+FILE.png`. Two checks keep them off the real screen without a `screen`
+lease (`OPENAGENTS_LEASES` names `screen`):
+
+- A windowed program such as `verse` calls `coder_lease::screen_refusal`
+  before it opens a window. In an agent environment, it refuses and points
+  to `--capture` and `openagents lease screen -- CMD`. An agent environment
+  is one where `OPENAGENTS_SESSION` names an agent's session or an agent
+  variable such as `CLAUDECODE` or `CODEX_THREAD_ID` is set.
+  `OPENAGENTS_LEASE_ID` alone, and a session named `process:PID`, which a
+  lease records when no agent holds it, don't count, so a person running
+  `verse` by hand or under a lease is unaffected.
+- Coder puts a `screencapture` shim beside the `cargo` shim. It refuses
+  without a `screen` lease, and under one it runs the real `screencapture`
+  further along `PATH`.
+
+`openagents lease list` shows who holds the screen.
 
 On one Unix account, a grant stops accidents, not a process set on forging
 one: such a process can write the grant file itself. A stronger guarantee

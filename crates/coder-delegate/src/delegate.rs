@@ -752,6 +752,7 @@ impl Briefing {
         let mut directions = format!("\n## What to do\n\n{}\n", inputs.directions);
         if coder_lease::shim::enabled().is_some() {
             directions.push_str(LEASED_BUILDS);
+            directions.push_str(OFFSCREEN_CAPTURES);
         }
         if coder_lease::scratch::delegate_dir().is_some() {
             directions.push_str(DURABLE_SCRATCH);
@@ -1794,6 +1795,12 @@ pub fn codex_auth_file(env: impl Fn(&str) -> Option<String>) -> Option<PathBuf> 
 pub const LEASED_BUILDS: &str = "\nHeavy `cargo` commands (build, test, check, clippy, run) take a build \
 lease on this machine and may wait their turn; let them wait, and don't change \
 `CARGO_TARGET_DIR`.\n";
+
+/// What a briefing tells the delegate about the real screen, beside the
+/// `screencapture` shim (`coder_lease::SCREENCAPTURE_SHIM`).
+pub const OFFSCREEN_CAPTURES: &str = "\nCapture offscreen, such as with `verse --capture \
+FILE.png`; don't run `screencapture` or open a visible window, which needs a `screen` \
+lease and the owner's grant.\n";
 
 /// What a briefing tells the delegate when it has a durable scratch
 /// directory (`coder_lease::scratch`).

@@ -149,6 +149,8 @@ web-time = "1.1.0"
 
 # Network, TLS, threads, and the disk caches: native only.
 [target.'cfg(not(target_arch = "wasm32"))'.dependencies]
+# The screen check: an agent opens a window only under a screen lease.
+coder-lease = { path = "../coder-lease" }
 gym-bridge = { path = "../gym-bridge", default-features = false }
 # The fetch-verify-cache client for the Gym's published results.
 gym-leaderboard = { path = "../gym-leaderboard", default-features = false, features = ["client"] }

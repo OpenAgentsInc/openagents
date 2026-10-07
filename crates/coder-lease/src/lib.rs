@@ -34,7 +34,10 @@
 //! process.
 //!
 //! [`shim`] writes the `cargo` shim Coder puts first on a delegate's
-//! `PATH`, so a delegate's heavy builds take `build` leases.
+//! `PATH`, so a delegate's heavy builds take `build` leases, and the
+//! `screencapture` shim beside it, which refuses without a `screen` lease.
+//! [`screen_refusal`] is the same rule for a program about to open a
+//! window: an agent environment needs a `screen` lease.
 //!
 //! [`scratch`] gives each session a durable scratch directory under
 //! `~/.openagents/scratch/<session>/`, which a lease's command and Coder's
@@ -49,6 +52,7 @@ mod limits;
 mod resource;
 mod root;
 pub mod scratch;
+mod screen;
 pub mod shim;
 mod table;
 mod usage;
@@ -68,6 +72,9 @@ pub use limits::{
 };
 pub use resource::{NAMED, Resource, Shape};
 pub use root::{ROOT_VAR, refuse_real_home, root_from, root_from_env};
+pub use screen::{
+    SCREENCAPTURE_SHIM, agent_marker, holds_screen, screen_refusal, screen_refusal_here,
+};
 pub use table::{Entry, PRIORITY_VAR, Priority, State, TABLE_SCHEMA};
 pub use usage::{
     DiskUse, PathUse, SLOT_USE_SCHEMA, SessionUsage, SlotUse, process_running, session_live, usage,

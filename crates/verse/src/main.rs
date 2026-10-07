@@ -69,6 +69,9 @@
 //! `verse --seed-rooms <relay-key-file>` creates the NIP-29 chat rooms as
 //! the relay; `scripts/verse-relay.sh` runs it.
 //!
+//! An agent (`OPENAGENTS_SESSION`, `CLAUDECODE`, and the like) opens no
+//! window without a `screen` lease; it renders offscreen with `--capture`.
+//!
 //! `verse --capture <file.png>` renders the spawn view to a PNG without a
 //! window; `--orbit <degrees>`, `--pitch <degrees>`, `--distance <meters>`,
 //! and `--size <width>x<height>` adjust the shot. `--board` opens the quest
@@ -84,6 +87,14 @@ fn main() -> ExitCode {
     let args: Vec<String> = std::env::args().skip(1).collect();
     if args.first().map(String::as_str) == Some("--seed-rooms") {
         return seed(&args[1..]);
+    }
+    // Every path but a capture opens a window: an agent needs a screen
+    // lease for one (`coder_lease::screen_refusal`, issue #10762).
+    if !args.iter().any(|arg| arg == "--capture")
+        && let Some(refusal) = coder_lease::screen_refusal_here("verse")
+    {
+        eprintln!("verse: {refusal}");
+        return ExitCode::FAILURE;
     }
     if args.first().map(String::as_str) == Some("--crypt-fight") {
         return match verse::imported::crypt_fight::run() {

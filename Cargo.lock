@@ -15231,6 +15231,7 @@ dependencies = [
  "coder-access",
  "coder-delegate",
  "coder-host",
+ "coder-lease",
  "coder-pty",
  "coder-ui",
  "coder-vt",
