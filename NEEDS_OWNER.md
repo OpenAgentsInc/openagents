@@ -321,6 +321,23 @@ real finality, or wallet liquidity. Existing fixed-unit Lightning products
 keep their own contracts; Coder pilot v1 remains a separate service invoice
 with zero product credits.
 
+## Native decision offer O5 (REV-16, #10823)
+
+Before activating the [selected native `kev-0.6b` offer](docs/decision-models/service/monetary-accounting.md#selected-native-decision-offer),
+accept its commercial price version, input-token rate, account currency,
+funding policy, and customer responsibility. Qualify the retained artifact
+family's actual loaded digest and all execution settings on the selected CPU
+host; pin them in both the offer and dedicated registry binding. Verify one
+concurrent call, the explicit request-rate limit, and agreement between the
+backend's enforced token ceiling and the monetary hold. Supply restricted
+deployment credentials and protect the existing ledgers from executor writes.
+Retain genuine funding finality and one admitted typed result with its exact
+payer, observed input count, charge, and sealed receipt; reconcile a duplicate
+and an unknown attempt. Record measured provider and hosting expenses
+separately, or keep them unknown. Local synthetic checks require no host
+deployment and establish no production price, funded sale, or inference
+qualification. Public terms continue to label qualification unknown.
+
 ## Sales outreach launch
 
 The [sales-floor decisions](docs/sales/agent-sales-floor.md#initial-operating-decisions)

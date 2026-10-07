@@ -544,6 +544,12 @@ impl Config {
                         name.display()
                     )
                 })?;
+                if let Some(offer) = &priced.offer {
+                    offer.check(priced)?;
+                    if self.accounts.is_none() || self.doors[door].classify.is_some() {
+                        return Err("The selected decision offer requires accounts and supports System One only.".into());
+                    }
+                }
             }
         }
         if let Some(origin) = &self.public_origin {

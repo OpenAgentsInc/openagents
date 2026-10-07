@@ -759,6 +759,9 @@ async fn models(State(state): State<Arc<ServeState>>) -> Json<Value> {
                 // forward; it does not pack separate requests. A batch
                 // of inputs is the caller's loop of bounded calls.
                 "batching": {"kind": "caller-loop"},
+                "metering": receipts::decision_metering::Metering::kev_packed_input(
+                    state.admission.max_total_tokens as u64
+                ),
                 "limits": {
                     "context_tokens": state.admission.max_total_tokens,
                     "questions_per_call": state.admission.max_questions,
@@ -994,4 +997,33 @@ pub fn router(state: Arc<ServeState>) -> Router {
         .route("/api/info", get(info))
         .route("/api/predict", post(predict))
         .with_state(state)
+}
+
+#[cfg(test)]
+mod metering_tests {
+    use super::*;
+    #[test]
+    fn packed_response_and_declaration_use_the_enforced_input_counter() {
+        let admission = Admission {
+            max_total_tokens: 128,
+            ..Admission::default()
+        };
+        let meter = receipts::decision_metering::Metering::kev_packed_input(
+            admission.max_total_tokens as u64,
+        );
+        assert_eq!(meter.validate_kev_input(), Ok(128));
+        assert!(admission.admit_tokens(128).is_ok());
+        assert!(admission.admit_tokens(129).is_err());
+        let answers = [(
+            "q".into(),
+            Answer::Noul(crate::api::NoulAnswer { noul: 0.75 }),
+        )]
+        .into_iter()
+        .collect();
+        let body = response_body("kev-0.6b", &answers, 8, 5, 0.0);
+        assert_eq!(body["model"], "kev-0.6b");
+        assert_eq!(body["usage"]["input_tokens"], 8);
+        assert_eq!(body["usage"]["output_tokens"], 5);
+        assert!(!meter.counters.contains_key("output_tokens"));
+    }
 }

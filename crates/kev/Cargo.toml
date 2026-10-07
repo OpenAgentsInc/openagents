@@ -8,7 +8,7 @@ publish.workspace = true
 
 [features]
 # The `kev-serve` binary and its dependencies.
-serve = ["dep:axum", "dep:tower-http", "dep:tokio"]
+serve = ["dep:axum", "dep:tower-http", "dep:tokio", "dep:receipts"]
 # Apple Metal execution for the backbone.
 metal = ["candle-core/metal", "candle-nn/metal"]
 
@@ -20,6 +20,7 @@ regex = "1"
 serde = { version = "1", features = ["derive"] }
 serde_json = { version = "1", features = ["preserve_order"] }
 sha2 = "0.10"
+receipts = { path = "../receipts", optional = true }
 thiserror = "2"
 tokenizers = "0.23"
 

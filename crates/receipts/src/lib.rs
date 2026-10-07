@@ -27,6 +27,7 @@
 //! schemas, not fields grafted onto this one.
 
 pub mod brainstorm_pilot;
+pub mod decision_metering;
 pub mod execution;
 pub mod export;
 pub mod feedback;

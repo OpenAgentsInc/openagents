@@ -80,6 +80,14 @@ pub(crate) fn current(
             "The selected price does not cover this resource.",
         ));
     }
+    if let Some(offer) = &priced.offer {
+        offer.check_binding(&admission.binding).map_err(|_| {
+            refuse(
+                "purchase_unavailable",
+                "The selected decision offer no longer matches its resource or capacity.",
+            )
+        })?;
+    }
     let maximum_charge = priced.price.quote(&priced.maximum_usage).map_err(|_| {
         refuse(
             "purchase_unavailable",

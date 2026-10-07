@@ -63,6 +63,69 @@ Absent `money`, the gateway behaves exactly as before: no ledger opens, no
 workspace is charged, no balance route exists, and no `x-settlement` header
 appears.
 
+### Selected native decision offer
+
+The first supported offer is native `kev-0.6b` on CPU with `f32` model and
+head tensors, through the packed `POST /v1/systemone` route. Add an
+`offer` to that door's existing `money.doors` entry with schema
+`openagents.decision-offer.v1`, an explicit `id` and `version`, the exact
+`identity`, and `requests_per_minute`. Configure `accounts`, workspace
+membership, and a dedicated registry binding with one concurrent call and
+the same request-rate limit. The
+[isolated offer fixture](../../../crates/gateway/tests/decision_offer.rs)
+contains the complete configuration shape; its rates, balance, and digest
+are synthetic and authorize no commercial launch.
+The gateway forwards the selected native artifact ID as `model`, preserving
+the original request digest and admitted registry snapshot; a customer door
+name needs no additional native alias.
+
+Use the retained
+[`kev-0.6b` artifact lock](../../../crates/kev/fixtures/variants/kev-0.6b/artifact-lock.json)
+to identify the supported artifact family. Pin the loaded content digest
+that the [native loader](../../../crates/kev/src/artifacts.rs) computes,
+rather than the artifact lock's file digest. The offer and registry must
+match that digest and all nine execution settings: `backend`, `dtype`,
+`head_dtype`, `attention`, `bucket_size`, `lora_merge`, `option_isolation`,
+`max_state`, and `max_branch`. This offer has no separate adapter identity.
+
+The native card declares `openagents.decision-metering.v1` with the
+`openagents.kev.packed-input.v1` adapter. It prices only `input_tokens`:
+the number of encoded token IDs in the packed state and question sequence.
+Native token admission bounds the padded forward before inference, so it
+also bounds this counter. The native ceiling and `maximum_usage` must match
+exactly. The gateway checks the counter's token units, basis, empty overlap
+list, caller-loop execution, and enforced ceiling before dispatch.
+`output_tokens` counts serialized answers and remains unpriced; this offer
+reports no cached-input counter. Decision access supplies no hosted text
+generation or execution authority.
+
+Use one positive `input-tokens` rate in the existing `tenancy::money::Price`.
+`millionths` and `per_units` form an exact rational rate; currency amounts
+have scale `1_000_000`, and each attempt rounds its charge up to a currency
+millionth. For example, the synthetic rate `7` per `2` tokens with a ceiling
+of `128` holds `448` millionths; observed usage of `3` tokens charges `11`.
+Missing rates, incompatible resources, a zero denominator, overflow, and
+changed retained terms under the same price version refuse. Use a new price
+version when rates change: the existing ledger retains the full original
+price, usage ceiling, and settlement for each attempt.
+
+Authenticated `GET /v1/models` adds `decision_offer` terms to the selected
+card. These terms bind the configured offer, exact price, quote ceiling,
+current customer/workspace/payer references, and settlement policy through
+the existing purchase context. Balance fields require the key's `balance`
+scope; restricted reads retain unknown funding admission. The terms state
+`configured`, rather than claiming backend health, production qualification,
+purchased funds, or physically reserved hardware. Provider and hosting
+expenses remain explicitly unknown and separate from the retail charge.
+Missing or conflicting response model identity and unpriceable usage retain
+the full outstanding hold. Same-request/attempt retries never redispatch.
+
+Production activation requires [owner step O5](../../../NEEDS_OWNER.md#native-decision-offer-o5-rev-16-10823):
+accepted commercial terms, actual artifact and capacity qualification,
+restricted deployment credentials, real funding, and a matching typed
+result, charge, and receipt. The isolated tests establish admission and
+accounting behavior without model weights, real funds, or a host deployment.
+
 ## Admission
 
 A call under monetary admission runs the existing sequence — authenticate,
@@ -81,7 +144,8 @@ backend dispatch, reserves the worst-case spend:
    the attempt `{idempotency-key}#{x-attempt}`, the request digest, the price
    terms, and `maximum_usage`. Concurrent calls serialize on the ledger — a
    workspace cannot overspend. An existing `(request, attempt)` refuses with
-   `409 idempotency_conflict` before dispatch and preserves the original hold.
+   `idempotency_conflict` before dispatch and preserves the original hold
+   (`400` on the decision route under NIP-DEC; `409` on classify).
    Concurrent retries cannot execute twice against one reservation.
 4. Only then does the backend's published identity get verified and the
    request forwarded.

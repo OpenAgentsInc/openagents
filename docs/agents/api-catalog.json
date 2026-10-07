@@ -281,7 +281,8 @@
          "registry_digest": "the manifest revision that authorized this card",
          "registry_sequence": "the manifest's sequence number"
         },
-        "classification": "the openagents.classify-discovery.v1 card: status configured | unsupported | unavailable | invalid-limits, plus declared limits, modes, admission ceilings, and execution shape when configured"
+        "classification": "the openagents.classify-discovery.v1 card: status configured | unsupported | unavailable | invalid-limits, plus declared limits, modes, admission ceilings, and execution shape when configured",
+        "decision_offer": "optional openagents.decision-offer-terms.v1: configured native offer, exact existing Price and maximum_usage, currency scale, counter units and basis, capacity, current purchase_context and payer, settlement rules, unknown production qualification, and separate unknown provider and hosting expenses; balance fields require balance scope; unavailable when current purchase admission fails"
        }
       ]
      },

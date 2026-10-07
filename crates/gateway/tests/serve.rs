@@ -2340,6 +2340,7 @@ const CHARGE: u64 = 70;
 /// lane under the synthetic `synthetic-fixture-v1` schedule.
 fn fixture_priced() -> Priced {
     Priced {
+        offer: None,
         price: tenancy::money::Price {
             version: "synthetic-fixture-v1".to_string(),
             currency: "USD".to_string(),

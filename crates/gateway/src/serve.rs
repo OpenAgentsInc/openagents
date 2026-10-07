@@ -157,7 +157,12 @@ impl ServeState {
     /// on one ledger would race reservations, and refusing is cheaper
     /// than reconciling them.
     pub fn open(config: Config) -> Result<Arc<Self>, Trouble> {
-        if config.earnings.is_some() {
+        if config.earnings.is_some()
+            || config
+                .money
+                .as_ref()
+                .is_some_and(|m| m.doors.values().any(|p| p.offer.is_some()))
+        {
             config
                 .check(std::path::Path::new("gateway.json"))
                 .map_err(|e| Trouble::Io(std::io::Error::other(e)))?;
@@ -180,7 +185,15 @@ impl ServeState {
         let money = config
             .money
             .as_ref()
-            .map(|money| tenancy::money::Ledger::open(&money.ledger))
+            .map(|money| {
+                let ledger = tenancy::money::Ledger::open(&money.ledger)?;
+                for priced in money.doors.values() {
+                    if let Some(offer) = &priced.offer {
+                        offer.check_history(priced, &ledger)?;
+                    }
+                }
+                Ok::<_, String>(ledger)
+            })
             .transpose()
             .map_err(Trouble::Money)?
             .map(Mutex::new);
@@ -535,7 +548,7 @@ pub(crate) async fn models(
     if let Some(scopes) = &caller.scopes {
         names.retain(|door| scopes.permits_model(door));
     }
-    let cards: Vec<Value> = names
+    let mut cards: Vec<Value> = names
         .iter()
         .filter_map(|door| {
             let binding = match caller.tenant.as_deref() {
@@ -561,6 +574,27 @@ pub(crate) async fn models(
             }))
         })
         .collect();
+    for card in &mut cards {
+        let door = card["id"].as_str().unwrap_or_default().to_string();
+        if state
+            .config
+            .money
+            .as_ref()
+            .and_then(|m| m.doors.get(&door))
+            .is_some_and(|p| p.offer.is_some())
+        {
+            card["decision_offer"] = crate::decision_offer::terms(
+                &state,
+                &headers,
+                &door,
+                caller
+                    .scopes
+                    .as_ref()
+                    .is_none_or(|s| s.permits_action("balance")),
+            )
+            .await;
+        }
+    }
     Ok(Json(json!({"models": cards})))
 }
 
@@ -1495,7 +1529,7 @@ async fn verified(
     ctx: &mut Context,
     hold: &Option<money::Hold>,
 ) -> Result<(), Verdict> {
-    let (published, published_batching) =
+    let (published, published_batching, card) =
         match published_identity(state, endpoint, &admission.binding.artifact.model).await {
             Ok(found) => found,
             Err(message) => {
@@ -1537,6 +1571,24 @@ async fn verified(
             status: StatusCode::SERVICE_UNAVAILABLE,
             code: "identity_mismatch",
             message: fault.to_string(),
+            outcome: Outcome::Unattempted,
+            ctx: ctx.clone(),
+        });
+    }
+    if let Some(priced) = state
+        .config
+        .money
+        .as_ref()
+        .and_then(|m| m.doors.get(&admission.door))
+        && let Some(offer) = &priced.offer
+        && let Err(message) = offer.check_card(priced, &card)
+    {
+        state.release(naming.request, naming.attempt).await;
+        ctx.settlement = money_release(state, hold).await;
+        return Err(Verdict::Refused {
+            status: StatusCode::SERVICE_UNAVAILABLE,
+            code: "identity_mismatch",
+            message,
             outcome: Outcome::Unattempted,
             ctx: ctx.clone(),
         });
@@ -1594,18 +1646,33 @@ async fn money_hold(
     };
     let ledger = state.money.as_ref().expect("money config opens a ledger");
     let mut ledger = ledger.lock().await;
-    match money::reserve(
-        &mut ledger,
-        &workspace,
-        naming.request,
-        naming.attempt,
-        naming.request_digest,
-        priced,
-        (
-            &admission.binding.artifact.model,
-            lane_name(admission.binding.lane),
-        ),
-    ) {
+    let reservation = (|| {
+        if ledger
+            .hold(
+                &workspace,
+                &format!("{}#{}", naming.request, naming.attempt),
+            )
+            .is_none()
+            && let Some(offer) = &priced.offer
+        {
+            offer
+                .check_binding(&admission.binding)
+                .map_err(money::Refusal::Price)?;
+        }
+        money::reserve(
+            &mut ledger,
+            &workspace,
+            naming.request,
+            naming.attempt,
+            naming.request_digest,
+            priced,
+            (
+                &admission.binding.artifact.model,
+                lane_name(admission.binding.lane),
+            ),
+        )
+    })();
+    match reservation {
         Ok(hold) => Ok(Some(hold)),
         Err(refusal) => {
             drop(ledger);
@@ -1899,26 +1966,40 @@ async fn admitted(
             ctx,
         };
     }
-    let (status, outcome, body_out, cause) =
-        match forward_cancellable(state, &endpoint, body, cancellation).await {
-            Forwarded::Served { status, body } => (status, Outcome::Answered, body, None),
-            Forwarded::Refused {
-                status,
-                body,
-                cause,
-            } => (status, Outcome::Refused, body, Some(cause)),
-            Forwarded::Unavailable { message } => (
-                StatusCode::SERVICE_UNAVAILABLE,
-                Outcome::Unavailable,
-                Bytes::from(
-                    serde_json::to_vec(&json!({
-                        "error": {"code": "unavailable", "message": message},
-                    }))
-                    .unwrap_or_default(),
-                ),
-                Some("unavailable".to_string()),
+    // A selected offer names the native artifact rather than requiring the
+    // backend to accept the customer's registry door as an implicit alias.
+    // The original envelope digest and admission still identify the purchase.
+    let native_body = hold.as_ref().filter(|h| h.offer.is_some()).map(|h| {
+        let mut native = envelope.clone();
+        native["model"] = json!(h.price.model);
+        Bytes::from(serde_json::to_vec(&native).unwrap_or_default())
+    });
+    let (status, outcome, body_out, cause) = match forward_cancellable(
+        state,
+        &endpoint,
+        native_body.as_ref().unwrap_or(body),
+        cancellation,
+    )
+    .await
+    {
+        Forwarded::Served { status, body } => (status, Outcome::Answered, body, None),
+        Forwarded::Refused {
+            status,
+            body,
+            cause,
+        } => (status, Outcome::Refused, body, Some(cause)),
+        Forwarded::Unavailable { message } => (
+            StatusCode::SERVICE_UNAVAILABLE,
+            Outcome::Unavailable,
+            Bytes::from(
+                serde_json::to_vec(&json!({
+                    "error": {"code": "unavailable", "message": message},
+                }))
+                .unwrap_or_default(),
             ),
-        };
+            Some("unavailable".to_string()),
+        ),
+    };
     ctx.result_digest = Some(digest_bytes(&body_out));
     settled(state, naming, outcome, &units).await;
     if hold.is_some() {
@@ -1927,7 +2008,7 @@ async fn admitted(
         // report — leaves the whole hold outstanding, never zero.
         let usage = serde_json::from_slice::<Value>(&body_out)
             .ok()
-            .and_then(|body| money::observed(&hold.as_ref().unwrap().price, &body));
+            .and_then(|body| money::observed_hold(hold.as_ref().unwrap(), &body));
         ctx.settlement = money_settle(state, &hold, naming, usage).await;
     }
     Verdict::Forwarded {
@@ -3111,7 +3192,7 @@ async fn dispatch_admitted(
             Forwarded::Served { body, .. } | Forwarded::Refused { body, .. } => {
                 serde_json::from_slice::<Value>(body)
                     .ok()
-                    .and_then(|body| money::observed(&held.price, &body))
+                    .and_then(|body| money::observed_hold(held, &body))
             }
             Forwarded::Unavailable { .. } => None,
         };
@@ -4672,7 +4753,7 @@ async fn published_identity(
     state: &ServeState,
     endpoint: &str,
     model: &str,
-) -> Result<(Published, Option<tenancy::backend::Batching>), String> {
+) -> Result<(Published, Option<tenancy::backend::Batching>, Value), String> {
     let response = state
         .client
         .get(format!("{endpoint}/v1/models"))
@@ -4743,6 +4824,7 @@ async fn published_identity(
                 .unwrap_or_default(),
         },
         batching,
+        card.clone(),
     ))
 }
 

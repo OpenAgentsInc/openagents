@@ -82,7 +82,8 @@ paths:
         schema:
           type: string
         description: The request's stable identity. Retries repeat it with an incrementing `X-Attempt`;
-          a settled pair refuses reuse, and a pair reused against different content is `409 idempotency_conflict`.
+          a settled pair refuses reuse, and a pair reused against different content is `idempotency_conflict`
+          (`400` under the decision route's NIP-DEC status table).
       - name: X-Attempt
         in: header
         required: false
@@ -3135,6 +3136,13 @@ components:
           description: 'The `openagents.classify-discovery.v1` card: `status` is `configured`, `unsupported`,
             `unavailable`, or `invalid-limits`; a configured card carries the door''s declared limits,
             supported modes, admission ceilings, and execution shape.'
+        decision_offer:
+          type: object
+          description: 'Optional `openagents.decision-offer-terms.v1` for the configured native offer:
+            exact Price, usage ceiling, counter units and basis, capacity, current purchase context,
+            payer, and settlement rules. Balance fields require balance scope. Production qualification
+            and provider and hosting expenses remain unknown; a failed current purchase admission
+            yields unavailable terms. See monetary-accounting.md.'
     Balance:
       type: object
       required:

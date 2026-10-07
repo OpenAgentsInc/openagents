@@ -84,6 +84,7 @@ fn account_config() -> config::Accounts {
 /// The monetary block charging the fixture price on `shared-kev`.
 fn money_config(ledger: &std::path::Path) -> Money {
     let priced = |capacity: &str| Priced {
+        offer: None,
         price: tenancy::money::Price {
             version: "synthetic-fixture-v1".to_string(),
             currency: "USD".to_string(),

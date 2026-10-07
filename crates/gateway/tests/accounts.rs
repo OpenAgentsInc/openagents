@@ -1485,6 +1485,7 @@ async fn purchases_recheck_customer_price_request_and_current_credential_before_
     }
     drop(ledger);
     let priced = gateway::money::Priced {
+        offer: None,
         price: Price {
             version: "fixture-price-1".into(),
             currency: "USD".into(),

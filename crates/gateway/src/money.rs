@@ -18,7 +18,7 @@
 use std::collections::BTreeMap;
 use std::path::PathBuf;
 
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use tenancy::money::{Ledger, Mutation, Operation, Phase, Price, Resource, Usage};
 
@@ -50,9 +50,13 @@ pub struct Money {
 
 /// What one door charges: the versioned price schedule and the
 /// worst-case usage an attempt may reserve.
-#[derive(Clone, Debug, Deserialize)]
+#[derive(Clone, Debug, Deserialize, Serialize)]
 #[serde(deny_unknown_fields)]
 pub struct Priced {
+    /// Optional supported native offer. Absent preserves legacy monetary
+    /// behavior without implying a commercially qualified product.
+    #[serde(default)]
+    pub offer: Option<crate::decision_offer::SelectedOffer>,
     /// The price the door's calls are quoted under. Its `model` and
     /// `capacity` must equal the binding's artifact id and lane, and its
     /// `policy` must be [`POLICY`] — a price naming anything else is one
@@ -97,6 +101,7 @@ impl std::fmt::Display for Refusal {
 /// The hold one admitted call stands under — what a later settle,
 /// release, or unknown marker names.
 pub struct Hold {
+    pub offer: Option<crate::decision_offer::SelectedOffer>,
     /// The workspace account charged.
     pub workspace: String,
     /// The hold's attempt identity: `{request}#{attempt}` — the same
@@ -139,6 +144,9 @@ pub fn reserve(
     let key = format!("{request}#{attempt}");
     if ledger.hold(workspace, &key).is_some() {
         return Err(Refusal::Duplicate);
+    }
+    if let Some(offer) = &priced.offer {
+        offer.check(priced).map_err(Refusal::Price)?;
     }
     let price = &priced.price;
     if price.policy != POLICY {
@@ -191,6 +199,7 @@ pub fn reserve(
         })
         .map_err(classify)?;
     Ok(Hold {
+        offer: priced.offer.clone(),
         workspace: workspace.to_string(),
         attempt: key,
         price: price.clone(),
@@ -322,6 +331,15 @@ pub fn observed(price: &Price, body: &Value) -> Option<Usage> {
     observed_total(price, &[body.get("usage")])
 }
 
+/// A selected native completion must still name the model that was admitted.
+/// A conflicting response is dispatched work with unknown liability.
+pub fn observed_hold(hold: &Hold, body: &Value) -> Option<Usage> {
+    if hold.offer.is_some() && body["model"].as_str() != Some(hold.price.model.as_str()) {
+        return None;
+    }
+    observed(&hold.price, body)
+}
+
 /// The same read over a fan-out: every dispatched item must report
 /// every priced resource for a total to exist — one silent item leaves
 /// the whole settlement outstanding rather than partially priced.
@@ -350,6 +368,7 @@ mod tests {
 
     fn priced() -> Priced {
         Priced {
+            offer: None,
             price: Price {
                 version: "synthetic-fixture-v1".into(),
                 currency: "USD".into(),
@@ -387,6 +406,7 @@ mod tests {
         let root = tempfile::tempdir().unwrap();
         let mut ledger = Ledger::open(&root.path().join("money.jsonl")).unwrap();
         let hold = Hold {
+            offer: None,
             workspace: "missing-workspace".into(),
             attempt: "missing-attempt".into(),
             price: priced().price,

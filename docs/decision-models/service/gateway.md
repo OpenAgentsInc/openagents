@@ -119,6 +119,10 @@ response also carries `x-api-version`, the catalog's declared version.
   statement about backend health — a listed door may still refuse at
   identity check, and the card is the serving process's word about its
   own artifact, never attestation.
+  A configured native decision offer adds authenticated price, counter,
+  payer, and settlement terms; see
+  [selected native decision offer](monetary-accounting.md#selected-native-decision-offer).
+  These terms keep funding, expense, and production qualification distinct.
 - `GET /healthz` — the process is up. Says nothing about backends;
   identity verification runs per request.
 
