@@ -92,6 +92,8 @@ impl WorldRuntime {
             .everglade_loader
             .as_mut()
             .and_then(everglade_pack::Loader::poll);
+        #[cfg(not(target_arch = "wasm32"))]
+        self.poll_private_assets();
         if !self.zone_loading() {
             return false;
         }
@@ -234,6 +236,11 @@ impl WorldRuntime {
             self.player.pos.z,
         ));
         self.camera = crate::camera::FollowCamera::default();
+        // The owner's private characters join as their packs arrive.
+        #[cfg(not(target_arch = "wasm32"))]
+        if !self.zone_state.demolition {
+            self.start_private_assets();
+        }
     }
     /// Enter Everglade from pack bytes the caller already holds, such as a
     /// browser's own download. The bytes must be the pinned pack: their
@@ -526,6 +533,10 @@ impl WorldRuntime {
                 self.zone_state.lagrange = None;
                 self.zone_state.lab = None;
                 self.zone_state.everglade = None;
+                #[cfg(not(target_arch = "wasm32"))]
+                {
+                    self.zone_state.private_loader = None;
+                }
                 self.zone_state.grove = None;
                 self.zone_state.crypt = None;
                 // A Wild Shape's pace ends with the Grove.

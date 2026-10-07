@@ -1066,6 +1066,11 @@ impl App {
         runtime.agent = agent;
         runtime.doors = doors;
         runtime.configure_zone_cache(crate::identity::home().join("zones-cache"));
+        // The owner's private characters in Everglade, from placements in
+        // Verse's home (docs/verse/private-assets.md). Tests never read the
+        // real home.
+        #[cfg(not(test))]
+        runtime.configure_private_assets(crate::identity::home());
         if options.studio_sim {
             // Records the simulated team on first entry to Everglade, off the
             // frame, and plays a frame every two seconds.

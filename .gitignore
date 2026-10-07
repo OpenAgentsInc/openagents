@@ -21,6 +21,13 @@ bins/coder-android/host/app/google-services.json
 /crates/plugin-*/evals/results/
 /plugins/*/evals/results/
 
+# Licensed Verse content never enters the repository
+# (docs/verse/private-assets.md); builds belong under
+# ~/.openagents/verse/private-build/.
+/private-assets/
+*.private.vtp
+private-assets.json
+
 # Local scratchpad. Shopping lists, previews, and private-client notes stay
 # here. The readme is the only tracked file.
 /scratch/*

@@ -380,6 +380,10 @@ pub fn creatures(pack: &ZonePack, placements: &[Placement]) -> Vec<Creature> {
 /// The town's creatures, posed for each frame.
 pub struct Wildlife {
     creatures: Vec<Creature>,
+    /// Each creature's distances from the eye where it draws, m: from zero
+    /// to [`CULL`] for the town's creatures, and a near or a far band for
+    /// a private character's two levels (`guests`).
+    bands: Vec<(f32, f32)>,
     beasts: Vec<Beast>,
     /// Each creature's vertex count in the figure, in order.
     counts: Vec<usize>,
@@ -399,14 +403,29 @@ impl Wildlife {
     ///
     /// Returns a message when a form cannot play.
     pub fn new(pack: &ZonePack, creatures: Vec<Creature>) -> Result<Self, String> {
+        Self::banded(
+            pack,
+            creatures.into_iter().map(|c| (c, (0.0, CULL))).collect(),
+        )
+    }
+
+    /// As [`Self::new`], each creature drawn only while the eye is within
+    /// its band of distances, m.
+    ///
+    /// # Errors
+    ///
+    /// Returns a message when a form cannot play.
+    pub fn banded(pack: &ZonePack, creatures: Vec<(Creature, (f32, f32))>) -> Result<Self, String> {
         let mut kept = Vec::new();
+        let mut bands = Vec::new();
         let mut beasts = Vec::new();
         let mut counts = Vec::new();
         let mut scene: Option<TexturedScene> = None;
-        for creature in creatures {
+        for (creature, band) in creatures {
             let Some(form) = pack.form(creature.form) else {
                 continue;
             };
+            bands.push(band);
             let beast = Beast::new(pack, form)?;
             let figure = beast.figure();
             counts.push(figure.vertices.len());
@@ -421,6 +440,7 @@ impl Wildlife {
         let posed = vec![FOLDED; counts.iter().sum()];
         Ok(Self {
             creatures: kept,
+            bands,
             beasts,
             counts,
             scene: Arc::new(scene),
@@ -456,16 +476,18 @@ impl Wildlife {
         let dt = if dt.is_finite() { dt.max(0.0) } else { 0.0 };
         self.clock = (self.clock + dt) % 3600.0;
         let mut at = 0;
-        for ((creature, beast), &count) in self
+        for (((creature, beast), &count), &(near, far)) in self
             .creatures
             .iter()
             .zip(&mut self.beasts)
             .zip(&self.counts)
+            .zip(&self.bands)
         {
             let moment = creature.route.at(self.clock + creature.phase);
             let slot = &mut self.posed[at..at + count];
             at += count;
-            if moment.at.distance(eye) > CULL {
+            let distance = moment.at.distance(eye);
+            if distance < near || distance > far {
                 slot.fill(FOLDED);
                 continue;
             }

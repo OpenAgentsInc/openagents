@@ -1,0 +1,36 @@
+[package]
+name = "verse-private"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+publish.workspace = true
+description = "Verse's private asset registry: the manifest schema, owner-local placements, NIP-98 grant requests, V4 signed URLs, and the verse-assets broker."
+
+[[bin]]
+name = "verse-assets"
+path = "src/bin/verse_assets.rs"
+required-features = ["broker"]
+
+[features]
+default = []
+# Asks a broker for a signed URL, for Verse and the `verse-private` command.
+client = ["reqwest/blocking"]
+# The `verse-assets` Cloud Run service.
+broker = ["dep:axum", "dep:tokio", "dep:reqwest"]
+
+[dependencies]
+axum = { version = "0.8", optional = true }
+base64 = "0.22"
+nostr = { path = "../nostr" }
+reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls"], optional = true }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+sha2 = "0.11.0"
+tokio = { version = "1", features = ["macros", "net", "rt-multi-thread", "signal", "sync", "time"], optional = true }
+
+[dev-dependencies]
+tempfile = "3"
+tokio = { version = "1", features = ["macros", "rt"] }
+
+[lints]
+workspace = true

@@ -1,0 +1,25 @@
+# Builds and pushes the verse-assets broker image from a GitHub commit:
+#
+#   gcloud builds submit https://github.com/OpenAgentsInc/openagents \
+#     --git-source-revision=SHA --project openagentsgemini --region us-central1 \
+#     --config crates/verse-private/cloudbuild.yaml \
+#     --substitutions _TAG=$(git rev-parse --short=10 SHA)
+#
+# See docs/deployment/verse-private-assets.md for the deploy and the rollback.
+steps:
+  - name: gcr.io/cloud-builders/docker
+    args:
+      - build
+      - -f
+      - crates/verse-private/Dockerfile
+      - -t
+      - us-central1-docker.pkg.dev/openagentsgemini/openagents/verse-assets:${_TAG}
+      - .
+images:
+  - us-central1-docker.pkg.dev/openagentsgemini/openagents/verse-assets:${_TAG}
+substitutions:
+  _TAG: latest
+options:
+  machineType: E2_HIGHCPU_8
+  logging: CLOUD_LOGGING_ONLY
+timeout: 3600s

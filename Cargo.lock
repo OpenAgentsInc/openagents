@@ -15286,6 +15286,7 @@ dependencies = [
  "verse-lagrange",
  "verse-net",
  "verse-pbr",
+ "verse-private",
  "verse-world",
  "verse-zone-crypt",
  "verse-zone-everglade",
@@ -15488,6 +15489,21 @@ dependencies = [
 ]
 
 [[package]]
+name = "verse-private"
+version = "0.1.0"
+dependencies = [
+ "axum 0.8.9",
+ "base64 0.22.1",
+ "nostr",
+ "reqwest 0.12.28",
+ "serde",
+ "serde_json",
+ "sha2 0.11.0",
+ "tempfile",
+ "tokio",
+]
+
+[[package]]
 name = "verse-world"
 version = "0.1.0"
 dependencies = [
@@ -15537,6 +15553,7 @@ dependencies = [
  "gltf",
  "libc",
  "miniz_oxide 0.8.9",
+ "nostr",
  "openagents-chat-app",
  "openagents-connect",
  "physics",
@@ -15551,6 +15568,7 @@ dependencies = [
  "verse-engine",
  "verse-gfx",
  "verse-pbr",
+ "verse-private",
  "verse-world",
 ]
 

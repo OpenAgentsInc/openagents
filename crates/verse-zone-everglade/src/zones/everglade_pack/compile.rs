@@ -20,8 +20,13 @@
 //!
 //! The sets in [`FORM_SETS`] hold skinned, animated models instead, which
 //! compile to the pack's forms (`forms`): the Grove's Wild Shape beasts.
+//!
+//! [`private`] compiles a licensed character into a private pack of its
+//! own, from a build directory outside the repository
+//! (`docs/verse/private-assets.md`).
 
 mod forms;
+pub mod private;
 
 use std::collections::BTreeMap;
 use std::io::Read;
@@ -387,6 +392,10 @@ fn read_set(root: &Path, set: &str) -> Result<(SourceSet, u64), String> {
 
 /// The edge a texture is compiled to.
 pub fn texture_edge(set: &str, file: &str, limits: &Limits) -> u32 {
+    // A private pack's images are baked at their edge; the limits bound it.
+    if set == private::SET {
+        return limits.texture_edge;
+    }
     let path = format!("{set}/{file}");
     let wanted = TEXTURE_EDGES
         .iter()

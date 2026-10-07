@@ -10,6 +10,10 @@ pub mod gate;
 pub use verse_zone_grove::zones::grove;
 pub mod hud;
 pub use verse_zone_lab as lab;
+#[cfg(not(target_arch = "wasm32"))]
+mod private_assets;
+#[cfg(test)]
+mod private_assets_tests;
 pub use verse_zone_lagrange as lagrange;
 #[cfg(test)]
 mod budget_tests;
@@ -318,6 +322,13 @@ pub(crate) struct State {
     /// The tops of the world's blockers the camera sees ([`sight`]), and the
     /// zone revision and blocker count they were measured for.
     sight_tops: (u64, usize, Vec<f32>),
+    /// Verse's home, where the owner's private placements and cache live,
+    /// when the desktop configured it, and Everglade's background load of
+    /// them (`private_assets`).
+    #[cfg(not(target_arch = "wasm32"))]
+    private_home: Option<std::path::PathBuf>,
+    #[cfg(not(target_arch = "wasm32"))]
+    private_loader: Option<everglade_pack::private_assets::PrivateLoader>,
 }
 impl Default for State {
     fn default() -> Self {
@@ -344,6 +355,10 @@ impl Default for State {
             ritual: None,
             ritual_crossed: false,
             sight_tops: (u64::MAX, 0, Vec::new()),
+            #[cfg(not(target_arch = "wasm32"))]
+            private_home: None,
+            #[cfg(not(target_arch = "wasm32"))]
+            private_loader: None,
         }
     }
 }

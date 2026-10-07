@@ -151,6 +151,8 @@ gym-bridge = { path = "../gym-bridge", default-features = false }
 # The fetch-verify-cache client for the Gym's published results.
 gym-leaderboard = { path = "../gym-leaderboard", default-features = false, features = ["client"] }
 libc = "0.2"
+# The owner's private placements (docs/verse/private-assets.md).
+verse-private = { path = "../verse-private" }
 coder-pty = { path = "../coder-pty", optional = true }
 # The terminal's fallback fonts, mapped rather than read: the system emoji
 # font is about 190 MB.

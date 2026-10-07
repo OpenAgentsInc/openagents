@@ -20,6 +20,8 @@
 pub mod compile;
 pub mod format;
 pub mod pinned;
+#[cfg(not(target_arch = "wasm32"))]
+pub mod private_assets;
 
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicBool, Ordering};

@@ -153,6 +153,23 @@ impl Limits {
     };
 }
 
+impl Limits {
+    /// The budgets of a private character pack
+    /// (`docs/verse/private-assets.md`): a near and a far level of one
+    /// licensed character, each with its own base-color image. The pack
+    /// never enters the repository, so nothing is committed.
+    pub const PRIVATE: Self = Self {
+        pack_bytes: 8 * 1024 * 1024,
+        decoded_texture_bytes: 16 * 1024 * 1024,
+        texture_edge: 1024,
+        triangles: 30_000,
+        model_triangles: 20_000,
+        committed_bytes: 0,
+        character_triangles: 24_000,
+        body_bytes: 16 * 1024 * 1024,
+    };
+}
+
 /// How a material's base-color alpha is used.
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub enum AlphaMode {
@@ -487,7 +504,9 @@ fn check_primitive(primitive: &Primitive, materials: usize) -> Result<(), String
 pub fn validate(contents: &Contents, limits: &Limits) -> Result<(), String> {
     if contents.textures.len() > MAX_TEXTURES
         || contents.materials.len() > MAX_MATERIALS
-        || contents.models.is_empty()
+        // A pack holds something: a model, or a form (a private character
+        // pack holds forms only).
+        || (contents.models.is_empty() && contents.forms.is_empty())
         || contents.models.len() > MAX_MODELS
     {
         return Err("Zone pack has an invalid number of entries".into());

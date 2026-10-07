@@ -1619,6 +1619,7 @@ dependencies = [
  "secp256k1 0.31.1",
  "serde",
  "serde_json",
+ "sha2 0.10.9",
  "tokio",
 ]
 
@@ -1689,6 +1690,7 @@ dependencies = [
  "coder-boundary",
  "coder-connect",
  "coder-history",
+ "coder-host-wire",
  "coder-link",
  "coder-pty",
  "coder-reach",
@@ -1704,6 +1706,17 @@ dependencies = [
  "tokio",
  "tokio-tungstenite 0.30.0",
  "windows-sys 0.61.2",
+]
+
+[[package]]
+name = "coder-host-wire"
+version = "0.1.0"
+dependencies = [
+ "coder-pty",
+ "coder-reach",
+ "nostr",
+ "serde",
+ "serde_json",
 ]
 
 [[package]]
@@ -1732,6 +1745,7 @@ dependencies = [
  "secp256k1 0.31.1",
  "serde",
  "serde_json",
+ "terminal-gfx",
  "tokio",
  "verse",
  "verse-engine",
@@ -1745,6 +1759,7 @@ dependencies = [
  "base64 0.22.1",
  "serde",
  "serde_json",
+ "sha2 0.10.9",
 ]
 
 [[package]]
@@ -1753,6 +1768,9 @@ version = "0.1.0"
 dependencies = [
  "base64 0.22.1",
  "futures-util",
+ "getrandom 0.3.4",
+ "gloo-timers",
+ "js-sys",
  "nostr",
  "secp256k1 0.31.1",
  "serde",
@@ -1761,6 +1779,9 @@ dependencies = [
  "tokio",
  "tokio-tungstenite 0.30.0",
  "url",
+ "wasm-bindgen",
+ "wasm-bindgen-futures",
+ "web-sys",
 ]
 
 [[package]]
@@ -4629,6 +4650,15 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "cf8baf1c55e62ffcace7a9f06f4bd9cd3f0c4beb022d3b367256b91b87513d98"
 
 [[package]]
+name = "memmap2"
+version = "0.9.11"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "d1219ed1b7f229ee7104d281dd01d6802fe28bb6e95d292942c4daacdeb798c0"
+dependencies = [
+ "libc",
+]
+
+[[package]]
 name = "mime"
 version = "0.3.17"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -5328,6 +5358,7 @@ name = "openagents-chat"
 version = "0.1.0"
 dependencies = [
  "atif",
+ "coder-access",
  "model-access",
  "nostr",
  "nostr-transport",
@@ -6554,6 +6585,12 @@ dependencies = [
 ]
 
 [[package]]
+name = "rtrb"
+version = "0.4.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "9278fb35b3e730abe136e9b395b5b81b96d06b9f5478a50f0c8430a2237b22de"
+
+[[package]]
 name = "ruint"
 version = "1.20.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -7742,19 +7779,43 @@ dependencies = [
 name = "terminal-control"
 version = "0.1.0"
 dependencies = [
+ "private-fs",
  "serde_json",
  "terminal-core",
+ "tokio",
+ "windows-sys 0.61.2",
 ]
 
 [[package]]
 name = "terminal-core"
 version = "0.1.0"
 dependencies = [
+ "coder-pty",
  "coder-vt",
+ "route-contract",
  "serde",
  "serde_json",
  "sha2 0.10.9",
+ "web-time",
  "workbench",
+]
+
+[[package]]
+name = "terminal-gfx"
+version = "0.1.0"
+dependencies = [
+ "bytemuck",
+ "coder-pty",
+ "coder-ui",
+ "coder-vt",
+ "memmap2",
+ "serde",
+ "serde_json",
+ "swash",
+ "terminal-core",
+ "unicode-width",
+ "verse-gfx",
+ "windows-sys 0.61.2",
 ]
 
 [[package]]
@@ -9058,6 +9119,7 @@ dependencies = [
  "verse-lagrange",
  "verse-net",
  "verse-pbr",
+ "verse-private",
  "verse-world",
  "verse-zone-crypt",
  "verse-zone-everglade",
@@ -9080,6 +9142,7 @@ dependencies = [
  "physics",
  "png",
  "resvg",
+ "secp256k1 0.31.1",
  "serde",
  "serde_json",
  "serde_path_to_error",
@@ -9113,6 +9176,7 @@ dependencies = [
  "glam",
  "libc",
  "png",
+ "rtrb",
  "serde",
  "serde_json",
  "sha2 0.10.9",
@@ -9171,6 +9235,7 @@ dependencies = [
  "verse-net",
  "verse-pbr",
  "verse-world",
+ "web-time",
  "wgpu",
 ]
 
@@ -9227,13 +9292,28 @@ dependencies = [
 ]
 
 [[package]]
+name = "verse-private"
+version = "0.1.0"
+dependencies = [
+ "base64 0.22.1",
+ "nostr",
+ "reqwest 0.12.28",
+ "serde",
+ "serde_json",
+ "sha2 0.11.0",
+]
+
+[[package]]
 name = "verse-world"
 version = "0.1.0"
 dependencies = [
  "coder-access",
  "coder-reach",
+ "futures-util",
  "getrandom 0.3.4",
  "glam",
+ "gloo-timers",
+ "miniz_oxide 0.8.9",
  "physics",
  "rustls",
  "secp256k1 0.31.1",
@@ -9243,6 +9323,8 @@ dependencies = [
  "tokio",
  "tokio-rustls",
  "verse-engine",
+ "wasm-bindgen-futures",
+ "web-time",
 ]
 
 [[package]]
@@ -9268,6 +9350,7 @@ dependencies = [
  "gltf",
  "libc",
  "miniz_oxide 0.8.9",
+ "nostr",
  "openagents-connect",
  "physics",
  "png",
@@ -9280,6 +9363,7 @@ dependencies = [
  "verse-engine",
  "verse-gfx",
  "verse-pbr",
+ "verse-private",
  "verse-world",
 ]
 

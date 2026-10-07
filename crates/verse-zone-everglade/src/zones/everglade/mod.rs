@@ -20,6 +20,7 @@ pub mod demolition;
 pub mod detail;
 pub mod draw;
 pub mod floaters;
+pub mod guests;
 pub mod hotbar;
 pub mod layout;
 pub mod npcs;
@@ -147,6 +148,9 @@ pub struct Everglade {
     smoke: Option<crate::fx::Particles>,
     /// The town's ambient creatures ([`wildlife`]).
     wildlife: Option<Box<wildlife::Wildlife>>,
+    /// Private characters the owner placed, each from its own private pack
+    /// ([`guests`]), added as their packs arrive.
+    guests: Vec<wildlife::Wildlife>,
     /// Another zone's light on these placements, such as the Grove's dusk:
     /// its stage at a time, whose key also lights the bake. Everglade's
     /// own afternoon without it.
@@ -248,7 +252,30 @@ impl Everglade {
             smoke: None,
             look: None,
             wildlife: None,
+            guests: Vec::new(),
         })
+    }
+
+    /// Stands the private character in `pack` at `stand` ([`guests`]). The
+    /// demolition yard takes no guests.
+    ///
+    /// # Errors
+    ///
+    /// Returns a message when the pack holds no guest that can play.
+    pub fn add_guest(&mut self, pack: &ZonePack, stand: guests::Stand) -> Result<(), String> {
+        if self.demolition.is_some() {
+            return Err("The demolition yard takes no guests".into());
+        }
+        self.guests.push(guests::guest(pack, stand)?);
+        self.extra_blocks.push(guests::block(stand));
+        self.refresh_blocks();
+        Ok(())
+    }
+
+    /// How many private characters stand in the zone.
+    #[must_use]
+    pub fn guest_count(&self) -> usize {
+        self.guests.len()
     }
 
     /// Lets the sledgehammer and Meteor Swarm break the town's buildings,
@@ -957,6 +984,13 @@ impl Everglade {
                 cast_scene = wildlife.joined(scene).or(cast_scene);
             }
         }
+        for guest in &mut self.guests {
+            guest.tick(dt, at.pos);
+            if let Some(scene) = &cast_scene {
+                guest.prepare(scene);
+                cast_scene = guest.joined(scene).or(cast_scene);
+            }
+        }
         let solids = self.town.as_mut().and_then(|town| {
             town.tick(dt, at);
             town.take_solids()
@@ -1045,6 +1079,9 @@ impl Everglade {
                 }
                 if let Some(wildlife) = &self.wildlife {
                     figure = wildlife.figure(figure, self.probes.as_deref());
+                }
+                for guest in &self.guests {
+                    figure = guest.figure(figure, self.probes.as_deref());
                 }
                 if let Some(yard) = &self.demolition {
                     figure = yard.figure(Some(figure));
