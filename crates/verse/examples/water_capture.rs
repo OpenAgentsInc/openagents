@@ -2,14 +2,17 @@
 //! renderer.
 //!
 //! Usage: water_capture OUT_DIR [--only NAME,...] [--frames N] [--size WxH]
-//! [--sequence N] [--spells]
+//! [--sequence N] [--spells] [--orb]
 //!
 //! Installs the lab as `verse --water-lab` does after the Everglade pack
 //! loads, then renders fixed cinematic views: the cove at golden hour and
 //! at noon, the shore's foam, the sun's glitter, floating bodies, a splash
 //! frame by frame, the falls, the river, and the view under water. With
 //! `--spells` it also casts each water spell and renders it into
-//! `OUT_DIR/spells`. `--sequence N` writes N frames of a slow pan across
+//! `OUT_DIR/spells`. With `--orb` it grows, holds, throws, and splashes a
+//! Water Orb, engulfs a dummy and a crate, strikes the orb and the sea with
+//! the Thunderbolt, and renders each, with a frame sequence, into
+//! `OUT_DIR/orb`. `--sequence N` writes N frames of a slow pan across
 //! the bay into `OUT_DIR/sequence`. Finally it renders `N` frames (240 by
 //! default) from the beach and prints the frame times; `VERSE_QUALITY`
 //! (`low`, `medium`, `high`) picks the tier.
@@ -31,6 +34,7 @@ struct Args {
     height: u32,
     sequence: usize,
     spells: bool,
+    orb: bool,
 }
 
 fn args() -> Result<Args, String> {
@@ -43,6 +47,7 @@ fn args() -> Result<Args, String> {
         height: 900,
         sequence: 0,
         spells: false,
+        orb: false,
     };
     while let Some(flag) = it.next() {
         match flag.as_str() {
@@ -63,6 +68,7 @@ fn args() -> Result<Args, String> {
                     .ok_or("--sequence N")?;
             }
             "--spells" => a.spells = true,
+            "--orb" => a.orb = true,
             "--size" => {
                 let v = it.next().ok_or("--size WxH")?;
                 let (w, h) = v.split_once('x').ok_or("--size WxH")?;
@@ -347,6 +353,9 @@ fn main() -> Result<(), String> {
     if a.spells {
         spells(&a, &mut runtime, &mut renderer, aspect)?;
     }
+    if a.orb {
+        orb(&a, &mut runtime, &mut renderer, aspect)?;
+    }
 
     if a.sequence > 0 {
         let dir = a.out.join("sequence");
@@ -521,6 +530,193 @@ fn spells(
         p + Vec3::new(-3.0, 1.8, 3.5),
         p + Vec3::new(0.0, 0.8, 0.0),
     )?;
+    Ok(())
+}
+
+/// The follow camera at `yaw` (around the player), `pitch`, and
+/// `distance`, as a player would frame the shot.
+fn frame(runtime: &mut WorldRuntime, yaw: f32, pitch: f32, distance: f32) {
+    runtime.camera.yaw_offset = yaw;
+    runtime.camera.pitch = pitch;
+    runtime.camera.distance = distance;
+}
+
+/// The Water Orb and the Thunderbolt, into `OUT/orb`, through the follow
+/// camera, so billboards face the eye that renders them.
+fn orb(
+    a: &Args,
+    runtime: &mut WorldRuntime,
+    renderer: &mut Offscreen,
+    aspect: f32,
+) -> Result<(), String> {
+    let dir = a.out.join("orb");
+    std::fs::create_dir_all(dir.join("sequence")).map_err(|e| e.to_string())?;
+    let idle = verse::controller::InputState::default();
+    let run = |runtime: &mut WorldRuntime, seconds: f32| {
+        for _ in 0..(seconds / (1.0 / 60.0)).round() as usize {
+            runtime.tick(&idle, 1.0 / 60.0);
+        }
+    };
+    let ui = verse::ui::UiBatch::default();
+    let shoot =
+        |runtime: &mut WorldRuntime, renderer: &mut Offscreen, path: &Path| -> Result<(), String> {
+            let pixels = renderer.render(runtime.view(aspect), &runtime.dynamic_mesh(), &ui)?;
+            write_png(path, a.width, a.height, &pixels)?;
+            eprintln!("wrote {}", path.display());
+            Ok(())
+        };
+    let stand = |runtime: &mut WorldRuntime, x: f32, z: f32, yaw: f32| {
+        let _ = runtime.set_spawn(Vec3::new(x, water::ground(x, z), z), yaw);
+    };
+    // Aims the pointer from the camera's eye at `at`.
+    let aim = |runtime: &mut WorldRuntime, at: Vec3| {
+        let eye = runtime.view(aspect).eye;
+        if let Some(lab) = runtime.water_lab_mut() {
+            lab.set_aim(Some((eye, (at - eye).normalize())));
+        }
+    };
+    let orb_key = water::hotbar::ORB;
+    let bolt_key = 6;
+    // Growing on the beach, drawing streams up out of the bay.
+    stand(runtime, 4.0, 16.0, PI);
+    run(runtime, 0.5);
+    frame(runtime, 1.1, 0.1, 9.0);
+    runtime.water_press(orb_key, false)?;
+    run(runtime, 1.0);
+    shoot(runtime, renderer, &dir.join("growing.png"))?;
+    // Grown to its largest: 12 m across.
+    run(runtime, 3.2);
+    frame(runtime, 0.55, 0.12, 17.0);
+    shoot(runtime, renderer, &dir.join("huge.png"))?;
+    frame(runtime, 1.25, 0.1, 24.0);
+    shoot(runtime, renderer, &dir.join("huge-side.png"))?;
+    // Thrown out over the bay, where floats bob, and its splash.
+    if let Some(lab) = runtime.water_lab_mut() {
+        for (k, (x, z)) in [(-6.0, -7.0), (3.0, -12.0), (-4.0, -14.0), (5.0, -8.0)]
+            .into_iter()
+            .enumerate()
+        {
+            lab.floats.spawn(
+                water::FloatKind::ALL[k % 3],
+                Vec3::new(x, 0.3, z),
+                k as f32,
+                Vec3::ZERO,
+            );
+        }
+    }
+    run(runtime, 0.5);
+    frame(runtime, 0.75, 0.12, 15.0);
+    aim(runtime, Vec3::new(-1.0, 0.0, -9.0));
+    runtime.water_release(orb_key, false)?;
+    run(runtime, 0.3);
+    shoot(runtime, renderer, &dir.join("throw.png"))?;
+    // Down the beach to watch it land.
+    stand(runtime, 3.0, 6.0, PI);
+    frame(runtime, 0.25, 0.08, 7.0);
+    let mut waited = 0.0;
+    while runtime.water_lab().is_some_and(|lab| !lab.orbs.is_empty()) && waited < 4.0 {
+        run(runtime, 1.0 / 60.0);
+        waited += 1.0 / 60.0;
+    }
+    run(runtime, 0.12);
+    shoot(runtime, renderer, &dir.join("impact.png"))?;
+    run(runtime, 0.3);
+    shoot(runtime, renderer, &dir.join("splash.png"))?;
+    run(runtime, 0.5);
+    shoot(runtime, renderer, &dir.join("splash-late.png"))?;
+    run(runtime, 3.0);
+    // An orb set hovering round the beach's straw dummy, with a crate and
+    // a barrel dropped in.
+    let dummy = runtime.water_lab().ok_or("no lab")?.targets[0].dummy.pos;
+    stand(runtime, dummy.x, dummy.z + 5.2, PI);
+    run(runtime, 0.3);
+    runtime.water_press(orb_key, false)?;
+    run(
+        runtime,
+        (4.0 - water::orb::MIN_RADIUS) / water::orb::GROW_FROM_WATER,
+    );
+    runtime.water_release(orb_key, true)?;
+    if let Some(lab) = runtime.water_lab_mut() {
+        let c = lab.orbs[0].center;
+        lab.floats.spawn(
+            water::FloatKind::Crate,
+            c + Vec3::new(1.4, 1.5, 0.3),
+            0.4,
+            Vec3::ZERO,
+        );
+        lab.floats.spawn(
+            water::FloatKind::Barrel,
+            c + Vec3::new(-1.5, 1.2, -0.4),
+            1.0,
+            Vec3::ZERO,
+        );
+    }
+    run(runtime, 3.0);
+    frame(runtime, 0.85, 0.08, 12.0);
+    shoot(runtime, renderer, &dir.join("engulfed.png"))?;
+    // The Thunderbolt on the orb: the strike, then the charge crackling
+    // through everything inside.
+    let center = runtime.water_lab().ok_or("no lab")?.orbs[0].center;
+    aim(runtime, center);
+    runtime.water_press(bolt_key, false)?;
+    run(runtime, 0.05);
+    shoot(runtime, renderer, &dir.join("lightning-strike.png"))?;
+    run(runtime, 0.2);
+    shoot(runtime, renderer, &dir.join("electrified.png"))?;
+    run(runtime, 0.5);
+    shoot(runtime, renderer, &dir.join("electrified-late.png"))?;
+    // The Thunderbolt in the sea between the two wading dummies.
+    run(runtime, 2.0);
+    stand(runtime, 6.0, 7.0, PI);
+    run(runtime, 0.3);
+    frame(runtime, 0.4, 0.2, 9.0);
+    aim(runtime, Vec3::new(4.5, 0.0, -9.0));
+    runtime.water_press(bolt_key, false)?;
+    run(runtime, 0.11);
+    shoot(runtime, renderer, &dir.join("sea-conduction.png"))?;
+    run(runtime, 0.4);
+    shoot(runtime, renderer, &dir.join("sea-conduction-after.png"))?;
+    // A frame sequence at 24 frames a second: grow, throw, and splash,
+    // then an orb round the dummy struck by lightning.
+    run(runtime, 11.0);
+    let mut frame_index = 0;
+    let mut record = |runtime: &mut WorldRuntime,
+                      renderer: &mut Offscreen,
+                      seconds: f32|
+     -> Result<(), String> {
+        for _ in 0..(seconds * 24.0).round() as usize {
+            run(runtime, 1.0 / 24.0);
+            shoot(
+                runtime,
+                renderer,
+                &dir.join("sequence").join(format!("{frame_index:04}.png")),
+            )?;
+            frame_index += 1;
+        }
+        Ok(())
+    };
+    stand(runtime, 4.0, 16.0, PI);
+    run(runtime, 0.5);
+    frame(runtime, 0.6, 0.14, 12.0);
+    runtime.water_press(orb_key, false)?;
+    record(runtime, renderer, 2.6)?;
+    aim(runtime, Vec3::new(-1.0, 0.0, -9.0));
+    runtime.water_release(orb_key, false)?;
+    record(runtime, renderer, 0.5)?;
+    stand(runtime, 3.0, 6.0, PI);
+    frame(runtime, 0.25, 0.08, 7.0);
+    record(runtime, renderer, 1.6)?;
+    let dummy = runtime.water_lab().ok_or("no lab")?.targets[0].dummy.pos;
+    stand(runtime, dummy.x, dummy.z + 5.2, PI);
+    frame(runtime, 0.85, 0.08, 12.0);
+    runtime.water_press(orb_key, false)?;
+    record(runtime, renderer, 2.4)?;
+    runtime.water_release(orb_key, true)?;
+    record(runtime, renderer, 0.6)?;
+    let center = runtime.water_lab().ok_or("no lab")?.orbs[0].center;
+    aim(runtime, center);
+    runtime.water_press(bolt_key, false)?;
+    record(runtime, renderer, 1.6)?;
     Ok(())
 }
 

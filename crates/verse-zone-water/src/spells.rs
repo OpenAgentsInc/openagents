@@ -120,16 +120,23 @@ pub enum Slot {
     CreateWater,
     SleetStorm,
     WaterBreathing,
+    /// Our own spell, after Create or Destroy Water and Control Water
+    /// ([`crate::orb`]).
+    WaterOrb,
+    /// The Grove's Thunderbolt ([`crate::bolt`]).
+    Thunderbolt,
     Drop,
 }
 
 impl Slot {
-    pub const ALL: [Self; 6] = [
+    pub const ALL: [Self; 8] = [
         Self::WaterWalk,
         Self::ControlWater,
         Self::CreateWater,
         Self::SleetStorm,
         Self::WaterBreathing,
+        Self::WaterOrb,
+        Self::Thunderbolt,
         Self::Drop,
     ];
 
@@ -142,6 +149,8 @@ impl Slot {
             Self::CreateWater => "fog-cloud-icon",
             Self::SleetStorm => "sleet-storm-icon",
             Self::WaterBreathing => "blur-icon",
+            Self::WaterOrb => "water-orb-icon",
+            Self::Thunderbolt => "thunderbolt-icon",
             Self::Drop => "conjure-animals-icon",
         }
     }
@@ -154,6 +163,8 @@ impl Slot {
             Self::CreateWater => "Create or Destroy Water",
             Self::SleetStorm => "Sleet Storm",
             Self::WaterBreathing => "Water Breathing",
+            Self::WaterOrb => "Water Orb",
+            Self::Thunderbolt => "Thunderbolt",
             Self::Drop => "Drop a float",
         }
     }
@@ -168,8 +179,11 @@ pub struct Spells {
     /// The mode the next Control Water starts in.
     pub mode: Mode,
     pub rain: Option<Placed>,
-    /// Where rain last fell, and how wet it still is.
+    /// Where rain or a burst orb last fell, and how wet it still is.
     pub wet: Option<(Vec2, f32)>,
+    /// How far the wetness reaches from its center, m: Create Water's
+    /// cube, or a burst orb's splash. Zero means the cube's.
+    pub wet_radius: f32,
     pub drain: Option<Placed>,
     pub sleet: Option<Placed>,
     /// The ice: where, and how frozen, 0 to 1.
@@ -230,6 +244,7 @@ impl Spells {
             self.drain = None;
         }
         if let Some(rain) = self.rain {
+            self.wet_radius = RAIN_SIDE * 0.5;
             let wet = self.wet.map_or(0.0, |(_, w)| w);
             self.wet = Some((rain.center, (wet + dt / 4.0).min(1.0)));
             if now - rain.started > RAIN_TIME {

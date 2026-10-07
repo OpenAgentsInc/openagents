@@ -15639,6 +15639,7 @@ dependencies = [
  "verse-pbr",
  "verse-world",
  "verse-zone-everglade",
+ "verse-zone-grove",
 ]
 
 [[package]]

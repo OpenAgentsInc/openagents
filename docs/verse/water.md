@@ -550,6 +550,48 @@ The radius is 6 m because it reaches across any of Everglade's ponds (4 to
 local. Half damage on a failed save keeps a conducted hit below a direct
 one.
 
+The Water Lab applies this rule to its Thunderbolt (W8 note,
+[`bolt.rs`](../../crates/verse-zone-water/src/bolt.rs)): the sea and the
+river with the pool are separate bodies, a dummy counts as in the water when
+its feet are under the surface, the strike's own 3.4 m blast takes the place
+of rule 3's direct damage, and floating bodies in the same water within 6 m
+jolt.
+
+#### Water Orb
+
+The Water Lab's Water Orb is our own spell (homebrew), after Create or
+Destroy Water and Control Water; the SRD has no spell that shapes a sphere of
+water and throws it, so every number is ours
+([`orb.rs`](../../crates/verse-zone-water/src/orb.rs), W8 note):
+
+- **Grow.** While the key is held, the orb grows from 0.35 m to at most 6 m
+  in radius (12 m across), by 1.6 m a second while open water lies within
+  16 m (streams rise from the sea, the river, or the pool) and 0.9 m a
+  second otherwise (it condenses from the air).
+- **Throw or hold.** Letting go throws it on a ballistic arc at the
+  pointer's aim. With Shift it hovers in place for 1 minute; the key pressed
+  near it takes it back in hand.
+- **Burst.** It bursts where it meets the ground, the water, a dummy, or
+  its target. The splash reaches 2 m plus 2.2 times its radius: it throws
+  floating bodies and dummies back, wets the ground, and on water spills a
+  ring of ripples. An orb thrown into another pours into it, their volumes
+  added.
+- **Engulf.** Floating bodies and dummies inside a forming or hovering orb
+  are carried in it, their weight borne and their motion matched to its
+  water, and they fly with it when it is thrown.
+- **Lightning.** A bolt that meets an orb, or comes down over one, strikes
+  the orb instead of what lies under it. The whole orb is the contact
+  point, and nothing outside it takes damage. A dummy inside is Restrained
+  by the water, as the SRD's Engulf restrains, so it makes the spell's
+  Dexterity save with Disadvantage and takes the full damage on a failure
+  and half on a success. Floating bodies inside jolt.
+
+The renderer draws an orb, its droplets, and its streams through the water
+pass as `water::Kind::Orb` vertices in `Mesh::liquid`: a wobbling skin,
+Fresnel reflection, extinction along the refracted chord, the world behind
+it seen upside down as through a ball lens, caustics, and, while charged,
+a glow and crackling arcs.
+
 ### Rowboats
 
 The owner approved boardable, rowable rowboats in the first round. They

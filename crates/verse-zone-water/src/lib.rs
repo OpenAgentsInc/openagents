@@ -12,16 +12,21 @@
 //! and with Water Breathing dives. Crates, barrels, and planks float as
 //! rigid bodies in the shared `physics` crate ([`floats`]): `B` drops one
 //! ahead, and it splashes, bobs, tilts, and drifts with the waves and the
-//! current. The hotbar holds the water spells ([`spells`]); `T` turns the
-//! hour between golden hour and noon.
+//! current. The hotbar holds the water spells ([`spells`]), the Water Orb
+//! ([`orb`]), and the Grove's Thunderbolt ([`bolt`]), and training dummies
+//! stand on the beach and in the water ([`targets`]); `T` turns the hour
+//! between golden hour and noon.
 //!
 //! [`terrain`] is the ground; [`sea`] the water's rest shape and light.
 //! `verse` re-exports this crate as `zones::water`.
 
+pub mod bolt;
 pub mod floats;
 pub mod hotbar;
+pub mod orb;
 pub mod sea;
 pub mod spells;
+pub mod targets;
 pub mod terrain;
 #[cfg(test)]
 mod tests;
@@ -29,13 +34,18 @@ mod tests;
 use std::sync::Arc;
 
 use glam::{Vec2, Vec3};
+use physics::BodyId;
 use verse_core::fx::{Particles, Spawn};
 use verse_core::world::World;
 use verse_pbr::mesh::Mesh;
+use verse_pbr::pbr::textured::Figure;
 use verse_pbr::pbr::water::{Controls, Disc, Flow, Part, Water, Whirl};
+use verse_world::spells::Dice;
 use verse_zone_everglade::zones::everglade;
+use verse_zone_everglade::zones::everglade::floaters::Floater;
 use verse_zone_everglade::zones::everglade::layout::{Collision, Placement};
 use verse_zone_everglade::zones::everglade_pack::ZonePack;
+use verse_zone_grove::zones::grove::draw::{Model, Painter};
 
 pub use floats::{Floats, Kind as FloatKind};
 pub use sea::Hour;
@@ -285,7 +295,38 @@ pub struct WaterLab {
     /// What the character stands on this frame ([`Feet::floor`]), which
     /// the runtime applies after each movement step.
     pub floor: Option<f32>,
+    /// The Water Orbs: the one forming in front of the caster, those in
+    /// flight, and those set hovering ([`orb`]).
+    pub orbs: Vec<orb::Orb>,
+    /// The water burst orbs threw up, still in the air.
+    spills: Vec<orb::Spill>,
+    next_orb: u32,
+    feed_wait: f32,
+    /// The training dummies ([`targets`]).
+    pub targets: Vec<targets::Target>,
+    /// Numbers and words floating up from hits.
+    pub floaters: Vec<Floater>,
+    /// Thunderbolts striking now ([`bolt`]), and lightning running over
+    /// the water from where one struck it, and when.
+    pub bolts: Vec<bolt::Bolt>,
+    surges: Vec<(Vec3, f32)>,
+    /// How brightly lightning lights the sky, 0 to 1.
+    pub flash: f32,
+    /// The dice the rules roll behind the scenes.
+    dice: Dice,
+    /// The pointer's ray, origin and direction, while the app aims with it.
+    aim: Option<(Vec3, Vec3)>,
+    /// The caster's feet and facing at the last tick.
+    caster: (Vec3, Vec3),
+    /// Floating bodies lightning jolts, and until when.
+    jolts: Vec<(BodyId, f32)>,
+    /// The dummies' figure beside the character's, once the runtime sets
+    /// it from the pack.
+    model: Option<Model>,
 }
+
+/// Floating numbers at once, oldest dropped first.
+pub const MAX_FLOATERS: usize = 48;
 
 impl Default for WaterLab {
     fn default() -> Self {
@@ -333,6 +374,20 @@ impl WaterLab {
             log: Vec::new(),
             seed: 1,
             floor: None,
+            orbs: Vec::new(),
+            spills: Vec::new(),
+            next_orb: 1,
+            feed_wait: 0.0,
+            targets: targets::Target::field(),
+            floaters: Vec::new(),
+            bolts: Vec::new(),
+            surges: Vec::new(),
+            flash: 0.0,
+            dice: Dice::new(0x0057_A7E2),
+            aim: None,
+            caster: (SPAWN, Vec3::NEG_Z),
+            jolts: Vec::new(),
+            model: None,
         };
         lab.fx.start("water_falls_spray", Spawn::at(sea::landing()));
         for (k, (x, z)) in [
@@ -404,7 +459,11 @@ impl WaterLab {
         if let Some((at, amount)) = s.wet {
             controls.wet = Some(Disc {
                 center: at.to_array(),
-                radius: spells::RAIN_SIDE * 0.5,
+                radius: if s.wet_radius > 0.0 {
+                    s.wet_radius
+                } else {
+                    spells::RAIN_SIDE * 0.5
+                },
                 amount,
             });
         }
@@ -450,6 +509,9 @@ impl WaterLab {
         self.time += dt;
         self.spells.tick(dt, self.time);
         self.water.time = self.time;
+        // The orbs move first and take in what they touch, so the bodies
+        // they hold follow them this step.
+        self.tick_orbs(dt);
         let water = self.frame_water();
         let ice = water.controls;
         // The medium's current carries the bodies, the whirlpool's pull
@@ -470,6 +532,12 @@ impl WaterLab {
             }
         }
         self.floats = floats;
+        self.tick_jolts();
+        self.tick_targets(dt);
+        self.tick_bolts(dt);
+        let now = self.time;
+        self.floaters
+            .retain(|f| now - f.start < verse_zone_everglade::zones::everglade::floaters::FLOAT);
         for event in events {
             match event {
                 floats::Event::Splash { at, speed, size } => {
@@ -514,6 +582,7 @@ impl WaterLab {
                 ..Feet::default()
             };
         }
+        self.caster = (feet, forward);
         self.tick_world(dt);
         let moved = self.last.map_or(0.0, |last| {
             Vec2::new(feet.x - last.x, feet.z - last.z).length()
@@ -733,9 +802,105 @@ impl WaterLab {
                     "Water Breathing ends".into()
                 }
             }
+            Slot::WaterOrb => self.begin_orb(at, forward),
+            Slot::Thunderbolt => return self.thunderbolt(at, forward),
             Slot::Drop => return self.drop_float(at, forward, yaw),
         };
         self.say(line)
+    }
+
+    /// Lets go of a hotbar slot with the character at `at` facing
+    /// `forward`: the Water Orb's key throws the orb it formed, or with
+    /// `alternate` (Shift) sets it hovering. Other slots do nothing.
+    pub fn release(
+        &mut self,
+        slot: Slot,
+        alternate: bool,
+        at: Vec3,
+        forward: Vec3,
+    ) -> Option<String> {
+        match slot {
+            Slot::WaterOrb => self.release_orb(alternate, at, forward),
+            _ => None,
+        }
+    }
+
+    /// Aims with the pointer's ray from `origin` along `direction`, or, with
+    /// `None`, ahead of the caster.
+    pub fn set_aim(&mut self, ray: Option<(Vec3, Vec3)>) {
+        self.aim = ray.filter(|(o, d)| o.is_finite() && d.is_finite() && d.length_squared() > 1e-6);
+    }
+
+    /// Adds a floating number, dropping the oldest past [`MAX_FLOATERS`].
+    fn float(&mut self, floater: Floater) {
+        if self.floaters.len() >= MAX_FLOATERS {
+            self.floaters.remove(0);
+        }
+        self.floaters.push(floater);
+    }
+
+    /// Jolts the floating bodies lightning struck: they shudder and spin.
+    fn tick_jolts(&mut self) {
+        let now = self.time;
+        self.jolts.retain(|(_, until)| now < *until);
+        let jolts = self.jolts.clone();
+        for (id, until) in jolts {
+            let k = ((until - now) / bolt::JOLT).clamp(0.0, 1.0);
+            let kick = Vec3::new(
+                self.random() - 0.5,
+                self.random() - 0.5,
+                self.random() - 0.5,
+            ) * 1.8
+                * k;
+            let spin = Vec3::new(
+                self.random() - 0.5,
+                self.random() - 0.5,
+                self.random() - 0.5,
+            ) * 9.0
+                * k;
+            if let Some(body) = self.floats.world.bodies_mut().get_mut(id.0 as usize) {
+                body.vel += kick.as_dvec3();
+                body.omega += spin.as_dvec3();
+            }
+        }
+    }
+
+    /// Moves the dummies: those an orb holds with it, the rest falling and
+    /// sliding, and each untouched one back up in time.
+    fn tick_targets(&mut self, dt: f32) {
+        let now = self.time;
+        for (k, target) in self.targets.iter_mut().enumerate() {
+            let hold = self
+                .orbs
+                .iter()
+                .find(|o| o.dummies.contains(&k))
+                .map(|o| (o.center, o.velocity));
+            target.tick(dt, now, hold);
+        }
+    }
+
+    /// Sets the dummies' figure: the pack's dummy beside the character's
+    /// figure `cast`.
+    ///
+    /// # Errors
+    ///
+    /// Returns a message when the pack has no dummy.
+    pub fn set_model(&mut self, pack: &ZonePack, cast: Option<&Figure>) -> Result<(), String> {
+        self.model = Some(Model::new(pack, cast, &[], self.targets.len())?);
+        Ok(())
+    }
+
+    /// The character's figure `cast` with the dummies posed after it, and
+    /// where the dummies' vertices begin, for the probes' light; `None`
+    /// before [`Self::set_model`].
+    #[must_use]
+    pub fn figure(&self, cast: Option<&Figure>) -> Option<(Figure, usize)> {
+        let model = self.model.as_ref()?;
+        let dummies: Vec<_> = self.targets.iter().map(|t| t.dummy.clone()).collect();
+        Some((
+            model.figure(cast, None, &dummies, self.time),
+            model.cast_count(),
+        ))
     }
 
     /// Whether each slot's spell is running, for the hotbar.
@@ -747,6 +912,8 @@ impl WaterLab {
             Slot::CreateWater => self.spells.rain.is_some() || self.spells.drain.is_some(),
             Slot::SleetStorm => self.spells.sleet.is_some(),
             Slot::WaterBreathing => self.spells.breathing,
+            Slot::WaterOrb => self.forming().is_some(),
+            Slot::Thunderbolt => !self.bolts.is_empty(),
             Slot::Drop => false,
         }
     }
@@ -754,17 +921,36 @@ impl WaterLab {
     /// The stage this frame: the hour's light and the water.
     #[must_use]
     pub fn stage(&self) -> verse_pbr::pbr::Neon {
-        sea::stage(self.time, self.hour, self.frame_water())
+        let mut stage = sea::stage(self.time, self.hour, self.frame_water());
+        // Lightning lights the cove and the sky for a moment.
+        for (slot, lamp) in stage.lamps.iter_mut().zip(self.lamps()) {
+            *slot = lamp;
+        }
+        stage.sky_flash = stage.sky_flash.max(self.flash * 0.5);
+        stage
     }
 
-    /// This frame's lit stage, floating bodies, and particles.
+    /// This frame's lit stage, floating bodies, orbs, lightning, dummies'
+    /// bars and numbers, and particles, seen from `eye`.
     #[must_use]
-    pub fn mesh(&self) -> Mesh {
+    pub fn mesh(&self, eye: Vec3) -> Mesh {
         let mut mesh = Mesh {
             neon: Some(self.stage()),
             lit: self.floats.draw(),
             ..Mesh::default()
         };
+        self.orb_liquid(&mut mesh.liquid);
+        self.orb_marks(&mut mesh, eye);
+        self.bolt_marks(&mut mesh, eye);
+        let mut painter = Painter::new(eye);
+        let now = self.time;
+        for target in &self.targets {
+            painter.bar(&target.dummy, &target.dummy.conditions(now), false);
+        }
+        for floater in &self.floaters {
+            painter.floater(floater, now);
+        }
+        mesh.extend(&painter.mesh);
         self.fx.draw(&mut mesh.sprites);
         mesh
     }
@@ -789,8 +975,25 @@ impl WaterLab {
         if self.spells.breathing {
             live.push("Water Breathing".into());
         }
+        let hovering = self.orbs.iter().filter(|o| o.hovering()).count();
+        if hovering > 0 {
+            let plural = if hovering == 1 { "" } else { "s" };
+            live.push(format!("{hovering} hovering orb{plural}"));
+        }
         if !live.is_empty() {
             lines.push(live.join(" · "));
+        }
+        if let Some(orb) = self.forming() {
+            let full = if orb.radius >= orb::MAX_RADIUS - 1e-3 {
+                " (largest)"
+            } else {
+                ""
+            };
+            lines.push(format!(
+                "Water Orb {:.1} m across{full}, {} · let go to throw, Shift to hold",
+                orb.radius * 2.0,
+                orb.source.name()
+            ));
         }
         let limit = spells::breath_limit(spells::CON_MODIFIER);
         if self.breath < limit - 0.5 {
@@ -801,7 +1004,10 @@ impl WaterLab {
         } else if let Some(line) = self.log.last() {
             lines.push(line.clone());
         } else {
-            lines.push("1–5 cast · B drops a float · T turns the hour".into());
+            lines.push(
+                "1–5 cast · hold 6 for a Water Orb · 7 Thunderbolt · B drops a float · T turns the hour"
+                    .into(),
+            );
         }
         lines.join("\n")
     }

@@ -642,17 +642,23 @@ pub enum Kind {
     Stream,
     /// A falling sheet: aerated, streaked along its fall.
     Fall,
+    /// A free body of water, such as an orb a spell holds in the air or the
+    /// stream that feeds it: a closed surface around a center, wobbling by
+    /// this much (0 to 1), refracting like a ball lens, and electrified
+    /// when struck by lightning. [`WaterVertex::orb`] builds its vertices.
+    Orb(f32),
 }
 
 impl Kind {
     /// The vertex's kind channel: the swell scale for the sea, 2 for a
-    /// stream, and 3 for a fall.
+    /// stream, 3 for a fall, and 4 plus the wobble for an orb.
     #[must_use]
     pub fn code(self) -> f32 {
         match self {
             Self::Sea(scale) => scale.clamp(0.0, 1.0),
             Self::Stream => 2.0,
             Self::Fall => 3.0,
+            Self::Orb(wobble) => 4.0 + wobble.clamp(0.0, 0.99),
         }
     }
 }
@@ -683,6 +689,22 @@ impl WaterVertex {
             flow: [0.0; 2],
             foam: 0.0,
             kind: kind.code(),
+        }
+    }
+
+    /// A vertex of an orb ([`Kind::Orb`]) centered at `center`, `offset`
+    /// from it at rest, wobbling by `wobble` and electrified by `charge`
+    /// (each 0 to 1). The surface's center rides in the depth and flow
+    /// channels and the charge in the foam channel, so the vertex keeps
+    /// the water pass's one layout; the pass moves it by the wobble.
+    #[must_use]
+    pub fn orb(center: Vec3, offset: Vec3, wobble: f32, charge: f32) -> Self {
+        Self {
+            pos: offset.to_array(),
+            depth: center.y,
+            flow: [center.x, center.z],
+            foam: charge.clamp(0.0, 1.0),
+            kind: Kind::Orb(wobble).code(),
         }
     }
 }

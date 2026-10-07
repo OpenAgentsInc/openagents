@@ -469,10 +469,16 @@ impl WorldRuntime {
                 return;
             }
         };
+        let mut lab = water::WaterLab::new();
+        // The dummies join the character's figure; without the pack's
+        // dummy they still take hits, with bars and numbers.
+        if let Err(error) = lab.set_model(pack, glade.cast_figure().as_ref()) {
+            eprintln!("verse: the Water Lab's dummies have no model: {error}");
+        }
         self.zone_state.plaza_pose = Some((self.player.pos, self.player.yaw));
         self.world = world;
         self.zone_state.everglade = Some(glade);
-        self.zone_state.water = Some(Box::new(water::WaterLab::new()));
+        self.zone_state.water = Some(Box::new(lab));
         self.zone = ZoneId::WaterLab;
         self.zone_state.loading = LoadState::Idle;
         self.zone_state.error = None;
@@ -510,6 +516,40 @@ impl WorldRuntime {
             .as_deref_mut()
             .ok_or("Enter the Water Lab first")?;
         Ok(lab.press(slot, alternate, at, forward, yaw))
+    }
+
+    /// Lets go of the Water Lab's hotbar slot `index` (0-based): the Water
+    /// Orb's throws its orb, or with `alternate` (Shift) holds it in place.
+    /// Returns what happened, if anything did.
+    ///
+    /// # Errors
+    /// The player is not in the Water Lab, or the slot is empty.
+    pub fn water_release(
+        &mut self,
+        index: usize,
+        alternate: bool,
+    ) -> Result<Option<String>, String> {
+        let slot = *super::water::Slot::ALL
+            .get(index)
+            .ok_or("That slot is empty")?;
+        let (at, forward) = (self.player.pos, self.player.forward());
+        let lab = self
+            .zone_state
+            .water
+            .as_deref_mut()
+            .ok_or("Enter the Water Lab first")?;
+        Ok(lab.release(slot, alternate, at, forward))
+    }
+
+    /// Aims the Water Lab's throws and bolts along the ray through the
+    /// normalized viewport point `(x, y)` of a view with `aspect`, or ahead
+    /// of the player with `None`.
+    pub fn water_aim(&mut self, aspect: f32, point: Option<(f32, f32)>) {
+        let ray =
+            point.and_then(|(x, y)| crate::runtime::viewport_ray(&self.view(aspect), aspect, x, y));
+        if let Some(lab) = self.zone_state.water.as_deref_mut() {
+            lab.set_aim(ray);
+        }
     }
 
     /// Turns the Water Lab's hour between golden hour and noon.
@@ -2389,8 +2429,19 @@ impl WorldRuntime {
             // The cove's stage and water, the floating bodies and the
             // particles, the character (not in first person), and its spells.
             let eye = self.view(1.0).eye;
-            mesh.extend(&lab.mesh());
-            mesh.extend(&glade.player_mesh(&self.player, &self.gait, self.hides_avatar()));
+            mesh.extend(&lab.mesh(eye));
+            let mut player = glade.player_mesh(&self.player, &self.gait, self.hides_avatar());
+            // The dummies stand in the character's figure, lit by the
+            // probes as the character is.
+            if let Some((mut figure, start)) = lab.figure(player.figure.as_ref()) {
+                let mut vertices = figure.vertices.as_ref().clone();
+                if let Some(dummies) = vertices.get_mut(start..) {
+                    glade.shade(dummies);
+                }
+                figure.vertices = std::sync::Arc::new(vertices);
+                player.figure = Some(figure);
+            }
+            mesh.extend(&player);
             mesh.extend(&glade.spell_mesh_from(&self.player, eye));
         } else if let (Some(glade), Some(crypt)) =
             (&self.zone_state.everglade, &self.zone_state.crypt)

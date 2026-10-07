@@ -15,6 +15,7 @@ verse-gfx = { path = "../verse-gfx" }
 verse-pbr = { path = "../verse-pbr" }
 verse-world = { path = "../verse-world" }
 verse-zone-everglade = { path = "../verse-zone-everglade" }
+verse-zone-grove = { path = "../verse-zone-grove" }
 
 [lints]
 workspace = true

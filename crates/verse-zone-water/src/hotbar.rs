@@ -1,5 +1,5 @@
-//! The Water Lab's hotbar: its six slots in Everglade's tray
-//! (`everglade::hotbar::draw_of`), keys `1` to `5` and `B`, and the
+//! The Water Lab's hotbar: its eight slots in Everglade's tray
+//! (`everglade::hotbar::draw_of`), keys `1` to `7` and `B`, and the
 //! standard hover card ([`verse_core::tooltip`]) for each slot: the spell's
 //! name, what it does after the SRD, and its controls.
 //!
@@ -16,7 +16,9 @@ use crate::spells::Slot;
 /// How many slots the bar holds.
 pub const COUNT: usize = Slot::ALL.len();
 /// Each slot's key label.
-pub const KEYS: [&str; COUNT] = ["1", "2", "3", "4", "5", "B"];
+pub const KEYS: [&str; COUNT] = ["1", "2", "3", "4", "5", "6", "7", "B"];
+/// The Water Orb's slot, which acts on both press and release.
+pub const ORB: usize = 5;
 
 /// Each slot's name and one sentence on what it does.
 #[must_use]
@@ -41,6 +43,14 @@ pub fn tip(slot: Slot) -> Tip {
         Slot::WaterBreathing => Tip::new(
             "Water Breathing",
             "You breathe under water, so you can dive and walk the bed.",
+        ),
+        Slot::WaterOrb => Tip::new(
+            "Water Orb",
+            "A sphere of water gathers in front of you and grows while you hold it, then flies where you aim.",
+        ),
+        Slot::Thunderbolt => Tip::new(
+            "Thunderbolt",
+            "A huge bolt of lightning strikes where you aim, and electrifies water it meets.",
         ),
         Slot::Drop => Tip::new(
             "Drop a float",
@@ -81,8 +91,41 @@ pub fn card(index: usize) -> Option<Card> {
             .detail(format!("Key {key} turns it on and off"), palette::KEY)
             .detail("24 hours", palette::TIME)
             .detail("Without it, a breath lasts 1 + Con minutes", palette::RULE),
+        Slot::WaterOrb => card
+            .detail(
+                format!("Hold {key} to grow it, up to 12 m across"),
+                palette::KEY,
+            )
+            .detail(format!("Let go of {key} to throw it"), palette::KEY)
+            .detail(
+                format!("Shift as you let go of {key} holds it in place"),
+                palette::KEY,
+            )
+            .detail(
+                format!("Press {key} near a held orb to take it back"),
+                palette::KEY,
+            )
+            .detail(
+                "Homebrew, after Create or Destroy Water and Control Water",
+                palette::RULE,
+            )
+            .detail(
+                "Draws from the sea or river, or condenses from the air",
+                palette::RULE,
+            )
+            .detail(
+                "Carries what it engulfs; a held orb lasts 1 minute",
+                palette::TIME,
+            ),
+        Slot::Thunderbolt => card
+            .detail(format!("Key {key} strikes the pointer's aim"), palette::KEY)
+            .detail("12d10 lightning, Dexterity save for half", palette::RULE)
+            .detail("An orb it strikes shocks all inside it", palette::RULE)
+            .detail("In the sea or river it conducts 20 feet", palette::RULE)
+            .detail("The Grove's own spell, not SRD", palette::RULE)
+            .detail("No cooldown", palette::TIME),
         Slot::Drop => card
-            .detail(format!("Key {key} or 6"), palette::KEY)
+            .detail(format!("Key {key} or 8"), palette::KEY)
             .detail("No cooldown", palette::TIME),
     })
 }
@@ -100,12 +143,12 @@ pub fn frame(size: [f32; 2], bottom: f32) -> [f32; 4] {
     tray::frame_of(size, bottom, COUNT)
 }
 
-/// The slot a key presses, as a slot index: `1` to `5`, then `6` or `B`.
+/// The slot a key presses, as a slot index: `1` to `7`, then `8` or `B`.
 #[must_use]
 pub fn key(key: char) -> Option<usize> {
     match key {
-        '1'..='6' => Some(key as usize - '1' as usize),
-        'b' | 'B' => Some(5),
+        '1'..='8' => Some(key as usize - '1' as usize),
+        'b' | 'B' => Some(COUNT - 1),
         _ => None,
     }
 }
@@ -219,10 +262,32 @@ mod tests {
 
     #[test]
     fn keys_press_their_slots() {
-        for (index, key) in ['1', '2', '3', '4', '5', 'b'].into_iter().enumerate() {
+        for (index, key) in ['1', '2', '3', '4', '5', '6', '7', 'b']
+            .into_iter()
+            .enumerate()
+        {
             assert_eq!(super::key(key), Some(index));
         }
-        assert_eq!(super::key('6'), Some(5));
-        assert_eq!(super::key('7'), None);
+        assert_eq!(super::key('8'), Some(7));
+        assert_eq!(super::key('9'), None);
+        assert_eq!(Slot::ALL[ORB], Slot::WaterOrb);
+        assert_eq!(Slot::ALL[6], Slot::Thunderbolt);
+    }
+
+    /// The new slots say what they are: the orb is homebrew, the bolt the
+    /// Grove's own, and the orb's card names its hold, throw, and set.
+    #[test]
+    fn the_orb_and_the_bolt_have_cards() {
+        let orb = card(ORB).unwrap();
+        assert_eq!(orb.title, "Water Orb");
+        let says = |c: &Card, what: &str| c.details.iter().any(|(t, _)| t.contains(what));
+        assert!(says(&orb, "Homebrew"));
+        assert!(says(&orb, "Hold 6"));
+        assert!(says(&orb, "Let go of 6"));
+        assert!(says(&orb, "Shift"));
+        let bolt = card(6).unwrap();
+        assert_eq!(bolt.title, "Thunderbolt");
+        assert!(says(&bolt, "not SRD"));
+        assert!(says(&bolt, "Key 7"));
     }
 }

@@ -605,6 +605,9 @@ pub struct Photo {
     stars: wgpu::Buffer,
     star_count: u32,
     pub dynamic_lit: Stream,
+    /// This frame's free water ([`crate::mesh::Mesh::liquid`]), drawn by
+    /// the water pass.
+    pub liquid: Stream,
     pub glow: Stream,
     /// This frame's particle sprite quads (`crate::fx::vertices`).
     pub sprites: Stream,
@@ -1595,6 +1598,7 @@ impl Photo {
             stars: star_buffer,
             star_count: 0,
             dynamic_lit: Stream::new(device, "verse dynamic lit"),
+            liquid: Stream::new(device, "verse liquid"),
             glow: Stream::new(device, "verse glow"),
             sprites: Stream::new(device, "verse sprites"),
             fx_group,
@@ -2896,6 +2900,14 @@ impl Photo {
                 pass.set_vertex_buffer(0, gpu.vertices.slice(..));
                 pass.set_index_buffer(gpu.indices.slice(..), wgpu::IndexFormat::Uint32);
                 pass.draw_indexed(0..gpu.count, 0, 0..1);
+            }
+            // Free water, such as an orb in the air, over the zone's water.
+            if water.is_some() && self.liquid.count > 0 {
+                pass.set_pipeline(&self.pipelines.water);
+                pass.set_bind_group(1, &targets.guide_groups[0], &[]);
+                pass.set_bind_group(2, &self.water_group, &[]);
+                pass.set_vertex_buffer(0, self.liquid.buffer.slice(..));
+                pass.draw(0..self.liquid.count, 0..1);
             }
             self.draw_textured(&mut pass, world.textured, &order, Pass::Blended);
             self.draw_textured(&mut pass, world.figure, &figure_order, Pass::Blended);

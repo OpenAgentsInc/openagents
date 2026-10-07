@@ -691,6 +691,9 @@ struct App {
     grove_row: usize,
     /// Whether the mouse holds Everglade's Levitate slot down.
     levitate_held: bool,
+    /// Whether the mouse holds the Water Lab's Water Orb slot down, so
+    /// letting go anywhere throws the orb.
+    water_orb_held: bool,
     /// The hotbar slot the pointer rests on, for its card's hover delay.
     slot_tip: crate::tooltip::Dwell,
     /// The hosted instance this window walks in, and the heading its
@@ -1220,6 +1223,7 @@ impl App {
             grove_keys: Vec::new(),
             grove_row: 0,
             levitate_held: false,
+            water_orb_held: false,
             slot_tip: crate::tooltip::Dwell::default(),
             #[cfg(feature = "remote-chamber")]
             hosted,
@@ -2954,6 +2958,31 @@ impl App {
             .update(slot, self.started.elapsed().as_secs_f32())
     }
 
+    /// Aims the Water Lab's orbs and bolts at what lies under the cursor,
+    /// or ahead of the player while the cursor rests on the spell bar.
+    fn aim_water_lab(&mut self) {
+        if !self.in_water_lab() {
+            return;
+        }
+        let Some((size, aspect)) = self.viewport() else {
+            return;
+        };
+        if size[0] <= 0.0 || size[1] <= 0.0 {
+            return;
+        }
+        let logical = size.map(|v| v / self.scale);
+        let at = self.cursor.map(|v| v / self.scale);
+        let [left, top, width, _] = zones::water::hotbar::frame(logical, HOTBAR_BOTTOM);
+        let on_bar = at[1] >= top - 8.0 && at[0] >= left - 8.0 && at[0] <= left + width + 8.0;
+        let point = (!on_bar).then(|| {
+            (
+                (self.cursor[0] / size[0]).clamp(0.0, 1.0),
+                (self.cursor[1] / size[1]).clamp(0.0, 1.0),
+            )
+        });
+        self.runtime.water_aim(aspect, point);
+    }
+
     /// Puts Meteor Swarm's circle on the ground under the cursor while
     /// the demolition yard aims it.
     fn aim_meteor_swarm(&mut self) {
@@ -3181,6 +3210,23 @@ impl App {
                 return;
             }
         }
+        // The Water Lab's Water Orb grows while 6 is held and flies when it
+        // is let go; Shift as it is let go holds the orb in place.
+        if code == KeyCode::Digit6
+            && self.in_water_lab()
+            && (!pressed || (!self.chat.open && !self.map.expanded))
+        {
+            let orb = zones::water::hotbar::ORB;
+            let result = if pressed {
+                self.runtime.water_press(orb, self.keys.shift).map(Some)
+            } else {
+                self.runtime.water_release(orb, self.keys.shift)
+            };
+            if let Err(error) = result {
+                eprintln!("verse: {error}");
+            }
+            return;
+        }
         if pressed && !self.chat.open && !self.map.expanded {
             let snapshot = self
                 .runtime
@@ -3218,8 +3264,9 @@ impl App {
                 self.zone_action(ZoneIntent::Return);
                 return;
             }
-            // The Water Lab: 1 to 6 press its hotbar (Shift ends Control
-            // Water or casts Destroy Water), B drops a float, T turns the
+            // The Water Lab: 1 to 7 press its hotbar (Shift ends Control
+            // Water or casts Destroy Water; 6, the Water Orb, is handled on
+            // press and release above), 8 or B drops a float, T turns the
             // hour.
             if self.runtime.zone == zones::ZoneId::WaterLab {
                 let slot = match code {
@@ -3228,7 +3275,8 @@ impl App {
                     KeyCode::Digit3 => Some(2),
                     KeyCode::Digit4 => Some(3),
                     KeyCode::Digit5 => Some(4),
-                    KeyCode::Digit6 | KeyCode::KeyB => Some(5),
+                    KeyCode::Digit7 => Some(6),
+                    KeyCode::Digit8 | KeyCode::KeyB => Some(7),
                     _ => None,
                 };
                 let result = match (slot, code) {
@@ -3658,18 +3706,29 @@ impl App {
         if self.map.captured(1) {
             return;
         }
+        // The Water Orb's slot held with the mouse: letting go anywhere
+        // throws the orb, or with Shift holds it in place.
+        if button == MouseButton::Left && !pressed && self.water_orb_held {
+            self.water_orb_held = false;
+            if let Err(error) = self
+                .runtime
+                .water_release(zones::water::hotbar::ORB, self.keys.shift)
+            {
+                eprintln!("verse: {error}");
+            }
+            return;
+        }
         // The Water Lab's bar: a click casts the slot's spell, and never
         // reaches the zone panel behind the tray.
         if button == MouseButton::Left
             && self.in_water_lab()
             && let Some(index) = self.water_hotbar_at(self.cursor.map(|v| v / self.scale))
         {
-            if pressed
-                && !self.keys.left_button
-                && !self.keys.right_button
-                && let Err(error) = self.runtime.water_press(index, self.keys.shift)
-            {
-                eprintln!("verse: {error}");
+            if pressed && !self.keys.left_button && !self.keys.right_button {
+                match self.runtime.water_press(index, self.keys.shift) {
+                    Ok(_) => self.water_orb_held = index == zones::water::hotbar::ORB,
+                    Err(error) => eprintln!("verse: {error}"),
+                }
             }
             return;
         }
@@ -3975,6 +4034,7 @@ impl App {
         self.tick_ritual();
         self.runtime.zone_tick();
         self.aim_meteor_swarm();
+        self.aim_water_lab();
         self.open_pending_everglade();
         if self.runtime.zone_revision != self.rendered_zone_revision {
             self.stop_map();

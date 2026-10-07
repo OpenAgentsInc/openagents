@@ -283,10 +283,18 @@ fn vs_water(v: WaterIn) -> WaterOut {
         world += swell.xyz;
         crest = swell.w;
         world.y -= water_drop(v.pos.xz, depth);
+    } else if v.kind > 3.5 {
+        // An orb: its center rides in the depth and flow channels, and the
+        // vertex is its offset at rest, moved by the wobble.
+        let center = vec3<f32>(v.flow.x, v.depth, v.flow.y);
+        let r = length(v.pos);
+        let d = v.pos / max(r, 1e-5);
+        world = center + d * r * orb_shape(d, water.params.x, v.kind - 4.0);
+        crest = r;
     }
     o.clip = f.view_proj * vec4<f32>(world, 1.0);
     o.world = world;
-    o.rest = v.pos.xz;
+    o.rest = select(v.pos.xz, world.xz, v.kind > 3.5);
     o.depth = depth;
     o.flow = v.flow;
     o.foam = v.foam;
@@ -404,6 +412,9 @@ fn fs_water(i: WaterOut) -> @location(0) vec4<f32> {
     let v = normalize(f.eye.xyz - i.world);
     let kind = i.kind;
 
+    if kind > 3.5 {
+        return water_orb(i, v, pixel, t);
+    }
     if kind > 2.5 {
         // A falling sheet: aerated white water streaked along its fall,
         // thinner where it tears.
@@ -594,4 +605,145 @@ fn water_inscatter_local() -> vec3<f32> {
         sky = sky_irradiance(vec3<f32>(0.0, 1.0, 0.0));
     }
     return water.scatter.rgb * (sun + sky) / PI;
+}
+
+// ---- Orbs (`water::Kind::Orb`): free bodies of water, such as the Water
+// Lab's Water Orb and the streams that feed it. Each is a closed surface
+// around a center, wobbling by `orb_shape`. Seen from outside it is a ball
+// lens: Fresnel-weighted sky and the sun's glint on the skin, Beer–Lambert
+// extinction and in-scatter along the refracted ray's chord, the world
+// behind it turned upside down through the two refractions, and caustics
+// gathering on the side away from the sun. Lightning makes it glow and
+// crackle with arcs (`foam` carries the charge).
+
+// The surface's radius, as a multiple of the rest radius, along unit
+// direction `d` at time `t`.
+fn orb_shape(d: vec3<f32>, t: f32, wobble: f32) -> f32 {
+    let a = sin(2.1 * d.x + 1.3 * t) * cos(1.9 * d.z - 1.1 * t);
+    let b = sin(3.2 * d.y + 2.0 * t + 1.7 * d.x);
+    let c = sin(6.5 * (d.x + d.z) - 3.6 * t + 2.0 * d.y);
+    let amp = 0.025 + 0.14 * clamp(wobble, 0.0, 1.0);
+    return 1.0 + amp * (0.55 * a + 0.3 * b + 0.15 * c);
+}
+
+// What a ray leaving the orb along `d` sees: the sky above the horizon
+// and lit sand below it.
+fn orb_environment(d: vec3<f32>, world: vec3<f32>, pixel: vec2<f32>) -> vec3<f32> {
+    let sky = water_sky(d, 0.15);
+    let ground = vec3<f32>(0.46, 0.4, 0.3) * water_diffuse_light(world, vec3<f32>(0.0, 1.0, 0.0), pixel);
+    return mix(ground, sky, smoothstep(-0.08, 0.06, d.y));
+}
+
+fn water_orb(i: WaterOut, v: vec3<f32>, pixel: vec2<f32>, t: f32) -> vec4<f32> {
+    let center = vec3<f32>(i.flow.x, i.depth, i.flow.y);
+    let r = max(i.crest, 0.01);
+    let wobble = i.kind - 4.0;
+    let charge = clamp(i.foam, 0.0, 1.0);
+    let rel = i.world - center;
+    let d = normalize(rel);
+    // Only the near face draws, or the far face when the eye is inside.
+    let inside = distance(f.eye.xyz, center) < r;
+    let facing = dot(rel, f.eye.xyz - i.world) > 0.0;
+    if facing == inside {
+        return vec4<f32>(0.0);
+    }
+    // The wobbling surface's normal, from its shape a step to either side.
+    var ta = cross(d, vec3<f32>(0.0, 1.0, 0.0));
+    if dot(ta, ta) < 1e-4 {
+        ta = cross(d, vec3<f32>(1.0, 0.0, 0.0));
+    }
+    ta = normalize(ta);
+    let tb = cross(d, ta);
+    let e = 0.03;
+    let p0 = d * orb_shape(d, t, wobble);
+    let da = normalize(d + ta * e);
+    let db = normalize(d + tb * e);
+    var n = normalize(cross(da * orb_shape(da, t, wobble) - p0, db * orb_shape(db, t, wobble) - p0));
+    if dot(n, d) < 0.0 {
+        n = -n;
+    }
+    // Fine ripples running over the skin.
+    let q = d * r;
+    let ripple = vec3<f32>(
+        sin(q.y * 5.0 + t * 3.1) + sin(q.z * 7.3 - t * 2.3),
+        sin(q.z * 6.1 + t * 2.7) + sin(q.x * 5.7 + t * 3.3),
+        sin(q.x * 6.7 - t * 2.9) + sin(q.y * 7.1 + t * 2.1)
+    ) * (0.025 + 0.04 * wobble);
+    n = normalize(n + ripple - d * dot(ripple, d));
+    if inside {
+        n = -n;
+    }
+
+    let nov = max(dot(n, v), 1e-3);
+    let fresnel = 0.02 + 0.98 * pow(1.0 - nov, 5.0);
+    let roughness = clamp(water.look.x, 0.02, 0.3);
+    let sky = water_sky(reflect(-v, n), roughness);
+    let l = f.sun.xyz;
+    let nol = dot(n, l);
+    var glint = vec3<f32>(0.0);
+    if nol > 0.0 && f.sun.w > 0.0 {
+        let h = normalize(l + v);
+        let lobe = min(roughness * roughness + f.sun_disc.x * 0.5, 1.0);
+        let a2 = lobe * lobe;
+        let spec = d_ggx(max(dot(n, h), 0.0), a2) * v_smith(nov, nol, a2) * f_schlick1(0.02, max(dot(v, h), 0.0));
+        glint = vec3<f32>(spec) * f.sun.w * water_key_tint() * nol;
+    }
+    let sunlit = water_diffuse_light(i.world, l, pixel);
+
+    var rgb = vec3<f32>(0.0);
+    var alpha = 0.0;
+    if inside {
+        // From within: the water all around, and the sky through the skin.
+        let fog = water_inscatter_local() * 2.4;
+        rgb = fog * 0.6 + sky * fresnel * 0.4;
+        alpha = 0.35 + 0.4 * fresnel;
+    } else {
+        // Through the ball: in along the refracted ray, across the chord,
+        // and out again, which turns the world behind it upside down.
+        let d1 = refract(-v, n, 1.0 / WATER_IOR);
+        let chord = 2.0 * r * clamp(dot(d1, -d), 0.05, 1.0);
+        let exit = i.world + d1 * chord;
+        let nq = normalize(exit - center);
+        var d2 = refract(d1, -nq, WATER_IOR);
+        if dot(d2, d2) < 0.25 {
+            d2 = reflect(d1, -nq);
+        }
+        let trans = exp(-water.extinction.rgb * 0.55 * chord);
+        let through = dot(trans, vec3<f32>(0.3333));
+        let lens = 0.55 * smoothstep(0.08, 0.6, r);
+        let body = water_inscatter_local() * 1.8 * (1.0 - trans);
+        // Caustics: light gathered on the side away from the sun, and
+        // bright bands drifting through the water.
+        let focus = pow(max(dot(d, -l), 0.0), 10.0) * 2.5;
+        let band = value_noise(q * 1.4 + vec3<f32>(0.0, t * 0.6, t * 0.4));
+        let lines = pow(1.0 - abs(band * 2.0 - 1.0), 8.0) * 1.2;
+        let caustic = (focus + lines) * sunlit * 0.35 * through;
+        let seen = orb_environment(d2, exit, pixel) * trans * lens;
+        rgb = sky * fresnel + glint + (body + caustic + seen) * (1.0 - fresnel);
+        alpha = fresnel + (1.0 - fresnel) * ((1.0 - through) + through * lens);
+        // A thin stream or a droplet is aerated, white water, which shows
+        // against the sea where clear water would vanish.
+        let aerated = 1.0 - smoothstep(0.08, 0.7, r);
+        let white = vec3<f32>(0.86, 0.93, 0.96) * sunlit * (0.35 + 0.25 * lines);
+        rgb = rgb * (1.0 - aerated * 0.5) + white * aerated * 0.5;
+        alpha = alpha * (1.0 - aerated * 0.5) + aerated * 0.5;
+    }
+    if charge > 0.0 {
+        // Electrified: a blue glow through the water and white arcs
+        // crawling over the skin, redrawn many times a second.
+        let flick = floor(t * 24.0);
+        let c1 = value_noise(q * 1.3 + vec3<f32>(flick * 1.7, flick * 0.9, 0.0));
+        let c2 = value_noise(q * 2.9 + vec3<f32>(0.0, flick * 2.3, flick * 1.1));
+        let width = 0.03 + 0.05 * charge;
+        let crack = max(
+            1.0 - smoothstep(0.0, width, abs(c1 - 0.5)),
+            1.0 - smoothstep(0.0, width * 0.7, abs(c2 - 0.5))
+        );
+        let pulse = 0.75 + 0.25 * sin(t * 61.0 + q.y * 3.0);
+        let scale = water_diffuse_light(i.world, vec3<f32>(0.0, 1.0, 0.0), pixel);
+        let glow = vec3<f32>(0.4, 0.62, 1.0) * (0.15 * pulse) + vec3<f32>(0.9, 0.95, 1.0) * crack * 3.0;
+        rgb += glow * scale * charge;
+        alpha = max(alpha, charge * (0.05 + 0.6 * crack));
+    }
+    return water_out(rgb, alpha, i.world);
 }

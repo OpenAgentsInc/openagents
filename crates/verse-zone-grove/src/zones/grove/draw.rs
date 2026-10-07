@@ -30,7 +30,7 @@ const SHIFT: f32 = 0.7;
 /// materials, and primitives, then the dummy's added once for each dummy,
 /// so the renderer uploads it once and rewrites only the vertices each
 /// frame.
-pub(super) struct Model {
+pub struct Model {
     scene: Arc<TexturedScene>,
     /// How many vertices the character contributes, and the character
     /// scene they belong to.

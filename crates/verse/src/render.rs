@@ -1305,7 +1305,8 @@ pub(crate) fn mesh_resources(mesh: &Mesh) -> Result<verse_engine::quality::Resou
     let mut result = Resources {
         geometry_bytes: ((mesh.faces.len() + mesh.lines.len()) * std::mem::size_of::<Vertex>()
             + mesh.lit.len() * std::mem::size_of::<LitVertex>()
-            + mesh.glow.len() * std::mem::size_of::<crate::pbr::GlowVertex>())
+            + mesh.glow.len() * std::mem::size_of::<crate::pbr::GlowVertex>()
+            + mesh.liquid.len() * std::mem::size_of::<crate::pbr::water::WaterVertex>())
             as u64,
         // Dynamic amber buffers retain power-of-two capacity. Reserve their maximum and the UI buffer.
         buffer_bytes: 2 * MAX_DYNAMIC_BYTES + UI_BYTES,
@@ -2520,6 +2521,7 @@ impl Scene {
         write(device, queue, &mut self.dynamic_faces, &dynamic.faces);
         write(device, queue, &mut self.dynamic_lines, &dynamic.lines);
         photo.dynamic_lit.write(device, queue, &dynamic.lit);
+        photo.liquid.write(device, queue, &dynamic.liquid);
         let glow_limit = glow_triangles(self.capability.quality) * 3;
         photo.glow.write(
             device,

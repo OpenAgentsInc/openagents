@@ -132,10 +132,30 @@ pub enum Event {
     Ripple { at: Vec2, strength: f32 },
 }
 
+/// Water that holds a body apart from the sea, such as a Water Orb: the
+/// body is carried toward `center` at `velocity`, its weight borne by the
+/// water, swirling as the orb's water does.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct Hold {
+    pub center: Vec3,
+    pub velocity: Vec3,
+    pub radius: f32,
+}
+
+/// How stiffly a hold pulls a body toward its center, 1/s², and how
+/// strongly it matches the body to the water's motion, 1/s: a critically
+/// damped pull that keeps a body inside an orb even when it is thrown.
+const HOLD_PULL: f64 = 10.0;
+const HOLD_DRAG: f64 = 5.5;
+/// How fast a hold's water swirls about the vertical, rad/s.
+const HOLD_SWIRL: f64 = 0.7;
+
 /// The floating bodies and their physics world.
 pub struct Floats {
     pub world: World,
     pub floats: Vec<Float>,
+    /// The bodies water holds apart from the sea this frame, by id.
+    pub holds: Vec<(BodyId, Hold)>,
     time: f32,
     clock: physics::FixedStep,
 }
@@ -155,6 +175,7 @@ impl Floats {
         Self {
             world,
             floats: Vec::new(),
+            holds: Vec::new(),
             time: 0.0,
             clock: physics::FixedStep::new(DT, 12),
         }
@@ -261,6 +282,11 @@ impl Floats {
         let g = 9.81;
         for float in &self.floats {
             let kind = float.kind;
+            if let Some(hold) = self.held(float.id) {
+                let body = &mut self.world.bodies_mut()[float.id.0 as usize];
+                body_held(body, kind, &hold);
+                continue;
+            }
             let share = kind.volume() / float.samples.len() as f64;
             // Each sample's own height, for its submerged fraction.
             let cell = kind.half().y.min(kind.half().x) * 2.0 / 2.0;
@@ -305,6 +331,33 @@ impl Floats {
         }
     }
 
+    /// The hold on body `id`, if water holds it.
+    #[must_use]
+    pub fn held(&self, id: BodyId) -> Option<Hold> {
+        self.holds
+            .iter()
+            .find(|(h, _)| *h == id)
+            .map(|(_, hold)| *hold)
+    }
+
+    /// Throws every body within `radius` of `at` away from it and up, at
+    /// up to `speed` m/s at the center, falling to none at the edge: a
+    /// burst of water's knock.
+    pub fn blast(&mut self, at: Vec3, radius: f32, speed: f32) {
+        for f in &self.floats {
+            let body = &mut self.world.bodies_mut()[f.id.0 as usize];
+            let d = body.pos.as_vec3() - at;
+            let k = 1.0 - d.length() / radius.max(0.01);
+            if k <= 0.0 {
+                continue;
+            }
+            let out = Vec3::new(d.x, 0.0, d.z).normalize_or(Vec3::X);
+            let kick = (out + Vec3::Y * 0.7) * speed * k;
+            body.vel += kick.as_dvec3();
+            body.omega += DVec3::new(1.5, -2.0, 2.5) * f64::from(k);
+        }
+    }
+
     /// Each body's pose for drawing.
     pub fn poses(&self) -> impl Iterator<Item = (Kind, Vec3, Quat)> + '_ {
         let alpha = self.clock.alpha();
@@ -345,6 +398,23 @@ impl Floats {
         }
         out
     }
+}
+
+/// The forces on `body` while `hold` carries it: its weight borne, a pull
+/// toward the hold's center, drag toward the hold's swirling water, and
+/// a damped spin.
+fn body_held(body: &mut Body, kind: Kind, hold: &Hold) {
+    let m = kind.mass();
+    let center = hold.center.as_dvec3();
+    let rel = body.pos - center;
+    let swirl = DVec3::new(-rel.z, 0.0, rel.x) * HOLD_SWIRL;
+    let want = hold.velocity.as_dvec3() + swirl;
+    body.force +=
+        m * (DVec3::Y * 9.81 + (center - body.pos) * HOLD_PULL + (want - body.vel) * HOLD_DRAG);
+    // A slow tumble in the water, damped.
+    let spin = DVec3::new(0.3, 0.8, 0.2);
+    let inertia = (body.inertia.x + body.inertia.y + body.inertia.z) / 3.0;
+    body.torque += (spin - body.omega_world()) * inertia * 2.0;
 }
 
 /// Appends one body's triangles.

@@ -51,6 +51,11 @@ pub struct Mesh {
     /// uploads it once and draws it when the frame's stage carries
     /// [`crate::pbr::Neon::water`] (see [`crate::pbr::water`]).
     pub water: Option<std::sync::Arc<crate::pbr::water::WaterSurface>>,
+    /// This frame's free water, such as the Water Lab's orbs and the
+    /// streams that feed them: a triangle list of
+    /// [`crate::pbr::water::Kind::Orb`] vertices, read from a frame's
+    /// dynamic mesh only and drawn by the water pass after the zone's water.
+    pub liquid: Vec<crate::pbr::water::WaterVertex>,
 }
 
 impl Mesh {
@@ -152,6 +157,7 @@ impl Mesh {
         self.lit.extend_from_slice(&other.lit);
         self.glow.extend_from_slice(&other.glow);
         self.sprites.extend_from_slice(&other.sprites);
+        self.liquid.extend_from_slice(&other.liquid);
         if other.sky.is_some() {
             self.sky.clone_from(&other.sky);
         }

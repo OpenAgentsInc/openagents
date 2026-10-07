@@ -178,11 +178,24 @@ Control Water (Flood, Part Water, Redirect Flow, and Whirlpool; pressing
 **2** again switches to the next mode and **Shift+2** ends it), Create
 Water (**Shift+3** is Destroy Water), Sleet Storm, and Water Breathing.
 Without Water Breathing a held breath lasts the SRD's 1 + Constitution
-modifier minutes. **B** (or **6**) drops a crate, a barrel, or a plank
+modifier minutes. Holding **6** grows a Water Orb in front of the
+character, our own spell, up to 12 m across, drawing streams up from the
+sea or the river or condensing from the air; letting go throws it at the
+point under the pointer, where it bursts in a splash as wide as it is, and
+**Shift** as it is let go holds it hovering for a minute (**6** again near
+it takes it back). An orb carries the crates and dummies it engulfs. **7**
+calls down the Grove's Thunderbolt at the pointer's aim: on an orb it
+electrifies everything inside and nothing outside, and in the sea or the
+river it conducts 6 m through the same water
+([Lightning in water](water.md#lightning-in-water) and
+[Water Orb](water.md#water-orb)). Six training dummies stand on the beach,
+in the shallows, and in the river, with the Grove's health bars and
+floating numbers. **B** (or **8**) drops a crate, a barrel, or a plank
 ahead, which splashes and floats on the `physics` crate's rigid bodies.
 **T** turns the hour between golden hour and noon. **F** at the lantern at
 the head of the beach returns to the plaza. The `water_capture` example
-renders the zone's views, the spells, and its frame times.
+renders the zone's views, the spells (`--spells`), the Water Orb and the
+Thunderbolt with a frame sequence (`--orb`), and its frame times.
 
 ### The great crypt fight
 

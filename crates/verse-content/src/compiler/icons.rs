@@ -59,6 +59,7 @@ const MOON: [f32; 3] = [0.88, 0.9, 1.0];
 const THORN: [f32; 3] = [0.75, 0.82, 0.45];
 const NECROTIC: [f32; 3] = [0.7, 0.5, 0.95];
 const ACID: [f32; 3] = [0.8, 1.0, 0.3];
+const WATER: [f32; 3] = [0.35, 0.72, 1.0];
 
 /// The Grove's druid kit (`zones::grove::slots`): Wild Shape, the druid's
 /// features, and the spells of the Archdruid's four rows and four lands.
@@ -339,6 +340,8 @@ pub const ICONS: &[Icon] = &[
         "Lorc",
         BEAST
     ),
+    // The Water Lab's Water Orb.
+    icon!("water-orb-icon", "lorc/frozen-orb.svg", "Lorc", WATER),
 ];
 
 /// Edge length of a rasterized icon. The slot draws 36 logical units at up to
