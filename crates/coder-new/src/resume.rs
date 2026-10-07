@@ -13,6 +13,19 @@ pub(crate) struct History {
     last_attempt: Option<u64>,
     save_failed: bool,
     choices: Vec<sessions::Summary>,
+    following: Option<Following>,
+}
+
+/// A session another process holds, which this terminal watches
+/// (`coder --follow ID`, #10752): an agent's Coder session in its pane.
+#[derive(Debug)]
+struct Following {
+    id: String,
+    /// The session file's last change this terminal loaded.
+    seen: Option<std::time::SystemTime>,
+    /// The person pressed a key: take the session over as soon as its
+    /// holder lets go.
+    takeover: bool,
 }
 
 /// A stable newest-first snapshot of saved conversations.
@@ -104,6 +117,10 @@ impl App {
 
     /// Save changed live transcripts, with checkpoints during streaming replies.
     pub fn persist_session(&mut self, force: bool) -> bool {
+        // A followed session belongs to its holder until the takeover.
+        if self.history.following.is_some() {
+            return true;
+        }
         if self.mode != Mode::Live || !self.history.dirty || self.history.store.is_none() {
             return true;
         }
@@ -253,6 +270,129 @@ impl App {
             }
             _ => format!("Resumed {id}."),
         });
+        true
+    }
+
+    /// Watch session `id`, which another process may hold, and take it
+    /// over when the person presses a key and the holder lets go.
+    pub fn follow(&mut self, id: &str) -> bool {
+        let Some(store) = self.history.store.clone() else {
+            return self.resume_error("Conversation storage is unavailable.".into());
+        };
+        if let Err(error) = store.path(id) {
+            return self.resume_error(error);
+        }
+        self.set_mode(Mode::Live);
+        self.history.following = Some(Following {
+            id: id.to_owned(),
+            seen: None,
+            takeover: false,
+        });
+        self.notice = Some(format!(
+            "Following {id}. Press any key to take over the conversation."
+        ));
+        self.follow_tick();
+        true
+    }
+
+    /// Whether this terminal watches a session it does not hold.
+    #[must_use]
+    pub fn following(&self) -> bool {
+        self.history.following.is_some()
+    }
+
+    /// Reload the followed session when it changed, and take it over when
+    /// the person asked and its holder has let go.
+    pub fn follow_tick(&mut self) {
+        if self.history.following.is_none() {
+            return;
+        }
+        let Some(store) = self.history.store.clone() else {
+            return;
+        };
+        let Some(following) = &self.history.following else {
+            return;
+        };
+        let id = following.id.clone();
+        if following.takeover
+            && let Ok(lease) = store.lease(&id)
+        {
+            let document = if lease.exists().unwrap_or(false) {
+                lease.read().ok()
+            } else {
+                None
+            };
+            if let Some(document) = document {
+                self.load_followed(&document);
+            }
+            self.history.active = Some(lease);
+            self.history.following = None;
+            self.history.dirty = false;
+            self.notice = Some(format!("Conversation {id} is yours now."));
+            return;
+        }
+        let Ok(path) = store.path(&id) else {
+            return;
+        };
+        let modified = std::fs::metadata(&path)
+            .and_then(|metadata| metadata.modified())
+            .ok();
+        if modified.is_none() || modified == following.seen {
+            return;
+        }
+        if let Ok(document) = store.read(&id) {
+            self.load_followed(&document);
+            if let Some(following) = &mut self.history.following {
+                following.seen = modified;
+            }
+        }
+    }
+
+    fn load_followed(&mut self, document: &serde_json::Value) {
+        let mut restored = App::default();
+        if trajectory::restore_app(&mut restored, document).is_err() {
+            return;
+        }
+        let at_end = self.main_scroll == u16::MAX || self.scroll == u16::MAX;
+        self.live = restored.live;
+        self.delegations = restored.delegations;
+        if at_end || self.live.entries.is_empty() {
+            self.scroll = u16::MAX;
+            self.main_scroll = u16::MAX;
+        }
+        self.screen = Screen::Conversation;
+        self.history.dirty = false;
+    }
+
+    /// A key while following asks to take the session over; Ctrl+C quits.
+    pub(crate) fn follow_key(&mut self, key: KeyEvent) -> bool {
+        if key.kind == KeyEventKind::Release {
+            return true;
+        }
+        if key.modifiers.contains(KeyModifiers::CONTROL)
+            && matches!(key.code, KeyCode::Char('c' | 'd'))
+        {
+            return false;
+        }
+        match key.code {
+            KeyCode::PageUp | KeyCode::Up => {
+                self.scroll = self.scroll.saturating_sub(3);
+                return true;
+            }
+            KeyCode::PageDown | KeyCode::Down => {
+                self.scroll = self.scroll.saturating_add(3);
+                return true;
+            }
+            _ => {}
+        }
+        if let Some(following) = &mut self.history.following
+            && !following.takeover
+        {
+            following.takeover = true;
+            self.notice =
+                Some("Taking over: the conversation is yours as soon as its agent stops.".into());
+        }
+        self.follow_tick();
         true
     }
 

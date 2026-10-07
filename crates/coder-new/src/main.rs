@@ -34,6 +34,8 @@ fn main() -> io::Result<()> {
     let mut app = App::default();
     let mut capture = false;
     let mut models = false;
+    let mut follow: Option<String> = None;
+    let mut state: Option<std::path::PathBuf> = None;
     if !DEMO_AVAILABLE
         || !args.iter().any(|arg| arg == "--demo")
             && (!args.iter().any(|arg| arg == "--snapshot")
@@ -41,8 +43,20 @@ fn main() -> io::Result<()> {
     {
         app.set_mode(Mode::Live);
     }
-    for arg in args {
+    let mut args = args.into_iter();
+    while let Some(arg) = args.next() {
+        let mut value = |name: &str| {
+            args.next().ok_or_else(|| {
+                io::Error::new(
+                    io::ErrorKind::InvalidInput,
+                    format!("{name} needs a value. Use --help."),
+                )
+            })
+        };
         match arg.as_str() {
+            "--follow" => follow = Some(value("--follow")?),
+            "--state" => state = Some(value("--state")?.into()),
+            "--in" => std::env::set_current_dir(value("--in")?)?,
             "--live" => app.set_mode(Mode::Live),
             "--demo" if DEMO_AVAILABLE => app.set_mode(Mode::Demo),
             "--demo" => {
@@ -75,11 +89,13 @@ fn main() -> io::Result<()> {
         return io::stdout().write_all(snapshot::svg(&mut app, 110, 36).as_bytes());
     }
     let openagents_root = model_access::store::openagents_dir();
-    if let Some(root) = &openagents_root {
-        app.attach_session_store(coder_new::sessions::Store::under(root.join("coder-new")));
-        if let Err(error) = app.load_plugin_settings(coder_new::plugin_store::Store::under(
-            root.join("coder-new"),
-        )) {
+    if let Some(store) = state
+        .clone()
+        .or_else(|| openagents_root.as_ref().map(|root| root.join("coder-new")))
+    {
+        app.attach_session_store(coder_new::sessions::Store::under(&store));
+        if let Err(error) = app.load_plugin_settings(coder_new::plugin_store::Store::under(&store))
+        {
             app.notice = Some(error);
         }
     }
@@ -125,6 +141,15 @@ fn main() -> io::Result<()> {
     if models {
         app.open_models();
     }
+    if let Some(id) = &follow
+        && !app.follow(id)
+    {
+        return Err(io::Error::other(
+            app.notice
+                .clone()
+                .unwrap_or_else(|| "Cannot follow that conversation.".into()),
+        ));
+    }
     if app.mode == Mode::Live && app.plugins.enabled && app.plugins.key_configured {
         app.check_key();
     }
@@ -166,6 +191,7 @@ fn main() -> io::Result<()> {
         let mut catalog = coder_new::model_catalog::Loader::default();
         loop {
             app.elapsed_seconds = started.elapsed().as_secs();
+            app.follow_tick();
             background.sync(&mut app);
             app.persist_session(false);
             catalog.sync(&mut app);
@@ -224,7 +250,7 @@ fn help() -> String {
         ""
     };
     format!(
-        "Coder terminal\n\nUsage: coder {modes} [--plugins | --plugin-settings | --models] [--snapshot]\n\n--live             Use enabled providers and tools (default).\n{demo_option}--plugins          Start with plugin management.\n--plugin-settings  Start with OpenRouter settings.\n--models           Open the model picker for an enabled provider.\n--snapshot         Write a 110×36 SVG to stdout; defaults to {snapshot_mode}.\n--version          Print the release version and build commit.\n\n{demo_command}/models chooses a model and reasoning level. /export [path] writes ATIF. /resume [number|id] reopens a saved conversation. Type / for commands; Up/Down selects, Tab completes, Enter runs. Cmd+P on macOS, Ctrl+P on Windows, F2, or /plugins opens plugins. Esc stops a reply. Ctrl+C quits."
+        "Coder terminal\n\nUsage: coder {modes} [--plugins | --plugin-settings | --models] [--follow ID] [--state DIR] [--in DIR] [--snapshot]\n\n--live             Use enabled providers and tools (default).\n{demo_option}--plugins          Start with plugin management.\n--follow ID        Watch a conversation another process holds, such as an agent's; any key takes it over.\n--state DIR        Use DIR as the Coder store instead of ~/.openagents/coder-new.\n--in DIR           Work in DIR.\n--plugin-settings  Start with OpenRouter settings.\n--models           Open the model picker for an enabled provider.\n--snapshot         Write a 110×36 SVG to stdout; defaults to {snapshot_mode}.\n--version          Print the release version and build commit.\n\n{demo_command}/models chooses a model and reasoning level. /export [path] writes ATIF. /resume [number|id] reopens a saved conversation. Type / for commands; Up/Down selects, Tab completes, Enter runs. Cmd+P on macOS, Ctrl+P on Windows, F2, or /plugins opens plugins. Esc stops a reply. Ctrl+C quits."
     )
 }
 

@@ -107,6 +107,7 @@ fn picker_restores_saved_chat_and_continues_the_same_session() {
         environment: Default::default(),
         input: None,
         canceled: None,
+        approvals: None,
     };
     let read = programmatic::execute(
         &["sessions".into(), "read".into(), "older".into()],
@@ -425,4 +426,51 @@ fn failed_auto_save_prevents_switching_and_retries_after_storage_recovers() {
     let saved = sessions::read_document(&store.path(&id).unwrap()).unwrap();
     assert_eq!(saved["steps"][1]["message"], "New partial text");
     assert!(app.resume(Some("other")));
+}
+
+/// An agent's pane follows the session its agent holds, reloads it as the
+/// agent saves, and takes it over once a key asked and the agent let go.
+#[test]
+fn following_reloads_the_held_session_and_a_key_takes_it_over() {
+    let dir = tempfile::tempdir().unwrap();
+    let store = Store::under(dir.path().join("state"));
+    let held = store.lease("agent-alice").unwrap();
+    let mut chat = Chat::default();
+    chat.entries = vec![Entry::User("run the atif tests".into())];
+    let mut document = trajectory::document(&chat, "agent-alice", "openai/example:low", dir.path());
+    held.save(&document).unwrap();
+
+    let mut app = new_app(&store, dir.path());
+    assert!(app.follow("agent-alice"));
+    assert!(app.following());
+    assert_eq!(app.live.entries.len(), 1);
+    assert!(app.session_id().is_none(), "the agent holds it");
+
+    // The agent saves more; the pane shows it without a key.
+    chat.entries.push(Entry::Assistant {
+        text: "atif: 31 passed.".into(),
+        model: Some("openai/example:low".into()),
+    });
+    document = trajectory::document(&chat, "agent-alice", "openai/example:low", dir.path());
+    std::thread::sleep(Duration::from_millis(20));
+    held.save(&document).unwrap();
+    fs::File::open(store.path("agent-alice").unwrap())
+        .unwrap()
+        .set_times(fs::FileTimes::new().set_modified(SystemTime::now() + Duration::from_secs(5)))
+        .unwrap();
+    app.follow_tick();
+    assert_eq!(app.live.entries.len(), 2);
+
+    // A key asks; the session stays the agent's until it lets go.
+    key(&mut app, KeyCode::Char('x'));
+    assert!(app.following());
+    assert!(app.notice.as_deref().unwrap().starts_with("Taking over"));
+    drop(held);
+    app.follow_tick();
+    assert!(!app.following());
+    assert_eq!(app.session_id(), Some("agent-alice"));
+    assert_eq!(app.live.entries.len(), 2);
+    // Typing now goes to the composer.
+    key(&mut app, KeyCode::Char('o'));
+    assert_eq!(app.draft.text, "o");
 }

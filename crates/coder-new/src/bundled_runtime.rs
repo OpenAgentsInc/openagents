@@ -228,6 +228,17 @@ async fn cli_at(
     if cancel.load(Ordering::Relaxed) {
         return Err("The CLI call was canceled before it started.".into());
     }
+    let shown = std::iter::once("openagents".to_owned())
+        .chain(
+            arguments
+                .iter()
+                .map(|argument| format!("'{}'", argument.replace('\'', "'\\''"))),
+        )
+        .collect::<Vec<_>>()
+        .join(" ");
+    if let crate::approval::Verdict::Refused(why) = crate::approval::check(&shown) {
+        return Err(why);
+    }
     let mut command = std::process::Command::new(program);
     command.arg("--json").args(arguments).current_dir(cwd);
     scrub_plugin_credentials(&mut command);
@@ -930,6 +941,16 @@ struct Checkout<'a> {
 impl Env for Checkout<'_> {
     async fn run(&self, script: &str, deadline: Duration) -> CommandResult {
         let started = Instant::now();
+        // An agent-driven chat asks before anything that is not read-only.
+        if let crate::approval::Verdict::Refused(why) = crate::approval::check(script) {
+            return CommandResult {
+                command: redact_text(script, self.redaction_keys),
+                exit: None,
+                timed_out: false,
+                seconds: started.elapsed().as_secs_f64(),
+                output: why,
+            };
+        }
         let result = async {
             #[cfg(unix)]
             let mut command = self

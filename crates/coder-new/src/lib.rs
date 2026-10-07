@@ -2,6 +2,7 @@
 
 pub mod acp_discovery;
 pub mod agents;
+pub mod approval;
 pub mod bundled_runtime;
 pub mod bundled_settings;
 pub mod credentials;
@@ -779,6 +780,20 @@ impl App {
 
     /// Returns false when the preview should close.
     pub fn handle(&mut self, event: Event) -> bool {
+        if self.following() {
+            return match event {
+                Event::Key(key) => self.follow_key(key),
+                Event::Mouse(mouse) => {
+                    match mouse.kind {
+                        MouseEventKind::ScrollUp => self.scroll = self.scroll.saturating_sub(3),
+                        MouseEventKind::ScrollDown => self.scroll = self.scroll.saturating_add(3),
+                        _ => {}
+                    }
+                    true
+                }
+                _ => true,
+            };
+        }
         match event {
             Event::Mouse(mouse)
                 if self.screen == Screen::Conversation

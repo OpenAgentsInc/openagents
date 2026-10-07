@@ -52,6 +52,8 @@ macro_rules! command_usage {
   export ID [--output FILE]            Export a retained chat as ATIF-v1.8.
   import FILE [--session ID]           Retain ATIF for viewing or continuing.
 Options: --json streams NDJSON events for chat and delegation.
+         --approvals stdin asks before any command that is not read-only:
+         an approval event, answered by `confirm ID` or `reject ID` on stdin.
          --in DIR sets the working directory; --state DIR sets the Coder store.
 Settings default to ~/.openagents/coder-new. Sessions use its sessions directory.
 Keys are accepted through environment variables or configuration stdin, never printed."
@@ -72,6 +74,9 @@ pub struct Context {
     pub environment: BTreeMap<String, String>,
     pub input: Option<String>,
     pub canceled: Option<Arc<AtomicBool>>,
+    /// The approval desk of a gated chat (`--approvals stdin`), whose
+    /// answers the caller feeds ([`crate::approval`]).
+    pub approvals: Option<Arc<crate::approval::Desk>>,
 }
 
 #[derive(Debug)]
@@ -150,6 +155,37 @@ pub fn run(arguments: &[String], json_mode: bool) -> u8 {
     {
         Ok(path) if path.is_dir() => path,
         _ => return print_error("The working directory is unavailable.".into(), json_mode),
+    };
+    let approvals = match take_option(&mut args, "--approvals") {
+        Ok(None) => None,
+        Ok(Some(source)) if source == "stdin" && !args.iter().any(|arg| arg == "--stdin") => {
+            let desk = crate::approval::Desk::new();
+            let reader = Arc::clone(&desk);
+            std::thread::spawn(move || {
+                let mut line = String::new();
+                let stdin = io::stdin();
+                loop {
+                    line.clear();
+                    match io::BufRead::read_line(&mut stdin.lock(), &mut line) {
+                        Ok(0) | Err(_) => break,
+                        Ok(_) => {
+                            if let Err(error) = reader.answer(&line) {
+                                eprintln!("Coder: {error}");
+                            }
+                        }
+                    }
+                }
+                reader.close();
+            });
+            Some(desk)
+        }
+        Ok(Some(_)) => {
+            return print_error(
+                usage("Use --approvals stdin, with the prompt in -p or --prompt-file."),
+                json_mode,
+            );
+        }
+        Err(error) => return print_error(error, json_mode),
     };
     let input = if args.iter().any(|arg| arg == "--stdin") {
         let mut bytes = Vec::new();
@@ -233,6 +269,7 @@ pub fn run(arguments: &[String], json_mode: bool) -> u8 {
         environment,
         input,
         canceled,
+        approvals,
     };
     let mut emit = |event: Value| {
         if json_mode {
@@ -795,6 +832,7 @@ fn chat(
             model: Some("demo/local".into()),
         });
     } else {
+        let _gate = GateGuard::install(context);
         app.submit(&prompt, &context.cwd);
         if !app.live.busy {
             return Err(app
@@ -810,8 +848,26 @@ fn chat(
         let mut child_previous = BTreeMap::new();
         let mut child_partial = BTreeMap::new();
         let started = std::time::Instant::now();
+        let mut changed = false;
+        let mut saved = std::time::Instant::now();
         while app.live.busy || app.request.is_some() {
             app.elapsed_seconds = started.elapsed().as_secs();
+            if let Some(desk) = &context.approvals {
+                for mut event in desk.drain() {
+                    event["session"] = json!(session);
+                    emit(event);
+                }
+            }
+            // Checkpoint while it runs, so a follower sees the work.
+            if changed && saved.elapsed() >= CHECKPOINT {
+                let mut document = trajectory::main_document(app, &context.cwd);
+                document["session_id"] = json!(session);
+                document["trajectory_id"] = json!(session);
+                document["extra"]["running"] = json!(true);
+                let _ = lease.save(&document);
+                saved = std::time::Instant::now();
+                changed = false;
+            }
             if context
                 .canceled
                 .as_ref()
@@ -822,10 +878,12 @@ fn chat(
             background.sync(app);
             if let Some(text) = stream_delta(&app.live, &mut partial) {
                 emit(json!({"event":"delta","session":session,"text":text}));
+                changed = true;
             }
             for (index, entry) in app.live.entries.iter().enumerate() {
                 let value = entry_value(entry);
                 if previous.get(&index) != Some(&value) {
+                    changed = true;
                     emit(json!({"event":"entry","session":session,"index":index,"entry":value}));
                     previous.insert(index, value);
                 }
@@ -841,6 +899,7 @@ fn chat(
                     let key = (child.id.clone(), index);
                     let value = entry_value(entry);
                     if child_previous.get(&key) != Some(&value) {
+                        changed = true;
                         emit(
                             json!({"event":"delegation_entry","session":session,"delegation":child.id,"index":index,"entry":value}),
                         );
@@ -849,6 +908,12 @@ fn chat(
                 }
             }
             std::thread::sleep(Duration::from_millis(15));
+        }
+        if let Some(desk) = &context.approvals {
+            for mut event in desk.drain() {
+                event["session"] = json!(session);
+                emit(event);
+            }
         }
     }
     let mut document = trajectory::main_document(app, &context.cwd);
@@ -880,6 +945,36 @@ fn chat(
     Ok(
         json!({"event":"finished","session":session,"reply":reply,"tokens":target.tokens,"trajectory":session_path(context,&session)?}),
     )
+}
+
+/// How often a running chat saves its session for followers.
+const CHECKPOINT: Duration = Duration::from_secs(1);
+
+/// The approval gate of a gated chat, removed when the chat ends.
+struct GateGuard(bool);
+
+impl GateGuard {
+    fn install(context: &Context) -> Self {
+        let Some(desk) = &context.approvals else {
+            return Self(false);
+        };
+        crate::approval::install(Some(crate::approval::Gate {
+            desk: Arc::clone(desk),
+            cancel: context
+                .canceled
+                .clone()
+                .unwrap_or_else(|| Arc::new(AtomicBool::new(false))),
+        }));
+        Self(true)
+    }
+}
+
+impl Drop for GateGuard {
+    fn drop(&mut self) {
+        if self.0 {
+            crate::approval::install(None);
+        }
+    }
 }
 
 #[derive(Default)]
@@ -976,6 +1071,7 @@ fn delegate(
     let (sender, receiver) = std::sync::mpsc::channel();
     let (result_sender, result_receiver) = std::sync::mpsc::channel();
     let delegation = format!("{session}-delegate-{}", app.delegations.len() + 1);
+    let _gate = GateGuard::install(context);
     let delegated_name = execution
         .agents
         .iter()
@@ -1031,6 +1127,12 @@ fn delegate(
     let started = std::time::Instant::now();
     let result = loop {
         app.elapsed_seconds = started.elapsed().as_secs();
+        if let Some(desk) = &context.approvals {
+            for mut event in desk.drain() {
+                event["session"] = json!(session);
+                emit(event);
+            }
+        }
         match receiver.recv_timeout(Duration::from_millis(15)) {
             Ok(event) => {
                 emit(runtime_value(&event));
@@ -1199,6 +1301,7 @@ mod tests {
             environment: BTreeMap::new(),
             input: None,
             canceled: None,
+            approvals: None,
         }
     }
     fn execute_words(words: &[&str], context: &Context) -> Result<Value, Error> {
