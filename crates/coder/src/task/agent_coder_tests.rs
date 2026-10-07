@@ -621,3 +621,134 @@ fn each_coder_turn_leaves_a_spend_record_and_the_days_budget_refuses_the_next_re
             .any(|e| e.text.contains("daily budget of 1000 tokens"))
     );
 }
+
+/// Her record with engine `codex`.
+fn on_codex(dir: &tempfile::TempDir) -> Store {
+    let store = Store::new(&dir.path().join("host"), "alice").unwrap();
+    let mut record = store.load().unwrap().unwrap();
+    record.engine = agent::ENGINE_CODEX.into();
+    store.save(&record).unwrap();
+    store
+}
+
+/// Coder handing the work to Codex, which runs `command`, and Codex's end.
+fn codex_delegation(command: &str, output: serde_json::Value) -> Vec<CoderEvent> {
+    let delegation = |running: bool, output: serde_json::Value| CoderEvent::Delegation {
+        id: "alice-coder-delegate-1".into(),
+        agent: "Codex".into(),
+        running,
+        output,
+    };
+    let mut events = vec![delegation(true, serde_json::Value::Null)];
+    for mut event in run(command, 0, "ok") {
+        if let CoderEvent::Tool { delegation, .. } = &mut event {
+            *delegation = Some("alice-coder-delegate-1".into());
+        }
+        events.push(event);
+    }
+    events.push(delegation(false, output));
+    events
+}
+
+#[test]
+fn on_codex_coder_hands_her_coding_to_codex_and_codex_usage_is_her_spend() {
+    use crate::task::agent_spend;
+    let dir = tempfile::tempdir().unwrap();
+    let (agents, seen) = host(
+        &dir,
+        steps(&[("Fix the typo in README.md.", "the typo is fixed")], None),
+        vec![turn(
+            codex_delegation(
+                "sed -i '' s/teh/the/ README.md",
+                json!({"reply":"Fixed.","model":"gpt-codex","tokens":18,
+                    "usage":{"input_tokens":11,"output_tokens":7},"transport":"codex-cli"}),
+            ),
+            "Codex fixed the typo, and I checked it.",
+        )],
+        vec![judged(0.95, 0.02, Move::Continue)],
+        Some("Codex fixed the typo."),
+    );
+    let store = on_codex(&dir);
+    let owner = secp256k1::SecretKey::from_byte_array([7; 32]).unwrap();
+    let record = store.load().unwrap().unwrap();
+    let record = store.ensure_key(record, clock()).unwrap();
+    store
+        .attest(record, &owner, clock() + 30 * 86_400, clock())
+        .unwrap();
+    assert_eq!(view(&agents).route, "Coder V1, coding on Codex");
+
+    ask(&agents, "k1", "fix the typo in the readme");
+    let view = finished(&agents);
+    let given = seen.given.lock().unwrap().clone();
+    assert_eq!(given.len(), 1);
+    assert!(given[0].prompt.starts_with("Fix the typo in README.md."));
+    assert!(given[0].prompt.ends_with(CODEX_DIRECTIVE));
+    assert!(given[0].codex_writes && given[0].approvals);
+    for line in [
+        "alice: Coder handed the work to Codex",
+        "alice: Codex $ sed -i '' s/teh/the/ README.md",
+    ] {
+        assert!(
+            view.lines.iter().any(|l| l == line),
+            "{line} in {:?}",
+            view.lines
+        );
+    }
+    assert!(
+        journal(&dir)
+            .iter()
+            .any(|e| e.text == "Codex finished its delegation (18 tokens)")
+    );
+    // Codex's usage is a record of its own, beside Coder's turn.
+    let spent = agent_spend::owner_read(&store, &owner).unwrap();
+    let codex = spent
+        .records
+        .iter()
+        .find(|r| r.metric.harness == agent_spend::CODEX_HARNESS)
+        .expect("a Codex spend record");
+    assert_eq!(codex.metric.model.as_deref(), Some("gpt-codex"));
+    assert_eq!(codex.metric.turn.input_tokens, Some(11));
+    assert_eq!(codex.metric.turn.output_tokens, Some(7));
+}
+
+#[test]
+fn a_codex_limit_is_booked_said_once_and_later_requests_leave_codex_out() {
+    let dir = tempfile::tempdir().unwrap();
+    let limited = json!({"error": "Codex is out of capacity, so continue without Codex. Codex \
+        task failed: You've hit your usage limit. Try again in 2 hours.; process group cleared: \
+        true."});
+    let (agents, seen) = host(
+        &dir,
+        steps(&[("Fix the typo in README.md.", "the typo is fixed")], None),
+        vec![
+            turn(
+                codex_delegation("cat README.md", limited),
+                "Codex was out of capacity, so I fixed it myself.",
+            ),
+            turn(vec![], "Done."),
+        ],
+        vec![judged(0.95, 0.02, Move::Continue); 2],
+        Some("Fixed."),
+    );
+    on_codex(&dir);
+    ask(&agents, "k1", "fix the typo in the readme");
+    let view = finished(&agents);
+    let said: Vec<&String> = view
+        .lines
+        .iter()
+        .filter(|l| l.starts_with("alice: Codex is out of capacity until "))
+        .collect();
+    assert_eq!(said.len(), 1, "{:?}", view.lines);
+    assert!(said[0].ends_with(", so Coder works on its own model."));
+    let book = capacity::Book::load_with(&dir.path().join("tasks"), |_| None);
+    assert!(!book.has_capacity(capacity::Provider::Codex, clock()));
+
+    // The next request reads the book and leaves Codex out.
+    ask(&agents, "k2", "fix the next typo");
+    finished(&agents);
+    let given = seen.given.lock().unwrap().clone();
+    assert_eq!(given.len(), 2);
+    assert!(given[0].codex_writes);
+    assert!(!given[1].codex_writes);
+    assert!(!given[1].prompt.contains(CODEX_DIRECTIVE));
+}

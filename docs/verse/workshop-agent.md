@@ -428,6 +428,29 @@ demo or capture: a JSON list of Coder events every prompt plays, with the
 request relayed as one step, or a whole request (`plan`, one Coder turn per
 prompt in `turns`, `judgments`, and `report`).
 
+#### Coding on Codex
+
+`openagents agent engine alice codex` makes Codex do her coding, and
+`openagents agent engine alice coder` returns it to Coder's own model.
+Coder stays the driver on its own model: each of her prompts ends with one
+line that asks Coder to delegate the coding to the Codex agent
+(`acp_subagent`, on your ChatGPT login) and to check the result itself. The
+turn runs with `--codex-writes`, so Codex may edit the working directory
+under its own `workspace-write` sandbox, with no network. In terminal mode
+the turn is gated, so each Codex delegation first asks
+`codex exec --sandbox workspace-write` at her lectern, and her policy or
+you answer it. In task mode the studio's Coder turn has full access to her
+worktree, so Codex writes the worktree without asking.
+
+- Codex's commands reach her pane and journal as Coder's do, prefixed
+  `Codex`; her pane follows the Codex child chat while it runs, and her
+  panel's engine reads `Coder V1, coding on Codex`.
+- Codex's reported tokens are a spend record of their own (harness
+  `codex-cli`) beside Coder's turn.
+- A Codex usage or rate limit goes in the capacity book
+  (`~/.openagents/tasks/capacity.json`), she says once that Codex is out of
+  capacity until its reset, and Coder works on its own model until then.
+
 ## Persistence
 
 | What | Where | Who reads it | Survives |

@@ -395,6 +395,17 @@ impl App {
         let at_end = self.history.following.as_ref().is_none_or(|f| f.stick);
         self.live = restored.live;
         self.delegations = restored.delegations;
+        // A follower at the end watches the delegation running now, such as
+        // an agent's Codex child chat, and the main chat otherwise.
+        if at_end {
+            self.selected_agent = running_delegation(document)
+                .and_then(|id| self.delegations.iter().position(|child| child.id == id));
+        } else if self
+            .selected_agent
+            .is_some_and(|index| index >= self.delegations.len())
+        {
+            self.selected_agent = None;
+        }
         if at_end || self.live.entries.is_empty() {
             self.scroll = u16::MAX;
             self.main_scroll = u16::MAX;
@@ -453,5 +464,52 @@ impl App {
         }
         self.notice = Some(error);
         false
+    }
+}
+
+/// The delegation a saved chat records as running, if one is: the last
+/// `delegate` call, when it is still marked running.
+fn running_delegation(document: &serde_json::Value) -> Option<String> {
+    document
+        .get("steps")?
+        .as_array()?
+        .iter()
+        .rev()
+        .filter_map(|step| step.pointer("/tool_calls/0"))
+        .find(|call| {
+            call.pointer("/extra/schema")
+                .and_then(serde_json::Value::as_str)
+                == Some("openagents.delegation.v1")
+        })
+        .filter(|call| {
+            call.pointer("/extra/running")
+                .and_then(serde_json::Value::as_bool)
+                == Some(true)
+        })
+        .and_then(|call| call.get("tool_call_id"))
+        .and_then(serde_json::Value::as_str)
+        .map(str::to_owned)
+}
+
+#[cfg(test)]
+mod follow_tests {
+    use super::running_delegation;
+    use serde_json::json;
+
+    #[test]
+    fn a_follower_finds_the_delegation_that_runs_now() {
+        let call = |id: &str, running: bool| {
+            json!({"tool_calls":[{"tool_call_id":id,"function_name":"delegate",
+                "extra":{"schema":"openagents.delegation.v1","running":running}}]})
+        };
+        let running = json!({"steps":[call("s-delegate-1", false), {"message":"hi"},
+            call("s-delegate-2", true)]});
+        assert_eq!(
+            running_delegation(&running).as_deref(),
+            Some("s-delegate-2")
+        );
+        let done = json!({"steps":[call("s-delegate-1", true), call("s-delegate-2", false)]});
+        assert_eq!(running_delegation(&done), None);
+        assert_eq!(running_delegation(&json!({"steps":[]})), None);
     }
 }

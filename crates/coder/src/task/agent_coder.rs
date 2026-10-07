@@ -15,7 +15,8 @@
 
 use super::*;
 use crate::task::agent_spend::{self, Meter};
-use crate::task::agent_steer::{self, Answer, Hands, Places, Policy, TurnEnd, Turned};
+use crate::task::agent_steer::{self, Answer, Delegated, Hands, Places, Policy, TurnEnd, Turned};
+use crate::task::capacity;
 
 /// How long she waits for a turn running in her session before she gives
 /// up on a request.
@@ -63,6 +64,38 @@ struct HostHands<'a> {
     step: Option<u64>,
     /// Her spend records and budgets for this request.
     meter: Meter,
+    /// Coder delegates her coding to Codex: her engine is Codex, and the
+    /// capacity book gives Codex capacity.
+    codex: bool,
+}
+
+/// What she adds to each prompt when Codex does her coding: Coder, on its
+/// own model, hands the coding to Codex and checks what it did.
+pub(crate) const CODEX_DIRECTIVE: &str = "Delegate the coding in this step to the codex agent \
+     with acp_subagent: give it the task, the files involved, and how to check the result. \
+     Then read its changes and run the checks yourself before you answer. If Codex is \
+     unavailable or out of capacity, do the work yourself and say so.";
+
+/// The signed-in Codex login a book entry is kept for; a unit test reads
+/// no login.
+fn login(provider: capacity::Provider) -> Option<String> {
+    if cfg!(test) {
+        None
+    } else {
+        microcoder_loop::account::identify(provider)
+    }
+}
+
+/// Her one sentence when Codex has no capacity, from the capacity book or
+/// a refusal now.
+fn codex_out(name: &str, until: Option<u64>) -> String {
+    match until {
+        Some(at) => format!(
+            "{name}: Codex is out of capacity until {}, so Coder works on its own model.",
+            capacity::utc(at)
+        ),
+        None => format!("{name}: Codex is out of capacity, so Coder works on its own model."),
+    }
 }
 
 impl HostHands<'_> {
@@ -224,18 +257,33 @@ impl Hands for HostHands<'_> {
             });
         }
         self.open_pane();
+        let codex = self.codex;
         let turn = coder_v1::Turn {
             cwd: PathBuf::from(&self.cwd),
             state: self.state.clone(),
             session: self.session.clone(),
-            prompt: prompt.to_owned(),
+            // Her words, and on Codex the one line that hands the coding
+            // to it; the session shows both.
+            prompt: if codex {
+                format!("{prompt}\n\n{CODEX_DIRECTIVE}")
+            } else {
+                prompt.to_owned()
+            },
             // Plain Coder: nothing in her Coder session says who she is.
             instructions: None,
             approvals: true,
+            codex_writes: codex,
         };
+        if codex {
+            self.agents.with_live(&name, |live| {
+                live.model = "Coder V1, coding on Codex".into()
+            });
+        }
         self.agents.set_doing(&name, Doing::Thinking);
         let mut turned = Turned::ended(TurnEnd::Stopped);
         let mut previous: Option<CoderEvent> = None;
+        let mut ended_delegations: Vec<String> = Vec::new();
+        let mut codex_refused: Option<String> = None;
         let agents = self.agents;
         let (policy, places, stop) = (&self.policy, &self.places, self.stop.clone());
         let cwd = PathBuf::from(&self.cwd);
@@ -244,8 +292,63 @@ impl Hands for HostHands<'_> {
             let mut hear = |event: &CoderEvent| -> Option<bool> {
                 match event {
                     CoderEvent::Model { model } if !model.is_empty() => {
-                        agents.with_live(&name, |live| live.model = format!("Coder V1 ({model})"));
+                        agents.with_live(&name, |live| {
+                            live.model = if codex {
+                                format!("Coder V1 ({model}), coding on Codex")
+                            } else {
+                                format!("Coder V1 ({model})")
+                            };
+                        });
                         turned.model = Some(model.clone());
+                        None
+                    }
+                    CoderEvent::Delegation {
+                        id,
+                        agent: delegate,
+                        running,
+                        output,
+                    } => {
+                        if *running {
+                            if !ended_delegations.contains(id) && previous.as_ref() != Some(event) {
+                                agents.say(
+                                    &name,
+                                    &format!("{name}: Coder handed the work to {delegate}"),
+                                );
+                            }
+                            previous = Some(event.clone());
+                            return None;
+                        }
+                        if ended_delegations.contains(id) {
+                            return None;
+                        }
+                        ended_delegations.push(id.clone());
+                        let delegated = Delegated::from_output(delegate, output);
+                        let error = output
+                            .get("error")
+                            .and_then(serde_json::Value::as_str)
+                            .unwrap_or_default();
+                        if delegated.is_codex() && !error.is_empty() {
+                            codex_refused = Some(error.to_owned());
+                        }
+                        let _ = journal(
+                            Kind::Control,
+                            &if error.is_empty() {
+                                format!(
+                                    "{delegate} finished its delegation ({} tokens)",
+                                    delegated
+                                        .total_tokens
+                                        .or_else(|| delegated
+                                            .input_tokens
+                                            .zip(delegated.output_tokens)
+                                            .map(|(i, o)| i + o))
+                                        .map_or_else(|| "no".into(), |t| t.to_string())
+                                )
+                            } else {
+                                format!("{delegate} stopped: {}", agent::plain(error))
+                            },
+                            None,
+                        );
+                        turned.delegated.push(delegated);
                         None
                     }
                     CoderEvent::Tool { .. } if previous.as_ref() == Some(event) => None,
@@ -254,12 +357,17 @@ impl Hands for HostHands<'_> {
                         input,
                         output,
                         running,
-                        ..
+                        delegation,
                     } => {
+                        let by = if delegation.is_some() && codex {
+                            "Codex "
+                        } else {
+                            ""
+                        };
                         previous = Some(event.clone());
                         if !tool.eq_ignore_ascii_case("run") {
                             if *running {
-                                agents.say(&name, &format!("{name}: Coder is using {tool}"));
+                                agents.say(&name, &format!("{name}: {by}Coder is using {tool}"));
                             }
                             return None;
                         }
@@ -279,7 +387,7 @@ impl Hands for HostHands<'_> {
                                     Doing::Running
                                 },
                             );
-                            agents.say(&name, &format!("{name}: $ {command}"));
+                            agents.say(&name, &format!("{name}: {by}$ {command}"));
                             return None;
                         }
                         let status = output
@@ -298,7 +406,7 @@ impl Hands for HostHands<'_> {
                                     &format!("{command} ({} bytes of output)", said.len()),
                                     Some(status),
                                 );
-                                agents.say(&name, &format!("{name}: exit {status}"));
+                                agents.say(&name, &format!("{name}: {by}exit {status}"));
                             }
                             None if said.starts_with("The host refuses") => {
                                 turned.refused.push(command.clone());
@@ -393,6 +501,18 @@ impl Hands for HostHands<'_> {
             ended
         };
         self.engine = Some(engine);
+        // A Codex limit goes in the capacity book, as Coder books it, and
+        // her later prompts in this request leave Codex out.
+        if let Some(error) = codex_refused {
+            let now = (self.agents.clock)();
+            if let Some(refusal) = capacity::detect(capacity::Provider::Codex, &error, now) {
+                let _ = capacity::record_with(&self.agents.tasks, refusal.clone(), login);
+                self.codex = false;
+                let line = codex_out(&name, Some(refusal.until));
+                let _ = self.write(Kind::Control, &line, None);
+                self.agents.say(&name, &line);
+            }
+        }
         turned.end = match ended {
             Ended::Finished { reply, tokens } => {
                 // Zero is what Coder says when it counted nothing.
@@ -539,6 +659,7 @@ impl Agents {
             .or_else(coder_v1::default_state)
             .unwrap_or_else(|| self.root.join("coder-new"));
         self.set_doing(&name, Doing::Thinking);
+        let codex = record.codes_on_codex() && self.codex_has_capacity(store, &name);
         let mut hands = HostHands {
             agents: self,
             store,
@@ -558,6 +679,7 @@ impl Agents {
             watcher: None,
             step: None,
             meter,
+            codex,
         };
         let input = agent_steer::Input {
             record,
@@ -583,6 +705,21 @@ impl Agents {
         }
         hands.close();
         steered.report
+    }
+
+    /// Whether Codex can take her coding now: the capacity book in the
+    /// host's task store holds no Codex limit. When it does, she says so in
+    /// one sentence and Coder works on its own model.
+    pub(super) fn codex_has_capacity(&self, store: &Store, name: &str) -> bool {
+        let now = (self.clock)();
+        let book = capacity::Book::load_with(&self.tasks, login);
+        let Some(refusal) = book.blocking(capacity::Provider::Codex, now) else {
+            return true;
+        };
+        let line = codex_out(name, Some(refusal.until));
+        let _ = store.append(&Entry::new(now, Kind::Control, &line));
+        self.say(name, &line);
+        false
     }
 
     /// Takes her Coder session back from whatever holds it: her pane after

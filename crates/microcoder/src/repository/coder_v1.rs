@@ -11,8 +11,10 @@
 //! - **Process**: the `openagents` program beside this one or on `PATH`,
 //!   with the owner's login environment. Coder chooses its own provider:
 //!   the Codex login, then Claude Code's, then the OpenAgents Gateway. Its
-//!   Microcoder writes only the worktree and its own scratch. Full access
-//!   only, as a lean session: the grant names this endpoint only then.
+//!   Microcoder writes only the worktree and its own scratch, and a Codex
+//!   delegation writes only the worktree, under Codex's sandbox. Full
+//!   access only, as a lean session: the grant names this endpoint only
+//!   then.
 //! - **Transcript**: each command Coder ran and its reply go to the task's
 //!   ATIF transcript as they arrive, bounded.
 //! - **Cancellation**: a cancelled task interrupts Coder, which saves the
@@ -113,6 +115,11 @@ pub(crate) async fn turn(
         prompt,
         instructions: None,
         approvals: false,
+        // The turn has full access to the task's own worktree, which its
+        // Microcoder already writes; a Codex delegation it makes, such as
+        // a workshop agent's on Codex, writes the same worktree under
+        // Codex's sandbox, with no network.
+        codex_writes: true,
     };
     let cancel = Arc::new(AtomicBool::new(false));
     let (events, heard) = std::sync::mpsc::channel::<Event>();

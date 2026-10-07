@@ -61,6 +61,24 @@ pub const TEXT_MAX: usize = 16 * 1024;
 /// The most bytes one journal entry's text keeps.
 const ENTRY_MAX: usize = 2048;
 
+/// The [`Record::engine`] where Coder delegates her coding to Codex.
+pub const ENGINE_CODEX: &str = "codex";
+
+/// The engine `word` names, as a record keeps it: `codex`, or empty for
+/// `coder`, Coder's own model.
+///
+/// # Errors
+/// Any other word.
+pub fn parse_engine(word: &str) -> Result<String, String> {
+    match word {
+        ENGINE_CODEX => Ok(ENGINE_CODEX.into()),
+        "coder" | "" => Ok(String::new()),
+        other => Err(format!(
+            "{other} isn't an engine; use coder (Coder's own model) or codex"
+        )),
+    }
+}
+
 /// The agent's standing record (`openagents.workshop-agent.v1`).
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -94,6 +112,11 @@ pub struct Record {
     /// the first provider with capacity.
     #[serde(default, skip_serializing_if = "String::is_empty")]
     pub route: String,
+    /// What does her coding: empty for Coder's own model, or
+    /// [`ENGINE_CODEX`], where Coder delegates the coding to the Codex
+    /// agent on the owner's ChatGPT login and checks its work.
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub engine: String,
     /// Its desk in the workshop hall.
     #[serde(default = "default_desk")]
     pub desk: u32,
@@ -212,6 +235,12 @@ impl Record {
     #[must_use]
     pub fn role(&self) -> &'static str {
         preset(&self.name).map_or("workshop agent", |p| p.role)
+    }
+
+    /// Whether Coder delegates its coding to Codex.
+    #[must_use]
+    pub fn codes_on_codex(&self) -> bool {
+        self.engine == ENGINE_CODEX
     }
 
     /// The name people see.
@@ -595,6 +624,7 @@ impl Store {
             attestation: None,
             state: State::Active,
             route: String::new(),
+            engine: String::new(),
             desk: default_desk(),
             definition: preset.map(|p| {
                 let mut definition = p.definition();

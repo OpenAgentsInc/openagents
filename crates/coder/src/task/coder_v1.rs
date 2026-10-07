@@ -388,6 +388,17 @@ pub enum Event {
     },
     /// An approval was answered.
     Answered { id: u64, confirm: bool },
+    /// Coder delegated work to `agent`, such as Codex, in the child chat
+    /// `id`: running, or ended with `output` (its reply, model, and usage,
+    /// or `error`).
+    Delegation {
+        id: String,
+        agent: String,
+        #[serde(default)]
+        running: bool,
+        #[serde(default)]
+        output: Value,
+    },
 }
 
 /// How a turn ended.
@@ -417,6 +428,10 @@ pub struct Turn {
     pub instructions: Option<String>,
     /// Ask before any command that is not read-only.
     pub approvals: bool,
+    /// Let the turn's Codex delegations edit the working directory under
+    /// Codex's workspace-write sandbox (`--codex-writes`); a gated turn
+    /// still asks before each one.
+    pub codex_writes: bool,
 }
 
 /// What runs a turn: Coder V1 ([`Cli`]) or, in tests, a stand-in.
@@ -463,6 +478,22 @@ fn parse(line: &str) -> Option<Result<Event, Value>> {
         "model" => Event::Model {
             model: text("model"),
         },
+        "entry" if value.pointer("/entry/source").and_then(Value::as_str) == Some("delegation") => {
+            let entry = value.get("entry")?;
+            let field = |key: &str| {
+                entry
+                    .get(key)
+                    .and_then(Value::as_str)
+                    .unwrap_or_default()
+                    .to_owned()
+            };
+            Event::Delegation {
+                id: field("id"),
+                agent: field("name"),
+                running: entry.get("running").and_then(Value::as_bool) == Some(true),
+                output: entry.get("output").cloned().unwrap_or(Value::Null),
+            }
+        }
         "entry" => tool(value.get("entry")?, None)?,
         "delegation_entry" => tool(value.get("entry")?, Some(text("delegation")))?,
         "approval" => Event::Approval {
@@ -522,6 +553,9 @@ impl Cli {
         }
         if turn.approvals {
             command.arg("--approvals").arg("stdin");
+        }
+        if turn.codex_writes {
+            command.arg("--codex-writes");
         }
         command.envs(self.env.iter().map(|(key, value)| (key, value)));
         command
@@ -788,6 +822,14 @@ mod tests {
             parse(&ask.to_string()),
             Some(Ok(Event::Approval { id: 3, .. }))
         ));
+        let delegated = json!({"event":"entry","entry":{"source":"delegation","id":"s-delegate-1",
+            "name":"Codex","task":"fix it","running":false,
+            "output":{"reply":"done","tokens":18,"usage":{"input_tokens":11,"output_tokens":7}}}});
+        assert!(matches!(
+            parse(&delegated.to_string()),
+            Some(Ok(Event::Delegation { ref agent, running: false, ref output, .. }))
+                if agent == "Codex" && output["tokens"] == 18
+        ));
         let user = json!({"event":"entry","entry":{"source":"user","text":"hi"}});
         assert_eq!(parse(&user.to_string()), None);
         let done = json!({"event":"finished","session":"s","reply":"ok","tokens":7});
@@ -831,6 +873,7 @@ mod tests {
             prompt: "hello".into(),
             instructions: None,
             approvals: true,
+            codex_writes: false,
         };
         let mut heard = Vec::new();
         let ended = Cli {
@@ -877,6 +920,7 @@ mod tests {
             prompt: "p".into(),
             instructions: None,
             approvals: true,
+            codex_writes: false,
         };
         let mut tools = 0;
         scripted.turn(&turn, &AtomicBool::new(false), &mut |event| {

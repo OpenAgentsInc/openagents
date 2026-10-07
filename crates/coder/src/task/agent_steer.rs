@@ -1056,6 +1056,50 @@ pub struct Turned {
     /// The tokens Coder reported for the turn, `None` when it reported
     /// none.
     pub tokens: Option<u64>,
+    /// Each delegation Coder made in the turn that ended, such as Codex
+    /// doing her coding, with the usage it reported.
+    pub delegated: Vec<Delegated>,
+}
+
+/// One delegation that ended in a Coder turn, as her spend records count it.
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+pub struct Delegated {
+    /// The agent's name, such as `Codex`.
+    pub agent: String,
+    pub model: Option<String>,
+    pub input_tokens: Option<u64>,
+    pub output_tokens: Option<u64>,
+    pub total_tokens: Option<u64>,
+    /// It ended with an error.
+    pub failed: bool,
+}
+
+impl Delegated {
+    /// What a finished delegation's `output` reports: its model and usage,
+    /// or an error.
+    #[must_use]
+    pub fn from_output(agent: &str, output: &serde_json::Value) -> Self {
+        let number = |pointer: &str| output.pointer(pointer).and_then(serde_json::Value::as_u64);
+        Self {
+            agent: agent.to_owned(),
+            model: output
+                .get("model")
+                .and_then(serde_json::Value::as_str)
+                .filter(|model| !model.is_empty())
+                .map(str::to_owned),
+            input_tokens: number("/usage/input_tokens"),
+            output_tokens: number("/usage/output_tokens"),
+            total_tokens: number("/usage/total_tokens")
+                .or_else(|| number("/tokens").filter(|t| *t > 0)),
+            failed: output.get("error").is_some(),
+        }
+    }
+
+    /// Whether this was Codex.
+    #[must_use]
+    pub fn is_codex(&self) -> bool {
+        self.agent.eq_ignore_ascii_case("codex")
+    }
 }
 
 impl Turned {
@@ -1070,7 +1114,38 @@ impl Turned {
             never: Vec::new(),
             model: None,
             tokens: None,
+            delegated: Vec::new(),
         }
+    }
+
+    /// The spend records' calls for the delegations of the `n`th Coder
+    /// turn: Codex's own, under its harness, apart from Coder's turn.
+    #[must_use]
+    pub fn delegated_calls(&self, n: u32) -> Vec<Call> {
+        self.delegated
+            .iter()
+            .enumerate()
+            .map(|(i, delegated)| Call {
+                harness: if delegated.is_codex() {
+                    agent_spend::CODEX_HARNESS
+                } else {
+                    agent_spend::CODER_HARNESS
+                },
+                turn_id: format!("coder-{n}-delegation-{}", i + 1),
+                model: delegated.model.clone(),
+                usage: Counters {
+                    input_tokens: delegated.input_tokens,
+                    output_tokens: delegated.output_tokens,
+                    total_tokens: delegated.total_tokens,
+                    ..Counters::default()
+                },
+                stop: if delegated.failed {
+                    "error"
+                } else {
+                    "end_turn"
+                },
+            })
+            .collect()
     }
 
     /// This turn as a spend record's call (`agent_spend`): the `n`th
@@ -1656,6 +1731,9 @@ pub fn run(hands: &mut dyn Hands, mind: &mut Mind, input: &Input) -> Steered {
             facts.prompted += 1;
             let turned = hands.coder(&prompt);
             budget_used = budget_used.or_else(|| hands.spent(&turned.call(facts.prompted)));
+            for call in turned.delegated_calls(facts.prompted) {
+                budget_used = budget_used.or_else(|| hands.spent(&call));
+            }
             facts.ran.extend(turned.ran.iter().cloned());
             facts.never.extend(turned.never.iter().cloned());
             match &turned.end {

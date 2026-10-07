@@ -961,7 +961,9 @@ impl Agents {
                 .map(|l| l.model.clone())
                 .filter(|m| !m.is_empty())
                 .unwrap_or_else(|| {
-                    if record.route.is_empty() {
+                    if record.codes_on_codex() {
+                        "Coder V1, coding on Codex".into()
+                    } else if record.route.is_empty() {
                         "first with capacity".into()
                     } else {
                         record.route.clone()
@@ -1320,11 +1322,21 @@ impl Agents {
             }
         }
         let title = one_line(&queued.text);
+        // On Codex, the studio's Coder turn hands the coding to Codex in
+        // her worktree and checks it.
+        let codex = if record.codes_on_codex() && self.codex_has_capacity(store, &record.name) {
+            self.with_live(&record.name, |live| {
+                live.model = "Coder V1, coding on Codex".into();
+            });
+            format!("\n\n{}", coder_turn::CODEX_DIRECTIVE)
+        } else {
+            String::new()
+        };
         let direct = Direct {
             text: format!(
                 "{}\n\nYou are {}, the owner's workshop agent. Work only in this worktree. Leave \
                  your change in the working tree; the owner reviews and merges it at the Merge \
-                 station.",
+                 station.{codex}",
                 queued.text, record.name
             ),
             title: title.clone(),

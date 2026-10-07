@@ -4689,6 +4689,12 @@
         },
         {
           "kind": "option",
+          "name": "codex-writes",
+          "optional": true,
+          "repeated": true
+        },
+        {
+          "kind": "option",
           "name": "in",
           "value": "DIR",
           "open": true,
@@ -12325,6 +12331,79 @@
             "effect": "read_only",
             "runs_on": "connected_computer"
           }
+        },
+        {
+          "name": "engine",
+          "children": [
+            {
+              "name": "coder",
+              "leaf": {
+                "path": [
+                  "agent",
+                  "engine",
+                  "coder"
+                ],
+                "usage": [
+                  "engine NAME coder|codex"
+                ],
+                "forms": [
+                  {
+                    "tokens": [
+                      {
+                        "kind": "literal",
+                        "word": "engine"
+                      },
+                      {
+                        "kind": "positional",
+                        "name": "NAME"
+                      },
+                      {
+                        "kind": "literal",
+                        "word": "coder"
+                      }
+                    ]
+                  }
+                ],
+                "summary": "What does her coding: coder, Coder's own model (the default), or codex, where Coder delegates the coding to the Codex agent on your ChatGPT login and checks it, and works on its own model while Codex is out of capacity.",
+                "effect": "local_write",
+                "runs_on": "connected_computer"
+              }
+            },
+            {
+              "name": "codex",
+              "leaf": {
+                "path": [
+                  "agent",
+                  "engine",
+                  "codex"
+                ],
+                "usage": [
+                  "engine NAME coder|codex"
+                ],
+                "forms": [
+                  {
+                    "tokens": [
+                      {
+                        "kind": "literal",
+                        "word": "engine"
+                      },
+                      {
+                        "kind": "positional",
+                        "name": "NAME"
+                      },
+                      {
+                        "kind": "literal",
+                        "word": "codex"
+                      }
+                    ]
+                  }
+                ],
+                "summary": "What does her coding: coder, Coder's own model (the default), or codex, where Coder delegates the coding to the Codex agent on your ChatGPT login and checks it, and works on its own model while Codex is out of capacity.",
+                "effect": "local_write",
+                "runs_on": "connected_computer"
+              }
+            }
+          ]
         },
         {
           "name": "log",

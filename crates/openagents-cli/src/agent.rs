@@ -88,6 +88,11 @@ pub const USAGE: &str = "usage: openagents agent COMMAND [--root DIR] [--control
                key in FILE, and print the key the owner's trainer profile
                (13193) must list. Nothing is published; the key counts
                toward the owner only once both sides are.
+  engine NAME coder|codex
+               What does her coding: coder, Coder's own model (the
+               default), or codex, where Coder delegates the coding to the
+               Codex agent on your ChatGPT login and checks it, and works on
+               its own model while Codex is out of capacity.
   log NAME [--after N]
                Her journal, newest last.
   memory NAME list
@@ -170,6 +175,8 @@ pub(crate) const EFFECTS: &[Declared] = &[
     Declared::computer("signing on", Effect::LocalWrite),
     Declared::computer("signing off", Effect::LocalWrite),
     Declared::computer("xp-link", Effect::ReadOnly),
+    Declared::computer("engine coder", Effect::LocalWrite),
+    Declared::computer("engine codex", Effect::LocalWrite),
     Declared::computer("log", Effect::ReadOnly),
     Declared::computer("memory list", Effect::ReadOnly),
     Declared::computer("memory note", Effect::Publishes),
@@ -263,6 +270,7 @@ pub fn run(output: &Output, words: &[String]) -> u8 {
             signing(output, &root, name, *word == "on", now)
         }
         ["xp-link", name] => xp_link(output, &root, name, &args, now),
+        ["engine", name, word @ ("coder" | "codex")] => engine(output, &root, name, word, now),
         ["log", name] => log(output, &root, name, &args),
         ["memory", name, rest @ ..] => memory(output, &root, name, rest, &args),
         ["jobs", name, rest @ ..] => jobs(output, &root, name, rest, &args, now),
@@ -507,6 +515,7 @@ fn record_json(record: &Record, now: u64) -> Value {
         "workspace": record.workspace,
         "look": record.look,
         "route": record.route,
+        "engine": if record.engine.is_empty() { "coder" } else { record.engine.as_str() },
         "desk": record.desk,
         "pubkey": record.pubkey,
         "attestation": record.attestation,
@@ -1096,6 +1105,35 @@ fn xp_link(output: &Output, root: &Path, name: &str, args: &Args, now: u64) -> R
             serde_json::to_string(&linked.link).unwrap_or_default()
         )
     });
+    Ok(())
+}
+
+/// `engine NAME coder|codex`: what does her coding. The host reads her
+/// record at each request, so the next one uses it.
+fn engine(output: &Output, root: &Path, name: &str, word: &str, now: u64) -> Result<(), Fail> {
+    let (store, mut record) = store(root, name)?;
+    record.engine = agent::parse_engine(word).map_err(Fail::Failed)?;
+    store.save(&record).map_err(Fail::Failed)?;
+    let line = if record.codes_on_codex() {
+        "the owner set her engine to codex: Coder delegates her coding to Codex"
+    } else {
+        "the owner set her engine to coder: Coder codes on its own model"
+    };
+    let _ = store.append(&agent::Entry::new(now, agent::Kind::Control, line));
+    output.emit(
+        &json!({"agent": name, "engine": if record.engine.is_empty() { "coder" } else { record.engine.as_str() }}),
+        |_| {
+            if record.codes_on_codex() {
+                format!(
+                    "{name} now codes on Codex: Coder hands her coding to the Codex agent on \
+                     your ChatGPT login and checks it. When Codex is out of capacity, Coder \
+                     works on its own model."
+                )
+            } else {
+                format!("{name} now codes on Coder's own model.")
+            }
+        },
+    );
     Ok(())
 }
 

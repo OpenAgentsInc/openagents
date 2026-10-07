@@ -55,6 +55,9 @@ macro_rules! command_usage {
 Options: --json streams NDJSON events for chat and delegation.
          --approvals stdin asks before any command that is not read-only:
          an approval event, answered by `confirm ID` or `reject ID` on stdin.
+         --codex-writes lets a chat's Codex delegations edit the working
+         directory under Codex's workspace-write sandbox, with no network;
+         with --approvals, each delegation asks first.
          --in DIR sets the working directory; --state DIR sets the Coder store.
 Settings default to ~/.openagents/coder-new. Sessions use its sessions directory.
 Keys are accepted through environment variables or configuration stdin, never printed."
@@ -214,6 +217,15 @@ pub fn run(arguments: &[String], json_mode: bool) -> u8 {
         }
         Err(error) => return print_error(error, json_mode),
     };
+    // The host lets this chat's Codex delegations edit the working
+    // directory; a gated chat still asks before each one.
+    if args.iter().any(|arg| arg == "--codex-writes") {
+        if args.first().is_none_or(|arg| arg != "chat") {
+            return print_error(usage("--codex-writes applies to chat only."), json_mode);
+        }
+        args.retain(|arg| arg != "--codex-writes");
+        crate::bundled_runtime::allow_codex_writes(true);
+    }
     let input = if args.iter().any(|arg| arg == "--stdin") {
         let mut bytes = Vec::new();
         if io::stdin()

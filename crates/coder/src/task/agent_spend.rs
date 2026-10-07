@@ -62,6 +62,8 @@ pub const BUDGET_SCHEMA: &str = "openagents.agent-budget.v1";
 pub const HARNESS: &str = "openagents-agent";
 /// The `harness` of a Coder turn she prompts.
 pub const CODER_HARNESS: &str = "coder-v1";
+/// The `harness` of Codex's work when Coder delegates her coding to it.
+pub const CODEX_HARNESS: &str = "codex-cli";
 /// Dollars one request may spend when the owner set no budget.
 /// Provisional, as the loop's thresholds.
 pub const REQUEST_USD: f64 = 1.0;

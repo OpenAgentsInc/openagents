@@ -26,7 +26,71 @@ const TEXT_MAX: usize = 64 * 1024;
 const ARGUMENT_MAX: usize = 128;
 const ARGUMENT_BYTES: usize = 64 * 1024;
 const RUN_SECONDS: u64 = 600;
+/// How long a Codex delegation that may edit the working directory runs:
+/// a coding task takes longer than a review.
+const WRITE_SECONDS: u64 = 30 * 60;
 const POLL: Duration = Duration::from_millis(50);
+
+/// Whether this process's chat lets the native Codex bridge edit its
+/// working directory (`openagents coder chat --codex-writes`). Off, Codex
+/// runs read-only, as it always did. On, each Codex delegation runs under
+/// Codex's own `workspace-write` sandbox, which writes the working
+/// directory and its temporary files and turns the network off; in a
+/// gated chat ([`crate::approval`]) each such delegation first asks.
+static CODEX_WRITES: AtomicBool = AtomicBool::new(false);
+
+/// Lets Codex delegations in this process edit their working directory, or
+/// keeps them read-only. A chat sets it for its run.
+pub fn allow_codex_writes(on: bool) {
+    CODEX_WRITES.store(on, Ordering::SeqCst);
+}
+
+/// The command a gated chat asks about before Codex may edit files.
+pub const CODEX_WRITE_COMMAND: &str = "codex exec --sandbox workspace-write";
+
+/// The sandbox the native Codex bridge runs a delegation in.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum CodexSandbox {
+    ReadOnly,
+    WorkspaceWrite,
+}
+
+impl CodexSandbox {
+    fn word(self) -> &'static str {
+        match self {
+            Self::ReadOnly => "read-only",
+            Self::WorkspaceWrite => "workspace-write",
+        }
+    }
+
+    fn seconds(self) -> u64 {
+        match self {
+            Self::ReadOnly => RUN_SECONDS,
+            Self::WorkspaceWrite => WRITE_SECONDS,
+        }
+    }
+}
+
+/// The sandbox for the next Codex delegation in `cwd`: read-only unless
+/// the chat allows writes, and in a gated chat only when the person, or
+/// the agent's policy, confirms the write.
+fn codex_sandbox(cwd: &Path, cancel: &AtomicBool) -> CodexSandbox {
+    if !CODEX_WRITES.load(Ordering::SeqCst) {
+        return CodexSandbox::ReadOnly;
+    }
+    let Some(desk) = crate::approval::desk() else {
+        return CodexSandbox::WorkspaceWrite;
+    };
+    let why = format!(
+        "Codex edits files in {} under its own sandbox, with no network",
+        cwd.display()
+    );
+    if desk.ask(CODEX_WRITE_COMMAND, &why, cancel) {
+        CodexSandbox::WorkspaceWrite
+    } else {
+        CodexSandbox::ReadOnly
+    }
+}
 
 /// The protocol used by a registered local agent.
 #[derive(Clone, Copy, Debug, Default, Serialize, Deserialize, PartialEq, Eq)]
@@ -199,7 +263,7 @@ pub fn acp_tool_definition(agents: &[AcpAgent]) -> Option<Value> {
     }
     Some(json!({"type":"function","function":{
         "name":"acp_subagent",
-        "description":"Delegate a task to a registered local agent through ACP or the built-in native Codex bridge. Use exactly the agent the user names; never substitute another agent. If that agent is unavailable, report the reason and let the user choose. The host supplies the executable. Include the task, relevant context, and the result you need. This starts one child session, streams its work, and closes it when the task ends. ACP permission requests are denied. The native Codex bridge keeps Codex's configured model and uses a read-only sandbox without approval prompts; an enabled plugin does not grant additional authority.",
+        "description":"Delegate a task to a registered local agent through ACP or the built-in native Codex bridge. Use exactly the agent the user names; never substitute another agent. If that agent is unavailable, report the reason and let the user choose. The host supplies the executable. Include the task, relevant context, and the result you need. This starts one child session, streams its work, and closes it when the task ends. ACP permission requests are denied. The native Codex bridge keeps Codex's configured model and uses a read-only sandbox without approval prompts, unless the host let this chat's Codex edit the working directory under Codex's workspace-write sandbox; an enabled plugin does not grant additional authority.",
         "parameters":{"type":"object","properties":{"agent":{"type":"string","enum":ids},"task":{"type":"string","minLength":1,"maxLength":65536}},"required":["agent","task"],"additionalProperties":false}
     }}))
 }
@@ -361,7 +425,8 @@ pub async fn acp(
     }
     .ok_or_else(|| format!("The executable for {} is unavailable.", agent.name))?;
     if agent.transport == AgentTransport::CodexCli {
-        return codex_cli(&program, task, cwd, cancel, emit).await;
+        let sandbox = codex_sandbox(cwd, cancel);
+        return codex_cli(&program, task, cwd, sandbox, cancel, emit).await;
     }
     let environment = std::env::vars()
         .filter(|(name, _)| {
@@ -411,6 +476,7 @@ async fn codex_cli(
     program: &Path,
     task: &str,
     cwd: &Path,
+    sandbox: CodexSandbox,
     cancel: &Arc<AtomicBool>,
     emit: &mut dyn FnMut(RuntimeEvent),
 ) -> Result<Value, String> {
@@ -421,7 +487,7 @@ async fn codex_cli(
             "--json",
             "--skip-git-repo-check",
             "--sandbox",
-            "read-only",
+            sandbox.word(),
             "-c",
             "approval_policy=\"never\"",
             "-",
@@ -431,7 +497,9 @@ async fn codex_cli(
     command.env(mark, value);
     scrub_credentials(&mut command);
     let mut live = supervise::Job::from_command(command)
-        .bounded(supervise::Limits::within(Duration::from_secs(RUN_SECONDS)).keeping(TEXT_MAX))
+        .bounded(
+            supervise::Limits::within(Duration::from_secs(sandbox.seconds())).keeping(TEXT_MAX),
+        )
         .start(supervise::Input::Piped)?;
     if let Err(error) = live.send(task.as_bytes()).await {
         let stopped = live.stop().await;
@@ -474,8 +542,15 @@ async fn codex_cli(
                 format!("Codex exited with status {:?}.", stopped.ending.code())
             }
         });
+        // A usage or rate limit says so first, in one sentence, so the
+        // chat carries on without Codex and the host can book the limit.
+        let limited = if coder_delegate::limit::says_limited(&reason) {
+            "Codex is out of capacity, so continue without Codex. "
+        } else {
+            ""
+        };
         return Err(format!(
-            "Codex task failed: {reason}; process group cleared: {}.",
+            "{limited}Codex task failed: {reason}; process group cleared: {}.",
             stopped.group_clear
         ));
     }
@@ -498,7 +573,7 @@ async fn codex_cli(
                 .unwrap_or(0),
         );
     Ok(
-        json!({"session":events.session,"reply":events.text,"model":events.model,"stop_reason":"end_turn","usage":events.usage,"tokens":tokens,"group_clear":stopped.group_clear,"transport":"codex-cli","truncated":!reader.gaps().is_empty()}),
+        json!({"session":events.session,"reply":events.text,"model":events.model,"stop_reason":"end_turn","usage":events.usage,"tokens":tokens,"group_clear":stopped.group_clear,"transport":"codex-cli","sandbox":sandbox.word(),"truncated":!reader.gaps().is_empty()}),
     )
 }
 
@@ -1247,6 +1322,61 @@ printf '%s\n' '{"type":"turn.completed","usage":{"input_tokens":11,"output_token
         assert_eq!(
             std::fs::read_to_string(dir.path().join("caller")).unwrap(),
             mark
+        );
+    }
+
+    #[tokio::test]
+    #[cfg(unix)]
+    async fn a_writing_codex_delegation_uses_the_workspace_sandbox_and_names_a_limit() {
+        use std::os::unix::fs::PermissionsExt;
+        let dir = tempfile::tempdir().unwrap();
+        let program = dir.path().join("codex");
+        std::fs::write(
+            &program,
+            r#"#!/bin/sh
+printf '%s\n' "$@" > args
+cat > task
+printf '%s\n' '{"type":"thread.started","thread_id":"scratch-codex","model":"gpt-test"}'
+printf '%s\n' '{"type":"item.completed","item":{"type":"agent_message","text":"Edited."}}'
+printf '%s\n' '{"type":"turn.completed","usage":{"input_tokens":5,"output_tokens":2}}'
+"#,
+        )
+        .unwrap();
+        std::fs::set_permissions(&program, std::fs::Permissions::from_mode(0o700)).unwrap();
+        let cancel = Arc::new(AtomicBool::new(false));
+        let result = codex_cli(
+            &program,
+            "Fix it.",
+            dir.path(),
+            CodexSandbox::WorkspaceWrite,
+            &cancel,
+            &mut |_| {},
+        )
+        .await
+        .unwrap();
+        assert_eq!(result["sandbox"], "workspace-write");
+        let args = std::fs::read_to_string(dir.path().join("args")).unwrap();
+        assert!(args.contains("--sandbox\nworkspace-write\n"));
+        assert!(!args.contains("bypass"));
+
+        std::fs::write(
+            &program,
+            "#!/bin/sh\ncat > /dev/null\necho 'You have hit your usage limit. Try again later.' >&2\nexit 1\n",
+        )
+        .unwrap();
+        let error = codex_cli(
+            &program,
+            "Fix it.",
+            dir.path(),
+            CodexSandbox::WorkspaceWrite,
+            &cancel,
+            &mut |_| {},
+        )
+        .await
+        .unwrap_err();
+        assert!(
+            error.starts_with("Codex is out of capacity, so continue without Codex."),
+            "{error}"
         );
     }
 
