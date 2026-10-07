@@ -491,6 +491,12 @@ async fn host(arguments: &[String]) -> u8 {
             Ok(std::sync::Arc::new(inbox) as std::sync::Arc<dyn coder_host::Tasks>)
         },
     );
+    // A host that keeps its keys in the keychain keeps the agents' keys
+    // there too.
+    if let Err(why) = coder::task::agent_key::install_for_host(arguments) {
+        eprintln!("openagents host: {why}");
+        return EXIT_FAILURE;
+    }
     coder_host::control::set_local_coder(coder::task::local::ready_here);
     coder_host::control::set_local_runner(coder::task::local::runner_here);
     coder_host::control::set_local_engines(coder::task::local::engines_here);

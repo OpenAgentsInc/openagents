@@ -68,7 +68,7 @@ are real and durable, but she has no loop, model, or judgment of her own:
 
 | Piece | Today | Missing |
 | --- | --- | --- |
-| Key | `agents/NAME/key`, mode `0600`, made by `Store::ensure_key` | Keychain custody; it never signs anything |
+| Key | The host's keychain under `agent:NAME` with `--keychain`, else `agents/NAME/key`, mode `0600` (`coder::task::agent_key`, phase 4) | Signing anything but her profile and engrams |
 | Attestation | NIP-OA `auth` tag with `created_at<EXPIRY`, at most a year | Carried on her events; relay admission; profile |
 | Memory | `memory.jsonl`, `scores.jsonl`, scored recall (`agent_recall`) | Engram form, relay sync, owner reads from another device, core profile |
 | Persona | Hidden `--instructions` beside the Coder session | Her own system prompt, used by her own model |
@@ -170,9 +170,11 @@ An agent identity is:
 | Roles | `agent.json` gains `roles`: authority, controller, custodian, all the owner's host today | NIP-SOV vocabulary, so a later move to another custodian is a record change, not a redesign. |
 | Lineage | On rotation, a signed lineage record: old key, new key, reason, owner signature | Grants do not transfer; the owner re-delegates. |
 
-The record keeps schema `openagents.workshop-agent.v1` with new optional
-fields, or moves to `v2` if a field must become required; the phase decides
-and migrates existing records.
+The record keeps schema `openagents.workshop-agent.v1`: `definition` and
+`roles` are optional fields whose defaults come from fields the record has,
+so no field had to become required, and the host fills them in when it
+opens an older record. Her signed profile waits in `agents/NAME/profile.json`
+until a relay sync publishes it.
 
 ### Engrams
 

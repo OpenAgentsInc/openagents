@@ -10237,6 +10237,48 @@
           }
         },
         {
+          "name": "renew",
+          "leaf": {
+            "path": [
+              "agent",
+              "renew"
+            ],
+            "usage": [
+              "renew NAME --owner-key FILE [--days N]"
+            ],
+            "forms": [
+              {
+                "tokens": [
+                  {
+                    "kind": "literal",
+                    "word": "renew"
+                  },
+                  {
+                    "kind": "positional",
+                    "name": "NAME"
+                  },
+                  {
+                    "kind": "option",
+                    "name": "owner-key",
+                    "value": "FILE",
+                    "open": true
+                  },
+                  {
+                    "kind": "option",
+                    "name": "days",
+                    "value": "N",
+                    "open": true,
+                    "optional": true
+                  }
+                ]
+              }
+            ],
+            "summary": "Renew the owner's attestation of her key before it expires, and sign her profile again.",
+            "effect": "local_write",
+            "runs_on": "connected_computer"
+          }
+        },
+        {
           "name": "list",
           "leaf": {
             "path": [

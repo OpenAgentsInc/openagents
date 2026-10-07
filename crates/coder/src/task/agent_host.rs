@@ -399,6 +399,10 @@ impl Agents {
         let _ = store.migrate(now);
         match store.load() {
             Ok(Some(record)) => {
+                // A record from before phase 4 gains its definition and
+                // roles, and her profile follows her attestation.
+                let record = store.fill_identity(record.clone(), now).unwrap_or(record);
+                let _ = super::agent_profile::refresh(&store, &record, now);
                 self.reconcile_once(&store, now);
                 Ok((store, record))
             }
@@ -558,7 +562,9 @@ impl Agents {
     /// Makes agent `name`, working in the checkout `workspace`, with a key
     /// of her own, attested with `owner` for a year when the host holds
     /// the owner key (`studio.agent.new`). The host admitted only the
-    /// owner's own key. An agent that exists already stays as she is.
+    /// owner's own key. An agent that exists already stays as she is,
+    /// except that the owner key renews an attestation that is missing,
+    /// invalid, or within [`wire::RENEW_WARNING`] of expiring.
     ///
     /// # Errors
     /// `malformed` for a path that is not a Git checkout, `unavailable`
@@ -590,8 +596,17 @@ impl Agents {
         let mut record = store
             .ensure_key(record, now)
             .map_err(|why| refuse(Code::Unavailable, why))?;
+        // The host's owner key renews an attestation that is missing, no
+        // longer verifies, or expires within the renewal warning.
+        let renew = match (&record.pubkey, &record.attestation) {
+            (Some(pubkey), Some(attestation)) => {
+                agent::verify_attestation(pubkey, attestation, now)
+                    .map_or(true, |until| wire::renewal_warning(until, now).is_some())
+            }
+            _ => true,
+        };
         if let Some(owner) = owner
-            && (record.attestation.is_none() || !existed)
+            && (renew || !existed)
         {
             let until = now + 365 * 86_400;
             record = store
@@ -755,6 +770,9 @@ impl Agents {
             desk: record.desk,
             pubkey: record.pubkey.clone(),
             attested_until,
+            authorized_by: attested_until
+                .and(record.attestation.as_ref())
+                .map(|a| a.owner.clone()),
             lines,
             pending: live.and_then(|l| l.pending.as_ref().map(|(p, _)| p.clone())),
             run: live.and_then(|l| l.run.as_ref().map(|(s, _)| s.clone())),
@@ -786,6 +804,18 @@ impl Agents {
                     format!("{name} is {}, so she starts nothing new.", state.word()),
                 ));
             }
+        }
+        // Her identity fails closed: without the key she had, she runs
+        // nothing, and the host never makes her a new one.
+        if let Err(cause) = store.custody(&record) {
+            let _ = store.append(&Entry::new((self.clock)(), Kind::Refused, &cause));
+            return Err(coder_host::tasks::refuse(
+                Code::Unavailable,
+                format!(
+                    "{} can't reach her key, so she runs nothing until the owner restores it.",
+                    record.display_name()
+                ),
+            ));
         }
         if let Some(workspace) = &queued.workspace
             && !self.workspaces.contains_key(workspace)

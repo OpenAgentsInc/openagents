@@ -4,10 +4,12 @@
 //! append-only journal under the host's root:
 //! `~/.openagents/host/agents/NAME/agent.json` (mode `0600`) and
 //! `journal.jsonl`. Both survive a restart of the host and of Verse. The
-//! record names the agent's own Nostr key, which the host keeps in `key`
-//! beside it (mode `0600`), and the owner's NIP-OA attestation of that key
-//! ([`Attestation`]); it also holds her state: active, paused, stopped,
-//! or retired ([`State`]).
+//! record names the agent's own Nostr key, which the host keeps in its
+//! secret store ([`super::agent_key`]: the keychain when the host runs
+//! with `--keychain`, else `key` beside the record, mode `0600`), and the
+//! owner's NIP-OA attestation of that key ([`Attestation`]); it also holds
+//! her definition ([`Definition`]), her roles ([`Roles`]), and her state:
+//! active, paused, stopped, or retired ([`State`]).
 //!
 //! A terminal-mode request runs as a turn of Coder V1 in the agent's own
 //! session (`super::agent_host`, `super::coder_v1`): each command Coder
@@ -22,10 +24,13 @@
 
 use std::io::Write;
 use std::path::{Path, PathBuf};
+use std::sync::Arc;
 
 use serde::{Deserialize, Serialize};
 
 pub use microcoder_loop::models::NextAction;
+
+use super::agent_key::{KeyStore, Slot};
 
 /// The agent record's schema.
 pub const RECORD_SCHEMA: &str = "openagents.workshop-agent.v1";
@@ -90,10 +95,139 @@ pub struct Record {
     /// Its desk in the workshop hall.
     #[serde(default = "default_desk")]
     pub desk: u32,
+    /// Who she is to the people she answers: NIP-AP's fields, kept private
+    /// on the host. A record from before phase 4 gains one when the host
+    /// opens it.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub definition: Option<Definition>,
+    /// Who governs, runs, and keeps her key, in NIP-SOV's words.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub roles: Option<Roles>,
 }
 
 fn default_desk() -> u32 {
     3
+}
+
+/// Her definition: NIP-AP's persona fields, never published in v1.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct Definition {
+    /// The name people see, such as `Alice`.
+    pub display_name: String,
+    /// How she speaks, in words; empty is plain and brief.
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub voice: String,
+    /// The system prompt her own model calls start from; empty is the
+    /// host's own, from her name and charter. Her charter always follows
+    /// it.
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub system_prompt: String,
+    /// The route her own calls use; empty is the record's route.
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub route: String,
+    /// Whom she answers. Only [`RESPOND_TO_OWNER`] in v1, which the host
+    /// enforces.
+    #[serde(default = "owner_only")]
+    pub respond_to: String,
+}
+
+/// NIP-AP's `respond_to` for an agent that answers only her owner.
+pub const RESPOND_TO_OWNER: &str = "owner-only";
+
+fn owner_only() -> String {
+    RESPOND_TO_OWNER.into()
+}
+
+/// Who governs, runs, and keeps an agent, in NIP-SOV's words. Each is a
+/// public key, 64 lowercase hex characters, or [`THIS_HOST`] for the host
+/// whose root holds her record, so a later move to another custodian is a
+/// record change.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct Roles {
+    /// Who admits her policy: the owner whose attestation she carries;
+    /// empty until the owner attests her key.
+    #[serde(default)]
+    pub authority: String,
+    /// Who runs her lifecycle.
+    pub controller: String,
+    /// Who keeps her key and signs for her.
+    pub custodian: String,
+}
+
+/// A role the host whose root holds the record plays.
+pub const THIS_HOST: &str = "host";
+
+impl Definition {
+    /// The definition a record without one gets: her name, capitalized,
+    /// and the host's defaults for the rest.
+    #[must_use]
+    pub fn default_for(name: &str) -> Self {
+        let mut chars = name.chars();
+        let display_name = chars.next().map_or_else(String::new, |first| {
+            first.to_ascii_uppercase().to_string() + chars.as_str()
+        });
+        Self {
+            display_name,
+            voice: String::new(),
+            system_prompt: String::new(),
+            route: String::new(),
+            respond_to: owner_only(),
+        }
+    }
+}
+
+impl Record {
+    /// Her definition, or the default one when the record has none.
+    #[must_use]
+    pub fn definition(&self) -> Definition {
+        self.definition
+            .clone()
+            .unwrap_or_else(|| Definition::default_for(&self.name))
+    }
+
+    /// The name people see.
+    #[must_use]
+    pub fn display_name(&self) -> String {
+        let name = self.definition().display_name;
+        if name.trim().is_empty() {
+            self.name.clone()
+        } else {
+            name
+        }
+    }
+
+    /// Fills a missing definition and roles with their defaults, and the
+    /// authority from her attestation. Returns whether anything changed.
+    pub fn fill_identity(&mut self) -> bool {
+        let mut changed = false;
+        if self.definition.is_none() {
+            self.definition = Some(Definition::default_for(&self.name));
+            changed = true;
+        }
+        let owner = self
+            .attestation
+            .as_ref()
+            .map(|a| a.owner.clone())
+            .unwrap_or_default();
+        match &mut self.roles {
+            None => {
+                self.roles = Some(Roles {
+                    authority: owner,
+                    controller: THIS_HOST.into(),
+                    custodian: THIS_HOST.into(),
+                });
+                changed = true;
+            }
+            Some(roles) if !owner.is_empty() && roles.authority != owner => {
+                roles.authority = owner;
+                changed = true;
+            }
+            Some(_) => {}
+        }
+        changed
+    }
 }
 
 /// Whether an agent takes new work.
@@ -253,19 +387,35 @@ pub fn host_root() -> Option<PathBuf> {
         .map(|home| PathBuf::from(home).join(".openagents/host"))
 }
 
-/// One agent's directory under a host root.
+/// One agent's directory under a host root, and the store her key lives
+/// in.
 #[derive(Clone, Debug)]
 pub struct Store {
     dir: PathBuf,
     name: String,
+    keys: Arc<dyn KeyStore>,
 }
 
 impl Store {
-    /// The store of agent `name` under `host_root` (`agents/NAME`).
+    /// The store of agent `name` under `host_root` (`agents/NAME`), with
+    /// her key in the process's key store ([`super::agent_key::installed`]).
     ///
     /// # Errors
     /// When `name` is not an agent name.
     pub fn new(host_root: &Path, name: &str) -> Result<Self, String> {
+        Self::with_keys(host_root, name, super::agent_key::installed())
+    }
+
+    /// The store of agent `name` under `host_root`, with her key in
+    /// `keys`.
+    ///
+    /// # Errors
+    /// When `name` is not an agent name.
+    pub fn with_keys(
+        host_root: &Path,
+        name: &str,
+        keys: Arc<dyn KeyStore>,
+    ) -> Result<Self, String> {
         if !valid_name(name) {
             return Err(format!(
                 "`{name}` is not an agent name: lowercase letters, digits, and hyphens"
@@ -274,7 +424,21 @@ impl Store {
         Ok(Self {
             dir: host_root.join("agents").join(name),
             name: name.into(),
+            keys,
         })
+    }
+
+    /// Where her key lives: `file` or `keychain`.
+    #[must_use]
+    pub fn custody_kind(&self) -> &'static str {
+        self.keys.custody()
+    }
+
+    fn slot(&self) -> Slot<'_> {
+        Slot {
+            name: &self.name,
+            dir: &self.dir,
+        }
     }
 
     #[must_use]
@@ -320,6 +484,26 @@ impl Store {
         Ok(Some(record))
     }
 
+    /// Gives a record from before phase 4 its definition and roles, and
+    /// journals that, once. Returns the record.
+    ///
+    /// # Errors
+    /// When the record cannot be written.
+    pub fn fill_identity(&self, mut record: Record, now: u64) -> Result<Record, String> {
+        let had_definition = record.definition.is_some();
+        if record.fill_identity() {
+            self.save(&record)?;
+            if !had_definition {
+                self.append(&Entry::new(
+                    now,
+                    Kind::Migrated,
+                    "her record gained a definition and roles",
+                ))?;
+            }
+        }
+        Ok(record)
+    }
+
     /// The record, made first when the agent does not exist yet, with its
     /// terminal opening in `workspace`.
     ///
@@ -328,10 +512,10 @@ impl Store {
     pub fn open(&self, workspace: &Path, now: u64) -> Result<Record, String> {
         self.migrate(now)?;
         if let Some(record) = self.load()? {
-            return Ok(record);
+            return self.fill_identity(record, now);
         }
         private_dir(&self.dir)?;
-        let record = Record {
+        let mut record = Record {
             schema: RECORD_SCHEMA.into(),
             v: 1,
             requires: Vec::new(),
@@ -345,7 +529,10 @@ impl Store {
             state: State::Active,
             route: String::new(),
             desk: default_desk(),
+            definition: None,
+            roles: None,
         };
+        record.fill_identity();
         self.save(&record)?;
         self.append(&Entry::new(
             now,
@@ -434,43 +621,80 @@ impl Store {
         Ok(true)
     }
 
-    fn key_path(&self) -> PathBuf {
-        self.dir.join("key")
-    }
-
     /// The agent's own secret key, when it has one.
     ///
     /// # Errors
-    /// When the key file cannot be read or holds no key.
+    /// When her key store can't be read or holds no key.
     pub fn key(&self) -> Result<Option<secp256k1::SecretKey>, String> {
-        let text = match std::fs::read_to_string(self.key_path()) {
-            Ok(text) => text,
-            Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(None),
-            Err(e) => return Err(format!("cannot read {}: {e}", self.key_path().display())),
-        };
-        let bytes = decode_hex32(text.trim()).ok_or("the agent's key file holds no key")?;
-        secp256k1::SecretKey::from_byte_array(bytes)
-            .map(Some)
-            .map_err(|_| "the agent's key file holds no key".to_string())
+        self.keys.load(self.slot())
     }
 
-    /// Makes the agent's own key when it has none, records its public
-    /// half, and journals that. Returns the record.
+    /// Whether she may run: an agent whose record names a key runs only
+    /// with that key in hand. The error says why not, for her journal.
     ///
     /// # Errors
-    /// When the key or the record cannot be written.
-    pub fn ensure_key(&self, mut record: Record, now: u64) -> Result<Record, String> {
-        if let (Some(key), Some(pubkey)) = (self.key()?, &record.pubkey)
-            && public_hex(&key) == *pubkey
-        {
-            return Ok(record);
+    /// When her key store can't be read, holds no key although she had
+    /// one, or holds another key than her record names.
+    pub fn custody(&self, record: &Record) -> Result<(), String> {
+        let Some(pubkey) = &record.pubkey else {
+            return Ok(());
+        };
+        if record.state == State::Retired {
+            return Ok(());
         }
+        match self.key() {
+            Err(why) => Err(format!(
+                "her key can't be read from the {}: {why}",
+                self.custody_kind()
+            )),
+            Ok(None) => Err(format!(
+                "her key {pubkey} is missing from the {}",
+                self.custody_kind()
+            )),
+            Ok(Some(key)) if public_hex(&key) != *pubkey => Err(format!(
+                "the {} holds another key than her record's {pubkey}",
+                self.custody_kind()
+            )),
+            Ok(Some(_)) => Ok(()),
+        }
+    }
+
+    /// Makes the agent's own key when she has none and never had one,
+    /// records its public half, and journals that. Returns the record. An
+    /// agent whose record names a key never gets a new one here: a missing
+    /// or different key is an error, so the owner restores it or rotates
+    /// her on purpose. A retired agent may be keyed again.
+    ///
+    /// # Errors
+    /// When her key can't be read, is missing or different although she
+    /// had one, or the key or the record can't be written.
+    pub fn ensure_key(&self, mut record: Record, now: u64) -> Result<Record, String> {
+        let had = record.pubkey.clone();
+        let retired = record.state == State::Retired;
         let key = match self.key()? {
-            Some(key) => key,
+            Some(key) => {
+                let pubkey = public_hex(&key);
+                match &had {
+                    Some(had) if *had == pubkey => return Ok(record),
+                    Some(had) if !retired => {
+                        return Err(format!(
+                            "the {} holds another key than her record's {had}; the host won't \
+                             replace it",
+                            self.custody_kind()
+                        ));
+                    }
+                    _ => key,
+                }
+            }
+            None if had.is_some() && !retired => {
+                return Err(format!(
+                    "her key is missing from the {}; the host won't make her a new one",
+                    self.custody_kind()
+                ));
+            }
             None => {
                 let key = secp256k1::SecretKey::new(&mut secp256k1::rand::rng());
-                private_dir(&self.dir)?;
-                write_private(&self.key_path(), hex(&key.secret_bytes()).as_bytes())?;
+                self.keys.store(self.slot(), &key)?;
                 key
             }
         };
@@ -484,7 +708,7 @@ impl Store {
         self.append(&Entry::new(
             now,
             Kind::Keyed,
-            &format!("her key is {pubkey}"),
+            &format!("her key is {pubkey}, kept in the {}", self.custody_kind()),
         ))?;
         Ok(record)
     }
@@ -512,6 +736,7 @@ impl Store {
         let attestation = sign_attestation(owner, &agent, &format!("created_at<{expires_at}"))?;
         verify_attestation(&agent, &attestation, now)?;
         record.attestation = Some(attestation.clone());
+        record.fill_identity();
         self.save(&record)?;
         self.append(&Entry::new(
             now,
@@ -521,19 +746,18 @@ impl Store {
                 attestation.owner
             ),
         ))?;
+        // Her profile carries the new attestation. Without her key here,
+        // the host signs it when it next opens her.
+        let _ = super::agent_profile::refresh(self, &record, now);
         Ok(record)
     }
 
     /// Deletes the agent's key, keeping its record and journal.
     ///
     /// # Errors
-    /// When the key file exists and cannot be removed.
+    /// When her key store can't be written.
     pub fn delete_key(&self) -> Result<bool, String> {
-        match std::fs::remove_file(self.key_path()) {
-            Ok(()) => Ok(true),
-            Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(false),
-            Err(e) => Err(format!("cannot remove {}: {e}", self.key_path().display())),
-        }
+        self.keys.delete(self.slot())
     }
 
     /// Every agent under `host_root`, by name.
@@ -651,10 +875,6 @@ pub(crate) fn write_private(path: &Path, body: &[u8]) -> Result<(), String> {
     file.write_all(body)
         .and_then(|()| file.sync_all())
         .map_err(|e| format!("cannot write {}: {e}", path.display()))
-}
-
-fn hex(bytes: &[u8]) -> String {
-    bytes.iter().map(|b| format!("{b:02x}")).collect()
 }
 
 fn decode_hex32(text: &str) -> Option<[u8; 32]> {

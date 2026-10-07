@@ -1213,10 +1213,19 @@ pub struct Steered {
     pub last: Option<i32>,
 }
 
-/// Her definition, the system prompt her own calls start from. A small
-/// string from her record until phase 4 gives her a definition.
+/// Her definition, the system prompt her own calls start from: her
+/// record's `definition.system_prompt` followed by her charter, or, when
+/// she has none, a small string from her name and charter.
 #[must_use]
 pub fn definition(record: &Record) -> String {
+    let defined = record.definition();
+    let prompt = defined.system_prompt.trim();
+    if !prompt.is_empty() {
+        return format!(
+            "{prompt}\nYou answer only to the owner. Your charter: {charter}",
+            charter = record.charter,
+        );
+    }
     format!(
         "You are {name}, the owner's workshop agent, on their computer while they watch. \
          You answer only to the owner. Your charter: {charter}",

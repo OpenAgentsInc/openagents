@@ -30,7 +30,10 @@ pub const USAGE: &str = "usage: openagents agent COMMAND [--root DIR] [--control
                FILE (64 hex or nsec1) for N days, at most 365 (default 365).
   attest NAME --owner-key FILE [--days N]
                Attest her key again.
-  list         Every agent: state, activity, last report, service record.
+  renew NAME --owner-key FILE [--days N]
+               Renew the owner's attestation of her key before it expires,
+               and sign her profile again.
+  list        Every agent: state, activity, last report, service record.
   show NAME    One agent in full: key, attestation, transcript, jobs.
   ask NAME TEXT... [--mode MODE] [--workspace LABEL] [--from DIR] [--wait]
                Hand her a request; MODE is auto, task, or terminal, DIR is
@@ -88,6 +91,7 @@ smart terminal's `@alice TEXT` sends the same request as `ask`. Defaults:
 pub(crate) const EFFECTS: &[Declared] = &[
     Declared::computer("new", Effect::LocalWrite),
     Declared::computer("attest", Effect::LocalWrite),
+    Declared::computer("renew", Effect::LocalWrite),
     Declared::computer("list", Effect::ReadOnly),
     Declared::computer("show", Effect::ReadOnly),
     Declared::computer("ask", Effect::Publishes),
@@ -135,7 +139,8 @@ pub fn run(output: &Output, words: &[String]) -> u8 {
     let now = coder::task::autostart::unix_now();
     let result = match words.as_slice() {
         ["new", name] => new(output, &root, name, &args, now),
-        ["attest", name] => attest(output, &root, name, &args, now),
+        ["attest", name] => attest(output, &root, name, &args, now, false),
+        ["renew", name] => attest(output, &root, name, &args, now, true),
         ["list"] => list(output, &root, &args),
         ["show", name] => show(output, &root, name, &args, now),
         ["ask", name, text @ ..] if !text.is_empty() => ask(output, name, &text.join(" "), &args),
@@ -278,7 +283,11 @@ fn new(output: &Output, root: &Path, name: &str, args: &Args, now: u64) -> Resul
         record.route = route.into();
         store.save(&record).map_err(Fail::Failed)?;
     }
-    let mut record = store.ensure_key(record, now).map_err(Fail::Failed)?;
+    // An agent that has a key keeps it; the host may hold it in its
+    // keychain, out of this command's reach.
+    if record.pubkey.is_none() || record.state == State::Retired {
+        record = store.ensure_key(record, now).map_err(Fail::Failed)?;
+    }
     if let Some(owner) = owner_key(args)? {
         record = store
             .attest(record, &owner, expiry(args, now)?, now)
@@ -310,17 +319,53 @@ fn new(output: &Output, root: &Path, name: &str, args: &Args, now: u64) -> Resul
     Ok(())
 }
 
-fn attest(output: &Output, root: &Path, name: &str, args: &Args, now: u64) -> Result<(), Fail> {
+/// `attest`, or `renew` when `renewing`: the owner signs her key's
+/// attestation again, and her profile is signed with it when her key is
+/// here. Only an agent with no key yet gets one; a key she had is never
+/// replaced.
+fn attest(
+    output: &Output,
+    root: &Path,
+    name: &str,
+    args: &Args,
+    now: u64,
+    renewing: bool,
+) -> Result<(), Fail> {
     let (store, record) = store(root, name)?;
+    let verb = if renewing { "renew" } else { "attest" };
     let owner =
-        owner_key(args)?.ok_or_else(|| Fail::Failed("attest needs --owner-key FILE".into()))?;
-    let record = store.ensure_key(record, now).map_err(Fail::Failed)?;
+        owner_key(args)?.ok_or_else(|| Fail::Failed(format!("{verb} needs --owner-key FILE")))?;
+    let record = if record.pubkey.is_none() && !renewing {
+        store.ensure_key(record, now).map_err(Fail::Failed)?
+    } else {
+        record
+    };
+    if record.pubkey.is_none() {
+        return Err(Fail::Failed(format!(
+            "{name} has no key to renew; attest it with `openagents agent attest {name}`"
+        )));
+    }
     let record = store
         .attest(record, &owner, expiry(args, now)?, now)
         .map_err(Fail::Failed)?;
-    let value = record_json(&record, now);
+    let profile = coder::task::agent_profile::load(&store)
+        .ok()
+        .flatten()
+        .is_some_and(|event| coder::task::agent_profile::current(&record, &event));
+    let mut value = record_json(&record, now);
+    value["profile_signed"] = json!(profile);
     output.emit(&value, |v| {
-        format!("Attested {name}'s key until {}.", v["attested_until"])
+        let mut text = format!(
+            "{} {name}'s key until {}.",
+            if renewing { "Renewed" } else { "Attested" },
+            v["attested_until"]
+        );
+        text.push_str(if profile {
+            " Her profile is signed with the new attestation."
+        } else {
+            " The host signs her profile with it when it next opens her."
+        });
+        text
     });
     Ok(())
 }
@@ -332,7 +377,15 @@ fn record_json(record: &Record, now: u64) -> Value {
         }
         _ => None,
     };
+    let authorized = attested_until
+        .zip(record.attestation.as_ref())
+        .map(|(until, a)| wire::authorized_line(&a.owner, until, now));
     json!({
+        "authorized": authorized,
+        "authorized_by": attested_until.and(record.attestation.as_ref()).map(|a| a.owner.clone()),
+        "renew": attested_until.and_then(|until| wire::renewal_warning(until, now)),
+        "definition": record.definition(),
+        "roles": record.roles,
         "name": record.name,
         "state": record.state.word(),
         "workspace": record.workspace,
@@ -415,16 +468,25 @@ fn show(output: &Output, root: &Path, name: &str, args: &Args, now: u64) -> Resu
     output.emit(&value, |v| {
         let mut text = vec![
             format!("{name} ({}) at desk {}", record.state.word(), record.desk),
-            format!("key: {}", record.pubkey.as_deref().unwrap_or("none")),
+            format!(
+                "key: {} (in the {})",
+                record.pubkey.as_deref().unwrap_or("none"),
+                store.custody_kind()
+            ),
             format!(
                 "attested until: {}",
                 v["record"]["attested_until"]
                     .as_u64()
                     .map_or("not attested".to_string(), |at| at.to_string())
             ),
+        ];
+        if let Some(authorized) = v["record"]["authorized"].as_str() {
+            text.push(authorized.to_string());
+        }
+        text.extend([
             format!("works in: {}", record.workspace),
             format!("charter: {}", record.charter),
-        ];
+        ]);
         if let Some(view) = &view {
             text.push(line(view));
             if let Some(pending) = &view.pending {
@@ -946,7 +1008,37 @@ mod tests {
             "--days",
             "400",
         ]);
-        assert!(attest(&output, &root, "alice", &long, now).is_err());
+        assert!(attest(&output, &root, "alice", &long, now, false).is_err());
+        // Renewal: a new expiry, the same key, and her profile signed again.
+        let renew = args(&[
+            "renew",
+            "alice",
+            "--owner-key",
+            owner.to_str().unwrap(),
+            "--days",
+            "200",
+        ]);
+        assert!(attest(&output, &root, "alice", &renew, now + 10, true).is_ok());
+        let (store, renewed) = super::store(&root, "alice").ok().unwrap();
+        assert_eq!(renewed.pubkey.as_deref(), Some(pubkey.as_str()));
+        let value = record_json(&renewed, now + 10);
+        assert_eq!(value["attested_until"], now + 10 + 200 * 86_400);
+        assert!(
+            value["authorized"]
+                .as_str()
+                .unwrap()
+                .starts_with("authorized by npub1")
+        );
+        assert!(value["renew"].is_null());
+        let near = record_json(&renewed, now + 10 + 190 * 86_400);
+        assert!(near["renew"].as_str().unwrap().contains("10 days"));
+        let profile = coder::task::agent_profile::load(&store).unwrap().unwrap();
+        assert!(coder::task::agent_profile::current(&renewed, &profile));
+        assert!(
+            nostr::domain::verify_owner_attestation(&profile)
+                .unwrap()
+                .is_some()
+        );
         // A socket nobody answers: retire still deletes the key.
         let retired = args(&[
             "retire",

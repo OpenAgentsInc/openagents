@@ -1247,8 +1247,19 @@ impl Workshop {
                     .ok()
                     .and_then(|v| v.as_str().map(str::to_owned))
                     .unwrap_or_default();
+                let key = match (&view.authorized_by, view.attested_until) {
+                    (Some(owner), Some(until)) => {
+                        let now = std::time::SystemTime::now()
+                            .duration_since(std::time::UNIX_EPOCH)
+                            .map_or(0, |d| d.as_secs());
+                        wire::authorized_line(owner, until, now)
+                    }
+                    (None, Some(_)) => "key attested".into(),
+                    _ if view.pubkey.is_some() => "key unattested".into(),
+                    _ => "key none".into(),
+                };
                 format!(
-                    "{upper} | {} | {activity} | {} | model: {} | jobs {}/{} | key {}",
+                    "{upper} | {} | {activity} | {} | model: {} | jobs {}/{} | {key}",
                     view.state,
                     if view.headline.is_empty() {
                         "no report yet"
@@ -1258,13 +1269,6 @@ impl Workshop {
                     view.route,
                     view.jobs[0],
                     view.jobs[1],
-                    if view.attested_until.is_some() {
-                        "attested"
-                    } else if view.pubkey.is_some() {
-                        "unattested"
-                    } else {
-                        "none"
-                    }
                 )
             }
         };
@@ -1573,6 +1577,7 @@ mod tests {
             desk: DESK,
             pubkey: Some("ab".repeat(32)),
             attested_until: Some(10),
+            authorized_by: None,
             lines: vec!["you: run the atif tests".into()],
             pending: None,
             run: None,

@@ -575,7 +575,8 @@ fn seed_core(record: &Record) -> Body {
 }
 
 /// Her definition without secrets, as the `mem/persona` value: the
-/// record's name, charter, look, route, desk, and public keys.
+/// record's name, charter, look, route, desk, public keys, definition, and
+/// roles.
 fn persona(record: &Record) -> String {
     serde_json::json!({
         "name": record.name,
@@ -585,6 +586,8 @@ fn persona(record: &Record) -> String {
         "desk": record.desk,
         "pubkey": record.pubkey,
         "owner": record.attestation.as_ref().map(|a| a.owner.clone()),
+        "definition": record.definition,
+        "roles": record.roles,
     })
     .to_string()
 }

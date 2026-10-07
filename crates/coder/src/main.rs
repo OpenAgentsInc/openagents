@@ -358,6 +358,12 @@ async fn start() -> ExitCode {
         {
             return ExitCode::from(coder::task::autostart::cli(&arguments[2..]));
         }
+        // A host that keeps its keys in the keychain keeps the agents'
+        // keys there too.
+        if let Err(why) = coder::task::agent_key::install_for_host(&arguments[1..]) {
+            eprintln!("coder host: {why}");
+            return ExitCode::FAILURE;
+        }
         // The same host root `coder host` uses: `--root DIR`, else
         // ~/.openagents/host. The owner's auto-start policy lives there.
         let root = arguments

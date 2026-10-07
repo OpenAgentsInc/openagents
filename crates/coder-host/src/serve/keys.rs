@@ -125,6 +125,50 @@ pub fn owner(source: &dyn KeySource) -> openagents_connect::Result<SecretKey> {
     }
 }
 
+/// Keychain items by account name under [`KEYCHAIN_SERVICE`], for keys
+/// the host keeps that no [`KeyName`] names, such as a workshop agent's
+/// own key (`agent:NAME`). Each value is 64 lowercase hex characters, as
+/// for the host's own keys.
+pub trait AccountKeys: Send + Sync {
+    /// The key kept as `account`, or `None` when there is none.
+    ///
+    /// # Errors
+    /// Refuses a keychain that cannot be read or an item that is not a key.
+    fn load_account(&self, account: &str) -> openagents_connect::Result<Option<Secret>>;
+
+    /// Keeps `secret` as `account`, replacing what was there.
+    ///
+    /// # Errors
+    /// Refuses a keychain that cannot be written.
+    fn store_account(&self, account: &str, secret: &Secret) -> openagents_connect::Result<()>;
+
+    /// Deletes the item kept as `account`; deleting nothing succeeds.
+    ///
+    /// # Errors
+    /// Refuses a keychain that cannot be written.
+    fn delete_account(&self, account: &str) -> openagents_connect::Result<()>;
+}
+
+/// The platform keychain `serve --keychain` keeps the host's keys in, by
+/// account name.
+///
+/// # Errors
+/// Refuses a platform without a keychain this host reads.
+#[allow(clippy::unnecessary_wraps)]
+pub fn platform_accounts() -> openagents_connect::Result<Arc<dyn AccountKeys>> {
+    #[cfg(target_os = "macos")]
+    return Ok(Arc::new(Keychain::default()));
+    #[cfg(target_os = "linux")]
+    return Ok(Arc::new(SecretService));
+    #[cfg(windows)]
+    return Ok(Arc::new(CredentialManager::default()));
+    #[cfg(not(any(target_os = "macos", target_os = "linux", windows)))]
+    Err(openagents_connect::Error::new(
+        openagents_connect::Code::Unavailable,
+        "this platform has no keychain this host reads",
+    ))
+}
+
 /// The login keychain, under [`KEYCHAIN_SERVICE`], or another keychain a
 /// test opens.
 ///
@@ -185,8 +229,22 @@ impl Keychain {
 #[cfg(target_os = "macos")]
 impl KeySource for Keychain {
     fn load(&self, name: KeyName) -> openagents_connect::Result<Option<Secret>> {
+        self.load_account(account(name)?)
+    }
+
+    fn store(&self, name: KeyName, secret: &Secret) -> openagents_connect::Result<()> {
+        self.store_account(account(name)?, secret)
+    }
+
+    fn delete(&self, name: KeyName) -> openagents_connect::Result<()> {
+        self.delete_account(account(name)?)
+    }
+}
+
+#[cfg(target_os = "macos")]
+impl AccountKeys for Keychain {
+    fn load_account(&self, account: &str) -> openagents_connect::Result<Option<Secret>> {
         use openagents_connect::{Code, Error};
-        let account = account(name)?;
         let Some((bytes, _)) = self
             .find(account)
             .map_err(|()| Error::new(Code::Unavailable, "read the keychain"))?
@@ -200,7 +258,7 @@ impl KeySource for Keychain {
             .ok_or_else(|| Error::new(Code::Malformed, "keychain item is not a key"))
     }
 
-    fn store(&self, name: KeyName, secret: &Secret) -> openagents_connect::Result<()> {
+    fn store_account(&self, account: &str, secret: &Secret) -> openagents_connect::Result<()> {
         use security_framework::os::macos::keychain::SecKeychain;
         let unavailable = |_| {
             openagents_connect::Error::new(
@@ -208,7 +266,6 @@ impl KeySource for Keychain {
                 "write the keychain",
             )
         };
-        let account = account(name)?;
         let text: String = secret.expose().iter().map(|b| format!("{b:02x}")).collect();
         let keychain = match &self.keychain {
             Some(keychain) => keychain.clone(),
@@ -219,8 +276,7 @@ impl KeySource for Keychain {
             .map_err(unavailable)
     }
 
-    fn delete(&self, name: KeyName) -> openagents_connect::Result<()> {
-        let account = account(name)?;
+    fn delete_account(&self, account: &str) -> openagents_connect::Result<()> {
         match self.find(account) {
             Ok(Some((_, item))) => {
                 item.delete();
@@ -257,8 +313,8 @@ pub struct SecretService;
 
 #[cfg(target_os = "linux")]
 impl SecretService {
-    fn entry(name: KeyName) -> openagents_connect::Result<keyring::Entry> {
-        keyring::Entry::new(KEYCHAIN_SERVICE, account(name)?).map_err(|_| {
+    fn entry(account: &str) -> openagents_connect::Result<keyring::Entry> {
+        keyring::Entry::new(KEYCHAIN_SERVICE, account).map_err(|_| {
             openagents_connect::Error::new(
                 openagents_connect::Code::Unavailable,
                 "no Secret Service keyring answers on the session bus",
@@ -270,8 +326,23 @@ impl SecretService {
 #[cfg(target_os = "linux")]
 impl KeySource for SecretService {
     fn load(&self, name: KeyName) -> openagents_connect::Result<Option<Secret>> {
+        self.load_account(account(name)?)
+    }
+
+    fn store(&self, name: KeyName, secret: &Secret) -> openagents_connect::Result<()> {
+        self.store_account(account(name)?, secret)
+    }
+
+    fn delete(&self, name: KeyName) -> openagents_connect::Result<()> {
+        self.delete_account(account(name)?)
+    }
+}
+
+#[cfg(target_os = "linux")]
+impl AccountKeys for SecretService {
+    fn load_account(&self, account: &str) -> openagents_connect::Result<Option<Secret>> {
         use openagents_connect::{Code, Error};
-        match Self::entry(name)?.get_password() {
+        match Self::entry(account)?.get_password() {
             Ok(text) => parse_hex(text.trim_end())
                 .map(|bytes| Some(Secret::from_bytes(bytes)))
                 .ok_or_else(|| Error::new(Code::Malformed, "keychain item is not a key")),
@@ -280,9 +351,9 @@ impl KeySource for SecretService {
         }
     }
 
-    fn store(&self, name: KeyName, secret: &Secret) -> openagents_connect::Result<()> {
+    fn store_account(&self, account: &str, secret: &Secret) -> openagents_connect::Result<()> {
         let text: String = secret.expose().iter().map(|b| format!("{b:02x}")).collect();
-        Self::entry(name)?.set_password(&text).map_err(|_| {
+        Self::entry(account)?.set_password(&text).map_err(|_| {
             openagents_connect::Error::new(
                 openagents_connect::Code::Unavailable,
                 "write the keychain",
@@ -290,8 +361,8 @@ impl KeySource for SecretService {
         })
     }
 
-    fn delete(&self, name: KeyName) -> openagents_connect::Result<()> {
-        match Self::entry(name)?.delete_credential() {
+    fn delete_account(&self, account: &str) -> openagents_connect::Result<()> {
+        match Self::entry(account)?.delete_credential() {
             Ok(()) | Err(keyring::Error::NoEntry) => Ok(()),
             Err(_) => Err(openagents_connect::Error::new(
                 openagents_connect::Code::Unavailable,
@@ -365,11 +436,8 @@ impl CredentialManager {
         }
     }
 
-    fn target(&self, name: KeyName) -> openagents_connect::Result<Vec<u16>> {
-        Ok(Self::wide(&credential_target(
-            &self.service,
-            account(name)?,
-        )))
+    fn target(&self, account: &str) -> Vec<u16> {
+        Self::wide(&credential_target(&self.service, account))
     }
 
     fn wide(text: &str) -> Vec<u16> {
@@ -384,12 +452,27 @@ impl CredentialManager {
 #[cfg(windows)]
 impl KeySource for CredentialManager {
     fn load(&self, name: KeyName) -> openagents_connect::Result<Option<Secret>> {
+        self.load_account(account(name)?)
+    }
+
+    fn store(&self, name: KeyName, secret: &Secret) -> openagents_connect::Result<()> {
+        self.store_account(account(name)?, secret)
+    }
+
+    fn delete(&self, name: KeyName) -> openagents_connect::Result<()> {
+        self.delete_account(account(name)?)
+    }
+}
+
+#[cfg(windows)]
+impl AccountKeys for CredentialManager {
+    fn load_account(&self, account: &str) -> openagents_connect::Result<Option<Secret>> {
         use openagents_connect::{Code, Error};
         use windows_sys::Win32::Foundation::ERROR_NOT_FOUND;
         use windows_sys::Win32::Security::Credentials::{
             CRED_TYPE_GENERIC, CREDENTIALW, CredFree, CredReadW,
         };
-        let target = self.target(name)?;
+        let target = self.target(account);
         let mut credential: *mut CREDENTIALW = std::ptr::null_mut();
         // SAFETY: a NUL-terminated target name; `credential` receives a
         // block the call allocates, freed below with CredFree.
@@ -423,12 +506,12 @@ impl KeySource for CredentialManager {
             .ok_or_else(|| Error::new(Code::Malformed, "keychain item is not a key"))
     }
 
-    fn store(&self, name: KeyName, secret: &Secret) -> openagents_connect::Result<()> {
+    fn store_account(&self, account: &str, secret: &Secret) -> openagents_connect::Result<()> {
         use windows_sys::Win32::Security::Credentials::{
             CRED_PERSIST_LOCAL_MACHINE, CRED_TYPE_GENERIC, CREDENTIALW, CredWriteW,
         };
-        let mut target = self.target(name)?;
-        let mut user = Self::wide(account(name)?);
+        let mut target = self.target(account);
+        let mut user = Self::wide(account);
         let text: String = secret.expose().iter().map(|b| format!("{b:02x}")).collect();
         let mut blob = credential_blob(&text);
         let credential = CREDENTIALW {
@@ -452,10 +535,10 @@ impl KeySource for CredentialManager {
         }
     }
 
-    fn delete(&self, name: KeyName) -> openagents_connect::Result<()> {
+    fn delete_account(&self, account: &str) -> openagents_connect::Result<()> {
         use windows_sys::Win32::Foundation::ERROR_NOT_FOUND;
         use windows_sys::Win32::Security::Credentials::{CRED_TYPE_GENERIC, CredDeleteW};
-        let target = self.target(name)?;
+        let target = self.target(account);
         // SAFETY: a NUL-terminated target name.
         if unsafe { CredDeleteW(target.as_ptr(), CRED_TYPE_GENERIC, 0) } != 0 {
             return Ok(());

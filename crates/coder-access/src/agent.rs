@@ -181,6 +181,11 @@ pub struct AgentView {
     /// When the owner's attestation of that key expires.
     #[serde(default)]
     pub attested_until: Option<u64>,
+    /// The owner whose attestation of that key verifies now, 64 lowercase
+    /// hex characters. Left out when absent, so an older client that
+    /// refuses unknown fields still reads an unattested agent.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub authorized_by: Option<String>,
     /// Its transcript's newest lines, oldest first, ASCII.
     pub lines: Vec<String>,
     #[serde(default)]
@@ -386,6 +391,61 @@ impl JobEdit {
     }
 }
 
+/// How long before an attestation expires the owner is told to renew it:
+/// 14 days.
+pub const RENEW_WARNING: u64 = 14 * 86_400;
+
+/// `owner` (64 lowercase hex characters) as a short `npub`: its first 12
+/// and last 4 characters, or its first 12 characters when it is not a key.
+#[must_use]
+pub fn short_owner(owner: &str) -> String {
+    let hex = owner.as_bytes();
+    let mut bytes = [0u8; 32];
+    let parsed = hex.len() == 64
+        && bytes.iter_mut().enumerate().all(|(i, byte)| {
+            std::str::from_utf8(&hex[2 * i..2 * i + 2])
+                .ok()
+                .and_then(|pair| u8::from_str_radix(pair, 16).ok())
+                .map(|value| *byte = value)
+                .is_some()
+        });
+    if !parsed {
+        return owner.chars().take(12).collect();
+    }
+    let npub = nostr::nip19::encode_npub(&bytes);
+    format!("{}...{}", &npub[..12], &npub[npub.len() - 4..])
+}
+
+/// `authorized by OWNER`, with the renewal warning when the attestation
+/// expires within [`RENEW_WARNING`] of `now`.
+#[must_use]
+pub fn authorized_line(owner: &str, until: u64, now: u64) -> String {
+    let mut line = format!("authorized by {}", short_owner(owner));
+    if let Some(warning) = renewal_warning(until, now) {
+        line.push_str("; ");
+        line.push_str(&warning);
+    }
+    line
+}
+
+/// The renewal warning for an attestation valid until `until`, from 14
+/// days before it expires.
+#[must_use]
+pub fn renewal_warning(until: u64, now: u64) -> Option<String> {
+    if until <= now {
+        return Some("the attestation expired: renew it".into());
+    }
+    let left = until - now;
+    if left > RENEW_WARNING {
+        return None;
+    }
+    let days = left.div_ceil(86_400);
+    Some(format!(
+        "the attestation expires in {days} day{}: renew it",
+        if days == 1 { "" } else { "s" }
+    ))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -417,5 +477,25 @@ mod tests {
         assert!(workspace_path("code/app").is_err());
         assert!(workspace_path("/a\nb").is_err());
         assert!(workspace_path(&format!("/{}", "a".repeat(MAX_PATH))).is_err());
+    }
+
+    #[test]
+    fn the_owner_is_a_short_npub_and_renewal_warns_two_weeks_ahead() {
+        let owner = "ab".repeat(32);
+        let short = short_owner(&owner);
+        assert!(short.starts_with("npub1") && short.len() == 19, "{short}");
+        assert_eq!(short_owner("owner"), "owner");
+        let now = 1_000_000;
+        assert_eq!(renewal_warning(now + RENEW_WARNING + 1, now), None);
+        assert_eq!(
+            renewal_warning(now + 86_400, now).as_deref(),
+            Some("the attestation expires in 1 day: renew it")
+        );
+        assert!(renewal_warning(now, now).unwrap().contains("expired"));
+        assert_eq!(
+            authorized_line(&owner, now + 30 * 86_400, now),
+            format!("authorized by {short}")
+        );
+        assert!(authorized_line(&owner, now + 3 * 86_400, now).ends_with("in 3 days: renew it"));
     }
 }
