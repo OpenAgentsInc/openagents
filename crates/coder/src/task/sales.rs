@@ -9,6 +9,7 @@ use std::io::{Read, Write};
 use std::path::{Path, PathBuf};
 use std::time::{Duration, SystemTime};
 
+pub mod agents;
 pub mod claims;
 pub mod intake;
 pub mod partners;
@@ -153,6 +154,9 @@ pub struct Lead {
     pub partner_assignments: BTreeMap<String, partners::Assignment>,
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
     pub funnel_journeys: BTreeMap<String, receipts::sales_funnel::Journey>,
+    /// Private assigned-agent records; suppression erases them with this lead.
+    #[serde(default)]
+    pub agent_records: agents::LeadRecords,
 }
 #[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -279,6 +283,8 @@ struct State {
     intake_submissions: BTreeMap<String, intake::RecordedSubmission>,
     #[serde(default)]
     claims: claims::State,
+    #[serde(default)]
+    agents: agents::Book,
 }
 impl Default for State {
     fn default() -> Self {
@@ -295,12 +301,16 @@ impl Default for State {
             intakes: BTreeMap::new(),
             intake_submissions: BTreeMap::new(),
             claims: claims::State::default(),
+            agents: agents::Book::default(),
         }
     }
 }
 pub struct Store {
     dir: PathBuf,
     lock: File,
+    root_directory: File,
+    sales_directory: File,
+    native_keys: std::sync::Arc<dyn super::agent_key::KeyStore>,
     state: State,
     clock: fn() -> u64,
     poisoned: bool,
@@ -480,6 +490,7 @@ impl Store {
         }
         token(&state.salt)?;
         state.claims.check()?;
+        state.agents.check(&state.leads)?;
         if state.leads.values().any(|lead| lead.schema != LEAD_SCHEMA)
             || state
                 .receipts
@@ -531,6 +542,11 @@ impl Store {
             }
         }
         let mut store = Self {
+            root_directory: agents::native::directory(
+                dir.parent().ok_or("host root is unavailable")?,
+            )?,
+            sales_directory: agents::native::directory(&dir)?,
+            native_keys: super::agent_key::installed(),
             dir,
             lock,
             state,
@@ -544,10 +560,13 @@ impl Store {
         if self.poisoned {
             return Err("sales store needs recovery".into());
         }
+        self.sales_custody()?;
         super::verify_same_file(&self.dir.join("sales.lock"), &self.lock)
             .map_err(|e| e.to_string())?;
         let bytes = serde_json::to_vec_pretty(&next).map_err(|e| e.to_string())?;
-        let reserved = Self::funnel_count(&next).saturating_mul(FUNNEL_CLEANUP_BYTES);
+        let reserved = Self::funnel_count(&next)
+            .saturating_add(next.agents.cleanup_count(&next.leads))
+            .saturating_mul(FUNNEL_CLEANUP_BYTES);
         if bytes.len() > MAX_STATE.saturating_sub(reserved) {
             return Err("sales state exceeds bound".into());
         }
@@ -568,6 +587,7 @@ impl Store {
     fn ordinary_history_limit(&self, additional_journeys: usize) -> usize {
         (MAX_RECEIPTS - MAX_LEADS)
             .saturating_sub(Self::funnel_count(&self.state).saturating_add(additional_journeys))
+            .saturating_sub(self.state.agents.cleanup_count(&self.state.leads))
     }
     fn suppression(state: &State, address: &str) -> Result<String> {
         Ok(digest(
@@ -669,6 +689,7 @@ impl Store {
         Ok(())
     }
     fn check(&self, access: &Access) -> Result<Role> {
+        self.sales_custody()?;
         if self.poisoned {
             return Err("sales store needs recovery".into());
         }
@@ -679,6 +700,15 @@ impl Store {
             .filter(|p| p.active && p.token_digest == access.token_digest)
             .ok_or("sales access refused")?;
         Ok(p.role)
+    }
+    fn sales_custody(&self) -> Result<()> {
+        agents::native::same_directory(
+            self.dir.parent().ok_or("host root is unavailable")?,
+            &self.root_directory,
+        )?;
+        agents::native::same_directory(&self.dir, &self.sales_directory)?;
+        super::verify_same_file(&self.dir.join("sales.lock"), &self.lock)
+            .map_err(|_| "sales store custody changed".into())
     }
     fn admin(&self, access: &Access) -> Result<()> {
         if self.check(access)? == Role::Owner {
@@ -915,6 +945,9 @@ impl Store {
     }
     fn visible_lead(&self, access: &Access, lead: &Lead) -> Lead {
         let mut visible = lead.clone();
+        if self.check(access).ok() != Some(Role::Owner) {
+            visible.agent_records = agents::LeadRecords::default();
+        }
         visible.funnel_journeys.retain(|_, journey| {
             (self.clock)() < journey.retain_until && journey.recipient(access.principal())
         });
@@ -1066,6 +1099,7 @@ impl Store {
                     service_sales: BTreeMap::new(),
                     partner_assignments: BTreeMap::new(),
                     funnel_journeys: BTreeMap::new(),
+                    agent_records: agents::LeadRecords::default(),
                 },
             );
         } else {

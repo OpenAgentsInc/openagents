@@ -6,6 +6,8 @@ use coder::task::sales::{Role, Store};
 use serde_json::{Value, json};
 use std::io::Read;
 use std::path::Path;
+#[path = "sales_agents.rs"]
+mod agents;
 #[path = "sales_claims.rs"]
 mod claims;
 pub const USAGE: &str = "usage: openagents sales COMMAND --root DIR [--credential FILE] [--json]
@@ -28,6 +30,20 @@ pub const USAGE: &str = "usage: openagents sales COMMAND --root DIR [--credentia
         Read the owner's bounded digest-only audit references.
   suppressed --contact CHANNEL:ADDRESS
         Inspect minimum suppression before an authorized future contact.
+  agents anchor --agent NAME
+        Read the owner's exact native agent key and charter pins.
+  agents owner
+        Read owner-recorded policies and manual certification references.
+  agents owner-apply --input FILE [--new-credential FILE]
+        Record owner policy, assigned access, draft review, or certification.
+  agents policy-check --input FILE
+        Check and digest an explicit owner policy.
+  agents read
+        Read only the assigned lead's granted fields under an agent credential.
+  agents apply --input FILE
+        Apply a field-scoped change or propose a private draft.
+  agents memory
+        Read current opaque references and fixed nonidentifying summary fields.
   claims source --input FILE
         Review an immutable source over its explicit current source root.
   claims review --input FILE
@@ -77,6 +93,13 @@ pub(crate) const EFFECTS: &[Declared] = &[
     Declared::computer("export", Effect::LocalWrite),
     Declared::computer("audit", Effect::ReadOnly),
     Declared::computer("suppressed", Effect::ReadOnly),
+    Declared::computer("agents anchor", Effect::ReadOnly),
+    Declared::computer("agents owner", Effect::ReadOnly),
+    Declared::computer("agents owner-apply", Effect::Grants),
+    Declared::computer("agents policy-check", Effect::ReadOnly),
+    Declared::computer("agents read", Effect::ReadOnly),
+    Declared::computer("agents apply", Effect::LocalWrite),
+    Declared::computer("agents memory", Effect::ReadOnly),
     Declared::computer("claims source", Effect::Grants),
     Declared::computer("claims review", Effect::Grants),
     Declared::computer("claims read", Effect::LocalWrite),
@@ -88,6 +111,9 @@ pub(crate) const EFFECTS: &[Declared] = &[
     Declared::computer("review", Effect::LocalWrite),
 ];
 pub fn run(output: &Output, words: &[String]) -> u8 {
+    if words.first().is_some_and(|w| w == "agents") {
+        return agents::run(output, &words[1..]);
+    }
     if words.first().is_some_and(|w| w == "claims") {
         return claims::run(output, &words[1..]);
     }

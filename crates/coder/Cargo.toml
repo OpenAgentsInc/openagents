@@ -54,6 +54,7 @@ ratatui = "0.30"
 reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls", "stream"] }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
+jiff = "0.2.37"
 sha2 = "0.10"
 # The world tree a plan names places in (`task::agent_place`).
 world-tree = { path = "../world-tree" }

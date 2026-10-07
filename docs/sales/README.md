@@ -631,6 +631,67 @@ These records grant no outbound, model/provider, or customer-data disclosure
 authority. O1 confirms real humans, consent, and retention privately; O6
 separately authorizes any real outreach, as recorded in `NEEDS_OWNER.md`.
 
+
+REV-53 adds owner-issued native agent access to this same private store. Use
+`openagents sales agents anchor --agent paul` to read the current native key,
+owner attestation, job role, and exact charter pins. `agents owner` reads the
+owner's policy revision and manual certification history. `agents policy-check`
+checks an explicit `openagents.sales-policy.v1` document and returns its digest;
+`agents owner-apply` records an `openagents.sales-agent-owner-command.v1` with
+that current revision. Its operations are `publish_policy`, `revoke_policy`,
+`assign`, `revoke_assignment`, `review_draft`, and `record_certification`.
+An assignment also requires `--new-credential FILE` outside the complete host
+root, the exact current lead revision and native anchor, a current policy digest,
+and an expiry within consent, retention, policy, and native attestation limits.
+Assignment credentials must be new exclusive files; removed or revoked tokens
+cannot be reused for another lead. Keep all input and credential files private.
+The Rust types in
+`coder::task::sales::agents` define the versioned JSON shapes.
+
+The initial supported policy records explicit US jurisdiction, channels,
+allowed agent public keys, recipients, America/Chicago business time, review
+caps of at most 20 proposals per day across the floor, per-agent caps, trust,
+execution budget, playbook, and exact read/write fields. Stage and next-action
+reads are required; contact, source, workflow, permission, and customer-decision
+reads are separately granted. Native recipients use `agent:PUBLIC_KEY` alongside
+human recipients. Adding that recipient requires fresh owner-recorded consent
+through the existing pipeline update. Unknown jurisdiction, absent or expired
+channel consent, a changed recipient boundary, superseded or revoked policy,
+changed native key or charter, and paused or stopped agents refuse access.
+REV-52's durable crew barrier and member epoch also govern this native route;
+an applying or partial stop blocks it before lifecycle cleanup, and resuming
+requires a fresh assignment for the new epoch.
+Declared execution budgets and trust levels grant no model execution or sending.
+
+Use the assigned credential with `agents read`, `agents apply`, and `agents
+memory`. An `openagents.sales-agent-command.v1` can only `update_stage`,
+`update_next_action`, or `propose_draft` when its exact field is granted. It
+cannot select another lead, change permission or policy, issue grants, or record
+certification. Human and agent reads use the same canonical stage and next
+action after restart. Drafts pin the native author, original policy, playbook,
+template, check and recommendation references, and lead revision. They remain
+proposals; even an owner's `owner_reviewed` decision grants no outbound authority.
+References are attributable declarations, not independently rerun checks.
+
+Memory projections contain randomly minted stored references, stage, whether a
+next action exists, draft references, and the fixed `owner_review_required`
+lesson. They contain no address, message, permission text, exact next-action
+text, identifying summary, or contact-derived digest. Each projection rechecks
+current native identity, assignment, policy, consent, and recipients. This command
+does not write engrams or relay events, and edited memory cannot grant access.
+Manual `openagents.sales-cert.v1` references retain the owner, native identity,
+playbook, suite, roleplay, and draft-review references with an explicit state and
+expiry. Their basis is `owner_recorded`, `measured_qualified` is false, and
+outbound authority is false; REV-57's measured certification remains separate.
+
+The additive migration preserves native identities and canonical lead, service,
+partner, and financial references. Suppression and retention erase nested agent
+assignments and draft content with the lead. Caps survive policy changes,
+reassignment, and restart; exact retries consume no additional proposal.
+Day counters retain at most 366 business dates and refuse further growth at
+that bound, pending explicit operator maintenance. Reserved history and storage
+space keep assignment/policy revocation and contact cleanup available.
+
 ## Assisted pilot kit
 
 The [scope and review templates](pilot-kit.json) package the manual service

@@ -384,6 +384,7 @@ impl Store {
                     service_sales: BTreeMap::new(),
                     partner_assignments: BTreeMap::new(),
                     funnel_journeys: BTreeMap::new(),
+                    agent_records: super::agents::LeadRecords::default(),
                     intake: Some(Provenance {
                         policy: policy.id.clone(),
                         offer: policy.offer,

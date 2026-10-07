@@ -604,6 +604,20 @@ Live helpers, certification, hiring, and sending still require their own
 implemented adapters and explicit owner activation. These steps do not
 block the native role and verdict implementation or human-led first revenue.
 
+
+REV-53's private agent records are code-qualified with isolated native file-key
+and CLI fixtures. Before admitting a real member, verify its native owner
+attestation, exact job charter, private lead consent and `agent:PUBLIC_KEY`
+recipient, policy version, US jurisdiction, business timezone, review caps,
+execution budget, and expiry. Keep the issued scoped credential outside the
+host root. Review proposed drafts and manual certification references privately;
+these references are attributable owner records, not measured REV-57 certification.
+The record route performs no model call or outbound action. Engram publication,
+model helpers, measured certification, and sending need their own implemented
+adapters and explicit activation. No customer material belongs in memory;
+`agents memory` returns only current admitted random references and fixed fields.
+These owner choices do not block the native records implementation.
+
 The [sales-floor decisions](docs/sales/agent-sales-floor.md#initial-operating-decisions)
 start with permissioned US business email and individual approvals. Before
 live outreach, configure the dedicated domain and monitored mailbox; verify

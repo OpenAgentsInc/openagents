@@ -2750,6 +2750,7 @@ dependencies = [
  "indexmap 2.14.2",
  "jev",
  "jev-hosted",
+ "jiff",
  "knowledge",
  "libc",
  "memory-stream",

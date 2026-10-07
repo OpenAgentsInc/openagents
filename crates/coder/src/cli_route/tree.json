@@ -6343,6 +6343,252 @@
           }
         },
         {
+          "name": "agents",
+          "children": [
+            {
+              "name": "anchor",
+              "leaf": {
+                "path": [
+                  "sales",
+                  "agents",
+                  "anchor"
+                ],
+                "usage": [
+                  "agents anchor --agent NAME"
+                ],
+                "forms": [
+                  {
+                    "tokens": [
+                      {
+                        "kind": "literal",
+                        "word": "agents"
+                      },
+                      {
+                        "kind": "literal",
+                        "word": "anchor"
+                      },
+                      {
+                        "kind": "option",
+                        "name": "agent",
+                        "value": "NAME",
+                        "open": true
+                      }
+                    ]
+                  }
+                ],
+                "summary": "Read the owner's exact native agent key and charter pins.",
+                "effect": "read_only",
+                "runs_on": "connected_computer"
+              }
+            },
+            {
+              "name": "owner",
+              "leaf": {
+                "path": [
+                  "sales",
+                  "agents",
+                  "owner"
+                ],
+                "usage": [
+                  "agents owner"
+                ],
+                "forms": [
+                  {
+                    "tokens": [
+                      {
+                        "kind": "literal",
+                        "word": "agents"
+                      },
+                      {
+                        "kind": "literal",
+                        "word": "owner"
+                      }
+                    ]
+                  }
+                ],
+                "summary": "Read owner-recorded policies and manual certification references.",
+                "effect": "read_only",
+                "runs_on": "connected_computer"
+              }
+            },
+            {
+              "name": "owner-apply",
+              "leaf": {
+                "path": [
+                  "sales",
+                  "agents",
+                  "owner-apply"
+                ],
+                "usage": [
+                  "agents owner-apply --input FILE [--new-credential FILE]"
+                ],
+                "forms": [
+                  {
+                    "tokens": [
+                      {
+                        "kind": "literal",
+                        "word": "agents"
+                      },
+                      {
+                        "kind": "literal",
+                        "word": "owner-apply"
+                      },
+                      {
+                        "kind": "option",
+                        "name": "input",
+                        "value": "FILE",
+                        "open": true
+                      },
+                      {
+                        "kind": "option",
+                        "name": "new-credential",
+                        "value": "FILE",
+                        "open": true,
+                        "optional": true
+                      }
+                    ]
+                  }
+                ],
+                "summary": "Record owner policy, assigned access, draft review, or certification.",
+                "effect": "grants",
+                "runs_on": "connected_computer"
+              }
+            },
+            {
+              "name": "policy-check",
+              "leaf": {
+                "path": [
+                  "sales",
+                  "agents",
+                  "policy-check"
+                ],
+                "usage": [
+                  "agents policy-check --input FILE"
+                ],
+                "forms": [
+                  {
+                    "tokens": [
+                      {
+                        "kind": "literal",
+                        "word": "agents"
+                      },
+                      {
+                        "kind": "literal",
+                        "word": "policy-check"
+                      },
+                      {
+                        "kind": "option",
+                        "name": "input",
+                        "value": "FILE",
+                        "open": true
+                      }
+                    ]
+                  }
+                ],
+                "summary": "Check and digest an explicit owner policy.",
+                "effect": "read_only",
+                "runs_on": "connected_computer"
+              }
+            },
+            {
+              "name": "read",
+              "leaf": {
+                "path": [
+                  "sales",
+                  "agents",
+                  "read"
+                ],
+                "usage": [
+                  "agents read"
+                ],
+                "forms": [
+                  {
+                    "tokens": [
+                      {
+                        "kind": "literal",
+                        "word": "agents"
+                      },
+                      {
+                        "kind": "literal",
+                        "word": "read"
+                      }
+                    ]
+                  }
+                ],
+                "summary": "Read only the assigned lead's granted fields under an agent credential.",
+                "effect": "read_only",
+                "runs_on": "connected_computer"
+              }
+            },
+            {
+              "name": "apply",
+              "leaf": {
+                "path": [
+                  "sales",
+                  "agents",
+                  "apply"
+                ],
+                "usage": [
+                  "agents apply --input FILE"
+                ],
+                "forms": [
+                  {
+                    "tokens": [
+                      {
+                        "kind": "literal",
+                        "word": "agents"
+                      },
+                      {
+                        "kind": "literal",
+                        "word": "apply"
+                      },
+                      {
+                        "kind": "option",
+                        "name": "input",
+                        "value": "FILE",
+                        "open": true
+                      }
+                    ]
+                  }
+                ],
+                "summary": "Apply a field-scoped change or propose a private draft.",
+                "effect": "local_write",
+                "runs_on": "connected_computer"
+              }
+            },
+            {
+              "name": "memory",
+              "leaf": {
+                "path": [
+                  "sales",
+                  "agents",
+                  "memory"
+                ],
+                "usage": [
+                  "agents memory"
+                ],
+                "forms": [
+                  {
+                    "tokens": [
+                      {
+                        "kind": "literal",
+                        "word": "agents"
+                      },
+                      {
+                        "kind": "literal",
+                        "word": "memory"
+                      }
+                    ]
+                  }
+                ],
+                "summary": "Read current opaque references and fixed nonidentifying summary fields.",
+                "effect": "read_only",
+                "runs_on": "connected_computer"
+              }
+            }
+          ]
+        },
+        {
           "name": "claims",
           "children": [
             {
@@ -6858,6 +7104,14 @@
           "kind": "option",
           "name": "contact",
           "value": "CHANNEL:ADDRESS",
+          "open": true,
+          "optional": true,
+          "repeated": true
+        },
+        {
+          "kind": "option",
+          "name": "agent",
+          "value": "NAME",
           "open": true,
           "optional": true,
           "repeated": true
