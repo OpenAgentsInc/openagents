@@ -274,3 +274,220 @@ fn a_token_without_the_project_scope_is_said_once_and_the_claim_goes_on() {
         "{said:?}"
     );
 }
+
+fn claimant(session: &str, pid: Option<u32>) -> coder_lease::claims::Claimant {
+    coder_lease::claims::Claimant {
+        session: session.into(),
+        agent: "codex".into(),
+        pid,
+    }
+}
+
+fn session_body(session: &str) -> String {
+    format!(
+        "Claimed: an agent is working on this.\n\n{}",
+        marker("cli", session)
+    )
+}
+
+/// A process that has exited, for a session that ended.
+fn ended_pid() -> u32 {
+    let mut child = std::process::Command::new("true").spawn().unwrap();
+    let pid = child.id();
+    child.wait().unwrap();
+    pid
+}
+
+#[test]
+fn markers_carry_the_session_and_old_markers_still_parse() {
+    let new = session_body("claude-code:abc 1");
+    assert!(new.contains("session=claude-code:abc_1 -->"), "{new}");
+    assert_eq!(marker_field(&new, "session"), Some("claude-code:abc_1"));
+    let task = format!("Claimed. {} ", marker("task=t1", "s1"));
+    assert_eq!(marker_field(&task, "task"), Some("t1"));
+    assert_eq!(marker_field(&task, "session"), Some("s1"));
+    let old = format!("Claimed. {CLAIM_MARK} task=t1 -->");
+    assert_eq!(marker_field(&old, "task"), Some("t1"));
+    assert_eq!(marker_field(&old, "session"), None);
+    let comments = [Comment { body: old, at: 900 }];
+    assert!(active(&comments).is_some());
+    assert!(foreign_marker(7, &comments, 1_000, 6, "s1", None).is_some());
+}
+
+#[test]
+fn a_second_session_is_refused_the_same_one_reclaims_and_an_ended_one_is_taken_over() {
+    let leases = tempfile::tempdir().unwrap();
+    let root = leases.path();
+    let github = Fake::plain("octo");
+    github.issue(7, None, &[], &[]);
+    github.issue(8, None, &[], &[]);
+    let project = Project::default();
+    let now = github.now;
+    let alive = claimant("codex:a", Some(std::process::id()));
+    let mine = session_body("codex:a");
+    let said = take(
+        &github, root, REPO, 7, &mine, &project, &alive, now, 6, false,
+    )
+    .unwrap();
+    assert_eq!(said[0], "Holding #7 for session codex:a.");
+    assert!(
+        github.state(7).comments[0]
+            .body
+            .contains("session=codex:a -->")
+    );
+
+    // Another session is refused, naming the holder and its age.
+    let other = claimant("claude-code:b", None);
+    let theirs = session_body("claude-code:b");
+    let why = take(
+        &github,
+        root,
+        REPO,
+        7,
+        &theirs,
+        &project,
+        &other,
+        now + 120,
+        6,
+        false,
+    )
+    .unwrap_err();
+    assert!(
+        why.contains("session codex:a") && why.contains("2 minutes ago"),
+        "{why}"
+    );
+    assert_eq!(
+        github.state(7).comments.len(),
+        1,
+        "a refused claim posts nothing"
+    );
+    // And so is its release.
+    let release_body = Some(RELEASE_MARK);
+    assert!(
+        give_back(
+            &github,
+            root,
+            REPO,
+            7,
+            release_body,
+            &project,
+            "claude-code:b",
+            now,
+            6,
+            false
+        )
+        .is_err()
+    );
+
+    // The same session claims again.
+    let said = take(
+        &github,
+        root,
+        REPO,
+        7,
+        &mine,
+        &project,
+        &alive,
+        now + 60,
+        6,
+        false,
+    )
+    .unwrap();
+    assert!(said[0].starts_with("Renewed"), "{said:?}");
+
+    // A session whose process ended is taken over, its fresh marker too.
+    let dead = claimant("codex:dead", Some(ended_pid()));
+    let body = session_body("codex:dead");
+    take(
+        &github, root, REPO, 8, &body, &project, &dead, now, 6, false,
+    )
+    .unwrap();
+    let said = take(
+        &github,
+        root,
+        REPO,
+        8,
+        &theirs,
+        &project,
+        &other,
+        now + 10,
+        6,
+        false,
+    )
+    .unwrap();
+    assert!(said[0].contains("over from session codex:dead"), "{said:?}");
+    let record = coder_lease::claims::read(root, REPO, 8).unwrap().unwrap();
+    assert_eq!(record.session, "claude-code:b");
+
+    // Release drops the hold and posts the release; the issue is free.
+    let said = give_back(
+        &github,
+        root,
+        REPO,
+        7,
+        release_body,
+        &project,
+        "codex:a",
+        now,
+        6,
+        false,
+    )
+    .unwrap();
+    assert!(said[0].starts_with("Dropped session codex:a"), "{said:?}");
+    assert!(coder_lease::claims::read(root, REPO, 7).unwrap().is_none());
+    take(
+        &github,
+        root,
+        REPO,
+        7,
+        &theirs,
+        &project,
+        &other,
+        now + 200,
+        6,
+        false,
+    )
+    .unwrap();
+}
+
+#[test]
+fn a_fresh_marker_from_another_session_refuses_until_it_ages_or_force() {
+    let leases = tempfile::tempdir().unwrap();
+    let root = leases.path();
+    let github = Fake::plain("octo");
+    github.issue(9, None, &[], &[]);
+    github
+        .comment(REPO, 9, &session_body("elsewhere:1"))
+        .unwrap();
+    let project = Project::default();
+    let me = claimant("codex:a", Some(std::process::id()));
+    let mine = session_body("codex:a");
+    let why = take(
+        &github, root, REPO, 9, &mine, &project, &me, 1_100, 6, false,
+    )
+    .unwrap_err();
+    assert!(why.contains("session elsewhere:1"), "{why}");
+    assert!(coder_lease::claims::read(root, REPO, 9).unwrap().is_none());
+    // Past the claim window it is free.
+    let later = 1_000 + 6 * 3_600;
+    take(
+        &github, root, REPO, 9, &mine, &project, &me, later, 6, false,
+    )
+    .unwrap();
+    // A forced claim takes even a live hold.
+    let other = claimant("claude-code:b", None);
+    let theirs = session_body("claude-code:b");
+    take(
+        &github,
+        root,
+        REPO,
+        9,
+        &theirs,
+        &project,
+        &other,
+        later + 10,
+        6,
+        true,
+    )
+    .unwrap();
+}

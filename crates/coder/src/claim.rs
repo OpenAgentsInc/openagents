@@ -27,6 +27,13 @@
 //! when it has one: its item order, a "ready" status, and no open
 //! `blockedBy`; without one, a label (`coder-sized`) in issue order.
 //!
+//! A claim is also held on this computer by one agent session
+//! ([`take`], [`give_back`], #10764): an `issue/<n>` record under the
+//! lease root ([`coder_lease::claims`]) that refuses another live
+//! session's claim, and a `session=` field in the claim marker
+//! ([`marker`]), so a fresh marker from another session refuses too.
+//! Markers without the field, written before it, still parse.
+//!
 //! GitHub is reached through the `gh` CLI the person is signed in to
 //! ([`Gh`]); nothing here reads, stores, or prints a token.
 
@@ -488,6 +495,186 @@ pub fn pickup<H: Hub + ?Sized>(
             project.ready.join("/")
         ),
     ))
+}
+
+/// The value of `key` in the claim marker of `body`, such as `task` in
+/// `<!-- openagents-coder-claim task=abc session=s1 -->`. `None` when the
+/// body has no marker or the marker no such field.
+#[must_use]
+pub fn marker_field<'a>(body: &'a str, key: &str) -> Option<&'a str> {
+    let rest = body.split_once(CLAIM_MARK)?.1;
+    let fields = rest.split_once("-->").map_or(rest, |(fields, _)| fields);
+    fields
+        .split_whitespace()
+        .find_map(|word| word.strip_prefix(key)?.strip_prefix('='))
+}
+
+/// The session as a marker field: characters other than letters, digits,
+/// `:`, `.`, `_`, and `-` become `_`, so it ends no comment.
+#[must_use]
+pub fn session_word(session: &str) -> String {
+    session
+        .chars()
+        .take(128)
+        .map(|c| {
+            if c.is_ascii_alphanumeric() || matches!(c, ':' | '.' | '_' | '-') {
+                c
+            } else {
+                '_'
+            }
+        })
+        .collect()
+}
+
+/// A claim marker with `fields` (such as `cli` or `task=abc`) and the
+/// claiming session.
+#[must_use]
+pub fn marker(fields: &str, session: &str) -> String {
+    let fields = fields.trim();
+    let space = if fields.is_empty() { "" } else { " " };
+    format!(
+        "{CLAIM_MARK}{space}{fields} session={} -->",
+        session_word(session)
+    )
+}
+
+/// Why a claim comment on GitHub refuses `session`'s claim, or `None`:
+/// the latest unreleased claim is younger than `hours` and comes from
+/// another session, or from no named session (a marker written before
+/// the field, or a "Claimed" comment). `ended` is a session this
+/// computer saw end, whose marker no longer counts.
+#[must_use]
+pub fn foreign_marker(
+    number: u64,
+    comments: &[Comment],
+    now: u64,
+    hours: u64,
+    session: &str,
+    ended: Option<&str>,
+) -> Option<String> {
+    let claim = active(comments)?;
+    let age = now.saturating_sub(claim.at);
+    if age >= hours * 3_600 {
+        return None;
+    }
+    let ours = session_word(session);
+    match marker_field(&claim.body, "session") {
+        Some(theirs) if theirs == ours => None,
+        Some(theirs) if ended.is_some_and(|ended| session_word(ended) == theirs) => None,
+        Some(theirs) => Some(format!(
+            "#{number} has a claim comment from session {theirs}, {} ago",
+            ago(age)
+        )),
+        None => Some(format!(
+            "#{number} has a claim comment that names no session, {} ago",
+            ago(age)
+        )),
+    }
+}
+
+/// Claims `number` for `claimant`: refuses when another live session holds
+/// it on this computer or a fresh claim comment from another session is
+/// on the issue, unless `force`; then holds it under `lease_root` and
+/// writes the claim ([`claim`]) with `body`, which should carry
+/// [`marker`] with the claimant's session. `now` is in Unix seconds and
+/// `hours` the claim window.
+///
+/// # Errors
+/// Why the claim was refused.
+#[allow(clippy::too_many_arguments)]
+pub fn take<H: Hub + ?Sized>(
+    hub: &H,
+    lease_root: &std::path::Path,
+    repository: &str,
+    number: u64,
+    body: &str,
+    project: &Project,
+    claimant: &coder_lease::claims::Claimant,
+    now: u64,
+    hours: u64,
+    force: bool,
+) -> Result<Vec<String>, String> {
+    use coder_lease::claims::{self, Claimed};
+    let veto = |replaced: Option<&claims::IssueClaim>| {
+        let comments = hub.comments(repository, number).ok()?;
+        foreign_marker(
+            number,
+            &comments,
+            now,
+            hours,
+            &claimant.session,
+            replaced.map(|claim| claim.session.as_str()),
+        )
+    };
+    let taken = claims::claim(
+        lease_root,
+        repository,
+        number,
+        claimant,
+        now.saturating_mul(1_000),
+        std::time::Duration::from_secs(hours * 3_600),
+        force,
+        &veto,
+    )
+    .map_err(|refused| match refused {
+        claims::Refused::Broker(error) => format!("The claim could not be recorded: {error}."),
+        refused => format!("{refused}. Leave it, or pass --force to take it anyway."),
+    })?;
+    let session = &claimant.session;
+    let mut said = vec![match taken {
+        Claimed::New => format!("Holding #{number} for session {session}."),
+        Claimed::Renewed => format!("Renewed session {session}'s hold on #{number}."),
+        Claimed::TookOver(previous) => format!(
+            "Took #{number} over from session {}, whose claim ended or was overridden.",
+            previous.session
+        ),
+    }];
+    said.extend(claim(hub, repository, number, body, project));
+    Ok(said)
+}
+
+/// Releases `number` for `session`: drops this computer's hold when the
+/// session holds it or its holder ended (or under `force`), then releases
+/// the claim ([`release`]).
+///
+/// # Errors
+/// Another live session holds it.
+#[allow(clippy::too_many_arguments)]
+pub fn give_back<H: Hub + ?Sized>(
+    hub: &H,
+    lease_root: &std::path::Path,
+    repository: &str,
+    number: u64,
+    comment: Option<&str>,
+    project: &Project,
+    session: &str,
+    now: u64,
+    hours: u64,
+    force: bool,
+) -> Result<Vec<String>, String> {
+    use coder_lease::claims;
+    let dropped = claims::release(
+        lease_root,
+        repository,
+        number,
+        session,
+        now.saturating_mul(1_000),
+        std::time::Duration::from_secs(hours * 3_600),
+        force,
+    )
+    .map_err(|refused| match refused {
+        claims::Refused::Broker(error) => format!("The hold could not be released: {error}."),
+        refused => format!("{refused}. Pass --force to release it anyway."),
+    })?;
+    let mut said = Vec::new();
+    if let Some(dropped) = dropped {
+        said.push(format!(
+            "Dropped session {}'s hold on #{number}.",
+            dropped.session
+        ));
+    }
+    said.extend(release(hub, repository, number, comment, project));
+    Ok(said)
 }
 
 fn ago(seconds: u64) -> String {

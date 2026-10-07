@@ -42,7 +42,17 @@ not followed by `<!-- openagents-coder-release -->`, younger than
 `CLAIM_HOURS`, default 6) to In progress, moves open issues with an open native
 blocker to Blocked, and moves Blocked issues whose blockers have all closed back
 to Todo. It leaves In progress and In review set by hand alone until the issue
-closes.
+closes. A marker may carry a session, as in
+`<!-- openagents-coder-claim cli session=claude-code:ID -->`; the script
+reads markers with and without one the same way.
+
+`openagents issue claim N` holds the issue for your agent session on this
+computer. It refuses while another live session holds it or a claim comment
+from another session is younger than the claim window, and names that
+session and the claim's age; your own session can claim again. A claim
+from a session that ended is taken over. `openagents issue release N`
+releases both the hold and the comment. [Leases](coder/runtime/leases.md#issue-claims)
+covers the hold.
 
 Raw `gh`, if the scripts are not at hand:
 

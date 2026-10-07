@@ -524,11 +524,23 @@ fn active_claim(issue: &Issue) -> Option<&Comment> {
     crate::claim::active(&issue.comments)
 }
 
+/// The lease root that holds this computer's issue claims (#10764):
+/// `OPENAGENTS_LEASE_ROOT`, else beside the task store, as build leases
+/// use. A test's root is inside its scratch store, whose parent is the
+/// shared temporary directory.
+fn claims_root(store: &Path) -> PathBuf {
+    if cfg!(test) {
+        return store.join("leases");
+    }
+    std::env::var_os(coder_lease::ROOT_VAR)
+        .filter(|root| !root.is_empty())
+        .map_or_else(|| super::targets::lease_root(store), PathBuf::from)
+}
+
 /// Only a marker backed by this store's local task can be this computer's claim.
 fn inactive_own_claim(store: &Path, repository: &str, issue: &Issue) -> Option<String> {
     let body = &active_claim(issue)?.body;
-    let marker = body.split_once(CLAIM_MARK)?.1;
-    let task = marker.strip_prefix(" task=")?.split_once(" -->")?.0;
+    let task = crate::claim::marker_field(body, "task")?;
     let record = local::record(store, task)?;
     let flow = load(store, task)?;
     if flow.link.number != issue.number
@@ -611,14 +623,8 @@ pub fn stale_claims(
         let Ok(issue) = tracker.issue(&flow.link.repository, flow.link.number) else {
             continue;
         };
-        let ours = active_claim(&issue).is_some_and(|claim| {
-            claim
-                .body
-                .split_once(CLAIM_MARK)
-                .and_then(|(_, rest)| rest.strip_prefix(" task="))
-                .and_then(|rest| rest.split_once(" -->"))
-                .is_some_and(|(id, _)| id == task)
-        });
+        let ours = active_claim(&issue)
+            .is_some_and(|claim| crate::claim::marker_field(&claim.body, "task") == Some(&*task));
         if issue.open && ours {
             stale.push(background::services::Claim {
                 repository: flow.link.repository.clone(),
@@ -1074,14 +1080,8 @@ fn recovery_commit(top: &Path, task: &str) -> Result<Option<(String, String)>, S
 
 /// A replacement may take only the claim of the task on the confirmed lost host.
 fn recovery_claim(issue: &Issue, task: &str) -> bool {
-    active_claim(issue).is_none_or(|claim| {
-        claim
-            .body
-            .split_once(CLAIM_MARK)
-            .and_then(|(_, rest)| rest.strip_prefix(" task="))
-            .and_then(|rest| rest.split_once(" -->"))
-            .is_some_and(|(id, _)| id == task)
-    })
+    active_claim(issue)
+        .is_none_or(|claim| crate::claim::marker_field(&claim.body, "task") == Some(task))
 }
 
 /// The task store's landing lock file, held while a flow fetches, rebases
@@ -1297,6 +1297,51 @@ impl Runner {
                 );
             }
         }
+        // This computer's hold for this process's session (#10764): another
+        // live session's hold refuses a queue, as a claim comment does.
+        let session = coder_lease::scratch::delegate_session();
+        let claimant = coder_lease::claims::Claimant {
+            session: session.clone(),
+            agent: "coder".into(),
+            pid: Some(std::process::id()),
+        };
+        let hold = |force: bool| {
+            coder_lease::claims::claim(
+                &claims_root(self.local.store()),
+                &repository,
+                number,
+                &claimant,
+                (self.now)().saturating_mul(1_000),
+                Duration::from_secs(policy.claim_hours * 3_600),
+                force,
+                &|_| None,
+            )
+        };
+        match hold(false) {
+            Ok(_) => {}
+            Err(coder_lease::claims::Refused::Held(held)) if self.skip_claimed => {
+                return Err(Refused::Claimed(held.sentence()));
+            }
+            Err(coder_lease::claims::Refused::Held(held)) => {
+                note(
+                    &mut notes,
+                    format!(
+                        "{}. You asked for this issue by name, so Coder takes it over.",
+                        held.sentence()
+                    ),
+                );
+                if let Err(why) = hold(true) {
+                    note(
+                        &mut notes,
+                        format!("Coder could not hold #{number}: {why}."),
+                    );
+                }
+            }
+            Err(why) => note(
+                &mut notes,
+                format!("Coder could not hold #{number}: {why}."),
+            ),
+        }
         let branch = match &policy.branch {
             Some(branch) => branch.clone(),
             None => local::default_branch(&checkout.top),
@@ -1333,10 +1378,10 @@ impl Runner {
         let claim = format!(
             "Claimed: Coder is working on this from an OpenAgents chat {} (task `{}`), in its \
              own worktree of `{base}`. It runs the repository's checks, {land}, and comments \
-             the evidence here.\n\n{CLAIM_MARK} task={} -->",
+             the evidence here.\n\n{}",
             placement().claim,
             &record.task[..12],
-            record.task
+            crate::claim::marker(&format!("task={}", record.task), &session)
         );
         let mut flow = Flow {
             schema: FLOW_SCHEMA.into(),
@@ -2359,6 +2404,16 @@ impl Run<'_> {
                 }
             }
         }
+        // The run is over either way, so this computer's hold ends with it.
+        let _ = coder_lease::claims::release(
+            &claims_root(&self.work.store),
+            self.repository,
+            self.issue.number,
+            &coder_lease::scratch::delegate_session(),
+            0,
+            Duration::ZERO,
+            true,
+        );
         self.note(closing.clone());
         self.flow.closing = closing;
         self.flow.finished = true;

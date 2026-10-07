@@ -5322,7 +5322,7 @@
               "claim"
             ],
             "usage": [
-              "claim N [--repo OWNER/NAME] [--note TEXT]"
+              "claim N [--repo OWNER/NAME] [--note TEXT] [--force]"
             ],
             "forms": [
               {
@@ -5348,11 +5348,16 @@
                     "value": "TEXT",
                     "open": true,
                     "optional": true
+                  },
+                  {
+                    "kind": "option",
+                    "name": "force",
+                    "optional": true
                   }
                 ]
               }
             ],
-            "summary": "Claim issue N: a claim comment, you as assignee, and \"In progress\" on each project it is on.",
+            "summary": "Claim issue N for this agent session: hold it on this computer, then a claim comment naming the session, you as assignee, and \"In progress\" on each project it is on. Refused while another live session holds it or a fresh claim comment names another session; --force takes it anyway.",
             "effect": "publishes",
             "runs_on": "connected_computer"
           }
@@ -5365,7 +5370,7 @@
               "release"
             ],
             "usage": [
-              "release N [--repo OWNER/NAME] [--note TEXT]"
+              "release N [--repo OWNER/NAME] [--note TEXT] [--force]"
             ],
             "forms": [
               {
@@ -5391,11 +5396,16 @@
                     "value": "TEXT",
                     "open": true,
                     "optional": true
+                  },
+                  {
+                    "kind": "option",
+                    "name": "force",
+                    "optional": true
                   }
                 ]
               }
             ],
-            "summary": "Release a claim: a release comment, you off the assignees, and \"Ready\" (or \"Todo\") on each project it is on.",
+            "summary": "Release a claim: drop this session's hold, then a release comment, you off the assignees, and \"Ready\" (or \"Todo\") on each project. Refused while another live session holds it, unless --force.",
             "effect": "publishes",
             "runs_on": "connected_computer"
           }
@@ -5526,6 +5536,12 @@
           "name": "note",
           "value": "TEXT",
           "open": true,
+          "optional": true,
+          "repeated": true
+        },
+        {
+          "kind": "option",
+          "name": "force",
           "optional": true,
           "repeated": true
         },

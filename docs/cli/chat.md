@@ -429,6 +429,17 @@ and its queues, `coder-project`'s supervisor, and other agents through
   answered, or Status "In progress" set within `claim_hours` and after the
   latest release. A queue and `coder-project` leave a claimed issue alone;
   a person naming one issue is told and Coder works it anyway.
+- **Session**: a claim is held for the agent session that took it
+  ([#10764](https://github.com/OpenAgentsInc/openagents/issues/10764)): a
+  record under the lease root
+  ([Issue claims](../coder/runtime/leases.md#issue-claims)) and a
+  `session=` field in the marker. `claim` refuses while another live
+  session holds the issue or a claim comment from another session is
+  younger than `claim_hours`, and says which session and how long ago. The
+  same session claims again; a session that ended is taken over. `release`
+  drops the hold and is refused for another live session's claim. `--force`
+  overrides either refusal. Markers without a session still count as
+  claims.
 - **Without Projects** the claim is the comment and the assignee; nothing
   else changes. A step that fails (no project access, say) is said in the
   flow's notes and the rest still happen.
@@ -447,8 +458,8 @@ a `ready` Status, and no open `blockedBy`; without one, the `coder-sized`
 label (or the label given), oldest first.
 
 ```text
-openagents issue claim 10203 [--note TEXT]   # comment + assignee + In progress
-openagents issue release 10203               # release comment, unassign, Ready
+openagents issue claim 10203 [--note TEXT] [--force]   # hold + comment + assignee + In progress
+openagents issue release 10203 [--force]               # drop hold, release comment, unassign, Ready
 openagents issue status 10203                # claimed? and each project's Status
 openagents issue pickup [--label L]          # what to pick up next, in order
 ```

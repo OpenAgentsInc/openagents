@@ -15,6 +15,8 @@
 //!   `build` lease's slot and worktree hold ([`DiskUse`]); [`usage`] sums
 //!   them per session.
 //! - `grants/screen.json` is the owner's grant of the real screen.
+//! - `claims/<owner>/<name>/issue-<n>.json` is an issue claim held by an
+//!   agent session, which outlives the command that took it ([`claims`]).
 //!
 //! Exclusive resources ([`Shape::Exclusive`]) admit one holder. Counted
 //! ones ([`Shape::Counted`]) admit holders while their amounts fit:
@@ -46,6 +48,7 @@
 //! `docs/coder/runtime/leases.md` is the operator's page.
 
 mod broker;
+pub mod claims;
 mod grant;
 mod holder;
 mod limits;

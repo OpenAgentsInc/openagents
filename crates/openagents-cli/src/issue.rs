@@ -3,8 +3,13 @@
 //! here is the same comment marker Coder posts, the signed-in GitHub
 //! user as assignee, and "In progress" on the issue's project; Coder's
 //! queues, `coder-project`, and other agents read it the same way.
+//!
+//! A claim is also held on this computer for the caller's agent session
+//! (#10764): `claim` refuses an issue another live session holds, or that
+//! a fresh claim comment from another session marks, and the marker it
+//! posts names the session.
 
-use coder::claim::{self, CLAIM_MARK, Gh, Hub, RELEASE_MARK};
+use coder::claim::{self, Gh, Hub, RELEASE_MARK};
 use coder::task::issue_run::{Policy, Tracker};
 use serde_json::{Value, json};
 
@@ -13,12 +18,16 @@ use crate::{Args, Output};
 use coder::cli_route::tree::{Declared, Effect};
 
 pub(crate) const USAGE: &str = "usage: openagents issue COMMAND [OPTIONS]
-  claim N [--repo OWNER/NAME] [--note TEXT]
-        Claim issue N: a claim comment, you as assignee, and \"In progress\"
-        on each project it is on.
-  release N [--repo OWNER/NAME] [--note TEXT]
-        Release a claim: a release comment, you off the assignees, and
-        \"Ready\" (or \"Todo\") on each project it is on.
+  claim N [--repo OWNER/NAME] [--note TEXT] [--force]
+        Claim issue N for this agent session: hold it on this computer, then
+        a claim comment naming the session, you as assignee, and
+        \"In progress\" on each project it is on. Refused while another live
+        session holds it or a fresh claim comment names another session;
+        --force takes it anyway.
+  release N [--repo OWNER/NAME] [--note TEXT] [--force]
+        Release a claim: drop this session's hold, then a release comment,
+        you off the assignees, and \"Ready\" (or \"Todo\") on each project.
+        Refused while another live session holds it, unless --force.
   done N [--repo OWNER/NAME]
         Move a landed issue to \"Done\" on each project it is on.
   status N [--repo OWNER/NAME]
@@ -56,7 +65,7 @@ pub fn run(output: &Output, words: &[String]) -> u8 {
     ) {
         return output.usage("issue", &format!("unknown command `{command}`"), USAGE);
     }
-    let args = match Args::parse(rest, &[]) {
+    let args = match Args::parse(rest, &["force"]) {
         Ok(args) => args,
         Err(message) => return output.usage("issue", &message, USAGE),
     };
@@ -87,30 +96,28 @@ pub fn run(output: &Output, words: &[String]) -> u8 {
                 Err(message) => return output.usage("issue", &message, USAGE),
             };
             match command.as_str() {
-                "claim" => {
-                    let note = args.option("note").map(|note| format!("{note}\n\n"));
-                    let body = format!(
-                        "Claimed: an agent is working on this.\n\n{}{CLAIM_MARK} cli -->",
-                        note.unwrap_or_default()
-                    );
-                    said(
-                        "claim",
+                "claim" | "release" => {
+                    let leases = match coder_lease::root_from_env() {
+                        Ok(root) => root,
+                        Err(message) => return output.fail("issue", &message),
+                    };
+                    let claimant = coder_lease::claims::Claimant::detect();
+                    let done = hold(
+                        &hub,
+                        &leases,
+                        command == "claim",
                         &repository,
                         number,
-                        claim::claim(&hub, &repository, number, &body, &policy.project),
-                    )
-                }
-                "release" => {
-                    let body = format!(
-                        "{} {RELEASE_MARK}",
-                        args.option("note").unwrap_or("Released the claim.")
+                        &policy,
+                        &claimant,
+                        args.option("note"),
+                        unix_now(),
+                        args.switch("force"),
                     );
-                    said(
-                        "release",
-                        &repository,
-                        number,
-                        claim::release(&hub, &repository, number, Some(&body), &policy.project),
-                    )
+                    match done {
+                        Ok(lines) => said(command, &repository, number, lines),
+                        Err(message) => return output.fail("issue", &message),
+                    }
                 }
                 "done" => said(
                     "done",
@@ -159,6 +166,63 @@ fn place(named: Option<&str>) -> Result<(String, Policy), String> {
         }
     };
     Ok((repository, policy))
+}
+
+/// Claims (`take`) or releases issue `number` for `claimant` through
+/// [`claim::take`] and [`claim::give_back`].
+#[allow(clippy::too_many_arguments)]
+fn hold<H: Hub + ?Sized>(
+    hub: &H,
+    leases: &std::path::Path,
+    take: bool,
+    repository: &str,
+    number: u64,
+    policy: &Policy,
+    claimant: &coder_lease::claims::Claimant,
+    note: Option<&str>,
+    now: u64,
+    force: bool,
+) -> Result<Vec<String>, String> {
+    let hours = policy.claim_hours;
+    if take {
+        let note = note.map(|note| format!("{note}\n\n")).unwrap_or_default();
+        let body = format!(
+            "Claimed: an agent is working on this.\n\n{note}{}",
+            claim::marker("cli", &claimant.session)
+        );
+        claim::take(
+            hub,
+            leases,
+            repository,
+            number,
+            &body,
+            &policy.project,
+            claimant,
+            now,
+            hours,
+            force,
+        )
+    } else {
+        let body = format!("{} {RELEASE_MARK}", note.unwrap_or("Released the claim."));
+        claim::give_back(
+            hub,
+            leases,
+            repository,
+            number,
+            Some(&body),
+            &policy.project,
+            &claimant.session,
+            now,
+            hours,
+            force,
+        )
+    }
+}
+
+fn unix_now() -> u64 {
+    std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map_or(0, |since| since.as_secs())
 }
 
 fn status(hub: &Gh, repository: &str, number: u64, policy: &Policy) -> Result<Value, String> {
@@ -239,5 +303,54 @@ fn render(value: &Value) -> String {
             .filter_map(Value::as_str)
             .collect::<Vec<_>>()
             .join("\n"),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use coder::claim::fake::Fake;
+    use coder_lease::claims::Claimant;
+
+    fn session(id: &str, pid: Option<u32>) -> Claimant {
+        Claimant {
+            session: id.into(),
+            agent: "claude-code".into(),
+            pid,
+        }
+    }
+
+    #[test]
+    fn claim_and_release_hold_the_issue_for_the_session() {
+        let leases = tempfile::tempdir().unwrap();
+        let root = leases.path();
+        let github = Fake::plain("octo");
+        github.issue(5, None, &[], &[]);
+        let policy = Policy::default();
+        let repo = "acme/app";
+        let a = session("claude-code:a", Some(std::process::id()));
+        let b = session("claude-code:b", None);
+        let now = github.now;
+        let said = hold(
+            &github,
+            root,
+            true,
+            repo,
+            5,
+            &policy,
+            &a,
+            Some("why"),
+            now,
+            false,
+        )
+        .unwrap();
+        assert!(said[0].contains("session claude-code:a"), "{said:?}");
+        let comment = &github.state(5).comments[0].body;
+        assert!(comment.contains("why") && comment.contains("cli session=claude-code:a -->"));
+        let refused = hold(&github, root, true, repo, 5, &policy, &b, None, now, false);
+        assert!(refused.unwrap_err().contains("session claude-code:a"));
+        assert!(hold(&github, root, false, repo, 5, &policy, &b, None, now, false).is_err());
+        hold(&github, root, false, repo, 5, &policy, &a, None, now, false).unwrap();
+        hold(&github, root, true, repo, 5, &policy, &b, None, now, false).unwrap();
     }
 }

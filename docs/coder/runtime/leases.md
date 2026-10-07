@@ -340,6 +340,26 @@ order they'll be admitted, with each waiter's place, priority, and wait.
 `--json` prints the table, the limits, the aging step, and the screen
 grant.
 
+## Issue claims
+
+An issue claim must outlive the command that takes it, so it isn't a
+holder lock. `openagents issue claim N` and Coder's issue flow write a claim
+record, `claims/OWNER/NAME/issue-N.json` under the lease root
+([`coder_lease::claims`](../../../crates/coder-lease/src/claims.rs)), with
+the session, its agent process and that process's start time, and when it
+was claimed. The claim holds while both of these are true:
+
+- It's younger than the claim window: `claim_hours` in
+  `.openagents/coder-issues.json`, 6 hours by default, the same window as
+  `CLAIM_HOURS` in `scripts/project-sync.sh`.
+- A lease in the table names its session, or its agent process still runs
+  with the recorded start time.
+
+Another session's claim is refused, naming the holder's session and the
+claim's age. The same session claims again and renews it. A claim whose
+session ended is taken over. `openagents issue release N` drops the record,
+and `--force` on either command overrides another live session.
+
 ## The wrapped command's environment
 
 | Variable | Value |

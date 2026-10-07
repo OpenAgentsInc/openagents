@@ -9,7 +9,8 @@
 #   - closed issue                                   -> Done
 #   - open, live Coder claim marker in its comments  -> In progress
 #     (latest `<!-- openagents-coder-claim` newer than the latest
-#      `<!-- openagents-coder-release -->` and younger than CLAIM_HOURS, default 6)
+#      `<!-- openagents-coder-release -->` and younger than CLAIM_HOURS, default 6;
+#      a marker with or without a `session=` field counts the same)
 #   - open, native "blocked by" issue still open     -> Blocked (unless In progress
 #     or In review), and the "Blocked by" text field lists the open blockers
 #   - Blocked, all native blockers closed            -> Todo, "Blocked by" cleared
