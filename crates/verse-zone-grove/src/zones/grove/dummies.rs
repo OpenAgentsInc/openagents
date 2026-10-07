@@ -323,6 +323,26 @@ impl Dummy {
         self.pos.y + HEIGHT * self.kind.scale()
     }
 
+    /// Whether the segment from `from` to `to` passes through its body, an
+    /// upright cylinder 0.45 m across its scale, swept so a fast bolt never
+    /// skips it between steps.
+    #[must_use]
+    pub fn crossed_by(&self, from: Vec3, to: Vec3) -> bool {
+        let r = 0.45 * self.kind.scale();
+        let (a, b) = (
+            glam::Vec2::new(from.x - self.pos.x, from.z - self.pos.z),
+            glam::Vec2::new(to.x - self.pos.x, to.z - self.pos.z),
+        );
+        let d = b - a;
+        let k = if d.length_squared() < 1e-9 {
+            0.0
+        } else {
+            (-a.dot(d) / d.length_squared()).clamp(0.0, 1.0)
+        };
+        let y = from.y + (to.y - from.y) * k;
+        (a + d * k).length() <= r && y >= self.pos.y && y <= self.top()
+    }
+
     /// Whether its post holds it in place.
     #[must_use]
     pub fn anchored(&self) -> bool {

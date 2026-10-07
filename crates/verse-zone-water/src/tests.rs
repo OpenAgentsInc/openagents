@@ -576,3 +576,62 @@ fn the_lab_casts_spells_on_the_shared_rules() {
     }
     assert!(pos(&lab).y > floated + 2.0, "{}", pos(&lab).y);
 }
+
+/// A lab whose only dummies are straw ones at `spots`.
+fn lab_with_dummies(spots: &[[f32; 2]]) -> WaterLab {
+    use verse_zone_grove::zones::grove::dummies::Kind;
+    let mut lab = quiet_lab();
+    lab.targets = spots
+        .iter()
+        .map(|&at| crate::targets::Target::new(Kind::Straw, at))
+        .collect();
+    lab
+}
+
+/// Casts the Water Lab's Fireball from `caster` toward -Z and runs it to
+/// its burst.
+fn fireball(lab: &mut WaterLab, caster: Vec3) {
+    lab.cast_demo(Demo::Fireball, caster, Vec3::NEG_Z);
+    for _ in 0..(60 * 3) {
+        lab.tick(1.0 / 60.0, caster, Vec3::NEG_Z);
+    }
+}
+
+fn hurt(lab: &WaterLab, k: usize) -> bool {
+    let d = &lab.targets[k].dummy;
+    d.hp < d.kind.max_hp()
+}
+
+/// A Fireball aimed at a dummy bursts on it and burns it.
+#[test]
+fn a_fireball_aimed_at_a_dummy_bursts_on_it() {
+    let caster = Vec3::new(2.0, ground(2.0, 3.0), 3.0);
+    // The cast aims 14 m ahead: at the dummy.
+    let mut lab = lab_with_dummies(&[[2.0, -11.0]]);
+    fireball(&mut lab, caster);
+    assert!(hurt(&lab, 0), "{}", lab.targets[0].dummy.hp);
+}
+
+/// A Fireball aimed past a dummy standing in its path bursts on the dummy
+/// rather than flying through it; the burst reaches no farther than its
+/// 20-foot radius.
+#[test]
+fn a_fireball_bursts_on_a_dummy_in_its_path() {
+    let caster = Vec3::new(2.0, ground(2.0, 3.0), 3.0);
+    let mut lab = lab_with_dummies(&[[2.0, -4.0], [2.0, -12.5]]);
+    fireball(&mut lab, caster);
+    assert!(hurt(&lab, 0), "the dummy in the path burns");
+    assert!(!hurt(&lab, 1), "the burst stopped short of the aimed point");
+}
+
+/// A Fireball bursting on the water burns a dummy within 20 feet and not
+/// one beyond.
+#[test]
+fn a_fireball_on_the_water_burns_dummies_within_its_radius() {
+    let caster = Vec3::new(2.0, ground(2.0, 3.0), 3.0);
+    // The burst lands at (2, -11): one dummy 5 m beside it, one 9 m.
+    let mut lab = lab_with_dummies(&[[7.0, -11.0], [-7.0, -11.0]]);
+    fireball(&mut lab, caster);
+    assert!(hurt(&lab, 0), "{}", lab.targets[0].dummy.hp);
+    assert!(!hurt(&lab, 1));
+}

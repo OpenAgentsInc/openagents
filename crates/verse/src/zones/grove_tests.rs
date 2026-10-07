@@ -229,6 +229,35 @@ fn fire_bolt_rolls_attacks_that_land_damage() {
 }
 
 #[test]
+fn a_fireball_bursts_on_a_dummy_standing_in_its_path() {
+    let mut runtime = entered();
+    face(&mut runtime, STRAW, 20.0);
+    // Another dummy steps into the line, a little to the side, 8 m short
+    // of the target and out of its blast.
+    let blocker = 1;
+    {
+        let grove = grove_mut(&mut runtime);
+        let target = grove.dummies[STRAW].pos;
+        let at = target + Vec3::new(0.25, 0.0, -8.0);
+        grove.dummies[blocker].pos = at;
+        grove.dummies[blocker].home = at;
+    }
+    let before = grove(&runtime).dummies[blocker].hp;
+    runtime.zone_intent(Intent::Fireball).unwrap();
+    idle(&mut runtime, 1.5 + crate::zones::grove::FIREBALL_CAST);
+    let grove = grove(&runtime);
+    assert!(
+        grove.dummies[blocker].hp < before,
+        "the dummy in the path burns"
+    );
+    assert_eq!(
+        grove.dummies[STRAW].hp,
+        grove.dummies[STRAW].kind.max_hp(),
+        "the target, past the blast, is untouched"
+    );
+}
+
+#[test]
 fn fireball_burns_the_target_and_the_warded_dummy_resists_fire() {
     let mut runtime = entered();
     face(&mut runtime, STRAW, 10.0);

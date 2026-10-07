@@ -144,6 +144,8 @@ impl Demo {
 pub const FIREBALL_CAST: f32 = 0.8;
 /// How fast a thrown Fireball flies, m/s, as the Grove's does.
 pub const FIREBALL_SPEED: f32 = 24.0;
+/// Fireball's blast: a 20-foot radius, m.
+pub const FIREBALL_RADIUS: f32 = 20.0 * 0.3048;
 
 /// A spell that keeps acting each step.
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -152,6 +154,8 @@ pub enum Running {
     /// then a bolt of fire flying from `from` to `to`, where it bursts.
     Fireball {
         from: Vec3,
+        /// Where it is now, in flight.
+        at: Vec3,
         to: Vec3,
         launch: f32,
         ember: Option<verse_core::fx::Handle>,
@@ -311,9 +315,14 @@ impl WaterLab {
                 let from = self
                     .hand
                     .unwrap_or(at + Vec3::Y * 1.45 + Vec3::new(flat.x, 0.0, flat.y) * 0.3);
-                let ember = self.fx.start("cast_embers", Spawn::at(from).scaled(0.5));
+                // The fire that gathers in the hand is the one that flies,
+                // so nothing is left behind when it leaves.
+                let ember = self
+                    .fx
+                    .start("grove_flame_bolt", Spawn::at(from).scaled(1.2));
                 self.running.push(Running::Fireball {
                     from,
+                    at: from,
                     to,
                     launch: now + FIREBALL_CAST,
                     ember,
@@ -516,6 +525,7 @@ impl WaterLab {
         for r in std::mem::take(&mut self.running) {
             let Running::Fireball {
                 mut from,
+                at,
                 to,
                 launch,
                 ember,
@@ -532,6 +542,7 @@ impl WaterLab {
                 }
                 kept.push(Running::Fireball {
                     from,
+                    at: from,
                     to,
                     launch,
                     ember,
@@ -541,20 +552,25 @@ impl WaterLab {
             }
             let flight = (from.distance(to) / FIREBALL_SPEED).max(0.05);
             if trail.is_none() {
-                if let Some(ember) = ember {
-                    self.fx.stop(ember);
-                }
-                trail = self
-                    .fx
-                    .start("grove_flame_bolt", Spawn::at(from).scaled(1.6));
+                trail = ember;
             }
-            let k = (now - launch) / flight;
-            if k < 1.0 {
+            let k = ((now - launch) / flight).min(1.0);
+            let next = from.lerp(to, k);
+            // Swept along this step's path: the first dummy, orb, ground,
+            // or water it meets is where it bursts, so it never passes
+            // through a dummy however fast it flies.
+            let step = next - at;
+            let hit = self
+                .ray_hit(at, step, None)
+                .map(|(p, _)| p)
+                .filter(|p| p.distance(at) <= step.length() + 0.05);
+            if hit.is_none() && k < 1.0 {
                 if let Some(trail) = trail {
-                    self.fx.place(trail, from.lerp(to, k), (to - from) / flight);
+                    self.fx.place(trail, next, (to - from) / flight);
                 }
                 kept.push(Running::Fireball {
                     from,
+                    at: next,
                     to,
                     launch,
                     ember: None,
@@ -565,17 +581,33 @@ impl WaterLab {
             if let Some(trail) = trail {
                 self.fx.stop(trail);
             }
-            self.fireball_bursts(to);
+            self.fireball_bursts(hit.unwrap_or(to));
         }
         kept.extend(std::mem::take(&mut self.running));
         self.running = kept;
     }
 
-    /// A Fireball bursts at `at` on the water: flame, a splash and a
-    /// ring of ripples, and steam where the fire meets the water.
-    fn fireball_bursts(&mut self, at: Vec3) {
+    /// A Fireball bursts at `at`: 8d6 fire to every dummy within its
+    /// 20-foot radius, each saving on Dexterity for half (SRD 5.2.1); and
+    /// on the water, flame, a splash and a ring of ripples, and steam where
+    /// the fire meets the water.
+    pub(crate) fn fireball_bursts(&mut self, at: Vec3) {
+        use verse_zone_grove::zones::grove::kit::Damage;
         let tick = self.rules_tick();
         let basin = self.basin();
+        let total = self.dice.sum(8, 6) as f32;
+        let reached: Vec<usize> = (0..self.targets.len())
+            .filter(|&k| self.targets[k].dummy.center().distance(at) <= FIREBALL_RADIUS)
+            .collect();
+        for &k in &reached {
+            let amount = if self.save(k, false) {
+                (total / 2.0).floor()
+            } else {
+                total
+            };
+            self.hurt(k, amount, Damage::Fire);
+        }
+        self.floats.blast(at, FIREBALL_RADIUS, 6.0);
         let steam = self.rules.fire(&basin, at.as_dvec3(), 20.0 * 0.3048, tick);
         self.fx
             .start("grove_flame_hit", Spawn::at(at + Vec3::Y).scaled(2.0));
@@ -589,7 +621,8 @@ impl WaterLab {
             self.fx.start("water_steam", Spawn::at(p.as_vec3()));
         }
         let line = format!(
-            "Fireball: steam where it meets the water; {} ice melted",
+            "Fireball: {} dummies in the blast; steam where it meets the water; {} ice melted",
+            reached.len(),
             steam.melted
         );
         self.say(line);

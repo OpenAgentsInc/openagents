@@ -321,7 +321,7 @@ impl WaterLab {
 
     /// Dummy `k`'s Dexterity save against the spell save DC, with
     /// Disadvantage when water restrains it.
-    fn save(&mut self, k: usize, disadvantage: bool) -> bool {
+    pub(crate) fn save(&mut self, k: usize, disadvantage: bool) -> bool {
         let modifier = self.targets[k].dummy.kind.save(Ability::Dexterity);
         let first = self.dice.save(k as u64, "Dexterity", modifier, SAVE_DC);
         if disadvantage {
@@ -334,23 +334,23 @@ impl WaterLab {
 
     /// Deals `amount` lightning to dummy `k` and floats the number.
     fn shock(&mut self, k: usize, amount: f32) -> i32 {
+        self.hurt(k, amount, Damage::Lightning)
+    }
+
+    /// Deals `amount` of `kind` to dummy `k`, through its resistances, and
+    /// floats the number, or "Saved" when nothing got through.
+    pub(crate) fn hurt(&mut self, k: usize, amount: f32, kind: Damage) -> i32 {
         let now = self.time;
         let target = &mut self.targets[k];
         target.touched = now;
-        let dealt = target.dummy.damage(amount, Damage::Lightning, now);
+        let dealt = target.dummy.damage(amount, kind, now);
         let (top, feet) = (target.dummy.top(), target.dummy.pos);
         let text = if dealt > 0 {
             dealt.to_string()
         } else {
             "Saved".into()
         };
-        self.float(crate::targets::floater(
-            top,
-            feet,
-            &text,
-            Damage::Lightning.color(),
-            now,
-        ));
+        self.float(crate::targets::floater(top, feet, &text, kind.color(), now));
         dealt
     }
 

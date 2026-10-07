@@ -510,7 +510,23 @@ impl Grove {
                     trail,
                     from,
                 } => {
-                    if now - start >= flight {
+                    // Swept along its path so far: a standing dummy in the
+                    // way takes the bolt before its target does.
+                    let k = ((now - start) / flight.max(1e-3)).clamp(0.0, 1.0);
+                    let blocker = self.dummies.get(target).and_then(|d| {
+                        let at = from.lerp(d.center(), k);
+                        (0..self.dummies.len()).find(|&j| {
+                            j != target
+                                && !self.dummies[j].down()
+                                && self.dummies[j].crossed_by(from, at)
+                        })
+                    });
+                    if let Some(j) = blocker {
+                        if let Some(trail) = trail {
+                            self.fx.stop(trail);
+                        }
+                        landed.push((j, spell));
+                    } else if now - start >= flight {
                         if let Some(trail) = trail {
                             self.fx.stop(trail);
                         }
