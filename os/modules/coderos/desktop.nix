@@ -37,7 +37,7 @@ let
   # The copies here are copies because a Nix file cannot read a Rust
   # constant, and they match the console palette `default.nix` sets.
   # Paper Mono, the one typeface every OpenAgents surface uses, from the
-  # files committed under `assets/fonts/paper-mono/`.
+  # files committed under `crates/paper-mono/fonts/`.
   paperMono = pkgs.callPackage ../../pkgs/paper-mono.nix { };
 
   white = "ffffff";

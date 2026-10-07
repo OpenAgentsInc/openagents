@@ -1,6 +1,6 @@
 # Paper Mono, the one typeface CoderOS draws, as a font package.
 #
-# The files are the ones committed under `assets/fonts/paper-mono/` (SIL Open
+# The files are the ones committed under `crates/paper-mono/fonts/` (SIL Open
 # Font License 1.1), so the package fetches nothing. `os/` is the flake's
 # root, and the font directory sits one level up, as the workspace does for
 # `coder-desk.nix`. Only the four static weights are installed: fontconfig
@@ -13,13 +13,13 @@ stdenvNoCC.mkDerivation {
   version = "1.000";
 
   src = lib.fileset.toSource {
-    root = ../../assets/fonts/paper-mono;
+    root = ../../crates/paper-mono/fonts;
     fileset = lib.fileset.unions [
-      ../../assets/fonts/paper-mono/OFL.txt
-      ../../assets/fonts/paper-mono/PaperMono-Regular.ttf
-      ../../assets/fonts/paper-mono/PaperMono-Medium.ttf
-      ../../assets/fonts/paper-mono/PaperMono-SemiBold.ttf
-      ../../assets/fonts/paper-mono/PaperMono-Bold.ttf
+      ../../crates/paper-mono/fonts/OFL.txt
+      ../../crates/paper-mono/fonts/PaperMono-Regular.ttf
+      ../../crates/paper-mono/fonts/PaperMono-Medium.ttf
+      ../../crates/paper-mono/fonts/PaperMono-SemiBold.ttf
+      ../../crates/paper-mono/fonts/PaperMono-Bold.ttf
     ];
   };
 
