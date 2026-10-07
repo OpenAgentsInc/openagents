@@ -652,7 +652,7 @@ fn authored_mips_survive_snapshot_and_new_material_variants_reuse_them() {
     ];
     work.transact(&tx(1, edits)).unwrap();
     drop(work);
-    let mut work = Workspace::open(&root.path().join("work")).unwrap();
+    let work = Workspace::open(&root.path().join("work")).unwrap();
     let preview = work.preview().unwrap();
     assert_eq!(
         preview

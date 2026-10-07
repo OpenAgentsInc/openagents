@@ -1200,7 +1200,6 @@ use verse::zones::everglade::studio::live as studio_live;
 
 impl ControlStudio {
     fn start(socket: PathBuf) -> Self {
-        use studio_live::Transport as _;
         let (send, snapshots) = std::sync::mpsc::channel();
         std::thread::spawn(move || {
             let mut control = studio_live::ControlSocket::new(socket);

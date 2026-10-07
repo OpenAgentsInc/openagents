@@ -2939,21 +2939,6 @@ impl Game {
             .find(|a| a.id == *id)
             .map(|a| Vec3::from(a.pos))
     }
-    /// Living additional players' scene actors and movement controllers.
-    pub(crate) fn additional_characters(
-        &mut self,
-    ) -> Vec<(u64, &mut physics::character::Character)> {
-        let simulation = &self.simulation;
-        self.additional_players
-            .iter_mut()
-            .filter(|(_, p)| {
-                simulation
-                    .player_resources(p.source)
-                    .is_some_and(|r| r.hp > 0)
-            })
-            .map(|(actor, p)| (*actor, &mut p.character))
-            .collect()
-    }
     /// The movement controller of a scene actor, the adventurer included.
     pub(crate) fn spell_velocity(&mut self, actor: u64, velocity: glam::DVec3) {
         if actor == self.player_actor() {

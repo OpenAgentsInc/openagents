@@ -1294,7 +1294,6 @@ pub fn action_bar(
     let (left, y, s) = bar_geometry(width, height);
     let small = atlas.font("small").layout_at_scale(1.0 / s).unwrap();
     let hotkey = atlas.font("hotkey").layout_at_scale(1.0 / s).unwrap();
-    let numbers = atlas.font("numbers").layout_at_scale(1.0 / s).unwrap();
     let image =
         |ui: &mut UiBatch,
          name: &str,

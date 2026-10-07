@@ -2241,20 +2241,14 @@ impl Photo {
                 pass.set_bind_group(2, &gpu.groups[batch.material], &[]);
                 bound = Some(batch.material);
             }
-            self.draw_run(pass, gpu, draw, true);
+            self.draw_run(pass, draw, true);
         }
     }
 
     /// Issues `draw` from its first instance record, with the records bound
     /// once a pass (OpenGL ES offsets the instance stream for it), and
     /// counts its cost.
-    fn draw_run(
-        &self,
-        pass: &mut wgpu::RenderPass<'_>,
-        gpu: &TexturedGpu,
-        draw: instanced::Draw,
-        scene: bool,
-    ) {
+    fn draw_run(&self, pass: &mut wgpu::RenderPass<'_>, draw: instanced::Draw, scene: bool) {
         let first = draw.instances.first;
         pass.draw_indexed(
             draw.first..draw.first + draw.count,
@@ -2849,7 +2843,7 @@ impl Photo {
                         pass.set_bind_group(2, &gpu.groups[material], &[]);
                         bound = Some(material);
                     }
-                    self.draw_run(pass, gpu, draw, false);
+                    self.draw_run(pass, draw, false);
                 }
             }
         }

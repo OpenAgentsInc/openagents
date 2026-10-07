@@ -1654,7 +1654,7 @@ pub fn bow_mount_pose(
         }
     }
 }
-#[cfg(test)]
+#[cfg(all(test, feature = "chamber-client"))]
 pub(super) fn mounted_bow(
     sockets: verse_engine::sockets::Sockets<'_>,
     palette: verse_engine::sockets::Palette<'_>,

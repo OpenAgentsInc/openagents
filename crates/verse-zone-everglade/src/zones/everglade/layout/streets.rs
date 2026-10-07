@@ -273,7 +273,7 @@ fn ponds(out: &mut Vec<Placement>) {
 /// wall stands on the orchard's own reserved ground, which `clear` keeps
 /// every other piece off, so it checks only the roads and earlier pieces.
 fn orchard_wall(out: &mut Vec<Placement>, placed: &mut Vec<([f32; 2], f32)>) {
-    let mut try_put =
+    let try_put =
         |out: &mut Vec<Placement>, placed: &mut Vec<([f32; 2], f32)>, p: Placement, r: f32| {
             let [x, z] = p.at;
             let crowded = placed

@@ -382,6 +382,7 @@ impl Quest {
                 self.count(character).saturating_sub(*baseline)
             })
     }
+    #[cfg(test)]
     pub(super) fn acceptance(&self, instance: u64, actor: u64, baseline: u32) -> Transaction {
         self.acceptance_at(instance, actor, baseline, 0)
     }
@@ -405,6 +406,7 @@ impl Quest {
         });
         tx
     }
+    #[cfg(test)]
     pub(super) fn transaction(&self, instance: u64, actor: u64) -> Transaction {
         self.transaction_at(instance, actor, 0)
     }

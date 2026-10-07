@@ -109,6 +109,7 @@ pub fn shade(color: [f32; 3], a: Vec3, b: Vec3, c: Vec3) -> [f32; 3] {
 
 /// Triangles the ground adds to the zone: the grass grid and the dirt
 /// sheet, each carved cell subdivided.
+#[cfg(test)]
 #[must_use]
 pub(super) fn triangles() -> u64 {
     let carved = carved_cells();
