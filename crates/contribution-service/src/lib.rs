@@ -20,8 +20,8 @@ use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 use std::{
     fs::{self, File, OpenOptions},
-    os::unix::fs::{OpenOptionsExt, PermissionsExt},
-    path::{Component, Path},
+    os::unix::fs::{DirBuilderExt, MetadataExt, OpenOptionsExt, PermissionsExt},
+    path::{Component, Path, PathBuf},
 };
 use types::{Config, SCHEMA};
 
@@ -32,9 +32,7 @@ pub fn load_config(path: &Path) -> Result<Config> {
     private_path(path)?;
     let metadata =
         fs::symlink_metadata(path).map_err(|_| "contribution configuration is unavailable")?;
-    if !metadata.is_file() || metadata.permissions().mode() & 0o077 != 0 {
-        return Err("contribution configuration must be a private regular file".into());
-    }
+    private_regular(&metadata)?;
     let parent = path.parent().ok_or("configuration parent is absent")?;
     let name = path
         .file_name()
@@ -77,7 +75,7 @@ pub struct Host {
     config: Config,
     ledger: Ledger,
     records: Connection,
-    _lock: File,
+    custody: Vec<Custody>,
 }
 fn hex(bytes: &[u8]) -> String {
     bytes.iter().map(|b| format!("{b:02x}")).collect()
@@ -95,27 +93,93 @@ fn private_path(path: &Path) -> Result<()> {
     }
     Ok(())
 }
+fn private_regular(metadata: &fs::Metadata) -> Result<()> {
+    // SAFETY: geteuid reads the process identity and takes no memory pointers.
+    let own_uid = unsafe { libc::geteuid() };
+    if !metadata.is_file()
+        || metadata.uid() != own_uid
+        || metadata.nlink() != 1
+        || metadata.permissions().mode() & 0o077 != 0
+    {
+        return Err("private contribution files must be owned, unshared regular files".into());
+    }
+    Ok(())
+}
 fn private_file(path: &Path) -> Result<File> {
     private_path(path)?;
-    let file = OpenOptions::new()
-        .read(true)
-        .write(true)
-        .create(true)
-        .truncate(false)
-        .mode(0o600)
-        .custom_flags(libc::O_NOFOLLOW)
-        .open(path)
-        .map_err(|_| "private contribution state is unavailable")?;
-    if !file
-        .metadata()
-        .map_err(|_| "private state metadata is unavailable")?
-        .is_file()
-    {
-        return Err("private contribution state must be a regular file".into());
-    }
-    file.set_permissions(fs::Permissions::from_mode(0o600))
-        .map_err(|_| "private contribution state cannot be protected")?;
+    let options = || {
+        let mut options = OpenOptions::new();
+        options
+            .read(true)
+            .write(true)
+            .mode(0o600)
+            .custom_flags(libc::O_NOFOLLOW | libc::O_NONBLOCK);
+        options
+    };
+    let file = match options().create_new(true).open(path) {
+        Ok(file) => file,
+        Err(error) if error.kind() == std::io::ErrorKind::AlreadyExists => {
+            private_regular(
+                &fs::symlink_metadata(path)
+                    .map_err(|_| "private contribution file is unavailable")?,
+            )?;
+            options()
+                .open(path)
+                .map_err(|_| "private contribution file is unavailable")?
+        }
+        Err(_) => return Err("private contribution file cannot be created".into()),
+    };
+    private_regular(
+        &file
+            .metadata()
+            .map_err(|_| "private file metadata is unavailable")?,
+    )?;
     Ok(file)
+}
+/// Keep the original descriptors alive and compare every pathname before an
+/// effect. Replacing a lock cannot admit a second writer beside the old one.
+struct Custody {
+    path: PathBuf,
+    file: File,
+    directory: bool,
+}
+impl Custody {
+    fn check(&self) -> Result<()> {
+        private_path(&self.path)?;
+        let actual =
+            fs::symlink_metadata(&self.path).map_err(|_| "private contribution custody changed")?;
+        let held = self
+            .file
+            .metadata()
+            .map_err(|_| "private custody is unavailable")?;
+        if self.directory {
+            // SAFETY: geteuid reads the process identity without memory access.
+            if !actual.is_dir()
+                || actual.uid() != unsafe { libc::geteuid() }
+                || actual.permissions().mode() & 0o077 != 0
+            {
+                return Err("private contribution directory custody changed".into());
+            }
+        } else {
+            private_regular(&actual)?;
+            private_regular(&held)?;
+        }
+        if (actual.dev(), actual.ino()) != (held.dev(), held.ino()) {
+            return Err("private contribution custody changed".into());
+        }
+        Ok(())
+    }
+}
+fn check_sidecars(path: &Path) -> Result<()> {
+    for suffix in ["-journal", "-wal", "-shm"] {
+        let path = PathBuf::from(format!("{}{suffix}", path.display()));
+        match fs::symlink_metadata(&path) {
+            Ok(metadata) => private_regular(&metadata)?,
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}
+            Err(_) => return Err("private contribution sidecar is unavailable".into()),
+        }
+    }
+    Ok(())
 }
 impl Host {
     pub fn open(config: Config) -> Result<Self> {
@@ -137,21 +201,49 @@ impl Host {
             return Err("protected evidence, funding state, and the central ledger must be outside worker custody".into());
         }
         private_path(&config.state)?;
-        fs::create_dir_all(&config.state)
+        fs::DirBuilder::new()
+            .recursive(true)
+            .mode(0o700)
+            .create(&config.state)
             .map_err(|_| "private contribution state cannot be created")?;
-        fs::set_permissions(&config.state, fs::Permissions::from_mode(0o700))
-            .map_err(|_| "private contribution state cannot be protected")?;
+        let directory = Custody {
+            path: config.state.clone(),
+            file: File::open(&config.state)
+                .map_err(|_| "private contribution state is unavailable")?,
+            directory: true,
+        };
+        directory.check()?;
         let lock = private_file(&config.state.join("service.lock"))?;
         lock.try_lock_exclusive()
             .map_err(|_| "this contribution state already has an owner")?;
         private_path(&config.ledger)?;
-        if !fs::metadata(&config.ledger)
-            .is_ok_and(|m| m.is_file() && m.permissions().mode() & 0o077 == 0)
-        {
-            return Err("an existing private central ledger is required".into());
-        }
+        let ledger_metadata = fs::symlink_metadata(&config.ledger)
+            .map_err(|_| "an existing private central ledger is required")?;
+        private_regular(&ledger_metadata)?;
         let db_path = config.state.join("funding.sqlite");
-        private_file(&db_path)?;
+        let custody = vec![
+            directory,
+            Custody {
+                path: config.state.join("service.lock"),
+                file: lock,
+                directory: false,
+            },
+            Custody {
+                path: db_path.clone(),
+                file: private_file(&db_path)?,
+                directory: false,
+            },
+            Custody {
+                path: config.ledger.clone(),
+                file: private_file(&config.ledger)?,
+                directory: false,
+            },
+        ];
+        for entry in &custody {
+            entry.check()?;
+        }
+        check_sidecars(&db_path)?;
+        check_sidecars(&config.ledger)?;
         let records =
             Connection::open(db_path).map_err(|_| "contribution funding journal is unavailable")?;
         records
@@ -167,17 +259,28 @@ impl Host {
                 .map_err(|_| "funding state parent cannot be synced")?;
         }
         let ledger = Ledger::open(&config.ledger).map_err(|_| "central ledger is unavailable")?;
-        Ok(Self {
+        let host = Self {
             config,
             ledger,
             records,
-            _lock: lock,
-        })
+            custody,
+        };
+        host.check_custody()?;
+        Ok(host)
+    }
+    pub(crate) fn check_custody(&self) -> Result<()> {
+        for entry in &self.custody {
+            entry.check()?;
+        }
+        check_sidecars(&self.config.state.join("funding.sqlite"))?;
+        check_sidecars(&self.config.ledger)
     }
     pub fn assess(&self, wallet: &impl LightningWallet, now: i64) -> Result<evaluate::Report> {
+        self.check_custody()?;
         evaluate::verify(&self.config, &self.ledger, &wallet.node_id(), now).map(|v| v.report)
     }
     fn retained(&self) -> Result<Option<Funding>> {
+        self.check_custody()?;
         let bytes: Option<String> = self
             .records
             .query_row("SELECT bytes FROM obligation LIMIT 1", [], |r| r.get(0))
@@ -188,6 +291,7 @@ impl Host {
             .transpose()
     }
     fn save(&self, funding: &Funding) -> Result<()> {
+        self.check_custody()?;
         let changed = self
             .records
             .execute(
@@ -263,6 +367,7 @@ impl Host {
             receiver_evidence: None,
             state: "issuance_unknown".into(),
         };
+        self.check_custody()?;
         self.records
             .execute(
                 "INSERT INTO obligation(id,frozen,bytes) VALUES(?,?,?)",
@@ -273,12 +378,15 @@ impl Host {
                 ],
             )
             .map_err(|_| "the original funding intent cannot be retained")?;
-        let invoice = match wallet.receive_exact_from_node(
+        self.check_custody()?;
+        let invoice_result = wallet.receive_exact_from_node(
             &funding.central_node,
             u64::try_from(amount).map_err(|_| "invalid funded amount")?,
             parse_hash32(&funding.request_hash).map_err(|_| "invalid request hash")?,
             expiry,
-        ) {
+        );
+        self.check_custody()?;
+        let invoice = match invoice_result {
             Ok(invoice) => invoice,
             Err(openagents_wallet::WalletError::NodeMismatch { .. }) => {
                 funding.state = "receiver_refused".into();
@@ -354,10 +462,13 @@ impl Host {
             self.save(&funding)?;
             return Err("accepted contribution evidence changed".into());
         }
-        let payment = match wallet.lookup_from_node(
+        self.check_custody()?;
+        let lookup_result = wallet.lookup_from_node(
             &funding.central_node,
             parse_hash32(&invoice.payment_hash).map_err(|_| "invalid original payment hash")?,
-        ) {
+        );
+        self.check_custody()?;
+        let payment = match lookup_result {
             Ok(Some(p)) => p,
             Err(openagents_wallet::WalletError::NodeMismatch { .. }) => {
                 funding.state = "receiver_refused".into();
@@ -467,6 +578,7 @@ impl Host {
             verified_acceptance: fresh.accepted.clone(),
             current_funding_authority: self.config.authority.clone(),
         };
+        self.check_custody()?;
         if let Err(error) = self.ledger.record_contribution_earned(
             terms,
             &fresh.accepted,

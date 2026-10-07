@@ -146,12 +146,14 @@ impl Host {
         let connection =
             Connection::open_with_flags(&self.config.ledger, OpenFlags::SQLITE_OPEN_READ_ONLY)
                 .map_err(|_| "central snapshot source is unavailable")?;
+        self.check_custody()?;
         connection
             .execute(
                 "VACUUM INTO ?1",
                 [ledger_path.to_str().ok_or("invalid snapshot path")?],
             )
             .map_err(|_| "central reporting snapshot cannot be retained")?;
+        self.check_custody()?;
         fs::set_permissions(&ledger_path, fs::Permissions::from_mode(0o600))
             .map_err(|_| "central snapshot cannot be protected")?;
         fs::File::open(&ledger_path)
@@ -302,6 +304,7 @@ impl Host {
             independent_commercial_qualification: "unverified".into(),
             serving_activated: false,
         };
+        self.check_custody()?;
         retain(
             output,
             "contribution/report.json",

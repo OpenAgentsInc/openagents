@@ -162,6 +162,9 @@ actual adapter/head/tokenizer bytes, receipt chains, locked spend, transfer,
 and deployment gates. Signed current permissions bind every source group,
 license, and corpus item; admitted evaluator and acceptance keys bind the
 recomputed result. Source files and funding state stay outside the worker root.
+The adapter retains the original state, lock, journal, and central-ledger file
+identities and refuses replacement before effects or after a receiver call.
+Existing shared, foreign-owned, and hardlinked state files refuse admission.
 Distinct keys and private paths provide local admission boundaries; they do
 not attest that different people control the keys.
 

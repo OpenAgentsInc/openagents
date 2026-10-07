@@ -18,7 +18,7 @@ use serde_json::json;
 use std::{
     collections::{BTreeMap, BTreeSet},
     sync::{
-        Mutex,
+        Arc, Mutex,
         atomic::{AtomicUsize, Ordering},
     },
     time::Duration,
@@ -740,6 +740,7 @@ struct Wallet {
     bound_lookups: AtomicUsize,
     lookup_dispatches: AtomicUsize,
     resident_node: Mutex<String>,
+    lookup_hook: Mutex<Option<Box<dyn FnOnce() + Send>>>,
     record: Mutex<Option<PaymentRecord>>,
     lose_issue: bool,
     minted_at: i64,
@@ -752,6 +753,7 @@ impl Wallet {
             bound_lookups: AtomicUsize::new(0),
             lookup_dispatches: AtomicUsize::new(0),
             resident_node: Mutex::new(hex(&test_invoice::payee_of([9; 32]))),
+            lookup_hook: Mutex::new(None),
             record: Mutex::new(None),
             lose_issue: false,
             minted_at: NOW,
@@ -843,6 +845,9 @@ impl LightningWallet for Wallet {
     }
     fn lookup(&self, _: [u8; 32]) -> std::result::Result<Option<PaymentRecord>, WalletError> {
         self.lookup_dispatches.fetch_add(1, Ordering::SeqCst);
+        if let Some(hook) = self.lookup_hook.lock().unwrap().take() {
+            hook();
+        }
         Ok(self.record.lock().unwrap().clone())
     }
     fn pay(&self, _: &str, _: u64, _: Duration) -> std::result::Result<Proof, WalletError> {
@@ -1454,4 +1459,74 @@ fn funding_refreshes_time_after_lookup_and_before_central_accrual() {
             .is_err()
     );
     assert_eq!(host.ledger.accrued(&pk(1)).unwrap(), 0);
+}
+
+#[test]
+fn replaced_writer_lock_or_journal_during_lookup_cannot_accrue() {
+    for name in ["service.lock", "funding.sqlite", "state"] {
+        let f = Fixture::new();
+        let wallet = Wallet::new();
+        let mut host = f.host();
+        let funding = host.prepare(&wallet, NOW).unwrap();
+        wallet.fund(&funding);
+        let state = f.config.state.clone();
+        let config = f.config.clone();
+        let new_writer = Arc::new(Mutex::new(None));
+        let admitted_writer = new_writer.clone();
+        *wallet.lookup_hook.lock().unwrap() = Some(Box::new(move || {
+            if name == "state" {
+                fs::rename(&state, state.with_extension("old")).unwrap();
+                fs::create_dir(&state).unwrap();
+                fs::set_permissions(&state, fs::Permissions::from_mode(0o700)).unwrap();
+            } else {
+                let path = state.join(name);
+                fs::rename(&path, state.join(format!("{name}.old"))).unwrap();
+                fs::write(&path, b"replacement").unwrap();
+                fs::set_permissions(&path, fs::Permissions::from_mode(0o600)).unwrap();
+                if name == "service.lock" {
+                    *admitted_writer.lock().unwrap() = Some(Host::open(config).unwrap());
+                }
+            }
+        }));
+        assert!(
+            host.reconcile(&wallet, || Ok(NOW + 1))
+                .unwrap_err()
+                .contains("custody")
+        );
+        assert_eq!(host.ledger.accrued(&pk(1)).unwrap(), 0);
+        assert_eq!(host.ledger.totals().unwrap().settlements, 0);
+        if let Some(mut current) = new_writer.lock().unwrap().take() {
+            assert_eq!(
+                current.reconcile(&wallet, || Ok(NOW + 1)).unwrap().state,
+                "funded_liability"
+            );
+            assert_eq!(current.ledger.totals().unwrap().settlements, 1);
+            assert!(host.prepare(&wallet, NOW + 1).is_err());
+        }
+    }
+}
+#[test]
+fn shared_or_hardlinked_state_is_refused_without_changing_its_permissions() {
+    let f = Fixture::new();
+    fs::create_dir(&f.config.state).unwrap();
+    fs::set_permissions(&f.config.state, fs::Permissions::from_mode(0o700)).unwrap();
+    let path = f.config.state.join("funding.sqlite");
+    fs::write(&path, b"shared file").unwrap();
+    fs::set_permissions(&path, fs::Permissions::from_mode(0o644)).unwrap();
+    assert!(Host::open(f.config.clone()).is_err());
+    assert_eq!(
+        fs::metadata(&path).unwrap().permissions().mode() & 0o777,
+        0o644
+    );
+    fs::set_permissions(&path, fs::Permissions::from_mode(0o600)).unwrap();
+    fs::hard_link(&path, f._scratch.path().join("shared-link")).unwrap();
+    assert!(Host::open(f.config.clone()).is_err());
+    let f = Fixture::new();
+    fs::create_dir(&f.config.state).unwrap();
+    fs::set_permissions(&f.config.state, fs::Permissions::from_mode(0o755)).unwrap();
+    assert!(Host::open(f.config.clone()).is_err());
+    assert_eq!(
+        fs::metadata(&f.config.state).unwrap().permissions().mode() & 0o777,
+        0o755
+    );
 }
