@@ -490,7 +490,10 @@ mod tests {
         );
         for key in [&desktop_key, &phone_key] {
             assert!(
-                events.iter().filter(|event| &event.pubkey == key).count()
+                events
+                    .iter()
+                    .filter(|event| &event.pubkey == key && event.kind != 23300)
+                    .count()
                     <= verse::session::EVENT_BUDGET
             );
         }

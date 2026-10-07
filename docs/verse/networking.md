@@ -20,10 +20,10 @@ uses TLS; OpenAgents integrates REACH and NIP-HOST admission.
 Why not relays for live play:
 
 - **Rate.** The relay admits 60 events a minute per key and 120 per
-  address by default (`crates/nostr-relay/src/gateway/config.rs`). NIP-MV already caps a
-  client at 54 events a minute (`crates/verse/src/session.rs`), and asks
-  relays for a separate per-second lane that this relay does not give pose
-  kinds.
+  address by default (`crates/nostr-relay/src/gateway/config.rs`). A presence
+  session caps its durable states at 54 a minute
+  (`crates/verse/src/session.rs`); its pose frames go on the relay's
+  per-second pose lane (12 a second per key) instead.
 - **Cost per message.** Ephemeral events still pass through a Postgres
   transaction and `NOTIFY` fan-out (`crates/nostr-relay/src/store/mod.rs`), a database round trip per
   pose.

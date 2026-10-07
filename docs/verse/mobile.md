@@ -321,10 +321,10 @@ and finds them where the last player left them, over NIP-MV's
   its rest is still recorded.
 - **Plausibility.** Reports outside the world's walls, below the floor, or
   faster than 60 m/s or 60 rad/s are ignored.
-- **Budget.** Reports ride in the frames you send anyway. Every bare-world
-  publication, frames and states together, is capped at 54 events in any
-  minute, under the public relay's 60-event default. While you own a moving
-  body, that is about 40 frames, 6 snapshots, and 2 avatar states a minute.
+- **Budget.** Reports ride in the frames you send anyway. Bare-world states
+  and snapshots are capped at 54 events in any minute, under the public
+  relay's 60-event default; frames go on the relay's per-second pose lane
+  instead.
 
 Other players' avatars are drawn 3.3 seconds in the past, but bodies are
 not, so a remote player reaches the ball on screen a little after it
@@ -667,12 +667,12 @@ bare world needs:
   world event, so players cannot link it to the world identity. If Keychain
   cannot provide the key, the world stays offline.
 - **Cadence.** The tab publishes at Coder's mobile cadence: a pose frame every
-  three seconds while moving and every five seconds at rest, and durable
+  200 ms while moving and every five seconds at rest, and durable
   state on join and at most every thirty seconds while moving. While a
   player owns a moving body, frames go every 1.5 seconds. A presence
-  session caps everything it publishes at 54 events in any minute
+  session caps its durable states at 54 events in any minute
   (`verse::session::EVENT_BUDGET`), within the public relay's per-key
-  event limit. On join, it
+  event limit; pose frames go on the relay's per-second pose lane. On join, it
   restores its own saved position in the bare world within 1.5 seconds, or
   spawns at random.
 - **Rendering.** Other players' avatars are drawn in the neutral palette,

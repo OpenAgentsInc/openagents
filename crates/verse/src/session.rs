@@ -14,8 +14,9 @@
 //! - **Shared bodies.** In the bare world, the session carries the ball and
 //!   the blocks ([`crate::shared`]): reports of the bodies this client moves
 //!   ride in its pose frames, and a snapshot of their rest poses is an
-//!   addressable state. A presence session keeps every publication inside
-//!   [`EVENT_BUDGET`] events a minute.
+//!   addressable state. A presence session keeps its durable publications
+//!   inside [`EVENT_BUDGET`] events a minute; pose frames ride the relay's
+//!   pose lane, which counts them by the second instead.
 
 use std::collections::{HashMap, HashSet, VecDeque};
 use std::time::Duration;
@@ -52,11 +53,12 @@ pub const BUBBLE_TIME: Duration = Duration::from_secs(7);
 const MAX_PEOPLE: usize = 1024;
 /// Zone commands held for the application before older ones are dropped.
 const MAX_ZONE_COMMANDS: usize = 64;
-/// Most events a presence session publishes in any minute: under the
-/// 60-event-a-minute default of a mobile relay, with room to spare.
+/// Most durable events (states and body snapshots) a presence session
+/// publishes in any minute: under the relay's 60-event-a-minute default for a
+/// key, with room to spare. Pose frames are not counted here: the relay
+/// counts them in its pose lane, which allows 12 a second, and the moving
+/// cadence sends at most 10.
 pub const EVENT_BUDGET: usize = 54;
-/// Budget slots a pose frame leaves free for durable states.
-const FRAME_RESERVE: usize = 4;
 /// How long the first `rate-limited:` refusal slows publishing.
 const BACKOFF: Duration = Duration::from_secs(5);
 /// The longest a run of refusals slows publishing.
@@ -599,8 +601,6 @@ impl Session {
         }
     }
 
-    /// Limits every publication to `limit` events in any minute, or lifts
-    /// the limit. A presence session starts at [`EVENT_BUDGET`].
     /// Pose frames this session has published.
     #[must_use]
     pub fn frames_published(&self) -> u64 {
@@ -642,6 +642,8 @@ impl Session {
         self.throttled_until.is_some_and(|until| now < until)
     }
 
+    /// Limits durable publications to `limit` events in any minute, or
+    /// lifts the limit. A presence session starts at [`EVENT_BUDGET`].
     pub fn set_event_budget(&mut self, limit: Option<usize>) {
         self.budget.limit = limit;
     }
@@ -727,9 +729,9 @@ impl Session {
         if self.throttled_until.is_some_and(|t| now < t) {
             interval *= 4;
         }
-        if self.last_frame.is_none_or(|t| now - t >= interval)
-            && self.budget.allows(now, FRAME_RESERVE)
-        {
+        // Pose frames go on the relay's pose lane, not the per-minute budget:
+        // counting them there stopped a moving player for most of each minute.
+        if self.last_frame.is_none_or(|t| now - t >= interval) {
             self.last_frame = Some(now);
             self.seq += 1;
             let mut e = self.poses(player, agent);
@@ -750,7 +752,6 @@ impl Session {
                 unix_now(),
             ));
             self.frames_published += 1;
-            self.budget.record(now);
         }
 
         let due = match self.last_state {
@@ -1967,6 +1968,53 @@ mod tests {
     }
 
     #[test]
+    fn a_moving_presence_player_keeps_five_frames_a_second_for_minutes() {
+        let mut session = online_presence();
+        let mut player = PlayerController::new(Vec3::ZERO, 0.0);
+        let agent = Agent::new(&player);
+        let base = Instant::now();
+        let step = Duration::from_millis(16);
+        let mut frames = Vec::new();
+        let mut durable = Vec::new();
+        // Three minutes of walking in a circle, as a Grid walker does.
+        for k in 0..(180_000 / 16) {
+            let now = base + step * k;
+            let angle = k as f32 * 0.002;
+            player.pos = Vec3::new(angle.cos() * 6.0, 0.0, angle.sin() * 6.0);
+            player.speed = 3.0;
+            let before = session.published.borrow().len();
+            session.tick(now, &player, &agent);
+            for event in &session.published.borrow()[before..] {
+                if event.kind == mv::FRAME_KIND {
+                    frames.push(now - base);
+                } else {
+                    durable.push(now - base);
+                }
+            }
+        }
+        // Five frames a second throughout, with no stall past one interval.
+        let rate = frames.len() as f32 / 180.0;
+        assert!((4.5..=5.2).contains(&rate), "{rate} frames a second");
+        let worst = frames.windows(2).map(|w| w[1] - w[0]).max().unwrap();
+        assert!(worst <= Duration::from_millis(250), "a {worst:?} gap");
+        // Durable states stay inside the per-minute budget.
+        let busiest = durable
+            .iter()
+            .map(|start| {
+                durable
+                    .iter()
+                    .filter(|at| **at >= *start && **at < *start + Duration::from_secs(60))
+                    .count()
+            })
+            .max()
+            .unwrap_or(0);
+        assert!(
+            busiest <= EVENT_BUDGET,
+            "{busiest} durable events in a minute"
+        );
+    }
+
+    #[test]
     fn a_display_name_is_cleaned_to_what_the_tag_font_draws() {
         assert_eq!(display_name("  Alice   Smith "), Some("Alice Smith".into()));
         assert_eq!(display_name("al\u{7}ice\n\t"), Some("alice".into()));
@@ -2070,16 +2118,25 @@ mod tests {
                 log.push((now - base, event.kind, bodies));
             }
         }
-        let busiest = log
+        // Pose frames ride the relay's pose lane; the budget is for the rest.
+        let durable: Vec<_> = log
+            .iter()
+            .filter(|(_, kind, _)| *kind != mv::FRAME_KIND)
+            .collect();
+        let busiest = durable
             .iter()
             .map(|(start, ..)| {
-                log.iter()
+                durable
+                    .iter()
                     .filter(|(at, ..)| *at >= *start && *at < *start + Duration::from_secs(60))
                     .count()
             })
             .max()
             .unwrap();
-        assert!(busiest <= EVENT_BUDGET, "{busiest} events in one minute");
+        assert!(
+            busiest <= EVENT_BUDGET,
+            "{busiest} durable events in one minute"
+        );
         // The ball was reported all along, and resets and rests were recorded.
         let reports = log
             .iter()

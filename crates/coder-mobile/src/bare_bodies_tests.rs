@@ -98,7 +98,8 @@ fn busiest_minute(relay: &loopback_relay::LoopbackRelay, pubkey: &str) -> usize 
     let times: Vec<u64> = relay
         .published()
         .into_iter()
-        .filter(|event| event.pubkey == pubkey)
+        // Pose frames ride the relay's pose lane; the budget is for the rest.
+        .filter(|event| event.pubkey == pubkey && event.kind != 23300)
         .map(|event| event.created_at)
         .collect();
     times
