@@ -60,7 +60,8 @@ Alt+Enter for a new line. Type `/` to see the available commands.
 Enter:
 
 ```text
-Say hello, then give me three bullet points about what you can do in this folder. Do not change any files yet.
+Say hello, then give me three bullet points about what you can do
+in this folder. Do not change any files yet.
 ```
 
 Check that the reply appears in the chat and the bullet points render
@@ -72,13 +73,15 @@ If a reply needs stopping, press Esc. Ctrl+C quits Coder.
 Enter:
 
 ```text
-Create hello.txt in this folder containing exactly: Hello from Coder. Read it back and confirm its contents. Do not change any other files.
+Create hello.txt in this folder containing exactly: Hello from Coder.
+Read it back and confirm its contents. Do not change any other files.
 ```
 
 Wait for it to finish, then enter:
 
 ```text
-Change hello.txt to say: Hello from Coder RC4. Show me the before and after. Do not change any other files.
+Change hello.txt to say: Hello from Coder RC4.
+Show me the before and after. Do not change any other files.
 ```
 
 Check the file in your editor or file browser. It should contain the second
@@ -110,8 +113,8 @@ Skip this step if you do not have an OpenRouter API key.
 3. Return to the plugin list and ensure OpenRouter is on.
 4. Enter `/models`. Type to search, then use Up/Down and Enter to choose
    `openrouter/free` for the default free router or another listed model.
-   Fixed models offer their supported reasoning
-   levels; the free router skips that step. Confirm the output limit to save.
+   Fixed models offer their supported reasoning levels; the free router skips
+   that step. Confirm the output limit to save.
 5. Send another greeting. Check **OpenRouter connected** near the input bar,
    the selected model, and the actual model above the reply. A fixed model's
    label includes its reasoning setting, such as `:low`.
