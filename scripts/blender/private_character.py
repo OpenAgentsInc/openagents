@@ -3,7 +3,7 @@
 Run headless (`verse-private add` runs it for you):
     Blender -b --factory-startup --python scripts/blender/private_character.py -- \
         IN OUT_DIR [--height M] [--near N] [--far N] [--edge PX] [--up AXIS] [--turn DEG]
-        [--pose standing|seated]
+        [--pose standing|seated] [--overlay jacket,heels]
 
 IN is a `.glb`, `.gltf`, `.fbx`, or `.blend`. OUT_DIR receives
 `guest.gltf` and `guest.bin` (the near level), `guest_far.gltf` and
@@ -39,6 +39,12 @@ Steps:
   bowed a little toward the desk, and once a cycle a glance up and a little
   aside toward whoever arrives. The report gives `seat_m`, the height of the
   seat under the body, which a chair must match.
+- With `--overlay`, a seated body is dressed in original garments from
+  `outfit.py` before the levels are made: `jacket`, a tailored black
+  jacket, and `heels`, black pumps. They join the body with their own
+  materials, so the bake carries them into each level's one image, and the
+  rig weights them as it weights the body. The pumps' soles raise the
+  body a few millimeters; `seat_m` includes it.
 """
 
 import json
@@ -46,12 +52,15 @@ import math
 import os
 import sys
 
+import bmesh
 import bpy
+import numpy as np
 from mathutils import Matrix, Vector
 
 sys.dont_write_bytecode = True  # Leave the checkout's __pycache__ alone.
 sys.path.insert(0, os.path.dirname(__file__))
 import kit  # noqa: E402
+import outfit  # noqa: E402
 
 TAU = 2 * math.pi
 # Joint pivots as fractions of the body's height, and the height each
@@ -62,26 +71,36 @@ BLEND = 0.03
 # The seated pose's bends: the hip and knee pivots as fractions of the
 # standing height, and each bend's blend half width, also a fraction.
 HIP, KNEE, BEND = 0.49, 0.285, 0.035
+# With overlays, how much texture a garment's and the head's faces get
+# against the rest of the body, linearly.
+GARMENT_TEXEL, HEAD_TEXEL = 0.75, 1.45
 
 
 def options():
     a = kit.args()
     if len(a) < 2:
         sys.exit("usage: private_character.py IN OUT_DIR [--height M] [--near N] [--far N] "
-                 "[--edge PX] [--up AXIS] [--turn DEG] [--pose standing|seated]")
+                 "[--edge PX] [--up AXIS] [--turn DEG] [--pose standing|seated] "
+                 "[--overlay jacket,heels]")
     o = {"in": a[0], "out": a[1], "height": 1.62, "near": 20000, "far": 5000, "edge": 1024,
-         "up": "auto", "turn": 0.0, "pose": "standing"}
+         "up": "auto", "turn": 0.0, "pose": "standing", "overlay": ""}
     rest = a[2:]
     while rest:
         key, value = rest[0], rest[1] if len(rest) > 1 else None
         if not key.startswith("--") or value is None or key[2:] not in o:
             sys.exit(f"unknown or incomplete option: {key}")
         k = key[2:]
-        o[k] = value if k in ("up", "pose") else float(value)
+        o[k] = value if k in ("up", "pose", "overlay") else float(value)
         rest = rest[2:]
     o["near"], o["far"], o["edge"] = int(o["near"]), int(o["far"]), int(o["edge"])
     if o["pose"] not in ("standing", "seated"):
         sys.exit("--pose is standing or seated")
+    o["overlay"] = [x for x in o["overlay"].split(",") if x]
+    unknown = [x for x in o["overlay"] if x not in outfit.OVERLAYS]
+    if unknown:
+        sys.exit(f"unknown overlay {unknown[0]}; known: {', '.join(outfit.OVERLAYS)}")
+    if o["overlay"] and o["pose"] != "seated":
+        sys.exit("--overlay fits a seated body; add --pose seated")
     return o
 
 
@@ -173,11 +192,15 @@ def select(*objs):
     bpy.context.view_layer.objects.active = objs[-1]
 
 
-def level(high, name, target, edge):
+def level(high, name, target, edge, texels=None, group=None):
     """A copy of `high` decimated to `target` triangles, unwrapped afresh,
     with `high`'s base color baked into one `edge`-pixel image. Collapsing
     a dense AI mesh smears its own UV seams; a bake from the full mesh
-    doesn't."""
+    doesn't. `texels`, when given, maps a face's material name and height
+    to how much texture its island gets, linearly, before packing.
+    `group`, when given, maps a material name to a group: each group's
+    faces bake only from the same group's, so a jacket a centimeter over
+    a dress never paints the dress."""
     low = high.copy()
     low.data = high.data.copy()
     low.name = low.data.name = name
@@ -193,8 +216,17 @@ def level(high, name, target, edge):
     # and concave packing fills the square, so mipmaps don't bleed the
     # background into thin islands.
     bpy.ops.uv.smart_project(angle_limit=math.radians(89), island_margin=0.003, area_weight=1.0)
+    if texels:
+        bpy.ops.object.mode_set(mode="OBJECT")
+        scale_islands(low, "baked", texels)
+        bpy.ops.object.mode_set(mode="EDIT")
+        bpy.ops.mesh.select_all(action="SELECT")
     bpy.ops.uv.pack_islands(rotate=True, margin=0.003, shape_method="CONCAVE")
     bpy.ops.object.mode_set(mode="OBJECT")
+    low_groups = high_groups = None
+    if group:
+        low_groups = face_groups(low, group)
+        high_groups = face_groups(high, group)
     image = bpy.data.images.new(name, edge, edge, alpha=False)
     image.file_format = "PNG"
     mat = bpy.data.materials.new(name)
@@ -211,13 +243,161 @@ def level(high, name, target, edge):
     scene.render.engine = "CYCLES"
     scene.cycles.device = "CPU"
     scene.cycles.samples = 4
-    select(high, low)
-    bpy.ops.object.bake(type="DIFFUSE", pass_filter={"COLOR"}, use_selected_to_active=True,
-                        cage_extrusion=0.02, max_ray_distance=0.06, margin=8)
+    if group:
+        bake_groups(high, high_groups, low, low_groups, image, mat)
+    else:
+        select(high, low)
+        bake_into()
     image.pack()
     for layer in [u for u in uvs if u.name != "baked"]:
         uvs.remove(layer)
     return low, triangles
+
+
+def bake_into():
+    """Bakes the selected objects' base color into the active one's image."""
+    bpy.ops.object.bake(type="DIFFUSE", pass_filter={"COLOR"}, use_selected_to_active=True,
+                        cage_extrusion=0.02, max_ray_distance=0.06, margin=8)
+
+
+def face_groups(obj, group):
+    names = [m.name.split(".")[0] if m else "" for m in obj.data.materials]
+    index = [group(n) for n in names] or [0]
+    mi = [0] * len(obj.data.polygons)
+    obj.data.polygons.foreach_get("material_index", mi)
+    return [index[i] if i < len(index) else 0 for i in mi]
+
+
+def only_faces(obj, keep, name):
+    """A linked copy of `obj` with only the faces `keep` marks."""
+    c = obj.copy()
+    c.data = obj.data.copy()
+    c.name = c.data.name = name
+    bpy.context.scene.collection.objects.link(c)
+    bm = bmesh.new()
+    bm.from_mesh(c.data)
+    bm.faces.ensure_lookup_table()
+    bmesh.ops.delete(bm, geom=[f for f in bm.faces if not keep[f.index]], context="FACES")
+    bm.to_mesh(c.data)
+    bm.free()
+    return c
+
+
+def coverage(obj, edge):
+    """Which pixels of an `edge`-pixel image the faces of `obj` cover in its
+    active UV layer."""
+    me = obj.data
+    me.calc_loop_triangles()
+    uv = me.uv_layers.active.data
+    mask = np.zeros((edge, edge), bool)
+    for tri in me.loop_triangles:
+        p = np.array([uv[i].uv[:] for i in tri.loops]) * edge - 0.5
+        lo = np.floor(p.min(0)).astype(int)
+        hi = np.ceil(p.max(0)).astype(int)
+        lo, hi = np.clip(lo, 0, edge - 1), np.clip(hi, 0, edge - 1)
+        xs, ys = np.meshgrid(np.arange(lo[0], hi[0] + 1), np.arange(lo[1], hi[1] + 1))
+        a, b, c = p
+        d = (b[1] - c[1]) * (a[0] - c[0]) + (c[0] - b[0]) * (a[1] - c[1])
+        if abs(d) < 1e-12:
+            continue
+        w0 = ((b[1] - c[1]) * (xs - c[0]) + (c[0] - b[0]) * (ys - c[1])) / d
+        w1 = ((c[1] - a[1]) * (xs - c[0]) + (a[0] - c[0]) * (ys - c[1])) / d
+        inside = (w0 >= -0.02) & (w1 >= -0.02) & (w0 + w1 <= 1.02)
+        mask[ys[inside], xs[inside]] = True
+    return mask
+
+
+def dilate(mask, steps):
+    out = mask.copy()
+    for _ in range(steps):
+        grown = out.copy()
+        grown[1:] |= out[:-1]
+        grown[:-1] |= out[1:]
+        grown[:, 1:] |= out[:, :-1]
+        grown[:, :-1] |= out[:, 1:]
+        out = grown
+    return out
+
+
+def bake_groups(high, high_groups, low, low_groups, image, material):
+    """Bakes each group of `low`'s faces from the same group of `high`'s
+    into its own image, then lays the groups into `image` by where their
+    islands lie, the first group under the rest."""
+    edge = image.size[0]
+    tex = material.node_tree.nodes.active
+    out = None
+    taken = np.zeros((edge, edge), bool)
+    for g in sorted(set(low_groups)):
+        hi = only_faces(high, [x == g for x in high_groups], f"bake_high_{g}")
+        lo = only_faces(low, [x == g for x in low_groups], f"bake_low_{g}")
+        part = bpy.data.images.new(f"{image.name}_{g}", edge, edge, alpha=False)
+        tex.image = part
+        select(hi, lo)
+        bake_into()
+        px = np.array(part.pixels[:], dtype=np.float32).reshape(edge, edge, 4)
+        mine = coverage(lo, edge)
+        if out is None:
+            out = px
+        else:
+            # This group's islands and a margin around them, but never
+            # over another group's islands.
+            reach = dilate(mine, 4) & ~taken
+            out[reach] = px[reach]
+        taken |= mine
+        for o in (hi, lo):
+            data = o.data
+            bpy.data.objects.remove(o, do_unlink=True)
+            bpy.data.meshes.remove(data)
+        bpy.data.images.remove(part)
+    tex.image = image
+    image.pixels.foreach_set(out.ravel())
+    image.update()
+
+
+def scale_islands(obj, layer, texels):
+    """Scales each UV island of `obj` about its middle by the largest of
+    `texels(material name, face center)` over its faces, so packing gives
+    it that much more or less texture."""
+    me = obj.data
+    names = [m.name if m else "" for m in me.materials]
+    bm = bmesh.new()
+    bm.from_mesh(me)
+    uv = bm.loops.layers.uv[layer]
+    bm.faces.ensure_lookup_table()
+    parent = list(range(len(bm.faces)))
+
+    def find(i):
+        while parent[i] != i:
+            parent[i] = parent[parent[i]]
+            i = parent[i]
+        return i
+
+    def corner(face, vert):
+        for loop in face.loops:
+            if loop.vert == vert:
+                return loop[uv].uv
+        return None
+
+    for e in bm.edges:
+        if len(e.link_faces) != 2:
+            continue
+        f, g = e.link_faces
+        if all((corner(f, v) - corner(g, v)).length < 1e-6 for v in e.verts):
+            parent[find(f.index)] = find(g.index)
+    islands = {}
+    for f in bm.faces:
+        islands.setdefault(find(f.index), []).append(f)
+    for faces in islands.values():
+        k = max(texels(names[f.material_index] if f.material_index < len(names) else "",
+                       f.calc_center_median()) for f in faces)
+        if abs(k - 1.0) < 1e-6:
+            continue
+        loops = [loop for f in faces for loop in f.loops]
+        mid = sum((loop[uv].uv for loop in loops), Vector((0.0, 0.0))) / len(loops)
+        for loop in loops:
+            loop[uv].uv = mid + (loop[uv].uv - mid) * k
+    bm.to_mesh(me)
+    bm.free()
 
 
 def smoothstep(t):
@@ -382,8 +562,27 @@ def main():
     up, scale = stand(body, o["up"], o["turn"], o["height"])
     seated = o["pose"] == "seated"
     drop, seat_m = seat(body, o["height"]) if seated else (0.0, 0.0)
-    near_body, near = level(body, "guest", o["near"], o["edge"])
-    far_body, far = level(body, "guest_far", o["far"], o["edge"] // 2)
+    dressed = {}
+    if o["overlay"]:
+        body, lift, dressed = outfit.dress(body, o["height"], o["overlay"])
+        drop -= lift
+        seat_m += lift
+    texels = None
+    if o["overlay"]:
+        # The garments are plain cloth and leather; the face is what a
+        # visitor looks at. Spend the texture accordingly.
+        head = pivots(o["height"], drop)[-1]
+
+        def texels(material, center):
+            if material.split(".")[0] in outfit.MATERIALS:
+                return GARMENT_TEXEL
+            return HEAD_TEXEL if center.z > head else 1.0
+    group = None
+    if o["overlay"]:
+        def group(material):
+            return 1 if material in outfit.MATERIALS else 0
+    near_body, near = level(body, "guest", o["near"], o["edge"], texels, group)
+    far_body, far = level(body, "guest_far", o["far"], o["edge"] // 2, texels, group)
     bpy.data.objects.remove(body, do_unlink=True)
     body = near_body
     heights = pivots(o["height"], drop)
@@ -417,6 +616,8 @@ def main():
         "clips": ["idle"],
         "pose": o["pose"],
         "seat_m": round(seat_m, 3),
+        "overlay": o["overlay"],
+        "outfit": dressed,
         "previews": [os.path.basename(p) for p in previews],
     }
     with open(os.path.join(o["out"], "report.json"), "w") as f:
@@ -424,4 +625,5 @@ def main():
     print("PRIVATE_CHARACTER " + json.dumps(report, sort_keys=True))
 
 
-main()
+if __name__ == "__main__":
+    main()

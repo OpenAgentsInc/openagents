@@ -4,7 +4,7 @@
 //! ```text
 //! verse-private add SOURCE --name NAME --license ID [--reader HEX]... [--title TEXT]
 //!     [--height M] [--near N] [--far N] [--edge PX] [--up AXIS] [--turn DEG]
-//!     [--pose standing|seated] [--build DIR] [--dry-run]
+//!     [--pose standing|seated] [--overlay jacket,heels] [--build DIR] [--dry-run]
 //! verse-private place NAME (--at X,Z [--yaw RADIANS] | --seat SEAT) [--scale S]
 //!     [--broker URL] [--profile P]
 //! verse-private unplace NAME
@@ -22,6 +22,9 @@
 //! the private bucket with the owner's own `gcloud` login. Everything it
 //! writes locally goes under `~/.openagents/verse/private-build/`, outside
 //! the repository. Readers default to the `default` Verse profile's key.
+//! `--overlay` dresses a seated character in our own garments
+//! (`scripts/blender/outfit.py`); the provenance records that script's
+//! digest too.
 
 use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
@@ -34,6 +37,7 @@ use verse_zone_everglade::zones::everglade_pack::compile::private;
 
 const BLENDER: &str = "/Applications/Blender.app/Contents/MacOS/Blender";
 const SCRIPT: &str = "scripts/blender/private_character.py";
+const OUTFIT: &str = "scripts/blender/outfit.py";
 const MAX_VENDOR_FILES: usize = 256;
 const LICENSES: [(&str, &str); 1] = [(
     "fab-standard",
@@ -321,7 +325,7 @@ fn repository() -> PathBuf {
 fn add(args: &Args) -> Result<(), String> {
     args.only(&[
         "name", "license", "reader", "title", "height", "near", "far", "edge", "up", "turn",
-        "pose", "build",
+        "pose", "overlay", "build",
     ])?;
     let source = PathBuf::from(
         args.positional
@@ -389,6 +393,12 @@ fn add(args: &Args) -> Result<(), String> {
         let value = args.one(flag).unwrap_or(default).to_owned();
         blender_args.extend([format!("--{flag}"), value.clone()]);
         parameters.insert(flag.to_owned(), value);
+    }
+    if let Some(overlay) = args.one("overlay") {
+        blender_args.extend(["--overlay".to_owned(), overlay.to_owned()]);
+        parameters.insert("overlay".to_owned(), overlay.to_owned());
+        let outfit = std::fs::read(repo.join(OUTFIT)).map_err(|e| format!("{OUTFIT}: {e}"))?;
+        parameters.insert("outfit_sha256".to_owned(), sha256_hex(&outfit));
     }
     let blender = std::env::var("BLENDER").unwrap_or_else(|_| BLENDER.into());
     let script = repo.join(SCRIPT);

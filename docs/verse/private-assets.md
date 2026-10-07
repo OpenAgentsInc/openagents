@@ -136,6 +136,36 @@ and a little aside. The report records `seat_m`, the height of the seat
 under the body (0.395 m for a 1.62 m body), which the chair it sits on
 matches.
 
+### Overlays
+
+`add --pose seated --overlay jacket,heels` dresses a seated character in
+garments of our own, built by
+[`scripts/blender/outfit.py`](../../scripts/blender/outfit.py) around the
+body before the levels are made. The garment code is committed; the dressed
+body and its pack stay private like any other build.
+
+- `jacket`: a tailored black jacket. The script lofts a torso shell and two
+  sleeves over convex slices of the body, without the hair, joins them with
+  a voxel remesh, relaxes the surface, and pushes it back off the body. It
+  cuts the hem, the cuffs, the neck, and a single-breasted front that opens
+  in a V above the waist button, then adds notched lapels and a collar and
+  gives the edges a turned thickness. Hair the jacket would pass through is
+  lifted onto it by a smooth field over the angle around the neck and the
+  height, so curls keep their shape and the hair's layers never cross.
+- `heels`: black pumps fitted to the feet as the seated pose leaves them,
+  pointed with the heels lifted: an upper lofted over the foot's sections,
+  an almond toe, a throat cut low over the instep, and a tapered heel to the
+  floor. The soles raise the body 4 mm, which `seat_m` includes.
+
+Skin and dress the garments cover from every side are removed, so the levels
+spend their triangles on what shows. Each level then bakes the body's faces
+only from the body and the garments' faces only from the garments, so a
+jacket a centimeter over the dress never paints the dress. Only base color
+reaches the pack, so the cloth's folds are baked into it from ambient
+occlusion and the pumps' gloss as a soft highlight. The garments' islands get
+0.75 and the head's 1.45 times the linear texture density of the rest. The
+provenance records `overlay` and `outfit.py`'s digest.
+
 ## Access
 
 The broker is `verse-assets`, a small Cloud Run service built from
