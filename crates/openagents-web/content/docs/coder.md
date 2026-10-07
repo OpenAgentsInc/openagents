@@ -1,75 +1,152 @@
-# Coder
+# Coder quick start
 
-Coder is our coding agent. You ask for coding work in a chat, and Coder
-does it on your own computer, in your own project, with a coding agent
-you're already signed in to there, such as Codex, Claude Code, or Grok
-Build. It uses that computer's own git and GitHub sign-in.
+Coder is an AI coding assistant in your terminal. Ask it to explain code,
+change files, or run commands in the folder you open. You can follow its work
+in the chat and open a delegated agent's conversation below the input bar.
 
-## What you need
+The new **1.0.0-rc.4** release ships Coder, OpenAgents CLI, and Microcoder for
+macOS, Linux, and Windows. It includes plugin settings, an OpenRouter model
+picker, agent conversations, Markdown replies, code diffs, and saved chats
+that you can resume or export.
 
-- **A computer.** A Mac with OpenAgents for Mac, or any macOS, Linux, or
-  Windows computer with OpenAgents Terminal. We don't offer a hosted
-  computer yet.
-- **A coding agent signed in on it.** See [Coding agents](/docs/coding-agents).
-- **A project.** A Git checkout with at least one commit.
+You do not need an API key to start. Coder uses an available Codex or Claude
+Code login, then falls back to the **OpenAgents AI Gateway**. Connecting
+OpenRouter is optional.
 
-## Run Coder on the computer you're at
+## Playtest: follow these steps in order
 
-1. Open a chat in the Mac app, or run `openagents` in your project's
-   folder.
-2. Ask for the work: "add a unit test for slugify that covers an empty
-   string".
-3. The reply says Coder is starting, and Coder's steps stream into the
-   chat: what it reads, the commands it runs with their results, and its
-   progress (`step 5 · ≈40% done`).
-4. When it finishes, the chat shows a summary, the files it changed, and
-   where the change is. See [Worktrees and changes](/docs/worktrees-and-changes).
+Allow about 15 minutes. Use a new, empty folder so the test stays separate
+from your projects.
 
-In the Mac app, Coder works in the chat's project. If the chat has none, it
-uses the first project you picked in **Phones and computers**, then the
-last project it worked in. If none of them is a Git checkout, the chat asks
-you to **Choose folder…**.
+### 1. Install Coder
 
-## Run Coder from your phone
-
-1. [Connect your phone](/docs/connect-a-computer) to your Mac.
-2. On the Mac, in **Phones and computers**, click **Choose folder…** to
-   pick a project, and turn on **Let my phone start Coder here**.
-3. On the phone, ask for the work in a chat.
-
-If the Mac starts Coder at once (the default), Coder starts there with no
-tap, and the chat shows where it runs with **Stop**. Otherwise the reply
-shows **Run Coder on** your Mac; tap it. Without **Let my phone start
-Coder here**, the work is recorded but doesn't start by itself.
-
-If the computer is asleep or offline, the message waits on your phone and
-goes as soon as the computer is back. It is never sent twice.
-
-## Start at once, or ask first
-
-By default, Coder starts as soon as the reply says a message is coding
-work. To have the reply offer **Run Coder** instead, choose **Ask first**
-in the Mac app's **Settings → Coder**, or run:
+On macOS or Linux, run:
 
 ```sh
-openagents settings set coder.start ask_first
+curl -fsSL https://openagents.com/cli/install.sh | bash
 ```
 
-The same setting decides for your phone's requests to that computer.
+On Windows, open PowerShell and run:
 
-## Coder approves its own steps
+```powershell
+irm https://openagents.com/cli/install.ps1 | iex
+```
 
-By default, Coder doesn't stop to ask permission for each step: it runs
-commands, edits files, and can push, so the work gets done end to end. It
-works in its own copy of your project, never in your checkout. It can still
-ask you a question when it needs one; answer in the chat. To run it inside
-a stricter boundary, change `coder.access` in the
-[settings](/docs/settings).
+Open a new terminal, then check the version:
 
-## No step or time budget
+```sh
+coder --version
+```
 
-A run ends when Coder finishes, asks you something, or you stop it. If it
-keeps repeating an approach that already failed without making progress,
-it stops itself and says so.
+It should report `1.0.0-rc.4`. The [download page](/download) also has manual
+downloads. Run the installer again when you want to update.
 
-Next: [Coding agents](/docs/coding-agents).
+### 2. Open a test folder
+
+These commands work in a macOS/Linux terminal or Windows PowerShell:
+
+```sh
+mkdir coder-playtest
+cd coder-playtest
+coder
+```
+
+You should see an empty chat, the working folder at the top right, and an
+input bar at the bottom. Type a message and press Enter to send it. Use
+Alt+Enter for a new line. Type `/` to see the available commands.
+
+### 3. Send your first message
+
+Enter:
+
+```text
+Say hello, then give me three bullet points about what you can do in this folder. Do not change any files yet.
+```
+
+Check that the reply appears in the chat and the bullet points render
+normally. Notice the connection or model information near the input bar.
+If a reply needs stopping, press Esc. Ctrl+C quits Coder.
+
+### 4. Make one small change
+
+Enter:
+
+```text
+Create hello.txt in this folder containing exactly: Hello from Coder. Read it back and confirm its contents. Do not change any other files.
+```
+
+Wait for it to finish, then enter:
+
+```text
+Change hello.txt to say: Hello from Coder RC4. Show me the before and after. Do not change any other files.
+```
+
+Check the file in your editor or file browser. It should contain the second
+greeting. Follow the commands and results in the chat.
+
+If a delegated agent appears below the input bar, clear any draft and use
+Up/Down to select its conversation. Check its task, elapsed time, and token
+count. Press Up from the first agent to return to the main chat. Trackpad or
+mouse scrolling should scroll the chat without changing the selected agent.
+Some requests run entirely in the main chat and have no separate agent row.
+
+### 5. Try the plugin screen
+
+Enter `/plugins` or press F2. Up/Down selects a plugin, Space turns it on or
+off, and Enter opens its settings. Esc returns to the previous screen.
+
+Microcoder, Jev, OpenAgents CLI, and ACP Subagents ship enabled. OpenRouter
+BYOK starts off unless a key is already configured. Try turning Jev off and
+back on. Open **ACP Subagents** to see detected local agents and their
+checkboxes; an empty list is normal if none are installed.
+
+### 6. Optional: connect OpenRouter and choose a model
+
+Skip this step if you do not have an OpenRouter API key.
+
+1. In `/plugins`, select **OpenRouter BYOK** and press Enter.
+2. Enter your key in **OpenRouter API key**. Use Tab to select **Save**, then
+   press Enter. Check that the key is verified.
+3. Return to the plugin list and ensure OpenRouter is on.
+4. Enter `/models`. Type to search, then use Up/Down and Enter to choose
+   `openrouter/free` for the default free router or another listed model.
+   Fixed models offer their supported reasoning
+   levels; the free router skips that step. Confirm the output limit to save.
+5. Send another greeting. Check **OpenRouter connected** near the input bar,
+   the selected model, and the actual model above the reply. A fixed model's
+   label includes its reasoning setting, such as `:low`.
+
+Plugin settings persist when you quit and reopen Coder. Turning OpenRouter
+off retains its saved key and returns to the other available providers.
+
+### 7. Export and resume
+
+Enter `/export` after the reply finishes. Coder saves an **ATIF** file: a
+record of the conversation and its calls. It shows the file path and copies
+the path to your clipboard when clipboard access is available.
+
+Press Ctrl+C, run `coder` again in the same folder, and enter `/resume`.
+Select your test chat with Up/Down, then press Enter. The messages should
+return without repeating earlier commands. Send:
+
+```text
+What did we change in hello.txt?
+```
+
+### 8. Share your results
+
+Report your operating system, Coder version, provider and model, the step
+you tried, and what happened. Include a screenshot or the exported test chat
+if helpful. Keep API keys and private project content out of your report.
+You can [report a problem on GitHub](https://github.com/OpenAgentsInc/openagents/issues).
+
+## Use Coder from a script
+
+The companion CLI exposes the same chat runtime:
+
+```sh
+openagents coder chat -p "Explain the files in this folder. Do not change anything." --session first-test --json
+```
+
+Reuse `--session first-test` to continue that chat. Run
+`openagents coder --help` for the other commands.

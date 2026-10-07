@@ -5,7 +5,7 @@ downloads for seven platforms.
 
 ## Coder + OpenAgents CLI
 
-Coder 1.0.0-rc.3 is the new terminal UI. Its installer also installs the
+Coder 1.0.0-rc.4 is the new terminal UI. Its installer also installs the
 OpenAgents CLI and Microcoder, the companion commands Coder uses.
 
 On macOS and Linux:
@@ -27,8 +27,10 @@ checksums, and installs under `~/.openagents/bin`
 `openagents --help` for the CLI. Run the install command again to update.
 The installer follows the `rc` channel by default.
 
-Use `/plugins` to configure plugins, `/models` to select a model, and
-`/demo` to switch between live conversations and the UI examples.
+Follow the [Coder quick start](/docs/coder) for an ordered playtest: send a
+message, change a small file, configure plugins, and export and resume a chat.
+Use `/plugins` to configure plugins and `/models` to select an OpenRouter
+model when that plugin is enabled.
 
 ## Manual downloads
 
