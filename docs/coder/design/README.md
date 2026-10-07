@@ -49,6 +49,7 @@ SwiftUI, Android, terminal, and web integration under
 | [decision-function-inventory](decision-function-inventory.md) | Coder decision-function inventory |
 | [knowledge-base](knowledge-base.md) | The shared knowledge base: entries, retrieval, expansion, admission by measurement, and sharing over Nostr (NIP-KB) |
 | [luna-pivot](luna-pivot.md) | The Luna pivot: Jev structure around GPT-6 Luna, and the Microluna harness (superseded by Microcoder for the harness) |
+| [many-agents-one-machine](many-agents-one-machine.md) | Many coding agents on one machine: the kinds of contention seen on the owner's Mac, isolation against queues, what the host already enforces, and a resource broker proposal |
 | [microluna](microluna.md) | Microluna: calling Luna directly on a logged-in Codex session, and what to keep from Codex |
 | [microluna-parallel](microluna-parallel.md) | Historical Microluna parallel exploration proposal |
 | [microluna-v8](microluna-v8.md) | Historical v8 changes, retained failures, and limits of the selected-task result |
