@@ -1,0 +1,53 @@
+# A Fireball bursting on water: a big, dense cloud of steam that billows
+# up off the surface, rolls out over the water, drifts downwind, and thins
+# away over several seconds. Successive bursts pile up into a mist.
+description = "A rolling cloud of steam where a Fireball meets the water."
+
+[[emitter]]
+name = "billow"
+sheet = "smoke"
+blend = "alpha"
+light = "lit"
+burst = 8
+rate = 10.0
+duration = 1.2
+life = [3.5, 5.0]
+shape = "disc"
+radius = 1.6
+direction = [0.6, 1.0, 0.2]
+spread = 40.0
+speed = [0.6, 1.4]
+radial = [0.6, 1.6]
+gravity = 0.25
+drag = 0.45
+wander = 0.35
+size = [0.9, 1.4]
+scale = [[0.0, 0.5], [0.3, 1.6], [1.0, 2.8]]
+color = [1.3, 1.33, 1.38]
+alpha = [[0.0, 0.0], [0.12, 0.42], [0.6, 0.26], [1.0, 0.0]]
+spin = [-0.25, 0.25]
+priority = 3
+
+[[emitter]]
+name = "roll"
+sheet = "smoke"
+blend = "alpha"
+light = "lit"
+delay = 0.3
+rate = 6.0
+duration = 1.5
+life = [4.0, 5.5]
+shape = "disc"
+radius = 3.0
+direction = [1.0, 0.15, 0.3]
+spread = 30.0
+speed = [0.5, 1.1]
+gravity = 0.05
+drag = 0.3
+wander = 0.25
+size = [1.2, 1.8]
+scale = [[0.0, 0.6], [0.4, 1.5], [1.0, 2.4]]
+color = [1.25, 1.28, 1.33]
+alpha = [[0.0, 0.0], [0.2, 0.3], [1.0, 0.0]]
+spin = [-0.15, 0.15]
+priority = 2

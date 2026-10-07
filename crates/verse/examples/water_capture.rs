@@ -532,6 +532,98 @@ fn spells(
         lab.set_sea(0);
     }
     let wanted = std::env::var("VERSE_SPELL_VIDEO").ok();
+    // `VERSE_SPELL_VIDEO=fireball-volley`: Fireballs thrown one after
+    // another at a straw dummy wading in the shallows, a second straw
+    // dummy standing beside the line inside the blast, until both are down,
+    // then the steam drifting over the bay; frames at 30 a second into
+    // `OUT_DIR/spells/fireball-volley/`.
+    if wanted.as_deref() == Some("fireball-volley") {
+        use zones::grove::dummies::Kind;
+        let (x, z) = (2.0, 10.0);
+        stand(runtime, x, z, PI);
+        let caster = Vec3::new(x, water::ground(x, z), z);
+        if let Some(lab) = runtime.water_lab_mut() {
+            lab.rules = Default::default();
+            // The field's straw dummy wading at (2, -4) is the far one, on
+            // the line; the beach's straw dummy steps beside the line inside
+            // the blast; the warded dummy wades out of it.
+            lab.targets[0] = water::targets::Target::new(Kind::Straw, [3.6, -1.0]);
+            lab.targets[4] = water::targets::Target::new(Kind::Warded, [14.0, -7.0]);
+            // The armored dummy steps off the camera's path.
+            lab.targets[1] = water::targets::Target::new(Kind::Armored, [-12.0, 4.0]);
+        }
+        let out = dir.join("fireball-volley");
+        std::fs::create_dir_all(&out).map_err(|e| e.to_string())?;
+        // The camera's path, a Catmull-Rom spline through these eyes and
+        // where each looks, eased in and out over the whole film: behind
+        // the caster's shoulder, then a slow orbit of about 100 degrees
+        // round toward the dummies on the shore's side, so their names
+        // read, ending risen over the misty bay.
+        const TOTAL: usize = 15 * 30;
+        let keys: [(Vec3, Vec3); 6] = [
+            (Vec3::new(3.4, 2.3, 14.0), Vec3::new(2.2, 1.2, 2.0)),
+            (Vec3::new(7.0, 3.2, 14.5), Vec3::new(2.3, 1.0, 0.0)),
+            (Vec3::new(13.0, 4.2, 11.0), Vec3::new(2.5, 0.8, -1.0)),
+            (Vec3::new(16.5, 5.2, 5.0), Vec3::new(2.6, 0.7, -2.0)),
+            (Vec3::new(16.0, 7.5, 0.5), Vec3::new(2.4, 0.4, -2.5)),
+            (Vec3::new(12.5, 11.0, 2.0), Vec3::new(2.0, 0.0, -3.5)),
+        ];
+        let spline = |u: f32| -> (Vec3, Vec3) {
+            let u = u.clamp(0.0, 1.0);
+            let u = u * u * (3.0 - 2.0 * u);
+            let span = u * (keys.len() - 1) as f32;
+            let i = (span.floor() as usize).min(keys.len() - 2);
+            let t = span - i as f32;
+            let at = |k: isize| keys[k.clamp(0, keys.len() as isize - 1) as usize];
+            let i = i as isize;
+            let (p0, p1, p2, p3) = (at(i - 1), at(i), at(i + 1), at(i + 2));
+            let cr = |a: Vec3, b: Vec3, c: Vec3, d: Vec3| {
+                0.5 * (2.0 * b
+                    + (c - a) * t
+                    + (2.0 * a - 5.0 * b + 4.0 * c - d) * t * t
+                    + (3.0 * b - a - 3.0 * c + d) * t * t * t)
+            };
+            (cr(p0.0, p1.0, p2.0, p3.0), cr(p0.1, p1.1, p2.1, p3.1))
+        };
+        let frame = std::cell::Cell::new(0usize);
+        let mut film = |runtime: &mut WorldRuntime, seconds: f32| -> Result<(), String> {
+            for _ in 0..(seconds * 30.0).round() as usize {
+                run(runtime, 1.0 / 30.0);
+                let (eye, look) = spline(frame.get() as f32 / (TOTAL - 1) as f32);
+                shoot(
+                    runtime,
+                    &format!("fireball-volley/{:04}", frame.get()),
+                    eye,
+                    look,
+                )?;
+                frame.set(frame.get() + 1);
+            }
+            Ok(())
+        };
+        film(runtime, 1.0)?;
+        let down = |runtime: &WorldRuntime| {
+            runtime
+                .water_lab()
+                .map(|lab| [lab.targets[3].dummy.down(), lab.targets[0].dummy.down()])
+                .unwrap_or_default()
+        };
+        for cast in 1..=7 {
+            let line = runtime.water_cast_demo(water::Demo::Fireball, caster, Vec3::NEG_Z);
+            eprintln!("cast {cast}: {line}");
+            film(runtime, 1.5)?;
+            let hp = runtime
+                .water_lab()
+                .map(|lab| [lab.targets[3].dummy.hp, lab.targets[0].dummy.hp]);
+            eprintln!("after cast {cast}: far and near hit points {hp:?}");
+            if down(runtime).iter().all(|d| *d) {
+                break;
+            }
+        }
+        let left = TOTAL.saturating_sub(frame.get()) as f32 / 30.0;
+        film(runtime, left.max(4.0))?;
+        eprintln!("wrote {} frames to {}", frame.get(), out.display());
+        return Ok(());
+    }
     for spell in water::Demo::ALL {
         let name = spell.name().to_lowercase().replace(' ', "-");
         if name == "sleet-storm" || wanted.as_ref().is_some_and(|w| *w != name) {
