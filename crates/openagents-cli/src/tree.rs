@@ -168,8 +168,8 @@ pub fn help() -> Vec<GroupHelp<'static>> {
         group("sales", Some(crate::sales::USAGE), crate::sales::EFFECTS),
         group(
             "customer",
-            Some(crate::customer::USAGE),
-            crate::customer::EFFECTS,
+            Some(crate::customer::tree_usage()),
+            crate::customer::tree_effects(),
         ),
         group("lease", Some(crate::lease::USAGE), crate::lease::EFFECTS),
         group(

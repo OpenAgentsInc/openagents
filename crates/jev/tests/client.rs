@@ -119,6 +119,53 @@ async fn decision_funding_preserves_uncovered_holds_and_refuses_rebound_quotes()
 }
 
 #[tokio::test]
+async fn referral_mutations_do_not_retry_or_accept_private_share_paths() -> Outcome {
+    let id = format!("ref_{}", "a".repeat(32));
+    let token = format!("rfr_{}", "b".repeat(64));
+    let body=json!({"v":"openagents.accounts.v1","referral":{"referrer":id,"token":token,"path":"/join?customer=private-customer&ref=private-credential"}}).to_string();
+    let (base, seen) = serve(vec![Reply::new(200, &body)]).await?;
+    let client = Client::new(Config::new().base_url(base).api_key("fixture-only-key"))?;
+    let error = client
+        .account()
+        .for_referrals_account("buyer")
+        .issue_referral_link(&id)
+        .await
+        .unwrap_err();
+    assert!(matches!(error, Error::ResponseValidation { .. }));
+    assert!(!error.to_string().contains("private-customer"));
+    assert!(!error.to_string().contains("private-credential"));
+    assert_eq!(seen.lock().await.len(), 1);
+    assert_eq!(
+        seen.lock().await[0]
+            .headers
+            .get("x-openagents-referral-account")
+            .map(String::as_str),
+        Some("buyer")
+    );
+    let body =
+        json!({"error":{"code":"referral_store_unavailable","message":"private-source-label"}})
+            .to_string();
+    let (base, seen) = serve(vec![Reply::new(500, &body), Reply::new(200, "{}")]).await?;
+    let client = Client::new(
+        Config::new()
+            .base_url(base)
+            .api_key("fixture-only-key")
+            .retry(RetryPolicy {
+                max_retries: 3,
+                ..RetryPolicy::default()
+            }),
+    )?;
+    let error = client
+        .account()
+        .create_referrer(jev::ReferralKind::Person, "private-label")
+        .await
+        .unwrap_err();
+    assert!(!error.to_string().contains("private-source-label"));
+    assert_eq!(seen.lock().await.len(), 1);
+    Ok(())
+}
+
+#[tokio::test]
 async fn account_management_uses_gateway_timestamps_and_masks_grants() -> Outcome {
     let (base, seen) = serve(vec![Reply::new(200, r#"{"session":{"id":"fixture-session","kind":"user","account":"buyer-a","created_at":10,"expires_at":100},"token":"sess_fixture-only-not-a-real-token"}"#)]).await?;
     let client = Client::new(

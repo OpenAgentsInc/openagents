@@ -12,6 +12,7 @@ use std::time::{Duration, SystemTime};
 pub mod claims;
 pub mod intake;
 pub mod partners;
+pub mod referrals;
 
 pub const SCHEMA: &str = "openagents.sales.pipeline.v1";
 pub const COMMAND_SCHEMA: &str = "openagents.sales.pipeline-command.v1";
@@ -143,6 +144,9 @@ pub struct Lead {
     /// Immutable public-intake provenance; manual records have none.
     #[serde(default)]
     pub intake: Option<intake::Provenance>,
+    /// Canonical account source, separately checked by the pipeline owner.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub acquisition: Option<referrals::Introduction>,
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
     pub service_sales: BTreeMap<String, receipts::service_sale::Sale>,
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
@@ -187,6 +191,9 @@ pub enum Operation {
     },
     RecordServiceSale {
         admission: receipts::service_sale::Admission,
+    },
+    RecordAcquisition {
+        accounts_directory: String,
     },
     ReconcileServicePayment {
         sale: String,
@@ -482,6 +489,9 @@ impl Store {
             return Err("unsupported sales record schema".into());
         }
         for lead in state.leads.values() {
+            if let Some(introduction) = &lead.acquisition {
+                introduction.validate(&lead.details.account)?;
+            }
             if lead.partner_assignments.len() > partners::MAX_ASSIGNMENTS {
                 return Err("Private partner assignment count exceeds its bound.".into());
             }
@@ -1052,6 +1062,7 @@ impl Store {
                     details: input.details.clone(),
                     proposed_handoff: None,
                     intake: None,
+                    acquisition: None,
                     service_sales: BTreeMap::new(),
                     partner_assignments: BTreeMap::new(),
                     funnel_journeys: BTreeMap::new(),
@@ -1068,6 +1079,15 @@ impl Store {
                 .checked_add(1)
                 .ok_or("lead revision overflow")?;
             match &c.operation {
+                Operation::RecordAcquisition { accounts_directory } => {
+                    self.admin(access)?;
+                    self.readable(access, found)?;
+                    let introduction =
+                        self.admit_acquisition(access, found, accounts_directory, now)?;
+                    reference = introduction.accounts_revision.clone();
+                    next.leads.get_mut(&lead_id).unwrap().acquisition = Some(introduction);
+                    outcome = "acquisition_recorded";
+                }
                 Operation::AcceptHandoff { reference: r } => {
                     text(r, 256)?;
                     if role == Role::Reader {
@@ -1102,6 +1122,15 @@ impl Store {
                 }
                 Operation::Update { details } => {
                     self.writable(access, found)?;
+                    if found
+                        .acquisition
+                        .as_ref()
+                        .is_some_and(|source| source.source.account != details.account)
+                    {
+                        return Err(
+                            "account changes cannot rewrite an assisted introduction".into()
+                        );
+                    }
                     validate(details, now)?;
                     validate_contact_permission(&found.contact, details)?;
                     self.validate_readers(details, &found.responsible_human)?;
@@ -1444,6 +1473,12 @@ impl Store {
 
 #[cfg(test)]
 mod tests {
+    mod referral_tests {
+        include!(concat!(
+            env!("CARGO_MANIFEST_DIR"),
+            "/src/task/sales/referrals/tests.rs"
+        ));
+    }
     mod funnel_tests {
         include!(concat!(
             env!("CARGO_MANIFEST_DIR"),

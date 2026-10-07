@@ -1802,6 +1802,21 @@ claude mcp add openagents -- openagents mcp serve
 `--json`; source it (bash), place it on `$fpath` as `_openagents` (zsh), or
 save it under `~/.config/fish/completions/openagents.fish` (fish).
 
+## Referral sources
+
+`openagents customer referral --help` lists account-scoped introduction commands.
+Select an authenticated customer first, then use `create --input FILE` with a
+private `{ "kind": "person", "label": "Your private label" }` document and
+`link --referrer ID` to issue a source URL. Link issuance rotates earlier links.
+`capture --input FILE` accepts `{ "request": "YOUR_RANDOM_REQUEST_ID", "token":
+"rfr_...", "consent": true, "consent_version":
+"openagents.referral.consent.v1" }`. The customer must explicitly agree to record
+the introduction privately. Omit the token for missing attribution or set
+`consent` to false for refusal. `source` reads only the selected account's source.
+Existing capture cannot be overwritten; `migrate` and `accept` transfer referrer
+management through two authenticated accounts, preserving the stable identity.
+`disable` retires links. These commands create no commission or payment right.
+
 ## Verify
 
 ```sh

@@ -239,9 +239,24 @@ handoff from lead to accepted pilot, paid use, and expansion.
 
 ## Affiliate and referral program
 
+The [stable introduction source](../../crates/tenancy/src/accounts/referrals.rs)
+records a person, agent, author, or partner under a separate referrer ID.
+`openagents customer referral` uses the selected authenticated account to manage
+links and capture explicit consent. `/join?ref=TOKEN` contains random lookup
+material; it grants no account access. Signup preserves missing, declined,
+unknown, disabled, and malformed source outcomes. Exact capture replay preserves
+the original record; changed capture needs the later attribution contract.
+Rotation and accepted management migration disable earlier links while keeping
+historical source identity. The private pipeline owner can `record_acquisition`
+from the canonical account directory, separately from unverified intake text.
+These source records establish no permanent attribution or earnings right.
+OpenAgents sales-agent sources remain source-only. Review wording and consent
+before distributing links, as recorded in [NEEDS_OWNER.md](../../NEEDS_OWNER.md).
+
 Affiliate programs built large businesses on the early web, and the agent space
-has no real equivalent yet. Ours pays people, and their agents, for the usage
-they bring. Episode 239 set the rule: refer once, earn forever.
+has no real equivalent yet. The planned program pays people, and their agents,
+for the usage they bring. Episode 239 set the rule: refer once, earn forever.
+The following behavior depends on later attribution and settlement contracts.
 
 - **Referral links.** Anyone, person or agent, can create a referral link. New
   accounts that arrive through it are attributed to the referrer permanently.

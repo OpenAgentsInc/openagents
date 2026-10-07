@@ -391,6 +391,7 @@ impl Store {
                         consent_version: policy.consent_version,
                         referral: submission.referral.clone(),
                     }),
+                    acquisition: None,
                 },
             );
             next.intakes.get_mut(&access.id).unwrap().admitted += 1;

@@ -5,6 +5,45 @@ use coder::cli_route::tree::{Declared, Effect};
 use coder::customer::{CredentialCommand, CredentialStatus, Store};
 use serde_json::{Value, json};
 use std::path::Path;
+#[path = "customer_referral.rs"]
+mod referrals;
+#[cfg(test)]
+pub(crate) fn tree_usage() -> &'static str {
+    static USAGES: std::sync::OnceLock<String> = std::sync::OnceLock::new();
+    USAGES.get_or_init(|| {
+        let mut rows = vec![USAGE.lines().next().unwrap_or_default().to_owned()];
+        rows.extend(
+            USAGE
+                .lines()
+                .skip(1)
+                .take_while(|line| {
+                    (line.is_empty() || line.starts_with(' '))
+                        && !line.starts_with("  referral COMMAND")
+                })
+                .map(str::to_owned),
+        );
+        for line in referrals::USAGE
+            .lines()
+            .skip(1)
+            .take_while(|line| line.is_empty() || line.starts_with(' '))
+        {
+            rows.push(match line.strip_prefix("  ") {
+                Some(row) if !row.starts_with(' ') => format!("  referral {row}"),
+                _ => line.to_owned(),
+            });
+        }
+        rows.join("\n")
+    })
+}
+#[cfg(test)]
+pub(crate) fn tree_effects() -> &'static [Declared] {
+    static EFFECT: std::sync::OnceLock<Vec<Declared>> = std::sync::OnceLock::new();
+    EFFECT.get_or_init(|| {
+        let mut all = EFFECTS.to_vec();
+        all.extend_from_slice(referrals::EFFECTS);
+        all
+    })
+}
 pub const USAGE: &str = "usage: openagents customer COMMAND --root DIR [OPTIONS]
   import --alias NAME --input FILE
         Import an immutable credential alias from a private file; prints no key.
@@ -39,6 +78,9 @@ pub const USAGE: &str = "usage: openagents customer COMMAND --root DIR [OPTIONS]
   inspect --operation ID
         Verify a retained once-issued credential after interruption; never replay
         the mutation or silently select its account.
+  referral COMMAND [OPTIONS]
+        Create a private referrer, rotate its public source link, or capture
+        an explicitly consented introduction. Run referral --help for forms.
 
 DIR must be an explicit absolute private directory. Credentials, recovery
 material, and decision requests come from private regular files, never secret
@@ -116,6 +158,9 @@ fn secret(path: &str) -> Result<jev::ApiKey, String> {
     Ok(jev::ApiKey::new(text))
 }
 pub fn run(output: &Output, words: &[String]) -> u8 {
+    if words.first().is_some_and(|word| word == "referral") {
+        return referrals::run(output, &words[1..]);
+    }
     if words
         .first()
         .is_some_and(|v| matches!(v.as_str(), "--help" | "-h" | "help"))

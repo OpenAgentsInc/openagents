@@ -41,6 +41,8 @@ use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use sha2::{Digest, Sha256};
 
+pub mod referrals;
+
 /// The file the account store lives in, beside `registry.json`.
 const ACCOUNTS: &str = "accounts.json";
 
@@ -251,6 +253,9 @@ pub struct Store {
     /// Invitation id to invitation.
     #[serde(default)]
     pub invitations: BTreeMap<String, Invitation>,
+    /// Consented acquisition sources; empty books preserve earlier digests.
+    #[serde(default, skip_serializing_if = "referrals::Book::is_empty")]
+    pub referrals: referrals::Book,
     /// The digest over every field above.
     pub digest: String,
 }
@@ -303,6 +308,7 @@ impl Store {
                 "{name}: the store's digest does not recompute over its contents"
             ));
         }
+        self.referrals.validate(&self.accounts)?;
         let mut principals: BTreeMap<&str, &str> = BTreeMap::new();
         for account in self.accounts.values() {
             if account.id.is_empty() || account.label.is_empty() {
@@ -877,6 +883,7 @@ impl Accounts {
             accounts: BTreeMap::new(),
             workspaces: BTreeMap::new(),
             invitations: BTreeMap::new(),
+            referrals: referrals::Book::default(),
             digest: String::new(),
         };
         store.seal();
@@ -2354,6 +2361,7 @@ mod tests {
             accounts: BTreeMap::new(),
             workspaces: BTreeMap::new(),
             invitations: BTreeMap::new(),
+            referrals: referrals::Book::default(),
             digest: String::new(),
         };
         store.seal();

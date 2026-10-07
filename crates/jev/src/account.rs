@@ -29,20 +29,29 @@ const WORKSPACES_PATH: &str = "/v1/workspaces";
 
 #[path = "account_management.rs"]
 mod management;
+#[path = "account_referrals.rs"]
+mod referrals;
 pub use management::{
     GatewaySession, KeyGrant, KeyIdentity, PurchaseActivity, PurchaseActivityItem, PurchaseCost,
     PurchaseReceipt, SessionGrant, WorkspaceIdentity, WorkspaceView,
+};
+pub use referrals::{
+    ReferralCapture, ReferralIdentity, ReferralKind, ReferralLink, ReferralRecord, ReferralSource,
 };
 
 /// The account surface, scoped to its client.
 #[derive(Debug)]
 pub struct Account<'a> {
     pub(crate) client: &'a Client,
+    referral_account: Option<String>,
 }
 
 impl<'a> Account<'a> {
     pub(crate) fn new(client: &'a Client) -> Self {
-        Self { client }
+        Self {
+            client,
+            referral_account: None,
+        }
     }
 
     /// `GET /v1/session` — the session the bearer token names. An

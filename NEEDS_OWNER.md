@@ -1269,3 +1269,15 @@ computers:
 1. To sign her merged worktree commits, run `openagents agent signing alice
    on`, merge one of her changes at the Merge station, and check the tip
    with a NIP-GS verifier.
+
+## Referral source activation (REV-27, #10834)
+
+Review the public `/join?ref=TOKEN` wording and the explicit
+`openagents.referral.consent.v1` presentation before distributing links. Qualify
+signup and selected `openagents customer referral` commands against the intended
+account deployment, and identify its canonical private account directory before
+an assisted pipeline owner records an introduction. Synthetic checks establish
+source custody, replay refusal, migration, and redaction; they establish no real
+customer acquisition, permanent attribution terms, commission, or payout. Keep
+OpenAgents sales-agent identities source-only. REV-28 owns competing or changed
+attribution decisions; later commission contracts own payment eligibility.

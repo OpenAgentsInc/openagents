@@ -58,6 +58,9 @@ Use --sale with show/export for the original authorized service scope.
 Use --journey for separately consented original funnel scope. Owner-only
 weekly/review operations recheck current custody and source evidence.
 These records send no invoice or payment and create no product credit.
+The owner can record_acquisition with accounts_directory naming the canonical
+account service's private directory. It verifies the lead's exact account source
+and preserves consent refusal or missing attribution; intake text stays unverified.
 Only the owner can propose_partner with an exact owner approval and
 --evidence-root. advance_partner uses the named recipient's credential for
 acceptance/refusal and the named handoff target's credential for its decision.

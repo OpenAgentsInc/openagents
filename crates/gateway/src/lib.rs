@@ -55,6 +55,7 @@ pub mod money;
 pub mod open_quota;
 #[allow(clippy::result_large_err)]
 pub mod playground;
+mod referrals;
 pub mod relay_worker;
 pub mod serve;
 #[allow(clippy::result_large_err)]

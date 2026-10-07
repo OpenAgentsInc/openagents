@@ -171,6 +171,14 @@ fn server(replies: Vec<Reply>) -> (String, Arc<AtomicUsize>, std::thread::JoinHa
                     .contains(&format!("authorization: bearer {}", reply.token))
             );
             assert!(!text.contains("oak_unrelated-ambient.key"));
+            if text.lines().next().is_some_and(|line| {
+                line.contains("/v1/account/referrers") || line.contains("/v1/account/acquisition")
+            }) {
+                assert!(
+                    text.to_ascii_lowercase()
+                        .contains("x-openagents-referral-account: ada")
+                );
+            }
             if text.starts_with("POST ") || text.starts_with("DELETE ") {
                 count.fetch_add(1, Ordering::SeqCst);
             }
@@ -432,5 +440,79 @@ fn a_quote_cannot_be_approved_or_dispatched_after_customer_becomes_read_only() {
         f.ok(&["show", "--purchase", "read-only"])["status"],
         "quoted"
     );
+    thread.join().unwrap();
+}
+
+#[test]
+fn installed_referral_commands_use_selected_account_and_private_input() {
+    let f = Fixture::new();
+    let key = f.file("referrer-key", b"oak_fixture.referrer");
+    f.ok(&["import", "--alias", "referrer", "--input", &key]);
+    let id = format!("ref_{}", "a".repeat(32));
+    let token = format!("rfr_{}", "b".repeat(64));
+    let ctx = context("ada", "ada-personal", "referrer");
+    let record = json!({"schema":"openagents.referral.source.v1","id":id,"version":1,"owner":"ada","kind":"person","label":"Private referrer label","source_only":false,"pending_owner":null});
+    let source = json!({"schema":"openagents.referral.source.v1","account":"ada","request":"referral-input","outcome":"captured","referrer":{"id":id,"version":2,"kind":"person","source_only":false},"consent_version":"openagents.referral.consent.v1","captured_at":1000});
+    let replies = vec![
+        read_context("ada-personal", "oak_fixture.referrer", ctx.clone()),
+        read_context("ada-personal", "oak_fixture.referrer", ctx.clone()),
+        Reply {
+            route: "POST /v1/account/referrers ".into(),
+            token: "oak_fixture.referrer",
+            status: 200,
+            body: json!({"v":"openagents.accounts.v1","referral":record}),
+        },
+        read_context("ada-personal", "oak_fixture.referrer", ctx.clone()),
+        Reply {
+            route: format!("POST /v1/account/referrers/{id}/link "),
+            token: "oak_fixture.referrer",
+            status: 200,
+            body: json!({"v":"openagents.accounts.v1","referral":{"referrer":id,"token":token,"path":format!("/join?ref={token}")}}),
+        },
+        read_context("ada-personal", "oak_fixture.referrer", ctx.clone()),
+        Reply {
+            route: "POST /v1/account/acquisition ".into(),
+            token: "oak_fixture.referrer",
+            status: 200,
+            body: json!({"v":"openagents.accounts.v1","referral":source}),
+        },
+        read_context("ada-personal", "oak_fixture.referrer", ctx.clone()),
+        Reply {
+            route: "GET /v1/account/acquisition ".into(),
+            token: "oak_fixture.referrer",
+            status: 200,
+            body: json!({"v":"openagents.accounts.v1","referral":source}),
+        },
+        read_context("ada-personal", "oak_fixture.referrer", ctx),
+        Reply {
+            route: format!("DELETE /v1/account/referrers/{id}/link "),
+            token: "oak_fixture.referrer",
+            status: 200,
+            body: json!({"v":"openagents.accounts.v1","referral":{"disabled":true}}),
+        },
+    ];
+    let (origin, effects, thread) = server(replies);
+    f.select(&origin, "referrer", "ada", "ada-personal");
+    let input = f.file(
+        "referrer.json",
+        &serde_json::to_vec(&json!({"kind":"person","label":"Private referrer label"})).unwrap(),
+    );
+    assert_eq!(f.ok(&["referral", "create", "--input", &input])["id"], id);
+    let link = f.ok(&["referral", "link", "--referrer", &id]);
+    assert_eq!(link["url"], format!("{origin}/join?ref={token}"));
+    assert!(!link["url"].as_str().unwrap().contains("ada"));
+    let input=f.file("capture.json",&serde_json::to_vec(&json!({"request":"referral-input","token":token,"consent":true,"consent_version":"openagents.referral.consent.v1"})).unwrap());
+    assert_eq!(f.ok(&["referral", "capture", "--input", &input]), source);
+    assert_eq!(f.ok(&["referral", "source"]), source);
+    assert_eq!(
+        f.ok(&["referral", "disable", "--referrer", &id])["disabled"],
+        true
+    );
+    assert!(
+        !f.run(&["referral", "capture", "--token", "private-flag"])
+            .status
+            .success()
+    );
+    assert_eq!(effects.load(Ordering::SeqCst), 4);
     thread.join().unwrap();
 }

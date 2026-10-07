@@ -7275,6 +7275,299 @@
             "effect": "secret",
             "runs_on": "connected_computer"
           }
+        },
+        {
+          "name": "referral",
+          "children": [
+            {
+              "name": "create",
+              "leaf": {
+                "path": [
+                  "customer",
+                  "referral",
+                  "create"
+                ],
+                "usage": [
+                  "referral create --input FILE"
+                ],
+                "forms": [
+                  {
+                    "tokens": [
+                      {
+                        "kind": "literal",
+                        "word": "referral"
+                      },
+                      {
+                        "kind": "literal",
+                        "word": "create"
+                      },
+                      {
+                        "kind": "option",
+                        "name": "input",
+                        "value": "FILE",
+                        "open": true
+                      }
+                    ]
+                  }
+                ],
+                "summary": "Create a stable referrer from {kind:person|agent|author|partner,label}.",
+                "effect": "publishes",
+                "runs_on": "connected_computer"
+              }
+            },
+            {
+              "name": "show",
+              "leaf": {
+                "path": [
+                  "customer",
+                  "referral",
+                  "show"
+                ],
+                "usage": [
+                  "referral show --referrer ID"
+                ],
+                "forms": [
+                  {
+                    "tokens": [
+                      {
+                        "kind": "literal",
+                        "word": "referral"
+                      },
+                      {
+                        "kind": "literal",
+                        "word": "show"
+                      },
+                      {
+                        "kind": "option",
+                        "name": "referrer",
+                        "value": "ID",
+                        "open": true
+                      }
+                    ]
+                  }
+                ],
+                "summary": "Read a referrer managed by the current authenticated account.",
+                "effect": "read_only",
+                "runs_on": "connected_computer"
+              }
+            },
+            {
+              "name": "link",
+              "leaf": {
+                "path": [
+                  "customer",
+                  "referral",
+                  "link"
+                ],
+                "usage": [
+                  "referral link --referrer ID"
+                ],
+                "forms": [
+                  {
+                    "tokens": [
+                      {
+                        "kind": "literal",
+                        "word": "referral"
+                      },
+                      {
+                        "kind": "literal",
+                        "word": "link"
+                      },
+                      {
+                        "kind": "option",
+                        "name": "referrer",
+                        "value": "ID",
+                        "open": true
+                      }
+                    ]
+                  }
+                ],
+                "summary": "Rotate earlier public links and return a shareable source URL.",
+                "effect": "publishes",
+                "runs_on": "connected_computer"
+              }
+            },
+            {
+              "name": "disable",
+              "leaf": {
+                "path": [
+                  "customer",
+                  "referral",
+                  "disable"
+                ],
+                "usage": [
+                  "referral disable --referrer ID"
+                ],
+                "forms": [
+                  {
+                    "tokens": [
+                      {
+                        "kind": "literal",
+                        "word": "referral"
+                      },
+                      {
+                        "kind": "literal",
+                        "word": "disable"
+                      },
+                      {
+                        "kind": "option",
+                        "name": "referrer",
+                        "value": "ID",
+                        "open": true
+                      }
+                    ]
+                  }
+                ],
+                "summary": "Disable current links while preserving captured source history.",
+                "effect": "grants",
+                "runs_on": "connected_computer"
+              }
+            },
+            {
+              "name": "capture",
+              "leaf": {
+                "path": [
+                  "customer",
+                  "referral",
+                  "capture"
+                ],
+                "usage": [
+                  "referral capture --input FILE"
+                ],
+                "forms": [
+                  {
+                    "tokens": [
+                      {
+                        "kind": "literal",
+                        "word": "referral"
+                      },
+                      {
+                        "kind": "literal",
+                        "word": "capture"
+                      },
+                      {
+                        "kind": "option",
+                        "name": "input",
+                        "value": "FILE",
+                        "open": true
+                      }
+                    ]
+                  }
+                ],
+                "summary": "Record {request,token,consent,consent_version} once for this account. Consent uses openagents.referral.consent.v1. Missing or declined attribution stays explicit; changed or competing capture is refused.",
+                "effect": "grants",
+                "runs_on": "connected_computer"
+              }
+            },
+            {
+              "name": "source",
+              "leaf": {
+                "path": [
+                  "customer",
+                  "referral",
+                  "source"
+                ],
+                "usage": [
+                  "referral source"
+                ],
+                "forms": [
+                  {
+                    "tokens": [
+                      {
+                        "kind": "literal",
+                        "word": "referral"
+                      },
+                      {
+                        "kind": "literal",
+                        "word": "source"
+                      }
+                    ]
+                  }
+                ],
+                "summary": "Read only the current account's private acquisition source.",
+                "effect": "read_only",
+                "runs_on": "connected_computer"
+              }
+            },
+            {
+              "name": "migrate",
+              "leaf": {
+                "path": [
+                  "customer",
+                  "referral",
+                  "migrate"
+                ],
+                "usage": [
+                  "referral migrate --referrer ID --input FILE"
+                ],
+                "forms": [
+                  {
+                    "tokens": [
+                      {
+                        "kind": "literal",
+                        "word": "referral"
+                      },
+                      {
+                        "kind": "literal",
+                        "word": "migrate"
+                      },
+                      {
+                        "kind": "option",
+                        "name": "referrer",
+                        "value": "ID",
+                        "open": true
+                      },
+                      {
+                        "kind": "option",
+                        "name": "input",
+                        "value": "FILE",
+                        "open": true
+                      }
+                    ]
+                  }
+                ],
+                "summary": "Offer management migration to the account in {account:ID}.",
+                "effect": "grants",
+                "runs_on": "connected_computer"
+              }
+            },
+            {
+              "name": "accept",
+              "leaf": {
+                "path": [
+                  "customer",
+                  "referral",
+                  "accept"
+                ],
+                "usage": [
+                  "referral accept --referrer ID"
+                ],
+                "forms": [
+                  {
+                    "tokens": [
+                      {
+                        "kind": "literal",
+                        "word": "referral"
+                      },
+                      {
+                        "kind": "literal",
+                        "word": "accept"
+                      },
+                      {
+                        "kind": "option",
+                        "name": "referrer",
+                        "value": "ID",
+                        "open": true
+                      }
+                    ]
+                  }
+                ],
+                "summary": "Accept migration offered to the current authenticated account.",
+                "effect": "grants",
+                "runs_on": "connected_computer"
+              }
+            }
+          ]
         }
       ],
       "options": [
@@ -7361,6 +7654,14 @@
         {
           "kind": "option",
           "name": "operation",
+          "value": "ID",
+          "open": true,
+          "optional": true,
+          "repeated": true
+        },
+        {
+          "kind": "option",
+          "name": "referrer",
           "value": "ID",
           "open": true,
           "optional": true,

@@ -2777,6 +2777,7 @@ dependencies = [
  "sha2 0.10.9",
  "supervise",
  "tempfile",
+ "tenancy",
  "tokio",
  "tokio-tungstenite 0.30.0",
  "toml",

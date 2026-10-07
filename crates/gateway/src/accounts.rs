@@ -49,7 +49,7 @@ const INVITE_TTL_MAX: u64 = 2_592_000;
 /// The management routes the account surface mounts — present only
 /// when `accounts` is configured, like `/v1/balance` under `money`.
 pub fn routes() -> Vec<(&'static str, MethodRouter<Arc<ServeState>>)> {
-    vec![
+    let mut routes = vec![
         ("/v1/sessions", post(sign_in)),
         ("/v1/session", get(session_status).delete(logout)),
         ("/v1/accounts", post(sign_up)),
@@ -99,7 +99,9 @@ pub fn routes() -> Vec<(&'static str, MethodRouter<Arc<ServeState>>)> {
             post(key_rotate),
         ),
         ("/v1/workspaces/{workspace}/keys/{key}", delete(key_revoke)),
-    ]
+    ];
+    routes.extend(crate::referrals::routes());
+    routes
 }
 
 /// Who a management call runs as.
@@ -791,9 +793,28 @@ async fn sign_up(State(state): State<Arc<ServeState>>, Json(body): Json<Value>) 
         Ok(accounts) => accounts,
         Err(response) => return response,
     };
-    let account = match accounts.create_account(&label, &[]) {
-        Ok(account) => account,
-        Err(refusal) => return accounts_refusal(refusal),
+    let input = match body.get("acquisition") {
+        Some(value) => {
+            match serde_json::from_value::<tenancy::accounts::referrals::Capture>(value.clone()) {
+                Ok(input) => Some(input),
+                Err(_) => {
+                    return refused(
+                        StatusCode::BAD_REQUEST,
+                        "invalid_referral",
+                        "Invalid bounded acquisition input.",
+                    );
+                }
+            }
+        }
+        None => None,
+    };
+    let provisioned = match input.as_ref() {
+        Some(input) => accounts.create_account_acquired(&label, input),
+        None => accounts.create_account_unattributed(&label),
+    };
+    let (account, source) = match provisioned {
+        Ok(value) => value,
+        Err(error) => return crate::referrals::refused(error),
     };
     let workspace = match body.get("workspace").and_then(Value::as_str) {
         Some(name) if !name.is_empty() => name.to_string(),
@@ -855,6 +876,7 @@ async fn sign_up(State(state): State<Arc<ServeState>>, Json(body): Json<Value>) 
     answered(
         StatusCode::CREATED,
         json!({
+            "acquisition": source,
             "account": {"id": account.id, "label": account.label},
             "workspace": {
                 "id": workspace.id,

@@ -281,9 +281,10 @@ mod transport;
 
 pub use account::{
     Account, AccountDetails, AccountInfo, BalanceView, GatewaySession, KeyGrant, KeyIdentity,
-    Position, PurchaseActivity, PurchaseActivityItem, PurchaseCost, PurchaseReceipt, SessionBudget,
-    SessionGrant, SessionInfo, SessionView, UsageCost, UsageQuery, UsageTotals, UsageUnits,
-    UsageView, WorkspaceIdentity, WorkspaceRef, WorkspaceView,
+    Position, PurchaseActivity, PurchaseActivityItem, PurchaseCost, PurchaseReceipt,
+    ReferralCapture, ReferralIdentity, ReferralKind, ReferralLink, ReferralRecord, ReferralSource,
+    SessionBudget, SessionGrant, SessionInfo, SessionView, UsageCost, UsageQuery, UsageTotals,
+    UsageUnits, UsageView, WorkspaceIdentity, WorkspaceRef, WorkspaceView,
 };
 pub use answers::{
     Answer, ChoiceAnswer, MASS_TOLERANCE, NoulAnswer, RawResponse, ScoreAnswer, SystemOneResponse,

@@ -478,11 +478,22 @@ impl Client {
         path: &str,
         body: Option<Vec<u8>>,
     ) -> Result<RawResponse> {
+        self.request_private_headers(method, path, body, &HeaderMap::new())
+            .await
+    }
+
+    pub(crate) async fn request_private_headers(
+        &self,
+        method: Method,
+        path: &str,
+        body: Option<Vec<u8>>,
+        headers: &HeaderMap,
+    ) -> Result<RawResponse> {
         let mut prepared = self.prepare(
             method,
             path,
             body,
-            &HeaderMap::new(),
+            headers,
             None,
             Some(RetryPolicy {
                 max_retries: 0,

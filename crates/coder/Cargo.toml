@@ -19,6 +19,7 @@ coder-lease = { path = "../coder-lease" }
 acp-client = { path = "../acp-client" }
 coder-terminal = { path = "../coder-terminal" }
 jev = { path = "../jev" }
+tenancy = { path = "../tenancy" }
 jev-hosted = { path = "../jev-hosted" }
 # Who pays for a model call (BYOK, #10176).
 model-access = { path = "../model-access" }
