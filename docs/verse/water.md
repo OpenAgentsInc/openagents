@@ -1017,9 +1017,10 @@ The total is about 92 agent-hours. W1 can start at once; W2 and W4 to W7
 can run in parallel lanes once W2 lands. The umbrella issue,
 [#10784](https://github.com/OpenAgentsInc/openagents/issues/10784), is
 blocked by every phase. The playable coastal zone is specified separately in
-[The coast](coast.md) and tracked by
-[#10796](https://github.com/OpenAgentsInc/openagents/issues/10796), blocked
-by W4 and W10; it is not a phase of the water system.
+[The coast](coast.md) and built in its own phases, C1 to C6
+([#10885](https://github.com/OpenAgentsInc/openagents/issues/10885) to
+[#10890](https://github.com/OpenAgentsInc/openagents/issues/10890)), whose
+first is blocked by W3, W4, and W10; they are not phases of the water system.
 
 ## Coordination with the water demos
 
@@ -1057,8 +1058,9 @@ The owner answered the specification's open questions on 2026-10-06:
    Pond to 1.6 m. Glade Run stays a wading stream, 0.4 to 0.9 m deep, with a
    1.6 m plunge pool below the weir.
 2. **An ocean zone.** Yes, specified for now and not built:
-   [The coast](coast.md), tracked by
-   [#10796](https://github.com/OpenAgentsInc/openagents/issues/10796),
+   [The coast](coast.md), built in phases C1 to C6
+   ([#10885](https://github.com/OpenAgentsInc/openagents/issues/10885) to
+   [#10890](https://github.com/OpenAgentsInc/openagents/issues/10890)),
    blocked by W4 and W10. W10 keeps a coastal test scene as a capture
    example; the zone builds on it.
 3. **Freezing, and every other spell on water.** Decided from SRD 5.2.1 and
