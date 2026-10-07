@@ -1,0 +1,9 @@
+# A woodland pond: coastal water, Jerlov type 5, green and darker with
+# depth.
+description = "A woodland pond, green and dark where it is deep."
+jerlov = "C5"
+scatter = [0.018, 0.045, 0.030]
+foam = 0.4
+roughness = 0.03
+shore_band = 0.6
+crest_scatter = 0.2

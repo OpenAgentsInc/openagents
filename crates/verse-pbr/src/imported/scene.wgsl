@@ -1,7 +1,8 @@
 // VERSE_SHARED_SHADING
 // fog: rgb color, w density at the base height (1/m). fog_shape: base height
 // (m), falloff with height (1/m), start distance (m), and opacity cap.
-struct Frame { view:mat4x4<f32>,eye:vec4<f32>,ambient:vec4<f32>,fog:vec4<f32>,settings:vec4<f32>,lights:array<vec4<f32>,64>,shadow:array<mat4x4<f32>,24>,fog_shape:vec4<f32> };
+// water_control: what this tier's water draws (`verse_pbr::water::control`).
+struct Frame { view:mat4x4<f32>,eye:vec4<f32>,ambient:vec4<f32>,fog:vec4<f32>,settings:vec4<f32>,lights:array<vec4<f32>,64>,shadow:array<mat4x4<f32>,24>,fog_shape:vec4<f32>,water_control:vec4<f32> };
 struct Pose { model:mat4x4<f32>,params:vec4<f32>,bones:array<mat4x4<f32>,256> };
 struct Material { params:vec4<f32>,channels:vec4<f32>,emission:vec4<f32>,maps:vec4<f32> };
 @group(0) @binding(0) var<uniform> frame:Frame;
@@ -173,3 +174,5 @@ fn fog_amount(p:vec3<f32>)->f32{
  let fog=fog_amount(v.pos);let color=min(mix(lit,frame.fog.rgb,fog)*frame.ambient.w,vec3(60000.0));
  return vec4(color,verse_coverage(alpha,material.params.y));
 }
+// The water pass (`verse_pbr::water`): vs_water, fs_water_transmit, and fs_water.
+// VERSE_WATER_IMPORTED

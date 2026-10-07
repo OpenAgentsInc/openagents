@@ -1,0 +1,9 @@
+# A sheltered sandy cove: oceanic water, Jerlov type II, turquoise over
+# sand. The Water Lab's sea.
+description = "A sandy cove's clear turquoise shallows."
+jerlov = "II"
+scatter = [0.016, 0.085, 0.10]
+foam = 0.85
+roughness = 0.035
+shore_band = 1.2
+crest_scatter = 0.6

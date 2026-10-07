@@ -75,6 +75,13 @@ openagents.com's `/druid` does, or when its URL has the query parameter
 `zone=grove`, for example `/?gl&zone=grove`. The Grove is built on the same
 pinned pack, so the page serves the same files and nothing else changes.
 
+### Water Lab mode
+
+`?zone=water` opens the Water Lab, the cove for Verse's water
+(`docs/verse/water.md`), built on the same pinned pack, so the page serves
+the same files. Add `gl` (`?gl&zone=water`) to draw it with WebGL2 instead
+of WebGPU.
+
 ### Grid mode
 
 The module opens the shared Grid instead when the page's path ends in

@@ -327,7 +327,13 @@ async fn run() -> Result<(), String> {
             .search()
             .is_ok_and(|query| query.split(['?', '&']).any(|part| part == "demolition")),
     );
-    if grove {
+    // `?zone=water` opens the Water Lab, the cove for Verse's water, built
+    // on the same pack (`docs/verse/water.md`).
+    let water = query_value(&window, "zone").as_deref() == Some("water");
+    if water {
+        status("Opening the Water Lab…");
+        runtime.install_water_lab_bytes(&bytes)?;
+    } else if grove {
         status("Opening the Grove…");
         runtime.install_grove_bytes(&bytes)?;
     } else {

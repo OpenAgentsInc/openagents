@@ -1,8 +1,9 @@
 # Water
 
 Status: specification, 2026-10-06, updated the same day with the owner's
-answers to its open questions ([Owner decisions](#owner-decisions)). Phase
-W1 is implemented ([Coupling with `crates/physics`](#coupling-with-cratesphysics));
+answers to its open questions ([Owner decisions](#owner-decisions)). Phases
+W1 ([Coupling with `crates/physics`](#coupling-with-cratesphysics)) and W2
+([Shaders per tier](#shaders-per-tier)) are implemented;
 nothing else in this document is implemented yet unless a section says so. The phases at
 the end are tracked as GitHub issues on the
 [OpenAgents project board](../project-board.md). The coastal zone that builds
@@ -833,6 +834,27 @@ varyings.
 
 Every effect a tier drops leaves the frame correct and plainer, as
 `quality.rs` requires.
+
+**Status (W2, 2026-10-07).** `crates/verse-pbr/src/water/` holds the shared
+shader and its data. `water.wgsl` is spliced by `shading::source` into the
+physical renderer's pass (`water/photo.wgsl`, which also keeps the Water
+Lab's spells, falls, orbs, and sea-bed light from W0) and the imported
+renderer's (`water/imported.wgsl`). Both draw each surface inside the scene
+pass in two halves, a multiplied per-channel transmittance and an added
+emission, so no tier adds a pass or a render target. What lands: Gerstner
+displacement from `physics::water`'s own terms (`water::terms::Swell`;
+`water::parity` holds GPU displacements within 1 mm of `Surface::sample`),
+Schlick Fresnel at an index of 1.33, sky reflection blurred by roughness and
+pixel footprint, sun glints that fade by tier distance, crest scattering
+with a Henyey–Greenstein phase, Beer–Lambert absorption over baked depth with
+Jerlov presets (`assets/verse/water/presets/`), shore foam from a baked
+Euclidean distance field (`water::bake`), two-phase flow-advected detail,
+the low tier's baked normal tile (`water::tile`), and Snell's window from
+below. `water::control` is the `water_control` vector for each tier. The
+mesh is a grid per body at 1.5, 0.75, or 0.35 m; FFT cascades, planar and
+screen-space reflection, refraction, and clipmaps remain W4, W5, and W10.
+Captures for every tier through both renderers are in
+`bench/verse/2026-10-07/water/`.
 
 ### Coupling with `crates/physics`
 

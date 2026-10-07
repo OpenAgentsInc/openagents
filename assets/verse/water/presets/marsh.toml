@@ -1,0 +1,9 @@
+# Marsh and swamp water: turbid coastal water, Jerlov type 9,
+# brown-green.
+description = "Murky marsh water, brown-green and opaque within a meter."
+jerlov = "C9"
+scatter = [0.030, 0.032, 0.014]
+foam = 0.3
+roughness = 0.05
+shore_band = 0.4
+crest_scatter = 0.0

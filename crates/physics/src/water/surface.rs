@@ -107,6 +107,15 @@ pub struct Displacement {
     pub velocity: DVec3,
 }
 
+impl Phases {
+    /// Wave `i`'s counter, in steps of `2π / period`; zero past the last
+    /// wave. A renderer turns it into the same angle the physics uses.
+    #[must_use]
+    pub fn count(&self, i: usize) -> u64 {
+        self.count.get(i).copied().unwrap_or(0)
+    }
+}
+
 impl WaveSet {
     /// No waves.
     #[must_use]
@@ -237,7 +246,10 @@ impl WaveSet {
         }
     }
 
-    fn q(&self, wave: &Wave) -> f64 {
+    /// The horizontal factor `Q / (k A N)` of a wave in this set: how far
+    /// its particles swing sideways per meter of height.
+    #[must_use]
+    pub fn q(&self, wave: &Wave) -> f64 {
         let ka = wave.wavenumber() * wave.amplitude;
         if ka <= 0.0 {
             0.0

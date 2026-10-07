@@ -1,0 +1,8 @@
+# A clear lake: coastal water, Jerlov type 3, green-blue over depth.
+description = "A clear lake, green-blue where it deepens."
+jerlov = "C3"
+scatter = [0.020, 0.060, 0.050]
+foam = 0.5
+roughness = 0.03
+shore_band = 0.8
+crest_scatter = 0.4

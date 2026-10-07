@@ -92,7 +92,11 @@ struct Frame {
     // rgb a neon stage's key light color; w 1 when set, white otherwise.
     key_tint: vec4<f32>,
     fire_control: vec4<f32>,
-    // The sea (`pbr::water`): x its level (m), y 1 when the stage has it, z 1
+    // What this tier's water draws (`verse_pbr::water::control`): analytic
+    // detail waves (0 for the baked tile), the glints' fade distance (m),
+    // foam noise octaves, and 1.
+    water_control: vec4<f32>,
+    // The sea (`verse_pbr::water`, body 0): x its level (m), y 1 when the stage has it, z 1
     // when the eye is under it, w the caustics' strength.
     water: vec4<f32>,
     // rgb the water's extinction (1/m).

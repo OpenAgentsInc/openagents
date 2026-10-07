@@ -417,9 +417,10 @@ impl WaterLab {
         let mut water = self.water;
         water.time = self.time;
         let s = &self.spells;
-        water.level = LEVEL + s.rise;
-        water.rest = LEVEL;
-        water.swell_gain = s.swell;
+        let sea = water.sea_body_mut();
+        sea.level = LEVEL + s.rise;
+        sea.rest = LEVEL;
+        sea.swell_gain = s.swell;
         let mut controls = Controls::default();
         if s.part > 0.001 {
             let c = s
@@ -499,7 +500,8 @@ impl WaterLab {
             return None;
         }
         let ice = water.controls.ice_at(p);
-        let velocity = (water.velocity(p, depth + water.level - water.rest)
+        let sea = water.sea_body();
+        let velocity = (water.velocity(p, depth + sea.level - sea.rest)
             + water.controls.flow_at(p))
             * (1.0 - ice);
         Some(floats::Surface { height, velocity })
@@ -612,9 +614,9 @@ impl WaterLab {
         };
         let surface = self.surface_with(&water, p);
         let ice = water.controls.ice_at(p);
-        if ice > 0.5 && feet.y > water.level - 0.5 && self.surface_with(&water, p).is_some() {
+        if ice > 0.5 && feet.y > water.level() - 0.5 && self.surface_with(&water, p).is_some() {
             // Ice is ground, slick and hard going.
-            out.floor = Some(water.level + 0.04);
+            out.floor = Some(water.level() + 0.04);
             out.pace = 0.55;
         } else if let Some(s) = surface {
             let depth = s.height - feet.y;

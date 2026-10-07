@@ -19,6 +19,7 @@ mod material_gpu;
 mod mip_tests;
 mod shadow_cache;
 mod texture_gpu;
+mod water;
 use lighting::{Frame, Lighting};
 #[cfg(not(target_arch = "wasm32"))]
 use std::time::Instant;
@@ -358,6 +359,10 @@ impl Gpu {
 pub struct Renderer {
     /// Enables bounded optical integration for fire effects.
     pub fire_volumes: bool,
+    /// This frame's water ([`crate::water::Water`]), drawn over the surface
+    /// [`Renderer::set_water_surface`] uploaded.
+    pub water: Option<crate::water::Water>,
+    water_pass: water::WaterPass,
     pub last_lighting: verse_engine::lighting::FrameLighting,
     #[cfg(feature = "imported-surface")]
     instance: wgpu::Instance,
@@ -1204,6 +1209,14 @@ impl Renderer {
                     .into(),
             ),
         });
+        let water_pass = water::WaterPass::new(
+            &device,
+            &queue,
+            &shader,
+            &frame_layout,
+            scene_format,
+            samples,
+        );
         let layout = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
             label: None,
             bind_group_layouts: &[
@@ -1438,6 +1451,8 @@ impl Renderer {
             last_device_loss: None,
             last_timings: FrameTimings::default(),
             fire_volumes: true,
+            water: None,
+            water_pass,
             last_lighting: Default::default(),
             gpu_timer,
             submitted_frames: 0,
@@ -1601,6 +1616,21 @@ impl Renderer {
             pack: self.pack.clone(),
         }
     }
+    /// Uploads the water surface [`Renderer::water`] moves and colors, or
+    /// drops it. The low tier draws every other row and column of the
+    /// patches that allow it.
+    pub fn set_water_surface(
+        &mut self,
+        surface: Option<std::sync::Arc<crate::water::WaterSurface>>,
+    ) {
+        self.water_pass
+            .set_surface(&self.device, surface, self.admission.quality.tier);
+    }
+    /// The bytes the water surface and its normal tile hold on the GPU.
+    #[must_use]
+    pub fn water_bytes(&self) -> u64 {
+        self.water_pass.bytes()
+    }
     /// Call between frames. The caller can dispose of retired resources on a worker.
     pub fn commit_reload(&mut self, mut candidate: ReloadCandidate) -> Result<Self, String> {
         self.catalog.check(candidate.base)?;
@@ -1611,6 +1641,10 @@ impl Renderer {
         candidate.renderer.device_recoveries = self.device_recoveries;
         candidate.renderer.last_device_loss = self.last_device_loss.clone();
         candidate.renderer.resize(self.width, self.height)?;
+        candidate.renderer.water = self.water;
+        candidate
+            .renderer
+            .set_water_surface(self.water_pass.source.clone());
         let mut playback = std::mem::take(&mut self.playback);
         playback.retain(|(_, model), _| candidate.keep_playback.contains(model));
         candidate.renderer.playback = playback;
@@ -1831,6 +1865,10 @@ impl Renderer {
         } else {
             0.0
         };
+        frame.water_control = crate::water::control(self.admission.quality.tier);
+        let water_on = self
+            .water_pass
+            .prepare(&self.queue, self.water.as_ref(), view, self.height);
         self.last_lighting = verse_engine::lighting::FrameLighting {
             profile: verse_engine::lighting::PointProfile::Authored,
             exposure: lighting.exposure,
@@ -2391,7 +2429,19 @@ impl Renderer {
                         ..Default::default()
                     });
                     pass.set_bind_group(0, &self.frame_group, &[]);
-                    for slot in 0..SLOTS {
+                    // With water, opaque slots first, then the water, then
+                    // the blended slots over it; without, the slots in order.
+                    let order: Vec<usize> = if water_on {
+                        [0, 1, 4, 5, 8, 9, SLOTS, 2, 3, 6, 7, 10, 11].to_vec()
+                    } else {
+                        (0..SLOTS).collect()
+                    };
+                    for slot in order {
+                        if slot == SLOTS {
+                            self.water_pass.draw(&mut pass);
+                            pass.set_bind_group(0, &self.frame_group, &[]);
+                            continue;
+                        }
                         let blend = slot % 4;
                         let static_bundles =
                             self.static_batches

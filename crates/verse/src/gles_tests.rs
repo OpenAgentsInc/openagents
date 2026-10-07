@@ -11,7 +11,7 @@ use std::borrow::Cow;
 type Constant = (&'static str, &'static [f64]);
 
 /// Each shader the renderer compiles, with its pipeline constants.
-const SHADERS: [(&str, &str, &[Constant]); 5] = [
+const SHADERS: [(&str, &str, &[Constant]); 6] = [
     ("shader.wgsl", include_str!("shader.wgsl"), &[]),
     ("ui.wgsl", crate::ui::SHADER, &[]),
     (
@@ -24,6 +24,13 @@ const SHADERS: [(&str, &str, &[Constant]); 5] = [
             ("DETAIL", &[0.0, 1.0]),
             ("SCREEN", &[0.0, 1.0]),
         ],
+    ),
+    // The imported renderer's scene, with the shared water pass
+    // (`verse_pbr::water`) spliced in.
+    (
+        "imported/scene.wgsl",
+        include_str!("../../verse-pbr/src/imported/scene.wgsl"),
+        &[],
     ),
     (
         "pbr/post.wgsl",

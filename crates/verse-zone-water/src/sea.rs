@@ -2,13 +2,20 @@
 //! and the light it is seen in.
 
 use glam::{Vec2, Vec3};
-use verse_pbr::pbr::water::{Kind, Water, WaterPatch, WaterSurface, WaterVertex};
+use verse_pbr::pbr::water::{Body, Kind, Water, WaterPatch, WaterSurface, WaterVertex};
 use verse_pbr::pbr::{Daylight, Grade, HeightFog, Key, Neon};
+use verse_pbr::water::Preset;
 
 use crate::terrain::{
     self, CENTER, FALL_HALF_WIDTH, FALL_HEADING, FALL_SPEED, LEVEL, LIP, LOWER, POOL, POOL_LEVEL,
     POOL_RADIUS, REACH, Reach, UPPER, ground,
 };
+
+/// The sea's body in the frame's water: salt water, the cove's look.
+pub const SEA: usize = 0;
+/// The river's, the pool's, and the falls' body: fresh water, a stream's
+/// look.
+pub const FRESH: usize = 1;
 
 /// The cove's water surfaces.
 #[must_use]
@@ -42,7 +49,7 @@ fn sea() -> WaterPatch {
             ));
         }
     }
-    WaterPatch {
+    let mut patch = WaterPatch {
         cols: n,
         rows: n,
         vertices,
@@ -50,7 +57,9 @@ fn sea() -> WaterPatch {
         // A flood rises over the beach, so the sea keeps quads up to its
         // height and more.
         dry: 6.0,
-    }
+    };
+    patch.bake_shore();
+    patch
 }
 
 /// Resamples a reach's centerline every `step` m: points, surface heights,
@@ -110,7 +119,8 @@ fn reach(reach: &Reach, to_lip: bool) -> WaterPatch {
             let a = i as f32 / (cols - 1) as f32 * 2.0 - 1.0;
             let p = *c + side * a * half;
             let depth = y - ground(p.x, p.y);
-            let mut v = WaterVertex::new(Vec3::new(p.x, *y, p.y), depth, Kind::Stream);
+            let mut v =
+                WaterVertex::new(Vec3::new(p.x, *y, p.y), depth, Kind::Stream).in_body(FRESH);
             // Faster in the middle of the channel.
             let speed = reach.speed * (1.0 - 0.5 * a * a);
             v.flow = (*dir * speed).to_array();
@@ -125,13 +135,15 @@ fn reach(reach: &Reach, to_lip: bool) -> WaterPatch {
             vertices.push(v);
         }
     }
-    WaterPatch {
+    let mut patch = WaterPatch {
         cols,
         rows: rows.len() as u32,
         vertices,
         decimate: false,
         dry: 0.0,
-    }
+    };
+    patch.bake_shore();
+    patch
 }
 
 /// The plunge pool: a square grid over the pool, its foam thickest where
@@ -148,7 +160,8 @@ fn pool() -> WaterPatch {
             let z = POOL[1] - half + 2.0 * half * j as f32 / (n - 1) as f32;
             let p = Vec2::new(x, z);
             let depth = POOL_LEVEL - ground(x, z);
-            let mut v = WaterVertex::new(Vec3::new(x, POOL_LEVEL, z), depth, Kind::Stream);
+            let mut v =
+                WaterVertex::new(Vec3::new(x, POOL_LEVEL, z), depth, Kind::Stream).in_body(FRESH);
             let from = p - Vec2::new(land.x, land.z);
             let spread = from.normalize_or_zero() * 0.6 * (-from.length() / 3.0).exp();
             v.flow = (spread + (out - p).normalize_or_zero() * 0.25).to_array();
@@ -156,13 +169,15 @@ fn pool() -> WaterPatch {
             vertices.push(v);
         }
     }
-    WaterPatch {
+    let mut patch = WaterPatch {
         cols: n,
         rows: n,
         vertices,
         decimate: false,
         dry: 0.0,
-    }
+    };
+    patch.bake_shore();
+    patch
 }
 
 /// Where the falls meet the pool.
@@ -198,7 +213,8 @@ fn fall() -> WaterPatch {
         for i in 0..cols {
             let a = i as f32 / (cols - 1) as f32 * 2.0 - 1.0;
             let p = c + side * a * half;
-            let mut v = WaterVertex::new(Vec3::new(p.x, y + 0.02, p.y), 1.0, Kind::Fall);
+            let mut v =
+                WaterVertex::new(Vec3::new(p.x, y + 0.02, p.y), 1.0, Kind::Fall).in_body(FRESH);
             v.flow = heading.to_array();
             // Ragged, thinner edges; foamier as it falls.
             v.foam = (s * 0.8 + 0.2 - a.abs().powi(4) * 0.6).clamp(0.0, 1.0);
@@ -259,16 +275,23 @@ pub const HEIGHT_FOG: HeightFog = HeightFog {
 };
 
 /// The sea's swell and color for the lab: a gentle swell from the
-/// south-west rolling into the bay, clear water over sand.
+/// south-west rolling into the bay, clear water over sand (the `cove`
+/// preset), and the fresh water of the river, pool, and falls (`river`).
+/// The swell is `physics::water` terms ([`verse_pbr::water::frame::wind_sea`]),
+/// so the shader, the floats, and the physics share one surface.
 #[must_use]
 pub fn water() -> Water {
+    let preset = |name| Preset::named(name).cloned().unwrap_or_default();
     // Waves travel toward the beach (+z), a little east.
     let mut water = Water::sea(LEVEL, 0.25, 22.0, 1.0);
-    water.extinction = [0.36, 0.072, 0.052];
-    water.scatter = [0.016, 0.085, 0.10];
-    water.foam = 0.85;
+    let swell = water.sea_body().swell;
+    *water.sea_body_mut() = Body {
+        swell,
+        ..Body::still(LEVEL, &preset("cove"))
+    };
     water.caustics = 0.9;
-    water.roughness = 0.035;
+    let fresh = water.add(Body::still(POOL_LEVEL, &preset("river")));
+    debug_assert_eq!(fresh, Some(FRESH));
     water
 }
 

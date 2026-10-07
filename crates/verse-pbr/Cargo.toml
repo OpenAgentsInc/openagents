@@ -21,9 +21,11 @@ bytemuck = { version = "1.25", features = ["derive"] }
 coder-ui = { path = "../coder-ui" }
 glam = "0.30.10"
 gltf = { version = "=1.4.1", default-features = false, features = ["import", "utils", "names", "KHR_materials_emissive_strength"] }
+physics = { path = "../physics" }
 png = "0.18.1"
 pollster = "0.4"
 serde = { version = "1", features = ["derive"] }
+toml = "0.9"
 verse-engine = { path = "../verse-engine", features = ["asset-io"] }
 verse-gfx = { path = "../verse-gfx" }
 wgpu = "29.0.4"

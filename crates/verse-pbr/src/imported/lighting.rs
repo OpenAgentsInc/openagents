@@ -18,6 +18,8 @@ pub(super) struct Frame {
     /// Height fog's base height, falloff, start distance, and opacity cap;
     /// `fog`'s w is its density.
     pub fog_shape: [f32; 4],
+    /// What this tier's water draws ([`crate::water::control`]).
+    pub water_control: [f32; 4],
 }
 /// The frame uniform. `shadowed` names the lights that get the cube shadow
 /// maps, in map order ([`select_shadowed`]): they are written first, then the

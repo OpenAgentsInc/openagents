@@ -1,0 +1,9 @@
+# A clear pool, fountain, or bath: the clearest oceanic water, Jerlov
+# type I.
+description = "Clear still water in a basin."
+jerlov = "I"
+scatter = [0.012, 0.050, 0.060]
+foam = 0.3
+roughness = 0.02
+shore_band = 0.25
+crest_scatter = 0.0

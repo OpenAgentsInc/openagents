@@ -1,0 +1,9 @@
+# A shallow stream or river: coastal water, Jerlov type 3, with white
+# water where it runs fast.
+description = "A clear stream over stones."
+jerlov = "C3"
+scatter = [0.016, 0.055, 0.050]
+foam = 0.9
+roughness = 0.04
+shore_band = 0.5
+crest_scatter = 0.2

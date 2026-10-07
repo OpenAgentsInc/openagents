@@ -1,0 +1,8 @@
+# Open ocean: clear oceanic water, Jerlov type IB, deep blue over depth.
+description = "Clear open ocean, deep blue where it is deep."
+jerlov = "IB"
+scatter = [0.010, 0.050, 0.085]
+foam = 0.8
+roughness = 0.04
+shore_band = 1.6
+crest_scatter = 0.7

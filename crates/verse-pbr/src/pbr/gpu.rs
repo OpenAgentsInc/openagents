@@ -110,6 +110,8 @@ struct Frame {
     /// otherwise.
     key_tint: [f32; 4],
     fire_control: [f32; 4],
+    /// What this tier's water draws ([`crate::water::control`]).
+    water_control: [f32; 4],
     /// The sea ([`super::water`]): its level, 1 when present, 1 when the
     /// eye is under it, and the caustics' strength.
     water: [f32; 4],
@@ -361,8 +363,10 @@ struct Pipelines {
     sprites: wgpu::RenderPipeline,
     legacy: wgpu::RenderPipeline,
     wide: wgpu::RenderPipeline,
-    /// Water surfaces ([`super::water`]), premultiplied over the scene.
+    /// Water surfaces ([`crate::water`]): the emitted half, added over
+    /// the scene after the transmitted half has dimmed it.
     water: wgpu::RenderPipeline,
+    water_transmit: wgpu::RenderPipeline,
     /// Textured meshes by [`Pass`], single-sided then double-sided.
     textured: [[wgpu::RenderPipeline; 2]; 3],
     /// Opaque textured meshes into the shadow map.
@@ -612,7 +616,8 @@ pub struct Photo {
     /// This frame's particle sprite quads (`crate::fx::vertices`).
     pub sprites: Stream,
     fx_group: wgpu::BindGroup,
-    /// The water pass's uniform (group 2, binding 3).
+    /// The water pass's uniform (group 2, binding 3), with the low tier's
+    /// normal tile at bindings 4 and 5.
     water_buffer: wgpu::Buffer,
     water_group: wgpu::BindGroup,
     /// The display's headroom over reference white for space frames.
@@ -720,6 +725,9 @@ impl Photo {
             Tier::High => 16.0,
         };
         [steps, if self.fire_volumes { 1.0 } else { 0.0 }, 0.0, 0.0]
+    }
+    fn water_control(&self) -> [f32; 4] {
+        crate::water::control(self.capability.quality.tier)
     }
     pub fn new(
         device: &wgpu::Device,
@@ -1317,34 +1325,42 @@ impl Photo {
                 },
             ],
         });
-        // The water's uniform, at a binding the textured material's group
-        // leaves free in this module.
+        // The water's uniform and the low tier's normal tile, at bindings
+        // the textured material's group leaves free in this module.
+        let [tile_entry, tile_sampler_entry] = crate::water::tile_entries(4);
         let water_layout = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
             label: Some("verse water"),
-            entries: &[wgpu::BindGroupLayoutEntry {
-                binding: 3,
-                visibility: wgpu::ShaderStages::VERTEX_FRAGMENT,
-                ty: wgpu::BindingType::Buffer {
-                    ty: wgpu::BufferBindingType::Uniform,
-                    has_dynamic_offset: false,
-                    min_binding_size: None,
-                },
-                count: None,
-            }],
+            entries: &[
+                crate::water::uniform_entry(3),
+                tile_entry,
+                tile_sampler_entry,
+            ],
         });
         let water_buffer = device.create_buffer(&wgpu::BufferDescriptor {
             label: Some("verse water"),
-            size: std::mem::size_of::<super::water::WaterUniform>() as u64,
+            size: std::mem::size_of::<crate::water::WaterUniform>() as u64,
             usage: wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST,
             mapped_at_creation: false,
         });
+        let water_tile = crate::water::tile::texture(device, queue);
+        let water_tile_sampler = crate::water::tile::sampler(device);
         let water_group = device.create_bind_group(&wgpu::BindGroupDescriptor {
             label: Some("verse water"),
             layout: &water_layout,
-            entries: &[wgpu::BindGroupEntry {
-                binding: 3,
-                resource: water_buffer.as_entire_binding(),
-            }],
+            entries: &[
+                wgpu::BindGroupEntry {
+                    binding: 3,
+                    resource: water_buffer.as_entire_binding(),
+                },
+                wgpu::BindGroupEntry {
+                    binding: 4,
+                    resource: wgpu::BindingResource::TextureView(&water_tile),
+                },
+                wgpu::BindGroupEntry {
+                    binding: 5,
+                    resource: wgpu::BindingResource::Sampler(&water_tile_sampler),
+                },
+            ],
         });
         let water_pipeline_layout =
             device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
@@ -1356,27 +1372,38 @@ impl Photo {
                 ],
                 immediate_size: 0,
             });
-        const WATER: [wgpu::VertexAttribute; 5] = wgpu::vertex_attr_array![
-            0 => Float32x3, 1 => Float32, 2 => Float32x2, 3 => Float32, 4 => Float32
-        ];
+        let water_vertices = [wgpu::VertexBufferLayout {
+            array_stride: std::mem::size_of::<crate::water::WaterVertex>() as u64,
+            step_mode: wgpu::VertexStepMode::Vertex,
+            attributes: &crate::water::frame::VERTEX_ATTRIBUTES,
+        }];
         const SPRITE: [wgpu::VertexAttribute; 5] = wgpu::vertex_attr_array![
             0 => Float32x3, 1 => Float32x4, 2 => Float32x2, 3 => Float32x2, 4 => Float32x4
         ];
         let pipelines = Pipelines {
-            // Seen from above and below, so neither face is culled.
+            // Seen from above and below, so neither face is culled. The
+            // transmitted half multiplies the scene, then the emitted half
+            // adds to it, each tested against the depth without writing it.
             water: make(
                 &water_pipeline_layout,
                 "verse water",
                 "vs_water",
                 Some("fs_water"),
-                &[wgpu::VertexBufferLayout {
-                    array_stride: std::mem::size_of::<super::water::WaterVertex>() as u64,
-                    step_mode: wgpu::VertexStepMode::Vertex,
-                    attributes: &WATER,
-                }],
+                &water_vertices,
                 triangles,
                 depth_state(false, wgpu::CompareFunction::GreaterEqual),
-                Some(PREMULTIPLIED),
+                Some(crate::water::EMIT_BLEND),
+                samples,
+            ),
+            water_transmit: make(
+                &water_pipeline_layout,
+                "verse water transmit",
+                "vs_water",
+                Some("fs_water_transmit"),
+                &water_vertices,
+                triangles,
+                depth_state(false, wgpu::CompareFunction::GreaterEqual),
+                Some(crate::water::TRANSMIT_BLEND),
                 samples,
             ),
             textured: textured_pipelines,
@@ -1705,54 +1732,23 @@ impl Photo {
         )
     }
 
-    /// What the textured draws of the last frame cost.
-    #[must_use]
     /// Uploads a zone's water surface once. The low tier draws every other
     /// row and column of the patches that allow it.
+    #[must_use]
     pub fn upload_water(
         &self,
         device: &wgpu::Device,
-        surface: &super::water::WaterSurface,
+        surface: &crate::water::WaterSurface,
     ) -> WaterGpu {
-        use wgpu::util::DeviceExt;
-        let stride = if self.capability.quality.tier == Tier::Low {
-            2
-        } else {
-            1
-        };
-        let vertices = surface.vertices();
-        let indices = surface.indices(stride);
-        let make = |label, contents: &[u8], usage| {
-            device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
-                label: Some(label),
-                contents,
-                usage,
-            })
-        };
-        WaterGpu {
-            vertices: make(
-                "verse water vertices",
-                bytemuck::cast_slice(&vertices),
-                wgpu::BufferUsages::VERTEX,
-            ),
-            indices: make(
-                "verse water indices",
-                bytemuck::cast_slice(&indices),
-                wgpu::BufferUsages::INDEX,
-            ),
-            count: indices.len() as u32,
-        }
+        WaterGpu(crate::water::SurfaceGpu::upload(
+            device,
+            surface,
+            self.capability.quality.tier,
+        ))
     }
 
-    /// How many detail waves a tier's water fragments evaluate.
-    fn water_detail(&self) -> usize {
-        match self.capability.quality.tier {
-            Tier::Low => 6,
-            Tier::Medium => 10,
-            Tier::High => super::water::MAX_DETAIL,
-        }
-    }
-
+    /// What the textured draws of the last frame cost.
+    #[must_use]
     pub fn draw_stats(&self) -> DrawStats {
         self.stats.get()
     }
@@ -2256,6 +2252,7 @@ impl Photo {
             sky_horizon: [0.0; 4],
             sky_sun: [0.0; 4],
             fire_control: self.fire_control(),
+            water_control: self.water_control(),
             ..Frame::zeroed()
         };
         frame.set_cascades(&shadow);
@@ -2650,6 +2647,7 @@ impl Photo {
             sky_horizon: [0.0; 4],
             sky_sun: [0.0; 4],
             fire_control: self.fire_control(),
+            water_control: self.water_control(),
             ..Frame::zeroed()
         };
         let mut uniform = frame(reversed, neon.line_width, 1.0);
@@ -2777,19 +2775,23 @@ impl Photo {
         let water = neon.water.filter(|water| lit.is_some() && water.valid());
         if let Some(water) = &water {
             let eye = view.eye;
-            let under = eye.y < water.surface_height(eye.x, eye.z, f32::INFINITY);
+            // Only a sea lights and tints the lit surfaces under it; other
+            // bodies absorb over their own baked depth.
+            let under = water.sea && eye.y < water.surface_height(eye.x, eye.z, f32::INFINITY);
+            let sea = water.sea_body();
             uniform.water = [
-                water.level,
-                1.0,
+                sea.level,
+                if water.sea { 1.0 } else { 0.0 },
                 if under { 1.0 } else { 0.0 },
                 water.caustics,
             ];
-            let e = water.extinction;
+            let e = sea.absorption;
             uniform.water_extinction = [e[0], e[1], e[2], 0.0];
-            let c = water.scatter;
+            let c = sea.scatter;
             uniform.water_scatter = [c[0], c[1], c[2], water.time];
             uniform.water_controls = water.control_terms();
-            let packed = water.uniform(self.water_detail());
+            let mut packed = water.uniform();
+            packed.look[1] = crate::water::pixel_angle(view.view_proj, view.eye, height);
             queue.write_buffer(&self.water_buffer, 0, bytemuck::bytes_of(&packed));
         }
         queue.write_buffer(&self.frame, 0, bytemuck::bytes_of(&uniform));
@@ -2892,21 +2894,24 @@ impl Photo {
             }
             // The water over everything opaque, before glass and particles.
             if let (Some(gpu), Some(_)) = (world.water, &water)
-                && gpu.count > 0
+                && gpu.0.count() > 0
             {
-                pass.set_pipeline(&self.pipelines.water);
                 pass.set_bind_group(1, &targets.guide_groups[0], &[]);
                 pass.set_bind_group(2, &self.water_group, &[]);
-                pass.set_vertex_buffer(0, gpu.vertices.slice(..));
-                pass.set_index_buffer(gpu.indices.slice(..), wgpu::IndexFormat::Uint32);
-                pass.draw_indexed(0..gpu.count, 0, 0..1);
+                gpu.0.draw(
+                    &mut pass,
+                    &self.pipelines.water_transmit,
+                    &self.pipelines.water,
+                );
             }
             // Free water, such as an orb in the air, over the zone's water.
             if water.is_some() && self.liquid.count > 0 {
-                pass.set_pipeline(&self.pipelines.water);
                 pass.set_bind_group(1, &targets.guide_groups[0], &[]);
                 pass.set_bind_group(2, &self.water_group, &[]);
                 pass.set_vertex_buffer(0, self.liquid.buffer.slice(..));
+                pass.set_pipeline(&self.pipelines.water_transmit);
+                pass.draw(0..self.liquid.count, 0..1);
+                pass.set_pipeline(&self.pipelines.water);
                 pass.draw(0..self.liquid.count, 0..1);
             }
             self.draw_textured(&mut pass, world.textured, &order, Pass::Blended);
@@ -3021,17 +3026,13 @@ pub struct Batches<'a> {
 }
 
 /// A water surface on the GPU ([`Photo::upload_water`]).
-pub struct WaterGpu {
-    vertices: wgpu::Buffer,
-    indices: wgpu::Buffer,
-    count: u32,
-}
+pub struct WaterGpu(pub crate::water::SurfaceGpu);
 
 impl WaterGpu {
     /// The bytes the surface holds on the GPU.
     #[must_use]
     pub fn bytes(&self) -> u64 {
-        self.vertices.size() + self.indices.size()
+        self.0.bytes()
     }
 }
 

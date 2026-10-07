@@ -1,56 +1,35 @@
-//! Water: seas, lakes, streams, and falls, drawn by the physical renderer's
-//! water pass (`water.wgsl`) on a lit neon stage.
+//! A frame's water and the surfaces it moves: what both renderers' water
+//! passes draw (`water.wgsl`).
 //!
 //! A zone puts two things in its meshes. Its world mesh carries a
-//! [`WaterSurface`], the static grids of the water's rest shape, which the
-//! renderer uploads once. Each frame's stage ([`super::Neon::water`])
-//! carries a [`Water`]: the level, the clock, the swell, the fine detail,
-//! the ripples of the moment, and the water's optical properties.
+//! [`WaterSurface`], the static grids of the water's rest shape (built by
+//! hand or by [`super::bake`]), which a renderer uploads once. Each frame's
+//! stage ([`crate::pbr::Neon::water`], or the imported renderer's
+//! `water`) carries a [`Water`]: up to [`MAX_BODIES`] bodies, each with its
+//! level, its Gerstner swell ([`Swell`], the terms of a
+//! `physics::water::WaveSet`), and its optics, plus the clock, the fine
+//! detail, the ripples of the moment, and the spells on the sea. Body 0 is
+//! the sea when a stage has one: the physical renderer also tints and
+//! lights what lies under it.
 //!
-//! The techniques are public ones, reimplemented here:
-//!
-//! - The swell is a sum of Gerstner (trochoidal) waves, after Tessendorf,
-//!   "Simulating Ocean Water" (SIGGRAPH course notes, 2001), and Finch,
-//!   "Effective Water Simulation from Physical Models" (*GPU Gems*, ch. 1,
-//!   2004), with the deep-water dispersion relation ω² = g·k. Toward the
-//!   shore each wave's height falls with √tanh(k·d), the shallow-water
-//!   factor of the full dispersion relation, so the swell flattens out over
-//!   the beach instead of cutting through it.
-//! - Fine detail is a second, shorter set of waves that only bends normals,
-//!   faded out once a wave is shorter than a few pixels, with its slope
-//!   variance moved into roughness (Toksvig 2005; Olano and Baker, "LEAN
-//!   Mapping", 2010), so distant water keeps its sun glitter instead of
-//!   aliasing.
-//! - Streams advect their detail along a flow vector in two phases half a
-//!   period apart, blended so neither phase's reset shows (Vlachos, "Water
-//!   Flow in Portal 2", SIGGRAPH 2010).
-//! - Reflection is Fresnel-weighted (Schlick 1994) sky from the stage's
-//!   prefiltered sky, and the sun's glint is the renderer's GGX lobe.
-//! - Light under the surface is attenuated by Beer–Lambert extinction along
-//!   the refracted view path and the sun's path, plus single-scattered
-//!   in-scatter; the seabed's own shader applies it, so a floating crate's
-//!   submerged half fades into the blue the same way the sand does.
-//! - Caustics on the seabed come from the area ratio of the refracted light
-//!   field: where the surface's curvature focuses rays, the Jacobian of the
-//!   map from surface to bed vanishes and the light gathers into bright
-//!   lines (after Evan Wallace's WebGL Water, 2011, which measures the same
-//!   ratio with screen-space derivatives; here it is the analytic Hessian of
-//!   a few short waves).
-//! - Ripples are analytic expanding rings, a damped wave packet whose front
-//!   moves at a fixed speed.
-//!
-//! [`Water::surface_height`] evaluates the same swell on the CPU, so a
-//! floating body bobs on exactly the surface the player sees.
+//! The techniques are public ones, reimplemented here; `water.wgsl` names
+//! them. [`Water::surface_height`] evaluates the sea's swell in `f32`
+//! exactly as the shader does, so a floating body bobs on the surface the
+//! player sees, and [`Swell`] holds the same terms `physics::water`
+//! evaluates in `f64`.
 
 use std::f32::consts::TAU;
 
 use bytemuck::{Pod, Zeroable};
 use glam::{Vec2, Vec3};
 
+pub use super::terms::{Swell, shoaling, wind_sea};
+use super::{MAX_BODIES, preset::Preset};
+
 /// Gravity's acceleration, m/s².
 pub const GRAVITY: f32 = 9.81;
-/// The most swell waves a stage carries.
-pub const MAX_WAVES: usize = 8;
+/// The most Gerstner terms a body carries (`physics::water::MAX_WAVES`).
+pub const MAX_WAVES: usize = physics::water::MAX_WAVES;
 /// The most detail waves a stage carries.
 pub const MAX_DETAIL: usize = 16;
 /// The most ripples a frame carries.
@@ -62,8 +41,10 @@ pub const RIPPLE_SPEED: f32 = 1.1;
 /// A quad whose four corners stand this far above the water (negative
 /// depth) is dry ground, and no water is drawn there, m.
 pub const DRY: f32 = 0.6;
+/// The shore distance of a vertex nobody baked: far from any shore, m.
+pub const OPEN_WATER: f32 = 1000.0;
 
-/// One Gerstner wave.
+/// One detail wave: it bends normals and never moves the surface.
 #[derive(Clone, Copy, Debug, Default, PartialEq)]
 pub struct Wave {
     /// Unit direction of travel in the xz plane.
@@ -72,9 +53,6 @@ pub struct Wave {
     pub wavelength: f32,
     /// Crest height above the rest level, m.
     pub amplitude: f32,
-    /// Gerstner steepness Q: 0 is a sine wave; higher sharpens the crests
-    /// by moving water toward them.
-    pub steepness: f32,
     /// Phase offset, radians.
     pub phase: f32,
 }
@@ -91,13 +69,6 @@ impl Wave {
     pub fn omega(&self) -> f32 {
         (GRAVITY * self.k()).sqrt()
     }
-
-    /// The share of this wave's height left over water `depth` deep:
-    /// √tanh(k·d), one in deep water and zero on dry land.
-    #[must_use]
-    pub fn shoaling(&self, depth: f32) -> f32 {
-        (self.k() * depth.max(0.0)).tanh().sqrt()
-    }
 }
 
 /// An expanding ring on the surface, from a footstep, a bob, or a splash.
@@ -111,37 +82,144 @@ pub struct Ripple {
     pub strength: f32,
 }
 
+/// One body of water as a frame draws it.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct Body {
+    /// The level now, m.
+    pub level: f32,
+    /// The level its vertices were built at, m; a flood raises
+    /// [`Self::level`] above it.
+    pub rest: f32,
+    /// The Gerstner terms ([`Swell::from_set`]).
+    pub swell: Swell,
+    /// Scales the swell's heights: above one in a storm or a flood.
+    pub swell_gain: f32,
+    /// Absorption per meter, linear rgb (Beer–Lambert).
+    pub absorption: [f32; 3],
+    /// The share of the light under the surface scattered back up toward
+    /// the eye, linear rgb: the water's own color.
+    pub scatter: [f32; 3],
+    /// How much foam forms, 0 to 1.
+    pub foam: f32,
+    /// The calm surface's microfacet roughness.
+    pub roughness: f32,
+    /// How wide the shore's foam band is, m.
+    pub shore_band: f32,
+    /// How strongly light scatters through thin crests, 0 to 1.
+    pub crest_scatter: f32,
+    /// Whether the eye is in this body's water, which the zone knows: the
+    /// surface then shades from below. The physical renderer finds it for
+    /// the sea itself.
+    pub eye_inside: bool,
+}
+
+impl Default for Body {
+    fn default() -> Self {
+        Self::still(0.0, &Preset::default())
+    }
+}
+
+impl Body {
+    /// Still water at `level` with `preset`'s optics.
+    #[must_use]
+    pub fn still(level: f32, preset: &Preset) -> Self {
+        Self {
+            level,
+            rest: level,
+            swell: Swell::default(),
+            swell_gain: 1.0,
+            absorption: preset.absorption,
+            scatter: preset.scatter,
+            foam: preset.foam,
+            roughness: preset.roughness,
+            shore_band: preset.shore_band,
+            crest_scatter: preset.crest_scatter,
+            eye_inside: false,
+        }
+    }
+
+    /// `body`'s level, waves, and `preset`'s optics, at `level`.
+    #[must_use]
+    pub fn from_physics(body: &physics::water::WaterBody, preset: &Preset) -> Self {
+        let level = body.level.at(0.0).0 as f32;
+        Self {
+            swell: Swell::from_set(&body.waves),
+            ..Self::still(level, preset)
+        }
+    }
+
+    /// The swell's displacement of the rest point `p` (x, z) over water
+    /// `depth` deep at `time`: x, height, and z, m.
+    #[must_use]
+    pub fn displacement(&self, p: Vec2, depth: f32, time: f32) -> Vec3 {
+        let angles = self.swell.angles(f64::from(time));
+        self.swell.displacement(&angles, p, depth, self.swell_gain)
+    }
+
+    /// How fast the water at rest point `p` moves at `time`, m/s.
+    #[must_use]
+    pub fn velocity(&self, p: Vec2, depth: f32, time: f32) -> Vec3 {
+        let angles = self.swell.angles(f64::from(time));
+        self.swell.velocity(&angles, p, depth, self.swell_gain)
+    }
+
+    fn valid(&self) -> bool {
+        let finite = |v: f32| v.is_finite();
+        finite(self.level)
+            && finite(self.rest)
+            && finite(self.swell_gain)
+            && self.swell.count <= MAX_WAVES
+            && self.swell.terms.iter().all(|t| {
+                t.dir.iter().all(|v| v.is_finite())
+                    && finite(t.k)
+                    && finite(t.amplitude)
+                    && finite(t.q)
+                    && t.phase.is_finite()
+            })
+            && self.absorption.iter().all(|v| finite(*v) && *v >= 0.0)
+            && self.scatter.iter().all(|v| finite(*v) && *v >= 0.0)
+            && (0.0..=1.0).contains(&self.foam)
+            && (0.0..=1.0).contains(&self.roughness)
+            && (0.0..=1.0).contains(&self.crest_scatter)
+            && finite(self.shore_band)
+    }
+}
+
+/// A sky and a sun for a renderer that has neither of its own (the
+/// imported renderer's chamber), in its linear units.
+#[derive(Clone, Copy, Debug, Default, PartialEq)]
+pub struct Sky {
+    pub zenith: [f32; 3],
+    pub horizon: [f32; 3],
+    /// Toward the sun, unit.
+    pub sun_dir: [f32; 3],
+    /// The sun's illuminance in the renderer's units; zero for none.
+    pub sun_illuminance: f32,
+    pub sun_color: [f32; 3],
+}
+
 /// What a frame's water looks like and how it moves.
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct Water {
-    /// The sea's level now, m. The seabed's shading takes the water's
-    /// color from it; streams and pools at other heights carry their own.
-    pub level: f32,
-    /// The level the sea's vertices were built at, m; a flood raises
-    /// [`Self::level`] above it.
-    pub rest: f32,
-    /// Scales the swell's heights: above one in a storm or a flood.
-    pub swell_gain: f32,
-    /// What spells are doing to the water ([`Controls`]).
+    /// The bodies; the first [`Self::count`] are drawn. Body 0 is the sea
+    /// on a stage that has one.
+    pub bodies: [Body; MAX_BODIES],
+    pub count: usize,
+    /// Whether body 0 is a sea whose bed the physical renderer's lit
+    /// surfaces tint and light themselves ([`Kind::Sea`] vertices), with
+    /// its caustics, spells, and the view from under it.
+    pub sea: bool,
+    /// What spells are doing to the sea ([`Controls`]).
     pub controls: Controls,
     /// The water clock, s.
     pub time: f32,
-    pub waves: [Wave; MAX_WAVES],
-    pub wave_count: usize,
     pub detail: [Wave; MAX_DETAIL],
     pub detail_count: usize,
     pub ripples: [Ripple; MAX_RIPPLES],
-    /// Extinction (absorption and out-scattering) per meter, linear rgb.
-    pub extinction: [f32; 3],
-    /// The share of the light under the surface scattered back up toward
-    /// the eye, linear rgb: the water body's own color.
-    pub scatter: [f32; 3],
-    /// How much foam forms on crests and along the shore, 0 to 1.
-    pub foam: f32,
-    /// How strongly the caustics focus sunlight on the bed, 0 to 1.
+    /// How strongly the caustics focus sunlight on the sea's bed, 0 to 1.
     pub caustics: f32,
-    /// The calm surface's microfacet roughness.
-    pub roughness: f32,
+    /// The imported renderer's sky and sun, when set.
+    pub sky: Option<Sky>,
 }
 
 impl Default for Water {
@@ -151,65 +229,63 @@ impl Default for Water {
 }
 
 impl Water {
-    /// Still, clear water at `level` with only fine detail on it.
+    /// One body of still, clear water at `level` with only fine detail on it.
     #[must_use]
     pub fn calm(level: f32) -> Self {
         let mut water = Self {
-            level,
-            rest: level,
-            swell_gain: 1.0,
+            bodies: [Body::still(level, &Preset::default()); MAX_BODIES],
+            count: 1,
+            sea: false,
             controls: Controls::default(),
             time: 0.0,
-            waves: [Wave::default(); MAX_WAVES],
-            wave_count: 0,
             detail: [Wave::default(); MAX_DETAIL],
             detail_count: 0,
             ripples: [Ripple::default(); MAX_RIPPLES],
-            extinction: [0.42, 0.11, 0.085],
-            scatter: [0.012, 0.055, 0.07],
-            foam: 0.6,
             caustics: 0.8,
-            roughness: 0.04,
+            sky: None,
         };
         water.set_detail(0.3, 0.12, 2.4, 0.016);
         water
     }
 
-    /// A sea at `level` with a swell from `wind` (radians about +Y, the
-    /// direction the waves travel toward, as the controller's yaw: 0 is +z)
-    /// whose longest waves are `longest` m, `height` setting the crest
-    /// heights relative to wavelength.
+    /// A sea at `level` with a wind sea's swell ([`wind_sea`]): waves from
+    /// `wind` (radians about +Y, the direction they travel toward, as the
+    /// controller's yaw: 0 is +z), the longest `longest` m, `height`
+    /// setting the crest heights relative to wavelength.
     #[must_use]
     pub fn sea(level: f32, wind: f32, longest: f32, height: f32) -> Self {
         let mut water = Self::calm(level);
-        water.set_swell(wind, longest, height, MAX_WAVES);
+        water.sea = true;
+        water.bodies[0].swell = Swell::from_set(&wind_sea(wind, longest, height, MAX_WAVES));
         water.set_detail(wind, 0.1, longest * 0.18, 0.02);
         water
     }
 
-    /// Replaces the swell with `count` waves from `wind`, the longest
-    /// `longest` m, each shorter by a fixed ratio and turned a little off
-    /// the wind, alternately to either side, as a directional spectrum's
-    /// spread would. The steepness keeps the sum of Q·k·A under one, so no
-    /// crest loops.
-    pub fn set_swell(&mut self, wind: f32, longest: f32, height: f32, count: usize) {
-        let count = count.min(MAX_WAVES);
-        let mut wavelength = longest.max(0.5);
-        for i in 0..count {
-            let side = if i % 2 == 0 { 1.0 } else { -1.0 };
-            let turn = wind + side * (0.18 + 0.11 * i as f32) * golden(i as u32 + 1);
-            let amplitude = wavelength * 0.011 * height;
-            let k = TAU / wavelength;
-            self.waves[i] = Wave {
-                dir: [turn.sin(), turn.cos()],
-                wavelength,
-                amplitude,
-                steepness: (0.75 / (k * amplitude.max(1e-5) * count as f32)).min(1.0),
-                phase: golden(i as u32 + 7) * TAU,
-            };
-            wavelength *= 0.71;
+    /// Body 0, the sea on a stage that has one.
+    #[must_use]
+    pub fn sea_body(&self) -> &Body {
+        &self.bodies[0]
+    }
+
+    /// Body 0, to change.
+    pub fn sea_body_mut(&mut self) -> &mut Body {
+        &mut self.bodies[0]
+    }
+
+    /// The sea's level now, m.
+    #[must_use]
+    pub fn level(&self) -> f32 {
+        self.bodies[0].level
+    }
+
+    /// Adds a body and returns its index, or none when all are taken.
+    pub fn add(&mut self, body: Body) -> Option<usize> {
+        if self.count >= MAX_BODIES {
+            return None;
         }
-        self.wave_count = count;
+        self.bodies[self.count] = body;
+        self.count += 1;
+        Some(self.count - 1)
     }
 
     /// Replaces the detail with waves from `shortest` to `longest` m around
@@ -225,7 +301,6 @@ impl Water {
                 dir: [turn.sin(), turn.cos()],
                 wavelength,
                 amplitude: wavelength * slope,
-                steepness: 0.0,
                 phase: golden(i as u32 + 11) * TAU,
             };
             wavelength *= ratio;
@@ -233,58 +308,39 @@ impl Water {
         self.detail_count = count;
     }
 
-    /// The swell's displacement of the rest point `p` (x, z) over water
+    /// The sea's displacement of the rest point `p` (x, z) over water
     /// `depth` deep: x, height, and z, m.
     #[must_use]
     pub fn displacement(&self, p: Vec2, depth: f32) -> Vec3 {
-        let mut d = Vec3::ZERO;
-        for wave in &self.waves[..self.wave_count] {
-            let dir = Vec2::from(wave.dir);
-            let amplitude = wave.amplitude * self.swell_gain * wave.shoaling(depth);
-            let theta = wave.k() * dir.dot(p) - wave.omega() * self.time + wave.phase;
-            let (s, c) = theta.sin_cos();
-            d.x += wave.steepness * amplitude * dir.x * c;
-            d.z += wave.steepness * amplitude * dir.y * c;
-            d.y += amplitude * s;
-        }
-        d
+        self.bodies[0].displacement(p, depth, self.time)
     }
 
-    /// How fast the water at rest point `p` moves, m/s: the time
-    /// derivative of [`Self::displacement`], the orbital velocity a floating
-    /// body is carried by.
+    /// How fast the sea's water at rest point `p` moves, m/s: the orbital
+    /// velocity a floating body is carried by.
     #[must_use]
     pub fn velocity(&self, p: Vec2, depth: f32) -> Vec3 {
-        let mut v = Vec3::ZERO;
-        for wave in &self.waves[..self.wave_count] {
-            let dir = Vec2::from(wave.dir);
-            let amplitude = wave.amplitude * self.swell_gain * wave.shoaling(depth);
-            let omega = wave.omega();
-            let theta = wave.k() * dir.dot(p) - omega * self.time + wave.phase;
-            let (s, c) = theta.sin_cos();
-            v.x += wave.steepness * amplitude * dir.x * omega * s;
-            v.z += wave.steepness * amplitude * dir.y * omega * s;
-            v.y -= amplitude * omega * c;
-        }
-        v
+        self.bodies[0].velocity(p, depth, self.time)
     }
 
-    /// The surface's height above the point (x, z), over water `depth`
-    /// deep at rest, ripples and spells included, m. The swell moves water
+    /// The sea's height above the point (x, z), over water `depth` deep at
+    /// rest, ripples and spells included, m. The swell moves water
     /// sideways, so this finds the rest point whose displaced position lies
     /// over (x, z) by a few fixed-point steps, which converge while the
     /// waves don't loop.
     #[must_use]
     pub fn surface_height(&self, x: f32, z: f32, depth: f32) -> f32 {
+        let sea = &self.bodies[0];
         let target = Vec2::new(x, z);
-        let depth = depth + self.level - self.rest;
+        let depth = depth + sea.level - sea.rest;
         let calm = 1.0 - self.controls.ice_at(target);
+        let angles = sea.swell.angles(f64::from(self.time));
+        let at = |p: Vec2| sea.swell.displacement(&angles, p, depth, sea.swell_gain) * calm;
         let mut rest = target;
         for _ in 0..4 {
-            let d = self.displacement(rest, depth) * calm;
+            let d = at(rest);
             rest = target - Vec2::new(d.x, d.z);
         }
-        self.level + self.displacement(rest, depth).y * calm + self.ripple_height(target) * calm
+        sea.level + at(rest).y + self.ripple_height(target) * calm
             - self.controls.drop(target, depth)
     }
 
@@ -321,18 +377,38 @@ impl Water {
         };
     }
 
-    /// The uniform the water pass reads.
+    /// The uniform both water passes read, each body's swell at the water
+    /// clock.
     #[must_use]
-    pub fn uniform(&self, detail_count: usize) -> WaterUniform {
+    pub fn uniform(&self) -> WaterUniform {
+        self.uniform_by(|swell| swell.angles(f64::from(self.time)))
+    }
+
+    /// As [`Self::uniform`], each body's swell at whole tick `tick` of its
+    /// own clock, exactly as `physics::water` samples it there.
+    #[must_use]
+    pub fn uniform_at_tick(&self, tick: u64) -> WaterUniform {
+        self.uniform_by(|swell| swell.angles_at(tick, 0.0))
+    }
+
+    fn uniform_by(&self, angles: impl Fn(&Swell) -> [f32; MAX_WAVES]) -> WaterUniform {
         let mut u = WaterUniform::zeroed();
-        for (i, wave) in self.waves[..self.wave_count].iter().enumerate() {
-            u.waves[i * 2] = [wave.dir[0], wave.dir[1], wave.k(), wave.amplitude];
-            u.waves[i * 2 + 1] = [wave.steepness, wave.omega(), wave.phase, 0.0];
+        for (slot, body) in u.bodies.iter_mut().zip(&self.bodies[..self.count]) {
+            let angles = angles(&body.swell);
+            slot.waves = body.swell.rows(&angles);
+            let a = body.absorption;
+            slot.absorb = [a[0], a[1], a[2], body.level];
+            let s = body.scatter;
+            slot.scatter = [s[0], s[1], s[2], body.foam];
+            slot.params = [
+                body.swell.count as f32,
+                body.roughness,
+                body.swell_gain,
+                if body.eye_inside { 1.0 } else { 0.0 },
+            ];
+            slot.rest = [body.rest, body.shore_band, body.crest_scatter, 0.0];
         }
-        let detail = detail_count.min(self.detail_count);
-        // The longest detail waves matter most; a tier that draws fewer
-        // keeps those.
-        for (i, wave) in self.detail[..detail].iter().enumerate() {
+        for (i, wave) in self.detail[..self.detail_count].iter().enumerate() {
             u.detail[i * 2] = [wave.dir[0], wave.dir[1], wave.k(), wave.amplitude];
             u.detail[i * 2 + 1] = [wave.omega(), wave.phase, wave.wavelength, 0.0];
         }
@@ -344,25 +420,20 @@ impl Water {
                 ripples += 1;
             }
         }
-        u.extinction = [
-            self.extinction[0],
-            self.extinction[1],
-            self.extinction[2],
-            self.level,
-        ];
-        u.scatter = [self.scatter[0], self.scatter[1], self.scatter[2], self.foam];
         u.params = [
             self.time,
-            self.wave_count as f32,
-            detail as f32,
+            self.detail_count as f32,
             ripples as f32,
+            self.count as f32,
         ];
-        u.look = [
-            self.roughness,
-            self.caustics,
-            self.level - self.rest,
-            self.swell_gain,
-        ];
+        u.look = [self.caustics, 0.0, 0.0, 0.0];
+        if let Some(sky) = self.sky {
+            let (z, h, d, c) = (sky.zenith, sky.horizon, sky.sun_dir, sky.sun_color);
+            u.sky_zenith = [z[0], z[1], z[2], 1.0];
+            u.sky_horizon = [h[0], h[1], h[2], 0.0];
+            u.sun = [d[0], d[1], d[2], sky.sun_illuminance];
+            u.sun_color = [c[0], c[1], c[2], 0.0];
+        }
         u
     }
 
@@ -370,24 +441,17 @@ impl Water {
     #[must_use]
     pub fn valid(&self) -> bool {
         let finite = |v: f32| v.is_finite();
-        finite(self.level)
+        (1..=MAX_BODIES).contains(&self.count)
+            && self.bodies[..self.count].iter().all(Body::valid)
             && finite(self.time)
-            && self.wave_count <= MAX_WAVES
             && self.detail_count <= MAX_DETAIL
-            && self.waves.iter().chain(&self.detail).all(|w| {
+            && self.detail.iter().all(|w| {
                 w.dir.iter().all(|v| v.is_finite())
                     && w.wavelength > 0.0
                     && finite(w.amplitude)
-                    && finite(w.steepness)
                     && finite(w.phase)
             })
-            && self.extinction.iter().all(|v| finite(*v) && *v >= 0.0)
-            && self.scatter.iter().all(|v| finite(*v) && *v >= 0.0)
-            && (0.0..=1.0).contains(&self.foam)
             && (0.0..=1.0).contains(&self.caustics)
-            && (0.0..=1.0).contains(&self.roughness)
-            && finite(self.rest)
-            && finite(self.swell_gain)
             && self.controls.valid()
     }
 
@@ -608,37 +672,55 @@ fn golden(i: u32) -> f32 {
     (i as f32 * 0.618_034).fract()
 }
 
+/// One body's rows of [`WaterUniform`], in `water.wgsl`'s `WaterBody`.
+#[repr(C)]
+#[derive(Clone, Copy, Debug, Pod, Zeroable)]
+pub struct BodyUniform {
+    /// Per term: direction, wavenumber, amplitude; then q, the angle's
+    /// constant part now, ω, and 0.
+    pub waves: [[f32; 4]; 2 * MAX_WAVES],
+    /// rgb absorption; w the level now.
+    pub absorb: [f32; 4],
+    /// rgb in-scatter; w foam.
+    pub scatter: [f32; 4],
+    /// Term count, roughness, swell gain, and 1 when the eye is inside.
+    pub params: [f32; 4],
+    /// Rest level, shore band, crest scattering, and 0.
+    pub rest: [f32; 4],
+}
+
 /// What [`Water::uniform`] writes, in the layout `water.wgsl` reads.
 #[repr(C)]
 #[derive(Clone, Copy, Debug, Pod, Zeroable)]
 pub struct WaterUniform {
-    /// Per swell wave: direction, wavenumber, and amplitude; then
-    /// steepness, angular frequency, and phase.
-    pub waves: [[f32; 4]; 2 * MAX_WAVES],
+    pub bodies: [BodyUniform; MAX_BODIES],
     /// Per detail wave: direction, wavenumber, and amplitude; then angular
     /// frequency, phase, and wavelength.
     pub detail: [[f32; 4]; 2 * MAX_DETAIL],
     /// Per ripple: x, z, start, strength.
     pub ripples: [[f32; 4]; MAX_RIPPLES],
-    /// rgb extinction, 1/m; w the sea's level.
-    pub extinction: [f32; 4],
-    /// rgb in-scatter; w foam.
-    pub scatter: [f32; 4],
-    /// Time, swell count, detail count, ripple count.
+    /// Time, detail count, ripple count, and body count.
     pub params: [f32; 4],
-    /// Roughness, caustics, the flood's rise over the rest level, and the
-    /// swell's gain.
+    /// Caustics, and three spare.
     pub look: [f32; 4],
+    pub sky_zenith: [f32; 4],
+    pub sky_horizon: [f32; 4],
+    pub sun: [f32; 4],
+    pub sun_color: [f32; 4],
 }
 
 /// How a vertex of a water surface is drawn.
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub enum Kind {
-    /// The sea: the swell at this scale (0 to 1) moves it, and the bed
-    /// beneath takes the sea's color from [`Water::level`].
+    /// The sea: its body's swell at this scale (0 to 1) moves it, and on
+    /// the physical renderer the bed beneath takes the sea's color.
     Sea(f32),
-    /// A stream or pool at its own height: flat, its detail carried along
-    /// the vertex's flow, and its own depth tint drawn by the surface.
+    /// A pond, lake, pool, or calm river: its body's swell at this scale
+    /// (0 to 1) moves it, and the surface itself absorbs over the baked
+    /// depth under it.
+    Body(f32),
+    /// A stream or pool at its own height: [`Kind::Body`] without swell,
+    /// its detail carried along the vertex's flow.
     Stream,
     /// A falling sheet: aerated, streaked along its fall.
     Fall,
@@ -646,16 +728,19 @@ pub enum Kind {
     /// stream that feeds it: a closed surface around a center, wobbling by
     /// this much (0 to 1), refracting like a ball lens, and electrified
     /// when struck by lightning. [`WaterVertex::orb`] builds its vertices.
+    /// The physical renderer alone draws it.
     Orb(f32),
 }
 
 impl Kind {
-    /// The vertex's kind channel: the swell scale for the sea, 2 for a
-    /// stream, 3 for a fall, and 4 plus the wobble for an orb.
+    /// The vertex's kind channel: the swell scale for the sea, 2 plus up to
+    /// 0.98 for a body (2 for a stream), 3 for a fall, and 4 plus the
+    /// wobble for an orb.
     #[must_use]
     pub fn code(self) -> f32 {
         match self {
             Self::Sea(scale) => scale.clamp(0.0, 1.0),
+            Self::Body(scale) => 2.0 + 0.98 * scale.clamp(0.0, 1.0),
             Self::Stream => 2.0,
             Self::Fall => 3.0,
             Self::Orb(wobble) => 4.0 + wobble.clamp(0.0, 0.99),
@@ -678,7 +763,18 @@ pub struct WaterVertex {
     pub foam: f32,
     /// [`Kind::code`].
     pub kind: f32,
+    /// Distance to the shore, m ([`super::bake::shore_distance`]);
+    /// [`OPEN_WATER`] when nobody baked it.
+    pub shore: f32,
+    /// The body whose terms move and color it ([`Water::bodies`]).
+    pub body: f32,
 }
+
+/// The vertex attributes both water pipelines read.
+pub const VERTEX_ATTRIBUTES: [wgpu::VertexAttribute; 7] = wgpu::vertex_attr_array![
+    0 => Float32x3, 1 => Float32, 2 => Float32x2, 3 => Float32, 4 => Float32,
+    5 => Float32, 6 => Float32
+];
 
 impl WaterVertex {
     #[must_use]
@@ -689,7 +785,16 @@ impl WaterVertex {
             flow: [0.0; 2],
             foam: 0.0,
             kind: kind.code(),
+            shore: OPEN_WATER,
+            body: 0.0,
         }
+    }
+
+    /// This vertex in body `body`.
+    #[must_use]
+    pub fn in_body(mut self, body: usize) -> Self {
+        self.body = body.min(MAX_BODIES - 1) as f32;
+        self
     }
 
     /// A vertex of an orb ([`Kind::Orb`]) centered at `center`, `offset`
@@ -705,6 +810,8 @@ impl WaterVertex {
             flow: [center.x, center.z],
             foam: charge.clamp(0.0, 1.0),
             kind: Kind::Orb(wobble).code(),
+            shore: OPEN_WATER,
+            body: 0.0,
         }
     }
 }
@@ -721,6 +828,36 @@ pub struct WaterPatch {
     /// How high above its rest level a quad's corners may stand and still
     /// be drawn, m: [`DRY`], or more where a flood may rise.
     pub dry: f32,
+}
+
+impl WaterPatch {
+    /// Bakes each vertex's distance to the shore from the grid's own wet
+    /// and dry vertices ([`super::bake::shore_distance`]), with the grid's
+    /// spacing measured at each vertex, so a warped grid's distances stay
+    /// close to meters.
+    pub fn bake_shore(&mut self) {
+        let (cols, rows) = (self.cols as usize, self.rows as usize);
+        if cols < 2 || rows < 2 || self.vertices.len() != cols * rows {
+            return;
+        }
+        let wet: Vec<bool> = self.vertices.iter().map(|v| v.depth > 0.0).collect();
+        let cells = super::bake::shore_distance(cols, rows, &wet, 1.0);
+        let at = |c: usize, r: usize| Vec3::from(self.vertices[r * cols + c].pos);
+        let spacing: Vec<f32> = (0..rows)
+            .flat_map(|r| (0..cols).map(move |c| (c, r)))
+            .map(|(c, r)| {
+                // Central differences span two cells, one-sided ones one.
+                let (c0, c1) = (c.saturating_sub(1), (c + 1).min(cols - 1));
+                let (r0, r1) = (r.saturating_sub(1), (r + 1).min(rows - 1));
+                let dx = at(c1, r).distance(at(c0, r)) / (c1 - c0) as f32;
+                let dz = at(c, r1).distance(at(c, r0)) / (r1 - r0) as f32;
+                0.5 * (dx + dz)
+            })
+            .collect();
+        for ((v, d), s) in self.vertices.iter_mut().zip(cells).zip(spacing) {
+            v.shore = (d * s).min(OPEN_WATER);
+        }
+    }
 }
 
 /// The water of a zone at rest: one or more patches.
@@ -744,9 +881,19 @@ impl WaterSurface {
     /// patches that may be decimated.
     #[must_use]
     pub fn indices(&self, stride: u32) -> Vec<u32> {
+        self.ranges(stride).0
+    }
+
+    /// As [`Self::indices`], with each patch's range of them, so a
+    /// renderer can draw the patches in order, each through both halves of
+    /// its water pass.
+    #[must_use]
+    pub fn ranges(&self, stride: u32) -> (Vec<u32>, Vec<std::ops::Range<u32>>) {
         let mut out = Vec::new();
+        let mut ranges = Vec::new();
         let mut base = 0u32;
         for patch in &self.patches {
+            let start = out.len() as u32;
             let step = if patch.decimate { stride.max(1) } else { 1 };
             let at = |c: u32, r: u32| base + r * patch.cols + c;
             let dry = if patch.dry > 0.0 { patch.dry } else { DRY };
@@ -767,9 +914,10 @@ impl WaterSurface {
                 }
                 r = r2;
             }
+            ranges.push(start..out.len() as u32);
             base += patch.vertices.len() as u32;
         }
-        out
+        (out, ranges)
     }
 
     /// Checks that every patch is a whole grid of finite vertices.
@@ -794,6 +942,8 @@ impl WaterSurface {
                     && v.depth.is_finite()
                     && v.foam.is_finite()
                     && v.kind.is_finite()
+                    && v.shore.is_finite()
+                    && (0.0..MAX_BODIES as f32).contains(&v.body)
             }) {
                 return Err(format!("Water patch {i} has a vertex that is not finite"));
             }
@@ -805,21 +955,6 @@ impl WaterSurface {
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    /// A long wave's speed is the deep-water phase speed √(g·L / 2π).
-    #[test]
-    fn waves_follow_the_deep_water_dispersion_relation() {
-        let wave = Wave {
-            wavelength: 20.0,
-            ..Wave::default()
-        };
-        let speed = wave.omega() / wave.k();
-        let expected = (GRAVITY * 20.0 / TAU).sqrt();
-        assert!((speed - expected).abs() < 1e-4);
-        // A wave dies out over dry land and keeps its height in deep water.
-        assert_eq!(wave.shoaling(0.0), 0.0);
-        assert!(wave.shoaling(100.0) > 0.999);
-    }
 
     /// The CPU height finds the displaced surface over a point: the rest
     /// point it settles on is displaced back onto that point.
@@ -839,18 +974,6 @@ mod tests {
             let h = sea.surface_height(x, z, 50.0);
             assert!((h - d.y).abs() < 0.02, "{h} vs {}", d.y);
         }
-    }
-
-    /// No crest loops: the swell's summed Q·k·A stays under one.
-    #[test]
-    fn the_swell_never_loops() {
-        let sea = Water::sea(0.0, 1.0, 30.0, 2.0);
-        let sum: f32 = sea.waves[..sea.wave_count]
-            .iter()
-            .map(|w| w.steepness * w.k() * w.amplitude)
-            .sum();
-        assert!(sum <= 1.0, "{sum}");
-        assert!(sea.valid());
     }
 
     /// A ripple spreads, then fades out; a new one replaces the oldest.
@@ -875,11 +998,11 @@ mod tests {
             .map(|r| r.start)
             .fold(f32::MIN, f32::max);
         assert_eq!(newest, (MAX_RIPPLES + 2) as f32);
-        assert_eq!(water.uniform(MAX_DETAIL).params[3] as usize, 4);
+        assert_eq!(water.uniform().params[2] as usize, 4);
     }
 
     /// A grid's quads over dry ground draw nothing, and a decimated patch
-    /// draws a quarter as many triangles.
+    /// draws a quarter as many triangles; each patch's range is its own.
     #[test]
     fn dry_quads_are_skipped_and_low_tiers_decimate() {
         let mut patch = WaterPatch {
@@ -898,33 +1021,67 @@ mod tests {
                 ));
             }
         }
+        patch.bake_shore();
+        // The column next to the dry ground is a meter from it.
+        assert!((patch.vertices[3].shore - 1.0).abs() < 1e-4);
+        assert!((patch.vertices[0].shore - 4.0).abs() < 1e-4);
         let surface = WaterSurface {
-            patches: vec![patch],
+            patches: vec![patch.clone(), patch],
         };
         surface.validate().unwrap();
         // Columns 0 to 4 have a wet corner: four quads across, eight down.
-        assert_eq!(surface.indices(1).len(), 4 * 8 * 6);
-        assert_eq!(surface.indices(2).len(), 2 * 4 * 6);
+        assert_eq!(surface.indices(1).len(), 2 * 4 * 8 * 6);
+        let (_, ranges) = surface.ranges(2);
+        assert_eq!(ranges, vec![0..2 * 4 * 6, 2 * 4 * 6..2 * 2 * 4 * 6]);
     }
 
-    /// The uniform's layout is the one `water.wgsl` declares.
+    /// The uniform's layout is the one `water.wgsl` declares, in both
+    /// renderers.
     #[test]
     fn the_water_uniform_matches_the_shader() {
-        for gles in [false, true] {
-            let shared = crate::shading::source(include_str!("photo.wgsl"));
-            let source = verse_gfx::gles::wgsl(&shared, gles);
-            let module = naga::front::wgsl::parse_str(&source).unwrap();
-            let mut layouter = naga::proc::Layouter::default();
-            layouter.update(module.to_ctx()).unwrap();
-            let (ty, _) = module
-                .types
-                .iter()
-                .find(|(_, ty)| ty.name.as_deref() == Some("WaterUniform"))
-                .expect("water.wgsl declares WaterUniform");
-            assert_eq!(
-                layouter[ty].size as usize,
-                std::mem::size_of::<WaterUniform>()
-            );
+        for shader in [
+            include_str!("../pbr/photo.wgsl"),
+            include_str!("../imported/scene.wgsl"),
+        ] {
+            for gles in [false, true] {
+                let shared = crate::shading::source(shader);
+                let source = verse_gfx::gles::wgsl(&shared, gles);
+                let module = naga::front::wgsl::parse_str(&source).unwrap();
+                let mut layouter = naga::proc::Layouter::default();
+                layouter.update(module.to_ctx()).unwrap();
+                let size = |name: &str| {
+                    let (ty, _) = module
+                        .types
+                        .iter()
+                        .find(|(_, ty)| ty.name.as_deref() == Some(name))
+                        .expect("water.wgsl declares it");
+                    layouter[ty].size as usize
+                };
+                assert_eq!(size("WaterUniform"), std::mem::size_of::<WaterUniform>());
+                assert_eq!(size("WaterBody"), std::mem::size_of::<BodyUniform>());
+                // GLES and WebGL2 guarantee 16 KiB a uniform block.
+                assert!(size("WaterUniform") <= 16_384);
+            }
         }
+    }
+
+    /// The sea's CPU surface and velocity are the shader's terms: at the
+    /// same angles they agree with `Swell` itself.
+    #[test]
+    fn the_sea_reads_its_body_s_swell() {
+        let mut sea = Water::sea(1.5, 0.25, 22.0, 1.0);
+        sea.time = 12.25;
+        let body = sea.sea_body();
+        let angles = body.swell.angles(12.25);
+        let p = Vec2::new(4.0, -3.0);
+        assert_eq!(
+            sea.displacement(p, 30.0),
+            body.swell.displacement(&angles, p, 30.0, 1.0)
+        );
+        assert!(sea.valid());
+        let u = sea.uniform();
+        assert_eq!(u.params[3], 1.0);
+        assert_eq!(u.bodies[0].absorb[3], 1.5);
+        assert_eq!(u.bodies[0].params[0], 8.0);
     }
 }

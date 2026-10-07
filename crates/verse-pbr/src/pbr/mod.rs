@@ -32,7 +32,8 @@ pub mod screen;
 pub mod sky;
 pub mod textured;
 pub mod textured_bake;
-pub mod water;
+/// The water a frame draws, at its old path ([`crate::water::frame`]).
+pub use crate::water::frame as water;
 
 use std::sync::Arc;
 

@@ -489,6 +489,26 @@ impl WorldRuntime {
         self.camera = crate::camera::FollowCamera::default();
     }
 
+    /// Enter the Water Lab from Everglade's pack bytes the caller already
+    /// holds, as [`Self::install_grove_bytes`] does for the Grove.
+    ///
+    /// # Errors
+    /// The bytes are not the pinned pack, or the lab enters only from the
+    /// plaza.
+    pub fn install_water_lab_bytes(&mut self, bytes: &[u8]) -> Result<(), String> {
+        let pack = everglade_pack::ZonePack::decode_pinned(bytes)?;
+        self.install_water_lab(&pack);
+        if self.zone == ZoneId::WaterLab {
+            Ok(())
+        } else {
+            Err(self
+                .zone_state
+                .error
+                .clone()
+                .unwrap_or_else(|| "The Water Lab enters only from the plaza".into()))
+        }
+    }
+
     /// The Water Lab, while the player is in it.
     #[must_use]
     pub fn water_lab(&self) -> Option<&super::water::WaterLab> {

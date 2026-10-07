@@ -1,0 +1,317 @@
+{
+  "capture_command": "cargo run --release -p verse-pbr --example water_capture -- OUTPUT_DIRECTORY",
+  "capture": "Real GPU output from both renderers at each tier, each view with and without its water; no grading or editing.",
+  "water_drawn_in_every_view": true,
+  "low_tier": "The physical renderer's Low draws into an 8-bit sRGB scene target with one sample; both renderers draw water inside the scene pass, so no tier adds a pass or a render target for it.",
+  "views": [
+    {
+      "image": "physical-low-pond-noon.png",
+      "renderer": "physical",
+      "tier": "low",
+      "view": "pond-noon",
+      "pixels_changed_by_water": 0.39610146604938273,
+      "water_drawn": true,
+      "water_ms_with_readback": 0.5597325000000009
+    },
+    {
+      "image": "physical-low-pond-dusk.png",
+      "renderer": "physical",
+      "tier": "low",
+      "view": "pond-dusk",
+      "pixels_changed_by_water": 0.2648341049382716,
+      "water_drawn": true,
+      "water_ms_with_readback": 0.8585171666666662
+    },
+    {
+      "image": "physical-low-river.png",
+      "renderer": "physical",
+      "tier": "low",
+      "view": "river",
+      "pixels_changed_by_water": 0.1866261574074074,
+      "water_drawn": true,
+      "water_ms_with_readback": 2.406215083333333
+    },
+    {
+      "image": "physical-low-sea.png",
+      "renderer": "physical",
+      "tier": "low",
+      "view": "sea",
+      "pixels_changed_by_water": 0.36433449074074076,
+      "water_drawn": true,
+      "water_ms_with_readback": 1.095989499999999
+    },
+    {
+      "image": "physical-low-under.png",
+      "renderer": "physical",
+      "tier": "low",
+      "view": "under",
+      "pixels_changed_by_water": 0.660733024691358,
+      "water_drawn": true,
+      "water_ms_with_readback": 0.06306958333333368
+    },
+    {
+      "image": "imported-low-pond-noon.png",
+      "renderer": "imported",
+      "tier": "low",
+      "view": "pond-noon",
+      "pixels_changed_by_water": 0.40131172839506174,
+      "water_drawn": true,
+      "water_ms_with_readback": 0.92292375
+    },
+    {
+      "image": "imported-low-pond-dusk.png",
+      "renderer": "imported",
+      "tier": "low",
+      "view": "pond-dusk",
+      "pixels_changed_by_water": 0.3749980709876543,
+      "water_drawn": true,
+      "water_ms_with_readback": 0.8003753333333332
+    },
+    {
+      "image": "imported-low-river.png",
+      "renderer": "imported",
+      "tier": "low",
+      "view": "river",
+      "pixels_changed_by_water": 0.20526041666666667,
+      "water_drawn": true,
+      "water_ms_with_readback": 0.0848573333333329
+    },
+    {
+      "image": "imported-low-sea.png",
+      "renderer": "imported",
+      "tier": "low",
+      "view": "sea",
+      "pixels_changed_by_water": 0.513011188271605,
+      "water_drawn": true,
+      "water_ms_with_readback": 0.028260333333332888
+    },
+    {
+      "image": "imported-low-under.png",
+      "renderer": "imported",
+      "tier": "low",
+      "view": "under",
+      "pixels_changed_by_water": 0.660733024691358,
+      "water_drawn": true,
+      "water_ms_with_readback": 0.03064224999999987
+    },
+    {
+      "image": "physical-medium-pond-noon.png",
+      "renderer": "physical",
+      "tier": "medium",
+      "view": "pond-noon",
+      "pixels_changed_by_water": 0.40606288580246913,
+      "water_drawn": true,
+      "water_ms_with_readback": 1.289840333333335
+    },
+    {
+      "image": "physical-medium-pond-dusk.png",
+      "renderer": "physical",
+      "tier": "medium",
+      "view": "pond-dusk",
+      "pixels_changed_by_water": 0.2699710648148148,
+      "water_drawn": true,
+      "water_ms_with_readback": 1.4511805833333327
+    },
+    {
+      "image": "physical-medium-river.png",
+      "renderer": "physical",
+      "tier": "medium",
+      "view": "river",
+      "pixels_changed_by_water": 0.18894675925925927,
+      "water_drawn": true,
+      "water_ms_with_readback": 1.1327849166666653
+    },
+    {
+      "image": "physical-medium-sea.png",
+      "renderer": "physical",
+      "tier": "medium",
+      "view": "sea",
+      "pixels_changed_by_water": 0.36418788580246914,
+      "water_drawn": true,
+      "water_ms_with_readback": 2.259086916666665
+    },
+    {
+      "image": "physical-medium-under.png",
+      "renderer": "physical",
+      "tier": "medium",
+      "view": "under",
+      "pixels_changed_by_water": 0.663840663580247,
+      "water_drawn": true,
+      "water_ms_with_readback": 1.0944200000000008
+    },
+    {
+      "image": "imported-medium-pond-noon.png",
+      "renderer": "imported",
+      "tier": "medium",
+      "view": "pond-noon",
+      "pixels_changed_by_water": 0.4106076388888889,
+      "water_drawn": true,
+      "water_ms_with_readback": 1.4020210833333326
+    },
+    {
+      "image": "imported-medium-pond-dusk.png",
+      "renderer": "imported",
+      "tier": "medium",
+      "view": "pond-dusk",
+      "pixels_changed_by_water": 0.32810378086419756,
+      "water_drawn": true,
+      "water_ms_with_readback": 0.46932274999999946
+    },
+    {
+      "image": "imported-medium-river.png",
+      "renderer": "imported",
+      "tier": "medium",
+      "view": "river",
+      "pixels_changed_by_water": 0.2082079475308642,
+      "water_drawn": true,
+      "water_ms_with_readback": 0.7332707499999991
+    },
+    {
+      "image": "imported-medium-sea.png",
+      "renderer": "imported",
+      "tier": "medium",
+      "view": "sea",
+      "pixels_changed_by_water": 0.5336728395061728,
+      "water_drawn": true,
+      "water_ms_with_readback": 0.8649233333333339
+    },
+    {
+      "image": "imported-medium-under.png",
+      "renderer": "imported",
+      "tier": "medium",
+      "view": "under",
+      "pixels_changed_by_water": 0.6615489969135803,
+      "water_drawn": true,
+      "water_ms_with_readback": -0.011430333333333875
+    },
+    {
+      "image": "physical-high-pond-noon.png",
+      "renderer": "physical",
+      "tier": "high",
+      "view": "pond-noon",
+      "pixels_changed_by_water": 0.4120042438271605,
+      "water_drawn": true,
+      "water_ms_with_readback": 1.3598645833333345
+    },
+    {
+      "image": "physical-high-pond-dusk.png",
+      "renderer": "physical",
+      "tier": "high",
+      "view": "pond-dusk",
+      "pixels_changed_by_water": 0.273647762345679,
+      "water_drawn": true,
+      "water_ms_with_readback": 1.5014690000000002
+    },
+    {
+      "image": "physical-high-river.png",
+      "renderer": "physical",
+      "tier": "high",
+      "view": "river",
+      "pixels_changed_by_water": 0.19083912037037037,
+      "water_drawn": true,
+      "water_ms_with_readback": 1.4101599166666672
+    },
+    {
+      "image": "physical-high-sea.png",
+      "renderer": "physical",
+      "tier": "high",
+      "view": "sea",
+      "pixels_changed_by_water": 0.36552854938271606,
+      "water_drawn": true,
+      "water_ms_with_readback": 7.242545333333333
+    },
+    {
+      "image": "physical-high-under.png",
+      "renderer": "physical",
+      "tier": "high",
+      "view": "under",
+      "pixels_changed_by_water": 0.663858024691358,
+      "water_drawn": true,
+      "water_ms_with_readback": 1.1712566666666664
+    },
+    {
+      "image": "imported-high-pond-noon.png",
+      "renderer": "imported",
+      "tier": "high",
+      "view": "pond-noon",
+      "pixels_changed_by_water": 0.4135165895061728,
+      "water_drawn": true,
+      "water_ms_with_readback": 1.332194583333333
+    },
+    {
+      "image": "imported-high-pond-dusk.png",
+      "renderer": "imported",
+      "tier": "high",
+      "view": "pond-dusk",
+      "pixels_changed_by_water": 0.3477565586419753,
+      "water_drawn": true,
+      "water_ms_with_readback": 1.3836841666666668
+    },
+    {
+      "image": "imported-high-river.png",
+      "renderer": "imported",
+      "tier": "high",
+      "view": "river",
+      "pixels_changed_by_water": 0.20829475308641976,
+      "water_drawn": true,
+      "water_ms_with_readback": 1.5184094166666664
+    },
+    {
+      "image": "imported-high-sea.png",
+      "renderer": "imported",
+      "tier": "high",
+      "view": "sea",
+      "pixels_changed_by_water": 0.5408699845679013,
+      "water_drawn": true,
+      "water_ms_with_readback": 3.426961916666667
+    },
+    {
+      "image": "imported-high-under.png",
+      "renderer": "imported",
+      "tier": "high",
+      "view": "under",
+      "pixels_changed_by_water": 0.6614621913580246,
+      "water_drawn": true,
+      "water_ms_with_readback": -0.27596183333333335
+    }
+  ],
+  "web": {
+    "command": "scripts/build-everglade-web.sh --with-pack SITE; openagents browser run -- python3 -I webcheck.py SITE OUT CDP_DIR",
+    "browser": "headless Chrome on an Apple M5 Max",
+    "pages": {
+      "webgpu": {
+        "url": "?zone=water&frames",
+        "probe": {
+          "canvas_has_webgl2": false,
+          "navigator_gpu": true,
+          "webgpu_adapter": true,
+          "status": null,
+          "title": "Everglade"
+        },
+        "screenshot": "web-webgpu.png",
+        "errors": [
+          "Failed to load resource: the server responded with a status of 404 (File not found)"
+        ]
+      },
+      "webgl2": {
+        "url": "?gl&zone=water&frames",
+        "probe": {
+          "canvas_has_webgl2": true,
+          "navigator_gpu": true,
+          "webgpu_adapter": true,
+          "status": null,
+          "title": "Everglade"
+        },
+        "screenshot": "web-webgl2.png",
+        "errors": []
+      }
+    },
+    "result": "The Water Lab draws its sea, river, and falls through the shared water shader on WebGPU (the canvas holds a WebGPU context) and with ?gl on WebGL2 (the canvas holds a WebGL2 context), at 60 frames a second in both; the only console error is the test server's missing favicon."
+  },
+  "tests": {
+    "shader_validation": "cargo test -p verse-pbr --lib shading (both renderers, default and GLES variants) and cargo test -p verse --lib gles (the SHADERS table, GLSL ES 3.00 and Metal translation)",
+    "surface_parity": "cargo test -p verse-pbr --lib water::parity: 80 GPU-displaced points over five ticks up to 37,000,017, crests to 1.6 m: worst 2.1 um against WaveSet::at_rest and 37 um against Surface::sample (its own five-round inversion), under the 1 mm bound"
+  },
+  "timing_note": "frame_ms_with_readback includes a blocking readback on a machine running other builds; the per-view water cost is the difference with the dry render and is noisy to about a millisecond. Per-tier GPU budgets are W11's measurement.",
+  "dry_renders": "The renders without water are compared and digested (capture.json) but not retained."
+}

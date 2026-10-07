@@ -1,3 +1,13 @@
+## Water on a phone (#10774)
+
+The shared water shader (`docs/verse/water.md`, W2) validates and translates
+to GLSL ES 3.00 and Metal, and the Low tier was captured on the desktop with
+no floating-point target. On a physical phone (iOS, and Android on OpenGL
+ES 3.0 if one is at hand), walk through the plaza's WATER LAB arch and
+confirm the sea, the river, and the falls draw, with foam at the shore and
+the glint path at golden hour (`T` turns the hour). Note the frame rate in
+the Lab next to the beach.
+
 ## Private Verse characters on a paired phone (#10797)
 
 The phone path is code-complete and tested with fakes; no real phone,
