@@ -1,6 +1,6 @@
 //! The Grid robot: an original black-and-white robot on the Universal rig
-//! (`docs/verse/grid-robot.md`), and the patrol one of it walks in the
-//! Grid's plaza.
+//! (`docs/verse/grid-robot.md`), the four patrols it walks around the Grid's
+//! plaza, and a fifth that dances beside the Everglade arch.
 //!
 //! `scripts/blender/grid_robot.py` builds it from rigid parts, each bound to
 //! one joint, and `scripts/blender/grid_robot_admit.py` admits a near and a
@@ -38,28 +38,24 @@ pub const CLIP_IDLE: u16 = 0;
 pub const CLIP_WALK: u16 = 2;
 pub const CLIP_RUN: u16 = 3;
 pub const CLIP_AIRBORNE: u16 = 4;
-/// Reaching out to work a control.
-pub const CLIP_INTERACT: u16 = 5;
-/// Kneeling to fix something on the ground.
-pub const CLIP_KNEEL: u16 = 6;
+/// Dancing in place, on a loop.
+pub const CLIP_DANCE: u16 = 5;
 /// Each clip and the Universal clip it plays.
-const CLIPS: [(u16, &str); 6] = [
+const CLIPS: [(u16, &str); 5] = [
     (CLIP_IDLE, "Idle_Loop"),
     (CLIP_WALK, "Walk_Loop"),
     (CLIP_RUN, "Jog_Fwd_Loop"),
     (CLIP_AIRBORNE, "Jump_Loop"),
-    (CLIP_INTERACT, "Interact"),
-    (CLIP_KNEEL, "Fixing_Kneeling"),
+    (CLIP_DANCE, "Dance_Loop"),
 ];
 /// The loops whose last key is set to their first, so they cycle cleanly.
-const LOOPS: [u16; 4] = [CLIP_IDLE, CLIP_WALK, CLIP_RUN, CLIP_AIRBORNE];
+const LOOPS: [u16; 5] = [CLIP_IDLE, CLIP_WALK, CLIP_RUN, CLIP_AIRBORNE, CLIP_DANCE];
 /// `Walk_Loop`'s length, s, and the ground its stride covers in that time,
 /// m, as `characters::loop_distance` gives it.
 pub const WALK_LOOP_SECONDS: f32 = 4.0 / 3.0;
 pub const WALK_LOOP_METERS: f32 = 1.3;
-/// `Interact` and `Fixing_Kneeling`'s lengths, s.
-pub const INTERACT_SECONDS: f32 = 2.0;
-pub const KNEEL_SECONDS: f32 = 5.2;
+/// `Dance_Loop`'s length, s.
+pub const DANCE_SECONDS: f32 = 1.0;
 
 /// Rotation tolerance when thinning a clip's keys, in quaternion components.
 const ROTATION_TOLERANCE: f64 = 1.2e-3;
@@ -119,7 +115,7 @@ pub fn sources() -> Result<(String, u64), String> {
 
 /// The robot's `variant` (`lod0` or `lod1`) as a Grid model named `name`:
 /// flat surfaces on the white texel at `white`, skinned to the Universal
-/// rig, with the idle, walk, run, airborne, interact, and kneel clips.
+/// rig, with the idle, walk, run, airborne, and dance clips.
 pub fn model(dir: &Path, white: usize, variant: &str, name: &str) -> Result<Model, String> {
     if !["lod0", "lod1"].contains(&variant) {
         return Err("Unknown Grid robot variant".into());
@@ -383,42 +379,50 @@ fn flatten(imported: &[Surface], inverse: DMat4, white: usize) -> Result<Vec<Sur
     Ok(out)
 }
 
-/// Where the patrol walks: from its west end, by the plaza's middle, to
-/// its east end, by the Everglade arch. World x and z, m.
-pub const PATROL_WEST: [f32; 2] = [5.5, -6.0];
-pub const PATROL_EAST: [f32; 2] = [5.5, 3.0];
-/// Seconds a turn in place takes.
-const TURN_SECONDS: f32 = 0.8;
-/// Ground speed while walking, which the walk clip's stride covers.
-pub const WALK_SPEED: f32 = WALK_LOOP_METERS / WALK_LOOP_SECONDS;
+/// How much larger than its rig the robot stands in the Grid: about 2.8 m
+/// tall, a machine over the line figures. The instance transform scales it
+/// about its feet, so they stay on the ground.
+pub const SCALE: f32 = 1.5;
+/// The robot's body radius at [`SCALE`], m: its shoulders and pauldrons.
+pub const BODY_RADIUS: f32 = 0.45 * SCALE;
+/// How near a player's center comes to a robot's, m.
+pub const REACH: f32 = BODY_RADIUS + crate::controller::RADIUS;
 
-/// One step of the patrol.
+/// The four patrols: each robot walks between its route's ends, world x and
+/// z, m, one in each quadrant around the spawn. The two ahead flank the
+/// stack and the dominoes outside the side arches; the two behind run
+/// diagonally off the spawn's back corners. Each keeps clear of the arches,
+/// their approaches, the Gym, the pillar, the blocks, and the others.
+pub const ROUTES: [[[f32; 2]; 2]; 4] = [
+    [[13.0, 6.0], [13.0, 16.0]],
+    [[-13.0, 16.0], [-13.0, 6.0]],
+    [[16.0, -8.0], [8.0, -14.0]],
+    [[-8.0, -14.0], [-16.0, -8.0]],
+];
+/// Seconds a robot stands idle at each end of its route, turning back over
+/// the first [`TURN_SECONDS`].
+const PAUSE_SECONDS: f32 = 2.5;
+const TURN_SECONDS: f32 = 1.2;
+/// The fraction of a round between one patroller's start and the next's:
+/// near a quarter, but not one, so no two pause together.
+const PHASE: f64 = 0.287;
+/// Ground speed while walking: the walk clip's stride at [`SCALE`].
+pub const WALK_SPEED: f32 = WALK_LOOP_METERS * SCALE / WALK_LOOP_SECONDS;
+
+/// One step of a patrol.
 #[derive(Clone, Copy, Debug)]
 enum Step {
     /// Walks from one end to the other.
     Walk { from: [f32; 2], to: [f32; 2] },
-    /// Stands idle, turning from one heading to another over the first
-    /// [`TURN_SECONDS`].
-    Stand {
-        at: [f32; 2],
-        from: f32,
-        to: f32,
-        seconds: f32,
-    },
-    /// Plays a working clip once, facing `yaw`.
-    Work {
-        at: [f32; 2],
-        clip: u16,
-        yaw: f32,
-        seconds: f32,
-    },
+    /// Stands idle, turning from one heading to another.
+    Stand { at: [f32; 2], from: f32, to: f32 },
 }
 
 impl Step {
     fn seconds(self) -> f32 {
         match self {
             Self::Walk { from, to } => (to[0] - from[0]).hypot(to[1] - from[1]) / WALK_SPEED,
-            Self::Stand { seconds, .. } | Self::Work { seconds, .. } => seconds,
+            Self::Stand { .. } => PAUSE_SECONDS,
         }
     }
 }
@@ -427,70 +431,33 @@ fn heading(from: [f32; 2], to: [f32; 2]) -> f32 {
     (to[0] - from[0]).atan2(to[1] - from[1])
 }
 
-/// The patrol: walk east, turn to the arch and kneel to tend it, turn
-/// back, walk west, turn toward the plaza's middle and work a control, and
-/// turn east again.
-fn steps() -> [Step; 8] {
-    let (west, east) = (PATROL_WEST, PATROL_EAST);
-    let out = heading(west, east);
-    let back = heading(east, west);
-    let arch = std::f32::consts::FRAC_PI_2;
-    let middle = -std::f32::consts::FRAC_PI_2;
+/// A patrol: walk out, pause and turn, walk back, pause and turn.
+fn steps(route: usize) -> [Step; 4] {
+    let [a, b] = ROUTES[route];
+    let (out, back) = (heading(a, b), heading(b, a));
     [
-        Step::Walk {
-            from: west,
-            to: east,
-        },
+        Step::Walk { from: a, to: b },
         Step::Stand {
-            at: east,
+            at: b,
             from: out,
-            to: arch,
-            seconds: 1.2,
-        },
-        Step::Work {
-            at: east,
-            clip: CLIP_KNEEL,
-            yaw: arch,
-            seconds: KNEEL_SECONDS,
-        },
-        Step::Stand {
-            at: east,
-            from: arch,
             to: back,
-            seconds: 1.6,
         },
-        Step::Walk {
-            from: east,
-            to: west,
-        },
+        Step::Walk { from: b, to: a },
         Step::Stand {
-            at: west,
+            at: a,
             from: back,
-            to: middle,
-            seconds: 1.2,
-        },
-        Step::Work {
-            at: west,
-            clip: CLIP_INTERACT,
-            yaw: middle,
-            seconds: INTERACT_SECONDS,
-        },
-        Step::Stand {
-            at: west,
-            from: middle,
             to: out,
-            seconds: 2.4,
         },
     ]
 }
 
-/// One full round of the patrol, s.
+/// One full round of patrol `route`, s.
 #[must_use]
-pub fn round_seconds() -> f32 {
-    steps().iter().map(|s| s.seconds()).sum()
+pub fn round_seconds(route: usize) -> f32 {
+    steps(route).iter().map(|s| s.seconds()).sum()
 }
 
-/// Where the robot stands and what it plays at one moment of its patrol.
+/// Where a robot stands and what it plays at one moment.
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct Pose {
     /// Feet, on the ground.
@@ -504,13 +471,16 @@ pub struct Pose {
     pub speed: f32,
 }
 
-/// The robot's pose `clock` seconds into its patrol.
+/// The patroller on `route`'s pose `clock` seconds in. Each starts
+/// [`PHASE`] of a round after the one before, so no two move in step.
 #[must_use]
-pub fn pose(clock: f64) -> Pose {
-    let round = f64::from(round_seconds());
+pub fn patroller(route: usize, clock: f64) -> Pose {
+    let round = f64::from(round_seconds(route));
+    let clock = clock + round * PHASE * route as f64;
     let mut t = clock.rem_euclid(round) as f32;
-    let idle = clock as f32 % 1000.0;
-    for step in steps() {
+    let idle = (clock % 1000.0) as f32;
+    let steps = steps(route);
+    for step in steps {
         let length = step.seconds();
         if t >= length {
             t -= length;
@@ -531,7 +501,7 @@ pub fn pose(clock: f64) -> Pose {
                     speed: WALK_SPEED,
                 }
             }
-            Step::Stand { at, from, to, .. } => {
+            Step::Stand { at, from, to } => {
                 let turn = (t / TURN_SECONDS).min(1.0);
                 let eased = turn * turn * (3.0 - 2.0 * turn);
                 let delta = crate::controller::wrap(to - from);
@@ -543,19 +513,12 @@ pub fn pose(clock: f64) -> Pose {
                     speed: 0.0,
                 }
             }
-            Step::Work { at, clip, yaw, .. } => Pose {
-                pos: ground(at),
-                yaw,
-                animation: Selection::Legacy(clip),
-                // Once through: never past the clip's last key.
-                time: t.min(length - 1e-3),
-                speed: 0.0,
-            },
         };
     }
+    let [a, b] = ROUTES[route];
     Pose {
-        pos: ground(PATROL_WEST),
-        yaw: 0.0,
+        pos: ground(a),
+        yaw: heading(a, b),
         animation: Selection::Named(State::Idle),
         time: idle,
         speed: 0.0,
@@ -564,6 +527,57 @@ pub fn pose(clock: f64) -> Pose {
 
 fn ground(at: [f32; 2]) -> Vec3 {
     Vec3::new(at[0], 0.0, at[1])
+}
+
+/// Pushes a player's feet at `player` out of reach of a robot at `robot`.
+pub fn keep_clear(player: &mut Vec3, robot: Vec3) {
+    let (dx, dz) = (player.x - robot.x, player.z - robot.z);
+    let distance = dx.hypot(dz);
+    if !distance.is_finite() || distance >= REACH {
+        return;
+    }
+    let (nx, nz) = if distance > 1e-4 {
+        (dx / distance, dz / distance)
+    } else {
+        (0.0, -1.0)
+    };
+    player.x = robot.x + nx * REACH;
+    player.z = robot.z + nz * REACH;
+}
+
+/// Where the dancer stands in the Everglade arch's frame: outside the pillar
+/// on the side away from the spawn's line, and a step toward the spawn so it
+/// reads from the approach. Across, through, m; the opening spans
+/// [`crate::zones::gate::OPENING_HALF`] either side of the middle.
+pub const DANCER_BESIDE_ARCH: [f32; 2] = [3.6, -1.0];
+
+/// The Everglade arch's place in the Grid, whether or not the arch is drawn.
+fn everglade_arch() -> crate::zones::Gate {
+    crate::zones::Gate::everglade(&crate::blocks::Layout::grid())
+}
+
+/// Where the dancer stands, on the ground.
+#[must_use]
+pub fn dancer_spot() -> Vec3 {
+    let arch = everglade_arch();
+    let beside = Vec3::new(DANCER_BESIDE_ARCH[0], 0.0, DANCER_BESIDE_ARCH[1]);
+    let at = arch.at + Quat::from_rotation_y(arch.yaw) * beside;
+    Vec3::new(at.x, 0.0, at.z)
+}
+
+/// The dancer `clock` seconds in: in place beside the Everglade arch, facing
+/// the spawn, dancing on a loop.
+#[must_use]
+pub fn dancer(clock: f64) -> Pose {
+    let pos = dancer_spot();
+    let spawn = crate::world::SPAWN;
+    Pose {
+        pos,
+        yaw: heading([pos.x, pos.z], [spawn.x, spawn.z]),
+        animation: Selection::Legacy(CLIP_DANCE),
+        time: clock.rem_euclid(f64::from(DANCE_SECONDS)) as f32,
+        speed: 0.0,
+    }
 }
 
 /// The robot's engine instance at `pose`, the far level when the eye is
@@ -579,7 +593,11 @@ pub fn instance(pose: &Pose, eye: Vec3) -> verse_engine::presentation::Instance 
         mount: None,
         actor: None,
         model: model.into(),
-        transform: Mat4::from_rotation_translation(Quat::from_rotation_y(pose.yaw), pose.pos),
+        transform: Mat4::from_scale_rotation_translation(
+            Vec3::splat(SCALE),
+            Quat::from_rotation_y(pose.yaw),
+            pose.pos,
+        ),
         animation: pose.animation,
         time: pose.time.max(0.0),
         animation_epoch: None,
@@ -618,6 +636,23 @@ mod tests {
                 )
             })
             .collect()
+    }
+
+    /// The distance from `point` to the segment from `a` to `b`, on the
+    /// ground.
+    fn to_segment(point: Vec3, a: Vec3, b: Vec3) -> f32 {
+        let flat = |v: Vec3| Vec3::new(v.x, 0.0, v.z);
+        let (point, a, b) = (flat(point), flat(a), flat(b));
+        let ab = b - a;
+        let t = ((point - a).dot(ab) / ab.length_squared().max(1e-6)).clamp(0.0, 1.0);
+        point.distance(a + ab * t)
+    }
+
+    /// Points every 0.1 m along `route`.
+    fn along(route: usize) -> Vec<Vec3> {
+        let [a, b] = ROUTES[route].map(ground);
+        let n = (a.distance(b) / 0.1).ceil() as usize;
+        (0..=n).map(|i| a.lerp(b, i as f32 / n as f32)).collect()
     }
 
     #[test]
@@ -663,6 +698,13 @@ mod tests {
             );
             assert!(model.surfaces.iter().any(|s| s.tint == [1.0; 3]));
             assert!((1.8..1.95).contains(&model.height), "{}", model.height);
+            // Only the clips the Grid plays: no kneeling or working a control.
+            let mut ids: Vec<u16> = model.clips.iter().map(|c| c.id).collect();
+            ids.sort_unstable();
+            assert_eq!(
+                ids,
+                [CLIP_IDLE, CLIP_WALK, CLIP_RUN, CLIP_AIRBORNE, CLIP_DANCE]
+            );
         }
     }
 
@@ -717,45 +759,36 @@ mod tests {
         let walk = model.clips.iter().find(|c| c.id == CLIP_WALK).unwrap();
         assert!((walk.duration - WALK_LOOP_SECONDS).abs() < 1e-3);
         assert_eq!(characters::loop_distance(4), WALK_LOOP_METERS);
-        for (id, seconds) in [
-            (CLIP_INTERACT, INTERACT_SECONDS),
-            (CLIP_KNEEL, KNEEL_SECONDS),
-        ] {
-            let clip = model.clips.iter().find(|c| c.id == id).unwrap();
-            assert!((clip.duration - seconds).abs() < 1e-3);
-        }
+        let dance = model.clips.iter().find(|c| c.id == CLIP_DANCE).unwrap();
+        assert!((dance.duration - DANCE_SECONDS).abs() < 1e-3);
         let rest = posed(model, Selection::Named(State::Idle), 0.0);
         let lowest = rest.iter().map(|p| p.0.y).fold(f32::MAX, f32::min);
         assert!(lowest.abs() < 0.01, "standing soles at {lowest}");
         for selection in [
             Selection::Named(State::Idle),
             Selection::Named(State::Walk),
-            Selection::Legacy(CLIP_INTERACT),
-            Selection::Legacy(CLIP_KNEEL),
+            Selection::Legacy(CLIP_DANCE),
         ] {
             let mut planted = f32::MAX;
             for i in 0..=24 {
                 let time = i as f32 / 24.0 * 1.3;
-                let points = posed(model, selection, time);
+                // At the Grid's scale, about the feet.
+                let points: Vec<_> = posed(model, selection, time)
+                    .into_iter()
+                    .map(|(p, j)| (p * SCALE, j))
+                    .collect();
                 let soles = points
                     .iter()
                     .filter(|p| feet.contains(&p.1))
                     .map(|p| p.0.y)
                     .fold(f32::MAX, f32::min);
                 // A toe may dip a little as the foot rolls; nothing sinks.
-                assert!(soles > -0.03, "{selection:?} at {time}: soles at {soles}");
+                assert!(soles > -0.04, "{selection:?} at {time}: soles at {soles}");
                 planted = planted.min(soles.abs());
-                // Kneeling presses the knee ball a few centimeters into the
-                // floor; nothing else sinks.
-                let floor = if selection == Selection::Legacy(CLIP_KNEEL) {
-                    -0.05
-                } else {
-                    -0.03
-                };
                 let body = points.iter().map(|p| p.0.y).fold(f32::MAX, f32::min);
-                assert!(body > floor, "{selection:?} sinks to {body}");
+                assert!(body > -0.04, "{selection:?} sinks to {body}");
             }
-            assert!(planted < 0.02, "{selection:?} never plants a foot");
+            assert!(planted < 0.03, "{selection:?} never plants a foot");
         }
         // The loops close: their first and last poses match.
         for id in LOOPS {
@@ -772,57 +805,283 @@ mod tests {
     }
 
     #[test]
-    fn the_robot_patrols_the_grid_plaza_only() {
-        let mut grid = WorldRuntime::bare();
-        assert!(WorldRuntime::new().robot().is_none());
-        let start = grid.robot().unwrap();
-        assert_eq!(start.pos, Vec3::new(PATROL_WEST[0], 0.0, PATROL_WEST[1]));
-        for _ in 0..90 {
-            grid.tick_unoccupied(1.0 / 30.0);
+    fn the_robot_stands_half_again_as_tall_and_its_body_fits_its_radius() {
+        let pack = grid_pack::load_pinned().unwrap();
+        let model = &pack.models[ROBOT];
+        let tall = model.height * SCALE;
+        assert!((2.7..2.95).contains(&tall), "{tall} m tall");
+        let at = Pose {
+            pos: Vec3::new(3.0, 0.0, 4.0),
+            yaw: 0.0,
+            animation: Selection::Named(State::Idle),
+            time: 0.0,
+            speed: 0.0,
+        };
+        let transform = instance(&at, at.pos).transform;
+        assert!(transform.transform_point3(Vec3::ZERO).distance(at.pos) < 1e-6);
+        assert!(
+            (transform.transform_point3(Vec3::Y * model.height).y - tall).abs() < 1e-4,
+            "the feet stay put and the head rises"
+        );
+        // Standing, the body stays within its radius, and walking, the upper
+        // body does; only the swinging forearms and hands, and the striding
+        // legs, reach past it.
+        let names = &model.skin.as_ref().unwrap().names;
+        let arms: Vec<usize> = names
+            .iter()
+            .enumerate()
+            .filter(|(_, n)| {
+                [
+                    "hand", "lowerarm", "thumb", "index", "middle", "ring", "pinky",
+                ]
+                .iter()
+                .any(|p| n.starts_with(p))
+            })
+            .map(|(i, _)| i)
+            .collect();
+        let legs: Vec<usize> = names
+            .iter()
+            .enumerate()
+            .filter(|(_, n)| {
+                ["thigh", "calf", "foot", "ball"]
+                    .iter()
+                    .any(|p| n.starts_with(p))
+            })
+            .map(|(i, _)| i)
+            .collect();
+        for selection in [Selection::Named(State::Idle), Selection::Named(State::Walk)] {
+            let walking = selection == Selection::Named(State::Walk);
+            for i in 0..=8 {
+                let widest = posed(model, selection, i as f32 / 8.0)
+                    .iter()
+                    .filter(|p| !arms.contains(&p.1) && !(walking && legs.contains(&p.1)))
+                    .map(|p| p.0.x.hypot(p.0.z) * SCALE)
+                    .fold(0.0, f32::max);
+                assert!(widest < BODY_RADIUS + 0.1, "{selection:?}: {widest} m wide");
+            }
         }
-        let later = grid.robot().unwrap();
-        assert!((later.pos.distance(start.pos) - 3.0 * WALK_SPEED).abs() < 0.01);
-        let instances = crate::grid_frame::dynamic(&grid, &[], &[]);
-        assert!(instances.iter().any(|i| i.model == ROBOT));
     }
 
     #[test]
-    fn the_patrol_is_continuous_and_keeps_clear_of_the_arches_and_gym() {
-        let round = f64::from(round_seconds());
-        assert!(round > 20.0 && round < 60.0, "{round}");
+    fn four_robots_patrol_and_one_dances_in_the_grid_plaza_only() {
+        let mut grid = WorldRuntime::bare();
+        assert!(WorldRuntime::new().robots().is_empty());
+        let start = grid.robots();
+        assert_eq!(ROUTES.len(), 4);
+        assert_eq!(start.len(), ROUTES.len() + 1);
+        let dancers = start
+            .iter()
+            .filter(|r| r.animation == Selection::Legacy(CLIP_DANCE))
+            .count();
+        assert_eq!(dancers, 1);
+        for _ in 0..90 {
+            grid.tick_unoccupied(1.0 / 30.0);
+        }
+        let later = grid.robots();
+        for route in 0..ROUTES.len() {
+            assert_eq!(start[route], patroller(route, 0.0));
+            assert!(later[route].pos.distance(patroller(route, 3.0).pos) < 1e-3);
+        }
+        assert_eq!(later[ROUTES.len()].pos, dancer_spot());
+        let instances = crate::grid_frame::dynamic(&grid, &[], &[]);
+        let drawn = instances
+            .iter()
+            .filter(|i| i.model.as_str().starts_with("grid/robot"))
+            .count();
+        assert_eq!(drawn, 5);
+    }
+
+    #[test]
+    fn the_patrols_walk_and_idle_continuously_out_of_step() {
+        for route in 0..ROUTES.len() {
+            let round = f64::from(round_seconds(route));
+            assert!(round > 10.0 && round < 40.0, "{round}");
+            let mut previous = patroller(route, 0.0);
+            let mut kinds = std::collections::BTreeSet::new();
+            for i in 1..=(round * 30.0) as usize + 30 {
+                let now = patroller(route, i as f64 / 30.0);
+                let step = now.pos.distance(previous.pos);
+                assert!(step <= WALK_SPEED / 30.0 + 1e-3, "jump of {step} m at {i}");
+                let turn = crate::controller::wrap(now.yaw - previous.yaw).abs();
+                assert!(turn < 0.25, "snap of {turn} rad at {i}");
+                kinds.insert(format!("{:?}", now.animation));
+                previous = now;
+            }
+            // Only walking and idling: no kneeling or working a control.
+            let expected: std::collections::BTreeSet<String> = ["Named(Idle)", "Named(Walk)"]
+                .map(String::from)
+                .into_iter()
+                .collect();
+            assert_eq!(kinds, expected);
+        }
+        // No two move in step.
+        for clock in [0.0, 5.0, 11.0] {
+            let phases: std::collections::BTreeSet<_> = (0..ROUTES.len())
+                .map(|r| patroller(r, clock))
+                .map(|p| format!("{:?}{:.1}", p.animation, p.time))
+                .collect();
+            assert_eq!(phases.len(), ROUTES.len(), "in step at {clock}");
+        }
+    }
+
+    #[test]
+    fn the_routes_keep_clear_of_the_plaza_and_each_other() {
         let layout = crate::blocks::Layout::grid();
-        let gates = [
-            crate::zones::Gate::grid(&layout).at,
-            crate::zones::Gate::everglade(&layout).at,
-            crate::zones::Gate::ritual(&layout).at,
+        let spawn = crate::world::SPAWN;
+        let arches = [
+            crate::zones::Gate::grid(&layout),
+            crate::zones::Gate::everglade(&layout),
+            crate::zones::Gate::ritual(&layout),
         ];
         let walls = crate::world::GymSite::GRID.walls();
-        let mut previous = pose(0.0);
-        let mut kinds = std::collections::BTreeSet::new();
-        for i in 1..=(round * 30.0) as usize + 30 {
-            let now = pose(i as f64 / 30.0);
-            let step = now.pos.distance(previous.pos);
-            assert!(step <= WALK_SPEED / 30.0 + 1e-3, "jump of {step} m at {i}");
-            let turn = crate::controller::wrap(now.yaw - previous.yaw).abs();
-            assert!(turn < 0.25, "snap of {turn} rad at {i}");
-            for gate in gates {
-                assert!(now.pos.distance(gate) > 3.0, "too near an arch at {gate}");
+        let pillar = crate::pillar::AT.as_vec3();
+        let ball = crate::ball::START.as_vec3();
+        let stack = layout
+            .at(crate::blocks::STACK_AT[0], crate::blocks::STACK_AT[1], 0.0)
+            .as_vec3();
+        // The dominoes' arc, from its start to a quarter turn along.
+        let [side, ahead] = crate::blocks::DOMINOES_AT;
+        let dominoes: Vec<Vec3> = (0..=16)
+            .map(|i| {
+                let theta = std::f64::consts::FRAC_PI_2 * f64::from(i) / 16.0;
+                layout
+                    .at(
+                        side + 4.0 - 4.0 * theta.cos(),
+                        ahead + 4.0 * theta.sin(),
+                        0.0,
+                    )
+                    .as_vec3()
+            })
+            .collect();
+        let clear = 2.0 * BODY_RADIUS + 1.5;
+        for route in 0..ROUTES.len() {
+            for at in along(route) {
+                for arch in arches {
+                    assert!(at.distance(arch.at) > 4.0, "{route} at {at}: an arch");
+                    assert!(
+                        at.distance(arch.front().0) > 4.0,
+                        "{route} at {at}: an approach"
+                    );
+                    // The walk from the spawn to each arch.
+                    assert!(
+                        to_segment(at, spawn, arch.at) > 3.0,
+                        "{route} at {at}: a path"
+                    );
+                }
+                for wall in &walls {
+                    let inside = (wall.min[0] - 2.0..wall.max[0] + 2.0).contains(&at.x)
+                        && (wall.min[1] - 2.0..wall.max[1] + 2.0).contains(&at.z);
+                    assert!(!inside, "{route} at {at}: a Gym wall");
+                }
+                for (thing, point) in [
+                    ("the spawn", spawn),
+                    ("the pillar", pillar),
+                    ("the ball", ball),
+                    ("the stack", stack),
+                    ("the dancer", dancer_spot()),
+                ] {
+                    assert!(at.distance(point) > clear, "{route} at {at}: {thing}");
+                }
+                for domino in &dominoes {
+                    assert!(at.distance(*domino) > clear, "{route} at {at}: a domino");
+                }
+                // The routes never cross or come near each other.
+                for other in (0..ROUTES.len()).filter(|o| *o != route) {
+                    let [a, b] = ROUTES[other].map(ground);
+                    assert!(to_segment(at, a, b) > 4.0, "{route} nears {other}");
+                }
             }
-            for wall in &walls {
-                let inside = (wall.min[0] - 1.0..wall.max[0] + 1.0).contains(&now.pos.x)
-                    && (wall.min[1] - 1.0..wall.max[1] + 1.0).contains(&now.pos.z);
-                assert!(!inside, "inside a Gym wall at {}", now.pos);
-            }
-            kinds.insert(format!("{:?}", now.animation));
-            previous = now;
         }
-        // It idles, walks, kneels, and works a control in each round.
-        assert_eq!(kinds.len(), 4, "{kinds:?}");
+    }
+
+    #[test]
+    fn the_dance_is_in_the_pack_and_dances_in_place() {
+        let pack = grid_pack::embedded().unwrap();
+        for name in [ROBOT, ROBOT_FAR] {
+            let dance = pack.models[name]
+                .clips
+                .iter()
+                .find(|c| c.id == CLIP_DANCE)
+                .unwrap_or_else(|| panic!("{name} lacks the dance"));
+            assert!((dance.duration - DANCE_SECONDS).abs() < 1e-3);
+        }
+        // The pelvis sways but stays over the feet: no drift off the spot.
+        let model = &pack.models[ROBOT];
+        let names = &model.skin.as_ref().unwrap().names;
+        let pelvis = names.iter().position(|n| n == "pelvis").unwrap();
+        let center = |time: f32| {
+            let points = posed(model, Selection::Legacy(CLIP_DANCE), time);
+            let hips: Vec<Vec3> = points
+                .iter()
+                .filter(|p| p.1 == pelvis)
+                .map(|p| p.0)
+                .collect();
+            hips.iter().sum::<Vec3>() / hips.len() as f32 * SCALE
+        };
+        let rest = center(0.0);
+        for i in 0..=24 {
+            let at = center(i as f32 / 24.0 * DANCE_SECONDS);
+            let drift = Vec3::new(at.x - rest.x, 0.0, at.z - rest.z).length();
+            assert!(drift < 0.3, "the dancer's hips drift {drift} m");
+        }
+    }
+
+    #[test]
+    fn the_dancer_stands_beside_the_everglade_arch_and_clear_of_every_path() {
+        let arch = everglade_arch();
+        let spot = dancer_spot();
+        let near = spot.distance(arch.at);
+        assert!((2.5..5.0).contains(&near), "{near} m from the arch");
+        // Outside the opening and its pillars (1.9 m out, 0.175 m half
+        // wide), with room for a player to pass between.
+        let local = arch.local(spot);
+        assert!(
+            local.x.abs() - REACH > 2.075
+                && local.x.abs() - crate::zones::gate::OPENING_HALF > REACH,
+            "{local}"
+        );
+        // On the approach side, level with the arch: beside it, not behind.
+        assert!((-2.0..0.0).contains(&local.z), "{local}");
+        // Clear of the walk from the spawn to the opening, and of where a
+        // player comes back through.
+        let spawn = crate::world::SPAWN;
+        assert!(to_segment(spot, spawn, arch.at) > 2.0 * REACH);
+        assert!(spot.distance(arch.front().0) > 2.0 * REACH);
+        let layout = crate::blocks::Layout::grid();
+        for gate in [
+            crate::zones::Gate::grid(&layout).at,
+            crate::zones::Gate::ritual(&layout).at,
+        ] {
+            assert!(spot.distance(gate) > 3.0, "too near an arch at {gate}");
+        }
+        // It dances in place, facing the spawn, on a loop.
+        let a = dancer(0.25);
+        let b = dancer(0.25 + f64::from(DANCE_SECONDS) * 7.0);
+        assert_eq!(a.pos, spot);
+        assert_eq!(a.animation, Selection::Legacy(CLIP_DANCE));
+        assert!((a.time - b.time).abs() < 1e-3 && a.time < DANCE_SECONDS);
+        let facing = Quat::from_rotation_y(a.yaw) * Vec3::Z;
+        assert!(facing.dot((spawn - spot).normalize()) > 0.99);
+    }
+
+    #[test]
+    fn a_player_walks_through_the_everglade_arch_past_the_dancer() {
+        let arch = everglade_arch();
+        let dancer = dancer_spot();
+        let world =
+            |x: f32, z: f32| arch.at + Quat::from_rotation_y(arch.yaw) * Vec3::new(x, 0.0, z);
+        for x in [-1.5, 0.0, 1.5] {
+            for z in [-3.0, -1.5, 0.0, 1.5] {
+                let at = world(x, z);
+                let gap = Vec3::new(at.x - dancer.x, 0.0, at.z - dancer.z).length();
+                assert!(gap > REACH, "{x}, {z}: {gap}");
+            }
+        }
     }
 
     #[test]
     fn the_far_level_draws_beyond_its_distance() {
-        let at = pose(0.0);
+        let at = patroller(0, 0.0);
         assert_eq!(instance(&at, at.pos + Vec3::Z * 5.0).model, ROBOT);
         assert_eq!(
             instance(&at, at.pos + Vec3::Z * (FAR_METERS + 1.0)).model,
@@ -831,21 +1090,23 @@ mod tests {
     }
 
     #[test]
-    fn the_player_cannot_walk_through_the_robot() {
-        let mut grid = WorldRuntime::bare();
-        let robot = grid.robot().unwrap();
-        grid.player.pos = robot.pos - Vec3::Z * 0.3;
-        grid.tick(&InputState::default(), 1.0 / 60.0);
-        let robot = grid.robot().unwrap();
-        let gap = Vec3::new(
-            grid.player.pos.x - robot.pos.x,
-            0.0,
-            grid.player.pos.z - robot.pos.z,
-        )
-        .length();
-        assert!(
-            gap > 0.5,
-            "the player stands {gap} m from the robot's center"
-        );
+    fn the_player_cannot_walk_through_any_robot() {
+        for k in 0..=ROUTES.len() {
+            let mut grid = WorldRuntime::bare();
+            let robot = grid.robots()[k];
+            grid.player.pos = robot.pos - Vec3::Z * 0.3;
+            grid.tick(&InputState::default(), 1.0 / 60.0);
+            let robot = grid.robots()[k];
+            let gap = Vec3::new(
+                grid.player.pos.x - robot.pos.x,
+                0.0,
+                grid.player.pos.z - robot.pos.z,
+            )
+            .length();
+            assert!(
+                gap > REACH - 0.05,
+                "the player stands {gap} m from robot {k}'s center"
+            );
+        }
     }
 }

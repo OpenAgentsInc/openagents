@@ -1,7 +1,7 @@
 # The Grid robot
 
-The Grid robot is an original black-and-white robot that patrols the Grid's
-plaza as an NPC. It's built by script in Blender on the Universal rig, so
+The Grid robot is an original black-and-white robot. Four of them patrol the
+Grid's plaza as NPCs, and a fifth dances beside the Everglade arch. It's built by script in Blender on the Universal rig, so
 the Universal Animation Library's clips play on it, and the Grid draws it in
 its own flat look: near-black faceted armor, gray lines on its panel edges,
 and white glow.
@@ -40,21 +40,39 @@ cargo run -p verse --example grid_pack
 `motion.json`: each foot's lowest point per clip and every pair of parts that
 intersect in motion but not at rest. In idle and walk only the curled
 fingers touch the palm and the toe touches the boot as the foot rolls;
-kneeling presses the knee ball into the floor.
+the dance's feet stay within 2 cm of the floor, with the same finger
+contacts as idle.
 
 ## In the Grid
 
 The Grid pack (`assets/verse/grid/pack.json`) carries both levels, compiled
 by `crates/verse/src/grid_robot.rs`: armor in four shades by facet
 direction, edges sharper than 30 degrees as lines, and the clips `Idle_Loop`,
-`Walk_Loop`, `Jog_Fwd_Loop`, `Jump_Loop`, `Interact`, and `Fixing_Kneeling`.
+`Walk_Loop`, `Jog_Fwd_Loop`, `Jump_Loop`, and `Dance_Loop`.
 
-One robot patrols the plaza between (5.5, -6) and (5.5, 3), to the side of
-the spawn and clear of the arches: it walks to the Everglade arch's side,
-kneels to tend it, walks back, works a control facing the plaza, and turns
-around, about 29 seconds a round. Its patrol clock is local to each client.
-The player can't walk through it.
+The Grid draws the robot at 1.5 times its rig's size, about 2.8 m tall,
+scaled about its feet, and walks it at the stride's speed at that size.
 
-`cargo run --release -p verse --features capture --example grid_robot_capture -- OUT_DIR`
-renders it in the Grid: the spawn view, close views at moments of the
-patrol beside a line figure, an orbit, and the far level.
+Four robots patrol the plaza, one in each quadrant around the spawn
+(`ROUTES` in `crates/verse/src/grid_robot.rs`): two ahead, outside the side
+arches, and two behind, off the spawn's back corners. Each walks its route,
+stands idle a moment at each end while it turns, and walks back, about 19
+seconds a round. Each starts 0.287 of a round after the one before, so no
+two move in step. The routes stay clear of the arches and their approaches,
+the walks from the spawn to the arches, the Gym, the pillar, the ball, the
+blocks, the dancer, and each other.
+
+The fifth robot dances in place on a loop beside the Everglade arch: 3.6 m
+out from the arch's middle, past the pillar on the side away from the
+spawn's line, and a step toward the spawn, facing it. The arch's opening and
+its approach stay clear.
+
+The robots' clock is local to each client. The player can't walk through
+any of them: a player's center stays 1.125 m (the robot's body radius plus
+the player's) from a robot's.
+
+`cargo run -p verse --features capture --example grid_robot_capture -- OUT_DIR`
+renders them in the Grid: the spawn view, the plaza from above, each
+patroller beside a line figure, a pause at a route's end, the dancer by the
+arch through one loop, and the far level. It also prints the spawn view's
+GPU time with and without the robots.

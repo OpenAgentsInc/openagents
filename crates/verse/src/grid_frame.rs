@@ -112,7 +112,8 @@ pub struct Standing {
 /// The Grid's dynamic instances this frame: the arches the runtime stands,
 /// the local player unless the camera is in first person or nobody plays
 /// here, every peer the crowd shows (avatars as figures, agents as spades),
-/// standing visitors, and the Grid robot on its patrol.
+/// standing visitors, and the Grid robots: four on their patrols and one
+/// dancing by the Everglade arch.
 #[must_use]
 pub fn dynamic(runtime: &WorldRuntime, crowd: &[Figure], visitors: &[Standing]) -> Vec<Instance> {
     let mut out = grid_pack::gates(runtime);
@@ -143,7 +144,7 @@ pub fn dynamic(runtime: &WorldRuntime, crowd: &[Figure], visitors: &[Standing]) 
             0.0,
         ));
     }
-    if let Some(robot) = runtime.robot() {
+    for robot in runtime.robots() {
         out.push(crate::grid_robot::instance(&robot, runtime.framing().eye));
     }
     out
@@ -270,10 +271,19 @@ mod tests {
             }],
         );
         let figures = &dynamic[arches..];
-        // The player, the avatar, the agent's spade, the visitor, and the
-        // Grid robot on its patrol.
-        assert_eq!(figures.len(), 5);
-        assert_eq!(figures[4].model.as_str(), crate::grid_robot::ROBOT);
+        // The player, the avatar, the agent's spade, the visitor, the four
+        // Grid robots on their patrols, and the one dancing by the Everglade
+        // arch.
+        assert_eq!(figures.len(), 9);
+        assert!(
+            figures[4..8]
+                .iter()
+                .all(|f| f.model.as_str().starts_with(crate::grid_robot::ROBOT))
+        );
+        assert_eq!(
+            figures[8].animation,
+            Selection::Legacy(crate::grid_robot::CLIP_DANCE)
+        );
         assert_eq!(figures[0].animation, Selection::Named(State::Idle));
         assert_eq!(figures[1].animation, Selection::Named(State::Walk));
         assert!((figures[1].time - gait.cycle()).abs() < 1e-6);
@@ -281,8 +291,8 @@ mod tests {
         let spectator = WorldRuntime::unoccupied();
         assert_eq!(
             self::dynamic(&spectator, &[], &[]).len(),
-            grid_pack::gates(&spectator).len() + 1,
-            "a spectator sees the arches and the robot"
+            grid_pack::gates(&spectator).len() + 5,
+            "a spectator sees the arches and the five robots"
         );
     }
 

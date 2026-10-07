@@ -10,8 +10,8 @@ MODEL defaults to the built `grid-robot.lod0.glb` and OUT_DIR to
 
 - `turnaround.png`: front, three-quarter, side, and back in the bind pose,
   on the Grid's near-black field.
-- `poses.png`: one frame of each clip the Grid plays and of the working
-  poses, from the front three-quarter.
+- `poses.png`: one frame of each clip the Grid plays, from the front
+  three-quarter.
 - `motion.json`: for every sampled frame of those clips, the lowest point of
   each foot (planting), and every pair of rigid parts on different bones
   that intersect in that frame but not at rest.
@@ -35,16 +35,15 @@ import kit  # noqa: E402
 
 GAITS = os.path.join(kit.REPO, "assets", "verse", "characters", "quaternius", "gaits.glb")
 DEFAULT = os.path.join(kit.REPO, "assets", "verse", "characters", "original", "grid-robot", "build", "grid-robot.lod0.glb")
-# The clips the Grid binds, then the working poses.
+# The clips the Grid plays.
 CLIPS = [
     ("Idle_Loop", 0.5),
     ("Walk_Loop", 0.25),
     ("Walk_Loop", 0.75),
     ("Jog_Fwd_Loop", 0.25),
     ("Jump_Loop", 0.5),
-    ("Interact", 0.5),
-    ("Fixing_Kneeling", 0.5),
-    ("PickUp_Table", 0.5),
+    ("Dance_Loop", 0.25),
+    ("Dance_Loop", 0.6),
 ]
 
 

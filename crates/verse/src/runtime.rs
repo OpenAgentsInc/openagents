@@ -128,7 +128,8 @@ pub struct WorldRuntime {
     /// A published trace's ghost in the Grid's Gym, where the results
     /// panel's replay puts it; drawn only in the bare world.
     pub trace_ghost: Option<Vec3>,
-    /// Seconds the Grid robot has patrolled ([`crate::grid_robot::pose`]).
+    /// Seconds the Grid robots have patrolled and danced
+    /// ([`crate::grid_robot::patroller`]).
     robot_clock: f64,
 }
 
@@ -243,11 +244,17 @@ impl WorldRuntime {
         dt
     }
 
-    /// The Grid robot's pose on its patrol in the bare world's plaza; none
-    /// elsewhere.
+    /// The Grid robots in the bare world's plaza: the four patrollers in
+    /// route order, then the dancer by the Everglade arch. None elsewhere.
     #[must_use]
-    pub fn robot(&self) -> Option<crate::grid_robot::Pose> {
-        (self.bare && self.is_plaza()).then(|| crate::grid_robot::pose(self.robot_clock))
+    pub fn robots(&self) -> Vec<crate::grid_robot::Pose> {
+        if !(self.bare && self.is_plaza()) {
+            return Vec::new();
+        }
+        (0..crate::grid_robot::ROUTES.len())
+            .map(|route| crate::grid_robot::patroller(route, self.robot_clock))
+            .chain([crate::grid_robot::dancer(self.robot_clock)])
+            .collect()
     }
 
     /// The bare world's ball; other worlds have none.
@@ -449,10 +456,9 @@ impl WorldRuntime {
                 .separate(&self.avatars, &self.world.blockers, self.zone_half());
         }
         self.robot_clock += f64::from(dt);
-        // Nobody walks through the Grid robot.
-        if let Some(robot) = self.robot() {
-            self.player
-                .separate(&[robot.pos], &self.world.blockers, self.zone_half());
+        // Nobody walks through the Grid robots.
+        for robot in self.robots() {
+            crate::grid_robot::keep_clear(&mut self.player.pos, robot.pos);
         }
         // The ball waits on the Grid while the player visits a zone.
         if self.is_plaza()
