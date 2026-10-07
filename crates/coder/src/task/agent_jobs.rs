@@ -18,6 +18,7 @@
 //! passes the job's threshold, at most `early_per_day` times a day.
 
 use std::path::{Path, PathBuf};
+use std::sync::{Mutex, MutexGuard, PoisonError};
 
 use serde::{Deserialize, Serialize};
 
@@ -35,6 +36,16 @@ pub const EXPIRY_MAX: u64 = 90 * 24 * 60 * 60;
 pub const TITLE_MAX: usize = 120;
 /// The templates [`template`] makes.
 pub const TEMPLATES: [&str; 4] = ["nightly-check", "watch-issues", "keep-green", "reflect"];
+
+/// Serializes every read-modify-write of a jobs file in this process. The
+/// scheduler's [`tick`] runs on the host's sweep, and a reflection meters
+/// its cost on a thread of its own ([`Jobs::meter`]); without one lock, a
+/// write between the other's read and write would lose an update.
+static WRITE: Mutex<()> = Mutex::new(());
+
+fn hold() -> MutexGuard<'static, ()> {
+    WRITE.lock().unwrap_or_else(PoisonError::into_inner)
+}
 
 /// What makes a job fire.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
@@ -225,6 +236,7 @@ impl Jobs {
     /// A malformed job, an ID in use, or [`MAX_JOBS`] already.
     pub fn add(&self, job: Job, now: u64) -> Result<(), String> {
         validate(&job, now)?;
+        let _write = hold();
         let mut jobs = self.load()?;
         if jobs.iter().any(|j| j.job == job.job) {
             return Err(format!("a job named `{}` exists", job.job));
@@ -250,6 +262,7 @@ impl Jobs {
     /// # Errors
     /// No such job, an expiry out of range, or the file cannot be written.
     pub fn edit(&self, id: &str, edit: Edit, now: u64) -> Result<(), String> {
+        let _write = hold();
         let mut jobs = self.load()?;
         let index = jobs
             .iter()
@@ -295,6 +308,7 @@ impl Jobs {
         let Some(usd) = usd else {
             return Ok(());
         };
+        let _write = hold();
         let mut jobs = self.load()?;
         let Some(job) = jobs.iter_mut().find(|j| j.job == id) else {
             return Ok(());
@@ -310,6 +324,7 @@ impl Jobs {
     /// # Errors
     /// When the file cannot be written.
     pub fn disable_all(&self) -> Result<usize, String> {
+        let _write = hold();
         let mut jobs = self.load()?;
         let on = jobs.iter().filter(|j| j.enabled).count();
         if on > 0 {
@@ -547,6 +562,7 @@ pub fn tick(
     now: u64,
 ) -> Result<Vec<Occurrence>, String> {
     let jobs_file = Jobs::new(store.clone());
+    let _write = hold();
     let mut jobs = jobs_file.load()?;
     let mut fired = Vec::new();
     let mut changed = false;
@@ -708,6 +724,7 @@ fn due(
 /// When the jobs file cannot be written.
 pub fn observe(store: &Store, path: &Path, facts: &dyn Facts) -> Result<(), String> {
     let jobs_file = Jobs::new(store.clone());
+    let _write = hold();
     let mut jobs = jobs_file.load()?;
     let mut changed = false;
     for job in &mut jobs {
@@ -915,6 +932,33 @@ mod tests {
         let fired = tick(&store, &record, dir.path(), &world, now + 30).unwrap();
         assert_eq!(fired.len(), 1);
         assert!(fired[0].fix_on_failure);
+    }
+
+    #[test]
+    fn concurrent_meters_lose_no_update() {
+        let dir = tempfile::tempdir().unwrap();
+        let (store, _) = agent(&dir);
+        let jobs = Jobs::new(store.clone());
+        jobs.add(
+            template("reflect", "", None, None, 0, MONDAY).unwrap(),
+            MONDAY,
+        )
+        .unwrap();
+        let threads: Vec<_> = (0..4)
+            .map(|_| {
+                let jobs = jobs.clone();
+                std::thread::spawn(move || {
+                    for _ in 0..25 {
+                        jobs.meter("reflect", Some(0.01)).unwrap();
+                    }
+                })
+            })
+            .collect();
+        for thread in threads {
+            thread.join().unwrap();
+        }
+        let spent = jobs.load().unwrap()[0].budget.spent;
+        assert!((spent - 1.0).abs() < 1e-9, "spent {spent}");
     }
 
     #[test]
