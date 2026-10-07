@@ -2,11 +2,13 @@
 //!
 //! Town time is a pure function of Unix time: every device that agrees on
 //! the time of day in the real world derives the same town day, hour, and
-//! phase, with no network message. By default a town day passes in
-//! [`DAY_REAL_SECONDS`] of real time, counted from [`EPOCH_UNIX`], so a
-//! short visit sees the town's routines turn over. The wall-clock mode
-//! follows real hours instead. An hour pin fixes the time of day for
-//! captures and debugging while the day count keeps running.
+//! phase, with no network message. By default ([`Clock::DEFAULT`]) the
+//! time of day stays at [`DAYTIME_HOUR`], late morning, so Everglade is in
+//! daylight; the running cycle is a setting ([`Clock::RUNNING`]): a town
+//! day passes in [`DAY_REAL_SECONDS`] of real time, counted from
+//! [`EPOCH_UNIX`], so a short visit sees the town's routines turn over, or
+//! the wall-clock mode follows real hours. An hour pin fixes the time of
+//! day for captures and debugging while the day count keeps running.
 //!
 //! The crate reads no clock and has no dependencies: the caller passes the
 //! Unix time, so a render loop passes the real time and a test passes a
@@ -79,6 +81,10 @@ impl Mode {
     }
 }
 
+/// The hour the default clock holds: late morning, the light Everglade
+/// had before it had a clock.
+pub const DAYTIME_HOUR: f64 = 10.5;
+
 /// The town clock: an epoch, a mode, and an optional hour pin.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct Clock {
@@ -97,12 +103,31 @@ impl Default for Clock {
 }
 
 impl Clock {
-    /// The compressed day from [`EPOCH_UNIX`], unpinned.
+    /// Daytime by default: the compressed day from [`EPOCH_UNIX`] with its
+    /// time of day pinned at [`DAYTIME_HOUR`]. The day count still runs.
     pub const DEFAULT: Self = Self {
         epoch_unix: EPOCH_UNIX,
         mode: Mode::COMPRESSED,
-        pinned_second: None,
+        pinned_second: Some((DAYTIME_HOUR * 3_600.0) as u32),
     };
+
+    /// The running cycle: the compressed day from [`EPOCH_UNIX`], unpinned.
+    pub const RUNNING: Self = Self {
+        pinned_second: None,
+        ..Self::DEFAULT
+    };
+
+    /// The clock the settings give: daytime unless `mode` turns the cycle
+    /// on, then pinned at `hour` when one is given.
+    #[must_use]
+    pub fn from_settings(mode: Option<Mode>, hour: Option<f64>) -> Self {
+        let clock = mode.map_or(Self::DEFAULT, |mode| Self::RUNNING.with_mode(mode));
+        if hour.is_some() {
+            clock.pinned(hour)
+        } else {
+            clock
+        }
+    }
 
     /// This clock in `mode`.
     #[must_use]
@@ -345,23 +370,42 @@ mod tests {
     const INSTANT: i64 = 1_791_376_496;
 
     #[test]
+    fn the_default_is_daytime_and_the_cycle_is_a_setting() {
+        let day = Clock::default().at_unix(INSTANT);
+        assert_eq!((day.hour(), day.minute()), (10, 30));
+        assert_eq!(Clock::DEFAULT.pinned_hour(), Some(DAYTIME_HOUR));
+        assert_eq!(Clock::from_settings(None, None), Clock::DEFAULT);
+        assert_eq!(
+            Clock::from_settings(Some(Mode::COMPRESSED), None),
+            Clock::RUNNING
+        );
+        let wall = Clock::from_settings(Some(Mode::parse("wall").unwrap()), Some(18.5));
+        assert_eq!(wall.pinned_hour(), Some(18.5));
+        assert!(matches!(wall.mode, Mode::WallClock { .. }));
+        assert_eq!(
+            Clock::from_settings(None, Some(6.0)).pinned_hour(),
+            Some(6.0)
+        );
+    }
+
+    #[test]
     fn two_devices_at_one_instant_agree() {
-        let a = Clock::default();
-        let b = Clock::DEFAULT;
+        let a = Clock::RUNNING.with_mode(Mode::COMPRESSED);
+        let b = Clock::RUNNING;
         assert_eq!(a.at_unix(INSTANT), b.at_unix(INSTANT));
         assert_eq!(a.at(INSTANT as f64 + 0.25), b.at(INSTANT as f64 + 0.25));
     }
 
     #[test]
     fn the_epoch_is_midnight_of_day_zero() {
-        let t = Clock::DEFAULT.at_unix(EPOCH_UNIX);
+        let t = Clock::RUNNING.at_unix(EPOCH_UNIX);
         assert_eq!((t.day, t.hour(), t.minute()), (0, 0, 0));
         assert_eq!(t.phase(), Phase::Night);
     }
 
     #[test]
     fn a_compressed_day_passes_in_an_hour() {
-        let clock = Clock::DEFAULT;
+        let clock = Clock::RUNNING;
         let noon = clock.at_unix(EPOCH_UNIX + i64::from(DAY_REAL_SECONDS) / 2);
         assert_eq!((noon.day, noon.hour(), noon.minute()), (0, 12, 0));
         let next = clock.at_unix(EPOCH_UNIX + i64::from(DAY_REAL_SECONDS));
@@ -374,8 +418,8 @@ mod tests {
     #[test]
     fn town_time_is_monotonic() {
         for clock in [
-            Clock::DEFAULT,
-            Clock::DEFAULT.with_mode(Mode::WallClock {
+            Clock::RUNNING,
+            Clock::RUNNING.with_mode(Mode::WallClock {
                 utc_offset_minutes: -300,
             }),
         ] {
@@ -397,7 +441,7 @@ mod tests {
 
     #[test]
     fn the_wall_clock_follows_real_hours() {
-        let clock = Clock::DEFAULT.with_mode(Mode::WallClock {
+        let clock = Clock::RUNNING.with_mode(Mode::WallClock {
             utc_offset_minutes: 0,
         });
         let t = clock.at_unix(INSTANT);
@@ -441,24 +485,24 @@ mod tests {
 
     #[test]
     fn a_pin_fixes_the_hour_and_keeps_the_day() {
-        let clock = Clock::DEFAULT.pinned(Some(18.5));
+        let clock = Clock::RUNNING.pinned(Some(18.5));
         let a = clock.at_unix(INSTANT);
         let b = clock.at_unix(INSTANT + 7_200);
         assert_eq!((a.hour(), a.minute(), a.phase()), (18, 30, Phase::Dusk));
         assert_eq!(a.second, b.second);
         assert_eq!(b.day, a.day + 2);
-        assert_eq!(Clock::DEFAULT.pinned(Some(-1.0)).pinned_hour(), Some(23.0));
+        assert_eq!(Clock::RUNNING.pinned(Some(-1.0)).pinned_hour(), Some(23.0));
         assert_eq!(
-            Clock::DEFAULT.pinned(Some(23.9999999)).pinned_second,
+            Clock::RUNNING.pinned(Some(23.9999999)).pinned_second,
             Some(0)
         );
-        assert_eq!(Clock::DEFAULT.pinned(Some(f64::NAN)).pinned_hour(), None);
+        assert_eq!(Clock::RUNNING.pinned(Some(f64::NAN)).pinned_hour(), None);
         assert_eq!(clock.real_seconds_until(INSTANT as f64, 6.0), None);
     }
 
     #[test]
     fn real_seconds_until_an_hour() {
-        let clock = Clock::DEFAULT;
+        let clock = Clock::RUNNING;
         let wait = clock
             .real_seconds_until(EPOCH_UNIX as f64, 6.0)
             .expect("an unpinned clock moves");

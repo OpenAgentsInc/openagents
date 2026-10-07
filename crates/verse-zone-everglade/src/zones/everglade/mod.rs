@@ -701,7 +701,12 @@ impl Everglade {
     /// Reads the real time into the town clock and its light.
     fn advance_clock(&mut self) {
         self.now = self.clock.at(unix_now());
-        self.light = time_of_day::Light::at(self.now);
+        // A pinned hour never changes, so it lights exactly, unstepped:
+        // the default daytime is the old fixed 10:30 light.
+        self.light = match self.clock.pinned_hour() {
+            Some(hour) => time_of_day::Light::at_hours(hour as f32),
+            None => time_of_day::Light::at(self.now),
+        };
     }
 
     pub fn spawn() -> Vec3 {

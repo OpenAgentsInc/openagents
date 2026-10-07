@@ -203,19 +203,19 @@ fn parse(mut args: impl Iterator<Item = String>) -> Result<(Option<Shot>, Option
     if let Ok(relay) = std::env::var("VERSE_XP_RELAY") {
         options.xp_relay = Some(relay);
     }
-    if let Ok(mode) = std::env::var("VERSE_TOWN_CLOCK") {
-        options.town_clock = options
-            .town_clock
-            .with_mode(town_clock::Mode::parse(&mode)?);
-    }
+    // Daylight unless the cycle is on (`--town-clock`, VERSE_TOWN_CLOCK);
+    // `--town-hour` and VERSE_TOWN_HOUR pin the time of day either way.
+    let mut clock_mode = match std::env::var("VERSE_TOWN_CLOCK") {
+        Ok(mode) => Some(town_clock::Mode::parse(&mode)?),
+        Err(_) => None,
+    };
     if let Ok(outfit) = std::env::var("VERSE_ALICE_OUTFIT") {
         verse::zones::everglade::npcs::set_alice_outfit(&outfit)?;
     }
-    if let Ok(hour) = std::env::var("VERSE_TOWN_HOUR") {
-        options.town_clock = options
-            .town_clock
-            .pinned(Some(town_clock::parse_hour(&hour)?));
-    }
+    let mut clock_hour = match std::env::var("VERSE_TOWN_HOUR") {
+        Ok(hour) => Some(town_clock::parse_hour(&hour)?),
+        Err(_) => None,
+    };
     // A build without the dev-destruction feature ignores the variable.
     if verse::zones::everglade::hotbar::DEV_DESTRUCTION
         && std::env::var("VERSE_DEV_DESTRUCTION").is_ok_and(|v| v == "1")
@@ -346,14 +346,8 @@ fn parse(mut args: impl Iterator<Item = String>) -> Result<(Option<Shot>, Option
                     _ => return Err(format!("--place takes X,Z[,YAW], got {v}")),
                 };
             }
-            "--town-hour" => {
-                let hour = town_clock::parse_hour(&value()?)?;
-                options.town_clock = options.town_clock.pinned(Some(hour));
-            }
-            "--town-clock" => {
-                let mode = town_clock::Mode::parse(&value()?)?;
-                options.town_clock = options.town_clock.with_mode(mode);
-            }
+            "--town-hour" => clock_hour = Some(town_clock::parse_hour(&value()?)?),
+            "--town-clock" => clock_mode = Some(town_clock::Mode::parse(&value()?)?),
             "--owners-house" => {
                 options.everglade = true;
                 options.owners_house = true;
@@ -371,6 +365,7 @@ fn parse(mut args: impl Iterator<Item = String>) -> Result<(Option<Shot>, Option
             other => return Err(format!("unknown argument {other}")),
         }
     }
+    options.town_clock = town_clock::Clock::from_settings(clock_mode, clock_hour);
     let shot = shot.map(|s| Shot {
         width,
         height,
@@ -401,6 +396,14 @@ mod tests {
             }
         );
         assert!(parse(["--town-hour", "dusk"].map(str::to_owned).into_iter()).is_err());
+        // The cycle runs only when a mode is set.
+        let (_, options) = parse(
+            ["--town-clock", "compressed"]
+                .map(str::to_owned)
+                .into_iter(),
+        )
+        .unwrap();
+        assert_eq!(options.town_clock, town_clock::Clock::RUNNING);
     }
 
     #[test]

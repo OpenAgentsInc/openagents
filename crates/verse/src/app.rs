@@ -127,8 +127,8 @@ pub struct Options {
     /// the workshop agent at her workstation, once Everglade loads
     /// (`--owners-house`).
     pub owners_house: bool,
-    /// The town clock Everglade's sky follows: compressed by default, the
-    /// wall clock, or with its hour pinned (`--town-clock`, `--town-hour`,
+    /// The town clock Everglade's sky follows: daytime by default, the cycle
+    /// compressed or on the wall clock, or its hour pinned (`--town-clock`, `--town-hour`,
     /// `VERSE_TOWN_CLOCK`, `VERSE_TOWN_HOUR`).
     pub town_clock: town_clock::Clock,
     /// The pinned chamber the Grid's RITUAL arch joins

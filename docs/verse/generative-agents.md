@@ -422,9 +422,10 @@ choice at about 1,000 tokens costs $0.00004.
 - [`town-clock`](../../crates/town-clock/src/lib.rs) is the town clock, with
   no dependencies, and builds for `wasm32`. `Clock::at(unix_seconds)` gives
   a `TownTime` (day, hour, minute, and `Phase`: dawn from 05:00, morning,
-  noon, afternoon, dusk from 17:00, and night from 20:00). The default
+  noon, afternoon, dusk from 17:00, and night from 20:00). The default,
+  `Clock::DEFAULT`, holds 10:30 (`DAYTIME_HOUR`); `Clock::RUNNING`
   compresses a town day into `DAY_REAL_SECONDS` (one real hour) from
-  `EPOCH_UNIX` (2026-10-01T00:00Z); `Mode::WallClock` follows real hours.
+  `EPOCH_UNIX` (2026-10-01T00:00Z), and `Mode::WallClock` follows real hours.
   `Clock::pinned` fixes the hour and keeps the day count.
 - [`time_of_day.rs`](../../crates/verse-zone-everglade/src/zones/everglade/time_of_day.rs)
   turns town time into Everglade's sky, haze, key light, and exposure, from
@@ -435,7 +436,8 @@ choice at about 1,000 tokens costs $0.00004.
   light on the CPU. `Light::lamps_lit` is the lamp state the world tree
   reads; the street lamps in the pack have no point lights yet.
 - `verse --town-hour 18:30` and `VERSE_TOWN_HOUR` pin the hour;
-  `--town-clock wall` and `VERSE_TOWN_CLOCK` set the mode. The
+  `--town-clock compressed|wall[:MIN]` and `VERSE_TOWN_CLOCK` turn the
+  cycle on. The
   `everglade_capture` example pins 10:30 unless `VERSE_TOWN_HOUR` is set.
 - [`layout/districts.rs`](../../crates/verse-zone-everglade/src/zones/everglade/layout/districts.rs)
   holds the `District` enum with display names, `Building::district`, and
@@ -751,7 +753,7 @@ setting, so changing it later is a small edit.
 | Disclosure | Jev and the embedding provider may see screened journal text. Alice's [privacy and disclosure](workshop-agent.md#privacy-and-disclosure) section states it. (Owner.) |
 | Reflection cadence | Both: nightly, and early when summed importance since the last reflection passes the threshold. |
 | Alice outside the house | Her plan may name any node she knows, but her walks stay inside the house unless an owner setting widens the bound. |
-| The town clock | A compressed town day anchored to a fixed epoch, so every device agrees and routines show in a short visit, with a wall-clock mode as a setting. |
+| The town clock | Daytime by default; the compressed cycle or wall clock is a setting. |
 | Townsfolk talk | Fixed lines first. A model reply only for a player with a configured provider, under a per-player daily cap, so the owner never pays for a stranger on the web build. |
 | Knowledge entries | Alice only drafts; you publish. |
 | Interview judging | Your marks on a sample calibrate the judge. |
