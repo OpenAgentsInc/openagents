@@ -1,0 +1,6 @@
+{"type":"relay","url":"ws://127.0.0.1:7457","world":"verse-bare","players":1,"moving_ms":200,"idle_ms":5000}
+{"type":"join","n":0,"pubkey":"3d57f8d141cfbff9451fe0c18b79604aeb71f5c8be4b4d9d9d0ce40d639ec3d9","at":[7.0,0.0,-16.0]}
+{"type":"tick","not_online":[],"seconds":5,"players":1,"online":1,"frames_published":7,"refusals":6,"throttled":1}
+{"type":"tick","not_online":[],"seconds":10,"players":1,"online":1,"frames_published":13,"refusals":12,"throttled":1}
+{"type":"tick","not_online":[],"seconds":15,"players":1,"online":1,"frames_published":18,"refusals":18,"throttled":1}
+{"type":"done","not_online":[],"seconds":20,"players":1,"online":1,"frames_published":25,"refusals":24,"throttled":1}

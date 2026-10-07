@@ -1,0 +1,48 @@
+{
+  "issue": 10589,
+  "epic": 10590,
+  "kind": "simulated",
+  "revision": "02cdee3ba11e23b2cdca8c1e0adcd2aa80fe8e07",
+  "command": "scripts/grid-soak.sh --seconds 1800 --out bench/verse/2026-10-06/grid-soak",
+  "relay": "scratch nostr-relay on 127.0.0.1 with its default per-key and per-world limits (pose lane 12/s per key, population cap 20, world budget 300 frames/s); per-address limits raised because every player shares one address",
+  "players": "17 `openagents verse walkers` plus simulated phone, desktop, and browser clients (grid_soak example), 20 keys in verse-bare, the population cap",
+  "host": "Apple M5 Max, macOS; other agents' builds kept the load average between 6.5 and 50.4 (host-load.txt)",
+  "gates": {
+    "frame_time_p95": {
+      "pass": true,
+      "phone_1179x2556_ms": 6.05,
+      "desktop_1920x1080_ms": 5.86,
+      "browser_1280x800_ms": 5.42,
+      "budgets_ms": {"phone": 33.3, "desktop": 16.7, "browser": 33.3},
+      "measure": "wall time from session tick to completed readback through the engine renderer, offscreen, every frame for 1800 s (176,708 frames each)"
+    },
+    "no_rate_limited_refusals": {
+      "pass": true,
+      "detail": "0 refusals for all 17 walkers and the 3 clients over 1800 s"
+    },
+    "frame_age_at_viewer_under_1s": {
+      "pass": true,
+      "detail": "`verse load --max-age-ms 1000`: 20 publishers, 156,073 frames, oldest 136 ms, worst per-publisher gap 761 ms, 4.24 to 4.86 Hz each"
+    },
+    "rendering": {
+      "pass": true,
+      "detail": "each client drew 19 remote avatars from minute one to the end, Gym in view (browser-start.png, *-end.png)"
+    },
+    "population_cap": {
+      "pass": true,
+      "detail": "a 21st walker at 900 s got `rate-limited: world is full` for its frames (cap.ndjson) while the 20 kept zero refusals"
+    },
+    "portal_zone_instance": {
+      "pass": true,
+      "detail": "zone-everglade/: 20 walkers in verse-everglade for 600 s, 0 refusals, oldest frame 31 ms, worst gap 278 ms; a 21st refused"
+    }
+  },
+  "found_and_fixed": "Before 02cdee3ba1, a presence session counted pose frames against its 54-event-a-minute budget: a moving player sent about 50 frames and then stopped for the rest of the minute, its world presence lapsed after 15 s, and a 21st player took its slot and refused it. The first trial reproduced it (desktop refused `world is full`, walkers near 1 Hz).",
+  "not_covered": [
+    "Real devices: phone GPU, a browser's WebGPU/WebGL2, and a desktop window's present path; the owner's 30-minute run is in NEEDS_OWNER.md.",
+    "The public relay over the Internet: one machine, one address, loopback latency.",
+    "Phones and the desktop app pick up the pose-budget fix only in their next builds."
+  ],
+  "sustained_movement": "The authoritative 20-player battle movement soak (battle_scale harness: movement expiries, correction spikes, RSS growth) is #10559 and stays open there; this Grid presence soak does not exercise that pipeline and claims nothing about it.",
+  "verdict": "pass"
+}

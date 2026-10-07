@@ -221,7 +221,7 @@ fn run() -> Result<i32, String> {
             }
         }
         let now = Instant::now();
-        if !captured_start && now.duration_since(start) >= Duration::from_secs(60) {
+        if !captured_start && clients.iter().all(|client| client.pixels.is_some()) {
             captured_start = true;
             for client in &mut clients {
                 if let Some(pixels) = client.pixels.take() {

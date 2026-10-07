@@ -1,0 +1,13 @@
+{
+  "issue": 10589,
+  "revision": "02cdee3ba11e23b2cdca8c1e0adcd2aa80fe8e07",
+  "dirty": true,
+  "relay": "ws://127.0.0.1:7457 (scratch nostr-relay, default world limits, per-address limits raised)",
+  "world": "verse-everglade",
+  "players": 20,
+  "walkers": 20,
+  "clients": [],
+  "seconds": 600,
+  "host": "Darwin arm64, Apple M5 Max",
+  "started": "2026-10-07T01:06:25Z"
+}

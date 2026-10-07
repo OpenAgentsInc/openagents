@@ -1,0 +1,6 @@
+{"type":"relay","url":"ws://127.0.0.1:7457","world":"verse-everglade","players":1,"moving_ms":200,"idle_ms":5000}
+{"type":"join","n":0,"pubkey":"f83e24ecbdc26bf273989a35afcae77eb6ae60c57e2c2af2dbc1c23fe1550b9e","at":[7.0,0.0,-16.0]}
+{"type":"tick","not_online":[],"seconds":5,"players":1,"online":1,"frames_published":6,"refusals":6,"throttled":1}
+{"type":"tick","not_online":[],"seconds":10,"players":1,"online":1,"frames_published":13,"refusals":12,"throttled":1}
+{"type":"tick","not_online":[],"seconds":15,"players":1,"online":1,"frames_published":19,"refusals":19,"throttled":1}
+{"type":"done","not_online":[],"seconds":20,"players":1,"online":1,"frames_published":25,"refusals":25,"throttled":1}

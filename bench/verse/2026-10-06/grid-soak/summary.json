@@ -1,0 +1,88 @@
+{
+  "relay": "ws://127.0.0.1:7457",
+  "world": "verse-bare",
+  "seconds": 1800,
+  "measured_s": 1800,
+  "adapter": "offscreen engine renderer, readback every frame",
+  "clients": [
+    {
+      "client": "phone",
+      "pubkey": "80e4170dcaabb1f640fffeb761a66f4d35437f852bc3688d12cc96adb18829ed",
+      "size": [
+        1179,
+        2556
+      ],
+      "moving_ms": 200,
+      "crowd_delayed": true,
+      "frames": 176708,
+      "frame_p50_ms": 3.27,
+      "frame_p95_ms": 6.05,
+      "frame_p99_ms": 7.08,
+      "frame_max_ms": 37.012709,
+      "gpu_wait_p95_ms": 4.99,
+      "readback_p95_ms": 0.38,
+      "budget_ms": 33.3,
+      "within_budget": true,
+      "peers_shown_min_after_60s": 19,
+      "peers_shown_max_after_60s": 19,
+      "frames_published": 8751,
+      "refusals": 0,
+      "last_refusal": null,
+      "rate_limited": false,
+      "pass": true
+    },
+    {
+      "client": "desktop",
+      "pubkey": "8e38b997bc65309624bea1b37b96c63d6469ade802a169763af37c7ce5b774d5",
+      "size": [
+        1920,
+        1080
+      ],
+      "moving_ms": 200,
+      "crowd_delayed": false,
+      "frames": 176708,
+      "frame_p50_ms": 3.28,
+      "frame_p95_ms": 5.86,
+      "frame_p99_ms": 6.97,
+      "frame_max_ms": 57.868875,
+      "gpu_wait_p95_ms": 4.64,
+      "readback_p95_ms": 0.17,
+      "budget_ms": 16.7,
+      "within_budget": true,
+      "peers_shown_min_after_60s": 19,
+      "peers_shown_max_after_60s": 19,
+      "frames_published": 8746,
+      "refusals": 0,
+      "last_refusal": null,
+      "rate_limited": false,
+      "pass": true
+    },
+    {
+      "client": "browser",
+      "pubkey": "49bc3d577fee2b9a060dbe0337af794ca3e84278d7d15a7ef98c31b80460da53",
+      "size": [
+        1280,
+        800
+      ],
+      "moving_ms": 200,
+      "crowd_delayed": true,
+      "frames": 176708,
+      "frame_p50_ms": 2.3,
+      "frame_p95_ms": 5.42,
+      "frame_p99_ms": 6.69,
+      "frame_max_ms": 63.844874999999995,
+      "gpu_wait_p95_ms": 4.6,
+      "readback_p95_ms": 0.08,
+      "budget_ms": 33.3,
+      "within_budget": true,
+      "peers_shown_min_after_60s": 19,
+      "peers_shown_max_after_60s": 19,
+      "frames_published": 8750,
+      "refusals": 0,
+      "last_refusal": null,
+      "rate_limited": false,
+      "pass": true
+    }
+  ],
+  "pass": true
+}

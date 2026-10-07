@@ -5,6 +5,7 @@
 #
 # Usage:
 #   scripts/grid-soak.sh [--seconds 1800] [--walkers 17] [--out DIR]
+#                        [--world verse-everglade]
 #
 # Everything runs under a temporary directory with a temporary HOME: a
 # scratch Postgres, the relay on ws://127.0.0.1:7457, and fresh in-memory
@@ -22,6 +23,10 @@
 # walkers.ndjson, load.json, frames.ndjson, summary.json, cap.ndjson,
 # relay.log, and each client's first and last view as a PNG.
 #
+# `--world` soaks a portal's shared zone instance (`verse-everglade`,
+# `verse-lagrange-1`) instead: walkers stand in for all 20 players there,
+# since the rendering clients draw the Grid only.
+#
 # To run with real devices instead, start the relay the same way, point
 # the phone, `verse --frame-times`, and the browser at it, and leave out the
 # simulated clients; NEEDS_OWNER.md lists that run.
@@ -34,11 +39,13 @@ root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 seconds=1800
 walkers=17
 out=""
+world=verse-bare
 while [[ $# -gt 0 ]]; do
   case "$1" in
     --seconds) seconds="$2"; shift 2 ;;
     --walkers) walkers="$2"; shift 2 ;;
     --out) out="$2"; shift 2 ;;
+    --world) world="$2"; shift 2 ;;
     *) echo "grid-soak: unknown argument $1" >&2; exit 2 ;;
   esac
 done
@@ -46,6 +53,9 @@ out="${out:-$root/bench/verse/$(date +%F)/grid-soak}"
 mkdir -p "$out"
 out="$(cd "$out" && pwd)"
 players=$((walkers + 3))
+if [[ "$world" != verse-bare ]]; then
+  walkers=$players
+fi
 port="${GRID_SOAK_PORT:-7457}"
 pg_port="${GRID_SOAK_PG_PORT:-55457}"
 target="${CARGO_TARGET_DIR:-$root/target}"
@@ -102,10 +112,10 @@ cat >"$out/meta.json" <<EOF
   "revision": "$(git -C "$root" rev-parse HEAD)",
   "dirty": $(if [[ -n "$(git -C "$root" status --porcelain -- crates scripts)" ]]; then echo true; else echo false; fi),
   "relay": "$relay (scratch nostr-relay, default world limits, per-address limits raised)",
-  "world": "verse-bare",
+  "world": "$world",
   "players": $players,
   "walkers": $walkers,
-  "clients": ["phone (simulated)", "desktop (simulated)", "browser (simulated)"],
+  "clients": $(if [[ "$world" == verse-bare ]]; then echo '["phone (simulated)", "desktop (simulated)", "browser (simulated)"]'; else echo '[]'; fi),
   "seconds": $seconds,
   "host": "$(uname -sm), $(sysctl -n machdep.cpu.brand_string 2>/dev/null || uname -p)",
   "started": "$(date -u +%FT%TZ)"
@@ -113,25 +123,28 @@ cat >"$out/meta.json" <<EOF
 EOF
 
 oa="$target/release/openagents"
-HOME="$scratch/home" "$oa" verse walkers "$walkers" --relay "$relay" \
+HOME="$scratch/home" "$oa" verse walkers "$walkers" --relay "$relay" --world "$world" \
   --wait $((seconds + 120)) --json >"$out/walkers.ndjson" 2>&1 &
 pids+=($!)
 sleep 10
-HOME="$scratch/home" "$oa" verse load --relay "$relay" --world verse-bare --players "$players" \
+HOME="$scratch/home" "$oa" verse load --relay "$relay" --world "$world" --players "$players" \
   --max-age-ms 1000 --wait "$seconds" --json >"$out/load.json" 2>&1 &
 load_pid=$!
 pids+=($load_pid)
 
 # Halfway through, a 21st player tries to join the full world; the relay
 # must refuse it while the 20 play on.
-(sleep $((seconds / 2)); HOME="$scratch/home" "$oa" verse walkers 1 --relay "$relay" \
+(sleep $((seconds / 2)); HOME="$scratch/home" "$oa" verse walkers 1 --relay "$relay" --world "$world" \
   --wait 20 --json >"$out/cap.ndjson" 2>&1) &
 pids+=($!)
 
 set +e
-HOME="$scratch/home" "$target/release/examples/grid_soak" --relay "$relay" \
-  --seconds "$seconds" --out "$out" 2>"$out/clients.log"
-clients=$?
+clients=0
+if [[ "$world" == verse-bare ]]; then
+  HOME="$scratch/home" "$target/release/examples/grid_soak" --relay "$relay" \
+    --seconds "$seconds" --out "$out" 2>"$out/clients.log"
+  clients=$?
+fi
 wait "$load_pid"
 load=$?
 set -e

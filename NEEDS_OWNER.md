@@ -423,6 +423,27 @@ it's redeployed. To finish checking:
 4. Block a walker with `openagents verse block KEY`, relaunch the Verse
    app on the same computer, and check that the walker stays hidden.
 
+## The 20-player Grid soak on real devices (#10589)
+
+The simulated soak passed on 2026-10-06
+(`bench/verse/2026-10-06/grid-soak/review.json`): 17 walkers and simulated
+phone, desktop, and browser clients for 30 minutes on a scratch relay, with
+frame-time p95 near 6 ms, no refusals, no frame older than 136 ms, and a
+21st player refused by the cap. Real devices haven't run it, and phones and
+the desktop app need a build from `main` after 02cdee3ba1, which stops pose
+frames from stalling for most of each minute. To finish checking:
+
+1. Deploy the relay from `main` if it predates the population cap (#10588).
+2. Run `openagents verse walkers 17 --world verse-bare --wait 1900` and,
+   beside it, `openagents verse load --world verse-bare --players 20
+   --max-age-ms 1000 --wait 1800 --json`.
+3. Join with a phone build, `verse --frame-times` on the reference desktop,
+   and the browser Grid, standing with the Gym in view for 30 minutes.
+4. Check frame-time p95 under 16.7 ms on the desktop and 33.3 ms on the
+   phone and browser, no `rate-limited:` refusals, and `load` exit 0. Retain
+   the output under `bench/verse/<date>/grid-soak/`. Open a new issue for
+   anything that fails.
+
 ## Block a player from the Grid on a phone (#10638)
 
 Tapping a player's name tag on the Grid opens a card with **Block**,
