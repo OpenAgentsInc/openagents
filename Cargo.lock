@@ -15293,6 +15293,7 @@ dependencies = [
  "verse-zone-grove",
  "verse-zone-lab",
  "verse-zone-lagrange",
+ "verse-zone-water",
  "web-time",
  "webpki-roots 1.0.9",
  "wgpu",
@@ -15611,6 +15612,18 @@ dependencies = [
  "verse-lagrange",
  "verse-pbr",
  "verse-world",
+]
+
+[[package]]
+name = "verse-zone-water"
+version = "0.1.0"
+dependencies = [
+ "glam",
+ "physics",
+ "verse-core",
+ "verse-pbr",
+ "verse-world",
+ "verse-zone-everglade",
 ]
 
 [[package]]

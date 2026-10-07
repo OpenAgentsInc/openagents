@@ -1,0 +1,45 @@
+# Sleet Storm over water: freezing rain and sleet falling through a
+# cylinder 40 feet in radius and 20 feet tall. Started at the cylinder's
+# top center; runs until the spell ends.
+description = "Gray-blue sleet streaks falling through a 12 m cylinder."
+
+[[emitter]]
+name = "sleet"
+sheet = "sparks"
+frames = [0, 0]
+blend = "alpha"
+light = "lit"
+rate = 260.0
+life = [0.7, 0.8]
+shape = "disc"
+radius = 12.0
+direction = [0.2, -1.0, 0.0]
+spread = 5.0
+speed = [7.5, 8.5]
+gravity = -3.0
+size = [0.02, 0.035]
+stretch = 0.05
+stretch_max = 0.6
+rotate = false
+color = [1.25, 1.35, 1.5]
+alpha = [[0.0, 0.0], [0.1, 0.7], [0.9, 0.7], [1.0, 0.0]]
+priority = 2
+
+[[emitter]]
+name = "flakes"
+sheet = "sparks"
+frames = [3, 3]
+blend = "alpha"
+light = "lit"
+rate = 60.0
+life = [1.0, 1.3]
+shape = "disc"
+radius = 12.0
+direction = [0.2, -1.0, 0.0]
+spread = 10.0
+speed = [4.0, 5.0]
+wander = 0.8
+size = [0.03, 0.05]
+color = [1.5, 1.6, 1.7]
+alpha = [[0.0, 0.0], [0.1, 0.8], [0.9, 0.8], [1.0, 0.0]]
+priority = 1

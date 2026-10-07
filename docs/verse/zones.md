@@ -159,6 +159,31 @@ heavy door, facing the hall. At the door, **F** (or **Plaza** on the panel
 that shows there) opens it and returns to the plaza. Builds without the models,
 such as the phones and the browser, have neither the arch nor the zone.
 
+### Water Lab controls
+
+The Water Lab is a cove built to show water: a sandy bay between two rocky
+headlands with a reef, a river on a plateau in the west that falls about
+15 m into a plunge pool and runs across the beach to the sea, and floating
+crates, barrels, and planks ([`verse-zone-water`](../../crates/verse-zone-water/src/lib.rs)).
+Its arch, `WATER LAB`, stands on the plaza opposite Lagrange 1's, and
+`verse --water-lab` opens it directly. Entry loads Everglade's pack for the
+character. The renderer's water pass draws the sea, the river, the pool, and
+the falls ([`pbr::water`](../../crates/verse-pbr/src/pbr/water.rs), phase W0
+of [the water specification](water.md)).
+
+The player wades, slowed by depth, swims with the head up in deep water,
+and walks the bed under water with Water Breathing. **1** to **5** cast the
+water spells, after SRD 5.2.1, with no mana and no cooldowns: Water Walk,
+Control Water (Flood, Part Water, Redirect Flow, and Whirlpool; pressing
+**2** again switches to the next mode and **Shift+2** ends it), Create
+Water (**Shift+3** is Destroy Water), Sleet Storm, and Water Breathing.
+Without Water Breathing a held breath lasts the SRD's 1 + Constitution
+modifier minutes. **B** (or **6**) drops a crate, a barrel, or a plank
+ahead, which splashes and floats on the `physics` crate's rigid bodies.
+**T** turns the hour between golden hour and noon. **F** at the lantern at
+the head of the beach returns to the plaza. The `water_capture` example
+renders the zone's views, the spells, and its frame times.
+
 ### The great crypt fight
 
 `verse --crypt-fight` opens the ritual chamber's cultist fight, played alone,

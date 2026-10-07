@@ -274,6 +274,7 @@ impl WorldRuntime {
                 crate::zones::ZoneId::Everglade
                     | crate::zones::ZoneId::Crypt
                     | crate::zones::ZoneId::MeteorStressTest
+                    | crate::zones::ZoneId::WaterLab
             )
     }
 
@@ -608,6 +609,7 @@ impl WorldRuntime {
                     | crate::zones::ZoneId::Grove
                     | crate::zones::ZoneId::Crypt
                     | crate::zones::ZoneId::MeteorStressTest
+                    | crate::zones::ZoneId::WaterLab
             )
     }
 

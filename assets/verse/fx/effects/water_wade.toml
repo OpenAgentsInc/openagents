@@ -1,0 +1,46 @@
+# Feet through shallow water: a few droplets kicked forward and a puff of
+# spray. The lab starts one each stride while the player wades.
+description = "Droplets and a little spray kicked up by a wading stride."
+
+[[emitter]]
+name = "droplets"
+sheet = "sparks"
+frames = [0, 0]
+blend = "alpha"
+light = "lit"
+burst = 14
+duration = 0.05
+life = [0.35, 0.6]
+shape = "disc"
+radius = 0.2
+spread = 40.0
+speed = [1.2, 2.4]
+inherit = 0.6
+gravity = -9.8
+size = [0.015, 0.03]
+stretch = 0.03
+stretch_max = 0.15
+rotate = false
+color = [1.6, 1.7, 1.75]
+alpha = [[0.0, 0.9], [1.0, 0.0]]
+priority = 2
+
+[[emitter]]
+name = "spray"
+sheet = "smoke"
+blend = "alpha"
+light = "lit"
+burst = 3
+duration = 0.05
+life = [0.4, 0.6]
+shape = "disc"
+radius = 0.2
+speed = [0.4, 0.9]
+inherit = 0.4
+gravity = -2.0
+drag = 1.5
+size = [0.1, 0.18]
+scale = [0.6, 1.2, 1.5]
+color = [1.4, 1.5, 1.55]
+alpha = [[0.0, 0.0], [0.15, 0.5], [1.0, 0.0]]
+priority = 1

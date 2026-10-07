@@ -35,6 +35,10 @@
 //! `F` at its door returns to the plaza. `--crypt-fight` opens the cultist
 //! fight in the great crypt in a window of its own, played alone with the
 //! ritual chamber's controls; the crypt's models are built into the binary.
+//! `--water-lab` opens straight into the Water Lab, a cove with a sea, a
+//! river, and a waterfall: `1` to `5` cast its water spells, `B` drops a
+//! crate, a barrel, or a plank to float, `T` turns the hour, and `F` at the
+//! lantern on the beach returns to the plaza.
 //! `--frame-times` prints one JSON line of frame times per second.
 //! `--everglade` opens straight into Everglade instead of the plaza, and
 //! `--studio-notice <text>` leads Everglade's caption with a notice;
@@ -282,6 +286,7 @@ fn parse(mut args: impl Iterator<Item = String>) -> Result<(Option<Shot>, Option
                 options.relay = None;
             }
             "--crypt" => options.crypt = true,
+            "--water-lab" => options.water_lab = true,
             #[cfg(feature = "remote-chamber")]
             "--join" => options.chamber = Some(value()?.into()),
             "--demolition" => {

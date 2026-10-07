@@ -44,6 +44,14 @@ impl WorldRuntime {
                     .clamp(ground, ground + everglade.ceiling());
             }
             everglade.move_controlled(&mut self.player, input, &self.world.blockers, dt);
+            // In the Water Lab, the water under Water Walk, the swimming
+            // level, and ice hold the character up; below them it rises.
+            if let Some(floor) = self.zone_state.water.as_ref().and_then(|lab| lab.floor)
+                && self.player.pos.y < floor
+            {
+                self.player.set_surface_height(floor);
+                self.player.hold_altitude(floor);
+            }
             if self.zone_state.crypt.is_some() {
                 // The vault holds a levitating or jumping player under it.
                 let top = super::crypt::feet_ceiling(self.player.pos.x);
@@ -108,6 +116,8 @@ impl WorldRuntime {
                     self.install_grove(&pack);
                 } else if self.zone_state.destination == ZoneId::Crypt {
                     self.install_crypt(&pack);
+                } else if self.zone_state.destination == ZoneId::WaterLab {
+                    self.install_water_lab(&pack);
                 } else {
                     self.install_everglade(&pack);
                 }
@@ -438,6 +448,121 @@ impl WorldRuntime {
         self.camera = crate::camera::FollowCamera::default();
     }
 
+    /// Enter the Water Lab: the cove built on Everglade's verified pack,
+    /// walked with its character and movement ([`super::water`]).
+    pub fn install_water_lab(&mut self, pack: &everglade_pack::ZonePack) {
+        use super::water;
+        if self.is_hosted() || !self.is_plaza() {
+            return;
+        }
+        let mut spawn = self.player;
+        spawn.pos = water::spawn();
+        spawn.yaw = water::SPAWN_YAW;
+        let built = water::solids(pack)
+            .and_then(|solids| Everglade::with_solids(pack, &spawn, solids))
+            .and_then(|glade| Ok((glade, water::world(pack)?)));
+        let (glade, world) = match built {
+            Ok(built) => built,
+            Err(error) => {
+                self.zone_load_failed(&error);
+                return;
+            }
+        };
+        self.zone_state.plaza_pose = Some((self.player.pos, self.player.yaw));
+        self.world = world;
+        self.zone_state.everglade = Some(glade);
+        self.zone_state.water = Some(Box::new(water::WaterLab::new()));
+        self.zone = ZoneId::WaterLab;
+        self.zone_state.loading = LoadState::Idle;
+        self.zone_state.error = None;
+        self.zone_state.progress = 1.0;
+        self.zone_revision = self.zone_revision.saturating_add(1);
+        let _ = self.set_spawn(water::spawn(), water::SPAWN_YAW);
+        self.player.set_surface_height(water::spawn().y);
+        self.camera = crate::camera::FollowCamera::default();
+    }
+
+    /// The Water Lab, while the player is in it.
+    #[must_use]
+    pub fn water_lab(&self) -> Option<&super::water::WaterLab> {
+        self.zone_state.water.as_deref()
+    }
+
+    /// The Water Lab, to change it, as a capture or a test does.
+    pub fn water_lab_mut(&mut self) -> Option<&mut super::water::WaterLab> {
+        self.zone_state.water.as_deref_mut()
+    }
+
+    /// Presses the Water Lab's hotbar slot `index` (0-based); `alternate`
+    /// (Shift) ends Control Water or casts Destroy Water.
+    ///
+    /// # Errors
+    /// The player is not in the Water Lab, or the slot is empty.
+    pub fn water_press(&mut self, index: usize, alternate: bool) -> Result<String, String> {
+        let slot = *super::water::Slot::ALL
+            .get(index)
+            .ok_or("That slot is empty")?;
+        let (at, forward, yaw) = (self.player.pos, self.player.forward(), self.player.yaw);
+        let lab = self
+            .zone_state
+            .water
+            .as_deref_mut()
+            .ok_or("Enter the Water Lab first")?;
+        Ok(lab.press(slot, alternate, at, forward, yaw))
+    }
+
+    /// Turns the Water Lab's hour between golden hour and noon.
+    ///
+    /// # Errors
+    /// The player is not in the Water Lab.
+    pub fn water_hour(&mut self) -> Result<String, String> {
+        let lab = self
+            .zone_state
+            .water
+            .as_deref_mut()
+            .ok_or("Enter the Water Lab first")?;
+        Ok(lab.turn_hour())
+    }
+
+    /// The Water Lab's hotbar: each slot's icon and state.
+    #[must_use]
+    pub fn water_bar(&self) -> Option<Vec<(&'static str, super::everglade::hotbar::Slot)>> {
+        let lab = self.zone_state.water.as_deref()?;
+        Some(
+            super::water::Slot::ALL
+                .iter()
+                .map(|&slot| {
+                    (
+                        slot.icon(),
+                        super::everglade::hotbar::Slot {
+                            enabled: true,
+                            active: lab.active(slot),
+                            cooldown: 0.0,
+                        },
+                    )
+                })
+                .collect(),
+        )
+    }
+
+    /// Start loading the Water Lab from the plaza, as `verse --water-lab`
+    /// asks at launch; it loads Everglade's pack for the character.
+    ///
+    /// # Errors
+    /// The player is not in the plaza, a load is under way, or the pack
+    /// cannot be requested.
+    pub fn enter_water_lab(&mut self) -> Result<(), String> {
+        if !self.is_plaza() || self.zone_loading() {
+            return Err("The Water Lab enters only from the plaza".into());
+        }
+        self.zone_state.destination = ZoneId::WaterLab;
+        let result = self.start_zone_load(ZoneId::WaterLab);
+        if let Err(error) = &result {
+            self.zone_state.error = Some(error.chars().take(180).collect());
+        }
+        result
+    }
+
     /// Whether the player stands in reach of the crypt's door.
     #[must_use]
     pub fn crypt_door_near(&self) -> bool {
@@ -458,6 +583,9 @@ impl WorldRuntime {
         // The crypt's door opens from closer than an arch.
         if self.zone == ZoneId::Crypt {
             return super::crypt::near_door(self.player.pos);
+        }
+        if self.zone == ZoneId::WaterLab {
+            return super::water::near_exit(self.player.pos);
         }
         let offset = self.player.pos - at;
         offset.x.hypot(offset.z) <= 6.0
@@ -539,6 +667,7 @@ impl WorldRuntime {
                 }
                 self.zone_state.grove = None;
                 self.zone_state.crypt = None;
+                self.zone_state.water = None;
                 // A Wild Shape's pace ends with the Grove.
                 self.player.set_pace(1.0);
                 self.zone = ZoneId::Plaza;
@@ -1416,6 +1545,10 @@ impl WorldRuntime {
                 "Meteor Stress Test · {} casters · {} meteors in flight · 1: cast · R: rebuild · automatic rebuild every 3 min",
                 counts[0], counts[1]
             )
+        } else if let Some(lab) = &self.zone_state.water {
+            add("jump", "Jump", Intent::Jump, !self.player.airborne());
+            add("return", self.return_label(), Intent::Return, true);
+            lab.caption(self.player.pos)
         } else if self.zone_state.crypt.is_some() {
             add("jump", "Jump", Intent::Jump, !self.player.airborne());
             add("return", self.return_label(), Intent::Return, true);
@@ -1498,6 +1631,14 @@ impl WorldRuntime {
             } else if nearest == Some(ZoneId::PhysicsLab) {
                 add("enter", "Enter Lab", Intent::Enter, true);
                 "Physics Lab · live rigid-body sandbox".into()
+            } else if nearest == Some(ZoneId::WaterLab) {
+                add(
+                    "enter",
+                    "Enter Water Lab",
+                    Intent::Enter,
+                    self.zone_state.everglade_loader.is_some(),
+                );
+                "Water Lab · a cove of waves, falls, and floating things".into()
             } else if nearest == Some(ZoneId::Crypt) {
                 add(
                     "enter",
@@ -1720,7 +1861,11 @@ impl WorldRuntime {
         // The Grove and the crypt walk with Everglade's character.
         if !matches!(
             destination,
-            ZoneId::Everglade | ZoneId::Grove | ZoneId::Crypt | ZoneId::MeteorStressTest
+            ZoneId::Everglade
+                | ZoneId::Grove
+                | ZoneId::Crypt
+                | ZoneId::MeteorStressTest
+                | ZoneId::WaterLab
         ) {
             return Err("This zone has no pack to load".into());
         }
@@ -1781,8 +1926,9 @@ impl WorldRuntime {
             }
             return mesh;
         }
-        // The crypt's door is its way out; it has no arch.
-        if self.zone == ZoneId::Crypt {
+        // The crypt's door and the Water Lab's lantern are their ways out;
+        // they have no arch.
+        if matches!(self.zone, ZoneId::Crypt | ZoneId::WaterLab) {
             return mesh;
         }
         for (_, at) in self.zone.portals() {
@@ -2129,7 +2275,27 @@ impl WorldRuntime {
             lab.tick(dt);
         }
         let state = &mut self.zone_state;
-        if let (Some(glade), Some(crypt)) = (&mut state.everglade, &mut state.crypt) {
+        if let (Some(glade), Some(lab)) = (&mut state.everglade, &mut state.water) {
+            glade.tick(dt, &self.player, &[]);
+            // The lab says what the character stands on: water under Water
+            // Walk, the swimming level, or ice; and how fast it goes.
+            let feet = lab.tick(dt, self.player.pos, self.player.forward());
+            self.player.set_pace(feet.pace);
+            lab.floor = feet.floor;
+            // The next step stands on it, as on a block.
+            let p = self.player.pos;
+            glade.set_extra_blocks(
+                feet.floor
+                    .map(|top| {
+                        let square = crate::controller::Footprint {
+                            min: [p.x - 0.9, p.z - 0.9],
+                            max: [p.x + 0.9, p.z + 0.9],
+                        };
+                        vec![(square, top)]
+                    })
+                    .unwrap_or_default(),
+            );
+        } else if let (Some(glade), Some(crypt)) = (&mut state.everglade, &mut state.crypt) {
             glade.tick(dt, &self.player, &[]);
             crypt.tick(dt);
         } else if let (Some(glade), Some(grove)) = (&mut state.everglade, &mut state.grove) {
@@ -2179,7 +2345,16 @@ impl WorldRuntime {
             // The lab has no suit of its own; the plaza character walks it.
             mesh.extend(&crate::avatar::mesh(&self.player, &self.gait));
         }
-        if let (Some(glade), Some(crypt)) = (&self.zone_state.everglade, &self.zone_state.crypt) {
+        if let (Some(glade), Some(lab)) = (&self.zone_state.everglade, &self.zone_state.water) {
+            // The cove's stage and water, the floating bodies and the
+            // particles, the character (not in first person), and its spells.
+            let eye = self.view(1.0).eye;
+            mesh.extend(&lab.mesh());
+            mesh.extend(&glade.player_mesh(&self.player, &self.gait, self.hides_avatar()));
+            mesh.extend(&glade.spell_mesh_from(&self.player, eye));
+        } else if let (Some(glade), Some(crypt)) =
+            (&self.zone_state.everglade, &self.zone_state.crypt)
+        {
             // The hall's candlelit stage, moonbeam, and effects, the
             // character (not in first person), and the glade's spells.
             let eye = self.view(1.0).eye;

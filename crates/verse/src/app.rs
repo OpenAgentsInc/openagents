@@ -96,6 +96,9 @@ pub struct Options {
     /// Open straight into the crypt lab once the window shows (`verse
     /// --crypt`).
     pub crypt: bool,
+    /// Open straight into the Water Lab once the window shows (`verse
+    /// --water-lab`).
+    pub water_lab: bool,
     /// Open Everglade as the demolition yard (`--demolition`): two kit
     /// cottages to knock down with a sledgehammer.
     pub demolition: bool,
@@ -162,6 +165,7 @@ impl Default for Options {
             grove: false,
             meteor_stress_test: false,
             crypt: false,
+            water_lab: false,
             demolition: false,
             dev_destruction: false,
             frame_times: false,
@@ -2249,6 +2253,8 @@ impl App {
             self.runtime.enter_grove()
         } else if zone == zones::ZoneId::Crypt {
             self.runtime.enter_crypt()
+        } else if zone == zones::ZoneId::WaterLab {
+            self.runtime.enter_water_lab()
         } else {
             self.runtime.enter_everglade()
         };
@@ -3191,6 +3197,31 @@ impl App {
             {
                 self.zone_action(ZoneIntent::Return);
                 return;
+            }
+            // The Water Lab: 1 to 6 press its hotbar (Shift ends Control
+            // Water or casts Destroy Water), B drops a float, T turns the
+            // hour.
+            if self.runtime.zone == zones::ZoneId::WaterLab {
+                let slot = match code {
+                    KeyCode::Digit1 => Some(0),
+                    KeyCode::Digit2 => Some(1),
+                    KeyCode::Digit3 => Some(2),
+                    KeyCode::Digit4 => Some(3),
+                    KeyCode::Digit5 => Some(4),
+                    KeyCode::Digit6 | KeyCode::KeyB => Some(5),
+                    _ => None,
+                };
+                let result = match (slot, code) {
+                    (Some(slot), _) => Some(self.runtime.water_press(slot, self.keys.shift)),
+                    (None, KeyCode::KeyT) => Some(self.runtime.water_hour()),
+                    _ => None,
+                };
+                if let Some(result) = result {
+                    if let Err(error) = result {
+                        eprintln!("verse: {error}");
+                    }
+                    return;
+                }
             }
             // In the crypt, F at the door leaves, whichever way the player
             // faces.
@@ -4394,6 +4425,31 @@ impl App {
                     }
                     ui.vertices.extend(batch.vertices);
                 }
+                // The Water Lab's spell bar.
+                if self.runtime.zone == zones::ZoneId::WaterLab
+                    && let (Some(atlas), Some(bar)) = (&self.map_atlas, self.runtime.water_bar())
+                {
+                    let mut batch = crate::ui::UiBatch::default();
+                    let keys = ["1", "2", "3", "4", "5", "B"];
+                    let sprites: Vec<(&str, &str)> = bar
+                        .iter()
+                        .zip(keys)
+                        .map(|((icon, _), key)| (*icon, key))
+                        .collect();
+                    let slots: Vec<_> = bar.iter().map(|(_, slot)| *slot).collect();
+                    zones::everglade::hotbar::draw_of(
+                        &mut batch,
+                        atlas,
+                        size.map(|v| v / self.scale),
+                        HOTBAR_BOTTOM,
+                        &sprites,
+                        &slots,
+                    );
+                    for vertex in &mut batch.vertices {
+                        vertex.pos = vertex.pos.map(|v| v * self.scale);
+                    }
+                    ui.vertices.extend(batch.vertices);
+                }
                 if self.in_bare_grove()
                     && let (Some(atlas), Some(slots)) = (&self.map_atlas, self.runtime.grove_bar())
                 {
@@ -4900,6 +4956,12 @@ impl ApplicationHandler for App {
         // character.
         if std::mem::take(&mut self.connection_options.crypt) {
             self.everglade_pending = Some(zones::ZoneId::Crypt);
+            self.open_pending_everglade();
+        }
+        // `--water-lab` likewise: the cove loads Everglade's pack for its
+        // character.
+        if std::mem::take(&mut self.connection_options.water_lab) {
+            self.everglade_pending = Some(zones::ZoneId::WaterLab);
             self.open_pending_everglade();
         }
     }

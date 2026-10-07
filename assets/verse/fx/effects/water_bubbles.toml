@@ -1,0 +1,23 @@
+# Bubbles rising from a swimmer or a sinking body, seen under water: they
+# wobble up and vanish at the surface.
+description = "A stream of small bubbles wobbling up through water."
+
+[[emitter]]
+name = "bubbles"
+sheet = "sparks"
+frames = [3, 3]
+blend = "alpha"
+light = "lit"
+rate = 10.0
+duration = 1.2
+life = [1.2, 2.0]
+shape = "sphere"
+radius = 0.2
+speed = [0.3, 0.6]
+gravity = 1.6
+drag = 1.2
+wander = 1.2
+size = [0.02, 0.05]
+color = [1.4, 1.6, 1.7]
+alpha = [[0.0, 0.0], [0.1, 0.7], [0.9, 0.5], [1.0, 0.0]]
+priority = 2

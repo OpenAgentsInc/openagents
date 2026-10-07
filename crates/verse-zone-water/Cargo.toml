@@ -1,0 +1,18 @@
+[package]
+name = "verse-zone-water"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+publish.workspace = true
+description = "Verse's Water Lab zone: a cove with a sea, a river, a waterfall, floating rigid bodies, and water spells, drawn by the physical renderer's water pass."
+
+[dependencies]
+glam = "0.30.10"
+physics = { path = "../physics" }
+verse-core = { path = "../verse-core" }
+verse-pbr = { path = "../verse-pbr" }
+verse-world = { path = "../verse-world" }
+verse-zone-everglade = { path = "../verse-zone-everglade" }
+
+[lints]
+workspace = true

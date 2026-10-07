@@ -108,6 +108,8 @@ verse-zone-lagrange = { path = "../verse-zone-lagrange" }
 verse-zone-lab = { path = "../verse-zone-lab" }
 # The crypt lab zone; `verse` re-exports it as `zones::crypt`.
 verse-zone-crypt = { path = "../verse-zone-crypt" }
+# The Water Lab zone; `verse` re-exports it as `zones::water`.
+verse-zone-water = { path = "../verse-zone-water" }
 # Everglade with its pack, and the Grove on that pack; `verse` re-exports
 # them as `zones::everglade`, `zones::everglade_pack`, and `zones::grove`.
 verse-zone-everglade = { path = "../verse-zone-everglade" }
@@ -275,6 +277,10 @@ required-features = ["capture"]
 
 [[example]]
 name = "crypt_lab"
+required-features = ["capture"]
+
+[[example]]
+name = "water_capture"
 required-features = ["capture"]
 
 [[example]]
