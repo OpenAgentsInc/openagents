@@ -174,7 +174,8 @@ pub unsafe extern "C" fn openagents_verse_create(
             // The block list lives beside the zone packs.
             blocklist_directory: None,
         };
-        unsafe {
+        let world = presence.is_some();
+        let mut handle = unsafe {
             VerseHandle::create_bare_with_gym(
                 layer,
                 config.width,
@@ -184,7 +185,11 @@ pub unsafe extern "C" fn openagents_verse_create(
                 presence,
                 gym,
             )
-        }
+        }?;
+        // The owner's private characters in Everglade, from the app's
+        // private Verse directory (`crate::verse_private`).
+        crate::verse_private::mount(&mut handle, world);
+        Ok(handle)
     }));
     match result {
         Ok(Ok(handle)) => Box::into_raw(Box::new(handle)),

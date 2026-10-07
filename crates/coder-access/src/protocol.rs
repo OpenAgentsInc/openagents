@@ -642,6 +642,13 @@ pub enum Operation {
     /// grant ends.
     #[serde(rename = "chats.invite")]
     InviteChats {},
+    /// Ask for the owner's private Verse placements
+    /// (`docs/verse/private-assets.md`), naming the sender's Verse world
+    /// key, which the host notes so the owner can grant it a reader. A
+    /// read: it grants nothing, and only the asset's manifest decides who
+    /// may load a pack.
+    #[serde(rename = "verse.private")]
+    VersePrivate { world_key: String },
     /// List the host's chat threads, newest first, without archived ones.
     #[serde(rename = "thread.list")]
     ListThreads {},
@@ -883,6 +890,7 @@ impl Operation {
             Self::ListThreads {}
                 | Self::ReadThread { .. }
                 | Self::ReviewTask { .. }
+                | Self::VersePrivate { .. }
                 | Self::StudioSnapshot {}
                 | Self::StudioUpdate { .. }
                 | Self::OpenReview { .. }
@@ -1006,6 +1014,7 @@ impl Operation {
             Self::ListWalletLinks {} => "wallet.link.list",
             Self::AnswerWalletLink { .. } => "wallet.link.answer",
             Self::InviteChats {} => "chats.invite",
+            Self::VersePrivate { .. } => "verse.private",
             Self::ListThreads {} => "thread.list",
             Self::ReadThread { .. } => "thread.read",
             Self::SendThread { .. } => "thread.send",
@@ -1060,6 +1069,7 @@ impl Operation {
             | Self::Revoke { .. } => Some(Right::AccessAdmin),
             Self::ListDevices {} => Some(Right::AccessRead),
             Self::InviteChats {}
+            | Self::VersePrivate { .. }
             | Self::ListThreads {}
             | Self::ReadThread { .. }
             | Self::ReviewTask { .. }
@@ -1176,6 +1186,7 @@ impl Operation {
                 }
             }
             Self::RunThread { thread } => crate::thread::id(thread)?,
+            Self::VersePrivate { world_key } => public(world_key)?,
             Self::ReviewTask { task } => identity(task).map_err(Error::from)?,
             Self::PublishTask {
                 task,
@@ -1492,6 +1503,12 @@ pub enum Outcome {
     WalletLinkAnswered {
         id: String,
     },
+    /// The owner's private Verse placements (`verse.private`): the
+    /// `openagents.verse.private-placements.v1` file as the host holds it,
+    /// at most [`MAX_VERSE_PLACEMENTS`] bytes, or `None` when it holds none.
+    VersePrivate {
+        placements: Option<String>,
+    },
     /// A single-use `coder-pair:` invitation to the host's read-only Coder
     /// chats (`chats.invite`), and when the chat grant it carries ends.
     Chats {
@@ -1564,6 +1581,8 @@ fn background_rule(rule: &str) -> Result<()> {
 
 /// The longest `coder-pair:` invitation a `chats` outcome carries.
 pub const MAX_CHAT_INVITATION: usize = 4096;
+/// The longest private Verse placements file a host answers with.
+pub const MAX_VERSE_PLACEMENTS: usize = 64 * 1024;
 
 /// The most workspace labels a `workspaces` outcome carries.
 pub const MAX_WORKSPACES: usize = 64;
@@ -1627,6 +1646,13 @@ impl Outcome {
                 || !invitation.is_ascii())
         {
             return fail(Code::Malformed, "not a chat invitation");
+        }
+        if let Self::VersePrivate {
+            placements: Some(placements),
+        } = self
+            && placements.len() > MAX_VERSE_PLACEMENTS
+        {
+            return fail(Code::Bounds, "private placements exceed their bound");
         }
         if let Self::Threads { threads } = self {
             if threads.len() > crate::thread::MAX_THREADS {
@@ -1708,6 +1734,7 @@ impl Outcome {
             }
             (Operation::ListSpends { .. }, Self::Spends { .. })
             | (Operation::InviteChats {}, Self::Chats { .. })
+            | (Operation::VersePrivate { .. }, Self::VersePrivate { .. })
             | (Operation::ListThreads {}, Self::Threads { .. }) => true,
             (Operation::ReadThread { thread, .. }, Self::Thread { thread: page }) => {
                 page.thread == *thread

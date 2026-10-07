@@ -27,6 +27,7 @@ host = [
     "dep:tokio-rustls",
     "dep:security-framework",
     "dep:keyring",
+    "dep:verse-private",
 ]
 
 [dependencies]
@@ -52,6 +53,9 @@ terminal-core = { path = "../terminal-core", optional = true }
 # The host root's one generation counter, shared with the service launcher.
 coder-service = { path = "../coder-service", optional = true }
 libc = { version = "0.2", optional = true }
+# The owner's private Verse placements a paired phone asks for (host
+# feature only; docs/verse/private-assets.md).
+verse-private = { path = "../verse-private", optional = true }
 # The iroh endpoint (enroll and reach ALPNs) and connect codes, for the host
 # and the client; the local control protocol and the key source are the
 # host's.

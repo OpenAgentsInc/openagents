@@ -41,6 +41,9 @@ coder-mobile = { path = "../coder-mobile" }
 # The Account tab's trainer card: Verse's read-only NIP-XP reader and its
 # level curve, the same code that puts levels over heads in the Grid.
 verse = { path = "../verse", default-features = false, features = ["xp-host"] }
+# The owner's private Verse placements a paired computer sends
+# (`src/verse_private.rs`).
+verse-private = { path = "../verse-private" }
 # "What you made" (`CARD-07`, the Profile): the XP ledger's eval credit.
 xp-ledger = { path = "../xp-ledger" }
 base64 = "0.22"

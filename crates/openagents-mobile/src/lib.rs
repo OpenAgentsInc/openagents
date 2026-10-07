@@ -55,6 +55,7 @@ mod tailnet_view;
 mod trainer;
 mod transcripts;
 mod verse;
+mod verse_private;
 mod wake;
 mod wallet;
 mod wallet_link;

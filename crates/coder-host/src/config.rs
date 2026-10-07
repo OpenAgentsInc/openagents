@@ -181,6 +181,11 @@ pub struct Config {
     /// with a control socket moves those threads into its own store
     /// (`openagents_chat::migrate`). `None`, as in tests, looks nowhere.
     pub chat_home: Option<PathBuf>,
+    /// Verse's home on this computer (`~/.openagents/verse`, or
+    /// `VERSE_HOME`), where the owner's private placements live. A paired
+    /// phone reads them with `verse.private` (`docs/verse/private-assets.md`).
+    /// `None`, as in tests, offers none.
+    pub verse_home: Option<PathBuf>,
     /// The shell a terminal's `shell` launch runs, as a login shell. zsh,
     /// bash, and fish get the shell-integration hooks, so the terminal's
     /// block journal sees each command. `None` runs `/bin/sh` without
@@ -236,6 +241,7 @@ impl Config {
             serve_chats: false,
             chat_door: None,
             chat_home: None,
+            verse_home: None,
             terminal_shell: None,
         }
     }

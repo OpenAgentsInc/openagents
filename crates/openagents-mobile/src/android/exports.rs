@@ -281,17 +281,21 @@ pub extern "system" fn Java_com_openagents_app_OpenAgentsNative_verseCreate<'loc
                     }
                     // SAFETY: `window` is acquired on this main thread and is
                     // stored after the handle, so it outlives the renderer.
-                    let handle = unsafe {
+                    let presence = config.presence()?;
+                    let world = presence.is_some();
+                    let mut handle = unsafe {
                         VerseHandle::create_bare_with_gym(
                             window.0.as_ptr().cast(),
                             config.width,
                             config.height,
                             config.scale,
                             false,
-                            config.presence()?,
+                            presence,
                             config.gym()?,
                         )
                     }?;
+                    // The owner's private characters in Everglade.
+                    crate::verse_private::mount(&mut handle, world);
                     let id = next_handle()?;
                     verses.insert(
                         id,

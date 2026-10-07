@@ -11,6 +11,9 @@ operations.
   archive, and provenance.
 - `placements`: the owner-local `private-assets.json` in Verse's home, which
   places private assets in a zone. Committed code never names one.
+- `phones`: the owner-local `private-phones.json`, where the owner's host
+  notes each paired phone's Verse key when it asks for the placements
+  (NIP-HOST `verse.private`), so the owner can grant it.
 - `auth`: the NIP-98 grant request a reader's Verse key signs, and the grant.
 - `signed_url`: Cloud Storage V4 signed URLs over an injected signer.
 - `broker` (feature `broker`): the `verse-assets` Cloud Run service. It checks

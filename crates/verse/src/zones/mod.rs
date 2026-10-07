@@ -359,6 +359,11 @@ pub(crate) struct State {
     /// them (`private_assets`).
     #[cfg(not(target_arch = "wasm32"))]
     private_home: Option<std::path::PathBuf>,
+    /// The key that signs grant requests on a phone, which also asks the
+    /// broker before drawing a cached pack; `None` on the desktop, which
+    /// signs with the placements' profile key.
+    #[cfg(not(target_arch = "wasm32"))]
+    private_signer: Option<nostr::domain::RelaySigner>,
     #[cfg(not(target_arch = "wasm32"))]
     private_loader: Option<everglade_pack::private_assets::PrivateLoader>,
 }
@@ -391,6 +396,8 @@ impl Default for State {
             sight_tops: (u64::MAX, 0, Vec::new()),
             #[cfg(not(target_arch = "wasm32"))]
             private_home: None,
+            #[cfg(not(target_arch = "wasm32"))]
+            private_signer: None,
             #[cfg(not(target_arch = "wasm32"))]
             private_loader: None,
         }

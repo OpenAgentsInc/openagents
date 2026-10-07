@@ -4,8 +4,12 @@
 //! exact length and digest, bounded decoding, and a content-addressed cache.
 //!
 //! The cache directory is created with mode 0700 and each pack written with
-//! mode 0600. A cached pack that verifies loads without asking the broker.
-//! Every failure is reported once and leaves the zone as it was.
+//! mode 0600. On the desktop, a cached pack that verifies loads without
+//! asking the broker. A phone asks first ([`Recheck::Always`]): a refusal
+//! deletes the cached pack and draws nothing, so revoking the phone's key
+//! takes effect at its next entry, and only an unreachable broker falls
+//! back to the cache. Every failure is reported once and leaves the zone as
+//! it was.
 
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
@@ -14,11 +18,22 @@ use std::sync::{Arc, Mutex, OnceLock, mpsc};
 use std::thread::JoinHandle;
 
 use nostr::domain::RelaySigner;
+use verse_private::client::GrantError;
 use verse_private::placements::{Placement, Placements};
 
 use super::ZonePack;
 use super::compile::private;
 use super::pinned::PinnedFile;
+
+/// When a cached pack is checked with the broker before it is drawn.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Recheck {
+    /// Never: a cached pack that verifies is drawn. The owner's desktop.
+    Never,
+    /// On every load: a refusal deletes the cached pack, and only an
+    /// unavailable broker falls back to it. A paired phone.
+    Always,
+}
 
 /// One placement's outcome.
 #[derive(Debug)]
@@ -83,23 +98,46 @@ fn private_directory(cache: &Path) -> Result<(), String> {
         .map_err(|_| "private cache could not be created".into())
 }
 
-/// Loads one placement: from the cache when it verifies, otherwise through
-/// `grant`, which returns a signed URL for it.
+/// Loads one placement: from the cache when it verifies (after the broker
+/// admits it, under [`Recheck::Always`]), otherwise through `grant`, which
+/// returns a signed URL for it.
 fn load(
     placement: &Placement,
     cache: &Path,
     cancel: &AtomicBool,
-    grant: &dyn Fn(&Placement) -> Result<String, String>,
+    recheck: Recheck,
+    grant: &dyn Fn(&Placement) -> Result<String, GrantError>,
 ) -> Result<ZonePack, String> {
     private_directory(cache)?;
     let mut file = file(placement);
-    if let Ok(bytes) = file.read_bounded(&cache.join(file.cache_name()))
-        && let Ok(pack) = private::decode(&bytes)
+    let cached_path = cache.join(file.cache_name());
+    let cached = file
+        .read_bounded(&cached_path)
+        .ok()
+        .and_then(|bytes| private::decode(&bytes).ok());
+    if recheck == Recheck::Never
+        && let Some(pack) = cached
     {
         return Ok(pack);
     }
-    file.url = grant(placement)?;
-    file.fetch(cache, cancel, &mut |_, _| {}, private::decode)
+    match grant(placement) {
+        // Admitted: a verified copy needs no download.
+        Ok(url) => match cached {
+            Some(pack) => Ok(pack),
+            None => {
+                file.url = url;
+                file.fetch(cache, cancel, &mut |_, _| {}, private::decode)
+            }
+        },
+        Err(GrantError::Refused) => {
+            // This key may no longer read the pack: forget the copy.
+            if recheck == Recheck::Always {
+                let _ = std::fs::remove_file(&cached_path);
+            }
+            Err(GrantError::Refused.to_string())
+        }
+        Err(error) => cached.ok_or_else(|| error.to_string()),
+    }
 }
 
 fn now() -> u64 {
@@ -118,6 +156,7 @@ impl PrivateLoader {
         zone: &str,
         signer: RelaySigner,
         cache: PathBuf,
+        recheck: Recheck,
     ) -> Option<Self> {
         let broker = placements.broker.clone();
         let grant = move |p: &Placement| {
@@ -126,14 +165,13 @@ impl PrivateLoader {
                     if grant.bytes == p.bytes {
                         Ok(grant.url)
                     } else {
-                        Err(verse_private::client::GrantError::Unavailable(
+                        Err(GrantError::Unavailable(
                             "the grant's length differs from the placement's".into(),
                         ))
                     }
                 })
-                .map_err(|error| error.to_string())
         };
-        Self::start_with(placements, zone, cache, grant)
+        Self::start_with(placements, zone, cache, recheck, grant)
     }
 
     /// As [`Self::start`], with `grant` standing in for the broker.
@@ -141,7 +179,8 @@ impl PrivateLoader {
         placements: &Placements,
         zone: &str,
         cache: PathBuf,
-        grant: impl Fn(&Placement) -> Result<String, String> + Send + 'static,
+        recheck: Recheck,
+        grant: impl Fn(&Placement) -> Result<String, GrantError> + Send + 'static,
     ) -> Option<Self> {
         let wanted: Vec<Placement> = placements.in_zone(zone).cloned().collect();
         if wanted.is_empty() {
@@ -157,7 +196,7 @@ impl PrivateLoader {
                     if worker_cancel.load(Ordering::Acquire) {
                         return;
                     }
-                    let event = match load(&placement, &cache, &worker_cancel, &grant) {
+                    let event = match load(&placement, &cache, &worker_cancel, recheck, &grant) {
                         Ok(pack) => PrivateEvent::Ready {
                             placement,
                             pack: Box::new(pack),
@@ -244,10 +283,13 @@ mod tests {
         pinned
             .install_cache(&cache, &pack, &AtomicBool::new(false))
             .unwrap();
-        let mut loader = PrivateLoader::start_with(&file, "everglade", cache.clone(), |_| {
-            Err("the broker must not be asked".into())
-        })
-        .unwrap();
+        let mut loader =
+            PrivateLoader::start_with(&file, "everglade", cache.clone(), Recheck::Never, |_| {
+                Err(GrantError::Unavailable(
+                    "the broker must not be asked".into(),
+                ))
+            })
+            .unwrap();
         match wait(&mut loader) {
             PrivateEvent::Ready { placement, pack } => {
                 assert_eq!(placement.asset, "sample-guest");
@@ -269,10 +311,11 @@ mod tests {
         let home = tempfile::tempdir().unwrap();
         let cache = home.path().join("private-cache");
         let file = placements(&"cd".repeat(32), 1234);
-        let mut loader = PrivateLoader::start_with(&file, "everglade", cache.clone(), |_| {
-            Err("the broker refused this key".into())
-        })
-        .unwrap();
+        let mut loader =
+            PrivateLoader::start_with(&file, "everglade", cache.clone(), Recheck::Always, |_| {
+                Err(GrantError::Refused)
+            })
+            .unwrap();
         match wait(&mut loader) {
             PrivateEvent::Failed { asset, reason } => {
                 assert_eq!(asset, "sample-guest");
@@ -282,7 +325,10 @@ mod tests {
         }
         assert_eq!(std::fs::read_dir(&cache).unwrap().count(), 0);
         // A zone with no placements starts nothing.
-        assert!(PrivateLoader::start_with(&file, "grid", cache, |_| Ok(String::new())).is_none());
+        assert!(
+            PrivateLoader::start_with(&file, "grid", cache, Recheck::Never, |_| Ok(String::new()))
+                .is_none()
+        );
     }
 
     #[test]
@@ -293,9 +339,55 @@ mod tests {
             &file,
             "everglade",
             home.path().join("private-cache"),
+            Recheck::Never,
             |_| Ok("http://storage.example/pack".into()),
         )
         .unwrap();
         assert!(matches!(wait(&mut loader), PrivateEvent::Failed { .. }));
+    }
+
+    /// A phone's cache: an admitted key draws the cached pack without
+    /// downloading it, an unreachable broker falls back to it, and a
+    /// refusal deletes it and draws nothing.
+    #[test]
+    fn a_phone_rechecks_its_cache_with_the_broker() {
+        let pack = private::sample();
+        let sha256 = verse_private::sha256_hex(&pack);
+        let home = tempfile::tempdir().unwrap();
+        let cache = home.path().join("private-cache");
+        let file = placements(&sha256, pack.len() as u64);
+        let mut pinned = super::file(&file.placements[0]);
+        pinned.url = "https://unused.example".into();
+        private_directory(&cache).unwrap();
+        pinned
+            .install_cache(&cache, &pack, &AtomicBool::new(false))
+            .unwrap();
+        let cached = cache.join(format!("{sha256}.vtp"));
+        let run = |grant: Result<String, GrantError>| {
+            let mut loader = PrivateLoader::start_with(
+                &file,
+                "everglade",
+                cache.clone(),
+                Recheck::Always,
+                move |_| grant.clone(),
+            )
+            .unwrap();
+            wait(&mut loader)
+        };
+        // Admitted: the URL is never fetched, since the cache verifies.
+        assert!(matches!(
+            run(Ok("https://storage.example/never-fetched".into())),
+            PrivateEvent::Ready { .. }
+        ));
+        assert!(matches!(
+            run(Err(GrantError::Unavailable("offline".into()))),
+            PrivateEvent::Ready { .. }
+        ));
+        assert!(cached.exists());
+        match run(Err(GrantError::Refused)) {
+            PrivateEvent::Failed { reason, .. } => assert!(reason.contains("refused"), "{reason}"),
+            PrivateEvent::Ready { .. } => panic!("a refused key drew its cached pack"),
+        }
+        assert!(!cached.exists(), "a refusal leaves no cached pack behind");
     }
 }

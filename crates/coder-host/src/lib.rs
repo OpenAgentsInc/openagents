@@ -59,6 +59,8 @@ pub mod terminal_sessions;
 #[cfg(feature = "host")]
 mod tls;
 #[cfg(feature = "host")]
+pub mod verse_private;
+#[cfg(feature = "host")]
 pub mod wallet_link;
 
 /// The composed profiles, re-exported so a client names one dependency.

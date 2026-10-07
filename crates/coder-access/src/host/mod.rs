@@ -91,6 +91,18 @@ pub trait Dispatch: Send {
     fn chats(&mut self, _device: &str, _now: u64) -> std::result::Result<(String, u64), Code> {
         Err(Code::Unavailable)
     }
+    /// The owner's private Verse placements for `device`, which holds
+    /// `observe` and named its Verse `world_key` (`verse.private`): the
+    /// placements file, or `None` when the owner has none. A host without
+    /// a Verse home has none to offer.
+    fn verse_private(
+        &mut self,
+        _device: &str,
+        _world_key: &str,
+        _now: u64,
+    ) -> std::result::Result<Option<String>, Code> {
+        Err(Code::Unsupported)
+    }
     /// The host's chat threads for `device`, which holds `observe`
     /// (`thread.list`): newest first, archived ones left out. A host that
     /// keeps no threads has none to offer.
@@ -989,6 +1001,21 @@ impl Host {
                 }
                 Err(code) => Err(Error::new(code, "the host serves no chats")),
             },
+            Operation::VersePrivate { world_key } => {
+                match dispatch.verse_private(&p.key, world_key, now) {
+                    Ok(placements) => {
+                        let outcome = Outcome::VersePrivate { placements };
+                        match outcome.validate() {
+                            Ok(()) => Ok(outcome),
+                            Err(_) => Err(Error::new(
+                                Code::Unavailable,
+                                "the private placements exceed their bound",
+                            )),
+                        }
+                    }
+                    Err(code) => Err(Error::new(code, "the host has no private placements")),
+                }
+            }
             Operation::ListThreads {} => match dispatch.threads(&p.key) {
                 Ok(threads) => {
                     let outcome = Outcome::Threads { threads };

@@ -523,6 +523,20 @@ impl VerseHandle {
         create_renderer(layer, scene)
     }
 
+    /// Lets the world's Everglade draw the owner's private placements kept
+    /// in `directory`, an absolute directory in the app's sandbox that the
+    /// app keeps in step with the owner's computer, signing grant requests
+    /// with this mount's world key (`docs/verse/private-assets.md`). Call
+    /// it only for a mount with the player's world identity: the broker
+    /// refuses a throwaway key, so nothing would draw.
+    ///
+    /// # Errors
+    ///
+    /// Returns a message when `directory` is not an absolute path.
+    pub fn configure_private_assets(&mut self, directory: &str) -> Result<(), String> {
+        self.scene.configure_private_assets(directory)
+    }
+
     /// Android can lose its native window while retaining the application scene.
     /// Suspend effects and release the renderer before its window is released.
     #[cfg(any(target_os = "android", test))]
@@ -817,6 +831,41 @@ mod tests {
             ritual.map(std::path::PathBuf::from),
             Some(dir.path().join(verse::ritual::FILE))
         );
+    }
+
+    #[test]
+    fn private_assets_need_an_absolute_sandbox_directory() {
+        let presence = BarePresence {
+            secret_hex: "02".repeat(32),
+            relay: None,
+            name: None,
+        };
+        let scene = Scene::new(crate::verse_ffi::bare_config_with_gym(
+            4,
+            4,
+            1.0,
+            false,
+            Some(presence),
+            BareGym::default(),
+        ))
+        .unwrap();
+        let mut handle = VerseHandle {
+            scene,
+            renderer: None,
+            rendered_zone_revision: 0,
+            rendered_chamber_revision: 0,
+            layer: ptr::null_mut(),
+        };
+        for bad in ["", "relative/dir"] {
+            assert!(handle.configure_private_assets(bad).is_err(), "{bad:?}");
+        }
+        let dir = tempfile::tempdir().unwrap();
+        handle
+            .configure_private_assets(&dir.path().to_string_lossy())
+            .unwrap();
+        // Nothing is read until Everglade is entered.
+        assert_eq!(std::fs::read_dir(dir.path()).unwrap().count(), 0);
+        assert_eq!(handle.scene.world.private_guests(), 0);
     }
 
     #[test]

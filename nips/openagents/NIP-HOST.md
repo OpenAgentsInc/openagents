@@ -674,6 +674,7 @@ A request is `openagents.host-request.v1`:
 | `spend.list` | `operate` | `spends` |
 | `spend.settle` | `operate` | `settled` |
 | `chats.invite` | `observe` | `chats` |
+| `verse.private` | `observe` | `verse_private` |
 | `thread.list` | `observe` | `threads` |
 | `thread.read` | `observe` | `thread` |
 | `thread.send` | `operate` | `dispatched` |
@@ -760,6 +761,16 @@ carries ends. It admits only the host's Coder task store. A device holding
 (nearby approval, or a connect code redeemed on the relay), and again before
 its chat grant ends. A host that serves no chats refuses it as
 `unavailable`, and an older host as `malformed` or `unsupported`.
+`verse.private` carries `{world_key}`, the device's Verse world public key
+as 64 lowercase hex characters, and returns `verse_private`:
+`{placements}`, the owner's private Verse placements file
+(`openagents.verse.private-placements.v1`, at most 65,536 bytes) as the
+host's Verse home holds it, or `null` when it holds none
+([Private assets](../../docs/verse/private-assets.md#phones)). The host
+notes the world key so its owner can grant it; the answer grants nothing,
+because only an asset's manifest names who may load its pack. A host
+without a Verse home refuses it as `unsupported`, and a placements file it
+can't read as `unavailable`. Like `thread.list`, its reply is not retained.
 `thread.list`, `thread.read`, and `thread.send` carry the host's chat
 threads to a device: the conversations with OpenAgents that the host keeps
 in its own chat store, which the owner starts in the desktop app or with
@@ -856,8 +867,8 @@ sends `thread.run` when the person accepts that chip. A `malformed` or
 `unsupported` refusal means the device drops the chip. `thread.run` grants
 no execution authority beyond that handoff: the host's auto-start policy
 still decides whether the task runs.
-Unlike every other operation, the host does not retain a `thread.list` or
-`thread.read` reply (see [Admission order and retention](#admission-order-and-retention)).
+Unlike every other operation, the host does not retain a `thread.list`,
+`thread.read`, or `verse.private` reply (see [Admission order and retention](#admission-order-and-retention)).
 The `studio.*` operations carry the
 [Agent Studio](../../docs/verse/agent-studio.md#the-client-is-a-view): the
 host's studio coordinator is the source of truth, and a device sends

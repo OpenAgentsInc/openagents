@@ -112,6 +112,23 @@ fn a_cached_private_pack_stands_its_character_in_everglade() {
 }
 
 #[test]
+fn a_phone_signs_with_its_world_key_and_falls_back_to_its_cache_offline() {
+    // The broker in the placements can't be reached, so the phone's check
+    // is unavailable rather than refused, and the cached pack stands.
+    let home = cached(None);
+    let mut runtime = at_portal();
+    let world = crate::identity::Identity::from_secret_hex("phone", &"07".repeat(32)).unwrap();
+    runtime.configure_private_assets_as(home.path().to_owned(), world.signer);
+    runtime.install_everglade(pack());
+    assert!(
+        tick_until(&mut runtime, |r| r.private_guests() == 1),
+        "the phone's cached private pack never stood its character"
+    );
+    // The phone signs with its world key, never a profile's key file.
+    assert!(!home.path().join("private-test.key").exists());
+}
+
+#[test]
 fn without_authorization_or_configuration_everglade_is_unchanged() {
     // The broker can't be reached and nothing is cached: nothing stands.
     let home = tempfile::tempdir().unwrap();

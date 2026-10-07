@@ -390,6 +390,22 @@ fn chat_home(root: &Path) -> Option<PathBuf> {
         .flatten()
 }
 
+/// Verse's home a host with `root` offers private placements from:
+/// `VERSE_HOME` when set, else `~/.openagents/verse` when `root` is this
+/// user's host root, else none, so a scratch host never reads the
+/// owner's placements.
+fn verse_home(root: &Path) -> Option<PathBuf> {
+    if let Some(dir) = std::env::var_os("VERSE_HOME").filter(|dir| !dir.is_empty()) {
+        return Some(PathBuf::from(dir));
+    }
+    let own = home(".openagents/host").ok()?;
+    let same = match (root.canonicalize(), own.canonicalize()) {
+        (Ok(a), Ok(b)) => a == b,
+        _ => root == own,
+    };
+    same.then(|| home(".openagents/verse").ok()).flatten()
+}
+
 fn home(relative: &str) -> Result<PathBuf> {
     let home = std::env::var_os("HOME")
         .map(PathBuf::from)
@@ -893,6 +909,8 @@ async fn serve(common: &Common, options: &mut Options, open_tasks: Box<OpenTasks
     // home for: a host under another root, as a test runs it, never moves
     // the person's threads into a store it will throw away.
     config.chat_home = chat_home(root);
+    // The owner's private Verse placements, for paired phones.
+    config.verse_home = verse_home(root);
     // A phone that pairs with a connect code reads this host's Coder chats
     // as a tailnet-admitted one does: the same observer and sources. When
     // tailnet admission serves the observer, this only issues invitations.

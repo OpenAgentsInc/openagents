@@ -1,3 +1,16 @@
+## Private Verse characters on a paired phone (#10797)
+
+The phone path is code-complete and tested with fakes; no real phone,
+key, or broker was used. To see it on a device: install a build with this
+change on a phone paired with the Mac, restart the Mac's host so it runs
+this commit, and open the OpenAgents app. On the Mac, run
+`verse-private phones` (the host also logs the command the first time the
+phone asks), then `verse-private grant NAME KEY` with the
+phone's world key. In the app's Verse tab, walk through the EVERGLADE arch
+to the owner's house; the seated character should be at the reception. Then run
+`verse-private revoke NAME KEY`, leave and re-enter Everglade,
+and check the character is gone.
+
 ## World place calibration (#10788)
 
 Agents walk down the world tree with Jev

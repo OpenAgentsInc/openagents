@@ -801,6 +801,10 @@ pub struct App {
     /// Computers' asks for the wallet, and how they are answered.
     wallet_link: crate::wallet_link::Linking,
     link_transport: Option<Arc<dyn crate::wallet_link::Transport>>,
+    /// The owner's private Verse placements, kept in step with the paired
+    /// computers (`crate::verse_private`).
+    verse_private: crate::verse_private::Syncing,
+    verse_private_transport: Option<Arc<dyn crate::verse_private::Transport>>,
     /// Chat invitations asked of computers paired without a current one.
     chat_invites: crate::chat_invites::Invites,
     /// How those asks reach the computers; `None` without the live client.
@@ -940,6 +944,15 @@ impl App {
                 runtime.handle().clone(),
             )) as Arc<dyn crate::wallet_link::Transport>
         });
+        let verse_private_transport = terminals.clone().map(|terminals| {
+            Arc::new(crate::verse_private::Live::new(
+                terminals,
+                runtime.handle().clone(),
+            )) as Arc<dyn crate::verse_private::Transport>
+        });
+        // The Verse tab's Everglade reads the owner's private placements
+        // from here.
+        crate::verse_private::set_home(&config.state_dir);
         let chat_asker = terminals.clone().map(|terminals| {
             Arc::new(crate::chat_invites::Live::new(
                 terminals,
@@ -1105,6 +1118,8 @@ impl App {
             spend_transport,
             wallet_link: crate::wallet_link::Linking::default(),
             link_transport,
+            verse_private: crate::verse_private::Syncing::default(),
+            verse_private_transport,
             chat_invites: crate::chat_invites::Invites::default(),
             chat_asker,
             trainer: crate::trainer::Trainer::default(),
@@ -1972,6 +1987,37 @@ impl App {
         self.spend.poll(hosts, transport, self.payer());
     }
 
+    /// Ask the computers this phone may observe for the owner's private
+    /// Verse placements, in the background, once the world key is here.
+    fn sync_verse_private(&mut self) {
+        let (Some(transport), Some(computers), Some(world), Some(home)) = (
+            self.verse_private_transport.clone(),
+            &self.computers,
+            self.world,
+            crate::verse_private::home(),
+        ) else {
+            return;
+        };
+        let Ok(identity) = verse::identity::Identity::from_secret("phone", world) else {
+            return;
+        };
+        let hosts: Vec<String> = computers
+            .snapshot()
+            .hosts
+            .iter()
+            .filter(|record| {
+                matches!(
+                    &record.enrollment,
+                    coder_computers::Enrollment::Enrolled { rights, .. }
+                        if rights.contains(coder_host::access::Right::Observe)
+                )
+            })
+            .map(|record| record.key.clone())
+            .collect();
+        self.verse_private
+            .poll(home, identity.signer.pubkey().to_owned(), hosts, transport);
+    }
+
     /// Register `token` for wakes, or with `None` revoke the lease.
     fn push_token(&mut self, token: Option<&str>) {
         let Some(push) = self.push.as_mut() else {
@@ -2011,9 +2057,13 @@ impl App {
                     .pair(chats, paired.label.clone(), paired.host.clone(), None);
             }
             self.coder.prefer(paired.host);
+            // A new computer may hold the owner's private placements, and
+            // notes this phone's world key for the owner to grant.
+            self.verse_private.soon();
         }
         self.renew_chats();
         self.poll_spends();
+        self.sync_verse_private();
         let tailnet = self.render_tailnet();
         // Chat commands that waited for their computer try again.
         self.coder.flush(self.computers.as_mut());

@@ -210,6 +210,40 @@ fn chats_invite_requires_observe_and_answers_only_a_chat_invitation() {
 }
 
 #[test]
+fn verse_private_needs_observe_is_a_read_and_bounds_its_placements() {
+    use coder_access::protocol::{MAX_VERSE_PLACEMENTS, Operation, Outcome};
+    let op = Operation::VersePrivate {
+        world_key: "ab".repeat(32),
+    };
+    assert_eq!(op.name(), "verse.private");
+    assert_eq!(op.required(), Some(coder_access::Right::Observe));
+    assert!(op.reads_only() && !op.retains_reply());
+    assert!(op.validate().is_ok());
+    let wire = serde_json::to_value(&op).unwrap();
+    assert_eq!(wire["kind"], "verse.private");
+    assert!(
+        Operation::VersePrivate {
+            world_key: "not a key".into()
+        }
+        .validate()
+        .is_err()
+    );
+    let none = Outcome::VersePrivate { placements: None };
+    let some = Outcome::VersePrivate {
+        placements: Some("{}".into()),
+    };
+    for outcome in [&none, &some] {
+        assert!(outcome.validate().is_ok());
+        assert!(outcome.answers(&op));
+        assert!(!outcome.answers(&Operation::ListWorkspaces {}));
+    }
+    let long = Outcome::VersePrivate {
+        placements: Some("x".repeat(MAX_VERSE_PLACEMENTS + 1)),
+    };
+    assert_eq!(long.validate().expect_err("refused").code, Code::Bounds);
+}
+
+#[test]
 fn thread_reads_need_observe_sends_need_operate_and_reads_are_not_retained() {
     use coder_access::protocol::{Operation, Outcome, Receipt};
     use coder_access::thread::{MAX_THREADS, ThreadPage, ThreadRow};

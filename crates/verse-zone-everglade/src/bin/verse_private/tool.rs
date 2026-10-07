@@ -14,6 +14,7 @@
 //! verse-private revoke NAME HEX
 //! verse-private remove NAME
 //! verse-private whoami [--profile P]
+//! verse-private phones
 //! ```
 //!
 //! `add` converts a licensed character with Blender
@@ -25,6 +26,8 @@
 //! `--overlay` dresses a seated character in our own garments
 //! (`scripts/blender/outfit.py`); the provenance records that script's
 //! digest too.
+//! `phones` lists the paired phones that asked this computer's host for the
+//! placements, with the command that grants each one.
 
 use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
@@ -53,7 +56,7 @@ pub fn main() {
 }
 
 fn usage() -> String {
-    "usage: verse-private add|place|unplace|list|show|grant|revoke|remove|whoami ... \
+    "usage: verse-private add|place|unplace|list|show|grant|revoke|remove|whoami|phones ... \
      (docs/verse/private-assets.md)"
         .into()
 }
@@ -139,8 +142,34 @@ fn run(args: &[String]) -> Result<(), String> {
             );
             Ok(())
         }
+        "phones" => {
+            args.only(&[])?;
+            phones()
+        }
         _ => Err(usage()),
     }
+}
+
+/// The paired phones that asked for the placements, newest first, and the
+/// command that lets each load an asset.
+fn phones() -> Result<(), String> {
+    let record = verse_private::phones::load(&verse_home()?);
+    if record.phones.is_empty() {
+        println!(
+            "No phone has asked yet. Open the OpenAgents app on a phone paired with this \
+             computer, and run this again."
+        );
+        return Ok(());
+    }
+    for phone in &record.phones {
+        println!(
+            "phone {} (last asked {}): verse-private grant NAME {}",
+            &phone.device[..12],
+            phone.last_seen,
+            phone.world_key
+        );
+    }
+    Ok(())
 }
 
 fn name_arg(args: &Args) -> Result<String, String> {

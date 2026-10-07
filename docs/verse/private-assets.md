@@ -1,7 +1,7 @@
 # Private assets
 
 Status: implemented on desktop, October 6, 2026 (#10769, #10770, #10771,
-#10772).
+#10772), and on paired phones, October 7, 2026 (#10797).
 
 Verse can draw licensed 3D assets that this public repository must never
 hold. A licensed asset, such as a Fab listing under the standard license,
@@ -106,7 +106,8 @@ It runs these steps:
    whose pack is missing.
 
 `verse-private list`, `show NAME`, `grant NAME KEY`, `revoke NAME KEY`, and
-`remove NAME` manage the registry. `place NAME --at X,Z --yaw RADIANS`
+`remove NAME` manage the registry, and `phones` lists the paired phones that
+asked for the placements ([Phones](#phones)). `place NAME --at X,Z --yaw RADIANS`
 writes the owner-local placement, and `place NAME --seat SEAT` seats it
 instead (see [Seats](#seats)).
 
@@ -284,10 +285,54 @@ character.
 
 ### Phones
 
-The phone builds share the loader, but the iOS and Android hosts don't yet
-pass a placements file to the world runtime. The broker accepts a phone's
-Verse key once it is listed as a reader (`verse-private grant`). Wiring the
-phone's placements is follow-up work (#10797).
+A phone paired with the owner's computer draws the same private characters
+in the OpenAgents app's Everglade, on iOS and Android, through the same
+broker. Nothing new is committed or published, and the broker is unchanged.
+
+1. **The placements come from the computer.** While the app is open, it
+   asks each paired computer it may observe for the placements with
+   NIP-HOST `verse.private` ([NIP-HOST](../../nips/openagents/NIP-HOST.md)),
+   over the existing encrypted host channel, naming its Verse world key.
+   The computer's host answers with its `private-assets.json` from Verse's
+   home (`~/.openagents/verse`, or `VERSE_HOME`), or with nothing when it
+   has none. A host under another root, as in a test, has no Verse home and
+   refuses. The app asks at most every five minutes, and at once after a
+   computer pairs.
+2. **The phone keeps them privately.** The app writes the file to
+   `verse-private/private-assets.json` under its private state directory
+   (Application Support on iOS, `noBackupFilesDir` on Android), mode 0600
+   in a 0700 directory, and caches packs beside it in
+   `verse-private/private-cache/`. The file never enters a packet or a log.
+   The first computer that answers with placements wins. When every
+   computer answers that it has none, the phone deletes its copy and its
+   cached packs; when one can't be reached or sends a file that fails its
+   checks, the phone keeps what it has. A pack no placement names any more
+   is deleted.
+3. **The owner grants the phone's key.** The computer's host notes each
+   phone's world key in `~/.openagents/verse/private-phones.json` (mode
+   0600) and, the first time it sees a key, logs the command that grants
+   it. `verse-private phones` lists every phone that asked:
+
+   ```text
+   phone 4f2a9c01d3e8 (last asked 1791400000): verse-private grant NAME 7b1e...
+   ```
+
+   Run that `verse-private grant NAME KEY` for each asset the phone may
+   load. A placement grants nothing on its own: the broker signs a URL
+   only for a key the asset's manifest lists.
+4. **The phone signs with its world key.** The Verse tab mounts with the
+   phone's world key, the protected identity it already keeps in Keychain
+   or Keystore for world presence, never the device key that holds host
+   grants. On each Everglade entry the loader asks the broker for every
+   placement, even a cached one: an admitted key draws the cached pack
+   without downloading it again, an unreachable broker falls back to the
+   cache, and a refusal deletes the cached pack and draws nothing. A
+   download is checked by length and digest, exactly as on the desktop.
+
+To revoke a phone, run `verse-private revoke NAME KEY`: its next Everglade
+entry is refused and its cached copy is deleted. Revoking the phone's host
+grant, or unplacing the asset on the computer, also stops it getting new
+placements.
 
 ## Operations
 
@@ -297,8 +342,11 @@ phone's placements is follow-up work (#10797).
   days; delete them sooner with `gcloud storage rm --all-versions`.
 - **Revoke a reader:** `verse-private revoke NAME KEY`. The broker reads the
   manifest on every request, so the next request is refused; a URL already
-  signed stays valid for at most 300 seconds. A cached copy on that device
-  stays until deleted.
+  signed stays valid for at most 300 seconds. A cached copy on a desktop
+  stays until deleted; a phone deletes its copy at its next refused entry.
+- **Let a paired phone load an asset:** open the OpenAgents app on the
+  phone, run `verse-private phones` on the computer, and run the
+  `verse-private grant` it prints.
 - **Shut everything off:** remove the broker's bucket binding, or delete the
   Cloud Run service.
 - **Rotate:** nothing to rotate by hand. The signing keys are Google-managed

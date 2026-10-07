@@ -1200,6 +1200,20 @@ impl Scene {
         self.blocklist_directory = directory;
     }
 
+    /// Lets Everglade draw the owner's private placements kept in
+    /// `directory`, signing grant requests with this mount's world key
+    /// (`docs/verse/private-assets.md`).
+    pub(crate) fn configure_private_assets(&mut self, directory: &str) -> Result<(), String> {
+        let path = std::path::Path::new(directory);
+        if directory.is_empty() || directory.len() > 4096 || !path.is_absolute() {
+            return Err("Private assets require an absolute native directory".into());
+        }
+        let signer = verse::identity::Identity::from_secret("phone", self.secret)?.signer;
+        self.world
+            .configure_private_assets_as(path.to_path_buf(), signer);
+        Ok(())
+    }
+
     /// Blocks or unblocks the player with `pubkey` in the running presence
     /// session and saves the list. Returns whether it changed.
     pub fn set_player_blocked(&mut self, pubkey: &str, blocked: bool) -> Result<bool, String> {

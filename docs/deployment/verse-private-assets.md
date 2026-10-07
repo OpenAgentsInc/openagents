@@ -73,6 +73,10 @@ Roll back by sending traffic to the previous revision:
 - **See what's there:** `verse-private list` and `verse-private show NAME`.
 - **Let another device load an asset:** run `verse-private whoami --profile P`
   where that device's Verse key lives, then `verse-private grant NAME KEY`.
+  For a paired phone, open the OpenAgents app on it and run
+  `verse-private phones` on the owner's computer, which prints the grant
+  command with the phone's world key. The broker needs no change for
+  phones.
 - **Revoke a reader:** `verse-private revoke NAME KEY`. The next request is
   refused; a URL already signed lives at most 300 seconds.
 - **Remove an asset:** `verse-private remove NAME`. Versioning keeps

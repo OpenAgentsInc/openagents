@@ -219,8 +219,27 @@ pub fn load(home: &Path) -> Result<Option<Placements>, String> {
 /// Returns a message when the file can't be written.
 pub fn save(home: &Path, placements: &Placements) -> Result<(), String> {
     let bytes = placements.to_bytes()?;
-    std::fs::create_dir_all(home).map_err(|e| format!("{}: {e}", home.display()))?;
-    let temp = home.join(format!(".{FILE}.{}.part", std::process::id()));
+    write_private(home, FILE, &bytes)
+}
+
+/// Writes `bytes` to `name` in `home` with mode 0600, through a temporary
+/// file and a rename, creating `home` with mode 0700 when it is missing.
+///
+/// # Errors
+///
+/// Returns a message when the file can't be written.
+pub fn write_private(home: &Path, name: &str, bytes: &[u8]) -> Result<(), String> {
+    let mut builder = std::fs::DirBuilder::new();
+    builder.recursive(true);
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::DirBuilderExt;
+        builder.mode(0o700);
+    }
+    builder
+        .create(home)
+        .map_err(|e| format!("{}: {e}", home.display()))?;
+    let temp = home.join(format!(".{name}.{}.part", std::process::id()));
     let mut options = std::fs::OpenOptions::new();
     options.write(true).create_new(true);
     #[cfg(unix)]
@@ -231,14 +250,14 @@ pub fn save(home: &Path, placements: &Placements) -> Result<(), String> {
     let result = (|| {
         use std::io::Write;
         let mut file = options.open(&temp).map_err(|e| e.to_string())?;
-        file.write_all(&bytes).map_err(|e| e.to_string())?;
+        file.write_all(bytes).map_err(|e| e.to_string())?;
         file.sync_all().map_err(|e| e.to_string())?;
-        std::fs::rename(&temp, path(home)).map_err(|e| e.to_string())
+        std::fs::rename(&temp, home.join(name)).map_err(|e| e.to_string())
     })();
     if result.is_err() {
         let _ = std::fs::remove_file(&temp);
     }
-    result.map_err(|e| format!("{FILE} could not be written: {e}"))
+    result.map_err(|e| format!("{name} could not be written: {e}"))
 }
 
 #[cfg(test)]

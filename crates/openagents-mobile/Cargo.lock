@@ -5472,6 +5472,7 @@ dependencies = [
  "url",
  "uuid",
  "verse",
+ "verse-private",
  "xp-ledger",
 ]
 
@@ -9432,10 +9433,13 @@ version = "0.1.0"
 dependencies = [
  "glam",
  "physics",
+ "verse-content",
  "verse-core",
+ "verse-gfx",
  "verse-pbr",
  "verse-world",
  "verse-zone-everglade",
+ "verse-zone-grove",
 ]
 
 [[package]]

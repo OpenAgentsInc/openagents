@@ -263,6 +263,23 @@ impl Dispatch for Dispatcher {
         Some(&mut self.links)
     }
 
+    /// The owner's private Verse placements, from Verse's home on this
+    /// computer, for a paired phone that named its Verse world key.
+    fn verse_private(
+        &mut self,
+        device: &str,
+        world_key: &str,
+        now: u64,
+    ) -> Result<Option<String>, Code> {
+        let home = self
+            .shared
+            .config
+            .verse_home
+            .as_deref()
+            .ok_or(Code::Unsupported)?;
+        crate::verse_private::answer(home, device, world_key, now)
+    }
+
     /// One image chunk, kept by the task owner for this device only.
     fn put_artifact(
         &mut self,

@@ -1,18 +1,23 @@
 //! The owner's private assets in Everglade (`docs/verse/private-assets.md`).
 //!
 //! The desktop names Verse's home ([`WorldRuntime::configure_private_assets`]).
-//! On each Everglade entry, the placements file there
-//! (`private-assets.json`) names the broker, the profile whose key signs, and
-//! where each private character stands; the packs load in the background and
-//! each character joins the zone as it arrives. Without the file, a key the
-//! broker admits, or the network, nothing is drawn and the zone is unchanged.
-//! Committed code names no private asset, and a browser build compiles none
-//! of this.
+//! A paired phone names a directory in its app sandbox and its world key
+//! ([`WorldRuntime::configure_private_assets_as`]); its app keeps the
+//! placements there in step with the owner's computer. On each Everglade
+//! entry, the placements file there (`private-assets.json`) names the
+//! broker, the profile whose key signs (the desktop's), and where each
+//! private character stands; the packs load in the background and each
+//! character joins the zone as it arrives. Without the file, a key the
+//! broker admits, or the network, nothing is drawn and the zone is
+//! unchanged. Committed code names no private asset, and a browser build
+//! compiles none of this.
 
 use std::path::PathBuf;
 
+use nostr::domain::RelaySigner;
+
 use super::everglade::guests::{self, Stand};
-use super::everglade_pack::private_assets::{PrivateEvent, PrivateLoader};
+use super::everglade_pack::private_assets::{PrivateEvent, PrivateLoader, Recheck};
 use crate::runtime::WorldRuntime;
 
 impl WorldRuntime {
@@ -20,6 +25,17 @@ impl WorldRuntime {
     /// Verse's home directory. This reads nothing until Everglade is entered.
     pub fn configure_private_assets(&mut self, home: PathBuf) {
         self.zone_state.private_home = Some(home);
+        self.zone_state.private_signer = None;
+    }
+
+    /// Lets Everglade load private placements from `home` on a paired phone,
+    /// signing grant requests with `signer`, the phone's world key, rather
+    /// than a profile's key file. Every entry asks the broker again, even
+    /// for a cached pack, so a revoked key draws nothing. This reads
+    /// nothing until Everglade is entered.
+    pub fn configure_private_assets_as(&mut self, home: PathBuf, signer: RelaySigner) {
+        self.zone_state.private_home = Some(home);
+        self.zone_state.private_signer = Some(signer);
     }
 
     /// Starts loading the private placements for Everglade, when configured.
@@ -36,20 +52,24 @@ impl WorldRuntime {
                 return;
             }
         };
-        // Read only: a missing key signs with a throwaway one, which no
-        // manifest names, so the broker refuses it.
-        let identity = match crate::identity::load_or_ephemeral(&home, &placements.profile) {
-            Ok(identity) => identity,
-            Err(error) => {
-                eprintln!("verse: private assets are off: {error}");
-                return;
-            }
+        let (signer, recheck) = match self.zone_state.private_signer.clone() {
+            Some(signer) => (signer, Recheck::Always),
+            // Read only: a missing key signs with a throwaway one, which no
+            // manifest names, so the broker refuses it.
+            None => match crate::identity::load_or_ephemeral(&home, &placements.profile) {
+                Ok(identity) => (identity.signer, Recheck::Never),
+                Err(error) => {
+                    eprintln!("verse: private assets are off: {error}");
+                    return;
+                }
+            },
         };
         self.zone_state.private_loader = PrivateLoader::start(
             &placements,
             "everglade",
-            identity.signer,
+            signer,
             home.join(verse_private::placements::CACHE),
+            recheck,
         );
     }
 

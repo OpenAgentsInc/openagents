@@ -5,6 +5,8 @@
 //!   asset carries in the private bucket.
 //! - [`placements`]: the owner-local file that places private assets in a
 //!   zone. Committed code never names a private asset.
+//! - [`phones`]: the owner-local record of the paired phones that asked for
+//!   the placements, and the Verse keys to grant them.
 //! - [`auth`]: the NIP-98 grant request a reader signs, and the grant.
 //! - [`signed_url`]: Cloud Storage V4 signed URLs over an injected signer.
 //! - `broker` (feature `broker`): the `verse-assets` service, which grants a
@@ -17,6 +19,7 @@
 
 pub mod auth;
 pub mod manifest;
+pub mod phones;
 pub mod placements;
 pub mod signed_url;
 
