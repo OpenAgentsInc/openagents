@@ -342,6 +342,12 @@ async fn start() -> ExitCode {
     {
         return ExitCode::from(coder::activity::cli(&arguments[1..]));
     }
+    if arguments
+        .first()
+        .is_some_and(|argument| argument == "interview")
+    {
+        return ExitCode::from(coder::task::agent_interview::cli(&arguments[1..]));
+    }
     if arguments.first().is_some_and(|argument| argument == "task") {
         return ExitCode::from(coder::task::cli::run(&arguments[1..]).await);
     }

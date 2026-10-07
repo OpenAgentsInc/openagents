@@ -39,6 +39,8 @@
 //!   accounting of whether the recorded rows cover it.
 //! - [`commitment`] — the digested anchor a report is checked against after
 //!   the store has left the writer's hands.
+//! - [`interview`] — agent interviews: a frozen journal-and-memory fixture,
+//!   the interview categories, the code-checked scorer, and its row.
 //! - [`eval`] — one run over a suite: what a door's answer becomes, and what
 //!   a table of rows says afterwards.
 //! - [`regress`] — one door against its own last recorded run, which is the
@@ -81,6 +83,7 @@ pub mod coverage;
 pub mod eval;
 pub mod gate;
 pub mod index;
+pub mod interview;
 pub mod jobs;
 pub mod questions;
 pub mod regress;

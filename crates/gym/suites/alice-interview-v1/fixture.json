@@ -1,0 +1,14 @@
+{
+ "schema": "openagents.agent-interview-fixture.v1",
+ "name": "alice-interview-v1",
+ "agent": "alice",
+ "workspace": "/work/openagents",
+ "from": 1788771600,
+ "as_of": 1790586000,
+ "synthetic": true,
+ "journal_rows": 339,
+ "memory_entries": 51,
+ "journal_sha256": "8d3c87ad1e293c33d77e42a9ea312968dd32ff96819d949960d1c2825a932261",
+ "memory_sha256": "74f62e5418452a8fcbef23b540adee0abfe38aa9ff746425e5eec1674f81d9da",
+ "digest": "5a13cd68aa2f48bebd0b29caf25f57bd48aaef2d0870706e2176c1d6380cb9ec"
+}

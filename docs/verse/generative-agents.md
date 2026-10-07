@@ -522,6 +522,38 @@ judging adds about $0.05.
 before item 1, so the change is measured against the code it replaces; that
 is the one place the code argues for changing the order.
 
+**Implemented (phase A).** The fixture, the memory category, and the
+no-memory and word-overlap arms:
+
+- The suite is
+  [`alice-interview-v1.json`](../../crates/gym/suites/alice-interview-v1.json):
+  22 memory items, 7 or 8 per partition. Its fixture,
+  [`alice-interview-v1/`](../../crates/gym/suites/alice-interview-v1), holds
+  339 synthetic journal rows and 51 memory entries from September 7 to 27,
+  2026, with a digested manifest. `build_alice_interview_v1.py` beside them
+  regenerates both. Each item's `state` pins the fixture digest, the
+  interview time, the check (each `all` group needs one of its terms, and no
+  `none` term may appear), and the records that hold the answer, as
+  `journal:POS` (the 1-based line) or `memory:ID`.
+- [`gym::interview`](../../crates/gym/src/interview.rs) owns the fixture
+  manifest, the five categories, the code-checked scorer, and the row
+  (`openagents.gym.interview_row.v1`), which the store's allowlist reads.
+- [`agent_interview.rs`](../../crates/coder/src/task/agent_interview.rs)
+  owns the runner. An arm is an `ArmName` variant with an `Arm` that builds a
+  briefing; an answerer is an `Answerer`: `FromBriefing` and `Canned` need
+  no model, and `Live` asks Alice's model through the capacity book. Rows
+  record the records the briefing carried and which of the item's sources
+  were among them.
+
+Run it with `coder interview`. It interviews both arms on the development
+partition with the scripted answerer and appends rows to
+`~/.openagents/gym/interviews.jsonl`. Pass `--arm word-overlap`,
+`--answerer live`, `--store PATH`, or `--trial N` (a repeat run is refused
+as a duplicate trial unless the trial differs). `--partition locked` needs
+`--ledger PATH` and `--reason TEXT`, and the read is recorded once. With the
+scripted answerer, the development partition scores 0 of 7 for no memory and
+2 of 7 for word overlap.
+
 ## What to skip
 
 - **A model call per villager per tick.** The paper's cost came from
@@ -555,7 +587,7 @@ fixtures and a small demo.
 
 | Phase | Items | Issue | Depends on |
 | --- | --- | --- | --- |
-| A. Measure first | The fixture, the suite's memory category, and the baseline arm from item 7 | [#10785](https://github.com/OpenAgentsInc/openagents/issues/10785) | None |
+| A. Measure first | The fixture, the suite's memory category, and the baseline arm from item 7 (implemented) | [#10785](https://github.com/OpenAgentsInc/openagents/issues/10785) | None |
 | B1. Memory | 1 | [#10787](https://github.com/OpenAgentsInc/openagents/issues/10787) | A |
 | B2. Reflection | 2 | [#10789](https://github.com/OpenAgentsInc/openagents/issues/10789) | B1 |
 | B3. Interviews | The rest of item 7 | [#10794](https://github.com/OpenAgentsInc/openagents/issues/10794) | B2, D |

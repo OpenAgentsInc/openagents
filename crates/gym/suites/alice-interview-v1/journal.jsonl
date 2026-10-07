@@ -1,0 +1,339 @@
+{"schema":"openagents.agent-journal-entry.v1","at":1788771600,"kind":"created","text":"the owner made alice in /work/openagents"}
+{"schema":"openagents.agent-journal-entry.v1","at":1788771660,"kind":"keyed","text":"made alice's key"}
+{"schema":"openagents.agent-journal-entry.v1","at":1788771720,"kind":"keyed","text":"the owner attested alice's key"}
+{"schema":"openagents.agent-journal-entry.v1","at":1788772200,"kind":"request","text":"remember that the release branch is cut on Thursdays","from":"owner"}
+{"schema":"openagents.agent-journal-entry.v1","at":1788772200,"kind":"memory","text":"wrote note entry 1: the release branch is cut on Thursdays"}
+{"schema":"openagents.agent-journal-entry.v1","at":1788772200,"kind":"report","text":"I'll remember that (memory entry 1)."}
+{"schema":"openagents.agent-journal-entry.v1","at":1788773400,"kind":"request","text":"run the atif tests","from":"owner"}
+{"schema":"openagents.agent-journal-entry.v1","at":1788773400,"kind":"memory","text":"the briefing carried memory entries 1"}
+{"schema":"openagents.agent-journal-entry.v1","at":1788773420,"kind":"plan","text":"Plan: run cargo test -p atif in /work/openagents."}
+{"schema":"openagents.agent-journal-entry.v1","at":1788773460,"kind":"ran","text":"cargo test -p atif (5310 bytes of output)","status":0}
+{"schema":"openagents.agent-journal-entry.v1","at":1788773550,"kind":"report","text":"The atif tests passed: 214 tests, exit 0."}
+{"schema":"openagents.agent-journal-entry.v1","at":1788773550,"kind":"memory","text":"wrote outcome entry 2: 1788773550: run the atif tests (ok exit 0)"}
+{"schema":"openagents.agent-journal-entry.v1","at":1788789600,"kind":"request","text":"always write commit messages in the imperative mood, under 72 characters","from":"owner"}
+{"schema":"openagents.agent-journal-entry.v1","at":1788789600,"kind":"memory","text":"proposed preference entry 3: The owner said: always write commit messages in the imperative mood, under 72 characters"}
+{"schema":"openagents.agent-journal-entry.v1","at":1788789600,"kind":"report","text":"I'll follow that once you accept it at F2."}
+{"schema":"openagents.agent-journal-entry.v1","at":1788861600,"kind":"request","text":"fix the flaky timeout in the coder-pty replay test","from":"owner"}
+{"schema":"openagents.agent-journal-entry.v1","at":1788861630,"kind":"task","text":"made task t-101 for goal g-55 in openagents, in her own worktree"}
+{"schema":"openagents.agent-journal-entry.v1","at":1788865200,"kind":"task","text":"task t-101 waits at the Merge station"}
+{"schema":"openagents.agent-journal-entry.v1","at":1788865200,"kind":"report","text":"My change for \"Fix the flaky timeout in the coder-pty replay test\" waits for you at the Merge station: Merge, Request changes, or Reject."}
+{"schema":"openagents.agent-journal-entry.v1","at":1788883200,"kind":"memory","text":"the owner accepted preference 3"}
+{"schema":"openagents.agent-journal-entry.v1","at":1788883500,"kind":"memory","text":"wrote project entry 4: coder-pty's replay test waits on a 2 second idle timer; a slow machine needs the 10 second bound"}
+{"schema":"openagents.agent-journal-entry.v1","at":1788951600,"kind":"task","text":"task t-101 merged by the owner"}
+{"schema":"openagents.agent-journal-entry.v1","at":1788951600,"kind":"memory","text":"wrote outcome entry 5: task t-101 merged by the owner at the Merge station"}
+{"schema":"openagents.agent-journal-entry.v1","at":1788966000,"kind":"request","text":"what does the gym ledger record?","from":"owner"}
+{"schema":"openagents.agent-journal-entry.v1","at":1788966000,"kind":"memory","text":"the briefing carried memory entries 1, 3"}
+{"schema":"openagents.agent-journal-entry.v1","at":1788966060,"kind":"ran","text":"rg -n \"LockedRead\" crates/gym/src (2210 bytes of output)","status":0}
+{"schema":"openagents.agent-journal-entry.v1","at":1788966150,"kind":"report","text":"The ledger records each locked read: the suite digest, what it was spent on, why, and when."}
+{"schema":"openagents.agent-journal-entry.v1","at":1788966150,"kind":"memory","text":"wrote outcome entry 6: 1788966150: what does the gym ledger record? (ok exit 0)"}
+{"schema":"openagents.agent-journal-entry.v1","at":1788984000,"kind":"job","text":"the owner added job nightly-check (Nightly checks), off"}
+{"schema":"openagents.agent-journal-entry.v1","at":1788984060,"kind":"job","text":"job nightly-check turned on"}
+{"schema":"openagents.agent-journal-entry.v1","at":1789005600,"kind":"job","text":"job nightly-check fired, occurrence 1 of 30"}
+{"schema":"openagents.agent-journal-entry.v1","at":1789005605,"kind":"request","text":"Run the nightly checks: cargo test -p atif, then cargo test -p gym.","from":"job:nightly-check"}
+{"schema":"openagents.agent-journal-entry.v1","at":1789005605,"kind":"memory","text":"the briefing carried memory entries 1, 3"}
+{"schema":"openagents.agent-journal-entry.v1","at":1789005665,"kind":"ran","text":"cargo test -p atif (5310 bytes of output)","status":0}
+{"schema":"openagents.agent-journal-entry.v1","at":1789005755,"kind":"ran","text":"cargo test -p gym (6588 bytes of output)","status":0}
+{"schema":"openagents.agent-journal-entry.v1","at":1789005845,"kind":"report","text":"The nightly checks passed: atif and gym, exit 0."}
+{"schema":"openagents.agent-journal-entry.v1","at":1789005845,"kind":"memory","text":"wrote outcome entry 7: 1789005845: Run the nightly checks: cargo test -p atif, then cargo test -p gym. (ok exit 0)"}
+{"schema":"openagents.agent-journal-entry.v1","at":1789034400,"kind":"request","text":"remember that the staging relay listens on port 7447","from":"owner"}
+{"schema":"openagents.agent-journal-entry.v1","at":1789034400,"kind":"memory","text":"wrote note entry 8: the staging relay listens on port 7447"}
+{"schema":"openagents.agent-journal-entry.v1","at":1789034400,"kind":"report","text":"I'll remember that (memory entry 8)."}
+{"schema":"openagents.agent-journal-entry.v1","at":1789092000,"kind":"job","text":"job nightly-check fired, occurrence 2 of 30"}
+{"schema":"openagents.agent-journal-entry.v1","at":1789092005,"kind":"request","text":"Run the nightly checks: cargo test -p atif, then cargo test -p gym.","from":"job:nightly-check"}
+{"schema":"openagents.agent-journal-entry.v1","at":1789092005,"kind":"memory","text":"the briefing carried memory entries 1, 3, 8"}
+{"schema":"openagents.agent-journal-entry.v1","at":1789092065,"kind":"ran","text":"cargo test -p atif (5310 bytes of output)","status":0}
+{"schema":"openagents.agent-journal-entry.v1","at":1789092155,"kind":"ran","text":"cargo test -p gym (6588 bytes of output)","status":0}
+{"schema":"openagents.agent-journal-entry.v1","at":1789092245,"kind":"report","text":"The nightly checks passed: atif and gym, exit 0."}
+{"schema":"openagents.agent-journal-entry.v1","at":1789092245,"kind":"memory","text":"wrote outcome entry 9: 1789092245: Run the nightly checks: cargo test -p atif, then cargo test -p gym. (ok exit 0)"}
+{"schema":"openagents.agent-journal-entry.v1","at":1789120800,"kind":"request","text":"push the docs fix to main","from":"owner"}
+{"schema":"openagents.agent-journal-entry.v1","at":1789120800,"kind":"memory","text":"the briefing carried memory entries 1, 3, 8"}
+{"schema":"openagents.agent-journal-entry.v1","at":1789120860,"kind":"plan","text":"Plan: push the committed docs fix to main."}
+{"schema":"openagents.agent-journal-entry.v1","at":1789120920,"kind":"proposed","text":"git push origin HEAD:main (it publishes to a remote)"}
+{"schema":"openagents.agent-journal-entry.v1","at":1789121040,"kind":"rejected","text":"git push origin HEAD:main"}
+{"schema":"openagents.agent-journal-entry.v1","at":1789121100,"kind":"report","text":"You rejected the push, so nothing left this computer."}
+{"schema":"openagents.agent-journal-entry.v1","at":1789122000,"kind":"request","text":"never push to main yourself","from":"owner"}
+{"schema":"openagents.agent-journal-entry.v1","at":1789122000,"kind":"memory","text":"proposed preference entry 10: The owner said: never push to main yourself"}
+{"schema":"openagents.agent-journal-entry.v1","at":1789122000,"kind":"report","text":"I'll follow that once you accept it at F2."}
+{"schema":"openagents.agent-journal-entry.v1","at":1789178400,"kind":"job","text":"job nightly-check fired, occurrence 3 of 30"}
+{"schema":"openagents.agent-journal-entry.v1","at":1789178405,"kind":"request","text":"Run the nightly checks: cargo test -p atif, then cargo test -p gym.","from":"job:nightly-check"}
+{"schema":"openagents.agent-journal-entry.v1","at":1789178405,"kind":"memory","text":"the briefing carried memory entries 1, 3, 8"}
+{"schema":"openagents.agent-journal-entry.v1","at":1789178465,"kind":"ran","text":"cargo test -p atif (5310 bytes of output)","status":0}
+{"schema":"openagents.agent-journal-entry.v1","at":1789178555,"kind":"ran","text":"cargo test -p gym (6588 bytes of output)","status":0}
+{"schema":"openagents.agent-journal-entry.v1","at":1789178645,"kind":"report","text":"The nightly checks passed: atif and gym, exit 0."}
+{"schema":"openagents.agent-journal-entry.v1","at":1789178645,"kind":"memory","text":"wrote outcome entry 11: 1789178645: Run the nightly checks: cargo test -p atif, then cargo test -p gym. (ok exit 0)"}
+{"schema":"openagents.agent-journal-entry.v1","at":1789203600,"kind":"memory","text":"the owner accepted preference 10"}
+{"schema":"openagents.agent-journal-entry.v1","at":1789210800,"kind":"request","text":"why does the verse-lagrange station-keeping test take 40 seconds?","from":"owner"}
+{"schema":"openagents.agent-journal-entry.v1","at":1789210800,"kind":"memory","text":"the briefing carried memory entries 1, 3, 8, 10"}
+{"schema":"openagents.agent-journal-entry.v1","at":1789210860,"kind":"ran","text":"cargo test -p verse-lagrange station_keeping -- --nocapture (8120 bytes of output)","status":0}
+{"schema":"openagents.agent-journal-entry.v1","at":1789210950,"kind":"report","text":"The station-keeping test integrates 3,000 orbits with RK4 at a 60 second step; most of the 40 seconds is that loop."}
+{"schema":"openagents.agent-journal-entry.v1","at":1789210950,"kind":"memory","text":"wrote outcome entry 12: 1789210950: why does the verse-lagrange station-keeping test take 40 seconds? (ok exit 0)"}
+{"schema":"openagents.agent-journal-entry.v1","at":1789211400,"kind":"memory","text":"wrote project entry 13: verse-lagrange's station-keeping test integrates 3,000 orbits; it is slow by design"}
+{"schema":"openagents.agent-journal-entry.v1","at":1789264800,"kind":"job","text":"job nightly-check fired, occurrence 4 of 30"}
+{"schema":"openagents.agent-journal-entry.v1","at":1789264805,"kind":"request","text":"Run the nightly checks: cargo test -p atif, then cargo test -p gym.","from":"job:nightly-check"}
+{"schema":"openagents.agent-journal-entry.v1","at":1789264805,"kind":"memory","text":"the briefing carried memory entries 1, 3, 8, 10"}
+{"schema":"openagents.agent-journal-entry.v1","at":1789264865,"kind":"ran","text":"cargo test -p atif (5310 bytes of output)","status":0}
+{"schema":"openagents.agent-journal-entry.v1","at":1789264955,"kind":"ran","text":"cargo test -p gym (6588 bytes of output)","status":0}
+{"schema":"openagents.agent-journal-entry.v1","at":1789265045,"kind":"report","text":"The nightly checks passed: atif and gym, exit 0."}
+{"schema":"openagents.agent-journal-entry.v1","at":1789265045,"kind":"memory","text":"wrote outcome entry 14: 1789265045: Run the nightly checks: cargo test -p atif, then cargo test -p gym. (ok exit 0)"}
+{"schema":"openagents.agent-journal-entry.v1","at":1789351200,"kind":"job","text":"job nightly-check fired, occurrence 5 of 30"}
+{"schema":"openagents.agent-journal-entry.v1","at":1789351205,"kind":"request","text":"Run the nightly checks: cargo test -p atif, then cargo test -p gym.","from":"job:nightly-check"}
+{"schema":"openagents.agent-journal-entry.v1","at":1789351205,"kind":"memory","text":"the briefing carried memory entries 1, 3, 8, 10"}
+{"schema":"openagents.agent-journal-entry.v1","at":1789351265,"kind":"ran","text":"cargo test -p atif (5310 bytes of output)","status":0}
+{"schema":"openagents.agent-journal-entry.v1","at":1789351355,"kind":"ran","text":"cargo test -p gym (6588 bytes of output)","status":0}
+{"schema":"openagents.agent-journal-entry.v1","at":1789351445,"kind":"report","text":"The nightly checks passed: atif and gym, exit 0."}
+{"schema":"openagents.agent-journal-entry.v1","at":1789351445,"kind":"memory","text":"wrote outcome entry 15: 1789351445: Run the nightly checks: cargo test -p atif, then cargo test -p gym. (ok exit 0)"}
+{"schema":"openagents.agent-journal-entry.v1","at":1789376400,"kind":"request","text":"add a watch-issues job for issues labeled agent","from":"owner"}
+{"schema":"openagents.agent-journal-entry.v1","at":1789376460,"kind":"job","text":"the owner added job watch-issues (Watch issues), off"}
+{"schema":"openagents.agent-journal-entry.v1","at":1789376520,"kind":"job","text":"job watch-issues turned on"}
+{"schema":"openagents.agent-journal-entry.v1","at":1789376520,"kind":"report","text":"The watch-issues job runs each morning at 08:00."}
+{"schema":"openagents.agent-journal-entry.v1","at":1789390800,"kind":"request","text":"update the everglade-web README with the wasm check command","from":"owner"}
+{"schema":"openagents.agent-journal-entry.v1","at":1789390830,"kind":"task","text":"made task t-105 for goal g-58 in openagents, in her own worktree"}
+{"schema":"openagents.agent-journal-entry.v1","at":1789394400,"kind":"task","text":"task t-105 waits at the Merge station"}
+{"schema":"openagents.agent-journal-entry.v1","at":1789394400,"kind":"report","text":"My change for \"Name the wasm check in the everglade-web README\" waits for you at the Merge station: Merge, Request changes, or Reject."}
+{"schema":"openagents.agent-journal-entry.v1","at":1789394700,"kind":"memory","text":"wrote project entry 16: everglade-web builds only for wasm32-unknown-unknown; check it with cargo check -p everglade-web --target wasm32-unknown-unknown"}
+{"schema":"openagents.agent-journal-entry.v1","at":1789437600,"kind":"job","text":"job nightly-check fired, occurrence 6 of 30"}
+{"schema":"openagents.agent-journal-entry.v1","at":1789437605,"kind":"request","text":"Run the nightly checks: cargo test -p atif, then cargo test -p gym.","from":"job:nightly-check"}
+{"schema":"openagents.agent-journal-entry.v1","at":1789437605,"kind":"memory","text":"the briefing carried memory entries 1, 3, 8, 10"}
+{"schema":"openagents.agent-journal-entry.v1","at":1789437665,"kind":"ran","text":"cargo test -p atif (5310 bytes of output)","status":0}
+{"schema":"openagents.agent-journal-entry.v1","at":1789437755,"kind":"ran","text":"cargo test -p gym (6604 bytes of output)","status":101}
+{"schema":"openagents.agent-journal-entry.v1","at":1789437760,"kind":"failed","text":"A check failed: cargo test -p gym exited 101."}
+{"schema":"openagents.agent-journal-entry.v1","at":1789459200,"kind":"job","text":"job watch-issues fired, occurrence 1 of 30"}
+{"schema":"openagents.agent-journal-entry.v1","at":1789459205,"kind":"request","text":"Look at open issues labeled agent and pick one you can do.","from":"job:watch-issues"}
+{"schema":"openagents.agent-journal-entry.v1","at":1789459205,"kind":"memory","text":"the briefing carried memory entries 1, 3, 8, 10"}
+{"schema":"openagents.agent-journal-entry.v1","at":1789459265,"kind":"ran","text":"gh issue list --label agent --state open (1022 bytes of output)","status":0}
+{"schema":"openagents.agent-journal-entry.v1","at":1789459355,"kind":"report","text":"No open issue labeled agent fits today."}
+{"schema":"openagents.agent-journal-entry.v1","at":1789459355,"kind":"memory","text":"wrote outcome entry 17: 1789459355: Look at open issues labeled agent and pick one you can do. (ok exit 0)"}
+{"schema":"openagents.agent-journal-entry.v1","at":1789466400,"kind":"request","text":"look at why the gym tests failed last night","from":"owner"}
+{"schema":"openagents.agent-journal-entry.v1","at":1789466400,"kind":"memory","text":"the briefing carried memory entries 1, 3, 8, 10"}
+{"schema":"openagents.agent-journal-entry.v1","at":1789466460,"kind":"ran","text":"cargo test -p gym store:: (6600 bytes of output)","status":101}
+{"schema":"openagents.agent-journal-entry.v1","at":1789466580,"kind":"ran","text":"git log -3 --oneline crates/gym (310 bytes of output)","status":0}
+{"schema":"openagents.agent-journal-entry.v1","at":1789466700,"kind":"report","text":"The store test fails because a new row schema was added without updating the allowlist test."}
+{"schema":"openagents.agent-journal-entry.v1","at":1789470000,"kind":"request","text":"fix the gym allowlist test","from":"owner"}
+{"schema":"openagents.agent-journal-entry.v1","at":1789470030,"kind":"task","text":"made task t-108 for goal g-59 in openagents, in her own worktree"}
+{"schema":"openagents.agent-journal-entry.v1","at":1789473600,"kind":"task","text":"task t-108 waits at the Merge station"}
+{"schema":"openagents.agent-journal-entry.v1","at":1789473600,"kind":"report","text":"My change for \"Name the new row schema in the allowlist test\" waits for you at the Merge station: Merge, Request changes, or Reject."}
+{"schema":"openagents.agent-journal-entry.v1","at":1789491600,"kind":"task","text":"task t-108 merged by the owner"}
+{"schema":"openagents.agent-journal-entry.v1","at":1789491600,"kind":"memory","text":"wrote outcome entry 18: task t-108 merged by the owner at the Merge station"}
+{"schema":"openagents.agent-journal-entry.v1","at":1789524000,"kind":"job","text":"job nightly-check fired, occurrence 7 of 30"}
+{"schema":"openagents.agent-journal-entry.v1","at":1789524005,"kind":"request","text":"Run the nightly checks: cargo test -p atif, then cargo test -p gym.","from":"job:nightly-check"}
+{"schema":"openagents.agent-journal-entry.v1","at":1789524005,"kind":"memory","text":"the briefing carried memory entries 1, 3, 8, 10"}
+{"schema":"openagents.agent-journal-entry.v1","at":1789524065,"kind":"ran","text":"cargo test -p atif (5310 bytes of output)","status":0}
+{"schema":"openagents.agent-journal-entry.v1","at":1789524155,"kind":"ran","text":"cargo test -p gym (6588 bytes of output)","status":0}
+{"schema":"openagents.agent-journal-entry.v1","at":1789524245,"kind":"report","text":"The nightly checks passed: atif and gym, exit 0."}
+{"schema":"openagents.agent-journal-entry.v1","at":1789524245,"kind":"memory","text":"wrote outcome entry 19: 1789524245: Run the nightly checks: cargo test -p atif, then cargo test -p gym. (ok exit 0)"}
+{"schema":"openagents.agent-journal-entry.v1","at":1789545600,"kind":"job","text":"job watch-issues fired, occurrence 2 of 30"}
+{"schema":"openagents.agent-journal-entry.v1","at":1789545605,"kind":"request","text":"Look at open issues labeled agent and pick one you can do.","from":"job:watch-issues"}
+{"schema":"openagents.agent-journal-entry.v1","at":1789545665,"kind":"ran","text":"gh issue list --label agent --state open (1022 bytes of output)","status":0}
+{"schema":"openagents.agent-journal-entry.v1","at":1789545670,"kind":"plan","text":"Plan: take issue 10412, document the nightly-check job template."}
+{"schema":"openagents.agent-journal-entry.v1","at":1789545700,"kind":"task","text":"made task t-110 for goal g-61 in openagents, in her own worktree"}
+{"schema":"openagents.agent-journal-entry.v1","at":1789549300,"kind":"task","text":"task t-110 waits at the Merge station"}
+{"schema":"openagents.agent-journal-entry.v1","at":1789549300,"kind":"report","text":"My change for \"Document the nightly-check job template\" waits for you at the Merge station: Merge, Request changes, or Reject."}
+{"schema":"openagents.agent-journal-entry.v1","at":1789551000,"kind":"task","text":"task t-105 merged by the owner"}
+{"schema":"openagents.agent-journal-entry.v1","at":1789551000,"kind":"memory","text":"wrote outcome entry 20: task t-105 merged by the owner at the Merge station"}
+{"schema":"openagents.agent-journal-entry.v1","at":1789552800,"kind":"request","text":"remember that Jev thresholds need a measurement document before code trusts them","from":"owner"}
+{"schema":"openagents.agent-journal-entry.v1","at":1789552800,"kind":"memory","text":"wrote note entry 21: Jev thresholds need a measurement document before code trusts them"}
+{"schema":"openagents.agent-journal-entry.v1","at":1789552800,"kind":"report","text":"I'll remember that (memory entry 21)."}
+{"schema":"openagents.agent-journal-entry.v1","at":1789610400,"kind":"job","text":"job nightly-check fired, occurrence 8 of 30"}
+{"schema":"openagents.agent-journal-entry.v1","at":1789610405,"kind":"request","text":"Run the nightly checks: cargo test -p atif, then cargo test -p gym.","from":"job:nightly-check"}
+{"schema":"openagents.agent-journal-entry.v1","at":1789610405,"kind":"memory","text":"the briefing carried memory entries 1, 3, 8, 10, 21"}
+{"schema":"openagents.agent-journal-entry.v1","at":1789610465,"kind":"ran","text":"cargo test -p atif (5310 bytes of output)","status":0}
+{"schema":"openagents.agent-journal-entry.v1","at":1789610555,"kind":"ran","text":"cargo test -p gym (6588 bytes of output)","status":0}
+{"schema":"openagents.agent-journal-entry.v1","at":1789610645,"kind":"report","text":"The nightly checks passed: atif and gym, exit 0."}
+{"schema":"openagents.agent-journal-entry.v1","at":1789610645,"kind":"memory","text":"wrote outcome entry 22: 1789610645: Run the nightly checks: cargo test -p atif, then cargo test -p gym. (ok exit 0)"}
+{"schema":"openagents.agent-journal-entry.v1","at":1789632000,"kind":"job","text":"job watch-issues fired, occurrence 3 of 30"}
+{"schema":"openagents.agent-journal-entry.v1","at":1789632005,"kind":"request","text":"Look at open issues labeled agent and pick one you can do.","from":"job:watch-issues"}
+{"schema":"openagents.agent-journal-entry.v1","at":1789632005,"kind":"memory","text":"the briefing carried memory entries 1, 3, 8, 10, 21"}
+{"schema":"openagents.agent-journal-entry.v1","at":1789632065,"kind":"ran","text":"gh issue list --label agent --state open (1022 bytes of output)","status":0}
+{"schema":"openagents.agent-journal-entry.v1","at":1789632155,"kind":"report","text":"No open issue labeled agent fits today."}
+{"schema":"openagents.agent-journal-entry.v1","at":1789632155,"kind":"memory","text":"wrote outcome entry 23: 1789632155: Look at open issues labeled agent and pick one you can do. (ok exit 0)"}
+{"schema":"openagents.agent-journal-entry.v1","at":1789642800,"kind":"request","text":"bump tokio to 1.48 across the workspace","from":"owner"}
+{"schema":"openagents.agent-journal-entry.v1","at":1789642830,"kind":"task","text":"made task t-118 for goal g-63 in openagents, in her own worktree"}
+{"schema":"openagents.agent-journal-entry.v1","at":1789646400,"kind":"task","text":"task t-118 waits at the Merge station"}
+{"schema":"openagents.agent-journal-entry.v1","at":1789646400,"kind":"report","text":"My change for \"Bump tokio to 1.48\" waits for you at the Merge station: Merge, Request changes, or Reject."}
+{"schema":"openagents.agent-journal-entry.v1","at":1789660800,"kind":"task","text":"task t-118 rejected by the owner"}
+{"schema":"openagents.agent-journal-entry.v1","at":1789662600,"kind":"request","text":"from now on run cargo fmt before every commit","from":"owner"}
+{"schema":"openagents.agent-journal-entry.v1","at":1789662600,"kind":"memory","text":"proposed preference entry 24: The owner said: from now on run cargo fmt before every commit"}
+{"schema":"openagents.agent-journal-entry.v1","at":1789662600,"kind":"report","text":"I'll follow that once you accept it at F2."}
+{"schema":"openagents.agent-journal-entry.v1","at":1789696800,"kind":"job","text":"job nightly-check fired, occurrence 9 of 30"}
+{"schema":"openagents.agent-journal-entry.v1","at":1789696805,"kind":"request","text":"Run the nightly checks: cargo test -p atif, then cargo test -p gym.","from":"job:nightly-check"}
+{"schema":"openagents.agent-journal-entry.v1","at":1789696805,"kind":"memory","text":"the briefing carried memory entries 1, 3, 8, 10, 21"}
+{"schema":"openagents.agent-journal-entry.v1","at":1789696865,"kind":"ran","text":"cargo test -p atif (5310 bytes of output)","status":0}
+{"schema":"openagents.agent-journal-entry.v1","at":1789696955,"kind":"ran","text":"cargo test -p gym (6588 bytes of output)","status":0}
+{"schema":"openagents.agent-journal-entry.v1","at":1789697045,"kind":"report","text":"The nightly checks passed: atif and gym, exit 0."}
+{"schema":"openagents.agent-journal-entry.v1","at":1789697045,"kind":"memory","text":"wrote outcome entry 25: 1789697045: Run the nightly checks: cargo test -p atif, then cargo test -p gym. (ok exit 0)"}
+{"schema":"openagents.agent-journal-entry.v1","at":1789718400,"kind":"job","text":"job watch-issues fired, occurrence 4 of 30"}
+{"schema":"openagents.agent-journal-entry.v1","at":1789718405,"kind":"request","text":"Look at open issues labeled agent and pick one you can do.","from":"job:watch-issues"}
+{"schema":"openagents.agent-journal-entry.v1","at":1789718405,"kind":"memory","text":"the briefing carried memory entries 1, 3, 8, 10, 21"}
+{"schema":"openagents.agent-journal-entry.v1","at":1789718465,"kind":"ran","text":"gh issue list --label agent --state open (1022 bytes of output)","status":0}
+{"schema":"openagents.agent-journal-entry.v1","at":1789718555,"kind":"report","text":"No open issue labeled agent fits today."}
+{"schema":"openagents.agent-journal-entry.v1","at":1789718555,"kind":"memory","text":"wrote outcome entry 26: 1789718555: Look at open issues labeled agent and pick one you can do. (ok exit 0)"}
+{"schema":"openagents.agent-journal-entry.v1","at":1789725600,"kind":"request","text":"clean the build directory","from":"owner"}
+{"schema":"openagents.agent-journal-entry.v1","at":1789725600,"kind":"memory","text":"the briefing carried memory entries 1, 3, 8, 10, 21"}
+{"schema":"openagents.agent-journal-entry.v1","at":1789725660,"kind":"refused","text":"rm -rf target"}
+{"schema":"openagents.agent-journal-entry.v1","at":1789725720,"kind":"report","text":"The host refused rm -rf target, so I left the build directory alone."}
+{"schema":"openagents.agent-journal-entry.v1","at":1789743600,"kind":"request","text":"i prefer that you never run the full workspace tests","from":"owner"}
+{"schema":"openagents.agent-journal-entry.v1","at":1789743600,"kind":"memory","text":"proposed preference entry 27: The owner said: i prefer that you never run the full workspace tests"}
+{"schema":"openagents.agent-journal-entry.v1","at":1789743600,"kind":"report","text":"I'll follow that once you accept it at F2."}
+{"schema":"openagents.agent-journal-entry.v1","at":1789783200,"kind":"job","text":"job nightly-check fired, occurrence 10 of 30"}
+{"schema":"openagents.agent-journal-entry.v1","at":1789783205,"kind":"request","text":"Run the nightly checks: cargo test -p atif, then cargo test -p gym.","from":"job:nightly-check"}
+{"schema":"openagents.agent-journal-entry.v1","at":1789783205,"kind":"memory","text":"the briefing carried memory entries 1, 3, 8, 10, 21"}
+{"schema":"openagents.agent-journal-entry.v1","at":1789783265,"kind":"ran","text":"cargo test -p atif (5310 bytes of output)","status":0}
+{"schema":"openagents.agent-journal-entry.v1","at":1789783355,"kind":"ran","text":"cargo test -p gym (6588 bytes of output)","status":0}
+{"schema":"openagents.agent-journal-entry.v1","at":1789783445,"kind":"report","text":"The nightly checks passed: atif and gym, exit 0."}
+{"schema":"openagents.agent-journal-entry.v1","at":1789783445,"kind":"memory","text":"wrote outcome entry 28: 1789783445: Run the nightly checks: cargo test -p atif, then cargo test -p gym. (ok exit 0)"}
+{"schema":"openagents.agent-journal-entry.v1","at":1789804800,"kind":"job","text":"job watch-issues fired, occurrence 5 of 30"}
+{"schema":"openagents.agent-journal-entry.v1","at":1789804805,"kind":"request","text":"Look at open issues labeled agent and pick one you can do.","from":"job:watch-issues"}
+{"schema":"openagents.agent-journal-entry.v1","at":1789804805,"kind":"memory","text":"the briefing carried memory entries 1, 3, 8, 10, 21"}
+{"schema":"openagents.agent-journal-entry.v1","at":1789804865,"kind":"ran","text":"gh issue list --label agent --state open (1022 bytes of output)","status":0}
+{"schema":"openagents.agent-journal-entry.v1","at":1789804955,"kind":"report","text":"No open issue labeled agent fits today."}
+{"schema":"openagents.agent-journal-entry.v1","at":1789804955,"kind":"memory","text":"wrote outcome entry 29: 1789804955: Look at open issues labeled agent and pick one you can do. (ok exit 0)"}
+{"schema":"openagents.agent-journal-entry.v1","at":1789808400,"kind":"memory","text":"the owner rejected preference 27"}
+{"schema":"openagents.agent-journal-entry.v1","at":1789840800,"kind":"control","text":"the owner paused alice"}
+{"schema":"openagents.agent-journal-entry.v1","at":1789869600,"kind":"job","text":"job nightly-check refused and skipped: alice is paused"}
+{"schema":"openagents.agent-journal-entry.v1","at":1789891200,"kind":"job","text":"job watch-issues refused and skipped: alice is paused"}
+{"schema":"openagents.agent-journal-entry.v1","at":1789956000,"kind":"job","text":"job nightly-check refused and skipped: alice is paused"}
+{"schema":"openagents.agent-journal-entry.v1","at":1789977600,"kind":"job","text":"job watch-issues refused and skipped: alice is paused"}
+{"schema":"openagents.agent-journal-entry.v1","at":1789981200,"kind":"control","text":"the owner resumed alice"}
+{"schema":"openagents.agent-journal-entry.v1","at":1790042400,"kind":"job","text":"job nightly-check fired, occurrence 11 of 30"}
+{"schema":"openagents.agent-journal-entry.v1","at":1790042405,"kind":"request","text":"Run the nightly checks: cargo test -p atif, then cargo test -p gym.","from":"job:nightly-check"}
+{"schema":"openagents.agent-journal-entry.v1","at":1790042405,"kind":"memory","text":"the briefing carried memory entries 1, 3, 8, 10, 21"}
+{"schema":"openagents.agent-journal-entry.v1","at":1790042465,"kind":"ran","text":"cargo test -p atif (5310 bytes of output)","status":0}
+{"schema":"openagents.agent-journal-entry.v1","at":1790042555,"kind":"ran","text":"cargo test -p gym (6588 bytes of output)","status":0}
+{"schema":"openagents.agent-journal-entry.v1","at":1790042645,"kind":"report","text":"The nightly checks passed: atif and gym, exit 0."}
+{"schema":"openagents.agent-journal-entry.v1","at":1790042645,"kind":"memory","text":"wrote outcome entry 30: 1790042645: Run the nightly checks: cargo test -p atif, then cargo test -p gym. (ok exit 0)"}
+{"schema":"openagents.agent-journal-entry.v1","at":1790064000,"kind":"job","text":"job watch-issues fired, occurrence 6 of 30"}
+{"schema":"openagents.agent-journal-entry.v1","at":1790064005,"kind":"request","text":"Look at open issues labeled agent and pick one you can do.","from":"job:watch-issues"}
+{"schema":"openagents.agent-journal-entry.v1","at":1790064005,"kind":"memory","text":"the briefing carried memory entries 1, 3, 8, 10, 21"}
+{"schema":"openagents.agent-journal-entry.v1","at":1790064065,"kind":"ran","text":"gh issue list --label agent --state open (1022 bytes of output)","status":0}
+{"schema":"openagents.agent-journal-entry.v1","at":1790064155,"kind":"report","text":"No open issue labeled agent fits today."}
+{"schema":"openagents.agent-journal-entry.v1","at":1790064155,"kind":"memory","text":"wrote outcome entry 31: 1790064155: Look at open issues labeled agent and pick one you can do. (ok exit 0)"}
+{"schema":"openagents.agent-journal-entry.v1","at":1790071200,"kind":"request","text":"add a keep-green job for the supervise crate","from":"owner"}
+{"schema":"openagents.agent-journal-entry.v1","at":1790071260,"kind":"job","text":"the owner added job keep-green (Keep supervise green), off"}
+{"schema":"openagents.agent-journal-entry.v1","at":1790071320,"kind":"job","text":"job keep-green turned on"}
+{"schema":"openagents.agent-journal-entry.v1","at":1790071320,"kind":"report","text":"The keep-green job runs cargo test -p supervise each night at 03:00."}
+{"schema":"openagents.agent-journal-entry.v1","at":1790085600,"kind":"request","text":"run the coder-boundary tests","from":"owner"}
+{"schema":"openagents.agent-journal-entry.v1","at":1790085600,"kind":"memory","text":"the briefing carried memory entries 1, 3, 8, 10, 21"}
+{"schema":"openagents.agent-journal-entry.v1","at":1790085660,"kind":"ran","text":"cargo test -p coder-boundary (7400 bytes of output)","status":0}
+{"schema":"openagents.agent-journal-entry.v1","at":1790085750,"kind":"report","text":"The coder-boundary tests passed, exit 0."}
+{"schema":"openagents.agent-journal-entry.v1","at":1790085750,"kind":"memory","text":"wrote outcome entry 32: 1790085750: run the coder-boundary tests (ok exit 0)"}
+{"schema":"openagents.agent-journal-entry.v1","at":1790128800,"kind":"job","text":"job nightly-check fired, occurrence 12 of 30"}
+{"schema":"openagents.agent-journal-entry.v1","at":1790128805,"kind":"request","text":"Run the nightly checks: cargo test -p atif, then cargo test -p gym.","from":"job:nightly-check"}
+{"schema":"openagents.agent-journal-entry.v1","at":1790128805,"kind":"memory","text":"the briefing carried memory entries 1, 3, 8, 10, 21"}
+{"schema":"openagents.agent-journal-entry.v1","at":1790128865,"kind":"ran","text":"cargo test -p atif (5310 bytes of output)","status":0}
+{"schema":"openagents.agent-journal-entry.v1","at":1790128955,"kind":"ran","text":"cargo test -p gym (6588 bytes of output)","status":0}
+{"schema":"openagents.agent-journal-entry.v1","at":1790129045,"kind":"report","text":"The nightly checks passed: atif and gym, exit 0."}
+{"schema":"openagents.agent-journal-entry.v1","at":1790129045,"kind":"memory","text":"wrote outcome entry 33: 1790129045: Run the nightly checks: cargo test -p atif, then cargo test -p gym. (ok exit 0)"}
+{"schema":"openagents.agent-journal-entry.v1","at":1790132400,"kind":"job","text":"job keep-green fired, occurrence 1 of 30"}
+{"schema":"openagents.agent-journal-entry.v1","at":1790132405,"kind":"request","text":"Keep it green: cargo test -p supervise.","from":"job:keep-green"}
+{"schema":"openagents.agent-journal-entry.v1","at":1790132405,"kind":"memory","text":"the briefing carried memory entries 1, 3, 8, 10, 21"}
+{"schema":"openagents.agent-journal-entry.v1","at":1790132465,"kind":"ran","text":"cargo test -p supervise (4398 bytes of output)","status":0}
+{"schema":"openagents.agent-journal-entry.v1","at":1790132555,"kind":"report","text":"The supervise tests pass, exit 0."}
+{"schema":"openagents.agent-journal-entry.v1","at":1790132555,"kind":"memory","text":"wrote outcome entry 34: 1790132555: Keep it green: cargo test -p supervise. (ok exit 0)"}
+{"schema":"openagents.agent-journal-entry.v1","at":1790150400,"kind":"job","text":"job watch-issues fired, occurrence 7 of 30"}
+{"schema":"openagents.agent-journal-entry.v1","at":1790150405,"kind":"request","text":"Look at open issues labeled agent and pick one you can do.","from":"job:watch-issues"}
+{"schema":"openagents.agent-journal-entry.v1","at":1790150405,"kind":"memory","text":"the briefing carried memory entries 1, 3, 8, 10, 21"}
+{"schema":"openagents.agent-journal-entry.v1","at":1790150465,"kind":"ran","text":"gh issue list --label agent --state open (1022 bytes of output)","status":0}
+{"schema":"openagents.agent-journal-entry.v1","at":1790150555,"kind":"report","text":"No open issue labeled agent fits today."}
+{"schema":"openagents.agent-journal-entry.v1","at":1790150555,"kind":"memory","text":"wrote outcome entry 35: 1790150555: Look at open issues labeled agent and pick one you can do. (ok exit 0)"}
+{"schema":"openagents.agent-journal-entry.v1","at":1790157600,"kind":"request","text":"run the verse tests in release mode","from":"owner"}
+{"schema":"openagents.agent-journal-entry.v1","at":1790157600,"kind":"memory","text":"the briefing carried memory entries 1, 3, 8, 10, 21"}
+{"schema":"openagents.agent-journal-entry.v1","at":1790157660,"kind":"ran","text":"cargo test -p verse --release: did not finish"}
+{"schema":"openagents.agent-journal-entry.v1","at":1790157750,"kind":"failed","text":"The command did not finish: cargo test -p verse --release."}
+{"schema":"openagents.agent-journal-entry.v1","at":1790159400,"kind":"memory","text":"wrote project entry 36: verse's release-mode tests need more than the 20 minute command bound"}
+{"schema":"openagents.agent-journal-entry.v1","at":1790215200,"kind":"job","text":"job nightly-check fired, occurrence 13 of 30"}
+{"schema":"openagents.agent-journal-entry.v1","at":1790215205,"kind":"request","text":"Run the nightly checks: cargo test -p atif, then cargo test -p gym.","from":"job:nightly-check"}
+{"schema":"openagents.agent-journal-entry.v1","at":1790215205,"kind":"memory","text":"the briefing carried memory entries 1, 3, 8, 10, 21"}
+{"schema":"openagents.agent-journal-entry.v1","at":1790215265,"kind":"ran","text":"cargo test -p atif (5310 bytes of output)","status":0}
+{"schema":"openagents.agent-journal-entry.v1","at":1790215355,"kind":"ran","text":"cargo test -p gym (6588 bytes of output)","status":0}
+{"schema":"openagents.agent-journal-entry.v1","at":1790215445,"kind":"report","text":"The nightly checks passed: atif and gym, exit 0."}
+{"schema":"openagents.agent-journal-entry.v1","at":1790215445,"kind":"memory","text":"wrote outcome entry 37: 1790215445: Run the nightly checks: cargo test -p atif, then cargo test -p gym. (ok exit 0)"}
+{"schema":"openagents.agent-journal-entry.v1","at":1790218800,"kind":"job","text":"job keep-green fired, occurrence 2 of 30"}
+{"schema":"openagents.agent-journal-entry.v1","at":1790218805,"kind":"request","text":"Keep it green: cargo test -p supervise.","from":"job:keep-green"}
+{"schema":"openagents.agent-journal-entry.v1","at":1790218805,"kind":"memory","text":"the briefing carried memory entries 1, 3, 8, 10, 21"}
+{"schema":"openagents.agent-journal-entry.v1","at":1790218865,"kind":"ran","text":"cargo test -p supervise (4398 bytes of output)","status":0}
+{"schema":"openagents.agent-journal-entry.v1","at":1790218955,"kind":"report","text":"The supervise tests pass, exit 0."}
+{"schema":"openagents.agent-journal-entry.v1","at":1790218955,"kind":"memory","text":"wrote outcome entry 38: 1790218955: Keep it green: cargo test -p supervise. (ok exit 0)"}
+{"schema":"openagents.agent-journal-entry.v1","at":1790236800,"kind":"job","text":"job watch-issues fired, occurrence 8 of 30"}
+{"schema":"openagents.agent-journal-entry.v1","at":1790236805,"kind":"request","text":"Look at open issues labeled agent and pick one you can do.","from":"job:watch-issues"}
+{"schema":"openagents.agent-journal-entry.v1","at":1790236805,"kind":"memory","text":"the briefing carried memory entries 1, 3, 8, 10, 21"}
+{"schema":"openagents.agent-journal-entry.v1","at":1790236865,"kind":"ran","text":"gh issue list --label agent --state open (1022 bytes of output)","status":0}
+{"schema":"openagents.agent-journal-entry.v1","at":1790236955,"kind":"report","text":"No open issue labeled agent fits today."}
+{"schema":"openagents.agent-journal-entry.v1","at":1790236955,"kind":"memory","text":"wrote outcome entry 39: 1790236955: Look at open issues labeled agent and pick one you can do. (ok exit 0)"}
+{"schema":"openagents.agent-journal-entry.v1","at":1790241300,"kind":"request","text":"update the gym README's ledger section to name the lock file","from":"owner"}
+{"schema":"openagents.agent-journal-entry.v1","at":1790241330,"kind":"task","text":"made task t-125 for goal g-67 in openagents, in her own worktree"}
+{"schema":"openagents.agent-journal-entry.v1","at":1790244900,"kind":"task","text":"task t-125 waits at the Merge station"}
+{"schema":"openagents.agent-journal-entry.v1","at":1790244900,"kind":"report","text":"My change for \"Name the ledger's lock file in the gym README\" waits for you at the Merge station: Merge, Request changes, or Reject."}
+{"schema":"openagents.agent-journal-entry.v1","at":1790262000,"kind":"task","text":"task t-125 merged by the owner"}
+{"schema":"openagents.agent-journal-entry.v1","at":1790262000,"kind":"memory","text":"wrote outcome entry 40: task t-125 merged by the owner at the Merge station"}
+{"schema":"openagents.agent-journal-entry.v1","at":1790301600,"kind":"job","text":"job nightly-check fired, occurrence 14 of 30"}
+{"schema":"openagents.agent-journal-entry.v1","at":1790301605,"kind":"request","text":"Run the nightly checks: cargo test -p atif, then cargo test -p gym.","from":"job:nightly-check"}
+{"schema":"openagents.agent-journal-entry.v1","at":1790301605,"kind":"memory","text":"the briefing carried memory entries 1, 3, 8, 10, 21"}
+{"schema":"openagents.agent-journal-entry.v1","at":1790301665,"kind":"ran","text":"cargo test -p atif (5310 bytes of output)","status":0}
+{"schema":"openagents.agent-journal-entry.v1","at":1790301755,"kind":"ran","text":"cargo test -p gym (6588 bytes of output)","status":0}
+{"schema":"openagents.agent-journal-entry.v1","at":1790301845,"kind":"report","text":"The nightly checks passed: atif and gym, exit 0."}
+{"schema":"openagents.agent-journal-entry.v1","at":1790301845,"kind":"memory","text":"wrote outcome entry 41: 1790301845: Run the nightly checks: cargo test -p atif, then cargo test -p gym. (ok exit 0)"}
+{"schema":"openagents.agent-journal-entry.v1","at":1790305200,"kind":"job","text":"job keep-green fired, occurrence 3 of 30"}
+{"schema":"openagents.agent-journal-entry.v1","at":1790305205,"kind":"request","text":"Keep it green: cargo test -p supervise.","from":"job:keep-green"}
+{"schema":"openagents.agent-journal-entry.v1","at":1790305265,"kind":"ran","text":"cargo test -p supervise (4410 bytes of output)","status":101}
+{"schema":"openagents.agent-journal-entry.v1","at":1790305270,"kind":"failed","text":"A check failed on the default branch: cargo test -p supervise exited 101."}
+{"schema":"openagents.agent-journal-entry.v1","at":1790305320,"kind":"request","text":"A check failed on the default branch: cargo test -p supervise exited 101. Fix it in your own worktree and bring the change to the Merge station. Never merge.","from":"job:keep-green"}
+{"schema":"openagents.agent-journal-entry.v1","at":1790305350,"kind":"task","text":"made task t-129 for goal g-70 in openagents, in her own worktree"}
+{"schema":"openagents.agent-journal-entry.v1","at":1790308920,"kind":"task","text":"task t-129 waits at the Merge station"}
+{"schema":"openagents.agent-journal-entry.v1","at":1790308920,"kind":"report","text":"My change for \"Fix the supervise deadline test\" waits for you at the Merge station: Merge, Request changes, or Reject."}
+{"schema":"openagents.agent-journal-entry.v1","at":1790323200,"kind":"job","text":"job watch-issues fired, occurrence 9 of 30"}
+{"schema":"openagents.agent-journal-entry.v1","at":1790323205,"kind":"request","text":"Look at open issues labeled agent and pick one you can do.","from":"job:watch-issues"}
+{"schema":"openagents.agent-journal-entry.v1","at":1790323205,"kind":"memory","text":"the briefing carried memory entries 1, 3, 8, 10, 21"}
+{"schema":"openagents.agent-journal-entry.v1","at":1790323265,"kind":"ran","text":"gh issue list --label agent --state open (1022 bytes of output)","status":0}
+{"schema":"openagents.agent-journal-entry.v1","at":1790323355,"kind":"report","text":"No open issue labeled agent fits today."}
+{"schema":"openagents.agent-journal-entry.v1","at":1790323355,"kind":"memory","text":"wrote outcome entry 42: 1790323355: Look at open issues labeled agent and pick one you can do. (ok exit 0)"}
+{"schema":"openagents.agent-journal-entry.v1","at":1790344800,"kind":"task","text":"task t-129 merged by the owner"}
+{"schema":"openagents.agent-journal-entry.v1","at":1790344800,"kind":"memory","text":"wrote outcome entry 43: task t-129 merged by the owner at the Merge station"}
+{"schema":"openagents.agent-journal-entry.v1","at":1790388000,"kind":"job","text":"job nightly-check fired, occurrence 15 of 30"}
+{"schema":"openagents.agent-journal-entry.v1","at":1790388005,"kind":"request","text":"Run the nightly checks: cargo test -p atif, then cargo test -p gym.","from":"job:nightly-check"}
+{"schema":"openagents.agent-journal-entry.v1","at":1790388005,"kind":"memory","text":"the briefing carried memory entries 1, 3, 8, 10, 21"}
+{"schema":"openagents.agent-journal-entry.v1","at":1790388065,"kind":"ran","text":"cargo test -p atif (5310 bytes of output)","status":0}
+{"schema":"openagents.agent-journal-entry.v1","at":1790388155,"kind":"ran","text":"cargo test -p gym (6588 bytes of output)","status":0}
+{"schema":"openagents.agent-journal-entry.v1","at":1790388245,"kind":"report","text":"The nightly checks passed: atif and gym, exit 0."}
+{"schema":"openagents.agent-journal-entry.v1","at":1790388245,"kind":"memory","text":"wrote outcome entry 44: 1790388245: Run the nightly checks: cargo test -p atif, then cargo test -p gym. (ok exit 0)"}
+{"schema":"openagents.agent-journal-entry.v1","at":1790391600,"kind":"job","text":"job keep-green fired, occurrence 4 of 30"}
+{"schema":"openagents.agent-journal-entry.v1","at":1790391605,"kind":"request","text":"Keep it green: cargo test -p supervise.","from":"job:keep-green"}
+{"schema":"openagents.agent-journal-entry.v1","at":1790391605,"kind":"memory","text":"the briefing carried memory entries 1, 3, 8, 10, 21"}
+{"schema":"openagents.agent-journal-entry.v1","at":1790391665,"kind":"ran","text":"cargo test -p supervise (4398 bytes of output)","status":0}
+{"schema":"openagents.agent-journal-entry.v1","at":1790391755,"kind":"report","text":"The supervise tests pass, exit 0."}
+{"schema":"openagents.agent-journal-entry.v1","at":1790391755,"kind":"memory","text":"wrote outcome entry 45: 1790391755: Keep it green: cargo test -p supervise. (ok exit 0)"}
+{"schema":"openagents.agent-journal-entry.v1","at":1790409600,"kind":"job","text":"job watch-issues fired, occurrence 10 of 30"}
+{"schema":"openagents.agent-journal-entry.v1","at":1790409605,"kind":"request","text":"Look at open issues labeled agent and pick one you can do.","from":"job:watch-issues"}
+{"schema":"openagents.agent-journal-entry.v1","at":1790409605,"kind":"memory","text":"the briefing carried memory entries 1, 3, 8, 10, 21"}
+{"schema":"openagents.agent-journal-entry.v1","at":1790409665,"kind":"ran","text":"gh issue list --label agent --state open (1022 bytes of output)","status":0}
+{"schema":"openagents.agent-journal-entry.v1","at":1790409755,"kind":"report","text":"No open issue labeled agent fits today."}
+{"schema":"openagents.agent-journal-entry.v1","at":1790409755,"kind":"memory","text":"wrote outcome entry 46: 1790409755: Look at open issues labeled agent and pick one you can do. (ok exit 0)"}
+{"schema":"openagents.agent-journal-entry.v1","at":1790416800,"kind":"request","text":"add a --json flag to coder activity","from":"owner"}
+{"schema":"openagents.agent-journal-entry.v1","at":1790416830,"kind":"task","text":"made task t-131 for goal g-72 in openagents, in her own worktree"}
+{"schema":"openagents.agent-journal-entry.v1","at":1790420400,"kind":"task","text":"task t-131 waits at the Merge station"}
+{"schema":"openagents.agent-journal-entry.v1","at":1790420400,"kind":"report","text":"My change for \"Add --json to coder activity\" waits for you at the Merge station: Merge, Request changes, or Reject."}
+{"schema":"openagents.agent-journal-entry.v1","at":1790442000,"kind":"task","text":"task t-131 merged by the owner"}
+{"schema":"openagents.agent-journal-entry.v1","at":1790442000,"kind":"memory","text":"wrote outcome entry 47: task t-131 merged by the owner at the Merge station"}
+{"schema":"openagents.agent-journal-entry.v1","at":1790474400,"kind":"job","text":"job nightly-check fired, occurrence 16 of 30"}
+{"schema":"openagents.agent-journal-entry.v1","at":1790474405,"kind":"request","text":"Run the nightly checks: cargo test -p atif, then cargo test -p gym.","from":"job:nightly-check"}
+{"schema":"openagents.agent-journal-entry.v1","at":1790474405,"kind":"memory","text":"the briefing carried memory entries 1, 3, 8, 10, 21"}
+{"schema":"openagents.agent-journal-entry.v1","at":1790474465,"kind":"ran","text":"cargo test -p atif (5310 bytes of output)","status":0}
+{"schema":"openagents.agent-journal-entry.v1","at":1790474555,"kind":"ran","text":"cargo test -p gym (6588 bytes of output)","status":0}
+{"schema":"openagents.agent-journal-entry.v1","at":1790474645,"kind":"report","text":"The nightly checks passed: atif and gym, exit 0."}
+{"schema":"openagents.agent-journal-entry.v1","at":1790474645,"kind":"memory","text":"wrote outcome entry 48: 1790474645: Run the nightly checks: cargo test -p atif, then cargo test -p gym. (ok exit 0)"}
+{"schema":"openagents.agent-journal-entry.v1","at":1790478000,"kind":"job","text":"job keep-green fired, occurrence 5 of 30"}
+{"schema":"openagents.agent-journal-entry.v1","at":1790478005,"kind":"request","text":"Keep it green: cargo test -p supervise.","from":"job:keep-green"}
+{"schema":"openagents.agent-journal-entry.v1","at":1790478005,"kind":"memory","text":"the briefing carried memory entries 1, 3, 8, 10, 21"}
+{"schema":"openagents.agent-journal-entry.v1","at":1790478065,"kind":"ran","text":"cargo test -p supervise (4398 bytes of output)","status":0}
+{"schema":"openagents.agent-journal-entry.v1","at":1790478155,"kind":"report","text":"The supervise tests pass, exit 0."}
+{"schema":"openagents.agent-journal-entry.v1","at":1790478155,"kind":"memory","text":"wrote outcome entry 49: 1790478155: Keep it green: cargo test -p supervise. (ok exit 0)"}
+{"schema":"openagents.agent-journal-entry.v1","at":1790496000,"kind":"job","text":"job watch-issues fired, occurrence 11 of 30"}
+{"schema":"openagents.agent-journal-entry.v1","at":1790496005,"kind":"request","text":"Look at open issues labeled agent and pick one you can do.","from":"job:watch-issues"}
+{"schema":"openagents.agent-journal-entry.v1","at":1790496005,"kind":"memory","text":"the briefing carried memory entries 1, 3, 8, 10, 21"}
+{"schema":"openagents.agent-journal-entry.v1","at":1790496065,"kind":"ran","text":"gh issue list --label agent --state open (1022 bytes of output)","status":0}
+{"schema":"openagents.agent-journal-entry.v1","at":1790496155,"kind":"report","text":"No open issue labeled agent fits today."}
+{"schema":"openagents.agent-journal-entry.v1","at":1790496155,"kind":"memory","text":"wrote outcome entry 50: 1790496155: Look at open issues labeled agent and pick one you can do. (ok exit 0)"}
+{"schema":"openagents.agent-journal-entry.v1","at":1790510400,"kind":"request","text":"summarize this week's merged changes","from":"owner"}
+{"schema":"openagents.agent-journal-entry.v1","at":1790510400,"kind":"memory","text":"the briefing carried memory entries 1, 3, 8, 10, 21"}
+{"schema":"openagents.agent-journal-entry.v1","at":1790510460,"kind":"ran","text":"git log --since=2026-09-21 --oneline (640 bytes of output)","status":0}
+{"schema":"openagents.agent-journal-entry.v1","at":1790510550,"kind":"report","text":"This week the owner merged t-125, t-129, and t-131."}
+{"schema":"openagents.agent-journal-entry.v1","at":1790510550,"kind":"memory","text":"wrote outcome entry 51: 1790510550: summarize this week's merged changes (ok exit 0)"}

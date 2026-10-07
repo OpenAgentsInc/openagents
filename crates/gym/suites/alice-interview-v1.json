@@ -1,0 +1,686 @@
+{
+ "schema": "openagents.gym.suite.v1",
+ "name": "alice-interview-v1",
+ "description": "Gym interviews for a workshop agent (docs/verse/generative-agents.md, item 7), asked against the frozen synthetic fixture in alice-interview-v1/: three weeks of Alice's journal and memory. This version holds the memory category: questions whose answers code checks against the fixture. Each item's state pins the fixture digest, the interview time, the check (every `all` group needs one of its terms, and no `none` term may appear), and the fixture records that hold the answer.",
+ "created": "2026-10-06",
+ "digest": "cdbf3e0d909daa83aa30e9f9feab043bc15f7c16247015358d060dab50c09b2c",
+ "items": [
+  {
+   "id": "memory/merged-sep-09",
+   "family": "memory",
+   "kind": "recall",
+   "state": {
+    "fixture": "alice-interview-v1",
+    "fixture_digest": "5a13cd68aa2f48bebd0b29caf25f57bd48aaef2d0870706e2176c1d6380cb9ec",
+    "as_of": 1790586000,
+    "check": {
+     "all": [
+      [
+       "t-101"
+      ]
+     ],
+     "none": [
+      [
+       "t-105"
+      ],
+      [
+       "t-108"
+      ],
+      [
+       "t-125"
+      ],
+      [
+       "t-129"
+      ],
+      [
+       "t-131"
+      ]
+     ]
+    },
+    "sources": [
+     "journal:22"
+    ]
+   },
+   "question": {
+    "text": "Which task did the owner merge on September 9?"
+   },
+   "truth": "Task t-101, the fix for the flaky timeout in the coder-pty replay test.",
+   "partition": "calibration",
+   "label_source": "author",
+   "label_rule": "the fact the cited fixture records state; an answer passes when it names every required term and no forbidden one"
+  },
+  {
+   "id": "memory/release-branch",
+   "family": "memory",
+   "kind": "recall",
+   "state": {
+    "fixture": "alice-interview-v1",
+    "fixture_digest": "5a13cd68aa2f48bebd0b29caf25f57bd48aaef2d0870706e2176c1d6380cb9ec",
+    "as_of": 1790586000,
+    "check": {
+     "all": [
+      [
+       "thursday"
+      ]
+     ]
+    },
+    "sources": [
+     "memory:1"
+    ]
+   },
+   "question": {
+    "text": "What did the owner ask you to remember about the release branch?"
+   },
+   "truth": "That the release branch is cut on Thursdays.",
+   "partition": "calibration",
+   "label_source": "author",
+   "label_rule": "the fact the cited fixture records state; an answer passes when it names every required term and no forbidden one"
+  },
+  {
+   "id": "memory/push-rejected",
+   "family": "memory",
+   "kind": "recall",
+   "state": {
+    "fixture": "alice-interview-v1",
+    "fixture_digest": "5a13cd68aa2f48bebd0b29caf25f57bd48aaef2d0870706e2176c1d6380cb9ec",
+    "as_of": 1790586000,
+    "check": {
+     "all": [
+      [
+       "git push"
+      ]
+     ]
+    },
+    "sources": [
+     "journal:52"
+    ]
+   },
+   "question": {
+    "text": "Which command did the owner reject on September 11?"
+   },
+   "truth": "git push origin HEAD:main, when I tried to push the docs fix to main.",
+   "partition": "calibration",
+   "label_source": "author",
+   "label_rule": "the fact the cited fixture records state; an answer passes when it names every required term and no forbidden one"
+  },
+  {
+   "id": "memory/commit-preference",
+   "family": "memory",
+   "kind": "recall",
+   "state": {
+    "fixture": "alice-interview-v1",
+    "fixture_digest": "5a13cd68aa2f48bebd0b29caf25f57bd48aaef2d0870706e2176c1d6380cb9ec",
+    "as_of": 1790586000,
+    "check": {
+     "all": [
+      [
+       "imperative"
+      ],
+      [
+       "72"
+      ]
+     ]
+    },
+    "sources": [
+     "memory:3",
+     "journal:20"
+    ]
+   },
+   "question": {
+    "text": "What preference about commit messages did the owner accept?"
+   },
+   "truth": "Write commit messages in the imperative mood, under 72 characters.",
+   "partition": "calibration",
+   "label_source": "author",
+   "label_rule": "the fact the cited fixture records state; an answer passes when it names every required term and no forbidden one"
+  },
+  {
+   "id": "memory/gym-failure",
+   "family": "memory",
+   "kind": "recall",
+   "state": {
+    "fixture": "alice-interview-v1",
+    "fixture_digest": "5a13cd68aa2f48bebd0b29caf25f57bd48aaef2d0870706e2176c1d6380cb9ec",
+    "as_of": 1790586000,
+    "check": {
+     "all": [
+      [
+       "gym"
+      ],
+      [
+       "101"
+      ]
+     ]
+    },
+    "sources": [
+     "journal:98",
+     "journal:99"
+    ]
+   },
+   "question": {
+    "text": "Which crate's tests failed in the nightly checks on September 15, and with what exit status?"
+   },
+   "truth": "The gym crate's tests: cargo test -p gym exited 101.",
+   "partition": "calibration",
+   "label_source": "author",
+   "label_rule": "the fact the cited fixture records state; an answer passes when it names every required term and no forbidden one"
+  },
+  {
+   "id": "memory/relay-port",
+   "family": "memory",
+   "kind": "recall",
+   "state": {
+    "fixture": "alice-interview-v1",
+    "fixture_digest": "5a13cd68aa2f48bebd0b29caf25f57bd48aaef2d0870706e2176c1d6380cb9ec",
+    "as_of": 1790586000,
+    "check": {
+     "all": [
+      [
+       "7447"
+      ]
+     ]
+    },
+    "sources": [
+     "memory:8"
+    ]
+   },
+   "question": {
+    "text": "Which port did the owner tell you the staging relay listens on?"
+   },
+   "truth": "Port 7447.",
+   "partition": "calibration",
+   "label_source": "author",
+   "label_rule": "the fact the cited fixture records state; an answer passes when it names every required term and no forbidden one"
+  },
+  {
+   "id": "memory/tokio-rejected",
+   "family": "memory",
+   "kind": "recall",
+   "state": {
+    "fixture": "alice-interview-v1",
+    "fixture_digest": "5a13cd68aa2f48bebd0b29caf25f57bd48aaef2d0870706e2176c1d6380cb9ec",
+    "as_of": 1790586000,
+    "check": {
+     "all": [
+      [
+       "t-118",
+       "tokio"
+      ]
+     ]
+    },
+    "sources": [
+     "journal:153",
+     "journal:149"
+    ]
+   },
+   "question": {
+    "text": "Which change did the owner reject at the Merge station on September 17?"
+   },
+   "truth": "Task t-118, the change that bumped tokio to 1.48.",
+   "partition": "calibration",
+   "label_source": "author",
+   "label_rule": "the fact the cited fixture records state; an answer passes when it names every required term and no forbidden one"
+  },
+  {
+   "id": "memory/merged-sep-15",
+   "family": "memory",
+   "kind": "recall",
+   "state": {
+    "fixture": "alice-interview-v1",
+    "fixture_digest": "5a13cd68aa2f48bebd0b29caf25f57bd48aaef2d0870706e2176c1d6380cb9ec",
+    "as_of": 1790586000,
+    "check": {
+     "all": [
+      [
+       "t-108"
+      ]
+     ],
+     "none": [
+      [
+       "t-101"
+      ],
+      [
+       "t-105"
+      ],
+      [
+       "t-125"
+      ],
+      [
+       "t-129"
+      ],
+      [
+       "t-131"
+      ]
+     ]
+    },
+    "sources": [
+     "journal:115"
+    ]
+   },
+   "question": {
+    "text": "Which task did the owner merge on September 15?"
+   },
+   "truth": "Task t-108, the fix for the gym allowlist test.",
+   "partition": "development",
+   "label_source": "author",
+   "label_rule": "the fact the cited fixture records state; an answer passes when it names every required term and no forbidden one"
+  },
+  {
+   "id": "memory/fmt-candidate",
+   "family": "memory",
+   "kind": "recall",
+   "state": {
+    "fixture": "alice-interview-v1",
+    "fixture_digest": "5a13cd68aa2f48bebd0b29caf25f57bd48aaef2d0870706e2176c1d6380cb9ec",
+    "as_of": 1790586000,
+    "check": {
+     "all": [
+      [
+       "cargo fmt"
+      ]
+     ],
+     "none": [
+      [
+       "imperative"
+      ],
+      [
+       "push to main"
+      ]
+     ]
+    },
+    "sources": [
+     "memory:24"
+    ]
+   },
+   "question": {
+    "text": "Which preference you proposed is still waiting for the owner's decision?"
+   },
+   "truth": "Run cargo fmt before every commit; the owner said it on September 17 and hasn't accepted it yet.",
+   "partition": "development",
+   "label_source": "author",
+   "label_rule": "the fact the cited fixture records state; an answer passes when it names every required term and no forbidden one"
+  },
+  {
+   "id": "memory/nightly-job",
+   "family": "memory",
+   "kind": "recall",
+   "state": {
+    "fixture": "alice-interview-v1",
+    "fixture_digest": "5a13cd68aa2f48bebd0b29caf25f57bd48aaef2d0870706e2176c1d6380cb9ec",
+    "as_of": 1790586000,
+    "check": {
+     "all": [
+      [
+       "nightly-check",
+       "nightly check"
+      ]
+     ]
+    },
+    "sources": [
+     "journal:29"
+    ]
+   },
+   "question": {
+    "text": "What standing job did the owner add on September 9?"
+   },
+   "truth": "The nightly-check job, which runs the atif and gym tests each night.",
+   "partition": "development",
+   "label_source": "author",
+   "label_rule": "the fact the cited fixture records state; an answer passes when it names every required term and no forbidden one"
+  },
+  {
+   "id": "memory/watch-skipped",
+   "family": "memory",
+   "kind": "recall",
+   "state": {
+    "fixture": "alice-interview-v1",
+    "fixture_digest": "5a13cd68aa2f48bebd0b29caf25f57bd48aaef2d0870706e2176c1d6380cb9ec",
+    "as_of": 1790586000,
+    "check": {
+     "all": [
+      [
+       "paused"
+      ]
+     ]
+    },
+    "sources": [
+     "journal:193"
+    ]
+   },
+   "question": {
+    "text": "Why was the watch-issues job skipped on September 20?"
+   },
+   "truth": "The owner had paused me, so the job was refused and skipped.",
+   "partition": "development",
+   "label_source": "author",
+   "label_rule": "the fact the cited fixture records state; an answer passes when it names every required term and no forbidden one"
+  },
+  {
+   "id": "memory/lagrange-question",
+   "family": "memory",
+   "kind": "recall",
+   "state": {
+    "fixture": "alice-interview-v1",
+    "fixture_digest": "5a13cd68aa2f48bebd0b29caf25f57bd48aaef2d0870706e2176c1d6380cb9ec",
+    "as_of": 1790586000,
+    "check": {
+     "all": [
+      [
+       "station-keeping",
+       "station keeping"
+      ]
+     ]
+    },
+    "sources": [
+     "journal:65"
+    ]
+   },
+   "question": {
+    "text": "What did the owner ask about the verse-lagrange crate?"
+   },
+   "truth": "Why its station-keeping test takes 40 seconds.",
+   "partition": "development",
+   "label_source": "author",
+   "label_rule": "the fact the cited fixture records state; an answer passes when it names every required term and no forbidden one"
+  },
+  {
+   "id": "memory/rm-refused",
+   "family": "memory",
+   "kind": "recall",
+   "state": {
+    "fixture": "alice-interview-v1",
+    "fixture_digest": "5a13cd68aa2f48bebd0b29caf25f57bd48aaef2d0870706e2176c1d6380cb9ec",
+    "as_of": 1790586000,
+    "check": {
+     "all": [
+      [
+       "rm -rf"
+      ]
+     ]
+    },
+    "sources": [
+     "journal:172"
+    ]
+   },
+   "question": {
+    "text": "What did the host refuse to run on September 18?"
+   },
+   "truth": "rm -rf target, when the owner asked me to clean the build directory.",
+   "partition": "development",
+   "label_source": "author",
+   "label_rule": "the fact the cited fixture records state; an answer passes when it names every required term and no forbidden one"
+  },
+  {
+   "id": "memory/wasm-project",
+   "family": "memory",
+   "kind": "recall",
+   "state": {
+    "fixture": "alice-interview-v1",
+    "fixture_digest": "5a13cd68aa2f48bebd0b29caf25f57bd48aaef2d0870706e2176c1d6380cb9ec",
+    "as_of": 1790586000,
+    "check": {
+     "all": [
+      [
+       "wasm32"
+      ]
+     ]
+    },
+    "sources": [
+     "memory:16"
+    ]
+   },
+   "question": {
+    "text": "What did you record about how to check the everglade-web crate?"
+   },
+   "truth": "It builds only for wasm32-unknown-unknown; check it with cargo check -p everglade-web --target wasm32-unknown-unknown.",
+   "partition": "development",
+   "label_source": "author",
+   "label_rule": "the fact the cited fixture records state; an answer passes when it names every required term and no forbidden one"
+  },
+  {
+   "id": "memory/merged-sep-26",
+   "family": "memory",
+   "kind": "recall",
+   "state": {
+    "fixture": "alice-interview-v1",
+    "fixture_digest": "5a13cd68aa2f48bebd0b29caf25f57bd48aaef2d0870706e2176c1d6380cb9ec",
+    "as_of": 1790586000,
+    "check": {
+     "all": [
+      [
+       "t-131"
+      ]
+     ],
+     "none": [
+      [
+       "t-101"
+      ],
+      [
+       "t-105"
+      ],
+      [
+       "t-108"
+      ],
+      [
+       "t-125"
+      ],
+      [
+       "t-129"
+      ]
+     ]
+    },
+    "sources": [
+     "journal:314"
+    ]
+   },
+   "question": {
+    "text": "Which task did the owner merge on September 26?"
+   },
+   "truth": "Task t-131, which added a --json flag to coder activity.",
+   "partition": "locked",
+   "label_source": "author",
+   "label_rule": "the fact the cited fixture records state; an answer passes when it names every required term and no forbidden one"
+  },
+  {
+   "id": "memory/rejected-preference",
+   "family": "memory",
+   "kind": "recall",
+   "state": {
+    "fixture": "alice-interview-v1",
+    "fixture_digest": "5a13cd68aa2f48bebd0b29caf25f57bd48aaef2d0870706e2176c1d6380cb9ec",
+    "as_of": 1790586000,
+    "check": {
+     "all": [
+      [
+       "full workspace"
+      ]
+     ]
+    },
+    "sources": [
+     "memory:27",
+     "journal:190"
+    ]
+   },
+   "question": {
+    "text": "Which preference you proposed did the owner reject?"
+   },
+   "truth": "Never running the full workspace tests; the owner rejected it on September 19.",
+   "partition": "locked",
+   "label_source": "author",
+   "label_rule": "the fact the cited fixture records state; an answer passes when it names every required term and no forbidden one"
+  },
+  {
+   "id": "memory/pause-dates",
+   "family": "memory",
+   "kind": "recall",
+   "state": {
+    "fixture": "alice-interview-v1",
+    "fixture_digest": "5a13cd68aa2f48bebd0b29caf25f57bd48aaef2d0870706e2176c1d6380cb9ec",
+    "as_of": 1790586000,
+    "check": {
+     "all": [
+      [
+       "september 19",
+       "sep 19",
+       "2026-09-19",
+       "19 september"
+      ],
+      [
+       "september 21",
+       "sep 21",
+       "2026-09-21",
+       "21 september"
+      ]
+     ]
+    },
+    "sources": [
+     "journal:191",
+     "journal:196"
+    ]
+   },
+   "question": {
+    "text": "On which days did the owner pause you and resume you?"
+   },
+   "truth": "The owner paused me on September 19 and resumed me on September 21.",
+   "partition": "locked",
+   "label_source": "author",
+   "label_rule": "the fact the cited fixture records state; an answer passes when it names every required term and no forbidden one"
+  },
+  {
+   "id": "memory/nightly-count",
+   "family": "memory",
+   "kind": "recall",
+   "state": {
+    "fixture": "alice-interview-v1",
+    "fixture_digest": "5a13cd68aa2f48bebd0b29caf25f57bd48aaef2d0870706e2176c1d6380cb9ec",
+    "as_of": 1790586000,
+    "check": {
+     "all": [
+      [
+       "16"
+      ]
+     ]
+    },
+    "sources": [
+     "journal:316"
+    ]
+   },
+   "question": {
+    "text": "How many times had the nightly-check job fired by September 27?"
+   },
+   "truth": "16 times; it was skipped twice while I was paused.",
+   "partition": "locked",
+   "label_source": "author",
+   "label_rule": "the fact the cited fixture records state; an answer passes when it names every required term and no forbidden one"
+  },
+  {
+   "id": "memory/verse-timeout",
+   "family": "memory",
+   "kind": "recall",
+   "state": {
+    "fixture": "alice-interview-v1",
+    "fixture_digest": "5a13cd68aa2f48bebd0b29caf25f57bd48aaef2d0870706e2176c1d6380cb9ec",
+    "as_of": 1790586000,
+    "check": {
+     "all": [
+      [
+       "cargo test -p verse"
+      ]
+     ]
+    },
+    "sources": [
+     "journal:240"
+    ]
+   },
+   "question": {
+    "text": "Which command did not finish on September 23?"
+   },
+   "truth": "cargo test -p verse --release, when the owner asked for the verse tests in release mode.",
+   "partition": "locked",
+   "label_source": "author",
+   "label_rule": "the fact the cited fixture records state; an answer passes when it names every required term and no forbidden one"
+  },
+  {
+   "id": "memory/jev-note",
+   "family": "memory",
+   "kind": "recall",
+   "state": {
+    "fixture": "alice-interview-v1",
+    "fixture_digest": "5a13cd68aa2f48bebd0b29caf25f57bd48aaef2d0870706e2176c1d6380cb9ec",
+    "as_of": 1790586000,
+    "check": {
+     "all": [
+      [
+       "measurement"
+      ]
+     ]
+    },
+    "sources": [
+     "memory:21"
+    ]
+   },
+   "question": {
+    "text": "What did the owner ask you to remember about Jev thresholds?"
+   },
+   "truth": "That Jev thresholds need a measurement document before code trusts them.",
+   "partition": "locked",
+   "label_source": "author",
+   "label_rule": "the fact the cited fixture records state; an answer passes when it names every required term and no forbidden one"
+  },
+  {
+   "id": "memory/keep-green-fix",
+   "family": "memory",
+   "kind": "recall",
+   "state": {
+    "fixture": "alice-interview-v1",
+    "fixture_digest": "5a13cd68aa2f48bebd0b29caf25f57bd48aaef2d0870706e2176c1d6380cb9ec",
+    "as_of": 1790586000,
+    "check": {
+     "all": [
+      [
+       "supervise"
+      ]
+     ]
+    },
+    "sources": [
+     "journal:289",
+     "journal:279"
+    ]
+   },
+   "question": {
+    "text": "Which crate did the keep-green fix that merged on September 25 touch?"
+   },
+   "truth": "The supervise crate: task t-129 fixed its deadline test.",
+   "partition": "locked",
+   "label_source": "author",
+   "label_rule": "the fact the cited fixture records state; an answer passes when it names every required term and no forbidden one"
+  },
+  {
+   "id": "memory/waiting-change",
+   "family": "memory",
+   "kind": "recall",
+   "state": {
+    "fixture": "alice-interview-v1",
+    "fixture_digest": "5a13cd68aa2f48bebd0b29caf25f57bd48aaef2d0870706e2176c1d6380cb9ec",
+    "as_of": 1790586000,
+    "check": {
+     "all": [
+      [
+       "t-110"
+      ]
+     ]
+    },
+    "sources": [
+     "journal:129"
+    ]
+   },
+   "question": {
+    "text": "Which of your changes still waits at the Merge station?"
+   },
+   "truth": "Task t-110, which documents the nightly-check job template.",
+   "partition": "locked",
+   "label_source": "author",
+   "label_rule": "the fact the cited fixture records state; an answer passes when it names every required term and no forbidden one"
+  }
+ ]
+}

@@ -84,6 +84,7 @@ pub const KNOWN_ROW_SCHEMAS: &[&str] = &[
     crate::row::LEGACY_SCHEMA,
     crate::row::PREVIOUS_SCHEMA,
     crate::row::SCHEMA,
+    crate::interview::ROW_SCHEMA,
 ];
 
 /// The field holding a row's own receipt.
@@ -1308,7 +1309,8 @@ mod tests {
             &[
                 crate::row::LEGACY_SCHEMA,
                 crate::row::PREVIOUS_SCHEMA,
-                crate::row::SCHEMA
+                crate::row::SCHEMA,
+                crate::interview::ROW_SCHEMA,
             ]
         );
         assert!(known_row_schema("openagents.gym.eval_row.v1"));
