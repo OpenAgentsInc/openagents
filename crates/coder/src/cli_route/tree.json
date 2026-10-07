@@ -6036,7 +6036,7 @@
               "show"
             ],
             "usage": [
-              "show --lead LEAD [--sale SALE]"
+              "show --lead LEAD [--sale SALE | --assignment ID | --proposal FILE]"
             ],
             "forms": [
               {
@@ -6057,11 +6057,25 @@
                     "value": "SALE",
                     "open": true,
                     "optional": true
+                  },
+                  {
+                    "kind": "option",
+                    "name": "assignment",
+                    "value": "ID",
+                    "open": true,
+                    "optional": true
+                  },
+                  {
+                    "kind": "option",
+                    "name": "proposal",
+                    "value": "FILE",
+                    "open": true,
+                    "optional": true
                   }
                 ]
               }
             ],
-            "summary": "Read one authorized private lead/account record.",
+            "summary": "Read one authorized private lead/account record. --proposal computes the owner's exact proposal digest before approval.",
             "effect": "read_only",
             "runs_on": "connected_computer"
           }
@@ -6074,7 +6088,7 @@
               "export"
             ],
             "usage": [
-              "export --lead LEAD --output FILE [--sale SALE]"
+              "export --lead LEAD --output FILE [--sale SALE | --assignment ID]"
             ],
             "forms": [
               {
@@ -6099,6 +6113,13 @@
                     "kind": "option",
                     "name": "sale",
                     "value": "SALE",
+                    "open": true,
+                    "optional": true
+                  },
+                  {
+                    "kind": "option",
+                    "name": "assignment",
+                    "value": "ID",
                     "open": true,
                     "optional": true
                   }
@@ -6558,6 +6579,22 @@
           "kind": "option",
           "name": "sale",
           "value": "SALE",
+          "open": true,
+          "optional": true,
+          "repeated": true
+        },
+        {
+          "kind": "option",
+          "name": "assignment",
+          "value": "ID",
+          "open": true,
+          "optional": true,
+          "repeated": true
+        },
+        {
+          "kind": "option",
+          "name": "proposal",
+          "value": "FILE",
           "open": true,
           "optional": true,
           "repeated": true

@@ -11,6 +11,7 @@ use std::time::{Duration, SystemTime};
 
 pub mod claims;
 pub mod intake;
+pub mod partners;
 
 pub const SCHEMA: &str = "openagents.sales.pipeline.v1";
 pub const COMMAND_SCHEMA: &str = "openagents.sales.pipeline-command.v1";
@@ -143,6 +144,8 @@ pub struct Lead {
     pub intake: Option<intake::Provenance>,
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
     pub service_sales: BTreeMap<String, receipts::service_sale::Sale>,
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub partner_assignments: BTreeMap<String, partners::Assignment>,
 }
 #[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -189,6 +192,13 @@ pub enum Operation {
     ReconcileServiceFulfillment {
         sale: String,
         fulfillment: receipts::service_sale::FulfillmentInput,
+    },
+    ProposePartner {
+        proposal: partners::Proposal,
+    },
+    AdvancePartner {
+        assignment: String,
+        action: partners::Action,
     },
 }
 
@@ -452,6 +462,15 @@ impl Store {
             return Err("unsupported sales record schema".into());
         }
         for lead in state.leads.values() {
+            if lead.partner_assignments.len() > partners::MAX_ASSIGNMENTS {
+                return Err("Private partner assignment count exceeds its bound.".into());
+            }
+            for (id, assignment) in &lead.partner_assignments {
+                assignment.validate()?;
+                if id != &assignment.proposal.id || assignment.pipeline_lead != lead.id {
+                    return Err("Private partner assignment ownership disagrees.".into());
+                }
+            }
             if lead.service_sales.len() > service::MAX_SALES {
                 return Err("private service sale count exceeds bound".into());
             }
@@ -549,6 +568,28 @@ impl Store {
         // Revoked/expired permission stops qualification and cancels proposed handoffs.
         let mut changed = !expired.is_empty();
         for lead in next.leads.values_mut() {
+            let unavailable = lead.details.permission.state != PermissionState::Granted
+                || lead.details.permission.expires_at <= now;
+            let mut partner_changed = false;
+            for assignment in lead.partner_assignments.values_mut() {
+                let scope_changed = assignment.account != lead.details.account
+                    || assignment.permission_reference != lead.details.permission.reference
+                    || assignment.data.permitted_use != lead.details.data.permitted_use
+                    || assignment
+                        .data
+                        .recipients
+                        .iter()
+                        .any(|r| !lead.details.data.recipients.contains(r));
+                partner_changed |= assignment.retire(now, unavailable || scope_changed);
+            }
+            if partner_changed {
+                lead.revision = lead
+                    .revision
+                    .checked_add(1)
+                    .ok_or("Lead revision overflow.")?;
+                lead.updated_at = now;
+                changed = true;
+            }
             let before = lead.service_sales.len();
             lead.service_sales.retain(|_, sale| sale.retain_until > now);
             changed |= before != lead.service_sales.len();
@@ -759,6 +800,22 @@ impl Store {
             .ok_or("unknown sales principal")?
             .active = false;
         for lead in next.leads.values_mut() {
+            let now = (self.clock)();
+            for assignment in lead.partner_assignments.values_mut() {
+                if assignment.proposal.recipient_human == human
+                    || assignment
+                        .handoff
+                        .as_ref()
+                        .is_some_and(|h| h.target == human)
+                {
+                    if assignment.retire(now, true) {
+                        lead.revision = lead
+                            .revision
+                            .checked_add(1)
+                            .ok_or("Lead revision overflow.")?;
+                    }
+                }
+            }
             if lead
                 .proposed_handoff
                 .as_ref()
@@ -808,6 +865,14 @@ impl Store {
                 && sale
                     .admitted_recipients
                     .contains(&format!("human:{}", access.principal()))
+        });
+        visible.partner_assignments.retain(|_, assignment| {
+            (self.clock)() < assignment.data.retain_until
+                && assignment
+                    .data
+                    .recipients
+                    .contains(&format!("human:{}", access.principal()))
+                && self.partner_visible(access, assignment)
         });
         visible
     }
@@ -936,6 +1001,7 @@ impl Store {
                     proposed_handoff: None,
                     intake: None,
                     service_sales: BTreeMap::new(),
+                    partner_assignments: BTreeMap::new(),
                 },
             );
         } else {
@@ -1122,6 +1188,34 @@ impl Store {
                         .push(verified);
                     outcome = "service_fulfillment_reconciled";
                     reference = fulfillment.bill.sha256.clone();
+                }
+                Operation::ProposePartner { proposal } => {
+                    let assignment =
+                        self.propose_partner(access, found, proposal, evidence_root, now)?;
+                    next.leads
+                        .get_mut(&lead_id)
+                        .unwrap()
+                        .partner_assignments
+                        .insert(proposal.id.clone(), assignment);
+                    outcome = "partner_proposed";
+                    reference = proposal.approval.sha256.clone();
+                }
+                Operation::AdvancePartner { assignment, action } => {
+                    let updated = self.advance_partner(
+                        access,
+                        found,
+                        assignment,
+                        action,
+                        evidence_root,
+                        now,
+                    )?;
+                    reference = updated.events.last().unwrap().evidence.sha256.clone();
+                    next.leads
+                        .get_mut(&lead_id)
+                        .unwrap()
+                        .partner_assignments
+                        .insert(assignment.clone(), updated);
+                    outcome = "partner_advanced";
                 }
                 Operation::Create { .. } => unreachable!(),
             }

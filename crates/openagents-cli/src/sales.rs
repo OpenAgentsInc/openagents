@@ -19,9 +19,10 @@ pub const USAGE: &str = "usage: openagents sales COMMAND --root DIR [--credentia
         Apply a bounded versioned JSON command; FILE=- reads stdin.
   list [--after LEAD] [--limit N]
         List only records this credential can read, at most 100.
-  show --lead LEAD [--sale SALE]
+  show --lead LEAD [--sale SALE | --assignment ID | --proposal FILE]
         Read one authorized private lead/account record.
-  export --lead LEAD --output FILE [--sale SALE]
+        --proposal computes the owner's exact proposal digest before approval.
+  export --lead LEAD --output FILE [--sale SALE | --assignment ID]
         Create a private exclusive JSON export; no shared/public export.
   audit [--after N] [--limit N]
         Read the owner's bounded digest-only audit references.
@@ -50,7 +51,12 @@ outbound, provider, execution, or customer-data disclosure authority.
 Only the owner can record_service_sale, reconcile_service_payment, or
 reconcile_service_fulfillment through apply with --evidence-root DIR.
 Use --sale with show/export for the original authorized service scope.
-These records send no invoice or payment and create no product credit.";
+These records send no invoice or payment and create no product credit.
+Only the owner can propose_partner with an exact owner approval and
+--evidence-root. advance_partner uses the named recipient's credential for
+acceptance/refusal and the named handoff target's credential for its decision.
+Pending invitations contain no private brief or lead-read grant. Changed terms
+need a new proposal and approval; commission references establish no earnings.";
 #[cfg(test)]
 pub(crate) const EFFECTS: &[Declared] = &[
     Declared::computer("init", Effect::Grants),
@@ -119,8 +125,15 @@ fn parse(words: &[String]) -> Result<Args, String> {
         "revoke" => &["root", "credential", "human"],
         "apply" => &["root", "credential", "input", "evidence-root"],
         "list" | "audit" => &["root", "credential", "after", "limit"],
-        "show" => &["root", "credential", "lead", "sale"],
-        "export" => &["root", "credential", "lead", "output", "sale"],
+        "show" => &[
+            "root",
+            "credential",
+            "lead",
+            "sale",
+            "assignment",
+            "proposal",
+        ],
+        "export" => &["root", "credential", "lead", "output", "sale", "assignment"],
         "suppressed" => &["root", "credential", "contact"],
         _ => return Err(USAGE.into()),
     };
@@ -130,6 +143,14 @@ fn parse(words: &[String]) -> Result<Args, String> {
         .any(|name| !allowed.contains(name))
     {
         return Err("unknown sales option".into());
+    }
+    if ["sale", "assignment", "proposal"]
+        .iter()
+        .filter(|name| args.option(name).is_some())
+        .count()
+        > 1
+    {
+        return Err("Select one sales record scope.".into());
     }
     for name in match command {
         "init" => vec!["root", "credential", "owner"],
@@ -213,7 +234,22 @@ fn execute_args(args: &Args) -> Result<Value, String> {
             .map_err(|e| e.to_string())?
         }
         "list" => json!({"records":store.list(&access,args.option("after"),page(&args)?)?}),
-        "show" => if let Some(sale) = args.option("sale") {
+        "show" => if let Some(assignment) = args.option("assignment") {
+            Ok(store.partner_show(&access, required(&args, "lead")?, assignment)?)
+        } else if let Some(path) = args.option("proposal") {
+            let mut bytes = Vec::new();
+            std::fs::File::open(path)
+                .map_err(|_| "Partner proposal is unavailable.")?
+                .take(32 * 1024 + 1)
+                .read_to_end(&mut bytes)
+                .map_err(|_| "Partner proposal read failed.")?;
+            if bytes.len() > 32 * 1024 {
+                return Err("Partner proposal exceeds its input bound.".into());
+            }
+            let proposal =
+                serde_json::from_slice(&bytes).map_err(|_| "Invalid partner proposal JSON.")?;
+            Ok(store.partner_digest(&access, required(&args, "lead")?, &proposal)?)
+        } else if let Some(sale) = args.option("sale") {
             serde_json::to_value(store.service_show(&access, required(&args, "lead")?, sale)?)
         } else {
             serde_json::to_value(store.show(&access, required(&args, "lead")?)?)
@@ -221,7 +257,9 @@ fn execute_args(args: &Args) -> Result<Value, String> {
         .map_err(|e| e.to_string())?,
         "export" => {
             let path = Path::new(required(&args, "output")?);
-            let sha = if let Some(sale) = args.option("sale") {
+            let sha = if let Some(assignment) = args.option("assignment") {
+                store.partner_export(&access, required(&args, "lead")?, assignment, path)?
+            } else if let Some(sale) = args.option("sale") {
                 store.service_export(&access, required(&args, "lead")?, sale, path)?
             } else {
                 store.export(&access, required(&args, "lead")?, path)?

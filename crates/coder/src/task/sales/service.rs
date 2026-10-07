@@ -15,13 +15,13 @@ pub const MAX_SALES: usize = 16;
 const MAX_FILE: usize = 8 * 1024 * 1024;
 const MAX_TOTAL: usize = 64 * 1024 * 1024;
 
-struct Reader<'a> {
+pub(super) struct Reader<'a> {
     root: &'a Path,
     sources: BTreeMap<String, (String, Vec<u8>)>,
     total: usize,
 }
 impl<'a> Reader<'a> {
-    fn new(root: Option<&'a Path>) -> Result<Self> {
+    pub(super) fn new(root: Option<&'a Path>) -> Result<Self> {
         let root = root.ok_or("service recording needs an explicit private evidence root")?;
         let meta =
             fs::symlink_metadata(root).map_err(|_| "service evidence root is unavailable")?;
@@ -35,7 +35,7 @@ impl<'a> Reader<'a> {
             total: 0,
         })
     }
-    fn read(&mut self, r: &Reference) -> Result<Vec<u8>> {
+    pub(super) fn read(&mut self, r: &Reference) -> Result<Vec<u8>> {
         r.validate()?;
         if let Some((hash, bytes)) = self.sources.get(&r.path) {
             if hash != &r.sha256 {

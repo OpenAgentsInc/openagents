@@ -382,6 +382,7 @@ impl Store {
                     details,
                     proposed_handoff: None,
                     service_sales: BTreeMap::new(),
+                    partner_assignments: BTreeMap::new(),
                     intake: Some(Provenance {
                         policy: policy.id.clone(),
                         offer: policy.offer,

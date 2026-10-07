@@ -31,6 +31,7 @@ customer records, compensation agreements, and negotiations stay private.
 - [Private sales pipeline](#private-sales-pipeline)
 - [Assisted pilot kit](#assisted-pilot-kit)
 - [Delivery, offboarding, and support](#delivery-offboarding-and-support)
+- [Accepted partner assignments](#accepted-partner-assignments)
 - [Invoiced services](#invoiced-services)
 - [Measures](#measures)
 - [Considerations and risks](#considerations-and-risks)
@@ -635,6 +636,35 @@ and private configuration. Publication requires its own authority and any
 applicable [plugin release review](../plugins/README.md). Delivery acceptance,
 cleanup evidence, support acceptance, and service payment remain separate.
 Real O1/O8 customer and support qualification is tracked in `NEEDS_OWNER.md`.
+
+## Accepted partner assignments
+
+REV-33 adds `propose_partner` and `advance_partner` to the same private pipeline.
+The [partner types](../../crates/coder/src/task/sales/partners.rs) separate a
+consented discovery brief from fulfillment with an exact deliverable scope,
+protected check references, revision/rework limits, support owner, and the
+existing service fulfillment obligation. Prepare an owner's approval with
+`show --lead LEAD --proposal PRIVATE_PROPOSAL_FILE`; it returns the digest
+that `openagents.sales.partner-approval.v1` must name. Apply the proposal with
+the owner credential, current revision, and explicit private `--evidence-root`.
+
+Use `show --lead LEAD --assignment ID` or `export --assignment ID` for the
+assignment's own admitted scope. A pending recipient sees a minimal invitation,
+then accepts the exact proposal digest with their own writer credential.
+Acceptance changes neither lead ownership nor execution/disclosure rights.
+Proposals are immutable: cancel and prepare a new assignment and owner approval
+when recipient or terms change. Refusal, expiry, revoked access, or changed
+admission stops the active assignment. Every handoff needs its named target's
+separate acceptance; retries preserve the original receipt and obligation.
+
+Fulfillment delivery must match the canonical accepted service sale, customer
+acceptance, frozen checks, and support contract. Its payment/bill references
+come from that same service record; partner actions send no invoice or funds.
+Commission references require an explicitly accepted agreement and retain
+attribution separately from the fulfillment human. They establish no commission
+eligibility or payout. Independent paid workers still need their own admitted
+labor/market contract. Real introductions, disclosure, commercial qualification,
+and external evidence cleanup remain owner steps in `NEEDS_OWNER.md`.
 
 ## Invoiced services
 

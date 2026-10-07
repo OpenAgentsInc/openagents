@@ -192,6 +192,18 @@ ownership. Scratch fixtures establish persistence and authorization, not
 customer permission. The CLI does not activate messaging; O6 still separately
 authorizes real outbound. Keep customer content and credentials out of git.
 
+## Partner assignment activation O1/O7 (REV-33, #10840)
+
+Before entering a real assignment, privately verify the partner's identity,
+exact consent and brief recipients, owner-approved proposal digest, scope,
+acceptance, next action, support handoff, and retention. Authorize an actual
+introduction or disclosure separately. For charged fulfillment, qualify the
+same accepted service obligation and external bill/payment references; an
+assignment creates no invoice, execution grant, or payment. Commission references
+do not qualify attribution, earnings, or payouts without the owning agreement
+and rails. Delete private source copies and exports when their consent expires.
+Scratch fixtures establish record boundaries, not independent commercial supply.
+
 ## Assisted pilot agreement O1 (REV-06, #10813)
 
 Before using the [pilot kit](docs/sales/README.md#assisted-pilot-kit), approve
