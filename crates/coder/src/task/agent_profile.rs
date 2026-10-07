@@ -35,10 +35,16 @@ pub fn path(store: &Store) -> PathBuf {
 #[must_use]
 pub fn content(record: &Record) -> String {
     let name = record.display_name();
+    let p = record.refer();
     serde_json::json!({
         "name": name,
         "display_name": name,
-        "about": format!("{name} is a workshop agent. She answers only her owner."),
+        "about": format!(
+            "{name} is a {}. {} answers only {} owner.",
+            record.role(),
+            p.they_cap(),
+            p.their()
+        ),
         "bot": true,
     })
     .to_string()
@@ -52,12 +58,17 @@ pub fn content(record: &Record) -> String {
 pub fn sign(record: &Record, key: &secp256k1::SecretKey, now: u64) -> Result<Event, String> {
     let pubkey = agent::public_hex(key);
     if record.pubkey.as_deref() != Some(pubkey.as_str()) {
-        return Err("the key isn't the one her record names".into());
+        return Err(format!(
+            "the key isn't the one {} record names",
+            record.refer().their()
+        ));
     }
-    let attestation = record
-        .attestation
-        .as_ref()
-        .ok_or("she has no owner attestation to carry")?;
+    let attestation = record.attestation.as_ref().ok_or_else(|| {
+        format!(
+            "{} has no owner attestation to carry",
+            record.refer().they()
+        )
+    })?;
     let secret: String = key
         .secret_bytes()
         .iter()
@@ -73,7 +84,10 @@ pub fn sign(record: &Record, key: &secp256k1::SecretKey, now: u64) -> Result<Eve
     let event = signer.sign(now, PROFILE_KIND, vec![auth], content(record));
     match nostr::domain::verify_owner_attestation(&event)? {
         Some(owner) if owner.owner_pubkey == attestation.owner => Ok(event),
-        _ => Err("her profile doesn't carry the owner's attestation".into()),
+        _ => Err(format!(
+            "{} profile doesn't carry the owner's attestation",
+            record.refer().their()
+        )),
     }
 }
 
@@ -145,7 +159,69 @@ pub fn refresh(store: &Store, record: &Record, now: u64) -> Result<Option<Event>
     store.append(&Entry::new(
         now,
         Kind::Keyed,
-        "her profile is signed with the owner's attestation, ready for her relays",
+        &format!(
+            "{their} profile is signed with the owner's attestation, ready for {their} relays",
+            their = store.refer().their()
+        ),
     ))?;
     Ok(Some(event))
+}
+
+/// What linking an agent's key to its owner's XP trainer profile takes:
+/// the agent's side, signed, and the key the owner's side lists.
+#[derive(Clone, Debug)]
+pub struct XpLink {
+    /// The agent's NIP-XP key link (`13195`), signed with its key, naming
+    /// the owner as its trainer.
+    pub link: Event,
+    /// The agent's public key, hex: the entry the owner's trainer profile
+    /// (`13193`) adds to its `keys`, so the link holds both ways.
+    pub key: String,
+    /// The owner's public key, hex.
+    pub trainer: String,
+}
+
+/// The agent's side of an XP key link to `owner` (hex), signed with its
+/// key at `now`. Nothing is published: the owner adds [`XpLink::key`] to
+/// their trainer profile and publishes both, and until both sides exist
+/// the key counts toward no one.
+///
+/// # Errors
+/// When the agent has no key here, its key isn't the one its record
+/// names, `owner` isn't the owner that attested it, or the link doesn't
+/// verify.
+pub fn xp_link(store: &Store, owner: &str, now: u64) -> Result<XpLink, String> {
+    let record = store
+        .load()?
+        .ok_or_else(|| format!("there is no agent named {}", store.name()))?;
+    let p = record.refer();
+    let key = store
+        .key()?
+        .ok_or_else(|| format!("{} key isn't on this computer", p.their()))?;
+    let pubkey = agent::public_hex(&key);
+    if record.pubkey.as_deref() != Some(pubkey.as_str()) {
+        return Err(format!("the key isn't the one {} record names", p.their()));
+    }
+    if let Some(attestation) = &record.attestation
+        && attestation.owner != owner
+    {
+        return Err(format!(
+            "that owner key isn't the one that attested {}",
+            p.them()
+        ));
+    }
+    let unsigned = nostr::xp::link(&pubkey, Some(owner)).map_err(|e| e.to_string())?;
+    let secret: String = key
+        .secret_bytes()
+        .iter()
+        .map(|b| format!("{b:02x}"))
+        .collect();
+    let signer = RelaySigner::from_secret_hex(&secret).map_err(|e| e.to_string())?;
+    let link = signer.sign(now, unsigned.kind, unsigned.tags, unsigned.content);
+    nostr::xp::parse_link(&link).map_err(|e| e.to_string())?;
+    Ok(XpLink {
+        link,
+        key: pubkey,
+        trainer: owner.to_string(),
+    })
 }

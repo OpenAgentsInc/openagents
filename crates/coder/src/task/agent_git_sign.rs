@@ -94,15 +94,20 @@ pub fn set(store: &Store, on: bool, now: u64) -> Result<Settings, String> {
     agent::write_private(&temp, &body)?;
     std::fs::rename(&temp, store.dir().join(SETTINGS_FILE))
         .map_err(|e| format!("can't write {SETTINGS_FILE}: {e}"))?;
-    store.append(&Entry::new(
-        now,
-        Kind::Control,
+    store.append(&Entry::new(now, Kind::Control, &{
+        let p = store.refer();
         if on {
-            "NIP-GS: her merged worktree commits are signed with her key"
+            format!(
+                "NIP-GS: {their} merged worktree commits are signed with {their} key",
+                their = p.their()
+            )
         } else {
-            "NIP-GS: her worktree commits are no longer signed"
-        },
-    ))?;
+            format!(
+                "NIP-GS: {} worktree commits are no longer signed",
+                p.their()
+            )
+        }
+    }))?;
     Ok(settings)
 }
 
@@ -263,10 +268,16 @@ pub fn sign_for(
         return None;
     }
     Some((|| {
-        let key = store.key()?.ok_or("her key is missing")?;
+        let p = record.refer();
+        let key = store
+            .key()?
+            .ok_or_else(|| format!("{} key is missing", p.their()))?;
         let pubkey = agent::public_hex(&key);
         if record.pubkey.as_deref() != Some(pubkey.as_str()) {
-            return Err("her key store holds another key than her record's".to_string());
+            return Err(format!(
+                "{their} key store holds another key than {their} record's",
+                their = p.their()
+            ));
         }
         let raw = git(repo, &["cat-file", "commit", commit], None)?;
         let at = committer_time(&raw)?;
@@ -279,7 +290,8 @@ pub fn sign_for(
             at,
             Kind::Task,
             &format!(
-                "NIP-GS: signed her commit {} as {}{}",
+                "NIP-GS: signed {} commit {} as {}{}",
+                record.refer().their(),
                 &commit[..commit.len().min(12)],
                 &signed[..signed.len().min(12)],
                 if oa.is_some() {

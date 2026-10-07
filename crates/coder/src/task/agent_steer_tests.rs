@@ -130,7 +130,7 @@ fn her_policy_file_is_read_and_a_bad_one_is_refused() {
     )
     .unwrap();
     assert_eq!(Policy::load(&store).unwrap(), narrow);
-    assert!(narrow.describe().contains("`cargo fmt`"));
+    assert!(narrow.describe("her").contains("`cargo fmt`"));
     std::fs::write(
         store.dir().join(POLICY_FILE),
         "{\"schema\":\"x\",\"rules\":[]}",

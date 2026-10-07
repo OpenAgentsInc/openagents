@@ -174,7 +174,10 @@ pub fn set_relays(store: &Store, relays: &[String], now: u64) -> Result<Settings
     }
     let relays = configured(relays);
     if relays.len() > MAX_RELAYS {
-        return Err(format!("she syncs with at most {MAX_RELAYS} relays"));
+        return Err(format!(
+            "{} syncs with at most {MAX_RELAYS} relays",
+            store.refer().they()
+        ));
     }
     let mut settings = Settings::load(store)?;
     settings.memory_relays = relays;
@@ -680,20 +683,26 @@ fn pass(
     let record = store
         .load()?
         .ok_or_else(|| format!("there is no agent named {}", store.name()))?;
+    let p = record.refer();
+    let (they, them, their) = p.words();
     match record.state {
-        State::Retired => return Err("she is retired".into()),
-        State::Moved => return Err("she moved to another computer, which syncs her".into()),
+        State::Retired => return Err(format!("{they} is retired")),
+        State::Moved => {
+            return Err(format!(
+                "{they} moved to another computer, which syncs {them}"
+            ));
+        }
         _ => {}
     }
     if record.pubkey.is_none() {
-        return Err("she has no key".into());
+        return Err(format!("{they} has no key"));
     }
     store.custody(&record)?;
-    let key = store.key()?.ok_or("she has no key")?;
+    let key = store.key()?.ok_or_else(|| format!("{they} has no key"))?;
     let attestation = record
         .attestation
         .clone()
-        .ok_or("she has no owner attestation to present")?;
+        .ok_or_else(|| format!("{they} has no owner attestation to present"))?;
     let auth = Tag::new(vec![
         "auth".into(),
         attestation.owner,
@@ -709,10 +718,10 @@ fn pass(
     // from the relays instead of seeding a rival one first.
     let mut engrams = match EngramStore::read(store, screen) {
         Opened::Ready(engrams) => engrams,
-        Opened::Skipped(why) => return Err(format!("she keeps no engrams: {why}")),
+        Opened::Skipped(why) => return Err(format!("{they} keeps no engrams: {why}")),
         Opened::Unreadable(why) => {
             return Err(format!(
-                "her engram store can't be read, so nothing syncs: {why}"
+                "{their} engram store can't be read, so nothing syncs: {why}"
             ));
         }
     };
@@ -796,7 +805,7 @@ fn pass(
         Opened::Ready(engrams) => engrams,
         Opened::Skipped(why) | Opened::Unreadable(why) => {
             return Err(format!(
-                "her engram store can't be read after the merge: {why}"
+                "{their} engram store can't be read after the merge: {why}"
             ));
         }
     };

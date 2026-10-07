@@ -161,6 +161,12 @@ citations, the world tree, and day plans built from real work.
 each member has its own key, private definition, engrams beneath the existing
 memory stream, policy, and steering loop. Its phase 3 first proves Alice
 steering plain Coder; phase 9 makes the loop name-generic and adds Bob.
+Phase 9 is done: the loop, policy, prompts, and journal take the member's
+name and pronouns from its definition, so a member is
+`openagents agent new NAME` or `studio.agent.new`. A name in the preset
+table in [`agent_preset.rs`](../../crates/coder/src/task/agent_preset.rs)
+(Alice, Bob) starts from its charter, look, and definition, and
+`--preset NAME` starts another name from one.
 The owner/agent conversation stays separate from the agent/Coder session.
 Reuse those issues instead of implementing another crew runtime. Role
 charters, typed verdicts, coordinated stop, and town/sales adapters remain

@@ -27,8 +27,12 @@ use coder::cli_route::tree::{Declared, Effect};
 
 pub const USAGE: &str = "usage: openagents agent COMMAND [--root DIR] [--control-socket PATH]
   new NAME [--workspace DIR] [--owner-key FILE] [--days N] [--route ROUTE]
+      [--preset PRESET]
                Make an agent with her own key, attested by the owner key in
                FILE (64 hex or nsec1) for N days, at most 365 (default 365).
+               A crew member's name (alice, bob) starts from its preset:
+               charter, look, and definition. --preset starts another name
+               from one.
   attest NAME --owner-key FILE [--days N]
                Attest her key again.
   renew NAME --owner-key FILE [--days N]
@@ -79,6 +83,11 @@ pub const USAGE: &str = "usage: openagents agent COMMAND [--root DIR] [--control
                Sign the tip of her merged worktree changes with her key
                (NIP-GS), with the owner's attestation embedded. Off by
                default.
+  xp-link NAME --owner-key FILE
+               Sign her side of an XP key link (NIP-XP 13195) to the owner
+               key in FILE, and print the key the owner's trainer profile
+               (13193) must list. Nothing is published; the key counts
+               toward the owner only once both sides are.
   log NAME [--after N]
                Her journal, newest last.
   memory NAME list
@@ -153,6 +162,7 @@ pub(crate) const EFFECTS: &[Declared] = &[
     Declared::computer("import", Effect::LocalWrite),
     Declared::computer("signing on", Effect::LocalWrite),
     Declared::computer("signing off", Effect::LocalWrite),
+    Declared::computer("xp-link", Effect::ReadOnly),
     Declared::computer("log", Effect::ReadOnly),
     Declared::computer("memory list", Effect::ReadOnly),
     Declared::computer("memory note", Effect::Publishes),
@@ -213,7 +223,10 @@ pub fn run(output: &Output, words: &[String]) -> u8 {
                     .unwrap_or("stopped from the command line")
                     .into(),
             },
-            &format!("Stopped {name}. Her journal records each step: openagents agent log {name}"),
+            &format!(
+                "Stopped {name}. {} journal records each step: openagents agent log {name}",
+                refer(&root, name).their_cap()
+            ),
         ),
         ["pause", name] => send(
             output,
@@ -221,7 +234,10 @@ pub fn run(output: &Output, words: &[String]) -> u8 {
             &Operation::PauseSeat {
                 seat: (*name).into(),
             },
-            &format!("Paused {name}: she keeps everything and starts nothing new."),
+            &format!(
+                "Paused {name}: {} keeps everything and starts nothing new.",
+                refer(&root, name).they()
+            ),
         ),
         ["resume", name] => send(
             output,
@@ -239,6 +255,7 @@ pub fn run(output: &Output, words: &[String]) -> u8 {
         ["signing", name, word @ ("on" | "off")] => {
             signing(output, &root, name, *word == "on", now)
         }
+        ["xp-link", name] => xp_link(output, &root, name, &args, now),
         ["log", name] => log(output, &root, name, &args),
         ["memory", name, rest @ ..] => memory(output, &root, name, rest, &args),
         ["jobs", name, rest @ ..] => jobs(output, &root, name, rest, &args, now),
@@ -300,6 +317,11 @@ fn send(output: &Output, args: &Args, operation: &Operation, said: &str) -> Resu
     Ok(())
 }
 
+/// How sentences about agent `name` refer to it.
+fn refer(root: &Path, name: &str) -> agent::Refer {
+    Store::new(root, name).map_or_else(|_| agent::Refer::for_name(name), |s| s.refer())
+}
+
 fn store(root: &Path, name: &str) -> Result<(Store, Record), Fail> {
     let store = Store::new(root, name).map_err(Fail::Failed)?;
     let _ = store.migrate(coder::task::autostart::unix_now());
@@ -340,7 +362,19 @@ fn new(output: &Output, root: &Path, name: &str, args: &Args, now: u64) -> Resul
         .unwrap_or_else(|| PathBuf::from("/"));
     let existed = store.load().map_err(Fail::Failed)?.is_some()
         || store.migrate(now).map_err(Fail::Failed)?;
-    let mut record = store.open(&workspace, now).map_err(Fail::Failed)?;
+    let preset = match args.option("preset") {
+        Some(named) => Some(agent::preset(named).ok_or_else(|| {
+            let known: Vec<&str> = agent::PRESETS.iter().map(|p| p.name).collect();
+            Fail::Failed(format!(
+                "there is no preset named {named}; the presets are {}",
+                known.join(", ")
+            ))
+        })?),
+        None => agent::preset(name),
+    };
+    let mut record = store
+        .open_as(&workspace, now, preset)
+        .map_err(Fail::Failed)?;
     if let Some(route) = args.option("route") {
         coder::task::studio::parse_route(route).map_err(|e| Fail::Failed(e.to_string()))?;
         record.route = route.into();
@@ -358,9 +392,11 @@ fn new(output: &Output, root: &Path, name: &str, args: &Args, now: u64) -> Resul
     }
     let value = record_json(&record, now);
     output.emit(&value, |_| {
+        let p = record.refer();
         let mut text = format!(
-            "{} {name}. Her key is {}.",
+            "{} {name}. {} key is {}.",
             if existed { "Opened" } else { "Made" },
+            p.their_cap(),
             record.pubkey.as_deref().unwrap_or("missing")
         );
         match &record.attestation {
@@ -373,8 +409,10 @@ fn new(output: &Output, root: &Path, name: &str, args: &Args, now: u64) -> Resul
             )),
         }
         text.push_str(&format!(
-            "\nShe works in {}. Her record and journal: {}",
+            "\n{} works in {}. {} record and journal: {}",
+            p.they_cap(),
             record.workspace,
+            p.their_cap(),
             store.dir().display()
         ));
         text
@@ -423,10 +461,18 @@ fn attest(
             if renewing { "Renewed" } else { "Attested" },
             v["attested_until"]
         );
-        text.push_str(if profile {
-            " Her profile is signed with the new attestation."
+        let p = record.refer();
+        text.push_str(&if profile {
+            format!(
+                " {} profile is signed with the new attestation.",
+                p.their_cap()
+            )
         } else {
-            " The host signs her profile with it when it next opens her."
+            format!(
+                " The host signs {} profile with it when it next opens {}.",
+                p.their(),
+                p.them()
+            )
         });
         text
     });
@@ -510,7 +556,7 @@ fn list(output: &Output, root: &Path, args: &Args) -> Result<(), Fail> {
         }
         let mut text: Vec<String> = agents.agents.iter().map(line).collect();
         if !live {
-            text.push("(no host answered; read from her records)".into());
+            text.push("(no host answered; read from the agents' records)".into());
         }
         text.join("\n")
     });
@@ -673,7 +719,10 @@ fn ask(output: &Output, name: &str, text: &str, args: &Args) -> Result<(), Fail>
     )?;
     if !args.switch("wait") {
         output.emit(&json!({"asked": name}), |_| {
-            format!("Asked {name}. Follow her with `openagents agent show {name}`.")
+            format!(
+                "Asked {name}. Follow {} with `openagents agent show {name}`.",
+                agent::Refer::for_name(name).them()
+            )
         });
         return Ok(());
     }
@@ -703,7 +752,10 @@ fn ask(output: &Output, name: &str, text: &str, args: &Args) -> Result<(), Fail>
             return Ok(());
         }
         if start.elapsed() > Duration::from_secs(60 * 60) {
-            return Err(Fail::Failed("she has not reported in an hour".into()));
+            return Err(Fail::Failed(format!(
+                "{} has not reported in an hour",
+                agent::Refer::for_name(name).they()
+            )));
         }
         std::thread::sleep(Duration::from_millis(500));
     }
@@ -797,9 +849,10 @@ fn retire(output: &Output, root: &Path, name: &str, args: &Args, now: u64) -> Re
                     json!({"retired": name, "key_deleted": deleted, "host": true, "archive": sent});
                 output.emit(&value, |_| {
                     format!(
-                        "Retired {name} at the host: her key is deleted, and her journal and \
-                         engrams stay for the owner key.{}",
-                        archive_line(&sent)
+                        "Retired {name} at the host: {their} key is deleted, and {their} \
+                         journal and engrams stay for the owner key.{}",
+                        archive_line(&sent),
+                        their = store.refer().their()
                     )
                 });
                 return Ok(());
@@ -819,6 +872,7 @@ fn retire(output: &Output, root: &Path, name: &str, args: &Args, now: u64) -> Re
             Err(refusal) => return Err(Fail::Refused(refusal)),
         }
     }
+    let p = store.refer();
     let retired = lifecycle::retire(&store, owner.as_ref(), now).map_err(Fail::Failed)?;
     let sent = match (&retired.archive, &owner) {
         (Some(request), Some(owner)) => send_archive(&store, owner, request, &retired.relays, now),
@@ -827,12 +881,13 @@ fn retire(output: &Output, root: &Path, name: &str, args: &Args, now: u64) -> Re
     let value = json!({"retired": name, "key_deleted": retired.key_deleted, "host": false, "archive": sent});
     output.emit(&value, |_| {
         format!(
-            "Retired {name}: {}, and her journal and engrams stay for the owner key.{}",
+            "Retired {name}: {}, and {} journal and engrams stay for the owner key.{}",
             if retired.key_deleted {
-                "her key is deleted"
+                format!("{} key is deleted", p.their())
             } else {
-                "she had no key here"
+                format!("{} had no key here", p.they())
             },
+            p.their(),
             archive_line(&sent)
         )
     });
@@ -844,7 +899,9 @@ fn retire(output: &Output, root: &Path, name: &str, args: &Args, now: u64) -> Re
 fn rotate(output: &Output, root: &Path, name: &str, args: &Args, now: u64) -> Result<(), Fail> {
     let reason = args.option("reason").unwrap_or_default().to_string();
     let owner = owner_key(args)?;
-    let (store, _) = store(root, name)?;
+    let (store, record) = store(root, name)?;
+    let p = record.refer();
+    let (they, _, their) = p.words();
     let here = store.key().ok().flatten().is_some();
     if let Some(mut host) = live_host(args) {
         match host.call(&Operation::RotateAgent {
@@ -854,9 +911,9 @@ fn rotate(output: &Output, root: &Path, name: &str, args: &Args, now: u64) -> Re
             Ok(Outcome::Agent { agent: value }) => {
                 output.emit(&value, |v| {
                     format!(
-                        "Rotated {name} at the host: her key is {}, and {} engrams are \
-                         encrypted under it. Grants to her old key don't carry over; delegate \
-                         again any she needs.",
+                        "Rotated {name} at the host: {their} key is {}, and {} engrams are \
+                         encrypted under it. Grants to {their} old key don't carry over; \
+                         delegate again any {they} needs.",
                         v["new"].as_str().unwrap_or("new"),
                         v["engrams"]
                     )
@@ -893,9 +950,9 @@ fn rotate(output: &Output, root: &Path, name: &str, args: &Args, now: u64) -> Re
     });
     output.emit(&value, |_| {
         format!(
-            "Rotated {name}: her key {} is now {}, and {} engrams are encrypted under it. The \
-             owner signed the lineage record. Grants to her old key don't carry over; delegate \
-             again any she needs.{}",
+            "Rotated {name}: {their} key {} is now {}, and {} engrams are encrypted under it. \
+             The owner signed the lineage record. Grants to {their} old key don't carry over; \
+             delegate again any {they} needs.{}",
             rotated.old,
             rotated.new,
             rotated.engrams,
@@ -910,7 +967,7 @@ fn move_to(output: &Output, root: &Path, name: &str, args: &Args, now: u64) -> R
     let to = args.option("to").ok_or_else(|| {
         Fail::Failed("move needs --to HOSTKEY, the other computer's host key".into())
     })?;
-    let (store, _) = store(root, name)?;
+    let (store, record) = store(root, name)?;
     let _ = call(
         args,
         &Operation::StopAgent {
@@ -919,10 +976,13 @@ fn move_to(output: &Output, root: &Path, name: &str, args: &Args, now: u64) -> R
         },
     );
     lifecycle::mark_moved(&store, to, now).map_err(Fail::Failed)?;
+    let p = record.refer();
+    let (they, them, their) = p.words();
     output.emit(&json!({"moved": name, "to": to}), |_| {
         format!(
-            "Moved {name}: the computer {to} runs her now, and this one runs nothing of hers. \
-             That computer's host must hold her key and grant it what she needs there."
+            "Moved {name}: the computer {to} runs {them} now, and this one runs nothing of {}. \
+             That computer's host must hold {their} key and grant it what {they} needs there.",
+            p.theirs()
         )
     });
     Ok(())
@@ -936,7 +996,8 @@ fn export(output: &Output, root: &Path, name: &str, args: &Args, now: u64) -> Re
         .ok_or_else(|| Fail::Failed("export needs --out FILE".into()))?;
     let choice = lifecycle::MemoryChoice::parse(args.option("memory").unwrap_or("none"))
         .map_err(Fail::Failed)?;
-    let (store, _) = store(root, name)?;
+    let (store, record) = store(root, name)?;
+    let their = record.refer().their().to_string();
     let snapshot = lifecycle::export(
         &store,
         &secret_screen_shapes(),
@@ -966,11 +1027,11 @@ fn export(output: &Output, root: &Path, name: &str, args: &Args, now: u64) -> Re
     });
     output.emit(&value, |_| {
         format!(
-            "Exported {name} to {out} without her key: her definition{}{}.",
+            "Exported {name} to {out} without {their} key: {their} definition{}{}.",
             if snapshot.core.is_some() {
-                ", her core"
+                format!(", {their} core")
             } else {
-                ""
+                String::new()
             },
             if snapshot.entries.is_empty() {
                 String::new()
@@ -992,12 +1053,41 @@ fn signing(output: &Output, root: &Path, name: &str, on: bool, now: u64) -> Resu
     output.emit(&json!({"agent": name, "signing": settings}), |_| {
         if on {
             format!(
-                "The tip of each change of {name}'s you merge is now signed with her key, with \
-                 your attestation embedded (NIP-GS)."
+                "The tip of each change of {name}'s you merge is now signed with {} key, with \
+                 your attestation embedded (NIP-GS).",
+                store.refer().their()
             )
         } else {
             format!("{name}'s merged changes are no longer signed.")
         }
+    });
+    Ok(())
+}
+
+/// `xp-link`: the agent's side of an XP key link to the owner, signed
+/// here and printed, and the entry the owner's trainer profile adds.
+fn xp_link(output: &Output, root: &Path, name: &str, args: &Args, now: u64) -> Result<(), Fail> {
+    let owner = owner_key(args)?
+        .ok_or_else(|| Fail::Failed("xp-link needs the owner key: --owner-key FILE".into()))?;
+    let (store, record) = store(root, name)?;
+    let trainer = agent::public_hex(&owner);
+    let linked =
+        coder::task::agent_profile::xp_link(&store, &trainer, now).map_err(Fail::Failed)?;
+    let value = json!({
+        "agent": name,
+        "link": linked.link,
+        "trainer": linked.trainer,
+        "profile_key": linked.key,
+    });
+    output.emit(&value, |_| {
+        format!(
+            "Signed {name}'s XP key link to the trainer {trainer}. Nothing was published.\n\
+             Add {} key to the keys of your trainer profile (13193) so the link holds both \
+             ways:\n  {}\nThe signed link (13195):\n  {}",
+            record.refer().their(),
+            linked.key,
+            serde_json::to_string(&linked.link).unwrap_or_default()
+        )
     });
     Ok(())
 }
@@ -1037,7 +1127,8 @@ fn import(output: &Output, root: &Path, file: &str, args: &Args, now: u64) -> Re
             if record.attestation.is_some() {
                 ""
             } else {
-                " Attest it to encrypt her memory: openagents agent attest NAME --owner-key FILE"
+                " Attest it to encrypt the agent's memory: openagents agent attest NAME \
+                 --owner-key FILE"
             }
         )
     });
@@ -1285,7 +1376,8 @@ fn engrams_from_relay(output: &Output, root: &Path, name: &str, args: &Args) -> 
         (None, Some(hex)) => hex,
         (None, None) => {
             return Err(Fail::Failed(format!(
-                "{name} isn't on this computer; name her key with --agent HEX"
+                "{name} isn't on this computer; name {} key with --agent HEX",
+                agent::Refer::for_name(name).their()
             )));
         }
     };
@@ -1413,7 +1505,8 @@ fn sync(output: &Output, root: &Path, name: &str, verb: &str, args: &Args) -> Re
             };
             if verb == "on" && record.attestation.is_none() {
                 return Err(Fail::Failed(format!(
-                    "{name} has no owner attestation to present to a relay; attest her key first"
+                    "{name} has no owner attestation to present to a relay; attest {} key first",
+                    record.refer().their()
                 )));
             }
             let settings = agent_sync::set_relays(&store, &relays, now).map_err(Fail::Failed)?;
@@ -1438,8 +1531,9 @@ fn sync(output: &Output, root: &Path, name: &str, verb: &str, args: &Args) -> Re
             if store.custody(&record).is_err() || store.key().ok().flatten().is_none() {
                 agent_sync::request(&store, now).map_err(Fail::Failed)?;
                 let said = format!(
-                    "Her key isn't in a file here, so the host runs a pass at its next sweep. \
-                     Check it with: openagents agent memory {name} sync status"
+                    "{} key isn't in a file here, so the host runs a pass at its next sweep. \
+                     Check it with: openagents agent memory {name} sync status",
+                    record.refer().their_cap()
                 );
                 output.emit(&json!({"requested_at": now}), |_| said.clone());
                 return Ok(());

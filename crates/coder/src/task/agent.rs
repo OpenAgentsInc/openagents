@@ -32,6 +32,7 @@ use serde::{Deserialize, Serialize};
 pub use microcoder_loop::models::NextAction;
 
 use super::agent_key::{KeyStore, Slot};
+pub use super::agent_preset::{PRESETS, Preset, Pronouns, Refer, capitalize, preset};
 
 /// The agent record's schema.
 pub const RECORD_SCHEMA: &str = "openagents.workshop-agent.v1";
@@ -131,6 +132,10 @@ pub struct Definition {
     /// enforces.
     #[serde(default = "owner_only")]
     pub respond_to: String,
+    /// How the host's sentences refer to the agent; none is its preset's,
+    /// else by name ([`super::agent_preset`]).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub pronouns: Option<Pronouns>,
 }
 
 /// NIP-AP's `respond_to` for an agent that answers only her owner.
@@ -161,20 +166,21 @@ pub struct Roles {
 pub const THIS_HOST: &str = "host";
 
 impl Definition {
-    /// The definition a record without one gets: her name, capitalized,
-    /// and the host's defaults for the rest.
+    /// The definition a record without one gets: its preset's
+    /// ([`super::agent_preset`]), else its name, capitalized, and the
+    /// host's defaults for the rest.
     #[must_use]
     pub fn default_for(name: &str) -> Self {
-        let mut chars = name.chars();
-        let display_name = chars.next().map_or_else(String::new, |first| {
-            first.to_ascii_uppercase().to_string() + chars.as_str()
-        });
+        if let Some(preset) = preset(name) {
+            return preset.definition();
+        }
         Self {
-            display_name,
+            display_name: capitalize(name),
             voice: String::new(),
             system_prompt: String::new(),
             route: String::new(),
             respond_to: owner_only(),
+            pronouns: None,
         }
     }
 }
@@ -186,6 +192,26 @@ impl Record {
         self.definition
             .clone()
             .unwrap_or_else(|| Definition::default_for(&self.name))
+    }
+
+    /// How the host's sentences refer to it: its definition's pronouns,
+    /// else its preset's, else by name.
+    #[must_use]
+    pub fn refer(&self) -> Refer {
+        let pronouns = self
+            .definition
+            .as_ref()
+            .and_then(|d| d.pronouns)
+            .or_else(|| preset(&self.name).map(|p| p.pronouns))
+            .unwrap_or_default();
+        Refer::new(pronouns, &self.display_name())
+    }
+
+    /// Its job on the crew, in a few words: its preset's role, else
+    /// `workshop agent`.
+    #[must_use]
+    pub fn role(&self) -> &'static str {
+        preset(&self.name).map_or("workshop agent", |p| p.role)
     }
 
     /// The name people see.
@@ -462,6 +488,16 @@ impl Store {
         &self.name
     }
 
+    /// How the host's sentences refer to this agent: its record's words,
+    /// or its preset's before it has a readable record.
+    #[must_use]
+    pub fn refer(&self) -> Refer {
+        match self.load() {
+            Ok(Some(record)) => record.refer(),
+            _ => Refer::for_name(&self.name),
+        }
+    }
+
     fn record_path(&self) -> PathBuf {
         self.dir.join("agent.json")
     }
@@ -508,7 +544,10 @@ impl Store {
                 self.append(&Entry::new(
                     now,
                     Kind::Migrated,
-                    "her record gained a definition and roles",
+                    &format!(
+                        "{} record gained a definition and roles",
+                        record.refer().their()
+                    ),
                 ))?;
             }
         }
@@ -521,6 +560,21 @@ impl Store {
     /// # Errors
     /// When the directory or the record cannot be written or read.
     pub fn open(&self, workspace: &Path, now: u64) -> Result<Record, String> {
+        self.open_as(workspace, now, preset(&self.name))
+    }
+
+    /// [`Self::open`], with a new record made from `preset` when there is
+    /// one: its charter, look, and definition, under this agent's name.
+    /// An agent that exists already keeps its record.
+    ///
+    /// # Errors
+    /// When the directory or the record cannot be written or read.
+    pub fn open_as(
+        &self,
+        workspace: &Path,
+        now: u64,
+        preset: Option<&Preset>,
+    ) -> Result<Record, String> {
         self.migrate(now)?;
         if let Some(record) = self.load()? {
             return self.fill_identity(record, now);
@@ -531,16 +585,24 @@ impl Store {
             v: 1,
             requires: Vec::new(),
             name: self.name.clone(),
-            charter: DEFAULT_CHARTER.into(),
+            charter: preset
+                .map_or(super::agent_preset::CHARTER, |p| p.charter)
+                .into(),
             workspace: workspace.display().to_string(),
-            look: DEFAULT_LOOK.into(),
+            look: preset.map_or_else(|| self.name.clone(), |p| p.look.into()),
             created_at: now,
             pubkey: None,
             attestation: None,
             state: State::Active,
             route: String::new(),
             desk: default_desk(),
-            definition: None,
+            definition: preset.map(|p| {
+                let mut definition = p.definition();
+                if p.name != self.name {
+                    definition.display_name = capitalize(&self.name);
+                }
+                definition
+            }),
             roles: None,
         };
         record.fill_identity();
@@ -625,8 +687,9 @@ impl Store {
             now,
             Kind::Migrated,
             &format!(
-                "{LEGACY_NAME} is now {}; her record and journal moved here",
-                self.name
+                "{LEGACY_NAME} is now {}; {} record and journal moved here",
+                self.name,
+                record.refer().their()
             ),
         ))?;
         Ok(true)
@@ -653,18 +716,22 @@ impl Store {
         if record.state.is_gone() {
             return Ok(());
         }
+        let p = record.refer();
         match self.key() {
             Err(why) => Err(format!(
-                "her key can't be read from the {}: {why}",
+                "{} key can't be read from the {}: {why}",
+                p.their(),
                 self.custody_kind()
             )),
             Ok(None) => Err(format!(
-                "her key {pubkey} is missing from the {}",
+                "{} key {pubkey} is missing from the {}",
+                p.their(),
                 self.custody_kind()
             )),
             Ok(Some(key)) if public_hex(&key) != *pubkey => Err(format!(
-                "the {} holds another key than her record's {pubkey}",
-                self.custody_kind()
+                "the {} holds another key than {} record's {pubkey}",
+                self.custody_kind(),
+                p.their()
             )),
             Ok(Some(_)) => Ok(()),
         }
@@ -682,6 +749,7 @@ impl Store {
     pub fn ensure_key(&self, mut record: Record, now: u64) -> Result<Record, String> {
         let had = record.pubkey.clone();
         let retired = record.state == State::Retired;
+        let p = record.refer();
         let key = match self.key()? {
             Some(key) => {
                 let pubkey = public_hex(&key);
@@ -689,9 +757,10 @@ impl Store {
                     Some(had) if *had == pubkey => return Ok(record),
                     Some(had) if !retired => {
                         return Err(format!(
-                            "the {} holds another key than her record's {had}; the host won't \
+                            "the {} holds another key than {} record's {had}; the host won't \
                              replace it",
-                            self.custody_kind()
+                            self.custody_kind(),
+                            p.their()
                         ));
                     }
                     _ => key,
@@ -699,8 +768,10 @@ impl Store {
             }
             None if had.is_some() && !retired => {
                 return Err(format!(
-                    "her key is missing from the {}; the host won't make her a new one",
-                    self.custody_kind()
+                    "{} key is missing from the {}; the host won't make {} a new one",
+                    p.their(),
+                    self.custody_kind(),
+                    p.them()
                 ));
             }
             None => {
@@ -719,7 +790,11 @@ impl Store {
         self.append(&Entry::new(
             now,
             Kind::Keyed,
-            &format!("her key is {pubkey}, kept in the {}", self.custody_kind()),
+            &format!(
+                "{} key is {pubkey}, kept in the {}",
+                p.their(),
+                self.custody_kind()
+            ),
         ))?;
         Ok(record)
     }
@@ -753,8 +828,9 @@ impl Store {
             now,
             Kind::Keyed,
             &format!(
-                "the owner {} attested her key until {expires_at}",
-                attestation.owner
+                "the owner {} attested {} key until {expires_at}",
+                attestation.owner,
+                record.refer().their()
             ),
         ))?;
         // Her profile carries the new attestation. Without her key here,
@@ -779,8 +855,9 @@ impl Store {
         match self.keys.load(slot)? {
             Some(back) if back == *key => Ok(()),
             _ => Err(format!(
-                "the {} didn't keep her next key",
-                self.custody_kind()
+                "the {} didn't keep {} next key",
+                self.custody_kind(),
+                self.refer().their()
             )),
         }
     }
@@ -810,8 +887,9 @@ impl Store {
         match self.keys.load(self.slot())? {
             Some(back) if back == *key => Ok(()),
             _ => Err(format!(
-                "the {} didn't keep her new key",
-                self.custody_kind()
+                "the {} didn't keep {} new key",
+                self.custody_kind(),
+                self.refer().their()
             )),
         }
     }

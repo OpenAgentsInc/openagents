@@ -301,7 +301,10 @@ pub fn send_archive(
             },
         };
         let text = if one.accepted {
-            format!("{url} took the owner's NIP-IA archive request for her old key")
+            format!(
+                "{url} took the owner's NIP-IA archive request for {} old key",
+                store.refer().their()
+            )
         } else {
             format!(
                 "{url} didn't take the owner's NIP-IA archive request: {}",
@@ -323,9 +326,10 @@ fn relays(store: &Store) -> Vec<String> {
 
 fn owner_matches(record: &Record, owner: &SecretKey) -> Result<(), String> {
     match &record.attestation {
-        Some(attestation) if attestation.owner != agent::public_hex(owner) => {
-            Err("that owner key isn't the one that attested her".into())
-        }
+        Some(attestation) if attestation.owner != agent::public_hex(owner) => Err(format!(
+            "that owner key isn't the one that attested {}",
+            record.refer().them()
+        )),
         _ => Ok(()),
     }
 }
@@ -366,16 +370,27 @@ pub fn rotate(
     let mut record = store
         .load()?
         .ok_or_else(|| format!("there is no agent named {}", store.name()))?;
+    let p = record.refer();
+    let (they, them, their) = p.words();
     match record.state {
-        State::Retired => return Err("she is retired, so she has no key to rotate".into()),
+        State::Retired => {
+            return Err(format!("{they} is retired, so {they} has no key to rotate"));
+        }
         State::Moved => {
-            return Err("she moved to another computer; rotate her there".into());
+            return Err(format!(
+                "{they} moved to another computer; rotate {them} there"
+            ));
         }
         _ => {}
     }
-    let old_pub = record.pubkey.clone().ok_or("she has no key to rotate")?;
+    let old_pub = record
+        .pubkey
+        .clone()
+        .ok_or_else(|| format!("{they} has no key to rotate"))?;
     if record.attestation.is_none() {
-        return Err("her key has no owner attestation; attest it before rotating".into());
+        return Err(format!(
+            "{their} key has no owner attestation; attest it before rotating"
+        ));
     }
     owner_matches(&record, owner)?;
     if expires_at <= now || expires_at - now > agent::ATTESTATION_MAX {
@@ -390,13 +405,15 @@ pub fn rotate(
         .take(REASON_MAX)
         .collect();
     store.custody(&record)?;
-    let old_key = store.key()?.ok_or("her key is missing")?;
+    let old_key = store
+        .key()?
+        .ok_or_else(|| format!("{their} key is missing"))?;
     let old_heads: Vec<engram::Engram> = match EngramStore::read(store, screen) {
         Opened::Ready(engrams) => engrams.heads().into_iter().cloned().collect(),
         Opened::Skipped(_) => Vec::new(),
         Opened::Unreadable(why) => {
             return Err(format!(
-                "her engram store can't be read, so she isn't rotated: {why}"
+                "{their} engram store can't be read, so {they} isn't rotated: {why}"
             ));
         }
     };
@@ -415,7 +432,7 @@ pub fn rotate(
     let new_pub = agent::public_hex(&fresh);
     let new_x: XOnlyPublicKey = new_pub
         .parse()
-        .map_err(|_| undo("her new key is not a key".into()))?;
+        .map_err(|_| undo(format!("{their} new key is not a key")))?;
 
     // 2. Every head signed again and encrypted for the new pair, each
     //    verified for her and for her owner before anything moves.
@@ -473,7 +490,7 @@ pub fn rotate(
     let had_dir = current.exists();
     if had_dir {
         std::fs::rename(&current, &old_dir)
-            .map_err(|e| undo(format!("can't set her old engrams aside: {e}")))?;
+            .map_err(|e| undo(format!("can't set {their} old engrams aside: {e}")))?;
     }
     let put_back = |why: String| -> String {
         let _ = std::fs::remove_dir_all(&current);
@@ -483,7 +500,7 @@ pub fn rotate(
         undo(why)
     };
     std::fs::rename(&next, &current)
-        .map_err(|e| put_back(format!("can't put her new engrams in place: {e}")))?;
+        .map_err(|e| put_back(format!("can't put {their} new engrams in place: {e}")))?;
     store.replace_key(&fresh).map_err(|why| {
         let _ = store.replace_key(&old_key);
         put_back(why)
@@ -506,7 +523,7 @@ pub fn rotate(
     let opened = EngramStore::open(store, screen, now);
     let Opened::Ready(_) = &opened else {
         return Err(format!(
-            "her new engram store doesn't open after the rotation: {opened:?}"
+            "{their} new engram store doesn't open after the rotation: {opened:?}"
         ));
     };
     let view = agent_engrams::owner_read(store, owner)?;
@@ -521,7 +538,7 @@ pub fn rotate(
         now,
         Kind::Keyed,
         &format!(
-            "the owner rotated her key: {old_pub} is now {new_pub}, kept in the {}; {} engrams \
+            "the owner rotated {their} key: {old_pub} is now {new_pub}, kept in the {}; {} engrams \
              signed and encrypted again under the new key; reason: {}",
             store.custody_kind(),
             old_heads.len(),
@@ -535,7 +552,10 @@ pub fn rotate(
     let _ = store.append(&Entry::new(
         now,
         Kind::Control,
-        "grants made to her old key don't carry over; the owner delegates again any she needs",
+        &format!(
+            "grants made to {their} old key don't carry over; the owner delegates again any \
+             {they} needs"
+        ),
     ));
     Ok(Rotated {
         old: old_pub,
@@ -583,6 +603,8 @@ pub fn retire(store: &Store, owner: Option<&SecretKey>, now: u64) -> Result<Reti
         _ => None,
     };
     let key_deleted = store.delete_key()?;
+    let p = record.refer();
+    let (they, _, their) = p.words();
     record.state = State::Retired;
     record.attestation = None;
     store.save(&record)?;
@@ -590,11 +612,12 @@ pub fn retire(store: &Store, owner: Option<&SecretKey>, now: u64) -> Result<Reti
         now,
         Kind::Control,
         &format!(
-            "retired by the owner; {}; her journal and engrams stay, and the owner key reads them",
+            "retired by the owner; {}; {their} journal and engrams stay, and the owner key \
+             reads them",
             if key_deleted {
-                "her key is deleted"
+                format!("{their} key is deleted")
             } else {
-                "she had no key here"
+                format!("{they} had no key here")
             }
         ),
     ))?;
@@ -602,8 +625,10 @@ pub fn retire(store: &Store, owner: Option<&SecretKey>, now: u64) -> Result<Reti
         let _ = store.append(&Entry::new(
             now,
             Kind::Control,
-            "relay sync was on, but no owner key was at hand to ask her relays to archive her \
-             key with NIP-IA",
+            &format!(
+                "relay sync was on, but no owner key was at hand to ask {their} relays to \
+                 archive {their} key with NIP-IA"
+            ),
         ));
     }
     Ok(Retired {
@@ -628,7 +653,7 @@ pub fn retired_archive(
         .load()?
         .ok_or_else(|| format!("there is no agent named {}", store.name()))?;
     if record.state != State::Retired {
-        return Err("she isn't retired".into());
+        return Err(format!("{} isn't retired", record.refer().they()));
     }
     let authority = record
         .roles
@@ -636,7 +661,10 @@ pub fn retired_archive(
         .map(|roles| roles.authority.clone())
         .unwrap_or_default();
     if !authority.is_empty() && authority != agent::public_hex(owner) {
-        return Err("that owner key isn't the one that attested her".into());
+        return Err(format!(
+            "that owner key isn't the one that attested {}",
+            record.refer().them()
+        ));
     }
     let relays = relays(store);
     match &record.pubkey {
@@ -667,8 +695,9 @@ pub fn mark_moved(store: &Store, to: &str, now: u64) -> Result<Record, String> {
     let mut record = store
         .load()?
         .ok_or_else(|| format!("there is no agent named {}", store.name()))?;
+    let p = record.refer();
     if record.state == State::Retired {
-        return Err("she is retired".into());
+        return Err(format!("{} is retired", p.they()));
     }
     let _ = super::agent_jobs::Jobs::new(store.clone()).disable_all();
     record.fill_identity();
@@ -682,8 +711,10 @@ pub fn mark_moved(store: &Store, to: &str, now: u64) -> Result<Record, String> {
         now,
         Kind::Control,
         &format!(
-            "moved by the owner to the computer {to}, which runs her now; this one runs nothing \
-             of hers"
+            "moved by the owner to the computer {to}, which runs {} now; this one runs nothing \
+             of {}",
+            p.them(),
+            p.theirs()
         ),
     ))?;
     Ok(record)
@@ -807,8 +838,9 @@ fn read_core(
     match EngramStore::read(store, screen) {
         Opened::Ready(engrams) => Ok(engrams.core().map(str::to_string)),
         Opened::Skipped(why) | Opened::Unreadable(why) => Err(format!(
-            "her core is encrypted and her key can't read it here ({why}); export with \
-             --owner-key FILE"
+            "{their} core is encrypted and {their} key can't read it here ({why}); export \
+             with --owner-key FILE",
+            their = store.refer().their()
         )),
     }
 }
@@ -887,13 +919,14 @@ pub fn import(
         now,
         Kind::Created,
         &format!(
-            "imported from a snapshot of {} with a new key: her definition, {}, and {} memory \
+            "imported from a snapshot of {} with a new key: {} definition, {}, and {} memory \
              entries",
             snapshot.name,
+            record.refer().their(),
             if snapshot.core.is_some() {
-                "her core"
+                format!("{} core", record.refer().their())
             } else {
-                "no core"
+                "no core".into()
             },
             entries.len()
         ),

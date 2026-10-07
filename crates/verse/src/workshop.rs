@@ -208,6 +208,9 @@ pub struct Workshop {
     not_owner: bool,
     /// What she said when setup ended, shown before her transcript.
     greeting: Vec<String>,
+    /// The agent this window shows: [`NAME`] unless [`Workshop::named`]
+    /// says otherwise.
+    name: String,
 }
 
 impl Default for Workshop {
@@ -238,6 +241,7 @@ impl Default for Workshop {
             starting: None,
             not_owner: false,
             greeting: Vec::new(),
+            name: NAME.into(),
         }
     }
 }
@@ -354,7 +358,12 @@ fn mint() -> String {
 }
 
 /// The worker: asks for her every [`POLL`], and sends what the frame asks.
-fn work(mut transport: Box<dyn Transport>, to: &Receiver<ToHost>, from: &Sender<FromHost>) {
+fn work(
+    mut transport: Box<dyn Transport>,
+    to: &Receiver<ToHost>,
+    from: &Sender<FromHost>,
+    name: &str,
+) {
     let mut reachable = true;
     loop {
         loop {
@@ -411,7 +420,7 @@ fn work(mut transport: Box<dyn Transport>, to: &Receiver<ToHost>, from: &Sender<
             Ok(Outcome::Agent { agent }) => {
                 reachable = true;
                 let agents: wire::Agents = serde_json::from_value(*agent).unwrap_or_default();
-                let her = agents.agents.into_iter().find(|a| a.name == NAME);
+                let her = agents.agents.into_iter().find(|a| a.name == name);
                 if from.send(FromHost::View(her.map(Box::new))).is_err() {
                     return;
                 }
@@ -512,6 +521,19 @@ impl Workshop {
             }),
             ..Self::default()
         }
+    }
+
+    /// The same window for crew member `name` in place of [`NAME`].
+    #[must_use]
+    pub fn named(mut self, name: &str) -> Self {
+        self.name = name.into();
+        self
+    }
+
+    /// The agent this window shows.
+    #[must_use]
+    pub fn name(&self) -> &str {
+        &self.name
     }
 
     /// Start the host with `starter` instead, as a test does.
@@ -628,7 +650,7 @@ impl Workshop {
             (Setup::Summary { workspace }, PanelKey::Enter) => {
                 self.setup_note = None;
                 self.send(Operation::NewAgent {
-                    agent: NAME.into(),
+                    agent: self.name.clone(),
                     workspace: workspace.clone(),
                 });
                 self.setup = Setup::Making { workspace };
@@ -671,11 +693,12 @@ impl Workshop {
 
     /// What she says during setup, in place of her transcript.
     fn setup_lines(&self) -> Vec<String> {
-        let me = format!("{NAME}:");
+        let name = &self.name;
+        let me = format!("{name}:");
         let mut lines: Vec<String> = match &self.setup {
             Setup::Off => Vec::new(),
             Setup::Hello => vec![
-                format!("{me} Hello, I'm Alice, your workshop agent."),
+                format!("{me} Hello, I'm {}, your workshop agent.", shown_name(name)),
                 format!(
                     "{me} I run commands in a terminal I drive, make code changes in my own \
                      worktree, and report back here. Anything that is not read-only waits for \
@@ -725,7 +748,7 @@ impl Workshop {
             }
             Setup::Summary { workspace } => vec![
                 format!("{me} Here is what I will be. CONFIRM makes me; REJECT makes nothing."),
-                format!("  name       {NAME}"),
+                format!("  name       {name}"),
                 format!("  workspace  {workspace}"),
                 "  key        a new key of my own, attested by your owner key on this host"
                     .to_string(),
@@ -747,10 +770,11 @@ impl Workshop {
         self.setup = Setup::Off;
         self.setup_note = None;
         self.absent = false;
+        let name = &self.name;
         self.greeting = [
-            format!("{NAME}: I'm ready. I work in {}.", made.workspace),
+            format!("{name}: I'm ready. I work in {}.", made.workspace),
             format!(
-                "{NAME}: {}",
+                "{name}: {}",
                 if made.attested_until.is_some() {
                     "My key is my own, attested by your owner key for a year."
                 } else {
@@ -759,7 +783,7 @@ impl Workshop {
                 }
             ),
             format!(
-                "{NAME}: A first idea: ask me what changed lately. ENTER sends it, or type your \
+                "{name}: A first idea: ask me what changed lately. ENTER sends it, or type your \
                  own."
             ),
         ]
@@ -799,19 +823,25 @@ impl Workshop {
         }
         self.loaded = true;
         let Some(transport) = self.connect.take().and_then(|connect| connect()) else {
+            let name = self.name.clone();
             self.note(&format!(
-                "{NAME} works on her owner's computer; this window has no host to ask."
+                "{name} works on {} owner's computer; this window has no host to ask.",
+                if name == NAME { "her" } else { "the" }
             ));
             return;
         };
         let (to, rx) = mpsc::channel();
         let (tx, from) = mpsc::channel();
+        let name = self.name.clone();
         let spawned = std::thread::Builder::new()
             .name("verse-workshop-agent".into())
-            .spawn(move || work(transport, &rx, &tx));
+            .spawn({
+                let name = name.clone();
+                move || work(transport, &rx, &tx, &name)
+            });
         match spawned {
             Ok(_) => self.worker = Some(Worker { to, from }),
-            Err(error) => self.note(&format!("{NAME}'s connection did not start: {error}")),
+            Err(error) => self.note(&format!("{name}'s connection did not start: {error}")),
         }
     }
 
@@ -878,13 +908,14 @@ impl Workshop {
         }
         if self.view.is_none() {
             self.note(&format!(
-                "{NAME} is not on a host yet. {}",
+                "{} is not on a host yet. {}",
+                self.name,
                 self.trouble.clone().unwrap_or_default()
             ));
             return;
         }
         self.send(Operation::AskAgent {
-            agent: NAME.into(),
+            agent: self.name.clone(),
             text: text.into(),
             workspace: None,
             context: String::new(),
@@ -900,7 +931,7 @@ impl Workshop {
         };
         self.answered = Some(step);
         self.send(Operation::AnswerAgent {
-            agent: NAME.into(),
+            agent: self.name.clone(),
             step,
             confirm,
         });
@@ -1029,7 +1060,15 @@ impl Workshop {
                     pane.render_revision += 1;
                 }
             }
-            self.note(&format!("{NAME} was stopped: her pane is yours again."));
+            self.note(&format!(
+                "{} was stopped: {} pane is yours again.",
+                self.name,
+                if self.name == NAME {
+                    "her"
+                } else {
+                    "the agent's"
+                }
+            ));
         }
         let Some(step) = view.run.filter(|s| s.typist) else {
             // Her turn ended: the pane stays, and is yours.
@@ -1078,9 +1117,9 @@ impl Workshop {
             let program = terminal_gfx::pty::Program::Command {
                 program: PathBuf::from(program),
                 args: args.to_vec(),
-                label: format!("coder: {NAME}"),
+                label: format!("coder: {}", self.name),
             };
-            self.pane = terminal.open_typist_running(NAME, &program);
+            self.pane = terminal.open_typist_running(&self.name, &program);
             if self.pane.is_none() {
                 let why = terminal
                     .notice
@@ -1094,7 +1133,7 @@ impl Workshop {
         terminal.show_pane(id);
         if let Some(pane) = terminal.panes.get_mut(&id) {
             // Her own pane: she takes it up again for a new turn.
-            pane.typist = Some(NAME.into());
+            pane.typist = Some(self.name.clone());
             pane.taken_back = false;
             pane.render_revision += 1;
         }
@@ -1103,7 +1142,7 @@ impl Workshop {
 
     fn report(&mut self, step: u64, ran: wire::Ran) {
         self.send(Operation::AgentRan {
-            agent: NAME.into(),
+            agent: self.name.clone(),
             step,
             ran,
         });
@@ -1157,10 +1196,14 @@ impl Workshop {
             _ => planned,
         };
         vec![seat_wire::Seat {
-            seat: NAME.into(),
+            seat: self.name.clone(),
             role: seat_wire::Role::Worker,
             route: self.plate_status(),
-            look: LOOK.into(),
+            look: if self.name == NAME {
+                LOOK.into()
+            } else {
+                self.name.clone()
+            },
             desk: DESK,
             activity,
             station,
@@ -1255,7 +1298,7 @@ impl Workshop {
             cut.push_str("...");
             cut
         };
-        let upper = NAME.to_uppercase();
+        let upper = self.name.to_uppercase();
         let step = match &self.setup {
             Setup::Off => None,
             Setup::Hello => Some("hello"),
@@ -1356,7 +1399,7 @@ impl Workshop {
         for (i, line) in shown.iter().enumerate() {
             let tone = if line.starts_with("you") || line.starts_with("  ") {
                 Intensity::ThreeQuarters
-            } else if line.starts_with(&format!("{NAME}: $")) || line.starts_with('>') {
+            } else if line.starts_with(&format!("{}: $", self.name)) || line.starts_with('>') {
                 Intensity::Full
             } else {
                 Intensity::Half
@@ -1433,11 +1476,11 @@ impl Workshop {
         self.scroll = 0;
         match self.page {
             Page::Memory => self.send(Operation::ListAgentMemory {
-                agent: NAME.into(),
+                agent: self.name.clone(),
                 after: None,
             }),
             Page::Journal => self.send(Operation::AgentLog {
-                agent: NAME.into(),
+                agent: self.name.clone(),
                 after: None,
             }),
             Page::Transcript | Page::Plan => {}
@@ -1463,11 +1506,11 @@ impl Workshop {
             _ => wire::MemoryEdit::Note { text: text.into() },
         };
         self.send(Operation::EditAgentMemory {
-            agent: NAME.into(),
+            agent: self.name.clone(),
             edit,
         });
         self.send(Operation::ListAgentMemory {
-            agent: NAME.into(),
+            agent: self.name.clone(),
             after: None,
         });
     }
@@ -1496,11 +1539,15 @@ impl Workshop {
                 if let Some(asking) = self.asking.take() {
                     match asking {
                         Asking::Stop => self.send(Operation::StopAgent {
-                            agent: NAME.into(),
+                            agent: self.name.clone(),
                             reason: "stopped at her desk".into(),
                         }),
-                        Asking::Pause => self.send(Operation::PauseSeat { seat: NAME.into() }),
-                        Asking::Resume => self.send(Operation::ResumeSeat { seat: NAME.into() }),
+                        Asking::Pause => self.send(Operation::PauseSeat {
+                            seat: self.name.clone(),
+                        }),
+                        Asking::Resume => self.send(Operation::ResumeSeat {
+                            seat: self.name.clone(),
+                        }),
                     }
                 } else if self.pending().is_some() {
                     if self.input.trim().is_empty() {
@@ -1573,6 +1620,14 @@ pub enum PanelKey {
     Stop,
     /// F8: pause or resume her, after CONFIRM.
     Pause,
+}
+
+/// The name `name` shows as: its first letter upper case.
+fn shown_name(name: &str) -> String {
+    let mut chars = name.chars();
+    chars.next().map_or_else(String::new, |first| {
+        first.to_ascii_uppercase().to_string() + chars.as_str()
+    })
 }
 
 #[cfg(test)]

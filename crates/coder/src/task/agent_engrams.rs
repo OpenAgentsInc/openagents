@@ -171,19 +171,25 @@ pub fn owner_of(record: &Record) -> Result<Option<XOnlyPublicKey>, String> {
     let Some(attestation) = &record.attestation else {
         return Ok(None);
     };
-    let pubkey = record
-        .pubkey
-        .as_deref()
-        .ok_or("her record has an attestation but no key")?;
+    let pubkey = record.pubkey.as_deref().ok_or_else(|| {
+        format!(
+            "{} record has an attestation but no key",
+            record.refer().their()
+        )
+    })?;
     // Time 0 checks the signature and the clause grammar without the
     // expiry: an expired attestation still names her owner.
-    agent::verify_attestation(pubkey, attestation, 0)
-        .map_err(|why| format!("her owner attestation does not hold: {why}"))?;
+    agent::verify_attestation(pubkey, attestation, 0).map_err(|why| {
+        format!(
+            "{} owner attestation does not hold: {why}",
+            record.refer().their()
+        )
+    })?;
     attestation
         .owner
         .parse::<XOnlyPublicKey>()
         .map(Some)
-        .map_err(|_| "her owner attestation names no key".to_string())
+        .map_err(|_| format!("{} owner attestation names no key", record.refer().their()))
 }
 
 /// Reads every `D.json` event in `dir`, as `(file stem, event)`. A missing
@@ -232,7 +238,11 @@ impl EngramStore {
             Err(why) => return Opened::Unreadable(why),
         };
         if record.pubkey.as_deref() != Some(agent::public_hex(&secret).as_str()) {
-            return Opened::Unreadable(format!("{}'s key does not match her record", store.name()));
+            return Opened::Unreadable(format!(
+                "{}'s key does not match {} record",
+                store.name(),
+                record.refer().their()
+            ));
         }
         let owner = match owner_of(&record) {
             Ok(Some(owner)) => owner,
@@ -287,9 +297,16 @@ impl EngramStore {
                 Ok(_) => note(
                     store,
                     now,
-                    "seeded her core record from her name and charter",
+                    &format!(
+                        "seeded {their} core record from {their} name and charter",
+                        their = record.refer().their()
+                    ),
                 ),
-                Err(why) => note(store, now, &format!("cannot seed her core record: {why}")),
+                Err(why) => note(
+                    store,
+                    now,
+                    &format!("cannot seed {} core record: {why}", record.refer().their()),
+                ),
             }
         }
         let persona = persona(&record);
@@ -301,7 +318,11 @@ impl EngramStore {
                 .map_err(|e| e.to_string())
                 .and_then(|body| engrams.put(body, now))
         {
-            note(store, now, &format!("cannot write her persona: {why}"));
+            note(
+                store,
+                now,
+                &format!("cannot write {} persona: {why}", record.refer().their()),
+            );
         }
         Opened::Ready(engrams)
     }
@@ -611,8 +632,10 @@ fn write_atomic(dir: &Path, name: &str, body: &[u8]) -> Result<(), String> {
 /// The `core` body seeded from her record: her name and charter.
 fn seed_core(record: &Record) -> Body {
     let profile = format!(
-        "I am {}, my owner's workshop agent.\n\nMy charter: {}",
-        record.name, record.charter
+        "I am {}, my owner's {}.\n\nMy charter: {}",
+        record.name,
+        record.role(),
+        record.charter
     );
     Body::Core {
         profile,
@@ -851,9 +874,12 @@ pub fn owner_read(store: &Store, owner: &SecretKey) -> Result<OwnerView, String>
     let agent = record
         .pubkey
         .as_deref()
-        .ok_or("she has no key, so she has no engrams")?
+        .ok_or_else(|| {
+            let p = record.refer();
+            format!("{} has no key, so {} has no engrams", p.they(), p.they())
+        })?
         .parse::<XOnlyPublicKey>()
-        .map_err(|_| "her record's key is not a key".to_string())?;
+        .map_err(|_| format!("{} record's key is not a key", record.refer().their()))?;
     let pair = Pair::for_owner(owner, &agent);
     let mut view = OwnerView::default();
     for (stem, event) in events(&dir_of(store))? {

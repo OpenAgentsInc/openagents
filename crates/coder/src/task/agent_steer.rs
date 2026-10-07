@@ -675,13 +675,15 @@ pub struct Rule {
 }
 
 impl Rule {
-    fn text(&self) -> String {
+    /// The rule in words, for the agent whose possessive is `their`.
+    #[must_use]
+    pub fn text(&self, their: &str) -> String {
         let command = if self.command.is_empty() {
             "any command".to_string()
         } else {
             format!("`{}`", self.command)
         };
-        format!("{} {command} in her {}", self.tool, self.directory)
+        format!("{} {command} in {their} {}", self.tool, self.directory)
     }
 }
 
@@ -722,8 +724,8 @@ impl Places {
 /// Her policy's answer to one approval.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum Answer {
-    /// A standing rule confirms it; the text names the rule.
-    Confirm(String),
+    /// A standing rule confirms it: this one.
+    Confirm(Rule),
     /// The owner decides at her lectern.
     Escalate,
     /// She never does it; the text says what it is.
@@ -791,14 +793,15 @@ impl Policy {
         Ok(policy)
     }
 
-    /// Her policy in words, for her planning call.
+    /// Her policy in words, for her planning call; `their` is her
+    /// possessive ([`agent::Refer::their`]).
     #[must_use]
-    pub fn describe(&self) -> String {
+    pub fn describe(&self, their: &str) -> String {
         let mut text = String::from("Coder runs read-only commands without asking. Of the rest, ");
         if self.rules.is_empty() {
             text.push_str("the owner confirms or rejects every one");
         } else {
-            let rules: Vec<String> = self.rules.iter().map(Rule::text).collect();
+            let rules: Vec<String> = self.rules.iter().map(|rule| rule.text(their)).collect();
             text.push_str(&format!(
                 "your policy confirms {}; the owner confirms or rejects the others",
                 rules.join(", ")
@@ -832,7 +835,7 @@ impl Policy {
                 _ => false,
             };
             if inside {
-                return Answer::Confirm(rule.text());
+                return Answer::Confirm(rule.clone());
             }
         }
         Answer::Escalate
@@ -1279,18 +1282,25 @@ pub struct Steered {
 pub fn definition(record: &Record) -> String {
     let defined = record.definition();
     let prompt = defined.system_prompt.trim();
-    if !prompt.is_empty() {
-        return format!(
+    let mut text = if prompt.is_empty() {
+        format!(
+            "You are {name}, the owner's {role}, on their computer while they watch. \
+             You answer only to the owner. Your charter: {charter}",
+            name = record.name,
+            role = record.role(),
+            charter = record.charter,
+        )
+    } else {
+        format!(
             "{prompt}\nYou answer only to the owner. Your charter: {charter}",
             charter = record.charter,
-        );
+        )
+    };
+    let voice = defined.voice.trim();
+    if !voice.is_empty() {
+        text.push_str(&format!("\nYour voice: {voice}"));
     }
-    format!(
-        "You are {name}, the owner's workshop agent, on their computer while they watch. \
-         You answer only to the owner. Your charter: {charter}",
-        name = record.name,
-        charter = record.charter,
-    )
+    text
 }
 
 fn plan_system(record: &Record) -> String {
@@ -1321,7 +1331,7 @@ fn plan_prompt(input: &Input) -> String {
         "The owner's request:\n{}\n\nWorking directory: {}\n\nYour approval policy: {}\n",
         input.request,
         input.cwd,
-        input.policy.describe()
+        input.policy.describe(input.record.refer().their())
     );
     if let Some(core) = input.core.filter(|c| !c.trim().is_empty()) {
         prompt.push_str(&format!(

@@ -11259,7 +11259,7 @@
               "new"
             ],
             "usage": [
-              "new NAME [--workspace DIR] [--owner-key FILE] [--days N] [--route ROUTE]"
+              "new NAME [--workspace DIR] [--owner-key FILE] [--days N] [--route ROUTE] [--preset PRESET]"
             ],
             "forms": [
               {
@@ -11299,11 +11299,18 @@
                     "value": "ROUTE",
                     "open": true,
                     "optional": true
+                  },
+                  {
+                    "kind": "option",
+                    "name": "preset",
+                    "value": "PRESET",
+                    "open": true,
+                    "optional": true
                   }
                 ]
               }
             ],
-            "summary": "Make an agent with her own key, attested by the owner key in FILE (64 hex or nsec1) for N days, at most 365 (default 365).",
+            "summary": "Make an agent with her own key, attested by the owner key in FILE (64 hex or nsec1) for N days, at most 365 (default 365). A crew member's name (alice, bob) starts from its preset: charter, look, and definition. --preset starts another name from one.",
             "effect": "local_write",
             "runs_on": "connected_computer"
           }
@@ -11982,6 +11989,41 @@
               }
             }
           ]
+        },
+        {
+          "name": "xp-link",
+          "leaf": {
+            "path": [
+              "agent",
+              "xp-link"
+            ],
+            "usage": [
+              "xp-link NAME --owner-key FILE"
+            ],
+            "forms": [
+              {
+                "tokens": [
+                  {
+                    "kind": "literal",
+                    "word": "xp-link"
+                  },
+                  {
+                    "kind": "positional",
+                    "name": "NAME"
+                  },
+                  {
+                    "kind": "option",
+                    "name": "owner-key",
+                    "value": "FILE",
+                    "open": true
+                  }
+                ]
+              }
+            ],
+            "summary": "Sign her side of an XP key link (NIP-XP 13195) to the owner key in FILE, and print the key the owner's trainer profile (13193) must list. Nothing is published; the key counts toward the owner only once both sides are.",
+            "effect": "read_only",
+            "runs_on": "connected_computer"
+          }
         },
         {
           "name": "log",
@@ -12714,6 +12756,14 @@
           "kind": "option",
           "name": "route",
           "value": "ROUTE",
+          "open": true,
+          "optional": true,
+          "repeated": true
+        },
+        {
+          "kind": "option",
+          "name": "preset",
+          "value": "PRESET",
           "open": true,
           "optional": true,
           "repeated": true

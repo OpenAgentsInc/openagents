@@ -667,11 +667,10 @@ impl Agents {
                 .map_err(|why| refuse(Code::Unavailable, why))?;
         }
         if !existed {
-            let _ = store.append(&Entry::new(
-                now,
-                Kind::Created,
-                "the owner set her up at her workstation",
-            ));
+            let _ = store.append(&Entry::new(now, Kind::Created, &{
+                let p = record.refer();
+                format!("the owner set {} up at {} workstation", p.them(), p.their())
+            }));
         }
         self.reconcile_once(&store, now);
         let attested_until = match (&record.pubkey, &record.attestation) {
@@ -738,20 +737,29 @@ impl Agents {
         from: &str,
     ) -> Result<serde_json::Value, Code> {
         let refuse = coder_host::tasks::refuse;
+        let p = super::agent::Refer::for_name(name);
         let owner = owner.ok_or_else(|| {
             refuse(
                 Code::Unavailable,
                 format!(
-                    "This host holds no owner key to rotate her with. Rotate her where her key \
-                     and the owner key are: openagents agent rotate {name} --owner-key FILE"
+                    "This host holds no owner key to rotate {them} with. Rotate {them} where \
+                     {their} key and the owner key are: openagents agent rotate {name} \
+                     --owner-key FILE",
+                    them = p.them(),
+                    their = p.their(),
                 ),
             )
         })?;
-        let (store, _) = self.store(name)?;
+        let (store, record) = self.store(name)?;
+        let p = record.refer();
         if self.lock().live.get(name).is_some_and(|live| live.busy) {
             return Err(refuse(
                 Code::Conflict,
-                format!("{name} is working; stop her before rotating her key."),
+                format!(
+                    "{name} is working; stop {} before rotating {} key.",
+                    p.them(),
+                    p.their()
+                ),
             ));
         }
         let now = (self.clock)();
@@ -976,13 +984,20 @@ impl Agents {
             State::Moved => {
                 return Err(coder_host::tasks::refuse(
                     Code::Forbidden,
-                    format!("{name} moved to another computer, which runs her now."),
+                    format!(
+                        "{name} moved to another computer, which runs {} now.",
+                        record.refer().them()
+                    ),
                 ));
             }
             state => {
                 return Err(coder_host::tasks::refuse(
                     Code::Conflict,
-                    format!("{name} is {}, so she starts nothing new.", state.word()),
+                    format!(
+                        "{name} is {}, so {} starts nothing new.",
+                        state.word(),
+                        record.refer().they()
+                    ),
                 ));
             }
         }
@@ -993,8 +1008,10 @@ impl Agents {
             return Err(coder_host::tasks::refuse(
                 Code::Unavailable,
                 format!(
-                    "{} can't reach her key, so she runs nothing until the owner restores it.",
-                    record.display_name()
+                    "{} can't reach {} key, so {} runs nothing until the owner restores it.",
+                    record.display_name(),
+                    record.refer().their(),
+                    record.refer().they()
                 ),
             ));
         }
@@ -1305,7 +1322,10 @@ impl Agents {
         let _ = store.append(&Entry::new(
             now,
             Kind::Task,
-            &format!("made task {task} for goal {goal} in {label}, in her own worktree"),
+            &format!(
+                "made task {task} for goal {goal} in {label}, in {} own worktree",
+                record.refer().their()
+            ),
         ));
         self.say(
             &record.name,
@@ -1597,6 +1617,7 @@ impl Agents {
     /// No such agent, or her record cannot be written.
     pub fn stop(&self, name: &str, reason: &str, from: &str) -> Result<(), Code> {
         let (store, mut record) = self.store(name)?;
+        let p = record.refer();
         let now = (self.clock)();
         let note = |text: &str| {
             let mut entry = Entry::new(now, Kind::Control, text);
@@ -1615,16 +1636,23 @@ impl Agents {
         // 1. Standing jobs off.
         match Jobs::new(store.clone()).disable_all() {
             Ok(on) => note(&format!("stop 1 of 4: turned off {on} standing jobs")),
-            Err(why) => note(&format!("stop 1 of 4: could not turn off her jobs: {why}")),
+            Err(why) => note(&format!(
+                "stop 1 of 4: could not turn off {} jobs: {why}",
+                p.their()
+            )),
         }
         // 2. Release every pane she drives, with Ctrl+C to her command.
+        let interrupted = format!(
+            "stopped by the owner; {} command was interrupted",
+            p.their()
+        );
         let (typing, change) = self.with_live(name, |live| {
             live.cancel.store(true, Ordering::SeqCst);
             live.release += 1;
             live.queue.clear();
             let typing = live.run.take().map(|(step, reply)| {
                 let _ = reply.send(wire::Ran {
-                    lost: Some("stopped by the owner; her command was interrupted".into()),
+                    lost: Some(interrupted),
                     ..wire::Ran::default()
                 });
                 step
@@ -1639,16 +1667,23 @@ impl Agents {
         });
         note(&match typing {
             Some(step) => format!(
-                "stop 2 of 4: released her panes and interrupted step {}; its effect is unknown",
+                "stop 2 of 4: released {} panes and interrupted step {}; its effect is unknown",
+                p.their(),
                 step.step
             ),
-            None => "stop 2 of 4: released her panes; no command was running".into(),
+            None => format!(
+                "stop 2 of 4: released {} panes; no command was running",
+                p.their()
+            ),
         });
         // 3. Cancel her running and queued tasks.
-        let cancelled = self.cancel_tasks(name, change.as_ref().map(|(g, _)| g.as_str()));
+        let cancelled = self.cancel_tasks(name, &p, change.as_ref().map(|(g, _)| g.as_str()));
         note(&format!("stop 3 of 4: {cancelled}"));
         // 4. Her grants on other computers.
-        note("stop 4 of 4: she holds no grants on other computers to revoke");
+        note(&format!(
+            "stop 4 of 4: {} holds no grants on other computers to revoke",
+            p.they()
+        ));
         if !record.state.is_gone() {
             record.state = State::Stopped;
             store
@@ -1658,26 +1693,27 @@ impl Agents {
         Ok(())
     }
 
-    fn cancel_tasks(&self, name: &str, goal: Option<&str>) -> String {
+    fn cancel_tasks(&self, name: &str, p: &super::agent::Refer, goal: Option<&str>) -> String {
         use super::studio::Studio;
         if !Studio::present(&self.tasks) {
-            return "she has no studio tasks".into();
+            return format!("{} has no studio tasks", p.they());
         }
         let (Ok(mut tasks), Ok(mut studio)) =
             (super::Store::open(&self.tasks), Studio::open(&self.tasks))
         else {
-            return "could not open the studio to cancel her tasks".into();
+            return format!("could not open the studio to cancel {} tasks", p.their());
         };
         if studio.state().seat(name).is_none() {
-            return "she has no studio seat or tasks".into();
+            return format!("{} has no studio seat or tasks", p.they());
         }
         match studio.stop_seat(&mut tasks, name) {
             Ok(returned) => format!(
-                "cancelled her studio work{}; {} task(s) returned to the board as planned",
+                "cancelled {} studio work{}; {} task(s) returned to the board as planned",
+                p.their(),
                 goal.map(|g| format!(" for goal {g}")).unwrap_or_default(),
                 returned.len()
             ),
-            Err(why) => format!("could not cancel her studio work: {why}"),
+            Err(why) => format!("could not cancel {} studio work: {why}", p.their()),
         }
     }
 
@@ -2198,3 +2234,7 @@ mod plan;
 #[cfg(test)]
 #[path = "agent_host_tests.rs"]
 mod tests;
+
+#[cfg(test)]
+#[path = "agent_crew_tests.rs"]
+mod crew_tests;

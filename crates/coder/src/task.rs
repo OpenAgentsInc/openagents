@@ -38,6 +38,7 @@ pub mod agent_lifecycle;
 pub mod agent_memory;
 pub mod agent_place;
 pub mod agent_plan;
+pub mod agent_preset;
 pub mod agent_profile;
 pub mod agent_recall;
 pub mod agent_reflect;

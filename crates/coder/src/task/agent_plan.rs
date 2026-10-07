@@ -984,7 +984,10 @@ pub fn seat_plan(
 pub fn text(plan: &DayPlan) -> String {
     let mut out = format!("{} for {}, within {}\n", plan.agent, plan.date, plan.bound);
     if plan.idle() {
-        out.push_str("no work today: idle at her desk\n");
+        out.push_str(&format!(
+            "no work today: idle at {} desk\n",
+            super::agent::Refer::for_name(&plan.agent).their()
+        ));
     }
     let current = plan.current.and_then(|i| usize::try_from(i).ok());
     for (index, block) in plan.blocks.iter().enumerate() {

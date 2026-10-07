@@ -613,7 +613,8 @@ fn land(
         Some(Ok(signed)) => signed,
         Some(Err(why)) => {
             return Err(format!(
-                "{seat}'s change can't be signed with her key, so nothing merged: {why}"
+                "{seat}'s change can't be signed with {} key, so nothing merged: {why}",
+                crate::task::agent::Refer::for_name(seat).their()
             ));
         }
     };

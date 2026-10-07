@@ -217,9 +217,10 @@ impl Hands for HostHands<'_> {
             self.engine = Some(engine);
             return Turned::ended(match why {
                 coder_v1::Unreclaimed::Stopped => TurnEnd::Stopped,
-                coder_v1::Unreclaimed::Busy => {
-                    TurnEnd::Busy("her Coder session stayed held".into())
-                }
+                coder_v1::Unreclaimed::Busy => TurnEnd::Busy(format!(
+                    "{} Coder session stayed held",
+                    self.record.refer().their()
+                )),
             });
         }
         self.open_pane();
@@ -238,6 +239,7 @@ impl Hands for HostHands<'_> {
         let agents = self.agents;
         let (policy, places, stop) = (&self.policy, &self.places, self.stop.clone());
         let cwd = PathBuf::from(&self.cwd);
+        let their = self.record.refer().their().to_string();
         let ended = {
             let mut hear = |event: &CoderEvent| -> Option<bool> {
                 match event {
@@ -332,7 +334,10 @@ impl Hands for HostHands<'_> {
                             Answer::Confirm(rule) => {
                                 let _ = journal(
                                     Kind::Confirmed,
-                                    &format!("{command} (by her policy: {rule})"),
+                                    &format!(
+                                        "{command} (by {their} policy: {})",
+                                        rule.text(&their)
+                                    ),
                                     None,
                                 );
                                 agents.say(

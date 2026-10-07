@@ -97,7 +97,10 @@ impl Agents {
             let _ = store.append(&Entry::new(
                 now,
                 Kind::Job,
-                &format!("job {job} skipped: she is planning already"),
+                &format!(
+                    "job {job} skipped: {} is planning already",
+                    store.refer().they()
+                ),
             ));
             return;
         }

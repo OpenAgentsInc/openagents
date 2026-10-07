@@ -41,6 +41,13 @@ impl Slot<'_> {
         format!("agent:{}", self.name)
     }
 
+    /// How sentences about the slot's agent refer to it: its preset's
+    /// words, for the agent whose slot this is, or whose next key it holds.
+    #[must_use]
+    pub fn refer(&self) -> agent::Refer {
+        agent::Refer::for_name(self.name.split('.').next().unwrap_or(self.name))
+    }
+
     /// Her key file, `agents/NAME/key`.
     #[must_use]
     pub fn file(&self) -> PathBuf {
@@ -194,7 +201,7 @@ impl KeyStore for HostKeychain {
         secret
             .map(|secret| {
                 SecretKey::from_byte_array(*secret.expose())
-                    .map_err(|_| "her keychain item is not a key".to_string())
+                    .map_err(|_| format!("{} keychain item is not a key", slot.refer().their()))
             })
             .transpose()
     }
@@ -263,12 +270,13 @@ impl KeyStore for Migrating {
         let Some(key) = self.file.load(slot)? else {
             return Ok(None);
         };
+        let their = slot.refer().their().to_string();
         let text = if self.migrate(slot, &key) {
-            "her key moved from its file into the host's keychain"
+            format!("{their} key moved from its file into the host's keychain")
         } else {
-            "her key stays in its file: the keychain didn't keep it"
+            format!("{their} key stays in its file: the keychain didn't keep it")
         };
-        journal(slot, text);
+        journal(slot, &text);
         Ok(Some(key))
     }
 
@@ -276,7 +284,10 @@ impl KeyStore for Migrating {
         self.keychain.store(slot, key)?;
         match self.keychain.load(slot)? {
             Some(back) if back == *key => Ok(()),
-            _ => Err("the keychain didn't keep her key".into()),
+            _ => Err(format!(
+                "the keychain didn't keep {} key",
+                slot.refer().their()
+            )),
         }
     }
 
