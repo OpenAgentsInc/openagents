@@ -2845,6 +2845,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "coder-cloud"
+version = "0.1.0"
+dependencies = [
+ "serde",
+ "serde_json",
+ "tempfile",
+ "tokio",
+]
+
+[[package]]
 name = "coder-compositor"
 version = "0.1.0"
 dependencies = [
