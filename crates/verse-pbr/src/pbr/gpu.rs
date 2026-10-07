@@ -110,6 +110,15 @@ struct Frame {
     /// otherwise.
     key_tint: [f32; 4],
     fire_control: [f32; 4],
+    /// The sea ([`super::water`]): its level, 1 when present, 1 when the
+    /// eye is under it, and the caustics' strength.
+    water: [f32; 4],
+    /// The water's extinction per meter.
+    water_extinction: [f32; 4],
+    /// The water's in-scatter, and the water clock.
+    water_scatter: [f32; 4],
+    /// Spells on the water ([`super::water::Water::control_terms`]).
+    water_controls: [[f32; 4]; 6],
 }
 
 impl Frame {
@@ -352,6 +361,8 @@ struct Pipelines {
     sprites: wgpu::RenderPipeline,
     legacy: wgpu::RenderPipeline,
     wide: wgpu::RenderPipeline,
+    /// Water surfaces ([`super::water`]), premultiplied over the scene.
+    water: wgpu::RenderPipeline,
     /// Textured meshes by [`Pass`], single-sided then double-sided.
     textured: [[wgpu::RenderPipeline; 2]; 3],
     /// Opaque textured meshes into the shadow map.
@@ -598,6 +609,9 @@ pub struct Photo {
     /// This frame's particle sprite quads (`crate::fx::vertices`).
     pub sprites: Stream,
     fx_group: wgpu::BindGroup,
+    /// The water pass's uniform (group 2, binding 3).
+    water_buffer: wgpu::Buffer,
+    water_group: wgpu::BindGroup,
     /// The display's headroom over reference white for space frames.
     pub headroom: f32,
     /// Enable bounded optical fire; disabling it keeps the original flipbooks for comparisons.
@@ -1300,10 +1314,68 @@ impl Photo {
                 },
             ],
         });
+        // The water's uniform, at a binding the textured material's group
+        // leaves free in this module.
+        let water_layout = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
+            label: Some("verse water"),
+            entries: &[wgpu::BindGroupLayoutEntry {
+                binding: 3,
+                visibility: wgpu::ShaderStages::VERTEX_FRAGMENT,
+                ty: wgpu::BindingType::Buffer {
+                    ty: wgpu::BufferBindingType::Uniform,
+                    has_dynamic_offset: false,
+                    min_binding_size: None,
+                },
+                count: None,
+            }],
+        });
+        let water_buffer = device.create_buffer(&wgpu::BufferDescriptor {
+            label: Some("verse water"),
+            size: std::mem::size_of::<super::water::WaterUniform>() as u64,
+            usage: wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST,
+            mapped_at_creation: false,
+        });
+        let water_group = device.create_bind_group(&wgpu::BindGroupDescriptor {
+            label: Some("verse water"),
+            layout: &water_layout,
+            entries: &[wgpu::BindGroupEntry {
+                binding: 3,
+                resource: water_buffer.as_entire_binding(),
+            }],
+        });
+        let water_pipeline_layout =
+            device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
+                label: Some("verse water"),
+                bind_group_layouts: &[
+                    Some(&scene_layout),
+                    Some(&guide_layout),
+                    Some(&water_layout),
+                ],
+                immediate_size: 0,
+            });
+        const WATER: [wgpu::VertexAttribute; 5] = wgpu::vertex_attr_array![
+            0 => Float32x3, 1 => Float32, 2 => Float32x2, 3 => Float32, 4 => Float32
+        ];
         const SPRITE: [wgpu::VertexAttribute; 5] = wgpu::vertex_attr_array![
             0 => Float32x3, 1 => Float32x4, 2 => Float32x2, 3 => Float32x2, 4 => Float32x4
         ];
         let pipelines = Pipelines {
+            // Seen from above and below, so neither face is culled.
+            water: make(
+                &water_pipeline_layout,
+                "verse water",
+                "vs_water",
+                Some("fs_water"),
+                &[wgpu::VertexBufferLayout {
+                    array_stride: std::mem::size_of::<super::water::WaterVertex>() as u64,
+                    step_mode: wgpu::VertexStepMode::Vertex,
+                    attributes: &WATER,
+                }],
+                triangles,
+                depth_state(false, wgpu::CompareFunction::GreaterEqual),
+                Some(PREMULTIPLIED),
+                samples,
+            ),
             textured: textured_pipelines,
             textured_shadow: textured_shadow_opaque,
             textured_shadow_masked,
@@ -1526,6 +1598,8 @@ impl Photo {
             glow: Stream::new(device, "verse glow"),
             sprites: Stream::new(device, "verse sprites"),
             fx_group,
+            water_buffer,
+            water_group,
             headroom: 1.0,
             fire_volumes: true,
         })
@@ -1629,6 +1703,52 @@ impl Photo {
 
     /// What the textured draws of the last frame cost.
     #[must_use]
+    /// Uploads a zone's water surface once. The low tier draws every other
+    /// row and column of the patches that allow it.
+    pub fn upload_water(
+        &self,
+        device: &wgpu::Device,
+        surface: &super::water::WaterSurface,
+    ) -> WaterGpu {
+        use wgpu::util::DeviceExt;
+        let stride = if self.capability.quality.tier == Tier::Low {
+            2
+        } else {
+            1
+        };
+        let vertices = surface.vertices();
+        let indices = surface.indices(stride);
+        let make = |label, contents: &[u8], usage| {
+            device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
+                label: Some(label),
+                contents,
+                usage,
+            })
+        };
+        WaterGpu {
+            vertices: make(
+                "verse water vertices",
+                bytemuck::cast_slice(&vertices),
+                wgpu::BufferUsages::VERTEX,
+            ),
+            indices: make(
+                "verse water indices",
+                bytemuck::cast_slice(&indices),
+                wgpu::BufferUsages::INDEX,
+            ),
+            count: indices.len() as u32,
+        }
+    }
+
+    /// How many detail waves a tier's water fragments evaluate.
+    fn water_detail(&self) -> usize {
+        match self.capability.quality.tier {
+            Tier::Low => 6,
+            Tier::Medium => 10,
+            Tier::High => super::water::MAX_DETAIL,
+        }
+    }
+
     pub fn draw_stats(&self) -> DrawStats {
         self.stats.get()
     }
@@ -2648,6 +2768,26 @@ impl Photo {
         if let Some(fog) = neon.height_fog.filter(|fog| fog.validate().is_ok()) {
             [uniform.fog_shape, uniform.fog_lobe] = fog.uniform();
         }
+        // The sea lights its bed and tints what lies under it on a lit
+        // stage only, as its surface needs the key for its glint.
+        let water = neon.water.filter(|water| lit.is_some() && water.valid());
+        if let Some(water) = &water {
+            let eye = view.eye;
+            let under = eye.y < water.surface_height(eye.x, eye.z, f32::INFINITY);
+            uniform.water = [
+                water.level,
+                1.0,
+                if under { 1.0 } else { 0.0 },
+                water.caustics,
+            ];
+            let e = water.extinction;
+            uniform.water_extinction = [e[0], e[1], e[2], 0.0];
+            let c = water.scatter;
+            uniform.water_scatter = [c[0], c[1], c[2], water.time];
+            uniform.water_controls = water.control_terms();
+            let packed = water.uniform(self.water_detail());
+            queue.write_buffer(&self.water_buffer, 0, bytemuck::bytes_of(&packed));
+        }
         queue.write_buffer(&self.frame, 0, bytemuck::bytes_of(&uniform));
         if let Some(shadow) = &shadow {
             self.encode_shadow(queue, encoder, &uniform, shadow, &world);
@@ -2745,6 +2885,17 @@ impl Photo {
                     pass.set_vertex_buffer(0, buffer.slice(..));
                     pass.draw(0..count, 0..1);
                 }
+            }
+            // The water over everything opaque, before glass and particles.
+            if let (Some(gpu), Some(_)) = (world.water, &water)
+                && gpu.count > 0
+            {
+                pass.set_pipeline(&self.pipelines.water);
+                pass.set_bind_group(1, &targets.guide_groups[0], &[]);
+                pass.set_bind_group(2, &self.water_group, &[]);
+                pass.set_vertex_buffer(0, gpu.vertices.slice(..));
+                pass.set_index_buffer(gpu.indices.slice(..), wgpu::IndexFormat::Uint32);
+                pass.draw_indexed(0..gpu.count, 0, 0..1);
             }
             self.draw_textured(&mut pass, world.textured, &order, Pass::Blended);
             self.draw_textured(&mut pass, world.figure, &figure_order, Pass::Blended);
@@ -2852,6 +3003,24 @@ pub struct Batches<'a> {
     pub textured: Option<&'a TexturedGpu>,
     /// The dynamic mesh's figure, its vertices written for this frame.
     pub figure: Option<&'a TexturedGpu>,
+    /// The world's water surface ([`super::water`]), drawn on a lit neon
+    /// stage that carries [`Neon::water`].
+    pub water: Option<&'a WaterGpu>,
+}
+
+/// A water surface on the GPU ([`Photo::upload_water`]).
+pub struct WaterGpu {
+    vertices: wgpu::Buffer,
+    indices: wgpu::Buffer,
+    count: u32,
+}
+
+impl WaterGpu {
+    /// The bytes the surface holds on the GPU.
+    #[must_use]
+    pub fn bytes(&self) -> u64 {
+        self.vertices.size() + self.indices.size()
+    }
 }
 
 /// Illuminance at the station from the full Earth, lux per channel: a

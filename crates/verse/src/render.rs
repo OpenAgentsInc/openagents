@@ -107,6 +107,11 @@ struct Scene {
     /// The dynamic mesh's figure on the GPU, with the scene it was uploaded
     /// from; a different scene uploads again.
     figure: Option<(std::sync::Arc<TexturedScene>, TexturedGpu)>,
+    /// The world's water surface, waiting for the physical path's first
+    /// frame, which uploads it.
+    water_pending: Option<std::sync::Arc<crate::pbr::water::WaterSurface>>,
+    /// The world's water surface on the GPU.
+    water: Option<crate::pbr::gpu::WaterGpu>,
     /// Created on the first frame that carries a sky.
     photo: Option<Photo>,
     photo_failed: bool,
@@ -878,6 +883,8 @@ impl Renderer {
         self.scene.world_lit = upload_lit(&self.device, &world.lit);
         self.scene.textured_pending = textured;
         self.scene.textured = None;
+        self.scene.water_pending = world.water.clone();
+        self.scene.water = None;
         self.scene.textured_baked = None;
         self.scene.textured_edits = None;
         self.scene.figure = None;
@@ -2233,6 +2240,8 @@ impl Scene {
             textured_baked: None,
             textured_edits: None,
             figure: None,
+            water_pending: world.water.clone(),
+            water: None,
             photo: None,
             photo_failed: false,
             headroom: 1.0,
@@ -2443,6 +2452,9 @@ impl Scene {
         let Some(photo) = &mut self.photo else {
             return false;
         };
+        if let Some(surface) = self.water_pending.take() {
+            self.water = Some(photo.upload_water(device, &surface));
+        }
         if let Some((scene, merged)) = self.textured_pending.take() {
             self.textured = Some(photo.upload_textured(device, queue, &scene, &merged));
             self.textured_baked = Some(scene.baked.clone());
@@ -2546,6 +2558,7 @@ impl Scene {
                 .figure
                 .as_ref()
                 .and(self.figure.as_ref().map(|(_, gpu)| gpu)),
+            water: self.water.as_ref(),
         };
         photo.headroom = self.headroom;
         photo.encode(

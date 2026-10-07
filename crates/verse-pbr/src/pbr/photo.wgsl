@@ -92,6 +92,24 @@ struct Frame {
     // rgb a neon stage's key light color; w 1 when set, white otherwise.
     key_tint: vec4<f32>,
     fire_control: vec4<f32>,
+    // The sea (`pbr::water`): x its level (m), y 1 when the stage has it, z 1
+    // when the eye is under it, w the caustics' strength.
+    water: vec4<f32>,
+    // rgb the water's extinction (1/m).
+    water_extinction: vec4<f32>,
+    // rgb the water's in-scatter; w the water clock (s).
+    water_scatter: vec4<f32>,
+    // Spells on the water (`water::Water::control_terms`): Part Water's
+    // trench center and direction; its half length, half width, and how
+    // far it is open, with Redirect Flow's radius; Redirect Flow's center
+    // and velocity; a whirlpool's center, radius, and strength; rain's
+    // wetness and ice, each a center, a radius, and an amount.
+    water_part: vec4<f32>,
+    water_part_size: vec4<f32>,
+    water_flow: vec4<f32>,
+    water_whirl: vec4<f32>,
+    water_wet: vec4<f32>,
+    water_ice: vec4<f32>,
 };
 
 @group(0) @binding(0) var<uniform> f: Frame;
@@ -202,7 +220,9 @@ fn expose(luminance: vec3<f32>) -> vec3<f32> {
 // place of the ramp, and sunlight scattered toward the eye brightens the fog
 // on the Sun's side.
 fn neon_fog(color: vec3<f32>, world: vec3<f32>, weight: f32) -> vec3<f32> {
-    if f.neon.w < 0.5 {
+    // Under the sea the water's own fog (`water_view`) stands in for the
+    // air's.
+    if f.neon.w < 0.5 || (f.water.y > 0.5 && f.water.z > 0.5) {
         return color;
     }
     let d = distance(world.xz, f.eye.xz);
@@ -377,6 +397,11 @@ fn fs_daylight(i: SkyOut) -> @location(0) vec4<f32> {
     let angle = acos(clamp(mu, -1.0, 1.0));
     let disc = 1.0 - smoothstep(r * 0.75, r * 1.15, angle);
     c += f.sky_sun.rgb * disc * 6.0 * (1.0 - 0.8 * density);
+    // Under the sea, only Snell's window above shows the sky; below the
+    // horizon the eye looks into the water's own color.
+    if f.water.y > 0.5 && f.water.z > 0.5 && d.y < 0.05 {
+        c = water_fog();
+    }
     // Dither below one 8-bit step against banding in the gradient.
     c += (noise_ign(i.clip.xy) - 0.5) / 255.0;
     return vec4<f32>(expose(max(c, vec3<f32>(0.0))), 1.0);
@@ -781,6 +806,25 @@ fn shade(i: Shading) -> vec3<f32> {
     var roughness = clamp(i.params.y, 0.03, 1.0);
     let ao = clamp(i.params.w, 0.0, 1.0);
     var base = i.color;
+    // Rain darkens and glosses what it wets and pools on flat ground;
+    // sleet frosts the ground under its ice (`pbr::water`).
+    if f.water.y > 0.5 {
+        let wet = water_wetness(i.world.xz);
+        if wet > 0.0 {
+            base *= 1.0 - 0.45 * wet;
+            roughness = mix(roughness, 0.18, wet);
+            let flat = smoothstep(0.93, 0.99, geometric.y);
+            let pool = smoothstep(0.52, 0.6, value_noise(vec3<f32>(i.world.xz * 0.45, 3.0)) + 0.25 * wet);
+            let puddle = flat * pool * wet;
+            base = mix(base, base * 0.25, puddle);
+            roughness = mix(roughness, 0.03, puddle);
+        }
+        if f.water_ice.w > 0.0 && i.world.y > f.water.x - 0.2 {
+            let frost = water_ice(i.world.xz) * smoothstep(0.3, 0.8, geometric.y);
+            base = mix(base, vec3<f32>(0.78, 0.84, 0.9), frost * 0.7);
+            roughness = mix(roughness, 0.45, frost);
+        }
+    }
     // Derivatives need uniform control flow, which WGSL requires and a
     // browser's WebGPU enforces, so take the footprint before branching on
     // the per-fragment material code.
@@ -851,7 +895,8 @@ fn shade(i: Shading) -> vec3<f32> {
         var angular: f32;
         if k == 0 {
             l = f.sun.xyz;
-            e = vec3<f32>(f.sun.w) * select(vec3<f32>(1.0), f.key_tint.rgb, f.key_tint.w > 0.5);
+            // Under the sea the sun arrives dimmed and gathered into caustics.
+            e = vec3<f32>(f.sun.w) * select(vec3<f32>(1.0), f.key_tint.rgb, f.key_tint.w > 0.5) * water_sun(i.world);
             angular = f.sun_disc.x;
         } else {
             l = f.earth.xyz;
@@ -955,9 +1000,12 @@ fn shade(i: Shading) -> vec3<f32> {
         irr = probe_irradiance(i.world, n) * ambient;
         lr = probe_irradiance(i.world, r) / PI;
     }
-    radiance += diffuse_color / PI * irr;
-    radiance += lr * e_spec * so;
+    let wet = water_ambient(i.world);
+    radiance += diffuse_color / PI * irr * wet;
+    radiance += lr * e_spec * so * wet;
     radiance += i.emit * f.lamp_params.y;
+    // The sea between this point and the eye.
+    radiance = water_view(i.world, radiance);
 
     if DEBUG == 1u {
         radiance = direct_part;
@@ -1683,3 +1731,5 @@ fn fs_wide(i: WideOut) -> @location(0) vec4<f32> {
     }
     return vec4<f32>(c * coverage, coverage);
 }
+
+// VERSE_WATER
