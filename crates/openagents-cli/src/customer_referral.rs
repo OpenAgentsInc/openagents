@@ -3,7 +3,7 @@ use crate::{Args, Output};
 #[cfg(test)]
 use coder::cli_route::tree::{Declared, Effect};
 use coder::customer::Store;
-use jev::{AttributionProposal, ReferralCapture, ReferralKind};
+use jev::{AttributionProposal, CommissionInput, ReferralCapture, ReferralKind};
 use serde::Deserialize;
 use serde_json::json;
 use std::path::Path;
@@ -31,6 +31,15 @@ pub const USAGE: &str = "usage: openagents customer referral COMMAND --root DIR 
         Read authorized management successors, which create no earnings right.
   policy [--digest DIGEST]
         Read the operator-published attribution terms and exact policy digest.
+  terms [--digest DIGEST]
+        Inspect explicitly published commission terms; this grants no earnings.
+  commission --customer ID [--agreement DIGEST]
+        Read your customer or currently managed referrer's exact private consent.
+        Omit --agreement for the active mutually accepted version.
+  accept-terms --input FILE
+        Consent to {request,customer,terms_digest,attribution_decision,consent}.
+        Both native parties accept the exact published version and attribution.
+        Current conflicts refuse new consent. No accrual or payout is enabled.
   attribution
         Read the current customer's private decisions and retained binding.
   propose --input FILE
@@ -67,6 +76,9 @@ pub(crate) const EFFECTS: &[Declared] = &[
     Declared::computer("referral accept", Effect::Grants),
     Declared::computer("referral lineage", Effect::ReadOnly),
     Declared::computer("referral policy", Effect::ReadOnly),
+    Declared::computer("referral terms", Effect::ReadOnly),
+    Declared::computer("referral commission", Effect::ReadOnly),
+    Declared::computer("referral accept-terms", Effect::Grants),
     Declared::computer("referral attribution", Effect::ReadOnly),
     Declared::computer("referral propose", Effect::Grants),
     Declared::computer("referral confirm", Effect::Grants),
@@ -103,11 +115,12 @@ pub fn run(output: &Output, words: &[String]) -> u8 {
         return output.usage("customer referral", "Select one referral command.", USAGE);
     };
     let allowed: &[&str] = match command.as_str() {
-        "create" | "capture" | "propose" | "confirm" => &["root", "input"],
+        "create" | "capture" | "propose" | "confirm" | "accept-terms" => &["root", "input"],
         "show" | "link" | "disable" | "accept" | "lineage" => &["root", "referrer"],
         "migrate" => &["root", "referrer", "input"],
         "source" | "attribution" => &["root"],
-        "policy" => &["root", "digest"],
+        "policy" | "terms" => &["root", "digest"],
+        "commission" => &["root", "customer", "agreement"],
         "workspace" => &["root", "workspace"],
         "adopt" => &["root", "workspace", "input"],
         _ => return output.usage("customer referral", "Unknown referral command.", USAGE),
@@ -118,7 +131,10 @@ pub fn run(output: &Output, words: &[String]) -> u8 {
         .any(|name| !allowed.contains(name))
         || allowed
             .iter()
-            .filter(|name| command != "policy" || **name != "digest")
+            .filter(|name| {
+                !((matches!(command.as_str(), "policy" | "terms") && **name == "digest")
+                    || (command == "commission" && **name == "agreement"))
+            })
             .any(|name| required(&args, name).is_err())
     {
         return output.usage(
@@ -166,6 +182,22 @@ async fn execute(args: &Args, command: &str) -> Result<serde_json::Value, String
         }
         "show" => json!(account.referrer(id()?).await.map_err(err)?),
         "lineage" => json!(account.referrer_successors(id()?).await.map_err(err)?),
+        "terms" => json!(
+            account
+                .commission_terms(args.option("digest"))
+                .await
+                .map_err(err)?
+        ),
+        "commission" => json!(
+            account
+                .commission_agreement(required(args, "customer")?, args.option("agreement"))
+                .await
+                .map_err(err)?
+        ),
+        "accept-terms" => {
+            let value: CommissionInput = input(args)?;
+            json!(account.accept_commission_terms(&value).await.map_err(err)?)
+        }
         "policy" => json!(match args.option("digest") {
             Some(digest) => account
                 .attribution_policy_version(digest)

@@ -1897,6 +1897,34 @@ authority. Publish exact agreed terms through the local `tenant-referrals`
 operator command before requesting consent, and qualify the intended deployment
 as recorded in [NEEDS_OWNER.md](../../NEEDS_OWNER.md#referral-source-and-attribution-activation-rev-27rev-28-1083410835).
 
+`terms [--digest DIGEST]` reads a separately published commission contract.
+`accept-terms --input FILE` requires explicit `{ "request": "YOUR_REQUEST",
+"customer": "ACCOUNT", "terms_digest": "sha256:...", "attribution_decision":
+"sha256:...", "consent": true }`. The customer and current manager of the stable
+referrer accept the same immutable terms and accepted attribution decision.
+`commission --customer ACCOUNT [--agreement DIGEST]` reads a private agreement
+as one of those native parties. The exact agreement digest reproduces historical
+consent; omitting it reads the active mutually accepted version. A new publication
+does not replace accepted terms. Current credential revocation, manager changes,
+and attribution review are rechecked under the canonical account writer.
+
+The local operator uses `tenant-referrals commission-check --input FILE` to
+validate a proposed contract and derive its digest without publication. After
+review, `commission-publish --registry DIR --input FILE --approve DIGEST
+--expected DIGEST|none` publishes the exact sealed terms against the expected
+current head. `commission-show --registry DIR [--digest DIGEST]` inspects it.
+Use an owned registry directory with mode `0700` and a bounded input file with
+mode `0600`.
+There are no supplied commercial share or minimum defaults, and no FX conversion.
+The selected existing Spark and Lightning rails accept sats, msats, or BTC
+millionths, with an exactly payable whole-satoshi minimum within the native
+ledger's integer bound. The contract declares whole-satoshi payout precision
+and retention of unpaid msat remainders. Foreign currency terms are refused;
+same-unit arithmetic does not qualify a destination or a future payout.
+Publication and consent grant no accrual or payout authority. Qualify commercial
+terms and the later settlement adapter before promising earnings, as recorded in
+[NEEDS_OWNER.md](../../NEEDS_OWNER.md#referral-commission-contract-activation-rev-29-10836).
+
 ## Verify
 
 ```sh

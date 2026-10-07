@@ -239,6 +239,99 @@ pub struct State {
     successors: Vec<Successor>,
 }
 impl State {
+    pub(super) fn retained_binding(&self, customer: &str) -> Option<Binding> {
+        self.customers.get(customer)?.binding.clone()
+    }
+    fn accepted(&self, binding: &Binding) -> Option<&Decision> {
+        self.customers
+            .get(&binding.customer)?
+            .decisions
+            .iter()
+            .find(|d| {
+                d.status == Status::Accepted
+                    && d.digest == binding.accepted_decision
+                    && binding_for(d) == *binding
+            })
+    }
+    pub(super) fn retains_accepted(&self, binding: &Binding) -> bool {
+        self.accepted(binding).is_some()
+    }
+    /// Pin the exact native management authority that admitted this consent.
+    pub(super) fn commission_manager(
+        &self,
+        book: &Book,
+        binding: &Binding,
+        actor: &str,
+    ) -> Result<(u64, Option<String>), Error> {
+        let decision = self.accepted(binding).ok_or(Error::Unavailable)?;
+        let referrer = book
+            .referrers
+            .get(&binding.referrer.id)
+            .ok_or(Error::Unavailable)?;
+        if referrer.owner != actor {
+            return Err(Error::Unauthorized);
+        }
+        if let Some(successor) = self
+            .successors
+            .iter()
+            .rev()
+            .find(|s| s.referrer == referrer.id)
+        {
+            if successor.to == actor && successor.version <= referrer.version {
+                return Ok((referrer.version, Some(successor.digest.clone())));
+            }
+            return Err(Error::Unauthorized);
+        }
+        if decision.referrer_owner.as_deref() == Some(actor) {
+            Ok((referrer.version, None))
+        } else {
+            Err(Error::Unauthorized)
+        }
+    }
+    pub(super) fn retains_commission_manager(
+        &self,
+        binding: &Binding,
+        actor: &str,
+        version: u64,
+        successor: Option<&str>,
+        at: u64,
+    ) -> bool {
+        if version < binding.referrer.version {
+            return false;
+        }
+        match successor {
+            Some(id) => self.successors.iter().any(|s| {
+                s.digest == id
+                    && s.referrer == binding.referrer.id
+                    && s.to == actor
+                    && s.version <= version
+                    && s.accepted_at <= at
+            }),
+            None => self
+                .accepted(binding)
+                .is_some_and(|d| d.referrer_owner.as_deref() == Some(actor)),
+        }
+    }
+    pub(super) fn current_commission_binding(
+        &self,
+        book: &Book,
+        customer: &str,
+    ) -> Result<Binding, Error> {
+        let view = self.customers.get(customer).ok_or(Error::Unavailable)?;
+        if view.status != Status::Accepted {
+            return Err(Error::Conflict);
+        }
+        let binding = view.binding.clone().ok_or(Error::Unavailable)?;
+        let referrer = book
+            .referrers
+            .get(&binding.referrer.id)
+            .ok_or(Error::Unavailable)?;
+        if binding.referrer.source_only || referrer.source_only || referrer.owner == customer {
+            return Err(Error::Conflict);
+        }
+        self.commission_manager(book, &binding, &referrer.owner)?;
+        Ok(binding)
+    }
     pub(super) fn confirms_manager(&self, referrer: &Referrer, actor: &str) -> bool {
         self.successors
             .iter()

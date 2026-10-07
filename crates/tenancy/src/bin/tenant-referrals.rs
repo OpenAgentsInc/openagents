@@ -1,7 +1,8 @@
-//! The local account operator publishes immutable attribution terms.
+//! The local account operator checks and explicitly publishes immutable terms.
 use serde::Deserialize;
 use std::path::Path;
 use tenancy::accounts::referrals::attribution::Policy;
+use tenancy::accounts::referrals::commission::Terms;
 
 const INPUT_LIMIT: u64 = 16 * 1024;
 
@@ -13,6 +14,9 @@ struct Input {
 }
 fn run() -> Result<(), String> {
     let words: Vec<_> = std::env::args().skip(1).collect();
+    if words.first().is_some_and(|w| w.starts_with("commission-")) {
+        return commission(&words);
+    }
     if words.len() != 5
         || words[0] != "publish"
         || words[1] != "--registry"
@@ -39,6 +43,92 @@ fn run() -> Result<(), String> {
         serde_json::json!({"version":published.version,"digest":published.digest,"rule":published.rule,"commission_eligibility":false})
     );
     Ok(())
+}
+fn commission(words: &[String]) -> Result<(), String> {
+    let usage = "usage: tenant-referrals commission-check --input FILE | commission-show --registry DIR [--digest DIGEST] | commission-publish --registry DIR --input FILE --approve DIGEST --expected DIGEST|none";
+    let mut options = std::collections::BTreeMap::new();
+    if !(words.len() - 1).is_multiple_of(2) {
+        return Err(usage.into());
+    }
+    for pair in words[1..].chunks_exact(2) {
+        if !pair[0].starts_with("--")
+            || pair[1].is_empty()
+            || options.insert(pair[0].as_str(), pair[1].as_str()).is_some()
+        {
+            return Err(usage.into());
+        }
+    }
+    let command = words[0].as_str();
+    let allowed: &[&str] = match command {
+        "commission-check" => &["--input"],
+        "commission-show" => &["--registry", "--digest"],
+        "commission-publish" => &["--registry", "--input", "--approve", "--expected"],
+        _ => return Err(usage.into()),
+    };
+    if options.keys().any(|name| !allowed.contains(name)) {
+        return Err(usage.into());
+    }
+    let required = |name| options.get(name).copied().ok_or_else(|| usage.to_string());
+    let terms = if command != "commission-show" {
+        let path = Path::new(required("--input")?);
+        if !path.is_absolute() {
+            return Err("Use an absolute private terms input path.".into());
+        }
+        let t: Terms = serde_json::from_slice(&private_input(path)?)
+            .map_err(|_| "Invalid commission terms input.")?;
+        Some(if command == "commission-check" && t.digest.is_empty() {
+            t.seal().map_err(|e| e.to_string())?
+        } else {
+            t.validate().map_err(|e| e.to_string())?;
+            t
+        })
+    } else {
+        None
+    };
+    let value = if command == "commission-check" {
+        serde_json::json!({"terms":terms,"published":false,"accrual_enabled":false})
+    } else {
+        let dir = Path::new(required("--registry")?);
+        private_registry(dir)?;
+        let accounts = tenancy::Accounts::open(dir)
+            .map_err(|_| "The canonical account store is unavailable.")?;
+        if command == "commission-show" {
+            serde_json::json!({"publication":accounts.commission_publication(options.get("--digest").copied()).map_err(|e| e.to_string())?,"accrual_enabled":false})
+        } else {
+            let expected = required("--expected")?;
+            let published = accounts
+                .publish_commission_terms(
+                    terms.as_ref().unwrap(),
+                    required("--approve")?,
+                    if expected == "none" {
+                        None
+                    } else {
+                        Some(expected)
+                    },
+                )
+                .map_err(|e| e.to_string())?;
+            serde_json::json!({"publication":published,"accrual_enabled":false})
+        }
+    };
+    println!("{value}");
+    Ok(())
+}
+#[cfg(unix)]
+fn private_registry(path: &Path) -> Result<(), String> {
+    use std::os::unix::fs::MetadataExt;
+    let m = std::fs::symlink_metadata(path).map_err(|_| "The account registry is unavailable.")?;
+    if !path.is_absolute()
+        || !m.is_dir()
+        || m.mode() & 0o777 != 0o700
+        || m.uid() != unsafe { libc::geteuid() }
+    {
+        return Err("Use an absolute owned account directory with mode 0700.".into());
+    }
+    Ok(())
+}
+#[cfg(not(unix))]
+fn private_registry(_: &Path) -> Result<(), String> {
+    Err("Private commission publication is unavailable on this platform.".into())
 }
 #[cfg(unix)]
 fn private_input(path: &Path) -> Result<Vec<u8>, String> {

@@ -8042,6 +8042,122 @@
               }
             },
             {
+              "name": "terms",
+              "leaf": {
+                "path": [
+                  "customer",
+                  "referral",
+                  "terms"
+                ],
+                "usage": [
+                  "referral terms [--digest DIGEST]"
+                ],
+                "forms": [
+                  {
+                    "tokens": [
+                      {
+                        "kind": "literal",
+                        "word": "referral"
+                      },
+                      {
+                        "kind": "literal",
+                        "word": "terms"
+                      },
+                      {
+                        "kind": "option",
+                        "name": "digest",
+                        "value": "DIGEST",
+                        "open": true,
+                        "optional": true
+                      }
+                    ]
+                  }
+                ],
+                "summary": "Inspect explicitly published commission terms; this grants no earnings.",
+                "effect": "read_only",
+                "runs_on": "connected_computer"
+              }
+            },
+            {
+              "name": "commission",
+              "leaf": {
+                "path": [
+                  "customer",
+                  "referral",
+                  "commission"
+                ],
+                "usage": [
+                  "referral commission --customer ID [--agreement DIGEST]"
+                ],
+                "forms": [
+                  {
+                    "tokens": [
+                      {
+                        "kind": "literal",
+                        "word": "referral"
+                      },
+                      {
+                        "kind": "literal",
+                        "word": "commission"
+                      },
+                      {
+                        "kind": "option",
+                        "name": "customer",
+                        "value": "ID",
+                        "open": true
+                      },
+                      {
+                        "kind": "option",
+                        "name": "agreement",
+                        "value": "DIGEST",
+                        "open": true,
+                        "optional": true
+                      }
+                    ]
+                  }
+                ],
+                "summary": "Read your customer or currently managed referrer's exact private consent. Omit --agreement for the active mutually accepted version.",
+                "effect": "read_only",
+                "runs_on": "connected_computer"
+              }
+            },
+            {
+              "name": "accept-terms",
+              "leaf": {
+                "path": [
+                  "customer",
+                  "referral",
+                  "accept-terms"
+                ],
+                "usage": [
+                  "referral accept-terms --input FILE"
+                ],
+                "forms": [
+                  {
+                    "tokens": [
+                      {
+                        "kind": "literal",
+                        "word": "referral"
+                      },
+                      {
+                        "kind": "literal",
+                        "word": "accept-terms"
+                      },
+                      {
+                        "kind": "option",
+                        "name": "input",
+                        "value": "FILE",
+                        "open": true
+                      }
+                    ]
+                  }
+                ],
+                "summary": "Consent to {request,customer,terms_digest,attribution_decision,consent}. Both native parties accept the exact published version and attribution. Current conflicts refuse new consent. No accrual or payout is enabled.",
+                "effect": "grants",
+                "runs_on": "connected_computer"
+              }
+            },
+            {
               "name": "attribution",
               "leaf": {
                 "path": [
@@ -8342,6 +8458,22 @@
           "kind": "option",
           "name": "referrer",
           "value": "ID",
+          "open": true,
+          "optional": true,
+          "repeated": true
+        },
+        {
+          "kind": "option",
+          "name": "customer",
+          "value": "ID",
+          "open": true,
+          "optional": true,
+          "repeated": true
+        },
+        {
+          "kind": "option",
+          "name": "agreement",
+          "value": "DIGEST",
           "open": true,
           "optional": true,
           "repeated": true

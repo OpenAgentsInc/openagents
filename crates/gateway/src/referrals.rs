@@ -10,8 +10,8 @@ use axum::{
 use serde::Deserialize;
 use serde_json::{Value, json};
 use std::sync::Arc;
-use tenancy::accounts::referrals::attribution;
 use tenancy::accounts::referrals::{self, Capture, Error, Kind};
+use tenancy::accounts::referrals::{attribution, commission};
 
 pub(crate) fn routes() -> Vec<(&'static str, MethodRouter<Arc<ServeState>>)> {
     vec![
@@ -21,6 +21,11 @@ pub(crate) fn routes() -> Vec<(&'static str, MethodRouter<Arc<ServeState>>)> {
         ("/v1/account/attribution/policy", get(policy)),
         ("/v1/account/attribution", get(attributed).post(propose)),
         ("/v1/account/attribution/confirm", post(confirm)),
+        ("/v1/account/referral-terms", get(commission_terms)),
+        (
+            "/v1/account/referral-agreement",
+            get(commission_agreement).post(commission_accept),
+        ),
         (
             "/v1/workspaces/{workspace}/attribution",
             get(workspace_attribution).post(adopt),
@@ -88,6 +93,67 @@ fn current(state: &ServeState, headers: &HeaderMap, account: &str) -> bool {
 #[serde(deny_unknown_fields)]
 struct PolicyQuery {
     digest: Option<String>,
+}
+async fn commission_terms(
+    State(state): State<Arc<ServeState>>,
+    headers: HeaderMap,
+    Query(query): Query<PolicyQuery>,
+) -> Response {
+    let (store, account) = match actor(&state, &headers).await {
+        Ok(v) => v,
+        Err(e) => return e,
+    };
+    match store.commission_publication_guarded(&account, query.digest.as_deref(), || {
+        current(&state, &headers, &account)
+    }) {
+        Ok(v) => answer(v),
+        Err(e) => refused(e),
+    }
+}
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct AgreementQuery {
+    customer: String,
+    agreement: Option<String>,
+}
+async fn commission_agreement(
+    State(state): State<Arc<ServeState>>,
+    headers: HeaderMap,
+    Query(query): Query<AgreementQuery>,
+) -> Response {
+    let (store, account) = match actor(&state, &headers).await {
+        Ok(v) => v,
+        Err(e) => return e,
+    };
+    match store.commission_agreement_guarded(
+        &account,
+        &query.customer,
+        query.agreement.as_deref(),
+        || current(&state, &headers, &account),
+    ) {
+        Ok(v) => answer(v),
+        Err(e) => refused(e),
+    }
+}
+async fn commission_accept(
+    State(state): State<Arc<ServeState>>,
+    headers: HeaderMap,
+    Json(body): Json<Value>,
+) -> Response {
+    let (store, account) = match actor(&state, &headers).await {
+        Ok(v) => v,
+        Err(e) => return e,
+    };
+    let input: commission::Input = match serde_json::from_value(body) {
+        Ok(v) => v,
+        Err(_) => return refused(Error::Invalid),
+    };
+    match store
+        .accept_commission_terms_guarded(&account, &input, || current(&state, &headers, &account))
+    {
+        Ok(v) => answer(v),
+        Err(e) => refused(e),
+    }
 }
 async fn policy(
     State(state): State<Arc<ServeState>>,

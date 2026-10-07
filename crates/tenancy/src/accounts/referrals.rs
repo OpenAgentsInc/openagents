@@ -3,6 +3,7 @@
 use super::*;
 
 pub mod attribution;
+pub mod commission;
 
 pub const SCHEMA: &str = "openagents.referral.source.v1";
 pub const CONSENT: &str = "openagents.referral.consent.v1";
@@ -127,6 +128,8 @@ pub struct Book {
     sources: BTreeMap<String, Recorded>,
     #[serde(default, skip_serializing_if = "attribution::State::is_empty")]
     attribution: attribution::State,
+    #[serde(default, skip_serializing_if = "commission::State::is_empty")]
+    commissions: commission::State,
 }
 
 #[derive(Debug, Eq, PartialEq)]
@@ -184,6 +187,7 @@ impl Book {
             && self.links.is_empty()
             && self.sources.is_empty()
             && self.attribution.is_empty()
+            && self.commissions.is_empty()
     }
     pub(super) fn validate(
         &self,
@@ -246,7 +250,8 @@ impl Book {
                 }
             }
         }
-        self.attribution.validate(self, accounts, workspaces)
+        self.attribution.validate(self, accounts, workspaces)?;
+        self.commissions.validate(self, accounts)
     }
     fn capture(
         &mut self,

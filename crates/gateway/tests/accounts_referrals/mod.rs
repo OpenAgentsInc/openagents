@@ -3,6 +3,7 @@ use super::*;
 use tenancy::accounts::referrals::{CONSENT, Outcome};
 
 mod attribution;
+mod commission;
 
 #[tokio::test]
 async fn referral_link_survives_signup_without_private_cross_account_reads() {

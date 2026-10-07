@@ -408,3 +408,182 @@ pub struct ReferralSuccessor {
     pub management_only: bool,
     pub digest: String,
 }
+
+/// Native validated terms stay in their versioned JSON shape. The SDK does not
+/// reinterpret economic units or supply commercial defaults.
+#[derive(Clone, Debug, Deserialize, Serialize, Eq, PartialEq)]
+#[serde(deny_unknown_fields)]
+pub struct CommissionPublication {
+    pub terms: serde_json::Value,
+    pub published_at: u64,
+    pub account_revision: String,
+}
+#[derive(Clone, Debug, Deserialize, Serialize, Eq, PartialEq)]
+#[serde(deny_unknown_fields)]
+pub struct CommissionInput {
+    pub request: String,
+    pub customer: String,
+    pub terms_digest: String,
+    pub attribution_decision: String,
+    pub consent: bool,
+}
+#[derive(Clone, Debug, Deserialize, Serialize, Eq, PartialEq)]
+#[serde(deny_unknown_fields)]
+pub struct CommissionAcceptance {
+    pub party: String,
+    pub actor: String,
+    pub request: String,
+    pub account_revision: String,
+    pub accepted_at: u64,
+    pub manager_version: Option<u64>,
+    pub manager_successor: Option<String>,
+    pub digest: String,
+}
+#[derive(Clone, Debug, Deserialize, Serialize, Eq, PartialEq)]
+#[serde(deny_unknown_fields)]
+pub struct CommissionAgreement {
+    pub schema: String,
+    pub id: String,
+    pub customer: String,
+    pub binding: AttributionBinding,
+    pub attribution_decision: String,
+    pub terms_digest: String,
+    pub acceptances: std::collections::BTreeMap<String, CommissionAcceptance>,
+}
+#[derive(Clone, Debug, Deserialize, Serialize, Eq, PartialEq)]
+#[serde(deny_unknown_fields)]
+pub struct CommissionView {
+    pub agreement: CommissionAgreement,
+    pub terms: CommissionPublication,
+    pub state: String,
+    pub terms_qualified: bool,
+    pub active_for_new_transactions: bool,
+    pub accrual_enabled: bool,
+    pub payout_qualified: bool,
+    pub payout_enabled: bool,
+}
+fn commission_digest(value: &str) -> bool {
+    value.strip_prefix("sha256:").is_some_and(|h| {
+        h.len() == 64
+            && h.bytes()
+                .all(|b| b.is_ascii_digit() || (b'a'..=b'f').contains(&b))
+    })
+}
+fn commission_invalid() -> Error {
+    Error::Config("Invalid referral commission identity or response.".into())
+}
+fn commission_publication(value: &CommissionPublication) -> Result<()> {
+    if value.terms["schema"] != "openagents.referral.commission-terms.v1"
+        || !value.terms["digest"]
+            .as_str()
+            .is_some_and(commission_digest)
+        || !value.terms["version"]
+            .as_str()
+            .is_some_and(|s| !s.is_empty() && s.len() <= 64)
+        || !commission_digest(&value.account_revision)
+    {
+        return Err(commission_invalid());
+    }
+    Ok(())
+}
+fn commission_view(value: &CommissionView, customer: &str, agreement: Option<&str>) -> Result<()> {
+    commission_publication(&value.terms)?;
+    let a = &value.agreement;
+    if a.schema != "openagents.referral.commission-agreement.v1"
+        || !commission_digest(&a.id)
+        || a.customer != customer
+        || a.binding.customer != customer
+        || a.attribution_decision != a.binding.accepted_decision
+        || value.terms.terms["digest"] != a.terms_digest
+        || agreement.is_some_and(|id| a.id != id)
+        || value.accrual_enabled
+        || value.payout_qualified
+        || value.payout_enabled
+        || !matches!(
+            value.state.as_str(),
+            "accepted-terms" | "awaiting-other-party" | "suspended-attribution-review"
+        )
+        || value.terms_qualified != (value.state == "accepted-terms")
+        || (value.active_for_new_transactions && !value.terms_qualified)
+        || a.acceptances.len() > 2
+        || (value.terms_qualified && a.acceptances.len() != 2)
+        || a.acceptances.iter().any(|(role, p)| {
+            role != &p.party
+                || !matches!(role.as_str(), "customer" | "referrer")
+                || (role == "customer" && p.actor != customer)
+        })
+    {
+        return Err(commission_invalid());
+    }
+    Ok(())
+}
+impl Account<'_> {
+    pub async fn commission_terms(
+        &self,
+        digest: Option<&str>,
+    ) -> Result<Option<CommissionPublication>> {
+        if digest.is_some_and(|id| !commission_digest(id)) {
+            return Err(commission_invalid());
+        }
+        let path = digest.map_or_else(
+            || "/v1/account/referral-terms".into(),
+            |id| format!("/v1/account/referral-terms?digest={id}"),
+        );
+        let value: Option<CommissionPublication> =
+            self.referral_call(Method::GET, &path, None).await?;
+        if let Some(v) = &value {
+            commission_publication(v)?;
+            if digest.is_some_and(|id| v.terms["digest"] != id) {
+                return Err(commission_invalid());
+            }
+        }
+        Ok(value)
+    }
+    pub async fn commission_agreement(
+        &self,
+        customer: &str,
+        agreement: Option<&str>,
+    ) -> Result<Option<CommissionView>> {
+        if customer.is_empty()
+            || customer.len() > 128
+            || !customer
+                .bytes()
+                .all(|b| b.is_ascii_alphanumeric() || b"_-".contains(&b))
+            || agreement.is_some_and(|id| !commission_digest(id))
+        {
+            return Err(commission_invalid());
+        }
+        let mut path = format!("/v1/account/referral-agreement?customer={customer}");
+        if let Some(id) = agreement {
+            path.push_str(&format!("&agreement={id}"));
+        }
+        let value: Option<CommissionView> = self.referral_call(Method::GET, &path, None).await?;
+        if let Some(v) = &value {
+            commission_view(v, customer, agreement)?;
+        }
+        Ok(value)
+    }
+    /// Consent is one private transport attempt. It creates no payment authority.
+    pub async fn accept_commission_terms(&self, input: &CommissionInput) -> Result<CommissionView> {
+        if !input.consent
+            || !commission_digest(&input.terms_digest)
+            || !commission_digest(&input.attribution_decision)
+        {
+            return Err(commission_invalid());
+        }
+        let value: CommissionView = self
+            .referral_call(
+                Method::POST,
+                "/v1/account/referral-agreement",
+                Some(json!(input)),
+            )
+            .await?;
+        commission_view(&value, &input.customer, None)?;
+        if value.agreement.terms_digest != input.terms_digest
+            || value.agreement.attribution_decision != input.attribution_decision
+        {
+            return Err(commission_invalid());
+        }
+        Ok(value)
+    }
+}

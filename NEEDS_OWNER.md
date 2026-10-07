@@ -1437,6 +1437,39 @@ distribution. A successor changes management; it does not transfer a payment
 right. Later commission contracts decide eligible usage and earnings; synthetic
 checks create no real referral, commercial agreement, or commission.
 
+## Referral commission contract activation (REV-29, #10836)
+
+Choose and agree on the commercial eligible products, rational share, earned
+OpenAgents base, exact native unit, rounding, hold duration, payout minimum,
+qualified destinations, refund and dispute liability, attribution conflict rule,
+and permanence. The Rust contract supplies no commercial defaults. Its selected
+profile uses the same exact unit throughout; it performs no FX conversion.
+The existing Spark and Lightning destination rules accept only BTC denominated
+terms (sats, msats, or BTC millionths). Declare whole-satoshi payout precision,
+retention of unpaid msat remainders, and a minimum that converts exactly to
+whole sats within the native ledger's integer bound. No terms agreement
+qualifies a real payout destination. Broader currency or rail offers require an
+explicitly reviewed conversion and an actual settlement adapter.
+Keep signed author fees outside the commission base, exclude unused funding,
+promotional or free credit, self-referral, recycled funding, unknown costs, and
+unresolved attribution, and retain paid reversal obligations separately.
+
+Prepare a bounded private `Terms` JSON file from the native contract in
+`crates/tenancy/src/accounts/referrals/commission.rs`. Use `tenant-referrals
+commission-check --input FILE` to derive and review the digest without publishing.
+After commercial review, retain that sealed file and explicitly publish with
+`commission-publish --registry DIR --input FILE --approve DIGEST --expected
+DIGEST|none` against the intended canonical account directory. Changing an
+existing version is refused. The registry directory must be owned and have mode
+`0700`; the bounded private input file must have mode `0600`.
+Qualify the intended Gateway, SDK, and installed
+customer consent and historical-read path before distributing the published
+terms. Both native parties must accept the exact terms and accepted attribution
+decision. Publication, consent, and the inert supplied-fact preview enable no
+accrual or payout. REV-30 must independently verify earned settlements, actual
+costs, attribution, reversals, and central-ledger liabilities; the isolated
+synthetic checks establish no real commercial agreement, buyer, or commission.
+
 ## Remote placement for gates and benchmarks (#10767)
 
 `openagents lease run --class CLASS` places release gates and benchmarks on

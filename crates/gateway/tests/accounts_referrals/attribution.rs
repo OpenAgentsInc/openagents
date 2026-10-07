@@ -2,13 +2,13 @@
 use super::*;
 use tenancy::accounts::referrals::attribution::{Policy, RULE};
 
-fn policy() -> Policy {
+pub(super) fn policy() -> Policy {
     Policy::new("synthetic-v1".into(), "The two synthetic parties agree to retain this relationship across credentials, personal-to-team conversion, and ownership transfer. Corrections require explicit mutual review. This fixture grants no commission.".into()).unwrap()
 }
-fn proposal(policy: &Policy, referrer: &str, request: &str) -> Value {
+pub(super) fn proposal(policy: &Policy, referrer: &str, request: &str) -> Value {
     json!({"request":request,"policy_digest":policy.digest,"introduction":"early_agreement","referrer":referrer,"evidence":[{"reference":"private-early-agreement-1","digest":format!("sha256:{}","a".repeat(64))}],"reason":"Both parties confirm their prior agreement.","consent":true,"expected_decision":null})
 }
-async fn restart(d: &mut Deployment) {
+pub(super) async fn restart(d: &mut Deployment) {
     d.server.abort();
     let _ = (&mut d.server).await;
     d._state.take();
@@ -175,7 +175,7 @@ async fn attribution_terms_confirmation_transfer_and_private_export_use_canonica
     d.server.abort();
 }
 
-fn configure_money(d: &mut Deployment, customers: &[&Joined]) -> std::path::PathBuf {
+pub(super) fn configure_money(d: &mut Deployment, customers: &[&Joined]) -> std::path::PathBuf {
     use tenancy::money::{Ledger, Mutation, Operation, Price, Rate, Resource};
     let path = d.dir.path().join("referral-money.jsonl");
     let mut ledger = Ledger::open(&path).unwrap();

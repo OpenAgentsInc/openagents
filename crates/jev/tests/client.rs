@@ -392,6 +392,74 @@ async fn referral_mutations_do_not_retry_or_accept_private_share_paths() -> Outc
 }
 
 #[tokio::test]
+async fn commission_consent_never_retries_and_exact_terms_reads_refuse_substitution() -> Outcome {
+    let body =
+        json!({"error":{"code":"referral_store_unavailable","message":"private-consent-details"}})
+            .to_string();
+    let (base, seen) = serve(vec![Reply::new(503, &body), Reply::new(200, "{}")]).await?;
+    let client = Client::new(
+        Config::new()
+            .base_url(base)
+            .api_key("fixture-only-key")
+            .retry(RetryPolicy {
+                max_retries: 3,
+                ..RetryPolicy::default()
+            }),
+    )?;
+    let digest = format!("sha256:{}", "a".repeat(64));
+    let input = jev::CommissionInput {
+        request: "consent".into(),
+        customer: "customer-one".into(),
+        terms_digest: digest.clone(),
+        attribution_decision: digest.clone(),
+        consent: true,
+    };
+    let error = client
+        .account()
+        .for_referrals_account("source-manager")
+        .accept_commission_terms(&input)
+        .await
+        .unwrap_err();
+    assert!(!error.to_string().contains("private-consent-details"));
+    let calls = seen.lock().await;
+    assert_eq!(calls.len(), 1);
+    assert_eq!(
+        calls[0]
+            .headers
+            .get("x-openagents-referral-account")
+            .map(String::as_str),
+        Some("source-manager")
+    );
+    drop(calls);
+    let body=json!({"v":"openagents.accounts.v1","referral":{"terms":{"schema":"openagents.referral.commission-terms.v1","version":"private-substitute-terms","digest":format!("sha256:{}","b".repeat(64))},"published_at":1,"account_revision":digest}}).to_string();
+    let (base, seen) = serve(vec![Reply::new(200, &body)]).await?;
+    let client = Client::new(Config::new().base_url(base).api_key("fixture-only-key"))?;
+    let error = client
+        .account()
+        .commission_terms(Some(&digest))
+        .await
+        .unwrap_err();
+    assert!(!error.to_string().contains("private-substitute-terms"));
+    assert_eq!(seen.lock().await.len(), 1);
+    assert!(
+        client
+            .account()
+            .commission_agreement("../foreign", None)
+            .await
+            .is_err()
+    );
+    assert!(
+        client
+            .account()
+            .commission_agreement("customer-one", Some("not-a-digest"))
+            .await
+            .is_err()
+    );
+    assert_eq!(seen.lock().await.len(), 1);
+    Ok(())
+}
+
+#[tokio::test]
 async fn attribution_mutations_keep_selected_account_and_do_not_retry_uncertain_confirmation()
 -> Outcome {
     let body =

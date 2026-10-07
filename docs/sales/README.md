@@ -261,14 +261,36 @@ account history. Team creation inherits that relationship; ownership transfer
 retains its original customer. Workspace reads require current owner or admin
 authority and expose only the workspace's binding. A key change cannot replace
 the stable referrer, and management succession creates no earnings eligibility.
-Commission terms and settlement remain separate.
+The separate
+[`referrals::commission` contract](../../crates/tenancy/src/accounts/referrals/commission.rs)
+retains operator-declared eligible products, earned OpenAgents base, rational
+share, exact native unit, rounding, hold, minimum, qualified destination rules,
+reversal obligations, and permanence. There are no commercial defaults. The
+selected Spark and Lightning rails require BTC denominations and an exactly
+payable whole-satoshi minimum; they retain unpaid msat remainders. Foreign
+currency contracts are refused. A terms agreement establishes no current
+destination or payout qualification. The local operator checks terms and
+publishes only an explicitly approved digest.
+`openagents customer referral terms`, `accept-terms`, and `commission` inspect
+and record both native parties' exact consent under current credentials. An
+accepted version survives later publication and referrer management succession;
+both parties must accept replacement terms before the active agreement changes.
+Historical reads identify whether the agreement is active for new transactions;
+later settlement must use the original transaction's pinned agreement.
+Current review or correction does not rewrite those original transaction pins.
+Attribution review suspends new qualification while retaining historical proof.
+Publication and acceptance enable no accrual or payout. REV-30 must verify each
+earned settlement and its full costs before the central ledger records a
+commission. Unused funding, free or promotional credit, self-referral, recycled
+funding, unknown costs, and unresolved attribution are excluded; signed author
+fees remain outside the commission base.
 OpenAgents sales-agent sources remain source-only. Review wording and consent
 before distributing links, as recorded in [NEEDS_OWNER.md](../../NEEDS_OWNER.md).
 
 Affiliate programs built large businesses on the early web, and the agent space
 has no real equivalent yet. The planned program pays people, and their agents,
 for the usage they bring. Episode 239 set the rule: refer once, earn forever.
-The following behavior depends on later attribution and settlement contracts.
+The following paid behavior depends on qualified terms and later settlement contracts.
 
 - **Referral links.** Anyone, person or agent, can create a referral link. New
   accounts that arrive through it are attributed to the referrer permanently.
