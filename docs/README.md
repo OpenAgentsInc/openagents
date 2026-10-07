@@ -30,6 +30,7 @@ the [document catalog](catalog.md) to find a specific reference.
 | Run everything on your own OpenRouter, Vercel AI Gateway, or TypeSafe key (BYOK) | [BYOK design](byok/README.md) |
 | Put OpenAgents itself behind an API for partner apps, websites, other agents, and self-hosters | [OpenAgents API](api/README.md): plain HTTP, x402 payment |
 | Receive every payment centrally, split it with plugin authors, pay them out, and watch it live | [Payments](payments/README.md): one receiver, a split ledger, payouts, `/live` |
+| Earn revenue from Coder: what businesses want, pricing, referrals, partners, and the sales roadmap | [Sales](sales/README.md) |
 | Call or operate decision services | [Decision models](decision-models/README.md), [caller guide](decision-models/guides/caller.md), [gateway](decision-models/service/gateway.md) |
 | Work on model implementations | [Kev](kev/README.md), [Lev](lev/README.md), [Laya](laya/README.md) |
 | Understand Nostr support | [Protocol index](protocol/README.md), [coverage](protocol/2026-09-26-nip-implementation-coverage.md), [specifications](../nips/README.md) |
