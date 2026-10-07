@@ -30,7 +30,7 @@
 
 use std::collections::BTreeMap;
 use std::io::{Read, Write};
-use std::os::unix::fs::OpenOptionsExt;
+use std::os::unix::fs::{MetadataExt, OpenOptionsExt, PermissionsExt};
 use std::path::{Path, PathBuf};
 
 use serde::{Deserialize, Serialize};
@@ -1722,36 +1722,57 @@ fn load(dir: &Path) -> Result<Store, Trouble> {
     Store::parse(&text, &path.display().to_string()).map_err(Trouble::Invalid)
 }
 
+// Keep the same inode for every writer. Removing a locked file lets another
+// process create a second lock; leaving a sentinel after a crash blocks recovery.
 struct BillingLock {
-    path: PathBuf,
+    _file: std::fs::File,
 }
 
 impl BillingLock {
     fn acquire(dir: &Path) -> Result<Self, Trouble> {
         let path = dir.join(LOCK);
+        let file = std::fs::OpenOptions::new()
+            .create(true)
+            .truncate(false)
+            .read(true)
+            .write(true)
+            .mode(0o600)
+            .custom_flags(libc::O_NOFOLLOW | libc::O_CLOEXEC)
+            .open(&path)?;
+        let held = file.metadata()?;
+        if !held.is_file()
+            || held.nlink() != 1
+            || held.uid() != unsafe { libc::geteuid() }
+            || held.permissions().mode() & 0o077 != 0
+        {
+            return Err(Trouble::Invalid(
+                "billing lock requires an owned private regular file".into(),
+            ));
+        }
         for _ in 0..LOCK_RETRIES {
-            match std::fs::OpenOptions::new()
-                .create_new(true)
-                .write(true)
-                .open(&path)
-            {
-                Ok(mut file) => {
-                    writeln!(file, "pid {}", std::process::id()).ok();
-                    return Ok(Self { path });
+            match file.try_lock() {
+                Ok(()) => {
+                    let current = std::fs::symlink_metadata(&path)?;
+                    if !current.is_file()
+                        || current.dev() != held.dev()
+                        || current.ino() != held.ino()
+                        || current.nlink() != 1
+                        || current.uid() != held.uid()
+                        || current.permissions().mode() & 0o077 != 0
+                    {
+                        return Err(Trouble::Invalid(
+                            "billing lock changed while acquiring it".into(),
+                        ));
+                    }
+                    return Ok(Self { _file: file });
                 }
-                Err(error) if error.kind() == std::io::ErrorKind::AlreadyExists => {
+                Err(std::fs::TryLockError::WouldBlock) => {
                     std::thread::sleep(std::time::Duration::from_millis(10));
                 }
-                Err(error) => return Err(Trouble::Io(error)),
+                Err(std::fs::TryLockError::Error(error)) => return Err(Trouble::Io(error)),
             }
         }
         Err(Trouble::Locked(path.display().to_string()))
-    }
-}
-
-impl Drop for BillingLock {
-    fn drop(&mut self) {
-        std::fs::remove_file(&self.path).ok();
     }
 }
 
@@ -2130,5 +2151,67 @@ mod tests {
         let read = Billing::open(&dir).unwrap().store().unwrap();
         assert!(read.book.subscription_for("ws_1").is_some());
         std::fs::remove_dir_all(&dir).ok();
+    }
+    #[test]
+    fn lock_child() {
+        let Some(dir) = std::env::var_os("OPENAGENTS_BILLING_LOCK_TEST_DIR") else {
+            return;
+        };
+        let _lock = BillingLock::acquire(Path::new(&dir)).unwrap();
+        std::fs::write(Path::new(&dir).join("ready"), b"locked").unwrap();
+        loop {
+            std::thread::sleep(std::time::Duration::from_secs(1));
+        }
+    }
+
+    #[test]
+    fn a_killed_writer_releases_the_same_lock_inode() {
+        let dir = tempfile::tempdir().unwrap();
+        let billing = Billing::install(dir.path()).unwrap();
+        let before = std::fs::metadata(dir.path().join(LOCK)).unwrap();
+        let mut child = std::process::Command::new(std::env::current_exe().unwrap())
+            .args(["--exact", "billing::tests::lock_child", "--nocapture"])
+            .env("OPENAGENTS_BILLING_LOCK_TEST_DIR", dir.path())
+            .stdout(std::process::Stdio::null())
+            .stderr(std::process::Stdio::null())
+            .spawn()
+            .unwrap();
+        let deadline = std::time::Instant::now() + std::time::Duration::from_secs(10);
+        while !dir.path().join("ready").exists() {
+            if child.try_wait().unwrap().is_some() || std::time::Instant::now() >= deadline {
+                let _ = child.kill();
+                let _ = child.wait();
+                panic!("isolated lock child did not become ready");
+            }
+            std::thread::sleep(std::time::Duration::from_millis(10));
+        }
+        // An independent writer must be excluded while the child holds the file.
+        let excluded = matches!(BillingLock::acquire(dir.path()), Err(Trouble::Locked(_)));
+        child.kill().unwrap();
+        child.wait().unwrap();
+        assert!(excluded);
+        billing.record("test-owner", "restart", None, None).unwrap();
+        let after = std::fs::metadata(dir.path().join(LOCK)).unwrap();
+        assert_eq!((before.dev(), before.ino()), (after.dev(), after.ino()));
+        assert_eq!(billing.store().unwrap().sequence, 1);
+    }
+
+    #[test]
+    fn lock_refuses_symlinks_hardlinks_and_public_files() {
+        let dir = tempfile::tempdir().unwrap();
+        let elsewhere = dir.path().join("elsewhere");
+        std::fs::write(&elsewhere, b"untouched").unwrap();
+        let path = dir.path().join(LOCK);
+        std::os::unix::fs::symlink(&elsewhere, &path).unwrap();
+        assert!(BillingLock::acquire(dir.path()).is_err());
+        std::fs::remove_file(&path).unwrap();
+        std::fs::set_permissions(&elsewhere, std::fs::Permissions::from_mode(0o600)).unwrap();
+        std::fs::hard_link(&elsewhere, &path).unwrap();
+        assert!(BillingLock::acquire(dir.path()).is_err());
+        std::fs::remove_file(&path).unwrap();
+        std::fs::write(&path, b"public").unwrap();
+        std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o644)).unwrap();
+        assert!(BillingLock::acquire(dir.path()).is_err());
+        assert_eq!(std::fs::read(&elsewhere).unwrap(), b"untouched");
     }
 }
