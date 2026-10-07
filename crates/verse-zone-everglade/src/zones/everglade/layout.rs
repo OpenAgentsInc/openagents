@@ -756,9 +756,34 @@ fn open_ground(x: f32, z: f32) -> bool {
         && !near(TOWER, 5.0)
 }
 
-/// Every placement in the glade.
+/// Every placement in the glade but what floats on its water
+/// ([`floats`]), which the zone draws and moves itself.
 #[must_use]
 pub fn placements() -> Vec<Placement> {
+    every()
+        .into_iter()
+        .filter(|p| !floats_on_water(p))
+        .collect()
+}
+
+/// What floats on the water: the lily pads and the moored rowboats, which
+/// bob and which a player boards (`zones::everglade::boats`). The
+/// boathouse's rowboat stays a static prop in [`placements`].
+#[must_use]
+pub fn floats() -> Vec<Placement> {
+    every().into_iter().filter(floats_on_water).collect()
+}
+
+fn floats_on_water(p: &Placement) -> bool {
+    p.model == "generated/lily_pads"
+        || (p.model == "generated/rowboat"
+            && parks::moorings()
+                .iter()
+                .any(|(at, _)| (at[0] - p.at[0]).abs() < 1e-4 && (at[1] - p.at[1]).abs() < 1e-4))
+}
+
+/// Every placement in the glade, what floats included.
+fn every() -> Vec<Placement> {
     let mut out = Vec::with_capacity(512);
     hall(&mut out);
     stations(&mut out);

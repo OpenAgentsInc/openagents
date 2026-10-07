@@ -3132,6 +3132,7 @@ impl Photo {
                 (packed.clip, packed.field, packed.field_pages) =
                     ocean.prepare(queue, &self.water_field, view.eye);
             }
+            packed.ripple = self.ocean.field(queue, water, view);
             queue.write_buffer(&self.water_buffer, 0, bytemuck::bytes_of(&packed));
         }
         // Medium and High copy the opaque scene for the water and the

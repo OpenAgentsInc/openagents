@@ -15,7 +15,7 @@
 use std::f32::consts::TAU;
 use std::sync::Arc;
 
-use glam::Vec3;
+use glam::{Vec2, Vec3};
 
 use super::height;
 use super::layout::{PONDS, Placement};
@@ -399,6 +399,11 @@ pub struct Wildlife {
     /// The characters' scene and the scene of it and the creatures.
     combined: Option<(Arc<TexturedScene>, Arc<TexturedScene>)>,
     clock: f32,
+    /// Discs on the water a swimming creature steers around, such as the
+    /// boats: each a center and a radius, m.
+    avoid: Vec<(Vec2, f32)>,
+    /// Each swimming creature's place and velocity this frame.
+    swimmers: Vec<(Vec3, Vec3)>,
 }
 
 impl Wildlife {
@@ -452,6 +457,8 @@ impl Wildlife {
             posed,
             combined: None,
             clock: 0.0,
+            avoid: Vec::new(),
+            swimmers: Vec::new(),
         })
     }
 
@@ -475,11 +482,38 @@ impl Wildlife {
         drawn
     }
 
+    /// Sets the discs a swimming creature steers around: each a center and
+    /// a radius, m.
+    pub fn set_avoid(&mut self, avoid: Vec<(Vec2, f32)>) {
+        self.avoid = avoid;
+    }
+
+    /// The creatures swimming on the water this frame, each where it is and
+    /// how fast it moves, for the ripple field.
+    #[must_use]
+    pub fn swimmers(&self) -> &[(Vec3, Vec3)] {
+        &self.swimmers
+    }
+
     /// Advances the clock by `dt` and poses each creature within [`CULL`]
     /// of `eye`; the rest fold away.
     pub fn tick(&mut self, dt: f32, eye: Vec3) {
         let dt = if dt.is_finite() { dt.max(0.0) } else { 0.0 };
         self.clock = (self.clock + dt) % 3600.0;
+        // Who swims: a creature on a pond or the run, at its surface.
+        self.swimmers.clear();
+        for creature in &self.creatures {
+            let t = self.clock + creature.phase;
+            let now = steer_around(&self.avoid, creature.route.at(t));
+            let Some(top) = verse_world::social::everglade_water::surface(now.at.x, now.at.z)
+            else {
+                continue;
+            };
+            if (now.at.y - top).abs() < 0.35 {
+                let before = steer_around(&self.avoid, creature.route.at(t - 0.1));
+                self.swimmers.push((now.at, (now.at - before.at) / 0.1));
+            }
+        }
         let mut at = 0;
         for (((creature, beast), &count), &(near, far)) in self
             .creatures
@@ -489,6 +523,7 @@ impl Wildlife {
             .zip(&self.bands)
         {
             let moment = creature.route.at(self.clock + creature.phase);
+            let moment = steer_around(&self.avoid, moment);
             let slot = &mut self.posed[at..at + count];
             at += count;
             let distance = moment.at.distance(eye);
@@ -566,4 +601,25 @@ impl Wildlife {
             vertices: Arc::new(vertices),
         }
     }
+}
+
+/// `moment` pushed out of every disc of `avoid` it lies in, when it swims:
+/// a duck steering round a boat.
+fn steer_around(avoid: &[(Vec2, f32)], mut moment: Moment) -> Moment {
+    if avoid.is_empty()
+        || verse_world::social::everglade_water::surface(moment.at.x, moment.at.z).is_none()
+    {
+        return moment;
+    }
+    for &(center, radius) in avoid {
+        let d = Vec2::new(moment.at.x, moment.at.z) - center;
+        let len = d.length();
+        if len < radius {
+            let out = if len > 1e-3 { d / len } else { Vec2::X };
+            let p = center + out * radius;
+            moment.at.x = p.x;
+            moment.at.z = p.y;
+        }
+    }
+    moment
 }

@@ -3417,6 +3417,11 @@ impl App {
                 self.talk_to_villager(&id);
                 return;
             }
+            // By one of Everglade's rowboats, the interact key boards it,
+            // leaves it, or rights it.
+            if code == KeyCode::KeyF && !self.keys.shift && self.runtime.boat_interact().is_some() {
+                return;
+            }
             // In Everglade J opens the waiting decisions, and V mutes the
             // studio's bell and chimes.
             if self.runtime.studio().active() {

@@ -2327,6 +2327,34 @@ impl WorldRuntime {
             .map(|p| (p.id.clone(), p.name.clone()))
     }
 
+    /// Everglade's zone, while the player is in the town, for captures and
+    /// tools that act on its water.
+    pub fn everglade_zone_mut(&mut self) -> Option<&mut crate::zones::everglade::Everglade> {
+        if self.zone != ZoneId::Everglade || self.zone_state.demolition {
+            return None;
+        }
+        self.zone_state.everglade.as_mut()
+    }
+
+    /// Everglade's rowboats, while the player is in the town.
+    pub fn everglade_afloat_mut(&mut self) -> Option<&mut crate::zones::everglade::boats::Afloat> {
+        if self.zone != ZoneId::Everglade || self.zone_state.demolition {
+            return None;
+        }
+        self.zone_state.everglade.as_mut()?.afloat_mut()
+    }
+
+    /// The interact key by one of Everglade's rowboats: boards it, leaves
+    /// it, or rights it capsized. Returns what happened, or `None` with no
+    /// boat in reach.
+    pub fn boat_interact(&mut self) -> Option<String> {
+        if self.zone != ZoneId::Everglade || self.zone_state.demolition || self.zone_loading() {
+            return None;
+        }
+        let glade = self.zone_state.everglade.as_mut()?;
+        glade.interact_boat(&mut self.player)
+    }
+
     /// Shows `text` in a bubble over villager `id`.
     pub fn villager_say(&mut self, id: &str, text: &str) {
         self.zone_state.townsfolk.say(id, text);

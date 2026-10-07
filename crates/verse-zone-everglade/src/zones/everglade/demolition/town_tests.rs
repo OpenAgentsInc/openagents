@@ -614,3 +614,133 @@ fn a_small_geometry_budget_retires_the_oldest_debris_and_frees_the_pool() {
     town.tick(1.0 / 60.0, &caster(targets[0], 20.0));
     assert_eq!(town.geometry_bytes(), 0, "restoring frees the pool");
 }
+
+/// Breaking Glade Run's footbridge drops its planks in the stream: they
+/// float at the surface, drift downstream on the current, and lodge
+/// against the banks; and nothing falls through the slab under the water.
+#[test]
+fn the_footbridge_s_planks_float_down_glade_run_and_lodge() {
+    use super::site::Matter;
+    use verse_world::social::everglade_water::{run as glade_run, surface};
+    let mut town = town();
+    let ([bx, bz], _) = layout::BRIDGE;
+    let bridge = town
+        .buildings()
+        .iter()
+        .position(|b| {
+            let ([cx, cz], [hx, hz]) = b.rect;
+            (bx - cx).abs() <= hx + 0.5 && (bz - cz).abs() <= hz + 0.5 && b.destructible()
+        })
+        .expect("the footbridge is a building");
+    let player = caster(Vec3::new(bx, 0.0, bz), 8.0);
+    // Raise it, then break every piece.
+    town.blast(Vec3::new(bx, height(bx, bz) + 0.6, bz), 3.0, 0, Vec3::Z);
+    let doomed: Vec<usize> = pieces(&town, bridge).into_iter().map(|(i, _)| i).collect();
+    assert!(!doomed.is_empty());
+    for i in doomed {
+        let at = town.site().specs()[i].center;
+        town.site_mut().damage(i, 100_000, at, glam::DVec3::Y * 0.2);
+    }
+    run(&mut town, &player, 1.0);
+    let timber: Vec<_> = town
+        .site()
+        .chunk_bodies()
+        .into_iter()
+        .filter(|(_, m)| *m == Matter::Timber)
+        .collect();
+    assert!(!timber.is_empty(), "the bridge breaks into timber");
+    let course = glade_run();
+    let along = |p: glam::DVec3| course.locate(p.x as f32, p.z as f32).along;
+    let start: Vec<f32> = timber
+        .iter()
+        .map(|(b, _)| along(town.site().body_motion(*b).0))
+        .collect();
+    assert!(town.site().afloat() > 0, "planks fell in the water");
+    let splashes = town.site_mut().take_splashes();
+    assert!(!splashes.is_empty(), "they splashed");
+    run(&mut town, &player, 40.0);
+    let mut floating = 0;
+    let mut drifted = 0;
+    let mut lodged = 0;
+    for ((body, _), from) in timber.iter().zip(&start) {
+        let (pos, _) = town.site().body_motion(*body);
+        let Some(top) = surface(pos.x as f32, pos.z as f32) else {
+            continue;
+        };
+        // Never under the bed: through the slab and onto the carved bed.
+        assert!(
+            pos.y as f32 > height(pos.x as f32, pos.z as f32) - 0.3,
+            "{pos}"
+        );
+        if (pos.y as f32 - top).abs() < 0.35 {
+            floating += 1;
+        }
+        if along(pos) > from + 2.0 {
+            drifted += 1;
+        }
+        if town.site().is_frozen(*body) {
+            lodged += 1;
+        }
+    }
+    assert!(floating > 0, "timber floats");
+    assert!(drifted > 0, "the current carries planks downstream");
+    assert!(lodged > 0, "planks lodge");
+}
+
+/// Over Lantern Pond, timber debris floats at its draft and brick sinks to
+/// the carved bed, though both were given the same light mass to fall by.
+#[test]
+fn stone_debris_sinks_and_timber_floats() {
+    use super::site::{Cuboid, Link, Matter, PieceSpec, Role, Site};
+    use glam::{DQuat, DVec3};
+    use verse_world::social::everglade_water::{self as ew, PONDS};
+    let ([x, z], _) = PONDS[0];
+    let top = ew::surface(x, z).unwrap();
+    let half = DVec3::new(0.4, 0.15, 0.4);
+    let spec = |matter, dx: f32| PieceSpec {
+        building: 0,
+        role: Role::Block { level: 0 },
+        matter,
+        center: DVec3::new(f64::from(x + dx), f64::from(top) + 1.5, f64::from(z)),
+        orientation: DQuat::IDENTITY,
+        mass: 40.0,
+        size: half * 2.0,
+        hit_points: 10,
+        colliders: vec![Cuboid::between(-half, half)],
+        chunks: vec![
+            Cuboid::between(-half, DVec3::new(0.0, half.y, half.z)),
+            Cuboid::between(DVec3::new(0.0, -half.y, -half.z), half),
+        ],
+        blocks: false,
+        link: Link {
+            footing: true,
+            ..Link::default()
+        },
+    };
+    let mut site = Site::new(
+        vec![spec(Matter::Timber, -1.5), spec(Matter::Brick, 1.5)],
+        7,
+    );
+    site.set_ground(180.0, Vec::new());
+    site.set_water(ew::water(), ew::bed_boxes(1.0, 1.5));
+    site.retain(|_| true);
+    for piece in 0..2 {
+        let at = site.specs()[piece].center;
+        assert!(site.damage(piece, 1000, at, DVec3::ZERO));
+    }
+    for _ in 0..(20.0 * 60.0) as usize {
+        site.tick(1.0 / 60.0);
+    }
+    let chunks = site.chunk_bodies();
+    assert_eq!(chunks.len(), 4);
+    for (body, matter) in chunks {
+        let (pos, _) = site.body_motion(body);
+        let y = pos.y as f32;
+        match matter {
+            Matter::Timber => assert!((y - top).abs() < 0.3, "timber at {y}, surface {top}"),
+            _ => assert!(y < top - 1.5, "brick at {y}, surface {top}"),
+        }
+    }
+    let splashes = site.take_splashes();
+    assert!(splashes.len() >= 4 && splashes.iter().all(|s| s.speed > 2.0));
+}

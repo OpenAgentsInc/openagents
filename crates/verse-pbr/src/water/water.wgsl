@@ -32,6 +32,11 @@
 //   absorption path is the distance to the scene behind the surface, and
 //   foam gathers where that distance is short, as soft particles fade
 //   (Lorach, "Soft Particles", NVIDIA, 2007).
+// - The ripple and foam field around the camera (`water::ripple`): the
+//   damped wave equation (Bridson and Müller-Fischer, SIGGRAPH 2007 course
+//   notes) or Tessendorf's iWave ("Interactive Water Surfaces", 2004),
+//   with Kelvin's wake wedge drawn in, stepped on the CPU and read from
+//   the last layer of `water_waves`: height, slopes, and foam.
 //
 // The host shader declares the bindings and four hooks:
 //
@@ -113,6 +118,12 @@ struct WaterUniform {
     // The page each slot of the field's atlas holds (x × 4096 + z), four
     // slots a row; −1 for none.
     field_pages: array<vec4<f32>, 16>,
+    // The ripple field's window: its corner (x, z), side (m; 0 for none),
+    // and its layer in `water_waves`.
+    ripple: vec4<f32>,
+    // Per boat hull the water is masked out of: its middle (x, z) and its
+    // heading; then its half beam (0 for none), half length, and gunwale.
+    hulls: array<vec4<f32>, 8>,
 };
 
 // A vertex of a water surface at rest (`water::WaterVertex`).
@@ -254,6 +265,45 @@ fn water_ocean_detail(b: u32, p: vec2<f32>, depth: f32, scale: f32, footprint: f
     return o;
 }
 
+// ---- The ripple and foam field.
+
+// The field at `p`: height (m), its slopes along x and z, and foam, faded
+// out over the window's outer cells; zero outside it or without one.
+fn water_ripple_field(p: vec2<f32>) -> vec4<f32> {
+    let side = water.ripple.z;
+    if side <= 0.0 {
+        return vec4<f32>(0.0);
+    }
+    let uv = (p - water.ripple.xy) / side;
+    if any(uv < vec2<f32>(0.0)) || any(uv > vec2<f32>(1.0)) {
+        return vec4<f32>(0.0);
+    }
+    let edge = min(min(uv.x, 1.0 - uv.x), min(uv.y, 1.0 - uv.y));
+    let fade = smoothstep(0.0, 0.08, edge);
+    let layer = i32(water.ripple.w + 0.5);
+    return textureSampleLevel(water_waves, water_tile_sampler, uv, layer, 0.0) * fade;
+}
+
+// Whether `world` lies inside a boat's hull, under its gunwale: the hull
+// keeps the water out, so the surface draws nothing there (an analytic
+// footprint mask on every tier, in place of a screen-space one).
+fn water_in_hull(world: vec3<f32>) -> bool {
+    for (var i = 0; i < 4; i++) {
+        let a = water.hulls[i * 2];
+        let b = water.hulls[i * 2 + 1];
+        if b.x <= 0.0 {
+            continue;
+        }
+        let d = world.xz - a.xy;
+        let along = dot(d, a.zw);
+        let across = d.x * a.w - d.y * a.z;
+        if abs(along) < b.y && abs(across) < b.x && world.y < b.z {
+            return true;
+        }
+    }
+    return false;
+}
+
 // Displaces one vertex: `world` the position, `crest` the squeeze.
 struct WaterMoved {
     world: vec3<f32>,
@@ -278,6 +328,7 @@ fn water_move(v: WaterIn, scale: f32, rise: f32) -> WaterMoved {
         world += sea.xyz;
         o.crest = max(o.crest, sea.w);
     }
+    world.y += water_ripple_field(v.pos.xz).x;
     o.world = world;
     return o;
 }
@@ -571,7 +622,12 @@ fn water_foam(b: u32, rest: vec2<f32>, shore: f32, crest: f32, extra: f32, noise
     foam = max(foam, smoothstep(0.62, 0.95, crest) * smoothstep(0.35, 0.7, noise));
     foam = max(foam, clamp(extra, 0.0, 1.0) * smoothstep(0.25, 0.65, noise + 0.25 * extra));
     foam = max(foam, water_ripple_foam(rest) * smoothstep(0.2, 0.6, noise));
-    return clamp(foam * water.bodies[b].scatter.w, 0.0, 1.0);
+    // Trails and splash foam from the field: mottled, and solid where
+    // thick. They are churned water, as white on a still pond as on the
+    // sea, so the body's foam amount does not thin them.
+    let trail = water_ripple_field(rest).w;
+    let churned = trail * smoothstep(0.1, 0.5, noise + 0.5 * trail) * 0.9;
+    return max(clamp(foam * water.bodies[b].scatter.w, 0.0, 1.0), clamp(churned, 0.0, 0.9));
 }
 
 // What one surface fragment adds and lets through: `emit` the radiance it
@@ -676,7 +732,8 @@ fn water_normal(s: WaterFragment) -> WaterNormal {
         o.whitecap = sea.w * (1.0 - s.calm);
     }
     let detail = water_flow_detail(s.rest, s.flow, s.footprint, s.dpx, s.dpy);
-    slope = (slope + detail.xy + water_ripples(s.rest) + s.slope) * (1.0 - s.calm);
+    let field = water_ripple_field(s.rest);
+    slope = (slope + detail.xy + water_ripples(s.rest) + field.yz + s.slope) * (1.0 - s.calm);
     o.n = normalize(vec3<f32>(-slope.x, 1.0 - squeeze_y * (1.0 - s.calm), -slope.y));
     let base = water.bodies[s.body].params.y;
     o.roughness = clamp(sqrt(base * base + detail.z + lost), 0.02, 0.6);

@@ -442,9 +442,12 @@ impl Worker {
     }
 }
 
-/// The sea's texture and the worker that fills it.
+/// The sea's texture and the worker that fills it, and the ripple field
+/// that rides in its last layer.
 pub struct OceanGpu {
     plan: Plan,
+    /// The ripple and foam field around the camera ([`super::ripple`]).
+    pub ripples: super::ripple::Ripples,
     tier: Tier,
     texture: wgpu::Texture,
     view: wgpu::TextureView,
@@ -472,7 +475,7 @@ impl OceanGpu {
             size: wgpu::Extent3d {
                 width: plan.size as u32,
                 height: plan.size as u32,
-                depth_or_array_layers: plan.layers(),
+                depth_or_array_layers: plan.layers() + 1,
             },
             mip_level_count: 1,
             sample_count: 1,
@@ -487,6 +490,7 @@ impl OceanGpu {
         });
         Self {
             plan,
+            ripples: super::ripple::Ripples::for_tier(tier),
             tier,
             texture,
             view,
@@ -510,10 +514,64 @@ impl OceanGpu {
         self.plan
     }
 
-    /// The texture's bytes on the GPU.
+    /// The texture's bytes on the GPU, the ripple layer's included.
     #[must_use]
     pub fn bytes(&self) -> u64 {
-        self.plan.bytes()
+        self.plan.bytes() + (self.plan.size * self.plan.size * 8) as u64
+    }
+
+    /// Steps the ripple field to `water`'s clock with its sources around
+    /// what `view` looks at, uploads it to the last layer, and returns the
+    /// uniform's `ripple` row (all zero while the field is still and empty).
+    /// The window sits ahead of the eye, so it covers the water the camera
+    /// sees and the eye stays inside it.
+    pub fn field(
+        &mut self,
+        queue: &wgpu::Queue,
+        water: &super::Water,
+        view: verse_engine::presentation::View,
+    ) -> [f32; 4] {
+        let eye = view.eye;
+        let ahead = view
+            .view_proj
+            .inverse()
+            .project_point3(glam::Vec3::new(0.0, 0.0, 0.5))
+            - eye;
+        let ahead = glam::Vec2::new(ahead.x, ahead.z).normalize_or_zero();
+        let focus = glam::Vec2::new(eye.x, eye.z) + ahead * self.ripples.plan().extent() * 0.3;
+        self.ripples
+            .advance(water.time, focus, water.sources(), water.wet);
+        let busy = self.ripples.stats().wakes > 0 || !self.ripples.is_quiet();
+        if !busy {
+            return [0.0; 4];
+        }
+        let n = self.plan.size as u32;
+        let layer = self.plan.layers();
+        let texels = self.ripples.texels();
+        queue.write_texture(
+            wgpu::TexelCopyTextureInfo {
+                texture: &self.texture,
+                mip_level: 0,
+                origin: wgpu::Origin3d {
+                    x: 0,
+                    y: 0,
+                    z: layer,
+                },
+                aspect: wgpu::TextureAspect::All,
+            },
+            bytemuck::cast_slice(&texels),
+            wgpu::TexelCopyBufferLayout {
+                offset: 0,
+                bytes_per_row: Some(n * 8),
+                rows_per_image: Some(n),
+            },
+            wgpu::Extent3d {
+                width: n,
+                height: n,
+                depth_or_array_layers: 1,
+            },
+        );
+        self.ripples.window(layer)
     }
 
     fn upload(&mut self, queue: &wgpu::Queue, frame: &Frame) {

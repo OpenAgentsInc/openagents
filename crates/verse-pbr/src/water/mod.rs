@@ -15,6 +15,9 @@
 //! - [`tile`]: the baked looping normal tile the low tier reads.
 //! - [`ocean`]: the spectral sea's cascades (phase W4), synthesized on a
 //!   worker thread and uploaded as the `water_waves` array texture.
+//! - [`ripple`]: the interactive ripple and foam field around the camera
+//!   (phase W6), which movers, impacts, and spells write into; it rides
+//!   in one more layer of `water_waves`.
 //! - [`seas`]: sea states from `assets/verse/water/seas/`.
 //! - [`control`]: the frame's `water_control` vector for a quality tier.
 //! - [`screen`]: what Medium and High copy and trace (W5): the scene's
@@ -42,6 +45,7 @@ pub mod ocean;
 #[cfg(test)]
 mod parity;
 pub mod preset;
+pub mod ripple;
 pub mod screen;
 pub mod seas;
 pub mod terms;
@@ -52,6 +56,7 @@ pub use frame::{
 };
 pub use ocean::OceanGpu;
 pub use preset::{Jerlov, Preset};
+pub use ripple::{Ripples, Source};
 pub use seas::SeaState;
 pub use terms::Swell;
 

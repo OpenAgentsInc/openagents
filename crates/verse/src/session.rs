@@ -321,6 +321,12 @@ pub struct Session {
     budget: Budget,
     /// Shared-body reports and snapshots, oldest first.
     bodies_in: Vec<BodyIn>,
+    /// Everglade's rowboats this client hosts, as shared-body entries for
+    /// the next pose frame ([`boat_entry`]).
+    boat_entries: Vec<EntityPose>,
+    /// The boat and seat the local player sits in, which its avatar's
+    /// entry names instead of a pose of its own.
+    seat: Option<(String, &'static str)>,
     /// When the last body snapshot went out, and its `created_at`.
     last_snapshot: Option<(Instant, u64)>,
     /// Every event handed to the link, for tests.
@@ -493,6 +499,8 @@ impl Session {
                 sent: VecDeque::new(),
             },
             bodies_in: Vec::new(),
+            boat_entries: Vec::new(),
+            seat: None,
             last_snapshot: None,
             #[cfg(test)]
             published: std::cell::RefCell::default(),
@@ -671,6 +679,7 @@ impl Session {
     /// exchanges the shared bodies.
     pub fn tick_world(&mut self, now: Instant, world: &mut crate::runtime::WorldRuntime) {
         self.crowd.set_hosted(world.is_hosted());
+        self.exchange_boats(world);
         let crate::runtime::WorldRuntime {
             player,
             agent,
@@ -678,6 +687,43 @@ impl Session {
             ..
         } = world;
         self.tick_bodies(now, player, agent, ball.as_deref_mut());
+    }
+
+    /// Everglade's rowboats over NIP-MV's shared bodies: applies the reports
+    /// of boats other clients host (each boat's rower is its host, and the
+    /// stamps settle who that is), and queues the reports of the boats
+    /// this client hosts for its next frame. A seated player's avatar
+    /// names its boat and seat.
+    fn exchange_boats(&mut self, world: &mut crate::runtime::WorldRuntime) {
+        let me = self.id.signer.pubkey().to_owned();
+        let Some(afloat) = world.everglade_afloat_mut() else {
+            self.boat_entries.clear();
+            self.seat = None;
+            return;
+        };
+        afloat.set_me(&me);
+        let (boats, rest): (Vec<BodyIn>, Vec<BodyIn>) = std::mem::take(&mut self.bodies_in)
+            .into_iter()
+            .partition(|b| matches!(b, BodyIn::Entry { pose, .. } if is_boat(&pose.id)));
+        self.bodies_in = rest;
+        for report in boats {
+            if let BodyIn::Entry { from, pose, .. } = report
+                && from != me
+                && let Some(report) = boat_report(&pose)
+            {
+                afloat.fleet.receive(&from, &report);
+            }
+        }
+        self.boat_entries = afloat.fleet.reports(&me).iter().map(boat_entry).collect();
+        self.seat = afloat.seat().map(|(k, seat, _)| {
+            (
+                afloat.fleet.boats[k].id.clone(),
+                match seat {
+                    verse_world::rowboat::Seat::Rower => "row",
+                    verse_world::rowboat::Seat::Passenger => "ride",
+                },
+            )
+        });
     }
 
     /// As [`Session::tick`], with the shared `bodies`: applies the reports
@@ -720,9 +766,10 @@ impl Session {
         } else {
             self.intervals.idle
         };
-        if bodies
-            .as_deref()
-            .is_some_and(crate::ball::Ball::has_outgoing)
+        if !self.boat_entries.is_empty()
+            || bodies
+                .as_deref()
+                .is_some_and(crate::ball::Ball::has_outgoing)
         {
             interval = interval.min(self.body_interval());
         }
@@ -738,6 +785,8 @@ impl Session {
             if let Some(bodies) = bodies.as_deref_mut() {
                 e.extend(bodies.frame_entries(mv::MAX_ENTITIES - e.len()));
             }
+            let room = mv::MAX_ENTITIES.saturating_sub(e.len());
+            e.extend(self.boat_entries.iter().take(room).cloned());
             let frame = Frame {
                 v: 1,
                 s: self.session.clone(),
@@ -945,6 +994,14 @@ impl Session {
         let mut poses = poses(player, agent);
         if self.presence_only {
             poses.retain(|pose| pose.role == "avatar");
+        }
+        // A seated player rides its seat: its entry names the boat it
+        // follows and how it sits there.
+        if let Some((boat, how)) = &self.seat {
+            for pose in poses.iter_mut().filter(|p| p.role == "avatar") {
+                pose.follows = Some(boat.clone());
+                pose.a = Some((*how).to_owned());
+            }
         }
         poses
     }
@@ -1931,6 +1988,55 @@ fn unix_millis() -> u64 {
         .map_or(0, |d| d.as_millis() as u64)
 }
 
+/// Whether a shared-body id names one of Everglade's rowboats.
+fn is_boat(id: &str) -> bool {
+    id.starts_with("rowboat-")
+}
+
+/// A rowboat's report as a NIP-MV shared-body entry: its keel's pose,
+/// motion, and stamp, and its state in `a` (`+oars` while its host rows).
+pub(crate) fn boat_entry(report: &verse_world::rowboat::Report) -> EntityPose {
+    let mut pose = EntityPose::new(
+        &report.id,
+        mv::BODY_ROLE,
+        report.pos.as_vec3(),
+        report.rot.as_quat(),
+    );
+    pose.v = Some(report.vel.as_vec3().to_array());
+    pose.w = Some(report.omega.as_vec3().to_array());
+    pose.k = Some(report.stamp);
+    pose.r = report.rest;
+    pose.a = Some(format!(
+        "{}{}",
+        report.state.name(),
+        if report.rowing { "+oars" } else { "" }
+    ));
+    pose
+}
+
+/// The rowboat report a shared-body entry carries, if it is one.
+pub(crate) fn boat_report(pose: &EntityPose) -> Option<verse_world::rowboat::Report> {
+    if !is_boat(&pose.id) || pose.role != mv::BODY_ROLE {
+        return None;
+    }
+    let a = pose.a.as_deref().unwrap_or("upright");
+    let (state, rowing) = match a.strip_suffix("+oars") {
+        Some(state) => (state, true),
+        None => (a, false),
+    };
+    Some(verse_world::rowboat::Report {
+        id: pose.id.clone(),
+        pos: glam::Vec3::from(pose.p).as_dvec3(),
+        rot: glam::Quat::from_array(pose.q).as_dquat(),
+        vel: glam::Vec3::from(pose.v.unwrap_or_default()).as_dvec3(),
+        omega: glam::Vec3::from(pose.w.unwrap_or_default()).as_dvec3(),
+        stamp: pose.k?,
+        state: verse_world::rowboat::State::parse(state)?,
+        rest: pose.r,
+        rowing,
+    })
+}
+
 #[cfg(test)]
 mod tests {
     #[test]
@@ -2589,5 +2695,69 @@ mod tests {
         let rot = poses[0].rot();
         let fwd = rot * Vec3::Z;
         assert!((fwd - pc.forward()).length() < 1e-4);
+    }
+
+    /// Two clients in Everglade: the host rows a boat across Lantern Pond
+    /// and the other, its passenger, follows the host's pose frames, encoded
+    /// and decoded as NIP-MV frame content. Right after each frame the two
+    /// hold the same pose, and between frames they part by little.
+    #[test]
+    fn a_second_client_sees_the_host_s_rowboat_within_one_frame() {
+        use crate::zones::everglade::{boats, layout};
+        use verse_world::rowboat::{Fleet, Intent, Seat};
+        use verse_world::social::everglade_water as ew;
+        let moorings = boats::moorings(&layout::floats());
+        assert_eq!(moorings.len(), 3);
+        let beds = ew::bed_boxes(1.0, 1.5);
+        let mut host = Fleet::new(ew::water(), &beds, &moorings);
+        let mut guest = Fleet::new(ew::water(), &beds, &moorings);
+        let (keel, _) = host.frame(0);
+        let side = keel.as_vec3() + Vec3::new(0.0, 0.3, 0.0);
+        assert_eq!(host.board(0, "host", side, false), Ok(Seat::Rower));
+        assert_eq!(guest.board(0, "guest", side, false), Ok(Seat::Rower));
+        host.row(
+            "host",
+            Intent {
+                ahead: 1.0,
+                turn: 0.0,
+            },
+        );
+        let mut worst: f64 = 0.0;
+        let mut frames = 0;
+        for step in 0..720_u64 {
+            host.tick(1.0 / 60.0);
+            guest.tick(1.0 / 60.0);
+            if step % 6 == 0 {
+                let frame = Frame {
+                    v: 1,
+                    s: "a41c".into(),
+                    n: step,
+                    t: 1_790_000_000_000 + step * 16,
+                    e: host.reports("host").iter().map(boat_entry).collect(),
+                };
+                let wire = serde_json::to_string(&frame).unwrap();
+                let back: Frame = serde_json::from_str(&wire).unwrap();
+                for pose in &back.e {
+                    let report = boat_report(pose).expect("a rowboat entry");
+                    assert!(guest.receive("host", &report));
+                }
+                frames += 1;
+                let (a, ra) = host.frame(0);
+                let (b, rb) = guest.frame(0);
+                assert!(a.distance(b) < 0.01, "{a} vs {b}");
+                assert!(ra.angle_between(rb) < 0.01);
+            } else {
+                worst = worst.max(host.frame(0).0.distance(guest.frame(0).0));
+            }
+        }
+        assert!(frames > 100);
+        assert!(worst < 0.1, "parted by {worst} m between frames");
+        // It crossed the pond.
+        assert!(host.frame(0).0.distance(keel) > 4.0);
+        // The host took the oars; the guest rides as its passenger and
+        // hosts nothing.
+        assert_eq!(guest.seat_of("guest").map(|s| s.1), Some(Seat::Passenger));
+        assert_eq!(guest.seat_of("host").map(|s| s.1), Some(Seat::Rower));
+        assert!(guest.reports("guest").is_empty());
     }
 }

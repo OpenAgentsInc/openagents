@@ -54,6 +54,28 @@ fn toward(from: [f32; 2], to: [f32; 2]) -> f32 {
     (to[0] - from[0]).atan2(to[1] - from[1])
 }
 
+/// The jetties: pond and the angle from its center to the jetty's bank.
+const JETTIES: [(usize, f32); 3] = [(0, -2.35), (1, PI + 0.3), (2, 2.4)];
+
+/// The rowboats moored beside the jetties at Lantern Pond, Reed Pond, and
+/// the Thinking Pond: each boat's place and heading. They float and a
+/// player boards them (`zones::everglade::boats`).
+#[must_use]
+pub fn moorings() -> [([f32; 2], f32); 3] {
+    JETTIES.map(|(k, angle)| {
+        let (_, r) = PONDS[k];
+        let center = bank(k, angle, r);
+        let water = bank(k, angle, 0.0);
+        let yaw = toward(center, water);
+        let side = angle + FRAC_PI_2;
+        let boat = bank(k, angle, r - 2.6);
+        (
+            [boat[0] + side.cos() * 1.7, boat[1] + side.sin() * 1.7],
+            yaw + 0.25,
+        )
+    })
+}
+
 /// Reeds round each pond's bank, more lily pads, and a jetty with a
 /// rowboat at Lantern Pond, Reed Pond, and the Thinking Pond; another
 /// rowboat waits inside the boathouse.
@@ -85,7 +107,7 @@ fn ponds(out: &mut Vec<Placement>, placed: &mut Placed) {
         }
     }
     // Jetties reach from the bank over the water, a boat tied beside each.
-    for (k, angle) in [(0_usize, -2.35_f32), (1, PI + 0.3), (2, 2.4)] {
+    for ((k, angle), (boat, heading)) in JETTIES.into_iter().zip(moorings()) {
         let (_, r) = PONDS[k];
         let center = bank(k, angle, r);
         let water = bank(k, angle, 0.0);
@@ -98,13 +120,12 @@ fn ponds(out: &mut Vec<Placement>, placed: &mut Placed) {
             Collision::None,
         )));
         placed.push((center, 3.2));
-        let side = angle + FRAC_PI_2;
-        let boat = bank(k, angle, r - 2.6);
-        let boat = [boat[0] + side.cos() * 1.7, boat[1] + side.sin() * 1.7];
-        // Afloat at its draft on the sampled surface; boarding it is W6's.
+        // Afloat at its draft on the sampled surface; it floats as a boat
+        // a player boards (`zones::everglade::boats`), not in the static
+        // cells (`super::floats`).
         out.push(afloat(
-            Placement::new("generated/rowboat", boat, yaw + 0.25, Collision::None),
-            -0.18,
+            Placement::new("generated/rowboat", boat, heading, Collision::None),
+            -0.12,
         ));
     }
     if let Some(house) = city::GROUNDS.iter().find(|i| i.name == "boathouse") {

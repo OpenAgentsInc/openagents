@@ -174,6 +174,7 @@ impl WaterPass {
             f64::from(water.time),
             sea.swell_gain,
         );
+        uniform.ripple = self.ocean.field(queue, water, view);
         queue.write_buffer(&self.buffer, 0, bytemuck::bytes_of(&uniform));
         true
     }

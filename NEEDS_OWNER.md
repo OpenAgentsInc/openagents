@@ -1492,3 +1492,12 @@ disclosure rights separately. Only the isolated local Gateway SystemOne lane is
 code-qualified; cloud, customer-host, plugin, and fallback execution remain
 unavailable under this policy. No fixture uses owner hosts or funds, and policy
 review does not create spending or source grants.
+
+## Rowboats and wakes on a phone and with two players (#10778)
+
+Everglade's rowboats, wakes, and splashes were checked in tests and in
+offscreen captures only. On a phone, swim across Lantern Pond and check
+that the wake and foam trail show and the frame rate holds; then board
+the rowboat from the jetty with F, row across and back, and step out onto
+the jetty. With a second player in the same world, have them board as the
+passenger, and check that both see the same boat as it moves.

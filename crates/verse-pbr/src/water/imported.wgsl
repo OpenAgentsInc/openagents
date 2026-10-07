@@ -78,6 +78,9 @@ fn vs_water(v: WaterIn) -> WaterOut {
 }
 
 fn water_fragment(i: WaterOut) -> WaterShade {
+    if water_in_hull(i.world_depth.xyz) {
+        discard;
+    }
     let world = i.world_depth.xyz;
     let rest = i.rest_flow.xy;
     let dpx = dpdx(rest);

@@ -16,6 +16,7 @@
 //! ([`player`], [`pose`]); no companion follows.
 
 pub mod boards;
+pub mod boats;
 pub mod demolition;
 pub mod detail;
 pub mod draw;
@@ -84,6 +85,19 @@ pub const ATMOSPHERE: super::Atmosphere = super::Atmosphere {
         sun_strength: 0.4,
         sun_exponent: 3.0,
     }),
+};
+
+/// The quality tier the town's water effects are budgeted for until the
+/// renderer says ([`Everglade::set_water_tier`]): a phone's or a browser's
+/// Medium, a desktop's High.
+const WATER_TIER: verse_engine::quality::Tier = if cfg!(any(
+    target_arch = "wasm32",
+    target_os = "ios",
+    target_os = "android"
+)) {
+    verse_engine::quality::Tier::Medium
+} else {
+    verse_engine::quality::Tier::High
 };
 
 /// The start of the approach path, where the return portal to the plaza
@@ -175,6 +189,13 @@ pub struct Everglade {
     /// the town only: a zone built from other placements, such as the
     /// Grove, has no water.
     swim: Option<Box<water::Swim>>,
+    /// The rowboats and lily pads afloat ([`boats`]), in the town only.
+    afloat: Option<Box<boats::Afloat>>,
+    /// The water's splashes, spray, droplets, drips, and steam, within
+    /// the tier's particle budget, in the town only.
+    water_fx: Option<water::WaterFx>,
+    /// Impacts on the water since the last frame, for the ripple field.
+    pulses: Vec<verse_pbr::water::Source>,
 }
 
 impl Everglade {
@@ -200,6 +221,19 @@ impl Everglade {
                 crate::fx::Spawn::at(water::landing()).scaled(0.4),
             );
         }
+        zone.afloat = Some(Box::new(boats::Afloat::new(pack, &layout::floats())?));
+        let mut fx = water::WaterFx::new(WATER_TIER);
+        // Spray where the run breaks over the weir's stones, at each end
+        // of its lip.
+        let run = verse_world::social::everglade_water::run();
+        let ([lx, lz], _, half) = run.weir_lip();
+        let [tx, tz] = run.tangent_at(run.weir);
+        let level = run.level_at(run.weir - 0.5);
+        for side in [-0.7_f32, 0.7] {
+            let at = Vec3::new(lx - tz * half * side, level + 0.05, lz + tx * half * side);
+            fx.start("water_crest_spray", crate::fx::Spawn::at(at).scaled(0.6));
+        }
+        zone.water_fx = Some(fx);
         Ok(zone)
     }
 
@@ -291,6 +325,9 @@ impl Everglade {
             light: time_of_day::Light::at_hours(10.5),
             agora_bell: None,
             swim: None,
+            afloat: None,
+            water_fx: None,
+            pulses: Vec::new(),
         })
     }
 
@@ -839,7 +876,19 @@ impl Everglade {
             player.hold_altitude(
                 before + (self.altitude - before).clamp(-2.0 * lift * dt, 3.0 * lift * dt),
             );
+        } else if self
+            .afloat
+            .as_mut()
+            .is_some_and(|afloat| afloat.ride(player, &input))
+        {
+            // Aboard a boat: the keys row it, and the seat carries the
+            // player.
         } else {
+            if let Some(afloat) = &mut self.afloat
+                && let Some(k) = afloat.take_dump()
+            {
+                afloat.drop_in(k, player);
+            }
             let (feet, speed) = (player.pos.y, player.vertical_speed());
             if let Some(swim) = &self.swim {
                 // Wading and swimming are half speed (SRD 5.2.1), and each
@@ -1007,6 +1056,9 @@ impl Everglade {
         if let Some(smoke) = &self.smoke {
             smoke.draw(&mut mesh.sprites);
         }
+        if let Some(fx) = &self.water_fx {
+            fx.particles.draw(&mut mesh.sprites);
+        }
         if let Some(yard) = &self.demolition {
             mesh.extend(&yard.mesh(player, eye, hold));
         } else if let Some(bell) = &self.agora_bell {
@@ -1144,13 +1196,7 @@ impl Everglade {
         self.elapsed = (self.elapsed + dt) % 1000.0;
         self.advance_clock();
         self.rendered = self.stage(self.elapsed);
-        if let Some(swim) = &self.swim
-            && let Some(neon) = self.rendered.neon.as_mut()
-        {
-            let mut frame = water::frame(self.elapsed);
-            swim.ring(&mut frame, self.elapsed);
-            neon.water = Some(frame);
-        }
+        self.tick_water(dt, at);
         if self.look.is_none() {
             // The owner's house's, the Civic Hall's, the belvedere's, and
             // the Agora's candles and lamps near the player
@@ -1197,6 +1243,10 @@ impl Everglade {
                 cast_scene = guest.joined(scene).or(cast_scene);
             }
         }
+        if let (Some(afloat), Some(scene)) = (&mut self.afloat, &cast_scene) {
+            afloat.prepare(scene);
+            cast_scene = afloat.joined(scene).or(cast_scene);
+        }
         let solids = self.town.as_mut().and_then(|town| {
             town.tick(dt, at);
             town.take_solids()
@@ -1226,6 +1276,194 @@ impl Everglade {
                 self.bake = None;
             }
         }
+    }
+
+    /// The water's part of a frame: the boats and pads, the effects of what
+    /// struck the water, and the frame's water with every mover and impact
+    /// as a source for the ripple field and the boats' hulls masked out.
+    fn tick_water(&mut self, dt: f32, at: &PlayerController) {
+        let Some(swim) = self.swim.as_deref_mut() else {
+            return;
+        };
+        let mut frame = water::frame(self.elapsed);
+        swim.ring(&mut frame);
+        let mut fx_starts: Vec<(&'static str, crate::fx::Spawn)> = Vec::new();
+        for event in swim.take_events() {
+            match event {
+                water::WaterEvent::Splash { at, speed } => {
+                    let scale = water::splash_scale(speed, water::CHARACTER_MASS);
+                    fx_starts.push(("water_entry_splash", crate::fx::Spawn::at(at).scaled(scale)));
+                    self.pulses.push(verse_pbr::water::Source::impact(
+                        glam::Vec2::new(at.x, at.z),
+                        0.5 * scale,
+                        0.05 * scale,
+                    ));
+                }
+                water::WaterEvent::Stride { at, velocity } => {
+                    fx_starts.push(("water_wade", crate::fx::Spawn::at(at).moving(velocity)))
+                }
+                water::WaterEvent::Drip { at } => {
+                    fx_starts.push(("water_drips", crate::fx::Spawn::at(at)));
+                }
+            }
+        }
+        let mut movers: Vec<(glam::Vec2, f32)> = Vec::new();
+        if let Some(source) = swim.mover() {
+            movers.push((
+                glam::Vec2::from(source.at),
+                glam::Vec2::from(source.velocity).length(),
+            ));
+        }
+        if let Some(afloat) = &mut self.afloat {
+            afloat.tick(dt);
+            for event in afloat.take_events() {
+                match event {
+                    verse_world::rowboat::Event::Stroke { at, .. } => {
+                        // Each blade leaves the water off the beam.
+                        fx_starts.push(("water_droplets", crate::fx::Spawn::at(at)));
+                        self.pulses.push(verse_pbr::water::Source::impact(
+                            glam::Vec2::new(at.x, at.z),
+                            0.5,
+                            0.015,
+                        ));
+                    }
+                    verse_world::rowboat::Event::Capsized { boat, .. }
+                    | verse_world::rowboat::Event::Broken { boat, .. } => {
+                        let (keel, _) = afloat.fleet.frame(boat);
+                        let p = keel.as_vec3();
+                        let top =
+                            verse_world::social::everglade_water::surface(p.x, p.z).unwrap_or(p.y);
+                        let at = Vec3::new(p.x, top, p.z);
+                        fx_starts
+                            .push(("water_entry_splash", crate::fx::Spawn::at(at).scaled(1.6)));
+                        self.pulses.push(verse_pbr::water::Source::impact(
+                            glam::Vec2::new(at.x, at.z),
+                            1.2,
+                            0.08,
+                        ));
+                    }
+                    _ => {}
+                }
+            }
+            for source in afloat.sources() {
+                movers.push((
+                    glam::Vec2::from(source.at),
+                    glam::Vec2::from(source.velocity).length(),
+                ));
+                frame.add_source(source);
+            }
+            for hull in afloat.hulls() {
+                frame.add_hull(hull);
+            }
+        }
+        if let Some(wildlife) = &mut self.wildlife {
+            for &(p, v) in wildlife.swimmers() {
+                let source = verse_pbr::water::Source::mover(
+                    glam::Vec2::new(p.x, p.z),
+                    glam::Vec2::new(v.x, v.z),
+                    0.2,
+                );
+                movers.push((
+                    glam::Vec2::new(p.x, p.z),
+                    glam::Vec2::new(v.x, v.z).length(),
+                ));
+                frame.add_source(source);
+            }
+            // Ducks steer round the boats.
+            let avoid = self.afloat.as_ref().map_or_else(Vec::new, |afloat| {
+                (0..afloat.fleet.boats.len())
+                    .filter(|&k| afloat.fleet.boats[k].state != verse_world::rowboat::State::Broken)
+                    .map(|k| {
+                        let (keel, _) = afloat.fleet.frame(k);
+                        (glam::Vec2::new(keel.x as f32, keel.z as f32), 2.4)
+                    })
+                    .collect()
+            });
+            wildlife.set_avoid(avoid);
+        }
+        if let Some(town) = &mut self.town {
+            for (p, v) in town.site().floating() {
+                frame.add_source(verse_pbr::water::Source::mover(
+                    glam::Vec2::new(p.x, p.z),
+                    glam::Vec2::new(v.x, v.z),
+                    0.25,
+                ));
+            }
+            for splash in town.site_mut().take_splashes() {
+                let scale = water::splash_scale(splash.speed, splash.mass);
+                if splash.hiss {
+                    fx_starts.push(("water_steam_puff", crate::fx::Spawn::at(splash.at)));
+                }
+                fx_starts.push((
+                    "water_entry_splash",
+                    crate::fx::Spawn::at(splash.at).scaled(scale),
+                ));
+                self.pulses.push(verse_pbr::water::Source::impact(
+                    glam::Vec2::new(splash.at.x, splash.at.z),
+                    0.4 * scale,
+                    0.04 * scale,
+                ));
+            }
+        }
+        if let Some(afloat) = &mut self.afloat {
+            afloat.set_movers(movers);
+        }
+        for pulse in self.pulses.drain(..) {
+            frame.add_source(pulse);
+        }
+        if let Some(fx) = &mut self.water_fx {
+            for (name, spawn) in fx_starts {
+                fx.start(name, spawn);
+            }
+            fx.particles.tick(dt, height);
+        }
+        let _ = at;
+        if let Some(neon) = self.rendered.neon.as_mut() {
+            neon.water = Some(frame);
+        }
+    }
+
+    /// The rowboats and lily pads afloat, in the town.
+    #[must_use]
+    pub fn afloat(&self) -> Option<&boats::Afloat> {
+        self.afloat.as_deref()
+    }
+
+    /// The rowboats and lily pads, to act on.
+    pub fn afloat_mut(&mut self) -> Option<&mut boats::Afloat> {
+        self.afloat.as_deref_mut()
+    }
+
+    /// The water's effects, in the town.
+    #[must_use]
+    pub fn water_fx(&self) -> Option<&water::WaterFx> {
+        self.water_fx.as_ref()
+    }
+
+    /// Budgets the water's effects for `tier`.
+    pub fn set_water_tier(&mut self, tier: verse_engine::quality::Tier) {
+        if let Some(fx) = &mut self.water_fx {
+            fx.set_tier(tier);
+        }
+    }
+
+    /// The interact key by a boat: leaves the boat the player sits in,
+    /// rights a capsized boat beside a swimmer, or boards the boat in
+    /// reach. Returns what happened, or `None` with no boat in reach.
+    pub fn interact_boat(&mut self, player: &mut PlayerController) -> Option<String> {
+        let swimming = self.swim.as_ref().is_some_and(|s| s.medium.afloat());
+        let line = self
+            .afloat
+            .as_mut()?
+            .interact(player, swimming, &self.solids)?;
+        Some(line)
+    }
+
+    /// Whether the interact key would do something with a boat for a
+    /// player at `at`.
+    #[must_use]
+    pub fn boat_in_reach(&self, at: Vec3) -> bool {
+        self.afloat.as_ref().is_some_and(|a| a.in_reach(at))
     }
 
     /// Waits for the light bake to finish and takes its result, for
@@ -1288,6 +1526,9 @@ impl Everglade {
                 }
                 for guest in &self.guests {
                     figure = guest.figure(figure, self.probes.as_deref());
+                }
+                if let Some(afloat) = &self.afloat {
+                    figure = afloat.figure(figure, self.probes.as_deref());
                 }
                 if let Some(yard) = &self.demolition {
                     figure = yard.figure(Some(figure));

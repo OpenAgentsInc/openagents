@@ -111,6 +111,24 @@ pub fn apply_where<W: Water + ?Sized>(
     settings: &Settings,
     which: impl Fn(BodyId) -> bool,
 ) -> Vec<Push> {
+    apply_scaled(world, water, tick, dt, settings, |id| {
+        which(id).then_some(1.0)
+    })
+}
+
+/// As [`apply_where`], with each accepted body's buoyancy scaled by the
+/// factor `which` gives it. A game body whose mass was tuned for how it
+/// moves rather than what it is made of floats as its material does when
+/// the factor is its mass over its material's density times its collider
+/// volume: buoyancy then holds it at the material's own draft.
+pub fn apply_scaled<W: Water + ?Sized>(
+    world: &mut World,
+    water: &W,
+    tick: u64,
+    dt: f64,
+    settings: &Settings,
+    which: impl Fn(BodyId) -> Option<f64>,
+) -> Vec<Push> {
     let mut pushes = Vec::new();
     let g = settings.gravity.length();
     let up = if g > 0.0 {
@@ -129,9 +147,12 @@ pub fn apply_where<W: Water + ?Sized>(
         let collider = world.colliders()[index];
         let id = collider.body;
         let body = world[id];
-        if !body.responds() || !which(id) {
+        if !body.responds() {
             continue;
         }
+        let Some(lift) = which(id).filter(|k| k.is_finite() && *k >= 0.0) else {
+            continue;
+        };
         let pose = collider.pose(world);
         let sub = submerged(&collider.shape, pose, water, tick);
         let Some(sample) = sub.water else {
@@ -147,7 +168,7 @@ pub fn apply_where<W: Water + ?Sized>(
         let mut out = [Push {
             body: id,
             term: Term::Buoyancy,
-            force: up * (rho * g * sub.volume),
+            force: up * (rho * g * sub.volume * lift),
             at: sub.centroid,
             couple: DVec3::ZERO,
         }; 2];
@@ -159,17 +180,29 @@ pub fn apply_where<W: Water + ?Sized>(
         let area = sub.wetted_area;
         let mut drag = -relative
             * (settings.linear * area + 0.5 * rho * settings.quadratic * 0.25 * area * speed);
-        // Never reverse the relative motion within one step.
-        let most = body.mass * speed / dt.max(1e-9);
-        let size = drag.length();
-        if size > most && size > 0.0 {
-            drag *= most / size;
-        }
         let share = if volumes[id.0 as usize] > 0.0 {
             volume(&collider.shape) / volumes[id.0 as usize]
         } else {
             1.0
         };
+        // Never reverse the relative motion within one step: the most this
+        // collider may push is its share of the body's effective mass at
+        // the point, along the drag, so the colliders of one body together
+        // never overshoot, nor does the spin an off-center push gives.
+        let size = drag.length();
+        if size > 0.0 {
+            let n = drag / size;
+            let rn = arm.cross(n);
+            let inverse = body.inverse_mass() + rn.dot(body.inverse_inertia_world(rn));
+            let most = if inverse > 0.0 {
+                share * speed / (dt.max(1e-9) * inverse)
+            } else {
+                0.0
+            };
+            if size > most {
+                drag *= most / size;
+            }
+        }
         let rate = (settings.angular * sub.wetted_fraction() * share).min(1.0 / dt.max(1e-9));
         let spin = body.inertia_world() * body.omega_world();
         out[1] = Push {

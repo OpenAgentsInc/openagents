@@ -49,6 +49,7 @@ use verse_core::world::World;
 use verse_pbr::mesh::Mesh;
 use verse_pbr::pbr::textured::Figure;
 use verse_pbr::pbr::water::{Controls, Disc, Flow, Part, Water, Whirl};
+use verse_pbr::water::Source;
 use verse_world::spells::Dice;
 use verse_zone_everglade::zones::everglade;
 use verse_zone_everglade::zones::everglade::floaters::Floater;
@@ -289,6 +290,10 @@ pub struct WaterLab {
     pub spells: Spells,
     fx: Particles,
     next_kind: usize,
+    /// What writes into the ripple field this frame: the character in the
+    /// water, and the splashes and impacts since the last tick
+    /// (`verse_pbr::water::ripple`).
+    sources: Vec<Source>,
     stride: f32,
     bubbles: f32,
     /// Breath left, s.
@@ -375,6 +380,7 @@ impl WaterLab {
             spells: Spells::default(),
             fx: Particles::new(7),
             next_kind: 0,
+            sources: Vec::new(),
             stride: 0.0,
             bubbles: 0.0,
             breath: spells::breath_limit(spells::CON_MODIFIER),
@@ -488,6 +494,21 @@ impl WaterLab {
             });
         }
         water.controls = controls;
+        // The ripple field: the character, the splashes, and every float
+        // moving on the surface leaves its wake and foam.
+        for source in &self.sources {
+            water.add_source(*source);
+        }
+        for body in self.floats.world.bodies() {
+            let (p, v) = (body.pos.as_vec3(), body.vel.as_vec3());
+            if !body.removed && (p.y - water.level()).abs() < 0.6 && v.length() > 0.15 {
+                water.add_source(Source::mover(
+                    Vec2::new(p.x, p.z),
+                    Vec2::new(v.x, v.z),
+                    0.35,
+                ));
+            }
+        }
         water
     }
 
@@ -520,6 +541,7 @@ impl WaterLab {
     }
 
     fn tick_world(&mut self, dt: f32) {
+        self.sources.clear();
         self.time += dt;
         self.spells.tick(dt, self.time);
         self.water.time = self.time;
@@ -559,6 +581,11 @@ impl WaterLab {
                     self.fx.start("water_splash", Spawn::at(at).scaled(scale));
                     self.water
                         .add_ripple(Vec2::new(at.x, at.z), (0.02 * speed * size).min(0.08));
+                    self.sources.push(Source::impact(
+                        Vec2::new(at.x, at.z),
+                        size.max(0.2),
+                        (0.012 * speed * size).min(0.08),
+                    ));
                 }
                 floats::Event::Ripple { at, strength } => {
                     self.water.add_ripple(at, strength);
@@ -638,6 +665,9 @@ impl WaterLab {
                     self.wake(p, s.height, forward, 0.05);
                 }
             } else if depth > 0.05 {
+                // The body crossing the surface writes its wake.
+                let velocity = Vec2::new(forward.x, forward.z) * self.speed;
+                self.sources.push(Source::mover(p, velocity, 0.35));
                 let swim = s.height - 1.25;
                 let bed = ground(feet.x, feet.z);
                 if !self.spells.breathing && bed < swim - 0.05 {

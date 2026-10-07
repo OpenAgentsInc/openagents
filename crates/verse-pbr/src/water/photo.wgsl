@@ -401,6 +401,9 @@ fn water_cover(rgb: vec3<f32>, alpha: f32) -> WaterShade {
 // thing in both entry points, so its derivatives stay in uniform control
 // flow.
 fn water_fragment(i: WaterOut) -> WaterShade {
+    if water_in_hull(i.world_depth.xyz) {
+        discard;
+    }
     let world = i.world_depth.xyz;
     let rest = i.rest_flow.xy;
     let geometric = normalize(cross(dpdx(world), dpdy(world)));

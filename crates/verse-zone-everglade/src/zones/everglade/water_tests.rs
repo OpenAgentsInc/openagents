@@ -301,47 +301,81 @@ fn the_water_bakes_over_the_carved_beds_and_draws_from_below_when_the_eye_is_in_
 }
 
 #[test]
-fn a_swimmer_rings_the_surface_where_it_crosses_it_and_the_frame_draws_the_rings() {
+fn a_swimmer_writes_its_wake_into_the_ripple_field_and_splashes_in_and_drips_out() {
     let solids = Solids::over(height);
     let ([cx, cz], _) = PONDS[0];
     let mut swim = Swim::default();
     let mut player = floating(cx - 2.0, cz, 1.0, 0.0);
-    // Floating still, then a few strokes.
+    // Treading water rings the surface gently.
     for _ in 0..240 {
         step(&mut swim, &mut player, &solids, &InputState::default());
     }
     assert_eq!(swim.medium, Medium::Swimming);
+    let still = swim.mover().expect("a swimmer crosses the surface");
+    assert!(Vec2::from(still.velocity).length() < 0.2);
+    // Stroking, it leaves a wake: a moving source the field draws a
+    // Kelvin wedge behind.
     for _ in 0..90 {
         step(&mut swim, &mut player, &solids, &forward());
     }
-    assert!(water_surface(player.pos.x, player.pos.z).is_some());
+    let stroke = swim.mover().unwrap();
+    assert!(Vec2::from(stroke.velocity).length() > verse_pbr::water::ripple::WAKE_SPEED);
+    assert!(stroke.strength > still.strength && stroke.foam > still.foam);
     let mut water = frame(500.0);
-    swim.ring(&mut water, 500.0);
-    let rings: Vec<_> = water.ripples.iter().filter(|r| r.strength > 0.0).collect();
-    assert!(rings.len() >= 3, "{} rings in 5.5 s afloat", rings.len());
-    for r in &rings {
-        let age = 500.0 - r.start;
-        assert!((0.0..=RIPPLE_LIFE).contains(&age), "{age}");
-        assert!((r.at[0] - player.pos.x).hypot(r.at[1] - player.pos.z) < 6.0);
-    }
-    // A stroke rings the water more strongly than floating still.
-    let newest = rings
-        .iter()
-        .max_by(|a, b| a.start.total_cmp(&b.start))
-        .unwrap();
-    let oldest = rings
-        .iter()
-        .min_by(|a, b| a.start.total_cmp(&b.start))
-        .unwrap();
-    assert!(newest.strength > oldest.strength);
-    assert!(water.valid());
+    swim.ring(&mut water);
+    assert_eq!(water.sources().len(), 1);
+    assert!(water.valid() && water.wet.is_some());
+    // The field's water: the pond is wet, dry ground beside it is not.
+    let wet = water.wet.unwrap();
+    assert!((wet.0)(cx, cz).is_some());
+    assert!((wet.0)(cx, cz - 20.0).is_none());
     // Dry ground makes none.
     let mut walker = Swim::default();
     let mut player = standing(cx, cz - 20.0, 0.0, -1.0);
     for _ in 0..60 {
         step(&mut walker, &mut player, &solids, &forward());
     }
-    let mut water = frame(10.0);
-    walker.ring(&mut water, 10.0);
-    assert!(water.ripples.iter().all(|r| r.strength == 0.0));
+    assert!(walker.mover().is_none());
+    // Jumping in from a height splashes.
+    let mut diver = Swim::default();
+    let top = water_surface(cx, cz).unwrap();
+    let mut player = PlayerController::new(Vec3::new(cx, top + 2.5, cz), 0.0);
+    player.set_surface_height(height(cx, cz));
+    for _ in 0..120 {
+        step(&mut diver, &mut player, &solids, &InputState::default());
+    }
+    let events = diver.take_events();
+    assert!(
+        events
+            .iter()
+            .any(|e| matches!(e, WaterEvent::Splash { speed, .. } if *speed > 3.0)),
+        "{events:?}"
+    );
+}
+
+/// A stress scenario: a crowd jumping in at once. The water's effects stay
+/// within each tier's particle budget, skipping what would overrun it, and
+/// a bigger, faster body draws a bigger splash.
+#[test]
+fn splashes_stay_within_each_tier_s_particle_budget() {
+    use verse_engine::quality::Tier;
+    for (tier, budget) in [(Tier::Low, 64), (Tier::Medium, 256), (Tier::High, 512)] {
+        let mut fx = WaterFx::new(tier);
+        assert_eq!(fx.budget(), budget);
+        let mut peak = 0;
+        for frame in 0..120 {
+            for k in 0..6 {
+                let at = Vec3::new(k as f32, 0.0, frame as f32 * 0.1);
+                let name = ["water_entry_splash", "water_wade", "water_droplets"][k % 3];
+                fx.start(name, crate::fx::Spawn::at(at));
+            }
+            fx.particles.tick(DT, |_, _| -10.0);
+            peak = peak.max(fx.len());
+        }
+        assert!(peak <= budget, "{tier:?}: {peak} of {budget}");
+        assert!(peak > budget / 2, "{tier:?}: the budget was used: {peak}");
+        assert!(fx.skipped > 0);
+    }
+    assert!(splash_scale(8.0, 80.0) > splash_scale(2.0, 80.0));
+    assert!(splash_scale(4.0, 300.0) > splash_scale(4.0, 20.0));
 }

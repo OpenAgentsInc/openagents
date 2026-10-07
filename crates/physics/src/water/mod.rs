@@ -41,7 +41,7 @@ pub mod spectrum;
 mod submerge;
 mod surface;
 
-pub use apply::{Push, Settings, Term, apply, apply_where, apply_with, record};
+pub use apply::{Push, Settings, Term, apply, apply_scaled, apply_where, apply_with, record};
 pub use body::{
     Course, FRESH, Kind, Level, Outline, SALT, Sample, Station, Surface, WaterBody, WaterId,
 };

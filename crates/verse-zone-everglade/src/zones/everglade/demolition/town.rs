@@ -278,6 +278,8 @@ struct Wreck {
     meshes: Vec<Vec<ChunkMesh>>,
     /// The placements, for cutting carved blocks.
     placements: Vec<crate::zones::everglade::layout::Placement>,
+    /// Whether the town has Everglade's water, which its debris floats on.
+    water: bool,
     clock: f32,
     /// Bumped when a building is raised or let go.
     revision: u64,
@@ -291,9 +293,15 @@ struct Wreck {
 }
 
 impl Wreck {
-    fn empty_site(floors: &[(DVec3, DVec3)]) -> Site {
+    fn empty_site(floors: &[(DVec3, DVec3)], water: bool) -> Site {
         let mut site = Site::new(Vec::new(), SEED);
         site.set_ground(GROUND, floors.to_vec());
+        if water {
+            site.set_water(
+                verse_world::social::everglade_water::water(),
+                water_beds().to_vec(),
+            );
+        }
         site.retain(|_| true);
         site.set_max_chunks(MAX_CHUNKS);
         site
@@ -1000,13 +1008,14 @@ impl Town {
         let mut town = Self {
             wreck: Wreck {
                 buildings,
-                site: Wreck::empty_site(&floors),
+                site: Wreck::empty_site(&floors, everglade),
                 floors,
                 refs: Vec::new(),
                 lifted: Vec::new(),
                 cuboids,
                 meshes,
                 placements: placements.to_vec(),
+                water: everglade,
                 clock: 0.0,
                 revision: 0,
                 sight: base.clone(),
@@ -1214,7 +1223,7 @@ impl Town {
         for building in lifted {
             self.wreck.let_go(building);
         }
-        self.wreck.site = Wreck::empty_site(&self.wreck.floors);
+        self.wreck.site = Wreck::empty_site(&self.wreck.floors, self.wreck.water);
         self.wreck.refs.clear();
         self.swarm.reset();
         self.rebuild = 180.0;
@@ -2286,11 +2295,29 @@ fn groups(
     Ok(out.into_values().collect())
 }
 
-/// What a carved placement of `model` is made of.
+/// The beds and banks of Everglade's water as the site's boxes, built once.
+fn water_beds() -> &'static [(DVec3, DVec3)] {
+    static BEDS: std::sync::OnceLock<Vec<(DVec3, DVec3)>> = std::sync::OnceLock::new();
+    BEDS.get_or_init(|| verse_world::social::everglade_water::bed_boxes(1.0, 1.5))
+}
+
+/// What a carved placement of `model` is made of: the footbridge, the
+/// jetties, and the boats are timber and float.
 fn matter(model: &str) -> Matter {
     if model.starts_with("props/")
         || [
-            "fence", "cart", "barrel", "bench", "stall", "sign", "Crate", "Wagon",
+            "fence",
+            "cart",
+            "barrel",
+            "bench",
+            "stall",
+            "sign",
+            "Crate",
+            "Wagon",
+            "footbridge",
+            "dock",
+            "boat",
+            "log",
         ]
         .iter()
         .any(|k| model.contains(k))

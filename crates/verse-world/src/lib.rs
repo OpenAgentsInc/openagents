@@ -255,6 +255,7 @@ pub mod prediction;
 pub mod replay;
 pub mod reverse_gravity;
 pub mod room;
+pub mod rowboat;
 pub mod rules;
 pub mod service;
 pub mod social;

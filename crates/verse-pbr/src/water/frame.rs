@@ -23,6 +23,7 @@ use std::f32::consts::TAU;
 use bytemuck::{Pod, Zeroable};
 use glam::{Vec2, Vec3};
 
+pub use super::ripple::{MAX_SOURCES, Source, Wet};
 pub use super::terms::{Swell, shoaling, wind_sea};
 use super::{MAX_BODIES, preset::Preset};
 
@@ -80,6 +81,23 @@ pub struct Ripple {
     pub start: f32,
     /// Its height at the start, m.
     pub strength: f32,
+}
+
+/// The most boat hulls a frame masks the water out of.
+pub const MAX_HULLS: usize = 4;
+
+/// A boat's hull over the water, which keeps the water out of it: the
+/// surface draws nothing inside its footprint under its gunwale.
+#[derive(Clone, Copy, Debug, Default, PartialEq)]
+pub struct Hull {
+    /// Its middle, x and z, m.
+    pub center: [f32; 2],
+    /// Unit direction toward the bow in the xz plane.
+    pub dir: [f32; 2],
+    /// Half its beam and half its length, m.
+    pub half: [f32; 2],
+    /// Its gunwale's height, m.
+    pub top: f32,
 }
 
 /// One body of water as a frame draws it.
@@ -247,6 +265,18 @@ pub struct Water {
     pub caustics: f32,
     /// The imported renderer's sky and sun, when set.
     pub sky: Option<Sky>,
+    /// What writes into the ripple and foam field this frame
+    /// ([`super::ripple`]): the first [`Self::source_count`] movers,
+    /// impacts, and spells. The renderer keeps its tier's budget of them.
+    pub sources: [Source; MAX_SOURCES],
+    pub source_count: usize,
+    /// Where the field's water is and how its current runs; wet and
+    /// still everywhere without it.
+    pub wet: Option<Wet>,
+    /// The boats' hulls the water is masked out of; the first
+    /// [`Self::hull_count`] apply.
+    pub hulls: [Hull; MAX_HULLS],
+    pub hull_count: usize,
 }
 
 impl Default for Water {
@@ -270,6 +300,11 @@ impl Water {
             ripples: [Ripple::default(); MAX_RIPPLES],
             caustics: 0.8,
             sky: None,
+            sources: [Source::default(); MAX_SOURCES],
+            source_count: 0,
+            wet: None,
+            hulls: [Hull::default(); MAX_HULLS],
+            hull_count: 0,
         };
         water.set_detail(0.3, 0.12, 2.4, 0.016);
         water
@@ -422,6 +457,39 @@ impl Water {
         };
     }
 
+    /// Lists `source` for the ripple field this frame; past
+    /// [`MAX_SOURCES`] the weakest gives way.
+    pub fn add_source(&mut self, source: Source) {
+        if self.source_count < MAX_SOURCES {
+            self.sources[self.source_count] = source;
+            self.source_count += 1;
+            return;
+        }
+        let weakest = self
+            .sources
+            .iter()
+            .enumerate()
+            .min_by(|a, b| a.1.strength.abs().total_cmp(&b.1.strength.abs()))
+            .map_or(0, |(i, _)| i);
+        if self.sources[weakest].strength.abs() < source.strength.abs() {
+            self.sources[weakest] = source;
+        }
+    }
+
+    /// Masks the water out of `hull`; past [`MAX_HULLS`] it is ignored.
+    pub fn add_hull(&mut self, hull: Hull) {
+        if self.hull_count < MAX_HULLS {
+            self.hulls[self.hull_count] = hull;
+            self.hull_count += 1;
+        }
+    }
+
+    /// This frame's sources.
+    #[must_use]
+    pub fn sources(&self) -> &[Source] {
+        &self.sources[..self.source_count.min(MAX_SOURCES)]
+    }
+
     /// The uniform both water passes read, each body's swell at the water
     /// clock.
     #[must_use]
@@ -472,6 +540,13 @@ impl Water {
             self.count as f32,
         ];
         u.look = [self.caustics, 0.0, 0.0, 0.0];
+        for (i, hull) in self.hulls[..self.hull_count.min(MAX_HULLS)]
+            .iter()
+            .enumerate()
+        {
+            u.hulls[i * 2] = [hull.center[0], hull.center[1], hull.dir[0], hull.dir[1]];
+            u.hulls[i * 2 + 1] = [hull.half[0], hull.half[1], hull.top, 0.0];
+        }
         if let Some(sky) = self.sky {
             let (z, h, d, c) = (sky.zenith, sky.horizon, sky.sun_dir, sky.sun_color);
             u.sky_zenith = [z[0], z[1], z[2], 1.0];
@@ -498,6 +573,16 @@ impl Water {
             })
             && (0.0..=1.0).contains(&self.caustics)
             && self.controls.valid()
+            && self.source_count <= MAX_SOURCES
+            && self.hull_count <= MAX_HULLS
+            && self.hulls.iter().all(|h| {
+                h.center
+                    .iter()
+                    .chain(&h.dir)
+                    .chain(&h.half)
+                    .all(|v| v.is_finite())
+                    && h.top.is_finite()
+            })
     }
 
     /// The frame uniform's water controls, in `photo.wgsl`'s order:
@@ -762,6 +847,13 @@ pub struct WaterUniform {
     pub field: [[f32; 4]; super::field::ROWS],
     /// The page each slot of the field's atlas holds.
     pub field_pages: [[f32; 4]; super::field::SLOT_ROWS],
+    /// The ripple field's window ([`super::ripple::Ripples::window`]):
+    /// its corner (x, z), side (m), and layer in `water_waves`; side 0
+    /// draws none.
+    pub ripple: [f32; 4],
+    /// Per hull ([`Hull`]): its middle and heading; then its half beam,
+    /// half length, and gunwale. A half beam of 0 masks nothing.
+    pub hulls: [[f32; 4]; 2 * MAX_HULLS],
 }
 
 /// How a vertex of a water surface is drawn.

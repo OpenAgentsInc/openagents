@@ -459,6 +459,59 @@ pub fn water() -> &'static WaterSet {
     })
 }
 
+/// The beds and banks of the water as static boxes for a physics world,
+/// each a center and half extents: one `cell` meters a side for every cell
+/// within `margin` of the water, its top on the carved ground. Floating
+/// debris and boats lodge against the banks and sink onto the beds.
+#[must_use]
+pub fn bed_boxes(cell: f32, margin: f32) -> Vec<(glam::DVec3, glam::DVec3)> {
+    let mut cells = std::collections::BTreeSet::new();
+    let mut cover = |lo: [f32; 2], hi: [f32; 2]| {
+        let i0 = ((lo[0] - margin) / cell).floor() as i32;
+        let i1 = ((hi[0] + margin) / cell).ceil() as i32;
+        let j0 = ((lo[1] - margin) / cell).floor() as i32;
+        let j1 = ((hi[1] + margin) / cell).ceil() as i32;
+        for j in j0..j1 {
+            for i in i0..i1 {
+                cells.insert((i, j));
+            }
+        }
+    };
+    for ([x, z], r) in PONDS {
+        cover([x - r, z - r], [x + r, z + r]);
+    }
+    let run = run();
+    for w in run.points.windows(2) {
+        let half = STREAM_HALF + POOL_RADIUS;
+        cover(
+            [w[0][0].min(w[1][0]) - half, w[0][1].min(w[1][1]) - half],
+            [w[0][0].max(w[1][0]) + half, w[0][1].max(w[1][1]) + half],
+        );
+    }
+    let near = |x: f32, z: f32| {
+        let reach = margin + cell * 0.71;
+        (0..8).any(|k| {
+            let a = k as f32 * std::f32::consts::FRAC_PI_4;
+            surface(x + a.cos() * reach, z + a.sin() * reach).is_some()
+        }) || surface(x, z).is_some()
+    };
+    let h = f64::from(cell) * 0.5;
+    cells
+        .into_iter()
+        .filter_map(|(i, j)| {
+            let (x, z) = ((i as f32 + 0.5) * cell, (j as f32 + 0.5) * cell);
+            if !near(x, z) {
+                return None;
+            }
+            let top = f64::from(super::everglade::height(x, z));
+            Some((
+                glam::DVec3::new(f64::from(x), top - 0.5, f64::from(z)),
+                glam::DVec3::new(h, 0.5, h),
+            ))
+        })
+        .collect()
+}
+
 /// The gameplay surface's height over `(x, z)`, m, if there is water. The
 /// ponds and the run carry no waves, so the tick does not matter.
 #[must_use]

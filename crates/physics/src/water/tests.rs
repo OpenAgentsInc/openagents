@@ -334,6 +334,48 @@ fn light_spheres_float_at_the_analytic_draft_and_heavy_ones_sink() {
     assert!(world[heavy].vel.y < -0.5);
 }
 
+/// A light proxy body floats at its material's draft when its buoyancy is
+/// scaled by its mass over the material's mass, and a stone proxy of the
+/// same light mass sinks.
+#[test]
+fn scaled_buoyancy_floats_a_proxy_at_its_material_s_draft() {
+    let pond = still_pond();
+    let mut world = World::new(DT);
+    let half = DVec3::new(0.5, 0.1, 0.25);
+    let shape = Shape::Cuboid { half };
+    let volume = 8.0 * half.x * half.y * half.z;
+    // Both weigh 40 kg/m³ of their box, as debris tuned for its fall does.
+    let mass = 40.0 * volume;
+    let wood = add(
+        &mut world,
+        shape,
+        mass,
+        DVec3::new(-3.0, 0.5, 0.0),
+        DQuat::IDENTITY,
+    );
+    let stone = add(
+        &mut world,
+        shape,
+        mass,
+        DVec3::new(3.0, 0.5, 0.0),
+        DQuat::IDENTITY,
+    );
+    let lift = |id: BodyId| {
+        let density = if id == wood { 600.0 } else { 2000.0 };
+        Some(mass / (density * volume))
+    };
+    for _ in 0..(30.0 / DT) as usize {
+        let tick = world.tick;
+        apply_scaled(&mut world, &pond, tick, DT, &Settings::default(), lift);
+        world.step(&GRAVITY);
+    }
+    let fraction = submersion(&world, wood, &pond).volume_fraction();
+    assert!((fraction - 0.6).abs() < 0.01, "{fraction}");
+    // The light stone proxy sinks slowly against its drag, but sinks.
+    assert!(world[stone].pos.y < -3.0, "{}", world[stone].pos);
+    assert!(world[stone].vel.y < -0.05, "{}", world[stone].vel);
+}
+
 #[test]
 fn sinking_reaches_the_quadratic_drag_terminal_speed() {
     let pond = still_pond();

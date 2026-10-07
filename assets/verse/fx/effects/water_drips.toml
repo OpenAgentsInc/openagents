@@ -1,0 +1,25 @@
+# Water running off a body that has just left the water: drops falling
+# from it for a second or two.
+description = "Drops falling off a body that has just climbed out."
+
+[[emitter]]
+name = "drips"
+sheet = "sparks"
+frames = [0, 0]
+blend = "alpha"
+light = "lit"
+rate = 9.0
+duration = 1.6
+life = [0.3, 0.5]
+shape = "sphere"
+radius = 0.25
+spread = 10.0
+speed = [0.0, 0.3]
+gravity = -9.8
+size = [0.012, 0.022]
+stretch = 0.02
+stretch_max = 0.1
+rotate = false
+color = [1.5, 1.6, 1.7]
+alpha = [[0.0, 0.85], [1.0, 0.3]]
+priority = 1

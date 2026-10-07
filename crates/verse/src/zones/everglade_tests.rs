@@ -1506,9 +1506,15 @@ fn every_pond_and_glade_run_submits_its_water_over_a_bed_below_it() {
         let bed = height(cx, cz);
         assert!(bed < level - 1.0, "pond {k}: bed {bed} under level {level}");
         let near = wet(k, cx, cz, r * 0.5);
-        assert!(!near.is_empty(), "pond {k} has no water drawn at its center");
+        assert!(
+            !near.is_empty(),
+            "pond {k} has no water drawn at its center"
+        );
         for (y, depth) in near {
-            assert!((y - level).abs() < 1e-3, "pond {k} drawn at {y}, not {level}");
+            assert!(
+                (y - level).abs() < 1e-3,
+                "pond {k} drawn at {y}, not {level}"
+            );
             assert!(depth > 0.3, "pond {k} drawn {depth} m deep near its center");
         }
     }

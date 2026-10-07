@@ -21,9 +21,9 @@
 
 use glam::{DVec2, Vec2, Vec3};
 use verse_pbr::water::{
-    Body, Kind, Preset, Water, WaterPatch, WaterSurface, WaterVertex,
+    Body, Kind, Preset, Source, Water, WaterPatch, WaterSurface, WaterVertex,
     bake::{self, Bake},
-    frame::{RIPPLE_LIFE, Ripple},
+    ripple::Wet,
 };
 use verse_world::social::everglade_water::{self as ew, PONDS, RUN};
 use verse_world::water::{
@@ -54,13 +54,14 @@ const POND_OVERLAP: f32 = 0.4;
 pub const WARN: f32 = 10.0;
 /// How long the medium's last word stays in the log, s.
 const MOST_LOG: usize = 6;
-/// How often a body in the water rings the surface, s: moving, and still.
-const RIPPLE_MOVING: f32 = 0.35;
-const RIPPLE_STILL: f32 = 1.2;
-/// A ring's starting height, m: moving, and still.
-const RIPPLE_STRENGTH: (f32, f32) = (0.018, 0.008);
-/// The most rings a swimmer keeps, each living `RIPPLE_LIFE`.
-const MOST_RIPPLES: usize = 12;
+/// A swimmer's footprint on the surface, m.
+const SWIMMER_RADIUS: f32 = 0.35;
+/// A wader kicks up spray once this often while moving, s.
+const STRIDE: f32 = 0.45;
+/// Falling into the water faster than this splashes, m/s.
+const SPLASH_SPEED: f32 = 1.5;
+/// A character's mass, for its splash, kg.
+pub const CHARACTER_MASS: f32 = 80.0;
 
 /// Index of Glade Run in the frame's bodies.
 pub const RUN_BODY: usize = 4;
@@ -204,7 +205,28 @@ pub fn frame(time: f32) -> Water {
     water.set_detail(0.6, 0.08, 1.6, 0.012);
     water.caustics = 0.6;
     water.time = time;
+    // The ripple field keeps to the water and drifts its foam on the
+    // current.
+    water.wet = Some(Wet(wet));
     water
+}
+
+/// Whether `(x, z)` is in Everglade's water, and its current there, for the
+/// ripple field.
+fn wet(x: f32, z: f32) -> Option<[f32; 2]> {
+    physics::water::Water::sample(ew::water(), f64::from(x), f64::from(z), 0)
+        .map(|s| [s.flow.x as f32, s.flow.z as f32])
+}
+
+/// Something the player's body did to the water, for its effects.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub enum WaterEvent {
+    /// It fell in at `speed` m/s.
+    Splash { at: Vec3, speed: f32 },
+    /// A wading stride kicked up spray.
+    Stride { at: Vec3, velocity: Vec3 },
+    /// It climbed out, dripping.
+    Drip { at: Vec3 },
 }
 
 /// Marks the body `eye` is in, so its surface shades from below.
@@ -246,14 +268,15 @@ pub struct Swim {
     pub log: Vec<String>,
     /// How many times breath ran out to the sixth level.
     pub defeats: u32,
-    /// The swimmer's own clock, s, which its ripples start on.
-    clock: f32,
-    /// Until the next ring on the surface, s.
-    ripple_wait: f32,
-    /// Where the feet were last step, for whether the body moves.
+    /// Where the feet were last step, for how fast the body moves.
     last: Option<Vec2>,
-    /// Rings the body made where it crosses the surface, on [`Self::clock`].
-    ripples: Vec<Ripple>,
+    /// The body where it crosses the surface this step, for the ripple
+    /// field: its wake and foam trail.
+    mover: Option<Source>,
+    /// Until the next stride's spray, s.
+    stride: f32,
+    /// What the body did to the water since [`Self::take_events`].
+    events: Vec<WaterEvent>,
 }
 
 impl Default for Swim {
@@ -274,57 +297,67 @@ impl Swim {
             pitch: 0.28,
             log: Vec::new(),
             defeats: 0,
-            clock: 0.0,
-            ripple_wait: 0.0,
             last: None,
-            ripples: Vec::new(),
+            mover: None,
+            stride: 0.0,
+            events: Vec::new(),
         }
     }
 
-    /// Puts the rings the body made on `water`, whose clock reads `now`.
-    pub fn ring(&self, water: &mut Water, now: f32) {
-        for (slot, r) in water.ripples.iter_mut().zip(&self.ripples) {
-            *slot = Ripple {
-                start: now - (self.clock - r.start),
-                ..*r
-            };
+    /// Lists the body for `water`'s ripple field while it crosses the
+    /// surface: its wake, its foam trail, and the rings of treading water.
+    pub fn ring(&self, water: &mut Water) {
+        if let Some(source) = self.mover {
+            water.add_source(source);
         }
     }
 
-    /// Rings the surface where the body crosses it: often while it moves,
-    /// now and then while it floats still. Wakes are W6's.
+    /// The body where it crosses the surface this step, if it does.
+    #[must_use]
+    pub fn mover(&self) -> Option<Source> {
+        self.mover
+    }
+
+    /// Takes what the body did to the water since the last call.
+    pub fn take_events(&mut self) -> Vec<WaterEvent> {
+        std::mem::take(&mut self.events)
+    }
+
+    /// The body where it crosses the surface, moving at its speed over the
+    /// ground, for the ripple field; and a wader's strides.
     fn ripple(&mut self, feet: Vec3, dt: f32) {
-        self.clock += dt;
-        let clock = self.clock;
-        self.ripples.retain(|r| clock - r.start < RIPPLE_LIFE);
         let at = Vec2::new(feet.x, feet.z);
-        let moved = self.last.map_or(0.0, |last| (at - last).length());
+        let velocity = self
+            .last
+            .map_or(Vec2::ZERO, |last| (at - last) / dt.max(1e-4));
         self.last = Some(at);
         let crossing = ew::surface(feet.x, feet.z)
             .is_some_and(|top| feet.y < top && feet.y + medium::EYE_HEIGHT as f32 > top);
-        if !crossing {
-            self.ripple_wait = 0.0;
-            return;
-        }
-        self.ripple_wait -= dt;
-        if self.ripple_wait > 0.0 {
-            return;
-        }
-        let moving = moved > 0.2 * dt;
-        let (wait, strength) = if moving {
-            (RIPPLE_MOVING, RIPPLE_STRENGTH.0)
-        } else {
-            (RIPPLE_STILL, RIPPLE_STRENGTH.1)
-        };
-        self.ripple_wait = wait;
-        if self.ripples.len() >= MOST_RIPPLES {
-            self.ripples.remove(0);
-        }
-        self.ripples.push(Ripple {
-            at: at.to_array(),
-            start: clock,
-            strength,
+        self.mover = crossing.then(|| {
+            // Treading water still rings the surface a little.
+            let mut source = Source::mover(at, velocity, SWIMMER_RADIUS);
+            if velocity.length() < 0.2 {
+                source.strength = 0.012;
+                source.foam = 0.05;
+            }
+            source
         });
+        if self.medium == Medium::Wading && velocity.length() > 0.5 {
+            self.stride -= dt;
+            if self.stride <= 0.0 {
+                self.stride = STRIDE;
+                let top = ew::surface(feet.x, feet.z).unwrap_or(feet.y);
+                self.events.push(WaterEvent::Stride {
+                    at: Vec3::new(feet.x, top, feet.z),
+                    velocity: Vec3::new(velocity.x, 0.0, velocity.y),
+                });
+            }
+        } else {
+            self.stride = 0.0;
+        }
+        if self.events.len() > 16 {
+            self.events.remove(0);
+        }
     }
 
     /// Sets the camera's pitch, rad, positive looking down.
@@ -450,6 +483,21 @@ impl Swim {
         if now != self.medium && now != Medium::Ground && !self.medium.wet() {
             let place = place_name(player.pos.x, player.pos.z);
             self.say(format!("You wade into {place}"));
+            // Falling in throws up a splash for the speed it fell at.
+            let speed = (before - player.pos.y) / dt;
+            if speed > SPLASH_SPEED
+                && let Some(top) = ew::surface(player.pos.x, player.pos.z)
+            {
+                self.events.push(WaterEvent::Splash {
+                    at: Vec3::new(player.pos.x, top, player.pos.z),
+                    speed,
+                });
+            }
+        }
+        if now == Medium::Ground && self.medium.wet() {
+            self.events.push(WaterEvent::Drip {
+                at: player.pos + Vec3::Y * 0.9,
+            });
         }
         self.medium = now;
         self.ripple(player.pos, dt);
@@ -599,6 +647,92 @@ pub fn add_sprites(atlas: &mut Atlas) -> Result<(), String> {
         icons::SIZE,
         &icons::rasterize(icon)?,
     )
+}
+
+/// The most water effect particles a tier keeps alive at once
+/// (`docs/verse/water.md`, Budgets per tier), within its sprite budget.
+#[must_use]
+pub fn fx_budget(tier: verse_engine::quality::Tier) -> usize {
+    match tier {
+        verse_engine::quality::Tier::Low => 64,
+        verse_engine::quality::Tier::Medium => 256,
+        verse_engine::quality::Tier::High => 512,
+    }
+}
+
+/// The water's sprite effects: splashes, spray, droplets, drips, and
+/// steam, kept within the tier's particle budget. An effect that would
+/// overrun it is skipped, as a budget overrun draws less.
+pub struct WaterFx {
+    pub particles: crate::fx::Particles,
+    budget: usize,
+    /// Effects skipped for the budget.
+    pub skipped: u32,
+    /// Each running effect and the most particles it can have alive.
+    running: Vec<(crate::fx::Handle, usize)>,
+}
+
+impl WaterFx {
+    #[must_use]
+    pub fn new(tier: verse_engine::quality::Tier) -> Self {
+        Self {
+            particles: crate::fx::Particles::new(0x5_7A7E),
+            budget: fx_budget(tier),
+            skipped: 0,
+            running: Vec::new(),
+        }
+    }
+
+    /// The particle budget.
+    #[must_use]
+    pub fn budget(&self) -> usize {
+        self.budget
+    }
+
+    /// Sets the tier's budget.
+    pub fn set_tier(&mut self, tier: verse_engine::quality::Tier) {
+        self.budget = fx_budget(tier);
+    }
+
+    /// Starts effect `name` at `spawn` if its most particles fit the
+    /// budget with what is alive. Returns whether it started.
+    pub fn start(&mut self, name: &str, spawn: crate::fx::Spawn) -> Option<crate::fx::Handle> {
+        let peak = crate::fx::system::effect(name)
+            .map_or(0.0, |e| e.peak())
+            .ceil() as usize;
+        // What the running effects may still have alive, at most.
+        let particles = &self.particles;
+        self.running.retain(|(h, _)| particles.alive(*h));
+        let committed: usize = self.running.iter().map(|(_, p)| p).sum();
+        if committed + peak > self.budget {
+            self.skipped += 1;
+            return None;
+        }
+        let handle = self.particles.start(name, spawn)?;
+        self.running.push((handle, peak));
+        Some(handle)
+    }
+
+    /// Particles alive now.
+    #[must_use]
+    pub fn len(&self) -> usize {
+        self.particles.len()
+    }
+
+    #[must_use]
+    pub fn is_empty(&self) -> bool {
+        self.particles.is_empty()
+    }
+}
+
+/// How large an entry splash is drawn for a body of `mass` kg meeting the
+/// water at `speed` m/s: by the square root of its momentum, a 80 kg
+/// character at 5 m/s drawing it at full size.
+#[must_use]
+pub fn splash_scale(speed: f32, mass: f32) -> f32 {
+    ((speed.max(0.0) * mass.max(0.0)) / 400.0)
+        .sqrt()
+        .clamp(0.3, 2.2)
 }
 
 #[cfg(test)]

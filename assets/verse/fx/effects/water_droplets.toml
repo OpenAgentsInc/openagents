@@ -1,0 +1,26 @@
+# An oar blade leaving the water at the end of a stroke: a short arc of
+# droplets flung off it and a few drops falling back.
+description = "Droplets flung off an oar blade at the end of a stroke."
+
+[[emitter]]
+name = "flung"
+sheet = "sparks"
+frames = [0, 0]
+blend = "alpha"
+light = "lit"
+burst = 10
+duration = 0.05
+life = [0.35, 0.6]
+shape = "disc"
+radius = 0.12
+spread = 35.0
+speed = [1.0, 2.2]
+inherit = 0.5
+gravity = -9.8
+size = [0.015, 0.03]
+stretch = 0.03
+stretch_max = 0.18
+rotate = false
+color = [1.6, 1.7, 1.75]
+alpha = [[0.0, 0.9], [1.0, 0.0]]
+priority = 2

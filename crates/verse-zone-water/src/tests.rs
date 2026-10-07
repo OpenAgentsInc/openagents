@@ -58,11 +58,19 @@ fn a_dropped_crate_splashes_and_floats() {
         Vec3::ZERO,
     );
     let mut splashed = false;
+    let mut impacts = 0;
+    let mut wakes = 0;
     for _ in 0..600 {
         lab.tick(1.0 / 60.0, spawn(), Vec3::NEG_Z);
         splashed |= lab.floats.floats.first().is_some_and(|f| f.wet);
+        // The splash and the bobbing crate write into the ripple field.
+        let water = lab.frame_water();
+        impacts += water.sources().iter().filter(|s| s.pulse).count();
+        wakes += water.sources().iter().filter(|s| !s.pulse).count();
     }
     assert!(splashed);
+    assert!(impacts >= 1, "the splash rings the ripple field");
+    assert!(wakes >= 1, "the moving crate leaves a wake");
     let (_, at, vel) = lab.floats.states().next().unwrap();
     let surface = lab.surface_at(Vec2::new(at.x, at.z)).unwrap().height;
     // Its center rides near the surface, not sunk and not flying.

@@ -1,0 +1,122 @@
+{
+  "schema": "openagents.verse.everglade_wake_capture.v1",
+  "pack": "367da275afc505543d77841dd4f44efafbb6d784b783a17742985b13ce922fb7",
+  "quality": "high",
+  "pictures": [
+    {
+      "name": "swim-wake",
+      "file": "swim-wake.png",
+      "player": [
+        2.5942165851593018,
+        -1.1352859735488892,
+        29.5
+      ],
+      "ripple_sources": 9,
+      "water_particles": 38,
+      "hulls": 3,
+      "boat": {
+        "keel": [
+          -2.1797194480895996,
+          -0.21820126867670764,
+          25.386377334594727
+        ],
+        "state": "upright",
+        "speed": 2.5304260943141957e-17,
+        "draft": 0.11820126718659152
+      },
+      "sha256": "973f1cdb0f95312cb32638fea12b595c3bfe8566898ac68e50636d2cb013635f"
+    },
+    {
+      "name": "boat-jetty",
+      "file": "boat-jetty.png",
+      "player": [
+        -3.400688409805298,
+        1.1799999475479126,
+        26.67852783203125
+      ],
+      "ripple_sources": 8,
+      "water_particles": 22,
+      "hulls": 3,
+      "boat": {
+        "keel": [
+          -2.1797194480896,
+          -0.21931708059766175,
+          25.386377334594727
+        ],
+        "state": "upright",
+        "speed": 3.283826634544027e-18,
+        "draft": 0.11931707910754563
+      },
+      "sha256": "4e663a2ede717cbccf1cb3b874fb410703a29277b73ad7dd68a56067b39ba72e"
+    },
+    {
+      "name": "boat-rowed",
+      "file": "boat-rowed.png",
+      "player": [
+        -0.5529587864875793,
+        -0.15269847214221954,
+        26.359621047973633
+      ],
+      "ripple_sources": 8,
+      "water_particles": 28,
+      "hulls": 3,
+      "boat": {
+        "keel": [
+          -0.6262038346940371,
+          -0.23098836536801917,
+          26.3159878693517
+        ],
+        "state": "upright",
+        "speed": 1.025110291613584,
+        "draft": 0.13098836387790305
+      },
+      "sha256": "a05f0a6448d874f552391a4b9475ff0847f3f9fbd0acece8943d608bce50e51f"
+    },
+    {
+      "name": "boat-capsized",
+      "file": "boat-capsized.png",
+      "player": [
+        -0.18626779317855835,
+        -1.300000548362732,
+        25.79897117614746
+      ],
+      "ripple_sources": 9,
+      "water_particles": 18,
+      "hulls": 2,
+      "boat": {
+        "keel": [
+          0.8478295455933733,
+          0.2233443727054616,
+          28.302100824393655
+        ],
+        "state": "capsized",
+        "speed": 0.5312422358781774,
+        "draft": -0.3233443741955777
+      },
+      "sha256": "465a494f69885a6ed1bad2c67f3ec863d813b204f75a8be29aa0308ec80b89f1"
+    },
+    {
+      "name": "bridge-debris",
+      "file": "bridge-debris.png",
+      "player": [
+        4.100779056549072,
+        0.0,
+        -83.99063873291016
+      ],
+      "ripple_sources": 9,
+      "water_particles": 19,
+      "hulls": 2,
+      "boat": {
+        "keel": [
+          2.402962198600289,
+          0.17126626462405328,
+          30.536900123410756
+        ],
+        "state": "capsized",
+        "speed": 0.062055232372471375,
+        "draft": -0.2712662661141694
+      },
+      "sha256": "dab6dca143ec8daa1888c069d08aefff9c3f226a5669a74261050f3f869a77fb"
+    }
+  ]
+}

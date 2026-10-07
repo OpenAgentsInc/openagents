@@ -5,8 +5,10 @@ answers to its open questions ([Owner decisions](#owner-decisions)). Phases
 W1 ([Coupling with `crates/physics`](#coupling-with-cratesphysics)), W2
 and W4 ([Shaders per tier](#shaders-per-tier)), W3
 ([Gameplay rules](#gameplay-rules): Everglade's water, swimming, and
-breath), and W5 ([Rendering passes](#rendering-passes): scene copies,
-refraction, and reflection) are implemented; nothing else in this document
+breath), W5 ([Rendering passes](#rendering-passes): scene copies,
+refraction, and reflection), and W6 ([Rowboats](#rowboats) and
+[Spells and destruction](#spells-and-destruction): ripples, wakes,
+splashes, floating debris, and boats) are implemented; nothing else in this document
 is implemented yet unless a section says so. The phases at the end are
 tracked as GitHub issues on the
 [OpenAgents project board](../project-board.md). The coastal zone that builds
@@ -654,6 +656,28 @@ Until then, W3 floats them as bobbing props (P11).
   intents; the boat's pose replicates as a NIP-MV shared body; passengers
   ride their seats and publish no pose of their own while seated. Ducks
   steer around boats.
+
+**Status (W6, 2026-10-07).** The ripple and foam field is
+`verse_pbr::water::ripple`: the damped wave equation on Low and Medium
+[Bridson07] and iWave on High [Tessendorf04], with Kelvin's wake wedge
+drawn behind each mover, foam that fades over 3 s and drifts on the
+current [Stam99], and dry cells held still. It rides as one more layer of
+the `water_waves` array, so it adds no texture binding: Low 64² at
+0.25 m, Medium 64² at 0.3 m, and High 128² at 0.2 m, not the 128² and 256²
+above, and its window sits ahead of the camera. A frame's `Water` lists its
+`sources` (8, 16, or 32 kept a tier) and the boats' `hulls`, which the
+shader masks the water out of (an analytic footprint, not a screen-space
+mask). Rowboats are `verse_world::rowboat::Fleet` (a draft of 0.12 m empty
+and about 0.19 m with two aboard, strokes at 0.8 a second to about 1.5 m/s,
+capsizing past 60°, righting, and breaking into seven floating planks); a
+boat's rower hosts it, and its pose travels as a NIP-MV shared-body entry
+(`rowboat-N`). Everglade's demolition debris over the water falls through
+the slab onto the carved beds (`everglade_water::bed_boxes`), floats or
+sinks by its matter (`physics::water::apply_scaled`), drifts, and lodges;
+blast-thrown debris hisses out in steam. Water effects
+(`water_entry_splash`, `water_droplets`, `water_drips`, `water_crest_spray`,
+and `water_steam_puff`) keep to 64, 256, or 512 particles. Captures are in
+`bench/verse/2026-10-07/everglade-wake/`.
 
 ### Weather
 

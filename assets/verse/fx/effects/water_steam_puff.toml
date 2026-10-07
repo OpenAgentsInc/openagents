@@ -1,0 +1,25 @@
+# Something burning going out in water: a hiss of white steam that bursts
+# up off the surface and thins away.
+description = "A burst of steam where burning debris goes out in water."
+
+[[emitter]]
+name = "steam"
+sheet = "smoke"
+blend = "alpha"
+light = "lit"
+burst = 10
+duration = 0.1
+life = [1.0, 1.8]
+shape = "disc"
+radius = 0.3
+spread = 25.0
+speed = [0.8, 1.8]
+gravity = 0.9
+drag = 0.9
+wander = 0.3
+size = [0.25, 0.4]
+scale = [[0.0, 0.5], [0.4, 1.4], [1.0, 2.4]]
+color = [1.35, 1.38, 1.42]
+alpha = [[0.0, 0.0], [0.1, 0.55], [1.0, 0.0]]
+spin = [-0.5, 0.5]
+priority = 3

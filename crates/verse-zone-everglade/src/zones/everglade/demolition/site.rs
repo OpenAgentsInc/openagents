@@ -14,11 +14,12 @@
 //! support is decided by rules over grid adjacency instead of welds.
 
 use glam::{DQuat, DVec3, Mat4, Vec3};
+use physics::water::{Water, WaterSet};
 use physics::{
     Body, BodyId, BodyKind, Collider, Filter, Joint, JointId, JointKind, Material, Shape, Uniform,
     World,
 };
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 
 /// Physics step, s, as the chamber's spell world.
 pub const STEP: f64 = 1.0 / 120.0;
@@ -60,6 +61,9 @@ const SETTLE_DAMPING: f64 = 0.95;
 /// frozen in place as a fixed body until something strikes near it, so a
 /// rubble pile whose last few pieces still rock costs the solver nothing.
 const FREEZE_SPEED: f64 = 0.6;
+/// Debris in the water slower than this against something fixed has
+/// lodged, m/s.
+const LODGED_SPEED: f64 = 0.08;
 const FREEZE_AFTER: f64 = 1.5;
 /// How near a piece that breaks or comes loose rouses frozen debris, m.
 const ROUSE: f64 = 3.0;
@@ -166,6 +170,47 @@ pub enum Matter {
     Tile,
     Brick,
 }
+
+impl Matter {
+    /// What it floats or sinks as, kg/m³: seasoned timber floats; plaster,
+    /// roof tile, and brick sink.
+    #[must_use]
+    pub const fn density(self) -> f64 {
+        match self {
+            Self::Timber => 600.0,
+            Self::Plaster => 1700.0,
+            Self::Tile => 2000.0,
+            Self::Brick => 1900.0,
+        }
+    }
+}
+
+/// Something that struck the water: a splash, or burning debris going out
+/// in steam.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct Splash {
+    pub at: Vec3,
+    /// How fast it met the surface, m/s, and its mass, kg.
+    pub speed: f32,
+    pub mass: f32,
+    /// Whether it was burning: thrown by a blast moments ago.
+    pub hiss: bool,
+    pub matter: Matter,
+}
+
+/// The ground slab's collision group, which debris in water passes
+/// through to the beds under it.
+const LAND: u32 = 1 << 30;
+/// Debris over water: everything but the slab.
+const WET: Filter = Filter {
+    group: !LAND,
+    mask: !LAND,
+};
+/// The beds' and banks' boxes.
+const BED: Filter = Filter {
+    group: !LAND,
+    mask: u32::MAX,
+};
 
 /// A box in a body's frame.
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -396,6 +441,14 @@ pub struct Site {
     /// comes loose, or joins a toppling top, a chunk ends, or debris
     /// thaws. [`Site::hold_frozen`] then checks what is frozen.
     unsettled: bool,
+    /// The water debris floats or sinks in, and the boxes of its beds and
+    /// banks, which replace the slab under it.
+    water: Option<&'static WaterSet>,
+    beds: Vec<(DVec3, DVec3)>,
+    /// Debris bodies in the water now, and what struck it since the last
+    /// [`Site::take_splashes`].
+    wet: BTreeSet<u32>,
+    splashes: Vec<Splash>,
 }
 
 impl Site {
@@ -427,6 +480,10 @@ impl Site {
             frozen: std::collections::BTreeSet::new(),
             rests: BTreeMap::new(),
             unsettled: false,
+            water: None,
+            beds: Vec::new(),
+            wet: BTreeSet::new(),
+            splashes: Vec::new(),
         };
         site.raise();
         site
@@ -501,22 +558,95 @@ impl Site {
         self.floors = floors;
     }
 
+    /// Puts `water` under the site with its beds and banks, `beds` (each a
+    /// box's center and half extents): debris over it falls through the
+    /// slab onto them, floats as its matter does
+    /// (`docs/verse/water.md`, Spells and destruction), drifts with the
+    /// current, and lodges against the banks. Takes effect when the world
+    /// is next built.
+    pub fn set_water(&mut self, water: &'static WaterSet, beds: Vec<(DVec3, DVec3)>) {
+        self.water = Some(water);
+        self.beds = beds;
+    }
+
+    /// What struck the water since the last call.
+    pub fn take_splashes(&mut self) -> Vec<Splash> {
+        std::mem::take(&mut self.splashes)
+    }
+
+    /// Debris bodies in the water now.
+    #[must_use]
+    pub fn afloat(&self) -> usize {
+        self.wet.len()
+    }
+
+    /// The debris in the water now: each body's place and velocity, for
+    /// the ripple field.
+    #[must_use]
+    pub fn floating(&self) -> Vec<(Vec3, Vec3)> {
+        self.wet
+            .iter()
+            .filter_map(|&id| self.world.bodies().get(id as usize))
+            .filter(|b| !b.removed)
+            .map(|b| (b.pos.as_vec3(), b.vel.as_vec3()))
+            .collect()
+    }
+
+    /// Every chunk alive with its matter.
+    #[must_use]
+    pub fn chunk_bodies(&self) -> Vec<(BodyId, Matter)> {
+        let mut out = Vec::new();
+        for (index, piece) in self.pieces.iter().enumerate() {
+            for chunk in piece.chunks.iter().filter(|c| !c.gone) {
+                out.push((chunk.body, self.specs[index].matter));
+            }
+        }
+        out
+    }
+
+    /// A body's position and velocity, m and m/s.
+    #[must_use]
+    pub fn body_motion(&self, body: BodyId) -> (DVec3, DVec3) {
+        let b = &self.world[body];
+        (b.pos, b.vel)
+    }
+
+    /// Whether body `id` is frozen in place.
+    #[must_use]
+    pub fn is_frozen(&self, body: BodyId) -> bool {
+        self.frozen.contains(&body.0)
+    }
+
     /// A physics world with only the ground in it: body 0, the slab, with
-    /// the floors' colliders.
+    /// the floors' colliders, and the beds and banks of any water.
     fn ground(&self) -> World {
         let mut world = World::new(STEP);
         let ground = world.add(
             Body::new(1.0, DVec3::ONE, DVec3::new(0.0, -0.5, 0.0)).with_kind(BodyKind::Static),
         );
-        world.add_collider(
-            Collider::new(
-                ground,
-                Shape::Cuboid {
-                    half: DVec3::new(self.ground_half, 0.5, self.ground_half),
-                },
-            )
-            .with_material(MATERIAL),
-        );
+        let slab = Collider::new(
+            ground,
+            Shape::Cuboid {
+                half: DVec3::new(self.ground_half, 0.5, self.ground_half),
+            },
+        )
+        .with_material(MATERIAL);
+        world.add_collider(if self.water.is_some() {
+            slab.with_filter(Filter {
+                group: LAND,
+                mask: LAND,
+            })
+        } else {
+            slab
+        });
+        for &(center, half) in &self.beds {
+            world.add_collider(
+                Collider::new(ground, Shape::Cuboid { half })
+                    .at(center - DVec3::new(0.0, -0.5, 0.0), DQuat::IDENTITY)
+                    .with_material(MATERIAL)
+                    .with_filter(BED),
+            );
+        }
         for &(center, half) in &self.floors {
             world.add_collider(
                 Collider::new(ground, Shape::Cuboid { half })
@@ -2028,6 +2158,7 @@ impl Site {
     /// One physics step, then impact damage, tilt breaks, and chunk ends.
     fn step(&mut self) {
         let gravity = Uniform(DVec3::new(0.0, -9.81, 0.0));
+        self.wet_debris();
         self.world.step(&gravity);
         let now = self.world.time();
         self.thrown.retain(|&(_, until)| until > now);
@@ -2081,8 +2212,16 @@ impl Site {
                     body.omega *= SETTLE_DAMPING;
                 }
                 if debris {
-                    let slow = body.vel.length() < FREEZE_SPEED
-                        && body.omega.length() < 2.0 * FREEZE_SPEED
+                    // Debris in the water drifts on the current as fast as
+                    // rubble settles, so it freezes only once lodged: all
+                    // but still against a bank or on the bed.
+                    let freeze = if self.wet.contains(&(index as u32)) {
+                        LODGED_SPEED
+                    } else {
+                        FREEZE_SPEED
+                    };
+                    let slow = body.vel.length() < freeze
+                        && body.omega.length() < 2.0 * freeze
                         && supported.contains_key(&(index as u32));
                     let rest = self.resting.entry(index as u32).or_insert(0.0);
                     *rest = if slow { *rest + STEP } else { 0.0 };
@@ -2175,6 +2314,114 @@ impl Site {
             self.remove_chunk(body);
         }
         self.hold_frozen();
+    }
+
+    /// Water's part of a step: debris over the water passes the slab to the
+    /// beds, floats or sinks by its matter, and drifts with the current;
+    /// debris that meets the surface splashes, and burning debris hisses.
+    fn wet_debris(&mut self) {
+        let Some(water) = self.water else {
+            return;
+        };
+        let tick = (self.world.time() / STEP).round() as u64;
+        // Every moving debris body and its matter.
+        let mut moving: BTreeMap<u32, Matter> = BTreeMap::new();
+        for (index, piece) in self.pieces.iter().enumerate() {
+            let matter = self.specs[index].matter;
+            match piece.status {
+                Status::Standing => {}
+                Status::Loose => {
+                    moving.insert(piece.body.0, matter);
+                }
+                Status::Broken => {
+                    for c in piece.chunks.iter().filter(|c| !c.gone) {
+                        moving.insert(c.body.0, matter);
+                    }
+                }
+            }
+        }
+        moving.retain(|id, _| {
+            self.world
+                .bodies()
+                .get(*id as usize)
+                .is_some_and(|b| b.kind == BodyKind::Dynamic && !b.removed)
+        });
+        let mut over: BTreeMap<u32, Matter> = BTreeMap::new();
+        let now = self.world.time();
+        for (&id, &matter) in &moving {
+            let body = &self.world[BodyId(id)];
+            let Some(sample) = water.sample(body.pos.x, body.pos.z, tick) else {
+                continue;
+            };
+            // Over the water: no slab under it.
+            over.insert(id, matter);
+            let under = body.pos.y < sample.height;
+            if under && !self.wet.contains(&id) {
+                self.wet.insert(id);
+                let hiss = self.thrown.binary_search_by_key(&id, |(b, _)| b.0).is_ok();
+                self.splashes.push(Splash {
+                    at: Vec3::new(body.pos.x as f32, sample.height as f32, body.pos.z as f32),
+                    speed: (-body.vel.y).max(0.0) as f32,
+                    mass: body.mass as f32,
+                    hiss,
+                    matter,
+                });
+                // Floating debris lasts longer, to drift and lodge.
+                let life = self.debris_lifetime * 3.0;
+                for piece in &mut self.pieces {
+                    for chunk in &mut piece.chunks {
+                        if chunk.body.0 == id && !chunk.gone {
+                            chunk.until = chunk.until.max(now + life);
+                        }
+                    }
+                }
+            } else if !under && body.pos.y > sample.height + 0.5 {
+                self.wet.remove(&id);
+            }
+        }
+        self.wet.retain(|id| over.contains_key(id));
+        // The slab lies only under debris that is not over the water.
+        for index in 0..self.world.colliders().len() {
+            let collider = self.world.colliders()[index];
+            if !moving.contains_key(&collider.body.0) || collider.filter == Filter::NONE {
+                continue;
+            }
+            let filter = if over.contains_key(&collider.body.0) {
+                WET
+            } else {
+                Filter::ALL
+            };
+            if collider.filter != filter {
+                self.world
+                    .collider_mut(physics::ColliderId(index as u32))
+                    .filter = filter;
+            }
+        }
+        // Each body floats as its matter does, whatever mass it was given
+        // to fall well: its buoyancy is scaled by its mass over the mass
+        // its colliders would have in that matter.
+        let mut volume: BTreeMap<u32, f64> = BTreeMap::new();
+        for c in self.world.colliders() {
+            if over.contains_key(&c.body.0) {
+                *volume.entry(c.body.0).or_default() += physics::water::volume(&c.shape);
+            }
+        }
+        let lift: BTreeMap<u32, f64> = over
+            .iter()
+            .filter_map(|(&id, &matter)| {
+                let v = *volume.get(&id)?;
+                let m = self.world.bodies()[id as usize].mass;
+                (v > 0.0).then(|| (id, m / (matter.density() * v)))
+            })
+            .collect();
+        physics::water::apply_scaled(
+            &mut self.world,
+            water,
+            tick,
+            STEP,
+            &physics::water::Settings::default(),
+            |id| lift.get(&id.0).copied(),
+        );
     }
 
     /// Adds `count` puffs of `matter`'s dust at `at`, `scale` times the
