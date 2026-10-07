@@ -42,6 +42,8 @@ use crate::sessions::{Access, push_access};
 /// The store's schema tag.
 pub const SCHEMA: &str = "openagents.billing.v1";
 
+pub mod prepaid;
+
 const BILLING: &str = "billing.json";
 const HISTORY_DIR: &str = "billing-history";
 const LOCK: &str = "billing.lock";
@@ -553,6 +555,9 @@ pub struct Reconciliation {
 /// customers did lives here.
 #[derive(Clone, Debug, Default, Deserialize, Serialize)]
 pub struct BillingBook {
+    /// Native prepaid checkouts and scrubbed events share the existing journal.
+    #[serde(default, skip_serializing_if = "prepaid::Book::is_empty")]
+    pub prepaid: prepaid::Book,
     /// Subscriptions by id.
     #[serde(default)]
     pub subscriptions: BTreeMap<String, Subscription>,
@@ -1563,6 +1568,7 @@ impl Store {
                 "{name}: the store's digest does not recompute over its contents"
             ));
         }
+        self.book.prepaid.validate()?;
         for (id, subscription) in &self.book.subscriptions {
             if *id != subscription.id {
                 return Err(format!(
