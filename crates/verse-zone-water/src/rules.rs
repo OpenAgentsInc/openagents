@@ -617,8 +617,15 @@ impl WaterLab {
             self.water.add_ripple(c, 0.12);
             self.sources.push(Source::impact(c, 3.0, 0.08));
         }
-        for p in &steam.at {
-            self.fx.start("water_steam", Spawn::at(p.as_vec3()));
+        // A rolling cloud of steam where the fire meets the water: one at
+        // the burst and one at each of up to eight points it boiled. Each
+        // thins away on its own.
+        if !steam.at.is_empty() {
+            self.fx.start("fireball_steam", Spawn::at(at).scaled(1.4));
+        }
+        let every = steam.at.len().div_ceil(8).max(1);
+        for p in steam.at.iter().step_by(every) {
+            self.fx.start("fireball_steam", Spawn::at(p.as_vec3()));
         }
         let line = format!(
             "Fireball: {} dummies in the blast; steam where it meets the water; {} ice melted",
