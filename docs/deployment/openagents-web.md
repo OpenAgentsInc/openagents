@@ -439,3 +439,15 @@ tag, `/`, `/grid`, `/everglade`, `/druid`, and `/api/stats` answered
 five-slot hotbar, key 6 cast nothing there, and the Grove still cast Meteor
 Swarm and Thunderbolt, before traffic moved. Rollback:
 `--to-revisions coder-web-0a15818d70=100`.
+
+The owner's lit house with Alice at her workstation (676f61ec11): the
+Greco-futurism house's candlelit great room and lanterns, Alice at a
+workstation there, owner-only admission for her requests (on the web she
+shows "owner only" and takes no input), and the Everglade pack that carries
+them. Image `openagents/openagents-web:676f61ec11`, built from GitHub by the
+automation account and applied as `chris@` from the live spec with only the
+revision name and image changed (`CODER_CHAT_SYNC` quoted). On the `new`
+tag, `/`, `/grid`, `/everglade`, `/druid`, and `/api/stats` answered
+200, headless Chrome drew Everglade on WebGPU and WebGL2 (`?gl`), and the
+Grove still cast, before traffic moved. Rollback:
+`--to-revisions coder-web-ba484fcf52=100`.
