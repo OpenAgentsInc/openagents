@@ -226,6 +226,32 @@ states it.
 
 **Estimate.** 5 agent-hours.
 
+**Implemented (phase B1).** Terminal-mode briefings now come from the
+scored stream:
+
+- [`memory-stream`](../../crates/memory-stream/src/lib.rs) holds the pure
+  scoring (recency, min-max, the weighted sum, and a bounded `Stream` for
+  townsfolk) with no dependencies, and builds for `wasm32`.
+- [`agent_recall.rs`](../../crates/coder/src/task/agent_recall.rs) builds the
+  briefing (`Memory::recall`): candidates leave out memory rows and requests
+  that proposed a preference or asked to remember something, so a candidate
+  waits for you and a forgotten entry stays forgotten. Each line shows its
+  kind and date. The receipt names journal rows too ("the briefing carried
+  memory entries 1, 3; journal rows 22"), and a memory-only receipt reads as
+  before. Importance comes from the sidecar, the rule table, Jev (at most 16
+  records per briefing), or a prior by kind until Jev scores it.
+  [`agent_recall_live.rs`](../../crates/coder/src/task/agent_recall_live.rs)
+  holds the Jev judge and the embedding relevance, whose vectors are cached
+  in `agents/NAME/embeddings-MODEL.bin`. `Agents::with_briefing` falls back
+  to word overlap.
+- The level mapping is provisional until a live calibration:
+  [measurement](../decision-models/measurements/2026-10-06-memory-importance.md).
+- `coder interview --arm scored` runs the stream offline (priors and BM25).
+  Scripted answerer on the open partitions: the scored arm carried the
+  answer's evidence for 9 of 14 items against 4 for word overlap, but the
+  scripted answerer, which picks the line sharing the most words, got 4
+  right against 5. A live answerer is the real comparison.
+
 ## 2. Reflection with checked citations
 
 **Design.** A nightly reflection over Alice's stream, as a fourth standing-job
@@ -596,7 +622,7 @@ fixtures and a small demo.
 | Phase | Items | Issue | Depends on |
 | --- | --- | --- | --- |
 | A. Measure first | The fixture, the suite's memory category, and the baseline arm from item 7 (implemented) | [#10785](https://github.com/OpenAgentsInc/openagents/issues/10785) | None |
-| B1. Memory | 1 | [#10787](https://github.com/OpenAgentsInc/openagents/issues/10787) | A |
+| B1. Memory | 1 (implemented) | [#10787](https://github.com/OpenAgentsInc/openagents/issues/10787) | A |
 | B2. Reflection | 2 | [#10789](https://github.com/OpenAgentsInc/openagents/issues/10789) | B1 |
 | B3. Interviews | The rest of item 7 | [#10794](https://github.com/OpenAgentsInc/openagents/issues/10794) | B2, D |
 | C1. Clock and districts | The town clock, time of day, and district data | [#10786](https://github.com/OpenAgentsInc/openagents/issues/10786) | None; runs beside A and B |

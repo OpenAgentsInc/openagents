@@ -425,9 +425,11 @@ Rules:
 - **You can read, edit, export, and forget.** Forgetting removes the entry
   from memory and journals that it was forgotten, without the content.
 - **Briefings are bounded.** A task's briefing carries at most 12 KiB of
-  memory, chosen by relevance to the request and workspace, as the studio's
-  shared memory does today, and records which entries it carried as a CTX
-  selection receipt.
+  memory entries and journal rows, chosen by recency, importance, and
+  relevance to the request and workspace
+  ([`agent_recall.rs`](../../crates/coder/src/task/agent_recall.rs)), and
+  records which records it carried as a CTX selection receipt. Importance
+  scores go to the sidecar `agents/NAME/scores.jsonl`, which holds no text.
 - **Relay mirror is opt-in.** When you turn it on, the agent mirrors memory
   as NIP-AE `30174` engrams signed by its key and encrypted to yours, so
   another of your devices can read it. Relays see only that an agent with an

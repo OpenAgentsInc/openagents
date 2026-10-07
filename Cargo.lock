@@ -2738,6 +2738,7 @@ dependencies = [
  "jev-hosted",
  "knowledge",
  "libc",
+ "memory-stream",
  "microcoder-loop",
  "model-access",
  "nostr",
@@ -8305,6 +8306,10 @@ checksum = "488016bfae457b036d996092f6cb448677611ce4449e970ceaf42695203f218a"
 dependencies = [
  "autocfg",
 ]
+
+[[package]]
+name = "memory-stream"
+version = "0.1.0"
 
 [[package]]
 name = "metal"

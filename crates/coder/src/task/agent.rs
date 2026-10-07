@@ -593,6 +593,30 @@ impl Store {
         let skip = entries.len().saturating_sub(last);
         Ok(entries.into_iter().skip(skip).collect())
     }
+
+    /// Every journal entry with its position, the 1-based line number a
+    /// `journal:POS` reference names, oldest first. A line that does not
+    /// read is skipped and keeps its position.
+    ///
+    /// # Errors
+    /// When the journal exists and cannot be read.
+    pub fn journal_rows(&self) -> Result<Vec<(usize, Entry)>, String> {
+        let text = match std::fs::read_to_string(self.journal_path()) {
+            Ok(text) => text,
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(Vec::new()),
+            Err(e) => {
+                return Err(format!(
+                    "cannot read {}: {e}",
+                    self.journal_path().display()
+                ));
+            }
+        };
+        Ok(text
+            .lines()
+            .enumerate()
+            .filter_map(|(i, line)| serde_json::from_str(line).ok().map(|e| (i + 1, e)))
+            .collect())
+    }
 }
 
 fn private_dir(dir: &Path) -> Result<(), String> {

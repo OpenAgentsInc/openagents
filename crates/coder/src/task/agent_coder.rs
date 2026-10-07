@@ -78,7 +78,7 @@ impl Agents {
         cwd: &str,
         text: &str,
         briefing: &str,
-        carried: &[u64],
+        carried: &[crate::task::agent_recall::Ref],
     ) -> Report {
         let name = record.name.clone();
         let clock = self.clock;
@@ -106,13 +106,8 @@ impl Agents {
         if let Err(why) = journal(Kind::Request, request, None) {
             return fail(format!("I can't keep my journal: {why}"), "no journal");
         }
-        if !carried.is_empty() {
-            let ids: Vec<String> = carried.iter().map(u64::to_string).collect();
-            let _ = journal(
-                Kind::Memory,
-                &format!("the briefing carried memory entries {}", ids.join(", ")),
-                None,
-            );
+        if let Some(receipt) = crate::task::agent_recall::receipt(carried) {
+            let _ = journal(Kind::Memory, &receipt, None);
         }
         let (mut engine, standing) = match (self.engine)(record) {
             Ok(engine) => engine,

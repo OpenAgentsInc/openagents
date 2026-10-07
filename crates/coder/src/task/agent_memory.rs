@@ -120,6 +120,12 @@ impl Memory {
         self.store.dir().join("memory.jsonl")
     }
 
+    /// The agent's store.
+    #[must_use]
+    pub fn store(&self) -> &Store {
+        &self.store
+    }
+
     /// Every entry, oldest first. A line that does not read is skipped.
     ///
     /// # Errors
@@ -286,11 +292,13 @@ impl Memory {
         ))
     }
 
-    /// The briefing for `request` in `workspace`: active entries only,
-    /// most relevant first, within [`BRIEFING_MAX`], as plain lines, and
-    /// the IDs it carried. Relevance is the words an entry shares with the
-    /// request and the workspace; a note and an accepted preference always
-    /// go first.
+    /// The word-overlap briefing for `request` in `workspace`: active
+    /// entries only, most relevant first, within [`BRIEFING_MAX`], as plain
+    /// lines, and the IDs it carried. Relevance is the words an entry
+    /// shares with the request and the workspace; a note and an accepted
+    /// preference always go first. The host briefs with the scored stream
+    /// (`Memory::recall` in `agent_recall`); this stays as the baseline the
+    /// interview compares it with and a host can fall back to.
     ///
     /// # Errors
     /// When the memory cannot be read.

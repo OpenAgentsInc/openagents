@@ -718,6 +718,11 @@ uses, and marks which are implemented and which are only specified.
   `nostr`, `serde`, and `sha2` only, so the phones read XP through Verse's
   `xp-host` feature without linking the knowledge base's model and
   embedding clients; keep it that way.
+- `crates/memory-stream` — generative-agent memory scoring with no
+  dependencies: `0.99^hours` recency, min-max normalization, the
+  equal-weight combination, and a small bounded stream. Alice's briefing
+  (`coder::task::agent_recall`) and Everglade's townsfolk share it; keep it
+  free of I/O so it builds for `wasm32`.
 - `crates/everglade-web` — Everglade in a browser: a `cdylib` over Verse's
   `web` feature (`wasm32-unknown-unknown`) that fetches the pinned pack from
   the same origin and draws the zone with WebGPU or WebGL2.

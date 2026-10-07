@@ -32,6 +32,7 @@ pub mod agent_host;
 pub mod agent_interview;
 pub mod agent_jobs;
 pub mod agent_memory;
+pub mod agent_recall;
 pub mod archive;
 pub mod artifact;
 pub mod autostart;

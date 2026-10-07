@@ -521,3 +521,36 @@ fn a_host_without_the_owner_key_makes_her_unattested() {
     assert_eq!(made.pubkey.len(), 64);
     assert_eq!(agents.places().places.len(), 1, "her own workspace");
 }
+
+#[test]
+fn a_terminal_briefing_carries_scored_journal_rows_and_records_them() {
+    let dir = tempfile::tempdir().unwrap();
+    let agents = host(
+        &dir,
+        vec![
+            turn(
+                run("echo atif: 31 passed", 0, "atif: 31 passed"),
+                "atif: 31 passed.",
+            ),
+            turn(vec![], "They passed."),
+        ],
+    );
+    ask(&agents, "k1", "run the atif tests", false).unwrap();
+    until(&agents, |v| !v.busy && v.headline == "ok exit 0");
+    ask(&agents, "k2", "what did the atif tests say?", false).unwrap();
+    until(&agents, |v| !v.busy && v.headline == "answered");
+    let store = Store::new(&dir.path().join("host"), "alice").unwrap();
+    let receipts: Vec<String> = store
+        .journal(100)
+        .unwrap()
+        .into_iter()
+        .filter(|e| e.text.starts_with("the briefing carried"))
+        .map(|e| e.text)
+        .collect();
+    assert!(
+        receipts.iter().any(|r| r.contains("journal rows")),
+        "{receipts:?}"
+    );
+    let scores = std::fs::read_to_string(store.dir().join("scores.jsonl")).unwrap();
+    assert!(scores.contains(crate::task::agent_recall::SCORE_SCHEMA));
+}

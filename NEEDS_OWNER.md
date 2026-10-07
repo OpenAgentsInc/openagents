@@ -1,3 +1,14 @@
+## Memory importance calibration and a live interview (#10787)
+
+Alice's briefing now scores importance with Jev
+(`questions/memory-importance.json`) under a provisional level mapping.
+Run the calibration in
+`docs/decision-models/measurements/2026-10-06-memory-importance.md` on the
+phase A fixture with a live Jev key, and record the numbers there. Then run
+`coder interview --arm all --answerer live --store SCRATCH` to compare the
+scored and word-overlap arms with a real answerer; the scripted answerer
+can't tell them apart. Both spend a little Jev and model money.
+
 ## Disk cleanup 0.2.0 on the Mac (#10759)
 
 The running Disk cleanup rule is the saved

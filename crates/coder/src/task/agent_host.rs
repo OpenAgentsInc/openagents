@@ -235,6 +235,8 @@ pub struct Agents {
     screen: secret_screen::Screen,
     clock: fn() -> u64,
     host_key: String,
+    /// How a terminal request's briefing is chosen.
+    briefing: super::agent_recall::Briefing,
 }
 
 impl std::fmt::Debug for Agents {
@@ -295,7 +297,16 @@ impl Agents {
             screen: secret_screen::Screen::host(),
             clock: unix_now,
             host_key: String::new(),
+            briefing: super::agent_recall::Briefing::default_scored(),
         }
+    }
+
+    /// Choose terminal briefings by `briefing` instead of the scored
+    /// stream with live services.
+    #[must_use]
+    pub fn with_briefing(mut self, briefing: super::agent_recall::Briefing) -> Self {
+        self.briefing = briefing;
+        self
     }
 
     /// Run requests on `engine` instead, as a test does.
@@ -849,7 +860,22 @@ impl Agents {
                 || record.workspace.clone(),
                 |(_, path)| path.display().to_string(),
             );
-        let (briefing, carried) = memory.briefing(&queued.text, &cwd).unwrap_or_default();
+        let (briefing, carried) = match &self.briefing {
+            super::agent_recall::Briefing::WordOverlap => memory
+                .briefing(&queued.text, &cwd)
+                .map(|(text, ids)| {
+                    let refs = ids.into_iter().map(super::agent_recall::Ref::Memory);
+                    (text, refs.collect())
+                })
+                .unwrap_or_default(),
+            super::agent_recall::Briefing::Scored(services) => {
+                let mut services = services(&store);
+                memory
+                    .recall(&queued.text, &cwd, now, &mut services)
+                    .map(|recall| (recall.text, recall.carried))
+                    .unwrap_or_default()
+            }
+        };
         let text = if queued.context.trim().is_empty() {
             queued.text.clone()
         } else {

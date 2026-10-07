@@ -86,7 +86,7 @@ fn both_arms_run_through_the_scripted_answerer_into_a_verified_chain() {
     );
 
     let rows = store.verified_rows().unwrap();
-    assert_eq!(rows.len(), 2 * items.len());
+    assert_eq!(rows.len(), ArmName::ALL.len() * items.len());
     assert!(matches!(verify_chain(&rows), ChainVerdict::Ok { .. }));
     for row in &rows {
         assert_eq!(row["schema"], gi::ROW_SCHEMA);

@@ -1,0 +1,12 @@
+[package]
+name = "memory-stream"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+description = "Generative-agent memory scoring: recency, importance, and relevance, normalized and combined, with a small bounded stream. No I/O; builds for wasm32."
+publish.workspace = true
+
+[dependencies]
+
+[lints]
+workspace = true

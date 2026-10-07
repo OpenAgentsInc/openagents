@@ -477,9 +477,12 @@ impl Set {
                     "question {id:?} asks for {options:?} options, and this host supplies only {SUPPLIED:?}"
                 ));
             }
-            if question
-                .get("criteria")
-                .is_some_and(|criteria| !criteria.is_object())
+            // A Score's criteria are an ordered list of levels; only a set
+            // whose options the run supplies needs an option map to join.
+            if question.get("options").is_some()
+                && question
+                    .get("criteria")
+                    .is_some_and(|criteria| !criteria.is_object())
             {
                 return Err(format!(
                     "question {id:?} declares criteria that are not an option set, and the run's options would replace them"
@@ -894,6 +897,7 @@ mod tests {
                 "openagents.expectation-support.v1",
                 "openagents.independence.v1",
                 "openagents.independence.v2",
+                "openagents.memory-importance.v1",
                 "openagents.method-conformance.v1",
                 "openagents.program.v1",
                 "openagents.review-finding.v1"

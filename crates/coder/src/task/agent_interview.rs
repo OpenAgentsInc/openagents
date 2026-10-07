@@ -6,10 +6,11 @@
 //! briefing the agent would carry, an [`Answerer`] answers from it, and
 //! each answer becomes a code-graded, receipt-chained row in a Gym store.
 //!
-//! Two arms exist: [`ArmName::NoMemory`], an empty briefing, and
-//! [`ArmName::WordOverlap`], today's [`Memory::briefing`]. The scored
-//! memory, no-reflection, and no-plan arms plug in as further
-//! [`ArmName`] variants with their own [`Arm`]. The [`FromBriefing`] and
+//! Three arms exist: [`ArmName::NoMemory`], an empty briefing;
+//! [`ArmName::WordOverlap`], the baseline [`Memory::briefing`]; and
+//! [`ArmName::Scored`], the scored memory stream. The no-reflection and
+//! no-plan arms plug in as further [`ArmName`] variants with their own
+//! [`Arm`]. The [`FromBriefing`] and
 //! [`Canned`] answerers run with no model; [`Live`] asks the agent's
 //! model through the capacity book, and only the command uses it.
 
@@ -118,18 +119,23 @@ pub trait Arm {
 pub enum ArmName {
     /// An empty briefing: the paper's no-memory condition.
     NoMemory,
-    /// Today's briefing: [`Memory::briefing`], words shared with the question.
+    /// The word-overlap baseline: [`Memory::briefing`], words shared with
+    /// the question.
     WordOverlap,
+    /// The scored memory stream (`agent_recall`): recency, importance, and
+    /// relevance over memory entries and journal rows.
+    Scored,
 }
 
 impl ArmName {
-    pub const ALL: [Self; 2] = [Self::NoMemory, Self::WordOverlap];
+    pub const ALL: [Self; 3] = [Self::NoMemory, Self::WordOverlap, Self::Scored];
 
     #[must_use]
     pub const fn as_str(self) -> &'static str {
         match self {
             Self::NoMemory => "no-memory",
             Self::WordOverlap => "word-overlap",
+            Self::Scored => "scored",
         }
     }
 
@@ -146,6 +152,7 @@ impl ArmName {
             Self::WordOverlap => Box::new(WordOverlap {
                 root: scratch.join(self.as_str()),
             }),
+            Self::Scored => Box::new(Scored),
         }
     }
 }
@@ -192,6 +199,50 @@ impl Arm for WordOverlap {
         Ok(Briefing {
             text,
             carried: ids.iter().map(|id| format!("memory:{id}")).collect(),
+        })
+    }
+}
+
+/// The scored stream (`agent_recall::recall`) over the fixture as it stood
+/// at the interview, with no model: rule and prior importance, BM25
+/// relevance, and recency from the fixture's own selection receipts.
+#[derive(Clone, Copy, Debug, Default)]
+pub struct Scored;
+
+impl Arm for Scored {
+    fn name(&self) -> &'static str {
+        ArmName::Scored.as_str()
+    }
+
+    fn brief(&mut self, fixture: &Fixture, ask: &Ask<'_>) -> Result<Briefing, String> {
+        let journal: Vec<(usize, Entry)> = fixture
+            .journal
+            .iter()
+            .enumerate()
+            .filter(|(_, e)| e.at < ask.as_of)
+            .map(|(i, e)| (i + 1, e.clone()))
+            .collect();
+        let memory: Vec<MemoryEntry> = fixture
+            .memory
+            .iter()
+            .filter(|e| e.at < ask.as_of)
+            .cloned()
+            .collect();
+        let recall = super::agent_recall::recall(
+            &super::agent_recall::Inputs {
+                agent: fixture.agent(),
+                request: ask.question,
+                workspace: fixture.workspace(),
+                now: ask.as_of,
+                journal: &journal,
+                memory: &memory,
+            },
+            &std::collections::HashMap::new(),
+            &mut super::agent_recall::Services::offline(),
+        );
+        Ok(Briefing {
+            text: recall.text,
+            carried: recall.carried.iter().map(ToString::to_string).collect(),
         })
     }
 }
@@ -463,7 +514,7 @@ coder interview [--arm NAME|all] [--partition calibration|development|locked]
 Interviews the workshop agent's frozen fixture (gym suite alice-interview-v1)
 and appends one receipt-chained row per item to a Gym store.
 
-  --arm         no-memory, word-overlap, or all (default all)
+  --arm         no-memory, word-overlap, scored, or all (default all)
   --partition   default development; locked is read once and needs --ledger
                 and --reason, and the read is recorded in the ledger
   --answerer    scripted answers from the briefing with no model (default);

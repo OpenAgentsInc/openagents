@@ -1,0 +1,54 @@
+{
+  "v": 1,
+  "id": "openagents.memory-importance.v1",
+  "name": "How much one record in a workshop agent's memory matters",
+  "summary": "Places one journal row or memory entry of a workshop agent on four concrete levels, from routine work that went as expected to an owner's standing instruction or an emergency stop. Code maps the probability-weighted level onto the 1-to-10 importance its memory retrieval combines with recency and relevance.",
+  "gate": "importance",
+  "questions": {
+    "importance": {
+      "type": "score",
+      "instructions": "How much does the record in `record` matter to what the agent named in `agent` should remember about its work for the owner? `record.source` says whether it is a journal row or a memory entry, `record.kind` names what kind of row or entry it is, `record.text` is what it says, and `record.status` is a finished command's exit status when there is one. Judge the record alone, by what happened, not by how long or how technical the text is.",
+      "criteria": [
+        {
+          "summary": "Routine work that went as expected.",
+          "signals": [
+            "a request or report about ordinary work that finished normally",
+            "a check or a scheduled job that passed",
+            "a question the agent answered from what it read"
+          ]
+        },
+        {
+          "summary": "A failure, or a correction from the owner.",
+          "signals": [
+            "a command or test that failed, timed out, or did not finish",
+            "the owner turned down a command the agent proposed, or the host refused one",
+            "the owner corrected how the agent did something"
+          ]
+        },
+        {
+          "summary": "A change that was merged or rejected.",
+          "signals": [
+            "the owner merged one of the agent's changes",
+            "the owner rejected a change at the Merge station",
+            "a change now waits for the owner's review"
+          ]
+        },
+        {
+          "summary": "An owner's standing instruction, or an emergency stop.",
+          "signals": [
+            "the owner told the agent to always or never do something from now on",
+            "the owner asked the agent to remember a fact",
+            "the owner stopped, paused, or retired the agent"
+          ]
+        }
+      ]
+    }
+  },
+  "policy": {
+    "v": 1,
+    "state_max_bytes": 4096,
+    "evidence": [
+      "docs/decision-models/measurements/2026-10-06-memory-importance.md"
+    ]
+  }
+}
