@@ -29,6 +29,8 @@ runner = [
 plugin = ["dep:plugin"]
 
 [dependencies]
+# Paper Mono, the one typeface, for the pages this crate renders.
+paper-mono = { path = "../paper-mono" }
 # The door proxy: the child reaches its pinned door only through a
 # loopback listener that swaps a per-run token for the real key.
 axum = { version = "0.8", optional = true }

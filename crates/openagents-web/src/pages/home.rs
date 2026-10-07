@@ -54,7 +54,7 @@ your own machines, and Coder is the one that writes code.</p>",
 
 /// The homepage's policy: the site's, plus its one script and its
 /// questions to `/ask`.
-const HOME_POLICY: &str = "default-src 'none'; style-src 'self'; img-src 'self'; \
+const HOME_POLICY: &str = "default-src 'none'; style-src 'self'; font-src 'self'; img-src 'self'; \
 script-src 'self'; connect-src 'self'; base-uri 'none'; form-action 'self'; \
 frame-ancestors 'none'";
 

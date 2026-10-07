@@ -9,6 +9,8 @@ publish.workspace = true
 [dependencies]
 atif = { path = "../atif" }
 gym = { path = "../gym", default-features = false }
+# Paper Mono, the one typeface, for the pages this crate renders.
+paper-mono = { path = "../paper-mono" }
 commercial-accounts = { path = "../commercial-accounts" }
 fs2 = "0.4"
 libc = "0.2"

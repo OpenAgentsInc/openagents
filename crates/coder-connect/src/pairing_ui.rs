@@ -24,8 +24,11 @@ impl Display {
         let svg = pairing::qr_svg(code)?;
         let terminal = pairing::terminal_qr(code)?;
         let path = directory.join(format!("pairing-{}.html", invitation.id));
+        // The page is a file with no server beside it, so it carries its
+        // typeface, Paper Mono, inline.
+        let font_face = paper_mono::font_face_inline();
         let html = format!(
-            "<!doctype html><html lang=\"en\"><meta charset=\"utf-8\"><meta name=\"referrer\" content=\"no-referrer\"><meta name=\"viewport\" content=\"width=device-width,initial-scale=1\"><title>Connect Coder</title><style>body{{font:18px system-ui;max-width:680px;margin:30px auto;padding:20px;background:#111;color:#eee}}svg{{display:block;width:min(100%,520px);height:auto;margin:20px auto}}input{{box-sizing:border-box;width:100%;padding:12px}}strong{{color:#ffbd45}}</style><h1>Connect your phone</h1><p>In Coder, choose <strong>Scan QR code</strong>.</p><p>Private, single-use code. Expires in five minutes. Only show it to your phone.</p>{svg}<label>Paste instead<input readonly value=\"{code}\" aria-label=\"Pairing code\"></label><p>Keep the command running. Check the terminal for pairing status.</p></html>",
+            "<!doctype html><html lang=\"en\"><meta charset=\"utf-8\"><meta name=\"referrer\" content=\"no-referrer\"><meta name=\"viewport\" content=\"width=device-width,initial-scale=1\"><title>Connect Coder</title><style>{font_face}body{{font:18px \"Paper Mono\",monospace;max-width:680px;margin:30px auto;padding:20px;background:#111;color:#eee}}svg{{display:block;width:min(100%,520px);height:auto;margin:20px auto}}input{{box-sizing:border-box;width:100%;padding:12px}}strong{{color:#ffbd45}}</style><h1>Connect your phone</h1><p>In Coder, choose <strong>Scan QR code</strong>.</p><p>Private, single-use code. Expires in five minutes. Only show it to your phone.</p>{svg}<label>Paste instead<input readonly value=\"{code}\" aria-label=\"Pairing code\"></label><p>Keep the command running. Check the terminal for pairing status.</p></html>",
         );
         let mut options = std::fs::OpenOptions::new();
         options.write(true).create_new(true);

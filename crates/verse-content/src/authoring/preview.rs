@@ -327,7 +327,10 @@ impl Preview {
             )
         };
         let mut svg = format!(
-            "<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"1000\" height=\"900\" viewBox=\"0 0 1000 900\"><rect width=\"1000\" height=\"900\" fill=\"#101724\"/><g font-family=\"sans-serif\" font-size=\"14\" fill=\"#e4e9f0\"><text x=\"20\" y=\"25\">{} · authority tick {}</text><text x=\"20\" y=\"48\">Meters in world X/Z · amber: collision · cyan: admitted navigation spans · green: friendly NPC</text>",
+            "<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"1000\" height=\"900\" viewBox=\"0 0 1000 900\"><style>{}</style><rect width=\"1000\" height=\"900\" fill=\"#101724\"/><g font-family=\"'Paper Mono', monospace\" font-size=\"14\" fill=\"#e4e9f0\"><text x=\"20\" y=\"25\">{} · authority tick {}</text><text x=\"20\" y=\"48\">Meters in world X/Z · amber: collision · cyan: admitted navigation spans · green: friendly NPC</text>",
+            // The preview is a file with no server beside it, so it carries
+            // its typeface, Paper Mono, inline.
+            paper_mono::font_face_inline(),
             escape(&report.zone),
             report.tick
         );

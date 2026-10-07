@@ -31,7 +31,7 @@ pub(crate) fn routes() -> Router<App> {
 
 /// The page's policy: the site's, plus its one script and its reads of
 /// the flow endpoints on this origin.
-const LIVE_POLICY: &str = "default-src 'none'; style-src 'self'; img-src 'self'; \
+const LIVE_POLICY: &str = "default-src 'none'; style-src 'self'; font-src 'self'; img-src 'self'; \
 script-src 'self'; connect-src 'self'; base-uri 'none'; form-action 'self'; \
 frame-ancestors 'none'";
 

@@ -457,7 +457,8 @@ async fn sitemap_and_robots_cover_the_public_surface() {
         if path.starts_with("/v1/") && path != "/v1/docs" {
             continue;
         }
-        if path == "/healthz" {
+        // Liveness and the pages' font are not crawl targets.
+        if path == "/healthz" || path == paper_mono::WOFF2_PATH {
             continue;
         }
         assert!(

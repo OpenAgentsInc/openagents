@@ -64,7 +64,7 @@ pub fn html(steps: &[Step]) -> String {
         "<!doctype html><html lang=\"en\"><meta charset=\"utf-8\">\
          <meta name=\"viewport\" content=\"width=device-width,initial-scale=1\">\
          <title>Coder platform probe</title>\
-         <style>body{{font:1rem system-ui;max-width:70rem;margin:auto;padding:1rem}}\
+         <style>{}body{{font:1rem \"Paper Mono\",monospace;max-width:70rem;margin:auto;padding:1rem}}\
          pre{{white-space:pre-wrap;overflow-wrap:anywhere}}\
          input{{font:inherit;width:95%;padding:.5rem}}</style>\
          <main><h1>Coder platform probe</h1>\
@@ -73,6 +73,7 @@ pub fn html(steps: &[Step]) -> String {
          <input id=\"draft\" autocomplete=\"off\" placeholder=\"日本語 · café · 👩🏽‍💻\">\
          <details><summary>Full transcript ({} steps)</summary><pre>{}</pre></details>\
          </main></html>",
+        paper_mono::font_face_inline(),
         steps.len(),
         escape_html(&transcript(steps)),
     )

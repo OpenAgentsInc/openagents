@@ -17,6 +17,8 @@ name = "coder-connect"
 required-features = ["host"]
 
 [dependencies]
+# Paper Mono, the one typeface, for the pages this crate renders.
+paper-mono = { path = "../paper-mono" }
 coder-history = { path = "../coder-history", default-features = false }
 nostr = { path = "../nostr" }
 serde = { version = "1", features = ["derive"] }

@@ -1,7 +1,7 @@
 <svg xmlns="http://www.w3.org/2000/svg" width="990" height="720" viewBox="0 0 990 720" role="img">
 <title>Coder terminal UI preview</title>
 <rect width="100%" height="100%" fill="#0a0a0a"/>
-<g font-family="DejaVu Sans Mono, monospace" font-size="15">
+<g font-family="Paper Mono, monospace" font-size="15">
 <text x="756" y="35" fill="#00ffff" font-weight="normal">l</text>
 <text x="765" y="35" fill="#00ffff" font-weight="normal">i</text>
 <text x="774" y="35" fill="#00ffff" font-weight="normal">v</text>

@@ -58,7 +58,7 @@ pub(crate) const CANVAS_ID: &str = "everglade-canvas";
 /// The page's policy: the site's, plus its one script and the module it
 /// imports from this site, compiling WebAssembly, and same-origin reads of
 /// the module and the pack.
-pub(crate) const EVERGLADE_POLICY: &str = "default-src 'none'; style-src 'self'; \
+pub(crate) const EVERGLADE_POLICY: &str = "default-src 'none'; style-src 'self'; font-src 'self'; \
 img-src 'self'; script-src 'self' 'wasm-unsafe-eval'; connect-src 'self'; \
 base-uri 'none'; form-action 'self'; frame-ancestors 'none'";
 
@@ -67,7 +67,7 @@ base-uri 'none'; form-action 'self'; frame-ancestors 'none'";
 pub(crate) const GRID_RELAY: &str = "wss://relay.openagents.com";
 
 /// The Grid page's policy: the build's, plus a WebSocket to [`GRID_RELAY`].
-pub(crate) const GRID_POLICY: &str = "default-src 'none'; style-src 'self'; \
+pub(crate) const GRID_POLICY: &str = "default-src 'none'; style-src 'self'; font-src 'self'; \
 img-src 'self'; script-src 'self' 'wasm-unsafe-eval'; \
 connect-src 'self' wss://relay.openagents.com; \
 base-uri 'none'; form-action 'self'; frame-ancestors 'none'";

@@ -38,7 +38,7 @@ use crate::backend::{Backend, Development};
 
 /// The policy every page is served under unless it sets a stricter one:
 /// no script from anywhere, styles and images from this site only.
-const SITE_POLICY: &str = "default-src 'none'; style-src 'self'; img-src 'self'; \
+const SITE_POLICY: &str = "default-src 'none'; style-src 'self'; font-src 'self'; img-src 'self'; \
      base-uri 'none'; form-action 'self'; frame-ancestors 'none'";
 
 /// How the server runs.
@@ -130,6 +130,7 @@ pub fn router(config: Config) -> Router {
         .route("/api/stats", get(pay_proxy))
         .route("/health", get(|| async { "ok" }))
         .route("/static/site.css", get(stylesheet))
+        .route(paper_mono::WOFF2_PATH, get(paper_mono_font))
         .route("/static/verse-grid.jpg", get(verse_grid))
         .route("/static/ask.js", get(ask_script))
         .route("/static/flow.js", get(flow_script))
@@ -211,13 +212,27 @@ async fn guard(hosts: Hosts, request: Request, next: Next) -> Response {
     response
 }
 
-/// The site stylesheet: the palette's `:root` block, then the rules.
+/// The site stylesheet: Paper Mono's `@font-face`, the palette's `:root`
+/// block, then the rules.
 fn css() -> String {
     format!(
-        "{}{}",
+        "{}{}{}",
+        paper_mono::font_face(paper_mono::WOFF2_PATH),
         palette::root_block(),
         include_str!("../static/site.css")
     )
+}
+
+/// Paper Mono, the site's one typeface, served from this origin.
+async fn paper_mono_font() -> Response {
+    (
+        [
+            (header::CONTENT_TYPE, "font/woff2"),
+            (header::CACHE_CONTROL, "public, max-age=31536000, immutable"),
+        ],
+        paper_mono::WOFF2,
+    )
+        .into_response()
 }
 
 /// The homepage terminal's script.

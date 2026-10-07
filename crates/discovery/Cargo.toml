@@ -7,6 +7,8 @@ description = "The public discovery surface: the bundled documentation corpus, t
 publish.workspace = true
 
 [dependencies]
+# Paper Mono, the one typeface, for the pages this crate renders.
+paper-mono = { path = "../paper-mono" }
 nostr = { path = "../nostr" }
 pulldown-cmark = { version = "0.13.4", default-features = false, features = ["html"] }
 serde = { version = "1", features = ["derive"] }

@@ -196,8 +196,26 @@ pub(crate) fn routes() -> Vec<(&'static str, MethodRouter<Arc<ServeState>>)> {
         ("/v1/docs/search", get(docs_search)),
         ("/v1/docs/examples", get(docs_examples)),
         ("/v1/docs/{id}", get(doc_read)),
+        (paper_mono::WOFF2_PATH, get(paper_mono_font)),
     ]);
     routes
+}
+
+/// Paper Mono, the typeface of the discovery pages, the dashboard, and the
+/// playground, served from this origin.
+async fn paper_mono_font() -> axum::response::Response {
+    use axum::response::IntoResponse;
+    (
+        [
+            (axum::http::header::CONTENT_TYPE, "font/woff2"),
+            (
+                axum::http::header::CACHE_CONTROL,
+                "public, max-age=31536000, immutable",
+            ),
+        ],
+        paper_mono::WOFF2,
+    )
+        .into_response()
 }
 
 /// Every public path — the sitemap and the catalog test share it. The

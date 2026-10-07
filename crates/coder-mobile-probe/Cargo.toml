@@ -10,6 +10,8 @@ description = "A synthetic, read-only probe of Rust native task views."
 crate-type = ["rlib", "cdylib"]
 
 [dependencies]
+# Paper Mono, the one typeface, for the pages this crate renders.
+paper-mono = { path = "../paper-mono" }
 atif = { path = "../atif" }
 serde_json = "1"
 

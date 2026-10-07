@@ -15,7 +15,7 @@ const STYLE: &str = "\
 :root{--bg:#fbfaf7;--fg:#1d1c1a;--muted:#6b675f;--line:#e2ded5;--good:#23703a;--bad:#a4282a;--mid:#8a6a12;--card:#ffffff}\
 @media (prefers-color-scheme:dark){:root{--bg:#141311;--fg:#ece9e2;--muted:#a09a8f;--line:#34312b;--good:#6fcf8a;--bad:#f08a86;--mid:#e5c15a;--card:#1c1b18}}\
 *{box-sizing:border-box}\
-body{margin:0;background:var(--bg);color:var(--fg);font:15px/1.5 -apple-system,BlinkMacSystemFont,\"Segoe UI\",sans-serif}\
+body{margin:0;background:var(--bg);color:var(--fg);font:15px/1.5 \"Paper Mono\",monospace}\
 main{max-width:960px;margin:0 auto;padding:24px 16px 48px}\
 h1{font-size:22px;margin:0 0 4px}h2{font-size:17px;margin:32px 0 8px}h3{font-size:15px;margin:0}\
 .muted{color:var(--muted)}.good{color:var(--good)}.bad{color:var(--bad)}.mid{color:var(--mid)}\
@@ -25,7 +25,7 @@ table{border-collapse:collapse;width:100%;font-size:14px}\
 th,td{text-align:left;padding:6px 8px;border-bottom:1px solid var(--line);vertical-align:top}\
 .case{background:var(--card);border:1px solid var(--line);border-radius:8px;padding:12px 16px;margin:12px 0}\
 details{margin:6px 0}summary{cursor:pointer}\
-code{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:13px;overflow-wrap:anywhere}\
+code{font-family:inherit;font-size:13px;overflow-wrap:anywhere}\
 .wrap{overflow-x:auto}";
 
 /// Escapes text for HTML.
@@ -99,7 +99,10 @@ pub fn render(evaluation: &Evaluation) -> String {
         out,
         "<!doctype html>\n<html lang=\"en\">\n<head>\n<meta charset=\"utf-8\">\n\
          <meta name=\"viewport\" content=\"width=device-width,initial-scale=1\">\n\
-         <title>Plugin test</title>\n<style>{STYLE}</style>\n</head>\n<body>\n<main>\n"
+         <title>Plugin test</title>\n<style>{}{STYLE}</style>\n</head>\n<body>\n<main>\n",
+        // A report is a file with no server beside it, so it carries its
+        // typeface, Paper Mono, inline.
+        paper_mono::font_face_inline()
     );
     let _ = write!(
         out,

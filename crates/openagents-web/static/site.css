@@ -5,7 +5,7 @@
    way a terminal box is. Only the homepage terminal and /live run a script. */
 
 *{box-sizing:border-box}
-html{background:var(--bg);color:var(--w75);font-family:ui-monospace,"SF Mono",SFMono-Regular,Menlo,Consolas,"Liberation Mono",monospace;font-size:14px;line-height:1.5;-webkit-text-size-adjust:100%}
+html{background:var(--bg);color:var(--w75);font-family:"Paper Mono",monospace;font-size:14px;line-height:1.5;-webkit-text-size-adjust:100%}
 html,body{height:100%;overflow:hidden}
 /* The page is the window's height: the header stays at the top and only
    the region under it scrolls. */

@@ -111,14 +111,15 @@ pub fn negotiate(accept: Option<&str>, offered: &[Repr]) -> Repr {
     if best.1 == 0.0 { offered[0] } else { best.0 }
 }
 
-/// The minimal HTML shell every browsable page shares.
+/// The minimal HTML shell every browsable page shares. Its typeface, Paper
+/// Mono, comes from [`paper_mono::WOFF2_PATH`] on the serving origin.
 #[must_use]
 pub fn page(title: &str, canonical: &str, body: &str) -> String {
     format!(
         "<!doctype html><html lang=\"en\"><head><meta charset=\"utf-8\">\
          <meta name=\"viewport\" content=\"width=device-width, initial-scale=1\">\
          <title>{}</title><link rel=\"canonical\" href=\"{}\">\
-         <style>body{{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;\
+         <style>{}body{{font-family:\"Paper Mono\",monospace;\
          max-width:60em;margin:2em auto;padding:0 1em;line-height:1.5;color:#111}}\
          nav a{{margin-right:1em}}pre{{overflow-x:auto;background:#f6f6f6;padding:1em}}\
          code{{font-size:.95em}}table{{border-collapse:collapse}}\
@@ -129,6 +130,7 @@ pub fn page(title: &str, canonical: &str, body: &str) -> String {
          <a href=\"/v1/docs\">docs</a></nav><main>{}</main></body></html>",
         escape(title),
         escape(canonical),
+        paper_mono::font_face(paper_mono::WOFF2_PATH),
         body
     )
 }

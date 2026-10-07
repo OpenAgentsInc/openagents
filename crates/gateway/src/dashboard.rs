@@ -97,8 +97,9 @@ pub(crate) fn page(title: &str, workspace: Option<&str>, body: &str) -> Html<Str
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>{title} · OpenAgents</title>
 <style>
+{font_face}
 :root {{ color-scheme: dark; }}
-body {{ font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; background: #0d0a08; color: #e8dcc8; margin: 0; padding: 1rem; max-width: 72rem; }}
+body {{ font-family: "Paper Mono", monospace; background: #0d0a08; color: #e8dcc8; margin: 0; padding: 1rem; max-width: 72rem; }}
 a {{ color: #ffb454; }}
 h1 {{ font-size: 1.2rem; color: #ffb454; }} h2 {{ font-size: 1rem; color: #d9973b; }}
 nav {{ margin-bottom: .5rem; }}
@@ -123,6 +124,7 @@ form.filters {{ margin: .5rem 0 1rem; }}
 @media (max-width: 40rem) {{ th, td {{ padding: .2rem .3rem; font-size: .78rem; }} }}
 </style></head><body>{nav}<main>{body}</main></body></html>"#,
         title = esc(title),
+        font_face = paper_mono::font_face(paper_mono::WOFF2_PATH),
     ))
 }
 

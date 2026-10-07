@@ -277,8 +277,17 @@ pub struct Callback {
     port: u16,
 }
 
-const DONE_PAGE: &str = "<!doctype html><meta charset=utf-8><title>OpenAgents</title><body style=\"font-family:system-ui;padding:3em\"><h1>Connected</h1><p>OpenRouter is connected. You can close this tab and go back to OpenAgents.</p>";
-const FAILED_PAGE: &str = "<!doctype html><meta charset=utf-8><title>OpenAgents</title><body style=\"font-family:system-ui;padding:3em\"><h1>Not connected</h1><p>OpenRouter wasn't connected. Go back to OpenAgents and try again.</p>";
+const DONE_BODY: &str = "<h1>Connected</h1><p>OpenRouter is connected. You can close this tab and go back to OpenAgents.</p>";
+const FAILED_BODY: &str = "<h1>Not connected</h1><p>OpenRouter wasn't connected. Go back to OpenAgents and try again.</p>";
+
+/// A callback page in Paper Mono. The one-off local listener has no route
+/// for the font, so the page carries it inline.
+fn callback_page(body: &str) -> String {
+    format!(
+        "<!doctype html><meta charset=utf-8><title>OpenAgents</title><style>{}body{{font-family:\"Paper Mono\",monospace;padding:3em}}</style><body>{body}",
+        paper_mono::font_face_inline()
+    )
+}
 
 fn respond(stream: &mut TcpStream, status: &str, page: &str) {
     let _ = write!(
@@ -347,11 +356,11 @@ impl Callback {
                     }
                     match read_callback(line.trim_end(), state) {
                         Reply::Code(code) => {
-                            respond(&mut stream, "200 OK", DONE_PAGE);
+                            respond(&mut stream, "200 OK", &callback_page(DONE_BODY));
                             return Ok(code);
                         }
                         Reply::Declined(why) => {
-                            respond(&mut stream, "200 OK", FAILED_PAGE);
+                            respond(&mut stream, "200 OK", &callback_page(FAILED_BODY));
                             return Err(why);
                         }
                         Reply::Other => respond(&mut stream, "404 Not Found", ""),
