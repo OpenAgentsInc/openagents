@@ -21,6 +21,29 @@ impl Credentials {
         }
         Ok(Self { values })
     }
+    pub fn sanitize_artifacts(&self, value: &mut Value) -> Result<()> {
+        use base64::Engine;
+        if let Some(files) = value["files"].as_array() {
+            for file in files {
+                let bytes = base64::engine::general_purpose::STANDARD
+                    .decode(
+                        file["content"]
+                            .as_str()
+                            .ok_or("Missing artifact file content.")?,
+                    )
+                    .map_err(|_| "Invalid artifact file encoding.")?;
+                for key in self.values.values().filter(|k| !k.is_empty()) {
+                    if bytes.windows(key.len()).any(|part| part == key.as_bytes()) {
+                        return Err("A changed remote file contains a selected credential. The artifact was refused.".into());
+                    }
+                }
+            }
+        }
+        if let Some(trace) = value.get_mut("trace") {
+            self.redact(trace);
+        }
+        Ok(())
+    }
     pub fn environment(&self) -> BTreeMap<String, String> {
         self.values.clone()
     }
@@ -55,6 +78,28 @@ impl Credentials {
 pub fn directory(record: &Record) -> String {
     format!("/home/user/.oa-coder/jobs/{}", record.id)
 }
+/// Bind a remote directory before writing task files or credentials.
+pub fn claim_script(r: &Record, dir: &str) -> String {
+    let task = r
+        .turns
+        .first()
+        .and_then(|v| v["task"].as_str())
+        .unwrap_or(&r.spec.task);
+    let identity=crate::workspace::digest(&serde_json::to_vec(&serde_json::json!({"cwd":r.spec.cwd,"agent":r.spec.agent,"mode":r.spec.mode,"task":task,"workspace":r.workspace.as_ref().map(|s|&s.input_digest)})).unwrap());
+    format!(
+        "set -eu; umask 077; d={}; mkdir -p \"$d\"; if [ ! -f \"$d/job-identity\" ]; then (set -C; printf %s {} > \"$d/job-identity\") 2>/dev/null || true; fi; [ \"$(cat \"$d/job-identity\")\" = {} ]",
+        boat::shell_quote(dir),
+        boat::shell_quote(&identity),
+        boat::shell_quote(&identity)
+    )
+}
+pub fn workdir(record: &Record, dir: &str) -> String {
+    let mut path = std::path::PathBuf::from(dir).join("workspace");
+    if let Some(s) = &record.workspace {
+        path.push(&s.working_directory);
+    }
+    path.to_string_lossy().into_owned()
+}
 pub fn prepare_script(record: &Record, dir: &str) -> String {
     let model = record
         .spec
@@ -67,6 +112,7 @@ pub fn prepare_script(record: &Record, dir: &str) -> String {
 umask 077
 d={dir}
 mkdir -p "$d/workspace" "/tmp/oa-coder-{job}/state"
+export PATH="$HOME/.local/bin:$HOME/.cargo/bin:/usr/local/bin:$PATH"
 export CODEX_HOME="/tmp/oa-coder-{job}/codex"
 mkdir -p "$CODEX_HOME"
 if [ -f "/tmp/oa-coder-{job}.env" ]; then chmod 600 "/tmp/oa-coder-{job}.env"; . "/tmp/oa-coder-{job}.env"; fi
@@ -97,7 +143,12 @@ if [ -n "${{OPENROUTER_API_KEY:-}}" ]; then "$p" coder --state "/tmp/oa-coder-{j
                 format!(
                     "\"$p\" coder --state \"/tmp/oa-coder-{}/state\" models set {model} >/dev/null",
                     record.id
-                )
+                ) + &record
+                    .spec
+                    .reasoning
+                    .as_deref()
+                    .map(|effort| format!(" --reasoning {}", boat::shell_quote(effort)))
+                    .unwrap_or_default()
             }
         )
     } else {
@@ -118,18 +169,20 @@ flock -n 9 || exit 75
 printf '%s' "$$" > "$d/pid"
 touch "$d/started"
 p=$(cat "$d/binary")
+export PATH="$HOME/.local/bin:$HOME/.cargo/bin:/usr/local/bin:$PATH"
 export CODEX_HOME="/tmp/oa-coder-{job}/codex"
 if [ -f "/tmp/oa-coder-{job}.env" ]; then . "/tmp/oa-coder-{job}.env"; rm -f "/tmp/oa-coder-{job}.env"; fi
 unset OPENAGENTS_CODER_EVENT_CHANNEL OPENAGENTS_CODER_MODEL_INPUT
 {model_env}
 export OA_CODER_CLOUD_CREDENTIAL_NAMES={credential_names}
-"$p" --json coder --in "$d/workspace" --state "/tmp/oa-coder-{job}/state" delegate {agent} --task "$(cat "$d/task")" --session {session} > "$d/out" 2> "$d/err"
+"$p" --json coder --in {workdir} --state "/tmp/oa-coder-{job}/state" delegate {agent} --task "$(cat "$d/task")" --session {session} > "$d/out" 2> "$d/err"
 rc=$?
 printf '%s' "$rc" > "$d/exit.writing"
 mv "$d/exit.writing" "$d/exit"
 exit "$rc"
 "#,
         dir = boat::shell_quote(dir),
+        workdir = boat::shell_quote(&workdir(record, dir)),
         job = record.id,
         model_env = format!(
             "export CODER_CODEX_MODEL={}\nexport CODER_CODEX_REASONING={}\n",
@@ -201,8 +254,7 @@ pub fn parse_poll(record: &Record, body: &str) -> Result<crate::Observation> {
             if code == 0 {
                 let result = result
                     .or_else(|| {
-                        record
-                            .events
+                        record.events[record.binding["turn_start"].as_u64().unwrap_or(0) as usize..]
                             .iter()
                             .rev()
                             .find(|v| v.get("event").is_none() || v["event"] == "finished")

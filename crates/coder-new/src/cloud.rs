@@ -11,7 +11,12 @@ pub fn execute(
     context: &Context,
     emit: &mut dyn FnMut(Value),
 ) -> Result<Value, String> {
-    if context.approvals.is_some() {
+    if context.approvals.is_some()
+        && !(command == "remote"
+            && args
+                .first()
+                .is_some_and(|a| matches!(a.as_str(), "list" | "status" | "artifacts")))
+    {
         return Err(
             "Remote execution requires an explicit cloud delegation from an ungated host.".into(),
         );
@@ -30,6 +35,59 @@ pub fn execute(
             [op, id] if op == "status" => {
                 return serde_json::to_value(store.read(id)?)
                     .map_err(|_| "Cannot encode the remote job.".into());
+            }
+            [op, id] if op == "artifacts" => {
+                let r = store.read(id)?;
+                return Ok(
+                    json!({"job":id,"artifacts":r.artifacts,"error":r.artifact_error,"directory":store.root().join(format!("{id}.artifacts"))}),
+                );
+            }
+            [op, id] if op == "apply" => {
+                let lease = store.lease(id)?;
+                let r = lease.read(id)?;
+                coder_cloud::workspace::apply(&lease, &r, &context.cwd)?;
+                return Ok(json!({"job":id,"applied":true}));
+            }
+            [op, id, flag, task] if op == "continue" && flag == "--task" => {
+                let lease = store.lease(id)?;
+                let mut r = lease.read(id)?;
+                if !r.state.terminal() || !r.cleanup_complete {
+                    return Err(
+                        "Follow or cancel the current remote turn before continuing it.".into(),
+                    );
+                }
+                if r.resource.is_none() {
+                    return Err(
+                        "This job never provisioned a remote workspace. Start a new delegation."
+                            .into(),
+                    );
+                }
+                if task.is_empty() || task.len() > 1024 * 1024 {
+                    return Err("Invalid continuation task.".into());
+                }
+                let conversation = r.remote_task.as_ref().and_then(|t| t.conversation.clone());
+                r.binding["continue_conversation"] = json!(conversation);
+                r.binding["turn_start"] = json!(r.events.len());
+                r.turns.push(json!({"task":r.spec.task,"result":r.result,"state":r.state,"usage":r.usage,"artifacts":r.artifacts}));
+                r.events.push(json!({"event":"user","text":task}));
+                r.spec.task = task.clone();
+                r.spec.validate()?;
+                r.state = State::Resuming;
+                r.created_ms = coder_cloud::now_ms();
+                r.remote_task = None;
+                if r.spec.mode == Mode::Coder {
+                    r.cursor = None;
+                }
+                r.result = None;
+                r.error = None;
+                r.cancel_requested = false;
+                r.cleanup_complete = false;
+                r.cleanup_error = None;
+                r.artifacts = None;
+                r.artifact_error = None;
+                lease.clear_cancel()?;
+                lease.save(&r)?;
+                return run(&runtime, &lease, &mut r, context, emit);
             }
             [op, id] if op == "cancel" => {
                 store.cancel(id)?;
@@ -60,7 +118,26 @@ pub fn execute(
             }
         }
     }
-    let (id, spec) = parse(args, context)?;
+    let mut launch_args = args.to_vec();
+    let no_workspace = if let Some(i) = launch_args.iter().position(|a| a == "--no-workspace") {
+        launch_args.remove(i);
+        true
+    } else {
+        false
+    };
+    let revision = take(&mut launch_args, "--revision")?;
+    let mut paths = vec![];
+    while let Some(p) = take(&mut launch_args, "--workspace-path")? {
+        paths.push(p);
+    }
+    let mut included = vec![];
+    while let Some(p) = take(&mut launch_args, "--include")? {
+        included.push(p);
+    }
+    if no_workspace && (revision.is_some() || !paths.is_empty() || !included.is_empty()) {
+        return Err("Workspace options cannot be combined with --no-workspace.".into());
+    }
+    let (id, spec) = parse(&launch_args, context)?;
     let lease = store.lease(&id)?;
     let mut record = if lease.exists() {
         let record = lease.read(&id)?;
@@ -69,7 +146,16 @@ pub fn execute(
         }
         record
     } else {
-        let record = Record::new(&id, spec)?;
+        let mut record = Record::new(&id, spec)?;
+        if !no_workspace {
+            record.workspace = Some(coder_cloud::workspace::capture(
+                &lease,
+                &context.cwd,
+                revision.as_deref(),
+                paths,
+                included,
+            )?);
+        }
         lease.save(&record)?;
         record
     };
@@ -133,7 +219,13 @@ fn run(
         .as_ref()
         .and_then(|v| v["reply"].as_str())
         .unwrap_or("");
-    let out = json!({"event":"finished","job":id,"state":record.state,"resource":record.resource,"reply":reply,"result":record.result,"usage":record.usage,"cleanup_complete":record.cleanup_complete});
+    let out = json!({"event":"finished","job":id,"state":record.state,"resource":record.resource,"reply":reply,"result":record.result,"usage":record.usage,"cleanup_complete":record.cleanup_complete,"artifacts":record.artifacts,"artifact_error":record.artifact_error});
+    if let Some(error) = &record.artifact_error {
+        return Err(format!(
+            "{error} Remote job: {id}; cleanup confirmed: {}.",
+            record.cleanup_complete
+        ));
+    }
     if record.state == State::Failed {
         return Err(format!(
             "{} Remote job: {id}.",
@@ -195,7 +287,13 @@ fn parse(args: &[String], context: &Context) -> Result<(String, Spec), String> {
     while let Some(name) = take(&mut args, "--credential-env")? {
         if matches!(
             name.as_str(),
-            "BOAT_API_KEY" | "GOOGLE_APPLICATION_CREDENTIALS"
+            "BOAT_API_KEY"
+                | "GOOGLE_APPLICATION_CREDENTIALS"
+                | "CLOUDSDK_AUTH_ACCESS_TOKEN"
+                | "GOOGLE_OAUTH_ACCESS_TOKEN"
+                | "HOME"
+                | "PATH"
+                | "SHELL"
         ) {
             return Err("Cloud control credentials cannot be sent to an agent.".into());
         }
@@ -239,6 +337,17 @@ fn parse(args: &[String], context: &Context) -> Result<(String, Spec), String> {
         && (spec.model.is_some() || spec.reasoning.is_some())
     {
         return Err("Explicit remote runtime model settings require codex or microcoder.".into());
+    }
+    if spec.mode == Mode::Coder
+        && spec.agent == "microcoder"
+        && (spec.model.is_some() || spec.reasoning.is_some())
+        && (!spec
+            .credential_names
+            .iter()
+            .any(|n| n == "OPENROUTER_API_KEY")
+            || spec.model.is_none())
+    {
+        return Err("Explicit remote Microcoder model settings require --model and an admitted OPENROUTER_API_KEY.".into());
     }
     coder_cloud::validate_id(&id)?;
     Ok((id, spec))

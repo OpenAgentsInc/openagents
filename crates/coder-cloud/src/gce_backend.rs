@@ -66,7 +66,7 @@ impl Transport for System {
         if !output.status.success() {
             return Err("The GCE command failed or disconnected.".into());
         }
-        if output.stdout.len() > 1024 * 1024 {
+        if output.stdout.len() > 32 * 1024 * 1024 {
             return Err("The GCE response exceeds its limit.".into());
         }
         String::from_utf8(output.stdout).map_err(|_| "Invalid GCE response encoding.".into())
@@ -166,6 +166,8 @@ impl<T: Transport> Backend for Gce<T> {
     }
     async fn prepare(&self, r: &Record) -> Result<()> {
         let dir = directory(r);
+        self.command(r, &runtime::claim_script(r, &dir), None)
+            .await?;
         self.command(
             r,
             &format!(
@@ -185,6 +187,27 @@ impl<T: Transport> Backend for Gce<T> {
         .await?;
         self.command(r, &runtime::prepare_script(r, &dir), None)
             .await?;
+        if let Some(snapshot) = &r.workspace {
+            let marker = self
+                .command(
+                    r,
+                    &format!(
+                        "cat {}/workspace-input 2>/dev/null || true",
+                        boat::shell_quote(&dir)
+                    ),
+                    None,
+                )
+                .await?;
+            if marker != snapshot.input_digest {
+                if !marker.is_empty() {
+                    return Err("The remote workspace identity differs from this job.".into());
+                }
+                self.put(r, &(dir.clone() + "/input.json"), &snapshot.input()?)
+                    .await?;
+                self.command(r, &crate::workspace::restore_script(r, &dir)?, None)
+                    .await?;
+            }
+        }
         let (p, _) = self.admitted(r)?;
         let mut script = runtime::launch_script(r, &dir);
         let slots = format!(
@@ -277,6 +300,37 @@ touch "$HOME/.oa-pool/busy"
         self.transport
             .execute(&p, &h, &cancel_script(&directory(r)), None)
             .await?;
+        Ok(())
+    }
+    async fn collect(&self, r: &Record) -> Result<Option<Value>> {
+        let (p, h) = binding(r)?;
+        if !self
+            .transport
+            .hosts(&p)?
+            .iter()
+            .any(|live| live.name == h.name && live.zone == h.zone && live.status == "RUNNING")
+        {
+            return Ok(None);
+        }
+        let text = self
+            .command(r, &crate::workspace::collect_script(r, &directory(r)), None)
+            .await?;
+        let mut v: Value =
+            serde_json::from_str(&text).map_err(|_| "Invalid remote artifact manifest.")?;
+        self.credentials.sanitize_artifacts(&mut v)?;
+        Ok(Some(v))
+    }
+    async fn restart(&self, r: &Record) -> Result<()> {
+        self.cancel(r).await?;
+        self.command(
+            r,
+            &format!(
+                "d={}; rm -f \"$d/started\" \"$d/pid\" \"$d/exit\" \"$d/out\"; true",
+                boat::shell_quote(&directory(r))
+            ),
+            None,
+        )
+        .await?;
         Ok(())
     }
     async fn cleanup(&self, r: &Record) -> Result<Option<Value>> {

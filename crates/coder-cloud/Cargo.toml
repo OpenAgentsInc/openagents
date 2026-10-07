@@ -7,6 +7,8 @@ publish.workspace = true
 description = "Durable remote Coder jobs and explicitly selected cloud execution."
 
 [dependencies]
+atif = { path = "../atif" }
+sha2 = "0.10"
 boat = { path = "../boat" }
 base64 = "0.22"
 serde = { version = "1", features = ["derive"] }

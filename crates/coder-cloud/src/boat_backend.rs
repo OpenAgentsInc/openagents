@@ -58,7 +58,7 @@ impl Boat {
         format!(
             "{}\n\nWork in {}. OpenAgents remote job: {}.",
             r.spec.task,
-            runtime::directory(r) + "/workspace",
+            runtime::workdir(r, &runtime::directory(r)),
             r.id
         )
     }
@@ -89,7 +89,7 @@ impl Boat {
             .remote_task
             .as_ref()
             .ok_or("The Boat prompt is unknown.")?;
-        let page = self
+        let mut page = self
             .client
             .events(&EventsParams {
                 sandbox_id: self.resource(r)?.into(),
@@ -101,6 +101,13 @@ impl Boat {
             })
             .await
             .map_err(|e| e.to_string())?;
+        for e in &mut page.events {
+            if let Some(data) = &mut e.data {
+                for v in data.values_mut() {
+                    self.credentials.redact(v);
+                }
+            }
+        }
         let events = normalize(r, &page.events);
         let cursor = page
             .page_info
@@ -138,8 +145,7 @@ impl Boat {
                     status.status
                 )))
             } else {
-                let reply = r
-                    .events
+                let reply = r.events[r.binding["turn_start"].as_u64().unwrap_or(0) as usize..]
                     .iter()
                     .chain(events.iter())
                     .filter(|v| v["event"] == "delta")
@@ -179,7 +185,7 @@ impl Backend for Boat {
                     from_: r.spec.template.clone(),
                     setup_script: Some(format!(
                         "mkdir -p {}",
-                        boat::shell_quote(&(runtime::directory(r) + "/workspace"))
+                        boat::shell_quote(&(runtime::workdir(r, &runtime::directory(r))))
                     )),
                     ..Default::default()
                 }),
@@ -206,6 +212,7 @@ impl Backend for Boat {
                 .map_err(|e| e.to_string())?;
         }
         let dir = runtime::directory(r);
+        self.command(r, runtime::claim_script(r, &dir)).await?;
         self.client
             .write_text(id, &format!("{dir}/task"), &r.spec.task)
             .await
@@ -220,6 +227,39 @@ impl Backend for Boat {
             .map_err(|e| e.to_string())?;
         let script = runtime::prepare_script(r, &dir);
         self.command(r, script).await?;
+        if let Some(snapshot) = &r.workspace {
+            let marker = self
+                .command(
+                    r,
+                    format!(
+                        "cat {}/workspace-input 2>/dev/null || true",
+                        boat::shell_quote(&dir)
+                    ),
+                )
+                .await?;
+            if marker != snapshot.input_digest {
+                if !marker.is_empty() {
+                    return Err("The remote workspace identity differs from this job.".into());
+                }
+                let input = snapshot.input()?;
+                for (i, chunk) in input.chunks(1024 * 1024).enumerate() {
+                    self.client
+                        .write_bytes(id, &format!("{dir}/input-{i:04}.part"), chunk)
+                        .await
+                        .map_err(|e| e.to_string())?;
+                }
+                self.command(
+                    r,
+                    format!(
+                        "d={}; cat \"$d\"/input-*.part > \"$d/input.json\"",
+                        boat::shell_quote(&dir)
+                    ),
+                )
+                .await?;
+                self.command(r, crate::workspace::restore_script(r, &dir)?)
+                    .await?;
+            }
+        }
         if r.spec.mode == Mode::Coder {
             self.client
                 .write_text(
@@ -241,7 +281,11 @@ impl Backend for Boat {
                     body: PromptRequest {
                         provider: r.spec.agent.clone(),
                         prompt: self.prompt(r),
-                        new: Some(true),
+                        new: Some(r.binding["continue_conversation"].is_null()),
+                        conversation_id: r.binding["continue_conversation"]
+                            .as_str()
+                            .map(|s| Nullable::Value(s.into()))
+                            .unwrap_or(Nullable::Unset),
                         model: r
                             .spec
                             .model
@@ -369,6 +413,64 @@ impl Backend for Boat {
             let dir = runtime::directory(r);
             self.command(r,format!("d={}; if [ -f \"$d/pid\" ]; then kill -TERM -- -\"$(cat \"$d/pid\")\" 2>/dev/null || true; fi",boat::shell_quote(&dir))).await?;
         }
+        Ok(())
+    }
+    async fn collect(&self, r: &Record) -> Result<Option<Value>> {
+        if r.workspace.is_none() && r.spec.mode == Mode::Integrated {
+            return Ok(None);
+        }
+        let text = self
+            .command(
+                r,
+                crate::workspace::collect_script(r, &runtime::directory(r)),
+            )
+            .await?;
+        let mut v: Value =
+            serde_json::from_str(&text).map_err(|_| "Invalid remote artifact manifest.")?;
+        self.credentials.sanitize_artifacts(&mut v)?;
+        Ok(Some(v))
+    }
+    async fn restart(&self, r: &Record) -> Result<()> {
+        let id = self.resource(r)?;
+        let info = self
+            .client
+            .get(&GetParams {
+                sandbox_id: id.into(),
+                ..Default::default()
+            })
+            .await
+            .map_err(|e| e.to_string())?;
+        if matches!(info.sandbox.state.as_str(), "archived" | "stopped") {
+            self.client
+                .resume(&ResumeParams {
+                    sandbox_id: id.into(),
+                    body: Some(ResumeRequest {
+                        env: Some(self.credentials.environment()),
+                        no_env: Some(true),
+                        ttl_seconds: Nullable::Value(r.spec.timeout_seconds as i64),
+                        ..Default::default()
+                    }),
+                    ..Default::default()
+                })
+                .await
+                .map_err(|e| e.to_string())?;
+        }
+        self.client
+            .wait_until_ready(
+                id,
+                &WaitOptions {
+                    timeout: Duration::from_secs(900),
+                    ..Default::default()
+                },
+            )
+            .await
+            .map_err(|e| e.to_string())?;
+        let d = boat::shell_quote(&runtime::directory(r));
+        self.command(
+            r,
+            format!("d={d}; rm -f \"$d/started\" \"$d/pid\" \"$d/exit\" \"$d/out\"; true"),
+        )
+        .await?;
         Ok(())
     }
     async fn cleanup(&self, r: &Record) -> Result<Option<Value>> {

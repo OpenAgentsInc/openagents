@@ -14,6 +14,7 @@ pub mod boat_backend;
 pub mod gce_backend;
 pub mod pool;
 pub mod runtime;
+pub mod workspace;
 
 pub type Result<T> = std::result::Result<T, String>;
 pub const MAX_RECORD_BYTES: usize = 32 * 1024 * 1024;
@@ -60,6 +61,10 @@ impl Spec {
         }
         for name in &self.credential_names {
             if name.is_empty()
+                || !name
+                    .bytes()
+                    .next()
+                    .is_some_and(|c| c.is_ascii_uppercase() || c == b'_')
                 || name.len() > 128
                 || !name
                     .bytes()
@@ -79,6 +84,7 @@ impl Spec {
 pub enum State {
     Created,
     Provisioning,
+    Resuming,
     Ready,
     Dispatching,
     Running,
@@ -119,6 +125,14 @@ pub struct Record {
     /// Backend-specific references, excluding credentials.
     #[serde(default)]
     pub binding: Value,
+    #[serde(default)]
+    pub workspace: Option<workspace::Snapshot>,
+    #[serde(default)]
+    pub artifacts: Option<workspace::Artifacts>,
+    #[serde(default)]
+    pub artifact_error: Option<String>,
+    #[serde(default)]
+    pub turns: Vec<Value>,
 }
 impl Record {
     pub fn new(id: &str, spec: Spec) -> Result<Self> {
@@ -142,6 +156,10 @@ impl Record {
             cleanup_error: None,
             cancel_requested: false,
             binding: Value::Null,
+            workspace: None,
+            artifacts: None,
+            artifact_error: None,
+            turns: vec![],
         })
     }
 }
@@ -244,6 +262,36 @@ impl Lease {
     pub fn read(&self, id: &str) -> Result<Record> {
         read_record(&self.path, id)
     }
+    pub fn file(&self, name: &str) -> Result<PathBuf> {
+        if !matches!(
+            name,
+            "input.json"
+                | "changes.patch"
+                | "events.ndjson"
+                | "trajectory.atif.json"
+                | "result.json"
+                | "manifest.json"
+        ) {
+            return Err("Invalid remote artifact path.".into());
+        }
+        let root = self.path.parent().unwrap().join(format!(
+            "{}.artifacts",
+            self.path.file_stem().unwrap().to_string_lossy()
+        ));
+        if fs::symlink_metadata(&root).is_ok_and(|m| !m.is_dir() || m.file_type().is_symlink()) {
+            return Err("The artifact directory must be a regular directory.".into());
+        }
+        fs::create_dir_all(&root).map_err(|_| "Cannot create the artifact directory.")?;
+        protect_dir(&root)?;
+        Ok(root.join(name))
+    }
+    pub fn clear_cancel(&self) -> Result<()> {
+        match fs::remove_file(self.path.with_extension("cancel")) {
+            Ok(()) => Ok(()),
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(()),
+            Err(_) => Err("Cannot clear the remote cancellation marker.".into()),
+        }
+    }
     pub fn exists(&self) -> bool {
         self.path.exists()
     }
@@ -315,6 +363,26 @@ fn read_record(path: &Path, id: &str) -> Result<Record> {
     }
     let record: Record =
         serde_json::from_slice(&bytes).map_err(|_| "Cannot decode the remote job.")?;
+    if record.binding["turn_start"]
+        .as_u64()
+        .is_some_and(|n| n > record.events.len() as u64)
+    {
+        return Err("Invalid retained turn cursor.".into());
+    }
+    if let Some(s) = &record.workspace {
+        let expected = path
+            .parent()
+            .unwrap()
+            .join(format!("{id}.artifacts/input.json"));
+        if s.input_path != expected
+            || !s
+                .working_directory
+                .components()
+                .all(|c| matches!(c, std::path::Component::Normal(_)))
+        {
+            return Err("Invalid retained workspace path.".into());
+        }
+    }
     if record.schema != "openagents.coder.remote-job.v1" || record.id != id {
         return Err("Remote job schema or identity mismatch.".into());
     }
@@ -342,6 +410,12 @@ pub trait Backend {
     async fn recover(&self, record: &Record) -> Result<Option<Task>>;
     async fn poll(&self, record: &Record) -> Result<Observation>;
     async fn cancel(&self, record: &Record) -> Result<()>;
+    async fn collect(&self, _record: &Record) -> Result<Option<Value>> {
+        Ok(None)
+    }
+    async fn restart(&self, _record: &Record) -> Result<()> {
+        Err("This backend cannot continue a completed session.".into())
+    }
     async fn cleanup(&self, record: &Record) -> Result<Option<Value>>;
 }
 
@@ -363,6 +437,15 @@ pub async fn drive<B: Backend>(
         record.cleanup_complete = true;
         lease.save(record)?;
         return Ok(());
+    }
+    if record.state == State::Resuming {
+        if record.cancel_requested || cancel.load(Ordering::Relaxed) || lease.cancelled() {
+            record.state = State::Cancelled;
+        } else {
+            backend.restart(record).await?;
+            record.state = State::Ready;
+        }
+        lease.save(record)?;
     }
     if record.state == State::Created || record.state == State::Provisioning {
         record.state = State::Provisioning;
@@ -451,14 +534,26 @@ pub async fn drive<B: Backend>(
             break;
         }
         let observation = backend.poll(record).await?;
-        for event in &observation.events {
-            if serde_json::to_vec(event)
-                .map_err(|_| "Cannot encode a remote event.")?
-                .len()
-                > MAX_EVENT_BYTES
-            {
-                return Err("A remote event exceeds its size limit.".into());
-            }
+        let incoming =
+            serde_json::to_vec(&observation.events).map_err(|_| "Cannot encode remote events.")?;
+        let oversized = observation
+            .events
+            .iter()
+            .any(|e| serde_json::to_vec(e).is_ok_and(|v| v.len() > MAX_EVENT_BYTES))
+            || incoming.len()
+                + serde_json::to_vec(record)
+                    .map_err(|_| "Cannot encode the remote job.")?
+                    .len()
+                > MAX_RECORD_BYTES - 65536;
+        if oversized {
+            record.cancel_requested = true;
+            record.error = Some(
+                "Remote output reached its retained size limit; execution was stopped.".into(),
+            );
+            lease.save(record)?;
+            backend.cancel(record).await?;
+            record.state = State::Failed;
+            break;
         }
         let previous = record.events.len();
         record.events.extend(observation.events);
@@ -484,6 +579,22 @@ pub async fn drive<B: Backend>(
             tokio::time::sleep(interval).await;
         }
     }
+    if record.state.terminal() && record.artifacts.is_none() {
+        match backend
+            .collect(record)
+            .await
+            .and_then(|payload| workspace::retain(lease, record, payload))
+        {
+            Ok(artifacts) => {
+                record.artifacts = Some(artifacts);
+                record.artifact_error = None;
+            }
+            Err(error) => {
+                record.artifact_error = Some(error);
+            }
+        }
+        lease.save(record)?;
+    }
     if record.state.terminal() && !record.cleanup_complete {
         match backend.cleanup(record).await {
             Ok(usage) => {
@@ -498,6 +609,7 @@ pub async fn drive<B: Backend>(
             }
         }
         record.updated_ms = now_ms();
+        workspace::seal_usage(lease, record)?;
         lease.save(record)?;
     }
     Ok(())
@@ -523,6 +635,8 @@ mod tests {
         }
     }
     struct Fake {
+        restarts: Cell<u32>,
+        oversized: bool,
         dispatches: Cell<u32>,
         fail_dispatch: bool,
         cancels: Cell<u32>,
@@ -550,10 +664,16 @@ mod tests {
         }
         async fn poll(&self, _: &Record) -> Result<Observation> {
             Ok(Observation {
-                events: vec![serde_json::json!({"event":"delta","text":"done"})],
+                events: vec![
+                    serde_json::json!({"event":"delta","text":if self.oversized {"x".repeat(MAX_EVENT_BYTES)}else{"done".into()}}),
+                ],
                 cursor: Some("1".into()),
                 end: Some(Ok(serde_json::json!({"reply":"done"}))),
             })
+        }
+        async fn restart(&self, _: &Record) -> Result<()> {
+            self.restarts.set(self.restarts.get() + 1);
+            Ok(())
         }
         async fn cancel(&self, _: &Record) -> Result<()> {
             self.cancels.set(self.cancels.get() + 1);
@@ -564,6 +684,75 @@ mod tests {
         }
     }
     #[tokio::test]
+    async fn oversized_output_stops_execution_and_retains_confirmed_cleanup() {
+        let root = tempfile::tempdir().unwrap();
+        let store = Store::under(root.path());
+        let lease = store.lease("j1").unwrap();
+        let mut r = Record::new("j1", spec()).unwrap();
+        let b = Fake {
+            restarts: Cell::new(0),
+            oversized: true,
+            dispatches: Cell::new(0),
+            fail_dispatch: false,
+            cancels: Cell::new(0),
+        };
+        drive(
+            &b,
+            &lease,
+            &mut r,
+            &AtomicBool::new(false),
+            Duration::from_millis(1),
+            &mut |_| panic!("Oversized event escaped"),
+        )
+        .await
+        .unwrap();
+        assert_eq!(r.state, State::Failed);
+        assert!(r.cleanup_complete);
+        assert_eq!(b.cancels.get(), 1);
+        assert!(r.events.is_empty());
+        assert!(r.artifacts.is_some());
+    }
+    #[tokio::test]
+    async fn retained_continuation_restarts_before_one_dispatch_and_follow_is_inert() {
+        let root = tempfile::tempdir().unwrap();
+        let store = Store::under(root.path());
+        let lease = store.lease("j1").unwrap();
+        let mut r = Record::new("j1", spec()).unwrap();
+        r.state = State::Resuming;
+        r.resource = Some("existing".into());
+        lease.save(&r).unwrap();
+        let b = Fake {
+            restarts: Cell::new(0),
+            oversized: false,
+            dispatches: Cell::new(0),
+            fail_dispatch: false,
+            cancels: Cell::new(0),
+        };
+        drive(
+            &b,
+            &lease,
+            &mut r,
+            &AtomicBool::new(false),
+            Duration::from_millis(1),
+            &mut |_| {},
+        )
+        .await
+        .unwrap();
+        drive(
+            &b,
+            &lease,
+            &mut r,
+            &AtomicBool::new(false),
+            Duration::from_millis(1),
+            &mut |_| panic!("Replayed event"),
+        )
+        .await
+        .unwrap();
+        assert_eq!(b.restarts.get(), 1);
+        assert_eq!(b.dispatches.get(), 1);
+        assert_eq!(r.resource.as_deref(), Some("existing"));
+    }
+    #[tokio::test]
     async fn lost_dispatch_recovers_without_submitting_twice_and_terminal_follow_is_inert() {
         let root = tempfile::tempdir().unwrap();
         let store = Store::under(root.path());
@@ -572,6 +761,8 @@ mod tests {
         let backend = Fake {
             dispatches: Cell::new(0),
             fail_dispatch: true,
+            restarts: Cell::new(0),
+            oversized: false,
             cancels: Cell::new(0),
         };
         let cancel = AtomicBool::new(false);
@@ -630,6 +821,8 @@ mod tests {
         let backend = Fake {
             dispatches: Cell::new(0),
             fail_dispatch: false,
+            restarts: Cell::new(0),
+            oversized: false,
             cancels: Cell::new(0),
         };
         drive(

@@ -282,3 +282,17 @@ openagents coder delegate codex --on gce --task "Review the checkout" --credenti
 Jobs retain the pool grant and epoch, own a process slot, and reconnect to their
 original host. Confirmed host loss ends the job without replaying it. GCE usage
 is a labeled estimate of the job's share of the host list price.
+
+Cloud delegation snapshots the selected Git revision and its tracked caller
+changes. Repeat `--workspace-path PATH` to limit repository files and
+`--include FILE` to admit untracked files. Paths are relative to the repository
+root. Credential files and symlink traversal are refused. Large selections
+fail before cloud provisioning; `--no-workspace` starts an empty workspace.
+Private repositories transfer from the authorized local checkout and need no
+GitHub credential on the remote agent.
+
+`remote artifacts JOB` reports the private artifact directory and content
+digests: patch, event log, ATIF transcript, and result. `remote apply JOB`
+checks the original caller revision and admitted file contents before applying
+the patch. `remote continue JOB --task TEXT` resumes the same remote workspace;
+Boat integrated agents also keep their conversation ID.

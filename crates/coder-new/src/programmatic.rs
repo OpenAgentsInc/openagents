@@ -35,7 +35,9 @@ macro_rules! command_usage {
        [--on boat|gce] [--mode integrated|coder] [--model ID] [--reasoning EFFORT]
        [--job ID] [--size small|default|large|xlarge] [--template NAME]
        [--credential-env NAME] [--timeout SECONDS]
-  remote list|status ID|follow ID|cancel ID|steer ID --message TEXT
+       [--revision REF] [--workspace-path PATH] [--include FILE] [--no-workspace]
+  remote list|status ID|follow ID|cancel ID|artifacts ID|apply ID
+  remote continue ID --task TEXT | steer ID --message TEXT
                                       Retain, observe, or control a remote job.
                                       Run Microcoder or an enabled ACP subagent.
   plugins list                        List registered plugins and their status.

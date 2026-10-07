@@ -23,6 +23,9 @@ async fn integrated_agent_keeps_exact_selection_redacts_output_and_confirms_stop
         ),
         info("ready", Value::Null),
         reply(
+            json!({"ok":true,"type":"command.result","success":true,"exitCode":0,"stdout":"","stderr":"","timedOut":false}),
+        ),
+        reply(
             json!({"ok":true,"type":"file.written","id":"bx_test","path":"task","size":4,"success":true,"encoding":"utf8"}),
         ),
         reply(
@@ -103,11 +106,11 @@ async fn integrated_agent_keeps_exact_selection_redacts_output_and_confirms_stop
     let create: Value = serde_json::from_slice(&seen[0].body).unwrap();
     assert_eq!(create["noEnv"], true);
     assert_eq!(create["env"]["TEST_API_KEY"], "test-secret");
-    let prompt: Value = serde_json::from_slice(&seen[5].body).unwrap();
+    let prompt: Value = serde_json::from_slice(&seen[6].body).unwrap();
     assert_eq!(prompt["provider"], "codex");
     assert_eq!(prompt["model"], "chosen-model");
     assert_eq!(prompt["reasoningEffort"], "medium");
-    assert_eq!(seen[10].method, "GET");
+    assert_eq!(seen[11].method, "GET");
 }
 
 #[test]
