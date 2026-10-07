@@ -230,9 +230,10 @@ plans a small sales organization of OpenAgents agents, built on the
 - **Agents train before they sell.** A playbook built from this page, a
   claims register backed by evidence, role-play against simulated buyers,
   and Gym suites that grade claims, compliance, and tone.
-- **The work is visible.** The Agora's preferred site is farther west of
-  Lantern Road, facing Civic Hall, subject to placement checks. It shows
-  agents at standing desks and a leaderboard of real pipeline numbers.
+- **The work is visible.** The Agora building stands north of the market
+  hall, facing Fountain Plaza, after the west-of-Lantern site failed its
+  survey. Its standing desks and bell hook are built; agents, private
+  record-backed boards, and earned-sale triggers remain to be integrated.
   The bell requires an earned, attributed, settled sale and delivery
   evidence. Live amounts and bell events are private by default.
 - **Selling stays honest.** Agents disclose that they are AI, make only
@@ -350,10 +351,13 @@ Existing terminal, router, cloud, and payment backlogs keep their technical
 ownership; this roadmap orders their contribution to revenue.
 
 Its [build issue list](revenue-roadmap.md#build-issue-list) is the consolidated
-inventory: 76 proposed work items with stable IDs, responsibility areas,
-dependencies, and acceptance, including the sales floor. It links completed
+inventory: 76 detailed GitHub issues with stable IDs, responsibility areas,
+dependencies, and acceptance, including the sales floor. At filing, 74 remain
+open and the two Agora survey/art items are complete. It links completed
 foundations and existing open world issues, identifies the smallest revenue
 path for each offer, and separates owner activation from code completion.
+All filed work is on the required project board with mandatory native blockers;
+conditional integrations and alternative lanes stay explicit in issue scope.
 Its [shared-agent phase map](revenue-roadmap.md#shared-agent-foundation-10807)
 reuses #10807: Alice steering Coder first, then generic crew machinery for
 Paul. Sales adds current-record adapters, narrowing charters, aggregate
