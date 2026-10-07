@@ -41,6 +41,8 @@ mod studio_tests;
 #[cfg(test)]
 mod tests;
 #[cfg(test)]
+mod tooltip_tests;
+#[cfg(test)]
 mod town_tests;
 #[cfg(test)]
 mod water_tests;

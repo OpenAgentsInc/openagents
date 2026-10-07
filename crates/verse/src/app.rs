@@ -3256,10 +3256,11 @@ impl App {
                     return self.zone_action(intent);
                 }
             }
-            // Everglade has no arch back: G leaves for the Grid.
+            // Everglade has no arch back, and the Water Lab no panel: G
+            // leaves for the Grid or the plaza.
             if code == KeyCode::KeyG
-                && self.in_bare_everglade()
-                && self.runtime.zone == zones::ZoneId::Everglade
+                && ((self.in_bare_everglade() && self.runtime.zone == zones::ZoneId::Everglade)
+                    || self.in_water_lab())
             {
                 self.zone_action(ZoneIntent::Return);
                 return;
@@ -4433,7 +4434,10 @@ impl App {
                         && self.picker.is_none()
                         // The crypt shows its panel only at the door.
                         && (!self.in_bare_everglade() || self.runtime.crypt_door_near())
-                        && !self.in_bare_grove(),
+                        && !self.in_bare_grove()
+                        // The Water Lab shows its spell bar and no panel; F
+                        // at the lantern or G leaves.
+                        && !self.in_water_lab(),
                 ));
                 if let (Some(atlas), Some(frame)) = (&self.map_atlas, &self.zone_frame) {
                     ui.vertices

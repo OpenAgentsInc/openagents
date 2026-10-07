@@ -981,7 +981,7 @@ impl WaterLab {
             live.push(format!("{hovering} hovering orb{plural}"));
         }
         if !live.is_empty() {
-            lines.push(live.join(" · "));
+            lines.push(live.join(", "));
         }
         if let Some(orb) = self.forming() {
             let full = if orb.radius >= orb::MAX_RADIUS - 1e-3 {
@@ -990,7 +990,7 @@ impl WaterLab {
                 ""
             };
             lines.push(format!(
-                "Water Orb {:.1} m across{full}, {} · let go to throw, Shift to hold",
+                "Water Orb {:.1} m across{full}, {}; let go to throw, Shift to hold",
                 orb.radius * 2.0,
                 orb.source.name()
             ));
@@ -1005,7 +1005,7 @@ impl WaterLab {
             lines.push(line.clone());
         } else {
             lines.push(
-                "1–5 cast · hold 6 for a Water Orb · 7 Thunderbolt · B drops a float · T turns the hour"
+                "1 to 5 cast, hold 6 for a Water Orb, 7 Thunderbolt, B drops a float, T turns the hour, G leaves"
                     .into(),
             );
         }

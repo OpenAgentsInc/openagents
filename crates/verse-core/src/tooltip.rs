@@ -33,7 +33,7 @@ const WARM: f32 = 0.3;
 /// The widest card, in logical points.
 pub const MAX_WIDTH: f32 = 360.0;
 /// Padding inside the border, points.
-const PAD_X: f32 = 9.0;
+pub const PAD_X: f32 = 9.0;
 const PAD_Y: f32 = 7.0;
 /// Space between lines, points.
 const GAP: f32 = 3.0;
@@ -185,6 +185,13 @@ fn measure(atlas: &Atlas, card: &Card, screen: [f32; 2]) -> Layout {
     let mut width = 0.0_f32;
     for (text, color) in &card.details {
         let piece = atlas.measure(text);
+        if piece > inner {
+            // A detail wider than the card wraps onto lines of its own.
+            for part in atlas.wrap(text, inner) {
+                details.push(vec![(part, *color)]);
+            }
+            continue;
+        }
         let fits = details.last().is_some_and(|line| {
             let used: f32 = line.iter().map(|(t, _)| atlas.measure(t)).sum();
             used + atlas.measure(dot) + piece <= inner
@@ -394,6 +401,26 @@ mod tests {
         assert_eq!(dwell.update(None, 0.6), None);
         assert_eq!(dwell.update(Some(1), 2.0), None);
         assert_eq!(dwell.update(Some(1), 2.4), Some(1));
+    }
+
+    /// A detail longer than the card wraps instead of running past its
+    /// right edge.
+    #[test]
+    fn a_long_detail_wraps_inside_the_card() {
+        let atlas = Atlas::new(14.0);
+        let card = card().detail(
+            "Homebrew, after Create or Destroy Water and Control Water, and a good deal more besides",
+            palette::RULE,
+        );
+        for screen in [SCREEN, [390.0, 844.0], [200.0, 600.0]] {
+            let laid = layout(&atlas, &card, [100.0, 500.0, 36.0, 36.0], screen);
+            let inner = laid.rect[2] - 2.0 * PAD_X;
+            for line in &laid.details {
+                let used: f32 = line.iter().map(|(t, _)| atlas.measure(t)).sum();
+                assert!(used <= inner + 0.5, "{line:?} {used} > {inner}");
+            }
+            assert!(laid.details.len() >= 2);
+        }
     }
 
     #[test]
