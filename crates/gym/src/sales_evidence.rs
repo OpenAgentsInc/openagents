@@ -654,9 +654,13 @@ pub fn write_private(path: &Path, bytes: &[u8]) -> Result<(), String> {
     file.write_all(bytes)
         .and_then(|()| file.sync_all())
         .map_err(|e| e.to_string())?;
-    fs::File::open(path.parent().ok_or("output needs a parent")?)
-        .and_then(|f| f.sync_all())
-        .map_err(|e| e.to_string())
+    fs::File::open(
+        path.parent()
+            .filter(|p| !p.as_os_str().is_empty())
+            .unwrap_or(Path::new(".")),
+    )
+    .and_then(|f| f.sync_all())
+    .map_err(|e| e.to_string())
 }
 
 /// Offline CLI adapter. Detailed records never go to stdout.
