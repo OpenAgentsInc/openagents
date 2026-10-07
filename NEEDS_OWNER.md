@@ -705,7 +705,16 @@ handling on a live service are unverified.
 ## Alice in the owner's house
 
 Deploy Everglade pack `4cfbbe2bfe74bba084436b5a5fd8dc09ec0c770fcdd613f9ef92986749950abb`
-so Verse can download the house with Alice's workstation. Then run the flow in
+so Verse can download the house with Alice's workstation. Then:
+
+1. Run Verse (`verse --owners-house`), or the OpenAgents desktop app.
+1. Walk into your house, up to Alice's workstation, and press F.
+1. Follow her: Enter continues, Enter starts the host if she says none is
+   running, pick a workspace from her list (or type a path), and Enter
+   confirms. Then send the request she suggests.
+
 [Talk to Alice in your house](docs/verse/workshop-agent.md#talk-to-alice-in-your-house)
-on your own host: the scratch-host run verified each step, but not your
-host, your Codex login's limits, or another person's device being refused.
+has each step. A scratch-host run verified each step with keystrokes into
+Verse, but not your host, the desktop app's keychain-held owner key
+attesting her, your Codex login's limits, or another person's device being
+refused.

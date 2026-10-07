@@ -400,6 +400,11 @@ same studio again.
 changed: the Verse window, the host, the seats it added, the auto-start
 policy, and the workspace. Anything `up` found already there stays.
 
+`openagents studio host` starts this computer's host the way `up` does,
+with no repository, team, or Verse, when none answers its control socket;
+`down` stops it. Verse runs it when you confirm starting a host at Alice's
+workstation.
+
 ### Seats, goals, and memory on this computer
 
 These commands read and write this computer's task store directly

@@ -86,16 +86,31 @@ draws her as `ALICE / owner only` and gives no F prompt.
 
 To go through the whole flow:
 
-1. Run the host. On a Mac, the OpenAgents desktop app runs it; elsewhere,
-   `openagents studio up --repo REPO` starts one.
-1. Open Alice once, with your key attesting hers:
-   `openagents agent new alice --workspace DIR --owner-key KEYFILE`.
-   `DIR` is where her terminal commands run; task-mode changes go in her own
-   worktree of the studio's repository.
-1. Start Verse in your house with `verse --owners-house`, or walk to the
-   east end of Library Way and in through the front door. Walk up to her
-   workstation and press F.
-1. Type a request and press Enter.
+1. Run Verse, or the OpenAgents desktop app, and walk into your house: the
+   east end of Library Way, in through the front door. `verse
+   --owners-house` starts just inside the door, facing her.
+1. Walk up to her workstation and press F. The first time, she sets
+   herself up in her panel:
+   1. She introduces herself and says that only you can give her work.
+      Press Enter.
+   1. If no host is running on this computer, she says so and asks to
+      start one. Enter (CONFIRM) starts it, the same host
+      `openagents studio up` starts; Esc (REJECT) leaves it off.
+   1. She asks which workspace she works in and lists the Git checkouts
+      the host knows: the studio's repository, the host's workspaces, the
+      checkouts recent tasks ran in, and the checkout Verse came from.
+      Choose one with Up and Down, or type its number or a path, and press
+      Enter. A path that does not exist or is not in a Git repository is
+      refused on the spot.
+   1. She shows what she will be. Enter (CONFIRM) makes her; Esc (REJECT)
+      makes nothing and returns to the list.
+   1. She says she is ready and puts a first request on the input line.
+   You pick and confirm; nothing asks for a key or a command line. The
+   host makes her through `studio.agent.new`, which only your own key may
+   send, gives her a key of her own, and attests it with the owner key it
+   holds. A host whose owner key lives elsewhere makes her unattested and
+   she says so.
+1. Type a request, or keep her suggestion, and press Enter.
    - A read-only request, such as `run the atif tests and tell me if they
      pass`, opens a terminal pane titled `driven by alice`. She types the
      command there and stands at the console by the east wall while it
@@ -111,6 +126,11 @@ To go through the whole flow:
    (Enter confirms; four journaled steps), and F8 pauses or resumes her.
    `openagents agent show|stop|pause|resume alice` do the same from a
    shell. Her record, memory, and journal survive a host or Verse restart.
+
+From a shell instead, `openagents studio host` starts the host,
+`openagents agent new alice --workspace DIR --owner-key KEYFILE` makes her
+with the owner key in `KEYFILE`, and `openagents agent ask alice TEXT`
+asks her.
 
 ## What the NIPs contribute
 
@@ -584,6 +604,8 @@ No new event kinds. These are new:
   | `studio.agent.jobs.list` | `observe` | `{agent}` | `jobs` |
   | `studio.agent.jobs.edit` | `operate` | `{agent, edit}`: pause, resume, or delete; creating or renewing needs the host's confirmation | `dispatched` |
   | `studio.agent.log` | `observe` | `{agent, after}` | `journal`, at most 128 entries |
+  | `studio.agent.workspaces` | `observe` | Nothing | `places`: the Git checkouts a new agent may work in, at most 8 |
+  | `studio.agent.new` | `operate`, and only the owner's own key | `{agent, workspace}`; an absolute path in a Git checkout | `made`: her workspace, key, and attestation expiry |
 
   Pause and resume reuse `studio.seat.pause` and `studio.seat.resume`. An
   older host refuses these as `malformed` or `unsupported`.
@@ -604,7 +626,7 @@ commits between October 3 and 5, 2026. The state is as of October 6, 2026.
 | Area | State | What is there | Missing | Agent-hours left |
 | --- | --- | --- | --- | --- |
 | Resident seat | Done | Alice at her workstation in the owner's house, drawn from the host's agent view whether or not a goal runs; task mode adds a worker studio seat for her on first use, and a direct request is a one-task goal for her seat (`Studio::submit_direct`) | None | 0 |
-| Agent record and key | Done | `agent.json` with state, route, desk, and her public key; her secret key in `key` (mode `0600`) beside it; the owner's NIP-OA `auth` attestation with a `created_at<` expiry of at most a year; `openagents agent new`, `attest`, `list`, `show`, `stop`, `pause`, `resume`, and `retire` | The key in the host's keychain or key store rather than a file | 0.5 |
+| Agent record and key | Done | `agent.json` with state, route, desk, and her public key; her secret key in `key` (mode `0600`) beside it; the owner's NIP-OA `auth` attestation with a `created_at<` expiry of at most a year; setup in her panel in Verse (`studio.agent.new`, attested with the host's owner key, and `studio.agent.workspaces`); `openagents agent new`, `attest`, `list`, `show`, `stop`, `pause`, `resume`, and `retire` | The key in the host's keychain or key store rather than a file | 0.5 |
 | Walk-up composer | Done | The desk panel, anchored to the bottom of the window: status row, transcript with a scroll bar, `PROPOSED:` line, input line, key strip; F2 memory, F4 journal, F7 stop, F8 pause or resume, each of the last two after CONFIRM | None | 0 |
 | Request routing | Partial | `auto`, `task`, and `terminal` modes; a word list chooses for `auto` | The typed task-or-terminal question and its threshold | 1 |
 | Typist | Done | The pane badge `driven by alice`, take-back on any key | NIP-TERM typist record with `kind: "agent"` | 0.5 |
@@ -629,7 +651,8 @@ real computers are separate and go in `NEEDS_OWNER.md`.
 ## Roadmap
 
 1. **Demo: one agent at a desk on this Mac.** Done, with Alice. A resident
-   seat named by `openagents agent new alice`, with a key and attestation.
+   seat the owner sets up in her panel in Verse, with a key and
+   attestation.
    You walk up in Everglade, press F, and type "run the atif tests and tell
    me what fails." She walks to the Workbench, types `cargo test -p atif` in
    a pane titled `driven by alice`, waits for the result, goes back to her
