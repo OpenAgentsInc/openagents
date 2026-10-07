@@ -3,8 +3,8 @@
 To delegate with an OpenAI API key, fund or replace the configured credential;
 the live check reports exhausted quota. OpenRouter BYOK needs a valid
 replacement credential; the configured keys fail authentication. Codex login
-forwarding and Microcoder through the OpenAgents cloud fallback pass the live
-Boat checks. Credentials remain unchanged.
+forwarding passes Boat's live integrated API check. Microcoder through the
+OpenAgents cloud fallback passes the headless Boat and GCE lifecycles.
 
 ## Archive the medieval town kit in the private bucket (#10894)
 
