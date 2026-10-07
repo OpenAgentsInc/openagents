@@ -132,8 +132,14 @@ fn main() -> Result<(), String> {
         return Err("Everglade did not install from the pinned pack".into());
     }
     if private.is_some() {
+        // VERSE_CAPTURE_PRIVATE_COUNT=N waits for N private placements
+        // rather than the first, for a view of several.
+        let wanted = std::env::var("VERSE_CAPTURE_PRIVATE_COUNT")
+            .ok()
+            .and_then(|n| n.parse::<usize>().ok())
+            .unwrap_or(1);
         let deadline = std::time::Instant::now() + std::time::Duration::from_secs(120);
-        while runtime.private_guests() == 0 && std::time::Instant::now() < deadline {
+        while runtime.private_guests() < wanted && std::time::Instant::now() < deadline {
             runtime.zone_tick();
             std::thread::sleep(std::time::Duration::from_millis(50));
         }
