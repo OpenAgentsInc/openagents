@@ -886,11 +886,14 @@ handoffs, Arthur works the partner channel, and Vanna runs the affiliate
 program. Bob places each body. Retiring a hire is the workshop agent's
 **Retire** action.
 
-**In Verse.** The Agora, a Greco-futurism trading hall at Main Street's
-west end facing the Civic Hall: rows of standing desks, a leaderboard wall,
-a bell that rings on settled revenue, Paul's corner office with the lectern
-where you approve sends and hires, and a training room with role-play
-booths.
+**In Verse.** The Agora, a Greco-futurism trading hall on a candidate parcel
+west of Lantern Road facing the Civic Hall, subject to placement checks:
+rows of standing desks, a leaderboard wall, a bell that rings once for an
+earned settled sale with delivery evidence, Paul's corner office with the
+lectern where you approve sends and hires, and a training room with role-play
+booths. Live amounts and real bell events are private by default. Start
+Paul alone; the [initial decisions](../sales/agent-sales-floor.md#initial-operating-decisions)
+set hiring, caps, channels, and approval eligibility.
 
 **Talk to him.** "Paul, who replied yesterday?" or "Paul, why do you want a
 second prospector?"
@@ -1042,8 +1045,8 @@ parallel once phase 0 lands. Owner checks on real computers go in
 9. **Order.** Is phase 2's order (Carol, Dave, Trent, Peggy and Victor, then
    Wendy) the one you want, or should Wendy come first so the rest report
    through her from the start?
-10. **The sales floor.** Is Paul the right sales leader, and should phase 5
-    start with Paul alone (a verified claims register and drafts you send by
-    hand) before the trust members it relies on are built? The
-    [sales floor's open questions](../sales/agent-sales-floor.md#open-questions-for-the-owner)
-    cover caps, channels, and trust levels.
+
+The sales-floor naming and first slice are provisionally decided: Paul
+alone with a verified claims register and drafts you send by hand. Its
+[October 7 decisions](../sales/agent-sales-floor.md#initial-operating-decisions)
+also cover caps, channels, trust, placement, privacy, voice, and human handoff.

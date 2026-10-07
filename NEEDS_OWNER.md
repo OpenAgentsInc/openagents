@@ -45,6 +45,19 @@ browser/network qualification remains unverified.
 
 # Owner checks
 
+## Sales outreach launch
+
+The [sales-floor decisions](docs/sales/agent-sales-floor.md#initial-operating-decisions)
+start with permissioned US business email and individual approvals. Before
+live outreach, configure the dedicated domain and monitored mailbox; verify
+SPF, DKIM, DMARC alignment, TLS, commercial identification, and
+unsubscribe/suppression handling; confirm
+the recipient scope and footer with counsel; accept the certification sample;
+and grant the exact campaign, model budget, and five-message daily pilot cap.
+The host sending path still needs implementation and scratch qualification.
+These documentation decisions don't activate outreach. Keep qualified
+handoffs with the owner until a collaborator accepts a private agreement.
+
 ## Reviewed knowledge admission (#10667)
 
 Before live use, retain a separately authorized independent evaluator cohort and explicit owner review under the fixed-pair profile; verify the exact candidate and actual runtime/configuration receipts, full charges, instruction/disclosure grant, expiry, and retirement. Synthetic signed fixtures validate the boundary; they do not establish real-world transfer or XP. On a scratch Mac session, inspect the pane with `--knowledge-review EVIDENCE --knowledge-operator PUBKEY --knowledge-evaluator PUBKEY`; physical rendering remains unverified.

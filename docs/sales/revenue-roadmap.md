@@ -199,6 +199,13 @@ outreach that the owner approves before it is sent, follow-ups, and qualified
 handoffs into the pipeline above. It is G7 tooling and operations. Its
 Everglade building, leaderboard, and hires do not gate R1.
 
+Its [October 7 operating decisions](agent-sales-floor.md#initial-operating-decisions)
+start Paul alone with owner-sent drafts, permissioned US business email, and
+human closing. Add hires from actual queues, qualify batch approvals before
+granting them, and keep live revenue private. The bell requires earned
+settlement plus delivery evidence, excluding unused top-ups. Launch setup
+and campaign grants remain explicit [owner steps](../../NEEDS_OWNER.md#sales-outreach-launch).
+
 ## Economics, referrals, and partners
 
 For each offer, retain three different records: customer payment and earned

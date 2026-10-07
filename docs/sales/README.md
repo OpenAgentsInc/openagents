@@ -230,10 +230,11 @@ plans a small sales organization of OpenAgents agents, built on the
 - **Agents train before they sell.** A playbook built from this page, a
   claims register backed by evidence, role-play against simulated buyers,
   and Gym suites that grade claims, compliance, and tone.
-- **The work is visible.** The Agora, a Greco-futurism trading hall at Main
-  Street's west end, shows agents at standing desks, a leaderboard of real
-  pipeline numbers, and a bell that rings when the payment ledger records a
-  settled deal.
+- **The work is visible.** The Agora's preferred site is farther west of
+  Lantern Road, facing Civic Hall, subject to placement checks. It shows
+  agents at standing desks and a leaderboard of real pipeline numbers.
+  The bell requires an earned, attributed, settled sale and delivery
+  evidence. Live amounts and bell events are private by default.
 - **Selling stays honest.** Agents disclose that they are AI, make only
   verified claims, honor every opt-out, and follow anti-spam law. The
   boiler-room energy stays in the world, never in how we treat a real
@@ -242,6 +243,13 @@ plans a small sales organization of OpenAgents agents, built on the
 The floor serves the roadmap's sales operations (G7) and R0 lead work. It
 doesn't gate the first payment: Paul alone, with a verified claims register
 and drafts the owner sends, is the first useful slice.
+
+The [October 7 decisions](agent-sales-floor.md#initial-operating-decisions)
+keep Paul and the proposed names, start with permissioned US email, cap
+floor-wide model use at $5/day, ramp from five to twenty daily messages,
+and keep launch conversations written with human closing. Batching needs
+an implemented gate, measured evidence, and an explicit grant; four weeks
+alone doesn't qualify it.
 
 ## Business accounts
 
@@ -403,7 +411,7 @@ work without requiring every surface or market to launch together.
   launch?
 - Which admin features does the first business customer need before they pay?
 - Which department agents should we build first as reusable templates?
-- How much of first-touch outreach should agents draft, and how soon should
-  batched approvals replace approving every message? The
-  [sales floor's open questions](agent-sales-floor.md#open-questions-for-the-owner)
-  list the details.
+
+The sales floor's former questions about names, hiring, outreach, trust,
+the building, visibility, voice, and human handoff now have
+[provisional operating decisions](agent-sales-floor.md#initial-operating-decisions).

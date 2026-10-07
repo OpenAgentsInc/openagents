@@ -1,7 +1,8 @@
 # The agent sales floor
 
-Status: proposal, October 6, 2026. Nothing on this page is implemented. It
-plans a sales organization of OpenAgents' own agents, run and visible inside
+Status: proposal with provisional decisions, October 7, 2026. Nothing on this
+page is implemented. It plans a sales organization of OpenAgents' own agents,
+run and visible inside
 [Everglade](../verse/everglade.md), that carries out the
 [sales strategy](README.md) under the owner's authority. The
 [unified revenue roadmap](revenue-roadmap.md) still owns the delivery order;
@@ -32,7 +33,8 @@ leaderboard on the wall, and a bell that rings when a deal settles.
 - [Measures](#measures)
 - [Costs](#costs)
 - [Build order](#build-order)
-- [Open questions for the owner](#open-questions-for-the-owner)
+- [Initial operating decisions](#initial-operating-decisions)
+- [Evidence behind the decisions](#evidence-behind-the-decisions)
 
 ## Summary
 
@@ -49,6 +51,10 @@ leaderboard on the wall, and a bell that rings when a deal settles.
   Main Street's west end, holds rows of standing desks, a leaderboard wall,
   a bell, Paul's corner office, and a training room with role-play booths.
   Agents walk there from day plans built from real sales work.
+- **Paul alone first.** Start with a verified playbook and drafts the owner
+  sends. Add Erin, Frank, and Pat when their queues justify them; Arthur and
+  Vanna follow qualified partner and referral programs. Launch with
+  permissioned US business email, written conversations, and human closing.
 - **Training before selling.** A versioned playbook, role-play against
   simulated buyers, Gym suites that grade drafts for accurate claims,
   compliance, and tone, and a certification gate before an agent's first
@@ -178,13 +184,18 @@ Each hire has:
    draft; a second prospector would clear the queue."
 2. **The host checks the caps.** The host refuses a proposal that would
    exceed the headcount cap or the floor's total daily budget, before the
-   owner sees it. The proposed defaults: Paul plus three hires at first, at
-   most six hires ever without a new owner decision, and a floor budget of
-   $5 a day at list prices.
+   owner sees it. The initial ceiling is Paul plus three active hires, with
+   a $5 daily model budget for the whole floor. Expansion requires a new
+   owner grant; the planning ceiling after expansion is six active hires
+   plus Paul. It counts active agents, not lifetime hires. Each replacement
+   still needs confirmation. The [initial decisions](#initial-operating-decisions)
+   set the hiring order and sending ramp.
 3. **The owner decides at the lectern.** The proposal waits at the lectern in
    Paul's office, on the phone, or in the terminal, and the owner answers
-   CONFIRM or REJECT through the same single-use decision path Alice's
-   approvals use
+   CONFIRM or REJECT, reusing Alice's owner-only interaction
+   ([`agent_host.rs`](../../crates/coder/src/task/agent_host.rs)). The proposed
+   hire path still needs durable, single-use binding to the exact proposal,
+   using the studio action ledger as a design reference
    ([`studio_approvals.rs`](../../crates/coder/src/task/studio_approvals.rs)).
 4. **The host creates the agent.** On CONFIRM, the host runs the equivalent
    of `openagents agent new NAME --role ROLE`, which the
@@ -226,12 +237,17 @@ as the town's seat of government.
   other. Main Street's far blocks end at x = −100, where Lantern Road
   crosses (`STREETS` in
   [`layout/city.rs`](../../crates/verse-zone-everglade/src/zones/everglade/layout/city.rs)),
-  with the Lantern Quarter to the south and the orchard to the north. Bob
-  checks the site against `city::reserved()` and the style's rule of at
-  least 3 m of open ground on every side
+  with the Lantern Quarter to the south and the orchard to the north. This
+  is a preferred candidate, not an admitted placement. A hall centered at
+  the junction would overlap the snug and other reserved ground. Bob
+  surveys a parcel farther west of Lantern Road, checking the complete hall,
+  north wing, steps, generated roofs, foliage, roads, trails, and terrain
+  against `city::reserved()` and the style's rule of at least 3 m of open
+  ground on every side
   ([Beside the half-timbered town](../verse/greco-futurism.md#beside-the-half-timbered-town)).
-  If it doesn't fit, the fallback is open ground north of the market hall
-  where the north trail leaves Market Way, near the Fountain Plaza's market.
+  If it doesn't fit, Bob surveys an off-trail parcel north of the market
+  hall. That fallback must also preserve the north trail and the chapel's
+  reserved ground; it isn't assumed clear.
 - **Front.** A podium and a shallow stair, four smooth columns, a plain
   entablature, and tall bronze doors that stand open. The frieze carries a
   band of small amber panes. Outside, the building stays quiet, as the style
@@ -251,16 +267,19 @@ as the town's seat of government.
 | Paul's corner office | A walled corner behind a lattice screen, with his desk, the pipeline board, and the owner's lectern | Hire proposals and send approvals waiting for the owner |
 | The training room | A side room with a long whiteboard and four role-play booths: paired standing lecterns facing each other with headsets, behind lattice screens | The day's lesson on the whiteboard; which booth runs which role-play |
 
-The phones and headsets are props. No agent calls a real person by voice
-under this plan; "calls" on the board count role-play sessions and written
-conversations.
+The phones and headsets are props. Launch selling stays written; humans
+conduct booked demos. The board labels practice as **Role-plays** and real
+written exchanges as **Conversations**, rather than implying phone calls.
 
 Text on the boards, the ticker, and the whiteboard is drawn by Verse on
 in-world surfaces, as the Gym's boards and the Task Wall are, never baked
 into a texture. The boards show counts, amounts, agent names, and activity
 words. They never show a prospect's name, company, or message. In an
-instance other people can see, the owner chooses whether revenue figures
-appear.
+instance other people can see, live amounts, deal timing, private approval
+contents, and real bell events are hidden by default. The owner may publish
+a reviewed, delayed aggregate projection; publishing amounts doesn't
+implicitly publish deal events. Demonstration data is labeled. Shared
+rendering reads that projection, never raw lead or payment records.
 
 ### Making it lively, honestly
 
@@ -284,10 +303,17 @@ floor, and each one shows real work:
   morning stand-up at the leaderboard, where Paul reads yesterday's real
   numbers; training before the floor's sending window; and the evening
   board update.
-- **The bell.** When the payment ledger records a settled payment attributed
-  to the pipeline, the bell rings, the agents on the floor turn and applaud,
-  and the ticker names the agent and the stage. A verbal yes, a booked
-  meeting, or an invoice doesn't ring it.
+- **The bell.** An attributed sale rings once when settlement and the
+  agreed delivery or acceptance evidence are both retained. Prepaid
+  top-ups, free credits, internal transfers, verbal agreement, booked
+  meetings, unpaid invoices, and pilot agreements don't ring it. A pilot
+  agreement changes the pipeline board. Deduplicate by the sale and
+  settlement references; refunds and disputes correct net totals without
+  another bell. Show gross customer charges, author/resource shares, and
+  OpenAgents retained revenue separately, following the
+  [roadmap's economics](revenue-roadmap.md#economics-referrals-and-partners).
+  A private event never triggers sound, applause, or a ticker in a shared
+  instance.
 - **Idle is honest.** With nothing in a queue, an agent stands idle at its
   desk. The floor never invents calls to look busy, as the crew's honest-work
   rule requires.
@@ -367,17 +393,25 @@ transcripts, each with the three partitions the Gym requires:
 | Suite | Checks | Scored by |
 | --- | --- | --- |
 | Claims | Every factual statement maps to an entry in the claims register; no invented numbers, customers, or features | Code where it can, and Jev `noul` questions for the rest |
-| Compliance | The AI disclosure, sender identity, postal address, and opt-out are present; the recipient isn't suppressed; the message fits the channel's rules | Code |
+| Compliance | Accurate human/AI sender disclosure, commercial identification, postal address, and working opt-out; recipient scope and suppression checks; channel rules | Code |
 | Tone | No pressure, false urgency, invented scarcity, flattery, or guilt; respectful and short | Jev questions, calibrated on the owner's marks on a sample, as the [Gym interviews](../verse/generative-agents.md#7-gym-interviews) calibrate theirs |
 
 New question sets go in [`questions/`](../../questions) with measured
-thresholds before code trusts them, as the TypeSafe skill requires.
+thresholds before code trusts them, as the TypeSafe skill requires. Calibrate
+on owner-labeled development examples, then evaluate the frozen questions
+and thresholds on the locked partition. A serious claims or compliance
+failure fails the candidate regardless of its average tone score. Model
+probabilities advise review; they never grant sending authority. TypeSafe's
+[confidence guidance](https://docs.typesafe.ai/confidence) calls for thresholds
+tested on the application's own data.
 
 ### Certification
 
 An agent is certified at a playbook version when it passes all three suites
-on the locked partition, completes a set number of role-plays with passing
-grades, and the owner marks a sample of its drafts acceptable. A new playbook
+on the locked partition, completes ten passing role-plays spanning at least
+five buyer situations, and the owner accepts twenty drafts, including
+ambiguous replies and opt-out cases. These counts are initial review choices,
+not validated error bounds. A new playbook
 version, a complaint traced to the agent, or two failed draft checks in a
 week suspends certification until the agent passes again.
 
@@ -404,7 +438,9 @@ referred. The floor works the first two stages and hands off the rest.
    She respects each site's terms and `robots.txt`, signs in nowhere, and
    records each lead's source and date. A lead record holds the minimum: a
    name, a business role, a published business address, the public signal,
-   and the legal basis for contact.
+   the recipient's jurisdiction, contact permission and its source/date,
+   and the legal basis for contact. Public availability supplies research
+   evidence; it doesn't establish permission for launch outreach.
 2. **Draft.** Frank writes a short first message that cites the public signal
    (for example, a public post about agent costs), asks one discovery
    question, and makes no claim outside the register. Paul reviews it and
@@ -429,25 +465,55 @@ referred. The floor works the first two stages and hands off the rest.
    owner's calendar.
 9. **Hand off.** A qualified lead, with its workflow, decision maker, current
    tools, and data boundary recorded, goes to the owner or a person the owner
-   names, with a demo brief and a proposed pilot from the
-   [pilot kit](revenue-roadmap.md#sales-and-pilot-operations). Pricing, terms,
-   and payment stay with people.
+   names who accepts the assignment, with a demo brief and a proposed pilot
+   from the [pilot kit](revenue-roadmap.md#sales-and-pilot-operations). Pricing, terms,
+   and payment stay with people. See the
+   [human handoff decision](#initial-operating-decisions) for the required
+   brief and responsibility split.
 10. **Track.** Every stage change is a record on the owner's host. The
     leaderboard and the admin view read those records, and revenue comes
     only from the payment ledger, never from an agent's report.
 
-### Channels
+### Channels and jurisdictions
 
-- **Email** from a dedicated sending domain the owner sets up, with SPF,
-  DKIM, and DMARC, and with a postal address and an opt-out link in every
-  message. Setting up the domain and the sending account is an owner step in
-  `NEEDS_OWNER.md`.
-- **Public replies** only where someone publicly asked a question the
-  product answers, under the agent's own labeled account or Nostr key, and
-  only on platforms whose terms allow a labeled automated account. Where a
-  platform doesn't, the agent drafts and the owner posts.
-- **Community posts** in communities whose rules allow them, disclosed as
-  coming from an OpenAgents agent, and never repeated across communities.
+- **Email first.** Start with known US business contacts who requested
+  contact or accepted an introduction. Use a dedicated sending domain and
+  monitored mailbox, SPF, DKIM, DMARC alignment, TLS, accurate identity and
+  subject, accurate human/AI disclosure, clear commercial identification,
+  postal address, and tested unsubscribe processing.
+  The pilot requires all three authentication methods and one-click
+  unsubscribe as internal controls, beyond Gmail's low-volume SPF-or-DKIM
+  minimum. The provider must meet its DNS and delivery requirements. Begin
+  at five messages a day; increase gradually after reviewed delivery and
+  feedback. [Gmail sender guidelines](https://support.google.com/mail/answer/81126?hl=en).
+- **US scope first.** Unknown recipient jurisdiction blocks proactive
+  outreach. Commercial B2B email still falls under CAN-SPAM; warm contact
+  doesn't remove identity, address, or opt-out requirements. The FTC allows
+  ten business days to honor opt-outs and requires a working opt-out
+  mechanism for at least thirty days after each message; this floor
+  suppresses immediately.
+  [FTC business guide](https://www.ftc.gov/business-guidance/resources/can-spam-act-compliance-guide-business).
+  Defer Canadian, UK, and EU outbound until a separate jurisdiction review.
+  Canada requires a supported consent basis; a published address alone isn't
+  blanket permission. UK rules distinguish corporate recipients from sole
+  traders, and personal-data rules still apply.
+  [CRTC consent guidance](https://crtc.gc.ca/eng/com500/guide.htm),
+  [ICO B2B guidance](https://ico.org.uk/for-organisations/direct-marketing-and-privacy-and-electronic-communications/business-to-business-marketing/).
+- **Public replies second.** Agents prepare relevant Nostr and community
+  replies; the owner posts initially, disclosing the AI assistance. An
+  agent account may post only after its channel adapter, host authority,
+  suppression, and recipient/community rules are qualified. Protocol access
+  alone doesn't authorize contact. X requires its own prior written explicit
+  approval for AI reply bots and prohibits unsolicited automated outreach.
+  LinkedIn prohibits bots and unauthorized automation for scraping,
+  messaging, and engagement. Keep X and LinkedIn to owner-written or
+  agent-assisted manual posts at launch.
+  [X automation rules](https://help.x.com/en/rules-and-policies/x-automation),
+  [LinkedIn automation policy](https://www.linkedin.com/help/linkedin/answer/a1341387/prohibited-software-and-extensions).
+
+Domain, mailbox, footer, jurisdiction review, and launch authorization are
+tracked in [owner checks](../../NEEDS_OWNER.md#sales-outreach-launch). These
+planning decisions don't configure a sender or authorize a campaign.
 
 ### Affiliates and referrals
 
@@ -477,30 +543,59 @@ triggers are the owner's.
 
 Each week Paul drafts a public update, in the spirit of
 [episode 247](../transcripts/247.md): messages sent, reply and opt-out rates,
-meetings booked, pilots agreed, settled revenue, what worked, and what
-didn't, with a capture of the Agora from `verse --capture`. Only aggregates
-the owner approves are published, never a prospect's name or message, and
-the owner publishes it.
+meetings booked, pilots agreed, earned settled revenue, what worked, and what
+didn't, with a capture of the approved shared projection from `verse --capture`.
+Only aggregates the owner approves are published, never a prospect's name
+or message, and the owner publishes it.
 
 ## Approvals and trust levels
 
-The floor earns autonomy in steps. The host enforces each level; Paul can
-propose a move up, and only the owner can grant it.
+The floor earns autonomy in steps, by agent and channel. Paul may propose
+promotion; only the owner grants it. Start at level 0. The current
+[`studio_approvals.rs`](../../crates/coder/src/task/studio_approvals.rs)
+supports one exact action consumed once; batch and standing policies need
+new implementation and qualification. Elapsed time never grants authority.
+
+All budgets, sending caps, follow-up spacing, and trust periods use real
+wall-clock time. The initial policy timezone is `America/Chicago`; daily
+limits reset at midnight there. Everglade's compressed town clock schedules
+visual routines only and never resets a limit or authorizes a send.
 
 | Level | What the owner approves | Entry condition |
 | --- | --- | --- |
 | 0. Every message | Each external message, one CONFIRM or REJECT at a time | The starting level, for every new channel and every new hire |
-| 1. Reviewed batches | A batch of up to 20 drafts from one approved template version, after Paul's review and the checks; the owner reads a sample and approves or rejects the batch | Four weeks at level 0 with no complaint, an opt-out rate under 2%, and certified agents only |
-| 2. Standing follow-ups | Follow-ups that use an approved follow-up template, in a thread whose first message the owner approved, within the daily cap | Four more weeks at level 1 under the same conditions |
+| 1. Reviewed batches | Initially up to five exact drafts from one template version; the owner can read every item and approves the frozen batch | Implemented batch gate; certified agent; at least four weeks at level 0 and 100 delivered messages across at least 25 permissioned contacts; no spam complaint, suppression breach, or unsupported sent claim; explicit owner grant |
+| 2. Standing follow-ups | Proposed bounded follow-up policy for explicitly invited threads, with template, expiry, and caps | Deferred beyond launch; at least four additional weeks and 100 delivered messages at level 1, then separate policy implementation, qualification, and owner grant |
+
+The sample counts are provisional operating choices, not statistical proof
+of safety. Don't contact extra people to meet them. If the cohort is smaller,
+keep individual approvals. At level 1, the owner reads all five items in
+the first five batches. Only a further reviewed grant may raise batch size,
+up to the unchanged floor-wide ceiling of twenty messages a day.
+
+Each batch binds exact recipients, channel, content and attachment digests,
+template/playbook/policy versions, limits, and expiry. Consume each send
+once; changed content needs new approval. Pause and revocation work across
+phone, terminal, and lectern, which show the same approval subject. An
+uncertain delivery is reconciled before retrying. Certification and approval
+never widen a charter, credential grant, contact permission, or spend cap.
 
 Some things never rise above level 0: a reply to an interested prospect, any
 message that mentions price, a first message to a partner, any public post,
 and any message from a new channel.
 
-The floor drops to level 0 automatically, and Wendy reports it, when any of
-these happens: a spam complaint, a recipient who says they didn't want the
-message, a message sent to a suppressed address, a failed claims check on a
-sent message, a bounce rate above 5% in a day, or a finding from Mallory.
+A spam complaint, unwanted-contact report, suppressed send, unsupported sent
+claim, authentication failure, or material Mallory finding pauses external
+sending and resets trust to level 0. Restart needs correction and an owner
+decision. Every hard bounce suppresses that address and pauses the sending
+channel for review; daily percentages alone are misleading at this volume.
+A routine opt-out suppresses the contact immediately; it is counted
+separately from a spam complaint. Review any opt-out cluster before another
+batch. Google recommends reported spam below 0.10% and never reaching 0.30%;
+these delivery measures aren't certification thresholds, and absent
+low-volume telemetry is unknown, not zero.
+[Gmail spam guidance](https://support.google.com/mail/answer/81126?hl=en),
+[Postmaster dashboard limits](https://support.google.com/mail/answer/14668346?hl=en).
 
 ## Hard rules
 
@@ -511,16 +606,18 @@ enforces them where code can.
    register, each entry is backed by evidence (receipts, Gym results,
    benchmarks), Victor verifies the evidence, and Judy decides disputes about
    wording. An agent that can't support a claim doesn't make it.
-2. **Agents disclose they are AI.** Every message, post, and reply says the
-   sender is an AI agent working for OpenAgents. No agent presents itself as
-   a person.
+2. **Identify the actual sender.** Agent-account messages, posts, and replies
+   disclose an AI agent working for OpenAgents. Owner-sent or posted drafts
+   identify the human/company accurately and disclose AI assistance. No
+   agent impersonates a person or uses a synthetic employee profile.
 3. **No impersonation.** No agent speaks as the owner, an employee, another
    person, or another company, or implies a relationship that doesn't exist.
 4. **Anti-spam law.** Messages follow the rules of each recipient's
-   jurisdiction, including CAN-SPAM in the United States, GDPR and the
-   ePrivacy rules in the European Union and the United Kingdom, and CASL in
-   Canada: accurate sender and subject lines, a postal address, a working
-   opt-out in every message, and a lawful basis for each contact. Where the
+   jurisdiction, including CAN-SPAM in the United States, GDPR and national
+   ePrivacy rules in the European Union, UK GDPR and PECR in the United
+   Kingdom, and CASL in Canada: accurate sender and subject lines, a postal
+   address, clear commercial identification, a working opt-out in every
+   message, and a lawful basis for each contact. Where the
    law requires consent, the floor doesn't send without it.
 5. **Opt-outs are permanent.** An opt-out goes on a host-held suppression
    list at once, well inside the legal deadline, and code checks that list
@@ -533,8 +630,17 @@ enforces them where code can.
 7. **No forbidden data sources.** No scraping that violates a site's terms,
    no signed-in scraping, and no bought, rented, or swapped contact lists
    unless every contact on them consented to hear from us.
-8. **Sending limits.** Daily caps per agent and for the whole floor, starting
-   at 20 messages a day in total, raised only by the owner.
+8. **Sending limits.** Start at five messages a day for the whole floor.
+   After a clean operating week and owner review, raise to ten; after another
+   clean week and review, raise to twenty. The ceiling includes first
+   messages, follow-ups, replies, and sales posts across all hires and
+   channels, including owner-sent drafts recorded in the pilot. It is a
+   limit, not a target. Agent allocations may only narrow it. Further
+   increases need a new policy and owner grant.
+   A clean operating week has actual reconciled deliveries, no spam
+   complaint, authentication failure, unwanted-contact report, or
+   claims/suppression breach, and owner review of feedback. An empty queue
+   isn't evidence to raise the cap.
 9. **Spend caps.** Each agent has a daily model budget and the floor a total;
    no agent pays anyone or holds money.
 10. **Owner-only authority for anything external.** Sending, posting,
@@ -551,7 +657,8 @@ enforces them where code can.
 13. **Lead data stays private.** Lead records live on the owner's host, pass
     the secret screen, never enter the repository or a public event, and are
     deleted after 90 days without engagement unless the owner sets another
-    period.
+    period. Keep only the minimum suppression identity needed to prevent
+    recontact after deleting the lead; deletion never clears an opt-out.
 14. **The boiler room is only a look.** The trading-floor theme lives in the
     building, the bell, and the animation. With real people, the floor uses
     no pressure, false urgency, invented scarcity, repeated chasing, or
@@ -586,10 +693,11 @@ Nostr event kinds.
 
 | Record | Holds |
 | --- | --- |
+| `openagents.sales-policy.v1` | Owner-granted scope: agents, channels, recipient jurisdictions and permission requirements, wall-clock timezone, budgets, caps, trust level, versions, expiry, and revocation |
 | `openagents.sales-playbook.v1` | The versioned playbook, including the claims register with an evidence reference per claim |
-| `openagents.sales-lead.v1` | One lead: business contact, source and date, public signal, legal basis, stage, assigned agent, next action; private |
+| `openagents.sales-lead.v1` | One lead: business contact, source and date, public signal, jurisdiction, permission evidence, legal basis, stage, assigned agent or accepted human owner, next action; private |
 | `openagents.sales-draft.v1` | A draft, its author, template version, check results, and Paul's recommendation |
-| `openagents.sales-send.v1` | A sent message: the approved draft's digest, the approval reference, channel, and time |
+| `openagents.sales-send.v1` | Exact recipient and draft digests, approval/policy references, channel, attempt and delivery state, and time; uncertain delivery is retained without blind replay |
 | `openagents.sales-suppression.v1` | The suppression list, append-only |
 | `openagents.sales-hire.v1` | A hire or retirement proposal and the owner's decision |
 | `openagents.sales-cert.v1` | An agent's certification: playbook version, suite results, role-plays, owner's marks |
@@ -606,7 +714,7 @@ same records that Paul's office panel and the leaderboard read.
 | Reply rate, positive reply rate, meetings booked | Which signals, questions, and templates work |
 | Opt-out, complaint, and bounce rates | Whether to slow down or stop; complaints stop the floor at once |
 | Leads qualified and handed off; pilots agreed | Whether the floor feeds the roadmap's R0 and R1 |
-| Settled revenue attributed to the pipeline | Whether the floor earns its cost |
+| Attributed earned settled charges, OpenAgents retained revenue, reversals, and delivery evidence | Whether the floor earns its cost; keep top-ups and author/resource shares separate |
 | Model and sending cost per qualified lead | Whether to hire, retire, or change channels |
 | Claims-check failures; certification pass rate | Whether the playbook and training work |
 | Affiliate sign-ups that activate and pay; partner introductions accepted | Whether referrals and partners bring buyers |
@@ -629,8 +737,12 @@ list-price estimates, not bills.
 | Day plans and memory per agent | About $0.10 to $0.26 a day, as for Alice |
 
 A floor of Paul and three hires sending 20 messages a day costs about $2 to
-$3 a day at list prices, inside the proposed $5 cap. Sending services and the
-sending domain are separate owner costs.
+$3 a day at the recorded list prices. The $5 ceiling includes plans,
+research, drafts, checks, role-plays, Gym runs, day plans, and retries for
+the entire floor. Reserve a bounded cost before each call; unknown usage or
+an exhausted budget stops new model work. Unused budget doesn't roll over.
+Reconfirm prices before activation and show actual billed cost separately.
+Sending services and the sending domain are separate owner costs.
 
 ## Build order
 
@@ -645,10 +757,12 @@ states, sales-floor work only. Visual looks for agents are separate.
 | S2. Outbound at level 0 | The send path with the suppression list, footer, and caps; reply ingestion and classification; Mallory's reply-injection campaign | S1; Faythe for sending credentials; Grace's compliance check; the owner's sending domain and legal review | 14 |
 | S3. Hiring | Hire proposals, cap enforcement, creation and attestation on CONFIRM, retirement | S0; Bob (crew phase 1) to place bodies | 6 |
 | S4. The Agora | The building and kit pieces in Blender, admission, `layout/agora.rs`, the boards, ticker, and bell | Generative agents C1 and C2 (clock and world tree); Bob for placement | 12 |
-| S5. Life on the floor | World-tree nodes, day plans from sales work, the stand-up and training routines, the bell on ledger settlement | S4; generative agents D (day plans); the payment ledger's attributed settlement | 6 |
-| S6. Referrals, partners, and trust levels | Vanna and Arthur, levels 1 and 2, the weekly public update | S2 and S3; the roadmap's G8 attribution for paid commissions | 6 |
+| S5. Life on the floor | World-tree nodes, day plans from sales work, routines, private/shared projections, the bell on an earned settled sale | S4; generative agents D (day plans); attributed settlement and delivery evidence | 6 |
+| S6. Referrals, partners, and trust levels | Vanna and Arthur, qualified batch approvals, the weekly public update; standing follow-ups are a later extension | S2 and S3; measured level-0 record; the roadmap's G8 attribution for paid commissions | 6 |
 
-About 66 agent-hours in all. S1 and S4 can run in parallel once their
+About 66 agent-hours as an initial estimate, excluding the deferred
+standing-follow-up extension; qualify batch and projection work before
+treating that estimate as a schedule. S1 and S4 can run in parallel once their
 dependencies land, and S4 doesn't wait for S2: the floor can be built and
 shown with role-play alone before any real message goes out. Owner steps go
 in `NEEDS_OWNER.md`: the sending domain and account, legal review of the
@@ -659,24 +773,81 @@ The first useful slice is S0 and S1 with Paul alone: a playbook, a claims
 register Victor has verified, and drafts the owner can send by hand. That
 slice already helps the roadmap's R0 lead work, and it needs no building.
 
-## Open questions for the owner
+<a id="open-questions-for-the-owner"></a>
 
-1. **The name.** Is Paul right for the sales leader, and is the slate of hires
-   (Erin, Frank, Pat, Arthur, Vanna) the one you want?
-2. **Caps.** Is Paul plus three hires at first, at most six, with a $5 daily
-   floor budget and 20 messages a day, the right start?
-3. **Channels.** Email first, public replies first, or both? Which platforms
-   do you want the agents on?
-4. **Jurisdictions.** Which countries should the floor contact first, given
-   that some require consent before any commercial email?
-5. **Trust levels.** Are four weeks and the thresholds above the right bar
-   for batched approvals?
-6. **The bell.** Settled revenue only, or also a pilot agreed?
-7. **The site.** Main Street's west end, facing the Civic Hall, or near the
-   market hall?
-8. **Visibility.** Should the Agora's revenue figures ever show in a shared
-   instance, or only in yours?
-9. **Voice.** Should a sales agent ever speak to a person by voice, for
-   example in a meeting the prospect booked, or stay written only?
-10. **The human seller.** How should the floor hand off to the prospective
-    sales collaborator the roadmap mentions, if that role is agreed?
+## Initial operating decisions
+
+These answer the ten former open questions as of October 7, 2026. They are
+planning defaults chosen from current source, the retained history, and
+current primary-source guidance. They don't claim implementation or a live
+campaign grant. Numeric pilot limits are review choices, not research-backed
+optima. Revisit them against accepted pilots, retained revenue, delivery
+cost, recipient feedback, and the owner's review burden.
+
+| Question | Initial decision | When to revisit |
+| --- | --- | --- |
+| 1. Names | Keep Paul, Erin, Frank, Pat, Arthur, and Vanna; Carole remains synthetic training data | A role changes enough to need a different charter |
+| 2. Caps and hiring | Start Paul alone; add Erin for research backlog, Frank for drafting backlog, then Pat for qualified demos. Initially at most three active hires plus Paul; expansion requires a new grant, with six hires plus Paul as the planning ceiling. Keep $5/day model ceiling and ramp 5 → 10 → 20 total external messages/day | Review queues, fully counted cost, and owner capacity weekly; don't hire to fill desks |
+| 3. Channels | Permissioned business email first, owner sending initially; relevant Nostr/community drafts for owner posting second. X/LinkedIn stay manual | Each new adapter proves identity, threading, suppression, exact approval, delivery reconciliation, and platform permission |
+| 4. Jurisdictions | Known US business recipients who requested contact or accepted an introduction; unknown location blocks proactive contact. Other outbound jurisdictions wait | A buyer cohort needs expansion and its recipient/channel rules are separately reviewed |
+| 5. Trust | Level 0 at launch. Four weeks plus the delivered-message evidence and explicit owner grant may qualify level 1; five-item batches first. Level 2 is deferred | A qualified batch gate and measured review record justify broader scope; calendar time alone never does |
+| 6. Bell | Earned, attributed, settled sale with agreed delivery/acceptance evidence; once per sale. Pilot agreement updates the board | A new product changes settlement or acceptance semantics; reconcile refunds and retained share |
+| 7. Site | Prefer a surveyed parcel farther west of Lantern Road, facing Civic Hall; use a surveyed off-trail market parcel if it fails | Bob validates full geometry, access, terrain, and clearance; Agora construction never gates R1 |
+| 8. Visibility | Private live amounts and bell events by default. Shared instances get labeled demonstration data or reviewed, delayed aggregates | The owner explicitly publishes a particular projection after privacy review |
+| 9. Voice | Written-only agents at launch; humans conduct booked demos. Consider agent participation only in specifically requested, disclosed, human-supervised meetings | A separate capability covers recipient permission, recording/transcription, retention, and applicable call rules; no AI cold calling |
+| 10. Human seller | Owner receives qualified briefs and owns closing until a collaborator privately agrees and accepts a bounded assignment | Agreed availability, scope, authority, compensation, and customer demand justify the role |
+
+For question 10, each private handoff contains the lead ID, permission/source,
+workflow and decision maker, current tools, measured baseline or its unknown
+status, data boundary, cited claims, proposed demo/pilot and acceptance
+criteria, next action, and review date. Paul routes it only after the human
+accepts. The human owns discovery, relationship, agreed price/terms, and
+closing; engineering owns technical delivery and the customer owns
+acceptance. Agents continue research and drafting within their assignments.
+The brief grants no mailbox, calendar, payment, or broader lead access.
+Keep compensation and referral agreements separate, as the
+[roadmap requires](revenue-roadmap.md#sales-and-pilot-operations).
+
+Voice is deferred partly because AI telephone voices fall within the FCC's
+artificial/prerecorded-voice rules; covered telemarketing calls require prior
+express written consent absent an applicable exemption. This doesn't
+establish a universal rule for web meetings. Any later voice scope gets its
+own review. [FCC ruling 24-17](https://docs.fcc.gov/public/attachments/FCC-24-17A1.pdf).
+
+## Evidence behind the decisions
+
+The [transcript guide](../transcripts/README.md) distinguishes historical
+intent from shipped behavior. [239](../transcripts/239.md) and
+[247](../transcripts/247.md) support buyer demand, partner fulfillment, and
+honest public reporting. The [Coder-era review](revenue-roadmap.md#what-the-background-changes)
+covers 275–289: daily usefulness, dependable execution, measured outcomes,
+and contributor economics. [284](../transcripts/284.md) informs the decision
+to reward verified work rather than invented activity. The October 6
+operator conversation informs assisted pilots and a possible human sales
+role; expressions of interest aren't agreements.
+
+`docs/teardowns/` was removed in the September 18 reset. These links pin its
+last retained tree, `8f84d05896ef14edee491621bf977ee5315cc8ed`. The reports
+are July–August historical audits, not current product qualification. The
+following applications are planning inferences:
+
+- [Hermes](https://github.com/OpenAgentsInc/openagents/blob/8f84d05896ef14edee491621bf977ee5315cc8ed/docs/teardowns/2026-08-01-hermes-agent-desktop-teardown.md)
+  exposes channel verification burden and varying approval behavior. Start
+  with one sending channel and one host authority contract.
+- [Executor](https://github.com/OpenAgentsInc/openagents/blob/8f84d05896ef14edee491621bf977ee5315cc8ed/docs/teardowns/2026-07-12-executor-architecture-teardown.md)
+  keeps credentials behind trusted handles; safety annotations aren't
+  authority. Keep mailbox credentials in the host and bind approvals to
+  exact actions.
+- [Macro](https://github.com/OpenAgentsInc/openagents/blob/8f84d05896ef14edee491621bf977ee5315cc8ed/docs/teardowns/2026-08-10-macro-teardown.md)
+  excludes email sending from its foreign MCP projection and uses scoped
+  entity access. Give a collaborator an accepted assignment, not implicit
+  access to the full sales account.
+- [Linear Agents](https://github.com/OpenAgentsInc/openagents/blob/8f84d05896ef14edee491621bf977ee5315cc8ed/docs/teardowns/linear-agents.md)
+  distinguishes human ownership from delegation and builds automation on
+  reliable manual work. Keep human closing and promote from outcomes.
+- [Amp](https://github.com/OpenAgentsInc/openagents/blob/8f84d05896ef14edee491621bf977ee5315cc8ed/docs/teardowns/2026-07-16-amp-code-teardown.md)
+  distinguishes unlisted sharing from privacy. Hide live revenue and deal
+  timing across shared instances.
+- [Buzz](https://github.com/OpenAgentsInc/openagents/blob/8f84d05896ef14edee491621bf977ee5315cc8ed/docs/teardowns/2026-07-21-buzz-teardown.md)
+  separates participation, execution, acceptance, and settlement. Bind the
+  bell to earned delivery and payment rather than activity or funding.
