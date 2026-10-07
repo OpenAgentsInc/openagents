@@ -635,6 +635,8 @@ refused in a test; captures `pylon-field-two-machines.png` and
 - `scripts/pylon-psionic.sh` sets up and runs a pylon as transient user
   units; `scripts/pylon-demo.sh` runs the cross-machine demo against
   `relay.openagents.com`.
+- Pylon traffic, test jobs included, uses the production relay
+  (owner's decision, 2026-10-07).
 
 Not yet: `coder host share` (the provider is a separate command, not part of
 the Coder host), the `background` lease, Alice's routing to the pool, Verse
