@@ -412,7 +412,7 @@ fn active_model(app: &App) -> String {
     if app.plugins.enabled && app.plugins.key_configured {
         app.plugins.options.slug(&app.plugins.model)
     } else {
-        "openagents/gateway".into()
+        "auto".into()
     }
 }
 
@@ -677,7 +677,7 @@ fn clear_jev(app: &mut App) {
 fn model_command(app: &mut App, args: &[String]) -> Result<Value, Error> {
     if args.is_empty() || args == ["list"] {
         let mut catalog = vec![
-            json!({"plugin":crate::plugin_definition::FALLBACK_PROVIDER.id,"id":"openagents/gateway","name":"OpenAgents AI Gateway","reasoning":[],"default":true}),
+            json!({"plugin":crate::plugin_definition::FALLBACK_PROVIDER.id,"id":"auto","name":"Auto","reasoning":[],"default":true}),
         ];
         if app.plugins.enabled {
             catalog.extend(models::openrouter_catalog().iter().map(|model|json!({"plugin":model.plugin,"id":model.id,"name":model.name,"reasoning":model.efforts,"context_length":model.context_length,"max_output_tokens":model.max_output_tokens})));
@@ -725,16 +725,16 @@ fn model_command(app: &mut App, args: &[String]) -> Result<Value, Error> {
         }
         slug = model.into();
     }
-    if slug == "openagents/gateway" {
+    if slug == "auto" {
         if reasoning.is_some() || max_tokens.is_some() {
             return Err(usage(
-                "The automatic gateway does not expose reasoning or output limits.",
+                "The automatic provider does not expose reasoning or output limits.",
             ));
         }
         if app.plugins.enabled && !app.plugins.toggle_enabled() {
             return Err("Cannot save provider selection.".into());
         }
-        return Ok(json!({"model":"openagents/gateway","provider":"openagents-gateway"}));
+        return Ok(json!({"model":"auto","provider":"openagents-gateway"}));
     }
     let model = models::openrouter_catalog()
         .into_iter()
@@ -1671,12 +1671,14 @@ mod tests {
         let temp = tempfile::tempdir().unwrap();
         let context = context(&temp);
         let status = execute_words(&["status"], &context).unwrap();
-        assert_eq!(status["model"], "openagents/gateway");
+        assert_eq!(status["model"], "auto");
         let catalog = execute_words(&["models", "list"], &context).unwrap();
-        assert_eq!(catalog["models"][0]["id"], "openagents/gateway");
+        assert_eq!(catalog["models"][0]["id"], "auto");
+        let selected = execute_words(&["models", "set", "auto"], &context).unwrap();
+        assert_eq!(selected["model"], "auto");
         execute_words(&["plugins", "enable", "openrouter-byok"], &context).unwrap();
         let status = execute_words(&["status"], &context).unwrap();
-        assert_eq!(status["model"], "openagents/gateway");
+        assert_eq!(status["model"], "auto");
         let catalog = execute_words(&["models", "list"], &context).unwrap();
         assert!(catalog["models"].as_array().unwrap().len() > 1);
     }

@@ -280,7 +280,7 @@ pub fn main_document(app: &App, cwd: &Path) -> Value {
         app.plugins.options.slug(&app.plugins.model)
     } else {
         match chat_model(&app.live) {
-            "unknown" => "openagents/gateway".into(),
+            "unknown" => "auto".into(),
             actual => actual.into(),
         }
     };
@@ -628,7 +628,7 @@ mod tests {
         let exported = document(
             &chat,
             "pending",
-            "openagents/gateway",
+            "auto",
             Path::new("/workspace"),
         );
         assert_eq!(

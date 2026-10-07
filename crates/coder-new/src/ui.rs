@@ -141,7 +141,7 @@ pub fn render(frame: &mut Frame, app: &mut App) {
                         _ => None,
                     })
                 })
-                .or(Some("openagents/gateway"))
+                .or(Some("auto"))
         } else {
             None
         },
