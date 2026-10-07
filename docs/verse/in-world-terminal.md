@@ -125,8 +125,8 @@ terminal:
   and F1 to F24, the keypad in both modes, and modified navigation keys
   send what xterm sends.
 - **Text.** Wide characters take two cells, combining marks draw over
-  their character, and characters Fira Mono's prebuilt set lacks are
-  rasterized on demand from Fira Mono and this computer's fonts (CJK,
+  their character, and characters Paper Mono's prebuilt set lacks are
+  rasterized on demand from Paper Mono and this computer's fonts (CJK,
   symbols, and emoji as a grayscale mask in the white ladder). Box drawing,
   blocks, braille, and powerline separators are drawn as shapes.
 - **Performance.** Each frame applies output for at most 3 ms and 256 KiB a
@@ -205,7 +205,7 @@ property above. A Verse terminal is one more client of this stack.
 | Piece | Fit for a terminal | Where |
 | --- | --- | --- |
 | Rust Native panels | Paints a Rust Native view on the CPU with `rust-native-desktop` and hands the pixels to the renderer as an `OverlayImage`, drawn over the finished frame. Owns keyboard focus: while focused, every key goes to the panel and none reaches the character; a press outside returns focus to the world. Desktop only (`panels` feature). `rust-native-desktop` already lays out `TextRole::Terminal` text monospaced. | `crates/verse/src/panels.rs` (`Panel::key`, `Panel::press`), `crates/verse-gfx/src/overlay.rs` (`OverlayImage`, `MAX_EXTENT`), `crates/verse/src/app.rs` (`panel_key`), `crates/rust-native-desktop/src/layout.rs` |
-| Screen-space UI batch | Fira Mono Medium rasterized once with `swash` into a single-channel atlas; `UiBatch::rect` and `UiBatch::text` draw colored quads and text in physical pixels. The font is monospaced, so cells align. The atlas carries only printable ASCII, Latin-1, and four extra characters; anything else draws as `?`. | `crates/verse-gfx/src/ui.rs` (`Atlas`, `drawable`, `UiBatch::text`) |
+| Screen-space UI batch | Paper Mono at medium weight rasterized once with `swash` into a single-channel atlas; `UiBatch::rect` and `UiBatch::text` draw colored quads and text in physical pixels. The font is monospaced, so cells align. The atlas carries only printable ASCII, Latin-1, and four extra characters; anything else draws as `?`. | `crates/verse-gfx/src/ui.rs` (`Atlas`, `drawable`, `UiBatch::text`) |
 | In-world boards | Everglade's Task Wall, goal board, and one desk monitor per seat (0.84 m by 0.5 m) that already streams a seat's log tail. Text is stroke lettering built into meshes (`letters` through `doors::scene_label`), which suits a few short lines, not an 80 by 24 grid redrawn many times a second. | `crates/verse-zone-everglade/src/zones/everglade/boards.rs` (`monitor`, `screen`, `letters`), `crates/verse-zone-everglade/src/zones/everglade/layout.rs` (`DESKS`, `Board`) |
 | Host connection | The Agent Studio talks to this computer's host over the same-user control socket (`openagents_connect::control`), a request and response protocol. It has no streaming terminal operation. | `crates/verse-zone-everglade/src/zones/everglade/studio/live.rs`, `crates/openagents-connect/src/control.rs` (`Op`) |
 | Web build | `everglade-web` draws Everglade with WebGPU or WebGL2 and connects to no relay or studio host. | `crates/everglade-web/README.md` |

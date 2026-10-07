@@ -233,14 +233,13 @@ pub fn compile(pack: &mut Pack, dir: &Path, bestiary_path: Option<&Path>) -> Res
         revision.clone(),
         bytes,
     )?];
-    let font = include_bytes!("../../../verse/assets/FiraMono-Medium.ttf");
     let (font_hash, font_bytes) = bundle(&[
-        font,
-        include_bytes!("../../../verse/assets/FiraMono-LICENSE"),
+        paper_mono::VARIABLE,
+        include_bytes!("../../../paper-mono/fonts/OFL.txt"),
     ]);
     assets.push(source(
-        "verse:source:fira-mono",
-        "Mozilla Foundation and Telefonica S.A.",
+        "verse:source:paper-mono",
+        "The Paper-Mono Project Authors",
         License::Ofl11,
         "ttf",
         font_hash,

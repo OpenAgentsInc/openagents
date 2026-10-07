@@ -12,6 +12,8 @@ compiler = ["authoring", "dep:gltf", "dep:libm", "dep:png", "dep:resvg"]
 authoring = ["dep:secp256k1", "dep:png", "dep:serde", "dep:serde_path_to_error", "verse-world/service-auth"]
 
 [dependencies]
+# Paper Mono, the UI font the inventory records as a source.
+paper-mono = { path = "../paper-mono" }
 verse-engine = { path = "../verse-engine", features = ["asset-io"] }
 verse-world = { path = "../verse-world" }
 physics = { path = "../physics" }

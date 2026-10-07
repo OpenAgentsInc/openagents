@@ -1,7 +1,7 @@
 //! Screen-space UI: glyph atlases, optional color sprites, and batches of quads.
 //!
-//! Text is Fira Mono Medium (SIL Open Font License 1.1, `assets/`),
-//! rasterized once at startup into a single-channel atlas. A [`UiBatch`]
+//! Text is Paper Mono (SIL Open Font License 1.1, `crates/paper-mono`) at
+//! [`MONO_WEIGHT`], rasterized once at startup into a single-channel atlas. A [`UiBatch`]
 //! collects solid rectangles, frames, and text in physical pixels with the
 //! origin at the top-left; the renderer draws it over the world with alpha
 //! blending. Every color is a step of the amber ladder or the near-black
@@ -12,12 +12,14 @@ pub use verse_engine::overlay::Vertex as UiVertex;
 
 use crate::palette;
 
-// The font stays in `crates/verse/assets` beside its license, where the
-// imported scenes read it too.
-const FONT: &[u8] = include_bytes!("../../verse/assets/FiraMono-Medium.ttf");
-/// Fira Mono Medium, the atlas's font, for callers that rasterize more of
-/// its glyphs on demand ([`Atlas::insert_glyph`]).
+const FONT: &[u8] = paper_mono::VARIABLE;
+/// Paper Mono's variable face, the atlas's font, for callers that rasterize
+/// more of its glyphs on demand ([`Atlas::insert_glyph`]). Rasterize it at
+/// [`MONO_WEIGHT`].
 pub const MONO_FONT: &[u8] = FONT;
+/// The `wght` the atlas draws Paper Mono at: medium, which reads on the
+/// world at small sizes. A face without the axis ignores it.
+pub const MONO_WEIGHT: f32 = 500.0;
 /// The sprite that holds glyphs added after the atlas was built.
 const DYNAMIC: &str = "glyphs:dynamic";
 /// The WGSL shader that draws a [`UiBatch`] and an overlay panel.
@@ -189,7 +191,12 @@ impl Atlas {
         let mut context = ScaleContext::new();
         // Hinting snaps stems to whole pixels, which suits 1x displays; at Retina
         // densities it distorts shapes, so they draw unhinted, as macOS draws text.
-        let mut scaler = context.builder(font).size(px).hint(px < 20.0).build();
+        let mut scaler = context
+            .builder(font)
+            .size(px)
+            .hint(px < 20.0)
+            .variations([("wght", MONO_WEIGHT)])
+            .build();
         let chars: Vec<char> = (FIRST..=LAST)
             .chain(LATIN1)
             .filter_map(char::from_u32)

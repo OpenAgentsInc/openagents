@@ -1,5 +1,5 @@
 //! Glyphs the atlas does not carry, rasterized on demand into its reserved
-//! rows: Fira Mono's own glyphs beyond the prebuilt set first, then this
+//! rows: Paper Mono's own glyphs beyond the prebuilt set first, then this
 //! computer's fonts for symbols, CJK, and emoji. Color emoji become a
 //! coverage mask, so they draw in the pane's white ladder like any text.
 //!
@@ -17,7 +17,7 @@ use swash::zeno::Format;
 
 use verse_gfx::ui::Atlas;
 
-/// Fonts tried after Fira Mono, in order, with the face index in a
+/// Fonts tried after Paper Mono, for the glyphs it lacks, in order, with the face index in a
 /// collection. Missing files are skipped.
 const FONTS: &[(&str, u32)] = &[
     ("/system/fonts/NotoSansCJK-Regular.ttc", 0),
@@ -25,15 +25,15 @@ const FONTS: &[(&str, u32)] = &[
     ("/system/fonts/NotoColorEmoji.ttf", 0),
     ("/System/Library/Fonts/LanguageSupport/PingFang.ttc", 0),
     ("/System/Library/Fonts/CoreUI/AppleColorEmoji.ttc", 0),
-    ("/System/Library/Fonts/Menlo.ttc", 0),
+    ("/System/Library/Fonts/Menlo.ttc", 0), // check-fonts: allow
     ("/System/Library/Fonts/Apple Symbols.ttf", 0),
-    ("/System/Library/Fonts/Supplemental/Arial Unicode.ttf", 0),
+    ("/System/Library/Fonts/Supplemental/Arial Unicode.ttf", 0), // check-fonts: allow
     ("/System/Library/Fonts/Hiragino Sans GB.ttc", 0),
     ("/System/Library/Fonts/AppleSDGothicNeo.ttc", 0),
     ("/System/Library/Fonts/Apple Braille.ttf", 0),
     ("/System/Library/Fonts/Apple Color Emoji.ttc", 0),
-    ("/usr/share/fonts/truetype/dejavu/DejaVuSansMono.ttf", 0),
-    ("/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf", 0),
+    ("/usr/share/fonts/truetype/dejavu/DejaVuSansMono.ttf", 0), // check-fonts: allow
+    ("/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf", 0), // check-fonts: allow
     ("/usr/share/fonts/opentype/noto/NotoSansCJK-Regular.ttc", 0),
     ("/usr/share/fonts/noto-cjk/NotoSansCJK-Regular.ttc", 0),
     (
@@ -106,7 +106,7 @@ impl Default for Fallback {
 }
 
 impl Fallback {
-    /// Fira Mono, then the fonts of [`FONTS`] this computer has.
+    /// Paper Mono, then the fonts of [`FONTS`] this computer has.
     #[must_use]
     pub fn new() -> Self {
         let mut fonts = vec![Font {
@@ -178,7 +178,13 @@ impl Fallback {
             if id == 0 {
                 continue;
             }
-            let mut scaler = self.context.builder(face).size(px).hint(px < 20.0).build();
+            let mut scaler = self
+                .context
+                .builder(face)
+                .size(px)
+                .hint(px < 20.0)
+                .variations([("wght", verse_gfx::ui::MONO_WEIGHT)])
+                .build();
             let Some(image) =
                 Render::new(&[Source::ColorBitmap(StrikeWith::BestFit), Source::Outline])
                     .format(Format::Alpha)

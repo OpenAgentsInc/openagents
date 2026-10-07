@@ -241,7 +241,7 @@ The original chamber needs:
   not own damage resolution.
 - Original HUD frames, spell icons, and typography. Keep the compact ten-ability
   layout, red enemy bars, player/target resources, cooldowns, and outlined damage
-  numbers as usability requirements. Replace all imported Friz/Arial files and
+  numbers as usability requirements. Replace all imported font files with Paper Mono, and
   Classic textures with original or explicitly approved redistributable assets.
 
 For animation, compile shared skeletons, inverse bind poses, clips, attachment

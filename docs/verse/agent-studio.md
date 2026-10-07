@@ -402,8 +402,8 @@ than drawing its own:
 | Command palette, chat and profile menus, archive confirmation | [`openagents-chat-app/src/command_panel.rs`](../../crates/openagents-chat-app/src/command_panel.rs), key caps in [`rust-native-desktop/src/paint.rs`](../../crates/rust-native-desktop/src/paint.rs) | Yes |
 | Rename dialog, profile footer | [`openagents-desktop/src/chat.rs`](../../crates/openagents-desktop/src/chat.rs) | No |
 
-Geist fonts and Solar icons are the only Zeron-sourced assets in the
-repository, each with its notice.
+Solar icons are the only Zeron-sourced assets in the repository, with
+their notice. Text uses Paper Mono, the typeface every surface uses.
 
 Verse shares none of this today. Its HUD
 ([`crates/verse/src/hud.rs`](../../crates/verse/src/hud.rs)) draws with its

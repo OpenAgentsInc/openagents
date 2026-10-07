@@ -575,7 +575,8 @@ fn fallback_glyphs_fill_the_atlas_and_shapes_need_none() {
     let mut atlas = crate::ui::Atlas::new(16.0);
     atlas.reserve_glyphs(256).unwrap();
     let mut fallback = super::glyphs::Fallback::new();
-    // Fira Mono has these beyond the prebuilt set.
+    // Paper Mono or this computer's fonts have these beyond the prebuilt
+    // set.
     for c in ['λ', 'Ж', '→', '≠'] {
         assert!(!atlas.has_glyph(c) || c == '→', "{c} was prebuilt");
         assert!(fallback.ensure(&mut atlas, c), "{c} not rasterized");

@@ -69,7 +69,7 @@ Ruins zone on 2026-10-05.
 [#10426](https://github.com/OpenAgentsInc/openagents/issues/10426) implements the
 first asset-free procedural scene. The `verse_play` native example generates an
 original chamber, skeletal placeholder actors, weapons, particles, and UI
-sprites; it uses the bundled licensed Fira Mono font. It retains timed dialogue,
+sprites; it uses the bundled licensed Paper Mono font. It retains timed dialogue,
 camera handoff, local combat, overhead red health bars, damage numbers, corpses,
 and respawns. See the [scene instructions](../../../assets/verse/original/README.md).
 

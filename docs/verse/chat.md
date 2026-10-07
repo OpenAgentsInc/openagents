@@ -201,8 +201,8 @@ Refusals appear as `CHAT NOT SENT:` notices.
 
 ### Text
 
-Text is Fira Mono Medium (SIL Open Font License 1.1, in
-`crates/verse/assets/` with its license), rasterized once into a glyph
+Text is Paper Mono at medium weight (SIL Open Font License 1.1, in
+`crates/paper-mono/` with its license), rasterized once into a glyph
 atlas.
 
 ### The relay

@@ -1303,7 +1303,7 @@ fn status_element(document: &Document) -> Option<HtmlElement> {
         ("border-radius", "6px"),
         ("background", "rgba(10, 14, 8, 0.8)"),
         ("color", "#e8f0d8"),
-        ("font", "14px/1.4 system-ui, sans-serif"),
+        ("font", "14px/1.4 \"Paper Mono\", monospace"),
         ("pointer-events", "none"),
     ] {
         let _ = style.set_property(name, value);

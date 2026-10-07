@@ -586,7 +586,7 @@ cargo test -p verse --lib gles
 | [`verse-net/src/xp.rs`](../../crates/verse-net/src/xp.rs) | NIP-XP reading: the reader thread, the snapshot of quests, XP, and titles, the level curve, and the board and HUD text. `verse-net/src/xp/fixture.rs` holds throwaway signed fixtures. |
 | [`src/replay.rs`](../../crates/verse/src/replay.rs) | Run replays: events to visits, the shared clock, the `beats-winner` list, the ghost, and the HUD lines. |
 | [`verse-net/src/feed.rs`](../../crates/verse-net/src/feed.rs) | The NOSTR tab: public notes from damus and primal, filtering, pacing, and stand-ins. |
-| [`verse-gfx/src/ui.rs`](../../crates/verse-gfx/src/ui.rs), [`verse-gfx/src/ui.wgsl`](../../crates/verse-gfx/src/ui.wgsl) | Glyph atlas (Fira Mono, OFL) and screen-space quads. |
+| [`verse-gfx/src/ui.rs`](../../crates/verse-gfx/src/ui.rs), [`verse-gfx/src/ui.wgsl`](../../crates/verse-gfx/src/ui.wgsl) | Glyph atlas (Paper Mono, OFL) and screen-space quads. |
 | [`verse-pbr/src/mesh.rs`](../../crates/verse-pbr/src/mesh.rs) | The shared vertex format and line, quad, cube, and ring builders. |
 | [`verse-gfx/src/palette.rs`](../../crates/verse-gfx/src/palette.rs) | The amber ladder in linear light. |
 | [`src/zones/`](../../crates/verse/src/zones/mod.rs) | Curated zone identities, portals, lazy zone loading, palette/fog, the zone hotbar, and the Lagrange 1 scene. |
