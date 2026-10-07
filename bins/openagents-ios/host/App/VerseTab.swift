@@ -433,7 +433,7 @@ struct VerseTab: View {
     private var active: Bool { selected && phase == .active }
     private var boardOpen: Bool { world.gymOpen || world.resultsOpen || world.evalsOpen }
 
-    var body: some View {
+    private var content: some View {
         GeometryReader { outer in
             let safe = outer.safeAreaInsets
             ZStack(alignment: .bottom) {
@@ -518,6 +518,10 @@ struct VerseTab: View {
                 }
             }
         }
+    }
+
+    private var observed: some View {
+        content
         .background(Color.black.ignoresSafeArea())
         .onAppear {
             world.syncStudio(studioComputer, connect: connectStudio)
@@ -540,12 +544,20 @@ struct VerseTab: View {
             if !on { terminalTyping = false }
         }
         .onChange(of: keyboard) { _, value in world.send(["action": "computer_keyboard", "bottom": value]) }
-        .task(id: world.computerOpen && app.packet?.terminal == true && active) {
-            while active && world.computerOpen && app.packet?.terminal == true && !Task.isCancelled {
+        .task(id: terminalPolling) {
+            while terminalPolling && !Task.isCancelled {
                 app.pollTerminal()
                 try? await Task.sleep(for: .milliseconds(120))
             }
         }
+    }
+
+    private var terminalPolling: Bool {
+        world.computerOpen && app.packet?.terminal == true && active
+    }
+
+    var body: some View {
+        observed
         .onChange(of: world.inEverglade) { _, _ in world.syncStudio(studioComputer, connect: connectStudio) }
         .onChange(of: studioComputer) { _, _ in world.syncStudio(studioComputer, connect: connectStudio) }
         .onChange(of: world.studioOpen) { _, open in if !open { studioDraft = "" } }
