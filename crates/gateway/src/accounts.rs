@@ -496,6 +496,19 @@ async fn sign_in(State(state): State<Arc<ServeState>>, headers: HeaderMap) -> Re
             );
         }
     };
+    // User sessions currently carry account membership, not key scopes.
+    // Refuse a conversion that would erase a credential's narrowing.
+    if authenticated
+        .scopes
+        .as_ref()
+        .is_some_and(|scope| scope.models.is_some() || scope.actions.is_some())
+    {
+        return refused(
+            StatusCode::FORBIDDEN,
+            "out_of_scope",
+            "A constrained API key cannot mint an unrestricted account session.",
+        );
+    }
     let accounts = match accounts_store(&state) {
         Ok(accounts) => accounts,
         Err(response) => return response,

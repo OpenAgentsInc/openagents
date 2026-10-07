@@ -985,6 +985,27 @@ async fn named_scoped_keys_and_their_lifecycle() {
     assert_eq!(status, StatusCode::FORBIDDEN, "{body}");
     assert_eq!(code(&body), "out_of_scope");
 
+    // Sign-in must not turn a narrowed credential into an unrestricted session.
+    let (status, body) = post(&deployment, "/v1/sessions", Some(&scoped_token), &json!({})).await;
+    assert_eq!(status, StatusCode::FORBIDDEN, "{body}");
+    assert_eq!(code(&body), "out_of_scope");
+    assert!(body.get("token").is_none());
+
+    // Even permission to read accounts does not erase a model restriction.
+    let (status, body) = post(
+        &deployment,
+        &keys_path,
+        Some(&ada.session_token),
+        &json!({"name":"reader", "scopes":{"models":["acme-kev"], "actions":["accounts"]}}),
+    )
+    .await;
+    assert_eq!(status, StatusCode::CREATED, "{body}");
+    let reader = body["key_token"].as_str().unwrap();
+    let (status, body) = post(&deployment, "/v1/sessions", Some(reader), &json!({})).await;
+    assert_eq!(status, StatusCode::FORBIDDEN, "{body}");
+    assert_eq!(code(&body), "out_of_scope");
+    assert!(body.get("token").is_none());
+
     // Pause holds without ending; resume releases it.
     let (status, body) = post(
         &deployment,

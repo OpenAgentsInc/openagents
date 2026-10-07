@@ -27,6 +27,12 @@ const BALANCE_PATH: &str = "/v1/balance";
 /// The workspaces route family.
 const WORKSPACES_PATH: &str = "/v1/workspaces";
 
+#[path = "account_management.rs"]
+mod management;
+pub use management::{
+    GatewaySession, KeyGrant, KeyIdentity, SessionGrant, WorkspaceIdentity, WorkspaceView,
+};
+
 /// The account surface, scoped to its client.
 #[derive(Debug)]
 pub struct Account<'a> {
@@ -243,15 +249,32 @@ pub struct SessionInfo {
     /// The account the session acts for, when it names one.
     #[serde(default)]
     pub account: Option<String>,
-    /// When the session was created.
-    #[serde(default)]
+    /// When the session was created; gateway Unix seconds become decimal text.
+    #[serde(default, deserialize_with = "session_time")]
     pub created_at: Option<String>,
-    /// When it ends.
-    #[serde(default)]
+    /// When it ends; gateway Unix seconds become decimal text.
+    #[serde(default, deserialize_with = "session_time")]
     pub expires_at: Option<String>,
     /// `active`, `closed`, or `revoked` — its standing.
     #[serde(default)]
     pub state: Option<String>,
+}
+
+fn session_time<'de, D: serde::Deserializer<'de>>(
+    deserializer: D,
+) -> std::result::Result<Option<String>, D::Error> {
+    #[derive(Deserialize)]
+    #[serde(untagged)]
+    enum Time {
+        Seconds(u64),
+        Text(String),
+    }
+    Ok(
+        Option::<Time>::deserialize(deserializer)?.map(|time| match time {
+            Time::Seconds(value) => value.to_string(),
+            Time::Text(value) => value,
+        }),
+    )
 }
 
 /// The funded anonymous lane's counters.

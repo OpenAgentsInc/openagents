@@ -151,7 +151,7 @@ Under the `accounts` document the gateway also mounts the
 account-management family — every route below conditional on that
 configuration:
 
-- `POST /v1/sessions` — sign in with an `oak_` key, or mint a funded
+- `POST /v1/sessions` — sign in with an unconstrained `oak_` key, or mint a funded
   anonymous session with no credential; `GET` and `DELETE /v1/session`
   describe and end it.
 - `POST /v1/accounts` — self-serve sign-up: account, personal

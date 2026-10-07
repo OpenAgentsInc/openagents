@@ -172,6 +172,33 @@ fn asking() -> SystemOneRequest {
     )
 }
 
+#[tokio::test]
+async fn recovery_request_and_refusal_bodies_never_enter_debug_logs() -> Outcome {
+    let secret = "fixture-recovery-secret-not-a-real-token";
+    let body = serde_json::json!({
+        "error": {"code": "recovery_closed", "message": secret},
+        "key_token": secret,
+    })
+    .to_string();
+    let base = serve(vec![
+        Reply::new(503, &body)
+            .header("x-visible", secret)
+            .header("x-typesafe-request-id", secret),
+    ])
+    .await;
+    let capture = Capture::default();
+    let _guard = logged(Level::DEBUG, capture.clone());
+    let error = client(&base)?
+        .account()
+        .recover(&jev::ApiKey::new(secret))
+        .await
+        .unwrap_err();
+    assert!(!capture.read().contains(secret));
+    assert!(capture.read().contains("[private]"));
+    assert!(!format!("{error:?}").contains(secret));
+    Ok(())
+}
+
 /// Every credential a request or a response carries is masked before a line
 /// reaches the log: the API key, the caller's secret headers, and the
 /// server's.

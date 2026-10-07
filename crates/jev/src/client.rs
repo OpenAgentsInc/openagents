@@ -396,6 +396,29 @@ impl Client {
         self.send_read(&prepared).await
     }
 
+    /// Credential-management mutations are single-attempt operations. Their
+    /// bodies and refusal payloads must not enter diagnostics.
+    pub(crate) async fn request_private(
+        &self,
+        method: Method,
+        path: &str,
+        body: Option<Vec<u8>>,
+    ) -> Result<RawResponse> {
+        let mut prepared = self.prepare(
+            method,
+            path,
+            body,
+            &HeaderMap::new(),
+            None,
+            Some(RetryPolicy {
+                max_retries: 0,
+                ..self.retry().clone()
+            }),
+        )?;
+        prepared.private = true;
+        self.send_read(&prepared).await
+    }
+
     /// Everything one call sends, before its first attempt.
     fn prepare(
         &self,
@@ -434,6 +457,7 @@ impl Client {
             headers,
             timeout,
             retry,
+            private: false,
         })
     }
 
@@ -587,7 +611,7 @@ impl Client {
             request = prepared.tag,
             method = %prepared.method,
             url = %prepared.url,
-            headers = %transport::redact(&headers),
+            headers = %if prepared.private { "[private]".into() } else { transport::redact(&headers).to_string() },
             body = %prepared.body_text(),
             "sending an attempt"
         );
@@ -638,7 +662,7 @@ impl Client {
             url = %prepared.url,
             status = status.as_u16(),
             elapsed_ms = began.elapsed().as_millis(),
-            request_id = request_id(response.headers()).unwrap_or("-"),
+            request_id = if prepared.private { "[private]" } else { request_id(response.headers()).unwrap_or("-") },
             "the API answered"
         );
         if status.is_success() {
@@ -741,20 +765,57 @@ impl Client {
             .await
             .map(|bytes| bytes.to_vec())
             .unwrap_or_default();
-        let body = transport::parse_body(&bytes);
+        let body = if prepared.private {
+            // Preserve only known refusal codes. An arbitrary server message
+            // may echo the recovery token or a newly issued credential.
+            serde_json::from_slice::<Value>(&bytes)
+                .ok()
+                .and_then(|v| v["error"]["code"].as_str().map(str::to_owned))
+                .filter(|code| {
+                    matches!(
+                        code.as_str(),
+                        "unauthenticated"
+                            | "invalid_api_key"
+                            | "no_account"
+                            | "already_signed_in"
+                            | "recovery_expired"
+                            | "recovery_closed"
+                            | "invalid_recovery"
+                            | "session_closed"
+                            | "forbidden"
+                            | "not_member"
+                            | "membership_revoked"
+                            | "unknown_workspace"
+                            | "out_of_scope"
+                            | "unknown_key"
+                            | "unavailable"
+                    )
+                })
+                .map(|code| {
+                    crate::error::ResponseBody::Json(serde_json::json!({
+                        "error": {"code": code, "message": "Credential operation refused."}
+                    }))
+                })
+        } else {
+            transport::parse_body(&bytes)
+        };
         tracing::debug!(
             target: "jev",
             request = prepared.tag,
             status = status.as_u16(),
-            headers = %transport::redact(&headers),
-            body = %String::from_utf8_lossy(&bytes),
+            headers = %if prepared.private { "[private]".into() } else { transport::redact(&headers).to_string() },
+            body = %if prepared.private { "[private]".into() } else { String::from_utf8_lossy(&bytes).into_owned() },
             "the failed response carried this body"
         );
         Failed {
             error: Error::from(ApiError::new(
                 prepared.endpoint.clone(),
                 status.as_u16(),
-                headers.clone(),
+                if prepared.private {
+                    HeaderMap::new()
+                } else {
+                    headers.clone()
+                },
                 body,
             )),
             headers: Some(headers),
@@ -779,12 +840,16 @@ struct Prepared {
     headers: HeaderMap,
     timeout: Duration,
     retry: RetryPolicy,
+    private: bool,
 }
 
 impl Prepared {
     /// The body as text for a `debug` line. Bodies are logged as they are sent,
     /// the way both official SDKs log them.
     fn body_text(&self) -> String {
+        if self.private {
+            return "[private]".into();
+        }
         match self.body.as_deref() {
             Some(bytes) => String::from_utf8_lossy(bytes).into_owned(),
             None => String::new(),

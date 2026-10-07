@@ -20,6 +20,63 @@ use tokio::sync::Mutex;
 type Outcome = Result<(), Box<dyn std::error::Error>>;
 
 #[tokio::test]
+async fn account_management_uses_gateway_timestamps_and_masks_grants() -> Outcome {
+    let (base, seen) = serve(vec![Reply::new(200, r#"{"session":{"id":"fixture-session","kind":"user","account":"buyer-a","created_at":10,"expires_at":100},"token":"sess_fixture-only-not-a-real-token"}"#)]).await?;
+    let client = Client::new(
+        Config::new()
+            .base_url(base)
+            .api_key("fixture-only-not-a-real-key"),
+    )?;
+    let grant = client.account().sign_in().await?;
+    assert_eq!(grant.session.account.as_deref(), Some("buyer-a"));
+    assert_eq!(grant.session.created_at, 10);
+    assert!(!format!("{grant:?}").contains("sess_fixture"));
+    assert_eq!(seen.lock().await.len(), 1);
+    Ok(())
+}
+
+#[tokio::test]
+async fn account_session_reads_actual_gateway_unix_seconds() -> Outcome {
+    let body = r#"{"session":{"id":"fixture-session","kind":"user","account":"buyer-a","created_at":10,"expires_at":100,"state":"active"}}"#;
+    let (base, _) = serve(vec![Reply::new(200, body)]).await?;
+    let client = Client::new(Config::new().base_url(base).api_key("sess_fixture-only"))?;
+    let view = client.account().session().await?;
+    assert_eq!(view.session.created_at.as_deref(), Some("10"));
+    assert_eq!(view.session.expires_at.as_deref(), Some("100"));
+    assert_eq!(view.session.account.as_deref(), Some("buyer-a"));
+    Ok(())
+}
+
+#[tokio::test]
+async fn account_management_never_retries_or_echoes_refusal_credentials() -> Outcome {
+    let secret = "fixture-recovery-only-not-a-real-token";
+    let body =
+        json!({"error":{"code":"recovery_closed","message":secret},"token":secret}).to_string();
+    let (base, seen) = serve(vec![Reply::new(500, &body), Reply::new(200, "{}")]).await?;
+    let client = Client::new(
+        Config::new()
+            .base_url(base)
+            .api_key("fixture-only-not-a-real-key"),
+    )?;
+    let error = client
+        .account()
+        .recover(&jev::ApiKey::new(secret))
+        .await
+        .unwrap_err();
+    assert_eq!(seen.lock().await.len(), 1);
+    assert!(!format!("{error:?}").contains(secret));
+    assert!(!error.to_string().contains(secret));
+    match error {
+        Error::Api(error) => assert_eq!(
+            error.body.unwrap().to_string().contains("recovery_closed"),
+            true
+        ),
+        _ => panic!("Expected typed HTTP refusal"),
+    }
+    Ok(())
+}
+
+#[tokio::test]
 async fn local_only_sends_no_credentials_and_does_not_follow_redirects() -> Outcome {
     let (base, seen) = serve(vec![Reply::new(200, RECORDED_RESPONSE)]).await?;
     Client::new(Config::local(&base, "local-model").retry(once()))?

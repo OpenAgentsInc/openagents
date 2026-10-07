@@ -280,8 +280,9 @@ mod retry;
 mod transport;
 
 pub use account::{
-    Account, AccountDetails, AccountInfo, BalanceView, Position, SessionBudget, SessionInfo,
-    SessionView, UsageCost, UsageQuery, UsageTotals, UsageUnits, UsageView, WorkspaceRef,
+    Account, AccountDetails, AccountInfo, BalanceView, GatewaySession, KeyGrant, KeyIdentity,
+    Position, SessionBudget, SessionGrant, SessionInfo, SessionView, UsageCost, UsageQuery,
+    UsageTotals, UsageUnits, UsageView, WorkspaceIdentity, WorkspaceRef, WorkspaceView,
 };
 pub use answers::{
     Answer, ChoiceAnswer, MASS_TOLERANCE, NoulAnswer, RawResponse, ScoreAnswer, SystemOneResponse,
