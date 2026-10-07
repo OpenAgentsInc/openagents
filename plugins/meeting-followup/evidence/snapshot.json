@@ -1,0 +1,15 @@
+{
+  "snapshot": {
+    "schema": "openagents.workflow-template.snapshot.v1",
+    "task": "second-customer-task",
+    "customer": "synthetic-new-customer",
+    "human_owner": "local-human",
+    "recipient": "local-reviewer",
+    "permission_epoch": 2,
+    "source_sha256": "d54717d612b5f50768fa787690583257137af935f425d2024d882616c631ddda",
+    "package_digest": "ed8e354cf3b97386e5c2baf51fc35efcb37f0b29c95881ae314090180eea2eba",
+    "program_digest": "1dbd0b4860056d840e52457483fb1fb959e7ed7ce4b417c18437e41f6239e626"
+  },
+  "snapshot_digest": "9f4785728ff4e224b5b60128fa1d859f1323227bc1a8cb4a924f53eec007618a",
+  "text": "Prepared exact input/release references. Review this snapshot before approving its digest; no workflow ran."
+}

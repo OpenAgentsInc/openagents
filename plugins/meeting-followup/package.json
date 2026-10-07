@@ -1,0 +1,13 @@
+{
+  "v": 1,
+  "slug": "meeting-followup",
+  "name": "Meeting follow-up",
+  "summary": "Turn one authorized operations meeting note into cited action items for human review.",
+  "version": "0.1.0",
+  "publisher": "a7cff3ee1ff0209f971b9f24673db310ab858899c9d9a99b640e6cb29b1753f0",
+  "provenance": "OpenAgents reusable operations template; synthetic fixtures; existing plugin-action-items Rust/Wasm guest; REV-45. No signed publication or customer adoption claimed.",
+  "program": {
+    "name": "meeting-followup",
+    "digest": "1dbd0b4860056d840e52457483fb1fb959e7ed7ce4b417c18437e41f6239e626"
+  }
+}

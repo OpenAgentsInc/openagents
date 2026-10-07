@@ -21664,6 +21664,209 @@
           }
         },
         {
+          "name": "template",
+          "children": [
+            {
+              "name": "prepare",
+              "leaf": {
+                "path": [
+                  "plugin",
+                  "template",
+                  "prepare"
+                ],
+                "usage": [
+                  "template prepare --package DIR --source FILE --task ID --customer ID --owner ID --recipient ID --permission-epoch N"
+                ],
+                "forms": [
+                  {
+                    "tokens": [
+                      {
+                        "kind": "literal",
+                        "word": "template"
+                      },
+                      {
+                        "kind": "literal",
+                        "word": "prepare"
+                      },
+                      {
+                        "kind": "option",
+                        "name": "package",
+                        "value": "DIR",
+                        "open": true
+                      },
+                      {
+                        "kind": "option",
+                        "name": "source",
+                        "value": "FILE",
+                        "open": true
+                      },
+                      {
+                        "kind": "option",
+                        "name": "task",
+                        "value": "ID",
+                        "open": true
+                      },
+                      {
+                        "kind": "option",
+                        "name": "customer",
+                        "value": "ID",
+                        "open": true
+                      },
+                      {
+                        "kind": "option",
+                        "name": "owner",
+                        "value": "ID",
+                        "open": true
+                      },
+                      {
+                        "kind": "option",
+                        "name": "recipient",
+                        "value": "ID",
+                        "open": true
+                      },
+                      {
+                        "kind": "option",
+                        "name": "permission-epoch",
+                        "value": "N",
+                        "open": true
+                      }
+                    ]
+                  }
+                ],
+                "summary": "Prepare an exact local meeting input and release snapshot; run nothing.",
+                "effect": "read_only",
+                "runs_on": "connected_computer"
+              }
+            },
+            {
+              "name": "run",
+              "leaf": {
+                "path": [
+                  "plugin",
+                  "template",
+                  "run"
+                ],
+                "usage": [
+                  "template run --package DIR --source FILE --snapshot FILE --approve DIGEST --recipient ID --permission-epoch N"
+                ],
+                "forms": [
+                  {
+                    "tokens": [
+                      {
+                        "kind": "literal",
+                        "word": "template"
+                      },
+                      {
+                        "kind": "literal",
+                        "word": "run"
+                      },
+                      {
+                        "kind": "option",
+                        "name": "package",
+                        "value": "DIR",
+                        "open": true
+                      },
+                      {
+                        "kind": "option",
+                        "name": "source",
+                        "value": "FILE",
+                        "open": true
+                      },
+                      {
+                        "kind": "option",
+                        "name": "snapshot",
+                        "value": "FILE",
+                        "open": true
+                      },
+                      {
+                        "kind": "option",
+                        "name": "approve",
+                        "value": "DIGEST",
+                        "open": true
+                      },
+                      {
+                        "kind": "option",
+                        "name": "recipient",
+                        "value": "ID",
+                        "open": true
+                      },
+                      {
+                        "kind": "option",
+                        "name": "permission-epoch",
+                        "value": "N",
+                        "open": true
+                      }
+                    ]
+                  }
+                ],
+                "summary": "Run the supported meeting template on the approved captured bytes.",
+                "effect": "read_only",
+                "runs_on": "connected_computer"
+              }
+            },
+            {
+              "name": "check",
+              "leaf": {
+                "path": [
+                  "plugin",
+                  "template",
+                  "check"
+                ],
+                "usage": [
+                  "template check --source FILE --snapshot FILE --report FILE --protected FILE --protected-sha256 DIGEST"
+                ],
+                "forms": [
+                  {
+                    "tokens": [
+                      {
+                        "kind": "literal",
+                        "word": "template"
+                      },
+                      {
+                        "kind": "literal",
+                        "word": "check"
+                      },
+                      {
+                        "kind": "option",
+                        "name": "source",
+                        "value": "FILE",
+                        "open": true
+                      },
+                      {
+                        "kind": "option",
+                        "name": "snapshot",
+                        "value": "FILE",
+                        "open": true
+                      },
+                      {
+                        "kind": "option",
+                        "name": "report",
+                        "value": "FILE",
+                        "open": true
+                      },
+                      {
+                        "kind": "option",
+                        "name": "protected",
+                        "value": "FILE",
+                        "open": true
+                      },
+                      {
+                        "kind": "option",
+                        "name": "protected-sha256",
+                        "value": "DIGEST",
+                        "open": true
+                      }
+                    ]
+                  }
+                ],
+                "summary": "Check exact citations and protected expectations separately from the guest.",
+                "effect": "read_only",
+                "runs_on": "connected_computer"
+              }
+            }
+          ]
+        },
+        {
           "name": "brainstorm-pilot",
           "children": [
             {
@@ -22624,6 +22827,94 @@
           "kind": "option",
           "name": "blobs-dir",
           "value": "DIR",
+          "open": true,
+          "optional": true,
+          "repeated": true
+        },
+        {
+          "kind": "option",
+          "name": "source",
+          "value": "FILE",
+          "open": true,
+          "optional": true,
+          "repeated": true
+        },
+        {
+          "kind": "option",
+          "name": "task",
+          "value": "ID",
+          "open": true,
+          "optional": true,
+          "repeated": true
+        },
+        {
+          "kind": "option",
+          "name": "customer",
+          "value": "ID",
+          "open": true,
+          "optional": true,
+          "repeated": true
+        },
+        {
+          "kind": "option",
+          "name": "owner",
+          "value": "ID",
+          "open": true,
+          "optional": true,
+          "repeated": true
+        },
+        {
+          "kind": "option",
+          "name": "recipient",
+          "value": "ID",
+          "open": true,
+          "optional": true,
+          "repeated": true
+        },
+        {
+          "kind": "option",
+          "name": "permission-epoch",
+          "value": "N",
+          "open": true,
+          "optional": true,
+          "repeated": true
+        },
+        {
+          "kind": "option",
+          "name": "snapshot",
+          "value": "FILE",
+          "open": true,
+          "optional": true,
+          "repeated": true
+        },
+        {
+          "kind": "option",
+          "name": "approve",
+          "value": "DIGEST",
+          "open": true,
+          "optional": true,
+          "repeated": true
+        },
+        {
+          "kind": "option",
+          "name": "report",
+          "value": "FILE",
+          "open": true,
+          "optional": true,
+          "repeated": true
+        },
+        {
+          "kind": "option",
+          "name": "protected",
+          "value": "FILE",
+          "open": true,
+          "optional": true,
+          "repeated": true
+        },
+        {
+          "kind": "option",
+          "name": "protected-sha256",
+          "value": "DIGEST",
           "open": true,
           "optional": true,
           "repeated": true

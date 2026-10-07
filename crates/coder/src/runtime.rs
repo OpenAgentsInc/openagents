@@ -311,6 +311,7 @@ pub fn enforced(kind: Kind) -> &'static [&'static str] {
             "output_bytes",
             "read_bytes",
             "module_bytes",
+            "captured_input",
         ],
         // An invoke names a host operation. It carries no command, and
         // this host admits none until one is configured.
@@ -874,6 +875,8 @@ pub struct Runtime {
     defaults: Option<String>,
     budget: Option<Budget>,
     module_ceiling: plugin::Limits,
+    /// Immutable, operator-captured files. Unset preserves workspace capture.
+    captured_files: Option<BTreeMap<String, Vec<u8>>>,
 }
 
 /// The ceilings a `module` step runs under when the operator sets none:
@@ -887,6 +890,32 @@ pub fn module_ceiling() -> plugin::Limits {
 }
 
 impl Runtime {
+    /// A local module runner over bytes the host already admitted. It opens no
+    /// home configuration, source registry, provider, or filesystem workspace.
+    pub(crate) fn captured(files: BTreeMap<String, Vec<u8>>) -> Self {
+        Runtime {
+            survey: Survey {
+                capabilities: Vec::new(),
+                programs: crate::program::Registry::default(),
+                sources: source::Registry::default(),
+                workspace: PathBuf::new(),
+            },
+            questions: questions::Registry::open(&[]),
+            door: None,
+            door_error: None,
+            relay: None,
+            repository: None,
+            host: Host::without_repository(),
+            verification: None,
+            review: None,
+            runstate: None,
+            defaults: None,
+            budget: None,
+            module_ceiling: module_ceiling(),
+            captured_files: Some(files),
+        }
+    }
+
     /// Reads what this machine can reach, what it could run, and what it
     /// may ask, then holds them for the run.
     ///
@@ -922,6 +951,7 @@ impl Runtime {
             defaults: None,
             budget: None,
             module_ceiling: module_ceiling(),
+            captured_files: None,
             repository: repository.map(Path::to_path_buf),
             host: match repository {
                 Some(_) => Host::with_repository(),
@@ -951,6 +981,7 @@ impl Runtime {
             defaults: None,
             budget: None,
             module_ceiling: module_ceiling(),
+            captured_files: None,
             host,
         }
     }
@@ -1324,12 +1355,23 @@ impl Runtime {
                 let present = read_scope(module.get("read_present"))
                     .map_err(|reason| Refused::at(name, "scope_invalid", reason))?;
                 let named = module.get("read_named").and_then(Value::as_bool) == Some(true);
-                let scope = plugin::scope::resolve(
-                    &self.survey.workspace,
-                    &read,
-                    &present,
-                    named.then_some(request),
-                );
+                let scope = if self.captured_files.is_some() {
+                    if !present.is_empty() || named {
+                        return Err(Refused::at(
+                            name,
+                            "scope_invalid",
+                            "A captured run requires a fixed read scope.",
+                        ));
+                    }
+                    read
+                } else {
+                    plugin::scope::resolve(
+                        &self.survey.workspace,
+                        &read,
+                        &present,
+                        named.then_some(request),
+                    )
+                };
                 self.grant_snapshot(name, &scope, limits.read_bytes)?
             }
         };
@@ -1448,6 +1490,54 @@ impl Runtime {
         scope: &[String],
         read_bytes: usize,
     ) -> Result<(plugin::Snapshot, BTreeMap<String, String>), Refused> {
+        if let Some(files) = &self.captured_files {
+            if scope.len() > SNAPSHOT_ENTRIES {
+                return Err(Refused::at(
+                    name,
+                    "scope_invalid",
+                    "Too many captured files.",
+                ));
+            }
+            let mut snapshot = plugin::Snapshot::default();
+            let mut children = Vec::new();
+            let mut total = 0usize;
+            for path in scope {
+                let bytes = files.get(path).ok_or_else(|| {
+                    Refused::at(
+                        name,
+                        "scope_unavailable",
+                        "The fixed file was not captured.",
+                    )
+                })?;
+                total = total.saturating_add(bytes.len());
+                if total > SNAPSHOT_BYTES {
+                    return Err(Refused::at(
+                        name,
+                        "scope_invalid",
+                        "Captured files exceed the host byte bound.",
+                    ));
+                }
+                let label = format!("{SNAPSHOT_ROOT}/{path}");
+                snapshot
+                    .insert(
+                        &label,
+                        plugin::Entry::File {
+                            bytes: bytes[..bytes.len().min(read_bytes)].to_vec(),
+                            version: plugin::digest(bytes),
+                            complete: bytes.len() <= read_bytes,
+                        },
+                    )
+                    .map_err(|reason| Refused::at(name, "scope_invalid", reason))?;
+                children.push(label);
+            }
+            snapshot
+                .insert(SNAPSHOT_ROOT, plugin::Entry::Directory { children })
+                .map_err(|reason| Refused::at(name, "scope_invalid", reason))?;
+            return Ok((
+                snapshot,
+                BTreeMap::from([(SNAPSHOT_ROOT.to_string(), "root".to_string())]),
+            ));
+        }
         let root = self.survey.workspace.canonicalize().map_err(|error| {
             Refused::at(
                 name,
@@ -1582,6 +1672,13 @@ impl Runtime {
                     "{bound} is a count above zero, and this step names {value}"
                 )),
             },
+            "captured_input" => {
+                if value == &Value::Bool(true) && self.captured_files.is_some() {
+                    Ok(())
+                } else {
+                    refuse("This program requires operator-approved captured input through the template runner.".into())
+                }
+            }
             "fuel" | "memory_bytes" | "output_bytes" | "read_bytes" | "module_bytes" => {
                 let ceiling = self.module_bound_ceiling(bound);
                 match value.as_u64() {
@@ -5316,6 +5413,20 @@ mod tests {
 
     use super::*;
 
+    #[test]
+    fn a_captured_input_bound_refuses_ordinary_runtime_admission() {
+        let program = Program::parse(crate::workflow_template::PROGRAM.as_bytes()).unwrap();
+        let refused = empty_runtime().admit(&program).unwrap_err();
+        assert!(refused.reason.contains("operator-approved captured input"));
+        let runtime = Runtime::captured(BTreeMap::new());
+        runtime.admit(&program).unwrap();
+        let mut invalid = program;
+        invalid.steps[0]
+            .bounds
+            .insert("captured_input".into(), json!(false));
+        assert!(runtime.admit(&invalid).is_err());
+    }
+
     fn empty_runtime() -> Runtime {
         Runtime {
             survey: Survey {
@@ -5334,6 +5445,7 @@ mod tests {
             defaults: None,
             budget: None,
             module_ceiling: module_ceiling(),
+            captured_files: None,
             repository: None,
             host: Host::without_repository(),
         }
@@ -7060,6 +7172,7 @@ mod tests {
             defaults: None,
             budget: None,
             module_ceiling: module_ceiling(),
+            captured_files: None,
             repository: Some(repo.to_path_buf()),
             host: Host::with_repository(),
         }

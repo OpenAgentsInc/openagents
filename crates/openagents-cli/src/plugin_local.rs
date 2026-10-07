@@ -28,6 +28,7 @@ pub fn run(output: &Output, words: &[String]) -> Option<u8> {
     let name = format!("plugin {command}");
     let first = rest.iter().find(|word| !word.starts_with('-'));
     let result = match command.as_str() {
+        "template" => crate::workflow_template::run(rest),
         "brainstorm-pilot" => crate::brainstorm_pilot::check(rest),
         "install" => first
             .ok_or_else(|| "install needs the plugin's directory".to_owned())
@@ -55,7 +56,16 @@ pub fn run(output: &Output, words: &[String]) -> Option<u8> {
             output.emit(&value, |value| {
                 value["text"].as_str().unwrap_or_default().to_owned()
             });
-            0
+            if value["succeeded"] == serde_json::Value::Bool(false)
+                || value["check"]["passed"] == serde_json::Value::Bool(false)
+                || value["report"]["with_template"]["finished"] == serde_json::Value::Bool(false)
+                || value["report"]["without_file_access"]["finished"]
+                    == serde_json::Value::Bool(false)
+            {
+                crate::EXIT_FAILURE
+            } else {
+                0
+            }
         }
         Err(message) => output.fail(&name, &message),
     })

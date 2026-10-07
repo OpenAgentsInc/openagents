@@ -103,6 +103,8 @@ mod walkers;
 #[cfg(unix)]
 mod wallet;
 #[cfg(unix)]
+mod workflow_template;
+#[cfg(unix)]
 mod worktree;
 mod world;
 #[cfg(unix)]

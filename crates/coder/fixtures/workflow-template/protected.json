@@ -1,0 +1,28 @@
+{
+  "schema": "openagents.workflow-template.protected.v1",
+  "source_sha256": "d54717d612b5f50768fa787690583257137af935f425d2024d882616c631ddda",
+  "items": [
+    {
+      "owner": "Mei",
+      "task": "prepare the room",
+      "due": "Friday",
+      "source": {
+        "line": 3,
+        "from": "meeting.md"
+      },
+      "text": "ACTION: Mei will prepare the room by Friday"
+    },
+    {
+      "owner": null,
+      "task": "Update the checklist",
+      "due": null,
+      "source": {
+        "line": 4,
+        "from": "meeting.md"
+      },
+      "text": "- [ ] Update the checklist"
+    }
+  ],
+  "unassigned": 1,
+  "done_left_out": 1
+}

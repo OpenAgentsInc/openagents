@@ -1,0 +1,15 @@
+{
+  "check": {
+    "schema": "openagents.workflow-template.check.v1",
+    "passed": true,
+    "failures": [],
+    "snapshot_digest": "9f4785728ff4e224b5b60128fa1d859f1323227bc1a8cb4a924f53eec007618a",
+    "report_digest": "45ac38d1c36a379edb8d72791885644463837b5fcd8b602bd8891a7b48c4b12e",
+    "protected_digest": "1ba71b94d5fd19bc25c01e80a58ff15b32496d033748c8fc7970aaa5d046fd0e",
+    "items_with_template": 2,
+    "items_without_file_access": 0,
+    "customer_accepted": false,
+    "independently_attested": false
+  },
+  "text": "Checked exact source citations and protected expectations. Customer acceptance, publication, and independent attestation remain separate."
+}

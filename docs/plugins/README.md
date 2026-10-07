@@ -21,6 +21,12 @@ guidance off, installs no native code, and performs no lookup or publication.
 Its optional private pilot checker preserves exact-key coverage and distinguishes
 operator-recorded funnel stages from qualified paid conversion.
 
+The [meeting follow-up template](../../plugins/meeting-followup/README.md)
+packages the existing action-items guest for an operations department. Its
+local runner binds exact input/release and current recipient/permission
+snapshots; independent protected checks stay outside the guest's read scope.
+Synthetic comparisons establish bounded extraction, not customer ROI.
+
 ## What a plugin contains
 
 A plugin can contain any of these parts:

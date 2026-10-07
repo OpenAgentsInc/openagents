@@ -1,0 +1,18 @@
+{
+  "schema": "openagents.workflow-template.provenance.v1",
+  "template": "meeting-followup",
+  "version": "0.1.0",
+  "department": "operations",
+  "workflow": "draft cited follow-up items for local human review",
+  "source_crate": "crates/plugin-action-items",
+  "guest_digest": "sha256:72e70d8909eaf55ae31674d3b315189d7494fbc4e1f679fb8a4b4cb6de82f0a5",
+  "build_receipt": "crates/plugin/fixtures/action-items.receipt.json",
+  "program_digest": "1dbd0b4860056d840e52457483fb1fb959e7ed7ce4b417c18437e41f6239e626",
+  "package_digest": "ed8e354cf3b97386e5c2baf51fc35efcb37f0b29c95881ae314090180eea2eba",
+  "reuse_material": "Public OpenAgents code and newly authored synthetic notes only; no customer pilot material.",
+  "rights_basis": "Repository Apache-2.0 license (LICENSE); preserve license and notices. This claim does not verify customer rights.",
+  "release_state": "local source package; no signed NIP-EXT release or publication",
+  "comparison": "Same retained guest with approved meeting bytes versus empty text and no file handles; mechanical extraction/access only, no model-quality or ROI claim.",
+  "authority": "Fresh explicit snapshot approval; no outgoing delivery, write, network, process, spend, or persistent permission grant.",
+  "retained_build_receipt": "build-receipt.json"
+}

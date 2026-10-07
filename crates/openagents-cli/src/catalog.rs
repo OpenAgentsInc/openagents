@@ -85,6 +85,15 @@ pub(crate) const EXT_USAGE: &str = "usage: openagents plugin COMMAND [OPTIONS]
         release. It starts off.
   installed
         The plugins installed on this computer, on or off.
+  template prepare --package DIR --source FILE --task ID --customer ID --owner ID
+      --recipient ID --permission-epoch N
+        Prepare an exact local meeting input and release snapshot; run nothing.
+  template run --package DIR --source FILE --snapshot FILE --approve DIGEST
+      --recipient ID --permission-epoch N
+        Run the supported meeting template on the approved captured bytes.
+  template check --source FILE --snapshot FILE --report FILE --protected FILE
+      --protected-sha256 DIGEST
+        Check exact citations and protected expectations separately from the guest.
   brainstorm-pilot check --input FILE --sources DIR
         Check selected private exact-key observations and consented funnel
         claims. Reads no service; grants no publication or payment authority.
@@ -150,6 +159,9 @@ pub(crate) const EXT_EFFECTS: &[Declared] = &[
     Declared::computer("install", Effect::LocalWrite),
     Declared::computer("installed", Effect::ReadOnly),
     Declared::computer("brainstorm-pilot check", Effect::ReadOnly),
+    Declared::computer("template prepare", Effect::ReadOnly),
+    Declared::computer("template run", Effect::ReadOnly),
+    Declared::computer("template check", Effect::ReadOnly),
     Declared::computer("enable", Effect::LocalWrite),
     Declared::computer("disable", Effect::LocalWrite),
     Declared::computer("inspect", Effect::ReadOnly),

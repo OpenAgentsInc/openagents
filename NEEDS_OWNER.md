@@ -156,7 +156,7 @@ browser/network qualification remains unverified.
 
 # Owner checks
 
-## Delivery, cleanup, and support O1/O8 (REV-07, #10814)
+## Delivery, cleanup, support, and reusable templates O1/O8 (REV-07/REV-45, #10814/#10852)
 
 Privately complete the [handoff kit](docs/sales/delivery-kit.json) with the real
 customer's exact accepted result/runbook, dependencies, limits, retained
@@ -166,6 +166,17 @@ owner checks and their next actions. Approve exact reuse rights and privacy
 review before transferring generic material, and authorize publication
 separately. The synthetic review proves the manual package, not real removal,
 customer acceptance, support responsibility, or permission to reuse their work.
+
+Before using the [meeting follow-up template](plugins/meeting-followup/README.md)
+with genuine customer notes, agree to that department's workflow, human owner,
+input and recipient rights, protected checks, support, and retention. Prepare
+and approve a fresh exact snapshot and current permission epoch for each task;
+the local runner cannot discover revoked consent or verify operator declarations.
+Retain separate customer acceptance and real usefulness evidence. Review exact
+material rights and privacy before transferring genuine pilot learning, and
+authorize a release/disclosure separately through the existing plugin flow.
+The two-customer synthetic comparison is not genuine adoption, paid use, or ROI;
+no publication, customer contact, or real-host qualification was performed.
 
 ## Public pilot publication and intake O1 (REV-05, #10812)
 

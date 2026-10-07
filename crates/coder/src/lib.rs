@@ -101,6 +101,7 @@ pub mod tracker;
 pub mod turn;
 pub mod verification;
 pub mod waves;
+pub mod workflow_template;
 mod worktree;
 
 pub use crate::capability::{Found, Manifest, Presence};
