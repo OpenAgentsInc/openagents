@@ -12,12 +12,12 @@ Modes, per the asset runbook:
 
 - **Reference** for the body, hair, clothing, and gear: lofted from
   primitives by the script, shaded procedurally, with no kit mesh or image.
-- **Compose** for the head: the head, eyeballs, and brows of
+- **Compose** for the head's shape: the head and eyeballs of
   `Superhero_Female_FullBody.gltf` from Quaternius's Universal Base
   Characters (CC0 1.0, retained under `assets/verse/characters/quaternius/`,
   its license pinned in that folder's manifest), reshaped by the script's
-  `reshape`. The bake samples that file's skin and eye base-color images,
-  retinted to Alice's palette.
+  `reshape`. Her face, eyes, brows, and hair strips are painted by
+  `scripts/blender/alice_paint.py`; no image from that file is used.
 - **Skeleton:** the same file's Universal rig, whose 65 joints' names,
   parents, and rest transforms the admission copies verbatim.
 
@@ -25,6 +25,12 @@ Valley of the Ancient (Epic Games) was studied in Reference-only mode, from
 its asset names and its general qualities; none of its content was opened
 in Blender, rendered, traced, exported, or used, and Alice avoids every Echo
 signature feature the specification lists.
+
+Two Fab characters the owner licensed (a rigged fantasy woman and a
+stylized long-haired woman, both under Fab's standard license) were studied
+only, rendered and measured outside the repository for proportions, face
+painting, hair shape, and texture technique. None of their geometry, UVs,
+texture pixels, or likeness is in Alice or in this repository.
 
 License: CC0 1.0 (`license.txt`). Credit for the base head and rig:
 Quaternius.

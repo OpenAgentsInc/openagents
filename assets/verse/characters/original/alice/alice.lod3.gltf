@@ -1374,7 +1374,7 @@
     59,
     58
    ],
-   "inverseBindMatrices": 6
+   "inverseBindMatrices": 12
   }
  ],
  "meshes": [
@@ -1392,6 +1392,18 @@
      "indices": 5,
      "material": 0,
      "mode": 4
+    },
+    {
+     "attributes": {
+      "POSITION": 6,
+      "NORMAL": 7,
+      "TEXCOORD_0": 8,
+      "JOINTS_0": 9,
+      "WEIGHTS_0": 10
+     },
+     "indices": 11,
+     "material": 1,
+     "mode": 4
     }
    ]
   }
@@ -1400,6 +1412,19 @@
   {
    "name": "alice",
    "doubleSided": true,
+   "pbrMetallicRoughness": {
+    "baseColorTexture": {
+     "index": 0
+    },
+    "metallicFactor": 0.0,
+    "roughnessFactor": 0.85
+   }
+  },
+  {
+   "name": "alice_hair",
+   "doubleSided": true,
+   "alphaMode": "MASK",
+   "alphaCutoff": 0.5,
    "pbrMetallicRoughness": {
     "baseColorTexture": {
      "index": 0
@@ -1434,7 +1459,7 @@
   {
    "bufferView": 0,
    "componentType": 5126,
-   "count": 3261,
+   "count": 2962,
    "type": "VEC3",
    "min": [
     -0.8230000138282776,
@@ -1450,35 +1475,81 @@
   {
    "bufferView": 1,
    "componentType": 5126,
-   "count": 3261,
+   "count": 2962,
    "type": "VEC3"
   },
   {
    "bufferView": 2,
    "componentType": 5126,
-   "count": 3261,
+   "count": 2962,
    "type": "VEC2"
   },
   {
    "bufferView": 3,
    "componentType": 5121,
-   "count": 3261,
+   "count": 2962,
    "type": "VEC4"
   },
   {
    "bufferView": 4,
    "componentType": 5126,
-   "count": 3261,
+   "count": 2962,
    "type": "VEC4"
   },
   {
    "bufferView": 5,
    "componentType": 5123,
-   "count": 7722,
+   "count": 6924,
    "type": "SCALAR"
   },
   {
    "bufferView": 6,
+   "componentType": 5126,
+   "count": 216,
+   "type": "VEC3",
+   "min": [
+    -0.19042295217514038,
+    1.2032787799835205,
+    -0.15946973860263824
+   ],
+   "max": [
+    0.18974459171295166,
+    1.7916134595870972,
+    0.1478382796049118
+   ]
+  },
+  {
+   "bufferView": 7,
+   "componentType": 5126,
+   "count": 216,
+   "type": "VEC3"
+  },
+  {
+   "bufferView": 8,
+   "componentType": 5126,
+   "count": 216,
+   "type": "VEC2"
+  },
+  {
+   "bufferView": 9,
+   "componentType": 5121,
+   "count": 216,
+   "type": "VEC4"
+  },
+  {
+   "bufferView": 10,
+   "componentType": 5126,
+   "count": 216,
+   "type": "VEC4"
+  },
+  {
+   "bufferView": 11,
+   "componentType": 5123,
+   "count": 504,
+   "type": "SCALAR"
+  },
+  {
+   "bufferView": 12,
    "componentType": 5126,
    "count": 65,
    "type": "MAT4"
@@ -1488,48 +1559,84 @@
   {
    "buffer": 0,
    "byteOffset": 0,
-   "byteLength": 39132,
+   "byteLength": 35544,
    "target": 34962
   },
   {
    "buffer": 0,
-   "byteOffset": 39132,
-   "byteLength": 39132,
+   "byteOffset": 35544,
+   "byteLength": 35544,
    "target": 34962
   },
   {
    "buffer": 0,
-   "byteOffset": 78264,
-   "byteLength": 26088,
+   "byteOffset": 71088,
+   "byteLength": 23696,
    "target": 34962
   },
   {
    "buffer": 0,
-   "byteOffset": 104352,
-   "byteLength": 13044,
+   "byteOffset": 94784,
+   "byteLength": 11848,
    "target": 34962
   },
   {
    "buffer": 0,
-   "byteOffset": 117396,
-   "byteLength": 52176,
+   "byteOffset": 106632,
+   "byteLength": 47392,
    "target": 34962
   },
   {
    "buffer": 0,
-   "byteOffset": 169572,
-   "byteLength": 15444,
+   "byteOffset": 154024,
+   "byteLength": 13848,
    "target": 34963
   },
   {
    "buffer": 0,
-   "byteOffset": 185016,
+   "byteOffset": 167872,
+   "byteLength": 2592,
+   "target": 34962
+  },
+  {
+   "buffer": 0,
+   "byteOffset": 170464,
+   "byteLength": 2592,
+   "target": 34962
+  },
+  {
+   "buffer": 0,
+   "byteOffset": 173056,
+   "byteLength": 1728,
+   "target": 34962
+  },
+  {
+   "buffer": 0,
+   "byteOffset": 174784,
+   "byteLength": 864,
+   "target": 34962
+  },
+  {
+   "buffer": 0,
+   "byteOffset": 175648,
+   "byteLength": 3456,
+   "target": 34962
+  },
+  {
+   "buffer": 0,
+   "byteOffset": 179104,
+   "byteLength": 1008,
+   "target": 34963
+  },
+  {
+   "buffer": 0,
+   "byteOffset": 180112,
    "byteLength": 4160
   }
  ],
  "buffers": [
   {
-   "byteLength": 189176,
+   "byteLength": 184272,
    "uri": "alice.lod3.bin"
   }
  ]

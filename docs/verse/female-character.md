@@ -22,7 +22,7 @@ Defaults taken for the owner's open questions, which the owner can change:
 | --- | --- |
 | Role | Explorer-druid (option C) |
 | Palette | Forest green, warm brown leather, and cream linen, with copper accents |
-| Hair | Dark auburn, a chin-length layered bob with a side part and a swept fringe |
+| Hair | Auburn, long and softly wavy past the shoulder blades, with a center part and locks that frame the face (the owner's choice, October 6, 2026) |
 | Clips | The Everglade pack's eight (idle, walk, run, jump, backpedal, two strafes, and the swing); raising `MAX_CLIPS` is a later phase |
 
 What was built:
@@ -30,62 +30,101 @@ What was built:
 - **Script.** `scripts/blender/alice.py` builds her in three reusable parts:
   `build_body` (the skin and underlayer that show: hands, legs, and feet,
   lofted on the Universal rig with scripted weights), the head
-  (`ubc_head` and `build_head`: the reshaped head, eyes, brows, hair, and eye
-  highlights), and `build_outfit` (tunic, open knee-length coat, hood worn
-  down, sash, satchel and strap, bracers, boots, and a staff on her back).
-  It writes `alice.<variant>.glb` to `assets/verse/characters/original/alice/`.
+  (`ubc_head` and `build_head`: the reshaped head, its painted face and
+  eyes, and the hair), and `build_outfit` (tunic, open knee-length coat,
+  collar, sash, satchel and strap, bracers, boots, and a staff on her back).
+  `scripts/blender/alice_paint.py` paints her face, eyes, and hair strips.
+  It writes `alice.<variant>.glb` to `assets/verse/characters/original/alice/build/`.
 - **Head.** The CC0 Universal Base Characters female head (Compose mode),
   cut from `Superhero_Female_FullBody.gltf` and reshaped by `reshape`: a
   slightly larger head for our stylized proportions, a softer and narrower
   jaw, a rounder chin, a shorter and slightly upturned nose, fuller lips and
-  cheeks, a softer brow ridge, and ears laid back under the hair. It keeps
-  the base's real structure: edge loops around the eyes and mouth, separate
-  eyeballs with an iris and pupil, eyelids, a nose with nostrils, upper and
-  lower lips, and ears. Script additions: a highlight on each cornea, slimmer
-  auburn brows lifted at their inner ends, her own skin tone over the base's
-  painted face, and baked warmth on the cheeks, nose, and lips.
+  cheeks, a softer brow ridge, eyes 2.2 mm closer to the nose and 4 percent
+  larger than the base's, and ears removed under the hair. It keeps the
+  base's real structure: edge loops around the eyes and mouth, separate
+  eyeballs, eyelids, a nose, and upper and lower lips. The inside of the
+  mouth, which the closed lips hide from every side, is removed.
+- **Painted face.** `alice_paint.face` paints her face at 2048 pixels in a
+  front projection over 21 cm, measured from her own head: the eye openings
+  (where, seen from in front, an eyeball is nearer than the skin), the
+  mouth's line, and the nose's tip. It paints skin that varies in warmth;
+  warm cheeks, nose, and chin; shadowed sides of the nose with a light
+  bridge, soft nostrils, and creases around its wings; a warm crease in each
+  eye socket; an upper lash line that thickens toward the outer corner and
+  flicks up and out; a fainter lower lash line; brows of about 340 painted
+  strands each, rising at the head and lying along the arch; and lips with a
+  Cupid's bow, a darker upper lip, a fuller lighter lower lip with a
+  highlight, and a dark line between them. `alice_paint.eyes` paints the
+  eyes in the same projection: a sclera no brighter than her skin, pinker
+  toward the corners and shaded under the upper lid; a hazel-green iris
+  (0.205 of the opening's width) with radial fibers, a dark limbal ring, and
+  a pupil; and a catchlight up and to her left in both eyes. The face takes
+  6.5 times the atlas's texel density, so `lod1`'s face is about 300 pixels
+  across.
+- **Hair.** Long, softly wavy auburn hair with a center part, after the
+  owner's long-hair reference (see [Lessons from a long-hair
+  reference](#lessons-from-a-long-hair-reference)), built as original
+  geometry: an opaque scalp cap and back sheet, dark at the roots, close to
+  the skin at the hairline, and over it alpha-tested hair cards (`lod0`
+  has 90, `lod1` 72). Each card leaves the center part (or, at the back,
+  the crown), lifts off the crown for volume, settles onto the head at the
+  temples, and falls in S-waves whose period grows from 7.5 to 12.5 cm and
+  whose amplitude grows from 3 to 16 mm toward the tips. The cards nearest
+  the face become locks that frame it and fall in front of the shoulders to
+  below the bust; the rest fall behind the shoulders to the shoulder blades,
+  longest at the middle of the back. An under layer of wider, darker cards
+  fills the volume, and a few thin wisps break the outline. Every card
+  samples one of six painted strips (`alice_paint.hair_strips`) in the
+  atlas's bottom band, so the cards share their texels: strands with dark
+  gaps, shadow toward each clump's edges, dark roots, a sheen near the
+  crown, lighter ends, and tips cut into strands of different lengths.
+- **Clothing detail.** The bake paints what a base-color-only renderer can
+  show: a crossed weave in the linen, fuzz and long folds in the wool coat
+  with princess seams and a row of stitches beside each, grain, creases,
+  and worn, lighter edges on the leather, fold streaks in the sash,
+  polished edges on the copper, and warmth at the knuckles and fingertips.
+  Cycles' pointiness finds the worn edges.
 - **Weights.** Generated parts take their chain's bones with smoothstep
   blends around each joint; the head keeps the base's weights. At most four
   influences a vertex, normalized, rounded to 255ths at admission.
 - **Atlas.** One baked base-color atlas per variant: diffuse color times
-  ambient occlusion and a soft top light, at six bits a channel.
+  ambient occlusion and a soft top light, at seven bits a channel. Its
+  alpha is opaque except in the hair strips' band (the bottom 16 percent).
 - **Admission.** `scripts/blender/character_admit.py` writes each variant's
   `.gltf`, `.bin`, and `.png` with the base rig's own joint nodes and inverse
   binds, checks the budgets and weights, and writes `manifest.json`
-  (`openagents.verse.character-sources.v1`). `crates/verse-content`'s
+  (`openagents.verse.character-sources.v1`). Each variant has two
+  materials on the one atlas: `alice`, opaque, and `alice_hair`,
+  alpha-masked at 0.5 and double-sided, for the cards. `crates/verse-content`'s
   `characters::alice` imports a variant and gives her every Universal clip.
 - **Placement.** The Everglade pack carries `lod1` as the form `npc/alice`
   (the format needs no new section). She is the workshop agent's body
   ([Workshop agent](workshop-agent.md)): the studio draws the seat whose
-  look is `alice` as this form (`everglade::npcs::form_of`), so she sits at
-  her workstation in the owner's house, walks to its console and its
-  lectern with the player's retargeted walk, and holds the studio's
-  postures, which the zone authors from her idle. She no longer stands by
-  the approach.
+  look is `alice` as this form (`everglade::npcs::form_of`), so she stands
+  at her workstation, a standing desk, in the owner's house (she never
+  sits), walks to its console and its lectern with the player's retargeted
+  walk, and holds the studio's postures, which the zone authors from her
+  idle. She no longer stands by the approach.
 - **High definition.** The near levels are built coarse and subdivided
   (`lod0`'s head too), then shaded smooth with weighted normals, keeping
-  creases sharper than 60 degrees. Long hair falls past her shoulders in
-  clumps with tapered tips, with side-swept bangs, three locks in front of
-  her shoulders, and a painted strand texture (darker roots, lighter ends,
-  a sheen band); it rides the neck and upper spine where it lies on her
-  back. Her nostrils close to a soft underside, her ears are removed under
-  the hair, and the face bakes with almost no occlusion, so no dark wedges
-  show in the eyes, nose, or mouth.
-- **Figure and fit.** A woman's figure: a bust under the tunic and coat, a
-  waist the sash cinches, hips as wide as her shoulders, slimmer arms and
-  neck, and boots 27 cm long. The coat follows the figure, fitted at the
-  bust and waist and flaring over the hips, with side vents below the hip.
-  The Universal clips hang a slimmer figure's arms, so `characters::alice`
-  turns her upper arms out by `ALICE_ARMS_OUT` (0.17 rad) in every clip,
-  and her hands hang clear of the coat standing and walking; a test checks
-  it.
+  creases sharper than 60 degrees. The cards are never subdivided. Her
+  nostrils close to a soft underside and the face bakes with almost no
+  occlusion, so no dark wedges show in the eyes, nose, or mouth.
+- **Figure and fit.** A woman's figure: a round bust under the tunic and
+  coat, a waist the sash cinches, hips as wide as her shoulders, slimmer
+  arms and neck, and boots 27 cm long. The coat follows the figure, fitted
+  at the bust and waist and flaring over the hips, with side vents below
+  the hip. The Universal clips hang a slimmer figure's arms, so
+  `characters::alice` turns her upper arms out by `ALICE_ARMS_OUT`
+  (0.17 rad) in every clip, and her hands hang clear of the coat standing
+  and walking; a test checks it.
 
 | Variant | Triangles | Budget | Atlas |
 | --- | ---: | ---: | --- |
-| `lod0` (chamber, close views) | 89,996 | 100,000 | 2048 |
-| `lod1` (Everglade, the workshop seat) | 36,670 | 46,000 | 1024 |
-| `lod2` (phones, once packs split by tier) | 6,897 | 10,000 | 256 |
-| `lod3` (distant, once skinned levels of detail exist) | 2,574 | 3,000 | 256 |
+| `lod0` (chamber, close views) | 72,332 | 100,000 | 2048 |
+| `lod1` (Everglade, the workshop agent) | 34,554 | 46,000 | 1024 |
+| `lod2` (phones, once packs split by tier) | 6,028 | 10,000 | 256 |
+| `lod3` (distant, once skinned levels of detail exist) | 2,400 | 3,000 | 256 |
 
 `Limits::EVERGLADE` allows a 48,000-triangle character for her near level
 and 590,000 triangles in the pack. The glb files `alice.py` writes go to
@@ -160,6 +199,90 @@ The construction lessons Alice takes:
 - **Painted warmth carries the face at a distance**: warm cheeks and nose,
   rose lips, and darker brow strokes. Alice's bake adds warmth on her cheeks,
   nose, and lips, and her brows are fuller and darker.
+
+### Lessons from a painted reference
+
+On October 6, 2026, the owner gave a higher-fidelity reference: a rigged,
+animated fantasy woman from Fab (AI-generated, standard license), one fused
+94,000-triangle mesh with one 4096-pixel base-color texture on generated
+UVs and a 65-bone Mixamo rig. It was studied only: rendered and measured in
+Blender headless, with its renders kept outside the repository. Nothing
+from it is in Alice or in the repository: no geometry, UVs, texture pixels,
+or likeness. Its license forbids redistribution, and this repository is
+open source. What it teaches, as shares of its height (H) and, in
+parentheses, at Alice's 1.767 m:
+
+| Measure | The reference |
+| --- | --- |
+| Head, crown to chin | 0.136 H (24 cm), about 7.4 heads |
+| Shoulder joints | 0.198 H apart (35 cm) |
+| Waist and hips | 0.146 H (26 cm) and 0.213 H (38 cm) wide; waist to hip 0.69 |
+| Bust | Its profile 0.166 H deep against 0.131 H at the waist, so it stands 0.035 H (6 cm) past the underbust, with its fullest point at 0.72 H |
+| Legs and hands | Crotch at about 0.47 H, knees at 0.30 H; a hand 0.108 H long |
+| Eyes | Centers 0.038 H (6.7 cm) apart, 0.52 of the face's width at the cheekbones (12.8 cm); each opening 3.0 cm wide and about 0.4 as tall as wide, almond-shaped; 1.3 eye widths between them |
+| Lower face | Eye line to the nose's base 4.5 cm; the nose's base to the line of the lips 2.5 cm; that line to the chin 4.0 cm; the lips 5.6 cm wide, 0.44 of the face |
+| Brows | About 1.6 cm above the eye's center, thin, arched, darker at the head |
+
+Its base-color texture carries the shading a base-color-only renderer
+needs. In its flat color (value and saturation in HSV):
+
+- Skin isn't one tone: the forehead is at value 0.76 and saturation 0.15,
+  and the cheeks at 0.24 saturation and a redder hue (16 degrees against
+  21).
+- The eye socket is painted dark and warm: the upper lid's crease is at
+  value 0.43 and saturation 0.49, 45 percent darker than the forehead, and
+  under the eye is at 0.67. The lash line is near black (0.13).
+- The sides of the nose are 28 percent darker than its tip, which is what
+  shapes it from the front.
+- The lips are as bright as the skin (0.68 to 0.71) but far more saturated
+  (0.43 to 0.50, a rose hue), with a dark line between them (0.37).
+- The sclera is no brighter than the skin (0.81), so the eyes read as part
+  of the face rather than as two lit discs.
+- The hair's surface is at median value 0.6; 14 to 21 percent of it is dark
+  gaps between strands, about half the median, every 2 to 6 mm, with the
+  part darkest.
+- The clothing's detail is in the color, with no normal map: leather at
+  median luminance 0.20 with soft long crease streaks; seams as thin light
+  lines of piping that lift the 95th percentile to 0.41 on a 0.16 median;
+  boots and hardware with painted highlights on their edges.
+
+What Alice took, as her own scripted build:
+
+- Her eyes were 3.8 by 1.8 cm, round, 8.2 cm apart, with a sclera far
+  brighter than her skin and a glint disc on each. Now each eye moves
+  2.2 mm toward the nose, the openings are 4 percent larger than the
+  base's instead of 16, the sclera is painted no brighter than her skin and
+  shaded under the upper lid, and the catchlight is painted.
+- Her brow meshes were blocks; her face's warmth was three vertex-color
+  blobs. Now `alice_paint.face` paints the socket's crease, the lash lines,
+  the nose's planes, the lips, and the brows as strands, at 2048 pixels.
+- Her jaw narrows 6.5 percent toward the chin (from 4), and her bust is
+  rounder and stands a little farther forward (5.6 cm at its fullest).
+- Her clothing's procedural shading gained seams, stitching, weave, folds,
+  creases, and worn edges.
+
+### Lessons from a long-hair reference
+
+The owner then chose a hairstyle from a second Fab model (a stylized
+long-haired woman, AI-generated, standard license; one fused
+225,000-triangle mesh with no separate hair and no rig), with the same
+rule: studied only, and Alice's hair is original scripted geometry. As
+shares of its head's height (crown to chin):
+
+| Measure | The reference |
+| --- | --- |
+| Length | At the back, 2.15 head heights below the crown (the shoulder blades); the front locks 2.4 (below the bust) |
+| Width from the front | 0.66 at the crown, 0.81 at the temples, 1.0 to 1.1 at the jaw, 1.5 to 1.6 where it spreads over the shoulders |
+| Depth from the side | 0.91 at the crown, with volume behind it |
+| Waves | Soft S-waves with a period of about 0.29 head heights by the face, loosening to about 0.45 at the ends; amplitude about 0.03, growing to 0.06 at the ends |
+| Clumps | About 12 major clumps across the back at 40 percent of the length |
+| Part and hairline | A center part from the hairline to the crown; a rounded hairline |
+| Framing | Locks leave the part, sweep over the temples, frame the face from the cheekbones down, and fall in front of the shoulders onto the chest |
+| Color | Dark brown at median luminance 0.14 to 0.16 from root to tip, varying about 12 percent between strands; the part's roots darkest, at about half the mid tone |
+
+Alice's hair follows that shape in her own auburn: a center part, volume at
+the crown, face-framing locks over the chest, and loosening S-waves to the
+shoulder blades, as cards with tapered, strand-cut tips over a dark cap.
 
 ## Mode and the Echo rule
 
@@ -372,12 +495,12 @@ and the skinned figure path has none. The face is therefore simple:
 
 ## Hair
 
-- **Shape.** Chin-length, layered, with a side part, in a dark color; a
-  hooded variant hides most of it. No buns, braids, or ponytail.
-- **Construction.** A sculpted shell: one closed low-polygon mass with
-  strand ridges carved in, plus four to six alpha-tested cards at the fringe
-  and nape. Use alpha test, never blending, so it draws on WebGL2 without
-  sorting.
+- **Shape.** Alice's is long and softly wavy with a center part (see
+  [Alice, the first build](#alice-the-first-build)); a hooded variant hides
+  most of it. No buns, braids, or ponytail.
+- **Construction.** An opaque cap and back sheet under alpha-tested cards
+  that carry the strands, the waves, and the tips. Use alpha test, never
+  blending, so it draws on WebGL2 without sorting.
 - **Skinning.** Rigid to `Head`.
 - **Physics.** None. The coat and sash carry the motion.
 

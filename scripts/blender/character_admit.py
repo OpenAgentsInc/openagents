@@ -6,7 +6,9 @@ Run from the repository root with Python 3 (NumPy only):
 
 `scripts/blender/alice.py` writes `alice.<variant>.glb` under
 `assets/verse/characters/original/alice/`: one skinned mesh on the Universal
-rig and its baked base-color atlas. The character compiler reads glTF with a
+rig and its baked base-color atlas, whose alpha cuts the hair cards. The
+admitted glTF has two materials on that atlas: `alice`, opaque, and
+`alice_hair`, alpha-masked at 0.5, for the cards. The character compiler reads glTF with a
 separate `.bin` buffer and PNG image, so this script writes, beside each glb,
 `alice.<variant>.gltf`, `.bin`, and `.png`, and the folder's `manifest.json`
 (`openagents.verse.character-sources.v1`) with every file's SHA-256.
@@ -43,12 +45,14 @@ LICENSE = b"""Alice, an original player character for Verse
 
 Made by OpenAgents with scripts/blender/alice.py. Her body, hair, clothing,
 and gear are generated from primitives and procedural shading (Reference
-mode). Her head, eyes, and brows are those of Superhero_Female_FullBody.gltf
-from Quaternius's Universal Base Characters (CC0 1.0, https://quaternius.com),
-reshaped by the script, with that file's skin and eye images retinted in the
-bake (Compose mode). Epic Games' Valley of the Ancient was studied in
-Reference-only mode for general qualities (docs/verse/female-character.md);
-none of its content was opened in Blender, traced, or used.
+mode). Her head and eyes are those of Superhero_Female_FullBody.gltf from
+Quaternius's Universal Base Characters (CC0 1.0, https://quaternius.com),
+reshaped by the script (Compose mode); her face, eyes, brows, and hair are
+painted by scripts/blender/alice_paint.py. Epic Games' Valley of the
+Ancient was studied in Reference-only mode for general qualities
+(docs/verse/female-character.md); none of its content was opened in
+Blender, traced, or used. Two Fab characters were studied only, for
+measurements and technique; none of their content is in Alice.
 
 Her skeleton is the same file's Universal rig, whose joint names, parents,
 and rest transforms are copied verbatim so the Universal Animation Library
@@ -222,7 +226,9 @@ def admit(variant, base):
         }
         i = put(idx.astype(np.uint16) if len(pos) <= 65535 else idx, 5123 if len(pos) <= 65535 else 5125,
                 "SCALAR", 34963)
-        primitives.append({"attributes": a, "indices": i, "material": 0, "mode": 4})
+        name = doc["materials"][prim["material"]]["name"] if "material" in prim else "alice"
+        primitives.append({"attributes": a, "indices": i, "material": 1 if name == "alice_hair" else 0,
+                           "mode": 4})
     assert triangles <= BUDGETS[variant], f"{variant}: {triangles} triangles"
     # Inverse binds from the base rig's own joints.
     theirs_by_index = [theirs[n] for n in base_names]
@@ -246,6 +252,14 @@ def admit(variant, base):
         "materials": [{
             "name": "alice",
             "doubleSided": True,
+            "pbrMetallicRoughness": {"baseColorTexture": {"index": 0}, "metallicFactor": 0.0,
+                                     "roughnessFactor": 0.85},
+        }, {
+            # The hair cards: the atlas's alpha cuts their strands.
+            "name": "alice_hair",
+            "doubleSided": True,
+            "alphaMode": "MASK",
+            "alphaCutoff": 0.5,
             "pbrMetallicRoughness": {"baseColorTexture": {"index": 0}, "metallicFactor": 0.0,
                                      "roughnessFactor": 0.85},
         }],

@@ -4,7 +4,7 @@ Run headless, one variant per run:
     Blender -b --factory-startup --python scripts/blender/alice.py -- \
         [OUT_DIR] [lod0|lod1|lod2|lod3] [--quick PREVIEW_DIR]
 
-OUT_DIR defaults to assets/verse/characters/original/alice and the variant
+OUT_DIR defaults to assets/verse/characters/original/alice/build and the variant
 to lod1. Each run writes `alice.<variant>.glb` and prints one `MODEL` line.
 `--quick` skips the bake and export and renders the built scene from four
 sides into PREVIEW_DIR, for fast iteration.
@@ -14,19 +14,19 @@ character reuses her base body (`build_body`) and head (`ubc_head`,
 `build_head`) with an outfit of its own (`build_outfit` is Alice's).
 
 Modes: Reference for the body, hair, clothing, and gear, made here from
-primitives and procedural shading; Compose for the head, eyes, and brows,
-cut from the CC0 Universal Base Characters female body (Quaternius,
+primitives and procedural shading; Compose for the head and eyes, cut from
+the CC0 Universal Base Characters female body (Quaternius,
 `Superhero_Female_FullBody.gltf`) and reshaped by `reshape`, so the face has
-real structure. The same file gives the skeleton: Alice has the Universal 65
+real structure. `alice_paint.py` paints her face, eyes, and hair strips. The same file gives the skeleton: Alice has the Universal 65
 joints with their names, parents, and rest transforms, and every Universal
 Animation Library clip plays on her.
 
 Design (docs/verse/female-character.md): an explorer-druid in a forest-green,
 knee-length open coat over a cream linen tunic, dark leggings, tall warm-brown
 boots, wrapped leather bracers, a copper-red sash, a cross-body satchel, a
-staff on her back, and a hood worn down. Dark auburn hair in a chin-length
-layered bob with a side part and a swept fringe. A stylized face in the
-Quaternius-adjacent look of our world. She avoids every Echo signature the
+staff on her back, and a collar. Long, softly wavy auburn hair with a center
+part and locks that frame her face, as alpha-tested cards over a scalp cap.
+A stylized, hand-painted face in the look of our world. She avoids every Echo signature the
 spec lists: no updo, buns, braids, or ponytail, no scarf, no skirt, no lone
 shoulder pad, no canteen, and no gold.
 
@@ -48,7 +48,8 @@ How it is built:
   influences per vertex, normalized.
 - One base-color atlas per variant, baked deterministically in Cycles:
   the diffuse color of the procedural materials, times ambient occlusion and
-  a soft top light, so folds read without a normal map.
+  a soft top light, so folds read without a normal map. Its bottom band
+  holds the painted hair strips every card samples, with their alpha.
 """
 
 import json
@@ -62,6 +63,7 @@ import bpy
 from mathutils import Matrix, Vector
 
 sys.path.insert(0, os.path.dirname(__file__))
+import alice_paint  # noqa: E402
 import kit  # noqa: E402
 
 BASE = os.path.join(
@@ -73,15 +75,22 @@ OUT = os.path.join(kit.REPO, "assets", "verse", "characters", "original", "alice
 # the triangle budget per variant (docs/verse/female-character.md).
 LODS = {
     # Near levels are built coarse and subdivided once (`subdiv`), so every
-    # surface is smooth; far levels are built at their final density.
-    "lod0": dict(limb=16, torso=32, head=(32, 22), hair=(60, 12), finger=6, fingers=True, stride=1,
-                 tex=2048, budget=100000, samples=128, subdiv=1, head_subdiv=1),
-    "lod1": dict(limb=8, torso=16, head=(24, 16), hair=(36, 7), finger=4, fingers=True, stride=1,
-                 tex=1024, budget=46000, samples=96, subdiv=1),
-    "lod2": dict(limb=10, torso=16, head=(18, 12), hair=(30, 6), finger=4, fingers=False, stride=2,
-                 tex=256, budget=10000, samples=64, head_ratio=0.45),
+    # surface is smooth; far levels are built at their final density. The
+    # hair cards (`cards`: top layer, under layer, and wisps a side;
+    # `card_steps`: rows over the skull and down the fall) are never
+    # subdivided.
+    "lod0": dict(limb=16, torso=32, head=(32, 22), hair=(40, 10), finger=6, fingers=True, stride=1,
+                 tex=2048, budget=100000, samples=128, subdiv=1, head_subdiv=1,
+                 cards=(24, 16, 4), card_steps=(7, 22), card_across=2),
+    "lod1": dict(limb=8, torso=16, head=(24, 16), hair=(28, 6), finger=4, fingers=True, stride=1,
+                 tex=1024, budget=46000, samples=96, subdiv=1,
+                 cards=(20, 12, 3), card_steps=(6, 16), card_across=2),
+    "lod2": dict(limb=10, torso=16, head=(18, 12), hair=(24, 6), finger=4, fingers=False, stride=2,
+                 tex=256, budget=10000, samples=64, head_ratio=0.45,
+                 cards=(10, 4, 0), card_steps=(3, 7), card_across=1),
     "lod3": dict(limb=6, torso=10, head=(10, 8), hair=(14, 4), finger=3, fingers=False, stride=3,
-                 tex=256, budget=3000, samples=48, lite=True, head_ratio=0.12),
+                 tex=256, budget=3000, samples=48, lite=True, head_ratio=0.12,
+                 cards=(6, 0, 0), card_steps=(2, 4), card_across=1),
 }
 
 
@@ -95,14 +104,12 @@ def linear(h):
 # The palette: forest green, warm brown leather, and cream linen, with copper
 # accents; dark auburn hair. No gold anywhere.
 PALETTE = {
-    "skin": "#EDB18F",
-    "blush": "#FFC2B0",
-    "lips": "#F0A49C",
-    "glint": "#FFFFFF",
-    "brow": "#4E2416",
-    "lash": "#24140F",
+    "skin": "#E9AF92",
     "hair": "#5E2418",
-    "hair_inner": "#3A160F",
+    "hair_base": "#4E1D10",
+    "hair_inner": "#3C150C",
+    "hair_dark": "#2A0D07",
+    "hair_light": "#A8502A",
     "linen": "#E9DDC2",
     "linen_shade": "#CDBE9C",
     "coat": "#2F5B35",
@@ -166,6 +173,8 @@ class Mesh:
 
     def __init__(self):
         self.v, self.w, self.f, self.m, self.tag = [], [], [], [], []
+        # Per-face UVs, for meshes whose faces carry their own (the cards).
+        self.uv = []
         self.part = "body"
 
     def vert(self, p, w):
@@ -346,9 +355,20 @@ def gauss(x, w):
 
 # The base head's left eye center, and how much larger Alice's eyes are.
 EYE_CENTER = Vector((0.0315, -0.06, 1.656))
-EYE_GROW = 0.16
+EYE_GROW = 0.04
+# How far each eye moves toward the nose, m.
+EYE_IN = 0.0022
+# An iris's diameter as a share of the eye opening's width.
+IRIS_SHARE = 0.205
 # Levels a channel in the baked atlas (seven bits).
 LEVELS = 127
+# How much more of the atlas, by length, the face takes than the rest of
+# her.
+FACE_TEXELS = 6.5
+# The atlas's bottom band, a share of its height, holds the hair strips
+# every card samples; STRIPS_PREVIEW is their size in the cards' material.
+HAIR_BAND = 0.16
+STRIPS_PREVIEW = (1024, 192)
 # Her arms are this much slimmer than the lofts' first measurements.
 ARM_SLIM = 0.88
 
@@ -370,7 +390,7 @@ def reshape(p):
     front = smoothstep(0.02, -0.045, p.y)
     lower = smoothstep(1.62, 1.545, p.z)
     # An oval face: the jaw narrows a little, toward a small, round chin.
-    q.x *= 1 - 0.04 * lower * front
+    q.x *= 1 - 0.065 * lower * front
     chin = gauss(p.x, 0.03) * gauss(p.z - 1.55, 0.02) * front
     q.y += 0.004 * chin
     q.z += 0.002 * chin
@@ -392,10 +412,13 @@ def reshape(p):
     # A soft brow ridge that shades the eyes, as a game face needs.
     brow = gauss(p.z - 1.676, 0.008) * gauss(abs(p.x) - 0.03, 0.025) * smoothstep(-0.075, -0.09, p.y)
     q.y -= 0.0012 * brow
-    # Larger eyes: the lids open wider about each eye's center.
+    # Eyes a little larger, and a little closer together: the base's are
+    # set wider than a painted reference's, whose eye centers are about
+    # 0.52 of the face's width apart.
     for s in (1, -1):
         c = EYE_CENTER.copy()
         c.x *= s
+        q.x -= s * EYE_IN * gauss(math.hypot(p.x - c.x, p.z - c.z), 0.024) * smoothstep(0.0, -0.05, p.y)
         r = math.hypot(p.x - c.x, (p.z - c.z) * 1.3)
         w = smoothstep(0.03, 0.012, r) * smoothstep(0.0, -0.05, p.y)
         if w > 0:
@@ -445,83 +468,30 @@ def ubc_head(lod):
         vs = [v for v in eyes.data.vertices if v.co.x * side > 0]
         c = sum((v.co for v in vs), Vector()) / len(vs)
         moved = reshape(c)
-        # Larger, and turned up a little, so her gaze meets yours rather
-        # than resting under heavy lids.
+        # Turned up a little, so her gaze meets yours rather than resting
+        # under heavy lids.
         up = Matrix.Rotation(math.radians(-6), 3, "X")
         for v in vs:
             v.co = moved + up @ ((v.co - c) * (1 + EYE_GROW + 0.035))
-    # Brows follow the brow ridge.
-    for side in (1, -1):
-        vs = [v for v in brows.data.vertices if v.co.x * side > 0]
-        mz = sum(v.co.z for v in vs) / len(vs)
-        for v in vs:
-            co = v.co.copy()
-            # A little shorter at the outer end, inside the hairline.
-            co.x = math.copysign(0.004 + abs(co.x) * 0.84, co.x)
-            # Full enough to read at a distance, a little higher, and the
-            # inner ends lifted most, so her resting look is open rather
-            # than stern.
-            inner = smoothstep(0.045, 0.012, abs(co.x))
-            arch = gauss(abs(co.x) - 0.034, 0.012)
-            co.z = mz + (co.z - mz) * 0.68 + 0.0055 + 0.0055 * inner + 0.0025 * arch
-            v.co = reshape(co)
-    for o in (body, eyes, brows):
+    # The painted brows replace the base's brow mesh.
+    bpy.data.objects.remove(brows, do_unlink=True)
+    for o in (body, eyes):
         uv = o.data.uv_layers
         while len(uv) > 1:
             uv.remove(uv[-1])
         uv[0].name = "UVMap"
+    marks = face_marks(body, eyes)
     ratio = lod.get("head_ratio", 1.0)
     if ratio < 1.0:
-        for o, r in ((body, ratio), (eyes, max(0.12, ratio)), (brows, ratio * 0.5)):
+        for o, r in ((body, ratio), (eyes, max(0.12, ratio))):
             mod = o.modifiers.new("Decimate", "DECIMATE")
             mod.ratio = r
             bpy.context.view_layer.objects.active = o
             bpy.ops.object.modifier_apply(modifier=mod.name)
-    # Materials: Alice's skin over the base's painted lips and shading, the
-    # base's eye texture, and auburn brows.
-    face_material(body)
-    brows.data.materials.clear()
-    brows.data.materials.append(material("brow"))
-    eye_material(eyes)
-    # Warmth on the cheeks, the nose, and the lips, and the lash lines, for
-    # the bake.
-    eye_centers = []
-    for side in (1, -1):
-        vs = [v.co for v in eyes.data.vertices if v.co.x * side > 0]
-        c = sum(vs, Vector()) / len(vs)
-        c.y = min(p.y for p in vs)
-        eye_centers.append(c)
-    attr = body.data.color_attributes.new("warm", "FLOAT_COLOR", "POINT")
-    for v in body.data.vertices:
-        p = v.co
-        w = 0.0
-        if p.y < -0.03:
-            w += 0.9 * gauss(abs(p.x) - 0.045, 0.018) * gauss(p.z - 1.615, 0.016)
-            w += 0.7 * gauss(p.x, 0.012) * gauss(p.z - 1.618, 0.012) * smoothstep(-0.09, -0.105, p.y)
-        lip = gauss(p.x, 0.022) * gauss(p.z - 1.591, 0.0075) if p.y < -0.075 else 0.0
-        # The upper lid's lash line, a dark band that reads at a distance,
-        # flicked out at the outer corner, and a fainter lower line.
-        lash = 0.0
-        for c in eye_centers:
-            if p.y > c.y + 0.012:
-                continue
-            u = (p.x - c.x) / 0.0195
-            t = (p.z - c.z) / 0.0095
-            e = math.hypot(u, t)
-            if t > -0.15:
-                lash = max(lash, smoothstep(0.88, 0.99, e) * smoothstep(1.30, 1.10, e))
-            elif t > -1.2:
-                lash = max(lash, 0.35 * smoothstep(0.9, 1.0, e) * smoothstep(1.3, 1.1, e))
-            outer = (p.x - c.x) * (1 if c.x > 0 else -1)
-            if 0.014 < outer < 0.026 and abs(p.z - c.z - 0.002 - 0.25 * (outer - 0.014)) < 0.0022:
-                lash = max(lash, 0.9)
-        attr.data[v.index].color = (min(1.0, w), min(1.0, lip), min(1.0, lash), 1)
-    bpy.context.view_layer.objects.active = brows
-    bpy.ops.object.select_all(action="DESELECT")
-    body.select_set(True)
-    brows.select_set(True)
-    bpy.context.view_layer.objects.active = body
-    bpy.ops.object.join()
+    # Materials: her hand-painted face and eyes, projected from the front.
+    size = 2048 if lod["tex"] >= 1024 else 1024
+    face_material(body, alice_paint.face(marks, size))
+    eye_material(eyes, alice_paint.eyes(marks, size))
     body.name = "AliceHead"
     return body, eyes
 
@@ -657,9 +627,9 @@ def bust(d, p):
     out = 0.0
     if d.y < 0:
         for sx in (-1, 1):
-            r2 = ((p.x - sx * 0.068) / 0.060) ** 2 + ((p.z - 1.248) / 0.064) ** 2
+            r2 = ((p.x - sx * 0.068) / 0.062) ** 2 + ((p.z - 1.244) / 0.066) ** 2
             # A super-Gaussian: a full, rounded front that falls off softly.
-            out += 0.050 * exp(-(r2 ** 1.6)) * (-d.y) ** 0.6
+            out += 0.056 * exp(-(r2 ** 1.6)) * (-d.y) ** 0.6
     if d.y > 0:
         out += 0.006 * exp(-(((abs(p.x) - 0.08) / 0.05) ** 2)) * exp(-(((p.z - 1.36) / 0.06) ** 2)) * d.y
     return out
@@ -684,6 +654,8 @@ class Alice:
         self.R = rig
         self.L = lod
         self.M = Mesh()
+        # The hair cards: alpha-tested, never subdivided.
+        self.C = Mesh()
         self.torso_chain = rig.torso()
         self.bvh = None
         self.skull_cache = {}
@@ -847,132 +819,265 @@ class Alice:
             w["spine_03"] = a * b
         return {k: v for k, v in w.items() if v > 1e-4}
 
+    def hairline(self, aa):
+        """The hairline's angle from the crown at azimuth `aa` from the
+        front: a rounded line high on the forehead, lower at the temples,
+        and at the nape behind."""
+        return 0.66 + 0.34 * min(1.0, aa / 1.2) ** 2 + 0.75 * smoothstep(1.05, 1.6, aa) + 0.2 * smoothstep(1.8, 2.6, aa)
+
     def hair(self):
-        """Long, layered hair past her shoulders, with side-swept bangs over
-        her right brow and a side part on her left: one shell with
-        thickness, in clumps whose tapered tips cut a layered hem. It lies
-        on her shoulders and back, and three tapered locks fall in front."""
+        """The hair's opaque base: a scalp cap from the hairline over the
+        skull, darker at the roots, with the center part, and behind it a
+        sheet from the nape down her back. The cards (`cards`) lie over it,
+        so it shows only in the shadow between them."""
         M = self.M
         M.part = "hair"
         cols, nrows = self.L["hair"]
-        nrows *= 2
-        out_off = 0.013
-        thick = 0.009
-        ph_eq = 1.62
-        clumps = max(10, cols // 3)
+        out_off = 0.009
         columns = []
         for j in range(cols):
             th = -pi / 2 + 2 * pi * j / cols
             al = math.atan2(math.sin(th + pi / 2), math.cos(th + pi / 2))
             aa = abs(al)
-            frac = (j * clumps / cols) % 1.0
-            clump = sin(pi * frac) ** 2
-            # Where the column leaves the skull: the hairline in front, the
-            # equator at the sides and back.
-            hairline = 0.62 + 0.30 * min(1.0, aa / 1.25) ** 2 + 0.28 * smoothstep(0.55, 1.0, aa)
-            bangs = 0.50 * exp(-(((al + 0.10) / 0.70) ** 2)) * smoothstep(1.10, 0.40, al)
-            # The bangs end in tapered locks, longest at each clump's middle.
-            tips = 0.07 * clump * smoothstep(0.05, 0.25, bangs) * smoothstep(0.95, 0.65, aa)
-            ph_face = min(1.24, hairline + bangs + tips)
-            k = smoothstep(0.98, 1.45, aa)
-            ph_end = lerp(ph_face, ph_eq, k)
-            # Layered length: at the collarbone in front, past the shoulder
-            # blades at the back, each clump ending in a tapered tip.
-            z_end = lerp(1.50, 1.30, smoothstep(1.25, 2.3, aa)) - 0.045 * clump * k
-            columns.append((th, al, ph_end, k, z_end, clump))
+            ph_end = self.hairline(aa)
+            k = smoothstep(1.35, 2.0, aa)
+            # Down her back to the shoulder blades, hidden under the cards.
+            z_end = lerp(1.50, 1.34, smoothstep(1.6, 2.6, aa))
+            columns.append((th, al, ph_end, k, z_end))
         P = []
-        for th, al, ph_end, k, z_end, clump in columns:
+        for th, al, ph_end, k, z_end in columns:
             p_eq = self.head_point(th, ph_end)
             n_eq = self.head_normal(th, ph_end)
             skull = (ph_end - 0.06) * 0.10
             drop = max(0.0, (p_eq.z - z_end)) * k
-            total = skull + drop
             col = []
-            # Half the rows over the skull and half down the fall, so the
-            # crown stays round when the level is subdivided.
             for i in range(nrows + 1):
                 u = i / nrows
-                if drop > 0:
-                    d = skull * min(1.0, 2 * u) + drop * max(0.0, 2 * u - 1)
-                else:
-                    d = skull * u
+                d = (skull + drop) * u
                 if d <= skull + 1e-9 or drop <= 0:
                     ph = 0.06 + (ph_end - 0.06) * min(1.0, d / skull)
-                    # The bangs sweep toward her right as they fall, and
-                    # stand a little off her forehead.
-                    sweep = -0.10 * smoothstep(0.8, 1.2, ph) * smoothstep(0.7, 0.0, abs(al + 0.1))
-                    tt = th + sweep
-                    lift = 0.004 * smoothstep(0.9, 1.15, ph) * smoothstep(0.9, 0.2, abs(al))
-                    p = self.head_point(tt, ph) + self.head_normal(tt, ph) * (out_off + lift)
-                    groove = -0.004 * exp(-(((al - 0.45) / 0.07) ** 2)) * smoothstep(0.95, 0.4, ph)
-                    ridge = 0.004 * clump * smoothstep(0.35, 0.9, ph)
-                    p = p + self.head_normal(tt, ph) * (groove + ridge)
+                    # Close to the skin at the hairline in front, so no step
+                    # shows between the hair and the forehead.
+                    edge = 1 - 0.8 * smoothstep(ph_end - 0.3, ph_end, ph) * (1 - k)
+                    p = self.head_point(th, ph) + self.head_normal(th, ph) * out_off * edge
                 else:
                     f = (d - skull) / drop
-                    radial = Vector((p_eq.x - self.HC.x, p_eq.y - self.HC.y, 0)).normalized()
-                    p = p_eq + n_eq * out_off
-                    p = p + Vector((0, 0, -(p_eq.z - z_end) * f))
-                    # Volume at the crown's fall, clumps, and a slight inward
-                    # turn at the tips.
-                    p = p + radial * (0.016 * sin(pi * min(1.0, f * 1.6)) + 0.005 * clump
-                                      - 0.006 * smoothstep(0.85, 1.0, f))
-                    p = self.drape(p, 0.010 + 0.004 * clump)
+                    p = p_eq + n_eq * out_off + Vector((0, 0, -(p_eq.z - z_end) * f))
+                    p = self.drape(p, 0.006)
                 col.append(p)
             P.append(col)
-        # Smooth over the ears: the rays that fit the skull catch them, and
-        # hair falls over them, not around them.
-        side = [c[3] > 0.6 for c in columns]
-        for _ in range(3):
-            Q = [list(col) for col in P]
-            for j in range(cols):
-                a, b = (j - 1) % cols, (j + 1) % cols
-                if not (side[j] and side[a] and side[b]):
-                    continue
-                for i in range(1, nrows + 1):
-                    Q[j][i] = P[j][i] * 0.5 + (P[a][i] + P[b][i]) * 0.25
-            P = Q
-        # Rows bottom to top, columns counterclockwise: faces point out.
         rows = [[P[j][nrows - i] for j in range(cols)] for i in range(nrows + 1)]
         W = [[self.w_hair(p.z) for p in r] for r in rows]
-        out, inn = shell(M, rows, W, thick, "hair", "hair_inner", "hair_inner", wrap=True,
+        out, inn = shell(M, rows, W, 0.002, "hair_base", "hair_inner", "hair_inner", wrap=True,
                          rims=(True, False, False, False))
-        top_out = out[-1]
-        fan(M, top_out, self.head_point(0, 0) + Vector((0, 0, out_off + 0.002)), rigid("Head"), "hair",
+        fan(M, out[-1], self.head_point(0, 0) + Vector((0, 0, out_off + 0.001)), rigid("Head"), "hair_base",
             Vector((0, 0, 1)))
-        if not self.L.get("lite"):
-            self.locks()
+        self.cards()
 
-    def locks(self):
-        """Three tapered locks that fall in front of her shoulders onto her
-        chest: two on her left, one on her right."""
-        M = self.M
-        M.part = "hair"
-        segs = 6
-        steps = 7 if self.L["stride"] == 1 else 4
-        for s, al0, z_tip, toward in ((1, 1.28, 1.31, 0.62), (1, 1.42, 1.35, 0.85), (-1, 1.32, 1.33, 0.70)):
-            th0 = -pi / 2 + s * al0
-            # Starting under the side hair, below the ear, so the lock emerges
-            # from beneath it rather than through it.
-            start = self.head_point(th0, 1.62) - Vector((0, 0, 0.06))
-            path = []
-            for i in range(steps + 1):
-                t = i / steps
-                z = lerp(start.z, z_tip, t)
-                al = lerp(al0, toward, smoothstep(0.0, 0.8, t))
-                d = Vector((cos(-pi / 2 + s * al), sin(-pi / 2 + s * al), 0))
-                r0 = math.hypot(start.x, start.y - self.HC.y)
-                p = Vector((0, self.HC.y, z)) + d * r0
-                path.append(self.drape(p, 0.010))
-            rings = []
-            for i, c in enumerate(path):
-                t = i / steps
-                nxt = path[min(i + 1, steps)]
-                prv = path[max(i - 1, 0)]
-                axis = (nxt - prv).normalized()
-                out = Vector((c.x, c.y - 0.02, 0)).normalized()
-                width = 0.022 * (1 - t) ** 0.7 + 0.002
-                rings.append(dict(c=c, axis=axis, ref=out, rx=0.0035 * (1 - 0.6 * t) + 0.001, ry=width))
-            loft(M, rings, segs, "hair", lambda p: self.w_hair(p.z), cap0=True, cap1=True, dome=0.004)
+    def skull_dir(self, d, off):
+        """The point `off` out from the skull in direction `d` from the
+        head's center, and the skull's normal there."""
+        d = d.normalized()
+        ph = math.acos(max(-1.0, min(1.0, d.z)))
+        th = math.atan2(d.y, d.x)
+        p, n = self.skull(th, ph)
+        return p + n * off, n
+
+    def clear_head(self, p, gap):
+        """`p` moved out of the head to at least `gap` from its surface."""
+        if self.bvh is None or p.z < 1.47:
+            return p
+        hit = self.bvh.find_nearest(p)
+        if hit[0] is None:
+            return p
+        q, n = hit[0], hit[1].normalized()
+        if (p - q).dot(n) < gap:
+            return q + n * gap
+        return p
+
+    def meet_hairline(self, q):
+        """`q` brought down onto the skin where it nears the hairline in
+        front, so the hair meets the forehead rather than floating over it:
+        from below, a gap there shows the cards' shaded undersides as a dark
+        band."""
+        d = q - self.HC
+        if d.y > 0.02 or d.length < 1e-6:
+            return q
+        ph = math.acos(max(-1.0, min(1.0, d.normalized().z)))
+        al = abs(math.atan2(d.y, d.x) + pi / 2)
+        al = min(al, 2 * pi - al)
+        if al > 1.7:
+            return q
+        line = self.hairline(al)
+        w = smoothstep(line - 0.30, line - 0.04, ph)
+        if w <= 0:
+            return q
+        p, n = self.skull_dir(d, 0.0)
+        off = (q - p).dot(n)
+        return p + n * lerp(off, 0.0025, w) + (q - p - n * off)
+
+    def card_specs(self):
+        """Each card's side, exit azimuth, layer, and length, deterministic.
+        Front locks leave the part over the temples and fall in front of the
+        shoulders; the rest sweep from the center part and the crown down
+        the sides and back."""
+        import random
+
+        rng = random.Random(7)
+        top, under, wisps = self.L["cards"]
+        out = []
+        for s in (1, -1):
+            for k in range(top):
+                t = (k + 0.5) / top
+                a_e = lerp(1.02, pi - 0.04, t ** 0.92) + rng.uniform(-0.04, 0.04)
+                out.append(dict(s=s, a_e=a_e, layer=1, width=rng.uniform(0.030, 0.042), seed=rng.random()))
+            for k in range(under):
+                t = (k + 0.5) / under
+                a_e = lerp(1.10, pi - 0.08, t) + rng.uniform(-0.05, 0.05)
+                out.append(dict(s=s, a_e=a_e, layer=0, width=rng.uniform(0.040, 0.052), seed=rng.random()))
+            out.append(dict(s=s, a_e=pi - 0.01, layer=1, width=0.05, seed=rng.random()))
+            for k in range(wisps):
+                a_e = lerp(1.05, 2.4, (k + 0.5) / max(1, wisps)) + rng.uniform(-0.1, 0.1)
+                out.append(dict(s=s, a_e=a_e, layer=2, width=rng.uniform(0.008, 0.012), seed=rng.random()))
+        return out
+
+    def card_path(self, spec, n_skull, n_fall):
+        """A card's center line from its root on the part (or the crown)
+        over the skull to where it leaves the head, then down in loosening
+        S-waves to its tip, with the outward normal at each point."""
+        import random
+
+        rng = random.Random(int(spec["seed"] * 1e6))
+        s, a_e, layer = spec["s"], spec["a_e"], spec["layer"]
+        off = {0: 0.012, 1: 0.018, 2: 0.022}[layer]
+        # The root: on the center part, a little to her side of it, from
+        # the front hairline back to the crown.
+        back = smoothstep(1.05, 2.7, a_e)
+        root_ph = lerp(0.60, 0.10, back)
+        root_al = lerp(0.035, 0.6, smoothstep(2.3, pi, a_e))
+        exit_ph = lerp(1.30, 1.95, smoothstep(1.1, 2.3, a_e))
+
+        def direction(al, ph):
+            th = -pi / 2 + s * al
+            return Vector((sin(ph) * cos(th), sin(ph) * sin(th), cos(ph)))
+
+        d0 = direction(root_al, root_ph)
+        d1 = direction(a_e, exit_ph)
+        pts, nrm = [], []
+        for i in range(n_skull + 1):
+            t = i / n_skull
+            d = d0.slerp(d1, t)
+            if a_e < 1.6:
+                # The front cards sweep from the part along the hairline to
+                # the temples, so no scalp shows between the hair and the
+                # forehead.
+                ph = math.acos(max(-1.0, min(1.0, d.z)))
+                al = abs(math.atan2(d.y, d.x) + pi / 2)
+                al = min(al, 2 * pi - al)
+                edge = self.hairline(al) - 0.10 - 0.12 * smoothstep(1.02, 1.6, a_e)
+                d = direction(al, lerp(max(ph, edge), ph, smoothstep(0.75, 1.0, t)))
+            # Volume: the hair lifts off the crown and settles at the sides.
+            lift = 0.014 * sin(pi * min(1.0, t * 1.2)) * (1.0 - 0.4 * back) + 0.006 * t
+            settle = 1 - 0.55 * smoothstep(0.55, 1.0, t) * (1 - back)
+            p, n = self.skull_dir(d, (off + lift) * settle)
+            pts.append(p)
+            nrm.append(n)
+        E = pts[-1]
+        r_e = math.hypot(E.x, E.y - self.HC.y)
+        # Where it ends: front locks over the chest, the sides past the
+        # shoulder blades, the back longest at the middle, as a soft V.
+        lock = a_e < 1.42
+        if lock:
+            z_end = 1.19 + rng.uniform(-0.02, 0.025)
+        else:
+            z_end = lerp(1.30, 1.245, smoothstep(1.7, pi, a_e)) + rng.uniform(-0.035, 0.025)
+        if layer == 0:
+            z_end += 0.03
+        # Below the jaw the fall turns in front of the shoulder (the locks)
+        # or behind it.
+        if lock:
+            a_t = lerp(0.62, 0.95, (a_e - 1.02) / 0.4)
+        elif a_e < 1.75:
+            a_t = 1.95
+        else:
+            a_t = max(a_e, 2.05)
+        phase = 2 * pi * (0.35 * a_e * s + 0.15 * rng.random())
+        length = E.z - z_end
+        for i in range(1, n_fall + 1):
+            f = i / n_fall
+            z = E.z - length * f
+            turn = smoothstep(1.56, 1.40, z)
+            al = lerp(a_e, a_t, turn)
+            th = -pi / 2 + s * al
+            d = Vector((cos(th), sin(th), 0))
+            r = r_e * (1 + 0.10 * smoothstep(0.0, 0.4, f))
+            p = Vector((0, self.HC.y, z)) + d * r
+            # S-waves that loosen and grow toward the ends.
+            fall = E.z - z
+            period = 0.075 + 0.05 * f
+            amp = 0.003 + 0.013 * smoothstep(0.1, 0.9, f)
+            tangent = Vector((-d.y, d.x, 0))
+            w = sin(2 * pi * fall / period + phase)
+            p = p + tangent * (amp * w) + d * (0.004 * cos(2 * pi * fall / period + phase))
+            p = self.drape(p, 0.010 + 0.006 * layer + 0.004 * f)
+            p = self.clear_head(p, off + 0.004)
+            pts.append(p)
+            nrm.append(Vector((p.x, p.y - self.HC.y, 0)).normalized())
+        # The tips curl in a little.
+        return pts, nrm, n_skull
+
+    def cards(self):
+        """Alpha-tested hair cards: clumps that leave the center part,
+        lift at the crown, frame the face, and fall in loosening S-waves to
+        tapered, strand-cut tips. Each card's UV runs across it (u) and from
+        root to tip (v), so the strand texture follows the hair."""
+        C = self.C
+        C.part = "hair"
+        n_skull, n_fall = self.L["card_steps"]
+        across = self.L.get("card_across", 2)
+        lanes = alice_paint.HAIR_LANES
+        for index, spec in enumerate(self.card_specs()):
+            pts, nrm, ns = self.card_path(spec, n_skull, n_fall)
+            # The under layer's lanes are darker; the wisps have their own.
+            lane = {0: index % 2, 1: 2 + index % 3, 2: lanes - 1}[spec["layer"]]
+            n = len(pts)
+            rows, uvs = [], []
+            for i, (p, nm) in enumerate(zip(pts, nrm)):
+                nxt = pts[min(i + 1, n - 1)]
+                prv = pts[max(i - 1, 0)]
+                t = (nxt - prv).normalized()
+                side = t.cross(nm).normalized()
+                v = i / (n - 1)
+                # Narrow at the root, full through the fall, tapering to the
+                # tip.
+                w = spec["width"] * (0.75 + 0.25 * smoothstep(0.0, 0.25, v)) * (1.0 - 0.62 * smoothstep(0.62, 1.0, v))
+                if spec["layer"] == 2:
+                    w = spec["width"] * (1 - 0.7 * v)
+                row = []
+                for k in range(across + 1):
+                    u = k / across
+                    x = (u - 0.5) * w
+                    # A rounded clump: the middle stands a little proud.
+                    bulge = 0.18 * w * (1 - (2 * u - 1) ** 2)
+                    q = p + side * x + nm * bulge
+                    if i <= ns:
+                        q = self.meet_hairline(q)
+                    row.append(q)
+                rows.append(row)
+                # Strip space: along the strip root to tip, across its lane.
+                uvs.append([(0.002 + 0.996 * v, (lane + 0.04 + 0.92 * k / across) / lanes)
+                            for k in range(across + 1)])
+            idx = [[C.vert(q, self.w_hair(q.z)) for q in row] for row in rows]
+            for i in range(n - 1):
+                for k in range(across):
+                    q = (idx[i][k], idx[i][k + 1], idx[i + 1][k + 1], idx[i + 1][k])
+                    uv = (uvs[i][k], uvs[i][k + 1], uvs[i + 1][k + 1], uvs[i + 1][k])
+                    a, b, c = C.v[q[0]], C.v[q[1]], C.v[q[3]]
+                    # Faces point out from the head.
+                    if (b - a).cross(c - a).dot(nrm[i]) < 0:
+                        q, uv = q[::-1], uv[::-1]
+                    C.face(q, "hair_card")
+                    C.uv.append(uv)
 
     # Arms and hands -------------------------------------------------------------------------
 
@@ -1481,23 +1586,6 @@ class Alice:
         dg = bpy.context.evaluated_depsgraph_get()
         self.bvh = BVHTree.FromObject(head, dg)
         self.hair()
-        self.glints(eyes)
-
-    def glints(self, eyes):
-        """A small highlight on each cornea, up and toward her outer side."""
-        M = self.M
-        M.part = "face"
-        pts = [v.co.copy() for v in eyes.data.vertices]
-        for s in (1, -1):
-            side = [p for p in pts if p.x * s > 0]
-            front = min(p.y for p in side)
-            cornea = [p for p in side if p.y < front + 0.004]
-            c = sum(cornea, Vector()) / len(cornea)
-            at = Vector((c.x + s * 0.0035, front - 0.0006, c.z + 0.0035))
-            n = 6 if self.L.get("lite") else 8
-            ring = [M.vert(at + Vector((0.0026 * cos(2 * pi * k / n), 0, 0.0026 * sin(2 * pi * k / n))),
-                           rigid("Head")) for k in range(n)]
-            fan(M, ring, at + Vector((0, -0.0002, 0)), rigid("Head"), "glint", Vector((0, -1, 0)))
 
     def build_outfit(self):
         """Alice's own clothes and gear."""
@@ -1521,10 +1609,170 @@ class Alice:
 # --- Blender objects, materials, bake, export -------------------------------------------------
 
 
+def node_math(nt, op, a, b=None, c=None):
+    """A Math node computing `op` of sockets or numbers; returns its output."""
+    n = nt.nodes.new("ShaderNodeMath")
+    n.operation = op
+    for i, x in enumerate((a, b, c)):
+        if x is None:
+            continue
+        if isinstance(x, (int, float)):
+            n.inputs[i].default_value = x
+        else:
+            nt.links.new(x, n.inputs[i])
+    return n.outputs[0]
+
+
+def node_smooth(nt, value, lo, hi):
+    """smoothstep(lo, hi, value) as a Map Range node."""
+    n = nt.nodes.new("ShaderNodeMapRange")
+    n.interpolation_type = "SMOOTHSTEP"
+    nt.links.new(value, n.inputs["Value"])
+    n.inputs["From Min"].default_value = lo
+    n.inputs["From Max"].default_value = hi
+    return n.outputs["Result"]
+
+
+def card_material():
+    """The hair cards' material: the painted strips
+    (`alice_paint.hair_strips`), read through each card's `hairuv`, which
+    places the card on its lane root to tip. The strips' alpha cuts the
+    tips into strands and frays the edges; the bake copies the strips into
+    the atlas's band (`HAIR_BAND`)."""
+    import numpy as np
+
+    strips = alice_paint.hair_strips(*STRIPS_PREVIEW)
+    img = bpy.data.images.new("hair_strips", STRIPS_PREVIEW[0], STRIPS_PREVIEW[1], alpha=True, float_buffer=True)
+    img.colorspace_settings.name = "Linear Rec.709"
+    img.pixels.foreach_set(np.ascontiguousarray(strips, dtype=np.float32).ravel())
+    m = bpy.data.materials.new("hair_card")
+    m.use_nodes = True
+    nt = m.node_tree
+    bsdf = nt.nodes["Principled BSDF"]
+    bsdf.inputs["Roughness"].default_value = 0.6
+    uvn = nt.nodes.new("ShaderNodeUVMap")
+    uvn.uv_map = "hairuv"
+    tex = nt.nodes.new("ShaderNodeTexImage")
+    tex.image = img
+    tex.extension = "EXTEND"
+    nt.links.new(uvn.outputs["UV"], tex.inputs["Vector"])
+    nt.links.new(tex.outputs["Color"], bsdf.inputs["Base Color"])
+    nt.links.new(tex.outputs["Alpha"], bsdf.inputs["Alpha"])
+    m["alpha"] = True
+    return m
+
+
+def node_value(nt, kind, vector, scale, **settings):
+    """A texture node's factor output over `vector` at `scale`."""
+    n = nt.nodes.new(kind)
+    n.inputs["Scale"].default_value = scale
+    for key, value in settings.items():
+        if key in n.inputs:
+            n.inputs[key].default_value = value
+        else:
+            setattr(n, key, value)
+    nt.links.new(vector, n.inputs["Vector"])
+    return n.outputs["Fac"]
+
+
+def node_scale(nt, color, factor):
+    """`color` times the scalar `factor`."""
+    n = nt.nodes.new("ShaderNodeMix")
+    n.data_type = "RGBA"
+    n.blend_type = "MULTIPLY"
+    n.inputs["Factor"].default_value = 1.0
+    nt.links.new(color, n.inputs["A"])
+    comb = nt.nodes.new("ShaderNodeCombineColor")
+    for i in range(3):
+        nt.links.new(factor, comb.inputs[i])
+    nt.links.new(comb.outputs[0], n.inputs["B"])
+    return n.outputs["Result"]
+
+
+def node_toward(nt, color, factor, target):
+    """`color` blended toward the linear color `target` by `factor`."""
+    n = nt.nodes.new("ShaderNodeMix")
+    n.data_type = "RGBA"
+    nt.links.new(factor, n.inputs["Factor"])
+    nt.links.new(color, n.inputs["A"])
+    n.inputs["B"].default_value = (*target, 1)
+    return n.outputs["Result"]
+
+
+def surface_detail(nt, name, color):
+    """Painted surface detail a base-color-only renderer can show, after a
+    high-fidelity reference whose texture carries its seams, stitching,
+    creases, and wear: a weave in the linen, fuzz and long folds in the
+    wool coat with princess seams and their stitching, grain, creases, and
+    worn edges on the leather, fold streaks in the sash, polished edges on
+    the copper, and warmth at the knuckles and fingertips."""
+    geo = nt.nodes.new("ShaderNodeNewGeometry")
+    pos = geo.outputs["Position"]
+    sep = nt.nodes.new("ShaderNodeSeparateXYZ")
+    nt.links.new(pos, sep.inputs[0])
+    x, z = sep.outputs["X"], sep.outputs["Z"]
+    edges = node_smooth(nt, geo.outputs["Pointiness"], 0.52, 0.62)
+    base = name.split(".")[0]
+    if base in ("linen", "linen_shade"):
+        # The weave: crossed threads about 3 mm apart, and soft wrinkles.
+        a = node_value(nt, "ShaderNodeTexWave", pos, 210.0, wave_type="BANDS", bands_direction="X")
+        b = node_value(nt, "ShaderNodeTexWave", pos, 210.0, wave_type="BANDS", bands_direction="Z")
+        weave = node_math(nt, "MULTIPLY", node_math(nt, "ADD", a, b), 0.5)
+        color = node_scale(nt, color, node_math(nt, "MULTIPLY_ADD", weave, 0.08, 0.96))
+        wr = node_value(nt, "ShaderNodeTexWave", pos, 22.0, wave_type="BANDS", bands_direction="Z",
+                        Distortion=5.0, Detail=3.0)
+        color = node_scale(nt, color, node_math(nt, "MULTIPLY_ADD", wr, 0.10, 0.95))
+    elif base in ("coat", "coat_inner", "coat_trim"):
+        fuzz = node_value(nt, "ShaderNodeTexNoise", pos, 320.0, Detail=2.0)
+        color = node_scale(nt, color, node_math(nt, "MULTIPLY_ADD", fuzz, 0.10, 0.95))
+        folds = node_value(nt, "ShaderNodeTexWave", pos, 16.0, wave_type="BANDS", bands_direction="X",
+                           Distortion=3.0, Detail=2.0)
+        color = node_scale(nt, color, node_math(nt, "MULTIPLY_ADD", folds, 0.16, 0.91))
+        if base == "coat":
+            # Princess seams, front and back, with a row of stitches beside
+            # each.
+            d = node_math(nt, "ABSOLUTE", node_math(nt, "SUBTRACT", node_math(nt, "ABSOLUTE", x), 0.085))
+            seam = node_math(nt, "SUBTRACT", 1.0, node_smooth(nt, d, 0.0007, 0.0018))
+            color = node_scale(nt, color, node_math(nt, "MULTIPLY_ADD", seam, -0.40, 1.0))
+            row = node_math(nt, "SUBTRACT", 1.0, node_smooth(nt, node_math(nt, "ABSOLUTE",
+                            node_math(nt, "SUBTRACT", d, 0.0042)), 0.0004, 0.0009))
+            dash = node_smooth(nt, node_math(nt, "SINE", node_math(nt, "MULTIPLY", z, 2 * pi / 0.007)), 0.1, 0.4)
+            color = node_toward(nt, color, node_math(nt, "MULTIPLY", node_math(nt, "MULTIPLY", row, dash), 0.45),
+                                linear("#8FA57E"))
+        if base == "coat_trim":
+            color = node_toward(nt, color, node_math(nt, "MULTIPLY", edges, 0.35), linear("#5E7D57"))
+    elif base in ("leather", "leather_dark", "sole"):
+        grain = node_value(nt, "ShaderNodeTexNoise", pos, 420.0, Detail=2.0)
+        color = node_scale(nt, color, node_math(nt, "MULTIPLY_ADD", grain, 0.12, 0.94))
+        crease = node_value(nt, "ShaderNodeTexWave", pos, 55.0, wave_type="BANDS", bands_direction="Z",
+                            Distortion=7.0, Detail=3.0)
+        lines = node_math(nt, "SUBTRACT", 1.0, node_smooth(nt, crease, 0.0, 0.10))
+        color = node_scale(nt, color, node_math(nt, "MULTIPLY_ADD", lines, -0.28, 1.0))
+        color = node_toward(nt, color, node_math(nt, "MULTIPLY", edges, 0.45), linear("#C08A5C"))
+    elif base == "leggings":
+        knit = node_value(nt, "ShaderNodeTexWave", pos, 260.0, wave_type="BANDS", bands_direction="X")
+        color = node_scale(nt, color, node_math(nt, "MULTIPLY_ADD", knit, 0.10, 0.95))
+    elif base == "sash":
+        a = node_value(nt, "ShaderNodeTexWave", pos, 230.0, wave_type="BANDS", bands_direction="X")
+        color = node_scale(nt, color, node_math(nt, "MULTIPLY_ADD", a, 0.08, 0.96))
+        fold = node_value(nt, "ShaderNodeTexWave", pos, 38.0, wave_type="BANDS", bands_direction="Z",
+                          Distortion=4.0, Detail=2.0)
+        color = node_scale(nt, color, node_math(nt, "MULTIPLY_ADD", fold, 0.24, 0.86))
+    elif base == "copper":
+        spots = node_value(nt, "ShaderNodeTexNoise", pos, 60.0, Detail=3.0)
+        color = node_scale(nt, color, node_math(nt, "MULTIPLY_ADD", spots, 0.30, 0.82))
+        color = node_toward(nt, color, node_math(nt, "MULTIPLY", edges, 0.6), linear("#F2B47A"))
+    elif base == "skin":
+        color = node_toward(nt, color, node_math(nt, "MULTIPLY", edges, 0.5), linear("#E08A78"))
+    return color
+
+
 def material(name):
     m = bpy.data.materials.get(name)
     if m:
         return m
+    if name == "hair_card":
+        return card_material()
     m = bpy.data.materials.new(name)
     m.use_nodes = True
     nt = m.node_tree
@@ -1538,10 +1786,12 @@ def material(name):
         "linen": ("noise", 0.05), "linen_shade": ("noise", 0.05), "coat": ("noise", 0.08),
         "coat_inner": ("noise", 0.06), "coat_trim": ("noise", 0.06), "leather": ("noise", 0.12),
         "leather_dark": ("noise", 0.10), "leggings": ("noise", 0.05), "sash": ("noise", 0.06),
-        "hair": ("strands", 0.38), "hair_inner": ("strands", 0.20), "wood": ("grain", 0.25),
+        "hair": ("strands", 0.38), "hair_base": ("strands", 0.30), "hair_inner": ("strands", 0.20), "wood": ("grain", 0.25),
     }.get(name)
     if not variation:
-        bsdf.inputs["Base Color"].default_value = (*col, 1)
+        rgb = nt.nodes.new("ShaderNodeRGB")
+        rgb.outputs[0].default_value = (*col, 1)
+        nt.links.new(surface_detail(nt, name, rgb.outputs[0]), bsdf.inputs["Base Color"])
         return m
     kind, amount = variation
     coord = nt.nodes.new("ShaderNodeTexCoord")
@@ -1638,117 +1888,125 @@ def material(name):
     hi = tuple(min(1.0, c * (1 + amount)) for c in col)
     mixn.inputs["A"].default_value = (*lo, 1)
     mixn.inputs["B"].default_value = (*hi, 1)
-    nt.links.new(mixn.outputs["Result"], bsdf.inputs["Base Color"])
+    nt.links.new(surface_detail(nt, name, mixn.outputs["Result"]), bsdf.inputs["Base Color"])
     return m
 
 
-def base_image(obj):
-    """The base-color image of `obj`'s first material, from the CC0 base."""
-    nt = obj.data.materials[0].node_tree
-    link = nt.nodes["Principled BSDF"].inputs["Base Color"].links[0]
-    node = link.from_node
-    while node.type != "TEX_IMAGE":
-        node = next(i.links[0].from_node for i in node.inputs if i.links)
-    return node.image
+def face_marks(head, eyes):
+    """Where the painting goes, measured on the reshaped head: each eye
+    opening's boundary, the mouth's line, the nose's tip, and each iris's
+    center and radius in the front view (x, z)."""
+    bm = bmesh.new()
+    bm.from_mesh(head.data)
+    openings, mouth = [], []
+    centers = []
+    for side in (1, -1):
+        vs = [v.co for v in eyes.data.vertices if v.co.x * side > 0]
+        centers.append(sum(vs, Vector()) / len(vs))
+    # The lids close over the eyeballs without a hole, so an opening is
+    # where, seen from in front, the eyeball is nearer than the skin; its
+    # boundary is the lids' edge.
+    from mathutils.bvhtree import BVHTree
+
+    dg = bpy.context.evaluated_depsgraph_get()
+    skin, ball = BVHTree.FromObject(head, dg), BVHTree.FromObject(eyes, dg)
+    step = 0.0004
+    for side, c in zip((1, -1), centers):
+        n = int(0.032 / step)
+        seen = set()
+        for i in range(-n, n + 1):
+            for k in range(-n // 2, n // 2 + 1):
+                x, z = c.x + i * step, c.z + k * step
+                start = Vector((x, -0.4, z))
+                e = ball.ray_cast(start, Vector((0, 1, 0)))
+                if e[0] is None:
+                    continue
+                h = skin.ray_cast(start, Vector((0, 1, 0)))
+                if h[0] is None or e[3] < h[3]:
+                    seen.add((i, k))
+        pts = [(c.x + i * step, c.z + k * step) for i, k in seen
+               if any((i + di, k + dk) not in seen for di, dk in ((1, 0), (-1, 0), (0, 1), (0, -1)))]
+        openings.append(pts)
+    for e in bm.edges:
+        m = (e.verts[0].co + e.verts[1].co) / 2
+        if e.is_boundary and m.y < -0.05 and abs(m.x) < 0.04 and 1.56 < m.z < 1.60:
+            mouth += [(v.co.x, v.co.z) for v in e.verts]
+    tip = min((v.co for v in bm.verts if abs(v.co.x) < 0.003 and 1.60 < v.co.z < 1.64), key=lambda p: p.y)
+    bm.free()
+    # The irises face along each eye's gaze, turned up as the eyes are.
+    gaze = Matrix.Rotation(math.radians(-6), 3, "X") @ Vector((0, -1, 0))
+    irises = []
+    for side, c in zip((1, -1), centers):
+        vs = [v.co for v in eyes.data.vertices if v.co.x * side > 0]
+        vs.sort(key=lambda p: -(p - c).dot(gaze))
+        front = vs[: max(3, len(vs) // 40)]
+        f = sum(front, Vector()) / len(front)
+        irises.append((f.x, f.z))
+    width = max(max(abs(x) for x, _ in o) - min(abs(x) for x, _ in o) for o in openings)
+    return {"openings": openings, "mouth": mouth, "nose_tip": tip.z, "irises": irises,
+            "iris_radius": IRIS_SHARE * width}
 
 
-def textured(name, image, uv="UVMap"):
-    """A material sampling `image` through UV map `uv`; returns the
-    material, its node tree, and the image's color output."""
+def projected(name, pixels, rect):
+    """A material that paints `pixels` (RGBA, linear, rows bottom to top)
+    over each surface point's (x, z) in `rect`, as seen from in front.
+    Returns the material, its node tree, the painted color, and the
+    position's components."""
+    import numpy as np
+
+    h, w = pixels.shape[:2]
+    img = bpy.data.images.new(name, w, h, alpha=True, float_buffer=True)
+    img.colorspace_settings.name = "Linear Rec.709"
+    img.pixels.foreach_set(np.ascontiguousarray(pixels, dtype=np.float32).ravel())
     m = bpy.data.materials.new(name)
     m.use_nodes = True
     nt = m.node_tree
-    uvn = nt.nodes.new("ShaderNodeUVMap")
-    uvn.uv_map = uv
+    geo = nt.nodes.new("ShaderNodeNewGeometry")
+    sep = nt.nodes.new("ShaderNodeSeparateXYZ")
+    nt.links.new(geo.outputs["Position"], sep.inputs[0])
+    x0, x1, z0, z1 = rect
+    comb = nt.nodes.new("ShaderNodeCombineXYZ")
+    for axis, lo, hi, slot in (("X", x0, x1, 0), ("Z", z0, z1, 1)):
+        mr = nt.nodes.new("ShaderNodeMapRange")
+        mr.clamp = False
+        nt.links.new(sep.outputs[axis], mr.inputs["Value"])
+        mr.inputs["From Min"].default_value = lo
+        mr.inputs["From Max"].default_value = hi
+        nt.links.new(mr.outputs["Result"], comb.inputs[slot])
     tex = nt.nodes.new("ShaderNodeTexImage")
-    tex.image = image
-    nt.links.new(uvn.outputs["UV"], tex.inputs["Vector"])
-    nt.nodes["Principled BSDF"].inputs["Roughness"].default_value = 0.6
-    return m, nt, tex.outputs["Color"]
+    tex.image = img
+    tex.extension = "EXTEND"
+    tex.interpolation = "Cubic"
+    nt.links.new(comb.outputs[0], tex.inputs["Vector"])
+    bsdf = nt.nodes["Principled BSDF"]
+    bsdf.inputs["Roughness"].default_value = 0.6
+    return m, nt, tex.outputs["Color"], sep
 
 
-def face_material(obj):
-    """Alice's skin over the base's painted face: its lips, brows' shadow,
-    and shading, scaled to her tone, warmed on the cheeks, nose, and lips."""
-    import numpy as np
-
-    image = base_image(obj)
-    px = np.array(image.pixels[:], dtype=np.float32).reshape(-1, 4)[:, :3]
-    # The pixels are stored sRGB-encoded; the shader samples them linear.
-    px = np.where(px <= 0.04045, px / 12.92, ((px + 0.055) / 1.055) ** 2.4)
-    # The base's typical skin, from its brighter half.
-    lum = px.mean(axis=1)
-    typical = px[lum > np.median(lum)].mean(axis=0)
-    target = linear(PALETTE["skin"])
-    factor = tuple(min(6.0, t / max(c, 1e-4)) for t, c in zip(target, typical))
-    m, nt, color = textured("face_skin", image)
-    # A third of the way toward the typical tone: the base's painted
-    # contours are a superhero's; Alice's are softer.
-    soft = nt.nodes.new("ShaderNodeMix")
-    soft.data_type = "RGBA"
-    soft.inputs["Factor"].default_value = 0.5
-    nt.links.new(color, soft.inputs["A"])
-    soft.inputs["B"].default_value = (*typical.tolist(), 1)
-    # No painted shadow darker than two thirds of her tone: the base's deep
-    # nostrils and mouth corners read as spots at a game's distance.
-    floor = nt.nodes.new("ShaderNodeMix")
-    floor.data_type = "RGBA"
-    floor.blend_type = "LIGHTEN"
-    floor.inputs["Factor"].default_value = 1.0
-    nt.links.new(soft.outputs["Result"], floor.inputs["A"])
-    floor.inputs["B"].default_value = (*(typical * 0.82).tolist(), 1)
-    soft = floor
-    mul = nt.nodes.new("ShaderNodeMix")
-    mul.data_type = "RGBA"
-    mul.blend_type = "MULTIPLY"
-    mul.inputs["Factor"].default_value = 1.0
-    nt.links.new(soft.outputs["Result"], mul.inputs["A"])
-    mul.inputs["B"].default_value = (*factor, 1)
-    attr = nt.nodes.new("ShaderNodeAttribute")
-    attr.attribute_name = "warm"
-    sep = nt.nodes.new("ShaderNodeSeparateColor")
-    nt.links.new(attr.outputs["Color"], sep.inputs["Color"])
-    scale = nt.nodes.new("ShaderNodeMath")
-    scale.operation = "MULTIPLY"
-    nt.links.new(sep.outputs[0], scale.inputs[0])
-    scale.inputs[1].default_value = 0.45
-    warm = nt.nodes.new("ShaderNodeMix")
-    warm.data_type = "RGBA"
-    warm.blend_type = "MULTIPLY"
-    nt.links.new(scale.outputs[0], warm.inputs["Factor"])
-    nt.links.new(mul.outputs["Result"], warm.inputs["A"])
-    warm.inputs["B"].default_value = (*linear(PALETTE["blush"]), 1)
-    # The lips: a soft rose over the base's own lip shading.
-    lips = nt.nodes.new("ShaderNodeMath")
-    lips.operation = "MULTIPLY"
-    nt.links.new(sep.outputs[1], lips.inputs[0])
-    lips.inputs[1].default_value = 0.55
-    rose = nt.nodes.new("ShaderNodeMix")
-    rose.data_type = "RGBA"
-    rose.blend_type = "MULTIPLY"
-    nt.links.new(lips.outputs[0], rose.inputs["Factor"])
-    nt.links.new(warm.outputs["Result"], rose.inputs["A"])
-    rose.inputs["B"].default_value = (*linear(PALETTE["lips"]), 1)
-    # The lash lines.
-    lash = nt.nodes.new("ShaderNodeMix")
-    lash.data_type = "RGBA"
-    nt.links.new(sep.outputs[2], lash.inputs["Factor"])
-    nt.links.new(rose.outputs["Result"], lash.inputs["A"])
-    lash.inputs["B"].default_value = (*linear(PALETTE["lash"]), 1)
-    nt.links.new(lash.outputs["Result"], nt.nodes["Principled BSDF"].inputs["Base Color"])
+def face_material(obj, pixels):
+    """Alice's hand-painted face (`alice_paint.face`), projected from the
+    front onto the face; the back and sides of the head and neck take the
+    side skin tone, so the front's features don't show through."""
+    m, nt, color, sep = projected("face_skin", pixels, alice_paint.FACE_RECT)
+    front = nt.nodes.new("ShaderNodeMapRange")
+    front.interpolation_type = "SMOOTHSTEP"
+    nt.links.new(sep.outputs["Y"], front.inputs["Value"])
+    front.inputs["From Min"].default_value = 0.005
+    front.inputs["From Max"].default_value = -0.035
+    mix = nt.nodes.new("ShaderNodeMix")
+    mix.data_type = "RGBA"
+    nt.links.new(front.outputs["Result"], mix.inputs["Factor"])
+    mix.inputs["A"].default_value = (*linear(alice_paint.PALETTE["skin_side"]), 1)
+    nt.links.new(color, mix.inputs["B"])
+    nt.links.new(mix.outputs["Result"], nt.nodes["Principled BSDF"].inputs["Base Color"])
     obj.data.materials.clear()
     obj.data.materials.append(m)
 
 
-def eye_material(obj):
-    """The base's eye texture: sclera, a brown iris, and a pupil, with more
-    contrast and a whiter white, so the eyes read at a game's distance."""
-    m, nt, color = textured("eyes", base_image(obj))
-    bc = nt.nodes.new("ShaderNodeBrightContrast")
-    bc.inputs["Bright"].default_value = 0.06
-    bc.inputs["Contrast"].default_value = 0.45
-    nt.links.new(color, bc.inputs["Color"])
-    nt.links.new(bc.outputs["Color"], nt.nodes["Principled BSDF"].inputs["Base Color"])
+def eye_material(obj, pixels):
+    """Alice's painted eyes (`alice_paint.eyes`), projected from the front."""
+    m, nt, color, _ = projected("eyes", pixels, alice_paint.EYE_RECT)
+    nt.links.new(color, nt.nodes["Principled BSDF"].inputs["Base Color"])
     obj.data.materials.clear()
     obj.data.materials.append(m)
 
@@ -1757,6 +2015,11 @@ def to_object(M, arm):
     me = bpy.data.meshes.new("Alice")
     me.from_pydata([tuple(v) for v in M.v], [], [list(f) for f in M.f])
     me.update()
+    if M.uv:
+        layer = me.uv_layers.new(name="hairuv")
+        for poly, uv in zip(me.polygons, M.uv):
+            for li, t in zip(poly.loop_indices, uv):
+                layer.data[li].uv = t
     obj = bpy.data.objects.new("Alice", me)
     bpy.context.scene.collection.objects.link(obj)
     names = sorted(set(M.m))
@@ -1788,11 +2051,11 @@ def to_object(M, arm):
     return obj
 
 
-def join_head(obj, head, eyes):
-    """Joins the head and eyes into Alice's object, at most four influences
-    a vertex, normalized."""
+def join_head(obj, head, eyes, cards):
+    """Joins the head, eyes, and hair cards into Alice's object, at most
+    four influences a vertex, normalized."""
     bpy.ops.object.select_all(action="DESELECT")
-    for o in (obj, head, eyes):
+    for o in (obj, head, eyes, cards):
         o.select_set(True)
     bpy.context.view_layer.objects.active = obj
     bpy.ops.object.join()
@@ -1808,16 +2071,39 @@ def join_head(obj, head, eyes):
 
 
 def drop_ears(head):
-    """Removes the ears and the skull's sides behind them once the hair is
-    fitted: her long hair covers them, and they would only poke through."""
+    """Presses the ears flat once the hair is fitted (her long hair covers
+    them, and they would only poke through), and removes the inside of the
+    mouth."""
     bm = bmesh.new()
     bm.from_mesh(head.data)
 
     def ear(c):
         return abs(c.x) > 0.064 and 1.585 < c.z < 1.715 and c.y > -0.03
 
-    gone = [f for f in bm.faces if any(ear(v.co) for v in f.verts)]
-    bmesh.ops.delete(bm, geom=gone, context="FACES")
+    # Pressed flat to the skull rather than removed, so no hole shows
+    # between the locks.
+    for v in bm.verts:
+        if ear(v.co):
+            v.co.x = math.copysign(min(abs(v.co.x), 0.060), v.co.x)
+    # The inside of the mouth, which the closed lips hide from every side:
+    # it would only take atlas space.
+    from mathutils.bvhtree import BVHTree
+
+    tree = BVHTree.FromBMesh(bm)
+    looks = [Vector(d).normalized() for d in ((0, 1, 0), (0.7, 1, 0), (-0.7, 1, 0), (0, 1, 0.7), (0, 1, -0.7))]
+
+    def hidden(f):
+        c = f.calc_center_median()
+        if not (abs(c.x) < 0.035 and 1.55 < c.z < 1.62 and c.y > -0.105):
+            return False
+        for d in looks:
+            hit = tree.ray_cast(c - d * 0.3, d)
+            if hit[0] is None or (hit[0] - c).length < 0.0015:
+                return False
+        return True
+
+    inside = [f for f in bm.faces if hidden(f)]
+    bmesh.ops.delete(bm, geom=inside, context="FACES")
     bmesh.ops.delete(bm, geom=[v for v in bm.verts if not v.link_faces], context="VERTS")
     bm.to_mesh(head.data)
     bm.free()
@@ -1869,31 +2155,70 @@ def check_weights(obj):
 
 
 def unwrap(obj, lod):
-    """Smart-project UVs; the face gets three times the texel density."""
+    """Smart-project UVs for everything but the hair cards, the face at
+    FACE_TEXELS times the texel density, packed above the atlas's bottom
+    band (`HAIR_BAND`); the cards map onto the hair strips painted in that
+    band, so they share its texels rather than each taking its own."""
     me = obj.data
-    head = {i for i, p in enumerate(me.polygons) if obj.material_slots[p.material_index].name in
-            ("face_skin", "eyes", "glint", "brow")
-            and sum(me.vertices[k].co.z for k in p.vertices) / len(p.vertices) > 1.50}
-    verts = {k for i in head for k in me.polygons[i].vertices}
-    saved = {k: me.vertices[k].co.copy() for k in verts}
+    slot = {i: s.material.name for i, s in enumerate(obj.material_slots)}
+    card_ids = {p.index for p in me.polygons if slot[p.material_index] == "hair_card"}
+    saved = {}
     center = Vector((0, -0.006, 1.646))
+    # The face takes the most, the rest of the head (under the hair) little,
+    # blended smoothly so the islands don't tear between them.
+    verts = {k for p in me.polygons if slot[p.material_index] in ("face_skin", "eyes") for k in p.vertices}
     for k in verts:
-        me.vertices[k].co = center + (me.vertices[k].co - center) * 3.0
+        co = me.vertices[k].co
+        if co.z < 1.50:
+            continue
+        face = smoothstep(-0.01, -0.045, co.y) * smoothstep(1.52, 1.56, co.z)
+        scale = lerp(0.8, FACE_TEXELS, face)
+        saved[k] = co.copy()
+        me.vertices[k].co = center + (co - center) * scale
     atlas = me.uv_layers.new(name="atlas")
     me.uv_layers.active = atlas
     atlas.active_render = True
+    # Select everything but the cards (vertices too, which the selection
+    # follows in edit mode).
+    for v in me.vertices:
+        v.select = False
+    for e in me.edges:
+        e.select = False
+    for p in me.polygons:
+        p.select = p.index not in card_ids
+        if p.select:
+            for k in p.vertices:
+                me.vertices[k].select = True
     bpy.ops.object.select_all(action="DESELECT")
     bpy.context.view_layer.objects.active = obj
     obj.select_set(True)
     bpy.ops.object.mode_set(mode="EDIT")
-    bpy.ops.mesh.select_all(action="SELECT")
     margin = 4.0 / lod["tex"]
     bpy.ops.uv.smart_project(angle_limit=math.radians(60), island_margin=margin, area_weight=0.0,
                              scale_to_bounds=False)
-    bpy.ops.uv.pack_islands(margin=margin, rotate=True)
     bpy.ops.object.mode_set(mode="OBJECT")
     for k, co in saved.items():
         me.vertices[k].co = co
+    band = HAIR_BAND
+    # The mode switches replace the layers' data; look them up again.
+    atlas = me.uv_layers["atlas"]
+    hair = me.uv_layers["hairuv"]
+    # Stretch the projected islands over the space above the band, then
+    # pack them into it.
+    us = [d.uv[0] for p in me.polygons if p.index not in card_ids for d in (atlas.data[li] for li in p.loop_indices)]
+    vs = [d.uv[1] for p in me.polygons if p.index not in card_ids for d in (atlas.data[li] for li in p.loop_indices)]
+    u0, u1, v0, v1 = min(us), max(us), min(vs), max(vs)
+    for p in me.polygons:
+        for li in p.loop_indices:
+            if p.index in card_ids:
+                x, y = hair.data[li].uv
+                atlas.data[li].uv = (x, y * band)
+            else:
+                u, v = atlas.data[li].uv
+                atlas.data[li].uv = ((u - u0) / (u1 - u0), band + (1 - band) * (v - v0) / (v1 - v0))
+    bpy.ops.object.mode_set(mode="EDIT")
+    bpy.ops.uv.pack_islands(udim_source="ORIGINAL_AABB", margin=margin, rotate=True)
+    bpy.ops.object.mode_set(mode="OBJECT")
 
 
 def bake(obj, lod):
@@ -1919,6 +2244,13 @@ def bake(obj, lod):
     bpy.ops.object.select_all(action="DESELECT")
     obj.select_set(True)
     bpy.context.view_layer.objects.active = obj
+    # The cards bake opaque; their texels are replaced by the strips.
+    for slot in obj.material_slots:
+        nt = slot.material.node_tree
+        bsdf = nt.nodes["Principled BSDF"]
+        if bsdf.inputs["Alpha"].links:
+            nt.links.remove(bsdf.inputs["Alpha"].links[0])
+            bsdf.inputs["Alpha"].default_value = 1.0
     for kind, args in (("color", dict(type="DIFFUSE", pass_filter={"COLOR"})), ("ao", dict(type="AO")),
                        ("normal", dict(type="NORMAL", normal_space="OBJECT")),
                        ("mask", dict(type="EMIT"))):
@@ -1926,7 +2258,7 @@ def bake(obj, lod):
             nt = slot.material.node_tree
             if kind == "mask":
                 # The face's mask: its materials glow white for this pass.
-                face = slot.material.name.split(".")[0] in ("face_skin", "eyes", "glint", "brow")
+                face = slot.material.name.split(".")[0] in ("face_skin", "eyes")
                 bsdf = nt.nodes["Principled BSDF"]
                 bsdf.inputs["Emission Color"].default_value = (1, 1, 1, 1) if face else (0, 0, 0, 1)
                 bsdf.inputs["Emission Strength"].default_value = 1.0
@@ -1955,8 +2287,16 @@ def bake(obj, lod):
     # Fewer levels a channel than eight bits: soft shading shows no banding
     # at a character's size on screen, and the atlas compresses far better.
     srgb = np.round(np.clip(srgb, 0, 1) * LEVELS) / LEVELS
-    out = np.concatenate([srgb, np.ones_like(srgb[..., :1])], axis=-1)
-    final = bpy.data.images.new("Alice_BaseColor", size, size, alpha=False)
+    alpha = np.ones_like(srgb[..., :1])
+    # The hair strips fill the bottom band, alpha and all.
+    rows = int(round(HAIR_BAND * size))
+    strips = alice_paint.hair_strips(size, rows)
+    lin = np.clip(strips[..., :3], 0, 1)
+    band = np.where(lin <= 0.0031308, lin * 12.92, 1.055 * np.power(lin, 1 / 2.4) - 0.055)
+    srgb[:rows] = np.round(band * LEVELS) / LEVELS
+    alpha[:rows, :, 0] = np.round(strips[..., 3] * LEVELS) / LEVELS
+    out = np.concatenate([srgb, alpha], axis=-1)
+    final = bpy.data.images.new("Alice_BaseColor", size, size, alpha=True)
     final.colorspace_settings.name = "sRGB"
     final.pixels[:] = out.reshape(-1).tolist()
     final.pack()
@@ -1964,20 +2304,29 @@ def bake(obj, lod):
 
 
 def finish(obj, image):
-    """One material sampling the baked atlas."""
-    m = bpy.data.materials.new("alice")
-    m.use_nodes = True
-    nt = m.node_tree
-    bsdf = nt.nodes["Principled BSDF"]
-    bsdf.inputs["Roughness"].default_value = 0.85
-    tex = nt.nodes.new("ShaderNodeTexImage")
-    tex.image = image
-    nt.links.new(tex.outputs["Color"], bsdf.inputs["Base Color"])
+    """Two materials sampling the baked atlas: `alice`, opaque, and
+    `alice_hair` for the cards, which the atlas's alpha cuts
+    (`character_admit.py` writes it as an alpha-masked material)."""
+    cards = {p.index for p in obj.data.polygons if obj.material_slots[p.material_index].name == "hair_card"}
+    mats = []
+    for name in ("alice", "alice_hair"):
+        m = bpy.data.materials.new(name)
+        m.use_nodes = True
+        nt = m.node_tree
+        bsdf = nt.nodes["Principled BSDF"]
+        bsdf.inputs["Roughness"].default_value = 0.85
+        tex = nt.nodes.new("ShaderNodeTexImage")
+        tex.image = image
+        nt.links.new(tex.outputs["Color"], bsdf.inputs["Base Color"])
+        # Both read the atlas's alpha, so the exporter writes one RGBA image.
+        nt.links.new(tex.outputs["Alpha"], bsdf.inputs["Alpha"])
+        mats.append(m)
     obj.data.materials.clear()
-    obj.data.materials.append(m)
+    for m in mats:
+        obj.data.materials.append(m)
     for p in obj.data.polygons:
-        p.material_index = 0
-    # Only the atlas ships; the base's own UV map sampled its textures.
+        p.material_index = 1 if p.index in cards else 0
+    # Only the atlas ships; the other UV maps sampled the paintings.
     for layer in list(obj.data.uv_layers):
         if layer.name != "atlas":
             obj.data.uv_layers.remove(layer)
@@ -2037,6 +2386,7 @@ def main():
     M = alice.build(head, eyes)
     drop_ears(head)
     obj = to_object(M, arm)
+    cards = to_object(alice.C, arm)
     parts = {}
     for f, tag in zip(M.f, M.tag):
         parts[tag] = parts.get(tag, 0) + len(f) - 2
@@ -2048,7 +2398,8 @@ def main():
         parts = {k: v * 4 ** lod["subdiv"] for k, v in parts.items()}
     parts["head"] = sum(len(p.vertices) - 2 for p in head.data.polygons)
     parts["eyes"] = sum(len(p.vertices) - 2 for p in eyes.data.polygons)
-    obj = join_head(obj, head, eyes)
+    parts["cards"] = sum(len(p.vertices) - 2 for p in cards.data.polygons)
+    obj = join_head(obj, head, eyes, cards)
     smooth(obj)
     check_weights(obj)
     tris = sum(len(p.vertices) - 2 for p in obj.data.polygons)

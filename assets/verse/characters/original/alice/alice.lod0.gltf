@@ -1374,7 +1374,7 @@
     59,
     58
    ],
-   "inverseBindMatrices": 6
+   "inverseBindMatrices": 12
   }
  ],
  "meshes": [
@@ -1392,6 +1392,18 @@
      "indices": 5,
      "material": 0,
      "mode": 4
+    },
+    {
+     "attributes": {
+      "POSITION": 6,
+      "NORMAL": 7,
+      "TEXCOORD_0": 8,
+      "JOINTS_0": 9,
+      "WEIGHTS_0": 10
+     },
+     "indices": 11,
+     "material": 1,
+     "mode": 4
     }
    ]
   }
@@ -1400,6 +1412,19 @@
   {
    "name": "alice",
    "doubleSided": true,
+   "pbrMetallicRoughness": {
+    "baseColorTexture": {
+     "index": 0
+    },
+    "metallicFactor": 0.0,
+    "roughnessFactor": 0.85
+   }
+  },
+  {
+   "name": "alice_hair",
+   "doubleSided": true,
+   "alphaMode": "MASK",
+   "alphaCutoff": 0.5,
    "pbrMetallicRoughness": {
     "baseColorTexture": {
      "index": 0
@@ -1434,7 +1459,7 @@
   {
    "bufferView": 0,
    "componentType": 5126,
-   "count": 58065,
+   "count": 42954,
    "type": "VEC3",
    "min": [
     -0.850361704826355,
@@ -1450,35 +1475,81 @@
   {
    "bufferView": 1,
    "componentType": 5126,
-   "count": 58065,
+   "count": 42954,
    "type": "VEC3"
   },
   {
    "bufferView": 2,
    "componentType": 5126,
-   "count": 58065,
+   "count": 42954,
    "type": "VEC2"
   },
   {
    "bufferView": 3,
    "componentType": 5121,
-   "count": 58065,
+   "count": 42954,
    "type": "VEC4"
   },
   {
    "bufferView": 4,
    "componentType": 5126,
-   "count": 58065,
+   "count": 42954,
    "type": "VEC4"
   },
   {
    "bufferView": 5,
    "componentType": 5123,
-   "count": 269988,
+   "count": 196296,
    "type": "SCALAR"
   },
   {
    "bufferView": 6,
+   "componentType": 5126,
+   "count": 8342,
+   "type": "VEC3",
+   "min": [
+    -0.19670617580413818,
+    1.177718997001648,
+    -0.17248830199241638
+   ],
+   "max": [
+    0.19374072551727295,
+    1.8040894269943237,
+    0.1858331710100174
+   ]
+  },
+  {
+   "bufferView": 7,
+   "componentType": 5126,
+   "count": 8342,
+   "type": "VEC3"
+  },
+  {
+   "bufferView": 8,
+   "componentType": 5126,
+   "count": 8342,
+   "type": "VEC2"
+  },
+  {
+   "bufferView": 9,
+   "componentType": 5121,
+   "count": 8342,
+   "type": "VEC4"
+  },
+  {
+   "bufferView": 10,
+   "componentType": 5126,
+   "count": 8342,
+   "type": "VEC4"
+  },
+  {
+   "bufferView": 11,
+   "componentType": 5123,
+   "count": 31320,
+   "type": "SCALAR"
+  },
+  {
+   "bufferView": 12,
    "componentType": 5126,
    "count": 65,
    "type": "MAT4"
@@ -1488,48 +1559,84 @@
   {
    "buffer": 0,
    "byteOffset": 0,
-   "byteLength": 696780,
+   "byteLength": 515448,
    "target": 34962
   },
   {
    "buffer": 0,
-   "byteOffset": 696780,
-   "byteLength": 696780,
+   "byteOffset": 515448,
+   "byteLength": 515448,
    "target": 34962
   },
   {
    "buffer": 0,
-   "byteOffset": 1393560,
-   "byteLength": 464520,
+   "byteOffset": 1030896,
+   "byteLength": 343632,
    "target": 34962
   },
   {
    "buffer": 0,
-   "byteOffset": 1858080,
-   "byteLength": 232260,
+   "byteOffset": 1374528,
+   "byteLength": 171816,
    "target": 34962
   },
   {
    "buffer": 0,
-   "byteOffset": 2090340,
-   "byteLength": 929040,
+   "byteOffset": 1546344,
+   "byteLength": 687264,
    "target": 34962
   },
   {
    "buffer": 0,
-   "byteOffset": 3019380,
-   "byteLength": 539976,
+   "byteOffset": 2233608,
+   "byteLength": 392592,
    "target": 34963
   },
   {
    "buffer": 0,
-   "byteOffset": 3559356,
+   "byteOffset": 2626200,
+   "byteLength": 100104,
+   "target": 34962
+  },
+  {
+   "buffer": 0,
+   "byteOffset": 2726304,
+   "byteLength": 100104,
+   "target": 34962
+  },
+  {
+   "buffer": 0,
+   "byteOffset": 2826408,
+   "byteLength": 66736,
+   "target": 34962
+  },
+  {
+   "buffer": 0,
+   "byteOffset": 2893144,
+   "byteLength": 33368,
+   "target": 34962
+  },
+  {
+   "buffer": 0,
+   "byteOffset": 2926512,
+   "byteLength": 133472,
+   "target": 34962
+  },
+  {
+   "buffer": 0,
+   "byteOffset": 3059984,
+   "byteLength": 62640,
+   "target": 34963
+  },
+  {
+   "buffer": 0,
+   "byteOffset": 3122624,
    "byteLength": 4160
   }
  ],
  "buffers": [
   {
-   "byteLength": 3563516,
+   "byteLength": 3126784,
    "uri": "alice.lod0.bin"
   }
  ]
