@@ -808,3 +808,84 @@ fn a_reflect_occurrence_runs_the_reflection_and_meters_its_cost() {
         std::thread::sleep(Duration::from_millis(20));
     }
 }
+
+#[test]
+fn her_morning_plan_is_visible_and_the_owners_request_replans_it() {
+    use crate::task::agent_plan;
+    let dir = tempfile::tempdir().unwrap();
+    let store = Store::new(&dir.path().join("host"), "alice").unwrap();
+    let agents = host(&dir, vec![turn(Vec::new(), "Looked at it.")]).with_facts(Arc::new(Capacity));
+    let memory = Memory::new(store.clone(), secret_screen::Screen::shapes());
+    let insight = memory
+        .add(
+            MemoryKind::Insight,
+            Author::Agent,
+            "The owner reviews changes after lunch.",
+            vec!["journal:1".into()],
+            clock() - 100,
+        )
+        .unwrap();
+    let draft = json!({"blocks": [{
+        "source": format!("memory:{insight}"),
+        "node": agent_plan::DESK,
+        "start": "13:00",
+        "minutes": 60,
+        "title": "Bring the morning's changes for review",
+    }]})
+    .to_string();
+    let calls = Arc::new(Mutex::new(0_usize));
+    let counted = calls.clone();
+    let planner: agent_plan::ServicesFactory = Arc::new(move |_: &Store| {
+        *counted.lock().unwrap() += 1;
+        Ok(agent_plan::Services {
+            writer: Box::new(agent_plan::Scripted::new([draft.clone()])),
+            judge: Box::new(agent_plan::Answers::default()),
+        })
+    });
+    let agents = agents.with_planner(planner);
+    let jobs = Jobs::new(store.clone());
+    let then = clock() - 2 * 86_400;
+    for name in ["plan", "nightly-check"] {
+        jobs.add(
+            agent_jobs::template(name, "", None, None, 0, then).unwrap(),
+            then,
+        )
+        .unwrap();
+    }
+    jobs.edit("plan", agent_jobs::Edit::On, then).unwrap();
+    // The check is on, but its slot passed before it was: it fires
+    // tomorrow, and today's plan holds it.
+    jobs.edit("nightly-check", agent_jobs::Edit::On, clock())
+        .unwrap();
+    agents.tick();
+    let plan = until(&agents, |v| v.plan.is_some()).plan.unwrap();
+    let sources: Vec<&str> = plan.blocks.iter().map(|b| b.source.as_str()).collect();
+    let insight_source = format!("memory:{insight}");
+    assert_eq!(sources, ["job:nightly-check", insight_source.as_str()]);
+    // The occurrence asked for one draft; following the plan asked
+    // nothing, since no block is under way at midnight.
+    assert_eq!(*calls.lock().unwrap(), 1);
+    // The owner's request interrupts at once, by code.
+    ask(&agents, "k-owner-1", "look at the failing deploy", false).unwrap();
+    let replanned = until(&agents, |v| {
+        v.plan.as_ref().is_some_and(|p| !p.replans.is_empty())
+    })
+    .plan
+    .unwrap();
+    let current = replanned.current_block().unwrap();
+    assert_eq!(
+        (current.source.as_str(), current.start),
+        ("request:kowner1", 0)
+    );
+    assert_eq!(
+        replanned.replans[0].kind,
+        coder_host::access::day_plan::Replanned::Interrupt
+    );
+    let journal = store.journal(200).unwrap();
+    assert!(
+        journal.iter().any(
+            |e| e.kind == Kind::Plan && e.text.starts_with("day plan for 2026-10-05: 2 blocks")
+        )
+    );
+    assert!(journal.iter().any(|e| e.text.contains("react_now by code")));
+}

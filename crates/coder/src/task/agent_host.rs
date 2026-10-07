@@ -242,6 +242,10 @@ pub struct Agents {
     reflector: super::agent_reflect::ServicesFactory,
     /// The agents reflecting now; a second occurrence waits for the first.
     reflecting: Arc<Mutex<BTreeSet<String>>>,
+    /// What her day plan drafts, decomposes, and reacts with.
+    planner: super::agent_plan::ServicesFactory,
+    /// The agents with a plan call under way; one at a time.
+    planning: Arc<Mutex<BTreeSet<String>>>,
     /// The agents whose engram stores this host has reconciled.
     reconciled: Arc<Mutex<BTreeSet<String>>>,
     /// What she plans, judges, and reports with in terminal mode.
@@ -317,6 +321,8 @@ impl Agents {
             briefing: super::agent_recall::Briefing::default_scored(),
             reflector: super::agent_reflect::default_factory(),
             reflecting: Arc::new(Mutex::new(BTreeSet::new())),
+            planner: super::agent_plan::default_factory(),
+            planning: Arc::default(),
             reconciled: Arc::default(),
             mind: super::agent_steer::default_mind(),
             relay_sync: super::agent_sync::Sweeper::new(Arc::new(super::agent_sync::Live)),
@@ -492,6 +498,22 @@ impl Agents {
                     && record.state == State::Paused
                 {
                     self.pause(agent, false, &principal.device)?;
+                }
+                // The owner's request always interrupts her day plan.
+                if let Ok((store, _)) = self.store(agent) {
+                    let source: String = key
+                        .chars()
+                        .filter(char::is_ascii_alphanumeric)
+                        .take(16)
+                        .collect();
+                    self.plan_event(
+                        &store,
+                        &super::agent_plan::Event::Owner {
+                            source: format!("request:{source}"),
+                            text: one_line(text),
+                        },
+                        (self.clock)(),
+                    );
                 }
                 self.ask(
                     key,
@@ -739,6 +761,7 @@ impl Agents {
             _ => None,
         };
         let service = service(store);
+        let plan = super::agent_plan::today(store, now);
         let shared = self.lock();
         let live = shared.live.get(&record.name);
         let doing = live.map_or(Doing::Idle, |l| l.doing);
@@ -799,6 +822,7 @@ impl Agents {
                 u32::try_from(jobs.len()).unwrap_or(0),
             ],
             candidates: u32::try_from(candidates).unwrap_or(0),
+            plan,
         }
     }
 
@@ -1600,15 +1624,23 @@ impl Agents {
                 .workspace_for(&record, None)
                 .map_or_else(|| PathBuf::from(&record.workspace), |(_, path)| path);
             let _ = agent_jobs::observe(&store, &path, self.facts.as_ref());
+            self.follow_plan(&store, &record, now);
             let Ok(fired) = agent_jobs::tick(&store, &record, &path, self.facts.as_ref(), now)
             else {
                 continue;
             };
+            let jobs = Jobs::new(store.clone()).load().unwrap_or_default();
             for occurrence in fired {
                 if let Some(trigger) = &occurrence.reflect {
                     self.reflect(&store, &occurrence.job, trigger, now);
                     continue;
                 }
+                if occurrence.plan {
+                    self.plan_day(&store, &occurrence.job, now);
+                    continue;
+                }
+                let event = plan::occurrence_event(&jobs, &occurrence.job, &occurrence.text);
+                let reacted = self.plan_event(&store, &event, now);
                 let workspace = Some(occurrence.workspace.clone())
                     .filter(|w| !w.is_empty() && self.workspaces.contains_key(w));
                 let key = format!("job-{}-{}-{now}", record.name, occurrence.job);
@@ -1626,6 +1658,7 @@ impl Agents {
                         fix_on_failure: occurrence.fix_on_failure,
                     },
                 );
+                self.hurry(&record.name, reacted.as_ref());
             }
         }
     }
@@ -1979,6 +2012,9 @@ fn wait<T>(answer: &Receiver<T>, cancel: &AtomicBool, limit: Duration) -> Option
 
 #[path = "agent_coder.rs"]
 mod coder_turn;
+
+#[path = "agent_host_plan.rs"]
+mod plan;
 
 #[cfg(test)]
 #[path = "agent_host_tests.rs"]

@@ -229,7 +229,7 @@ fn main() -> Result<(), String> {
     };
     let idle = InputState::default();
     let workshop = match view.split_once(':') {
-        Some((how @ ("alice" | "alice-door" | "alice-walk"), files)) => {
+        Some((how @ ("alice" | "alice-door" | "alice-walk" | "alice-board"), files)) => {
             Some(alice(&mut runtime, how, files, &idle)?)
         }
         _ => None,
@@ -460,6 +460,8 @@ fn studio(_: &mut WorldRuntime, _: &str, _: Option<usize>) -> Result<(), String>
 ///   stands the player.
 /// - `alice-door:FILE`: from just inside the front door, looking down the
 ///   great room at her.
+/// - `alice-board:FILE`: in the great room, facing her day plan's board on
+///   the west wall, from a view whose `plan` the board shows.
 /// - `alice-walk:FROM,TO`: from the door, a moment after the answer in TO
 ///   sends her from where FROM put her, so she is on her way.
 fn alice(
@@ -490,6 +492,7 @@ fn alice(
     };
     let mut workshop = read(first)?;
     runtime.set_studio_resident(workshop.seats());
+    runtime.set_studio_plan(workshop.plan().cloned());
     runtime.update_studio(true, 0.0);
     let floor = zones::everglade::layout::estate::floor();
     match how {
@@ -505,6 +508,12 @@ fn alice(
                 glam::Vec3::new(stand.x, floor, stand.z),
                 (-toward.x).atan2(-toward.z),
             )?;
+        }
+        "alice-board" => {
+            let ([bx, bz], _, _) = zones::everglade::layout::estate::PLAN_BOARD;
+            let [x, z] = OWNERS_HOUSE.world([bx + 6.4, bz + 1.2]);
+            let [tx, tz] = OWNERS_HOUSE.world([bx, bz]);
+            runtime.set_spawn(glam::Vec3::new(x, floor, z), (tx - x).atan2(tz - z))?;
         }
         _ => {
             let [x, z] = OWNERS_HOUSE.world([0.0, -12.6]);

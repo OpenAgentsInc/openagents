@@ -13,7 +13,8 @@
 //! [`ArmName::NoMemory`], an empty briefing; and [`ArmName::WordOverlap`],
 //! the baseline [`Memory::briefing`]. The day plan is a [`Planner`]:
 //! [`StandingJobs`] reads the standing jobs and waiting tasks from the
-//! fixture with no model, and phase D's plan plugs in as another.
+//! fixture with no model, and [`DayPlans`] adds the blocks a recorded
+//! morning draft makes through `agent_plan`'s checks.
 //!
 //! The [`FromBriefing`] and [`Canned`] answerers run with no model; [`Live`]
 //! asks the agent's model through the capacity book, under a cost cap, and
@@ -179,10 +180,10 @@ impl ArmName {
                 root: scratch.join(self.as_str()),
             }),
             Self::NoReflectionOrPlan => Box::new(NoReflectionOrPlan),
-            Self::NoReflection => Box::new(NoReflection::new(Box::new(StandingJobs))),
+            Self::NoReflection => Box::new(NoReflection::new(Box::new(DayPlans::new(None)))),
             Self::Full => Box::new(Full::new(
                 scratch.join(self.as_str()),
-                Box::new(StandingJobs),
+                Box::new(DayPlans::new(Some(scratch.join("full-plan")))),
             )),
         }
     }
@@ -390,6 +391,136 @@ impl Planner for StandingJobs {
             carried.push(format!("journal:{pos}"));
         }
         Ok(Briefing { text, carried })
+    }
+}
+
+/// The recorded morning draft over the fixture.
+#[derive(Clone, Debug, serde::Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct PlanScript {
+    pub schema: String,
+    pub fixture_digest: String,
+    /// When she plans, Unix seconds.
+    pub at: u64,
+    pub model: String,
+    /// The draft call's reply.
+    pub draft: serde_json::Value,
+}
+
+/// The plan script's schema.
+pub const PLAN_SCRIPT_SCHEMA: &str = "openagents.agent-plan-script.v1";
+
+const ALICE_V1_PLAN: &str = include_str!("../../fixtures/agent-plan/alice-interview-v1.json");
+
+impl PlanScript {
+    /// The recorded morning draft over the phase A fixture.
+    ///
+    /// # Errors
+    /// When it doesn't parse.
+    pub fn alice_v1() -> Result<Self, String> {
+        let script: Self = serde_json::from_str(ALICE_V1_PLAN)
+            .map_err(|e| format!("the recorded plan doesn't read: {e}"))?;
+        if script.schema != PLAN_SCRIPT_SCHEMA {
+            return Err(format!("the recorded plan isn't {PLAN_SCRIPT_SCHEMA}"));
+        }
+        Ok(script)
+    }
+}
+
+/// Phase D's day plan (`agent_plan`): [`StandingJobs`]' jobs in their
+/// slots, by code, and the blocks the recorded morning draft makes from her
+/// accepted insights, kept only when `agent_plan::draft`'s checks pass
+/// them. With insights (the full arm), they are the ones the recorded
+/// reflection stores; without (the no-reflection arm), the draft has no
+/// source to work and makes no call.
+pub struct DayPlans {
+    /// Where the recorded reflection runs, for the full arm.
+    reflect: Option<PathBuf>,
+    insights: Option<Vec<MemoryEntry>>,
+}
+
+impl DayPlans {
+    /// A day plan over the recorded reflection's insights, run under
+    /// `reflect`, or over none.
+    #[must_use]
+    pub fn new(reflect: Option<PathBuf>) -> Self {
+        Self {
+            reflect,
+            insights: None,
+        }
+    }
+
+    /// The plan the recorded draft makes over `fixture` at its morning.
+    ///
+    /// # Errors
+    /// When the scripts don't pin this fixture, or the draft fails.
+    pub fn made(&mut self, fixture: &Fixture) -> Result<super::agent_plan::Made, String> {
+        use super::agent_plan as plan;
+        let script = PlanScript::alice_v1()?;
+        if script.fixture_digest != fixture.gym.manifest.digest {
+            return Err(format!(
+                "the recorded plan pins fixture {}, and this fixture is {}",
+                script.fixture_digest, fixture.gym.manifest.digest
+            ));
+        }
+        if self.insights.is_none() {
+            self.insights = Some(match &self.reflect {
+                Some(root) => reflect_fixture(fixture, root)?.1,
+                None => Vec::new(),
+            });
+        }
+        let memory: Vec<MemoryEntry> = self
+            .insights
+            .iter()
+            .flatten()
+            .filter(|e| e.at <= script.at)
+            .cloned()
+            .collect();
+        let tree = world_tree::everglade();
+        let known = world_tree::Known::new(fixture.agent(), tree);
+        let inputs = plan::Inputs {
+            agent: fixture.agent(),
+            now: script.at,
+            utc_offset: 0,
+            jobs: &[],
+            issues: &[],
+            queued: &[],
+            memory: &memory,
+            tree,
+            known: &known,
+            bound: plan::HOUSE,
+        };
+        let mut writer = plan::Scripted::new([script.draft.to_string()]);
+        plan::draft(&inputs, &mut writer, &secret_screen::Screen::shapes())
+    }
+}
+
+impl Planner for DayPlans {
+    fn plan(&mut self, fixture: &Fixture, ask: &Ask<'_>) -> Result<Briefing, String> {
+        let jobs = StandingJobs.plan(fixture, ask)?;
+        let made = self.made(fixture)?;
+        let today = &gym::eval::utc_from_unix(ask.as_of)[..10];
+        if made.plan.made_at > ask.as_of || made.plan.date != today || made.plan.idle() {
+            return Ok(jobs);
+        }
+        let mut text = format!(
+            "Your other blocks for {today} (drafted at {} from real work):\n",
+            coder_host::access::day_plan::clock(super::agent_plan::local(made.plan.made_at, 0).1)
+        );
+        let mut carried = Vec::new();
+        for block in &made.plan.blocks {
+            text.push_str(&format!(
+                "- {}-{} {} [{}]\n",
+                coder_host::access::day_plan::clock(block.start),
+                coder_host::access::day_plan::clock(block.end),
+                block.title,
+                block.source
+            ));
+            if block.source.starts_with("memory:") || block.source.starts_with("journal:") {
+                carried.push(block.source.clone());
+            }
+        }
+        Ok(joined(jobs, Briefing { text, carried }))
     }
 }
 

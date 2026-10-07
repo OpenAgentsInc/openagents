@@ -11638,7 +11638,7 @@
                     ]
                   }
                 ],
-                "summary": "Add nightly-check, watch-issues, keep-green, or reflect, off.",
+                "summary": "Add nightly-check, watch-issues, keep-green, reflect, or plan (her morning day plan), off.",
                 "effect": "local_write",
                 "runs_on": "connected_computer"
               }

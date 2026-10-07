@@ -255,8 +255,12 @@ fn seats_walk_to_their_station_and_skip_ahead_when_activity_outruns_them() {
 #[test]
 fn the_world_draws_seats_lamps_beacons_and_live_boards() {
     let idle = boards::live(None);
+    let plan_board = boards::plan_board(None);
     let mut studio = Studio::default();
-    assert_eq!(studio.mesh(Vec3::ZERO).faces.len(), idle.faces.len());
+    assert_eq!(
+        studio.mesh(Vec3::ZERO).faces.len(),
+        idle.faces.len() + plan_board.faces.len()
+    );
     studio.active = true;
     let mut waiting = seat("lead", 0, Activity::Waiting);
     waiting.task = Some("t1".into());

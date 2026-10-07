@@ -84,6 +84,19 @@ checker validates source pins and operator claims; it does not publish, verify
 indexing or paid conversion independently, or activate another capability.
 REV-05/REV-26 commercial joins apply only when their authorized lanes are used.
 
+## React-or-continue calibration and a live day plan (#10790)
+
+Alice's day plan asks Jev whether she reacts to an event
+(`questions/react-or-continue.json`), which has no live measurement yet.
+Run the calibration in
+`docs/decision-models/measurements/2026-10-07-react-or-continue.md` with a
+live Jev key and record the numbers there. Then turn her morning plan on
+(`openagents agent jobs alice add plan`, then `on plan`); the next 07:00
+drafts the day. Check the plan board on the great room's west wall and her
+F3 page, that every block names real work, and that a request you send
+re-plans from the block under way. A day costs about $0.10 at Sol list
+prices.
+
 ## Insight support calibration and a live reflection (#10789)
 
 Alice's reflection checks each insight with Jev

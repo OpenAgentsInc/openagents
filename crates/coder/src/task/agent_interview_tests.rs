@@ -467,3 +467,43 @@ fn the_live_answerer_stops_at_its_cost_cap() {
     assert!(refused.contains("cost cap"), "{refused}");
     assert_eq!(live.model.0.len(), 2);
 }
+
+#[test]
+fn the_day_plan_drafts_from_insights_only_when_reflection_stored_them() {
+    let fixture = Fixture::alice_v1().unwrap();
+    let scratch = tempfile::tempdir().unwrap();
+    let made = DayPlans::new(Some(scratch.path().join("reflect")))
+        .made(&fixture)
+        .unwrap();
+    assert!(made.called);
+    let sources: Vec<&str> = made.plan.blocks.iter().map(|b| b.source.as_str()).collect();
+    assert_eq!(sources, ["memory:55"], "{:?}", made.rejected);
+    assert_eq!(made.rejected.len(), 1);
+    assert!(made.rejected[0].1.contains("wasn't offered"));
+    // Without reflection there is nothing to draft from, and no call.
+    let bare = DayPlans::new(None).made(&fixture).unwrap();
+    assert!(!bare.called && bare.plan.idle());
+    let ask = Ask {
+        item_id: "plan/ten-am",
+        question: "What will you do at 10 AM?",
+        as_of: 1_790_586_000,
+    };
+    let full = ArmName::Full
+        .build(scratch.path())
+        .brief(&fixture, &ask)
+        .unwrap();
+    assert!(
+        full.text.contains(
+            "- 10:00-11:00 Rerun the verse release tests with a longer command bound [memory:55]"
+        ),
+        "{}",
+        full.text
+    );
+    assert!(full.carried.iter().any(|c| c == "memory:55"));
+    let no_reflection = ArmName::NoReflection
+        .build(scratch.path())
+        .brief(&fixture, &ask)
+        .unwrap();
+    assert!(no_reflection.text.contains("Your plan for 2026-09-28"));
+    assert!(!no_reflection.text.contains("Your other blocks"));
+}

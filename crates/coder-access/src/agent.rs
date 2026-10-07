@@ -205,6 +205,11 @@ pub struct AgentView {
     pub jobs: [u32; 2],
     /// Preferences it proposed that wait for the person.
     pub candidates: u32,
+    /// Today's plan, from `agents/NAME/plan.json`. Left out when there is
+    /// none, so an older client that refuses unknown fields still reads an
+    /// agent without one.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub plan: Option<crate::day_plan::DayPlan>,
 }
 
 /// `studio.agent.list`'s answer.

@@ -35,6 +35,7 @@ pub mod agent_jobs;
 pub mod agent_key;
 pub mod agent_memory;
 pub mod agent_place;
+pub mod agent_plan;
 pub mod agent_profile;
 pub mod agent_recall;
 pub mod agent_reflect;

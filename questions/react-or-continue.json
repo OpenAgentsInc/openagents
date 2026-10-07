@@ -1,0 +1,25 @@
+{
+  "v": 1,
+  "id": "openagents.react-or-continue.v1",
+  "name": "Whether a workshop agent reacts to an event or keeps to its day plan",
+  "summary": "Asks, for one event that happens while a workshop agent works a block of its day plan, whether it continues the block, reacts now, or takes the event up as the next block. Code decides the known cases before asking: the owner's request always interrupts, and a scheduled standing job fires in the slot the plan already holds. Reacting now or deferring re-plans from the current block on; continuing leaves the plan as it is, and the event's work waits in the agent's queue.",
+  "gate": "reaction",
+  "questions": {
+    "reaction": {
+      "type": "choice",
+      "instructions": "The workshop agent named in `agent` is working the block of its day plan in `current` (its title, the real work it comes from in `source`, and the time it ends in `until`); `next` is the block after it, if any, and `now` is the local time. The event in `event` just happened: its `what` says what it is, and `source` names the work it comes from. Should the agent stop and handle the event, take it up as the next block, or keep to the plan? Judge by urgency and by what waiting costs: a failure on the default branch that others build on, or anything that blocks the owner, is urgent; a new issue to work, a routine report, or anything that can wait an hour without harm isn't. An event that repeats or restates the current block's own work isn't a reason to stop.",
+      "criteria": {
+        "continue": "The event can wait or needs nothing from the agent today beyond what its queue already holds. Keep working the current block; the plan stays as it is.",
+        "react_now": "The event is urgent: waiting until the current block ends would let harm grow or keep the owner blocked. Stop the current block and handle the event now.",
+        "defer": "The event needs the agent's attention today but can wait until the current block ends. Finish the current block, then take the event up as the next block."
+      }
+    }
+  },
+  "policy": {
+    "v": 1,
+    "state_max_bytes": 8192,
+    "evidence": [
+      "docs/decision-models/measurements/2026-10-07-react-or-continue.md"
+    ]
+  }
+}

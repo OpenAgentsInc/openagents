@@ -1688,6 +1688,7 @@ impl App {
         }
         self.workshop.frame(&mut self.terminal);
         self.runtime.set_studio_resident(self.workshop.seats());
+        self.runtime.set_studio_plan(self.workshop.plan().cloned());
         // `--place`: stand the player there once, when Everglade is up.
         if in_glade && let Some([x, z, yaw]) = self.connection_options.place.take() {
             let y = self.runtime.player.pos.y + 1.0;
@@ -1771,6 +1772,7 @@ impl App {
             KeyCode::ArrowUp => PanelKey::Up,
             KeyCode::ArrowDown => PanelKey::Down,
             KeyCode::F2 => PanelKey::Memory,
+            KeyCode::F3 => PanelKey::Plan,
             KeyCode::F4 => PanelKey::Journal,
             KeyCode::F7 => PanelKey::Stop,
             KeyCode::F8 => PanelKey::Pause,

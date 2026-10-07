@@ -1,0 +1,24 @@
+{
+  "schema": "openagents.agent-plan-script.v1",
+  "fixture_digest": "5a13cd68aa2f48bebd0b29caf25f57bd48aaef2d0870706e2176c1d6380cb9ec",
+  "at": 1790578800,
+  "model": "recorded",
+  "draft": {
+    "blocks": [
+      {
+        "source": "memory:55",
+        "node": "everglade/knowledge-district/owners-house/great-room/console",
+        "start": "10:00",
+        "minutes": 60,
+        "title": "Rerun the verse release tests with a longer command bound"
+      },
+      {
+        "source": "issue:42",
+        "node": "everglade/knowledge-district/owners-house/great-room/workstation",
+        "start": "15:00",
+        "minutes": 60,
+        "title": "Work an issue nobody filed"
+      }
+    ]
+  }
+}

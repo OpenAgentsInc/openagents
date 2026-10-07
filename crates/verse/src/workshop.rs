@@ -17,8 +17,13 @@
 //! always shows, her transcript, a pending proposal when one waits, the
 //! input line, and the key strip. ENTER sends a request, or CONFIRMs a
 //! proposal on an empty line; ESC REJECTs it, or closes the panel. F2 shows
-//! her memory, F4 her journal, F7 stops her, and F8 pauses or resumes her,
-//! each of the last two only after CONFIRM.
+//! her memory, F3 her day plan, F4 her journal, F7 stops her, and F8 pauses
+//! or resumes her, each of the last two only after CONFIRM.
+//!
+//! Her day plan (`openagents.agent-day-plan.v1`) comes in the same view.
+//! While she isn't running a command or waiting for you, she walks to the
+//! spot the block under way names (`AliceSpot::of_node`); her walks stay in
+//! the great room. The plan board on its west wall shows the day.
 //!
 //! She does her work in Coder V1 (#10753): the host runs each request as a
 //! turn of her own Coder session, and Coder's approvals are her proposals.
@@ -51,6 +56,7 @@ use coder_ui::theme::Intensity;
 use glam::Vec3;
 use terminal_gfx::layout::PaneId;
 
+use crate::zones::everglade::layout::estate::AliceSpot;
 use crate::zones::everglade::studio::live::{ControlSocket, Transport};
 
 /// The workshop agent's name.
@@ -132,6 +138,8 @@ pub enum Page {
     Transcript,
     Memory,
     Journal,
+    /// Her day plan, from her view: no host read.
+    Plan,
 }
 
 /// An action that waits for CONFIRM.
@@ -459,7 +467,7 @@ fn page_lines(page: Page, value: &serde_json::Value) -> Vec<String> {
                 })
                 .collect()
         }
-        Page::Transcript => Vec::new(),
+        Page::Transcript | Page::Plan => Vec::new(),
     }
 }
 
@@ -1123,12 +1131,18 @@ impl Workshop {
             return Vec::new();
         }
         let activity = self.activity();
+        // Otherwise she works where the block under way puts her.
+        let planned = self
+            .plan()
+            .and_then(|plan| plan.current_block())
+            .and_then(|block| AliceSpot::of_node(&block.node))
+            .map_or(seat_wire::Station::Desk, AliceSpot::station);
         let station = match activity {
             Activity::Running | Activity::Testing | Activity::Editing => {
                 seat_wire::Station::Workbench
             }
             Activity::Waiting => seat_wire::Station::Podium,
-            _ => seat_wire::Station::Desk,
+            _ => planned,
         };
         vec![seat_wire::Seat {
             seat: NAME.into(),
@@ -1145,6 +1159,12 @@ impl Workshop {
                 .is_some_and(|v| v.state == "paused" || v.state == "stopped"),
             spend: seat_wire::Spend::default(),
         }]
+    }
+
+    /// Her day plan, as her host's view carries it.
+    #[must_use]
+    pub fn plan(&self) -> Option<&coder_access::day_plan::DayPlan> {
+        self.view.as_ref().and_then(|v| v.plan.as_ref())
     }
 
     /// The nameplate's third row: her last outcome, else her model.
@@ -1201,6 +1221,10 @@ impl Workshop {
                 lines
             }
             Page::Memory | Page::Journal => self.page_lines.iter().map(|l| ascii(l)).collect(),
+            Page::Plan => match self.view.as_ref().and_then(|v| v.plan.as_ref()) {
+                Some(plan) => plan.lines().iter().map(|l| ascii(l)).collect(),
+                None => vec!["No day plan today. Turn her plan job on to have one.".into()],
+            },
         }
     }
 
@@ -1374,7 +1398,7 @@ impl Workshop {
             "ENTER CONFIRM  ESC REJECT".to_string()
         } else {
             format!(
-                "ENTER SEND  ESC CLOSE  F2 MEMORY  F4 JOURNAL  F7 STOP  F8 {}  PGUP PGDN{}",
+                "ENTER SEND  ESC CLOSE  F2 MEMORY  F3 PLAN  F4 JOURNAL  F7 STOP  F8 {}  PGUP PGDN{}",
                 if paused { "RESUME" } else { "PAUSE" },
                 if self.busy() {
                     "  CTRL+` HER PANE (ANY KEY TAKES IT BACK)"
@@ -1404,7 +1428,7 @@ impl Workshop {
                 agent: NAME.into(),
                 after: None,
             }),
-            Page::Transcript => {}
+            Page::Transcript | Page::Plan => {}
         }
     }
 
@@ -1495,6 +1519,7 @@ impl Workshop {
             }
             PanelKey::Memory => self.open_page(Page::Memory),
             PanelKey::Journal => self.open_page(Page::Journal),
+            PanelKey::Plan => self.open_page(Page::Plan),
             PanelKey::Stop => self.asking = Some(Asking::Stop),
             PanelKey::Pause => {
                 let paused = self
@@ -1528,6 +1553,8 @@ pub enum PanelKey {
     Down,
     /// F2: her memory.
     Memory,
+    /// F3: her day plan.
+    Plan,
     /// F4: her journal.
     Journal,
     /// F7: stop her, after CONFIRM.
@@ -1587,6 +1614,7 @@ mod tests {
             busy: false,
             jobs: [0, 1],
             candidates: 0,
+            plan: None,
         }
     }
 
@@ -1645,6 +1673,59 @@ mod tests {
         workshop.view = Some(busy);
         assert_eq!(workshop.seats()[0].station, seat_wire::Station::Podium);
         assert_eq!(workshop.seats()[0].route, "needs you");
+    }
+
+    #[test]
+    fn idle_she_walks_to_the_planned_block_and_f3_shows_her_day() {
+        use coder_access::day_plan::{Block, By, DayPlan, SCHEMA};
+        let room = "everglade/knowledge-district/owners-house/great-room";
+        let block = |start, node: &str, title: &str| Block {
+            start,
+            end: start + 60,
+            title: title.into(),
+            source: "issue:7".into(),
+            node: format!("{room}/{node}"),
+            by: By::Model,
+        };
+        let mut planned = view();
+        planned.plan = Some(DayPlan {
+            schema: SCHEMA.into(),
+            agent: NAME.into(),
+            date: "2026-10-07".into(),
+            utc_offset: 0,
+            made_at: 0,
+            bound: "everglade/knowledge-district/owners-house".into(),
+            blocks: vec![
+                block(540, "workstation", "Work issue 7"),
+                block(600, "lectern", "Bring issue 7 for review"),
+            ],
+            current: Some(1),
+            steps: Vec::new(),
+            replans: Vec::new(),
+        });
+        let (mut workshop, _) = connected(planned.clone());
+        workshop.view = Some(planned.clone());
+        assert_eq!(workshop.seats()[0].station, seat_wire::Station::Podium);
+        // A command running still takes her to the console.
+        planned.activity = Activity::Running;
+        workshop.view = Some(planned.clone());
+        assert_eq!(workshop.seats()[0].station, seat_wire::Station::Workbench);
+        // A node outside her spots leaves her at her desk.
+        planned.activity = Activity::Idle;
+        if let Some(plan) = planned.plan.as_mut() {
+            plan.blocks[1].node = "everglade/commons/workshop-hall/hall/library".into();
+        }
+        workshop.view = Some(planned);
+        assert_eq!(workshop.seats()[0].station, seat_wire::Station::Desk);
+        workshop.open = true;
+        workshop.key(PanelKey::Plan);
+        let rows = workshop.rows(80, 12);
+        assert!(
+            rows.iter()
+                .any(|(row, _)| row.contains("> 10:00-11:00 Bring issue 7")),
+            "{rows:?}"
+        );
+        assert!(rows.iter().any(|(row, _)| row.contains("F3 PLAN")));
     }
 
     #[test]

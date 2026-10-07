@@ -537,6 +537,59 @@ $0.002. That's about $0.10 a day. Studio seats cost nothing.
 
 **Estimate.** 7 agent-hours, after item 3 and the town clock.
 
+**Implemented (phase D).** [`agent_plan.rs`](../../crates/coder/src/task/agent_plan.rs)
+holds the plan, and
+[`day_plan.rs`](../../crates/coder-access/src/day_plan.rs) its record:
+
+- `openagents.agent-day-plan.v1` (`DayPlan`): the local date, at most 8
+  blocks (start and end as minutes of the day, title, source, world-tree
+  node, and who placed it: code, the model, the owner, a reaction, or the
+  studio), the current block, its steps, and at most 16 re-plans. The host
+  keeps it in `agents/NAME/plan.json`, and `studio.agent.list` carries
+  today's in `AgentView::plan`, so a paired client reads it with no new
+  operation.
+- `draft` places each enabled standing job with a schedule (`nightly-check`,
+  `reflect`) in its slot by code, and offers the model only the other
+  sources by ID: the issues `watch-issues` would pick (`issue:N`), the
+  queued requests (`request:N`), and active insights (`memory:ID`). `check`
+  drops a drafted block whose source wasn't offered or is planned already,
+  whose node isn't a place she knows within the bound, or whose time is in
+  the past, out of 15 to 240 minutes, past midnight, or overlapping. No
+  source but the jobs makes no call; no source at all is an idle plan.
+- The bound is `agent_plan::HOUSE`; `Trigger::Plan`'s `bound` field in
+  `jobs.json` widens it. Her great room's three spots are always hers;
+  elsewhere, only the nodes in her `known.json`.
+- `begin` moves the plan to the block under way, and `decompose` breaks its
+  first hour into 5 to 15 minute steps with one call, when it starts.
+- `react`: the owner's request interrupts by code; a scheduled job's
+  occurrence makes its block current; anything else asks Jev the choice in
+  [`react-or-continue.json`](../../questions/react-or-continue.json)
+  (provisional, [measurement](../decision-models/measurements/2026-10-07-react-or-continue.md)),
+  and on no answer she continues. `replan` is code: the block under way
+  stops, the new block starts, later work follows in order, scheduled jobs
+  keep their slots, and what no longer fits is named in the history. A
+  reaction also moves its request to the front of her queue. Re-plans
+  cost no model call.
+- `seat_plan` renders a studio seat's task queue as blocks at its desk,
+  with no model call.
+- The `plan` template (`agent_jobs`, `Trigger::Plan`) fires daily at 07:00,
+  off until the owner turns it on, admitted like any occurrence. The host
+  (`agent_host_plan.rs`) drafts on a thread of its own, decomposes each
+  block that starts while the job admits it, applies the events, journals
+  each as a `plan` row, and meters the cost into the job's budget.
+- In Everglade, an idle Alice walks to the spot the current block's node
+  names (`AliceSpot::of_node`), her panel's F3 page shows the plan, and
+  the plan board on the great room's west wall shows the day
+  (`boards::plan_board`). Capture it with the `everglade_capture`
+  example's `alice-board:FILE` view.
+- The interview's `full` and `no-reflection` arms carry the plan through
+  `DayPlans`: the standing jobs from the fixture, and the blocks a recorded
+  morning draft,
+  [`fixtures/agent-plan/alice-interview-v1.json`](../../crates/coder/fixtures/agent-plan/alice-interview-v1.json),
+  makes through the same checks. With the recorded reflection's insights
+  it keeps a block for `memory:55` and drops an invented issue; with none
+  it makes no call.
+
 ## 5. Townsfolk with deterministic routines
 
 **Design.** Smallville-style villagers in Everglade, cheap by construction.
@@ -895,7 +948,7 @@ fixtures and a small demo.
 | B3. Interviews | The rest of item 7 (implemented) | [#10794](https://github.com/OpenAgentsInc/openagents/issues/10794) | B2, D |
 | C1. Clock and districts | The town clock, time of day, and district data (implemented) | [#10786](https://github.com/OpenAgentsInc/openagents/issues/10786) | None; runs beside A and B |
 | C2. World | 3 | [#10788](https://github.com/OpenAgentsInc/openagents/issues/10788) | C1 |
-| D. Days | 4 | [#10790](https://github.com/OpenAgentsInc/openagents/issues/10790) | C2, B2 |
+| D. Days | 4 (implemented) | [#10790](https://github.com/OpenAgentsInc/openagents/issues/10790) | C2, B2 |
 | E1. Townsfolk | 5: routines, definitions, and spawn mechanics (implemented) | [#10791](https://github.com/OpenAgentsInc/openagents/issues/10791) | C2 |
 | E2. Town talk | 5: rumors, memory of the player, and dialogue | [#10792](https://github.com/OpenAgentsInc/openagents/issues/10792) | E1, B1 |
 | F. Sharing | 6 | [#10793](https://github.com/OpenAgentsInc/openagents/issues/10793) | B2 |

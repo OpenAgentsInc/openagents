@@ -15,7 +15,8 @@
 //! ([`template`]). A reflect occurrence runs the agent's reflection
 //! (`agent_reflect`) instead of handing her a request: nightly, and early
 //! when the summed importance of her records since the last reflection
-//! passes the job's threshold, at most `early_per_day` times a day.
+//! passes the job's threshold, at most `early_per_day` times a day. A plan
+//! occurrence makes the agent's day plan (`agent_plan`) once a morning.
 
 use std::path::{Path, PathBuf};
 use std::sync::{Mutex, MutexGuard, PoisonError};
@@ -35,7 +36,13 @@ pub const EXPIRY_MAX: u64 = 90 * 24 * 60 * 60;
 /// The longest title.
 pub const TITLE_MAX: usize = 120;
 /// The templates [`template`] makes.
-pub const TEMPLATES: [&str; 4] = ["nightly-check", "watch-issues", "keep-green", "reflect"];
+pub const TEMPLATES: [&str; 5] = [
+    "nightly-check",
+    "watch-issues",
+    "keep-green",
+    "reflect",
+    "plan",
+];
 
 /// Serializes every read-modify-write of a jobs file in this process. The
 /// scheduler's [`tick`] runs on the host's sweep, and a reflection meters
@@ -77,6 +84,17 @@ pub enum Trigger {
         threshold: u32,
         early_per_day: u32,
     },
+    /// The morning's day plan, daily at `at` (`agent_plan`).
+    Plan {
+        /// `HH:MM`.
+        at: String,
+        #[serde(default)]
+        utc_offset: i32,
+        /// The world-tree node her walks stay within: the owner's house
+        /// (`agent_plan::HOUSE`) when unset. The owner widens it here.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        bound: Option<String>,
+    },
 }
 
 impl Trigger {
@@ -87,6 +105,7 @@ impl Trigger {
             Self::Issues { .. } => "issues",
             Self::Checks {} => "checks",
             Self::Reflect { .. } => "reflect",
+            Self::Plan { .. } => "plan",
         }
     }
 }
@@ -177,6 +196,8 @@ pub struct Occurrence {
     /// Reflect: what triggered the reflection, such as `nightly`; the host
     /// runs a reflection in place of a request.
     pub reflect: Option<String>,
+    /// Plan: the host makes the day plan in place of a request.
+    pub plan: bool,
 }
 
 /// An agent's jobs file.
@@ -401,6 +422,11 @@ pub fn validate(job: &Job, now: u64) -> Result<(), String> {
             return Err("a schedule is HH:MM, and a weekday 0 (Monday) to 6".into());
         }
     }
+    if let Trigger::Plan { at, .. } = &job.trigger
+        && minutes(at).is_none()
+    {
+        return Err("a plan's time is HH:MM".into());
+    }
     if let Trigger::Reflect {
         at,
         threshold,
@@ -543,6 +569,25 @@ pub fn template(
             job.budget.per_occurrence = 0.25;
             job
         }
+        "plan" => {
+            let mut job = base(
+                "plan",
+                "Morning plan",
+                Trigger::Plan {
+                    at: "07:00".into(),
+                    utc_offset,
+                    bound: None,
+                },
+                "Plan the day from real work only: scheduled jobs in their slots, the issues you \
+                 would pick, the owner's queued requests, and your accepted insights.",
+                Mode::Terminal,
+            );
+            // The plan, its block decompositions, and its re-plans: about
+            // $0.10 a day.
+            job.budget.per_occurrence = 0.15;
+            job.budget.per_job = 5.0;
+            job
+        }
         other => return Err(format!("no job template named `{other}`")),
     })
 }
@@ -584,6 +629,7 @@ pub fn tick(
                 job.budget.unmetered += 1;
                 let reflect = matches!(job.trigger, Trigger::Reflect { .. })
                     .then(|| detail.clone().unwrap_or_else(|| "nightly".into()));
+                let plan = matches!(job.trigger, Trigger::Plan { .. });
                 let text = match &detail {
                     Some(detail) => format!("{}\n\n{detail}", job.action),
                     None => job.action.clone(),
@@ -605,6 +651,7 @@ pub fn tick(
                     quiet: job.quiet,
                     fix_on_failure: job.template.as_deref() == Some("keep-green"),
                     reflect,
+                    plan,
                 });
             }
             Err(why) => {
@@ -634,6 +681,11 @@ fn due(
     now: u64,
 ) -> Option<(Option<String>, Option<String>)> {
     match &job.trigger {
+        Trigger::Plan { at, utc_offset, .. } => {
+            let slot = last_slot(at, None, *utc_offset, now)?;
+            let after = job.last_fired.unwrap_or(0).max(job.enabled_at);
+            (slot > after).then_some((None, None))
+        }
         Trigger::Schedule {
             at,
             weekday,

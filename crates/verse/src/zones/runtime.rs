@@ -2238,6 +2238,12 @@ impl WorldRuntime {
         self.zone_state.studio.set_resident(seats);
     }
 
+    /// Sets the workshop agent's day plan for the plan board in the great
+    /// room ([`Studio::set_plan`]).
+    pub fn set_studio_plan(&mut self, plan: Option<coder_access::day_plan::DayPlan>) {
+        self.zone_state.studio.set_plan(plan);
+    }
+
     /// The Agent Studio as Everglade draws it.
     #[must_use]
     pub fn studio(&self) -> &Studio {

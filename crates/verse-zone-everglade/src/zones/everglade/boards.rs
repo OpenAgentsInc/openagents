@@ -8,6 +8,7 @@
 use super::layout::{Board, DESKS, GOAL_BOARD, TASK_COLUMNS, TASK_WALL};
 use super::signals::Summary;
 use crate::mesh::{Mesh, Vertex};
+use coder_access::day_plan::DayPlan;
 use coder_access::studio::{Activity, GoalStatus, TaskStatus, View};
 use glam::{Mat4, Vec3};
 
@@ -623,6 +624,107 @@ fn goal(world: &mut Mesh, view: Option<&View>) {
     place(world, &board, mesh);
 }
 
+/// The most plan lines the plan board shows under its title.
+pub const PLAN_LINES: usize = 9;
+/// The plan board's lettering height, m.
+const PLAN_TEXT: f32 = 0.095;
+
+/// The plan board's lines, top to bottom, in the board alphabet, and
+/// whether each is the block under way: a block's start and title, the
+/// current block's steps under it, and the last re-plan. An idle day says
+/// so.
+#[must_use]
+pub fn plan_lines(plan: &DayPlan, width: usize) -> Vec<(String, bool)> {
+    use coder_access::day_plan::clock;
+    let fit = |text: &str| super::studio::lettering(&text.replace(':', "."), width);
+    if plan.idle() {
+        return vec![(fit("No work today. Idle at her desk."), false)];
+    }
+    let current = plan.current.and_then(|i| usize::try_from(i).ok());
+    let mut out = Vec::new();
+    for (index, block) in plan.blocks.iter().enumerate() {
+        let now = current == Some(index);
+        out.push((fit(&format!("{} {}", clock(block.start), block.title)), now));
+        if now {
+            for step in plan.steps.iter().take(2) {
+                out.push((fit(&format!("  {} {}", clock(step.start), step.text)), true));
+            }
+        }
+    }
+    if let Some(replan) = plan.replans.last() {
+        out.push((fit(&format!("Replanned {}", clock(replan.minute))), false));
+    }
+    // Keep the block under way in view: drop finished blocks first.
+    while out.len() > PLAN_LINES {
+        match out.iter().position(|(_, now)| *now) {
+            Some(at) if at > 0 => {
+                out.remove(0);
+            }
+            _ => {
+                out.truncate(PLAN_LINES);
+            }
+        }
+    }
+    out
+}
+
+/// The plan board in the great room: a framed slate on the wall with its
+/// title, and, from `plan`, her day's blocks with the one under way lit.
+/// No plan leaves the slate blank under its title.
+#[must_use]
+pub fn plan_board(plan: Option<&DayPlan>) -> Mesh {
+    let board = super::layout::estate::plan_board();
+    let [w, h] = board.size;
+    let (hw, hh) = (w / 2.0, h / 2.0);
+    let mut mesh = Mesh::default();
+    slab(
+        &mut mesh,
+        Vec3::new(-hw, -hh, 0.0),
+        Vec3::new(hw, hh, 0.04),
+        SLATE,
+    );
+    let bar = 0.06;
+    for (min, max) in [
+        ([-hw - bar, hh], [hw + bar, hh + bar]),
+        ([-hw - bar, -hh - bar], [hw + bar, -hh]),
+        ([-hw - bar, -hh], [-hw, hh]),
+        ([hw, -hh], [hw + bar, hh]),
+    ] {
+        slab(
+            &mut mesh,
+            Vec3::new(min[0], min[1], -0.03),
+            Vec3::new(max[0], max[1], 0.06),
+            WOOD,
+        );
+    }
+    let face = -0.012;
+    let title = match plan {
+        Some(plan) => format!("ALICE / DAY PLAN  {}", plan.date.replace('-', ".")),
+        None => "ALICE / DAY PLAN".into(),
+    };
+    letters(&mut mesh, &title, 0.0, hh - 0.22, face, 0.12, CHALK);
+    panel(
+        &mut mesh,
+        [-hw + 0.06, hh - 0.28],
+        [hw - 0.06, hh - 0.268],
+        face,
+        CHALK_DIM,
+    );
+    if let Some(plan) = plan {
+        let left = hw - 0.1;
+        // A label holds at most 32 characters.
+        let width = fit(w - 0.2, PLAN_TEXT).min(32);
+        for (i, (line, now)) in plan_lines(plan, width).iter().enumerate() {
+            let y = hh - 0.46 - i as f32 * (PLAN_TEXT + 0.07);
+            let color = if *now { PAPER_RUNNING } else { CHALK };
+            left_letters(&mut mesh, line, left, y, face - 0.006, PLAN_TEXT, color);
+        }
+    }
+    let mut world = Mesh::default();
+    place(&mut world, &board, mesh);
+    world
+}
+
 /// The live boards: the Task Wall's cards, every monitor's text, and the
 /// goal board's face, from `view`, or idle boards without one.
 #[must_use]
@@ -735,5 +837,67 @@ mod tests {
         assert!(shown.faces.len() > empty.faces.len());
         let lit = shown.faces.iter().filter(|v| v.color == RING_LIT).count();
         assert_eq!(lit, lit_segments(1.0 / 3.0) * 6);
+    }
+
+    #[test]
+    fn the_plan_board_shows_her_day_in_the_great_room() {
+        use super::super::layout::estate::{self, AliceSpot, OWNERS_HOUSE};
+        use coder_access::day_plan::{Block, By, DayPlan, SCHEMA};
+        let room = "everglade/knowledge-district/owners-house/great-room";
+        let mut plan = DayPlan {
+            schema: SCHEMA.into(),
+            agent: "alice".into(),
+            date: "2026-10-07".into(),
+            utc_offset: 0,
+            made_at: 0,
+            bound: "everglade/knowledge-district/owners-house".into(),
+            blocks: (0..8)
+                .map(|i| Block {
+                    start: 480 + i * 60,
+                    end: 540 + i * 60,
+                    title: format!("Work issue {i}: fix it"),
+                    source: format!("issue:{i}"),
+                    node: format!("{room}/workstation"),
+                    by: By::Model,
+                })
+                .collect(),
+            current: Some(7),
+            steps: Vec::new(),
+            replans: Vec::new(),
+        };
+        let lines = plan_lines(&plan, 40);
+        assert!(lines.len() <= PLAN_LINES);
+        // The block under way stays in view, in the board alphabet.
+        assert_eq!(
+            lines.last().unwrap(),
+            &("15.00 WORK ISSUE 7. FIX IT".to_string(), true)
+        );
+        let empty = plan_board(None);
+        let shown = plan_board(Some(&plan));
+        assert!(shown.faces.len() > empty.faces.len());
+        plan.blocks.clear();
+        plan.current = None;
+        assert_eq!(
+            plan_lines(&plan, 40)[0].0,
+            "NO WORK TODAY. IDLE AT HER DESK."
+        );
+        // It hangs inside the great room, facing into it.
+        let board = estate::plan_board();
+        let (center, half) = estate::ALICE_ROOM;
+        let middle = OWNERS_HOUSE.world(center);
+        assert!((board.center.x - middle[0]).abs() <= half + 0.5);
+        assert!((board.center.z - middle[1]).abs() <= half + 0.5);
+        let out = glam::Vec3::new(board.facing.sin(), 0.0, board.facing.cos());
+        let inward = glam::Vec3::new(middle[0] - board.center.x, 0.0, middle[1] - board.center.z);
+        assert!(out.dot(inward) > 0.0);
+        // Plan nodes name her spots.
+        assert_eq!(
+            AliceSpot::of_node(&format!("{room}/console")),
+            Some(AliceSpot::Workbench)
+        );
+        assert_eq!(
+            AliceSpot::of_node("everglade/commons/workshop-hall/hall/library"),
+            None
+        );
     }
 }

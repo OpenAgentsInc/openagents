@@ -11,6 +11,7 @@ pub mod agent;
 pub mod cj;
 #[cfg(not(target_arch = "wasm32"))]
 pub mod client;
+pub mod day_plan;
 #[cfg(feature = "host")]
 pub mod host;
 pub mod media;

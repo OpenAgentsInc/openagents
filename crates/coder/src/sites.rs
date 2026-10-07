@@ -706,6 +706,7 @@ mod tests {
                 "openagents.memory-importance.v1",
                 "openagents.method-conformance.v1",
                 "openagents.program.v1",
+                "openagents.react-or-continue.v1",
                 "openagents.review-finding.v1",
                 "openagents.world-place.v1",
             ]
@@ -724,8 +725,9 @@ mod tests {
         // as is the method-conformance set by `verify.method_conformance`,
         // the memory-importance set by the workshop agent's briefing,
         // the insight-support set by her reflection, the world-place
-        // set by her plans' place choice, the agent-steer set by her
-        // steering loop, and the interview-answer set by `coder interview`.
+        // set by her plans' place choice, the react-or-continue set by her
+        // day plan's reactions, the agent-steer set by her steering loop,
+        // and the interview-answer set by `coder interview`.
         // The inventory says so rather than letting a run find out at
         // admission.
         let unbound = |set: &str| Problem::UnboundSet {
@@ -744,6 +746,7 @@ mod tests {
                 unbound("openagents.interview-answer.v1"),
                 unbound("openagents.memory-importance.v1"),
                 unbound("openagents.method-conformance.v1"),
+                unbound("openagents.react-or-continue.v1"),
                 unbound("openagents.world-place.v1"),
             ]
         );

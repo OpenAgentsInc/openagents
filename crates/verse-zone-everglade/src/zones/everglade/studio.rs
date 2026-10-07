@@ -697,6 +697,10 @@ pub struct Studio {
     /// wins over a source seat of the same name: the workshop agent's task
     /// mode gives her a studio seat too, and her own view says more.
     resident: Vec<wire::Seat>,
+    /// The workshop agent's day plan, as her host's view carries it, and
+    /// the plan board in the great room drawn from it.
+    plan: Option<coder_access::day_plan::DayPlan>,
+    plan_board: Mesh,
 }
 
 impl Default for Studio {
@@ -721,6 +725,8 @@ impl Default for Studio {
             grant: None,
             hosted: None,
             resident: Vec::new(),
+            plan: None,
+            plan_board: boards::plan_board(None),
         }
     }
 }
@@ -929,6 +935,23 @@ impl Studio {
             let blockers = self.blockers.clone();
             self.show(self.merged(), &blockers);
         }
+    }
+
+    /// Sets the workshop agent's day plan, which the plan board in the
+    /// great room shows; the board redraws only when it changed.
+    pub fn set_plan(&mut self, plan: Option<coder_access::day_plan::DayPlan>) {
+        if self.plan == plan {
+            return;
+        }
+        self.plan_board = boards::plan_board(plan.as_ref());
+        self.plan = plan;
+        self.revision += 1;
+    }
+
+    /// The workshop agent's day plan, when her host sent one.
+    #[must_use]
+    pub fn plan(&self) -> Option<&coder_access::day_plan::DayPlan> {
+        self.plan.as_ref()
     }
 
     /// The source's studio with the resident seats added.
@@ -1321,6 +1344,7 @@ impl Studio {
     pub fn draw(&self, eye: Vec3, boxes: bool) -> Mesh {
         let mut mesh = Mesh::default();
         mesh.extend(&self.boards);
+        mesh.extend(&self.plan_board);
         let full = crate::palette::amber(Intensity::Full);
         for (index, seat) in self.seats.iter().enumerate() {
             if boxes {

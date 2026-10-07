@@ -83,8 +83,8 @@ pub const USAGE: &str = "usage: openagents agent COMMAND [--root DIR] [--control
   jobs NAME list
                Her standing jobs, all off until you turn one on.
   jobs NAME add TEMPLATE [--repository OWNER/REPO] [--label L]
-               Add nightly-check, watch-issues, keep-green, or reflect,
-               off.
+               Add nightly-check, watch-issues, keep-green, reflect, or
+               plan (her morning day plan), off.
   jobs NAME on JOB
                Turn a job on.
   jobs NAME off JOB

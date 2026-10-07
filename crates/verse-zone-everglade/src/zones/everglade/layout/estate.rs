@@ -393,6 +393,31 @@ impl AliceSpot {
         }
     }
 
+    /// The spot a world-tree node names (`world_tree::everglade`): her
+    /// workstation, the console, or the lectern in the great room. A node
+    /// anywhere else isn't one of her spots.
+    #[must_use]
+    pub fn of_node(node: &str) -> Option<Self> {
+        let spot = node.strip_prefix("everglade/knowledge-district/owners-house/great-room/")?;
+        match spot {
+            "workstation" => Some(Self::Desk),
+            "console" => Some(Self::Workbench),
+            "lectern" => Some(Self::Podium),
+            _ => None,
+        }
+    }
+
+    /// The studio station that puts her at this spot ([`AliceSpot::of`]).
+    #[must_use]
+    pub fn station(self) -> coder_access::studio::Station {
+        use coder_access::studio::Station;
+        match self {
+            Self::Desk => Station::Desk,
+            Self::Workbench => Station::Workbench,
+            Self::Podium => Station::Podium,
+        }
+    }
+
     /// Where she stands, x and z, and her heading as the controller's yaw.
     #[must_use]
     pub fn world(self) -> ([f32; 2], f32) {
@@ -400,6 +425,24 @@ impl AliceSpot {
         let [x, z] = OWNERS_HOUSE.world(at);
         let [tx, tz] = OWNERS_HOUSE.world(toward);
         ([x, z], (tx - x).atan2(tz - z))
+    }
+}
+
+/// Her day plan's board on the great room's west wall, over the sofa, in
+/// the house's frame: the middle of its face, x and z, m, its middle's
+/// height over the floor, and its width and height.
+pub const PLAN_BOARD: ([f32; 2], f32, [f32; 2]) = ([-9.45, -18.6], 2.35, [3.4, 1.9]);
+
+/// The plan board, facing into the great room.
+#[must_use]
+pub fn plan_board() -> super::Board {
+    let (at, up, size) = PLAN_BOARD;
+    let [x, z] = OWNERS_HOUSE.world(at);
+    let [tx, tz] = OWNERS_HOUSE.world([at[0] + 1.0, at[1]]);
+    super::Board {
+        center: Vec3::new(x, floor() + up, z),
+        facing: (tx - x).atan2(tz - z),
+        size,
     }
 }
 
