@@ -21,6 +21,23 @@ project-level roles. Nothing outside the project can: public access
 prevention refuses `allUsers` and `allAuthenticatedUsers`, and an anonymous
 read returns `403`.
 
+## Live (October 6, 2026)
+
+- Revision `verse-assets-00001-rmv`, image `verse-assets:c64ad66cfc` (built
+  from commit `c64ad66cfc` by `oa-mvp-automation@` and deployed by
+  `chris@`), serves 100% of traffic at
+  `https://verse-assets-157437760789.us-central1.run.app`. It predates the
+  `/health` route; the next deploy adds it.
+- The registry holds one asset, `cute-asian-girl`: pack
+  `5416e7f78b1a…` (2,377,473 bytes), its manifest, and its 8 vendor files
+  (134 MB). Its one reader is the owner's desktop Verse key (`default`
+  profile, `0b010805ac08…`).
+- Checked: an unsigned grant request returns `403`; an anonymous read of
+  the pack object returns `403`; the owner's desktop Verse loaded the pack
+  through a signed URL and cached it as `private-cache/<digest>.vtp` (file
+  0600, directory 0700); a Verse home whose profile key is not a reader got
+  `403` from the broker, drew nothing, and cached nothing.
+
 ## Deploy the broker
 
 Build from a commit on `main`, then deploy the image:
@@ -42,7 +59,6 @@ gcloud run deploy verse-assets --project openagentsgemini --region us-central1 \
 Check it after a deploy:
 
 ```sh
-curl -s https://verse-assets-157437760789.us-central1.run.app/healthz   # ok
 curl -s -o /dev/null -w '%{http_code}\n' -X POST \
   https://verse-assets-157437760789.us-central1.run.app/v1/private/url  # 403
 ```

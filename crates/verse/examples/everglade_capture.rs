@@ -83,9 +83,24 @@ fn main() -> Result<(), String> {
         ));
     let pack = everglade_pack::ZonePack::load_local(&pack)?;
     let mut runtime = WorldRuntime::new();
+    // With VERSE_CAPTURE_PRIVATE set to Verse's home, the owner's private
+    // characters load through the broker as on the desktop
+    // (docs/verse/private-assets.md).
+    let private = std::env::var_os("VERSE_CAPTURE_PRIVATE").map(PathBuf::from);
+    if let Some(home) = &private {
+        runtime.configure_private_assets(home.clone());
+    }
     runtime.install_everglade(&pack);
     if runtime.zone != zones::ZoneId::Everglade {
         return Err("Everglade did not install from the pinned pack".into());
+    }
+    if private.is_some() {
+        let deadline = std::time::Instant::now() + std::time::Duration::from_secs(120);
+        while runtime.private_guests() == 0 && std::time::Instant::now() < deadline {
+            runtime.zone_tick();
+            std::thread::sleep(std::time::Duration::from_millis(50));
+        }
+        eprintln!("private guests: {}", runtime.private_guests());
     }
     let first_person = view.ends_with("eyes");
     let (at, yaw, tilt) = match view.as_str() {

@@ -205,12 +205,24 @@ draws the near level within 18 m and the far level to 60 m, and not at all
 beyond. When the file is missing, the key is not a reader, or the network
 is down, nothing is drawn and the zone is unchanged; Verse logs one line.
 
+The first asset stands on the grass beside the walk to the owner's house,
+at `(106.0, -31.2)`, facing west toward an arriving player. To see her, run
+desktop Verse and walk from Everglade's spawn east along Library Way to the
+house. For an offline look, the capture example loads the placements the
+same way:
+
+```sh
+VERSE_CAPTURE_PRIVATE=~/.openagents/verse \
+  cargo run -p verse --features capture --example everglade_capture -- \
+  out.png at:104.2,-33.4,0.15,-8
+```
+
 ### Phones
 
 The phone builds share the loader, but the iOS and Android hosts don't yet
 pass a placements file to the world runtime. The broker accepts a phone's
 Verse key once it is listed as a reader (`verse-private grant`). Wiring the
-phone's placements is follow-up work.
+phone's placements is follow-up work (#10797).
 
 ## Operations
 

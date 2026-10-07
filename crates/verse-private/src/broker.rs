@@ -161,7 +161,7 @@ impl<B: Bucket, S: UrlSigner> Broker<B, S> {
     }
 }
 
-/// The HTTP surface: `POST /v1/private/url` and `GET /healthz`.
+/// The HTTP surface: `POST /v1/private/url` and `GET /health` (Cloud Run reserves `/healthz`).
 pub fn router<B: Bucket, S: UrlSigner>(broker: Arc<Broker<B, S>>) -> axum::Router {
     use axum::extract::{DefaultBodyLimit, State};
     use axum::http::{HeaderMap, StatusCode, header};
@@ -208,7 +208,7 @@ pub fn router<B: Bucket, S: UrlSigner>(broker: Arc<Broker<B, S>>) -> axum::Route
 
     axum::Router::new()
         .route(crate::auth::ROUTE, post(grant::<B, S>))
-        .route("/healthz", get(|| async { "ok" }))
+        .route("/health", get(|| async { "ok" }))
         .layer(DefaultBodyLimit::max(MAX_REQUEST_BYTES))
         .with_state(broker)
 }
