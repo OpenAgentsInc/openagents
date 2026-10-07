@@ -221,6 +221,7 @@ resources, defaults, overrides, and receipts.
 openagents lease build -- cargo test -p coder-lease
 openagents lease quiet --receipt soak-lease.json -- scripts/grid-soak.sh
 openagents lease memory --amount 24 --no-wait -- ./train.sh
+openagents lease run --class release-gate -- ./scripts/verify-rust.sh --release
 openagents lease list --json
 openagents lease grant screen --for 30m
 openagents lease revoke screen
@@ -229,7 +230,10 @@ openagents lease revoke screen
 `lease RESOURCE` waits its turn unless `--no-wait` is given, and exits with
 the command's status. With `--json` it prints the receipt after the
 command's output. `lease list` shows holders and waiters, and `lease grant
-screen` asks the owner to confirm on an interactive terminal.
+screen` asks the owner to confirm on an interactive terminal. `lease run
+--class CLASS` places a release gate, benchmark, soak, or build here or on
+another computer by the `coder.placement` setting;
+[Placement](../coder/runtime/placement.md) covers it.
 
 ## Durable scratch (`openagents scratch`)
 

@@ -50,6 +50,7 @@ mod key;
 #[cfg(unix)]
 mod labor;
 mod lease;
+mod lease_place;
 mod mcp;
 mod out;
 #[cfg(unix)]

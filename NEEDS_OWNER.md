@@ -1333,3 +1333,16 @@ source custody, replay refusal, migration, and redaction; they establish no real
 customer acquisition, permanent attribution terms, commission, or payout. Keep
 OpenAgents sales-agent identities source-only. REV-28 owns competing or changed
 attribution decisions; later commission contracts own payment eligibility.
+
+## Remote placement for gates and benchmarks (#10767)
+
+`openagents lease run --class CLASS` places release gates and benchmarks on
+another computer over SSH, but no computer is configured by default, so they
+run here under `quiet` until you name one. On this Mac, check that `ssh
+coderos-4080 true` succeeds without a prompt, then run `openagents settings
+set coder.placement computer=coderos-4080`. Make the first real remote run
+yourself, for example `openagents lease run --class release-gate --place
+remote:coderos-4080 -- ./scripts/verify-rust.sh --release`, and check that it
+checks out the pushed commit under `~/.openagents/remote-runs/openagents/`
+there and that its receipt lands in `~/.openagents/leases/placements/` here.
+Tests used only a stand-in `ssh`; no real computer was reached.

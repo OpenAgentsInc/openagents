@@ -61,7 +61,11 @@ waits for running builds and holds new ones: `openagents lease quiet
 --receipt FILE -- CMD`. `openagents lease list` shows who holds what. If the
 installed `openagents` has no `lease` command, build it once with `cargo build
 -p openagents-cli --bin openagents` and run it from your target directory.
-Read `docs/coder/runtime/leases.md`.
+Read `docs/coder/runtime/leases.md`. Run release gates and Terminal-Bench
+with a class so placement can send them to another computer: `openagents
+lease run --class release-gate -- CMD` or `--class bench`; soaks use
+`openagents lease quiet --class soak -- CMD` and stay here
+(`docs/coder/runtime/placement.md`).
 
 Capture offscreen (`verse --capture FILE.png` and other offscreen paths).
 Don't open a visible window or run `screencapture` without a `screen` lease

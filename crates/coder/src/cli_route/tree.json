@@ -5615,6 +5615,30 @@
               },
               {
                 "kind": "option",
+                "name": "class",
+                "value": "CLASS",
+                "open": true,
+                "optional": true,
+                "repeated": true
+              },
+              {
+                "kind": "option",
+                "name": "place",
+                "value": "PLACE",
+                "open": true,
+                "optional": true,
+                "repeated": true
+              },
+              {
+                "kind": "option",
+                "name": "fetch",
+                "value": "PATH",
+                "open": true,
+                "optional": true,
+                "repeated": true
+              },
+              {
+                "kind": "option",
                 "name": "for",
                 "value": "DURATION",
                 "open": true,
@@ -5643,6 +5667,79 @@
         "runs_on": "connected_computer"
       },
       "children": [
+        {
+          "name": "run",
+          "leaf": {
+            "path": [
+              "lease",
+              "run"
+            ],
+            "usage": [
+              "run --class CLASS [--place PLACE] [--fetch PATH]... [--priority P] [--no-wait] [--receipt PATH] [--keep-target-dir] -- CMD [ARGS...]"
+            ],
+            "forms": [
+              {
+                "tokens": [
+                  {
+                    "kind": "literal",
+                    "word": "run"
+                  },
+                  {
+                    "kind": "option",
+                    "name": "class",
+                    "value": "CLASS",
+                    "open": true
+                  },
+                  {
+                    "kind": "option",
+                    "name": "place",
+                    "value": "PLACE",
+                    "open": true,
+                    "optional": true
+                  },
+                  {
+                    "kind": "option",
+                    "name": "fetch",
+                    "value": "PATH",
+                    "open": true,
+                    "optional": true,
+                    "repeated": true
+                  },
+                  {
+                    "kind": "option",
+                    "name": "priority",
+                    "value": "P",
+                    "open": true,
+                    "optional": true
+                  },
+                  {
+                    "kind": "option",
+                    "name": "no-wait",
+                    "optional": true
+                  },
+                  {
+                    "kind": "option",
+                    "name": "receipt",
+                    "value": "PATH",
+                    "open": true,
+                    "optional": true
+                  },
+                  {
+                    "kind": "option",
+                    "name": "keep-target-dir",
+                    "optional": true
+                  },
+                  {
+                    "kind": "rest"
+                  }
+                ]
+              }
+            ],
+            "summary": "Run a long job where the placement policy puts it. CLASS is release-gate, bench, soak, or build; PLACE is local, auto, remote, or remote:COMPUTER, and overrides the setting coder.placement. By default release gates and benchmarks are auto, the first configured computer that answers over SSH, else here; soaks and builds stay here. Here, a build holds a build lease and the rest hold quiet. On another computer, CMD runs in a checkout of origin at this checkout's pushed commit, its output streams here, and each --fetch PATH, relative to the checkout's top, is copied back to the same place here. A placement receipt names where it ran and the leases it held.",
+            "effect": "long_running",
+            "runs_on": "connected_computer"
+          }
+        },
         {
           "name": "list",
           "leaf": {
@@ -5802,6 +5899,30 @@
         {
           "kind": "option",
           "name": "receipt",
+          "value": "PATH",
+          "open": true,
+          "optional": true,
+          "repeated": true
+        },
+        {
+          "kind": "option",
+          "name": "class",
+          "value": "CLASS",
+          "open": true,
+          "optional": true,
+          "repeated": true
+        },
+        {
+          "kind": "option",
+          "name": "place",
+          "value": "PLACE",
+          "open": true,
+          "optional": true,
+          "repeated": true
+        },
+        {
+          "kind": "option",
+          "name": "fetch",
           "value": "PATH",
           "open": true,
           "optional": true,
@@ -8593,6 +8714,16 @@
               }
             }
           ]
+        }
+      ],
+      "options": [
+        {
+          "kind": "option",
+          "name": "class):",
+          "value": "CLASS=PLACE",
+          "open": true,
+          "optional": true,
+          "repeated": true
         }
       ]
     },

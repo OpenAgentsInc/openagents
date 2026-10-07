@@ -277,6 +277,19 @@ The wrapped command sees `OPENAGENTS_LEASES=quiet`, so its own receipt can
 record that it ran on a quiet machine. `scripts/grid-soak.sh` writes the
 variable into its `meta.json` as `leases`.
 
+### Placement
+
+A job can say what it is instead of which lease it needs: `openagents lease
+run --class CLASS -- CMD`, or `openagents lease quiet --class soak -- CMD`.
+The `coder.placement` setting then decides whether it runs here under its
+lease or on another computer over SSH. By default release gates and
+benchmarks go to the first configured computer that answers, else run here
+under `quiet`; soaks stay here under `quiet`, because they measure this
+machine's own client; and builds stay here, where the warm caches are. No
+computer is configured until you set one.
+[Placement](placement.md) covers the classes, the setting, remote runs, and
+their receipts.
+
 ## The screen
 
 The real screen is off limits to agents unless the owner grants it. A

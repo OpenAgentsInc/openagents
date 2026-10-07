@@ -9,6 +9,7 @@ use std::time::Duration;
 
 #[cfg(test)]
 use coder::cli_route::tree::{Declared, Effect};
+use coder_lease::placement::{Class, Place, Target};
 use coder_lease::{
     Blocked, Broker, Error, Grant, Holder, Priority, Queued, Request, Resource, State, Wait,
     grant_refusal,
@@ -20,6 +21,19 @@ use crate::Output;
 pub(crate) const USAGE: &str =
     "usage: openagents lease RESOURCE [--amount N] [--priority P] [--no-wait] [--receipt PATH] -- CMD [ARGS...]
        openagents lease build [--keep-target-dir] [--priority P] [--no-wait] [--receipt PATH] -- CMD [ARGS...]
+       openagents lease quiet --class CLASS [--place PLACE] [--fetch PATH]... [--receipt PATH] -- CMD [ARGS...]
+  run --class CLASS [--place PLACE] [--fetch PATH]... [--priority P] [--no-wait] [--receipt PATH] [--keep-target-dir] -- CMD [ARGS...]
+                 Run a long job where the placement policy puts it. CLASS is
+                 release-gate, bench, soak, or build; PLACE is local, auto,
+                 remote, or remote:COMPUTER, and overrides the setting
+                 coder.placement. By default release gates and benchmarks are
+                 auto, the first configured computer that answers over SSH,
+                 else here; soaks and builds stay here. Here, a build holds a
+                 build lease and the rest hold quiet. On another computer, CMD
+                 runs in a checkout of origin at this checkout's pushed commit,
+                 its output streams here, and each --fetch PATH, relative to
+                 the checkout's top, is copied back to the same place here. A
+                 placement receipt names where it ran and the leases it held.
   list           Every lease held and waiting: resource, each waiter's place in
                  the queue, priority, holder session, agent, process, command
                  name, and how long it has waited or been held, with the build
@@ -63,6 +77,7 @@ of sessions that ended, then refuses and names the reclaim command.";
 #[cfg(test)]
 pub(crate) const EFFECTS: &[Declared] = &[
     Declared::computer("", Effect::LongRunning),
+    Declared::computer("run", Effect::LongRunning),
     Declared::computer("list", Effect::ReadOnly),
     Declared::computer("du", Effect::ReadOnly),
     Declared::computer("grant screen", Effect::Grants),
@@ -82,7 +97,8 @@ pub fn run(output: &Output, words: &[String]) -> u8 {
         "du" => du(output, &words[1..]),
         "grant" => grant(output, &words[1..]),
         "revoke" => revoke(output, &words[1..]),
-        _ => hold(output, words),
+        "run" => hold(output, &words[1..], true),
+        _ => hold(output, words, false),
     }
 }
 
@@ -366,9 +382,17 @@ struct Hold {
     receipt: Option<PathBuf>,
     keep_target_dir: bool,
     command: Vec<String>,
+    /// The job's class, when it's placed (#10767).
+    class: Option<Class>,
+    /// `--place`, overriding the policy.
+    place: Option<Place>,
+    /// `--fetch` paths, relative to the checkout's top.
+    fetch: Vec<String>,
 }
 
-fn parse_hold(words: &[String]) -> Result<Hold, String> {
+/// Parses `lease RESOURCE ...`, or with `run`, `lease run --class CLASS
+/// ...`, whose resource is the class's.
+fn parse_hold(words: &[String], run: bool) -> Result<Hold, String> {
     let split = words
         .iter()
         .position(|word| word == "--")
@@ -377,15 +401,55 @@ fn parse_hold(words: &[String]) -> Result<Hold, String> {
     if command.is_empty() {
         return Err("a command is required after `--`".to_owned());
     }
+    let positional = usize::from(!run);
     let args = crate::argv::parse_command(
         options,
-        "lease",
-        &["amount", "receipt", "priority"],
+        if run { "lease run" } else { "lease" },
+        &["amount", "receipt", "priority", "class", "place", "fetch"],
         &["no-wait", "keep-target-dir"],
-        1,
-        1,
+        positional,
+        positional,
     )?;
-    let resource = Resource::parse(&args.positional()[0])?;
+    let mut class = args.option("class").map(Class::parse).transpose()?;
+    let place = args.option("place").map(Place::parse).transpose()?;
+    let resource = if run {
+        class
+            .ok_or("lease run needs --class: release-gate, bench, soak, or build")?
+            .local_resource()
+    } else {
+        Resource::parse(&args.positional()[0])?
+    };
+    if class.is_none() && place.is_some() {
+        if resource == Resource::Build {
+            class = Some(Class::Build);
+        } else {
+            return Err("--place needs --class: release-gate, bench, soak, or build".to_owned());
+        }
+    }
+    if let Some(class) = class
+        && class.local_resource() != resource
+    {
+        return Err(format!(
+            "a {class} job holds {} here, not {resource}; use `openagents lease run --class {class}`",
+            class.local_resource()
+        ));
+    }
+    let fetch: Vec<String> = args
+        .options("fetch")
+        .into_iter()
+        .map(str::to_owned)
+        .collect();
+    if class.is_none() && !fetch.is_empty() {
+        return Err("--fetch needs --class".to_owned());
+    }
+    if let Some(bad) = fetch.iter().find(|path| {
+        path.is_empty()
+            || !std::path::Path::new(path)
+                .components()
+                .all(|part| matches!(part, std::path::Component::Normal(_)))
+    }) {
+        return Err(format!("--fetch `{bad}` is not a path inside the checkout"));
+    }
     let keep_target_dir = args.switch("keep-target-dir");
     if keep_target_dir && resource != Resource::Build {
         return Err("--keep-target-dir goes with build only".to_owned());
@@ -408,6 +472,9 @@ fn parse_hold(words: &[String]) -> Result<Hold, String> {
         receipt: args.option("receipt").map(PathBuf::from),
         keep_target_dir,
         command: command.to_vec(),
+        class,
+        place,
+        fetch,
     })
 }
 
@@ -437,8 +504,8 @@ fn describe(blocked: &Blocked) -> String {
     }
 }
 
-fn hold(output: &Output, words: &[String]) -> u8 {
-    let hold = match parse_hold(words) {
+fn hold(output: &Output, words: &[String], run: bool) -> u8 {
+    let hold = match parse_hold(words, run) {
         Ok(hold) => hold,
         Err(message) => return output.usage("lease", &message, USAGE),
     };
@@ -446,6 +513,25 @@ fn hold(output: &Output, words: &[String]) -> u8 {
         Ok(broker) => broker,
         Err(code) => return code,
     };
+    let started_at_ms = coder_lease::now_ms();
+    // A classed job is placed first (#10767): another computer runs it
+    // without a lease here.
+    let decision = match hold.class {
+        None => None,
+        Some(class) => match crate::lease_place::place(class, hold.place.as_ref()) {
+            Ok(decision) => Some(decision),
+            Err(message) => return output.fail("lease", &message),
+        },
+    };
+    if let Some(decision) = &decision {
+        if let Target::Remote(_) = decision.target {
+            return finish_remote(output, &broker, &hold, decision);
+        }
+        eprintln!(
+            "openagents lease: running here under {}: {}",
+            hold.resource, decision.reason
+        );
+    }
     // --priority, else the session's OPENAGENTS_LEASE_PRIORITY, else normal.
     let priority = match hold.priority {
         Some(priority) => priority,
@@ -473,12 +559,19 @@ fn hold(output: &Output, words: &[String]) -> u8 {
         request = request.amount(amount);
     }
     let shim = std::env::var_os(SHIM_VAR).is_some_and(|value| value == "1");
+    // A build that waits may go to another computer instead; say so once.
+    let mut hint = (hold.resource == Resource::Build && decision.is_none() && !shim)
+        .then(crate::lease_place::build_hint)
+        .flatten();
     let lease = match broker.acquire_notify(request, &mut |blocked| {
         eprintln!(
             "openagents lease: waiting for {}: {}",
             hold.resource,
             describe(blocked)
         );
+        if let Some(hint) = hint.take() {
+            eprintln!("{hint}");
+        }
     }) {
         Ok(lease) => lease,
         Err(Error::Busy(blocked)) => {
@@ -549,6 +642,17 @@ fn hold(output: &Output, words: &[String]) -> u8 {
     if let Some(slot) = slot_path {
         record_slot(&broker, &receipt, slot);
     }
+    if let Some(decision) = &decision {
+        let placed = crate::lease_place::local_receipt(
+            decision,
+            &hold.command,
+            started_at_ms,
+            exit,
+            &receipt,
+            &hold.fetch,
+        );
+        return finish_placed(output, &broker, &hold, &placed, exit, failure);
+    }
     if let Some(path) = &hold.receipt
         && let Err(error) = receipt.write(path)
     {
@@ -564,6 +668,43 @@ fn hold(output: &Output, words: &[String]) -> u8 {
         Some(code) => u8::try_from(code & 0xff).unwrap_or(crate::EXIT_FAILURE),
         None => crate::EXIT_FAILURE,
     }
+}
+
+/// Runs a job placed on another computer and reports it as a local one
+/// would: its exit code, its receipt, and why it had none.
+fn finish_remote(
+    output: &Output,
+    broker: &Broker,
+    hold: &Hold,
+    decision: &coder_lease::placement::Decision,
+) -> u8 {
+    match crate::lease_place::run_remote(decision, &hold.command, &hold.fetch) {
+        Ok((placed, failure)) => {
+            let exit = placed.exit;
+            finish_placed(output, broker, hold, &placed, exit, failure)
+        }
+        Err(message) => output.fail("lease", &message),
+    }
+}
+
+/// Records a placement receipt, prints it under `--json`, and exits with
+/// the command's status.
+fn finish_placed(
+    output: &Output,
+    broker: &Broker,
+    hold: &Hold,
+    placed: &coder_lease::placement::Receipt,
+    exit: Option<i32>,
+    failure: Option<String>,
+) -> u8 {
+    if let Err(message) = crate::lease_place::record(broker.root(), placed, hold.receipt.as_deref())
+    {
+        return output.fail("lease", &message);
+    }
+    if output.json() {
+        println!("{}", serde_json::to_value(placed).unwrap_or(Value::Null));
+    }
+    finish_unleased(exit, failure)
 }
 
 /// Set by the `cargo` lease shim (`coder_lease::shim`) when it runs
@@ -853,18 +994,21 @@ mod tests {
 
     #[test]
     fn lease_parses_the_resource_options_and_command() {
-        let hold = parse_hold(&words(&[
-            "disk",
-            "--amount",
-            "40",
-            "--no-wait",
-            "--receipt",
-            "out/r.json",
-            "--",
-            "cargo",
-            "test",
-            "--json",
-        ]))
+        let hold = parse_hold(
+            &words(&[
+                "disk",
+                "--amount",
+                "40",
+                "--no-wait",
+                "--receipt",
+                "out/r.json",
+                "--",
+                "cargo",
+                "test",
+                "--json",
+            ]),
+            false,
+        )
         .unwrap();
         assert_eq!(
             hold,
@@ -876,15 +1020,18 @@ mod tests {
                 receipt: Some(PathBuf::from("out/r.json")),
                 keep_target_dir: false,
                 command: words(&["cargo", "test", "--json"]),
+                class: None,
+                place: None,
+                fetch: Vec::new(),
             }
         );
-        assert!(parse_hold(&words(&["build", "cargo", "test"])).is_err());
-        assert!(parse_hold(&words(&["build", "--"])).is_err());
-        assert!(parse_hold(&words(&["cpu", "--", "true"])).is_err());
-        assert!(parse_hold(&words(&["build", "--amount", "0", "--", "true"])).is_err());
-        assert!(parse_hold(&words(&["--", "true"])).is_err());
+        assert!(parse_hold(&words(&["build", "cargo", "test"]), false).is_err());
+        assert!(parse_hold(&words(&["build", "--"]), false).is_err());
+        assert!(parse_hold(&words(&["cpu", "--", "true"]), false).is_err());
+        assert!(parse_hold(&words(&["build", "--amount", "0", "--", "true"]), false).is_err());
+        assert!(parse_hold(&words(&["--", "true"]), false).is_err());
         assert_eq!(
-            parse_hold(&words(&["issue/10755", "--", "true"]))
+            parse_hold(&words(&["issue/10755", "--", "true"]), false)
                 .unwrap()
                 .resource,
             Resource::Issue(10755)
@@ -893,18 +1040,80 @@ mod tests {
 
     #[test]
     fn lease_takes_a_priority_by_name() {
-        let hold = parse_hold(&words(&["build", "--priority", "push", "--", "cargo"])).unwrap();
+        let hold = parse_hold(
+            &words(&["build", "--priority", "push", "--", "cargo"]),
+            false,
+        )
+        .unwrap();
         assert_eq!(hold.priority, Some(Priority::Push));
-        let hold = parse_hold(&words(&["gpu", "--", "true"])).unwrap();
+        let hold = parse_hold(&words(&["gpu", "--", "true"]), false).unwrap();
         assert_eq!(hold.priority, None);
-        assert!(parse_hold(&words(&["build", "--priority", "urgent", "--", "cargo"])).is_err());
+        assert!(
+            parse_hold(
+                &words(&["build", "--priority", "urgent", "--", "cargo"]),
+                false
+            )
+            .is_err()
+        );
+    }
+
+    #[test]
+    fn a_placed_job_takes_its_class_place_and_result_files() {
+        let hold = parse_hold(
+            &words(&[
+                "--class",
+                "release-gate",
+                "--place",
+                "remote:coderos-4080",
+                "--fetch",
+                "out/gate.json",
+                "--fetch",
+                "out/log.txt",
+                "--",
+                "./scripts/verify-rust.sh",
+                "--release",
+            ]),
+            true,
+        )
+        .unwrap();
+        assert_eq!(hold.resource, Resource::Quiet);
+        assert_eq!(hold.class, Some(Class::ReleaseGate));
+        assert_eq!(hold.place, Some(Place::Remote(Some("coderos-4080".into()))));
+        assert_eq!(hold.fetch, ["out/gate.json", "out/log.txt"]);
+        let build = parse_hold(&words(&["--class", "build", "--", "cargo"]), true).unwrap();
+        assert_eq!(build.resource, Resource::Build);
+        let soak = parse_hold(
+            &words(&["quiet", "--class", "soak", "--place", "auto", "--", "x"]),
+            false,
+        )
+        .unwrap();
+        assert_eq!(soak.class, Some(Class::Soak));
+        // `--place` on a build implies the build class.
+        let placed = parse_hold(&words(&["build", "--place", "remote", "--", "x"]), false).unwrap();
+        assert_eq!(placed.class, Some(Class::Build));
+        for refused in [
+            &["--", "x"][..],
+            &["--class", "gpu", "--", "x"],
+            &["--class", "bench", "--place", "moon", "--", "x"],
+            &["--class", "bench", "--fetch", "../secret", "--", "x"],
+            &["--class", "bench", "--fetch", "/etc/passwd", "--", "x"],
+        ] {
+            assert!(parse_hold(&words(refused), true).is_err(), "{refused:?}");
+        }
+        assert!(parse_hold(&words(&["build", "--class", "soak", "--", "x"]), false).is_err());
+        assert!(parse_hold(&words(&["quiet", "--place", "remote", "--", "x"]), false).is_err());
+        assert!(parse_hold(&words(&["quiet", "--fetch", "out", "--", "x"]), false).is_err());
     }
 
     #[test]
     fn keep_target_dir_goes_with_build_only() {
-        let hold = parse_hold(&words(&["build", "--keep-target-dir", "--", "cargo"])).unwrap();
+        let hold = parse_hold(
+            &words(&["build", "--keep-target-dir", "--", "cargo"]),
+            false,
+        )
+        .unwrap();
         assert!(hold.keep_target_dir);
-        assert!(parse_hold(&words(&["gpu", "--keep-target-dir", "--", "true"])).is_err());
+        assert!(parse_hold(&words(&["gpu", "--keep-target-dir", "--", "true"]), false).is_err());
     }
 
     #[test]

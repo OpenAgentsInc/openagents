@@ -62,6 +62,7 @@ use super::adapter::Access;
 use super::autostart::{ClaudeRuns, CodexRuns, Route};
 use super::capacity::Provider;
 use super::usage;
+use coder_lease::placement::Policy;
 
 /// The file's schema.
 pub const SCHEMA: &str = "openagents.settings.v1";
@@ -401,6 +402,12 @@ pub struct Coder {
     /// overrides it. `None` uses the default, a slot for every 8 cores.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub build_leases: Option<u64>,
+    /// Where each class of long job runs (#10767): `local`, `auto`, or
+    /// `remote:COMPUTER`, and the computers `auto` tries. A file names it
+    /// only when it differs from the defaults: release gates and
+    /// benchmarks `auto`, soaks and builds `local`, and no computer.
+    #[serde(default, skip_serializing_if = "Policy::is_default")]
+    pub placement: Policy,
 }
 
 impl Default for Coder {
@@ -419,6 +426,7 @@ impl Default for Coder {
             slot_cap_gb: None,
             slot_free_gb: None,
             build_leases: None,
+            placement: Policy::default(),
         }
     }
 }
@@ -631,7 +639,7 @@ impl Default for Settings {
 
 /// The flat keys [`Settings::get`] and [`Settings::set`] take.
 #[must_use]
-pub const fn keys() -> [&'static str; 14] {
+pub const fn keys() -> [&'static str; 15] {
     [
         "coder.providers",
         "coder.disabled",
@@ -646,6 +654,7 @@ pub const fn keys() -> [&'static str; 14] {
         "coder.slot_cap_gb",
         "coder.slot_free_gb",
         "coder.build_leases",
+        "coder.placement",
         "models.payer",
     ]
 }
@@ -748,6 +757,7 @@ impl Settings {
             "coder.slot_cap_gb" => json!(coder.slot_cap_gb),
             "coder.slot_free_gb" => json!(coder.slot_free_gb),
             "coder.build_leases" => json!(coder.build_leases),
+            "coder.placement" => coder.placement.effective(),
             "models.payer" => json!(self.models.payer.as_str()),
             _ => return Err(unknown(key)),
         })
@@ -888,6 +898,12 @@ impl Settings {
                     ),
                 };
             }
+            "coder.placement" => {
+                coder.placement = match value.trim() {
+                    "default" | "null" | "none" => Policy::default(),
+                    entries => Policy::parse(entries)?,
+                };
+            }
             _ => return Err(unknown(key)),
         }
         coder.validate()?;
@@ -937,6 +953,7 @@ impl Settings {
             "coder.slot_cap_gb" => coder.slot_cap_gb = default.slot_cap_gb,
             "coder.slot_free_gb" => coder.slot_free_gb = default.slot_free_gb,
             "coder.build_leases" => coder.build_leases = default.build_leases,
+            "coder.placement" => coder.placement = default.placement,
             "models.payer" => self.models.payer = model_access::Mode::Ours,
             _ => return Err(unknown(key)),
         }
@@ -1471,6 +1488,57 @@ mod tests {
             .set("coder.build_leases", "default", dir.path())
             .unwrap();
         assert_eq!(settings.coder.build_leases, None);
+    }
+
+    /// Placement keeps release gates and benchmarks `auto` and soaks and
+    /// builds local until the person says otherwise (#10767).
+    #[test]
+    fn placement_has_its_defaults_and_takes_classes_and_computers() {
+        let dir = tempfile::tempdir().unwrap();
+        let file = dir.path().join("settings.json");
+        let mut settings = Settings::default();
+        assert_eq!(
+            settings.get("coder.placement").unwrap(),
+            json!({
+                "release-gate": "auto",
+                "bench": "auto",
+                "soak": "local",
+                "build": "local",
+                "computers": [],
+            })
+        );
+        settings.save(&file).unwrap();
+        assert!(
+            !std::fs::read_to_string(&file)
+                .unwrap()
+                .contains("placement")
+        );
+        settings
+            .set(
+                "coder.placement",
+                "bench=remote:coderos-4080,computer=coderos-4080",
+                dir.path(),
+            )
+            .unwrap();
+        settings.save(&file).unwrap();
+        let read = coder_lease::placement::Policy::read(&file).unwrap();
+        assert_eq!(read, settings.coder.placement);
+        assert_eq!(
+            Settings::load(&file)
+                .unwrap()
+                .get("coder.placement")
+                .unwrap()["bench"],
+            json!("remote:coderos-4080")
+        );
+        assert!(
+            settings
+                .set("coder.placement", "gpu=local", dir.path())
+                .is_err()
+        );
+        settings
+            .set("coder.placement", "default", dir.path())
+            .unwrap();
+        assert!(settings.coder.placement.is_default());
     }
 
     /// The shadow baseline is off unless the person turns it on (#10209),

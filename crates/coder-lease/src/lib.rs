@@ -48,6 +48,9 @@
 //! `~/.openagents/scratch/<session>/`, which a lease's command and Coder's
 //! delegates get in `OPENAGENTS_SCRATCH`.
 //!
+//! [`placement`] decides whether a long job runs here under a lease or on
+//! another computer, from its class and the `coder.placement` setting.
+//!
 //! `docs/coder/runtime/leases.md` is the operator's page.
 
 pub mod artifact;
@@ -56,6 +59,7 @@ pub mod claims;
 mod grant;
 mod holder;
 mod limits;
+pub mod placement;
 mod resource;
 mod root;
 pub mod scratch;

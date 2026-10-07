@@ -17,6 +17,10 @@
 //! 4. [`Launcher::remove`] stops a host that this launcher started, and only
 //!    detaches from a host that it adopted.
 //!
+//! Separately, a [`Job`] runs one command on another computer in a checkout
+//! at a pushed commit and copies result files back, for jobs placed off
+//! this machine (`openagents lease run --class CLASS`).
+//!
 //! # Ownership
 //!
 //! The remote machine records who started a host. A host this launcher
@@ -53,6 +57,7 @@ compile_error!("coder-ssh runs the system ssh binary through Unix process groups
 
 mod askpass;
 mod error;
+mod job;
 mod launcher;
 mod protocol;
 mod ssh;
@@ -60,6 +65,7 @@ mod tunnel;
 
 pub use askpass::{Prompter, Secret};
 pub use error::Error;
+pub use job::{Job, SETUP_FAILED, reachable};
 pub use launcher::{
     Arch, Artifact, Host, Install, Invitation, Launcher, Os, Ownership, Release, Removal, Runner,
     Start,

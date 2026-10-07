@@ -552,6 +552,13 @@ async fn settings_change_the_local_run_and_the_defaults_change_nothing() {
             "coder.slot_cap_gb": null,
             "coder.slot_free_gb": null,
             "coder.build_leases": null,
+            "coder.placement": {
+                "release-gate": "auto",
+                "bench": "auto",
+                "soak": "local",
+                "build": "local",
+                "computers": [],
+            },
             "models.payer": "ours",
         })
     );
