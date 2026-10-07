@@ -45,7 +45,7 @@ fn parse(words: &[String]) -> Result<Args, String> {
         ],
         "approve" => &["root", "purchase", "digest"],
         "invoke" => &["root", "purchase", "wait"],
-        "show" | "cancel" => &["root", "purchase"],
+        "show" | "cancel" | "recover" => &["root", "purchase"],
         _ => return Err("Unknown plugin purchase command.".into()),
     };
     if a.option_names().iter().any(|n| !allowed.contains(n)) {
@@ -141,6 +141,29 @@ struct Reply {
 }
 trait Transport {
     fn send(&self, url: &str, body: &[u8], signature: Option<&str>) -> Result<Reply, String>;
+    fn invoke(
+        &self,
+        url: &str,
+        body: &[u8],
+        signature: &str,
+        authorization: Option<&str>,
+    ) -> Result<Reply, String> {
+        if authorization.is_some() {
+            return Err(
+                "Original private invocation authorization transport is unavailable.".into(),
+            );
+        }
+        self.send(url, body, Some(signature))
+    }
+    fn recover(
+        &self,
+        _url: &str,
+        _body: &[u8],
+        _secret: &str,
+        _payment_hash: &str,
+    ) -> Result<Reply, String> {
+        Err("The selected service has no admitted recovery transport.".into())
+    }
 }
 struct Http(reqwest::blocking::Client);
 impl Http {
@@ -156,6 +179,36 @@ impl Http {
 }
 impl Transport for Http {
     fn send(&self, url: &str, body: &[u8], signature: Option<&str>) -> Result<Reply, String> {
+        self.request(url, body, signature, None, None)
+    }
+    fn invoke(
+        &self,
+        url: &str,
+        body: &[u8],
+        signature: &str,
+        authorization: Option<&str>,
+    ) -> Result<Reply, String> {
+        self.request(url, body, Some(signature), None, authorization)
+    }
+    fn recover(
+        &self,
+        url: &str,
+        body: &[u8],
+        secret: &str,
+        payment_hash: &str,
+    ) -> Result<Reply, String> {
+        self.request(url, body, None, Some((secret, payment_hash)), None)
+    }
+}
+impl Http {
+    fn request(
+        &self,
+        url: &str,
+        body: &[u8],
+        signature: Option<&str>,
+        recovery: Option<(&str, &str)>,
+        authorization: Option<&str>,
+    ) -> Result<Reply, String> {
         use std::io::Read;
         let mut request = self
             .0
@@ -164,6 +217,14 @@ impl Transport for Http {
             .body(body.to_vec());
         if let Some(s) = signature {
             request = request.header(PAYMENT_SIGNATURE, s);
+        }
+        if let Some((secret, hash)) = recovery {
+            request = request
+                .header(openagents_x402::outcome::AUTHORIZATION, secret)
+                .header(openagents_x402::outcome::PAYMENT, hash);
+        }
+        if let Some(secret) = authorization {
+            request = request.header(openagents_x402::outcome::AUTHORIZATION, secret);
         }
         let response = request
             .send()
@@ -178,12 +239,17 @@ impl Transport for Http {
         };
         let required = header(PAYMENT_REQUIRED);
         let settlement = header(PAYMENT_RESPONSE);
+        let bound = if recovery.is_some() {
+            256 * 1024
+        } else {
+            128 * 1024
+        };
         let mut body = Vec::new();
         response
-            .take(128 * 1024 + 1)
+            .take(bound + 1)
             .read_to_end(&mut body)
             .map_err(|_| "Plugin service body is unavailable.")?;
-        if body.len() > 128 * 1024 {
+        if body.len() as u64 > bound {
             return Err("Plugin response exceeds the admitted bound.".into());
         }
         Ok(Reply {
@@ -284,7 +350,18 @@ fn execute(a: &Args) -> Result<View, String> {
             max_fee_msat,
             request_hash: String::new(),
             expires_at_ms: 0,
+            recovery_authorization: None,
         };
+        use std::io::Read;
+        let mut random = [0u8; 32];
+        std::fs::File::open("/dev/urandom")
+            .and_then(|mut f| f.read_exact(&mut random))
+            .map_err(|_| "Private purchase authorization is unavailable.")?;
+        let secret = random
+            .iter()
+            .map(|b| format!("{b:02x}"))
+            .collect::<String>();
+        offer.recovery_authorization = Some(openagents_x402::outcome::commitment(&secret));
         if offer.quote.plugin.as_deref() != Some(plugin) {
             return Err("Preview identifies another plugin.".into());
         }
@@ -304,6 +381,12 @@ fn execute(a: &Args) -> Result<View, String> {
                 "Plugin terms changed or invoice issuance is unavailable; review a new purchase."
                     .into(),
             );
+        }
+        if serde_json::from_slice::<Value>(&reply.body)
+            .ok()
+            .is_none_or(|v| v["recovery_contract"] != openagents_x402::outcome::SCHEMA)
+        {
+            return Err("The service does not admit the reviewed private outcome recovery contract; no payment was dispatched.".into());
         }
         offer.payment = wire::decode_payment_required(
             reply
@@ -334,7 +417,7 @@ fn execute(a: &Args) -> Result<View, String> {
                 .saturating_add(invoice.expiry_seconds())
                 .saturating_mul(1000),
         );
-        return store.quote_plugin(id, offer, request, current, at);
+        return store.quote_plugin_with_recovery(id, offer, request, current, at, Some(secret));
     }
     let view = store.plugin_view(id)?;
     // Refuse a retry before opening even the payment transport.
@@ -342,6 +425,19 @@ fn execute(a: &Args) -> Result<View, String> {
         return Err("This purchase is unapproved or was already attempted. Retained uncertainty requires recovery, never repayment.".into());
     }
     let (wallet, payer) = resident(&view.offer.payer.home)?;
+    if command == "recover" {
+        let current = crate::runtime().block_on(store.current_selection())?;
+        return recover(
+            &mut store,
+            id,
+            &current,
+            &payer,
+            &wallet,
+            &transport,
+            &crate::x402::open_ledger(),
+            now(),
+        );
+    }
     let supplied = store.plugin_request(id)?.to_owned();
     let source = source(root, &view.offer);
     let packet = resolved(&source, &view.offer, &supplied)?;
@@ -374,6 +470,92 @@ fn execute(a: &Args) -> Result<View, String> {
         a.number::<u64>("wait", 60)?.clamp(1, 300),
         now(),
     )
+}
+
+fn recover(
+    store: &mut Store,
+    id: &str,
+    current: &Selection,
+    payer: &Payer,
+    wallet: &dyn LightningWallet,
+    transport: &dyn Transport,
+    ledger: &Ledger,
+    at: u64,
+) -> Result<View, String> {
+    use openagents_wallet::{PaymentDirection, PaymentStatus};
+    let (offer, body, secret) = store.plugin_recovery(id, current, payer)?;
+    let invoice =
+        nostr::x402::decode_invoice(offer.invoice()).map_err(|_| "Retained invoice is invalid.")?;
+    let hash = invoice
+        .payment_hash()
+        .iter()
+        .map(|b| format!("{b:02x}"))
+        .collect::<String>();
+    let Some(record) = wallet
+        .lookup_from_node(&payer.node, invoice.payment_hash())
+        .map_err(
+            |_| "Original resident payment lookup is unavailable; keep its unresolved liability.",
+        )?
+    else {
+        return store.plugin_view(id);
+    };
+    if record.status != PaymentStatus::Succeeded
+        || record.direction != PaymentDirection::Outbound
+        || record.payment_hash != hash
+        || record.amount_msat != Some(offer.quote.price_msat)
+        || record.bolt11.as_ref().is_some_and(|s| s != offer.invoice())
+        || record.updated_at < invoice.created_at()
+        || record.updated_at > at / 1000 + nostr::x402::DEFAULT_CLOCK_SKEW
+    {
+        return Err("Original payment lookup is pending, failed, or mismatched; recovery cannot release liability or pay again.".into());
+    }
+    let Some(fee_msat) = record.fee_msat else {
+        return store.plugin_view(id);
+    };
+    let Some(preimage) = record.preimage else {
+        return store.plugin_view(id);
+    };
+    let charge = Charge {
+        payment_hash: hash.clone(),
+        amount_msat: offer.quote.price_msat,
+        fee_msat,
+    };
+    store.plugin_recovered_charge(id, charge.clone(), &preimage)?;
+    ledger
+        .record_once(&Entry {
+            paid_at: record.updated_at,
+            binding: "http:1".into(),
+            network: payer.network.clone(),
+            provider: offer.payment.accepts[0].pay_to.clone(),
+            capability: None,
+            resource: offer.url.clone(),
+            amount_msat: charge.amount_msat,
+            fee_msat: charge.fee_msat,
+            payment_hash: hash.clone(),
+            phase: "paid".into(),
+        })
+        .map_err(
+            |_| "Known payment could not be recorded in the buyer ledger; do not pay again.",
+        )?;
+    let reply = match transport.recover(&offer.url, &body, &secret, &hash) {
+        Ok(r) => r,
+        Err(_) => return store.plugin_view(id),
+    };
+    if reply.status != 200 {
+        return store.plugin_view(id);
+    }
+    let evidence: openagents_x402::outcome::View = serde_json::from_slice(&reply.body)
+        .map_err(|_| "Private recovery evidence is invalid; keep the original liability.")?;
+    let view = store.plugin_recovered(id, evidence)?;
+    let phase = match view.phase {
+        Phase::Completed => "http_200",
+        Phase::Failed => "delivery_failed",
+        _ => "paid_delivery_unknown",
+    };
+    ledger.set_phase(&hash, phase).map_err(
+        |_| "Known recovery evidence is retained but the buyer ledger phase needs reconciliation.",
+    )?;
+    Ok(view)
 }
 fn buy(
     store: &mut Store,
@@ -412,6 +594,7 @@ fn buy(
     if wallet.node_id() != payer.node {
         return Err("The approved payer node changed; no payment was dispatched.".into());
     }
+    let authorization = store.plugin_invocation_authorization(id, current)?;
     let (offer, body) = store.begin_plugin(id, current, payer, packet, at)?;
     let proof = match wallet.pay_from_node(
         &payer.node,
@@ -439,7 +622,7 @@ fn buy(
         return store.plugin_unknown(id);
     }
     if ledger
-        .append(&Entry {
+        .record_once(&Entry {
             paid_at: at / 1000,
             binding: "http:1".into(),
             network: payer.network.clone(),
@@ -465,7 +648,7 @@ fn buy(
         extensions: None,
     })
     .map_err(|e| e.to_string())?;
-    let reply = match transport.send(&offer.url, &body, Some(&signature)) {
+    let reply = match transport.invoke(&offer.url, &body, &signature, authorization.as_deref()) {
         Ok(reply) => reply,
         Err(_) => return store.plugin_unknown(id),
     };

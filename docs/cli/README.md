@@ -1781,6 +1781,13 @@ charge. A receipt binding check preserves the guest's verification class;
 liability and refuses another attempt or purchase for that payer until recovery
 resolves it. A failed delivery can still carry a confirmed charge.
 
+Use `plugin purchase recover --root DIR --purchase ID` after a lost payment or
+delivery acknowledgment. It checks the original resident payment and reads the
+provider's private retained outcome using the original purchase authorization.
+Recovery does not pay or run the plugin again. Missing payment details or an
+interrupted invocation remain unknown; keep the purchase reference for support.
+Older purchases without recovery authorization need manual reconciliation.
+
 ```sh
 openagents plugin run crates/plugin-explain-error --in ~/code/shop --request-file failure.txt
 openagents plugin run crates/plugin-dependency-check --in ~/code/shop

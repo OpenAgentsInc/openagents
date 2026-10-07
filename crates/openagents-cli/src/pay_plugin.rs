@@ -720,7 +720,7 @@ pub(crate) mod tests {
 
     pub(crate) fn front_with(
         dir: &Path,
-        receiver: Arc<FakeReceiver>,
+        receiver: Arc<dyn Receiver>,
         sink: Arc<LedgerSink>,
         source: Arc<dyn PluginSource>,
     ) -> Front<FileReplayStore> {

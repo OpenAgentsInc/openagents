@@ -72,6 +72,9 @@ pub(crate) const EXT_USAGE: &str = "usage: openagents plugin COMMAND [OPTIONS]
         An uncertain charge or delivery remains unresolved and cannot repay.
   purchase show|cancel --root DIR --purchase ID
         Read retained purchase state, or cancel before payment starts.
+  purchase recover --root DIR --purchase ID
+        Reconcile the original resident payment and privately read retained
+        provider custody. Never pay, redispatch, infer a refund, or erase uncertainty.
   new SLUG [--name NAME] [--in DIR] [--from-rule ID]
         Start a plugin in DIR (default ./SLUG): its package.json, a skill
         under skills/, and a README with the next commands. --from-rule
@@ -173,6 +176,7 @@ pub(crate) const EXT_EFFECTS: &[Declared] = &[
     Declared::computer("purchase approve", Effect::Grants),
     Declared::computer("purchase invoke", Effect::Spends),
     Declared::computer("purchase show", Effect::ReadOnly),
+    Declared::computer("purchase recover", Effect::LocalWrite),
     Declared::computer("purchase cancel", Effect::LocalWrite),
     Declared::computer("new", Effect::LocalWrite),
     Declared::computer("pin", Effect::LocalWrite),

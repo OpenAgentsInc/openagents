@@ -16,6 +16,43 @@ Related: [the OpenAgents API](../api/README.md) (x402 payment, plugin fees),
 [Bitcoin](../bitcoin/README.md) (node history), and
 [NIP-X402](../../nips/openagents/NIP-X402.md).
 
+## Paid-plugin outcomes and recovery
+
+The selected installed CLI uses `plugin purchase recover --root DIR --purchase ID`
+to look up the original resident payment and read its provider's private outcome.
+It rechecks the original customer and credential identity and current rights.
+It never sends a payment or runs a guest. A missing payment, fee, proof, or
+provider record retains uncertainty and its charge ceiling. A known payment
+with missing delivery remains paid; it does not imply a refund or zero cost.
+
+New quotes require `openagents.plugin-outcome.v1`. The client keeps a random
+purchase secret in its private book and includes only its SHA-256 commitment
+in the exact invoiced body. Initial invocation requires
+`OpenAgents-Recovery-Authorization`; a recovery POST sends that same secret,
+the original body, and `OpenAgents-Recovery-Payment` with the original payment
+hash. A payment hash, shared payer node, account label, or paid proof alone
+cannot read this purchase. The response is private, uses `Cache-Control:
+no-store`, and is bounded to 256 KiB, including a base64-encoded result of at
+most 128 KiB. These records are attributable provider claims.
+
+`pay serve` keeps private custody in `replay/outcomes`. All fronts for the
+receiver must share its replay store, outcome directory, and existing ledger.
+The journal pins one request and invoice per purchase authorization, records
+settlement before execution, and seals an irreversible invocation intent.
+It checks the original directory, locks, and sealed source bytes before effects
+and after lookups; replacement refuses further execution or result writes.
+Restart recovery reconciles the original wallet and settlement without
+dispatch. The retained signed invoice pins the receiver node; observed
+collection must match its hash, amount, and payment disposition. A stopped
+request with no invocation intent becomes a known failed
+delivery after settlement; an interrupted invocation remains unknown. A
+retained result or failure can be read repeatedly without another accrual or
+payout. Preserve these records and bindings; deleting unknown custody cannot
+authorize a retry. Older purchases without this secret require support.
+Reversals and new purchases require separate authorization under existing
+payment policy. Real receiver and installed-client qualification remains in
+[the owner gates](../../NEEDS_OWNER.md#first-paid-workflow-o2o8-rev-101112-108171081810819).
+
 ## Private earnings and payout management
 
 The gateway's optional `earnings` block connects account authorization to the

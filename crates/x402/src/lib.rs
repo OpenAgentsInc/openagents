@@ -25,6 +25,7 @@ pub mod front;
 pub mod hosted;
 pub mod mcp;
 pub mod native;
+pub mod outcome;
 pub mod payment_scheme;
 pub mod policy;
 pub mod replay;

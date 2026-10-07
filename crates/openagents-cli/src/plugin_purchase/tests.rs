@@ -16,14 +16,74 @@ struct Wire {
     upgraded_verification: AtomicBool,
 }
 impl Transport for Wire {
-    fn send(&self, url: &str, body: &[u8], signature: Option<&str>) -> Result<Reply, String> {
+    fn recover(
+        &self,
+        url: &str,
+        body: &[u8],
+        secret: &str,
+        payment_hash: &str,
+    ) -> Result<Reply, String> {
         let parsed = reqwest::Url::parse(url).unwrap();
+        let (response, _) = self.front.handle(
+            &Request {
+                method: "POST".into(),
+                target: parsed.path().into(),
+                headers: vec![
+                    (
+                        openagents_x402::outcome::AUTHORIZATION.into(),
+                        secret.into(),
+                    ),
+                    (
+                        openagents_x402::outcome::PAYMENT.into(),
+                        payment_hash.into(),
+                    ),
+                ],
+                body: body.to_vec(),
+            },
+            NOW + 10_000,
+        );
+        Ok(Reply {
+            status: response.status,
+            required: None,
+            settlement: None,
+            body: response.body,
+        })
+    }
+    fn send(&self, url: &str, body: &[u8], signature: Option<&str>) -> Result<Reply, String> {
+        self.authorized_send(url, body, signature, None)
+    }
+    fn invoke(
+        &self,
+        url: &str,
+        body: &[u8],
+        signature: &str,
+        authorization: Option<&str>,
+    ) -> Result<Reply, String> {
+        self.authorized_send(url, body, Some(signature), authorization)
+    }
+}
+impl Wire {
+    fn authorized_send(
+        &self,
+        url: &str,
+        body: &[u8],
+        signature: Option<&str>,
+        authorization: Option<&str>,
+    ) -> Result<Reply, String> {
+        let parsed = reqwest::Url::parse(url).unwrap();
+        let mut headers = signature
+            .map(|s| vec![(PAYMENT_SIGNATURE.into(), s.into())])
+            .unwrap_or_default();
+        if let Some(secret) = authorization {
+            headers.push((
+                openagents_x402::outcome::AUTHORIZATION.into(),
+                secret.into(),
+            ));
+        }
         let request = Request {
             method: "POST".into(),
             target: parsed.path().into(),
-            headers: signature
-                .map(|s| vec![(PAYMENT_SIGNATURE.into(), s.into())])
-                .unwrap_or_default(),
+            headers,
             body: body.to_vec(),
         };
         let (response, _) = self.front.handle(&request, NOW);
@@ -48,12 +108,23 @@ impl Transport for Wire {
 }
 struct Wallet {
     receiver: Arc<FakeReceiver>,
+    received: Arc<Mutex<std::collections::BTreeMap<String, u64>>>,
     payments: AtomicU64,
     pending: AtomicBool,
+    lost_ack: AtomicBool,
+    records: Mutex<std::collections::BTreeMap<String, PaymentRecord>>,
+    unknown_fee: AtomicBool,
+    receiver_identity: AtomicBool,
 }
 impl LightningWallet for Wallet {
     fn node_id(&self) -> String {
-        to_hex(nostr::x402::test_invoice::payee_of([19; 32]))
+        to_hex(nostr::x402::test_invoice::payee_of(
+            if self.receiver_identity.load(Ordering::SeqCst) {
+                [9; 32]
+            } else {
+                [19; 32]
+            },
+        ))
     }
     fn pay(&self, invoice: &str, fee: u64, _: Duration) -> Result<Proof, WalletError> {
         assert_eq!(fee, 0);
@@ -65,19 +136,49 @@ impl LightningWallet for Wallet {
                 waited_secs: 1,
             });
         }
-        Ok(Proof {
+        let proof = Proof {
             payment_hash: to_hex(parsed.payment_hash()),
             preimage: self.receiver.pay(invoice),
             amount_msat: parsed.amount_msat(),
             fee_msat: 0,
             bolt11: invoice.into(),
-        })
+        };
+        self.records.lock().unwrap().insert(
+            proof.payment_hash.clone(),
+            PaymentRecord {
+                payment_hash: proof.payment_hash.clone(),
+                direction: openagents_wallet::PaymentDirection::Outbound,
+                status: openagents_wallet::PaymentStatus::Succeeded,
+                amount_msat: Some(proof.amount_msat),
+                fee_msat: Some(proof.fee_msat),
+                preimage: Some(proof.preimage.clone()),
+                bolt11: None,
+                updated_at: parsed.created_at() + 1,
+            },
+        );
+        self.received
+            .lock()
+            .unwrap()
+            .insert(proof.payment_hash.clone(), proof.amount_msat);
+        if self.lost_ack.load(Ordering::SeqCst) {
+            return Err(WalletError::Pending {
+                payment_hash: proof.payment_hash,
+                waited_secs: 1,
+            });
+        }
+        Ok(proof)
     }
     fn receive_exact(&self, _: u64, _: [u8; 32], _: u32) -> Result<IssuedInvoice, WalletError> {
         unreachable!()
     }
-    fn lookup(&self, _: [u8; 32]) -> Result<Option<PaymentRecord>, WalletError> {
-        unreachable!()
+    fn lookup(&self, hash: [u8; 32]) -> Result<Option<PaymentRecord>, WalletError> {
+        let mut record = self.records.lock().unwrap().get(&to_hex(hash)).cloned();
+        if self.unknown_fee.load(Ordering::SeqCst) {
+            if let Some(r) = &mut record {
+                r.fee_msat = None;
+            }
+        }
+        Ok(record)
     }
     fn balance(&self) -> Result<Balance, WalletError> {
         unreachable!()
@@ -150,6 +251,9 @@ struct Harness {
 }
 impl Harness {
     fn new() -> Self {
+        Self::with_recovery(false)
+    }
+    fn with_recovery(recoverable: bool) -> Self {
         let root = tempfile::tempdir().unwrap();
         let (source, id) = signed_source(root.path());
         let receiver = Arc::new(FakeReceiver {
@@ -157,15 +261,29 @@ impl Harness {
             preimages: Mutex::new(Default::default()),
         });
         let sink = Arc::new(pay_plugin::LedgerSink::in_memory());
+        let received = Arc::new(Mutex::new(Default::default()));
         let wire = Wire {
-            front: front_with(root.path(), receiver.clone(), sink, source.clone()),
+            front: front_with(
+                root.path(),
+                Arc::new(LiveReceiver(receiver.clone(), received.clone(), Some(NOW))),
+                sink,
+                source.clone(),
+            )
+            .with_outcomes(
+                openagents_x402::outcome::Store::open(&root.path().join("outcomes")).unwrap(),
+            ),
             lost: AtomicBool::new(false),
             upgraded_verification: AtomicBool::new(false),
         };
         let wallet = Wallet {
             receiver,
+            received,
             payments: AtomicU64::new(0),
             pending: AtomicBool::new(false),
+            lost_ack: AtomicBool::new(false),
+            records: Mutex::new(Default::default()),
+            unknown_fee: AtomicBool::new(false),
+            receiver_identity: AtomicBool::new(false),
         };
         let current = current();
         let mut store = Store::open(&root.path().join("customer")).unwrap();
@@ -209,6 +327,8 @@ impl Harness {
             max_fee_msat: 0,
             request_hash: String::new(),
             expires_at_ms: (NOW + 300) * 1000,
+            recovery_authorization: recoverable
+                .then(|| openagents_x402::outcome::commitment(&"e5".repeat(32))),
         };
         offer.packet = resolved(source.as_ref(), &offer, request).unwrap();
         let body = offer.body(request);
@@ -218,12 +338,13 @@ impl Harness {
         assert_eq!(reply.status, 402);
         offer.payment = wire::decode_payment_required(reply.required.as_ref().unwrap()).unwrap();
         store
-            .quote_plugin(
+            .quote_plugin_with_recovery(
                 "one",
                 offer.clone(),
                 request.into(),
                 current.clone(),
                 NOW * 1000,
+                recoverable.then(|| "e5".repeat(32)),
             )
             .unwrap();
         let ledger = Ledger::open(&root.path().join("buyer.ndjson"));
@@ -395,17 +516,283 @@ fn uncertain_payment_and_lost_delivery_keep_original_identity_after_restart() {
     }
 }
 
-struct LiveReceiver(Arc<FakeReceiver>);
+#[test]
+fn private_recovery_restores_lost_delivery_once_and_refuses_revoked_or_shared_payer_access() {
+    let mut h = Harness::with_recovery(true);
+    h.approve();
+    h.wire.lost.store(true, Ordering::SeqCst);
+    assert_eq!(h.buy().unwrap().phase, Phase::Unknown);
+    let before = h.store.plugin_view("one").unwrap();
+    assert!(
+        !serde_json::to_string(&before)
+            .unwrap()
+            .contains(&"e5".repeat(32))
+    );
+    drop(h.store);
+    h.store = Store::open(&h.root.path().join("customer")).unwrap();
+    let mut denied = h.current.clone();
+    denied.context.can_invoke = false;
+    assert!(
+        recover(
+            &mut h.store,
+            "one",
+            &denied,
+            &h.offer.payer,
+            &h.wallet,
+            &h.wire,
+            &h.ledger,
+            (NOW + 10_000) * 1000
+        )
+        .is_err()
+    );
+    let mut other = h.current.clone();
+    other.context.account = "another-buyer".into();
+    other.context.workspace = "another-workspace".into();
+    other.context.payer_workspace = "another-workspace".into();
+    h.store.bind(other.clone()).unwrap();
+    assert!(
+        recover(
+            &mut h.store,
+            "one",
+            &other,
+            &h.offer.payer,
+            &h.wallet,
+            &h.wire,
+            &h.ledger,
+            (NOW + 10_000) * 1000
+        )
+        .is_err()
+    );
+    h.store.bind(h.current.clone()).unwrap();
+    let mut current = h.current.clone();
+    current.context.price.version = "new-price-version".into();
+    let first = recover(
+        &mut h.store,
+        "one",
+        &current,
+        &h.offer.payer,
+        &h.wallet,
+        &h.wire,
+        &h.ledger,
+        (NOW + 10_000) * 1000,
+    )
+    .unwrap();
+    assert_eq!(first.phase, Phase::Completed);
+    assert!(first.result.is_some());
+    assert!(first.unresolved_maximum_msat.is_none());
+    let again = recover(
+        &mut h.store,
+        "one",
+        &current,
+        &h.offer.payer,
+        &h.wallet,
+        &h.wire,
+        &h.ledger,
+        (NOW + 10_000) * 1000,
+    )
+    .unwrap();
+    assert_eq!(
+        first.recovery.unwrap().receipt_reference,
+        again.recovery.unwrap().receipt_reference
+    );
+    assert_eq!(h.wallet.payments.load(Ordering::SeqCst), 1);
+    assert_eq!(h.ledger.entries().unwrap().len(), 1);
+    assert!(h.buy().is_err());
+}
+
+#[test]
+fn lost_payment_ack_and_missing_fees_keep_known_money_separate_from_missing_delivery() {
+    let mut h = Harness::with_recovery(true);
+    h.approve();
+    h.wallet.lost_ack.store(true, Ordering::SeqCst);
+    let first = h.buy().unwrap();
+    assert_eq!(first.phase, Phase::Unknown);
+    assert!(first.charge.is_none());
+    h.wallet.unknown_fee.store(true, Ordering::SeqCst);
+    let unknown = recover(
+        &mut h.store,
+        "one",
+        &h.current,
+        &h.offer.payer,
+        &h.wallet,
+        &h.wire,
+        &h.ledger,
+        (NOW + 10_000) * 1000,
+    )
+    .unwrap();
+    assert!(unknown.charge.is_none());
+    assert_eq!(unknown.unresolved_maximum_msat, Some(6000));
+    h.wallet.unknown_fee.store(false, Ordering::SeqCst);
+    let paid = recover(
+        &mut h.store,
+        "one",
+        &h.current,
+        &h.offer.payer,
+        &h.wallet,
+        &h.wire,
+        &h.ledger,
+        (NOW + 10_000) * 1000,
+    )
+    .unwrap();
+    assert_eq!(paid.phase, Phase::Unknown);
+    assert_eq!(paid.charge.unwrap().amount_msat, 6000);
+    assert!(paid.result.is_none());
+    assert!(paid.recovery.is_none());
+    assert_eq!(h.ledger.entries().unwrap().len(), 1);
+    assert_eq!(h.wallet.payments.load(Ordering::SeqCst), 1);
+    assert!(h.buy().is_err());
+    let again = recover(
+        &mut h.store,
+        "one",
+        &h.current,
+        &h.offer.payer,
+        &h.wallet,
+        &h.wire,
+        &h.ledger,
+        (NOW + 10_000) * 1000,
+    )
+    .unwrap();
+    assert_eq!(again.phase, Phase::Unknown);
+    assert_eq!(h.ledger.entries().unwrap().len(), 1);
+}
+
+#[test]
+fn payment_dispatch_fence_survives_restart_before_and_after_wallet_acknowledgment() {
+    for paid in [false, true] {
+        let mut h = Harness::with_recovery(true);
+        h.approve();
+        let (offer, _body) = h
+            .store
+            .begin_plugin(
+                "one",
+                &h.current,
+                &h.offer.payer,
+                &h.offer.packet,
+                NOW * 1000 + 1,
+            )
+            .unwrap();
+        if paid {
+            h.wallet.lost_ack.store(true, Ordering::SeqCst);
+            assert!(
+                h.wallet
+                    .pay_from_node(
+                        &offer.payer.node,
+                        offer.invoice(),
+                        0,
+                        Duration::from_secs(1)
+                    )
+                    .is_err()
+            );
+        }
+        let path = h.root.path().join("customer");
+        drop(h.store);
+        let mut store = Store::open(&path).unwrap();
+        assert_eq!(store.plugin_view("one").unwrap().phase, Phase::Unknown);
+        let recovered = recover(
+            &mut store,
+            "one",
+            &h.current,
+            &offer.payer,
+            &h.wallet,
+            &h.wire,
+            &h.ledger,
+            (NOW + 10_000) * 1000,
+        )
+        .unwrap();
+        assert_eq!(recovered.phase, Phase::Unknown);
+        assert_eq!(recovered.charge.is_some(), paid);
+        assert!(recovered.result.is_none());
+        assert_eq!(h.wallet.payments.load(Ordering::SeqCst), u64::from(paid));
+        assert_eq!(h.ledger.entries().unwrap().len(), usize::from(paid));
+        assert!(
+            store
+                .begin_plugin(
+                    "one",
+                    &h.current,
+                    &offer.payer,
+                    &offer.packet,
+                    (NOW + 10_000) * 1000
+                )
+                .is_err()
+        );
+    }
+}
+
+#[test]
+fn receiver_collection_uses_original_node_and_actual_ldk_record_shape() {
+    let mut h = Harness::with_recovery(true);
+    h.approve();
+    let paid = h.buy().unwrap();
+    let hash = paid.charge.unwrap().payment_hash;
+    let invoice = h.offer.invoice();
+    assert!(crate::pay::observed_collection(&h.wallet, invoice, NOW + 10_000).is_err());
+    h.wallet.receiver_identity.store(true, Ordering::SeqCst);
+    assert_eq!(
+        crate::pay::observed_collection(&h.wallet, invoice, NOW + 10_000).unwrap(),
+        None
+    );
+    let mut original = h.wallet.records.lock().unwrap()[&hash].clone();
+    original.direction = openagents_wallet::PaymentDirection::Inbound;
+    original.fee_msat = None;
+    original.bolt11 = None;
+    h.wallet
+        .records
+        .lock()
+        .unwrap()
+        .insert(hash.clone(), original.clone());
+    assert_eq!(
+        crate::pay::observed_collection(&h.wallet, invoice, NOW + 10_000).unwrap(),
+        Some(6000)
+    );
+    let mut net = original.clone();
+    net.amount_msat = Some(5800);
+    h.wallet.records.lock().unwrap().insert(hash.clone(), net);
+    assert_eq!(
+        crate::pay::observed_collection(&h.wallet, invoice, NOW + 10_000).unwrap(),
+        Some(5800)
+    );
+    for variant in 0..6 {
+        let mut changed = original.clone();
+        match variant {
+            0 => changed.payment_hash = "00".repeat(32),
+            1 => changed.preimage = Some("00".repeat(32)),
+            2 => changed.updated_at = NOW + 1_000_000,
+            3 => changed.amount_msat = Some(6001),
+            4 => changed.bolt11 = Some("another invoice".into()),
+            _ => changed.status = openagents_wallet::PaymentStatus::Pending,
+        }
+        h.wallet
+            .records
+            .lock()
+            .unwrap()
+            .insert(hash.clone(), changed);
+        assert_eq!(
+            crate::pay::observed_collection(&h.wallet, invoice, NOW + 10_000).unwrap(),
+            None
+        );
+    }
+    assert_eq!(h.wallet.payments.load(Ordering::SeqCst), 1);
+}
+
+struct LiveReceiver(
+    Arc<FakeReceiver>,
+    Arc<Mutex<std::collections::BTreeMap<String, u64>>>,
+    Option<u64>,
+);
 impl openagents_x402::server::Receiver for LiveReceiver {
     fn pay_to(&self) -> String {
         to_hex(nostr::x402::test_invoice::payee_of([9; 32]))
     }
     fn invoice(&self, amount: u64, hash: [u8; 32], expiry: u32) -> Result<String, String> {
-        self.0
-            .invoice_at(amount, hash, expiry, openagents_x402::unix_now())
+        self.0.invoice_at(
+            amount,
+            hash,
+            expiry,
+            self.2.unwrap_or_else(openagents_x402::unix_now),
+        )
     }
-    fn received_msat(&self, _: [u8; 32]) -> Result<Option<u64>, String> {
-        Ok(None)
+    fn received_msat(&self, hash: [u8; 32]) -> Result<Option<u64>, String> {
+        Ok(self.1.lock().unwrap().get(&to_hex(hash)).copied())
     }
 }
 
@@ -434,16 +821,26 @@ fn installed_cli_quotes_approves_pays_returns_and_preserves_unknown_delivery() {
     });
     let wallet = Arc::new(Wallet {
         receiver: receiver.clone(),
+        received: Arc::new(Mutex::new(Default::default())),
         payments: AtomicU64::new(0),
         pending: AtomicBool::new(false),
+        lost_ack: AtomicBool::new(false),
+        records: Mutex::new(Default::default()),
+        unknown_fee: AtomicBool::new(false),
+        receiver_identity: AtomicBool::new(false),
     });
     let invoke = pay_plugin::Invoke::new(5000, source);
+    let executions = Arc::new(AtomicU64::new(0));
+    let counted = executions.clone();
     let route = Route {
         id: "plugin-invoke".into(),
         method: "POST".into(),
         path: "/v1/plugins/{id}/invoke".into(),
         price: invoke.price(),
-        executor: invoke,
+        executor: Arc::new(move |call: &openagents_x402::front::Call<'_>| {
+            counted.fetch_add(1, Ordering::SeqCst);
+            openagents_x402::front::RouteExecutor::execute(invoke.as_ref(), call)
+        }),
         role: pay_plugin::ROLE.into(),
         resource: "plugin-invoke".into(),
         plugin: None,
@@ -459,7 +856,11 @@ fn installed_cli_quotes_approves_pays_returns_and_preserves_unknown_delivery() {
             challenge_key: vec![7; 32],
             timeout_secs: 300,
         },
-        Arc::new(LiveReceiver(receiver.clone())),
+        Arc::new(LiveReceiver(
+            receiver.clone(),
+            wallet.received.clone(),
+            None,
+        )),
         Facilitator::new(
             FileReplayStore::open(&root.path().join("replay")).unwrap(),
             60,
@@ -467,7 +868,8 @@ fn installed_cli_quotes_approves_pays_returns_and_preserves_unknown_delivery() {
         Arc::new(pay_plugin::LedgerSink::in_memory()),
         vec![route],
     )
-    .unwrap();
+    .unwrap()
+    .with_outcomes(openagents_x402::outcome::Store::open(&root.path().join("outcomes")).unwrap());
     let mut selected = current();
     selected.origin = origin.clone();
     let context = serde_json::to_value(&selected.context).unwrap();
@@ -526,7 +928,12 @@ fn installed_cli_quotes_approves_pays_returns_and_preserves_unknown_delivery() {
             .unwrap();
         store.bind(selected).unwrap();
     }
-    let wallet_home = root.path().join("wallet");
+    // Native socket paths need a short private parent on Darwin.
+    let socket_root = tempfile::Builder::new()
+        .prefix("oa-rev12-")
+        .tempdir_in("/tmp")
+        .unwrap();
+    let wallet_home = socket_root.path().join("wallet");
     std::fs::create_dir(&wallet_home).unwrap();
     std::fs::set_permissions(&wallet_home, std::fs::Permissions::from_mode(0o700)).unwrap();
     let config =
@@ -701,10 +1108,38 @@ fn installed_cli_quotes_approves_pays_returns_and_preserves_unknown_delivery() {
     assert_eq!(v["charge"]["amount_msat"], 6000);
     assert!(!run(&["invoke", "--purchase", "lost"]).0.status.success());
     assert_eq!(wallet.payments.load(Ordering::SeqCst), 2);
+    assert_eq!(executions.load(Ordering::SeqCst), 2);
     let (o, v) = run(&["show", "--purchase", "lost"]);
     assert!(!o.status.success());
     assert_eq!(v["phase"], "unknown");
     assert_eq!(v["unresolved_maximum_msat"], 6000);
+    denied.store(true, Ordering::SeqCst);
+    assert!(!run(&["recover", "--purchase", "lost"]).0.status.success());
+    assert_eq!(wallet.payments.load(Ordering::SeqCst), 2);
+    denied.store(false, Ordering::SeqCst);
+    loss.store(false, Ordering::SeqCst);
+    let (o, first) = run(&["recover", "--purchase", "lost"]);
+    assert!(
+        o.status.success(),
+        "{} {}",
+        String::from_utf8_lossy(&o.stderr),
+        first
+    );
+    assert_eq!(first["phase"], "completed");
+    assert_eq!(
+        first["result"]["value"]["items"].as_array().unwrap().len(),
+        3
+    );
+    let (o, again) = run(&["recover", "--purchase", "lost"]);
+    assert!(o.status.success());
+    assert_eq!(
+        first["recovery"]["receipt_reference"],
+        again["recovery"]["receipt_reference"]
+    );
+    assert_eq!(first["result"], again["result"]);
+    assert_eq!(wallet.payments.load(Ordering::SeqCst), 2);
+    assert_eq!(executions.load(Ordering::SeqCst), 2);
+    assert!(!run(&["invoke", "--purchase", "lost"]).0.status.success());
     stop.store(true, Ordering::SeqCst);
     resident_stop.store(true, Ordering::SeqCst);
     http.join().unwrap();

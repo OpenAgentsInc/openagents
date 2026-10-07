@@ -1,4 +1,4 @@
-## First paid workflow O2/O8 (REV-10/11, #10817/#10818)
+## First paid workflow O2/O8 (REV-10/11/12, #10817/#10818/#10819)
 
 Review the [meeting action-items package](plugins/meeting-action-items/README.md),
 choose a real publisher, immutable version, per-call author fee, and supported
@@ -17,9 +17,18 @@ Qualify `plugin purchase` in the selected installed CLI with its separately
 authenticated customer and explicit resident payer that checks the expected
 node identity before payment. Review the exact invoice,
 release, input digest, endpoint/author total, routing-fee ceiling, and expiry
-before approval. Retain the actual result and original settlement. REV-12
-recovery and the remaining commercial gates must pass before launch; this
-fixture does not authorize a payment, refund, or public offer.
+before approval. Retain the actual result and original settlement. On the
+qualified receiver and installed client, test loss of acknowledgment and
+restart at payment, settlement, and invocation boundaries; privately recover
+the original purchase and confirm one payment, at most one invocation, and
+unchanged author shares. Confirm that another customer, a copied paid proof,
+and revoked client rights cannot read its result. Protect and back up the
+private buyer book and receiver's shared replay/outcome/ledger custody, and
+retain unknown obligations without deleting their bindings. Older purchases
+without a private recovery secret require support. Any reversal or new
+purchase needs separate authorization; these isolated checks authorize no
+payment, refund, deployment, or public offer. The remaining commercial gates
+must pass before launch.
 
 ## Swimming in Everglade on a phone (#10775)
 

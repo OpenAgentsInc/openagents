@@ -37,6 +37,15 @@ pub trait Receiver: Send + Sync {
         let _ = payment_hash;
         Ok(None)
     }
+    /// Observe collection on the original invoice's receiver, without issuing or paying.
+    fn received_invoice(&self, invoice: &str) -> Result<Option<u64>, String> {
+        let invoice = nostr::x402::decode_invoice(invoice)
+            .map_err(|_| "Original receiver invoice is invalid.")?;
+        if hex::encode(invoice.payee()) != self.pay_to() {
+            return Err("Original receiver identity changed.".into());
+        }
+        self.received_msat(invoice.payment_hash())
+    }
 }
 
 /// Runs the purchased operation. `Ok` bytes become the 200 body.

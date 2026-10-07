@@ -15,7 +15,9 @@
 //! released and a `503`, and the executor does not run, so the same proof can
 //! be presented again once the ledger is back; nothing was sold twice and
 //! nothing was sold unrecorded. The funded execution adapter retains the
-//! claim for exact recovery instead of releasing it.
+//! claim for exact recovery instead of releasing it. A paid-plugin request
+//! that binds private outcome authorization likewise retains its settlement
+//! and irreversible invocation fence; recovery reads never dispatch it again.
 
 use std::sync::Arc;
 
@@ -331,6 +333,8 @@ pub struct Front<S: ReplayStore> {
     sink: Arc<dyn SettlementSink>,
     routes: Vec<Route>,
     funded_purchase: Option<String>,
+    #[cfg(unix)]
+    outcomes: Option<crate::outcome::Store>,
 }
 
 fn field_token(text: &str) -> bool {
@@ -404,11 +408,21 @@ impl<S: ReplayStore> Front<S> {
             sink,
             routes,
             funded_purchase: None,
+            #[cfg(unix)]
+            outcomes: None,
         })
     }
 
     pub(crate) fn with_funded_purchase(mut self, purchase: String) -> Self {
         self.funded_purchase = Some(purchase);
+        self
+    }
+
+    /// Admit the provider-specific, authenticated HTTP plugin recovery contract.
+    /// Every entrance for this receiver must use the same private custody.
+    #[cfg(unix)]
+    pub fn with_outcomes(mut self, store: crate::outcome::Store) -> Self {
+        self.outcomes = Some(store);
         self
     }
 
@@ -474,6 +488,27 @@ impl<S: ReplayStore> Front<S> {
             payer_fingerprint: None,
         };
         let path = request.target.split('?').next().unwrap_or_default();
+        #[cfg(unix)]
+        if request.header(crate::outcome::PAYMENT).is_some()
+            || request.header(crate::outcome::AUTHORIZATION).is_some()
+                && request.header(PAYMENT_SIGNATURE).is_none()
+        {
+            let url = format!("{}{}", self.config.base_url, request.target);
+            let Some(hash) = http_binding(&request.method, &url, &request.body, &[])
+                .ok()
+                .and_then(|b| binding_hash(&b).ok())
+            else {
+                return done(
+                    event,
+                    Response::json(
+                        403,
+                        &json!({"error":{"type":"purchase_recovery_unavailable"}}),
+                    ),
+                    "recovery_refused",
+                );
+            };
+            return self.recover_outcome(request, &hash, event);
+        }
         let matched: Vec<(&Route, Vec<(String, String)>)> = self
             .routes
             .iter()
@@ -634,6 +669,23 @@ impl<S: ReplayStore> Front<S> {
                 );
             }
         }
+        #[cfg(unix)]
+        if self.outcomes.is_some()
+            && quote.plugin.is_some()
+            && let Some(value) = serde_json::from_slice::<Value>(&request.body)
+                .ok()
+                .and_then(|v| v.get("recovery_authorization").cloned())
+            && value.as_str().is_none_or(|s| !crate::outcome::token(s))
+        {
+            return done(
+                event,
+                Response::json(
+                    400,
+                    &json!({"error":{"type":"recovery_authorization_invalid"}}),
+                ),
+                "refused",
+            );
+        }
         if let Some(usage) = usage.as_mut() {
             if quote.plugin.is_some() {
                 usage.plugin.clone_from(&quote.plugin);
@@ -680,6 +732,25 @@ impl<S: ReplayStore> Front<S> {
     /// A fresh `402` with both encodings of one new invoice. `refusal` says
     /// why a presented proof was refused, in both vocabularies.
     fn challenge(&self, paid: &Paid<'_>, refusal: Option<(&str, Problem)>) -> Response {
+        #[cfg(unix)]
+        if let Some(store) = &self.outcomes
+            && let Some(authorization) = serde_json::from_slice::<Value>(&paid.request.body)
+                .ok()
+                .and_then(|v| v["recovery_authorization"].as_str().map(str::to_owned))
+        {
+            match store.bound(self.config.network, &authorization) {
+                Ok(false) => {}
+                Ok(true) => {
+                    return Response::json(
+                        409,
+                        &json!({"error":{"type":"recovery_required","message":"Original purchase custody already exists. Use private recovery; no replacement invoice was issued."}}),
+                    );
+                }
+                Err(_) => {
+                    return Response::json(503, &json!({"error":{"type":"outcome_unavailable"}}));
+                }
+            }
+        }
         let mut digest = [0u8; 32];
         if hex::decode_to_slice(paid.request_hash, &mut digest).is_err() {
             return Response::json(500, &json!({"error": {"type": "binding_digest"}}));
@@ -791,6 +862,15 @@ impl<S: ReplayStore> Front<S> {
         if let Some(plugin) = &paid.quote.plugin {
             body["plugin"] = json!(plugin);
         }
+        #[cfg(unix)]
+        if self.outcomes.is_some()
+            && paid.quote.plugin.is_some()
+            && serde_json::from_slice::<Value>(&paid.request.body)
+                .ok()
+                .is_some_and(|v| v.get("recovery_authorization").is_some())
+        {
+            body["recovery_contract"] = json!(crate::outcome::SCHEMA);
+        }
         if let Some(release) = &paid.quote.release {
             body["release"] = json!(release);
         }
@@ -802,7 +882,11 @@ impl<S: ReplayStore> Front<S> {
             .headers
             .push(("cache-control".into(), "no-store".into()));
         response.headers.push((PAYMENT_REQUIRED.into(), required));
-        if let Some(challenge) = challenge {
+        #[cfg(unix)]
+        let recoverable = body.get("recovery_contract").is_some();
+        #[cfg(not(unix))]
+        let recoverable = false;
+        if let Some(challenge) = challenge.filter(|_| !recoverable) {
             response
                 .headers
                 .push((WWW_AUTHENTICATE.into(), challenge.header_value()));
@@ -856,6 +940,15 @@ impl<S: ReplayStore> Front<S> {
             );
         };
         let requirements = self.requirements(paid.request_hash, invoice, paid.price);
+        #[cfg(unix)]
+        if paid.quote.plugin.is_some()
+            && let Some(store) = &self.outcomes
+            && serde_json::from_slice::<Value>(&paid.request.body)
+                .ok()
+                .is_some_and(|v| v.get("recovery_authorization").is_some())
+        {
+            return self.recoverable_x402(store, paid, &requirements, &payload, event);
+        }
         match self
             .facilitator
             .settle(&requirements, &payload, &paid.purchase(), paid.now)
@@ -872,6 +965,22 @@ impl<S: ReplayStore> Front<S> {
     }
 
     fn payment(&self, paid: &Paid<'_>, value: &str, event: Event) -> (Response, Event) {
+        #[cfg(unix)]
+        if self.outcomes.is_some()
+            && paid.quote.plugin.is_some()
+            && serde_json::from_slice::<Value>(&paid.request.body)
+                .ok()
+                .is_some_and(|v| v.get("recovery_authorization").is_some())
+        {
+            return done(
+                event,
+                Response::json(
+                    400,
+                    &json!({"error":{"type":"recovery_encoding_unsupported","message":"The reviewed recovery contract requires PAYMENT-SIGNATURE."}}),
+                ),
+                "refused",
+            );
+        }
         let credential = match payment_scheme::parse_credential(value) {
             Ok(credential) => credential,
             Err(problem) => return self.refuse(paid, "malformed_credential", problem, event),
@@ -942,14 +1051,56 @@ impl<S: ReplayStore> Front<S> {
         admitted: Admission,
         scheme: Scheme,
         challenge_id: Option<&str>,
+        event: Event,
+    ) -> (Response, Event) {
+        self.admitted_inner(paid, admitted, scheme, challenge_id, event, None)
+    }
+
+    fn admitted_inner(
+        &self,
+        paid: &Paid<'_>,
+        admitted: Admission,
+        scheme: Scheme,
+        challenge_id: Option<&str>,
         mut event: Event,
+        #[cfg(unix)] mut custody: Option<crate::outcome::Transaction>,
+        #[cfg(not(unix))] _custody: Option<()>,
     ) -> (Response, Event) {
         let payment_hash = admitted.proof.payment_hash.clone();
         event.payment_hash = Some(payment_hash.clone());
+        #[cfg(unix)]
+        if custody.as_ref().is_some_and(|tx| tx.current().is_err()) {
+            return done(
+                event,
+                Response::json(503, &json!({"error":{"type":"outcome_custody_changed"}})),
+                "outcome_unknown",
+            );
+        }
         let mut hash = [0u8; 32];
-        let looked_up = hex::decode_to_slice(&payment_hash, &mut hash)
-            .ok()
-            .and_then(|()| self.receiver.received_msat(hash).ok().flatten());
+        let mut legacy_collection = || {
+            hex::decode_to_slice(&payment_hash, &mut hash)
+                .ok()
+                .and_then(|()| self.receiver.received_msat(hash).ok().flatten())
+        };
+        #[cfg(unix)]
+        let looked_up = match &custody {
+            Some(tx) => self
+                .receiver
+                .received_invoice(&tx.record.identity.invoice)
+                .ok()
+                .flatten(),
+            None => legacy_collection(),
+        };
+        #[cfg(not(unix))]
+        let looked_up = legacy_collection();
+        #[cfg(unix)]
+        if custody.as_ref().is_some_and(|tx| tx.current().is_err()) {
+            return done(
+                event,
+                Response::json(503, &json!({"error":{"type":"outcome_custody_changed"}})),
+                "outcome_unknown",
+            );
+        }
         let settlement = Settlement {
             payment_hash: payment_hash.clone(),
             request_hash: paid.request_hash.to_string(),
@@ -975,12 +1126,52 @@ impl<S: ReplayStore> Front<S> {
             network: admitted.proof.network.clone(),
             settled_at: paid.now,
         };
+        #[cfg(unix)]
+        if custody.is_some() && looked_up.is_none_or(|n| n == 0 || n > paid.price) {
+            return done(
+                event,
+                Response::json(
+                    503,
+                    &json!({"error":{"type":"receiver_collection_unknown","message":"Original proof is retained, but the receiver has no matching observed collection. Use private recovery; nothing ran."}}),
+                ),
+                "outcome_unknown",
+            );
+        }
+        #[cfg(unix)]
+        if let Some(tx) = &mut custody {
+            tx.record.settlement = settlement.clone();
+            if tx.stage(crate::outcome::Stage::SettlementPending).is_err() {
+                return done(
+                    event,
+                    Response::json(
+                        503,
+                        &json!({"error":{"type":"outcome_unavailable","message":"Original payment remains unresolved; use authorized recovery."}}),
+                    ),
+                    "outcome_unknown",
+                );
+            }
+        }
+        #[cfg(unix)]
+        if custody.as_ref().is_some_and(|tx| tx.current().is_err()) {
+            return done(
+                event,
+                Response::json(503, &json!({"error":{"type":"outcome_custody_changed"}})),
+                "outcome_unknown",
+            );
+        }
         if let Err(message) = self.sink.on_settled(&settlement) {
             // Ordinary resources release an unexecuted claim. Funded resources
             // retain it for recovery of the original settlement and task.
-            let released = self
-                .facilitator
-                .release_unexecuted(&admitted.proof.consumption_key);
+            #[cfg(unix)]
+            let recoverable = custody.is_some();
+            #[cfg(not(unix))]
+            let recoverable = false;
+            let released = if recoverable {
+                Ok(())
+            } else {
+                self.facilitator
+                    .release_unexecuted(&admitted.proof.consumption_key)
+            };
             event.error_reason = Some(match released {
                 Ok(()) => message,
                 Err(error) => format!("{message}; release: {error}"),
@@ -990,7 +1181,7 @@ impl<S: ReplayStore> Front<S> {
                 &json!({
                     "error": {
                         "type": "settlement_unrecorded",
-                        "message": "The payment is valid but could not be recorded, so nothing ran. Retry the same request with the same proof.",
+                        "message": if recoverable { "The original payment remains unresolved and nothing ran. Use authorized recovery; do not pay again or redispatch." } else { "The payment is valid but could not be recorded, so nothing ran. Retry the same request with the same proof." },
                     },
                     "type": "https://paymentauth.org/problems/internal-payment-error",
                     "title": "Settlement Not Recorded",
@@ -999,6 +1190,24 @@ impl<S: ReplayStore> Front<S> {
             );
             response.headers.push(("retry-after".into(), "5".into()));
             return done(event, response, "unrecorded");
+        }
+
+        #[cfg(unix)]
+        if let Some(tx) = &mut custody {
+            if tx
+                .stage(crate::outcome::Stage::Settled)
+                .and_then(|()| tx.stage(crate::outcome::Stage::Invoking))
+                .is_err()
+            {
+                return done(
+                    event,
+                    Response::json(
+                        503,
+                        &json!({"error":{"type":"outcome_unavailable","message":"Keep the original receipt and recover its custody; do not execute or pay again."}}),
+                    ),
+                    "outcome_unknown",
+                );
+            }
         }
 
         let settlement_header = encode_header(&admitted.response).unwrap_or_default();
@@ -1010,6 +1219,14 @@ impl<S: ReplayStore> Front<S> {
             provider_keys: None,
             quote: Some(paid.quote),
         };
+        #[cfg(unix)]
+        if custody.as_ref().is_some_and(|tx| tx.current().is_err()) {
+            return done(
+                event,
+                Response::json(503, &json!({"error":{"type":"outcome_custody_changed"}})),
+                "outcome_unknown",
+            );
+        }
         let mut response = match paid.route.executor.execute(&call) {
             Ok(output) => {
                 let content_type = output
@@ -1024,7 +1241,15 @@ impl<S: ReplayStore> Front<S> {
             Err(message) => {
                 // The payment is consumed and recorded; the buyer holds a
                 // settlement that bought a failed execution. Say so.
-                event.error_reason = Some(message.clone());
+                #[cfg(unix)]
+                let private_custody = custody.is_some();
+                #[cfg(not(unix))]
+                let private_custody = false;
+                event.error_reason = Some(if private_custody {
+                    "execution_failed".into()
+                } else {
+                    message.clone()
+                });
                 Response::json(
                     500,
                     &json!({"error": {"type": "execution_failed", "message": "execution failed after settlement", "detail": message}}),
@@ -1040,12 +1265,294 @@ impl<S: ReplayStore> Front<S> {
                 payment_scheme::receipt(id, &payment_hash, paid.now),
             ));
         }
+        #[cfg(unix)]
+        if let Some(tx) = &mut custody {
+            response
+                .headers
+                .push(("cache-control".into(), "no-store".into()));
+            if tx.finish(response.clone()).is_err() {
+                return done(
+                    event,
+                    Response::json(
+                        503,
+                        &json!({"error":{"type":"outcome_unavailable","message":"Execution was admitted but result persistence is uncertain. Recover the original purchase without reexecution."}}),
+                    ),
+                    "outcome_unknown",
+                );
+            }
+        }
         let outcome = if response.status == 200 {
             "executed"
         } else {
             "execution_failed"
         };
         done(event, response, outcome)
+    }
+
+    #[cfg(unix)]
+    fn recoverable_x402(
+        &self,
+        store: &crate::outcome::Store,
+        paid: &Paid<'_>,
+        requirements: &PaymentRequirements,
+        payload: &PaymentPayload,
+        event: Event,
+    ) -> (Response, Event) {
+        use crate::{outcome::Identity, replay::ReplayEntry};
+        let authorization = serde_json::from_slice::<Value>(&paid.request.body)
+            .ok()
+            .and_then(|v| v["recovery_authorization"].as_str().map(str::to_owned));
+        let Some(authorization) = authorization.filter(|v| crate::outcome::token(v)) else {
+            return done(
+                event,
+                Response::json(
+                    400,
+                    &json!({"error":{"type":"recovery_authorization_invalid"}}),
+                ),
+                "refused",
+            );
+        };
+        if paid
+            .request
+            .headers
+            .iter()
+            .filter(|(n, _)| n.eq_ignore_ascii_case(crate::outcome::AUTHORIZATION))
+            .count()
+            != 1
+            || paid
+                .request
+                .header(crate::outcome::AUTHORIZATION)
+                .is_none_or(|s| {
+                    !crate::outcome::token(s) || crate::outcome::commitment(s) != authorization
+                })
+        {
+            return done(
+                event,
+                Response::json(
+                    403,
+                    &json!({"error":{"type":"original_purchase_authorization_required"}}),
+                ),
+                "refused",
+            );
+        }
+        let proof = match crate::facilitator::verify(
+            requirements,
+            payload,
+            paid.now,
+            nostr::x402::DEFAULT_CLOCK_SKEW,
+            crate::facilitator::HTTP_ONLY,
+        ) {
+            Ok(proof) => proof,
+            Err(reason) => return self.refuse(paid, reason, Problem::from_reason(reason), event),
+        };
+        let payment = SettlementResponse {
+            success: true,
+            error_reason: None,
+            transaction: proof.payment_hash.clone(),
+            network: proof.network.clone(),
+            amount: Some(proof.invoice_amount_msat.to_string()),
+        };
+        let settlement = Settlement {
+            payment_hash: proof.payment_hash.clone(),
+            request_hash: paid.request_hash.into(),
+            route: paid.route.id.clone(),
+            resource: paid
+                .quote
+                .resource
+                .clone()
+                .unwrap_or_else(|| paid.route.resource.clone()),
+            role: paid.route.role.clone(),
+            plugin: paid.quote.plugin.clone(),
+            release: paid.quote.release.clone(),
+            author: paid.quote.author.clone(),
+            fee_msat: paid.quote.fee_msat,
+            price_msat: paid.price,
+            received_msat: proof.invoice_amount_msat,
+            received_from_wallet: false,
+            scheme: Scheme::X402,
+            network: proof.network.clone(),
+            settled_at: paid.now,
+        };
+        let replay = ReplayEntry {
+            key: proof.consumption_key.clone(),
+            network: proof.network.clone(),
+            payment_hash: proof.payment_hash.clone(),
+            amount_msat: proof.invoice_amount_msat,
+            consumed_at: paid.now,
+            retain_until: u64::MAX,
+            purchase: paid.purchase(),
+        };
+        let custody = match store.prepare(
+            Identity {
+                network: proof.network.clone(),
+                payment_hash: proof.payment_hash.clone(),
+                invoice: requirements.extra["invoice"]
+                    .as_str()
+                    .unwrap_or_default()
+                    .into(),
+                request_hash: paid.request_hash.into(),
+                authorization,
+                quote: paid.quote.clone(),
+            },
+            replay,
+            settlement,
+            payment.clone(),
+        ) {
+            Ok(tx) => tx,
+            Err(_) => {
+                return done(
+                    event,
+                    Response::json(
+                        409,
+                        &json!({"error":{"type":"recovery_required","message":"Recover the original purchase with its private authorization; no new payment or invocation was admitted."}}),
+                    ),
+                    "recovery_required",
+                );
+            }
+        };
+        // The private proof-admission record precedes the shared replay key.
+        // Retain the key indefinitely for this separately retained obligation.
+        if custody.current().is_err()
+            || self
+                .facilitator
+                .store()
+                .insert(&custody.record.replay)
+                .is_err()
+        {
+            return done(
+                event,
+                Response::json(
+                    503,
+                    &json!({"error":{"type":"recovery_required","message":"Original payment custody is retained; use authorized recovery without execution."}}),
+                ),
+                "outcome_unknown",
+            );
+        }
+        self.admitted_inner(
+            paid,
+            Admission {
+                proof,
+                response: payment,
+            },
+            Scheme::X402,
+            None,
+            event,
+            Some(custody),
+        )
+    }
+
+    #[cfg(unix)]
+    fn recover_outcome(
+        &self,
+        request: &Request,
+        request_hash: &str,
+        event: Event,
+    ) -> (Response, Event) {
+        use crate::outcome::Stage;
+        let refused = |event| {
+            done(
+                event,
+                Response::json(
+                    403,
+                    &json!({"error":{"type":"purchase_recovery_unavailable","message":"Original private purchase authorization and custody are required."}}),
+                ),
+                "recovery_refused",
+            )
+        };
+        let Some(store) = &self.outcomes else {
+            return refused(event);
+        };
+        let (Some(secret), Some(hash)) = (
+            request.header(crate::outcome::AUTHORIZATION),
+            request.header(crate::outcome::PAYMENT),
+        ) else {
+            return refused(event);
+        };
+        if request
+            .headers
+            .iter()
+            .filter(|(n, _)| n.eq_ignore_ascii_case(crate::outcome::AUTHORIZATION))
+            .count()
+            != 1
+            || request
+                .headers
+                .iter()
+                .filter(|(n, _)| n.eq_ignore_ascii_case(crate::outcome::PAYMENT))
+                .count()
+                != 1
+            || request.header(PAYMENT_SIGNATURE).is_some()
+        {
+            return refused(event);
+        }
+        let mut tx = match store.recover(self.config.network, hash, request_hash, secret) {
+            Ok(tx) => tx,
+            Err(_) => return refused(event),
+        };
+        if matches!(tx.record.stage, Stage::Prepared | Stage::SettlementPending) {
+            let received = self
+                .receiver
+                .received_invoice(&tx.record.identity.invoice)
+                .ok()
+                .flatten();
+            if tx.current().is_err() {
+                return refused(event);
+            }
+            if received.is_some_and(|n| n > 0 && n <= tx.record.identity.quote.price_msat)
+                && (tx.record.stage == Stage::Prepared
+                    || received == Some(tx.record.settlement.received_msat))
+            {
+                let replay = &tx.record.replay;
+                let consumed = match self.facilitator.store().get(&replay.key) {
+                    Ok(Some(old)) => {
+                        old.network == replay.network
+                            && old.payment_hash == replay.payment_hash
+                            && old.purchase == replay.purchase
+                            && old.amount_msat == replay.amount_msat
+                    }
+                    Ok(None) => {
+                        tx.current().is_ok() && self.facilitator.store().insert(replay).is_ok()
+                    }
+                    Err(_) => false,
+                };
+                if consumed {
+                    // Freeze the first settlement intent. Never relabel its timestamp or split.
+                    if tx.record.stage == Stage::Prepared {
+                        tx.record.settlement.received_msat = received.unwrap();
+                        tx.record.settlement.received_from_wallet = true;
+                    }
+                    if tx.stage(Stage::SettlementPending).is_ok()
+                        && tx.current().is_ok()
+                        && self.sink.on_settled(&tx.record.settlement).is_ok()
+                    {
+                        let _ = tx.stage(Stage::Settled);
+                    }
+                }
+            }
+        }
+        if tx.record.stage == Stage::Settled {
+            // This lock can only be acquired after the dispatching request ends.
+            // A durable invocation fence is absent, so delivery is known unattempted.
+            let mut failed = Response::json(
+                503,
+                &json!({"error":{"type":"execution_unattempted","message":"Original payment settled but no invocation was admitted. Retain this receipt for support; reversal or a new purchase requires separate authorization."}}),
+            );
+            if let Ok(value) = encode_header(&tx.record.payment) {
+                failed.headers.push((PAYMENT_RESPONSE.into(), value));
+            }
+            let _ = tx.finish(failed);
+        }
+        if tx.current().is_err() {
+            return refused(event);
+        }
+        // Neither a settled receipt nor an unknown invocation authorizes dispatch.
+        let mut response = Response::json(
+            200,
+            &serde_json::to_value(tx.record.view()).expect("outcome view serializes"),
+        );
+        response
+            .headers
+            .push(("cache-control".into(), "no-store".into()));
+        done(event, response, "recovered")
     }
 }
 
@@ -1116,18 +1623,77 @@ impl NdjsonSettlements {
 
 impl SettlementSink for NdjsonSettlements {
     fn on_settled(&self, settlement: &Settlement) -> Result<(), String> {
-        use std::io::Write;
+        use std::io::{Read, Seek, SeekFrom, Write};
         let mut line = serde_json::to_vec(settlement).map_err(|e| e.to_string())?;
         line.push(b'\n');
         let _guard = self.lock.lock().map_err(|_| "settlement log lock")?;
-        let mut file = std::fs::OpenOptions::new()
-            .create(true)
-            .append(true)
+        let mut options = std::fs::OpenOptions::new();
+        options.create(true).read(true).append(true);
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::OpenOptionsExt;
+            options
+                .mode(0o600)
+                .custom_flags(libc::O_NOFOLLOW | libc::O_NONBLOCK);
+        }
+        let mut file = options
             .open(&self.path)
             .map_err(|e| format!("{}: {e}", self.path.display()))?;
+        if !file
+            .metadata()
+            .map_err(|_| "Settlement log is unavailable.")?
+            .is_file()
+        {
+            return Err("Settlement log must be a regular file.".into());
+        }
+        #[cfg(unix)]
+        {
+            use std::os::fd::AsRawFd;
+            if unsafe { libc::flock(file.as_raw_fd(), libc::LOCK_EX) } != 0 {
+                return Err("Settlement log lock is unavailable.".into());
+            }
+        }
+        file.seek(SeekFrom::Start(0))
+            .map_err(|_| "Settlement log is unavailable.")?;
+        let mut reader = std::io::BufReader::new(&file);
+        let mut found = false;
+        loop {
+            use std::io::BufRead;
+            let mut bytes = Vec::new();
+            let n = std::io::Read::by_ref(&mut reader)
+                .take(64 * 1024 + 1)
+                .read_until(b'\n', &mut bytes)
+                .map_err(|_| "Settlement log is unavailable.")?;
+            if n == 0 {
+                break;
+            }
+            if n > 64 * 1024 || bytes.last() != Some(&b'\n') {
+                return Err(
+                    "Settlement log has an unresolved partial record; nothing can execute.".into(),
+                );
+            }
+            let old: Settlement = serde_json::from_slice(&bytes)
+                .map_err(|_| "Settlement log has an invalid record; nothing can execute.")?;
+            if old.payment_hash == settlement.payment_hash {
+                if found || old != *settlement {
+                    return Err("Settlement log conflicts with the original payment.".into());
+                }
+                found = true;
+            }
+        }
+        if found {
+            return Ok(());
+        }
         file.write_all(&line)
             .and_then(|()| file.sync_data())
-            .map_err(|e| format!("{}: {e}", self.path.display()))
+            .map_err(|e| format!("{}: {e}", self.path.display()))?;
+        #[cfg(unix)]
+        if let Some(parent) = self.path.parent() {
+            std::fs::File::open(parent)
+                .and_then(|f| f.sync_all())
+                .map_err(|_| "Settlement log directory could not be synced.")?;
+        }
+        Ok(())
     }
 }
 

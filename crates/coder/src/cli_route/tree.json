@@ -22820,6 +22820,48 @@
                 "effect": "local_write",
                 "runs_on": "connected_computer"
               }
+            },
+            {
+              "name": "recover",
+              "leaf": {
+                "path": [
+                  "plugin",
+                  "purchase",
+                  "recover"
+                ],
+                "usage": [
+                  "purchase recover --root DIR --purchase ID"
+                ],
+                "forms": [
+                  {
+                    "tokens": [
+                      {
+                        "kind": "literal",
+                        "word": "purchase"
+                      },
+                      {
+                        "kind": "literal",
+                        "word": "recover"
+                      },
+                      {
+                        "kind": "option",
+                        "name": "root",
+                        "value": "DIR",
+                        "open": true
+                      },
+                      {
+                        "kind": "option",
+                        "name": "purchase",
+                        "value": "ID",
+                        "open": true
+                      }
+                    ]
+                  }
+                ],
+                "summary": "Reconcile the original resident payment and privately read retained provider custody. Never pay, redispatch, infer a refund, or erase uncertainty.",
+                "effect": "local_write",
+                "runs_on": "connected_computer"
+              }
             }
           ]
         },

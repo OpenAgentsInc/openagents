@@ -616,6 +616,68 @@ impl Node {
         }
         Ok(None)
     }
+    fn received_invoice(&self, invoice: &str) -> Result<Option<u64>, String> {
+        for attempt in 0..10 {
+            if let Some(amount) =
+                observed_collection(&*self.0, invoice, openagents_x402::unix_now())?
+            {
+                return Ok(Some(amount));
+            }
+            if attempt < 9 {
+                std::thread::sleep(Duration::from_millis(200));
+            }
+        }
+        Ok(None)
+    }
+}
+
+/// Match the authenticated receiver record to the retained signed invoice.
+pub(crate) fn observed_collection(
+    wallet: &dyn LightningWallet,
+    original: &str,
+    now: u64,
+) -> Result<Option<u64>, String> {
+    let invoice = nostr::x402::decode_invoice(original)
+        .map_err(|_| "Original receiver invoice is invalid.")?;
+    let hash = invoice.payment_hash();
+    let hash_text = hash.iter().map(|b| format!("{b:02x}")).collect::<String>();
+    let node = invoice
+        .payee()
+        .iter()
+        .map(|b| format!("{b:02x}"))
+        .collect::<String>();
+    let Some(record) = wallet
+        .lookup_from_node(&node, hash)
+        .map_err(|_| "Original receiver lookup is unavailable or changed identity.")?
+    else {
+        return Ok(None);
+    };
+    let valid_preimage = record.preimage.as_ref().is_none_or(|text| {
+        use sha2::{Digest, Sha256};
+        openagents_wallet::parse_hash32(text)
+            .is_ok_and(|bytes| Sha256::digest(bytes).as_slice() == hash)
+    });
+    if record.direction != PaymentDirection::Inbound
+        || record.status != PaymentStatus::Succeeded
+        || record.payment_hash != hash_text
+        || record
+            .amount_msat
+            .is_none_or(|n| n == 0 || n > invoice.amount_msat())
+        || record.bolt11.as_ref().is_some_and(|s| s != original)
+        || record.updated_at < invoice.created_at()
+        || record.updated_at > now.saturating_add(nostr::x402::DEFAULT_CLOCK_SKEW)
+        || record.updated_at
+            > invoice
+                .created_at()
+                .saturating_add(invoice.expiry_seconds())
+                .saturating_add(nostr::x402::DEFAULT_CLOCK_SKEW)
+        || !valid_preimage
+    {
+        return Ok(None);
+    }
+    // Incoming LDK records omit a fee and original invoice. The known actual
+    // transfer can include an LSP deduction; no missing fee becomes zero cost.
+    Ok(record.amount_msat)
 }
 
 /// The wallet as the front's receiver, with `received_msat` from `lookup`.
@@ -630,6 +692,9 @@ impl Receiver for Wallet {
     }
     fn received_msat(&self, payment_hash: [u8; 32]) -> Result<Option<u64>, String> {
         self.0.received(payment_hash)
+    }
+    fn received_invoice(&self, invoice: &str) -> Result<Option<u64>, String> {
+        self.0.received_invoice(invoice)
     }
 }
 
@@ -740,7 +805,18 @@ fn serve(output: &Output, words: &[String]) -> u8 {
         sink,
         hosted.as_ref(),
     ) {
-        Ok(front) => Arc::new(front),
+        Ok(front) => {
+            #[cfg(unix)]
+            let front = match openagents_x402::outcome::Store::open(&replay_dir().join("outcomes"))
+            {
+                Ok(store) => front.with_outcomes(store),
+                Err(message) => {
+                    let _ = wallet.stop();
+                    return output.fail("pay", &message);
+                }
+            };
+            Arc::new(front)
+        }
         Err(message) => {
             let _ = wallet.stop();
             return output.fail("pay", &message);

@@ -37,13 +37,18 @@ pub struct Offer {
     pub max_fee_msat: u64,
     pub request_hash: String,
     pub expires_at_ms: u64,
+    /// Commitment to the original private purchase authorization, never a payer identity.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub recovery_authorization: Option<String>,
 }
 impl Offer {
     pub fn body(&self, request: &str) -> Vec<u8> {
-        serde_json::to_vec(
-            &json!({"quote_digest":execution::quote_digest(&self.quote),"request":request}),
-        )
-        .expect("plugin request serializes")
+        let mut body =
+            json!({"quote_digest":execution::quote_digest(&self.quote),"request":request});
+        if let Some(authorization) = &self.recovery_authorization {
+            body["recovery_authorization"] = json!(authorization);
+        }
+        serde_json::to_vec(&body).expect("plugin request serializes")
     }
     pub fn digest(&self) -> String {
         digest_request(&serde_json::to_value(self).expect("plugin offer serializes"))
@@ -87,6 +92,10 @@ impl Offer {
             || self.packet.module.len() != 71
             || self.packet.input.len() != 71
             || now >= self.expires_at_ms
+            || self
+                .recovery_authorization
+                .as_ref()
+                .is_some_and(|s| !openagents_x402::outcome::token(s))
         {
             return Err("Plugin offer changes its exact resource, release, packet, total, payer, or expiry.".into());
         }
@@ -156,6 +165,10 @@ pub(super) struct Purchase {
     settlement: Option<SettlementResponse>,
     result: Option<Value>,
     delivery_status: Option<u16>,
+    #[serde(default)]
+    recovery_secret: Option<String>,
+    #[serde(default)]
+    recovery: Option<openagents_x402::outcome::View>,
 }
 impl Purchase {
     pub(super) fn recover(&mut self) -> bool {
@@ -183,6 +196,7 @@ pub struct View {
     pub result: Option<Value>,
     pub delivery_status: Option<u16>,
     pub unresolved_maximum_msat: Option<u64>,
+    pub recovery: Option<openagents_x402::outcome::View>,
 }
 fn quote(id: &str, p: &Purchase) -> Quote {
     Quote {
@@ -212,6 +226,13 @@ pub(super) fn check(book: &Book) -> Result<()> {
             || matches!(p.phase, Phase::Quoted | Phase::Cancelled) != p.approval.is_none()
             || matches!(p.phase, Phase::Paid | Phase::Completed | Phase::Failed)
                 && p.charge.is_none()
+            || p.offer.recovery_authorization
+                != p.recovery_secret
+                    .as_ref()
+                    .map(|s| openagents_x402::outcome::commitment(s))
+            || p.recovery_secret
+                .as_ref()
+                .is_some_and(|s| !openagents_x402::outcome::token(s))
         {
             return Err("Retained plugin purchase attribution changed.".into());
         }
@@ -264,6 +285,9 @@ pub(super) fn check(book: &Book) -> Result<()> {
                     p.result.as_ref().ok_or("Missing retained plugin result.")?,
                 )?;
             }
+        }
+        if let Some(recovery) = &p.recovery {
+            check_recovery(p, recovery)?;
         }
     }
     Ok(())
@@ -341,6 +365,7 @@ impl Store {
                     .price_msat
                     .saturating_add(p.offer.max_fee_msat)
             }),
+            recovery: p.recovery.clone(),
         })
     }
     pub fn plugin_liability(&self) -> bool {
@@ -366,6 +391,28 @@ impl Store {
         current: Selection,
         now: u64,
     ) -> Result<View> {
+        self.quote_plugin_with_recovery(id, offer, request, current, now, None)
+    }
+    /// Keep the original secret in private custody before approving its commitment.
+    pub fn quote_plugin_with_recovery(
+        &mut self,
+        id: &str,
+        offer: Offer,
+        request: String,
+        current: Selection,
+        now: u64,
+        secret: Option<String>,
+    ) -> Result<View> {
+        if offer.recovery_authorization
+            != secret
+                .as_ref()
+                .map(|s| openagents_x402::outcome::commitment(s))
+            || secret
+                .as_ref()
+                .is_some_and(|s| !openagents_x402::outcome::token(s))
+        {
+            return Err("Recovery must bind the original private purchase authorization.".into());
+        }
         let selected = self
             .book
             .selected
@@ -402,6 +449,8 @@ impl Store {
                 settlement: None,
                 result: None,
                 delivery_status: None,
+                recovery_secret: secret,
+                recovery: None,
             },
         );
         self.persist(next)?;
@@ -489,6 +538,22 @@ impl Store {
     pub fn plugin_request(&self, id: &str) -> Result<&str> {
         Ok(&self.plugin(id)?.request)
     }
+    /// The caller authenticates the original customer before beginning payment.
+    pub fn plugin_invocation_authorization(
+        &self,
+        id: &str,
+        current: &Selection,
+    ) -> Result<Option<String>> {
+        let p = self.plugin(id)?;
+        if p.phase != Phase::Approved
+            || &p.selection != current
+            || self.book.selected.as_ref() != Some(current)
+            || !current.context.can_invoke
+        {
+            return Err("Original current customer approval is required before exposing invocation authority.".into());
+        }
+        Ok(p.recovery_secret.clone())
+    }
     pub fn plugin_paid(
         &mut self,
         id: &str,
@@ -545,7 +610,7 @@ impl Store {
     ) -> Result<View> {
         let p = self.plugin(id)?;
         let charge = p.charge.as_ref().ok_or("No confirmed plugin charge.")?;
-        if p.phase != Phase::Paid
+        if !matches!(p.phase, Phase::Paid | Phase::Unknown | Phase::Completed)
             || !settlement.success
             || settlement.transaction != charge.payment_hash
             || settlement.network != p.offer.payer.network
@@ -575,7 +640,7 @@ impl Store {
     ) -> Result<View> {
         let p = self.plugin(id)?;
         let charge = p.charge.as_ref().ok_or("No confirmed plugin charge.")?;
-        if p.phase != Phase::Paid
+        if !matches!(p.phase, Phase::Paid | Phase::Unknown | Phase::Failed)
             || status < 400
             || !settlement.success
             || settlement.transaction != charge.payment_hash
@@ -592,4 +657,168 @@ impl Store {
         self.persist(next)?;
         self.plugin_view(id)
     }
+
+    /// Recheck the selected authenticated principal before exposing recovery authority.
+    pub fn plugin_recovery(
+        &self,
+        id: &str,
+        current: &Selection,
+        payer: &Payer,
+    ) -> Result<(Offer, Vec<u8>, String)> {
+        let p = self.plugin(id)?;
+        if !matches!(
+            p.phase,
+            Phase::Unknown | Phase::Paid | Phase::Completed | Phase::Failed
+        ) || !same_customer(current, &p.selection)
+            || !same_identity(&current.context, &p.selection.context)
+            || current.credential_alias != p.selection.credential_alias
+            || !current.context.can_invoke
+            || self.book.selected.as_ref().is_none_or(|s| {
+                !same_customer(s, current) || s.credential_alias != current.credential_alias
+            })
+            || payer != &p.offer.payer
+        {
+            return Err("Recovery needs the original authenticated customer, current rights, and exact resident binding.".into());
+        }
+        Ok((p.offer.clone(), p.offer.body(&p.request), p.recovery_secret.clone().ok_or("This older purchase has no private recovery authorization; retain its receipt for support.")?))
+    }
+    /// An exact resident lookup can recover a lost payment acknowledgment. It never pays.
+    pub fn plugin_recovered_charge(
+        &mut self,
+        id: &str,
+        charge: Charge,
+        preimage: &str,
+    ) -> Result<View> {
+        use sha2::{Digest, Sha256};
+        let p = self.plugin(id)?;
+        let invoice = nostr::x402::decode_invoice(p.offer.invoice())
+            .map_err(|_| "Retained invoice changed.")?;
+        let hash = invoice
+            .payment_hash()
+            .iter()
+            .map(|b| format!("{b:02x}"))
+            .collect::<String>();
+        let bytes = (0..preimage.len())
+            .step_by(2)
+            .map(|i| {
+                preimage
+                    .get(i..i + 2)
+                    .and_then(|s| u8::from_str_radix(s, 16).ok())
+            })
+            .collect::<Option<Vec<_>>>();
+        if !matches!(
+            p.phase,
+            Phase::Unknown | Phase::Paid | Phase::Completed | Phase::Failed
+        ) || !openagents_x402::outcome::token(preimage)
+            || bytes
+                .as_ref()
+                .is_none_or(|b| format!("{:x}", Sha256::digest(b)) != hash)
+            || charge.payment_hash != hash
+            || charge.amount_msat != p.offer.quote.price_msat
+            || charge.fee_msat > p.offer.max_fee_msat
+            || p.charge.as_ref().is_some_and(|old| old != &charge)
+        {
+            return Err(
+                "Recovery lookup changes the exact paid invoice, amount, fee, or proof.".into(),
+            );
+        }
+        let mut next = self.book.clone();
+        next.plugin_purchases.get_mut(id).unwrap().charge = Some(charge);
+        self.persist(next)?;
+        self.plugin_view(id)
+    }
+    pub fn plugin_recovered(
+        &mut self,
+        id: &str,
+        recovery: openagents_x402::outcome::View,
+    ) -> Result<View> {
+        let p = self.plugin(id)?;
+        check_recovery(p, &recovery)?;
+        let mut next = self.book.clone();
+        let p = next.plugin_purchases.get_mut(id).unwrap();
+        if let Some(response) = &recovery.response {
+            let settlement = recovery
+                .settlement
+                .clone()
+                .ok_or("Recovery result has no settlement.")?;
+            if response.status == 200 {
+                let value = serde_json::from_slice(&response.body)
+                    .map_err(|_| "Recovery result is invalid.")?;
+                check_result(
+                    &p.offer,
+                    p.charge.as_ref().ok_or("Missing recovered charge.")?,
+                    &value,
+                )?;
+                if p.result.as_ref().is_some_and(|old| old != &value) {
+                    return Err("A recovered result changes the original retained delivery.".into());
+                }
+                p.result = Some(value);
+                p.phase = Phase::Completed;
+            } else {
+                p.phase = Phase::Failed;
+            }
+            p.settlement = Some(settlement);
+            p.delivery_status = Some(response.status);
+        }
+        p.recovery = Some(recovery);
+        self.persist(next)?;
+        self.plugin_view(id)
+    }
+}
+
+fn check_recovery(p: &Purchase, r: &openagents_x402::outcome::View) -> Result<()> {
+    use openagents_x402::outcome::{SCHEMA, Stage};
+    if r.schema != SCHEMA
+        || r.identity.network != p.offer.payer.network
+        || r.identity.invoice != p.offer.invoice()
+        || r.identity.request_hash != p.offer.request_hash
+        || r.identity.authorization != p.offer.recovery_authorization.clone().unwrap_or_default()
+        || r.identity.quote != p.offer.quote
+        || r.receipt_reference != r.identity.receipt_reference()
+        || r.guidance.len() > 1024
+        || p.charge
+            .as_ref()
+            .is_none_or(|c| c.payment_hash != r.identity.payment_hash)
+        || r.response.is_some() != matches!(r.stage, Stage::Completed | Stage::Failed)
+        || matches!(
+            r.stage,
+            Stage::Completed | Stage::Failed | Stage::Invoking | Stage::Settled
+        ) != r.settlement.is_some()
+        || r.settlement.as_ref().is_some_and(|s| {
+            !s.success
+                || s.transaction != r.identity.payment_hash
+                || s.network != p.offer.payer.network
+                || s.amount.as_deref() != Some(p.offer.quote.price_msat.to_string().as_str())
+        })
+        || p.phase == Phase::Completed && r.stage != Stage::Completed
+        || p.phase == Phase::Failed && r.stage != Stage::Failed
+    {
+        return Err(
+            "Recovery evidence changes the original protected purchase, payment, or disposition."
+                .into(),
+        );
+    }
+    if let Some(response) = &r.response {
+        if response.body.len() > 128 * 1024
+            || response.headers.len() > 16
+            || response
+                .headers
+                .iter()
+                .any(|(n, v)| n.len() > 128 || v.len() > 4096)
+            || (r.stage == Stage::Completed) != (response.status == 200)
+            || r.stage == Stage::Failed && response.status < 400
+            || p.delivery_status.is_some_and(|old| old != response.status)
+            || p.recovery
+                .as_ref()
+                .and_then(|old| old.response.as_ref())
+                .is_some_and(|old| {
+                    old.status != response.status
+                        || old.headers != response.headers
+                        || old.body != response.body
+                })
+        {
+            return Err("Recovery changes the bounded delivery disposition.".into());
+        }
+    }
+    Ok(())
 }

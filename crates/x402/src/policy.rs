@@ -250,6 +250,32 @@ pub struct Ledger {
 }
 
 impl Ledger {
+    #[cfg(unix)]
+    fn mutation_lock(&self) -> Result<fs::File, PolicyError> {
+        use std::os::{fd::AsRawFd, unix::fs::OpenOptionsExt};
+        if let Some(parent) = self.path.parent() {
+            fs::create_dir_all(parent).map_err(|e| PolicyError::Io(e.to_string()))?;
+        }
+        let file = fs::OpenOptions::new()
+            .create(true)
+            .read(true)
+            .write(true)
+            .mode(0o600)
+            .custom_flags(libc::O_NOFOLLOW | libc::O_NONBLOCK)
+            .open(self.path.with_extension("ndjson.lock"))
+            .map_err(|e| PolicyError::Io(e.to_string()))?;
+        if !file
+            .metadata()
+            .map_err(|e| PolicyError::Io(e.to_string()))?
+            .is_file()
+            || unsafe { libc::flock(file.as_raw_fd(), libc::LOCK_EX) } != 0
+        {
+            return Err(PolicyError::Io(
+                "Buyer ledger mutation lock is unavailable.".into(),
+            ));
+        }
+        Ok(file)
+    }
     pub fn open(path: &Path) -> Self {
         Self {
             path: path.to_path_buf(),
@@ -261,6 +287,8 @@ impl Ledger {
     }
 
     pub fn append(&self, entry: &Entry) -> Result<(), PolicyError> {
+        #[cfg(unix)]
+        let _lock = self.mutation_lock()?;
         let io =
             |error: std::io::Error| PolicyError::Io(format!("{}: {error}", self.path.display()));
         if let Some(parent) = self.path.parent() {
@@ -275,6 +303,86 @@ impl Ledger {
             .map_err(io)?;
         file.write_all(&line).map_err(io)?;
         file.sync_data().map_err(io)
+    }
+
+    /// Record the original charge once without accepting conflicting or partial evidence.
+    #[cfg(unix)]
+    pub fn record_once(&self, entry: &Entry) -> Result<(), PolicyError> {
+        let _lock = self.mutation_lock()?;
+        use std::io::{Read, Seek, SeekFrom};
+        use std::os::{fd::AsRawFd, unix::fs::OpenOptionsExt};
+        let io = |e: std::io::Error| PolicyError::Io(e.to_string());
+        if let Some(parent) = self.path.parent() {
+            fs::create_dir_all(parent).map_err(io)?;
+        }
+        let mut file = fs::OpenOptions::new()
+            .create(true)
+            .read(true)
+            .append(true)
+            .mode(0o600)
+            .custom_flags(libc::O_NOFOLLOW | libc::O_NONBLOCK)
+            .open(&self.path)
+            .map_err(io)?;
+        let m = file.metadata().map_err(io)?;
+        if !m.is_file() || m.len() > 16 * 1024 * 1024 {
+            return Err(PolicyError::Io(
+                "Buyer ledger is not a bounded regular file.".into(),
+            ));
+        }
+        if unsafe { libc::flock(file.as_raw_fd(), libc::LOCK_EX) } != 0 {
+            return Err(PolicyError::Io("Buyer ledger lock is unavailable.".into()));
+        }
+        file.seek(SeekFrom::Start(0)).map_err(io)?;
+        let mut reader = std::io::BufReader::new(&file);
+        let mut found = false;
+        loop {
+            let mut bytes = Vec::new();
+            let n = std::io::Read::by_ref(&mut reader)
+                .take(16 * 1024 + 1)
+                .read_until(b'\n', &mut bytes)
+                .map_err(io)?;
+            if n == 0 {
+                break;
+            }
+            if n > 16 * 1024 || bytes.last() != Some(&b'\n') {
+                return Err(PolicyError::Io(
+                    "Buyer ledger has unresolved partial evidence.".into(),
+                ));
+            }
+            let old: Entry = serde_json::from_slice(&bytes)
+                .map_err(|_| PolicyError::Io("Buyer ledger has invalid evidence.".into()))?;
+            if old.payment_hash == entry.payment_hash {
+                if found
+                    || old.binding != entry.binding
+                    || old.network != entry.network
+                    || old.provider != entry.provider
+                    || old.resource != entry.resource
+                    || old.capability != entry.capability
+                    || old.amount_msat != entry.amount_msat
+                    || old.fee_msat != entry.fee_msat
+                {
+                    return Err(PolicyError::Io(
+                        "Buyer ledger conflicts with the original charge.".into(),
+                    ));
+                }
+                found = true;
+            }
+        }
+        if found {
+            return Ok(());
+        }
+        let mut line = serde_json::to_vec(entry)
+            .map_err(|_| PolicyError::Io("Invalid buyer charge.".into()))?;
+        line.push(b'\n');
+        file.write_all(&line)
+            .and_then(|()| file.sync_all())
+            .map_err(io)?;
+        if let Some(parent) = self.path.parent() {
+            fs::File::open(parent)
+                .and_then(|f| f.sync_all())
+                .map_err(io)?;
+        }
+        Ok(())
     }
 
     /// Every entry, oldest first. A missing file is an empty ledger; a
@@ -300,6 +408,8 @@ impl Ledger {
     /// Record how the call paid for by `payment_hash` ended. Rewrites the
     /// file; a hash that is not in it is left alone.
     pub fn set_phase(&self, payment_hash: &str, phase: &str) -> Result<(), PolicyError> {
+        #[cfg(unix)]
+        let _lock = self.mutation_lock()?;
         let mut entries = self.entries()?;
         let mut changed = false;
         for entry in entries.iter_mut().rev() {
@@ -320,8 +430,32 @@ impl Ledger {
             bytes.push(b'\n');
         }
         let tmp = self.path.with_extension("ndjson.tmp");
-        fs::write(&tmp, bytes).map_err(io)?;
-        fs::rename(&tmp, &self.path).map_err(io)
+        let mut options = fs::OpenOptions::new();
+        options.create(true).truncate(true).write(true);
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::OpenOptionsExt;
+            options
+                .mode(0o600)
+                .custom_flags(libc::O_NOFOLLOW | libc::O_NONBLOCK);
+        }
+        let mut file = options.open(&tmp).map_err(io)?;
+        if !file.metadata().map_err(io)?.is_file() {
+            return Err(PolicyError::Io(
+                "Buyer ledger pending write is not a regular file.".into(),
+            ));
+        }
+        file.write_all(&bytes)
+            .and_then(|()| file.sync_all())
+            .map_err(io)?;
+        fs::rename(&tmp, &self.path).map_err(io)?;
+        #[cfg(unix)]
+        if let Some(parent) = self.path.parent() {
+            fs::File::open(parent)
+                .and_then(|f| f.sync_all())
+                .map_err(io)?;
+        }
+        Ok(())
     }
 
     /// Amounts plus fees paid since `since`.
@@ -485,5 +619,45 @@ mod tests {
         policy().save(&path).unwrap();
         assert_eq!(Policy::load(&path).unwrap(), Some(policy()));
         let _ = fs::remove_dir_all(&dir);
+    }
+    #[cfg(unix)]
+    #[test]
+    fn original_charge_is_idempotent_across_threads_and_refuses_partial_or_conflicting_rows() {
+        use std::{io::Write, sync::Arc};
+        let root = tempfile::tempdir().unwrap();
+        let ledger = Arc::new(Ledger::open(&root.path().join(LEDGER_FILE)));
+        let charge = Entry {
+            paid_at: 100,
+            binding: "http:1".into(),
+            network: "lnbtc:testnet".into(),
+            provider: "02aa".into(),
+            capability: None,
+            resource: "https://example.test/x".into(),
+            amount_msat: 6000,
+            fee_msat: 7,
+            payment_hash: "ab".repeat(32),
+            phase: "paid".into(),
+        };
+        std::thread::scope(|scope| {
+            for _ in 0..8 {
+                let l = ledger.clone();
+                let c = charge.clone();
+                scope.spawn(move || l.record_once(&c).unwrap());
+            }
+        });
+        assert_eq!(ledger.entries().unwrap().len(), 1);
+        ledger.set_phase(&charge.payment_hash, "known").unwrap();
+        ledger.record_once(&charge).unwrap();
+        assert_eq!(ledger.entries().unwrap()[0].phase, "known");
+        let mut changed = charge.clone();
+        changed.fee_msat += 1;
+        assert!(ledger.record_once(&changed).is_err());
+        std::fs::OpenOptions::new()
+            .append(true)
+            .open(ledger.path())
+            .unwrap()
+            .write_all(b"{partial")
+            .unwrap();
+        assert!(ledger.record_once(&charge).is_err());
     }
 }
