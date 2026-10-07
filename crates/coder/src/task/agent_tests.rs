@@ -187,3 +187,45 @@ fn the_report_is_plain_ascii() {
     assert!(cut.chars().count() <= REPLY_MAX);
     assert!(cut.ends_with("..."));
 }
+
+#[test]
+fn sign_attestation_mints_the_nip_oa_vector() {
+    // TEST KEYS from NIP-OA's vectors. Never use them in production.
+    let mut owner = [0_u8; 32];
+    owner[31] = 1;
+    let owner = secp256k1::SecretKey::from_byte_array(owner).unwrap();
+    let agent = "c6047f9441ed7d6d3045406e95c07cd85c778e4b8cef3ca7abac09b95c709ee5";
+    let attestation = sign_attestation(&owner, agent, "kind=1&created_at<1713957000").unwrap();
+    let minted =
+        nostr::domain::mint_owner_attestation(&owner, agent, "kind=1&created_at<1713957000")
+            .unwrap();
+    // The record keeps its three fields, and the signature is the nostr
+    // minter's deterministic one.
+    assert_eq!(
+        serde_json::to_value(&attestation).unwrap(),
+        serde_json::json!({
+            "owner": "79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798",
+            "conditions": "kind=1&created_at<1713957000",
+            "signature": minted.signature,
+        })
+    );
+    // NIP-OA's own vector signature verifies the same way.
+    let spec = Attestation {
+        signature: "8b7df2575caf0a108374f8471722b233c53f9ff827a8b0f91861966c3b9dd5cb2e189eae9f49d72187674c2f5bd244145e10ff86c9f257ffe65a1ee5f108b369".into(),
+        ..attestation.clone()
+    };
+    assert_eq!(
+        verify_attestation(agent, &spec, 1_713_956_400),
+        Ok(1_713_957_000)
+    );
+    assert_eq!(
+        verify_attestation(agent, &attestation, 1_713_956_400),
+        Ok(1_713_957_000)
+    );
+    let expiring = sign_attestation(&owner, agent, "created_at<1800000000").unwrap();
+    assert_eq!(
+        verify_attestation(agent, &expiring, 1_790_000_000),
+        Ok(1_800_000_000)
+    );
+    assert!(sign_attestation(&owner, agent, "created_at<01").is_err());
+}

@@ -37,7 +37,7 @@ mod gift_wrap;
 mod git;
 mod goal;
 mod handler;
-mod hex;
+pub(crate) mod hex;
 mod highlight;
 mod imeta;
 mod label;
@@ -86,8 +86,9 @@ mod zap;
 
 pub use agent::{
     AGENT_OBSERVER_KIND, AGENT_TURN_METRIC_KIND, AgentObserverDirection, AgentObserverRoute,
-    OwnerAttestation, agent_observer_route, agent_turn_metric_owner, validate_nip44_v2_content,
-    verify_agent_auth_attestation, verify_owner_attestation, verify_owner_binding,
+    MintedOwnerAttestation, OwnerAttestation, agent_observer_route, agent_turn_metric_owner,
+    mint_owner_attestation, validate_nip44_v2_content, verify_agent_auth_attestation,
+    verify_owner_attestation, verify_owner_binding,
 };
 pub use alt::{alt_text, fallback_summary, needs_fallback};
 pub use app_data::{AppData, AppTag, open_app_data};

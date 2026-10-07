@@ -20,6 +20,7 @@ pub mod contracts;
 pub mod control;
 pub mod decision;
 pub mod domain;
+pub mod engram;
 pub mod eval_ext;
 pub mod execution;
 pub mod ext;

@@ -504,7 +504,7 @@ impl Store {
         if expires_at <= now || expires_at - now > ATTESTATION_MAX {
             return Err("an attestation expires within a year".into());
         }
-        let attestation = sign_attestation(owner, &agent, &format!("created_at<{expires_at}"));
+        let attestation = sign_attestation(owner, &agent, &format!("created_at<{expires_at}"))?;
         verify_attestation(&agent, &attestation, now)?;
         record.attestation = Some(attestation.clone());
         self.save(&record)?;
@@ -684,23 +684,23 @@ pub fn parse_secret(text: &str) -> Result<secp256k1::SecretKey, String> {
     secp256k1::SecretKey::from_byte_array(bytes).map_err(|_| "not a secret key".to_string())
 }
 
-/// The owner's NIP-OA attestation of `agent` under `conditions`.
-#[must_use]
+/// The owner's NIP-OA attestation of `agent` under `conditions`, minted by
+/// [`nostr::domain::mint_owner_attestation`].
+///
+/// # Errors
+/// When `agent` is not a lowercase hex key, is the owner's own key, or
+/// `conditions` breaks the NIP-OA grammar.
 pub fn sign_attestation(
     owner: &secp256k1::SecretKey,
     agent: &str,
     conditions: &str,
-) -> Attestation {
-    use sha2::Digest;
-    let secp = secp256k1::Secp256k1::signing_only();
-    let keypair = secp256k1::Keypair::from_secret_key(&secp, owner);
-    let digest: [u8; 32] =
-        sha2::Sha256::digest(format!("nostr:agent-auth:{agent}:{conditions}").as_bytes()).into();
-    Attestation {
-        owner: keypair.x_only_public_key().0.to_string(),
-        conditions: conditions.into(),
-        signature: secp.sign_schnorr_no_aux_rand(&digest, &keypair).to_string(),
-    }
+) -> Result<Attestation, String> {
+    let minted = nostr::domain::mint_owner_attestation(owner, agent, conditions)?;
+    Ok(Attestation {
+        owner: minted.owner_pubkey,
+        conditions: minted.conditions,
+        signature: minted.signature,
+    })
 }
 
 /// Checks `attestation` of `agent` at `now`: the owner's signature, a
