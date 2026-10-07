@@ -32,6 +32,7 @@ pub mod foliage;
 pub mod furnish;
 pub mod generated;
 pub mod greens;
+pub mod kit_house;
 pub mod parks;
 pub mod streets;
 pub mod trails;

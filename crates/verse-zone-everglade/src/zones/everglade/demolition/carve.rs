@@ -27,7 +27,7 @@ use super::chunks::{self, ChunkMesh, Triangle};
 use super::kit::Cut;
 use crate::pbr::textured::{TexturedVertex, UNBAKED};
 use crate::zones::everglade::layout::{Placement, generated::patches};
-use crate::zones::everglade_pack::ZonePack;
+use crate::zones::everglade_pack::{ZonePack, kit};
 
 /// A block's width and depth at most, m.
 pub const CELL: f32 = 3.5;
@@ -71,7 +71,8 @@ const KEEP: [&str; 19] = [
 pub fn carvable(model: &str) -> bool {
     (model.starts_with("generated/")
         || model.starts_with("props/")
-        || model.starts_with("village/"))
+        || model.starts_with("village/")
+        || model.starts_with("kit/"))
         && !KEEP.iter().any(|prefix| model.starts_with(prefix))
 }
 
@@ -107,6 +108,10 @@ impl Lattice {
     /// for the models in [`FINE`].
     #[must_use]
     pub fn of_model(name: &str, bounds: ([f32; 3], [f32; 3]), scale: f32) -> Self {
+        // A medieval kit piece is already one piece of its house: one block.
+        if name.starts_with("kit/") {
+            return Self::sized(bounds, scale, f32::MAX, f32::MAX);
+        }
         match FINE.iter().find(|(model, ..)| *model == name) {
             Some(&(_, cell, level)) => Self::sized(bounds, scale, cell, level),
             None => Self::of(bounds, scale),
@@ -260,7 +265,14 @@ pub struct Split {
 pub fn split_model(pack: &ZonePack, name: &str, scale: f32) -> Result<Arc<Split>, String> {
     type Cache = Mutex<BTreeMap<(String, u32), Arc<Split>>>;
     static CACHE: OnceLock<Cache> = OnceLock::new();
-    let key = (name.to_owned(), scale.to_bits());
+    // A kit piece's split depends on whether the licensed kit or its proxy
+    // draws it.
+    let drawn = if name.starts_with("kit/") && kit::installed(pack) {
+        format!("{name}@kit")
+    } else {
+        name.to_owned()
+    };
+    let key = (drawn, scale.to_bits());
     let cache = CACHE.get_or_init(Cache::default);
     if let Some(hit) = cache
         .lock()
@@ -324,6 +336,13 @@ pub fn columns(pack: &ZonePack, placement: &Placement) -> Result<Option<Arc<Colu
     {
         return Ok(hit.clone());
     }
+    // A medieval kit piece collides as its committed proxy, with the
+    // licensed kit or without it.
+    let pack = if placement.model.starts_with("kit/") {
+        kit::proxies()
+    } else {
+        pack
+    };
     let split = split_model(pack, placement.model, placement.scale)?;
     let mut triangles: Vec<([Vec3; 3], u32)> = split
         .triangles

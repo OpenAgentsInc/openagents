@@ -1,7 +1,7 @@
 {
   "schema": "openagents.verse-world-tree.v1",
   "zone": "everglade",
-  "digest": "sha256:f8bd47fc18a7231c2e7b88e3a15cdf7b056ea120e683b30a1007137657210f0b",
+  "digest": "sha256:94cbd845aa55d5b314fe89d5a6f41983c155ed76645f2c1ed37aa9c7edcb3772",
   "nodes": [
     {
       "id": "everglade",
@@ -3615,13 +3615,23 @@
       "kind": "building",
       "district": "stoop-lane",
       "stand": [
-        -57.0,
-        35.6
+        -58.67,
+        33.66
+      ],
+      "entry": [
+        [
+          -58.67,
+          33.66
+        ],
+        [
+          -53.69,
+          33.16
+        ]
       ],
       "affordances": [
         "sleep"
       ],
-      "source": "front:townhouse 1"
+      "source": "door:townhouse 1"
     },
     {
       "id": "everglade/stoop-lane/townhouse-1/door",
@@ -3630,11 +3640,12 @@
       "object": "door",
       "district": "stoop-lane",
       "stand": [
-        -57.0,
-        35.6
+        -58.67,
+        33.66
       ],
-      "open": false,
-      "source": "front:townhouse 1:door"
+      "facing": 1.67,
+      "open": true,
+      "source": "door:townhouse 1:door"
     },
     {
       "id": "everglade/stoop-lane/townhouse-2",
@@ -3642,13 +3653,23 @@
       "kind": "building",
       "district": "stoop-lane",
       "stand": [
-        -58.4,
-        21.0
+        -58.59,
+        22.67
+      ],
+      "entry": [
+        [
+          -58.59,
+          22.67
+        ],
+        [
+          -53.6,
+          22.92
+        ]
       ],
       "affordances": [
         "sleep"
       ],
-      "source": "front:townhouse 2"
+      "source": "door:townhouse 2"
     },
     {
       "id": "everglade/stoop-lane/townhouse-2/door",
@@ -3657,11 +3678,12 @@
       "object": "door",
       "district": "stoop-lane",
       "stand": [
-        -58.4,
-        21.0
+        -58.59,
+        22.67
       ],
-      "open": false,
-      "source": "front:townhouse 2:door"
+      "facing": 1.52,
+      "open": true,
+      "source": "door:townhouse 2:door"
     },
     {
       "id": "everglade/stoop-lane/townhouse-3",
@@ -3669,13 +3691,23 @@
       "kind": "building",
       "district": "stoop-lane",
       "stand": [
-        -57.2,
-        7.0
+        -58.69,
+        5.79
+      ],
+      "entry": [
+        [
+          -58.69,
+          5.79
+        ],
+        [
+          -53.73,
+          5.19
+        ]
       ],
       "affordances": [
         "sleep"
       ],
-      "source": "front:townhouse 3"
+      "source": "door:townhouse 3"
     },
     {
       "id": "everglade/stoop-lane/townhouse-3/door",
@@ -3684,11 +3716,12 @@
       "object": "door",
       "district": "stoop-lane",
       "stand": [
-        -57.2,
-        7.0
+        -58.69,
+        5.79
       ],
-      "open": false,
-      "source": "front:townhouse 3:door"
+      "facing": 1.69,
+      "open": true,
+      "source": "door:townhouse 3:door"
     },
     {
       "id": "everglade/stoop-lane/townhouse-4",
@@ -3696,13 +3729,23 @@
       "kind": "building",
       "district": "stoop-lane",
       "stand": [
-        -62.8,
-        35.0
+        -61.36,
+        33.53
+      ],
+      "entry": [
+        [
+          -61.36,
+          33.53
+        ],
+        [
+          -66.34,
+          33.13
+        ]
       ],
       "affordances": [
         "sleep"
       ],
-      "source": "front:townhouse 4"
+      "source": "door:townhouse 4"
     },
     {
       "id": "everglade/stoop-lane/townhouse-4/door",
@@ -3711,11 +3754,12 @@
       "object": "door",
       "district": "stoop-lane",
       "stand": [
-        -62.8,
-        35.0
+        -61.36,
+        33.53
       ],
-      "open": false,
-      "source": "front:townhouse 4:door"
+      "facing": -1.65,
+      "open": true,
+      "source": "door:townhouse 4:door"
     },
     {
       "id": "everglade/stoop-lane/townhouse-5",
@@ -3723,13 +3767,23 @@
       "kind": "building",
       "district": "stoop-lane",
       "stand": [
-        -63.0,
-        23.3
+        -61.39,
+        22.61
+      ],
+      "entry": [
+        [
+          -61.39,
+          22.61
+        ],
+        [
+          -66.38,
+          22.91
+        ]
       ],
       "affordances": [
         "sleep"
       ],
-      "source": "front:townhouse 5"
+      "source": "door:townhouse 5"
     },
     {
       "id": "everglade/stoop-lane/townhouse-5/door",
@@ -3738,11 +3792,12 @@
       "object": "door",
       "district": "stoop-lane",
       "stand": [
-        -63.0,
-        23.3
+        -61.39,
+        22.61
       ],
-      "open": false,
-      "source": "front:townhouse 5:door"
+      "facing": -1.51,
+      "open": true,
+      "source": "door:townhouse 5:door"
     },
     {
       "id": "everglade/stoop-lane/townhouse-6",
@@ -3750,13 +3805,23 @@
       "kind": "building",
       "district": "stoop-lane",
       "stand": [
-        -63.0,
-        6.4
+        -61.32,
+        5.73
+      ],
+      "entry": [
+        [
+          -61.32,
+          5.73
+        ],
+        [
+          -66.29,
+          5.18
+        ]
       ],
       "affordances": [
         "sleep"
       ],
-      "source": "front:townhouse 6"
+      "source": "door:townhouse 6"
     },
     {
       "id": "everglade/stoop-lane/townhouse-6/door",
@@ -3765,11 +3830,12 @@
       "object": "door",
       "district": "stoop-lane",
       "stand": [
-        -63.0,
-        6.4
+        -61.32,
+        5.73
       ],
-      "open": false,
-      "source": "front:townhouse 6:door"
+      "facing": -1.68,
+      "open": true,
+      "source": "door:townhouse 6:door"
     },
     {
       "id": "everglade/lantern-quarter",

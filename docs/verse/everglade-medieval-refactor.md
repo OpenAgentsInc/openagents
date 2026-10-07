@@ -286,6 +286,37 @@ Destruction stays lazy: a kit house draws as merged geometry until it is
 first hit, then rises into a `Site` of its pieces, under the existing
 limits (`MAX_LIVE` 12 and 6, `MAX_CHUNKS` 220).
 
+### As built (P2 and P4)
+
+What the code does, where it differs from the sketch above:
+
+- **Pieces.** `everglade_pack::kit::PIECES` holds 53 kit pieces, each a
+  `kit/<id>` model name, a committed box in the kit's own frame (meters,
+  Y up, a wall running along +x with its outer face toward +z), a proxy
+  shape, and a coat. `scripts/unreal/medieval_kit_recipe.json` maps each ID
+  to its vendor mesh, with a mirror or scale where a piece needs one, and a
+  test keeps the two lists equal.
+- **The pack.** `scripts/unreal/medieval_kit_build.py` writes one glTF per
+  piece from the private export, with tints baked into vertex colors,
+  tiling into texture coordinates, and one primitive per image; the
+  `everglade_kit` example compiles it with `compile::kit` under
+  `Limits::KIT` (512 px images) into an 11.3 MB pack of about 25,000
+  triangles. `kit::install` puts the kit's models into the decoded
+  Everglade pack, or a proxy for each piece when the kit is absent or a
+  model leaves its box by more than 0.1 m.
+- **Houses.** `layout::kit_house` builds a house from its lot: corner
+  pieces 1 m along each side, 4 m and 2 m bays between them, stories 4.5 m
+  floor to floor (a 4 m wall and a 0.5 m band), a 2 m plinth sunk 1.25 m,
+  steps to the door, and a gabled roof whose 6 m slopes span the side that
+  is 10 m: from a ridge along the front on an 8 m by 10 m lot, or from a
+  ridge front to back, gable to the street, on a 10 m front.
+- **Collision.** Kit pieces are carved, one block each, so the town's
+  existing demolition breaks them piece by piece and the pieces above fall
+  when what holds them goes. A kit piece's collision columns come from its
+  proxy, never from the licensed mesh, so walking is the same with and
+  without the kit. Villagers and navigation route around
+  `KitHouse::walls`, open at the door.
+
 ### Coplanar faces
 
 The kit overlaps on purpose: trims sit on wall faces, corners overlap wall
@@ -498,6 +529,30 @@ kit pack loaded and without it, saved outside the repository.
   amend [Private assets](private-assets.md) for the licensed-kit class;
   update [Zones](zones.md) and [Everglade](everglade.md).
 - Acceptance: the public pack's size drops; docs match the code.
+
+### B1 to B4: the offline lighting bake
+
+The owner added four phases on October 7, 2026, under the same umbrella.
+They bake Everglade's static lighting offline, so no device bakes it at
+zone load. No NVIDIA SDK code is copied or linked; techniques are
+reimplemented from published papers.
+
+- **B1 (#10905): the baker.** A `verse-bake` tool with a GPU backend
+  (Vulkan ray queries) run on `coderos-4080` through
+  `openagents lease run --class bench --place remote:coderos-4080`, and a
+  multithreaded CPU backend that agrees with it within a stated tolerance.
+  Deterministic by a fixed seed. Starts once P2 gives a compiled kit-town
+  scene.
+- **B2 (#10906): lightmap layers in the kit pack.** Sky, sun at four
+  positions, and lamps, as second-UV lightmaps and a probe grid, through
+  the artifact queue, with today's load-time bake as the fallback. Needs
+  B1; lands with or right after P5.
+- **B3 (#10907): time of day and destruction.** The town clock blends the
+  sun layers and fades the lamp layer in at dusk; a broken piece and its
+  neighbors fall back to dynamic light. Needs B2.
+- **B4 (#10908): tiers and measurement.** Half and quarter resolution for
+  web and phones, and the measured download, memory, frame, and load
+  costs. Needs B2 and P8.
 
 ## The proof
 

@@ -11,6 +11,14 @@
    "lod0": true,
    "mesh": "Meshes/Props/SM_balcony_01"
   },
+  "band-1": {
+   "mesh": "Meshes/Architecture/Modules/Walls_elements/SM_wall_A_element_2_01",
+   "scale": [
+    0.5,
+    1.0,
+    1.0
+   ]
+  },
   "band-2": {
    "mesh": "Meshes/Architecture/Modules/Walls_elements/SM_wall_A_element_2_01"
   },

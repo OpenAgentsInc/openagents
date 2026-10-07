@@ -61,7 +61,7 @@ pub fn is_kit_model(name: &str) -> bool {
 /// Returns a message when a file is unreadable or too large, a model fails
 /// the importer, a model name is not a kit name, or the pack exceeds
 /// [`Limits::KIT`].
-pub fn compile(directory: &Path, grade: fn(&mut [u8])) -> Result<Compiled, String> {
+pub fn compile(directory: &Path, grade: fn(u32, u32, &mut [u8])) -> Result<Compiled, String> {
     let limits = &Limits::KIT;
     let mut files = BTreeMap::new();
     let mut source_bytes = 0;
@@ -114,7 +114,7 @@ pub fn compile(directory: &Path, grade: fn(&mut [u8])) -> Result<Compiled, Strin
     for texture in &mut contents.textures {
         let decoded = format::decode_texture(texture)?;
         let mut rgba = decoded.rgba;
-        grade(&mut rgba);
+        grade(decoded.width, decoded.height, &mut rgba);
         texture.png = super::encode_png(decoded.width, decoded.height, &rgba)?;
     }
     let bytes = format::encode(&contents, limits)?;
@@ -267,7 +267,7 @@ mod tests {
         std::fs::write(dir.path().join("Card.bin"), &bin).unwrap();
         std::fs::write(dir.path().join("Leaf.png"), leaf_png()).unwrap();
         std::fs::write(dir.path().join("build.json"), "{}").unwrap();
-        fn redden(rgba: &mut [u8]) {
+        fn redden(_: u32, _: u32, rgba: &mut [u8]) {
             for p in rgba.chunks_exact_mut(4) {
                 p[0] = 200;
             }
@@ -282,6 +282,6 @@ mod tests {
         assert_eq!(compile(dir.path(), redden).unwrap().sha256, compiled.sha256);
         // A model whose file is not a kit ID is refused.
         std::fs::write(dir.path().join("Wall_A.gltf"), &gltf).unwrap();
-        assert!(compile(dir.path(), |_| ()).is_err());
+        assert!(compile(dir.path(), |_, _, _| ()).is_err());
     }
 }

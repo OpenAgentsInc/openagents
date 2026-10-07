@@ -58,10 +58,67 @@ pub fn pinned() -> PinnedFile {
     }
 }
 
+/// How much of a kit image's fine detail [`grade`] keeps: the rest is its
+/// local average, which softens the kit's grit toward a painted surface.
+pub const GRADE_DETAIL: f32 = 0.6;
+/// How far [`grade`] pushes colors from their gray, 1 for no change.
+pub const GRADE_SATURATION: f32 = 1.2;
+/// The exponent [`grade`] raises each sRGB channel to, under 1 to lighten.
+pub const GRADE_GAMMA: f32 = 0.85;
+/// A warm shift [`grade`] multiplies red, green, and blue by.
+pub const GRADE_WARMTH: [f32; 3] = [1.04, 1.01, 0.95];
+
 /// The grade every kit image takes when the kit pack is compiled, so the
-/// kit's base colors sit with Everglade's painted look. Identity until the
-/// grade is set (plan phase P3).
-pub fn grade(_rgba: &mut [u8]) {}
+/// kit's realistic base colors sit with Everglade's painted look
+/// (plan phase P3): it softens fine detail toward the local average,
+/// lightens, saturates, and warms. Alpha is unchanged. It runs on
+/// `width` by `height` sRGB pixels at the pack's texture edge.
+pub fn grade(width: u32, height: u32, rgba: &mut [u8]) {
+    let (w, h) = (width as usize, height as usize);
+    if w == 0 || h == 0 || rgba.len() != w * h * 4 {
+        return;
+    }
+    // A box blur of radius r, a sixty-fourth of the image's width, as the
+    // local average; summed-area tables keep it linear in the pixels.
+    let r = (w.max(h) / 64).max(1);
+    let mut sums = vec![[0u64; 3]; (w + 1) * (h + 1)];
+    for y in 0..h {
+        for x in 0..w {
+            let p = &rgba[(y * w + x) * 4..];
+            let above = sums[y * (w + 1) + x + 1];
+            let left = sums[(y + 1) * (w + 1) + x];
+            let diagonal = sums[y * (w + 1) + x];
+            let mut s = [0u64; 3];
+            for c in 0..3 {
+                s[c] = u64::from(p[c]) + above[c] + left[c] - diagonal[c];
+            }
+            sums[(y + 1) * (w + 1) + x + 1] = s;
+        }
+    }
+    let original = rgba.to_vec();
+    for y in 0..h {
+        for x in 0..w {
+            let (x0, x1) = (x.saturating_sub(r), (x + r + 1).min(w));
+            let (y0, y1) = (y.saturating_sub(r), (y + r + 1).min(h));
+            let area = ((x1 - x0) * (y1 - y0)) as f32;
+            let at = |yy: usize, xx: usize| sums[yy * (w + 1) + xx];
+            let i = (y * w + x) * 4;
+            let mut rgb = [0.0f32; 3];
+            for c in 0..3 {
+                let total = at(y1, x1)[c] + at(y0, x0)[c] - at(y0, x1)[c] - at(y1, x0)[c];
+                let mean = total as f32 / area;
+                let own = f32::from(original[i + c]);
+                rgb[c] = (mean + (own - mean) * GRADE_DETAIL) / 255.0;
+            }
+            let gray = 0.299 * rgb[0] + 0.587 * rgb[1] + 0.114 * rgb[2];
+            for c in 0..3 {
+                let saturated = (gray + (rgb[c] - gray) * GRADE_SATURATION).clamp(0.0, 1.0);
+                let lit = saturated.powf(GRADE_GAMMA) * GRADE_WARMTH[c];
+                rgba[i + c] = (lit.clamp(0.0, 1.0) * 255.0).round() as u8;
+            }
+        }
+    }
+}
 
 /// What a proxy is made of: the Everglade pack's image and a linear tint.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -175,359 +232,61 @@ const GABLE: Shape = Shape::Slope { gable: true };
 
 /// Every kit piece, sorted by model name. The boxes are the kit pieces'
 /// bounds in its frame, rounded to centimeters.
-pub const PIECES: [Piece; 52] = [
-    piece(
-        "kit/anvil",
-        [-0.25, 0.0, -0.5],
-        [0.25, 0.43, 0.66],
-        Block,
-        Metal,
-    ),
-    piece(
-        "kit/awning",
-        [0.0, -1.12, -0.01],
-        [4.0, 0.39, 2.32],
-        Block,
-        Cloth,
-    ),
-    piece(
-        "kit/balcony",
-        [0.0, -0.51, -0.2],
-        [2.4, 0.98, 0.83],
-        Block,
-        Wood,
-    ),
-    piece(
-        "kit/band-2",
-        [0.0, -0.05, 0.0],
-        [2.0, 0.55, 0.5],
-        Block,
-        Timber,
-    ),
-    piece(
-        "kit/band-4",
-        [0.0, -0.05, 0.0],
-        [4.0, 0.55, 0.5],
-        Block,
-        Timber,
-    ),
-    piece(
-        "kit/barrel",
-        [-0.41, -0.02, -0.43],
-        [0.41, 1.15, 0.41],
-        Block,
-        Wood,
-    ),
-    piece(
-        "kit/basket",
-        [-0.33, 0.0, -0.32],
-        [0.32, 0.56, 0.33],
-        Block,
-        Wood,
-    ),
-    piece(
-        "kit/bench",
-        [-0.38, 0.0, -1.02],
-        [0.51, 1.31, 1.02],
-        Block,
-        Wood,
-    ),
-    piece(
-        "kit/bucket",
-        [-0.22, 0.0, -0.23],
-        [0.25, 0.32, 0.23],
-        Block,
-        Wood,
-    ),
-    piece(
-        "kit/cart",
-        [-1.24, 0.0, -0.87],
-        [2.08, 1.22, 0.88],
-        Block,
-        Wood,
-    ),
-    piece(
-        "kit/chair",
-        [-0.25, -0.01, -0.23],
-        [0.25, 0.92, 0.23],
-        Block,
-        Wood,
-    ),
-    piece(
-        "kit/chimney",
-        [-0.57, 0.0, -0.57],
-        [0.57, 3.89, 0.57],
-        Block,
-        Stone,
-    ),
-    piece(
-        "kit/chimney-wide",
-        [-0.51, 0.0, -0.71],
-        [0.51, 4.05, 0.71],
-        Block,
-        Stone,
-    ),
-    piece(
-        "kit/corner",
-        [-0.1, 0.0, -1.0],
-        [1.0, 4.0, 0.11],
-        Block,
-        Timber,
-    ),
-    piece(
-        "kit/corner-b",
-        [0.0, 0.0, 0.0],
-        [2.0, 4.5, 2.0],
-        Block,
-        Stone,
-    ),
-    piece(
-        "kit/crate",
-        [-0.65, 0.0, -0.65],
-        [0.65, 1.27, 0.65],
-        Block,
-        Wood,
-    ),
-    piece(
-        "kit/door-2",
-        [0.0, 0.0, -0.05],
-        [2.0, 4.0, 0.55],
-        DOOR_2,
-        Plaster,
-    ),
-    piece(
-        "kit/door-4",
-        [0.0, 0.0, -0.05],
-        [4.0, 4.0, 0.55],
-        DOOR_4,
-        Plaster,
-    ),
-    piece(
-        "kit/door-b",
-        [0.0, 0.0, 0.0],
-        [5.8, 4.5, 1.5],
-        DOOR_B,
-        Stone,
-    ),
+#[rustfmt::skip]
+pub const PIECES: [Piece; 53] = [
+    piece("kit/anvil", [-0.25, 0.0, -0.5], [0.25, 0.43, 0.66], Block, Metal),
+    piece("kit/awning", [0.0, -1.12, -0.01], [4.0, 0.39, 2.32], Block, Cloth),
+    piece("kit/balcony", [0.0, -0.51, -0.2], [2.4, 0.98, 0.83], Block, Wood),
+    piece("kit/band-1", [0.0, -0.05, 0.0], [1.0, 0.55, 0.5], Block, Timber),
+    piece("kit/band-2", [0.0, -0.05, 0.0], [2.0, 0.55, 0.5], Block, Timber),
+    piece("kit/band-4", [0.0, -0.05, 0.0], [4.0, 0.55, 0.5], Block, Timber),
+    piece("kit/barrel", [-0.41, -0.02, -0.43], [0.41, 1.15, 0.41], Block, Wood),
+    piece("kit/basket", [-0.33, 0.0, -0.32], [0.32, 0.56, 0.33], Block, Wood),
+    piece("kit/bench", [-0.38, 0.0, -1.02], [0.51, 1.31, 1.02], Block, Wood),
+    piece("kit/bucket", [-0.22, 0.0, -0.23], [0.25, 0.32, 0.23], Block, Wood),
+    piece("kit/cart", [-1.24, 0.0, -0.87], [2.08, 1.22, 0.88], Block, Wood),
+    piece("kit/chair", [-0.25, -0.01, -0.23], [0.25, 0.92, 0.23], Block, Wood),
+    piece("kit/chimney", [-0.57, 0.0, -0.57], [0.57, 3.89, 0.57], Block, Stone),
+    piece("kit/chimney-wide", [-0.51, 0.0, -0.71], [0.51, 4.05, 0.71], Block, Stone),
+    piece("kit/corner", [-0.1, 0.0, -1.0], [1.0, 4.0, 0.11], Block, Timber),
+    piece("kit/corner-b", [0.0, 0.0, 0.0], [2.0, 4.5, 2.0], Block, Stone),
+    piece("kit/crate", [-0.65, 0.0, -0.65], [0.65, 1.27, 0.65], Block, Wood),
+    piece("kit/door-2", [0.0, 0.0, -0.05], [2.0, 4.0, 0.55], DOOR_2, Plaster),
+    piece("kit/door-4", [0.0, 0.0, -0.05], [4.0, 4.0, 0.55], DOOR_4, Plaster),
+    piece("kit/door-b", [0.0, 0.0, 0.0], [5.8, 4.5, 1.5], DOOR_B, Stone),
     piece("kit/floor-4", [0.0, 0.0, 0.0], [4.0, 0.5, 4.0], Block, Wood),
-    piece(
-        "kit/floor-4x2",
-        [0.0, 0.0, 0.0],
-        [4.0, 0.5, 2.0],
-        Block,
-        Wood,
-    ),
-    piece(
-        "kit/flowerpot",
-        [-1.34, -0.04, -0.61],
-        [1.34, 0.5, 0.06],
-        Block,
-        Wood,
-    ),
-    piece(
-        "kit/forge",
-        [-3.25, 0.0, -1.37],
-        [3.25, 2.91, 0.93],
-        Block,
-        Stone,
-    ),
-    piece(
-        "kit/fountain",
-        [-3.09, 0.0, -3.09],
-        [3.09, 2.14, 3.09],
-        Block,
-        Stone,
-    ),
-    piece(
-        "kit/lamp",
-        [-0.19, 0.0, -0.58],
-        [0.19, 3.44, 0.58],
-        Block,
-        Metal,
-    ),
-    piece(
-        "kit/plinth-2",
-        [0.0, 0.0, 0.0],
-        [2.0, 2.0, 0.75],
-        Block,
-        Stone,
-    ),
-    piece(
-        "kit/plinth-4",
-        [0.0, 0.0, 0.0],
-        [4.0, 2.0, 0.75],
-        Block,
-        Stone,
-    ),
-    piece(
-        "kit/plinth-corner",
-        [0.0, 0.0, -1.25],
-        [1.25, 2.0, 0.0],
-        Block,
-        Stone,
-    ),
-    piece(
-        "kit/porch-roof",
-        [-1.1, -0.06, -0.02],
-        [1.1, 0.54, 0.94],
-        Block,
-        Tile,
-    ),
-    piece(
-        "kit/ridge-2",
-        [-2.0, 0.0, -0.22],
-        [0.0, 0.37, 0.22],
-        Block,
-        Tile,
-    ),
-    piece(
-        "kit/ridge-4",
-        [-4.0, 0.0, -0.22],
-        [0.0, 0.37, 0.22],
-        Block,
-        Tile,
-    ),
-    piece(
-        "kit/ridge-end",
-        [-4.0, -0.2, -0.22],
-        [0.5, 0.37, 0.22],
-        Block,
-        Tile,
-    ),
-    piece(
-        "kit/ridge-end-mirror",
-        [-0.5, -0.2, -0.22],
-        [4.0, 0.37, 0.22],
-        Block,
-        Tile,
-    ),
-    piece(
-        "kit/roof-end",
-        [-4.0, -0.29, 0.0],
-        [1.03, 4.05, 6.11],
-        GABLE,
-        Tile,
-    ),
-    piece(
-        "kit/roof-end-mirror",
-        [-1.03, -0.29, 0.0],
-        [4.0, 4.05, 6.11],
-        GABLE,
-        Tile,
-    ),
-    piece(
-        "kit/roof-mid",
-        [-4.15, -0.21, 0.0],
-        [0.15, 4.0, 6.01],
-        SLOPE,
-        Tile,
-    ),
-    piece(
-        "kit/roof-mid-2",
-        [-2.15, -0.21, 0.0],
-        [0.15, 4.0, 6.0],
-        SLOPE,
-        Tile,
-    ),
-    piece(
-        "kit/shutter",
-        [0.0, 0.0, -0.02],
-        [1.0, 2.2, 0.1],
-        Block,
-        Wood,
-    ),
-    piece(
-        "kit/sign",
-        [-1.01, 0.0, -0.53],
-        [1.01, 0.6, 0.14],
-        Block,
-        Wood,
-    ),
+    piece("kit/floor-4x2", [0.0, 0.0, 0.0], [4.0, 0.5, 2.0], Block, Wood),
+    piece("kit/flowerpot", [-1.34, -0.04, -0.61], [1.34, 0.5, 0.06], Block, Wood),
+    piece("kit/forge", [-3.25, 0.0, -1.37], [3.25, 2.91, 0.93], Block, Stone),
+    piece("kit/fountain", [-3.09, 0.0, -3.09], [3.09, 2.14, 3.09], Block, Stone),
+    piece("kit/lamp", [-0.19, 0.0, -0.58], [0.19, 3.44, 0.58], Block, Metal),
+    piece("kit/plinth-2", [0.0, 0.0, 0.0], [2.0, 2.0, 0.75], Block, Stone),
+    piece("kit/plinth-4", [0.0, 0.0, 0.0], [4.0, 2.0, 0.75], Block, Stone),
+    piece("kit/plinth-corner", [0.0, 0.0, -1.25], [1.25, 2.0, 0.0], Block, Stone),
+    piece("kit/porch-roof", [-1.1, -0.06, -0.02], [1.1, 0.54, 0.94], Block, Tile),
+    piece("kit/ridge-2", [-2.0, 0.0, -0.22], [0.0, 0.37, 0.22], Block, Tile),
+    piece("kit/ridge-4", [-4.0, 0.0, -0.22], [0.0, 0.37, 0.22], Block, Tile),
+    piece("kit/ridge-end", [-4.0, -0.2, -0.22], [0.5, 0.37, 0.22], Block, Tile),
+    piece("kit/ridge-end-mirror", [-0.5, -0.2, -0.22], [4.0, 0.37, 0.22], Block, Tile),
+    piece("kit/roof-end", [-4.0, -0.29, 0.0], [1.03, 4.05, 6.11], GABLE, Tile),
+    piece("kit/roof-end-mirror", [-1.03, -0.29, 0.0], [4.0, 4.05, 6.11], GABLE, Tile),
+    piece("kit/roof-mid", [-4.15, -0.21, 0.0], [0.15, 4.0, 6.01], SLOPE, Tile),
+    piece("kit/roof-mid-2", [-2.15, -0.21, 0.0], [0.15, 4.0, 6.0], SLOPE, Tile),
+    piece("kit/shutter", [0.0, 0.0, -0.02], [1.0, 2.2, 0.1], Block, Wood),
+    piece("kit/sign", [-1.01, 0.0, -0.53], [1.01, 0.6, 0.14], Block, Wood),
     piece("kit/stairs", [0.0, 0.0, 0.0], [2.75, 2.0, 2.0], Steps, Wood),
-    piece(
-        "kit/stall",
-        [-2.12, -0.01, -0.06],
-        [2.08, 3.48, 2.58],
-        Block,
-        Cloth,
-    ),
-    piece(
-        "kit/table",
-        [-0.5, 0.0, -0.5],
-        [0.5, 0.78, 0.5],
-        Block,
-        Wood,
-    ),
-    piece(
-        "kit/wall-2",
-        [0.0, 0.0, -0.04],
-        [2.0, 4.0, 0.54],
-        Block,
-        Plaster,
-    ),
-    piece(
-        "kit/wall-2-timber",
-        [0.0, 0.0, -0.12],
-        [2.0, 4.0, 0.63],
-        Block,
-        Plaster,
-    ),
-    piece(
-        "kit/wall-4",
-        [0.0, 0.0, -0.04],
-        [4.0, 4.0, 0.54],
-        Block,
-        Plaster,
-    ),
-    piece(
-        "kit/wall-4-timber",
-        [0.0, 0.0, -0.12],
-        [4.0, 4.0, 0.63],
-        Block,
-        Plaster,
-    ),
-    piece(
-        "kit/wall-b-4",
-        [0.0, 0.0, 0.0],
-        [4.0, 4.5, 1.5],
-        Block,
-        Stone,
-    ),
-    piece(
-        "kit/window-4",
-        [0.0, 0.0, -0.06],
-        [4.0, 4.0, 0.56],
-        Window,
-        Plaster,
-    ),
-    piece(
-        "kit/window-4-small",
-        [0.0, -0.08, -0.06],
-        [4.0, 4.0, 0.56],
-        Window,
-        Plaster,
-    ),
-    piece(
-        "kit/window-4-tall",
-        [0.0, 0.0, -0.06],
-        [4.0, 4.0, 0.64],
-        Window,
-        Plaster,
-    ),
-    piece(
-        "kit/window-4-wide",
-        [0.0, 0.0, -0.06],
-        [4.0, 4.0, 0.56],
-        Window,
-        Plaster,
-    ),
-    piece(
-        "kit/window-b",
-        [0.0, 0.0, -0.1],
-        [5.7, 4.5, 1.5],
-        Window,
-        Stone,
-    ),
+    piece("kit/stall", [-2.12, -0.01, -0.06], [2.08, 3.48, 2.58], Block, Cloth),
+    piece("kit/table", [-0.5, 0.0, -0.5], [0.5, 0.78, 0.5], Block, Wood),
+    piece("kit/wall-2", [0.0, 0.0, -0.04], [2.0, 4.0, 0.54], Block, Plaster),
+    piece("kit/wall-2-timber", [0.0, 0.0, -0.12], [2.0, 4.0, 0.63], Block, Plaster),
+    piece("kit/wall-4", [0.0, 0.0, -0.04], [4.0, 4.0, 0.54], Block, Plaster),
+    piece("kit/wall-4-timber", [0.0, 0.0, -0.12], [4.0, 4.0, 0.63], Block, Plaster),
+    piece("kit/wall-b-4", [0.0, 0.0, 0.0], [4.0, 4.5, 1.5], Block, Stone),
+    piece("kit/window-4", [0.0, 0.0, -0.06], [4.0, 4.0, 0.56], Window, Plaster),
+    piece("kit/window-4-small", [0.0, -0.08, -0.06], [4.0, 4.0, 0.56], Window, Plaster),
+    piece("kit/window-4-tall", [0.0, 0.0, -0.06], [4.0, 4.0, 0.64], Window, Plaster),
+    piece("kit/window-4-wide", [0.0, 0.0, -0.06], [4.0, 4.0, 0.56], Window, Plaster),
+    piece("kit/window-b", [0.0, 0.0, -0.1], [5.7, 4.5, 1.5], Window, Stone),
 ];
 
 /// The piece a model name places, if it is a kit piece.
@@ -537,6 +296,23 @@ pub fn piece_of(model: &str) -> Option<&'static Piece> {
         .binary_search_by(|p| p.model.cmp(model))
         .ok()
         .map(|i| &PIECES[i])
+}
+
+/// A pack of the proxies alone, which every kit piece collides as.
+#[must_use]
+pub fn proxies() -> &'static ZonePack {
+    static PROXIES: std::sync::OnceLock<ZonePack> = std::sync::OnceLock::new();
+    PROXIES.get_or_init(|| {
+        let mut pack = ZonePack {
+            textures: Vec::new(),
+            materials: Vec::new(),
+            models: Vec::new(),
+            character: None,
+            forms: Vec::new(),
+        };
+        install(&mut pack, None);
+        pack
+    })
 }
 
 /// Whether `pack` draws the licensed kit rather than the proxies.
@@ -878,6 +654,37 @@ mod tests {
             character: None,
             forms: Vec::new(),
         }
+    }
+
+    #[test]
+    fn the_grade_lightens_saturates_and_softens_but_keeps_alpha() {
+        // A gray-green checkerboard with a transparent corner.
+        let (w, h) = (16u32, 16u32);
+        let mut rgba = Vec::new();
+        for y in 0..h {
+            for x in 0..w {
+                let v = if (x + y) % 2 == 0 { 70 } else { 110 };
+                let a = if x == 0 && y == 0 { 0 } else { 255 };
+                rgba.extend([v, v + 20, v - 10, a]);
+            }
+        }
+        let before = rgba.clone();
+        grade(w, h, &mut rgba);
+        let mean = |px: &[u8], c: usize| {
+            px.chunks_exact(4).map(|p| f32::from(p[c])).sum::<f32>() / (w * h) as f32
+        };
+        // Lighter on average, and greener than it is red, by more.
+        assert!(mean(&rgba, 1) > mean(&before, 1));
+        assert!(mean(&rgba, 1) - mean(&rgba, 0) > mean(&before, 1) - mean(&before, 0));
+        // The checkerboard's contrast drops.
+        let spread = |px: &[u8]| i32::from(px[4 * 17]) - i32::from(px[4 * 18]);
+        assert!(spread(&rgba).abs() < spread(&before).abs());
+        assert_eq!(rgba[3], 0);
+        assert_eq!(rgba[7], 255);
+        // A wrong size changes nothing.
+        let mut odd = before.clone();
+        grade(w + 1, h, &mut odd);
+        assert_eq!(odd, before);
     }
 
     #[test]

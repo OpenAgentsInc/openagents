@@ -23,6 +23,7 @@ use super::generated::{
     MARKET_HALL, MEETING_HALL, MUSIC_HALL, Model, NARROW_HOUSE, OBSERVATORY, SHOP_HOUSE, SMITHY,
     STONE_COTTAGE, TALL_HOUSE, TAVERN, TIMBER_HOUSE, WINDMILL,
 };
+use super::kit_house::{KitHouse, KitStyle};
 use super::{
     Collision, DOOR_HALF, EAST, NORTH, Piece, Placement, SOUTH, WALL_TOP, WEST, dress, height,
     noise, prop, roof_at, tree, wall, wall_lantern,
@@ -386,7 +387,7 @@ const fn stand_in(
 /// and Stoop Lane, the open market hall on the Fountain Plaza, the tavern
 /// in the Lantern Quarter, terraces of row houses on Brownstone Row, the
 /// observatory on its hill, and the cottage with its tower in Walden Woods.
-pub const STAND_INS: [StandIn; 74] = [
+pub const STAND_INS: [StandIn; 68] = [
     stand_in("corner shop", "corner shop", &CORNER_SHOP, 0.0),
     stand_in("bakehouse", "bakehouse", &BAKERY, 0.0),
     stand_in("tailor", "tailor", &DORMER_HOUSE, 0.0),
@@ -394,10 +395,6 @@ pub const STAND_INS: [StandIn; 74] = [
     stand_in("print shop", "print shop", &CORNER_SHOP, 0.0),
     stand_in("music shop", "music shop", &TALL_HOUSE, 0.0),
     stand_in("market hall", "market hall", &MARKET_HALL, 0.0),
-    stand_in("townhouse 1", "townhouse 1", &TALL_HOUSE, 0.0),
-    stand_in("townhouse 3", "townhouse 3", &DORMER_HOUSE, 0.0),
-    stand_in("townhouse 4", "townhouse 4", &DORMER_HOUSE, 0.0),
-    stand_in("townhouse 6", "townhouse 6", &TALL_HOUSE, 0.0),
     // The Lantern Quarter: the round Music Hall, the meeting hall back from
     // Hearth Road behind its porch, the tavern on its corner, and the guild
     // hall, a little south so its turret clears the Music Hall.
@@ -460,8 +457,6 @@ pub const STAND_INS: [StandIn; 74] = [
     // fountain.
     stand_in("plaza cafe west", "plaza cafe west", &TIMBER_HOUSE, -2.3),
     stand_in("plaza cafe east", "plaza cafe east", &SHOP_HOUSE, 0.0),
-    stand_in("townhouse 2", "townhouse 2", &GAMBREL_HOUSE, 0.0),
-    stand_in("townhouse 5", "townhouse 5", &TIMBER_HOUSE, 0.0),
     stand_in("the fiddle", "the fiddle", &LANTERN_INN, 0.0),
     stand_in("the hearth", "the hearth", &TIMBER_HOUSE, 0.0),
     stand_in("choir house", "choir house", &GAMBREL_HOUSE, 0.0),
@@ -545,7 +540,56 @@ pub const PLAZA_FOUNTAIN: Instance = Instance::new("fountain", &FOUNTAIN, [-6.0,
 
 /// Whether a generated model stands in `b`'s place.
 fn replaced(b: &Building) -> bool {
-    STAND_INS.iter().any(|s| s.building == b.name)
+    STAND_INS.iter().any(|s| s.building == b.name) || kit_lot(b).is_some()
+}
+
+/// The buildings rebuilt from the licensed medieval kit
+/// (`docs/verse/everglade-medieval-refactor.md`), by name: how far each lot
+/// turns from its street, radians, its style, and the front bay that holds
+/// its door. Stoop Lane's lots turn a few degrees either way, after the
+/// kit's demo town, so the lane curves; the main streets stay straight.
+pub const KIT_LOTS: [(&str, f32, KitStyle, usize); 6] = [
+    ("townhouse 1", 0.1, KitStyle::Timber, 0),
+    ("townhouse 2", -0.05, KitStyle::Plaster, 1),
+    ("townhouse 3", 0.12, KitStyle::Plaster, 0),
+    ("townhouse 4", -0.08, KitStyle::Plaster, 1),
+    ("townhouse 5", 0.06, KitStyle::Timber, 0),
+    ("townhouse 6", -0.11, KitStyle::Timber, 1),
+];
+
+fn kit_lot(b: &Building) -> Option<&'static (&'static str, f32, KitStyle, usize)> {
+    KIT_LOTS.iter().find(|lot| lot.0 == b.name)
+}
+
+/// The kit house on a building's lot, if it is rebuilt from the kit: the
+/// lot's outline, its front on the door's side, turned by the lot's turn.
+fn kit_house(b: &Building) -> Option<KitHouse> {
+    let &(_, turn, style, door_bay) = kit_lot(b)?;
+    let (center, [hx, hz]) = b.rect;
+    let (width, depth) = match b.door {
+        S | N => (2.0 * hx, 2.0 * hz),
+        W | E => (2.0 * hz, 2.0 * hx),
+    };
+    let seed = b
+        .name
+        .bytes()
+        .fold(17u32, |h, c| h.wrapping_mul(31) ^ u32::from(c));
+    Some(KitHouse {
+        name: b.name,
+        center,
+        width,
+        depth,
+        facing: b.door.outward() + turn,
+        stories: b.stories,
+        style,
+        door_bay,
+        seed,
+    })
+}
+
+/// Every kit house of the city, with its building.
+pub fn kit_houses() -> Vec<(&'static Building, KitHouse)> {
+    all().filter_map(|b| Some((b, kit_house(b)?))).collect()
 }
 
 /// The building in `name`'s place.
@@ -593,7 +637,11 @@ pub(super) fn street_fronts() -> Vec<([f32; 2], [f32; 2])> {
             let i = place(s);
             (i.world([i.model.front[0], 0.0]), i.outward())
         });
-    kit.chain(generated).collect()
+    let medieval = kit_houses()
+        .into_iter()
+        .filter(|(b, _)| on_street(b))
+        .map(|(_, h)| h.front());
+    kit.chain(generated).chain(medieval).collect()
 }
 
 /// The footprints of the city's kit-built houses, which take paint
@@ -740,6 +788,10 @@ pub fn doors() -> Vec<(&'static str, [f32; 2], [f32; 2])> {
             )
         })
         .chain(open)
+        .chain(kit_houses().into_iter().map(|(b, h)| {
+            let (outside, inside) = h.door_points();
+            (b.name, outside, inside)
+        }))
         .collect()
 }
 
@@ -759,6 +811,14 @@ pub fn roads() -> Vec<([f32; 2], [f32; 2], f32)> {
         if (start[0] - end[0]).abs() + (start[1] - end[1]).abs() > 0.5 {
             out.push((start, end, 1.0));
         }
+    }
+    for (b, h) in kit_houses() {
+        let (end, _) = h.door_points();
+        let start = match b.door {
+            S | N => [end[0], b.street],
+            W | E => [b.street, end[1]],
+        };
+        out.push((start, end, 1.0));
     }
     for b in all().filter(|b| !replaced(b)) {
         let doors = door_centers(b);
@@ -793,6 +853,9 @@ pub fn blocks() -> Vec<(Footprint, f32)> {
         .flat_map(Instance::blocks)
         .collect();
     out.extend(kit_blocks());
+    // The medieval kit houses' walls; a walker meets their pieces' own
+    // columns instead (`demolition::carve`).
+    out.extend(kit_houses().iter().flat_map(|(_, h)| h.walls()));
     out
 }
 
@@ -975,6 +1038,9 @@ pub fn build(out: &mut Vec<Placement>) {
             raise(out, b, 500 + k as u32);
         }
     }
+    for (_, house) in kit_houses() {
+        house.raise(out);
+    }
     out.extend(instances().iter().map(Instance::placement));
     market(out);
     stoops(out);
@@ -1039,6 +1105,10 @@ fn front_of(b: &Building) -> ([f32; 2], [f32; 2]) {
     if let Some(s) = STAND_INS.iter().find(|s| s.building == b.name) {
         let i = place(s);
         return (i.front(), i.outward());
+    }
+    if let Some(h) = kit_house(b) {
+        let (d, n) = h.front();
+        return ([d[0] + 0.9 * n[0], d[1] + 0.9 * n[1]], n);
     }
     let d = door_centers(b)[0];
     let n = b.door.normal();

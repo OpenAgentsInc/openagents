@@ -148,7 +148,7 @@ fn every_placement_names_an_admitted_model_and_stays_in_the_glade() {
             .unwrap_or_else(|| panic!("{} is not in the pack", placement.model));
         let set = placement.model.split('/').next().unwrap();
         assert!(
-            ["nature", "village", "props", "generated", "foliage"].contains(&set),
+            ["nature", "village", "props", "generated", "foliage", "kit"].contains(&set),
             "{}",
             placement.model
         );

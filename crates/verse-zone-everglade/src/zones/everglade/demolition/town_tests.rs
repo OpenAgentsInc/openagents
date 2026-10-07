@@ -968,3 +968,88 @@ fn a_target_300_m_away_is_in_reach_in_a_dev_build() {
     assert!(across > 250.0, "the ring stopped at {across} m");
     assert!(town.confirm(&player), "the cast begins");
 }
+
+/// The town building that holds the medieval kit house named `name`.
+fn kit_house(town: &Town, name: &str) -> (usize, layout::kit_house::KitHouse) {
+    let (_, house) = layout::city::kit_houses()
+        .into_iter()
+        .find(|(b, _)| b.name == name)
+        .expect("the kit house is in the layout");
+    // The building whose footprint's middle is nearest the house's: a lamp
+    // or a bush beside it may be a building of its own.
+    let distance = |i: usize| {
+        let ([cx, cz], _) = town.buildings()[i].rect;
+        (house.center[0] - cx).hypot(house.center[1] - cz)
+    };
+    let index = (0..town.buildings().len())
+        .min_by(|&a, &b| distance(a).total_cmp(&distance(b)))
+        .expect("the town has buildings");
+    assert!(distance(index) < 2.0, "the survey found the kit house");
+    (index, house)
+}
+
+#[test]
+fn a_kit_house_breaks_piece_by_piece_and_its_upper_story_falls_with_its_walls() {
+    let mut town = town();
+    let (index, house) = kit_house(&town, "townhouse 1");
+    assert!(house.stories >= 2, "the test house has an upper story");
+    let (s, c) = house.facing.sin_cos();
+    let out = Vec3::new(s, 0.0, c);
+    let player = caster(Vec3::new(house.center[0], 0.0, house.center[1]), 30.0);
+    // A small blast at the front wall raises the house and breaks the
+    // pieces it reaches, and only those.
+    let front = house.world([2.5, house.depth / 2.0 + 0.1]);
+    let at = Vec3::new(front[0], house.floor() + 2.0, front[1]);
+    town.blast(at, 1.2, 400, out);
+    run(&mut town, &player, 3.0);
+    assert!(town.raised().contains(&index), "the blast raised the house");
+    // Every kit piece is one piece of the house, not carved finer.
+    let count = pieces(&town, index).len();
+    let mut placed = Vec::new();
+    house.raise(&mut placed);
+    assert!(
+        count >= placed.len() / 2,
+        "{count} pieces for {} placements",
+        placed.len()
+    );
+    let broken = |town: &Town| {
+        pieces(town, index)
+            .into_iter()
+            .filter(|&(_, s)| s != Status::Standing)
+            .count()
+    };
+    let first = broken(&town);
+    assert!(first >= 1, "{first} of {count} pieces broke or fell");
+    assert!(first * 4 < count, "{first} of {count} pieces went at once");
+    // Blow out the ground floor's walls all round, and what stood on them
+    // comes down: nothing above the ground floor stays standing.
+    let (hw, hd) = (house.width / 2.0, house.depth / 2.0);
+    let mut ring = Vec::new();
+    for k in 0..=8 {
+        let t = -1.0 + 2.0 * k as f32 / 8.0;
+        ring.push(([t * hw, hd + 0.1], out));
+        ring.push(([t * hw, -hd - 0.1], -out));
+        ring.push(([hw + 0.1, t * hd], Vec3::new(c, 0.0, -s)));
+        ring.push(([-hw - 0.1, t * hd], Vec3::new(-c, 0.0, s)));
+    }
+    for up in [0.5, 2.0, 3.5] {
+        for &(p, face) in &ring {
+            let p = house.world(p);
+            town.blast(Vec3::new(p[0], house.floor() + up, p[1]), 1.5, 400, face);
+        }
+        run(&mut town, &player, 1.0);
+    }
+    run(&mut town, &player, 8.0);
+    assert!(broken(&town) > first, "the ring broke more");
+    let standing_high = pieces(&town, index)
+        .into_iter()
+        .filter(|&(i, s)| {
+            s == Status::Standing
+                && town.site().specs()[i].center.y as f32 > house.floor() + layout::kit_house::STORY
+        })
+        .count();
+    assert_eq!(
+        standing_high, 0,
+        "pieces above the ground floor still stand"
+    );
+}
