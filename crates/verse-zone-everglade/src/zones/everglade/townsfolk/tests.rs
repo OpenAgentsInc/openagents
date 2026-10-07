@@ -124,3 +124,89 @@ fn every_embedded_file_parses() {
         Npc::parse(json).unwrap();
     }
 }
+
+#[test]
+fn the_demo_rumor_starts_with_mira_and_reaches_tobin_and_wren_at_the_market() {
+    let (spread, left_out) = rumors();
+    assert!(left_out.is_empty(), "{left_out:#?}");
+    assert_eq!(spread.len(), rumor_files().len());
+    let (rumor, diffusion) = spread
+        .iter()
+        .find(|(r, _)| r.id == "team-in-the-hall")
+        .unwrap();
+    assert_eq!(rumor.source, "mira-baker");
+    assert!(::townsfolk::quest::step_of(&rumor.step).is_some());
+    let before = TownTime::at_hour(rumor.day, 11.0);
+    let after = TownTime::at_hour(rumor.day, 13.0);
+    assert_eq!(diffusion.known_by(before), ["mira-baker"]);
+    let mut knows = diffusion.known_by(after);
+    knows.sort_unstable();
+    assert_eq!(knows, ["mira-baker", "tobin-smith", "wren-bellringer"]);
+    assert!(
+        diffusion.learned[1..].iter().all(|l| l.node == MARKET),
+        "{diffusion:#?}"
+    );
+    assert!(known_rumors("tobin-smith", before).is_empty());
+    assert_eq!(known_rumors("tobin-smith", after)[0].id, "team-in-the-hall");
+}
+
+#[test]
+fn nameplates_of_villagers_standing_together_stand_apart_and_words_show_over_them() {
+    // Three together and one alone, seen from the south (-z).
+    let points = [
+        Vec3::new(0.0, 0.0, 0.0),
+        Vec3::new(0.4, 0.0, 0.5),
+        Vec3::new(-0.4, 0.0, 1.2),
+        Vec3::new(20.0, 0.0, 0.0),
+    ];
+    let eye = Vec3::new(0.0, 2.0, -10.0);
+    let spots = plate_spots(&points, eye);
+    assert_eq!(spots[3], points[3], "alone, over itself");
+    let mut across: Vec<f32> = spots[..3].iter().map(|s| s.x).collect();
+    across.sort_by(f32::total_cmp);
+    assert!(
+        (across[1] - across[0] - PLATE_SPACING).abs() < 1e-4,
+        "{spots:?}"
+    );
+    assert!(
+        (across[2] - across[1] - PLATE_SPACING).abs() < 1e-4,
+        "{spots:?}"
+    );
+    // Left to right as they stand, and only across the view.
+    assert!(
+        spots[2].x < spots[0].x && spots[0].x < spots[1].x,
+        "{spots:?}"
+    );
+    assert!(
+        spots
+            .iter()
+            .zip(&points)
+            .all(|(s, p)| (s.z - p.z).abs() < 1e-4)
+    );
+
+    let (roster, _) = roster();
+    let tree = world_tree::everglade();
+    let noon = TownTime::at_hour(2, 12.5);
+    let near_market = Vec3::new(-1.0, 0.0, 70.0);
+    let mut folk = Townsfolk::default();
+    folk.tick_roster(roster, tree, noon, &[], near_market);
+    let eye = near_market + Vec3::new(0.0, 2.0, -8.0);
+    let plain = folk.draw(eye).faces.len();
+    let mira = folk
+        .people()
+        .iter()
+        .find(|p| p.id == "mira-baker")
+        .unwrap()
+        .pos;
+    assert_eq!(
+        folk.in_reach(mira + Vec3::new(0.5, 0.0, 0.0)).unwrap().id,
+        "mira-baker"
+    );
+    assert!(folk.in_reach(mira + Vec3::new(40.0, 0.0, 0.0)).is_none());
+    folk.say("mira-baker", "Fresh loaves at dawn.");
+    assert_eq!(folk.saying("mira-baker"), Some("Fresh loaves at dawn."));
+    assert!(folk.draw(eye).faces.len() > plain);
+    folk.step(SAY_SECONDS + 0.1);
+    assert_eq!(folk.saying("mira-baker"), None);
+    assert_eq!(folk.draw(eye).faces.len(), plain);
+}

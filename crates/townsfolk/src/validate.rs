@@ -97,7 +97,13 @@ impl<'a> Checks<'a> {
     }
 }
 
-fn text(out: &mut Vec<Problem>, screen: &dyn Screen, field: String, value: &str, max: usize) {
+pub(crate) fn text(
+    out: &mut Vec<Problem>,
+    screen: &dyn Screen,
+    field: String,
+    value: &str,
+    max: usize,
+) {
     let count = value.chars().count();
     if value.trim().is_empty() {
         out.push(Problem::new(field, Code::Text, "is empty"));
@@ -126,7 +132,7 @@ fn text(out: &mut Vec<Problem>, screen: &dyn Screen, field: String, value: &str,
 
 /// Checks node `id` for `field`: in the tree, and a place a villager can
 /// stand (a building, a room, or an object).
-fn place(out: &mut Vec<Problem>, tree: &Tree, field: &str, id: &str) -> bool {
+pub(crate) fn place(out: &mut Vec<Problem>, tree: &Tree, field: &str, id: &str) -> bool {
     match tree.node(id) {
         None => {
             out.push(Problem::new(

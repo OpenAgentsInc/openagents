@@ -20,13 +20,23 @@
 //! - [`sim`] renders a day as text, and [`files`] keeps the checked-in
 //!   directory: proposals anyone may stage, and the roster only the owner
 //!   changes ([`files::admit`]).
+//! - Phase E2: a [`rumor`] (`openagents.verse-rumor.v1`) names a real
+//!   [`quest`] step and carries a repeat score set once; [`diffusion`]
+//!   spreads it over [`sim::meetings`] with seeded rolls, so every device
+//!   agrees who knows it when; [`talk`] keeps each villager's memory of the
+//!   player in the player's save and decides between a fixed line and a
+//!   model reply under the per-player daily cap.
 //!
 //! The crate depends on serde, SHA-256, the town clock, and the world tree
 //! only, so the web build, the phones, and the command line read it alike.
 
+pub mod diffusion;
 pub mod files;
+pub mod quest;
 pub mod routine;
+pub mod rumor;
 pub mod sim;
+pub mod talk;
 pub mod validate;
 
 use std::fmt;
@@ -35,7 +45,9 @@ use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 use world_tree::Affordance;
 
+pub use diffusion::{Diffusion, diffusion};
 pub use routine::{Placement, Roster, Villager};
+pub use rumor::{RUMOR_SCHEMA, Rumor};
 
 /// A villager definition's schema.
 pub const NPC_SCHEMA: &str = "openagents.verse-npc.v1";
@@ -425,6 +437,9 @@ pub struct Town {
     pub budgets: Budgets,
     /// The admitted definitions, by ID.
     pub admitted: Vec<Admitted>,
+    /// The admitted rumors, by ID (phase E2).
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub rumors: Vec<Admitted>,
 }
 
 impl Town {
@@ -437,6 +452,7 @@ impl Town {
             seed,
             budgets: Budgets::default(),
             admitted: Vec::new(),
+            rumors: Vec::new(),
         }
     }
 
@@ -458,6 +474,12 @@ impl Town {
     #[must_use]
     pub fn entry(&self, id: &str) -> Option<&Admitted> {
         self.admitted.iter().find(|a| a.id == id)
+    }
+
+    /// The admitted rumor entry for `id`.
+    #[must_use]
+    pub fn rumor(&self, id: &str) -> Option<&Admitted> {
+        self.rumors.iter().find(|a| a.id == id)
     }
 
     /// Checks the schema, the budgets against their ceilings, and the
@@ -496,6 +518,15 @@ impl Town {
             if self.admitted[..i].iter().any(|b| b.id == a.id) {
                 out.push(Problem::new(
                     format!("admitted[{i}].id"),
+                    Code::Duplicate,
+                    format!("{} is admitted twice", a.id),
+                ));
+            }
+        }
+        for (i, a) in self.rumors.iter().enumerate() {
+            if self.rumors[..i].iter().any(|b| b.id == a.id) || self.entry(&a.id).is_some() {
+                out.push(Problem::new(
+                    format!("rumors[{i}].id"),
                     Code::Duplicate,
                     format!("{} is admitted twice", a.id),
                 ));
@@ -547,6 +578,12 @@ pub enum Code {
     Duplicate,
     /// An admitted definition has no file.
     Missing,
+    /// A rumor names no real quest step.
+    Step,
+    /// A rumor's source isn't a villager, or isn't where it starts.
+    Source,
+    /// A rumor has no repeat score, or one outside 0 to 1.
+    Unscored,
 }
 
 impl Code {
@@ -571,6 +608,9 @@ impl Code {
             Self::NotAdmitted => "not-admitted",
             Self::Duplicate => "duplicate",
             Self::Missing => "missing",
+            Self::Step => "step",
+            Self::Source => "source",
+            Self::Unscored => "unscored",
         }
     }
 }
@@ -640,5 +680,7 @@ fn pretty<T: Serialize>(value: &T) -> String {
     text
 }
 
+#[cfg(test)]
+mod talk_tests;
 #[cfg(test)]
 mod tests;

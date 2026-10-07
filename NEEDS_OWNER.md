@@ -165,6 +165,20 @@ phase A fixture with a live Jev key, and record the numbers there. Then run
 scored and word-overlap arms with a real answerer; the scripted answerer
 can't tell them apart. Both spend a little Jev and model money.
 
+## Villager talk and rumor scores in Everglade (#10792)
+
+The demo rumor `team-in-the-hall` was scored once by live Jev (0.62) and
+added to `townsfolk/town.json` for the demo; review it as the owner's
+admission in the commit, or remove it with `openagents verse town remove
+team-in-the-hall --owner`. On the desktop, open Everglade at noon
+(`verse --everglade --town-hour 12:30`), walk to the Market Hall, and press
+`F` next to Mira, Tobin, or Wren: with a configured provider each answers
+with one model reply in a bubble, under 20 replies a town day, and remembers
+you the next time (`~/.openagents/verse/PROFILE-townsfolk.json`, or under
+`VERSE_HOME`). Then run the calibration in
+`docs/decision-models/measurements/2026-10-07-rumor-repeat.md`. A reply
+costs about $0.0003 on Luna.
+
 ## Disk cleanup 0.2.0 on the Mac (#10759)
 
 The running Disk cleanup rule is the saved

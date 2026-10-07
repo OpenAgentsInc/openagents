@@ -12,6 +12,8 @@ pub use verse_core::agent;
 pub mod app;
 #[cfg(feature = "native-audio")]
 pub mod audio_native;
+#[cfg(feature = "desktop")]
+pub mod town_talk;
 pub use verse_core::avatar;
 pub mod ball;
 pub mod blocks;

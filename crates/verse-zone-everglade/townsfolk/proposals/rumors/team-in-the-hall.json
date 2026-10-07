@@ -1,0 +1,19 @@
+{
+  "schema": "openagents.verse-town-proposal.v1",
+  "id": "team-in-the-hall",
+  "digest": "sha256:0d2745b0aca3bb85da991948e842f84f4ac6c2123657ac94b38c4a52430645a6",
+  "proposed_at": 1791372177,
+  "routes_checked": true,
+  "valid": true,
+  "problems": [],
+  "day": [
+    "repeat score 0.62 (jev openagents.rumor-repeat.v1 jev-1.13.0)",
+    "rumor team-in-the-hall (pass probability 0.62), days 155 to 157:",
+    "  day 155 10:00 Mira starts it at bakery",
+    "  day 155 11:55 Wren hears it from Mira at market hall",
+    "  day 155 12:00 Tobin hears it from Wren at market hall",
+    "  end of day 155: 3 of 3 villagers know it",
+    "  end of day 156: 3 of 3 villagers know it",
+    "  end of day 157: 3 of 3 villagers know it"
+  ]
+}

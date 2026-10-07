@@ -1697,6 +1697,12 @@ impl WorldRuntime {
                     )
                 };
             }
+            if self.interact_hint == crate::runtime::InteractHint::Key
+                && self.studio_panel_here().is_none()
+                && let Some((_, name)) = self.villager_in_reach()
+            {
+                caption = format!("Everglade\nF talks to {name}, a character");
+            }
             match &self.zone_state.studio_notice {
                 Some(notice) if caption.is_empty() => notice.clone(),
                 Some(notice) => format!("{notice} · {caption}"),
@@ -2292,6 +2298,27 @@ impl WorldRuntime {
         self.zone_state.studio.set_sounds(on);
     }
 
+    /// The villager in talking reach in Everglade, by ID and name.
+    #[must_use]
+    pub fn villager_in_reach(&self) -> Option<(String, String)> {
+        if self.zone_state.everglade.is_none()
+            || self.zone != ZoneId::Everglade
+            || self.zone_state.demolition
+            || self.zone_loading()
+        {
+            return None;
+        }
+        self.zone_state
+            .townsfolk
+            .in_reach(self.player.pos)
+            .map(|p| (p.id.clone(), p.name.clone()))
+    }
+
+    /// Shows `text` in a bubble over villager `id`.
+    pub fn villager_say(&mut self, id: &str, text: &str) {
+        self.zone_state.townsfolk.say(id, text);
+    }
+
     /// The panel the interact key opens where the player stands, in
     /// Everglade.
     #[must_use]
@@ -2447,6 +2474,7 @@ impl WorldRuntime {
                 state
                     .townsfolk
                     .tick(everglade.town_time(), &self.world.blockers, self.player.pos);
+                state.townsfolk.step(dt);
                 seats.extend(state.townsfolk.figures());
             }
             everglade.tick(dt, &self.player, &seats);

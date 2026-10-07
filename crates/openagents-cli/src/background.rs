@@ -251,6 +251,11 @@ pub(crate) const NO_JEV: &str = "Jev, the judge background rules ask, can't be r
      provider-key set typesafe`.";
 
 impl JevJudge {
+    /// The resolved client, for another caller that asks Jev the same way.
+    pub(crate) fn client(&self) -> jev::Client {
+        self.client.clone()
+    }
+
     pub(crate) fn from_env() -> Option<Self> {
         // The same door the rest of Coder decides through: the configured
         // decision profile, `TYPESAFE_API_KEY`, or `~/.openagents/jev.json`.

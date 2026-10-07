@@ -1,0 +1,54 @@
+{
+  "v": 1,
+  "id": "openagents.rumor-repeat.v1",
+  "name": "How likely townsfolk are to repeat a rumor",
+  "summary": "Places one rumor a Verse villager starts on four concrete levels, from a private remark nobody would pass on to news the whole town would want to hear. Code maps the probability-weighted level onto the chance one villager passes the rumor to another at a meeting, once, when the rumor is proposed.",
+  "gate": "repeat",
+  "questions": {
+    "repeat": {
+      "type": "score",
+      "instructions": "How likely are the villagers of a small town to repeat the rumor in `rumor` to each other when they meet? `rumor.fact` is what the rumor says, `rumor.source` is the villager who starts it, with its role, and `rumor.place` is where it starts. Judge how much a townsperson would want to pass it on, by what it says, not by how long or how well written it is.",
+      "criteria": [
+        {
+          "summary": "A private or dull remark nobody would pass on.",
+          "signals": [
+            "a remark about the speaker's own chores or mood",
+            "something everyone in town already knows",
+            "a fact that matters to no one else"
+          ]
+        },
+        {
+          "summary": "Mild news a few people might mention.",
+          "signals": [
+            "a small change at a shop or a workplace",
+            "a remark about the weather or the season",
+            "news that matters to one trade only"
+          ]
+        },
+        {
+          "summary": "Useful news most people would pass on.",
+          "signals": [
+            "something new to see or do in town",
+            "a place newly open, or work newly started, that anyone may visit",
+            "a hint about where a newcomer should go next"
+          ]
+        },
+        {
+          "summary": "Exciting news the whole town would want to hear.",
+          "signals": [
+            "a surprising arrival or discovery",
+            "an event everyone is invited to",
+            "news that changes what people can do in town"
+          ]
+        }
+      ]
+    }
+  },
+  "policy": {
+    "v": 1,
+    "state_max_bytes": 2048,
+    "evidence": [
+      "docs/decision-models/measurements/2026-10-07-rumor-repeat.md"
+    ]
+  }
+}

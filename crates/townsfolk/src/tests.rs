@@ -7,8 +7,8 @@ use super::validate::{self, Checks, NoScreen, Router, Straight};
 use super::*;
 
 const HOME: &str = "everglade/stoop-lane/home-1";
-const BAKERY: &str = "everglade/main-street/bakery";
-const MARKET: &str = "everglade/fountain-plaza/market-hall";
+pub(crate) const BAKERY: &str = "everglade/main-street/bakery";
+pub(crate) const MARKET: &str = "everglade/fountain-plaza/market-hall";
 const SMITHY: &str = "everglade/foundry/smithy";
 const HOME2: &str = "everglade/stoop-lane/home-2";
 const DESK: &str = "everglade/commons/workshop-hall/hall/desk-1";
@@ -21,7 +21,7 @@ fn row(at: &str, node: &str, activity: Activity) -> Row {
     }
 }
 
-fn baker() -> Npc {
+pub(crate) fn baker() -> Npc {
     Npc {
         schema: NPC_SCHEMA.into(),
         id: "test-baker".into(),
@@ -46,7 +46,7 @@ fn baker() -> Npc {
     }
 }
 
-fn smith() -> Npc {
+pub(crate) fn smith() -> Npc {
     Npc {
         id: "test-smith".into(),
         name: "Tobin".into(),
@@ -387,7 +387,7 @@ fn two_villagers_cannot_book_one_exclusive_object_at_once() {
     assert_eq!(v.offset(9, 2, 1), [0.0, 0.0]);
 }
 
-fn town_with(npcs: &[&Npc]) -> Town {
+pub(crate) fn town_with(npcs: &[&Npc]) -> Town {
     let mut town = Town::new("everglade", 11);
     for npc in npcs {
         town.admitted.push(Admitted {
@@ -440,7 +440,7 @@ fn a_client_loads_only_admitted_digests() {
     assert!(Roster::load(&other.to_json(), &files, tree).is_err());
 }
 
-fn scratch(npcs: &[&Npc]) -> (tempfile::TempDir, Dir) {
+pub(crate) fn scratch(npcs: &[&Npc]) -> (tempfile::TempDir, Dir) {
     let temp = tempfile::tempdir().unwrap();
     let dir = Dir::new(temp.path().join("townsfolk"));
     dir.write_town(&Town::new("everglade", 3)).unwrap();

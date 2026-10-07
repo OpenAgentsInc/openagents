@@ -99,6 +99,7 @@ mod terminal;
 mod tree;
 mod verse_terminal;
 mod verse_town;
+mod verse_town_rumor;
 mod walkers;
 #[cfg(unix)]
 mod wallet;

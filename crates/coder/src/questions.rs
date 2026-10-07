@@ -906,6 +906,7 @@ mod tests {
                 "openagents.program.v1",
                 "openagents.react-or-continue.v1",
                 "openagents.review-finding.v1",
+                "openagents.rumor-repeat.v1",
                 "openagents.world-place.v1"
             ]
         );

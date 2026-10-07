@@ -22,5 +22,11 @@
       "id": "wren-bellringer",
       "digest": "sha256:ed46cad94717266027fb0604cc30529ee3b23518258e5259e2791a1d5fa7c78e"
     }
+  ],
+  "rumors": [
+    {
+      "id": "team-in-the-hall",
+      "digest": "sha256:0d2745b0aca3bb85da991948e842f84f4ac6c2123657ac94b38c4a52430645a6"
+    }
   ]
 }

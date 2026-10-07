@@ -595,6 +595,9 @@ struct App {
     chat: hud::Input,
     method: Channel,
     brain: Brain,
+    /// Conversations with Everglade's villagers, started on the first one,
+    /// so a window that never talks reads no save and starts no voice.
+    town_talk: Option<crate::town_talk::TownTalk>,
     agent_says: Option<(String, Option<Instant>)>,
     feed: Option<Feed>,
     left_tab: hud::LeftTab,
@@ -1152,6 +1155,7 @@ impl App {
             chat: hud::Input::default(),
             method: Channel::All,
             brain: Brain::start(&options.profile),
+            town_talk: None,
             agent_says: None,
             feed: options.relay.as_ref().map(|_| Feed::start()),
             left_tab: hud::LeftTab::World,
@@ -2852,6 +2856,45 @@ impl App {
         out.join("\n")
     }
 
+    /// Talks to Everglade's villager `id` (`crate::town_talk`): its words
+    /// show over it now, or when the model's reply comes.
+    fn talk_to_villager(&mut self, id: &str) {
+        let Some(time) = self.runtime.town_time() else {
+            return;
+        };
+        let (roster, _) = zones::everglade::townsfolk::roster();
+        let Some(villager) = roster.villager(id) else {
+            return;
+        };
+        let rumors = zones::everglade::townsfolk::known_rumors(id, time);
+        let profile = &self.connection_options.profile;
+        let talk = self.town_talk.get_or_insert_with(|| {
+            crate::town_talk::TownTalk::new(
+                profile,
+                Some(crate::town_talk::save_path(
+                    &crate::identity::home(),
+                    profile,
+                )),
+                brain::Voice::start(),
+            )
+        });
+        if talk.waiting() {
+            return;
+        }
+        let said = talk.talk(&villager.npc, &rumors, roster.town.budgets, time);
+        self.runtime
+            .villager_say(id, said.as_deref().unwrap_or("..."));
+    }
+
+    /// Shows a villager's model reply once it comes.
+    fn hear_villagers(&mut self) {
+        if let Some(talk) = &mut self.town_talk
+            && let Some((id, text)) = talk.poll()
+        {
+            self.runtime.villager_say(&id, &text);
+        }
+    }
+
     /// Streams the agent's reply into its bubble and the personal window.
     fn hear_agent(&mut self, now: Instant) {
         for reply in self.brain.drain() {
@@ -3359,6 +3402,15 @@ impl App {
                 } else {
                     self.open_studio_panel(kind);
                 }
+                return;
+            }
+            // Next to one of Everglade's villagers, the interact key talks
+            // to it.
+            if code == KeyCode::KeyF
+                && !self.keys.shift
+                && let Some((id, _)) = self.runtime.villager_in_reach()
+            {
+                self.talk_to_villager(&id);
                 return;
             }
             // In Everglade J opens the waiting decisions, and V mutes the
@@ -4215,6 +4267,7 @@ impl App {
         } else {
             self.brain.drain();
         }
+        self.hear_villagers();
         if let Some(board) = &mut self.xp {
             board.tick();
         }

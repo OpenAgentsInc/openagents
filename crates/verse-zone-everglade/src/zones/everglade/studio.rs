@@ -308,6 +308,11 @@ pub(super) fn plate_transform(feet: Vec3, eye: Vec3) -> Option<Mat4> {
     billboard(feet, plate_lift(feet, eye), eye)
 }
 
+/// Glade space for a speech bubble over the nameplate of a seat at `feet`.
+pub(super) fn over_plate(feet: Vec3, eye: Vec3) -> Option<Mat4> {
+    billboard(feet, plate_lift(feet, eye) + PLATE_TALL + LAMP_GAP, eye)
+}
+
 /// The text a nameplate shows: the name, the activity, and the route.
 #[must_use]
 pub fn nameplate(seat: &wire::Seat) -> [String; 3] {
@@ -1540,6 +1545,11 @@ pub fn wrap(text: &str, width: usize, rows: usize) -> Vec<String> {
 /// to over the wrapped text, on a pale card with a tail toward the
 /// speaker.
 fn bubble(speech: &Speech) -> Mesh {
+    bubble_sized(speech, SPEECH_CHARS, SPEECH_LINES)
+}
+
+/// [`bubble`] with `chars` a line and at most `rows` lines.
+pub(super) fn bubble_sized(speech: &Speech, chars: usize, rows: usize) -> Mesh {
     const PAPER: [f32; 3] = [0.93, 0.9, 0.8];
     const EDGE: [f32; 3] = [0.3, 0.26, 0.2];
     const INK: [f32; 3] = [0.08, 0.08, 0.08];
@@ -1551,9 +1561,9 @@ fn bubble(speech: &Speech) -> Mesh {
     const TAIL: f32 = 0.08;
     let to = match &speech.to {
         Addressee::Person => "TO YOU".to_owned(),
-        Addressee::Seat(seat) => lettering(&format!("to {seat}"), SPEECH_CHARS),
+        Addressee::Seat(seat) => lettering(&format!("to {seat}"), chars),
     };
-    let lines = wrap(&speech.text, SPEECH_CHARS, SPEECH_LINES);
+    let lines = wrap(&speech.text, chars, rows);
     let advance = |chars: usize, size: f32| chars as f32 * 6.0 / 7.0 * size;
     let wide = lines
         .iter()

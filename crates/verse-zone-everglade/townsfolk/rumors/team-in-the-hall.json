@@ -1,0 +1,15 @@
+{
+  "schema": "openagents.verse-rumor.v1",
+  "id": "team-in-the-hall",
+  "fact": "A team of agents works in the workshop hall by the glade, and Bram says anyone may walk in and watch them.",
+  "source": "mira-baker",
+  "node": "everglade/main-street/bakery",
+  "day": 155,
+  "at": "10:00",
+  "days": 3,
+  "step": "apprentice-road/1/team-at-work",
+  "repeat": {
+    "probability": 0.6173333333333334,
+    "basis": "jev openagents.rumor-repeat.v1 jev-1.13.0"
+  }
+}

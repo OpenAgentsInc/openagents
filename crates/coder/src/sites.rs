@@ -709,6 +709,7 @@ mod tests {
                 "openagents.program.v1",
                 "openagents.react-or-continue.v1",
                 "openagents.review-finding.v1",
+                "openagents.rumor-repeat.v1",
                 "openagents.world-place.v1",
             ]
         );
@@ -728,8 +729,9 @@ mod tests {
         // the insight-support set by her reflection, the insight-share
         // set by her knowledge drafts, the world-place set by her plans'
         // place choice, the react-or-continue set by her day plan's
-        // reactions, the agent-steer set by her steering loop, and the
-        // interview-answer set by `coder interview`.
+        // reactions, the agent-steer set by her steering loop, the
+        // interview-answer set by `coder interview`, and the rumor-repeat
+        // set by `openagents verse town rumor propose`.
         // The inventory says so rather than letting a run find out at
         // admission.
         let unbound = |set: &str| Problem::UnboundSet {
@@ -750,6 +752,7 @@ mod tests {
                 unbound("openagents.memory-importance.v1"),
                 unbound("openagents.method-conformance.v1"),
                 unbound("openagents.react-or-continue.v1"),
+                unbound("openagents.rumor-repeat.v1"),
                 unbound("openagents.world-place.v1"),
             ]
         );

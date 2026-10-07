@@ -60,9 +60,9 @@ pub(crate) const USAGE: &str = "usage: openagents verse COMMAND [OPTIONS]
                             this computer: status, open, hide, split, focus,
                             close, send, key, read, tab, zoom
                             (openagents verse terminal --help).
-  town COMMAND              Author Everglade's townsfolk: list, validate,
-                            preview, propose, and the owner's admit and remove
-                            (openagents verse town --help).
+  town COMMAND              Author Everglade's townsfolk and rumors: list,
+                            validate, preview, propose, rumor, and the owner's
+                            admit and remove (openagents verse town --help).
   control ENTITY move X,Y,Z [--yaw DEGREES] [--role ROLE] [--name NAME]
   control ENTITY gesture NAME [--to PUBKEY,ENTITY] [--at X,Y,Z]
   control ENTITY leave      Drive another entity this identity publishes (for

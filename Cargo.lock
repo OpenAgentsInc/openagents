@@ -14684,6 +14684,7 @@ version = "0.1.0"
 name = "townsfolk"
 version = "0.1.0"
 dependencies = [
+ "memory-stream",
  "serde",
  "serde_json",
  "sha2 0.10.9",
@@ -15385,6 +15386,7 @@ dependencies = [
  "tokio-tungstenite 0.30.0",
  "toml",
  "town-clock",
+ "townsfolk",
  "verse-content",
  "verse-core",
  "verse-engine",

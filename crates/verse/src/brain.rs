@@ -98,7 +98,7 @@ impl Brain {
     }
 }
 
-fn pick_door() -> Option<(String, ResponsesDoor)> {
+pub(crate) fn pick_door() -> Option<(String, ResponsesDoor)> {
     if let Some(door) = ResponsesDoor::from_env() {
         return Some(("the CODER door".to_owned(), door));
     }
@@ -114,6 +114,65 @@ fn pick_door() -> Option<(String, ResponsesDoor)> {
         .unwrap_or_else(|| coder_delegate::credentials::GENERATION_BASE_URL.to_owned());
     let door = ResponsesDoor::new(base, FREE_LANE, found.secret.expose());
     Some(("the OpenAgents free lane".to_owned(), door))
+}
+
+/// A villager's voice: one model call a question, with no history, on a
+/// background thread, through the same door as the agent
+/// (`crate::town_talk`).
+pub struct Voice {
+    tx: Sender<(String, String)>,
+    rx: Receiver<Result<String, String>>,
+}
+
+impl Voice {
+    /// Starts the voice's thread, or `None` when this machine has no door:
+    /// a player without a configured provider gets fixed lines only.
+    #[must_use]
+    pub fn start() -> Option<Self> {
+        let (_, door) = pick_door()?;
+        let (ask_tx, ask_rx) = mpsc::channel::<(String, String)>();
+        let (reply_tx, reply_rx) = mpsc::channel();
+        std::thread::Builder::new()
+            .name("verse-villager".into())
+            .spawn(move || {
+                let Ok(runtime) = tokio::runtime::Builder::new_current_thread()
+                    .enable_all()
+                    .build()
+                else {
+                    return;
+                };
+                while let Ok((system, user)) = ask_rx.recv() {
+                    let input = [Message {
+                        role: Role::User,
+                        text: user,
+                    }];
+                    let mut sink = |_: &str| {};
+                    let mut meta = |_| {};
+                    let result = runtime
+                        .block_on(door.generate(&system, &input, &mut sink, &mut meta))
+                        .map(|(text, _)| text)
+                        .map_err(|e| e.to_string());
+                    if reply_tx.send(result).is_err() {
+                        return;
+                    }
+                }
+            })
+            .ok()?;
+        Some(Self {
+            tx: ask_tx,
+            rx: reply_rx,
+        })
+    }
+
+    /// Asks for one reply.
+    pub fn ask(&self, system: String, user: String) -> bool {
+        self.tx.send((system, user)).is_ok()
+    }
+
+    /// The reply, once it came.
+    pub fn poll(&self) -> Option<Result<String, String>> {
+        self.rx.try_recv().ok()
+    }
 }
 
 /// The agent's standing instructions.

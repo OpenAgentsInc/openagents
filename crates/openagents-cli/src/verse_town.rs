@@ -38,17 +38,22 @@ pub(crate) const USAGE: &str = "usage: openagents verse town COMMAND [OPTIONS]
                             day's meetings.
   propose ID                Validate a definition with its routes and stage
                             proposals/ID.json for the owner. Anyone may propose.
-  admit ID --owner          Add the proposed digest to town.json. The owner's
-                            action: it asks you to type the ID at a terminal,
-                            and no agent's charter grants it. Commit town.json
-                            to ship it.
-  remove ID --owner         Take a villager off the roster; its file stays.
+  admit ID --owner          Add the proposed digest of villager or rumor ID to
+                            town.json. The owner's action: it asks you to type
+                            the ID at a terminal, and no agent's charter grants
+                            it. Commit town.json to ship it.
+  remove ID --owner         Take a villager or rumor off the roster; its file
+                            stays.
+  rumor COMMAND             Author rumors: validate, preview, propose
+                            (openagents verse town rumor --help).
 Options: --dir PATH (default crates/verse-zone-everglade/townsfolk in this
 checkout), --pack PATH (the pinned Everglade pack the routes come from;
 default assets/verse/everglade in this checkout), --no-routes (validate and
 preview without routing legs).";
 
-const COMMANDS: &[&str] = &["list", "validate", "preview", "propose", "admit", "remove"];
+const COMMANDS: &[&str] = &[
+    "list", "validate", "preview", "propose", "admit", "remove", "rumor",
+];
 
 /// The townsfolk directory under a checkout.
 const DIR_IN_CHECKOUT: &str = "crates/verse-zone-everglade/townsfolk";
@@ -64,6 +69,18 @@ pub(crate) fn run(output: &Output, words: &[String]) -> u8 {
     }
     if !COMMANDS.contains(&command.as_str()) {
         return output.usage(group, &format!("unknown command `{command}`"), USAGE);
+    }
+    if command == "rumor" {
+        let args = match Args::parse(rest, &["prior"]) {
+            Ok(args) => args,
+            Err(message) => {
+                return output.usage(group, &message, crate::verse_town_rumor::USAGE);
+            }
+        };
+        return match directory(&args) {
+            Ok(dir) => crate::verse_town_rumor::run(output, rest, &dir),
+            Err(message) => output.fail(group, &message),
+        };
     }
     let args = match Args::parse(rest, &["owner", "no-routes"]) {
         Ok(args) => args,
@@ -149,7 +166,7 @@ fn blockers(args: &Args, dir: &Dir) -> Result<Option<Vec<verse::controller::Foot
     blockers_from_pack(&path).map(Some)
 }
 
-fn screen() -> impl Screen {
+pub(crate) fn screen() -> impl Screen {
     let screen = secret_screen::Screen::host();
     move |text: &str| screen.check(text).err().map(|r| r.to_string())
 }
@@ -164,9 +181,10 @@ fn problems_text(problems: &[Problem]) -> String {
 
 fn list(output: &Output, dir: &Dir) -> Result<u8, String> {
     let rows = files::list(dir)?;
-    let value = json!({ "dir": dir.root(), "villagers": rows });
+    let rumors = files::list_rumors(dir)?;
+    let value = json!({ "dir": dir.root(), "villagers": rows, "rumors": rumors });
     output.emit(&value, |_| {
-        if rows.is_empty() {
+        if rows.is_empty() && rumors.is_empty() {
             return "no townsfolk definitions".into();
         }
         let mut table = vec![vec![
@@ -174,14 +192,18 @@ fn list(output: &Output, dir: &Dir) -> Result<u8, String> {
             "STATE".to_owned(),
             "DIGEST".to_owned(),
         ]];
-        for row in &rows {
+        let kinds = rows
+            .iter()
+            .map(|r| (r, ""))
+            .chain(rumors.iter().map(|r| (r, " (rumor)")));
+        for (row, kind) in kinds {
             let digest = row
                 .file_digest
                 .as_deref()
                 .or(row.admitted_digest.as_deref())
                 .unwrap_or("");
             table.push(vec![
-                row.id.clone(),
+                format!("{}{kind}", row.id),
                 row.state.to_owned(),
                 digest.chars().take(19).collect(),
             ]);
@@ -331,7 +353,7 @@ fn preview(output: &Output, dir: &Dir, args: &Args) -> Result<u8, String> {
     Ok(0)
 }
 
-fn now_unix() -> i64 {
+pub(crate) fn now_unix() -> i64 {
     std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
         .map_or(0, |d| i64::try_from(d.as_secs()).unwrap_or(0))
@@ -403,6 +425,11 @@ fn owner(output: &Output, dir: &Dir, args: &Args, command: &str, id: &str) -> Re
             "{command} is the owner's action: pass --owner and confirm at a terminal"
         ));
     }
+    let rumor = !dir.npc_path(id).exists()
+        && (dir.rumor_path(id).exists() || dir.town()?.rumor(id).is_some());
+    if rumor {
+        return owner_rumor(output, dir, command, id);
+    }
     if command == "admit" {
         let tree = world_tree::everglade();
         let proposal = dir
@@ -432,6 +459,42 @@ fn owner(output: &Output, dir: &Dir, args: &Args, command: &str, id: &str) -> Re
             format!("removed {id} from the roster; its file stays")
         } else {
             format!("{id} wasn't on the roster")
+        }
+    });
+    Ok(0)
+}
+
+/// `admit` and `remove` for a rumor, after the owner's `--owner`.
+fn owner_rumor(output: &Output, dir: &Dir, command: &str, id: &str) -> Result<u8, String> {
+    if command == "admit" {
+        let proposal = dir
+            .rumor_proposal(id)?
+            .ok_or_else(|| format!("{id} has no proposal; run rumor propose first"))?;
+        for line in &proposal.day {
+            eprintln!("{line}");
+        }
+        confirm(id, "admit")?;
+        let today = crate::verse_town_rumor::today();
+        let entry = files::admit_rumor(dir, id, world_tree::everglade(), today)?;
+        let value =
+            json!({ "admitted_rumor": entry.id, "digest": entry.digest, "town": dir.town_path() });
+        output.emit(&value, |_| {
+            format!(
+                "admitted rumor {id} ({}); commit {} to ship it",
+                entry.digest,
+                dir.town_path().display()
+            )
+        });
+        return Ok(0);
+    }
+    confirm(id, "remove")?;
+    let removed = files::remove_rumor(dir, id)?;
+    let value = json!({ "removed": removed, "rumor": id });
+    output.emit(&value, |_| {
+        if removed {
+            format!("removed rumor {id} from the roster; its file stays")
+        } else {
+            format!("rumor {id} wasn't on the roster")
         }
     });
     Ok(0)
@@ -472,6 +535,68 @@ mod tests {
         assert_eq!(run(&output, &words(&format!("list --dir {d}"))), 0);
         assert_eq!(
             run(&output, &words(&format!("nope --dir {d}"))),
+            crate::out::EXIT_USAGE
+        );
+    }
+
+    #[test]
+    fn a_rumor_is_proposed_with_the_prior_previewed_and_admitted_only_by_the_owner() {
+        let temp = tempfile::tempdir().unwrap();
+        let dir = temp.path().join("townsfolk");
+        let checked_in = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("../verse-zone-everglade/townsfolk");
+        std::fs::create_dir_all(dir.join("npcs")).unwrap();
+        std::fs::copy(checked_in.join("town.json"), dir.join("town.json")).unwrap();
+        for id in ["mira-baker", "tobin-smith", "wren-bellringer"] {
+            let name = format!("npcs/{id}.json");
+            std::fs::copy(checked_in.join(&name), dir.join(&name)).unwrap();
+        }
+        let mut rumor: townsfolk::Rumor = serde_json::from_str(
+            &std::fs::read_to_string(checked_in.join("rumors/team-in-the-hall.json")).unwrap(),
+        )
+        .unwrap();
+        rumor.id = "scratch-rumor".into();
+        rumor.repeat = None;
+        let mut town = Dir::new(&dir).town().unwrap();
+        town.rumors.clear();
+        Dir::new(&dir).write_town(&town).unwrap();
+        Dir::new(&dir).write_rumor(&rumor).unwrap();
+        let output = Output::new(true);
+        let d = dir.display();
+        assert_eq!(
+            run(&output, &words(&format!("rumor validate --dir {d}"))),
+            0
+        );
+        assert_eq!(
+            run(
+                &output,
+                &words(&format!("rumor preview scratch-rumor --days 1 --dir {d}"))
+            ),
+            0
+        );
+        assert_eq!(
+            run(
+                &output,
+                &words(&format!("rumor propose scratch-rumor --prior --dir {d}"))
+            ),
+            0
+        );
+        let scored = Dir::new(&dir).rumor("scratch-rumor").unwrap();
+        assert_eq!(scored.repeat.unwrap().basis, "prior");
+        let rows = files::list_rumors(&Dir::new(&dir)).unwrap();
+        assert_eq!(rows[0].state, "proposed");
+        assert_eq!(run(&output, &words(&format!("list --dir {d}"))), 0);
+        // Admission is the owner's, at a terminal; the test has none.
+        assert_eq!(
+            run(
+                &output,
+                &words(&format!("admit scratch-rumor --owner --dir {d}"))
+            ),
+            crate::out::EXIT_FAILURE
+        );
+        assert!(Dir::new(&dir).town().unwrap().rumors.is_empty());
+        assert_eq!(
+            run(&output, &words(&format!("rumor nope --dir {d}"))),
             crate::out::EXIT_USAGE
         );
     }

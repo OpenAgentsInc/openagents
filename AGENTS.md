@@ -741,7 +741,9 @@ uses, and marks which are implemented and which are only specified.
   that admits them by digest under budgets with hard ceilings, validation
   against the world tree with typed problems, deterministic routines from
   the town clock and a seed, co-location queries, and the propose/admit
-  files flow. The data lives in `crates/verse-zone-everglade/townsfolk/`;
+  files flow; rumors (`openagents.verse-rumor.v1`) with their seeded
+  diffusion, and talk planning over each villager's bounded memory of the
+  player. The data lives in `crates/verse-zone-everglade/townsfolk/`;
   `openagents verse town` is its command, and only the owner admits. Read
   "Authoring townsfolk" in `docs/verse/generative-agents.md` first.
 - `crates/everglade-web` — Everglade in a browser: a `cdylib` over Verse's

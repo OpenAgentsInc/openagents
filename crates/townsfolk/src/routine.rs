@@ -247,7 +247,7 @@ impl Villager {
 
 /// A 64-bit mix of the seed, the villager, the day, the row, and a salt:
 /// integer only, so every platform agrees.
-fn mix(seed: u64, id: &str, day: i64, row: usize, salt: u64) -> u64 {
+pub(crate) fn mix(seed: u64, id: &str, day: i64, row: usize, salt: u64) -> u64 {
     let mut h: u64 = 0xcbf2_9ce4_8422_2325;
     for b in id.bytes() {
         h ^= u64::from(b);

@@ -177,6 +177,30 @@ impl<T> Stream<T> {
         }
     }
 
+    /// A stream of at most `capacity` records holding `memories`, as a
+    /// save stored them: when there are more, the newest written stay.
+    #[must_use]
+    pub fn from_memories(capacity: usize, mut memories: Vec<Memory<T>>) -> Self {
+        let capacity = capacity.max(1);
+        memories.sort_by_key(|m| m.created);
+        let extra = memories.len().saturating_sub(capacity);
+        memories.drain(..extra);
+        for m in &mut memories {
+            m.importance = clamp_importance(m.importance);
+        }
+        Self {
+            capacity,
+            weights: Weights::default(),
+            memories,
+        }
+    }
+
+    /// The records, oldest written first, for a save to store.
+    #[must_use]
+    pub fn into_memories(self) -> Vec<Memory<T>> {
+        self.memories
+    }
+
     /// The same stream ranking under `weights`.
     #[must_use]
     pub fn with_weights(mut self, weights: Weights) -> Self {
@@ -256,6 +280,17 @@ mod tests {
 
     fn close(a: f64, b: f64) -> bool {
         (a - b).abs() < 1e-9
+    }
+
+    #[test]
+    fn a_stream_round_trips_through_its_memories_and_keeps_the_newest() {
+        let mut s = Stream::new(3);
+        for i in 0..3u64 {
+            s.push(i, i * 10, 5.0);
+        }
+        let back = Stream::from_memories(2, s.into_memories());
+        let kept: Vec<u64> = back.memories().iter().map(|m| m.item).collect();
+        assert_eq!(kept, vec![1, 2]);
     }
 
     #[test]

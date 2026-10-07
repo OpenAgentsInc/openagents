@@ -275,6 +275,14 @@ fn main() -> Result<(), String> {
     for _ in 0..settle {
         runtime.tick(&idle, 0.05);
     }
+    // With VERSE_CAPTURE_SAY=ID:TEXT, villager ID shows TEXT in its bubble,
+    // as a reply does when the player talks to it. The text is a stand-in;
+    // no model runs.
+    if let Ok(say) = std::env::var("VERSE_CAPTURE_SAY")
+        && let Some((id, text)) = say.split_once(':')
+    {
+        runtime.villager_say(id, text);
+    }
     let mut atlas = verse::ui::Atlas::new(16.0);
     zones::everglade::hotbar::add_sprites(&mut atlas)?;
     let snapshot = runtime.zone_snapshot(1.6);

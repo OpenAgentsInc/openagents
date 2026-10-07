@@ -640,8 +640,8 @@ build bounded.
 
 **Estimate.** 12 agent-hours, after item 3 and the town clock.
 
-**Implemented (phase E1).** Routines, definitions, admission, and spawning;
-rumors, villager memory, and dialogue are phase E2's.
+**Implemented (phases E1 and E2).** Routines, definitions, admission, and
+spawning (E1); rumors, villager memory of the player, and dialogue (E2).
 
 - [`crates/townsfolk`](../../crates/townsfolk) (serde, SHA-256, the town
   clock, and the world tree; builds for wasm32) holds the definition
@@ -663,6 +663,42 @@ rumors, villager memory, and dialogue are phase E2's.
   the cycle on (`--town-clock compressed`) they walk their day.
 - The demo town is Mira the baker, Tobin the smith, and Wren the
   bell-ringer, who all stand at the Market Hall from about 12:00 to 13:00.
+- Rumors (E2): `townsfolk::rumor` holds `openagents.verse-rumor.v1` and
+  its checks, `townsfolk::quest::STEPS` the Apprentice's Road steps a rumor
+  may point at, and `townsfolk::diffusion::diffusion(villagers, seed,
+  rumor, days)` the spread: over `sim::meetings` at a 5-minute step, each
+  villager who doesn't know the rumor hears it from each one at the meeting
+  who does with the rumor's repeat probability, by a roll seeded with the
+  town's seed, the rumor, the meeting, and the pair. Every device gets the
+  same who and when. `openagents verse town rumor propose` sets the repeat
+  score once with Jev (`questions/rumor-repeat.json`, provisional; see
+  [its measurement](../decision-models/measurements/2026-10-07-rumor-repeat.md)),
+  mapped onto 0.1 to 0.9, and stores it in the file. Rumors earn no XP.
+- The demo rumor `team-in-the-hall` starts with Mira at the bakery at
+  10:00 on town day 155 and points at *The Team at Work*. Jev scored it
+  0.62; Wren hears it from Mira at 11:55 and Tobin from Wren at 12:00, at
+  the Market Hall, so all three know it after one simulated day.
+- Talking (E2): `townsfolk::talk` keeps each villager's
+  `memory_stream::Stream` of encounters with one player (greeted, talked,
+  step reached, gift; importance by kind, at most 24 a villager) in a
+  `Save` with the model-reply count keyed by the town day. `plan` says the
+  line for the player's quest step first; otherwise one model reply, only
+  with a configured provider and under `replies_per_player_per_day`; else a
+  fixed line, a rumor the villager hasn't told this player yet or one of
+  its own lines. The prompt holds the character card, the top five
+  memories of the player, and the rumors the villager knows with the step
+  each points at. The model sits behind `talk::Answerer`.
+- On the desktop, `F` next to a villager talks to it
+  (`crates/verse/src/town_talk.rs`): the reply goes through the agent
+  chat's door (`brain::Voice`), shows in a bubble over the villager's
+  nameplate, and the save lives in `PROFILE-townsfolk.json` in the Verse
+  home. A machine with no door gets fixed lines. The web and phone builds
+  have no talk path yet; the save type is plain data, so a later web path
+  can keep it in memory. Nothing reports the player's quest step to a
+  villager yet, so step lines wait for the quest engine.
+- Nameplates of villagers standing within 3 m of each other stand side by
+  side across the view (`zones::everglade::townsfolk::plate_spots`), so
+  each stays readable under the Market Hall's arcade.
 
 ### Authoring townsfolk (for Bob)
 
@@ -749,6 +785,50 @@ admitted file takes it out of the town until the owner admits the new
 digest. Changes reach players through a normal commit, which is the owner's
 review. `cargo test -p verse-zone-everglade townsfolk` checks that the
 checked-in roster loads and that every admitted leg routes.
+
+#### Rumors
+
+A rumor is one JSON file in
+`crates/verse-zone-everglade/townsfolk/rumors/ID.json`:
+
+```json
+{
+  "schema": "openagents.verse-rumor.v1",
+  "id": "team-in-the-hall",
+  "fact": "A team of agents works in the workshop hall by the glade.",
+  "source": "mira-baker",
+  "node": "everglade/main-street/bakery",
+  "day": 155,
+  "at": "10:00",
+  "days": 3,
+  "step": "apprentice-road/1/team-at-work"
+}
+```
+
+The source villager starts it at `node` at `at` on town day `day`, and it
+travels for `days` town days (1 to 7). The default clock runs a town day
+every real hour, so pick a day near today's, which `rumor validate` prints.
+Don't write `repeat`: `propose` adds it once.
+
+| Command | Who | What it does |
+| --- | --- | --- |
+| `openagents verse town rumor validate [ID...]` | Anyone | Runs the checks below; exits 1 on a problem. |
+| `openagents verse town rumor preview ID [--days N]` | Anyone | Who learns it, when, where, and from whom, and how many know it at the end of each day. |
+| `openagents verse town rumor propose ID [--prior]` | Anyone | Validates, asks Jev for the repeat score (or uses 0.5 with `--prior`), writes it into the file, and stages `proposals/rumors/ID.json` with the diffusion. |
+| `openagents verse town admit ID --owner` | Owner | Adds the rumor's proposed digest to `rumors` in `town.json`. |
+| `openagents verse town remove ID --owner` | Owner | Takes the rumor off the roster; its file stays. |
+
+`openagents verse town list` shows rumors beside villagers. Validation
+refuses a rumor when:
+
+- `id` isn't a valid ID, is a villager's ID, or isn't its file's name.
+- `fact` is empty, over 200 characters, or fails the secret screen.
+- `step` isn't one of `townsfolk::quest::STEPS`, the Apprentice's Road
+  quests from `apprentice-road/1/clearing` to `apprentice-road/5/open-doors`.
+- `source` isn't an admitted villager, or doesn't stand at `node` at `at`
+  on `day`.
+- `days` isn't 1 to 7, or admitting it would put more rumors in flight on
+  today's town day than `rumors_in_flight`.
 
 ## 6. Knowledge that spreads through NIP-KB
 
@@ -977,7 +1057,7 @@ fixtures and a small demo.
 | C2. World | 3 | [#10788](https://github.com/OpenAgentsInc/openagents/issues/10788) | C1 |
 | D. Days | 4 (implemented) | [#10790](https://github.com/OpenAgentsInc/openagents/issues/10790) | C2, B2 |
 | E1. Townsfolk | 5: routines, definitions, and spawn mechanics (implemented) | [#10791](https://github.com/OpenAgentsInc/openagents/issues/10791) | C2 |
-| E2. Town talk | 5: rumors, memory of the player, and dialogue | [#10792](https://github.com/OpenAgentsInc/openagents/issues/10792) | E1, B1 |
+| E2. Town talk | 5: rumors, memory of the player, and dialogue (implemented) | [#10792](https://github.com/OpenAgentsInc/openagents/issues/10792) | E1, B1 |
 | F. Sharing | 6 (implemented) | [#10793](https://github.com/OpenAgentsInc/openagents/issues/10793) | B2 |
 
 [#10795](https://github.com/OpenAgentsInc/openagents/issues/10795) is the
