@@ -209,7 +209,7 @@ admissible as it is.
 3. For heavy models, add far levels of detail:
    `Blender -b --factory-startup --python scripts/blender/everglade_lod.py -- NAME`
    writes a simplified version into the pack's `lod` set.
-4. Compile and repin the pack:
+4. To see the pack locally, compile it:
 
    ```sh
    cargo run --release -p verse --example everglade_pack -- assets/verse/everglade
@@ -218,11 +218,27 @@ admissible as it is.
    It writes `<sha256>.vtp`, removes the earlier pack, and prints the
    `PACK_SHA256` and `PACK_BYTES` to pin in
    [`everglade_pack.rs`](../../crates/verse-zone-everglade/src/zones/everglade_pack.rs).
-   Move the old digest into `EVERGLADE_PACK_HISTORY`; never delete history.
-   Repin once per round, at the end, after rebasing on other agents' pack
-   changes. The compile isn't yet bit-identical across machines (#10622), so
-   another machine's digest may need adding to the history too.
-5. Check it: `cargo run --release -p verse --example everglade_pack -- assets/verse/everglade --check`.
+   A local repin is for your own captures. You don't push it: the pack
+   queue repins on `main` (step 5).
+5. Land the change through the pack queue, never with a direct push to
+   `main`. Commit your sources, scripts, and layout on a branch, then run:
+
+   ```sh
+   openagents artifact submit everglade-pack --summary "the belvedere"
+   ```
+
+   The queue applies queued changes one at a time onto current
+   `origin/main` and leaves out each branch's own `.vtp` and pin lines. It
+   then regenerates the pack once for the batch, runs the `--check` form of
+   the command above, commits `Repin the Everglade pack with the belvedere`,
+   and pushes. It moves the old digest into `EVERGLADE_PACK_HISTORY`, and
+   never deletes history. A change that conflicts or fails the check comes
+   back with its reason (`openagents artifact queue --all`); rebase it and
+   submit again. The queue replaces the old rule to rebase right before
+   pushing and repin once. [The artifact queue](../coder/runtime/artifact-queue.md)
+   covers the commands, and
+   [`artifacts/everglade-pack.json`](../../artifacts/everglade-pack.json)
+   holds the pack's regenerate and check commands.
 
 ## Step 7: Place the models
 
@@ -269,8 +285,10 @@ before and after, and the pack size.
   commits. Commit messages follow the
   [Google developer style](../../.agents/skills/google-developer-style/SKILL.md)
   and end with the session's co-author trailer.
-- Rebase on `origin/main`, rebuild and rerun the checks after the rebase,
-  then push. Check that your commits touch only your files.
+- A change to the pack lands through `openagents artifact submit
+  everglade-pack` (step 6). Push other changes after you rebase on
+  `origin/main` and rerun the checks. Check that your commits touch only
+  your files.
 - Report: the models made (name, mode, triangles), where each was placed,
   the pack size and triangle numbers before and after, the gallery and
   capture paths, and anything you skipped and why.
@@ -297,5 +315,5 @@ model and record the decision in the provenance:
 | A converted model renders invisible | FBX materials with alpha 0 and hashed blending | `convert_fbx.py` forces them opaque |
 | A converted creature shrinks to a few centimeters | Its clips animate the rig object's own scale | The converter drops object-level curves |
 | Preview is empty | The glTF importer's helper icosphere at the origin threw off framing | `preview.py` frames from evaluated mesh vertices and hides helpers |
-| Pack test fails "rebuild and repin" after another agent's push | Two agents repinned, or another machine compiled a different digest | Rebase, recompile, repin once, keep every reviewed digest in history |
+| Pack test fails "rebuild and repin" after another agent's push | Two agents repinned, or another machine compiled a different digest | Submit the change through `openagents artifact submit everglade-pack`, which repins once on current `main` and keeps every reviewed digest in history |
 | Builds fail with no space | The disk filled | Remove merged worktrees and idle `~/work/openagents-target-*` directories; `kache gc` |

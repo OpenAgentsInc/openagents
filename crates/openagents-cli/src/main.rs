@@ -18,6 +18,7 @@ use std::process::ExitCode;
 // (see the dispatch below); Windows builds the rest.
 mod agent;
 mod argv;
+mod artifact;
 #[cfg(unix)]
 mod background;
 mod boat_run;
@@ -143,7 +144,9 @@ Coder:
                debugging port, removed when the command ends.
   capacity     The shared usage-limit book: which providers have capacity, check
                one before starting an agent, and record a limit an agent hit.
-  settings     What Coder may use on this computer: providers, ask first, and more.
+  artifact     The queue for single-digest artifacts such as the Everglade pack:
+               submit a change, list the queue, and land it with one repin.
+  settings    What Coder may use on this computer: providers, ask first, and more.
   service      Install, update, and roll back the resident host service.
   background   The host's background rules, built in and from plugins turned on here.
   worktree     Coder's task worktrees here: list them with size and what removing
@@ -327,6 +330,7 @@ fn main() -> ExitCode {
         "scratch" => scratch::run(&output, &rest),
         "browser" => browser::run(&output, &rest),
         "capacity" => capacity::run(&output, &rest),
+        "artifact" | "artifacts" => artifact::run(&output, &rest),
         "chat" => chat::run(&output, &rest),
         "terminal" => screen::run(&output, &rest),
         "computer" | "computers" => computer::run(&output, &rest),

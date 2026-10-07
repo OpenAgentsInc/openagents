@@ -1,0 +1,10 @@
+{
+  "schema": "openagents.artifact.v1",
+  "name": "grid-pack",
+  "description": "The Grid engine pack's fingerprint: assets/verse/grid/pack.json, which the verse crate embeds and its tests compare with a fresh compile.",
+  "regenerate": "cargo run -p verse --example grid_pack",
+  "check": "cargo test -p verse --lib grid_pack::tests::the_pinned_pack_is_what_the_sources_compile_to",
+  "build_lease": true,
+  "pinned": ["assets/verse/grid/pack.json", "assets/verse/grid/verse-flat-white.png"],
+  "message": "Regenerate the Grid pack fingerprint for {changes}"
+}

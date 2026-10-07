@@ -134,6 +134,15 @@ captures and scripts somewhere a reboot doesn't clear. `--session SESSION`
 names another session, and `--json` prints the path, session, and root.
 [Durable scratch](../coder/guides/scratch.md) covers the rules.
 
+## Single-digest artifacts (`openagents artifact`)
+
+`openagents artifact submit NAME` queues a branch's change to an artifact
+in the `artifacts/` registry, such as `everglade-pack`, and runs the queue,
+which lands changes one at a time on `origin/main` with one repin per
+batch. `artifact queue` lists pending changes (`--all` adds landed and
+rejected ones with their reasons), and `artifact run NAME` runs the queue.
+[The artifact queue](../coder/runtime/artifact-queue.md) covers it.
+
 ## Browser checks (`openagents browser`)
 
 `openagents browser run -- CMD` starts Chrome with a fresh profile and its own

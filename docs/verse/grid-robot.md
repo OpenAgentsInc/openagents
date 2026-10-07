@@ -36,6 +36,12 @@ $B -b --factory-startup --python scripts/blender/grid_robot_views.py
 cargo run -p verse --example grid_pack
 ```
 
+The last command rewrites the Grid pack's fingerprint,
+`assets/verse/grid/pack.json`. Land a change that moves it through
+`openagents artifact submit grid-pack`, which regenerates the fingerprint
+once on current `main`; see
+[the artifact queue](../coder/runtime/artifact-queue.md).
+
 `grid_robot_views.py` renders a turnaround and the clip poses, and writes
 `motion.json`: each foot's lowest point per clip and every pair of parts that
 intersect in motion but not at rest. In idle and walk only the curled

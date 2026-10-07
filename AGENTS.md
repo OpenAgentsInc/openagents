@@ -635,6 +635,10 @@ uses, and marks which are implemented and which are only specified.
   priority queue with aging, receipts, and the screen grant. No dependency on
   `crates/coder`; `openagents lease` is its command. Read
   `docs/coder/runtime/leases.md` before changing admission or the quiet rule.
+  Its `artifact` module is the queue for single-digest artifacts listed in
+  `artifacts/` (the Everglade pack, the Grid pack fingerprint): land a
+  change to one with `openagents artifact submit NAME`, never a direct repin
+  push; `docs/coder/runtime/artifact-queue.md`.
 - `crates/supervise` — the one subprocess supervisor `coder` and
   `coderbench` run other programs through. A job runs in a process group of
   its own, a deadline or a cancelled caller terminates that group and reaps

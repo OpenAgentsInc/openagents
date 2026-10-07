@@ -182,6 +182,11 @@ pub fn help() -> Vec<GroupHelp<'static>> {
             crate::capacity::EFFECTS,
         ),
         group(
+            "artifact",
+            Some(crate::artifact::USAGE),
+            crate::artifact::EFFECTS,
+        ),
+        group(
             "settings",
             Some(crate::settings::USAGE),
             crate::settings::EFFECTS,

@@ -1,0 +1,19 @@
+{
+  "schema": "openagents.artifact.v1",
+  "name": "everglade-pack",
+  "description": "The Everglade zone pack: one digest over every admitted source set under assets/verse/everglade, pinned in everglade_pack.rs.",
+  "regenerate": "cargo run --release -p verse --example everglade_pack -- assets/verse/everglade",
+  "check": "cargo run --release -p verse --example everglade_pack -- assets/verse/everglade --check",
+  "build_lease": true,
+  "pinned": ["assets/verse/everglade/*.vtp"],
+  "pin": {
+    "file": "crates/verse-zone-everglade/src/zones/everglade_pack.rs",
+    "lines": ["pub const PACK_SHA256: &str = ", "pub const PACK_BYTES: u64 = "],
+    "history": {
+      "from": "pub const PACK_SHA256: &str = ",
+      "after": "    PACK_SHA256,",
+      "end": "];"
+    }
+  },
+  "message": "Repin the Everglade pack with {changes}"
+}

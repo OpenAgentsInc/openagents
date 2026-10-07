@@ -17,6 +17,9 @@
 //! - `grants/screen.json` is the owner's grant of the real screen.
 //! - `claims/<owner>/<name>/issue-<n>.json` is an issue claim held by an
 //!   agent session, which outlives the command that took it ([`claims`]).
+//! - `artifacts/<name>/` is a single-digest artifact's queue of submitted
+//!   changes and the scratch worktree its runner lands them from
+//!   ([`artifact`]).
 //!
 //! Exclusive resources ([`Shape::Exclusive`]) admit one holder. Counted
 //! ones ([`Shape::Counted`]) admit holders while their amounts fit:
@@ -47,6 +50,7 @@
 //!
 //! `docs/coder/runtime/leases.md` is the operator's page.
 
+pub mod artifact;
 mod broker;
 pub mod claims;
 mod grant;

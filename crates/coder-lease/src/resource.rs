@@ -105,7 +105,7 @@ pub const NAMED: [&str; 9] = [
     "build", "memory", "disk", "quiet", "screen", "browser", "gpu", "unreal", "blender",
 ];
 
-fn valid_name(name: &str) -> bool {
+pub(crate) fn valid_name(name: &str) -> bool {
     !name.is_empty()
         && name.len() <= 128
         && name != "."

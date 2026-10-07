@@ -233,7 +233,7 @@ reads it.
 | `quiet` | Exclusive | One holder | Waits for builds; holds new builds. |
 | `screen` | Exclusive | One holder, with an owner grant | Offscreen capture is the default. |
 | `browser`, `gpu`, `unreal`, `blender` | Exclusive | One holder | Headless Chrome with its own profile needs no lease. |
-| `artifact/NAME`, `issue/N` | Exclusive | One holder | For the single-digest artifact queue and issue claims. |
+| `artifact/NAME`, `issue/N` | Exclusive | One holder | For [the single-digest artifact queue](artifact-queue.md) and issue claims. |
 
 A counted lease is admitted while the amounts held plus its own fit the
 capacity. A `disk` lease is admitted when the free space on the lease

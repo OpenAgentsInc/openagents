@@ -6101,6 +6101,154 @@
       ]
     },
     {
+      "name": "artifact",
+      "summary": "The queue for single-digest artifacts such as the Everglade pack: submit a change, list the queue, and land it with one repin.",
+      "children": [
+        {
+          "name": "submit",
+          "leaf": {
+            "path": [
+              "artifact",
+              "submit"
+            ],
+            "usage": [
+              "submit NAME [--branch B] [--summary TEXT] [--no-run]"
+            ],
+            "forms": [
+              {
+                "tokens": [
+                  {
+                    "kind": "literal",
+                    "word": "submit"
+                  },
+                  {
+                    "kind": "positional",
+                    "name": "NAME"
+                  },
+                  {
+                    "kind": "option",
+                    "name": "branch",
+                    "value": "B",
+                    "open": true,
+                    "optional": true
+                  },
+                  {
+                    "kind": "option",
+                    "name": "summary",
+                    "value": "TEXT",
+                    "open": true,
+                    "optional": true
+                  },
+                  {
+                    "kind": "option",
+                    "name": "no-run",
+                    "optional": true
+                  }
+                ]
+              }
+            ],
+            "summary": "Queue the commits on branch B (the checked-out branch by default) that origin/main lacks as a change to artifact NAME, then run the queue unless another process runs it. --summary names the change in the repin commit (\"Repin the Everglade pack with TEXT\"); the branch name by default. --no-run only queues it.",
+            "effect": "publishes",
+            "runs_on": "connected_computer"
+          }
+        },
+        {
+          "name": "queue",
+          "leaf": {
+            "path": [
+              "artifact",
+              "queue"
+            ],
+            "usage": [
+              "queue [NAME] [--all]"
+            ],
+            "forms": [
+              {
+                "tokens": [
+                  {
+                    "kind": "literal",
+                    "word": "queue"
+                  },
+                  {
+                    "kind": "positional",
+                    "name": "NAME",
+                    "optional": true
+                  },
+                  {
+                    "kind": "option",
+                    "name": "all",
+                    "optional": true
+                  }
+                ]
+              }
+            ],
+            "summary": "The pending changes, oldest first: artifact, identifier, branch, summary, session, and age. --all adds the landed and rejected ones, with each rejection's reason. Bare `openagents artifact` is queue.",
+            "effect": "read_only",
+            "runs_on": "connected_computer"
+          }
+        },
+        {
+          "name": "run",
+          "leaf": {
+            "path": [
+              "artifact",
+              "run"
+            ],
+            "usage": [
+              "run NAME"
+            ],
+            "forms": [
+              {
+                "tokens": [
+                  {
+                    "kind": "literal",
+                    "word": "run"
+                  },
+                  {
+                    "kind": "positional",
+                    "name": "NAME"
+                  }
+                ]
+              }
+            ],
+            "summary": "Run NAME's queue now, under the exclusive artifact/NAME lease: fetch origin/main into a scratch worktree, apply each pending change in order with the artifact's pinned files left out, regenerate the pin once, run the check, commit the repin, and push. A change that conflicts or fails the check comes back with its reason; the rest land. Exits 1 when a change was rejected.",
+            "effect": "publishes",
+            "runs_on": "connected_computer"
+          }
+        }
+      ],
+      "options": [
+        {
+          "kind": "option",
+          "name": "branch",
+          "value": "B",
+          "open": true,
+          "optional": true,
+          "repeated": true
+        },
+        {
+          "kind": "option",
+          "name": "summary",
+          "value": "TEXT",
+          "open": true,
+          "optional": true,
+          "repeated": true
+        },
+        {
+          "kind": "option",
+          "name": "no-run",
+          "optional": true,
+          "repeated": true
+        },
+        {
+          "kind": "option",
+          "name": "all",
+          "optional": true,
+          "repeated": true
+        }
+      ]
+    },
+    {
       "name": "settings",
       "summary": "What Coder may use on this computer: providers, ask first, and more.",
       "children": [
