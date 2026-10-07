@@ -12,15 +12,15 @@
   "admitted": [
     {
       "id": "mira-baker",
-      "digest": "sha256:acad9eaf530f761a6f2fb7edbd332430663c6ef7d76c22e4236ea4efa1659123"
+      "digest": "sha256:45842a80d46d761bfc4a5b158d3e66a9eaecfdccbc6ee7cca24a5cbe29c4d439"
     },
     {
       "id": "tobin-smith",
-      "digest": "sha256:3b5770cae3ef58de5e657317bfd263c0b736a3732b7cf7414eac051bf668e92f"
+      "digest": "sha256:53b37678b897a08a23e25b09293467e91ed0290d9f4bbf4fcd1f9089b2750184"
     },
     {
       "id": "wren-bellringer",
-      "digest": "sha256:ed46cad94717266027fb0604cc30529ee3b23518258e5259e2791a1d5fa7c78e"
+      "digest": "sha256:608fd5719041c22e6b33109c4979aa488ac4ba9efbf6147fb75bb6f9774648f9"
     }
   ],
   "rumors": [
