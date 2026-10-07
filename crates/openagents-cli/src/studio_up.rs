@@ -372,6 +372,40 @@ fn up_inner(output: &Output, args: &Args, paths: &Paths) -> Result<(), String> {
     Ok(())
 }
 
+/// `openagents studio host`: start this computer's host the way `up` does,
+/// with no repository, team, or Verse, when none answers its control
+/// socket. `down` stops a host this started. Verse runs it when the owner
+/// confirms starting a host at the workshop agent's desk.
+pub(crate) fn host_up(output: &Output, args: &Args, paths: &Paths) -> u8 {
+    match host_up_inner(args, paths) {
+        Ok((host, pid)) => {
+            let value = json!({
+                "host": host,
+                "host_pid": pid,
+                "socket": paths.socket,
+            });
+            output.emit(&value, |_| host.sentence());
+            0
+        }
+        Err(message) => output.fail("studio host", &message),
+    }
+}
+
+fn host_up_inner(args: &Args, paths: &Paths) -> Result<(Host, Option<u32>), String> {
+    let mut builder = std::fs::DirBuilder::new();
+    builder.recursive(true);
+    #[cfg(unix)]
+    std::os::unix::fs::DirBuilderExt::mode(&mut builder, 0o700);
+    builder
+        .create(&paths.root)
+        .map_err(|e| format!("cannot create {}: {e}", paths.root.display()))?;
+    let mut record = Record::load(&paths.root).unwrap_or_default();
+    record.at = autostart::unix_now();
+    let host = ensure_host(args, paths, &mut record, false);
+    record.save(&paths.root)?;
+    Ok((host?, record.host_pid))
+}
+
 /// `up --sim`: a new scratch host whose studio is the simulated team, its
 /// host started with `--studio-sim`, and Verse on its control socket.
 /// Whatever an earlier `up --sim` started is stopped and removed first.
@@ -1542,6 +1576,69 @@ mod tests {
         assert_eq!(loaded.workspaces_added, ["w"]);
         assert_eq!(loaded.host_pid, Some(42));
         assert_eq!(loaded.schema, RECORD_SCHEMA);
+    }
+
+    /// `studio host`, which Verse runs when the owner confirms at Alice's
+    /// desk, starts `coder host serve` on the scratch paths when nothing
+    /// answers, records it for `down`, and leaves a host that answers
+    /// alone.
+    #[cfg(unix)]
+    #[test]
+    fn studio_host_starts_a_host_only_when_none_answers() {
+        use std::os::unix::fs::PermissionsExt;
+        let scratch = scratch();
+        let paths = &scratch.paths;
+        let base = paths.root.parent().unwrap().to_path_buf();
+        // A stand-in `coder` that records its arguments and stays up; the
+        // test opens the control socket it would have opened.
+        let said = base.join("coder-args");
+        let coder = base.join("coder");
+        std::fs::write(
+            &coder,
+            format!(
+                "#!/bin/sh\necho \"$@\" > '{}'\nexec sleep 30\n",
+                said.display()
+            ),
+        )
+        .unwrap();
+        std::fs::set_permissions(&coder, std::fs::Permissions::from_mode(0o755)).unwrap();
+        let socket = paths.socket.clone();
+        let watch = said.clone();
+        let listener = std::thread::spawn(move || {
+            let start = Instant::now();
+            while !watch.exists() {
+                assert!(start.elapsed() < Duration::from_secs(20));
+                std::thread::sleep(Duration::from_millis(20));
+            }
+            let listener = std::os::unix::net::UnixListener::bind(&socket).unwrap();
+            std::thread::sleep(Duration::from_secs(3));
+            drop(listener);
+        });
+        let words: Vec<String> = ["host", "--coder", coder.to_str().unwrap()]
+            .iter()
+            .map(|w| (*w).to_string())
+            .collect();
+        let args = Args::parse(&words, SWITCHES).unwrap();
+        let (host, pid) = host_up_inner(&args, paths).unwrap();
+        let Host::Started { pid: started } = host else {
+            panic!("started {host:?}");
+        };
+        assert_eq!(pid, Some(started));
+        let line = std::fs::read_to_string(&said).unwrap();
+        assert!(line.starts_with("host serve --state"), "{line}");
+        for path in [&paths.root, &paths.state, &paths.keys, &paths.socket] {
+            assert!(line.contains(&path.display().to_string()), "{line}");
+            assert!(path.starts_with(&base), "{}", path.display());
+        }
+        assert_eq!(Record::load(&paths.root).unwrap().host_pid, Some(started));
+        // A host that answers is left alone.
+        let (again, _) = host_up_inner(&args, paths).unwrap();
+        assert_eq!(again, Host::Running);
+        // SAFETY: kill has no memory preconditions.
+        unsafe {
+            libc::kill(libc::pid_t::try_from(started).unwrap(), libc::SIGKILL);
+        }
+        listener.join().unwrap();
     }
 
     #[test]

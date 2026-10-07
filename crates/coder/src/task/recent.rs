@@ -35,6 +35,26 @@ fn recent(store: &Path, since: u64) -> Result<Vec<(Task, u64)>, String> {
         .collect())
 }
 
+/// The directories the store's newest tasks ran in, newest first, each
+/// once, at most `max`. A directory that no longer exists is skipped.
+#[must_use]
+pub fn checkouts(store: &Path, max: usize) -> Vec<std::path::PathBuf> {
+    let mut tasks = recent(store, 0).unwrap_or_default();
+    tasks.sort_by(|a, b| b.1.cmp(&a.1));
+    let mut paths: Vec<std::path::PathBuf> = Vec::new();
+    for (task, _) in tasks {
+        let path = std::path::PathBuf::from(&task.intent.workspace.path);
+        if path.as_os_str().is_empty() || !path.is_dir() || paths.contains(&path) {
+            continue;
+        }
+        paths.push(path);
+        if paths.len() == max {
+            break;
+        }
+    }
+    paths
+}
+
 /// The Coder runs that ended since `since`, and what the priced ones cost.
 ///
 /// # Errors

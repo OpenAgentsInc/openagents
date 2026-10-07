@@ -411,6 +411,22 @@ impl Tasks for Inbox {
         }
     }
 
+    fn new_agent(
+        &self,
+        _key: &str,
+        _principal: &Principal,
+        op: &Operation,
+        owner: Option<&secp256k1::SecretKey>,
+    ) -> Result<serde_json::Value, Code> {
+        let (Some(agents), Operation::NewAgent { agent, workspace }) = (&self.agents, op) else {
+            return Err(coder_host::tasks::refuse(
+                Code::Unsupported,
+                "This host keeps no workshop agents.",
+            ));
+        };
+        agents.create(agent, std::path::Path::new(workspace), owner)
+    }
+
     fn agent_reports(&self) -> Vec<coder_host::AgentReport> {
         self.agents
             .as_ref()

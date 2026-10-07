@@ -57,6 +57,8 @@ pub const QUEUE_MAX: usize = 4;
 const LINES: usize = 200;
 /// The most request IDs remembered for retries.
 const ASKED_MAX: usize = 512;
+/// The most checkouts `studio.agent.workspaces` offers.
+const PLACES_MAX: usize = 8;
 /// How often a task-mode run looks at its change.
 const TASK_POLL: Duration = Duration::from_secs(2);
 /// The scripted plan in place of a model, for an offline demo or a
@@ -341,7 +343,7 @@ impl Agents {
             Ok(None) => Err(coder_host::tasks::refuse(
                 Code::Forbidden,
                 format!(
-                    "This host has no agent named {name}. Make one with `openagents agent new {name}`."
+                    "This host has no agent named {name}. Set her up in Verse: walk up to her workstation in your house and press F."
                 ),
             )),
             Err(why) => Err(coder_host::tasks::refuse(Code::Unavailable, why)),
@@ -457,8 +459,119 @@ impl Agents {
                 self.pause(seat, false, &principal.device)?;
                 Ok(dispatched(seat))
             }
+            Operation::ListAgentWorkspaces {} => Ok(value(&self.places())),
             _ => Err(Code::Unsupported),
         }
+    }
+
+    /// Makes agent `name`, working in the checkout `workspace`, with a key
+    /// of her own, attested with `owner` for a year when the host holds
+    /// the owner key (`studio.agent.new`). The host admitted only the
+    /// owner's own key. An agent that exists already stays as she is.
+    ///
+    /// # Errors
+    /// `malformed` for a path that is not a Git checkout, `unavailable`
+    /// when her files cannot be written.
+    pub fn create(
+        &self,
+        name: &str,
+        workspace: &Path,
+        owner: Option<&secp256k1::SecretKey>,
+    ) -> Result<serde_json::Value, Code> {
+        let refuse = coder_host::tasks::refuse;
+        let store = Store::new(&self.root, name).map_err(|why| refuse(Code::Malformed, why))?;
+        let now = (self.clock)();
+        let existed = store
+            .load()
+            .map_err(|why| refuse(Code::Unavailable, why))?
+            .is_some()
+            || store
+                .migrate(now)
+                .map_err(|why| refuse(Code::Unavailable, why))?;
+        let workspace = if existed {
+            workspace.to_path_buf()
+        } else {
+            agent::checkout(workspace).map_err(|why| refuse(Code::Malformed, why))?
+        };
+        let record = store
+            .open(&workspace, now)
+            .map_err(|why| refuse(Code::Unavailable, why))?;
+        let mut record = store
+            .ensure_key(record, now)
+            .map_err(|why| refuse(Code::Unavailable, why))?;
+        if let Some(owner) = owner
+            && (record.attestation.is_none() || !existed)
+        {
+            let until = now + 365 * 86_400;
+            record = store
+                .attest(record, owner, until, now)
+                .map_err(|why| refuse(Code::Unavailable, why))?;
+        }
+        if !existed {
+            let _ = store.append(&Entry::new(
+                now,
+                Kind::Created,
+                "the owner set her up at her workstation",
+            ));
+        }
+        let attested_until = match (&record.pubkey, &record.attestation) {
+            (Some(pubkey), Some(attestation)) => {
+                agent::verify_attestation(pubkey, attestation, now).ok()
+            }
+            _ => None,
+        };
+        Ok(erased::Value::json(&wire::Made {
+            agent: record.name.clone(),
+            workspace: record.workspace.clone(),
+            pubkey: record.pubkey.clone().unwrap_or_default(),
+            attested_until,
+            existed,
+        }))
+    }
+
+    /// The checkouts a new agent may work in, most likely first: the
+    /// studio's repository, the host's workspaces, the checkouts its
+    /// recent tasks ran in, and other agents' workspaces. Each is a Git
+    /// checkout that exists now.
+    #[must_use]
+    pub fn places(&self) -> wire::Places {
+        let mut candidates: Vec<(PathBuf, String)> = Vec::new();
+        if let Some(repo) = std::fs::read(self.root.join("studio.json"))
+            .ok()
+            .and_then(|bytes| serde_json::from_slice::<serde_json::Value>(&bytes).ok())
+            .and_then(|value| value.get("repo")?.as_str().map(PathBuf::from))
+        {
+            candidates.push((repo, "the studio's repository".into()));
+        }
+        for (label, path) in &self.workspaces {
+            candidates.push((path.clone(), format!("the host's workspace {label}")));
+        }
+        for path in super::recent::checkouts(&self.tasks, 6) {
+            candidates.push((path, "a recent task ran here".into()));
+        }
+        for store in Store::all(&self.root) {
+            if let Ok(Some(record)) = store.load() {
+                candidates.push((
+                    PathBuf::from(&record.workspace),
+                    format!("{} works here", record.name),
+                ));
+            }
+        }
+        let mut places: Vec<wire::Place> = Vec::new();
+        for (path, from) in candidates {
+            let Ok(path) = agent::checkout(&path) else {
+                continue;
+            };
+            let path = path.display().to_string();
+            if places.iter().any(|place| place.path == path) {
+                continue;
+            }
+            places.push(wire::Place { path, from });
+            if places.len() == PLACES_MAX {
+                break;
+            }
+        }
+        wire::Places { places }
     }
 
     /// Whether `name` is one of this host's agents.

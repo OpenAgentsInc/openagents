@@ -39,6 +39,11 @@ pub(crate) const USAGE: &str = "usage: openagents studio COMMAND [OPTIONS]
                   host user's reads and network, which session and sdk
                   seats need. Options are remembered for the next up.
   down            Stop and undo only what up started and changed.
+  host [--coder PATH] [--control-socket PATH]
+                  Start this computer's host as up does, with no
+                  repository, team, or Verse, when none answers. Verse
+                  runs it when you confirm starting a host at the
+                  workshop agent's desk; down stops it.
   seat set NAME --route ROUTE [--role ROLE] [--look LOOK] [--desk N]
                   Add a seat or change one: a lead plans goals, a worker
                   (the default ROLE) works plan entries. ROUTE is
@@ -126,6 +131,7 @@ its identity.";
 pub(crate) const EFFECTS: &[Declared] = &[
     Declared::computer("up", Effect::LocalWrite),
     Declared::computer("down", Effect::LocalWrite),
+    Declared::computer("host", Effect::LocalWrite),
     Declared::computer("seat set", Effect::LocalWrite),
     Declared::computer("seat list", Effect::ReadOnly),
     Declared::computer("seat remove", Effect::LocalWrite),
@@ -182,7 +188,7 @@ pub fn run(output: &Output, words: &[String]) -> u8 {
     let root = args.option("root").map_or_else(default_root, PathBuf::from);
     let words: Vec<&str> = args.positional().iter().map(String::as_str).collect();
     let now = autostart::unix_now();
-    if let ["up" | "down"] = words.as_slice() {
+    if let ["up" | "down" | "host"] = words.as_slice() {
         let own = args.option("root").is_none();
         let paths = crate::studio_up::Paths::new(
             root,
@@ -190,10 +196,10 @@ pub fn run(output: &Output, words: &[String]) -> u8 {
             args.option("control-socket").map(PathBuf::from),
             own,
         );
-        return if words[0] == "up" {
-            crate::studio_up::up(output, &args, &paths)
-        } else {
-            crate::studio_up::down(output, &paths)
+        return match words[0] {
+            "up" => crate::studio_up::up(output, &args, &paths),
+            "host" => crate::studio_up::host_up(output, &args, &paths),
+            _ => crate::studio_up::down(output, &paths),
         };
     }
     if let Some(code) = crate::studio_host::dispatch(output, &words, &args) {

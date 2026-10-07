@@ -351,3 +351,123 @@ fn modes_and_ids_are_stable() {
     assert_eq!(thread_id("alice").len(), 32);
     assert_ne!(subject("h", "alice"), subject("h", "bob"));
 }
+
+/// The owner sets her up through `studio.agent.new`: the host offers its
+/// checkouts, refuses a path that is not a Git checkout, makes her with a
+/// key it attests with the owner key, and she then takes a request.
+#[test]
+fn the_owner_sets_her_up_and_she_takes_a_request() {
+    let dir = tempfile::tempdir().unwrap();
+    let root = dir.path().join("host");
+    let app = dir.path().join("app");
+    std::fs::create_dir_all(app.join(".git")).unwrap();
+    std::fs::create_dir_all(app.join("src")).unwrap();
+    let plain = dir.path().join("plain");
+    std::fs::create_dir_all(&plain).unwrap();
+    let script = Arc::new(Mutex::new(VecDeque::from(vec![vec![
+        agent::action(&["echo atif: 31 passed"], ""),
+        agent::action(&[], "atif: 31 passed."),
+    ]])));
+    let model: ModelFactory = Arc::new(move |_record: &Record| {
+        let actions = script.lock().unwrap().pop_front().unwrap_or_default();
+        Ok((
+            Box::new(agent::Scripted {
+                actions: actions.into(),
+                prompts: Vec::new(),
+            }) as Box<dyn Model + Send>,
+            "scripted".to_string(),
+        ))
+    });
+    let workspaces = BTreeMap::from([("app".to_string(), app.clone())]);
+    let agents = Agents::new(&root, dir.path().join("tasks"), workspaces)
+        .with_model(model)
+        .with_clock(clock);
+    assert!(agents.list().agents.is_empty(), "no agent yet");
+    assert_eq!(
+        ask(&agents, "k0", "run the atif tests", false),
+        Err(Code::Forbidden),
+        "nobody to ask before setup"
+    );
+
+    // The host offers its workspace.
+    let canonical = app.canonicalize().unwrap();
+    let places = agents.places();
+    assert_eq!(places.places.len(), 1, "{places:?}");
+    assert_eq!(places.places[0].path, canonical.display().to_string());
+    assert_eq!(places.places[0].from, "the host's workspace app");
+    let listed: wire::Places = serde_json::from_value(
+        agents
+            .answer("k1", &owner(), &Operation::ListAgentWorkspaces {})
+            .unwrap(),
+    )
+    .unwrap();
+    assert_eq!(listed, places);
+
+    // A path that is not a Git checkout is refused, and nothing is made.
+    for bad in [plain.clone(), dir.path().join("missing")] {
+        assert_eq!(agents.create("alice", &bad, None), Err(Code::Malformed));
+    }
+    assert!(agents.list().agents.is_empty());
+
+    // A folder inside the checkout is a workspace; the owner key attests
+    // her own key for a year.
+    let owner_key = secp256k1::SecretKey::new(&mut secp256k1::rand::rng());
+    let made: wire::Made = serde_json::from_value(
+        agents
+            .create("alice", &app.join("src"), Some(&owner_key))
+            .unwrap(),
+    )
+    .unwrap();
+    assert!(!made.existed);
+    assert_eq!(made.workspace, canonical.join("src").display().to_string());
+    assert_eq!(made.attested_until, Some(clock() + 365 * 86_400));
+    assert_eq!(made.pubkey.len(), 64);
+    let her = view(&agents);
+    assert_eq!((her.name.as_str(), her.state.as_str()), ("alice", "active"));
+    assert_eq!(her.attested_until, made.attested_until);
+    let store = Store::new(&root, "alice").unwrap();
+    assert!(store.key().unwrap().is_some());
+    let journal = store.journal(10).unwrap();
+    assert_eq!(journal[0].kind, Kind::Created);
+    assert!(
+        journal
+            .iter()
+            .any(|e| e.text == "the owner set her up at her workstation")
+    );
+
+    // Setting her up again changes nothing.
+    let again: wire::Made =
+        serde_json::from_value(agents.create("alice", &plain, Some(&owner_key)).unwrap()).unwrap();
+    assert!(again.existed);
+    assert_eq!(again.workspace, made.workspace);
+    assert_eq!(again.pubkey, made.pubkey);
+
+    // She takes a request, and her command runs in her workspace.
+    ask(&agents, "k2", "run the atif tests", false).unwrap();
+    let seen = until(&agents, |v| !v.busy && v.headline == "ok exit 0");
+    assert!(
+        seen.lines
+            .iter()
+            .any(|l| l == "alice: $ echo atif: 31 passed")
+    );
+}
+
+/// Without the owner key on the host, she is made with her own key and no
+/// attestation, which the answer says.
+#[test]
+fn a_host_without_the_owner_key_makes_her_unattested() {
+    let dir = tempfile::tempdir().unwrap();
+    let app = dir.path().join("app");
+    std::fs::create_dir_all(app.join(".git")).unwrap();
+    let agents = Agents::new(
+        dir.path().join("host"),
+        dir.path().join("tasks"),
+        BTreeMap::new(),
+    )
+    .with_clock(clock);
+    let made: wire::Made =
+        serde_json::from_value(agents.create("alice", &app, None).unwrap()).unwrap();
+    assert_eq!(made.attested_until, None);
+    assert_eq!(made.pubkey.len(), 64);
+    assert_eq!(agents.places().places.len(), 1, "her own workspace");
+}

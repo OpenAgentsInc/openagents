@@ -309,6 +309,23 @@ impl Dispatch for Dispatcher {
         }
         let principal = principal(device, grant);
         let _ = crate::tasks::take_reason(Code::Unavailable);
+        if let coder_access::protocol::Operation::NewAgent { .. } = op {
+            // Making her is the owner's own act: her key is attested with
+            // the owner key, so a granted device may not ask for it.
+            if !agent_setup_admits(&self.shared.owner, device, grant) {
+                return self.noted(Err(Refusal::because(
+                    Code::Forbidden,
+                    "Only her owner sets up the workshop agent.",
+                )));
+            }
+            // Load only: an existing host never mints another owner.
+            let owner = crate::control::owner_key(&self.shared).ok().flatten();
+            let result = self
+                .shared
+                .tasks
+                .new_agent(request, &principal, op, owner.as_ref());
+            return self.noted(result.map_err(Refusal::from));
+        }
         let result = self.shared.tasks.agent(request, &principal, op);
         self.noted(result.map_err(Refusal::from))
     }
@@ -638,6 +655,12 @@ pub(crate) fn agent_admits(owner: &str, device: &str, grant: Option<(&str, u64)>
     device == owner || grant.is_some()
 }
 
+/// Whether `device`, under `grant`, may set up a workshop agent: only the
+/// host's owner, with the owner's own key and no grant.
+pub(crate) fn agent_setup_admits(owner: &str, device: &str, grant: Option<(&str, u64)>) -> bool {
+    device == owner && grant.is_none()
+}
+
 #[cfg(test)]
 mod agent_tests {
     #[test]
@@ -650,5 +673,19 @@ mod agent_tests {
             Some(("grant", 1))
         ));
         assert!(!super::agent_admits(&owner, &"c".repeat(64), None));
+    }
+
+    #[test]
+    fn only_the_owners_own_key_sets_up_the_workshop_agent() {
+        let owner = "a".repeat(64);
+        assert!(super::agent_setup_admits(&owner, &owner, None));
+        // A device the owner granted `operate` asks her for work, but
+        // cannot make her.
+        assert!(!super::agent_setup_admits(
+            &owner,
+            &"b".repeat(64),
+            Some(("grant", 1))
+        ));
+        assert!(!super::agent_setup_admits(&owner, &"c".repeat(64), None));
     }
 }

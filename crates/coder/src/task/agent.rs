@@ -227,6 +227,28 @@ pub fn valid_name(name: &str) -> bool {
             .all(|b| b.is_ascii_lowercase() || b.is_ascii_digit() || b == b'-')
 }
 
+/// `path` as a workspace for an agent: an absolute directory inside a Git
+/// checkout, canonical. The error is a plain sentence for the owner.
+///
+/// # Errors
+/// When `path` is relative, does not exist, is not a directory, or is in
+/// no Git checkout.
+pub fn checkout(path: &Path) -> Result<PathBuf, String> {
+    if !path.is_absolute() {
+        return Err(format!("{} is not a full path.", path.display()));
+    }
+    let Ok(canonical) = path.canonicalize() else {
+        return Err(format!("{} does not exist.", path.display()));
+    };
+    if !canonical.is_dir() {
+        return Err(format!("{} is not a folder.", path.display()));
+    }
+    if !canonical.ancestors().any(|dir| dir.join(".git").exists()) {
+        return Err(format!("{} is not in a Git repository.", path.display()));
+    }
+    Ok(canonical)
+}
+
 /// The host's root on this computer, `~/.openagents/host`.
 #[must_use]
 pub fn host_root() -> Option<PathBuf> {

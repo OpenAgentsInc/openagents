@@ -469,6 +469,11 @@ fn agent_operations() -> Vec<Operation> {
             agent: agent(),
             after: None,
         },
+        Operation::ListAgentWorkspaces {},
+        Operation::NewAgent {
+            agent: agent(),
+            workspace: "/Users/me/code/app".into(),
+        },
     ]
 }
 

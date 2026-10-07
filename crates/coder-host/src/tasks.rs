@@ -499,6 +499,24 @@ pub trait Tasks: Send + Sync {
         Err(Code::Unsupported)
     }
 
+    /// Make a workshop agent for `studio.agent.new`, which only the
+    /// owner's own key sends. `owner` is the owner key this host holds,
+    /// which attests her key; `None` when the key lives elsewhere. The
+    /// answer is `coder_access::agent::Made` as JSON. The default refuses
+    /// as `unsupported`.
+    ///
+    /// # Errors
+    /// Returns the NIP-HOST refusal code the device receives.
+    fn new_agent(
+        &self,
+        _key: &str,
+        _principal: &Principal,
+        _op: &Operation,
+        _owner: Option<&secp256k1::SecretKey>,
+    ) -> Result<serde_json::Value, Code> {
+        Err(Code::Unsupported)
+    }
+
     /// The workshop agents' reports since the last call, oldest first: the
     /// host notes each into the agent's own chat thread and publishes its
     /// activity summary to every device that holds `observe`. The default

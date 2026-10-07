@@ -1680,7 +1680,7 @@ impl App {
                 eprintln!("--place: {error}");
             }
         }
-        self.runtime.set_workshop_owner(self.workshop.connected());
+        self.runtime.set_workshop_owner(self.workshop.owner());
         // `--owners-house`: in through the front door, facing her.
         if in_glade && std::mem::take(&mut self.connection_options.owners_house) {
             use zones::everglade::layout::estate;
@@ -1749,6 +1749,8 @@ impl App {
             KeyCode::Backspace => PanelKey::Backspace,
             KeyCode::PageUp => PanelKey::PageUp,
             KeyCode::PageDown => PanelKey::PageDown,
+            KeyCode::ArrowUp => PanelKey::Up,
+            KeyCode::ArrowDown => PanelKey::Down,
             KeyCode::F2 => PanelKey::Memory,
             KeyCode::F4 => PanelKey::Journal,
             KeyCode::F7 => PanelKey::Stop,
@@ -3229,14 +3231,15 @@ impl App {
             }
             // In Everglade the interact key next to the workshop agent
             // opens her panel; elsewhere it opens the station in reach.
-            // Only her owner's window, whose host answers for her, opens
-            // her panel; anyone else sees her and her caption says so.
+            // Only her owner's window, which has its own host to ask,
+            // opens her panel, and sets her up there when she does not
+            // exist yet; anyone else sees her and her caption says so.
             if code == KeyCode::KeyF
                 && !self.keys.shift
                 && self.near_workshop_agent()
-                && self.workshop.connected()
+                && self.workshop.owner()
             {
-                self.workshop.open = true;
+                self.workshop.open_panel();
                 self.keys = Keys::default();
                 self.climb = 0.0;
                 return;

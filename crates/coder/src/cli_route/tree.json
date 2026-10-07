@@ -7528,6 +7528,45 @@
           }
         },
         {
+          "name": "host",
+          "leaf": {
+            "path": [
+              "studio",
+              "host"
+            ],
+            "usage": [
+              "host [--coder PATH] [--control-socket PATH]"
+            ],
+            "forms": [
+              {
+                "tokens": [
+                  {
+                    "kind": "literal",
+                    "word": "host"
+                  },
+                  {
+                    "kind": "option",
+                    "name": "coder",
+                    "value": "PATH",
+                    "open": true,
+                    "optional": true
+                  },
+                  {
+                    "kind": "option",
+                    "name": "control-socket",
+                    "value": "PATH",
+                    "open": true,
+                    "optional": true
+                  }
+                ]
+              }
+            ],
+            "summary": "Start this computer's host as up does, with no repository, team, or Verse, when none answers. Verse runs it when you confirm starting a host at the workshop agent's desk; down stops it.",
+            "effect": "local_write",
+            "runs_on": "connected_computer"
+          }
+        },
+        {
           "name": "seat",
           "children": [
             {

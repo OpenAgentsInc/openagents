@@ -1172,7 +1172,9 @@ impl Host {
             | Operation::EditAgentMemory { .. }
             | Operation::ListAgentJobs { .. }
             | Operation::EditAgentJobs { .. }
-            | Operation::AgentLog { .. }) => {
+            | Operation::AgentLog { .. }
+            | Operation::ListAgentWorkspaces {}
+            | Operation::NewAgent { .. }) => {
                 let grant = p.grant.as_deref().zip(request.epoch);
                 match dispatch.agent(&request.request, &p.key, grant, op) {
                     Ok(value) => {

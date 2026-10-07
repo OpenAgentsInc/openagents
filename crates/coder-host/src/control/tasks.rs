@@ -531,7 +531,7 @@ fn unavailable(message: &str) -> coder_access::Error {
 
 /// The owner key this host keeps, if any. Each way it cannot be read is
 /// its own refusal; an absent key or key source is `None`.
-fn owner_key(shared: &Shared) -> coder_access::Result<Option<SecretKey>> {
+pub(crate) fn owner_key(shared: &Shared) -> coder_access::Result<Option<SecretKey>> {
     let Some(keys) = shared.config.keys.as_ref() else {
         return Ok(None);
     };

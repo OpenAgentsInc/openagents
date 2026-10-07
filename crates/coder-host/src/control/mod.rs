@@ -36,7 +36,7 @@ use crate::{Error, Result};
 #[cfg(unix)]
 pub mod socket;
 mod tasks;
-pub(crate) use tasks::run_thread;
+pub(crate) use tasks::{owner_key, run_thread};
 pub mod windows;
 
 #[cfg(unix)]

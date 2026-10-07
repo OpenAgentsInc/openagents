@@ -10,7 +10,7 @@
 //! one of the types here, bounded at [`MAX_AGENT_BYTES`], as the
 //! `background.*` answers are: a write answers [`Dispatched`], `list`
 //! answers [`Agents`], `memory.list` [`Memory`], `jobs.list` [`Jobs`], and
-//! `log` [`Journal`].
+//! `log` [`Journal`], `workspaces` [`Places`], and `new` [`Made`].
 //!
 //! Pause and resume are `studio.seat.pause` and `studio.seat.resume` with
 //! the agent's name as the seat.
@@ -255,6 +255,59 @@ pub struct Journal {
     pub journal: Vec<JournalRow>,
 }
 
+/// A checkout the host offers a new agent as her workspace.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct Place {
+    /// Its absolute path on the host.
+    pub path: String,
+    /// Why the host offers it, such as `the studio's repository`.
+    pub from: String,
+}
+
+/// `studio.agent.workspaces`'s answer, most likely first.
+#[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct Places {
+    pub places: Vec<Place>,
+}
+
+/// `studio.agent.new`'s answer.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct Made {
+    pub agent: String,
+    /// The checkout her terminal opens in.
+    pub workspace: String,
+    /// Her own key's public half.
+    pub pubkey: String,
+    /// When the owner's attestation of her key expires; `None` when the
+    /// host holds no owner key to attest it with.
+    #[serde(default)]
+    pub attested_until: Option<u64>,
+    /// She existed already, and nothing was made.
+    #[serde(default)]
+    pub existed: bool,
+}
+
+/// The longest workspace path `studio.agent.new` carries.
+pub const MAX_PATH: usize = 4096;
+
+/// A workspace path: absolute, one line, at most [`MAX_PATH`] bytes.
+///
+/// # Errors
+/// `bounds` for a long path or one with a control character, `malformed`
+/// for a relative one.
+pub fn workspace_path(value: &str) -> Result<()> {
+    if value.len() > MAX_PATH || value.chars().any(char::is_control) {
+        return fail(Code::Bounds, "the workspace path exceeds its bound");
+    }
+    if !value.starts_with('/') {
+        return fail(Code::Malformed, "the workspace path is not absolute");
+    }
+    Ok(())
+}
+
 /// An agent name, a studio seat name.
 ///
 /// # Errors
@@ -343,5 +396,9 @@ mod tests {
         assert!(name("alice").is_ok() && name("Alice").is_err());
         assert!(request_text("run the atif tests").is_ok());
         assert!(context(&"x".repeat(MAX_CONTEXT + 1)).is_err());
+        assert!(workspace_path("/Users/me/code/app").is_ok());
+        assert!(workspace_path("code/app").is_err());
+        assert!(workspace_path("/a\nb").is_err());
+        assert!(workspace_path(&format!("/{}", "a".repeat(MAX_PATH))).is_err());
     }
 }

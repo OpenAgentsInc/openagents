@@ -863,6 +863,15 @@ pub enum Operation {
     /// A read.
     #[serde(rename = "studio.agent.log")]
     AgentLog { agent: String, after: Option<u64> },
+    /// The Git checkouts the host offers a new agent as her workspace
+    /// ([`crate::agent::Places`]). A read.
+    #[serde(rename = "studio.agent.workspaces")]
+    ListAgentWorkspaces {},
+    /// Make the agent, working in the checkout `workspace`, with a key of
+    /// her own that the host attests with the owner key it holds. Only
+    /// the owner's own key may send it; a granted device may not.
+    #[serde(rename = "studio.agent.new")]
+    NewAgent { agent: String, workspace: String },
 }
 impl Operation {
     /// A read with no effect, whose reply the host does not retain: an
@@ -881,6 +890,7 @@ impl Operation {
                 | Self::ListAgentMemory { .. }
                 | Self::ListAgentJobs { .. }
                 | Self::AgentLog { .. }
+                | Self::ListAgentWorkspaces {}
         )
     }
 
@@ -901,6 +911,8 @@ impl Operation {
                 | Self::ListAgentJobs { .. }
                 | Self::EditAgentJobs { .. }
                 | Self::AgentLog { .. }
+                | Self::ListAgentWorkspaces {}
+                | Self::NewAgent { .. }
         )
     }
 
@@ -1032,6 +1044,8 @@ impl Operation {
             Self::ListAgentJobs { .. } => "studio.agent.jobs.list",
             Self::EditAgentJobs { .. } => "studio.agent.jobs.edit",
             Self::AgentLog { .. } => "studio.agent.log",
+            Self::ListAgentWorkspaces {} => "studio.agent.workspaces",
+            Self::NewAgent { .. } => "studio.agent.new",
         }
     }
     /// The right this operation requires. Redemption uses the invitation's
@@ -1058,7 +1072,8 @@ impl Operation {
             | Self::ListAgents {}
             | Self::ListAgentMemory { .. }
             | Self::ListAgentJobs { .. }
-            | Self::AgentLog { .. } => Some(Right::Observe),
+            | Self::AgentLog { .. }
+            | Self::ListAgentWorkspaces {} => Some(Right::Observe),
             Self::CreateTask { .. }
             | Self::SteerTask { .. }
             | Self::CancelTask { .. }
@@ -1093,7 +1108,8 @@ impl Operation {
             | Self::AgentRan { .. }
             | Self::StopAgent { .. }
             | Self::EditAgentMemory { .. }
-            | Self::EditAgentJobs { .. } => Some(Right::Operate),
+            | Self::EditAgentJobs { .. }
+            | Self::NewAgent { .. } => Some(Right::Operate),
             Self::OpenTerminal { .. } | Self::OpenTaskTerminal { .. } => Some(Right::Terminal),
             Self::DecideMerge { .. } => Some(Right::Review),
         }
@@ -1300,7 +1316,11 @@ impl Operation {
                 safe(*issued_at)?;
             }
             Self::DecideMerge { decision } => decision.validate()?,
-            Self::ListAgents {} => {}
+            Self::ListAgents {} | Self::ListAgentWorkspaces {} => {}
+            Self::NewAgent { agent, workspace } => {
+                crate::agent::name(agent)?;
+                crate::agent::workspace_path(workspace)?;
+            }
             Self::AskAgent {
                 agent,
                 text: request,
