@@ -113,6 +113,7 @@ pub mod runs_story;
 pub mod runs_transcript;
 pub mod sales_evidence;
 pub mod sales_finance;
+pub mod sales_weekly;
 pub mod spread;
 pub mod store;
 pub mod suite;

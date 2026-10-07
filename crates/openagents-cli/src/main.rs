@@ -77,6 +77,7 @@ mod quest;
 mod reach;
 mod relay;
 mod sales;
+mod sales_weekly;
 mod scratch;
 mod screen;
 #[cfg(unix)]

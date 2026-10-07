@@ -193,3 +193,65 @@ Exports omit customer/offer/cohort identities, source paths/digests, terms,
 individual incidents, and support humans. Outputs are exclusive mode-0600
 files. The command publishes nothing; the owner reviews aggregate disclosure
 rights and genuine source coverage under O1/O5/O8 before any margin claim.
+
+## Consented weekly operating review
+
+`openagents sales weekly --root HOST --credential FILE --input MANIFEST
+--evidence-root DIR --output FILE` reads consented journey exports from the
+canonical private pipeline. The [shared contract](../../crates/receipts/src/sales_funnel.rs)
+defines bounded enrollment, events, failure responsibility, and exports; the
+[Store](../../crates/coder/src/task/sales/funnel.rs) owns authorization, conditional
+revisions, exact retries, retention, and current custody. The
+[reader](../../crates/gym/src/sales_weekly.rs) replays protected task and financial
+evidence rather than interpreting a declaration as accepted work or revenue.
+
+The `openagents.gym.sales-weekly.v1` manifest names `owner`, a completed seven-day
+`period_start`/`period_end`, `generated_at`, explicit `journeys` references,
+optional `finance: {manifest, report}`, and retained `gaps`. References contain
+`path` and `sha256` under the explicit private evidence root. Finance must cover
+the window. A larger retained financial scope stays labeled as such; its margin
+does not become a weekly contribution. Finance retains its independently
+declared account scope; matching dates do not attribute its margin to consented
+journeys or their cohorts. Missing finances and unknown costs
+remain unknown. CLI manifest, report, and review inputs must be private regular
+files. Outputs are exclusive mode-0600 files outside the pipeline store and
+credential paths.
+
+Each task event names a REV-03 manifest, its recomputed report, exact task, and
+`openagents.sales.task-account-attribution.v1` record. The latter pins
+`account` (or explicit `null`), `offer_version`, `cohort`, `manifest_digest`,
+`task`, and the exact accepted `customer_decision` reference. Unknown account
+attribution cannot become an accepted buyer stage. Purchase events name the
+financial offer/entry and stable service-sale, settlement, or commercial source
+identity. The reader joins the rechecked REV-25 `entry_outcomes` and current
+canonical service export. Rebuild an older v1 financial report to include these
+additive findings before its weekly join. Failed/unknown/refunded sources, free trials,
+agreements, and unused funding never become settled purchases. A repeat requires
+another settled source and a distinct independently accepted task for the same
+account, lane, evidence classification, offer version, and cohort. Renaming a
+comparison/task or copying its accepted artifact, trace, and customer decision
+does not produce a repeat. Retention counts prior buyers who return with such a
+distinct accepted purchase during the window.
+
+The private report retains stage counts, conversion numerators/denominators,
+owner-recorded source-to-acceptance and acceptance-to-purchase time, repeat and
+retention counts, failure owners/dated actions, gaps, and checked economics.
+Self-serve and assisted histories and `fixture`/`owner_records` sources stay
+separate. Install/provider observations and manually agreed pilot decisions
+stay observations. `commercial_activation_attested` is always `false`:
+replay establishes the recorded source relationship, not remote attestation or
+genuine customer/payment truth.
+
+For a count-only artifact, run `openagents sales review` with the same root,
+credential, input, and evidence flags, plus `--report FILE --review FILE
+--output FILE`. Its `openagents.gym.sales-weekly-review.v1` record contains
+`owner`, the exact `report_digest`, `approved: true`, `reviewed_at`, and an
+owner-chosen `release_at` later than both the review and window end. The release
+delay must have elapsed; separate aggregation consent and original retention
+must still be current. The CLI replays the current report and rechecks canonical
+custody under the Store lock. Withdrawal, deletion, changed failure ownership,
+or a recorded service refund refuses stale evidence. Public counts omit account,
+lead, offer/cohort names, messages, source references, individual dates, timing,
+and live amounts. The command publishes nothing. Qualify genuine source truth,
+customer rights, external-copy retention, and disclosure under O1/O8 before
+using it in an operating claim.

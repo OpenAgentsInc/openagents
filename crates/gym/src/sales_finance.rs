@@ -2,6 +2,7 @@
 //! This projection transfers no money and never turns activity into revenue.
 
 use crate::sales_evidence::{self, Reference};
+use receipts::sales_funnel::{FinancialIdentity, TaskIdentity};
 use serde::{Deserialize, Serialize};
 use std::collections::{BTreeMap, BTreeSet};
 use std::fs;
@@ -301,6 +302,31 @@ pub struct Report {
     pub cohorts: Vec<OperatingView>,
     pub source_digests: BTreeMap<String, String>,
     pub commissions: String,
+    /// Recomputed source findings for consented operating projections. A
+    /// recorded observation or a gross collection alone is not activation.
+    #[serde(default)]
+    pub entry_outcomes: Vec<EntryOutcome>,
+}
+#[derive(Clone, Copy, Debug, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub enum PurchaseStatus {
+    Settled,
+    Unknown,
+    Refunded,
+    FailedDelivery,
+    Funding,
+}
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct EntryOutcome {
+    pub offer: String,
+    pub entry: String,
+    pub account: String,
+    pub offer_version: String,
+    pub cohort: String,
+    pub at: u64,
+    pub source: FinancialIdentity,
+    pub status: PurchaseStatus,
+    pub accepted_task: Option<TaskIdentity>,
 }
 #[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -489,6 +515,7 @@ pub fn rebuild(root: &Path, bytes: &[u8]) -> Result<Report, String> {
     let mut tasks = BTreeSet::new();
     let mut bill_sources = BTreeSet::new();
     let mut views = Vec::new();
+    let mut entry_outcomes = Vec::new();
     let mut offer_ids = BTreeSet::new();
     for offer in &manifest.offers {
         for value in [&offer.id, &offer.version, &offer.account, &offer.cohort] {
@@ -527,6 +554,9 @@ pub fn rebuild(root: &Path, bytes: &[u8]) -> Result<Report, String> {
             reader.read(&entry.delivery_evidence)?;
             let mut r = Revenue::default();
             let mut service = None;
+            let source_identity;
+            let mut source_unresolved = false;
+            let mut accepted_task = None;
             let kind;
             match &entry.source {
                 Source::Settlement {
@@ -535,6 +565,7 @@ pub fn rebuild(root: &Path, bytes: &[u8]) -> Result<Report, String> {
                     attribution,
                 } => {
                     text(key)?;
+                    source_identity = FinancialIdentity::Settlement { key: key.clone() };
                     // Payment hashes and debit IDs identify the financial event;
                     // a newer snapshot must not turn it into another collection.
                     if !sources.insert(format!("ledger-settlement:{key}")) {
@@ -633,6 +664,9 @@ pub fn rebuild(root: &Path, bytes: &[u8]) -> Result<Report, String> {
                 Source::Commercial { receipt } => {
                     let record: CommercialReceipt = serde_json::from_slice(&reader.read(receipt)?)
                         .map_err(|_| "malformed commercial receipt")?;
+                    source_identity = FinancialIdentity::Commercial {
+                        receipt: record.id.clone(),
+                    };
                     if record.kind == CollectionKind::Service {
                         return Err(
                             "service earnings require the authoritative REV-18 private export"
@@ -712,6 +746,9 @@ pub fn rebuild(root: &Path, bytes: &[u8]) -> Result<Report, String> {
                             .map_err(|_| "malformed private service export")?;
                     record.validate()?;
                     let sale = &record.sale;
+                    source_identity = FinancialIdentity::ServiceSale {
+                        sale: sale.admission.id.clone(),
+                    };
                     let facts = receipts::service_sale::verify_sources(
                         &sale.admission,
                         &sale.pipeline_lead,
@@ -801,6 +838,7 @@ pub fn rebuild(root: &Path, bytes: &[u8]) -> Result<Report, String> {
                     r.refunds = convert(summary.refunded_minor)?;
                     r.refund_reversals = convert(summary.refund_reversals_minor)?;
                     if summary.unresolved {
+                        source_unresolved = true;
                         add(&mut unresolved_payments, 1)?;
                     }
                     if let Some(f) = &sale.effective_fulfillment()? {
@@ -926,6 +964,22 @@ pub fn rebuild(root: &Path, bytes: &[u8]) -> Result<Report, String> {
                     return Err("task costs cannot be counted twice".into());
                 }
                 accepted = task.candidate.iter().any(|a| a.acceptance.is_some());
+                if let Some(candidate) = task.candidate.iter().find(|a| a.acceptance.is_some()) {
+                    accepted_task = Some(TaskIdentity {
+                        manifest_digest: study.manifest_digest.clone(),
+                        task: task.id.clone(),
+                        task_digest: task.task_digest.clone(),
+                        candidate_digest: candidate.artifact.sha256.clone(),
+                        trace_digest: candidate.trace.sha256.clone(),
+                        customer_acceptance_digest: candidate
+                            .acceptance
+                            .as_ref()
+                            .unwrap()
+                            .customer_decision
+                            .sha256
+                            .clone(),
+                    });
+                }
                 failed = task.candidate.iter().any(|a| {
                     a.checks
                         .values()
@@ -1097,6 +1151,32 @@ pub fn rebuild(root: &Path, bytes: &[u8]) -> Result<Report, String> {
                 add(&mut incident_count, 1)?;
                 add(&mut incident_ms, incident.elapsed_ms)?;
             }
+            let status = if kind != CollectionKind::Service {
+                PurchaseStatus::Funding
+            } else if entry.delivery == Delivery::Failed {
+                PurchaseStatus::FailedDelivery
+            } else if r.refunds > r.refund_reversals || r.losses > 0 {
+                PurchaseStatus::Refunded
+            } else if source_unresolved
+                || entry.delivery != Delivery::Accepted
+                || !accepted
+                || (r.collected == 0 && r.purchased_balance_consumed == 0)
+            {
+                PurchaseStatus::Unknown
+            } else {
+                PurchaseStatus::Settled
+            };
+            entry_outcomes.push(EntryOutcome {
+                offer: offer.id.clone(),
+                entry: entry.id.clone(),
+                account: offer.account.clone(),
+                offer_version: offer.version.clone(),
+                cohort: offer.cohort.clone(),
+                at: entry.at,
+                source: source_identity,
+                status,
+                accepted_task,
+            });
             let total = revenue.entry(entry.terms.unit.clone()).or_default();
             merge_revenue(total, &r)?;
         }
@@ -1203,6 +1283,7 @@ pub fn rebuild(root: &Path, bytes: &[u8]) -> Result<Report, String> {
             .map(|(p, (h, _))| (p, h))
             .collect(),
         commissions: "unavailable".into(),
+        entry_outcomes,
     })
 }
 
@@ -1387,4 +1468,4 @@ pub fn command(args: &[String]) -> Result<(), String> {
 
 #[cfg(test)]
 #[path = "sales_finance_tests.rs"]
-mod tests;
+pub(crate) mod tests;

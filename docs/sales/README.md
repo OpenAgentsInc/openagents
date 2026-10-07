@@ -697,6 +697,38 @@ product balance, subscription, entitlement, quota, or plugin accrual. Real
 payment truth, customer rights, and external evidence retention remain O1 work
 in `NEEDS_OWNER.md`.
 
+## Consented weekly review
+
+REV-26 records explicit journeys in the same private pipeline. The owner uses
+`record_funnel_journey`, `record_funnel_event`, and `record_conversion_failure`
+through `apply --evidence-root DIR`, with the current lead revision. Enrollment
+requires separate telemetry consent, an offer version, cohort, lane, and explicit
+`fixture` or `owner_records` classification. The original account, recipients,
+and retention remain pinned. `revoke_funnel_consent` removes the journey;
+contact deletion, permission withdrawal, and original retention also remove it.
+Bounded history reserves retry-safe withdrawal and contact cleanup capacity.
+Private copies in the separate evidence directory still need owner cleanup.
+
+Use `show --lead LEAD --journey JOURNEY` or `export --lead LEAD --journey JOURNEY
+--output FILE` to read authorized history. Self-serve acquisition, install,
+provider, accepted-task, and purchase events remain separate from assisted
+pilot/customer decisions. Install and provider observations prove no commercial
+activation. Purchase observations become qualified counts only when the reader
+replays independently accepted task evidence, exact account attribution, and
+the matching settled financial source. Current canonical service custody must
+agree; a recorded refund cannot keep an old paid count. Retries and copied task
+sources cannot become repeat use. Unknown attribution, payment, failed work,
+refunds, and declined pilots retain a responsible human and dated next action.
+
+`openagents sales weekly` rebuilds a private seven-day review through the current
+owner credential. `openagents sales review` rechecks the sources and current
+custody before writing separately consented, owner-reviewed, delayed counts.
+The [weekly evidence guide](evidence.md#consented-weekly-operating-review)
+defines its manifest and review records. It publishes nothing and grants no
+outreach, tracking, handoff, task execution, or payment authority. Real buyer,
+payment, provider, and publication qualification remains O1/O8 work in
+`NEEDS_OWNER.md`.
+
 ## Measures
 
 - Weekly active developers, and how many of them pay for anything.

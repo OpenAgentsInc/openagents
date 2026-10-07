@@ -317,8 +317,8 @@ impl Store {
         {
             return Err("intake is unavailable for this request".into());
         }
-        if self.state.receipts.len() >= MAX_RECEIPTS - MAX_LEADS
-            || self.state.audit.len() >= MAX_RECEIPTS - MAX_LEADS
+        if self.state.receipts.len() >= self.ordinary_history_limit(0)
+            || self.state.audit.len() >= self.ordinary_history_limit(0)
             || self.state.intake_submissions.len() >= MAX_RECEIPTS - MAX_LEADS
         {
             return Err("intake history bound reached".into());
@@ -383,6 +383,7 @@ impl Store {
                     proposed_handoff: None,
                     service_sales: BTreeMap::new(),
                     partner_assignments: BTreeMap::new(),
+                    funnel_journeys: BTreeMap::new(),
                     intake: Some(Provenance {
                         policy: policy.id.clone(),
                         offer: policy.offer,

@@ -21,6 +21,7 @@ const MAX_STATE: usize = 8 * 1024 * 1024;
 const MAX_COMMAND: usize = 32 * 1024;
 const MAX_LEADS: usize = 512;
 const MAX_RECEIPTS: usize = 4096;
+const FUNNEL_CLEANUP_BYTES: usize = 2048;
 const MAX_PRINCIPALS: usize = 32;
 const RETENTION_MAX: u64 = 366 * 24 * 60 * 60;
 type Result<T> = std::result::Result<T, String>;
@@ -146,6 +147,8 @@ pub struct Lead {
     pub service_sales: BTreeMap<String, receipts::service_sale::Sale>,
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
     pub partner_assignments: BTreeMap<String, partners::Assignment>,
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub funnel_journeys: BTreeMap<String, receipts::sales_funnel::Journey>,
 }
 #[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -200,8 +203,25 @@ pub enum Operation {
         assignment: String,
         action: partners::Action,
     },
+    RecordFunnelJourney {
+        admission: receipts::sales_funnel::Admission,
+    },
+    RecordFunnelEvent {
+        journey: String,
+        event: receipts::sales_funnel::EventInput,
+    },
+    RecordConversionFailure {
+        journey: String,
+        failure: receipts::sales_funnel::FailureInput,
+    },
+    RevokeFunnelConsent {
+        journey: String,
+        reference: String,
+    },
 }
 
+#[path = "sales/funnel.rs"]
+pub mod funnel;
 #[path = "sales/service.rs"]
 pub mod service;
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
@@ -471,6 +491,15 @@ impl Store {
                     return Err("Private partner assignment ownership disagrees.".into());
                 }
             }
+            if lead.funnel_journeys.len() > funnel::MAX_JOURNEYS {
+                return Err("private funnel journey count exceeds bound".into());
+            }
+            for (id, journey) in &lead.funnel_journeys {
+                journey.validate()?;
+                if id != &journey.admission.id || journey.pipeline_lead != lead.id {
+                    return Err("private funnel journey ownership disagrees".into());
+                }
+            }
             if lead.service_sales.len() > service::MAX_SALES {
                 return Err("private service sale count exceeds bound".into());
             }
@@ -508,7 +537,8 @@ impl Store {
         super::verify_same_file(&self.dir.join("sales.lock"), &self.lock)
             .map_err(|e| e.to_string())?;
         let bytes = serde_json::to_vec_pretty(&next).map_err(|e| e.to_string())?;
-        if bytes.len() > MAX_STATE {
+        let reserved = Self::funnel_count(&next).saturating_mul(FUNNEL_CLEANUP_BYTES);
+        if bytes.len() > MAX_STATE.saturating_sub(reserved) {
             return Err("sales state exceeds bound".into());
         }
         if let Err(e) = super::replace_file(&self.dir, "state.json", &bytes) {
@@ -517,6 +547,17 @@ impl Store {
         }
         self.state = next;
         Ok(())
+    }
+    fn funnel_count(state: &State) -> usize {
+        state
+            .leads
+            .values()
+            .map(|lead| lead.funnel_journeys.len())
+            .sum()
+    }
+    fn ordinary_history_limit(&self, additional_journeys: usize) -> usize {
+        (MAX_RECEIPTS - MAX_LEADS)
+            .saturating_sub(Self::funnel_count(&self.state).saturating_add(additional_journeys))
     }
     fn suppression(state: &State, address: &str) -> Result<String> {
         Ok(digest(
@@ -590,6 +631,10 @@ impl Store {
                 lead.updated_at = now;
                 changed = true;
             }
+            let before = lead.funnel_journeys.len();
+            lead.funnel_journeys
+                .retain(|_, journey| journey.retain_until > now);
+            changed |= before != lead.funnel_journeys.len();
             let before = lead.service_sales.len();
             lead.service_sales.retain(|_, sale| sale.retain_until > now);
             changed |= before != lead.service_sales.len();
@@ -860,6 +905,9 @@ impl Store {
     }
     fn visible_lead(&self, access: &Access, lead: &Lead) -> Lead {
         let mut visible = lead.clone();
+        visible.funnel_journeys.retain(|_, journey| {
+            (self.clock)() < journey.retain_until && journey.recipient(access.principal())
+        });
         visible.service_sales.retain(|_, sale| {
             (self.clock)() < sale.retain_until
                 && sale
@@ -928,23 +976,27 @@ impl Store {
             }
             return Err("sales command idempotency conflict".into());
         }
-        // Reserve one cleanup receipt for every possible live lead. Once the
-        // ordinary history fills, no operation can add records or consume this
-        // reserve except a deletion/suppression that removes a live record.
+        // Reserve contact cleanup plus one retry-safe withdrawal per current
+        // journey. Enrollment and intake cannot consume those privacy slots.
         let cleanup = matches!(
             c.operation,
             Operation::Delete { .. } | Operation::Suppress { .. }
         );
         let history_limit = if cleanup {
             MAX_RECEIPTS
+        } else if matches!(c.operation, Operation::RevokeFunnelConsent { .. }) {
+            MAX_RECEIPTS - self.state.leads.len()
         } else {
-            MAX_RECEIPTS - MAX_LEADS
+            self.ordinary_history_limit(usize::from(matches!(
+                c.operation,
+                Operation::RecordFunnelJourney { .. }
+            )))
         };
         if self.state.receipts.len() >= history_limit || self.state.audit.len() >= history_limit {
             return Err(if cleanup {
                 "sales cleanup history bound reached"
             } else {
-                "sales ordinary history bound reached; deletion and suppression remain available"
+                "sales ordinary history bound reached; privacy cleanup remains available"
             }
             .into());
         }
@@ -1002,6 +1054,7 @@ impl Store {
                     intake: None,
                     service_sales: BTreeMap::new(),
                     partner_assignments: BTreeMap::new(),
+                    funnel_journeys: BTreeMap::new(),
                 },
             );
         } else {
@@ -1080,6 +1133,9 @@ impl Store {
                     }
                     let lead = next.leads.get_mut(&lead_id).unwrap();
                     lead.details = details.clone();
+                    if details.permission.state == PermissionState::Revoked {
+                        lead.funnel_journeys.clear();
+                    }
                     lead.proposed_handoff = None;
                     outcome = "updated";
                     reference = "conditional update".into();
@@ -1122,6 +1178,91 @@ impl Store {
                     } else {
                         "suppressed"
                     };
+                    reference = r.clone();
+                }
+                Operation::RecordFunnelJourney { admission } => {
+                    self.admin(access)?;
+                    self.readable(access, found)?;
+                    let journey = self.admit_funnel(
+                        access,
+                        found,
+                        admission,
+                        &input_digest,
+                        evidence_root,
+                        now,
+                    )?;
+                    next.leads
+                        .get_mut(&lead_id)
+                        .unwrap()
+                        .funnel_journeys
+                        .insert(admission.id.clone(), journey);
+                    outcome = "funnel_journey_recorded";
+                    reference = admission.consent.evidence.sha256.clone();
+                }
+                Operation::RecordFunnelEvent { journey, event } => {
+                    self.admin(access)?;
+                    self.readable(access, found)?;
+                    let recorded = self.record_funnel_event(
+                        access,
+                        found,
+                        journey,
+                        event,
+                        &input_digest,
+                        evidence_root,
+                        now,
+                    )?;
+                    next.leads
+                        .get_mut(&lead_id)
+                        .unwrap()
+                        .funnel_journeys
+                        .get_mut(journey)
+                        .unwrap()
+                        .events
+                        .push(recorded);
+                    outcome = "funnel_event_recorded";
+                    reference = event.id.clone();
+                }
+                Operation::RecordConversionFailure { journey, failure } => {
+                    self.admin(access)?;
+                    self.readable(access, found)?;
+                    let recorded = self.record_conversion_failure(
+                        access,
+                        found,
+                        journey,
+                        failure,
+                        &input_digest,
+                        evidence_root,
+                        now,
+                    )?;
+                    next.leads
+                        .get_mut(&lead_id)
+                        .unwrap()
+                        .funnel_journeys
+                        .get_mut(journey)
+                        .unwrap()
+                        .failures
+                        .push(recorded);
+                    outcome = "conversion_failure_recorded";
+                    reference = failure.evidence.sha256.clone();
+                }
+                Operation::RevokeFunnelConsent {
+                    journey,
+                    reference: r,
+                } => {
+                    self.admin(access)?;
+                    self.readable(access, found)?;
+                    text(r, 256)?;
+                    if next
+                        .leads
+                        .get_mut(&lead_id)
+                        .unwrap()
+                        .funnel_journeys
+                        .remove(journey)
+                        .is_none()
+                    {
+                        return Err("funnel journey is unavailable".into());
+                    }
+                    outcome = "funnel_consent_revoked";
                     reference = r.clone();
                 }
                 Operation::RecordServiceSale { admission } => {
@@ -1303,6 +1444,12 @@ impl Store {
 
 #[cfg(test)]
 mod tests {
+    mod funnel_tests {
+        include!(concat!(
+            env!("CARGO_MANIFEST_DIR"),
+            "/src/task/sales/funnel_tests.rs"
+        ));
+    }
     mod service_fixture {
         include!(concat!(
             env!("CARGO_MANIFEST_DIR"),

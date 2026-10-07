@@ -253,6 +253,23 @@ synthetic fixtures establish no owner approval, customer agreement, payment,
 or product availability. O6 still governs real outreach. Founder CLI use needs
 no host deployment; Paul/outbox integration remains separate REV-55/REV-62 work.
 
+## Consented activation and weekly review O1/O8 (REV-26, #10833)
+
+Before enrolling real journeys, obtain separate tracking consent and optional
+delayed count aggregation permission, agree to data recipients/retention, and
+privately qualify immutable account/offer/cohort attribution. Record genuine
+install/provider observations, independent task/customer acceptance, and current
+settled/refunded payment evidence; fixtures and owner declarations establish no
+commercial activation. Accept responsibility and a dated next action for failed
+conversions. Qualify the selected paid product lane separately from manual
+service evidence. Review actual bills, unknown costs, coverage gaps, and the
+chosen seven-day scope before any contribution claim. Use an exact private
+report review and explicit release date for count exports; qualify disclosure
+rights before publication. Keep real names, messages, amounts, and deal dates
+private. Agree to cleanup of separate evidence/export copies after consent
+withdrawal or retention expiry; deleting the pipeline record removes no external
+copy. These operations contact no customer and transfer no money.
+
 ## Pilot evidence O1/O8 (REV-03, #10810)
 
 Before using [pilot comparison evidence](docs/sales/evidence.md) in a sales

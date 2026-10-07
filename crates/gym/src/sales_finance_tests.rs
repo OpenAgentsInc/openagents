@@ -47,7 +47,7 @@ fn freeze(root: &Path, m: &mut Manifest) {
         },
     );
 }
-fn fixture(rail: Rail) -> (TempDir, Manifest) {
+pub(crate) fn fixture(rail: Rail) -> (TempDir, Manifest) {
     let (dir, mut study) = evidence::tests::fixture();
     let root = dir.path();
     fs::set_permissions(root, fs::Permissions::from_mode(0o700)).unwrap();
@@ -219,7 +219,7 @@ fn fixture(rail: Rail) -> (TempDir, Manifest) {
 fn build(dir: &TempDir, m: &Manifest) -> Report {
     rebuild(dir.path(), &serde_json::to_vec(m).unwrap()).unwrap()
 }
-fn service_fixture() -> (TempDir, Manifest, receipts::service_sale::Export) {
+pub(crate) fn service_fixture() -> (TempDir, Manifest, receipts::service_sale::Export) {
     use receipts::service_sale::{self as service, Disposition, Verification};
     let (dir, mut m) = fixture(Rail::Lightning);
     let root = dir.path();

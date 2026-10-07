@@ -6036,7 +6036,7 @@
               "show"
             ],
             "usage": [
-              "show --lead LEAD [--sale SALE | --assignment ID | --proposal FILE]"
+              "show --lead LEAD [--sale SALE | --assignment ID | --journey JOURNEY | --proposal FILE]"
             ],
             "forms": [
               {
@@ -6067,6 +6067,13 @@
                   },
                   {
                     "kind": "option",
+                    "name": "journey",
+                    "value": "JOURNEY",
+                    "open": true,
+                    "optional": true
+                  },
+                  {
+                    "kind": "option",
                     "name": "proposal",
                     "value": "FILE",
                     "open": true,
@@ -6088,7 +6095,7 @@
               "export"
             ],
             "usage": [
-              "export --lead LEAD --output FILE [--sale SALE | --assignment ID]"
+              "export --lead LEAD --output FILE [--sale SALE | --assignment ID | --journey JOURNEY]"
             ],
             "forms": [
               {
@@ -6120,6 +6127,13 @@
                     "kind": "option",
                     "name": "assignment",
                     "value": "ID",
+                    "open": true,
+                    "optional": true
+                  },
+                  {
+                    "kind": "option",
+                    "name": "journey",
+                    "value": "JOURNEY",
                     "open": true,
                     "optional": true
                   }
@@ -6489,6 +6503,104 @@
               }
             }
           ]
+        },
+        {
+          "name": "weekly",
+          "leaf": {
+            "path": [
+              "sales",
+              "weekly"
+            ],
+            "usage": [
+              "weekly --input MANIFEST --evidence-root DIR --output FILE"
+            ],
+            "forms": [
+              {
+                "tokens": [
+                  {
+                    "kind": "literal",
+                    "word": "weekly"
+                  },
+                  {
+                    "kind": "option",
+                    "name": "input",
+                    "value": "MANIFEST",
+                    "open": true
+                  },
+                  {
+                    "kind": "option",
+                    "name": "evidence-root",
+                    "value": "DIR",
+                    "open": true
+                  },
+                  {
+                    "kind": "option",
+                    "name": "output",
+                    "value": "FILE",
+                    "open": true
+                  }
+                ]
+              }
+            ],
+            "summary": "Recheck consented journeys and economics into a private weekly report.",
+            "effect": "local_write",
+            "runs_on": "connected_computer"
+          }
+        },
+        {
+          "name": "review",
+          "leaf": {
+            "path": [
+              "sales",
+              "review"
+            ],
+            "usage": [
+              "review --input MANIFEST --evidence-root DIR --report FILE --review FILE --output FILE"
+            ],
+            "forms": [
+              {
+                "tokens": [
+                  {
+                    "kind": "literal",
+                    "word": "review"
+                  },
+                  {
+                    "kind": "option",
+                    "name": "input",
+                    "value": "MANIFEST",
+                    "open": true
+                  },
+                  {
+                    "kind": "option",
+                    "name": "evidence-root",
+                    "value": "DIR",
+                    "open": true
+                  },
+                  {
+                    "kind": "option",
+                    "name": "report",
+                    "value": "FILE",
+                    "open": true
+                  },
+                  {
+                    "kind": "option",
+                    "name": "review",
+                    "value": "FILE",
+                    "open": true
+                  },
+                  {
+                    "kind": "option",
+                    "name": "output",
+                    "value": "FILE",
+                    "open": true
+                  }
+                ]
+              }
+            ],
+            "summary": "Write owner-reviewed delayed counts; this publishes nothing.",
+            "effect": "local_write",
+            "runs_on": "connected_computer"
+          }
         }
       ],
       "options": [
@@ -6593,6 +6705,14 @@
         },
         {
           "kind": "option",
+          "name": "journey",
+          "value": "JOURNEY",
+          "open": true,
+          "optional": true,
+          "repeated": true
+        },
+        {
+          "kind": "option",
           "name": "proposal",
           "value": "FILE",
           "open": true,
@@ -6627,6 +6747,22 @@
           "kind": "option",
           "name": "draft",
           "value": "ID",
+          "open": true,
+          "optional": true,
+          "repeated": true
+        },
+        {
+          "kind": "option",
+          "name": "report",
+          "value": "FILE",
+          "open": true,
+          "optional": true,
+          "repeated": true
+        },
+        {
+          "kind": "option",
+          "name": "review",
+          "value": "FILE",
           "open": true,
           "optional": true,
           "repeated": true

@@ -19,10 +19,10 @@ pub const USAGE: &str = "usage: openagents sales COMMAND --root DIR [--credentia
         Apply a bounded versioned JSON command; FILE=- reads stdin.
   list [--after LEAD] [--limit N]
         List only records this credential can read, at most 100.
-  show --lead LEAD [--sale SALE | --assignment ID | --proposal FILE]
+  show --lead LEAD [--sale SALE | --assignment ID | --journey JOURNEY | --proposal FILE]
         Read one authorized private lead/account record.
         --proposal computes the owner's exact proposal digest before approval.
-  export --lead LEAD --output FILE [--sale SALE | --assignment ID]
+  export --lead LEAD --output FILE [--sale SALE | --assignment ID | --journey JOURNEY]
         Create a private exclusive JSON export; no shared/public export.
   audit [--after N] [--limit N]
         Read the owner's bounded digest-only audit references.
@@ -42,6 +42,10 @@ pub const USAGE: &str = "usage: openagents sales COMMAND --root DIR [--credentia
         Withdraw a source or claim revision with a retained reason reference.
   claims history [--after N] [--limit N]
         Read the owner's bounded claim decision history.
+  weekly --input MANIFEST --evidence-root DIR --output FILE
+        Recheck consented journeys and economics into a private weekly report.
+  review --input MANIFEST --evidence-root DIR --report FILE --review FILE --output FILE
+        Write owner-reviewed delayed counts; this publishes nothing.
 
 All commands require an explicit private host root. Except init, read the
 current human's credential from FILE; do not put its secret on the command
@@ -51,6 +55,8 @@ outbound, provider, execution, or customer-data disclosure authority.
 Only the owner can record_service_sale, reconcile_service_payment, or
 reconcile_service_fulfillment through apply with --evidence-root DIR.
 Use --sale with show/export for the original authorized service scope.
+Use --journey for separately consented original funnel scope. Owner-only
+weekly/review operations recheck current custody and source evidence.
 These records send no invoice or payment and create no product credit.
 Only the owner can propose_partner with an exact owner approval and
 --evidence-root. advance_partner uses the named recipient's credential for
@@ -75,10 +81,18 @@ pub(crate) const EFFECTS: &[Declared] = &[
     Declared::computer("claims validate", Effect::LocalWrite),
     Declared::computer("claims withdraw", Effect::Grants),
     Declared::computer("claims history", Effect::ReadOnly),
+    Declared::computer("weekly", Effect::LocalWrite),
+    Declared::computer("review", Effect::LocalWrite),
 ];
 pub fn run(output: &Output, words: &[String]) -> u8 {
     if words.first().is_some_and(|w| w == "claims") {
         return claims::run(output, &words[1..]);
+    }
+    if words
+        .first()
+        .is_some_and(|w| matches!(w.as_str(), "weekly" | "review"))
+    {
+        return crate::sales_weekly::run(output, words);
     }
     if words
         .first()
@@ -132,8 +146,17 @@ fn parse(words: &[String]) -> Result<Args, String> {
             "sale",
             "assignment",
             "proposal",
+            "journey",
         ],
-        "export" => &["root", "credential", "lead", "output", "sale", "assignment"],
+        "export" => &[
+            "root",
+            "credential",
+            "lead",
+            "output",
+            "sale",
+            "assignment",
+            "journey",
+        ],
         "suppressed" => &["root", "credential", "contact"],
         _ => return Err(USAGE.into()),
     };
@@ -144,7 +167,7 @@ fn parse(words: &[String]) -> Result<Args, String> {
     {
         return Err("unknown sales option".into());
     }
-    if ["sale", "assignment", "proposal"]
+    if ["sale", "assignment", "proposal", "journey"]
         .iter()
         .filter(|name| args.option(name).is_some())
         .count()
@@ -172,6 +195,9 @@ fn parse(words: &[String]) -> Result<Args, String> {
     }
     if command == "issue" && !matches!(args.option("role"), Some("writer" | "reader")) {
         return Err("role must be writer or reader".into());
+    }
+    if args.option("sale").is_some() && args.option("journey").is_some() {
+        return Err("choose one private sale or journey scope".into());
     }
     Ok(args)
 }
@@ -251,6 +277,8 @@ fn execute_args(args: &Args) -> Result<Value, String> {
             Ok(store.partner_digest(&access, required(&args, "lead")?, &proposal)?)
         } else if let Some(sale) = args.option("sale") {
             serde_json::to_value(store.service_show(&access, required(&args, "lead")?, sale)?)
+        } else if let Some(journey) = args.option("journey") {
+            serde_json::to_value(store.funnel_show(&access, required(&args, "lead")?, journey)?)
         } else {
             serde_json::to_value(store.show(&access, required(&args, "lead")?)?)
         }
@@ -261,6 +289,8 @@ fn execute_args(args: &Args) -> Result<Value, String> {
                 store.partner_export(&access, required(&args, "lead")?, assignment, path)?
             } else if let Some(sale) = args.option("sale") {
                 store.service_export(&access, required(&args, "lead")?, sale, path)?
+            } else if let Some(journey) = args.option("journey") {
+                store.funnel_export(&access, required(&args, "lead")?, journey, path)?
             } else {
                 store.export(&access, required(&args, "lead")?, path)?
             };

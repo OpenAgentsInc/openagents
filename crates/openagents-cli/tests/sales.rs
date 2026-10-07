@@ -190,4 +190,31 @@ fn private_pipeline_restart_handoff_authorization_replay_and_suppression() {
     assert!(!original.to_string().contains(&token));
     let invalid = f.run("owner-token", &["list", "--limit", "101"]);
     assert_eq!(invalid.status.code(), Some(64));
+    let state_path = f.dir.path().join("host/sales/state.json");
+    let before = fs::read(&state_path).unwrap();
+    for command in ["show", "export"] {
+        for other in ["--sale", "--assignment"] {
+            let denied = f.run(
+                "owner-token",
+                &[
+                    command,
+                    "--lead",
+                    lead,
+                    "--journey",
+                    "private-journey",
+                    other,
+                    "private-record",
+                ],
+            );
+            assert_eq!(denied.status.code(), Some(64));
+            let output = format!(
+                "{}{}",
+                String::from_utf8_lossy(&denied.stdout),
+                String::from_utf8_lossy(&denied.stderr)
+            );
+            assert!(output.contains("Select one sales record scope."));
+            assert!(!output.contains("private-journey"));
+            assert_eq!(fs::read(&state_path).unwrap(), before);
+        }
+    }
 }

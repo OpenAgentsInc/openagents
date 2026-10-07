@@ -33,6 +33,7 @@ pub mod export;
 pub mod feedback;
 pub mod join;
 pub mod replay;
+pub mod sales_funnel;
 pub mod service_sale;
 pub mod validate;
 

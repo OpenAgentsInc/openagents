@@ -86,6 +86,13 @@ prospect and starts no agent. `sales claims source`, `review`, `read`, `draft`,
 Draft reads recheck current source, price, playbook, and comparative evidence;
 proposed prices remain unavailable without separately recorded activation.
 
+The owner can enroll separately consented funnel journeys through `apply`, read
+their original scope with `show`/`export --journey JOURNEY`, and run `weekly` over
+explicit private exports, accepted task evidence, and checked finances. `review`
+rechecks current custody and writes owner-approved delayed counts with no
+publication. The [weekly evidence guide](../sales/evidence.md#consented-weekly-operating-review)
+defines the manifests, review, privacy boundaries, and qualification limits.
+
 ## Coder (`openagents coder`)
 
 `openagents coder` exposes the Coder terminal's chat runtime, plugin settings,
