@@ -70,6 +70,12 @@ impl Transport for Fake {
     fn start(&self, _: &Pool) -> coder_cloud::Result<Host> {
         panic!("Unexpected host creation")
     }
+    async fn prepare_runtime(&self, _: &Pool, _: &Host) -> coder_cloud::Result<()> {
+        self.calls
+            .borrow_mut()
+            .push(("runtime-preparation".into(), vec![]));
+        Ok(())
+    }
     async fn execute(
         &self,
         _: &Pool,
@@ -156,6 +162,18 @@ async fn shared_gce_job_retains_the_grant_streams_redacted_results_and_estimates
         !calls
             .iter()
             .any(|(script, _)| script.contains("fixture-secret"))
+    );
+    drop(calls);
+    r.turns.push(json!({"state":"completed"}));
+    b.prepare(&r).await.unwrap();
+    assert_eq!(
+        b.transport
+            .calls
+            .borrow()
+            .iter()
+            .filter(|(s, _)| s == "runtime-preparation")
+            .count(),
+        1
     );
 }
 #[tokio::test]

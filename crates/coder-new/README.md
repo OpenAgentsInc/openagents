@@ -284,6 +284,9 @@ inside the JSON are redacted from output and refused in changed-file artifacts.
 
 The same runtime can run in a granted Google Compute Engine pool:
 
+Pool updates publish versioned runtime bundles with their matching CLI. A job
+keeps its prepared executable for continuation while new jobs prepare `main`.
+
 ```sh
 openagents cloud up --hosts 1 --max-hosts 2
 openagents coder plugins enable gce-cloud

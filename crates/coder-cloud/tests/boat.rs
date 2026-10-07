@@ -161,6 +161,25 @@ fn headless_launch_runs_once_and_retains_ndjson_with_the_selected_model() {
         "{}",
         String::from_utf8_lossy(&prepared.stderr)
     );
+    let alternate = root.path().join("alternate");
+    std::fs::write(&alternate, "#!/bin/sh\nexit 9\n").unwrap();
+    std::fs::set_permissions(&alternate, std::fs::Permissions::from_mode(0o700)).unwrap();
+    let repeated = Command::new("sh")
+        .args([
+            "-c",
+            &coder_cloud::runtime::prepare_script(&record, dir.to_str().unwrap()),
+        ])
+        .env_clear()
+        .env("PATH", std::env::var_os("PATH").unwrap())
+        .env("HOME", root.path())
+        .env("OA_CODER_CLOUD_BINARY", &alternate)
+        .output()
+        .unwrap();
+    assert!(repeated.status.success());
+    assert_eq!(
+        std::fs::read_to_string(dir.join("binary")).unwrap(),
+        binary.to_string_lossy()
+    );
     let script = coder_cloud::runtime::launch_script(&record, dir.to_str().unwrap());
     assert!(call(&script).status.success());
     assert!(call(&script).status.success());

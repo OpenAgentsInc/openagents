@@ -159,12 +159,14 @@ if [ -n "${{OPENAI_API_KEY:-}}" ] && command -v codex >/dev/null 2>&1; then prin
         format!(
             r#"
 p="${{OA_CODER_CLOUD_BINARY:-}}"
+if [ -f "$d/binary" ]; then p=$(cat "$d/binary"); fi
 if [ -z "$p" ]; then
  for b in "$HOME/.oa-pool/bin/coder-cloud-runtime" "$HOME/.local/bin/coder-cloud-runtime" "$HOME/.openagents/bin/coder-cloud-runtime" "$HOME/.oa-pool/bin/openagents" "$HOME/.openagents/bin/openagents" "$HOME/.local/bin/openagents"; do [ ! -x "$b" ] || {{ p="$b"; break; }}; done
 fi
 if [ -z "$p" ]; then p=$(command -v coder-cloud-runtime || command -v openagents || true); fi
 if [ -z "$p" ]; then p=$(find "$HOME/.openagents/targets" -path '*/debug/openagents' -type f 2>/dev/null | head -n 1 || true); fi
 [ -n "$p" ] && [ -x "$p" ] || {{ echo 'The image lacks the headless Coder runtime.' >&2; exit 1; }}
+p=$(readlink -f "$p")
 "$p" coder --help | grep -q 'delegate AGENT' || {{ echo 'The image has an incompatible Coder runtime.' >&2; exit 1; }}
 printf '%s' "$p" > "$d/binary"
 "$p" --version > "$d/runtime-version"

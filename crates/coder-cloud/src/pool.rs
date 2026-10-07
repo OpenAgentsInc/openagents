@@ -468,12 +468,35 @@ echo "OA_POOL_AGENT_READY" >/dev/ttyS0
 /// build unifies features and misses the warm target; see the image
 /// runbook). Builds on one host take turns.
 pub const BUILD: &str = r#"export PATH="$HOME/.cargo/bin:$HOME/.grok/bin:$HOME/.local/bin:/usr/local/bin:$PATH" CARGO_INCREMENTAL=0
+oa_install() {
+  local warm=$1 rev=$2 installed="$HOME/.oa-pool/versions/$2" staged="$HOME/.oa-pool/versions/$2.writing"
+  if [ ! -d "$installed" ]; then
+    mkdir -p "$staged"
+    rm -f "$staged/openagents" "$staged/microcoder" "$staged/coder-cloud-runtime" "$staged/runtime.json" "$staged/rev"
+    for b in openagents microcoder coder-cloud-runtime; do
+      if ! command -v strip >/dev/null 2>&1 || ! strip --strip-all -o "$staged/$b" "$warm/debug/$b" 2>/dev/null; then
+        cp "$warm/debug/$b" "$staged/$b" || return 3
+      fi
+      chmod 555 "$staged/$b"
+      "$staged/$b" --version >/dev/null || return 3
+    done
+    "$staged/coder-cloud-runtime" --runtime-manifest > "$staged/runtime.json" || return 3
+    jq -e --arg rev "$rev" '.revision == $rev and .tree == "clean"' "$staged/runtime.json" >/dev/null || return 3
+    echo "$rev" > "$staged/rev"
+    chmod 444 "$staged/runtime.json" "$staged/rev"
+    mv "$staged" "$installed" || return 3
+  fi
+  mkdir -p "$HOME/.oa-pool/bin"
+  for b in openagents microcoder coder-cloud-runtime runtime.json rev; do
+    ln -sfn "$installed/$b" "$HOME/.oa-pool/bin/$b.next" && mv -Tf "$HOME/.oa-pool/bin/$b.next" "$HOME/.oa-pool/bin/$b" || return 3
+  done
+}
 oa_build() {
   exec 8>"$HOME/.oa-pool/build.lock"; flock 8
   cd "$HOME/openagents" || { echo "pool: no clone at ~/openagents" >&2; return 2; }
   git fetch -q origin main || { echo "pool: git fetch failed" >&2; return 2; }
   local rev; rev=$(git rev-parse origin/main)
-  if [ "$(cat "$HOME/.oa-pool/bin/rev" 2>/dev/null)" = "$rev" ] && [ -x "$HOME/.oa-pool/bin/microcoder" ] && [ -x "$HOME/.oa-pool/bin/coder-cloud-runtime" ]; then
+  if [ "$(cat "$HOME/.oa-pool/bin/rev" 2>/dev/null)" = "$rev" ] && [ -x "$HOME/.oa-pool/bin/microcoder" ] && [ -L "$HOME/.oa-pool/bin/coder-cloud-runtime" ]; then
     flock -u 8; exec 8>&-; return 0
   fi
   git checkout -q --detach "$rev" || return 2
@@ -489,8 +512,7 @@ oa_build() {
     CARGO_TARGET_DIR="$warm" "$lease" lease build --keep-target-dir -- cargo build --locked -q -p $p >/tmp/oa-pool-build.log 2>&1 \
       || { tail -n 40 /tmp/oa-pool-build.log >&2; flock -u 8; exec 8>&-; return 3; }
   done
-  cp "$warm/debug/openagents" "$warm/debug/microcoder" "$warm/debug/coder-cloud-runtime" "$HOME/.oa-pool/bin/" && echo "$rev" >"$HOME/.oa-pool/bin/rev"
-  "$HOME/.oa-pool/bin/coder-cloud-runtime" --runtime-manifest > "$HOME/.oa-pool/bin/runtime.json"
+  oa_install "$warm" "$rev" || return 3
   flock -u 8; exec 8>&-
 }
 "#;
@@ -1035,6 +1057,57 @@ mod tests {
         assert!(HOST_AGENT.contains("compute.googleapis.com"));
         assert!(HOST_AGENT.contains("/etc/openagents/pool-host"));
         assert!(prepare_script().contains("oa_build"));
+    }
+
+    #[test]
+    fn runtime_updates_keep_the_previous_bundle_and_its_cli_companion() {
+        use std::os::unix::fs::PermissionsExt;
+        let home = tempfile::tempdir().unwrap();
+        let warm = home.path().join("warm");
+        std::fs::create_dir_all(warm.join("debug")).unwrap();
+        let publisher = BUILD.split("oa_build()").next().unwrap();
+        let publish = |rev: &str| {
+            for bin in ["openagents", "microcoder", "coder-cloud-runtime"] {
+                let path = warm.join("debug").join(bin);
+                std::fs::write(&path, format!("#!/bin/sh\ncase \"$1\" in --runtime-manifest) echo '{{\"revision\":\"{rev}\",\"tree\":\"clean\"}}';; *) echo {rev};; esac\n")).unwrap();
+                std::fs::set_permissions(path, std::fs::Permissions::from_mode(0o755)).unwrap();
+            }
+            let output = std::process::Command::new("bash")
+                .args([
+                    "-c",
+                    &format!(
+                        "{publisher}\noa_install {} {rev}",
+                        boat::shell_quote(&warm.to_string_lossy())
+                    ),
+                ])
+                .env_clear()
+                .env("HOME", home.path())
+                .env("PATH", std::env::var_os("PATH").unwrap())
+                .output()
+                .unwrap();
+            assert!(
+                output.status.success(),
+                "{}",
+                String::from_utf8_lossy(&output.stderr)
+            );
+        };
+        let current = home.path().join(".oa-pool/bin/coder-cloud-runtime");
+        publish("v1");
+        let pinned = std::fs::canonicalize(&current).unwrap();
+        publish("v2");
+        let version = |p: &std::path::Path| {
+            std::process::Command::new(p)
+                .arg("--version")
+                .output()
+                .unwrap()
+                .stdout
+        };
+        assert_eq!(version(&current), b"v2\n");
+        assert_eq!(version(&pinned), b"v1\n");
+        assert_eq!(
+            version(&pinned.parent().unwrap().join("openagents")),
+            b"v1\n"
+        );
     }
 
     #[test]

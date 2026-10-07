@@ -182,7 +182,9 @@ impl<T: Transport> Backend for Gce<T> {
     }
     async fn prepare(&self, r: &Record) -> Result<()> {
         let (p, h) = self.admitted(r)?;
-        self.transport.prepare_runtime(&p, &h).await?;
+        if r.turns.is_empty() {
+            self.transport.prepare_runtime(&p, &h).await?;
+        }
         let dir = directory(r);
         self.command(r, &runtime::claim_script(r, &dir), None)
             .await?;
