@@ -104,3 +104,18 @@ SELECT s.settlement,s.party,s.role,s.amount_msat - CASE
     ELSE 0 END AS amount_msat FROM share s
 UNION ALL
 SELECT settlement,party,kind,amount_msat FROM bonus WHERE kind='first_paid_call';
+
+-- Stable identity of these native records, retained through backup and restore.
+CREATE TABLE IF NOT EXISTS ledger_origin (
+    singleton INTEGER PRIMARY KEY CHECK(singleton = 1),
+    id TEXT NOT NULL CHECK(length(id) = 64 AND id NOT GLOB '*[^0-9a-f]*')
+);
+INSERT INTO ledger_origin(singleton,id) SELECT 1,lower(hex(randomblob(32)))
+WHERE NOT EXISTS(SELECT 1 FROM ledger_origin WHERE singleton=1);
+CREATE TRIGGER IF NOT EXISTS ledger_origin_no_replace BEFORE INSERT ON ledger_origin
+WHEN EXISTS(SELECT 1 FROM ledger_origin WHERE singleton=NEW.singleton)
+BEGIN SELECT RAISE(ABORT, 'Native ledger origin already exists'); END;
+CREATE TRIGGER IF NOT EXISTS ledger_origin_no_update BEFORE UPDATE ON ledger_origin
+BEGIN SELECT RAISE(ABORT, 'Native ledger origin is immutable'); END;
+CREATE TRIGGER IF NOT EXISTS ledger_origin_no_delete BEFORE DELETE ON ledger_origin
+BEGIN SELECT RAISE(ABORT, 'Native ledger origin is retained'); END;

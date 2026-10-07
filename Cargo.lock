@@ -3399,6 +3399,19 @@ dependencies = [
 ]
 
 [[package]]
+name = "commercial-accounts"
+version = "0.1.0"
+dependencies = [
+ "libc",
+ "pay-ledger",
+ "serde",
+ "serde_json",
+ "sha2 0.10.9",
+ "tempfile",
+ "tenancy",
+]
+
+[[package]]
 name = "compact_str"
 version = "0.9.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"

@@ -31,6 +31,8 @@
 //! calls is specified in
 //! `docs/decision-models/service/workspace-membership.md`, not implemented here.
 
+pub mod commercial;
+
 use std::collections::BTreeMap;
 use std::io::{Read, Write};
 use std::os::unix::fs::OpenOptionsExt;
@@ -256,6 +258,9 @@ pub struct Store {
     /// Consented acquisition sources; empty books preserve earlier digests.
     #[serde(default, skip_serializing_if = "referrals::Book::is_empty")]
     pub referrals: referrals::Book,
+    /// Explicit commercial attribution; empty books preserve old digests.
+    #[serde(default, skip_serializing_if = "commercial::Book::is_empty")]
+    pub commercial: commercial::Book,
     /// The digest over every field above.
     pub digest: String,
 }
@@ -413,6 +418,7 @@ impl Store {
                 ));
             }
         }
+        self.commercial.validate(self)?;
         Ok(())
     }
 }
@@ -884,6 +890,7 @@ impl Accounts {
             workspaces: BTreeMap::new(),
             invitations: BTreeMap::new(),
             referrals: referrals::Book::default(),
+            commercial: commercial::Book::default(),
             digest: String::new(),
         };
         store.seal();
@@ -2398,6 +2405,7 @@ mod tests {
             workspaces: BTreeMap::new(),
             invitations: BTreeMap::new(),
             referrals: referrals::Book::default(),
+            commercial: commercial::Book::default(),
             digest: String::new(),
         };
         store.seal();

@@ -277,6 +277,24 @@ impl Ledger {
         connection.busy_timeout(std::time::Duration::from_secs(5))?;
         Ok(Self { connection })
     }
+    /// Stable identity of the native ledger records. It survives reopen and
+    /// backup; paths, configured issuer names, and payer labels do not define it.
+    /// A legacy read-only book must first receive the ordinary native migration.
+    pub fn origin(&self) -> Result<String> {
+        let id: String = self.connection.query_row(
+            "SELECT id FROM ledger_origin WHERE singleton=1",
+            [],
+            |row| row.get(0),
+        )?;
+        if id.len() != 64
+            || !id
+                .bytes()
+                .all(|b| b.is_ascii_digit() || (b'a'..=b'f').contains(&b))
+        {
+            return Err(Error::Invalid("native ledger origin"));
+        }
+        Ok(id)
+    }
     pub fn in_memory() -> Result<Self> {
         Self::initialize(Connection::open_in_memory()?)
     }
@@ -826,4 +844,45 @@ fn read_record(connection: &Connection, key: &str) -> Result<Option<Recorded>> {
         record.bonuses = connection.prepare("SELECT kind,party,requested_msat,amount_msat,outcome FROM bonus WHERE settlement=? ORDER BY kind,party")?.query_map([key], |r| Ok(Bonus { kind:r.get(0)?,party:r.get(1)?,requested_msat:r.get(2)?,amount_msat:r.get(3)?,outcome:r.get(4)? }))?.collect::<std::result::Result<_,_>>()?;
     }
     Ok(record)
+}
+
+#[cfg(test)]
+mod origin_tests {
+    use super::*;
+    #[test]
+    fn native_origin_survives_reopen_copy_and_read_only_without_relabeling() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("native.db");
+        let book = Ledger::open(&path).unwrap();
+        let origin = book.origin().unwrap();
+        assert!(
+            book.connection
+                .execute("UPDATE ledger_origin SET id=lower(hex(randomblob(32)))", [])
+                .is_err()
+        );
+        assert!(
+            book.connection
+                .execute("DELETE FROM ledger_origin", [])
+                .is_err()
+        );
+        assert!(book.connection.execute("INSERT OR REPLACE INTO ledger_origin(singleton,id) VALUES(1,lower(hex(randomblob(32))))", []).is_err());
+        drop(book);
+        assert_eq!(Ledger::open(&path).unwrap().origin().unwrap(), origin);
+        let before = std::fs::read(&path).unwrap();
+        assert_eq!(
+            Ledger::open_read_only(&path).unwrap().origin().unwrap(),
+            origin
+        );
+        assert_eq!(std::fs::read(&path).unwrap(), before);
+        let backup = dir.path().join("backup.db");
+        std::fs::copy(&path, &backup).unwrap();
+        assert_eq!(Ledger::open(&backup).unwrap().origin().unwrap(), origin);
+        assert_ne!(
+            Ledger::open(dir.path().join("other.db"))
+                .unwrap()
+                .origin()
+                .unwrap(),
+            origin
+        );
+    }
 }

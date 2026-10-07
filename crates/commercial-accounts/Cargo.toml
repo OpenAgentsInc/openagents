@@ -1,0 +1,21 @@
+[package]
+name = "commercial-accounts"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+publish.workspace = true
+description = "Explicit commercial attribution over native tenancy and retail accounts."
+
+[dependencies]
+tenancy = { path = "../tenancy" }
+pay-ledger = { path = "../pay-ledger" }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+sha2 = "0.10"
+libc = "0.2"
+
+[dev-dependencies]
+tempfile = "3"
+
+[lints]
+workspace = true
