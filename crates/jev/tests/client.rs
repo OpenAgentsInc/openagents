@@ -1803,3 +1803,90 @@ async fn approved_purchase_preserves_exact_identity_and_never_retries() -> Outco
     assert!(!format!("{error:?}").contains("fixture-private-content"));
     Ok(())
 }
+
+#[tokio::test]
+async fn purchase_receipt_reads_verify_the_exact_workspace_digest_and_bounded_pages() -> Outcome {
+    let mut receipt = receipts::execution::ExecutionReceipt::for_attempt(
+        "http",
+        "fixture-purchase",
+        1,
+        format!("sha256:{}", "a".repeat(64)),
+    );
+    receipt.attempt_id = "fixture-attempt".into();
+    receipt.workspace = Some("workspace-a".into());
+    receipt.seal();
+    let digest = receipt.digest.clone();
+    let body=json!({"receipt":receipt,"cost":{"reserved":100,"retail":20,"phase":"settled","price_version":"price-1"}}).to_string();
+    let mut changed = receipt.clone();
+    changed.workspace = Some("workspace-b".into());
+    changed.seal();
+    let foreign = json!({"receipt":changed,"cost":null}).to_string();
+    let mut tampered = receipt.clone();
+    tampered.request = "tampered".into();
+    let tampered = json!({"receipt":tampered,"cost":null}).to_string();
+    let page=json!({"workspace":"workspace-a","items":[{"digest":digest,"request":"fixture-purchase","attempt":1}],"cursor":null}).to_string();
+    let bad_page = json!({"workspace":"workspace-b","items":[],"cursor":null}).to_string();
+    let (base, seen) = serve(vec![
+        Reply::new(200, &body),
+        Reply::new(200, &foreign),
+        Reply::new(200, &tampered),
+        Reply::new(200, &page),
+        Reply::new(200, &bad_page),
+    ])
+    .await?;
+    let client = Client::new(Config::new().base_url(base).api_key("oak_fixture-only"))?;
+    let proof = client
+        .account()
+        .purchase_receipt("workspace-a", &digest)
+        .await?;
+    assert_eq!(proof.receipt.request, "fixture-purchase");
+    assert_eq!(proof.cost.unwrap().retail, Some(20));
+    assert!(
+        client
+            .account()
+            .purchase_receipt("workspace-a", &digest)
+            .await
+            .is_err()
+    );
+    assert!(
+        client
+            .account()
+            .purchase_receipt("workspace-a", &digest)
+            .await
+            .is_err()
+    );
+    let page = client
+        .account()
+        .purchase_activity("workspace-a", "session:fixture", Some("time|digest"))
+        .await?;
+    assert_eq!(page.items.len(), 1);
+    assert!(
+        client
+            .account()
+            .purchase_activity("workspace-a", "session:fixture", None)
+            .await
+            .is_err()
+    );
+    assert!(
+        client
+            .account()
+            .purchase_receipt("workspace-a", "../../elsewhere")
+            .await
+            .is_err()
+    );
+    assert!(
+        client
+            .account()
+            .purchase_activity("workspace-a", "../key", None)
+            .await
+            .is_err()
+    );
+    let seen = seen.lock().await;
+    assert_eq!(seen.len(), 5);
+    assert!(
+        seen[3]
+            .target
+            .contains("limit=10&key=session%3Afixture&cursor=time%7Cdigest")
+    );
+    Ok(())
+}

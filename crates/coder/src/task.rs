@@ -1696,7 +1696,7 @@ fn sync_directory_ancestry(path: &Path) -> Result<(), Error> {
 
 /// Flushes a directory's entries.
 #[cfg(unix)]
-fn sync_directory(path: &Path) -> Result<(), Error> {
+pub(crate) fn sync_directory(path: &Path) -> Result<(), Error> {
     File::open(path)?.sync_all()?;
     Ok(())
 }
@@ -1704,13 +1704,13 @@ fn sync_directory(path: &Path) -> Result<(), Error> {
 /// Windows cannot flush a directory, and NTFS journals its entries, so
 /// this only checks that it is there.
 #[cfg(windows)]
-fn sync_directory(path: &Path) -> Result<(), Error> {
+pub(crate) fn sync_directory(path: &Path) -> Result<(), Error> {
     private_fs::open_dir(path)?;
     Ok(())
 }
 
 #[cfg(not(any(unix, windows)))]
-fn sync_directory(_: &Path) -> Result<(), Error> {
+pub(crate) fn sync_directory(_: &Path) -> Result<(), Error> {
     Err(Error::UnsupportedPlatform)
 }
 
@@ -1763,7 +1763,7 @@ pub(crate) fn verify_same_file(path: &Path, file: &File) -> Result<(), Error> {
 }
 
 #[cfg(windows)]
-fn private_open(path: &Path, create: bool, write: bool) -> Result<File, Error> {
+pub(crate) fn private_open(path: &Path, create: bool, write: bool) -> Result<File, Error> {
     if !create {
         regular_or_absent(path)?;
     }
@@ -1875,7 +1875,7 @@ pub(crate) fn verify_same_file(path: &Path, file: &File) -> Result<(), Error> {
 }
 
 #[cfg(unix)]
-fn private_open(path: &Path, create: bool, write: bool) -> Result<File, Error> {
+pub(crate) fn private_open(path: &Path, create: bool, write: bool) -> Result<File, Error> {
     use std::os::unix::fs::OpenOptionsExt;
     if !create {
         regular_or_absent(path)?;
@@ -1904,7 +1904,7 @@ pub(crate) fn verify_same_file(_: &Path, _: &File) -> Result<(), Error> {
     Err(Error::UnsupportedPlatform)
 }
 #[cfg(not(any(unix, windows)))]
-fn private_open(_: &Path, _: bool, _: bool) -> Result<File, Error> {
+pub(crate) fn private_open(_: &Path, _: bool, _: bool) -> Result<File, Error> {
     Err(Error::UnsupportedPlatform)
 }
 

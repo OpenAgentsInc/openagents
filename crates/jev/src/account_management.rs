@@ -4,7 +4,7 @@
 use super::Account;
 use crate::{ApiKey, Error, RawResponse, Result};
 use reqwest::Method;
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 
 /// A once-issued session. Debug output masks its credential.
 #[derive(Debug)]
@@ -52,6 +52,42 @@ pub struct WorkspaceIdentity {
 pub struct WorkspaceView {
     pub workspace: WorkspaceIdentity,
     pub role: String,
+}
+
+/// A bounded activity page used to locate an original purchase attempt.
+#[derive(Debug, Clone, Deserialize, Serialize)]
+pub struct PurchaseActivity {
+    pub workspace: String,
+    pub items: Vec<PurchaseActivityItem>,
+    pub cursor: Option<String>,
+}
+#[derive(Debug, Clone, Deserialize, Serialize)]
+pub struct PurchaseActivityItem {
+    pub digest: String,
+    pub request: String,
+    pub attempt: u32,
+}
+/// Current money-ledger position for the original execution receipt.
+#[derive(Debug, Clone, Deserialize, Serialize)]
+pub struct PurchaseCost {
+    pub reserved: u64,
+    pub retail: Option<u64>,
+    pub phase: String,
+    pub price_version: String,
+}
+/// A verified receipt and its current settlement claim from the same origin.
+#[derive(Debug, Clone, Deserialize, Serialize)]
+pub struct PurchaseReceipt {
+    pub receipt: receipts::execution::ExecutionReceipt,
+    pub cost: Option<PurchaseCost>,
+}
+fn receipt_digest(value: &str) -> bool {
+    value.strip_prefix("sha256:").is_some_and(|hex| {
+        hex.len() == 64
+            && hex
+                .bytes()
+                .all(|b| b.is_ascii_digit() || (b'a'..=b'f').contains(&b))
+    })
 }
 
 fn identifier(value: &str) -> Result<()> {
@@ -143,6 +179,97 @@ impl Account<'_> {
             return Err(Error::Config("Customer purchase selection changed.".into()));
         }
         Ok(context)
+    }
+
+    /// Read at most ten activity references under fresh workspace membership.
+    pub async fn purchase_activity(
+        &self,
+        workspace: &str,
+        original_key: &str,
+        cursor: Option<&str>,
+    ) -> Result<PurchaseActivity> {
+        identifier(workspace)?;
+        if original_key.is_empty()
+            || original_key.len() > 128
+            || !original_key
+                .bytes()
+                .all(|b| b.is_ascii_alphanumeric() || b"-_.:".contains(&b))
+        {
+            return Err(Error::Config(
+                "Invalid original purchase credential reference.".into(),
+            ));
+        }
+        if cursor
+            .is_some_and(|value| value.len() > 256 || value.bytes().any(|b| b.is_ascii_control()))
+        {
+            return Err(Error::Config("Invalid purchase activity cursor.".into()));
+        }
+        let mut query = reqwest::Url::parse("https://fixture.invalid/").expect("static URL");
+        {
+            let mut pairs = query.query_pairs_mut();
+            pairs
+                .append_pair("limit", "10")
+                .append_pair("key", original_key);
+            if let Some(cursor) = cursor {
+                pairs.append_pair("cursor", cursor);
+            }
+        }
+        let raw = self
+            .client
+            .request_private(
+                Method::GET,
+                &format!(
+                    "/v1/workspaces/{workspace}/usage/activity?{}",
+                    query.query().unwrap()
+                ),
+                None,
+            )
+            .await?;
+        let page: PurchaseActivity = decode(&raw)?;
+        if page.workspace != workspace
+            || page.items.len() > 10
+            || page
+                .items
+                .iter()
+                .any(|item| !receipt_digest(&item.digest) || item.attempt == 0)
+            || page.cursor.as_ref().is_some_and(|cursor| {
+                cursor.len() > 256 || cursor.bytes().any(|b| b.is_ascii_control())
+            })
+        {
+            return Err(Error::Config("Invalid purchase activity page.".into()));
+        }
+        Ok(page)
+    }
+    /// Read the exact original receipt. This never invokes or retries a purchase.
+    pub async fn purchase_receipt(&self, workspace: &str, digest: &str) -> Result<PurchaseReceipt> {
+        identifier(workspace)?;
+        if !receipt_digest(digest) {
+            return Err(Error::Config("Invalid purchase receipt digest.".into()));
+        }
+        let raw = self
+            .client
+            .request_private(
+                Method::GET,
+                &format!("/v1/workspaces/{workspace}/usage/receipts/{digest}"),
+                None,
+            )
+            .await?;
+        let proof: PurchaseReceipt = decode(&raw)?;
+        if proof.receipt.verify().is_err()
+            || proof.receipt.digest != digest
+            || proof.receipt.workspace.as_deref() != Some(workspace)
+            || proof.cost.as_ref().is_some_and(|cost| {
+                !matches!(
+                    cost.phase.as_str(),
+                    "held" | "unknown" | "settled" | "released"
+                )
+            })
+        {
+            return Err(Error::Config(
+                "Purchase receipt is unverifiable or belongs to another workspace.".into(),
+            ));
+        }
+        Ok(proof)
     }
 
     /// Consume a recovery token once. A transport failure is uncertain and

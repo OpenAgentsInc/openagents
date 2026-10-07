@@ -30,7 +30,8 @@ const WORKSPACES_PATH: &str = "/v1/workspaces";
 #[path = "account_management.rs"]
 mod management;
 pub use management::{
-    GatewaySession, KeyGrant, KeyIdentity, SessionGrant, WorkspaceIdentity, WorkspaceView,
+    GatewaySession, KeyGrant, KeyIdentity, PurchaseActivity, PurchaseActivityItem, PurchaseCost,
+    PurchaseReceipt, SessionGrant, WorkspaceIdentity, WorkspaceView,
 };
 
 /// The account surface, scoped to its client.
