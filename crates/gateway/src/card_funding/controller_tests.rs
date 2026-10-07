@@ -65,6 +65,20 @@ async fn body(response: Response) -> Value {
         .unwrap();
     serde_json::from_slice(&bytes).unwrap()
 }
+fn browser_fields(html: &str) -> BTreeMap<String, String> {
+    let form = html
+        .split("<form")
+        .find(|f| f.contains("name=\"csrf\""))
+        .expect("An actual funding form renders.");
+    form.split("<input")
+        .filter_map(|input| {
+            let input = input.split('>').next()?;
+            let name = input.split("name=\"").nth(1)?.split('"').next()?;
+            let value = input.split("value=\"").nth(1)?.split('"').next()?;
+            Some((name.into(), value.into()))
+        })
+        .collect()
+}
 fn signature(secret: &str, bytes: &[u8], timestamp: u64) -> String {
     let mut mac = <Hmac<Sha256> as Mac>::new_from_slice(secret.as_bytes()).unwrap();
     mac.update(timestamp.to_string().as_bytes());
@@ -175,10 +189,14 @@ async fn native_checkout_lost_reply_webhook_and_recovery_keep_one_original_credi
             b.set_credential(account.id.as_str().into(), issued.key.digest.clone(), now)
         })
         .unwrap();
+    let session = tenancy::Sessions::open(root.path())
+        .unwrap()
+        .mutate(|b, _, at| b.issue(account.id.as_str().into(), at))
+        .unwrap();
     let mut headers = HeaderMap::new();
     headers.insert(
         "authorization",
-        format!("Bearer {}", issued.token).parse().unwrap(),
+        format!("Bearer {}", session.once).parse().unwrap(),
     );
     headers.insert("x-workspace-id", workspace.id.parse().unwrap());
     let native = Arc::new(Mutex::new(Native {
@@ -197,21 +215,57 @@ async fn native_checkout_lost_reply_webhook_and_recovery_keep_one_original_credi
     )
     .await;
     *state.card_test_origin.lock().unwrap() = Some(origin);
+    let before_invalid = state.money_lock().await.unwrap().head().to_string();
+    for invalid in [
+        "short",
+        "private.contact@example.invalid",
+        "not/a/native/reference",
+    ] {
+        assert!(
+            quoted(&state, &headers, "fixture", invalid, 100_000_000)
+                .await
+                .is_err()
+        );
+    }
+    assert_eq!(state.money_lock().await.unwrap().head(), before_invalid);
+    assert!(
+        state
+            .money_lock()
+            .await
+            .unwrap()
+            .balance(&workspace.id)
+            .is_err()
+    );
     let (customer_origin, customer_task) = server(crate::serve::router(state.clone())).await;
     let client = reqwest::Client::new();
-    let endpoint = format!(
-        "{customer_origin}/v1/workspaces/{}/card-funding/fixture",
-        workspace.id
+    let mut browser_headers = HeaderMap::new();
+    browser_headers.insert(
+        "cookie",
+        format!("oa_session={}", session.once).parse().unwrap(),
     );
-    let id = "native_controller_quote_001";
+    let billing_url = format!("{customer_origin}/dashboard/w/{}/billing", workspace.id);
+    let funding_url = format!("{customer_origin}/dashboard/w/{}/funding", workspace.id);
     let response = client
-        .post(&endpoint)
-        .headers(headers.clone())
-        .json(&json!({"action":"quote","id":id,"gross_units":100_000_000}))
+        .get(&billing_url)
+        .headers(browser_headers.clone())
         .send()
         .await
         .unwrap();
     assert_eq!(response.status(), StatusCode::OK);
+    let mut fields = browser_fields(&response.text().await.unwrap());
+    let original_id = fields["id"].clone();
+    let id = original_id.as_str();
+    fields.insert("gross_cents".into(), "10000".into());
+    let response = client
+        .post(&funding_url)
+        .headers(browser_headers.clone())
+        .form(&fields)
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(response.status(), StatusCode::OK);
+    let approve_fields = browser_fields(&response.text().await.unwrap());
+    assert_eq!(approve_fields["action"], "checkout");
     for path in [
         "/v1/plans",
         "/v1/billing/sessions/native_controller_quote_001",
@@ -255,17 +309,33 @@ async fn native_checkout_lost_reply_webhook_and_recovery_keep_one_original_credi
     );
     assert!(native.lock().unwrap().creates.is_empty());
     let approved = digest(&original.binding);
-    assert!(
-        checkout(&state, &headers, "fixture", id, &approved)
-            .await
-            .is_err()
-    );
+    assert_eq!(approve_fields["approved"], approved);
+    let interrupted = client
+        .post(&funding_url)
+        .headers(browser_headers.clone())
+        .form(&approve_fields)
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(interrupted.status(), StatusCode::SERVICE_UNAVAILABLE);
     let unknown = retained(book(&state).unwrap(), id).unwrap();
     assert!(unknown.checkout.as_ref().unwrap().native.is_none());
     let original_key = unknown.checkout.as_ref().unwrap().idempotency.clone();
-    checkout(&state, &headers, "fixture", id, &approved)
+    let recovered = client
+        .post(&funding_url)
+        .headers(browser_headers.clone())
+        .form(&approve_fields)
+        .send()
         .await
         .unwrap();
+    assert_eq!(recovered.status(), StatusCode::OK);
+    assert!(
+        recovered
+            .text()
+            .await
+            .unwrap()
+            .contains("Continue the original hosted checkout")
+    );
     let ready = retained(book(&state).unwrap(), id).unwrap();
     assert_eq!(ready.checkout.as_ref().unwrap().idempotency, original_key);
     assert_eq!(
@@ -279,6 +349,126 @@ async fn native_checkout_lost_reply_webhook_and_recovery_keep_one_original_credi
         let sent = serde_json::to_string(&n.creates).unwrap();
         assert!(!sent.contains("private seeded"));
     }
+    // The selected client reads private original terms without moving money.
+
+    let resume_url = format!("{customer_origin}/dashboard/funding/{id}");
+    let before = state.money_lock().await.unwrap().head().to_string();
+    for _ in 0..2 {
+        let r = client
+            .get(&resume_url)
+            .headers(browser_headers.clone())
+            .send()
+            .await
+            .unwrap();
+        assert_eq!(r.status(), StatusCode::OK);
+        assert_eq!(r.headers()["cache-control"], "no-store");
+        let html = r.text().await.unwrap();
+        assert!(html.contains("Unknown; no verified collection"));
+        assert!(html.contains("Continue the original hosted checkout"));
+        assert!(!html.contains(&session.once));
+        assert!(!html.contains("private seeded"));
+        assert!(html.contains("Processor and Lightning wallet liquidity: unknown"));
+    }
+    if let (Ok(binary), Ok(helper)) = (
+        std::env::var("OPENAGENTS_REV23_BROWSER"),
+        std::env::var("OPENAGENTS_REV23_BROWSER_CHECK"),
+    ) {
+        let (origin, token, ws, quote) = (
+            customer_origin.clone(),
+            session.once.clone(),
+            workspace.id.clone(),
+            id.to_string(),
+        );
+        let result = tokio::task::spawn_blocking(move || {
+            std::process::Command::new(binary)
+                .args(["browser", "run", "--json", "--", "python3", &helper])
+                .env("REV23_FIXTURE_ORIGIN", origin)
+                .env("REV23_FIXTURE_SESSION", token)
+                .env("REV23_FIXTURE_WORKSPACE", ws)
+                .env("REV23_FIXTURE_QUOTE", quote)
+                .output()
+                .expect("Isolated browser fixture launches.")
+        })
+        .await
+        .unwrap();
+        assert!(
+            result.status.success(),
+            "Isolated browser acceptance failed: {}",
+            String::from_utf8_lossy(&result.stderr)
+        );
+        println!("{}", String::from_utf8_lossy(&result.stdout));
+    }
+    assert_eq!(state.money_lock().await.unwrap().head(), before);
+    let sdk = jev::Client::new(
+        jev::Config::new()
+            .api_key(session.once.clone())
+            .base_url(&customer_origin),
+    )
+    .unwrap();
+    let view = sdk
+        .account()
+        .card_funding(
+            &workspace.id,
+            "fixture",
+            &jev::CardFundingAction::Read { id: id.into() },
+        )
+        .await
+        .unwrap();
+    assert_eq!(view.balance.available, 0);
+    assert!(view.outstanding.as_ref().unwrap().is_empty());
+    assert!(!format!("{view:?}").contains("checkout.stripe.com"));
+    reconcile_original(&state, book(&state).unwrap(), id)
+        .await
+        .unwrap();
+    assert_eq!(
+        retained(book(&state).unwrap(), id)
+            .unwrap()
+            .unpaid_status
+            .as_deref(),
+        Some("pending")
+    );
+    native
+        .lock()
+        .unwrap()
+        .records
+        .get_mut("/v1/checkout/sessions/cs_test_controller")
+        .unwrap()["status"] = json!("expired");
+    reconcile_original(&state, book(&state).unwrap(), id)
+        .await
+        .unwrap();
+    let r = client
+        .get(&resume_url)
+        .headers(browser_headers.clone())
+        .send()
+        .await
+        .unwrap();
+    assert!(
+        r.text()
+            .await
+            .unwrap()
+            .contains("Expired unpaid; no funding")
+    );
+    assert_eq!(
+        state
+            .money_lock()
+            .await
+            .unwrap()
+            .balance(&workspace.id)
+            .unwrap()
+            .available,
+        0
+    );
+    native
+        .lock()
+        .unwrap()
+        .records
+        .get_mut("/v1/checkout/sessions/cs_test_controller")
+        .unwrap()["status"] = json!("open");
+    assert_eq!(native.lock().unwrap().creates.len(), 3);
+    assert_eq!(
+        client.get(&resume_url).send().await.unwrap().status(),
+        StatusCode::UNAUTHORIZED
+    );
     let bytes=serde_json::to_vec(&json!({"object":"event","id":"evt_controller","api_version":"fixture.v1","livemode":false,"created":now(),"type":"charge.succeeded",
         "data":{"object":{"object":"charge","id":"ch_controller","paid":true,"amount":10000,"client_credit":999999999}}})).unwrap();
     let mut delivery = HeaderMap::new();
@@ -360,6 +550,16 @@ async fn native_checkout_lost_reply_webhook_and_recovery_keep_one_original_credi
             .credited,
         97_000_000
     );
+    let r = client
+        .get(&resume_url)
+        .headers(browser_headers.clone())
+        .send()
+        .await
+        .unwrap();
+    let html = r.text().await.unwrap();
+    assert!(html.contains("Funded"));
+    assert!(html.contains("97.000000 USD"));
+    assert!(!html.contains("Continue the original hosted checkout"));
     let old = retained(book(&state).unwrap(), id).unwrap();
     assert!(
         !serde_json::to_string(&old)
@@ -481,6 +681,72 @@ async fn native_checkout_lost_reply_webhook_and_recovery_keep_one_original_credi
     .await;
     assert_eq!(read.status(), StatusCode::OK);
     assert_eq!(body(read).await["balance"]["available"], 0);
+    // Balance and inference access do not grant billing mutations.
+    let readonly = keys::issue_scoped(
+        root.path(),
+        registry.manifest(),
+        "fixture",
+        Some("readonly"),
+        Some(keys::Scopes {
+            models: None,
+            actions: Some(
+                ["accounts", "balance", "inference"]
+                    .into_iter()
+                    .map(String::from)
+                    .collect(),
+            ),
+        }),
+    )
+    .unwrap();
+    accounts
+        .update_principals(
+            &account.id,
+            &[
+                format!("key:{}", issued.key.id),
+                format!("key:{}", readonly.key.id),
+            ],
+        )
+        .unwrap();
+    let mut readonly_headers = HeaderMap::new();
+    readonly_headers.insert(
+        "authorization",
+        format!("Bearer {}", readonly.token).parse().unwrap(),
+    );
+    readonly_headers.insert("x-workspace-id", workspace.id.parse().unwrap());
+    let endpoint = format!(
+        "{customer_origin}/v1/workspaces/{}/card-funding/fixture",
+        workspace.id
+    );
+    let before = state.money_lock().await.unwrap().head().to_string();
+    for action in [
+        json!({"action":"quote","id":"readonly_native_quote","gross_units":10_000}),
+        json!({"action":"checkout","id":id,"approved":approved}),
+        json!({"action":"reconcile","id":id}),
+    ] {
+        assert_eq!(
+            client
+                .post(&endpoint)
+                .headers(readonly_headers.clone())
+                .json(&action)
+                .send()
+                .await
+                .unwrap()
+                .status(),
+            StatusCode::FORBIDDEN
+        );
+    }
+    assert_eq!(state.money_lock().await.unwrap().head(), before);
+    assert_eq!(
+        client
+            .post(&endpoint)
+            .headers(readonly_headers)
+            .json(&json!({"action":"read","id":id}))
+            .send()
+            .await
+            .unwrap()
+            .status(),
+        StatusCode::OK
+    );
     customer_task.abort();
     let _ = customer_task.await;
     task.abort();

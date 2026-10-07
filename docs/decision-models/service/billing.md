@@ -124,6 +124,23 @@ held or unknown obligations. Processor expenses and uncovered spent reversals
 remain separate from customer principal. A bounded background sweep checks two
 retained purchases per pass; signed duplicate deliveries also trigger recovery.
 
+The native Rust dashboard at `/dashboard/billing` quotes purchases for eligible
+USD doors. Its approval form binds the current session, workspace, original
+purchase, and complete `sha256:` approval digest. The form shows the fee cap,
+conversion, spend limit, available and restricted credit, and bounded outstanding
+holds before approval. A private hosted checkout link continues the original
+purchase; refreshing `/dashboard/funding/{purchase}` or adding a success query
+parameter moves no credit. Reconciliation reports verified pending or expired
+unpaid checkouts, actual fees, reversals, and unknown obligations separately.
+
+The Rust SDK exposes `Client::card_funding` with typed quote, checkout, read,
+and reconcile actions. Quote amounts use USD cents; ledger amounts use USD
+millionths. Private funding requests do not retry automatically, and their
+errors omit provider bodies and request headers. Explicit checkout recovery
+uses the same retained purchase and native idempotency intent. Neither client
+converts native card credit to the Common BTC funding lane or establishes
+processor or Lightning liquidity.
+
 ## The catalog and checkout
 
 `GET /v1/plans` is unauthenticated — the published catalog is what a

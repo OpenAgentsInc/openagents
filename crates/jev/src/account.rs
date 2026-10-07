@@ -27,6 +27,13 @@ const BALANCE_PATH: &str = "/v1/balance";
 /// The workspaces route family.
 const WORKSPACES_PATH: &str = "/v1/workspaces";
 
+#[path = "account_card.rs"]
+mod card;
+pub use card::{
+    CardFundingAction, CardFundingBalance, CardFundingBinding, CardFundingCreate,
+    CardFundingFinality, CardFundingHold, CardFundingObservation, CardFundingPayment,
+    CardFundingQuote, CardFundingRecord, CardFundingSnapshot, CardFundingView,
+};
 #[path = "account_management.rs"]
 mod management;
 #[path = "account_policy.rs"]

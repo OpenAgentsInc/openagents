@@ -25,7 +25,7 @@ use tenancy::{
 const SCHEMA: &str = "openagents.card-funding.v1";
 #[derive(Deserialize)]
 #[serde(tag = "action", rename_all = "snake_case", deny_unknown_fields)]
-enum Request {
+pub(crate) enum Request {
     Quote { id: String, gross_units: u64 },
     Checkout { id: String, approved: String },
     Read { id: String },
@@ -83,7 +83,7 @@ fn source(id: &str, action: &str) -> String {
 fn opaque() -> Result<String, String> {
     tenancy::billing::fresh_ref().map_err(|_| "Native reference is unavailable.".into())
 }
-fn view_authority(
+pub(crate) fn view_authority(
     state: &ServeState,
     headers: &HeaderMap,
     workspace: &str,
@@ -113,12 +113,35 @@ fn view_authority(
     }
     Ok(account.into())
 }
-fn current(
+fn mutation_authority(
+    state: &ServeState,
+    headers: &HeaderMap,
+    workspace: &str,
+) -> Result<(), Response> {
+    let (_, caller) = crate::serve::authenticate(state, headers)
+        .map_err(|(s, c, m)| accounts::refused(s, c, m))?;
+    if caller
+        .scopes
+        .as_ref()
+        .is_some_and(|s| !s.permits_action("billing"))
+    {
+        return Err(accounts::refused(
+            StatusCode::FORBIDDEN,
+            "out_of_scope",
+            "Changing native billing requires billing authority.",
+        ));
+    }
+    view_authority(state, headers, workspace)?;
+    Ok(())
+}
+pub(crate) fn current(
     state: &ServeState,
     headers: &HeaderMap,
     door: &str,
     original: &Binding,
 ) -> Result<(), String> {
+    mutation_authority(state, headers, &original.context.workspace)
+        .map_err(|_| "Current billing authority is unavailable.")?;
     let current = crate::purchase::current(state, headers, door)
         .map_err(|_| "Current purchase authority is unavailable.")?;
     if current != original.context
@@ -322,7 +345,39 @@ async fn reconcile_with(
             adjustment_fee_units: c.adjustment_fee_units,
             excess_removed_units: c.excess_removed_units,
         },
+        Ok(None) if original.applied.is_none() => {
+            let status = provider
+                .unpaid_status(&Original {
+                    checkout,
+                    customer,
+                    customer_reference: &original.binding.customer_reference,
+                    quote: &quote,
+                })
+                .await?;
+            billing
+                .check_source()
+                .map_err(|_| "Billing custody changed.")?;
+            mutate(billing, |b| {
+                let r = b
+                    .checkouts
+                    .get_mut(id)
+                    .ok_or("Original checkout is unavailable.")?;
+                if r.binding != original.binding || r.applied.is_some() || r.applying.is_some() {
+                    return Err("Original unpaid checkout changed.".into());
+                }
+                r.unpaid_status = Some(status);
+                Ok(())
+            })?;
+            return Ok(());
+        }
         Ok(None) | Err(_) => {
+            mutate(billing, |b| {
+                b.checkouts
+                    .get_mut(id)
+                    .ok_or("Original checkout is unavailable.")?
+                    .unpaid_status = None;
+                Ok(())
+            })?;
             quarantine(state, billing, id).await?;
             return Err("Native collection is unavailable; original credit is quarantined.".into());
         }
@@ -342,6 +397,7 @@ async fn quoted(
     id: &str,
     gross: u64,
 ) -> Result<(), String> {
+    super::checkout::opaque(id)?;
     let config = config(state)?;
     config.check()?;
     let billing = book(state)?;
@@ -595,7 +651,7 @@ pub(crate) fn routes() -> Vec<(&'static str, MethodRouter<Arc<ServeState>>)> {
         ),
     ]
 }
-async fn handle(
+pub(crate) async fn handle(
     State(state): State<Arc<ServeState>>,
     Path((workspace, door)): Path<(String, String)>,
     mut headers: HeaderMap,
@@ -631,6 +687,11 @@ async fn handle(
         return r;
     }
     let _serial = state.card_lock.lock().await;
+    if !matches!(&request, Request::Read { .. }) {
+        if let Err(r) = mutation_authority(&state, &headers, &workspace) {
+            return r;
+        }
+    }
     let result=async {
         let account=view_authority(&state,&headers,&workspace).map_err(|_|"Current funding authority is unavailable.")?;
         let id=match &request {Request::Quote{id,..}|Request::Checkout{id,..}|Request::Read{id}|Request::Reconcile{id}=>id};
@@ -652,7 +713,10 @@ async fn handle(
         if fresh!=original.binding.context.account {return Err("Original customer changed.".into());}
         let ledger=state.money_lock().await.ok_or("Native money is unavailable.")?;
         ledger.check_source(&state.config.money.as_ref().ok_or("Native money is unavailable.")?.ledger)?;
-        Ok::<_,String>(json!({"schema":SCHEMA,"approval_digest":digest(&original.binding),"record":original,"balance":ledger.balance(&workspace)?,"processor_liquidity":"unknown","production_qualification":"owner_required_O5"}))
+        view_authority(&state,&headers,&workspace).map_err(|_|"Current funding authority is unavailable.")?;
+        let holds=ledger.holds(&workspace).into_iter().filter(|(_,h)|matches!(h.phase,tenancy::money::Phase::Held|tenancy::money::Phase::Unknown)).collect::<Vec<_>>();
+        let outstanding=holds.iter().take(64).map(|(attempt,h)|json!({"attempt":attempt,"reserved":h.reserved,"phase":h.phase})).collect::<Vec<_>>();
+        Ok::<_,String>(json!({"outstanding":outstanding,"outstanding_count":holds.len(),"schema":SCHEMA,"approval_digest":digest(&original.binding),"record":original,"balance":ledger.balance(&workspace)?,"processor_liquidity":"unknown","production_qualification":"owner_required_O5"}))
     }.await;
     match result {
         Ok(v) => Json(v).into_response(),

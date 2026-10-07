@@ -117,12 +117,8 @@ impl Stripe {
         .map_err(|_| refusal())?
     }
 
-    async fn collect_inner(
-        &self,
-        original: &Original<'_>,
-        previous: Option<&Collection>,
-        now: u64,
-    ) -> Result<Option<Collection>, String> {
+    /// Verify original merchant, customer, quote, amount, and native checkout.
+    async fn checked_checkout(&self, original: &Original<'_>) -> Result<Value, String> {
         let quoted = original.quote;
         identifier(
             original.checkout,
@@ -169,6 +165,39 @@ impl Stripe {
         {
             return Err(refusal());
         }
+        Ok(checkout)
+    }
+
+    /// Only native unpaid state can identify a pending or expired checkout.
+    pub(crate) async fn unpaid_status(&self, original: &Original<'_>) -> Result<String, String> {
+        let checkout = tokio::time::timeout(
+            std::time::Duration::from_secs(60),
+            self.checked_checkout(original),
+        )
+        .await
+        .map_err(|_| refusal())??;
+        let status = match (
+            checkout["status"].as_str(),
+            checkout["payment_status"].as_str(),
+        ) {
+            (Some("open"), Some("unpaid")) => "pending",
+            (Some("expired"), Some("unpaid")) => "expired",
+            _ => return Err(refusal()),
+        };
+        self.admitted_account().await?;
+        Ok(status.into())
+    }
+
+    async fn collect_inner(
+        &self,
+        original: &Original<'_>,
+        previous: Option<&Collection>,
+        now: u64,
+    ) -> Result<Option<Collection>, String> {
+        let quoted = original.quote;
+        let quote = &quoted.quote;
+        let conversion = &quoted.conversion;
+        let checkout = self.checked_checkout(original).await?;
         if checkout["status"] != "complete" || checkout["payment_status"] != "paid" {
             if previous.is_some() {
                 return Err(refusal());

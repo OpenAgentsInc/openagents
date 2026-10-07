@@ -13,6 +13,8 @@ const API_ORIGIN: &str = "https://api.stripe.com";
 mod config;
 pub(crate) mod controller;
 pub use config::Config;
+pub(crate) mod browser;
+mod browser_csrf;
 mod checkout;
 pub use checkout::CheckoutRequest;
 mod adjustments;

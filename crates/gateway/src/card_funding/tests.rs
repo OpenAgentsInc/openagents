@@ -1018,7 +1018,7 @@ async fn actual_checkout_creation_is_native_account_bound_one_time_exact_and_ret
     assert_eq!(captured[1].2, "checkout_request_fixture");
     assert_eq!(
         captured[1].1["success_url"],
-        "https://fixture.invalid/dashboard?funding=checkout_quote_fixture"
+        "https://fixture.invalid/dashboard/funding/checkout_quote_fixture"
     );
     request.amount_cents = 49;
     assert!(client.create_checkout(&request, 100).await.is_err());

@@ -73,6 +73,9 @@ pub struct Observation {
 #[derive(Clone, Debug, Deserialize, Serialize)]
 #[serde(deny_unknown_fields)]
 pub struct Checkout {
+    /// Verified unpaid native status. Absence remains unknown, never failed.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub unpaid_status: Option<String>,
     pub binding: Binding,
     pub customer: Option<Create>,
     pub checkout: Option<Create>,
@@ -257,6 +260,22 @@ impl Book {
             {
                 return Err("Hosted checkout has no original native reference.".into());
             }
+            if record.unpaid_status.is_some()
+                && record
+                    .checkout
+                    .as_ref()
+                    .and_then(|c| c.native.as_ref())
+                    .is_none()
+            {
+                return Err("Unpaid status has no original native checkout.".into());
+            }
+            if record
+                .unpaid_status
+                .as_deref()
+                .is_some_and(|s| !matches!(s, "pending" | "expired"))
+            {
+                return Err("Native unpaid status is invalid.".into());
+            }
             if let Some(observation) = &record.applied {
                 record.check_observation(observation)?;
             }
@@ -302,6 +321,7 @@ impl Book {
         self.checkouts.insert(
             id.clone(),
             Checkout {
+                unpaid_status: None,
                 binding,
                 customer: None,
                 checkout: None,

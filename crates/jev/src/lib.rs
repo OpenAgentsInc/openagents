@@ -69,6 +69,7 @@
 //!
 //! ```
 //! use jev::{
+//!     CardFundingAction, CardFundingBalance, CardFundingBinding, CardFundingCreate, CardFundingFinality, CardFundingHold, CardFundingObservation, CardFundingPayment, CardFundingQuote, CardFundingRecord, CardFundingSnapshot, CardFundingView,
 //!     Account, AccountDetails, AccountInfo, Answer, ApiError, ApiErrorKind, ApiKey, BalanceView,
 //!     CallOptions, Choice, ChoiceAnswer, Classify, ClassifyItem, ClassifyOutcomes, ClassifyReport,
 //!     ClassifyRequest, ClassifyTiming, ClassifyUnit, ClassifyUsage, Client, Config, Cuts,
@@ -282,7 +283,10 @@ mod transport;
 pub use account::{
     Account, AccountDetails, AccountInfo, AttributionBinding, AttributionConfirmation,
     AttributionDecision, AttributionPolicy, AttributionProposal, AttributionReview,
-    AttributionStatus, AttributionView, BalanceView, CommissionAcceptance, CommissionAgreement,
+    AttributionStatus, AttributionView, BalanceView, CardFundingAction, CardFundingBalance,
+    CardFundingBinding, CardFundingCreate, CardFundingFinality, CardFundingHold,
+    CardFundingObservation, CardFundingPayment, CardFundingQuote, CardFundingRecord,
+    CardFundingSnapshot, CardFundingView, CommissionAcceptance, CommissionAgreement,
     CommissionInput, CommissionPublication, CommissionView, GatewaySession, InvitationGrant,
     KeyGrant, KeyIdentity, Position, PurchaseActivity, PurchaseActivityItem, PurchaseCost,
     PurchaseReceipt, ReferralCapture, ReferralEvidence, ReferralIdentity, ReferralIntroduction,

@@ -52,6 +52,15 @@ pub fn routes() -> Vec<(&'static str, MethodRouter<Arc<ServeState>>)> {
         ("/dashboard/w/{workspace}/members", get(members_page)),
         ("/dashboard/w/{workspace}/keys", get(keys_page)),
         ("/dashboard/w/{workspace}/billing", get(billing_page)),
+        (
+            "/dashboard/w/{workspace}/funding",
+            post(crate::card_funding::browser::submit)
+                .layer(axum::extract::DefaultBodyLimit::max(32 * 1024)),
+        ),
+        (
+            "/dashboard/funding/{id}",
+            get(crate::card_funding::browser::resume),
+        ),
     ]
 }
 
@@ -1118,6 +1127,14 @@ async fn billing_page(
     Path(workspace): Path<String>,
     headers: HeaderMap,
 ) -> Response {
+    if state
+        .config
+        .billing
+        .as_ref()
+        .is_some_and(|b| b.prepaid.is_some())
+    {
+        return crate::card_funding::browser::billing(state, workspace, headers).await;
+    }
     if let Err(response) = member_of(&state, &headers, &workspace) {
         return response;
     }

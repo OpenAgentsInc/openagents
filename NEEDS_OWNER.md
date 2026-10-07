@@ -618,6 +618,10 @@ and refund or dispute evidence privately before commercial activation. The
 optional Stripe adapter and isolated native HTTP fixtures establish code
 behavior; they establish no live merchant, card sale, production fee, or wallet
 liquidity. Common funding and BTC conversion remain unavailable in this profile.
+The native dashboard and Rust SDK (REV-23, #10830) use this same profile.
+Qualify a real hosted checkout, session-bound approval, read-only browser return,
+and original-purchase recovery on the chosen deployment before offering it to
+customers; isolated browser and provider fixtures establish these code paths.
 
 ## Native decision offer O5 (REV-16, #10823)
 

@@ -12,7 +12,7 @@ pub struct CheckoutRequest {
     pub idempotency: String,
 }
 
-fn opaque(value: &str) -> Result<(), String> {
+pub(super) fn opaque(value: &str) -> Result<(), String> {
     if !(16..=128).contains(&value.len())
         || !value
             .bytes()
@@ -84,7 +84,7 @@ impl Stripe {
             return Err(refusal());
         }
         let success = format!(
-            "{}/dashboard?funding={}",
+            "{}/dashboard/funding/{}",
             request.return_origin.trim_end_matches('/'),
             request.quote
         );
