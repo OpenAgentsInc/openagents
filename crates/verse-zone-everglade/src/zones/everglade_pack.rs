@@ -19,6 +19,7 @@
 
 pub mod compile;
 pub mod format;
+pub mod kit;
 pub mod pinned;
 #[cfg(not(target_arch = "wasm32"))]
 pub mod private_assets;
@@ -153,15 +154,31 @@ pub fn pinned() -> PinnedFile {
 }
 
 impl ZonePack {
-    /// Verifies the pinned digest, then decodes the bounded pack.
+    /// Verifies the pinned digest, then decodes the bounded pack, with the
+    /// medieval kit's proxies in place of the licensed kit (`kit`).
     pub fn decode_pinned(bytes: &[u8]) -> Result<Self, String> {
         pinned().verify(bytes)?;
-        format::decode(bytes, &Limits::EVERGLADE)
+        let mut pack = format::decode(bytes, &Limits::EVERGLADE)?;
+        kit::install(&mut pack, None);
+        Ok(pack)
     }
 
     /// Loads the same verified pack from a local file for offline captures.
+    /// With [`kit::LOCAL_ENV`] naming a kit pack, the licensed kit draws in
+    /// place of its proxies.
     pub fn load_local(path: &Path) -> Result<Self, String> {
-        Self::decode_pinned(&pinned().read_bounded(path)?)
+        let mut pack = Self::decode_pinned(&pinned().read_bounded(path)?)?;
+        if let Some(local) = std::env::var_os(kit::LOCAL_ENV) {
+            let pieces = kit::load_local(Path::new(&local))?;
+            let report = kit::install(&mut pack, Some(&pieces));
+            if !report.refused.is_empty() {
+                eprintln!(
+                    "verse: kit pieces outside their boxes: {:?}",
+                    report.refused
+                );
+            }
+        }
+        Ok(pack)
     }
 }
 
@@ -186,6 +203,7 @@ struct Worker {
 pub struct Loader {
     cache: PathBuf,
     worker: Option<Worker>,
+    download_kit: bool,
 }
 
 impl Loader {
@@ -194,7 +212,15 @@ impl Loader {
         Self {
             cache: cache_path,
             worker: None,
+            download_kit: false,
         }
+    }
+
+    /// Whether an entry downloads the pinned kit pack when the cache lacks
+    /// it. Off by default, so tests and tools never reach the network; the
+    /// kit in the cache is used either way.
+    pub fn download_kit(&mut self, download: bool) {
+        self.download_kit = download;
     }
 
     /// Starts one entry attempt. A canceled worker must finish before retrying.
@@ -211,6 +237,7 @@ impl Loader {
             return false;
         }
         let cache = self.cache.clone();
+        let download_kit = self.download_kit;
         let cancel = Arc::new(AtomicBool::new(false));
         let worker_cancel = cancel.clone();
         let (tx, events) = mpsc::channel();
@@ -221,12 +248,21 @@ impl Loader {
                 let mut progress = |received: u64, total: u64| {
                     let _ = progress_tx.send(LoadEvent::Progress { received, total });
                 };
-                let result = pinned().fetch(
-                    &cache,
-                    &worker_cancel,
-                    &mut progress,
-                    ZonePack::decode_pinned,
-                );
+                let result = pinned()
+                    .fetch(
+                        &cache,
+                        &worker_cancel,
+                        &mut progress,
+                        ZonePack::decode_pinned,
+                    )
+                    .map(|mut pack| {
+                        // The licensed kit when it is cached or published;
+                        // its committed proxies otherwise.
+                        if let Ok(pieces) = kit::fetch(&cache, download_kit, &worker_cancel) {
+                            kit::install(&mut pack, Some(&pieces));
+                        }
+                        pack
+                    });
                 if !worker_cancel.load(Ordering::Acquire) {
                     let event = match result {
                         Ok(pack) => LoadEvent::Ready(Box::new(pack)),

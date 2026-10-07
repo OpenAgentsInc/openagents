@@ -14,7 +14,7 @@ fn repository() -> PathBuf {
 
 /// An 8x8 RGBA leaf card: opaque green on the left half, transparent black on
 /// the right.
-fn leaf_png() -> Vec<u8> {
+pub(super) fn leaf_png() -> Vec<u8> {
     let mut rgba = Vec::new();
     for _y in 0..8 {
         for x in 0..8 {
@@ -34,7 +34,7 @@ fn leaf_png() -> Vec<u8> {
 
 /// A one-quad, alpha-masked card offset by one meter on x by its node, with a
 /// normal map the compiler must ignore.
-fn card() -> (Vec<u8>, Vec<u8>) {
+pub(super) fn card() -> (Vec<u8>, Vec<u8>) {
     let mut bin = Vec::new();
     for p in [[0f32, 0., 0.], [1., 0., 0.], [1., 1., 0.], [0., 1., 0.]] {
         p.iter()
@@ -563,11 +563,20 @@ fn committed_sources_compile_within_budgets_to_the_pinned_pack() {
             path.display()
         );
         // The pinned pack, which the loader admits, decodes to the same
-        // models, materials, and textures.
+        // models, materials, and textures, beside the medieval kit's proxies.
         let pinned = root.join(format!("{PACK_SHA256}.{PACK_EXTENSION}"));
         let pinned = ZonePack::load_local(&pinned).expect("the pinned pack loads");
-        assert_eq!(pinned.models.len(), pack.models.len());
-        assert_eq!(pinned.materials, pack.materials);
+        let own = |name: &str| !name.starts_with("kit/") && !name.starts_with("kit-proxy/");
+        let models = pinned.models.iter().filter(|m| own(&m.name)).count();
+        assert_eq!(models, pack.models.len());
+        assert_eq!(pinned.models.len() - models, kit::PIECES.len());
+        let materials: Vec<_> = pinned
+            .materials
+            .iter()
+            .filter(|m| own(&m.name))
+            .cloned()
+            .collect();
+        assert_eq!(materials, pack.materials);
         assert_eq!(pinned.textures, pack.textures);
     }
 }

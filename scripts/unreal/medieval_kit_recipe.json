@@ -1,0 +1,186 @@
+{
+ "pieces": {
+  "anvil": {
+   "lod0": true,
+   "mesh": "Meshes/Props/SM_anvil_01"
+  },
+  "awning": {
+   "mesh": "Meshes/Props/SM_tent_01"
+  },
+  "balcony": {
+   "lod0": true,
+   "mesh": "Meshes/Props/SM_balcony_01"
+  },
+  "band-2": {
+   "mesh": "Meshes/Architecture/Modules/Walls_elements/SM_wall_A_element_2_01"
+  },
+  "band-4": {
+   "mesh": "Meshes/Architecture/Modules/Walls_elements/SM_wall_A_element_4_01"
+  },
+  "barrel": {
+   "lod0": true,
+   "mesh": "Meshes/Props/SM_barrel_01"
+  },
+  "basket": {
+   "lod0": true,
+   "mesh": "Meshes/Props/SM_basket_01"
+  },
+  "bench": {
+   "lod0": true,
+   "mesh": "Meshes/Props/SM_bench_01"
+  },
+  "bucket": {
+   "lod0": true,
+   "mesh": "Meshes/Props/SM_bucket_01"
+  },
+  "cart": {
+   "lod0": true,
+   "mesh": "Meshes/Props/SM_carriage"
+  },
+  "chair": {
+   "lod0": true,
+   "mesh": "Meshes/Props/SM_chair_01"
+  },
+  "chimney": {
+   "mesh": "Meshes/Architecture/SM_chimney_03"
+  },
+  "chimney-wide": {
+   "mesh": "Meshes/Architecture/SM_chimney_04"
+  },
+  "corner": {
+   "mesh": "Meshes/Architecture/Modules/Walls_A/SM_wall_A_corner_4_01_02"
+  },
+  "corner-b": {
+   "mesh": "Meshes/Architecture/Modules/Walls_B/SM_wall_B_corner_01_01"
+  },
+  "crate": {
+   "mesh": "Meshes/Props/SM_box_01"
+  },
+  "door-2": {
+   "mesh": "Meshes/Architecture/Modules/Doorways/SM_wall_A_doorway_2x2_01_02"
+  },
+  "door-4": {
+   "mesh": "Meshes/Architecture/Modules/Doorways/SM_wall_A_doorway_4x4_01_02"
+  },
+  "door-b": {
+   "mesh": "Meshes/Architecture/Modules/Walls_B/SM_wall_B_doorway_4x4_03"
+  },
+  "floor-4": {
+   "mesh": "Meshes/Architecture/Modules/Floor_Ceiling/SM_floor_ceiling_4x4_01"
+  },
+  "floor-4x2": {
+   "mesh": "Meshes/Architecture/Modules/Floor_Ceiling/SM_floor_ceiling_4x4_01",
+   "scale": [
+    1.0,
+    1.0,
+    0.5
+   ]
+  },
+  "flowerpot": {
+   "mesh": "Meshes/Props/SM_flowerpot_01"
+  },
+  "forge": {
+   "mesh": "Meshes/Architecture/SM_blacksmith_fireplace_01"
+  },
+  "fountain": {
+   "mesh": "Meshes/Props/SM_fountain_01"
+  },
+  "lamp": {
+   "mesh": "Meshes/Props/SM_street_lamp_01"
+  },
+  "plinth-2": {
+   "mesh": "Meshes/Architecture/Modules/Basement/SM_basement_A_2x2_01"
+  },
+  "plinth-4": {
+   "mesh": "Meshes/Architecture/Modules/Basement/SM_basement_A_2x4_01"
+  },
+  "plinth-corner": {
+   "mesh": "Meshes/Architecture/Modules/Basement/SM_basement_A_corner_01_01"
+  },
+  "porch-roof": {
+   "lod0": true,
+   "mesh": "Meshes/Architecture/SM_porch_roof_02"
+  },
+  "ridge-2": {
+   "mesh": "Meshes/Architecture/Modules/Roof/SM_roof_A_top_part_2_01"
+  },
+  "ridge-4": {
+   "lod0": true,
+   "mesh": "Meshes/Architecture/Modules/Roof/SM_roof_A_top_part_4_01"
+  },
+  "ridge-end": {
+   "lod0": true,
+   "mesh": "Meshes/Architecture/Modules/Roof/SM_roof_A_top_part_4_02"
+  },
+  "ridge-end-mirror": {
+   "lod0": true,
+   "mesh": "Meshes/Architecture/Modules/Roof/SM_roof_A_top_part_4_02",
+   "mirror_x": true
+  },
+  "roof-end": {
+   "lod0": true,
+   "mesh": "Meshes/Architecture/Modules/Roof/SM_roof_A_part_01_02"
+  },
+  "roof-end-mirror": {
+   "lod0": true,
+   "mesh": "Meshes/Architecture/Modules/Roof/SM_roof_A_part_01_02",
+   "mirror_x": true
+  },
+  "roof-mid": {
+   "lod0": true,
+   "mesh": "Meshes/Architecture/Modules/Roof/SM_roof_A_part_4_02_01"
+  },
+  "roof-mid-2": {
+   "lod0": true,
+   "mesh": "Meshes/Architecture/Modules/Roof/SM_roof_A_part_2_02_01"
+  },
+  "shutter": {
+   "lod0": true,
+   "mesh": "Meshes/Architecture/SM_shutter_01"
+  },
+  "sign": {
+   "mesh": "Meshes/Props/SM_signboard_02"
+  },
+  "stairs": {
+   "mesh": "Meshes/Architecture/SM_porch_stairs_01"
+  },
+  "stall": {
+   "mesh": "Meshes/Props/SM_tent_02"
+  },
+  "table": {
+   "mesh": "Meshes/Props/SM_table_01"
+  },
+  "wall-2": {
+   "mesh": "Meshes/Architecture/Modules/Walls_A/SM_wall_A_2x4_01_02"
+  },
+  "wall-2-timber": {
+   "mesh": "Meshes/Architecture/Modules/Walls_A/SM_wall_A_2x4_02_02"
+  },
+  "wall-4": {
+   "mesh": "Meshes/Architecture/Modules/Walls_A/SM_wall_A_4x4_01_02"
+  },
+  "wall-4-timber": {
+   "mesh": "Meshes/Architecture/Modules/Walls_A/SM_wall_A_4x4_02_02"
+  },
+  "wall-b-4": {
+   "mesh": "Meshes/Architecture/Modules/Walls_B/SM_wall_B_4x4_01"
+  },
+  "window-4": {
+   "mesh": "Meshes/Architecture/Modules/Windows/SM_wall_A_window_4x4_01_02"
+  },
+  "window-4-small": {
+   "mesh": "Meshes/Architecture/Modules/Windows/SM_wall_A_window_4x4_04_02"
+  },
+  "window-4-tall": {
+   "mesh": "Meshes/Architecture/Modules/Windows/SM_wall_A_window_4x4_05_02"
+  },
+  "window-4-wide": {
+   "mesh": "Meshes/Architecture/Modules/Windows/SM_wall_A_window_4x4_07_02"
+  },
+  "window-b": {
+   "lod0": true,
+   "mesh": "Meshes/Architecture/Modules/Walls_B/SM_wall_B_window_02"
+  }
+ },
+ "schema": "openagents.verse.medieval-kit-recipe.v1"
+}

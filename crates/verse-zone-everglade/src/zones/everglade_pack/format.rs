@@ -170,6 +170,24 @@ impl Limits {
     };
 }
 
+impl Limits {
+    /// The budgets of the licensed medieval kit pack
+    /// (`docs/verse/everglade-medieval-refactor.md`): static kit pieces and
+    /// their far levels, each primitive one base-color image, at most 512 px
+    /// a side. Its bytes live only in the private bucket and in builds, so
+    /// nothing is committed; the repository holds its digest.
+    pub const KIT: Self = Self {
+        pack_bytes: 24 * 1024 * 1024,
+        decoded_texture_bytes: 64 * 1024 * 1024,
+        texture_edge: 512,
+        triangles: 400_000,
+        model_triangles: 20_000,
+        committed_bytes: 0,
+        character_triangles: 0,
+        body_bytes: 32 * 1024 * 1024,
+    };
+}
+
 /// How a material's base-color alpha is used.
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub enum AlphaMode {

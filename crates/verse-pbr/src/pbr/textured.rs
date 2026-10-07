@@ -47,8 +47,9 @@ pub const CELL: f32 = 8.0;
 /// Largest base-color image side. OpenGL ES 3.0 guarantees 2048 texels; the
 /// importer halves larger images until they fit.
 pub const MAX_IMAGE_SIZE: u32 = 2048;
-/// Most base-color images in one scene.
-pub const MAX_IMAGES: usize = 64;
+/// Most base-color images in one scene: a zone pack's 64 and, in
+/// Everglade, the medieval kit's.
+pub const MAX_IMAGES: usize = 96;
 /// Most materials in one scene.
 pub const MAX_MATERIALS: usize = 1024;
 /// Most placements in one scene.

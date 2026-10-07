@@ -96,7 +96,7 @@ so a submitted branch can't change the commands that check it.
 | `pin` | Optional. The source `file` whose `lines` (line prefixes) hold the pin, and the `history` list that keeps earlier digests. |
 | `message` | The repin commit's subject. `{changes}` becomes the summaries. |
 
-The registry has two entries:
+The registry has three entries:
 
 - `everglade-pack` runs
   `cargo run --release -p verse --example everglade_pack -- assets/verse/everglade`
@@ -108,6 +108,13 @@ The registry has two entries:
   and the `the_pinned_pack_is_what_the_sources_compile_to` test in `verse`
   to check. It pins `assets/verse/grid/pack.json` and the white texel
   beside it.
+- `everglade-kit` runs `scripts/unreal/medieval_kit_build.py` and the
+  `everglade_kit` example in `verse-zone-everglade` to regenerate, and the
+  example with `--check` to check. The kit pack is licensed, so the entry
+  pins no file, only `KIT_SHA256` and `KIT_BYTES` in
+  `crates/verse-zone-everglade/src/zones/everglade_pack/kit.rs`, and it runs
+  only on a machine with the private export
+  (`docs/verse/everglade-medieval-refactor.md`).
 
 A generated fixture or a lockfile can join the queue with a file of its
 own.

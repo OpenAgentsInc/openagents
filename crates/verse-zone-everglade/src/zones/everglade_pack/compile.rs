@@ -23,9 +23,12 @@
 //!
 //! [`private`] compiles a licensed character into a private pack of its
 //! own, from a build directory outside the repository
-//! (`docs/verse/private-assets.md`).
+//! (`docs/verse/private-assets.md`), and [`kit`] compiles the licensed
+//! medieval kit into the kit pack
+//! (`docs/verse/everglade-medieval-refactor.md`).
 
 mod forms;
+pub mod kit;
 pub mod private;
 
 use std::collections::BTreeMap;
@@ -395,8 +398,9 @@ fn read_set(root: &Path, set: &str) -> Result<(SourceSet, u64), String> {
 
 /// The edge a texture is compiled to.
 pub fn texture_edge(set: &str, file: &str, limits: &Limits) -> u32 {
-    // A private pack's images are baked at their edge; the limits bound it.
-    if set == private::SET {
+    // A private pack's images are baked at their edge, and a kit pack's
+    // images take its tier's edge; the limits bound both.
+    if set == private::SET || set == kit::SET {
         return limits.texture_edge;
     }
     let path = format!("{set}/{file}");
