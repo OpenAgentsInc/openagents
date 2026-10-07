@@ -20,7 +20,14 @@
 //! **Slugs.** `core` is seeded from her record (name and charter) when it
 //! is absent and is never rewritten here; `mem/persona` is a snapshot of
 //! her definition without secrets, rewritten when it changes;
-//! `mem/entry/ID` is one `agent_memory::MemoryEntry` as JSON text;
+//! `mem/entry/ID` is one `agent_memory::MemoryEntry` as JSON text, and
+//! `mem/insight/ID` is one whose kind is `insight`, a reflection's insight
+//! with its checked citations in `sources` ([`slug_of`]). The ID is the
+//! memory entry's, so the two prefixes share one sequence and an insight is
+//! never written twice; an insight an older host wrote at `mem/entry/ID`
+//! moves to `mem/insight/ID` at the next [`reconcile`], which tombstones the
+//! old slug. `mem/proposal/core` holds a `core` proposal waiting for the
+//! owner (`agent_consolidate`);
 //! `mem/score/journal/POS` and `mem/score/memory/ID` are the newest
 //! `scores.jsonl` row for `journal:POS` and `memory:ID`. A memory body
 //! carries the working row's `schema` and `v` as extra fields. Forgetting
@@ -32,7 +39,15 @@
 //! them; [`reconcile`] runs when the host first opens an agent, takes an
 //! engram head newer than its working row (how an edit from another device
 //! arrives), and writes through every working row the store lacks, which
-//! migrates an agent made before the store existed.
+//! migrates an agent made before the store existed. The working files are a
+//! cache of the store: when `memory.jsonl` is missing and the store holds
+//! entries, [`rebuild_from_engrams`] writes it again from the heads, and
+//! `scores.jsonl` with it.
+//!
+//! **Reachability.** [`reach`] follows the NIP-AE `[[slug]]` references from
+//! `core` through every memory it reaches and lists the orphans (memories
+//! nothing reachable links) and the dangling references (links to a slug
+//! with no live head). Nothing deletes an orphan.
 //!
 //! **Fail closed.** When any head cannot be read, verified, or decrypted,
 //! the whole store is [`Opened::Unreadable`]: a reader carries nothing from
@@ -147,6 +162,44 @@ pub fn dir_of(store: &Store) -> PathBuf {
 #[must_use]
 pub fn entry_slug(id: u64) -> Slug {
     Slug::parse(&format!("mem/entry/{id}")).expect("a number is a slug segment")
+}
+
+/// The slug of insight entry `id`: `mem/insight/ID`.
+#[must_use]
+pub fn insight_slug(id: u64) -> Slug {
+    Slug::parse(&format!("mem/insight/{id}")).expect("a number is a slug segment")
+}
+
+/// Where memory entry `entry` lives: `mem/insight/ID` for an insight, else
+/// `mem/entry/ID`.
+#[must_use]
+pub fn slug_of(entry: &MemoryEntry) -> Slug {
+    if entry.kind == super::agent_memory::MemoryKind::Insight {
+        insight_slug(entry.id)
+    } else {
+        entry_slug(entry.id)
+    }
+}
+
+/// The memory ID in an entry or insight slug.
+fn entry_id(slug: &Slug) -> Option<u64> {
+    let text = slug.as_str();
+    text.strip_prefix("mem/entry/")
+        .or_else(|| text.strip_prefix("mem/insight/"))?
+        .parse()
+        .ok()
+}
+
+/// The SHA-256 of a `core` profile, lowercase hex: the base a `core`
+/// proposal names for its compare-and-swap. A missing `core` hashes as the
+/// empty profile.
+#[must_use]
+pub fn core_hash(profile: Option<&str>) -> String {
+    use sha2::Digest;
+    sha2::Sha256::digest(profile.unwrap_or("").as_bytes())
+        .iter()
+        .map(|b| format!("{b:02x}"))
+        .collect()
 }
 
 /// The slug of the score row for `reference` (`journal:POS` or
@@ -502,29 +555,51 @@ impl EngramStore {
         Ok(true)
     }
 
-    /// Writes memory entry `entry` as `mem/entry/ID`.
+    /// Writes memory entry `entry` at its slug ([`slug_of`]). An insight
+    /// that still has a live head at `mem/entry/ID`, from an older host,
+    /// tombstones it, so the entry lives at one slug.
     ///
     /// # Errors
     /// As [`EngramStore::put`].
     pub fn put_entry(&mut self, entry: &MemoryEntry, now: u64) -> Result<Engram, String> {
         let value = serde_json::to_string(entry).map_err(|e| e.to_string())?;
-        let body = Body::memory(entry_slug(entry.id), value)
+        let slug = slug_of(entry);
+        let body = Body::memory(slug.clone(), value)
             .and_then(|b| b.with_extra("schema", entry.schema.clone().into()))
             .and_then(|b| b.with_extra("v", entry.v.into()))
             .map_err(|e| e.to_string())?;
-        self.put(body, now)
+        let written = self.put(body, now)?;
+        let old = entry_slug(entry.id);
+        if slug != old && self.head(&old).is_some_and(|h| !h.is_tombstone()) {
+            self.tombstone(old, now)?;
+        }
+        Ok(written)
     }
 
-    /// Writes the tombstone of memory entry `id`.
-    ///
-    /// # Errors
-    /// As [`EngramStore::put`].
-    pub fn forget_entry(&mut self, id: u64, now: u64) -> Result<Engram, String> {
-        let body = Body::tombstone(entry_slug(id))
+    fn tombstone(&mut self, slug: Slug, now: u64) -> Result<Engram, String> {
+        let body = Body::tombstone(slug)
             .and_then(|b| b.with_extra("schema", super::agent_memory::SCHEMA.into()))
             .and_then(|b| b.with_extra("v", 1.into()))
             .map_err(|e| e.to_string())?;
         self.put(body, now)
+    }
+
+    /// Writes the tombstone of memory entry `id`: at each of its slugs
+    /// with a live head, or at `mem/entry/ID` when neither has one.
+    ///
+    /// # Errors
+    /// As [`EngramStore::put`].
+    pub fn forget_entry(&mut self, id: u64, now: u64) -> Result<Engram, String> {
+        let mut last = None;
+        for slug in [insight_slug(id), entry_slug(id)] {
+            if self.head(&slug).is_some_and(|h| !h.is_tombstone()) {
+                last = Some(self.tombstone(slug, now)?);
+            }
+        }
+        match last {
+            Some(written) => Ok(written),
+            None => self.tombstone(entry_slug(id), now),
+        }
     }
 
     /// Writes score row `row` as `mem/score/...`.
@@ -542,33 +617,31 @@ impl EngramStore {
         self.put(body, now)
     }
 
-    /// Every live `mem/entry/ID` head as `(head, entry)`, and every entry
-    /// tombstone as `(head, None)`, by ID. A head whose value is not an
-    /// entry is skipped.
-    fn entry_heads(&self) -> BTreeMap<u64, (&Engram, Option<MemoryEntry>)> {
-        let mut out = BTreeMap::new();
+    /// Every live `mem/entry/ID` or `mem/insight/ID` head as `(head,
+    /// entry)`, and every entry tombstone as `(head, None)`, by ID. A head
+    /// whose value is not an entry is skipped. When both slugs of one ID
+    /// have a head, a live one wins over a tombstone, then the newer.
+    pub(crate) fn entry_heads(&self) -> BTreeMap<u64, (&Engram, Option<MemoryEntry>)> {
+        let mut out: BTreeMap<u64, (&Engram, Option<MemoryEntry>)> = BTreeMap::new();
         for head in self.heads.values() {
             let Body::Memory { slug, value, .. } = &head.body else {
                 continue;
             };
-            let Some(Ok(id)) = slug
-                .as_str()
-                .strip_prefix("mem/entry/")
-                .map(str::parse::<u64>)
-            else {
+            let Some(id) = entry_id(slug) else {
                 continue;
             };
-            match value {
-                None => {
-                    out.insert(id, (head, None));
-                }
-                Some(text) => {
-                    if let Ok(entry) = serde_json::from_str::<MemoryEntry>(text)
-                        && entry.id == id
-                    {
-                        out.insert(id, (head, Some(entry)));
-                    }
-                }
+            let entry = match value {
+                None => None,
+                Some(text) => match serde_json::from_str::<MemoryEntry>(text) {
+                    Ok(entry) if entry.id == id => Some(entry),
+                    _ => continue,
+                },
+            };
+            let wins = out.get(&id).is_none_or(|(have, had)| {
+                (entry.is_some(), head.created_at) > (had.is_some(), have.created_at)
+            });
+            if wins {
+                out.insert(id, (head, entry));
             }
         }
         out
@@ -804,7 +877,8 @@ pub fn reconcile(memory: &Memory, now: u64) -> Result<Reconciled, String> {
     let stale: Vec<MemoryEntry> = rows
         .into_iter()
         .filter(|row| match heads.get(&row.id) {
-            Some((_, Some(entry))) => entry != row,
+            // An insight at `mem/entry/ID` moves to `mem/insight/ID`.
+            Some((head, Some(entry))) => entry != row || head.slug() != slug_of(row),
             _ => true,
         })
         .collect();
@@ -850,6 +924,174 @@ pub fn reconcile(memory: &Memory, now: u64) -> Result<Reconciled, String> {
         );
     }
     Ok(done)
+}
+
+/// Whether `store`'s engram index lists a head whose slug starts with one
+/// of `prefixes`: a cheap look, without decrypting, before a rebuild.
+fn index_lists(store: &Store, prefixes: &[&str]) -> bool {
+    read_index(&dir_of(store))
+        .ok()
+        .flatten()
+        .is_some_and(|index| {
+            index
+                .heads
+                .values()
+                .any(|head| prefixes.iter().any(|p| head.slug.starts_with(p)))
+        })
+}
+
+/// What [`rebuild_from_engrams`] wrote.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub struct Rebuilt {
+    /// Entries written to a missing `memory.jsonl`.
+    pub entries: usize,
+    /// Rows written to a missing `scores.jsonl`.
+    pub scores: usize,
+}
+
+/// Writes `memory.jsonl` and `scores.jsonl` again from the engram heads
+/// when either is missing and the store holds what it would carry: the
+/// live entries by ID, and the newest score row for each record. The
+/// working files are a cache of the store, so deleting one loses nothing
+/// the store holds. It reads the store and writes nothing to it; a store
+/// that cannot be read rebuilds nothing.
+///
+/// # Errors
+/// When the store cannot be read or a working file cannot be written.
+pub fn rebuild_from_engrams(memory: &Memory) -> Result<Rebuilt, String> {
+    let store = memory.store();
+    let entries_missing = !store.dir().join("memory.jsonl").exists()
+        && index_lists(store, &["mem/entry/", "mem/insight/"]);
+    let scores_missing =
+        !store.dir().join("scores.jsonl").exists() && index_lists(store, &["mem/score/"]);
+    if !entries_missing && !scores_missing {
+        return Ok(Rebuilt::default());
+    }
+    let engrams = match EngramStore::read(store, memory.screen()) {
+        Opened::Ready(engrams) => engrams,
+        Opened::Skipped(why) | Opened::Unreadable(why) => return Err(why),
+    };
+    let mut done = Rebuilt::default();
+    if entries_missing {
+        let rows: Vec<MemoryEntry> = engrams
+            .entry_heads()
+            .into_values()
+            .filter_map(|(_, entry)| entry)
+            .collect();
+        if !rows.is_empty() {
+            memory.replace_entries(&rows)?;
+            done.entries = rows.len();
+        }
+    }
+    if scores_missing {
+        let rows: Vec<ScoreRow> = engrams
+            .score_heads()
+            .into_values()
+            .map(|(_, row)| row)
+            .collect();
+        Scores::of(store).append(&rows)?;
+        done.scores = rows.len();
+    }
+    if done != Rebuilt::default() {
+        note(
+            store,
+            super::autostart::unix_now(),
+            &format!(
+                "rebuilt the working files from engrams: {} entries, {} score rows",
+                done.entries, done.scores
+            ),
+        );
+    }
+    Ok(done)
+}
+
+/// Whether `slug` is a memory the owner reviews for reachability: not a
+/// score row, her persona snapshot, or a pending proposal, which are
+/// bookkeeping that no `core` links.
+#[must_use]
+pub fn reviewed(slug: &Slug) -> bool {
+    let text = slug.as_str();
+    !slug.is_core()
+        && text != PERSONA_SLUG
+        && !text.starts_with("mem/score/")
+        && !text.starts_with("mem/proposal/")
+}
+
+/// One `[[slug]]` reference that names no live head.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize)]
+pub struct Dangling {
+    /// The slug whose text holds the reference.
+    pub from: String,
+    /// The slug it names.
+    pub to: String,
+}
+
+/// The reachability graph rooted at `core` (NIP-AE, "References and
+/// reachability"): its edges are the `[[slug]]` references in `core` and
+/// in each memory it reaches.
+#[derive(Clone, Debug, Default, PartialEq, Eq, Serialize)]
+pub struct Reach {
+    /// Whether there is a `core` to start from.
+    pub core: bool,
+    /// The live memories `core` reaches, by slug.
+    pub reachable: Vec<String>,
+    /// The live memories it doesn't reach, by slug, apart from the
+    /// bookkeeping slugs that [`reviewed`] leaves out. Listed for the
+    /// owner, never deleted.
+    pub orphans: Vec<String>,
+    /// References that name a missing or forgotten slug.
+    pub dangling: Vec<Dangling>,
+}
+
+/// The reachability graph of `heads`, which hold at most one head per
+/// slug, as a store or an owner read returns them.
+#[must_use]
+pub fn reach<'a>(heads: impl IntoIterator<Item = &'a Engram>) -> Reach {
+    let by_slug: BTreeMap<String, &Engram> = heads
+        .into_iter()
+        .map(|head| (head.slug().as_str().to_string(), head))
+        .collect();
+    let mut out = Reach::default();
+    let mut seen = std::collections::BTreeSet::new();
+    if let Some(core) = by_slug.get(engram::CORE_SLUG) {
+        out.core = true;
+        let mut queue = std::collections::VecDeque::from([*core]);
+        while let Some(head) = queue.pop_front() {
+            let from = head.slug();
+            for link in head.body.links() {
+                if link.is_core() {
+                    continue;
+                }
+                match by_slug.get(link.as_str()) {
+                    Some(target) if !target.is_tombstone() => {
+                        if seen.insert(link.as_str().to_string()) {
+                            queue.push_back(target);
+                        }
+                    }
+                    _ => out.dangling.push(Dangling {
+                        from: from.as_str().to_string(),
+                        to: link.as_str().to_string(),
+                    }),
+                }
+            }
+        }
+    }
+    out.orphans = by_slug
+        .values()
+        .filter(|h| !h.is_tombstone() && reviewed(&h.slug()))
+        .map(|h| h.slug().as_str().to_string())
+        .filter(|slug| !seen.contains(slug))
+        .collect();
+    out.reachable = seen.into_iter().collect();
+    out
+}
+
+impl EngramStore {
+    /// The reachability graph of this store's heads ([`reach`]).
+    #[must_use]
+    pub fn reach(&self) -> Reach {
+        reach(self.heads.values())
+    }
 }
 
 /// What the owner reads with the owner key.

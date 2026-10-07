@@ -100,14 +100,21 @@ pub const USAGE: &str = "usage: openagents agent COMMAND [--root DIR] [--control
                Forget an entry; the journal keeps only that it was forgotten.
   memory NAME accept ID
                Accept a preference she proposed, so her briefings carry it.
+               Entry 0 is a core profile she proposed: accepting it writes
+               her core, unless her core changed since she proposed it.
   memory NAME reject ID
-               Reject a preference she proposed.
+               Reject a preference she proposed, or, as entry 0, her
+               proposed core profile.
   memory NAME engrams [--owner-key FILE] [--from-relay] [--relay URL]...
                Her engram heads: slug, time, and event ID. With the owner
                key in FILE, decrypt each one and print it too. With
                --from-relay, read them from relays with the owner key
                alone: her write relays from her relay list on each URL,
                else the URLs, else the relays she syncs with.
+  memory NAME engrams --orphans [--owner-key FILE]
+               The memories her core does not reach through [[slug]]
+               links, and the links that name a missing memory. Nothing
+               deletes an orphan.
   memory NAME sync on [--relay URL]...
                Sync her engrams with these relays, by default the owner's
                relay. Sync is off until you turn it on; a relay sees her
@@ -182,7 +189,7 @@ pub(crate) const EFFECTS: &[Declared] = &[
     Declared::computer("jobs renew", Effect::LocalWrite),
 ];
 
-const SWITCHES: &[&str] = &["wait", "from-relay"];
+const SWITCHES: &[&str] = &["wait", "from-relay", "orphans"];
 
 pub fn run(output: &Output, words: &[String]) -> u8 {
     if words
@@ -1202,6 +1209,7 @@ fn memory(
         ["engrams"] if args.switch("from-relay") => {
             return engrams_from_relay(output, root, name, args);
         }
+        ["engrams"] if args.switch("orphans") => return orphans(output, root, name, args),
         ["engrams"] => return engrams(output, root, name, args),
         ["sync", verb] => return sync(output, root, name, verb, args),
         ["note", text @ ..] if !text.is_empty() => Some(wire::MemoryEdit::Note {
@@ -1243,11 +1251,15 @@ fn memory(
             .map_err(|e| Fail::Failed(format!("the host's answer does not read: {e}")))?,
         Err(Fail::Refused(refusal)) if refusal.code == "unavailable" => {
             let (store, _) = store(root, name)?;
-            wire::Memory {
-                drafts: coder::task::agent_share::draft_rows(&store),
-                memory: coder::task::agent_memory::Memory::new(store, secret_screen_shapes())
+            let mut memory = coder::task::agent_consolidate::rows(&store, &secret_screen_shapes());
+            memory.extend(
+                coder::task::agent_memory::Memory::new(store.clone(), secret_screen_shapes())
                     .rows(None)
                     .map_err(Fail::Failed)?,
+            );
+            wire::Memory {
+                drafts: coder::task::agent_share::draft_rows(&store),
+                memory,
             }
         }
         Err(other) => return Err(other),
@@ -1354,6 +1366,61 @@ fn engrams(output: &Output, root: &Path, name: &str, args: &Args) -> Result<(), 
         }
         for problem in &problems {
             lines.push(format!("not read: {problem}"));
+        }
+        lines.join("\n")
+    });
+    Ok(())
+}
+
+/// The memories her `core` does not reach, and the links that name a
+/// missing memory, read with her key here or with the owner key.
+fn orphans(output: &Output, root: &Path, name: &str, args: &Args) -> Result<(), Fail> {
+    use coder::task::agent_engrams::{self, EngramStore, Opened};
+    let (store, _) = store(root, name)?;
+    let reach = if let Some(owner) = owner_key(args)? {
+        let view = agent_engrams::owner_read(&store, &owner).map_err(Fail::Failed)?;
+        if !view.problems.is_empty() {
+            return Err(Fail::Failed(format!(
+                "{name}'s engrams do not all read, so no orphan list is complete: {}",
+                view.problems.join("; ")
+            )));
+        }
+        agent_engrams::reach(&view.heads)
+    } else {
+        match EngramStore::read(&store, &secret_screen_shapes()) {
+            Opened::Ready(engrams) => engrams.reach(),
+            Opened::Skipped(why) => {
+                let said = format!("{name} keeps no engrams: {why}.");
+                output.emit(&json!({"orphans": [], "skipped": why}), |_| said.clone());
+                return Ok(());
+            }
+            Opened::Unreadable(why) => {
+                return Err(Fail::Failed(format!(
+                    "{name}'s engram store cannot be read, so nothing from it is carried: {why}"
+                )));
+            }
+        }
+    };
+    output.emit(&json!(reach), |_| {
+        let mut lines = Vec::new();
+        if !reach.core {
+            lines.push(format!(
+                "{name} has no core yet, so every memory is an orphan."
+            ));
+        }
+        lines.push(format!(
+            "{} memories reachable from her core, {} orphans; nothing deletes an orphan.",
+            reach.reachable.len(),
+            reach.orphans.len()
+        ));
+        for orphan in &reach.orphans {
+            lines.push(format!("  orphan  {orphan}"));
+        }
+        for dangling in &reach.dangling {
+            lines.push(format!(
+                "  missing {} (linked from {})",
+                dangling.to, dangling.from
+            ));
         }
         lines.join("\n")
     });
@@ -1861,6 +1928,20 @@ mod tests {
         assert!(engrams(&output, &root, "alice", &with_owner).is_ok());
         let missing = args(&["--owner-key", dir.path().join("none").to_str().unwrap()]);
         assert!(engrams(&output, &root, "alice", &missing).is_err());
+        // Her seeded core links nothing, so the note is an orphan, read
+        // the same with her key and with the owner key.
+        assert_eq!(
+            coder::task::agent_engrams::reach(&view.heads).orphans.len(),
+            1
+        );
+        assert!(orphans(&output, &root, "alice", &args(&["--orphans"])).is_ok());
+        let both = args(&["--orphans", "--owner-key", owner.to_str().unwrap()]);
+        assert!(orphans(&output, &root, "alice", &both).is_ok());
+        assert!(memory_list_routes_orphans(&output, &root));
+    }
+
+    fn memory_list_routes_orphans(output: &Output, root: &Path) -> bool {
+        memory(output, root, "alice", &["engrams"], &args(&["--orphans"])).is_ok()
     }
 
     #[test]

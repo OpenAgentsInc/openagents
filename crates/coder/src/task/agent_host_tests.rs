@@ -919,3 +919,91 @@ fn her_morning_plan_is_visible_and_the_owners_request_replans_it() {
     );
     assert!(journal.iter().any(|e| e.text.contains("react_now by code")));
 }
+
+#[test]
+fn the_owner_accepts_her_core_proposal_as_memory_row_zero() {
+    use crate::task::agent_consolidate::{self, PROPOSAL_ID};
+    use crate::task::agent_engrams::{EngramStore, Opened};
+    struct Profile(String);
+    impl crate::task::agent_reflect::Writer for Profile {
+        fn write(&mut self, _: &str, _: &str) -> Result<crate::task::agent_reflect::Reply, String> {
+            Ok(crate::task::agent_reflect::Reply {
+                text: json!({ "profile": self.0 }).to_string(),
+                model: "scripted".into(),
+                usd: None,
+            })
+        }
+    }
+    let dir = tempfile::tempdir().unwrap();
+    let agents = host(&dir, Vec::new());
+    let store = Store::new(&dir.path().join("host"), "alice").unwrap();
+    let record = store.load().unwrap().unwrap();
+    let record = store.ensure_key(record, clock()).unwrap();
+    let owner_key = secp256k1::SecretKey::from_byte_array([7; 32]).unwrap();
+    let record = store
+        .attest(record, &owner_key, clock() + 86_400, clock())
+        .unwrap();
+    let memory = Memory::new(store.clone(), secret_screen::Screen::shapes());
+    let insight = memory
+        .add(
+            MemoryKind::Insight,
+            Author::Agent,
+            "Reviews go faster with small diffs.",
+            vec!["journal:1".into()],
+            clock(),
+        )
+        .unwrap();
+    let profile = format!(
+        "I am alice.\n\nMy charter: {}\n\nSmall diffs review faster. [[mem/insight/{insight}]]",
+        record.charter
+    );
+    agent_consolidate::propose(&memory, &mut Profile(profile.clone()), clock()).unwrap();
+    let list: wire::Memory = serde_json::from_value(
+        agents
+            .answer(
+                "m",
+                &owner(),
+                &Operation::ListAgentMemory {
+                    agent: "alice".into(),
+                    after: None,
+                },
+            )
+            .unwrap(),
+    )
+    .unwrap();
+    assert_eq!(list.memory[0].id, PROPOSAL_ID);
+    assert_eq!(
+        (list.memory[0].kind.as_str(), list.memory[0].state.as_str()),
+        ("core", "candidate")
+    );
+    assert!(
+        list.memory
+            .iter()
+            .any(|m| m.kind == "insight" && m.id == insight)
+    );
+    let done = agents
+        .answer(
+            "m1",
+            &owner(),
+            &Operation::EditAgentMemory {
+                agent: "alice".into(),
+                edit: wire::MemoryEdit::Accept { id: PROPOSAL_ID },
+            },
+        )
+        .unwrap();
+    assert_eq!(done["dispatched"], "core");
+    let Opened::Ready(engrams) = EngramStore::read(&store, &secret_screen::Screen::shapes()) else {
+        panic!("not ready");
+    };
+    assert_eq!(engrams.core(), Some(profile.as_str()));
+    // Nothing waits now, so a second accept is a conflict.
+    let again = agents.answer(
+        "m2",
+        &owner(),
+        &Operation::EditAgentMemory {
+            agent: "alice".into(),
+            edit: wire::MemoryEdit::Accept { id: PROPOSAL_ID },
+        },
+    );
+    assert_eq!(again, Err(Code::Conflict));
+}

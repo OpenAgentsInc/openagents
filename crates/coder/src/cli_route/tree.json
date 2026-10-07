@@ -12509,7 +12509,7 @@
                     ]
                   }
                 ],
-                "summary": "Accept a preference she proposed, so her briefings carry it.",
+                "summary": "Accept a preference she proposed, so her briefings carry it. Entry 0 is a core profile she proposed: accepting it writes her core, unless her core changed since she proposed it.",
                 "effect": "publishes",
                 "runs_on": "connected_computer"
               }
@@ -12547,7 +12547,7 @@
                     ]
                   }
                 ],
-                "summary": "Reject a preference she proposed.",
+                "summary": "Reject a preference she proposed, or, as entry 0, her proposed core profile.",
                 "effect": "publishes",
                 "runs_on": "connected_computer"
               }
@@ -12561,7 +12561,8 @@
                   "engrams"
                 ],
                 "usage": [
-                  "memory NAME engrams [--owner-key FILE] [--from-relay] [--relay URL]..."
+                  "memory NAME engrams [--owner-key FILE] [--from-relay] [--relay URL]...",
+                  "memory NAME engrams --orphans [--owner-key FILE]"
                 ],
                 "forms": [
                   {
@@ -12597,6 +12598,33 @@
                         "open": true,
                         "optional": true,
                         "repeated": true
+                      }
+                    ]
+                  },
+                  {
+                    "tokens": [
+                      {
+                        "kind": "literal",
+                        "word": "memory"
+                      },
+                      {
+                        "kind": "positional",
+                        "name": "NAME"
+                      },
+                      {
+                        "kind": "literal",
+                        "word": "engrams"
+                      },
+                      {
+                        "kind": "option",
+                        "name": "orphans"
+                      },
+                      {
+                        "kind": "option",
+                        "name": "owner-key",
+                        "value": "FILE",
+                        "open": true,
+                        "optional": true
                       }
                     ]
                   }
@@ -13154,6 +13182,12 @@
           "name": "relay",
           "value": "URL",
           "open": true,
+          "optional": true,
+          "repeated": true
+        },
+        {
+          "kind": "option",
+          "name": "orphans",
           "optional": true,
           "repeated": true
         },

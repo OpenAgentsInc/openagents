@@ -147,11 +147,20 @@ impl Memory {
     }
 
     /// Every entry, oldest first. A line that does not read is skipped.
+    /// A missing file is rebuilt from the engram store first, when it
+    /// holds entries (`agent_engrams::rebuild_from_engrams`).
     ///
     /// # Errors
     /// When the file exists and cannot be read.
     pub fn entries(&self) -> Result<Vec<MemoryEntry>, String> {
-        let text = match std::fs::read_to_string(self.path()) {
+        let read = match std::fs::read_to_string(self.path()) {
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
+                let _ = super::agent_engrams::rebuild_from_engrams(self);
+                std::fs::read_to_string(self.path())
+            }
+            other => other,
+        };
+        let text = match read {
             Ok(text) => text,
             Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(Vec::new()),
             Err(e) => return Err(format!("cannot read {}: {e}", self.path().display())),

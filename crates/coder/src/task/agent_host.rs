@@ -243,6 +243,8 @@ pub struct Agents {
     /// What a reflection's new insights are drafted as knowledge entries
     /// with.
     sharer: super::agent_share::ServicesFactory,
+    /// What a nightly reflection's `core` proposal is written with.
+    consolidator: super::agent_consolidate::WriterFactory,
     /// The agents reflecting now; a second occurrence waits for the first.
     reflecting: Arc<Mutex<BTreeSet<String>>>,
     /// What her day plan drafts, decomposes, and reacts with.
@@ -326,6 +328,7 @@ impl Agents {
             briefing: super::agent_recall::Briefing::default_scored(),
             reflector: super::agent_reflect::default_factory(),
             sharer: super::agent_share::default_factory(),
+            consolidator: super::agent_consolidate::default_factory(),
             reflecting: Arc::new(Mutex::new(BTreeSet::new())),
             planner: super::agent_plan::default_factory(),
             planning: Arc::default(),
@@ -361,6 +364,17 @@ impl Agents {
     #[must_use]
     pub fn with_reflector(mut self, reflector: super::agent_reflect::ServicesFactory) -> Self {
         self.reflector = reflector;
+        self
+    }
+
+    /// Propose `core` with the model `consolidator` makes instead of her
+    /// live model, as a test does.
+    #[must_use]
+    pub fn with_consolidator(
+        mut self,
+        consolidator: super::agent_consolidate::WriterFactory,
+    ) -> Self {
+        self.consolidator = consolidator;
         self
     }
 
@@ -566,9 +580,16 @@ impl Agents {
             Operation::ListAgentMemory { agent, after } => {
                 let (store, _) = self.store(agent)?;
                 let drafts = super::agent_share::draft_rows(&store);
-                let memory = Memory::new(store, self.screen.clone())
-                    .rows(*after)
-                    .map_err(|why| coder_host::tasks::refuse(Code::Unavailable, why))?;
+                let mut memory = if after.is_none() {
+                    super::agent_consolidate::rows(&store, &self.screen)
+                } else {
+                    Vec::new()
+                };
+                memory.extend(
+                    Memory::new(store, self.screen.clone())
+                        .rows(*after)
+                        .map_err(|why| coder_host::tasks::refuse(Code::Unavailable, why))?,
+                );
                 Ok(value(&wire::Memory { memory, drafts }))
             }
             Operation::EditAgentMemory { agent, edit } => {
@@ -1776,6 +1797,13 @@ impl Agents {
                 memory.forget(*id, now).map_err(refused)?;
                 Ok(id.to_string())
             }
+            wire::MemoryEdit::Accept { id } | wire::MemoryEdit::Reject { id }
+                if *id == super::agent_consolidate::PROPOSAL_ID =>
+            {
+                let accept = matches!(edit, wire::MemoryEdit::Accept { .. });
+                super::agent_consolidate::decide(&memory, accept, now).map_err(refused)?;
+                Ok("core".into())
+            }
             wire::MemoryEdit::Accept { id } => {
                 memory.decide(*id, true, now).map_err(refused)?;
                 Ok(id.to_string())
@@ -1863,6 +1891,7 @@ impl Agents {
         }
         let reflector = self.reflector.clone();
         let sharer = self.sharer.clone();
+        let consolidator = self.consolidator.clone();
         let reflecting = self.reflecting.clone();
         let screen = self.screen.clone();
         let store = store.clone();
@@ -1875,8 +1904,13 @@ impl Agents {
             match result {
                 Ok((reflection, applied)) => {
                     let shared = share(&memory, &sharer, &applied.stored, now);
-                    let usd = match (reflection.usd(), shared) {
-                        (Some(a), Some(b)) => Some(a + b),
+                    let proposed = if trigger == "nightly" {
+                        consolidate(&memory, &consolidator, now)
+                    } else {
+                        Some(0.0)
+                    };
+                    let usd = match (reflection.usd(), shared, proposed) {
+                        (Some(a), Some(b), Some(c)) => Some(a + b + c),
                         _ => None,
                     };
                     let _ = Jobs::new(store.clone()).meter(&job, usd);
@@ -1919,6 +1953,31 @@ fn share(
                 now,
                 Kind::Memory,
                 &format!("{} skipped: {why}", super::agent_share::RUN_PREFIX),
+            ));
+            Some(0.0)
+        }
+    }
+}
+
+/// Proposes a new `core` after a nightly reflection
+/// (`agent_consolidate`), and returns what that cost: `Some(0.0)` when no
+/// model was called, `None` when the call reported no cost. Every outcome
+/// is journaled; a model that can't start costs nothing.
+fn consolidate(
+    memory: &Memory,
+    consolidator: &super::agent_consolidate::WriterFactory,
+    now: u64,
+) -> Option<f64> {
+    let result = consolidator(memory.store())
+        .and_then(|mut writer| super::agent_consolidate::propose(memory, writer.as_mut(), now));
+    match result {
+        Ok((_, Some(reply))) => reply.usd,
+        Ok((_, None)) => Some(0.0),
+        Err(why) => {
+            let _ = memory.store().append(&Entry::new(
+                now,
+                Kind::Memory,
+                &format!("{} skipped: {why}", super::agent_consolidate::RUN_PREFIX),
             ));
             Some(0.0)
         }

@@ -392,3 +392,174 @@ fn an_agent_without_an_owner_keeps_her_memory_and_no_engrams() {
     assert_eq!(notes.len(), 1, "journaled once: {notes:?}");
     assert!(notes[0].contains("no owner attestation"));
 }
+
+#[test]
+fn insights_live_at_their_own_slug_and_old_ones_move_there() {
+    let dir = tempfile::tempdir().unwrap();
+    let memory = attested(&dir);
+    let insight = memory
+        .add(
+            MemoryKind::Insight,
+            Author::Agent,
+            "Small changes merge the same day.",
+            vec!["journal:1".into(), "memory:2".into()],
+            10,
+        )
+        .unwrap();
+    let engrams = ready(&memory, 11);
+    let value = engrams.value(&insight_slug(insight)).unwrap();
+    let entry: MemoryEntry = serde_json::from_str(value).unwrap();
+    assert_eq!(
+        entry.sources,
+        vec!["journal:1", "memory:2"],
+        "citations kept"
+    );
+    assert!(engrams.head(&entry_slug(insight)).is_none(), "written once");
+
+    // An older host wrote this insight at `mem/entry/ID`.
+    let mut engrams = ready(&memory, 12);
+    engrams.forget_entry(insight, 12).unwrap();
+    let body = Body::memory(entry_slug(insight), serde_json::to_string(&entry).unwrap())
+        .unwrap()
+        .with_extra("schema", entry.schema.clone().into())
+        .unwrap();
+    engrams.put(body, 13).unwrap();
+    assert!(engrams.value(&insight_slug(insight)).is_none());
+    reconcile(&memory, 20).unwrap();
+    let engrams = ready(&memory, 21);
+    assert!(engrams.value(&insight_slug(insight)).is_some(), "moved");
+    assert!(engrams.head(&entry_slug(insight)).unwrap().is_tombstone());
+    assert_eq!(memory.entries().unwrap(), vec![entry]);
+
+    // Forgetting tombstones the slug it lives at.
+    memory.forget(insight, 30).unwrap();
+    let engrams = ready(&memory, 31);
+    assert!(engrams.head(&insight_slug(insight)).unwrap().is_tombstone());
+    reconcile(&memory, 32).unwrap();
+    assert!(memory.entries().unwrap().is_empty());
+}
+
+#[test]
+fn deleted_working_files_rebuild_from_engrams_identically() {
+    let dir = tempfile::tempdir().unwrap();
+    let memory = attested(&dir);
+    memory
+        .add(MemoryKind::Note, Author::Owner, "first", vec![], 10)
+        .unwrap();
+    let pref = memory
+        .add(
+            MemoryKind::Preference,
+            Author::Agent,
+            "Owner wants tests.",
+            vec![],
+            11,
+        )
+        .unwrap();
+    memory.decide(pref, true, 12).unwrap();
+    memory
+        .add(
+            MemoryKind::Insight,
+            Author::Agent,
+            "An insight.",
+            vec!["journal:1".into()],
+            13,
+        )
+        .unwrap();
+    let gone = memory
+        .add(MemoryKind::Note, Author::Owner, "forgotten", vec![], 14)
+        .unwrap();
+    memory.forget(gone, 15).unwrap();
+    let store = memory.store().clone();
+    let rows = [row("journal:2", 4.0, 16), row("memory:1", 2.0, 16)];
+    Scores::of(&store).append(&rows).unwrap();
+    write_through_scores(&memory, &rows, 16);
+    let working = std::fs::read(store.dir().join("memory.jsonl")).unwrap();
+    let scores = Scores::of(&store).load().unwrap();
+
+    std::fs::remove_file(store.dir().join("memory.jsonl")).unwrap();
+    std::fs::remove_file(store.dir().join("scores.jsonl")).unwrap();
+    // Any read of the memory rebuilds both files from the heads.
+    assert_eq!(memory.entries().unwrap().len(), 3);
+    assert_eq!(
+        std::fs::read(store.dir().join("memory.jsonl")).unwrap(),
+        working
+    );
+    assert_eq!(Scores::of(&store).load().unwrap(), scores);
+    assert!(
+        engram_notes(&memory)
+            .iter()
+            .any(|n| n.contains("rebuilt the working files from engrams: 3 entries, 2 score rows"))
+    );
+    // An unreadable store rebuilds nothing.
+    std::fs::remove_file(store.dir().join("memory.jsonl")).unwrap();
+    let engrams = ready(&memory, 20);
+    let file = engrams
+        .dir()
+        .join(format!("{}.json", engrams.pair().d_tag(&entry_slug(1))));
+    std::fs::write(&file, "{ not an event").unwrap();
+    assert!(rebuild_from_engrams(&memory).is_err());
+    assert!(memory.entries().unwrap().is_empty());
+}
+
+#[test]
+fn reach_lists_orphans_and_dangling_links_from_core() {
+    let dir = tempfile::tempdir().unwrap();
+    let memory = attested(&dir);
+    let linked = memory
+        .add(MemoryKind::Note, Author::Owner, "linked note", vec![], 10)
+        .unwrap();
+    let orphan = memory
+        .add(MemoryKind::Note, Author::Owner, "orphan note", vec![], 11)
+        .unwrap();
+    let mut engrams = ready(&memory, 12);
+    // A memory reached through another memory, and links to nothing.
+    let chained = Body::memory(
+        Slug::parse("mem/topic/merges").unwrap(),
+        format!("see [[mem/entry/{linked}]] and [[mem/entry/404]]"),
+    )
+    .unwrap();
+    engrams.put(chained, 12).unwrap();
+    engrams
+        .put(
+            Body::core("I am alice. [[mem/topic/merges]] [[mem/gone]] [[core]]"),
+            13,
+        )
+        .unwrap();
+    let reach = engrams.reach();
+    assert!(reach.core);
+    assert_eq!(
+        reach.reachable,
+        vec![
+            format!("mem/entry/{linked}"),
+            "mem/topic/merges".to_string()
+        ]
+    );
+    assert_eq!(reach.orphans, vec![format!("mem/entry/{orphan}")]);
+    assert_eq!(
+        reach.dangling,
+        vec![
+            Dangling {
+                from: "core".into(),
+                to: "mem/gone".into()
+            },
+            Dangling {
+                from: "mem/topic/merges".into(),
+                to: "mem/entry/404".into()
+            },
+        ]
+    );
+    // A forgotten target dangles; nothing deletes the orphan.
+    memory.forget(linked, 20).unwrap();
+    let engrams = ready(&memory, 21);
+    let reach = engrams.reach();
+    assert!(
+        reach
+            .dangling
+            .iter()
+            .any(|d| d.to == format!("mem/entry/{linked}"))
+    );
+    assert!(engrams.value(&entry_slug(orphan)).is_some());
+    // The owner key reads the same graph.
+    let view = owner_read(memory.store(), &owner()).unwrap();
+    assert_eq!(super::reach(&view.heads), reach);
+}

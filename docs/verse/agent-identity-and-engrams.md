@@ -189,7 +189,8 @@ copying bytes and verification is the same code path.
 | --- | --- | --- |
 | `core` | Her profile: who she is, her rules, standing goals, and `[[links]]` to the memories her identity depends on, at most 10 KiB | Consolidation, after owner review |
 | `mem/entry/ID` | One `agent_memory::MemoryEntry` as JSON: kind, state, author, text, sources | Write-through from `Memory::add`, `decide`, `forget` |
-| `mem/insight/ID` | One reflection insight with its cited references (generative agents B2) | Reflection, when it lands |
+| `mem/insight/ID` | One reflection insight: the `MemoryEntry` of kind `insight`, its cited references in `sources` (generative agents B2). Entry and insight IDs share one sequence, so an insight is written at this slug and never at `mem/entry/ID` too; one an older host wrote there moves here at reconcile | Write-through from reflection's `Memory::add` |
+| `mem/proposal/core` | A `core` proposal waiting for the owner: the profile and `base`, the SHA-256 of the `core` it replaces | Consolidation |
 | `mem/score/REF` | Importance rows from `scores.jsonl` | Write-through, so a second device ranks the same way |
 | `mem/persona` | Her definition snapshot, without secrets | Identity changes |
 | `mem/journal/DAY` | A daily digest of journal rows: counts and headlines, no command output | Nightly, so another device sees her history in outline |
@@ -211,10 +212,10 @@ engrams, and the host journals that once.
 the working files that `agent_memory` and `agent_recall` read, so the
 generative-agents work is not disturbed. Each write goes through to an
 engram. On start, the host reconciles: an engram head newer than the
-working row wins, which is how an edit from another device arrives. Once
-relay sync is stable, the working files become a cache of the engram store;
-that switch is phase 6 and is coordinated with the generative-agents
-umbrella, #10795.
+working row wins, which is how an edit from another device arrives. The
+working files are a cache of the engram store: when `memory.jsonl` is
+missing, the next read rebuilds it, and a missing `scores.jsonl`, from the
+heads (`agent_engrams::rebuild_from_engrams`).
 
 **Retrieval.** Her loop always carries `core`, then the scored recall from
 `agent_recall` within the 12 KiB briefing limit, with its receipt. If the
@@ -223,9 +224,19 @@ report, and never writes `core` in that state (Buzz's fail-closed rule).
 
 **Consolidation.** Nightly, with reflection: she proposes a new `core` that
 keeps her rules, adds standing facts that insights support, and links the
-memories it relies on. The owner accepts or rejects it at F2, like a
-preference. She never deletes an orphan; the F2 view lists orphans for the
-owner.
+memories it relies on (`agent_consolidate`). It runs only after a nightly
+reflection of the `reflect` job, which is off until the owner turns it on,
+and only when an active insight is not yet reachable from `core` and no
+proposal waits. Code checks the reply: it keeps her charter, fits 10 KiB,
+passes the secret screen, and links only active entries and insights. The
+owner accepts or rejects it at F2, like a preference, as memory row 0
+(`accept 0`, `reject 0`, or `openagents agent memory NAME accept 0`).
+Accepting is a compare-and-swap on the SHA-256 of `core`: when `core`
+changed since the proposal, the write is refused, journaled, and the stale
+proposal discarded. She never deletes an orphan; F2 shows how many there
+are, and `openagents agent memory NAME engrams --orphans` lists them and
+the links that name a missing memory. Score rows, `mem/persona`, and a
+pending proposal are bookkeeping and are not listed as orphans.
 
 **Sync.** Off until the owner turns it on for an agent. Then her NIP-65
 `10002` names her write relays (default: the owner's relay), she
