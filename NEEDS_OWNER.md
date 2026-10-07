@@ -66,6 +66,15 @@ browser/network qualification remains unverified.
 
 # Owner checks
 
+## Pilot evidence O1/O8 (REV-03, #10810)
+
+Before using [pilot comparison evidence](docs/sales/evidence.md) in a sales
+claim, privately freeze a complete attempt inventory and obtain baseline/data
+permission, independent check records, customer acceptance, and actual billed
+evidence where available. Review the exact report and disclosure rights before
+publishing its aggregate projection. Synthetic tests establish the adapter,
+not a real customer result, measured savings, or a deployed routing improvement.
+
 ## First workflow offer O1 (REV-01, #10808)
 
 Before selling [Coder pilot v1](docs/sales/README.md#first-workflow-offer-v1),
