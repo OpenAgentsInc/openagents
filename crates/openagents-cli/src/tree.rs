@@ -45,6 +45,14 @@ const TASK: &[Declared] = &[
 ];
 
 const CODER: &[Declared] = &[
+    Declared::computer("remote list", Effect::ReadOnly),
+    Declared::computer("remote status", Effect::ReadOnly),
+    Declared::computer("remote follow", Effect::LongRunning),
+    Declared::computer("remote cancel", Effect::Publishes),
+    Declared::computer("remote artifacts", Effect::ReadOnly),
+    Declared::computer("remote apply", Effect::LocalWrite),
+    Declared::computer("remote continue", Effect::LongRunning),
+    Declared::computer("remote steer", Effect::Publishes),
     Declared::computer("status", Effect::ReadOnly),
     Declared::computer("chat", Effect::LongRunning),
     Declared::computer("delegate", Effect::LongRunning),

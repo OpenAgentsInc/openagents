@@ -3989,7 +3989,7 @@
               "delegate"
             ],
             "usage": [
-              "delegate AGENT --task TEXT [--session ID]"
+              "delegate AGENT --task TEXT [--session ID] [--on boat|gce] [--mode integrated|coder] [--model ID] [--reasoning EFFORT] [--job ID] [--size small|default|large|xlarge] [--template NAME] [--credential-env NAME] [--timeout SECONDS] [--revision REF] [--workspace-path PATH] [--include FILE] [--no-workspace]"
             ],
             "forms": [
               {
@@ -4014,14 +4014,399 @@
                     "value": "ID",
                     "open": true,
                     "optional": true
+                  },
+                  {
+                    "kind": "option",
+                    "name": "on",
+                    "value": "boat|gce",
+                    "choices": [
+                      "boat",
+                      "gce"
+                    ],
+                    "optional": true
+                  },
+                  {
+                    "kind": "option",
+                    "name": "mode",
+                    "value": "integrated|coder",
+                    "choices": [
+                      "integrated",
+                      "coder"
+                    ],
+                    "optional": true
+                  },
+                  {
+                    "kind": "option",
+                    "name": "model",
+                    "value": "ID",
+                    "open": true,
+                    "optional": true
+                  },
+                  {
+                    "kind": "option",
+                    "name": "reasoning",
+                    "value": "EFFORT",
+                    "open": true,
+                    "optional": true
+                  },
+                  {
+                    "kind": "option",
+                    "name": "job",
+                    "value": "ID",
+                    "open": true,
+                    "optional": true
+                  },
+                  {
+                    "kind": "option",
+                    "name": "size",
+                    "value": "small|default|large|xlarge",
+                    "choices": [
+                      "small",
+                      "default",
+                      "large",
+                      "xlarge"
+                    ],
+                    "optional": true
+                  },
+                  {
+                    "kind": "option",
+                    "name": "template",
+                    "value": "NAME",
+                    "open": true,
+                    "optional": true
+                  },
+                  {
+                    "kind": "option",
+                    "name": "credential-env",
+                    "value": "NAME",
+                    "open": true,
+                    "optional": true
+                  },
+                  {
+                    "kind": "option",
+                    "name": "timeout",
+                    "value": "SECONDS",
+                    "open": true,
+                    "optional": true
+                  },
+                  {
+                    "kind": "option",
+                    "name": "revision",
+                    "value": "REF",
+                    "open": true,
+                    "optional": true
+                  },
+                  {
+                    "kind": "option",
+                    "name": "workspace-path",
+                    "value": "PATH",
+                    "open": true,
+                    "optional": true
+                  },
+                  {
+                    "kind": "option",
+                    "name": "include",
+                    "value": "FILE",
+                    "open": true,
+                    "optional": true
+                  },
+                  {
+                    "kind": "option",
+                    "name": "no-workspace",
+                    "optional": true
                   }
                 ]
               }
             ],
-            "summary": "Run Microcoder or an enabled ACP subagent.",
+            "summary": "",
             "effect": "long_running",
             "runs_on": "connected_computer"
           }
+        },
+        {
+          "name": "remote",
+          "children": [
+            {
+              "name": "list",
+              "leaf": {
+                "path": [
+                  "coder",
+                  "remote",
+                  "list"
+                ],
+                "usage": [
+                  "remote list"
+                ],
+                "forms": [
+                  {
+                    "tokens": [
+                      {
+                        "kind": "literal",
+                        "word": "remote"
+                      },
+                      {
+                        "kind": "literal",
+                        "word": "list"
+                      }
+                    ]
+                  }
+                ],
+                "summary": "List retained remote jobs.",
+                "effect": "read_only",
+                "runs_on": "connected_computer"
+              }
+            },
+            {
+              "name": "status",
+              "leaf": {
+                "path": [
+                  "coder",
+                  "remote",
+                  "status"
+                ],
+                "usage": [
+                  "remote status ID"
+                ],
+                "forms": [
+                  {
+                    "tokens": [
+                      {
+                        "kind": "literal",
+                        "word": "remote"
+                      },
+                      {
+                        "kind": "literal",
+                        "word": "status"
+                      },
+                      {
+                        "kind": "positional",
+                        "name": "ID"
+                      }
+                    ]
+                  }
+                ],
+                "summary": "Read one retained remote job.",
+                "effect": "read_only",
+                "runs_on": "connected_computer"
+              }
+            },
+            {
+              "name": "follow",
+              "leaf": {
+                "path": [
+                  "coder",
+                  "remote",
+                  "follow"
+                ],
+                "usage": [
+                  "remote follow ID"
+                ],
+                "forms": [
+                  {
+                    "tokens": [
+                      {
+                        "kind": "literal",
+                        "word": "remote"
+                      },
+                      {
+                        "kind": "literal",
+                        "word": "follow"
+                      },
+                      {
+                        "kind": "positional",
+                        "name": "ID"
+                      }
+                    ]
+                  }
+                ],
+                "summary": "Observe a remote job to completion.",
+                "effect": "long_running",
+                "runs_on": "connected_computer"
+              }
+            },
+            {
+              "name": "cancel",
+              "leaf": {
+                "path": [
+                  "coder",
+                  "remote",
+                  "cancel"
+                ],
+                "usage": [
+                  "remote cancel ID"
+                ],
+                "forms": [
+                  {
+                    "tokens": [
+                      {
+                        "kind": "literal",
+                        "word": "remote"
+                      },
+                      {
+                        "kind": "literal",
+                        "word": "cancel"
+                      },
+                      {
+                        "kind": "positional",
+                        "name": "ID"
+                      }
+                    ]
+                  }
+                ],
+                "summary": "Request cancellation of a remote job.",
+                "effect": "publishes",
+                "runs_on": "connected_computer"
+              }
+            },
+            {
+              "name": "artifacts",
+              "leaf": {
+                "path": [
+                  "coder",
+                  "remote",
+                  "artifacts"
+                ],
+                "usage": [
+                  "remote artifacts ID"
+                ],
+                "forms": [
+                  {
+                    "tokens": [
+                      {
+                        "kind": "literal",
+                        "word": "remote"
+                      },
+                      {
+                        "kind": "literal",
+                        "word": "artifacts"
+                      },
+                      {
+                        "kind": "positional",
+                        "name": "ID"
+                      }
+                    ]
+                  }
+                ],
+                "summary": "Read a remote job's artifacts.",
+                "effect": "read_only",
+                "runs_on": "connected_computer"
+              }
+            },
+            {
+              "name": "apply",
+              "leaf": {
+                "path": [
+                  "coder",
+                  "remote",
+                  "apply"
+                ],
+                "usage": [
+                  "remote apply ID"
+                ],
+                "forms": [
+                  {
+                    "tokens": [
+                      {
+                        "kind": "literal",
+                        "word": "remote"
+                      },
+                      {
+                        "kind": "literal",
+                        "word": "apply"
+                      },
+                      {
+                        "kind": "positional",
+                        "name": "ID"
+                      }
+                    ]
+                  }
+                ],
+                "summary": "Apply a remote job's artifacts locally.",
+                "effect": "local_write",
+                "runs_on": "connected_computer"
+              }
+            },
+            {
+              "name": "continue",
+              "leaf": {
+                "path": [
+                  "coder",
+                  "remote",
+                  "continue"
+                ],
+                "usage": [
+                  "remote continue ID --task TEXT"
+                ],
+                "forms": [
+                  {
+                    "tokens": [
+                      {
+                        "kind": "literal",
+                        "word": "remote"
+                      },
+                      {
+                        "kind": "literal",
+                        "word": "continue"
+                      },
+                      {
+                        "kind": "positional",
+                        "name": "ID"
+                      },
+                      {
+                        "kind": "option",
+                        "name": "task",
+                        "value": "TEXT",
+                        "open": true
+                      }
+                    ]
+                  }
+                ],
+                "summary": "Resume a remote job with a new task.",
+                "effect": "long_running",
+                "runs_on": "connected_computer"
+              }
+            },
+            {
+              "name": "steer",
+              "leaf": {
+                "path": [
+                  "coder",
+                  "remote",
+                  "steer"
+                ],
+                "usage": [
+                  "remote steer ID --message TEXT"
+                ],
+                "forms": [
+                  {
+                    "tokens": [
+                      {
+                        "kind": "literal",
+                        "word": "remote"
+                      },
+                      {
+                        "kind": "literal",
+                        "word": "steer"
+                      },
+                      {
+                        "kind": "positional",
+                        "name": "ID"
+                      },
+                      {
+                        "kind": "option",
+                        "name": "message",
+                        "value": "TEXT",
+                        "open": true
+                      }
+                    ]
+                  }
+                ],
+                "summary": "Send a correction to a remote job. Run Microcoder or an enabled ACP subagent.",
+                "effect": "publishes",
+                "runs_on": "connected_computer"
+              }
+            }
+          ]
         },
         {
           "name": "plugins",
@@ -4157,7 +4542,7 @@
                     ]
                   }
                 ],
-                "summary": "Configure OpenRouter or Jev with a JSON object: api_key, model, endpoint, enabled. An api_key of null removes the saved key.",
+                "summary": "Configure a plugin with a JSON object: api_key, model, endpoint, enabled. An api_key of null removes the saved key. Cloud: mode, size, template, credential_names, workspace_paths.",
                 "effect": "local_write",
                 "runs_on": "connected_computer"
               }
@@ -4653,8 +5038,121 @@
         },
         {
           "kind": "option",
+          "name": "on",
+          "value": "boat|gce",
+          "choices": [
+            "boat",
+            "gce"
+          ],
+          "optional": true,
+          "repeated": true
+        },
+        {
+          "kind": "option",
+          "name": "mode",
+          "value": "integrated|coder",
+          "choices": [
+            "integrated",
+            "coder"
+          ],
+          "optional": true,
+          "repeated": true
+        },
+        {
+          "kind": "option",
+          "name": "model",
+          "value": "ID",
+          "open": true,
+          "optional": true,
+          "repeated": true
+        },
+        {
+          "kind": "option",
           "name": "reasoning",
           "value": "EFFORT",
+          "open": true,
+          "optional": true,
+          "repeated": true
+        },
+        {
+          "kind": "option",
+          "name": "job",
+          "value": "ID",
+          "open": true,
+          "optional": true,
+          "repeated": true
+        },
+        {
+          "kind": "option",
+          "name": "size",
+          "value": "small|default|large|xlarge",
+          "choices": [
+            "small",
+            "default",
+            "large",
+            "xlarge"
+          ],
+          "optional": true,
+          "repeated": true
+        },
+        {
+          "kind": "option",
+          "name": "template",
+          "value": "NAME",
+          "open": true,
+          "optional": true,
+          "repeated": true
+        },
+        {
+          "kind": "option",
+          "name": "credential-env",
+          "value": "NAME",
+          "open": true,
+          "optional": true,
+          "repeated": true
+        },
+        {
+          "kind": "option",
+          "name": "timeout",
+          "value": "SECONDS",
+          "open": true,
+          "optional": true,
+          "repeated": true
+        },
+        {
+          "kind": "option",
+          "name": "revision",
+          "value": "REF",
+          "open": true,
+          "optional": true,
+          "repeated": true
+        },
+        {
+          "kind": "option",
+          "name": "workspace-path",
+          "value": "PATH",
+          "open": true,
+          "optional": true,
+          "repeated": true
+        },
+        {
+          "kind": "option",
+          "name": "include",
+          "value": "FILE",
+          "open": true,
+          "optional": true,
+          "repeated": true
+        },
+        {
+          "kind": "option",
+          "name": "no-workspace",
+          "optional": true,
+          "repeated": true
+        },
+        {
+          "kind": "option",
+          "name": "message",
+          "value": "TEXT",
           "open": true,
           "optional": true,
           "repeated": true
@@ -15147,6 +15645,14 @@
         {
           "kind": "option",
           "name": "on",
+          "optional": true,
+          "repeated": true
+        },
+        {
+          "kind": "option",
+          "name": "task",
+          "value": "TEXT",
+          "open": true,
           "optional": true,
           "repeated": true
         },

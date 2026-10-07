@@ -36,9 +36,14 @@ macro_rules! command_usage {
        [--job ID] [--size small|default|large|xlarge] [--template NAME]
        [--credential-env NAME] [--timeout SECONDS]
        [--revision REF] [--workspace-path PATH] [--include FILE] [--no-workspace]
-  remote list|status ID|follow ID|cancel ID|artifacts ID|apply ID
-  remote continue ID --task TEXT | steer ID --message TEXT
-                                      Retain, observe, or control a remote job.
+  remote list                         List retained remote jobs.
+  remote status ID                    Read one retained remote job.
+  remote follow ID                    Observe a remote job to completion.
+  remote cancel ID                    Request cancellation of a remote job.
+  remote artifacts ID                 Read a remote job's artifacts.
+  remote apply ID                     Apply a remote job's artifacts locally.
+  remote continue ID --task TEXT       Resume a remote job with a new task.
+  remote steer ID --message TEXT       Send a correction to a remote job.
                                       Run Microcoder or an enabled ACP subagent.
   plugins list                        List registered plugins and their status.
   plugins enable ID                   Turn a registered plugin on.
