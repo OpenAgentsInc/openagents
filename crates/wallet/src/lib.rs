@@ -43,15 +43,70 @@ pub trait LightningWallet {
         expiry_secs: u32,
     ) -> Result<IssuedInvoice, WalletError>;
 
+    /// Issue an invoice only on the expected node. Remote adapters carry
+    /// this identity to the resident that creates the invoice.
+    fn receive_exact_from_node(
+        &self,
+        expected_node: &str,
+        amount_msat: u64,
+        request_hash: [u8; 32],
+        expiry_secs: u32,
+    ) -> Result<IssuedInvoice, WalletError> {
+        let actual_node = self.node_id();
+        if actual_node != expected_node {
+            return Err(WalletError::NodeMismatch {
+                expected_node: expected_node.into(),
+                actual_node,
+            });
+        }
+        self.receive_exact(amount_msat, request_hash, expiry_secs)
+    }
+
     /// Pay `invoice`, refusing any route whose total routing fee exceeds
     /// `max_fee_msat`, and wait up to `wait` for the outcome. Paying an
     /// invoice this wallet already paid returns the recorded proof instead of
     /// paying again.
     fn pay(&self, invoice: &str, max_fee_msat: u64, wait: Duration) -> Result<Proof, WalletError>;
 
+    /// Pay only from the explicitly approved node. Remote adapters must
+    /// carry this identity to the resident that dispatches the payment.
+    fn pay_from_node(
+        &self,
+        expected_node: &str,
+        invoice: &str,
+        max_fee_msat: u64,
+        wait: Duration,
+    ) -> Result<Proof, WalletError> {
+        let actual_node = self.node_id();
+        if actual_node != expected_node {
+            return Err(WalletError::NodeMismatch {
+                expected_node: expected_node.into(),
+                actual_node,
+            });
+        }
+        self.pay(invoice, max_fee_msat, wait)
+    }
+
     /// The recorded state of the payment with `payment_hash`, in either
     /// direction, or `None` when this wallet never saw it.
     fn lookup(&self, payment_hash: [u8; 32]) -> Result<Option<PaymentRecord>, WalletError>;
+
+    /// Look up a payment only on the expected node. Remote adapters carry
+    /// this identity to the resident that reads its payment record.
+    fn lookup_from_node(
+        &self,
+        expected_node: &str,
+        payment_hash: [u8; 32],
+    ) -> Result<Option<PaymentRecord>, WalletError> {
+        let actual_node = self.node_id();
+        if actual_node != expected_node {
+            return Err(WalletError::NodeMismatch {
+                expected_node: expected_node.into(),
+                actual_node,
+            });
+        }
+        self.lookup(payment_hash)
+    }
 
     /// Every Lightning payment the node recorded, in either direction,
     /// without preimages or invoices (on-chain payments are left out). For

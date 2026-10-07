@@ -8,6 +8,14 @@ pub enum WalletError {
     /// The caller's input is malformed.
     #[error("{0}")]
     Invalid(String),
+    /// The resident serves a different node than the caller approved.
+    #[error(
+        "wallet node changed from {expected_node} to {actual_node}; no operation was dispatched"
+    )]
+    NodeMismatch {
+        expected_node: String,
+        actual_node: String,
+    },
     /// The wallet is not initialized, or its files are unreadable.
     #[error("{0}")]
     Setup(String),

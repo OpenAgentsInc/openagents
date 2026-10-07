@@ -129,6 +129,23 @@ impl LightningWallet for Opened {
         }
     }
 
+    fn receive_exact_from_node(
+        &self,
+        expected_node: &str,
+        amount_msat: u64,
+        request_hash: [u8; 32],
+        expiry_secs: u32,
+    ) -> Result<IssuedInvoice, WalletError> {
+        match self {
+            Self::Resident(w) => {
+                w.receive_exact_from_node(expected_node, amount_msat, request_hash, expiry_secs)
+            }
+            Self::Local(w) => {
+                w.receive_exact_from_node(expected_node, amount_msat, request_hash, expiry_secs)
+            }
+        }
+    }
+
     fn pay(&self, invoice: &str, max_fee_msat: u64, wait: Duration) -> Result<Proof, WalletError> {
         match self {
             Self::Resident(w) => w.pay(invoice, max_fee_msat, wait),
@@ -136,10 +153,34 @@ impl LightningWallet for Opened {
         }
     }
 
+    fn pay_from_node(
+        &self,
+        expected_node: &str,
+        invoice: &str,
+        max_fee_msat: u64,
+        wait: Duration,
+    ) -> Result<Proof, WalletError> {
+        match self {
+            Self::Resident(w) => w.pay_from_node(expected_node, invoice, max_fee_msat, wait),
+            Self::Local(w) => w.pay_from_node(expected_node, invoice, max_fee_msat, wait),
+        }
+    }
+
     fn lookup(&self, payment_hash: [u8; 32]) -> Result<Option<PaymentRecord>, WalletError> {
         match self {
             Self::Resident(w) => w.lookup(payment_hash),
             Self::Local(w) => w.lookup(payment_hash),
+        }
+    }
+
+    fn lookup_from_node(
+        &self,
+        expected_node: &str,
+        payment_hash: [u8; 32],
+    ) -> Result<Option<PaymentRecord>, WalletError> {
+        match self {
+            Self::Resident(w) => w.lookup_from_node(expected_node, payment_hash),
+            Self::Local(w) => w.lookup_from_node(expected_node, payment_hash),
         }
     }
 

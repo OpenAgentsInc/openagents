@@ -32,7 +32,14 @@ pub enum Request {
     Ping,
     Status,
     NodeId,
+    BoundPaymentIdentity,
     ReceiveExact {
+        amount_msat: u64,
+        request_hash: String,
+        expiry_secs: u32,
+    },
+    ReceiveExactFromNode {
+        expected_node: String,
         amount_msat: u64,
         request_hash: String,
         expiry_secs: u32,
@@ -42,7 +49,17 @@ pub enum Request {
         max_fee_msat: u64,
         wait_secs: u64,
     },
+    PayFromNode {
+        expected_node: String,
+        invoice: String,
+        max_fee_msat: u64,
+        wait_secs: u64,
+    },
     Lookup {
+        payment_hash: String,
+    },
+    LookupFromNode {
+        expected_node: String,
         payment_hash: String,
     },
     Payments,
@@ -223,6 +240,7 @@ fn handle<W: Served>(
             node: wallet.status(),
         }),
         Request::NodeId => Ok(serde_json::Value::String(wallet.node_id())),
+        Request::BoundPaymentIdentity => Ok(serde_json::Value::String(wallet.node_id())),
         Request::ReceiveExact {
             amount_msat,
             request_hash,
@@ -232,14 +250,40 @@ fn handle<W: Served>(
             crate::parse_hash32(&request_hash)?,
             expiry_secs,
         )?),
+        Request::ReceiveExactFromNode {
+            expected_node,
+            amount_msat,
+            request_hash,
+            expiry_secs,
+        } => value(wallet.receive_exact_from_node(
+            &expected_node,
+            amount_msat,
+            crate::parse_hash32(&request_hash)?,
+            expiry_secs,
+        )?),
         Request::Pay {
             invoice,
             max_fee_msat,
             wait_secs,
         } => value(wallet.pay(&invoice, max_fee_msat, Duration::from_secs(wait_secs))?),
+        Request::PayFromNode {
+            expected_node,
+            invoice,
+            max_fee_msat,
+            wait_secs,
+        } => value(wallet.pay_from_node(
+            &expected_node,
+            &invoice,
+            max_fee_msat,
+            Duration::from_secs(wait_secs),
+        )?),
         Request::Lookup { payment_hash } => {
             value(wallet.lookup(crate::parse_hash32(&payment_hash)?)?)
         }
+        Request::LookupFromNode {
+            expected_node,
+            payment_hash,
+        } => value(wallet.lookup_from_node(&expected_node, crate::parse_hash32(&payment_hash)?)?),
         Request::Payments => value(wallet.payments()?),
         Request::Balance => value(wallet.balance()?),
         Request::Channels => value(wallet.channels()?),
@@ -309,6 +353,12 @@ impl RemoteWallet {
 
     pub fn path(&self) -> &Path {
         &self.path
+    }
+
+    /// Read the current payer from a resident that supports payment binding.
+    /// Older residents refuse this operation before any payment is sent.
+    pub fn bound_payment_identity(&self) -> Result<String, WalletError> {
+        self.typed(&Request::BoundPaymentIdentity, REPLY_WAIT)
     }
 
     pub fn buy_channel(
@@ -424,6 +474,24 @@ impl LightningWallet for RemoteWallet {
         )
     }
 
+    fn receive_exact_from_node(
+        &self,
+        expected_node: &str,
+        amount_msat: u64,
+        request_hash: [u8; 32],
+        expiry_secs: u32,
+    ) -> Result<IssuedInvoice, WalletError> {
+        self.typed(
+            &Request::ReceiveExactFromNode {
+                expected_node: expected_node.into(),
+                amount_msat,
+                request_hash: hex::encode(request_hash),
+                expiry_secs,
+            },
+            REPLY_WAIT,
+        )
+    }
+
     fn pay(&self, invoice: &str, max_fee_msat: u64, wait: Duration) -> Result<Proof, WalletError> {
         self.typed(
             &Request::Pay {
@@ -435,9 +503,41 @@ impl LightningWallet for RemoteWallet {
         )
     }
 
+    fn pay_from_node(
+        &self,
+        expected_node: &str,
+        invoice: &str,
+        max_fee_msat: u64,
+        wait: Duration,
+    ) -> Result<Proof, WalletError> {
+        self.typed(
+            &Request::PayFromNode {
+                expected_node: expected_node.into(),
+                invoice: invoice.into(),
+                max_fee_msat,
+                wait_secs: wait.as_secs(),
+            },
+            wait + PAY_SLACK,
+        )
+    }
+
     fn lookup(&self, payment_hash: [u8; 32]) -> Result<Option<PaymentRecord>, WalletError> {
         self.typed(
             &Request::Lookup {
+                payment_hash: hex::encode(payment_hash),
+            },
+            REPLY_WAIT,
+        )
+    }
+
+    fn lookup_from_node(
+        &self,
+        expected_node: &str,
+        payment_hash: [u8; 32],
+    ) -> Result<Option<PaymentRecord>, WalletError> {
+        self.typed(
+            &Request::LookupFromNode {
+                expected_node: expected_node.into(),
                 payment_hash: hex::encode(payment_hash),
             },
             REPLY_WAIT,
@@ -500,11 +600,19 @@ impl LightningWallet for RemoteWallet {
 mod tests {
     use super::*;
 
-    struct Fake;
+    #[derive(Default)]
+    struct Fake {
+        replacement: AtomicBool,
+        operations: std::sync::atomic::AtomicU64,
+    }
 
     impl LightningWallet for Fake {
         fn node_id(&self) -> String {
-            "02".repeat(33)
+            if self.replacement.load(Ordering::Relaxed) {
+                "03".repeat(33)
+            } else {
+                "02".repeat(33)
+            }
         }
         fn receive_exact(
             &self,
@@ -512,6 +620,7 @@ mod tests {
             request_hash: [u8; 32],
             expiry_secs: u32,
         ) -> Result<IssuedInvoice, WalletError> {
+            self.operations.fetch_add(1, Ordering::Relaxed);
             Ok(IssuedInvoice {
                 bolt11: "lntb1fake".into(),
                 payment_hash: "00".repeat(32),
@@ -522,12 +631,14 @@ mod tests {
             })
         }
         fn pay(&self, invoice: &str, _: u64, _: Duration) -> Result<Proof, WalletError> {
+            self.operations.fetch_add(1, Ordering::Relaxed);
             Err(WalletError::Failed {
                 payment_hash: "11".repeat(32),
                 reason: format!("no route for {invoice}"),
             })
         }
         fn lookup(&self, _: [u8; 32]) -> Result<Option<PaymentRecord>, WalletError> {
+            self.operations.fetch_add(1, Ordering::Relaxed);
             Ok(None)
         }
         fn balance(&self) -> Result<Balance, WalletError> {
@@ -603,16 +714,43 @@ mod tests {
         let server = Server::bind(&home).unwrap();
         let stop = server.stop_flag();
         let path = server.path().to_path_buf();
-        let thread = std::thread::spawn(move || server.run(Arc::new(Fake)));
+        let wallet = Arc::new(Fake::default());
+        let served = wallet.clone();
+        let thread = std::thread::spawn(move || server.run(served));
 
         let remote = RemoteWallet::probe(&home).expect("resident answers");
         assert_eq!(remote.node_id(), "02".repeat(33));
+        assert_eq!(remote.bound_payment_identity().unwrap(), remote.node_id());
+        assert!(matches!(
+            remote.pay_from_node(&"03".repeat(33), "lntb1x", 10, Duration::from_secs(1)),
+            Err(WalletError::NodeMismatch { .. })
+        ));
+        assert!(matches!(
+            remote.pay_from_node(&remote.node_id(), "lntb1x", 10, Duration::from_secs(1)),
+            Err(WalletError::Failed { .. })
+        ));
         let issued = remote.receive_exact(1000, [7; 32], 60).unwrap();
+        assert_eq!(issued.description_hash, "07".repeat(32));
+        assert!(matches!(
+            remote.receive_exact_from_node(&"03".repeat(33), 1000, [7; 32], 60),
+            Err(WalletError::NodeMismatch { .. })
+        ));
+        let issued = remote
+            .receive_exact_from_node(&remote.node_id(), 1000, [7; 32], 60)
+            .unwrap();
         assert_eq!(issued.description_hash, "07".repeat(32));
         assert_eq!(remote.balance().unwrap().anchor_reserve_sats, 4);
         assert!(remote.channels().unwrap().is_empty());
         assert_eq!(remote.funding_address().unwrap(), "tb1qfake");
         assert_eq!(remote.lookup([1; 32]).unwrap(), None);
+        assert!(matches!(
+            remote.lookup_from_node(&"03".repeat(33), [1; 32]),
+            Err(WalletError::NodeMismatch { .. })
+        ));
+        assert_eq!(
+            remote.lookup_from_node(&remote.node_id(), [1; 32]).unwrap(),
+            None
+        );
         assert_eq!(
             remote.open_channel("03ab", "h:1", 5, false).unwrap(),
             "channel-to-03ab"
@@ -632,6 +770,41 @@ mod tests {
             Err(WalletError::Failed { reason, .. }) => assert_eq!(reason, "no route for lntb1x"),
             other => panic!("{other:?}"),
         }
+
+        // A connected client still caches the earlier node, but every bound
+        // operation checks the node currently serving the request.
+        wallet.replacement.store(true, Ordering::Relaxed);
+        assert_eq!(remote.node_id(), "02".repeat(33));
+        assert_eq!(remote.bound_payment_identity().unwrap(), "03".repeat(33));
+        let before = wallet.operations.load(Ordering::Relaxed);
+        assert!(matches!(
+            remote.receive_exact_from_node(&remote.node_id(), 1000, [7; 32], 60),
+            Err(WalletError::NodeMismatch { .. })
+        ));
+        assert!(matches!(
+            remote.lookup_from_node(&remote.node_id(), [1; 32]),
+            Err(WalletError::NodeMismatch { .. })
+        ));
+        assert!(matches!(
+            remote.pay_from_node(&remote.node_id(), "lntb1x", 10, Duration::from_secs(1)),
+            Err(WalletError::NodeMismatch { .. })
+        ));
+        #[cfg(feature = "ldk")]
+        {
+            let opened = crate::open::Opened::Resident(remote);
+            assert!(
+                opened
+                    .receive_exact_from_node(&opened.node_id(), 1000, [7; 32], 60)
+                    .is_err()
+            );
+            assert!(opened.lookup_from_node(&opened.node_id(), [1; 32]).is_err());
+            assert!(
+                opened
+                    .pay_from_node(&opened.node_id(), "lntb1x", 10, Duration::from_secs(1))
+                    .is_err()
+            );
+        }
+        assert_eq!(wallet.operations.load(Ordering::Relaxed), before);
 
         assert!(
             Server::bind(&home).is_err(),
