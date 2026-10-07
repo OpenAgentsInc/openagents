@@ -882,3 +882,38 @@ fn meteor_swarm_and_the_thunderbolt_break_the_new_buildings_and_r_restores_them(
         }
     }
 }
+
+/// The pieces one `strike` at the Civic Hall's south side leaves broken
+/// or loose, across the town.
+fn civic_hall_damage(strike: super::meteor::Strike) -> usize {
+    let mut town = town();
+    let b = carved_of(&town, "generated/civic_hall");
+    let at = inside_south(&town.buildings()[b]);
+    let player = caster(at, 20.0);
+    town.target(strike, &player).expect("the spell is ready");
+    assert!(town.aim(at + Vec3::Y * 40.0, Vec3::NEG_Y, &player));
+    assert!(town.confirm(&player));
+    let dt = 1.0 / 60.0;
+    let mut seconds = 0.0;
+    while town.swarm().casting() {
+        town.tick(dt, &player);
+        seconds += dt;
+        assert!(seconds < 4.0, "the cast ends");
+    }
+    run(&mut town, &player, 2.0);
+    town.refs()
+        .iter()
+        .enumerate()
+        .filter(|(i, _)| town.site().pieces()[*i].status != Status::Standing)
+        .count()
+}
+
+#[test]
+fn a_mega_thunderbolt_breaks_several_times_what_a_thunderbolt_does() {
+    use super::meteor::Strike;
+    let bolt = civic_hall_damage(Strike::Lightning);
+    let mega = civic_hall_damage(Strike::MegaLightning);
+    eprintln!("Civic Hall pieces down: Thunderbolt {bolt}, Mega Thunderbolt {mega}");
+    assert!(bolt > 0, "the Thunderbolt breaks something");
+    assert!(mega >= 3 * bolt, "{mega} is not 3x {bolt}");
+}

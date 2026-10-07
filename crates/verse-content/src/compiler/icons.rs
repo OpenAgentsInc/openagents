@@ -286,6 +286,14 @@ pub const ICONS: &[Icon] = &[
         "Lorc",
         SUNLIGHT
     ),
+    // Everglade's dev-bar Mega Thunderbolt: the Thunderbolt's artwork in
+    // electric violet.
+    icon!(
+        "mega-thunderbolt-icon",
+        "lorc/lightning-frequency.svg",
+        "Lorc",
+        [0.82, 0.48, 1.0]
+    ),
     icon!(
         "reverse-gravity-icon",
         "delapouite/gravitation.svg",

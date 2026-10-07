@@ -71,6 +71,9 @@ pub enum Intent {
     /// Everglade's dev destruction: aim the Thunderbolt at a wall or the
     /// ground (`verse::zones::everglade::demolition::meteor::Strike`).
     Thunderbolt,
+    /// Everglade's dev destruction: aim the Mega Thunderbolt, a faster
+    /// bolt with five times the Thunderbolt's damage.
+    MegaThunderbolt,
 }
 
 /// Linear-light scene values; the Coder application UI keeps its own palette.

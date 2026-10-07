@@ -910,19 +910,22 @@ impl WorldRuntime {
                     .meteor_swarm(&player)?;
                 self.zone_state.error = None;
             }
-            Intent::Thunderbolt => {
+            Intent::Thunderbolt | Intent::MegaThunderbolt => {
+                use super::everglade::demolition::meteor::Strike;
                 if !self.casts_destruction() {
                     return Err("Everglade has no offensive spells".into());
                 }
                 let player = self.player.clone();
+                let strike = if intent == Intent::MegaThunderbolt {
+                    Strike::MegaLightning
+                } else {
+                    Strike::Lightning
+                };
                 self.zone_state
                     .everglade
                     .as_mut()
                     .ok_or("Enter Everglade first")?
-                    .target_strike(
-                        super::everglade::demolition::meteor::Strike::Lightning,
-                        &player,
-                    )?;
+                    .target_strike(strike, &player)?;
                 self.zone_state.error = None;
             }
             Intent::Interact if self.zone == ZoneId::Crypt => {
@@ -1063,7 +1066,8 @@ impl WorldRuntime {
     /// Source slot indices in the zone's displayed hotbar order: displayed
     /// slot `i` is `SLOTS[order[i]]`. The Meteor Stress Test puts Meteor
     /// Swarm first and Levitate sixth; Everglade with dev destruction on
-    /// puts Meteor Swarm, the Thunderbolt, then Levitate first
+    /// puts Meteor Swarm, the Thunderbolt, the Mega Thunderbolt, then
+    /// Levitate first
     /// ([`super::everglade::hotbar::DEV_ORDER`]); elsewhere the bar keeps
     /// [`super::everglade::hotbar::SLOTS`] order. It has one entry per slot
     /// [`Self::everglade_hotbar`] shows.
@@ -1071,7 +1075,7 @@ impl WorldRuntime {
     pub fn everglade_hotbar_order(&self) -> Vec<usize> {
         use super::everglade::hotbar::{COUNT, DEV_ORDER, in_order};
         if self.zone == ZoneId::MeteorStressTest {
-            vec![5, 1, 2, 3, 4, 0, 7]
+            vec![5, 1, 2, 3, 4, 0, 8]
         } else if self.everglade_destruction() {
             DEV_ORDER.to_vec()
         } else {
@@ -1154,6 +1158,7 @@ impl WorldRuntime {
         bar.extend([
             strike(Strike::Meteors),
             strike(Strike::Lightning),
+            strike(Strike::MegaLightning),
             on(glade.town().is_some(), wielding),
         ]);
         Some(

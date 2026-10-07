@@ -828,7 +828,8 @@ impl Grove {
         for impact in town.take_impacts() {
             let spell = match impact.strike {
                 everglade::demolition::meteor::Strike::Meteors => Spell::MeteorSwarm,
-                everglade::demolition::meteor::Strike::Lightning => Spell::Thunderbolt,
+                everglade::demolition::meteor::Strike::Lightning
+                | everglade::demolition::meteor::Strike::MegaLightning => Spell::Thunderbolt,
             };
             self.impact_flash(impact.at, impact.normal, spell == Spell::Thunderbolt);
             for i in self.within(impact.at, impact.radius) {

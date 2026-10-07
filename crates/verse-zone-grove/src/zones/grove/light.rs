@@ -298,7 +298,8 @@ impl Grove {
                             crate::zones::everglade::demolition::meteor::Strike::Meteors => {
                                 [1.0, 0.45, 0.14]
                             }
-                            crate::zones::everglade::demolition::meteor::Strike::Lightning => {
+                            crate::zones::everglade::demolition::meteor::Strike::Lightning
+                            | crate::zones::everglade::demolition::meteor::Strike::MegaLightning => {
                                 [0.6, 0.72, 1.0]
                             }
                         };

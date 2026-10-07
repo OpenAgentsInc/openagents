@@ -37,7 +37,12 @@ pub const TIPS: [Tip; 3] = [
 #[must_use]
 pub fn help(status: &meteor::Status) -> &'static str {
     let lightning = status.strike == meteor::Strike::Lightning;
-    if status.targeting && lightning {
+    let mega = status.strike == meteor::Strike::MegaLightning;
+    if status.targeting && mega {
+        "Click a wall or the ground to call down Mega Thunderbolt · right click or Esc cancels"
+    } else if status.casting.is_some() && mega {
+        "Casting Mega Thunderbolt · keep moving if you like · Esc stops it"
+    } else if status.targeting && lightning {
         "Click a wall or the ground to call down Thunderbolt · right click or Esc cancels"
     } else if status.targeting {
         "Click the ground or a wall to call down Meteor Swarm · right click or Esc cancels"

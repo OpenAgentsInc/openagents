@@ -1,9 +1,10 @@
 //! Offline visual acceptance of Everglade's destructible town.
-//! Usage: town_capture OUTPUT_DIR [civic]
+//! Usage: town_capture OUTPUT_DIR [civic [mega]]
 //!
 //! Installs Everglade from the committed, pinned pack, settles its light,
 //! and calls Meteor Swarm down on Main Street's café, seen from the street,
-//! or with `civic` on the Civic Hall's front, seen from its plaza,
+//! or with `civic` on the Civic Hall's front, seen from its plaza (with
+//! `mega`, a Mega Thunderbolt there instead),
 //! rendering with Everglade's hotbar into `OUTPUT_DIR`. The Civic Hall's
 //! run stops after `aftermath.png` and then writes `restored.png`.
 //!
@@ -45,6 +46,7 @@ fn main() -> Result<(), String> {
             everglade_pack::PACK_EXTENSION
         ));
     let civic = std::env::args().nth(2).as_deref() == Some("civic");
+    let mega = civic && std::env::args().nth(3).as_deref() == Some("mega");
     let pack = everglade_pack::ZonePack::load_local(&pack)?;
     let mut runtime = WorldRuntime::new();
     runtime.install_everglade(&pack);
@@ -86,7 +88,11 @@ fn main() -> Result<(), String> {
     runtime.apply(Action::Orbit { dx: 0.0, dy: -60.0 })?;
     tick(&mut runtime, 0.2);
     shot(&runtime, &atlas, &dir.join("before.png"))?;
-    runtime.zone_intent(zones::Intent::MeteorSwarm)?;
+    runtime.zone_intent(if mega {
+        zones::Intent::MegaThunderbolt
+    } else {
+        zones::Intent::MeteorSwarm
+    })?;
     let aspect = 1.6;
     let clip = runtime.view(aspect).view_proj * front.extend(1.0);
     let (x, y) = (0.5 + 0.5 * clip.x / clip.w, 0.5 - 0.5 * clip.y / clip.w);
@@ -98,9 +104,23 @@ fn main() -> Result<(), String> {
     if !runtime.demolition_confirm() {
         return Err("Meteor Swarm did not start its cast".into());
     }
-    let cast = zones::everglade::demolition::meteor::CAST;
-    tick(&mut runtime, cast - 0.4);
+    let cast = if mega {
+        zones::everglade::demolition::meteor::MEGA_CAST
+    } else {
+        zones::everglade::demolition::meteor::CAST
+    };
+    tick(&mut runtime, (cast - 0.4).max(0.1));
     shot(&runtime, &atlas, &dir.join("casting.png"))?;
+    if mega {
+        // The bolt lands as the cast ends; catch its flash.
+        tick(&mut runtime, cast - 0.1 + 0.12);
+        shot(&runtime, &atlas, &dir.join("impact.png"))?;
+        tick(&mut runtime, 4.0);
+        shot(&runtime, &atlas, &dir.join("aftermath.png"))?;
+        runtime.zone_intent(zones::Intent::Rebuild)?;
+        tick(&mut runtime, 0.2);
+        return shot(&runtime, &atlas, &dir.join("restored.png"));
+    }
     tick(&mut runtime, 0.4 + 0.87);
     shot(&runtime, &atlas, &dir.join("impact.png"))?;
     tick(&mut runtime, 0.75);

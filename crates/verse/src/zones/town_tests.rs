@@ -64,6 +64,7 @@ fn everglade_offers_no_offensive_spell_and_its_demolition_still_runs() {
     for intent in [
         Intent::MeteorSwarm,
         Intent::Thunderbolt,
+        Intent::MegaThunderbolt,
         Intent::Swing,
         Intent::Rebuild,
     ] {
@@ -105,29 +106,41 @@ fn everglade_offers_no_offensive_spell_and_its_demolition_still_runs() {
 fn everglade_casts_meteor_swarm_swings_and_restores_through_its_intents() {
     use crate::controller::InputState;
     use crate::zones::Intent;
-    use crate::zones::everglade::hotbar::{DEV_ORDER, FULL_COUNT, SLOTS};
+    use crate::zones::everglade::demolition::meteor::Strike;
+    use crate::zones::everglade::hotbar::{DEV_COUNT, DEV_ORDER, SLOTS};
     let mut runtime = crate::zones::everglade_tests::entered();
     runtime.set_dev_destruction(true).unwrap();
     let slots = runtime.everglade_hotbar().expect("Everglade's hotbar");
-    assert_eq!(slots.len(), FULL_COUNT);
-    // Meteor Swarm on 1, the Thunderbolt on 2, Levitate on 3, and the
-    // sledgehammer last.
+    assert_eq!(slots.len(), DEV_COUNT);
+    // Meteor Swarm on 1, the Thunderbolt on 2, the Mega Thunderbolt on 3,
+    // and Levitate on 4.
     assert_eq!(runtime.everglade_hotbar_order(), DEV_ORDER.to_vec());
-    let intents: Vec<Intent> = (0..FULL_COUNT)
+    let intents: Vec<Intent> = (0..DEV_COUNT)
         .map(|i| runtime.everglade_slot_intent(i).unwrap())
         .collect();
     assert_eq!(
-        intents[..3],
-        [Intent::MeteorSwarm, Intent::Thunderbolt, Intent::Levitate]
+        intents[..4],
+        [
+            Intent::MeteorSwarm,
+            Intent::Thunderbolt,
+            Intent::MegaThunderbolt,
+            Intent::Levitate
+        ]
     );
-    assert_eq!(intents[FULL_COUNT - 1], Intent::Swing);
     assert_eq!(SLOTS[DEV_ORDER[1]].1, "thunderbolt-icon");
+    assert_eq!(SLOTS[DEV_ORDER[2]].1, "mega-thunderbolt-icon");
     assert!(slots[0].enabled, "Meteor Swarm is ready");
     assert!(slots[1].enabled, "the Thunderbolt is ready");
-    assert!(
-        slots[FULL_COUNT - 1].enabled,
-        "the sledgehammer is in reach"
+    assert!(slots[2].enabled, "the Mega Thunderbolt is ready");
+    // The Mega Thunderbolt aims and lights its own slot.
+    runtime.zone_intent(Intent::MegaThunderbolt).unwrap();
+    assert_eq!(
+        runtime.everglade_swarm().unwrap().strike,
+        Strike::MegaLightning
     );
+    let slots = runtime.everglade_hotbar().unwrap();
+    assert!(slots[2].active && !slots[1].active);
+    assert!(runtime.demolition_cancel());
     // The Thunderbolt aims, lights its own slot, and casts.
     runtime.zone_intent(Intent::Thunderbolt).unwrap();
     assert!(runtime.demolition_targeting());

@@ -42,7 +42,10 @@
 //! ([`Strike::Lightning`]): after a [`BOLT_CAST`] s cast, one thick jagged
 //! bolt with branches leaves the clouds for the ring, flashes, and blasts
 //! [`BOLT_BLAST`] m around the strike with [`BOLT_DICE`] (the
-//! `thunderbolt_strike` effect).
+//! `thunderbolt_strike` effect). Everglade's dev bar also casts the Mega
+//! Thunderbolt ([`Strike::MegaLightning`]): a [`MEGA_CAST`] s cast, five
+//! times the damage ([`MEGA_DICE`]) over five times the volume
+//! ([`MEGA_BLAST`]), a thicker, brighter bolt, and a harder shake.
 //!
 //! The fire, smoke, sparks, and shockwave are sprite particles: the effects
 //! under `assets/verse/fx/effects/` (`meteor_head`, `meteor_trail`,
@@ -107,6 +110,15 @@ const BOLT_HEIGHT: f32 = 60.0;
 const BOLT_CORE: [f32; 3] = [0.92, 0.95, 1.0];
 const BOLT_GLOW: [f32; 3] = [0.45, 0.6, 1.0];
 const BOLT_LUMINANCE: f32 = 90.0;
+/// The Mega Thunderbolt's cast bar, s, and its ring's radius, m.
+pub const MEGA_CAST: f32 = 0.5;
+pub const MEGA_AREA: f32 = 3.6;
+/// Its blast's radius, m: five times the Thunderbolt's blast volume.
+pub const MEGA_BLAST: f32 = BOLT_BLAST * 1.71;
+/// How fast its blast throws debris, m/s.
+pub const MEGA_THROW: f32 = 22.0;
+/// Its damage to structures: 100d10, five times the Thunderbolt's.
+pub const MEGA_DICE: (u32, u32) = (100, 10);
 
 /// What the targeting calls down.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Default)]
@@ -116,6 +128,8 @@ pub enum Strike {
     Meteors,
     /// One huge bolt of lightning.
     Lightning,
+    /// The Mega Thunderbolt: a faster cast and five times the damage.
+    MegaLightning,
 }
 
 impl Strike {
@@ -125,7 +139,14 @@ impl Strike {
         match self {
             Self::Meteors => "Meteor Swarm",
             Self::Lightning => "Thunderbolt",
+            Self::MegaLightning => "Mega Thunderbolt",
         }
+    }
+
+    /// Whether it calls down a bolt of lightning rather than meteors.
+    #[must_use]
+    pub const fn lightning(self) -> bool {
+        matches!(self, Self::Lightning | Self::MegaLightning)
     }
 
     /// The cast bar's length, s.
@@ -134,6 +155,7 @@ impl Strike {
         match self {
             Self::Meteors => CAST,
             Self::Lightning => BOLT_CAST,
+            Self::MegaLightning => MEGA_CAST,
         }
     }
 
@@ -144,6 +166,7 @@ impl Strike {
             (Self::Meteors, false) => AREA,
             (Self::Meteors, true) => WALL_AREA,
             (Self::Lightning, _) => BOLT_AREA,
+            (Self::MegaLightning, _) => MEGA_AREA,
         }
     }
 }
@@ -246,6 +269,8 @@ struct Bolt {
     age: f32,
     seed: u32,
     struck: bool,
+    /// Whether it is the Mega Thunderbolt.
+    mega: bool,
 }
 
 impl Bolt {
@@ -618,7 +643,8 @@ impl Swarm {
                 self.casting = None;
                 match strike {
                     Strike::Meteors => self.release(aim, from, site),
-                    Strike::Lightning => self.call_bolt(aim, site),
+                    Strike::Lightning => self.call_bolt(aim, site, false),
+                    Strike::MegaLightning => self.call_bolt(aim, site, true),
                 }
             }
         }
@@ -816,9 +842,9 @@ impl Swarm {
 
     /// The thunderbolt's cast completes: its damage is rolled and the bolt
     /// leaves the clouds for `aim`.
-    fn call_bolt(&mut self, aim: Aim, site: &mut dyn Target) {
+    fn call_bolt(&mut self, aim: Aim, site: &mut dyn Target, mega: bool) {
         self.idle = 0.0;
-        let (count, sides) = BOLT_DICE;
+        let (count, sides) = if mega { MEGA_DICE } else { BOLT_DICE };
         let total: i32 = (0..count).map(|_| site.roll(sides)).sum();
         self.damage = Damage {
             fire: 0,
@@ -843,6 +869,7 @@ impl Swarm {
             age: 0.0,
             seed,
             struck: false,
+            mega,
         });
     }
 
@@ -861,14 +888,19 @@ impl Swarm {
             let face = if bolt.aim.wall() { normal } else { Vec3::ZERO };
             // Its heart sits just off the face, as a meteor's does.
             let center = at + normal * 0.5;
-            blows.extend(site.explode_facing(
-                center,
-                BOLT_BLAST,
-                self.damage.total(),
-                BOLT_THROW,
-                face,
-            ));
+            let (blast, throw, strike) = if bolt.mega {
+                (MEGA_BLAST, MEGA_THROW, Strike::MegaLightning)
+            } else {
+                (BOLT_BLAST, BOLT_THROW, Strike::Lightning)
+            };
+            blows.extend(site.explode_facing(center, blast, self.damage.total(), throw, face));
             self.fx.start("thunderbolt_strike", Spawn::at(center));
+            if bolt.mega {
+                // A second burst and a fireball's shockwave around it.
+                self.fx
+                    .start("thunderbolt_strike", Spawn::at(center + Vec3::Y));
+                self.fx.start("meteor_explosion", Spawn::at(center));
+            }
             let ground = height(at.x, at.z);
             if at.y - ground < 1.5 {
                 if self.scorches.len() >= MAX_SCORCHES {
@@ -876,7 +908,7 @@ impl Swarm {
                 }
                 self.scorches.push(Scorch {
                     at: Vec3::new(at.x, ground, at.z),
-                    radius: BOLT_BLAST * 0.7,
+                    radius: blast * 0.7,
                     age: 0.0,
                     seed: bolt.seed,
                 });
@@ -884,10 +916,10 @@ impl Swarm {
             self.impacts.push(Impact {
                 at: center,
                 normal,
-                strike: Strike::Lightning,
-                radius: BOLT_BLAST,
+                strike,
+                radius: blast,
             });
-            self.shake = (self.shake + 0.7).min(1.0);
+            self.shake = (self.shake + if bolt.mega { 1.0 } else { 0.7 }).min(1.0);
         }
         self.bolts.retain(|b| b.age < BOLT_LIFE);
         blows
@@ -970,7 +1002,7 @@ impl Swarm {
             rock(mesh, meteor.at(meteor.t), self.clock);
         }
         if let Some(cast) = self.casting
-            && cast.strike == Strike::Lightning
+            && cast.strike.lightning()
         {
             // The storm gathers over the target while the cast runs: a
             // dim cloud glow and sparks crawling in it.
@@ -1268,7 +1300,7 @@ fn ring(
             }
         });
     }
-    if strike == Strike::Lightning {
+    if strike.lightning() {
         // Blue-white instead of fire.
         for v in &mut out[start..] {
             let l = v.radiance[0].max(v.radiance[1]).max(v.radiance[2]);
@@ -1342,8 +1374,12 @@ fn draw_bolt(out: &mut Vec<GlowVertex>, bolt: &Bolt, eye: Vec3) {
     }
     // While the leader comes down, only the part above it shows.
     let reach = (bolt.age / BOLT_LEAD).clamp(0.0, 1.0);
+    // The Mega Thunderbolt is twice as thick and brighter.
+    let (thick, bright) = if bolt.mega { (2.2, 1.8) } else { (1.0, 1.0) };
+    let light = light * bright;
     for (k, path) in bolt.paths().iter().enumerate() {
         let (core, wide) = if k == 0 { (0.32, 1.4) } else { (0.12, 0.6) };
+        let (core, wide) = (core * thick, wide * thick);
         let shown = if k == 0 {
             ((path.len() - 1) as f32 * reach).ceil() as usize
         } else if reach < 1.0 {
@@ -1375,8 +1411,8 @@ fn draw_bolt(out: &mut Vec<GlowVertex>, bolt: &Bolt, eye: Vec3) {
         blob(
             out,
             bolt.aim.at + bolt.aim.normal * 0.5,
-            2.0 + 5.0 * flash,
-            tint(BOLT_CORE, BOLT_LUMINANCE * 1.5 * flash),
+            (2.0 + 5.0 * flash) * thick,
+            tint(BOLT_CORE, BOLT_LUMINANCE * 1.5 * flash * bright),
             eye,
         );
         blob(out, bolt.sky, 12.0, tint(BOLT_GLOW, 6.0 * light), eye);
