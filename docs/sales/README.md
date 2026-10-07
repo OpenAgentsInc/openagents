@@ -1,10 +1,11 @@
 # Sales and revenue
 
-Status: proposal, October 6, 2026. This page collects what businesses tell us
-they want from coding and work agents, how we plan to earn revenue from Coder
-and the products around it, and what we still need to build. It's a public
-page, so it records principles, product requirements, and a build order, not
-pricing negotiations, targets, or account plans.
+Status: proposal, updated October 6, 2026. This page records the sales strategy
+for OpenAgents, with Coder as the first adoption path. The
+[unified revenue roadmap](revenue-roadmap.md) owns the delivery order, missing
+pieces, dependencies, and evidence needed to earn revenue. Product and payment
+documents retain their implementation contracts. These are public plans;
+customer records, compensation agreements, and negotiations stay private.
 
 ## Contents
 
@@ -29,18 +30,26 @@ pricing negotiations, targets, or account plans.
 
 ## Summary
 
-Coder is a coding agent that works with the agents and subscriptions a person
-already has, such as Claude Code, Codex, Grok Build, and Devin, and routes work
-across them. It puts cheap, fast typed decisions (Jev) in front of expensive
-models, so the same work costs less. Everything else is a plugin that anyone
-can publish, free or paid, with a revenue share on paid use.
+OpenAgents is the composable agent and ecosystem; Coder is the coding workflow
+that gives developers a concrete reason to adopt it. Coder combines installed
+agents, existing logins, and cheap typed decisions (Jev). The first promise to
+prove is accepted work with less expense or more capacity from the accounts a
+customer already pays for. Plugins extend that workflow and let authors earn
+from paid use.
 
 The revenue plan follows product-led growth: individual developers adopt Coder
 because it makes their existing usage go further, they bring it into their
-teams, and teams become paying business accounts. We sell usage, not seats or
-multi-year contracts. Two engines feed that growth: an affiliate program that
-pays people for the usage they bring, and hands-on onboarding for businesses
-that want help fitting agents into how they already work.
+teams, and teams become paying business accounts. Assisted business pilots run
+in parallel: choose a recurring workflow, prove the result, and convert it
+into paid usage and reusable capabilities. We plan to sell usage and bounded
+services, without seat bundles or multi-year commitments. Affiliates and
+partners expand demand after payment, attribution, and margins are proven.
+
+Free local use creates adoption; it does not itself generate OpenAgents
+revenue. The commercial task is to connect that adoption to a useful paid
+addition, collect payment, deliver it, and earn repeat use. Existing billing,
+wallet, and cloud modules are foundations for that path, not evidence that the
+whole purchase flow is available today.
 
 ## What businesses want
 
@@ -82,22 +91,22 @@ software to businesses. They recur often enough to shape the product.
 | --- | --- | --- |
 | Coder | Developers, then teams | Free to use with the person's own subscriptions; paid usage for anything we run (cloud work, the OpenAgents gateway, paid plugins) |
 | Cloud computers | Developers and teams who outgrow one machine | Usage-based compute, quoted and metered in sats ([retail cloud](../cloud/retail-contract.md)) |
-| The gateway | Anyone who wants to start without their own model keys | Usage-based model access with routing to the cheapest model that can do the job |
-| Plugins | Plugin authors sell; users buy | Paid plugins carry a per-call fee; we take a share and the author keeps the rest |
+| Decision access | Callers who need supported System One judgments | Funded usage through the decision gateway; hosted agent/model execution is a separate proposed paid resource |
+| Plugins | Plugin authors sell; users buy | The author receives the declared per-call fee; OpenAgents earns the separately priced endpoint charge, under the current [split contract](../payments/2026-10-02-central-receive-and-splits.md#3-who-gets-paid) |
 | Business accounts | Teams and companies | Usage plus optional paid onboarding and support |
 | Department agents | Businesses | Built during onboarding, run on usage, measured in the Gym |
 
 ## Principles
 
-- **A strict upgrade first.** Whatever a team does today with a coding agent,
-  Coder should do at least as well for less. Cost savings are the first thing a
-  buyer can verify on their own work, so we lead with them.
+- **A strict upgrade as the goal.** Prove quality, cost, and time on a team's
+  own work before making a comparative claim. Extra capacity from a fixed
+  subscription is different from a lower bill; report each accurately.
 - **Usage, not contracts.** We don't sell multi-year commitments or seat
   bundles. Customers connect a payment method, use what they need, and stop
   when they want. Our incentive is to make usage worth more, not to lock it in.
 - **Bring your own subscription.** Coder uses the accounts customers already
-  pay for. We earn on what we add: routing, cloud work, plugins, onboarding, and
-  visibility.
+  pay for. We earn on paid resources and services we add. Routing local work
+  through a customer's login does not automatically create a charge for us.
 - **Prove it on their work.** Every claim we make to a business should come
   with evidence from their own tasks: receipts, the Gym, and before-and-after
   costs.
@@ -108,39 +117,45 @@ software to businesses. They recur often enough to shape the product.
 
 ## How customers arrive
 
-1. **A developer installs Coder.** No setup: it finds the agents and logins
-   already on the machine and routes between them. The first win is that their
-   existing usage goes further.
+1. **A developer installs Coder.** It detects supported agents and logins,
+   reports what is ready, and helps them complete a first useful task.
 2. **They use more of it.** Cloud computers when their machine is busy, paid
-   plugins, the gateway when a subscription runs out.
+   plugins, and supported paid capabilities their current tools do not supply.
 3. **They bring their team.** A champion shares sessions, plugins, and
    department agents with colleagues.
 4. **The team becomes a business account.** Shared billing, an admin view, and
    policies.
-5. **The business asks for help.** Hands-on onboarding fits Coder to their
-   workflows and builds their first department agents.
+5. **The business expands.** Measured workflows become department agents and
+   reusable plugins, with policies and evidence for the team.
 
-The affiliate program accelerates every step: people who bring usage earn
-from it.
+Businesses can also arrive through a direct introduction, a partner, or a
+public demonstration. Hands-on onboarding starts with one scoped pilot; it
+does not wait for organic team conversion or the full admin product. The
+[roadmap's funnel](revenue-roadmap.md#sales-and-pilot-operations) defines the
+handoff from lead to accepted pilot, paid use, and expansion.
 
 ## Pricing and billing
 
-- **Free credits to start.** A new business account gets a starting credit
-  and a short onboarding session, so it can see value on its own work before it
-  pays anything.
+- **Proposed starting offer.** Give a new business account a capped credit
+  and short onboarding session so it can test value on its own work. The
+  amount, eligibility, and onboarding scope remain decisions; do not promise
+  an unlimited trial.
 - **Pay as you go.** Usage is metered per resource (compute, gateway calls,
   plugin calls) and charged against a prepaid balance or a card. The retail
   cloud already defines quotes, holds, metering, and settlement
   ([compute balance](../cloud/compute-balance.md),
   [price book](../cloud/retail-prices.md)).
-- **One balance across products.** Cloud work, gateway calls, and paid plugins
-  draw from one balance per account.
-- **Payment rails.** Cards for businesses; Lightning for individuals, plugin
-  authors, and machine-to-machine payments
+- **One balance across products is the goal.** The purchased compute balance,
+  paid-call funding, and decision gateway currently have different accounting
+  paths. Connecting them requires account mapping and settlement adapters,
+  with their existing units and rights preserved.
+- **Payment rails.** Plan cards for businesses; the existing decision billing
+  provider is sandbox-only, so live card collection needs an adapter.
+  Lightning serves individuals, plugin authors, and machine-to-machine payments
   ([NIP-X402](../../nips/openagents/NIP-X402.md)).
-- **Margins come from what we add.** Routing work to the cheapest capable
-  model, running cloud work efficiently, and services stacked on one base. More
-  usage is better for us and for the customer at the same time.
+- **Margins come from what we add.** Price against full delivery costs,
+  including failed work, checks, payments, support, and incentives. Provider
+  grants can fund a trial; they do not establish sustainable margins.
 
 ## Affiliate and referral program
 
@@ -152,7 +167,9 @@ they bring. Episode 239 set the rule: refer once, earn forever.
   accounts that arrive through it are attributed to the referrer permanently.
 - **Earn on usage.** The referrer earns a small share of everything their
   referrals buy anywhere in the OpenAgents ecosystem, for as long as those
-  accounts stay active. Business accounts they bring in count the same way.
+  accounts stay active, under a published rule for eligible settled usage.
+  Free credits and unused top-ups do not create commission. Business accounts
+  they bring in count under the same attribution rules.
 - **Agents sell too.** An agent with a key pair can hold a referral link,
   bring buyers, and earn. A network of selling agents is a sales force that
   scales with the number of agents, not with hiring.
@@ -176,9 +193,10 @@ already serve businesses that need agents.
 - **Partner organizations** (agencies, startups, and agent groups) fulfill
   parts of a buyer's order. We refer them business, build their offering into
   ours, or both, with referral commissions in either direction.
-- **The coding agent pool.** Agents already volunteer to build against our
-  backlog. We pay them for accepted work, with receipts, and point the pool at
-  software that paying customers need, so custom work ships fast.
+- **The coding agent pool.** Plan to pay contributors for accepted work that
+  customers need, with explicit checks and receipts. Paid labor and dispute
+  handling need their own qualification; a free labor host is not paid
+  fulfillment.
 - **Both sides at once.** Sellers (compute, data, labor, verification) join
   through the Pylon network; buyers come through the sales funnel. Supply has
   always been the easy side; demand closes the revenue loop.
@@ -215,7 +233,8 @@ and department agents they need, and leaves them with measured, repeatable
 workflows.
 
 - **Start where they are.** If they already use an agent, Coder routes to it.
-  The first deliverable is lower cost on the work they already do.
+  The first deliverable is a measured improvement in accepted work, cost,
+  completion time, or capacity from their existing subscription.
 - **Build department agents.** Turn a department's documents and procedures
   into an agent the team directs, with a test set in the Gym so its
   performance is tracked over time.
@@ -228,86 +247,65 @@ workflows.
 
 Agents and plugins become things people can find, trust, and pay for.
 
-- **Identity.** Every agent and plugin has its own key pair
+- **Identity.** Agents have portable identities; plugin releases bind the
+  publisher's identity and exact version
   ([NIP-SOV](../../nips/openagents/NIP-SOV.md),
   [NIP-HOST](../../nips/openagents/NIP-HOST.md)).
 - **Reputation.** Verified work earns experience
   ([NIP-XP](../../nips/openagents/NIP-XP.md)); reviews and track records attach
   to the agent's identity, not to our database.
-- **Registries.** Curated plugin registries
+- **Registries.** Planned curated plugin registries
   ([NIP-REG](../../nips/openagents/NIP-REG.md)) and a marketplace
   ([NIP-MKT](../../nips/openagents/NIP-MKT.md)) let buyers find agents and
   plugins by skill, price, and reputation.
 - **Discovery partners.** Because identity and reputation live on Nostr,
-  third-party search and web-of-trust indexes can list our agents and plugins
-  without an integration deal. We should make that easy, and treat partners who
-  bring buyers like affiliates. A first partner plugin is planned in
+  third-party search and web-of-trust indexes can help people find publishers.
+  Verify each index's coverage; a social score does not establish capability
+  availability or work quality. A first partner plugin and separate public
+  discoverability pilot are planned in
   [`docs/plugins/brainstorm-v1-integration.md`](../plugins/brainstorm-v1-integration.md).
 
 ## What exists today
 
-| Need | What exists |
+The October 6 documentation and code review separates foundations from a
+customer-ready offer. It includes no new live payment or deployment check.
+
+| Need | Foundation and remaining boundary |
 | --- | --- |
-| The product | Coder V1 ([`crates/coder-new`](../../crates/coder-new)), with routing across installed agents and Jev in front of models |
-| Accounts and workspaces | [`tenancy::accounts`](../../crates/tenancy/src/accounts.rs), [`tenancy::sessions`](../../crates/tenancy/src/sessions.rs) |
-| Billing | [`tenancy::billing`](../../crates/tenancy/src/billing.rs): plans, checkout, invoices, provider events |
-| Metering and quota | [`tenancy::quota`](../../crates/tenancy/src/quota.rs), the gateway's reservations and receipts |
-| Cloud computers | The retail cloud contract, price book, balance, and launch gate ([`docs/cloud/`](../cloud/)) |
-| Paid plugins | Signed plugin releases with per-call fees and author shares ([`docs/plugins/`](../plugins/README.md)) |
-| Identity, reputation, registries | NIP-SOV, NIP-HOST, NIP-XP, NIP-REG, NIP-MKT |
-| Evidence | Receipts ([`crates/receipts`](../../crates/receipts)) and the Gym ([`crates/gym`](../../crates/gym)) |
-| Lightning | [`crates/wallet`](../../crates/wallet), [`crates/x402`](../../crates/x402) |
-| Payment splits and payouts | [Payments](../payments/README.md): one receiver, a split ledger, payouts to plugin authors |
+| Coder | [Live bundled plugins and installed-login paths](../../crates/coder-new/README.md); customer account, top-up, and paid-call purchase controls still need integration |
+| Accounts | [`tenancy::accounts`](../../crates/tenancy/src/accounts.rs) and sessions; product-wide identity and billing mapping remain work |
+| Card billing | [Plans and checkout](../decision-models/service/billing.md) are implemented with a sandbox provider only |
+| Cloud | [Balance](../cloud/compute-balance.md), retail lifecycle, and [fake/simulated qualification](../cloud/retail-qualification.md); customer service integration and funded launch remain gates |
+| Paid plugins | Signed releases and a deployed pay front; the [October 3 receipt](../payments/2026-10-03-end-to-end-demo.md) proves the challenge path, not funded execution and author payout |
+| Shared money | [Payment ledger and splits](../payments/README.md); compute funding, paid calls, and gateway accounting still require a unified customer path |
+| Evidence | Receipts and the Gym; customer baselines and independent workflow acceptance must connect to them |
+| Discovery | Nostr identities and protocol contracts; supported indexing, usable listings, and referral conversion require qualification |
 
 ## What we need to build
 
-1. **Cost proof inside Coder.** Show each person what their work would have
-   cost on frontier models and what it cost through Coder, per task and per
-   week. This is the first thing a champion shows their manager.
-2. **One balance and a pricing page.** A single prepaid balance for cloud,
-   gateway, and plugin usage; a public page that explains usage pricing in
-   plain terms; a starting credit for new business accounts.
-3. **Referral links and payouts.** Link creation for people and agents,
-   permanent attribution on sign-up, revenue share on paid usage across every
-   product, holds, payouts over Lightning or as credit, and an earnings view.
-4. **Partner and pool payouts.** Commissions to partner organizations and
-   payment for accepted coding-agent pool work, on the same ledger, with
-   receipts.
-5. **Team accounts in the product.** Inviting colleagues from Coder, shared
-   plugins and agents, and shared billing.
-6. **The admin view.** Agent work, cost, wait times, and outcomes by person and
-   team, with budgets and alerts.
-7. **Policies.** Data, model, plugin, and placement policies that admins set
-   and Coder enforces.
-8. **Department agents.** A template and workflow for turning a department's
-   documents into an agent with a Gym test set and a performance history.
-9. **Quarterly evidence reports.** Generated from receipts and the Gym: what
-   agents handled, how reliably, and where help is needed.
-10. **Onboarding kit.** Runbooks, plugin templates, and a checklist that make
-   each hands-on engagement faster than the last.
-11. **Marketplace listings.** Plugin and agent pages with reputation, reviews,
-    and pricing, readable by third-party indexes.
+The [missing-pieces table](revenue-roadmap.md#missing-pieces-and-existing-owners)
+covers product integration, payment, sales operations, and launch evidence.
+The first priorities are a supported offer, cost and quality proof, a funded
+purchase path in the client, and a bounded business pilot. Shared billing,
+attribution, team controls, and reusable department agents build on that path.
 
 ## Roadmap
 
-| Phase | Goal | Includes |
-| --- | --- | --- |
-| 1. Launch | Developers adopt Coder and see savings | Coder V1, cost proof, the pricing page, the gateway |
-| 2. First revenue | Usage pays | One balance, cloud computers behind the launch gate, paid plugins live |
-| 3. Growth loop | Usage brings usage | Referral links and payouts, plugin authors as affiliates, marketplace listings |
-| 4. Teams | Champions bring teams | Team accounts, shared plugins and agents, shared billing |
-| 5. Business | Companies adopt with confidence | The admin view, budgets, policies, evidence reports, hands-on onboarding |
-| 6. Up market | Larger customers | Department agents at scale, single sign-on, audit export, customer-owned computers |
-
-Phases 1 and 2 build on what exists today. Phase 3 is the first new system of
-substance. Phases 4 and 5 can start in parallel once accounts and the balance
-are shared across products.
+Use the [unified revenue roadmap](revenue-roadmap.md#delivery-order) for the
+order and exit criteria: prove an offer, collect the first payment, earn repeat
+use, qualify referrals and partners, then expand teams and workflows. Assisted
+pilots and acquisition preparation run alongside engineering from the start.
+Existing terminal, router, cloud, and payment backlogs keep their technical
+ownership; this roadmap orders their contribution to revenue.
 
 ## Measures
 
 - Weekly active developers, and how many of them pay for anything.
 - Savings per active developer, measured on their own work.
 - Paid usage per account, and how it grows month over month.
+- Earned usage and service revenue, separately from cash top-ups and unused
+  purchased balances; contribution margin after delivery and incentives.
+- First accepted task, first settled purchase, and repeat paid use by cohort.
 - Share of new accounts that arrive through referrals.
 - Teams per champion, and time from first install to first team account.
 - Onboarding engagements, time to first measured result, and retention after
@@ -345,8 +343,11 @@ retained [transcript archive](../transcripts/README.md) describe it:
   affiliates, partner fulfillment, the paid coding agent pool, and sharing the
   results in public.
 
-Since then the product has narrowed to Coder and the services around it, so
-this page applies those ideas to Coder first.
+The [Coder-era review](revenue-roadmap.md#what-the-background-changes) adds
+episodes 275–289: dependable daily use, cloud placement, trusted devices,
+measured System One work, and the composable general agent. Coder supplies
+the first concrete buyer workflow; successful plugins extend it into other
+work without requiring every surface or market to launch together.
 
 ## Open questions
 
