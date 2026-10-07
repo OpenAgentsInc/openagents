@@ -1,7 +1,8 @@
 # Agent identity and engrams
 
-Status: specification, October 7, 2026. Epic and phase issues are listed in
-[Phases](#phases). It turns the workshop agent from Coder wearing a name tag
+Status: specification, October 7, 2026. The epic is
+[#10807](https://github.com/OpenAgentsInc/openagents/issues/10807), and
+[Phases](#phases) lists one issue per phase. It turns the workshop agent from Coder wearing a name tag
 into an agent of her own: Alice has her own key, her own memory as engrams,
 and her own loop, and she steers plain Coder as a tool. Bob, Paul, and the
 rest of [the crew](crew.md) follow on the same machinery.
@@ -378,17 +379,17 @@ Agent-hours at this repository's pace, as [Workshop
 agent](workshop-agent.md#what-exists-and-what-is-missing) states it. Phase 3
 is the one the owner is waiting for; it needs only phases 1 and 2.
 
-| Phase | Delivers | Depends on | Agent-hours |
-| --- | --- | --- | --- |
-| 1. Primitives | `nostr::engram` (NIP-AE codec, slugs, `d` derivation, strict body, head selection, monotonic writes, listing) and `nostr::domain::agent` minting, both with the spec's test vectors | None | 2 |
-| 2. Local engram store | `agents/NAME/engrams/`, write-through from memory and scores, `core` seeded from her definition, reconcile on start, fail-closed reads, `openagents agent memory NAME engrams` and owner decrypt with the owner key | 1 | 3 |
-| 3. Alice steers Coder | `agent_steer`: plan, prompt, watch, policy approvals, Jev judgment, follow-ups, verify, report; `alice-coder` without persona; panel and pane split; live check on a scratch host | 2 | 7 |
-| 4. Identity | `KeyStore` with keychain and file backends, fail-closed; definition and roles in the record; `kind:0` profile with `auth`; "authorized by" in the panel; renewal warning | 1 | 4 |
-| 5. Relay sync | NIP-65 relay list, NIP-AA client auth, publish and read heads, conflict detection, `--from-relay` owner reads; opt-in setting | 2, 4 | 4 |
-| 6. Consolidation | `core` proposals with owner review, `[[link]]` reachability and orphans at F2, insights as engrams, working files become a cache | 2; generative agents B2 (#10789) | 3 |
-| 7. Lifecycle | Rotate with re-encryption and lineage, retire with NIP-IA, migrate to another host with a delegated grant, export snapshot, NIP-GS signed worktree commits | 4, 5 | 5 |
-| 8. Spend records | NIP-AM `44200` per turn for her calls and Coder's, owner-read, budget enforcement from the records | 3, 5 | 2 |
-| 9. Crew | Name-generic loop, definitions, and policy; a second member (Bob) on the same machinery; optional XP key link | 3, 4 | 3 |
+| Phase | Issue | Delivers | Depends on | Agent-hours |
+| --- | --- | --- | --- | --- |
+| 1. Primitives | [#10798](https://github.com/OpenAgentsInc/openagents/issues/10798) | `nostr::engram` (NIP-AE codec, slugs, `d` derivation, strict body, head selection, monotonic writes, listing) and `nostr::domain::agent` minting, both with the spec's test vectors | None | 2 |
+| 2. Local engram store | [#10799](https://github.com/OpenAgentsInc/openagents/issues/10799) | `agents/NAME/engrams/`, write-through from memory and scores, `core` seeded from her definition, reconcile on start, fail-closed reads, `openagents agent memory NAME engrams` and owner decrypt with the owner key | 1 | 3 |
+| 3. Alice steers Coder | [#10800](https://github.com/OpenAgentsInc/openagents/issues/10800) | `agent_steer`: plan, prompt, watch, policy approvals, Jev judgment, follow-ups, verify, report; `alice-coder` without persona; panel and pane split; live check on a scratch host | 2 | 7 |
+| 4. Identity | [#10801](https://github.com/OpenAgentsInc/openagents/issues/10801) | `KeyStore` with keychain and file backends, fail-closed; definition and roles in the record; `kind:0` profile with `auth`; "authorized by" in the panel; renewal warning | 1 | 4 |
+| 5. Relay sync | [#10802](https://github.com/OpenAgentsInc/openagents/issues/10802) | NIP-65 relay list, NIP-AA client auth, publish and read heads, conflict detection, `--from-relay` owner reads; opt-in setting | 2, 4 | 4 |
+| 6. Consolidation | [#10803](https://github.com/OpenAgentsInc/openagents/issues/10803) | `core` proposals with owner review, `[[link]]` reachability and orphans at F2, insights as engrams, working files become a cache | 2; generative agents B2 (#10789) | 3 |
+| 7. Lifecycle | [#10804](https://github.com/OpenAgentsInc/openagents/issues/10804) | Rotate with re-encryption and lineage, retire with NIP-IA, migrate to another host with a delegated grant, export snapshot, NIP-GS signed worktree commits | 4, 5 | 5 |
+| 8. Spend records | [#10805](https://github.com/OpenAgentsInc/openagents/issues/10805) | NIP-AM `44200` per turn for her calls and Coder's, owner-read, budget enforcement from the records | 3, 5 | 2 |
+| 9. Crew | [#10806](https://github.com/OpenAgentsInc/openagents/issues/10806) | Name-generic loop, definitions, and policy; a second member (Bob) on the same machinery; optional XP key link | 3, 4 | 3 |
 
 About 33 agent-hours. Owner checks on real computers go in `NEEDS_OWNER.md`.
 
