@@ -130,6 +130,13 @@ fn report() -> (Vec<String>, bool) {
                 "executor",
             ));
         }
+        Some(Chosen::Delegate(target))
+            if target.agent
+                == delegate_door::Agent::Cli(coder_delegate::delegate::Agent::Codex) =>
+        {
+            lines.push(codex_executor(settings.model.as_deref()));
+            lines.push(policy_line());
+        }
         _ => {
             let model = settings
                 .model
@@ -144,13 +151,7 @@ fn report() -> (Vec<String>, bool) {
                 executor.prompt_cache_ttl.as_deref().unwrap_or("default"),
                 delegate_door::quiet().as_secs() / 60,
             ));
-            lines.push(format!(
-                "{:<10} {} ({}), sha256 {}",
-                "policy",
-                coder_delegate::terminal::POLICY_FILE,
-                coder_delegate::terminal::policy_name(),
-                coder_delegate::terminal::policy_digest(),
-            ));
+            lines.push(policy_line());
         }
     }
     lines.push(format!(
@@ -231,5 +232,46 @@ fn fallback() -> String {
             .to_string(),
         Ok(door) => format!("{} ({})", door.name(), door.label()),
         Err(why) => format!("refused: {why}"),
+    }
+}
+
+/// The selected Codex CLI owns its tool and cache settings; Claude's defaults
+/// in the reference briefing policy do not describe that executor.
+fn codex_executor(model: Option<&str>) -> String {
+    format!(
+        "{:<10} codex runs {} · CLI-owned tools and cache settings · runs until done · stops after {} min silent",
+        "executor",
+        model.unwrap_or_else(|| coder_delegate::delegate::Agent::Codex.default_model()),
+        delegate_door::quiet().as_secs() / 60,
+    )
+}
+
+fn policy_line() -> String {
+    format!(
+        "{:<10} {} ({}), sha256 {}",
+        "policy",
+        coder_delegate::terminal::POLICY_FILE,
+        coder_delegate::terminal::policy_name(),
+        coder_delegate::terminal::policy_digest(),
+    )
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn selected_codex_diagnostics_use_its_model_and_settings() {
+        let default = codex_executor(None);
+        assert!(default.contains(&format!(
+            "codex runs {}",
+            coder_delegate::delegate::Agent::Codex.default_model()
+        )));
+        assert!(default.contains("CLI-owned tools and cache settings"));
+        assert!(!default.contains("claude-code"));
+        assert!(!default.contains("Bash,Read"));
+        let named = codex_executor(Some("fixture-model"));
+        assert!(named.contains("codex runs fixture-model"));
+        assert!(!named.contains(coder_delegate::delegate::Agent::Codex.default_model()));
     }
 }
