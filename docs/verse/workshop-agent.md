@@ -733,6 +733,10 @@ No new event kinds. These are new:
   | `studio.agent.log` | `observe` | `{agent, after}` | `journal`, at most 128 entries |
   | `studio.agent.workspaces` | `observe` | Nothing | `places`: the Git checkouts a new agent may work in, at most 8 |
   | `studio.agent.new` | `operate`, and only the owner's own key | `{agent, workspace}`; an absolute path in a Git checkout | `made`: her workspace, key, and attestation expiry |
+  | `studio.agent.crew.new` | `operate`, and only the owner's own key | `{agent, workspace, job_role}`; one of the six sales jobs, using the same identity store | `made`; no access or spending grant |
+  | `studio.agent.charter.set` | `operate`, and only the owner's own key | `{agent, job_role, expected, drafting, purpose}`; an idle member and its current charter revision | The updated record; initial sales scope has no model tools or autonomous jobs |
+  | `studio.agent.verdict.record` | `operate`, and only the owner's own key | `{agent, verdict}`; bounded `VerdictInput` with subject revision and exact evidence digests | Signed private owner-recorded recommendation; exact ID retries return the original, changed content conflicts |
+  | `studio.agent.verdict.list` | `observe` | `{agent}` | At most 24 verified private records, bounded within the native reply; neither approvals nor independent decision proof |
 
   Pause and resume reuse `studio.seat.pause` and `studio.seat.resume`. An
   older host refuses these as `malformed` or `unsupported`.

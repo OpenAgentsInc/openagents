@@ -188,6 +188,92 @@ fn prompts(seen: &Seen) -> Vec<String> {
 }
 
 #[test]
+fn crew_sales_job_uses_the_shared_turn_and_refuses_even_read_approvals() {
+    let dir = tempfile::tempdir().unwrap();
+    let mut events = codex_delegation(
+        "cat private.txt",
+        json!({"error":"You've hit your usage limit. Try again in 2 hours."}),
+    );
+    let mut reported = codex_delegation(
+        "touch denied",
+        json!({"reply":"A claimed execution.","model":"gpt-codex","tokens":18,
+            "usage":{"input_tokens":11,"output_tokens":7},"transport":"codex-cli"}),
+    );
+    for event in &mut reported {
+        if let CoderEvent::Delegation { id, .. } = event {
+            *id = "unadmitted-second-delegation".into();
+        }
+    }
+    events.extend(reported);
+    events.push(CoderEvent::Approval {
+        id: 1,
+        command: "cat private.txt".into(),
+        why: "A fixture attempts a workspace read.".into(),
+    });
+    events.extend(run("cat private.txt", 0, "must not be recorded"));
+    let (agents, seen) = host(
+        &dir,
+        steps(
+            &[("Draft from the supplied facts.", "a draft exists")],
+            None,
+        ),
+        vec![turn(events, "A draft for owner review.")],
+        vec![judged(0.95, 0.02, Move::Continue)],
+        Some("The draft needs owner review."),
+    );
+    let store = Store::new(&dir.path().join("host"), "alice").unwrap();
+    let mut record = store.load().unwrap().unwrap();
+    record.engine = super::agent::ENGINE_CODEX.into();
+    let owner_key = secp256k1::SecretKey::from_byte_array([7; 32]).unwrap();
+    let record = store.ensure_key(record, clock()).unwrap();
+    store
+        .attest(record, &owner_key, clock() + 30 * 86_400, clock())
+        .unwrap();
+    store
+        .crew_charter(
+            coder_host::access::crew::JobRole::SalesLead,
+            0,
+            true,
+            "Draft supplied facts only.",
+            clock(),
+            &"d".repeat(64),
+        )
+        .unwrap();
+    ask(
+        &agents,
+        "crew-request",
+        "Draft a recommendation from these facts.",
+    );
+    let view = finished(&agents);
+    assert!(!view.route.contains("coding on Codex"));
+    assert!(!view.lines.iter().any(|line| line.contains("Codex")));
+    assert!(!dir.path().join("tasks").join(capacity::FILE).exists());
+    let spent = crate::task::agent_spend::owner_read(&store, &owner_key).unwrap();
+    assert!(
+        spent
+            .records
+            .iter()
+            .all(|record| { record.metric.harness != crate::task::agent_spend::CODEX_HARNESS })
+    );
+    assert!(store.load().unwrap().unwrap().codes_on_codex());
+    let given = seen.given.lock().unwrap();
+    assert_eq!(given.len(), 1);
+    assert!(given[0].tool_free);
+    assert!(!given[0].codex_writes);
+    assert!(!given[0].prompt.contains("acp_subagent"));
+    assert!(!given[0].prompt.contains("Codex"));
+    assert_eq!(given[0].cwd, store.dir());
+    assert_eq!(given[0].instructions, None);
+    let journal = journal(&dir);
+    assert!(journal.iter().any(|e| e.kind == Kind::Refused));
+    assert!(
+        !journal
+            .iter()
+            .any(|e| matches!(e.kind, Kind::Confirmed | Kind::Ran))
+    );
+}
+
+#[test]
 fn a_question_she_can_answer_never_reaches_coder() {
     let dir = tempfile::tempdir().unwrap();
     let plan = Plan {

@@ -758,6 +758,10 @@ pub struct Snapshot {
     pub name: String,
     pub definition: agent::Definition,
     pub charter: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub job_role: Option<coder_host::access::crew::JobRole>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub crew_charter: Option<coder_host::access::crew::Charter>,
     pub look: String,
     #[serde(default, skip_serializing_if = "String::is_empty")]
     pub route: String,
@@ -812,6 +816,8 @@ pub fn export(
         name: record.name.clone(),
         definition: record.definition(),
         charter: record.charter.clone(),
+        job_role: record.job_role,
+        crew_charter: record.crew_charter.clone(),
         look: record.look.clone(),
         route: record.route.clone(),
         desk: record.desk,
@@ -866,6 +872,15 @@ pub fn import(
     if snapshot.schema != SNAPSHOT_SCHEMA || snapshot.v != 1 {
         return Err("a snapshot this host doesn't read".into());
     }
+    match (&snapshot.job_role, &snapshot.crew_charter) {
+        (None, None) => {}
+        (Some(_), Some(charter)) => charter.validate().map_err(|e| e.message)?,
+        _ => {
+            return Err(
+                "A sales snapshot must preserve its job role and machine charter together.".into(),
+            );
+        }
+    }
     if store.load()?.is_some() {
         return Err(format!(
             "{} exists here already; import under another name",
@@ -874,6 +889,12 @@ pub fn import(
     }
     let mut record = store.open(workspace, now)?;
     record.charter = snapshot.charter.clone();
+    record.job_role = snapshot.job_role;
+    record.crew_charter = snapshot.crew_charter.clone();
+    record.requires.retain(|r| r != "crew-sales.v1");
+    if record.job_role.is_some() {
+        record.requires.push("crew-sales.v1".into());
+    }
     record.look = snapshot.look.clone();
     record.route = snapshot.route.clone();
     record.desk = snapshot.desk;

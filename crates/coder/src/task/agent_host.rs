@@ -3,7 +3,7 @@
 //! device, Verse included, is a client.
 //!
 //! [`Agents`] answers the `studio.agent.*` NIP-HOST operations
-//! (`coder_access::agent`). A request becomes a run on a worker thread of
+//! (`coder_host::access::agent`). A request becomes a run on a worker thread of
 //! the host's own. In terminal mode she steers Coder V1 (#10800,
 //! [`super::agent_steer`]): she plans, prompts plain Coder (`openagents
 //! coder chat --json --approvals stdin`) in her Coder session,
@@ -513,6 +513,13 @@ impl Agents {
         let value = |v: &dyn erased::Value| v.json();
         match op {
             Operation::ListAgents {} => Ok(value(&self.list())),
+            Operation::ListAgentVerdicts { agent } => {
+                let (store, _) = self.store(agent)?;
+                let verdicts = store
+                    .crew_verdicts()
+                    .map_err(|why| coder_host::tasks::refuse(Code::Unavailable, why))?;
+                Ok(serde_json::json!({"verdicts": verdicts}))
+            }
             Operation::AskAgent {
                 agent,
                 text,
@@ -521,6 +528,15 @@ impl Agents {
                 mode,
                 typist,
             } => {
+                let (_, record) = self.store(agent)?;
+                if record.crew_charter.as_ref().is_some_and(|charter| {
+                    !charter.drafting || *mode == Mode::Task || workspace.is_some() || *typist
+                }) {
+                    return Err(coder_host::tasks::refuse(
+                        Code::Forbidden,
+                        "This sales charter refuses the request before changing member state.",
+                    ));
+                }
                 // The owner asking her is the owner wanting her to work: a
                 // paused agent resumes for it. The kill switch's stop holds
                 // until the owner resumes her.
@@ -643,11 +659,119 @@ impl Agents {
     /// # Errors
     /// `malformed` for a path that is not a Git checkout, `unavailable`
     /// when her files cannot be written.
+    pub fn create_crew(
+        &self,
+        name: &str,
+        workspace: &Path,
+        role: coder_host::access::crew::JobRole,
+        owner: Option<&secp256k1::SecretKey>,
+    ) -> Result<serde_json::Value, Code> {
+        let _shared = self.lock();
+        let store = Store::new(&self.root, name)
+            .map_err(|why| coder_host::tasks::refuse(Code::Malformed, why))?;
+        if let Some(record) = store
+            .load()
+            .map_err(|why| coder_host::tasks::refuse(Code::Unavailable, why))?
+        {
+            if record.job_role != Some(role) {
+                return Err(coder_host::tasks::refuse(
+                    Code::Conflict,
+                    "This existing member keeps its role; use the owner's charter edit.",
+                ));
+            }
+        }
+        self.create_as(name, workspace, owner, agent::preset(role.preset()))
+    }
+
+    pub fn owner_crew(
+        &self,
+        principal: &Principal,
+        op: &Operation,
+    ) -> Result<serde_json::Value, Code> {
+        if principal.grant.is_some() {
+            return Err(coder_host::tasks::refuse(
+                Code::Forbidden,
+                "Only the owner's own key changes crew charters or records verdicts.",
+            ));
+        }
+        match op {
+            Operation::SetAgentCharter {
+                agent,
+                job_role,
+                expected,
+                drafting,
+                purpose,
+            } => {
+                self.screen.check(purpose).map_err(|_| {
+                    coder_host::tasks::refuse(
+                        Code::Malformed,
+                        "Keep credentials out of crew charters.",
+                    )
+                })?;
+                let shared = self.lock();
+                if shared
+                    .live
+                    .get(agent)
+                    .is_some_and(|live| live.busy || !live.queue.is_empty())
+                {
+                    return Err(coder_host::tasks::refuse(
+                        Code::Conflict,
+                        "Stop the member before changing its charter.",
+                    ));
+                }
+                let (store, _) = self.store(agent)?;
+                let record = store
+                    .crew_charter(
+                        *job_role,
+                        *expected,
+                        *drafting,
+                        purpose,
+                        (self.clock)(),
+                        &principal.device,
+                    )
+                    .map_err(|why| coder_host::tasks::refuse(Code::Conflict, why))?;
+                serde_json::to_value(record).map_err(|_| Code::Unavailable)
+            }
+            Operation::RecordAgentVerdict { agent, verdict } => {
+                for text in std::iter::once(verdict.id.as_str())
+                    .chain(std::iter::once(verdict.subject.reference.as_str()))
+                    .chain(std::iter::once(verdict.reason.as_str()))
+                    .chain(verdict.evidence.iter().map(|e| e.reference.as_str()))
+                {
+                    self.screen.check(text).map_err(|_| {
+                        coder_host::tasks::refuse(
+                            Code::Malformed,
+                            "Keep credentials out of crew verdicts.",
+                        )
+                    })?;
+                }
+                let _shared = self.lock();
+                let (store, _) = self.store(agent)?;
+                let verdict = store
+                    .crew_verdict(verdict, (self.clock)(), &principal.device)
+                    .map_err(|why| coder_host::tasks::refuse(Code::Malformed, why))?;
+                serde_json::to_value(verdict).map_err(|_| Code::Unavailable)
+            }
+            _ => Err(Code::Unsupported),
+        }
+    }
+
     pub fn create(
         &self,
         name: &str,
         workspace: &Path,
         owner: Option<&secp256k1::SecretKey>,
+    ) -> Result<serde_json::Value, Code> {
+        let _shared = self.lock();
+        self.create_as(name, workspace, owner, agent::preset(name))
+    }
+
+    fn create_as(
+        &self,
+        name: &str,
+        workspace: &Path,
+        owner: Option<&secp256k1::SecretKey>,
+        preset: Option<&agent::Preset>,
     ) -> Result<serde_json::Value, Code> {
         let refuse = coder_host::tasks::refuse;
         let store = Store::new(&self.root, name).map_err(|why| refuse(Code::Malformed, why))?;
@@ -665,7 +789,7 @@ impl Agents {
             agent::checkout(workspace).map_err(|why| refuse(Code::Malformed, why))?
         };
         let record = store
-            .open(&workspace, now)
+            .open_as(&workspace, now, preset)
             .map_err(|why| refuse(Code::Unavailable, why))?;
         let mut record = store
             .ensure_key(record, now)
@@ -955,13 +1079,15 @@ impl Agents {
             })
             .unwrap_or_else(|| transcript(store));
         wire::AgentView {
+            job_role: record.job_role,
+            crew_charter: record.crew_charter.clone(),
             name: record.name.clone(),
             look: record.look.clone(),
             route: live
                 .map(|l| l.model.clone())
                 .filter(|m| !m.is_empty())
                 .unwrap_or_else(|| {
-                    if record.codes_on_codex() {
+                    if record.job_role.is_none() && record.codes_on_codex() {
                         "Coder V1, coding on Codex".into()
                     } else if record.route.is_empty() {
                         "first with capacity".into()
@@ -996,6 +1122,18 @@ impl Agents {
 
     fn ask(&self, key: &str, name: &str, queued: Queued) -> Result<(), Code> {
         let (store, record) = self.store(name)?;
+        if let Some(charter) = &record.crew_charter {
+            if !charter.drafting
+                || queued.mode == Mode::Task
+                || queued.workspace.is_some()
+                || queued.typist
+            {
+                return Err(coder_host::tasks::refuse(
+                    Code::Forbidden,
+                    "This sales charter permits supplied-request drafting only, with no task, workspace, or terminal control.",
+                ));
+            }
+        }
         match record.state {
             State::Active => {}
             State::Retired => {
@@ -1047,6 +1185,22 @@ impl Agents {
             ));
         }
         let mut shared = self.lock();
+        let current = store
+            .load()
+            .map_err(|why| coder_host::tasks::refuse(Code::Unavailable, why))?
+            .ok_or(Code::Unavailable)?;
+        if let Some(charter) = &current.crew_charter {
+            if !charter.drafting
+                || queued.mode == Mode::Task
+                || queued.workspace.is_some()
+                || queued.typist
+            {
+                return Err(coder_host::tasks::refuse(
+                    Code::Forbidden,
+                    "The current sales charter refuses this request.",
+                ));
+            }
+        }
         if shared.asked.iter().any(|k| k == key) {
             return Ok(());
         }
@@ -1129,6 +1283,20 @@ impl Agents {
             .get(name)
             .map(|l| l.cancel.clone())
             .unwrap_or_default();
+        if record.crew_charter.as_ref().is_some_and(|charter| {
+            !charter.drafting
+                || queued.mode == Mode::Task
+                || queued.workspace.is_some()
+                || queued.typist
+        }) {
+            let report = Report {
+                outcome: Outcome::Stopped,
+                reply: "The current sales charter refuses this request.".into(),
+                headline: "charter refused".into(),
+            };
+            self.finish(&store, &record, &queued, &report, None);
+            return;
+        }
         self.say(name, &format!("you: {}", one_line(&queued.text)));
         let memory = Memory::new(store.clone(), self.screen.clone());
         // "Remember ..." is a note, with no model call.
@@ -1157,6 +1325,7 @@ impl Agents {
             );
         }
         let mode = match queued.mode {
+            Mode::Auto if record.job_role.is_some() => Mode::Terminal,
             Mode::Auto => choose_mode(&queued.text),
             mode => mode,
         };
@@ -1324,7 +1493,10 @@ impl Agents {
         let title = one_line(&queued.text);
         // On Codex, the studio's Coder turn hands the coding to Codex in
         // her worktree and checks it.
-        let codex = if record.codes_on_codex() && self.codex_has_capacity(store, &record.name) {
+        let codex = if record.job_role.is_none()
+            && record.codes_on_codex()
+            && self.codex_has_capacity(store, &record.name)
+        {
             self.with_live(&record.name, |live| {
                 live.model = "Coder V1, coding on Codex".into();
             });
@@ -1837,6 +2009,9 @@ impl Agents {
             let Ok(Some(record)) = store.load() else {
                 continue;
             };
+            if record.job_role.is_some() {
+                continue;
+            }
             self.watch_change(&store, &record);
             let _ = self.relay_sync.sweep(&store, &self.screen, now);
             let path = self

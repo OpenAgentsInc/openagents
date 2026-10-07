@@ -283,6 +283,14 @@ impl Jobs {
     /// # Errors
     /// No such job, an expiry out of range, or the file cannot be written.
     pub fn edit(&self, id: &str, edit: Edit, now: u64) -> Result<(), String> {
+        if matches!(edit, Edit::On | Edit::Renew(_))
+            && self
+                .store
+                .load()?
+                .is_some_and(|record| record.job_role.is_some())
+        {
+            return Err("This sales charter permits owner-requested drafting only; standing jobs need a separately admitted sales adapter.".into());
+        }
         let _write = hold();
         let mut jobs = self.load()?;
         let index = jobs

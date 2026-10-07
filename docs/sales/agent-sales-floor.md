@@ -1,9 +1,13 @@
 # The agent sales floor
 
 Status: proposal with provisional decisions, October 7, 2026. The Agora's
-building (phase S4's building, kit pieces, and bell hook) is built; nothing
-else on this page is implemented. It plans a sales organization of
-OpenAgents' own agents, run and visible inside
+building (phase S4's building, kit pieces, and bell hook) is built. REV-51
+adds the six sales job presets, narrowing host charters, and signed,
+owner-recorded crew verdicts on the shared runtime. Its initial scope is
+owner-requested drafting from supplied text and the member's own private
+memory; all model tools and standing jobs are disabled for sales roles.
+The other sales-floor adapters and operating policies remain planned. This
+page plans a sales organization of OpenAgents' own agents, run and visible inside
 [Everglade](../verse/everglade.md), that carries out the
 [sales strategy](README.md) under the owner's authority. The
 [unified revenue roadmap](revenue-roadmap.md) still owns the delivery order;
@@ -133,17 +137,23 @@ and to Wendy.
 - Read a lead record outside his team's assignments, or write any lead
   record into a public event.
 
-**Today.** Paul is not implemented. Alice's host-side wrapper has an agent
-record, key, journal, memory, standing jobs, and an approval gate
-([crew shared machinery](../verse/crew.md#shared-machinery)). Her own model,
-engrams, and steering loop are planned in
-[#10807](https://github.com/OpenAgentsInc/openagents/issues/10807).
+**Today.** `openagents agent new paul --workspace PATH` creates Paul's
+sales-lead preset through the owner-admitted host surface. He reuses the
+shared key, definition, private memory, journal, and steering runtime
+([crew shared machinery](../verse/crew.md#shared-machinery)). His initial
+machine charter permits owner-requested drafting only: no model tools,
+workspace reads, task execution, autonomous jobs, or external effects.
+The owner can narrow drafting further with `openagents agent charter` and
+retain signed recommendations with `openagents agent verdict`. These
+owner-recorded evidence references grant no approval and prove no model or
+independent evaluator ran.
 
 **Beyond the shared machinery.** Reuse the epic's name-generic crew phase
 [#10806](https://github.com/OpenAgentsInc/openagents/issues/10806) for Paul's
-definition, key, memory, and loop. Add his sales role/charter, current-record
-adapters, the [sales records](#records), and confirmed hire proposals. His
-owner conversation is separate from his plain Coder session (`paul-coder`);
+definition, key, memory, and loop. The sales job roles, machine charters,
+and verdict records are the REV-51 slice; current-record adapters, the
+[sales records](#records), and confirmed hire proposals remain separate
+work. His owner conversation is separate from his plain Coder session (`paul-coder`);
 his loop plans, judges bounded follow-ups, verifies, and reports. Coder
 receives task prompts without Paul's persona. Prospects and other agents
 cannot call his owner-only request surface; their outputs enter host records

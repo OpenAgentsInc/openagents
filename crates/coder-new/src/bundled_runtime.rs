@@ -74,21 +74,24 @@ impl CodexSandbox {
 /// The sandbox for the next Codex delegation in `cwd`: read-only unless
 /// the chat allows writes, and in a gated chat only when the person, or
 /// the agent's policy, confirms the write.
-fn codex_sandbox(cwd: &Path, cancel: &AtomicBool) -> CodexSandbox {
+fn codex_sandbox(cwd: &Path, cancel: &AtomicBool) -> Result<CodexSandbox, String> {
+    if !crate::approval::tools_allowed() {
+        return Err("The crew charter refuses Codex delegation, including read-only work.".into());
+    }
     if !CODEX_WRITES.load(Ordering::SeqCst) {
-        return CodexSandbox::ReadOnly;
+        return Ok(CodexSandbox::ReadOnly);
     }
     let Some(desk) = crate::approval::desk() else {
-        return CodexSandbox::WorkspaceWrite;
+        return Ok(CodexSandbox::WorkspaceWrite);
     };
     let why = format!(
         "Codex edits files in {} under its own sandbox, with no network",
         cwd.display()
     );
     if desk.ask(CODEX_WRITE_COMMAND, &why, cancel) {
-        CodexSandbox::WorkspaceWrite
+        Ok(CodexSandbox::WorkspaceWrite)
     } else {
-        CodexSandbox::ReadOnly
+        Ok(CodexSandbox::ReadOnly)
     }
 }
 
@@ -400,6 +403,11 @@ pub async fn acp(
     cancel: &Arc<AtomicBool>,
     emit: &mut dyn FnMut(RuntimeEvent),
 ) -> Result<Value, String> {
+    if !crate::approval::tools_allowed() {
+        return Err(
+            "The crew charter refuses ACP and Codex delegation, including read-only work.".into(),
+        );
+    }
     agent.validate()?;
     if !agent.enabled {
         return Err("This ACP agent is turned off.".into());
@@ -425,7 +433,7 @@ pub async fn acp(
     }
     .ok_or_else(|| format!("The executable for {} is unavailable.", agent.name))?;
     if agent.transport == AgentTransport::CodexCli {
-        let sandbox = codex_sandbox(cwd, cancel);
+        let sandbox = codex_sandbox(cwd, cancel)?;
         return codex_cli(&program, task, cwd, sandbox, cancel, emit).await;
     }
     let environment = std::env::vars()
@@ -480,6 +488,9 @@ async fn codex_cli(
     cancel: &Arc<AtomicBool>,
     emit: &mut dyn FnMut(RuntimeEvent),
 ) -> Result<Value, String> {
+    if !crate::approval::tools_allowed() {
+        return Err("The crew charter refuses Codex delegation, including read-only work.".into());
+    }
     let mut command = std::process::Command::new(program);
     command
         .args([
@@ -1133,6 +1144,9 @@ impl Env for Checkout<'_> {
     }
 
     async fn read(&self, path: &str) -> Option<String> {
+        if !crate::approval::tools_allowed() {
+            return None;
+        }
         let path = self.directory.join(path).canonicalize().ok()?;
         if !path.starts_with(&self.directory) {
             return None;
@@ -1223,6 +1237,106 @@ fn bounded(text: &str, bytes: usize) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[tokio::test]
+    async fn crew_tool_free_scope_refuses_native_fallback_reads_and_commands() {
+        let dir = tempfile::tempdir().unwrap();
+        let directory = dir.path().canonicalize().unwrap();
+        std::fs::write(directory.join("private.txt"), "private fixture").unwrap();
+        let boundary = coder_boundary::Boundary::writing(&directory)
+            .build()
+            .unwrap();
+        crate::approval::install(Some(crate::approval::Gate {
+            desk: crate::approval::Desk::tool_free(),
+            cancel: Arc::new(AtomicBool::new(false)),
+        }));
+        struct Reset;
+        impl Drop for Reset {
+            fn drop(&mut self) {
+                crate::approval::install(None);
+            }
+        }
+        let _reset = Reset;
+        let environment = Checkout {
+            directory,
+            boundary,
+            cancel: Arc::new(AtomicBool::new(false)),
+            redaction_keys: &[],
+        };
+        assert_eq!(environment.read("private.txt").await, None);
+        for command in ["cat private.txt", "touch changed"] {
+            let result = environment.run(command, Duration::from_secs(1)).await;
+            assert_eq!(result.exit, None);
+            assert!(result.output.contains("crew charter"));
+        }
+        assert!(!dir.path().join("changed").exists());
+    }
+
+    #[tokio::test]
+    #[cfg(unix)]
+    async fn crew_tool_free_scope_refuses_direct_acp_and_codex_without_asking() {
+        use std::os::unix::fs::PermissionsExt;
+        let dir = tempfile::tempdir().unwrap();
+        let program = dir.path().join("codex");
+        let marker = dir.path().join("spawned");
+        std::fs::write(&program, "#!/bin/sh\ntouch spawned\n").unwrap();
+        std::fs::set_permissions(&program, std::fs::Permissions::from_mode(0o700)).unwrap();
+        let desk = crate::approval::Desk::tool_free();
+        let cancel = Arc::new(AtomicBool::new(false));
+        crate::approval::install(Some(crate::approval::Gate {
+            desk: Arc::clone(&desk),
+            cancel: Arc::clone(&cancel),
+        }));
+        struct Reset(bool);
+        impl Drop for Reset {
+            fn drop(&mut self) {
+                allow_codex_writes(self.0);
+                crate::approval::install(None);
+            }
+        }
+        let _reset = Reset(CODEX_WRITES.swap(true, Ordering::SeqCst));
+        // A write setting cannot convert a tool-free refusal into an approval
+        // question or a read-only child. Both native transports stop first.
+        assert!(
+            codex_sandbox(dir.path(), &cancel)
+                .unwrap_err()
+                .contains("crew charter")
+        );
+        let mut events = vec![];
+        for transport in [AgentTransport::Acp, AgentTransport::CodexCli] {
+            let mut native = agent(program.clone());
+            native.id = "codex".into();
+            native.transport = transport;
+            let error = acp(
+                &native,
+                "Draft supplied facts only.",
+                dir.path(),
+                &cancel,
+                &mut |event| events.push(event),
+            )
+            .await
+            .unwrap_err();
+            assert!(error.contains("crew charter"));
+        }
+        for sandbox in [CodexSandbox::ReadOnly, CodexSandbox::WorkspaceWrite] {
+            assert!(
+                codex_cli(
+                    &program,
+                    "Draft supplied facts only.",
+                    dir.path(),
+                    sandbox,
+                    &cancel,
+                    &mut |event| events.push(event),
+                )
+                .await
+                .unwrap_err()
+                .contains("crew charter")
+            );
+        }
+        assert!(desk.drain().is_empty());
+        assert!(events.is_empty());
+        assert!(!marker.exists());
+    }
 
     fn agent(program: PathBuf) -> AcpAgent {
         AcpAgent {

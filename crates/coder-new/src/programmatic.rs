@@ -58,6 +58,7 @@ Options: --json streams NDJSON events for chat and delegation.
          --codex-writes lets a chat's Codex delegations edit the working
          directory under Codex's workspace-write sandbox, with no network;
          with --approvals, each delegation asks first.
+         --approvals tool-free refuses all model tools, including reads.
          --in DIR sets the working directory; --state DIR sets the Coder store.
 Settings default to ~/.openagents/coder-new. Sessions use its sessions directory.
 Keys are accepted through environment variables or configuration stdin, never printed."
@@ -188,6 +189,7 @@ pub fn run(arguments: &[String], json_mode: bool) -> u8 {
     };
     let approvals = match take_option(&mut args, "--approvals") {
         Ok(None) => None,
+        Ok(Some(source)) if source == "tool-free" => Some(crate::approval::Desk::tool_free()),
         Ok(Some(source)) if source == "stdin" && !args.iter().any(|arg| arg == "--stdin") => {
             let desk = crate::approval::Desk::new();
             let reader = Arc::clone(&desk);
@@ -211,7 +213,9 @@ pub fn run(arguments: &[String], json_mode: bool) -> u8 {
         }
         Ok(Some(_)) => {
             return print_error(
-                usage("Use --approvals stdin, with the prompt in -p or --prompt-file."),
+                usage(
+                    "Use --approvals stdin or tool-free, with the prompt in -p or --prompt-file.",
+                ),
                 json_mode,
             );
         }

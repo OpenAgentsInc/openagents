@@ -41,12 +41,21 @@ pub struct Desk {
     events: Mutex<VecDeque<Value>>,
     answers: Mutex<BTreeMap<u64, Option<bool>>>,
     closed: AtomicBool,
+    tool_free: bool,
 }
 
 impl Desk {
     #[must_use]
     pub fn new() -> Arc<Self> {
         Arc::new(Self::default())
+    }
+
+    /// A host charter that disables all model tools, including reads.
+    pub fn tool_free() -> Arc<Self> {
+        Arc::new(Self {
+            tool_free: true,
+            ..Self::default()
+        })
     }
 
     /// Takes one answer line. Blank lines are ignored.
@@ -242,7 +251,17 @@ pub fn check(command: &str) -> Verdict {
     verdict(&gate, command)
 }
 
+/// Whether the current host charter permits model tools.
+pub(crate) fn tools_allowed() -> bool {
+    current().is_none_or(|gate| !gate.desk.tool_free)
+}
+
 fn verdict(gate: &Gate, command: &str) -> Verdict {
+    if gate.desk.tool_free {
+        return Verdict::Refused(
+            "The host refuses all model tools under this crew charter.".into(),
+        );
+    }
     use coder::task::agent::{Effect, effect};
     match effect(command) {
         Effect::ReadOnly => Verdict::Run,

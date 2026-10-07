@@ -128,6 +128,12 @@ pub struct Record {
     /// Who governs, runs, and keeps her key, in NIP-SOV's words.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub roles: Option<Roles>,
+    /// A private job description, distinct from SOV authority roles.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub job_role: Option<coder_host::access::crew::JobRole>,
+    /// Enforced sales scope; templates cannot widen host access.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub crew_charter: Option<coder_host::access::crew::Charter>,
 }
 
 fn default_desk() -> u32 {
@@ -234,7 +240,14 @@ impl Record {
     /// `workshop agent`.
     #[must_use]
     pub fn role(&self) -> &'static str {
-        preset(&self.name).map_or("workshop agent", |p| p.role)
+        self.job_role.map_or_else(
+            || {
+                preset(&self.name)
+                    .filter(|p| p.job_role.is_none())
+                    .map_or("workshop agent", |p| p.role)
+            },
+            |role| role.name(),
+        )
     }
 
     /// Whether Coder delegates its coding to Codex.
@@ -551,11 +564,18 @@ impl Store {
                 self.record_path().display()
             )
         })?;
-        if record.schema != RECORD_SCHEMA || record.v != 1 || !record.requires.is_empty() {
+        if record.schema != RECORD_SCHEMA
+            || record.v != 1
+            || record.requires.iter().any(|r| r != "crew-sales.v1")
+        {
             return Err(format!(
                 "{} is a record this host does not read",
                 self.record_path().display()
             ));
+        }
+        record.validate_crew()?;
+        if record.job_role.is_some() && !record.requires.iter().any(|r| r == "crew-sales.v1") {
+            return Err("A sales record must declare its enforced crew-sales.v1 scope.".into());
         }
         Ok(Some(record))
     }
@@ -612,7 +632,11 @@ impl Store {
         let mut record = Record {
             schema: RECORD_SCHEMA.into(),
             v: 1,
-            requires: Vec::new(),
+            requires: if preset.and_then(|p| p.job_role).is_some() {
+                vec!["crew-sales.v1".into()]
+            } else {
+                Vec::new()
+            },
             name: self.name.clone(),
             charter: preset
                 .map_or(super::agent_preset::CHARTER, |p| p.charter)
@@ -634,6 +658,10 @@ impl Store {
                 definition
             }),
             roles: None,
+            job_role: preset.and_then(|p| p.job_role),
+            crew_charter: preset
+                .and_then(|p| p.job_role)
+                .map(coder_host::access::crew::Charter::initial),
         };
         record.fill_identity();
         self.save(&record)?;
@@ -650,6 +678,7 @@ impl Store {
     /// # Errors
     /// When the record cannot be written.
     pub fn save(&self, record: &Record) -> Result<(), String> {
+        record.validate_crew()?;
         private_dir(&self.dir)?;
         let body = serde_json::to_vec_pretty(record).map_err(|e| e.to_string())?;
         let temp = self.dir.join(".agent.json.tmp");

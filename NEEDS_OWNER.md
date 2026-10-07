@@ -544,6 +544,16 @@ implementation behavior and do not establish a funded sale or commercial launch.
 
 ## Sales outreach launch
 
+REV-51's sales presets and native owner controls are code-qualified with
+isolated fixtures. Use matching client and host builds; an older host
+refuses the new operations. Before using a real model for Paul or a hire,
+select and admit that member's provider, private assignment, and spend cap. The initial
+charter permits supplied-request drafting only; its signed owner-recorded
+verdicts do not certify claims, prove a Jev call, or authorize outreach.
+Live helpers, certification, hiring, and sending still require their own
+implemented adapters and explicit owner activation. These steps do not
+block the native role and verdict implementation or human-led first revenue.
+
 The [sales-floor decisions](docs/sales/agent-sales-floor.md#initial-operating-decisions)
 start with permissioned US business email and individual approvals. Before
 live outreach, configure the dedicated domain and monitored mailbox; verify

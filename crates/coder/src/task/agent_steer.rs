@@ -1371,6 +1371,12 @@ pub fn definition(record: &Record) -> String {
             charter = record.charter,
         )
     };
+    if let Some(charter) = &record.crew_charter {
+        text.push_str(&format!(
+            "\nOwner-defined drafting purpose: {}. The native tool-free scope remains in force.",
+            charter.purpose
+        ));
+    }
     let voice = defined.voice.trim();
     if !voice.is_empty() {
         text.push_str(&format!("\nYour voice: {voice}"));

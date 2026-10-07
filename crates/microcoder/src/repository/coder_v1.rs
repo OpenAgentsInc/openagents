@@ -120,6 +120,7 @@ pub(crate) async fn turn(
         // a workshop agent's on Codex, writes the same worktree under
         // Codex's sandbox, with no network.
         codex_writes: true,
+        tool_free: false,
     };
     let cancel = Arc::new(AtomicBool::new(false));
     let (events, heard) = std::sync::mpsc::channel::<Event>();

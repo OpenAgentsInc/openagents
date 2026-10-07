@@ -84,6 +84,9 @@ impl ExecutionSettings {
     }
 
     fn enabled_for(&self, binding: ToolBinding) -> bool {
+        if !crate::approval::tools_allowed() {
+            return false;
+        }
         match binding {
             ToolBinding::Microcoder => self.microcoder,
             ToolBinding::OpenAgentsCli => self.cli,
@@ -104,6 +107,9 @@ impl ExecutionSettings {
     }
 
     pub fn defs(&self) -> Vec<Value> {
+        if !crate::approval::tools_allowed() {
+            return Vec::new();
+        }
         let mut definitions = Vec::new();
         if self.shell {
             definitions.push(bundled_runtime::run_tool_definition());
@@ -190,6 +196,9 @@ impl ExecutionSettings {
         cancel: &Arc<AtomicBool>,
         emit: &mut (dyn FnMut(RuntimeEvent) + Send),
     ) -> Result<Value, String> {
+        if !crate::approval::tools_allowed() {
+            return Err("The host refuses all model tools under this crew charter.".into());
+        }
         if cancel.load(Ordering::Relaxed) {
             return Err("The plugin call was canceled before it started.".into());
         }
@@ -506,6 +515,55 @@ pub fn redact_value(value: &mut Value, key: &str) {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[tokio::test]
+    async fn crew_tool_free_scope_refuses_reads_commands_and_delegation_before_dispatch() {
+        let dir = tempfile::tempdir().unwrap();
+        crate::approval::install(Some(crate::approval::Gate {
+            desk: crate::approval::Desk::tool_free(),
+            cancel: Arc::new(AtomicBool::new(false)),
+        }));
+        struct Reset;
+        impl Drop for Reset {
+            fn drop(&mut self) {
+                crate::approval::install(None);
+            }
+        }
+        let _reset = Reset;
+        let mut settings = settings();
+        settings.cwd = dir.path().into();
+        settings.shell = true;
+        settings.cli = true;
+        settings.microcoder = true;
+        settings.acp = true;
+        settings.jev_enabled = true;
+        assert!(settings.defs().is_empty());
+        for (name, arguments) in [
+            ("Run", json!({"command":"cat private.txt"})),
+            ("Run", json!({"command":"touch changed"})),
+            (
+                "openagents_cli",
+                json!({"arguments":["agent","answer","erin","confirm"]}),
+            ),
+            ("microcoder", json!({"task":"Read another member's state."})),
+            ("acp_subagent", json!({"agent":"codex","task":"Pay now."})),
+            ("jev", json!({})),
+            ("brainstorm_search_people", json!({"query":"private input"})),
+        ] {
+            let error = settings
+                .execute(
+                    name,
+                    arguments,
+                    None,
+                    &Arc::new(AtomicBool::new(false)),
+                    &mut |_| panic!("no dispatch event"),
+                )
+                .await
+                .unwrap_err();
+            assert!(error.contains("crew charter"));
+        }
+        assert!(!dir.path().join("changed").exists());
+    }
     fn settings() -> ExecutionSettings {
         ExecutionSettings {
             microcoder: false,

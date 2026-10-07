@@ -333,7 +333,7 @@ impl Dispatch for Dispatcher {
             if !agent_setup_admits(&self.shared.owner, device, grant) {
                 return self.noted(Err(Refusal::because(
                     Code::Forbidden,
-                    "Only her owner sets up, retires, or rotates the workshop agent.",
+                    "Only the owner's own key changes crew identity, charters, or verdicts.",
                 )));
             }
             // Load only: an existing host never mints another owner.
@@ -705,5 +705,59 @@ mod agent_tests {
             Some(("grant", 1))
         ));
         assert!(!super::agent_setup_admits(&owner, &"c".repeat(64), None));
+    }
+
+    #[test]
+    fn crew_mutations_take_the_owner_only_dispatch_branch() {
+        use coder_access::{Operation, crew::JobRole};
+        let operations = [
+            Operation::NewCrewAgent {
+                agent: "paul".into(),
+                workspace: "/work/repo".into(),
+                job_role: JobRole::SalesLead,
+            },
+            Operation::SetAgentCharter {
+                agent: "paul".into(),
+                job_role: JobRole::SalesLead,
+                expected: 1,
+                drafting: false,
+                purpose: "Wait for owner review.".into(),
+            },
+            Operation::RecordAgentVerdict {
+                agent: "paul".into(),
+                verdict: coder_access::crew::VerdictInput {
+                    id: "review-1".into(),
+                    subject: coder_access::crew::Subject {
+                        kind: "issue".into(),
+                        reference: "github:issue/1".into(),
+                        revision: 1,
+                        sha256: "a".repeat(64),
+                    },
+                    evidence: vec![coder_access::crew::Evidence {
+                        reference: "host:receipt/1".into(),
+                        sha256: "b".repeat(64),
+                    }],
+                    result: coder_access::crew::ResultKind::NeedsEvidence,
+                    reason: "Independent acceptance is missing.".into(),
+                    question_set_sha256: None,
+                },
+            },
+        ];
+        for op in operations {
+            assert!(op.owner_agent());
+            assert!(!op.reads_only());
+            assert!(op.validate().is_ok());
+            assert!(!super::agent_setup_admits(
+                &"a".repeat(64),
+                &"b".repeat(64),
+                Some(("grant", 1))
+            ));
+        }
+        assert!(
+            !Operation::ListAgentVerdicts {
+                agent: "paul".into()
+            }
+            .owner_agent()
+        );
     }
 }

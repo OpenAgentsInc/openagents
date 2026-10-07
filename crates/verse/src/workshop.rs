@@ -1662,6 +1662,8 @@ mod tests {
 
     fn view() -> AgentView {
         AgentView {
+            job_role: None,
+            crew_charter: None,
             name: NAME.into(),
             look: LOOK.into(),
             route: "codex gpt-6-luna".into(),

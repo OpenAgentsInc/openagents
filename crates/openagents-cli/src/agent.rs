@@ -27,12 +27,21 @@ use coder::cli_route::tree::{Declared, Effect};
 
 pub const USAGE: &str = "usage: openagents agent COMMAND [--root DIR] [--control-socket PATH]
   new NAME [--workspace DIR] [--owner-key FILE] [--days N] [--route ROUTE]
-      [--preset PRESET]
+      [--preset PRESET] [--role ROLE]
                Make an agent with her own key, attested by the owner key in
                FILE (64 hex or nsec1) for N days, at most 365 (default 365).
-               A crew member's name (alice, bob) starts from its preset:
+               A crew member's name (alice, bob, paul, erin, frank, pat, arthur, vanna) starts from its preset:
                charter, look, and definition. --preset starts another name
                from one.
+  charter NAME --role ROLE --expected N --drafting on|off --purpose TEXT
+               Owner-only host edit of a sales job charter. All model tools,
+               task execution, sending, payments, and publication stay absent.
+  verdict NAME record FILE
+               Owner-only host recording of a signed private recommendation.
+               FILE is a bounded VerdictInput JSON document with exact pins.
+               A question-set digest is a reference, not proof of a decision.
+  verdict NAME list
+               Read signed retained recommendations. They grant no approval.
   attest NAME --owner-key FILE [--days N]
                Attest her key again.
   renew NAME --owner-key FILE [--days N]
@@ -157,6 +166,9 @@ smart terminal's `@alice TEXT` sends the same request as `ask`. Defaults:
 #[cfg(test)]
 pub(crate) const EFFECTS: &[Declared] = &[
     Declared::computer("new", Effect::LocalWrite),
+    Declared::computer("charter", Effect::Publishes),
+    Declared::computer("verdict record", Effect::Publishes),
+    Declared::computer("verdict list", Effect::ReadOnly),
     Declared::computer("attest", Effect::LocalWrite),
     Declared::computer("renew", Effect::LocalWrite),
     Declared::computer("list", Effect::ReadOnly),
@@ -219,6 +231,9 @@ pub fn run(output: &Output, words: &[String]) -> u8 {
     let now = coder::task::autostart::unix_now();
     let result = match words.as_slice() {
         ["new", name] => new(output, &root, name, &args, now),
+        ["charter", name] => charter(output, name, &args),
+        ["verdict", name, "record", file] => verdict(output, name, file, &args),
+        ["verdict", name, "list"] => verdicts(output, &root, name, &args),
         ["attest", name] => attest(output, &root, name, &args, now, false),
         ["renew", name] => attest(output, &root, name, &args, now, true),
         ["list"] => list(output, &root, &args),
@@ -349,6 +364,110 @@ fn store(root: &Path, name: &str) -> Result<(Store, Record), Fail> {
     Ok((store, record))
 }
 
+fn charter(output: &Output, name: &str, args: &Args) -> Result<(), Fail> {
+    let role = args
+        .option("role")
+        .ok_or_else(|| Fail::Failed("Choose --role for the crew charter.".into()))?;
+    let job_role = coder_access::crew::JobRole::parse(role).map_err(|e| Fail::Failed(e.message))?;
+    let expected = args.number("expected", 0_u64).map_err(Fail::Failed)?;
+    let drafting = match args.option("drafting") {
+        Some("on") => true,
+        Some("off") => false,
+        _ => return Err(Fail::Failed("Choose --drafting on or off.".into())),
+    };
+    let purpose = args
+        .option("purpose")
+        .ok_or_else(|| Fail::Failed("Supply --purpose text.".into()))?
+        .into();
+    send(
+        output,
+        args,
+        &Operation::SetAgentCharter {
+            agent: name.into(),
+            job_role,
+            expected,
+            drafting,
+            purpose,
+        },
+        "The owner changed the crew charter; it grants no tools or action approval.",
+    )
+}
+
+fn verdict(output: &Output, name: &str, file: &str, args: &Args) -> Result<(), Fail> {
+    use std::io::Read;
+    let metadata = std::fs::symlink_metadata(file)
+        .map_err(|_| Fail::Failed("Cannot read the crew verdict input.".into()))?;
+    if !metadata.is_file() || metadata.len() > 32 * 1024 {
+        return Err(Fail::Failed(
+            "A crew verdict input must be a regular file of at most 32 KiB.".into(),
+        ));
+    }
+    let mut options = std::fs::OpenOptions::new();
+    options.read(true);
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::OpenOptionsExt;
+        options.custom_flags(libc::O_NOFOLLOW | libc::O_NONBLOCK);
+    }
+    let opened = options
+        .open(file)
+        .map_err(|_| Fail::Failed("Cannot read the crew verdict input.".into()))?;
+    let current = opened
+        .metadata()
+        .map_err(|_| Fail::Failed("Cannot read the crew verdict input.".into()))?;
+    if !current.is_file() || current.len() > 32 * 1024 {
+        return Err(Fail::Failed(
+            "The crew verdict input is unavailable or exceeds its bound.".into(),
+        ));
+    }
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::MetadataExt;
+        if current.dev() != metadata.dev() || current.ino() != metadata.ino() {
+            return Err(Fail::Failed(
+                "The crew verdict input changed while it was opened.".into(),
+            ));
+        }
+    }
+    let mut bytes = Vec::new();
+    opened
+        .take(32 * 1024 + 1)
+        .read_to_end(&mut bytes)
+        .map_err(|_| Fail::Failed("Cannot read the crew verdict input.".into()))?;
+    if bytes.len() > 32 * 1024 {
+        return Err(Fail::Failed(
+            "The crew verdict input exceeds 32 KiB.".into(),
+        ));
+    }
+    let verdict: coder_access::crew::VerdictInput = serde_json::from_slice(&bytes)
+        .map_err(|_| Fail::Failed("The crew verdict input is malformed.".into()))?;
+    verdict.validate().map_err(|e| Fail::Failed(e.message))?;
+    send(
+        output,
+        args,
+        &Operation::RecordAgentVerdict {
+            agent: name.into(),
+            verdict,
+        },
+        "The host retained a signed private recommendation, without approving an action.",
+    )
+}
+
+fn verdicts(output: &Output, root: &Path, name: &str, args: &Args) -> Result<(), Fail> {
+    let value = match call(args, &Operation::ListAgentVerdicts { agent: name.into() }) {
+        Ok(value) => value,
+        Err(Fail::Refused(refusal)) if refusal.code == "unavailable" => {
+            let (store, _) = store(root, name)?;
+            json!({"verdicts": store.crew_verdicts().map_err(Fail::Failed)?})
+        }
+        Err(error) => return Err(error),
+    };
+    output.emit(&value, |value| {
+        serde_json::to_string_pretty(value).unwrap_or_default()
+    });
+    Ok(())
+}
+
 fn owner_key(args: &Args) -> Result<Option<secp256k1::SecretKey>, Fail> {
     let Some(path) = args.option("owner-key") else {
         return Ok(None);
@@ -387,6 +506,30 @@ fn new(output: &Output, root: &Path, name: &str, args: &Args, now: u64) -> Resul
         })?),
         None => agent::preset(name),
     };
+    let job_role = args
+        .option("role")
+        .map(coder_access::crew::JobRole::parse)
+        .transpose()
+        .map_err(|e| Fail::Failed(e.message))?
+        .or_else(|| preset.and_then(|p| p.job_role));
+    if let Some(job_role) = job_role {
+        if args.option("owner-key").is_some() || args.option("route").is_some() {
+            return Err(Fail::Failed(
+                "Sales creation uses the running host's owner admission; omit owner-key and route."
+                    .into(),
+            ));
+        }
+        return send(
+            output,
+            args,
+            &Operation::NewCrewAgent {
+                agent: name.into(),
+                workspace: workspace.display().to_string(),
+                job_role,
+            },
+            "The host created the sales member with its private drafting charter.",
+        );
+    }
     let mut record = store
         .open_as(&workspace, now, preset)
         .map_err(Fail::Failed)?;
@@ -510,6 +653,8 @@ fn record_json(record: &Record, now: u64) -> Value {
         "renew": attested_until.and_then(|until| wire::renewal_warning(until, now)),
         "definition": record.definition(),
         "roles": record.roles,
+        "job_role": record.job_role,
+        "crew_charter": record.crew_charter,
         "name": record.name,
         "state": record.state.word(),
         "workspace": record.workspace,
@@ -609,6 +754,16 @@ fn show(output: &Output, root: &Path, name: &str, args: &Args, now: u64) -> Resu
         ];
         if let Some(authorized) = v["record"]["authorized"].as_str() {
             text.push(authorized.to_string());
+        }
+        if let Some(role) = record.job_role {
+            text.push(format!("job role: {} (no authority grant)", role.name()));
+            if let Some(charter) = &record.crew_charter {
+                text.push(format!(
+                    "machine charter {}: drafting {}; model tools disabled",
+                    charter.revision,
+                    if charter.drafting { "on" } else { "off" }
+                ));
+            }
         }
         text.extend([
             format!("works in: {}", record.workspace),

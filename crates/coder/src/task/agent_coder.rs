@@ -257,9 +257,13 @@ impl Hands for HostHands<'_> {
             });
         }
         self.open_pane();
-        let codex = self.codex;
+        let codex = self.codex && self.record.job_role.is_none();
         let turn = coder_v1::Turn {
-            cwd: PathBuf::from(&self.cwd),
+            cwd: if self.record.job_role.is_some() {
+                self.store.dir().into()
+            } else {
+                PathBuf::from(&self.cwd)
+            },
             state: self.state.clone(),
             session: self.session.clone(),
             // Her words, and on Codex the one line that hands the coding
@@ -273,6 +277,7 @@ impl Hands for HostHands<'_> {
             instructions: None,
             approvals: true,
             codex_writes: codex,
+            tool_free: self.record.job_role.is_some(),
         };
         if codex {
             self.agents.with_live(&name, |live| {
@@ -288,6 +293,7 @@ impl Hands for HostHands<'_> {
         let (policy, places, stop) = (&self.policy, &self.places, self.stop.clone());
         let cwd = PathBuf::from(&self.cwd);
         let their = self.record.refer().their().to_string();
+        let tool_free = self.record.job_role.is_some();
         let ended = {
             let mut hear = |event: &CoderEvent| -> Option<bool> {
                 match event {
@@ -308,6 +314,17 @@ impl Hands for HostHands<'_> {
                         running,
                         output,
                     } => {
+                        if tool_free {
+                            if previous.as_ref() != Some(event) {
+                                let _ = journal(
+                                    Kind::Refused,
+                                    "sales charter refused a reported delegation",
+                                    None,
+                                );
+                            }
+                            previous = Some(event.clone());
+                            return None;
+                        }
                         if *running {
                             if !ended_delegations.contains(id) && previous.as_ref() != Some(event) {
                                 agents.say(
@@ -359,6 +376,15 @@ impl Hands for HostHands<'_> {
                         running,
                         delegation,
                     } => {
+                        if tool_free {
+                            previous = Some(event.clone());
+                            let _ = journal(
+                                Kind::Refused,
+                                "sales charter refused a reported model tool",
+                                None,
+                            );
+                            return None;
+                        }
                         let by = if delegation.is_some() && codex {
                             "Codex "
                         } else {
@@ -424,6 +450,11 @@ impl Hands for HostHands<'_> {
                         None
                     }
                     CoderEvent::Approval { command, why, .. } => {
+                        if tool_free {
+                            let _ =
+                                journal(Kind::Refused, "sales charter refused a model tool", None);
+                            return Some(false);
+                        }
                         let command = agent::plain(command);
                         let confirm = match policy.answer("run", &command, &cwd, places) {
                             Answer::Never(what) => {
@@ -503,7 +534,7 @@ impl Hands for HostHands<'_> {
         self.engine = Some(engine);
         // A Codex limit goes in the capacity book, as Coder books it, and
         // her later prompts in this request leave Codex out.
-        if let Some(error) = codex_refused {
+        if !tool_free && let Some(error) = codex_refused {
             let now = (self.agents.clock)();
             if let Some(refusal) = capacity::detect(capacity::Provider::Codex, &error, now) {
                 let _ = capacity::record_with(&self.agents.tasks, refusal.clone(), login);
@@ -659,7 +690,9 @@ impl Agents {
             .or_else(coder_v1::default_state)
             .unwrap_or_else(|| self.root.join("coder-new"));
         self.set_doing(&name, Doing::Thinking);
-        let codex = record.codes_on_codex() && self.codex_has_capacity(store, &name);
+        let codex = record.job_role.is_none()
+            && record.codes_on_codex()
+            && self.codex_has_capacity(store, &name);
         let mut hands = HostHands {
             agents: self,
             store,

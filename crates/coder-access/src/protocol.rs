@@ -879,6 +879,30 @@ pub enum Operation {
     /// the owner's own key may send it; a granted device may not.
     #[serde(rename = "studio.agent.new")]
     NewAgent { agent: String, workspace: String },
+    /// Owner-only crew creation on the shared identity and runtime.
+    #[serde(rename = "studio.agent.crew.new")]
+    NewCrewAgent {
+        agent: String,
+        workspace: String,
+        job_role: crate::crew::JobRole,
+    },
+    /// Owner-only machine charter edit. It grants no tools or access rights.
+    #[serde(rename = "studio.agent.charter.set")]
+    SetAgentCharter {
+        agent: String,
+        job_role: crate::crew::JobRole,
+        expected: u64,
+        drafting: bool,
+        purpose: String,
+    },
+    /// Owner-recorded evidence recommendation; never an action approval.
+    #[serde(rename = "studio.agent.verdict.record")]
+    RecordAgentVerdict {
+        agent: String,
+        verdict: crate::crew::VerdictInput,
+    },
+    #[serde(rename = "studio.agent.verdict.list")]
+    ListAgentVerdicts { agent: String },
     /// Retire the agent: stop her, delete her key from the host's key
     /// store, and keep her journal and engrams, which the owner key still
     /// reads. With relay sync on and the owner key at the host, the owner
@@ -909,6 +933,7 @@ impl Operation {
                 | Self::ListAgents {}
                 | Self::ListAgentMemory { .. }
                 | Self::ListAgentJobs { .. }
+                | Self::ListAgentVerdicts { .. }
                 | Self::AgentLog { .. }
                 | Self::ListAgentWorkspaces {}
         )
@@ -930,8 +955,12 @@ impl Operation {
                 | Self::EditAgentMemory { .. }
                 | Self::ListAgentJobs { .. }
                 | Self::EditAgentJobs { .. }
+                | Self::ListAgentVerdicts { .. }
                 | Self::AgentLog { .. }
                 | Self::ListAgentWorkspaces {}
+                | Self::NewCrewAgent { .. }
+                | Self::SetAgentCharter { .. }
+                | Self::RecordAgentVerdict { .. }
                 | Self::NewAgent { .. }
                 | Self::RetireAgent { .. }
                 | Self::RotateAgent { .. }
@@ -944,7 +973,12 @@ impl Operation {
     pub fn owner_agent(&self) -> bool {
         matches!(
             self,
-            Self::NewAgent { .. } | Self::RetireAgent { .. } | Self::RotateAgent { .. }
+            Self::NewAgent { .. }
+                | Self::NewCrewAgent { .. }
+                | Self::SetAgentCharter { .. }
+                | Self::RecordAgentVerdict { .. }
+                | Self::RetireAgent { .. }
+                | Self::RotateAgent { .. }
         )
     }
 
@@ -1078,6 +1112,10 @@ impl Operation {
             Self::EditAgentJobs { .. } => "studio.agent.jobs.edit",
             Self::AgentLog { .. } => "studio.agent.log",
             Self::ListAgentWorkspaces {} => "studio.agent.workspaces",
+            Self::NewCrewAgent { .. } => "studio.agent.crew.new",
+            Self::SetAgentCharter { .. } => "studio.agent.charter.set",
+            Self::RecordAgentVerdict { .. } => "studio.agent.verdict.record",
+            Self::ListAgentVerdicts { .. } => "studio.agent.verdict.list",
             Self::NewAgent { .. } => "studio.agent.new",
             Self::RetireAgent { .. } => "studio.agent.retire",
             Self::RotateAgent { .. } => "studio.agent.rotate",
@@ -1108,6 +1146,7 @@ impl Operation {
             | Self::ListAgents {}
             | Self::ListAgentMemory { .. }
             | Self::ListAgentJobs { .. }
+            | Self::ListAgentVerdicts { .. }
             | Self::AgentLog { .. }
             | Self::ListAgentWorkspaces {} => Some(Right::Observe),
             Self::CreateTask { .. }
@@ -1145,6 +1184,9 @@ impl Operation {
             | Self::StopAgent { .. }
             | Self::EditAgentMemory { .. }
             | Self::EditAgentJobs { .. }
+            | Self::NewCrewAgent { .. }
+            | Self::SetAgentCharter { .. }
+            | Self::RecordAgentVerdict { .. }
             | Self::NewAgent { .. }
             | Self::RetireAgent { .. }
             | Self::RotateAgent { .. } => Some(Right::Operate),
@@ -1356,11 +1398,36 @@ impl Operation {
             }
             Self::DecideMerge { decision } => decision.validate()?,
             Self::ListAgents {} | Self::ListAgentWorkspaces {} => {}
-            Self::NewAgent { agent, workspace } => {
+            Self::NewCrewAgent {
+                agent, workspace, ..
+            }
+            | Self::NewAgent { agent, workspace } => {
                 crate::agent::name(agent)?;
                 crate::agent::workspace_path(workspace)?;
             }
-            Self::RetireAgent { agent } => crate::agent::name(agent)?,
+            Self::SetAgentCharter {
+                agent,
+                expected,
+                purpose,
+                ..
+            } => {
+                crate::agent::name(agent)?;
+                safe(*expected)?;
+                crate::crew::Charter {
+                    schema: crate::crew::CHARTER_SCHEMA.into(),
+                    revision: 1,
+                    drafting: false,
+                    purpose: purpose.clone(),
+                }
+                .validate()?;
+            }
+            Self::RecordAgentVerdict { agent, verdict } => {
+                crate::agent::name(agent)?;
+                verdict.validate()?;
+            }
+            Self::ListAgentVerdicts { agent } | Self::RetireAgent { agent } => {
+                crate::agent::name(agent)?
+            }
             Self::RotateAgent { agent, reason } => {
                 crate::agent::name(agent)?;
                 text(reason, 256)?;

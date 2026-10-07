@@ -1201,6 +1201,10 @@ impl Host {
             | Operation::EditAgentJobs { .. }
             | Operation::AgentLog { .. }
             | Operation::ListAgentWorkspaces {}
+            | Operation::NewCrewAgent { .. }
+            | Operation::SetAgentCharter { .. }
+            | Operation::RecordAgentVerdict { .. }
+            | Operation::ListAgentVerdicts { .. }
             | Operation::NewAgent { .. }
             | Operation::RetireAgent { .. }
             | Operation::RotateAgent { .. }) => {

@@ -432,6 +432,8 @@ pub struct Turn {
     /// Codex's workspace-write sandbox (`--codex-writes`); a gated turn
     /// still asks before each one.
     pub codex_writes: bool,
+    /// Disable every model tool, including read-only commands and delegation.
+    pub tool_free: bool,
 }
 
 /// What runs a turn: Coder V1 ([`Cli`]) or, in tests, a stand-in.
@@ -551,10 +553,12 @@ impl Cli {
         {
             command.arg("--instructions").arg(instructions);
         }
-        if turn.approvals {
+        if turn.tool_free {
+            command.arg("--approvals").arg("tool-free");
+        } else if turn.approvals {
             command.arg("--approvals").arg("stdin");
         }
-        if turn.codex_writes {
+        if turn.codex_writes && !turn.tool_free {
             command.arg("--codex-writes");
         }
         command.envs(self.env.iter().map(|(key, value)| (key, value)));
@@ -851,6 +855,39 @@ mod tests {
 
     #[cfg(unix)]
     #[test]
+    fn crew_turn_passes_the_machine_tool_free_boundary_to_the_native_child() {
+        use std::os::unix::fs::PermissionsExt;
+        let dir = tempfile::tempdir().unwrap();
+        let program = dir.path().join("openagents");
+        let argv = dir.path().join("argv");
+        std::fs::write(&program, format!("#!/bin/sh\nprintf '%s\\n' \"$@\" > '{}'\necho '{{\"event\":\"finished\",\"reply\":\"draft\",\"tokens\":0}}'\n", argv.display())).unwrap();
+        std::fs::set_permissions(&program, std::fs::Permissions::from_mode(0o700)).unwrap();
+        let turn = Turn {
+            cwd: dir.path().into(),
+            state: dir.path().join("state"),
+            session: "paul-coder".into(),
+            prompt: "Draft a recommendation.".into(),
+            instructions: None,
+            approvals: true,
+            tool_free: true,
+            codex_writes: true,
+        };
+        assert!(matches!(
+            Cli {
+                program,
+                env: vec![]
+            }
+            .turn(&turn, &AtomicBool::new(false), &mut |_| None),
+            Ended::Finished { .. }
+        ));
+        let arguments = std::fs::read_to_string(argv).unwrap();
+        assert!(arguments.contains("--approvals\ntool-free\n"));
+        assert!(!arguments.contains("--approvals\nstdin\n"));
+        assert!(!arguments.contains("--codex-writes"));
+    }
+
+    #[cfg(unix)]
+    #[test]
     fn the_cli_turn_streams_answers_approvals_and_reads_the_result() {
         use std::os::unix::fs::PermissionsExt;
         let dir = tempfile::tempdir().unwrap();
@@ -874,6 +911,7 @@ mod tests {
             instructions: None,
             approvals: true,
             codex_writes: false,
+            tool_free: false,
         };
         let mut heard = Vec::new();
         let ended = Cli {
@@ -921,6 +959,7 @@ mod tests {
             instructions: None,
             approvals: true,
             codex_writes: false,
+            tool_free: false,
         };
         let mut tools = 0;
         scripted.turn(&turn, &AtomicBool::new(false), &mut |event| {

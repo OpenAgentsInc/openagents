@@ -669,6 +669,20 @@ with `--owner-key FILE`, records the owner's NIP-OA attestation of it for
 change waits at the Merge station; `openagents studio review TASK` and
 `openagents studio merge TASK` act on it from here.
 
+Sales presets (Paul, Erin, Frank, Pat, Arthur, and Vanna) use the same
+identity and private memory. Their creation, charter edits, and signed
+verdict recording require the running host's owner admission; they have no
+local mutation fallback. `new NAME --role sales-researcher` selects a sales
+job for another name. The initial sales charter permits drafting from the
+supplied owner request and the member's own memory, with all model tools,
+workspace reads, task execution, and autonomous jobs disabled.
+`agent charter NAME --role ROLE --expected N --drafting off --purpose TEXT`
+narrows the current charter. `agent verdict NAME record FILE` retains a
+typed, signed owner-recorded recommendation; `agent verdict NAME list`
+reads up to 24 retained records. Evidence and question-set digests are
+references, never approval or proof of an independent model decision.
+Live sales activation remains in [NEEDS_OWNER.md](../../NEEDS_OWNER.md#sales-outreach-launch).
+
 ## Verse (NIP-MV)
 
 Headless presence: see who is around, listen, speak, move, and gesture.

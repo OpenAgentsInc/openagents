@@ -1,8 +1,11 @@
 # The crew
 
-Status: proposal, October 6, 2026. The owner approved the cast and its
-roles on October 6, 2026; this page refines them against the code. Only
-Alice exists as an agent today. Each member's **Today** line cites the code
+Status: proposal with implemented shared sales roles, October 7, 2026.
+The owner approved the cast and its roles on October 6, 2026; this page
+refines them against the code. Alice and Bob share the native agent runtime;
+REV-51 adds the six sales
+job presets with an initial drafting-only charter. Other named members
+remain proposed. Each member's **Today** line cites the code
 or process that already does that member's job, and every path on this page
 was checked on the date above.
 
@@ -95,8 +98,8 @@ separate visual work later.
 | Chuck | Chaos: kill, fill, drop | The demolition yard | Recovery code without a harness | 4 |
 | Oscar | Devil's-advocate design review | The Lounge | Open-question sections, by hand | 4 |
 | Rupert | Repudiator: tests non-repudiation | The archive's records room | `verify_chain`, append-only journals | 4 |
-| Paul | Sales leader: discovery, outreach plans, training, hires | His corner office in the Agora, Main Street's west end | Nothing; sales is run by hand | 5 |
-| Erin, Frank, Pat, Arthur, Vanna | Sales hires: research, outreach, demos, partners, affiliates | Standing desks on the Agora's floor | Nothing | 5 |
+| Paul | Sales leader: discovery, outreach plans, training, hires | His corner office in the Agora, Main Street's west end | Native sales-lead preset and owner-requested drafting; sales adapters remain planned | 5 |
+| Erin, Frank, Pat, Arthur, Vanna | Sales hires: research, outreach, demos, partners, affiliates | Standing desks on the Agora's floor | Native job presets with the same drafting-only scope; no hiring activation | 5 |
 
 ## Rules every member follows
 
@@ -165,27 +168,33 @@ Phase 9 is done: the loop, policy, prompts, and journal take the member's
 name and pronouns from its definition, so a member is
 `openagents agent new NAME` or `studio.agent.new`. A name in the preset
 table in [`agent_preset.rs`](../../crates/coder/src/task/agent_preset.rs)
-(Alice, Bob) starts from its charter, look, and definition, and
-`--preset NAME` starts another name from one.
+(Alice, Bob, Paul, Erin, Frank, Pat, Arthur, Vanna) starts from its charter,
+look, and definition; `--preset NAME` starts another name from one.
 The owner/agent conversation stays separate from the agent/Coder session.
-Reuse those issues instead of implementing another crew runtime. Role
-charters, typed verdicts, coordinated stop, and town/sales adapters remain
-crew-specific work; SOV authority/controller/custodian roles are distinct
-from a member's job role. Relay sync is opt-in and grants no host rights.
+Reuse those issues instead of implementing another crew runtime. REV-51
+adds a compatible `job_role`, versioned narrowing charters, and signed
+`openagents.crew-verdict.v1` records through owner-only native host
+operations. Sales roles initially draft from the supplied owner request
+and their own private memory; the host refuses all model tools, workspace
+reads, task control, and autonomous jobs. A retained Codex engine setting
+does not grant sales agents delegation or workspace-write authority.
+SOV authority/controller/custodian roles remain distinct. Relay sync is opt-in and grants no host rights.
 
 The crew needs a few additions to this machinery, counted as phase 0 of the
 [build order](#build-order):
 
-- **A role field and charter templates.** The agent record gains `role`
-  (`workshop`, `town`, `issues`, `deploy`, and so on), and each role has a
-  charter template that narrows the default charter. `openagents agent new
-  NAME --role ROLE` makes a member from its template.
-- **Verdict records.** Victor, Judy, Walter, Grace, and Oscar produce typed
-  verdicts rather than code: `openagents.crew-verdict.v1`, with the subject
-  (a task revision, an issue, a deploy, a campaign finding), the verdict,
-  the evidence references, and the Jev question set's digest when Jev
-  decided part of it. Verdicts go in the verdict author's journal and are
-  read by the host, never by a model as instructions.
+- **Further role adapters.** `openagents agent new NAME --role ROLE`
+  supports the six sales jobs. Their charters can disable drafting or
+  narrow its stated purpose; prose cannot grant tools or data access.
+  Workshop, town, issue, and deploy job templates remain separate work.
+- **Verdict producers.** `openagents agent verdict NAME record FILE`
+  retains a signed, immutable owner-recorded recommendation with an exact
+  subject revision, evidence digests, result, and optional question-set
+  digest. Exact retries return the original; reusing an ID with changed
+  content or tampered signatures fails. The question-set digest is a reference, not proof that
+  Jev ran or that evidence was independently checked. Verdicts are private
+  host data with a journal reference, never approvals or executable
+  instructions. Automatic verifier and judge adapters remain separate work.
 - **A roster in Verse.** Everglade draws every agent the host lists, each at
   its role's station with its own look, instead of only the seat whose look
   is `alice` (`everglade::npcs::form_of` in
@@ -888,13 +897,16 @@ hire's charter or budget; quote a price outside Ivan's price book, offer a
 discount, agree to terms, or take payment; approve a hire's step; hold a
 sending credential.
 
-**Today.** Nothing. The [sales strategy](../sales/README.md) and the
-[revenue roadmap's pipeline](../sales/revenue-roadmap.md#sales-and-pilot-operations)
-are run by hand.
+**Today.** The native sales-lead preset reuses the generic identity,
+private memory, and steering runtime. Its initial machine charter permits
+owner-requested drafting only, with no model tools or autonomous jobs.
+The [sales-floor contract](../sales/agent-sales-floor.md#the-sales-leader-paul)
+lists the remaining operational adapters; the pipeline is still directed
+by a person.
 
-**Beyond the shared machinery.** The `sales` roles and charter templates;
-lead, draft, send, suppression, hire, certification, and playbook records;
-hire proposals checked against a headcount and spend cap; and three Gym
+**Beyond the shared machinery.** Lead, draft, send, suppression, hire,
+certification, and playbook adapters; hire proposals checked against a
+headcount and spend cap; and three Gym
 suites (claims, compliance, and tone) with a certification gate before any
 agent's first real message.
 

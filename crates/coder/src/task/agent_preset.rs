@@ -148,6 +148,7 @@ pub struct Preset {
     pub voice: &'static str,
     /// Its job on the crew, in a few words.
     pub role: &'static str,
+    pub job_role: Option<coder_host::access::crew::JobRole>,
 }
 
 /// The charter an agent without a preset starts with: the default
@@ -176,6 +177,7 @@ pub const PRESETS: &[Preset] = &[
         charter: DEFAULT_CHARTER,
         voice: "",
         role: "workshop agent",
+        job_role: None,
     },
     Preset {
         name: "bob",
@@ -185,6 +187,67 @@ pub const PRESETS: &[Preset] = &[
         charter: BOB_CHARTER,
         voice: "Practical and concrete; talks about the town in places, people, and hours.",
         role: "town builder",
+        job_role: None,
+    },
+    Preset {
+        name: "paul",
+        display_name: "Paul",
+        pronouns: Pronouns::Name,
+        look: "paul",
+        charter: super::agent_crew::SALES_CHARTER,
+        voice: "Concrete, brief, and explicit about missing evidence.",
+        role: "sales crew member",
+        job_role: Some(coder_host::access::crew::JobRole::SalesLead),
+    },
+    Preset {
+        name: "erin",
+        display_name: "Erin",
+        pronouns: Pronouns::Name,
+        look: "erin",
+        charter: super::agent_crew::SALES_CHARTER,
+        voice: "Concrete, brief, and explicit about missing evidence.",
+        role: "sales crew member",
+        job_role: Some(coder_host::access::crew::JobRole::SalesResearcher),
+    },
+    Preset {
+        name: "frank",
+        display_name: "Frank",
+        pronouns: Pronouns::Name,
+        look: "frank",
+        charter: super::agent_crew::SALES_CHARTER,
+        voice: "Concrete, brief, and explicit about missing evidence.",
+        role: "sales crew member",
+        job_role: Some(coder_host::access::crew::JobRole::SalesProspector),
+    },
+    Preset {
+        name: "pat",
+        display_name: "Pat",
+        pronouns: Pronouns::Name,
+        look: "pat",
+        charter: super::agent_crew::SALES_CHARTER,
+        voice: "Concrete, brief, and explicit about missing evidence.",
+        role: "sales crew member",
+        job_role: Some(coder_host::access::crew::JobRole::SalesDemo),
+    },
+    Preset {
+        name: "arthur",
+        display_name: "Arthur",
+        pronouns: Pronouns::Name,
+        look: "arthur",
+        charter: super::agent_crew::SALES_CHARTER,
+        voice: "Concrete, brief, and explicit about missing evidence.",
+        role: "sales crew member",
+        job_role: Some(coder_host::access::crew::JobRole::SalesPartner),
+    },
+    Preset {
+        name: "vanna",
+        display_name: "Vanna",
+        pronouns: Pronouns::Name,
+        look: "vanna",
+        charter: super::agent_crew::SALES_CHARTER,
+        voice: "Concrete, brief, and explicit about missing evidence.",
+        role: "sales crew member",
+        job_role: Some(coder_host::access::crew::JobRole::SalesAffiliate),
     },
 ];
 

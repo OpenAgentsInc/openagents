@@ -430,6 +430,14 @@ impl Tasks for Inbox {
             ));
         };
         match op {
+            Operation::NewCrewAgent {
+                agent,
+                workspace,
+                job_role,
+            } => agents.create_crew(agent, std::path::Path::new(workspace), *job_role, owner),
+            Operation::SetAgentCharter { .. } | Operation::RecordAgentVerdict { .. } => {
+                agents.owner_crew(principal, op)
+            }
             Operation::NewAgent { agent, workspace } => {
                 agents.create(agent, std::path::Path::new(workspace), owner)
             }

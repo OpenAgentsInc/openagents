@@ -164,6 +164,10 @@ pub struct Service {
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct AgentView {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub job_role: Option<crate::crew::JobRole>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub crew_charter: Option<crate::crew::Charter>,
     pub name: String,
     pub look: String,
     /// The route it plans with, or the model that answered last.
