@@ -1649,3 +1649,23 @@ references; qualify recovery and any funding loss without reminting an invoice,
 reexecuting a purchase, or rewriting author shares. Gateway referrer statements
 require explicit commission activation, current native referrer management,
 current workspace membership, and qualified rail evidence.
+
+## Paper Mono on the phones and CoderOS (#10904)
+
+Every surface now names Paper Mono (`crates/paper-mono`), but no phone or
+CoderOS build ran after the change, because builds were held to the build
+lease after the 14:50 crash. Build and look at each:
+
+- iOS: run XcodeGen and build `bins/openagents-ios` and `bins/coder-ios` for
+  a simulator or device. Each `project.yml` bundles the four static faces
+  from `crates/paper-mono/fonts/` and each `Info.plist` lists them under
+  `UIAppFonts`; check that text draws in Paper Mono, not the system face, and
+  that nothing clips. The mockup (`bins/openagents-mockup-ios`) built and
+  rendered Paper Mono on a simulator before the crash.
+- Android: build `bins/openagents-android` and `bins/coder-android`
+  (`scripts/build-openagents-android.sh apk`). The `paperMonoFonts` Gradle
+  task copies the faces into a generated `res/font`; this machine has no
+  Android SDK, so neither the task nor the Kotlin compiled here.
+- CoderOS: rebuild a host with `coderos.desktop.enable` and check that
+  `fc-match monospace`, `fc-match sans`, and `fc-match serif` print Paper
+  Mono, and that foot draws Coder's braille spinner.

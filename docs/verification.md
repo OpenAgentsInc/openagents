@@ -236,6 +236,9 @@ and continues; that result is a partial gate, not a pass.
 reason, and review date, the `paste` dependency paths, and the license
 review.
 
+`./scripts/check-fonts.sh` fails when a surface names a typeface other than
+Paper Mono or the tree tracks another font file.
+
 ## Current verification record
 
 On 2026-09-20, the workspace passed strict all-target Clippy on Rust 1.97.1
