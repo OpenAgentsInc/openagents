@@ -89,6 +89,10 @@ pub struct World {
     /// fixed bodies the island rests on).
     #[serde(skip)]
     pub slept: Vec<(BodyId, Momentum)>,
+    /// Bodies held up by something other than a contact for this step,
+    /// such as still water ([`World::support`]); cleared by the step.
+    #[serde(skip)]
+    supported: Vec<BodyId>,
     /// Counts and timings of the last step, for profiling.
     #[serde(skip)]
     pub stats: StepStats,
@@ -162,8 +166,16 @@ impl World {
             contacts: Vec::new(),
             warm: Vec::new(),
             slept: Vec::new(),
+            supported: Vec::new(),
             stats: StepStats::default(),
         }
+    }
+
+    /// Count body `id` as resting on something fixed for the next step's
+    /// sleep test, as a contact with a fixed body would. Still water calls
+    /// this for the bodies it floats ([`crate::water::apply`]).
+    pub fn support(&mut self, id: BodyId) {
+        self.supported.push(id);
     }
 
     /// Attach a collider to its body.
@@ -282,6 +294,7 @@ impl World {
         if self.sleep.enabled {
             self.settle(&manifolds);
         }
+        self.supported.clear();
         self.tick += 1;
         self.stats.manifolds = manifolds.len();
         self.stats.contact_points = self.contacts.len();
@@ -512,6 +525,11 @@ impl World {
                 (true, false) if self.rests_on(b) => grounded_bodies[a] = true,
                 (false, true) if self.rests_on(a) => grounded_bodies[b] = true,
                 _ => {}
+            }
+        }
+        for id in &self.supported {
+            if let Some(grounded) = grounded_bodies.get_mut(id.0 as usize) {
+                *grounded = true;
             }
         }
         let dt = self.dt;

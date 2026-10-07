@@ -1,8 +1,9 @@
 # Water
 
 Status: specification, 2026-10-06, updated the same day with the owner's
-answers to its open questions ([Owner decisions](#owner-decisions)). Nothing
-in this document is implemented yet unless a section says so. The phases at
+answers to its open questions ([Owner decisions](#owner-decisions)). Phase
+W1 is implemented ([Coupling with `crates/physics`](#coupling-with-cratesphysics));
+nothing else in this document is implemented yet unless a section says so. The phases at
 the end are tracked as GitHub issues on the
 [OpenAgents project board](../project-board.md). The coastal zone that builds
 on the ocean phases has its own specification, [The coast](coast.md).
@@ -864,6 +865,20 @@ New module `physics::water`:
   `Diving`. Swimming replaces gravity with buoyancy toward a float line,
   applies the flow, and follows [Swimming and wading](#swimming-and-wading)
   and [Breath and suffocation](#breath-and-suffocation) [SRD521].
+
+**Status (W1, 2026-10-07).** `crates/physics/src/water/` implements
+everything in this section except the character medium: `WaterBody`,
+`Outline`, `Level`, `WaveSet` (at most eight Gerstner terms on integer phase
+counters, so `Surface::sample` at tick N equals stepping from tick 0 bit for
+bit), `Water` and `WaterSet`, `submerged`, `apply` with the
+`water.buoyancy` and `water.drag` ledger terms, and `FlowGrid::river`.
+Bodies that float on still water count as supported for island sleep
+(`World::support`). The bed and the preset are not in the record yet; zones supply
+ground as colliders. The Water Lab's floats use `apply`. In
+`cargo run --release -p physics --example water_buoyancy`, the water forces
+on 64 bodies on an eight-term ocean took 77 µs a step on average (96 µs at
+the 99th percentile) on an Apple M5 Max, rising to about 150–290 µs while
+the machine ran other builds (load average near 100).
 
 ### Spells and destruction
 

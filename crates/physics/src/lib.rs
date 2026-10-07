@@ -32,6 +32,8 @@
 //! - [`thrusters`]: body-mounted thrusters, a bounded allocator from a wanted
 //!   force and torque to throttles, and a vector PID controller.
 //! - [`trace`]: sampled states and a tolerance comparison for replay tests.
+//! - [`water`]: water bodies, a deterministic Gerstner surface, currents,
+//!   and buoyancy and drag on colliders.
 //!
 //! The crate has no rendering, networking, I/O, or zone knowledge. Zones
 //! own their rules (fields, controls, part definitions) and consume these
@@ -60,6 +62,7 @@ pub mod thrusters;
 pub mod trace;
 pub mod walkable;
 pub(crate) mod wall;
+pub mod water;
 pub mod world;
 
 pub use body::{Body, BodyKind, Composite};

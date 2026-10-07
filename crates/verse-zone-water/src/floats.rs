@@ -1,20 +1,18 @@
 //! Things that float: crates, barrels, and planks as rigid bodies in the
 //! shared `physics` crate, held up by buoyancy and slowed by drag.
 //!
-//! Each body carries a cloud of sample points, each standing for an equal
-//! share of its volume. A point under the surface pushes up with the weight
-//! of the water it displaces (Archimedes), scaled by how deep it sits
-//! within its own height, at that point, so a body tips toward the wave
-//! that lifts one end and rights itself as the swell passes. Drag acts on
-//! each point's velocity relative to the water, which carries a body along
-//! with the waves' orbital motion and a river's current. The sea floor and
-//! the banks push back as stiff, damped springs; bodies collide with one
-//! another through the physics crate's contact solver. This is the
-//! standard multi-point buoyancy of game engines (for example, Kerner,
-//! "Water interaction model for boats in video games", *Game Developer*,
-//! 2015), reimplemented here.
+//! Buoyancy, drag, and damping come from `physics::water`: each body's
+//! collider is clipped by the local water plane (fitted under a crate's or
+//! plank's lowest corners, so a body tips toward the wave that lifts one
+//! end and rights itself as the swell passes), Archimedes' force acts at
+//! the center of the submerged volume, and drag acts on the velocity
+//! relative to the water, which carries a body along with the waves'
+//! orbital motion and a river's current. A cloud of sample points on each
+//! body meets the sea floor and the banks, which push back as stiff,
+//! damped springs; bodies collide with one another through the physics
+//! crate's contact solver.
 
-use glam::{DQuat, DVec3, Quat, Vec2, Vec3};
+use glam::{DQuat, DVec2, DVec3, Quat, Vec2, Vec3};
 use physics::{Body, BodyId, Collider, Filter, Material, Shape, Uniform, World};
 use verse_pbr::pbr::LitVertex;
 
@@ -130,6 +128,50 @@ pub enum Event {
     Splash { at: Vec3, speed: f32, size: f32 },
     /// A body bobbing in the water.
     Ripple { at: Vec2, strength: f32 },
+}
+
+/// Drag strong enough that the swell and the river carry what floats and
+/// bobbing settles within a few swells.
+const SETTINGS: physics::water::Settings = physics::water::Settings {
+    gravity: DVec3::new(0.0, -9.81, 0.0),
+    linear: 500.0,
+    quadratic: 2.0,
+    angular: 2.0,
+};
+
+/// The lab's water as `physics::water` sees it: its surface height, a
+/// normal from the heights around, and its velocity plus any spell's push.
+struct LabWater<'a, M: Medium> {
+    medium: &'a M,
+    push: &'a dyn Fn(Vec3) -> Vec3,
+}
+
+impl<M: Medium> physics::water::Water for LabWater<'_, M> {
+    fn sample(&self, x: f64, z: f64, _tick: u64) -> Option<physics::water::Sample> {
+        let p = Vec2::new(x as f32, z as f32);
+        let surface = self.medium.surface(p)?;
+        let h = 0.25;
+        let height = |d: Vec2| {
+            self.medium
+                .surface(p + d)
+                .map_or(surface.height, |s| s.height)
+        };
+        let dx = height(Vec2::X * h) - height(-Vec2::X * h);
+        let dz = height(Vec2::Y * h) - height(-Vec2::Y * h);
+        let at = Vec3::new(p.x, surface.height, p.y);
+        Some(physics::water::Sample {
+            body: physics::water::WaterId(0),
+            height: f64::from(surface.height),
+            normal: DVec3::new(f64::from(-dx), f64::from(2.0 * h), f64::from(-dz)).normalize(),
+            surface_velocity: (surface.velocity + (self.push)(at)).as_dvec3(),
+            flow: DVec3::ZERO,
+            density: RHO,
+        })
+    }
+
+    fn bodies_overlapping(&self, _: DVec2, _: DVec2) -> Vec<physics::water::WaterId> {
+        vec![physics::water::WaterId(0)]
+    }
 }
 
 /// Water that holds a body apart from the sea, such as a Water Orb: the
@@ -279,17 +321,25 @@ impl Floats {
     }
 
     fn forces(&mut self, medium: &impl Medium, push: &dyn Fn(Vec3) -> Vec3) {
-        let g = 9.81;
         for float in &self.floats {
-            let kind = float.kind;
             if let Some(hold) = self.held(float.id) {
                 let body = &mut self.world.bodies_mut()[float.id.0 as usize];
-                body_held(body, kind, &hold);
+                body_held(body, float.kind, &hold);
+            }
+        }
+        // Buoyancy, drag, and damping on every body water does not hold
+        // apart, from the shared water physics.
+        let water = LabWater { medium, push };
+        let tick = self.world.tick;
+        let holds = &self.holds;
+        physics::water::apply_where(&mut self.world, &water, tick, DT, &SETTINGS, |id| {
+            !holds.iter().any(|(h, _)| *h == id)
+        });
+        for float in &self.floats {
+            if self.held(float.id).is_some() {
                 continue;
             }
-            let share = kind.volume() / float.samples.len() as f64;
-            // Each sample's own height, for its submerged fraction.
-            let cell = kind.half().y.min(kind.half().x) * 2.0 / 2.0;
+            let kind = float.kind;
             let body = &mut self.world.bodies_mut()[float.id.0 as usize];
             let mut force = DVec3::ZERO;
             let mut torque = DVec3::ZERO;
@@ -298,33 +348,19 @@ impl Floats {
                 let arm = body.orientation * *local;
                 let p = body.pos + arm;
                 let pv = body.vel + w.cross(arm);
-                let xz = Vec2::new(p.x as f32, p.z as f32);
-                let mut f = DVec3::ZERO;
-                if let Some(surface) = medium.surface(xz) {
-                    let under = f64::from(surface.height) - p.y;
-                    let wet = ((under / cell) + 0.5).clamp(0.0, 1.0);
-                    if wet > 0.0 {
-                        f.y += RHO * g * share * wet;
-                        let extra = push(p.as_vec3()).as_dvec3();
-                        let rel = pv - surface.velocity.as_dvec3() - extra;
-                        // Linear and quadratic drag, stronger vertically,
-                        // so bobbing settles in a few swells.
-                        let k = RHO * share * wet;
-                        let lin = DVec3::new(1.2, 2.6, 1.2);
-                        f -= k * (rel * lin + rel * rel.length() * 0.6);
-                    }
-                }
                 // The ground pushes back.
-                let floor = f64::from(medium.ground(xz));
+                let floor = f64::from(medium.ground(Vec2::new(p.x as f32, p.z as f32)));
                 if p.y < floor {
                     let m = kind.mass() / float.samples.len() as f64;
                     let depth = floor - p.y;
-                    f.y += m * (900.0 * depth - 40.0 * pv.y.min(0.0));
-                    f.x -= m * 6.0 * pv.x;
-                    f.z -= m * 6.0 * pv.z;
+                    let f = DVec3::new(
+                        -m * 6.0 * pv.x,
+                        m * (900.0 * depth - 40.0 * pv.y.min(0.0)),
+                        -m * 6.0 * pv.z,
+                    );
+                    force += f;
+                    torque += arm.cross(f);
                 }
-                force += f;
-                torque += arm.cross(f);
             }
             body.force += force;
             body.torque += torque;
