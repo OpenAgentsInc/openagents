@@ -5959,7 +5959,7 @@
               "apply"
             ],
             "usage": [
-              "apply --input FILE"
+              "apply --input FILE [--evidence-root DIR]"
             ],
             "forms": [
               {
@@ -5973,6 +5973,13 @@
                     "name": "input",
                     "value": "FILE",
                     "open": true
+                  },
+                  {
+                    "kind": "option",
+                    "name": "evidence-root",
+                    "value": "DIR",
+                    "open": true,
+                    "optional": true
                   }
                 ]
               }
@@ -6029,7 +6036,7 @@
               "show"
             ],
             "usage": [
-              "show --lead LEAD"
+              "show --lead LEAD [--sale SALE]"
             ],
             "forms": [
               {
@@ -6043,6 +6050,13 @@
                     "name": "lead",
                     "value": "LEAD",
                     "open": true
+                  },
+                  {
+                    "kind": "option",
+                    "name": "sale",
+                    "value": "SALE",
+                    "open": true,
+                    "optional": true
                   }
                 ]
               }
@@ -6060,7 +6074,7 @@
               "export"
             ],
             "usage": [
-              "export --lead LEAD --output FILE"
+              "export --lead LEAD --output FILE [--sale SALE]"
             ],
             "forms": [
               {
@@ -6080,6 +6094,13 @@
                     "name": "output",
                     "value": "FILE",
                     "open": true
+                  },
+                  {
+                    "kind": "option",
+                    "name": "sale",
+                    "value": "SALE",
+                    "open": true,
+                    "optional": true
                   }
                 ]
               }
@@ -6503,6 +6524,14 @@
         },
         {
           "kind": "option",
+          "name": "evidence-root",
+          "value": "DIR",
+          "open": true,
+          "optional": true,
+          "repeated": true
+        },
+        {
+          "kind": "option",
           "name": "after",
           "value": "LEAD",
           "open": true,
@@ -6521,6 +6550,14 @@
           "kind": "option",
           "name": "lead",
           "value": "LEAD",
+          "open": true,
+          "optional": true,
+          "repeated": true
+        },
+        {
+          "kind": "option",
+          "name": "sale",
+          "value": "SALE",
           "open": true,
           "optional": true,
           "repeated": true
@@ -20715,6 +20752,53 @@
           }
         },
         {
+          "name": "brainstorm-pilot",
+          "children": [
+            {
+              "name": "check",
+              "leaf": {
+                "path": [
+                  "plugin",
+                  "brainstorm-pilot",
+                  "check"
+                ],
+                "usage": [
+                  "brainstorm-pilot check --input FILE --sources DIR"
+                ],
+                "forms": [
+                  {
+                    "tokens": [
+                      {
+                        "kind": "literal",
+                        "word": "brainstorm-pilot"
+                      },
+                      {
+                        "kind": "literal",
+                        "word": "check"
+                      },
+                      {
+                        "kind": "option",
+                        "name": "input",
+                        "value": "FILE",
+                        "open": true
+                      },
+                      {
+                        "kind": "option",
+                        "name": "sources",
+                        "value": "DIR",
+                        "open": true
+                      }
+                    ]
+                  }
+                ],
+                "summary": "Check selected private exact-key observations and consented funnel claims. Reads no service; grants no publication or payment authority.",
+                "effect": "read_only",
+                "runs_on": "connected_computer"
+              }
+            }
+          ]
+        },
+        {
           "name": "enable",
           "leaf": {
             "path": [
@@ -21627,6 +21711,22 @@
         {
           "kind": "option",
           "name": "blobs-dir",
+          "value": "DIR",
+          "open": true,
+          "optional": true,
+          "repeated": true
+        },
+        {
+          "kind": "option",
+          "name": "input",
+          "value": "FILE",
+          "open": true,
+          "optional": true,
+          "repeated": true
+        },
+        {
+          "kind": "option",
+          "name": "sources",
           "value": "DIR",
           "open": true,
           "optional": true,

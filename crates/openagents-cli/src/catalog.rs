@@ -149,6 +149,7 @@ pub(crate) const EXT_EFFECTS: &[Declared] = &[
     Declared::computer("search", Effect::ReadOnly),
     Declared::computer("install", Effect::LocalWrite),
     Declared::computer("installed", Effect::ReadOnly),
+    Declared::computer("brainstorm-pilot check", Effect::ReadOnly),
     Declared::computer("enable", Effect::LocalWrite),
     Declared::computer("disable", Effect::LocalWrite),
     Declared::computer("inspect", Effect::ReadOnly),
