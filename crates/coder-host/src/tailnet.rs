@@ -760,11 +760,9 @@ mod tests {
             chats: None,
         };
         let access = settings.access();
-        assert_eq!(access.public_key().unwrap(), host_key);
+        assert_eq!(retry_busy(|| access.public_key()).unwrap(), host_key);
         let now = crate::unix_time().unwrap();
-        access
-            .invite(&settings.relay, Rights::standard(), now, now + 3600)
-            .unwrap();
+        retry_busy(|| access.invite(&settings.relay, Rights::standard(), now, now + 3600)).unwrap();
         // Another serving key: refused before Tailscale is asked.
         let other = start(settings.clone(), &"0".repeat(64)).await.unwrap_err();
         assert!(other.to_string().contains("serving host"), "{other}");

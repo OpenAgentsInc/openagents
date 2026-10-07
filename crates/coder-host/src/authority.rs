@@ -441,13 +441,17 @@ mod tests {
         pair_with(host, device, "observe", now);
     }
 
+    /// Each store call waits out a brief holder, as `Authority` does: a
+    /// child that another test spawns keeps a copy of the store's lock until
+    /// it runs its program (#10751).
     fn pair_with(host: &Host, device: &SecretKey, rights: &str, now: u64) {
         let rights = Rights::parse_list(rights).unwrap();
-        let code = host.invite(RELAY, rights, now, now + 3600).unwrap().code;
+        let code = busy_retry(|| host.invite(RELAY, rights.clone(), now, now + 3600))
+            .unwrap()
+            .code;
         let invitation = HostInvitation::parse(&code, now, POLICY).unwrap();
         let pending = prepare_redeem(&invitation, device, now, POLICY).unwrap();
-        host.handle(&pending.event, RELAY, now, &mut Unconnected)
-            .unwrap();
+        busy_retry(|| host.handle(&pending.event, RELAY, now, &mut Unconnected)).unwrap();
     }
 
     /// A check on one thread while another thread's operation holds the

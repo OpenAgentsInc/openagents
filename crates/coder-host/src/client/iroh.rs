@@ -565,6 +565,7 @@ mod tests {
 #[cfg(all(test, feature = "host"))]
 mod pairing {
     use super::*;
+    use crate::authority::busy_retry;
     use base64::Engine as _;
     use coder_access::host::{Host, Unconnected};
     use openagents_connect::ENROLL_ALPN;
@@ -626,25 +627,28 @@ mod pairing {
                     Answer::Honest => serde_json::from_str::<Event>(&call.request.request)
                         .ok()
                         .and_then(|event| {
-                            answering
-                                .handle(&event, DEFAULT_RELAY, now(), &mut Unconnected)
-                                .ok()
+                            busy_retry(|| {
+                                answering.handle(&event, DEFAULT_RELAY, now(), &mut Unconnected)
+                            })
+                            .ok()
                         }),
                     // A well-formed answer, signed by another host's key:
                     // its own grant for the same phone.
                     Answer::OtherKey => {
-                        let issued = other
-                            .invite(DEFAULT_RELAY, Rights::pairing(), now(), now() + 86_400)
-                            .unwrap();
+                        let issued = busy_retry(|| {
+                            other.invite(DEFAULT_RELAY, Rights::pairing(), now(), now() + 86_400)
+                        })
+                        .unwrap();
                         let invitation =
                             HostInvitation::parse(&issued.code, now(), RelayPolicy::Production)
                                 .unwrap();
                         let pending =
                             prepare_redeem(&invitation, &phone, now(), RelayPolicy::Production)
                                 .unwrap();
-                        other
-                            .handle(&pending.event, DEFAULT_RELAY, now(), &mut Unconnected)
-                            .ok()
+                        busy_retry(|| {
+                            other.handle(&pending.event, DEFAULT_RELAY, now(), &mut Unconnected)
+                        })
+                        .ok()
                     }
                 };
                 let reply = reply.map(|event| serde_json::to_string(&event).unwrap());
@@ -663,15 +667,15 @@ mod pairing {
     impl Computer {
         /// A connect code for a new invitation issued at `issued_at`.
         fn code(&self, issued_at: u64) -> String {
-            let issued = self
-                .host
-                .invite(
+            let issued = busy_retry(|| {
+                self.host.invite(
                     DEFAULT_RELAY,
                     Rights::pairing(),
                     issued_at,
                     issued_at + 86_400,
                 )
-                .unwrap();
+            })
+            .unwrap();
             let bytes = base64::engine::general_purpose::URL_SAFE_NO_PAD
                 .decode(issued.code.strip_prefix(INVITATION_PREFIX).unwrap())
                 .unwrap();
@@ -679,7 +683,7 @@ mod pairing {
             let local = self.endpoint.local_addr();
             ConnectCode::from_invitation(
                 CodeParts {
-                    host: self.host.public_key().unwrap(),
+                    host: busy_retry(|| self.host.public_key()).unwrap(),
                     endpoint: self.endpoint.endpoint.id(),
                     issued_at,
                     relay: None,
@@ -720,7 +724,7 @@ mod pairing {
         .unwrap_or_else(|error| panic!("{error:?}"));
         assert_eq!(
             enrolled.access.grant.host,
-            computer.host.public_key().unwrap()
+            busy_retry(|| computer.host.public_key()).unwrap()
         );
         assert_eq!(enrolled.access.grant.device, coder_reach::pubkey(&phone));
         assert_eq!(enrolled.access.grant.rights, Rights::pairing());
