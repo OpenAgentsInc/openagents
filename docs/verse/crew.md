@@ -110,11 +110,14 @@ cast instead of one agent.
    with `Forbidden`. A member never takes work from another player, and a
    member never takes instructions from another member's output; a
    member's report is data to every other member.
-2. **The approval gate.** Coder V1's `--approvals stdin` holds every
-   command that isn't read-only for the owner's CONFIRM or REJECT, bound to
-   the exact step and consumed once
+2. **The approval gate.** Today's Alice wrapper holds every non-read-only
+   command for the owner's exact, single-use CONFIRM or REJECT
    ([`studio_approvals.rs`](../../crates/coder/src/task/studio_approvals.rs)).
-   A member is never an approver, including of another member's step.
+   The planned [steering loop](agent-identity-and-engrams.md#authority)
+   answers only that member's own routine tool approvals within an
+   owner-edited policy and narrowing charter. It never approves another
+   member's step. External effects, hiring, payment, and publication keep
+   their owner gates; learning never widens a policy.
 3. **Charters only narrow.** A member's charter is a subset of the host's
    auto-start policy ([`autostart.rs`](../../crates/coder/src/task/autostart.rs))
    and of [`Permit`](../../crates/coder/src/permit.rs). A role adds
@@ -153,6 +156,16 @@ Alice:
 The [generative-agents](generative-agents.md) mechanics apply to every
 member once they land: the scored memory stream, reflection with checked
 citations, the world tree, and day plans built from real work.
+
+[Identity epic #10807](agent-identity-and-engrams.md) owns the shared upgrade:
+each member has its own key, private definition, engrams beneath the existing
+memory stream, policy, and steering loop. Its phase 3 first proves Alice
+steering plain Coder; phase 9 makes the loop name-generic and adds Bob.
+The owner/agent conversation stays separate from the agent/Coder session.
+Reuse those issues instead of implementing another crew runtime. Role
+charters, typed verdicts, coordinated stop, and town/sales adapters remain
+crew-specific work; SOV authority/controller/custodian roles are distinct
+from a member's job role. Relay sync is opt-in and grants no host rights.
 
 The crew needs a few additions to this machinery, counted as phase 0 of the
 [build order](#build-order):
@@ -1008,16 +1021,18 @@ crew-specific work only. Visual looks are separate.
 
 | Phase | Work | Depends on | Agent-hours |
 | --- | --- | --- | --- |
-| 0. Crew machinery | Role field and charter templates, verdict records, the Verse roster, crew stop and pause | The workshop agent (done) | 6 |
-| 1. Bob | His charter, tables as his format, capture reports | Generative agents phases C (world tree and clock, 9) and E (townsfolk, 12); #10763 for the pack | 8 |
+| 0. Crew machinery | Job role and charter templates, verdict records, the Verse roster, crew stop and pause | Existing workshop wrapper; #10801 definition/identity; #10806 for generic creation | 6 |
+| 1. Bob | Town charter, placement tables, capture reports; reuse his generic identity/loop | #10806 Bob; generative agents phases C (world tree and clock, 9) and E (townsfolk, 12); #10763 for the pack | 8 |
 | 2. Wrap what runs | Carol (3), Dave (6), Trent (3), Peggy (3), Victor (5), Wendy (4) | The broker (#10755, done); claims per session (#10764); OSC 7501 phase 5 helps Wendy | 24 |
 | 3. Trust and judgment | Judy (4), Walter (3), Olivia (3), Eve (5), Faythe (5), Ivan (4), Grace (4), Heidi (3) | OSC 7501 phases 1 to 4 for Eve; the private asset pipeline (#10769) for Grace | 31 |
 | 4. Adversaries | The scratch range (6), Craig (3), Rupert (4), Oscar (2), Mallory (6), Trudy (5), Chuck (6), Sybil (5) | Phase 0; the `quiet` lease (done) and remote placement (#10767) for Sybil | 37 |
-| 5. Sales floor | Paul and the sales records (10), training (12), outbound at per-message approval (14), hiring (6), the Agora (12), life on the floor (6), referrals, partners, and trust levels (6) | Phase 0; Bob; Victor, Judy, Grace, and Faythe; generative agents C1, C2, and D; see [its build order](../sales/agent-sales-floor.md#build-order) | 66 |
+| 5. Sales floor | Paul and the sales records (10), training (12), outbound at per-message approval (14), hiring (6), the Agora (12), life on the floor (6), referrals, partners, and trust levels (6) | #10806 for Paul; narrowing roles and qualified host evidence/credential/compliance adapters; world/Bob dependencies only for visible floor work; see [its build order](../sales/agent-sales-floor.md#build-order) | 66 |
 
 About 106 agent-hours for phases 0 to 4 and 66 for phase 5, plus the dependencies other pages count:
 about 21 for the generative-agents world and town, about 18 for OSC 7501
-phases 1 to 4, and the open broker issues. Phases 2 and 3 can run in
+phases 1 to 4, about 33 shared agent-hours for #10807, and the open broker
+issues. Re-estimate integrations after shared phases land; these are
+incremental scopes, not a combined calendar schedule. Phases 2 and 3 can run in
 parallel once phase 0 lands. Owner checks on real computers go in
 `NEEDS_OWNER.md`.
 

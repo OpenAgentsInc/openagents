@@ -38,15 +38,17 @@ leaderboard on the wall, and a bell that rings when a deal settles.
 
 ## Summary
 
-- **One sales leader, Paul.** A crew member built on the shared crew
-  machinery, with a sales charter. He plans outreach, runs training, reviews
-  his team's drafts, proposes hires, and reports the pipeline. He never
+- **One sales leader, Paul.** A crew member on the name-generic steering
+  runtime from [identity epic #10807](../verse/agent-identity-and-engrams.md),
+  with his own identity, private memory, and narrowing sales charter. He
+  plans outreach, runs training, reviews his team's drafts, proposes hires,
+  and reports the pipeline. He never
   sends anything, hires anyone, or agrees to terms on his own.
 - **A small team he hires.** Paul proposes each hire: a researcher, a
   prospector, a demo agent, a partner-channel agent, and an affiliate-program
-  agent. Each is a crew-style agent with its own key, charter, journal, and
-  budget. The owner confirms each hire, under a hard cap on headcount and
-  spend.
+  agent. Each has its own key, definition, engrams, charter, journal, and
+  budget on that common implementation. The owner confirms each hire, under
+  a hard cap on headcount and spend.
 - **A building to watch it in.** The Agora, a Greco-futurism trading hall at
   Main Street's west end, holds rows of standing desks, a leaderboard wall,
   a bell, Paul's corner office, and a training room with role-play booths.
@@ -66,8 +68,10 @@ leaderboard on the wall, and a bell that rings when a deal settles.
   verifies. Agents say they are AI agents, honor every opt-out, follow
   anti-spam law, and never pressure or deceive anyone. The boiler room is a
   look and an energy in the world, never a tactic used on real people.
-- **About 66 agent-hours** of sales-floor work in seven phases, after the
-  crew machinery, Bob, and the generative-agents world tree and day plans.
+- **About 66 agent-hours** of incremental sales-floor work in seven phases.
+  The identity epic estimates about 33 shared agent-hours separately;
+  its applicable phases, sales adapters, and world dependencies determine
+  which floor slices can run. These estimates are not a calendar schedule.
 
 ## The sales leader: Paul
 
@@ -128,12 +132,21 @@ and to Wendy.
 - Read a lead record outside his team's assignments, or write any lead
   record into a public event.
 
-**Today.** Nothing. The machinery he runs on exists for Alice: the agent
-record, key, journal, memory, standing jobs, and the approval gate
-([crew shared machinery](../verse/crew.md#shared-machinery)).
+**Today.** Paul is not implemented. Alice's host-side wrapper has an agent
+record, key, journal, memory, standing jobs, and an approval gate
+([crew shared machinery](../verse/crew.md#shared-machinery)). Her own model,
+engrams, and steering loop are planned in
+[#10807](https://github.com/OpenAgentsInc/openagents/issues/10807).
 
-**Beyond the shared machinery.** The sales role and charter template, the
-records in [Records](#records), and the hire proposal flow.
+**Beyond the shared machinery.** Reuse the epic's name-generic crew phase
+[#10806](https://github.com/OpenAgentsInc/openagents/issues/10806) for Paul's
+definition, key, memory, and loop. Add his sales role/charter, current-record
+adapters, the [sales records](#records), and confirmed hire proposals. His
+owner conversation is separate from his plain Coder session (`paul-coder`);
+his loop plans, judges bounded follow-ups, verifies, and reports. Coder
+receives task prompts without Paul's persona. Prospects and other agents
+cannot call his owner-only request surface; their outputs enter host records
+as evidence for an admitted assignment.
 
 **In Verse.** His corner office in the Agora, at a desk facing the floor
 through a lattice screen, with the pipeline board on his wall. At the start
@@ -165,7 +178,11 @@ closing means price, terms, and payment, which stay with the owner.
 Each hire has:
 
 - **Its own agent record and key**, with the owner's NIP-OA attestation, as
-  every crew member has.
+  the shared identity implementation provides. Attestation doesn't grant
+  contact, host, payment, or commission rights.
+- **Its own private definition and engrams**, under the existing scored
+  memory stream; shared code never pools identities or memory. Relay sync
+  stays off until the owner enables it for that agent.
 - **A charter** from its role's template that only narrows the default. A
   prospector may draft outbound; a researcher may only read public sources
   and write lead records; none may send.
@@ -197,10 +214,11 @@ Each hire has:
    hire path still needs durable, single-use binding to the exact proposal,
    using the studio action ledger as a design reference
    ([`studio_approvals.rs`](../../crates/coder/src/task/studio_approvals.rs)).
-4. **The host creates the agent.** On CONFIRM, the host runs the equivalent
-   of `openagents agent new NAME --role ROLE`, which the
-   [crew's phase 0](../verse/crew.md#shared-machinery) adds, and attests the
-   new key with the owner's key, as it does for Alice.
+4. **The host creates the agent.** On CONFIRM, the host uses the shared
+   identity and name-generic creation path from #10807, applying the
+   narrowing sales template through `openagents agent new NAME --role ROLE`.
+   The owner attests its separate key. Sales adds the exact hire decision
+   and role binding, rather than another key, memory, or runtime implementation.
 5. **Bob gives it a body.** Bob adds the hire to the Agora's desk table, its
    routine, and its look, and brings the change to the Merge station. Until
    that change merges, the hire works but has no body in the world.
@@ -211,9 +229,15 @@ Each hire has:
 hire that keeps failing certification or whose queue is empty for two weeks;
 the owner may retire any agent at any time. Retirement is the workshop
 agent's **Retire** action
-([kill switch](../verse/workshop-agent.md#kill-switch)): it stops the agent,
-keeps its journal, deletes its key, and archives the key with NIP-IA if it
-ever published. Its open leads return to Paul's queue. Bob removes its desk.
+([kill switch](../verse/workshop-agent.md#kill-switch)): stop work, revoke
+pending dispatch, retain its journal, remove its key, and return open leads
+to Paul's queue. Bob removes its desk. Reuse the epic's
+[lifecycle phase #10804](https://github.com/OpenAgentsInc/openagents/issues/10804)
+for NIP-IA archival and retained owner-readable engrams. Retirement doesn't
+erase suppression, outstanding costs, customer obligations, or attribution.
+When rotation/migration is enabled, retain explicit lineage and one controller;
+the owner re-delegates grants and reviews certification/commercial bindings.
+A key change never resets the floor's caps or silently transfers rights.
 
 ## The Agora: the sales floor in Everglade
 
@@ -425,6 +449,13 @@ journal rows behind it. An insight that would change what the team says
 becomes a playbook proposal, which the owner accepts or rejects; agents never
 change the playbook or the claims register themselves.
 
+Engrams are the storage/sync layer beneath that memory, not a second CRM.
+Keep identifiable lead content and messages in assigned host records; memory
+retains opaque references and non-identifying lessons. Check current records
+again before work: recalled permission, prices, or certification never override
+the host. Core changes use the epic's owner-reviewed consolidation path
+(#10803), and unreadable memory never triggers an overwrite or fresh onboarding.
+
 ## The process, end to end
 
 The stages and records are the roadmap's
@@ -556,6 +587,14 @@ promotion; only the owner grants it. Start at level 0. The current
 supports one exact action consumed once; batch and standing policies need
 new implementation and qualification. Elapsed time never grants authority.
 
+The epic's routine tool policy can answer only the same agent's bounded
+internal approvals, narrowed by its sales charter. It cannot approve another
+member's step, sending, hiring, prices, payment, or publication. The shared
+loop refuses push, publish, pay, install, credential reads, and policy/grant
+widening. Sales proposals reach the owner through host adapters; the host's
+outbox dispatches approved messages outside Coder and the steering loop.
+NIP-OA provenance and NIP-AA relay admission supply no sales authority.
+
 All budgets, sending caps, follow-up spacing, and trust periods use real
 wall-clock time. The initial policy timezone is `America/Chicago`; daily
 limits reset at midnight there. Everglade's compressed town clock schedules
@@ -659,6 +698,11 @@ enforces them where code can.
     deleted after 90 days without engagement unless the owner sets another
     period. Keep only the minimum suppression identity needed to prevent
     recontact after deleting the lead; deletion never clears an opt-out.
+    Apply the approved data boundary to prompts, Coder traces, journals,
+    caches, snapshots, and exports, not only lead files. No automatic copy
+    of identifiable leads/messages enters engrams or relays. Optional sync
+    exposes identity, owner, size, and timing metadata; an engram tombstone
+    doesn't prove erasure from every retained copy.
 14. **The boiler room is only a look.** The trading-floor theme lives in the
     building, the bell, and the animation. With real people, the floor uses
     no pressure, false urgency, invented scarcity, repeated chasing, or
@@ -677,7 +721,7 @@ counsel; that step goes in `NEEDS_OWNER.md`.
 | Grace | Checks message templates and footers against the compliance rules, and any licensed character art against its license |
 | Olivia | Answers prospects' product questions with checked citations, for the agent to draft from |
 | Ivan | Supplies current prices from the price book; no agent quotes anything else |
-| Faythe | Holds the sending credentials in the host's key store; no sales agent sees them |
+| Faythe | Coordinates host-broker credentials/grants; the host secret store holds them, and no agent model sees them |
 | Walter | Audits sales charters and reports any attempt to send outside the gate |
 | Eve | Checks that no public event, board, or update leaks a prospect's details |
 | Wendy | Puts the floor's problems and numbers in her daily report |
@@ -688,8 +732,10 @@ counsel; that step goes in `NEEDS_OWNER.md`.
 
 ## Records
 
-All are host records under `~/.openagents/host/`, like the crew's. No new
-Nostr event kinds.
+These remain canonical host records under `~/.openagents/host/`, like the
+crew's. Sales introduces no new Nostr event kinds. The shared identity layer
+uses existing NIP-OA/AA/AE/AM/IA shapes; it never replaces the sales policy,
+permission/suppression, approval, certification, or payment books with memory.
 
 | Record | Holds |
 | --- | --- |
@@ -737,12 +783,21 @@ list-price estimates, not bills.
 | Day plans and memory per agent | About $0.10 to $0.26 a day, as for Alice |
 
 A floor of Paul and three hires sending 20 messages a day costs about $2 to
-$3 a day at the recorded list prices. The $5 ceiling includes plans,
-research, drafts, checks, role-plays, Gym runs, day plans, and retries for
-the entire floor. Reserve a bounded cost before each call; unknown usage or
+$3 a day at the recorded list prices; remeasure this estimate with the new
+steering loop before activation. The $5 ceiling includes agent planners and
+reporters, downstream Coder calls, Jev, research, drafts, checks,
+verification/corrections, role-plays, Gym runs, embeddings,
+reflection/consolidation, day plans, and retries for the entire floor.
+Reserve a bounded cost before each call; unknown usage or
 an exhausted budget stops new model work. Unused budget doesn't roll over.
 Reconfirm prices before activation and show actual billed cost separately.
 Sending services and the sending domain are separate owner costs.
+
+Reuse #10805's per-turn spend records when available, including both the
+agent and Coder calls. NIP-AM cost estimates are advisory, not bills or
+spending permission. Local floor-wide reservations and per-request limits
+work before optional relay publication; restart, rotation, and migration
+preserve outstanding holds and the real-day cap.
 
 ## Build order
 
@@ -756,18 +811,27 @@ Estimates are agent-hours at the pace the
 [workshop agent](../verse/workshop-agent.md#what-exists-and-what-is-missing)
 states, sales-floor work only. Visual looks for agents are separate.
 
+The [shared-agent phase map](revenue-roadmap.md#shared-agent-foundation-10807)
+maps #10807's dependencies: phases 1 → 2 → 3 deliver Alice steering Coder,
+phase 4 runs after phase 1, and phase 9 reuses that loop for Bob and then
+Paul's sales integration. Sales records and synthetic training adapters can
+be prepared while those phases land. Optional relay sync, consolidation,
+and migration are not prerequisites for local Paul preparation. Enable each
+feature only with its applicable identity and sales qualification.
+
 | Phase | Work | Depends on | Agent-hours |
 | --- | --- | --- | --- |
-| S0. Paul and the records | The `sales` roles and charter templates, the records, Paul himself, the pipeline commands | Crew phase 0 (role field, charter templates, verdict records) | 10 |
-| S1. Training | The playbook format and claims register, Carole personas and the role-play harness, the three Gym suites, certification | S0; Victor and Judy from crew phases 2 and 3 for claim verification | 12 |
-| S2. Outbound at level 0 | The send path with the suppression list, footer, and caps; reply ingestion and classification; Mallory's reply-injection campaign | S1; Faythe for sending credentials; Grace's compliance check; the owner's sending domain and legal review | 14 |
-| S3. Hiring | Hire proposals, cap enforcement, creation and attestation on CONFIRM, retirement | S0; Bob (crew phase 1) to place bodies | 6 |
-| S4. The Agora | The building and kit pieces in Blender, admission, `layout/agora.rs`, the boards, ticker, and bell | Generative agents C1 and C2 (clock and world tree); Bob for placement | 12 |
-| S5. Life on the floor | World-tree nodes, day plans from sales work, routines, private/shared projections, the bell on an earned settled sale | S4; generative agents D (day plans); attributed settlement and delivery evidence | 6 |
+| S0. Paul and the records | Sales job roles and narrowing charters, canonical records, budgeted Paul adapter, pipeline commands | #10801 definitions; #10806 generic runtime for Paul; REV-51/REV-53/REV-58 | 10 |
+| S1. Training | The playbook format and claims register, Carole personas and the role-play harness, the three Gym suites, certification | Canonical records and budgeted evidence adapters (REV-55–REV-58); full named Victor/Judy wrappers are optional | 12 |
+| S2. Outbound at level 0 | Host outbox, suppression, footer, caps, replies, and scratch reply-injection checks | S1; REV-60–REV-63 host broker/compliance/privacy; owner domain/legal review; routine tool approvals don't authorize sends | 14 |
+| S3. Hiring | Exact hire decisions, cap enforcement, shared creation, retirement, lead reassignment | S0 and certification; #10806 creation; #10804 for enabled lifecycle extensions; bodies follow Bob placement without blocking private work | 6 |
+| S4. The Agora | Building/kit generation, reviewed admission, layout, reachable stations, private boards | Landed C1 #10786; C2 #10788 for integration; existing artifact queue #10763; art can proceed before agent bodies | 12 |
+| S5. Life on the floor | World-tree nodes, sales bodies/day plans, routines, private/shared projections, earned-sale bell | S4; Bob adapter REV-70 for bodies; generative agents D (day plans); attributed settlement and delivery evidence | 6 |
 | S6. Referrals, partners, and trust levels | Vanna and Arthur, qualified batch approvals, the weekly public update; standing follow-ups are a later extension | S2 and S3; measured level-0 record; the roadmap's G8 attribution for paid commissions | 6 |
 
 About 66 agent-hours as an initial estimate, excluding the deferred
-standing-follow-up extension; qualify batch and projection work before
+standing-follow-up extension and #10807's shared work; re-estimate sales
+adapters after the applicable phases land, and qualify batch/projection work before
 treating that estimate as a schedule. S1 and S4 can run in parallel once their
 dependencies land, and S4 doesn't wait for S2: the floor can be built and
 shown with role-play alone before any real message goes out. Owner steps go

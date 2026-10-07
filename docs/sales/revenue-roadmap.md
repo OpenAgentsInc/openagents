@@ -10,7 +10,9 @@ Milestones below are proposed exit criteria, not claims of completed launches
 or commitments to dates.
 
 The review uses episodes 275–289, the earlier revenue episodes, the October 6
-operator conversation, maintained documentation, and targeted source reads.
+operator conversation, maintained documentation, targeted source reads, and
+the October 7 [agent identity epic #10807](https://github.com/OpenAgentsInc/openagents/issues/10807)
+and its [specification](../verse/agent-identity-and-engrams.md).
 No live service, customer, or funded payment was tested for this review.
 
 ## Contents
@@ -203,10 +205,68 @@ acceptance, or a deployed customer offer.
 | Plugin receiver, splits, and payouts | Closed [#10200](https://github.com/OpenAgentsInc/openagents/issues/10200), covering #10185–#10199; [payment contract](../payments/README.md) | Customer integration, authenticated earnings access, and actual funded delivery/payout evidence |
 | Retail lifecycle and adapters | Closed #10704–#10719, #10722–#10724 and [#10748](https://github.com/OpenAgentsInc/openagents/issues/10748); [retail service](../cloud/retail-service.md), [qualification](../cloud/retail-qualification.md) | Production customer transport/worker and client spending controls; [#10719](https://github.com/OpenAgentsInc/openagents/issues/10719) is a read projection |
 | Gateway, account, money, and usage APIs | Closed [#9468](https://github.com/OpenAgentsInc/openagents/issues/9468), [#9490](https://github.com/OpenAgentsInc/openagents/issues/9490), [#9491](https://github.com/OpenAgentsInc/openagents/issues/9491), [#9492](https://github.com/OpenAgentsInc/openagents/issues/9492), [#9493](https://github.com/OpenAgentsInc/openagents/issues/9493); [gateway](../decision-models/service/gateway.md) | Supported funded door, live card provider, client connection, and cross-product financial mapping |
-| Agent records and memory | Existing keyed agents, owner decisions, journals, finite jobs, stop/pause/retire; closed [#10785](https://github.com/OpenAgentsInc/openagents/issues/10785), [#10787](https://github.com/OpenAgentsInc/openagents/issues/10787); [crew machinery](../verse/crew.md#shared-machinery) | Roles, sales records, grants, training, and coordinated sales operation |
-| World prerequisites | Open [#10786](https://github.com/OpenAgentsInc/openagents/issues/10786), [#10788](https://github.com/OpenAgentsInc/openagents/issues/10788), [#10789](https://github.com/OpenAgentsInc/openagents/issues/10789), [#10790](https://github.com/OpenAgentsInc/openagents/issues/10790), [#10791](https://github.com/OpenAgentsInc/openagents/issues/10791); [generative agents](../verse/generative-agents.md#phases-and-dependencies) | Finish these existing issues for the Agora's world tree, day plans, and roster; don't file duplicate foundations |
+| Agent records and memory | Existing keyed Alice wrapper, owner decisions, journals, finite jobs, stop/pause/retire; closed [#10785](https://github.com/OpenAgentsInc/openagents/issues/10785), [#10787](https://github.com/OpenAgentsInc/openagents/issues/10787); [crew machinery](../verse/crew.md#shared-machinery) | Her own identity, engrams, and steering loop belong to open #10807; sales adds narrowing roles, records, grants, training, and coordinated operation |
+| World prerequisites | Closed [#10786](https://github.com/OpenAgentsInc/openagents/issues/10786); open [#10788](https://github.com/OpenAgentsInc/openagents/issues/10788), [#10789](https://github.com/OpenAgentsInc/openagents/issues/10789), [#10790](https://github.com/OpenAgentsInc/openagents/issues/10790), [#10791](https://github.com/OpenAgentsInc/openagents/issues/10791); [generative agents](../verse/generative-agents.md#phases-and-dependencies) | Reuse the landed town clock; finish the existing reflection, world-tree, day-plan, and roster issues without duplicate foundations |
 | Artifact pack delivery | Closed [#10763](https://github.com/OpenAgentsInc/openagents/issues/10763), landed while this inventory was being prepared; [artifact queue](../coder/runtime/artifact-queue.md) | Submit Agora pack changes through the existing serialized queue; no new merge-queue implementation or direct pack repin push |
 | Later paid-market profiles | Closed [#10725](https://github.com/OpenAgentsInc/openagents/issues/10725)–[#10729](https://github.com/OpenAgentsInc/openagents/issues/10729); [later-market contracts](../payments/later-markets.md) | Customer/provider integration and funded availability; reviewed profiles and fake tooling aren't a live paid labor pool |
+
+### Shared agent foundation: #10807
+
+The [identity and engrams specification](../verse/agent-identity-and-engrams.md)
+owns the common runtime. Its nine phase issues are open as of this review;
+reuse them rather than filing REV duplicates for agent keys, memory storage,
+steering, sync, or lifecycle. Each member has its own key, definition, engrams,
+policy, and conversations. The implementation is shared; identities and
+private memory are separate.
+
+| Existing phase issue | Native dependency | Sales integration boundary |
+| --- | --- | --- |
+| 1. Primitives [#10798](https://github.com/OpenAgentsInc/openagents/issues/10798) | None | Shared attestation and NIP-AE codec; no sales-specific event kind |
+| 2. Local engrams [#10799](https://github.com/OpenAgentsInc/openagents/issues/10799) | #10798 | Shared write-through beneath the existing memory stream and scored recall; sales reads assigned host records by reference |
+| 3. Alice steers Coder [#10800](https://github.com/OpenAgentsInc/openagents/issues/10800) | #10799 | First owner-visible target: plan, plain Coder prompts, judge, bounded corrections, verify, and report; separate owner/agent and agent/Coder conversations |
+| 4. Identity [#10801](https://github.com/OpenAgentsInc/openagents/issues/10801) | #10798 | Key custody, private definition, SOV authority/controller/custodian roles, signed profile, and expiry warning; sales job roles and charters remain REV-51 |
+| 5. Relay sync [#10802](https://github.com/OpenAgentsInc/openagents/issues/10802) | #10799, #10801 | Optional owner-device continuity through NIP-AA/NIP-AE, off per agent until enabled; not a Paul or revenue launch gate |
+| 6. Consolidation [#10803](https://github.com/OpenAgentsInc/openagents/issues/10803) | #10799, reflection #10789 | Owner-reviewed core proposals and memory reachability; no new sales memory system or authority from reflection |
+| 7. Lifecycle [#10804](https://github.com/OpenAgentsInc/openagents/issues/10804) | #10801, #10802 | Shared rotation, retained owner-readable history, retirement, migration, and export; REV-64 adds floor caps and lead reassignment |
+| 8. Spend records [#10805](https://github.com/OpenAgentsInc/openagents/issues/10805) | #10800, #10802 | Both the steering agent's and Coder's calls; REV-58 adds aggregate floor reservations, real-day limits, and all helper work |
+| 9. Crew [#10806](https://github.com/OpenAgentsInc/openagents/issues/10806) | #10800, #10801 | Name-generic loop/definition/policy and Bob as the second member; REV-54 supplies Paul, REV-70 supplies Bob's sales placement work |
+
+Deliver phases 1 → 2 → 3 first; phase 4 can run after phase 1 in parallel.
+Phase 9 then makes that runtime reusable for Paul. Prepare sales records,
+playbook adapters, synthetic training, and Agora art in parallel. The
+remaining epic phases keep their native blockers; sync, consolidation,
+migration, and relay spend publication don't all have to land before local
+Paul preparation. Local spend admission and sales privacy do.
+
+The epic estimates about 33 agent-hours of shared work. The floor's roughly
+66 agent-hours are incremental sales scope, not another copy of those phases
+or a combined calendar promise. Human pilots and every smallest R1 path
+remain independent of #10807.
+
+Apply these boundaries when integrating the phases:
+
+- Agent keys identify actors. Customer/workspace/payer mapping in REV-09 and
+  REV-19, referral attribution in REV-27/REV-28, and qualified payout
+  destinations remain separate commercial records. Rotation never transfers
+  host grants, certification, payment rights, or earnings eligibility silently.
+  Preserve historical attribution under a stable commercial referrer ID and
+  reviewed lineage; changing an agent key doesn't mint a new eligible referral.
+- Engrams hold screened memory and checked insights. The private host
+  pipeline, permission/suppression lists, owner approvals, certification, and
+  money ledger remain authoritative. Use opaque record references and
+  non-identifying summaries in persistent memory; keep lead identity and
+  message content in the assigned host records. A tombstone isn't proof of
+  deletion from a relay, cache, trace, or plaintext export.
+- Paul's loop may answer only its own permitted routine tool approvals.
+  Its charter narrows the shared defaults to sales operations; it cannot
+  approve another member's step. Sending, hiring, pricing, payment, and
+  publication use the owner gate and host adapters outside the steering
+  loop. NIP-OA/NIP-AA attest identity and relay access, not permission to act.
+- REV-58 reserves the steering, Coder, Jev, helper, reflection, and retry
+  costs together before dispatch. Reuse #10805's call records when available;
+  until then require a bounded local cost source and retain unknown holds.
+  NIP-AM cost estimates are advisory; actual bills stay separate. Its
+  telemetry neither admits spending nor establishes revenue or settlement.
 
 ### R0: supported offer, evidence, and pilot operations
 
@@ -318,28 +378,34 @@ rows are the implementation inventory for the [sales-floor design](agent-sales-f
 whose S0–S6 phases describe scope and rough effort. This roadmap owns ordering.
 R0/R1 can proceed through humans while any of these rows is incomplete.
 
+REV-54 includes the sales steering adapter; REV-53/REV-60 include its memory
+and privacy integration; REV-64 includes lifecycle reconciliation when those
+operations are enabled. These are incremental integrations with #10807,
+not new copies of its phase issues. Current host records are checked at each
+admission; memory and model-written preferences never grant authority.
+
 | ID | Issue scope and owner | Depends on | Acceptance |
 | --- | --- | --- | --- |
-| REV-51 | Crew/host: add role fields, narrowing charters, and typed evidence verdicts | Existing keyed agent/journal/owner machinery | Role-aware creation loads old records, preserves keys/attestation, and grants no new rights; helper verdicts retain author/evidence and remain data |
+| REV-51 | Crew/host: add sales job roles, narrowing charters, and typed evidence verdicts | Identity definition/roles #10801; #10806 for generic creation | Reuse the shared record/key schema; sales job roles remain distinct from SOV authority/controller/custodian roles; old records load without replacing keys; charters only narrow and verdicts retain author/evidence as data |
 | REV-52 | Crew/host: implement crew-wide owner stop/pause and dispatch revocation | REV-51 | Owner stops selected members and pending dispatch together; restart never silently resumes stopped work; existing individual stop/retire semantics remain authoritative |
-| REV-53 | Host/sales: extend the private pipeline with policy, draft, assignment, and certification records | REV-04, REV-51 | One durable private record set survives restart; agents see assigned leads only; jurisdiction/permission/version/expiry and grant scope are explicit |
-| REV-54 | Sales/host: instantiate Paul and expose pipeline/lead/draft/suppression/certification controls | REV-53, REV-58; REV-55/REV-57 for real-prospect drafts | Paul plans from actual queues under owner-admitted assignments and budget; every lead has an accepted owner/next action/date; recommendations never approve effects and empty work stays idle |
+| REV-53 | Host/sales: extend the private pipeline with policy, draft, assignment, and certification records | REV-04, REV-51 | One durable private record set survives restart; agents read assigned leads only; jurisdiction/permission/version/expiry and grant scope are explicit; memory uses opaque references/non-identifying summaries, never an automatic copy of CRM contents |
+| REV-54 | Sales/host: instantiate Paul on the shared steering loop and expose pipeline/lead/draft/suppression/certification controls | REV-53, REV-58; generic crew #10806; REV-55/REV-57 for real-prospect drafts | Paul has his own definition/key/engrams and owner conversation, steers plain Coder in a separate session, and plans from admitted queues; checks/report cite host evidence; interested replies are data, never owner requests; recommendations grant no effects and empty work stays idle |
 | REV-55 | Sales/evidence: connect the reviewed playbook, claims, price, and answer helpers | REV-08, REV-53, REV-58; existing evidence/document readers | Minimum host adapters feed exact reviewed evidence, price, and answer references into versioned drafts; proposed Peggy/Victor/Judy/Olivia/Ivan roles may wrap them later; full named crew is optional |
 | REV-56 | Gym/sales: add synthetic Carole personas and written role-play harness | REV-55 | Objections, misleading answers, uncertainty, and opt-outs are covered; fixtures describe no real buyers and practice never enters real-contact queues |
 | REV-57 | Gym/sales: implement claims/compliance/tone suites and certification | REV-55, REV-56; existing Gym | Calibrate on owner-labeled development data and evaluate frozen checks on locked data; serious failures block certification; required practice/samples, playbook changes, complaints, and two failed weekly checks enforce certification or suspension |
-| REV-58 | Host/payments: enforce sales model reservations and wall-clock policy | REV-53 | Plans, research, drafts, training, checks, day plans, and retries fit the $5 ceiling; unknown cost holds capacity; real `America/Chicago` days, weekly sending ramp, and caps don't follow town time |
+| REV-58 | Host/payments: enforce sales model reservations and wall-clock policy | REV-53; reuse spend records #10805 when available | One floor ledger reserves agent planner/reporter, Coder, Jev, helpers, training, embeddings/reflection, day plans, verification/corrections, and retries within $5; unknown cost holds capacity; local bounded admission works before relay telemetry; real `America/Chicago` limits persist across restart/rotation/migration |
 | REV-59 | Sales/host: add meeting-slot proposals and accepted qualified human assignments | REV-04, REV-54, REV-55 | Owner-published slots and full private brief reach an accepting human; agents don't read calendars, accept prices/terms, or inherit mailbox/payment access |
-| REV-60 | Host/privacy: implement suppression, contact admission, retention, and deletion | REV-53; sales jurisdiction/channel policy | Opt-outs suppress across hires/channels; ambiguous opt-outs block contact; inactive leads expire while minimal suppression identity survives; scratch log/snapshot/export tests retain no unauthorized lead disclosure |
-| REV-61 | Host/security: add one email adapter with broker-owned credentials and compliance checks | REV-58, REV-60; owner domain/mailbox setup | Minimum host credential/authority/compliance/privacy adapters implement the proposed Faythe/Walter/Grace/Eve responsibilities; agent context receives no credentials; identity, footer, unsubscribe, recipient admission, and delivery authentication are verified |
-| REV-62 | Host/client: implement durable level-0 approval and outbox dispatch | REV-52, REV-57, REV-58, REV-60, REV-61 | Viewers show exact recipient/content/attachments/versions; one-use approval sends once; edits/revocation block it; unknown delivery reconciles; complaints, suppressed sends, false claims, or authentication failure pause/reset trust and require corrected owner-approved restart |
+| REV-60 | Host/privacy: implement suppression, contact admission, retention, and deletion | REV-53; sales jurisdiction/channel policy | Opt-outs suppress across hires/channels; ambiguity blocks contact; inactive leads expire while minimal suppression survives; scratch memory/prompt/trace/cache/sync/export checks enforce approved recipients and retention; relay tombstones never count as verified erasure |
+| REV-61 | Host/security: add one email adapter with broker-owned credentials and compliance checks | REV-58, REV-60; owner domain/mailbox setup | Minimum host credential/authority/compliance/privacy adapters implement the proposed Faythe/Walter/Grace/Eve responsibilities outside Coder; agent context receives no credentials; identity, footer, unsubscribe, recipient admission, and delivery authentication are verified |
+| REV-62 | Host/client: implement durable level-0 approval and outbox dispatch | REV-52, REV-57, REV-58, REV-60, REV-61 | Host-owned dispatch outside the steering loop binds exact recipient/content/attachments/versions; owner approval sends once; routine tool policy never authorizes it; edits/revocation block, unknown delivery reconciles, and complaints/false claims/suppression/authentication failures pause/reset until corrected owner restart |
 | REV-63 | Host/sales: ingest replies and schedule bounded follow-ups | REV-60, REV-62; REV-59 for booking/handoff branches | Opt-out precedes model classification; Mallory scratch-inbox injection tests pass before real sending and after handler changes; replies/links/attachments grant no effects; hard bounces suppress/pause the channel; two follow-ups use real weeks/current permission |
-| REV-64 | Crew/host: add confirmed hiring, retirement, and lead reassignment | REV-51–REV-54, REV-57, REV-58 | Start Paul alone; queues justify Erin, Frank, then Pat; exact proposals create/attest once within Paul-plus-three initial cap and budget; new hires train before real drafting; retirement stops work and reassigns leads with journals retained |
+| REV-64 | Crew/host: add confirmed hiring, retirement, and lead reassignment | REV-51–REV-54, REV-57, REV-58; generic creation #10806 | Start Paul alone; queues justify Erin → Frank → Pat; exact proposals create/attest once within Paul-plus-three cap and budget; hires train before real drafting; retire stops/reassigns without losing owner-readable history or suppression; reuse #10804 for rotation/migration, with explicit grants and reviewed certification bindings |
 | REV-65 | Sales/operations: project the private floor report and Wendy escalation | REV-54, REV-58; REV-62/REV-63 for outbound metrics; REV-25/REV-26 for financial enrichment | Pipeline and immediate complaint/pause escalation work before revenue; real counts and known/unknown costs remain distinct; Paul drafts a weekly aggregate update for owner review/publication |
 | REV-66 | Host/client: add qualified reviewed-batch grants | Measured REV-62/REV-63 operation; REV-57 | Frozen five-item batches bind exact recipients/content/versions/expiry/caps and consume sends once; edits/revocation block remaining sends; interested replies, prices, first partner messages, public posts, and new channels stay level 0; thresholds never auto-grant authority |
 | REV-67 | Verse/art: survey and admit an Agora parcel | Existing Everglade layout/style contracts | Complete hall/wing/steps/roof, foliage, terrain, access, and 3 m clearance pass; select west-of-Lantern or surveyed off-trail market fallback from retained evidence |
 | REV-68 | Verse/art: add Agora kit generation, review, and artifact admission | REV-67; existing original-art/pack tools and completed artifact queue #10763 | Scripts recognize Agora and retain original provenance plus near/far budgets; reviewed pack changes land through `openagents artifact submit everglade-pack`, with one checked repin on current main |
 | REV-69 | Verse: add the Agora layout, reachable stations, and private boards | REV-53, REV-68; world tree [#10788](https://github.com/OpenAgentsInc/openagents/issues/10788) | Every desk/booth/lectern is reachable; record-backed views show no prospect identity/message; licensed hire art remains optional |
-| REV-70 | Crew/Verse: add the minimal Bob wrapper and connect sales bodies/day plans | REV-64, REV-69; crew phase 1; [#10790](https://github.com/OpenAgentsInc/openagents/issues/10790), [#10791](https://github.com/OpenAgentsInc/openagents/issues/10791) | Bob validates/captures placement tables and places Paul plus admitted hires; activities cite actual work and idle stays honest; town routines never reset operational limits or authorize effects |
+| REV-70 | Crew/Verse: extend Bob's town adapter for sales bodies and day plans | REV-64, REV-69; shared Bob #10806; [#10790](https://github.com/OpenAgentsInc/openagents/issues/10790), [#10791](https://github.com/OpenAgentsInc/openagents/issues/10791) | Reuse Bob's identity/loop; sales placement code validates/captures tables and places Paul plus admitted hires through owner-reviewed work; activities cite actual work and idle stays honest; town routines never reset limits or authorize effects |
 | REV-71 | Verse/payments: implement the earned-sale bell and reviewed shared projection | REV-65, REV-69; attributed settlement and delivery evidence | Earned-sale bell fires once and reversals adjust totals; scratch boards/ticker/capture/animation tests hide raw leads, live amounts, and deal timing from shared viewers; owner can capture/publish only reviewed delayed aggregates or labeled demos |
 | REV-72 | Sales/growth: instantiate Arthur/Vanna against qualified partner/referral operations | REV-59, REV-62, REV-64; REV-33 for partner assignments; REV-29–REV-32 for commission activity | Arthur can prepare partner research before commission infrastructure; paid assignments/earnings claims wait for their contracts and qualification; Vanna preserves attribution; own-agent links earn nothing; Sybil scratch referral-abuse checks pass |
 
@@ -554,9 +620,12 @@ Use the build IDs above to select the first scoped issues:
 3. Accounts/payments start REV-19/REV-21, then the relevant common-funding and
    live-card adapters REV-20/REV-22. Preserve first-lane availability while
    cross-product and card funding are being built.
-4. Crew/host start REV-51/REV-53/REV-58, then budgeted Paul, reviewed playbook,
-   and training. Automated sending waits for REV-60–REV-63 and O6; Agora art
-   and the existing world issues can proceed separately.
+4. Shared-agent work follows #10798 → #10799 → #10800 first, with #10801
+   alongside and #10806 before Paul's steering integration. Sales prepares
+   REV-04/REV-53 record schemas, REV-55 adapters, training fixtures, and Agora
+   art in parallel; integrate REV-51/REV-58 before budgeted Paul (REV-54).
+   Automated sending waits for REV-60–REV-63 and O6. Optional sync and the
+   remaining world issues don't delay founder-led revenue.
 5. Growth prepares REV-27–REV-33; Brainstorm REV-34–REV-37 is one independently
    qualified discovery experiment. Team and wider-supply rows follow buyer
    evidence, not completion of every preceding product lane.

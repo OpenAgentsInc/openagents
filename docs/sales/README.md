@@ -1,6 +1,6 @@
 # Sales and revenue
 
-Status: proposal, updated October 6, 2026. This page records the sales strategy
+Status: proposal, updated October 7, 2026. This page records the sales strategy
 for OpenAgents, with Coder as the first adoption path. The
 [unified revenue roadmap](revenue-roadmap.md) owns the delivery order, missing
 pieces, dependencies, and evidence needed to earn revenue. The
@@ -290,7 +290,9 @@ workflows.
 
 Agents and plugins become things people can find, trust, and pay for.
 
-- **Identity.** Agents have portable identities; plugin releases bind the
+- **Identity.** The [identity and engrams epic #10807](../verse/agent-identity-and-engrams.md)
+  plans each agent's key, private memory, and steering loop; portable
+  lifecycle and owner-device sync remain open phases. Plugin releases bind the
   publisher's identity and exact version
   ([NIP-SOV](../../nips/openagents/NIP-SOV.md),
   [NIP-HOST](../../nips/openagents/NIP-HOST.md)).
@@ -334,7 +336,9 @@ attribution, team controls, and reusable department agents build on that path.
 The [agent sales floor's build order](agent-sales-floor.md#build-order) adds
 the agent-run sales operation: Paul and the sales records, training and
 certification, outbound under the owner's approval, hiring, and the Agora in
-Everglade, about 66 agent-hours after the crew machinery it builds on.
+Everglade, about 66 incremental agent-hours alongside applicable shared
+agent and world dependencies. #10807 estimates about 33 shared agent-hours
+separately; neither estimate is a launch schedule.
 
 ## Roadmap
 
@@ -350,6 +354,11 @@ inventory: 76 proposed work items with stable IDs, responsibility areas,
 dependencies, and acceptance, including the sales floor. It links completed
 foundations and existing open world issues, identifies the smallest revenue
 path for each offer, and separates owner activation from code completion.
+Its [shared-agent phase map](revenue-roadmap.md#shared-agent-foundation-10807)
+reuses #10807: Alice steering Coder first, then generic crew machinery for
+Paul. Sales adds current-record adapters, narrowing charters, aggregate
+budgets, and owner-approved outreach; first revenue can proceed through humans
+while the epic remains open.
 
 The agent sales floor runs alongside from R0: Paul and a verified claims
 register first, then certified hires sending under per-message approval, then
