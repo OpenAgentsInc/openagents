@@ -78,6 +78,7 @@ pub struct App {
     pub checking_key: bool,
     pub checking_jev: bool,
     pub(crate) brainstorm_job: Option<brainstorm::Job>,
+    brainstorm_conversation: Option<brainstorm::Conversation>,
     pub slash_selected: usize,
     pub slash_hidden: bool,
     pub notice: Option<String>,
@@ -263,6 +264,7 @@ impl App {
 
     pub fn cancel_request(&mut self) {
         let brainstorm = self.brainstorm_job.take();
+        self.brainstorm_conversation = None;
         if let Some(job) = &brainstorm {
             job.cancellation.cancel();
             if matches!(
@@ -373,12 +375,19 @@ impl App {
                 let Some(job) = self.brainstorm_job.take() else {
                     return;
                 };
+                let conversation = self.brainstorm_conversation.take();
                 if generation != job.generation
                     || generation != self.plugins.bundled.brainstorm.generation
                 {
                     self.live.busy = false;
-                    self.live
-                        .stop_tools("Brainstorm settings changed before this result returned.");
+                    if let Some(conversation) = &conversation {
+                        self.finish_brainstorm_conversation(conversation);
+                        if let Some(chat) = conversation.chat_mut(self) {
+                            let reason = "Brainstorm settings changed before this result returned.";
+                            chat.stop_tools(reason);
+                            chat.notice = Some(reason.into());
+                        }
+                    }
                     return;
                 }
                 if matches!(job.command, brainstorm::Command::Test) {
@@ -397,21 +406,33 @@ impl App {
                     };
                     return;
                 }
-                self.live.busy = false;
+                let Some(conversation) = conversation else {
+                    self.live.busy = false;
+                    self.live.notice =
+                        Some("The Brainstorm lookup conversation is unavailable.".into());
+                    return;
+                };
+                self.finish_brainstorm_conversation(&conversation);
                 let output = match result {
                     Ok(outcome) => brainstorm::output(outcome),
                     Err(error) => serde_json::json!({ "error": error.to_string(), "state": error,
                         "recipient": job.origin, "operation": job.command.name(), "completed_at_ms": atif::now_ms() }),
                 };
-                self.live.tool(
+                let Some(chat) = conversation.chat_mut(self) else {
+                    self.live.notice =
+                        Some("The Brainstorm lookup conversation is unavailable.".into());
+                    return;
+                };
+                chat.tool(
                     job.command.name().into(),
                     job.command.input(&job.origin),
                     output,
                     false,
                 );
+                chat.notice = None;
                 self.live.notice = None;
                 self.history.dirty = true;
-                self.scroll_main_to_end();
+                self.scroll_brainstorm_conversation(&conversation);
             }
             live::Update::Delegation {
                 delegation,
@@ -645,7 +666,7 @@ impl App {
                 return;
             }
         };
-        if matches!(job.command, brainstorm::Command::Test) {
+        let conversation = if matches!(job.command, brainstorm::Command::Test) {
             let edited = self.plugins.bundled.brainstorm.edited_preferences();
             if !edited
                 .as_ref()
@@ -655,41 +676,82 @@ impl App {
                     Some("Save a valid origin before testing its connection.".into());
                 return;
             }
+            None
         } else {
             if !self.ensure_session() {
                 return;
             }
-            let text = std::mem::take(&mut self.draft.text);
-            self.select_agent(None);
-            self.draft.text = text;
-            self.draft.cursor = self.draft.text.len();
-        }
+            let Some(conversation) = brainstorm::Conversation::selected(self) else {
+                self.live.notice = Some("The selected lookup conversation is unavailable.".into());
+                return;
+            };
+            Some(conversation)
+        };
         self.cancel_request();
         if matches!(job.command, brainstorm::Command::Test) {
             self.plugins.bundled.brainstorm.connection = plugins::Connection::Checking;
             self.plugins.bundled.brainstorm.discovery = None;
-        } else {
-            self.live
-                .entries
-                .push(live::Entry::User(std::mem::take(&mut self.draft.text)));
+        } else if let Some(conversation) = &conversation {
+            let text = std::mem::take(&mut self.draft.text);
             self.draft.cursor = 0;
-            self.live.tool(
+            let Some(chat) = conversation.chat_mut(self) else {
+                self.draft.text = text;
+                self.draft.cursor = self.draft.text.len();
+                self.live.notice = Some("The selected lookup conversation is unavailable.".into());
+                return;
+            };
+            chat.entries.push(live::Entry::User(text));
+            chat.tool(
                 job.command.name().into(),
                 job.command.input(&job.origin),
                 serde_json::Value::Null,
                 true,
             );
+            chat.busy = true;
+            chat.notice = None;
+            if let brainstorm::Conversation::Delegation(id) = conversation {
+                if let Some(child) = self.delegations.iter_mut().find(|child| &child.id == id) {
+                    child.running = true;
+                    child.started_at = self.elapsed_seconds;
+                }
+            }
             self.live.busy = true;
             self.live.notice = None;
             self.history.dirty = true;
-            self.scroll_main_to_end();
+            self.scroll_brainstorm_conversation(conversation);
         }
+        self.brainstorm_conversation = conversation;
         self.brainstorm_job = Some(job.clone());
         self.request = Some(live::Request {
             id: self.request_id,
             key: model_access::ApiKey::new(""),
             kind: live::Work::Brainstorm { job },
         });
+    }
+
+    fn finish_brainstorm_conversation(&mut self, conversation: &brainstorm::Conversation) {
+        self.live.busy = false;
+        if let brainstorm::Conversation::Delegation(id) = conversation {
+            if let Some(child) = self.delegations.iter_mut().find(|child| &child.id == id) {
+                child.running = false;
+                child.chat.busy = false;
+                child.elapsed_seconds = self.elapsed_seconds.saturating_sub(child.started_at);
+            }
+        }
+    }
+
+    fn scroll_brainstorm_conversation(&mut self, conversation: &brainstorm::Conversation) {
+        match conversation {
+            brainstorm::Conversation::Main => self.scroll_main_to_end(),
+            brainstorm::Conversation::Delegation(id) => {
+                if let Some(index) = self.delegations.iter().position(|child| &child.id == id) {
+                    self.delegations[index].scroll = u16::MAX;
+                    if self.selected_agent == Some(index) {
+                        self.scroll = u16::MAX;
+                    }
+                }
+            }
+        }
     }
 
     pub fn check_brainstorm_connection(&mut self) {

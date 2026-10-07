@@ -147,6 +147,50 @@ pub enum Outcome {
     Observation(Observation),
 }
 
+/// Keep lookup evidence in the conversation that admitted its public input.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub(crate) enum Conversation {
+    Main,
+    Delegation(String),
+}
+
+impl Conversation {
+    pub(crate) fn selected(app: &crate::App) -> Option<Self> {
+        match app.selected_agent {
+            None => Some(Self::Main),
+            Some(index) => app
+                .delegations
+                .get(index)
+                .map(|child| Self::Delegation(child.id.clone())),
+        }
+    }
+
+    pub(crate) fn chat<'a>(&self, app: &'a crate::App) -> Option<&'a crate::live::Chat> {
+        match self {
+            Self::Main => Some(&app.live),
+            Self::Delegation(id) => app
+                .delegations
+                .iter()
+                .find(|child| &child.id == id)
+                .map(|child| &child.chat),
+        }
+    }
+
+    pub(crate) fn chat_mut<'a>(
+        &self,
+        app: &'a mut crate::App,
+    ) -> Option<&'a mut crate::live::Chat> {
+        match self {
+            Self::Main => Some(&mut app.live),
+            Self::Delegation(id) => app
+                .delegations
+                .iter_mut()
+                .find(|child| &child.id == id)
+                .map(|child| &mut child.chat),
+        }
+    }
+}
+
 pub(crate) trait Lookup: Send + Sync {
     fn set_enabled(&self, enabled: bool);
     fn read<'a>(

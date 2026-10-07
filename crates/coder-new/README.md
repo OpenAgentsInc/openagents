@@ -71,8 +71,9 @@ These are unsigned HTTP observations; the API does not bind its effective
 observer atomically to the discovered key. Following local and OpenRouter turns
 receive the newest observation or typed failure within an 8 KiB context allowance.
 Earlier observations remain in the existing transcript, without another query
-history store. This supports the current live conversation; observation recovery
-across chat reopening and automatic local-model lookup remain separate work.
+history store. Lookups stay in the selected live conversation, including a
+delegation, and following turns use that conversation's observation. Observation
+recovery across chat reopening and automatic local-model lookup remain separate work.
 
 Enabled plugins register their tools and usage instructions for OpenRouter
 chat. Tool calls run on the background worker, appear in the transcript, and

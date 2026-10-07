@@ -173,6 +173,27 @@ fn fixture_app() -> (App, Arc<Fixture>) {
     (app, fixture)
 }
 
+fn add_child(app: &mut App) {
+    app.delegations.push(crate::live::Delegation {
+        id: "child".into(),
+        name: "microcoder".into(),
+        task: "Review public fixture accounts.".into(),
+        chat: crate::live::Chat {
+            entries: vec![Entry::Assistant {
+                text: "An earlier child reply.".into(),
+                model: Some("synthetic/child".into()),
+            }],
+            tokens: 7,
+            ..Default::default()
+        },
+        started_at: 0,
+        elapsed_seconds: 0,
+        running: false,
+        draft: Default::default(),
+        scroll: 0,
+    });
+}
+
 fn pump(app: &mut App, background: &mut Background, done: impl Fn(&App) -> bool) {
     let deadline = Instant::now() + Duration::from_secs(2);
     loop {
@@ -541,6 +562,173 @@ fn headless_lookup_returns_its_current_bounded_observation_or_error_without_a_pr
             .count(),
         1
     );
+}
+
+#[test]
+fn headless_child_lookup_uses_its_own_turn_boundary_and_following_conversation() {
+    let directory = tempfile::tempdir().unwrap();
+    let context = crate::programmatic::Context {
+        root: directory.path().join("state"),
+        cwd: directory.path().into(),
+        environment: Default::default(),
+        input: None,
+        canceled: None,
+        approvals: None,
+    };
+    let (mut app, fixture) = fixture_app();
+    app.live
+        .entries
+        .extend((0..30).map(|index| Entry::User(format!("Parent history {index}"))));
+    app.live.entries.push(Entry::Tool {
+        name: Command::Search(String::new()).name().into(),
+        input: serde_json::Value::Null,
+        output: output(Outcome::Observation(observation(&Command::Search(
+            "Parent account".into(),
+        )))),
+        running: false,
+    });
+    app.live.entries.push(Entry::Assistant {
+        text: "An earlier parent reply.".into(),
+        model: Some("synthetic/parent".into()),
+    });
+    let parent = app.live.entries.clone();
+    add_child(&mut app);
+    let mut events = Vec::new();
+    let result = crate::programmatic::chat(
+        &mut app,
+        &[
+            "--session".into(),
+            "child-lookup".into(),
+            "--delegation".into(),
+            "child".into(),
+            "-p".into(),
+            format!("/brainstorm rank {OTHER}"),
+        ],
+        &context,
+        &mut |event| events.push(event),
+    )
+    .unwrap();
+    let reply = result["reply"].as_str().unwrap();
+    let result: serde_json::Value = serde_json::from_str(reply).unwrap();
+    assert!(reply.len() <= 8 * 1024);
+    assert_eq!(result["observation"]["operation"], "rank");
+    assert_eq!(result["observation"]["subjects"][0]["pubkey"], OTHER);
+    assert_eq!(app.selected_agent, Some(0));
+    assert!(app.live.entries == parent);
+    assert!(app.live.entries.len() > app.delegations[0].chat.entries.len());
+    assert_eq!(app.delegations[0].chat.tokens, 7);
+    assert!(!app.delegations[0].running);
+    assert!(!app.delegations[0].chat.busy);
+    assert!(
+        events
+            .iter()
+            .any(|event| event["event"] == "delegation_entry"
+                && event["delegation"] == "child"
+                && event["entry"]["source"] == "user")
+    );
+    assert!(
+        events
+            .iter()
+            .any(|event| event["event"] == "delegation_entry"
+                && event["delegation"] == "child"
+                && event["entry"]["output"].get("observation").is_some())
+    );
+    let retained = crate::sessions::Store::under(&context.root)
+        .read("child-lookup")
+        .unwrap();
+    assert!(crate::trajectory::from_document(&retained).unwrap().entries == parent);
+    let child = crate::trajectory::from_document(&retained["subagent_trajectories"][0]).unwrap();
+    assert!(
+        matches!(child.entries.last(), Some(Entry::Tool { output, .. }) if output["observation"]["subjects"][0]["pubkey"] == OTHER)
+    );
+
+    app.submit("Compare this child's account.", directory.path());
+    let Work::Delegate {
+        delegation,
+        arguments,
+        ..
+    } = app.request.take().unwrap().kind
+    else {
+        panic!("The following child turn must keep its ordinary delegation route")
+    };
+    assert_eq!(delegation, "child");
+    let task = arguments["task"].as_str().unwrap();
+    assert!(task.contains("Compare this child's account."));
+    assert!(task.contains(OTHER));
+    assert!(task.contains("separate_https_observation"));
+    assert!(task.contains("expires_at_ms"));
+    assert!(!task.contains("Parent history"));
+    assert!(task.contains("unknown"));
+    app.cancel_request();
+    *fixture.error.lock().unwrap() = Some(Error::AuthenticationRequired { status: 401 });
+    let failure = crate::programmatic::chat(
+        &mut app,
+        &[
+            "--session".into(),
+            "child-lookup".into(),
+            "--delegation".into(),
+            "child".into(),
+            "-p".into(),
+            "/brainstorm search Unavailable".into(),
+        ],
+        &context,
+        &mut |_| {},
+    )
+    .unwrap();
+    let failure: serde_json::Value =
+        serde_json::from_str(failure["reply"].as_str().unwrap()).unwrap();
+    assert!(failure.get("error").is_some());
+    assert!(failure.get("observation").is_none());
+    assert_eq!(failure["recipient"], ORIGIN);
+    assert!(app.live.entries == parent);
+    assert_eq!(fixture.calls.lock().unwrap().len(), 2);
+    assert!(matches!(app.plugins.connection, Connection::Unchecked));
+}
+
+#[test]
+fn child_lookup_completion_and_cancel_keep_the_original_target_after_navigation() {
+    let (mut app, fixture) = fixture_app();
+    add_child(&mut app);
+    app.select_agent(Some(0));
+    app.submit("/brainstorm search Rust", std::path::Path::new("/fixture"));
+    assert!(app.delegations[0].chat.busy);
+    assert!(app.delegations[0].running);
+    assert!(matches!(
+        app.delegations[0].chat.entries.last(),
+        Some(Entry::Tool { running: true, .. })
+    ));
+    app.select_agent(None);
+    pump(&mut app, &mut Background::default(), |app| !app.live.busy);
+    assert_eq!(app.selected_agent, None);
+    assert!(app.live.entries.is_empty());
+    assert!(!app.delegations[0].running);
+    assert!(!app.delegations[0].chat.busy);
+    assert!(
+        matches!(app.delegations[0].chat.entries.last(), Some(Entry::Tool { output, running: false, .. }) if output.get("observation").is_some())
+    );
+    app.select_agent(Some(0));
+    fixture.delay.store(100, Ordering::SeqCst);
+    app.submit(
+        &format!("/brainstorm rank {OTHER}"),
+        std::path::Path::new("/fixture"),
+    );
+    let pending = app.brainstorm_job.as_ref().unwrap().clone();
+    let id = app.request_id;
+    app.select_agent(None);
+    key(&mut app, KeyCode::Esc);
+    assert!(pending.cancellation.is_cancelled());
+    assert!(!app.delegations[0].running);
+    assert!(!app.delegations[0].chat.busy);
+    app.apply_update(Update::BrainstormFinished {
+        id,
+        generation: pending.generation,
+        result: Ok(Outcome::Observation(observation(&pending.command))),
+    });
+    assert!(app.live.entries.is_empty());
+    assert!(
+        matches!(app.delegations[0].chat.entries.last(), Some(Entry::Tool { output, running: false, .. }) if output.get("error").is_some() && output.get("observation").is_none())
+    );
+    assert_eq!(app.delegations[0].chat.tokens, 7);
 }
 
 #[test]

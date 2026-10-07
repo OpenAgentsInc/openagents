@@ -841,7 +841,6 @@ pub(crate) fn chat(
         .or_else(|| fs::read_to_string(&standing).ok())
         .filter(|text| !text.trim().is_empty());
     let brainstorm_lookup = !demo && matches!(crate::brainstorm::parse(prompt.trim()), Some(Ok(_)));
-    let turn_start = app.live.entries.len();
     if let Some(id) = delegation {
         app.selected_agent = Some(
             app.delegations
@@ -850,6 +849,18 @@ pub(crate) fn chat(
                 .ok_or_else(|| usage("That delegation is not part of the selected session."))?,
         );
     }
+    let lookup_conversation = if brainstorm_lookup {
+        let conversation = crate::brainstorm::Conversation::selected(app)
+            .ok_or("The selected lookup conversation is unavailable.")?;
+        let turn_start = conversation
+            .chat(app)
+            .ok_or("The selected lookup conversation is unavailable.")?
+            .entries
+            .len();
+        Some((conversation, turn_start))
+    } else {
+        None
+    };
     if demo {
         let target = if let Some(index) = app.selected_agent {
             &mut app.delegations[index].chat
@@ -895,6 +906,14 @@ pub(crate) fn chat(
                     .entries
                     .iter()
                     .enumerate()
+                    .take(match &lookup_conversation {
+                        Some((crate::brainstorm::Conversation::Delegation(id), start))
+                            if id == &child.id =>
+                        {
+                            *start
+                        }
+                        _ => child.chat.entries.len(),
+                    })
                     .map(|(index, entry)| ((child.id.clone(), index), entry_value(entry)))
             })
             .collect();
@@ -975,16 +994,24 @@ pub(crate) fn chat(
     if let Some(error) = &app.live.notice {
         return Err(error.clone().into());
     }
-    let target = app
-        .selected_agent
-        .and_then(|index| app.delegations.get(index))
-        .map_or(&app.live, |child| &child.chat);
+    let target = match &lookup_conversation {
+        Some((conversation, _)) => conversation
+            .chat(app)
+            .ok_or("The Brainstorm lookup conversation is unavailable.")?,
+        None => app
+            .selected_agent
+            .and_then(|index| app.delegations.get(index))
+            .map_or(&app.live, |child| &child.chat),
+    };
     if let Some(error) = &target.notice {
         return Err(error.clone().into());
     }
-    let reply = if brainstorm_lookup {
+    let reply = if let Some((_, turn_start)) = &lookup_conversation {
         // A lookup completes with its own tool observation, without a model reply.
-        target.entries[turn_start..]
+        target
+            .entries
+            .get(*turn_start..)
+            .unwrap_or_default()
             .iter()
             .rev()
             .find_map(|entry| match entry {
