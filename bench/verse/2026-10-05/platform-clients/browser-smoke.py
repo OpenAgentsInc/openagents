@@ -9,14 +9,15 @@ threading.Thread(target=http.serve_forever,daemon=True).start();url=f"http://127
 browser='/nix/store/km74bimklrd4zmvxz4963srphshynzia-ungoogled-chromium-152.0.7977.82/bin/chromium'
 env=os.environ.copy();env.update(HOME=str(home),XDG_CONFIG_HOME=str(home/"config"),XDG_CACHE_HOME=str(home/"cache"));env.pop("DISPLAY",None);env.pop("WAYLAND_DISPLAY",None)
 args=[browser,"--headless=new","--user-data-dir="+str(profile),"--remote-debugging-port=0","--remote-allow-origins=http://127.0.0.1","--disable-background-networking","--disable-sync","--no-first-run","--use-gl=angle","--use-angle=swiftshader","--enable-unsafe-swiftshader","--window-size=1000,800","about:blank"]
-log=(base/"browser.log").open('w');proc=subprocess.Popen(args,env=env,stdout=log,stderr=subprocess.STDOUT);results=[];cdp=None
+given=os.environ.get("OPENAGENTS_CHROME_PORT") # set by `openagents browser run`; else start our own
+log=(base/"browser.log").open('w');proc=None if given else subprocess.Popen(args,env=env,stdout=log,stderr=subprocess.STDOUT);results=[];cdp=None
 (base/"receipt.json").unlink(missing_ok=True)
 try:
- for i in range(200):
+ for i in range(0 if given else 200):
   if (profile/"DevToolsActivePort").exists():break
   if proc.poll() is not None:raise RuntimeError("Browser exited; inspect browser.log")
   time.sleep(.1)
- port=int((profile/"DevToolsActivePort").read_text().splitlines()[0]);tabs=json.load(urllib.request.urlopen(f"http://127.0.0.1:{port}/json"));tab=next(x for x in tabs if x['type']=='page');cdp=Cdp(tab['webSocketDebuggerUrl']);cdp.call('Runtime.enable');cdp.call('Page.enable');cdp.call('Page.bringToFront');cdp.call('Emulation.setDeviceMetricsOverride',{'width':1000,'height':800,'deviceScaleFactor':1,'mobile':False});cdp.call('Page.navigate',{'url':url})
+ port=int(given or (profile/"DevToolsActivePort").read_text().splitlines()[0]);tabs=json.load(urllib.request.urlopen(f"http://127.0.0.1:{port}/json"));tab=next(x for x in tabs if x['type']=='page');cdp=Cdp(tab['webSocketDebuggerUrl']);cdp.call('Runtime.enable');cdp.call('Page.enable');cdp.call('Page.bringToFront');cdp.call('Emulation.setDeviceMetricsOverride',{'width':1000,'height':800,'deviceScaleFactor':1,'mobile':False});cdp.call('Page.navigate',{'url':url})
  def val(expr):
   r=cdp.eval(expr)
   if 'exceptionDetails' in r:raise RuntimeError(r)
@@ -82,7 +83,8 @@ finally:
  if cdp:
   try:cdp.call('Page.navigate',{'url':'about:blank'})
   except Exception:pass
- proc.terminate()
- try:proc.wait(timeout=10)
- except subprocess.TimeoutExpired:proc.kill();proc.wait()
+ if proc:
+  proc.terminate()
+  try:proc.wait(timeout=10)
+  except subprocess.TimeoutExpired:proc.kill();proc.wait()
  http.shutdown();(site/'stop').touch();log.close()

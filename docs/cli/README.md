@@ -134,6 +134,14 @@ captures and scripts somewhere a reboot doesn't clear. `--session SESSION`
 names another session, and `--json` prints the path, session, and root.
 [Durable scratch](../coder/guides/scratch.md) covers the rules.
 
+## Browser checks (`openagents browser`)
+
+`openagents browser run -- CMD` starts Chrome with a fresh profile and its own
+debugging port, gives `CMD` `OPENAGENTS_CHROME_PORT` and
+`OPENAGENTS_CHROME_WS`, and removes the profile when `CMD` ends, so agents can
+verify in a browser at the same time. `--headed` takes the screen and browser
+leases. [Verify in a browser](../coder/guides/browser.md) covers the details.
+
 ## Local capability settings (`openagents settings`)
 
 `openagents settings show|get|set|unset` edits `~/.openagents/settings.json`,

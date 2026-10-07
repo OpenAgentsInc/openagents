@@ -171,6 +171,11 @@ pub fn help() -> Vec<GroupHelp<'static>> {
             crate::scratch::EFFECTS,
         ),
         group(
+            "browser",
+            Some(crate::browser::USAGE),
+            crate::browser::EFFECTS,
+        ),
+        group(
             "settings",
             Some(crate::settings::USAGE),
             crate::settings::EFFECTS,

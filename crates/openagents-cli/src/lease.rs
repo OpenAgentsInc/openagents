@@ -555,7 +555,10 @@ fn disk_low(free: u64, floor: u64) -> String {
 /// Runs the command under `supervise`, in a process group of its own that
 /// holds the terminal while it runs, and returns its exit code and, when
 /// it had none, why.
-fn run_command(command: &[String], env: &[(String, String)]) -> (Option<i32>, Option<String>) {
+pub(crate) fn run_command(
+    command: &[String],
+    env: &[(String, String)],
+) -> (Option<i32>, Option<String>) {
     let mut child = Command::new(&command[0]);
     child.args(&command[1..]).env_remove(SHIM_VAR);
     for (name, value) in env {

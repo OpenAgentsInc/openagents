@@ -5795,6 +5795,89 @@
       ]
     },
     {
+      "name": "browser",
+      "summary": "Run a command beside a Chrome of its own: a fresh profile and debugging port, removed when the command ends.",
+      "children": [
+        {
+          "name": "run",
+          "leaf": {
+            "path": [
+              "browser",
+              "run"
+            ],
+            "usage": [
+              "run [--headed] [--browser PATH] [--timeout SECONDS] -- CMD [ARGS...]"
+            ],
+            "forms": [
+              {
+                "tokens": [
+                  {
+                    "kind": "literal",
+                    "word": "run"
+                  },
+                  {
+                    "kind": "option",
+                    "name": "headed",
+                    "optional": true
+                  },
+                  {
+                    "kind": "option",
+                    "name": "browser",
+                    "value": "PATH",
+                    "open": true,
+                    "optional": true
+                  },
+                  {
+                    "kind": "option",
+                    "name": "timeout",
+                    "value": "SECONDS",
+                    "open": true,
+                    "optional": true
+                  },
+                  {
+                    "kind": "rest"
+                  }
+                ]
+              }
+            ],
+            "summary": "Start Chrome with a fresh profile and a debugging port of its own, run CMD, then end Chrome and remove the profile, also when CMD fails or this command is interrupted. Exits with CMD's status.",
+            "effect": "long_running",
+            "runs_on": "connected_computer"
+          }
+        }
+      ],
+      "options": [
+        {
+          "kind": "option",
+          "name": "headed",
+          "optional": true,
+          "repeated": true
+        },
+        {
+          "kind": "option",
+          "name": "browser",
+          "value": "PATH",
+          "open": true,
+          "optional": true,
+          "repeated": true
+        },
+        {
+          "kind": "option",
+          "name": "timeout",
+          "value": "SECONDS",
+          "open": true,
+          "optional": true,
+          "repeated": true
+        },
+        {
+          "kind": "option",
+          "name": "json",
+          "optional": true,
+          "repeated": true
+        }
+      ]
+    },
+    {
       "name": "settings",
       "summary": "What Coder may use on this computer: providers, ask first, and more.",
       "children": [

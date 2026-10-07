@@ -12,6 +12,7 @@ plans or analysis, not alternative operating instructions.
 | [activity](activity.md) | Check whether a running `coder` has work in flight before you close its window |
 | [artifact-verification](artifact-verification.md) | Verify a retained artifact |
 | [coder-one-ask](coder-one-ask.md) | Ask Coder One a question about runs, answered from the Gym with checked citations |
+| [browser](browser.md) | Verify in a browser with a Chrome profile and port of your own, through `openagents browser run` |
 | [coder-one-checks](coder-one-checks.md) | Check claimed behavior with admitted scenarios |
 | [coder-one-components](coder-one-components.md) | Run a Coder One component alone on fixtures |
 | [coder-one-issue-eval](coder-one-issue-eval.md) | Measure an issue-flow change on past issues, with a development and a held-out part |

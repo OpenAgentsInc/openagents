@@ -68,7 +68,7 @@ pub fn run(output: &Output, words: &[String]) -> u8 {
 
 /// Creates the scratch directory and describes it: its path, session, and
 /// root.
-fn locate(given: Option<String>) -> Result<Value, String> {
+pub(crate) fn locate(given: Option<String>) -> Result<Value, String> {
     let inherited = std::env::var_os(scratch::SCRATCH_VAR)
         .filter(|dir| !dir.is_empty())
         .map(PathBuf::from);

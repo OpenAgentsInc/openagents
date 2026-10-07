@@ -21,6 +21,7 @@ mod argv;
 #[cfg(unix)]
 mod background;
 mod boat_run;
+mod browser;
 mod catalog;
 mod chamber;
 mod chat;
@@ -137,6 +138,8 @@ Coder:
                quiet, the screen, the GPU), and list holders and waiters.
   scratch      Make and print this session's durable scratch directory, under
                ~/.openagents/scratch, for files that must outlive a reboot.
+  browser      Run a command beside a Chrome of its own: a fresh profile and
+               debugging port, removed when the command ends.
   settings     What Coder may use on this computer: providers, ask first, and more.
   service      Install, update, and roll back the resident host service.
   background   The host's background rules, built in and from plugins turned on here.
@@ -319,6 +322,7 @@ fn main() -> ExitCode {
         "issue" => issue::run(&output, &rest),
         "lease" | "leases" => lease::run(&output, &rest),
         "scratch" => scratch::run(&output, &rest),
+        "browser" => browser::run(&output, &rest),
         "chat" => chat::run(&output, &rest),
         "terminal" => screen::run(&output, &rest),
         "computer" | "computers" => computer::run(&output, &rest),

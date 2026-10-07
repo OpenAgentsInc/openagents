@@ -67,6 +67,10 @@ Keep scratch files (captures, scripts, notes) in the directory `openagents
 scratch` prints (`$OPENAGENTS_SCRATCH` under a lease or a Coder delegation),
 not in `/tmp`, which a reboot clears; `docs/coder/guides/scratch.md`.
 
+Verify in a browser through `openagents browser run -- CMD`, which gives each
+check its own Chrome profile and port (`OPENAGENTS_CHROME_PORT`), never a
+fixed port or a shared profile; `docs/coder/guides/browser.md`.
+
 When a test fails only because a checked-in generated file is stale, run its
 regenerate command and commit the result; don't investigate further.
 
